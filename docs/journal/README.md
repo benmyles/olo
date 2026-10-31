@@ -3,6 +3,14 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-10-31
+
+### Telegram: polls and reactions on their baselines
+
+*15:19* — A poll's shares stand on their answers' baseline; a reaction's count is centred in its chip by its figures with the emoji on their middle, and the emoji lines up with the message text above. Voice notes' waveform bars and the file glyph sit on device pixels at every scale. The layout review now judges an emoji inside a line of text with that line, not against the whole bubble.
+
+![Telegram: polls and reactions on their baselines](2026-10-31/151915-telegram-polls-and-reactions-on-their-baselines.png)
+
 ## 2026-10-30
 
 ### StyledEdit: Page View, dark

@@ -590,7 +590,9 @@ fn lay_reactions(ctx: &egui::Context, m: &Message, look: &Look, x: f32, y: f32, 
     let (mut cx, mut cy) = (x, y);
     for r in &m.reactions {
         let g = plain(ctx, &short_count(r.count), FontId::new(META + 0.5, style::bold()), if r.mine { Color32::WHITE } else { look.link }, 60.0);
-        let w = 8.0 + 18.0 + 4.0 + g.size().x + 8.0;
+        // (Its emoji in from the chip's edge as the bubble's text is from
+        // the bubble's, so they line up.)
+        let w = PAD.x + 18.0 + 4.0 + g.size().x + PAD.x;
         if cx + w > x + max_w && cx > x {
             cx = x;
             cy += REACTION_H + 4.0;
@@ -739,8 +741,10 @@ pub fn paint(p: &Painter, o: Pos2, m: &Message, laid: &Laid, pp: &Paint, pointer
                 p.galley(r.min + vec2(0.0, a.size().y + 2.0), b.clone(), look.dim);
                 continue;
             }
-            p.galley(r.min + vec2(40.0, 0.0), a.clone(), look.text);
-            p.galley(pos2(r.left() + 34.0 - b.size().x, r.top()), b.clone(), look.text);
+            // The answer and its share on one baseline.
+            let baseline = style::snap_coord(p.ctx(), r.top() + style::baseline_offset(a));
+            p.galley(style::galley_on_baseline(p.ctx(), a, r.left() + 40.0, baseline), a.clone(), look.text);
+            p.galley(style::galley_on_baseline(p.ctx(), b, r.left() + 34.0 - b.size().x, baseline), b.clone(), look.text);
             let bar = Rect::from_min_size(pos2(r.left() + 40.0, r.bottom() - 5.0), vec2((r.width() - 40.0) * share.max(0.02), 3.0));
             p.rect_filled(style::snap(p.ctx(), bar), 1.5, look.link);
         }
@@ -841,11 +845,16 @@ fn paint_reactions(p: &Painter, o: Pos2, laid: &Laid, look: &Look, over: &mut im
         let r = r.translate(o.to_vec2());
         let fill = if *mine { look.accent } else { look.link.gamma_multiply(0.14) };
         p.rect_filled(style::snap(p.ctx(), r), r.height() / 2.0, fill);
-        let er = Rect::from_min_size(pos2(r.left() + 7.0, r.center().y - 9.0), vec2(18.0, 18.0));
+        // The count centred in the chip by its figures, the emoji on
+        // their middle (as a mark beside text is).
+        let size = META + 0.5;
+        let baseline = style::baseline_at(p.ctx(), r.center().y, size);
+        let caps = baseline - size * style::CAP_HEIGHT / 2.0;
+        let er = style::snap_centred(p.ctx(), pos2(r.left() + PAD.x + 9.0, caps), vec2(18.0, 18.0));
         if !emoji::paint(p, er, e) {
             p.text(er.center(), Align2::CENTER_CENTER, e, FontId::proportional(13.0), look.text);
         }
-        p.galley(pos2(er.right() + 4.0, r.center().y - g.size().y / 2.0), g.clone(), if *mine { Color32::WHITE } else { look.link });
+        p.galley(style::galley_on_baseline(p.ctx(), g, er.right() + 4.0, baseline), g.clone(), if *mine { Color32::WHITE } else { look.link });
         over(r, Hit::Reaction(e.clone()));
     }
 }
@@ -911,12 +920,16 @@ fn paint_media(p: &Painter, r: Rect, m: &Message, laid: &Laid, pp: &Paint, corne
             let wr = Rect::from_min_max(pos2(r.left() + 46.0, r.top() + 4.0), pos2(r.right(), r.top() + 24.0));
             let n = ((wr.width() / 3.0) as usize).max(1);
             let played = pp.playing.unwrap_or(0.0);
+            // Each bar on device pixels, two points wide, its height whole
+            // pixels standing on the same line.
             let ppp = p.ctx().pixels_per_point();
+            let bottom = style::snap_coord(p.ctx(), wr.bottom());
+            let (w, step) = ((2.0 * ppp).round() / ppp, (3.0 * ppp).round() / ppp);
             for i in 0..n {
                 let s = if waveform.is_empty() { 4 } else { waveform[i * waveform.len() / n] } as f32;
-                let h = (2.0 + s / 31.0 * wr.height()).min(wr.height());
-                let x = ((wr.left() + i as f32 * 3.0) * ppp).round() / ppp;
-                let bar = Rect::from_min_max(pos2(x, wr.bottom() - h), pos2(x + 2.0, wr.bottom()));
+                let h = ((2.0 + s / 31.0 * wr.height()).min(wr.height()) * ppp).round().max(1.0) / ppp;
+                let x = style::snap_coord(p.ctx(), wr.left()) + i as f32 * step;
+                let bar = Rect::from_min_max(pos2(x, bottom - h), pos2(x + w, bottom));
                 let ink = if (i as f32 / n as f32) < played { look.accent } else { look.accent.gamma_multiply(0.35) };
                 p.rect_filled(bar, 1.0, ink);
             }
@@ -999,11 +1012,17 @@ fn eye(p: &Painter, c: Pos2, ink: Color32) {
     p.circle_filled(c, 1.4, ink);
 }
 
-/// A page with a folded corner (a file), centred at `c`.
+/// A page with a folded corner (a file), centred at `c`: its edges whole
+/// device pixels, each down the middle of its pixels so it's crisp.
 fn document(p: &Painter, c: Pos2, ink: Color32) {
-    let s = Stroke::new(1.5, ink);
-    let r = Rect::from_center_size(c, vec2(12.0, 15.0));
-    let fold = 4.0;
+    let ppp = p.ctx().pixels_per_point();
+    let px = (1.5 * ppp).round().max(1.0);
+    let s = Stroke::new(px / ppp, ink);
+    // Edges' middles: on a pixel's middle for an odd width, between
+    // pixels for an even one.
+    let at = |v: f32| ((v * ppp - px / 2.0).round() + px / 2.0) / ppp;
+    let r = Rect::from_min_max(pos2(at(c.x - 6.0), at(c.y - 7.5)), pos2(at(c.x + 6.0), at(c.y + 7.5)));
+    let fold = (4.0 * ppp).round() / ppp;
     let pts = vec![r.left_top(), pos2(r.right() - fold, r.top()), pos2(r.right(), r.top() + fold), r.right_bottom(), r.left_bottom(), r.left_top()];
     p.add(egui::Shape::line(pts, s));
     p.line_segment([pos2(r.right() - fold, r.top()), pos2(r.right() - fold, r.top() + fold)], s);

@@ -2524,5 +2524,11 @@
   "title": "StyledEdit: Page View, dark",
   "caption": "The desk half way to black under dark sheets.",
   "image": "2026-10-30/214407-stylededit-page-view-dark.png"
+ },
+ {
+  "time": "2026-10-31T15:19:15",
+  "title": "Telegram: polls and reactions on their baselines",
+  "caption": "A poll's shares stand on their answers' baseline; a reaction's count is centred in its chip by its figures with the emoji on their middle, and the emoji lines up with the message text above. Voice notes' waveform bars and the file glyph sit on device pixels at every scale. The layout review now judges an emoji inside a line of text with that line, not against the whole bubble.",
+  "image": "2026-10-31/151915-telegram-polls-and-reactions-on-their-baselines.png"
  }
 ]

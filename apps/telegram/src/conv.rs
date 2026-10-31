@@ -300,6 +300,8 @@ pub fn show(ui: &mut Ui, rect: Rect, c: &mut Conv, u: ConvUi) -> Vec<Act> {
     }
     let content = y + MARGIN - RUN_GAP;
     let view_h = list.height();
+    // It scrolls: on a grid of its own, not level with the chat list's.
+    olo_kit::layout_review::own_grid(ui, list);
     // Keep what's in view where it was: at the bottom if it was, else
     // the same messages when older ones came in above.
     let (last_content, last_offset, last_view, last_oldest) = c.last;

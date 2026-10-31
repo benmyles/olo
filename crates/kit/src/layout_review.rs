@@ -582,7 +582,16 @@ fn centred(p: &Parts, t: &Text) -> bool {
 
 fn off_centre(p: &Parts, out: &mut Vec<Finding>) {
     let mut items: Vec<(Rect, f32, String)> = p.texts.iter().map(|t| (caps(t), t.middle, quote(t))).collect();
-    items.extend(p.icons.iter().map(|i| i.rect).map(|r| (r, r.center().y, "an icon".to_owned())));
+    // An icon level with text beside it on its line (an emoji in a
+    // message, a mark after a name) goes with that line: the line is
+    // judged, and the icon against it (near-level), not the band.
+    let in_line = |r: Rect| {
+        p.texts.iter().any(|t| {
+            let gap = (t.rect.left() - r.right()).max(r.left() - t.rect.right());
+            (t.middle - r.center().y).abs() <= 1.0 && gap <= t.size * 1.5 && t.rect.y_range().intersects(r.y_range())
+        })
+    };
+    items.extend(p.icons.iter().map(|i| i.rect).filter(|r| !in_line(*r)).map(|r| (r, r.center().y, "an icon".to_owned())));
     for (r, middle, name) in items {
         let Some(band) = band_of(p, r) else { continue };
         let d = middle - band.center().y;
@@ -728,6 +737,32 @@ mod tests {
             text(&p, 8.0, 25.0, "Header");
         });
         assert!(!kinds(&cut).contains(&"off-centre"), "{cut:?}");
+    }
+
+    /// An icon in a band is centred in it, unless it is in a line of
+    /// text (an emoji in a message), which it goes with.
+    #[test]
+    fn icons_in_a_line_go_with_the_line() {
+        let icon = |p: &Painter, x: f32, cy: f32| {
+            let r = style::snap_centred(p.ctx(), pos2(x + 5.75, cy), vec2(11.5, 11.5));
+            p.image(TextureId::User(7), r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+        };
+        let bubble = |p: &Painter| p.rect_filled(Rect::from_min_size(pos2(0.0, 10.0), vec2(200.0, 34.0)), 0.0, Color32::GRAY);
+        // Alone, low in its band.
+        let alone = frame(2.0, |p| {
+            bubble(p);
+            icon(p, 120.0, 35.0);
+        });
+        assert!(kinds(&alone).contains(&"off-centre"), "{alone:?}");
+        // The second of two lines, after its text: level with it.
+        let line = frame(2.0, |p| {
+            bubble(p);
+            text(p, 8.0, 19.0, "Theo");
+            let font = style::plain_font();
+            let (r, baseline) = style::label_with_baseline(p, 8.0, 35.0, Align::Min, "Soft 3D it is", font.clone(), Color32::BLACK);
+            icon(p, r.right() + 4.0, baseline - font.size * style::CAP_HEIGHT / 2.0);
+        });
+        assert!(!kinds(&line).contains(&"off-centre"), "{line:?}");
     }
 
     /// Text set from its right (sizes in a column) starts on a device

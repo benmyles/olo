@@ -226,6 +226,9 @@ pub fn show(ui: &mut Ui, rect: Rect, l: ListUi) -> Option<Act> {
     }
     style::hline(&painter, rect.left(), rect.right(), top, style::c(p.shadow).gamma_multiply(0.5));
     let body = Rect::from_min_max(egui::pos2(rect.left(), top + style::hairline(ui.ctx())), rect.max);
+    // It scrolls: its rows are on a grid of their own, not level with
+    // the conversation's beside it.
+    olo_kit::layout_review::own_grid(ui, body);
 
     let ids = shown(l.store, l.view);
     // The archive's row, at the top of all chats.
