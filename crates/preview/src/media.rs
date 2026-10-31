@@ -144,12 +144,18 @@ fn mp4(path: &Path, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), Strin
     if d > 0.0 {
         m.duration = Some(d);
     }
+    // AV1, which the mp4 crate doesn't know.
+    let av1 = if video.is_none() { std::fs::File::open(path).ok().and_then(|mut f| mp4_av1(&mut f, size)) } else { None };
+    if let Some(a) = &av1 {
+        video = Some((a.id, "AV1"));
+    }
     let Some((id, codec)) = video else {
         m.note = "MPEG-4 file".into();
         return Ok(());
     };
     let t = &r.tracks()[&id];
-    let (w, h, fps) = (t.width(), t.height(), t.frame_rate());
+    let (w, h) = av1.as_ref().map_or((t.width(), t.height()), |a| (a.width, a.height));
+    let fps = t.frame_rate();
     m.rows.push(("Size".into(), format!("{w} × {h}")));
     let mut fmt = codec.to_string();
     if fps > 0.0 {
@@ -161,6 +167,27 @@ fn mp4(path: &Path, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), Strin
     }
     m.rows.push(("Format".into(), fmt));
     m.note = format!("{codec} video, {w} × {h}");
+    if let Some(a) = av1 {
+        m.playable = true;
+        // The first picture that decodes, a tenth of the way in.
+        let mut dec = olo_kit::images::av1::Decoder::new(1, 1)?;
+        let count = t.sample_count();
+        let syncs = t.trak.mdia.minf.stbl.stss.as_ref().map(|s| s.entries.clone()).unwrap_or_else(|| vec![1]);
+        let start = syncs.iter().copied().filter(|&s| s <= (count / 10).max(1)).max().unwrap_or(1);
+        let mut out = Vec::new();
+        for sid in start..=(start + 120).min(count) {
+            if cancel.load(Ordering::Relaxed) || !out.is_empty() {
+                break;
+            }
+            let Ok(Some(sample)) = r.read_sample(id, sid) else { continue };
+            let data = if sid == start { [a.obus.as_slice(), &sample.bytes].concat() } else { sample.bytes.to_vec() };
+            dec.decode(&data, &mut out)?;
+        }
+        if let Some(f) = out.first() {
+            m.picture = Some(Arc::new(ColorImage::from_rgba_unmultiplied([f.width as usize, f.height as usize], &f.to_rgba())));
+        }
+        return Ok(());
+    }
     if codec != "H.264" {
         return Ok(());
     }
@@ -283,6 +310,107 @@ fn av1_poster<R: std::io::Read + std::io::Seek>(mk: &mut matroska_demuxer::Matro
         m.picture = Some(Arc::new(ColorImage::from_rgba_unmultiplied([f.width as usize, f.height as usize], &f.to_rgba())));
     }
     Ok(())
+}
+
+/// An MPEG-4 file's AV1 track (an `av01` sample entry, which the mp4
+/// crate passes over, though it keeps the track's sample tables): its id,
+/// picture size and the sequence header OBUs of its `av1C`.
+pub(crate) struct Av1Track {
+    pub id: u32,
+    pub width: u16,
+    pub height: u16,
+    pub obus: Vec<u8>,
+}
+
+/// The AV1 track of the MPEG-4 file `r` (`len` bytes long), found by
+/// walking its boxes to each track's sample description.
+pub(crate) fn mp4_av1<R: std::io::Read + std::io::Seek>(r: &mut R, len: u64) -> Option<Av1Track> {
+    use std::io::SeekFrom;
+    // The top-level boxes, as far as `moov` (read whole: it holds only
+    // tables, and is small next to the pictures).
+    let mut at = 0u64;
+    let moov = loop {
+        if at + 8 > len {
+            return None;
+        }
+        r.seek(SeekFrom::Start(at)).ok()?;
+        let mut h = [0u8; 16];
+        r.read_exact(&mut h[..8]).ok()?;
+        let (mut size, mut head) = (u32::from_be_bytes(h[0..4].try_into().ok()?) as u64, 8);
+        if size == 1 {
+            r.read_exact(&mut h[8..16]).ok()?;
+            (size, head) = (u64::from_be_bytes(h[8..16].try_into().ok()?), 16);
+        } else if size == 0 {
+            size = len - at;
+        }
+        if size < head {
+            return None;
+        }
+        if &h[4..8] == b"moov" {
+            if size > 64 << 20 {
+                return None;
+            }
+            let mut b = vec![0; (size - head) as usize];
+            r.read_exact(&mut b).ok()?;
+            break b;
+        }
+        at += size;
+    };
+    for trak in children(&moov, b"trak") {
+        // tkhd: version and flags, two times (four or eight bytes each),
+        // then the track's id.
+        let tkhd = children(trak, b"tkhd").next()?;
+        let off = if tkhd.first() == Some(&1) { 20 } else { 12 };
+        let id = u32::from_be_bytes(tkhd.get(off..off + 4)?.try_into().ok()?);
+        let Some(stsd) = within(trak, &[b"mdia", b"minf", b"stbl", b"stsd"]) else { continue };
+        // Version, flags and the entry count, then the entries.
+        for (kind, entry) in boxes(stsd.get(8..)?) {
+            if &kind != b"av01" {
+                continue;
+            }
+            // A visual sample entry's 78 bytes of fields (its width and
+            // height 24 bytes in), then its boxes; av1C's four bytes of
+            // fields, then the OBUs.
+            let width = u16::from_be_bytes(entry.get(24..26)?.try_into().ok()?);
+            let height = u16::from_be_bytes(entry.get(26..28)?.try_into().ok()?);
+            let av1c = children(entry.get(78..)?, b"av1C").next()?;
+            return Some(Av1Track { id, width, height, obus: av1c.get(4..)?.to_vec() });
+        }
+    }
+    None
+}
+
+/// The boxes laid end to end in `b`: each one's type and contents.
+fn boxes(b: &[u8]) -> impl Iterator<Item = ([u8; 4], &[u8])> {
+    let mut at = 0;
+    std::iter::from_fn(move || {
+        let h = b.get(at..at + 8)?;
+        let size = u32::from_be_bytes(h[0..4].try_into().ok()?) as usize;
+        let kind: [u8; 4] = h[4..8].try_into().ok()?;
+        let (head, size) = match size {
+            1 => (16, u64::from_be_bytes(b.get(at + 8..at + 16)?.try_into().ok()?) as usize),
+            0 => (8, b.len() - at),
+            n => (8, n),
+        };
+        if size < head || at + size > b.len() {
+            return None;
+        }
+        let body = &b[at + head..at + size];
+        at += size;
+        Some((kind, body))
+    })
+}
+
+fn children<'a>(b: &'a [u8], kind: &'a [u8; 4]) -> impl Iterator<Item = &'a [u8]> {
+    boxes(b).filter(move |(k, _)| k == kind).map(|(_, body)| body)
+}
+
+/// The box at `path` (each the first of its type) inside `b`.
+fn within<'a>(mut b: &'a [u8], path: &[&'a [u8; 4]]) -> Option<&'a [u8]> {
+    for k in path {
+        b = children(b, k).next()?;
+    }
+    Some(b)
 }
 
 fn codec_name(id: &str) -> &'static str {

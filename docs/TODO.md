@@ -2026,7 +2026,8 @@ as they land (with the commit), add new ones as they come up.
   View menu, pinch/⌘-scroll/double-click, drag and scroll to pan; halved
   levels for smooth fitting); ~~video playback (frames + audio)~~ (H.264 in mp4/Matroska, AV1 in
   Matroska/WebM, synced to the sound, seeking, keeps the screen awake;
-  VP9, HEVC and AV1-in-mp4 still show facts only), ~~AVIF/HEIC/Opus~~.
+  ~~AV1-in-mp4~~ (2026-10-30; 600 pictures a second at 640×360 in
+  release); VP9 and HEVC still show facts only), ~~AVIF/HEIC/Opus~~.
 
 ## app_server
 

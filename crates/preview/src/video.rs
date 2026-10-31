@@ -635,8 +635,10 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
 struct Mp4 {
     reader: mp4::Mp4Reader<BufReader<Box<dyn ReadSeek>>>,
     track: u32,
+    codec: Codec,
     timescale: f64,
-    /// Parameter sets, in start-code form, sent before each key frame.
+    /// Sent before each key frame: H.264's parameter sets, in start-code
+    /// form, or AV1's sequence header.
     sets: Vec<u8>,
     nal_len: usize,
     /// Each sample's decode time, and the key frames (1-based).
@@ -653,17 +655,29 @@ impl Mp4 {
     fn open(input: &Input) -> Result<Mp4, String> {
         let (f, size) = input.open()?;
         let reader = mp4::Mp4Reader::read_header(BufReader::new(f), size).map_err(|e| e.to_string())?;
-        let (track, t) = reader
-            .tracks()
-            .iter()
-            .find(|(_, t)| matches!(t.media_type(), Ok(mp4::MediaType::H264)))
-            .ok_or("This video's format can't be played.")?;
+        let h264 = reader.tracks().iter().find(|(_, t)| matches!(t.media_type(), Ok(mp4::MediaType::H264)));
+        // AV1, which the mp4 crate doesn't know: its track and sequence
+        // header found by walking the boxes.
+        let av1 = if h264.is_none() { input.open().ok().and_then(|(mut f, len)| media::mp4_av1(&mut f, len)) } else { None };
+        let (track, t, codec) = match (h264, &av1) {
+            (Some((id, t)), _) => (*id, t, Codec::H264),
+            (None, Some(a)) => (a.id, reader.tracks().get(&a.id).ok_or("no AV1 track")?, Codec::Av1),
+            _ => return Err("This video's format can't be played.".into()),
+        };
         let stbl = &t.trak.mdia.minf.stbl;
-        let avcc = &stbl.stsd.avc1.as_ref().ok_or("no avcC")?.avcc;
         let mut sets = Vec::new();
-        for ps in avcc.sequence_parameter_sets.iter().chain(&avcc.picture_parameter_sets) {
-            sets.extend_from_slice(&[0, 0, 0, 1]);
-            sets.extend_from_slice(&ps.bytes);
+        let mut nal_len = 0;
+        match &av1 {
+            // Its sequence header goes before each key frame.
+            Some(a) => sets.extend_from_slice(&a.obus),
+            None => {
+                let avcc = &stbl.stsd.avc1.as_ref().ok_or("no avcC")?.avcc;
+                for ps in avcc.sequence_parameter_sets.iter().chain(&avcc.picture_parameter_sets) {
+                    sets.extend_from_slice(&[0, 0, 0, 1]);
+                    sets.extend_from_slice(&ps.bytes);
+                }
+                nal_len = avcc.length_size_minus_one as usize % 4 + 1;
+            }
         }
         let mut times = Vec::with_capacity(t.sample_count() as usize);
         let mut at = 0u64;
@@ -687,11 +701,12 @@ impl Mp4 {
             }
         }
         Ok(Mp4 {
-            track: *track,
+            track,
+            codec,
             timescale,
             shift,
             sets,
-            nal_len: avcc.length_size_minus_one as usize % 4 + 1,
+            nal_len,
             times,
             syncs: stbl.stss.as_ref().map(|s| s.entries.clone()),
             next: 1,
@@ -702,7 +717,7 @@ impl Mp4 {
 
 impl Demux for Mp4 {
     fn codec(&self) -> Codec {
-        Codec::H264
+        self.codec
     }
 
     fn next(&mut self) -> Option<Packet> {
@@ -717,7 +732,11 @@ impl Demux for Mp4 {
             if s.is_sync {
                 data.extend_from_slice(&self.sets);
             }
-            media::avcc_to_annexb(&s.bytes, self.nal_len, &mut data);
+            // (AV1 samples are OBUs as the decoder takes them.)
+            match self.codec {
+                Codec::Av1 => data.extend_from_slice(&s.bytes),
+                Codec::H264 => media::avcc_to_annexb(&s.bytes, self.nal_len, &mut data),
+            }
             let pts = (s.start_time as i64 + s.rendering_offset as i64) as f64 / self.timescale + self.shift;
             return Some(Packet { pts, data });
         }
@@ -862,26 +881,49 @@ mod tests {
         let dir = std::path::PathBuf::from(std::env::var("OLO_SAMPLES").expect("OLO_SAMPLES"));
         for name in ["test.mp4", "test.mkv", "gop.mp4", "gop.mkv", "av1.webm", "bframes.mp4"] {
             for target in [0.0, 5.0, 2.5] {
-                let path = dir.join(name);
-                let shared = Arc::new((Mutex::new(Shared { seek: Some(target), ..Default::default() }), Condvar::new()));
-                let s = shared.clone();
-                let worker = std::thread::spawn(move || decode(&Input::file(&path), &s));
-                let (m, cv) = &*shared;
-                let mut sh = m.lock().unwrap();
-                while sh.queue.len() < 3 && !sh.eof {
-                    sh = cv.wait_timeout(sh, Duration::from_millis(50)).unwrap().0;
-                }
-                let pts: Vec<f64> = sh.queue.iter().map(|f| f.pts).collect();
-                sh.stop = true;
-                drop(sh);
-                cv.notify_all();
-                worker.join().unwrap().unwrap();
-                assert!(pts.len() >= 3, "{name} @ {target}: {pts:?}");
-                // The first picture is the one showing at the target.
-                assert!((pts[0] - target).abs() < 0.05, "{name} @ {target}: {pts:?}");
-                assert!(pts.windows(2).all(|w| w[1] > w[0]), "{name}: in order {pts:?}");
+                seeks(&dir.join(name), target);
             }
         }
+    }
+
+    /// The first pictures after seeking `path` to `target` are the one
+    /// showing then and those after it, in order.
+    fn seeks(path: &std::path::Path, target: f64) {
+        let name = path.display();
+        let shared = Arc::new((Mutex::new(Shared { seek: Some(target), ..Default::default() }), Condvar::new()));
+        let s = shared.clone();
+        let p = path.to_owned();
+        let worker = std::thread::spawn(move || decode(&Input::file(&p), &s));
+        let (m, cv) = &*shared;
+        let mut sh = m.lock().unwrap();
+        while sh.queue.len() < 3 && !sh.eof {
+            sh = cv.wait_timeout(sh, Duration::from_millis(50)).unwrap().0;
+        }
+        let pts: Vec<f64> = sh.queue.iter().map(|f| f.pts).collect();
+        sh.stop = true;
+        drop(sh);
+        cv.notify_all();
+        worker.join().unwrap().unwrap();
+        assert!(pts.len() >= 3, "{name} @ {target}: {pts:?}");
+        // The first picture is the one showing at the target.
+        assert!((pts[0] - target).abs() < 0.05, "{name} @ {target}: {pts:?}");
+        assert!(pts.windows(2).all(|w| w[1] > w[0]), "{name}: in order {pts:?}");
+    }
+
+    /// AV1 in MPEG-4 (which the mp4 crate doesn't know): `OLO_SAMPLES=dir`
+    /// with av1.mp4, 4 seconds at 30 fps, a key frame a second (ffmpeg's
+    /// testsrc2 through libsvtav1); its poster frame and facts too.
+    #[test]
+    #[ignore]
+    fn av1_in_mp4() {
+        let dir = std::path::PathBuf::from(std::env::var("OLO_SAMPLES").expect("OLO_SAMPLES"));
+        let path = dir.join("av1.mp4");
+        for target in [0.0, 2.5] {
+            seeks(&path, target);
+        }
+        let Ok(crate::load::Update::Body(crate::load::Body::Media(m))) = media::video(&path, &Arc::new(std::sync::atomic::AtomicBool::new(false))) else { panic!("no facts") };
+        assert!(m.playable && m.picture.is_some(), "{:?}", m.rows);
+        assert!(m.note.starts_with("AV1 video, 640 × 360"), "{}", m.note);
     }
 
     /// Every picture of bframes.mp4 (H.264 High with B-frames and implicit
@@ -949,7 +991,7 @@ mod tests {
     #[ignore]
     fn keeps_up() {
         let dir = std::path::PathBuf::from(std::env::var("OLO_SAMPLES").expect("OLO_SAMPLES"));
-        for name in ["av1-1080.mkv", "gop.mp4"] {
+        for name in ["av1-1080.mkv", "gop.mp4", "av1.mp4"] {
             let path = dir.join(name);
             let shared = Arc::new((Mutex::new(Shared::default()), Condvar::new()));
             let s = shared.clone();
