@@ -1907,8 +1907,9 @@ as they land (with the commit), add new ones as they come up.
 - ~~**Log viewer app**~~ (done: `apps/logs`, Log Viewer; the journal read
   natively, live; Find, program, level and time filters; syntax
   highlighting; Show in Context; `olo-logs --print … [--json]` for
-  agents; HACKING, "Log Viewer". Left: the apps' own log files, where
-  there are any beside the journal) (Ben): an Olo app that shows every Olo
+  agents; HACKING, "Log Viewer"; 2026-10-30: the apps' own log files
+  beside the journal too, the Agent Screens' listed in File, any other
+  opened, `--print --file`) (Ben): an Olo app that shows every Olo
   event in one place (app_server, olo-session, Deskbar, Tracker and
   every app's log) so issues can be spotted and tracked down: live tail,
   filter by program, level and text, a time range, warnings and errors

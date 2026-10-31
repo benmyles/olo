@@ -162,6 +162,7 @@ pub const APP_KEYS: &[AppKey] = &[
     k("passwords.copy-otp", PASSWORDS, "copy:otp", "Copy One-Time Password", &["Shift+Cmd+O"], &["Ctrl+Shift+O"], &["Alt+Shift+O"]),
     k("passwords.edit", PASSWORDS, "edit", "Edit", &["Cmd+E"], &["Ctrl+E"], &["Alt+E"]),
     k("passwords.all", PASSWORDS, "source:all", "All Items", &["Cmd+0"], &["Ctrl+0"], &["Alt+0"]),
+    k("logs.open-file", LOGS, "open-file", "Open Log File…", &["Cmd+O"], &["Ctrl+O"], &["Alt+O"]),
     k("logs.live", LOGS, "live", "Live", &["Cmd+L"], &["Ctrl+L"], &["Alt+L"]),
     k("logs.end", LOGS, "end", "Go to End", &["Cmd+Down"], &["Ctrl+End"], &["Alt+End"]),
     k("logs.context", LOGS, "context", "Show in Context", &["Cmd+K"], &["Ctrl+K"], &["Alt+K"]),

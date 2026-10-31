@@ -16,7 +16,16 @@ mod journal;
 mod model;
 mod reader;
 
-use std::{cell::RefCell, collections::BTreeMap, sync::Arc, time::Instant};
+use std::{
+    cell::RefCell,
+    collections::BTreeMap,
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Instant,
+};
 
 use model::{Level, Line, Now, Query, Since};
 use reader::Update;
@@ -24,6 +33,7 @@ use serde::{Deserialize, Serialize};
 use olo_kit::{
     App, Cx, Menu, WindowId, WindowOptions,
     egui::{self, Align, Id, Key, Rect, Ui, pos2, vec2},
+    file_panel::{self, FilePanel, PanelResult},
     instance::{self, Launch},
     metrics as m,
     style::{self, c},
@@ -133,6 +143,39 @@ struct Logs {
     loaded: bool,
     failed: Option<String>,
     detail: String,
+    /// What the lines are of: the journal, or a log file an app writes
+    /// beside it (an Agent Screen's).
+    source: Option<PathBuf>,
+    /// Bumped when the source changes: the reader of the one before stops,
+    /// and what it sent is dropped.
+    generation: Arc<AtomicU64>,
+    /// File ▸ Open Log File's panel.
+    panel: Option<(WindowId, FilePanel)>,
+    /// The Agent Screens' logs, as last looked for (File ▸ Agent Screen
+    /// Logs), and when.
+    screen_logs: (Option<Instant>, Vec<(String, PathBuf)>),
+}
+
+/// An update from the reader of source `generation` ([`Logs::start`]).
+struct Tagged(u64, Update);
+
+/// The Agent Screens' logs (`$XDG_RUNTIME_DIR/olo-screens`: a screen's
+/// own, `NAME.log`, and each program run there, `NAME-PROGRAM.log`), the
+/// latest written first.
+fn screen_logs() -> Vec<(String, PathBuf)> {
+    let dir = std::env::var_os("XDG_RUNTIME_DIR").map_or_else(|| PathBuf::from("/tmp"), PathBuf::from).join("olo-screens");
+    let mut logs: Vec<(std::time::SystemTime, String, PathBuf)> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "log"))
+        .filter_map(|e| {
+            let at = e.metadata().ok()?.modified().ok()?;
+            Some((at, e.path().file_stem()?.to_string_lossy().into_owned(), e.path()))
+        })
+        .collect();
+    logs.sort_by_key(|l| std::cmp::Reverse(l.0));
+    logs.into_iter().take(24).map(|(_, name, path)| (name, path)).collect()
 }
 
 /// The lines being chosen again for a new query (`Logs::refilter`), a
@@ -218,7 +261,66 @@ impl Logs {
         if let Some(id) = self.main {
             return cx.activate(id);
         }
-        self.main = Some(cx.open_window(WindowOptions::new(TITLE, 820, 520).min_size(560, 340)));
+        self.main = Some(cx.open_window(WindowOptions::new(self.title(), 820, 520).min_size(560, 340)));
+    }
+
+    fn title(&self) -> String {
+        match &self.source {
+            Some(path) => format!("{} — {TITLE}", path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()),
+            None => TITLE.into(),
+        }
+    }
+
+    /// Read the source from the start, on a worker (the one before's
+    /// reader stopping).
+    fn start(&mut self, cx: &mut Cx) {
+        let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
+        self.lines.clear();
+        self.view.clear();
+        (self.warnings, self.errors) = (0, 0);
+        self.programs.clear();
+        self.programs_since = None;
+        *self.facets.borrow_mut() = None;
+        self.filter = None;
+        self.before_context = None;
+        self.list = ListState { multiple: true, ..ListState::default() };
+        (self.selected, self.reveal, self.shown) = (None, None, None);
+        self.at_end = true;
+        self.loaded = false;
+        self.failed = None;
+        self.detail.clear();
+        let (proxy, current, source) = (cx.proxy(), self.generation.clone(), self.source.clone());
+        std::thread::Builder::new()
+            .name("journal".into())
+            .spawn(move || {
+                let mut on = |u: Update| {
+                    if current.load(Ordering::SeqCst) != generation {
+                        return false;
+                    }
+                    // Nothing new: nothing to send.
+                    if !matches!(&u, Update::Lines { new, more } if new.is_empty() && more.is_empty()) {
+                        proxy.send(Tagged(generation, u));
+                    }
+                    true
+                };
+                match &source {
+                    Some(path) => reader::run_file(path, true, &mut on),
+                    None => reader::run(true, &mut on),
+                }
+            })
+            .expect("thread");
+        if let Some(id) = self.main {
+            cx.set_title(id, self.title());
+            cx.redraw(id);
+        }
+    }
+
+    /// Read `source` (None: the journal) instead.
+    fn read(&mut self, cx: &mut Cx, source: Option<PathBuf>) {
+        if source != self.source {
+            self.source = source;
+            self.start(cx);
+        }
     }
 
     fn count(&mut self, i: usize) {
@@ -437,8 +539,22 @@ impl Logs {
                 self.at_end = true;
                 self.reveal = self.view.len().checked_sub(1);
             }
+            "journal" => self.read(cx, None),
+            "open-file" => {
+                if let Some((id, _)) = &self.panel {
+                    return cx.activate(*id);
+                }
+                let dir = self.source.as_ref().and_then(|p| p.parent()).map_or_else(|| std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from), PathBuf::from);
+                let panel = FilePanel::open(dir).filters(vec![file_panel::Filter::new("Log Files").glob("*.log").glob("*.txt").glob("*.out"), file_panel::Filter::new("All Files").glob("*")], 0);
+                let id = cx.open_window(WindowOptions::new("Open Log File", file_panel::PANEL_SIZE.0, file_panel::PANEL_SIZE.1).min_size(420, 300));
+                self.panel = Some((id, panel));
+            }
             "quit" => cx.quit(),
-            _ => {}
+            c => {
+                if let Some(path) = c.strip_prefix("file:") {
+                    self.read(cx, Some(PathBuf::from(path)));
+                }
+            }
         }
     }
 
@@ -503,8 +619,15 @@ impl Logs {
             c(p.failure),
         );
         let reveal = self.reveal.take();
-        let empty = if self.loaded { "No lines match." } else { "Reading the journal…" };
+        let empty = match (self.loaded, &self.source) {
+            (true, _) => "No lines match.",
+            (false, None) => "Reading the journal…",
+            (false, Some(_)) => "Reading…",
+        };
         let (lines, view, midnight, query) = (&self.lines, &self.view, self.now.midnight, &self.query);
+        // (A line's cells are kept by its index, which starts again with
+        // another source.)
+        let source = self.generation.load(Ordering::SeqCst).rotate_left(48);
         // (Rows' messages kept by the words they mark, too.)
         let marks = {
             use std::hash::{Hash, Hasher};
@@ -526,7 +649,7 @@ impl Logs {
                     let plain = |text: String, color| egui::text::LayoutJob::simple_singleline(text, font.clone(), color);
                     // Each cell kept while its line is the same (a line
                     // grows when more of its message comes).
-                    let line = view[cell.row] as u64;
+                    let line = view[cell.row] as u64 ^ source;
                     match cell.column {
                         0 => cell.text_cached(line ^ midnight.rotate_left(32), || plain(model::format_time(l.time, midnight), cell.text_color)),
                         1 => cell.text_cached(line, || plain(l.program.to_string(), cell.text_color)),
@@ -594,7 +717,7 @@ impl Logs {
             status += &format!(", {} {}", self.errors, if self.errors == 1 { "error" } else { "errors" });
         }
         if !self.loaded && self.failed.is_none() {
-            status += " (reading the journal…)";
+            status += if self.source.is_some() { " (reading…)" } else { " (reading the journal…)" };
         } else if self.filter.is_some() {
             status += " (finding…)";
         }
@@ -627,13 +750,43 @@ impl App for Logs {
     fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut Ui) {
         if Some(window) == self.main {
             self.main_ui(cx, ui);
+        } else if let Some((id, panel)) = &mut self.panel
+            && *id == window
+            && let Some(result) = panel.ui(ui)
+        {
+            self.panel = None;
+            cx.close_window(window);
+            if let PanelResult::Chosen(path) = result {
+                self.read(cx, Some(path));
+            }
         }
     }
 
-    fn menu_bar(&mut self, _window: WindowId) -> Option<Vec<Menu>> {
+    fn menu_bar(&mut self, window: WindowId) -> Option<Vec<Menu>> {
+        if self.panel.as_ref().is_some_and(|(id, _)| *id == window) {
+            return None;
+        }
         let any = !self.list.selected.is_empty();
+        // (Looked for again at most every two seconds: the bar is built
+        // every frame.)
+        if self.screen_logs.0.is_none_or(|t| t.elapsed().as_secs() >= 2) {
+            self.screen_logs = (Some(Instant::now()), screen_logs());
+        }
+        let mut screens = Menu::new("Agent Screen Logs");
+        for (name, path) in &self.screen_logs.1 {
+            screens = screens.item(name.as_str(), format!("file:{}", path.display()), None).checked(self.source.as_ref() == Some(path));
+        }
+        if self.screen_logs.1.is_empty() {
+            screens = screens.item("No Agent Screens", "", None).enabled(false);
+        }
         Some(vec![
-            Menu::new("File").item("Quit", "quit", Some(Key::Q)),
+            Menu::new("File")
+                .item("Journal", "journal", None)
+                .checked(self.source.is_none())
+                .item("Open Log File…", "open-file", Some(Key::O))
+                .submenu(screens)
+                .separator()
+                .item("Quit", "quit", Some(Key::Q)),
             Menu::new("Edit").item("Copy", "copy", Some(Key::C)).enabled(any).item("Select All", "select-all", Some(Key::A)),
             Menu::new("View")
                 .item("Live", "live", Some(Key::L))
@@ -651,17 +804,30 @@ impl App for Logs {
         Logs::command(self, cx, command);
     }
 
-    fn close_requested(&mut self, cx: &mut Cx, _window: WindowId) {
+    fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
+        if self.panel.as_ref().is_some_and(|(id, _)| *id == window) {
+            self.panel = None;
+            return cx.close_window(window);
+        }
         self.store();
         cx.quit();
     }
 
     fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
-        if message.is::<Launch>() {
+        if let Some(launch) = message.downcast_ref::<Launch>() {
+            // A log file to read (from Tracker, or `olo-logs FILE`).
+            if let Some(a) = launch.args.iter().find(|a| !a.starts_with('-')) {
+                let path = launch.cwd.as_ref().map_or_else(|| PathBuf::from(a), |c| c.join(a));
+                self.read(cx, Some(path));
+            }
             return self.open(cx);
         }
-        let Ok(update) = message.downcast::<Update>() else { return };
-        match *update {
+        let Ok(tagged) = message.downcast::<Tagged>() else { return };
+        let Tagged(generation, update) = *tagged;
+        if generation != self.generation.load(Ordering::SeqCst) {
+            return;
+        }
+        match update {
             Update::Lines { new, more } => self.take(new, more),
             Update::Loaded => {
                 self.loaded = true;
@@ -686,6 +852,7 @@ fn print(args: &[String]) -> i32 {
     // The flags say it as filters, and --query as typed in the search.
     let mut text = String::new();
     let (mut json, mut follow) = (false, false);
+    let mut file: Option<PathBuf> = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         let mut value = || it.next().cloned().unwrap_or_default();
@@ -693,6 +860,7 @@ fn print(args: &[String]) -> i32 {
             "--print" => {}
             "--json" => json = true,
             "--follow" => follow = true,
+            "--file" => file = Some(PathBuf::from(value())),
             "--all-programs" => search::set_filter(&mut text, model::KEYS, "program", &["all"]),
             "--since" => match Since::parse(&value()) {
                 Some(s) => search::set_filter(&mut text, model::KEYS, "since", &[&s.code()]),
@@ -742,7 +910,7 @@ fn print(args: &[String]) -> i32 {
         printed = printed.max(upto);
         out.flush().is_ok()
     };
-    reader::run(follow, &mut |u| match u {
+    let mut on = |u: Update| match u {
         Update::Lines { new, more } => {
             let idle = new.is_empty() && more.is_empty();
             for (i, text) in more {
@@ -770,13 +938,17 @@ fn print(args: &[String]) -> i32 {
             status = 1;
             false
         }
-    });
+    };
+    match &file {
+        Some(path) => reader::run_file(path, follow, &mut on),
+        None => reader::run(follow, &mut on),
+    }
     status
 }
 
 fn usage() -> i32 {
     eprintln!(
-        "usage: olo-logs --print [--query TEXT] [--since 10m|2h|1d|today|boot|all] [--level debug|info|warning|error]\n                    [--program NAME | --all-programs] [--find TEXT] [--json] [--follow]\n  TEXT as in the search: words, \"phrases\", -word, program:a,b (or all), -program:x, level:, since:, pid:"
+        "usage: olo-logs --print [--query TEXT] [--since 10m|2h|1d|today|boot|all] [--level debug|info|warning|error]\n                    [--program NAME | --all-programs] [--find TEXT] [--json] [--follow] [--file LOG]\n       olo-logs [LOG]   (the journal, or a log file such as an Agent Screen's)\n  TEXT as in the search: words, \"phrases\", -word, program:a,b (or all), -program:x, level:, since:, pid:"
     );
     2
 }
@@ -822,19 +994,6 @@ fn main() {
         // A search's words are for now; its filters stay.
         settings.search = search::filters_only(&settings.search, model::KEYS);
         let query = Query::from_text(&settings.search);
-        let proxy = cx.proxy();
-        std::thread::Builder::new()
-            .name("journal".into())
-            .spawn(move || {
-                reader::run(true, &mut |u| {
-                    // Nothing new: nothing to send.
-                    if !matches!(&u, Update::Lines { new, more } if new.is_empty() && more.is_empty()) {
-                        proxy.send(u);
-                    }
-                    true
-                })
-            })
-            .expect("thread");
         let mut app = Logs {
             main: None,
             settings,
@@ -858,7 +1017,13 @@ fn main() {
             loaded: false,
             failed: None,
             detail: String::new(),
+            // A log file named on the command line, else the journal.
+            source: args.iter().find(|a| !a.starts_with('-')).map(PathBuf::from).map(|p| std::fs::canonicalize(&p).unwrap_or(p)),
+            generation: Arc::new(AtomicU64::new(0)),
+            panel: None,
+            screen_logs: (None, Vec::new()),
         };
+        app.start(cx);
         app.open(cx);
         app
     });
@@ -890,4 +1055,41 @@ mod tests {
     fn iso_times() {
         assert_eq!(super::iso_time(1_793_085_657_797_247), "2026-10-27T07:20:57.797Z");
     }
+
+    /// A log file is read whole, then followed as it grows.
+    #[test]
+    fn reads_and_follows_a_file() {
+        let dir = std::path::Path::new("/var/tmp").join(format!("olo-logs-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("agent-olo-chrome.log");
+        std::fs::write(&path, "2026-10-30T10:00:00Z  INFO olo: one\npanicked at src/main.rs:3\n    a backtrace line\n").unwrap();
+        let mut lines: Vec<super::Line> = Vec::new();
+        let mut appended = false;
+        super::reader::run_file(&path, true, &mut |u| match u {
+            super::Update::Lines { new, more } => {
+                for (i, t) in more {
+                    lines[i].message.push('\n');
+                    lines[i].message.push_str(&t);
+                }
+                lines.extend(new);
+                // Stop once the appended line has come.
+                lines.len() < 3
+            }
+            super::Update::Loaded => {
+                assert_eq!(lines.len(), 2);
+                assert!(lines[1].message.ends_with("a backtrace line"));
+                use std::io::Write;
+                let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+                f.write_all(b"two\n").unwrap();
+                appended = true;
+                true
+            }
+            super::Update::Failed(why) => panic!("{why}"),
+        });
+        assert!(appended);
+        assert_eq!(&*lines[0].program, "agent-olo-chrome");
+        assert_eq!((lines[1].level, lines[2].message.as_str()), (super::Level::Error, "two"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
 }

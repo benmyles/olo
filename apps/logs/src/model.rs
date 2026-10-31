@@ -294,6 +294,57 @@ impl Builder {
     }
 }
 
+/// A line of a log file `program` wrote (no journal around it): its
+/// level and text read as a journal line's are, its time tracing's where
+/// it starts with one, else `fallback` (microseconds since the epoch).
+pub fn file_line(raw: &str, program: &Arc<str>, fallback: u64, boot: [u8; 16]) -> Line {
+    let text = strip_ansi(raw);
+    let time = tracing_time(&text).unwrap_or(fallback);
+    let (level, message) = if let Some((level, rest)) = tracing_prefix(&text) {
+        (level, rest.trim_end().to_owned())
+    } else if let Some((level, rest)) = chromium_prefix(&text) {
+        (level, rest.trim_end().to_owned())
+    } else {
+        // As an Olo program's stderr in the journal: news unless it says
+        // otherwise.
+        let level = level_in_text(&text).unwrap_or(if says_trouble(&text) { Level::Warning } else { Level::Info });
+        (level, text.trim_end().to_owned())
+    };
+    // (A file chosen to read is shown as Olo's own are, by default.)
+    Line { time, program: program.clone(), pid: 0, level, message, olo: true, boot }
+}
+
+/// Whether a log file's line goes on with the one before it (a panic's
+/// backtrace, a wrapped value).
+pub fn continues_line(raw: &str) -> bool {
+    continues(&strip_ansi(raw))
+}
+
+/// The time tracing's lines start with (`2026-10-27T04:45:52.225681Z`), in
+/// microseconds since the epoch.
+fn tracing_time(text: &str) -> Option<u64> {
+    let b = text.as_bytes();
+    if b.len() < 20 || b[4] != b'-' || b[7] != b'-' || b[10] != b'T' || b[13] != b':' || b[16] != b':' {
+        return None;
+    }
+    let num = |r: std::ops::Range<usize>| text.get(r).and_then(|t| t.parse::<i64>().ok());
+    let (y, mo, d) = (num(0..4)?, num(5..7)?, num(8..10)?);
+    let (h, mi, sec) = (num(11..13)?, num(14..16)?, num(17..19)?);
+    let mut micros = 0;
+    if b[19] == b'.' {
+        let digits: String = text[20..].chars().take_while(char::is_ascii_digit).take(6).collect();
+        micros = format!("{digits:0<6}").parse::<u64>().ok()?;
+    }
+    // Days since 1970 of the civil date (Howard Hinnant's).
+    let y = if mo <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * ((mo + 9) % 12) + 2) / 5 + d - 1;
+    let days = era * 146_097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719_468;
+    let secs = u64::try_from(days * 86_400 + h * 3600 + mi * 60 + sec).ok()?;
+    Some(secs * 1_000_000 + micros)
+}
+
 /// How far back a query looks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -608,4 +659,18 @@ mod tests {
     fn ansi_is_stripped() {
         assert_eq!(strip_ansi("\u{1b}[1;31mred\u{1b}[0m \u{1b}]0;title\u{7}x"), "red x");
     }
+
+    #[test]
+    fn file_lines() {
+        let p: Arc<str> = Arc::from("agent");
+        let l = file_line("2026-10-30T19:46:53.401234Z  WARN app_server::udev: no gamma", &p, 7, [0; 16]);
+        assert_eq!((l.level, l.message.as_str()), (Level::Warning, "app_server::udev: no gamma"));
+        assert_eq!(l.time, 1_793_389_613_401_234);
+        assert_eq!(tracing_time("1970-01-01T00:00:01Z"), Some(1_000_000));
+        let plain = file_line("starting up", &p, 7, [0; 16]);
+        assert_eq!((plain.time, plain.level), (7, Level::Info));
+        assert_eq!(file_line("couldn't open the socket", &p, 7, [0; 16]).level, Level::Warning);
+        assert!(continues_line("    at main.rs:3") && !continues_line("next"));
+    }
+
 }

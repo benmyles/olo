@@ -704,11 +704,12 @@ fn read(dir: &Path, filters: &[Filter]) -> Result<Vec<Item>, String> {
             let is_dir = meta.is_dir();
             let mut fits = 0;
             if !is_dir && !filters.is_empty() {
-                let mime = filters
-                    .iter()
-                    .any(|f| !f.types.is_empty())
-                    .then(|| crate::mime::from_name(&name).unwrap_or_else(|| "application/octet-stream".into()))
-                    .unwrap_or_default();
+                // (Its type only when a filter asks by type.)
+                let mime = if filters.iter().any(|f| !f.types.is_empty()) {
+                    crate::mime::from_name(&name).unwrap_or_else(|| "application/octet-stream".into())
+                } else {
+                    String::new()
+                };
                 for (i, f) in filters.iter().enumerate() {
                     if f.matches(&name, &mime) {
                         fits |= 1 << i;

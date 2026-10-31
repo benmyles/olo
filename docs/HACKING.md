@@ -5398,6 +5398,23 @@ Terminal's `asking before closing` names the program and where the
 close came from, app_server's `asked to close a window` and `close box
 clicked` the window and who), dependencies only their warnings.
 
+Logs an app writes beside the journal are read too: File ▸ Agent Screen
+Logs lists the Agent Screens' (`$XDG_RUNTIME_DIR/olo-screens`: a
+screen's own `NAME.log` and each program run there, `NAME-PROGRAM.log`,
+the latest written first), File ▸ Open Log File… (⌘O) any other, and
+`olo-logs FILE` (or Tracker's Open With) opens one; File ▸ Journal goes
+back. The window then shows that file, titled by it, with the same
+search, filters and live tail (`reader::run_file`: read whole, then
+followed as it grows, from the start again if it is cut short, as a
+screen started again under its name does). Its lines are parsed as the
+journal's (`model::file_line`: tracing's time and level, Chromium's
+prefix, GLib's words, a panic as an error, indented lines going on with
+the one before); those without a time of their own take the file's.
+Changing what is read restarts the reader with a new generation
+(`Logs::start`): the old one stops, what it already sent is dropped, and
+the list's kept cells (keyed by line) are keyed by the generation too.
+`olo-logs --print --file LOG` prints one for agents.
+
 - journal.rs: systemd's journal file format (JOURNAL_FILE_FORMAT.md): the
   header, entries through the chain of entry arrays, fields in data
   objects (zstd, xz or lz4; the regular and the compact layout). Data
