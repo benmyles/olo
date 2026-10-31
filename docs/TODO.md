@@ -214,6 +214,16 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **StyledEdit: icon toolbars, as Gobe Productive's** (Ben, 2026-10-31,
+  for later): "stylededit should have icon toolbars (side and top)
+  reminiscent of gobe productive from beos. build out the kit to support
+  the ui components etc in a reusable way and make sure everything is
+  pixel perfect, looks great, gets properly themed etc". So: a kit
+  toolbar (icon buttons, toggles, pop-up pickers for fonts, sizes and
+  colours, separators, groups; along the top and down the side, as
+  Gobe's tool and format bars), its icons drawn to ICONS.md at every
+  scale, themed in light, dark and night, keyboard- and agent-reachable,
+  documented in HACKING; StyledEdit's commands on it.
 - **Emoji picker** (Ben, 2026-10-31): "an olo native emoji picker app
   that inserts the selected emoji into wherever the text cursor is in the
   active window. have it support fuzzy keyword search but also give it an
