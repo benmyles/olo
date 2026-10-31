@@ -225,7 +225,10 @@ as they land (with the commit), add new ones as they come up.
   Best done once in the kit (where text is cut to fit, remember the full
   text and its rect; show it in the kit's tip, `olo_kit::tip`, after the
   usual hover pause) so every app gets it, and agents read the full text
-  as the element's name.
+  as the element's name. Then (Ben, same day): "if the user presses the
+  super key while hovering over it then it should show the tooltip
+  immediately without a delay" (Super while the pointer is on cut-short
+  text shows its tip at once; app_server's own text, window tabs, too).
 
 - ~~**Bug: after an upgrade, an auto-tiled window under Deskbar**~~ (Ben,
   2026-10-30; fixed): "after an olo hot upgrade i sometimes see windows, e.g.
