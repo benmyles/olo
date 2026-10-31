@@ -2014,7 +2014,8 @@ document, a folder of 3,000 files, photos, 200 notifications, a
 terminal's worth of output), and at 1×, 1.5× and 2× runs each app
 (the kit's demo, Tracker twice, StyledEdit, Terminal, Viewer,
 Notifications, Activity Monitor, DeskCalc, DiskUsage, Logs,
-Preferences, the palette, Passwords, Screenshot) through what people
+Preferences, the palette, Passwords, Screenshot, Telegram with a pretend
+account of 3,000 chats) through what people
 do: launched and zoomed to fill the screen, left to load, idle for a
 second (it should draw nothing), the pointer swept over it, each scroll
 view scrolled (fingers, a flick and its glide, wheel notches, judged as
@@ -6168,3 +6169,61 @@ holding fixture credentials, a fake upstream
 (`OLO_POOL_UPSTREAM=http://127.0.0.1:PORT`: its `/oauth` takes
 refreshes), `OLO_POOL_PORT` and `OLO_POOL_KEYFILE`, and a fake
 `claude` or `codex` on `PATH` for separate sign-ins. Never real accounts.
+
+## Telegram (apps/telegram, crates/telegram)
+
+A Telegram client of Olo's own: MTProto in process through grammers
+(`olo-tg`), no Telegram Desktop and no tdlib.
+
+* **olo-tg** (`crates/telegram`): `model` is chats, messages, topics,
+  folders and contacts as plain data; `backend` the commands the app
+  sends (`Cmd`) and the events it hears (`Event`) over channels, from
+  `net` (the real account, on a tokio runtime of its own thread: raw TL
+  for the dialogs, history, replies, forum topics, folders, search,
+  read state, drafts, pins and archive, notify settings and typing;
+  grammers' client for sending, editing, deleting, forwarding,
+  reacting, pinning, uploads and downloads; updates converted as they
+  come) or `demo` (a pretend account answering as the real one would,
+  with no network: people, groups, a channel, a forum, folders and the
+  archive, every kind of message; `OLO_TELEGRAM_DEMO=N` adds N more
+  chats, `OLO_TELEGRAM_DEMO_EVERY=S` a message every S seconds).
+  `account` keeps the API ID and hash and the session's secrets (home
+  datacenter, authorization keys) in the login keyring and the rest
+  (peers' access hashes, update state, cached chats, messages and media)
+  in a folder only the person can read; signing out clears both.
+  `OLO_TELEGRAM_SECRETS=DIR` and `OLO_TELEGRAM_CACHE=DIR` keep them in
+  folders instead, so tests never touch the keyring. `signin`: the
+  phone code, the QR code (`auth.exportLoginToken`) and the two-step
+  password.
+* **Setting it up** is in Preferences ▸ Integrations ▸ Telegram: the
+  API ID and hash the person registers at my.telegram.org (never
+  Telegram Desktop's), then signing in by phone or QR, the password if
+  asked; Sign Out. The app is told (`--reconnect`) and picks the
+  account up.
+* **The app**: `store` is what is known, kept up to date from the
+  events (the list's order, each thread's loaded messages with a
+  version bumped on change, our messages still sending, who's typing);
+  `pics` asks for pictures the first time they are drawn and decodes
+  them on two workers into textures. `list` is the chat list (the
+  search field, folders as chips with the rest under More, pinned
+  chats, the archive's row, unread and mention counts, typing in place
+  of the preview; while searching, matching chats then Telegram's
+  people, chats and messages). `conv` is the conversation: its header,
+  a forum's topics as chips, the messages laid out once per message
+  and width (`bubble::Laid`, cached by thread version) with only those
+  in view painted, older pages loaded as it scrolls up keeping what's
+  in view where it was, and the composer (replying, editing, files
+  going with it, the draft saved). `bubble` lays out and paints a
+  message: replies, forwards, photos and video frames, voice notes'
+  waveforms, files, stickers, polls, link previews, reactions, read
+  ticks, and the text's entities with colour emoji in line
+  (`emoji::make_room`/`paint_in`). Both panes scroll, so each is a
+  grid of its own for the layout review.
+* **Around it**: new messages notify through Olo's notifications,
+  answered from the banner (`Note::reply`, `NoteEvent::Replied`); the
+  unread count is Deskbar's badge (`Notifier::badge`); folders, chats
+  and messages are commands with keys (`app_keys::TELEGRAM`: ⌘1–8 for
+  folders, ⌘9 the archive, ⌘↑/⌘↓ the previous and next chat), and
+  every row, bubble and button is in the accessibility tree.
+* **Not yet**: recording voice notes (no Opus encoder in Rust yet), and
+  animated stickers show their first frame.

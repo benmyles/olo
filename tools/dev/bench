@@ -104,6 +104,8 @@ APPS = [
     App("preferences", ["olo-preferences"], look_only=True, rows=True),
     App("passwords", ["olo-passwords"], env=[f"OLO_1PASSWORD_SOCKET={SCRATCH}/no-such-1p.sock"]),
     App("screenshot", ["olo-screenshot"]),
+    # A pretend account with thousands of chats (no network, no keyring).
+    App("telegram", ["olo-telegram"], env=["OLO_TELEGRAM_DEMO=3000", f"OLO_TELEGRAM_CACHE={SCRATCH}/telegram-cache", f"OLO_TELEGRAM_SECRETS={SCRATCH}/telegram-secrets"], settle=3.0),
 ]
 SAVERS = ["BuyNow", "Icons", "Lissart", "Message", "Spiral", "Spots", "StringTheme", "SuperString"]
 

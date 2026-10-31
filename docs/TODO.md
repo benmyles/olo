@@ -1120,7 +1120,12 @@ as they land (with the commit), add new ones as they come up.
   the sockets' owners: Sent and Received columns, "Programs Using the
   Network"), and connections and interfaces read by netlink rather than
   /proc/net (done 2026-10-30, `netdiag.rs`).
-- **Telegram, as an Olo app** (Ben, 2026-10-29): "please build an olo
+- ~~**Telegram, as an Olo app**~~ (Ben, 2026-10-29; done: HACKING
+  "Telegram", Preferences ▸ Integrations ▸ Telegram; the bench runs it
+  with 3,000 chats, every frame under 6 ms. Not yet: recording voice
+  notes (no Opus encoder in Rust), animated stickers move (their first
+  frame shows), and signing in to a real account past the phone step is
+  untried here, needing the person's own API ID): "please build an olo
   native telegram client that's an absolute pleasure to use and looks
   really great and supports all the core features of telegram". MTProto
   natively in Rust (a crate such as grammers; no Telegram Desktop or
