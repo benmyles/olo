@@ -2192,7 +2192,16 @@ launcher lists them. The panel list Deskbar shows is
   to cover and cropped on a worker thread (one picture at a time, only
   the latest asked for each output), kept in the output's user
   data and drawn under every surface; the workspace colour shows until
-  it is ready or if the file can't be read. Scaling is in 8 bits with
+  it is ready or if the file can't be read. The worker cuts it into
+  strips of about 4 MB, each a texture of its own, and a new picture is
+  uploaded a strip a frame while the old one stays up, then swapped in
+  whole: a screen's whole picture (30 MB at 3456×2234) uploaded in one
+  frame held it up 20 ms. Window tabs likewise: a tab whose look changes
+  is drawn on a worker (`deco.rs`, `tab_worker`: cosmic-text's shaping
+  and glyphs took 4–13 ms at times) and the old one shown till it's
+  done; a window's first tab is drawn at once. A frame over a 120 Hz
+  frame's time logs where its time went (gathering or drawing, and the
+  window, layer or wallpaper that took it). Scaling is in 8 bits with
   the crop applied as it scales (`fast_image_resize`), one full-size copy
   at a time, and the memory it took goes back to the system afterwards
   (`malloc_trim`), so switching themes doesn't leave app_server hundreds

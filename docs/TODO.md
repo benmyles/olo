@@ -2187,17 +2187,19 @@ as they land (with the commit), add new ones as they come up.
   Run: `tsession start NAME 2560x1600,1920x1080 --session --shell --home
   EMPTY` (`TSESSION_PROFILE=release`), `wm-fuzz NAME --seed N --steps 300
   --keep-going`.
-- **app_server: a slow frame now and then in the bench's live resize**
-  (found 2026-10-30, at 1.5× and 2×, with Activity Monitor and Logs, on
-  the app_server before today's changes too; some runs pass): 15–48 ms
-  once in a run, all of it in drawing (`render_output`), none in
-  app_server's own work (its slowest request took 120 µs). Commits
-  already wait for their buffers (`dmabuf.generate_blocker`) and buffers
-  are imported when made, so it is the GL driver waiting, as far as a
-  test can tell with the person's own session drawing on the same GPU
-  (its Chrome, Slack, Terminal). To find: run the bench with the
-  person's session idle, or time GL inside `render_output` (bind, the
-  damage tracker, the flush) on a run that fails.
+- ~~**app_server: a slow frame now and then in the bench's live resize**~~
+  (found 2026-10-30, at 1.5× and 2×; done 2026-10-30): 15–48 ms once in
+  a run, in `render_output`. Timed by part (app_server now logs a slow
+  frame's parts, and which window or layer took the time): it was never
+  drawing but gathering the elements, and two things in it: a new
+  wallpaper's 30 MB texture uploaded whole in the first frame to show
+  it (20–24 ms), and a window's tab redrawn by cosmic-text when its look
+  changed (4–13 ms: a face's first use, glyphs at a new size, its lock).
+  The wallpaper is now strips of about 4 MB, a new one uploaded a strip
+  a frame with the old one up meanwhile; a changed tab is drawn on a
+  worker, the old one shown till it's done. The bench (Activity Monitor
+  and Log Viewer at 1.5× and 2×): 0 of 36 steps fail, where 2–3 did
+  every run.
 - ~~**wm-fuzz: failures now and then**~~ (found 2026-10-30, from a loop
   over seeds 3, 3, 3, 5, 1, 2, 4, 6 at 300 steps each; done 2026-10-30:
   seeds 1–7 pass all 300 steps, each from a fresh session). They were a
