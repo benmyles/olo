@@ -45,6 +45,7 @@ use std::{
 use egui::{
     Align, CursorIcon, Galley, Id, Pos2, Rect, Response, Sense, Ui, Vec2,
     accesskit,
+    epaint::text::{TabStop, TabStops},
     text::{ByteIndex, CCursor, CharIndex, LayoutJob, LayoutSection, TextFormat},
     vec2,
 };
@@ -103,6 +104,21 @@ pub struct Paragraph {
     pub marker: Option<String>,
     /// A table's row: its cells, a tab apart, side by side.
     pub row: Option<Row>,
+    /// Where its tabs go, from the text's left edge (as a ruler shows
+    /// them); None: a stop every four spaces, as in code.
+    pub tabs: Option<TabStops>,
+}
+
+impl Paragraph {
+    /// Its tab stops for its galley, which starts at its indent; `space`
+    /// is a space's width in its first font.
+    pub fn galley_tabs(&self, space: f32) -> TabStops {
+        let left = self.left.max(0.0);
+        match &self.tabs {
+            Some(t) => TabStops { stops: t.stops.iter().filter(|s| s.x > left).map(|s| TabStop { x: s.x - left, ..*s }).collect(), every: t.every },
+            None => TabStops::every(4.0 * space),
+        }
+    }
 }
 
 /// A table's row ([`Paragraph::row`]).
@@ -332,6 +348,9 @@ pub struct Editor {
     /// which rule, its columns' widths), to take hold of.
     rules: Vec<(Rect, usize, usize, Vec<f32>)>,
     column_drag: Option<ColumnDrag>,
+    /// Where the text's left edge was on screen last frame, and how wide
+    /// it was ([`Editor::text_span`]).
+    span: Option<(f32, f32)>,
 }
 
 impl Editor {
@@ -362,6 +381,7 @@ impl Editor {
             misspelled: std::collections::HashMap::new(),
             rules: Vec::new(),
             column_drag: None,
+            span: None,
         };
         e.reset("");
         e
@@ -564,6 +584,8 @@ impl Editor {
                     job.sections.push(LayoutSection { leading_space: 0.0, byte_range: ByteIndex(0)..ByteIndex(p.len), format: TextFormat::default() });
                 }
                 job.sections[0].leading_space += f.first.max(0.0);
+                let space = ui.fonts_mut(|fonts| fonts.glyph_width(&job.sections[0].format.font_id, ' '));
+                job.tabs = Some(f.galley_tabs(space));
                 // A list's marker, in the paragraph's first style (for this
                 // frame's drawing).
                 match f.marker {
@@ -859,6 +881,13 @@ impl Editor {
         true
     }
 
+    /// Where the text's left edge was on screen when last shown (scrolled
+    /// sideways too), and its width (the wrap width, or the view's): for
+    /// a ruler over it.
+    pub fn text_span(&self) -> Option<(f32, f32)> {
+        self.span
+    }
+
     /// Show the editor in `rect`.
     pub fn show(&mut self, ui: &mut Ui, rect: Rect, doc: &mut dyn Document, o: &Options) -> Output {
         let focused = ui.memory(|mem| mem.has_focus(self.id));
@@ -875,6 +904,7 @@ impl Editor {
         let ppp = ctx.pixels_per_point();
         let screen = Rect::from_min_size(ui.max_rect().min + vp.min.to_vec2(), vp.size());
         let inner = (vp.width() - 2.0 * o.margin.x).max(1.0);
+        self.span = Some((screen.min.x - vp.min.x + o.margin.x, inner.round()));
         if !o.wrap && (self.width - inner.round()).abs() > 0.5 {
             // (Unwrapped, a table is the view's width.)
             self.width = inner.round();

@@ -94,6 +94,82 @@ pub struct LayoutJob {
     /// If `true`, trailing whitespace is included in the row width used for alignment.
     /// This is desirable for text editors where the user expects to see their spaces.
     pub keep_trailing_whitespace: bool,
+
+    /// Olo: where tabs take the text after them (else a tab is
+    /// [`crate::text::FontTweak::tab_size`] spaces wide wherever it is).
+    pub tabs: Option<TabStops>,
+}
+
+/// Olo: where a tab takes the text after it ([`LayoutJob::tabs`]), as a
+/// word processor's ruler has it.
+#[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+pub struct TabStops {
+    /// From the start of the row (the galley's left edge; a first row's
+    /// `leading_space` counts), left to right.
+    pub stops: Vec<TabStop>,
+
+    /// Past the last of them (or with none), a stop every this many
+    /// points; none if 0.
+    pub every: f32,
+}
+
+impl TabStops {
+    /// A stop every `every` points, and no others.
+    pub fn every(every: f32) -> Self {
+        Self { stops: Vec::new(), every }
+    }
+
+    /// The first stop past `x`.
+    pub fn after(&self, x: f32) -> Option<TabStop> {
+        // (Text ending at a stop, to within half a point, goes on to the
+        // next.)
+        const HAIR: f32 = 0.5;
+        if let Some(stop) = self.stops.iter().find(|s| s.x > x + HAIR) {
+            return Some(*stop);
+        }
+        (self.every > 0.0).then(|| TabStop {
+            x: ((x + HAIR) / self.every).floor() * self.every + self.every,
+            align: TabAlign::Left,
+        })
+    }
+}
+
+impl core::hash::Hash for TabStops {
+    #[inline]
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.stops.len().hash(state);
+        for stop in &self.stops {
+            emath::OrderedFloat(stop.x).hash(state);
+            stop.align.hash(state);
+        }
+        emath::OrderedFloat(self.every).hash(state);
+    }
+}
+
+/// Olo: a tab stop ([`TabStops`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+pub struct TabStop {
+    /// Points from the row's start.
+    pub x: f32,
+    pub align: TabAlign,
+}
+
+/// Olo: how a [`TabStop`] lines up the text after its tab (up to the
+/// next tab, or the paragraph's end).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+pub enum TabAlign {
+    /// It starts at the stop.
+    #[default]
+    Left,
+    /// It is centred on the stop.
+    Center,
+    /// It ends at the stop.
+    Right,
+    /// Its decimal point is at the stop (else its end).
+    Decimal,
 }
 
 impl Default for LayoutJob {
@@ -109,6 +185,7 @@ impl Default for LayoutJob {
             justify: false,
             round_output_to_gui: true,
             keep_trailing_whitespace: false,
+            tabs: None,
         }
     }
 }
@@ -317,6 +394,7 @@ impl core::hash::Hash for LayoutJob {
             justify,
             round_output_to_gui,
             keep_trailing_whitespace,
+            tabs,
         } = self;
 
         text.hash(state);
@@ -328,6 +406,7 @@ impl core::hash::Hash for LayoutJob {
         justify.hash(state);
         round_output_to_gui.hash(state);
         keep_trailing_whitespace.hash(state);
+        tabs.hash(state);
     }
 }
 

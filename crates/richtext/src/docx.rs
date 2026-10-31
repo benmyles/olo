@@ -4,7 +4,7 @@
 use std::{collections::HashMap, fmt::Write as _, io::Write as _};
 
 use crate::{
-    Align, Document, Kind, List, Paragraph, Span, Table,
+    Align, Document, Kind, List, Paragraph, Span, Tab, TabAlign, Table,
     xml::{X, attr, esc, events, hex_color, is_mono, zip_text},
 };
 
@@ -117,8 +117,28 @@ fn paragraph(out: &mut String, p: &Paragraph, links: &mut Vec<String>, numbered_
         // Bullets are numbering 1; numbered list k is numbering k + 1.
         let num = if l.numbered { numbered_list + 1 } else { 1 };
         let _ = write!(out, "<w:numPr><w:ilvl w:val=\"{}\"/><w:numId w:val=\"{num}\"/></w:numPr>", l.level.min(8));
-    } else if p.indent > 0 {
-        let _ = write!(out, "<w:ind w:left=\"{}\"/>", p.indent as u32 * LEVEL);
+    }
+    // (In the schema's order: tabs, then indents, then alignment.)
+    if !p.tabs.is_empty() {
+        out.push_str("<w:tabs>");
+        for t in &p.tabs {
+            let _ = write!(out, "<w:tab w:val=\"{}\" w:pos=\"{}\"/>", tab_val(t.align), twips(t.x));
+        }
+        out.push_str("</w:tabs>");
+    }
+    if p.list.is_none() && (p.indent > 0 || p.left > 0.0 || p.first > 0.0 || p.right > 0.0) {
+        out.push_str("<w:ind");
+        let left = p.indent as u32 * LEVEL + twips(p.left);
+        if left > 0 {
+            let _ = write!(out, " w:left=\"{left}\"");
+        }
+        if p.right > 0.0 {
+            let _ = write!(out, " w:right=\"{}\"", twips(p.right));
+        }
+        if p.first > 0.0 {
+            let _ = write!(out, " w:firstLine=\"{}\"", twips(p.first));
+        }
+        out.push_str("/>");
     }
     let jc = match p.align {
         Align::Left => None,
@@ -152,6 +172,20 @@ fn paragraph(out: &mut String, p: &Paragraph, links: &mut Vec<String>, numbered_
         }
     }
     out.push_str("</w:p>");
+}
+
+/// Points in twentieths (twips).
+fn twips(points: f32) -> u32 {
+    (points.max(0.0) * 20.0).round() as u32
+}
+
+fn tab_val(a: TabAlign) -> &'static str {
+    match a {
+        TabAlign::Left => "left",
+        TabAlign::Center => "center",
+        TabAlign::Right => "right",
+        TabAlign::Decimal => "decimal",
+    }
 }
 
 fn table(out: &mut String, t: &Table, links: &mut Vec<String>, numbered_list: u32) {
@@ -379,8 +413,27 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
                 "numId" if in_ppr => num_id = attr(&a, "val").filter(|v| *v != "0").map(str::to_owned),
                 "ilvl" if in_ppr => ilvl = attr(&a, "val").and_then(|v| v.parse().ok()).unwrap_or(0),
                 "ind" if in_ppr => {
-                    let left: i64 = attr(&a, "left").or(attr(&a, "start")).and_then(|v| v.parse().ok()).unwrap_or(0);
-                    para.indent = ((left.max(0) as u32 + LEVEL / 2) / LEVEL).min(8) as u8;
+                    // Whole levels, and the rest in points.
+                    let twip = |name: &str| attr(&a, name).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0).max(0.0) as u32;
+                    let left = twip("left").max(twip("start"));
+                    para.indent = (left / LEVEL).min(8) as u8;
+                    para.left = (left - para.indent as u32 * LEVEL) as f32 / 20.0;
+                    para.right = twip("right").max(twip("end")) as f32 / 20.0;
+                    para.first = twip("firstLine") as f32 / 20.0;
+                }
+                "tab" if in_ppr => {
+                    let align = match attr(&a, "val") {
+                        Some("center") => Some(TabAlign::Center),
+                        Some("right" | "end") => Some(TabAlign::Right),
+                        Some("decimal") => Some(TabAlign::Decimal),
+                        Some("left" | "start") => Some(TabAlign::Left),
+                        // (A cleared one, a bar, a list's.)
+                        _ => None,
+                    };
+                    if let (Some(align), Some(pos)) = (align, attr(&a, "pos").and_then(|v| v.parse::<f64>().ok())) {
+                        para.tabs.push(Tab { x: (pos.max(0.0) / 20.0) as f32, align });
+                        para.tabs.sort_by(|a, b| a.x.total_cmp(&b.x));
+                    }
                 }
                 "jc" if in_ppr => {
                     para.align = match attr(&a, "val") {
@@ -437,7 +490,7 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
                         para.list = Some(List { numbered: !bulleted(id, ilvl), level: ilvl });
                     }
                     if para.list.is_some() {
-                        para.indent = 0;
+                        (para.indent, para.left, para.first, para.right) = (0, 0.0, 0.0, 0.0);
                     }
                 }
                 "rPr" => in_rpr = false,

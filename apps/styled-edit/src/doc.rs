@@ -153,7 +153,57 @@ pub struct Para {
     pub level: u8,
     pub align: Option<Align>,
     pub row: Option<Row>,
+    /// Set on the ruler, in points: indents beyond what its kind and
+    /// level give (`left` and `right` added to theirs; `first`, the first
+    /// line's, further in from the left one), and tab stops from the
+    /// text's left edge, left to right.
+    pub left: f32,
+    pub first: f32,
+    pub right: f32,
+    pub tabs: Vec<Tab>,
 }
+
+/// A tab stop: where, and how it lines up the text after its tab.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct Tab {
+    pub x: f32,
+    pub align: TabAlign,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum TabAlign {
+    #[default]
+    Left,
+    Center,
+    Right,
+    Decimal,
+}
+
+impl TabAlign {
+    pub fn to_kit(self) -> egui::epaint::text::TabAlign {
+        use egui::epaint::text::TabAlign as A;
+        match self {
+            TabAlign::Left => A::Left,
+            TabAlign::Center => A::Center,
+            TabAlign::Right => A::Right,
+            TabAlign::Decimal => A::Decimal,
+        }
+    }
+
+    pub fn from_kit(a: egui::epaint::text::TabAlign) -> TabAlign {
+        use egui::epaint::text::TabAlign as A;
+        match a {
+            A::Left => TabAlign::Left,
+            A::Center => TabAlign::Center,
+            A::Right => TabAlign::Right,
+            A::Decimal => TabAlign::Decimal,
+        }
+    }
+}
+
+/// Where tabs go without stops of a paragraph's own: every half inch.
+pub const TAB_EVERY: f32 = 36.0;
 
 /// A table's row: its cells are the paragraph's text, a tab apart (so
 /// the file's text is the table's, tab-separated). A table is the rows
@@ -166,6 +216,47 @@ pub struct Row {
     pub columns: Vec<f32>,
     /// The table's header row.
     pub header: bool,
+}
+
+impl Para {
+    /// The indents its kind, level and list give (left, right), before
+    /// the ruler's.
+    pub fn base_indents(&self) -> (f32, f32) {
+        let list = self.list != List::None;
+        let quote = self.kind == Kind::Quote;
+        let left = self.level as f32 * INDENT + if list { MARKER_ROOM } else { 0.0 } + if quote { INDENT } else { 0.0 };
+        (left, if quote { INDENT } else { 0.0 })
+    }
+
+    /// Where its tabs go: its own stops, then one every half inch; code
+    /// as code editors have it (every four spaces).
+    pub fn tab_stops(&self) -> Option<egui::epaint::text::TabStops> {
+        if self.kind == Kind::Code && self.tabs.is_empty() {
+            return None;
+        }
+        let stops = self.tabs.iter().map(|t| egui::epaint::text::TabStop { x: t.x, align: t.align.to_kit() }).collect();
+        Some(egui::epaint::text::TabStops { stops, every: TAB_EVERY })
+    }
+
+    /// What the ruler shows of it: its indents in all (from the text's
+    /// edges) and its tabs.
+    pub fn ruler(&self) -> olo_kit::ruler::Setting {
+        let (l, r) = self.base_indents();
+        olo_kit::ruler::Setting {
+            indents: olo_kit::ruler::Indents { left: l + self.left, first: self.first, right: r + self.right },
+            tabs: self.tabs.iter().map(|t| egui::epaint::text::TabStop { x: t.x, align: t.align.to_kit() }).collect(),
+        }
+    }
+
+    /// The ruler's setting made its own: indents beyond its kind's and
+    /// level's (none below them), and tabs.
+    pub fn set_ruler(&mut self, s: &olo_kit::ruler::Setting) {
+        let (l, r) = self.base_indents();
+        self.left = (s.indents.left - l).max(0.0);
+        self.first = s.indents.first.max(0.0);
+        self.right = (s.indents.right - r).max(0.0);
+        self.tabs = s.tabs.iter().map(|t| Tab { x: t.x, align: TabAlign::from_kit(t.align) }).collect();
+    }
 }
 
 /// The deepest indent.
@@ -359,8 +450,8 @@ impl Doc {
     pub fn format(&self, i: usize, align: Align) -> olo_kit::editor::Paragraph {
         let p = &self.paras[i];
         let (above, below) = p.kind.spacing();
-        let list = p.list != List::None;
-        let left = p.level as f32 * INDENT + if list { MARKER_ROOM } else { 0.0 } + if p.kind == Kind::Quote { INDENT } else { 0.0 };
+        let (base_left, base_right) = p.base_indents();
+        let left = base_left + p.left.max(0.0);
         let marker = match p.list {
             List::None => None,
             List::Bullet => Some(["•", "◦", "▪"][p.level as usize % 3].to_owned()),
@@ -383,14 +474,15 @@ impl Doc {
         }
         olo_kit::editor::Paragraph {
             left,
-            first: 0.0,
-            right: if p.kind == Kind::Quote { INDENT } else { 0.0 },
+            first: p.first.max(0.0),
+            right: base_right + p.right.max(0.0),
             above,
             below,
             align: halign,
             justify: Some(a == Align::Justify),
             marker,
             row: None,
+            tabs: p.tab_stops(),
         }
     }
 

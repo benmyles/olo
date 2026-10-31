@@ -922,8 +922,10 @@ as they land (with the commit), add new ones as they come up.
   checked in LibreOffice), and Quick Look reading Word, OpenDocument and
   now RTF through it; tables in the editor (the kit editor's rows, the
   Table menu, in and out of every format, printed), column widths
-  dragged by their rules. Next: a ruler, pictures, headers and footers,
-  the page view.
+  dragged by their rules; a ruler (the kit's `ruler`: indents and tab
+  stops, left, centre, right and decimal, which epaint now lays out),
+  kept in every format. Next: pictures, headers and footers, the page
+  view.
 - ~~**Activity Monitor, revamped**~~ (Ben, 2026-10-29, at the end):
   "revamp activity monitor to include everything a nerd could ever want
   to know, with live views, drill downs, tuning settings and ability to

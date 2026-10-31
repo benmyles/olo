@@ -45,7 +45,16 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
   out the same. And `Fonts::galley_generation` (in
   `src/text/fonts.rs`) changes whenever galleys laid out before stop
   painting right (the atlas emptied when full, the fonts changed), for
-  those kept across frames.
+  those kept across frames. And tab stops, which egui hasn't (a tab was
+  four spaces wherever it fell): `LayoutJob::tabs` (`TabStops`: stops
+  lining text up on their left, centre, right or decimal point, then one
+  every so many points) widens each tab to take the text after it to its
+  stop, measured from its row's start, once a paragraph is shaped and
+  again from each new row's start as rows wrap (`set_tabs` in
+  `src/text/text_layout.rs`, with `test_tab_stops`); justified rows widen
+  only the spaces after their last tab. (Run epaint's tests from
+  vendor/epaint with `--features default_fonts` and a `CARGO_TARGET_DIR`
+  of its own: it isn't a workspace member.)
 - **matroska-demuxer 0.8.1** (Zlib OR MIT OR Apache-2.0): seeking with
   cue points that carry a CueRelativePosition (as ffmpeg writes in WebM)
   read the position against the file's first cluster instead of the cue's

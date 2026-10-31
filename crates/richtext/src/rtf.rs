@@ -10,7 +10,7 @@
 
 use std::{collections::HashMap, fmt::Write as _};
 
-use crate::{Align, Document, Kind, List, Paragraph, Span, Table, xml::is_mono};
+use crate::{Align, Document, Kind, List, Paragraph, Span, Tab, TabAlign, Table, xml::is_mono};
 
 /// Twips (twentieths of a point) in half an inch: an indent level.
 const LEVEL: i32 = 720;
@@ -222,6 +222,11 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
     Ok(out.into_bytes())
 }
 
+/// Points in twentieths (twips).
+fn twips(points: f32) -> i32 {
+    (points.max(0.0) * 20.0).round() as i32
+}
+
 /// A table, ruled: each row's cells defined (their right edges), then
 /// their paragraphs, in the table (`\intbl`), each cell's last ended by
 /// `\cell`, and the row by `\row`.
@@ -271,14 +276,27 @@ fn paragraph(out: &mut String, p: &Paragraph, numbered_list: u32, counts: &mut [
         }
         None => {
             let quote = p.kind == Kind::Quote;
-            let left = p.indent as i32 * LEVEL + if quote { LEVEL } else { 0 };
+            let left = p.indent as i32 * LEVEL + if quote { LEVEL } else { 0 } + twips(p.left);
             if left > 0 {
                 let _ = write!(out, "\\li{left}");
             }
-            if quote {
-                out.push_str("\\ri720");
+            let right = if quote { LEVEL } else { 0 } + twips(p.right);
+            if right > 0 {
+                let _ = write!(out, "\\ri{right}");
+            }
+            if p.first > 0.0 {
+                let _ = write!(out, "\\fi{}", twips(p.first));
             }
         }
+    }
+    for tab in &p.tabs {
+        let kind = match tab.align {
+            TabAlign::Left => "",
+            TabAlign::Center => "\\tqc",
+            TabAlign::Right => "\\tqr",
+            TabAlign::Decimal => "\\tqdec",
+        };
+        let _ = write!(out, "{kind}\\tx{}", twips(tab.x));
     }
     match p.align {
         Align::Left => {}
@@ -390,6 +408,12 @@ struct State {
     outline: Option<i32>,
     /// The paragraph is in a table.
     intbl: bool,
+    /// Twips: the first line's indent, the right one.
+    first: i32,
+    right: i32,
+    /// Tab stops so far, and how the next lines text up.
+    tabs: Vec<Tab>,
+    tab_align: TabAlign,
 }
 
 impl State {
@@ -414,6 +438,10 @@ impl State {
             numbering: None,
             outline: None,
             intbl: false,
+            first: 0,
+            right: 0,
+            tabs: Vec::new(),
+            tab_align: TabAlign::Left,
         }
     }
 
@@ -424,6 +452,8 @@ impl State {
 
     fn pard(&mut self) {
         (self.style, self.left, self.align, self.ls, self.ilvl, self.numbering, self.outline, self.intbl) = (0, 0, Align::Left, 0, 0, None, None, false);
+        (self.first, self.right, self.tab_align) = (0, 0, TabAlign::Left);
+        self.tabs.clear();
     }
 }
 
@@ -898,6 +928,17 @@ impl Reader {
             "qr" => st.align = Align::Right,
             "qj" | "qd" => st.align = Align::Justify,
             "li" | "lin" => st.left = n,
+            "fi" => st.first = n,
+            "ri" | "rin" => st.right = n,
+            "tqc" => st.tab_align = TabAlign::Center,
+            "tqr" => st.tab_align = TabAlign::Right,
+            "tqdec" => st.tab_align = TabAlign::Decimal,
+            "tx" => {
+                let align = std::mem::take(&mut st.tab_align);
+                st.tabs.push(Tab { x: n.max(0) as f32 / 20.0, align });
+            }
+            // (A bar, not a stop.)
+            "tb" => st.tab_align = TabAlign::Left,
             "ls" => st.ls = n,
             "ilvl" => st.ilvl = n,
             "outlinelevel" => st.outline = Some(n),
@@ -992,12 +1033,17 @@ impl Reader {
         } else {
             st.numbering
         };
-        let indent = if list.is_some() {
-            0
+        // Outside a list: whole levels, and the rest in points.
+        let quote = if kind == Kind::Quote { LEVEL } else { 0 };
+        let (indent, left, first, right) = if list.is_some() {
+            (0, 0.0, 0.0, 0.0)
         } else {
-            let left = st.left - if kind == Kind::Quote { LEVEL } else { 0 };
-            ((left as f32 / LEVEL as f32).round() as i32).clamp(0, 8) as u8
+            let left = (st.left - quote).max(0);
+            let levels = (left / LEVEL).min(8);
+            (levels as u8, (left - levels * LEVEL) as f32 / 20.0, st.first.max(0) as f32 / 20.0, (st.right - quote).max(0) as f32 / 20.0)
         };
+        let mut tabs = st.tabs.clone();
+        tabs.sort_by(|a, b| a.x.total_cmp(&b.x));
         let lk = look(kind);
         let mut spans = std::mem::take(&mut self.spans);
         for s in &mut spans {
@@ -1020,7 +1066,7 @@ impl Reader {
                 }
             }
         }
-        Paragraph { kind, list, indent, align: st.align, spans, table: None }
+        Paragraph { kind, list, indent, align: st.align, spans, table: None, left, first, right, tabs }
     }
 }
 

@@ -880,7 +880,7 @@ mod tests {
                 para(rt::Kind::Code, "let a = 1;"),
                 para(rt::Kind::Code, "let b = 2;"),
                 rt::Paragraph {
-                    table: Some(rt::Table { header: true, rows: vec![vec![vec![para(rt::Kind::Body, "A")], vec![para(rt::Kind::Body, "B")]], vec![vec![para(rt::Kind::Body, "1")], vec![para(rt::Kind::Body, "2")]]] }),
+                    table: Some(rt::Table { header: true, rows: vec![vec![vec![para(rt::Kind::Body, "A")], vec![para(rt::Kind::Body, "B")]], vec![vec![para(rt::Kind::Body, "1")], vec![para(rt::Kind::Body, "2")]]], ..Default::default() }),
                     ..Default::default()
                 },
             ],

@@ -182,6 +182,7 @@ impl GalleyCache {
                 },
                 round_output_to_gui: job.round_output_to_gui,
                 keep_trailing_whitespace: job.keep_trailing_whitespace,
+                tabs: job.tabs.clone(),
             };
 
             // Add overlapping sections:

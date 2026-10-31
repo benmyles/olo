@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### StyledEdit: the ruler, indents and tab stops
+
+*19:37* — A ruler over the text (the kit's ruler; Document ▸ Show Ruler): the caret's paragraph's first-line, left and right indents to drag, and tab stops: a click sets one, a drag moves it or takes it off, and its menu (or a double click) makes it left, centre, right or decimal. Tabs now go to stops (epaint's TabStops); here a left stop at 1½ in and a decimal one at 2¼ in line up a price list. Indents and stops are kept in Word, OpenDocument and RTF.
+
+![StyledEdit: the ruler, indents and tab stops](2026-10-30/193751-stylededit-the-ruler-indents-and-tab-stops.png)
+
 ### StyledEdit: dragging a table's column rule
 
 *19:15* — A table's inner rule can be dragged: a line shows where it will go, and let go, every row of the table takes the new widths (one step to undo). The widths are kept in StyledEdit's own files and in Word, OpenDocument, RTF and HTML.

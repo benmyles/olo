@@ -93,6 +93,8 @@ struct DocWin {
     /// Words counted for the status line, and for which text and
     /// selection.
     words: Option<((u64, Range<usize>), Words)>,
+    /// The ruler shows (Document ▸ Show Ruler).
+    ruler: bool,
 }
 
 /// Words in the selection (if any) and in the whole document.
@@ -148,6 +150,7 @@ impl DocWin {
             on_disk: None,
             spell: None,
             words: None,
+            ruler: true,
         }
     }
 
@@ -318,6 +321,8 @@ struct StyledEdit {
     /// The paper and pages the next PDF is made with (the Print panel's,
     /// when it chose a PDF).
     pdf_setup: Option<(olo_print::Paper, Option<(u32, u32)>)>,
+    /// New windows show the ruler (as the last one shown or hidden).
+    ruler: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -335,6 +340,12 @@ struct SavedDoc {
     /// The editor's view ([`Editor::view`]).
     #[serde(default)]
     view: (usize, f32),
+    #[serde(default = "shown")]
+    ruler: bool,
+}
+
+fn shown() -> bool {
+    true
 }
 
 /// Pages `range` (from 1, inclusive) of `pages`, or all of them.
@@ -361,7 +372,8 @@ fn home() -> PathBuf {
 impl StyledEdit {
     fn new_doc(&mut self, cx: &mut Cx) -> WindowId {
         self.untitled += 1;
-        let d = DocWin::new(None, self.untitled);
+        let mut d = DocWin::new(None, self.untitled);
+        d.ruler = self.ruler;
         self.add_window(cx, d)
     }
 
@@ -394,6 +406,7 @@ impl StyledEdit {
             return;
         }
         let mut d = DocWin::new(Some(path.clone()), 0);
+        d.ruler = self.ruler;
         d.loading = true;
         let id = self.add_window(cx, d);
         self.load(cx, id, path);
@@ -813,7 +826,7 @@ impl StyledEdit {
             .separator()
             .item("Even Columns", "table:even", None)
             .enabled(t);
-        let document = Menu::new("Document").item("Wrap Lines", "wrap", None).checked(d.doc.wrap);
+        let document = Menu::new("Document").item("Wrap Lines", "wrap", None).checked(d.doc.wrap).item("Show Ruler", "ruler", None).checked(d.ruler && d.doc.wrap).enabled(d.doc.wrap);
         // Styles and layout are saved with the file, so a read-only one
         // keeps its own (as Haiku's StyledEdit has it).
         vec![file, edit, font.all_enabled(editable), paragraph.all_enabled(editable), if editable { tables } else { tables.all_enabled(false) }, document.all_enabled(editable)]
@@ -1003,6 +1016,10 @@ impl StyledEdit {
             "indent-more" => d.doc.set_paras(bytes, selection, |p| p.level = (p.level + 1).min(doc::MAX_LEVEL)),
             "indent-less" => d.doc.set_paras(bytes, selection, |p| p.level = p.level.saturating_sub(1)),
             "wrap" => d.doc.wrap = !d.doc.wrap,
+            "ruler" => {
+                d.ruler = !d.ruler;
+                self.ruler = d.ruler;
+            }
             c if c.starts_with("kind:") => {
                 let Some((kind, ..)) = doc::Kind::ALL.into_iter().find(|(_, _, id)| Some(*id) == c.strip_prefix("kind:")) else { return };
                 let r = d.doc.paras_in(bytes.clone());
@@ -1038,7 +1055,14 @@ impl StyledEdit {
         let Some(Win::Doc(d)) = self.windows.get_mut(&window) else { return None };
         let full = ui.max_rect();
         let status = Rect::from_min_max(pos2(full.left(), full.bottom() - STATUS_H), full.max);
-        let area = Rect::from_min_max(full.min, pos2(full.right(), status.top()));
+        let mut area = Rect::from_min_max(full.min, pos2(full.right(), status.top()));
+        // The ruler, over the text (when it wraps: the text is then the
+        // view's width).
+        let ruler_rect = (d.ruler && d.doc.wrap).then(|| {
+            let r = Rect::from_min_size(area.min, vec2(area.width(), olo_kit::ruler::HEIGHT));
+            area.min.y = r.bottom();
+            r
+        });
 
         // Undo and Redo (⌘Z / ⇧⌘Z on a Mac, Ctrl+Z / Ctrl+Y on Windows)
         // are ours, not the field's.
@@ -1060,6 +1084,31 @@ impl StyledEdit {
         if editable && ui.memory(|mem| mem.has_focus(d.editor.id())) && d.list_keys(ui) {
             ui.ctx().request_repaint();
         }
+        // The caret's paragraph's indents and tabs; changed, the selected
+        // paragraphs take them (one step to undo).
+        let mut guide = None;
+        if let Some(rr) = ruler_rect {
+            // (Where the text was last frame; this frame's is the same
+            // but for a resize, which shows it again.)
+            let (origin, width) = d.editor.text_span().unwrap_or((area.left() + m::TEXT_INSET, (area.width() - widgets::SCROLL_BAR - 2.0 * m::TEXT_INSET).round().max(1.0)));
+            let here = d.doc.para_index(d.editor.caret().min(d.doc.text().len()));
+            let setting = d.doc.paras()[here].ruler();
+            let ruled = olo_kit::ruler::show(ui, d.editor.id().with("ruler"), rr, origin, width, &setting);
+            guide = ruled.guide;
+            if let Some(s) = ruled.changed
+                && editable
+            {
+                let bytes = d.bytes();
+                let r = d.doc.paras_in(bytes.clone());
+                let whole = d.doc.para_range(r.start).start..d.doc.para_range(r.end - 1).end;
+                d.doc.set_paras(bytes.clone(), bytes, |p| {
+                    if p.row.is_none() {
+                        p.set_ruler(&s);
+                    }
+                });
+                d.editor.restyled(whole);
+            }
+        }
         let options = editor::Options {
             editable,
             wrap: d.doc.wrap,
@@ -1076,6 +1125,10 @@ impl StyledEdit {
         let DocWin { doc, editor, .. } = &mut **d;
         let mut styled = Styled { doc, fonts: &mut self.fonts, ctx: &ui.ctx().clone(), base: c(p.document_text) };
         let out = editor.show(ui, area, &mut styled, &options);
+        // A marker held on the ruler: where it goes, down the text.
+        if let Some(x) = guide {
+            style::vline(&ui.painter_at(area), x, area.top(), area.bottom(), c(p.keyboard_navigation));
+        }
         // Right-click on a misspelled word (the editor has put the caret
         // in it): what it might be, first.
         if out.response.secondary_clicked() {
@@ -1465,6 +1518,7 @@ impl App for StyledEdit {
                 Ok((text, runs, paras)) => {
                     self.untitled += 1;
                     let mut d = DocWin::new(None, self.untitled);
+                    d.ruler = self.ruler;
                     let mut doc = Doc::with_paras(text, Some(runs), Some(paras));
                     // Not saved anywhere yet.
                     doc.saved_generation = 0;
@@ -1522,6 +1576,7 @@ impl App for StyledEdit {
                     wrap: d.doc.wrap,
                     selection: (d.bytes().start, d.bytes().end),
                     view: d.editor.view(),
+                    ruler: d.ruler,
                 }),
                 _ => None,
             })
@@ -1535,6 +1590,7 @@ impl StyledEdit {
         for s in docs {
             self.untitled = self.untitled.max(s.untitled);
             let mut d = DocWin::new(s.path.clone(), s.untitled);
+            d.ruler = s.ruler;
             match s.edited {
                 Some((text, runs)) => {
                     let mut doc = Doc::with_paras(text, Some(runs), Some(s.paras).filter(|p| !p.is_empty()));
@@ -1571,7 +1627,7 @@ fn main() {
         instance::listen(APP_ID, cx.proxy());
         let proxy = cx.proxy();
         let fonts = fonts::Fonts::start(move |e| proxy.send(Msg::Fonts(e)));
-        let mut app = StyledEdit { windows: HashMap::new(), fonts, search: Search { wrap: true, ..Search::default() }, untitled: 0, watch: None, spelling: true, ctx: None, pdf_setup: None };
+        let mut app = StyledEdit { windows: HashMap::new(), fonts, search: Search { wrap: true, ..Search::default() }, untitled: 0, watch: None, spelling: true, ctx: None, pdf_setup: None, ruler: true };
         match cx.restored_state().and_then(|s| serde_json::from_str::<Vec<SavedDoc>>(&s).ok()) {
             Some(docs) if !docs.is_empty() => app.restore(cx, docs),
             _ => app.handle_args(cx, &args, None),

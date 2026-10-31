@@ -4,7 +4,7 @@
 use std::{collections::HashMap, fmt::Write as _, io::Write as _};
 
 use crate::{
-    Align, Document, Kind, List, Paragraph, Span, Table,
+    Align, Document, Kind, List, Paragraph, Span, Tab, TabAlign, Table,
     xml::{X, attr, esc, events, hex_color, is_mono, zip_text},
 };
 
@@ -77,11 +77,24 @@ fn text_props(s: &Span) -> String {
 #[derive(Default)]
 struct Auto {
     text: Vec<String>,
-    para: Vec<(Kind, Align, u8)>,
+    para: Vec<ParaStyle>,
     fonts: Vec<String>,
     tables: usize,
     /// Styles for the columns of tables with widths of their own.
     columns: String,
+}
+
+/// An automatic paragraph style: what of a paragraph isn't its kind's.
+#[derive(Clone, PartialEq)]
+struct ParaStyle {
+    kind: Kind,
+    align: Align,
+    /// Points from the text's left edge (levels and the ruler's), the
+    /// first line's further in, from the right edge.
+    left: f32,
+    first: f32,
+    right: f32,
+    tabs: Vec<Tab>,
 }
 
 pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
@@ -138,8 +151,8 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
     for (i, props) in text_styles.iter().enumerate() {
         let _ = write!(auto, "<style:style style:name=\"T{}\" style:family=\"text\"><style:text-properties{props}/></style:style>", i + 1);
     }
-    for (i, (kind, align, indent)) in para_styles.iter().enumerate() {
-        let a = match align {
+    for (i, ps) in para_styles.iter().enumerate() {
+        let a = match ps.align {
             Align::Left => "start",
             Align::Center => "center",
             Align::Right => "end",
@@ -147,11 +160,35 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
         };
         let _ = write!(
             auto,
-            "<style:style style:name=\"P{}\" style:family=\"paragraph\" style:parent-style-name=\"{}\"><style:paragraph-properties fo:text-align=\"{a}\" fo:margin-left=\"{}in\"/></style:style>",
+            "<style:style style:name=\"P{}\" style:family=\"paragraph\" style:parent-style-name=\"{}\"><style:paragraph-properties fo:text-align=\"{a}\" fo:margin-left=\"{}pt\"",
             i + 1,
-            style_name(*kind),
-            *indent as f32 * 0.5
+            style_name(ps.kind),
+            ps.left
         );
+        if ps.right > 0.0 {
+            let _ = write!(auto, " fo:margin-right=\"{}pt\"", ps.right);
+        }
+        if ps.first > 0.0 {
+            let _ = write!(auto, " fo:text-indent=\"{}pt\"", ps.first);
+        }
+        if ps.tabs.is_empty() {
+            auto.push_str("/>");
+        } else {
+            // (Measured from the paragraph's indent, as LibreOffice has
+            // them.)
+            auto.push_str("><style:tab-stops>");
+            for t in ps.tabs.iter().filter(|t| t.x > ps.left) {
+                let kind = match t.align {
+                    TabAlign::Left => "left\"",
+                    TabAlign::Center => "center\"",
+                    TabAlign::Right => "right\"",
+                    TabAlign::Decimal => "char\" style:char=\".\"",
+                };
+                let _ = write!(auto, "<style:tab-stop style:position=\"{}pt\" style:type=\"{kind}/>", t.x - ps.left);
+            }
+            auto.push_str("</style:tab-stops></style:paragraph-properties>");
+        }
+        auto.push_str("</style:style>");
     }
     let level_styles = |bullet: bool| {
         (1..=10)
@@ -221,11 +258,18 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
 }
 
 fn paragraph(body: &mut String, p: &Paragraph, auto: &mut Auto) {
-    let indent = if p.list.is_some() { 0 } else { p.indent };
-    let style = if p.align == Align::Left && indent == 0 {
+    let list = p.list.is_some();
+    let key = ParaStyle {
+        kind: p.kind,
+        align: p.align,
+        left: if list { 0.0 } else { p.indent as f32 * 36.0 + p.left.max(0.0) },
+        first: if list { 0.0 } else { p.first.max(0.0) },
+        right: if list { 0.0 } else { p.right.max(0.0) },
+        tabs: p.tabs.clone(),
+    };
+    let style = if p.align == Align::Left && key.left == 0.0 && key.first == 0.0 && key.right == 0.0 && key.tabs.is_empty() {
         style_name(p.kind).to_owned()
     } else {
-        let key = (p.kind, p.align, indent);
         let n = auto.para.iter().position(|k| *k == key).unwrap_or_else(|| {
             auto.para.push(key);
             auto.para.len() - 1
@@ -379,6 +423,11 @@ struct Props {
     font: Option<String>,
     align: Option<Align>,
     margin: Option<f32>,
+    /// Inches: the first line's indent, the right margin.
+    text_indent: Option<f32>,
+    margin_right: Option<f32>,
+    /// Tab stops (points from the indent).
+    tabs: Option<Vec<Tab>>,
     /// A table column's width: relative (`rel-column-width`), else in
     /// inches.
     column: Option<f32>,
@@ -429,6 +478,26 @@ fn read_styles(xml: &str, into: &mut HashMap<String, Props>, lists: &mut HashMap
                             _ => Align::Left,
                         });
                         p.margin = attr(&a, "margin-left").and_then(inches);
+                        p.text_indent = attr(&a, "text-indent").and_then(inches);
+                        p.margin_right = attr(&a, "margin-right").and_then(inches);
+                    }
+                }
+                "tab-stops" => {
+                    if let Some(p) = cur.as_ref().and_then(|c| into.get_mut(c)) {
+                        p.tabs = Some(Vec::new());
+                    }
+                }
+                "tab-stop" => {
+                    if let Some(tabs) = cur.as_ref().and_then(|c| into.get_mut(c)).and_then(|p| p.tabs.as_mut())
+                        && let Some(at) = attr(&a, "position").and_then(inches)
+                    {
+                        let align = match attr(&a, "type") {
+                            Some("center") => TabAlign::Center,
+                            Some("right") => TabAlign::Right,
+                            Some("char") => TabAlign::Decimal,
+                            _ => TabAlign::Left,
+                        };
+                        tabs.push(Tab { x: at * 72.0, align });
                     }
                 }
                 "table-column-properties" => {
@@ -563,11 +632,21 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
                     if let Some(depth) = lists.len().checked_sub(1) {
                         let numbered = lists.last().cloned().flatten().and_then(|s| list_styles.get(&s).and_then(|l| l.get(depth).copied())).unwrap_or(false);
                         p.list = Some(List { numbered, level: depth.min(8) as u8 });
-                    } else if let Some(m) = find(&styles, style, &|p| p.margin) {
-                        // Margins the kind gives itself aren't indents.
-                        if p.kind != Kind::Quote {
-                            p.indent = (m / 0.5).round().clamp(0.0, 8.0) as u8;
-                        }
+                    } else if p.kind != Kind::Quote {
+                        // Whole levels and the rest in points. (Margins
+                        // the kind gives itself aren't indents.)
+                        let pt = |f: &dyn Fn(&Props) -> Option<f32>| find(&styles, style, f).map_or(0.0, |v| (v * 72.0 * 100.0).round() / 100.0).max(0.0);
+                        let m = pt(&|p| p.margin);
+                        p.indent = ((m + 0.01) / 36.0).floor().min(8.0) as u8;
+                        p.left = m - p.indent as f32 * 36.0;
+                        p.first = pt(&|p| p.text_indent);
+                        p.right = pt(&|p| p.margin_right);
+                    }
+                    // Tab stops, from the indent to from the text's edge.
+                    if let Some(tabs) = find(&styles, style, &|p| p.tabs.clone()) {
+                        let m = find(&styles, style, &|p| p.margin).unwrap_or(0.0) * 72.0;
+                        p.tabs = tabs.into_iter().map(|t| Tab { x: ((t.x + m) * 100.0).round() / 100.0, ..t }).collect();
+                        p.tabs.sort_by(|a, b| a.x.total_cmp(&b.x));
                     }
                     // The paragraph style's own character properties are
                     // its kind's, not spans'.

@@ -4,7 +4,7 @@
 
 use std::ops::Range;
 
-use crate::doc::{Align, DEFAULT_SIZE, Kind, List, MONOSPACE, Para, Row, Run, Style};
+use crate::doc::{Align, DEFAULT_SIZE, Kind, List, MONOSPACE, Para, Row, Run, Style, Tab, TabAlign};
 
 /// Links' colour, as Import sets it.
 const LINK: [u8; 3] = [0x1f, 0x5f, 0xc4];
@@ -270,7 +270,20 @@ fn rich_para(p: &olo_richtext::Paragraph) -> Para {
         Some(l) => (if l.numbered { List::Number } else { List::Bullet }, l.level),
         None => (List::None, p.indent),
     };
-    Para { kind, list, level: level.min(crate::doc::MAX_LEVEL), align, row: None }
+    let tabs = p
+        .tabs
+        .iter()
+        .map(|t| Tab {
+            x: t.x,
+            align: match t.align {
+                rt::TabAlign::Left => TabAlign::Left,
+                rt::TabAlign::Center => TabAlign::Center,
+                rt::TabAlign::Right => TabAlign::Right,
+                rt::TabAlign::Decimal => TabAlign::Decimal,
+            },
+        })
+        .collect();
+    Para { kind, list, level: level.min(crate::doc::MAX_LEVEL), align, row: None, left: p.left, first: p.first, right: p.right, tabs }
 }
 
 /// `olo_richtext` spans as text in StyledEdit's styles (on the
@@ -353,7 +366,31 @@ pub fn to_rich(text: &str, runs: &[Run], paras: &[Para], align: Align) -> olo_ri
             List::None => None,
             l => Some(rt::List { numbered: l == List::Number, level: p.level }),
         };
-        doc.paragraphs.push(rt::Paragraph { kind, list, indent: if list.is_none() { p.level } else { 0 }, align: a, spans: rich(r), table: None });
+        let tabs = p
+            .tabs
+            .iter()
+            .map(|t| rt::Tab {
+                x: t.x,
+                align: match t.align {
+                    TabAlign::Left => rt::TabAlign::Left,
+                    TabAlign::Center => rt::TabAlign::Center,
+                    TabAlign::Right => rt::TabAlign::Right,
+                    TabAlign::Decimal => rt::TabAlign::Decimal,
+                },
+            })
+            .collect();
+        doc.paragraphs.push(rt::Paragraph {
+            kind,
+            list,
+            indent: if list.is_none() { p.level } else { 0 },
+            align: a,
+            spans: rich(r),
+            table: None,
+            left: p.left,
+            first: p.first,
+            right: p.right,
+            tabs,
+        });
     }
     if let Some(t) = table.take() {
         doc.paragraphs.push(rt::Paragraph { table: Some(t), ..rt::Paragraph::default() });
@@ -611,17 +648,27 @@ pub fn to_html(text: &str, runs: &[Run], paras: &[Para], title: &str, align: Ali
             (_, Kind::Heading3) => "h3",
             _ => "p",
         };
-        let style = match p.align {
-            Some(Align::Center) => " style=\"text-align: center\"",
-            Some(Align::Right) => " style=\"text-align: right\"",
-            Some(Align::Justify) => " style=\"text-align: justify\"",
-            _ => match align {
-                Align::Center => " style=\"text-align: center\"",
-                Align::Right => " style=\"text-align: right\"",
-                Align::Justify => " style=\"text-align: justify\"",
-                Align::Left => "",
-            },
-        };
+        let mut css = Vec::new();
+        match p.align.unwrap_or(align) {
+            Align::Center => css.push("text-align: center".to_owned()),
+            Align::Right => css.push("text-align: right".to_owned()),
+            Align::Justify => css.push("text-align: justify".to_owned()),
+            Align::Left => {}
+        }
+        // Indents (a list's are its own); tab stops HTML hasn't.
+        if p.list == List::None {
+            let left = p.level as f32 * crate::doc::INDENT + p.left;
+            if left > 0.0 {
+                css.push(format!("margin-left: {left}pt"));
+            }
+            if p.right > 0.0 {
+                css.push(format!("margin-right: {}pt", p.right));
+            }
+            if p.first > 0.0 {
+                css.push(format!("text-indent: {}pt", p.first));
+            }
+        }
+        let style = if css.is_empty() { String::new() } else { format!(" style=\"{}\"", css.join("; ")) };
         out.push_str(&format!("<{tag}{style}>"));
         let heading = tag.starts_with('h');
         for (r, s) in spans(runs, r.clone()) {
@@ -779,5 +826,20 @@ mod tests {
         assert_eq!(paras4[1].row.as_ref().map(|r| r.columns.clone()), Some(vec![0.75, 0.25]));
         let html = to_html(&text, &runs, &paras, "t", Align::Left);
         assert!(html.contains("<table") && html.contains("<th") && html.contains("<td"));
+    }
+
+    #[test]
+    fn ruler_settings_in_and_out() {
+        // A paragraph's indents and tab stops, through each format.
+        let text = "Ruled\t1\t2.5";
+        let para = Para { left: 18.0, first: 36.0, right: 9.0, tabs: vec![Tab { x: 144.0, align: TabAlign::Right }, Tab { x: 216.0, align: TabAlign::Decimal }], ..Para::default() };
+        let runs = vec![Run { len: text.len(), style: Style::default() }];
+        let rich = to_rich(text, &runs, std::slice::from_ref(&para), Align::Left);
+        for bytes in [olo_richtext::write_docx(&rich).unwrap(), olo_richtext::write_odt(&rich).unwrap(), olo_richtext::write_rtf(&rich).unwrap()] {
+            let back = olo_richtext::read_docx(&bytes).or_else(|_| olo_richtext::read_odt(&bytes)).or_else(|_| olo_richtext::read_rtf(&bytes)).unwrap();
+            let (_, _, paras) = from_rich(back);
+            assert_eq!((paras[0].left, paras[0].first, paras[0].right), (18.0, 36.0, 9.0));
+            assert_eq!(paras[0].tabs, para.tabs);
+        }
     }
 }

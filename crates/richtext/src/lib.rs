@@ -52,6 +52,35 @@ pub struct Paragraph {
     /// A table here, in the flow of paragraphs, instead of text (its
     /// spans are empty).
     pub table: Option<Table>,
+    /// Indents beyond the levels (a ruler's), in points: `left` added to
+    /// `indent`'s, `first` the first line's further in from it, `right`
+    /// from the text's right edge. (Outside lists: a list's indents are
+    /// its levels'.)
+    pub left: f32,
+    pub first: f32,
+    pub right: f32,
+    /// Tab stops, in points from the text's left edge, left to right.
+    pub tabs: Vec<Tab>,
+}
+
+/// A tab stop: where, and how it lines up the text after a tab.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Tab {
+    pub x: f32,
+    pub align: TabAlign,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TabAlign {
+    /// The text starts at it.
+    #[default]
+    Left,
+    /// It is centred on it.
+    Center,
+    /// It ends at it.
+    Right,
+    /// Its decimal point is at it.
+    Decimal,
 }
 
 /// A table: rows of cells, each cell paragraphs of its own (a table in
@@ -285,6 +314,13 @@ mod tests {
                 p(Kind::Code, vec![Span { monospace: true, ..plain.with_text("let x = 1;") }]),
                 Paragraph { align: Align::Center, ..p(Kind::Heading2, vec![plain.with_text("Centred")]) },
                 Paragraph { indent: 2, align: Align::Justify, ..p(Kind::Body, vec![plain.with_text("Indented twice.")]) },
+                Paragraph {
+                    left: 18.0,
+                    first: 36.0,
+                    right: 9.0,
+                    tabs: vec![Tab { x: 144.0, align: TabAlign::Right }, Tab { x: 216.0, align: TabAlign::Decimal }, Tab { x: 288.0, align: TabAlign::Center }, Tab { x: 360.0, align: TabAlign::Left }],
+                    ..p(Kind::Body, vec![plain.with_text("Ruled\t1\t2.5\tmid\tend")])
+                },
                 Paragraph {
                     table: Some(Table {
                         header: true,

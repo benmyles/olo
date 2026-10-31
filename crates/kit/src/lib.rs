@@ -31,6 +31,7 @@ pub mod menu;
 pub mod metrics;
 pub mod notify;
 pub mod places;
+pub mod ruler;
 mod platform;
 pub mod recorded;
 pub mod search;

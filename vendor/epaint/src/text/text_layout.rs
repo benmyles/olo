@@ -19,7 +19,7 @@ use crate::{
 
 use super::{
     ByteRangeExt as _, Galley, Glyph, LayoutJob, LayoutSection, PlacedRow, Row, RowVisuals,
-    VariationCoords,
+    TabAlign, TabStops, VariationCoords,
     family::FamilyKey,
     font_face::{FontFace, GlyphInfo, ShapedGlyph},
     glyph_atlas::{GlyphAllocation, OutlineGlyph, RasterGlyphAllocation},
@@ -229,12 +229,21 @@ pub(crate) fn layout_shaped(
 
     // For most of this we ignore the y coordinate:
 
-    let paragraphs = match shaped {
+    let mut paragraphs = match shaped {
         Some(cache) => cache.get_or_shape(fonts, pixels_per_point, &job),
         None => shape(fonts, pixels_per_point, &job),
     };
 
     let point_scale = PointScale::new(pixels_per_point);
+
+    // Olo: tabs to their stops, as if each paragraph were one row (rows
+    // after a wrap set theirs again from their own start).
+    if let Some(tabs) = &job.tabs {
+        for paragraph in &mut paragraphs {
+            let shift = set_tabs(&mut paragraph.glyphs, 0, 0.0, tabs, point_scale);
+            paragraph.cursor_x_px += shift * pixels_per_point;
+        }
+    }
 
     let intrinsic_size = calculate_intrinsic_size(point_scale, &job, &paragraphs);
 
@@ -837,7 +846,7 @@ fn rows_from_paragraphs(
 
     let mut rows = vec![];
 
-    for (i, paragraph) in paragraphs.into_iter().enumerate() {
+    for (i, mut paragraph) in paragraphs.into_iter().enumerate() {
         if job.wrap.max_rows <= rows.len() {
             *elided = true;
             break;
@@ -874,7 +883,7 @@ fn rows_from_paragraphs(
                     ends_with_newline: !is_last_paragraph,
                 });
             } else {
-                line_break(&paragraph, job, &mut rows, elided);
+                line_break(&mut paragraph, job, &mut rows, elided, pixels_per_point);
                 let placed_row = rows.last_mut().unwrap();
                 placed_row.ends_with_newline = !is_last_paragraph;
             }
@@ -885,12 +894,20 @@ fn rows_from_paragraphs(
 }
 
 fn line_break(
-    paragraph: &Paragraph,
+    paragraph: &mut Paragraph,
     job: &LayoutJob,
     out_rows: &mut Vec<PlacedRow>,
     elided: &mut bool,
+    pixels_per_point: f32,
 ) {
     let wrap_width = job.effective_wrap_width();
+    // Olo: a new row's tabs go to stops from its own start.
+    let point_scale = PointScale::new(pixels_per_point);
+    let retab = |glyphs: &mut [Glyph], from: usize, row_start_x: f32| {
+        if let Some(tabs) = &job.tabs {
+            set_tabs(glyphs, from, row_start_x, tabs, point_scale);
+        }
+    };
 
     // Keeps track of good places to insert row break if we exceed `wrap_width`.
     let mut row_break_candidates = RowBreakCandidates::default();
@@ -927,6 +944,7 @@ fn line_break(
                 });
                 row_start_x += first_row_indentation;
                 first_row_indentation = 0.0;
+                retab(&mut paragraph.glyphs, row_start_idx, row_start_x);
             } else if let Some(last_kept_index) = row_break_candidates.get(job.wrap.break_anywhere)
             {
                 let glyphs: Vec<Glyph> = paragraph.glyphs[row_start_idx..=last_kept_index]
@@ -956,6 +974,7 @@ fn line_break(
                 row_start_idx = last_kept_index + 1;
                 row_start_x = paragraph.glyphs[row_start_idx].pos.x;
                 row_break_candidates.forget_before_idx(row_start_idx);
+                retab(&mut paragraph.glyphs, row_start_idx, row_start_x);
             } else {
                 // Found no place to break, so we have to overrun wrap_width.
             }
@@ -996,6 +1015,61 @@ fn line_break(
             });
         }
     }
+}
+
+/// Olo: each tab in `glyphs[from..]` (up to the paragraph's end) made as
+/// wide as takes the text after it to its stop, measured from
+/// `row_start_x`; what follows moves with it. Returns how far the last
+/// glyph moved.
+fn set_tabs(
+    glyphs: &mut [Glyph],
+    from: usize,
+    row_start_x: f32,
+    tabs: &TabStops,
+    point_scale: PointScale,
+) -> f32 {
+    let mut moved = 0.0;
+    for i in from..glyphs.len() {
+        if glyphs[i].chr != '\t' {
+            continue;
+        }
+        let x = glyphs[i].pos.x - row_start_x;
+        let Some(stop) = tabs.after(x) else {
+            continue;
+        };
+        // What it lines up: the text after it, up to the next tab, from
+        // where it starts now to where that tab (else its last glyph)
+        // starts. (Glyphs are placed by their whole-pixel advances, not
+        // `advance_width`, so their own places measure it.)
+        let next = glyphs[i + 1..]
+            .iter()
+            .position(|g| g.chr == '\t')
+            .map(|k| i + 1 + k);
+        let text = &glyphs[i + 1..next.unwrap_or(glyphs.len())];
+        let start = text.first().map_or(glyphs[i].max_x(), |g| g.pos.x);
+        let end = match next {
+            Some(k) => glyphs[k].pos.x,
+            None => text.last().map_or(start, |g| g.max_x()),
+        };
+        let lead = match stop.align {
+            TabAlign::Left => 0.0,
+            TabAlign::Center => (end - start) / 2.0,
+            TabAlign::Right => end - start,
+            TabAlign::Decimal => text
+                .iter()
+                .find(|g| g.chr == '.')
+                .map_or(end - start, |g| g.pos.x - start),
+        };
+        // (Whole pixels: the text after it is drawn as sharp as before.)
+        let to = point_scale.round_to_pixel(row_start_x + (stop.x - lead).max(x));
+        let by = to - start;
+        glyphs[i].advance_width = to - glyphs[i].pos.x;
+        for g in &mut glyphs[i + 1..] {
+            g.pos.x += by;
+        }
+        moved += by;
+    }
+    moved
 }
 
 /// Trims the last glyphs in the row and replaces it with an overflow character (e.g. `…`).
@@ -1251,6 +1325,9 @@ fn halign_and_justify_edited_row(
     };
     let end = row.glyphs.len() - trailing;
     let leading = row.glyphs[..end].iter().take_while(|glyph| glyph.chr.is_whitespace()).count();
+    // (Text lined up at tab stops stays there: only the spaces after the
+    // row's last tab widen.)
+    let leading = row.glyphs[..end].iter().rposition(|glyph| glyph.chr == '\t').map_or(leading, |t| leading.max(t + 1));
     // From the row's start, indentation included, to its last glyph that counts.
     let width = end.checked_sub(1).map_or(0.0, |last| row.glyphs[last].max_x());
     let spaces = row.glyphs[leading..end].iter().filter(|glyph| glyph.chr.is_whitespace()).count();
@@ -2397,6 +2474,63 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// Olo's patch: tabs go to their stops, from each row's start.
+    #[test]
+    fn test_tab_stops() {
+        let mut fonts = test_fonts();
+        let x_of = |galley: &Galley, row: usize, chr: char| -> f32 {
+            let r = &galley.rows[row];
+            r.pos.x + r.glyphs.iter().find(|g| g.chr == chr).unwrap().pos.x
+        };
+        let end_of = |galley: &Galley, row: usize, chr: char| -> f32 {
+            let r = &galley.rows[row];
+            r.pos.x + r.glyphs.iter().find(|g| g.chr == chr).unwrap().max_x()
+        };
+        let stops = TabStops {
+            stops: vec![
+                TabStop { x: 100.0, align: TabAlign::Left },
+                TabStop { x: 200.0, align: TabAlign::Right },
+                TabStop { x: 300.0, align: TabAlign::Decimal },
+                TabStop { x: 400.0, align: TabAlign::Center },
+            ],
+            every: 36.0,
+        };
+        for ppp in [1.0, 1.5, 2.0] {
+            let mut job = LayoutJob::single_section("a\tB\tCD\t12.5\tE".into(), TextFormat::default());
+            job.tabs = Some(stops.clone());
+            let g = layout(&mut fonts, ppp, job.into());
+            let near = |a: f32, b: f32| (a - b).abs() <= 1.0 / ppp;
+            assert!(near(x_of(&g, 0, 'B'), 100.0), "left {}", x_of(&g, 0, 'B'));
+            assert!(near(end_of(&g, 0, 'D'), 200.0), "right {}", end_of(&g, 0, 'D'));
+            assert!(near(x_of(&g, 0, '.'), 300.0), "decimal {}", x_of(&g, 0, '.'));
+            let e = (x_of(&g, 0, 'E') + end_of(&g, 0, 'E')) / 2.0;
+            assert!(near(e, 400.0), "centre {e}");
+            // Past the stops, one every 36 points.
+            let mut job = LayoutJob::single_section("x\tY".into(), TextFormat::default());
+            job.tabs = Some(TabStops::every(36.0));
+            let g = layout(&mut fonts, ppp, job.into());
+            assert!(near(x_of(&g, 0, 'Y'), 36.0));
+        }
+        // A wrapped row's tabs measure from its own start.
+        let mut job = LayoutJob::single_section("word word word word word word word word\tZ".into(), TextFormat::default());
+        job.wrap.max_width = 150.0;
+        job.tabs = Some(TabStops::every(100.0));
+        job.keep_trailing_whitespace = true;
+        let g = layout(&mut fonts, 1.0, job.into());
+        let last = g.rows.len() - 1;
+        assert!(0 < last);
+        assert!((x_of(&g, last, 'Z') - 100.0).abs() <= 1.0, "wrapped {}", x_of(&g, last, 'Z'));
+        // Justified, text at a stop stays there.
+        let mut job = LayoutJob::single_section("a b\tc d e f g h i j k l m n o p q r s t u v w".into(), TextFormat::default());
+        job.wrap.max_width = 200.0;
+        job.tabs = Some(TabStops::every(60.0));
+        job.justify = true;
+        job.keep_trailing_whitespace = true;
+        let g = layout(&mut fonts, 1.0, job.into());
+        assert!(1 < g.rows.len());
+        assert!((x_of(&g, 0, 'c') - 60.0).abs() <= 1.0, "justified {}", x_of(&g, 0, 'c'));
     }
 
     #[test]

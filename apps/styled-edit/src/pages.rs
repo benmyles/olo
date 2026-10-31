@@ -117,6 +117,8 @@ pub fn pages(input: Input, paper: Paper) -> Vec<Page> {
             continue;
         }
         job.sections[0].leading_space += f.first;
+        let space = fonts.with_pixels_per_point(PPP).glyph_width(&job.sections[0].format.font_id, ' ');
+        job.tabs = Some(f.galley_tabs(space));
         let first_format = job.sections[0].format.clone();
         let section_of = sections_of(&job);
         let mut char_at = 0usize;
