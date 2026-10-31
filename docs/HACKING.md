@@ -179,6 +179,81 @@ like pixel alignment is.
      in egui's atlas each glyph was rasterised on the UI thread and the
      atlas sent to the GPU again whole as it grew.
 
+## Fast and light (applies to everything)
+
+**Olo is fast and lightweight: a core tenet, held as strictly as
+pixel-perfection.** Every CPU cycle spent has to buy something someone
+sees or uses; work that changes nothing is a bug. It is checked in
+review, and a change isn't done until it has been measured.
+
+What it means in numbers, on release builds:
+
+* **Idle** (nothing on screen changing): app_server and every app at
+  about 0% of a core, asleep. app_server's displays rest (about ten
+  looks a second each, see rule 9); an app wakes only for input, an
+  event it asked for or work it was given. No polling: no timers that
+  look for changes (rule 7), no frames when nothing changed (the bench
+  checks an idle second draws nothing), no events subscribed to that
+  aren't used (`into_events_of`).
+* **A little changing** (an agent's spinner, a blinking cursor, a
+  clock): the cost follows what changed, not what's on screen: a
+  spinner's row, not the terminal. The whole desktop stays in single
+  digits of one core with an agent working in a full-screen Terminal
+  (Terminal: 1.2 ms a frame whole, 0.1 ms of it for the grid).
+* **A lot changing** (scrolling, a live resize, video): every frame
+  within 8.3 ms (rule 9), drawn by the GPU, and no more CPU than that
+  takes.
+* **Over time**: memory, threads and file descriptors don't grow
+  (`tools/dev/perf-fuzz` checks).
+
+How to measure (before and after, the same case, numbers in the commit
+message):
+
+* `tools/dev/cost PID [SECONDS]`: a running process's CPU per thread
+  (user and kernel), wakeups and preemptions a second, and for a kit
+  app each window's frames and their cost by phase (ui, tessellating,
+  submitting). Read-only, so it works on a test session's processes
+  and, when the person asks, on theirs.
+* app_server: `tsession ipc NAME '{"type":"timings"}'` twice, seconds
+  apart: each display's looks, their total and slowest. Asking starts a
+  4 ms heartbeat for a minute, so measure its CPU before asking or a
+  minute after.
+* `tools/dev/bench` (every app's frames against the budget),
+  `tools/dev/scroll-check` (smoothness and the first frame's latency),
+  `tools/dev/perf-fuzz` (stalls, slow answers, growth).
+* Measure the case the change is for (idle; a spinner; scrolling a big
+  folder; a window full screen on a 16" MacBook Pro's 3456×2234 at 2×)
+  on release builds, compare with the build before, and check the
+  latency too: a saving that makes the first frame after input later
+  isn't one. A guess ("should be cheap") isn't a measurement.
+
+How Olo keeps it (do the same):
+
+* **Nothing changed, nothing done.** app_server's displays rest and are
+  woken by what can change them (rule 9); the kit draws on input,
+  events and `request_repaint`, and a window that doesn't show gets no
+  frame callbacks. Don't `request_repaint` on a timer to look for
+  changes.
+* **Work done once is kept**, keyed by what it was made from:
+  Terminal's rows (`RowCache`: each row's cells compared with those it
+  was drawn from, only changed rows laid out and tessellated again),
+  `recorded::Recorded`, `Cell::text_cached`, window tab looks, the
+  wallpaper's strips. Compare the source (cells, a version counter)
+  rather than hashing what you'd draw: finding out what changed must
+  cost far less than drawing it.
+* **Only what shows, only what changed**: virtualised lists, per-row
+  and per-item caches, damage.
+* **Ask for less**: events by kind (`EventKind`: `OwnWindows`, not every
+  window's title), files by inotify, an event written out once for all.
+  Something that wakes every app costs every app: an agent's spinning
+  title woke every app's two kit threads ten times a second.
+* **Per frame, no waste**: no new strings or vectors for what didn't
+  change, nothing quadratic (a check of a whole run per character cost
+  Terminal 1 ms a frame), no locks held across calls (Deskbar's status
+  deadlocked holding one), no sleeping loops.
+* **The GPU draws, the CPU decides.** Upload once and keep textures;
+  meshes made once and handed over as they are.
+
 ## Layout
 
 | Path | What |

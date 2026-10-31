@@ -319,7 +319,12 @@ as they land (with the commit), add new ones as they come up.
   less/man, tmux, fzf, lazygit, Claude Code and Codex in every terminal
   theme of every Olo look, light and dark, at 1× and 2×, as shots in
   the journal.
-- **olo-terminal uses far too much CPU** (Ben, 2026-10-31): "same with
+- ~~**olo-terminal uses far too much CPU**~~ (Ben, 2026-10-31; done:
+  each row is compared with the cells it was drawn from and only rows
+  that changed are rebuilt; a full-screen agent spinner frame 4.5 ms →
+  1.2 ms whole, its grid 2.2 ms → 0.1 ms; the process 14% → under 4% of
+  a core with ten windows and six spinners; hidden windows still draw
+  once a second, under a millisecond): "same with
   olo-terminal: look at 4356 it is using wayu more cpu than it should".
   Measured (read-only, /proc and its `{"frames":true}`): 14% of a core on
   its UI thread, ~74 wakeups/s. Its window "olo — ◑ …" (a tab whose
@@ -2172,7 +2177,8 @@ as they land (with the commit), add new ones as they come up.
 
 ## app_server
 
-- **Agent rules: fast and light, measured** (Ben, 2026-10-31): once
+- ~~**Agent rules: fast and light, measured**~~ (Ben, 2026-10-31; done:
+  CLAUDE.md, HACKING "Fast and light", `tools/dev/cost`): once
   app_server's and Terminal's CPU are fixed, "add agent rules about this
   … so that moving forward everything is very carefully benchmarked and
   cpu cycles are never wasted and everything is ultra optimized. one of
@@ -2180,7 +2186,16 @@ as they land (with the commit), add new ones as they come up.
   (CLAUDE.md and HACKING.md: how to measure a change's CPU and frame
   cost, what budgets hold, and that a change isn't done until it's
   measured).
-- **app_server's idle CPU** (Ben, 2026-10-31): "i often see
+- ~~**app_server's idle CPU**~~ (Ben, 2026-10-31; done, measured
+  headless; on the real displays to be seen after the upgrade: HACKING,
+  rule 9's resting displays and "Fast and light"): every display looked
+  for damage every frame forever (on a real one with a DRM test commit),
+  and every app's kit threads took every event. Now displays rest after
+  3 empty looks (every 100 ms, woken at once by commits on them, input,
+  requests, window changes), the event loop's timeout is 100 ms, not
+  16, and apps ask only for the events they use. Idle session: 10 looks
+  a second instead of 61 (240 on two 120 Hz displays), 26 wakeups a
+  second instead of 119, same scrolling latency. "i often see
   olo-app-server using 20%+ cpu. look at pid 3266 right now to see what
   it is doing and how it can be made much more efficient: it should
   never need to get above single digit cpu in a core." Measured

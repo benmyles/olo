@@ -13,6 +13,16 @@ rules are universal and non-negotiable:
   seamlessly for agents as well as for people: what a person can see and
   do, an agent can read (structured, not just pixels) and drive through a
   documented API, without getting in the person's way.
+- **Fast and light, measured.** Olo is super fast and lightweight: a core
+  tenet, held as strictly as pixel-perfection. No CPU cycle is wasted:
+  idle costs nothing (no polling, no frames or events when nothing
+  changed), work follows what changed, not what's on screen, and work
+  done once is kept. Every change to something that runs per frame, per
+  event or while idle is measured on release builds before and after
+  (`tools/dev/cost PID`, app_server's `timings`, `tools/dev/bench`,
+  `scroll-check`), latency included, with the numbers in the commit
+  message; it isn't done until it is. See "Fast and light" in
+  HACKING.md.
 - **Never block the UI.** Anything that can take more than a frame runs on a
   worker thread, shows live progress, streams results and can be cancelled.
   See "The responsiveness rule" in HACKING.md.

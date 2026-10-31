@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+"""What a running process costs, measured over a few seconds without
+touching it (read-only: /proc, and a kit app's own `{"frames":true}`).
+
+  cost PID [SECONDS] [--json]
+
+Prints, for the whole process and each busy thread: its share of one
+core (user and kernel), how often it woke (voluntary context switches,
+the wakeups an idle program should hardly have) and how often it was
+preempted. For one of Olo's kit apps, also each window's (and open
+menu's) frames in that time and their mean cost by phase: the app's
+`ui`, tessellating, submitting to the GPU, and the slowest.
+
+For app_server's own frames ask it: `tsession ipc NAME '{"type":"timings"}'`
+twice, SECONDS apart (each display's looks, their total and slowest).
+
+Use it before and after a change, on release builds, with the window
+doing what you changed (an agent's spinner, scrolling, idle), and put
+the numbers in the commit message (HACKING, "Fast and light").
+"""
+
+import json
+import os
+import socket
+import sys
+import time
+
+HZ = os.sysconf("SC_CLK_TCK")
+
+
+def threads(pid):
+    out = {}
+    for tid in os.listdir(f"/proc/{pid}/task"):
+        try:
+            with open(f"/proc/{pid}/task/{tid}/stat") as f:
+                st = f.read()
+            name = st[st.index("(") + 1 : st.rindex(")")]
+            fields = st[st.rindex(")") + 2 :].split()
+            with open(f"/proc/{pid}/task/{tid}/status") as f:
+                status = dict(line.split(":", 1) for line in f if ":" in line)
+            out[tid] = (
+                name,
+                int(fields[11]),
+                int(fields[12]),
+                int(status["voluntary_ctxt_switches"]),
+                int(status["nonvoluntary_ctxt_switches"]),
+            )
+        except (OSError, KeyError, ValueError):
+            pass
+    return out
+
+
+def frames(pid):
+    """The kit app's frames since it was last asked (None: not a kit app)."""
+    run = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+    path = os.path.join(run, f"olo-menus-{pid}.sock")
+    if not os.path.exists(path):
+        return None
+    try:
+        s = socket.socket(socket.AF_UNIX)
+        s.settimeout(3)
+        s.connect(path)
+        s.sendall(b'{"frames":true}\n')
+        buf = b""
+        while not buf.endswith(b"\n"):
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            buf += chunk
+        return json.loads(buf)
+    except (OSError, ValueError):
+        return None
+
+
+def main():
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if not args:
+        sys.exit(__doc__)
+    pid = int(args[0])
+    secs = float(args[1]) if len(args) > 1 else 5.0
+    as_json = "--json" in sys.argv
+
+    frames(pid)
+    a = threads(pid)
+    time.sleep(secs)
+    b = threads(pid)
+    windows = frames(pid)
+
+    rows = []
+    for tid, (name, ut, stt, vol, inv) in b.items():
+        if tid not in a:
+            continue
+        user = (ut - a[tid][1]) / HZ / secs * 100
+        system = (stt - a[tid][2]) / HZ / secs * 100
+        rows.append(
+            {
+                "tid": int(tid),
+                "name": name,
+                "cpu": round(user + system, 1),
+                "user": round(user, 1),
+                "sys": round(system, 1),
+                "wakeups": round((vol - a[tid][3]) / secs),
+                "preempted": round((inv - a[tid][4]) / secs),
+            }
+        )
+    rows.sort(key=lambda r: (-r["cpu"], -r["wakeups"]))
+    total = {
+        "cpu": round(sum(r["cpu"] for r in rows), 1),
+        "wakeups": sum(r["wakeups"] for r in rows),
+    }
+    drawn = []
+    for w in windows or []:
+        marks = w.get("marks", [])
+        n = len(marks) or 1
+        mean = lambda k: sum(m.get(k, 0) for m in marks) // n
+        drawn.append(
+            {
+                "title": w.get("title", ""),
+                "frames": w.get("frames", 0),
+                "per_second": round(w.get("frames", 0) / secs, 1),
+                "mean_us": mean("us"),
+                "ui_us": mean("ui_us"),
+                "tessellate_us": mean("tessellate_us"),
+                "submit_us": mean("submit_us"),
+                "slowest_us": w.get("slowest_us", 0),
+            }
+        )
+
+    if as_json:
+        print(json.dumps({"seconds": secs, "total": total, "threads": rows, "windows": drawn}))
+        return
+    with open(f"/proc/{pid}/comm") as f:
+        comm = f.read().strip()
+    print(f"{comm} ({pid}) over {secs:g} s: {total['cpu']}% of a core, {total['wakeups']} wakeups/s")
+    for r in rows:
+        if r["cpu"] == 0 and r["wakeups"] < 1:
+            continue
+        print(
+            f"  {r['cpu']:5.1f}%  {r['name']:<18} user {r['user']:4.1f}%  sys {r['sys']:4.1f}%"
+            f"  wakeups {r['wakeups']:5}/s  preempted {r['preempted']:3}/s"
+        )
+    for w in drawn:
+        print(
+            f"  {w['title'][:48]!r}: {w['frames']} frames ({w['per_second']}/s), mean {w['mean_us']} µs"
+            f" (ui {w['ui_us']}, tessellate {w['tessellate_us']}, submit {w['submit_us']}), slowest {w['slowest_us']} µs"
+        )
+
+
+if __name__ == "__main__":
+    main()
