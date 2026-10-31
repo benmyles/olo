@@ -461,10 +461,15 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) {
     let data = &mut state.backend_data;
     let screen = &mut data.screens[index];
     let result = {
+        let bind = std::time::Instant::now();
         let Ok(mut fb) = data.renderer.bind(&mut screen.target) else {
             warn!("cannot bind offscreen target");
             return;
         };
+        // (Binding should be nothing; when it isn't, the GPU was busy.)
+        if bind.elapsed() > std::time::Duration::from_millis(4) {
+            tracing::info!("slow frame on {name}: {:.1} ms binding the target", bind.elapsed().as_secs_f64() * 1e3);
+        }
         render_output(
             output,
             &state.space,

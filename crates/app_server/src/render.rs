@@ -448,10 +448,25 @@ where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: Clone + Send + 'static,
 {
+    let start = std::time::Instant::now();
     let (elements, clear_color) =
         output_elements(output, space, custom_elements, renderer, overview, desktop_color, locked);
     let elements = frame(elements, fit);
-    damage_tracker.render_output(renderer, framebuffer, age, &elements, clear_color)
+    let gathered = start.elapsed();
+    let result = damage_tracker.render_output(renderer, framebuffer, age, &elements, clear_color);
+    // A frame over a 120 Hz frame's time says where it went: gathering the
+    // elements (which imports what clients committed) or drawing them.
+    let took = start.elapsed();
+    if took > std::time::Duration::from_micros(8_333) {
+        tracing::info!(
+            "slow frame on {}: {:.1} ms gathering {} elements, {:.1} ms drawing",
+            output.name(),
+            gathered.as_secs_f64() * 1e3,
+            elements.len(),
+            (took - gathered).as_secs_f64() * 1e3
+        );
+    }
+    result
 }
 
 /// Render `output` offscreen and read it back (see screenshot.rs).
