@@ -929,8 +929,9 @@ as they land (with the commit), add new ones as they come up.
   printed, and kept in Word, OpenDocument and RTF); pictures (characters
   in the text the kit's editor draws: Insert Picture…, pasted or
   dropped, sized from the Edit menu, kept beside the document, and in
-  Word, OpenDocument, RTF, web pages, Markdown and print). Next: the page
-  view.
+  Word, OpenDocument, RTF, web pages, Markdown and print); Page View
+  (sheets of the paper it prints on, breaking as printing does, headers
+  and footers on them; the kit editor's `Options::pages`).
 - ~~**Activity Monitor, revamped**~~ (Ben, 2026-10-29, at the end):
   "revamp activity monitor to include everything a nerd could ever want
   to know, with live views, drill downs, tuning settings and ability to

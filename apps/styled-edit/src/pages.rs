@@ -22,7 +22,7 @@ const SHADE: [u8; 3] = [0xee, 0xee, 0xee];
 /// The page's margins, in points (an inch).
 pub const MARGIN: f32 = 72.0;
 /// The header's and footer's size, and colour.
-const MARGIN_TEXT: f32 = 10.0;
+pub const MARGIN_TEXT: f32 = 10.0;
 const MARGIN_GRAY: [u8; 3] = [0x50, 0x50, 0x50];
 /// Laid out this finely (as at 4×), so places are a quarter point at
 /// worst.
@@ -215,6 +215,24 @@ pub fn pages(input: Input, paper: Paper) -> Vec<Page> {
         }
     }
     pages
+}
+
+/// What page `k` (from 0) of `n` shows in its margins, as printed: the
+/// header's left, centre and right parts, then the footer's, each with
+/// its baseline's distance from the page's top. With no header or footer
+/// set, the page's number at the foot when there's more than one page.
+pub fn margin_lines(page: Option<&Margins>, k: usize, n: usize) -> Vec<(String, f32)> {
+    let height = olo_print::local_paper().height;
+    match page {
+        Some(m) => m
+            .header
+            .iter()
+            .map(|p| (Margins::fill(p, k + 1, n), MARGIN / 2.0))
+            .chain(m.footer.iter().map(|p| (Margins::fill(p, k + 1, n), height - MARGIN / 2.0)))
+            .collect(),
+        None if n > 1 => vec![(String::new(), 0.0), (String::new(), 0.0), (String::new(), 0.0), (String::new(), 0.0), ((k + 1).to_string(), height - MARGIN / 2.0), (String::new(), 0.0)],
+        None => Vec::new(),
+    }
 }
 
 /// Which section of `job` each character is in (the glyphs come in the

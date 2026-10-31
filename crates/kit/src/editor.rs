@@ -245,11 +245,50 @@ pub struct Options {
     /// Misspelled words are underlined ([`crate::spell`]), all but the
     /// one being typed.
     pub spelling: bool,
+    /// The text set on pages, as it prints (else in one column the view's
+    /// width).
+    pub pages: Option<Pages>,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { editable: true, wrap: true, align: Align::Min, justify: false, margin: vec2(m::TEXT_INSET, 4.0), background: None, spelling: false }
+        Options { editable: true, wrap: true, align: Align::Min, justify: false, margin: vec2(m::TEXT_INSET, 4.0), background: None, spelling: false, pages: None }
+    }
+}
+
+/// Text set on pages ([`Options::pages`]): sheets of paper down a desk,
+/// the text within each one's margins, a page's text going on to the
+/// next's. In points.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Pages {
+    pub paper: Vec2,
+    /// On every side.
+    pub margin: f32,
+    /// Between sheets, and around them.
+    pub gap: f32,
+}
+
+impl Pages {
+    fn text_w(&self) -> f32 {
+        (self.paper.x - 2.0 * self.margin).max(1.0)
+    }
+    fn text_h(&self) -> f32 {
+        (self.paper.y - 2.0 * self.margin).max(1.0)
+    }
+    /// From a page's text to the next's (down the text, where page 0's
+    /// starts at 0).
+    fn pitch(&self) -> f32 {
+        self.paper.y + self.gap
+    }
+    /// The page that `y` (down the text) is on (or in the gap after).
+    fn page_of(&self, y: f32) -> usize {
+        (y / self.pitch()).floor().max(0.0) as usize
+    }
+    fn top(&self, k: usize) -> f32 {
+        k as f32 * self.pitch()
+    }
+    fn bottom(&self, k: usize) -> f32 {
+        self.top(k) + self.text_h()
     }
 }
 
@@ -257,6 +296,11 @@ pub struct Output {
     pub response: Response,
     /// The text changed this frame (by typing, pasting, a drop).
     pub changed: bool,
+    /// Set on pages: each sheet showing (its page, from 0) and where it
+    /// is (for the app's header and footer on it), and how many pages
+    /// there are.
+    pub sheets: Vec<(usize, Rect)>,
+    pub pages: usize,
 }
 
 /// One paragraph: bytes `start..start + len` of the text (its newline
@@ -286,6 +330,9 @@ struct Set {
     align: Option<Align>,
     /// A table's row: its columns and header, hashed.
     row: Option<u64>,
+    /// Set on pages: where on its page it starts (half points), which its
+    /// rows' breaks depend on.
+    page_at: i32,
 }
 
 /// A paragraph laid out: one galley, or one a cell of a table's row.
@@ -395,6 +442,8 @@ pub struct Editor {
     /// Where the text's left edge was on screen last frame, and how wide
     /// it was ([`Editor::text_span`]).
     span: Option<(f32, f32)>,
+    /// Set on pages ([`Options::pages`]).
+    pages: Option<Pages>,
 }
 
 impl Editor {
@@ -426,6 +475,7 @@ impl Editor {
             rules: Vec::new(),
             column_drag: None,
             span: None,
+            pages: None,
         };
         e.reset("");
         e
@@ -567,6 +617,18 @@ impl Editor {
         self.tops.reserve(self.paras.len() + 1);
         let (mut y, mut widest) = (0.0, 0.0f32);
         for p in &self.paras {
+            // On pages: one whose first row (or a table's row, or one not
+            // yet laid out, whole) doesn't fit at a page's foot starts the
+            // next page (a longer one's other rows go on as they come:
+            // `break_rows`).
+            if let Some(pg) = self.pages {
+                let k = pg.page_of(y);
+                let body = p.height - p.set.above - p.set.below;
+                let first = p.set.above + if p.set.row.is_some() || p.key == NEVER { body } else { p.row_h.min(body) };
+                if y > pg.top(k) + 0.5 && y + first > pg.bottom(k) + 0.5 {
+                    y = pg.top(k + 1);
+                }
+            }
             self.tops.push(y);
             y += p.height;
             widest = widest.max(p.natural);
@@ -574,6 +636,14 @@ impl Editor {
         self.tops.push(y);
         self.widest = widest;
         self.tops_dirty = false;
+    }
+
+    /// How many pages the text is on (set on pages; else 1).
+    fn page_count(&self) -> usize {
+        match (self.pages, self.tops.last()) {
+            (Some(pg), Some(&end)) => pg.page_of((end - 0.5).max(0.0)) + 1,
+            _ => 1,
+        }
     }
 
     /// The paragraph at `y` down the text (clamped to the first and last).
@@ -612,7 +682,12 @@ impl Editor {
         });
         // (A table's rows meet: no space between them.)
         let (above, below) = if f.row.is_some() { (0.0, 0.0) } else { (f.above.max(0.0), f.below.max(0.0)) };
-        let set = Set { left: f.left.max(0.0), right: f.right.max(0.0), above, below, align: f.align, row: row_key };
+        // On pages, where on its page it starts.
+        let page_at = self.pages.map_or(0, |pg| {
+            let top = self.tops.get(i).copied().unwrap_or(0.0);
+            ((top - pg.top(pg.page_of(top))) * 2.0).round() as i32
+        });
+        let set = Set { left: f.left.max(0.0), right: f.right.max(0.0), above, below, align: f.align, row: row_key, page_at };
         let laid = match &f.row {
             None => {
                 let mut job = LayoutJob {
@@ -642,7 +717,13 @@ impl Editor {
                         self.markers.remove(&i);
                     }
                 }
-                let g = ui.fonts_mut(|f| f.layout_job(job));
+                let mut g = ui.fonts_mut(|f| f.layout_job(job));
+                // On pages: a row that doesn't fit at a page's foot goes
+                // to the next page's top, and the rows after it with it.
+                if let Some(pg) = self.pages {
+                    let top = self.tops.get(i).copied().unwrap_or(0.0) + above;
+                    g = break_rows(g, top, &pg);
+                }
                 Laid { parts: vec![Part { g, at: Vec2::ZERO, start: 0, len: p.len, frame: (0.0, 0.0) }], row: None, pictures: f.pictures.clone() }
             }
             Some(row) => {
@@ -707,7 +788,9 @@ impl Editor {
             None if wrapped => g.rows.iter().map(|r| r.size.x).sum(),
             None => g.size().x + p.set.left + p.set.right,
         };
-        p.row_h = if laid.row.is_some() { body } else { g.size().y / rows };
+        // (Its rows' own heights: on pages a row moved to the next page
+        // makes the galley taller by the gap, not its rows.)
+        p.row_h = if laid.row.is_some() { body } else { g.rows.iter().map(|r| r.size.y).sum::<f32>().max(1.0) / rows };
         p.key = self.key;
         let p = *p;
         if first && p.len > 0 && laid.row.is_none() {
@@ -935,8 +1018,12 @@ impl Editor {
     /// Show the editor in `rect`.
     pub fn show(&mut self, ui: &mut Ui, rect: Rect, doc: &mut dyn Document, o: &Options) -> Output {
         let focused = ui.memory(|mem| mem.has_focus(self.id));
-        let mut view = ScrollView::new(self.id.with("scroll")).horizontal(!o.wrap).focused(focused);
-        if let Some(bg) = o.background {
+        let mut view = ScrollView::new(self.id.with("scroll")).horizontal(!o.wrap || o.pages.is_some()).focused(focused);
+        // On pages, the desk under the sheets (each in the document's own
+        // colour).
+        if o.pages.is_some() {
+            view = view.background(desk(&style::palette(ui.ctx())));
+        } else if let Some(bg) = o.background {
             view = view.background(bg);
         }
         view.show_in(ui, rect, |ui, vp| self.body(ui, vp, doc, o))
@@ -947,7 +1034,27 @@ impl Editor {
         let id = self.id;
         let ppp = ctx.pixels_per_point();
         let screen = Rect::from_min_size(ui.max_rect().min + vp.min.to_vec2(), vp.size());
-        let inner = (vp.width() - 2.0 * o.margin.x).max(1.0);
+        // On pages: the text as wide as a page's, the sheets in the
+        // middle (else at the left, the view scrolling sideways), the
+        // first page's text a gap and a margin down.
+        if self.pages != o.pages {
+            self.pages = o.pages;
+            self.key += 1;
+            self.tops_dirty = true;
+        }
+        let paged;
+        let o = match o.pages {
+            Some(pg) => {
+                let sheet_x = ((vp.width() - pg.paper.x) / 2.0).max(pg.gap).round();
+                paged = Options { margin: vec2(sheet_x + pg.margin, pg.gap + pg.margin), wrap: true, ..*o };
+                &paged
+            }
+            None => o,
+        };
+        let inner = match o.pages {
+            Some(pg) => pg.text_w(),
+            None => (vp.width() - 2.0 * o.margin.x).max(1.0),
+        };
         self.span = Some((screen.min.x - vp.min.x + o.margin.x, inner.round()));
         if !o.wrap && (self.width - inner.round()).abs() > 0.5 {
             // (Unwrapped, a table is the view's width.)
@@ -973,7 +1080,10 @@ impl Editor {
         let changed = self.input(ui, &response, doc, o, inner, vp, &to_content);
 
         // Where the view goes: kept on its top paragraph, or to the caret.
-        let content_h = |e: &Editor| e.tops[e.paras.len()] + 2.0 * o.margin.y;
+        let content_h = |e: &Editor| match o.pages {
+            Some(pg) => e.page_count() as f32 * pg.pitch() + pg.gap,
+            None => e.tops[e.paras.len()] + 2.0 * o.margin.y,
+        };
         let mut offset = vp.min.to_vec2();
         if self.scroll_by != Vec2::ZERO {
             // The caret went as far, so it stays where it shows.
@@ -1040,7 +1150,11 @@ impl Editor {
         if (offset - vp.min.to_vec2()).length() > 0.01 {
             ScrollView::scroll_to(&ctx, self.id.with("scroll"), offset);
         }
-        let width = if o.wrap { vp.width() } else { vp.width().max(self.widest + 2.0 * o.margin.x) };
+        let width = match o.pages {
+            Some(pg) => vp.width().max(pg.paper.x + 2.0 * pg.gap),
+            None if o.wrap => vp.width(),
+            None => vp.width().max(self.widest + 2.0 * o.margin.x),
+        };
         ui.set_min_size(vec2(width, content_h(self).max(vp.height())));
 
         // Where content point `p` is drawn this frame.
@@ -1051,6 +1165,25 @@ impl Editor {
         let sel = self.selection();
         let visuals = ui.visuals().clone();
         let fill = if active { visuals.selection.bg_fill } else { visuals.selection.bg_fill.gamma_multiply(0.6) };
+        // On pages: the sheets showing, in the document's colour, each
+        // with a shadow on the desk.
+        let mut sheets = Vec::new();
+        if let Some(pg) = o.pages {
+            let paper = o.background.map_or(visuals.extreme_bg_color, style::c);
+            let line = 1.0 / ppp;
+            for k in 0..self.page_count() {
+                let r = Rect::from_min_size(snap(origin + vec2(o.margin.x - pg.margin, o.margin.y - pg.margin + pg.top(k))), pg.paper);
+                if !r.intersects(screen.expand(4.0)) {
+                    continue;
+                }
+                // (Its offsets whole device pixels.)
+                let px = |pt: f32| (pt * ppp).round() / ppp;
+                painter.rect_filled(r.translate(vec2(px(2.0), px(3.0))), 0.0, Color32::from_black_alpha(28));
+                painter.rect_filled(r.translate(vec2(line, line)), 0.0, Color32::from_black_alpha(46));
+                painter.rect_filled(r, 0.0, paper);
+                sheets.push((k, r));
+            }
+        }
         let text = doc.text();
         let checker = (o.spelling && o.editable).then(|| crate::spell::checker(&ctx)).flatten();
         let squiggle_color = style::c(style::palette(&ctx).failure);
@@ -1255,7 +1388,8 @@ impl Editor {
             }
             n.add_action(accesskit::Action::Focus);
         });
-        Output { response, changed }
+        let pages = self.page_count();
+        Output { response, changed, sheets, pages }
     }
 
     /// Measure the paragraphs within a screen above and below the view
@@ -1613,6 +1747,41 @@ fn split(text: &str, start: usize, end: usize) -> impl Iterator<Item = (usize, u
 /// What changed from `old` to `new`: the bytes of `old` that went, and
 /// how many bytes came in their place (what is the same at either end
 /// stays).
+/// The desk sheets of paper lie on ([`Options::pages`]): the window's
+/// ground a shade darker; in the dark, the page's half way to black (so
+/// a dark sheet still stands out on it).
+fn desk(p: &olo_theme::Palette) -> olo_theme::Rgba {
+    let [r, g, b, _] = p.document_background;
+    let dark = (r as u32 * 3 + g as u32 * 6 + b as u32) / 10 < 128;
+    if dark { olo_theme::mix(p.document_background, [0, 0, 0, 255], 0.5) } else { olo_theme::mix(p.panel_background, [0, 0, 0, 255], 0.12) }
+}
+
+/// `g` (a paragraph starting `top` down the text, set on pages `pg`)
+/// with each row that doesn't fit at a page's foot moved to the next
+/// page's top, the rows after it with it, and as much taller.
+fn break_rows(g: Arc<Galley>, top: f32, pg: &Pages) -> Arc<Galley> {
+    let mut shift = 0.0;
+    let mut rows = Vec::with_capacity(g.rows.len());
+    for (ri, r) in g.rows.iter().enumerate() {
+        let y = top + r.pos.y + shift;
+        let k = pg.page_of(y);
+        if ri > 0 && y + r.size.y > pg.bottom(k) + 0.5 {
+            shift += pg.top(k + 1) - y;
+        }
+        let mut r = r.clone();
+        r.pos.y += shift;
+        rows.push(r);
+    }
+    if shift == 0.0 {
+        return g;
+    }
+    let mut broken = (*g).clone();
+    broken.rows = rows;
+    broken.rect.max.y += shift;
+    broken.mesh_bounds.max.y += shift;
+    Arc::new(broken)
+}
+
 /// A wavy line under bytes `r` of paragraph text `para` (laid out as
 /// `g`, drawn at `at`), a device pixel thick, on device pixels.
 fn squiggle(painter: &egui::Painter, g: &Galley, at: Pos2, para: &str, r: Range<usize>, ppp: f32, color: egui::Color32) {
@@ -1781,5 +1950,32 @@ mod tests {
         assert_eq!(word_at(t, 12), 9..12);
         assert_eq!(prev_char("hé", 3), 1);
         assert_eq!(next_char("hé", 1), 3);
+    }
+
+    #[test]
+    fn rows_break_across_pages() {
+        // A tall paragraph set on short pages: no row crosses a page's
+        // foot, the first stays put, and the paragraph is taller by the
+        // gaps.
+        let pg = Pages { paper: vec2(200.0, 200.0), margin: 20.0, gap: 10.0 };
+        let ctx = egui::Context::default();
+        let mut g = None;
+        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let mut job = LayoutJob::simple("word ".repeat(400), egui::FontId::proportional(12.0), Color32::BLACK, 150.0);
+            job.wrap.max_width = 150.0;
+            g = Some(ui.fonts_mut(|f| f.layout_job(job)));
+        });
+        out.textures_delta.clear();
+        let g = g.unwrap();
+        let top = 100.0;
+        let broken = break_rows(g.clone(), top, &pg);
+        assert!(broken.rows.len() > 20 && broken.rows[0].pos.y == g.rows[0].pos.y);
+        for r in &broken.rows {
+            let y = top + r.pos.y;
+            let k = pg.page_of(y);
+            assert!(y >= pg.top(k) - 0.01 && y + r.size.y <= pg.bottom(k) + 0.5, "row at {y} on page {k}");
+        }
+        let gaps = broken.size().y - g.size().y;
+        assert!(gaps >= 2.0 * (2.0 * pg.margin + pg.gap) - 0.5, "{gaps}");
     }
 }

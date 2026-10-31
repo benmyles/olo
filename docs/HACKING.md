@@ -1102,6 +1102,21 @@ into it (a millisecond's worth a frame), and the view holds on the
 paragraph at its top while heights above it settle, so nothing jumps.
 `TextControl` and `TextView` stay for fields and short text.
 
+Set on pages (`Options::pages`: the paper, its margins and the gap
+between sheets), the editor lays the text out as it prints: a text
+column the page's text wide (centred, scrolling sideways when the view
+is narrower), sheets of the document's colour down a desk a shade
+darker than the window (half way to black under dark sheets), each
+with a shadow on whole device pixels. A paragraph whose first row
+doesn't fit at a page's foot starts the next page (`ensure_tops`); a
+longer one's rows go on as they come, each that doesn't fit moved to the
+next page's top inside its galley (`break_rows`), so painting, the
+caret, selection and hit-testing need no knowledge of pages. Where a
+paragraph starts on its page is part of how it's set (`Set::page_at`),
+so it's broken again when that changes. `Output::sheets` gives each
+sheet showing and `Output::pages` how many there are, for the app's
+headers and footers.
+
 Pictures go in the text as characters: `editor::PICTURE` (U+FFFC), laid
 out by the document as big as the picture (`editor::push_picture`: its
 section unseen and as tall, and the glyph as wide through epaint's
@@ -3930,6 +3945,12 @@ theirs back the same way, checked in LibreOffice; a web page holds its
 pictures (`data:` addresses), Markdown points at their files
 (`![what it shows](path)`, read back from beside the file), and printing
 and PDFs place each where its character is (`olo_print::Item::Image`).
+
+Document ▸ Page View (per window, kept through a reload; lines wrap
+in it) sets the text on sheets of the paper it prints on
+(`olo_print::local_paper`) with the margins it prints with, breaking as
+printing breaks (`editor::Pages`); each sheet shows its header and
+footer as printed (`pages::margin_lines`), the ruler spans its text.
 
 Document ▸ Header & Footer… sets what every printed page shows in its
 margins (`doc::Page`, `Doc::page`): a left, centre and right part of

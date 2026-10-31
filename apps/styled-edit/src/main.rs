@@ -102,6 +102,8 @@ struct DocWin {
     words: Option<((u64, Range<usize>), Words)>,
     /// The ruler shows (Document ▸ Show Ruler).
     ruler: bool,
+    /// The text is set on pages (Document ▸ Page View).
+    page_view: bool,
 }
 
 /// Words in the selection (if any) and in the whole document.
@@ -167,6 +169,7 @@ impl DocWin {
             spell: None,
             words: None,
             ruler: true,
+            page_view: false,
         }
     }
 
@@ -367,6 +370,8 @@ struct SavedDoc {
     ruler: bool,
     #[serde(default)]
     page: Option<doc::Page>,
+    #[serde(default)]
+    page_view: bool,
 }
 
 fn shown() -> bool {
@@ -963,6 +968,8 @@ impl StyledEdit {
             .item("Show Ruler", "ruler", None)
             .checked(d.ruler && d.doc.wrap)
             .enabled(d.doc.wrap)
+            .item("Page View", "page-view", None)
+            .checked(d.page_view)
             .separator()
             .item("Header & Footer…", "margins", None);
         // Styles and layout are saved with the file, so a read-only one
@@ -1174,6 +1181,11 @@ impl StyledEdit {
                 d.ruler = !d.ruler;
                 self.ruler = d.ruler;
             }
+            "page-view" => {
+                d.page_view = !d.page_view;
+                // (Set on pages, lines wrap.)
+                d.doc.wrap |= d.page_view;
+            }
             c if c.starts_with("kind:") => {
                 let Some((kind, ..)) = doc::Kind::ALL.into_iter().find(|(_, _, id)| Some(*id) == c.strip_prefix("kind:")) else { return };
                 let r = d.doc.paras_in(bytes.clone());
@@ -1275,11 +1287,36 @@ impl StyledEdit {
             margin: vec2(m::TEXT_INSET, 4.0),
             background: Some(p.document_background),
             spelling: self.spelling,
+            // On the paper it prints on, with the margins it prints with.
+            pages: (d.page_view && d.doc.wrap).then(|| {
+                let paper = olo_print::local_paper();
+                editor::Pages { paper: vec2(paper.width, paper.height), margin: pages::MARGIN, gap: PAGE_GAP }
+            }),
         };
         let DocWin { doc, editor, path, .. } = &mut **d;
         let folder = path.as_deref().and_then(Path::parent);
         let mut styled = Styled { doc, fonts: &mut self.fonts, ctx: &ui.ctx().clone(), base: c(p.document_text), pictures: &mut self.pictures, folder };
         let out = editor.show(ui, area, &mut styled, &options);
+        // The header and footer on each sheet, as printed.
+        if !out.sheets.is_empty() {
+            let painter = ui.painter_at(area);
+            let page = d.doc.page.clone();
+            for (k, sheet) in &out.sheets {
+                for (i, (text, y)) in pages::margin_lines(page.as_ref(), *k, out.pages).into_iter().enumerate() {
+                    if text.trim().is_empty() {
+                        continue;
+                    }
+                    let (x, align) = match i % 3 {
+                        0 => (sheet.left() + pages::MARGIN, egui::Align2::LEFT_BOTTOM),
+                        1 => (sheet.center().x, egui::Align2::CENTER_BOTTOM),
+                        _ => (sheet.right() - pages::MARGIN, egui::Align2::RIGHT_BOTTOM),
+                    };
+                    // (Its baseline where print has it: bottom less descent.)
+                    let at = pos2(x, sheet.top() + y + pages::MARGIN_TEXT * 0.25);
+                    painter.text(at, align, text, egui::FontId::proportional(pages::MARGIN_TEXT), c(p.document_text).gamma_multiply(0.6));
+                }
+            }
+        }
         // A marker held on the ruler: where it goes, down the text.
         if let Some(x) = guide {
             style::vline(&ui.painter_at(area), x, area.top(), area.bottom(), c(p.keyboard_navigation));
@@ -1486,6 +1523,8 @@ const REPLACE_H: f32 = FIND_H + m::CONTROL_HEIGHT + m::TIGHT + m::MARK_ROW + m::
 const MARGINS_W: f32 = 420.0;
 const MARGINS_H: f32 = 2.0 * m::WINDOW_INSET + 2.0 * (m::MARK_ROW + 3.0 * (m::TIGHT + m::CONTROL_HEIGHT)) + m::SPACING + m::SPACING + m::MARK_ROW + m::SPACING + m::CONTROL_HEIGHT;
 const MARGINS_DIVIDER: f32 = 56.0;
+/// Between sheets in Page View (points).
+const PAGE_GAP: f32 = 16.0;
 /// The most room a picture put in takes at first (points): a US Letter
 /// page's text across, and most of its height.
 const PICTURE_ROOM: (f32, f32) = (468.0, 600.0);
@@ -1806,6 +1845,7 @@ impl App for StyledEdit {
                     selection: (d.bytes().start, d.bytes().end),
                     view: d.editor.view(),
                     ruler: d.ruler,
+                    page_view: d.page_view,
                     page: d.doc.page.clone(),
                 }),
                 _ => None,
@@ -1821,6 +1861,7 @@ impl StyledEdit {
             self.untitled = self.untitled.max(s.untitled);
             let mut d = DocWin::new(s.path.clone(), s.untitled);
             d.ruler = s.ruler;
+            d.page_view = s.page_view;
             match s.edited {
                 Some((text, runs)) => {
                     let mut doc = Doc::with_paras(text, Some(runs), Some(s.paras).filter(|p| !p.is_empty()));

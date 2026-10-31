@@ -2512,5 +2512,17 @@
   "title": "StyledEdit: pictures",
   "caption": "Pictures in the text: Insert Picture\u2026, pasted or dropped; drawn by the kit's editor where their character is, sized from the Edit menu, kept beside the document, and in Word, OpenDocument, RTF, web pages, Markdown and print.",
   "image": "2026-10-30/213451-stylededit-pictures.png"
+ },
+ {
+  "time": "2026-10-30T21:44:06",
+  "title": "StyledEdit: Page View",
+  "caption": "Document \u25b8 Page View sets the text on sheets of the paper it prints on, with its margins: paragraphs and rows break across pages as printed, headers and footers on each sheet; the kit editor's Options::pages.",
+  "image": "2026-10-30/214406-stylededit-page-view.png"
+ },
+ {
+  "time": "2026-10-30T21:44:07",
+  "title": "StyledEdit: Page View, dark",
+  "caption": "The desk half way to black under dark sheets.",
+  "image": "2026-10-30/214407-stylededit-page-view-dark.png"
  }
 ]

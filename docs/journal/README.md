@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### StyledEdit: Page View, dark
+
+*21:44* — The desk half way to black under dark sheets.
+
+![StyledEdit: Page View, dark](2026-10-30/214407-stylededit-page-view-dark.png)
+
+### StyledEdit: Page View
+
+*21:44* — Document ▸ Page View sets the text on sheets of the paper it prints on, with its margins: paragraphs and rows break across pages as printed, headers and footers on each sheet; the kit editor's Options::pages.
+
+![StyledEdit: Page View](2026-10-30/214406-stylededit-page-view.png)
+
 ### StyledEdit: pictures
 
 *21:34* — Pictures in the text: Insert Picture…, pasted or dropped; drawn by the kit's editor where their character is, sized from the Edit menu, kept beside the document, and in Word, OpenDocument, RTF, web pages, Markdown and print.
