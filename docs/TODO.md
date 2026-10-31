@@ -478,17 +478,27 @@ as they land (with the commit), add new ones as they come up.
   its clear layer outlived it, taking that click; it now takes the
   pointer from the press, and a menu's window gets a frame as the menu
   goes (it draws on frames, which a still screen doesn't make).
-- **A group taller than its display, from a member's least size**
+- ~~**A group taller than its display, from a member's least size**~~
   (found by wm-fuzz, seed 3 steps 90 and 118, two displays 1600×1000
-  and 1280×800 at 2×; also seed 1 step 229): a Terminal whose text was
-  made bigger can't be smaller than 247×407, so its group on the
-  384-high display grows past it (step 90: "no smaller than any of its
-  windows can be"); after smaller text it no longer has to, but stays
-  so, until a window joining it (step 118) fits it back to 250×384 and
-  wm-fuzz sees the others moved. Decide: a group (or window) kept past
-  its display only while a member really needs it, fitted back as soon
-  as none does (a least size shrinking), so a later join changes nothing
-  else; then the fuzz check stands as it is.
+  and 1280×800 at 2×; also seed 1 step 229). Done: it wasn't a least
+  size. wm-fuzz's step 90 sizes a Terminal group by hand 23 px taller
+  than its 384-high display, which is the person's to do and stays. At
+  step 118 a Tracker put in that group, asked for 247×407 but unable to
+  be narrower than 250, drew 250×407; `keep_on_screen` took that as the
+  app sizing itself and fitted the whole of it to the screen, height
+  too, and the group followed. Now it fits only the sides the app chose
+  (a side taken as asked is Olo's), so the group grows to 250 wide and
+  stays as tall. wm-fuzz's Cmd+Tab and ⌘-drag-in checks also let a
+  window coming into a group grow it to its least size, as group_window
+  did (seed 3 step 244: a Tracker back from hidden into a Terminal group
+  sized 151 high meanwhile; seed 2 step 50), and a tiled group may grow
+  inside its tile area (seed 1 step 229: a right-hand tile grows
+  leftwards). And the case the TODO was about, for tiles (seed 2 step
+  134): a tiled Terminal grown to a Tracker's least size by grouping
+  stayed that size after the Tracker was taken out, bigger than its
+  tile, until a zoom round trip put it back. A tiled window or group now
+  goes back to its tile's size as soon as the window that needed more
+  leaves (`back_to_tile`); wm-fuzz lets it.
 - ~~**Notifications: one of the same, not several**~~ (Ben, 2026-10-30):
   "add a preferences -> notifications setting, enabled by default, that
   dedupes notifications so that if we get >1 active notification from

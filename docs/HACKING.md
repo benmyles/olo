@@ -2952,6 +2952,16 @@ turns off are `TilingSettings::ungrouped_apps` (app ids), toggled by
 Group Windows in Deskbar's team menu and in Tracker's menu for an app
 (`olo_kit::settings::groups_windows` / `set_groups_windows`). A group's
 frame is never smaller than any of its windows can be (`least_frame`).
+A window that joins a group it can't be as small as draws bigger only
+on that side: `keep_on_screen` fits to the screen only the sides an app
+chose itself, never one it took as asked, so a Tracker put in a Terminal
+group sized by hand taller than its display is wider, as tall, and
+doesn't pull the group back onto the screen. A window brought back into
+its group (from hidden) likewise only grows it to that window's least
+size, where it is. Tiled (by a tile shortcut), a group grown past its
+tile for a window that needed it is its tile's size again once that
+window has gone (taken out, dragged out, closed): `back_to_tile` in
+`sync_groups`, by `tile_frame`, where `retile` would put it.
 
 Only an app's own windows group by themselves, but any windows can be
 grouped by hand (`WindowMeta::grouping`: `Auto`, `Alone` once taken out,

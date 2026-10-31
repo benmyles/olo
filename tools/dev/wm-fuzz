@@ -128,6 +128,10 @@ class Fuzz:
         self.by_hand, self.alone = set(self.windows()), set()
         # Steps Terminal's text size has been made bigger (less smaller).
         self.text_steps = 0
+        # Terminal windows whose text size changed: each fits its grid
+        # when it next can (grouped, behind its group's front or hidden,
+        # it can't then), a step or more later, once.
+        self.grid_pending = set()
         self.only = set()
         # Tiled windows seen out of their tiles (each said once), and
         # whether that fails the run (--tiles).
@@ -188,10 +192,10 @@ class Fuzz:
         current, by = cur
         return w["workspace"] == by.get(w.get("output"), current)
 
-    def settle(self, timeout=5.0):
+    def settle(self, timeout=5.0, quiet=0.25):
         """The windows once they stop changing: none settling (its
         program still to draw what it was asked, `WindowInfo::settling`)
-        and nothing changing for a quarter of a second. Every state seen
+        and nothing changing for `quiet` seconds (a quarter of one). Every state seen
         on the way, a few milliseconds apart, is kept in `trail` (and
         when, in `trail_at`), so a window that jumps and comes back (a
         flicker) is caught too."""
@@ -207,7 +211,8 @@ class Fuzz:
                 if hasattr(self, "step_trail"):
                     self.step_trail.append((time.time() - self.step_t0, now))
                 last, since = key, time.time()
-            elif time.time() - since > 0.25 and not any(w.get("settling") for w in now.values()):
+            # (A tab behind another isn't drawn: it settles when in front.)
+            elif time.time() - since > quiet and not any(w.get("settling") and not w.get("behind") for w in now.values()):
                 return now
             elif time.time() - t0 > timeout:
                 self.history.append(f"{self.step}: (still settling after {timeout} s: {sorted(i for i, w in now.items() if w.get('settling'))})")
@@ -410,6 +415,16 @@ class Fuzz:
         self.check_steady(what, before, moving)
 
     def check_unchanged(self, what, before, after, skip=()):
+        late = {i for i in self.grid_pending if i in before and i in after and fr(before[i]) != fr(after[i])}
+        self.grid_pending -= late
+        # (One still to draw what it was asked, behind its group's front,
+        # draws it when it can.)
+        unsettled = {i for i, w in before.items() if w.get("settling")}
+        # (A group whose windows weren't one size yet becomes so.)
+        for g in self.groups(before).values():
+            if len({fr(before[i])[2:] for i in g if fr(before[i])}) > 1:
+                unsettled |= set(g)
+        skip = set(skip) | late | unsettled
         moved = {i: (fr(before[i]), fr(after[i])) for i in before
                  if i in after and i not in skip and fr(before[i]) and fr(after[i]) and fr(before[i]) != fr(after[i])
                  and before[i]["workspace"] == after[i]["workspace"]}
@@ -428,6 +443,10 @@ class Fuzz:
                 return
 
     def check_back(self, what, wid, before, after):
+        if wid in self.grid_pending and wid in before and wid in after and fr(before[wid]) != fr(after[wid]):
+            # A Terminal fitting its grid at last.
+            self.grid_pending.discard(wid)
+            return
         if wid in before and wid in after and fr(before[wid]) and fr(before[wid]) != fr(after[wid]):
             self.fail(f"{what} didn't come back: window {wid} ({before[wid]['app_id']}) {fr(before[wid])} -> {fr(after[wid])}")
 
@@ -579,14 +598,20 @@ class Fuzz:
                 self.fail(f"{what}: window {i} ({w['app_id']}) was {'hidden' if w['minimized'] else 'shown'} and is now {'hidden' if a['minimized'] else 'shown'}")
             if a["workspace"] != w["workspace"]:
                 self.fail(f"{what}: window {i} moved from workspace {w['workspace']} to {a['workspace']}")
+        # One brought back from hidden into its group makes the group as
+        # big as it can be at the least, where it is (as group_window).
+        grown = set()
+        for c in chosen:
+            if c in wins and (wins[c]["minimized"] or fr(wins[c]) is None):
+                grown |= self.grown(c, self.group_of(after, c), wins, after)
         ws_before = {i: w["workspace"] for i, w in wins.items()}
         moved = {i: (fr(wins[i]), fr(after[i])) for i in wins
-                 if i in after and i not in chosen and fr(wins[i]) and fr(after[i]) and fr(wins[i]) != fr(after[i])}
+                 if i in after and i not in chosen and i not in grown and fr(wins[i]) and fr(after[i]) and fr(wins[i]) != fr(after[i])}
         if moved:
             self.fail(f"{what} (chose {chosen}) moved windows: " + ", ".join(f"{i} ({wins[i]['app_id']}, ws {ws_before[i]}) {a} -> {b}" for i, (a, b) in moved.items())
                       + "\n  before: " + state(wins) + "\n  after:  " + state(after))
         else:
-            self.check_steady(what, wins, skip=set(chosen))
+            self.check_steady(what, wins, skip=set(chosen) | grown)
 
     def op_twitch(self, wins, shown):
         n, back = self.rng.randint(1, 5), self.rng.random() < 0.25
@@ -697,7 +722,7 @@ class Fuzz:
             # StyledEdit asks before closing a changed document; leave it.
             return
         self.check_sane(after)
-        self.check_unchanged(f"closing {w}", wins, after)
+        self.check_unchanged(f"closing {w}", wins, after, skip=self.shrunk(w, self.group_of(wins, w), wins, after))
 
     def op_workspace_trip(self, wins, shown):
         ws = self.workspace()
@@ -916,8 +941,13 @@ class Fuzz:
         bigger = what == "bigger text"
         self.text_steps += 1 if bigger else -1
         self.keys([CMD, SHIFT, 13 if bigger else 12])
-        after = self.settle()
+        # Every Terminal window resizes itself to keep its grid, each
+        # when it next draws: one on another display can take longer
+        # than the usual quiet.
+        after = self.settle(quiet=1.0)
         self.check_sane(after)
+        # (Any of them may: each fits when it is next drawn and sized.)
+        self.grid_pending |= {i for i, a in after.items() if a["app_id"] == "olo.terminal"}
         terms = [i for i in terms if i in before and i in after and fr(before[i]) and fr(after[i])]
         self.check_unchanged(what, before, after, skip=set().union(*(self.mates(before, i) for i in terms)))
         outs = self.output_rects()
@@ -1093,7 +1123,7 @@ class Fuzz:
             self.fail(f"{w}, let go at {fmt(to)} after cmd-dragging it out, has its tab at {t}")
         if fr(after[w]) and fr(after[w])[2:] != fr(wins[w])[2:]:
             self.fail(f"{w}, cmd-dragged out of its group, changed size: {fr(wins[w])} -> {fr(after[w])}")
-        self.check_unchanged(f"cmd-dragging {w} out of its group", wins, after, skip={w})
+        self.check_unchanged(f"cmd-dragging {w} out of its group", wins, after, skip={w} | self.shrunk(w, self.group_of(wins, w), wins, after))
 
     def op_tab_in(self, wins, shown):
         if len(shown) < 2:
@@ -1161,10 +1191,51 @@ class Fuzz:
         got = self.group_of(after, w)
         if after[w].get("group") is None or set(got) != set(tg) | {w} or [i for i in got if i != w] != tg:
             self.fail(f"{w} let go over {t}'s tabs: its group is {got}, not {tg} with it")
-        # Where it showed it would go.
+        # Where it showed it would go (in its place among them, if the
+        # group grew to what it can be at the least, its tabs wider).
         elif held and tab_rect(after[w]) != held:
-            self.fail(f"{w} showed its tab at {held} over {t}'s, but went in at {tab_rect(after[w])}")
-        self.check_unchanged(f"cmd-dragging {w} into {t}'s group", wins, after, skip={w})
+            grew = fr(after.get(t, {})) and fr(wins[t]) and fr(after[t])[2] > fr(wins[t])[2]
+            place = sum(1 for r in theirs if r and r[0] < held[0])
+            if not grew or got.index(w) != place:
+                self.fail(f"{w} showed its tab at {held} over {t}'s, but went in at {tab_rect(after[w])}")
+        # (Its old group, tiled, gives back what it needed.)
+        gone = self.shrunk(w, self.group_of(wins, w), wins, after)
+        self.check_unchanged(f"cmd-dragging {w} into {t}'s group", wins, after, skip={w} | self.grown(w, tg, wins, after) | gone)
+
+    def grown(self, w, members, before, after):
+        """Those of `members` that only grew to what `w`, just come into
+        their group, can be at the least (a group is no smaller than its
+        biggest window's least size): where they were, or, tiled, in
+        their tile wherever it went (one at the area's right edge grows
+        leftwards)."""
+        least = (after.get(w) or {}).get("least") or (before.get(w) or {}).get("least")
+        out = set()
+        if not least:
+            return out
+        for i in members:
+            a, b = fr(before.get(i, {})), fr(after.get(i, {}))
+            if i == w or not a or not b or a == b or b[2:] != (max(a[2], least[0]), max(a[3], least[1])):
+                continue
+            if b[:2] == a[:2] or (before[i].get("tiled") and after[i].get("tiled")):
+                out.add(i)
+        return out
+
+    def shrunk(self, w, members, before, after):
+        """Those of `members`, tiled, that only gave back what `w`, just
+        gone from their group, needed (a group is no smaller than its
+        biggest window's least size; tiled, it is its tile's size when
+        none needs more): wherever their tile is."""
+        least = (before.get(w) or {}).get("least")
+        out = set()
+        if not least:
+            return out
+        for i in members:
+            a, b = fr(before.get(i, {})), fr(after.get(i, {}))
+            if i == w or not a or not b or a == b or not (before[i].get("tiled") and after[i].get("tiled")):
+                continue
+            if a[2:] == (max(b[2], least[0]), max(b[3], least[1])):
+                out.add(i)
+        return out
 
     def op_group_window(self, wins, shown):
         if len(shown) < 2:
@@ -1195,16 +1266,10 @@ class Fuzz:
             self.fail(f"group_window {w} with {t} at {index}: the group is {self.group_of(after, w)}, not {want}")
         if w in after and not after[w]["focused"]:
             self.fail(f"group_window {w} with {t}: {w} doesn't have the keyboard")
-        # The group may grow to what its new window can be at the least
-        # (a group is no smaller than its biggest member's least size),
-        # where it is, and no more.
-        grown = set()
-        least = wins[w].get("least")
-        for i in tg:
-            a, b = fr(wins.get(i, {})), fr(after.get(i, {}))
-            if least and a and b and a != b and b[:2] == a[:2] and b[2:] == (max(a[2], least[0]), max(a[3], least[1])):
-                grown.add(i)
-        self.check_unchanged(f"group_window {w} with {t}", wins, after, skip={w} | grown)
+        # The group may grow to what its new window can be at the least,
+        # and no more.
+        gone = self.shrunk(w, self.group_of(wins, w), wins, after)
+        self.check_unchanged(f"group_window {w} with {t}", wins, after, skip={w} | self.grown(w, tg, wins, after) | gone)
 
     def op_ungroup_window(self, wins, shown):
         groups = [g for g in self.groups(wins).values() if g[0] in shown]
@@ -1229,7 +1294,7 @@ class Fuzz:
             self.fail(f"ungroup_window {w}: {fr(wins[w])} -> {fr(after[w])}")
         if len(rest) > 1 and self.group_of(after, rest[0]) != rest:
             self.fail(f"ungroup_window {w}: the rest of its group {rest} came apart: now {self.group_of(after, rest[0])}")
-        self.check_unchanged(f"ungroup_window {w}", wins, after, skip={w})
+        self.check_unchanged(f"ungroup_window {w}", wins, after, skip={w} | self.shrunk(w, self.group_of(wins, w), wins, after))
 
     def op_move_tab(self, wins, shown):
         groups = [g for g in self.groups(wins).values() if g[0] in shown]

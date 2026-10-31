@@ -416,11 +416,17 @@ fn keep_on_screen(space: &mut Space<WindowElement>, surface: &WlSurface, window:
         return;
     }
     const MARGIN: i32 = 8;
+    // A side it took as it was asked is Olo's too: a window put in a
+    // group is asked for the group's size, and one that can't be as
+    // narrow is wider, but as tall as the group (fitting that would
+    // move the whole group).
+    let keep_w = hold_w || asked.is_some_and(|a| a.w == content.w);
+    let keep_h = hold_h || asked.is_some_and(|a| a.h == content.h);
     // Too big for the screen: as big as fits (or as small as it can be).
     let room = |span: i32, frame: i32, least: i32, now: i32| (span - 2 * MARGIN - frame).max(least).min(now);
     let fitting = Size::from((
-        if hold_w { content.w } else { room(zone.size.w, geo.size.w - content.w, least.w, content.w) },
-        if hold_h { content.h } else { room(zone.size.h, geo.size.h - content.h, least.h, content.h) },
+        if keep_w { content.w } else { room(zone.size.w, geo.size.w - content.w, least.w, content.w) },
+        if keep_h { content.h } else { room(zone.size.h, geo.size.h - content.h, least.h, content.h) },
     ));
     if fitting != content {
         toplevel.with_pending_state(|s| s.size = Some(fitting));

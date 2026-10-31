@@ -835,6 +835,16 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         self.set_frame(window, frame, true);
     }
 
+    /// Where a tiled window belongs now (what `retile` would make it): its
+    /// part of the tiling area, given way to what it and its group can be
+    /// at the least.
+    pub(super) fn tile_frame(&self, window: &WindowElement) -> Option<Rectangle<i32, Logical>> {
+        let tile = Self::tiled(window)?;
+        let area = self.window_output(window).and_then(|o| self.tile_area(&o))?;
+        let fraction = Self::custom_part(window).unwrap_or_else(|| tile.fraction());
+        Some(self.given_way(window, part(area, fraction, self.tile_gap()), area))
+    }
+
     /// An edge drag of `window` (`sides`) is starting or going on: the
     /// first time, find its tiled neighbours. A tiled window with none is
     /// being sized away from its tile by hand: no longer tiled.

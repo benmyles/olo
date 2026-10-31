@@ -526,6 +526,16 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             if let Some(size) = size_on_the_way(&leader) {
                 frame.size = size;
             }
+            // A window that needed more room than the group's tile has
+            // left it: tiled, the group is its tile's size again.
+            let lost = number_before.is_some_and(|n| before.list.iter().any(|(m, was)| *m == n && was.iter().any(|w| !g.contains(w))));
+            if lost && !resizing && self.back_to_tile(&leader) {
+                let Some(now) = self.space.element_geometry(&leader) else { continue };
+                frame = now;
+                if let Some(size) = size_on_the_way(&leader) {
+                    frame.size = size;
+                }
+            }
             // No smaller than any of them can be (different apps' windows
             // put together by hand), so they are all one size: the leader
             // too, once no grab is sizing it.
@@ -606,6 +616,12 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 d.tab_offset = 0;
             }
         }
+        // Tiled, it had the group's size; on its own, its tile's.
+        if !resizing {
+            for (w, _) in &left {
+                self.back_to_tile(w);
+            }
+        }
         let mut stacked: Vec<(u64, Rectangle<i32, Logical>)> = Vec::new();
         let mut apart: Vec<&(WindowElement, u64)> = left.iter().filter(|(w, _)| self.space.element_location(w).is_some()).collect();
         apart.sort_by_key(|(w, _)| w.id());
@@ -634,6 +650,21 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let seen_on = seen.iter().map(|w| (w.clone(), self.group_display(w))).collect();
         self.groups = Groups { seen, seen_on, list, away, known: all, numbers, joining, settling };
         mark_behind(&self.space);
+    }
+
+    /// A tiled window its group made bigger than its tile (a group is no
+    /// smaller than any of its windows can be), now that the window that
+    /// needed it has gone: its tile's size again. True if it was asked.
+    fn back_to_tile(&mut self, w: &WindowElement) -> bool {
+        if self.tree_of(w).is_some() || self.is_zoomed(w) || size_on_the_way(w).is_some() {
+            return false;
+        }
+        let (Some(now), Some(fit)) = (self.space.element_geometry(w), self.tile_frame(w)) else { return false };
+        if now.size.w <= fit.size.w && now.size.h <= fit.size.h {
+            return false;
+        }
+        self.refit(w);
+        true
     }
 
     /// A window's edge or corner being dragged: windows' sizes wait till
