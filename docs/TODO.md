@@ -904,10 +904,11 @@ as they land (with the commit), add new ones as they come up.
   indents, spacing and marker (`editor::Paragraph`); File ▸ Import… for
   Markdown, Word and OpenDocument, and Export as any of those or a web
   page (`olo-richtext`, links kept; checked in LibreOffice); spelling as
-  you type with suggestions (the kit's `spell`, Hunspell dictionaries).
-  Next: a ruler, RTF, tables, pictures, headers and footers, the page
-  view and PDF; Quick Look's Word and OpenDocument readers moved onto
-  `olo-richtext`.
+  you type with suggestions (the kit's `spell`, Hunspell dictionaries);
+  printing and PDF (`olo-print`: the Print panel, CUPS over IPP, PDF by
+  krilla, pages laid out as the editor lays them out). Next: a ruler,
+  RTF, tables, pictures, headers and footers, the page view; Quick
+  Look's Word and OpenDocument readers moved onto `olo-richtext`.
 - ~~**Activity Monitor, revamped**~~ (Ben, 2026-10-29, at the end):
   "revamp activity monitor to include everything a nerd could ever want
   to know, with live views, drill downs, tuning settings and ability to

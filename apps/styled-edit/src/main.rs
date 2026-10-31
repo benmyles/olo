@@ -5,6 +5,7 @@
 
 mod convert;
 mod doc;
+mod pages;
 mod fonts;
 
 use std::{
@@ -54,6 +55,8 @@ enum Msg {
     Imported(PathBuf, Result<(String, Vec<Run>, Vec<doc::Para>), String>),
     /// A copy written in another format.
     Exported(PathBuf, Result<(), String>),
+    /// A document sent to a printer (its title).
+    Printed(String, Result<(), String>),
 }
 
 /// What to do once the document is saved (or its changes discarded).
@@ -256,6 +259,7 @@ enum Format {
     Html,
     Word,
     OpenDocument,
+    Pdf,
 }
 
 impl Format {
@@ -265,6 +269,7 @@ impl Format {
             Format::Html => "html",
             Format::Word => "docx",
             Format::OpenDocument => "odt",
+            Format::Pdf => "pdf",
         }
     }
 }
@@ -276,6 +281,7 @@ enum Win {
     Revert { doc: WindowId, message: String },
     Error { message: String },
     Find { doc: WindowId, replace: bool },
+    Print { doc: WindowId, panel: Box<olo_print::panel::PrintPanel> },
 }
 
 /// The Find and Replace windows' settings, shared by every document.
@@ -301,6 +307,11 @@ struct StyledEdit {
     /// Misspelled words are underlined (Edit ▸ Check Spelling While
     /// Typing).
     spelling: bool,
+    /// The windows' egui context (for laying pages out like them).
+    ctx: Option<egui::Context>,
+    /// The paper and pages the next PDF is made with (the Print panel's,
+    /// when it chose a PDF).
+    pdf_setup: Option<(olo_print::Paper, Option<(u32, u32)>)>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -318,6 +329,14 @@ struct SavedDoc {
     /// The editor's view ([`Editor::view`]).
     #[serde(default)]
     view: (usize, f32),
+}
+
+/// Pages `range` (from 1, inclusive) of `pages`, or all of them.
+fn chosen(pages: Vec<olo_print::Page>, range: Option<(u32, u32)>) -> Vec<olo_print::Page> {
+    match range {
+        Some((a, b)) => pages.into_iter().skip(a.saturating_sub(1) as usize).take((b.saturating_sub(a) + 1) as usize).collect(),
+        None => pages,
+    }
 }
 
 /// When a file was last written and how long it is.
@@ -391,7 +410,7 @@ impl StyledEdit {
             .windows
             .iter()
             .filter(|(_, w)| match w {
-                Win::Unsaved { doc, .. } | Win::Revert { doc, .. } | Win::Find { doc, .. } => *doc == win,
+                Win::Unsaved { doc, .. } | Win::Revert { doc, .. } | Win::Find { doc, .. } | Win::Print { doc, .. } => *doc == win,
                 Win::Panel { doc: Some(doc), .. } => *doc == win,
                 _ => false,
             })
@@ -462,9 +481,51 @@ impl StyledEdit {
         });
     }
 
+    /// What a worker needs to set document `win` on pages (as its window
+    /// draws it).
+    fn page_input(&mut self, win: WindowId) -> Option<(pages::Input, String)> {
+        let ctx = self.ctx.clone()?;
+        let Some(Win::Doc(d)) = self.windows.get(&win) else { return None };
+        let mut families: Vec<(Style, egui::FontFamily)> = Vec::new();
+        for r in d.doc.runs() {
+            if !families.iter().any(|(s, _)| *s == r.style) {
+                families.push((r.style.clone(), self.fonts.family(&ctx, &r.style)));
+            }
+        }
+        let options = ctx.fonts(|f| *f.options());
+        let input = pages::Input { text: d.doc.text().to_owned(), runs: d.doc.runs().to_vec(), paras: d.doc.paras().to_vec(), align: d.doc.align, families, options };
+        Some((input, d.title()))
+    }
+
+    /// Print document `win` on `printer` (set, made a PDF and sent on a
+    /// worker).
+    fn print(&mut self, cx: &mut Cx, win: WindowId, printer: String, choice: olo_print::panel::Choice) {
+        let Some((input, title)) = self.page_input(win) else { return };
+        let proxy = cx.proxy();
+        std::thread::spawn(move || {
+            let pages = chosen(pages::pages(input, choice.paper), choice.pages);
+            let r = olo_print::pdf(&pages, &title).and_then(|pdf| {
+                let job = olo_print::ipp::Job { name: title.clone(), copies: choice.copies, media: Some(choice.paper.pwg.into()), pages: None, two_sided: false };
+                olo_print::ipp::print(&printer, &pdf, &job)
+            });
+            proxy.send(Msg::Printed(title, r.map(|_| ())));
+        });
+    }
+
     /// A copy of the document in `format` at `to` (on a worker); the
     /// document stays as it is, and where.
     fn export(&mut self, cx: &mut Cx, win: WindowId, to: PathBuf, format: Format) {
+        if format == Format::Pdf {
+            let (paper, range) = self.pdf_setup.take().unwrap_or((olo_print::local_paper(), None));
+            let Some((input, title)) = self.page_input(win) else { return };
+            let proxy = cx.proxy();
+            std::thread::spawn(move || {
+                let pages = chosen(pages::pages(input, paper), range);
+                let r = olo_print::pdf(&pages, &title).and_then(|pdf| std::fs::write(&to, pdf).map_err(|e| e.to_string()));
+                proxy.send(Msg::Exported(to, r));
+            });
+            return;
+        }
         let Some(Win::Doc(d)) = self.windows.get(&win) else { return };
         let (text, runs, paras, align, title) = (d.doc.text().to_owned(), d.doc.runs().to_vec(), d.doc.paras().to_vec(), d.doc.align, d.title());
         let proxy = cx.proxy();
@@ -474,6 +535,7 @@ impl StyledEdit {
                 Format::Html => Ok(convert::to_html(&text, &runs, &paras, &title, align).into_bytes()),
                 Format::Word => olo_richtext::write_docx(&convert::to_rich(&text, &runs, &paras, align)),
                 Format::OpenDocument => olo_richtext::write_odt(&convert::to_rich(&text, &runs, &paras, align)),
+                Format::Pdf => unreachable!("made above"),
             };
             let r = out.and_then(|bytes| std::fs::write(&to, bytes).map_err(|e| e.to_string()));
             proxy.send(Msg::Exported(to, r));
@@ -588,9 +650,12 @@ impl StyledEdit {
             .item("Revert to Saved…", "revert", None)
             .enabled(d.path.is_some() && d.doc.edited() && !d.saving)
             .separator()
+            .item("Print…", "print", Some(Key::P))
+            .separator()
             .item("Import…", "import", None)
             .submenu(
                 Menu::new("Export")
+                    .item("PDF…", "export:pdf", None)
                     .item("Word Document…", "export:docx", None)
                     .item("OpenDocument Text…", "export:odt", None)
                     .separator()
@@ -720,6 +785,13 @@ impl StyledEdit {
             }
             "open" => return self.open_panel(cx, Some(win), Purpose::Open),
             "import" => return self.open_panel(cx, Some(win), Purpose::Import),
+            "export:pdf" => return self.open_panel(cx, Some(win), Purpose::Export(Format::Pdf)),
+            "print" => {
+                let Some(ctx) = self.ctx.clone() else { return };
+                let id = cx.open_window(WindowOptions::new("Print", olo_print::panel::SIZE.0, olo_print::panel::SIZE.1).parent(win).dialog());
+                self.windows.insert(id, Win::Print { doc: win, panel: Box::new(olo_print::panel::PrintPanel::new(&ctx)) });
+                return;
+            }
             "export:md" => return self.open_panel(cx, Some(win), Purpose::Export(Format::Markdown)),
             "export:html" => return self.open_panel(cx, Some(win), Purpose::Export(Format::Html)),
             "export:docx" => return self.open_panel(cx, Some(win), Purpose::Export(Format::Word)),
@@ -1126,6 +1198,9 @@ const REPLACE_H: f32 = FIND_H + m::CONTROL_HEIGHT + m::TIGHT + m::MARK_ROW + m::
 
 impl App for StyledEdit {
     fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut Ui) {
+        if self.ctx.is_none() {
+            self.ctx = Some(ui.ctx().clone());
+        }
         if matches!(self.windows.get(&window), Some(Win::Doc(_))) {
             olo_kit::dnd::open_files(ui, "open");
         }
@@ -1133,6 +1208,21 @@ impl App for StyledEdit {
             Some(Win::Doc(_)) => {
                 if let Some(command) = self.doc_ui(window, ui) {
                     self.doc_command(cx, window, &command);
+                }
+            }
+            Some(Win::Print { doc, panel }) => {
+                let doc = *doc;
+                let Some(result) = panel.ui(ui) else { return };
+                self.windows.remove(&window);
+                cx.close_window(window);
+                let Some(choice) = result else { return };
+                match choice.printer.clone() {
+                    // A PDF: where to, first.
+                    None => {
+                        self.pdf_setup = Some((choice.paper, choice.pages));
+                        self.open_panel(cx, Some(doc), Purpose::Export(Format::Pdf));
+                    }
+                    Some(printer) => self.print(cx, doc, printer, choice),
                 }
             }
             Some(Win::Find { doc, replace }) => {
@@ -1316,6 +1406,11 @@ impl App for StyledEdit {
                 }
                 Err(e) => self.show_error(cx, format!("“{}” couldn't be imported. {e}", file_name(&path))),
             },
+            Msg::Printed(title, result) => {
+                if let Err(e) = result {
+                    self.show_error(cx, format!("“{title}” couldn't be printed. {e}"));
+                }
+            }
             Msg::Exported(path, result) => {
                 if let Err(e) = result {
                     self.show_error(cx, format!("“{}” couldn't be written. {e}", file_name(&path)));
@@ -1409,7 +1504,7 @@ fn main() {
         instance::listen(APP_ID, cx.proxy());
         let proxy = cx.proxy();
         let fonts = fonts::Fonts::start(move |e| proxy.send(Msg::Fonts(e)));
-        let mut app = StyledEdit { windows: HashMap::new(), fonts, search: Search { wrap: true, ..Search::default() }, untitled: 0, watch: None, spelling: true };
+        let mut app = StyledEdit { windows: HashMap::new(), fonts, search: Search { wrap: true, ..Search::default() }, untitled: 0, watch: None, spelling: true, ctx: None, pdf_setup: None };
         match cx.restored_state().and_then(|s| serde_json::from_str::<Vec<SavedDoc>>(&s).ok()) {
             Some(docs) if !docs.is_empty() => app.restore(cx, docs),
             _ => app.handle_args(cx, &args, None),

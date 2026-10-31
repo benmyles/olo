@@ -2470,5 +2470,11 @@
   "title": "StyledEdit: spelling as you type",
   "caption": "Misspelled words get a red wave under them (the kit editor's Options::spelling, Hunspell dictionaries read natively by spellbook); right-click one for suggestions, Ignore Spelling or Learn Spelling.",
   "image": "2026-10-30/172433-stylededit-spelling-as-you-type.png"
+ },
+ {
+  "time": "2026-10-30T17:37:04",
+  "title": "Printing: the Print panel and PDF",
+  "caption": "StyledEdit's File > Print... (and Export > PDF): a printer from CUPS (spoken to natively over IPP) or a PDF, paper, copies and pages; pages laid out as the editor lays them out and made into a PDF in process (krilla), fonts embedded, text selectable.",
+  "image": "2026-10-30/173704-printing-the-print-panel-and-pdf.png"
  }
 ]

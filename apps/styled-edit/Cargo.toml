@@ -16,4 +16,5 @@ serde_json.workspace = true
 fontdb = "0.23"
 pulldown-cmark = { version = "0.13", default-features = false }
 olo-richtext.workspace = true
+olo-print.workspace = true
 libc = "0.2"

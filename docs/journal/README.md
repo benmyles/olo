@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### Printing: the Print panel and PDF
+
+*17:37* — StyledEdit's File > Print... (and Export > PDF): a printer from CUPS (spoken to natively over IPP) or a PDF, paper, copies and pages; pages laid out as the editor lays them out and made into a PDF in process (krilla), fonts embedded, text selectable.
+
+![Printing: the Print panel and PDF](2026-10-30/173704-printing-the-print-panel-and-pdf.png)
+
 ### StyledEdit: spelling as you type
 
 *17:24* — Misspelled words get a red wave under them (the kit editor's Options::spelling, Hunspell dictionaries read natively by spellbook); right-click one for suggestions, Ignore Spelling or Learn Spelling.
