@@ -1928,7 +1928,7 @@ as they land (with the commit), add new ones as they come up.
   the frame, which also covers screenshots and headless outputs). Show
   in Preferences when the screen can't do it; check external displays
   too.
-- ~~**Scrolling feels the same everywhere**~~ (app_server `scroll.rs`: Chromium ×1/12 a touchpad, ×0.4 a wheel; GTK 4 ×0.4 a touchpad; measured headless; GTK 3 not yet) (Ben): in Chrome scrolling is
+- ~~**Scrolling feels the same everywhere**~~ (app_server `scroll.rs`: Chromium ×1/12 a touchpad, ×0.4 a wheel; GTK 4 ×0.4 a touchpad; GTK 3 by the window's height (it scrolls by its view's, ^⅔), 94–97% of Olo's distance; measured headless) (Ben): in Chrome scrolling is
   far too fast (maybe GTK apps too). A wheel notch or touchpad swipe
   should move Chrome and GTK apps as far as it moves an Olo app, with
   the same smooth scrolling (app_server's axis values, value120 and

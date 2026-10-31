@@ -162,7 +162,18 @@ impl<BackendData: Backend> PointerTarget<AnvilState<BackendData>> for PointerFoc
             Self::WlSurface(w) => match w.client().and_then(|c| crate::state::client_pid(&c, &data.display_handle)) {
                 Some(pid) => {
                     let toolkit = crate::scroll::toolkit(pid);
-                    let mut frame = crate::scroll::adjust(frame, toolkit);
+                    // (GTK 3 scrolls by its scrolled area's height: the
+                    // window's is as near as can be seen from here.)
+                    let height = (toolkit == crate::scroll::Toolkit::Gtk3)
+                        .then(|| {
+                            let mut root = w.clone();
+                            while let Some(parent) = smithay::wayland::compositor::get_parent(&root) {
+                                root = parent;
+                            }
+                            data.window_for_surface(&root).map(|win| smithay::desktop::space::SpaceElement::geometry(&win).size.h)
+                        })
+                        .flatten();
+                    let mut frame = crate::scroll::adjust(frame, toolkit, height);
                     if toolkit == crate::scroll::Toolkit::Olo && data.pacer.sending_glide {
                         frame.source = Some(smithay::backend::input::AxisSource::Continuous);
                     }

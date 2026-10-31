@@ -3453,7 +3453,16 @@ Chromium (Chrome, Chromium, Electron apps: found by `icudtl.dat` and a V8
 snapshot beside the program) scrolls finger values 12× as far and a notch
 120 px, so gets them ×1/12 and ×0.4 (value and value120); GTK 4 (a
 process with `libgtk-4.so` mapped) scrolls finger values 2.5× as far (a
-notch the same 48), so gets them ×0.4. Chromium is recognised before
+notch the same 48), so gets them ×0.4. GTK 3 (`libgtk-3.so`) scrolls a
+tenth of either value (a notch's is 15) times its scrolled area's
+height to the power ⅔ (`get_scroll_unit`): 448 px for a 100 px finger
+scroll and 67 a notch in a 300 px view. app_server can't see the
+scrolled area, so it goes by the window's height (`focus.rs` finds the
+window from the surface): a finger's values × 10 / h^⅔, a notch's
+× 32 / h^⅔ (its values, not `value120`, are what GTK 3 reads).
+Measured with a PyGObject window of numbered lines that prints its
+adjustment: 94–97 px for 100 and 45–47 a notch at 300 and 700 px, 1×
+and 2× (the view a little shorter than the window). Chromium is recognised before
 the kit's socket, since olo-chrome answers on one named after Chrome's
 pid for its page trees. Chromium also flings on its own when a finger
 scroll stops within 200 ms of its last move, however long the fingers

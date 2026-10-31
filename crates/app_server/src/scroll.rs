@@ -4,8 +4,10 @@
 //! wheel notch 48 of them. Chromium (Chrome, Chromium and Electron apps)
 //! scrolls a touchpad's values twelve times as far and a notch 120
 //! pixels; GTK 4 a touchpad's values two and a half times as far (a notch
-//! the same 48). Their scrolls are scaled here so they match (measured
-//! with a ruler page and a numbered file; see HACKING.md, "Scrolling").
+//! the same 48); GTK 3 a tenth of either value times its scrolled area's
+//! height to the power ⅔ (`get_scroll_unit`), which app_server knows only
+//! as the window's. Their scrolls are scaled here so they match (measured
+//! with a ruler page and numbered lines; see HACKING.md, "Scrolling").
 
 use std::{collections::HashMap, path::Path, sync::Mutex, time::Duration};
 
@@ -24,6 +26,7 @@ pub enum Toolkit {
     Olo,
     Chromium,
     Gtk4,
+    Gtk3,
 }
 
 /// What draws `pid`'s windows, as far as scrolling goes (remembered per
@@ -45,6 +48,7 @@ pub fn toolkit(pid: i32) -> Toolkit {
             // (olo_kit::commands).
             _ if runtime_dir().join(format!("olo-menus-{pid}.sock")).exists() => Toolkit::Olo,
             _ if maps(pid, "/libgtk-4.so") => Toolkit::Gtk4,
+            _ if maps(pid, "/libgtk-3.so") => Toolkit::Gtk3,
             _ => Toolkit::AsGiven,
         }
     })
@@ -65,14 +69,25 @@ fn maps(pid: i32, lib: &str) -> bool {
     std::fs::read_to_string(format!("/proc/{pid}/maps")).is_ok_and(|m| m.contains(lib))
 }
 
-/// `frame` as `toolkit` should get it.
-pub fn adjust(mut frame: AxisFrame, toolkit: Toolkit) -> AxisFrame {
-    let scale = match (toolkit, frame.source) {
+/// `frame` as `toolkit` should get it, in a window `height` logical
+/// pixels high (what GTK 3 goes by).
+pub fn adjust(mut frame: AxisFrame, toolkit: Toolkit, height: Option<i32>) -> AxisFrame {
+    let wheel = matches!(frame.source, Some(AxisSource::Wheel | AxisSource::WheelTilt));
+    let scale = match (toolkit, wheel) {
         (Toolkit::AsGiven | Toolkit::Olo, _) => return frame,
-        (Toolkit::Chromium, Some(AxisSource::Wheel | AxisSource::WheelTilt)) => 48.0 / 120.0,
-        (Toolkit::Chromium, _) => 1.0 / 12.0,
-        (Toolkit::Gtk4, Some(AxisSource::Wheel | AxisSource::WheelTilt)) => return frame,
-        (Toolkit::Gtk4, _) => 1.0 / 2.5,
+        (Toolkit::Chromium, true) => 48.0 / 120.0,
+        (Toolkit::Chromium, false) => 1.0 / 12.0,
+        (Toolkit::Gtk4, true) => return frame,
+        (Toolkit::Gtk4, false) => 1.0 / 2.5,
+        (Toolkit::Gtk3, _) => {
+            // It goes value / 10 × page^⅔: a finger's values as they are,
+            // a notch (15° of value) 48. Its value, not its notches, is
+            // what it reads.
+            let unit = (height.unwrap_or(600).max(50) as f64).powf(2.0 / 3.0) / 10.0;
+            let scale = if wheel { 48.0 / 15.0 / unit } else { 1.0 / unit };
+            frame.axis = (frame.axis.0 * scale, frame.axis.1 * scale);
+            return frame;
+        }
     };
     frame.axis = (frame.axis.0 * scale, frame.axis.1 * scale);
     frame.v120 = frame.v120.map(|(h, v)| ((h as f64 * scale).round() as i32, (v as f64 * scale).round() as i32));
