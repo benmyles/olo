@@ -103,11 +103,14 @@ pub struct Options {
     /// Between the view's edges and the text.
     pub margin: Vec2,
     pub background: Option<olo_theme::Rgba>,
+    /// Misspelled words are underlined ([`crate::spell`]), all but the
+    /// one being typed.
+    pub spelling: bool,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { editable: true, wrap: true, align: Align::Min, justify: false, margin: vec2(m::TEXT_INSET, 4.0), background: None }
+        Options { editable: true, wrap: true, align: Align::Min, justify: false, margin: vec2(m::TEXT_INSET, 4.0), background: None, spelling: false }
     }
 }
 
@@ -148,6 +151,9 @@ struct Set {
 const NEVER: u64 = 0;
 /// Laid out, but not as it is now (restyled): its size is a good guess.
 const STALE: u64 = 1;
+
+/// How long a frame spends checking the spelling of paragraphs new to it.
+const SPELL_BUDGET: Duration = Duration::from_micros(2000);
 
 /// How long a frame spends measuring paragraphs about to come into view.
 const MEASURE_BUDGET: Duration = Duration::from_micros(1000);
@@ -201,6 +207,9 @@ pub struct Editor {
     set_top: Option<(usize, f32)>,
     /// List markers of the paragraphs laid out this frame, by paragraph.
     markers: std::collections::HashMap<usize, Arc<Galley>>,
+    /// Misspelled words (bytes) of paragraphs checked, by their text's
+    /// hash: a paragraph is checked once until it changes.
+    misspelled: std::collections::HashMap<u64, Arc<Vec<Range<usize>>>>,
 }
 
 impl Editor {
@@ -227,9 +236,15 @@ impl Editor {
             top: (0, 0.0),
             set_top: None,
             markers: std::collections::HashMap::new(),
+            misspelled: std::collections::HashMap::new(),
         };
         e.reset("");
         e
+    }
+
+    /// Check the spelling again (a word was learnt or ignored).
+    pub fn respell(&mut self) {
+        self.misspelled.clear();
     }
 
     /// The editor's widget id (it has the keyboard when this is focused).
@@ -683,6 +698,9 @@ impl Editor {
         let visuals = ui.visuals().clone();
         let fill = if active { visuals.selection.bg_fill } else { visuals.selection.bg_fill.gamma_multiply(0.6) };
         let text = doc.text();
+        let checker = (o.spelling && o.editable).then(|| crate::spell::checker(&ctx)).flatten();
+        let squiggle_color = style::c(style::palette(&ctx).failure);
+        let checking = Instant::now();
         for (i, g) in &shown {
             let p = self.paras[*i];
             let at = snap(origin + self.origin(*i, o, inner));
@@ -712,6 +730,38 @@ impl Editor {
                 }
             }
             painter.galley(at, g.clone(), visuals.text_color());
+            if let Some(c) = &checker {
+                let para = &text[p.start..end];
+                let key = {
+                    use std::hash::{Hash, Hasher};
+                    let mut h = std::collections::hash_map::DefaultHasher::new();
+                    para.hash(&mut h);
+                    h.finish()
+                };
+                if self.misspelled.len() > 4096 {
+                    self.misspelled.clear();
+                }
+                // Checked once, within a budget a frame (the rest next frame).
+                let wrong = match self.misspelled.get(&key) {
+                    Some(w) => w.clone(),
+                    None if checking.elapsed() < SPELL_BUDGET => {
+                        let w = Arc::new(c.misspelled(para));
+                        self.misspelled.insert(key, w.clone());
+                        w
+                    }
+                    None => {
+                        ctx.request_repaint();
+                        Arc::new(Vec::new())
+                    }
+                };
+                for r in wrong.iter() {
+                    // Not the word being typed.
+                    if active && sel.is_empty() && (p.start + r.start..=p.start + r.end).contains(&self.caret) {
+                        continue;
+                    }
+                    squiggle(&painter, g, at, para, r.clone(), ppp, squiggle_color);
+                }
+            }
             if let Some(m) = self.markers.get(i) {
                 let first = g.rows.first().map_or(0.0, |r| r.pos.y);
                 let w = m.size().x;
@@ -819,6 +869,22 @@ impl Editor {
             ctx.set_cursor_icon(CursorIcon::Text);
         }
         let (pressed, down, latest, mods) = ui.input(|i| (i.pointer.primary_pressed(), i.pointer.primary_down(), i.pointer.latest_pos(), i.modifiers));
+        // A right-click outside the selection puts the caret there first,
+        // so the menu is about what was clicked (a misspelled word's
+        // suggestions).
+        if ui.input(|i| i.pointer.secondary_pressed())
+            && response.hovered()
+            && let Some(pos) = latest
+        {
+            let (at, next) = self.byte_at(ui, doc, o, inner, content(pos));
+            if !(self.selection().start..=self.selection().end).contains(&at) || self.selection().is_empty() {
+                self.anchor = at;
+                self.caret = at;
+                self.prefer_next = next;
+                self.h_pos = None;
+            }
+            ctx.memory_mut(|mem| mem.request_focus(id));
+        }
         if pressed
             && response.hovered()
             && let Some(pos) = latest
@@ -1050,6 +1116,39 @@ fn split(text: &str, start: usize, end: usize) -> impl Iterator<Item = (usize, u
 /// What changed from `old` to `new`: the bytes of `old` that went, and
 /// how many bytes came in their place (what is the same at either end
 /// stays).
+/// A wavy line under bytes `r` of paragraph text `para` (laid out as
+/// `g`, drawn at `at`), a device pixel thick, on device pixels.
+fn squiggle(painter: &egui::Painter, g: &Galley, at: Pos2, para: &str, r: Range<usize>, ppp: f32, color: egui::Color32) {
+    let (a, b) = (para[..r.start].chars().count(), para[..r.end].chars().count());
+    let px = 1.0 / ppp;
+    let mut c0 = 0;
+    for row in &g.rows {
+        let n = row.char_count_excluding_newline().0;
+        if a < c0 + n && b > c0 {
+            let left = row.x_offset(CharIndex(a.max(c0) - c0));
+            let right = row.x_offset(CharIndex(b.min(c0 + n) - c0));
+            let snap = |v: f32| (v * ppp).round() / ppp;
+            let base = snap(at.y + row.pos.y + row.size.y) - 2.0 * px;
+            let x0 = snap(at.x + row.pos.x + left);
+            let x1 = snap(at.x + row.pos.x + right);
+            // Up and down every two device pixels.
+            let step = 2.0 * px;
+            let mut points = Vec::new();
+            let mut x = x0;
+            let mut k = 0;
+            while x <= x1 {
+                points.push(Pos2::new(x, base + if k % 2 == 0 { 0.5 * px } else { -1.5 * px } + px));
+                x += step;
+                k += 1;
+            }
+            if points.len() >= 2 {
+                painter.add(egui::Shape::line(points, egui::Stroke::new(px, color)));
+            }
+        }
+        c0 += n;
+    }
+}
+
 pub fn difference(old: &str, new: &str) -> (Range<usize>, usize) {
     let (a, b) = (old.as_bytes(), new.as_bytes());
     let mut p = common(a.chunks(256).zip(b.chunks(256)), |(x, y)| x == y) * 256;

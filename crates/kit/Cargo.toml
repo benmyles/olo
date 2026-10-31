@@ -11,6 +11,7 @@ zbus = { version = "5.19", default-features = false, features = ["blocking-api",
 olo-theme.workspace = true
 olo-protocol.workspace = true
 olo-xdg.workspace = true
+spellbook = "0.3"
 olo-emoji.workspace = true
 olo-images.workspace = true
 serde.workspace = true

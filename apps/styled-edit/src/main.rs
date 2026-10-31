@@ -84,6 +84,8 @@ struct DocWin {
     /// The file as last loaded or saved here (when it was written, how
     /// long), to tell another program's change from our own save.
     on_disk: Option<(std::time::SystemTime, u64)>,
+    /// The misspelled word right-clicked, and what it might be.
+    spell: Option<(Range<usize>, Vec<String>)>,
     /// Words counted for the status line, and for which text and
     /// selection.
     words: Option<((u64, Range<usize>), Words)>,
@@ -137,6 +139,7 @@ impl DocWin {
             read_only: false,
             restore: None,
             on_disk: None,
+            spell: None,
             words: None,
         }
     }
@@ -295,6 +298,9 @@ struct StyledEdit {
     /// (`olo_kit::watch`): one changed by another program is read again
     /// if it has no unsaved changes here.
     watch: Option<olo_kit::watch::Watch>,
+    /// Misspelled words are underlined (Edit ▸ Check Spelling While
+    /// Typing).
+    spelling: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -622,7 +628,10 @@ impl StyledEdit {
             .item("Replace…", "replace", Some(Key::R))
             .enabled(editable)
             .item("Replace Same", "replace-same", Some(Key::T))
-            .enabled(editable && !self.search.find.is_empty());
+            .enabled(editable && !self.search.find.is_empty())
+            .separator()
+            .item("Check Spelling While Typing", "spelling", None)
+            .checked(self.spelling);
 
         // The style where the selection starts (or what typing will use).
         let cur = d.doc.style_at(d.bytes().start);
@@ -754,6 +763,29 @@ impl StyledEdit {
                 return;
             }
             "paste" => return cx.paste(win),
+            "spelling" => {
+                self.spelling = !self.spelling;
+                for w in self.windows.keys().copied().collect::<Vec<_>>() {
+                    cx.redraw(w);
+                }
+                return;
+            }
+            "spell:learn" | "spell:ignore" => {
+                let checker = olo_kit::spell::loaded();
+                if let (Some(c), Some(Win::Doc(d))) = (checker, self.windows.get(&win))
+                    && let Some((r, _)) = &d.spell
+                {
+                    let word = d.doc.text()[r.clone()].to_owned();
+                    if command == "spell:learn" { c.learn(&word) } else { c.ignore(&word) }
+                }
+                for (&w, win) in self.windows.iter_mut() {
+                    if let Win::Doc(d) = win {
+                        d.editor.respell();
+                        cx.redraw(w);
+                    }
+                }
+                return;
+            }
             _ => {}
         }
         let Some(Win::Doc(d)) = self.windows.get_mut(&win) else { return };
@@ -817,6 +849,17 @@ impl StyledEdit {
                 // On if the first paragraph isn't in this kind of list yet.
                 let on = d.doc.paras()[d.doc.para_index(bytes.start)].list != list;
                 d.doc.set_paras(bytes, selection, |p| p.list = if on { list } else { doc::List::None });
+            }
+            c if c.starts_with("spell:") => {
+                // A guess for the misspelled word, in its place.
+                let guess = c.strip_prefix("spell:").and_then(|k| k.parse::<usize>().ok());
+                if let (Some(k), Some((r, guesses))) = (guess, d.spell.take())
+                    && let Some(g) = guesses.get(k)
+                    && r.end <= d.doc.text().len()
+                {
+                    let change = d.doc.replace(r.clone(), g, selection);
+                    d.changed(change, r.start + g.len()..r.start + g.len());
+                }
             }
             "indent-more" => d.doc.set_paras(bytes, selection, |p| p.level = (p.level + 1).min(doc::MAX_LEVEL)),
             "indent-less" => d.doc.set_paras(bytes, selection, |p| p.level = p.level.saturating_sub(1)),
@@ -889,15 +932,39 @@ impl StyledEdit {
             justify: d.doc.align == Align::Justify,
             margin: vec2(m::TEXT_INSET, 4.0),
             background: Some(p.document_background),
+            spelling: self.spelling,
         };
         let DocWin { doc, editor, .. } = &mut **d;
         let mut styled = Styled { doc, fonts: &mut self.fonts, ctx: &ui.ctx().clone(), base: c(p.document_text) };
         let out = editor.show(ui, area, &mut styled, &options);
+        // Right-click on a misspelled word (the editor has put the caret
+        // in it): what it might be, first.
+        if out.response.secondary_clicked() {
+            d.spell = None;
+            if self.spelling
+                && editable
+                && let Some(checker) = olo_kit::spell::checker(ui.ctx())
+                && let Some(r) = olo_kit::spell::word_at(d.doc.text(), d.editor.caret())
+                && !checker.check(&d.doc.text()[r.clone()])
+            {
+                let guesses = checker.suggest(&d.doc.text()[r.clone()]);
+                d.spell = Some((r, guesses));
+            }
+        }
         // Right-click: the Edit menu's own commands, so styles go along.
         let chosen = widgets::context_menu(&out.response, || {
             let selected = !d.bytes().is_empty();
-            Menu::new("Edit")
-                .item("Cut", "cut", Some(Key::X))
+            let mut menu = Menu::new("Edit");
+            if let Some((_, guesses)) = &d.spell {
+                for (k, g) in guesses.iter().enumerate() {
+                    menu = menu.item(g.as_str(), format!("spell:{k}"), None);
+                }
+                if guesses.is_empty() {
+                    menu = menu.item("No Guesses Found", "spell:none", None).enabled(false);
+                }
+                menu = menu.separator().item("Ignore Spelling", "spell:ignore", None).item("Learn Spelling", "spell:learn", None).separator();
+            }
+            menu.item("Cut", "cut", Some(Key::X))
                 .enabled(editable && selected)
                 .item("Copy", "copy", Some(Key::C))
                 .enabled(selected)
@@ -1342,7 +1409,7 @@ fn main() {
         instance::listen(APP_ID, cx.proxy());
         let proxy = cx.proxy();
         let fonts = fonts::Fonts::start(move |e| proxy.send(Msg::Fonts(e)));
-        let mut app = StyledEdit { windows: HashMap::new(), fonts, search: Search { wrap: true, ..Search::default() }, untitled: 0, watch: None };
+        let mut app = StyledEdit { windows: HashMap::new(), fonts, search: Search { wrap: true, ..Search::default() }, untitled: 0, watch: None, spelling: true };
         match cx.restored_state().and_then(|s| serde_json::from_str::<Vec<SavedDoc>>(&s).ok()) {
             Some(docs) if !docs.is_empty() => app.restore(cx, docs),
             _ => app.handle_args(cx, &args, None),

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### StyledEdit: spelling as you type
+
+*17:24* — Misspelled words get a red wave under them (the kit editor's Options::spelling, Hunspell dictionaries read natively by spellbook); right-click one for suggestions, Ignore Spelling or Learn Spelling.
+
+![StyledEdit: spelling as you type](2026-10-30/172433-stylededit-spelling-as-you-type.png)
+
 ### StyledEdit: paragraph styles and lists
 
 *17:02* — Paragraphs have a style (Title, Heading 1-3, Quote, Code, Body), bulleted and numbered lists that nest and number themselves, indents and their own alignment; the kit's editor sets each paragraph's indents, spacing and list marker (Document::paragraph). Word count in the status line.

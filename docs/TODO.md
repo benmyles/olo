@@ -903,9 +903,10 @@ as they land (with the commit), add new ones as they come up.
   saved in the file's attributes; the kit's editor sets each paragraph's
   indents, spacing and marker (`editor::Paragraph`); File ▸ Import… for
   Markdown, Word and OpenDocument, and Export as any of those or a web
-  page (`olo-richtext`, links kept; checked in LibreOffice). Next: a
-  ruler, RTF, tables, pictures, headers and footers, the page view and
-  PDF, spelling; Quick Look's Word and OpenDocument readers moved onto
+  page (`olo-richtext`, links kept; checked in LibreOffice); spelling as
+  you type with suggestions (the kit's `spell`, Hunspell dictionaries).
+  Next: a ruler, RTF, tables, pictures, headers and footers, the page
+  view and PDF; Quick Look's Word and OpenDocument readers moved onto
   `olo-richtext`.
 - ~~**Activity Monitor, revamped**~~ (Ben, 2026-10-29, at the end):
   "revamp activity monitor to include everything a nerd could ever want

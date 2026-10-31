@@ -35,6 +35,7 @@ pub mod recorded;
 pub mod search;
 pub mod settings;
 pub mod sidebar;
+pub mod spell;
 pub mod style;
 pub mod textures;
 pub mod text_drag;

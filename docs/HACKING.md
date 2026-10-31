@@ -1104,7 +1104,25 @@ list's `marker`, drawn before its first row in the room `left` leaves,
 in the paragraph's first style). Each paragraph's galley wraps within
 its indents and sits by them (`Editor::shift`, `origin`); its height
 counts its spacing, and ↑/↓ keep to an x from the text's edge, so rows
-line up across paragraphs indented differently. Each frame, `editor.show(ui, rect, &mut doc,
+line up across paragraphs indented differently. With
+`Options::spelling`, misspelled words get a red wave under them (the
+palette's `failure`, a device pixel thick, two up and down), all but the
+word at the caret while typing; a paragraph is checked once until its
+text changes (`Editor::respell` checks again), within 2 ms a frame. A
+right-click outside the selection puts the caret where it was, so the
+app's menu can be about that word.
+
+Spelling (`spell.rs`): the system's Hunspell dictionaries
+(`/usr/share/hunspell`, `~/.local/share/hunspell`) in the language of
+`LANG` (else another of that language, else `en_US`), read by spellbook
+on a worker the first time `spell::checker(ctx)` is asked (16 ms; None
+until then, and a frame when ready; `spell::loaded()` without a
+context). `Checker::check`, `misspelled(text)`, `suggest(word)` (eight
+at most), `learn(word)` (every app's, in `~/.config/olo/words`) and
+`ignore(word)` (until the app quits). `spell::words` finds the words to
+check: letters with apostrophes inside, leaving alone tokens that are
+addresses, paths, numbers or identifiers and words in capitals;
+`spell::word_at(text, at)` the one at the caret. Each frame, `editor.show(ui, rect, &mut doc,
 &Options { editable, wrap, align, justify, margin, background })` gives
 `Output { response, changed }`. What the app changes itself it reports:
 `reset(text)` for new text (loaded), `changed(old, new)` or
@@ -3713,6 +3731,10 @@ marker, so list text lines up with a quotation's). They are saved in
 `user.olo.paragraphs` (JSON, dropped if the count no longer fits the
 text), undone with the text, and kept through a reload. The status line
 counts words (in the selection too), for documents up to a megabyte.
+
+Spelling is checked as you type (Edit ▸ Check Spelling While Typing,
+on); right-clicking a misspelled word offers its suggestions, Ignore
+Spelling and Learn Spelling above the Edit commands (`DocWin::spell`).
 
 Other formats (`convert.rs`, on a worker, from a copy of the text, runs
 and paragraphs): File ▸ Import… reads a Markdown, Word or
