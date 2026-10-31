@@ -302,9 +302,18 @@ fn entry_mirrors(display: &olo_protocol::DisplaySettings, output: &Output) -> bo
 
 /// Where `output`'s settings are kept: its monitor, else its connector.
 pub fn display_key(output: &Output) -> String {
+    if let Some(Identity(told)) = output.user_data().get::<Identity>()
+        && let Some((make, model, serial)) = told.borrow().as_ref()
+    {
+        return olo_protocol::display_key(&output.name(), make, model, serial);
+    }
     let p = output.physical_properties();
     olo_protocol::display_key(&output.name(), &p.make, &p.model, &p.serial_number)
 }
+
+/// Who a display's monitor is, told after it was set up (its EDID came
+/// late): make, model, serial (`display_identified`).
+pub struct Identity(RefCell<Option<(String, String, String)>>);
 
 /// Minutes since local midnight.
 fn local_minutes() -> u32 {
@@ -1249,6 +1258,31 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
             })
             .collect()
+    }
+
+    /// `output`'s monitor told who it is only after the display was set up
+    /// by its connector (its EDID came late): from now on its settings,
+    /// its place among the displays and its workspace are its monitor's,
+    /// its windows going with it.
+    pub fn display_identified(&mut self, output: &Output, make: String, model: String, serial: String) {
+        let was = self.showing_raw(output);
+        output.user_data().insert_if_missing(|| Identity(RefCell::new(None)));
+        if let Some(Identity(told)) = output.user_data().get::<Identity>() {
+            *told.borrow_mut() = Some((make, model, serial));
+        }
+        let key = display_key(output);
+        info!(output = output.name(), key, "the display told who it is: its settings now");
+        // Its saved workspace, switched to from the one it showed.
+        let saved = self.showing.insert(key, was);
+        self.apply_output_settings(output);
+        let pointer = self.pointer.current_location();
+        fixup_positions(&mut self.space, &self.settings.display, pointer);
+        self.rehome_windows();
+        if let Some(ws) = saved.filter(|ws| *ws != was) {
+            self.switch_workspace_on(output, ws);
+        }
+        self.tell_workspaces();
+        self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
     }
 
     /// Apply the configured scale and rotation to an output.

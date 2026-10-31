@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+"""Do windows come back where they were when app_server restarts in place
+(an upgrade, `olo-session reload`)? Checks every window's display, place
+on it, size, workspace and whether it is hidden, and each display's
+place and workspace, before and after.
+
+  layout-check NAME [--late MS] [--auto]
+
+NAME is a tsession with several screens, started under olo-session, e.g.
+
+  tsession start lay 2560x1600,1920x1080,3456x2160 --session
+  tools/dev/layout-check lay
+
+It arranges the screens in an order unlike the one they're found in
+(the last found first), opens a few windows and puts them on every
+screen and on a second workspace of one (with --auto, auto-tiling on
+the first screen's workspace), reloads app_server and compares. Start
+the session with OLO_HEADLESS_LATE_MS=700 in the environment to have the
+screens found one by one after the windows are back, as a real upgrade
+finds them. Exits 1 on any difference.
+"""
+
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+
+TSESSION = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tsession")
+BASE = "/tmp/olo-dev"
+
+
+def env_of(name):
+    with open(os.path.join(BASE, name, "env.json")) as f:
+        return json.load(f)
+
+
+def ipc(name, request, timeout=5.0):
+    s = socket.socket(socket.AF_UNIX)
+    s.settimeout(timeout)
+    s.connect(env_of(name)["OLO_SOCKET"])
+    s.sendall((json.dumps(request) + "\n").encode())
+    answer = json.loads(s.makefile().readline())
+    s.close()
+    return answer
+
+
+def tsession(*args):
+    env = dict(os.environ)
+    env.pop("WAYLAND_DISPLAY", None)
+    env.pop("OLO_SOCKET", None)
+    return subprocess.run(["/usr/bin/python3", TSESSION, *args], capture_output=True, text=True, env=env).stdout
+
+
+def outputs(name):
+    out = {}
+    for o in ipc(name, {"type": "outputs"})["outputs"]:
+        mode = o.get("current_mode") or {}
+        scale = o.get("scale") or 1.0
+        w, h = mode.get("width", 0), mode.get("height", 0)
+        if o.get("rotation", 0) in (90, 270):
+            w, h = h, w
+        out[o["name"]] = {"key": o.get("key", ""), "pos": tuple(o["position"]), "size": (round(w / scale), round(h / scale))}
+    return out
+
+
+def windows(name):
+    return ipc(name, {"type": "list_windows"})["windows"]
+
+
+def showing(name):
+    w = ipc(name, {"type": "workspaces"})
+    return {d["output"]: d["current"] for d in w.get("displays", [])}
+
+
+def snapshot(name):
+    outs = outputs(name)
+    found = {}
+    listed = windows(name)
+    titles = [(w["app_id"], w["title"]) for w in listed]
+    # (Two windows of one title can't be told apart: left out.)
+    listed = [w for w in listed if titles.count((w["app_id"], w["title"])) == 1]
+    for w in listed:
+        f = w.get("frame")
+        o = w.get("output")
+        origin = outs.get(o, {}).get("pos", (0, 0))
+        key = (w["app_id"], w["title"])
+        found[key] = {
+            "display": outs.get(o, {}).get("key") or o,
+            # (Away on a workspace not showing: no frame to compare.)
+            "at": f and (f["x"] - origin[0], f["y"] - origin[1]),
+            "size": f and (f["width"], f["height"]),
+            "workspace": w["workspace"],
+            "minimized": w["minimized"],
+        }
+    displays = {v["key"] or k: {"pos": v["pos"]} for k, v in outs.items()}
+    return {"windows": found, "displays": displays, "showing": {outs.get(k, {}).get("key") or k: v for k, v in showing(name).items()}}
+
+
+def settle(name, seconds=1.5):
+    time.sleep(seconds)
+
+
+def main():
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if not args:
+        sys.exit(__doc__)
+    name = args[0]
+    auto = "--auto" in sys.argv
+    outs = outputs(name)
+    names = list(outs)
+    if len(names) < 2:
+        sys.exit("layout-check: the session needs two screens or more")
+    # The screens in an order unlike the one they're found in.
+    order = names[-1:] + names[:-1]
+    x = 0
+    for n in order:
+        ipc(name, {"type": "configure_output", "name": n, "config": {"position": [x, 0]}})
+        x += outs[n]["size"][0]
+    settle(name)
+    outs = outputs(name)
+    # Windows: a few on every screen, one on another workspace.
+    # (Each with a title of its own, so each is told from the rest.)
+    home = env_of(name).get("HOME", os.path.expanduser("~"))
+    docs = []
+    for word in ("one", "two", "three", "four"):
+        path = os.path.join(home, f"layout-check-{word}.txt")
+        with open(path, "w") as f:
+            f.write(f"{word}\n")
+        docs.append(path)
+    before = {w["id"] for w in windows(name)}
+    for cmd in [["olo-styled-edit", d] for d in docs] + [["olo-terminal"], ["olo-deskcalc"]]:
+        tsession("run", name, *cmd)
+        settle(name, 2.0)
+    new = [w for w in windows(name) if w["id"] not in before and w.get("frame")]
+    if auto:
+        ipc(name, {"type": "set_auto_tiling", "on": True, "output": order[0], "workspace": 0})
+        settle(name)
+    for i, w in enumerate(new):
+        o = order[i % len(order)]
+        ox, oy = outs[o]["pos"]
+        f = w["frame"]
+        ipc(name, {"type": "place", "id": w["id"], "frame": {"x": ox + 40 + 30 * i, "y": oy + 60 + 20 * i, "width": min(f["width"], 700), "height": min(f["height"], 500)}})
+    settle(name)
+    if len(new) >= 3:
+        ipc(name, {"type": "move_to_workspace", "id": new[2]["id"], "index": 1, "output": order[0]})
+    ipc(name, {"type": "switch_workspace", "index": 1, "output": order[-1]})
+    settle(name, 2.0)
+    was = snapshot(name)
+    tsession("reload", name)
+    # Back, the screens found (late ones too) and the windows settled.
+    time.sleep(12)
+    now = snapshot(name)
+    problems = []
+    for k, v in was["displays"].items():
+        if now["displays"].get(k) != v:
+            problems.append(f"display {k}: was {v}, now {now['displays'].get(k)}")
+    for k, v in was["showing"].items():
+        if now["showing"].get(k) != v:
+            problems.append(f"display {k} showed workspace {v}, now {now['showing'].get(k)}")
+    for k, v in was["windows"].items():
+        n = now["windows"].get(k)
+        if n is None:
+            problems.append(f"{k[0]} “{k[1]}”: gone")
+            continue
+        for field in ("display", "at", "size", "workspace", "minimized"):
+            if field in ("at", "size") and (v[field] is None or n[field] is None):
+                continue
+            if v[field] != n[field]:
+                problems.append(f"{k[0]} “{k[1]}”: {field} was {v[field]}, now {n[field]}")
+    print(f"{len(was['windows'])} windows on {len(was['displays'])} displays")
+    for p in problems:
+        print("  ✗ " + p)
+    if problems:
+        sys.exit(1)
+    print("  ✓ everything back where it was")
+
+
+if __name__ == "__main__":
+    main()

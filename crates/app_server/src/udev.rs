@@ -1205,7 +1205,17 @@ struct BackendData {
     registration_token: RegistrationToken,
     /// Night light by colour matrix, per screen.
     ctm: std::cell::RefCell<HashMap<crtc::Handle, Ctm>>,
+    /// Connectors with a monitor not yet telling who it is, since when
+    /// (`connector_connected` waits for its EDID).
+    identifying: HashMap<connector::Handle, Instant>,
+    /// Displays set up by their connector after that wait, still looked
+    /// at for their EDID (`look_for_edid`): connector, its screen, since.
+    unidentified: Vec<(connector::Handle, crtc::Handle, String, Instant)>,
 }
+
+/// How long a display is waited for to tell who it is (its EDID) before
+/// it is set up by its connector alone.
+const IDENTIFY_WAIT: Duration = Duration::from_secs(3);
 
 #[derive(Debug, thiserror::Error)]
 enum DeviceAddError {
@@ -1422,12 +1432,60 @@ impl AnvilState<UdevData> {
                     .ok(),
                 active_leases: Vec::new(),
                 ctm: Default::default(),
+                identifying: HashMap::new(),
+                unidentified: Vec::new(),
             },
         );
 
         self.device_changed(node);
 
         Ok(())
+    }
+
+    /// Displays set up without knowing who they are: any whose EDID has
+    /// come is now known by it (`display_identified`). Whether any are
+    /// still to be looked at (for a minute at most).
+    fn look_for_edid(&mut self, node: DrmNode) -> bool {
+        let Some(device) = self.backend_data.backends.get_mut(&node) else { return false };
+        device.unidentified.retain(|(_, crtc, _, since)| device.surfaces.contains_key(crtc) && since.elapsed() < Duration::from_secs(60));
+        let mut told = Vec::new();
+        device.unidentified.retain(|(handle, crtc, name, _)| {
+            let info = display_info::for_connector(device.drm_output_manager.device(), *handle);
+            let found = info
+                .as_ref()
+                .and_then(|i| Some((i.make()?, i.model()?, i.serial()?)))
+                .or_else(|| olo_system::edid::for_connector(name).map(|e| (e.maker, e.model.unwrap_or_default(), e.serial.unwrap_or_default())));
+            match found {
+                Some(who) => {
+                    told.push((*crtc, who));
+                    false
+                }
+                None => true,
+            }
+        });
+        let more = !device.unidentified.is_empty();
+        for (crtc, (make, model, serial)) in told {
+            let output = self.backend_data.backends.get(&node).and_then(|d| d.surfaces.get(&crtc)).map(|s| s.output.clone());
+            if let Some(output) = output {
+                self.display_identified(&output, make, model, serial);
+            }
+        }
+        more
+    }
+
+    /// A display still to tell who it is (`IDENTIFY_WAIT`): looked at
+    /// again, if it is still plugged in.
+    fn identify_again(&mut self, node: DrmNode, handle: connector::Handle, crtc: crtc::Handle) {
+        let Some(device) = self.backend_data.backends.get_mut(&node) else { return };
+        if !device.identifying.contains_key(&handle) {
+            return;
+        }
+        match device.drm_output_manager.device().get_connector(handle, false) {
+            Ok(info) if info.state() == connector::State::Connected => self.connector_connected(node, info, crtc),
+            _ => {
+                device.identifying.remove(&handle);
+            }
+        }
     }
 
     fn connector_connected(&mut self, node: DrmNode, connector: connector::Info, crtc: crtc::Handle) {
@@ -1466,6 +1524,36 @@ impl AnvilState<UdevData> {
         // The kernel's copy of the EDID when the DRM route gives nothing
         // (Apple Silicon's DCP).
         let edid = olo_system::edid::for_connector(&output_name);
+
+        // A monitor not telling yet who it is (Apple's DCP has its EDID a
+        // second after a new app_server takes the displays over, as on an
+        // upgrade): waited for, rather than set up by its connector, whose
+        // saved place, scale, workspaces and tiles are another display's
+        // or none. Windows coming back wait for it meanwhile. (A built-in
+        // panel may have none to give.)
+        let internal = matches!(
+            connector.interface(),
+            connector::Interface::EmbeddedDisplayPort | connector::Interface::LVDS | connector::Interface::DSI
+        );
+        if display_info.is_none() && edid.is_none() && !internal {
+            let since = *device.identifying.entry(connector.handle()).or_insert_with(Instant::now);
+            if since.elapsed() < IDENTIFY_WAIT {
+                let handle = connector.handle();
+                let _ = self.handle.insert_source(Timer::from_duration(Duration::from_millis(100)), move |_, _, data| {
+                    data.identify_again(node, handle, crtc);
+                    TimeoutAction::Drop
+                });
+                return;
+            }
+            warn!(connector = output_name, "no EDID after {IDENTIFY_WAIT:?}: set up by its connector, looking for it still");
+            device.unidentified.push((connector.handle(), crtc, output_name.clone(), Instant::now()));
+            let _ = self.handle.insert_source(Timer::from_duration(Duration::from_millis(500)), move |_, _, data| {
+                if data.look_for_edid(node) { TimeoutAction::ToDuration(Duration::from_millis(500)) } else { TimeoutAction::Drop }
+            });
+        }
+        if device.identifying.remove(&connector.handle()).is_some() {
+            info!(connector = output_name, "the display told who it is");
+        }
 
         let make = display_info
             .as_ref()

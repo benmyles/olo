@@ -251,16 +251,21 @@ pub fn run_headless(size_arg: Option<&str>) {
     // test of what a real one sees: windows reconnecting before DRM has
     // found the displays).
     let late = std::env::var("OLO_HEADLESS_LATE_MS").ok().and_then(|v| v.parse::<u64>().ok()).filter(|&ms| ms > 0).map(Duration::from_millis);
+    // The displays don't say who they are until this long after they're
+    // found (a test of a monitor whose EDID comes late, as Apple's DCP
+    // gives it after an upgrade: `display_identified`).
+    let anonymous = std::env::var("OLO_HEADLESS_ANONYMOUS_MS").ok().and_then(|v| v.parse::<u64>().ok()).filter(|&ms| ms > 0).map(Duration::from_millis);
     let mut screens = Vec::new();
     for (i, &size) in sizes.iter().enumerate() {
         let modes = modes_for(size);
+        let (make, model) = if anonymous.is_some() { ("Unknown", "Unknown") } else { ("Olo", "Headless") };
         let output = Output::new(
             format!("HEADLESS-{}", i + 1),
             PhysicalProperties {
                 size: (0, 0).into(),
                 subpixel: Subpixel::Unknown,
-                make: "Olo".into(),
-                model: "Headless".into(),
+                make: make.into(),
+                model: model.into(),
                 serial_number: i.to_string(),
             },
         );
@@ -464,6 +469,13 @@ fn twitcher_overlay(
 /// Put `output` in the layout, as a DRM display is once found: its
 /// resolution chosen in Preferences, its settings, its place.
 fn add_output(state: &mut AnvilState<HeadlessData>, output: &Output) {
+    if let Some(after) = std::env::var("OLO_HEADLESS_ANONYMOUS_MS").ok().and_then(|v| v.parse::<u64>().ok()).filter(|&ms| ms > 0) {
+        let (output, serial) = (output.clone(), output.physical_properties().serial_number);
+        let _ = state.handle.insert_source(Timer::from_duration(Duration::from_millis(after)), move |_, _, state| {
+            state.display_identified(&output, "Olo".into(), "Headless".into(), serial.clone());
+            TimeoutAction::Drop
+        });
+    }
     let saved = state.settings.display.config(&crate::desktop::display_key(output), &output.name()).and_then(|c| c.mode.clone());
     if let Some(m) = saved {
         let mode = Mode { size: (m.width, m.height).into(), refresh: m.refresh };

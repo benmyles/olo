@@ -96,6 +96,10 @@ pub struct Placement {
     /// is it fitted to them again.
     #[serde(default)]
     pub screen: Option<(String, [i32; 4])>,
+    /// That display's key (`display_key`: its monitor, so it is found
+    /// on another connector too), if it was known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub screen_key: Option<String>,
     /// Floated over auto-tiled windows (true) or tiled (false) by hand.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub floating: Option<bool>,
@@ -222,6 +226,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let (tile, part) = Self::tile_state(w);
         // (Before the decoration is borrowed below: the geometry borrows it.)
         let screen = self.screen_of(w);
+        let screen_key = self.display_of(w).map(|o| crate::desktop::display_key(&o));
         Some(Placement {
             tile,
             part,
@@ -245,11 +250,33 @@ impl<B: Backend + 'static> AnvilState<B> {
             pid: meta.owner.borrow().as_ref().map_or(0, |(pid, _)| *pid),
             client: meta.owner.borrow().as_ref().map(|(_, c)| c.clone()),
             screen,
+            screen_key,
             floating: Self::float_override(w),
             slot: 0,
             stacking: None,
             id: w.id(),
         })
+    }
+
+    /// The display `p` was saved on, if it is here: by its monitor (it may
+    /// be on another connector now), else by its connector.
+    fn saved_display(&self, p: &Placement) -> Option<smithay::output::Output> {
+        let (name, _) = p.screen.as_ref()?;
+        let by_key = p.screen_key.as_ref().filter(|k| *k != name).and_then(|k| self.space.outputs().find(|o| crate::desktop::display_key(o) == *k));
+        by_key.or_else(|| self.space.outputs().find(|o| o.name() == *name)).cloned()
+    }
+
+    /// Where `p` goes: the same place on the display it was saved on,
+    /// wherever that display is now (the displays may be arranged
+    /// otherwise for now: found one by one after a restart, each shifting
+    /// the rest; or set up in another order). Else where it was saved.
+    fn saved_location(&self, p: &Placement) -> Point<i32, smithay::utils::Logical> {
+        let on = |o: smithay::output::Output| {
+            let (_, [x, y, _, _]) = p.screen.as_ref()?;
+            let g = self.space.output_geometry(&o)?;
+            Some(Point::from((g.loc.x + p.x - x, g.loc.y + p.y - y)))
+        };
+        self.saved_display(p).and_then(on).unwrap_or_else(|| Point::from((p.x, p.y)))
     }
 
     /// The display `w` is on (away, the one it left), its name and place.
@@ -459,7 +486,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         // kept, rather than be fitted onto another (`displays_changed`).
         if let Some((name, _)) = &p.screen
             && self.display_wait_until.is_some_and(|t| std::time::Instant::now() < t)
-            && !self.space.outputs().any(|o| o.name() == *name)
+            && self.saved_display(&p).is_none()
         {
             info!(window = window.id(), app_id = window.app_id(), display = %name, "back before its display: waiting for it");
             meta.placed.set(false);
@@ -470,8 +497,9 @@ impl<B: Backend + 'static> AnvilState<B> {
             }
             return false;
         }
-        self.space.map_element(window.clone(), Point::from((p.x, p.y)), p.focused);
-        info!(window = window.id(), app_id = window.app_id(), slot = p.slot, x = p.x, y = p.y, "put back where it was");
+        let at = self.saved_location(&p);
+        self.space.map_element(window.clone(), at, p.focused);
+        info!(window = window.id(), app_id = window.app_id(), slot = p.slot, x = at.x, y = at.y, display = ?p.screen_key.as_ref().or(p.screen.as_ref().map(|s| &s.0)), "put back where it was");
         self.restored.push((window.clone(), p.clone()));
         meta.put_back.set(true);
         meta.slot.set(p.slot);
@@ -501,7 +529,12 @@ impl<B: Backend + 'static> AnvilState<B> {
         // window of its own size back on the display it was on, as it was,
         // is exactly as it was (one bigger than the room beside Deskbar,
         // which may not be back yet, isn't squeezed into it).
-        if !self.own_size(&window) || p.screen.is_none() || p.screen != self.screen_of(&window) {
+        // (Its display by who it is and its size: where the displays are
+        // arranged doesn't matter, it went back to the same place on it.)
+        let size = |s: &(String, [i32; 4])| (s.1[2], s.1[3]);
+        let same_size = p.screen.as_ref().map(size) == self.screen_of(&window).as_ref().map(size);
+        let its_display = self.saved_display(&p).is_some_and(|o| self.display_of(&window).as_ref() == Some(&o));
+        if !self.own_size(&window) || !same_size || !its_display {
             self.refit(&window);
         }
         meta.restored_focus.set(p.focused.then(std::time::Instant::now));
@@ -711,7 +744,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 continue;
             }
             let wanted = window.meta().returning.borrow().as_ref().and_then(|p| p.screen.as_ref().map(|(n, _)| n.clone()));
-            let here = wanted.as_ref().is_none_or(|n| self.space.outputs().any(|o| o.name() == *n));
+            let here = window.meta().returning.borrow().as_ref().is_none_or(|p| p.screen.is_none() || self.saved_display(p).is_some());
             if !here && !over {
                 self.waiting_for_display.push(window);
                 continue;
@@ -721,8 +754,9 @@ impl<B: Backend + 'static> AnvilState<B> {
             }
             let Some(surface) = window.wl_surface().map(|s| s.into_owned()) else { continue };
             // (Mapped where it was for now; restoring it puts it exactly.)
-            if let Some(p) = window.meta().returning.borrow().as_ref() {
-                self.space.map_element(window.clone(), Point::from((p.x, p.y)), false);
+            let at = window.meta().returning.borrow().as_ref().map(|p| self.saved_location(p));
+            if let Some(at) = at {
+                self.space.map_element(window.clone(), at, false);
             }
             self.restore_placement(&surface);
         }

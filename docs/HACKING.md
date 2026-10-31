@@ -1991,6 +1991,29 @@ moved since on purpose: by hand, a shortcut or an agent,
 ("came back from the restart other than it was"), with a summary
 ("windows back after the restart, checked against what was saved").
 
+A window goes back to the same place on the display it was saved on
+(`Placement::screen_key`, the monitor, else `screen`'s connector),
+wherever that display is now (`saved_location`): the displays found one
+by one are arranged anew as each comes, and a window put back by its
+desktop coordinates meanwhile landed on another display. And a display
+is known by its monitor before anything is done with it: one that can't
+say yet (no EDID: Apple's DCP has it about a second after a new
+app_server takes the displays over, as on an upgrade, so all of them
+came up "Unknown", their saved places, scales and workspaces weren't
+found, and the windows scattered) isn't set up until it can, for up to
+`udev::IDENTIFY_WAIT` (3 s; returning windows wait for it). One set up
+without (the wait over) is looked at for its EDID for a minute, and
+when it comes, `display_identified` makes its settings, place and
+workspace its monitor's, its windows going with it.
+`tools/dev/layout-check NAME [--auto]` checks this quickly: it arranges
+a session's screens in an order unlike the one they're found in, puts
+windows on each and on another workspace (auto-tiled with `--auto`),
+reloads app_server and compares every window's display, place, size,
+workspace, and each display's place and workspace. Run it with
+`OLO_HEADLESS_LATE_MS=700` and with `OLO_HEADLESS_ANONYMOUS_MS=1500`
+(the screens say who they are only that long after they're found) in
+the environment the session starts with.
+
 `tools/dev/perf-fuzz NAME [--seed N] [--steps N] [--keep-going]` is its
 counterpart for speed: on the same kind of session it hammers the
 desktop with random bursts (dragging and resizing windows, Cmd+Tab and
