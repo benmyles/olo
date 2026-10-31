@@ -212,6 +212,44 @@ as they land (with the commit), add new ones as they come up.
 - ~~Kit opener instead of `xdg-open`~~: `olo_xdg::open` (shared-mime-info
   globs + sniffing, our apps first, mimeapps.list, Exec field codes).
 
+## The kit
+
+- **From egui to Olo's own GPUI** (Ben, 2026-10-31): "i think we need to
+  rethink the decision to use egui -- it is not performant enough. …
+  shift gears to do a full refactor to rip out egui and replace with
+  gpui. vendor the gpui code into our repo -- we will own and change it
+  as needed so that it becomes the olo gpui and we won't worry about
+  keeping it up to date with upstream gpui we will just treat it as the
+  starting point for us. we need to keep all the styling, behavior,
+  features etc. that we've already built in olo (although where gpui can
+  make it look and work even better we should do that we don't want to
+  try to replicate stuff egui isn't doing right) and we need to make sure
+  everything is super performant, minimum 120fps always, memory and cpu
+  efficient (using gpu for as much as possible)." In stages, each
+  leaving every app working:
+  1. Vendor GPUI 0.2.2 (Apache-2.0) into `gpui/` as Olo's own: Wayland
+     only (its X11 code and dependencies gone), no fetching images by URL
+     (`http_client`), its `util` cut to what it uses (no git2), no
+     serde_json `preserve_order` for the whole workspace; building in the
+     workspace. *Done* (gpui/README.md).
+  2. A GPUI window on Olo (blade on Vulkan, Honeykrisp): measured against
+     egui drawing the same thing (frame time, CPU, memory, wakeups).
+     *Frames done*: upstream drew and committed 60 times a second while
+     idle (62 wakeups/s); Olo's draws only when something changed (idle:
+     0%, 2 wakeups/s; an animation at the display's rate, 3.6%). Still
+     to do: memory (153 MB RSS for hello_world against egui DeskCalc's
+     80 MB) and threads (20 against 10).
+  3. The kit on GPUI: the platform (layer shell for Deskbar, popups for
+     menus and tips, fractional scale, viewport, text input, the
+     accessibility tree and the commands socket agents use, frame
+     timings, the layout review), the style (palette, metrics, fonts,
+     pixel snapping at every scale), then the widgets, documented in
+     HACKING.
+  4. The apps one by one, small first (DeskCalc, Screenshot, the lock
+     screen, Preferences' panels) to the largest (Terminal, StyledEdit,
+     Tracker), each checked at every scale and theme and benchmarked;
+     egui leaves the workspace with the last.
+
 ## Apps
 
 - **StyledEdit: icon toolbars, as Gobe Productive's** (Ben, 2026-10-31,
