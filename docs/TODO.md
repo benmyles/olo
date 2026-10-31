@@ -294,6 +294,31 @@ as they land (with the commit), add new ones as they come up.
   running as it moves (its connection handed between the two
   app_servers, or the app reopened there with its saved state).
 
+- **Terminal: light mode hard to read** (Ben, 2026-10-31): "in light
+  mode my terminal is really hard to read i'm not sure why or what's
+  conflicting but can you figure out a way so that the terminal gets
+  properly themed with colors that look beautiful and have high
+  readability. make sure you test it with various terminal clis, tuis,
+  claude code, and codex for every supported terminal theme light and
+  dark and all terminal themes that come as part of the olo themes both
+  the light and dark variants. every single one must look polished with
+  excellent legibility and aesthetics." Seen in his screenshot (light):
+  Codex's composer a mid-grey band with its placeholder and footer
+  nearly invisible, its paths and dim text pale blue/grey on white, its
+  added lines on a dark grey-green; Claude Code's diff on near-black
+  green, its dim text and tips too faint. Likely causes to check: how
+  programs learn the background (OSC 10/11/4 answers, `COLORFGBG`,
+  `TERM`/`COLORTERM`), Codex and Claude Code picking dark styles
+  (Claude Code's own theme setting), 256-colour greys and the bright
+  colours chosen for dark backgrounds, faint (SGR 2) mixed too far
+  towards the background, truecolor backgrounds a program blends from
+  what it thinks the background is. So: answer the colour queries
+  truly, a minimum contrast for text against its cell (as iTerm's and
+  Ghostty's "minimum contrast"), faint kept legible, and each look's
+  palettes tuned. Checked with ls, git diff/log, htop/btop, vim/nvim,
+  less/man, tmux, fzf, lazygit, Claude Code and Codex in every terminal
+  theme of every Olo look, light and dark, at 1× and 2×, as shots in
+  the journal.
 - **olo-terminal uses far too much CPU** (Ben, 2026-10-31): "same with
   olo-terminal: look at 4356 it is using wayu more cpu than it should".
   Measured (read-only, /proc and its `{"frames":true}`): 14% of a core on
