@@ -1096,7 +1096,14 @@ The app's text and styles are an `editor::Document`: `text()`,
 `sections(range, job)` (one paragraph's styles as `LayoutJob` sections)
 and `replace(range, text, selection)`, through which every edit goes
 (typing, pasting, a drop), so undo and styles follow; `copied` and
-`move_text` are optional. Each frame, `editor.show(ui, rect, &mut doc,
+`move_text` are optional, and so is `paragraph(range)`: how that
+paragraph is set (`editor::Paragraph`: `left`, `first` and `right`
+indents, space `above` and `below`, its own `align` and `justify`, and a
+list's `marker`, drawn before its first row in the room `left` leaves,
+in the paragraph's first style). Each paragraph's galley wraps within
+its indents and sits by them (`Editor::shift`, `origin`); its height
+counts its spacing, and ↑/↓ keep to an x from the text's edge, so rows
+line up across paragraphs indented differently. Each frame, `editor.show(ui, rect, &mut doc,
 &Options { editable, wrap, align, justify, margin, background })` gives
 `Output { response, changed }`. What the app changes itself it reports:
 `reset(text)` for new text (loaded), `changed(old, new)` or
@@ -3683,8 +3690,28 @@ brings its styles back. Undo is our own (snapshots, typing and deleting
 coalesced within 2 s); ⌘Z/⌘⇧Z/⌘Y are consumed before the editor sees
 them, and what they change goes to the editor with `replaced`. Replace
 All splices each match so the styles between them survive. A read-only
-document's Font and Document menus are disabled (`Menu::all_enabled`):
-its styles are saved with it.
+document's Font, Paragraph and Document menus are disabled
+(`Menu::all_enabled`): its styles are saved with it.
+
+Paragraphs (`doc::Para`, one per paragraph, kept with `para_starts` by
+`Doc::splice`): a kind (`Kind`: Body, Title, Heading 1–3, Quote, Code;
+choosing one restyles its text, `Kind::apply`, and gives it its space
+above and below), a list (bulleted, numbered: `Doc::number` counts its
+place among those at its level, deeper ones under it not breaking the
+count), an indent level and its own alignment (the Paragraph menu's
+Align items set the selected paragraphs'; the document's alignment,
+`user.olo.alignment`, is only the default now). Removing text across
+paragraphs leaves the first's setting; each newline put in starts a
+paragraph set like the one it split, and Return at a heading's end
+starts body text. In a list, Return in an empty item steps out a level
+(ending the list at the outermost), Tab and ⇧Tab indent it more or less,
+Backspace at its start takes its marker away (`DocWin::list_keys`, before
+the editor sees the keys). `Doc::format` turns a paragraph into the
+editor's `Paragraph` (24 points an indent level, and for a list's
+marker, so list text lines up with a quotation's). They are saved in
+`user.olo.paragraphs` (JSON, dropped if the count no longer fits the
+text), undone with the text, and kept through a reload. The status line
+counts words (in the selection too), for documents up to a megabyte.
 
 `fonts.rs` owns a font database on a worker thread: it lists families for
 the Font menu (in submenus titled like a dictionary's guide words) and

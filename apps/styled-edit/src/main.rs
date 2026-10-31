@@ -79,7 +79,13 @@ struct DocWin {
     /// The file as last loaded or saved here (when it was written, how
     /// long), to tell another program's change from our own save.
     on_disk: Option<(std::time::SystemTime, u64)>,
+    /// Words counted for the status line, and for which text and
+    /// selection.
+    words: Option<((u64, Range<usize>), Words)>,
 }
+
+/// Words in the selection (if any) and in the whole document.
+type Words = (Option<usize>, usize);
 
 /// The document as the editor sees it: its text, styles in the fonts
 /// they use, and edits that keep both (and undo) in step.
@@ -97,6 +103,9 @@ impl editor::Document for Styled<'_> {
     fn sections(&mut self, range: Range<usize>, job: &mut LayoutJob) {
         let (fonts, ctx) = (&mut *self.fonts, self.ctx);
         self.doc.sections(range, self.base, &mut |s| fonts.family(ctx, s), job);
+    }
+    fn paragraph(&mut self, range: Range<usize>) -> editor::Paragraph {
+        self.doc.format(self.doc.para_index(range.start), self.doc.align)
     }
     fn replace(&mut self, range: Range<usize>, text: &str, selection: Range<usize>) {
         self.doc.edit(range, text, selection);
@@ -123,7 +132,65 @@ impl DocWin {
             read_only: false,
             restore: None,
             on_disk: None,
+            words: None,
         }
+    }
+
+    /// The words in the selection (if any) and in all of it, counted again
+    /// when either changes; None for a document too long to count on the
+    /// way (a millisecond's worth).
+    fn word_count(&mut self) -> Option<Words> {
+        const MOST: usize = 1 << 20;
+        if self.doc.text().len() > MOST {
+            return None;
+        }
+        let sel = self.bytes();
+        let key = (self.doc.generation, sel.clone());
+        if let Some((k, w)) = &self.words
+            && *k == key
+        {
+            return Some(*w);
+        }
+        let count = |t: &str| t.split_whitespace().count();
+        let text = self.doc.text();
+        let w = ((!sel.is_empty()).then(|| count(&text[sel.clone()])), count(text));
+        self.words = Some((key, w));
+        Some(w)
+    }
+
+    /// Keys a list item takes before the editor: Return in an empty one
+    /// ends the list (or steps out a level), Tab and ⇧Tab indent it more
+    /// or less, Backspace at its start takes its marker away. Whether one
+    /// was taken.
+    fn list_keys(&mut self, ui: &Ui) -> bool {
+        let sel = self.bytes();
+        let i = self.doc.para_index(sel.start);
+        let para = self.doc.paras()[i].clone();
+        if para.list == doc::List::None {
+            return false;
+        }
+        let range = self.doc.para_range(i);
+        let empty = sel.is_empty() && range.is_empty();
+        let at_start = sel.is_empty() && sel.start == range.start;
+        let (enter, tab, back_tab, backspace) = ui.input_mut(|k| {
+            (
+                empty && k.consume_key(egui::Modifiers::NONE, Key::Enter),
+                k.consume_key(egui::Modifiers::NONE, Key::Tab),
+                k.consume_key(egui::Modifiers::SHIFT, Key::Tab),
+                at_start && !empty && k.consume_key(egui::Modifiers::NONE, Key::Backspace),
+            )
+        });
+        if enter {
+            let out = para.level == 0;
+            self.doc.set_paras(sel.clone(), sel, |p| if out { p.list = doc::List::None } else { p.level -= 1 });
+        } else if tab {
+            self.doc.set_paras(sel.clone(), sel, |p| p.level = (p.level + 1).min(doc::MAX_LEVEL));
+        } else if back_tab {
+            self.doc.set_paras(sel.clone(), sel, |p| p.level = p.level.saturating_sub(1));
+        } else if backspace {
+            self.doc.set_paras(sel.clone(), sel, |p| p.list = doc::List::None);
+        }
+        enter || tab || back_tab || backspace
     }
 
     fn title(&self) -> String {
@@ -208,6 +275,9 @@ struct SavedDoc {
     untitled: usize,
     /// Unsaved text and styles; None when the file holds it all.
     edited: Option<(String, Vec<Run>)>,
+    /// The unsaved text's paragraphs.
+    #[serde(default)]
+    paras: Vec<doc::Para>,
     align: Align,
     wrap: bool,
     selection: (usize, usize),
@@ -332,10 +402,11 @@ impl StyledEdit {
         };
         d.saving = true;
         d.after_save = after;
-        let (text, runs, align, wrap, generation) = (d.doc.text().to_owned(), d.doc.runs().to_vec(), d.doc.align, d.doc.wrap, d.doc.generation);
+        let (text, runs, paras, align, wrap, generation) =
+            (d.doc.text().to_owned(), d.doc.runs().to_vec(), d.doc.paras().to_vec(), d.doc.align, d.doc.wrap, d.doc.generation);
         let proxy = cx.proxy();
         std::thread::spawn(move || {
-            let r = doc::save(&path, &text, &runs, align, wrap);
+            let r = doc::save(&path, &text, &runs, &paras, align, wrap);
             proxy.send(Msg::Saved(win, generation, path, r));
         });
     }
@@ -507,8 +578,26 @@ impl StyledEdit {
                 font = font.submenu(group);
             }
         }
-        let align = d.doc.align;
-        let document = Menu::new("Document")
+        // The paragraph the selection starts in.
+        let para = d.doc.paras()[d.doc.para_index(d.bytes().start)].clone();
+        let align = para.align.unwrap_or(d.doc.align);
+        let mut kinds = Menu::new("Style");
+        for (k, label, id) in doc::Kind::ALL {
+            kinds = kinds.item(label, format!("kind:{id}"), None).checked(para.kind == k);
+        }
+        let paragraph = Menu::new("Paragraph")
+            .submenu(kinds)
+            .separator()
+            .item("Bulleted List", "list-bullet", None)
+            .checked(para.list == doc::List::Bullet)
+            .item("Numbered List", "list-number", None)
+            .checked(para.list == doc::List::Number)
+            .separator()
+            .item("Indent More", "indent-more", None)
+            .enabled(para.level < doc::MAX_LEVEL)
+            .item("Indent Less", "indent-less", None)
+            .enabled(para.level > 0)
+            .separator()
             .item("Align Left", "align-left", None)
             .checked(align == Align::Left)
             .item("Align Center", "align-center", None)
@@ -516,13 +605,11 @@ impl StyledEdit {
             .item("Align Right", "align-right", None)
             .checked(align == Align::Right)
             .item("Justify", "align-justify", None)
-            .checked(align == Align::Justify)
-            .separator()
-            .item("Wrap Lines", "wrap", None)
-            .checked(d.doc.wrap);
+            .checked(align == Align::Justify);
+        let document = Menu::new("Document").item("Wrap Lines", "wrap", None).checked(d.doc.wrap);
         // Styles and layout are saved with the file, so a read-only one
         // keeps its own (as Haiku's StyledEdit has it).
-        vec![file, edit, font.all_enabled(editable), document.all_enabled(editable)]
+        vec![file, edit, font.all_enabled(editable), paragraph.all_enabled(editable), document.all_enabled(editable)]
     }
 
     fn doc_command(&mut self, cx: &mut Cx, win: WindowId, command: &str) {
@@ -619,11 +706,32 @@ impl StyledEdit {
                 let on = !d.doc.style_at(bytes.start).strikeout;
                 restyle(d, &|s| s.strikeout = on);
             }
-            "align-left" => d.doc.align = Align::Left,
-            "align-center" => d.doc.align = Align::Center,
-            "align-right" => d.doc.align = Align::Right,
-            "align-justify" => d.doc.align = Align::Justify,
+            "align-left" | "align-center" | "align-right" | "align-justify" => {
+                let a = match command {
+                    "align-center" => Align::Center,
+                    "align-right" => Align::Right,
+                    "align-justify" => Align::Justify,
+                    _ => Align::Left,
+                };
+                let base = d.doc.align;
+                d.doc.set_paras(bytes, selection, |p| p.align = (a != base).then_some(a));
+            }
+            "list-bullet" | "list-number" => {
+                let list = if command == "list-bullet" { doc::List::Bullet } else { doc::List::Number };
+                // On if the first paragraph isn't in this kind of list yet.
+                let on = d.doc.paras()[d.doc.para_index(bytes.start)].list != list;
+                d.doc.set_paras(bytes, selection, |p| p.list = if on { list } else { doc::List::None });
+            }
+            "indent-more" => d.doc.set_paras(bytes, selection, |p| p.level = (p.level + 1).min(doc::MAX_LEVEL)),
+            "indent-less" => d.doc.set_paras(bytes, selection, |p| p.level = p.level.saturating_sub(1)),
             "wrap" => d.doc.wrap = !d.doc.wrap,
+            c if c.starts_with("kind:") => {
+                let Some((kind, ..)) = doc::Kind::ALL.into_iter().find(|(_, _, id)| Some(*id) == c.strip_prefix("kind:")) else { return };
+                let r = d.doc.paras_in(bytes.clone());
+                let whole = d.doc.para_range(r.start).start..d.doc.para_range(r.end - 1).end;
+                d.doc.set_kind(bytes, selection, kind);
+                d.editor.restyled(whole);
+            }
             c => {
                 if let Some(size) = c.strip_prefix("size:").and_then(|s| s.parse::<f32>().ok()) {
                     restyle(d, &|s| s.size = size);
@@ -638,7 +746,7 @@ impl StyledEdit {
                 }
             }
         }
-        if command.starts_with("align-") || command == "wrap" {
+        if command == "wrap" {
             // Layout changes are edits too (they're saved with the file).
             d.doc.generation += 1;
         }
@@ -670,6 +778,9 @@ impl StyledEdit {
         }
         if !ui.memory(|mem| mem.focused().is_some()) {
             ui.memory_mut(|mem| mem.request_focus(d.editor.id()));
+        }
+        if editable && ui.memory(|mem| mem.has_focus(d.editor.id())) && d.list_keys(ui) {
+            ui.ctx().request_repaint();
         }
         let options = editor::Options {
             editable,
@@ -706,6 +817,14 @@ impl StyledEdit {
         style::hline(painter, status.left(), status.right(), status.top(), style::shade(&p, p.panel_background, 1.3));
         let (line, col) = d.editor.line_col(d.doc.text(), d.editor.caret());
         let mut info = format!("Line {line}, Column {col}");
+        if let Some(words) = d.word_count() {
+            let n = |k: usize| if k == 1 { "1 word".to_owned() } else { format!("{k} words") };
+            info.push_str("   ");
+            info.push_str(&match words {
+                (Some(sel), all) => format!("{sel} of {}", n(all)),
+                (None, all) => n(all),
+            });
+        }
         if d.loading {
             info = "Loading…".into();
         }
@@ -973,7 +1092,7 @@ impl App for StyledEdit {
                 d.loading = false;
                 match result {
                     Ok(l) => {
-                        let mut doc = Doc::new(l.text, l.runs);
+                        let mut doc = Doc::with_paras(l.text, l.runs, l.paras);
                         doc.align = l.align;
                         doc.wrap = l.wrap;
                         let (select, view) = d.restore.take().unwrap_or_default();
@@ -1054,6 +1173,7 @@ impl App for StyledEdit {
                     path: d.path.clone(),
                     untitled: d.untitled,
                     edited: (d.doc.edited() || d.path.is_none()).then(|| (d.doc.text().to_owned(), d.doc.runs().to_vec())),
+                    paras: if d.doc.edited() || d.path.is_none() { d.doc.paras().to_vec() } else { Vec::new() },
                     align: d.doc.align,
                     wrap: d.doc.wrap,
                     selection: (d.bytes().start, d.bytes().end),
@@ -1073,7 +1193,7 @@ impl StyledEdit {
             let mut d = DocWin::new(s.path.clone(), s.untitled);
             match s.edited {
                 Some((text, runs)) => {
-                    let mut doc = Doc::new(text, Some(runs));
+                    let mut doc = Doc::with_paras(text, Some(runs), Some(s.paras).filter(|p| !p.is_empty()));
                     doc.align = s.align;
                     doc.wrap = s.wrap;
                     // Unsaved work stays unsaved (an empty new one is clean).

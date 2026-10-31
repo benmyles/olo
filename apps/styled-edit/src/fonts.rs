@@ -79,6 +79,10 @@ impl Fonts {
     /// The family to draw `s` with in this frame: its own face once
     /// loaded (asking for it the first time), the UI font until then.
     pub fn family(&mut self, ctx: &Context, s: &Style) -> FontFamily {
+        // Code paragraphs: the kit's monospaced font.
+        if s.family == crate::doc::MONOSPACE {
+            return FontFamily::Monospace;
+        }
         // The system font's regular, bold and italic are the kit's own.
         if s.family.is_empty() && !(s.bold && s.italic) {
             return match (s.bold, s.italic) {

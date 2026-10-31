@@ -63,6 +63,98 @@ pub enum Align {
     Justify,
 }
 
+/// What a paragraph is: body text, a title or heading, a quotation or
+/// code. Each has its size and spacing (`Kind::style`), and is what it
+/// says in Markdown or HTML.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum Kind {
+    #[default]
+    Body,
+    Title,
+    Heading1,
+    Heading2,
+    Heading3,
+    Quote,
+    Code,
+}
+
+impl Kind {
+    pub const ALL: [(Kind, &'static str, &'static str); 7] = [
+        (Kind::Body, "Body", "body"),
+        (Kind::Title, "Title", "title"),
+        (Kind::Heading1, "Heading 1", "heading-1"),
+        (Kind::Heading2, "Heading 2", "heading-2"),
+        (Kind::Heading3, "Heading 3", "heading-3"),
+        (Kind::Quote, "Quote", "quote"),
+        (Kind::Code, "Code", "code"),
+    ];
+
+    /// What choosing it does to the text's style.
+    pub fn apply(self, s: &mut Style) {
+        let (size, bold, italic) = match self {
+            Kind::Body => (DEFAULT_SIZE, false, false),
+            Kind::Title => (28.0, true, false),
+            Kind::Heading1 => (22.0, true, false),
+            Kind::Heading2 => (18.0, true, false),
+            Kind::Heading3 => (14.0, true, false),
+            Kind::Quote => (DEFAULT_SIZE, false, true),
+            Kind::Code => (DEFAULT_SIZE, false, false),
+        };
+        s.size = size;
+        s.bold = bold;
+        s.italic = italic;
+        s.family = if self == Kind::Code { MONOSPACE.into() } else if s.family == MONOSPACE { String::new() } else { std::mem::take(&mut s.family) };
+    }
+
+    /// Space above and below it, in points.
+    pub fn spacing(self) -> (f32, f32) {
+        match self {
+            Kind::Body | Kind::Code => (0.0, 0.0),
+            Kind::Title => (6.0, 10.0),
+            Kind::Heading1 => (14.0, 6.0),
+            Kind::Heading2 => (12.0, 4.0),
+            Kind::Heading3 => (10.0, 2.0),
+            Kind::Quote => (4.0, 4.0),
+        }
+    }
+
+    /// A heading or title is followed by body text (Return at its end).
+    fn next(self) -> Kind {
+        match self {
+            Kind::Title | Kind::Heading1 | Kind::Heading2 | Kind::Heading3 => Kind::Body,
+            k => k,
+        }
+    }
+}
+
+/// The family Code paragraphs are set in.
+pub const MONOSPACE: &str = "monospace";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum List {
+    #[default]
+    None,
+    Bullet,
+    Number,
+}
+
+/// How a paragraph is set: its kind, a list it is in, how far it is
+/// indented and its own alignment (else the document's).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct Para {
+    pub kind: Kind,
+    pub list: List,
+    pub level: u8,
+    pub align: Option<Align>,
+}
+
+/// The deepest indent.
+pub const MAX_LEVEL: u8 = 8;
+/// An indent level, and the room a list's marker takes, in points.
+pub const INDENT: f32 = 24.0;
+pub const MARKER_ROOM: f32 = INDENT;
+
 /// A step to undo: bytes `at..at + now` of the text were `was`, and the
 /// runs were `runs`. (Only what changed: a long document isn't copied
 /// for every word typed.)
@@ -72,6 +164,7 @@ struct State {
     now: usize,
     was: String,
     runs: Vec<Run>,
+    paras: Vec<Para>,
     /// Selection to restore.
     selection: Range<usize>,
 }
@@ -96,6 +189,10 @@ pub struct Doc {
     runs: Vec<Run>,
     /// Where each run starts (to find one without walking them all).
     starts: Vec<usize>,
+    /// Each paragraph's setting, and where it starts (a byte after a
+    /// newline, or 0).
+    paras: Vec<Para>,
+    para_starts: Vec<usize>,
     pub align: Align,
     pub wrap: bool,
     /// Style for text typed next at `typing.0` (bytes), set by a style
@@ -149,6 +246,12 @@ fn split_at(runs: &mut Vec<Run>, at: usize) -> usize {
 
 impl Doc {
     pub fn new(text: String, runs: Option<Vec<Run>>) -> Doc {
+        Doc::with_paras(text, runs, None)
+    }
+
+    /// A document with its paragraphs set as `paras` says (dropped unless
+    /// there is one for each).
+    pub fn with_paras(text: String, runs: Option<Vec<Run>>, paras: Option<Vec<Para>>) -> Doc {
         let mut runs = runs.unwrap_or_default();
         // Styles that don't fit the text (edited elsewhere) are dropped.
         let fits = runs.iter().map(|r| r.len).sum::<usize>() == text.len() && {
@@ -162,10 +265,14 @@ impl Doc {
             runs = vec![Run { len: text.len(), style: Style::default() }];
         }
         normalize(&mut runs);
+        let count = text.bytes().filter(|&b| b == b'\n').count() + 1;
+        let paras = paras.filter(|p| p.len() == count).unwrap_or_else(|| vec![Para::default(); count]);
         let mut d = Doc {
             text,
             runs,
             starts: Vec::new(),
+            paras,
+            para_starts: Vec::new(),
             align: Align::Left,
             wrap: true,
             typing: None,
@@ -177,7 +284,131 @@ impl Doc {
             saved_generation: 1,
         };
         d.index_runs();
+        d.index_paras();
         d
+    }
+
+    fn index_paras(&mut self) {
+        self.para_starts.clear();
+        self.para_starts.push(0);
+        self.para_starts.extend(self.text.match_indices('\n').map(|(i, _)| i + 1));
+        debug_assert_eq!(self.para_starts.len(), self.paras.len());
+    }
+
+    pub fn paras(&self) -> &[Para] {
+        &self.paras
+    }
+
+    /// The paragraph holding byte `at` (a newline belongs to the one it
+    /// ends).
+    pub fn para_index(&self, at: usize) -> usize {
+        self.para_starts.partition_point(|&s| s <= at).saturating_sub(1)
+    }
+
+    /// Paragraph `i`'s bytes, without its newline.
+    pub fn para_range(&self, i: usize) -> Range<usize> {
+        let start = self.para_starts[i];
+        let end = self.para_starts.get(i + 1).map_or(self.text.len(), |&n| n - 1);
+        start..end
+    }
+
+    /// The paragraphs bytes `range` touch.
+    pub fn paras_in(&self, range: Range<usize>) -> Range<usize> {
+        self.para_index(range.start)..self.para_index(range.end) + 1
+    }
+
+    /// Paragraph `i`'s number in its list (1 for the first of a numbered
+    /// list at its level, counting on past deeper items under it).
+    pub fn number(&self, i: usize) -> usize {
+        let level = self.paras[i].level;
+        let mut n = 1;
+        for p in self.paras[..i].iter().rev() {
+            if p.list == List::None || p.level < level {
+                break;
+            }
+            if p.level == level {
+                if p.list != List::Number {
+                    break;
+                }
+                n += 1;
+            }
+        }
+        n
+    }
+
+    /// How paragraph `i` is drawn: indents, spacing, alignment, marker.
+    pub fn format(&self, i: usize, align: Align) -> olo_kit::editor::Paragraph {
+        let p = &self.paras[i];
+        let (above, below) = p.kind.spacing();
+        let list = p.list != List::None;
+        let left = p.level as f32 * INDENT + if list { MARKER_ROOM } else { 0.0 } + if p.kind == Kind::Quote { INDENT } else { 0.0 };
+        let marker = match p.list {
+            List::None => None,
+            List::Bullet => Some(["•", "◦", "▪"][p.level as usize % 3].to_owned()),
+            List::Number => Some(format!("{}.", self.number(i))),
+        };
+        let a = p.align.unwrap_or(align);
+        olo_kit::editor::Paragraph {
+            left,
+            first: 0.0,
+            right: if p.kind == Kind::Quote { INDENT } else { 0.0 },
+            above,
+            below,
+            align: Some(match a {
+                Align::Left | Align::Justify => egui::Align::Min,
+                Align::Center => egui::Align::Center,
+                Align::Right => egui::Align::Max,
+            }),
+            justify: Some(a == Align::Justify),
+            marker,
+        }
+    }
+
+    /// Change the paragraphs bytes `range` touch with `f`, as one step to
+    /// undo.
+    pub fn set_paras(&mut self, range: Range<usize>, selection: Range<usize>, f: impl Fn(&mut Para)) {
+        let r = self.paras_in(range);
+        let mut changed = self.paras.clone();
+        for p in &mut changed[r] {
+            f(p);
+        }
+        if changed == self.paras {
+            return;
+        }
+        self.push_undo(selection.start..selection.start, 0, selection);
+        self.last_edit = None;
+        self.paras = changed;
+        self.redo.clear();
+        self.generation += 1;
+    }
+
+    /// Set the paragraphs bytes `range` touch as `kind`, their text
+    /// restyled to match, as one step to undo.
+    pub fn set_kind(&mut self, range: Range<usize>, selection: Range<usize>, kind: Kind) {
+        let r = self.paras_in(range.clone());
+        let bytes = self.para_range(r.start).start..self.para_range(r.end - 1).end;
+        self.push_undo(selection.start..selection.start, 0, selection);
+        self.last_edit = None;
+        for p in &mut self.paras[r] {
+            p.kind = kind;
+        }
+        if !bytes.is_empty() {
+            let start = split_at(&mut self.runs, bytes.start);
+            let end = split_at(&mut self.runs, bytes.end);
+            for run in &mut self.runs[start..end] {
+                kind.apply(&mut run.style);
+            }
+            normalize(&mut self.runs);
+            self.index_runs();
+        }
+        // Typed next in an empty one: in its style.
+        if bytes.is_empty() {
+            let mut style = self.style_at(bytes.start);
+            kind.apply(&mut style);
+            self.typing = Some((bytes.start, style));
+        }
+        self.redo.clear();
+        self.generation += 1;
     }
 
     fn index_runs(&mut self) {
@@ -275,6 +506,25 @@ impl Doc {
         let end = split_at(&mut self.runs, removed.end);
         self.runs.splice(start..end, added);
         normalize(&mut self.runs);
+        // The paragraphs the removed bytes spanned become one (the
+        // first's setting); each newline put in starts another set like it
+        // (body text after a heading's end).
+        let (p0, p1) = (self.para_index(removed.start), self.para_index(removed.end));
+        let first = self.paras[p0].clone();
+        let at_end = self.para_range(p1).end == removed.end;
+        let new_starts: Vec<usize> = inserted.match_indices('\n').map(|(i, _)| p + i + 1).collect();
+        let next = if at_end && inserted.ends_with('\n') { Para { kind: first.kind.next(), ..first.clone() } } else { first.clone() };
+        let mut added_paras = vec![first.clone(); new_starts.len()];
+        if let Some(last) = added_paras.last_mut() {
+            *last = next;
+        }
+        let delta = inserted.len() as isize - removed.len() as isize;
+        self.paras.splice(p0 + 1..p1 + 1, added_paras);
+        let n = new_starts.len();
+        self.para_starts.splice(p0 + 1..p1 + 1, new_starts);
+        for s in &mut self.para_starts[p0 + 1 + n..] {
+            *s = (*s as isize + delta) as usize;
+        }
         self.text.replace_range(removed, inserted);
         if self.runs.is_empty() && !self.text.is_empty() {
             self.runs.push(Run { len: self.text.len(), style: Style::default() });
@@ -304,7 +554,7 @@ impl Doc {
 
     /// Before bytes `removed` become `inserted` bytes: a step to undo it.
     fn push_undo(&mut self, removed: Range<usize>, inserted: usize, selection: Range<usize>) {
-        self.undo.push(State { at: removed.start, now: inserted, was: self.text[removed].to_owned(), runs: self.runs.clone(), selection });
+        self.undo.push(State { at: removed.start, now: inserted, was: self.text[removed].to_owned(), runs: self.runs.clone(), paras: self.paras.clone(), selection });
         // Plenty, without keeping every keystroke of a long session.
         if self.undo.len() > 500 {
             self.undo.remove(0);
@@ -403,9 +653,17 @@ impl Doc {
     /// Put `s` back, keeping what it replaces on the other stack.
     fn restore(&mut self, s: State, selection: Range<usize>, redoing: bool) -> (Range<usize>, Change) {
         let removed = s.at..s.at + s.now;
-        let back = State { at: s.at, now: s.was.len(), was: self.text[removed.clone()].to_owned(), runs: std::mem::replace(&mut self.runs, s.runs), selection };
+        let back = State {
+            at: s.at,
+            now: s.was.len(),
+            was: self.text[removed.clone()].to_owned(),
+            runs: std::mem::replace(&mut self.runs, s.runs),
+            paras: std::mem::replace(&mut self.paras, s.paras),
+            selection,
+        };
         self.text.replace_range(removed.clone(), &s.was);
         self.index_runs();
+        self.index_paras();
         if redoing { self.undo.push(back) } else { self.redo.push(back) }
         self.last_edit = None;
         self.typing = None;
@@ -415,7 +673,7 @@ impl Doc {
 
     /// Replace `range` (bytes) with `with`, as one undoable step (Replace).
     pub fn replace(&mut self, range: Range<usize>, with: &str, selection: Range<usize>) -> Change {
-        self.replace_all(&[range.clone()], with, selection).unwrap_or(Change { removed: range.start..range.start, inserted: 0 })
+        self.replace_all(std::slice::from_ref(&range), with, selection).unwrap_or(Change { removed: range.start..range.start, inserted: 0 })
     }
 
     /// The styles of bytes `range` (one paragraph) as sections of `job`,
@@ -500,11 +758,13 @@ pub fn find_all(hay: &str, needle: &str, case: bool) -> Vec<Range<usize>> {
 const ATTR_STYLES: &str = "user.olo.styles";
 const ATTR_ALIGN: &str = "user.olo.alignment";
 const ATTR_WRAP: &str = "user.olo.wrap";
+const ATTR_PARAS: &str = "user.olo.paragraphs";
 
 /// What a file holds.
 pub struct Loaded {
     pub text: String,
     pub runs: Option<Vec<Run>>,
+    pub paras: Option<Vec<Para>>,
     pub align: Align,
     pub wrap: bool,
     /// Not UTF-8: read as Latin-1 (saved back as UTF-8).
@@ -555,6 +815,7 @@ pub fn load(path: &Path) -> Result<Loaded, String> {
         Err(e) => (e.into_bytes().iter().map(|&b| b as char).collect(), true),
     };
     let runs = get_attr(path, ATTR_STYLES).and_then(|v| serde_json::from_slice::<Vec<Run>>(&v).ok());
+    let paras = get_attr(path, ATTR_PARAS).and_then(|v| serde_json::from_slice::<Vec<Para>>(&v).ok());
     let align = get_attr(path, ATTR_ALIGN).and_then(|v| serde_json::from_slice(&v).ok()).unwrap_or_default();
     let wrap = get_attr(path, ATTR_WRAP).is_none_or(|v| v != b"false");
     let read_only = {
@@ -563,12 +824,12 @@ pub fn load(path: &Path) -> Result<Loaded, String> {
             // SAFETY: a valid C string.
             .is_ok_and(|p| unsafe { libc::access(p.as_ptr(), libc::W_OK) } != 0)
     };
-    Ok(Loaded { text, runs: if latin1 { None } else { runs }, align, wrap, latin1, read_only })
+    Ok(Loaded { text, runs: if latin1 { None } else { runs }, paras: if latin1 { None } else { paras }, align, wrap, latin1, read_only })
 }
 
 /// Write a file whole (beside it, then renamed over it, keeping its
 /// permissions), styles in its attributes. On a worker thread.
-pub fn save(path: &Path, text: &str, runs: &[Run], align: Align, wrap: bool) -> Result<(), String> {
+pub fn save(path: &Path, text: &str, runs: &[Run], paras: &[Para], align: Align, wrap: bool) -> Result<(), String> {
     let dir = path.parent().ok_or("no folder")?;
     let name = path.file_name().ok_or("no name")?.to_string_lossy();
     let tmp = dir.join(format!(".{name}.saving"));
@@ -584,6 +845,9 @@ pub fn save(path: &Path, text: &str, runs: &[Run], align: Align, wrap: bool) -> 
         }
         if align != Align::Left {
             set_attr(&tmp, ATTR_ALIGN, &serde_json::to_vec(&align).unwrap_or_default());
+        }
+        if paras.iter().any(|p| *p != Para::default()) {
+            set_attr(&tmp, ATTR_PARAS, &serde_json::to_vec(paras).unwrap_or_default());
         }
         if !wrap {
             set_attr(&tmp, ATTR_WRAP, b"false");
@@ -776,7 +1040,7 @@ mod tests {
             s.bold = true;
             s.color = Some([200, 0, 0]);
         });
-        save(&path, d.text(), d.runs(), Align::Center, false).unwrap();
+        save(&path, d.text(), d.runs(), d.paras(), Align::Center, false).unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "Hello, world");
         let l = load(&path).unwrap();
         assert_eq!(l.text, "Hello, world");
@@ -804,6 +1068,70 @@ mod tests {
         if attr(&path, "user.tabula.alignment").is_some() {
             assert_eq!(load(&path).unwrap().align, Align::Center);
         }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    fn kinds(d: &Doc) -> Vec<Kind> {
+        d.paras().iter().map(|p| p.kind).collect()
+    }
+
+    #[test]
+    fn paragraphs_follow_the_text() {
+        let mut d = Doc::new("Title\nbody".into(), None);
+        d.set_kind(0..0, 0..0, Kind::Heading1);
+        assert_eq!(kinds(&d), [Kind::Heading1, Kind::Body]);
+        assert!(d.runs()[0].style.bold && d.runs()[0].style.size == 22.0);
+        // Return at a heading's end: body text after it.
+        d.sync("Title\n\nbody", 5..5);
+        assert_eq!(kinds(&d), [Kind::Heading1, Kind::Body, Kind::Body]);
+        // In its middle: both halves stay headings.
+        d.sync("Ti\ntle\n\nbody", 2..2);
+        assert_eq!(kinds(&d), [Kind::Heading1, Kind::Heading1, Kind::Body, Kind::Body]);
+        // Joining paragraphs keeps the first's setting.
+        d.sync("Title\n\nbody", 3..3);
+        assert_eq!(kinds(&d), [Kind::Heading1, Kind::Body, Kind::Body]);
+        assert_eq!((d.para_range(0), d.para_range(1), d.para_range(2)), (0..5, 6..6, 7..11));
+        // Undo brings the paragraphs back with the text.
+        d.undo(0..0);
+        assert_eq!(kinds(&d), [Kind::Heading1, Kind::Heading1, Kind::Body, Kind::Body]);
+        assert_eq!(d.para_range(1), 3..6);
+    }
+
+    #[test]
+    fn lists_number_and_nest() {
+        let mut d = Doc::new("a\nb\nsub\nc\nafter".into(), None);
+        d.set_paras(0..8, 0..0, |p| p.list = List::Number);
+        d.set_paras(4..5, 0..0, |p| p.level = 1);
+        assert_eq!([d.number(0), d.number(1), d.number(2), d.number(3)], [1, 2, 1, 3]);
+        assert_eq!(d.format(2, Align::Left).marker.as_deref(), Some("1."));
+        assert_eq!(d.format(4, Align::Left).marker, None);
+        // A new item from Return (at the end of the last) is in the list.
+        d.edit(9..9, "\n", 9..9);
+        d.edit(10..10, "d", 10..10);
+        assert_eq!(d.text(), "a\nb\nsub\nc\nd\nafter");
+        assert_eq!(d.paras()[4].list, List::Number);
+        assert_eq!(d.number(4), 4);
+        let f = d.format(2, Align::Left);
+        assert_eq!(f.left, INDENT + MARKER_ROOM);
+    }
+
+    #[test]
+    fn paragraphs_saved_and_loaded() {
+        let dir = std::env::temp_dir().join(format!("olo-se-paras-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("p.txt");
+        let mut d = Doc::new("Head\nitem".into(), None);
+        d.set_kind(0..0, 0..0, Kind::Title);
+        d.set_paras(5..5, 0..0, |p| p.list = List::Bullet);
+        save(&path, d.text(), d.runs(), d.paras(), Align::Left, true).unwrap();
+        let l = load(&path).unwrap();
+        if l.paras.is_some() {
+            let back = Doc::with_paras(l.text, l.runs, l.paras);
+            assert_eq!(back.paras(), d.paras());
+        }
+        // Edited elsewhere (a paragraph more): the setting no longer fits.
+        let other = Doc::with_paras("one\ntwo\nthree".into(), None, Some(d.paras().to_vec()));
+        assert!(other.paras().iter().all(|p| *p == Para::default()));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

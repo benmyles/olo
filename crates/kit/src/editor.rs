@@ -50,6 +50,11 @@ pub trait Document {
     /// sections of `job`, whose text is that paragraph (its byte 0 is
     /// `range.start`). An empty paragraph needs one, empty, for its height.
     fn sections(&mut self, range: Range<usize>, job: &mut LayoutJob);
+    /// How paragraph `range` (without its newline) is set: indents,
+    /// space around it, its alignment, a list's marker. Plain by default.
+    fn paragraph(&mut self, _range: Range<usize>) -> Paragraph {
+        Paragraph::default()
+    }
     /// Replace bytes `range` with `text` (typing, deleting, pasting, a
     /// drop); the selection was `selection` (for undo).
     fn replace(&mut self, range: Range<usize>, text: &str, selection: Range<usize>);
@@ -64,6 +69,26 @@ pub trait Document {
         self.replace(at..at, &text, selection);
         at..at + text.len()
     }
+}
+
+/// How one paragraph is set ([`Document::paragraph`]), in points.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Paragraph {
+    /// Every row starts this far in from the text's left edge.
+    pub left: f32,
+    /// The first row starts this much further in.
+    pub first: f32,
+    /// Rows wrap this far in from the right edge.
+    pub right: f32,
+    /// Space above and below it.
+    pub above: f32,
+    pub below: f32,
+    /// Its own alignment and justification (else the editor's).
+    pub align: Option<Align>,
+    pub justify: Option<bool>,
+    /// A list's bullet or number, drawn before the first row (in the
+    /// space `left` leaves), in the paragraph's first style.
+    pub marker: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -104,6 +129,19 @@ struct Para {
     row_h: f32,
     /// The layout it was measured for (`Editor::key`); `NEVER` or `STALE`.
     key: u64,
+    /// How it was set when last laid out.
+    set: Set,
+}
+
+/// What of a [`Paragraph`] places its galley: indents, the space above
+/// (and below, in its height) and its alignment.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct Set {
+    left: f32,
+    right: f32,
+    above: f32,
+    below: f32,
+    align: Option<Align>,
 }
 
 /// Never laid out: its size is a guess from its length.
@@ -161,6 +199,8 @@ pub struct Editor {
     top: (usize, f32),
     /// Where the view goes on the next frame ([`Editor::set_view`]).
     set_top: Option<(usize, f32)>,
+    /// List markers of the paragraphs laid out this frame, by paragraph.
+    markers: std::collections::HashMap<usize, Arc<Galley>>,
 }
 
 impl Editor {
@@ -186,6 +226,7 @@ impl Editor {
             touched: 0.0,
             top: (0, 0.0),
             set_top: None,
+            markers: std::collections::HashMap::new(),
         };
         e.reset("");
         e
@@ -301,7 +342,7 @@ impl Editor {
     }
 
     fn guess(&self, start: usize, len: usize) -> Para {
-        let mut p = Para { start, len, height: 0.0, natural: len as f32 * self.char_w, row_h: self.row_h, key: NEVER };
+        let mut p = Para { start, len, height: 0.0, natural: len as f32 * self.char_w, row_h: self.row_h, key: NEVER, set: Set::default() };
         p.height = self.estimate(&p);
         p
     }
@@ -311,7 +352,7 @@ impl Editor {
             Some(w) if w > 0.0 => (p.natural / w).ceil().max(1.0),
             _ => 1.0,
         };
-        rows * p.row_h
+        rows * p.row_h + p.set.above + p.set.below
     }
 
     fn ensure_tops(&mut self) {
@@ -357,14 +398,39 @@ impl Editor {
         let (wrap, _, align, justify) = self.params.unwrap_or((None, 1.0, Align::Min, false));
         let p = self.paras[i];
         let range = p.start..p.start + p.len;
-        let mut job = LayoutJob { text: doc.text()[range.clone()].to_owned(), halign: align, justify, keep_trailing_whitespace: true, ..Default::default() };
-        job.wrap.max_width = wrap.unwrap_or(f32::INFINITY);
+        let f = doc.paragraph(range.clone());
+        let set = Set { left: f.left.max(0.0), right: f.right.max(0.0), above: f.above.max(0.0), below: f.below.max(0.0), align: f.align };
+        let mut job = LayoutJob {
+            text: doc.text()[range.clone()].to_owned(),
+            halign: f.align.unwrap_or(align),
+            justify: f.justify.unwrap_or(justify),
+            keep_trailing_whitespace: true,
+            ..Default::default()
+        };
+        job.wrap.max_width = wrap.map_or(f32::INFINITY, |w| (w - set.left - set.right).max(1.0));
         doc.sections(range, &mut job);
         if job.sections.is_empty() {
             job.sections.push(LayoutSection { leading_space: 0.0, byte_range: ByteIndex(0)..ByteIndex(p.len), format: TextFormat::default() });
         }
+        job.sections[0].leading_space += f.first.max(0.0);
+        // A list's marker, in the paragraph's first style (for this frame's
+        // drawing).
+        match f.marker {
+            Some(m) if !m.is_empty() => {
+                let format = job.sections[0].format.clone();
+                let mark = ui.fonts_mut(|f| f.layout_job(LayoutJob::single_section(m, format)));
+                self.markers.insert(i, mark);
+            }
+            _ => {
+                self.markers.remove(&i);
+            }
+        }
         let g = ui.fonts_mut(|f| f.layout_job(job));
-        if p.key != self.key {
+        if set != p.set {
+            self.paras[i].set = set;
+            self.tops_dirty = true;
+        }
+        if p.key != self.key || set != p.set {
             self.measured(i, &g);
         }
         g
@@ -375,13 +441,13 @@ impl Editor {
         let rows = g.rows.len().max(1) as f32;
         let p = &mut self.paras[i];
         let first = p.key == NEVER;
-        let h = g.size().y;
+        let h = g.size().y + p.set.above + p.set.below;
         if p.height != h {
             self.tops_dirty = true;
         }
         p.height = h;
-        p.natural = if wrapped { g.rows.iter().map(|r| r.size.x).sum() } else { g.size().x };
-        p.row_h = h / rows;
+        p.natural = if wrapped { g.rows.iter().map(|r| r.size.x).sum() } else { g.size().x + p.set.left + p.set.right };
+        p.row_h = g.size().y / rows;
         p.key = self.key;
         let p = *p;
         if first && p.len > 0 {
@@ -408,20 +474,23 @@ impl Editor {
         }
     }
 
-    /// The x of the galleys' origin from the text's left (alignment).
-    fn shift(&self, inner: f32) -> f32 {
+    /// The x of paragraph `i`'s galley origin from the text's left (its
+    /// indent and alignment).
+    fn shift(&self, i: usize, inner: f32) -> f32 {
         let (wrap, _, align, _) = self.params.unwrap_or((None, 1.0, Align::Min, false));
-        let w = wrap.unwrap_or(inner.max(self.widest));
-        match align {
-            Align::Min => 0.0,
-            Align::Center => w / 2.0,
-            Align::Max => w,
-        }
+        let set = self.paras[i].set;
+        let w = (wrap.unwrap_or(inner.max(self.widest)) - set.left - set.right).max(1.0);
+        set.left
+            + match set.align.unwrap_or(align) {
+                Align::Min => 0.0,
+                Align::Center => w / 2.0,
+                Align::Max => w,
+            }
     }
 
     /// Paragraph `i`'s galley origin in content coordinates.
     fn origin(&self, i: usize, o: &Options, inner: f32) -> Vec2 {
-        vec2(o.margin.x + self.shift(inner), o.margin.y + self.tops[i])
+        vec2(o.margin.x + self.shift(i, inner), o.margin.y + self.tops[i] + self.paras[i].set.above)
     }
 
     /// The byte at content point `pos` (and whether it is at the start of
@@ -452,11 +521,13 @@ impl Editor {
         g.pos_from_cursor(c).translate(self.origin(i, o, inner))
     }
 
-    /// The byte a row up or down from the caret, keeping to `h_pos`.
-    fn vertical(&mut self, ui: &Ui, doc: &mut dyn Document, down: bool) -> (usize, bool) {
+    /// The byte a row up or down from the caret, keeping to `h_pos` (an
+    /// x from the text's left, so paragraphs indented differently line up).
+    fn vertical(&mut self, ui: &Ui, doc: &mut dyn Document, inner: f32, down: bool) -> (usize, bool) {
         let (i, g, c) = self.cursor(ui, doc, self.caret, self.prefer_next);
         let lc = g.layout_from_cursor(c);
-        let h = *self.h_pos.get_or_insert_with(|| g.pos_from_cursor(c).center().x);
+        let here = g.pos_from_cursor(c).center().x + self.shift(i, inner);
+        let h = *self.h_pos.get_or_insert(here);
         let (pi, gal, row) = if down && lc.row + 1 < g.rows.len() {
             (i, g, lc.row + 1)
         } else if !down && lc.row > 0 {
@@ -473,7 +544,7 @@ impl Editor {
             return (to, false);
         };
         let Some(r) = gal.rows.get(row) else { return (self.paras[pi].start, false) };
-        let column = r.char_at(h - r.pos.x).0.min(r.char_count_excluding_newline().0);
+        let column = r.char_at(h - self.shift(pi, inner) - r.pos.x).0.min(r.char_count_excluding_newline().0);
         let col: usize = gal.rows[..row].iter().map(|r| r.char_count_including_newline().0).sum::<usize>() + column;
         let p = self.paras[pi];
         (p.start + byte_of_col(&doc.text()[p.start..p.start + p.len], col), column < r.char_count_excluding_newline().0)
@@ -550,6 +621,7 @@ impl Editor {
         // or the caret being revealed): again until it settles.
         let revealing = std::mem::take(&mut self.reveal);
         let mut shown: Vec<(usize, Arc<Galley>)> = Vec::new();
+        self.markers.clear();
         for pass in 0..6 {
             if revealing {
                 let r = self.caret_rect(ui, doc, o, inner, self.caret, self.prefer_next);
@@ -640,6 +712,13 @@ impl Editor {
                 }
             }
             painter.galley(at, g.clone(), visuals.text_color());
+            if let Some(m) = self.markers.get(i) {
+                let first = g.rows.first().map_or(0.0, |r| r.pos.y);
+                let w = m.size().x;
+                let gap = (m.size().y * 0.35).round();
+                let x = origin.x + o.margin.x + self.paras[*i].set.left - gap - w;
+                painter.galley(snap(Pos2::new(x, at.y + first)), m.clone(), visuals.text_color());
+            }
         }
         if active && sel.is_empty() {
             let r = self.caret_rect(ui, doc, o, inner, self.caret, self.prefer_next).translate(origin.to_vec2());
@@ -912,7 +991,7 @@ impl Editor {
             }
             K::ArrowUp | K::ArrowDown if mods.command => to = Some((if key == K::ArrowUp { 0 } else { text_len }, false)),
             K::ArrowUp | K::ArrowDown => {
-                to = Some(self.vertical(ui, doc, key == K::ArrowDown));
+                to = Some(self.vertical(ui, doc, inner, key == K::ArrowDown));
                 keep_h = true;
             }
             K::Home | K::End if mods.ctrl => to = Some((if key == K::Home { 0 } else { text_len }, false)),
@@ -920,9 +999,9 @@ impl Editor {
             K::PageUp | K::PageDown => {
                 // A view's height up or down, the view going along.
                 let r = self.caret_rect(ui, doc, o, inner, self.caret, self.prefer_next);
-                let h = *self.h_pos.get_or_insert(r.center().x - o.margin.x - self.shift(inner));
+                let h = *self.h_pos.get_or_insert(r.center().x - o.margin.x);
                 let dy = if key == K::PageUp { -vp.height() } else { vp.height() };
-                let target = Pos2::new(o.margin.x + self.shift(inner) + h, r.center().y + dy);
+                let target = Pos2::new(o.margin.x + h, r.center().y + dy);
                 to = Some(self.byte_at(ui, doc, o, inner, target));
                 keep_h = true;
                 self.scroll_by.y += dy;

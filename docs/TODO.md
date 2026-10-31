@@ -896,6 +896,14 @@ as they land (with the commit), add new ones as they come up.
   other apps -- use it as an opportunity to enhance the kit too": rulers,
   style menus, tables, page views and the like are kit widgets,
   documented in HACKING.
+  Done so far (2026-10-30): paragraph styles (Title, Heading 1–3,
+  Quote, Code, Body), bulleted and numbered lists that nest and number
+  themselves, indent levels and alignment per paragraph (the Paragraph
+  menu; Tab, ⇧Tab, Return and Backspace in lists), a word count, all
+  saved in the file's attributes; the kit's editor sets each paragraph's
+  indents, spacing and marker (`editor::Paragraph`). Next: a ruler,
+  Markdown/RTF/HTML/DOCX/ODT, tables, pictures, headers and footers, the
+  page view and PDF, spelling.
 - ~~**Activity Monitor, revamped**~~ (Ben, 2026-10-29, at the end):
   "revamp activity monitor to include everything a nerd could ever want
   to know, with live views, drill downs, tuning settings and ability to

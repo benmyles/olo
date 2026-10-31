@@ -2458,5 +2458,11 @@
   "title": "Quick Look full screen on two displays: after",
   "caption": "F fills only the display the window is on; the other is untouched, and F again puts it back where it was. Same at 1.5\u00d7 and 2\u00d7.",
   "image": "2026-10-30/153348-quick-look-full-screen-on-two-displays-after.png"
+ },
+ {
+  "time": "2026-10-30T17:02:47",
+  "title": "StyledEdit: paragraph styles and lists",
+  "caption": "Paragraphs have a style (Title, Heading 1-3, Quote, Code, Body), bulleted and numbered lists that nest and number themselves, indents and their own alignment; the kit's editor sets each paragraph's indents, spacing and list marker (Document::paragraph). Word count in the status line.",
+  "image": "2026-10-30/170247-stylededit-paragraph-styles-and-lists.png"
  }
 ]
