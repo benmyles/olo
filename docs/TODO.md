@@ -892,7 +892,7 @@ as they land (with the commit), add new ones as they come up.
   and every Tracker view); a plain click on one of several leaves it
   alone; Enter on several opens them all; Open Parent selects the folder
   it came from. Checked by driving each view in a test session.
-- **StyledEdit, much more featureful** (Ben, 2026-10-29, after
+- ~~**StyledEdit, much more featureful**~~ (done 2026-10-30: every feature below; HACKING, "StyledEdit") (Ben, 2026-10-29, after
   everything else): "please improve StyledEdit to be much more featureful
   -- it doesn't need all the bells and whistles of, say, modern Word or
   Excel, but maybe something like ClarisWorks / Gobe Productive". After
