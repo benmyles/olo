@@ -437,6 +437,7 @@ where
         let start = std::time::Instant::now();
         output_render_elements.extend(
             crate::wallpaper::element(renderer, output)
+                .into_iter()
                 .map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))),
         );
         slow_elements(start, || "the wallpaper".into());

@@ -102,9 +102,23 @@ mod tests {
     #[test]
     fn chromium_matches_olo() {
         let finger = AxisFrame::new(InputTime::now()).source(AxisSource::Finger).value(Axis::Vertical, 24.0);
-        assert_eq!(adjust(finger, Toolkit::Chromium).axis.1, 2.0);
-        assert_eq!(adjust(finger, Toolkit::AsGiven).axis.1, 24.0);
+        assert_eq!(adjust(finger, Toolkit::Chromium, None).axis.1, 2.0);
+        assert_eq!(adjust(finger, Toolkit::AsGiven, None).axis.1, 24.0);
         let wheel = AxisFrame::new(InputTime::now()).source(AxisSource::Wheel).value(Axis::Vertical, 15.0).v120(Axis::Vertical, 120);
-        assert_eq!(adjust(wheel, Toolkit::Chromium).v120, Some((0, 48)));
+        assert_eq!(adjust(wheel, Toolkit::Chromium, None).v120, Some((0, 48)));
+    }
+
+    /// GTK 3 goes a tenth of the value times the height^⅔: what it gets
+    /// takes it as far as Olo's apps go (a finger's values, a notch 48).
+    #[test]
+    fn gtk3_matches_olo() {
+        let unit = 300f64.powf(2.0 / 3.0) / 10.0;
+        let finger = AxisFrame::new(InputTime::now()).source(AxisSource::Finger).value(Axis::Vertical, 100.0);
+        assert!((adjust(finger, Toolkit::Gtk3, Some(300)).axis.1 * unit - 100.0).abs() < 1e-6);
+        let wheel = AxisFrame::new(InputTime::now()).source(AxisSource::Wheel).value(Axis::Vertical, 15.0).v120(Axis::Vertical, 120);
+        let got = adjust(wheel, Toolkit::Gtk3, Some(300));
+        assert!((got.axis.1 * unit - 48.0).abs() < 1e-6);
+        // (Its notches it doesn't read; they stay.)
+        assert_eq!(got.v120, Some((0, 120)));
     }
 }

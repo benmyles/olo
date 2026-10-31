@@ -10,6 +10,11 @@
 
 use std::{
     cell::{RefCell, RefMut},
+    sync::{
+        Arc, Mutex, OnceLock,
+        atomic::{AtomicU64, Ordering},
+        mpsc,
+    },
     time::{Duration, Instant},
 };
 
@@ -88,9 +93,56 @@ pub struct Decoration {
     /// texture already on the GPU rather than uploading another, which
     /// can hold up a frame by milliseconds while the GPU is busy.
     tabs: Vec<(TabKey, MemoryRenderBuffer)>,
+    /// Which decoration it is, to the tab worker (`tab_worker`), and the
+    /// look it was last asked to draw.
+    id: u64,
+    asked: Option<TabKey>,
     frame_ids: Vec<Id>,
     frame_commit: CommitCounter,
     frame_key: Option<(bool, u64, bool)>,
+}
+
+static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+
+/// Tabs drawn off the frame: a tab's text is shaped and its glyphs drawn
+/// by cosmic-text, which took 4-13 ms now and then (its first use of a
+/// face, a glyph at a new size, its lock held by another thread), a frame's
+/// whole budget. A changed tab is asked of this worker; frames show the
+/// window's tab as it was until the new one is done (the next frame,
+/// usually). Asked: (decoration, look, layout, scale, palette); done:
+/// (decoration, look, pixels).
+struct TabWorker {
+    jobs: Mutex<mpsc::Sender<TabJob>>,
+    done: Arc<Mutex<Vec<(u64, TabKey, Pixmap)>>>,
+}
+
+type TabJob = (u64, TabKey, TabLayout, f64, Arc<Palette>);
+
+fn tab_worker() -> &'static TabWorker {
+    static WORKER: OnceLock<TabWorker> = OnceLock::new();
+    WORKER.get_or_init(|| {
+        let (jobs, todo) = mpsc::channel::<TabJob>();
+        let done = Arc::new(Mutex::new(Vec::new()));
+        let out = done.clone();
+        let _ = std::thread::Builder::new().name("tabs".into()).spawn(move || {
+            while let Ok(job) = todo.recv() {
+                // Only each decoration's latest look.
+                let mut latest: Vec<TabJob> = Vec::new();
+                for job in std::iter::once(job).chain(todo.try_iter()) {
+                    latest.retain(|j| j.0 != job.0);
+                    latest.push(job);
+                }
+                for (id, key, tab, s, palette) in latest {
+                    let pixmap = draw_tab(&palette, &key, &tab, s);
+                    let mut done = out.lock().unwrap();
+                    // (One waiting per decoration: the latest.)
+                    done.retain(|d: &(u64, TabKey, Pixmap)| d.0 != id);
+                    done.push((id, key, pixmap));
+                }
+            }
+        });
+        TabWorker { jobs: Mutex::new(jobs), done }
+    })
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -139,6 +191,8 @@ impl Default for Decoration {
             target: false,
             title_width: None,
             tabs: Vec::new(),
+            id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
+            asked: None,
             frame_ids: (0..16).map(|_| Id::new()).collect(),
             frame_commit: CommitCounter::default(),
             frame_key: None,
@@ -363,11 +417,30 @@ impl Decoration {
             generation,
             target: self.target,
         };
+        // A look drawn before, or done by the worker, is shown at once; a
+        // new one is asked of the worker (the first is drawn here: there
+        // is nothing to show meanwhile).
+        let done = {
+            let mut done = tab_worker().done.lock().unwrap();
+            done.iter().position(|d| d.0 == self.id).map(|i| done.remove(i))
+        };
+        let mut pixmap = None;
+        if let Some((_, look, p)) = done
+            && look == key
+        {
+            pixmap = Some(p);
+            self.asked = None;
+        }
         if let Some(i) = self.tabs.iter().position(|(k, _)| *k == key) {
             let looked = self.tabs.remove(i);
             self.tabs.insert(0, looked);
+        } else if phys.0 > 0 && phys.1 > 0 && pixmap.is_none() && !self.tabs.is_empty() {
+            if self.asked.as_ref() != Some(&key) {
+                self.asked = Some(key.clone());
+                let _ = tab_worker().jobs.lock().unwrap().send((self.id, key.clone(), tab, s, palette.clone()));
+            }
         } else if phys.0 > 0 && phys.1 > 0 {
-            let pixmap = draw_tab(&palette, &key, &tab, s);
+            let pixmap = pixmap.unwrap_or_else(|| draw_tab(&palette, &key, &tab, s));
             let size: Size<i32, Buffer> = phys.into();
             let buffer = MemoryRenderBuffer::from_slice(
                 pixmap.data(),

@@ -51,11 +51,23 @@ struct Key {
 struct Slot {
     /// The picture asked for (being decoded, shown, or failed).
     wanted: Option<Key>,
-    shown: Option<MemoryRenderBuffer>,
+    shown: Option<Strips>,
+    /// A new picture on its way to the GPU, and how many of its strips are
+    /// there: shown once they all are.
+    coming: Option<(Strips, usize)>,
 }
 
+/// A picture cut across into strips of about `STRIP_BYTES`, each a texture
+/// of its own: a frame uploads one of a new picture's (a whole screen's
+/// is 30 MB, which held a frame up 20 ms), the old picture showing till
+/// they're all there. Each strip: its top, its height, its pixels.
+#[derive(Clone)]
+struct Strips(Vec<(i32, i32, MemoryRenderBuffer)>, i32);
+
+const STRIP_BYTES: usize = 4 << 20;
+
 /// A worker's picture for an output, ready to draw.
-type Done = (String, Key, Result<MemoryRenderBuffer, String>);
+type Done = (String, Key, Result<Strips, String>);
 
 /// What the worker is asked: a picture for an output, or to give back
 /// the memory pictures took (once a new one has replaced the old).
@@ -86,11 +98,22 @@ fn work(jobs: mpsc::Receiver<Job>, done: channel::Sender<Done>) {
             }
         }
         for (name, key) in todo {
-            // Ready to draw: copied into its buffer here, not on the loop.
+            // Ready to draw: copied into its strips' buffers here, not on
+            // the loop.
             let result = load(&key.path, key.size).map(|img| {
-                let size: Size<i32, Buffer> = (img.width() as i32, img.height() as i32).into();
+                let (w, h) = (img.width() as usize, img.height() as usize);
                 let opaque = img.pixels().all(|p| p[3] == 255);
-                MemoryRenderBuffer::from_slice(img.as_raw(), Fourcc::Abgr8888, size, 1, Transform::Normal, opaque.then(|| vec![Rectangle::from_size(size)]))
+                let rows = (STRIP_BYTES / (w * 4).max(1)).clamp(1, h.max(1));
+                let strips = (0..h)
+                    .step_by(rows)
+                    .map(|top| {
+                        let n = rows.min(h - top);
+                        let size: Size<i32, Buffer> = (w as i32, n as i32).into();
+                        let pixels = &img.as_raw()[top * w * 4..(top + n) * w * 4];
+                        (top as i32, n as i32, MemoryRenderBuffer::from_slice(pixels, Fourcc::Abgr8888, size, 1, Transform::Normal, opaque.then(|| vec![Rectangle::from_size(size)])))
+                    })
+                    .collect();
+                Strips(strips, w as i32)
             });
             if done.send((name, key, result)).is_err() {
                 return;
@@ -171,15 +194,16 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.wallpaper.jobs = Some(jobs);
     }
 
-    fn wallpaper_arrived(&mut self, name: String, key: Key, result: Result<MemoryRenderBuffer, String>) {
+    fn wallpaper_arrived(&mut self, name: String, key: Key, result: Result<Strips, String>) {
         let Some(output) = self.space.outputs().find(|o| o.name() == name).cloned() else { return };
         let mut slot = slot(&output).lock().unwrap();
         if slot.wanted.as_ref() != Some(&key) {
             return; // Superseded while it was being read.
         }
         match result {
-            Ok(buffer) => {
-                slot.shown = Some(buffer);
+            Ok(strips) => {
+                // Shown once on the GPU (`element`).
+                slot.coming = Some((strips, 0));
                 info!(output = name, path = %key.path.display(), "wallpaper ready");
                 // The picture replaced is freed: the worker gives the memory
                 // back (off the loop, which that would hold up a moment).
@@ -189,7 +213,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             }
             Err(e) => {
                 warn!(path = %key.path.display(), "can't show the wallpaper: {e}");
-                slot.shown = None;
+                (slot.shown, slot.coming) = (None, None);
             }
         }
     }
@@ -221,16 +245,32 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 }
 
-/// The wallpaper element for `output`, covering it pixel for pixel (it
-/// is drawn at the screen's size), if one is ready.
-pub fn element<R>(renderer: &mut R, output: &Output) -> Option<Exact<MemoryRenderBufferRenderElement<R>>>
+/// The wallpaper's elements for `output`, its strips covering it pixel
+/// for pixel (it is made at the screen's size), if one is ready. A new
+/// one is uploaded a strip each frame meanwhile.
+pub fn element<R>(renderer: &mut R, output: &Output) -> Vec<Exact<MemoryRenderBufferRenderElement<R>>>
 where
     R: Renderer + ImportMem,
     R::TextureId: Send + Clone + 'static,
 {
-    let buffer = slot(output).lock().unwrap().shown.clone()?;
-    let (w, h) = physical_size(output)?;
-    crate::render::picture(renderer, (0.0, 0.0).into(), &buffer, (w as i32, h as i32), None, Kind::Unspecified)
+    let strip = |renderer: &mut R, w: i32, (top, h, buffer): &(i32, i32, MemoryRenderBuffer)| {
+        crate::render::picture(renderer, (0.0, *top as f64).into(), buffer, (w, *h), None, Kind::Unspecified)
+    };
+    let mut slot = slot(output).lock().unwrap();
+    if let Some((strips, done)) = &mut slot.coming {
+        // (Made now, the element uploads its texture; it is kept with the
+        // buffer for when it is shown.)
+        if let Some(s) = strips.0.get(*done) {
+            let _ = strip(renderer, strips.1, s);
+            *done += 1;
+        }
+        if *done >= strips.0.len() {
+            slot.shown = slot.coming.take().map(|(s, _)| s);
+        }
+    }
+    let Some(shown) = slot.shown.clone() else { return Vec::new() };
+    drop(slot);
+    shown.0.iter().filter_map(|s| strip(renderer, shown.1, s)).collect()
 }
 
 #[cfg(test)]
