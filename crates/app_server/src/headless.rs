@@ -349,7 +349,8 @@ pub fn run_headless(size_arg: Option<&str>) {
 
     info!("Initialization completed, starting the main loop.");
     while state.running.load(Ordering::SeqCst) {
-        if event_loop.dispatch(Some(Duration::from_millis(16)), &mut state).is_err() {
+        // (As udev's: the timeout only keeps `tick` looking now and then.)
+        if event_loop.dispatch(Some(crate::render::IDLE_POLL), &mut state).is_err() {
             state.running.store(false, Ordering::SeqCst);
             break;
         }

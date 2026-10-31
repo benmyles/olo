@@ -498,8 +498,9 @@ pub fn rests() -> bool {
 /// (`Backend::wake`: a commit on it, input, a request, the windows
 /// changing). Looking costs gathering every element on it and comparing
 /// them: done 120 times a second for each display, it kept an idle
-/// app_server at a fifth of a core.
-pub const IDLE_FRAMES: u32 = 12;
+/// app_server at a fifth of a core. Few, as what comes next wakes it
+/// anyway: a blinking cursor's frame was followed by twelve looks.
+pub const IDLE_FRAMES: u32 = 3;
 /// How often a resting display looks anyway, for what changed without
 /// waking it (`keep_warm`'s pixel, a timer of ours not hooked up).
 pub const IDLE_POLL: std::time::Duration = std::time::Duration::from_millis(100);

@@ -1007,7 +1007,9 @@ pub fn run_udev() {
      */
 
     while state.running.load(Ordering::SeqCst) {
-        let result = event_loop.dispatch(Some(Duration::from_millis(16)), &mut state);
+        // Everything comes as an event; the timeout only keeps `tick`
+        // looking now and then (autotiling's every-so-often look).
+        let result = event_loop.dispatch(Some(crate::render::IDLE_POLL), &mut state);
         if result.is_err() {
             state.running.store(false, Ordering::SeqCst);
         } else {

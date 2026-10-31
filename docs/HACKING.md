@@ -126,7 +126,7 @@ like pixel alignment is.
    every app (see Testing).
 
    A display with nothing new rests (`render::IDLE_FRAMES`, both
-   backends): after 12 looks in a row that found no damage it looks
+   backends): after 3 looks in a row that found no damage it looks
    only every 100 ms (`IDLE_POLL`), and at once when woken
    (`Backend::wake`, paced a quarter of a frame after its last look):
    a commit wakes the displays its window is on (every display for a
