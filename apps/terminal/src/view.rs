@@ -129,7 +129,14 @@ pub struct Mouse {
 struct RowCache {
     key: Option<RowKey>,
     rows: Vec<Option<CachedRow>>,
+    /// When every row was last drawn afresh (`REFRESH`).
+    fresh: Option<std::time::Instant>,
 }
+
+/// How often a showing screen is drawn whole again from its cells,
+/// whatever changed: nothing on it is ever out of date for longer, should
+/// a change ever not ask for a frame.
+const REFRESH: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// What every row is drawn for: the cell metrics and scale, where the
 /// screen is, its size, the colours, the font atlas.
@@ -414,10 +421,12 @@ pub fn show(
         atlas: ctx.fonts(|f| f.font_image_size()),
     };
     let cache = &mut mouse.rows;
-    if cache.key.as_ref() != Some(&key) {
+    if cache.key.as_ref() != Some(&key) || cache.fresh.is_none_or(|t| t.elapsed() >= REFRESH) {
         cache.key = Some(key);
         cache.rows.clear();
+        cache.fresh = Some(std::time::Instant::now());
     }
+    ctx.request_repaint_after(REFRESH);
     cache.rows.resize_with(rows, || None);
     let grid = term.grid();
     let mut fronts = Vec::with_capacity(rows);
