@@ -2211,6 +2211,24 @@ as they land (with the commit), add new ones as they come up.
 
 ## app_server
 
+- **Displays: kept where they are, numbered for good** (Ben, 2026-10-31):
+  "we absolutely must get these upgrades (and connecting/disconnecting
+  monitors) keeping things where they already were on the right
+  display-workspaces (unless the display is no longer available in which
+  case move it to the primary display on the matching workspace) … also
+  make sure that we are using some kind of permanent identifier for each
+  display behind the scenes so that what display is 0/1/2 etc doesn't
+  change and remains consistent across connect/disconnect, restart etc.
+  … and it has to work with auto tiling properly so that they come back
+  with the same positions and any custom resizes etc". Upgrades: done
+  (7a7c5fd: displays known by their monitors before use, windows back on
+  their own displays; `tools/dev/layout-check`). Still to do: each
+  monitor's number (D0, D1, …) given once and kept in the settings by
+  its key, not its place left to right; unplugging a display moves its
+  windows to the main display on the same workspaces, and plugging it
+  back in returns them, tiles and custom sizes included; a headless
+  test for plugging and unplugging (IPC for test sessions), run by
+  layout-check.
 - ~~**Agent rules: fast and light, measured**~~ (Ben, 2026-10-31; done:
   CLAUDE.md, HACKING "Fast and light", `tools/dev/cost`): once
   app_server's and Terminal's CPU are fixed, "add agent rules about this
