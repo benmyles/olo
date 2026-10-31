@@ -189,7 +189,7 @@ impl Demo {
         m.media = Some(Media::Poll { question: "Which onboarding illustration style?".into(), answers: vec![("Flat line art".into(), 3), ("Soft 3D".into(), 5), ("Photos".into(), 1)], voters: 9, closed: false, quiz: false });
         let m = s.say(20, theo(), "Soft 3D it is then 🎉");
         react(m, &[("🎉", 3, false), ("❤️", 1, false)]);
-        let m = s.say(6, elif(), "I'll update the `illustrations` page tonight");
+        let m = s.say(6, elif(), "I'll update the illustrations page tonight");
         mark(m, "illustrations", EntityKind::Code);
         let mut c = Chat { unread: 4, mentions: 1, members: Some(5), ..chat(CREW, ChatKind::Group, "Design Crew") };
         c.read_inbox = 6;
@@ -230,7 +230,7 @@ impl Demo {
         let mut s = Script::new(RUST, t);
         let m = s.say(60 * 9, jun(), "Has anyone moved to the 2024 edition yet? Any surprises?");
         m.topic = Some(1);
-        let m = s.say(60 * 8, elif(), "Only `gen` becoming a keyword bit me");
+        let m = s.say(60 * 8, elif(), "Only gen becoming a keyword bit me");
         m.topic = Some(1);
         mark(m, "gen", EntityKind::Code);
         let m = s.say(60 * 2, theo(), "Why does this borrow fail?\n\nlet first = &v[0];\nv.push(4);\nprintln!(\"{first}\");");
@@ -239,7 +239,7 @@ impl Demo {
             let end = m.text.len();
             m.entities.push(Entity { start: p, end, kind: EntityKind::Pre("rust".into()) });
         }
-        let m = s.say(55, mira(), "Pushing may reallocate, so `first` could dangle. Clone the value or push first.");
+        let m = s.say(55, mira(), "Pushing may reallocate, so first could dangle. Clone the value or push first.");
         m.topic = Some(2);
         mark(m, "first", EntityKind::Code);
         m.reply_to = Some(ReplyTo { id: 3, from: Some("Theo Brandt".into()), text: Some("Why does this borrow fail?".into()) });

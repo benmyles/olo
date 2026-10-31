@@ -23,3 +23,6 @@ rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] 
 ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "platform-verifier"] }
 tar = "0.4"
 zstd = "0.14"
+olo-tg.workspace = true
+# Integrations ▸ Telegram: signing in with a QR code.
+qrcode = { version = "0.14", default-features = false }

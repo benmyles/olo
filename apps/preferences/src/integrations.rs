@@ -1,5 +1,5 @@
 //! Integrations: the services Olo works with, each connected here (and
-//! only here). GitHub: Terminal shows each tab's pull request and its
+//! only here). Telegram: its API ID and signing in (`telegram.rs`). GitHub: Terminal shows each tab's pull request and its
 //! checks with it. The sign-in is `olo_system::github`'s: a token Olo keeps
 //! in the login keyring, else `GH_TOKEN`, else the GitHub CLI's. Checking
 //! and connecting talk to GitHub on a worker.
@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use olo_kit::{
     egui::{Context, Sense, Ui, vec2},
     icons, metrics as m,
-    widgets::{BBox, Button, StringView, TextControl, button_row},
+    widgets::{BBox, Button, StringView, TextControl},
 };
 use olo_system::github::{self, Source};
 
@@ -37,6 +37,18 @@ pub struct State {
     /// A token being typed, to connect with.
     token: String,
     adding: bool,
+    telegram: crate::telegram::State,
+}
+
+/// A row of buttons, right to left, as tall as a button (the kit's
+/// `button_row` centres itself in all the height left, and this panel
+/// has more boxes under each row).
+pub fn buttons<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+    ui.allocate_ui_with_layout(vec2(ui.available_width(), m::CONTROL_HEIGHT), olo_kit::egui::Layout::right_to_left(olo_kit::egui::Align::Center), |ui| {
+        ui.spacing_mut().item_spacing.x = m::SPACING + 2.0;
+        add(ui)
+    })
+    .inner
 }
 
 /// Who `token` signs in as, by asking GitHub.
@@ -152,7 +164,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             ui.add(StringView::new("A classic token with the repo scope, or a fine-grained one that can read pull requests and checks. Olo keeps it in your login keyring.").dim(true).wrap(true));
         }
         ui.add_space(m::TIGHT);
-        button_row(ui, |ui| {
+        buttons(ui, |ui| {
             if st.adding {
                 let enter = ui.input(|i| i.key_pressed(olo_kit::egui::Key::Enter));
                 let ok = ui.add_enabled(!st.token.trim().is_empty(), Button::new("Connect").default(true)).clicked();
@@ -183,4 +195,6 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             }
         });
     });
+    ui.add_space(m::SPACING);
+    crate::telegram::ui(ui, &mut st.telegram);
 }

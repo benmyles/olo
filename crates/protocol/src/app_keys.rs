@@ -50,6 +50,7 @@ const ACTIVITY: Option<&str> = Some("olo.activity");
 const DISK_USAGE: Option<&str> = Some("olo.disk-usage");
 const NOTIFICATIONS: Option<&str> = Some("olo.notifications");
 const PALETTE: Option<&str> = Some("olo.palette");
+const TELEGRAM: Option<&str> = Some("olo.telegram");
 
 /// The apps with keys of their own, as Preferences names them.
 pub const APPS: &[(&str, &str)] = &[
@@ -66,6 +67,7 @@ pub const APPS: &[(&str, &str)] = &[
     ("olo.screen", "Agent Screens"),
     ("olo.notifications", "Notifications"),
     ("olo.palette", "Command Palette"),
+    ("olo.telegram", "Telegram"),
 ];
 
 /// The name of the group of every app's commands.
@@ -193,6 +195,22 @@ pub const APP_KEYS: &[AppKey] = &[
     k("notifications.view-cards", NOTIFICATIONS, "view-cards", "Cards", &["Cmd+3"], &["Ctrl+3"], &["Alt+3"]),
     k("notifications.view-conversations", NOTIFICATIONS, "view-conversations", "Conversations", &["Cmd+4"], &["Ctrl+4"], &["Alt+4"]),
     k("palette.alternate", PALETTE, "alternate", "Do the result's other action", &["Cmd+Return"], &["Ctrl+Return"], &["Alt+Return"]),
+    // Telegram: Telegram Desktop's where it has them.
+    k("telegram.contacts", TELEGRAM, "contacts", "Contacts", &["Cmd+K"], &["Ctrl+K"], &["Alt+K"]),
+    k("telegram.attach", TELEGRAM, "attach", "Attach Files", &["Cmd+O"], &["Ctrl+O"], &["Alt+O"]),
+    k("telegram.info", TELEGRAM, "info", "Chat Info", &["Cmd+I"], &["Ctrl+I"], &["Alt+I"]),
+    k("telegram.all-chats", TELEGRAM, "folder:all", "All Chats", &["Cmd+0"], &["Ctrl+0"], &["Alt+0"]),
+    k("telegram.folder-1", TELEGRAM, "folder:1", "First folder", &["Cmd+1"], &["Ctrl+1"], &["Alt+1"]),
+    k("telegram.folder-2", TELEGRAM, "folder:2", "Second folder", &["Cmd+2"], &["Ctrl+2"], &["Alt+2"]),
+    k("telegram.folder-3", TELEGRAM, "folder:3", "Third folder", &["Cmd+3"], &["Ctrl+3"], &["Alt+3"]),
+    k("telegram.folder-4", TELEGRAM, "folder:4", "Fourth folder", &["Cmd+4"], &["Ctrl+4"], &["Alt+4"]),
+    k("telegram.folder-5", TELEGRAM, "folder:5", "Fifth folder", &["Cmd+5"], &["Ctrl+5"], &["Alt+5"]),
+    k("telegram.folder-6", TELEGRAM, "folder:6", "Sixth folder", &["Cmd+6"], &["Ctrl+6"], &["Alt+6"]),
+    k("telegram.folder-7", TELEGRAM, "folder:7", "Seventh folder", &["Cmd+7"], &["Ctrl+7"], &["Alt+7"]),
+    k("telegram.folder-8", TELEGRAM, "folder:8", "Eighth folder", &["Cmd+8"], &["Ctrl+8"], &["Alt+8"]),
+    k("telegram.archive", TELEGRAM, "archive", "Archived Chats", &["Cmd+9"], &["Ctrl+9"], &["Alt+9"]),
+    k("telegram.prev", TELEGRAM, "prev", "Previous Chat", &["Cmd+Up"], &["Alt+Up"], &["Alt+Up"]),
+    k("telegram.next", TELEGRAM, "next", "Next Chat", &["Cmd+Down"], &["Alt+Down"], &["Alt+Down"]),
 ];
 
 /// The entry for `command` in app `app`: the app's own, else every app's.

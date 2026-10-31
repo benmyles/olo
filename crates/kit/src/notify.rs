@@ -178,6 +178,7 @@ pub enum NoteEvent {
 enum Ask {
     Show(NoteId, Box<Note>),
     Close(NoteId),
+    Badge(u32),
 }
 
 /// Shows an app's notifications. Cheap to clone; one thread per notifier.
@@ -214,6 +215,13 @@ impl Notifier {
 
     pub fn close(&self, id: NoteId) {
         let _ = self.to.send(Ask::Close(id));
+    }
+
+    /// How many things are unread in the app (0: none): Deskbar lights
+    /// its row's dot (`com.canonical.Unity.LauncherEntry`'s count, for
+    /// the app's desktop entry, as chat apps send it).
+    pub fn badge(&self, count: u32) {
+        let _ = self.to.send(Ask::Badge(count));
     }
 }
 
@@ -306,6 +314,14 @@ fn run(from: mpsc::Receiver<Ask>, proxy: Events, app: String, entry: String) {
                 Some(server) => c.call_method(Some(NAME), PATH, Some(NAME), "CloseNotification", &(server,)).map(|_| ()),
                 None => Ok(()),
             },
+            Ask::Badge(count) => {
+                use zbus::zvariant::Value;
+                let mut props: HashMap<&str, Value> = HashMap::new();
+                props.insert("count", Value::from(count as i64));
+                props.insert("count-visible", Value::from(count > 0));
+                let uri = format!("application://{entry}.desktop");
+                c.emit_signal(None::<&str>, "/com/canonical/unity/launcherentry/olo", "com.canonical.Unity.LauncherEntry", "Update", &(uri.as_str(), props))
+            }
         };
         if let Err(e) = r {
             tracing::info!("notifications: {e}");
