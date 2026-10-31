@@ -23,7 +23,6 @@ autobenches = false
 description = "A derive macro for creating refinement types in Rust"
 readme = false
 license = "Apache-2.0"
-resolver = "2"
 
 [lib]
 name = "gpui_derive_refineable"

@@ -23,7 +23,6 @@ autobenches = false
 description = "A library for working with semantic versioning in gpui and Zed"
 readme = false
 license = "Apache-2.0"
-resolver = "2"
 
 [lib]
 name = "gpui_semantic_version"

@@ -237,8 +237,10 @@ as they land (with the commit), add new ones as they come up.
      *Frames done*: upstream drew and committed 60 times a second while
      idle (62 wakeups/s); Olo's draws only when something changed (idle:
      0%, 2 wakeups/s; an animation at the display's rate, 3.6%). Still
-     to do: memory (153 MB RSS for hello_world against egui DeskCalc's
-     80 MB) and threads (20 against 10).
+     to do: the `blocking` crate's thread waking twice a second (zbus,
+     started by the portal settings watcher: Olo's settings instead).
+     *Memory and threads done*: hello_world 153 → 59 MB RSS (egui
+     DeskCalc: 80 MB), threads 20 → 8 when idle.
   3. The kit on GPUI: the platform (layer shell for Deskbar, popups for
      menus and tips, fractional scale, viewport, text input, the
      accessibility tree and the commands socket agents use, frame

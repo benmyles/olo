@@ -23,7 +23,6 @@ autobenches = false
 description = "A sum tree data structure, a concurrency-friendly B-tree"
 readme = false
 license = "Apache-2.0"
-resolver = "2"
 
 [lib]
 name = "gpui_sum_tree"

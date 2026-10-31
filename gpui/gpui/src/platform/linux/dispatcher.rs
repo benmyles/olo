@@ -6,6 +6,10 @@ use calloop::{
     timer::TimeoutAction,
 };
 use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
     thread,
     time::{Duration, Instant},
 };
@@ -19,39 +23,85 @@ struct TimerAfter {
 pub(crate) struct LinuxDispatcher {
     main_sender: Sender<Runnable>,
     timer_sender: Sender<TimerAfter>,
-    background_sender: flume::Sender<Runnable>,
-    _background_threads: Vec<thread::JoinHandle<()>>,
+    workers: Arc<Workers>,
+    _timer_thread: thread::JoinHandle<()>,
     main_thread_id: thread::ThreadId,
+}
+
+/// Olo: background threads start when there's work none is free for (up
+/// to one a core) and leave after a while without any, so an idle app
+/// keeps none. (GPUI started one a core up front and kept them.)
+struct Workers {
+    sender: flume::Sender<Runnable>,
+    receiver: flume::Receiver<Runnable>,
+    max: usize,
+    running: AtomicUsize,
+    idle: AtomicUsize,
+    next: AtomicUsize,
+}
+
+const WORKER_LINGER: Duration = Duration::from_secs(10);
+
+impl Workers {
+    fn dispatch(this: &Arc<Self>, runnable: Runnable) {
+        this.sender.send(runnable).unwrap();
+        if this.idle.load(Ordering::Acquire) == 0
+            && this
+                .running
+                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+                    (n < this.max).then_some(n + 1)
+                })
+                .is_ok()
+        {
+            let workers = this.clone();
+            let i = this.next.fetch_add(1, Ordering::Relaxed);
+            let spawned = std::thread::Builder::new()
+                .name(format!("Worker-{i}"))
+                .spawn(move || workers.work(i));
+            if spawned.is_err() {
+                this.running.fetch_sub(1, Ordering::AcqRel);
+            }
+        }
+    }
+
+    fn work(&self, i: usize) {
+        loop {
+            self.idle.fetch_add(1, Ordering::AcqRel);
+            let next = self.receiver.recv_timeout(WORKER_LINGER);
+            self.idle.fetch_sub(1, Ordering::AcqRel);
+            let Ok(runnable) = next else {
+                self.running.fetch_sub(1, Ordering::AcqRel);
+                // (Work sent as it was leaving: another takes it.)
+                if !self.receiver.is_empty() && self.idle.load(Ordering::Acquire) == 0 {
+                    self.running.fetch_add(1, Ordering::AcqRel);
+                    continue;
+                }
+                return;
+            };
+            let start = Instant::now();
+            runnable.run();
+            log::trace!(
+                "background thread {}: ran runnable. took: {:?}",
+                i,
+                start.elapsed()
+            );
+        }
+    }
 }
 
 impl LinuxDispatcher {
     pub fn new(main_sender: Sender<Runnable>) -> Self {
-        let (background_sender, background_receiver) = flume::unbounded::<Runnable>();
-        let thread_count = std::thread::available_parallelism()
-            .map(|i| i.get())
-            .unwrap_or(1);
-
-        let mut background_threads = (0..thread_count)
-            .map(|i| {
-                let receiver = background_receiver.clone();
-                std::thread::Builder::new()
-                    .name(format!("Worker-{i}"))
-                    .spawn(move || {
-                        for runnable in receiver {
-                            let start = Instant::now();
-
-                            runnable.run();
-
-                            log::trace!(
-                                "background thread {}: ran runnable. took: {:?}",
-                                i,
-                                start.elapsed()
-                            );
-                        }
-                    })
-                    .unwrap()
-            })
-            .collect::<Vec<_>>();
+        let (sender, receiver) = flume::unbounded::<Runnable>();
+        let workers = Arc::new(Workers {
+            sender,
+            receiver,
+            max: std::thread::available_parallelism()
+                .map(|i| i.get())
+                .unwrap_or(1),
+            running: AtomicUsize::new(0),
+            idle: AtomicUsize::new(0),
+            next: AtomicUsize::new(0),
+        });
 
         let (timer_sender, timer_channel) = calloop::channel::channel::<TimerAfter>();
         let timer_thread = std::thread::Builder::new()
@@ -86,13 +136,11 @@ impl LinuxDispatcher {
             })
             .unwrap();
 
-        background_threads.push(timer_thread);
-
         Self {
             main_sender,
             timer_sender,
-            background_sender,
-            _background_threads: background_threads,
+            workers,
+            _timer_thread: timer_thread,
             main_thread_id: thread::current().id(),
         }
     }
@@ -104,7 +152,7 @@ impl PlatformDispatcher for LinuxDispatcher {
     }
 
     fn dispatch(&self, runnable: Runnable, _: Option<TaskLabel>) {
-        self.background_sender.send(runnable).unwrap();
+        Workers::dispatch(&self.workers, runnable);
     }
 
     fn dispatch_on_main_thread(&self, runnable: Runnable) {

@@ -23,7 +23,6 @@ autobenches = false
 description = "Macros used by gpui"
 readme = false
 license = "Apache-2.0"
-resolver = "2"
 
 [features]
 inspector = []

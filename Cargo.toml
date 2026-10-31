@@ -45,6 +45,7 @@ rev = "24647fc8d00131eb7f388efed26e35ea316b0018"
 
 # See vendor/README.md.
 [patch.crates-io]
+blade-graphics = { path = "gpui/blade-graphics" }
 epaint = { path = "vendor/epaint" }
 egui-wgpu = { path = "vendor/egui-wgpu" }
 wgpu-hal = { path = "vendor/wgpu-hal" }

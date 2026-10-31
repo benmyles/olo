@@ -23,7 +23,6 @@ autobenches = false
 description = "Standard collection type re-exports used by Zed and GPUI"
 readme = false
 license = "Apache-2.0"
-resolver = "2"
 
 [features]
 test-support = []
