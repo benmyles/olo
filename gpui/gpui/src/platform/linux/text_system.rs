@@ -670,7 +670,9 @@ impl State {
         glyph
             .draw(DrawSettings::hinted(hinting, false), &mut pen)
             .ok()?;
-        let b = path.control_box().expand();
+        let darken = darkening(params.font_size.0) * params.scale_factor;
+        let reach = f64::from(darken / 2.0);
+        let b = path.control_box().inflate(reach, reach).expand();
         let (width, height) = (b.width() as u16, b.height() as u16);
         if width == 0 || height == 0 {
             return None;
@@ -679,6 +681,10 @@ impl State {
         ctx.set_transform(kurbo::Affine::translate((-b.x0, -b.y0)));
         ctx.set_paint(vello_cpu::color::OpaqueColor::<vello_cpu::color::Srgb>::WHITE);
         ctx.fill_path(&path);
+        if darken > 0.0 {
+            ctx.set_stroke(kurbo::Stroke::new(f64::from(darken)));
+            ctx.stroke_path(&path);
+        }
         let mut pixmap = vello_cpu::Pixmap::new(width, height);
         let mut resources = vello_cpu::Resources::new();
         ctx.render(&mut pixmap, &mut resources);
@@ -695,6 +701,26 @@ impl State {
             coverage,
         ))
     }
+}
+
+/// How much text is thickened, in logical pixels: the stroke drawn
+/// around its outline, a tenth of a pixel for 12-point text and smaller,
+/// tapering to none at 24 points (where strokes are thick enough).
+/// Grey-scale anti-aliasing leaves small text's stems thinner and paler
+/// than the design (a stem a pixel and a third wide becomes one dark
+/// pixel and a pale one); a little dilation, as macOS's font smoothing
+/// and FreeType's stem darkening do, gives back its colour: fuller,
+/// smoother text, without turning it bold. `OLO_TEXT_DARKEN` sets the
+/// amount at 12 points (0: none).
+fn darkening(points: f32) -> f32 {
+    static AT_12: std::sync::OnceLock<f32> = std::sync::OnceLock::new();
+    let at_12 = *AT_12.get_or_init(|| {
+        std::env::var("OLO_TEXT_DARKEN")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0.1)
+    });
+    at_12 * ((24.0 - points) / 12.0).clamp(0.0, 1.0)
 }
 
 /// A colour glyph (an emoji), unhinted, cropped to what it paints.
