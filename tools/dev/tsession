@@ -44,6 +44,13 @@ speed: tools/dev/bench).
 """
 import glob, json, os, pwd, re, signal, socket, subprocess, sys, time
 
+# Nothing a test session starts is the person's own session: a shell in
+# theirs carries OLO_REAL_SESSION, which would let a test Activity
+# Monitor ask for root (pkexec) as theirs does. Its helper stays off
+# unless a test asks for it.
+os.environ.pop("OLO_REAL_SESSION", None)
+os.environ.setdefault("OLO_ACTIVITY_HELPER", "off")
+
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 BASE = "/tmp/olo-dev"
 # Where sessions lived before the rename (Tabula); ones still running
