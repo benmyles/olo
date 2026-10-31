@@ -214,6 +214,19 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **olo-terminal uses far too much CPU** (Ben, 2026-10-31): "same with
+  olo-terminal: look at 4356 it is using wayu more cpu than it should".
+  Measured (read-only, /proc and its `{"frames":true}`): 14% of a core on
+  its UI thread, ~74 wakeups/s. Its window "olo — ◑ …" (a tab whose
+  coding agent is working: the spinning title, the TUI's own spinner)
+  drew 128 frames in 5 s, each ~4.5 ms (UI 2.5 ms, tessellating 1.4 ms,
+  submitting 0.5 ms): the whole screen laid out and tessellated again for
+  a spinner. A hidden window ("scraper") still draws once a second at
+  5.5 ms. Wanted: single digits at most. Redraw only what changed (keep
+  each row's shapes from frame to frame; repaint the title/tab spinner
+  without the screen), draw a spinner no faster than it turns, and make
+  a hidden window's once-a-second frame cheap or skip it.
+
 - **Tooltips for text that doesn't show in full** (Ben, 2026-10-31):
   "when hovering over anything in olo or any olo app where the text has
   been truncated or occluded or otherwise is not being displayed in full
@@ -2053,6 +2066,21 @@ as they land (with the commit), add new ones as they come up.
   release); VP9 and HEVC still show facts only), ~~AVIF/HEIC/Opus~~.
 
 ## app_server
+
+- **app_server's idle CPU** (Ben, 2026-10-31): "i often see
+  olo-app-server using 20%+ cpu. look at pid 3266 right now to see what
+  it is doing and how it can be made much more efficient: it should
+  never need to get above single digit cpu in a core." Measured
+  (read-only, /proc): 21–26% of a core, all on the main thread, about
+  half of it in the kernel (sys 13–14%), ~290–320 wakeups/s, with three
+  displays (eDP-1 and DP-1 at 2×, DP-2 at 1×) and Terminal redrawing ~26
+  frames/s for an agent's spinner (above) and Activity Monitor's live
+  graphs open. So every client frame costs app_server several
+  milliseconds. Find where (sampling its main thread), then: composite
+  only the damaged region of only the display it's on, skip outputs
+  with no damage, keep GPU work from re-uploading what didn't change,
+  and see whether the keep-warm pixel (one frame a second per display
+  while in use) and the GPU buffer ioctls (agx VM binds) are part of it.
 
 - ~~**Auto-tiling follows the sizes I give**~~ (Ben, 2026-10-29; done:
   HACKING, auto-tiling; edges no longer snap when let go): "auto-tiling
