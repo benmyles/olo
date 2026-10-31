@@ -221,6 +221,24 @@ as they land (with the commit), add new ones as they come up.
   app_server, its frames brought back and shown) frame by frame and make
   it the same 120 fps, input-to-photon, as the desktop: frames shared as
   dmabufs rather than copied, input sent at once, no polling.
+- **Agent Screens: Chrome opened from a screen's Deskbar lands on the
+  person's display** (Ben, 2026-10-31): "i was just using the "Take
+  Control" feature in an agent screen, and i used the deskpad to try open
+  a new chrome, but it actually opened it on my user screen instead of in
+  the agent screen". Anything launched on an agent screen (its Deskbar,
+  its Tracker, an agent's `olo-screen run`) must open there. Likely cause
+  (to confirm): Chrome's single-instance handoff, where the new process
+  finds the person's running Chrome by its profile and asks it for a
+  window, which that Chrome opens on its own Wayland connection; so a
+  screen's Chrome needs its own instance (its own profile dir, or a
+  Chrome running on that screen), and every launcher there passes the
+  screen's `WAYLAND_DISPLAY`/`OLO_SOCKET`. Check the other single-instance
+  apps (ours via D-Bus activation, Slack, GTK's GApplication) the same way.
+- **Agent Screens: rename a screen** (Ben, 2026-10-31): "i should be able
+  to rename an agent screen". A name the person gives (in the list, the
+  screen's title and its menu, as Tracker renames: click the name or
+  Rename…), kept with the screen's history and shown wherever the screen
+  is (Deskbar's item, move-to menus, `olo-screen list`, the agent's tree).
 - **Passwords for Agent Screens** (Ben, 2026-10-31): "in the Agent
   Screens app i can choose items from passwords that i want to make
   available by default to all new and existing agent screen sessions and
