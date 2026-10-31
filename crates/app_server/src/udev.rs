@@ -350,11 +350,19 @@ impl Backend for UdevData {
                 // but no sooner than a frame after its last look (a storm
                 // of wakes, the pointer moving, stays a look a frame).
                 let frame = s.output.current_mode().map_or(Duration::from_millis(16), |m| Duration::from_secs_f64(1_000f64 / m.refresh as f64));
-                due.push((*node, *crtc, s.last_look.map_or(now, |l| (l + frame).max(now))));
+                let at = s.last_look.map_or(now, |l| (l + frame).max(now));
+                // For the display's next vblank after it, as a look
+                // after a frame is (what clients are told the frame is for).
+                let target = s.last_presentation_time.map(|last| {
+                    let since: Duration = Time::elapsed(&last, smithay::utils::Clock::<Monotonic>::new().now()) + (at - now);
+                    let frames = (since.as_secs_f64() / frame.as_secs_f64()).ceil().max(1.0) as u32;
+                    last + frame * frames
+                });
+                due.push((*node, *crtc, at, target));
             }
         }
-        for (node, crtc, at) in due {
-            let token = schedule_look(&self.loop_handle, node, crtc, Timer::from_deadline(at), None);
+        for (node, crtc, at, target) in due {
+            let token = schedule_look(&self.loop_handle, node, crtc, Timer::from_deadline(at), target);
             if let Some(s) = self.backends.get_mut(&node).and_then(|b| b.surfaces.get_mut(&crtc)) {
                 s.retest = token;
             }
@@ -1014,11 +1022,15 @@ pub fn run_udev() {
             let start = Instant::now();
             state.space.refresh();
             state.popups.cleanup();
+            state.timings.phase("space refresh", start);
+            let t = Instant::now();
             state.tick();
+            state.timings.phase("tick", t);
             state.timings.handled(|| "tick".into(), start);
             let start = Instant::now();
             display_handle.flush_clients().unwrap();
             state.timings.handled(|| "flushing to clients".into(), start);
+            state.timings.phase("flushing to clients", start);
         }
     }
     state.save_layout();
@@ -1866,6 +1878,12 @@ impl AnvilState<UdevData> {
 
     fn frame_finish(&mut self, dev_id: DrmNode, crtc: crtc::Handle, metadata: &mut Option<DrmEventMetadata>) {
         profiling::scope!("frame_finish", &format!("{crtc:?}"));
+        let t = Instant::now();
+        self.frame_finish_inner(dev_id, crtc, metadata);
+        self.timings.phase("vblank", t);
+    }
+
+    fn frame_finish_inner(&mut self, dev_id: DrmNode, crtc: crtc::Handle, metadata: &mut Option<DrmEventMetadata>) {
 
         let device_backend = match self.backend_data.backends.get_mut(&dev_id) {
             Some(backend) => backend,
@@ -2052,6 +2070,15 @@ impl AnvilState<UdevData> {
 
     // If crtc is `Some()`, render it, else render all crtcs
     fn render(&mut self, node: DrmNode, crtc: Option<crtc::Handle>, frame_target: Time<Monotonic>) {
+        let t = Instant::now();
+        self.render_inner(node, crtc, frame_target);
+        self.timings.phase("look (whole)", t);
+        for (name, took) in crate::render::take_parts() {
+            self.timings.add(name, took);
+        }
+    }
+
+    fn render_inner(&mut self, node: DrmNode, crtc: Option<crtc::Handle>, frame_target: Time<Monotonic>) {
         let device_backend = match self.backend_data.backends.get_mut(&node) {
             Some(backend) => backend,
             None => {
@@ -2088,12 +2115,16 @@ impl AnvilState<UdevData> {
             // somehow we got called with an invalid output
             return;
         };
+        // (Something of ours moving: it doesn't rest.)
+        let awake = self.keeps_awake();
         // A mirror draws its source's frame, fitted to its own mode.
         let source = crate::render::mirror_source(&screen);
         let fit = source.as_ref().map(|s| crate::render::fit_outputs(&screen, s, &self.space));
         let output = source.unwrap_or(screen);
 
+        let t = Instant::now();
         self.pre_repaint(&output, frame_target);
+        self.timings.phase("pre_repaint", t);
         let desktop_color = self.desktop_color(&output);
         let twitcher = self.twitcher_entries();
         let output_geo = self.space.output_geometry(&output).unwrap_or_default();
@@ -2204,14 +2235,16 @@ impl AnvilState<UdevData> {
                 let dmabuf_feedback = surface.dmabuf_feedback.clone();
                 // (A resting look that found only the keep-warm pixel
                 // changed rests on.)
-                let new = has_rendered && !(was_asleep && crate::render::warm_changed(&output)) || crate::wallpaper::coming(&output);
+                let new = has_rendered && !(was_asleep && crate::render::warm_changed(&output)) || crate::wallpaper::coming(&output) || awake;
                 surface.idle_frames = if new { 0 } else { surface.idle_frames.saturating_add(1) };
                 resting = surface.idle_frames >= crate::render::IDLE_FRAMES && crate::render::rests(true);
                 if new && was_asleep {
                     // Something changed without waking it (worth a wake).
                     debug!(output = output.name(), "a resting display found something new at its look");
                 }
+                let t = Instant::now();
                 self.post_repaint(&output, dmabuf_feedback, &states);
+                self.timings.phase("post_repaint", t);
                 !has_rendered
             }
             Err(err) => {
@@ -2365,9 +2398,12 @@ fn render_surface<'a>(
         custom_elements.push(CustomRenderElements::Fps(element.clone()));
     }
 
+    let t = Instant::now();
     let (elements, clear_color) =
         output_elements(output, space, custom_elements, renderer, overview, desktop_color, locked);
     let elements = crate::render::frame(elements, fit);
+    crate::render::part("gather (all)", t);
+    let t = Instant::now();
 
     let frame_mode = if surface.disable_direct_scanout {
         FrameFlags::empty()
@@ -2383,6 +2419,7 @@ fn render_surface<'a>(
                 element.sync.wait();
             }
             crate::render::frame_done(!render_frame_result.is_empty);
+            crate::render::part("drm render_frame", t);
             (!render_frame_result.is_empty, render_frame_result.states)
         })
         .map_err(|err| match err {

@@ -177,6 +177,14 @@ impl<BackendData: Backend> CompositorHandler for AnvilState<BackendData> {
     }
 
     fn commit(&mut self, surface: &WlSurface) {
+        let t = std::time::Instant::now();
+        self.commit_inner(surface);
+        self.timings.phase("commit", t);
+    }
+}
+
+impl<BackendData: Backend + 'static> AnvilState<BackendData> {
+    fn commit_inner(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
         self.backend_data.early_import(surface);
         self.wake_for(surface);

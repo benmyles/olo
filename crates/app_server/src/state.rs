@@ -1050,6 +1050,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                         display.get_mut().dispatch_clients(data).unwrap();
                     }
                     data.timings.handled(|| "clients' requests".into(), start);
+                    data.timings.phase("clients' requests", start);
                     Ok(PostAction::Continue)
                 },
             )

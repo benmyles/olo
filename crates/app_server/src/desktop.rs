@@ -464,13 +464,20 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// Called once per loop iteration: drop dead windows and tell
     /// subscribers (Deskbar) when the window list changed.
     pub fn tick(&mut self) {
+        let t = std::time::Instant::now();
         self.parked.0.borrow_mut().retain(|w| w.alive());
         self.sync_groups();
+        crate::render::part("tick: groups", t);
+        let t = std::time::Instant::now();
         self.auto_tick();
+        crate::render::part("tick: auto-tiling", t);
+        let t = std::time::Instant::now();
         self.sync_held_sides();
         self.keep_children_above();
         self.focus_tick();
         self.note_recent();
+        crate::render::part("tick: sides, children, focus", t);
+        let t = std::time::Instant::now();
         // Another display active (a window there focused, a press there):
         // "this workspace" is another, for apps opening windows.
         let active = self.active_output().map(|o| o.name());
@@ -479,6 +486,10 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.tell_workspaces();
         }
         let infos = self.window_infos();
+        crate::render::part("tick: window infos", t);
+        for (name, took) in crate::render::take_parts() {
+            self.timings.add(name, took);
+        }
         if infos != self.last_window_infos {
             self.backend_data.wake(None);
             crate::twitcher::prewarm(infos.iter().map(|i| i.app_id.as_str()));
@@ -1239,6 +1250,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     refresh: m.refresh,
                 };
                 let source = crate::render::mirror_source(o);
+                let mirror = source.is_some();
                 let placed = source.as_ref().unwrap_or(o);
                 let loc = self.space.output_geometry(placed).map(|g| g.loc).unwrap_or_default();
                 OutputInfo {
@@ -1255,6 +1267,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     main: main.as_ref() == Some(o),
                     mirror_of: source.map(|s| s.name()),
                     brightness: if crate::power::is_internal(&o.name()) { self.power.brightness } else { self.power.display_brightness(&o.name()) },
+                    number: (!mirror).then(|| self.settings.display.numbers.get(&display_key(o)).copied()).flatten(),
                 }
             })
             .collect()
@@ -1272,6 +1285,13 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         let key = display_key(output);
         info!(output = output.name(), key, "the display told who it is: its settings now");
+        // Its number, if it had one only by its connector meanwhile.
+        let numbers = &mut self.settings.display.numbers;
+        if !numbers.contains_key(&key)
+            && let Some(n) = numbers.remove(&output.name())
+        {
+            numbers.insert(key.clone(), n);
+        }
         // Its saved workspace, switched to from the one it showed.
         let saved = self.showing.insert(key, was);
         self.apply_output_settings(output);
@@ -1283,6 +1303,44 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         self.tell_workspaces();
         self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
+    }
+
+    /// Something of app_server's own is moving (a scroll being paced or
+    /// gliding on, a window dragged or resized, the overview, Twitcher, the
+    /// keyboard hints, the spotlight, the level indicator, a window's glow
+    /// fading): the displays don't rest meanwhile, as a frame of it may
+    /// change nothing to see and the next must still come at once.
+    pub fn keeps_awake(&self) -> bool {
+        self.pacer.busy()
+            || self.pointer.is_grabbed()
+            || self.overview.is_some()
+            || self.twitch.is_some()
+            || self.hints.active()
+            || crate::spotlight::active()
+            || self.space.outputs().any(crate::osd::showing)
+            || self.space.elements().any(|w| (0.0..1.0).contains(&w.meta().glow_strength()) && w.meta().glow.get().is_some())
+    }
+
+    /// Give each display found a number of its own if it has none
+    /// (`DisplaySettings::numbers`): the first ones left to right, later
+    /// ones the smallest free. Kept, so a display's number doesn't change
+    /// as others come, go or are moved about.
+    pub fn number_displays(&mut self) {
+        let mut shown: Vec<(Point<i32, Logical>, String)> =
+            self.space.outputs().filter_map(|o| Some((self.space.output_geometry(o)?.loc, display_key(o)))).collect();
+        shown.sort_by_key(|(at, _)| (at.x, at.y));
+        let numbers = &mut self.settings.display.numbers;
+        let mut changed = false;
+        for (_, key) in shown {
+            if !numbers.contains_key(&key) {
+                let free = (0..).find(|n| !numbers.values().any(|v| v == n)).unwrap_or(0);
+                numbers.insert(key, free);
+                changed = true;
+            }
+        }
+        if changed {
+            save_settings(&self.settings);
+        }
     }
 
     /// Apply the configured scale and rotation to an output.

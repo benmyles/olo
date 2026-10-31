@@ -61,6 +61,11 @@ type Shown = (Instant, MemoryRenderBuffer, (i32, i32));
 #[derive(Default)]
 struct Slot(Mutex<Option<Shown>>);
 
+/// Whether the indicator is up on `output` (or fading).
+pub fn showing(output: &Output) -> bool {
+    slot(output).0.lock().unwrap_or_else(|e| e.into_inner()).is_some()
+}
+
 fn slot(output: &Output) -> &Slot {
     output.user_data().insert_if_missing_threadsafe(Slot::default);
     output.user_data().get::<Slot>().unwrap()

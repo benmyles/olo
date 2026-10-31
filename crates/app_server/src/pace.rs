@@ -59,6 +59,13 @@ pub struct Pacer {
     pub sending_glide: bool,
 }
 
+impl Pacer {
+    /// A scroll is being sent, a frame's worth a frame, or gliding on.
+    pub fn busy(&self) -> bool {
+        !self.reports.is_empty() || self.gliding
+    }
+}
+
 impl Default for Pacer {
     fn default() -> Self {
         Pacer {

@@ -1269,7 +1269,37 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         pointer.frame(self);
     }
 
+    /// The displays under the pointer, where it was (`before`) and is, look
+    /// again if resting (`Backend::wake`).
+    pub fn wake_under_pointer(&mut self, before: Point<f64, Logical>) {
+        let now = self.pointer.current_location();
+        let mut under: Vec<Output> = self.space.output_under(before).cloned().collect();
+        for o in self.space.output_under(now) {
+            if !under.contains(o) {
+                under.push(o.clone());
+            }
+        }
+        if under.is_empty() {
+            self.backend_data.wake(None);
+        } else {
+            self.backend_data.wake(Some(&under));
+        }
+    }
+
     pub fn synthetic_input(&mut self, event: olo_protocol::SyntheticEvent) {
+        use olo_protocol::SyntheticEvent as S;
+        // As real input wakes the displays (`process_input_event`).
+        let before = self.pointer.current_location();
+        let pointing = matches!(event, S::Move { .. } | S::Scroll { .. });
+        self.synthetic_input_inner(event);
+        if pointing {
+            self.wake_under_pointer(before);
+        } else {
+            self.backend_data.wake(None);
+        }
+    }
+
+    fn synthetic_input_inner(&mut self, event: olo_protocol::SyntheticEvent) {
         use olo_protocol::SyntheticEvent as S;
         self.power_activity();
         let serial = SCOUNTER.next_serial();
@@ -1347,8 +1377,14 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 #[cfg(feature = "udev")]
 impl AnvilState<UdevData> {
     pub fn process_input_event<B: InputBackend>(&mut self, dh: &DisplayHandle, event: InputEvent<B>) {
-        // The pointer moves, a key shows something of ours: the displays look.
-        self.backend_data.wake(None);
+        // The pointer moving or scrolling changes only what is under it
+        // (the pointer drawn, a scroll paced there): those displays look.
+        // Anything else may show something of ours anywhere: every one.
+        let pointing = matches!(event, InputEvent::PointerMotion { .. } | InputEvent::PointerMotionAbsolute { .. } | InputEvent::PointerAxis { .. });
+        let before = self.pointer.current_location();
+        if !pointing {
+            self.backend_data.wake(None);
+        }
         let start = std::time::Instant::now();
         let kind = match &event {
             InputEvent::Keyboard { .. } => "key",
@@ -1359,7 +1395,11 @@ impl AnvilState<UdevData> {
             _ => "gesture or touch",
         };
         self.handle_input_event(dh, event);
+        if pointing {
+            self.wake_under_pointer(before);
+        }
         self.timings.handled(|| format!("input {kind}"), start);
+        self.timings.phase("input", start);
     }
 
     fn handle_input_event<B: InputBackend>(&mut self, dh: &DisplayHandle, event: InputEvent<B>) {

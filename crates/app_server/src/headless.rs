@@ -361,7 +361,10 @@ pub fn run_headless(size_arg: Option<&str>) {
         let start = std::time::Instant::now();
         state.space.refresh();
         state.popups.cleanup();
+        state.timings.phase("space refresh", start);
+        let t = std::time::Instant::now();
         state.tick();
+        state.timings.phase("tick", t);
         state.timings.handled(|| "tick".into(), start);
         for output in &outputs {
             for shot in state.ipc.shots_for(output) {
@@ -524,12 +527,19 @@ fn frames_due(state: &mut AnvilState<HeadlessData>) -> std::time::Instant {
         }
         let was_asleep = std::mem::replace(&mut screen.asleep, false);
         screen.looked = Some(now);
+        // (Something of ours moving: it doesn't rest.)
+        let awake = state.keeps_awake();
+        let t = std::time::Instant::now();
         let new = render_frame(state, i);
+        state.timings.phase("look (whole)", t);
+        for (name, took) in crate::render::take_parts() {
+            state.timings.add(name, took);
+        }
         let screen = &mut state.backend_data.screens[i];
         // (A resting look that found only the keep-warm pixel changed
         // rests on.)
         let output = screen.output.clone();
-        let new = new && !(was_asleep && crate::render::warm_changed(&output)) || crate::wallpaper::coming(&output);
+        let new = new && !(was_asleep && crate::render::warm_changed(&output)) || crate::wallpaper::coming(&output) || awake;
         screen.idle_frames = if new { 0 } else { screen.idle_frames.saturating_add(1) };
         if new && was_asleep {
             // Something changed without waking it (worth a wake).
@@ -559,7 +569,9 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) -> bool {
     let now = state.clock.now();
     let frame = frame_time(output);
     let frame_target = now + frame;
+    let t = std::time::Instant::now();
     state.pre_repaint(output, frame_target);
+    state.timings.phase("pre_repaint", t);
     let desktop_color = state.desktop_color(output);
     let overlay = twitcher_overlay(state, output);
     let locked = state.lock.locked();
@@ -606,7 +618,9 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) -> bool {
                     wp_presentation_feedback::Kind::empty(),
                 );
             }
+            let t = std::time::Instant::now();
             state.post_repaint(output, None, &states);
+            state.timings.phase("post_repaint", t);
             damaged
         }
         Err(e) => {

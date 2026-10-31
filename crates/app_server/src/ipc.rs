@@ -359,7 +359,9 @@ impl<B: Backend + 'static> AnvilState<B> {
                 | Request::Outputs
                 | Request::PowerStatus
                 | Request::ActivationToken
-                | Request::Timings
+                | Request::Timings { .. }
+                // (Input wakes the displays it changes: `synthetic_input`.)
+                | Request::Synthetic { .. }
         );
         if !asks {
             self.backend_data.wake(None);
@@ -710,7 +712,12 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.ipc.recording = Some(crate::screenshot::Recording::start(PathBuf::from(path), frames, output));
                 Reply::Ok
             }
-            Request::Timings => Reply::Timings { timings: self.take_timings() },
+            Request::Timings { quiet } => Reply::Timings { timings: self.take_timings(quiet) },
+            Request::SetResting { on } => {
+                crate::render::set_rests(on);
+                info!(?on, "displays resting");
+                Reply::Ok
+            }
             Request::Quit => {
                 self.running.store(false, std::sync::atomic::Ordering::SeqCst);
                 Reply::Ok

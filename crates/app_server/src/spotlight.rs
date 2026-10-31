@@ -57,6 +57,11 @@ static STATE: Mutex<Option<State>> = Mutex::new(None);
 /// changes.
 static DRAWN: Mutex<Option<HashMap<String, (Id, CommitCounter, f32)>>> = Mutex::new(None);
 
+/// Whether the dim is up (or fading).
+pub fn active() -> bool {
+    STATE.lock().unwrap_or_else(|e| e.into_inner()).is_some()
+}
+
 /// Keep `bright` lit and dim the rest (fading in, if it isn't yet).
 pub fn show(bright: HashSet<u64>) {
     let mut state = STATE.lock().unwrap_or_else(|e| e.into_inner());

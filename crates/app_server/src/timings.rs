@@ -11,7 +11,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use olo_protocol::{FrameTimings, Timings as Answer};
+use olo_protocol::{FrameTimings, PhaseTimings, Timings as Answer};
 use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
 
 use crate::state::{AnvilState, Backend};
@@ -31,6 +31,7 @@ pub struct Timings {
     beats: u32,
     latest_beat: Duration,
     slowest: Option<(String, Duration)>,
+    phases: BTreeMap<&'static str, PhaseTimings>,
 }
 
 impl Timings {
@@ -48,6 +49,23 @@ impl Timings {
         f.frames += 1;
         f.slowest_us = f.slowest_us.max(us);
         f.total_us += us;
+    }
+
+    /// Part `name` of the loop done, since `start` (`Answer::phases`).
+    pub fn phase(&mut self, name: &'static str, start: Instant) {
+        self.add(name, start.elapsed());
+    }
+
+    /// Part `name` of the loop done, in `took`.
+    pub fn add(&mut self, name: &'static str, took: Duration) {
+        if !self.watching() {
+            return;
+        }
+        let us = took.as_micros() as u64;
+        let p = self.phases.entry(name).or_insert_with(|| PhaseTimings { name: name.to_owned(), ..Default::default() });
+        p.count += 1;
+        p.total_us += us;
+        p.slowest_us = p.slowest_us.max(us);
     }
 
     /// Something done (a request, an input event, clients' requests, the
@@ -68,6 +86,7 @@ impl Timings {
             beats: self.beats,
             latest_beat_us: self.latest_beat.as_micros() as u64,
             slowest: self.slowest.take().map(|(what, t)| (what, t.as_micros() as u64)),
+            phases: std::mem::take(&mut self.phases).into_values().collect(),
         };
         self.beats = 0;
         self.latest_beat = Duration::ZERO;
@@ -78,13 +97,13 @@ impl Timings {
 impl<B: Backend + 'static> AnvilState<B> {
     /// `Request::Timings`: what was counted since the last ask; and keep
     /// counting (the first ask starts the heartbeat).
-    pub fn take_timings(&mut self) -> Answer {
+    pub fn take_timings(&mut self, quiet: bool) -> Answer {
         if !self.timings.watching() {
             // Nothing counted while nobody watched.
             self.timings = Timings { beating: self.timings.beating, ..Default::default() };
         }
         self.timings.watched_until = Some(Instant::now() + WATCH);
-        if !self.timings.beating {
+        if !self.timings.beating && !quiet {
             self.timings.beating = true;
             let _ = self.handle.insert_source(Timer::from_duration(BEAT), |due, _, state| {
                 let t = &mut state.timings;

@@ -324,11 +324,14 @@ where
         );
         out.extend(elements.into_iter().map(|e| OutputRenderElements::Space(SpaceRenderElements::Surface(e))));
     };
+    let t = std::time::Instant::now();
     whole(renderer, &mut out, Layer::Overlay);
     for (menu, at) in crate::shell::lower_layer_menus(output) {
         tree(renderer, &mut out, &menu, at);
     }
     whole(renderer, &mut out, Layer::Top);
+    part("gather: upper layers", t);
+    let t = std::time::Instant::now();
     let window = |e| OutputRenderElements::Space(SpaceRenderElements::Element(Wrap::from(e)));
     if let (Some(region), Some(overview)) = (space.output_geometry(output), overview.filter(|o| o.shows(&output.name()))) {
         out.extend(overview.elements(renderer, output, region.loc, region.size));
@@ -358,11 +361,30 @@ where
             out.push(window(WindowRenderElement::Decoration(d)));
         }
     }
+    part("gather: windows", t);
     // The lower layers themselves, without their menus.
+    let t = std::time::Instant::now();
     for (l, at) in layers.iter().filter(|(l, _)| matches!(l.layer(), Layer::Bottom | Layer::Background)) {
         tree(renderer, &mut out, l.wl_surface(), *at);
     }
+    part("gather: lower layers", t);
     out
+}
+
+thread_local! {
+    /// The parts of the look being drawn and what each took, for the
+    /// timings (`part`, `take_parts`).
+    static PARTS: std::cell::RefCell<Vec<(&'static str, std::time::Duration)>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Part `name` of a look done, since `start` (`Timings::phases`).
+pub fn part(name: &'static str, start: std::time::Instant) {
+    PARTS.with(|p| p.borrow_mut().push((name, start.elapsed())));
+}
+
+/// The parts of the look just done (`part`).
+pub fn take_parts() -> Vec<(&'static str, std::time::Duration)> {
+    PARTS.with(|p| std::mem::take(&mut *p.borrow_mut()))
 }
 
 /// What took over 4 ms to gather (most likely importing a buffer it had
@@ -486,21 +508,44 @@ pub fn warm_changed(output: &Output) -> bool {
     WARM.with(|w| w.borrow().changed.as_deref() == Some(output.name().as_str()))
 }
 
-/// Whether displays rest: headless ones (agent screens, tests) do; real
-/// ones (`real`) don't, unless `OLO_REST=on` (`off` stops both). On real
-/// displays it made the desktop stutter: every pointer motion woke every
-/// resting display for a look, each with a DRM test commit, up to four a
-/// frame, and the loop fell behind. Not again until pointer motion wakes
-/// only the display it's on and that is measured on real displays.
-pub fn rests(real: bool) -> bool {
-    static REST: std::sync::OnceLock<Option<bool>> = std::sync::OnceLock::new();
-    REST.get_or_init(|| match std::env::var("OLO_REST").as_deref() {
-        Ok("on") => Some(true),
-        Ok("off") => Some(false),
-        _ => None,
-    })
-    .unwrap_or(!real)
+/// Whether displays rest (`OLO_REST=off`, or `Request::SetResting` at
+/// run time, stops it). The first time on real displays it made the
+/// desktop stutter: every pointer motion woke every resting display for a
+/// look, each with a DRM test commit, up to four a frame, and a scroll's
+/// glide went on at ten frames a second once nothing changed. Now pointer
+/// motion and scrolling wake only the displays under the pointer, a woken
+/// look comes a frame after the last at the soonest (for the next vblank),
+/// and nothing rests while something of app_server's own moves
+/// (`keeps_awake`): headless, scrolling as smooth as without (glides
+/// smoother), a storm of pointer motion no dearer, an idle display ten
+/// looks a second.
+pub fn rests(_real: bool) -> bool {
+    match REST.load(std::sync::atomic::Ordering::Relaxed) {
+        ON => true,
+        OFF => false,
+        _ => {
+            let from_env = match std::env::var("OLO_REST").as_deref() {
+                Ok("on") => ON,
+                Ok("off") => OFF,
+                _ => DEFAULT,
+            };
+            let _ = REST.compare_exchange(UNSET, from_env, std::sync::atomic::Ordering::Relaxed, std::sync::atomic::Ordering::Relaxed);
+            REST.load(std::sync::atomic::Ordering::Relaxed) != OFF
+        }
+    }
 }
+
+/// Resting on or off for every display from now (`Request::SetResting`),
+/// or (None) as the backend has it.
+pub fn set_rests(on: Option<bool>) {
+    REST.store(match on { Some(true) => ON, Some(false) => OFF, None => DEFAULT }, std::sync::atomic::Ordering::Relaxed);
+}
+
+static REST: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(UNSET);
+const UNSET: u8 = 0;
+const DEFAULT: u8 = 1;
+const ON: u8 = 2;
+const OFF: u8 = 3;
 
 /// Frames in a row with nothing new after which a display rests: it
 /// looks again only every `IDLE_POLL`, or at once when woken
@@ -596,6 +641,7 @@ where
                 .map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))),
         );
         slow_elements(start, || "the wallpaper".into());
+        part("gather: wallpaper", start);
 
         (output_render_elements, desktop_color)
     }
@@ -625,7 +671,10 @@ where
         output_elements(output, space, custom_elements, renderer, overview, desktop_color, locked);
     let elements = frame(elements, fit);
     let gathered = start.elapsed();
+    part("gather (all)", start);
+    let t = std::time::Instant::now();
     let result = damage_tracker.render_output(renderer, framebuffer, age, &elements, clear_color);
+    part("damage and draw", t);
     // A frame over a 120 Hz frame's time says where it went: gathering the
     // elements (which imports what clients committed) or drawing them.
     let took = start.elapsed();

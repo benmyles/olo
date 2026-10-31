@@ -310,9 +310,21 @@ pub enum Request {
     },
     /// Inject input as if from a device (for automated UI tests).
     Synthetic { events: Vec<SyntheticEvent> },
+    /// Displays with nothing new rest (look again only when woken, or now
+    /// and then) or look every frame: `on`, `off`, or (None) as app_server
+    /// has it for its kind of display. Until app_server restarts.
+    SetResting {
+        #[serde(default)]
+        on: Option<bool>,
+    },
     /// How app_server has kept up since the last ask ([`Timings`]), and
-    /// keep watching for another minute (for tools/dev/perf-fuzz).
-    Timings,
+    /// keep watching for another minute (for tools/dev/perf-fuzz). `quiet`:
+    /// without the heartbeat (which wakes app_server every 4 ms), to
+    /// measure what it costs.
+    Timings {
+        #[serde(default)]
+        quiet: bool,
+    },
     Quit,
 }
 
@@ -397,6 +409,20 @@ pub struct Timings {
     /// clients' requests (their commits among them), or the "tick" after
     /// each turn of the loop; to tell what made a beat late.
     pub slowest: Option<(String, u64)>,
+    /// What the loop spent its time on, by part ("pre_repaint", "tick",
+    /// "commit", …): how often, in all and the slowest, to find where the
+    /// CPU goes.
+    #[serde(default)]
+    pub phases: Vec<PhaseTimings>,
+}
+
+/// One part of app_server's loop ([`Timings::phases`]).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct PhaseTimings {
+    pub name: String,
+    pub count: u32,
+    pub total_us: u64,
+    pub slowest_us: u64,
 }
 
 /// How long one display's frames took to draw: from gathering what is on
@@ -723,16 +749,27 @@ pub struct OutputInfo {
     /// Its brightness, 0–1, when it can be set from here.
     #[serde(default)]
     pub brightness: Option<f32>,
+    /// The number it goes by ("D1"), its own for good
+    /// (`DisplaySettings::numbers`).
+    #[serde(default)]
+    pub number: Option<u32>,
 }
 
 /// The number display `output` (a connector) goes by, "D0", "D1", …:
-/// the displays left to right (then top to bottom), from 0. None with
-/// only one display, which needs no number, and for a mirror (it shows
-/// another's picture).
+/// the monitor's own, given the first time it was seen and kept
+/// (`DisplaySettings::numbers`), so it doesn't change as displays come,
+/// go or are moved about; from an app_server from before, the displays
+/// left to right (then top to bottom), from 0. None with only one
+/// display, which needs no number, and for a mirror (it shows another's
+/// picture).
 pub fn display_number(outputs: &[OutputInfo], output: &str) -> Option<u32> {
     let mut shown: Vec<&OutputInfo> = outputs.iter().filter(|o| o.mirror_of.is_none()).collect();
     if shown.len() < 2 {
         return None;
+    }
+    let this = shown.iter().find(|o| o.name == output)?;
+    if let Some(n) = this.number {
+        return Some(n);
     }
     shown.sort_by_key(|o| o.position);
     shown.iter().position(|o| o.name == output).map(|i| i as u32)
@@ -1084,6 +1121,11 @@ pub struct DisplaySettings {
     /// under a connector by older versions still apply, and move to the
     /// monitor's key when next changed.
     pub outputs: std::collections::BTreeMap<String, OutputConfig>,
+    /// Each display's number ("D1"), by its key: given the first time it
+    /// is seen (the smallest free; the first ones left to right) and kept,
+    /// whatever comes, goes or moves ([`display_number`]).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub numbers: std::collections::BTreeMap<String, u32>,
 }
 
 /// Where a display's settings are kept: "make model serial" from its EDID
@@ -1100,7 +1142,7 @@ pub fn display_key(connector: &str, make: &str, model: &str, serial: &str) -> St
 
 impl Default for DisplaySettings {
     fn default() -> Self {
-        DisplaySettings { scale: 2.0, main: None, outputs: Default::default() }
+        DisplaySettings { scale: 2.0, main: None, outputs: Default::default(), numbers: Default::default() }
     }
 }
 
@@ -1798,6 +1840,7 @@ mod tests {
             main: false,
             mirror_of: mirror.map(Into::into),
             brightness: None,
+            number: None,
         };
         let one = [out("eDP-1", 0, None), out("HDMI-A-1", 0, Some("eDP-1"))];
         assert_eq!(display_number(&one, "eDP-1"), None);
@@ -1806,6 +1849,9 @@ mod tests {
         let numbers: Vec<Option<u32>> = ["DP-2", "DP-1", "eDP-1", "HDMI-A-1"].iter().map(|o| display_number(&three, o)).collect();
         assert_eq!(numbers, [Some(0), Some(1), Some(2), None]);
         assert_eq!(workspace_name(Some(2), 3), "D2 Workspace 4");
+        // Their own numbers, wherever they are.
+        let kept = [OutputInfo { number: Some(2), ..out("eDP-1", 0, None) }, OutputInfo { number: Some(0), ..out("DP-1", 1728, None) }];
+        assert_eq!((display_number(&kept, "eDP-1"), display_number(&kept, "DP-1")), (Some(2), Some(0)));
     }
     use super::*;
 

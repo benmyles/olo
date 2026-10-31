@@ -2222,9 +2222,9 @@ as they land (with the commit), add new ones as they come up.
   … and it has to work with auto tiling properly so that they come back
   with the same positions and any custom resizes etc". Upgrades: done
   (7a7c5fd: displays known by their monitors before use, windows back on
-  their own displays; `tools/dev/layout-check`). Still to do: each
-  monitor's number (D0, D1, …) given once and kept in the settings by
-  its key, not its place left to right; unplugging a display moves its
+  their own displays; `tools/dev/layout-check`). Numbers: done (each
+  monitor's number, D0, D1, …, given once and kept in the settings by its
+  key, `DisplaySettings::numbers`). Still to do: unplugging a display moves its
   windows to the main display on the same workspaces, and plugging it
   back in returns them, tiles and custom sizes included; a headless
   test for plugging and unplugging (IPC for test sessions), run by
