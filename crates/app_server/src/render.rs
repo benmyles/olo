@@ -304,8 +304,10 @@ where
     // A layer surface with its menus, or (`tree`) a surface alone.
     let whole = |renderer: &mut R, out: &mut Vec<_>, layer: Layer| {
         for (l, at) in layers.iter().filter(|(l, _)| l.layer() == layer) {
+            let start = std::time::Instant::now();
             let elements: Vec<WaylandSurfaceRenderElement<R>> =
                 AsRenderElements::<R>::render_elements(l, renderer, at.to_physical_precise_round(scale), scale.into(), 1.0);
+            slow_elements(start, || format!("layer {}", l.namespace()));
             out.extend(elements.into_iter().map(|e| OutputRenderElements::Space(SpaceRenderElements::Surface(e))));
         }
     };
@@ -345,7 +347,9 @@ where
                 out.push(window(WindowRenderElement::Decoration(dim.take().unwrap().1)));
             }
             let location = (at - SpaceElement::geometry(w).loc - region.loc).to_physical_precise_round(scale);
+            let start = std::time::Instant::now();
             let elements: Vec<WindowRenderElement<R>> = w.render_elements(renderer, location, scale.into(), 1.0);
+            slow_elements(start, || format!("window {} {:?}", w.id(), SpaceElement::geometry(w).size));
             out.extend(elements.into_iter().map(window));
         }
         if let Some((_, d)) = dim {
@@ -357,6 +361,15 @@ where
         tree(renderer, &mut out, l.wl_surface(), *at);
     }
     out
+}
+
+/// What took over 4 ms to gather (most likely importing a buffer it had
+/// just committed), named by `what`, in the log.
+fn slow_elements(start: std::time::Instant, what: impl FnOnce() -> String) {
+    let took = start.elapsed();
+    if took > std::time::Duration::from_millis(4) {
+        tracing::info!("slow elements: {} took {:.1} ms", what(), took.as_secs_f64() * 1e3);
+    }
 }
 
 pub fn output_elements<R>(
@@ -421,10 +434,12 @@ where
         crate::shell::modes::mark_covered(space);
         output_render_elements.extend(space_elements(renderer, space, output, overview));
         // The wallpaper goes under everything, over the workspace colour.
+        let start = std::time::Instant::now();
         output_render_elements.extend(
             crate::wallpaper::element(renderer, output)
                 .map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))),
         );
+        slow_elements(start, || "the wallpaper".into());
 
         (output_render_elements, desktop_color)
     }
