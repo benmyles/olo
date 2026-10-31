@@ -6,8 +6,14 @@
 //! glyph to the cell width; wide characters and glyphs from fallback fonts
 //! are placed cell by cell; box-drawing and block characters are drawn as
 //! shapes so lines join seamlessly.
+//!
+//! Each row is laid out and tessellated once (`RowCache`): a frame that
+//! changes one row (an agent's spinner, a line typed) rebuilds that row's
+//! meshes and hands egui the rest as they were, so it neither lays out nor
+//! tessellates the screen again. The cursor, the hovered link, colour
+//! emoji and pictures are drawn live over them.
 
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
 use alacritty_terminal::{
     grid::{Dimensions, Scroll},
@@ -107,6 +113,72 @@ pub struct Mouse {
     hover: Option<Hover>,
     /// Image textures by image id, with the generation they were made from.
     textures: HashMap<u32, (u64, egui::TextureHandle)>,
+    /// The screen's rows as last tessellated.
+    rows: RowCache,
+}
+
+/// The screen's rows as last drawn: for each, a hash of what it was made
+/// from and its tessellated backgrounds and foreground (text, boxes,
+/// lines). Dropped whole when anything they were drawn for changes (the
+/// cell metrics, scale, colours, where the screen is, the font atlas).
+#[derive(Default)]
+struct RowCache {
+    key: u64,
+    rows: Vec<Option<(u64, Arc<egui::Mesh>, Arc<egui::Mesh>)>>,
+}
+
+/// A row's cells, gathered before they're drawn (only rows that changed are).
+#[derive(Default)]
+struct RowBuf {
+    hash: u64,
+    /// Backgrounds: column, width in cells, colour.
+    bgs: Vec<(usize, f32, Color32)>,
+    runs: Vec<(usize, String, Style)>,
+    singles: Vec<(usize, char, Style, bool)>,
+    boxes: Vec<(usize, char, Color32)>,
+    lines: Vec<(Rect, Color32)>,
+}
+
+/// FNV-1a over 64-bit words: what a row is made from, cheaply.
+fn mix_in(h: &mut u64, v: u64) {
+    *h = (*h ^ v).wrapping_mul(0x0000_0100_0000_01b3);
+}
+
+/// Where shapes go to be tessellated once rather than painted: the calls
+/// `draw_box` makes on a painter.
+struct Shapes<'a> {
+    ctx: &'a egui::Context,
+    list: RefCell<Vec<egui::Shape>>,
+}
+
+impl<'a> Shapes<'a> {
+    fn new(ctx: &'a egui::Context) -> Self {
+        Shapes { ctx, list: RefCell::new(Vec::new()) }
+    }
+    fn rect_filled(&self, r: Rect, _radius: f32, color: Color32) {
+        self.list.borrow_mut().push(egui::Shape::rect_filled(r, 0.0, color));
+    }
+    fn add(&self, shape: egui::Shape) {
+        self.list.borrow_mut().push(shape);
+    }
+    fn layout_no_wrap(&self, text: String, font: FontId, color: Color32) -> Arc<egui::Galley> {
+        self.ctx.fonts_mut(|f| f.layout_no_wrap(text, font, color))
+    }
+    fn galley(&self, pos: Pos2, galley: Arc<egui::Galley>, color: Color32) {
+        self.list.borrow_mut().push(egui::Shape::galley(pos, galley, color));
+    }
+    /// The shapes as one mesh (they all draw from the font texture).
+    fn tessellate(self) -> Arc<egui::Mesh> {
+        let ctx = self.ctx;
+        let font_size = ctx.fonts(|f| f.font_image_size());
+        let options = ctx.tessellation_options(|o| *o);
+        let mut t = egui::epaint::Tessellator::new(ctx.pixels_per_point(), options, font_size, Vec::new());
+        let mut mesh = egui::Mesh::default();
+        for shape in self.list.into_inner() {
+            t.tessellate_shape(shape, &mut mesh);
+        }
+        Arc::new(mesh)
+    }
 }
 
 #[derive(Clone)]
@@ -255,12 +327,13 @@ pub fn show(
     let cell = m.cell;
     let at = |line: i32, col: usize| pos2(origin.x + col as f32 * cell.x, origin.y + (line + offset) as f32 * cell.y);
 
-    // Per-row text runs: (start column, text, style) for runs of simple
-    // glyphs, plus individually placed glyphs.
+    // Each row's cells: backgrounds, runs of simple glyphs, glyphs placed
+    // one by one, boxes and lines; drawn (and tessellated) only for rows
+    // that changed. Emoji and their fallbacks are drawn live.
+    let mut bufs: Vec<RowBuf> = (0..rows).map(|_| RowBuf { hash: 0xcbf2_9ce4_8422_2325, ..RowBuf::default() }).collect();
+    let row_of = |line: i32| (line + offset).clamp(0, rows as i32 - 1) as usize;
     let mut runs: Vec<(i32, usize, String, Style)> = Vec::new();
     let mut singles: Vec<(i32, usize, char, Style, bool)> = Vec::new();
-    let mut boxes: Vec<(i32, usize, char, Color32)> = Vec::new();
-    let mut lines: Vec<(Rect, Color32)> = Vec::new();
     let mut cursor_cell: Option<(char, Style, bool)> = None;
     let mut image_cells: Vec<(i32, usize, u32, usize)> = Vec::new();
     // Colour emoji: (line, column, cluster, style, cells).
@@ -296,9 +369,20 @@ pub fn show(
         }
         let wide = flags.contains(Flags::WIDE_CHAR);
         let width = if wide { 2.0 } else { 1.0 };
+        let buf = &mut bufs[row_of(line)];
+        // What this cell adds to its row's look.
+        mix_in(&mut buf.hash, col as u64 | (cell_.c as u64) << 16 | (flags.bits() as u64) << 40);
+        mix_in(&mut buf.hash, (c32(fg).to_array().iter().fold(0u64, |a, &b| a << 8 | b as u64)) << 32 | c32(bg).to_array().iter().fold(0u64, |a, &b| a << 8 | b as u64));
+        if let Some(z) = cell_.zerowidth() {
+            for ch in z {
+                mix_in(&mut buf.hash, *ch as u64);
+            }
+        }
+        if let Some(u) = cell_.underline_color() {
+            mix_in(&mut buf.hash, c32(scheme.resolve(u, colors)).to_array().iter().fold(1u64, |a, &b| a << 8 | b as u64));
+        }
         if bg != bg_default {
-            let p = at(line, col);
-            painter.rect_filled(Rect::from_min_size(p, vec2(cell.x * width, cell.y)), 0.0, c32(bg));
+            buf.bgs.push((col, width, c32(bg)));
         }
         let style = Style { fg: c32(fg), bold: flags.contains(Flags::BOLD), italic: flags.contains(Flags::ITALIC) };
         let is_cursor = show_cursor && point == cursor.point;
@@ -316,14 +400,14 @@ pub fn show(
             let uc = cell_.underline_color().map(|c| c32(scheme.resolve(c, colors))).unwrap_or(style.fg);
             let y = p.y + m.ascent + m.row * 0.86;
             let t = (m.size / 12.0).round().max(1.0) * px.max(0.5);
-            lines.push((Rect::from_min_size(pos2(p.x, y), vec2(w, t)), uc));
+            buf.lines.push((Rect::from_min_size(pos2(p.x, y), vec2(w, t)), uc));
             if flags.contains(Flags::DOUBLE_UNDERLINE) {
-                lines.push((Rect::from_min_size(pos2(p.x, y + 2.0 * t), vec2(w, t)), uc));
+                buf.lines.push((Rect::from_min_size(pos2(p.x, y + 2.0 * t), vec2(w, t)), uc));
             }
         }
         if flags.contains(Flags::STRIKEOUT) {
             let y = p.y + m.ascent + m.row * 0.52;
-            lines.push((Rect::from_min_size(pos2(p.x, y), vec2(w, px.max(0.5))), style.fg));
+            buf.lines.push((Rect::from_min_size(pos2(p.x, y), vec2(w, px.max(0.5))), style.fg));
         }
         let c = cell_.c;
         if c == ' ' || c == '\0' {
@@ -331,7 +415,7 @@ pub fn show(
         }
         used.insert((line, col));
         if is_box(c) {
-            boxes.push((line, col, c, style.fg));
+            buf.boxes.push((col, c, style.fg));
         } else if wide || !glyphs.simple(ui, m, c) || cell_.zerowidth().is_some() {
             let mut cluster = String::from(c);
             cluster.extend(cell_.zerowidth().into_iter().flatten());
@@ -351,31 +435,24 @@ pub fn show(
                 emoji.push((line, col, cluster, style, cells));
                 continue;
             }
-            let mut text_c = c;
             if let Some(z) = cell_.zerowidth() {
                 // Combining marks: lay the cluster out together.
                 let mut t = String::from(c);
                 t.extend(z);
-                singles.push((line, col, '\u{0}', style, wide));
-                runs.push((line, col, t, style));
-                text_c = '\u{0}';
+                buf.runs.push((col, t, style));
+            } else {
+                buf.singles.push((col, c, style, wide));
             }
-            if text_c != '\u{0}' {
-                singles.push((line, col, c, style, wide));
-            }
-        } else if let Some(last) = runs.last_mut()
-            && last.0 == line
-            && last.3 == style
-            && last.1 + last.2.chars().count() == col
-            && last.2.chars().all(|ch| glyphs.simple(ui, m, ch))
+        } else if let Some(last) = buf.runs.last_mut()
+            && last.2 == style
+            && last.0 + last.1.chars().count() == col
+            && last.1.chars().all(|ch| glyphs.simple(ui, m, ch))
         {
-            last.2.push(c);
+            last.1.push(c);
         } else {
-            runs.push((line, col, c.to_string(), style));
+            buf.runs.push((col, c.to_string(), style));
         }
     }
-
-    draw_images(ui, &painter, s, &image_cells, &mut mouse.textures, at, cell);
 
     let font_for = |st: Style| {
         let family = if st.bold {
@@ -388,6 +465,80 @@ pub fn show(
         FontId::new(m.size, family)
     };
     let spacing = cell.x - m.advance;
+    let run_galley = |text: &str, st: Style| {
+        let mut job = LayoutJob::default();
+        job.append(text, 0.0, egui::TextFormat { font_id: font_for(st), color: st.fg, extra_letter_spacing: spacing, ..Default::default() });
+        ui.fonts_mut(|f| f.layout_job(job))
+    };
+
+    // The rows: as they were where nothing changed, else drawn and
+    // tessellated again. Every row's backgrounds go under every row's
+    // text, so a glyph reaching into the next row isn't covered.
+    let ctx = ui.ctx().clone();
+    let cache_key = {
+        let mut k = 0xcbf2_9ce4_8422_2325u64;
+        for v in [m.size.to_bits() as u64, cell.x.to_bits() as u64, cell.y.to_bits() as u64, m.ppp.to_bits() as u64, origin.x.to_bits() as u64, origin.y.to_bits() as u64, cols as u64, rows as u64] {
+            mix_in(&mut k, v);
+        }
+        mix_in(&mut k, c32(bg_default).to_array().iter().fold(0u64, |a, &b| a << 8 | b as u64));
+        mix_in(&mut k, ctx.fonts(|f| f.galley_generation()));
+        let [w, h] = ctx.fonts(|f| f.font_image_size());
+        mix_in(&mut k, (w as u64) << 32 | h as u64);
+        k
+    };
+    let cache = &mut mouse.rows;
+    if cache.key != cache_key {
+        cache.key = cache_key;
+        cache.rows.clear();
+    }
+    cache.rows.resize(rows, None);
+    let mut fronts = Vec::with_capacity(rows);
+    for (r, buf) in bufs.into_iter().enumerate() {
+        let (back, front) = match &cache.rows[r] {
+            Some((h, back, front)) if *h == buf.hash => (back.clone(), front.clone()),
+            _ => {
+                let line = r as i32 - offset;
+                let back_shapes = Shapes::new(&ctx);
+                for (col, width, color) in &buf.bgs {
+                    back_shapes.rect_filled(Rect::from_min_size(at(line, *col), vec2(cell.x * width, cell.y)), 0.0, *color);
+                }
+                let front_shapes = Shapes::new(&ctx);
+                for (col, text, st) in &buf.runs {
+                    let p = at(line, *col);
+                    front_shapes.galley(pos2(p.x, p.y + m.ascent), run_galley(text, *st), st.fg);
+                }
+                for (col, c, st, wide) in &buf.singles {
+                    let galley = ctx.fonts_mut(|f| f.layout_no_wrap(c.to_string(), font_for(*st), st.fg));
+                    let p = at(line, *col);
+                    let w = if *wide { cell.x * 2.0 } else { cell.x };
+                    // Centre glyphs that aren't cell-sized in their cell(s).
+                    let x = p.x + ((w - galley.size().x) / 2.0 * m.ppp).round() / m.ppp;
+                    front_shapes.galley(pos2(x, p.y + m.ascent), galley, st.fg);
+                }
+                for (col, c, color) in &buf.boxes {
+                    draw_box(&front_shapes, Rect::from_min_size(at(line, *col), cell), *c, *color, m.ppp);
+                }
+                for (rr, c) in &buf.lines {
+                    front_shapes.rect_filled(*rr, 0.0, *c);
+                }
+                let (back, front) = (back_shapes.tessellate(), front_shapes.tessellate());
+                cache.rows[r] = Some((buf.hash, back.clone(), front.clone()));
+                (back, front)
+            }
+        };
+        if !back.is_empty() {
+            painter.add(egui::Shape::Mesh(back));
+        }
+        fronts.push(front);
+    }
+    for front in fronts {
+        if !front.is_empty() {
+            painter.add(egui::Shape::Mesh(front));
+        }
+    }
+
+    draw_images(ui, &painter, s, &image_cells, &mut mouse.textures, at, cell);
+
     // Colour emoji, else (no colour glyph) the cluster as text.
     for (line, col, cluster, st, cells) in emoji {
         // Two cells wide, as an emoji should be: a narrow one borrows a
@@ -406,15 +557,8 @@ pub fn show(
         }
     }
     for (line, col, text, st) in runs {
-        let mut job = LayoutJob::default();
-        job.append(
-            &text,
-            0.0,
-            egui::TextFormat { font_id: font_for(st), color: st.fg, extra_letter_spacing: spacing, ..Default::default() },
-        );
-        let galley = ui.fonts_mut(|f| f.layout_job(job));
         let p = at(line, col);
-        painter.galley(pos2(p.x, p.y + m.ascent), galley, st.fg);
+        painter.galley(pos2(p.x, p.y + m.ascent), run_galley(&text, st), st.fg);
     }
     for (line, col, c, st, wide) in singles {
         if c == '\u{0}' {
@@ -426,12 +570,6 @@ pub fn show(
         // Centre glyphs that aren't cell-sized in their cell(s).
         let x = p.x + ((w - galley.size().x) / 2.0 * m.ppp).round() / m.ppp;
         painter.galley(pos2(x, p.y + m.ascent), galley, st.fg);
-    }
-    for (line, col, c, color) in boxes {
-        draw_box(&painter, Rect::from_min_size(at(line, col), cell), c, color, m.ppp);
-    }
-    for (r, c) in lines {
-        painter.rect_filled(r, 0.0, c);
     }
     // The hovered link, underlined.
     if let Some(h) = &mouse.hover
@@ -497,7 +635,7 @@ pub fn show(
 
 /// Box-drawing (U+2500–257F), blocks (U+2580–259F) and the Powerline
 /// arrows, drawn to the cell so adjacent cells connect exactly.
-fn draw_box(p: &egui::Painter, r: Rect, c: char, color: Color32, ppp: f32) {
+fn draw_box(p: &Shapes, r: Rect, c: char, color: Color32, ppp: f32) {
     let px = 1.0 / ppp;
     let snap = |v: f32| (v * ppp).round() / ppp;
     let light = (r.width() / 8.0 * ppp).round().max(1.0) / ppp;
@@ -677,7 +815,7 @@ fn draw_box(p: &egui::Painter, r: Rect, c: char, color: Color32, ppp: f32) {
     let _ = (cx, cy);
 }
 
-fn fill_alpha(p: &egui::Painter, r: Rect, color: Color32, a: u8) {
+fn fill_alpha(p: &Shapes, r: Rect, color: Color32, a: u8) {
     p.rect_filled(r, 0.0, Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), a));
 }
 
