@@ -4720,6 +4720,7 @@ dependencies = [
  "matroska-demuxer",
  "mp4",
  "olo-kit",
+ "olo-richtext",
  "openh264",
  "opus-decoder",
  "pulldown-cmark",
@@ -4763,6 +4764,7 @@ dependencies = [
 name = "olo-richtext"
 version = "0.1.0"
 dependencies = [
+ "encoding_rs",
  "quick-xml 0.42.0",
  "zip",
 ]

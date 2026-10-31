@@ -88,7 +88,7 @@ fn ours_among(mime: &str, installed: impl Fn(&str) -> bool) -> Option<&'static s
     let candidates: &[&'static str] = match (major, mime) {
         (_, "inode/directory") => &["olo-tracker"],
         (_, "text/html" | "application/xhtml+xml") => &["olo-chrome", "olo-styled-edit"],
-        ("text", _) | (_, "application/x-shellscript" | "application/json" | "application/xml" | "application/toml") => {
+        ("text", _) | (_, "application/x-shellscript" | "application/json" | "application/xml" | "application/toml" | "application/rtf") => {
             &["olo-styled-edit", "olo-viewer"]
         }
         ("image" | "audio" | "video" | "font", _) => &["olo-viewer"],

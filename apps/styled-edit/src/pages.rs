@@ -4,13 +4,19 @@
 //! fonts (`olo_kit::style::all_font_definitions`, the document's faces
 //! included), and its rows set down the pages, a row that doesn't fit
 //! starting the next. Each word is placed where the layout put it, in
-//! its own font, size and colour; pages are numbered at the foot.
+//! its own font, size and colour; pages are numbered at the foot. A
+//! table's row is its cells laid out in their columns, ruled (a header
+//! shaded), and kept whole on a page.
 
 use egui::{Color32, FontFamily, epaint::text::Fonts, text::LayoutJob};
 use olo_kit::egui;
 use olo_print::{Font, Item, Page, Paper};
 
 use crate::doc::{Align, Doc, MONOSPACE, Para, Run, Style};
+
+/// A table's rules, and a header row's shade.
+const RULE: [u8; 3] = [0x80, 0x80, 0x80];
+const SHADE: [u8; 3] = [0xee, 0xee, 0xee];
 
 /// The page's margins, in points (an inch).
 pub const MARGIN: f32 = 72.0;
@@ -43,6 +49,55 @@ pub fn pages(input: Input, paper: Paper) -> Vec<Page> {
     for i in 0..doc.paras().len() {
         let r = doc.para_range(i);
         let f = doc.format(i, input.align);
+        if let Some(row) = &f.row {
+            // A table's row: each cell laid out in its column, the row
+            // kept whole (on the next page if it doesn't fit).
+            let cells = olo_kit::editor::cells(&input.text[r.clone()]);
+            let columns = olo_kit::editor::cell_columns(row, cells.len(), width - f.left);
+            let inset = olo_kit::editor::CELL_INSET;
+            let mut laid = Vec::new();
+            for ((s, len), (x, w)) in cells.into_iter().zip(columns) {
+                let cell = r.start + s..r.start + s + len;
+                let inner = (w - 2.0 * inset.x).max(1.0);
+                let mut job = LayoutJob { text: input.text[cell.clone()].to_owned(), halign: f.align.unwrap_or(egui::Align::Min), keep_trailing_whitespace: true, ..Default::default() };
+                job.wrap.max_width = inner;
+                let mut styles: Vec<Style> = Vec::new();
+                doc.sections(cell, Color32::BLACK, &mut |s| {
+                    styles.push(s.clone());
+                    family(s)
+                }, &mut job);
+                let section_of = sections_of(&job);
+                let g = fonts.with_pixels_per_point(PPP).layout_job(job);
+                let ax = match f.align.unwrap_or(egui::Align::Min) {
+                    egui::Align::Min => 0.0,
+                    egui::Align::Center => inner / 2.0,
+                    egui::Align::Max => inner,
+                };
+                laid.push((x, w, ax, g, styles, section_of));
+            }
+            let h = laid.iter().map(|c| c.3.size().y).fold(0.0, f32::max) + 2.0 * inset.y;
+            if y + h > bottom && y > MARGIN {
+                pages.push(new_page());
+                y = MARGIN;
+            }
+            let page = pages.last_mut().expect("a page");
+            let left = MARGIN + f.left;
+            for (x, w, ax, g, styles, section_of) in &laid {
+                let (l, rr) = (left + x, left + x + w);
+                if row.header {
+                    page.items.push(Item::Rect { x: l, y, w: *w, h, color: SHADE });
+                }
+                for (from, to) in [((l, y), (rr, y)), ((l, y + h), (rr, y + h)), ((l, y), (l, y + h)), ((rr, y), (rr, y + h))] {
+                    page.items.push(Item::Line { from, to, width: 0.5, color: RULE });
+                }
+                let mut char_at = 0;
+                for grow in &g.rows {
+                    place_words(page, grow, left + x + inset.x + ax, y + inset.y + grow.pos.y, styles, section_of, &mut char_at);
+                }
+            }
+            y += h;
+            continue;
+        }
         let wrap = (width - f.left - f.right).max(1.0);
         let mut job = LayoutJob {
             text: input.text[r.clone()].to_owned(),
@@ -63,10 +118,7 @@ pub fn pages(input: Input, paper: Paper) -> Vec<Page> {
         }
         job.sections[0].leading_space += f.first;
         let first_format = job.sections[0].format.clone();
-        // Which section each character is in (the glyphs come in the
-        // characters' order).
-        let ranges: Vec<std::ops::Range<usize>> = job.sections.iter().map(|s| s.byte_range.start.0..s.byte_range.end.0).collect();
-        let section_of: Vec<usize> = job.text.char_indices().map(|(b, _)| ranges.iter().position(|r| r.contains(&b)).unwrap_or(0)).collect();
+        let section_of = sections_of(&job);
         let mut char_at = 0usize;
         let g = fonts.with_pixels_per_point(PPP).layout_job(job);
         // Where the galley's x = 0 is (alignment puts rows around it).
@@ -103,37 +155,7 @@ pub fn pages(input: Input, paper: Paper) -> Vec<Page> {
                     page.items.push(text_item(MARGIN + f.left - gap - w, baseline, m.clone(), &s, w));
                 }
             }
-            // Words (and the spaces between), each where it was laid.
-            let mut word: Option<(f32, f32, String, usize, f32)> = None;
-            let flush = |word: &mut Option<(f32, f32, String, usize, f32)>, page: &mut Page| {
-                if let Some((x, baseline, text, section, w)) = word.take()
-                    && !text.trim().is_empty()
-                {
-                    let s = styles.get(section).cloned().unwrap_or_default();
-                    page.items.push(text_item(x, baseline, text, &s, w));
-                }
-            };
-            for gl in &row.glyphs {
-                let x = origin_x + row.pos.x + gl.pos.x;
-                let baseline = top + gl.pos.y;
-                let section = section_of.get(char_at).copied().unwrap_or(0);
-                char_at += 1;
-                if gl.chr.is_whitespace() {
-                    flush(&mut word, page);
-                    continue;
-                }
-                match &mut word {
-                    Some((x0, _, text, sec, w)) if *sec == section => {
-                        text.push(gl.chr);
-                        *w = x + gl.advance_width - *x0;
-                    }
-                    _ => {
-                        flush(&mut word, page);
-                        word = Some((x, baseline, gl.chr.to_string(), section, gl.advance_width));
-                    }
-                }
-            }
-            flush(&mut word, page);
+            place_words(page, row, origin_x, top, &styles, &section_of, &mut char_at);
         }
         y = base + g.size().y + f.below;
     }
@@ -158,6 +180,49 @@ pub fn pages(input: Input, paper: Paper) -> Vec<Page> {
         }
     }
     pages
+}
+
+/// Which section of `job` each character is in (the glyphs come in the
+/// characters' order).
+fn sections_of(job: &LayoutJob) -> Vec<usize> {
+    let ranges: Vec<std::ops::Range<usize>> = job.sections.iter().map(|s| s.byte_range.start.0..s.byte_range.end.0).collect();
+    job.text.char_indices().map(|(b, _)| ranges.iter().position(|r| r.contains(&b)).unwrap_or(0)).collect()
+}
+
+/// A laid-out row's words (and not the spaces between), each where the
+/// layout put it, in its section's style; `char_at` counts the galley's
+/// characters on.
+fn place_words(page: &mut Page, row: &egui::epaint::text::PlacedRow, origin_x: f32, top: f32, styles: &[Style], section_of: &[usize], char_at: &mut usize) {
+    let mut word: Option<(f32, f32, String, usize, f32)> = None;
+    let flush = |word: &mut Option<(f32, f32, String, usize, f32)>, page: &mut Page| {
+        if let Some((x, baseline, text, section, w)) = word.take()
+            && !text.trim().is_empty()
+        {
+            let s = styles.get(section).cloned().unwrap_or_default();
+            page.items.push(text_item(x, baseline, text, &s, w));
+        }
+    };
+    for gl in &row.glyphs {
+        let x = origin_x + row.pos.x + gl.pos.x;
+        let baseline = top + gl.pos.y;
+        let section = section_of.get(*char_at).copied().unwrap_or(0);
+        *char_at += 1;
+        if gl.chr.is_whitespace() {
+            flush(&mut word, page);
+            continue;
+        }
+        match &mut word {
+            Some((x0, _, text, sec, w)) if *sec == section => {
+                text.push(gl.chr);
+                *w = x + gl.advance_width - *x0;
+            }
+            _ => {
+                flush(&mut word, page);
+                word = Some((x, baseline, gl.chr.to_string(), section, gl.advance_width));
+            }
+        }
+    }
+    flush(&mut word, page);
 }
 
 fn text_item(x: f32, y: f32, text: String, s: &Style, width: f32) -> Item {
@@ -194,6 +259,25 @@ mod tests {
         if let Item::Text { x, y, .. } = &pages[0].items[0] {
             assert!((x - MARGIN).abs() < 0.5 && *y > MARGIN && *y < MARGIN + 20.0, "{x} {y}");
         }
+    }
+
+    #[test]
+    fn table_rows_are_ruled_cells() {
+        let mut i = input("Name\tSize\na\t1");
+        i.paras = vec![
+            Para { row: Some(crate::doc::Row { header: true, ..Default::default() }), ..Para::default() },
+            Para { row: Some(crate::doc::Row::default()), ..Para::default() },
+        ];
+        let paper = olo_print::PAPERS[0];
+        let pages = pages(i, paper);
+        let items = &pages[0].items;
+        // The header shaded, every cell ruled, each word in its column.
+        assert_eq!(items.iter().filter(|i| matches!(i, Item::Rect { .. })).count(), 2);
+        assert_eq!(items.iter().filter(|i| matches!(i, Item::Line { .. })).count(), 16);
+        let x_of = |w: &str| items.iter().find_map(|i| if let Item::Text { text, x, .. } = i { (text == w).then_some(*x) } else { None }).unwrap();
+        let half = (paper.width - 2.0 * MARGIN) / 2.0;
+        assert!((x_of("Size") - (MARGIN + half + olo_kit::editor::CELL_INSET.x)).abs() < 1.0);
+        assert!((x_of("1") - x_of("Size")).abs() < 0.5 && (x_of("a") - x_of("Name")).abs() < 0.5);
     }
 
     #[test]

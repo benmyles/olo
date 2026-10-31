@@ -6,6 +6,7 @@
 mod convert;
 mod doc;
 mod pages;
+mod table;
 mod fonts;
 
 use std::{
@@ -259,6 +260,7 @@ enum Format {
     Html,
     Word,
     OpenDocument,
+    Rtf,
     Pdf,
 }
 
@@ -269,6 +271,7 @@ impl Format {
             Format::Html => "html",
             Format::Word => "docx",
             Format::OpenDocument => "odt",
+            Format::Rtf => "rtf",
             Format::Pdf => "pdf",
         }
     }
@@ -378,7 +381,8 @@ impl StyledEdit {
     }
 
     fn open_file(&mut self, cx: &mut Cx, path: PathBuf) {
-        // Word and OpenDocument aren't text: in as a new document.
+        // Word, OpenDocument and RTF aren't plain text: in as a new
+        // document.
         if olo_richtext::format_of(&path).is_some() {
             return self.import(cx, path);
         }
@@ -449,10 +453,11 @@ impl StyledEdit {
                 "Import",
                 FilePanel::open(dir).filters(
                     vec![
-                        Filter::new("All Documents").glob("*.md").glob("*.markdown").glob("*.mdown").glob("*.docx").glob("*.odt").mime("text/markdown"),
+                        Filter::new("All Documents").glob("*.md").glob("*.markdown").glob("*.mdown").glob("*.docx").glob("*.odt").glob("*.rtf").mime("text/markdown").mime("text/rtf"),
                         Filter::new("Markdown").glob("*.md").glob("*.markdown").glob("*.mdown").mime("text/markdown"),
                         Filter::new("Word").glob("*.docx"),
                         Filter::new("OpenDocument Text").glob("*.odt"),
+                        Filter::new("Rich Text").glob("*.rtf").mime("text/rtf"),
                     ],
                     0,
                 ),
@@ -535,6 +540,7 @@ impl StyledEdit {
                 Format::Html => Ok(convert::to_html(&text, &runs, &paras, &title, align).into_bytes()),
                 Format::Word => olo_richtext::write_docx(&convert::to_rich(&text, &runs, &paras, align)),
                 Format::OpenDocument => olo_richtext::write_odt(&convert::to_rich(&text, &runs, &paras, align)),
+                Format::Rtf => olo_richtext::write_rtf(&convert::to_rich(&text, &runs, &paras, align)),
                 Format::Pdf => unreachable!("made above"),
             };
             let r = out.and_then(|bytes| std::fs::write(&to, bytes).map_err(|e| e.to_string()));
@@ -658,6 +664,7 @@ impl StyledEdit {
                     .item("PDF…", "export:pdf", None)
                     .item("Word Document…", "export:docx", None)
                     .item("OpenDocument Text…", "export:odt", None)
+                    .item("Rich Text (RTF)…", "export:rtf", None)
                     .separator()
                     .item("Markdown…", "export:md", None)
                     .item("Web Page (HTML)…", "export:html", None),
@@ -771,10 +778,42 @@ impl StyledEdit {
             .checked(align == Align::Right)
             .item("Justify", "align-justify", None)
             .checked(align == Align::Justify);
+        // The table the caret is in, if any.
+        let here = d.doc.para_index(d.editor.caret().min(d.doc.text().len()));
+        let in_table = table::table_of(&d.doc, here);
+        let header = in_table.as_ref().is_some_and(|t| d.doc.paras()[t.start].row.as_ref().is_some_and(|r| r.header));
+        let one_column = in_table.as_ref().is_none_or(|t| t.clone().all(|j| table::cells(&d.doc, j).len() <= 1));
+        let t = in_table.is_some();
+        let tables = Menu::new("Table")
+            .item("Insert Table", "table:insert", None)
+            .item(if t { "Convert to Text" } else { "Convert to Table" }, if t { "table:text" } else { "table:convert" }, None)
+            .separator()
+            .item("Header Row", "table:header", None)
+            .checked(header)
+            .enabled(t)
+            .separator()
+            .item("Add Row Above", "table:row-above", None)
+            .enabled(t)
+            .item("Add Row Below", "table:row-below", None)
+            .enabled(t)
+            .item("Add Column Before", "table:column-before", None)
+            .enabled(t)
+            .item("Add Column After", "table:column-after", None)
+            .enabled(t)
+            .separator()
+            .item("Delete Row", "table:delete-row", None)
+            .enabled(t)
+            .item("Delete Column", "table:delete-column", None)
+            .enabled(t && !one_column)
+            .item("Delete Table", "table:delete", None)
+            .enabled(t)
+            .separator()
+            .item("Even Columns", "table:even", None)
+            .enabled(t);
         let document = Menu::new("Document").item("Wrap Lines", "wrap", None).checked(d.doc.wrap);
         // Styles and layout are saved with the file, so a read-only one
         // keeps its own (as Haiku's StyledEdit has it).
-        vec![file, edit, font.all_enabled(editable), paragraph.all_enabled(editable), document.all_enabled(editable)]
+        vec![file, edit, font.all_enabled(editable), paragraph.all_enabled(editable), if editable { tables } else { tables.all_enabled(false) }, document.all_enabled(editable)]
     }
 
     fn doc_command(&mut self, cx: &mut Cx, win: WindowId, command: &str) {
@@ -795,6 +834,7 @@ impl StyledEdit {
             "export:html" => return self.open_panel(cx, Some(win), Purpose::Export(Format::Html)),
             "export:docx" => return self.open_panel(cx, Some(win), Purpose::Export(Format::Word)),
             "export:odt" => return self.open_panel(cx, Some(win), Purpose::Export(Format::OpenDocument)),
+            "export:rtf" => return self.open_panel(cx, Some(win), Purpose::Export(Format::Rtf)),
             "save" => return self.save(cx, win, None, After::Nothing),
             "save-as" => return self.open_panel(cx, Some(win), Purpose::SaveAs),
             "close" => return self.leave(cx, win, After::Close),
@@ -930,6 +970,31 @@ impl StyledEdit {
                 {
                     let change = d.doc.replace(r.clone(), g, selection);
                     d.changed(change, r.start + g.len()..r.start + g.len());
+                }
+            }
+            c if c.starts_with("table:") => {
+                let caret = d.editor.caret().min(d.doc.text().len());
+                let i = d.doc.para_index(caret);
+                let doc = &mut d.doc;
+                let done = match c {
+                    "table:insert" => table::insert(doc, i, 3, 3, selection),
+                    "table:convert" => table::convert(doc, bytes, true, selection),
+                    "table:text" => table::convert(doc, bytes, false, selection),
+                    "table:header" => table::toggle_header(doc, i, selection),
+                    "table:row-above" => table::add_row(doc, i, false, selection),
+                    "table:row-below" => table::add_row(doc, i, true, selection),
+                    "table:column-before" => table::add_column(doc, i, caret, false, selection),
+                    "table:column-after" => table::add_column(doc, i, caret, true, selection),
+                    "table:delete-row" => table::delete_rows(doc, i..i + 1, selection),
+                    "table:delete-column" => table::delete_column(doc, i, caret, selection),
+                    "table:delete" => table::table_of(doc, i).and_then(|t| table::delete_rows(doc, t, selection)),
+                    "table:even" => table::even_columns(doc, i, selection),
+                    _ => None,
+                };
+                if let Some((change, select)) = done {
+                    d.changed(change, select);
+                    // Rows set otherwise, beyond what the text change touched.
+                    d.editor.relayout();
                 }
             }
             "indent-more" => d.doc.set_paras(bytes, selection, |p| p.level = (p.level + 1).min(doc::MAX_LEVEL)),

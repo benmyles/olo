@@ -1,6 +1,7 @@
 //! Formatted documents (Markdown, Word, OpenDocument text and slides,
-//! PowerPoint) as blocks of styled text, and spreadsheets (Excel,
-//! OpenDocument, CSV) as tables. All read natively: zip + XML, calamine,
+//! RTF, PowerPoint) as blocks of styled text, and spreadsheets (Excel,
+//! OpenDocument, CSV) as tables. All read natively: `olo-richtext` for
+//! Word, OpenDocument text and RTF, zip + XML for slides, calamine,
 //! pulldown-cmark.
 
 use std::{io::Read, path::Path};
@@ -507,10 +508,19 @@ fn zip_text(z: &mut zip::ZipArchive<std::fs::File>, name: &str) -> Option<String
 }
 
 pub fn office(path: &Path, ext: &str) -> Result<Update, String> {
+    let unreadable = || "This document can't be read.".to_string();
+    if let Some(kind) = match ext {
+        "docx" => Some("Word document"),
+        "odt" => Some("OpenDocument text"),
+        "rtf" => Some("Rich Text document"),
+        _ => None,
+    } {
+        let doc = olo_richtext::read(path).map_err(|_| unreadable())?;
+        return Ok(Update::Body(Body::Rich { blocks: rich(doc), note: kind.into() }));
+    }
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-    let mut z = zip::ZipArchive::new(file).map_err(|_| "This document can't be read.".to_string())?;
+    let mut z = zip::ZipArchive::new(file).map_err(|_| unreadable())?;
     let (blocks, kind) = match ext {
-        "docx" => (docx(&zip_text(&mut z, "word/document.xml").ok_or("This document can't be read.")?), "Word document"),
         "pptx" => {
             let mut slides: Vec<(u32, String)> = (0..z.len())
                 .filter_map(|i| z.by_index(i).ok().and_then(|f| f.name().ok().map(|n| n.into_owned())))
@@ -529,95 +539,97 @@ pub fn office(path: &Path, ext: &str) -> Result<Update, String> {
             }
             (blocks, "PowerPoint presentation")
         }
-        "odp" => (odf(&zip_text(&mut z, "content.xml").ok_or("This document can't be read.")?, true), "OpenDocument presentation"),
-        _ => (odf(&zip_text(&mut z, "content.xml").ok_or("This document can't be read.")?, false), "OpenDocument text"),
+        _ => (odf(&zip_text(&mut z, "content.xml").ok_or_else(unreadable)?, true), "OpenDocument presentation"),
     };
     Ok(Update::Body(Body::Rich { blocks, note: kind.into() }))
 }
 
-fn on(attrs: &[(String, String)]) -> bool {
-    !matches!(attr(attrs, "val"), Some("0" | "false" | "none"))
-}
-
-fn docx(xml: &str) -> Vec<Block> {
+/// A word processor's document as blocks: headings, paragraphs, lists
+/// (numbered as they count), quotations, code and tables. Empty
+/// paragraphs are spacing, left out.
+pub fn rich(doc: olo_richtext::Document) -> Vec<Block> {
+    use olo_richtext as rt;
+    let spans = |spans: &[rt::Span]| -> Vec<Span> {
+        spans
+            .iter()
+            .map(|s| Span { text: s.text.clone(), bold: s.bold, italic: s.italic, code: s.monospace, strike: s.strike, link: s.link.is_some(), url: s.link.clone() })
+            .collect()
+    };
     let mut blocks = Vec::new();
-    let mut spans: Vec<Span> = Vec::new();
-    let mut style = Span::default();
-    let (mut heading, mut list, mut in_text, mut in_ppr) = (0u8, None::<u8>, false, false);
-    let mut table: Option<Vec<Vec<String>>> = None;
-    let mut cell: Option<String> = None;
-    for ev in xml_events(xml) {
-        match ev {
-            X::Start(n, a) => match n.as_str() {
-                "p" => {
-                    spans.clear();
-                    heading = 0;
-                    list = None;
-                }
-                "pPr" => in_ppr = true,
-                "pStyle" => {
-                    let v = attr(&a, "val").unwrap_or("").to_lowercase();
-                    if let Some(l) = v.strip_prefix("heading").and_then(|l| l.parse::<u8>().ok()) {
-                        heading = l.clamp(1, 6);
-                    } else if v == "title" {
-                        heading = 1;
-                    } else if v.contains("list") {
-                        list.get_or_insert(0);
-                    }
-                }
-                "ilvl" if in_ppr => list = Some(attr(&a, "val").and_then(|v| v.parse().ok()).unwrap_or(0)),
-                "numPr" => {
-                    list.get_or_insert(0);
-                }
-                "r" => style = Span::default(),
-                "b" if !in_ppr => style.bold = on(&a),
-                "i" if !in_ppr => style.italic = on(&a),
-                "strike" if !in_ppr => style.strike = on(&a),
-                "t" => in_text = true,
-                "tab" if !in_ppr => spans.push(Span { text: "    ".into(), ..style.clone() }),
-                "br" => spans.push(Span { text: "\n".into(), ..style.clone() }),
-                "tbl" => table = Some(Vec::new()),
-                "tr" => {
-                    if let Some(t) = &mut table {
-                        t.push(Vec::new());
-                    }
-                }
-                "tc" => cell = Some(String::new()),
-                _ => {}
-            },
-            X::End(n) => match n.as_str() {
-                "pPr" => in_ppr = false,
-                "t" => in_text = false,
-                "p" => {
-                    let s = std::mem::take(&mut spans);
-                    if let Some(c) = &mut cell {
-                        if !c.is_empty() {
-                            c.push(' ');
-                        }
-                        c.push_str(&s.iter().map(|s| s.text.as_str()).collect::<String>());
-                    } else if heading > 0 {
-                        blocks.push(Block::Heading(heading, s));
-                    } else if let Some(d) = list {
-                        blocks.push(Block::Item(d, "•".into(), s));
-                    } else {
-                        blocks.push(Block::Para(s));
-                    }
-                }
-                "tc" => {
-                    if let (Some(c), Some(row)) = (cell.take(), table.as_mut().and_then(|t| t.last_mut())) {
-                        row.push(c);
-                    }
-                }
-                "tbl" => {
-                    if let Some(t) = table.take() {
-                        blocks.push(Block::plain_table(t));
-                    }
-                }
-                _ => {}
-            },
-            X::Text(t) if in_text => spans.push(Span { text: t, ..style.clone() }),
-            X::Text(_) => {}
+    let mut quoted = false;
+    // Each list level's count so far (a list ends at anything else).
+    let mut counts = [0u32; 9];
+    for p in &doc.paragraphs {
+        let empty = p.table.is_none() && p.spans.iter().all(|s| s.text.trim().is_empty());
+        if empty {
+            continue;
         }
+        if quoted && p.kind != rt::Kind::Quote {
+            blocks.push(Block::QuoteEnd);
+            quoted = false;
+        }
+        if p.list.is_none() {
+            counts = [0; 9];
+        }
+        if let Some(t) = &p.table {
+            let columns = t.columns();
+            let rows = t
+                .rows
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .map(|cell| {
+                            let mut out: Vec<Span> = Vec::new();
+                            for (k, cp) in cell.iter().enumerate() {
+                                if k > 0 {
+                                    out.push(Span { text: " ".into(), ..Default::default() });
+                                }
+                                out.extend(spans(&cp.spans));
+                            }
+                            out
+                        })
+                        .collect()
+                })
+                .collect();
+            blocks.push(Block::Table { align: vec![Align::Left; columns], rows });
+            continue;
+        }
+        let text = spans(&p.spans);
+        if let Some(l) = p.list {
+            let level = (l.level as usize).min(8);
+            counts[level] += 1;
+            counts[level + 1..].iter_mut().for_each(|c| *c = 0);
+            let marker = if l.numbered { format!("{}.", counts[level]) } else { "•".into() };
+            blocks.push(Block::Item(level as u8, marker, text));
+            continue;
+        }
+        match p.kind {
+            rt::Kind::Title | rt::Kind::Heading1 => blocks.push(Block::Heading(1, text)),
+            rt::Kind::Heading2 => blocks.push(Block::Heading(2, text)),
+            rt::Kind::Heading3 => blocks.push(Block::Heading(3, text)),
+            rt::Kind::Quote => {
+                if !quoted {
+                    blocks.push(Block::QuoteStart(None));
+                    quoted = true;
+                }
+                blocks.push(Block::Para(text));
+            }
+            rt::Kind::Code => {
+                // One block for neighbouring lines of code.
+                let line: String = p.spans.iter().map(|s| s.text.as_str()).collect();
+                match blocks.last_mut() {
+                    Some(Block::Code { lines, tokens, .. }) => {
+                        lines.push(line);
+                        tokens.push(Vec::new());
+                    }
+                    _ => blocks.push(Block::Code { lines: vec![line], tokens: vec![Vec::new()], depth: 0 }),
+                }
+            }
+            rt::Kind::Body => blocks.push(Block::Para(text)),
+        }
+    }
+    if quoted {
+        blocks.push(Block::QuoteEnd);
     }
     blocks
 }
@@ -851,13 +863,39 @@ mod tests {
     }
 
     #[test]
-    fn word_xml() {
-        let xml = r#"<w:document xmlns:w="w"><w:body>
-            <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Report</w:t></w:r></w:p>
-            <w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Bold</w:t></w:r><w:r><w:t xml:space="preserve"> &amp; plain</w:t></w:r></w:p>
-            </w:body></w:document>"#;
-        let b = docx(xml);
+    fn word_documents() {
+        use olo_richtext as rt;
+        let text = |t: &str| vec![rt::Span::default().with_text(t)];
+        let para = |kind, t: &str| rt::Paragraph { kind, spans: text(t), ..Default::default() };
+        let item = |numbered, level, t: &str| rt::Paragraph { list: Some(rt::List { numbered, level }), spans: text(t), ..Default::default() };
+        let doc = rt::Document {
+            paragraphs: vec![
+                para(rt::Kind::Heading1, "Report"),
+                rt::Paragraph { spans: vec![rt::Span { bold: true, ..rt::Span::default().with_text("Bold") }, rt::Span::default().with_text(" & plain")], ..Default::default() },
+                para(rt::Kind::Body, ""),
+                item(true, 0, "one"),
+                item(true, 1, "one.one"),
+                item(true, 0, "two"),
+                para(rt::Kind::Quote, "Quoted"),
+                para(rt::Kind::Code, "let a = 1;"),
+                para(rt::Kind::Code, "let b = 2;"),
+                rt::Paragraph {
+                    table: Some(rt::Table { header: true, rows: vec![vec![vec![para(rt::Kind::Body, "A")], vec![para(rt::Kind::Body, "B")]], vec![vec![para(rt::Kind::Body, "1")], vec![para(rt::Kind::Body, "2")]]] }),
+                    ..Default::default()
+                },
+            ],
+            font: None,
+        };
+        let b = rich(rt::read_docx(&rt::write_docx(&doc).unwrap()).unwrap());
         assert!(matches!(&b[0], Block::Heading(1, s) if plain(s) == "Report"));
         assert!(matches!(&b[1], Block::Para(s) if s[0].bold && plain(s) == "Bold & plain"));
+        // (The empty paragraph is spacing.)
+        assert!(matches!(&b[2], Block::Item(0, m, s) if m == "1." && plain(s) == "one"));
+        assert!(matches!(&b[3], Block::Item(1, m, _) if m == "1."));
+        assert!(matches!(&b[4], Block::Item(0, m, _) if m == "2."));
+        assert!(matches!(&b[5], Block::QuoteStart(None)));
+        assert!(matches!(&b[7], Block::QuoteEnd));
+        assert!(matches!(&b[8], Block::Code { lines, .. } if lines.len() == 2));
+        assert!(matches!(&b[9], Block::Table { rows, .. } if rows.len() == 2 && plain(&rows[1][1]) == "2"));
     }
 }

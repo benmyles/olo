@@ -916,9 +916,14 @@ as they land (with the commit), add new ones as they come up.
   page (`olo-richtext`, links kept; checked in LibreOffice); spelling as
   you type with suggestions (the kit's `spell`, Hunspell dictionaries);
   printing and PDF (`olo-print`: the Print panel, CUPS over IPP, PDF by
-  krilla, pages laid out as the editor lays them out). Next: a ruler,
-  RTF, tables, pictures, headers and footers, the page view; Quick
-  Look's Word and OpenDocument readers moved onto `olo-richtext`.
+  krilla, pages laid out as the editor lays them out); RTF in and out
+  (`olo-richtext`'s `rtf.rs`, checked both ways with LibreOffice);
+  tables in `olo-richtext` (Word, OpenDocument and RTF, read and written,
+  checked in LibreOffice), and Quick Look reading Word, OpenDocument and
+  now RTF through it; tables in the editor (the kit editor's rows, the
+  Table menu, in and out of every format, printed). Next: column widths
+  dragged by their rules, a ruler, pictures, headers and footers, the
+  page view.
 - ~~**Activity Monitor, revamped**~~ (Ben, 2026-10-29, at the end):
   "revamp activity monitor to include everything a nerd could ever want
   to know, with live views, drill downs, tuning settings and ability to

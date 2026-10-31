@@ -74,7 +74,7 @@ pub fn load(entry: &Item, max_image: u32, cancel: &Arc<AtomicBool>, send: Send) 
             (_, "svg" | "svgz") => svg(&entry.path, max_image / 2),
             (_, "pdf") => return pdf::load(&entry.path, cancel, send),
             (_, "md" | "markdown" | "mdown") => doc::markdown(&entry.path),
-            (_, "docx" | "odt" | "pptx" | "odp") => doc::office(&entry.path, &ext),
+            (_, "docx" | "odt" | "rtf" | "pptx" | "odp") => doc::office(&entry.path, &ext),
             (_, "xlsx" | "xlsm" | "xlsb" | "xls" | "ods" | "csv" | "tsv") => doc::table(&entry.path, &ext),
             (_, "ttf" | "otf" | "ttc" | "otc") => font(&entry.path),
             (Kind::Image, _) => image(&entry.path, max_image),

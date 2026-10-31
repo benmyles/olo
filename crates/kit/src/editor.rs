@@ -19,7 +19,15 @@
 //!
 //! Keys are egui's (the field's): arrows, ⌥ or ⌘ with ←/→ by word, ⌘↑/↓
 //! and ⌘Home/End to either end, Home/End along the row, Page Up/Down;
-//! Shift extends. A press on the selection drags its text (as
+//! Shift extends.
+//!
+//! A paragraph can be a table's row ([`Paragraph::row`]): its text is its
+//! cells, a tab between each, each laid out in its column and ruled; the
+//! rows of a table are paragraphs one after another. Tab and ⇧Tab go from
+//! cell to cell (Tab in the last cell adds a row), Return adds a row
+//! below, and edits keep a table's tabs and newlines: what is typed or
+//! pasted into a cell is one line, and deleting across cells or rows
+//! empties them rather than joining them. A press on the selection drags its text (as
 //! [`text_drag`](crate::text_drag)); text dropped on the editor goes in
 //! where it lands, and moves when it came from here.
 //!
@@ -89,6 +97,53 @@ pub struct Paragraph {
     /// A list's bullet or number, drawn before the first row (in the
     /// space `left` leaves), in the paragraph's first style.
     pub marker: Option<String>,
+    /// A table's row: its cells, a tab apart, side by side.
+    pub row: Option<Row>,
+}
+
+/// A table's row ([`Paragraph::row`]).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Row {
+    /// Each column's share of the text's width (equal shares when there
+    /// aren't as many as cells).
+    pub columns: Vec<f32>,
+    /// A header row: shaded.
+    pub header: bool,
+}
+
+/// Between a cell's rules and its text, in points.
+pub const CELL_INSET: Vec2 = Vec2 { x: 6.0, y: 3.0 };
+
+/// The left edge and width of each of `n` cells of `row` across `width`
+/// (whole points, so rules fall on pixels).
+pub fn cell_columns(row: &Row, n: usize, width: f32) -> Vec<(f32, f32)> {
+    let n = n.max(1);
+    let shares: Vec<f32> = if row.columns.len() == n && row.columns.iter().all(|w| *w > 0.0) { row.columns.clone() } else { vec![1.0; n] };
+    let total: f32 = shares.iter().sum();
+    let mut sum = 0.0;
+    let mut x = 0.0;
+    shares
+        .iter()
+        .map(|w| {
+            sum += w;
+            let right = (sum / total * width).round();
+            let c = (x, right - x);
+            x = right;
+            c
+        })
+        .collect()
+}
+
+/// Bytes of `para` (a row's text) in each cell, as (start, length).
+pub fn cells(para: &str) -> Vec<(usize, usize)> {
+    let mut out = Vec::new();
+    let mut from = 0;
+    for (i, _) in para.match_indices('\t') {
+        out.push((from, i - from));
+        from = i + 1;
+    }
+    out.push((from, para.len() - from));
+    out
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -145,6 +200,41 @@ struct Set {
     above: f32,
     below: f32,
     align: Option<Align>,
+    /// A table's row: its columns and header, hashed.
+    row: Option<u64>,
+}
+
+/// A paragraph laid out: one galley, or one a cell of a table's row.
+#[derive(Clone)]
+struct Laid {
+    parts: Vec<Part>,
+    /// A row's height (its cells' rules) and whether it is a header.
+    row: Option<(f32, bool)>,
+}
+
+/// A galley of a [`Laid`] paragraph: where it is from the paragraph's
+/// origin, the bytes it holds (from the paragraph's start), and its
+/// cell's left edge and width.
+#[derive(Clone)]
+struct Part {
+    g: Arc<Galley>,
+    at: Vec2,
+    start: usize,
+    len: usize,
+    frame: (f32, f32),
+}
+
+impl Laid {
+    /// The part (cell) at `x` across the paragraph.
+    fn part_at_x(&self, x: f32) -> usize {
+        self.parts.iter().rposition(|q| q.frame.0 <= x).unwrap_or(0)
+    }
+
+    /// The part holding byte `rel` of the paragraph (a cell's end before
+    /// the next's start).
+    fn part_of(&self, rel: usize) -> usize {
+        self.parts.iter().position(|q| rel <= q.start + q.len).unwrap_or(self.parts.len() - 1)
+    }
 }
 
 /// Never laid out: its size is a guess from its length.
@@ -179,6 +269,8 @@ pub struct Editor {
     tops_dirty: bool,
     /// The widest paragraph, unwrapped.
     widest: f32,
+    /// The text's width in the view (a table's, when rows don't wrap).
+    width: f32,
     params: Option<Params>,
     /// Bumped whenever every layout changes (`Para::key`).
     key: u64,
@@ -220,6 +312,7 @@ impl Editor {
             tops: Vec::new(),
             tops_dirty: true,
             widest: 0.0,
+            width: 400.0,
             params: None,
             key: 2,
             calibrated: false,
@@ -408,64 +501,118 @@ impl Editor {
     }
 
     /// Paragraph `i` laid out (egui keeps galleys while they're used), and
-    /// measured.
-    fn galley(&mut self, ui: &Ui, doc: &mut dyn Document, i: usize) -> Arc<Galley> {
+    /// measured: one galley, or one a cell of a table's row.
+    fn laid(&mut self, ui: &Ui, doc: &mut dyn Document, i: usize) -> Laid {
         let (wrap, _, align, justify) = self.params.unwrap_or((None, 1.0, Align::Min, false));
         let p = self.paras[i];
         let range = p.start..p.start + p.len;
         let f = doc.paragraph(range.clone());
-        let set = Set { left: f.left.max(0.0), right: f.right.max(0.0), above: f.above.max(0.0), below: f.below.max(0.0), align: f.align };
-        let mut job = LayoutJob {
-            text: doc.text()[range.clone()].to_owned(),
-            halign: f.align.unwrap_or(align),
-            justify: f.justify.unwrap_or(justify),
-            keep_trailing_whitespace: true,
-            ..Default::default()
-        };
-        job.wrap.max_width = wrap.map_or(f32::INFINITY, |w| (w - set.left - set.right).max(1.0));
-        doc.sections(range, &mut job);
-        if job.sections.is_empty() {
-            job.sections.push(LayoutSection { leading_space: 0.0, byte_range: ByteIndex(0)..ByteIndex(p.len), format: TextFormat::default() });
-        }
-        job.sections[0].leading_space += f.first.max(0.0);
-        // A list's marker, in the paragraph's first style (for this frame's
-        // drawing).
-        match f.marker {
-            Some(m) if !m.is_empty() => {
-                let format = job.sections[0].format.clone();
-                let mark = ui.fonts_mut(|f| f.layout_job(LayoutJob::single_section(m, format)));
-                self.markers.insert(i, mark);
+        let row_key = f.row.as_ref().map(|r| {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            r.columns.iter().for_each(|c| c.to_bits().hash(&mut h));
+            r.header.hash(&mut h);
+            h.finish()
+        });
+        // (A table's rows meet: no space between them.)
+        let (above, below) = if f.row.is_some() { (0.0, 0.0) } else { (f.above.max(0.0), f.below.max(0.0)) };
+        let set = Set { left: f.left.max(0.0), right: f.right.max(0.0), above, below, align: f.align, row: row_key };
+        let laid = match &f.row {
+            None => {
+                let mut job = LayoutJob {
+                    text: doc.text()[range.clone()].to_owned(),
+                    halign: f.align.unwrap_or(align),
+                    justify: f.justify.unwrap_or(justify),
+                    keep_trailing_whitespace: true,
+                    ..Default::default()
+                };
+                job.wrap.max_width = wrap.map_or(f32::INFINITY, |w| (w - set.left - set.right).max(1.0));
+                doc.sections(range, &mut job);
+                if job.sections.is_empty() {
+                    job.sections.push(LayoutSection { leading_space: 0.0, byte_range: ByteIndex(0)..ByteIndex(p.len), format: TextFormat::default() });
+                }
+                job.sections[0].leading_space += f.first.max(0.0);
+                // A list's marker, in the paragraph's first style (for this
+                // frame's drawing).
+                match f.marker {
+                    Some(m) if !m.is_empty() => {
+                        let format = job.sections[0].format.clone();
+                        let mark = ui.fonts_mut(|f| f.layout_job(LayoutJob::single_section(m, format)));
+                        self.markers.insert(i, mark);
+                    }
+                    _ => {
+                        self.markers.remove(&i);
+                    }
+                }
+                let g = ui.fonts_mut(|f| f.layout_job(job));
+                Laid { parts: vec![Part { g, at: Vec2::ZERO, start: 0, len: p.len, frame: (0.0, 0.0) }], row: None }
             }
-            _ => {
+            Some(row) => {
                 self.markers.remove(&i);
+                let width = (wrap.unwrap_or(self.width) - set.left - set.right).max(1.0);
+                let text = doc.text()[range].to_owned();
+                let cells = cells(&text);
+                let columns = cell_columns(row, cells.len(), width);
+                let halign = f.align.unwrap_or(Align::Min);
+                let mut parts = Vec::with_capacity(cells.len());
+                for ((start, len), (x, w)) in cells.into_iter().zip(columns) {
+                    let inner = (w - 2.0 * CELL_INSET.x).max(1.0);
+                    let mut job = LayoutJob { text: text[start..start + len].to_owned(), halign, justify: f.justify.unwrap_or(false), keep_trailing_whitespace: true, ..Default::default() };
+                    job.wrap.max_width = inner;
+                    doc.sections(p.start + start..p.start + start + len, &mut job);
+                    if job.sections.is_empty() {
+                        job.sections.push(LayoutSection { leading_space: 0.0, byte_range: ByteIndex(0)..ByteIndex(len), format: TextFormat::default() });
+                    }
+                    let g = ui.fonts_mut(|f| f.layout_job(job));
+                    let ax = match halign {
+                        Align::Min => 0.0,
+                        Align::Center => inner / 2.0,
+                        Align::Max => inner,
+                    };
+                    parts.push(Part { g, at: vec2(x + CELL_INSET.x + ax, CELL_INSET.y), start, len, frame: (x, w) });
+                }
+                // A whole number of points high, the text in the middle of
+                // what rounding leaves.
+                let tallest = parts.iter().map(|q| q.g.size().y).fold(0.0, f32::max);
+                let h = (tallest + 2.0 * CELL_INSET.y).round();
+                for q in &mut parts {
+                    q.at.y = (h - tallest) / 2.0;
+                }
+                Laid { parts, row: Some((h, row.header)) }
             }
-        }
-        let g = ui.fonts_mut(|f| f.layout_job(job));
+        };
         if set != p.set {
             self.paras[i].set = set;
             self.tops_dirty = true;
         }
         if p.key != self.key || set != p.set {
-            self.measured(i, &g);
+            self.measured(i, &laid);
         }
-        g
+        laid
     }
 
-    fn measured(&mut self, i: usize, g: &Galley) {
+    fn measured(&mut self, i: usize, laid: &Laid) {
         let wrapped = self.params.is_some_and(|p| p.0.is_some());
+        let g = &laid.parts[0].g;
         let rows = g.rows.len().max(1) as f32;
         let p = &mut self.paras[i];
         let first = p.key == NEVER;
-        let h = g.size().y + p.set.above + p.set.below;
+        let body = laid.row.map_or(g.size().y, |(h, _)| h);
+        let h = body + p.set.above + p.set.below;
         if p.height != h {
             self.tops_dirty = true;
         }
         p.height = h;
-        p.natural = if wrapped { g.rows.iter().map(|r| r.size.x).sum() } else { g.size().x + p.set.left + p.set.right };
-        p.row_h = g.size().y / rows;
+        p.natural = match laid.row {
+            // A row is as wide as its columns (one row high, as guessed).
+            Some(_) => laid.parts.iter().map(|q| q.frame.1).sum::<f32>() + p.set.left + p.set.right,
+            None if wrapped => g.rows.iter().map(|r| r.size.x).sum(),
+            None => g.size().x + p.set.left + p.set.right,
+        };
+        p.row_h = if laid.row.is_some() { body } else { g.size().y / rows };
         p.key = self.key;
         let p = *p;
-        if first && p.len > 0 {
+        if first && p.len > 0 && laid.row.is_none() {
             let w = p.natural / p.len as f32;
             if !self.calibrated {
                 // Guesses so far were from nothing: from this one now.
@@ -494,6 +641,10 @@ impl Editor {
     fn shift(&self, i: usize, inner: f32) -> f32 {
         let (wrap, _, align, _) = self.params.unwrap_or((None, 1.0, Align::Min, false));
         let set = self.paras[i].set;
+        // (A row's cells align their own text.)
+        if set.row.is_some() {
+            return set.left;
+        }
         let w = (wrap.unwrap_or(inner.max(self.widest)) - set.left - set.right).max(1.0);
         set.left
             + match set.align.unwrap_or(align) {
@@ -513,75 +664,167 @@ impl Editor {
     fn byte_at(&mut self, ui: &Ui, doc: &mut dyn Document, o: &Options, inner: f32, pos: Pos2) -> (usize, bool) {
         self.ensure_tops();
         let i = self.para_at_y(pos.y - o.margin.y);
-        let g = self.galley(ui, doc, i);
+        let laid = self.laid(ui, doc, i);
         self.ensure_tops();
-        let c = g.cursor_from_pos(pos.to_vec2() - self.origin(i, o, inner));
-        let p = self.paras[i];
-        (p.start + byte_of_col(&doc.text()[p.start..p.start + p.len], c.index.0), c.prefer_next_row)
+        let local = pos.to_vec2() - self.origin(i, o, inner);
+        let q = &laid.parts[laid.part_at_x(local.x)];
+        let c = q.g.cursor_from_pos(local - q.at);
+        let base = self.paras[i].start + q.start;
+        (base + byte_of_col(&doc.text()[base..base + q.len], c.index.0), c.prefer_next_row)
     }
 
-    /// Byte `at`'s paragraph, galley and cursor in it.
-    fn cursor(&mut self, ui: &Ui, doc: &mut dyn Document, at: usize, prefer_next: bool) -> (usize, Arc<Galley>, CCursor) {
+    /// Byte `at`'s paragraph, its part (cell) and the cursor in that.
+    fn cursor(&mut self, ui: &Ui, doc: &mut dyn Document, at: usize, prefer_next: bool) -> (usize, Part, CCursor) {
         let i = self.para_of(at);
-        let g = self.galley(ui, doc, i);
+        let laid = self.laid(ui, doc, i);
         let p = self.paras[i];
-        let col = doc.text()[p.start..at.clamp(p.start, p.start + p.len)].chars().count();
-        (i, g, CCursor { index: CharIndex(col), prefer_next_row: prefer_next })
+        let rel = at.clamp(p.start, p.start + p.len) - p.start;
+        let q = laid.parts[laid.part_of(rel)].clone();
+        let col = doc.text()[p.start + q.start..p.start + rel.max(q.start)].chars().count();
+        (i, q, CCursor { index: CharIndex(col), prefer_next_row: prefer_next })
     }
 
     /// The caret's rectangle (zero wide) in content coordinates.
     fn caret_rect(&mut self, ui: &Ui, doc: &mut dyn Document, o: &Options, inner: f32, at: usize, prefer_next: bool) -> Rect {
-        let (i, g, c) = self.cursor(ui, doc, at, prefer_next);
+        let (i, q, c) = self.cursor(ui, doc, at, prefer_next);
         self.ensure_tops();
-        g.pos_from_cursor(c).translate(self.origin(i, o, inner))
+        q.g.pos_from_cursor(c).translate(self.origin(i, o, inner) + q.at)
     }
 
     /// The byte a row up or down from the caret, keeping to `h_pos` (an
     /// x from the text's left, so paragraphs indented differently line up).
     fn vertical(&mut self, ui: &Ui, doc: &mut dyn Document, inner: f32, down: bool) -> (usize, bool) {
-        let (i, g, c) = self.cursor(ui, doc, self.caret, self.prefer_next);
-        let lc = g.layout_from_cursor(c);
-        let here = g.pos_from_cursor(c).center().x + self.shift(i, inner);
+        let (i, q, c) = self.cursor(ui, doc, self.caret, self.prefer_next);
+        let lc = q.g.layout_from_cursor(c);
+        let here = q.g.pos_from_cursor(c).center().x + self.shift(i, inner) + q.at.x;
         let h = *self.h_pos.get_or_insert(here);
-        let (pi, gal, row) = if down && lc.row + 1 < g.rows.len() {
-            (i, g, lc.row + 1)
+        // The paragraph and part (a row's cell under `h`) the row is in.
+        let mut beside = |e: &mut Editor, pi: usize| {
+            let laid = e.laid(ui, doc, pi);
+            laid.parts[laid.part_at_x(h - e.shift(pi, inner))].clone()
+        };
+        let (pi, part, row) = if down && lc.row + 1 < q.g.rows.len() {
+            (i, q, lc.row + 1)
         } else if !down && lc.row > 0 {
-            (i, g, lc.row - 1)
+            (i, q, lc.row - 1)
         } else if down && i + 1 < self.paras.len() {
-            (i + 1, self.galley(ui, doc, i + 1), 0)
+            (i + 1, beside(self, i + 1), 0)
         } else if !down && i > 0 {
-            let g = self.galley(ui, doc, i - 1);
-            let last = g.rows.len().saturating_sub(1);
-            (i - 1, g, last)
+            let part = beside(self, i - 1);
+            let last = part.g.rows.len().saturating_sub(1);
+            (i - 1, part, last)
         } else {
             // Past the first or last row: to the very start or end.
             let to = if down { doc.text().len() } else { 0 };
             return (to, false);
         };
-        let Some(r) = gal.rows.get(row) else { return (self.paras[pi].start, false) };
-        let column = r.char_at(h - self.shift(pi, inner) - r.pos.x).0.min(r.char_count_excluding_newline().0);
-        let col: usize = gal.rows[..row].iter().map(|r| r.char_count_including_newline().0).sum::<usize>() + column;
-        let p = self.paras[pi];
-        (p.start + byte_of_col(&doc.text()[p.start..p.start + p.len], col), column < r.char_count_excluding_newline().0)
+        let base = self.paras[pi].start + part.start;
+        let Some(r) = part.g.rows.get(row) else { return (base, false) };
+        let column = r.char_at(h - self.shift(pi, inner) - part.at.x - r.pos.x).0.min(r.char_count_excluding_newline().0);
+        let col: usize = part.g.rows[..row].iter().map(|r| r.char_count_including_newline().0).sum::<usize>() + column;
+        (base + byte_of_col(&doc.text()[base..base + part.len], col), column < r.char_count_excluding_newline().0)
     }
 
     /// The start or end of the caret's row.
     fn row_end(&mut self, ui: &Ui, doc: &mut dyn Document, end: bool) -> (usize, bool) {
-        let (i, g, c) = self.cursor(ui, doc, self.caret, self.prefer_next);
-        let c = if end { g.cursor_end_of_row(&c) } else { g.cursor_begin_of_row(&c) };
-        let p = self.paras[i];
-        (p.start + byte_of_col(&doc.text()[p.start..p.start + p.len], c.index.0), c.prefer_next_row)
+        let (i, q, c) = self.cursor(ui, doc, self.caret, self.prefer_next);
+        let c = if end { q.g.cursor_end_of_row(&c) } else { q.g.cursor_begin_of_row(&c) };
+        let base = self.paras[i].start + q.start;
+        (base + byte_of_col(&doc.text()[base..base + q.len], c.index.0), c.prefer_next_row)
     }
 
+    /// Replace bytes `range` with `text` (typed, pasted, deleted), the
+    /// caret after it. Where a table's row is touched, its structure
+    /// stays: text put in a cell is one line (tabs and newlines become
+    /// spaces), and the tabs and newlines going are put back after it, so
+    /// cells and rows empty rather than join.
     fn edit(&mut self, doc: &mut dyn Document, range: Range<usize>, text: &str) {
+        let (a, b) = (self.para_of(range.start), self.para_of(range.end));
+        if !(a..=b).any(|i| self.paras[i].set.row.is_some()) {
+            return self.edit_raw(doc, range, text, text.len());
+        }
+        let clean: String = text.chars().map(|c| if c == '\t' || c == '\n' { ' ' } else { c }).collect();
+        let kept: String = doc.text()[range.clone()].chars().filter(|c| *c == '\t' || *c == '\n').collect();
+        if clean.is_empty() && kept == doc.text()[range.clone()] {
+            // Only structure (a cell's start, backspaced): the caret goes
+            // back over it instead.
+            self.anchor = range.start;
+            self.caret = range.start;
+            self.prefer_next = false;
+            self.h_pos = None;
+            self.reveal = true;
+            return;
+        }
+        let caret = clean.len();
+        self.edit_raw(doc, range, &(clean + &kept), caret);
+    }
+
+    /// Replace bytes `range` with `text` as it is, the caret `caret` bytes
+    /// into it.
+    fn edit_raw(&mut self, doc: &mut dyn Document, range: Range<usize>, text: &str, caret: usize) {
         let sel = self.selection();
         doc.replace(range.clone(), text, sel);
         self.replaced(doc.text(), range.clone(), text.len());
-        self.anchor = range.start + text.len();
+        self.anchor = range.start + caret;
         self.caret = self.anchor;
         self.prefer_next = false;
         self.h_pos = None;
         self.reveal = true;
+    }
+
+    /// The caret's cell, if it is in a table's row: the row's paragraph,
+    /// its cells (bytes of the text) and which one.
+    fn cell(&self, text: &str) -> Option<(usize, Vec<Range<usize>>, usize)> {
+        let i = self.para_of(self.caret);
+        let p = self.paras[i];
+        p.set.row?;
+        let cells: Vec<Range<usize>> = cells(&text[p.start..p.start + p.len]).into_iter().map(|(s, l)| p.start + s..p.start + s + l).collect();
+        let k = cells.iter().position(|c| self.caret <= c.end).unwrap_or(cells.len() - 1);
+        Some((i, cells, k))
+    }
+
+    /// Tab (or ⇧Tab) in a table's row: the next (previous) cell, all of
+    /// it selected; Tab in the last cell of a table's last row adds a row.
+    fn tab(&mut self, doc: &mut dyn Document, back: bool) -> Option<bool> {
+        let (i, cells, k) = self.cell(doc.text())?;
+        let select = |e: &mut Editor, r: Range<usize>| {
+            e.anchor = r.start;
+            e.caret = r.end;
+            e.h_pos = None;
+            e.reveal = true;
+        };
+        if back {
+            if k > 0 {
+                select(self, cells[k - 1].clone());
+            } else if i > 0 && self.paras[i - 1].set.row.is_some() {
+                let q = self.paras[i - 1];
+                let last = cells_of(doc.text(), q.start, q.len).pop().unwrap_or(q.start..q.start);
+                select(self, last);
+            }
+            return Some(false);
+        }
+        if k + 1 < cells.len() {
+            select(self, cells[k + 1].clone());
+            return Some(false);
+        }
+        if i + 1 < self.paras.len() && self.paras[i + 1].set.row.is_some() {
+            let q = self.paras[i + 1];
+            let first = cells_of(doc.text(), q.start, q.len).swap_remove(0);
+            select(self, first);
+            return Some(false);
+        }
+        Some(self.add_row(doc, i, cells.len()))
+    }
+
+    /// A row of `n` empty cells after row `i`, the caret in its first.
+    fn add_row(&mut self, doc: &mut dyn Document, i: usize, n: usize) -> bool {
+        let p = self.paras[i];
+        let end = p.start + p.len;
+        let row = format!("\n{}", "\t".repeat(n.saturating_sub(1)));
+        self.anchor = end;
+        self.caret = end;
+        self.edit_raw(doc, end..end, &row, 1);
+        true
     }
 
     /// Show the editor in `rect`.
@@ -600,6 +843,11 @@ impl Editor {
         let ppp = ctx.pixels_per_point();
         let screen = Rect::from_min_size(ui.max_rect().min + vp.min.to_vec2(), vp.size());
         let inner = (vp.width() - 2.0 * o.margin.x).max(1.0);
+        if !o.wrap && (self.width - inner.round()).abs() > 0.5 {
+            // (Unwrapped, a table is the view's width.)
+            self.width = inner.round();
+            self.key += 1;
+        }
         self.set_params((o.wrap.then_some(inner.round()), ppp, o.align, o.justify));
         // The paragraph at the top of the view, where it stays.
         self.ensure_tops();
@@ -635,7 +883,7 @@ impl Editor {
         // Lay out what shows, measuring it (which may move what follows,
         // or the caret being revealed): again until it settles.
         let revealing = std::mem::take(&mut self.reveal);
-        let mut shown: Vec<(usize, Arc<Galley>)> = Vec::new();
+        let mut shown: Vec<(usize, Laid)> = Vec::new();
         self.markers.clear();
         for pass in 0..6 {
             if revealing {
@@ -674,8 +922,8 @@ impl Editor {
             shown.clear();
             let mut i = first;
             while i < self.paras.len() && o.margin.y + self.tops[i] < offset.y + vp.height() {
-                let g = self.galley(ui, doc, i);
-                shown.push((i, g));
+                let laid = self.laid(ui, doc, i);
+                shown.push((i, laid));
                 i += 1;
             }
             if !self.tops_dirty {
@@ -701,35 +949,72 @@ impl Editor {
         let checker = (o.spelling && o.editable).then(|| crate::spell::checker(&ctx)).flatten();
         let squiggle_color = style::c(style::palette(&ctx).failure);
         let checking = Instant::now();
-        for (i, g) in &shown {
+        // Rules in the text's colour, faint (a border's colour is lost on a
+        // dark page); a header shaded with the controls'.
+        let rule = visuals.text_color().gamma_multiply(0.35);
+        let shade = style::c(style::palette(&ctx).control_background);
+        for (i, laid) in &shown {
             let p = self.paras[*i];
             let at = snap(origin + self.origin(*i, o, inner));
             let end = p.start + p.len;
-            // The selection behind the text (its newline too, as a sliver).
-            if !sel.is_empty() && sel.start <= end && sel.end > p.start {
-                let para = &text[p.start..end];
-                let a = para[..sel.start.clamp(p.start, end) - p.start].chars().count();
-                let b = para[..sel.end.clamp(p.start, end) - p.start].chars().count();
-                let past = sel.end > end;
-                let mut c0 = 0;
-                for (ri, row) in g.rows.iter().enumerate() {
-                    let n = row.char_count_excluding_newline().0;
-                    let last = ri + 1 == g.rows.len();
-                    // On past this row's end: to its edge (and the
-                    // paragraph's newline, a sliver after the last).
-                    let on = if last { past } else { b > c0 + n };
-                    if a <= c0 + n && b >= c0 {
-                        let left = row.x_offset(CharIndex(a.max(c0) - c0));
-                        let right = if on { row.size.x + if last { row.size.y * 0.5 } else { 0.0 } } else { row.x_offset(CharIndex(b.min(c0 + n) - c0)) };
-                        if right > left {
-                            let r = Rect::from_min_max(snap(at + row.pos.to_vec2() + vec2(left, 0.0)), snap(at + row.pos.to_vec2() + vec2(right, row.size.y)));
-                            painter.rect_filled(r, 0.0, fill);
-                        }
+            // A row: its cells' rules, a device pixel wide on device
+            // pixels (rows meet on one), and a header's shade.
+            if let Some((h, header)) = laid.row {
+                let px = 1.0 / ppp;
+                let line = |v: f32| ((v * ppp).floor() + 0.5) / ppp;
+                // From the rows' tops before snapping, so a row's bottom
+                // rule and the next's top fall on the same pixel.
+                let y0 = origin.y + o.margin.y + self.tops[*i];
+                let (top, bottom) = (line(y0), line(y0 + h));
+                for q in &laid.parts {
+                    let (l, r) = (line(at.x + q.frame.0), line(at.x + q.frame.0 + q.frame.1));
+                    if header {
+                        // Whole pixels, the rules' own included.
+                        let half = px / 2.0;
+                        painter.rect_filled(Rect::from_min_max(Pos2::new(l - half, top - half), Pos2::new(r + half, bottom + half)), 0.0, shade);
                     }
-                    c0 += n;
+                    painter.line_segment([Pos2::new(l, top), Pos2::new(l, bottom)], egui::Stroke::new(px, rule));
+                    painter.line_segment([Pos2::new(r, top), Pos2::new(r, bottom)], egui::Stroke::new(px, rule));
+                    painter.line_segment([Pos2::new(l, top), Pos2::new(r, top)], egui::Stroke::new(px, rule));
+                    painter.line_segment([Pos2::new(l, bottom), Pos2::new(r, bottom)], egui::Stroke::new(px, rule));
                 }
             }
-            painter.galley(at, g.clone(), visuals.text_color());
+            for q in &laid.parts {
+                let (qs, qe) = (p.start + q.start, p.start + q.start + q.len);
+                let mut qat = snap(at + q.at);
+                if laid.row.is_some() {
+                    // Up a part pixel rather than down: capitals sit a
+                    // little below their line's middle, so a cell's text
+                    // rounded down would look low in its row.
+                    qat.y = ((at.y + q.at.y) * ppp).floor() / ppp;
+                }
+                // The selection behind the text (the paragraph's newline,
+                // or a cell's tab, too, as a sliver).
+                if !sel.is_empty() && sel.start <= qe && sel.end > qs {
+                    let part = &text[qs..qe];
+                    let a = part[..sel.start.clamp(qs, qe) - qs].chars().count();
+                    let b = part[..sel.end.clamp(qs, qe) - qs].chars().count();
+                    let past = sel.end > qe;
+                    let mut c0 = 0;
+                    for (ri, row) in q.g.rows.iter().enumerate() {
+                        let n = row.char_count_excluding_newline().0;
+                        let last = ri + 1 == q.g.rows.len();
+                        // On past this row's end: to its edge (and the
+                        // paragraph's newline, a sliver after the last).
+                        let on = if last { past } else { b > c0 + n };
+                        if a <= c0 + n && b >= c0 {
+                            let left = row.x_offset(CharIndex(a.max(c0) - c0));
+                            let right = if on { row.size.x + if last { row.size.y * 0.5 } else { 0.0 } } else { row.x_offset(CharIndex(b.min(c0 + n) - c0)) };
+                            if right > left {
+                                let r = Rect::from_min_max(snap(qat + row.pos.to_vec2() + vec2(left, 0.0)), snap(qat + row.pos.to_vec2() + vec2(right, row.size.y)));
+                                painter.rect_filled(r, 0.0, fill);
+                            }
+                        }
+                        c0 += n;
+                    }
+                }
+                painter.galley(qat, q.g.clone(), visuals.text_color());
+            }
             if let Some(c) = &checker {
                 let para = &text[p.start..end];
                 let key = {
@@ -759,10 +1044,15 @@ impl Editor {
                     if active && sel.is_empty() && (p.start + r.start..=p.start + r.end).contains(&self.caret) {
                         continue;
                     }
-                    squiggle(&painter, g, at, para, r.clone(), ppp, squiggle_color);
+                    // In its cell (a word never crosses a tab).
+                    let q = &laid.parts[laid.part_of(r.start)];
+                    let part = &para[q.start..q.start + q.len];
+                    let local = r.start.saturating_sub(q.start)..(r.end - q.start).min(q.len);
+                    squiggle(&painter, &q.g, snap(at + q.at), part, local, ppp, squiggle_color);
                 }
             }
             if let Some(m) = self.markers.get(i) {
+                let g = &laid.parts[0].g;
                 let first = g.rows.first().map_or(0.0, |r| r.pos.y);
                 let w = m.size().x;
                 let gap = (m.size().y * 0.35).round();
@@ -824,7 +1114,7 @@ impl Editor {
                 ui.ctx().request_repaint();
                 return;
             }
-            self.galley(ui, doc, i);
+            self.laid(ui, doc, i);
         }
     }
 
@@ -1013,8 +1303,15 @@ impl Editor {
         let mut keep_h = false;
         match key {
             K::Enter if o.editable => {
+                // In a table, a row below.
+                if let Some((i, cells, _)) = self.cell(doc.text()) {
+                    return self.add_row(doc, i, cells.len());
+                }
                 self.edit(doc, sel, "\n");
                 return true;
+            }
+            K::Tab if !mods.command && self.cell(doc.text()).is_some() => {
+                return if o.editable { self.tab(doc, mods.shift).unwrap_or(false) } else { false };
             }
             K::Tab if o.editable && !mods.shift && !mods.command => {
                 self.edit(doc, sel, "\t");
@@ -1087,6 +1384,12 @@ impl Editor {
         }
         false
     }
+}
+
+/// The cells of the row at bytes `start..start + len` of `text`, as bytes
+/// of the text.
+fn cells_of(text: &str, start: usize, len: usize) -> Vec<Range<usize>> {
+    cells(&text[start..start + len]).into_iter().map(|(s, l)| start + s..start + s + l).collect()
 }
 
 /// Paragraphs of `text[start..end]` (which starts one): their starts and
@@ -1248,6 +1551,17 @@ mod tests {
         assert_eq!(starts(&e), [(0, 7)]);
         e.reset("");
         assert_eq!(starts(&e), [(0, 0)]);
+    }
+
+    #[test]
+    fn rows_cells_and_columns() {
+        assert_eq!(cells("a\tbc\t"), [(0, 1), (2, 2), (5, 0)]);
+        assert_eq!(cells(""), [(0, 0)]);
+        // Equal shares unless there is one a cell; whole points that add up.
+        let row = Row { columns: vec![1.0, 3.0], header: false };
+        assert_eq!(cell_columns(&row, 2, 400.0), [(0.0, 100.0), (100.0, 300.0)]);
+        assert_eq!(cell_columns(&row, 3, 100.0), [(0.0, 33.0), (33.0, 34.0), (67.0, 33.0)]);
+        assert_eq!(cells_of("x\na\tb", 2, 3), [2..3, 4..5]);
     }
 
     #[test]

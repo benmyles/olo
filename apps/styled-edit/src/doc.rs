@@ -143,7 +143,8 @@ pub enum List {
 }
 
 /// How a paragraph is set: its kind, a list it is in, how far it is
-/// indented and its own alignment (else the document's).
+/// indented, its own alignment (else the document's), and whether it is
+/// a table's row.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct Para {
@@ -151,6 +152,20 @@ pub struct Para {
     pub list: List,
     pub level: u8,
     pub align: Option<Align>,
+    pub row: Option<Row>,
+}
+
+/// A table's row: its cells are the paragraph's text, a tab apart (so
+/// the file's text is the table's, tab-separated). A table is the rows
+/// one after another.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct Row {
+    /// Each column's share of the width (equal ones when there aren't as
+    /// many as cells).
+    pub columns: Vec<f32>,
+    /// The table's header row.
+    pub header: bool,
 }
 
 /// The deepest indent.
@@ -352,19 +367,30 @@ impl Doc {
             List::Number => Some(format!("{}.", self.number(i))),
         };
         let a = p.align.unwrap_or(align);
+        let halign = Some(match a {
+            Align::Left | Align::Justify => egui::Align::Min,
+            Align::Center => egui::Align::Center,
+            Align::Right => egui::Align::Max,
+        });
+        if let Some(r) = &p.row {
+            return olo_kit::editor::Paragraph {
+                left: p.level as f32 * INDENT,
+                align: halign,
+                justify: Some(a == Align::Justify),
+                row: Some(olo_kit::editor::Row { columns: r.columns.clone(), header: r.header }),
+                ..Default::default()
+            };
+        }
         olo_kit::editor::Paragraph {
             left,
             first: 0.0,
             right: if p.kind == Kind::Quote { INDENT } else { 0.0 },
             above,
             below,
-            align: Some(match a {
-                Align::Left | Align::Justify => egui::Align::Min,
-                Align::Center => egui::Align::Center,
-                Align::Right => egui::Align::Max,
-            }),
+            align: halign,
             justify: Some(a == Align::Justify),
             marker,
+            row: None,
         }
     }
 
@@ -511,15 +537,20 @@ impl Doc {
         self.runs.splice(start..end, added);
         normalize(&mut self.runs);
         // The paragraphs the removed bytes spanned become one (the
-        // first's setting); each newline put in starts another set like it
-        // (body text after a heading's end).
+        // first's setting); newlines put back in their place start ones set
+        // as those were (a table's rows stay rows when the text between
+        // goes), and any more start ones set like the first (body text
+        // after a heading's end).
         let (p0, p1) = (self.para_index(removed.start), self.para_index(removed.end));
         let first = self.paras[p0].clone();
         let at_end = self.para_range(p1).end == removed.end;
         let new_starts: Vec<usize> = inserted.match_indices('\n').map(|(i, _)| p + i + 1).collect();
         let next = if at_end && inserted.ends_with('\n') { Para { kind: first.kind.next(), ..first.clone() } } else { first.clone() };
-        let mut added_paras = vec![first.clone(); new_starts.len()];
-        if let Some(last) = added_paras.last_mut() {
+        let were = &self.paras[p0 + 1..p1 + 1];
+        let mut added_paras: Vec<Para> = (0..new_starts.len()).map(|k| were.get(k).cloned().unwrap_or_else(|| first.clone())).collect();
+        if new_starts.len() > were.len()
+            && let Some(last) = added_paras.last_mut()
+        {
             *last = next;
         }
         let delta = inserted.len() as isize - removed.len() as isize;
@@ -678,6 +709,28 @@ impl Doc {
     /// Replace `range` (bytes) with `with`, as one undoable step (Replace).
     pub fn replace(&mut self, range: Range<usize>, with: &str, selection: Range<usize>) -> Change {
         self.replace_all(std::slice::from_ref(&range), with, selection).unwrap_or(Change { removed: range.start..range.start, inserted: 0 })
+    }
+
+    /// Replace every range (bytes, in order, not overlapping; `with` each)
+    /// and then set the paragraphs bytes `after` (of the text then) touch,
+    /// `set` given each one's place among them: one step to undo (a
+    /// table's rows made, added or taken away).
+    pub fn replace_paras(&mut self, ranges: &[Range<usize>], with: &str, selection: Range<usize>, after: impl Fn(&Doc) -> Range<usize>, set: impl Fn(usize, &mut Para)) -> Option<Change> {
+        let change = if ranges.iter().all(|r| r.is_empty()) && with.is_empty() {
+            // Only the paragraphs: a step of its own still.
+            self.push_undo(selection.start..selection.start, 0, selection);
+            self.redo.clear();
+            self.generation += 1;
+            Change { removed: 0..0, inserted: 0 }
+        } else {
+            self.replace_all(ranges, with, selection)?
+        };
+        self.last_edit = None;
+        let r = self.paras_in(after(self));
+        for (k, i) in r.enumerate() {
+            set(k, &mut self.paras[i]);
+        }
+        Some(change)
     }
 
     /// The styles of bytes `range` (one paragraph) as sections of `job`,

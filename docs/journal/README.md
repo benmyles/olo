@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### StyledEdit: tables
+
+*18:51* — A paragraph can be a table's row: its cells its text between tabs, laid out side by side in columns by the kit editor and ruled a device pixel wide (a header row shaded). Tab and ⇧Tab go from cell to cell, Tab in the last cell and Return add a row, and edits keep a table's cells and rows. The Table menu inserts and converts tables, adds and deletes rows and columns, and toggles the header; Word, OpenDocument, RTF and Markdown tables come in as tables and go out as them.
+
+![StyledEdit: tables](2026-10-30/185129-stylededit-tables.png)
+
 ### Printing: the Print panel and PDF
 
 *17:37* — StyledEdit's File > Print... (and Export > PDF): a printer from CUPS (spoken to natively over IPP) or a PDF, paper, copies and pages; pages laid out as the editor lays them out and made into a PDF in process (krilla), fonts embedded, text selectable.

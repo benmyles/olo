@@ -4,7 +4,7 @@
 use std::{collections::HashMap, fmt::Write as _, io::Write as _};
 
 use crate::{
-    Align, Document, Kind, List, Paragraph, Span,
+    Align, Document, Kind, List, Paragraph, Span, Table,
     xml::{X, attr, esc, events, hex_color, is_mono, zip_text},
 };
 
@@ -15,6 +15,9 @@ const PKG: &str = "http://schemas.openxmlformats.org/package/2006/relationships"
 const LEVEL: u32 = 720;
 /// The font code is set in.
 const MONO: &str = "Courier New";
+/// Twips across a page's text (US Letter less inch margins): a table's
+/// width, shared out between its columns.
+const TEXT_WIDTH: u32 = 9360;
 
 fn style_id(kind: Kind) -> Option<&'static str> {
     match kind {
@@ -29,14 +32,14 @@ fn style_id(kind: Kind) -> Option<&'static str> {
 }
 
 /// A paragraph style's kind, by its name (or id).
-fn kind_of(name: &str) -> Kind {
+pub(crate) fn kind_of(name: &str) -> Kind {
     let n = name.to_ascii_lowercase().replace(' ', "");
     match n.as_str() {
         "title" => Kind::Title,
         "heading1" => Kind::Heading1,
         "heading2" => Kind::Heading2,
         _ if n.starts_with("heading") && n[7..].parse::<u8>().is_ok() => Kind::Heading3,
-        "quote" | "intensequote" | "blocktext" => Kind::Quote,
+        "quote" | "quotations" | "blockquotation" | "intensequote" | "blocktext" => Kind::Quote,
         _ if n.contains("code") || n.contains("source") || n.contains("preformatted") => Kind::Code,
         _ => Kind::Body,
     }
@@ -58,7 +61,14 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
         } else if numbered {
             in_numbered = true;
         }
-        paragraph(&mut body, p, &mut links, numbered_lists);
+        match &p.table {
+            Some(t) => table(&mut body, t, &mut links, numbered_lists),
+            None => paragraph(&mut body, p, &mut links, numbered_lists),
+        }
+    }
+    // (Word wants a paragraph last, after a table.)
+    if doc.paragraphs.last().is_some_and(|p| p.table.is_some()) {
+        body.push_str("<w:p/>");
     }
     let document = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:document xmlns:w=\"{W}\" xmlns:r=\"{R}\"><w:body>{body}<w:sectPr/></w:body></w:document>"
@@ -144,6 +154,33 @@ fn paragraph(out: &mut String, p: &Paragraph, links: &mut Vec<String>, numbered_
     out.push_str("</w:p>");
 }
 
+fn table(out: &mut String, t: &Table, links: &mut Vec<String>, numbered_list: u32) {
+    let columns = t.columns().max(1);
+    let w = TEXT_WIDTH / columns as u32;
+    out.push_str("<w:tbl><w:tblPr><w:tblStyle w:val=\"TableGrid\"/><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr><w:tblGrid>");
+    for _ in 0..columns {
+        let _ = write!(out, "<w:gridCol w:w=\"{w}\"/>");
+    }
+    out.push_str("</w:tblGrid>");
+    for (r, row) in t.rows.iter().enumerate() {
+        out.push_str("<w:tr>");
+        if r == 0 && t.header {
+            out.push_str("<w:trPr><w:tblHeader/></w:trPr>");
+        }
+        for c in 0..columns {
+            let _ = write!(out, "<w:tc><w:tcPr><w:tcW w:w=\"{w}\" w:type=\"dxa\"/></w:tcPr>");
+            match row.get(c).filter(|cell| !cell.is_empty()) {
+                Some(cell) => cell.iter().for_each(|p| paragraph(out, p, links, numbered_list)),
+                // (A cell holds a paragraph at least.)
+                None => out.push_str("<w:p/>"),
+            }
+            out.push_str("</w:tc>");
+        }
+        out.push_str("</w:tr>");
+    }
+    out.push_str("</w:tbl>");
+}
+
 fn run(out: &mut String, s: &Span) {
     out.push_str("<w:r><w:rPr>");
     // (In the order Word's schema has them.)
@@ -199,6 +236,11 @@ fn styles(font: Option<&str>) -> String {
          <w:docDefaults><w:rPrDefault><w:rPr>{}<w:sz w:val=\"24\"/></w:rPr></w:rPrDefault></w:docDefaults>\
          <w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\"><w:name w:val=\"Normal\"/><w:qFormat/></w:style>\
          <w:style w:type=\"character\" w:styleId=\"Hyperlink\"><w:name w:val=\"Hyperlink\"/><w:rPr><w:color w:val=\"0563C1\"/><w:u w:val=\"single\"/></w:rPr></w:style>\
+         <w:style w:type=\"table\" w:styleId=\"TableGrid\"><w:name w:val=\"Table Grid\"/><w:tblPr><w:tblBorders>\
+         <w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"auto\"/><w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"auto\"/>\
+         <w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"auto\"/><w:right w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"auto\"/>\
+         <w:insideH w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"auto\"/><w:insideV w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"auto\"/>\
+         </w:tblBorders><w:tblCellMar><w:left w:w=\"108\" w:type=\"dxa\"/><w:right w:w=\"108\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr></w:style>\
          {}{}{}{}{}{}</w:styles>",
         font.map(|f| {
             let f = esc(f);
@@ -312,9 +354,9 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
     let (mut in_ppr, mut in_rpr, mut in_run, mut in_text) = (false, false, false, false);
     let (mut num_id, mut ilvl): (Option<String>, u8) = (None, 0);
     let mut link: Option<String> = None;
-    // A table: its rows' cells as spans, and the cell being read.
+    // The table being read (one in a cell comes in as its paragraphs).
     let mut table_depth = 0;
-    let mut row: Vec<Vec<Span>> = Vec::new();
+    let mut table = Table::default();
     for e in events(&main) {
         match e {
             X::Start(n, a) => match n.as_str() {
@@ -373,9 +415,19 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
                 "tab" if in_run && !in_ppr => para.spans.push(span.with_text("\t")),
                 "br" | "cr" if in_run => para.spans.push(span.with_text("\n")),
                 "noBreakHyphen" if in_run => para.spans.push(span.with_text("-")),
-                "tbl" => table_depth += 1,
-                "tr" => row.clear(),
-                "tc" => row.push(Vec::new()),
+                "tbl" => {
+                    table_depth += 1;
+                    if table_depth == 1 {
+                        table = Table::default();
+                    }
+                }
+                "tr" if table_depth == 1 => table.rows.push(Vec::new()),
+                "tc" if table_depth == 1 => {
+                    if let Some(row) = table.rows.last_mut() {
+                        row.push(Vec::new());
+                    }
+                }
+                "tblHeader" if table_depth == 1 && table.rows.len() == 1 => table.header = on(&a),
                 _ => {}
             },
             X::End(n) => match n.as_str() {
@@ -394,28 +446,17 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
                 "hyperlink" => link = None,
                 "p" => {
                     let p = std::mem::take(&mut para);
-                    if table_depth > 0 {
-                        if let Some(cell) = row.last_mut() {
-                            if !cell.is_empty() {
-                                cell.push(Span::default().with_text(" "));
-                            }
-                            cell.extend(p.spans);
-                        }
-                    } else {
-                        doc.paragraphs.push(p);
+                    match table.rows.last_mut().and_then(|r| r.last_mut()) {
+                        Some(cell) if table_depth > 0 => cell.push(p),
+                        _ => doc.paragraphs.push(p),
                     }
                 }
-                "tr" if table_depth == 1 => {
-                    let mut spans = Vec::new();
-                    for (k, cell) in row.drain(..).enumerate() {
-                        if k > 0 {
-                            spans.push(Span::default().with_text("\t"));
-                        }
-                        spans.extend(cell);
+                "tbl" => {
+                    if table_depth == 1 {
+                        doc.paragraphs.push(Paragraph { table: Some(std::mem::take(&mut table)), ..Paragraph::default() });
                     }
-                    doc.paragraphs.push(Paragraph { spans, ..Paragraph::default() });
+                    table_depth -= 1;
                 }
-                "tbl" => table_depth -= 1,
                 _ => {}
             },
             X::Text(t) if in_text => para.spans.push(span.with_text(t)),

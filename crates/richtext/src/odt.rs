@@ -4,7 +4,7 @@
 use std::{collections::HashMap, fmt::Write as _, io::Write as _};
 
 use crate::{
-    Align, Document, Kind, List, Paragraph, Span,
+    Align, Document, Kind, List, Paragraph, Span, Table,
     xml::{X, attr, esc, events, hex_color, is_mono, zip_text},
 };
 
@@ -71,12 +71,19 @@ fn text_props(s: &Span) -> String {
     p
 }
 
+/// The automatic styles the body uses, gathered as it is written: text
+/// ones by properties, paragraph ones by (kind, alignment, indent); and
+/// the fonts named.
+#[derive(Default)]
+struct Auto {
+    text: Vec<String>,
+    para: Vec<(Kind, Align, u8)>,
+    fonts: Vec<String>,
+    tables: usize,
+}
+
 pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
-    // Automatic styles: text ones by properties, paragraph ones by
-    // (kind, alignment, indent).
-    let mut text_styles: Vec<String> = Vec::new();
-    let mut para_styles: Vec<(Kind, Align, u8)> = Vec::new();
-    let mut fonts: Vec<String> = Vec::new();
+    let mut auto_styles = Auto::default();
     let mut body = String::new();
     // Lists open: numbered or not.
     let mut lists: Vec<bool> = Vec::new();
@@ -110,62 +117,21 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
             }
             None => close(&mut body, &mut lists, 0),
         }
-        let indent = if p.list.is_some() { 0 } else { p.indent };
-        let style = if p.align == Align::Left && indent == 0 {
-            style_name(p.kind).to_owned()
-        } else {
-            let key = (p.kind, p.align, indent);
-            let n = para_styles.iter().position(|k| *k == key).unwrap_or_else(|| {
-                para_styles.push(key);
-                para_styles.len() - 1
-            });
-            format!("P{}", n + 1)
-        };
-        let (tag, level) = match p.kind {
-            Kind::Heading1 => ("text:h", Some(1)),
-            Kind::Heading2 => ("text:h", Some(2)),
-            Kind::Heading3 => ("text:h", Some(3)),
-            _ => ("text:p", None),
-        };
-        let _ = write!(body, "<{tag} text:style-name=\"{style}\"");
-        if let Some(l) = level {
-            let _ = write!(body, " text:outline-level=\"{l}\"");
+        match &p.table {
+            Some(t) => table(&mut body, t, &mut auto_styles),
+            None => paragraph(&mut body, p, &mut auto_styles),
         }
-        body.push('>');
-        let mut i = 0;
-        while i < p.spans.len() {
-            let url = p.spans[i].link.clone();
-            if let Some(u) = &url {
-                let _ = write!(body, "<text:a xlink:type=\"simple\" xlink:href=\"{}\">", esc(u));
-            }
-            while i < p.spans.len() && p.spans[i].link == url {
-                let s = &p.spans[i];
-                if let Some(f) = s.font.as_deref().or(s.monospace.then_some(MONO))
-                    && !fonts.iter().any(|x| x == f)
-                {
-                    fonts.push(f.to_owned());
-                }
-                let props = text_props(s);
-                if props.is_empty() {
-                    body.push_str(&text(&s.text));
-                } else {
-                    let n = text_styles.iter().position(|x| *x == props).unwrap_or_else(|| {
-                        text_styles.push(props);
-                        text_styles.len() - 1
-                    });
-                    let _ = write!(body, "<text:span text:style-name=\"T{}\">{}</text:span>", n + 1, text(&s.text));
-                }
-                i += 1;
-            }
-            if url.is_some() {
-                body.push_str("</text:a>");
-            }
-        }
-        let _ = write!(body, "</{tag}>");
     }
     close(&mut body, &mut lists, 0);
 
+    let Auto { text: text_styles, para: para_styles, mut fonts, tables } = auto_styles;
     let mut auto = String::new();
+    if tables > 0 {
+        auto.push_str(
+            "<style:style style:name=\"Tbl\" style:family=\"table\"><style:table-properties style:width=\"6.5in\" table:align=\"margins\" table:border-model=\"collapsing\"/></style:style>\
+             <style:style style:name=\"TblCell\" style:family=\"table-cell\"><style:table-cell-properties fo:padding=\"0.04in\" fo:border=\"0.5pt solid #000000\"/></style:style>",
+        );
+    }
     for (i, props) in text_styles.iter().enumerate() {
         let _ = write!(auto, "<style:style style:name=\"T{}\" style:family=\"text\"><style:text-properties{props}/></style:style>", i + 1);
     }
@@ -249,6 +215,88 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
         z.write_all(data.as_bytes()).map_err(|e| e.to_string())?;
     }
     Ok(z.finish().map_err(|e| e.to_string())?.into_inner())
+}
+
+fn paragraph(body: &mut String, p: &Paragraph, auto: &mut Auto) {
+    let indent = if p.list.is_some() { 0 } else { p.indent };
+    let style = if p.align == Align::Left && indent == 0 {
+        style_name(p.kind).to_owned()
+    } else {
+        let key = (p.kind, p.align, indent);
+        let n = auto.para.iter().position(|k| *k == key).unwrap_or_else(|| {
+            auto.para.push(key);
+            auto.para.len() - 1
+        });
+        format!("P{}", n + 1)
+    };
+    let (tag, level) = match p.kind {
+        Kind::Heading1 => ("text:h", Some(1)),
+        Kind::Heading2 => ("text:h", Some(2)),
+        Kind::Heading3 => ("text:h", Some(3)),
+        _ => ("text:p", None),
+    };
+    let _ = write!(body, "<{tag} text:style-name=\"{style}\"");
+    if let Some(l) = level {
+        let _ = write!(body, " text:outline-level=\"{l}\"");
+    }
+    body.push('>');
+    let mut i = 0;
+    while i < p.spans.len() {
+        let url = p.spans[i].link.clone();
+        if let Some(u) = &url {
+            let _ = write!(body, "<text:a xlink:type=\"simple\" xlink:href=\"{}\">", esc(u));
+        }
+        while i < p.spans.len() && p.spans[i].link == url {
+            let s = &p.spans[i];
+            if let Some(f) = s.font.as_deref().or(s.monospace.then_some(MONO))
+                && !auto.fonts.iter().any(|x| x == f)
+            {
+                auto.fonts.push(f.to_owned());
+            }
+            let props = text_props(s);
+            if props.is_empty() {
+                body.push_str(&text(&s.text));
+            } else {
+                let n = auto.text.iter().position(|x| *x == props).unwrap_or_else(|| {
+                    auto.text.push(props);
+                    auto.text.len() - 1
+                });
+                let _ = write!(body, "<text:span text:style-name=\"T{}\">{}</text:span>", n + 1, text(&s.text));
+            }
+            i += 1;
+        }
+        if url.is_some() {
+            body.push_str("</text:a>");
+        }
+    }
+    let _ = write!(body, "</{tag}>");
+}
+
+/// A table, ruled, across the page; its header row repeated on each.
+fn table(body: &mut String, t: &Table, auto: &mut Auto) {
+    auto.tables += 1;
+    let columns = t.columns().max(1);
+    let _ = write!(body, "<table:table table:name=\"Table{}\" table:style-name=\"Tbl\"><table:table-column table:number-columns-repeated=\"{columns}\"/>", auto.tables);
+    for (r, row) in t.rows.iter().enumerate() {
+        let header = r == 0 && t.header;
+        if header {
+            body.push_str("<table:table-header-rows>");
+        }
+        body.push_str("<table:table-row>");
+        for c in 0..columns {
+            body.push_str("<table:table-cell table:style-name=\"TblCell\" office:value-type=\"string\">");
+            match row.get(c).filter(|cell| !cell.is_empty()) {
+                Some(cell) => cell.iter().for_each(|p| paragraph(body, p, auto)),
+                None => body.push_str("<text:p/>"),
+            }
+            body.push_str("</table:table-cell>");
+        }
+        body.push_str("</table:table-row>");
+        if header {
+            body.push_str("</table:table-header-rows>");
+        }
+    }
+    body.push_str("</table:table>");
 }
 
 /// Text as ODF keeps it: runs of spaces and tabs spelled out (XML would
@@ -436,10 +484,9 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
     let mut link: Option<String> = None;
     // Lists open: each one's style (inherited by nested lists).
     let mut lists: Vec<Option<String>> = Vec::new();
-    // In a table: the cells of the row being read.
+    // The table being read (one in a cell comes in as its paragraphs).
     let mut table_depth = 0;
-    let mut row: Vec<Vec<Span>> = Vec::new();
-    let mut in_cell = false;
+    let mut table = Table::default();
     let span_for = |name: &str, base: &Span| {
         let mut s = base.clone();
         if let Some(v) = find(&styles, name, &|p| p.bold) {
@@ -517,11 +564,18 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
                 }
                 "tab" => push(&mut para, &spans, "\t"),
                 "line-break" => push(&mut para, &spans, "\n"),
-                "table" => table_depth += 1,
-                "table-row" => row.clear(),
-                "table-cell" => {
-                    row.push(Vec::new());
-                    in_cell = true;
+                "table" => {
+                    table_depth += 1;
+                    if table_depth == 1 {
+                        table = Table::default();
+                    }
+                }
+                "table-header-rows" if table_depth == 1 && table.rows.is_empty() => table.header = true,
+                "table-row" if table_depth == 1 => table.rows.push(Vec::new()),
+                "table-cell" | "covered-table-cell" if table_depth == 1 => {
+                    if let Some(row) = table.rows.last_mut() {
+                        row.push(Vec::new());
+                    }
                 }
                 _ => {}
             },
@@ -531,15 +585,9 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
                 }
                 "p" | "h" => {
                     if let Some(p) = para.take() {
-                        if table_depth > 0 && in_cell {
-                            if let Some(cell) = row.last_mut() {
-                                if !cell.is_empty() {
-                                    cell.push(Span::default().with_text(" "));
-                                }
-                                cell.extend(p.spans);
-                            }
-                        } else {
-                            doc.paragraphs.push(p);
+                        match table.rows.last_mut().and_then(|r| r.last_mut()) {
+                            Some(cell) if table_depth > 0 => cell.push(p),
+                            _ => doc.paragraphs.push(p),
                         }
                     }
                     spans.clear();
@@ -551,18 +599,12 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
                     spans.pop();
                     link = None;
                 }
-                "table-cell" => in_cell = false,
-                "table-row" if table_depth == 1 => {
-                    let mut out = Vec::new();
-                    for (k, cell) in row.drain(..).enumerate() {
-                        if k > 0 {
-                            out.push(Span::default().with_text("\t"));
-                        }
-                        out.extend(cell);
+                "table" => {
+                    if table_depth == 1 {
+                        doc.paragraphs.push(Paragraph { table: Some(std::mem::take(&mut table)), ..Paragraph::default() });
                     }
-                    doc.paragraphs.push(Paragraph { spans: out, ..Paragraph::default() });
+                    table_depth -= 1;
                 }
-                "table" => table_depth -= 1,
                 _ => {}
             },
             // Spacing in the text folds into one space, as ODF has it

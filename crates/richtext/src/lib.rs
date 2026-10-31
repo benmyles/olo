@@ -1,6 +1,6 @@
 //! Formatted text documents as paragraphs of styled spans, read from and
-//! written to Word (.docx) and OpenDocument text (.odt) natively: zip and
-//! XML, in process. The model is what a word processor's paragraphs and
+//! written to Word (.docx), OpenDocument text (.odt) and Rich Text Format
+//! (.rtf) natively: zip and XML, and RTF's own words, in process. The model is what a word processor's paragraphs and
 //! character styles are; an app turns it into its own and back
 //! (StyledEdit's `convert.rs`).
 
@@ -8,6 +8,7 @@ use std::path::Path;
 
 mod docx;
 mod odt;
+mod rtf;
 mod xml;
 
 /// What a paragraph is: body text, a title or heading, a quotation or
@@ -48,6 +49,30 @@ pub struct Paragraph {
     pub indent: u8,
     pub align: Align,
     pub spans: Vec<Span>,
+    /// A table here, in the flow of paragraphs, instead of text (its
+    /// spans are empty).
+    pub table: Option<Table>,
+}
+
+/// A table: rows of cells, each cell paragraphs of its own (a table in
+/// a cell comes in as its paragraphs). Every row has a cell for each
+/// column, and every cell a paragraph at least (`Document::tidy`).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Table {
+    pub rows: Vec<Vec<Vec<Paragraph>>>,
+    /// The first row is a header (repeated at the top of each page).
+    pub header: bool,
+}
+
+impl Table {
+    pub fn columns(&self) -> usize {
+        self.rows.iter().map(Vec::len).max().unwrap_or(0)
+    }
+
+    /// A cell's text, its paragraphs a space apart.
+    pub fn cell_text(cell: &[Paragraph]) -> String {
+        cell.iter().map(|p| p.spans.iter().map(|s| s.text.as_str()).collect::<String>()).collect::<Vec<_>>().join(" ")
+    }
 }
 
 /// Text in one style. Sizes are points; None leaves it to the
@@ -87,56 +112,83 @@ pub struct Document {
 
 impl Document {
     /// Neighbouring spans of the same style run together, empty ones go,
-    /// and a paragraph holding a line break becomes two.
+    /// and a paragraph holding a line break becomes two; tables' cells
+    /// likewise, every row as wide as the widest, every cell with a
+    /// paragraph, and a table with no rows gone.
     pub fn tidy(&mut self) {
-        let mut out = Vec::with_capacity(self.paragraphs.len());
-        for mut p in std::mem::take(&mut self.paragraphs) {
-            let spans = std::mem::take(&mut p.spans);
-            let mut cur = p.clone();
-            for s in spans {
-                for (k, piece) in s.text.split('\n').enumerate() {
-                    if k > 0 {
-                        out.push(std::mem::replace(&mut cur, Paragraph { spans: Vec::new(), ..p.clone() }));
-                    }
-                    if piece.is_empty() {
-                        continue;
-                    }
-                    match cur.spans.last_mut() {
-                        Some(last) if last.same_style(&s) => last.text.push_str(piece),
-                        _ => cur.spans.push(s.with_text(piece)),
-                    }
-                }
-            }
-            out.push(cur);
-        }
-        self.paragraphs = out;
+        self.paragraphs = tidy(std::mem::take(&mut self.paragraphs));
     }
 }
 
-/// What kind of file this is, by its name: "docx", "odt" or None.
+fn tidy(paragraphs: Vec<Paragraph>) -> Vec<Paragraph> {
+    let mut out = Vec::with_capacity(paragraphs.len());
+    for mut p in paragraphs {
+        if let Some(mut t) = p.table.take() {
+            t.rows.retain(|r| !r.is_empty());
+            if t.rows.is_empty() {
+                continue;
+            }
+            let columns = t.columns();
+            for row in &mut t.rows {
+                row.resize_with(columns, Vec::new);
+                for cell in row.iter_mut() {
+                    *cell = tidy(std::mem::take(cell));
+                    if cell.is_empty() {
+                        cell.push(Paragraph::default());
+                    }
+                }
+            }
+            out.push(Paragraph { table: Some(t), ..Paragraph::default() });
+            continue;
+        }
+        let spans = std::mem::take(&mut p.spans);
+        let mut cur = p.clone();
+        for s in spans {
+            for (k, piece) in s.text.split('\n').enumerate() {
+                if k > 0 {
+                    out.push(std::mem::replace(&mut cur, Paragraph { spans: Vec::new(), ..p.clone() }));
+                }
+                if piece.is_empty() {
+                    continue;
+                }
+                match cur.spans.last_mut() {
+                    Some(last) if last.same_style(&s) => last.text.push_str(piece),
+                    _ => cur.spans.push(s.with_text(piece)),
+                }
+            }
+        }
+        out.push(cur);
+    }
+    out
+}
+
+/// What kind of file this is, by its name: "docx", "odt", "rtf" or None.
 pub fn format_of(path: &Path) -> Option<&'static str> {
     match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
         "docx" => Some("docx"),
         "odt" => Some("odt"),
+        "rtf" => Some("rtf"),
         _ => None,
     }
 }
 
-/// Read a Word or OpenDocument text file.
+/// Read a Word, OpenDocument text or RTF file.
 pub fn read(path: &Path) -> Result<Document, String> {
     let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
     match format_of(path) {
         Some("docx") => docx::read(&bytes),
         Some("odt") => odt::read(&bytes),
+        Some("rtf") => rtf::read(&bytes),
         _ => Err("This kind of document can't be read.".into()),
     }
 }
 
-/// Write a Word or OpenDocument text file (beside it, then over it).
+/// Write a Word, OpenDocument text or RTF file (beside it, then over it).
 pub fn write(path: &Path, doc: &Document) -> Result<(), String> {
     let bytes = match format_of(path) {
         Some("docx") => docx::write(doc)?,
         Some("odt") => odt::write(doc)?,
+        Some("rtf") => rtf::write(doc)?,
         _ => return Err("This kind of document can't be written.".into()),
     };
     let dir = path.parent().ok_or("no folder")?;
@@ -151,6 +203,7 @@ pub fn write(path: &Path, doc: &Document) -> Result<(), String> {
 
 pub use docx::{read as read_docx, write as write_docx};
 pub use odt::{read as read_odt, write as write_odt};
+pub use rtf::{read as read_rtf, write as write_rtf};
 
 #[cfg(test)]
 mod tests {
@@ -187,6 +240,20 @@ mod tests {
                 p(Kind::Code, vec![Span { monospace: true, ..plain.with_text("let x = 1;") }]),
                 Paragraph { align: Align::Center, ..p(Kind::Heading2, vec![plain.with_text("Centred")]) },
                 Paragraph { indent: 2, align: Align::Justify, ..p(Kind::Body, vec![plain.with_text("Indented twice.")]) },
+                Paragraph {
+                    table: Some(Table {
+                        header: true,
+                        rows: vec![
+                            vec![vec![p(Kind::Body, vec![Span { bold: true, ..plain.with_text("Name") }])], vec![p(Kind::Body, vec![Span { bold: true, ..plain.with_text("Size") }])]],
+                            vec![
+                                vec![p(Kind::Body, vec![plain.with_text("first")]), p(Kind::Body, vec![plain.with_text("two paragraphs")])],
+                                vec![Paragraph { align: Align::Right, ..p(Kind::Body, vec![plain.with_text("12")]) }],
+                            ],
+                            vec![vec![p(Kind::Body, vec![Span { italic: true, ..plain.with_text("second") }])], vec![p(Kind::Body, vec![])]],
+                        ],
+                    }),
+                    ..Default::default()
+                },
                 p(Kind::Heading3, vec![plain.with_text("Last")]),
                 p(Kind::Body, vec![]),
             ],
@@ -209,7 +276,7 @@ mod tests {
         assert_eq!(d.paragraphs[1].spans, vec![Span::default().with_text("c")]);
     }
 
-    /// The sample written to `$OLO_RICHTEXT_OUT/sample.docx` and `.odt`,
+    /// The sample written to `$OLO_RICHTEXT_OUT/sample.docx`, `.odt` and `.rtf`,
     /// for opening in other programs (set to check them by hand).
     #[test]
     fn writes_samples() {
@@ -217,6 +284,19 @@ mod tests {
         let dir = std::path::PathBuf::from(dir);
         write(&dir.join("sample.docx"), &sample()).unwrap();
         write(&dir.join("sample.odt"), &sample()).unwrap();
+        write(&dir.join("sample.rtf"), &sample()).unwrap();
+    }
+
+    /// The document at `$OLO_RICHTEXT_READ` as read, printed (set to see
+    /// what another program's file comes in as).
+    #[test]
+    fn reads_named_file() {
+        let Some(path) = std::env::var_os("OLO_RICHTEXT_READ") else { return };
+        let doc = read(std::path::Path::new(&path)).unwrap();
+        println!("font {:?}", doc.font);
+        for p in &doc.paragraphs {
+            println!("{:?} {:?} indent {} {:?}: {:?}", p.kind, p.list, p.indent, p.align, p.spans);
+        }
     }
 
     #[test]

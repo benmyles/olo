@@ -4,7 +4,7 @@
 
 use std::ops::Range;
 
-use crate::doc::{Align, DEFAULT_SIZE, Kind, List, MONOSPACE, Para, Run, Style};
+use crate::doc::{Align, DEFAULT_SIZE, Kind, List, MONOSPACE, Para, Row, Run, Style};
 
 /// Links' colour, as Import sets it.
 const LINK: [u8; 3] = [0x1f, 0x5f, 0xc4];
@@ -21,6 +21,7 @@ pub fn from_markdown(source: &str) -> (String, Vec<Run>, Vec<Para>) {
     let mut links: Vec<String> = Vec::new();
     let mut code_block = false;
     let mut in_cell = false;
+    let mut in_head = false;
     for e in Parser::new_ext(source, options) {
         match e {
             Event::Start(Tag::Heading { level, .. }) => {
@@ -73,9 +74,16 @@ pub fn from_markdown(source: &str) -> (String, Vec<Run>, Vec<Para>) {
                 code_block = false;
             }
             Event::End(TagEnd::Heading(_) | TagEnd::Paragraph | TagEnd::Item | TagEnd::TableRow | TagEnd::TableHead) => b.end(),
-            Event::Start(Tag::TableHead | Tag::TableRow) => {
-                b.start(Para::default());
+            // A table's rows (its head the header, bold as GitHub shows it).
+            Event::Start(Tag::TableHead) => {
+                b.start(Para { row: Some(Row { header: true, ..Row::default() }), ..Para::default() });
                 in_cell = false;
+                in_head = true;
+            }
+            Event::Start(Tag::TableRow) => {
+                b.start(Para { row: Some(Row::default()), ..Para::default() });
+                in_cell = false;
+                in_head = false;
             }
             Event::Start(Tag::TableCell) => {
                 if in_cell {
@@ -104,7 +112,7 @@ pub fn from_markdown(source: &str) -> (String, Vec<Run>, Vec<Para>) {
             }
             Event::Text(t) | Event::Html(t) | Event::InlineHtml(t) => {
                 let mut s = b.base();
-                s.bold |= bold > 0;
+                s.bold |= bold > 0 || (in_head && b.para.row.is_some());
                 s.italic |= italic > 0;
                 s.strikeout |= strike > 0;
                 if let Some(url) = links.last() {
@@ -186,6 +194,12 @@ impl Builder {
             return;
         }
         self.text.push_str(t);
+        // (In a row, a tab is the end of a cell: one in a cell's text is
+        // a space.)
+        if self.para.row.is_some() && t != "\t" && t.contains('\t') {
+            let at = self.text.len() - t.len();
+            self.text.replace_range(at.., &t.replace('\t', " "));
+        }
         match self.runs.last_mut() {
             Some(r) if r.style == *style => r.len += t.len(),
             _ => self.runs.push(Run { len: t.len(), style: style.clone() }),
@@ -203,53 +217,87 @@ impl Builder {
 /// A Word or OpenDocument document (`olo_richtext`) as text, runs and
 /// paragraphs.
 pub fn from_rich(doc: olo_richtext::Document) -> (String, Vec<Run>, Vec<Para>) {
-    use olo_richtext as rt;
     let mut b = Builder::default();
     for p in doc.paragraphs {
-        let kind = match p.kind {
-            rt::Kind::Body => Kind::Body,
-            rt::Kind::Title => Kind::Title,
-            rt::Kind::Heading1 => Kind::Heading1,
-            rt::Kind::Heading2 => Kind::Heading2,
-            rt::Kind::Heading3 => Kind::Heading3,
-            rt::Kind::Quote => Kind::Quote,
-            rt::Kind::Code => Kind::Code,
-        };
-        let align = match p.align {
-            rt::Align::Left => None,
-            rt::Align::Center => Some(Align::Center),
-            rt::Align::Right => Some(Align::Right),
-            rt::Align::Justify => Some(Align::Justify),
-        };
-        let (list, level) = match p.list {
-            Some(l) => (if l.numbered { List::Number } else { List::Bullet }, l.level),
-            None => (List::None, p.indent),
-        };
-        b.start(Para { kind, list, level: level.min(crate::doc::MAX_LEVEL), align });
-        for sp in p.spans {
-            let mut s = b.base();
-            s.bold |= sp.bold;
-            s.italic |= sp.italic;
-            s.underline |= sp.underline;
-            s.strikeout |= sp.strike;
-            if let Some(size) = sp.size {
-                s.size = size;
+        match &p.table {
+            // A table: its rows, each cell's paragraphs a space apart.
+            Some(t) => {
+                for (r, row) in t.rows.iter().enumerate() {
+                    b.start(Para { row: Some(Row { header: r == 0 && t.header, ..Row::default() }), ..Para::default() });
+                    for (c, cell) in row.iter().enumerate() {
+                        if c > 0 {
+                            let s = b.base();
+                            b.text("\t", &s);
+                        }
+                        for (k, cp) in cell.iter().enumerate() {
+                            if k > 0 {
+                                let s = b.base();
+                                b.text(" ", &s);
+                            }
+                            rich_spans(&mut b, &cp.spans);
+                        }
+                    }
+                }
             }
-            if sp.monospace {
-                s.family = MONOSPACE.into();
-            } else if let Some(f) = sp.font {
-                s.family = f;
+            None => {
+                b.start(rich_para(&p));
+                rich_spans(&mut b, &p.spans);
             }
-            s.color = sp.color.or(s.color);
-            if let Some(url) = sp.link {
-                s.underline = true;
-                s.color = s.color.or(Some(LINK));
-                s.link = Some(url);
-            }
-            b.text(&sp.text, &s);
         }
     }
     b.finish()
+}
+
+/// An `olo_richtext` paragraph's setting as StyledEdit's.
+fn rich_para(p: &olo_richtext::Paragraph) -> Para {
+    use olo_richtext as rt;
+    let kind = match p.kind {
+        rt::Kind::Body => Kind::Body,
+        rt::Kind::Title => Kind::Title,
+        rt::Kind::Heading1 => Kind::Heading1,
+        rt::Kind::Heading2 => Kind::Heading2,
+        rt::Kind::Heading3 => Kind::Heading3,
+        rt::Kind::Quote => Kind::Quote,
+        rt::Kind::Code => Kind::Code,
+    };
+    let align = match p.align {
+        rt::Align::Left => None,
+        rt::Align::Center => Some(Align::Center),
+        rt::Align::Right => Some(Align::Right),
+        rt::Align::Justify => Some(Align::Justify),
+    };
+    let (list, level) = match p.list {
+        Some(l) => (if l.numbered { List::Number } else { List::Bullet }, l.level),
+        None => (List::None, p.indent),
+    };
+    Para { kind, list, level: level.min(crate::doc::MAX_LEVEL), align, row: None }
+}
+
+/// `olo_richtext` spans as text in StyledEdit's styles (on the
+/// paragraph's own).
+fn rich_spans(b: &mut Builder, spans: &[olo_richtext::Span]) {
+    for sp in spans {
+        let mut s = b.base();
+        s.bold |= sp.bold;
+        s.italic |= sp.italic;
+        s.underline |= sp.underline;
+        s.strikeout |= sp.strike;
+        if let Some(size) = sp.size {
+            s.size = size;
+        }
+        if sp.monospace {
+            s.family = MONOSPACE.into();
+        } else if let Some(f) = &sp.font {
+            s.family = f.clone();
+        }
+        s.color = sp.color.or(s.color);
+        if let Some(url) = &sp.link {
+            s.underline = true;
+            s.color = s.color.or(Some(LINK));
+            s.link = Some(url.clone());
+        }
+        b.text(&sp.text, &s);
+    }
 }
 
 /// The document as `olo_richtext`'s, for Word or OpenDocument: every
@@ -259,7 +307,33 @@ pub fn to_rich(text: &str, runs: &[Run], paras: &[Para], align: Align) -> olo_ri
     use olo_richtext as rt;
     // Text in the system font is in Olo's.
     let mut doc = rt::Document { font: olo_theme::fonts::UI.first().map(|f| f.to_string()), ..rt::Document::default() };
+    let rich = |r: Range<usize>| -> Vec<rt::Span> {
+        spans(runs, r)
+            .map(|(r, s)| rt::Span {
+                text: text[r].to_owned(),
+                bold: s.bold,
+                italic: s.italic,
+                underline: s.underline,
+                strike: s.strikeout,
+                size: Some(s.size),
+                color: s.color,
+                font: (!s.family.is_empty() && s.family != MONOSPACE).then(|| s.family.clone()),
+                monospace: s.family == MONOSPACE,
+                link: s.link.clone(),
+            })
+            .collect()
+    };
+    // The table being made of rows one after another.
+    let mut table: Option<rt::Table> = None;
     for (r, p) in paragraphs(text, paras) {
+        if let Some(row) = &p.row {
+            let t = table.get_or_insert_with(|| rt::Table { header: row.header, ..rt::Table::default() });
+            t.rows.push(cells(text, r).into_iter().map(|c| vec![rt::Paragraph { spans: rich(c), ..rt::Paragraph::default() }]).collect());
+            continue;
+        }
+        if let Some(t) = table.take() {
+            doc.paragraphs.push(rt::Paragraph { table: Some(t), ..rt::Paragraph::default() });
+        }
         let kind = match p.kind {
             Kind::Body => rt::Kind::Body,
             Kind::Title => rt::Kind::Title,
@@ -279,23 +353,17 @@ pub fn to_rich(text: &str, runs: &[Run], paras: &[Para], align: Align) -> olo_ri
             List::None => None,
             l => Some(rt::List { numbered: l == List::Number, level: p.level }),
         };
-        let spans = spans(runs, r)
-            .map(|(r, s)| rt::Span {
-                text: text[r].to_owned(),
-                bold: s.bold,
-                italic: s.italic,
-                underline: s.underline,
-                strike: s.strikeout,
-                size: Some(s.size),
-                color: s.color,
-                font: (!s.family.is_empty() && s.family != MONOSPACE).then(|| s.family.clone()),
-                monospace: s.family == MONOSPACE,
-                link: s.link.clone(),
-            })
-            .collect();
-        doc.paragraphs.push(rt::Paragraph { kind, list, indent: if list.is_none() { p.level } else { 0 }, align: a, spans });
+        doc.paragraphs.push(rt::Paragraph { kind, list, indent: if list.is_none() { p.level } else { 0 }, align: a, spans: rich(r), table: None });
+    }
+    if let Some(t) = table.take() {
+        doc.paragraphs.push(rt::Paragraph { table: Some(t), ..rt::Paragraph::default() });
     }
     doc
+}
+
+/// A row's cells: the bytes of `range` (a paragraph) between its tabs.
+fn cells(text: &str, range: Range<usize>) -> Vec<Range<usize>> {
+    olo_kit::editor::cells(&text[range.clone()]).into_iter().map(|(s, l)| range.start + s..range.start + s + l).collect()
 }
 
 /// Each paragraph's bytes (without its newline), with its setting.
@@ -328,11 +396,29 @@ pub fn to_markdown(text: &str, runs: &[Run], paras: &[Para]) -> String {
     let mut last_item = false;
     let mut fence = false;
     let mut any = false;
+    let mut in_table = false;
     for (r, p) in paragraphs(text, paras) {
         if fence && p.kind != Kind::Code {
             out.push_str("```\n");
             fence = false;
         }
+        // A table: GitHub's, its first row the head.
+        if p.row.is_some() {
+            let cells = cells(text, r);
+            let line = |c: &Range<usize>| inline_markdown(text, runs, c.clone(), false, false, false).replace('|', "\\|");
+            if !in_table && any {
+                out.push('\n');
+            }
+            out.push_str(&format!("| {} |\n", cells.iter().map(line).collect::<Vec<_>>().join(" | ")));
+            if !in_table {
+                out.push_str(&format!("|{}\n", " --- |".repeat(cells.len())));
+            }
+            in_table = true;
+            any = true;
+            last_item = false;
+            continue;
+        }
+        in_table = false;
         if p.kind == Kind::Code {
             if !fence {
                 if any {
@@ -456,10 +542,15 @@ pub fn to_html(text: &str, runs: &[Run], paras: &[Para], title: &str, align: Ali
     let mut lists: Vec<bool> = Vec::new();
     let mut quote = false;
     let mut code = false;
+    let mut table = false;
     for (r, p) in paragraphs(text, paras) {
         if code && p.kind != Kind::Code {
             out.push_str("</code></pre>\n");
             code = false;
+        }
+        if table && p.row.is_none() {
+            out.push_str("</table>\n");
+            table = false;
         }
         let depth = if p.list == List::None { 0 } else { p.level as usize + 1 };
         while lists.len() > depth || (lists.len() == depth && depth > 0 && lists.last() != Some(&(p.list == List::Number))) {
@@ -473,6 +564,23 @@ pub fn to_html(text: &str, runs: &[Run], paras: &[Para], title: &str, align: Ali
             out.push_str(if code { "\n" } else { "<pre><code>" });
             code = true;
             out.push_str(&escape_html(&text[r]));
+            continue;
+        }
+        if let Some(row) = &p.row {
+            if !table {
+                out.push_str("<table style=\"border-collapse: collapse\">\n");
+                table = true;
+            }
+            let tag = if row.header { "th" } else { "td" };
+            out.push_str("<tr>");
+            for c in cells(text, r) {
+                out.push_str(&format!("<{tag} style=\"border: 1px solid #999; padding: 2px 6px\">"));
+                for (r, s) in spans(runs, c) {
+                    out.push_str(&inline_html(&text[r], s, false, p.kind));
+                }
+                out.push_str(&format!("</{tag}>"));
+            }
+            out.push_str("</tr>\n");
             continue;
         }
         if p.kind == Kind::Quote && !quote {
@@ -514,6 +622,9 @@ pub fn to_html(text: &str, runs: &[Run], paras: &[Para], title: &str, align: Ali
     }
     if code {
         out.push_str("</code></pre>\n");
+    }
+    if table {
+        out.push_str("</table>\n");
     }
     while let Some(numbered) = lists.pop() {
         out.push_str(if numbered { "</ol>\n" } else { "</ul>\n" });
@@ -630,5 +741,23 @@ mod tests {
         let html = to_html(&text, &runs, &paras, "T & co", Align::Left);
         assert!(html.contains("<title>T &amp; co</title>"));
         assert!(html.contains("<h1>T</h1>\n<ul>\n<li>a</li>\n<ul>\n<li>b</li>\n</ul>\n</ul>\n<p>end <strong>x</strong></p>"), "{html}");
+    }
+
+    #[test]
+    fn tables_in_and_out() {
+        let (text, runs, paras) = from_markdown("| Name | Size |\n|---|--:|\n| a | 1 |\n\nAfter\n");
+        assert_eq!(text, "Name\tSize\na\t1\nAfter");
+        assert!(paras[0].row.as_ref().is_some_and(|r| r.header) && paras[1].row.as_ref().is_some_and(|r| !r.header) && paras[2].row.is_none());
+        let md = to_markdown(&text, &runs, &paras);
+        assert!(md.starts_with("| **Name** | **Size** |\n| --- | --- |\n| a | 1 |\n\nAfter"), "{md}");
+        let rich = to_rich(&text, &runs, &paras, Align::Left);
+        let t = rich.paragraphs[0].table.as_ref().expect("a table");
+        assert!(t.header && t.rows.len() == 2 && olo_richtext::Table::cell_text(&t.rows[1][1]) == "1");
+        // And back: rows again.
+        let (text2, _, paras2) = from_rich(rich);
+        assert_eq!(text2, text);
+        assert!(paras2[0].row.as_ref().is_some_and(|r| r.header));
+        let html = to_html(&text, &runs, &paras, "t", Align::Left);
+        assert!(html.contains("<table") && html.contains("<th") && html.contains("<td"));
     }
 }

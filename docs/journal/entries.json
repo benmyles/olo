@@ -2476,5 +2476,11 @@
   "title": "Printing: the Print panel and PDF",
   "caption": "StyledEdit's File > Print... (and Export > PDF): a printer from CUPS (spoken to natively over IPP) or a PDF, paper, copies and pages; pages laid out as the editor lays them out and made into a PDF in process (krilla), fonts embedded, text selectable.",
   "image": "2026-10-30/173704-printing-the-print-panel-and-pdf.png"
+ },
+ {
+  "time": "2026-10-30T18:51:29",
+  "title": "StyledEdit: tables",
+  "caption": "A paragraph can be a table's row: its cells its text between tabs, laid out side by side in columns by the kit editor and ruled a device pixel wide (a header row shaded). Tab and \u21e7Tab go from cell to cell, Tab in the last cell and Return add a row, and edits keep a table's cells and rows. The Table menu inserts and converts tables, adds and deletes rows and columns, and toggles the header; Word, OpenDocument, RTF and Markdown tables come in as tables and go out as them.",
+  "image": "2026-10-30/185129-stylededit-tables.png"
  }
 ]
