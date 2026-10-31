@@ -347,10 +347,10 @@ impl Backend for UdevData {
                     self.loop_handle.remove(t);
                 }
                 // A resting display has no frame on its way: it looks now,
-                // only a quarter of a frame after its last look at least
-                // (a storm of wakes stays a few looks a frame).
+                // but no sooner than a frame after its last look (a storm
+                // of wakes, the pointer moving, stays a look a frame).
                 let frame = s.output.current_mode().map_or(Duration::from_millis(16), |m| Duration::from_secs_f64(1_000f64 / m.refresh as f64));
-                due.push((*node, *crtc, s.last_look.map_or(now, |l| (l + frame / 4).max(now))));
+                due.push((*node, *crtc, s.last_look.map_or(now, |l| (l + frame).max(now))));
             }
         }
         for (node, crtc, at) in due {
@@ -1007,9 +1007,7 @@ pub fn run_udev() {
      */
 
     while state.running.load(Ordering::SeqCst) {
-        // Everything comes as an event; the timeout only keeps `tick`
-        // looking now and then (autotiling's every-so-often look).
-        let result = event_loop.dispatch(Some(crate::render::IDLE_POLL), &mut state);
+        let result = event_loop.dispatch(Some(Duration::from_millis(16)), &mut state);
         if result.is_err() {
             state.running.store(false, Ordering::SeqCst);
         } else {
@@ -1156,8 +1154,7 @@ struct SurfaceData {
     /// The timer for its next look when no frame is on its way (resting,
     /// woken, or after a frame with nothing new); a look sooner cancels it.
     retest: Option<RegistrationToken>,
-    /// When it last looked, so a wake comes no sooner than a quarter of a
-    /// frame after.
+    /// When it last looked, so a wake comes no sooner than a frame after.
     last_look: Option<Instant>,
 }
 
@@ -2121,7 +2118,7 @@ impl AnvilState<UdevData> {
                 // changed rests on.)
                 let new = has_rendered && !(was_asleep && crate::render::warm_changed(&output)) || crate::wallpaper::coming(&output);
                 surface.idle_frames = if new { 0 } else { surface.idle_frames.saturating_add(1) };
-                resting = surface.idle_frames >= crate::render::IDLE_FRAMES && crate::render::rests();
+                resting = surface.idle_frames >= crate::render::IDLE_FRAMES && crate::render::rests(true);
                 if new && was_asleep {
                     // Something changed without waking it (worth a wake).
                     debug!(output = output.name(), "a resting display found something new at its look");

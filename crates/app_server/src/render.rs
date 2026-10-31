@@ -486,11 +486,20 @@ pub fn warm_changed(output: &Output) -> bool {
     WARM.with(|w| w.borrow().changed.as_deref() == Some(output.name().as_str()))
 }
 
-/// Whether displays rest at all (`OLO_REST=off`: every display looks
-/// every frame, as before resting).
-pub fn rests() -> bool {
-    static RESTS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *RESTS.get_or_init(|| std::env::var("OLO_REST").map_or(true, |v| v != "off"))
+/// Whether displays rest: headless ones (agent screens, tests) do; real
+/// ones (`real`) don't, unless `OLO_REST=on` (`off` stops both). On real
+/// displays it made the desktop stutter: every pointer motion woke every
+/// resting display for a look, each with a DRM test commit, up to four a
+/// frame, and the loop fell behind. Not again until pointer motion wakes
+/// only the display it's on and that is measured on real displays.
+pub fn rests(real: bool) -> bool {
+    static REST: std::sync::OnceLock<Option<bool>> = std::sync::OnceLock::new();
+    REST.get_or_init(|| match std::env::var("OLO_REST").as_deref() {
+        Ok("on") => Some(true),
+        Ok("off") => Some(false),
+        _ => None,
+    })
+    .unwrap_or(!real)
 }
 
 /// Frames in a row with nothing new after which a display rests: it

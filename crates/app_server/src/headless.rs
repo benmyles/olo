@@ -67,8 +67,7 @@ struct Screen {
     idle_frames: u32,
     /// Resting: its next look is `render::IDLE_POLL` away, unless woken.
     asleep: bool,
-    /// When it last looked, so a wake comes no sooner than a quarter of a
-    /// frame after.
+    /// When it last looked, so a wake comes no sooner than a frame after.
     looked: Option<std::time::Instant>,
 }
 
@@ -142,9 +141,9 @@ impl Backend for HeadlessData {
                 }
             }
             s.asleep = false;
-            // (A quarter of a frame after its last look at least: a storm
-            // of wakes stays a few looks a frame.)
-            s.due = s.looked.map_or(now, |l| (l + frame_time(&s.output) / 4).max(now));
+            // (A frame after its last look at least: a storm of wakes, the
+            // pointer moving, stays a look a frame.)
+            s.due = s.looked.map_or(now, |l| (l + frame_time(&s.output)).max(now));
             first = Some(first.map_or(s.due, |f| f.min(s.due)));
         }
         // The timer set for later: sooner.
@@ -524,7 +523,7 @@ fn frames_due(state: &mut AnvilState<HeadlessData>) -> std::time::Instant {
             // Something changed without waking it (worth a wake).
             tracing::debug!(output = screen.output.name(), "a resting display found something new at its look");
         }
-        if screen.idle_frames >= crate::render::IDLE_FRAMES && crate::render::rests() {
+        if screen.idle_frames >= crate::render::IDLE_FRAMES && crate::render::rests(false) {
             screen.asleep = true;
             screen.due = now + crate::render::IDLE_POLL;
         }

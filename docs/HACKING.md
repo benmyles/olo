@@ -125,8 +125,11 @@ like pixel alignment is.
    or a theme switch only breaks lines again. `tools/dev/bench` checks
    every app (see Testing).
 
-   A display with nothing new rests (`render::IDLE_FRAMES`, both
-   backends): after 3 looks in a row that found no damage it looks
+   A headless display (agent screens, tests) with nothing new rests
+   (`render::IDLE_FRAMES`; real displays only with `OLO_REST=on`, see
+   `render::rests`: on them every pointer motion woke every resting
+   display for a look with a DRM test commit, up to four a frame, and
+   the desktop stuttered): after 3 looks in a row that found no damage it looks
    only every 100 ms (`IDLE_POLL`), and at once when woken
    (`Backend::wake`, paced a quarter of a frame after its last look):
    a commit wakes the displays its window is on (every display for a
@@ -143,7 +146,8 @@ like pixel alignment is.
    100 ms late: wake for it (at debug level the log says "a resting
    display found something new at its look"). The keep-warm pixel
    alone doesn't wake a resting display. `OLO_REST=off` looks every
-   frame, as before.
+   frame, as before. Woken looks come no sooner than a frame after the
+   last.
 
    A frame's budget is the frame less what the GPU then takes to draw
    it: app_server shows a commit once its GPU work is done (the dmabuf
