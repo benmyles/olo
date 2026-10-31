@@ -1728,6 +1728,7 @@ impl App for Tracker {
                     olo_kit::notify::NoteEvent::Closed { id } => {
                         self.note_dirs.remove(&id);
                     }
+                    olo_kit::notify::NoteEvent::Replied { .. } => {}
                 }
                 return;
             }

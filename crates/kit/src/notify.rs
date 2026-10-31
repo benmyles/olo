@@ -67,6 +67,9 @@ pub struct Note {
     pub actions: Vec<(String, String)>,
     /// Stays until dismissed.
     pub sticky: bool,
+    /// Can be answered with text from the banner (KDE's `inline-reply`
+    /// action), this its field's placeholder.
+    pub reply: Option<String>,
     /// Not kept in the history (a progress note that will be replaced).
     pub transient: bool,
     /// No sound.
@@ -107,6 +110,14 @@ impl Note {
 
     pub fn sticky(mut self, on: bool) -> Note {
         self.sticky = on;
+        self
+    }
+
+    /// Answerable with text from the banner itself (a chat message): a
+    /// reply field whose placeholder is `placeholder` ("Reply to Ann").
+    /// The answer comes back as [`NoteEvent::Replied`].
+    pub fn reply(mut self, placeholder: impl Into<String>) -> Note {
+        self.reply = Some(placeholder.into());
         self
     }
 
@@ -158,6 +169,8 @@ pub enum NoteEvent {
     /// An action was chosen (`"default"`: the notification was clicked),
     /// with the activation token to raise a window with, when there is one.
     Action { id: NoteId, key: String, token: Option<String> },
+    /// It was answered from its reply field ([`Note::reply`]).
+    Replied { id: NoteId, text: String },
     /// It went (expired, dismissed or closed).
     Closed { id: NoteId },
 }
@@ -257,7 +270,11 @@ fn args(note: &Note, entry: &str) -> (String, Vec<String>, HashMap<&'static str,
     if look.size != CardSize::Auto {
         hints.insert(hint::SIZE, Value::from(look.size.name()));
     }
-    let actions = note.actions.iter().flat_map(|(k, l)| [k.clone(), l.clone()]).collect();
+    let mut actions: Vec<String> = note.actions.iter().flat_map(|(k, l)| [k.clone(), l.clone()]).collect();
+    if let Some(placeholder) = &note.reply {
+        actions.extend(["inline-reply".to_owned(), "Reply".to_owned()]);
+        hints.insert("x-kde-reply-placeholder-text", Value::from(placeholder.clone()));
+    }
     (escape(&note.body), actions, hints, if note.sticky || note.kind == NoteKind::Error { 0 } else { -1 })
 }
 
@@ -324,6 +341,13 @@ fn connect(ids: &Arc<Mutex<Ids>>, proxy: &Events) -> Option<zbus::blocking::Conn
                         proxy(NoteEvent::Action { id, key, token });
                     }
                 }
+                Some("NotificationReplied") => {
+                    if let Ok((server, text)) = msg.body().deserialize::<(u32, String)>()
+                        && let Some(&id) = ids.ours.get(&server)
+                    {
+                        proxy(NoteEvent::Replied { id, text });
+                    }
+                }
                 Some("NotificationClosed") => {
                     if let Ok((server, _reason)) = msg.body().deserialize::<(u32, u32)>()
                         && let Some(id) = ids.ours.remove(&server)
@@ -365,5 +389,9 @@ mod tests {
         assert_eq!(hints[hint::IMAGE], zbus::zvariant::Value::from("/tmp/a.png"));
         assert_eq!(hints[hint::SIZE], zbus::zvariant::Value::from("large"));
         assert_eq!(hints[hint::FIELDS], zbus::zvariant::Value::from(vec![("Size".to_owned(), "1.2 MB".to_owned())]));
+        let chat = Note::new("Ann").body("lunch?").action("default", "Show").reply("Reply to Ann");
+        let (_, actions, hints, _) = args(&chat, "olo-telegram");
+        assert_eq!(actions, ["default", "Show", "inline-reply", "Reply"]);
+        assert_eq!(hints["x-kde-reply-placeholder-text"], zbus::zvariant::Value::from("Reply to Ann"));
     }
 }

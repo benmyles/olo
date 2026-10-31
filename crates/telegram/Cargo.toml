@@ -1,0 +1,20 @@
+[package]
+name = "olo-tg"
+description = "Telegram for Olo: MTProto through grammers, in process; the chats and messages as plain data, a demo account, and the sign-in"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+olo-system.workspace = true
+olo-xdg.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+grammers-client = { version = "0.11", default-features = false, features = ["fs"] }
+grammers-session = { version = "0.11", default-features = false, features = ["serde"] }
+grammers-mtsender = "0.11"
+grammers-tl-types = "0.11"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "sync", "time", "fs"] }
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
+png = "0.18"
