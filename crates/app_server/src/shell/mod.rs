@@ -179,6 +179,7 @@ impl<BackendData: Backend> CompositorHandler for AnvilState<BackendData> {
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
         self.backend_data.early_import(surface);
+        self.wake_for(surface);
 
         if !is_sync_subsurface(surface) {
             let mut root = surface.clone();
@@ -326,6 +327,26 @@ impl<BackendData: Backend> WlrLayerShellHandler for AnvilState<BackendData> {
 }
 
 impl<BackendData: Backend> AnvilState<BackendData> {
+    /// `surface` changed: the displays its window is on look again if
+    /// resting (`Backend::wake`); every display, for what isn't a
+    /// window's (a popup, a layer, the pointer). A window showing nowhere
+    /// (another workspace, hidden) wakes none.
+    pub fn wake_for(&mut self, surface: &WlSurface) {
+        let mut root = surface.clone();
+        while let Some(parent) = get_parent(&root) {
+            root = parent;
+        }
+        match self.window_for_surface(&root) {
+            Some(w) => {
+                let on = self.space.outputs_for_element(&w);
+                if !on.is_empty() {
+                    self.backend_data.wake(Some(&on));
+                }
+            }
+            None => self.backend_data.wake(None),
+        }
+    }
+
     pub fn window_for_surface(&self, surface: &WlSurface) -> Option<WindowElement> {
         self.space
             .elements()

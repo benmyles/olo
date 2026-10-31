@@ -471,6 +471,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         let infos = self.window_infos();
         if infos != self.last_window_infos {
+            self.backend_data.wake(None);
             crate::twitcher::prewarm(infos.iter().map(|i| i.app_id.as_str()));
             self.sync_toplevel_handles(&infos);
             self.last_window_infos = infos.clone();
@@ -1073,6 +1074,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// Tell subscribers each display's workspace showing, and which is
     /// active.
     pub fn tell_workspaces(&mut self) {
+        self.backend_data.wake(None);
         self.told_active = self.active_output().map(|o| o.name());
         let (current, count, displays) = (self.workspace(), self.settings.workspace_count.max(1), self.display_workspaces());
         self.ipc.broadcast(Event::WorkspaceChanged { current, count, displays });

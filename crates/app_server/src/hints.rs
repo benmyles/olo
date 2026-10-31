@@ -832,6 +832,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     fn hints_arrived(&mut self, purpose: Purpose, places: &[Place], surfaces: &[Option<WlSurface>], mut answers: HashMap<usize, Built>) {
+        self.backend_data.wake(None);
         let start = Instant::now();
         let mut content = Vec::new();
         let mut layers = Vec::new();

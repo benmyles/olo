@@ -189,6 +189,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             let ChannelEvent::Msg((name, key, result)) = event else { return };
             let start = std::time::Instant::now();
             state.wallpaper_arrived(name, key, result);
+            state.backend_data.wake(None);
             state.timings.handled(|| "wallpaper ready".into(), start);
         });
         self.wallpaper.jobs = Some(jobs);
@@ -243,6 +244,12 @@ impl<B: Backend + 'static> AnvilState<B> {
             let _ = jobs.send(Job::Load(output.name(), key));
         }
     }
+}
+
+/// A new picture is going up to the GPU for `output`, a strip a frame:
+/// the display doesn't rest till it's shown.
+pub fn coming(output: &Output) -> bool {
+    slot(output).lock().unwrap().coming.is_some()
 }
 
 /// The wallpaper's elements for `output`, its strips covering it pixel

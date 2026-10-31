@@ -30,7 +30,7 @@ use smithay::{
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::{
         calloop::{
-            EventLoop,
+            EventLoop, LoopHandle, RegistrationToken,
             timer::{TimeoutAction, Timer},
         },
         wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
@@ -63,6 +63,13 @@ struct Screen {
     /// (Mesa's for its commands: bound into the GPU's address space, which
     /// can hold the CPU for tens of milliseconds while the GPU is busy).
     drawn: Option<smithay::backend::renderer::sync::SyncPoint>,
+    /// Looks in a row that found nothing new (`render::IDLE_FRAMES`).
+    idle_frames: u32,
+    /// Resting: its next look is `render::IDLE_POLL` away, unless woken.
+    asleep: bool,
+    /// When it last looked, so a wake comes no sooner than a quarter of a
+    /// frame after.
+    looked: Option<std::time::Instant>,
 }
 
 /// How long a frame of `output` lasts, at its mode's rate (60 or 120 Hz).
@@ -76,6 +83,11 @@ pub struct HeadlessData {
     screens: Vec<Screen>,
     dmabuf_state: (DmabufState, DmabufGlobal),
     dmabuf_checks: crate::dmabuf_check::Checks,
+    handle: LoopHandle<'static, AnvilState<HeadlessData>>,
+    /// The timer for the screen due next (`frames_due`), and when it fires.
+    frame_timer: Option<(RegistrationToken, std::time::Instant)>,
+    /// In `frames_due`: a wake there only moves screens' times up.
+    in_frames: bool,
 }
 
 impl DmabufHandler for AnvilState<HeadlessData> {
@@ -115,6 +127,37 @@ impl Backend for HeadlessData {
         "headless".into()
     }
     fn reset_buffers(&mut self, _output: &Output) {}
+    fn wake(&mut self, outputs: Option<&[Output]>) {
+        let now = std::time::Instant::now();
+        let mut first = None::<std::time::Instant>;
+        for s in &mut self.screens {
+            if !s.asleep {
+                continue;
+            }
+            // (A mirror shows its source's frame.)
+            if let Some(outputs) = outputs {
+                let source = crate::render::mirror_source(&s.output);
+                if !outputs.iter().any(|o| *o == s.output || source.as_ref() == Some(o)) {
+                    continue;
+                }
+            }
+            s.asleep = false;
+            // (A quarter of a frame after its last look at least: a storm
+            // of wakes stays a few looks a frame.)
+            s.due = s.looked.map_or(now, |l| (l + frame_time(&s.output) / 4).max(now));
+            first = Some(first.map_or(s.due, |f| f.min(s.due)));
+        }
+        // The timer set for later: sooner.
+        if let Some(at) = first
+            && !self.in_frames
+            && self.frame_timer.as_ref().is_none_or(|(_, when)| *when > at)
+        {
+            if let Some((token, _)) = self.frame_timer.take() {
+                self.handle.remove(token);
+            }
+            schedule_frames(self, at);
+        }
+    }
     fn early_import(&mut self, _surface: &wl_surface::WlSurface) {}
     fn update_led_state(&mut self, _led_state: LedState) {}
 
@@ -234,7 +277,7 @@ pub fn run_headless(size_arg: Option<&str>) {
         let buffer_size: Size<i32, Buffer> = size.into();
         let target: GlesTexture = renderer.create_buffer(Fourcc::Abgr8888, buffer_size).expect("offscreen buffer");
         let damage_tracker = OutputDamageTracker::from_output(&output);
-        screens.push(Screen { output, target, damage_tracker, due: std::time::Instant::now(), drawn: None });
+        screens.push(Screen { output, target, damage_tracker, due: std::time::Instant::now(), drawn: None, idle_frames: 0, asleep: false, looked: None });
     }
 
     // Feedback naming the render node: Mesa's EGL finds the GPU through it
@@ -266,7 +309,15 @@ pub fn run_headless(size_arg: Option<&str>) {
         .ok()
         .and_then(|n| crate::capture::dma_constraints(n, renderer.egl_context().dmabuf_render_formats()));
     let outputs: Vec<Output> = screens.iter().map(|s| s.output.clone()).collect();
-    let data = HeadlessData { renderer, screens, dmabuf_state: (dmabuf_state, dmabuf_global), dmabuf_checks };
+    let data = HeadlessData {
+        renderer,
+        screens,
+        dmabuf_state: (dmabuf_state, dmabuf_global),
+        dmabuf_checks,
+        handle: event_loop.handle(),
+        frame_timer: None,
+        in_frames: false,
+    };
     let mut state = AnvilState::init(display, event_loop.handle(), data, true);
     state.captures.dma = capture_dma;
     let shm_formats = state.backend_data.renderer.shm_formats();
@@ -293,31 +344,8 @@ pub fn run_headless(size_arg: Option<&str>) {
     }
 
 
-    // Each screen draws at its mode's rate, on time: the timer wakes for
-    // whichever is due next.
-    event_loop
-        .handle()
-        .insert_source(Timer::immediate(), move |_, _, state| {
-            let now = std::time::Instant::now();
-            for i in 0..state.backend_data.screens.len() {
-                let screen = &mut state.backend_data.screens[i];
-                if screen.due > now + Duration::from_micros(500) {
-                    continue;
-                }
-                let frame = frame_time(&screen.output);
-                // Late by more than a frame (a stall): start afresh.
-                screen.due = if screen.due + frame < now { now + frame } else { screen.due + frame };
-                // The GPU still on the last: this one waits for the next
-                // tick (its damage kept, its clients' frames not yet done).
-                if screen.drawn.as_ref().is_some_and(|s| !s.is_reached()) {
-                    continue;
-                }
-                render_frame(state, i);
-            }
-            let next = state.backend_data.screens.iter().map(|s| s.due).min().unwrap_or(now + Duration::from_millis(16));
-            TimeoutAction::ToInstant(next)
-        })
-        .expect("frame timer");
+    // Each screen draws at its mode's rate, on time (`frames_due`).
+    schedule_frames(&mut state.backend_data, std::time::Instant::now());
 
     info!("Initialization completed, starting the main loop.");
     while state.running.load(Ordering::SeqCst) {
@@ -451,11 +479,65 @@ fn add_output(state: &mut AnvilState<HeadlessData>, output: &Output) {
     state.apply_mirroring();
 }
 
-fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) {
+/// Each screen draws at its mode's rate, on time; one that found nothing
+/// new for `render::IDLE_FRAMES` rests, looking every `render::IDLE_POLL`
+/// until woken (`Backend::wake`). The timer wakes for whichever is due
+/// next.
+fn schedule_frames(data: &mut HeadlessData, at: std::time::Instant) {
+    let token = data.handle.insert_source(Timer::from_deadline(at), move |_, _, state| {
+        state.backend_data.frame_timer = None;
+        let next = frames_due(state);
+        schedule_frames(&mut state.backend_data, next);
+        TimeoutAction::Drop
+    });
+    data.frame_timer = token.ok().map(|t| (t, at));
+}
+
+/// Draw the screens due; when the next is due.
+fn frames_due(state: &mut AnvilState<HeadlessData>) -> std::time::Instant {
+    let now = std::time::Instant::now();
+    state.backend_data.in_frames = true;
+    for i in 0..state.backend_data.screens.len() {
+        let screen = &mut state.backend_data.screens[i];
+        if screen.due > now + Duration::from_micros(500) {
+            continue;
+        }
+        let frame = frame_time(&screen.output);
+        // Late by more than a frame (a stall): start afresh.
+        screen.due = if screen.due + frame < now { now + frame } else { screen.due + frame };
+        // The GPU still on the last: this one waits for the next
+        // tick (its damage kept, its clients' frames not yet done).
+        if screen.drawn.as_ref().is_some_and(|s| !s.is_reached()) {
+            continue;
+        }
+        let was_asleep = std::mem::replace(&mut screen.asleep, false);
+        screen.looked = Some(now);
+        let new = render_frame(state, i);
+        let screen = &mut state.backend_data.screens[i];
+        // (A resting look that found only the keep-warm pixel changed
+        // rests on.)
+        let output = screen.output.clone();
+        let new = new && !(was_asleep && crate::render::warm_changed(&output)) || crate::wallpaper::coming(&output);
+        screen.idle_frames = if new { 0 } else { screen.idle_frames.saturating_add(1) };
+        if new && was_asleep {
+            // Something changed without waking it (worth a wake).
+            tracing::debug!(output = screen.output.name(), "a resting display found something new at its look");
+        }
+        if screen.idle_frames >= crate::render::IDLE_FRAMES && crate::render::rests() {
+            screen.asleep = true;
+            screen.due = now + crate::render::IDLE_POLL;
+        }
+    }
+    state.backend_data.in_frames = false;
+    state.backend_data.screens.iter().map(|s| s.due).min().unwrap_or(now + Duration::from_millis(16))
+}
+
+/// Draw screen `index`; whether anything on it was new.
+fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) -> bool {
     let screen = state.backend_data.screens[index].output.clone();
     // (Not found yet: `OLO_HEADLESS_LATE_MS`.)
     if state.space.output_geometry(&screen).is_none() {
-        return;
+        return false;
     }
     // A mirror draws its source's frame, fitted.
     let source = crate::render::mirror_source(&screen);
@@ -475,7 +557,7 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) {
         let bind = std::time::Instant::now();
         let Ok(mut fb) = data.renderer.bind(&mut screen.target) else {
             warn!("cannot bind offscreen target");
-            return;
+            return false;
         };
         // (Binding should be nothing; when it isn't, the GPU was busy.)
         if bind.elapsed() > std::time::Duration::from_millis(4) {
@@ -496,7 +578,7 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) {
             fit,
         )
     };
-    match result {
+    let new = match result {
         Ok(r) => {
             let (damaged, sync, states) = (r.damage.is_some(), r.sync, r.states);
             state.backend_data.screens[index].drawn = Some(sync);
@@ -513,10 +595,15 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) {
                 );
             }
             state.post_repaint(output, None, &states);
+            damaged
         }
-        Err(e) => warn!("headless render: {e:?}"),
-    }
+        Err(e) => {
+            warn!("headless render: {e:?}");
+            false
+        }
+    };
     state.timings.frame(&name, start.elapsed());
+    new
 }
 
 #[cfg(test)]

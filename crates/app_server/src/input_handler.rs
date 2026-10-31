@@ -1108,6 +1108,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 #[cfg(feature = "winit")]
 impl<BackendData: Backend> AnvilState<BackendData> {
     pub fn process_input_event_windowed<B: InputBackend>(&mut self, event: InputEvent<B>, output_name: &str) {
+        self.backend_data.wake(None);
         self.power_activity();
         match event {
             InputEvent::Keyboard { event } => match self.keyboard_key_to_action::<B>(event) {
@@ -1346,6 +1347,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 #[cfg(feature = "udev")]
 impl AnvilState<UdevData> {
     pub fn process_input_event<B: InputBackend>(&mut self, dh: &DisplayHandle, event: InputEvent<B>) {
+        // The pointer moves, a key shows something of ours: the displays look.
+        self.backend_data.wake(None);
         let start = std::time::Instant::now();
         let kind = match &event {
             InputEvent::Keyboard { .. } => "key",

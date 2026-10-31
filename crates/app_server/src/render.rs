@@ -415,6 +415,10 @@ struct Warm {
     /// When the uploads that keep the driver's staging memory warm were
     /// last done (`warm_uploads`).
     uploaded: std::time::Instant,
+    /// What each screen last had of the pixel (its commit, or none).
+    shown: std::collections::HashMap<String, Option<CommitCounter>>,
+    /// The screen whose frame being gathered changed its pixel.
+    changed: Option<String>,
 }
 
 thread_local! {
@@ -424,6 +428,8 @@ thread_local! {
         bumped: std::time::Instant::now(),
         drawn: std::time::Instant::now(),
         uploaded: std::time::Instant::now(),
+        shown: Default::default(),
+        changed: None,
     });
 }
 
@@ -445,10 +451,12 @@ fn keep_warm(output: &Output) -> Option<smithay::backend::renderer::element::sol
             w.bumped = now;
         }
         // (Every screen's next frame, whatever its rate.)
-        if now - w.bumped > std::time::Duration::from_millis(30) {
-            return None;
-        }
-        let id = w.ids.entry(output.name()).or_insert_with(Id::new).clone();
+        let showing = (now - w.bumped <= std::time::Duration::from_millis(30)).then_some(w.commit);
+        let name = output.name();
+        let changed = w.shown.insert(name.clone(), showing) != Some(showing);
+        w.changed = changed.then(|| name.clone());
+        showing?;
+        let id = w.ids.entry(name).or_insert_with(Id::new).clone();
         Some(smithay::backend::renderer::element::solid::SolidColorRenderElement::new(
             id,
             Rectangle::from_size((1, 1).into()),
@@ -471,6 +479,30 @@ fn warm_uploads() -> bool {
         due
     })
 }
+
+/// Whether the frame just gathered for `output` changed `keep_warm`'s
+/// pixel: a resting display's look that found only that stays resting.
+pub fn warm_changed(output: &Output) -> bool {
+    WARM.with(|w| w.borrow().changed.as_deref() == Some(output.name().as_str()))
+}
+
+/// Whether displays rest at all (`OLO_REST=off`: every display looks
+/// every frame, as before resting).
+pub fn rests() -> bool {
+    static RESTS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *RESTS.get_or_init(|| std::env::var("OLO_REST").map_or(true, |v| v != "off"))
+}
+
+/// Frames in a row with nothing new after which a display rests: it
+/// looks again only every `IDLE_POLL`, or at once when woken
+/// (`Backend::wake`: a commit on it, input, a request, the windows
+/// changing). Looking costs gathering every element on it and comparing
+/// them: done 120 times a second for each display, it kept an idle
+/// app_server at a fifth of a core.
+pub const IDLE_FRAMES: u32 = 12;
+/// How often a resting display looks anyway, for what changed without
+/// waking it (`keep_warm`'s pixel, a timer of ours not hooked up).
+pub const IDLE_POLL: std::time::Duration = std::time::Duration::from_millis(100);
 
 /// A frame was drawn (`drew`: anything at all): unless it was the
 /// screens' frames for `keep_warm`'s pixel (any in the few milliseconds

@@ -346,6 +346,24 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// Handle one request. `None` means the reply is sent later (screenshots).
     pub fn handle_ipc(&mut self, req: Request, conn: &Rc<Conn>) -> Option<Reply> {
         let not_found = || Reply::Error { message: "no such window".into() };
+        // A request may change what shows (or want a screenshot); one only
+        // asking doesn't.
+        let asks = matches!(
+            req,
+            Request::Ping
+                | Request::ListWindows
+                | Request::Subscribe
+                | Request::SubscribeTo { .. }
+                | Request::GetSettings
+                | Request::Workspaces
+                | Request::Outputs
+                | Request::PowerStatus
+                | Request::ActivationToken
+                | Request::Timings
+        );
+        if !asks {
+            self.backend_data.wake(None);
+        }
         Some(match req {
             Request::Ping => Reply::Pong { version: env!("CARGO_PKG_VERSION").into() },
             Request::Subscribe => {

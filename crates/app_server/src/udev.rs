@@ -327,6 +327,40 @@ impl Backend for UdevData {
                 }
     }
 
+    fn wake(&mut self, outputs: Option<&[Output]>) {
+        let now = Instant::now();
+        let mut due = Vec::new();
+        for (node, gpu) in &mut self.backends {
+            for (crtc, s) in &mut gpu.surfaces {
+                if !s.asleep {
+                    continue;
+                }
+                // (A mirror shows its source's frame.)
+                if let Some(outputs) = outputs {
+                    let source = crate::render::mirror_source(&s.output);
+                    if !outputs.iter().any(|o| *o == s.output || source.as_ref() == Some(o)) {
+                        continue;
+                    }
+                }
+                s.asleep = false;
+                if let Some(t) = s.retest.take() {
+                    self.loop_handle.remove(t);
+                }
+                // A resting display has no frame on its way: it looks now,
+                // only a quarter of a frame after its last look at least
+                // (a storm of wakes stays a few looks a frame).
+                let frame = s.output.current_mode().map_or(Duration::from_millis(16), |m| Duration::from_secs_f64(1_000f64 / m.refresh as f64));
+                due.push((*node, *crtc, s.last_look.map_or(now, |l| (l + frame / 4).max(now))));
+            }
+        }
+        for (node, crtc, at) in due {
+            let token = schedule_look(&self.loop_handle, node, crtc, Timer::from_deadline(at), None);
+            if let Some(s) = self.backends.get_mut(&node).and_then(|b| b.surfaces.get_mut(&crtc)) {
+                s.retest = token;
+            }
+        }
+    }
+
     fn early_import(&mut self, surface: &wl_surface::WlSurface) {
         if let Err(err) = self.gpus.early_import(self.primary_gpu, surface) {
             warn!("Early buffer import failed: {}", err);
@@ -1112,6 +1146,39 @@ struct SurfaceData {
     dmabuf_feedback: Option<SurfaceDmabufFeedback>,
     last_presentation_time: Option<Time<Monotonic>>,
     vblank_throttle_timer: Option<RegistrationToken>,
+    /// Looks in a row that found nothing new (`render::IDLE_FRAMES`).
+    idle_frames: u32,
+    /// Resting: its next look is `render::IDLE_POLL` away, unless woken
+    /// (`Backend::wake`).
+    asleep: bool,
+    /// The timer for its next look when no frame is on its way (resting,
+    /// woken, or after a frame with nothing new); a look sooner cancels it.
+    retest: Option<RegistrationToken>,
+    /// When it last looked, so a wake comes no sooner than a quarter of a
+    /// frame after.
+    last_look: Option<Instant>,
+}
+
+/// Look at `crtc`'s display when `timer` fires, for `target` (now, if
+/// None). The token goes in `SurfaceData::retest`.
+fn schedule_look(
+    handle: &smithay::reexports::calloop::LoopHandle<'static, AnvilState<UdevData>>,
+    node: DrmNode,
+    crtc: crtc::Handle,
+    timer: Timer,
+    target: Option<Time<Monotonic>>,
+) -> Option<RegistrationToken> {
+    handle
+        .insert_source(timer, move |_, _, data| {
+            // (Fired: nothing to cancel.)
+            if let Some(s) = data.backend_data.backends.get_mut(&node).and_then(|b| b.surfaces.get_mut(&crtc)) {
+                s.retest = None;
+            }
+            let target = target.unwrap_or_else(|| data.clock.now());
+            data.render(node, Some(crtc), target);
+            TimeoutAction::Drop
+        })
+        .ok()
 }
 
 impl Drop for SurfaceData {
@@ -1562,6 +1629,10 @@ impl AnvilState<UdevData> {
                 dmabuf_feedback,
                 last_presentation_time: None,
                 vblank_throttle_timer: None,
+                idle_frames: 0,
+                asleep: false,
+                retest: None,
+                last_look: None,
             };
 
             device.surfaces.insert(crtc, surface);
@@ -1952,6 +2023,14 @@ impl AnvilState<UdevData> {
         } else {
             return;
         };
+        // Looking now: a look due later isn't wanted.
+        if let Some(t) = surface.retest.take() {
+            self.handle.remove(t);
+        }
+        surface.last_look = Some(Instant::now());
+        // (Resting till now, and not woken: its every-so-often look.)
+        let was_asleep = std::mem::replace(&mut surface.asleep, false);
+        let mut resting = false;
 
         let start = Instant::now();
 
@@ -2036,6 +2115,15 @@ impl AnvilState<UdevData> {
         let reschedule = match result {
             Ok((has_rendered, states)) => {
                 let dmabuf_feedback = surface.dmabuf_feedback.clone();
+                // (A resting look that found only the keep-warm pixel
+                // changed rests on.)
+                let new = has_rendered && !(was_asleep && crate::render::warm_changed(&output)) || crate::wallpaper::coming(&output);
+                surface.idle_frames = if new { 0 } else { surface.idle_frames.saturating_add(1) };
+                resting = surface.idle_frames >= crate::render::IDLE_FRAMES && crate::render::rests();
+                if new && was_asleep {
+                    // Something changed without waking it (worth a wake).
+                    debug!(output = output.name(), "a resting display found something new at its look");
+                }
                 self.post_repaint(&output, dmabuf_feedback, &states);
                 !has_rendered
             }
@@ -2078,21 +2166,23 @@ impl AnvilState<UdevData> {
 
             // If reschedule is true we either hit a temporary failure or more likely rendering
             // did not cause any damage on the output. In this case we just re-schedule a repaint
-            // after approx. one frame to re-test for damage.
-            let next_frame_target = frame_target + Duration::from_millis(1_000_000 / output_refresh as u64);
-            let reschedule_timeout =
-                Duration::from(next_frame_target).saturating_sub(self.clock.now().into());
+            // after approx. one frame to re-test for damage; after `IDLE_FRAMES` of
+            // nothing new, it rests: every `IDLE_POLL`, or when woken.
+            let (next_frame_target, reschedule_timeout) = if resting {
+                (frame_target + crate::render::IDLE_POLL, crate::render::IDLE_POLL)
+            } else {
+                let next = frame_target + Duration::from_millis(1_000_000 / output_refresh as u64);
+                (next, Duration::from(next).saturating_sub(self.clock.now().into()))
+            };
             trace!(
                 "reschedule repaint timer with delay {:?} on {:?}",
                 reschedule_timeout, crtc,
             );
-            let timer = Timer::from_duration(reschedule_timeout);
-            self.handle
-                .insert_source(timer, move |_, _, data| {
-                    data.render(node, Some(crtc), next_frame_target);
-                    TimeoutAction::Drop
-                })
-                .expect("failed to schedule frame timer");
+            let token = schedule_look(&self.handle, node, crtc, Timer::from_duration(reschedule_timeout), Some(next_frame_target));
+            if let Some(s) = self.backend_data.backends.get_mut(&node).and_then(|b| b.surfaces.get_mut(&crtc)) {
+                s.retest = token;
+                s.asleep = resting;
+            }
         } else {
             let elapsed = start.elapsed();
             tracing::trace!(?elapsed, "rendered surface");

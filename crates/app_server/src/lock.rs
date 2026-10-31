@@ -144,6 +144,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// Lock now (Ctrl+⌘Q, idle, before sleep, logind's Lock). The screen is
     /// covered at once; the lock screen is started to offer unlocking.
     pub fn lock_screen(&mut self) {
+        self.backend_data.wake(None);
         if !self.lock.locked {
             info!("locking");
             self.lock.locked = true;

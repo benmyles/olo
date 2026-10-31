@@ -955,8 +955,10 @@ impl<BackendData: Backend> ImageCopyCaptureHandler for AnvilState<BackendData> {
     }
 
     fn frame(&mut self, session: &SessionRef, frame: Frame) {
-        // With the screen's next frame (`capture::Captures::take`).
+        // With the screen's next frame (`capture::Captures::take`): one
+        // resting looks now.
         self.captures.queue(session, frame);
+        self.backend_data.wake(None);
     }
 }
 
@@ -1688,6 +1690,11 @@ pub trait Backend {
         Vec::new()
     }
     fn reset_buffers(&mut self, output: &Output);
+    /// What `outputs` (all, for None) show may have changed: a display
+    /// resting after frames with nothing new (`render::IDLE_FRAMES`)
+    /// looks again at once (paced to its rate) rather than at its next
+    /// `render::IDLE_POLL`.
+    fn wake(&mut self, _outputs: Option<&[Output]>) {}
     fn early_import(&mut self, surface: &WlSurface);
     fn update_led_state(&mut self, led_state: LedState);
     /// Switch `output` to `mode` (one of `output.modes()`), updating the

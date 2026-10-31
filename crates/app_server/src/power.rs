@@ -363,6 +363,7 @@ impl<B: Backend> AnvilState<B> {
     }
 
     pub fn power_changed(&mut self) {
+        self.backend_data.wake(None);
         let status = self.power_status();
         self.ipc.broadcast(Event::PowerChanged { status });
     }

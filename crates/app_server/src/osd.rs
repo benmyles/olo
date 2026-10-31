@@ -351,6 +351,7 @@ where
 impl<B: Backend> AnvilState<B> {
     /// Show `ind` on the screen under the pointer.
     pub fn show_indicator(&mut self, ind: Indicator) {
+        self.backend_data.wake(None);
         let at = self.pointer.current_location();
         let Some(output) = self.space.output_under(at).next().or_else(|| self.space.outputs().next()).cloned() else { return };
         show(self.space.outputs(), &output, &ind);
