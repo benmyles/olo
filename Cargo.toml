@@ -14,6 +14,7 @@ olo-protocol = { path = "crates/protocol" }
 olo-kit = { path = "crates/kit" }
 olo-theme = { path = "crates/theme" }
 olo-preview = { path = "crates/preview" }
+olo-richtext = { path = "crates/richtext" }
 olo-xdg = { path = "crates/xdg" }
 olo-system = { path = "crates/system" }
 olo-onepassword = { path = "crates/onepassword" }

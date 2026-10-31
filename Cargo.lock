@@ -4692,6 +4692,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-richtext"
+version = "0.1.0"
+dependencies = [
+ "quick-xml 0.42.0",
+ "zip",
+]
+
+[[package]]
 name = "olo-screen"
 version = "0.1.0"
 dependencies = [
@@ -4769,6 +4777,7 @@ dependencies = [
  "fontdb",
  "libc",
  "olo-kit",
+ "olo-richtext",
  "olo-theme",
  "pulldown-cmark",
  "serde",

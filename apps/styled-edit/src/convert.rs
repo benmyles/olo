@@ -200,6 +200,104 @@ impl Builder {
     }
 }
 
+/// A Word or OpenDocument document (`olo_richtext`) as text, runs and
+/// paragraphs.
+pub fn from_rich(doc: olo_richtext::Document) -> (String, Vec<Run>, Vec<Para>) {
+    use olo_richtext as rt;
+    let mut b = Builder::default();
+    for p in doc.paragraphs {
+        let kind = match p.kind {
+            rt::Kind::Body => Kind::Body,
+            rt::Kind::Title => Kind::Title,
+            rt::Kind::Heading1 => Kind::Heading1,
+            rt::Kind::Heading2 => Kind::Heading2,
+            rt::Kind::Heading3 => Kind::Heading3,
+            rt::Kind::Quote => Kind::Quote,
+            rt::Kind::Code => Kind::Code,
+        };
+        let align = match p.align {
+            rt::Align::Left => None,
+            rt::Align::Center => Some(Align::Center),
+            rt::Align::Right => Some(Align::Right),
+            rt::Align::Justify => Some(Align::Justify),
+        };
+        let (list, level) = match p.list {
+            Some(l) => (if l.numbered { List::Number } else { List::Bullet }, l.level),
+            None => (List::None, p.indent),
+        };
+        b.start(Para { kind, list, level: level.min(crate::doc::MAX_LEVEL), align });
+        for sp in p.spans {
+            let mut s = b.base();
+            s.bold |= sp.bold;
+            s.italic |= sp.italic;
+            s.underline |= sp.underline;
+            s.strikeout |= sp.strike;
+            if let Some(size) = sp.size {
+                s.size = size;
+            }
+            if sp.monospace {
+                s.family = MONOSPACE.into();
+            } else if let Some(f) = sp.font {
+                s.family = f;
+            }
+            s.color = sp.color.or(s.color);
+            if let Some(url) = sp.link {
+                s.underline = true;
+                s.color = s.color.or(Some(LINK));
+                s.link = Some(url);
+            }
+            b.text(&sp.text, &s);
+        }
+    }
+    b.finish()
+}
+
+/// The document as `olo_richtext`'s, for Word or OpenDocument: every
+/// paragraph's setting and every style (each span's size said, so it
+/// looks as it does here).
+pub fn to_rich(text: &str, runs: &[Run], paras: &[Para], align: Align) -> olo_richtext::Document {
+    use olo_richtext as rt;
+    // Text in the system font is in Olo's.
+    let mut doc = rt::Document { font: olo_theme::fonts::UI.first().map(|f| f.to_string()), ..rt::Document::default() };
+    for (r, p) in paragraphs(text, paras) {
+        let kind = match p.kind {
+            Kind::Body => rt::Kind::Body,
+            Kind::Title => rt::Kind::Title,
+            Kind::Heading1 => rt::Kind::Heading1,
+            Kind::Heading2 => rt::Kind::Heading2,
+            Kind::Heading3 => rt::Kind::Heading3,
+            Kind::Quote => rt::Kind::Quote,
+            Kind::Code => rt::Kind::Code,
+        };
+        let a = match p.align.unwrap_or(align) {
+            Align::Left => rt::Align::Left,
+            Align::Center => rt::Align::Center,
+            Align::Right => rt::Align::Right,
+            Align::Justify => rt::Align::Justify,
+        };
+        let list = match p.list {
+            List::None => None,
+            l => Some(rt::List { numbered: l == List::Number, level: p.level }),
+        };
+        let spans = spans(runs, r)
+            .map(|(r, s)| rt::Span {
+                text: text[r].to_owned(),
+                bold: s.bold,
+                italic: s.italic,
+                underline: s.underline,
+                strike: s.strikeout,
+                size: Some(s.size),
+                color: s.color,
+                font: (!s.family.is_empty() && s.family != MONOSPACE).then(|| s.family.clone()),
+                monospace: s.family == MONOSPACE,
+                link: s.link.clone(),
+            })
+            .collect();
+        doc.paragraphs.push(rt::Paragraph { kind, list, indent: if list.is_none() { p.level } else { 0 }, align: a, spans });
+    }
+    doc
+}
+
 /// Each paragraph's bytes (without its newline), with its setting.
 fn paragraphs<'a>(text: &'a str, paras: &'a [Para]) -> impl Iterator<Item = (Range<usize>, Para)> + 'a {
     let mut at = 0;
@@ -511,6 +609,19 @@ mod tests {
         let (text, runs, paras) = from_markdown("1\\. not a list and a \\*star\\*\n");
         assert_eq!(text, "1. not a list and a *star*");
         assert_eq!(to_markdown(&text, &runs, &paras), "1\\. not a list and a \\*star\\*\n");
+    }
+
+    #[test]
+    fn word_and_opendocument_round_trip() {
+        let (text, runs, paras) = from_markdown("# Plan\n\nSome **bold**, *italic*, `code` and [a link](https://e.com).\n\n- one\n    1. sub\n\n> quoted\n");
+        for write in [olo_richtext::write_docx, olo_richtext::write_odt] {
+            let bytes = write(&to_rich(&text, &runs, &paras, Align::Left)).unwrap();
+            let read = if bytes.starts_with(b"PK") && bytes.windows(8).any(|w| w == b"mimetype") { olo_richtext::read_odt(&bytes) } else { olo_richtext::read_docx(&bytes) };
+            let (t2, r2, p2) = from_rich(read.unwrap());
+            assert_eq!(t2, text);
+            assert_eq!(p2, paras);
+            assert_eq!(Doc::with_paras(t2, Some(r2), None).runs(), Doc::with_paras(text.clone(), Some(runs.clone()), None).runs());
+        }
     }
 
     #[test]

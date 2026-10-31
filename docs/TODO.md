@@ -902,10 +902,11 @@ as they land (with the commit), add new ones as they come up.
   menu; Tab, ⇧Tab, Return and Backspace in lists), a word count, all
   saved in the file's attributes; the kit's editor sets each paragraph's
   indents, spacing and marker (`editor::Paragraph`); File ▸ Import… for
-  Markdown and Export as Markdown or a web page (links kept). Next: a
-  ruler, Word/OpenDocument/RTF in and out (a light formats crate shared
-  with Quick Look's readers), tables, pictures, headers and footers, the
-  page view and PDF, spelling.
+  Markdown, Word and OpenDocument, and Export as any of those or a web
+  page (`olo-richtext`, links kept; checked in LibreOffice). Next: a
+  ruler, RTF, tables, pictures, headers and footers, the page view and
+  PDF, spelling; Quick Look's Word and OpenDocument readers moved onto
+  `olo-richtext`.
 - ~~**Activity Monitor, revamped**~~ (Ben, 2026-10-29, at the end):
   "revamp activity monitor to include everything a nerd could ever want
   to know, with live views, drill downs, tuning settings and ability to

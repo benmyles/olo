@@ -251,6 +251,8 @@ enum Purpose {
 enum Format {
     Markdown,
     Html,
+    Word,
+    OpenDocument,
 }
 
 impl Format {
@@ -258,6 +260,8 @@ impl Format {
         match self {
             Format::Markdown => "md",
             Format::Html => "html",
+            Format::Word => "docx",
+            Format::OpenDocument => "odt",
         }
     }
 }
@@ -349,6 +353,10 @@ impl StyledEdit {
     }
 
     fn open_file(&mut self, cx: &mut Cx, path: PathBuf) {
+        // Word and OpenDocument aren't text: in as a new document.
+        if olo_richtext::format_of(&path).is_some() {
+            return self.import(cx, path);
+        }
         if let Some((&id, _)) = self.windows.iter().find(|(_, w)| matches!(w, Win::Doc(d) if d.path.as_ref() == Some(&path))) {
             cx.activate(id);
             return;
@@ -414,7 +422,15 @@ impl StyledEdit {
             Purpose::SaveAs => ("Save As", FilePanel::save(dir, d.map(|d| d.title()).unwrap_or_default())),
             Purpose::Import => (
                 "Import",
-                FilePanel::open(dir).filters(vec![Filter::new("Markdown").glob("*.md").glob("*.markdown").glob("*.mdown").mime("text/markdown")], 0),
+                FilePanel::open(dir).filters(
+                    vec![
+                        Filter::new("All Documents").glob("*.md").glob("*.markdown").glob("*.mdown").glob("*.docx").glob("*.odt").mime("text/markdown"),
+                        Filter::new("Markdown").glob("*.md").glob("*.markdown").glob("*.mdown").mime("text/markdown"),
+                        Filter::new("Word").glob("*.docx"),
+                        Filter::new("OpenDocument Text").glob("*.odt"),
+                    ],
+                    0,
+                ),
             ),
             Purpose::Export(f) => {
                 // The document's name, in the format's extension.
@@ -432,9 +448,10 @@ impl StyledEdit {
     fn import(&mut self, cx: &mut Cx, path: PathBuf) {
         let proxy = cx.proxy();
         std::thread::spawn(move || {
-            let r = std::fs::read(&path)
-                .map_err(|e| e.to_string())
-                .map(|bytes| convert::from_markdown(&String::from_utf8_lossy(&bytes)));
+            let r = match olo_richtext::format_of(&path) {
+                Some(_) => olo_richtext::read(&path).map(convert::from_rich),
+                None => std::fs::read(&path).map_err(|e| e.to_string()).map(|bytes| convert::from_markdown(&String::from_utf8_lossy(&bytes))),
+            };
             proxy.send(Msg::Imported(path, r));
         });
     }
@@ -447,10 +464,12 @@ impl StyledEdit {
         let proxy = cx.proxy();
         std::thread::spawn(move || {
             let out = match format {
-                Format::Markdown => convert::to_markdown(&text, &runs, &paras),
-                Format::Html => convert::to_html(&text, &runs, &paras, &title, align),
+                Format::Markdown => Ok(convert::to_markdown(&text, &runs, &paras).into_bytes()),
+                Format::Html => Ok(convert::to_html(&text, &runs, &paras, &title, align).into_bytes()),
+                Format::Word => olo_richtext::write_docx(&convert::to_rich(&text, &runs, &paras, align)),
+                Format::OpenDocument => olo_richtext::write_odt(&convert::to_rich(&text, &runs, &paras, align)),
             };
-            let r = std::fs::write(&to, out).map_err(|e| e.to_string());
+            let r = out.and_then(|bytes| std::fs::write(&to, bytes).map_err(|e| e.to_string()));
             proxy.send(Msg::Exported(to, r));
         });
     }
@@ -564,7 +583,14 @@ impl StyledEdit {
             .enabled(d.path.is_some() && d.doc.edited() && !d.saving)
             .separator()
             .item("Import…", "import", None)
-            .submenu(Menu::new("Export").item("Markdown…", "export:md", None).item("Web Page (HTML)…", "export:html", None))
+            .submenu(
+                Menu::new("Export")
+                    .item("Word Document…", "export:docx", None)
+                    .item("OpenDocument Text…", "export:odt", None)
+                    .separator()
+                    .item("Markdown…", "export:md", None)
+                    .item("Web Page (HTML)…", "export:html", None),
+            )
             .separator()
             .item(olo_kit::tracker::LABEL, olo_kit::tracker::COMMAND, None)
             .enabled(d.path.is_some())
@@ -687,6 +713,8 @@ impl StyledEdit {
             "import" => return self.open_panel(cx, Some(win), Purpose::Import),
             "export:md" => return self.open_panel(cx, Some(win), Purpose::Export(Format::Markdown)),
             "export:html" => return self.open_panel(cx, Some(win), Purpose::Export(Format::Html)),
+            "export:docx" => return self.open_panel(cx, Some(win), Purpose::Export(Format::Word)),
+            "export:odt" => return self.open_panel(cx, Some(win), Purpose::Export(Format::OpenDocument)),
             "save" => return self.save(cx, win, None, After::Nothing),
             "save-as" => return self.open_panel(cx, Some(win), Purpose::SaveAs),
             "close" => return self.leave(cx, win, After::Close),
