@@ -39,6 +39,7 @@ smithay::backend::renderer::element::render_elements! {
     Pointer=PointerRenderElement<R>,
     Surface=WaylandSurfaceRenderElement<R>,
     Overlay=Exact<MemoryRenderBufferRenderElement<R>>,
+    Warm=smithay::backend::renderer::element::solid::SolidColorRenderElement,
     #[cfg(feature = "debug")]
     // Note: We would like to borrow this element instead, but that would introduce
     // a feature-dependent lifetime, which introduces a lot more feature bounds
@@ -53,6 +54,7 @@ impl<R: Renderer> std::fmt::Debug for CustomRenderElements<R> {
             Self::Pointer(arg0) => f.debug_tuple("Pointer").field(arg0).finish(),
             Self::Surface(arg0) => f.debug_tuple("Surface").field(arg0).finish(),
             Self::Overlay(arg0) => f.debug_tuple("Overlay").field(arg0).finish(),
+            Self::Warm(arg0) => f.debug_tuple("Warm").field(arg0).finish(),
             #[cfg(feature = "debug")]
             Self::Fps(arg0) => f.debug_tuple("Fps").field(arg0).finish(),
             Self::_GenericCatcher(arg0) => f.debug_tuple("_GenericCatcher").field(arg0).finish(),
@@ -385,6 +387,117 @@ where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: Clone + Send + 'static,
 {
+    let warm = keep_warm(output).map(|e| OutputRenderElements::Custom(CustomRenderElements::Warm(e)));
+    if warm_uploads() {
+        crate::shell::deco::warm_tab_upload(renderer);
+    }
+    let (mut elements, clear) = gather_elements(output, space, custom_elements, renderer, overview, desktop_color, locked);
+    if let Some(warm) = warm {
+        elements.insert(0, warm);
+    }
+    (elements, clear)
+}
+
+/// How long the GPU driver keeps memory for a frame's commands that no
+/// frame used (Mesa's, at least; Asahi's drops it after about 2 s).
+const WARM_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
+/// Kept warm this long after the last frame that drew something.
+const WARM_FOR: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// The frames' memory kept warm (`keep_warm`): each screen's pixel, the
+/// commit they share, when it last changed, and when a frame last drew
+/// anything else.
+struct Warm {
+    ids: std::collections::HashMap<String, Id>,
+    commit: CommitCounter,
+    bumped: std::time::Instant,
+    drawn: std::time::Instant,
+    /// When the uploads that keep the driver's staging memory warm were
+    /// last done (`warm_uploads`).
+    uploaded: std::time::Instant,
+}
+
+thread_local! {
+    static WARM: std::cell::RefCell<Warm> = std::cell::RefCell::new(Warm {
+        ids: Default::default(),
+        commit: CommitCounter::default(),
+        bumped: std::time::Instant::now(),
+        drawn: std::time::Instant::now(),
+        uploaded: std::time::Instant::now(),
+    });
+}
+
+/// A pixel of nothing in the screen's top left corner, there for a frame
+/// or two every second while the desktop is in use, so a frame is drawn
+/// (and one more as it goes; only then, so a full-screen window still
+/// goes straight to the display between): the GPU
+/// driver keeps memory for a frame's commands only while frames use it,
+/// and getting more maps it into the GPU's address space, which can hold
+/// the CPU for tens of milliseconds while the GPU is busy (Apple's: the
+/// first frames after a pause took 10–30 ms). Drawing a pixel costs
+/// nothing to see.
+fn keep_warm(output: &Output) -> Option<smithay::backend::renderer::element::solid::SolidColorRenderElement> {
+    WARM.with(|w| {
+        let mut w = w.borrow_mut();
+        let now = std::time::Instant::now();
+        if now - w.bumped >= WARM_EVERY && now - w.drawn <= WARM_FOR {
+            w.commit.increment();
+            w.bumped = now;
+        }
+        // (Every screen's next frame, whatever its rate.)
+        if now - w.bumped > std::time::Duration::from_millis(30) {
+            return None;
+        }
+        let id = w.ids.entry(output.name()).or_insert_with(Id::new).clone();
+        Some(smithay::backend::renderer::element::solid::SolidColorRenderElement::new(
+            id,
+            Rectangle::from_size((1, 1).into()),
+            w.commit,
+            [0.0, 0.0, 0.0, 0.0],
+            Kind::Unspecified,
+        ))
+    })
+}
+
+/// Whether this frame does the uploads that keep the driver's memory for
+/// writing textures warm (once each time `keep_warm`'s pixel changes).
+fn warm_uploads() -> bool {
+    WARM.with(|w| {
+        let mut w = w.borrow_mut();
+        let due = w.uploaded < w.bumped;
+        if due {
+            w.uploaded = w.bumped;
+        }
+        due
+    })
+}
+
+/// A frame was drawn (`drew`: anything at all): unless it was the
+/// screens' frames for `keep_warm`'s pixel (any in the few milliseconds
+/// after it changed), the desktop is in use.
+pub fn frame_done(drew: bool) {
+    WARM.with(|w| {
+        let mut w = w.borrow_mut();
+        let now = std::time::Instant::now();
+        if drew && now - w.bumped > std::time::Duration::from_millis(60) {
+            w.drawn = now;
+        }
+    });
+}
+
+fn gather_elements<R>(
+    output: &Output,
+    space: &Space<WindowElement>,
+    custom_elements: impl IntoIterator<Item = CustomRenderElements<R>>,
+    renderer: &mut R,
+    overview: Option<&crate::overview::Overview>,
+    desktop_color: Color32F,
+    locked: bool,
+) -> (Vec<OutputRenderElements<R, WindowRenderElement<R>>>, Color32F)
+where
+    R: Renderer + ImportAll + ImportMem,
+    R::TextureId: Clone + Send + 'static,
+{
     // The brightness / volume indicator, over everything but the pointer.
     let screen = space.output_geometry(output).map(|g| g.size).unwrap_or_default();
     let indicator = crate::osd::element(renderer, output, screen)
@@ -465,6 +578,7 @@ where
     R::TextureId: Clone + Send + 'static,
 {
     let start = std::time::Instant::now();
+    let cpu = ThreadUse::now();
     let (elements, clear_color) =
         output_elements(output, space, custom_elements, renderer, overview, desktop_color, locked);
     let elements = frame(elements, fit);
@@ -473,16 +587,87 @@ where
     // A frame over a 120 Hz frame's time says where it went: gathering the
     // elements (which imports what clients committed) or drawing them.
     let took = start.elapsed();
+    frame_done(result.as_ref().is_ok_and(|r| r.damage.is_some_and(|d| !d.is_empty())));
+    // Which elements weren't in the output's last frame (a texture, or a
+    // kind of drawing, new to the GPU may cost it more the first time).
+    let ids: std::collections::HashSet<Id> = elements.iter().map(|e| e.id().clone()).collect();
+    let new = LAST_IDS.with(|last| {
+        let mut last = last.borrow_mut();
+        let seen = last.entry(output.name()).or_default();
+        let new = ids.difference(seen).count();
+        *seen = ids;
+        new
+    });
     if took > std::time::Duration::from_micros(8_333) {
+        let damaged: i64 = match &result {
+            Ok(r) => r.damage.map_or(0, |d| d.iter().map(|r| r.size.w as i64 * r.size.h as i64).sum()),
+            Err(_) => 0,
+        };
+        // (Whether it was working, waiting for the GPU or a lock, or
+        // waiting for a CPU while others ran.)
+        let used = ThreadUse::now().since(&cpu);
         tracing::info!(
-            "slow frame on {}: {:.1} ms gathering {} elements, {:.1} ms drawing",
+            "slow frame on {}: {:.1} ms gathering {} elements ({new} new), {:.1} ms drawing {:.1} Mpx; {used}",
             output.name(),
             gathered.as_secs_f64() * 1e3,
             elements.len(),
-            (took - gathered).as_secs_f64() * 1e3
+            (took - gathered).as_secs_f64() * 1e3,
+            damaged as f64 / 1e6,
         );
     }
     result
+}
+
+/// What this thread has used: CPU time, and how often it gave the CPU up
+/// to wait (for the GPU, a lock, a file) or had it taken (by another
+/// thread or program, its time up).
+pub struct ThreadUse {
+    pub cpu_ms: f64,
+    pub waits: i64,
+    pub preempted: i64,
+    /// Pages it touched that weren't in memory: read back from swap or a
+    /// file (major), or made (minor).
+    pub major_faults: i64,
+    pub minor_faults: i64,
+}
+
+impl ThreadUse {
+    pub fn now() -> ThreadUse {
+        // SAFETY: getrusage fills the struct it is given.
+        let mut u: libc::rusage = unsafe { std::mem::zeroed() };
+        unsafe { libc::getrusage(libc::RUSAGE_THREAD, &mut u) };
+        let ms = |t: libc::timeval| t.tv_sec as f64 * 1e3 + t.tv_usec as f64 / 1e3;
+        ThreadUse { cpu_ms: ms(u.ru_utime) + ms(u.ru_stime), waits: u.ru_nvcsw, preempted: u.ru_nivcsw, major_faults: u.ru_majflt, minor_faults: u.ru_minflt }
+    }
+
+    pub fn since(&self, before: &ThreadUse) -> ThreadUse {
+        ThreadUse {
+            cpu_ms: self.cpu_ms - before.cpu_ms,
+            waits: self.waits - before.waits,
+            preempted: self.preempted - before.preempted,
+            major_faults: self.major_faults - before.major_faults,
+            minor_faults: self.minor_faults - before.minor_faults,
+        }
+    }
+}
+
+impl std::fmt::Display for ThreadUse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:.1} ms on a CPU, {} waits, {} times preempted, {} pages faulted in ({} from swap or files)",
+            self.cpu_ms,
+            self.waits,
+            self.preempted,
+            self.major_faults + self.minor_faults,
+            self.major_faults
+        )
+    }
+}
+
+thread_local! {
+    /// Each output's last frame's elements (`render_output`).
+    static LAST_IDS: std::cell::RefCell<std::collections::HashMap<String, std::collections::HashSet<Id>>> = Default::default();
 }
 
 /// Render `output` offscreen and read it back (see screenshot.rs).

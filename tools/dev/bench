@@ -630,6 +630,15 @@ def run_app(b, app, scale):
     b.measure(tag, "theme light, dark", [pid], theme, transition=True)
     s.req({"type": "close", "id": wid})
     time.sleep(0.5)
+    # Still running (a document typed into asks whether to save it): end
+    # it, or the next scale's launch hands its file to this one and opens
+    # no window of its own.
+    if s.ours(pid):
+        os.kill(pid, 15)
+        for _ in range(50):
+            if not s.ours(pid):
+                break
+            time.sleep(0.05)
 
 
 def run_deskbar(b):

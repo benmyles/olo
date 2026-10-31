@@ -2205,6 +2205,7 @@ fn render_surface<'a>(
             if let PrimaryPlaneElement::Swapchain(element) = render_frame_result.primary_element {
                 element.sync.wait();
             }
+            crate::render::frame_done(!render_frame_result.is_empty);
             (!render_frame_result.is_empty, render_frame_result.states)
         })
         .map_err(|err| match err {

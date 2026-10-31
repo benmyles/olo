@@ -1895,7 +1895,10 @@ second (it should draw nothing), the pointer swept over it, each scroll
 view scrolled (fingers, a flick and its glide, wheel notches, judged as
 scroll-check does), its tabs clicked, its menus opened and walked, a
 field typed in, the window resized live, the theme flipped; then
-Deskbar and every screen saver module. Every frame each draws comes
+closed (and ended if it's still running, as a document typed into asks
+whether to save, so the next scale's launch opens a window of its own
+rather than handing its file to this one); then Deskbar and every
+screen saver module. Every frame each draws comes
 from its `{"frames":true}` marks (menus' too), app_server's from
 `{"type":"timings"}`. A step fails on any frame over the budget
 (`--budget`, a frame at `--hz`; the slowest frame's parts are printed
@@ -2201,7 +2204,24 @@ launcher lists them. The panel list Deskbar shows is
   and glyphs took 4–13 ms at times) and the old one shown till it's
   done; a window's first tab is drawn at once. A frame over a 120 Hz
   frame's time logs where its time went (gathering or drawing, and the
-  window, layer or wallpaper that took it). Scaling is in 8 bits with
+  window, layer or wallpaper that took it; the elements new to it, the
+  area drawn, and the thread's CPU time, waits, preemptions and page
+  faults, `render::ThreadUse`, which tell work from waiting).
+  New GPU memory is what held frames up most (Apple's GPU, Mesa's
+  Asahi driver, sampled with `eu-stack` in the act): mapping it for the
+  GPU (`agx_bo_bind`'s ioctl) took 10–33 ms of CPU at times while the
+  GPU was busy. Mesa keeps what frames and uploads used for a second or
+  two and hands it out again, so app_server keeps that warm and stays
+  within it: a transparent pixel in each screen's corner shows for a
+  frame every second while the desktop is in use (`render::keep_warm`,
+  not while idle for two minutes, and only for a frame, so a
+  full-screen window still goes straight to the display), with an upload
+  of a spare tab buffer of each size (`deco::warm_tab_upload`); tab looks
+  are drawn into buffers of two widths, written whole, taken from spares
+  made for each tab height at its first window (`SPARE_TABS`), so a new
+  look needs no new memory; and headless screens draw the next frame
+  only once the GPU has finished the last (`headless::Screen::drawn`),
+  as a display would take it, rather than piling frames up. Scaling is in 8 bits with
   the crop applied as it scales (`fast_image_resize`), one full-size copy
   at a time, and the memory it took goes back to the system afterwards
   (`malloc_trim`), so switching themes doesn't leave app_server hundreds

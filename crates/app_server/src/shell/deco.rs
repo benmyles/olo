@@ -91,8 +91,10 @@ pub struct Decoration {
     /// hovered or pressed), the current one first: going back to one
     /// (Cmd+Tab back and forth, the pointer over the boxes) shows the
     /// texture already on the GPU rather than uploading another, which
-    /// can hold up a frame by milliseconds while the GPU is busy.
-    tabs: Vec<(TabKey, MemoryRenderBuffer)>,
+    /// can hold up a frame by milliseconds while the GPU is busy. Each
+    /// buffer is its look's size rounded up (`tab_buffer_size`), and goes
+    /// to the spares (`SPARE_TABS`) when it's dropped.
+    tabs: Vec<(TabKey, MemoryRenderBuffer, (i32, i32))>,
     /// Which decoration it is, to the tab worker (`tab_worker`), and the
     /// look it was last asked to draw.
     id: u64,
@@ -161,6 +163,124 @@ pub const DOUBLE_CLICK: Duration = Duration::from_millis(400);
 
 /// How many looks of a tab are kept drawn (`Decoration::tabs`).
 const TAB_LOOKS: usize = 6;
+
+thread_local! {
+    /// Tab looks' buffers no tab shows any more (a look dropped, a window
+    /// closed), for the next look of their size: drawing it into one
+    /// writes a texture already on the GPU, where a new texture needs new
+    /// GPU memory, and mapping that for the GPU can hold the CPU for tens
+    /// of milliseconds while the GPU is busy (Apple's, at least).
+    static SPARE_TABS: std::cell::RefCell<Vec<((i32, i32), MemoryRenderBuffer)>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// How many spare tab buffers are kept.
+const SPARE_TABS_MAX: usize = 48;
+
+thread_local! {
+    /// The tab heights (device pixels) spares were made for.
+    static WARMED_TABS: std::cell::RefCell<Vec<i32>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// The first time tabs `height` device pixels high are drawn (a scale's
+/// first window): spares of both widths (`tab_buffer_size`) made and put
+/// on the GPU at once, so windows opened later don't wait for theirs.
+fn warm_tabs<R>(renderer: &mut R, height: i32)
+where
+    R: Renderer + ImportMem,
+    R::TextureId: Send + Clone + 'static,
+{
+    if height <= 0 || WARMED_TABS.with(|w| w.borrow().contains(&height)) {
+        return;
+    }
+    WARMED_TABS.with(|w| w.borrow_mut().push(height));
+    for (width, n) in [(TAB_NARROW, 12), (TAB_WIDE, 4)] {
+        for _ in 0..n {
+            let size = (width, height);
+            let buffer = MemoryRenderBuffer::new(Fourcc::Abgr8888, size, 1, Transform::Normal, None);
+            let _ = MemoryRenderBufferRenderElement::from_buffer(renderer, (0.0, 0.0), &buffer, None, None, None, Kind::Unspecified);
+            keep_spare(size, buffer);
+        }
+    }
+}
+
+/// The widths tab looks' buffers have (device pixels): most tabs fit the
+/// narrow one.
+const TAB_NARROW: i32 = 512;
+const TAB_WIDE: i32 = 1024;
+
+/// The buffer a tab look `phys` device pixels big is drawn in: one of two
+/// widths (wider still in steps of the wide one), and always written
+/// whole. The GPU's driver puts a picture in a texture through a buffer
+/// of its own as big as what's written, kept for the next of about that
+/// size for a second or two; a size it hasn't one for is new memory to
+/// map for the GPU, which can hold the CPU tens of milliseconds while
+/// the GPU is busy. So every look's writing is one of two sizes, those
+/// kept warm (`warm_tab_upload`), and a spare buffer is there for most
+/// new looks.
+fn tab_buffer_size(phys: (i32, i32)) -> (i32, i32) {
+    let w = if phys.0 <= TAB_NARROW { TAB_NARROW } else { (phys.0 + TAB_WIDE - 1) / TAB_WIDE * TAB_WIDE };
+    (w, phys.1)
+}
+
+/// Write a spare tab buffer of each width whole (with the frames that
+/// keep the GPU's memory warm, `render::keep_warm`), so the driver's
+/// buffers for writing looks stay ready.
+pub fn warm_tab_upload<R>(renderer: &mut R)
+where
+    R: Renderer + ImportMem,
+    R::TextureId: Send + Clone + 'static,
+{
+    let heights: Vec<i32> = WARMED_TABS.with(|w| w.borrow().clone());
+    for height in heights {
+        for width in [TAB_NARROW, TAB_WIDE] {
+            let size = (width, height);
+            let Some(mut buffer) = spare_tab(size) else { continue };
+            let _ = buffer.render().draw(|_| Ok::<_, ()>(vec![Rectangle::from_size(size.into())]));
+            let _ = MemoryRenderBufferRenderElement::from_buffer(renderer, (0.0, 0.0), &buffer, None, None, None, Kind::Unspecified);
+            keep_spare(size, buffer);
+        }
+    }
+}
+
+/// A spare tab buffer `size` big, if there is one.
+fn spare_tab(size: (i32, i32)) -> Option<MemoryRenderBuffer> {
+    SPARE_TABS.with(|s| {
+        let mut s = s.borrow_mut();
+        let i = s.iter().position(|(k, _)| *k == size)?;
+        Some(s.swap_remove(i).1)
+    })
+}
+
+/// Keep `buffer` for another look (the oldest spare goes if there are
+/// too many).
+fn keep_spare(size: (i32, i32), buffer: MemoryRenderBuffer) {
+    SPARE_TABS.with(|s| {
+        let mut s = s.borrow_mut();
+        s.push((size, buffer));
+        if s.len() > SPARE_TABS_MAX {
+            s.remove(0);
+        }
+    });
+}
+
+/// `pixmap` into the top left of a buffer `width` pixels wide.
+fn copy_tab(mem: &mut [u8], width: i32, pixmap: &Pixmap) {
+    let row = pixmap.width() as usize * 4;
+    let stride = width as usize * 4;
+    for (y, src) in pixmap.data().chunks_exact(row).enumerate() {
+        if let Some(dst) = mem.get_mut(y * stride..y * stride + row) {
+            dst.copy_from_slice(src);
+        }
+    }
+}
+
+impl Drop for Decoration {
+    fn drop(&mut self) {
+        for (_, buffer, size) in self.tabs.drain(..) {
+            keep_spare(size, buffer);
+        }
+    }
+}
 
 /// Logical extra size the decoration adds around the client's geometry.
 pub fn extra_size() -> Size<i32, Logical> {
@@ -417,6 +537,7 @@ impl Decoration {
             generation,
             target: self.target,
         };
+        warm_tabs(renderer, phys.1);
         // A look drawn before, or done by the worker, is shown at once; a
         // new one is asked of the worker (the first is drawn here: there
         // is nothing to show meanwhile).
@@ -431,7 +552,7 @@ impl Decoration {
             pixmap = Some(p);
             self.asked = None;
         }
-        if let Some(i) = self.tabs.iter().position(|(k, _)| *k == key) {
+        if let Some(i) = self.tabs.iter().position(|(k, ..)| *k == key) {
             let looked = self.tabs.remove(i);
             self.tabs.insert(0, looked);
         } else if phys.0 > 0 && phys.1 > 0 && pixmap.is_none() && !self.tabs.is_empty() {
@@ -441,23 +562,43 @@ impl Decoration {
             }
         } else if phys.0 > 0 && phys.1 > 0 {
             let pixmap = pixmap.unwrap_or_else(|| draw_tab(&palette, &key, &tab, s));
-            let size: Size<i32, Buffer> = phys.into();
-            let buffer = MemoryRenderBuffer::from_slice(
-                pixmap.data(),
-                Fourcc::Abgr8888,
-                size,
-                1,
-                Transform::Normal,
-                Some(vec![Rectangle::from_size(size)]),
-            );
-            self.tabs.insert(0, (key, buffer));
-            self.tabs.truncate(TAB_LOOKS);
+            let bsize = tab_buffer_size(phys);
+            // A buffer of its size already made, if any (the oldest look
+            // kept, or a spare), takes the new look: its texture written
+            // again rather than one made (`SPARE_TABS`).
+            let oldest = (self.tabs.len() >= TAB_LOOKS && self.tabs.last().is_some_and(|t| t.2 == bsize)).then(|| self.tabs.pop()).flatten().map(|t| t.1);
+            let buffer = match oldest.or_else(|| spare_tab(bsize)) {
+                Some(mut buffer) => {
+                    let _ = buffer.render().draw(|mem| {
+                        copy_tab(mem, bsize.0, &pixmap);
+                        // (Whole: see `tab_buffer_size`.)
+                        Ok::<_, ()>(vec![Rectangle::from_size(bsize.into())])
+                    });
+                    buffer
+                }
+                None => {
+                    let mut mem = vec![0u8; bsize.0 as usize * bsize.1 as usize * 4];
+                    copy_tab(&mut mem, bsize.0, &pixmap);
+                    let size: Size<i32, Buffer> = bsize.into();
+                    MemoryRenderBuffer::from_slice(&mem, Fourcc::Abgr8888, size, 1, Transform::Normal, Some(vec![Rectangle::from_size(size)]))
+                }
+            };
+            self.tabs.insert(0, (key, buffer, bsize));
+            while self.tabs.len() > TAB_LOOKS {
+                let (_, buffer, size) = self.tabs.pop().expect("a look");
+                keep_spare(size, buffer);
+            }
         }
         let mut tabs = Vec::new();
-        if let Some((key, buffer)) = self.tabs.first() {
+        if let Some((key, buffer, _)) = self.tabs.first() {
             let at = location + Point::<i32, Physical>::from((tx(tab.x), 0));
             let rect = Rectangle::new(at, key.phys.into());
+            let (t, used) = (std::time::Instant::now(), crate::render::ThreadUse::now());
             tabs.extend(crate::render::exact(renderer, rect, buffer, key.phys, Some(alpha), Kind::Unspecified));
+            if t.elapsed() > Duration::from_millis(2) {
+                let used = crate::render::ThreadUse::now().since(&used);
+                tracing::info!("slow tab: {:.1} ms putting its {}×{} look on the GPU; {used}", t.elapsed().as_secs_f64() * 1e3, key.phys.0, key.phys.1);
+            }
         }
 
         // Frame: concentric bands out from the content (an outline, the
@@ -667,6 +808,29 @@ mod title_tests {
         assert_eq!(cut("abcdef"), "abcd…");
         assert_eq!(cut("ab  défg"), "ab…");
         set_title_chars(100);
+    }
+
+    /// How long tabs take to draw, cold and warm (`cargo test --release
+    /// -p app_server tab_timing -- --ignored --nocapture`).
+    #[test]
+    #[ignore]
+    fn tab_timing() {
+        let palette = theme::palette();
+        let t = std::time::Instant::now();
+        let w = text::measure("Warm", fonts::TAB_SIZE, true);
+        eprintln!("fonts loaded and first measure: {:.1} ms ({w})", t.elapsed().as_secs_f64() * 1e3);
+        for (i, title) in ["Untitled 1", "long.txt — StyledEdit", "Notifications", "Untitled 1", "Terminal: ~/src/olo", "Header & Footer"].iter().enumerate() {
+            for s in [2.0, 1.5] {
+                let mut d = Decoration::default();
+                let t = std::time::Instant::now();
+                let tab = d.tab_layout(title, (800, 600).into());
+                let laid = t.elapsed();
+                let key = TabKey { title: title.to_string(), focused: i % 2 == 0, hover: Part::None, pressed: Part::None, width: tab.width, phys: ((tab.width as f64 * s) as i32, (TAB_HEIGHT as f64 * s) as i32), generation: 0, target: false };
+                let t = std::time::Instant::now();
+                let _ = draw_tab(&palette, &key, &tab, s);
+                eprintln!("{title:24} at {s}: measured {:.2} ms, drawn {:.2} ms", laid.as_secs_f64() * 1e3, t.elapsed().as_secs_f64() * 1e3);
+            }
+        }
     }
 }
 

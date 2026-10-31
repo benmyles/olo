@@ -57,6 +57,12 @@ struct Screen {
     damage_tracker: OutputDamageTracker,
     /// When its next frame is due.
     due: std::time::Instant,
+    /// When the GPU has finished its last frame. A display takes a frame
+    /// only once it has shown the last; drawing on before the GPU is done
+    /// piles frames up, and each new one then needs memory of its own
+    /// (Mesa's for its commands: bound into the GPU's address space, which
+    /// can hold the CPU for tens of milliseconds while the GPU is busy).
+    drawn: Option<smithay::backend::renderer::sync::SyncPoint>,
 }
 
 /// How long a frame of `output` lasts, at its mode's rate (60 or 120 Hz).
@@ -228,7 +234,7 @@ pub fn run_headless(size_arg: Option<&str>) {
         let buffer_size: Size<i32, Buffer> = size.into();
         let target: GlesTexture = renderer.create_buffer(Fourcc::Abgr8888, buffer_size).expect("offscreen buffer");
         let damage_tracker = OutputDamageTracker::from_output(&output);
-        screens.push(Screen { output, target, damage_tracker, due: std::time::Instant::now() });
+        screens.push(Screen { output, target, damage_tracker, due: std::time::Instant::now(), drawn: None });
     }
 
     // Feedback naming the render node: Mesa's EGL finds the GPU through it
@@ -301,6 +307,11 @@ pub fn run_headless(size_arg: Option<&str>) {
                 let frame = frame_time(&screen.output);
                 // Late by more than a frame (a stall): start afresh.
                 screen.due = if screen.due + frame < now { now + frame } else { screen.due + frame };
+                // The GPU still on the last: this one waits for the next
+                // tick (its damage kept, its clients' frames not yet done).
+                if screen.drawn.as_ref().is_some_and(|s| !s.is_reached()) {
+                    continue;
+                }
                 render_frame(state, i);
             }
             let next = state.backend_data.screens.iter().map(|s| s.due).min().unwrap_or(now + Duration::from_millis(16));
@@ -487,11 +498,12 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) {
     };
     match result {
         Ok(r) => {
-            let states = r.states;
+            let (damaged, sync, states) = (r.damage.is_some(), r.sync, r.states);
+            state.backend_data.screens[index].drawn = Some(sync);
             // Without this every surface counts as off-screen and Smithay
             // throttles its frame callbacks to one a second.
             update_primary_scanout_output(&state.space, output, &state.dnd_icon, &state.cursor_status, &states);
-            if r.damage.is_some() {
+            if damaged {
                 let mut feedback = take_presentation_feedback(output, &state.space, &states);
                 feedback.presented(
                     frame_target,
@@ -505,4 +517,87 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) {
         Err(e) => warn!("headless render: {e:?}"),
     }
     state.timings.frame(&name, start.elapsed());
+}
+
+#[cfg(test)]
+mod gpu_timing {
+    use smithay::{
+        backend::{
+            allocator::{Fourcc, gbm::GbmDevice},
+            egl::{EGLContext, EGLDisplay},
+            renderer::{Bind, Color32F, Frame, ImportMem, Offscreen, Renderer, gles::{GlesRenderer, GlesTexture}},
+        },
+        utils::{Buffer, Rectangle, Size, Transform},
+    };
+    use std::time::Instant;
+
+    /// What putting small pictures (a tab's look) on the GPU costs: new
+    /// textures against writing into one made before, with the GPU idle
+    /// and busy drawing a full frame (`cargo test --release -p app_server
+    /// gpu_upload_timing -- --ignored --nocapture`).
+    #[test]
+    #[ignore]
+    fn gpu_upload_timing() {
+        let node = super::render_node().expect("a render node");
+        let file = std::fs::OpenOptions::new().read(true).write(true).open(&node).unwrap();
+        let gbm = GbmDevice::new(file).unwrap();
+        let egl = unsafe { EGLDisplay::new(gbm) }.unwrap();
+        let context = EGLContext::new(&egl).unwrap();
+        let mut r = unsafe { GlesRenderer::new(context) }.unwrap();
+        let (w, h) = (147, 31);
+        let data = vec![0x80u8; (w * h * 4) as usize];
+        let size: Size<i32, Buffer> = (w, h).into();
+        let screen: Size<i32, Buffer> = (3456, 2234).into();
+        let mut target: GlesTexture = r.create_buffer(Fourcc::Abgr8888, screen).unwrap();
+        let big = r.import_memory(&vec![0x40u8; (1600 * 1000 * 4) as usize], Fourcc::Abgr8888, (1600, 1000).into(), false).unwrap();
+        let mut busy = |r: &mut GlesRenderer| {
+            let mut fb = r.bind(&mut target).unwrap();
+            let s = (3456, 2234).into();
+            let mut f = r.render(&mut fb, s, Transform::Normal).unwrap();
+            let all = Rectangle::from_size(s);
+            f.clear(Color32F::new(0.2, 0.2, 0.2, 1.0), &[all]).unwrap();
+            for _ in 0..20 {
+                f.render_texture_from_to(&big, Rectangle::from_size((1600.0, 1000.0).into()), all, &[all], &[], Transform::Normal, 0.5, None, &[]).unwrap();
+            }
+            let _ = f.finish().unwrap();
+        };
+        let ms = |t: Instant| t.elapsed().as_secs_f64() * 1e3;
+        let report = |what: &str, times: &mut Vec<f64>| {
+            times.sort_by(f64::total_cmp);
+            eprintln!("{what:40} median {:.3} ms, worst {:.3} ms", times[times.len() / 2], times[times.len() - 1]);
+        };
+        for gpu_busy in [false, true] {
+            let mut fresh = Vec::new();
+            let mut kept = Vec::new();
+            let reused = r.import_memory(&data, Fourcc::Abgr8888, size, false).unwrap();
+            let mut textures = Vec::new();
+            for _ in 0..60 {
+                if gpu_busy {
+                    busy(&mut r);
+                }
+                let t = Instant::now();
+                textures.push(r.import_memory(&data, Fourcc::Abgr8888, size, false).unwrap());
+                fresh.push(ms(t));
+                if textures.len() > 6 {
+                    textures.remove(0);
+                }
+                if gpu_busy {
+                    busy(&mut r);
+                }
+                let t = Instant::now();
+                r.update_memory(&reused, &data, Rectangle::from_size(size)).unwrap();
+                kept.push(ms(t));
+            }
+            let when = if gpu_busy { "GPU busy" } else { "GPU idle" };
+            report(&format!("new texture, {when}"), &mut fresh);
+            report(&format!("into one made before, {when}"), &mut kept);
+        }
+        let mut frames = Vec::new();
+        for _ in 0..30 {
+            let t = Instant::now();
+            busy(&mut r);
+            frames.push(ms(t));
+        }
+        report("a full frame's commands", &mut frames);
+    }
 }
