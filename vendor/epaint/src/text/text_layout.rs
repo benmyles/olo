@@ -236,6 +236,28 @@ pub(crate) fn layout_shaped(
 
     let point_scale = PointScale::new(pixels_per_point);
 
+    // Olo: characters with an advance of their own (`LayoutJob::advances`:
+    // a picture's) as wide as it says, in whole pixels; what follows moves
+    // with them. (Each found as the nth of its character in its paragraph,
+    // so marks the shaper folds in don't throw it off.)
+    if !job.advances.is_empty() {
+        let mut line_starts = vec![0];
+        line_starts.extend(job.text.match_indices('\n').map(|(i, _)| i + 1));
+        for &(byte, width) in &job.advances {
+            let Some(c) = job.text.get(byte..).and_then(|t| t.chars().next()) else { continue };
+            let p = line_starts.partition_point(|&s| s <= byte) - 1;
+            let nth = job.text[line_starts[p]..byte].chars().filter(|&x| x == c).count();
+            let Some(paragraph) = paragraphs.get_mut(p) else { continue };
+            let Some(i) = paragraph.glyphs.iter().enumerate().filter(|(_, g)| g.chr == c).nth(nth).map(|(i, _)| i) else { continue };
+            let by = point_scale.round_to_pixel(width.max(0.0)) - paragraph.glyphs[i].advance_width;
+            paragraph.glyphs[i].advance_width += by;
+            for g in &mut paragraph.glyphs[i + 1..] {
+                g.pos.x += by;
+            }
+            paragraph.cursor_x_px += by * pixels_per_point;
+        }
+    }
+
     // Olo: tabs to their stops, as if each paragraph were one row (rows
     // after a wrap set theirs again from their own start).
     if let Some(tabs) = &job.tabs {

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-30
 
+### StyledEdit: pictures
+
+*21:34* — Pictures in the text: Insert Picture…, pasted or dropped; drawn by the kit's editor where their character is, sized from the Edit menu, kept beside the document, and in Word, OpenDocument, RTF, web pages, Markdown and print.
+
+![StyledEdit: pictures](2026-10-30/213451-stylededit-pictures.png)
+
 ### StyledEdit: Header & Footer
 
 *20:42* — Document ▸ Header & Footer… sets a left, centre and right part above and below every printed page, {page} and {pages} standing for the page number and count. Kept in the file, and in Word, OpenDocument and RTF (checked in LibreOffice).

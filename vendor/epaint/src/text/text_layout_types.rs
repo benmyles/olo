@@ -98,6 +98,11 @@ pub struct LayoutJob {
     /// Olo: where tabs take the text after them (else a tab is
     /// [`crate::text::FontTweak::tab_size`] spaces wide wherever it is).
     pub tabs: Option<TabStops>,
+
+    /// Olo: the characters at these bytes each advance this many points,
+    /// whatever their glyph is (a picture's character, laid out as wide
+    /// as the picture); what follows them moves with them.
+    pub advances: Vec<(usize, f32)>,
 }
 
 /// Olo: where a tab takes the text after it ([`LayoutJob::tabs`]), as a
@@ -186,6 +191,7 @@ impl Default for LayoutJob {
             round_output_to_gui: true,
             keep_trailing_whitespace: false,
             tabs: None,
+            advances: Vec::new(),
         }
     }
 }
@@ -395,6 +401,7 @@ impl core::hash::Hash for LayoutJob {
             round_output_to_gui,
             keep_trailing_whitespace,
             tabs,
+            advances,
         } = self;
 
         text.hash(state);
@@ -407,6 +414,10 @@ impl core::hash::Hash for LayoutJob {
         round_output_to_gui.hash(state);
         keep_trailing_whitespace.hash(state);
         tabs.hash(state);
+        for (byte, width) in advances {
+            byte.hash(state);
+            emath::OrderedFloat(*width).hash(state);
+        }
     }
 }
 

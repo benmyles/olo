@@ -4,13 +4,18 @@
 use std::{collections::HashMap, fmt::Write as _, io::Write as _};
 
 use crate::{
-    Align, Document, Kind, List, Paragraph, Span, Tab, TabAlign, Table,
-    xml::{X, attr, esc, events, hex_color, is_mono, zip_text},
+    Align, Document, Kind, List, Paragraph, Picture, Span, Tab, TabAlign, Table,
+    xml::{X, attr, esc, events, hex_color, is_mono, zip_bytes, zip_text},
 };
 
 const W: &str = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const R: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const PKG: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
+const WP: &str = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
+const A: &str = "http://schemas.openxmlformats.org/drawingml/2006/main";
+const PIC: &str = "http://schemas.openxmlformats.org/drawingml/2006/picture";
+/// English Metric Units in a point (pictures' sizes).
+const EMU: f32 = 12700.0;
 /// Twentieths of a point in half an inch: an indent level.
 const LEVEL: u32 = 720;
 /// The font code is set in.
@@ -45,8 +50,16 @@ pub(crate) fn kind_of(name: &str) -> Kind {
     }
 }
 
+/// What the document's parts point at: links, and pictures' files
+/// (`word/media/imageN.ext`, as `rIdPN`).
+#[derive(Default)]
+struct Refs<'a> {
+    links: Vec<String>,
+    media: Vec<(&'static str, &'a [u8])>,
+}
+
 pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
-    let mut links: Vec<String> = Vec::new();
+    let mut refs = Refs::default();
     // Each numbered list counts from 1: a numbering of its own.
     let mut numbered_lists = 0u32;
     let mut in_numbered = false;
@@ -62,8 +75,8 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
             in_numbered = true;
         }
         match &p.table {
-            Some(t) => table(&mut body, t, &mut links, numbered_lists),
-            None => paragraph(&mut body, p, &mut links, numbered_lists),
+            Some(t) => table(&mut body, t, &mut refs, numbered_lists),
+            None => paragraph(&mut body, p, &mut refs, numbered_lists),
         }
     }
     // (Word wants a paragraph last, after a table.)
@@ -82,7 +95,7 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
     }
     sect.push_str("</w:sectPr>");
     let document = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:document xmlns:w=\"{W}\" xmlns:r=\"{R}\"><w:body>{body}{sect}</w:body></w:document>"
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:document xmlns:w=\"{W}\" xmlns:r=\"{R}\" xmlns:wp=\"{WP}\"><w:body>{body}{sect}</w:body></w:document>"
     );
     let mut rels = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Relationships xmlns=\"{PKG}\">\
@@ -96,8 +109,11 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
     if footer {
         let _ = write!(rels, "<Relationship Id=\"rIdFooter\" Type=\"{R}/footer\" Target=\"footer1.xml\"/>");
     }
-    for (i, url) in links.iter().enumerate() {
+    for (i, url) in refs.links.iter().enumerate() {
         let _ = write!(rels, "<Relationship Id=\"rIdL{}\" Type=\"{R}/hyperlink\" Target=\"{}\" TargetMode=\"External\"/>", i + 1, esc(url));
+    }
+    for (i, (ext, _)) in refs.media.iter().enumerate() {
+        let _ = write!(rels, "<Relationship Id=\"rIdP{0}\" Type=\"{R}/image\" Target=\"media/image{0}.{ext}\"/>", i + 1);
     }
     rels.push_str("</Relationships>");
     let mut content_types = String::from(
@@ -114,6 +130,14 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
     }
     if footer {
         content_types.push_str("<Override PartName=\"/word/footer1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml\"/>");
+    }
+    let mut kinds: Vec<&str> = Vec::new();
+    for (ext, data) in &refs.media {
+        if !kinds.contains(ext) {
+            kinds.push(ext);
+            let mime = crate::kind_of_image(data).map_or("application/octet-stream", |k| k.1);
+            let _ = write!(content_types, "<Default Extension=\"{ext}\" ContentType=\"{mime}\"/>");
+        }
     }
     content_types.push_str("</Types>");
     let root_rels = format!(
@@ -142,10 +166,20 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
         z.start_file(name, opts).map_err(|e| e.to_string())?;
         z.write_all(data.as_bytes()).map_err(|e| e.to_string())?;
     }
+    // (Pictures are compressed already.)
+    let stored = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    for (i, (ext, data)) in refs.media.iter().enumerate() {
+        z.start_file(format!("word/media/image{}.{ext}", i + 1), stored).map_err(|e| e.to_string())?;
+        z.write_all(data).map_err(|e| e.to_string())?;
+    }
     Ok(z.finish().map_err(|e| e.to_string())?.into_inner())
 }
 
-fn paragraph(out: &mut String, p: &Paragraph, links: &mut Vec<String>, numbered_list: u32) {
+fn paragraph<'a>(out: &mut String, p: &'a Paragraph, refs: &mut Refs<'a>, numbered_list: u32) {
+    if let Some(pic) = &p.picture {
+        return picture(out, pic, p.align, refs);
+    }
+    let links = &mut refs.links;
     out.push_str("<w:p><w:pPr>");
     if let Some(id) = style_id(p.kind) {
         let _ = write!(out, "<w:pStyle w:val=\"{id}\"/>");
@@ -209,6 +243,29 @@ fn paragraph(out: &mut String, p: &Paragraph, links: &mut Vec<String>, numbered_
         }
     }
     out.push_str("</w:p>");
+}
+
+/// A picture's paragraph: the picture inline, at its size, its file in
+/// `word/media`.
+fn picture<'a>(out: &mut String, pic: &'a Picture, align: Align, refs: &mut Refs<'a>) {
+    let Some((ext, _)) = pic.kind() else { return };
+    refs.media.push((ext, &pic.data));
+    let n = refs.media.len();
+    let (cx, cy) = ((pic.width.max(1.0) * EMU).round() as u64, (pic.height.max(1.0) * EMU).round() as u64);
+    let alt = esc(&pic.alt);
+    let jc = match align {
+        Align::Center => "<w:jc w:val=\"center\"/>",
+        Align::Right => "<w:jc w:val=\"right\"/>",
+        _ => "",
+    };
+    let _ = write!(
+        out,
+        "<w:p><w:pPr>{jc}</w:pPr><w:r><w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\"><wp:extent cx=\"{cx}\" cy=\"{cy}\"/>\
+         <wp:docPr id=\"{n}\" name=\"Picture {n}\" descr=\"{alt}\"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a=\"{A}\" noChangeAspect=\"1\"/></wp:cNvGraphicFramePr>\
+         <a:graphic xmlns:a=\"{A}\"><a:graphicData uri=\"{PIC}\"><pic:pic xmlns:pic=\"{PIC}\"><pic:nvPicPr><pic:cNvPr id=\"{n}\" name=\"image{n}.{ext}\" descr=\"{alt}\"/><pic:cNvPicPr/></pic:nvPicPr>\
+         <pic:blipFill><a:blip r:embed=\"rIdP{n}\"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>\
+         <pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"{cx}\" cy=\"{cy}\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>"
+    );
 }
 
 /// A header (`hdr`) or footer (`ftr`) part: one paragraph, its three
@@ -314,7 +371,7 @@ fn tab_val(a: TabAlign) -> &'static str {
     }
 }
 
-fn table(out: &mut String, t: &Table, links: &mut Vec<String>, numbered_list: u32) {
+fn table<'a>(out: &mut String, t: &'a Table, refs: &mut Refs<'a>, numbered_list: u32) {
     let widths = t.column_widths(TEXT_WIDTH);
     out.push_str("<w:tbl><w:tblPr><w:tblStyle w:val=\"TableGrid\"/><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr><w:tblGrid>");
     for w in &widths {
@@ -329,7 +386,7 @@ fn table(out: &mut String, t: &Table, links: &mut Vec<String>, numbered_list: u3
         for (c, w) in widths.iter().enumerate() {
             let _ = write!(out, "<w:tc><w:tcPr><w:tcW w:w=\"{w}\" w:type=\"dxa\"/></w:tcPr>");
             match row.get(c).filter(|cell| !cell.is_empty()) {
-                Some(cell) => cell.iter().for_each(|p| paragraph(out, p, links, numbered_list)),
+                Some(cell) => cell.iter().for_each(|p| paragraph(out, p, refs, numbered_list)),
                 // (A cell holds a paragraph at least.)
                 None => out.push_str("<w:p/>"),
             }
@@ -531,12 +588,37 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
     // The table being read (one in a cell comes in as its paragraphs).
     let mut table_depth = 0;
     let mut table = Table::default();
+    // The picture being read, and the paragraph's so far with how many
+    // of its spans came before each (a paragraph of their own each).
+    let mut drawing: Option<Picture> = None;
+    let mut pictures: Vec<(usize, Picture)> = Vec::new();
     for e in events(&main) {
         match e {
             X::Start(n, a) => match n.as_str() {
                 "p" => {
                     para = Paragraph::default();
+                    pictures.clear();
                     (num_id, ilvl) = (None, 0);
+                }
+                "drawing" => drawing = Some(Picture::default()),
+                "extent" => {
+                    if let Some(pic) = &mut drawing {
+                        let emu = |name: &str| attr(&a, name).and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0) / EMU;
+                        (pic.width, pic.height) = (emu("cx"), emu("cy"));
+                    }
+                }
+                "docPr" => {
+                    if let Some(pic) = &mut drawing {
+                        pic.alt = attr(&a, "descr").or(attr(&a, "title")).unwrap_or_default().to_owned();
+                    }
+                }
+                "blip" => {
+                    if let Some(pic) = &mut drawing
+                        && let Some(target) = attr(&a, "embed").and_then(|id| targets.get(id))
+                    {
+                        let path = format!("word/{}", target.trim_start_matches('/').trim_start_matches("word/"));
+                        pic.data = zip_bytes(&mut z, &path).unwrap_or_default();
+                    }
                 }
                 "pPr" => in_ppr = true,
                 "rPr" if in_run => in_rpr = true,
@@ -638,11 +720,34 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
                 "r" => in_run = false,
                 "t" => in_text = false,
                 "hyperlink" => link = None,
+                "drawing" => {
+                    if let Some(pic) = drawing.take().filter(|p| !p.data.is_empty()) {
+                        pictures.push((para.spans.len(), pic));
+                    }
+                }
                 "p" => {
                     let p = std::mem::take(&mut para);
-                    match table.rows.last_mut().and_then(|r| r.last_mut()) {
-                        Some(cell) if table_depth > 0 => cell.push(p),
-                        _ => doc.paragraphs.push(p),
+                    // Its pictures, each a paragraph between its text's.
+                    let mut paragraphs = Vec::new();
+                    let mut spans = p.spans.clone().into_iter();
+                    let mut taken = 0;
+                    for (at, pic) in pictures.drain(..) {
+                        let before: Vec<Span> = spans.by_ref().take(at - taken).collect();
+                        taken = at;
+                        if !before.is_empty() {
+                            paragraphs.push(Paragraph { spans: before, ..p.clone() });
+                        }
+                        paragraphs.push(Paragraph { picture: Some(pic), align: p.align, ..Paragraph::default() });
+                    }
+                    let rest: Vec<Span> = spans.collect();
+                    if paragraphs.is_empty() || !rest.is_empty() {
+                        paragraphs.push(Paragraph { spans: rest, ..p });
+                    }
+                    for p in paragraphs {
+                        match table.rows.last_mut().and_then(|r| r.last_mut()) {
+                            Some(cell) if table_depth > 0 => cell.push(p),
+                            _ => doc.paragraphs.push(p),
+                        }
                     }
                 }
                 "tbl" => {

@@ -2506,5 +2506,11 @@
   "title": "StyledEdit: Header & Footer",
   "caption": "Document \u25b8 Header & Footer\u2026 sets a left, centre and right part above and below every printed page, {page} and {pages} standing for the page number and count. Kept in the file, and in Word, OpenDocument and RTF (checked in LibreOffice).",
   "image": "2026-10-30/204225-stylededit-header-footer.png"
+ },
+ {
+  "time": "2026-10-30T21:34:51",
+  "title": "StyledEdit: pictures",
+  "caption": "Pictures in the text: Insert Picture\u2026, pasted or dropped; drawn by the kit's editor where their character is, sized from the Edit menu, kept beside the document, and in Word, OpenDocument, RTF, web pages, Markdown and print.",
+  "image": "2026-10-30/213451-stylededit-pictures.png"
  }
 ]

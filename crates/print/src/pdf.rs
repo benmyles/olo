@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use krilla::{
     Document,
-    geom::{PathBuilder, Point},
+    geom::{PathBuilder, Point, Size, Transform},
     num::NormalizedF32,
     page::PageSettings,
     paint::{Fill, Stroke},
@@ -182,6 +182,21 @@ pub fn pdf(pages: &[Page], title: &str) -> Result<Vec<u8>, String> {
                     }
                 }
                 Item::Rect { x, y, w, h, color } => rect(&mut s, *x, *y, *w, *h, *color),
+                Item::Image { x, y, w, h, data } => {
+                    let bytes: krilla::Data = data.clone().into();
+                    let image = match data.as_slice() {
+                        [0x89, b'P', b'N', b'G', ..] => krilla::image::Image::from_png(bytes, true),
+                        [0xff, 0xd8, 0xff, ..] => krilla::image::Image::from_jpeg(bytes, true),
+                        [b'G', b'I', b'F', ..] => krilla::image::Image::from_gif(bytes, true),
+                        [b'R', b'I', b'F', b'F', ..] => krilla::image::Image::from_webp(bytes, true),
+                        _ => None,
+                    };
+                    if let (Some(image), Some(size)) = (image, Size::from_wh(w.max(0.01), h.max(0.01))) {
+                        s.push_transform(&Transform::from_translate(*x, *y));
+                        s.draw_image(image, size);
+                        s.pop();
+                    }
+                }
                 Item::Line { from, to, width, color } => {
                     let mut b = PathBuilder::new();
                     b.move_to(from.0, from.1);

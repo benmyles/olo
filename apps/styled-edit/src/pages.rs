@@ -242,6 +242,16 @@ fn place_words(page: &mut Page, row: &egui::epaint::text::PlacedRow, origin_x: f
         let baseline = top + gl.pos.y;
         let section = section_of.get(*char_at).copied().unwrap_or(0);
         *char_at += 1;
+        // A picture: where its character was laid out, as big.
+        if gl.chr == olo_kit::editor::PICTURE
+            && let Some(pic) = styles.get(section).and_then(|s| s.picture.as_ref())
+        {
+            flush(&mut word, page);
+            if let Some(data) = picture_bytes(&pic.path) {
+                page.items.push(Item::Image { x, y: top, w: pic.width, h: pic.height, data });
+            }
+            continue;
+        }
         if gl.chr.is_whitespace() {
             flush(&mut word, page);
             continue;
@@ -258,6 +268,14 @@ fn place_words(page: &mut Page, row: &egui::epaint::text::PlacedRow, origin_x: f
         }
     }
     flush(&mut word, page);
+}
+
+/// A picture file's bytes as a PDF takes them (each read once a setting).
+fn picture_bytes(path: &str) -> Option<std::sync::Arc<Vec<u8>>> {
+    thread_local! {
+        static READ: std::cell::RefCell<std::collections::HashMap<String, Option<std::sync::Arc<Vec<u8>>>>> = Default::default();
+    }
+    READ.with(|r| r.borrow_mut().entry(path.to_owned()).or_insert_with(|| crate::pictures::export_bytes(std::path::Path::new(path), true).map(std::sync::Arc::new)).clone())
 }
 
 fn text_item(x: f32, y: f32, text: String, s: &Style, width: f32) -> Item {
@@ -369,5 +387,22 @@ mod tests {
         i.page = Some(Margins::default());
         let empty = super::pages(i, paper);
         assert!(empty.iter().all(|p| top(p).is_empty() && foot(p).is_empty()));
+    }
+
+    #[test]
+    fn pictures_on_pages() {
+        let file = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/icons/16/printer.png");
+        let pic = crate::doc::Picture { path: file.into(), width: 48.0, height: 36.0, alt: String::new() };
+        let text = "A \u{FFFC} b";
+        let mut i = input(text);
+        i.runs = vec![Run { len: 2, style: Style::default() }, Run { len: 3, style: Style { picture: Some(pic), ..Style::default() } }, Run { len: 2, style: Style::default() }];
+        let pages = pages(i, olo_print::PAPERS[0]);
+        let items = &pages[0].items;
+        // The picture where its character is, as big; the words either side.
+        let img = items.iter().find_map(|i| if let Item::Image { x, y, w, h, .. } = i { Some((*x, *y, *w, *h)) } else { None }).expect("the picture");
+        assert_eq!((img.2, img.3), (48.0, 36.0));
+        let x_of = |w: &str| items.iter().find_map(|i| if let Item::Text { text, x, .. } = i { (text == w).then_some(*x) } else { None }).unwrap();
+        assert!(x_of("A") < img.0 && img.0 + 48.0 <= x_of("b") + 0.5, "{img:?}");
+        assert!(!items.iter().any(|i| matches!(i, Item::Text { text, .. } if text.contains('\u{FFFC}'))));
     }
 }

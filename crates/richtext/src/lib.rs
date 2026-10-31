@@ -61,6 +61,90 @@ pub struct Paragraph {
     pub right: f32,
     /// Tab stops, in points from the text's left edge, left to right.
     pub tabs: Vec<Tab>,
+    /// A picture here instead of text (its spans are empty), placed as
+    /// the paragraph is aligned.
+    pub picture: Option<Picture>,
+}
+
+/// A picture in the flow of paragraphs ([`Paragraph::picture`]): its file
+/// as it is, and how big it is on the page.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Picture {
+    /// The image file's bytes (PNG, JPEG, GIF, WebP, …; [`Picture::kind`]).
+    pub data: Vec<u8>,
+    /// Points across and down the page.
+    pub width: f32,
+    pub height: f32,
+    /// What it shows, for whoever can't see it.
+    pub alt: String,
+}
+
+impl Picture {
+    /// Its type, from its first bytes: the file extension and media
+    /// type, or None for a kind of file this doesn't know.
+    pub fn kind(&self) -> Option<(&'static str, &'static str)> {
+        kind_of_image(&self.data)
+    }
+}
+
+/// An image file's size in pixels, from its header (PNG, JPEG, GIF,
+/// WebP, BMP).
+pub fn pixels(data: &[u8]) -> Option<(u32, u32)> {
+    let be16 = |i: usize| Some(u16::from_be_bytes([*data.get(i)?, *data.get(i + 1)?]) as u32);
+    let le16 = |i: usize| Some(u16::from_le_bytes([*data.get(i)?, *data.get(i + 1)?]) as u32);
+    let be32 = |i: usize| Some(u32::from_be_bytes(data.get(i..i + 4)?.try_into().ok()?));
+    let le32 = |i: usize| Some(u32::from_le_bytes(data.get(i..i + 4)?.try_into().ok()?));
+    match kind_of_image(data)?.0 {
+        "png" => Some((be32(16)?, be32(20)?)),
+        "gif" => Some((le16(6)?, le16(8)?)),
+        "bmp" => Some((le32(18)?, le32(22)?.cast_signed().unsigned_abs())),
+        "webp" => match data.get(12..16)? {
+            b"VP8 " => Some((le16(26)? & 0x3fff, le16(28)? & 0x3fff)),
+            b"VP8L" => {
+                let b = le32(21)?;
+                Some(((b & 0x3fff) + 1, ((b >> 14) & 0x3fff) + 1))
+            }
+            b"VP8X" => {
+                let w = le32(24)? & 0xff_ffff;
+                let h = le32(27)? & 0xff_ffff;
+                Some((w + 1, h + 1))
+            }
+            _ => None,
+        },
+        // JPEG: the first start-of-frame marker's.
+        _ => {
+            let mut i = 2;
+            while i + 9 < data.len() {
+                if data[i] != 0xff {
+                    i += 1;
+                    continue;
+                }
+                let marker = data[i + 1];
+                if matches!(marker, 0xc0..=0xc3 | 0xc5..=0xc7 | 0xc9..=0xcb | 0xcd..=0xcf) {
+                    return Some((be16(i + 7)?, be16(i + 5)?));
+                }
+                if marker == 0xd8 || marker == 0x01 || (0xd0..=0xd7).contains(&marker) {
+                    i += 2;
+                    continue;
+                }
+                i += 2 + be16(i + 2)? as usize;
+            }
+            None
+        }
+    }
+}
+
+/// An image file's type from its first bytes: its extension and media
+/// type.
+pub fn kind_of_image(data: &[u8]) -> Option<(&'static str, &'static str)> {
+    Some(match data {
+        [0x89, b'P', b'N', b'G', ..] => ("png", "image/png"),
+        [0xff, 0xd8, 0xff, ..] => ("jpeg", "image/jpeg"),
+        [b'G', b'I', b'F', b'8', ..] => ("gif", "image/gif"),
+        [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'E', b'B', b'P', ..] => ("webp", "image/webp"),
+        [b'B', b'M', ..] => ("bmp", "image/bmp"),
+        _ => return None,
+    })
 }
 
 /// A tab stop: where, and how it lines up the text after a tab.
@@ -252,6 +336,14 @@ impl Document {
 fn tidy(paragraphs: Vec<Paragraph>) -> Vec<Paragraph> {
     let mut out = Vec::with_capacity(paragraphs.len());
     for mut p in paragraphs {
+        // A picture: alone in its paragraph, which keeps its alignment.
+        if let Some(picture) = p.picture.take() {
+            if picture.data.is_empty() {
+                continue;
+            }
+            out.push(Paragraph { picture: Some(picture), align: p.align, ..Paragraph::default() });
+            continue;
+        }
         if let Some(mut t) = p.table.take() {
             t.rows.retain(|r| !r.is_empty());
             if t.rows.is_empty() {
@@ -343,6 +435,19 @@ mod tests {
     use super::*;
 
     /// A document using everything the model has.
+    /// A picture: a 16-pixel icon, set at 48 points.
+    pub(crate) fn printer() -> Picture {
+        Picture { data: include_bytes!("../../../data/icons/16/printer.png").to_vec(), width: 48.0, height: 48.0, alt: "A printer".into() }
+    }
+
+    #[test]
+    fn pictures_kinds_and_sizes() {
+        let p = printer();
+        assert_eq!(p.kind(), Some(("png", "image/png")));
+        assert_eq!(pixels(&p.data), Some((16, 16)));
+        assert_eq!(kind_of_image(b"hello"), None);
+    }
+
     pub(crate) fn sample() -> Document {
         let plain = Span::default();
         let p = |kind, spans: Vec<Span>| Paragraph { kind, spans, ..Default::default() };
@@ -395,6 +500,7 @@ mod tests {
                     }),
                     ..Default::default()
                 },
+                Paragraph { align: Align::Center, picture: Some(printer()), ..Default::default() },
                 p(Kind::Heading3, vec![plain.with_text("Last")]),
                 p(Kind::Body, vec![]),
             ],

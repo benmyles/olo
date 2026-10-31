@@ -94,6 +94,15 @@ pub fn zip_text(z: &mut zip::ZipArchive<std::io::Cursor<&[u8]>>, name: &str) -> 
     Some(s)
 }
 
+/// A file in the zip as it is (a picture), if it's there.
+pub fn zip_bytes(z: &mut zip::ZipArchive<std::io::Cursor<&[u8]>>, name: &str) -> Option<Vec<u8>> {
+    use std::io::Read;
+    let mut f = z.by_name(name).ok()?;
+    let mut v = Vec::new();
+    f.read_to_end(&mut v).ok()?;
+    Some(v)
+}
+
 /// Monospaced, by a font's name.
 pub fn is_mono(font: &str) -> bool {
     let f = font.to_ascii_lowercase();

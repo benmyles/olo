@@ -10,7 +10,7 @@
 
 use std::{collections::HashMap, fmt::Write as _};
 
-use crate::{Align, Document, Kind, List, Paragraph, Span, Tab, TabAlign, Table, xml::is_mono};
+use crate::{Align, Document, Kind, List, Paragraph, Picture, Span, Tab, TabAlign, Table, xml::is_mono};
 
 /// Twips (twentieths of a point) in half an inch: an indent level.
 const LEVEL: i32 = 720;
@@ -330,6 +330,9 @@ fn paragraph(out: &mut String, p: &Paragraph, numbered_list: u32, counts: &mut [
     if let Some(m) = marker {
         let _ = write!(out, "{{\\listtext\\pard\\plain{} {}\\tab}}", char_look(Kind::Body), text(&m));
     }
+    if let Some(pic) = &p.picture {
+        picture(out, pic);
+    }
     let mut i = 0;
     while i < p.spans.len() {
         match &p.spans[i].link {
@@ -349,6 +352,25 @@ fn paragraph(out: &mut String, p: &Paragraph, numbered_list: u32, counts: &mut [
         }
     }
     out.push_str(if cell == Some(true) { "\\cell\n" } else { "\\par\n" });
+}
+
+/// A PNG or JPEG as `\\pict`, its bytes in hex, as big as it is on the
+/// page; other kinds of picture RTF readers don't take are left out.
+fn picture(out: &mut String, pic: &Picture) {
+    let blip = match pic.kind() {
+        Some(("png", _)) => "\\pngblip",
+        Some(("jpeg", _)) => "\\jpegblip",
+        _ => return,
+    };
+    let (w, h) = crate::pixels(&pic.data).unwrap_or((0, 0));
+    let _ = write!(out, "{{\\*\\shppict{{\\pict{blip}\\picw{w}\\pich{h}\\picwgoal{}\\pichgoal{}", twips(pic.width), twips(pic.height));
+    for (k, b) in pic.data.iter().enumerate() {
+        if k % 64 == 0 {
+            out.push('\n');
+        }
+        let _ = write!(out, "{b:02x}");
+    }
+    out.push_str("}}");
 }
 
 fn run(out: &mut String, s: &Span, link: bool, t: &mut Tables) {
@@ -402,6 +424,8 @@ enum Dest {
     FieldInst,
     /// The page's header (0) or footer (1).
     Page(usize),
+    /// A picture's description and data (`\\pict`).
+    Pict,
     /// Word 95's list numbering for the paragraph.
     Numbering,
 }
@@ -551,10 +575,27 @@ struct Reader {
     cell: Vec<Paragraph>,
     /// The page's header's and footer's text (`Dest::Page`).
     margins: [Option<String>; 2],
+    /// The picture being read (`Dest::Pict`), and whether the paragraph
+    /// ended by a `\\par` was one already pushed.
+    pict: Option<Pict>,
+    pictured: bool,
     /// The row being defined repeats at the top of each page.
     row_header: bool,
     /// Its cells' right edges (twips).
     row_edges: Vec<i32>,
+}
+
+/// A `\\pict` being read: its type, its data's bytes (a hex digit
+/// waiting for its pair), its size in pixels, as wanted (twips) and its
+/// scale (percent).
+#[derive(Default)]
+struct Pict {
+    kind: Option<&'static str>,
+    data: Vec<u8>,
+    nibble: Option<u8>,
+    px: (i32, i32),
+    goal: (i32, i32),
+    scale: (i32, i32),
 }
 
 pub fn read(bytes: &[u8]) -> Result<Document, String> {
@@ -588,6 +629,8 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
         row: Vec::new(),
         cell: Vec::new(),
         margins: [None, None],
+        pict: None,
+        pictured: false,
         row_header: false,
         row_edges: Vec::new(),
     };
@@ -758,6 +801,14 @@ impl Reader {
                     t.push(c);
                 }
             }
+            Dest::Pict => {
+                if let (Some(p), Some(v)) = (&mut self.pict, c.to_digit(16)) {
+                    match p.nibble.take() {
+                        Some(hi) => p.data.push(hi << 4 | v as u8),
+                        None => p.nibble = Some(v as u8),
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -767,6 +818,7 @@ impl Reader {
         if self.st.hidden {
             return;
         }
+        self.pictured = false;
         let st = &self.st;
         let (font, monospace) = match self.fonts.get(&st.font) {
             Some((name, _)) if st.font != self.deff => {
@@ -835,6 +887,31 @@ impl Reader {
                 }
             }
             Dest::Numbering => self.st.numbering = self.numbering_now.take(),
+            Dest::Pict => {
+                // A PNG or JPEG: a paragraph of its own, as big as it
+                // wants to be (else its pixels at 96 per inch), placed as
+                // the paragraph it's in is.
+                let Some(p) = self.pict.take() else { return };
+                let Some(_) = p.kind.filter(|_| !p.data.is_empty()) else { return };
+                let size = |goal: i32, px: i32, scale: i32| {
+                    let pt = if goal > 0 { goal as f32 / 20.0 } else { px.max(1) as f32 * 0.75 };
+                    pt * if scale > 0 { scale as f32 / 100.0 } else { 1.0 }
+                };
+                let picture = Picture { width: size(p.goal.0, p.px.0, p.scale.0), height: size(p.goal.1, p.px.1, p.scale.1), data: p.data, alt: String::new() };
+                if !self.spans.is_empty() {
+                    let align = self.st.align;
+                    self.end_paragraph();
+                    self.st.align = align;
+                }
+                let para = Paragraph { picture: Some(picture), align: self.st.align, ..Paragraph::default() };
+                if self.st.intbl {
+                    self.cell.push(para);
+                } else {
+                    self.end_table();
+                    self.paragraphs.push(para);
+                }
+                self.pictured = true;
+            }
             _ => {}
         }
     }
@@ -869,6 +946,13 @@ impl Reader {
             }
             // The Unicode text of `\upr`'s pair (the other is skipped).
             "ud" => return self.st.dest = Dest::Text,
+            // A picture (Word's own: `\*\shppict` around it; the
+            // `\nonshppict` beside it is for older readers).
+            "pict" if dest == Dest::Text => {
+                self.pict = Some(Pict { scale: (100, 100), ..Pict::default() });
+                return self.st.dest = Dest::Pict;
+            }
+            "shppict" => return,
             "upr" => return self.st.dest = Dest::Skip,
             "info" | "pict" | "headerl" | "headerf" | "footerl" | "footerf" | "footnote"
             | "object" | "xe" | "tc" | "txe" | "rxe" | "annotation" | "atnid" | "atnauthor" | "listtext" | "pntext" | "nonshppict"
@@ -878,6 +962,21 @@ impl Reader {
         }
         match dest {
             Dest::Skip | Dest::FieldInst => {}
+            Dest::Pict => {
+                if let Some(p) = &mut self.pict {
+                    match word {
+                        "pngblip" => p.kind = Some("png"),
+                        "jpegblip" => p.kind = Some("jpeg"),
+                        "picw" => p.px.0 = n,
+                        "pich" => p.px.1 = n,
+                        "picwgoal" => p.goal.0 = n,
+                        "pichgoal" => p.goal.1 = n,
+                        "picscalex" => p.scale.0 = n,
+                        "picscaley" => p.scale.1 = n,
+                        _ => {}
+                    }
+                }
+            }
             // A header's or footer's text: its tabs, breaks and characters.
             Dest::Page(k) => {
                 let c = match word {
@@ -1029,6 +1128,8 @@ impl Reader {
             "outlinelevel" => st.outline = Some(n),
             "intbl" => st.intbl = true,
             "itap" => st.intbl = n > 0,
+            // (The picture's own paragraph ended already.)
+            "par" if self.pictured && self.spans.is_empty() => self.pictured = false,
             "par" => self.end_paragraph(),
             "line" => self.text('\n'),
             // (A table in a cell: its cells a tab apart.)
@@ -1151,7 +1252,7 @@ impl Reader {
                 }
             }
         }
-        Paragraph { kind, list, indent, align: st.align, spans, table: None, left, first, right, tabs }
+        Paragraph { kind, list, indent, align: st.align, spans, table: None, left, first, right, tabs, picture: None }
     }
 }
 
@@ -1161,8 +1262,14 @@ mod tests {
 
     #[test]
     fn round_trip() {
-        let doc = crate::tests::sample();
+        let mut doc = crate::tests::sample();
         let back = read(&write(&doc).unwrap()).unwrap();
+        // (RTF keeps no picture's description.)
+        for p in &mut doc.paragraphs {
+            if let Some(pic) = &mut p.picture {
+                pic.alt.clear();
+            }
+        }
         assert_eq!(back, doc);
     }
 
@@ -1176,7 +1283,8 @@ mod tests {
     }
 
     /// As Word writes it: code pages, a style sheet, a list table, a
-    /// link, a table, a picture and a header to leave out.
+    /// link, a picture (its older readers' copy left out), a table and a
+    /// header.
     #[test]
     fn reads_what_word_writes() {
         let rtf = br#"{\rtf1\ansi\ansicpg1252\deff0\deflang1033{\fonttbl{\f0\froman\fcharset0 Times New Roman;}{\f1\fswiss\fcharset204{\*\falt Arial} Arial Cyr;}{\f2\fmodern\fcharset0 Consolas;}}
@@ -1197,8 +1305,12 @@ mod tests {
 \pard\li1440 \ldblquote quoted\rdblquote  \emdash  done\par
 }"#;
         let doc = read(rtf).unwrap();
-        assert_eq!(texts(&doc), ["Café naïve", "Plain bold and red Привет code", "first", "one", "See the site.", "A1\tB1", "\u{201C}quoted\u{201D} \u{2014} done"]);
-        assert!(doc.paragraphs[5].table.is_some());
+        assert_eq!(texts(&doc), ["Café naïve", "Plain bold and red Привет code", "first", "one", "See the site.", "", "A1\tB1", "\u{201C}quoted\u{201D} \u{2014} done"]);
+        // The picture: its pixels at 96 per inch, centred as the
+        // paragraph it's in was.
+        let pic = doc.paragraphs[5].picture.as_ref().expect("the picture");
+        assert_eq!((pic.data.len(), pic.width, pic.height, doc.paragraphs[5].align), (6, 7.5, 7.5, Align::Center));
+        assert!(doc.paragraphs[6].table.is_some());
         assert_eq!(doc.font.as_deref(), Some("Times New Roman"));
         let p = &doc.paragraphs;
         assert_eq!(p[0].kind, Kind::Heading1);
@@ -1213,7 +1325,7 @@ mod tests {
         let link = p[4].spans.iter().find(|s| s.text == "the site").unwrap();
         assert_eq!(link.link.as_deref(), Some("https://example.com/"));
         assert!(!link.underline && link.color.is_none());
-        assert_eq!(p[6].indent, 2);
+        assert_eq!(p[7].indent, 2);
     }
 
     /// Each paragraph's text; a table's rows a line each, cells a tab

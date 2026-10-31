@@ -6,6 +6,7 @@
 mod convert;
 mod doc;
 mod pages;
+mod pictures;
 mod table;
 mod fonts;
 
@@ -57,6 +58,9 @@ enum Msg {
     OnDisk(Vec<PathBuf>),
     /// A formatted document read in: its text, runs and paragraphs.
     Imported(PathBuf, Result<Imported, String>),
+    /// A picture to put in document `.0` at its selection: its file and
+    /// its size in pixels.
+    Picture(WindowId, PathBuf, Option<(u32, u32)>),
     /// A copy written in another format.
     Exported(PathBuf, Result<(), String>),
     /// A document sent to a printer (its title).
@@ -110,6 +114,10 @@ struct Styled<'a> {
     fonts: &'a mut fonts::Fonts,
     ctx: &'a egui::Context,
     base: Color32,
+    /// Its pictures' textures, and the folder their relative paths are
+    /// from (the document's).
+    pictures: &'a mut pictures::Pictures,
+    folder: Option<&'a Path>,
 }
 
 impl editor::Document for Styled<'_> {
@@ -121,7 +129,12 @@ impl editor::Document for Styled<'_> {
         self.doc.sections(range, self.base, &mut |s| fonts.family(ctx, s), job);
     }
     fn paragraph(&mut self, range: Range<usize>) -> editor::Paragraph {
-        self.doc.format(self.doc.para_index(range.start), self.doc.align)
+        let mut f = self.doc.format(self.doc.para_index(range.start), self.doc.align);
+        for (at, pic) in self.doc.pictures_in(range) {
+            let texture = self.pictures.texture(&pic.resolve(self.folder));
+            f.pictures.push((at, editor::Picture { texture, size: vec2(pic.width, pic.height) }));
+        }
+        f
     }
     fn replace(&mut self, range: Range<usize>, text: &str, selection: Range<usize>) {
         self.doc.edit(range, text, selection);
@@ -172,7 +185,8 @@ impl DocWin {
         {
             return Some(*w);
         }
-        let count = |t: &str| t.split_whitespace().count();
+        // (A picture isn't a word.)
+        let count = |t: &str| t.split(|c: char| c.is_whitespace() || c == editor::PICTURE).filter(|w| !w.is_empty()).count();
         let text = self.doc.text();
         let w = ((!sel.is_empty()).then(|| count(&text[sel.clone()])), count(text));
         self.words = Some((key, w));
@@ -261,6 +275,8 @@ enum Purpose {
     Import,
     /// A copy in another format.
     Export(Format),
+    /// A picture to put in.
+    Picture,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -328,6 +344,8 @@ struct StyledEdit {
     pdf_setup: Option<(olo_print::Paper, Option<(u32, u32)>)>,
     /// New windows show the ruler (as the last one shown or hidden).
     ruler: bool,
+    /// The documents' pictures' textures.
+    pictures: pictures::Pictures,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -485,6 +503,25 @@ impl StyledEdit {
                     0,
                 ),
             ),
+            Purpose::Picture => (
+                "Insert Picture",
+                FilePanel::open(dir).filters(
+                    vec![Filter::new("Pictures")
+                        .glob("*.png")
+                        .glob("*.jpg")
+                        .glob("*.jpeg")
+                        .glob("*.gif")
+                        .glob("*.webp")
+                        .glob("*.bmp")
+                        .glob("*.tif")
+                        .glob("*.tiff")
+                        .glob("*.heic")
+                        .glob("*.avif")
+                        .glob("*.jxl")
+                        .mime("image/")],
+                    0,
+                ),
+            ),
             Purpose::Export(f) => {
                 // The document's name, in the format's extension.
                 let title = d.map(|d| d.title()).unwrap_or_default();
@@ -508,7 +545,7 @@ impl StyledEdit {
                     (text, runs, paras, page)
                 }),
                 None => std::fs::read(&path).map_err(|e| e.to_string()).map(|bytes| {
-                    let (text, runs, paras) = convert::from_markdown(&String::from_utf8_lossy(&bytes));
+                    let (text, runs, paras) = convert::from_markdown_in(&String::from_utf8_lossy(&bytes), path.parent());
                     (text, runs, paras, None)
                 }),
             };
@@ -691,6 +728,17 @@ impl StyledEdit {
         cx.activate(doc);
     }
 
+    /// Put the picture at `path` in document `doc` (at its selection), its
+    /// size read on a worker; `px` if known already.
+    fn put_picture(&mut self, cx: &mut Cx, doc: WindowId, path: PathBuf, px: Option<(u32, u32)>) {
+        let proxy = cx.proxy();
+        std::thread::spawn(move || {
+            let px = px.or_else(|| pictures::pixels(&path));
+            proxy.send(Msg::Picture(doc, path, px));
+        });
+        cx.activate(doc);
+    }
+
     /// Find the search text from the selection; false if it isn't there.
     fn find_next(&mut self, win: WindowId) -> bool {
         let s = &self.search;
@@ -762,6 +810,8 @@ impl StyledEdit {
             .separator()
             .item("Close", "close", Some(Key::W))
             .item("Quit", "quit", Some(Key::Q));
+        // The picture selected, alone.
+        let picked = picture_selected(&d.doc, d.bytes());
         let edit = Menu::new("Edit")
             .item("Undo", "undo", Some(Key::Z))
             .enabled(editable && d.doc.can_undo())
@@ -776,6 +826,16 @@ impl StyledEdit {
             .enabled(editable)
             .item("Clear", "clear", None)
             .enabled(editable && has_sel)
+            .separator()
+            .item("Insert Picture…", "insert-picture", None)
+            .enabled(editable)
+            .submenu(
+                Menu::new("Picture Size")
+                    .item("Fit Page Width", "picture:fit", None)
+                    .item("Larger", "picture:larger", None)
+                    .item("Smaller", "picture:smaller", None)
+                    .all_enabled(editable && picked.is_some()),
+            )
             .separator()
             .item("Select All", "select-all", Some(Key::A))
             .separator()
@@ -968,7 +1028,9 @@ impl StyledEdit {
                 }
                 return;
             }
-            "paste" => return cx.paste(win),
+            // A picture on the clipboard goes in as one; else its text.
+            "paste" => return cx.paste_data(win, &["image/png", "image/jpeg", "image/"]),
+            "insert-picture" => return self.open_panel(cx, Some(win), Purpose::Picture),
             "spelling" => {
                 self.spelling = !self.spelling;
                 for w in self.windows.keys().copied().collect::<Vec<_>>() {
@@ -1023,6 +1085,19 @@ impl StyledEdit {
             "select-all" => {
                 let all = 0..d.doc.text().len();
                 d.editor.select(d.doc.text(), all);
+            }
+            c if c.starts_with("picture:") => {
+                let Some(pic) = picture_selected(&d.doc, bytes.clone()) else { return };
+                let k = match c {
+                    "picture:fit" => PICTURE_ROOM.0 / pic.width,
+                    "picture:larger" => 1.25,
+                    _ => 0.8,
+                };
+                restyle(d, &|s| {
+                    if let Some(p) = &mut s.picture {
+                        (p.width, p.height) = ((p.width * k).round().max(4.0), (p.height * k).round().max(4.0));
+                    }
+                });
             }
             "bold" => {
                 let on = !d.doc.style_at(bytes.start).bold;
@@ -1201,8 +1276,9 @@ impl StyledEdit {
             background: Some(p.document_background),
             spelling: self.spelling,
         };
-        let DocWin { doc, editor, .. } = &mut **d;
-        let mut styled = Styled { doc, fonts: &mut self.fonts, ctx: &ui.ctx().clone(), base: c(p.document_text) };
+        let DocWin { doc, editor, path, .. } = &mut **d;
+        let folder = path.as_deref().and_then(Path::parent);
+        let mut styled = Styled { doc, fonts: &mut self.fonts, ctx: &ui.ctx().clone(), base: c(p.document_text), pictures: &mut self.pictures, folder };
         let out = editor.show(ui, area, &mut styled, &options);
         // A marker held on the ruler: where it goes, down the text.
         if let Some(x) = guide {
@@ -1364,6 +1440,17 @@ impl StyledEdit {
     }
 }
 
+/// The picture that is the selection (its character alone), if it is one.
+fn picture_selected(doc: &Doc, sel: Range<usize>) -> Option<doc::Picture> {
+    (doc.text().get(sel.clone())? == editor::PICTURE.to_string()).then(|| doc.style_at(sel.end).picture).flatten()
+}
+
+/// A picture file, by its name.
+fn is_picture(p: &Path) -> bool {
+    let ext = p.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "tif" | "tiff" | "heic" | "heif" | "avif" | "jxl")
+}
+
 /// Titles for alphabetical groups of names, like a dictionary's guide
 /// words: each end is cut to the shortest prefix that tells it from the
 /// neighbouring group ("Jo – Noto Sans Ar").
@@ -1399,6 +1486,9 @@ const REPLACE_H: f32 = FIND_H + m::CONTROL_HEIGHT + m::TIGHT + m::MARK_ROW + m::
 const MARGINS_W: f32 = 420.0;
 const MARGINS_H: f32 = 2.0 * m::WINDOW_INSET + 2.0 * (m::MARK_ROW + 3.0 * (m::TIGHT + m::CONTROL_HEIGHT)) + m::SPACING + m::SPACING + m::MARK_ROW + m::SPACING + m::CONTROL_HEIGHT;
 const MARGINS_DIVIDER: f32 = 56.0;
+/// The most room a picture put in takes at first (points): a US Letter
+/// page's text across, and most of its height.
+const PICTURE_ROOM: (f32, f32) = (468.0, 600.0);
 
 impl App for StyledEdit {
     fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut Ui) {
@@ -1458,7 +1548,8 @@ impl App for StyledEdit {
                         };
                         self.save(cx, doc, Some(path), after);
                     }
-                    (Purpose::SaveAs, None) | (Purpose::Export(_), None) => {}
+                    (Purpose::SaveAs, None) | (Purpose::Export(_), None) | (Purpose::Picture, None) => {}
+                    (Purpose::Picture, Some(doc)) => self.put_picture(cx, doc, path, None),
                     (Purpose::Import, _) => self.import(cx, path),
                     (Purpose::Export(f), Some(doc)) => self.export(cx, doc, path, f),
                 }
@@ -1521,15 +1612,51 @@ impl App for StyledEdit {
         }
     }
 
-    fn dropped(&mut self, cx: &mut Cx, _window: WindowId, drop: olo_kit::dnd::Drop) {
+    fn dropped(&mut self, cx: &mut Cx, window: WindowId, drop: olo_kit::dnd::Drop) {
+        let editable = matches!(self.windows.get(&window), Some(Win::Doc(d)) if !d.loading && !d.read_only);
         for p in drop.paths() {
-            self.open_file(cx, p);
+            // A picture dropped on a document goes in it (at the caret);
+            // anything else opens.
+            if editable && is_picture(&p) {
+                self.put_picture(cx, window, p, None);
+            } else {
+                self.open_file(cx, p);
+            }
         }
     }
 
     fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
         let message = match message.downcast::<Launch>() {
             Ok(launch) => return self.handle_args(cx, &launch.args, launch.cwd.as_deref()),
+            Err(m) => m,
+        };
+        // The clipboard's picture, or (none) its text.
+        let message = match message.downcast::<olo_kit::Pasted>() {
+            Ok(p) => {
+                match p.data {
+                    Some((mime, data)) if mime.starts_with("image/") => {
+                        let (proxy, win) = (cx.proxy(), p.window);
+                        std::thread::spawn(move || {
+                            if let Some(path) = pictures::hold(&data) {
+                                let px = pictures::pixels(&path);
+                                proxy.send(Msg::Picture(win, path, px));
+                            }
+                        });
+                    }
+                    _ => cx.paste(p.window),
+                }
+                return;
+            }
+            Err(m) => m,
+        };
+        // A picture decoded: drawn from now on.
+        let message = match message.downcast::<pictures::Loaded>() {
+            Ok(l) => {
+                if let Some(ctx) = &self.ctx {
+                    self.pictures.loaded(ctx, *l);
+                }
+                return cx.redraw_all();
+            }
             Err(m) => m,
         };
         let Ok(msg) = message.downcast::<Msg>() else { return };
@@ -1614,6 +1741,21 @@ impl App for StyledEdit {
                 }
                 Err(e) => self.show_error(cx, format!("“{}” couldn't be imported. {e}", file_name(&path))),
             },
+            Msg::Picture(win, path, px) => {
+                let Some(Win::Doc(d)) = self.windows.get_mut(&win) else { return };
+                if px.is_none() {
+                    let message = format!("“{}” isn't a picture StyledEdit can read.", file_name(&path));
+                    return self.show_error(cx, message);
+                }
+                let (width, height) = pictures::fit(px.unwrap_or((1, 1)), PICTURE_ROOM.0, PICTURE_ROOM.1);
+                let alt = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+                let sel = d.bytes();
+                let pic = doc::Picture { path: path.to_string_lossy().into_owned(), width, height, alt };
+                let change = d.doc.insert_picture(sel.clone(), pic, sel.clone());
+                let after = sel.start + change.inserted;
+                d.changed(change, after..after);
+                cx.redraw(win);
+            }
             Msg::Printed(title, result) => {
                 if let Err(e) = result {
                     self.show_error(cx, format!("“{title}” couldn't be printed. {e}"));
@@ -1716,7 +1858,9 @@ fn main() {
         instance::listen(APP_ID, cx.proxy());
         let proxy = cx.proxy();
         let fonts = fonts::Fonts::start(move |e| proxy.send(Msg::Fonts(e)));
-        let mut app = StyledEdit { windows: HashMap::new(), fonts, search: Search { wrap: true, ..Search::default() }, untitled: 0, watch: None, spelling: true, ctx: None, pdf_setup: None, ruler: true };
+        let mut pictures = pictures::Pictures::default();
+        pictures.set_proxy(cx.proxy());
+        let mut app = StyledEdit { windows: HashMap::new(), fonts, search: Search { wrap: true, ..Search::default() }, untitled: 0, watch: None, spelling: true, ctx: None, pdf_setup: None, ruler: true, pictures };
         match cx.restored_state().and_then(|s| serde_json::from_str::<Vec<SavedDoc>>(&s).ok()) {
             Some(docs) if !docs.is_empty() => app.restore(cx, docs),
             _ => app.handle_args(cx, &args, None),

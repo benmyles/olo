@@ -183,6 +183,7 @@ impl GalleyCache {
                 round_output_to_gui: job.round_output_to_gui,
                 keep_trailing_whitespace: job.keep_trailing_whitespace,
                 tabs: job.tabs.clone(),
+                advances: job.advances.iter().filter(|(b, _)| (start..end).contains(b)).map(|&(b, w)| (b - start, w)).collect(),
             };
 
             // Add overlapping sections:

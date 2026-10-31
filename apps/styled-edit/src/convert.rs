@@ -10,8 +10,18 @@ use crate::doc::{Align, DEFAULT_SIZE, Kind, List, MONOSPACE, Para, Row, Run, Sty
 const LINK: [u8; 3] = [0x1f, 0x5f, 0xc4];
 
 /// A Markdown document as text, runs and paragraphs.
+#[cfg(test)]
 pub fn from_markdown(source: &str) -> (String, Vec<Run>, Vec<Para>) {
+    from_markdown_in(source, None)
+}
+
+/// [`from_markdown`], its pictures' paths (where they're relative) from
+/// folder `dir` (the file's): each one there goes in, its alt text its
+/// description. On a worker (a picture's size is read from it).
+pub fn from_markdown_in(source: &str, dir: Option<&std::path::Path>) -> (String, Vec<Run>, Vec<Para>) {
     use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+    // The picture being read: its file, and its alt text so far.
+    let mut image: Option<(String, String)> = None;
     let mut b = Builder::default();
     let options = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS | Options::ENABLE_GFM;
     // Lists open (numbered or not), quotes open, inline styles on.
@@ -97,6 +107,30 @@ pub fn from_markdown(source: &str) -> (String, Vec<Run>, Vec<Para>) {
             Event::End(TagEnd::Strong) => bold -= 1,
             Event::Start(Tag::Strikethrough) => strike += 1,
             Event::End(TagEnd::Strikethrough) => strike -= 1,
+            Event::Start(Tag::Image { dest_url, .. }) => image = Some((dest_url.to_string(), String::new())),
+            Event::Text(t) if image.is_some() => {
+                if let Some((_, alt)) = &mut image {
+                    alt.push_str(&t);
+                }
+            }
+            Event::End(TagEnd::Image) => {
+                let Some((url, alt)) = image.take() else { continue };
+                // A file here (not a web address), as big as it is.
+                let url = url.strip_prefix("file://").unwrap_or(&url).replace("%20", " ");
+                if url.contains("://") {
+                    continue;
+                }
+                let path = match dir {
+                    Some(d) if std::path::Path::new(&url).is_relative() => d.join(&url),
+                    _ => std::path::PathBuf::from(&url),
+                };
+                if let Some(px) = crate::pictures::pixels(&path) {
+                    let (width, height) = crate::pictures::fit(px, 468.0, 600.0);
+                    let picture = crate::doc::Picture { path: path.to_string_lossy().into_owned(), width, height, alt };
+                    let style = Style { picture: Some(picture), ..b.base() };
+                    b.text(&olo_kit::editor::PICTURE.to_string(), &style);
+                }
+            }
             Event::Start(Tag::Link { dest_url, .. }) => links.push(dest_url.to_string()),
             Event::End(TagEnd::Link) => {
                 links.pop();
@@ -254,7 +288,18 @@ pub fn from_rich(doc: olo_richtext::Document) -> (String, Vec<Run>, Vec<Para>) {
             }
             None => {
                 b.start(rich_para(&p));
-                rich_spans(&mut b, &p.spans);
+                match &p.picture {
+                    // A picture: its bytes kept as a file till the
+                    // document is saved (`pictures::hold`).
+                    Some(pic) => {
+                        if let Some(path) = crate::pictures::hold(&pic.data) {
+                            let picture = crate::doc::Picture { path: path.to_string_lossy().into_owned(), width: pic.width, height: pic.height, alt: pic.alt.clone() };
+                            let style = Style { picture: Some(picture), ..b.base() };
+                            b.text(&olo_kit::editor::PICTURE.to_string(), &style);
+                        }
+                    }
+                    None => rich_spans(&mut b, &p.spans),
+                }
             }
         }
     }
@@ -379,7 +424,7 @@ pub fn to_rich(text: &str, runs: &[Run], paras: &[Para], align: Align) -> olo_ri
             List::None => None,
             l => Some(rt::List { numbered: l == List::Number, level: p.level }),
         };
-        let tabs = p
+        let tabs: Vec<rt::Tab> = p
             .tabs
             .iter()
             .map(|t| rt::Tab {
@@ -392,18 +437,43 @@ pub fn to_rich(text: &str, runs: &[Run], paras: &[Para], align: Align) -> olo_ri
                 },
             })
             .collect();
-        doc.paragraphs.push(rt::Paragraph {
+        let para = |spans: Vec<rt::Span>| rt::Paragraph {
             kind,
             list,
             indent: if list.is_none() { p.level } else { 0 },
             align: a,
-            spans: rich(r),
+            spans,
             table: None,
             left: p.left,
             first: p.first,
             right: p.right,
-            tabs,
-        });
+            tabs: tabs.clone(),
+            picture: None,
+        };
+        // Its pictures, each a paragraph of its own between its text's
+        // (as Word and the others have them here).
+        let pictures: Vec<(usize, &crate::doc::Picture)> = spans(runs, r.clone())
+            .filter_map(|(sr, st)| st.picture.as_ref().map(|pic| (sr, pic)))
+            .flat_map(|(sr, pic)| text[sr.clone()].match_indices(olo_kit::editor::PICTURE).map(move |(k, _)| (sr.start + k, pic)).collect::<Vec<_>>())
+            .collect();
+        if pictures.is_empty() {
+            doc.paragraphs.push(para(rich(r)));
+            continue;
+        }
+        let mut from = r.start;
+        for (at, pic) in pictures {
+            if !text[from..at].trim().is_empty() {
+                doc.paragraphs.push(para(rich(from..at)));
+            }
+            if let Some(data) = crate::pictures::export_bytes(std::path::Path::new(&pic.path), false) {
+                let picture = rt::Picture { data, width: pic.width, height: pic.height, alt: pic.alt.clone() };
+                doc.paragraphs.push(rt::Paragraph { align: a, picture: Some(picture), ..rt::Paragraph::default() });
+            }
+            from = at + olo_kit::editor::PICTURE.len_utf8();
+        }
+        if !text[from..r.end].trim().is_empty() {
+            doc.paragraphs.push(para(rich(from..r.end)));
+        }
     }
     if let Some(t) = table.take() {
         doc.paragraphs.push(rt::Paragraph { table: Some(t), ..rt::Paragraph::default() });
@@ -523,15 +593,30 @@ fn inline_markdown(text: &str, runs: &[Run], range: Range<usize>, heading: bool,
     // Spans with the same marks run together.
     type Marks<'a> = (bool, bool, bool, bool, Option<&'a str>);
     let mut parts: Vec<(String, Marks)> = Vec::new();
+    // Pictures, as Markdown has them, written as they are.
+    let mut raw: Vec<usize> = Vec::new();
     for (r, s) in spans(runs, range) {
+        if let Some(pic) = &s.picture {
+            for _ in text[r].chars().filter(|&c| c == olo_kit::editor::PICTURE) {
+                raw.push(parts.len());
+                let alt = pic.alt.replace(['[', ']'], "");
+                parts.push((format!("![{alt}]({})", pic.path.replace(' ', "%20").replace(')', "%29")), (false, false, false, false, None)));
+            }
+            continue;
+        }
         let marks = (s.family == MONOSPACE, s.bold && !heading, s.italic && !quote, s.strikeout, s.link.as_deref());
+        let last_raw = parts.len().checked_sub(1).is_some_and(|k| raw.contains(&k));
         match parts.last_mut() {
-            Some((t, m)) if *m == marks => t.push_str(&text[r]),
+            Some((t, m)) if *m == marks && !last_raw => t.push_str(&text[r]),
             _ => parts.push((text[r].to_owned(), marks)),
         }
     }
     let mut out = String::new();
     for (k, (t, (code, bold, italic, strike, link))) in parts.into_iter().enumerate() {
+        if raw.contains(&k) {
+            out.push_str(&t);
+            continue;
+        }
         // Marks hug the text: spaces at either end go outside them.
         let body = t.trim();
         let (lead, tail) = (&t[..t.len() - t.trim_start().len()], &t[t.trim_end().len()..]);
@@ -577,6 +662,19 @@ fn escape_markdown(s: &str, line_start: bool) -> String {
             out.push('\\');
         }
         out.push(c);
+    }
+    out
+}
+
+/// `data` as base64 (a picture in a web page).
+fn base64(data: &[u8]) -> String {
+    const ABC: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for c in data.chunks(3) {
+        let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
+        for k in 0..4 {
+            out.push(if k <= c.len() { ABC[(n >> (18 - 6 * k) & 63) as usize] as char } else { '=' });
+        }
     }
     out
 }
@@ -709,6 +807,14 @@ pub fn to_html(text: &str, runs: &[Run], paras: &[Para], title: &str, align: Ali
 }
 
 fn inline_html(t: &str, s: &Style, heading: bool, kind: Kind) -> String {
+    // A picture: the page holds it (its bytes, so the page is one file).
+    if let Some(pic) = &s.picture {
+        let img = crate::pictures::export_bytes(std::path::Path::new(&pic.path), true).map(|data| {
+            let mime = olo_richtext::kind_of_image(&data).map_or("image/png", |k| k.1);
+            format!("<img src=\"data:{mime};base64,{}\" width=\"{}\" height=\"{}\" alt=\"{}\">", base64(&data), pic.width.round(), pic.height.round(), escape_html(&pic.alt))
+        });
+        return t.chars().filter(|&c| c == olo_kit::editor::PICTURE).map(|_| img.clone().unwrap_or_default()).collect();
+    }
     let mut css = Vec::new();
     // What the paragraph's kind gives it isn't said again.
     let mut base = Style::default();
@@ -854,5 +960,46 @@ mod tests {
             assert_eq!((paras[0].left, paras[0].first, paras[0].right), (18.0, 36.0, 9.0));
             assert_eq!(paras[0].tabs, para.tabs);
         }
+    }
+
+    /// A document with a picture between two lines of text.
+    fn with_picture() -> (String, Vec<Run>, Vec<Para>, String) {
+        let file = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/icons/16/printer.png").to_owned();
+        let pic = crate::doc::Picture { path: file.clone(), width: 48.0, height: 48.0, alt: "A printer".into() };
+        let text = "Above\n\u{FFFC}\nBelow".to_owned();
+        let runs = vec![
+            Run { len: 6, style: Style::default() },
+            Run { len: 3, style: Style { picture: Some(pic), ..Style::default() } },
+            Run { len: 6, style: Style::default() },
+        ];
+        let paras = vec![Para::default(), Para { align: Some(Align::Center), ..Para::default() }, Para::default()];
+        (text, runs, paras, file)
+    }
+
+    #[test]
+    fn pictures_in_every_format() {
+        let (text, runs, paras, file) = with_picture();
+        // Word and the others: a picture paragraph, centred, its bytes.
+        let rich = to_rich(&text, &runs, &paras, Align::Left);
+        assert_eq!(rich.paragraphs.len(), 3);
+        let pic = rich.paragraphs[1].picture.as_ref().expect("a picture");
+        assert_eq!((pic.width, pic.height, rich.paragraphs[1].align), (48.0, 48.0, olo_richtext::Align::Center));
+        assert_eq!(pic.data, std::fs::read(&file).unwrap());
+        // Back: its character, the picture its style (a file of its own).
+        let docx = olo_richtext::write_docx(&rich).unwrap();
+        let (t2, r2, p2) = from_rich(olo_richtext::read_docx(&docx).unwrap());
+        assert_eq!(t2, text);
+        let back = r2.iter().find_map(|r| r.style.picture.clone()).expect("a picture");
+        assert_eq!((back.width, back.height, back.alt.as_str()), (48.0, 48.0, "A printer"));
+        assert_eq!(std::fs::read(&back.path).unwrap(), std::fs::read(&file).unwrap());
+        assert_eq!(p2[1].align, Some(Align::Center));
+        // A web page holds it; Markdown points at it, and reads it back.
+        let html = to_html(&text, &runs, &paras, "t", Align::Left);
+        assert!(html.contains("<img src=\"data:image/png;base64,iVBOR") && html.contains("alt=\"A printer\""), "{html}");
+        let md = to_markdown(&text, &runs, &paras);
+        assert!(md.contains(&format!("![A printer]({file})")), "{md}");
+        let (t3, r3, _) = from_markdown_in(&md, None);
+        assert!(t3.contains('\u{FFFC}'));
+        assert!(r3.iter().any(|r| r.style.picture.as_ref().is_some_and(|p| p.path == file && p.width == 12.0)));
     }
 }

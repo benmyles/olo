@@ -34,6 +34,34 @@ pub struct Style {
     /// Where the text links to (from an imported document; kept for
     /// exporting it again).
     pub link: Option<String>,
+    /// A picture: the text is its character (`editor::PICTURE`).
+    pub picture: Option<Picture>,
+}
+
+/// A picture in the text ([`Style::picture`]): its file and how big it
+/// is shown.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Picture {
+    /// Where its file is: from the document's folder when relative
+    /// (`resolve`).
+    pub path: String,
+    /// Points across and down.
+    pub width: f32,
+    pub height: f32,
+    /// What it shows, for whoever can't see it.
+    pub alt: String,
+}
+
+impl Picture {
+    /// Its file, a relative path taken from `folder` (the document's).
+    pub fn resolve(&self, folder: Option<&Path>) -> std::path::PathBuf {
+        let p = Path::new(&self.path);
+        match folder {
+            Some(f) if p.is_relative() => f.join(p),
+            _ => p.to_path_buf(),
+        }
+    }
 }
 
 impl Default for Style {
@@ -47,6 +75,7 @@ impl Default for Style {
             strikeout: false,
             color: None,
             link: None,
+            picture: None,
         }
     }
 }
@@ -505,6 +534,8 @@ impl Doc {
             marker,
             row: None,
             tabs: p.tab_stops(),
+            // (Its pictures' textures are the window's: `Styled::paragraph`.)
+            pictures: Vec::new(),
         }
     }
 
@@ -640,8 +671,12 @@ impl Doc {
             _ => {
                 let style = match &self.typing {
                     Some((pos, style)) if *pos == p => style.clone(),
-                    _ if !removed.is_empty() => self.style_at(p + self.text[p..].chars().next().map_or(0, char::len_utf8)),
-                    _ => self.style_at(p),
+                    _ => {
+                        let mut s = if removed.is_empty() { self.style_at(p) } else { self.style_at(p + self.text[p..].chars().next().map_or(0, char::len_utf8)) };
+                        // (Text typed beside a picture is text.)
+                        s.picture = None;
+                        s
+                    }
                 };
                 vec![Run { len: inserted.len(), style }]
             }
@@ -820,6 +855,44 @@ impl Doc {
         (s.selection, Change { removed, inserted: s.was.len() })
     }
 
+    /// Put picture `pic` in place of bytes `range`: its character in the
+    /// style around it, as one step to undo.
+    pub fn insert_picture(&mut self, range: Range<usize>, pic: Picture, selection: Range<usize>) -> Change {
+        let mut style = self.style_at(range.start);
+        style.picture = Some(pic);
+        style.link = None;
+        let ch = olo_kit::editor::PICTURE.to_string();
+        self.push_undo(range.clone(), ch.len(), selection);
+        self.last_edit = None;
+        let clip = self.clip.take();
+        self.typing = Some((range.start, style));
+        self.splice(range.clone(), &ch);
+        self.typing = None;
+        self.clip = clip;
+        self.redo.clear();
+        self.generation += 1;
+        Change { removed: range, inserted: ch.len() }
+    }
+
+    /// The pictures in bytes `range` (a paragraph): each one's character's
+    /// place from `range.start`, and the picture.
+    pub fn pictures_in(&self, range: Range<usize>) -> Vec<(usize, &Picture)> {
+        let mut out = Vec::new();
+        let mut i = self.starts.partition_point(|&s| s <= range.start).saturating_sub(1);
+        while i < self.runs.len() && self.starts[i] < range.end {
+            if let Some(pic) = &self.runs[i].style.picture {
+                let (a, b) = (self.starts[i].max(range.start), (self.starts[i] + self.runs[i].len).min(range.end));
+                for (k, c) in self.text[a..b].char_indices() {
+                    if c == olo_kit::editor::PICTURE {
+                        out.push((a + k - range.start, pic));
+                    }
+                }
+            }
+            i += 1;
+        }
+        out
+    }
+
     /// Replace `range` (bytes) with `with`, as one undoable step (Replace).
     pub fn replace(&mut self, range: Range<usize>, with: &str, selection: Range<usize>) -> Change {
         self.replace_all(std::slice::from_ref(&range), with, selection).unwrap_or(Change { removed: range.start..range.start, inserted: 0 })
@@ -860,7 +933,24 @@ impl Doc {
         while i < self.runs.len() && self.starts[i] < range.end {
             let (a, b) = (self.starts[i].max(range.start), (self.starts[i] + self.runs[i].len).min(range.end));
             if b > a {
-                job.sections.push(section(a - range.start..b - range.start, &self.runs[i].style, base, family));
+                let style = &self.runs[i].style;
+                match &style.picture {
+                    // A picture's character as big as the picture (and any
+                    // other character in its run as text).
+                    Some(pic) => {
+                        let text = Style { picture: None, ..style.clone() };
+                        for (k, c) in self.text[a..b].char_indices() {
+                            let r = a + k - range.start..a + k + c.len_utf8() - range.start;
+                            if c == olo_kit::editor::PICTURE {
+                                let sec = section(r.clone(), style, base, family);
+                                olo_kit::editor::push_picture(job, r, sec.format, egui::vec2(pic.width, pic.height));
+                            } else {
+                                job.sections.push(section(r, &text, base, family));
+                            }
+                        }
+                    }
+                    None => job.sections.push(section(a - range.start..b - range.start, style, base, family)),
+                }
             }
             i += 1;
         }
@@ -987,7 +1077,10 @@ pub fn load(path: &Path) -> Result<Loaded, String> {
         Ok(t) => (t, false),
         Err(e) => (e.into_bytes().iter().map(|&b| b as char).collect(), true),
     };
-    let runs = get_attr(path, ATTR_STYLES).and_then(|v| serde_json::from_slice::<Vec<Run>>(&v).ok());
+    let mut runs = get_attr(path, ATTR_STYLES).and_then(|v| serde_json::from_slice::<Vec<Run>>(&v).ok());
+    if let Some(runs) = &mut runs {
+        crate::pictures::absolute(runs, path);
+    }
     let paras = get_attr(path, ATTR_PARAS).and_then(|v| serde_json::from_slice::<Vec<Para>>(&v).ok());
     let align = get_attr(path, ATTR_ALIGN).and_then(|v| serde_json::from_slice(&v).ok()).unwrap_or_default();
     let wrap = get_attr(path, ATTR_WRAP).is_none_or(|v| v != b"false");
@@ -1015,7 +1108,7 @@ pub fn save(path: &Path, text: &str, runs: &[Run], paras: &[Para], align: Align,
         // Plain text needs no styles attribute.
         let plain = runs.len() <= 1 && runs.first().is_none_or(|r| r.style == Style::default());
         if !plain {
-            set_attr(&tmp, ATTR_STYLES, &serde_json::to_vec(runs).unwrap_or_default());
+            set_attr(&tmp, ATTR_STYLES, &serde_json::to_vec(&crate::pictures::settle(runs, path)).unwrap_or_default());
         }
         if align != Align::Left {
             set_attr(&tmp, ATTR_ALIGN, &serde_json::to_vec(&align).unwrap_or_default());

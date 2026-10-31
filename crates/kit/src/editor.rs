@@ -31,6 +31,13 @@
 //! [`text_drag`](crate::text_drag)); text dropped on the editor goes in
 //! where it lands, and moves when it came from here.
 //!
+//! A picture is a character in the text (U+FFFC, [`PICTURE`]) that the
+//! document lays out as big as the picture (`Document::sections`: see
+//! [`push_picture`]) and names in [`Paragraph::pictures`]; the editor
+//! draws it there (a frame while it isn't loaded), tinted when selected.
+//! Typed around, deleted, copied and dragged, it is a character like
+//! any other.
+//!
 //! ```ignore
 //! let out = editor.show(ui, rect, &mut doc, &editor::Options::default());
 //! if out.changed { … }
@@ -43,7 +50,7 @@ use std::{
 };
 
 use egui::{
-    Align, CursorIcon, Galley, Id, Pos2, Rect, Response, Sense, Ui, Vec2,
+    Align, Color32, CursorIcon, Galley, Id, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2,
     accesskit,
     epaint::text::{TabStop, TabStops},
     text::{ByteIndex, CCursor, CharIndex, LayoutJob, LayoutSection, TextFormat},
@@ -107,6 +114,41 @@ pub struct Paragraph {
     /// Where its tabs go, from the text's left edge (as a ruler shows
     /// them); None: a stop every four spaces, as in code.
     pub tabs: Option<TabStops>,
+    /// Its pictures: each one's character ([`PICTURE`]), in bytes from the
+    /// paragraph's start, and how it is drawn there.
+    pub pictures: Vec<(usize, Picture)>,
+}
+
+/// The character a picture is in the text.
+pub const PICTURE: char = '\u{FFFC}';
+
+/// A picture as the editor draws it ([`Paragraph::pictures`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Picture {
+    /// Its texture; None while it's loading (or couldn't be): a frame.
+    pub texture: Option<egui::TextureId>,
+    /// Points across and down.
+    pub size: Vec2,
+}
+
+/// A picture's character ([`PICTURE`], at bytes `range` of `job`'s
+/// text) laid out so it takes the picture's room: in `format` (its
+/// style's) made unseen (the editor draws the picture over it), as high
+/// as the picture, and as wide (`LayoutJob::advances`, whatever the
+/// font's U+FFFC is like).
+pub fn push_picture(job: &mut LayoutJob, range: Range<usize>, format: TextFormat, size: Vec2) {
+    job.advances.push((range.start, size.x));
+    job.sections.push(LayoutSection { leading_space: 0.0, byte_range: ByteIndex(range.start)..ByteIndex(range.end), format: picture_format(format, size) });
+}
+
+fn picture_format(mut format: TextFormat, size: Vec2) -> TextFormat {
+    format.font_id.size = 1.0;
+    format.line_height = Some(size.y.max(1.0));
+    format.color = Color32::TRANSPARENT;
+    format.underline = Stroke::NONE;
+    format.strikethrough = Stroke::NONE;
+    format.background = Color32::TRANSPARENT;
+    format
 }
 
 impl Paragraph {
@@ -252,6 +294,8 @@ struct Laid {
     parts: Vec<Part>,
     /// A row's height (its cells' rules) and whether it is a header.
     row: Option<(f32, bool)>,
+    /// Its pictures ([`Paragraph::pictures`]).
+    pictures: Vec<(usize, Picture)>,
 }
 
 /// A galley of a [`Laid`] paragraph: where it is from the paragraph's
@@ -599,7 +643,7 @@ impl Editor {
                     }
                 }
                 let g = ui.fonts_mut(|f| f.layout_job(job));
-                Laid { parts: vec![Part { g, at: Vec2::ZERO, start: 0, len: p.len, frame: (0.0, 0.0) }], row: None }
+                Laid { parts: vec![Part { g, at: Vec2::ZERO, start: 0, len: p.len, frame: (0.0, 0.0) }], row: None, pictures: f.pictures.clone() }
             }
             Some(row) => {
                 self.markers.remove(&i);
@@ -632,7 +676,7 @@ impl Editor {
                 for q in &mut parts {
                     q.at.y = (h - tallest) / 2.0;
                 }
-                Laid { parts, row: Some((h, row.header)) }
+                Laid { parts, row: Some((h, row.header)), pictures: f.pictures.clone() }
             }
         };
         if set != p.set {
@@ -1103,6 +1147,35 @@ impl Editor {
                     }
                 }
                 painter.galley(qat, q.g.clone(), visuals.text_color());
+                // Its pictures, over their characters.
+                for (at_byte, pic) in laid.pictures.iter().filter(|(b, _)| (q.start..q.start + q.len).contains(b)) {
+                    let local = at_byte - q.start;
+                    let part = &text[qs..qe];
+                    let Some(ci) = part.get(..local).map(|t| t.chars().count()) else { continue };
+                    let mut c0 = 0;
+                    for row in &q.g.rows {
+                        let n = row.glyphs.len();
+                        if ci < c0 + n {
+                            let gl = &row.glyphs[ci - c0];
+                            let r = Rect::from_min_size(snap(qat + row.pos.to_vec2() + vec2(gl.pos.x, 0.0)), pic.size);
+                            match pic.texture {
+                                Some(t) => {
+                                    painter.image(t, r, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE);
+                                }
+                                None => {
+                                    painter.rect_filled(r, 0.0, visuals.faint_bg_color);
+                                    painter.rect_stroke(r, 0.0, Stroke::new(1.0 / ppp, visuals.weak_text_color()), egui::StrokeKind::Inside);
+                                }
+                            }
+                            // Selected: tinted as selected text's ground is.
+                            if !sel.is_empty() && (sel.start..sel.end).contains(&(p.start + at_byte)) {
+                                painter.rect_filled(r, 0.0, fill.gamma_multiply(0.6));
+                            }
+                            break;
+                        }
+                        c0 += n + usize::from(row.ends_with_newline);
+                    }
+                }
             }
             if let Some(c) = &checker {
                 let para = &text[p.start..end];

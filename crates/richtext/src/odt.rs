@@ -4,8 +4,8 @@
 use std::{collections::HashMap, fmt::Write as _, io::Write as _};
 
 use crate::{
-    Align, Document, Kind, List, Paragraph, Span, Tab, TabAlign, Table,
-    xml::{X, attr, esc, events, hex_color, is_mono, zip_text},
+    Align, Document, Kind, List, Paragraph, Picture, Span, Tab, TabAlign, Table,
+    xml::{X, attr, esc, events, hex_color, is_mono, zip_bytes, zip_text},
 };
 
 const NS: &str = "xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" \
@@ -15,6 +15,7 @@ const NS: &str = "xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.
     xmlns:xlink=\"http://www.w3.org/1999/xlink\" \
     xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\" \
     xmlns:table=\"urn:oasis:names:tc:opendocument:xmlns:table:1.0\" \
+    xmlns:draw=\"urn:oasis:names:tc:opendocument:xmlns:drawing:1.0\" \
     office:version=\"1.3\"";
 const MONO: &str = "Liberation Mono";
 
@@ -82,6 +83,8 @@ struct Auto {
     tables: usize,
     /// Styles for the columns of tables with widths of their own.
     columns: String,
+    /// Pictures' files (`Pictures/N.ext`) and media types.
+    pictures: Vec<(String, &'static str, Vec<u8>)>,
 }
 
 /// An automatic paragraph style: what of a paragraph isn't its kind's.
@@ -139,7 +142,7 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
     }
     close(&mut body, &mut lists, 0);
 
-    let Auto { text: text_styles, para: para_styles, mut fonts, tables, columns } = auto_styles;
+    let Auto { text: text_styles, para: para_styles, mut fonts, tables, columns, pictures } = auto_styles;
     let mut auto = String::new();
     if tables > 0 {
         auto.push_str(
@@ -282,20 +285,30 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
         page_styles,
         master,
     );
-    let manifest = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest:manifest xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" manifest:version=\"1.3\">\
+    let mut manifest = String::from(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest:manifest xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" manifest:version=\"1.3\">\
         <manifest:file-entry manifest:full-path=\"/\" manifest:media-type=\"application/vnd.oasis.opendocument.text\"/>\
         <manifest:file-entry manifest:full-path=\"content.xml\" manifest:media-type=\"text/xml\"/>\
-        <manifest:file-entry manifest:full-path=\"styles.xml\" manifest:media-type=\"text/xml\"/>\
-        </manifest:manifest>";
+        <manifest:file-entry manifest:full-path=\"styles.xml\" manifest:media-type=\"text/xml\"/>",
+    );
+    for (path, mime, _) in &pictures {
+        let _ = write!(manifest, "<manifest:file-entry manifest:full-path=\"{path}\" manifest:media-type=\"{mime}\"/>");
+    }
+    manifest.push_str("</manifest:manifest>");
     let mut z = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     // The type first, uncompressed, as the format asks.
     let stored = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
     let deflated = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
     z.start_file("mimetype", stored).map_err(|e| e.to_string())?;
     z.write_all(b"application/vnd.oasis.opendocument.text").map_err(|e| e.to_string())?;
-    for (name, data) in [("content.xml", content.as_str()), ("styles.xml", styles.as_str()), ("META-INF/manifest.xml", manifest)] {
+    for (name, data) in [("content.xml", content.as_str()), ("styles.xml", styles.as_str()), ("META-INF/manifest.xml", manifest.as_str())] {
         z.start_file(name, deflated).map_err(|e| e.to_string())?;
         z.write_all(data.as_bytes()).map_err(|e| e.to_string())?;
+    }
+    // (Pictures are compressed already.)
+    for (path, _, data) in &pictures {
+        z.start_file(path, stored).map_err(|e| e.to_string())?;
+        z.write_all(data).map_err(|e| e.to_string())?;
     }
     Ok(z.finish().map_err(|e| e.to_string())?.into_inner())
 }
@@ -330,6 +343,27 @@ fn paragraph(body: &mut String, p: &Paragraph, auto: &mut Auto) {
         let _ = write!(body, " text:outline-level=\"{l}\"");
     }
     body.push('>');
+    // A picture: as a character, the paragraph's alignment placing it.
+    if let Some(pic) = &p.picture {
+        if let Some((ext, mime)) = pic.kind() {
+            let n = auto.pictures.len() + 1;
+            let path = format!("Pictures/{n}.{ext}");
+            let _ = write!(
+                body,
+                "<draw:frame draw:name=\"Picture {n}\" text:anchor-type=\"as-char\" svg:width=\"{:.2}pt\" svg:height=\"{:.2}pt\" draw:z-index=\"0\">\
+                 <draw:image xlink:href=\"{path}\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/>",
+                pic.width.max(1.0),
+                pic.height.max(1.0)
+            );
+            if !pic.alt.is_empty() {
+                let _ = write!(body, "<svg:desc>{}</svg:desc>", esc(&pic.alt));
+            }
+            body.push_str("</draw:frame>");
+            auto.pictures.push((path, mime, pic.data.clone()));
+        }
+        let _ = write!(body, "</{tag}>");
+        return;
+    }
     let mut i = 0;
     while i < p.spans.len() {
         let url = p.spans[i].link.clone();
@@ -626,6 +660,12 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
     // The table being read (one in a cell comes in as its paragraphs).
     let mut table_depth = 0;
     let mut table = Table::default();
+    // The picture being read (its description being, too), and the
+    // paragraph's so far with how many of its spans came before each (a
+    // paragraph of their own each).
+    let mut frame: Option<Picture> = None;
+    let mut in_desc = false;
+    let mut pictures: Vec<(usize, Picture)> = Vec::new();
     let span_for = |name: &str, base: &Span| {
         let mut s = base.clone();
         if let Some(v) = find(&styles, name, &|p| p.bold) {
@@ -697,6 +737,18 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
                     spans = vec![Span { link: link.clone(), ..Span::default() }];
                     para = Some(p);
                 }
+                "frame" => {
+                    let pt = |name: &str| attr(&a, name).and_then(inches).map_or(0.0, |v| (v * 72.0 * 100.0).round() / 100.0);
+                    frame = Some(Picture { width: pt("width"), height: pt("height"), ..Picture::default() });
+                }
+                "image" => {
+                    if let Some(pic) = &mut frame
+                        && let Some(href) = attr(&a, "href")
+                    {
+                        pic.data = zip_bytes(&mut z, href.trim_start_matches("./")).unwrap_or_default();
+                    }
+                }
+                "desc" | "title" if frame.is_some() => in_desc = true,
                 "span" => {
                     let base = spans.last().cloned().unwrap_or_default();
                     spans.push(span_for(attr(&a, "style-name").unwrap_or(""), &base));
@@ -737,13 +789,38 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
                 "list" => {
                     lists.pop();
                 }
+                "desc" | "title" => in_desc = false,
+                "frame" => {
+                    if let Some(pic) = frame.take().filter(|p| !p.data.is_empty()) {
+                        pictures.push((para.as_ref().map_or(0, |p| p.spans.len()), pic));
+                    }
+                }
                 "p" | "h" => {
                     if let Some(p) = para.take() {
-                        match table.rows.last_mut().and_then(|r| r.last_mut()) {
-                            Some(cell) if table_depth > 0 => cell.push(p),
-                            _ => doc.paragraphs.push(p),
+                        // Its pictures, each a paragraph between its text's.
+                        let mut paragraphs = Vec::new();
+                        let mut rest = p.spans.clone().into_iter();
+                        let mut taken = 0;
+                        for (at, pic) in pictures.drain(..) {
+                            let before: Vec<Span> = rest.by_ref().take(at - taken).collect();
+                            taken = at;
+                            if before.iter().any(|s| !s.text.trim().is_empty()) {
+                                paragraphs.push(Paragraph { spans: before, ..p.clone() });
+                            }
+                            paragraphs.push(Paragraph { picture: Some(pic), align: p.align, ..Paragraph::default() });
+                        }
+                        let rest: Vec<Span> = rest.collect();
+                        if paragraphs.is_empty() || rest.iter().any(|s| !s.text.trim().is_empty()) {
+                            paragraphs.push(Paragraph { spans: rest, ..p });
+                        }
+                        for p in paragraphs {
+                            match table.rows.last_mut().and_then(|r| r.last_mut()) {
+                                Some(cell) if table_depth > 0 => cell.push(p),
+                                _ => doc.paragraphs.push(p),
+                            }
                         }
                     }
+                    pictures.clear();
                     spans.clear();
                 }
                 "span" => {
@@ -763,8 +840,15 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
             },
             // Spacing in the text folds into one space, as ODF has it
             // (runs of spaces are `text:s`).
+            X::Text(t) if in_desc => {
+                if let Some(pic) = &mut frame
+                    && pic.alt.is_empty()
+                {
+                    pic.alt = t.trim().to_owned();
+                }
+            }
             X::Text(t) => {
-                if para.is_some() {
+                if para.is_some() && frame.is_none() {
                     let mut folded = String::with_capacity(t.len());
                     for c in t.chars() {
                         if c.is_whitespace() {

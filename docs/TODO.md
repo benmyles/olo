@@ -926,8 +926,11 @@ as they land (with the commit), add new ones as they come up.
   stops, left, centre, right and decimal, which epaint now lays out),
   kept in every format; headers and footers (Document ▸ Header &
   Footer…, left, centre and right parts with the page number and count,
-  printed, and kept in Word, OpenDocument and RTF). Next: pictures, the
-  page view.
+  printed, and kept in Word, OpenDocument and RTF); pictures (characters
+  in the text the kit's editor draws: Insert Picture…, pasted or
+  dropped, sized from the Edit menu, kept beside the document, and in
+  Word, OpenDocument, RTF, web pages, Markdown and print). Next: the page
+  view.
 - ~~**Activity Monitor, revamped**~~ (Ben, 2026-10-29, at the end):
   "revamp activity monitor to include everything a nerd could ever want
   to know, with live views, drill downs, tuning settings and ability to
