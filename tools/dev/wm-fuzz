@@ -128,10 +128,11 @@ class Fuzz:
         self.by_hand, self.alone = set(self.windows()), set()
         # Steps Terminal's text size has been made bigger (less smaller).
         self.text_steps = 0
-        # Terminal windows whose text size changed: each fits its grid
-        # when it next can (grouped, behind its group's front or hidden,
-        # it can't then), a step or more later, once.
-        self.grid_pending = set()
+        # Terminal windows whose text size changed, and when: each fits its
+        # grid when it next can (grouped, behind its group's front or
+        # hidden, it can't then), and is put back where Olo holds it, in
+        # the few steps after (`grid_pending`).
+        self.grid_pending_since = {}
         self.only = set()
         # Tiled windows seen out of their tiles (each said once), and
         # whether that fails the run (--tiles).
@@ -407,19 +408,32 @@ class Fuzz:
 
     def check_round_trip(self, what, before, after, moving):
         """Everything back as it was; only `moving` moved on the way."""
+        # (A Terminal fitting its grid at last isn't the trip's doing.)
+        late = {i for i in self.grid_pending if i in before and i in after and fr(before[i]) != fr(after[i])}
         moved = {i: (fr(before[i]), fr(after[i])) for i in before
-                 if i in after and fr(before[i]) and fr(after[i]) and fr(before[i]) != fr(after[i])}
+                 if i in after and i not in late and fr(before[i]) and fr(after[i]) and fr(before[i]) != fr(after[i])}
         if moved:
             self.fail(f"{what} didn't come back: " + ", ".join(f"{i} ({before[i]['app_id']}) {a} -> {b}" for i, (a, b) in moved.items()))
             return
-        self.check_steady(what, before, moving)
+        # (Nor on the way: one fitting its grid as it shows again, then
+        # put back where it was.)
+        on_the_way = {i for i in self.grid_pending if i in before and any(i in t and fr(t[i]) != fr(before[i]) for t in self.trail)}
+        self.check_steady(what, before, set(moving) | on_the_way)
+
+    @property
+    def grid_pending(self):
+        """Terminal windows still fitting their grid after a text-size
+        change (within five steps of it)."""
+        return {i for i, at in self.grid_pending_since.items() if self.step - at <= 5}
 
     def check_unchanged(self, what, before, after, skip=()):
         late = {i for i in self.grid_pending if i in before and i in after and fr(before[i]) != fr(after[i])}
-        self.grid_pending -= late
         # (One still to draw what it was asked, behind its group's front,
         # draws it when it can.)
         unsettled = {i for i, w in before.items() if w.get("settling")}
+        # A tab behind another, not drawn, takes its group's size where it
+        # is when it next draws.
+        unsettled |= {i for i, w in before.items() if w.get("behind") and fr(w) and fr(after.get(i, {})) and fr(w)[:2] == fr(after[i])[:2]}
         # (A group whose windows weren't one size yet becomes so.)
         for g in self.groups(before).values():
             if len({fr(before[i])[2:] for i in g if fr(before[i])}) > 1:
@@ -445,7 +459,6 @@ class Fuzz:
     def check_back(self, what, wid, before, after):
         if wid in self.grid_pending and wid in before and wid in after and fr(before[wid]) != fr(after[wid]):
             # A Terminal fitting its grid at last.
-            self.grid_pending.discard(wid)
             return
         if wid in before and wid in after and fr(before[wid]) and fr(before[wid]) != fr(after[wid]):
             self.fail(f"{what} didn't come back: window {wid} ({before[wid]['app_id']}) {fr(before[wid])} -> {fr(after[wid])}")
@@ -877,7 +890,9 @@ class Fuzz:
         self.req({"type": "place", "id": w, "frame": frame})
         after = self.settle()
         self.check_sane(after)
-        self.check_unchanged(f"placing {w}", wins, after, skip=self.mates(wins, w))
+        # Its group goes with it: as it was, and as it is now (a window
+        # just back from hidden only rejoins as this step goes).
+        self.check_unchanged(f"placing {w}", wins, after, skip=self.mates(wins, w) | self.mates(after, w))
 
     # ---- apps resizing their windows ----
 
@@ -946,10 +961,11 @@ class Fuzz:
         # than the usual quiet.
         after = self.settle(quiet=1.0)
         self.check_sane(after)
-        # (Any of them may: each fits when it is next drawn and sized.)
-        self.grid_pending |= {i for i, a in after.items() if a["app_id"] == "olo.terminal"}
         terms = [i for i in terms if i in before and i in after and fr(before[i]) and fr(after[i])]
         self.check_unchanged(what, before, after, skip=set().union(*(self.mates(before, i) for i in terms)))
+        # Any of them may fit its grid again later, once (each fits when it
+        # is next drawn and sized), after what this step did.
+        self.grid_pending_since.update({i: self.step for i, a in after.items() if a["app_id"] == "olo.terminal"})
         outs = self.output_rects()
         for i in terms:
             if fr(after[i]) == fr(before[i]):

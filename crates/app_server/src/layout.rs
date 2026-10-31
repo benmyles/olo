@@ -12,7 +12,8 @@
 //!   change) within a minute;
 //! - an app started again after its old process ended (Chrome restarting
 //!   restores its windows), by app id and the very same title, within a
-//!   quarter of an hour.
+//!   quarter of an hour; not a window closed by hand (Olo asked it to
+//!   close), which is gone.
 //!
 //! Anything else is a new window, and opens where new windows open: on
 //! the display in use (under the pointer, or beside the app's focused
@@ -259,8 +260,14 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     /// Remember a window that is going away (it may come straight back, as
-    /// when an app re-executes itself after an upgrade).
+    /// when an app re-executes itself after an upgrade). Not one closed by
+    /// hand: a window of the same title its app opens later is a new one
+    /// (StyledEdit's next "Untitled 1" opens where the person is, not
+    /// where the last one was closed).
     pub fn remember_placement(&mut self, w: &WindowElement) {
+        if w.meta().closed_by_hand.get() {
+            return;
+        }
         let focused = self.seat.get_keyboard().and_then(|k| k.current_focus()).and_then(|f| f.wl_surface().map(|s| s.into_owned()));
         if let Some(mut p) = self.placement_of(w, focused.as_ref()) {
             // A client's windows go one after another as it disconnects:

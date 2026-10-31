@@ -201,6 +201,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     pub fn close_window(&mut self, window: &WindowElement) {
+        window.meta().closed_by_hand.set(true);
         match window.0.underlying_surface() {
             WindowSurface::Wayland(w) => w.send_close(),
         }

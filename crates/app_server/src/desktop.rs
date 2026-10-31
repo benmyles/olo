@@ -136,6 +136,10 @@ pub struct WindowMeta {
     /// agent) since it was put back after a restart: not put back again
     /// (`layout::check_restored`).
     pub moved_on_purpose: Cell<bool>,
+    /// Olo asked it to close (its close box, ⌘W, the window menu, an
+    /// agent): when it goes, it is gone, not kept for its app starting
+    /// again (`remember_placement`).
+    pub closed_by_hand: Cell<bool>,
 }
 
 impl WindowMeta {
@@ -185,6 +189,7 @@ impl WindowElement {
             glow: Cell::new(None),
             glow_pieces: Default::default(),
             moved_on_purpose: Cell::new(false),
+            closed_by_hand: Cell::new(false),
         });
         self.user_data().get::<WindowMeta>().unwrap()
     }
