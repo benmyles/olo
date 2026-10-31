@@ -36,3 +36,13 @@ What Olo changed, so far:
   multisampled) are made only when a window first draws a path.
 - Background threads start when there's work and none is free, and
   leave after 10 s without any (upstream kept one per core).
+- Olo's text (`gpui/src/platform/linux/text_system.rs`), the same as
+  the egui kit's: Olo's own faces (data/fonts) before the system's,
+  shaped by harfrust, outlines hinted by skrifa's autohinter (vertical
+  only, "light") and filled by vello_cpu; variable faces give every
+  weight on their axis; a character a face lacks comes from the kit's
+  chain (Olo's symbol faces, the other of Noto Sans and Noto Sans Mono,
+  DejaVu Sans, CJK, colour emoji), on the line's one baseline. GPUI's
+  cosmic-text and font-kit are gone (swash has no autohinter, so Noto
+  drew unhinted, and cosmic-text 0.14 had no variable weights). The
+  system's fonts load only when something needs them.

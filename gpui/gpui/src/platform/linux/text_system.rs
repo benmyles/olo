@@ -1,175 +1,235 @@
+//! Olo's text, the same as the egui kit's: the faces Olo ships
+//! (data/fonts: Noto Sans, Noto Sans Mono, their symbols) before the
+//! system's copies of them, shaped by harfrust, their outlines hinted by
+//! skrifa (vertically only, "light", as FreeType's autohinter, GTK and
+//! Chrome do it: Noto ships unhinted) and filled by vello_cpu. Variable
+//! faces give each weight from their axis. A character a face lacks comes
+//! from the kit's chain of others (Olo's symbol faces, the other of Noto
+//! Sans and Noto Sans Mono, DejaVu Sans, CJK, emoji), every glyph on the
+//! line's one baseline. (GPUI drew with cosmic-text and swash: no
+//! autohinter, so Noto was unhinted, and no weights from variable faces.)
+
 use crate::{
-    Bounds, DevicePixels, Font, FontFeatures, FontId, FontMetrics, FontRun, FontStyle, FontWeight,
-    GlyphId, LineLayout, Pixels, PlatformTextSystem, Point, RenderGlyphParams, SUBPIXEL_VARIANTS_X,
-    SUBPIXEL_VARIANTS_Y, ShapedGlyph, ShapedRun, SharedString, Size, point, size,
+    Bounds, DevicePixels, Font, FontId, FontMetrics, FontRun, FontStyle, GlyphId, LineLayout,
+    Pixels, PlatformTextSystem, RenderGlyphParams, SUBPIXEL_VARIANTS_X, ShapedGlyph, ShapedRun,
+    Size, point, px, size,
 };
-use anyhow::{Context as _, Ok, Result};
+use anyhow::{Context as _, Result, anyhow};
 use collections::HashMap;
-use cosmic_text::{
-    Attrs, AttrsList, CacheKey, Family, Font as CosmicTextFont, FontFeatures as CosmicFontFeatures,
-    FontSystem, ShapeBuffer, ShapeLine, SwashCache,
-};
-
-use itertools::Itertools;
 use parking_lot::RwLock;
-use pathfinder_geometry::{
-    rect::{RectF, RectI},
-    vector::{Vector2F, Vector2I},
+use skrifa::{
+    FontRef, MetadataProvider,
+    instance::{Location, Size as Ppem},
+    metrics::GlyphMetrics,
+    outline::{DrawSettings, HintingInstance, OutlinePen, SmoothMode, Target},
+    raw::TableProvider,
 };
-use smallvec::SmallVec;
 use std::{borrow::Cow, sync::Arc};
+use vello_cpu::kurbo;
 
-pub(crate) struct CosmicTextSystem(RwLock<CosmicTextSystemState>);
+type Data = Arc<dyn AsRef<[u8]> + Send + Sync>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct FontKey {
-    family: SharedString,
-    features: FontFeatures,
+/// One face in a font file.
+struct Source {
+    data: Data,
+    index: u32,
+    family: String,
+    italic: bool,
+    /// A static face's weight; a variable one's default.
+    weight: f32,
+    /// The `wght` axis's range, if it has one.
+    wght: Option<(f32, f32)>,
+    /// Colour glyphs (COLR, CBDT, sbix): emoji.
+    color: bool,
+    shaper: harfrust::ShaperData,
 }
 
-impl FontKey {
-    fn new(family: SharedString, features: FontFeatures) -> Self {
-        Self { family, features }
+impl Source {
+    fn font(&self) -> Option<FontRef<'_>> {
+        FontRef::from_index((*self.data).as_ref(), self.index).ok()
     }
 }
 
-struct CosmicTextSystemState {
-    swash_cache: SwashCache,
-    font_system: FontSystem,
-    scratch: ShapeBuffer,
-    /// Contains all already loaded fonts, including all faces. Indexed by `FontId`.
-    loaded_fonts: Vec<LoadedFont>,
-    /// Caches the `FontId`s associated with a specific family to avoid iterating the font database
-    /// for every font face in a family.
-    font_ids_by_family_cache: HashMap<FontKey, SmallVec<[FontId; 4]>>,
+/// A face at one weight, with its OpenType features: what a [`FontId`]
+/// names.
+struct Instance {
+    source: usize,
+    weight: f32,
+    location: Location,
+    shaper_instance: Option<harfrust::ShaperInstance>,
+    features: Vec<harfrust::Feature>,
+    units_per_em: f32,
+    metrics: FontMetrics,
+    /// The faces after it for characters it lacks.
+    fallbacks: Option<Arc<[FontId]>>,
 }
 
-struct LoadedFont {
-    font: Arc<CosmicTextFont>,
-    features: CosmicFontFeatures,
-    is_known_emoji_font: bool,
+pub(crate) struct OloTextSystem(RwLock<State>);
+
+struct State {
+    /// Olo's own faces, and any an app adds.
+    own: fontdb::Database,
+    /// The system's, loaded the first time they're needed.
+    system: Option<fontdb::Database>,
+    sources: Vec<Source>,
+    source_ids: HashMap<(bool, fontdb::ID), usize>,
+    instances: Vec<Instance>,
+    instance_ids: HashMap<(usize, u32, Vec<(String, u32)>), FontId>,
+    font_ids: HashMap<(String, u32, bool, Vec<(String, u32)>), FontId>,
+    /// The face found for a character none of a chain has, if any.
+    last_resort: HashMap<char, Option<usize>>,
+    hinting: HashMap<(usize, u32), HintingInstance>,
+    /// Glyphs drawn for their bounds, until GPUI asks for their pixels.
+    drawn: HashMap<RenderGlyphParams, (Bounds<DevicePixels>, Vec<u8>)>,
+    buffer: Option<harfrust::UnicodeBuffer>,
 }
 
-impl CosmicTextSystem {
+/// Olo's families, for GPUI's own names and the generic ones.
+fn families(name: &str) -> Vec<&str> {
+    match name {
+        ".SystemUIFont" | "Zed Plex Sans" | "IBM Plex Sans" | "system-ui" | "sans-serif" => {
+            olo_theme::fonts::UI.to_vec()
+        }
+        ".ZedMono" | "Zed Plex Mono" | "Zed Mono" | "Lilex" | "monospace" => {
+            olo_theme::fonts::MONO.to_vec()
+        }
+        name => {
+            let mut v = vec![name];
+            v.extend_from_slice(olo_theme::fonts::UI);
+            v
+        }
+    }
+}
+
+const WGHT: skrifa::Tag = skrifa::Tag::new(b"wght");
+
+impl OloTextSystem {
     pub(crate) fn new() -> Self {
-        // todo(linux) make font loading non-blocking
-        let mut font_system = FontSystem::new();
-
-        Self(RwLock::new(CosmicTextSystemState {
-            font_system,
-            swash_cache: SwashCache::new(),
-            scratch: ShapeBuffer::default(),
-            loaded_fonts: Vec::new(),
-            font_ids_by_family_cache: HashMap::default(),
+        let mut own = fontdb::Database::new();
+        if let Some(dir) = olo_xdg::fonts_dir() {
+            own.load_fonts_dir(dir);
+        }
+        Self(RwLock::new(State {
+            own,
+            system: None,
+            sources: Vec::new(),
+            source_ids: HashMap::default(),
+            instances: Vec::new(),
+            instance_ids: HashMap::default(),
+            font_ids: HashMap::default(),
+            last_resort: HashMap::default(),
+            hinting: HashMap::default(),
+            drawn: HashMap::default(),
+            buffer: Some(harfrust::UnicodeBuffer::new()),
         }))
     }
 }
 
-impl Default for CosmicTextSystem {
+impl Default for OloTextSystem {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl PlatformTextSystem for CosmicTextSystem {
+impl PlatformTextSystem for OloTextSystem {
     fn add_fonts(&self, fonts: Vec<Cow<'static, [u8]>>) -> Result<()> {
-        self.0.write().add_fonts(fonts)
+        let mut state = self.0.write();
+        for bytes in fonts {
+            state.own.load_font_data(bytes.into_owned());
+        }
+        state.font_ids.clear();
+        Ok(())
     }
 
     fn all_font_names(&self) -> Vec<String> {
-        let mut result = self
-            .0
-            .read()
-            .font_system
-            .db()
+        let mut state = self.0.write();
+        state.system();
+        let mut names: Vec<String> = state
+            .own
             .faces()
-            .filter_map(|face| face.families.first().map(|family| family.0.clone()))
-            .collect_vec();
-        result.sort();
-        result.dedup();
-        result
+            .chain(state.system.iter().flat_map(|db| db.faces()))
+            .filter_map(|face| face.families.first().map(|f| f.0.clone()))
+            .collect();
+        names.sort();
+        names.dedup();
+        names
     }
 
     fn font_id(&self, font: &Font) -> Result<FontId> {
-        // todo(linux): Do we need to use CosmicText's Font APIs? Can we consolidate this to use font_kit?
-        let mut state = self.0.write();
-        let key = FontKey::new(font.family.clone(), font.features.clone());
-        let candidates = if let Some(font_ids) = state.font_ids_by_family_cache.get(&key) {
-            font_ids.as_slice()
-        } else {
-            let font_ids = state.load_family(&font.family, &font.features)?;
-            state.font_ids_by_family_cache.insert(key.clone(), font_ids);
-            state.font_ids_by_family_cache[&key].as_ref()
-        };
-
-        // todo(linux) ideally we would make fontdb's `find_best_match` pub instead of using font-kit here
-        let candidate_properties = candidates
+        let features: Vec<(String, u32)> = font
+            .features
+            .0
             .iter()
-            .map(|font_id| {
-                let database_id = state.loaded_font(*font_id).font.id();
-                let face_info = state.font_system.db().face(database_id).expect("");
-                face_info_into_properties(face_info)
-            })
-            .collect::<SmallVec<[_; 4]>>();
-
-        let ix =
-            font_kit::matching::find_best_match(&candidate_properties, &font_into_properties(font))
-                .context("requested font family contains no font matching the other parameters")?;
-
-        Ok(candidates[ix])
+            .map(|(name, value)| (name.clone(), *value))
+            .collect();
+        let italic = font.style != FontStyle::Normal;
+        let key = (
+            font.family.to_string(),
+            font.weight.0.to_bits(),
+            italic,
+            features,
+        );
+        if let Some(id) = self.0.read().font_ids.get(&key) {
+            return Ok(*id);
+        }
+        let mut state = self.0.write();
+        let source = state
+            .find(&families(&font.family), font.weight.0, italic)
+            .with_context(|| format!("no font for {}", font.family))?;
+        let id = state.instance(source, font.weight.0, &key.3)?;
+        state.font_ids.insert(key, id);
+        Ok(id)
     }
 
     fn font_metrics(&self, font_id: FontId) -> FontMetrics {
-        let metrics = self
-            .0
-            .read()
-            .loaded_font(font_id)
-            .font
-            .as_swash()
-            .metrics(&[]);
-
-        FontMetrics {
-            units_per_em: metrics.units_per_em as u32,
-            ascent: metrics.ascent,
-            descent: -metrics.descent, // todo(linux) confirm this is correct
-            line_gap: metrics.leading,
-            underline_position: metrics.underline_offset,
-            underline_thickness: metrics.stroke_size,
-            cap_height: metrics.cap_height,
-            x_height: metrics.x_height,
-            // todo(linux): Compute this correctly
-            bounding_box: Bounds {
-                origin: point(0.0, 0.0),
-                size: size(metrics.max_width, metrics.ascent + metrics.descent),
-            },
-        }
+        self.0.read().instances[font_id.0].metrics
     }
 
     fn typographic_bounds(&self, font_id: FontId, glyph_id: GlyphId) -> Result<Bounds<f32>> {
-        let lock = self.0.read();
-        let glyph_metrics = lock.loaded_font(font_id).font.as_swash().glyph_metrics(&[]);
-        let glyph_id = glyph_id.0 as u16;
-        // todo(linux): Compute this correctly
-        // see https://github.com/servo/font-kit/blob/master/src/loaders/freetype.rs#L614-L620
-        Ok(Bounds {
-            origin: point(0.0, 0.0),
-            size: size(
-                glyph_metrics.advance_width(glyph_id),
-                glyph_metrics.advance_height(glyph_id),
-            ),
+        let state = self.0.read();
+        let instance = &state.instances[font_id.0];
+        let font = state.sources[instance.source].font().context("font")?;
+        let metrics = GlyphMetrics::new(&font, Ppem::unscaled(), &instance.location);
+        let gid = skrifa::GlyphId::new(glyph_id.0);
+        Ok(match metrics.bounds(gid) {
+            Some(b) => Bounds {
+                origin: point(b.x_min, b.y_min),
+                size: size(b.x_max - b.x_min, b.y_max - b.y_min),
+            },
+            None => Bounds {
+                origin: point(0.0, 0.0),
+                size: size(metrics.advance_width(gid).unwrap_or(0.0), 0.0),
+            },
         })
     }
 
     fn advance(&self, font_id: FontId, glyph_id: GlyphId) -> Result<Size<f32>> {
-        self.0.read().advance(font_id, glyph_id)
+        let state = self.0.read();
+        let instance = &state.instances[font_id.0];
+        let font = state.sources[instance.source].font().context("font")?;
+        let metrics = GlyphMetrics::new(&font, Ppem::unscaled(), &instance.location);
+        Ok(size(
+            metrics
+                .advance_width(skrifa::GlyphId::new(glyph_id.0))
+                .unwrap_or(0.0),
+            0.0,
+        ))
     }
 
     fn glyph_for_char(&self, font_id: FontId, ch: char) -> Option<GlyphId> {
-        self.0.read().glyph_for_char(font_id, ch)
+        let state = self.0.read();
+        let source = &state.sources[state.instances[font_id.0].source];
+        let gid = source.font()?.charmap().map(ch)?;
+        Some(GlyphId(gid.to_u32()))
     }
 
     fn glyph_raster_bounds(&self, params: &RenderGlyphParams) -> Result<Bounds<DevicePixels>> {
-        self.0.write().raster_bounds(params)
+        let mut state = self.0.write();
+        let Some((bounds, pixels)) = state.draw(params) else {
+            return Ok(Bounds::default());
+        };
+        state.drawn.insert(params.clone(), (bounds, pixels));
+        Ok(bounds)
     }
 
     fn rasterize_glyph(
@@ -177,7 +237,15 @@ impl PlatformTextSystem for CosmicTextSystem {
         params: &RenderGlyphParams,
         raster_bounds: Bounds<DevicePixels>,
     ) -> Result<(Size<DevicePixels>, Vec<u8>)> {
-        self.0.write().rasterize_glyph(params, raster_bounds)
+        if raster_bounds.size.width.0 == 0 || raster_bounds.size.height.0 == 0 {
+            anyhow::bail!("glyph bounds are empty");
+        }
+        let mut state = self.0.write();
+        let drawn = match state.drawn.remove(params) {
+            Some(drawn) => drawn,
+            None => state.draw(params).ok_or_else(|| anyhow!("no glyph"))?,
+        };
+        Ok((drawn.0.size, drawn.1))
     }
 
     fn layout_line(&self, text: &str, font_size: Pixels, runs: &[FontRun]) -> LineLayout {
@@ -185,397 +253,575 @@ impl PlatformTextSystem for CosmicTextSystem {
     }
 }
 
-impl CosmicTextSystemState {
-    fn loaded_font(&self, font_id: FontId) -> &LoadedFont {
-        &self.loaded_fonts[font_id.0]
+impl State {
+    fn system(&mut self) -> &fontdb::Database {
+        self.system.get_or_insert_with(|| {
+            let mut db = fontdb::Database::new();
+            db.load_system_fonts();
+            db
+        })
     }
 
-    #[profiling::function]
-    fn add_fonts(&mut self, fonts: Vec<Cow<'static, [u8]>>) -> Result<()> {
-        let db = self.font_system.db_mut();
-        for bytes in fonts {
-            match bytes {
-                Cow::Borrowed(embedded_font) => {
-                    db.load_font_data(embedded_font.to_vec());
-                }
-                Cow::Owned(bytes) => {
-                    db.load_font_data(bytes);
-                }
+    /// The best face of the first of `names` there is, Olo's own first.
+    fn find(&mut self, names: &[&str], weight: f32, italic: bool) -> Option<usize> {
+        for name in names {
+            if let Some(found) = self.find_in(false, name, weight, italic) {
+                return Some(found);
+            }
+            self.system();
+            if let Some(found) = self.find_in(true, name, weight, italic) {
+                return Some(found);
             }
         }
-        Ok(())
+        None
     }
 
-    #[profiling::function]
-    fn load_family(
-        &mut self,
-        name: &str,
-        features: &FontFeatures,
-    ) -> Result<SmallVec<[FontId; 4]>> {
-        // TODO: Determine the proper system UI font.
-        let name = crate::text_system::font_name_with_fallbacks(name, "IBM Plex Sans");
-
-        let families = self
-            .font_system
-            .db()
+    fn find_in(&mut self, system: bool, name: &str, weight: f32, italic: bool) -> Option<usize> {
+        let db = if system { self.system.as_ref()? } else { &self.own };
+        let faces: Vec<(fontdb::ID, bool, f32)> = db
             .faces()
-            .filter(|face| face.families.iter().any(|family| *name == family.0))
-            .map(|face| (face.id, face.post_script_name.clone()))
-            .collect::<SmallVec<[_; 4]>>();
-
-        let mut loaded_font_ids = SmallVec::new();
-        for (font_id, postscript_name) in families {
-            let font = self
-                .font_system
-                .get_font(font_id)
-                .context("Could not load font")?;
-
-            // HACK: To let the storybook run and render Windows caption icons. We should actually do better font fallback.
-            let allowed_bad_font_names = [
-                "SegoeFluentIcons", // NOTE: Segoe fluent icons postscript name is inconsistent
-                "Segoe Fluent Icons",
-            ];
-
-            if font.as_swash().charmap().map('m') == 0
-                && !allowed_bad_font_names.contains(&postscript_name.as_str())
-            {
-                self.font_system.db_mut().remove_face(font.id());
+            .filter(|f| f.families.iter().any(|(family, _)| family == name))
+            .map(|f| {
+                (
+                    f.id,
+                    f.style != fontdb::Style::Normal,
+                    f32::from(f.weight.0),
+                )
+            })
+            .collect();
+        if faces.is_empty() {
+            return None;
+        }
+        // The style asked for if there is one, then the nearest weight
+        // (a variable face's covers its range).
+        let mut best: Option<(usize, f32)> = None;
+        for (id, face_italic, _) in faces {
+            let Some(source) = self.source(system, id) else {
                 continue;
             };
-
-            let font_id = FontId(self.loaded_fonts.len());
-            loaded_font_ids.push(font_id);
-            self.loaded_fonts.push(LoadedFont {
-                font,
-                features: features.try_into()?,
-                is_known_emoji_font: check_is_known_emoji_font(&postscript_name),
-            });
+            let s = &self.sources[source];
+            let off = match s.wght {
+                Some((lo, hi)) => (weight.clamp(lo, hi) - weight).abs(),
+                None => (s.weight - weight).abs(),
+            } + if face_italic == italic { 0.0 } else { 10_000.0 };
+            if best.is_none_or(|(_, b)| off < b) {
+                best = Some((source, off));
+            }
         }
-
-        Ok(loaded_font_ids)
+        best.map(|(source, _)| source)
     }
 
-    fn advance(&self, font_id: FontId, glyph_id: GlyphId) -> Result<Size<f32>> {
-        let glyph_metrics = self.loaded_font(font_id).font.as_swash().glyph_metrics(&[]);
-        Ok(Size {
-            width: glyph_metrics.advance_width(glyph_id.0 as u16),
-            height: glyph_metrics.advance_height(glyph_id.0 as u16),
-        })
-    }
-
-    fn glyph_for_char(&self, font_id: FontId, ch: char) -> Option<GlyphId> {
-        let glyph_id = self.loaded_font(font_id).font.as_swash().charmap().map(ch);
-        if glyph_id == 0 {
-            None
-        } else {
-            Some(GlyphId(glyph_id.into()))
+    fn source(&mut self, system: bool, id: fontdb::ID) -> Option<usize> {
+        if let Some(source) = self.source_ids.get(&(system, id)) {
+            return Some(*source);
         }
+        let db = if system { self.system.as_ref()? } else { &self.own };
+        let info = db.face(id)?;
+        let family = info.families.first()?.0.clone();
+        let italic = info.style != fontdb::Style::Normal;
+        let weight = f32::from(info.weight.0);
+        let data: Data = match &info.source {
+            fontdb::Source::Binary(data) => data.clone(),
+            fontdb::Source::File(path) | fontdb::Source::SharedFile(path, _) => {
+                let file = std::fs::File::open(path).ok()?;
+                // SAFETY: font files aren't written to while in use; a
+                // file replaced on disk keeps the mapped copy.
+                let map = unsafe { memmap2::Mmap::map(&file) }.ok()?;
+                Arc::new(map)
+            }
+        };
+        let index = info.index;
+        let font = FontRef::from_index((*data).as_ref(), index).ok()?;
+        let wght = font
+            .axes()
+            .iter()
+            .find(|a| a.tag() == WGHT)
+            .map(|a| (a.min_value(), a.max_value()));
+        let weight = font
+            .axes()
+            .iter()
+            .find(|a| a.tag() == WGHT)
+            .map_or(weight, |a| a.default_value());
+        let color = font.colr().is_ok()
+            || font.cbdt().is_ok()
+            || font.sbix().is_ok()
+            || font.ebdt().is_ok();
+        let shaper = harfrust::ShaperData::new(&font);
+        let source = self.sources.len();
+        self.sources.push(Source {
+            data: data.clone(),
+            index,
+            family,
+            italic,
+            weight,
+            wght,
+            color,
+            shaper,
+        });
+        self.source_ids.insert((system, id), source);
+        Some(source)
     }
 
-    fn raster_bounds(&mut self, params: &RenderGlyphParams) -> Result<Bounds<DevicePixels>> {
-        let font = &self.loaded_fonts[params.font_id.0].font;
-        let subpixel_shift = point(
-            params.subpixel_variant.x as f32 / SUBPIXEL_VARIANTS_X as f32 / params.scale_factor,
-            params.subpixel_variant.y as f32 / SUBPIXEL_VARIANTS_Y as f32 / params.scale_factor,
-        );
-        let image = self
-            .swash_cache
-            .get_image(
-                &mut self.font_system,
-                CacheKey::new(
-                    font.id(),
-                    params.glyph_id.0 as u16,
-                    (params.font_size * params.scale_factor).into(),
-                    (subpixel_shift.x, subpixel_shift.y.trunc()),
-                    cosmic_text::CacheKeyFlags::empty(),
-                )
-                .0,
-            )
-            .clone()
-            .with_context(|| format!("no image for {params:?} in font {font:?}"))?;
-        Ok(Bounds {
-            origin: point(image.placement.left.into(), (-image.placement.top).into()),
-            size: size(image.placement.width.into(), image.placement.height.into()),
-        })
-    }
-
-    #[profiling::function]
-    fn rasterize_glyph(
+    /// `source` at `weight`, with `features`.
+    fn instance(
         &mut self,
-        params: &RenderGlyphParams,
-        glyph_bounds: Bounds<DevicePixels>,
-    ) -> Result<(Size<DevicePixels>, Vec<u8>)> {
-        if glyph_bounds.size.width.0 == 0 || glyph_bounds.size.height.0 == 0 {
-            anyhow::bail!("glyph bounds are empty");
+        source: usize,
+        weight: f32,
+        features: &[(String, u32)],
+    ) -> Result<FontId> {
+        let s = &self.sources[source];
+        let weight = s.wght.map_or(s.weight, |(lo, hi)| weight.clamp(lo, hi));
+        let key = (source, weight.to_bits(), features.to_vec());
+        if let Some(id) = self.instance_ids.get(&key) {
+            return Ok(*id);
+        }
+        let font = s.font().context("font")?;
+        let (location, shaper_instance) = if s.wght.is_some() {
+            (
+                font.axes().location([(WGHT, weight)]),
+                Some(harfrust::ShaperInstance::from_variations(
+                    &font,
+                    [harfrust::Variation {
+                        tag: WGHT,
+                        value: weight,
+                    }],
+                )),
+            )
         } else {
-            let bitmap_size = glyph_bounds.size;
-            let font = &self.loaded_fonts[params.font_id.0].font;
-            let subpixel_shift = point(
-                params.subpixel_variant.x as f32 / SUBPIXEL_VARIANTS_X as f32 / params.scale_factor,
-                params.subpixel_variant.y as f32 / SUBPIXEL_VARIANTS_Y as f32 / params.scale_factor,
-            );
-            let mut image = self
-                .swash_cache
-                .get_image(
-                    &mut self.font_system,
-                    CacheKey::new(
-                        font.id(),
-                        params.glyph_id.0 as u16,
-                        (params.font_size * params.scale_factor).into(),
-                        (subpixel_shift.x, subpixel_shift.y.trunc()),
-                        cosmic_text::CacheKeyFlags::empty(),
-                    )
-                    .0,
-                )
-                .clone()
-                .with_context(|| format!("no image for {params:?} in font {font:?}"))?;
+            (Location::default(), None)
+        };
+        let m = font.metrics(Ppem::unscaled(), &location);
+        let units_per_em = f32::from(m.units_per_em);
+        let ascent = m.ascent;
+        let descent = -m.descent;
+        let metrics = FontMetrics {
+            units_per_em: u32::from(m.units_per_em),
+            ascent,
+            descent,
+            line_gap: m.leading,
+            underline_position: m.underline.map_or(-units_per_em * 0.1, |u| u.offset),
+            underline_thickness: m.underline.map_or(units_per_em * 0.05, |u| u.thickness),
+            cap_height: m.cap_height.unwrap_or(ascent * 0.7),
+            x_height: m.x_height.unwrap_or(ascent * 0.5),
+            bounding_box: m.bounds.map_or(
+                Bounds {
+                    origin: point(0.0, -descent),
+                    size: size(units_per_em, ascent + descent),
+                },
+                |b| Bounds {
+                    origin: point(b.x_min, b.y_min),
+                    size: size(b.x_max - b.x_min, b.y_max - b.y_min),
+                },
+            ),
+        };
+        let features = features
+            .iter()
+            .filter_map(|(name, value)| {
+                let tag: [u8; 4] = name.as_bytes().try_into().ok()?;
+                Some(harfrust::Feature::new(
+                    harfrust::Tag::new(&tag),
+                    *value,
+                    ..,
+                ))
+            })
+            .collect();
+        let id = FontId(self.instances.len());
+        self.instances.push(Instance {
+            source,
+            weight,
+            location,
+            shaper_instance,
+            features,
+            units_per_em,
+            metrics,
+            fallbacks: None,
+        });
+        self.instance_ids.insert(key, id);
+        Ok(id)
+    }
 
-            if params.is_emoji {
-                // Convert from RGBA to BGRA.
-                for pixel in image.data.chunks_exact_mut(4) {
-                    pixel.swap(0, 2);
+    /// The faces after `id` for what it lacks: Olo's symbol faces, the
+    /// other of the UI and mono faces, DejaVu Sans, CJK, emoji.
+    fn fallbacks(&mut self, id: FontId) -> Arc<[FontId]> {
+        if let Some(chain) = &self.instances[id.0].fallbacks {
+            return chain.clone();
+        }
+        let weight = self.instances[id.0].weight;
+        let family = self.sources[self.instances[id.0].source].family.clone();
+        let mono = olo_theme::fonts::MONO.contains(&family.as_str());
+        let mut names: Vec<&[&str]> = olo_theme::fonts::SYMBOLS
+            .iter()
+            .map(std::slice::from_ref)
+            .collect();
+        names.push(if mono {
+            olo_theme::fonts::UI
+        } else {
+            olo_theme::fonts::MONO
+        });
+        names.push(&["DejaVu Sans"]);
+        names.push(&["Noto Sans CJK JP", "Noto Sans Mono CJK JP"]);
+        names.push(&["Noto Color Emoji"]);
+        names.push(&["Noto Emoji"]);
+        let mut chain = Vec::new();
+        for list in names {
+            if let Some(source) = self.find(list, weight, false)
+                && let Ok(fid) = self.instance(source, weight, &[])
+                && fid != id
+                && !chain.contains(&fid)
+            {
+                chain.push(fid);
+            }
+        }
+        let chain: Arc<[FontId]> = chain.into();
+        self.instances[id.0].fallbacks = Some(chain.clone());
+        chain
+    }
+
+    fn has(&self, id: FontId, ch: char) -> bool {
+        self.sources[self.instances[id.0].source]
+            .font()
+            .and_then(|f| f.charmap().map(ch))
+            .is_some_and(|g| g.to_u32() != 0)
+    }
+
+    /// The face for `ch` in a run of `primary`.
+    fn face_for(&mut self, primary: FontId, ch: char, emoji: bool) -> FontId {
+        let chain = self.fallbacks(primary);
+        let is_color = |s: &Self, id: FontId| s.sources[s.instances[id.0].source].color;
+        if emoji
+            && let Some(&id) = chain
+                .iter()
+                .find(|&&id| is_color(self, id) && self.has(id, ch))
+        {
+            return id;
+        }
+        if self.has(primary, ch) {
+            return primary;
+        }
+        if let Some(&id) = chain.iter().find(|&&id| self.has(id, ch)) {
+            return id;
+        }
+        // Anything the system has (once per character).
+        let source = match self.last_resort.get(&ch) {
+            Some(found) => *found,
+            None => {
+                self.system();
+                let found = self.system.as_ref().and_then(|db| {
+                    db.faces()
+                        .find(|f| {
+                            db.with_face_data(f.id, |data, index| {
+                                FontRef::from_index(data, index)
+                                    .ok()
+                                    .and_then(|font| font.charmap().map(ch))
+                                    .is_some_and(|g| g.to_u32() != 0)
+                            })
+                            .unwrap_or(false)
+                        })
+                        .map(|f| f.id)
+                });
+                let source = found.and_then(|id| self.source(true, id));
+                self.last_resort.insert(ch, source);
+                source
+            }
+        };
+        let weight = self.instances[primary.0].weight;
+        source
+            .and_then(|s| self.instance(s, weight, &[]).ok())
+            .unwrap_or(primary)
+    }
+
+    fn layout_line(&mut self, text: &str, font_size: Pixels, font_runs: &[FontRun]) -> LineLayout {
+        let mut runs: Vec<ShapedRun> = Vec::new();
+        let mut x = 0.0f32;
+        let (mut ascent, mut descent) = (0.0f32, 0.0f32);
+        let mut start = 0;
+        for run in font_runs {
+            let end = (start + run.len).min(text.len());
+            let primary = run.font_id;
+            let m = &self.instances[primary.0].metrics;
+            let scale = font_size.0 / m.units_per_em as f32;
+            ascent = ascent.max(m.ascent * scale);
+            descent = descent.max(m.descent * scale);
+            // Split by the face each character comes from; marks,
+            // joiners and selectors stay with what they follow.
+            let mut pieces: Vec<(usize, usize, FontId)> = Vec::new();
+            let chars: Vec<(usize, char)> = text[start..end]
+                .char_indices()
+                .map(|(i, c)| (start + i, c))
+                .collect();
+            for (n, &(i, ch)) in chars.iter().enumerate() {
+                let next = chars.get(n + 1).map(|&(_, c)| c);
+                let face = match pieces.last() {
+                    Some(&(_, _, face)) if follows(ch) => face,
+                    _ => self.face_for(primary, ch, emoji(ch, next)),
+                };
+                let len = ch.len_utf8();
+                match pieces.last_mut() {
+                    Some(last) if last.2 == face => last.1 = i + len,
+                    _ => pieces.push((i, i + len, face)),
                 }
             }
-
-            Ok((bitmap_size, image.data))
-        }
-    }
-
-    /// This is used when cosmic_text has chosen a fallback font instead of using the requested
-    /// font, typically to handle some unicode characters. When this happens, `loaded_fonts` may not
-    /// yet have an entry for this fallback font, and so one is added.
-    ///
-    /// Note that callers shouldn't use this `FontId` somewhere that will retrieve the corresponding
-    /// `LoadedFont.features`, as it will have an arbitrarily chosen or empty value. The only
-    /// current use of this field is for the *input* of `layout_line`, and so it's fine to use
-    /// `font_id_for_cosmic_id` when computing the *output* of `layout_line`.
-    fn font_id_for_cosmic_id(&mut self, id: cosmic_text::fontdb::ID) -> FontId {
-        if let Some(ix) = self
-            .loaded_fonts
-            .iter()
-            .position(|loaded_font| loaded_font.font.id() == id)
-        {
-            FontId(ix)
-        } else {
-            let font = self.font_system.get_font(id).unwrap();
-            let face = self.font_system.db().face(id).unwrap();
-
-            let font_id = FontId(self.loaded_fonts.len());
-            self.loaded_fonts.push(LoadedFont {
-                font,
-                features: CosmicFontFeatures::new(),
-                is_known_emoji_font: check_is_known_emoji_font(&face.post_script_name),
-            });
-
-            font_id
-        }
-    }
-
-    #[profiling::function]
-    fn layout_line(&mut self, text: &str, font_size: Pixels, font_runs: &[FontRun]) -> LineLayout {
-        let mut attrs_list = AttrsList::new(&Attrs::new());
-        let mut offs = 0;
-        for run in font_runs {
-            let loaded_font = self.loaded_font(run.font_id);
-            let font = self.font_system.db().face(loaded_font.font.id()).unwrap();
-
-            attrs_list.add_span(
-                offs..(offs + run.len),
-                &Attrs::new()
-                    .metadata(run.font_id.0)
-                    .family(Family::Name(&font.families.first().unwrap().0))
-                    .stretch(font.stretch)
-                    .style(font.style)
-                    .weight(font.weight)
-                    .font_features(loaded_font.features.clone()),
-            );
-            offs += run.len;
-        }
-
-        let line = ShapeLine::new(
-            &mut self.font_system,
-            text,
-            &attrs_list,
-            cosmic_text::Shaping::Advanced,
-            4,
-        );
-        let mut layout_lines = Vec::with_capacity(1);
-        line.layout_to_buffer(
-            &mut self.scratch,
-            font_size.0,
-            None, // We do our own wrapping
-            cosmic_text::Wrap::None,
-            None,
-            &mut layout_lines,
-            None,
-        );
-        let layout = layout_lines.first().unwrap();
-
-        let mut runs: Vec<ShapedRun> = Vec::new();
-        for glyph in &layout.glyphs {
-            let mut font_id = FontId(glyph.metadata);
-            let mut loaded_font = self.loaded_font(font_id);
-            if loaded_font.font.id() != glyph.font_id {
-                font_id = self.font_id_for_cosmic_id(glyph.font_id);
-                loaded_font = self.loaded_font(font_id);
+            for (from, to, face) in pieces {
+                x = self.shape(text, from, to, face, font_size, x, &mut runs);
             }
-            let is_emoji = loaded_font.is_known_emoji_font;
-
-            // HACK: Prevent crash caused by variation selectors.
-            if glyph.glyph_id == 3 && is_emoji {
-                continue;
-            }
-
-            let shaped_glyph = ShapedGlyph {
-                id: GlyphId(glyph.glyph_id as u32),
-                position: point(glyph.x.into(), glyph.y.into()),
-                index: glyph.start,
-                is_emoji,
-            };
-
-            if let Some(last_run) = runs
-                .last_mut()
-                .filter(|last_run| last_run.font_id == font_id)
-            {
-                last_run.glyphs.push(shaped_glyph);
-            } else {
-                runs.push(ShapedRun {
-                    font_id,
-                    glyphs: vec![shaped_glyph],
-                });
-            }
+            start = end;
         }
-
         LineLayout {
             font_size,
-            width: layout.w.into(),
-            ascent: layout.max_ascent.into(),
-            descent: layout.max_descent.into(),
+            width: px(x),
+            ascent: px(ascent),
+            descent: px(descent),
             runs,
             len: text.len(),
         }
     }
-}
 
-impl TryFrom<&FontFeatures> for CosmicFontFeatures {
-    type Error = anyhow::Error;
-
-    fn try_from(features: &FontFeatures) -> Result<Self> {
-        let mut result = CosmicFontFeatures::new();
-        for feature in features.0.iter() {
-            let name_bytes: [u8; 4] = feature
-                .0
-                .as_bytes()
-                .try_into()
-                .context("Incorrect feature flag format")?;
-
-            let tag = cosmic_text::FeatureTag::new(&name_bytes);
-
-            result.set(tag, feature.1);
+    /// Shapes `text[from..to]` in `face` from `x`; returns where it ends.
+    #[allow(clippy::too_many_arguments)]
+    fn shape(
+        &mut self,
+        text: &str,
+        from: usize,
+        to: usize,
+        face: FontId,
+        font_size: Pixels,
+        mut x: f32,
+        runs: &mut Vec<ShapedRun>,
+    ) -> f32 {
+        let instance = &self.instances[face.0];
+        let source = &self.sources[instance.source];
+        let Some(font) = source.font() else {
+            return x;
+        };
+        let scale = font_size.0 / instance.units_per_em;
+        let shaper = source
+            .shaper
+            .shaper(&font)
+            .instance(instance.shaper_instance.as_ref())
+            .build();
+        let mut buffer = self.buffer.take().unwrap_or_default();
+        buffer.push_str(&text[from..to]);
+        buffer.guess_segment_properties();
+        let glyphs = shaper.shape(
+            buffer,
+            harfrust::ShapeOptions::new().features(&instance.features),
+        );
+        let is_emoji = source.color;
+        let mut shaped = Vec::with_capacity(glyphs.len());
+        for (info, pos) in glyphs.glyph_infos().iter().zip(glyphs.glyph_positions()) {
+            shaped.push(ShapedGlyph {
+                id: GlyphId(info.glyph_id),
+                position: point(
+                    px(x + pos.x_offset as f32 * scale),
+                    px(-pos.y_offset as f32 * scale),
+                ),
+                index: from + info.cluster as usize,
+                is_emoji,
+            });
+            x += pos.x_advance as f32 * scale;
         }
-        Ok(result)
+        self.buffer = Some(glyphs.clear());
+        match runs.last_mut() {
+            Some(last) if last.font_id == face => last.glyphs.extend(shaped),
+            _ => runs.push(ShapedRun {
+                font_id: face,
+                glyphs: shaped,
+            }),
+        }
+        x
+    }
+
+    /// Draws a glyph: its bounds (in device pixels from its origin on
+    /// the baseline) and its pixels (coverage; BGRA for colour glyphs).
+    fn draw(&mut self, params: &RenderGlyphParams) -> Option<(Bounds<DevicePixels>, Vec<u8>)> {
+        let ppem = params.font_size.0 * params.scale_factor;
+        if !(ppem > 0.0 && ppem.is_finite()) {
+            return None;
+        }
+        let instance = &self.instances[params.font_id.0];
+        let source = &self.sources[instance.source];
+        if source.color {
+            return draw_color(source, instance, params.glyph_id, ppem);
+        }
+        let font = source.font()?;
+        let outlines = font.outline_glyphs();
+        let glyph = outlines.get(skrifa::GlyphId::new(params.glyph_id.0))?;
+        let key = (params.font_id.0, ppem.to_bits());
+        if !self.hinting.contains_key(&key) {
+            let hinting = HintingInstance::new(
+                &outlines,
+                Ppem::new(ppem),
+                &instance.location,
+                Target::Smooth {
+                    mode: SmoothMode::Light,
+                    symmetric_rendering: true,
+                    preserve_linear_metrics: true,
+                },
+            )
+            .ok()?;
+            self.hinting.insert(key, hinting);
+        }
+        let hinting = &self.hinting[&key];
+        let mut path = kurbo::BezPath::new();
+        let mut pen = Pen {
+            path: &mut path,
+            x: f64::from(params.subpixel_variant.x) / f64::from(SUBPIXEL_VARIANTS_X),
+        };
+        glyph
+            .draw(DrawSettings::hinted(hinting, false), &mut pen)
+            .ok()?;
+        let b = path.control_box().expand();
+        let (width, height) = (b.width() as u16, b.height() as u16);
+        if width == 0 || height == 0 {
+            return None;
+        }
+        let mut ctx = vello_cpu::RenderContext::new(width, height);
+        ctx.set_transform(kurbo::Affine::translate((-b.x0, -b.y0)));
+        ctx.set_paint(vello_cpu::color::OpaqueColor::<vello_cpu::color::Srgb>::WHITE);
+        ctx.fill_path(&path);
+        let mut pixmap = vello_cpu::Pixmap::new(width, height);
+        let mut resources = vello_cpu::Resources::new();
+        ctx.render(&mut pixmap, &mut resources);
+        let coverage = pixmap
+            .data_as_u8_slice()
+            .chunks_exact(4)
+            .map(|p| p[3])
+            .collect();
+        Some((
+            Bounds {
+                origin: point(DevicePixels(b.x0 as i32), DevicePixels(b.y0 as i32)),
+                size: size(DevicePixels(width.into()), DevicePixels(height.into())),
+            },
+            coverage,
+        ))
     }
 }
 
-impl From<RectF> for Bounds<f32> {
-    fn from(rect: RectF) -> Self {
+/// A colour glyph (an emoji), unhinted, cropped to what it paints.
+fn draw_color(
+    source: &Source,
+    instance: &Instance,
+    glyph: GlyphId,
+    ppem: f32,
+) -> Option<(Bounds<DevicePixels>, Vec<u8>)> {
+    use vello_cpu::peniko;
+    let canvas = (3.0 * ppem).ceil().clamp(1.0, 1024.0) as u16;
+    let (ox, oy) = (ppem, 2.0 * ppem);
+    let blob: Arc<dyn AsRef<[u8]> + Send + Sync> = source.data.clone();
+    let font = peniko::FontData::new(peniko::Blob::new(blob), source.index);
+    let coords: Vec<i16> = instance
+        .location
+        .coords()
+        .iter()
+        .map(|c| c.to_bits())
+        .collect();
+    let mut ctx = vello_cpu::RenderContext::new(canvas, canvas);
+    let mut resources = vello_cpu::Resources::new();
+    ctx.set_paint(vello_cpu::color::OpaqueColor::<vello_cpu::color::Srgb>::WHITE);
+    ctx.glyph_run(&mut resources, &font)
+        .font_size(ppem)
+        .hint(false)
+        .normalized_coords(&coords)
+        .fill_glyphs(std::iter::once(vello_cpu::Glyph {
+            id: glyph.0,
+            x: ox,
+            y: oy,
+        }));
+    let mut pixmap = vello_cpu::Pixmap::new(canvas, canvas);
+    ctx.render(&mut pixmap, &mut resources);
+    let n = canvas as usize;
+    let px = pixmap.data_as_u8_slice();
+    let (mut x0, mut y0, mut x1, mut y1) = (n, n, 0, 0);
+    for y in 0..n {
+        for x in 0..n {
+            if px[4 * (y * n + x) + 3] != 0 {
+                x0 = x0.min(x);
+                y0 = y0.min(y);
+                x1 = x1.max(x + 1);
+                y1 = y1.max(y + 1);
+            }
+        }
+    }
+    if x1 <= x0 || y1 <= y0 {
+        return None;
+    }
+    let mut bgra = Vec::with_capacity((x1 - x0) * (y1 - y0) * 4);
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let i = 4 * (y * n + x);
+            let (r, g, b, a) = (px[i], px[i + 1], px[i + 2], px[i + 3]);
+            // Premultiplied to straight, as GPUI's pictures are.
+            let un = |c: u8| {
+                if a == 0 {
+                    0
+                } else {
+                    ((u16::from(c) * 255 + u16::from(a) / 2) / u16::from(a)).min(255) as u8
+                }
+            };
+            bgra.extend_from_slice(&[un(b), un(g), un(r), a]);
+        }
+    }
+    Some((
         Bounds {
-            origin: point(rect.origin_x(), rect.origin_y()),
-            size: size(rect.width(), rect.height()),
-        }
-    }
-}
-
-impl From<RectI> for Bounds<DevicePixels> {
-    fn from(rect: RectI) -> Self {
-        Bounds {
-            origin: point(DevicePixels(rect.origin_x()), DevicePixels(rect.origin_y())),
-            size: size(DevicePixels(rect.width()), DevicePixels(rect.height())),
-        }
-    }
-}
-
-impl From<Vector2I> for Size<DevicePixels> {
-    fn from(value: Vector2I) -> Self {
-        size(value.x().into(), value.y().into())
-    }
-}
-
-impl From<RectI> for Bounds<i32> {
-    fn from(rect: RectI) -> Self {
-        Bounds {
-            origin: point(rect.origin_x(), rect.origin_y()),
-            size: size(rect.width(), rect.height()),
-        }
-    }
-}
-
-impl From<Point<u32>> for Vector2I {
-    fn from(size: Point<u32>) -> Self {
-        Vector2I::new(size.x as i32, size.y as i32)
-    }
-}
-
-impl From<Vector2F> for Size<f32> {
-    fn from(vec: Vector2F) -> Self {
-        size(vec.x(), vec.y())
-    }
-}
-
-impl From<FontWeight> for cosmic_text::Weight {
-    fn from(value: FontWeight) -> Self {
-        cosmic_text::Weight(value.0 as u16)
-    }
-}
-
-impl From<FontStyle> for cosmic_text::Style {
-    fn from(style: FontStyle) -> Self {
-        match style {
-            FontStyle::Normal => cosmic_text::Style::Normal,
-            FontStyle::Italic => cosmic_text::Style::Italic,
-            FontStyle::Oblique => cosmic_text::Style::Oblique,
-        }
-    }
-}
-
-fn font_into_properties(font: &crate::Font) -> font_kit::properties::Properties {
-    font_kit::properties::Properties {
-        style: match font.style {
-            crate::FontStyle::Normal => font_kit::properties::Style::Normal,
-            crate::FontStyle::Italic => font_kit::properties::Style::Italic,
-            crate::FontStyle::Oblique => font_kit::properties::Style::Oblique,
+            origin: point(
+                DevicePixels(x0 as i32 - ox as i32),
+                DevicePixels(y0 as i32 - oy as i32),
+            ),
+            size: size(
+                DevicePixels((x1 - x0) as i32),
+                DevicePixels((y1 - y0) as i32),
+            ),
         },
-        weight: font_kit::properties::Weight(font.weight.0),
-        stretch: Default::default(),
-    }
+        bgra,
+    ))
 }
 
-fn face_info_into_properties(
-    face_info: &cosmic_text::fontdb::FaceInfo,
-) -> font_kit::properties::Properties {
-    font_kit::properties::Properties {
-        style: match face_info.style {
-            cosmic_text::Style::Normal => font_kit::properties::Style::Normal,
-            cosmic_text::Style::Italic => font_kit::properties::Style::Italic,
-            cosmic_text::Style::Oblique => font_kit::properties::Style::Oblique,
-        },
-        // both libs use the same values for weight
-        weight: font_kit::properties::Weight(face_info.weight.0.into()),
-        stretch: match face_info.stretch {
-            cosmic_text::Stretch::Condensed => font_kit::properties::Stretch::CONDENSED,
-            cosmic_text::Stretch::Expanded => font_kit::properties::Stretch::EXPANDED,
-            cosmic_text::Stretch::ExtraCondensed => font_kit::properties::Stretch::EXTRA_CONDENSED,
-            cosmic_text::Stretch::ExtraExpanded => font_kit::properties::Stretch::EXTRA_EXPANDED,
-            cosmic_text::Stretch::Normal => font_kit::properties::Stretch::NORMAL,
-            cosmic_text::Stretch::SemiCondensed => font_kit::properties::Stretch::SEMI_CONDENSED,
-            cosmic_text::Stretch::SemiExpanded => font_kit::properties::Stretch::SEMI_EXPANDED,
-            cosmic_text::Stretch::UltraCondensed => font_kit::properties::Stretch::ULTRA_CONDENSED,
-            cosmic_text::Stretch::UltraExpanded => font_kit::properties::Stretch::ULTRA_EXPANDED,
-        },
-    }
+/// Marks, joiners, variation selectors, emoji modifiers and tags: drawn
+/// from the face of what they follow.
+fn follows(ch: char) -> bool {
+    matches!(ch as u32,
+        0x0300..=0x036F | 0x1AB0..=0x1AFF | 0x1DC0..=0x1DFF | 0x20D0..=0x20FF
+        | 0xFE20..=0xFE2F | 0x200C | 0x200D | 0xFE00..=0xFE0F
+        | 0x1F3FB..=0x1F3FF | 0xE0020..=0xE007F | 0xE0100..=0xE01EF)
 }
 
-fn check_is_known_emoji_font(postscript_name: &str) -> bool {
-    // TODO: Include other common emoji fonts
-    postscript_name == "NotoColorEmoji"
+/// Drawn as a colour emoji: pictographs, or a character asked to be one
+/// (U+FE0F after it).
+fn emoji(ch: char, next: Option<char>) -> bool {
+    matches!(ch as u32, 0x1F000..=0x1FAFF) || next == Some('\u{FE0F}')
+}
+
+/// An outline into a path, y down, `x` pixels to the right.
+struct Pen<'a> {
+    path: &'a mut kurbo::BezPath,
+    x: f64,
+}
+
+impl OutlinePen for Pen<'_> {
+    fn move_to(&mut self, x: f32, y: f32) {
+        self.path.move_to((f64::from(x) + self.x, -f64::from(y)));
+    }
+
+    fn line_to(&mut self, x: f32, y: f32) {
+        self.path.line_to((f64::from(x) + self.x, -f64::from(y)));
+    }
+
+    fn quad_to(&mut self, cx0: f32, cy0: f32, x: f32, y: f32) {
+        self.path.quad_to(
+            (f64::from(cx0) + self.x, -f64::from(cy0)),
+            (f64::from(x) + self.x, -f64::from(y)),
+        );
+    }
+
+    fn curve_to(&mut self, cx0: f32, cy0: f32, cx1: f32, cy1: f32, x: f32, y: f32) {
+        self.path.curve_to(
+            (f64::from(cx0) + self.x, -f64::from(cy0)),
+            (f64::from(cx1) + self.x, -f64::from(cy1)),
+            (f64::from(x) + self.x, -f64::from(y)),
+        );
+    }
+
+    fn close(&mut self) {
+        self.path.close_path();
+    }
 }
