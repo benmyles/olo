@@ -155,10 +155,9 @@ fn paragraph(out: &mut String, p: &Paragraph, links: &mut Vec<String>, numbered_
 }
 
 fn table(out: &mut String, t: &Table, links: &mut Vec<String>, numbered_list: u32) {
-    let columns = t.columns().max(1);
-    let w = TEXT_WIDTH / columns as u32;
+    let widths = t.column_widths(TEXT_WIDTH);
     out.push_str("<w:tbl><w:tblPr><w:tblStyle w:val=\"TableGrid\"/><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr><w:tblGrid>");
-    for _ in 0..columns {
+    for w in &widths {
         let _ = write!(out, "<w:gridCol w:w=\"{w}\"/>");
     }
     out.push_str("</w:tblGrid>");
@@ -167,7 +166,7 @@ fn table(out: &mut String, t: &Table, links: &mut Vec<String>, numbered_list: u3
         if r == 0 && t.header {
             out.push_str("<w:trPr><w:tblHeader/></w:trPr>");
         }
-        for c in 0..columns {
+        for (c, w) in widths.iter().enumerate() {
             let _ = write!(out, "<w:tc><w:tcPr><w:tcW w:w=\"{w}\" w:type=\"dxa\"/></w:tcPr>");
             match row.get(c).filter(|cell| !cell.is_empty()) {
                 Some(cell) => cell.iter().for_each(|p| paragraph(out, p, links, numbered_list)),
@@ -428,6 +427,7 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
                     }
                 }
                 "tblHeader" if table_depth == 1 && table.rows.len() == 1 => table.header = on(&a),
+                "gridCol" if table_depth == 1 => table.widths.push(attr(&a, "w").and_then(|v| v.parse().ok()).unwrap_or(0.0)),
                 _ => {}
             },
             X::End(n) => match n.as_str() {

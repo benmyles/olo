@@ -223,7 +223,7 @@ pub fn from_rich(doc: olo_richtext::Document) -> (String, Vec<Run>, Vec<Para>) {
             // A table: its rows, each cell's paragraphs a space apart.
             Some(t) => {
                 for (r, row) in t.rows.iter().enumerate() {
-                    b.start(Para { row: Some(Row { header: r == 0 && t.header, ..Row::default() }), ..Para::default() });
+                    b.start(Para { row: Some(Row { header: r == 0 && t.header, columns: t.widths.clone() }), ..Para::default() });
                     for (c, cell) in row.iter().enumerate() {
                         if c > 0 {
                             let s = b.base();
@@ -327,7 +327,7 @@ pub fn to_rich(text: &str, runs: &[Run], paras: &[Para], align: Align) -> olo_ri
     let mut table: Option<rt::Table> = None;
     for (r, p) in paragraphs(text, paras) {
         if let Some(row) = &p.row {
-            let t = table.get_or_insert_with(|| rt::Table { header: row.header, ..rt::Table::default() });
+            let t = table.get_or_insert_with(|| rt::Table { header: row.header, widths: row.columns.clone(), ..rt::Table::default() });
             t.rows.push(cells(text, r).into_iter().map(|c| vec![rt::Paragraph { spans: rich(c), ..rt::Paragraph::default() }]).collect());
             continue;
         }
@@ -568,7 +568,19 @@ pub fn to_html(text: &str, runs: &[Run], paras: &[Para], title: &str, align: Ali
         }
         if let Some(row) = &p.row {
             if !table {
-                out.push_str("<table style=\"border-collapse: collapse\">\n");
+                // Columns of widths of their own: the table across the
+                // page, each its share.
+                let n = cells(text, r.clone()).len();
+                if row.columns.len() == n && row.columns.iter().all(|w| *w > 0.0) {
+                    let total: f32 = row.columns.iter().sum();
+                    out.push_str("<table style=\"border-collapse: collapse; width: 100%\">\n<colgroup>");
+                    for w in &row.columns {
+                        out.push_str(&format!("<col style=\"width: {:.1}%\">", w / total * 100.0));
+                    }
+                    out.push_str("</colgroup>\n");
+                } else {
+                    out.push_str("<table style=\"border-collapse: collapse\">\n");
+                }
                 table = true;
             }
             let tag = if row.header { "th" } else { "td" };
@@ -757,6 +769,14 @@ mod tests {
         let (text2, _, paras2) = from_rich(rich);
         assert_eq!(text2, text);
         assert!(paras2[0].row.as_ref().is_some_and(|r| r.header));
+        // Columns dragged wider keep their widths, through Word too.
+        let mut paras3 = paras.clone();
+        for p in paras3.iter_mut().filter_map(|p| p.row.as_mut()) {
+            p.columns = vec![0.75, 0.25];
+        }
+        let docx = olo_richtext::write_docx(&to_rich(&text, &runs, &paras3, Align::Left)).unwrap();
+        let (_, _, paras4) = from_rich(olo_richtext::read_docx(&docx).unwrap());
+        assert_eq!(paras4[1].row.as_ref().map(|r| r.columns.clone()), Some(vec![0.75, 0.25]));
         let html = to_html(&text, &runs, &paras, "t", Align::Left);
         assert!(html.contains("<table") && html.contains("<th") && html.contains("<td"));
     }

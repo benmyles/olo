@@ -68,6 +68,10 @@ pub trait Document {
     fn replace(&mut self, range: Range<usize>, text: &str, selection: Range<usize>);
     /// Bytes `range` were copied or cut (to paste them back with styles).
     fn copied(&mut self, _range: Range<usize>) {}
+    /// A table's rule was dragged: the row at bytes `range` (and the rest
+    /// of its table) should have columns of these widths (shares of the
+    /// text's width). Ignored by default.
+    fn set_columns(&mut self, _range: Range<usize>, _columns: Vec<f32>) {}
     /// Move bytes `from` to byte `to` (of the text before the move), as
     /// text dragged within the editor does. Where it went.
     fn move_text(&mut self, from: Range<usize>, to: usize, selection: Range<usize>) -> Range<usize> {
@@ -113,6 +117,28 @@ pub struct Row {
 
 /// Between a cell's rules and its text, in points.
 pub const CELL_INSET: Vec2 = Vec2 { x: 6.0, y: 3.0 };
+/// The narrowest a column is dragged to, in points.
+const MIN_COLUMN: f32 = 24.0;
+
+/// A table's inner rule being dragged: its row (paragraph), which rule
+/// (left of cell `k`), the columns' widths when it was taken hold of,
+/// where the press was and how far it has gone.
+#[derive(Clone, Debug)]
+struct ColumnDrag {
+    para: usize,
+    k: usize,
+    widths: Vec<f32>,
+    press: f32,
+    by: f32,
+}
+
+impl ColumnDrag {
+    /// How far the rule has gone, kept to columns no narrower than
+    /// [`MIN_COLUMN`].
+    fn moved(&self) -> f32 {
+        self.by.clamp(-(self.widths[self.k - 1] - MIN_COLUMN).max(0.0), (self.widths[self.k] - MIN_COLUMN).max(0.0))
+    }
+}
 
 /// The left edge and width of each of `n` cells of `row` across `width`
 /// (whole points, so rules fall on pixels).
@@ -302,6 +328,10 @@ pub struct Editor {
     /// Misspelled words (bytes) of paragraphs checked, by their text's
     /// hash: a paragraph is checked once until it changes.
     misspelled: std::collections::HashMap<u64, Arc<Vec<Range<usize>>>>,
+    /// Tables' inner rules drawn last frame (where on screen, the row,
+    /// which rule, its columns' widths), to take hold of.
+    rules: Vec<(Rect, usize, usize, Vec<f32>)>,
+    column_drag: Option<ColumnDrag>,
 }
 
 impl Editor {
@@ -330,6 +360,8 @@ impl Editor {
             set_top: None,
             markers: std::collections::HashMap::new(),
             misspelled: std::collections::HashMap::new(),
+            rules: Vec::new(),
+            column_drag: None,
         };
         e.reset("");
         e
@@ -953,6 +985,19 @@ impl Editor {
         // dark page); a header shaded with the controls'.
         let rule = visuals.text_color().gamma_multiply(0.35);
         let shade = style::c(style::palette(&ctx).control_background);
+        let dragging = style::c(style::palette(&ctx).keyboard_navigation);
+        self.rules.clear();
+        // The table a rule is being dragged in: its rows' paragraphs.
+        let drag_table = self.column_drag.as_ref().map(|d| {
+            let (mut a, mut b) = (d.para, d.para);
+            while a > 0 && self.paras[a - 1].set.row.is_some() {
+                a -= 1;
+            }
+            while b + 1 < self.paras.len() && self.paras[b + 1].set.row.is_some() {
+                b += 1;
+            }
+            a..=b
+        });
         for (i, laid) in &shown {
             let p = self.paras[*i];
             let at = snap(origin + self.origin(*i, o, inner));
@@ -977,6 +1022,20 @@ impl Editor {
                     painter.line_segment([Pos2::new(r, top), Pos2::new(r, bottom)], egui::Stroke::new(px, rule));
                     painter.line_segment([Pos2::new(l, top), Pos2::new(r, top)], egui::Stroke::new(px, rule));
                     painter.line_segment([Pos2::new(l, bottom), Pos2::new(r, bottom)], egui::Stroke::new(px, rule));
+                }
+                // The inner rules, to take hold of (a few points either side).
+                let widths: Vec<f32> = laid.parts.iter().map(|q| q.frame.1).collect();
+                for (k, q) in laid.parts.iter().enumerate().skip(1) {
+                    let x = at.x + q.frame.0;
+                    self.rules.push((Rect::from_x_y_ranges(x - 3.0..=x + 3.0, top..=bottom), *i, k, widths.clone()));
+                }
+                // One being dragged: where it would go, across the table.
+                if let (Some(d), Some(t)) = (&self.column_drag, &drag_table)
+                    && t.contains(i)
+                    && let Some(q) = laid.parts.get(d.k)
+                {
+                    let x = line(at.x + q.frame.0 + d.moved());
+                    painter.line_segment([Pos2::new(x, top), Pos2::new(x, bottom)], egui::Stroke::new(2.0 * px, dragging));
                 }
             }
             for q in &laid.parts {
@@ -1159,6 +1218,38 @@ impl Editor {
             ctx.set_cursor_icon(CursorIcon::Text);
         }
         let (pressed, down, latest, mods) = ui.input(|i| (i.pointer.primary_pressed(), i.pointer.primary_down(), i.pointer.latest_pos(), i.modifiers));
+        // A table's inner rule: dragged, it sizes the columns either side
+        // (not selecting text); let go, the app is told.
+        let on_rule = latest.filter(|_| o.editable && response.hovered()).and_then(|p| self.rules.iter().find(|(r, ..)| r.contains(p)).cloned());
+        if on_rule.is_some() || self.column_drag.is_some() {
+            ctx.set_cursor_icon(CursorIcon::ResizeColumn);
+        }
+        if pressed
+            && let (Some((_, para, k, widths)), Some(p)) = (on_rule, latest)
+        {
+            self.column_drag = Some(ColumnDrag { para, k, widths, press: p.x, by: 0.0 });
+            ctx.memory_mut(|mem| mem.request_focus(id));
+            return changed;
+        }
+        if let Some(d) = &mut self.column_drag {
+            if down {
+                if let Some(p) = latest {
+                    d.by = p.x - d.press;
+                }
+                return changed;
+            }
+            let d = self.column_drag.take().expect("a drag");
+            let mut widths = d.widths.clone();
+            let by = d.moved();
+            widths[d.k - 1] += by;
+            widths[d.k] -= by;
+            if by != 0.0 && d.para < self.paras.len() {
+                let p = self.paras[d.para];
+                doc.set_columns(p.start..p.start + p.len, widths);
+                self.relayout();
+            }
+            return changed;
+        }
         // A right-click outside the selection puts the caret there first,
         // so the menu is about what was clicked (a misspelled word's
         // suggestions).

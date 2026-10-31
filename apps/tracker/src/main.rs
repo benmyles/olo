@@ -757,6 +757,10 @@ impl Tracker {
     /// workspace; else a new one here (each workspace has its own).
     fn open_folder(&mut self, cx: &mut Cx, path: &Path) -> WindowId {
         let path = path.canonicalize().unwrap_or_else(|_| path.to_owned());
+        // A recent folder now, for the Go menu and file panels (off the
+        // UI thread).
+        let p = path.clone();
+        std::thread::spawn(move || olo_kit::places::visited(&p));
         if let Some(id) = self.folder_window(cx, &path) {
             cx.activate(id);
             return id;
@@ -1049,6 +1053,16 @@ impl Tracker {
                 let _ = std::fs::create_dir_all(&t);
                 self.open_folder(cx, &t);
             }
+            "favorite-on" | "favorite-off" => {
+                let (dir, on) = (f.current_dir(), cmd == "favorite-on");
+                std::thread::spawn(move || olo_kit::places::set_favorite(&dir, on));
+            }
+            c if c.starts_with("go-place:") => {
+                let dir = PathBuf::from(&c["go-place:".len()..]);
+                if dir.is_dir() {
+                    self.open_folder(cx, &dir);
+                }
+            }
             "find" => self.open_find(cx),
             "close" => {
                 cx.close_window(win);
@@ -1128,11 +1142,38 @@ impl Tracker {
             )
             .item("Show Hidden Files", "hidden", None)
             .checked(self.hidden);
-        let go = Menu::new("Go")
-            .item("Home", "go-home", None)
-            .item("Desktop", "go-desktop", None)
-            .item(fs::volume_label(), "go-root", None)
-            .item("Trash", "go-trash", None);
+        // The standard folders, favourites (this one added or taken away)
+        // and recent folders, as every file panel has them
+        // (`olo_kit::places`).
+        let places = olo_kit::places::load();
+        let here = f.current_dir();
+        let mut favorites = Menu::new("Favorites");
+        for d in places.favorites.iter().filter(|d| d.is_dir()) {
+            favorites = favorites.item(olo_kit::places::label(d), format!("go-place:{}", d.display()), None);
+        }
+        if !places.favorites.is_empty() {
+            favorites = favorites.separator();
+        }
+        let name = olo_kit::places::label(&here);
+        favorites = if places.favorites.contains(&here) {
+            favorites.item(format!("Remove “{name}” from Favorites"), "favorite-off", None)
+        } else {
+            favorites.item(format!("Add “{name}” to Favorites"), "favorite-on", None)
+        };
+        let mut go = Menu::new("Go");
+        for (label, dir) in olo_kit::places::standard() {
+            let cmd = if dir == fs::home() { "go-home".to_owned() } else { format!("go-place:{}", dir.display()) };
+            go = go.item(label, cmd, None);
+        }
+        go = go.item(fs::volume_label(), "go-root", None).item("Trash", "go-trash", None).separator().submenu(favorites);
+        let recent: Vec<&PathBuf> = places.recent.iter().filter(|r| **r != here && r.is_dir()).collect();
+        if !recent.is_empty() {
+            let mut sub = Menu::new("Recent Folders");
+            for r in recent {
+                sub = sub.item(olo_kit::places::label(r), format!("go-place:{}", r.display()), None);
+            }
+            go = go.submenu(sub);
+        }
         vec![file, edit, window, go]
     }
 

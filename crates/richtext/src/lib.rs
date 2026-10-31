@@ -62,11 +62,51 @@ pub struct Table {
     pub rows: Vec<Vec<Vec<Paragraph>>>,
     /// The first row is a header (repeated at the top of each page).
     pub header: bool,
+    /// Each column's width, relative to the others (any unit); none:
+    /// as wide as each other.
+    pub widths: Vec<f32>,
 }
 
 impl Table {
     pub fn columns(&self) -> usize {
         self.rows.iter().map(Vec::len).max().unwrap_or(0)
+    }
+
+    /// Each column's share of the table's width, adding up to 1.
+    pub fn shares(&self) -> Vec<f32> {
+        let n = self.columns().max(1);
+        let sum: f32 = self.widths.iter().sum();
+        if self.widths.len() == n && self.widths.iter().all(|w| *w > 0.0) {
+            self.widths.iter().map(|w| w / sum).collect()
+        } else {
+            vec![1.0 / n as f32; n]
+        }
+    }
+
+    /// Where each column ends across `total` (whole units, the last at
+    /// `total`).
+    pub fn edges(&self, total: u32) -> Vec<u32> {
+        let mut at = 0.0;
+        self.shares()
+            .iter()
+            .map(|s| {
+                at += s;
+                (at * total as f32).round().min(total as f32) as u32
+            })
+            .collect()
+    }
+
+    /// Each column's width across `total` (whole units, adding up to it).
+    pub fn column_widths(&self, total: u32) -> Vec<u32> {
+        let mut last = 0;
+        self.edges(total)
+            .into_iter()
+            .map(|e| {
+                let w = e - last;
+                last = e;
+                w
+            })
+            .collect()
     }
 
     /// A cell's text, its paragraphs a space apart.
@@ -114,7 +154,8 @@ impl Document {
     /// Neighbouring spans of the same style run together, empty ones go,
     /// and a paragraph holding a line break becomes two; tables' cells
     /// likewise, every row as wide as the widest, every cell with a
-    /// paragraph, and a table with no rows gone.
+    /// paragraph, column widths shares of the width (or none), and a
+    /// table with no rows gone.
     pub fn tidy(&mut self) {
         self.paragraphs = tidy(std::mem::take(&mut self.paragraphs));
     }
@@ -129,6 +170,10 @@ fn tidy(paragraphs: Vec<Paragraph>) -> Vec<Paragraph> {
                 continue;
             }
             let columns = t.columns();
+            if t.widths.len() != columns || t.widths.iter().any(|w| w.is_nan() || *w <= 0.0) {
+                t.widths.clear();
+            }
+            t.widths = if t.widths.is_empty() { Vec::new() } else { t.shares() };
             for row in &mut t.rows {
                 row.resize_with(columns, Vec::new);
                 for cell in row.iter_mut() {
@@ -243,6 +288,7 @@ mod tests {
                 Paragraph {
                     table: Some(Table {
                         header: true,
+                        widths: vec![0.75, 0.25],
                         rows: vec![
                             vec![vec![p(Kind::Body, vec![Span { bold: true, ..plain.with_text("Name") }])], vec![p(Kind::Body, vec![Span { bold: true, ..plain.with_text("Size") }])]],
                             vec![

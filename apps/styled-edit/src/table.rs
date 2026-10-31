@@ -191,6 +191,19 @@ pub fn delete_column(doc: &mut Doc, i: usize, at: usize, selection: Range<usize>
     Some((change, caret..caret))
 }
 
+/// The columns of row `i`'s table these widths (shares of the width), a
+/// rule dragged in the editor.
+pub fn set_columns(doc: &mut Doc, i: usize, columns: Vec<f32>, selection: Range<usize>) -> Done {
+    let t = table_of(doc, i)?;
+    let whole = doc.para_range(t.start).start..doc.para_range(t.end - 1).end;
+    let change = doc.replace_paras(&[], "", selection.clone(), |_| whole.clone(), |_, p| {
+        if let Some(r) = &mut p.row {
+            r.columns = columns.clone();
+        }
+    })?;
+    Some((change, selection))
+}
+
 /// Every column of the caret's table as wide as the others.
 pub fn even_columns(doc: &mut Doc, i: usize, selection: Range<usize>) -> Done {
     let t = table_of(doc, i)?;

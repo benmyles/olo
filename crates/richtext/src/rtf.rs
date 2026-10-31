@@ -226,18 +226,17 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
 /// their paragraphs, in the table (`\intbl`), each cell's last ended by
 /// `\cell`, and the row by `\row`.
 fn write_table(out: &mut String, table: &Table, numbered_list: u32, counts: &mut [u32; 9], t: &mut Tables) {
-    let columns = table.columns().max(1);
-    let width = TEXT_WIDTH / columns as i32;
+    let edges = table.edges(TEXT_WIDTH as u32);
     for (r, row) in table.rows.iter().enumerate() {
         out.push_str("\\trowd\\trgaph108\\trleft0");
         if r == 0 && table.header {
             out.push_str("\\trhdr");
         }
-        for c in 0..columns {
-            let _ = write!(out, "\\clbrdrt\\brdrs\\brdrw10\\clbrdrl\\brdrs\\brdrw10\\clbrdrb\\brdrs\\brdrw10\\clbrdrr\\brdrs\\brdrw10\\cellx{}", width * (c as i32 + 1));
+        for edge in &edges {
+            let _ = write!(out, "\\clbrdrt\\brdrs\\brdrw10\\clbrdrl\\brdrs\\brdrw10\\clbrdrb\\brdrs\\brdrw10\\clbrdrr\\brdrs\\brdrw10\\cellx{edge}");
         }
         out.push('\n');
-        for c in 0..columns {
+        for c in 0..edges.len() {
             match row.get(c).filter(|cell| !cell.is_empty()) {
                 Some(cell) => {
                     for (k, p) in cell.iter().enumerate() {
@@ -498,6 +497,8 @@ struct Reader {
     cell: Vec<Paragraph>,
     /// The row being defined repeats at the top of each page.
     row_header: bool,
+    /// Its cells' right edges (twips).
+    row_edges: Vec<i32>,
 }
 
 pub fn read(bytes: &[u8]) -> Result<Document, String> {
@@ -531,6 +532,7 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
         row: Vec::new(),
         cell: Vec::new(),
         row_header: false,
+        row_edges: Vec::new(),
     };
     let mut i = 0;
     while i < bytes.len() {
@@ -905,7 +907,11 @@ impl Reader {
             "line" => self.text('\n'),
             // (A table in a cell: its cells a tab apart.)
             "tab" | "nestcell" => self.text('\t'),
-            "trowd" => self.row_header = false,
+            "trowd" => {
+                self.row_header = false;
+                self.row_edges.clear();
+            }
+            "cellx" => self.row_edges.push(n),
             "trhdr" => self.row_header = true,
             "cell" => {
                 let p = self.take_paragraph();
@@ -947,8 +953,11 @@ impl Reader {
         }
         let row = std::mem::take(&mut self.row);
         let table = self.table.get_or_insert_with(Table::default);
-        if table.rows.is_empty() && self.row_header {
-            table.header = true;
+        if table.rows.is_empty() {
+            table.header = self.row_header;
+            // The columns as wide as the first row's cells.
+            let mut last = 0;
+            table.widths = self.row_edges.iter().map(|&e| std::mem::replace(&mut last, e).abs_diff(e) as f32).collect();
         }
         table.rows.push(row);
     }

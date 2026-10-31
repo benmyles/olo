@@ -2482,5 +2482,17 @@
   "title": "StyledEdit: tables",
   "caption": "A paragraph can be a table's row: its cells its text between tabs, laid out side by side in columns by the kit editor and ruled a device pixel wide (a header row shaded). Tab and \u21e7Tab go from cell to cell, Tab in the last cell and Return add a row, and edits keep a table's cells and rows. The Table menu inserts and converts tables, adds and deletes rows and columns, and toggles the header; Word, OpenDocument, RTF and Markdown tables come in as tables and go out as them.",
   "image": "2026-10-30/185129-stylededit-tables.png"
+ },
+ {
+  "time": "2026-10-30T19:15:12",
+  "title": "File panels: Kind column, sorting, Favorites and Recent Folders",
+  "caption": "Every Open and Save panel lists Name, Kind, Size and Modified, sorted by any of them (folders first, names in natural order); the folder pop-up has the folders above this one, the standard places, Favorites (add or remove this folder) and Recent Folders, kept in ~/.config/olo/places.json and shared with Tracker's Go menu. Space looks at the selected file in the Viewer, as Quick Look.",
+  "image": "2026-10-30/191512-file-panels-kind-column-sorting-favorites-and-re.png"
+ },
+ {
+  "time": "2026-10-30T19:15:13",
+  "title": "StyledEdit: dragging a table's column rule",
+  "caption": "A table's inner rule can be dragged: a line shows where it will go, and let go, every row of the table takes the new widths (one step to undo). The widths are kept in StyledEdit's own files and in Word, OpenDocument, RTF and HTML.",
+  "image": "2026-10-30/191513-stylededit-dragging-a-table-s-column-rule.png"
  }
 ]

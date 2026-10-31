@@ -921,9 +921,9 @@ as they land (with the commit), add new ones as they come up.
   tables in `olo-richtext` (Word, OpenDocument and RTF, read and written,
   checked in LibreOffice), and Quick Look reading Word, OpenDocument and
   now RTF through it; tables in the editor (the kit editor's rows, the
-  Table menu, in and out of every format, printed). Next: column widths
-  dragged by their rules, a ruler, pictures, headers and footers, the
-  page view.
+  Table menu, in and out of every format, printed), column widths
+  dragged by their rules. Next: a ruler, pictures, headers and footers,
+  the page view.
 - ~~**Activity Monitor, revamped**~~ (Ben, 2026-10-29, at the end):
   "revamp activity monitor to include everything a nerd could ever want
   to know, with live views, drill downs, tuning settings and ability to
@@ -1647,8 +1647,11 @@ as they land (with the commit), add new ones as they come up.
     Show pop-up, the portal's `choices`; Chrome's uploads, GTK 4 and GTK 3
     tried. The toolkit switches are deliberately not set for everything:
     they also send GTK's link opening through OpenURI, which asks for an
-    app until one was picked 3 times (HACKING, "Open and Save"). Left:
-    Tracker's columns, favourites and Quick Look in the panel): an Olo
+    app until one was picked 3 times (HACKING, "Open and Save"); done
+    2026-10-30: the panel's list as Tracker's, Name, Kind, Size and
+    Modified, sorted by a header, Favorites and Recent Folders in its
+    folder pop-up shared with Tracker's Go menu (`olo_kit::places`),
+    and Space for a look at a file in the Viewer): an Olo
     portal backend
     (`org.freedesktop.impl.portal.FileChooser` in `olo-portal`, beside
     ScreenCast) showing the kit's file panel (Tracker's columns,
@@ -1660,7 +1663,10 @@ as they land (with the commit), add new ones as they come up.
     environment. Save dialogs too (name, folder, overwrite).
   - ~~**Show in folder**~~ (done 2026-10-30: the desktop's Tracker
     serves `org.freedesktop.FileManager1`, each call an Open in
-    Tracker). Left: the OpenURI portal's `OpenDirectory`, with OpenURI.
+    Tracker). The OpenURI portal's `OpenDirectory` needs nothing more:
+    xdg-desktop-portal (1.22 here) answers it with FileManager1's
+    `ShowItems`, which Tracker serves, and only without one opens
+    `inode/directory`'s default, which olo-session makes Tracker too.
   - **Opening things** (started 2026-10-30: the AppChooser portal is
     Olo's Open With window, so OpenURI's "which app?" is Olo's; olo-session
     writes desktop entries and `olo-mimeapps.list` defaults so GIO,
@@ -1688,8 +1694,11 @@ as they land (with the commit), add new ones as they come up.
     2026-10-30: fonts hinted as the kit, slight and grayscale, and Olo's
     Haiku cursors as an XCursor theme for programs that draw their own
     pointer; Olo's icons in the look as the icon theme, for the
-    freedesktop names it has pictures for). Left: `contrast` (once Olo
-    has a high-contrast look), text scaling to match the kit.
+    freedesktop names it has pictures for). Left, both waiting on Olo
+    itself: `contrast` (once Olo has a high-contrast look) and
+    `text-scaling-factor` (once Olo has a text size of its own; today
+    the kit's text is one size, `fonts::PLAIN_SIZE`, which GTK already
+    gets as its font size, so there is nothing to scale to).
   - **Menus and shortcuts** (GlobalShortcuts done 2026-10-30: asked
     once per app, kept, held through upgrades): ~~the GlobalShortcuts portal~~ (Chrome's
     extensions' shortcuts, Discord's push-to-talk) bound through Olo's

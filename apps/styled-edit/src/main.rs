@@ -124,6 +124,9 @@ impl editor::Document for Styled<'_> {
     fn copied(&mut self, range: Range<usize>) {
         self.doc.copied(range);
     }
+    fn set_columns(&mut self, range: Range<usize>, columns: Vec<f32>) {
+        table::set_columns(self.doc, self.doc.para_index(range.start), columns, range.start..range.start);
+    }
     fn move_text(&mut self, from: Range<usize>, to: usize, selection: Range<usize>) -> Range<usize> {
         self.doc.move_text(from, to, selection)
     }

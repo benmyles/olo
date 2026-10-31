@@ -113,6 +113,9 @@ struct Viewer {
     /// (`olo_kit::watch`): a file another program changed is shown again
     /// unless it has changes here, and Previous / Next know new files.
     watch: Option<olo_kit::watch::Watch>,
+    /// Started with `--look` (a file panel's Space): a look at a file,
+    /// its own process, put away with Space or Escape, as Quick Look.
+    look: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -684,6 +687,12 @@ impl Viewer {
     }
 
     fn doc_ui(&mut self, cx: &mut Cx, win: WindowId, ui: &mut Ui) {
+        // A look: Space or Escape puts it away.
+        if self.look && !ui.ctx().egui_wants_keyboard_input() && ui.input(|i| i.key_pressed(Key::Space) || i.key_pressed(Key::Escape)) {
+            self.windows.remove(&win);
+            cx.close_window(win);
+            return;
+        }
         let sign_menu = self.sign_menu("");
         let Some(Win::Doc(d)) = self.windows.get_mut(&win) else { return };
         let p = style::palette(ui.ctx());
@@ -1159,6 +1168,10 @@ impl App for Viewer {
     }
 
     fn save_state(&mut self, _cx: &Cx) -> Option<String> {
+        // (A look isn't kept through a reload.)
+        if self.look {
+            return Some("{}".into());
+        }
         let files = self
             .windows
             .values()
@@ -1201,12 +1214,17 @@ fn main() {
     // A session or install from before the rename (Tabula) carries on.
     olo_kit::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if instance::forward(APP_ID, &args) {
+    // (A look is its own process, which the panel that asked for it can
+    // put away.)
+    let look = args.iter().any(|a| a == "--look");
+    if !look && instance::forward(APP_ID, &args) {
         return;
     }
     olo_preview::audio::set_identity("Viewer", "olo-viewer");
-    olo_kit::run(APP_ID, |cx| {
-        instance::listen(APP_ID, cx.proxy());
+    olo_kit::run(APP_ID, move |cx| {
+        if !look {
+            instance::listen(APP_ID, cx.proxy());
+        }
         let proxy = cx.proxy();
         std::thread::spawn(move || {
             // Helvetica's metrics, for form fields and text boxes.
@@ -1221,8 +1239,9 @@ fn main() {
             next_id: 0,
             generation: 0,
             watch: None,
+            look,
         };
-        match cx.restored_state().and_then(|s| serde_json::from_str::<Saved>(&s).ok()) {
+        match cx.restored_state().filter(|_| !look).and_then(|s| serde_json::from_str::<Saved>(&s).ok()) {
             Some(saved) if !saved.files.is_empty() => {
                 for f in saved.files {
                     v.open_file(cx, f);

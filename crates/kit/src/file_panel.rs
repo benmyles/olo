@@ -6,6 +6,14 @@
 //! A panel can offer filters (a Show pop-up: by glob or by MIME type),
 //! choose several files at once, and carry an app's extra choices (a
 //! checkbox or a pop-up each, above the buttons).
+//!
+//! As Tracker's windows, its list has Name, Kind, Size and Modified,
+//! sorted by a column's header (folders first); its folder pop-up also
+//! goes to the standard folders, favourites and recent folders
+//! (`crate::places`, shared with Tracker's Go menu), and adds or takes
+//! away the folder shown as a favourite. Space takes a look at the
+//! selected file in the Viewer (`olo-viewer --look`: Space or Escape
+//! there, or Space again here, puts it away).
 
 use std::{
     path::{Path, PathBuf},
@@ -103,6 +111,10 @@ struct Item {
 type Listing = Arc<Mutex<Option<(PathBuf, Result<Vec<Item>, String>)>>>;
 
 pub struct FilePanel {
+    /// The Viewer showing a file for Space, while it is up.
+    look: Option<std::process::Child>,
+    /// The column and direction the items are sorted in.
+    sorted: Option<(usize, bool)>,
     mode: Mode,
     dir: PathBuf,
     name: String,
@@ -128,6 +140,48 @@ pub struct FilePanel {
     stale: Arc<std::sync::atomic::AtomicBool>,
 }
 
+impl Drop for FilePanel {
+    fn drop(&mut self) {
+        self.put_look_away();
+    }
+}
+
+/// Names in the order a person reads them: "file2" before "file10",
+/// letters without case.
+fn natural(a: &str, b: &str) -> std::cmp::Ordering {
+    let key = |s: &str| {
+        let mut out: Vec<(u8, u64, String)> = Vec::new();
+        let mut digits = String::new();
+        let mut text = String::new();
+        let flush = |out: &mut Vec<(u8, u64, String)>, digits: &mut String, text: &mut String| {
+            if !digits.is_empty() {
+                out.push((0, digits.parse().unwrap_or(u64::MAX), String::new()));
+                digits.clear();
+            }
+            if !text.is_empty() {
+                out.push((1, 0, text.to_lowercase()));
+                text.clear();
+            }
+        };
+        for c in s.chars() {
+            if c.is_ascii_digit() {
+                if !text.is_empty() {
+                    flush(&mut out, &mut digits, &mut text);
+                }
+                digits.push(c);
+            } else {
+                if !digits.is_empty() {
+                    flush(&mut out, &mut digits, &mut text);
+                }
+                text.push(c);
+            }
+        }
+        flush(&mut out, &mut digits, &mut text);
+        out
+    };
+    key(a).cmp(&key(b)).then_with(|| a.cmp(b))
+}
+
 fn home() -> PathBuf {
     std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from)
 }
@@ -150,6 +204,8 @@ impl FilePanel {
     fn new(mode: Mode, dir: PathBuf, name: String) -> Self {
         let dir = if dir.is_dir() { dir } else { home() };
         FilePanel {
+            look: None,
+            sorted: None,
             mode,
             dir,
             name,
@@ -222,10 +278,24 @@ impl FilePanel {
         it.is_dir || (self.mode != Mode::Folder && typed && filtered)
     }
 
-    /// Show the items that match, the selection kept by name.
+    /// Show the items that match, sorted, the selection kept by name.
     fn refilter(&mut self) {
         let chosen: Vec<String> = self.list.selected.iter().filter_map(|&i| self.items.get(i)).map(|it| it.name.clone()).collect();
         self.items = self.all.iter().filter(|i| self.matches(i)).cloned().collect();
+        // Folders first, then by the column chosen (by name, as listed,
+        // until one is): Name, Kind, Size, Modified.
+        let (col, asc) = self.list.sort.unwrap_or((0, true));
+        self.sorted = self.list.sort;
+        self.items.sort_by(|a, b| {
+            let by = match col {
+                1 => a.kind.name().cmp(b.kind.name()),
+                2 => a.size.cmp(&b.size),
+                3 => a.modified.cmp(&b.modified),
+                _ => std::cmp::Ordering::Equal,
+            }
+            .then_with(|| natural(&a.name, &b.name));
+            b.is_dir.cmp(&a.is_dir).then(if asc { by } else { by.reverse() })
+        });
         let (multiple, sort) = (self.list.multiple, self.list.sort);
         self.list = ListState { multiple, sort, ..Default::default() };
         for (i, it) in self.items.iter().enumerate() {
@@ -237,6 +307,30 @@ impl FilePanel {
                 }
             }
         }
+    }
+
+    /// Space: the selected file shown in the Viewer, or (shown already)
+    /// put away again.
+    fn toggle_look(&mut self) {
+        if self.put_look_away() {
+            return;
+        }
+        let Some(path) = self.list.single().and_then(|i| self.items.get(i)).filter(|it| !it.is_dir).map(|it| self.dir.join(&it.name)) else { return };
+        match crate::find_program("olo-viewer") {
+            Some(viewer) => self.look = std::process::Command::new(viewer).arg("--look").arg(path).spawn().ok(),
+            None => tracing::warn!("file panel: no olo-viewer to look with"),
+        }
+    }
+
+    /// The Viewer put away, if it was up (and still is).
+    fn put_look_away(&mut self) -> bool {
+        let Some(mut child) = self.look.take() else { return false };
+        let up = matches!(child.try_wait(), Ok(None));
+        if up {
+            let _ = child.kill();
+        }
+        let _ = child.wait();
+        up
     }
 
     /// The files selected, as paths (folders left out).
@@ -254,6 +348,11 @@ impl FilePanel {
     }
 
     fn go(&mut self, ctx: &egui::Context, dir: PathBuf) {
+        // (Remembered as a recent folder off the UI thread.)
+        if self.started {
+            let d = dir.clone();
+            std::thread::spawn(move || crate::places::visited(&d));
+        }
         self.dir = dir.clone();
         self.list = ListState { multiple: self.list.multiple, ..Default::default() };
         self.loading = true;
@@ -333,18 +432,57 @@ impl FilePanel {
         ));
         let popup_id = ui.make_persistent_id("panel-path");
         if path_resp.clicked() {
+            // The folders it is in, the standard ones, favourites (this one
+            // added or taken away) and the ones gone to lately.
+            let places = crate::places::load();
             let mut menu = Menu::new("");
             for (k, a) in self.dir.ancestors().enumerate().skip(1) {
-                let name = a.file_name().map_or_else(|| "/".to_string(), |n| n.to_string_lossy().into_owned());
-                menu = menu.item(name, format!("{k}"), None);
+                menu = menu.item(crate::places::label(a), format!("a{k}"), None).icon("folder");
+            }
+            menu = menu.separator();
+            for (label, dir) in crate::places::standard() {
+                let icon = if dir == home() { "home" } else { "folder" };
+                menu = menu.item(label, format!("g{}", dir.display()), None).icon(icon);
+            }
+            let mut favorites = Menu::new("Favorites");
+            for f in places.favorites.iter().filter(|f| f.is_dir()) {
+                favorites = favorites.item(crate::places::label(f), format!("g{}", f.display()), None).icon("folder");
+            }
+            let favorite = places.favorites.contains(&self.dir);
+            if !places.favorites.is_empty() {
+                favorites = favorites.separator();
+            }
+            let here = crate::places::label(&self.dir);
+            favorites = if favorite {
+                favorites.item(format!("Remove “{here}” from Favorites"), "f-", None)
+            } else {
+                favorites.item(format!("Add “{here}” to Favorites"), "f+", None)
+            };
+            menu = menu.separator().submenu(favorites);
+            let recent: Vec<&PathBuf> = places.recent.iter().filter(|r| **r != self.dir && r.is_dir()).collect();
+            if !recent.is_empty() {
+                let mut sub = Menu::new("Recent Folders");
+                for r in recent {
+                    sub = sub.item(crate::places::label(r), format!("g{}", r.display()), None).icon("folder");
+                }
+                menu = menu.submenu(sub);
             }
             widgets::popup_menu_at(ui.ctx(), popup_id, path_r.left_bottom(), menu);
         }
-        if let Some(k) = widgets::popup_result(ui.ctx(), popup_id).and_then(|s| s.parse::<usize>().ok())
-            && let Some(a) = self.dir.ancestors().nth(k)
-        {
-            let a = a.to_path_buf();
-            self.go(ui.ctx(), a);
+        if let Some(choice) = widgets::popup_result(ui.ctx(), popup_id) {
+            let to = match choice.split_at(1) {
+                ("a", k) => k.parse::<usize>().ok().and_then(|k| self.dir.ancestors().nth(k)).map(Path::to_path_buf),
+                ("g", dir) => Some(PathBuf::from(dir)).filter(|d| d.is_dir()),
+                ("f", on) => {
+                    let (dir, on) = (self.dir.clone(), on == "+");
+                    std::thread::spawn(move || crate::places::set_favorite(&dir, on));
+                    None
+                }
+                _ => None,
+            };
+            if let Some(to) = to {
+                self.go(ui.ctx(), to);
+            }
         }
         let home_r = Rect::from_min_max(pos2(top.right() - home_w, top.top()), top.max);
         if ui.put(home_r, Button::new("Home").min_width(home_w)).clicked() {
@@ -360,7 +498,11 @@ impl FilePanel {
         let list_r = Rect::from_min_max(pos2(full.left(), top.bottom() + m::SPACING), pos2(full.right(), bottom.top() - m::SPACING));
 
         // The list.
-        let columns = [Column::new("Name", list_r.width() * 0.55), Column::new("Size", 80.0).right(), Column::new("Modified", 140.0)];
+        // Name takes what the others leave (no sideways scrolling).
+        let (kind_w, size_w, modified_w) = (96.0, 72.0, 140.0);
+        // (Less the list's frame and a point or two to spare.)
+        let name_w = (list_r.width() - kind_w - size_w - modified_w - widgets::SCROLL_BAR - 6.0).floor().max(120.0);
+        let columns = [Column::new("Name", name_w), Column::new("Kind", kind_w), Column::new("Size", size_w).right(), Column::new("Modified", modified_w)];
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(list_r));
         let items = &self.items;
         let name = |i: usize| items[i].name.as_str();
@@ -378,11 +520,22 @@ impl FilePanel {
                     let width = (r.width() - m::CELL_INSET).max(0.0);
                     style::label_fit(cell.painter, r.left() + m::TIGHT, r.center().y, Align::Min, &it.name, style::plain_font(), cell.text_color, width);
                 }
-                1 if !it.is_dir => cell.text(&files::format_size(it.size)),
-                1 => cell.text("—"),
+                1 => cell.text(if it.is_dir { "Folder" } else { it.kind.name() }),
+                2 if !it.is_dir => cell.text(&files::format_size(it.size)),
+                2 => cell.text("—"),
                 _ => cell.text(&files::format_time(it.modified)),
             }
         });
+        // A header clicked: sorted that way.
+        if resp.sort_changed || self.list.sort != self.sorted {
+            self.refilter();
+        }
+        // Space: a look at the selected file in the Viewer, or put away
+        // (not while typing a name, in the list or in Save's field).
+        let typing = widgets::typing_to_select(ui.ctx()) || ui.ctx().text_edit_focused();
+        if !typing && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Space)) {
+            self.toggle_look();
+        }
         if self.loading || self.error.is_some() || (self.items.is_empty() && !self.loading) {
             let msg = match (&self.error, self.loading) {
                 (Some(e), _) => e.as_str(),
@@ -574,4 +727,16 @@ fn read(dir: &Path, filters: &[Filter]) -> Result<Vec<Item>, String> {
         .collect();
     items.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
     Ok(items)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn names_in_reading_order() {
+        let mut names = vec!["file10", "File2", "file1", "a", "B", "file2b"];
+        names.sort_by(|a, b| natural(a, b));
+        assert_eq!(names, ["a", "B", "file1", "File2", "file2b", "file10"]);
+    }
 }

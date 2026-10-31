@@ -30,6 +30,7 @@ pub mod keyboard;
 pub mod menu;
 pub mod metrics;
 pub mod notify;
+pub mod places;
 mod platform;
 pub mod recorded;
 pub mod search;

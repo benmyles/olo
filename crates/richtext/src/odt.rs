@@ -80,6 +80,8 @@ struct Auto {
     para: Vec<(Kind, Align, u8)>,
     fonts: Vec<String>,
     tables: usize,
+    /// Styles for the columns of tables with widths of their own.
+    columns: String,
 }
 
 pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
@@ -124,13 +126,14 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
     }
     close(&mut body, &mut lists, 0);
 
-    let Auto { text: text_styles, para: para_styles, mut fonts, tables } = auto_styles;
+    let Auto { text: text_styles, para: para_styles, mut fonts, tables, columns } = auto_styles;
     let mut auto = String::new();
     if tables > 0 {
         auto.push_str(
             "<style:style style:name=\"Tbl\" style:family=\"table\"><style:table-properties style:width=\"6.5in\" table:align=\"margins\" table:border-model=\"collapsing\"/></style:style>\
              <style:style style:name=\"TblCell\" style:family=\"table-cell\"><style:table-cell-properties fo:padding=\"0.04in\" fo:border=\"0.5pt solid #000000\"/></style:style>",
         );
+        auto.push_str(&columns);
     }
     for (i, props) in text_styles.iter().enumerate() {
         let _ = write!(auto, "<style:style style:name=\"T{}\" style:family=\"text\"><style:text-properties{props}/></style:style>", i + 1);
@@ -276,7 +279,22 @@ fn paragraph(body: &mut String, p: &Paragraph, auto: &mut Auto) {
 fn table(body: &mut String, t: &Table, auto: &mut Auto) {
     auto.tables += 1;
     let columns = t.columns().max(1);
-    let _ = write!(body, "<table:table table:name=\"Table{}\" table:style-name=\"Tbl\"><table:table-column table:number-columns-repeated=\"{columns}\"/>", auto.tables);
+    let _ = write!(body, "<table:table table:name=\"Table{}\" table:style-name=\"Tbl\">", auto.tables);
+    if t.widths.is_empty() {
+        let _ = write!(body, "<table:table-column table:number-columns-repeated=\"{columns}\"/>");
+    } else {
+        // Each column a style of its own: its width, of the page's 6.5in
+        // and as a share (out of 10000) of the table's.
+        for (c, w) in t.column_widths(10000).iter().enumerate() {
+            let name = format!("Tbl{}.C{}", auto.tables, c + 1);
+            let _ = write!(
+                auto.columns,
+                "<style:style style:name=\"{name}\" style:family=\"table-column\"><style:table-column-properties style:column-width=\"{}in\" style:rel-column-width=\"{w}*\"/></style:style>",
+                *w as f32 * 6.5 / 10000.0
+            );
+            let _ = write!(body, "<table:table-column table:style-name=\"{name}\"/>");
+        }
+    }
     for (r, row) in t.rows.iter().enumerate() {
         let header = r == 0 && t.header;
         if header {
@@ -361,6 +379,9 @@ struct Props {
     font: Option<String>,
     align: Option<Align>,
     margin: Option<f32>,
+    /// A table column's width: relative (`rel-column-width`), else in
+    /// inches.
+    column: Option<f32>,
 }
 
 fn read_styles(xml: &str, into: &mut HashMap<String, Props>, lists: &mut HashMap<String, Vec<bool>>) {
@@ -408,6 +429,11 @@ fn read_styles(xml: &str, into: &mut HashMap<String, Props>, lists: &mut HashMap
                             _ => Align::Left,
                         });
                         p.margin = attr(&a, "margin-left").and_then(inches);
+                    }
+                }
+                "table-column-properties" => {
+                    if let Some(p) = cur.as_ref().and_then(|c| into.get_mut(c)) {
+                        p.column = attr(&a, "rel-column-width").and_then(|v| v.trim_end_matches('*').parse().ok()).or_else(|| attr(&a, "column-width").and_then(inches));
                     }
                 }
                 "list-style" => {
@@ -571,6 +597,11 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
                     }
                 }
                 "table-header-rows" if table_depth == 1 && table.rows.is_empty() => table.header = true,
+                "table-column" if table_depth == 1 => {
+                    let width = attr(&a, "style-name").and_then(|s| styles.get(s)).and_then(|p| p.column).unwrap_or(0.0);
+                    let repeated: usize = attr(&a, "number-columns-repeated").and_then(|v| v.parse().ok()).unwrap_or(1);
+                    table.widths.extend(std::iter::repeat_n(width, repeated.min(1024)));
+                }
                 "table-row" if table_depth == 1 => table.rows.push(Vec::new()),
                 "table-cell" | "covered-table-cell" if table_depth == 1 => {
                     if let Some(row) = table.rows.last_mut() {
