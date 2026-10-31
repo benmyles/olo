@@ -183,12 +183,11 @@ pub fn show(ui: &mut Ui, rect: Rect, l: ListUi) -> Option<Act> {
                 let chip = style::snap(ui.ctx(), chip);
                 painter.rect_filled(chip, 11.0, fill);
                 let tw = style::label_width(ui.ctx(), title, font.clone());
-                // The name level with its count's (the pill sets its own on device pixels).
-                let mut cy = chip.center().y;
+                // The count on the name's baseline.
+                let (_, base) = style::label_with_baseline(&painter, chip.left() + 8.0, chip.center().y, egui::Align::LEFT, title, font.clone(), ink);
                 if unread > 0 {
-                    cy = style::pill(&painter, chip.left() + 8.0 + tw + 4.0, cy, &unread.to_string(), FontId::proportional(9.0), style::c(p.keyboard_navigation), Color32::WHITE).center().y;
+                    style::pill_on_baseline(&painter, chip.left() + 8.0 + tw + 4.0, base, &unread.to_string(), FontId::proportional(9.0), style::c(p.keyboard_navigation), Color32::WHITE);
                 }
-                style::label(&painter, chip.left() + 8.0, cy, egui::Align::LEFT, title, font.clone(), ink);
                 if more {
                     let c = egui::pos2(chip.right() - 10.0, chip.center().y);
                     let s = egui::Stroke::new(1.3, ink);
@@ -293,12 +292,13 @@ pub fn show(ui: &mut Ui, rect: Rect, l: ListUi) -> Option<Act> {
                         style::label(painter, x, r.top() + 19.0, egui::Align::LEFT, "Archived Chats", FontId::new(style::PLAIN_SIZE + 0.5, style::bold()), ink);
                         let names = archived.iter().take(4).map(|c| c.title.as_str()).collect::<Vec<_>>().join(", ");
                         let g = one_line(ui.ctx(), &names, style::small_font(), dim, r.right() - x - 12.0);
-                        painter.galley(style::text_origin(ui.ctx(), &g, x, r.top() + 41.0, style::small_font().size), g, dim);
+                        let base2 = style::baseline_at(ui.ctx(), r.top() + 41.0, style::small_font().size);
+                        painter.galley(style::galley_on_baseline(ui.ctx(), &g, x, base2), g, dim);
                         let unread: u32 = archived.iter().map(|c| c.unread).sum();
                         if unread > 0 {
                             let t = unread.to_string();
                             let w = style::pill_width(ui.ctx(), &t, FontId::proportional(10.0));
-                            style::pill(painter, r.right() - 12.0 - w, r.top() + 41.0, &t, FontId::proportional(10.0), dim, Color32::WHITE);
+                            style::pill_on_baseline(painter, r.right() - 12.0 - w, base2, &t, FontId::proportional(10.0), dim, Color32::WHITE);
                         }
                         resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, "Archived Chats"));
                         if resp.clicked() {
@@ -319,14 +319,17 @@ pub fn show(ui: &mut Ui, rect: Rect, l: ListUi) -> Option<Act> {
                         let pic = Rect::from_center_size(egui::pos2(r.left() + 10.0 + PICTURE / 2.0, r.center().y), vec2(PICTURE, PICTURE));
                         let tex = rows.pics.get(&Pic::Avatar(msg.chat), rows.backend).cloned();
                         bubble::avatar(painter, pic, msg.chat, &title, tex.as_ref(), p.mode == olo_theme::ThemeMode::Dark);
+                        olo_kit::layout_review::own_grid(ui, pic);
                         let x = pic.right() + 12.0;
                         let t = when::short(msg.date, now, rows.h24);
                         let tw = style::label_width(ui.ctx(), &t, style::small_font());
-                        style::label(painter, r.right() - 12.0 - tw, r.top() + 19.0, egui::Align::LEFT, &t, style::small_font(), dim);
+                        let base1 = style::baseline_at(ui.ctx(), r.top() + 19.0, style::PLAIN_SIZE + 0.5);
+                        let base2 = style::baseline_at(ui.ctx(), r.top() + 41.0, style::small_font().size);
+                        style::label_on_baseline(painter, r.right() - 12.0 - tw, base1, egui::Align::LEFT, &t, style::small_font(), dim);
                         let g = one_line(ui.ctx(), &title, FontId::new(style::PLAIN_SIZE + 0.5, style::bold()), ink, r.right() - x - tw - 24.0);
-                        painter.galley(style::text_origin(ui.ctx(), &g, x, r.top() + 19.0, style::PLAIN_SIZE + 0.5), g, ink);
+                        painter.galley(style::galley_on_baseline(ui.ctx(), &g, x, base1), g, ink);
                         let g = one_line(ui.ctx(), &msg.summary(), style::small_font(), dim, r.right() - x - 12.0);
-                        painter.galley(style::text_origin(ui.ctx(), &g, x, r.top() + 41.0, style::small_font().size), g, dim);
+                        painter.galley(style::galley_on_baseline(ui.ctx(), &g, x, base2), g, dim);
                         style::describe_item(ui.ctx(), &format!("{title}: {}", msg.summary()), r, false);
                         if resp.clicked() {
                             act = Some(Act::OpenAt(msg.chat, msg.id));
@@ -418,6 +421,7 @@ fn chat_row(ui: &mut Ui, r: Rect, c: &Chat, l: &mut Rows, p: &olo_theme::Palette
     } else {
         let tex = if c.photo.is_some() { l.pics.get(&Pic::Avatar(c.id), l.backend).cloned() } else { None };
         bubble::avatar(painter, pic, c.id, &c.title, tex.as_ref(), p.mode == olo_theme::ThemeMode::Dark);
+        olo_kit::layout_review::own_grid(ui, pic);
     }
     if c.seen == Some(olo_tg::Seen::Online) {
         let dot = pic.right_bottom() - vec2(7.0, 7.0);
@@ -432,7 +436,10 @@ fn chat_row(ui: &mut Ui, r: Rect, c: &Chat, l: &mut Rows, p: &olo_theme::Palette
         None => (String::new(), None),
     };
     let tw = style::label_width(ui.ctx(), &t, style::small_font());
-    style::label(painter, right - tw, r.top() + 19.0, egui::Align::LEFT, &t, style::small_font(), dim);
+    // Each line's parts on one baseline: the title and time, the preview and counts.
+    let base1 = style::baseline_at(ui.ctx(), r.top() + 19.0, style::PLAIN_SIZE + 0.5);
+    let base2 = style::baseline_at(ui.ctx(), r.top() + 41.0, style::small_font().size);
+    style::label_on_baseline(painter, right - tw, base1, egui::Align::LEFT, &t, style::small_font(), dim);
     let mut tx = right - tw;
     if let Some(read) = out_read {
         tx -= 16.0;
@@ -455,7 +462,7 @@ fn chat_row(ui: &mut Ui, r: Rect, c: &Chat, l: &mut Rows, p: &olo_theme::Palette
     title_room -= marks;
     let tg = one_line(ui.ctx(), &c.title, FontId::new(style::PLAIN_SIZE + 0.5, style::bold()), ink, title_room);
     let tsize = tg.size();
-    let at = style::text_origin(ui.ctx(), &tg, x, r.top() + 19.0, style::PLAIN_SIZE + 0.5);
+    let at = style::galley_on_baseline(ui.ctx(), &tg, x, base1);
     put(painter, at, tg, ink);
     let mut mx = x + tsize.x + 4.0;
     if c.verified {
@@ -478,12 +485,12 @@ fn chat_row(ui: &mut Ui, r: Rect, c: &Chat, l: &mut Rows, p: &olo_theme::Palette
         let fill = if selected { Color32::WHITE } else { fill };
         let tint = if selected { sel.fill } else { Color32::WHITE };
         let w = style::pill_width(ui.ctx(), n, pill_font.clone()).max(18.0);
-        let pr = style::pill(painter, right - w, r.top() + 41.0, n, pill_font.clone(), fill, tint);
+        let pr = style::pill_on_baseline(painter, right - w, base2, n, pill_font.clone(), fill, tint);
         px = pr.left() - 4.0;
     }
     if c.mentions > 0 {
         let fill = if selected { Color32::WHITE } else { accent };
-        let pr = style::pill(painter, px - 18.0, r.top() + 41.0, "@", pill_font.clone(), fill, if selected { sel.fill } else { Color32::WHITE });
+        let pr = style::pill_on_baseline(painter, px - 18.0, base2, "@", pill_font.clone(), fill, if selected { sel.fill } else { Color32::WHITE });
         px = pr.left() - 4.0;
     }
     if c.pinned && count.is_none() && c.mentions == 0 && !c.archived {
@@ -515,7 +522,7 @@ fn chat_row(ui: &mut Ui, r: Rect, c: &Chat, l: &mut Rows, p: &olo_theme::Palette
     }
     let (job, found) = olo_kit::emoji::make_room(&job);
     let g = ui.ctx().fonts_mut(|f| f.layout_job(job));
-    let pp = style::text_origin(ui.ctx(), &g, x, r.top() + 41.0, style::small_font().size);
+    let pp = style::galley_on_baseline(ui.ctx(), &g, x, base2);
     painter.galley(pp, g.clone(), dim);
     olo_kit::emoji::paint_in(painter, pp, &g, &found, dim);
     // A hairline between rows, from the text's edge.

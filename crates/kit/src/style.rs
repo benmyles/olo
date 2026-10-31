@@ -792,6 +792,32 @@ pub fn pill(p: &Painter, x: f32, cy: f32, text: &str, font: FontId, fill: Color3
     r
 }
 
+/// A [`pill`] whose text sits on `baseline` (a count beside a label of
+/// another size, on the label's baseline: centring each on one middle
+/// leaves them a pixel apart at some scales). Returns its rect.
+pub fn pill_on_baseline(p: &Painter, x: f32, baseline: f32, text: &str, font: FontId, fill: Color32, ink: Color32) -> Rect {
+    let h = pill_height(&font);
+    let cy = baseline - font.size * CAP_HEIGHT / 2.0;
+    let r = snap(p.ctx(), Rect::from_min_size(pos2(x, cy - h / 2.0), vec2(pill_width(p.ctx(), text, font.clone()), h)));
+    p.rect_filled(r, r.height() / 2.0, fill);
+    label_on_baseline(p, r.center().x, baseline, egui::Align::Center, text, font, ink);
+    r
+}
+
+/// Where the line of `font_size` text whose capitals are centred on
+/// `center_y` has its baseline, on a device pixel: for setting other
+/// things (a count, a smaller time) on that line.
+pub fn baseline_at(ctx: &Context, center_y: f32, font_size: f32) -> f32 {
+    snap_coord(ctx, center_y + font_size * CAP_HEIGHT / 2.0)
+}
+
+/// Where to put `galley` so its first line sits on `baseline`, on device
+/// pixels.
+pub fn galley_on_baseline(ctx: &Context, galley: &egui::Galley, x: f32, baseline: f32) -> Pos2 {
+    let ppp = ctx.pixels_per_point();
+    pos2((x * ppp).round() / ppp, ((baseline - baseline_offset(galley)) * ppp).round() / ppp)
+}
+
 /// Black or white, whichever reads on `fill` (text on a pill or tile in
 /// an app's own colour).
 pub fn ink_on(fill: Color32) -> Color32 {

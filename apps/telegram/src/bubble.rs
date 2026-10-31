@@ -508,7 +508,8 @@ pub fn lay(ctx: &egui::Context, m: &Message, place: Place, look: &Look, col: f32
         y += g.size().y;
         if fits_inline {
             width = width.max(last_w + 10.0 + meta_w);
-            meta_pos = pos2(f32::NAN, y - meta_g.size().y - 1.0);
+            // On the last line's baseline.
+            meta_pos = pos2(f32::NAN, tp.y + last_baseline(&g) - style::baseline_offset(&meta_g));
         } else {
             meta_pos = pos2(f32::NAN, y + 2.0);
             y += meta_g.size().y + 2.0;
@@ -779,6 +780,8 @@ pub fn paint(p: &Painter, o: Pos2, m: &Message, laid: &Laid, pp: &Paint, pointer
     }
     let (g, mp) = &laid.meta;
     let mp = o + mp.to_vec2();
+    let ppp = p.ctx().pixels_per_point();
+    let mp = pos2((mp.x * ppp).round() / ppp, (mp.y * ppp).round() / ppp);
     let ink = if laid.meta_over { Color32::WHITE } else if m.pending == Some((0, Pending::Failed)) { Color32::RED } else { look.dim };
     if laid.meta_over {
         let mr = Rect::from_min_size(mp - vec2(6.0, 2.0), g.size() + vec2(12.0 + if m.out { TICKS } else { 0.0 }, 4.0));
@@ -794,6 +797,15 @@ pub fn paint(p: &Painter, o: Pos2, m: &Message, laid: &Laid, pp: &Paint, pointer
     }
     paint_reactions(p, o, laid, look, &mut over);
     link.or_else(|| under(&areas, pointer))
+}
+
+/// Where a galley's last line has its baseline, from its top (as
+/// `style::baseline_offset` has the first's).
+fn last_baseline(g: &Galley) -> f32 {
+    g.rows
+        .last()
+        .and_then(|r| r.row.glyphs.first().map(|gl| r.pos.y + gl.pos.y + gl.font_ascent - gl.font_face_ascent - 0.5 * (gl.font_height - gl.font_face_height)))
+        .unwrap_or(g.size().y * 0.8)
 }
 
 /// The rows each code block (a `Pre` entity) takes in `g`, as one

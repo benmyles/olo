@@ -179,7 +179,10 @@ pub fn paint_in(painter: &Painter, origin: egui::Pos2, galley: &egui::Galley, em
             let Some(cluster) = emoji.get(k) else { return };
             k += 1;
             let size = g.font_height.max(1.0);
-            let cy = origin.y + row.pos.y + g.pos.y - g.font_ascent + g.font_height / 2.0;
+            // Centred on the capitals' middle, as a mark beside text is
+            // (`style::label`): the text's size is the advance's.
+            let text_size = g.advance_width / ADVANCE;
+            let cy = origin.y + row.pos.y + g.pos.y - text_size * crate::style::CAP_HEIGHT / 2.0;
             let x = origin.x + row.pos.x + g.pos.x;
             let rect = Rect::from_center_size(pos2(x + g.advance_width / 2.0, cy), vec2(g.advance_width, size * 1.05));
             if !paint(painter, rect, cluster) {

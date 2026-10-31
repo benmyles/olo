@@ -159,6 +159,7 @@ pub fn show(ui: &mut Ui, rect: Rect, c: &mut Conv, u: ConvUi) -> Vec<Act> {
         painter.circle_filled(pic.center(), 18.0, look.accent);
     } else {
         bubble::avatar(&painter, pic, chat.id, &chat.title, tex.as_ref(), look.dark);
+        olo_kit::layout_review::own_grid(ui, pic);
     }
     let x = pic.right() + 10.0;
     let ink = style::c(p.panel_text);
@@ -196,25 +197,29 @@ pub fn show(ui: &mut Ui, rect: Rect, c: &mut Conv, u: ConvUi) -> Vec<Act> {
         for (id, title, unread, color) in all {
             let font = FontId::proportional(style::SMALL_SIZE + 0.5);
             let tw = style::label_width(ui.ctx(), &title, font.clone()) + 6.0;
-            let badge = if unread > 0 { style::pill_width(ui.ctx(), &unread.to_string(), FontId::proportional(9.0)) + 4.0 } else { 0.0 };
+            // Counts the names' size: emoji in names are centred on their capitals.
+            let count_font = FontId::new(style::SMALL_SIZE + 0.5, style::bold());
+            let badge = if unread > 0 { style::pill_width(ui.ctx(), &unread.to_string(), count_font.clone()) + 4.0 } else { 0.0 };
             let w = tw + badge + 26.0;
             if x + w > row.right() {
                 break;
             }
-            let chip = Rect::from_min_size(pos2(x, row.top() + 5.0), vec2(w, 22.0));
+            let chip = style::snap(ui.ctx(), Rect::from_min_size(pos2(x, row.top() + 5.0), vec2(w, 22.0)));
             let chosen = c.topic == id;
             let r = ui.interact(chip, ui.make_persistent_id(("topic", id)), Sense::click());
             let fill = if chosen { style::selection_ink(&p).fill } else if r.hovered() { ink.gamma_multiply(0.08) } else { Color32::TRANSPARENT };
-            painter.rect_filled(style::snap(ui.ctx(), chip), 11.0, fill);
+            painter.rect_filled(chip, 11.0, fill);
+            // The dot on the name's capitals, the count on its baseline.
+            let base = style::baseline_at(ui.ctx(), chip.center().y, font.size);
             let rgb = Color32::from_rgb((color >> 16) as u8, (color >> 8) as u8, color as u8);
-            painter.circle_filled(pos2(chip.left() + 12.0, chip.center().y), 4.0, rgb);
+            painter.circle_filled(pos2(chip.left() + 12.0, base - font.size * style::CAP_HEIGHT / 2.0), 4.0, rgb);
             let tink = if chosen { style::selection_ink(&p).text } else { ink };
-            let g = one_line(ui.ctx(), &title, font, tink, tw + 20.0);
-            let gp = pos2(chip.left() + 20.0, chip.center().y - g.0.size().y / 2.0);
+            let g = one_line(ui.ctx(), &title, font.clone(), tink, tw + 20.0);
+            let gp = style::galley_on_baseline(ui.ctx(), &g.0, chip.left() + 20.0, base);
             painter.galley(gp, g.0.clone(), tink);
             olo_kit::emoji::paint_in(&painter, gp, &g.0, &g.1, tink);
             if unread > 0 {
-                style::pill(&painter, chip.left() + 20.0 + tw, chip.center().y, &unread.to_string(), FontId::proportional(9.0), look.accent, Color32::WHITE);
+                style::pill_on_baseline(&painter, chip.left() + 20.0 + tw, base, &unread.to_string(), count_font, look.accent, Color32::WHITE);
             }
             r.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Tab, true, chosen, &title));
             if r.clicked() {
@@ -380,6 +385,12 @@ pub fn show(ui: &mut Ui, rect: Rect, c: &mut Conv, u: ConvUi) -> Vec<Act> {
                             selected: flash,
                         };
                         let hit = bubble::paint(&painter, o, msg, laid, &pp, pointer);
+                        // The time is a stamp in the balloon's corner, set on
+                        // the text's baseline; a sender's picture is art.
+                        olo_kit::layout_review::own_grid(ui, Rect::from_min_size(o + laid.meta.1.to_vec2(), laid.meta.0.size()).expand(1.0));
+                        if laid.avatar {
+                            olo_kit::layout_review::own_grid(ui, Rect::from_min_size(pos2(o.x, o.y + laid.bubble.bottom() - bubble::AVATAR), vec2(bubble::AVATAR, bubble::AVATAR)));
+                        }
                         let whole = Rect::from_min_max(pos2(o.x + laid.bubble.left(), o.y), pos2(o.x + laid.bubble.right(), o.y + laid.height));
                         if pointer.is_some_and(|q| whole.contains(q)) || hit.is_some() {
                             hovered_msg = Some((msg.id, hit));
