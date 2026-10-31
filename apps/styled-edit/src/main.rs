@@ -3,6 +3,7 @@
 //! other programs still see plain text. One window per document; Find and
 //! Replace windows as in Haiku; unsaved work survives a reload.
 
+mod convert;
 mod doc;
 mod fonts;
 
@@ -18,7 +19,7 @@ use olo_kit::{
     App, Cx, Menu, WindowId, WindowOptions,
     editor::{self, Editor},
     egui::{self, Color32, Key, Rect, Ui, pos2, text::LayoutJob, vec2},
-    file_panel::{FilePanel, PANEL_SIZE, PanelResult},
+    file_panel::{FilePanel, Filter, PANEL_SIZE, PanelResult},
     instance::{self, Launch},
     metrics as m,
     style::{self, c},
@@ -49,6 +50,10 @@ enum Msg {
     Saved(WindowId, u64, PathBuf, Result<(), String>),
     /// Open documents' files changed on disk (another program wrote one).
     OnDisk(Vec<PathBuf>),
+    /// A formatted document read in: its text, runs and paragraphs.
+    Imported(PathBuf, Result<(String, Vec<Run>, Vec<doc::Para>), String>),
+    /// A copy written in another format.
+    Exported(PathBuf, Result<(), String>),
 }
 
 /// What to do once the document is saved (or its changes discarded).
@@ -236,6 +241,25 @@ static EDITORS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new
 enum Purpose {
     Open,
     SaveAs,
+    /// A formatted document (Markdown) in as a new one.
+    Import,
+    /// A copy in another format.
+    Export(Format),
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Format {
+    Markdown,
+    Html,
+}
+
+impl Format {
+    fn extension(self) -> &'static str {
+        match self {
+            Format::Markdown => "md",
+            Format::Html => "html",
+        }
+    }
 }
 
 enum Win {
@@ -388,9 +412,47 @@ impl StyledEdit {
         let (title, panel) = match purpose {
             Purpose::Open => ("Open", FilePanel::open(dir)),
             Purpose::SaveAs => ("Save As", FilePanel::save(dir, d.map(|d| d.title()).unwrap_or_default())),
+            Purpose::Import => (
+                "Import",
+                FilePanel::open(dir).filters(vec![Filter::new("Markdown").glob("*.md").glob("*.markdown").glob("*.mdown").mime("text/markdown")], 0),
+            ),
+            Purpose::Export(f) => {
+                // The document's name, in the format's extension.
+                let title = d.map(|d| d.title()).unwrap_or_default();
+                let stem = Path::new(&title).file_stem().map_or(title.clone(), |s| s.to_string_lossy().into_owned());
+                ("Export", FilePanel::save(dir, format!("{stem}.{}", f.extension())))
+            }
         };
         let id = cx.open_window(WindowOptions::new(title, PANEL_SIZE.0, PANEL_SIZE.1).min_size(420, 300));
         self.windows.insert(id, Win::Panel { doc, purpose, panel: Box::new(panel) });
+    }
+
+    /// A formatted document read in (on a worker) as a new, untitled one:
+    /// saving it writes a StyledEdit file, never over what it came from.
+    fn import(&mut self, cx: &mut Cx, path: PathBuf) {
+        let proxy = cx.proxy();
+        std::thread::spawn(move || {
+            let r = std::fs::read(&path)
+                .map_err(|e| e.to_string())
+                .map(|bytes| convert::from_markdown(&String::from_utf8_lossy(&bytes)));
+            proxy.send(Msg::Imported(path, r));
+        });
+    }
+
+    /// A copy of the document in `format` at `to` (on a worker); the
+    /// document stays as it is, and where.
+    fn export(&mut self, cx: &mut Cx, win: WindowId, to: PathBuf, format: Format) {
+        let Some(Win::Doc(d)) = self.windows.get(&win) else { return };
+        let (text, runs, paras, align, title) = (d.doc.text().to_owned(), d.doc.runs().to_vec(), d.doc.paras().to_vec(), d.doc.align, d.title());
+        let proxy = cx.proxy();
+        std::thread::spawn(move || {
+            let out = match format {
+                Format::Markdown => convert::to_markdown(&text, &runs, &paras),
+                Format::Html => convert::to_html(&text, &runs, &paras, &title, align),
+            };
+            let r = std::fs::write(&to, out).map_err(|e| e.to_string());
+            proxy.send(Msg::Exported(to, r));
+        });
     }
 
     /// Write the document to `to` (its own file when None, or ask where).
@@ -500,6 +562,9 @@ impl StyledEdit {
             .enabled(!d.saving && !d.loading)
             .item("Revert to Saved…", "revert", None)
             .enabled(d.path.is_some() && d.doc.edited() && !d.saving)
+            .separator()
+            .item("Import…", "import", None)
+            .submenu(Menu::new("Export").item("Markdown…", "export:md", None).item("Web Page (HTML)…", "export:html", None))
             .separator()
             .item(olo_kit::tracker::LABEL, olo_kit::tracker::COMMAND, None)
             .enabled(d.path.is_some())
@@ -619,6 +684,9 @@ impl StyledEdit {
                 return;
             }
             "open" => return self.open_panel(cx, Some(win), Purpose::Open),
+            "import" => return self.open_panel(cx, Some(win), Purpose::Import),
+            "export:md" => return self.open_panel(cx, Some(win), Purpose::Export(Format::Markdown)),
+            "export:html" => return self.open_panel(cx, Some(win), Purpose::Export(Format::Html)),
             "save" => return self.save(cx, win, None, After::Nothing),
             "save-as" => return self.open_panel(cx, Some(win), Purpose::SaveAs),
             "close" => return self.leave(cx, win, After::Close),
@@ -1000,7 +1068,9 @@ impl App for StyledEdit {
                         };
                         self.save(cx, doc, Some(path), after);
                     }
-                    (Purpose::SaveAs, None) => {}
+                    (Purpose::SaveAs, None) | (Purpose::Export(_), None) => {}
+                    (Purpose::Import, _) => self.import(cx, path),
+                    (Purpose::Export(f), Some(doc)) => self.export(cx, doc, path, f),
                 }
             }
             Some(Win::Unsaved { doc, after, message }) => {
@@ -1138,6 +1208,23 @@ impl App for StyledEdit {
                     }
                 }
                 cx.redraw(win);
+            }
+            Msg::Imported(path, result) => match result {
+                Ok((text, runs, paras)) => {
+                    self.untitled += 1;
+                    let mut d = DocWin::new(None, self.untitled);
+                    let mut doc = Doc::with_paras(text, Some(runs), Some(paras));
+                    // Not saved anywhere yet.
+                    doc.saved_generation = 0;
+                    d.reset(doc, 0..0);
+                    self.add_window(cx, d);
+                }
+                Err(e) => self.show_error(cx, format!("“{}” couldn't be imported. {e}", file_name(&path))),
+            },
+            Msg::Exported(path, result) => {
+                if let Err(e) = result {
+                    self.show_error(cx, format!("“{}” couldn't be written. {e}", file_name(&path)));
+                }
             }
             Msg::OnDisk(paths) => {
                 // Written by another program (not our own save): read again

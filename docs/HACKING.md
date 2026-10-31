@@ -3713,6 +3713,21 @@ marker, so list text lines up with a quotation's). They are saved in
 text), undone with the text, and kept through a reload. The status line
 counts words (in the selection too), for documents up to a megabyte.
 
+Other formats (`convert.rs`, on a worker, from a copy of the text, runs
+and paragraphs): File ▸ Import… reads a Markdown document
+(pulldown-cmark) into a new, untitled one (headings, lists, quotes, code
+blocks, bold, italic, struck-out and code text, links with their target
+in `Style::link`; a table's rows as lines with tabs between cells, a
+rule as a centred `* * *`), so saving it never writes over the source:
+a `.md` opened with Open stays its plain text, as it was (people keep
+notes in Markdown and edit them as text). File ▸ Export writes a copy as
+Markdown (`to_markdown`: marks hug their text, Markdown's own
+characters escaped, a list's items tight, code fenced; sizes, colours
+and fonts have no Markdown) or a web page (`to_html`: every style, the
+alignment, nested lists), leaving the document where it was. Word and
+OpenDocument come next, in a light formats crate shared with Quick
+Look's readers (which live in `preview`, too heavy to link here).
+
 `fonts.rs` owns a font database on a worker thread: it lists families for
 the Font menu (in submenus titled like a dictionary's guide words) and
 loads a face the first time a style names it, registering it as

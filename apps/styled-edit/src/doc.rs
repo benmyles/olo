@@ -31,6 +31,9 @@ pub struct Style {
     pub strikeout: bool,
     /// None is the document's text colour (black, or white in dark mode).
     pub color: Option<[u8; 3]>,
+    /// Where the text links to (from an imported document; kept for
+    /// exporting it again).
+    pub link: Option<String>,
 }
 
 impl Default for Style {
@@ -43,6 +46,7 @@ impl Default for Style {
             underline: false,
             strikeout: false,
             color: None,
+            link: None,
         }
     }
 }

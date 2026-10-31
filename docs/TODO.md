@@ -901,8 +901,10 @@ as they land (with the commit), add new ones as they come up.
   themselves, indent levels and alignment per paragraph (the Paragraph
   menu; Tab, ⇧Tab, Return and Backspace in lists), a word count, all
   saved in the file's attributes; the kit's editor sets each paragraph's
-  indents, spacing and marker (`editor::Paragraph`). Next: a ruler,
-  Markdown/RTF/HTML/DOCX/ODT, tables, pictures, headers and footers, the
+  indents, spacing and marker (`editor::Paragraph`); File ▸ Import… for
+  Markdown and Export as Markdown or a web page (links kept). Next: a
+  ruler, Word/OpenDocument/RTF in and out (a light formats crate shared
+  with Quick Look's readers), tables, pictures, headers and footers, the
   page view and PDF, spelling.
 - ~~**Activity Monitor, revamped**~~ (Ben, 2026-10-29, at the end):
   "revamp activity monitor to include everything a nerd could ever want
