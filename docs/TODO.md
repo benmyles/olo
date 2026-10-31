@@ -214,6 +214,25 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Emoji picker** (Ben, 2026-10-31): "an olo native emoji picker app
+  that inserts the selected emoji into wherever the text cursor is in the
+  active window. have it support fuzzy keyword search but also give it an
+  option to ask ai to choose the emojis based on a description e.g. "pat
+  on the back for going above and beyond". it should use the same ai
+  integration paths we have for the ai smart tiling with a selectable
+  model. make sure the picker is easy to use and the fuzzy search should
+  be autocomplete real time style and the ai search should be based on
+  maybe using super+enter to submit the text or something and then it
+  should come back with 5 different suggestions shown and you can either
+  select one to insert or type something else and search again". So: a
+  shortcut-summoned panel (as the palette) that types the chosen emoji
+  into the window that had the focus (as the clipboard can't: a text
+  input or synthetic keys through app_server, any app, ours or not); a
+  grid by category with recents and skin tones; fuzzy search over
+  CLDR names and keywords as you type; ⌘↩ asks the AI (crates/ai, as
+  smart tiling does, the model chosen in Preferences ▸ AI) for five
+  suggestions from a description, shown as a row to pick from or search
+  again; keyboard first, agent-readable.
 - **Agent Screens: Take Control is laggy** (Ben, 2026-10-31): "when using
   take control in agent screens it is very laggy -- this needs to feel as
   buttery smooth and be as performant as if we were using the desktop
