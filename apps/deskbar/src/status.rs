@@ -264,9 +264,12 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
         .spawn(move || {
             loop {
                 std::thread::sleep(Duration::from_secs(30));
-                // (Likewise a share whose portal died.)
-                let s = &counted.lock().unwrap().0;
-                let again = s.agent_screens > 0 || !s.sharing.is_empty();
+                // (Likewise a share whose portal died.) The lock let go
+                // before reading: `read` takes it again to publish.
+                let again = {
+                    let g = counted.lock().unwrap();
+                    g.0.agent_screens > 0 || !g.0.sharing.is_empty()
+                };
                 if again {
                     read(&[]);
                 }

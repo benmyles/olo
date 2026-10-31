@@ -239,6 +239,16 @@ as they land (with the commit), add new ones as they come up.
   screen's title and its menu, as Tracker renames: click the name or
   Rename…), kept with the screen's history and shown wherever the screen
   is (Deskbar's item, move-to menus, `olo-screen list`, the agent's tree).
+- ~~**Deskbar still shows agent screens running after they've all
+  stopped**~~ (Ben, 2026-10-31; fixed): "i have stopped all the agent
+  screens but in the deskpad it still shows the icon that indicates
+  agent screens are running". Cause: Deskbar's 30-second re-count (for a
+  screen killed without a word) held the status lock while re-reading,
+  which takes it again: a deadlock the first time it ran with a screen
+  up, after which nothing in the tray changed (agent screens, the bell's
+  count, Upgrade, battery, Wi-Fi, sharing); since fc8fd47 (2026-10-30).
+  Seen in the running Deskbar:
+  both status threads waiting on the lock. The lock is let go first now.
 - **Agent Screens: archive and delete, one or many** (Ben, 2026-10-31):
   "i should be able to archive stopped agent screens so that they no
   longer show in the list but there should be a menu option to show
