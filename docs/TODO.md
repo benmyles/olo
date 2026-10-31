@@ -214,6 +214,20 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Move windows to and from Agent Screens** (Ben, 2026-10-31):
+  "everywhere we have menu options to move something to a
+  display-workspace there should also be a section in that menu to move
+  it to an agent-screen (new or existing) and when in the agent screens
+  app next to take control there should be an option to move all windows
+  in the agent screen to a user display-workspace". So: the window tab's
+  menu, Deskbar's app menu, the workspace heading's menu, Tracker's and
+  Terminal's tab menus (wherever Move to Workspace is) gain an Agent
+  Screens section (each running screen, and New Agent Screen); Agent
+  Screens gets, beside Take Control, a way to move every window on the
+  screen onto one of the person's display-workspaces. The program keeps
+  running as it moves (its connection handed between the two
+  app_servers, or the app reopened there with its saved state).
+
 - **olo-terminal uses far too much CPU** (Ben, 2026-10-31): "same with
   olo-terminal: look at 4356 it is using wayu more cpu than it should".
   Measured (read-only, /proc and its `{"frames":true}`): 14% of a core on
