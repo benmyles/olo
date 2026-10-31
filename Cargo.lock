@@ -4672,6 +4672,7 @@ dependencies = [
  "libc",
  "memmap2",
  "olo-kit",
+ "olo-print",
  "olo-protocol",
  "olo-xdg",
  "pipewire",

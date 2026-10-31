@@ -275,10 +275,17 @@ pub struct Job {
 
 /// Print `pdf` on `printer` (Print-Job); the job's id.
 pub fn print(printer: &str, pdf: &[u8], job: &Job) -> Result<u32, String> {
+    print_document(printer, pdf, "application/pdf", job)
+}
+
+/// Print a document of type `format` ("application/pdf",
+/// "application/postscript") on `printer`; the job's id.
+pub fn print_document(printer: &str, document: &[u8], format: &str, job: &Job) -> Result<u32, String> {
+    let pdf = document;
     let uri = format!("ipp://localhost/printers/{printer}");
     let mut r = Request::new(0x0002, &uri);
     r.attr(0x42, "job-name", job.name.as_bytes());
-    r.attr(0x49, "document-format", b"application/pdf");
+    r.attr(0x49, "document-format", format.as_bytes());
     r.group(0x02); // job attributes
     r.attr(0x21, "copies", &(job.copies.max(1) as i32).to_be_bytes());
     if let Some(m) = &job.media {

@@ -787,9 +787,8 @@ impl StyledEdit {
             "import" => return self.open_panel(cx, Some(win), Purpose::Import),
             "export:pdf" => return self.open_panel(cx, Some(win), Purpose::Export(Format::Pdf)),
             "print" => {
-                let Some(ctx) = self.ctx.clone() else { return };
                 let id = cx.open_window(WindowOptions::new("Print", olo_print::panel::SIZE.0, olo_print::panel::SIZE.1).parent(win).dialog());
-                self.windows.insert(id, Win::Print { doc: win, panel: Box::new(olo_print::panel::PrintPanel::new(&ctx)) });
+                self.windows.insert(id, Win::Print { doc: win, panel: Box::new(olo_print::panel::PrintPanel::new()) });
                 return;
             }
             "export:md" => return self.open_panel(cx, Some(win), Purpose::Export(Format::Markdown)),

@@ -40,6 +40,7 @@ mod files;
 mod inhibit;
 mod picker;
 mod portal;
+mod print;
 mod shortcuts;
 mod shot;
 mod stream;
@@ -136,6 +137,8 @@ struct Portal {
     wallpapers: HashMap<WindowId, wallpaper::Dialog>,
     /// "Allow Keyboard Shortcuts?" (the GlobalShortcuts portal).
     keys: HashMap<WindowId, shortcuts::Dialog>,
+    /// Print panels (the Print portal), and who to answer.
+    prints: HashMap<WindowId, (olo_print::panel::PrintPanel, print::Ask)>,
     /// Thumbnails come before their window has drawn: kept until it does.
     thumbs: Vec<picker::Thumb>,
     /// The bus, once served (to end sessions from here).
@@ -168,6 +171,14 @@ impl Portal {
                 choices: panel.choices_made().iter().map(|ch| (ch.id.clone(), ch.value.clone())).collect(),
             });
             let _ = ask.reply.try_send(chosen);
+        }
+        cx.close_window(win);
+    }
+
+    /// Answer a Print panel's app with the choice (None: cancelled).
+    fn close_print(&mut self, cx: &mut Cx, win: WindowId, choice: Option<olo_print::panel::Choice>) {
+        if let Some((_, ask)) = self.prints.remove(&win) {
+            let _ = ask.reply.try_send(choice);
         }
         cx.close_window(win);
     }
@@ -224,6 +235,12 @@ impl Portal {
 
 impl App for Portal {
     fn ui(&mut self, cx: &mut Cx, win: WindowId, ui: &mut egui::Ui) {
+        if let Some((panel, _)) = self.prints.get_mut(&win) {
+            if let Some(choice) = panel.ui(ui) {
+                self.close_print(cx, win, choice);
+            }
+            return;
+        }
         if let Some((panel, _)) = self.panels.get_mut(&win) {
             if let Some(r) = panel.ui(ui) {
                 self.close_panel(cx, win, match r {
@@ -272,7 +289,9 @@ impl App for Portal {
     }
 
     fn close_requested(&mut self, cx: &mut Cx, win: WindowId) {
-        if self.panels.contains_key(&win) {
+        if self.prints.contains_key(&win) {
+            self.close_print(cx, win, None);
+        } else if self.panels.contains_key(&win) {
             self.close_panel(cx, win, None);
         } else if self.dialogs.contains_key(&win) {
             self.close_dialog(cx, win, false);
@@ -289,7 +308,7 @@ impl App for Portal {
 
     /// Sharing (or asking to): an upgrade would cut it off, so it waits.
     fn busy(&self) -> bool {
-        stream::live() > 0 || !self.pickers.is_empty() || !self.dialogs.is_empty() || !self.panels.is_empty() || !self.choosers.is_empty() || !self.wallpapers.is_empty() || !self.keys.is_empty()
+        stream::live() > 0 || !self.pickers.is_empty() || !self.dialogs.is_empty() || !self.panels.is_empty() || !self.choosers.is_empty() || !self.wallpapers.is_empty() || !self.keys.is_empty() || !self.prints.is_empty()
     }
 
     fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
@@ -351,7 +370,20 @@ impl App for Portal {
                 let (win, d) = access::Dialog::open(cx, ask);
                 self.dialogs.insert(win, d);
             }
+            portal::ToUi::Print(ask) => {
+                let mut options = WindowOptions { dialog: true, ..WindowOptions::new(if ask.title.is_empty() { "Print".to_owned() } else { format!("Print “{}”", ask.title) }, olo_print::panel::SIZE.0, olo_print::panel::SIZE.1) };
+                if !ask.parent.is_empty() {
+                    options = options.foreign_parent(ask.parent.clone());
+                }
+                let win = cx.open_window(options);
+                cx.activate(win);
+                self.prints.insert(win, (olo_print::panel::PrintPanel::new(), ask));
+            }
             portal::ToUi::Cancel(request) => {
+                let wins: Vec<WindowId> = self.prints.iter().filter(|(_, (_, a))| a.request == request).map(|(w, _)| *w).collect();
+                for win in wins {
+                    self.close_print(cx, win, None);
+                }
                 let wins: Vec<WindowId> = self.pickers.iter().filter(|(_, p)| p.request() == request).map(|(w, _)| *w).collect();
                 for win in wins {
                     self.close(cx, win, None);
@@ -492,7 +524,7 @@ fn main() -> std::process::ExitCode {
                 }
             })
             .expect("thread");
-        Portal { pickers: HashMap::new(), dialogs: HashMap::new(), panels: HashMap::new(), choosers: HashMap::new(), wallpapers: HashMap::new(), keys: HashMap::new(), thumbs: Vec::new(), bus }
+        Portal { pickers: HashMap::new(), dialogs: HashMap::new(), panels: HashMap::new(), choosers: HashMap::new(), wallpapers: HashMap::new(), keys: HashMap::new(), prints: HashMap::new(), thumbs: Vec::new(), bus }
     });
     std::process::ExitCode::SUCCESS
 }

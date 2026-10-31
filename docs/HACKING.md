@@ -3622,6 +3622,16 @@ it shares (`App::busy`).
   breaks as CRLF) opened in the person's mail program through
   `olo_xdg::open`; a link can't carry files, so attachments are shown in
   Tracker, to drag in.
+- **Print** (`print.rs`): PreparePrint shows Olo's Print panel
+  (`olo_print::panel`, over the asking window) and answers with GTK's
+  print settings (printer, `n-copies`, `page-ranges` counted from 0, or
+  `output-file-format` pdf) and page setup (the paper in millimetres,
+  its PWG name) and a token; Print takes the program's document from
+  the file descriptor (a PDF, or PostScript by its `%!PS`) and, for the
+  token's choice (or one asked now), sends it to CUPS over IPP with its
+  own format, or asks where to save it (Olo's Save panel, `files::Ask`).
+  Checked on a test session's bus with busctl: PreparePrint, then Print
+  of a PDF through a descriptor saved byte for byte.
 - **Global shortcuts** (`shortcuts.rs`, app_server `grabs.rs`): the
   GlobalShortcuts portal (Discord's push-to-talk, a browser extension's
   keys). An app's triggers ("CTRL+SHIFT+a", xkb names) become Olo

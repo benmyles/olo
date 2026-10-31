@@ -33,6 +33,8 @@ type Found = Option<Result<(Vec<Printer>, Option<String>), String>>;
 
 pub struct PrintPanel {
     found: Arc<Mutex<Found>>,
+    /// The printers have been asked for (on the first frame).
+    asked: bool,
     /// Where to: 0 is a PDF, then each printer.
     dest: usize,
     chosen_default: bool,
@@ -46,20 +48,19 @@ pub struct PrintPanel {
     pub page_count: Option<u32>,
 }
 
+impl Default for PrintPanel {
+    fn default() -> Self {
+        PrintPanel::new()
+    }
+}
+
 impl PrintPanel {
-    /// A panel, asking CUPS for its printers (a frame for `ctx` when it
-    /// answers).
-    pub fn new(ctx: &egui::Context) -> PrintPanel {
-        let found = Arc::new(Mutex::new(None));
-        let (f, ctx) = (found.clone(), ctx.clone());
-        let _ = std::thread::Builder::new().name("printers".into()).spawn(move || {
-            let r = crate::ipp::printers().map(|p| (p, crate::ipp::default_printer()));
-            *f.lock().unwrap_or_else(|e| e.into_inner()) = Some(r);
-            ctx.request_repaint();
-        });
+    /// A panel; it asks CUPS for the printers when it first shows.
+    pub fn new() -> PrintPanel {
         let local = local_paper();
         PrintPanel {
-            found,
+            found: Arc::new(Mutex::new(None)),
+            asked: false,
             dest: 0,
             chosen_default: false,
             paper: PAPERS.iter().position(|p| p.pwg == local.pwg).unwrap_or(0),
@@ -74,6 +75,15 @@ impl PrintPanel {
     /// Draw it; the choice once Print (or Save as PDF) is clicked, `Some(None)`
     /// for Cancel.
     pub fn ui(&mut self, ui: &mut Ui) -> Option<Option<Choice>> {
+        if !self.asked {
+            self.asked = true;
+            let (f, ctx) = (self.found.clone(), ui.ctx().clone());
+            let _ = std::thread::Builder::new().name("printers".into()).spawn(move || {
+                let r = crate::ipp::printers().map(|p| (p, crate::ipp::default_printer()));
+                *f.lock().unwrap_or_else(|e| e.into_inner()) = Some(r);
+                ctx.request_repaint();
+            });
+        }
         let found = self.found.lock().unwrap_or_else(|e| e.into_inner()).clone();
         let printers: Vec<Printer> = match &found {
             Some(Ok((p, _))) => p.clone(),
