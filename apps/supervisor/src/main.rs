@@ -409,7 +409,7 @@ fn follow_focus(focus: Arc<Mutex<Option<(i32, String)>>>) {
         .spawn(move || {
             loop {
                 if let Ok(client) = olo_protocol::Client::connect()
-                    && let Ok(events) = client.into_events()
+                    && let Ok(events) = client.into_events_of(&[olo_protocol::EventKind::Focus])
                 {
                     for e in events {
                         let Ok(e) = e else { break };

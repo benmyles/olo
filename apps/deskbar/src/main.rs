@@ -2124,7 +2124,8 @@ fn watch_server(proxy: olo_kit::Proxy) {
                     if let Ok(Reply::Outputs { outputs }) = c.request(&Request::Outputs) {
                         proxy.send(Msg::Outputs(outputs));
                     }
-                    if let Ok(events) = c.into_events() {
+                    use olo_protocol::EventKind as K;
+                    if let Ok(events) = c.into_events_of(&[K::Windows, K::Workspace, K::Power, K::Settings, K::Outputs]) {
                         // Displays that came while this was subscribing
                         // (after an upgrade they come one by one): asked
                         // again, now that what changes from here comes as

@@ -67,6 +67,13 @@ like pixel alignment is.
    Deskbar's applications, notification count, agent screens and
    upgrade; Agent Screens' list; Preferences ▸ Notifications; Logs' Live
    journal (journald touches the file for readers after each write).
+   Follow app_server with `Client::into_events_of(kinds)`, asking only
+   for the kinds used (`EventKind`): `Windows` is every window whenever
+   anything about any changes, an agent's spinning title ten times a
+   second, so only what shows windows asks for it (Deskbar); `OwnWindows`
+   is the program's own, only when where they are changes (the kit's
+   `theme-watch`), and `Focus` the focused one as the focus moves (the
+   supervisor). app_server writes each event out once for everyone.
 8. **app_server never deadlocks.** A hang there freezes the whole desktop.
    Smithay's per-surface lock isn't re-entrant: inside a closure given to
    `with_pending_state`, `with_states`, `with_committed_state` or

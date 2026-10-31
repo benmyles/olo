@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use olo_protocol::{Client, Event, PowerStatus, Reply, Request, Settings};
+use olo_protocol::{Client, Event, EventKind, PowerStatus, Reply, Request, Settings};
 
 /// The settings now, asked once (a local round trip; fine at startup).
 pub fn current() -> Option<Settings> {
@@ -27,7 +27,7 @@ pub fn watch(f: impl Fn(Settings) + Send + 'static) {
                 f(s);
             }
             if let Ok(client) = Client::connect()
-                && let Ok(events) = client.into_events()
+                && let Ok(events) = client.into_events_of(&[EventKind::Settings])
             {
                 for event in events {
                     if let Ok(Event::SettingsChanged { settings }) = event {
@@ -56,7 +56,7 @@ pub fn watch_power(f: impl Fn(PowerStatus) + Send + 'static) {
                 f(status);
             }
             if let Ok(client) = Client::connect()
-                && let Ok(events) = client.into_events()
+                && let Ok(events) = client.into_events_of(&[EventKind::Power])
             {
                 for event in events {
                     if let Ok(Event::PowerChanged { status }) = event {

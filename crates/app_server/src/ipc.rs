@@ -14,7 +14,7 @@ use smithay::reexports::calloop::{
     Interest, LoopHandle, Mode, PostAction,
     generic::{Generic, NoIoDrop},
 };
-use olo_protocol::{Event, Reply, Request};
+use olo_protocol::{Event, EventKind, Reply, Request};
 use tracing::{debug, info, warn};
 
 use crate::state::{AnvilState, Backend};
@@ -32,8 +32,17 @@ impl Conn {
         }
         let mut line = serde_json::to_vec(reply).expect("serialize reply");
         line.push(b'\n');
+        self.send_line(&line);
+    }
+
+    /// A reply already written out, newline and all (an event going to
+    /// many connections is written out once).
+    fn send_line(&self, line: &[u8]) {
+        if *self.dead.borrow() {
+            return;
+        }
         let mut s = &self.stream;
-        if let Err(err) = s.write_all(&line) {
+        if let Err(err) = s.write_all(line) {
             debug!(?err, "ipc client went away");
             *self.dead.borrow_mut() = true;
         }
@@ -69,6 +78,13 @@ impl Conn {
 
     /// The process at the other end, as "name (pid)", for the log.
     pub fn peer(&self) -> String {
+        let Some(pid) = self.peer_pid() else { return "unknown".into() };
+        let name = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
+        format!("{} ({pid})", name.trim())
+    }
+
+    /// The process at the other end (`SO_PEERCRED`).
+    pub fn peer_pid(&self) -> Option<i32> {
         use std::os::fd::AsRawFd;
         // SAFETY: an all-zero ucred is valid, and getsockopt writes at
         // most `len` bytes into it.
@@ -83,11 +99,7 @@ impl Conn {
                 &mut len,
             )
         };
-        if got != 0 {
-            return "unknown".into();
-        }
-        let name = std::fs::read_to_string(format!("/proc/{}/comm", cred.pid)).unwrap_or_default();
-        format!("{} ({})", name.trim(), cred.pid)
+        (got == 0).then_some(cred.pid)
     }
 }
 
@@ -96,7 +108,7 @@ pub struct IpcState {
     pub path: PathBuf,
     /// The socket file, when we made it (not olo-session).
     _file: Option<crate::sockfile::Owned>,
-    subscribers: Vec<Rc<Conn>>,
+    subscribers: Vec<Subscriber>,
     /// Keys other programs took (`GrabKeys`, grabs.rs): who, the id they
     /// gave, the chord.
     pub key_grabs: Vec<(Rc<Conn>, String, olo_protocol::shortcuts::Chord)>,
@@ -116,12 +128,70 @@ impl std::fmt::Debug for IpcState {
     }
 }
 
+/// A connection taking events: which kinds (all, for `Subscribe`), and
+/// for the windows' narrower kinds, what it was last sent.
+struct Subscriber {
+    conn: Rc<Conn>,
+    kinds: Option<Vec<EventKind>>,
+    /// Its process, for `OwnWindows`.
+    pid: Option<i32>,
+    /// What `OwnWindows` and `Focus` last sent it (as a hash).
+    sent: Option<u64>,
+}
+
+impl Subscriber {
+    fn wants(&self, kind: EventKind) -> bool {
+        self.kinds.as_ref().is_none_or(|k| k.contains(&kind))
+    }
+}
+
 impl IpcState {
+    pub fn subscribe(&mut self, conn: &Rc<Conn>, kinds: Option<Vec<EventKind>>) {
+        self.subscribers.retain(|s| !Rc::ptr_eq(&s.conn, conn));
+        let pid = conn.peer_pid();
+        self.subscribers.push(Subscriber { conn: conn.clone(), kinds, pid, sent: None });
+    }
+
+    /// Send `event` to the connections that want it, written out once.
+    /// Of the windows, those asking for their own or the focused one get
+    /// just those, and only when what they asked about changed.
     pub fn broadcast(&mut self, event: Event) {
-        self.subscribers.retain(|c| !c.is_dead());
-        let reply = Reply::Event { event };
-        for c in &self.subscribers {
-            c.send(&reply);
+        use std::hash::{Hash, Hasher};
+        self.subscribers.retain(|s| !s.conn.is_dead());
+        let Some(kind) = event.kind() else { return };
+        let mut line: Option<Vec<u8>> = None;
+        for s in &mut self.subscribers {
+            if s.wants(kind) {
+                let line = line.get_or_insert_with(|| {
+                    let mut l = serde_json::to_vec(&Reply::Event { event: event.clone() }).expect("serialize event");
+                    l.push(b'\n');
+                    l
+                });
+                s.conn.send_line(line);
+                continue;
+            }
+            let Event::WindowsChanged { windows } = &event else { continue };
+            let (own, focus) = (s.wants(EventKind::OwnWindows), s.wants(EventKind::Focus));
+            if !own && !focus {
+                continue;
+            }
+            let mut hash = std::hash::DefaultHasher::new();
+            let picked: Vec<_> = windows
+                .iter()
+                .filter(|w| (own && w.pid.is_some() && w.pid == s.pid) || (focus && w.focused))
+                .inspect(|w| {
+                    (w.id, w.pid, w.focused && focus).hash(&mut hash);
+                    if own && w.pid == s.pid {
+                        (w.surface, w.workspace, &w.output, w.minimized, w.behind).hash(&mut hash);
+                    }
+                })
+                .cloned()
+                .collect();
+            let hash = hash.finish();
+            if s.sent != Some(hash) {
+                s.sent = Some(hash);
+                s.conn.send(&Reply::Event { event: Event::WindowsChanged { windows: picked } });
+            }
         }
     }
 }
@@ -279,7 +349,11 @@ impl<B: Backend + 'static> AnvilState<B> {
         Some(match req {
             Request::Ping => Reply::Pong { version: env!("CARGO_PKG_VERSION").into() },
             Request::Subscribe => {
-                self.ipc.subscribers.push(conn.clone());
+                self.ipc.subscribe(conn, None);
+                Reply::Ok
+            }
+            Request::SubscribeTo { events } => {
+                self.ipc.subscribe(conn, Some(events));
                 Reply::Ok
             }
             Request::ListWindows => Reply::Windows { windows: self.window_infos_with_frames() },
@@ -636,4 +710,56 @@ fn inherited_ipc_socket() -> Option<UnixListener> {
     // SAFETY: called during single-threaded start-up.
     unsafe { std::env::remove_var("OLO_IPC_FD") };
     Some(listener)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use olo_protocol::WindowInfo;
+    use std::io::{BufRead, BufReader};
+
+    fn window(id: u64, pid: i32, title: &str, workspace: u32, focused: bool) -> WindowInfo {
+        serde_json::from_value(serde_json::json!({
+            "id": id, "app_id": "a", "title": title, "pid": pid, "workspace": workspace, "minimized": false, "focused": focused,
+        }))
+        .unwrap()
+    }
+
+    /// What each kind of subscriber is sent as windows change: everything
+    /// for `Windows`, our own only when they move for `OwnWindows`, the
+    /// focused one only when the focus moves for `Focus`.
+    #[test]
+    fn subscribers_get_only_what_they_asked_for() {
+        let me = std::process::id() as i32;
+        let mut ipc = IpcState::default();
+        let mut readers = Vec::new();
+        for kinds in [None, Some(vec![EventKind::OwnWindows]), Some(vec![EventKind::Focus]), Some(vec![EventKind::Settings])] {
+            let (ours, theirs) = UnixStream::pair().unwrap();
+            theirs.set_nonblocking(true).unwrap();
+            ipc.subscribe(&Rc::new(Conn { stream: ours, dead: RefCell::new(false) }), kinds);
+            readers.push(BufReader::new(theirs));
+        }
+        let mut sent = |ipc: &mut IpcState, windows: Vec<WindowInfo>| -> Vec<Option<Vec<u64>>> {
+            ipc.broadcast(Event::WindowsChanged { windows });
+            readers
+                .iter_mut()
+                .map(|r| {
+                    let mut line = String::new();
+                    r.read_line(&mut line).ok().filter(|n| *n > 0)?;
+                    match serde_json::from_str(&line).unwrap() {
+                        Reply::Event { event: Event::WindowsChanged { windows } } => Some(windows.iter().map(|w| w.id).collect()),
+                        other => panic!("{other:?}"),
+                    }
+                })
+                .collect()
+        };
+        let all = |a: &str, ws: u32, f: u64| vec![window(1, me, a, ws, f == 1), window(2, me + 1, "theirs", 0, f == 2)];
+        assert_eq!(sent(&mut ipc, all("a", 0, 2)), [Some(vec![1, 2]), Some(vec![1]), Some(vec![2]), None]);
+        // A title changes: only the subscriber to everything hears.
+        assert_eq!(sent(&mut ipc, all("b", 0, 2)), [Some(vec![1, 2]), None, None, None]);
+        // Ours moves to another workspace.
+        assert_eq!(sent(&mut ipc, all("b", 1, 2)), [Some(vec![1, 2]), Some(vec![1]), None, None]);
+        // The focus moves to ours.
+        assert_eq!(sent(&mut ipc, all("b", 1, 1)), [Some(vec![1, 2]), None, Some(vec![1]), None]);
+    }
 }

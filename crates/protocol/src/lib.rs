@@ -37,8 +37,12 @@ fn yes() -> bool {
 #[allow(clippy::large_enum_variant)] // one message at a time over a socket
 pub enum Request {
     Ping,
-    /// Start receiving [`Event`]s on this connection.
+    /// Start receiving [`Event`]s on this connection: all of them.
     Subscribe,
+    /// Start receiving only these kinds of [`Event`] on this connection
+    /// (an app_server from before this answers an error: then
+    /// [`Request::Subscribe`]; [`Client::into_events_of`] does both).
+    SubscribeTo { events: Vec<EventKind> },
     /// Take these keys for this connection, each `(id, keys)` with keys as
     /// a [`shortcuts::Chord`] is written ("Ctrl+Alt+K"): another program's
     /// global shortcuts (the GlobalShortcuts portal). They replace what
@@ -405,6 +409,28 @@ pub struct FrameTimings {
     pub total_us: u64,
 }
 
+/// The kinds of [`Event`] a connection can ask for
+/// ([`Request::SubscribeTo`]), so a program wakes only for what it uses.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum EventKind {
+    /// [`Event::WindowsChanged`]: every window, whenever anything about
+    /// any of them changes (a title too).
+    Windows,
+    /// [`Event::WindowsChanged`] with only the connection's own process's
+    /// windows, and only when where they are changes (workspace, display,
+    /// hidden, behind another in its group): not their titles or sizes.
+    OwnWindows,
+    /// [`Event::WindowsChanged`] with only the focused window (none when
+    /// nothing is), when another window gets the focus.
+    Focus,
+    Workspace,
+    Settings,
+    Outputs,
+    Power,
+    ShortcutRecorded,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[allow(clippy::large_enum_variant)]
@@ -429,6 +455,22 @@ pub enum Event {
     /// A key taken with [`Request::GrabKeys`] went down or up (sent only
     /// to the connection that took it).
     KeyGrab { id: String, pressed: bool },
+}
+
+impl Event {
+    /// Its kind, for subscriptions (a key grab goes only to the connection
+    /// that took the keys).
+    pub fn kind(&self) -> Option<EventKind> {
+        Some(match self {
+            Event::WindowsChanged { .. } => EventKind::Windows,
+            Event::WorkspaceChanged { .. } => EventKind::Workspace,
+            Event::SettingsChanged { .. } => EventKind::Settings,
+            Event::OutputsChanged { .. } => EventKind::Outputs,
+            Event::PowerChanged { .. } => EventKind::Power,
+            Event::ShortcutRecorded { .. } => EventKind::ShortcutRecorded,
+            Event::KeyGrab { .. } => return None,
+        })
+    }
 }
 
 /// What app_server's power management is doing now.
@@ -1669,18 +1711,39 @@ impl Client {
         self.writer.try_clone()
     }
 
-    /// Consume this client as an event stream (after sending Subscribe).
+    /// Consume this client as an event stream: every event (after
+    /// sending Subscribe).
     pub fn into_events(mut self) -> Result<impl Iterator<Item = Result<Event, ClientError>>, ClientError> {
         match self.request(&Request::Subscribe)? {
             Reply::Ok => {}
             other => return Err(ClientError::Server(format!("unexpected reply {other:?}"))),
         }
-        Ok(std::iter::from_fn(move || match self.read() {
+        Ok(self.events())
+    }
+
+    /// Consume this client as a stream of only these kinds of event
+    /// ([`EventKind`]). An app_server from before kinds sends them all
+    /// (so match on the events wanted, and filter `OwnWindows`' by pid).
+    pub fn into_events_of(mut self, kinds: &[EventKind]) -> Result<impl Iterator<Item = Result<Event, ClientError>>, ClientError> {
+        match self.request(&Request::SubscribeTo { events: kinds.to_vec() }) {
+            Ok(Reply::Ok) => {}
+            Err(ClientError::Server(_)) => match self.request(&Request::Subscribe)? {
+                Reply::Ok => {}
+                other => return Err(ClientError::Server(format!("unexpected reply {other:?}"))),
+            },
+            Ok(other) => return Err(ClientError::Server(format!("unexpected reply {other:?}"))),
+            Err(e) => return Err(e),
+        }
+        Ok(self.events())
+    }
+
+    fn events(mut self) -> impl Iterator<Item = Result<Event, ClientError>> {
+        std::iter::from_fn(move || match self.read() {
             Ok(Reply::Event { event }) => Some(Ok(event)),
             Ok(_) => None,
             Err(ClientError::Closed) => None,
             Err(e) => Some(Err(e)),
-        }))
+        })
     }
 }
 

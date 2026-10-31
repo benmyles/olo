@@ -9,7 +9,7 @@ use std::{
 };
 
 use olo_kit::Proxy;
-use olo_protocol::{Client, Event, OutputConfig, Reply, Request, Settings};
+use olo_protocol::{Client, Event, EventKind, OutputConfig, Reply, Request, Settings};
 
 use crate::Msg;
 
@@ -160,7 +160,7 @@ fn watch(proxy: Proxy, recorded: Recorded) {
                     if let Ok(Reply::Power { status }) = c.request(&Request::PowerStatus) {
                         proxy.send(Msg::Power(status));
                     }
-                    if let Ok(events) = c.into_events() {
+                    if let Ok(events) = c.into_events_of(&[EventKind::Settings, EventKind::Outputs, EventKind::Power, EventKind::ShortcutRecorded]) {
                         for e in events.flatten() {
                             match e {
                                 Event::SettingsChanged { settings } => proxy.send(Msg::Settings(Box::new(settings))),

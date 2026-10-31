@@ -8,7 +8,7 @@
 use std::time::Duration;
 
 use smithay_client_toolkit::reexports::calloop::channel::Sender;
-use olo_protocol::{Appearance, Client, Event, Reply, Request, Settings};
+use olo_protocol::{Appearance, Client, Event, EventKind, Reply, Request, Settings};
 use olo_theme::{Palette, ThemeMode};
 
 /// What the kit follows: the palette and the theme's id.
@@ -69,8 +69,9 @@ pub fn spawn(tx: Sender<Look>) {
                 {
                     return;
                 }
+                // Only what's used here: not every title that changes.
                 if let Ok(client) = Client::connect()
-                    && let Ok(events) = client.into_events()
+                    && let Ok(events) = client.into_events_of(&[EventKind::Settings, EventKind::Workspace, EventKind::OwnWindows])
                 {
                     // Where our windows are, then as it changes.
                     crate::workspaces::catch_up();

@@ -310,7 +310,8 @@ fn run(from: mpsc::Receiver<Ask>, proxy: Events, app: String, entry: String) {
                         ids.ours.insert(server, id);
                     })
             }
-            Ask::Close(id) => match ids.lock().unwrap().server.get(&id).copied() {
+            // (The map let go before the call: the signals' thread uses it.)
+            Ask::Close(id) => match { ids.lock().unwrap().server.get(&id).copied() } {
                 Some(server) => c.call_method(Some(NAME), PATH, Some(NAME), "CloseNotification", &(server,)).map(|_| ()),
                 None => Ok(()),
             },
