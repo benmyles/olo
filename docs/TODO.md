@@ -214,6 +214,31 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Agent Screens: Take Control is laggy** (Ben, 2026-10-31): "when using
+  take control in agent screens it is very laggy -- this needs to feel as
+  buttery smooth and be as performant as if we were using the desktop
+  directly." Measure the path (input forwarded to the headless
+  app_server, its frames brought back and shown) frame by frame and make
+  it the same 120 fps, input-to-photon, as the desktop: frames shared as
+  dmabufs rather than copied, input sent at once, no polling.
+- **Passwords for Agent Screens** (Ben, 2026-10-31): "in the Agent
+  Screens app i can choose items from passwords that i want to make
+  available by default to all new and existing agent screen sessions and
+  these items should be available to the agent by just opening the
+  passwords app in the agent screen and they'll see it unlocked
+  automatically and scoped to just the items i've chosen to make
+  available. on any given agent screen session i should be able to
+  further customize it in a new "Passwords" tab where i can optionally
+  remove any grants already provided or add more. and for both places
+  when defining grants it needs to be powerful: i should be able to
+  search and filter to add/remove multiple matching items in bulk". So:
+  default grants in Agent Screens (settings), per-screen grants in a
+  Passwords tab of each screen (taking away defaults or adding more);
+  Passwords opened on an agent screen opens unlocked, showing (and
+  filling, `op`, Chrome) only the granted items; both editors with the
+  kit's search language and filters, selecting many matches to grant or
+  revoke at once.
+
 - **Move windows to and from Agent Screens** (Ben, 2026-10-31):
   "everywhere we have menu options to move something to a
   display-workspace there should also be a section in that menu to move
