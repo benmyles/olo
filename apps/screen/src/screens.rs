@@ -41,6 +41,14 @@ pub struct Screen {
     pub started: u64,
 }
 
+/// Where Chrome keeps its profile on screen `name` (`CHROME_CONFIG_HOME`,
+/// which Chrome, Chromium and olo-chrome all follow): beside the screen's
+/// history. With the person's own, a Chrome started there was handed to
+/// the person's running Chrome, which opened the window on their display.
+pub fn chrome_home(name: &str) -> PathBuf {
+    crate::history::dir(name)
+}
+
 fn runtime_dir() -> PathBuf {
     std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir)
 }
@@ -110,7 +118,8 @@ impl Screen {
 
     /// The environment a program on this screen gets: its display and
     /// app_server, no X display (X programs would show on the person's
-    /// screen), and silence unless the screen has sound.
+    /// screen), Chrome's profile of its own (`chrome_home`), and silence
+    /// unless the screen has sound.
     pub fn env(&self) -> Vec<(String, String)> {
         let mut env = vec![
             ("WAYLAND_DISPLAY".to_owned(), self.wayland_display.clone()),
@@ -118,6 +127,7 @@ impl Screen {
             ("OLO_SESSION".to_owned(), "1".to_owned()),
             ("OLO_SESSION_PID".to_owned(), self.pid.to_string()),
             ("OLO_SCREEN".to_owned(), self.name.clone()),
+            ("CHROME_CONFIG_HOME".to_owned(), chrome_home(&self.name).display().to_string()),
         ];
         if !self.sound {
             env.push(("PULSE_SERVER".to_owned(), format!("unix:{}", dir().join("no-sound").display())));
@@ -256,6 +266,7 @@ pub fn start(name: &str, opts: &Options) -> Result<Screen, String> {
         .arg(format!("{pw}x{ph}"))
         .env("OLO_APP_SERVER_SETTINGS", &settings_path)
         .env("OLO_SCREEN", name)
+        .env("CHROME_CONFIG_HOME", chrome_home(name))
         .env_remove("WAYLAND_DISPLAY")
         .env_remove("OLO_SOCKET")
         .env_remove("OLO_SESSION")
@@ -512,6 +523,17 @@ pub fn type_text(text: &str) -> Result<Vec<SyntheticEvent>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Chrome on a screen keeps a profile of the screen's own, so it
+    /// runs there rather than handing its window to the person's Chrome.
+    #[test]
+    fn chrome_has_a_profile_of_its_own() {
+        let s = Screen { name: "work".into(), wayland_display: "wayland-9".into(), olo_socket: "/x".into(), pid: 1, width: 1, height: 1, scale: 1.0, sound: false, started: 0 };
+        let env: std::collections::HashMap<String, String> = s.env().into_iter().collect();
+        let home = &env["CHROME_CONFIG_HOME"];
+        assert!(home.ends_with("/screens/work"), "{home}");
+        assert_ne!(Some(home.as_str()), std::env::var("CHROME_CONFIG_HOME").ok().as_deref());
+    }
 
     #[test]
     fn keys_for_text() {
