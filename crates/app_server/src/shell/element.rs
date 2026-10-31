@@ -594,21 +594,34 @@ where
         if self.decorated() && !window_bbox.is_empty() {
             let title = self.title();
             let content = self.content_size();
+            let start = std::time::Instant::now();
             let (tabs, frame) =
                 self.decoration()
                     .render_elements(renderer, &title, content, location, scale, alpha);
             if self.tab_only() {
                 return tabs.into_iter().map(WindowRenderElement::Tab).map(C::from).collect();
             }
+            let decorated = start.elapsed();
             let client_location = location + self.client_render_offset().to_physical_precise_round(scale);
             let window_elements: Vec<WindowRenderElement<R>> =
                 AsRenderElements::render_elements(&self.0, renderer, client_location, scale, alpha);
+            let client = start.elapsed() - decorated;
             let halo = if glow > 0.0 {
                 let (outline, tab) = self.decoration().outline(&title, content, location, scale);
                 self.meta().glow_pieces.borrow_mut().elements(renderer, outline, Some(tab), scale.x, glow)
             } else {
                 Vec::new()
             };
+            // (Which of them made a slow frame slow: `render::slow_elements`.)
+            if start.elapsed() > std::time::Duration::from_millis(4) {
+                tracing::info!(
+                    "slow window elements: decoration {:.1} ms, the client's surfaces {:.1} ms ({} elements), glow {:.1} ms",
+                    decorated.as_secs_f64() * 1e3,
+                    client.as_secs_f64() * 1e3,
+                    window_elements.len(),
+                    (start.elapsed() - decorated - client).as_secs_f64() * 1e3
+                );
+            }
 
             // Popups and the window first, so menus overlap the tab.
             window_elements
