@@ -377,6 +377,15 @@ as they land (with the commit), add new ones as they come up.
      (docs/ICONS.md), with a really nice startup sound. Related: an
      "Upgrading Olo" veil on every display while app_server restarts
      and the displays settle, in the same style.
+   - **An app_server restart modesets every display** (seen 2026-11-01
+     in the kernel log at each upgrade: apple-dcp `set_digital_out_mode`
+     for each of the three displays, "Already set to timingID" yet done
+     again: the screens freeze for a second or two per restart). The
+     new app_server could keep a CRTC's mode when it is the one already
+     set (the same mode blob, no ALLOW_MODESET commit) and go straight
+     to page flips; where Smithay's surface init insists on a modeset,
+     Olo's Smithay changes that. Until then upgrades of app_server are
+     batched, not one a change.
    - **Supervisor priority tiers** (Ben, 2026-11-01: "it should always
      give the highest priority to the core olo processes and any
      system+input processes important for responsiveness/smoothness,

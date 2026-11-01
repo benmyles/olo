@@ -314,6 +314,14 @@ impl Backend for UdevData {
     const HAS_RELATIVE_MOTION: bool = true;
     const HAS_GESTURES: bool = true;
     const IS_SESSION: bool = true;
+    fn pointer_trace(&mut self, output: &str) -> Vec<olo_protocol::PointerFrame> {
+        self.backends
+            .values_mut()
+            .flat_map(|b| b.surfaces.values_mut())
+            .find(|s| s.output.name() == output)
+            .map(|s| s.pacing.pointer.iter().cloned().collect())
+            .unwrap_or_default()
+    }
     fn frames(&mut self) -> Vec<olo_protocol::DisplayFrames> {
         self.backends
             .values_mut()
@@ -2321,7 +2329,16 @@ impl AnvilState<UdevData> {
             let ahead = self.pointer_track.at(Duration::from(frame_target), now);
             if output_geo.to_f64().contains(now) {
                 let g = output_geo.to_f64();
-                Point::from((ahead.x.clamp(g.loc.x, g.loc.x + g.size.w - 1.0), ahead.y.clamp(g.loc.y, g.loc.y + g.size.h - 1.0)))
+                let drawn = Point::from((ahead.x.clamp(g.loc.x, g.loc.x + g.size.w - 1.0), ahead.y.clamp(g.loc.y, g.loc.y + g.size.h - 1.0)));
+                let (age, interval) = self.pointer_track.last().map_or((0, 0), |(t1, dt)| (Duration::from(frame_target).as_micros() as i64 - t1.as_micros() as i64, dt.as_micros() as u64));
+                surface.pacing.pointer_drawn(olo_protocol::PointerFrame {
+                    vblank_us: Duration::from(frame_target).as_micros() as u64,
+                    real: (now.x, now.y),
+                    drawn: (drawn.x, drawn.y),
+                    report_age_us: age,
+                    report_interval_us: interval,
+                });
+                drawn
             } else {
                 now
             }

@@ -1738,6 +1738,10 @@ pub trait Backend {
     fn frames(&mut self) -> Vec<olo_protocol::DisplayFrames> {
         Vec::new()
     }
+    /// The last frames that drew the pointer on `output`.
+    fn pointer_trace(&mut self, _output: &str) -> Vec<olo_protocol::PointerFrame> {
+        Vec::new()
+    }
 }
 
 /// The socket olo-wlproxy connects to for other programs

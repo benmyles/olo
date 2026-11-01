@@ -121,53 +121,90 @@ mod tests {
     }
 }
 
-/// Where the pointer will be when the frame shows (`Track::at`). A
-/// mouse reports at its own rate (125 Hz, 1000 Hz) against the display's
-/// (60, 120 Hz), so a frame drawn with the last position got two
-/// reports' worth of motion and the next three: the pointer moved
-/// unevenly though the hand didn't. As `pace.rs` does for scrolling,
-/// the frame draws the pointer where the last reports say it will be at
-/// the frame's vblank, from the velocity of the last two (extrapolated
-/// at most a frame ahead, and only while reports keep coming): motion
-/// even on any display, and a frame's worth less behind the hand.
+/// Where the pointer is drawn for a frame (`Track::at`): resampled onto
+/// the frame clock, as `pace.rs` does for scrolling and Android does for
+/// touch. A mouse reports at its own rate (125 Hz, 1000 Hz) against the
+/// display's (60, 120 Hz): drawn at the last report's position, one
+/// frame got two reports' worth of motion and the next three, and the
+/// pointer moved unevenly though the hand didn't. The frame shown at a
+/// vblank draws the pointer where it was `LATENCY` before that vblank,
+/// interpolated between the reports either side of then; past the last
+/// report it goes on at the last velocity, but at most `AHEAD` (an
+/// extrapolation a frame long overshot every turn of the hand, 2026-11-01).
+/// Nothing while the mouse is still (reports older than `STALE`), or
+/// after something warped the pointer. OLO_POINTER_AHEAD=0 draws it at
+/// its real position, as before.
 #[derive(Debug, Default)]
 pub struct Track {
-    /// The last reports: when (the input clock, monotonic) and where.
-    last: Option<(std::time::Duration, Point<f64, Logical>)>,
-    before: Option<(std::time::Duration, Point<f64, Logical>)>,
+    /// The last reports, oldest first: when (the input clock, monotonic,
+    /// the vblanks' too) and where.
+    reports: std::collections::VecDeque<(std::time::Duration, Point<f64, Logical>)>,
 }
 
 /// Reports older than this say nothing about now (the mouse stopped).
 const STALE: std::time::Duration = std::time::Duration::from_millis(40);
-/// At most this far ahead of the last report.
-const AHEAD: std::time::Duration = std::time::Duration::from_millis(17);
+/// Drawn this far behind the vblank, so the position is interpolated
+/// between reports, not guessed, at any report rate of 250 Hz and up.
+const LATENCY: std::time::Duration = std::time::Duration::from_millis(4);
+/// At most this far past the last report, along its motion.
+const AHEAD: std::time::Duration = std::time::Duration::from_millis(4);
+const KEPT: usize = 8;
 
 impl Track {
     /// A pointer report: at `at` the pointer was at `pos`.
     pub fn note(&mut self, at: std::time::Duration, pos: Point<f64, Logical>) {
-        self.before = self.last.take();
-        self.last = Some((at, pos));
+        if self.reports.len() == KEPT {
+            self.reports.pop_front();
+        }
+        self.reports.push_back((at, pos));
+    }
+
+    /// The last report's time, and the interval from the one before.
+    pub fn last(&self) -> Option<(std::time::Duration, std::time::Duration)> {
+        let n = self.reports.len();
+        let (t1, _) = *self.reports.get(n.checked_sub(1)?)?;
+        let t0 = self.reports.get(n.checked_sub(2)?).map_or(t1, |(t, _)| *t);
+        Some((t1, t1 - t0))
     }
 
     /// Where the pointer is drawn for a frame shown at `target`, given
-    /// where it is now (`now`): ahead along its last motion, or just
-    /// `now` when it isn't moving or the reports are too few or old.
+    /// where it is now (`now`).
     pub fn at(&self, target: std::time::Duration, now: Point<f64, Logical>) -> Point<f64, Logical> {
-        // Off unless asked for (OLO_POINTER_AHEAD=1): tried on Ben's
-        // session (2026-11-01) it made the pointer feel worse, not
-        // better; it wants a measured trace of reports against vblanks
-        // before another try.
         static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        if !*ON.get_or_init(|| std::env::var_os("OLO_POINTER_AHEAD").is_some_and(|v| v == "1")) {
+        if !*ON.get_or_init(|| std::env::var_os("OLO_POINTER_AHEAD").is_none_or(|v| v != "0")) {
             return now;
         }
-        let (Some((t1, p1)), Some((t0, p0))) = (self.last, self.before) else { return now };
-        if target <= t1 || target - t1 > STALE || t1 <= t0 || t1 - t0 > STALE || p1 != now {
+        let n = self.reports.len();
+        if n < 2 {
             return now;
         }
-        let ahead = (target - t1).min(AHEAD).as_secs_f64();
-        let dt = (t1 - t0).as_secs_f64();
-        Point::from((p1.x + (p1.x - p0.x) / dt * ahead, p1.y + (p1.y - p0.y) / dt * ahead))
+        let (t1, p1) = self.reports[n - 1];
+        if p1 != now || target <= t1 && t1 - target > STALE || target > t1 && target - t1 > STALE {
+            return now;
+        }
+        let t = target.saturating_sub(LATENCY);
+        if t >= t1 {
+            // Past the last report: on at its velocity, a little.
+            let (t0, p0) = self.reports[n - 2];
+            if t1 <= t0 || t1 - t0 > STALE {
+                return now;
+            }
+            let lead = (t - t1).min(AHEAD).as_secs_f64();
+            let dt = (t1 - t0).as_secs_f64();
+            return Point::from((p1.x + (p1.x - p0.x) / dt * lead, p1.y + (p1.y - p0.y) / dt * lead));
+        }
+        // Between two reports: where it was then.
+        for w in self.reports.iter().rev().collect::<Vec<_>>().windows(2) {
+            let ((tb, pb), (ta, pa)) = (*w[0], *w[1]);
+            if ta <= t && t <= tb {
+                if tb == ta {
+                    return pb;
+                }
+                let f = (t - ta).as_secs_f64() / (tb - ta).as_secs_f64();
+                return Point::from((pa.x + (pb.x - pa.x) * f, pa.y + (pb.y - pa.y) * f));
+            }
+        }
+        now
     }
 }
 
@@ -181,15 +218,27 @@ mod track_tests {
     }
 
     #[test]
-    fn moves_ahead_along_the_last_motion() {
-        // SAFETY: a test's own environment, before the switch is read.
-        unsafe { std::env::set_var("OLO_POINTER_AHEAD", "1") };
+    fn interpolates_between_reports_a_little_behind() {
         let mut t = Track::default();
-        t.note(ms(100), Point::from((10.0, 10.0)));
-        t.note(ms(108), Point::from((18.0, 10.0)));
-        // 1 px/ms: a frame 4 ms after the last report draws it 4 px on.
-        let p = t.at(ms(112), Point::from((18.0, 10.0)));
-        assert_eq!((p.x, p.y), (22.0, 10.0));
+        t.note(ms(100), Point::from((0.0, 0.0)));
+        t.note(ms(108), Point::from((8.0, 0.0)));
+        t.note(ms(116), Point::from((16.0, 0.0)));
+        // A frame at 118: drawn where it was at 114, between the last two.
+        let p = t.at(ms(118), Point::from((16.0, 0.0)));
+        assert_eq!((p.x, p.y), (14.0, 0.0));
+    }
+
+    #[test]
+    fn goes_on_a_little_past_the_last_report() {
+        let mut t = Track::default();
+        t.note(ms(100), Point::from((0.0, 0.0)));
+        t.note(ms(108), Point::from((8.0, 0.0)));
+        // At 1 px/ms: a frame at 130 wants 126, 18 ms past the last report: capped at 4 ms.
+        let p = t.at(ms(130), Point::from((8.0, 0.0)));
+        assert_eq!((p.x, p.y), (12.0, 0.0));
+        // A frame at 114 wants 110: 2 ms on.
+        let p = t.at(ms(114), Point::from((8.0, 0.0)));
+        assert_eq!((p.x, p.y), (10.0, 0.0));
     }
 
     #[test]
@@ -200,20 +249,8 @@ mod track_tests {
         t.note(ms(100), Point::from((10.0, 10.0)));
         assert_eq!(t.at(ms(112), now), now);
         t.note(ms(108), now);
-        // Old reports: the mouse stopped.
         assert_eq!(t.at(ms(200), now), now);
-        // The pointer was moved by something else since (warped).
         assert_eq!(t.at(ms(112), Point::from((500.0, 500.0))), Point::from((500.0, 500.0)));
-    }
-
-    #[test]
-    fn at_most_a_frame_ahead() {
-        // SAFETY: a test's own environment, before the switch is read.
-        unsafe { std::env::set_var("OLO_POINTER_AHEAD", "1") };
-        let mut t = Track::default();
-        t.note(ms(100), Point::from((0.0, 0.0)));
-        t.note(ms(101), Point::from((10.0, 0.0)));
-        let p = t.at(ms(130), Point::from((10.0, 0.0)));
-        assert!(p.x <= 10.0 + 10.0 * 17.0 + 0.001, "{}", p.x);
+        assert_eq!(t.last(), Some((ms(108), ms(8))));
     }
 }

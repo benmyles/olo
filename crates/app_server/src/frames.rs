@@ -81,6 +81,8 @@ pub struct Pacing {
     pub cursor_plane: bool,
     /// What the last frame scanned out and drew (`scanout_summary`).
     pub scanout: String,
+    /// The last frames that drew the pointer (`Request::PointerTrace`).
+    pub pointer: VecDeque<olo_protocol::PointerFrame>,
 }
 
 /// What a frame's elements came to: how many went straight to a plane
@@ -154,6 +156,7 @@ impl Default for Pacing {
             interval: None,
             cursor_plane: false,
             scanout: String::new(),
+            pointer: VecDeque::new(),
         }
     }
 }
@@ -245,6 +248,14 @@ impl Pacing {
         self.clean = 0;
         self.budget = (self.budget.max(Self::least(frame)) + frame / 4).min(frame);
         Some(Drop { late, took, budget: self.budget, parts: std::mem::take(&mut self.parts) })
+    }
+
+    /// The pointer was drawn for the frame at `vblank`.
+    pub fn pointer_drawn(&mut self, frame: olo_protocol::PointerFrame) {
+        if self.pointer.len() == KEPT {
+            self.pointer.pop_front();
+        }
+        self.pointer.push_back(frame);
     }
 
     fn tidy(&mut self, now: Instant) {

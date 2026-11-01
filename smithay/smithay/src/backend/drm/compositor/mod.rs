@@ -3165,31 +3165,21 @@ where
             .transform_point_in(element.location(scale), &output_geometry.size)
             - output_transform.transform_point_in(Point::default(), &cursor_plane_size);
 
-        // (Olo) The plane kept on the screen. Only a real cursor plane
-        // may hang off the display; an overlay plane standing in for one
-        // (apple-drm has none) is refused with EINVAL on the page flip
-        // when it does, which took the desktop down as the pointer
-        // crossed an edge (2026-11-01). So the destination is the part
-        // of the cursor on the display and the source the same part of
-        // its buffer; a pointer wholly off it (on the display next door)
-        // takes no plane here.
-        let Some(cursor_plane_dst) = Rectangle::new(cursor_plane_location, cursor_plane_size)
-            .intersection(Rectangle::from_size(output_geometry.size))
-            // A sliver at the edge is drawn into the frame instead: apple-drm
-            // refused the plane at 10 px wide (2026-11-01).
-            .filter(|dst| dst.size.w >= 16 && dst.size.h >= 16)
-        else {
-            trace!("element {:?} is off the display or a sliver of it, skipping cursor plane", element.id());
+        // (Olo) The plane only when the whole of it is on the display.
+        // Only a real cursor plane may hang off the display; an overlay
+        // plane standing in for one (apple-drm has none) is refused with
+        // EINVAL on the page flip when it does, which took the desktop
+        // down as the pointer crossed an edge (2026-11-01), and refused
+        // in the test when cropped to the part on the display (26 px of
+        // 64, or 63 rows). So at an edge the pointer is drawn into the
+        // frame, and no test fails every frame there.
+        let whole = Rectangle::new(cursor_plane_location, cursor_plane_size);
+        if !Rectangle::from_size(output_geometry.size).contains_rect(whole) {
+            trace!("element {:?} isn't wholly on the display, skipping cursor plane", element.id());
             return None;
-        };
-        let cursor_plane_src = Rectangle::<i32, BufferCoords>::new(
-            Point::from((
-                cursor_plane_dst.loc.x - cursor_plane_location.x,
-                cursor_plane_dst.loc.y - cursor_plane_location.y,
-            )),
-            Size::from((cursor_plane_dst.size.w, cursor_plane_dst.size.h)),
-        )
-        .to_f64();
+        }
+        let cursor_plane_dst = whole;
+        let cursor_plane_src = Rectangle::<i32, BufferCoords>::from_size(Size::from((cursor_plane_size.w, cursor_plane_size.h))).to_f64();
 
         let previous_state = self
             .pending_frame

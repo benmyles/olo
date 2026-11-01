@@ -371,6 +371,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 | Request::ActivationToken
                 | Request::Timings { .. }
                 | Request::Frames
+                | Request::PointerTrace { .. }
                 | Request::CaptureDrops { .. }
                 // (Input wakes the displays it changes: `synthetic_input`.)
                 | Request::Synthetic { .. }
@@ -726,6 +727,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             }
             Request::Timings { quiet } => Reply::Timings { timings: self.take_timings(quiet) },
             Request::Frames => Reply::Frames { displays: self.backend_data.frames(), capture: crate::frames::capture() },
+            Request::PointerTrace { output } => Reply::PointerTrace { frames: self.backend_data.pointer_trace(&output) },
             Request::CaptureDrops { on } => {
                 crate::frames::set_capture(on);
                 if on {

@@ -334,6 +334,9 @@ pub enum Request {
     /// a `frames` record in the log: Activity Monitor's "Capture debug
     /// information". Until app_server restarts.
     CaptureDrops { on: bool },
+    /// The last 120 frames of display `output` that drew the pointer
+    /// ([`PointerFrame`]): to measure how evenly it moves.
+    PointerTrace { output: String },
     Quit,
 }
 
@@ -401,6 +404,7 @@ pub enum Reply {
     Timings { timings: Timings },
     /// [`Request::Frames`]: each display, and whether drops are captured.
     Frames { displays: Vec<DisplayFrames>, capture: bool },
+    PointerTrace { frames: Vec<PointerFrame> },
     Event { event: Event },
 }
 
@@ -474,6 +478,20 @@ pub struct DisplayFrames {
     pub scanout: String,
     /// Resting: nothing new, looking only now and then.
     pub resting: bool,
+}
+
+/// One frame that drew the pointer ([`Request::PointerTrace`]): the
+/// vblank it was for, where the pointer really was and where it was
+/// drawn (`cursor::Track`), and the last report's age at that vblank and
+/// interval from the one before. Times in microseconds of the input
+/// clock, positions logical.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct PointerFrame {
+    pub vblank_us: u64,
+    pub real: (f64, f64),
+    pub drawn: (f64, f64),
+    pub report_age_us: i64,
+    pub report_interval_us: u64,
 }
 
 /// How long one display's frames took to draw: from gathering what is on
