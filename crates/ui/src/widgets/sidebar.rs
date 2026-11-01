@@ -43,8 +43,19 @@ impl Row {
         Row { icon: icon.into(), label: label.into(), value: None, heading: false }
     }
 
+    /// A heading; with no words, a gap setting what follows apart
+    /// (Passwords' Archive, under its categories).
     pub fn heading(label: impl Into<SharedString>) -> Row {
         Row { icon: SharedString::default(), label: label.into(), value: None, heading: true }
+    }
+
+    /// How tall it stands.
+    pub fn tall(&self) -> f32 {
+        match (self.heading, self.label.is_empty()) {
+            (false, _) => ROW,
+            (true, false) => HEADING,
+            (true, true) => 2.0 * m::TIGHT,
+        }
     }
 
     pub fn value(mut self, value: impl Into<SharedString>) -> Row {
@@ -55,7 +66,7 @@ impl Row {
 
 /// How tall `rows` stand in a sidebar.
 pub fn height(rows: &[Row]) -> f32 {
-    m::TIGHT + rows.iter().map(|r| if r.heading { HEADING } else { ROW }).sum::<f32>()
+    m::TIGHT + rows.iter().map(Row::tall).sum::<f32>()
 }
 
 /// The sidebar's ground: the panel's, a little darker.
@@ -77,6 +88,7 @@ pub struct Sidebar {
     rows: Rc<[Row]>,
     chosen: usize,
     on_choose: Option<ChooseFn>,
+    bare: bool,
 }
 
 struct SidebarState {
@@ -91,7 +103,14 @@ struct SidebarState {
 impl Sidebar {
     /// `chosen` is a row's index (never a heading's).
     pub fn new(id: impl Into<SharedString>, rows: impl Into<Rc<[Row]>>, chosen: usize) -> Sidebar {
-        Sidebar { id: id.into(), rows: rows.into(), chosen, on_choose: None }
+        Sidebar { id: id.into(), rows: rows.into(), chosen, on_choose: None, bare: false }
+    }
+
+    /// Without its ground and edge: over what's behind it (a list's well:
+    /// Passwords' sources).
+    pub fn bare(mut self) -> Self {
+        self.bare = true;
+        self
     }
 
     /// A row is chosen (clicked, or ↑ ↓): its index.
@@ -127,11 +146,11 @@ impl RenderOnce for Sidebar {
             let s = state.read(cx);
             (s.focus.clone(), s.scroll.clone())
         };
-        let Sidebar { id, rows, chosen, on_choose } = self;
+        let Sidebar { id, rows, chosen, on_choose, bare } = self;
         let total = height(&rows);
         // The chosen row brought into view when it changes.
         if state.read(cx).revealed != Some(chosen) {
-            let top: f32 = m::TIGHT + rows[..chosen.min(rows.len())].iter().map(|r| if r.heading { HEADING } else { ROW }).sum::<f32>();
+            let top: f32 = m::TIGHT + rows[..chosen.min(rows.len())].iter().map(Row::tall).sum::<f32>();
             let (view, offset) = (f32::from(scroll.bounds().size.height), -f32::from(scroll.offset().y));
             if view > 0.0 {
                 let y = if top < offset { Some(top - m::TIGHT) } else if top + ROW > offset + view { Some(top + ROW - view) } else { None };
@@ -150,7 +169,7 @@ impl RenderOnce for Sidebar {
                 hit_rows
                     .iter()
                     .map(|row| {
-                        let h = px(if row.heading { HEADING } else { ROW });
+                        let h = px(row.tall());
                         let r = Bounds { origin: point(b.left(), y), size: size(b.size.width, h) };
                         y += h;
                         (!row.heading).then(|| window.insert_hitbox(r, HitboxBehavior::Normal))
@@ -172,9 +191,12 @@ impl RenderOnce for Sidebar {
                 let (plain, bold) = (style::ui_font(FontWeight::NORMAL), style::ui_font(FontWeight::BOLD));
                 let mut y = b.top() + px(m::TIGHT);
                 for (i, row) in paint_rows.iter().enumerate() {
-                    let h = if row.heading { HEADING } else { ROW };
+                    let h = row.tall();
                     let r = Bounds::from_corners(point(b.left(), snap(y)), point(right, snap(y) + px(h)));
                     y += px(h);
+                    if row.heading && row.label.is_empty() {
+                        continue;
+                    }
                     if row.heading {
                         let t = style::label(window, cx, r.left() + px(m::WINDOW_INSET), r.center().y + px(2.0), style::Align::Left, row.label.to_uppercase(), style::SMALL_SIZE, bold.clone(), style::disabled_text(&p));
                         agent::record(window, cx, agent::Node { role: "Heading", name: Some(row.label.clone()), bounds: t, enabled: true, ..Default::default() });
@@ -253,7 +275,7 @@ impl RenderOnce for Sidebar {
                     f(to, window, cx);
                 }
             })
-            .child(backdrop)
+            .children((!bare).then_some(backdrop))
             .child(ScrollView::new(SharedString::from(format!("sidebar-scroll-{id}")), &scroll).border(false).auto_hide(true).child(list))
     }
 }

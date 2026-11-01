@@ -1666,6 +1666,16 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   egui kit's).
 - `widgets::StatusBar::new(fraction).label(..).trailing(..)` and
   `level_bar` (the bar alone).
+- `copy::secret(cx, text, clear_after)`: a password or one-time code on
+  the clipboard, marked for clipboard managers to leave alone
+  (`x-kde-passwordManagerHint`), and taken off after `clear_after` if
+  it's still ours (`App::withdraw_from_clipboard(&item)`, Olo's GPUI:
+  nothing if something else was copied since). An app that quits
+  while what's on the clipboard is its own runs on with its windows
+  gone (`App::quit` closes them) until something else is copied or it
+  takes its own off, so what it copied can still be pasted, as the
+  egui kit's apps did; launched meanwhile, it opens a window again and
+  carries on.
 - `widgets::ColumnListView::new(id, &model, columns, rows, cell)`:
   BColumnListView as the egui kit's, its state in a `ListModel` entity
   the app keeps (`ListModel::new(cx, multiple)`; `state` is the shared
@@ -1689,8 +1699,11 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   middle; `typing()` says a name is being typed (a space is part of
   it). Agents read `Row`s (named by their cells' text, selected or
   not) and `ColumnHeader`s (one scrolled out of view sideways is none
-  wide at the view's edge, not clickable). `examples/list.rs` is the egui demo's
-  Lists tab, for comparing.
+  wide at the view's edge, not clickable). `no_header()` shows the rows
+  alone (a list of things, not of columns: Passwords' items), its
+  frame's line along their top; a cell drawn by hand (an icon and two
+  lines) says its text to agents with `cell.say(text)`.
+  `examples/list.rs` is the egui demo's Lists tab, for comparing.
 - `style::label_fit` (a label cut short with "…" to a width, measured
   as shaped), `style::selection_band`, `style::selection_wash` (a thing
   selected in place: the selection colour see-through, its edge
@@ -1817,9 +1830,15 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   changed (their renders run; their cached children are replayed): so
   keep what changes often (a caret, a graph moving a pixel) in a small
   view, and what's costly beside it in cached views, not around it.
-  Activity Monitor's window is cached parts (menu bar, sidebar, the
-  section's cards, the process list) and a `GraphLayer`: a graph's
-  tick redraws the graphs and the window's few boxes around them.
+  `part::Part::new(&app, draw, cx)` is such a view drawn from the app's
+  entity (`draw(&mut App, window, cx)`, drawn again as the app changes;
+  `.observe(&model, cx)` for a list's model it shows too), placed with
+  `part::cached(&part, style)` (its size in the style). Activity
+  Monitor's window is parts (menu bar, sidebar, the section's cards,
+  the process list) and a `GraphLayer`: a graph's tick redraws the
+  graphs and the window's few boxes around them. Passwords' panes are
+  parts, and a one-time code counting down notifies the item pane's
+  part alone, once a second.
 - `Window::warm_glyphs(font, size)` (Olo's GPUI) has a face and size's
   printable characters drawn ahead, off the UI thread, so the frame that
   first shows them only copies them (a glyph drawn the first time costs
@@ -1986,7 +2005,10 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   label).value(v)` and `Row::heading(label)`, `sidebar::height(rows)`,
   its `ground` and `edge` colours for what sits on it; ↑ ↓ step over
   headings, rows past its height scroll, the chosen one is brought into
-  view; `ListItem`s and `Heading`s to agents).
+  view; `ListItem`s and `Heading`s to agents). `Row::heading("")` is a
+  short gap setting what follows apart, said to no one; `.bare()` drops
+  its ground and edge, over what's behind it (a list's sunken well:
+  Passwords' sources).
 - `widgets::TabView::new(id, labels, selected).on_select(f)` with the
   chosen tab's content as its child (BTabView: slanted folder tabs over
   a raised panel, the content inside `WINDOW_INSET`; `Tab`s to agents).
@@ -6541,9 +6563,11 @@ sample items, item versions, OTP codes) over the same protocol;
 Passwords is the app: sources (vaults, categories, Archive), a two-line
 item list and the selected item's fields (hover for Copy/Show; one-time
 codes count down), an editor with templates per category, a Password
-Generator window, and File/Edit/Item/View menus (⌘C username, ⇧⌘C password,
-⇧⌘O one-time code). Secrets go to the clipboard with `copy_secret` and
-leave after `clear_seconds`. A field (or website) drags out as text onto
+Generator panel, and File/Edit/Item/View menus (⌘C username, ⇧⌘C password,
+⇧⌘O one-time code, ⌘0 All Items, ⌘1–⌘9 the vaults by place, as
+`app_keys` has them). Secrets go to the clipboard with
+`olo_ui::copy::secret` and leave after `clear_seconds` (quit before,
+Passwords runs on without its windows until they do). A field (or website) drags out as text onto
 another app's field (`drag_field`: a one-time password's current code;
 the picture shows the field's name, never the value). It opens locked and locks after
 `lock_minutes` idle, and when the screen locks if `lock_with_screen`
@@ -6551,10 +6575,29 @@ the picture shows the field's name, never the value). It opens locked and locks 
 while the locked window has the keyboard, or the account password through
 PAM. Those, and `auto_sync`, are Preferences ▸ Security's
 (`Settings::security.passwords`, followed live through
-`olo_kit::settings::watch`; the screen locking comes from
+`olo_ui::settings::watch`; the screen locking comes from
 `settings::watch_power`, `PowerStatus::locked`; View ▸ Lock After writes
 the same setting with `settings::update`). Its own settings (accounts,
 the generator, the window size) live in `passwords.json`.
+
+It is on olo-ui: the app's state is a `Passwords` entity, which is the
+main window's view; the menu bar and the three panes are cached parts
+of it (`olo_ui::part`), so a one-time code counting down (a timer on
+the second, only while one shows) draws the item pane alone. Nothing
+ticks: one timer waits for the next thing due (a sync, the auto-lock,
+the status line clearing), set again whenever the app changes
+(`observe_self`). The list is worked out once for each change to the
+items, the source or the search (`visible`). Review Sync, Sync
+Problems, the generator (a panel: it floats, never a tab) and the
+alerts are views of their own that read it; a passkey question closes
+itself when the page gives up. Debug builds only take the PAM test
+service, so a release build can't be unlocked in a test session: to
+measure one, build it with `CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true`
+in a scratch `CARGO_TARGET_DIR`. Tests give it a keychain socket of its
+own (`OLO_KEYCHAIN_SOCKET`; the default is the person's Passwords') and
+a fake 1Password on a socket of its own (`onepassword-fake --socket
+NAME --accounts DIR`, `OLO_1PASSWORD_SOCKET=NAME`,
+`OLO_1PASSWORD_DATA=DIR`).
 
 **Its own store** (`vault.rs`). Every vault and item lives on this
 computer, so the app, Chrome's extension and the palette never wait on

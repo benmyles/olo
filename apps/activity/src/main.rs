@@ -40,6 +40,7 @@ use olo_ui::{
     },
     instance::{self, Launch},
     metrics as m,
+    part::Part,
     search::{SearchEvent, SearchField, search_field},
     widgets::{
         AlertFrame, Button, GraphLayer, GraphShelf, ListModel, Sidebar, TextControl, TextField, TextFieldEvent, button_row, open_alert, paragraph,
@@ -960,40 +961,12 @@ impl Activity {
     }
 }
 
-/// A part of the window drawn from the app, cached (`AnyView::cached`):
-/// drawn again as the app changes (or a list it shows), its last frame
-/// kept otherwise. GPUI draws again every view above one that changed:
-/// the section's graphs moving a pixel redraw their layer and, around
-/// it, only the window's few boxes; these parts are kept.
-struct Part {
-    app: Entity<Activity>,
-    draw: fn(&mut Activity, &mut Window, &mut Context<Activity>) -> AnyElement,
-    _observe: Vec<Subscription>,
-}
-
-impl Part {
-    fn new(app: &Entity<Activity>, lists: &[Entity<ListModel>], draw: fn(&mut Activity, &mut Window, &mut Context<Activity>) -> AnyElement, cx: &mut Context<Self>) -> Part {
-        // (A cached view isn't drawn again for a model it reads, only for
-        // what it observes.)
-        let mut observe = vec![cx.observe(app, |_, _, cx| cx.notify())];
-        observe.extend(lists.iter().map(|l| cx.observe(l, |_, _, cx| cx.notify())));
-        Part { app: app.clone(), draw, _observe: observe }
-    }
-}
-
-impl Render for Part {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let draw = self.draw;
-        self.app.update(cx, |a, cx| draw(a, window, cx))
-    }
-}
-
 /// The window's cached parts, and the section's graphs' layer.
 struct Parts {
-    menus: Entity<Part>,
-    sidebar: Entity<Part>,
-    processes: Entity<Part>,
-    cards: Entity<Part>,
+    menus: Entity<Part<Activity>>,
+    sidebar: Entity<Part<Activity>>,
+    processes: Entity<Part<Activity>>,
+    cards: Entity<Part<Activity>>,
     graphs: Entity<GraphLayer>,
 }
 
@@ -1003,10 +976,13 @@ impl Parts {
             let a = app.read(cx);
             ([a.connections_list.clone(), a.tunables_list.clone()], a.list.clone())
         };
-        let menus = cx.new(|cx| Part::new(app, &[], Activity::menu_bar, cx));
-        let sidebar = cx.new(|cx| Part::new(app, &[], Activity::sidebar, cx));
-        let processes = cx.new(|cx| Part::new(app, &[list], processes::list, cx));
-        let cards = cx.new(|cx| Part::new(app, &lists, sections::cards, cx));
+        let menus = cx.new(|cx| Part::new(app, Activity::menu_bar, cx));
+        let sidebar = cx.new(|cx| Part::new(app, Activity::sidebar, cx));
+        let processes = cx.new(|cx| Part::new(app, processes::list, cx).observe(&list, cx));
+        let cards = cx.new(|cx| {
+            let [a, b] = &lists;
+            Part::new(app, sections::cards, cx).observe(a, cx).observe(b, cx)
+        });
         let (shelf, now_of) = (app.read(cx).shelf.clone(), app.downgrade());
         let graphs = cx.new(|cx| {
             cx.observe(app, |_, _, cx| cx.notify()).detach();

@@ -179,6 +179,23 @@ impl Clipboard {
         self.self_mime.clone()
     }
 
+    /// Olo: whether the clipboard is still ours, holding `item`.
+    pub fn holds(&self, item: &ClipboardItem) -> bool {
+        self.current_offer.as_ref().is_some_and(|o| o.has_mime_type(&self.self_mime)) && self.contents.as_ref() == Some(item)
+    }
+
+    /// Olo: ours no longer (taken off).
+    /// Olo: whether what we last put on the clipboard is `item` (with no
+    /// window, no offer of our own comes back to say it's still there).
+    pub fn contents_are(&self, item: &ClipboardItem) -> bool {
+        self.contents.as_ref() == Some(item)
+    }
+
+    pub fn forget(&mut self) {
+        self.contents = None;
+        self.cached_read = None;
+    }
+
     pub fn send(&self, mime_type: String, fd: OwnedFd) {
         // Olo: the form asked for (an image, files), else the text.
         if let Some(bytes) = self.contents.as_ref().and_then(|contents| contents.bytes_for(&mime_type)) {

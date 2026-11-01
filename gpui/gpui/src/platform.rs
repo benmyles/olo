@@ -247,6 +247,14 @@ pub(crate) trait Platform: 'static {
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     fn write_to_primary(&self, item: ClipboardItem);
     fn write_to_clipboard(&self, item: ClipboardItem);
+    /// Olo: takes `item` off the clipboard if it's still there and ours
+    /// (a password copied a while ago).
+    fn withdraw_clipboard(&self, _item: &ClipboardItem) {}
+    /// Olo: whether what's on the clipboard is ours (quitting, the app
+    /// then runs on without its windows until it isn't).
+    fn holds_clipboard(&self) -> bool {
+        false
+    }
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     fn read_from_primary(&self) -> Option<ClipboardItem>;
     fn read_from_clipboard(&self) -> Option<ClipboardItem>;
@@ -1819,6 +1827,13 @@ impl ClipboardItem {
     /// Olo: `bytes` offered as `mime` (one form; see [`Self::from_entries`]).
     pub fn new_data(mime: impl Into<String>, bytes: impl Into<std::sync::Arc<[u8]>>) -> Self {
         Self { entries: vec![ClipboardEntry::Data(ClipboardData { mime: mime.into(), bytes: bytes.into() })] }
+    }
+
+    /// Olo: also as `mime` (a hint beside text: a password marked for
+    /// clipboard managers to leave alone).
+    pub fn and_data(mut self, mime: impl Into<String>, bytes: impl Into<std::sync::Arc<[u8]>>) -> Self {
+        self.entries.push(ClipboardEntry::Data(ClipboardData { mime: mime.into(), bytes: bytes.into() }));
+        self
     }
 
     /// Olo: the MIME types the item is offered as, each once, `text`

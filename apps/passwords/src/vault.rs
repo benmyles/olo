@@ -36,7 +36,7 @@ const KEY_ATTRS: [(&str, &str); 2] = [("application", "tabula-passwords"), ("pur
 pub const LOCAL: &str = "local-";
 
 pub fn path() -> PathBuf {
-    olo_kit::config_dir().join("passwords.vault")
+    olo_ui::config_dir().join("passwords.vault")
 }
 
 /// What 1Password had of an item when it was last synced.

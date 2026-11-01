@@ -384,6 +384,11 @@ pub(crate) struct WaylandClientState {
     next_token_request: u64,
     event_loop: Option<EventLoop<'static, WaylandClientStatePtr>>,
     common: LinuxCommon,
+    /// Olo: the clipboard's source while what's on it is ours.
+    selection_source: Option<wl_data_source::WlDataSource>,
+    /// Olo: quit while holding the clipboard: running on, windowless,
+    /// until something else is copied (or ours is taken off).
+    lingering: bool,
 }
 
 /// Olo: a drag out of one of our windows (`PlatformWindow::start_drag`):
@@ -833,6 +838,8 @@ impl WaylandClient {
             token_requests: HashMap::default(),
             next_token_request: 0,
             event_loop: Some(event_loop),
+            selection_source: None,
+            lingering: false,
         }));
 
         CLIENT.with(|c| *c.borrow_mut() = Rc::downgrade(&state));
@@ -918,6 +925,8 @@ impl LinuxClient for WaylandClient {
         params: WindowParams,
     ) -> anyhow::Result<Box<dyn PlatformWindow>> {
         let mut state = self.0.borrow_mut();
+        // Olo: a window again (launched while lingering): it runs on.
+        state.lingering = false;
 
         let parent = state
             .keyboard_focused_window
@@ -1123,7 +1132,35 @@ impl LinuxClient for WaylandClient {
             }
             data_source.offer(state.clipboard.self_mime());
             data_device.set_selection(Some(&data_source), serial);
+            state.selection_source = Some(data_source);
         }
+    }
+
+    fn withdraw_clipboard(&self, item: &crate::ClipboardItem) {
+        let mut state = self.0.borrow_mut();
+        let Some(data_device) = state.data_device.clone() else { return };
+        let ours = state.clipboard.holds(item) || (state.lingering && state.clipboard.contents_are(item));
+        if ours {
+            let serial = state.serial_tracker.get(SerialKind::KeyPress);
+            data_device.set_selection(None, serial);
+            state.clipboard.forget();
+            if let Some(source) = state.selection_source.take() {
+                source.destroy();
+            }
+            if state.lingering {
+                state.common.signal.stop();
+            }
+        }
+    }
+
+    fn linger_for_clipboard(&self) -> bool {
+        let mut state = self.0.borrow_mut();
+        state.lingering = state.selection_source.is_some();
+        state.lingering
+    }
+
+    fn holds_clipboard(&self) -> bool {
+        self.0.borrow().selection_source.is_some()
     }
 
     fn read_from_primary(&self) -> Option<crate::ClipboardItem> {
@@ -2606,6 +2643,14 @@ impl Dispatch<wl_data_source::WlDataSource, ()> for WaylandClientStatePtr {
             }
             wl_data_source::Event::Cancelled => {
                 data_source.destroy();
+                // Olo: something else was copied; quit and waiting for
+                // that, the app ends.
+                if state.selection_source.as_ref() == Some(data_source) {
+                    state.selection_source = None;
+                    if state.lingering {
+                        state.common.signal.stop();
+                    }
+                }
             }
             _ => {}
         }

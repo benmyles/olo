@@ -68,6 +68,18 @@ pub trait LinuxClient {
     fn reveal_path(&self, path: PathBuf);
     fn write_to_primary(&self, item: ClipboardItem);
     fn write_to_clipboard(&self, item: ClipboardItem);
+    /// Olo: takes `item` off the clipboard if it's still ours.
+    fn withdraw_clipboard(&self, _item: &ClipboardItem) {}
+    /// Olo: quitting: whether what's on the clipboard is ours, in which
+    /// case it runs on until that's gone (`withdraw_clipboard`, or
+    /// something else copied) so what was copied can still be pasted.
+    fn linger_for_clipboard(&self) -> bool {
+        false
+    }
+    /// Olo: whether what's on the clipboard is ours.
+    fn holds_clipboard(&self) -> bool {
+        false
+    }
     fn read_from_primary(&self) -> Option<ClipboardItem>;
     fn read_from_clipboard(&self) -> Option<ClipboardItem>;
     fn active_window(&self) -> Option<AnyWindowHandle>;
@@ -171,6 +183,9 @@ impl<P: LinuxClient + 'static> Platform for P {
     }
 
     fn quit(&self) {
+        if LinuxClient::linger_for_clipboard(self) {
+            return;
+        }
         self.with_common(|common| common.signal.stop());
     }
 
@@ -579,6 +594,14 @@ impl<P: LinuxClient + 'static> Platform for P {
 
     fn write_to_clipboard(&self, item: ClipboardItem) {
         self.write_to_clipboard(item)
+    }
+
+    fn withdraw_clipboard(&self, item: &ClipboardItem) {
+        LinuxClient::withdraw_clipboard(self, item)
+    }
+
+    fn holds_clipboard(&self) -> bool {
+        LinuxClient::holds_clipboard(self)
     }
 
     fn read_from_primary(&self) -> Option<ClipboardItem> {

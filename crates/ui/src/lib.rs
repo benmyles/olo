@@ -12,12 +12,14 @@
 pub mod agent;
 mod app;
 pub mod brand;
+pub mod copy;
 pub mod dnd;
 pub mod file_panel;
 mod lock;
 pub mod icons;
 pub mod keys;
 pub mod menu;
+pub mod part;
 pub mod review;
 pub mod search;
 pub mod style;

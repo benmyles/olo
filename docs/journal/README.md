@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-01
 
+### Passwords on GPUI
+
+*10:49* — Passwords moves to the GPUI kit: its panes are cached parts of the window, so a one-time code counting down redraws the item pane alone, once a second; half the CPU of the egui version in every interaction and 90 MB against 124. Synthetic items from the test 1Password.
+
+![Passwords on GPUI](2026-11-01/104952-passwords-on-gpui.png)
+
 ### Activity Monitor on GPUI
 
 *09:50* — Activity Monitor moves from egui to Olo's GPUI kit, looking as it did. Its window is cached parts with the section's graphs on a layer of their own (the kit's GraphLayer): a graph moving a pixel redraws the graphs, not the cards around them. Graphs' fills are a new GPU primitive (paint_area) instead of paths filled through window-sized multisampled textures, and a window's graphs move together on one clock. On release at 2×: the UI thread at or under egui's in every section with graphs (CPU 3.9% of a core against 5.2), 93–96 MB against 119–123.

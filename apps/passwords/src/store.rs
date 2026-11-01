@@ -17,7 +17,7 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD as B64};
 use chrono::{DateTime, Utc};
 use onepassword::{AutofillBehavior, Error, Item, ItemCategory, ItemCreateParams, ItemField, ItemFieldType, ItemOverview, VaultOverview, Website};
 use olo_keychain::{Incoming, Request, Response};
-use olo_kit::Proxy;
+use olo_ui::Proxy;
 
 use crate::{
     passkey,

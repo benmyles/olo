@@ -320,8 +320,13 @@ as they land (with the commit), add new ones as they come up.
      every section with graphs, CPU 3.9% of a core against 5.2, Graphs
      2.2 against 2.9, the same frames a second, 93–96 MB against
      119–123; Processes 0.7% against 0.4: its frame for each sample is
-     6 ms against 3.7). Next: StyledEdit, Tracker, Passwords,
-     Preferences (with the screen saver and its modules) and Terminal.
+     6 ms against 3.7). Passwords (its panes cached parts of its
+     window, the kit's `part::Part`; a one-time code counting down draws
+     its pane alone, once a second; no tick: one timer for the next
+     thing due; a secret copied stays pasteable after Quit until it's
+     cleared, the GPUI kit's clipboard linger, as the egui kit's apps;
+     on release with debug assertions (so a test session can unlock it) at 2×: 0 at rest either way; a one-time code showing, 1 frame a second against 2; arrowing through the list 0.8% of a core against 1.5, typing a search 0.6 against 1.6, moving over fields 1.2 against 3.0, as it draws once for a change where egui drew four or five times; its frames 1.7–2.5 ms against 1.2–1.7; 90 MB against 124). Next: StyledEdit, Tracker, Preferences (with the
+     screen saver and its modules) and Terminal.
      (`olo-preview`'s decoding no longer needs a toolkit: pictures are
      its own `Bitmap`s, and its egui views are behind its `egui`
      feature, for Tracker and the Viewer until they move; Telegram no

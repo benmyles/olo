@@ -3,7 +3,7 @@
 //! threads. The sensor is claimed only while the locked window has the
 //! keyboard, so it never holds it from sudo or the lock screen.
 
-use olo_kit::Proxy;
+use olo_ui::Proxy;
 use olo_system::{auth, fingerprint};
 use zeroize::Zeroize;
 

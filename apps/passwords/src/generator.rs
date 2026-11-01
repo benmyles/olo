@@ -1,13 +1,15 @@
 //! The Password Generator window: a recipe, a preview with its strength,
 //! Copy, and Use when it was opened from a password field.
 
-use onepassword::{PasswordRecipe, SeparatorType, WordListType, generate};
-use serde::{Deserialize, Serialize};
-use olo_kit::{
-    egui::{self, Sense, Ui, vec2},
-    metrics as m, style,
+use olo_ui::{
+    gpui::{Context, Entity, FocusHandle, FontWeight, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render, SharedString, Styled as _, Window, canvas, div, px},
+    agent, metrics as m, style, theme,
     widgets::{Button, CheckBox, MenuField, Slider, StatusBar, button_row},
 };
+use onepassword::{PasswordRecipe, SeparatorType, WordListType, generate};
+use serde::{Deserialize, Serialize};
+
+use crate::Passwords;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
@@ -75,7 +77,7 @@ pub fn verdict(bits: f64) -> (&'static str, f32) {
     (word, fraction)
 }
 
-pub fn meter_color(p: &olo_theme::Palette, bits: f64) -> egui::Color32 {
+pub fn meter_color(p: &olo_theme::Palette, bits: f64) -> Hsla {
     if bits < 36.0 {
         style::c(p.failure)
     } else if bits < 60.0 {
@@ -92,105 +94,159 @@ pub struct Generator {
     pub target: Option<(String, String)>,
 }
 
-pub enum Action {
-    Copy(String),
-    Use(String),
-    Close,
-}
-
 impl Generator {
     pub fn new(recipe: Recipe, target: Option<(String, String)>) -> Generator {
         let password = recipe.generate();
         Generator { recipe, password, target }
     }
+}
 
-    pub fn ui(&mut self, ui: &mut Ui) -> Option<Action> {
-        let p = style::palette(ui.ctx());
-        let mut action = None;
-        let before = self.recipe.clone();
-        ui.spacing_mut().item_spacing.y = m::SPACING;
+/// The generator's window: the password, large, in a well, how strong it
+/// is, the recipe, and Use (opened from a field), Copy and Regenerate.
+pub struct GeneratorView {
+    pub generator: Generator,
+    app: Entity<Passwords>,
+    focus: FocusHandle,
+}
 
-        // The password, large, in a well.
-        let (well, _) = ui.allocate_exact_size(vec2(ui.available_width(), 64.0), Sense::hover());
-        let well = style::snap(ui.ctx(), well);
-        ui.painter().rect_filled(well, 0.0, style::c(p.document_background));
-        style::sunken(ui.painter(), well, &p, false);
-        let font = style::mono_font(if self.password.chars().count() > 34 { 13.0 } else { 16.0 });
-        let galley = ui.painter().layout(self.password.clone(), font, style::c(p.document_text), well.width() - 2.0 * m::SPACING);
-        let pos = well.center() - galley.size() / 2.0;
-        ui.painter().galley(pos, galley, style::c(p.document_text));
+const DIVIDER: f32 = 80.0;
 
-        let bits = generate::entropy_bits(self.recipe.recipe());
+impl GeneratorView {
+    pub fn new(generator: Generator, app: Entity<Passwords>, cx: &mut Context<Self>) -> GeneratorView {
+        GeneratorView { generator, app, focus: cx.focus_handle() }
+    }
+
+    pub fn focus(&self, window: &mut Window) {
+        window.focus(&self.focus);
+    }
+
+    /// The recipe changed: a new password, and the app keeps the recipe.
+    fn change(&mut self, f: impl FnOnce(&mut Recipe), cx: &mut Context<Self>) {
+        f(&mut self.generator.recipe);
+        self.generator.password = self.generator.recipe.generate();
+        let recipe = self.generator.recipe.clone();
+        self.app.update(cx, |a, _| a.settings.generator = recipe);
+        cx.notify();
+    }
+}
+
+impl Render for GeneratorView {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let me = cx.entity();
+        let p = theme::palette(cx);
+        let r = &self.generator.recipe;
+        let bits = generate::entropy_bits(r.recipe());
         let (word, fraction) = verdict(bits);
-        let label = format!("{word} ({bits:.0} bits)");
-        ui.add(StatusBar::new(fraction).label(&label).color(meter_color(&p, bits)).bar_height(6.0));
+        let strength = StatusBar::new(fraction).label(format!("{word} ({bits:.0} bits)")).color(meter_color(&p, bits)).bar_height(6.0);
 
-        ui.add(MenuField::new("gen-kind", &mut self.recipe.kind, &KINDS).label("Type:").divider(80.0));
-        match self.recipe.kind {
-            1 => {
-                let mut words = self.recipe.words as f32;
-                let text = format!("{}", self.recipe.words);
-                let range = *generate::WORD_COUNT.start() as f32..=*generate::WORD_COUNT.end() as f32;
-                ui.add(Slider::new(&mut words, range).label("Words:").value_text(text).step(1.0));
-                self.recipe.words = words.round() as u32;
-                ui.add(MenuField::new("gen-sep", &mut self.recipe.separator, &SEPARATORS).label("Separator:").divider(80.0));
-                ui.add(MenuField::new("gen-list", &mut self.recipe.word_list, &WORD_LISTS).label("Made of:").divider(80.0));
-                ui.add(CheckBox::new(&mut self.recipe.capitalize, "Capitalise"));
+        // The password, large, in a well; a long one over lines.
+        let password: SharedString = self.generator.password.clone().into();
+        let well = canvas(
+            |_, _, _| {},
+            move |b, _, window, cx| {
+                let p = theme::palette(cx);
+                let b = style::snap(window, b);
+                style::fill_rect(window, b, style::c(p.document_background));
+                style::sunken(window, b, &p, false);
+                let size = if password.chars().count() > 34 { 13.0 } else { 16.0 };
+                let font = style::mono_font(FontWeight::NORMAL);
+                let advance = style::text_width(window, "0", size, font.clone()).max(olo_ui::gpui::px(1.0));
+                let per_line = (f32::from(b.size.width - olo_ui::gpui::px(2.0 * m::SPACING)) / f32::from(advance)).floor().max(1.0) as usize;
+                let chars: Vec<char> = password.chars().collect();
+                let lines: Vec<String> = chars.chunks(per_line).map(|c| c.iter().collect()).collect();
+                let line_h = size * 1.3;
+                let top = b.center().y - px(line_h * lines.len() as f32 / 2.0);
+                for (i, line) in lines.into_iter().enumerate() {
+                    style::label(window, cx, b.center().x, top + px(line_h * (i as f32 + 0.5)), style::Align::Center, line, size, font.clone(), style::c(p.document_text));
+                }
+                agent::record(window, cx, agent::Node { role: "Label", name: Some("Password".into()), value: Some(password.clone()), bounds: b, enabled: true, ..Default::default() });
+            },
+        )
+        .w_full()
+        .h(px(64.0))
+        .flex_shrink_0();
+
+        let kinds: Vec<SharedString> = KINDS.iter().map(|k| SharedString::from(*k)).collect();
+        let kind_me = me.clone();
+        let mut form = div().flex().flex_col().gap(px(m::SPACING)).child(well).child(strength).child(
+            MenuField::new("gen-kind", kinds, r.kind).label("Type:").divider(DIVIDER).on_change(move |i, _, cx| kind_me.update(cx, |g, cx| g.change(|r| r.kind = i, cx))),
+        );
+        let slider = |id: &'static str, label: &'static str, value: u32, range: std::ops::RangeInclusive<f32>, set: fn(&mut Recipe, u32)| {
+            let me = me.clone();
+            Slider::new(id, value as f32, range).label(label).value_text(value.to_string()).step(1.0).on_change(move |v, _, cx| {
+                let v = v.round() as u32;
+                me.update(cx, |g, cx| g.change(|r| set(r, v), cx))
+            })
+        };
+        let menu = |id: &'static str, label: &'static str, options: &[&'static str], chosen: usize, set: fn(&mut Recipe, usize)| {
+            let me = me.clone();
+            let options: Vec<SharedString> = options.iter().map(|o| SharedString::from(*o)).collect();
+            MenuField::new(id, options, chosen).label(label).divider(DIVIDER).on_change(move |i, _, cx| me.update(cx, |g, cx| g.change(|r| set(r, i), cx)))
+        };
+        let check = |id: &'static str, label: &'static str, on: bool, set: fn(&mut Recipe, bool)| {
+            let me = me.clone();
+            CheckBox::new(label, on).id(id).on_toggle(move |on, _, cx| me.update(cx, |g, cx| g.change(|r| set(r, on), cx)))
+        };
+        let range = *generate::WORD_COUNT.start() as f32..=*generate::WORD_COUNT.end() as f32;
+        form = match r.kind {
+            1 => form
+                .child(slider("gen-words", "Words:", r.words, range, |r, v| r.words = v))
+                .child(menu("gen-sep", "Separator:", &SEPARATORS, r.separator, |r, i| r.separator = i))
+                .child(menu("gen-list", "Made of:", &WORD_LISTS, r.word_list, |r, i| r.word_list = i))
+                .child(check("gen-capitalize", "Capitalise", r.capitalize, |r, on| r.capitalize = on)),
+            2 => form.child(slider("gen-pin", "Digits:", r.pin, 4.0..=12.0, |r, v| r.pin = v)),
+            _ => form.child(slider("gen-length", "Characters:", r.length, 8.0..=64.0, |r, v| r.length = v)).child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .gap(px(m::SPACING * 2.0))
+                    .child(check("gen-digits", "Numbers", r.digits, |r, on| r.digits = on))
+                    .child(check("gen-symbols", "Symbols", r.symbols, |r, on| r.symbols = on)),
+            ),
+        };
+
+        // The buttons on the window's bottom edge.
+        let pw = self.generator.password.clone();
+        let (use_me, copy_me, again_me) = (me.clone(), me.clone(), me.clone());
+        let copy = {
+            let pw = pw.clone();
+            move |_: &mut Window, cx: &mut olo_ui::gpui::App| {
+                let app = copy_me.read(cx).app.clone();
+                let pw = pw.clone();
+                app.update(cx, |a, cx| a.copy_secret("the password", &pw, cx));
             }
-            2 => {
-                let mut len = self.recipe.pin as f32;
-                let text = format!("{}", self.recipe.pin);
-                ui.add(Slider::new(&mut len, 4.0..=12.0).label("Digits:").value_text(text).step(1.0));
-                self.recipe.pin = len.round() as u32;
-            }
-            _ => {
-                let mut len = self.recipe.length as f32;
-                let text = format!("{}", self.recipe.length);
-                ui.add(Slider::new(&mut len, 8.0..=64.0).label("Characters:").value_text(text).step(1.0));
-                self.recipe.length = len.round() as u32;
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = m::SPACING * 2.0;
-                    ui.add(CheckBox::new(&mut self.recipe.digits, "Numbers"));
-                    ui.add(CheckBox::new(&mut self.recipe.symbols, "Symbols"));
+        };
+        let mut row = button_row();
+        row = row.child(Button::new("Regenerate").on_click(move |_, cx| again_me.update(cx, |g, cx| g.change(|_| {}, cx))));
+        if self.generator.target.is_some() {
+            row = row.child(Button::new("Copy").on_click(copy)).child(Button::new("Use").default(true).on_click(move |window, cx| {
+                let app = use_me.read(cx).app.clone();
+                let pw = pw.clone();
+                window.remove_window();
+                app.update(cx, |a, cx| {
+                    a.use_generated(pw, cx);
+                    a.generator_closed();
                 });
-            }
+            }));
+        } else {
+            row = row.child(Button::new("Copy").default(true).on_click(copy));
         }
-        if self.recipe.kind != before.kind
-            || self.recipe.length != before.length
-            || self.recipe.digits != before.digits
-            || self.recipe.symbols != before.symbols
-            || self.recipe.words != before.words
-            || self.recipe.capitalize != before.capitalize
-            || self.recipe.separator != before.separator
-            || self.recipe.word_list != before.word_list
-            || self.recipe.pin != before.pin
-        {
-            self.password = self.recipe.generate();
-        }
-
-        // The buttons sit on the window's bottom edge.
-        let row = m::CONTROL_HEIGHT + 4.0;
-        ui.add_space((ui.available_height() - row - m::SPACING).max(0.0));
-        ui.allocate_ui(vec2(ui.available_width(), row), |ui| {
-            button_row(ui, |ui| {
-                if self.target.is_some() {
-                    if ui.add(Button::new("Use").default(true)).clicked() {
-                        action = Some(Action::Use(self.password.clone()));
-                    }
-                    if ui.add(Button::new("Copy")).clicked() {
-                        action = Some(Action::Copy(self.password.clone()));
-                    }
-                } else if ui.add(Button::new("Copy").default(true)).clicked() {
-                    action = Some(Action::Copy(self.password.clone()));
+        div()
+            .size_full()
+            .track_focus(&self.focus)
+            .on_key_down(move |e: &KeyDownEvent, window, cx| {
+                if e.keystroke.key == "escape" {
+                    cx.stop_propagation();
+                    window.remove_window();
+                    let app = me.read(cx).app.clone();
+                    app.update(cx, |a, _| a.generator_closed());
                 }
-                if ui.add(Button::new("Regenerate")).clicked() {
-                    self.password = self.recipe.generate();
-                }
-            });
-        });
-        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-            action = Some(Action::Close);
-        }
-        action
+            })
+            .flex()
+            .flex_col()
+            .p(px(m::WINDOW_INSET))
+            .child(form)
+            .child(div().flex_1())
+            .child(row)
     }
 }

@@ -231,6 +231,12 @@ impl Cell<'_> {
         self.texts.push(text);
     }
 
+    /// What agents read of a cell the caller draws itself (its row is
+    /// named by its cells' text).
+    pub fn say(&mut self, text: impl Into<SharedString>) {
+        self.texts.push(text.into());
+    }
+
     /// Its text in `font` and `color`.
     pub fn text_with(&mut self, window: &mut Window, cx: &mut App, text: impl Into<SharedString>, font: Font, color: Hsla) {
         let text = text.into();
@@ -303,17 +309,25 @@ pub struct ColumnListView {
     cell: CellFn,
     names: Option<Rc<dyn Fn(usize) -> SharedString>>,
     empty: Option<SharedString>,
+    header: bool,
     handlers: Handlers,
 }
 
 impl ColumnListView {
     /// `rows` rows of `columns`, each cell drawn by `cell`.
     pub fn new(id: impl Into<SharedString>, model: &Entity<ListModel>, columns: impl Into<Rc<[Column]>>, rows: usize, cell: impl Fn(&mut Cell, &mut Window, &mut App) + 'static) -> ColumnListView {
-        ColumnListView { id: id.into(), model: model.clone(), columns: columns.into(), rows, row_height: m::LIST_ROW, cell: Rc::new(cell), names: None, empty: None, handlers: Handlers::default() }
+        ColumnListView { id: id.into(), model: model.clone(), columns: columns.into(), rows, row_height: m::LIST_ROW, cell: Rc::new(cell), names: None, empty: None, header: true, handlers: Handlers::default() }
     }
 
     pub fn row_height(mut self, h: f32) -> Self {
         self.row_height = h;
+        self
+    }
+
+    /// No header: a list of things rather than a table (Passwords'
+    /// items), its one column as wide as the list.
+    pub fn no_header(mut self) -> Self {
+        self.header = false;
         self
     }
 
@@ -438,7 +452,7 @@ impl RenderOnce for ColumnListView {
         let s = window.scale_factor();
         let dev = |v: f32| (v * s).round() / s;
         let edge = style::line_pixels(s) * 2.0 / s;
-        let head = dev(edge + HEADER_HEIGHT);
+        let head = if self.header { dev(edge + HEADER_HEIGHT) } else { edge };
         let bar = dev(edge + SCROLL_BAR);
         let hbar = if sideways { bar } else { edge };
 
@@ -810,7 +824,7 @@ impl RenderOnce for ColumnListView {
             .key_context(CONTEXT)
             .track_focus(&focus)
             .child(div().absolute().left(px(edge)).top(px(head)).right(px(bar)).bottom(px(hbar)).child(ground).child(list).child(pointer))
-            .child(div().absolute().left(px(edge)).top(px(edge)).right(px(edge)).h(px(head - edge)).child(header))
+            .children(self.header.then(|| div().absolute().left(px(edge)).top(px(edge)).right(px(edge)).h(px(head - edge)).child(header)))
             .child(div().absolute().top(px(head)).right(px(edge)).bottom(px(hbar)).w(px(bar - edge)).child(ScrollBar::vertical(SharedString::from(format!("{}-v", self.id)), base_handle.clone())));
         if sideways {
             let corner = canvas(|_, _, _| {}, |b, _, window, cx| style::fill_rect(window, b, style::c(theme::palette(cx).panel_background))).size_full();

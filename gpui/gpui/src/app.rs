@@ -731,7 +731,17 @@ impl App {
     }
 
     /// Gracefully quit the application via the platform's standard routine.
-    pub fn quit(&self) {
+    pub fn quit(&mut self) {
+        // Olo: an app holding the clipboard runs on with its windows gone
+        // until something else is copied (or it takes its own off), so
+        // what it copied can still be pasted, as the egui kit's apps did.
+        if self.platform.holds_clipboard() {
+            self.defer(|cx| {
+                for w in cx.windows() {
+                    let _ = w.update(cx, |_, window, _| window.remove_window());
+                }
+            });
+        }
         self.platform.quit();
     }
 
@@ -1025,6 +1035,12 @@ impl App {
     /// Writes data to the platform clipboard.
     pub fn write_to_clipboard(&self, item: ClipboardItem) {
         self.platform.write_to_clipboard(item)
+    }
+
+    /// Olo: takes `item` off the clipboard if it's still there and ours
+    /// (nothing else copied since).
+    pub fn withdraw_from_clipboard(&self, item: &ClipboardItem) {
+        self.platform.withdraw_clipboard(item)
     }
 
     /// Reads data from the primary selection buffer.

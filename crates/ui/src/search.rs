@@ -167,6 +167,12 @@ impl SearchField {
         self.field.read(cx).is_focused(window)
     }
 
+    /// Whether it's offering suggestions now (its list showing, which
+    /// ↑ ↓ move in): else an app may take them (Passwords' list).
+    pub fn suggesting(&self, window: &Window, cx: &App) -> bool {
+        !self.suggestions(window, cx).is_empty()
+    }
+
     /// What to offer now.
     fn suggestions(&self, window: &Window, cx: &App) -> Vec<Suggestion> {
         let f = self.field.read(cx);
