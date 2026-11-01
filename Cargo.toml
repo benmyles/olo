@@ -53,6 +53,7 @@ epaint = { path = "vendor/epaint" }
 egui-wgpu = { path = "vendor/egui-wgpu" }
 wgpu-hal = { path = "vendor/wgpu-hal" }
 matroska-demuxer = { path = "vendor/matroska-demuxer" }
+blocking = { path = "vendor/blocking" }
 
 [profile.release]
 debug = "line-tables-only"
