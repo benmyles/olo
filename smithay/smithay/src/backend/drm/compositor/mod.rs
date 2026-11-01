@@ -874,6 +874,10 @@ impl From<ExportBufferError> for Option<RenderingReason> {
             // We can try to give the client another chance
             // by announcing a scan-out tranche
             Some(RenderingReason::ScanoutFailed)
+        } else if matches!(err, ExportBufferError::Unsupported) {
+            // (Olo) Said, so the record tells a window with no dmabuf
+            // from one never tried.
+            Some(RenderingReason::NoScanoutBuffer)
         } else {
             // We provide no reason for rendering here as there
             // is no action that can be taken to make it work
@@ -3171,8 +3175,11 @@ where
         // takes no plane here.
         let Some(cursor_plane_dst) = Rectangle::new(cursor_plane_location, cursor_plane_size)
             .intersection(Rectangle::from_size(output_geometry.size))
+            // A sliver at the edge is drawn into the frame instead: apple-drm
+            // refused the plane at 10 px wide (2026-11-01).
+            .filter(|dst| dst.size.w >= 16 && dst.size.h >= 16)
         else {
-            trace!("element {:?} is off the display, skipping cursor plane", element.id());
+            trace!("element {:?} is off the display or a sliver of it, skipping cursor plane", element.id());
             return None;
         };
         let cursor_plane_src = Rectangle::<i32, BufferCoords>::new(

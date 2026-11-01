@@ -26,9 +26,11 @@ pub fn select_dmabuf_feedback<'a>(
                 scanout_feedback
             }
             // (Olo's reasons say where it is, not what its buffer is.)
-            None | Some(RenderingReason::Overlaps) | Some(RenderingReason::Underlay) | Some(RenderingReason::PlaneTaken) => {
-                default_feedback
-            }
+            None
+            | Some(RenderingReason::Overlaps)
+            | Some(RenderingReason::Underlay)
+            | Some(RenderingReason::PlaneTaken)
+            | Some(RenderingReason::NoScanoutBuffer) => default_feedback,
         },
         RenderElementPresentationState::ZeroCopy => scanout_feedback,
         RenderElementPresentationState::Skipped => default_feedback,

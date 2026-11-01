@@ -274,6 +274,9 @@ pub enum RenderingReason {
     Underlay,
     /// (Olo) Every plane that could take it already has an element.
     PlaneTaken,
+    /// (Olo) Its buffer can't be scanned out at all: not a dmabuf (shm,
+    /// or wl_drm's), or one no framebuffer can be made from.
+    NoScanoutBuffer,
 }
 
 /// Defines the presentation state of an element after rendering

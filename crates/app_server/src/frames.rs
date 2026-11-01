@@ -101,6 +101,7 @@ pub fn scanout_summary(states: &smithay::backend::renderer::element::RenderEleme
                     Some(R::Overlaps) => "overlaps",
                     Some(R::Underlay) => "underlay",
                     Some(R::PlaneTaken) => "planes taken",
+                    Some(R::NoScanoutBuffer) => "no dmabuf",
                 };
                 *why.entry(r).or_default() += 1;
             }
