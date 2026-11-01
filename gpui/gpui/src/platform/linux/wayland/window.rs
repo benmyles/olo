@@ -155,7 +155,22 @@ struct FrameLoop {
     /// queued from one (a task's `refresh`), so without it the frame
     /// would wait for the next input.
     signal: calloop::LoopSignal,
+    /// A wheel's notches being eased in.
+    wheel: RefCell<Option<WheelEase>>,
 }
+
+/// What is left to scroll of a wheel's notches, and where.
+struct WheelEase {
+    left: Point<f32>,
+    position: Point<Pixels>,
+    modifiers: Modifiers,
+    /// When the last step was.
+    last: Option<std::time::Instant>,
+}
+
+/// The time a wheel's notch takes to ease most of the way in: 90% in a
+/// tenth of a second, as the egui kit's.
+const WHEEL_EASE: f64 = 0.1 / std::f64::consts::LN_10;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FrameCallback {
@@ -453,6 +468,7 @@ impl WaylandWindow {
                 text_generation: Cell::new(0),
                 handle: loop_handle,
                 signal,
+                wheel: RefCell::new(None),
             }),
         });
 
@@ -515,7 +531,9 @@ impl WaylandWindowStatePtr {
     /// Draws a frame if anything changed (and asks for the next).
     pub fn frame(&self) {
         let frames = &self.frames;
-        frames.queued.set(false);
+        // (Still queued while the wheel's step goes in: what it changes
+        // is drawn by this frame, not one more.)
+        frames.queued.set(true);
         let mut state = self.state.borrow_mut();
         if frames.callback.get() == FrameCallback::None {
             state.surface.frame(&state.globals.qh, state.surface.id());
@@ -523,6 +541,11 @@ impl WaylandWindowStatePtr {
         }
         state.resize_throttle = false;
         drop(state);
+        let wheel = self.wheel_step();
+        if let Some(step) = wheel.clone() {
+            self.handle_input(PlatformInput::ScrollWheel(step));
+        }
+        frames.queued.set(false);
 
         let mut cb = self.callbacks.borrow_mut();
         let options = RequestFrameOptions {
@@ -535,6 +558,10 @@ impl WaylandWindowStatePtr {
         };
         drop(cb);
         log::trace!(target: "olo_frames", "frame: drew {drew}, callback {:?}", frames.callback.get());
+        if wheel.is_some() && !drew {
+            // Nothing moved (an edge): the rest goes.
+            frames.wheel.take();
+        }
         if !drew && frames.needs_commit.get() {
             self.state.borrow().surface.commit();
         }
@@ -543,6 +570,61 @@ impl WaylandWindowStatePtr {
             frames.callback.set(FrameCallback::Committed);
             frames.committed_at.set(std::time::Instant::now());
         }
+    }
+
+    /// Olo: a wheel's notches (`delta`, in points) to ease in over the
+    /// frames to come, scrolling what is at `position`.
+    pub fn add_wheel(&self, delta: Point<f32>, position: Point<Pixels>, modifiers: Modifiers) {
+        let mut wheel = self.frames.wheel.borrow_mut();
+        match wheel.as_mut() {
+            Some(w) => {
+                w.left = Point { x: w.left.x + delta.x, y: w.left.y + delta.y };
+                w.position = position;
+                w.modifiers = modifiers;
+            }
+            None => *wheel = Some(WheelEase { left: delta, position, modifiers, last: None }),
+        }
+        drop(wheel);
+        self.schedule_frame();
+    }
+
+    /// This frame's share of the wheel's notches: what is left shrinks
+    /// by the time since the last step (a frame's worth from a rest),
+    /// and the last of it is under a device pixel rather than a jump.
+    fn wheel_step(&self) -> Option<crate::ScrollWheelEvent> {
+        let mut slot = self.frames.wheel.borrow_mut();
+        let w = slot.as_mut()?;
+        let now = std::time::Instant::now();
+        let interval = self.frame_interval();
+        let dt = w.last.map_or(interval, |t| (now - t).as_secs_f64().min(4.0 * interval));
+        w.last = Some(now);
+        let k = (1.0 - (-dt / WHEEL_EASE).exp()) as f32;
+        let mut step = Point { x: w.left.x * k, y: w.left.y * k };
+        // Less than half a device pixel would be left: no more frames
+        // for moves that don't show.
+        let half_pixel = 0.5 / self.state.borrow().scale;
+        if (w.left.x - step.x).hypot(w.left.y - step.y) < half_pixel {
+            step = w.left;
+        }
+        w.left = Point { x: w.left.x - step.x, y: w.left.y - step.y };
+        log::trace!(target: "olo_frames", "wheel: step {:.2} after {:.1} ms, {:.2} left", step.y, dt * 1000.0, w.left.y);
+        let event = crate::ScrollWheelEvent {
+            position: w.position,
+            delta: crate::ScrollDelta::Pixels(Point { x: px(step.x), y: px(step.y) }),
+            modifiers: w.modifiers,
+            touch_phase: crate::TouchPhase::Moved,
+        };
+        if w.left.x == 0.0 && w.left.y == 0.0 {
+            *slot = None;
+        }
+        Some(event)
+    }
+
+    /// How long a frame shows on the window's display (60 Hz until it
+    /// says).
+    fn frame_interval(&self) -> f64 {
+        let mhz = self.state.borrow().display.as_ref().map_or(0, |(_, o)| o.refresh_mhz);
+        if mhz >= 10_000 { 1000.0 / f64::from(mhz) } else { 1.0 / 60.0 }
     }
 
     /// Something changed: draw it now if idle, else with the next frame.
@@ -661,6 +743,12 @@ impl WaylandWindowStatePtr {
         let mut state = self.state.borrow_mut();
         if let Some(known) = state.outputs.get_mut(&id) {
             *known = output.clone();
+            // (The display it's drawn for is a copy: kept up too.)
+            if let Some((shown, data)) = state.display.as_mut()
+                && *shown == id
+            {
+                *data = output.clone();
+            }
             state.primary_output_scale();
             drop(state);
             self.update_text_rendering();

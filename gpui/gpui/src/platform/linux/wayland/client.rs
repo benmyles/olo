@@ -100,6 +100,9 @@ const MIN_KEYCODE: u32 = 8;
 
 const UNKNOWN_KEYBOARD_LAYOUT_NAME: SharedString = SharedString::new_static("unknown");
 
+/// Olo: how far a wheel's notch scrolls, in points (the egui kit's).
+const WHEEL_NOTCH: f32 = 48.0;
+
 #[derive(Clone)]
 pub struct Globals {
     pub qh: QueueHandle<WaylandClientStatePtr>,
@@ -174,6 +177,7 @@ pub struct InProgressOutput {
     physical_mm: Size<i32>,
     subpixel: Option<wl_output::Subpixel>,
     transform: Option<wl_output::Transform>,
+    refresh_mhz: i32,
 }
 
 impl InProgressOutput {
@@ -187,6 +191,7 @@ impl InProgressOutput {
                 physical_mm: self.physical_mm,
                 subpixel: self.subpixel,
                 transform: self.transform,
+                refresh_mhz: self.refresh_mhz,
             })
         } else {
             None
@@ -205,6 +210,9 @@ pub struct Output {
     pub physical_mm: Size<i32>,
     pub subpixel: Option<wl_output::Subpixel>,
     pub transform: Option<wl_output::Transform>,
+    /// Olo: its refresh rate in millihertz (0 if unknown): how long a
+    /// frame shows, for easing a wheel's notches in.
+    pub refresh_mhz: i32,
 }
 
 impl Output {
@@ -297,10 +305,16 @@ pub(crate) struct WaylandClientState {
     axis_source: AxisSource,
     pub mouse_location: Option<Point<Pixels>>,
     continuous_scroll_delta: Option<Point<Pixels>>,
+    /// A wheel's notches this pointer frame.
     discrete_scroll_delta: Option<Point<f32>>,
     vertical_modifier: f32,
     horizontal_modifier: f32,
     scroll_event_received: bool,
+    /// Olo: the fingers (or the glide after them) stopped this frame.
+    scroll_stopped: bool,
+    /// Olo: fingers on the touchpad (or a glide) between a first move
+    /// and a stop: their scrolls are one gesture.
+    scrolling: bool,
     enter_token: Option<()>,
     button_pressed: Option<MouseButton>,
     mouse_focused_window: Option<WaylandWindowStatePtr>,
@@ -674,6 +688,8 @@ impl WaylandClient {
             },
             capslock: Capslock { on: false },
             scroll_event_received: false,
+            scroll_stopped: false,
+            scrolling: false,
             axis_source: AxisSource::Wheel,
             mouse_location: None,
             continuous_scroll_delta: None,
@@ -1133,8 +1149,9 @@ impl Dispatch<wl_output::WlOutput, ()> for WaylandClientStatePtr {
                 in_progress_output.subpixel = subpixel.into_result().ok();
                 in_progress_output.transform = transform.into_result().ok();
             }
-            wl_output::Event::Mode { width, height, .. } => {
-                in_progress_output.size = Some(size(DevicePixels(width), DevicePixels(height)))
+            wl_output::Event::Mode { width, height, refresh, .. } => {
+                in_progress_output.size = Some(size(DevicePixels(width), DevicePixels(height)));
+                in_progress_output.refresh_mhz = refresh;
             }
             // (Olo: kept, so later changes are followed too.)
             wl_output::Event::Done => {
@@ -1847,16 +1864,22 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientStatePtr {
                 let scroll_delta = state
                     .continuous_scroll_delta
                     .get_or_insert(point(px(0.0), px(0.0)));
-                let modifier = 3.0;
+                // Olo: the fingers' own distance (surface pixels, as the
+                // egui kit), not three times it.
                 match axis {
                     wl_pointer::Axis::VerticalScroll => {
-                        scroll_delta.y += px(value as f32 * modifier * axis_modifier);
+                        scroll_delta.y += px(value as f32 * axis_modifier);
                     }
                     wl_pointer::Axis::HorizontalScroll => {
-                        scroll_delta.x += px(value as f32 * modifier * axis_modifier);
+                        scroll_delta.x += px(value as f32 * axis_modifier);
                     }
                     _ => unreachable!(),
                 }
+            }
+            // Olo: the fingers lifted (or the glide after them ended).
+            wl_pointer::Event::AxisStop { .. } => {
+                state.scroll_stopped = true;
+                state.scroll_event_received = true;
             }
             wl_pointer::Event::AxisDiscrete {
                 axis: WEnum::Value(axis),
@@ -1877,10 +1900,10 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientStatePtr {
                 let scroll_delta = state.discrete_scroll_delta.get_or_insert(point(0.0, 0.0));
                 match axis {
                     wl_pointer::Axis::VerticalScroll => {
-                        scroll_delta.y += discrete as f32 * axis_modifier * SCROLL_LINES;
+                        scroll_delta.y += discrete as f32 * axis_modifier;
                     }
                     wl_pointer::Axis::HorizontalScroll => {
-                        scroll_delta.x += discrete as f32 * axis_modifier * SCROLL_LINES;
+                        scroll_delta.x += discrete as f32 * axis_modifier;
                     }
                     _ => unreachable!(),
                 }
@@ -1905,10 +1928,10 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientStatePtr {
                 let wheel_percent = value120 as f32 / 120.0;
                 match axis {
                     wl_pointer::Axis::VerticalScroll => {
-                        scroll_delta.y += wheel_percent * axis_modifier * SCROLL_LINES;
+                        scroll_delta.y += wheel_percent * axis_modifier;
                     }
                     wl_pointer::Axis::HorizontalScroll => {
-                        scroll_delta.x += wheel_percent * axis_modifier * SCROLL_LINES;
+                        scroll_delta.x += wheel_percent * axis_modifier;
                     }
                     _ => unreachable!(),
                 }
@@ -1918,28 +1941,37 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientStatePtr {
                     state.scroll_event_received = false;
                     let continuous = state.continuous_scroll_delta.take();
                     let discrete = state.discrete_scroll_delta.take();
-                    if let Some(continuous) = continuous {
-                        if let Some(window) = state.mouse_focused_window.clone() {
-                            let input = PlatformInput::ScrollWheel(ScrollWheelEvent {
-                                position: state.mouse_location.unwrap(),
-                                delta: ScrollDelta::Pixels(continuous),
-                                modifiers: state.modifiers,
-                                touch_phase: TouchPhase::Moved,
-                            });
-                            drop(state);
-                            window.handle_input(input);
-                        }
-                    } else if let Some(discrete) = discrete
-                        && let Some(window) = state.mouse_focused_window.clone()
-                    {
-                        let input = PlatformInput::ScrollWheel(ScrollWheelEvent {
-                            position: state.mouse_location.unwrap(),
-                            delta: ScrollDelta::Lines(discrete),
-                            modifiers: state.modifiers,
-                            touch_phase: TouchPhase::Moved,
-                        });
+                    let stopped = std::mem::take(&mut state.scroll_stopped);
+                    let wheel = matches!(state.axis_source, AxisSource::Wheel | AxisSource::WheelTilt);
+                    let (Some(window), Some(position)) = (state.mouse_focused_window.clone(), state.mouse_location) else {
+                        return;
+                    };
+                    let modifiers = state.modifiers;
+                    if let Some(discrete) = discrete.filter(|_| wheel) {
+                        // Olo: a wheel's notches eased in over the frames
+                        // to come, as the egui kit's (48 points a notch).
                         drop(state);
-                        window.handle_input(input);
+                        window.add_wheel(point(discrete.x * WHEEL_NOTCH, discrete.y * WHEEL_NOTCH), position, modifiers);
+                        return;
+                    }
+                    // Fingers on the touchpad, then (app_server's glide,
+                    // as `Continuous`) the glide after them: each from its
+                    // first move to its stop.
+                    let mut out = Vec::new();
+                    if let Some(continuous) = continuous.filter(|d| d.x != px(0.0) || d.y != px(0.0)) {
+                        let phase = if state.scrolling { TouchPhase::Moved } else { TouchPhase::Started };
+                        state.scrolling = true;
+                        out.push(ScrollWheelEvent { position, delta: ScrollDelta::Pixels(continuous), modifiers, touch_phase: phase });
+                    } else if let Some(discrete) = discrete {
+                        let lines = point(discrete.x * SCROLL_LINES, discrete.y * SCROLL_LINES);
+                        out.push(ScrollWheelEvent { position, delta: ScrollDelta::Lines(lines), modifiers, touch_phase: TouchPhase::Moved });
+                    }
+                    if stopped && std::mem::take(&mut state.scrolling) {
+                        out.push(ScrollWheelEvent { position, delta: ScrollDelta::Pixels(point(px(0.0), px(0.0))), modifiers, touch_phase: TouchPhase::Ended });
+                    }
+                    drop(state);
+                    for e in out {
+                        window.handle_input(PlatformInput::ScrollWheel(e));
                     }
                 }
             }

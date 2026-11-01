@@ -4,7 +4,7 @@
 
 use olo_ui::{
     WindowOptions,
-    gpui::{AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _, Window, div, px},
+    gpui::{AppContext as _, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _, Render, StatefulInteractiveElement as _, Styled as _, Window, div, px},
     metrics as m,
     widgets::{BBox, Button, CheckBox, MenuField, RadioButton, StringView, TextControl, TextField, text_field},
 };
@@ -85,6 +85,7 @@ impl Render for Gallery {
                     .child(Button::new("OK").default(true)),
             )
             .child(StringView::new("Dim text for hints.").dim(true))
+            .child(div().id("rows").h(px(100.0)).w(px(200.0)).overflow_y_scroll().children((1..=40).map(|i| StringView::new(format!("Row {i}")))))
     }
 }
 

@@ -41,6 +41,15 @@ What Olo changed, so far:
   and drawing the gallery's controls costs a third less (683 µs a frame
   against 1076 at 2×) in 20 MB less memory. `OLO_EXACT_PATHS=0` turns
   it off to compare.
+- Scrolling as the egui kit's: a wheel's notch scrolls 48 points, eased
+  in over the frames to come (90% in a tenth of a second, a step per
+  frame at the display's rate, ending once less than half a device
+  pixel is left, or at an edge), where upstream jumped three lines at
+  once; fingers on a touchpad scroll their own distance (upstream:
+  three times it), from a first move (`TouchPhase::Started`) to the
+  stop (`Ended`), and app_server's glide after them the same way.
+- `Window::draw_now` draws a window even out of sight (for a layout
+  review).
 - `Window::with_element_opacity` is public (a disabled control,
   faded), and popups (`WindowKind::Popup`) take an `offset` from their
   anchor (a menu field's menu, its current item over the field).
