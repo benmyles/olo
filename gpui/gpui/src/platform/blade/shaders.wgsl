@@ -1215,6 +1215,76 @@ fn fs_segment(input: SegmentVarying) -> @location(0) vec4<f32> {
     return blend_color(input.color, alpha);
 }
 
+// --- sectors (Olo) --- //
+// A ring's slice between two radii and two angles (clockwise from 12
+// o'clock), its coverage worked out from each pixel's distance to its
+// edges: ring charts, dials, discs, circles' outlines. Drawn on the quad
+// of its bounds. Each pair of parallel edges is box-filtered together
+// (c0 + c1 - 1), so a slice or a ring thinner than a pixel covers the
+// pixel by its width rather than reading as a full line.
+
+struct Sector {
+    order: u32,
+    pad: u32,
+    bounds: Bounds,
+    content_mask: Bounds,
+    color: Hsla,
+    center: vec2<f32>,
+    inner: f32,
+    outer: f32,
+    start: f32,
+    sweep: f32,
+}
+var<storage, read> b_sectors: array<Sector>;
+
+struct SectorVarying {
+    @builtin(position) position: vec4<f32>,
+    @location(0) @interpolate(flat) color: vec4<f32>,
+    @location(1) @interpolate(flat) sector_id: u32,
+    @location(2) clip_distances: vec4<f32>,
+}
+
+@vertex
+fn vs_sector(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) instance_id: u32) -> SectorVarying {
+    let unit_vertex = vec2<f32>(f32(vertex_id & 1u), 0.5 * f32(vertex_id & 2u));
+    let sector = b_sectors[instance_id];
+    var out = SectorVarying();
+    out.position = to_device_position(unit_vertex, sector.bounds);
+    out.color = hsla_to_rgba(sector.color);
+    out.sector_id = instance_id;
+    out.clip_distances = distance_from_clip_rect(unit_vertex, sector.bounds, sector.content_mask);
+    return out;
+}
+
+@fragment
+fn fs_sector(input: SectorVarying) -> @location(0) vec4<f32> {
+    if (any(input.clip_distances < vec4<f32>(0.0))) {
+        return vec4<f32>(0.0);
+    }
+    let sector = b_sectors[input.sector_id];
+    let p = input.position.xy - sector.center;
+    let r = length(p);
+    // Between the radii (no inner edge for a disc or a pie's slice).
+    var radial = saturate(sector.outer - r + 0.5);
+    if (sector.inner > 0.0) {
+        radial = saturate(radial + saturate(r - sector.inner + 0.5) - 1.0);
+    }
+    var alpha = radial;
+    if (sector.sweep < 6.2831853) {
+        // Inside each straight edge: towards the sweep from the first,
+        // back from the last.
+        let end = sector.start + sector.sweep;
+        let n0 = vec2<f32>(cos(sector.start), sin(sector.start));
+        let n1 = -vec2<f32>(cos(end), sin(end));
+        let c0 = saturate(dot(p, n0) + 0.5);
+        let c1 = saturate(dot(p, n1) + 0.5);
+        // Less than half a turn: inside both; more: either.
+        let angular = select(saturate(c0 + c1 - 1.0), max(c0, c1), sector.sweep > 3.14159265);
+        alpha = alpha * angular;
+    }
+    return blend_color(input.color, alpha);
+}
+
 // --- monochrome sprites --- //
 
 struct MonochromeSprite {

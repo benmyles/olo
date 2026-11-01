@@ -1545,9 +1545,15 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
 - Custom drawing in a `canvas` paints with GPUI: `window.paint_quad`
   (rectangles, rounded, bordered; circles as fully rounded quads),
   `style::label` (text), `icons::paint`, `PathBuilder` (filled or stroked
-  shapes, small ones with exact coverage), and `window.paint_segment`
+  shapes, small ones with exact coverage), `window.paint_segment`
   (lines of any angle on the GPU, for graphs and strokes:
-  `examples/lines.rs`).
+  `examples/lines.rs`) and `window.paint_sector` (a ring's slice, a
+  pie's, a disc or a circle's outline on the GPU, analytically
+  antialiased: charts, dials, round marks). Many lines or slices go in
+  a `window.paint_layer(bounds, ..)`: one place in the scene's order for
+  them all rather than a bounds-tree insert each (a layer draws its
+  kinds in a fixed order, fills before lines before sprites, so a mask
+  that must go under lines needs a layer of its own before them).
 - Alerts: `WindowOptions::alert(title, width, height)` (fixed size,
   xdg-dialog modal over the app's window with the keyboard, floated);
   `widgets::AlertFrame::new(icon)` (the stripe with the icon over it,

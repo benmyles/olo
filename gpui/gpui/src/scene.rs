@@ -30,6 +30,7 @@ pub(crate) struct Scene {
     pub(crate) paths: Vec<Path<ScaledPixels>>,
     pub(crate) underlines: Vec<Underline>,
     pub(crate) segments: Vec<Segment>,
+    pub(crate) sectors: Vec<Sector>,
     pub(crate) monochrome_sprites: Vec<MonochromeSprite>,
     pub(crate) polychrome_sprites: Vec<PolychromeSprite>,
     pub(crate) surfaces: Vec<PaintSurface>,
@@ -45,6 +46,7 @@ impl Scene {
         self.quads.clear();
         self.underlines.clear();
         self.segments.clear();
+        self.sectors.clear();
         self.monochrome_sprites.clear();
         self.polychrome_sprites.clear();
         self.surfaces.clear();
@@ -103,6 +105,10 @@ impl Scene {
                 segment.order = order;
                 self.segments.push(segment.clone());
             }
+            Primitive::Sector(sector) => {
+                sector.order = order;
+                self.sectors.push(sector.clone());
+            }
             Primitive::MonochromeSprite(sprite) => {
                 sprite.order = order;
                 self.monochrome_sprites.push(sprite.clone());
@@ -136,6 +142,7 @@ impl Scene {
         self.paths.sort_by_key(|path| path.order);
         self.underlines.sort_by_key(|underline| underline.order);
         self.segments.sort_by_key(|segment| segment.order);
+        self.sectors.sort_by_key(|sector| sector.order);
         self.monochrome_sprites
             .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
         self.polychrome_sprites
@@ -167,6 +174,9 @@ impl Scene {
             segments: &self.segments,
             segments_start: 0,
             segments_iter: self.segments.iter().peekable(),
+            sectors: &self.sectors,
+            sectors_start: 0,
+            sectors_iter: self.sectors.iter().peekable(),
             monochrome_sprites: &self.monochrome_sprites,
             monochrome_sprites_start: 0,
             monochrome_sprites_iter: self.monochrome_sprites.iter().peekable(),
@@ -193,6 +203,7 @@ pub(crate) enum PrimitiveKind {
     #[default]
     Quad,
     Path,
+    Sector,
     Underline,
     Segment,
     MonochromeSprite,
@@ -213,6 +224,7 @@ pub(crate) enum Primitive {
     Path(Path<ScaledPixels>),
     Underline(Underline),
     Segment(Segment),
+    Sector(Sector),
     MonochromeSprite(MonochromeSprite),
     PolychromeSprite(PolychromeSprite),
     Surface(PaintSurface),
@@ -226,6 +238,7 @@ impl Primitive {
             Primitive::Path(path) => &path.bounds,
             Primitive::Underline(underline) => &underline.bounds,
             Primitive::Segment(segment) => &segment.bounds,
+            Primitive::Sector(sector) => &sector.bounds,
             Primitive::MonochromeSprite(sprite) => &sprite.bounds,
             Primitive::PolychromeSprite(sprite) => &sprite.bounds,
             Primitive::Surface(surface) => &surface.bounds,
@@ -239,6 +252,7 @@ impl Primitive {
             Primitive::Path(path) => &path.content_mask,
             Primitive::Underline(underline) => &underline.content_mask,
             Primitive::Segment(segment) => &segment.content_mask,
+            Primitive::Sector(sector) => &sector.content_mask,
             Primitive::MonochromeSprite(sprite) => &sprite.content_mask,
             Primitive::PolychromeSprite(sprite) => &sprite.content_mask,
             Primitive::Surface(surface) => &surface.content_mask,
@@ -269,6 +283,9 @@ struct BatchIterator<'a> {
     segments: &'a [Segment],
     segments_start: usize,
     segments_iter: Peekable<slice::Iter<'a, Segment>>,
+    sectors: &'a [Sector],
+    sectors_start: usize,
+    sectors_iter: Peekable<slice::Iter<'a, Sector>>,
     monochrome_sprites: &'a [MonochromeSprite],
     monochrome_sprites_start: usize,
     monochrome_sprites_iter: Peekable<slice::Iter<'a, MonochromeSprite>>,
@@ -291,6 +308,10 @@ impl<'a> Iterator for BatchIterator<'a> {
             ),
             (self.quads_iter.peek().map(|q| q.order), PrimitiveKind::Quad),
             (self.paths_iter.peek().map(|q| q.order), PrimitiveKind::Path),
+            (
+                self.sectors_iter.peek().map(|s| s.order),
+                PrimitiveKind::Sector,
+            ),
             (
                 self.underlines_iter.peek().map(|u| u.order),
                 PrimitiveKind::Underline,
@@ -397,6 +418,20 @@ impl<'a> Iterator for BatchIterator<'a> {
                 self.segments_start = segments_end;
                 Some(PrimitiveBatch::Segments(&self.segments[segments_start..segments_end]))
             }
+            PrimitiveKind::Sector => {
+                let sectors_start = self.sectors_start;
+                let mut sectors_end = sectors_start + 1;
+                self.sectors_iter.next();
+                while self
+                    .sectors_iter
+                    .next_if(|sector| (sector.order, batch_kind) < max_order_and_kind)
+                    .is_some()
+                {
+                    sectors_end += 1;
+                }
+                self.sectors_start = sectors_end;
+                Some(PrimitiveBatch::Sectors(&self.sectors[sectors_start..sectors_end]))
+            }
             PrimitiveKind::MonochromeSprite => {
                 let texture_id = self.monochrome_sprites_iter.peek().unwrap().tile.texture_id;
                 let sprites_start = self.monochrome_sprites_start;
@@ -473,6 +508,7 @@ pub(crate) enum PrimitiveBatch<'a> {
     Paths(&'a [Path<ScaledPixels>]),
     Underlines(&'a [Underline]),
     Segments(&'a [Segment]),
+    Sectors(&'a [Sector]),
     MonochromeSprites {
         texture_id: AtlasTextureId,
         sprites: &'a [MonochromeSprite],
@@ -542,6 +578,34 @@ pub(crate) struct Segment {
 impl From<Segment> for Primitive {
     fn from(segment: Segment) -> Self {
         Primitive::Segment(segment)
+    }
+}
+
+/// Olo: a ring's slice (`Window::paint_sector`): between two radii and
+/// two angles, antialiased by each pixel's distance to its edges. A disc
+/// is one from radius 0 all the way round, a circle's outline a thin
+/// ring.
+#[derive(Debug, Clone)]
+#[repr(C)]
+pub(crate) struct Sector {
+    pub order: DrawOrder,
+    pub pad: u32,
+    /// What it covers (for ordering and clipping, and the quad drawn).
+    pub bounds: Bounds<ScaledPixels>,
+    pub content_mask: ContentMask<ScaledPixels>,
+    pub color: Hsla,
+    pub center: Point<ScaledPixels>,
+    pub inner: ScaledPixels,
+    pub outer: ScaledPixels,
+    /// Radians clockwise from 12 o'clock: where it starts, and how far
+    /// round it goes (a whole turn or more: all the way).
+    pub start: f32,
+    pub sweep: f32,
+}
+
+impl From<Sector> for Primitive {
+    fn from(sector: Sector) -> Self {
+        Primitive::Sector(sector)
     }
 }
 

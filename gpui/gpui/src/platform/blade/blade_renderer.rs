@@ -4,7 +4,7 @@
 use super::{BladeAtlas, BladeContext};
 use crate::{
     Background, Bounds, DevicePixels, GpuSpecs, MonochromeSprite, Path, Point, PolychromeSprite,
-    PrimitiveBatch, Quad, ScaledPixels, Scene, Segment, Shadow, Size, Underline,
+    PrimitiveBatch, Quad, ScaledPixels, Scene, Sector, Segment, Shadow, Size, Underline,
 };
 use blade_graphics as gpu;
 use blade_util::{BufferBelt, BufferBeltDescriptor};
@@ -87,6 +87,12 @@ struct ShaderSegmentsData {
 }
 
 #[derive(blade_macros::ShaderData)]
+struct ShaderSectorsData {
+    globals: GlobalParams,
+    b_sectors: gpu::BufferPiece,
+}
+
+#[derive(blade_macros::ShaderData)]
 struct ShaderMonoSpritesData {
     globals: GlobalParams,
     gamma_ratios: [f32; 4],
@@ -135,6 +141,7 @@ struct BladePipelines {
     paths: gpu::RenderPipeline,
     underlines: gpu::RenderPipeline,
     segments: gpu::RenderPipeline,
+    sectors: gpu::RenderPipeline,
     mono_sprites: gpu::RenderPipeline,
     poly_sprites: gpu::RenderPipeline,
     surfaces: gpu::RenderPipeline,
@@ -159,6 +166,7 @@ impl BladePipelines {
         shader.check_struct_size::<PathSprite>();
         shader.check_struct_size::<Underline>();
         shader.check_struct_size::<Segment>();
+        shader.check_struct_size::<Sector>();
         shader.check_struct_size::<MonochromeSprite>();
         shader.check_struct_size::<PolychromeSprite>();
 
@@ -280,6 +288,20 @@ impl BladePipelines {
                 color_targets,
                 multisample_state: gpu::MultisampleState::default(),
             }),
+            sectors: gpu.create_render_pipeline(gpu::RenderPipelineDesc {
+                name: "sectors",
+                data_layouts: &[&ShaderSectorsData::layout()],
+                vertex: shader.at("vs_sector"),
+                vertex_fetches: &[],
+                primitive: gpu::PrimitiveState {
+                    topology: gpu::PrimitiveTopology::TriangleStrip,
+                    ..Default::default()
+                },
+                depth_stencil: None,
+                fragment: Some(shader.at("fs_sector")),
+                color_targets,
+                multisample_state: gpu::MultisampleState::default(),
+            }),
             mono_sprites: gpu.create_render_pipeline(gpu::RenderPipelineDesc {
                 name: "mono-sprites",
                 data_layouts: &[&ShaderMonoSpritesData::layout()],
@@ -332,6 +354,7 @@ impl BladePipelines {
         gpu.destroy_render_pipeline(&mut self.paths);
         gpu.destroy_render_pipeline(&mut self.underlines);
         gpu.destroy_render_pipeline(&mut self.segments);
+        gpu.destroy_render_pipeline(&mut self.sectors);
         gpu.destroy_render_pipeline(&mut self.mono_sprites);
         gpu.destroy_render_pipeline(&mut self.poly_sprites);
         gpu.destroy_render_pipeline(&mut self.surfaces);
@@ -853,6 +876,19 @@ impl BladeRenderer {
                         },
                     );
                     encoder.draw(0, 4, 0, segments.len() as u32);
+                }
+                PrimitiveBatch::Sectors(sectors) => {
+                    let instance_buf =
+                        unsafe { self.instance_belt.alloc_typed(sectors, &self.gpu) };
+                    let mut encoder = pass.with(&self.pipelines.sectors);
+                    encoder.bind(
+                        0,
+                        &ShaderSectorsData {
+                            globals,
+                            b_sectors: instance_buf,
+                        },
+                    );
+                    encoder.draw(0, 4, 0, sectors.len() as u32);
                 }
                 PrimitiveBatch::MonochromeSprites {
                     texture_id,

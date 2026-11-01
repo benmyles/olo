@@ -268,11 +268,12 @@ impl RenderOnce for Graph {
                             }
                             last_col = col;
                         }
-                        for run in runs.into_iter().filter(|r| r.len() > 1) {
-                            if line.fill {
+                        let runs: Vec<_> = runs.into_iter().filter(|r| r.len() > 1).collect();
+                        if line.fill {
+                            for run in &runs {
                                 let mut path = PathBuilder::fill();
                                 path.move_to(point(run[0].x, inner.bottom()));
-                                for pt in &run {
+                                for pt in run {
                                     path.line_to(*pt);
                                 }
                                 path.line_to(point(run[run.len() - 1].x, inner.bottom()));
@@ -281,10 +282,17 @@ impl RenderOnce for Graph {
                                     window.paint_path(path, line.color.opacity(40.0 / 255.0));
                                 }
                             }
-                            for w in run.windows(2) {
-                                window.paint_segment(w[0], w[1], px(1.5), true, line.color);
-                            }
                         }
+                        // The line's segments in a layer: one place in the
+                        // scene's order for them all rather than one each
+                        // (over the fill, which is drawn before it).
+                        window.paint_layer(inner, |window| {
+                            for run in &runs {
+                                for w in run.windows(2) {
+                                    window.paint_segment(w[0], w[1], px(1.5), true, line.color);
+                                }
+                            }
+                        });
                     }
                     // Hovering: the time under the pointer and each value
                     // then.

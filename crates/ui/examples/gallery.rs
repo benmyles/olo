@@ -6,9 +6,9 @@ use olo_ui::{
     WindowOptions,
     gpui::{AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, ScrollHandle, SharedString, Styled as _, Window, div, px},
     metrics as m,
-    widgets::{BBox, Button, CheckBox, Column, ColumnListView, ListModel, MenuField, RadioButton, ScrollView, Slider, StatusBar, StringView, TextControl, TextField, open_alert, text_field},
+    widgets::{BBox, Button, CheckBox, Column, ColumnListView, Graph, ListModel, MenuField, RadioButton, ScrollView, Series, Slider, StatusBar, StringView, TextControl, TextField, open_alert, text_field},
 };
-use std::rc::Rc;
+use std::{collections::VecDeque, rc::Rc};
 
 const FONTS: &[&str] = &["Nimbus Sans", "DejaVu Sans", "Noto Sans", "Liberation Sans"];
 
@@ -127,7 +127,19 @@ impl Render for Gallery {
             .child(div().w(px(300.0)).child(StatusBar::new(0.42).label("Copying files…").trailing("3 of 7")))
             .child(div().h(px(100.0)).w(px(220.0)).child(ScrollView::new("rows", &self.rows).child(div().px(px(6.0)).children((1..=40).map(|i| StringView::new(format!("Row {i}")))))))
             .child(div().h(px(140.0)).w(px(300.0)).child(self.list(cx)))
+            .child(div().h(px(80.0)).w(px(300.0)).child(graph(cx)))
     }
+}
+
+/// A minute of two made-up series, one filled.
+fn graph(cx: &mut Context<Gallery>) -> Graph {
+    let p = olo_ui::theme::palette(cx);
+    let wave = |f: f64, k: f64| Rc::new((0..=120).map(|i| (i as f64 * 0.5, k * (1.2 + (i as f64 * f).sin() + 0.3 * (i as f64 * f * 3.1).cos()))).collect::<VecDeque<_>>());
+    let series = [
+        Series::new("In", olo_ui::style::c(p.hue(olo_ui::palette::Hue::Blue)), wave(0.11, 40.0)).fill(true),
+        Series::new("Out", olo_ui::style::c(p.hue(olo_ui::palette::Hue::Red)), wave(0.07, 25.0)),
+    ];
+    Graph::new("gallery-graph", series, 60.0).span(60.0).grid(15.0)
 }
 
 impl Gallery {
@@ -174,7 +186,7 @@ impl Gallery {
 
 fn main() {
     olo_ui::run("olo.gallery", |cx| {
-        olo_ui::open_window(cx, WindowOptions::new("Gallery", 480.0, 680.0), |_, cx| {
+        olo_ui::open_window(cx, WindowOptions::new("Gallery", 480.0, 770.0), |_, cx| {
             let name = text_field(cx, |f| f.name("Name"));
             name.update(cx, |f, cx| f.set_text("Hello, BeOS", cx));
             let files = ListModel::new(cx, true);

@@ -53,6 +53,16 @@ What Olo changed, so far:
   distance to the line, one instance a segment (a graph's hundred
   points: one draw call), where a path would be tessellated each frame.
   A translucent polyline darkens a little where its segments meet.
+- Ring slices drawn on the GPU (`Window::paint_sector`): between two
+  radii and two angles (clockwise from 12 o'clock), each pixel's
+  coverage from its distance to the edges, parallel edges box-filtered
+  together so one thinner than a pixel covers by its width; a disc from
+  radius 0 round a whole turn, a circle's outline a ring a line wide.
+  One instance on the quad of its bounds, where a path was tessellated
+  and its mask rasterised: DiskUsage's 68-slice chart paints in ~40 µs
+  (was 3.2 ms). `Window::paint_layer` gives everything inside one place
+  in the scene's order, so hundreds of segments or sectors cost one
+  bounds-tree insert (Graph's series, the chart's slices and lines).
 - Layer surfaces (wlr-layer-shell): `WindowKind::LayerShell` with
   `WindowOptions::layer_shell` (layer, anchored edges, exclusive zone,
   margins, keyboard, namespace, output by name), for Deskbar, the

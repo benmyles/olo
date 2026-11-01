@@ -14,7 +14,7 @@ use crate::{
     SMOOTH_SVG_SCALE_FACTOR, SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Shadow, TextRendering,
     SharedString, Size, StrikethroughStyle, Style, SubscriberSet, Subscription, SystemWindowTab,
     SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task, TextStyle, TextStyleRefinement,
-    Segment, TransformationMatrix, Underline, UnderlineStyle, WindowAppearance, WindowBackgroundAppearance,
+    Sector, Segment, TransformationMatrix, Underline, UnderlineStyle, WindowAppearance, WindowBackgroundAppearance,
     WindowBounds, WindowControls, WindowDecorations, WindowOptions, WindowParams, WindowTextSystem,
     point, prelude::*, px, rems, size, transparent_black,
 };
@@ -3035,6 +3035,67 @@ impl Window {
             to: b,
             half_width: half,
             pad: 0,
+        });
+    }
+
+    /// Olo: paints a slice of a ring around `center`, from radius `inner`
+    /// to `outer` and from `start` radians clockwise from 12 o'clock
+    /// `sweep` radians round (a whole turn or more: the whole ring; inner
+    /// 0: a pie's slice, or a disc), its edges antialiased by each pixel's
+    /// distance to them, drawn on the GPU: one instance, where a path
+    /// would be tessellated or rasterised (ring charts, gauges, dials,
+    /// round marks, a circle's outline as a ring a line wide).
+    ///
+    /// This method should only be called as part of the paint phase of element drawing.
+    pub fn paint_sector(&mut self, center: Point<Pixels>, inner: Pixels, outer: Pixels, start: f32, sweep: f32, color: Hsla) {
+        self.invalidator.debug_assert_paint();
+        if !(sweep > 0.0) || !(outer > inner) {
+            return;
+        }
+        let scale = self.scale_factor();
+        let c = center.scale(scale);
+        let (r0, r1) = (inner.scale(scale).max(ScaledPixels(0.0)), outer.scale(scale));
+        // What it covers: its corners (the middle, with no hole), and the
+        // ring's extremes at the quarter turns it passes, a pixel more for
+        // the edges.
+        let tau = std::f32::consts::TAU;
+        let at = |r: ScaledPixels, a: f32| point(c.x + r * a.sin(), c.y - r * a.cos());
+        let (mut min, mut max) = (point(ScaledPixels(f32::MAX), ScaledPixels(f32::MAX)), point(ScaledPixels(f32::MIN), ScaledPixels(f32::MIN)));
+        let mut take = |p: Point<ScaledPixels>| {
+            min = point(min.x.min(p.x), min.y.min(p.y));
+            max = point(max.x.max(p.x), max.y.max(p.y));
+        };
+        if sweep >= tau {
+            take(point(c.x - r1, c.y - r1));
+            take(point(c.x + r1, c.y + r1));
+        } else {
+            let end = start + sweep;
+            for a in [start, end] {
+                take(at(r0, a));
+                take(at(r1, a));
+            }
+            let quarter = tau / 4.0;
+            let mut k = (start / quarter).ceil();
+            while k * quarter <= end {
+                take(at(r1, k * quarter));
+                k += 1.0;
+            }
+        }
+        let pad = ScaledPixels(1.0);
+        let bounds = Bounds::from_corners(point(min.x - pad, min.y - pad), point(max.x + pad, max.y + pad));
+        let opacity = self.element_opacity();
+        let content_mask = self.content_mask().scale(scale);
+        self.next_frame.scene.insert_primitive(Sector {
+            order: 0,
+            pad: 0,
+            bounds,
+            content_mask,
+            color: color.opacity(opacity),
+            center: c,
+            inner: r0,
+            outer: r1,
+            start,
+            sweep: sweep.min(tau),
         });
     }
 
