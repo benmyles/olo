@@ -386,6 +386,19 @@ as they land (with the commit), add new ones as they come up.
      to page flips; where Smithay's surface init insists on a modeset,
      Olo's Smithay changes that. Until then upgrades of app_server are
      batched, not one a change.
+   - **app_server's critical path on threads of its own** (Ben,
+     2026-11-01: "why run the risk of a blocking call? threads would
+     make sure we don't accidentally block"): input → pointer plane
+     update → commit never shares a thread with anything that can
+     block. Design: an input-and-cursor thread owning libinput and the
+     cursor planes (a pointer move is a plane property commit, no frame);
+     a render-and-commit thread per display owning its GL context, DRM
+     surface and pacing (a slow 5K frame can't delay the built-in
+     display's); the Wayland clients and IPC on the main loop, handing
+     each display's thread a snapshot of what to draw. Our own
+     synchronous work (importing a client's buffer, a fence, a DCP test
+     or commit) is what blocks today, and the heartbeat (`timings`)
+     finds it. After the reliability work.
    - **Supervisor priority tiers** (Ben, 2026-11-01: "it should always
      give the highest priority to the core olo processes and any
      system+input processes important for responsiveness/smoothness,
