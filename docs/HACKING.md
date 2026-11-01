@@ -4124,6 +4124,17 @@ an odd x so it sits between pixels.
 
 ## The pointer (crates/hvif, app_server cursor.rs)
 
+Where it is drawn: a frame draws the pointer where the last reports say
+it will be at the frame's vblank (`cursor::Track`, from the velocity of
+the last two reports, at most a frame ahead and only while reports keep
+coming and nothing warped the pointer; kept on the display). A mouse
+reports at its own rate (125 Hz, 1000 Hz) against the display's (60,
+120 Hz): drawn at the last position, one frame got two reports' worth
+of motion and the next three, and the pointer moved unevenly though the
+hand didn't (Ben, 2026-11-01: "jittery/off"); as `pace.rs` does for
+scrolling, the frame clock gets the position for its time. Hit-testing,
+focus and what clients get use the real position.
+
 The pointer is Haiku's system cursor set (`crates/hvif/cursors`, from
 Haiku's CursorData.cpp, MIT; see the LICENSE there). `olo-hvif` reads
 the Haiku Vector Icon Format and draws it as Haiku's IconRenderer does

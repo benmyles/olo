@@ -244,6 +244,9 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub hints: crate::hints::Hints,
     pub wallpaper: crate::wallpaper::Loader,
     pub cursor_status: CursorImageStatus,
+    /// The pointer's last reports, to draw it where it will be at the
+    /// frame's vblank (`cursor::Track`).
+    pub pointer_track: crate::cursor::Track,
     pub seat_name: String,
     pub seat: Seat<AnvilState<BackendData>>,
     pub clock: Clock<Monotonic>,
@@ -1219,6 +1222,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             hints: Default::default(),
             wallpaper: Default::default(),
             cursor_status: CursorImageStatus::default_named(),
+            pointer_track: Default::default(),
             seat_name,
             seat,
             pointer,

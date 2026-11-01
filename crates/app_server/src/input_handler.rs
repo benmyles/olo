@@ -1227,6 +1227,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
         let pointer = self.pointer.clone();
         let under = self.surface_under(pos);
+        self.pointer_track.note(std::time::Duration::from_micros(evt.time().micros()), pos);
         pointer.motion(
             self,
             under,
@@ -1680,6 +1681,7 @@ impl AnvilState<UdevData> {
         // The surface where the pointer is now, not where it was before
         // this motion (a window just entered gets the pointer with this
         // motion, not the next).
+        self.pointer_track.note(std::time::Duration::from_micros(evt.time().micros()), pointer_location);
         pointer.motion(
             self,
             new_under.clone(),

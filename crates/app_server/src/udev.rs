@@ -2314,12 +2314,24 @@ impl AnvilState<UdevData> {
         let shape = crate::cursor::named(&self.cursor_status).unwrap_or(crate::cursor::Shape::SystemDefault);
         let pointer_image = (crate::cursor::buffer(shape, pointer_scale), crate::cursor::image(shape, pointer_scale).size as i32);
 
+        // The pointer drawn where it will be at this frame's vblank
+        // (`cursor::Track`), kept on this display.
+        let pointer_drawn = {
+            let now = self.pointer.current_location();
+            let ahead = self.pointer_track.at(Duration::from(frame_target), now);
+            if output_geo.to_f64().contains(now) {
+                let g = output_geo.to_f64();
+                Point::from((ahead.x.clamp(g.loc.x, g.loc.x + g.size.w - 1.0), ahead.y.clamp(g.loc.y, g.loc.y + g.size.h - 1.0)))
+            } else {
+                now
+            }
+        };
         let result = render_surface(
             surface,
             &mut renderer,
             &self.space,
             &output,
-            self.pointer.current_location(),
+            pointer_drawn,
             &pointer_image,
             &mut self.backend_data.pointer_element,
             &self.dnd_icon,
