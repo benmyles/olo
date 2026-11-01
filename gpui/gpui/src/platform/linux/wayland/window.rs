@@ -30,6 +30,7 @@ use wayland_protocols::{
 };
 use wayland_protocols_plasma::blur::client::org_kde_kwin_blur;
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
+use wayland_protocols::ext::session_lock::v1::client::{ext_session_lock_surface_v1, ext_session_lock_v1};
 
 use crate::{
     AnyWindowHandle, Bounds, Decorations, Globals, GpuSpecs, Modifiers, Output, Pixels,
@@ -96,6 +97,8 @@ pub struct WaylandWindowState {
     /// sits.
     layer_surface: Option<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
     layer_shell: Option<crate::LayerShellOptions>,
+    /// Olo: a lock surface's (`WindowKind::SessionLock`).
+    lock_surface: Option<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1>,
     acknowledged_first_configure: bool,
     pub surface: wl_surface::WlSurface,
     decoration: Option<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1>,
@@ -232,6 +235,7 @@ impl WaylandWindowState {
             xdg_surface,
             layer_surface,
             layer_shell: options.layer_shell.clone(),
+            lock_surface: None,
             acknowledged_first_configure: false,
             surface,
             decoration,
@@ -348,6 +352,9 @@ impl Drop for WaylandWindow {
         if let Some(layer_surface) = &state.layer_surface {
             layer_surface.destroy();
         }
+        if let Some(lock_surface) = &state.lock_surface {
+            lock_surface.destroy();
+        }
         state.surface.destroy();
 
         let state_ptr = self.0.clone();
@@ -384,8 +391,17 @@ impl WaylandWindow {
         signal: calloop::LoopSignal,
         popup_parent: Option<(PopupParent, u32)>,
         layer_output: Option<wl_output::WlOutput>,
+        session_lock: Option<(ext_session_lock_v1::ExtSessionLockV1, wl_output::WlOutput)>,
     ) -> anyhow::Result<(Self, ObjectId)> {
         let surface = globals.compositor.create_surface(&globals.qh, ());
+        // Olo: a lock surface covers its output while the session is
+        // locked; the compositor sizes it.
+        if let Some((lock, output)) = session_lock {
+            let lock_surface = lock.get_lock_surface(&surface, &output, &globals.qh, surface.id());
+            let made = Self::finish(handle, globals, gpu_context, client, params, appearance, loop_handle, signal, surface, None, None, None, None)?;
+            made.0.0.state.borrow_mut().lock_surface = Some(lock_surface);
+            return Ok(made);
+        }
         // Olo: a layer surface (Deskbar, the desktop, notifications, an
         // overlay) has no xdg surface.
         if params.kind == WindowKind::LayerShell {
@@ -517,6 +533,7 @@ impl WaylandWindow {
         toplevel: Option<xdg_toplevel::XdgToplevel>,
         popup: Option<xdg_popup::XdgPopup>,
     ) -> anyhow::Result<(Self, ObjectId)> {
+        let lock_surface = params.kind == WindowKind::SessionLock;
         if let Some(fractional_scale_manager) = globals.fractional_scale_manager.as_ref() {
             fractional_scale_manager.get_fractional_scale(&surface, &globals.qh, surface.id());
         }
@@ -564,8 +581,11 @@ impl WaylandWindow {
             }),
         });
 
-        // Kick things off
-        surface.commit();
+        // Kick things off (a lock surface is configured without it, and
+        // mustn't commit before acknowledging that).
+        if !lock_surface {
+            surface.commit();
+        }
 
         Ok((this, surface.id()))
     }
@@ -591,6 +611,29 @@ impl WaylandWindowStatePtr {
             (Some(x), _) => Some(PopupParent::Xdg(x.clone())),
             (None, Some(l)) => Some(PopupParent::Layer(l.clone())),
             _ => None,
+        }
+    }
+
+    /// Olo: a lock surface's size (its output's), to acknowledge and draw.
+    pub fn handle_lock_surface_event(&self, event: ext_session_lock_surface_v1::Event) {
+        if let ext_session_lock_surface_v1::Event::Configure { serial, width, height } = event {
+            let to = size(px(width as f32), px(height as f32));
+            if width > 0 && height > 0 && (to != self.state.borrow().bounds.size || !self.state.borrow().acknowledged_first_configure) {
+                self.resize(to);
+            }
+            let mut state = self.state.borrow_mut();
+            if let Some(lock_surface) = &state.lock_surface {
+                lock_surface.ack_configure(serial);
+            }
+            let first = !state.acknowledged_first_configure;
+            state.acknowledged_first_configure = true;
+            drop(state);
+            self.frames.needs_commit.set(true);
+            if first {
+                self.frame();
+            } else {
+                self.schedule_frame();
+            }
         }
     }
 

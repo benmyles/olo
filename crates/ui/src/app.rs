@@ -28,11 +28,13 @@ pub struct WindowOptions {
     pub dialog: Option<gpui::Dialog>,
     /// Never resized (an alert).
     pub fixed: bool,
+    /// Covers this output while the session is locked (`lock_session`).
+    pub lock_output: Option<String>,
 }
 
 impl WindowOptions {
     pub fn new(title: impl Into<SharedString>, width: f32, height: f32) -> Self {
-        WindowOptions { title: title.into(), size: (width, height), min_size: None, panel: true, floating: false, layer: None, dialog: None, fixed: false }
+        WindowOptions { title: title.into(), size: (width, height), min_size: None, panel: true, floating: false, layer: None, dialog: None, fixed: false, lock_output: None }
     }
 
     /// A BAlert window `width` × `height`: fixed, modal over the app's
@@ -149,7 +151,14 @@ pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, bu
             app_id: Some(app_id(cx)),
             window_min_size: options.min_size.map(|(w, h)| size(px(w), px(h))),
             toplevel_tag: options.floating.then(|| "floating".to_string()),
-            kind: if options.layer.is_some() { gpui::WindowKind::LayerShell } else { gpui::WindowKind::Normal },
+            kind: if options.lock_output.is_some() {
+                gpui::WindowKind::SessionLock
+            } else if options.layer.is_some() {
+                gpui::WindowKind::LayerShell
+            } else {
+                gpui::WindowKind::Normal
+            },
+            session_lock_output: options.lock_output.clone(),
             layer_shell: options.layer.clone(),
             dialog: options.dialog,
             is_resizable: !options.fixed,

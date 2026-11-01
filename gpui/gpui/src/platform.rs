@@ -74,6 +74,8 @@ pub use keystroke::*;
 
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 pub(crate) use linux::*;
+#[cfg(all(any(target_os = "linux", target_os = "freebsd"), feature = "wayland"))]
+pub use linux::{lock_session, unlock_session};
 #[cfg(target_os = "macos")]
 pub(crate) use mac::*;
 pub use semantic_version::SemanticVersion;
@@ -120,8 +122,10 @@ pub fn guess_compositor() -> &'static str {
         return "Headless";
     }
 
+    // (Olo: or a connection handed over as WAYLAND_SOCKET, as app_server
+    // starts the lock screen.)
     #[cfg(feature = "wayland")]
-    let wayland_display = std::env::var_os("WAYLAND_DISPLAY");
+    let wayland_display = std::env::var_os("WAYLAND_DISPLAY").filter(|d| !d.is_empty()).or_else(|| std::env::var_os("WAYLAND_SOCKET"));
     #[cfg(not(feature = "wayland"))]
     let wayland_display: Option<std::ffi::OsString> = None;
 
@@ -267,6 +271,11 @@ pub trait PlatformDisplay: Send + Sync + Debug {
 
     /// Get the bounds for this display
     fn bounds(&self) -> Bounds<Pixels>;
+
+    /// Olo: its name (the output's connector, "DP-1"), if it says.
+    fn name(&self) -> Option<String> {
+        None
+    }
 
     /// Get the default bounds for this display to place a window
     fn default_bounds(&self) -> Bounds<Pixels> {
@@ -1136,6 +1145,10 @@ pub struct WindowOptions {
     /// windows by app_server), modal to the window it's over or not.
     pub dialog: Option<Dialog>,
 
+    /// Olo: the output a [`WindowKind::SessionLock`] window covers, by
+    /// name (None: the first).
+    pub session_lock_output: Option<String>,
+
     /// Window minimum size
     pub window_min_size: Option<Size<Pixels>>,
 
@@ -1200,6 +1213,9 @@ pub(crate) struct WindowParams {
     /// Olo: a dialog (`WindowOptions::dialog`).
     pub dialog: Option<Dialog>,
 
+    /// Olo: the output a lock surface covers (`WindowOptions::session_lock_output`).
+    pub session_lock_output: Option<String>,
+
     pub window_min_size: Option<Size<Pixels>>,
     #[cfg(target_os = "macos")]
     pub tabbing_identifier: Option<String>,
@@ -1261,6 +1277,7 @@ impl Default for WindowOptions {
             toplevel_tag: None,
             layer_shell: None,
             dialog: None,
+            session_lock_output: None,
             window_min_size: None,
             window_decorations: None,
             tabbing_identifier: None,
@@ -1300,6 +1317,17 @@ pub struct LayerShellOptions {
     pub namespace: String,
     /// The output to sit on, by name; None lets the compositor choose.
     pub output: Option<String>,
+}
+
+/// Olo: what happens to the session lock (`lock_session`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SessionLockEvent {
+    /// The session is locked: cover every output.
+    Locked,
+    /// Outputs changed while locked: cover any new one.
+    Outputs,
+    /// The compositor ended the lock, or refused it.
+    Finished,
 }
 
 /// Olo: a dialog window (xdg-dialog), over the window that has the
@@ -1355,6 +1383,11 @@ pub enum WindowKind {
     /// `WindowOptions::layer_shell` says; its size is the window's, or
     /// the output's along an axis anchored at both ends.
     LayerShell,
+
+    /// Olo: what covers an output while the session is locked
+    /// (ext-session-lock: the lock screen), after `lock_session`; the
+    /// output's size.
+    SessionLock,
 
     /// Olo: a popup (a menu, a tip) over `parent`, its top left at
     /// `corner` of `anchor` (a rectangle in the parent's content, as a

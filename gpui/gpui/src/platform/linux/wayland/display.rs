@@ -39,4 +39,8 @@ impl PlatformDisplay for WaylandDisplay {
     fn bounds(&self) -> Bounds<Pixels> {
         self.bounds
     }
+
+    fn name(&self) -> Option<String> {
+        self.name.clone()
+    }
 }

@@ -128,6 +128,8 @@ pub struct TextField {
     blink: Option<Task<()>>,
     /// Shown as bullets, never copied (a password).
     password: bool,
+    /// Shown dim while it's empty ("Password").
+    hint: SharedString,
     /// Can't be typed in now (a password while PAM checks the last).
     enabled: bool,
 }
@@ -164,7 +166,14 @@ impl TextField {
             blink: None,
             password: false,
             enabled: true,
+            hint: SharedString::default(),
         }
+    }
+
+    /// What it shows, dim, while it's empty.
+    pub fn hint(mut self, hint: impl Into<SharedString>) -> Self {
+        self.hint = hint.into();
+        self
     }
 
     /// Shows bullets for its characters and never copies them.
@@ -729,6 +738,7 @@ impl Element for FieldElement {
         let selected = field.to_shown(field.selected.start)..field.to_shown(field.selected.end);
         let (caret, caret_on) = (field.to_shown(field.caret()), field.caret_on && field.enabled);
         let name = field.name.clone();
+        let (hint, marked, right) = (field.hint.clone(), field.marked.clone(), field.align == Align::Right);
         if field.enabled {
             window.handle_input(&field.focus.clone(), ElementInputHandler::new(bounds, self.field.clone()), cx);
         }
@@ -744,6 +754,12 @@ impl Element for FieldElement {
             }
             let _ = line.paint(point(left, top), height, window, cx);
             crate::review::text(window, drawn, baseline, &text, size_px);
+            if text.is_empty() && !hint.is_empty() && marked.is_none() {
+                let ink = style::disabled_text(&palette);
+                let align = if right { style::Align::Right } else { style::Align::Left };
+                let x = if right { bounds.right() } else { bounds.origin.x };
+                style::label(window, cx, x, bounds.center().y, align, hint.clone(), size_px, style::ui_font(gpui::FontWeight::NORMAL), ink);
+            }
             if focused && selected.is_empty() && caret_on {
                 let x = style::snap_coord(window, left + line.x_for_index(caret));
                 let w = style::hairline(window);

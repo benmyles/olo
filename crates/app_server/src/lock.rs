@@ -328,6 +328,15 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     fn lock_configure(&self, surface: &LockSurface, output: &Output) {
         let size = self.space.output_geometry(output).map(|g| g.size).unwrap_or_else(|| Size::from((1280, 800)));
+        // Its output's scale, as windows are told it (else a lock screen
+        // drew at 1× and was stretched): the surface is on that output,
+        // at that fractional scale, buffers at the scale rounded up.
+        let scale = output.current_scale();
+        output.enter(surface.wl_surface());
+        smithay::wayland::compositor::with_states(surface.wl_surface(), |states| {
+            smithay::wayland::fractional_scale::with_fractional_scale(states, |f| f.set_preferred_scale(scale.fractional_scale()));
+            smithay::wayland::compositor::send_surface_state(surface.wl_surface(), states, scale.integer_scale(), output.current_transform());
+        });
         surface.with_pending_state(|s| s.size = Some(Size::from((size.w as u32, size.h as u32))));
         surface.send_configure();
     }

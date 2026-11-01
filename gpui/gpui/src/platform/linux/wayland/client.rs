@@ -1,3 +1,4 @@
+use anyhow::Context as _;
 use std::{
     cell::{RefCell, RefMut},
     hash::Hash,
@@ -63,6 +64,7 @@ use wayland_protocols::xdg::decoration::zv1::client::{
 use wayland_protocols::xdg::shell::client::{xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base};
 use wayland_protocols::xdg::toplevel_tag::v1::client::xdg_toplevel_tag_manager_v1;
 use wayland_protocols::xdg::dialog::v1::client::{xdg_dialog_v1, xdg_wm_dialog_v1};
+use wayland_protocols::ext::session_lock::v1::client::{ext_session_lock_manager_v1, ext_session_lock_surface_v1, ext_session_lock_v1};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 use wayland_protocols_plasma::blur::client::{org_kde_kwin_blur, org_kde_kwin_blur_manager};
 use xkbcommon::xkb::ffi::XKB_KEYMAP_FORMAT_TEXT_V1;
@@ -124,6 +126,8 @@ pub struct Globals {
     /// Olo: tags for windows (`floating`, `under-pointer`), which
     /// app_server places and tiles by.
     pub toplevel_tags: Option<xdg_toplevel_tag_manager_v1::XdgToplevelTagManagerV1>,
+    /// Olo: locking the session (the lock screen).
+    pub session_lock_manager: Option<ext_session_lock_manager_v1::ExtSessionLockManagerV1>,
     /// Olo: dialogs (alerts, panels): never tabs, modal or not.
     pub wm_dialog: Option<xdg_wm_dialog_v1::XdgWmDialogV1>,
     /// Olo: surfaces of the desktop's own (Deskbar, notifications).
@@ -168,6 +172,7 @@ impl Globals {
             toplevel_tags: globals.bind(&qh, 1..=1, ()).ok(),
             layer_shell: globals.bind(&qh, 1..=4, ()).ok(),
             wm_dialog: globals.bind(&qh, 1..=1, ()).ok(),
+            session_lock_manager: globals.bind(&qh, 1..=1, ()).ok(),
             blur_manager: globals.bind(&qh, 1..=1, ()).ok(),
             text_input_manager: globals.bind(&qh, 1..=1, ()).ok(),
             executor,
@@ -286,6 +291,10 @@ impl Output {
 pub(crate) struct WaylandClientState {
     serial_tracker: SerialTracker,
     globals: Globals,
+    /// Olo: the session's lock while this app holds it, and the
+    /// connection (to send its end at once).
+    session_lock: Option<ext_session_lock_v1::ExtSessionLockV1>,
+    connection: Connection,
     /// Olo: made with the first window (an agent with none, the polkit
     /// agent's resident self, holds no GPU device: no driver threads, a
     /// third of the memory).
@@ -656,6 +665,8 @@ impl WaylandClient {
             serial_tracker: SerialTracker::new(),
             globals,
             gpu_context: None,
+            session_lock: None,
+            connection: conn.clone(),
             wl_seat: seat,
             wl_pointer: None,
             wl_keyboard: None,
@@ -725,6 +736,7 @@ impl WaylandClient {
         WaylandSource::new(conn, event_queue)
             .insert(handle)
             .unwrap();
+        CLIENT.with(|c| *c.borrow_mut() = Rc::downgrade(&state));
 
         Self(state)
     }
@@ -815,6 +827,20 @@ impl LinuxClient for WaylandClient {
                 .map(|p| (p, state.serial_tracker.get(SerialKind::MousePress))),
             _ => None,
         };
+        // Olo: a lock surface covers an output (by name, or the first)
+        // of the session's lock.
+        let session_lock = if params.kind == crate::WindowKind::SessionLock {
+            let lock = state.session_lock.clone().context("lock_session first")?;
+            let output = state
+                .outputs
+                .iter()
+                .find(|(_, o)| params.session_lock_output.is_none() || o.name == params.session_lock_output)
+                .and_then(|(id, _)| state.wl_outputs.get(id).cloned())
+                .context("no such output")?;
+            Some((lock, output))
+        } else {
+            None
+        };
         // Olo: the output a layer surface asked for, by name.
         let layer_output = params
             .layer_shell
@@ -839,6 +865,7 @@ impl LinuxClient for WaylandClient {
             state.common.signal.clone(),
             popup_parent,
             layer_output,
+            session_lock,
         )?;
         state.windows.insert(surface_id, window.0.clone());
 
@@ -1183,6 +1210,10 @@ impl Dispatch<wl_output::WlOutput, ()> for WaylandClientStatePtr {
                 if let Some(complete) = in_progress_output.complete() {
                     state.outputs.insert(output.id(), complete.clone());
                     state.wl_outputs.insert(output.id(), output.clone());
+                    // Olo: a new output must be covered while locked.
+                    if state.session_lock.is_some() {
+                        state.common.foreground_executor.spawn(async move { session_lock_event(crate::SessionLockEvent::Outputs) }).detach();
+                    }
                     let windows: Vec<_> = state.windows.values().cloned().collect();
                     drop(state);
                     for window in windows {
@@ -1264,6 +1295,94 @@ delegate_noop!(WaylandClientStatePtr: ignore xdg_positioner::XdgPositioner);
 delegate_noop!(WaylandClientStatePtr: ignore xdg_toplevel_tag_manager_v1::XdgToplevelTagManagerV1);
 delegate_noop!(WaylandClientStatePtr: ignore zwlr_layer_shell_v1::ZwlrLayerShellV1);
 delegate_noop!(WaylandClientStatePtr: ignore xdg_wm_dialog_v1::XdgWmDialogV1);
+delegate_noop!(WaylandClientStatePtr: ignore ext_session_lock_manager_v1::ExtSessionLockManagerV1);
+
+impl Dispatch<ext_session_lock_v1::ExtSessionLockV1, ()> for WaylandClientStatePtr {
+    fn event(
+        this: &mut Self,
+        _: &ext_session_lock_v1::ExtSessionLockV1,
+        event: ext_session_lock_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        let event = match event {
+            ext_session_lock_v1::Event::Locked => crate::SessionLockEvent::Locked,
+            ext_session_lock_v1::Event::Finished => {
+                this.get_client().borrow_mut().session_lock = None;
+                crate::SessionLockEvent::Finished
+            }
+            _ => return,
+        };
+        session_lock_event(event);
+    }
+}
+
+impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, ObjectId> for WaylandClientStatePtr {
+    fn event(
+        this: &mut Self,
+        _: &ext_session_lock_surface_v1::ExtSessionLockSurfaceV1,
+        event: ext_session_lock_surface_v1::Event,
+        surface_id: &ObjectId,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        let client = this.get_client();
+        let mut state = client.borrow_mut();
+        let Some(window) = get_window(&mut state, surface_id) else {
+            return;
+        };
+        drop(state);
+        window.handle_lock_surface_event(event);
+    }
+}
+
+thread_local! {
+    /// Olo: the client, for the session lock's free functions.
+    static CLIENT: RefCell<std::rc::Weak<RefCell<WaylandClientState>>> = RefCell::new(std::rc::Weak::new());
+    /// Olo: who hears of the session lock.
+    static LOCK_HANDLER: RefCell<Option<Box<dyn FnMut(crate::SessionLockEvent)>>> = RefCell::new(None);
+}
+
+/// Tells the lock's handler (outside any borrow of the client).
+fn session_lock_event(event: crate::SessionLockEvent) {
+    let handler = LOCK_HANDLER.with(|h| h.borrow_mut().take());
+    if let Some(mut handler) = handler {
+        handler(event);
+        LOCK_HANDLER.with(|h| {
+            let mut h = h.borrow_mut();
+            if h.is_none() {
+                *h = Some(handler);
+            }
+        });
+    }
+}
+
+/// Olo: locks the session (ext-session-lock): `handler` hears when it's
+/// locked (then open a `WindowKind::SessionLock` window on each output),
+/// when outputs change while it is (cover the new ones), and when the
+/// compositor ends or refuses it.
+pub fn lock_session(handler: impl FnMut(crate::SessionLockEvent) + 'static) -> anyhow::Result<()> {
+    let client = CLIENT.with(|c| c.borrow().upgrade()).context("no Wayland connection")?;
+    let mut state = client.borrow_mut();
+    let manager = state.globals.session_lock_manager.clone().context("the compositor can't lock the session")?;
+    LOCK_HANDLER.with(|h| *h.borrow_mut() = Some(Box::new(handler)));
+    if state.session_lock.is_none() {
+        state.session_lock = Some(manager.lock(&state.globals.qh, ()));
+    }
+    Ok(())
+}
+
+/// Olo: ends the session lock (the lock screen was answered), sent to
+/// the compositor at once.
+pub fn unlock_session() {
+    let Some(client) = CLIENT.with(|c| c.borrow().upgrade()) else { return };
+    let mut state = client.borrow_mut();
+    if let Some(lock) = state.session_lock.take() {
+        lock.unlock_and_destroy();
+        let _ = state.connection.flush();
+    }
+}
 delegate_noop!(WaylandClientStatePtr: ignore xdg_dialog_v1::XdgDialogV1);
 
 impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ObjectId> for WaylandClientStatePtr {

@@ -6,19 +6,19 @@
 //! Both checks run on worker threads: PAM for the password (which sleeps on
 //! a failure) and fprintd for Touch ID, listening the whole time.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use olo_kit::{
-    App, Cx, SessionLock, WindowId,
-    egui::{self, Align2, FontId, Key, Rect, Sense, pos2, vec2},
-    icons, metrics as m,
-    style::{self, c},
-    widgets::TextControl,
-};
 use olo_system::{auth, fingerprint};
+use olo_ui::{
+    gpui::{App, AppContext as _, Bounds, Context, Entity, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Render, SessionLockEvent, Styled as _, Window, canvas, div, point, px, size},
+    icons, metrics as m, style, theme,
+    widgets::{TextControl, TextField, TextFieldEvent, text_field},
+};
 
 const APP_ID: &str = "olo.lock";
-const PANEL: egui::Vec2 = vec2(340.0, 150.0);
+const PANEL: (f32, f32) = (340.0, 150.0);
+/// How long a wrong answer shakes the panel.
+const SHAKE: f32 = 0.4;
 
 enum Msg {
     Password(Result<(), auth::AuthError>),
@@ -34,21 +34,22 @@ enum Status {
     Error(String),
 }
 
+/// What every output's window shows: one lock.
 struct Lock {
-    windows: Vec<WindowId>,
     user: String,
     name: String,
-    password: String,
+    field: Entity<TextField>,
     status: Status,
     /// What the fingerprint sensor last said (None: not offered).
     finger: Option<String>,
     finger_stop: fingerprint::Stop,
-    proxy: olo_kit::Proxy,
     unlocking: bool,
-    /// Wrong attempts in a row (the field shakes on each).
-    shake: Option<std::time::Instant>,
+    /// A wrong answer just came (the panel shakes).
+    shake: Option<Instant>,
     /// The first workspace's desktop colour (as the settings had it).
     desktop: [u8; 3],
+    /// Which output's window has the panel (the first covered).
+    primary: Option<String>,
 }
 
 fn clock_text() -> (String, String) {
@@ -126,8 +127,14 @@ mod libc_tm {
 }
 
 impl Lock {
-    fn start_fingerprint(&self) {
-        let (user, stop, proxy) = (self.user.clone(), self.finger_stop.clone(), self.proxy.clone());
+    fn start_fingerprint(&self, cx: &App) {
+        // Not in a test: `OLO_NO_FINGERPRINT`, or a debug build checking
+        // passwords with a private PAM service, leaves the reader (the
+        // person's own) alone.
+        if std::env::var_os("OLO_NO_FINGERPRINT").is_some() || cfg!(debug_assertions) && std::env::var_os("OLO_PAM_CONFDIR").is_some() {
+            return;
+        }
+        let (user, stop, proxy) = (self.user.clone(), self.finger_stop.clone(), olo_ui::proxy(cx));
         std::thread::Builder::new()
             .name("fingerprint".into())
             .spawn(move || {
@@ -150,171 +157,50 @@ impl Lock {
             .expect("thread");
     }
 
-    fn submit(&mut self) {
-        if self.status == Status::Checking || self.password.is_empty() {
+    fn submit(&mut self, cx: &mut Context<Self>) {
+        if self.status == Status::Checking || self.field.read(cx).text().is_empty() {
             return;
         }
         self.status = Status::Checking;
-        let (user, password, proxy) = (self.user.clone(), std::mem::take(&mut self.password), self.proxy.clone());
+        let password = self.field.read(cx).text().to_owned();
+        self.field.update(cx, |f, cx| {
+            f.clear_secret(cx);
+            f.set_enabled(false, cx);
+        });
+        let (user, proxy) = (self.user.clone(), olo_ui::proxy(cx));
         std::thread::Builder::new()
             .name("pam".into())
-            .spawn(move || proxy.send(Msg::Password(auth::check_password(&user, &password))))
+            .spawn(move || {
+                let mut password = password;
+                let r = auth::check_password(&user, &password);
+                // SAFETY: zero bytes keep the string valid UTF-8.
+                unsafe { password.as_bytes_mut().fill(0) };
+                proxy.send(Msg::Password(r));
+            })
             .expect("thread");
+        cx.notify();
     }
 
-    fn unlock(&mut self, cx: &mut Cx) {
+    fn unlock(&mut self, cx: &mut Context<Self>) {
         if self.unlocking {
             return;
         }
         self.unlocking = true;
         self.finger_stop.stop();
-        cx.unlock_session();
+        olo_ui::unlock_session();
         cx.quit();
     }
 
-    fn redraw(&self, cx: &mut Cx) {
-        for &w in &self.windows {
-            cx.redraw(w);
-        }
-    }
-
-    /// The time, centred in the top third.
-    fn draw_clock(&self, ui: &egui::Ui, full: Rect) {
-        let (time, date) = clock_text();
-        let painter = ui.painter();
-        let white = c(style::palette(ui.ctx()).desktop_text);
-        let y = full.top() + full.height() * 0.22;
-        painter.text(pos2(full.center().x, y), Align2::CENTER_CENTER, time, FontId::new(72.0, style::bold()), white);
-        painter.text(pos2(full.center().x, y + 56.0), Align2::CENTER_CENTER, date, FontId::new(20.0, style::bold()), white);
-    }
-
-    fn draw_panel(&mut self, cx: &mut Cx, ui: &mut egui::Ui, full: Rect) {
-        let p = style::palette(ui.ctx());
-        let mut rect = Rect::from_center_size(full.center() + vec2(0.0, 40.0), PANEL);
-        // A wrong password shakes the panel, as macOS does.
-        if let Some(t) = self.shake {
-            let e = t.elapsed().as_secs_f32();
-            if e < 0.4 {
-                rect = rect.translate(vec2((e * 50.0).sin() * 10.0 * (1.0 - e / 0.4), 0.0));
-                ui.ctx().request_repaint();
-            } else {
-                self.shake = None;
-            }
-        }
-        let painter = ui.painter();
-        painter.rect_filled(rect.expand(1.0), 0.0, c(p.frame_focused[0]));
-        painter.rect_filled(rect, 0.0, c(p.panel_background));
-        style::raised(painter, rect, &p);
-
-        let inset = m::WINDOW_INSET;
-        let icon = Rect::from_min_size(rect.min + vec2(inset, inset), vec2(64.0, 64.0));
-        icons::paint(painter, icon, "people");
-        let text_x = icon.right() + inset;
-        painter.text(
-            pos2(text_x, icon.top() + 8.0),
-            Align2::LEFT_TOP,
-            &self.name,
-            FontId::new(16.0, style::bold()),
-            c(p.panel_text),
-        );
-        let mut y = icon.top() + 30.0;
-        if self.name != self.user {
-            painter.text(pos2(text_x, y), Align2::LEFT_TOP, &self.user, style::plain_font(), style::disabled_text(&p));
-            y += 18.0;
-        }
-        painter.text(pos2(text_x, y), Align2::LEFT_TOP, "This computer is locked.", style::plain_font(), c(p.panel_text));
-
-        let field = Rect::from_min_size(
-            pos2(rect.left() + inset, icon.bottom() + inset),
-            vec2(rect.width() - 2.0 * inset, m::CONTROL_HEIGHT),
-        );
-        let checking = self.status == Status::Checking;
-        let resp = ui
-            .scope_builder(egui::UiBuilder::new().max_rect(field), |ui| {
-                ui.add_enabled(
-                    !checking,
-                    TextControl::new(&mut self.password).password(true).autofocus(true).hint("Password"),
-                )
-            })
-            .inner;
-        // A single-line field gives up focus on Enter; take it straight
-        // back, so typing always lands in the password.
-        if !checking && resp.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
-            self.submit();
-        }
-        if !checking && !resp.has_focus() {
-            resp.request_focus();
-        }
-        if resp.changed() && matches!(self.status, Status::Error(_)) {
-            self.status = Status::Idle;
-        }
-
-        let (text, color) = match &self.status {
-            Status::Checking => ("Checking…".to_owned(), style::disabled_text(&p)),
-            Status::Error(e) => (e.clone(), c(p.failure)),
-            Status::Idle => match &self.finger {
-                Some(s) => (s.clone(), style::disabled_text(&p)),
-                None => ("Enter your password".to_owned(), style::disabled_text(&p)),
-            },
-        };
-        ui.painter().text(
-            pos2(rect.center().x, field.bottom() + inset + 4.0),
-            Align2::CENTER_CENTER,
-            text,
-            style::plain_font(),
-            color,
-        );
-        let _ = cx;
-    }
-}
-
-impl App for Lock {
-    fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
-        let full = ui.max_rect();
-        // The desktop colour under the look's scrim: the screen is
-        // clearly locked but still the person's.
-        let [r, g, b] = self.desktop;
-        let scrim = style::palette(ui.ctx()).scrim;
-        let dimmed = olo_kit::theme::mix([r, g, b, 255], [scrim[0], scrim[1], scrim[2], 255], 0.55);
-        ui.painter().rect_filled(full, 0.0, c(dimmed));
-        let _ = ui.interact(full, ui.make_persistent_id("lock-bg"), Sense::click());
-        self.draw_clock(ui, full);
-        if self.windows.first() == Some(&window) {
-            self.draw_panel(cx, ui, full);
-        }
-        // The clock ticks on the minute.
-        let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
-        ui.ctx().request_repaint_after(Duration::from_secs(60 - secs % 60));
-    }
-
-    fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
-        let message = match message.downcast::<SessionLock>() {
-            Ok(lock) => {
-                match *lock {
-                    SessionLock::Locked(windows) => {
-                        let first = self.windows.is_empty();
-                        self.windows = windows;
-                        if first {
-                            self.start_fingerprint();
-                        }
-                    }
-                    // Refused (another lock screen?) or ended: nothing to do.
-                    SessionLock::Finished => cx.quit(),
-                }
-                self.redraw(cx);
-                return;
-            }
-            Err(m) => m,
-        };
-        let Ok(msg) = message.downcast::<Msg>() else { return };
-        match *msg {
+    fn message(&mut self, msg: Msg, cx: &mut Context<Self>) {
+        match msg {
             Msg::Password(Ok(())) => self.unlock(cx),
             Msg::Password(Err(e)) => {
                 self.status = Status::Error(match e {
                     auth::AuthError::Denied(_) => "Incorrect password".into(),
                     auth::AuthError::Unavailable(m) => format!("Can't check passwords: {m}"),
                 });
-                self.shake = Some(std::time::Instant::now());
+                self.shake = Some(Instant::now());
+                self.field.update(cx, |f, cx| f.set_enabled(true, cx));
             }
             Msg::Finger(fingerprint::Event::Match) => self.unlock(cx),
             Msg::Finger(fingerprint::Event::Ready { swipe }) => {
@@ -323,33 +209,177 @@ impl App for Lock {
             Msg::Finger(fingerprint::Event::Retry(s)) => self.finger = Some(s),
             Msg::Finger(fingerprint::Event::NoMatch) => {
                 self.finger = Some("Fingerprint not recognised".into());
-                self.shake = Some(std::time::Instant::now());
+                self.shake = Some(Instant::now());
             }
             Msg::Finger(fingerprint::Event::Failed(_)) | Msg::NoFinger => self.finger = None,
         }
-        self.redraw(cx);
+        cx.notify();
     }
+
+    /// What shows under the field.
+    fn note(&self) -> (String, bool) {
+        match &self.status {
+            Status::Checking => ("Checking…".to_owned(), false),
+            Status::Error(e) => (e.clone(), true),
+            Status::Idle => (self.finger.clone().unwrap_or_else(|| "Enter your password".to_owned()), false),
+        }
+    }
+}
+
+/// One output's window: the desktop's colour dimmed, the time, and on
+/// the first output the panel asking for the password.
+struct Screen {
+    lock: Entity<Lock>,
+    output: String,
+}
+
+impl Render for Screen {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let lock = self.lock.read(cx);
+        let primary = lock.primary.as_deref() == Some(self.output.as_str());
+        let [r, g, b] = lock.desktop;
+        let backdrop = canvas(
+            |_, _, _| {},
+            move |bounds, _, window, cx| {
+                let p = theme::palette(cx);
+                // The desktop colour under the look's scrim: the screen is
+                // clearly locked but still the person's.
+                let dimmed = olo_theme::mix([r, g, b, 255], [p.scrim[0], p.scrim[1], p.scrim[2], 255], 0.55);
+                style::fill_rect(window, bounds, style::c(dimmed));
+                let (time, date) = clock_text();
+                let ink = style::c(p.desktop_text);
+                let x = bounds.center().x;
+                let y = bounds.top() + bounds.size.height * 0.22;
+                style::label(window, cx, x, y, style::Align::Center, time, 72.0, style::ui_font(FontWeight::BOLD), ink);
+                style::label(window, cx, x, y + px(56.0), style::Align::Center, date, 20.0, style::ui_font(FontWeight::BOLD), ink);
+            },
+        )
+        .absolute()
+        .inset_0();
+        let mut root = div().relative().size_full().child(backdrop);
+        if primary {
+            root = root.child(panel(lock, window));
+            // Typing always lands in the password.
+            let field = lock.field.read(cx);
+            if field.enabled() && !field.is_focused(window) {
+                let handle = olo_ui::gpui::Focusable::focus_handle(&lock.field, cx);
+                window.focus(&handle);
+            }
+        }
+        root
+    }
+}
+
+/// The panel: the person's picture and name, the field, the note; shaken
+/// for a moment after a wrong answer, as macOS does.
+fn panel(lock: &Lock, window: &mut Window) -> impl IntoElement {
+    let mut dx = 0.0;
+    if let Some(t) = lock.shake {
+        let e = t.elapsed().as_secs_f32();
+        if e < SHAKE {
+            dx = (e * 50.0).sin() * 10.0 * (1.0 - e / SHAKE);
+            window.request_animation_frame();
+        }
+    }
+    let (name, user) = (lock.name.clone(), lock.user.clone());
+    let (note, error) = lock.note();
+    let inset = m::WINDOW_INSET;
+    let face = canvas(
+        |_, _, _| {},
+        move |b, _, window, cx| {
+            let p = theme::palette(cx);
+            let outer = Bounds::from_corners(b.origin - point(px(1.0), px(1.0)), b.bottom_right() + point(px(1.0), px(1.0)));
+            style::fill_rect(window, outer, style::c(p.frame_focused[0]));
+            style::fill_rect(window, b, style::c(p.panel_background));
+            style::raised(window, b, &p);
+            let icon = Bounds { origin: b.origin + point(px(inset), px(inset)), size: size(px(64.0), px(64.0)) };
+            icons::paint(window, icon, "people");
+            let text_x = icon.right() + px(inset);
+            let ink = style::c(p.panel_text);
+            style::label(window, cx, text_x, icon.top() + px(16.0), style::Align::Left, name.clone(), 16.0, style::ui_font(FontWeight::BOLD), ink);
+            let mut y = icon.top() + px(38.0);
+            if name != user {
+                style::label(window, cx, text_x, y, style::Align::Left, user.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
+                y += px(18.0);
+            }
+            style::label(window, cx, text_x, y, style::Align::Left, "This computer is locked.", style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), ink);
+            let color = if error { style::c(p.failure) } else { style::disabled_text(&p) };
+            let note_y = b.top() + px(inset + 64.0 + inset + m::CONTROL_HEIGHT + inset + 4.0);
+            style::label(window, cx, b.center().x, note_y, style::Align::Center, note.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color);
+        },
+    )
+    .absolute()
+    .inset_0();
+    let field = div().absolute().left(px(inset)).right(px(inset)).top(px(inset + 64.0 + inset)).h(px(m::CONTROL_HEIGHT)).child(TextControl::new(lock.field.clone()));
+    // Centred, a little below the middle.
+    div().absolute().inset_0().flex().items_center().justify_center().child(
+        div().relative().left(px(dx)).top(px(40.0)).w(px(PANEL.0)).h(px(PANEL.1)).child(face).child(field).id("panel"),
+    )
 }
 
 fn main() {
     // A session or install from before the rename (Tabula) carries on.
-    olo_kit::legacy::adopt();
-    olo_kit::run(APP_ID, |cx| {
+    olo_xdg::legacy::adopt();
+    olo_ui::run(APP_ID, |cx| {
         let user = auth::current_user().unwrap_or_else(|| "user".into());
         let name = auth::full_name(&user).unwrap_or_else(|| user.clone());
-        cx.lock_session();
-        Lock {
-            windows: Vec::new(),
-            name,
-            user,
-            password: String::new(),
-            status: Status::Idle,
-            finger: None,
-            finger_stop: fingerprint::Stop::default(),
-            proxy: cx.proxy(),
-            unlocking: false,
-            shake: None,
-            desktop: olo_kit::settings::current().unwrap_or_default().workspace_color(0),
+        let field = text_field(cx, |f| f.name("Password").password(true).hint("Password"));
+        let desktop = olo_ui::settings::current().unwrap_or_default().workspace_color(0);
+        let lock = cx.new(|cx| {
+            cx.subscribe(&field, |l: &mut Lock, _, e: &TextFieldEvent, cx| match e {
+                TextFieldEvent::Entered => l.submit(cx),
+                TextFieldEvent::Changed if matches!(l.status, Status::Error(_)) => {
+                    l.status = Status::Idle;
+                    cx.notify();
+                }
+                _ => {}
+            })
+            .detach();
+            Lock { user, name, field, status: Status::Idle, finger: None, finger_stop: fingerprint::Stop::default(), unlocking: false, shake: None, desktop, primary: None }
+        });
+        let l = lock.clone();
+        olo_ui::message_handler(cx, move |m, cx| {
+            if let Ok(m) = m.downcast::<Msg>() {
+                l.update(cx, |l, cx| l.message(*m, cx));
+            }
+        });
+        // The clock ticks on the minute.
+        let l = lock.clone();
+        cx.spawn(async move |cx| {
+            loop {
+                let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+                cx.background_executor().timer(Duration::from_secs(60 - secs % 60)).await;
+                if l.update(cx, |_, cx| cx.notify()).is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
+        let (l, events) = (lock.clone(), lock.clone());
+        let locked = olo_ui::lock_session(
+            cx,
+            move |output, _, cx| {
+                let lock = l.clone();
+                lock.update(cx, |l, _| {
+                    if l.primary.is_none() {
+                        l.primary = Some(output.to_owned());
+                    }
+                });
+                let screen = cx.new(|cx| {
+                    cx.observe(&lock, |_, _, cx| cx.notify()).detach();
+                    Screen { lock: lock.clone(), output: output.to_owned() }
+                });
+                screen
+            },
+            move |event, cx| match event {
+                SessionLockEvent::Locked => events.update(cx, |l, cx| l.start_fingerprint(cx)),
+                // Refused (another lock screen?) or ended: nothing to do.
+                _ => cx.quit(),
+            },
+        );
+        if let Err(e) = locked {
+            eprintln!("olo-lock: {e}");
+            cx.quit();
         }
     });
 }

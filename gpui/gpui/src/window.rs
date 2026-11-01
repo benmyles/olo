@@ -1026,6 +1026,7 @@ impl Window {
             toplevel_tag,
             layer_shell,
             dialog,
+            session_lock_output,
         } = options;
 
         let bounds = window_bounds
@@ -1049,6 +1050,7 @@ impl Window {
                 toplevel_tag,
                 layer_shell,
                 dialog,
+                session_lock_output,
                 #[cfg(target_os = "macos")]
                 tabbing_identifier,
             },

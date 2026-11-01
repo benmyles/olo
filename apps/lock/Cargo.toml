@@ -9,6 +9,8 @@ name = "olo-lock"
 path = "src/main.rs"
 
 [dependencies]
-olo-kit.workspace = true
+olo-ui.workspace = true
+olo-theme.workspace = true
+olo-xdg.workspace = true
 olo-system.workspace = true
 tracing.workspace = true

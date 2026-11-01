@@ -11,6 +11,7 @@
 
 pub mod agent;
 mod app;
+mod lock;
 pub mod icons;
 pub mod menu;
 pub mod review;
@@ -20,6 +21,7 @@ mod upgrade;
 pub mod widgets;
 
 pub use app::{Frame, WindowOptions, app_id, message_handler, open_window, proxy, run, stay_resident};
+pub use lock::{lock_session, unlock_session};
 pub use menu::{Menu, MenuItem};
 pub use upgrade::{on_upgrade, restored_state};
 pub use gpui;

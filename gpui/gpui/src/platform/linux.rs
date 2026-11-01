@@ -18,6 +18,8 @@ pub(crate) use platform::*;
 pub(crate) use text_system::*;
 #[cfg(feature = "wayland")]
 pub(crate) use wayland::*;
+#[cfg(feature = "wayland")]
+pub use wayland::{lock_session, unlock_session};
 
 #[cfg(feature = "screen-capture")]
 pub(crate) type PlatformScreenCaptureFrame = scap::frame::Frame;

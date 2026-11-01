@@ -5851,13 +5851,18 @@ come back locked (only in the same session: display names get reused). Before sl
 app_server holds a logind delay inhibitor until every output shows the lock
 surface (or 3 s).
 
-`olo-lock` uses the kit's `cx.lock_session()` (`SessionLock::Locked`
-gives one window per output, the first is primary; `cx.unlock_session()`
-ends it) and checks the password with `olo_system::auth` (PAM via
+`olo-lock` (on olo-ui) uses `olo_ui::lock_session(cx, build, on_event)`
+(a window from `build` on every output, and on any added while locked;
+`Locked` once, `Finished` if refused; the first output's window has the
+panel) and `olo_ui::unlock_session()` (sent at once, then quit). GPUI
+takes app_server's `WAYLAND_SOCKET` as a Wayland connection, and a lock
+surface makes no commit before its first configure and checks the password with `olo_system::auth` (PAM via
 libpam, on a thread) while listening for Touch ID with
 `olo_system::fingerprint`. Debug builds take `OLO_PAM_CONFDIR` +
 `OLO_PAM_SERVICE` (passed through by tsession), so tests use a private
-pam_exec service and never a real password:
+pam_exec service and never a real password; then (or with
+`OLO_NO_FINGERPRINT=1`) it leaves the fingerprint reader alone, which is
+the person's own:
 
 ```sh
 printf 'auth required pam_exec.so expose_authtok quiet /path/check.sh\naccount required pam_permit.so\n' > $dir/exec
