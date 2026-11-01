@@ -346,59 +346,24 @@ as they land (with the commit), add new ones as they come up.
      all `render_output`, and in it the GPU submit (asahi's
      agx_flush_batch from the fence) and syncobj waits, ~3 ms a frame
      in the kernel; plane assignment and atomic tests cost 0.0 ms.
-     **Next**: read the scan-out record with the video call on (does
-     Chrome's window reach an overlay plane now; if "overlaps", what
-     overlaps it: decorations? if "format", its modifier); the "draws"
-     vs "finish" split; if finish is the cost, fewer flushes (one fence
-     a frame is already one; look at asahi's batch limit and whether
-     `drmSyncobjWait` in agx_cleanup_batches is the GPU's time for the
-     previous frame); the GPU time of a 5K composite itself (38
-     elements drawn each frame: check the damage is the video's rect,
-     not the output); eDP-1 at 120 Hz dropping ~1 in 240 at 4.8 ms
-     draws. Verify on the hardware after each upgrade: Displays showing
-     0 dropped a minute on DP-1 and eDP-1 with video playing, the
-     pointer smooth at any speed, app_server near 0% with the call on.
-   - **An outside program's `zwp_primary_selection_offer_v1` request
-     refused** (seen 2026-11-01 through olo-wlproxy for pid 21201:
-     "app_server's error on wl_display@1: invalid method 2, object
-     zwp_primary_selection_offer_v1"; the interface has receive and
-     destroy only). Find which program sends opcode 2 (a newer
-     interface version it was told it has?) and whether app_server
-     advertises a version it doesn't serve.
-   - **"gpui: window not found" from the palette and Deskbar** after a
-     window closed under them: GPUI handles kept to windows the
-     compositor closed. Deskbar's bars are pruned now; the palette's
-     and any other app's handles want the same at the kit level.
-   - **Olo's own login and boot** (Ben, 2026-11-01, for after the GPUI
-     refactor is complete): replace GDM with an Olo-native display
-     manager, and have Olo take over the boot visuals as early as it can
-     (Plymouth's place): an "Olo starting up" screen that is an homage
-     to BeOS's boot screen, drawn with sunburst-made graphics
-     (docs/ICONS.md), with a really nice startup sound. Related: an
-     "Upgrading Olo" veil on every display while app_server restarts
-     and the displays settle, in the same style.
-   - **An app_server restart modesets every display** (seen 2026-11-01
-     in the kernel log at each upgrade: apple-dcp `set_digital_out_mode`
-     for each of the three displays, "Already set to timingID" yet done
-     again: the screens freeze for a second or two per restart). The
-     new app_server could keep a CRTC's mode when it is the one already
-     set (the same mode blob, no ALLOW_MODESET commit) and go straight
-     to page flips; where Smithay's surface init insists on a modeset,
-     Olo's Smithay changes that. Until then upgrades of app_server are
-     batched, not one a change.
-   - **app_server's critical path on threads of its own** (Ben,
-     2026-11-01: "why run the risk of a blocking call? threads would
-     make sure we don't accidentally block"): input → pointer plane
-     update → commit never shares a thread with anything that can
-     block. Design: an input-and-cursor thread owning libinput and the
-     cursor planes (a pointer move is a plane property commit, no frame);
-     a render-and-commit thread per display owning its GL context, DRM
-     surface and pacing (a slow 5K frame can't delay the built-in
-     display's); the Wayland clients and IPC on the main loop, handing
-     each display's thread a snapshot of what to draw. Our own
-     synchronous work (importing a client's buffer, a fence, a DCP test
-     or commit) is what blocks today, and the heartbeat (`timings`)
-     finds it. After the reliability work.
+     **Found since** (2026-11-01, later): the 5 ms was Smithay's GLES
+     renderer making a fence per texture drawn (a GPU submit an
+     element); one fence a frame took the 5K's draw to 0.2/1.2 ms
+     (p50/p95), drops to 0–1 a minute, app_server's kernel time from
+     13% to 1.5%. The pointer's remaining "jitter" and "stuck" are the
+     mouse's reports (Razer Viper V2 Pro, 2.4 GHz receiver on a hub,
+     USB autosuspend on): 429 gaps over 5 ms a minute, the longest 39 ms,
+     673 of 1000 reports a second (`PointerHealth`, Activity Monitor ▸
+     Displays ▸ Pointer). `71-olo-input.rules` keeps receivers awake;
+     the radio is the person's to fix (the receiver nearer, its
+     extender, a lower polling rate). **Next**: windows on overlay
+     planes (OLO_OVERLAY_PLANES=1) once the pointer and such a plane
+     agree (a client's cursor on the plane rendered right, or the
+     pointer's plane above every window plane and the window refused
+     while the pointer is drawn in the frame over it); the "draws"
+     0.2 ms and "finish" 0.2 ms are what's left of a frame; app_server
+     at ~11% with a call on is the tick (now once per 8 ms) and looks;
+     per-display render threads (its own TODO).
    - **Supervisor priority tiers** (Ben, 2026-11-01: "it should always
      give the highest priority to the core olo processes and any
      system+input processes important for responsiveness/smoothness,
