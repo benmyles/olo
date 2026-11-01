@@ -99,7 +99,10 @@ impl RenderOnce for Button {
         let w = (((tw + 2.0 * pad).max(self.min_width)) / 2.0).ceil() * 2.0;
         let h = if self.small { SMALL_BUTTON_HEIGHT } else { m::CONTROL_HEIGHT };
         let (label, default, pushed) = (self.label.clone(), self.default, self.pushed);
-        let mut c = control(self.id.clone(), w, h, move |r, s, window, cx| paint_button(r, s, &label, default, pushed, font_size, window, cx)).enabled(self.enabled).agent("Button", self.label.clone(), None);
+        let mut c = control(self.id.clone(), w, h, move |r, s, window, cx| paint_button(r, s, &label, default, pushed, font_size, window, cx)).enabled(self.enabled).focusable().agent("Button", self.label.clone(), None);
+        if default {
+            c = c.default_key();
+        }
         if let Some(f) = self.on_click {
             c = c.on_click(move |b, window, cx| f(b, window, cx));
         }
@@ -141,7 +144,16 @@ fn paint_button(r: Bounds<Pixels>, s: ControlState, label: &str, default: bool, 
     let off = if s.pressed && !pushed { style::hairline(window) } else { px(0.0) };
     let color = if s.enabled { style::c(p.control_text) } else { style::disabled_text(&p) };
     let c = r.center();
-    style::label(window, cx, c.x + off, c.y + off, style::Align::Center, label.to_string(), font_size, style::ui_font(FontWeight::NORMAL), color);
+    let text = style::label(window, cx, c.x + off, c.y + off, style::Align::Center, label.to_string(), font_size, style::ui_font(FontWeight::NORMAL), color);
+    if s.focused {
+        focus_underline(window, text, &p);
+    }
+}
+
+/// BeOS marks the control with the keyboard by underlining its label in
+/// the navigation colour.
+pub(crate) fn focus_underline(window: &mut Window, text: Bounds<Pixels>, p: &olo_theme::Palette) {
+    style::hline_above(window, text.left(), text.right(), text.bottom(), style::c(p.keyboard_navigation));
 }
 
 /// The sunken well check boxes share.
@@ -221,9 +233,13 @@ impl RenderOnce for CheckBox {
                 crate::menu::check_mark(window, mark, ink);
             }
             let color = if s.enabled { style::c(p.panel_text) } else { style::disabled_text(&p) };
-            style::label(window, cx, well.right() + px(m::MARK_GAP), r.center().y, style::Align::Left, label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color);
+            let text = style::label(window, cx, well.right() + px(m::MARK_GAP), r.center().y, style::Align::Left, label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color);
+            if s.focused {
+                focus_underline(window, text, &p);
+            }
         })
         .enabled(self.enabled)
+        .focusable()
         .agent("CheckBox", self.label.clone(), Some(checked && !mixed));
         if let Some(f) = self.on_toggle {
             let next = mixed || !checked;
@@ -302,9 +318,13 @@ impl RenderOnce for RadioButton {
                 circle(window, cx0 - px(1.0), cy0 - px(1.0), 0.9, style::c([lit[0], lit[1], lit[2], 255]));
             }
             let color = if s.enabled { style::c(p.panel_text) } else { style::disabled_text(&p) };
-            style::label(window, cx, r.left() + px(13.0 + m::MARK_GAP), r.center().y, style::Align::Left, label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color);
+            let text = style::label(window, cx, r.left() + px(13.0 + m::MARK_GAP), r.center().y, style::Align::Left, label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color);
+            if s.focused {
+                focus_underline(window, text, &p);
+            }
         })
         .enabled(self.enabled)
+        .focusable()
         .agent("RadioButton", self.label.clone(), Some(selected));
         if let Some(f) = self.on_select {
             c = c.on_click(move |_, window, cx| f(window, cx));

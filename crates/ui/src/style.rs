@@ -299,6 +299,15 @@ pub fn label_fit(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pixels,
     label(window, cx, x, center_y, align, text, font_size, font, color)
 }
 
+/// Selection over `r`, for a thing selected in place with nothing round
+/// it (a part of a bar, a cell flush with its neighbours): the list's
+/// selection colour, see-through, and its edge hairline just inside.
+/// Paint it after the thing's ground and before its text.
+pub fn selection_wash(window: &mut Window, r: Bounds<Pixels>, palette: &Palette) {
+    fill_rect(window, r, c(palette.list_selected_background).opacity(0.7));
+    frame_rect(window, r, c(palette.selection_edge()));
+}
+
 /// A rubber-band selection rectangle (Tracker, desktop, any list): a
 /// one-pixel navigation-blue frame over a faint tint of the same colour.
 pub fn selection_band(window: &mut Window, r: Bounds<Pixels>, palette: &Palette) {

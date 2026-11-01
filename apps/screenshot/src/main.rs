@@ -23,7 +23,7 @@ use olo_ui::{
     Frame, WindowOptions, clipboard,
     file_panel::{self, FilePanel, PanelResult},
     gpui::{
-        self, App, AppContext as _, Bounds, ClipboardEntry, ClipboardItem, Context, Corners, Entity, Image, ImageFormat, IntoElement, KeyDownEvent, InteractiveElement as _, ParentElement as _, Pixels, Render, RenderImage, SharedString, Styled as _, Window, WindowHandle, canvas, div, point, px, size,
+        self, App, AppContext as _, Bounds, ClipboardEntry, ClipboardItem, Context, Corners, Entity, Image, ImageFormat, IntoElement, InteractiveElement as _, ParentElement as _, Pixels, Render, RenderImage, SharedString, Styled as _, Window, WindowHandle, canvas, div, point, px, size,
     },
     instance::{self, Launch},
     metrics as m, style, theme,
@@ -532,12 +532,8 @@ impl Render for Screenshot {
             .child(at(new_x, l.buttons_y, 120.0).child(Button::new("New screenshot").min_width(120.0).enabled(self.busy.is_none()).on_click(move |_, cx| new.update(cx, |s, cx| s.take(cx)))))
             .child(at(save_x, l.buttons_y, bw).child(Button::new("Save").default(true).min_width(bw).enabled(can_save).on_click(move |_, cx| save.update(cx, |s, cx| s.save(cx)))));
 
-        let enter = me.clone();
-        div().size_full().relative().track_focus(&self.focus).child(picture).child(form).child(buttons).on_key_down(move |e: &KeyDownEvent, _, cx| {
-            if e.keystroke.key == "enter" {
-                enter.update(cx, |s, cx| s.save(cx));
-            }
-        })
+        // Return saves: Save is the default button.
+        div().size_full().relative().track_focus(&self.focus).child(picture).child(form).child(buttons)
     }
 }
 

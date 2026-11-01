@@ -112,18 +112,53 @@ impl Frame {
     }
 }
 
+gpui::actions!(olo_frame, [FocusNext, FocusPrev]);
+
+type DefaultClick = std::rc::Rc<dyn Fn(&mut Window, &mut App)>;
+
+/// Each window's default button, as last drawn.
+#[derive(Default)]
+struct DefaultButtons(std::collections::HashMap<gpui::WindowId, DefaultClick>);
+
+impl Global for DefaultButtons {}
+
+/// The window's default button is drawn: Return clicks it.
+pub(crate) fn set_default_button(window: &Window, cx: &mut App, click: DefaultClick) {
+    cx.default_global::<DefaultButtons>().0.insert(window.window_handle().window_id(), click);
+}
+
+/// Tab and ⇧Tab move the keyboard through the window's controls, fields
+/// and lists, as BeOS's keyboard navigation does (a view of its own that
+/// takes Tab, a terminal or an editor, binds it in its key context).
+pub(crate) fn bind_keys(cx: &mut App) {
+    cx.bind_keys([gpui::KeyBinding::new("tab", FocusNext, None), gpui::KeyBinding::new("shift-tab", FocusPrev, None)]);
+}
+
 impl Render for Frame {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         agent::begin_frame(window, cx, &self.title);
+        // Drawn again below if there still is one.
+        cx.default_global::<DefaultButtons>().0.remove(&window.window_handle().window_id());
         let p = theme::palette(cx);
         let mut root = div()
             .size_full()
             .track_focus(&self.focus)
+            .on_action(|_: &FocusNext, window, _| window.focus_next())
+            .on_action(|_: &FocusPrev, window, _| window.focus_prev())
             // The menu bar's keys, when nothing in the window took them
             // (a text field's ⌘C is its own).
             .on_key_down(|e: &KeyDownEvent, window, cx| {
                 if let Some((command, on_command)) = crate::menu::bar_shortcut(window, cx, &e.keystroke) {
                     on_command(&command, window, cx);
+                    cx.stop_propagation();
+                    return;
+                }
+                // Return nothing took: the default button.
+                if e.keystroke.key == "enter"
+                    && !e.keystroke.modifiers.modified()
+                    && let Some(click) = cx.try_global::<DefaultButtons>().and_then(|d| d.0.get(&window.window_handle().window_id())).cloned()
+                {
+                    click(window, cx);
                     cx.stop_propagation();
                 }
             })
@@ -235,6 +270,7 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
         theme::init(cx);
         agent::init(cx, &app_id);
         crate::widgets::bind_keys(cx);
+        bind_keys(cx);
         crate::upgrade::init(cx);
         crate::icons::init(cx);
         let (tx, mut rx) = mpsc::unbounded::<Box<dyn Any + Send>>();
@@ -256,6 +292,8 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
         .detach();
         cx.on_window_closed(|cx| {
             agent::forget_closed(cx);
+            let open: std::collections::HashSet<gpui::WindowId> = cx.windows().iter().map(|w| w.window_id()).collect();
+            cx.default_global::<DefaultButtons>().0.retain(|id, _| open.contains(id));
             crate::menu::forget_closed(cx);
             if cx.windows().is_empty() && !cx.has_global::<Resident>() {
                 cx.quit();

@@ -3577,6 +3577,16 @@ impl Window {
         self.next_frame.dispatch_tree.set_focus_id(focus_handle.id);
     }
 
+    /// Olo: puts `focus_handle` in the window's tab order where this
+    /// element is drawn (a div does this for a focus handle it tracks): for
+    /// elements of their own that take the keyboard (BeOS's controls).
+    ///
+    /// This method should only be called as part of the paint phase of element drawing.
+    pub fn insert_tab_stop(&mut self, focus_handle: &FocusHandle) {
+        self.invalidator.debug_assert_paint();
+        self.next_frame.tab_stops.insert(focus_handle);
+    }
+
     /// Sets the view id for the current element, which will be used to manage view caching.
     ///
     /// This method should only be called as part of element prepaint. We plan on removing this

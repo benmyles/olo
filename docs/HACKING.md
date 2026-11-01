@@ -1541,7 +1541,18 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   whether the pointer is over it or holding it down, draws itself from
   that through a closure, takes a click (press and release both on
   it), says what it is to agents, and is drawn faded (half opacity, as
-  egui fades a disabled widget) when it can't be used. A canvas
+  egui fades a disabled widget) when it can't be used.
+  Keyboard navigation, as BeOS's: Tab and ⇧Tab (bound in the Frame)
+  move the keyboard through the window's tab stops in drawing order:
+  text fields, lists and sliders (their focus handles are tab stops; a
+  disabled field drops out), and every button, check box, radio button
+  and menu field (`Control::focusable`: a focus handle kept by the
+  control's id, `Window::insert_tab_stop`, the label underlined in the
+  navigation colour while it has the keyboard, Space clicks it). A
+  default button (`Button::default`, `Control::default_key`) answers
+  Return from anywhere in its window when what has the keyboard
+  doesn't take Return itself (a field's Return is its own, an alert's
+  is its action). A canvas
   absolutely placed in a padded element needs `.inset_0()`, not
   `.size_full()`: without insets it starts after the padding.
 - Custom drawing in a `canvas` paints with GPUI: `window.paint_quad`
@@ -1605,7 +1616,9 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   not) and `ColumnHeader`s. `examples/list.rs` is the egui demo's
   Lists tab, for comparing.
 - `style::label_fit` (a label cut short with "…" to a width, measured
-  as shaped), `style::selection_band` and `style::snap_centred`.
+  as shaped), `style::selection_band`, `style::selection_wash` (a thing
+  selected in place: the selection colour see-through, its edge
+  inside) and `style::snap_centred`.
 - `widgets::Graph::new(id, series, now)` (live series of timed samples,
   as the egui kit's `graph`: lines drawn as GPU segments over faint
   fills, a grid in quarters and time lines that move with the samples,

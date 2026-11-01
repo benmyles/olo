@@ -75,9 +75,7 @@ impl RenderOnce for MenuField {
         control(self.id.clone(), width, m::CONTROL_HEIGHT, move |r, s, window, cx| {
             let p = theme::palette(cx);
             let color = if s.enabled { style::c(p.panel_text) } else { style::disabled_text(&p) };
-            if let Some(l) = &label {
-                style::label(window, cx, r.left(), r.center().y, style::Align::Left, l.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color);
-            }
+            let named = label.as_ref().map(|l| style::label(window, cx, r.left(), r.center().y, style::Align::Left, l.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color));
             let field = field_bounds(r, label_w);
             // A raised field with a drop-down mark.
             let base = p.menu_background;
@@ -85,9 +83,14 @@ impl RenderOnce for MenuField {
             style::vgradient(window, inner, style::tint(base, 0.82), style::shade(&p, base, 1.05));
             style::frame_rect(window, field, style::shade(&p, p.panel_background, 1.55));
             style::bevel(window, inner, style::c(p.shine), style::shade(&p, base, 1.2));
-            window.with_content_mask(Some(gpui::ContentMask { bounds: Bounds::from_corners(field.origin, point(field.right() - px(15.0 + m::TIGHT), field.bottom())) }), |window| {
-                style::label(window, cx, field.left() + px(m::TEXT_INSET), field.center().y, style::Align::Left, shown.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color);
+            let value = window.with_content_mask(Some(gpui::ContentMask { bounds: Bounds::from_corners(field.origin, point(field.right() - px(15.0 + m::TIGHT), field.bottom())) }), |window| {
+                style::label(window, cx, field.left() + px(m::TEXT_INSET), field.center().y, style::Align::Left, shown.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color)
             });
+            // With the keyboard: its label underlined (the choice, when
+            // it has none).
+            if s.focused {
+                super::buttons::focus_underline(window, named.unwrap_or(value), &p);
+            }
             let ax = field.right() - px(11.0);
             let ay = px(f32::from(field.center().y).round());
             let mut path = PathBuilder::fill();
@@ -100,6 +103,7 @@ impl RenderOnce for MenuField {
             }
         })
         .enabled(self.enabled)
+        .focusable()
         .agent("ComboBox", name, None)
         .on_click(move |at, window, cx| {
             // Opened from the click: the choices, the current one over

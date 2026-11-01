@@ -108,7 +108,7 @@ impl ListModel {
         cx.new(|cx| ListModel {
             state: ListState { multiple, ..Default::default() },
             scroll: UniformListScrollHandle::new(),
-            focus: cx.focus_handle(),
+            focus: cx.focus_handle().tab_stop(true),
             widths: Vec::new(),
             typing: TypeSelect::default(),
             drag: None,

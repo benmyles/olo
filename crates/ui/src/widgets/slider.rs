@@ -97,7 +97,7 @@ impl Slider {
 
 impl RenderOnce for Slider {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let state: Entity<SliderState> = window.use_keyed_state(SharedString::from(format!("olo-slider-{}", self.id)), cx, |_, cx| SliderState { focus: cx.focus_handle(), dragging: false });
+        let state: Entity<SliderState> = window.use_keyed_state(SharedString::from(format!("olo-slider-{}", self.id)), cx, |_, cx| SliderState { focus: cx.focus_handle().tab_stop(true), dragging: false });
         let focus = state.read(cx).focus.clone();
         let top = if self.label.is_some() || self.value_text.is_some() { m::LABEL_ROW + m::TIGHT } else { 0.0 };
         let bottom = if self.limits.is_some() { m::LABEL_ROW } else { 0.0 };

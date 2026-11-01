@@ -148,7 +148,7 @@ impl Focusable for TextField {
 impl TextField {
     pub fn new(cx: &mut Context<Self>) -> TextField {
         TextField {
-            focus: cx.focus_handle(),
+            focus: cx.focus_handle().tab_stop(true),
             text: String::new(),
             selected: 0..0,
             reversed: false,
@@ -194,6 +194,8 @@ impl TextField {
     pub fn set_enabled(&mut self, on: bool, cx: &mut Context<Self>) {
         if self.enabled != on {
             self.enabled = on;
+            // Tab passes over a field that can't be used.
+            self.focus = self.focus.clone().tab_stop(on);
             cx.notify();
         }
     }
