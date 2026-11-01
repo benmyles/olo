@@ -1,5 +1,6 @@
 //! Following app_server's look: the palette (theme, colour set, light or
-//! dark), in a GPUI global every window draws from, and the person's
+//! dark), in a GPUI global every window draws from, the keyboard profile
+//! (for menus' keys, `olo_kit_base::keys`), and the person's
 //! choice of how text is drawn on each display (Preferences ▸ Display,
 //! `olo_protocol::panels`). A thread listens for app_server's events (it
 //! sleeps until one comes) and hands them to the UI thread, which
@@ -27,7 +28,7 @@ pub fn palette(cx: &App) -> Arc<Palette> {
 }
 
 enum Change {
-    Look(Appearance),
+    Look(Box<olo_protocol::Settings>),
     Outputs(Vec<OutputInfo>),
 }
 
@@ -49,7 +50,11 @@ fn outputs() -> Option<Vec<OutputInfo>> {
 
 fn initial() -> Appearance {
     let env = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
-    let mut a = olo_protocol::socket_path().and_then(|_| settings()).map(|s| s.appearance).unwrap_or_else(|| Appearance {
+    let settings = olo_protocol::socket_path().and_then(|_| settings());
+    if let Some(s) = &settings {
+        olo_kit_base::keys::set(&s.keyboard.profile);
+    }
+    let mut a = settings.map(|s| s.appearance).unwrap_or_else(|| Appearance {
         colors: env("OLO_COLORS").unwrap_or_default(),
         ..Appearance::default()
     });
@@ -78,7 +83,7 @@ pub(crate) fn init(cx: &mut App) {
                 // (Re)connected, perhaps to a restarted app_server: catch
                 // up, then follow.
                 if let Some(s) = settings()
-                    && tx.unbounded_send(Change::Look(s.appearance)).is_err()
+                    && tx.unbounded_send(Change::Look(Box::new(s))).is_err()
                 {
                     return;
                 }
@@ -92,7 +97,7 @@ pub(crate) fn init(cx: &mut App) {
                 {
                     for event in events {
                         let change = match event {
-                            Ok(Event::SettingsChanged { settings }) => Change::Look(settings.appearance),
+                            Ok(Event::SettingsChanged { settings }) => Change::Look(Box::new(settings)),
                             Ok(Event::OutputsChanged { outputs }) => Change::Outputs(outputs),
                             _ => continue,
                         };
@@ -109,7 +114,9 @@ pub(crate) fn init(cx: &mut App) {
         while let Some(change) = rx.next().await {
             let _ = cx.update(|cx| {
                 match change {
-                    Change::Look(a) => {
+                    Change::Look(settings) => {
+                        olo_kit_base::keys::set(&settings.keyboard.profile);
+                        let a = settings.appearance;
                         tracing::debug!("look: {:?}", a.effective_theme);
                         let palette = Arc::new(a.palette());
                         if *palette == *cx.global::<Theme>().palette {

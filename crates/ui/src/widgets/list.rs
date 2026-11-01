@@ -371,10 +371,17 @@ impl RenderOnce for ColumnListView {
         let base_handle = scroll.0.borrow().base_handle.clone();
         let (rows, row_h, columns, handlers) = (self.rows, self.row_height, self.columns.clone(), self.handlers.clone());
         let total: f32 = widths(model.read(cx), &columns).iter().sum();
-        // Inside the sunken frame's two lines, on device pixels.
+        // Inside the sunken frame's two lines, on device pixels; the
+        // header's bottom and the bars' edges too (layout rounds a box's
+        // offset from its parent but its size from where it ends, so a
+        // header 22.5 device pixels tall at 1.25× and rows 24.5 down
+        // round a pixel apart).
         let s = window.scale_factor();
+        let dev = |v: f32| (v * s).round() / s;
         let edge = style::line_pixels(s) * 2.0 / s;
-        let hbar = if sideways { SCROLL_BAR } else { 0.0 };
+        let head = dev(edge + HEADER_HEIGHT);
+        let bar = dev(edge + SCROLL_BAR);
+        let hbar = if sideways { bar } else { edge };
 
         // The rows in view, each a canvas drawing its cells.
         let (list_model, list_columns, cell) = (model.clone(), columns.clone(), self.cell.clone());
@@ -676,23 +683,18 @@ impl RenderOnce for ColumnListView {
         .absolute()
         .inset_0();
 
-        // Behind: the rows' ground, the corner between the bars, what's
-        // said when there are none.
+        // Behind the rows (where layout put them, as it put the header):
+        // their ground, and what's said when there are none.
         let empty = (rows == 0).then(|| self.empty.clone()).flatten();
-        let backdrop = canvas(
+        let ground = canvas(
             |_, _, _| {},
             move |b, _, window, cx| {
                 let p = theme::palette(cx);
-                let inner = style::inset(window, b, 2.0);
-                let rows_area = Bounds::from_corners(point(inner.left(), inner.top() + px(HEADER_HEIGHT)), point(inner.right() - px(SCROLL_BAR), inner.bottom() - px(hbar)));
-                style::fill_rect(window, rows_area, style::c(p.list_background));
-                if hbar > 0.0 {
-                    style::fill_rect(window, Bounds::from_corners(point(inner.right() - px(SCROLL_BAR), inner.bottom() - px(hbar)), inner.bottom_right()), style::c(p.panel_background));
-                }
+                style::fill_rect(window, b, style::c(p.list_background));
                 if let Some(text) = &empty {
                     let dim = style::c(olo_theme::mix(p.list_item_text, p.list_background, 0.5));
                     let font = style::ui_font(FontWeight::NORMAL);
-                    style::label_fit(window, cx, rows_area.center().x, rows_area.center().y, style::Align::Center, text.clone(), style::PLAIN_SIZE, font, dim, rows_area.size.width - px(2.0 * m::SPACING));
+                    style::label_fit(window, cx, b.center().x, b.center().y, style::Align::Center, text.clone(), style::PLAIN_SIZE, font, dim, b.size.width - px(2.0 * m::SPACING));
                 }
             },
         )
@@ -715,12 +717,14 @@ impl RenderOnce for ColumnListView {
             .size_full()
             .key_context(CONTEXT)
             .track_focus(&focus)
-            .child(backdrop)
-            .child(div().absolute().left(px(edge)).top(px(edge + HEADER_HEIGHT)).right(px(edge + SCROLL_BAR)).bottom(px(edge + hbar)).child(list).child(pointer))
-            .child(div().absolute().left(px(edge)).top(px(edge)).right(px(edge)).h(px(HEADER_HEIGHT)).child(header))
-            .child(div().absolute().top(px(edge + HEADER_HEIGHT)).right(px(edge)).bottom(px(edge + hbar)).w(px(SCROLL_BAR)).child(ScrollBar::vertical(SharedString::from(format!("{}-v", self.id)), base_handle.clone())));
+            .child(div().absolute().left(px(edge)).top(px(head)).right(px(bar)).bottom(px(hbar)).child(ground).child(list).child(pointer))
+            .child(div().absolute().left(px(edge)).top(px(edge)).right(px(edge)).h(px(head - edge)).child(header))
+            .child(div().absolute().top(px(head)).right(px(edge)).bottom(px(hbar)).w(px(bar - edge)).child(ScrollBar::vertical(SharedString::from(format!("{}-v", self.id)), base_handle.clone())));
         if sideways {
-            root = root.child(div().absolute().left(px(edge)).right(px(edge + SCROLL_BAR)).bottom(px(edge)).h(px(SCROLL_BAR)).child(ScrollBar::horizontal(SharedString::from(format!("{}-h", self.id)), base_handle)));
+            let corner = canvas(|_, _, _| {}, |b, _, window, cx| style::fill_rect(window, b, style::c(theme::palette(cx).panel_background))).size_full();
+            root = root
+                .child(div().absolute().left(px(edge)).right(px(bar)).bottom(px(edge)).h(px(bar - edge)).child(ScrollBar::horizontal(SharedString::from(format!("{}-h", self.id)), base_handle)))
+                .child(div().absolute().right(px(edge)).bottom(px(edge)).w(px(bar - edge)).h(px(bar - edge)).child(corner));
         }
 
         // Keys: moving (with ⇧, growing from the anchor), opening, all,

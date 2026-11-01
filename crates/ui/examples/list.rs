@@ -1,12 +1,14 @@
 //! The column list view, as the egui kit's demo shows one (its Lists
 //! tab: the same processes and columns), for comparing the two closely,
-//! with a context menu and a note of what was opened.
+//! under the demo's menu bar, with a context menu and a note of what was
+//! opened or chosen.
 
 use std::rc::Rc;
 
 use olo_ui::{
     WindowOptions,
     gpui::{AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString, Styled as _, Window, div, px},
+    MenuBar,
     menu::{self, Menu},
     metrics as m,
     widgets::{Column, ColumnListView, ListModel, StringView},
@@ -30,6 +32,17 @@ const ROWS: &[(&str, &str, &str)] = &[
 struct Lists {
     list: Entity<ListModel>,
     last: SharedString,
+    wrap: bool,
+}
+
+impl Lists {
+    fn menus(&self) -> Vec<Menu> {
+        vec![
+            Menu::new("File").item("New", "new").key("n").item("Open…", "open").key("o").separator().submenu(Menu::new("Recent").item("one.txt", "r1").item("two.txt", "r2")).separator().item("Close", "close").key("w").item("Quit", "quit").key("q"),
+            Menu::new("Edit").item("Undo", "undo").key("z").item("Redo", "redo").shift_key("z").separator().item("Cut", "cut").key("x").item("Copy", "copy").key("c").item("Paste", "paste").key("v").item("Select All", "all").key("a"),
+            Menu::new("Options").item("Wrap Lines", "wrap").checked(self.wrap),
+        ]
+    }
 }
 
 impl Render for Lists {
@@ -58,15 +71,28 @@ impl Render for Lists {
             });
         });
         let rows: Rc<str> = format!("Opened: {}", self.last).into();
-        div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).child(div().flex_1().child(list)).child(StringView::new(rows.to_string()).dim(true))
+        let me = cx.entity();
+        let bar = MenuBar::new(self.menus(), move |command, window, cx| match command {
+            "quit" => cx.quit(),
+            "close" => window.remove_window(),
+            _ => me.update(cx, |l, cx| {
+                if command == "wrap" {
+                    l.wrap = !l.wrap;
+                }
+                l.last = format!("command {command}").into();
+                cx.notify();
+            }),
+        });
+        let content = div().flex_1().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).child(div().flex_1().child(list)).child(StringView::new(rows.to_string()).dim(true));
+        div().size_full().flex().flex_col().child(bar).child(content)
     }
 }
 
 fn main() {
     olo_ui::run("olo.list-example", |cx| {
-        olo_ui::open_window(cx, WindowOptions::new("Lists", 380.0, 300.0), |_, cx| {
+        olo_ui::open_window(cx, WindowOptions::new("Lists", 380.0, 326.0), |_, cx| {
             let list = ListModel::new(cx, true);
-            cx.new(|_| Lists { list, last: "nothing".into() })
+            cx.new(|_| Lists { list, last: "nothing".into(), wrap: true })
         });
     });
 }

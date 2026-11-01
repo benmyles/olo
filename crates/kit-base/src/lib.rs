@@ -2,12 +2,13 @@
 //! (`instance`), the desktop's settings, notifications, files and
 //! places, watching folders, Tracker, the spacing system (`metrics`),
 //! and the socket agents and the command palette read apps through
-//! (`commands`), with what the layout review finds (`review`), and a
-//! list's selection (`list`).
+//! (`commands`), with what the layout review finds (`review`), a list's
+//! selection (`list`) and the keyboard profile's keys (`keys`).
 
 pub mod commands;
 pub mod files;
 pub mod instance;
+pub mod keys;
 pub mod layout_review;
 pub mod list;
 pub mod metrics;

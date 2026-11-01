@@ -115,13 +115,8 @@ impl Render for Gallery {
             )
             .child(StringView::new(format!("Alert answer: {}", self.answer)).dim(true))
             .child(div().w(px(300.0)).child(StatusBar::new(0.42).label("Copying files…").trailing("3 of 7")))
-            .child(
-                div()
-                    .flex()
-                    .gap(px(m::SPACING))
-                    .child(div().h(px(140.0)).w(px(120.0)).child(ScrollView::new("rows", &self.rows).child(div().px(px(6.0)).children((1..=40).map(|i| StringView::new(format!("Row {i}")))))))
-                    .child(div().h(px(140.0)).w(px(300.0)).child(self.list(cx))),
-            )
+            .child(div().h(px(100.0)).w(px(220.0)).child(ScrollView::new("rows", &self.rows).child(div().px(px(6.0)).children((1..=40).map(|i| StringView::new(format!("Row {i}")))))))
+            .child(div().h(px(140.0)).w(px(300.0)).child(self.list(cx)))
     }
 }
 
@@ -169,7 +164,7 @@ impl Gallery {
 
 fn main() {
     olo_ui::run("olo.gallery", |cx| {
-        olo_ui::open_window(cx, WindowOptions::new("Gallery", 480.0, 480.0), |_, cx| {
+        olo_ui::open_window(cx, WindowOptions::new("Gallery", 480.0, 610.0), |_, cx| {
             let name = text_field(cx, |f| f.name("Name"));
             name.update(cx, |f, cx| f.set_text("Hello, BeOS", cx));
             let files = ListModel::new(cx, true);

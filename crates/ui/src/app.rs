@@ -3,7 +3,7 @@
 use std::any::Any;
 
 use futures::{StreamExt, channel::mpsc};
-use gpui::{AnyView, App, AppContext as _, Application, Bounds, Context, Entity, Global, IntoElement, ParentElement as _, Render, SharedString, Styled as _, TitlebarOptions, Window, WindowBounds, WindowHandle, canvas, div, px, size};
+use gpui::{AnyView, App, AppContext as _, Application, Bounds, Context, Entity, FocusHandle, Global, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render, SharedString, Styled as _, TitlebarOptions, Window, WindowBounds, WindowHandle, canvas, div, px, size};
 use olo_kit_base::Proxy;
 
 use crate::{agent, style, theme};
@@ -100,6 +100,9 @@ pub struct Frame {
     title: SharedString,
     content: AnyView,
     panel: bool,
+    /// Has the keyboard when nothing in the window does, so the menu
+    /// bar's keys reach it.
+    focus: FocusHandle,
 }
 
 impl Frame {
@@ -115,6 +118,15 @@ impl Render for Frame {
         let p = theme::palette(cx);
         let mut root = div()
             .size_full()
+            .track_focus(&self.focus)
+            // The menu bar's keys, when nothing in the window took them
+            // (a text field's ⌘C is its own).
+            .on_key_down(|e: &KeyDownEvent, window, cx| {
+                if let Some((command, on_command)) = crate::menu::bar_shortcut(window, cx, &e.keystroke) {
+                    on_command(&command, window, cx);
+                    cx.stop_propagation();
+                }
+            })
             .font_family(style::UI_FONT)
             .text_size(px(style::PLAIN_SIZE))
             .line_height(gpui::relative(style::LINE_HEIGHT))
@@ -167,7 +179,12 @@ pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, bu
         },
         move |window, cx| {
             let content = build(window, cx).into();
-            cx.new(|_| Frame { title, content, panel })
+            let frame = cx.new(|cx| Frame { title, content, panel, focus: cx.focus_handle() });
+            if window.focused(cx).is_none() {
+                let focus = frame.read(cx).focus.clone();
+                window.focus(&focus);
+            }
+            frame
         },
     )
     .ok()
@@ -211,6 +228,7 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
     let app_id = app_id.to_owned();
     Application::new().run(move |cx: &mut App| {
         cx.set_global(AppId(app_id.clone()));
+        olo_kit_base::keys::set_app_id(&app_id);
         theme::init(cx);
         agent::init(cx, &app_id);
         crate::widgets::bind_keys(cx);
@@ -235,6 +253,7 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
         .detach();
         cx.on_window_closed(|cx| {
             agent::forget_closed(cx);
+            crate::menu::forget_closed(cx);
             if cx.windows().is_empty() && !cx.has_global::<Resident>() {
                 cx.quit();
             }

@@ -13,6 +13,7 @@ pub mod agent;
 mod app;
 mod lock;
 pub mod icons;
+pub mod keys;
 pub mod menu;
 pub mod review;
 pub mod style;
@@ -22,7 +23,7 @@ pub mod widgets;
 
 pub use app::{Frame, WindowOptions, app_id, message_handler, open_window, proxy, run, stay_resident};
 pub use lock::{lock_session, unlock_session};
-pub use menu::{Menu, MenuItem};
+pub use menu::{Menu, MenuBar, MenuItem};
 pub use upgrade::{on_upgrade, restored_state};
 pub use gpui;
 pub use olo_kit_base::{Proxy, commands, files, instance, metrics, notify, places, settings, tracker, watch};

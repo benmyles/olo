@@ -139,14 +139,27 @@ fn answer(query: Query, cx: &mut App) {
                     cx.global_mut::<Agents>().menus = menus;
                     out
                 }
-                Some(a) => Some(Menus { app_id: a.app_id.clone(), entries: Vec::new() }),
+                // Else the front window's menu bar.
+                Some(a) => {
+                    let app_id = a.app_id.clone();
+                    let bar = front(cx).and_then(|w| crate::menu::bar_menus(w.window_id(), cx));
+                    let entries = bar.map(|(menus, _)| menus.iter().flat_map(|m| m.entries(&app_id).entries).collect()).unwrap_or_default();
+                    Some(Menus { app_id, entries })
+                }
                 None => None,
             };
             let _ = reply.send(menus.unwrap_or_default());
         }
         Query::Invoke(command, reply) => {
             let invoke = cx.default_global::<Agents>().invoke.take();
-            let ok = invoke.as_ref().is_some_and(|f| f(&command, cx));
+            let ok = match &invoke {
+                Some(f) => f(&command, cx),
+                // The front window's menu bar's, if it has the command.
+                None => front(cx)
+                    .and_then(|w| Some((w, crate::menu::bar_menus(w.window_id(), cx)?)))
+                    .filter(|(_, (menus, _))| menus.iter().any(|m| m.find_action(&command).is_some_and(|a| a.enabled)))
+                    .is_some_and(|(w, (_, on_command))| w.update(cx, |_, window, cx| on_command(&command, window, cx)).is_ok()),
+            };
             cx.default_global::<Agents>().invoke = invoke;
             let _ = reply.send(ok);
         }
@@ -172,6 +185,11 @@ fn answer(query: Query, cx: &mut App) {
         }
         Query::Focus(_) | Query::WindowOver(_) | Query::WindowDropped(_) => {}
     }
+}
+
+/// The window in front: the active one, else the first.
+fn front(cx: &App) -> Option<AnyWindowHandle> {
+    cx.active_window().or_else(|| cx.windows().first().copied())
 }
 
 /// Starts answering on the app's socket.

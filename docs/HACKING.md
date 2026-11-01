@@ -1617,6 +1617,20 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   icons, keys drawn as the kit's key combos, scrolling a menu taller
   than the screen, and press-drag-release choosing from the press that
   opened it.)
+- `MenuBar::new(menus, on_command)` at the top of a window's view: the
+  BeOS menu bar as the egui kit draws it. A press on a title opens its
+  menu under it; with one open, sliding across the bar opens the
+  others; a press on the open title puts it away. Items take keys with
+  `Menu::key("w")` / `shift_key("z")` / `shortcut(..)` (a Mac's, as
+  for the egui kit: the command key is Ctrl to an app), and
+  `menu::resolve` gives every item the keys its command has in the
+  keyboard profile (`olo_kit_base::keys`, shared with the egui kit's
+  logic: Mac, Windows or BeOS keys and labels, followed live from
+  app_server's settings). The window's `Frame` has the keyboard when
+  nothing in it does and takes the bar's keys that nothing else took
+  (a text field's ⌘C stays its own). With no `agent::set_menus`, the
+  command palette reads and invokes the front window's bar.
+  `Menu::keys_from(bar)` gives a context menu the bar's keys.
 - `WindowOptions::floating()`: the xdg-toplevel-tag `floating`, so
   app_server floats it over auto-tiled windows.
 - `WindowOptions::layer(namespace, layer, (top, bottom, left, right))`

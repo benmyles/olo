@@ -13,10 +13,14 @@
 use std::{cell::RefCell, rc::Rc};
 
 use gpui::{
-    AnyWindowHandle, App, AppContext as _, Bounds, Context, Corner, FocusHandle, Focusable, FontWeight, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Render, SharedString, Styled as _, Window, WindowBounds, WindowHandle, WindowKind, canvas, div, point, px, size,
+    AnyWindowHandle, App, AppContext as _, Bounds, Context, Corner, FocusHandle, Focusable, FontWeight, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Render, RenderOnce, SharedString, Styled as _, Window, WindowBounds, WindowHandle, WindowKind, canvas, div, point, px, size,
 };
 
-use crate::{agent, style, theme};
+use crate::{
+    agent,
+    keys::{self, Shortcut},
+    style, theme,
+};
 
 pub const ITEM_HEIGHT: f32 = 20.0;
 const SEPARATOR_HEIGHT: f32 = 10.0;
@@ -48,7 +52,11 @@ pub struct Action {
     pub command: String,
     pub enabled: bool,
     pub checked: bool,
-    /// Its keys as shown ("⌘C").
+    /// Its keys as the app presses them (the command key is Ctrl):
+    /// apps give the Mac's ([`Menu::key`]), [`resolve`] the profile's.
+    pub shortcut: Option<Shortcut>,
+    /// Its keys as shown ("⌘C", "Ctrl+C"): the shortcut's, or keys the
+    /// window doesn't take itself (a desktop shortcut, a chord).
     pub keys: Option<String>,
 }
 
@@ -89,12 +97,69 @@ impl Menu {
         self
     }
 
-    /// The last item's keys, as shown ("⌘C").
+    /// The last item's keys, as shown ("⌘C"), when not a shortcut of
+    /// the window's own (a desktop shortcut, a chord).
     pub fn keys(mut self, keys: impl Into<String>) -> Menu {
         if let Some(MenuItem::Action(a)) = self.items.last_mut() {
             a.keys = Some(keys.into());
         }
         self
+    }
+
+    /// The last item pressed with the command key and `key` (as GPUI
+    /// names it: "w", "f3", "="): ⌘W on a Mac's keys, Ctrl+W on
+    /// Windows'; the profile's keys for its command win ([`resolve`]).
+    pub fn key(self, key: &str) -> Menu {
+        self.shortcut(Shortcut::command(keys::evdev(key)))
+    }
+
+    /// With Shift too: ⇧⌘Z.
+    pub fn shift_key(self, key: &str) -> Menu {
+        self.shortcut(Shortcut::command(keys::evdev(key)).shifted())
+    }
+
+    /// Any chord: with Alt, or a key of its own.
+    pub fn shortcut(mut self, shortcut: Shortcut) -> Menu {
+        if let Some(MenuItem::Action(a)) = self.items.last_mut() {
+            a.shortcut = Some(shortcut);
+        }
+        self
+    }
+
+    /// The command its keys press, searching submenus too.
+    pub fn find_shortcut(&self, k: &gpui::Keystroke) -> Option<&str> {
+        self.items.iter().find_map(|item| match item {
+            MenuItem::Action(a) if a.enabled && a.shortcut.is_some_and(|s| keys::pressed(&s, k)) => Some(a.command.as_str()),
+            MenuItem::Submenu(m) => m.find_shortcut(k),
+            _ => None,
+        })
+    }
+
+    /// The item for `command`, searching submenus too.
+    pub fn find_action(&self, command: &str) -> Option<&Action> {
+        self.items.iter().find_map(|item| match item {
+            MenuItem::Action(a) if a.command == command => Some(a),
+            MenuItem::Submenu(m) => m.find_action(command),
+            _ => None,
+        })
+    }
+
+    /// Gives every item without keys the keys its command has in `bar`
+    /// (the window's menu bar), so a command shows its shortcut in a
+    /// context menu too without the app saying it twice.
+    pub fn keys_from(&mut self, bar: &[Menu]) {
+        for item in &mut self.items {
+            match item {
+                MenuItem::Action(a) if a.shortcut.is_none() && a.keys.is_none() => {
+                    if let Some(b) = bar.iter().find_map(|m| m.find_action(&a.command)) {
+                        a.shortcut = b.shortcut;
+                        a.keys = b.keys.clone();
+                    }
+                }
+                MenuItem::Submenu(m) => m.keys_from(bar),
+                _ => {}
+            }
+        }
     }
 
     fn any_enabled(&self) -> bool {
@@ -122,6 +187,45 @@ impl Menu {
         walk(self, &mut Vec::new(), &mut entries);
         olo_kit_base::commands::Menus { app_id: app_id.into(), entries }
     }
+}
+
+/// Gives `menus`' items the keys their commands have in the keyboard
+/// profile, as the platform writes them; a terminal-style window's
+/// (`raw`) as it presses them. Every app's keys (Copy, Close) go to items
+/// the app gave keys; the app's own in the profile go to its items
+/// whether or not it did. The menu bar does this to its menus.
+pub fn resolve(menus: &mut [Menu], raw: bool) {
+    fn walk(items: &mut [MenuItem], raw: bool) {
+        for item in items {
+            match item {
+                MenuItem::Action(a) => match olo_kit_base::keys::known(&a.command, raw) {
+                    Some(known) if known.own || a.shortcut.is_some() => {
+                        a.shortcut = known.keys.as_ref().map(|(s, _)| *s);
+                        a.keys = known.keys.map(|(_, label)| label);
+                    }
+                    Some(_) => {}
+                    None => {
+                        if let Some(s) = a.shortcut.filter(|_| a.keys.is_none()) {
+                            a.keys = Some(s.label());
+                            if cfg!(debug_assertions) {
+                                olo_kit_base::keys::unlisted(&a.command, &s);
+                            }
+                        }
+                    }
+                },
+                MenuItem::Submenu(m) => walk(&mut m.items, raw),
+                MenuItem::Separator => {}
+            }
+        }
+    }
+    for m in menus {
+        walk(&mut m.items, raw);
+    }
+}
+
+/// The command `k` presses in `menus`, if any.
+pub fn find_shortcut(menus: &[Menu], k: &gpui::Keystroke) -> Option<String> {
+    menus.iter().find_map(|m| m.find_shortcut(k)).map(str::to_owned)
 }
 
 /// What to do with the command chosen, in the window the menu opened over.
@@ -158,7 +262,7 @@ fn popup_size(window: &mut Window, menu: &Menu) -> (f32, f32) {
 /// the window's content). `on_choose` gets the command chosen, in
 /// `window`.
 pub fn popup(window: &mut Window, cx: &mut App, menu: Menu, anchor: Bounds<Pixels>, corner: Corner, on_choose: impl Fn(&str, &mut Window, &mut App) + 'static) -> Option<WindowHandle<MenuPopup>> {
-    open(window, cx, menu, Place { anchor, corner, ..Place::default() }, Rc::new(on_choose), None)
+    open(window, cx, menu, Place { anchor, corner, ..Place::default() }, Rc::new(on_choose), None, None)
 }
 
 /// Opens `menu` over `field` (in the window's content) with item
@@ -167,7 +271,7 @@ pub fn popup(window: &mut Window, cx: &mut App, menu: Menu, anchor: Bounds<Pixel
 pub fn popup_over(window: &mut Window, cx: &mut App, menu: Menu, field: Bounds<Pixels>, current: usize, on_choose: impl Fn(&str, &mut Window, &mut App) + 'static) -> Option<WindowHandle<MenuPopup>> {
     let dy = POPUP_PAD + item_offset(&menu, current) - (f32::from(field.size.height) - ITEM_HEIGHT) / 2.0;
     let place = Place { anchor: field, corner: Corner::TopLeft, offset: point(px(0.0), px(-dy.round())), min_width: f32::from(field.size.width).round(), selected: Some(current) };
-    open(window, cx, menu, place, Rc::new(on_choose), None)
+    open(window, cx, menu, place, Rc::new(on_choose), None, None)
 }
 
 /// Where item `i` begins below the menu's first.
@@ -197,7 +301,7 @@ pub fn context_menu(window: &mut Window, cx: &mut App, menu: Menu, position: gpu
     popup(window, cx, menu, anchor, Corner::TopLeft, on_choose)
 }
 
-fn open(window: &mut Window, cx: &mut App, menu: Menu, place: Place, on_choose: OnChoose, parent_menu: Option<WindowHandle<MenuPopup>>) -> Option<WindowHandle<MenuPopup>> {
+fn open(window: &mut Window, cx: &mut App, menu: Menu, place: Place, on_choose: OnChoose, parent_menu: Option<WindowHandle<MenuPopup>>, on_close: Option<Rc<dyn Fn(&mut App)>>) -> Option<WindowHandle<MenuPopup>> {
     let (w, h) = popup_size(window, &menu);
     let w = w.max(place.min_width);
     let Place { anchor, corner, offset, selected, .. } = place;
@@ -215,6 +319,9 @@ fn open(window: &mut Window, cx: &mut App, menu: Menu, place: Place, on_choose: 
         move |window, cx| {
             let view = cx.new(|cx| MenuPopup { menu, selected, focus: cx.focus_handle(), on_choose, origin, owner, sub: None, rows: Rc::default(), pressed_inside: false });
             window.focus(&view.focus_handle(cx));
+            if let Some(f) = on_close {
+                cx.observe_release(&view, move |_, cx| f(cx)).detach();
+            }
             view
         },
     )
@@ -296,7 +403,7 @@ impl MenuPopup {
         // this menu's edge.
         let anchor = Bounds { origin: point(row.left(), row.top() - px(POPUP_PAD - 1.0)), size: size(row.size.width - px(2.0), row.size.height) };
         let place = Place { anchor, corner: Corner::TopRight, ..Place::default() };
-        if let Some(handle) = open(window, cx, menu, place, self.on_choose.clone(), me) {
+        if let Some(handle) = open(window, cx, menu, place, self.on_choose.clone(), me, None) {
             self.sub = Some((i, handle));
         }
         cx.notify();
@@ -476,5 +583,200 @@ pub fn check_mark(window: &mut Window, r: Bounds<Pixels>, color: Hsla) {
     path.line_to(point(r.right(), r.top()));
     if let Ok(path) = path.build() {
         window.paint_path(path, color);
+    }
+}
+
+// ---- the menu bar ----------------------------------------------------------
+
+/// As tall as a tab strip's row and a pane's head, so the chrome under it
+/// keeps one rhythm.
+pub const BAR_HEIGHT: f32 = 26.0;
+const BAR_PAD: f32 = 8.0;
+
+/// A window's menu bar, as its frame keeps it: its menus (keys resolved),
+/// where commands go, which menu is open.
+struct Bar {
+    menus: Vec<Menu>,
+    on_command: OnChoose,
+    /// The menu open, and its popup.
+    open: Option<(usize, WindowHandle<MenuPopup>)>,
+    /// The open menu's title was pressed since it opened, so the next
+    /// press there puts it away (one that slid open stays for its press).
+    pressed: bool,
+}
+
+#[derive(Default)]
+struct Bars(std::collections::HashMap<gpui::WindowId, Bar>);
+
+impl gpui::Global for Bars {}
+
+/// BMenuBar: the window's menus across its top, as the egui kit draws
+/// them (the menu colour, a light top and left edge, a dark line under
+/// it; the open menu's title in the selection colours). A press on a
+/// title opens its menu as a popup under it; with one open, the pointer
+/// sliding across the bar opens the others; a press on the open title
+/// puts it away. The menus' keys come from the keyboard profile
+/// ([`resolve`]), and the window takes them when nothing in it did (a
+/// text field's ⌘C is its own). Agents read each title (`MenuBarItem`),
+/// and the command palette finds the commands.
+#[derive(IntoElement)]
+pub struct MenuBar {
+    menus: Vec<Menu>,
+    on_command: OnChoose,
+}
+
+impl MenuBar {
+    /// `menus` across the top; `on_command` gets the command chosen or
+    /// pressed, in the window.
+    pub fn new(menus: Vec<Menu>, on_command: impl Fn(&str, &mut Window, &mut App) + 'static) -> MenuBar {
+        MenuBar { menus, on_command: Rc::new(on_command) }
+    }
+}
+
+/// The window's menu bar's command for `k` (Frame takes the keys nothing
+/// else in the window did), and where to send it.
+pub(crate) fn bar_shortcut(window: &Window, cx: &App, k: &gpui::Keystroke) -> Option<(String, OnChoose)> {
+    let bar = cx.try_global::<Bars>()?.0.get(&window.window_handle().window_id())?;
+    Some((find_shortcut(&bar.menus, k)?, bar.on_command.clone()))
+}
+
+/// The menus of `window`'s bar (for the command palette) and where its
+/// commands go.
+pub(crate) fn bar_menus(window: gpui::WindowId, cx: &App) -> Option<(Vec<Menu>, OnChoose)> {
+    cx.try_global::<Bars>()?.0.get(&window).map(|b| (b.menus.clone(), b.on_command.clone()))
+}
+
+/// A window closed: its bar goes.
+pub(crate) fn forget_closed(cx: &mut App) {
+    let open: std::collections::HashSet<gpui::WindowId> = cx.windows().iter().map(|w| w.window_id()).collect();
+    cx.default_global::<Bars>().0.retain(|id, _| open.contains(id));
+}
+
+/// Opens bar menu `i` under its title `title` (in the window).
+fn open_bar_menu(window: &mut Window, cx: &mut App, i: usize, title: Bounds<Pixels>, pressed: bool) {
+    let id = window.window_handle().window_id();
+    let Some((menu, on_command)) = cx.try_global::<Bars>().and_then(|b| b.0.get(&id)).and_then(|b| Some((b.menus.get(i)?.clone(), b.on_command.clone()))) else { return };
+    close_bar_menu(window, cx);
+    let me = window.window_handle();
+    // Its popup gone (chosen, put away, a click elsewhere): no menu open,
+    // unless another has opened since.
+    let on_close: Rc<dyn Fn(&mut App)> = Rc::new(move |cx: &mut App| {
+        let bars = cx.default_global::<Bars>();
+        if let Some(bar) = bars.0.get_mut(&id)
+            && bar.open.is_some_and(|(o, _)| o == i)
+        {
+            bar.open = None;
+            bar.pressed = false;
+            let _ = me.update(cx, |_, window, _| window.refresh());
+        }
+    });
+    let place = Place { anchor: title, corner: Corner::BottomLeft, ..Place::default() };
+    let handle = open(window, cx, menu, place, on_command, None, Some(on_close));
+    if let Some(bar) = cx.default_global::<Bars>().0.get_mut(&id) {
+        bar.open = handle.map(|h| (i, h));
+        bar.pressed = pressed;
+    }
+    window.refresh();
+}
+
+/// Puts the bar's open menu away.
+fn close_bar_menu(window: &mut Window, cx: &mut App) {
+    let id = window.window_handle().window_id();
+    let open = cx.default_global::<Bars>().0.get_mut(&id).and_then(|b| b.open.take());
+    if let Some((_, handle)) = open {
+        let _ = handle.update(cx, |m, window, cx| m.close(window, cx));
+    }
+    window.refresh();
+}
+
+impl RenderOnce for MenuBar {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let mut menus = self.menus;
+        resolve(&mut menus, false);
+        let id = window.window_handle().window_id();
+        let bars = cx.default_global::<Bars>();
+        match bars.0.get_mut(&id) {
+            Some(bar) => {
+                bar.menus = menus.clone();
+                bar.on_command = self.on_command;
+            }
+            None => {
+                bars.0.insert(id, Bar { menus: menus.clone(), on_command: self.on_command, open: None, pressed: false });
+            }
+        }
+        let titles: Vec<SharedString> = menus.iter().map(|m| SharedString::from(m.title.clone())).collect();
+        canvas(
+            move |b, window, _| {
+                // The first title's text lines up with the window's
+                // content.
+                let font = style::ui_font(FontWeight::NORMAL);
+                let mut x = b.left() + px(olo_kit_base::metrics::WINDOW_INSET - BAR_PAD);
+                titles
+                    .iter()
+                    .map(|t| {
+                        let w = style::text_width(window, t.clone(), style::PLAIN_SIZE, font.clone()) + px(2.0 * BAR_PAD);
+                        let r = Bounds { origin: point(x, b.top() + px(1.0)), size: size(w, px(BAR_HEIGHT - 2.0)) };
+                        x += w;
+                        (t.clone(), r, window.insert_hitbox(r, gpui::HitboxBehavior::Normal))
+                    })
+                    .collect::<Vec<_>>()
+            },
+            move |b, items, window, cx| {
+                let p = theme::palette(cx);
+                style::fill_rect(window, b, style::c(p.menu_background));
+                // BeOS's bevel: light top and left, dark bottom.
+                style::hline(window, b.left(), b.right(), b.top(), style::c(p.shine));
+                style::vline(window, b.left(), b.top(), b.bottom(), style::c(p.shine));
+                style::hline_above(window, b.left(), b.right(), b.bottom(), style::tint(p.menu_background, 1.4));
+                let open = cx.try_global::<Bars>().and_then(|bars| bars.0.get(&id)).and_then(|bar| bar.open.map(|(i, _)| i));
+                let font = style::ui_font(FontWeight::NORMAL);
+                for (i, (title, r, _)) in items.iter().enumerate() {
+                    let ink = if open == Some(i) {
+                        // Between the bar's bevel lines, on device pixels.
+                        let line = style::hairline(window);
+                        style::fill_rect(window, Bounds::from_corners(point(r.left(), b.top() + line), point(r.right(), b.bottom() - line)), style::c(p.menu_selected_background));
+                        style::c(p.menu_selected_item_text)
+                    } else {
+                        style::c(p.menu_item_text)
+                    };
+                    style::label(window, cx, r.left() + px(BAR_PAD), r.center().y, style::Align::Left, title.clone(), style::PLAIN_SIZE, font.clone(), ink);
+                    agent::record(window, cx, agent::Node { role: "MenuBarItem", name: Some(title.clone()), bounds: *r, enabled: true, clickable: true, selected: Some(open == Some(i)), ..Default::default() });
+                }
+
+                let hits: Vec<(Bounds<Pixels>, gpui::Hitbox)> = items.iter().map(|(_, r, h)| (*r, h.clone())).collect();
+                let down = hits.clone();
+                // Menus open on the press, as on BeOS.
+                window.on_mouse_event(move |e: &gpui::MouseDownEvent, phase, window, cx| {
+                    if !phase.bubble() || e.button != MouseButton::Left {
+                        return;
+                    }
+                    let Some(i) = down.iter().position(|(_, h)| h.is_hovered(window)) else { return };
+                    let bar = cx.try_global::<Bars>().and_then(|bars| bars.0.get(&id));
+                    let (open_here, pressed) = bar.map_or((false, false), |b| (b.open.is_some_and(|(o, _)| o == i), b.pressed));
+                    if open_here && pressed {
+                        close_bar_menu(window, cx);
+                    } else {
+                        open_bar_menu(window, cx, i, down[i].0, true);
+                    }
+                    cx.stop_propagation();
+                });
+                // Sliding across the bar with one open opens the others.
+                window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, cx| {
+                    if !phase.bubble() {
+                        return;
+                    }
+                    let open = cx.try_global::<Bars>().and_then(|bars| bars.0.get(&id)).and_then(|b| b.open.map(|(i, _)| i));
+                    let Some(open) = open else { return };
+                    if let Some(i) = hits.iter().position(|(_, h)| h.is_hovered(window))
+                        && i != open
+                    {
+                        open_bar_menu(window, cx, i, hits[i].0, false);
+                    }
+                });
+            },
+        )
+        .w_full()
+        .h(px(BAR_HEIGHT))
+        .flex_shrink_0()
     }
 }
