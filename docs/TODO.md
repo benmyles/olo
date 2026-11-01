@@ -236,9 +236,9 @@ as they land (with the commit), add new ones as they come up.
      egui drawing the same thing (frame time, CPU, memory, wakeups).
      *Frames done*: upstream drew and committed 60 times a second while
      idle (62 wakeups/s); Olo's draws only when something changed (idle:
-     0%, 2 wakeups/s; an animation at the display's rate, 3.6%). Still
-     to do: the `blocking` crate's thread waking twice a second (zbus,
-     started by the portal settings watcher: Olo's settings instead).
+     0%, 2 wakeups/s; an animation at the display's rate, 3.6%). The
+     `blocking` crate's threads waking twice a second for good (under
+     zbus and smol): *done*, patched (5d30fbc9).
      *Memory and threads done*: hello_world 153 → 59 MB RSS (egui
      DeskCalc: 80 MB), threads 20 → 8 when idle.
   3. The kit on GPUI: the platform (layer shell for Deskbar, popups for
@@ -262,8 +262,14 @@ as they land (with the commit), add new ones as they come up.
   4. The apps one by one, small first (DeskCalc, Screenshot, the lock
      screen, Preferences' panels) to the largest (Terminal, StyledEdit,
      Tracker), each checked at every scale and theme and benchmarked;
-     egui leaves the workspace with the last. *DeskCalc done* (57 MB
-     against 83 MB; 42 frames for 20 clicks against 210).
+     egui leaves the workspace with the last. *Done*: DeskCalc (57 MB
+     against 83 MB; 42 frames for 20 clicks against 210), the polkit
+     agent, the lock screen, Supervisor, Token Pool, DiskUsage (ring
+     slices as GPU sectors), Screenshot (and its region and colour
+     pickers), DriveSetup. Next: Palette, Logs, the Chrome app, then
+     Deskbar, Telegram, Viewer, Notifications, the portal, Agent
+     Screens, StyledEdit, Activity Monitor, Tracker, Passwords,
+     Preferences (with the screen saver and its modules) and Terminal.
 - **Text and everything drawn, better than Apple's** (Ben, 2026-10-31):
   "make sure our text system is SOTA -- rivalling apple's or anything
   else out there. perfect looking, adorably beautiful text is essential";
