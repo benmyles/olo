@@ -1542,6 +1542,12 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   egui fades a disabled widget) when it can't be used. A canvas
   absolutely placed in a padded element needs `.inset_0()`, not
   `.size_full()`: without insets it starts after the padding.
+- Custom drawing in a `canvas` paints with GPUI: `window.paint_quad`
+  (rectangles, rounded, bordered; circles as fully rounded quads),
+  `style::label` (text), `icons::paint`, `PathBuilder` (filled or stroked
+  shapes, small ones with exact coverage), and `window.paint_segment`
+  (lines of any angle on the GPU, for graphs and strokes:
+  `examples/lines.rs`).
 - `icons::paint(window, bounds, name)`: Olo's icon set (or a theme's,
   or a file's), from the bitmap made for the device size it's shown at,
   a texture pixel to a device pixel; decoded once, on a worker, the

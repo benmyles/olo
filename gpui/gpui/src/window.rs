@@ -14,7 +14,7 @@ use crate::{
     SMOOTH_SVG_SCALE_FACTOR, SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Shadow, TextRendering,
     SharedString, Size, StrikethroughStyle, Style, SubscriberSet, Subscription, SystemWindowTab,
     SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task, TextStyle, TextStyleRefinement,
-    TransformationMatrix, Underline, UnderlineStyle, WindowAppearance, WindowBackgroundAppearance,
+    Segment, TransformationMatrix, Underline, UnderlineStyle, WindowAppearance, WindowBackgroundAppearance,
     WindowBounds, WindowControls, WindowDecorations, WindowOptions, WindowParams, WindowTextSystem,
     point, prelude::*, px, rems, size, transparent_black,
 };
@@ -3003,6 +3003,35 @@ impl Window {
         self.next_frame
             .scene
             .insert_primitive(path.scale(scale_factor));
+    }
+
+    /// Olo: paints a straight line from `from` to `to`, `width` wide, its
+    /// ends square (`round`: rounded) and its edges antialiased by each
+    /// pixel's distance to it, drawn on the GPU (graphs, screen savers,
+    /// strokes): where a path would be tessellated, one instance.
+    ///
+    /// This method should only be called as part of the paint phase of element drawing.
+    pub fn paint_segment(&mut self, from: Point<Pixels>, to: Point<Pixels>, width: Pixels, round: bool, color: Hsla) {
+        self.invalidator.debug_assert_paint();
+        let scale = self.scale_factor();
+        let (a, b) = (from.scale(scale), to.scale(scale));
+        let half = width.scale(scale) / 2.0;
+        let reach = half + ScaledPixels(1.0) + if round { half } else { ScaledPixels(0.0) };
+        let min = point(a.x.min(b.x) - reach, a.y.min(b.y) - reach);
+        let max = point(a.x.max(b.x) + reach, a.y.max(b.y) + reach);
+        let opacity = self.element_opacity();
+        let content_mask = self.content_mask().scale(scale);
+        self.next_frame.scene.insert_primitive(Segment {
+            order: 0,
+            round: round as u32,
+            bounds: Bounds::from_corners(min, max),
+            content_mask,
+            color: color.opacity(opacity),
+            from: a,
+            to: b,
+            half_width: half,
+            pad: 0,
+        });
     }
 
     /// Paint an underline into the scene for the next frame at the current z-index.

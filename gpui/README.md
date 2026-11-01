@@ -48,6 +48,11 @@ What Olo changed, so far:
   once; fingers on a touchpad scroll their own distance (upstream:
   three times it), from a first move (`TouchPhase::Started`) to the
   stop (`Ended`), and app_server's glide after them the same way.
+- Line segments drawn on the GPU (`Window::paint_segment`): any angle
+  and width, butt or round ends, each pixel's coverage from its
+  distance to the line, one instance a segment (a graph's hundred
+  points: one draw call), where a path would be tessellated each frame.
+  A translucent polyline darkens a little where its segments meet.
 - Layer surfaces (wlr-layer-shell): `WindowKind::LayerShell` with
   `WindowOptions::layer_shell` (layer, anchored edges, exclusive zone,
   margins, keyboard, namespace, output by name), for Deskbar, the

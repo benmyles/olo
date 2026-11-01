@@ -1143,6 +1143,78 @@ fn fs_underline(input: UnderlineVarying) -> @location(0) vec4<f32> {
     return blend_color(input.color, alpha * input.color.a);
 }
 
+// --- segments (Olo) --- //
+// A straight line of any angle and width, its coverage worked out from
+// each pixel's distance to it (a box for butt ends, a capsule for round):
+// graphs, screen savers, a check mark's strokes. Drawn on a quad along
+// it, a pixel wider all round for the edges.
+
+struct Segment {
+    order: u32,
+    round: u32,
+    bounds: Bounds,
+    content_mask: Bounds,
+    color: Hsla,
+    start: vec2<f32>,
+    end: vec2<f32>,
+    half_width: f32,
+    pad: u32,
+}
+var<storage, read> b_segments: array<Segment>;
+
+struct SegmentVarying {
+    @builtin(position) position: vec4<f32>,
+    // Where the pixel is along the segment from its start, and across.
+    @location(0) local: vec2<f32>,
+    @location(1) @interpolate(flat) color: vec4<f32>,
+    @location(2) @interpolate(flat) segment_id: u32,
+    @location(3) clip_distances: vec4<f32>,
+}
+
+@vertex
+fn vs_segment(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) instance_id: u32) -> SegmentVarying {
+    let unit_vertex = vec2<f32>(f32(vertex_id & 1u), 0.5 * f32(vertex_id & 2u));
+    let segment = b_segments[instance_id];
+    let along = segment.end - segment.start;
+    let len = length(along);
+    let d = select(vec2<f32>(1.0, 0.0), along / len, len > 0.0);
+    let n = vec2<f32>(-d.y, d.x);
+    // Round ends reach past the end points by the half width.
+    let ext = select(0.0, segment.half_width, segment.round != 0u) + 1.0;
+    let across = segment.half_width + 1.0;
+    let u = mix(-ext, len + ext, unit_vertex.x);
+    let v = mix(-across, across, unit_vertex.y);
+    let position = segment.start + d * u + n * v;
+
+    var out = SegmentVarying();
+    out.position = to_device_position_impl(position);
+    out.local = vec2<f32>(u, v);
+    out.color = hsla_to_rgba(segment.color);
+    out.segment_id = instance_id;
+    out.clip_distances = distance_from_clip_rect_impl(position, segment.content_mask);
+    return out;
+}
+
+@fragment
+fn fs_segment(input: SegmentVarying) -> @location(0) vec4<f32> {
+    if (any(input.clip_distances < vec4<f32>(0.0))) {
+        return vec4<f32>(0.0);
+    }
+    let segment = b_segments[input.segment_id];
+    let len = length(segment.end - segment.start);
+    let u = input.local.x;
+    let v = abs(input.local.y);
+    let past = max(max(-u, u - len), 0.0);
+    var sdf: f32;
+    if (segment.round != 0u) {
+        sdf = length(vec2<f32>(past, v)) - segment.half_width;
+    } else {
+        sdf = max(v - segment.half_width, max(-u, u - len));
+    }
+    let alpha = saturate(0.5 - sdf);
+    return blend_color(input.color, alpha);
+}
+
 // --- monochrome sprites --- //
 
 struct MonochromeSprite {
