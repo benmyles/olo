@@ -48,6 +48,9 @@ extern "C" fn retire(_: libc::c_int) {
 fn main() {
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
+    // Every outside program's Wayland traffic goes through here: with the
+    // shell, above apps (olo_protocol::performance::tier; -5).
+    let _ = olo_system::priority::raise_self(-5);
     let (Some(fd), Some(upstream)) = (std::env::var("OLO_WAYLAND_FD").ok().and_then(|f| f.parse::<i32>().ok()), std::env::var_os("OLO_WAYLAND_UPSTREAM"))
     else {
         eprintln!("olo-wlproxy is started by olo-session (OLO_WAYLAND_FD, OLO_WAYLAND_UPSTREAM)");

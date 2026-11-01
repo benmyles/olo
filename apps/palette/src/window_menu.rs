@@ -45,11 +45,11 @@ pub struct Facts {
     /// its own), and the number its display goes by among several ("D1").
     pub workspace: u32,
     pub workspaces: u32,
-    pub display: Option<u32>,
+    pub display: Option<i32>,
     pub displays: usize,
     /// The other displays, by connector and number, to move it to one of
     /// their workspaces.
-    pub others: Vec<(String, u32)>,
+    pub others: Vec<(String, i32)>,
     /// Rolled up to its tab.
     pub rolled: bool,
     /// In a group with other windows (their tabs side by side).
@@ -141,7 +141,7 @@ pub fn build(f: &Facts) -> Menu {
     .fold(Menu::new("Tile"), |m, (id, label)| if id.is_empty() { m.separator() } else { shortcut(m, id, label) });
     // Every display's workspaces, left to right as Deskbar's heading
     // menus list them; its own display's with their keys.
-    let mut displays: Vec<(Option<&str>, Option<u32>)> = f.others.iter().map(|(o, n)| (Some(o.as_str()), Some(*n))).collect();
+    let mut displays: Vec<(Option<&str>, Option<i32>)> = f.others.iter().map(|(o, n)| (Some(o.as_str()), Some(*n))).collect();
     displays.push((None, f.display));
     displays.sort_by_key(|(_, n)| *n);
     let mut spaces = Menu::new("Move to Workspace");

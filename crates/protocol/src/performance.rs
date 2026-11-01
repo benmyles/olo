@@ -184,6 +184,36 @@ pub struct Finding {
     pub since: u64,
 }
 
+/// Olo's priority tiers: what keeps the desktop responsive runs above
+/// everything else, always (each program asks rtkit for itself as it
+/// starts, `olo_system::priority::raise_self`; the supervisor re-asserts
+/// them), and only then does the focused app stand above background
+/// work (the supervisor lowering that). The nice a program's name gets,
+/// if any: app_server (every input event and frame) highest; the session,
+/// Deskbar and the Wayland proxy next.
+pub fn tier(name: &str) -> Option<i32> {
+    match name {
+        "olo-app-server" => Some(CORE_NICE),
+        "olo-session" | "olo-deskbar" | "olo-wlproxy" => Some(SHELL_NICE),
+        _ => None,
+    }
+}
+
+/// The compositor's nice.
+pub const CORE_NICE: i32 = -10;
+/// The session's, Deskbar's and the proxy's.
+pub const SHELL_NICE: i32 = -5;
+
+/// A program of Olo's own the supervisor found running above its tier
+/// and raised ([`SupervisorState::raised`]).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct Raised {
+    pub pid: i32,
+    pub name: String,
+    pub nice_before: i32,
+    pub nice: i32,
+}
+
 /// A process the supervisor lowered, and how.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Lowered {
@@ -217,6 +247,9 @@ pub struct SupervisorState {
     pub favoured: Option<(i32, String)>,
     pub findings: Vec<Finding>,
     pub lowered: Vec<Lowered>,
+    /// Olo's own programs it found above their tier and raised
+    /// ([`tier`]); each asks for itself as it starts, so usually none.
+    pub raised: Vec<Raised>,
     /// What it did lately, newest last.
     pub log: Vec<LogEntry>,
     /// The system's memory: available (% of RAM) and stalls (% some,

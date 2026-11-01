@@ -763,7 +763,6 @@ impl<B: Backend + 'static> AnvilState<B> {
         if over {
             self.display_wait_until = None;
         }
-        self.number_displays();
         // A display came or went: told at once (Deskbar puts a bar on it,
         // and the tiles there stop beside it), not only when something
         // else about the displays happens to change.

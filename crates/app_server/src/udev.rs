@@ -721,6 +721,9 @@ fn choose_primary_gpu(seat: &str) -> Option<DrmNode> {
 }
 
 pub fn run_udev() {
+    // Where each frame's time goes inside Smithay's compositor, for the
+    // timings and the record of dropped frames (frames.rs).
+    let _ = smithay::backend::drm::compositor::PHASE_HOOK.set(crate::render::add_part);
     let mut event_loop = EventLoop::try_new().unwrap();
     let display = Display::new().unwrap();
     let mut display_handle = display.handle();
@@ -1741,14 +1744,13 @@ impl AnvilState<UdevData> {
                     planes.cursor.push(plane);
                 }
             }
-            // The overlay planes that are left are not used: Smithay
-            // tests every dmabuf-backed element against them with an
-            // atomic TEST_ONLY commit as its buffers change, and on
-            // apple-drm those go through the display coprocessor;
-            // `drm render_frame` cost 4–7 ms of CPU a frame on the 4K and
-            // 5K displays with them (2026-11-01). OLO_OVERLAY_PLANES=1
-            // tries them (video straight to a plane, one day).
-            if std::env::var_os("OLO_OVERLAY_PLANES").is_none_or(|v| v != "1") {
+            // The overlay planes: a window whose buffer changes every
+            // frame (a video call) goes straight to one, and the frame
+            // costs app_server nothing (what macOS does). Whether one
+            // gets there, and why not, is the display's "scan-out" record
+            // (frames::scanout_summary). OLO_OVERLAY_PLANES=0 does
+            // without them, drawing everything.
+            if std::env::var_os("OLO_OVERLAY_PLANES").is_some_and(|v| v == "0") {
                 planes.overlay.clear();
             }
 
@@ -2331,6 +2333,15 @@ impl AnvilState<UdevData> {
         let reschedule = match result {
             Ok((has_rendered, states, cursor_on_plane)) => {
                 surface.pacing.drawn(took, &parts, has_rendered);
+                // What went to a plane of its own and what had to be
+                // drawn, and why (Activity Monitor ▸ Displays).
+                let scanout = crate::frames::scanout_summary(&states);
+                if scanout != surface.pacing.scanout {
+                    if crate::frames::capture() {
+                        info!(target: "frames", output = output.name(), scanout = %scanout, "scan-out changed");
+                    }
+                    surface.pacing.scanout = scanout;
+                }
                 if cursor_on_plane != surface.pacing.cursor_plane {
                     surface.pacing.cursor_plane = cursor_on_plane;
                     static FIRST: Once = Once::new();

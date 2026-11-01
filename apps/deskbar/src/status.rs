@@ -624,9 +624,9 @@ pub fn draw_gauge(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, p: &Pale
 
 /// This Deskbar's display, of several: a monitor with the display's
 /// number in it ("D1" in its workspaces' names).
-pub fn draw_display(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, p: &Palette, number: u32) {
+pub fn draw_display(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, p: &Palette, number: i32) {
     let screen = monitor(window, r, p, c(p.panel_background));
-    style::label(window, cx, screen.center().x, screen.center().y, style::Align::Center, number.to_string(), 8.0, style::ui_font(FontWeight::BOLD), ink(p));
+    style::label(window, cx, screen.center().x, screen.center().y, style::Align::Center, olo_protocol::display_number_text(number), 8.0, style::ui_font(FontWeight::BOLD), ink(p));
 }
 
 /// A screen being shared: the screen, with the red dot of a recording

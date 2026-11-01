@@ -104,7 +104,7 @@ const ROTATION_NAMES: [&str; 4] = ["Standard", "90°", "180°", "270°"];
 fn shown_name(o: &OutputInfo, all: &[OutputInfo]) -> String {
     let name = display_name(o);
     if let Some(n) = olo_protocol::display_number(all, &o.name) {
-        return format!("D{n} {name}");
+        return format!("{} {name}", olo_protocol::display_label(n));
     }
     if all.iter().filter(|x| display_name(x) == name).count() > 1 { format!("{name} ({})", o.name) } else { name }
 }

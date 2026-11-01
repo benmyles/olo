@@ -467,6 +467,11 @@ pub struct DisplayFrames {
     /// The pointer is on a plane of the display's own, so moving it
     /// draws nothing.
     pub cursor_plane: bool,
+    /// What the last frame's elements came to: how many went straight
+    /// to a plane of their own (nothing drawn for them) and how many had
+    /// to be drawn, with why ("1 on a plane; 6 drawn (1 overlaps, …)").
+    #[serde(default)]
+    pub scanout: String,
     /// Resting: nothing new, looking only now and then.
     pub resting: bool,
 }
@@ -803,42 +808,51 @@ pub struct OutputInfo {
     /// Its brightness, 0–1, when it can be set from here.
     #[serde(default)]
     pub brightness: Option<f32>,
-    /// The number it goes by ("D1"), its own for good
-    /// (`DisplaySettings::numbers`).
+    /// The number it goes by, from the main display: 0 the main one, −1
+    /// the one left of it, 1 the one right of it ([`display_number`]).
+    /// None with one display, or for a mirror.
     #[serde(default)]
-    pub number: Option<u32>,
+    pub number: Option<i32>,
     /// What kind of panel it is and how Olo draws for it
     /// ([`panels`]).
     #[serde(default)]
     pub panel: Option<panels::Panel>,
 }
 
-/// The number display `output` (a connector) goes by, "D0", "D1", …:
-/// the monitor's own, given the first time it was seen and kept
-/// (`DisplaySettings::numbers`), so it doesn't change as displays come,
-/// go or are moved about; from an app_server from before, the displays
-/// left to right (then top to bottom), from 0. None with only one
-/// display, which needs no number, and for a mirror (it shows another's
-/// picture).
-pub fn display_number(outputs: &[OutputInfo], output: &str) -> Option<u32> {
+/// The number display `output` (a connector) goes by, from the main
+/// display: the main one is D0, the displays left of it (then above)
+/// D−1, D−2, …, those right of it D1, D2, …, in their order left to
+/// right, then top to bottom. So a number says where a display is, and
+/// changes only when the displays are moved about or another is made
+/// the main one. None with only one display, which needs no number, and
+/// for a mirror (it shows another's picture).
+pub fn display_number(outputs: &[OutputInfo], output: &str) -> Option<i32> {
     let mut shown: Vec<&OutputInfo> = outputs.iter().filter(|o| o.mirror_of.is_none()).collect();
     if shown.len() < 2 {
         return None;
     }
-    let this = shown.iter().find(|o| o.name == output)?;
-    if let Some(n) = this.number {
-        return Some(n);
-    }
     shown.sort_by_key(|o| o.position);
-    shown.iter().position(|o| o.name == output).map(|i| i as u32)
+    let this = shown.iter().position(|o| o.name == output)?;
+    let main = shown.iter().position(|o| o.main).unwrap_or(0);
+    Some(this as i32 - main as i32)
+}
+
+/// A display's number as shown, "0", "−1" (a minus sign, not a hyphen).
+pub fn display_number_text(n: i32) -> String {
+    if n < 0 { format!("−{}", -n) } else { n.to_string() }
+}
+
+/// A display's label from its number: "D0", "D−1".
+pub fn display_label(n: i32) -> String {
+    format!("D{}", display_number_text(n))
 }
 
 /// Workspace `index`'s name (from 0): "Workspace 2", or on display
-/// `display` of several (`display_number`), "D1 Workspace 2", as Deskbar,
-/// Twitcher and the overview call it.
-pub fn workspace_name(display: Option<u32>, index: u32) -> String {
+/// `display` of several (`display_number`), "D1 Workspace 2" (or "D−1
+/// Workspace 2"), as Deskbar, Twitcher and the overview call it.
+pub fn workspace_name(display: Option<i32>, index: u32) -> String {
     match display {
-        Some(d) => format!("D{d} Workspace {}", index + 1),
+        Some(d) => format!("{} Workspace {}", display_label(d), index + 1),
         None => format!("Workspace {}", index + 1),
     }
 }
@@ -1190,11 +1204,6 @@ pub struct DisplaySettings {
     /// under a connector by older versions still apply, and move to the
     /// monitor's key when next changed.
     pub outputs: std::collections::BTreeMap<String, OutputConfig>,
-    /// Each display's number ("D1"), by its key: given the first time it
-    /// is seen (the smallest free; the first ones left to right) and kept,
-    /// whatever comes, goes or moves ([`display_number`]).
-    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
-    pub numbers: std::collections::BTreeMap<String, u32>,
 }
 
 /// Where a display's settings are kept: "make model serial" from its EDID
@@ -1211,7 +1220,7 @@ pub fn display_key(connector: &str, make: &str, model: &str, serial: &str) -> St
 
 impl Default for DisplaySettings {
     fn default() -> Self {
-        DisplaySettings { scale: 2.0, main: None, outputs: Default::default(), numbers: Default::default() }
+        DisplaySettings { scale: 2.0, main: None, outputs: Default::default() }
     }
 }
 
@@ -1915,13 +1924,17 @@ mod tests {
         let one = [out("eDP-1", 0, None), out("HDMI-A-1", 0, Some("eDP-1"))];
         assert_eq!(display_number(&one, "eDP-1"), None);
         assert_eq!(workspace_name(display_number(&one, "eDP-1"), 0), "Workspace 1");
+        // No main display: the leftmost is 0.
         let three = [out("eDP-1", 4480, None), out("DP-1", 1920, None), out("DP-2", 0, None), out("HDMI-A-1", 0, Some("DP-2"))];
-        let numbers: Vec<Option<u32>> = ["DP-2", "DP-1", "eDP-1", "HDMI-A-1"].iter().map(|o| display_number(&three, o)).collect();
+        let numbers: Vec<Option<i32>> = ["DP-2", "DP-1", "eDP-1", "HDMI-A-1"].iter().map(|o| display_number(&three, o)).collect();
         assert_eq!(numbers, [Some(0), Some(1), Some(2), None]);
         assert_eq!(workspace_name(Some(2), 3), "D2 Workspace 4");
-        // Their own numbers, wherever they are.
-        let kept = [OutputInfo { number: Some(2), ..out("eDP-1", 0, None) }, OutputInfo { number: Some(0), ..out("DP-1", 1728, None) }];
-        assert_eq!((display_number(&kept, "eDP-1"), display_number(&kept, "DP-1")), (Some(2), Some(0)));
+        // From the main display: the one left of it is −1.
+        let main = [out("eDP-1", 4480, None), OutputInfo { main: true, ..out("DP-1", 1920, None) }, out("DP-2", 0, None)];
+        let numbers: Vec<Option<i32>> = ["DP-2", "DP-1", "eDP-1"].iter().map(|o| display_number(&main, o)).collect();
+        assert_eq!(numbers, [Some(-1), Some(0), Some(1)]);
+        assert_eq!(workspace_name(Some(-1), 1), "D−1 Workspace 2");
+        assert_eq!(display_label(0), "D0");
     }
     use super::*;
 

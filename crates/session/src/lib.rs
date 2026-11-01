@@ -89,7 +89,12 @@ pub fn run() {
         Some("upgrade") => signal_session(libc::SIGUSR2),
         Some("quit") => signal_session(libc::SIGTERM),
         Some("-h" | "--help") => println!("{USAGE}"),
-        _ => Session::start(args).run(),
+        _ => {
+            // The session runs the shell: above apps and background work
+            // (olo_protocol::performance::tier; -5, the shell's).
+            let _ = olo_system::priority::raise_self(-5);
+            Session::start(args).run()
+        }
     }
 }
 

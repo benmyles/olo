@@ -426,7 +426,7 @@ impl Deskbar {
         displays.sort_by_key(|o| o.position);
         let mut m = Menu::new("Displays");
         for o in displays {
-            let n = olo_protocol::display_number(&self.outputs, &o.name).map(|n| format!("D{n}  ")).unwrap_or_default();
+            let n = olo_protocol::display_number(&self.outputs, &o.name).map(|n| format!("{}  ", olo_protocol::display_label(n))).unwrap_or_default();
             let here = o.name == own;
             m = m.item(format!("{n}{}", o.display_name()), format!("display:{}", o.name)).checked(here).enabled(!here);
         }
@@ -1785,7 +1785,7 @@ impl Deskbar {
         }
         if let (Some(n), Some(own)) = (display_number, display.clone()) {
             let name = self.outputs.iter().find(|o| o.name == own).map(|o| o.display_name()).unwrap_or_default();
-            let (r, h) = tray_item(&mut d, "display", format!("Display {n}: {name}. Click to go to another display."), Box::new(move |window, cx, r| status::draw_display(window, cx, r, &theme::palette(cx), n)));
+            let (r, h) = tray_item(&mut d, "display", format!("Display {}: {name}. Click to go to another display.", olo_protocol::display_number_text(n)), Box::new(move |window, cx, r| status::draw_display(window, cx, r, &theme::palette(cx), n)));
             let (m, v) = (model.clone(), view.clone());
             d.hits.push(
                 h.on_any_button(move |e, window, cx| {
@@ -2438,6 +2438,10 @@ fn watch_server(proxy: olo_ui::Proxy) {
 fn main() {
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
+    // The shell: above apps and background work (olo_protocol::performance::tier).
+    if let Err(e) = olo_system::priority::raise_self(olo_protocol::performance::SHELL_NICE) {
+        tracing::debug!("Deskbar stays at its nice: {e}");
+    }
     olo_ui::run("olo.deskbar", |cx| {
         let proxy = olo_ui::proxy(cx);
         watch_server(proxy.clone());

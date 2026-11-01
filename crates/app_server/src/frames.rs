@@ -71,6 +71,41 @@ pub struct Pacing {
     parts: Vec<(&'static str, Duration)>,
     /// The pointer went on the display's cursor plane in the last frame.
     pub cursor_plane: bool,
+    /// What the last frame scanned out and drew (`scanout_summary`).
+    pub scanout: String,
+}
+
+/// What a frame's elements came to: how many went straight to a plane
+/// (zero-copy) and how many had to be drawn, by Smithay's reason:
+/// "1 on a plane; 6 drawn (1 overlaps, 2 format, 3 not tried)".
+pub fn scanout_summary(states: &smithay::backend::renderer::element::RenderElementStates) -> String {
+    use smithay::backend::renderer::element::{RenderElementPresentationState as P, RenderingReason as R};
+    let (mut planes, mut drawn, mut skipped) = (0, 0, 0);
+    let mut why: std::collections::BTreeMap<&'static str, u32> = Default::default();
+    for s in states.states.values() {
+        match s.presentation_state {
+            P::ZeroCopy => planes += 1,
+            P::Skipped => skipped += 1,
+            P::Rendering { reason } => {
+                drawn += 1;
+                let r = match reason {
+                    None => "not tried",
+                    Some(R::FormatUnsupported) => "format",
+                    Some(R::ScanoutFailed) => "the driver refused",
+                    Some(R::Overlaps) => "overlaps",
+                    Some(R::Underlay) => "underlay",
+                    Some(R::PlaneTaken) => "planes taken",
+                };
+                *why.entry(r).or_default() += 1;
+            }
+        }
+    }
+    let why: Vec<String> = why.iter().map(|(k, n)| format!("{n} {k}")).collect();
+    let mut s = format!("{planes} on a plane; {drawn} drawn ({})", why.join(", "));
+    if skipped > 0 {
+        s.push_str(&format!("; {skipped} hidden"));
+    }
+    s
 }
 
 /// A frame presented late (`Pacing::presented`), for the log.
@@ -105,6 +140,7 @@ impl Default for Pacing {
             queued: None,
             parts: Vec::new(),
             cursor_plane: false,
+            scanout: String::new(),
         }
     }
 }
@@ -217,6 +253,7 @@ impl Pacing {
             budget_us: self.budget.max(Self::least(frame)).as_micros() as u64,
             delay_us: frame.saturating_sub(self.budget.max(Self::least(frame))).as_micros() as u64,
             cursor_plane: self.cursor_plane,
+            scanout: self.scanout.clone(),
             resting,
         }
     }

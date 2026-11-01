@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "apps/*", "gpui/*"]
+members = ["crates/*", "apps/*", "gpui/*", "smithay/*"]
 exclude = ["vendor"]
 
 [workspace.package]
@@ -37,14 +37,14 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "2"
 anyhow = "1"
 
+# Olo's own Smithay (smithay/README.md), from upstream's
+# 24647fc8d00131eb7f388efed26e35ea316b0018.
 [workspace.dependencies.smithay]
-git = "https://github.com/Smithay/smithay"
-rev = "24647fc8d00131eb7f388efed26e35ea316b0018"
+path = "smithay/smithay"
 default-features = false
 
 [workspace.dependencies.smithay-drm-extras]
-git = "https://github.com/Smithay/smithay"
-rev = "24647fc8d00131eb7f388efed26e35ea316b0018"
+path = "smithay/smithay-drm-extras"
 
 # See vendor/README.md.
 [patch.crates-io]

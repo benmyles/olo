@@ -640,7 +640,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     /// The number display `output` goes by ("D1"), with more than one.
-    pub fn display_number(&self, output: &str) -> Option<u32> {
+    pub fn display_number(&self, output: &str) -> Option<i32> {
         olo_protocol::display_number(&self.output_infos(), output)
     }
 
@@ -819,7 +819,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 let info = infos.iter().find(|i| i.name == o.name());
                 let name = info.map_or_else(|| o.name(), |i| i.display_name());
                 let name = match olo_protocol::display_number(&infos, &o.name()) {
-                    Some(n) => format!("D{n} {name}"),
+                    Some(n) => format!("{} {name}", olo_protocol::display_label(n)),
                     None => name,
                 };
                 (o, name)
@@ -1329,7 +1329,8 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     pub fn output_infos(&self) -> Vec<OutputInfo> {
         let main = self.main_output();
-        self.space
+        let mut infos: Vec<OutputInfo> = self
+            .space
             .outputs()
             .chain(self.mirrors.iter())
             .map(|o| {
@@ -1375,11 +1376,16 @@ impl<B: Backend + 'static> AnvilState<B> {
                     main: main.as_ref() == Some(o),
                     mirror_of: source.map(|s| s.name()),
                     brightness: if crate::power::is_internal(&o.name()) { self.power.brightness } else { self.power.display_brightness(&o.name()) },
-                    number: (!mirror).then(|| self.settings.display.numbers.get(&display_key(o)).copied()).flatten(),
+                    number: None,
                     panel: Some(panel),
                 }
             })
-            .collect()
+            .collect();
+        // Numbered from the main display, once all are known.
+        for i in 0..infos.len() {
+            infos[i].number = olo_protocol::display_number(&infos, &infos[i].name);
+        }
+        infos
     }
 
     /// `output`'s monitor told who it is only after the display was set up
@@ -1394,13 +1400,6 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         let key = display_key(output);
         info!(output = output.name(), key, "the display told who it is: its settings now");
-        // Its number, if it had one only by its connector meanwhile.
-        let numbers = &mut self.settings.display.numbers;
-        if !numbers.contains_key(&key)
-            && let Some(n) = numbers.remove(&output.name())
-        {
-            numbers.insert(key.clone(), n);
-        }
         // Its saved workspace, switched to from the one it showed.
         let saved = self.showing.insert(key, was);
         self.apply_output_settings(output);
@@ -1430,27 +1429,6 @@ impl<B: Backend + 'static> AnvilState<B> {
             || self.space.elements().any(|w| (0.0..1.0).contains(&w.meta().glow_strength()) && w.meta().glow.get().is_some())
     }
 
-    /// Give each display found a number of its own if it has none
-    /// (`DisplaySettings::numbers`): the first ones left to right, later
-    /// ones the smallest free. Kept, so a display's number doesn't change
-    /// as others come, go or are moved about.
-    pub fn number_displays(&mut self) {
-        let mut shown: Vec<(Point<i32, Logical>, String)> =
-            self.space.outputs().filter_map(|o| Some((self.space.output_geometry(o)?.loc, display_key(o)))).collect();
-        shown.sort_by_key(|(at, _)| (at.x, at.y));
-        let numbers = &mut self.settings.display.numbers;
-        let mut changed = false;
-        for (_, key) in shown {
-            if !numbers.contains_key(&key) {
-                let free = (0..).find(|n| !numbers.values().any(|v| v == n)).unwrap_or(0);
-                numbers.insert(key, free);
-                changed = true;
-            }
-        }
-        if changed {
-            save_settings(&self.settings);
-        }
-    }
 
     /// Apply the configured scale and rotation to an output.
     pub fn apply_output_settings(&self, output: &Output) {

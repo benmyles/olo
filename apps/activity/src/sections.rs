@@ -986,6 +986,7 @@ fn displays(app: &Activity, me: &Me, cx: &App) -> Vec<AnyElement> {
             ("Drawing".into(), format!("{} typically, {} at the 95th percentile, {} to {}", ms(d.render_p50_us), ms(d.render_p95_us), ms(d.render_min_us), ms(d.render_max_us))),
             ("Pacing".into(), format!("{} of each frame kept for drawing: a frame starts {} after the vblank", ms(d.budget_us), ms(d.delay_us))),
             ("Pointer".into(), if d.cursor_plane { "On a plane of its own: moving it draws nothing".into() } else { "Drawn into each frame".into() }),
+            ("Scan-out".into(), if d.scanout.is_empty() { "—".into() } else { d.scanout.clone() }),
         ];
         let figure = if d.resting { "resting".to_owned() } else { format!("{:.0} fps", d.fps) };
         let caption = match d.late_minute {
@@ -1299,6 +1300,13 @@ fn supervisor(app: &Activity, me: &Me, cx: &App) -> Vec<AnyElement> {
     let rows: Vec<(String, String)> = if st.running {
         vec![
             ("Favoured".into(), favoured),
+            (
+                "Olo's own".into(),
+                match st.raised.len() {
+                    0 => "Each above everything else, as it started (rtkit)".to_owned(),
+                    _ => st.raised.iter().map(|r| format!("{} to nice {}", r.name, r.nice)).collect::<Vec<_>>().join(", "),
+                },
+            ),
             (
                 "Lowered".into(),
                 match st.lowered.len() {

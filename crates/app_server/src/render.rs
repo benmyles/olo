@@ -382,6 +382,12 @@ pub fn part(name: &'static str, start: std::time::Instant) {
     PARTS.with(|p| p.borrow_mut().push((name, start.elapsed())));
 }
 
+/// Part `name` of a look done, in `took` (Smithay's compositor phases,
+/// `PHASE_HOOK`).
+pub fn add_part(name: &'static str, took: std::time::Duration) {
+    PARTS.with(|p| p.borrow_mut().push((name, took)));
+}
+
 /// The parts of the look just done (`part`).
 pub fn take_parts() -> Vec<(&'static str, std::time::Duration)> {
     PARTS.with(|p| std::mem::take(&mut *p.borrow_mut()))

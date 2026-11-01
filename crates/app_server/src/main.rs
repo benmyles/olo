@@ -35,6 +35,13 @@ fn main() {
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
     tracing_subscriber::fmt().compact().with_env_filter(env_filter).finish().with(tracing_subscriber::filter::filter_fn(|m| !bogus_error(m))).init();
 
+    // Every input event and every frame go through this thread: above
+    // everything else (olo_protocol::performance::tier).
+    match olo_system::priority::raise_self(olo_protocol::performance::CORE_NICE) {
+        Ok(nice) => tracing::info!(nice, "the main thread's priority (rtkit)"),
+        Err(e) => tracing::info!("the main thread stays at its nice: {e}"),
+    }
+
     profiling::register_thread!("Main Thread");
 
     let arg = ::std::env::args().nth(1);

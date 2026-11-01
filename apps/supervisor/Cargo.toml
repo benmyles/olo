@@ -9,6 +9,7 @@ name = "olo-supervisor"
 path = "src/main.rs"
 
 [dependencies]
+olo-system.workspace = true
 olo-ui.workspace = true
 olo-xdg.workspace = true
 olo-protocol.workspace = true

@@ -236,9 +236,9 @@ pub enum Msg {
 fn demo_frames() -> Vec<olo_protocol::DisplayFrames> {
     use olo_protocol::DisplayFrames;
     vec![
-        DisplayFrames { output: "DP-1".into(), refresh_mhz: 60_000, fps: 48.0, frames: 184_211, late: 1_902, late_minute: 7, render_min_us: 410, render_p50_us: 4_900, render_p95_us: 7_400, render_max_us: 9_600, budget_us: 9_750, delay_us: 6_917, cursor_plane: true, resting: false },
-        DisplayFrames { output: "eDP-1".into(), refresh_mhz: 120_000, fps: 120.0, frames: 402_118, late: 3, late_minute: 0, render_min_us: 180, render_p50_us: 700, render_p95_us: 2_900, render_max_us: 4_100, budget_us: 4_125, delay_us: 4_208, cursor_plane: true, resting: false },
-        DisplayFrames { output: "DP-2".into(), refresh_mhz: 60_000, fps: 0.0, frames: 9_120, late: 0, late_minute: 0, render_min_us: 90, render_p50_us: 110, render_p95_us: 700, render_max_us: 1_300, budget_us: 6_667, delay_us: 10_000, cursor_plane: false, resting: true },
+        DisplayFrames { output: "DP-1".into(), refresh_mhz: 60_000, fps: 48.0, frames: 184_211, late: 1_902, late_minute: 7, render_min_us: 410, render_p50_us: 4_900, render_p95_us: 7_400, render_max_us: 9_600, budget_us: 9_750, delay_us: 6_917, cursor_plane: true, scanout: "1 on a plane; 7 drawn (1 overlaps, 6 not tried)".into(), resting: false },
+        DisplayFrames { output: "eDP-1".into(), refresh_mhz: 120_000, fps: 120.0, frames: 402_118, late: 3, late_minute: 0, render_min_us: 180, render_p50_us: 700, render_p95_us: 2_900, render_max_us: 4_100, budget_us: 4_125, delay_us: 4_208, cursor_plane: true, scanout: "1 on a plane; 7 drawn (1 overlaps, 6 not tried)".into(), resting: false },
+        DisplayFrames { output: "DP-2".into(), refresh_mhz: 60_000, fps: 0.0, frames: 9_120, late: 0, late_minute: 0, render_min_us: 90, render_p50_us: 110, render_p95_us: 700, render_max_us: 1_300, budget_us: 6_667, delay_us: 10_000, cursor_plane: false, scanout: "0 on a plane; 3 drawn (3 not tried)".into(), resting: true },
     ]
 }
 

@@ -31,7 +31,7 @@ use std::{
 };
 
 use olo_ui::{gpui::App, instance, widgets};
-use olo_protocol::performance::{Finding, FindingKind, LogEntry, Lowered, PerformanceSettings, SupervisorState};
+use olo_protocol::performance::{Finding, FindingKind, LogEntry, Lowered, PerformanceSettings, Raised, SupervisorState};
 
 const APP_ID: &str = "olo.supervisor";
 const EVERY: Duration = Duration::from_secs(2);
@@ -83,6 +83,9 @@ struct Supervisor {
     clock: Instant,
     followed: HashMap<i32, Followed>,
     lowered: HashMap<i32, Lowered>,
+    /// Olo's own programs found above their tier and raised (or that
+    /// couldn't be, noted once).
+    raised: HashMap<i32, Raised>,
     /// When each zombie was first seen.
     zombies: HashMap<i32, f64>,
     /// Findings by process and kind, and those already asked about.
@@ -228,6 +231,28 @@ impl Supervisor {
             }
         }
 
+        // Olo's own tiers first (olo_protocol::performance::tier): each
+        // asks for itself as it starts, so one found above its tier is
+        // one rtkit refused then, or a thread made since; raised here.
+        self.raised.retain(|pid, _| alive.contains(pid));
+        for p in &procs {
+            let Some(nice) = olo_protocol::performance::tier(&p.name) else { continue };
+            if p.state == 'Z' || self.raised.contains_key(&p.pid) || olo_system::priority::nice_of(p.pid as u32).is_none_or(|n| n <= nice) {
+                continue;
+            }
+            let before = olo_system::priority::nice_of(p.pid as u32).unwrap_or(0);
+            let (count, error) = olo_system::priority::raise_process(p.pid as u32, nice);
+            if count > 0 {
+                let now = olo_system::priority::nice_of(p.pid as u32).unwrap_or(nice);
+                self.raised.insert(p.pid, Raised { pid: p.pid, name: p.name.clone(), nice_before: before, nice: now });
+                self.note(format!("Raised {} ({}) to nice {now}: Olo's own, above everything else", p.name, p.pid));
+            } else if let Some(e) = error {
+                // (Once a process: not worth asking every two seconds.)
+                self.raised.insert(p.pid, Raised { pid: p.pid, name: p.name.clone(), nice_before: before, nice: before });
+                self.note(format!("Couldn't raise {} ({}): {e}", p.name, p.pid));
+            }
+        }
+
         // Priorities: background work lowered, as it starts.
         self.lowered.retain(|pid, _| alive.contains(pid));
         if settings.priorities {
@@ -367,6 +392,9 @@ impl Supervisor {
         findings.sort_by(|a, b| b.urgent.cmp(&a.urgent).then(b.confidence.total_cmp(&a.confidence)).then(a.pid.cmp(&b.pid)));
         let mut lowered: Vec<Lowered> = self.lowered.values().cloned().collect();
         lowered.sort_by_key(|l| l.pid);
+        // (Only those it raised; one it couldn't is noted in the log.)
+        let mut raised: Vec<Raised> = self.raised.values().filter(|r| r.nice < r.nice_before).cloned().collect();
+        raised.sort_by_key(|r| r.pid);
         let (favoured, system) = now.unwrap_or_default();
         let state = SupervisorState {
             running: self.running,
@@ -374,6 +402,7 @@ impl Supervisor {
             favoured,
             findings,
             lowered,
+            raised,
             log: self.log.iter().cloned().collect(),
             memory_available: system.available_pct(),
             memory_stall: system.stall_some,
@@ -580,6 +609,7 @@ fn main() -> std::process::ExitCode {
             clock: Instant::now(),
             followed: HashMap::new(),
             lowered: HashMap::new(),
+            raised: HashMap::new(),
             zombies: HashMap::new(),
             findings: HashMap::new(),
             asked: HashSet::new(),

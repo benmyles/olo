@@ -2998,9 +2998,17 @@ launcher lists them. The panel list Deskbar shows is
   (`Request::FocusDisplay`: the pointer to the middle of where windows
   go on it, the keyboard to its front window, else its desktop, so it is
   the active display). With more than one, each display goes by a
-  number, left to right from D0 (`olo_protocol::display_number`; the
-  map's and the settings box's names, "D1 Studio Display"), which names
-  its workspaces (`workspace_name`: "D1 Workspace 2").
+  number from the main display (`olo_protocol::display_number`): the
+  main one is D0, the displays left of it D−1, D−2, …, those right of
+  it D1, D2, … (left to right, then top to bottom), so a number says
+  where a display stands and changes only when the displays are moved
+  about or another is made the main one (Ben, 2026-11-01; before, each
+  monitor kept a number of its own for good, which came out stale when
+  a display was set up by its connector before its EDID arrived). The
+  map's and the settings box's names ("D1 Studio Display"), Deskbar's
+  tray and menus and its workspaces' names (`workspace_name`: "D−1
+  Workspace 2") all use it; `display_label` and `display_number_text`
+  spell it, with a minus sign.
   render.rs draws the layers itself, front to back: Overlay, the menus
   of the Background and Bottom layers (the desktop's right-click menu,
   `shell::lower_layer_menus`), Top (Deskbar), the windows, then the
