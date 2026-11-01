@@ -547,7 +547,7 @@ fn legend_places(cx: &App, width: f32, items: &[LegendItem]) -> Vec<(f32, usize)
     let mut out = Vec::new();
     let (mut x, mut row) = (0.0, 0);
     for it in items {
-        let w = swatch_w(it) + style::text_width_app(cx, &it.name, style::SMALL_SIZE, &plain) + 6.0 + style::text_width_app(cx, &it.value, style::SMALL_SIZE, &bold) + 2.0 * m::SPACING;
+        let w = swatch_w(it) + style::text_width_app(cx, &it.name, style::DETAIL_SIZE, &plain) + 6.0 + style::text_width_app(cx, &it.value, style::SMALL_SIZE, &bold) + 2.0 * m::SPACING;
         if x > 0.0 && x + w > width {
             x = 0.0;
             row += 1;
@@ -579,7 +579,7 @@ pub fn legend(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, items: &[Leg
                 let swatch = style::snap_centred(window, point(left + px(SWATCH / 2.0), mid), SWATCH, SWATCH);
                 window.paint_quad(gpui::fill(swatch, it.color).corner_radii(px(2.0)));
             }
-            let name = style::label(window, cx, left + px(swatch_w(it)), mid, style::Align::Left, it.name.clone(), style::SMALL_SIZE, plain.clone(), dim);
+            let name = style::label(window, cx, left + px(swatch_w(it)), mid, style::Align::Left, it.name.clone(), style::DETAIL_SIZE, plain.clone(), dim);
             style::label(window, cx, name.right() + px(6.0), mid, style::Align::Left, it.value.clone(), style::SMALL_SIZE, bold.clone(), text);
         }
     });

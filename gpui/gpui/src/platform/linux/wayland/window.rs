@@ -550,6 +550,17 @@ impl WaylandWindow {
             .as_ref()
             .map(|viewporter| viewporter.get_viewport(&surface, &globals.qh, ()));
 
+        // Kick things off, before the GPU work of the renderer, so the
+        // compositor's first configure is on its way meanwhile (a lock
+        // surface is configured without it, and mustn't commit before
+        // acknowledging that).
+        if !lock_surface {
+            surface.commit();
+            if let Some(backend) = surface.backend().upgrade() {
+                let _ = backend.flush();
+            }
+        }
+
         let this = Self(WaylandWindowStatePtr {
             state: Rc::new(RefCell::new(WaylandWindowState::new(
                 handle,
@@ -580,12 +591,6 @@ impl WaylandWindow {
                 wheel: RefCell::new(None),
             }),
         });
-
-        // Kick things off (a lock surface is configured without it, and
-        // mustn't commit before acknowledging that).
-        if !lock_surface {
-            surface.commit();
-        }
 
         Ok((this, surface.id()))
     }
@@ -706,6 +711,14 @@ impl WaylandWindowStatePtr {
     /// Draws a frame if anything changed (and asks for the next).
     pub fn frame(&self) {
         let frames = &self.frames;
+        // Nothing may be attached before the surface's first configure is
+        // acknowledged (a protocol error that ends the program): a scale
+        // the compositor sends a new surface first asks for a frame too
+        // early. That configure draws it.
+        if !self.state.borrow().acknowledged_first_configure {
+            frames.queued.set(false);
+            return;
+        }
         // (Still queued while the wheel's step goes in: what it changes
         // is drawn by this frame, not one more.)
         frames.queued.set(true);

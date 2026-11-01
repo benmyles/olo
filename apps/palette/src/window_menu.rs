@@ -3,15 +3,16 @@
 //! pops a menu there of everything that can be done to the window, the
 //! same commands as the desktop's shortcuts. It is an ordinary kit popup
 //! (over a clear full-screen layer that takes the click outside it), so
-//! agents read and choose from it as from any menu.
+//! agents read and choose from it as from any menu; the layer goes when
+//! the menu does.
 
 use std::path::PathBuf;
 
-use olo_kit::{
-    Cx, Keyboard, Layer, LayerOptions, Proxy, WindowId, WindowKind, WindowOptions,
-    egui::{self, Pos2, pos2},
-    menu::{self, Menu},
-    tracker, widgets,
+use olo_ui::{
+    Frame, Proxy,
+    gpui::{App, AppContext as _, Context, IntoElement, LayerKeyboard, MouseDownEvent, Pixels, Point, Render, Styled as _, Window, WindowHandle, canvas, point, px},
+    menu::{self, Menu, MenuPopup},
+    tracker,
 };
 use olo_protocol::{Client, KeyboardProfile, Reply, Request, shortcuts};
 
@@ -19,7 +20,7 @@ use olo_protocol::{Client, KeyboardProfile, Reply, Request, shortcuts};
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ask {
     pub window: u64,
-    pub at: Pos2,
+    pub at: (f32, f32),
     pub output: Option<String>,
 }
 
@@ -29,7 +30,7 @@ impl Ask {
         let num = |n: usize| args.get(i + n).and_then(|a| a.parse::<f32>().ok());
         Some(Ask {
             window: args.get(i + 1)?.parse().ok()?,
-            at: pos2(num(2)?, num(3)?),
+            at: (num(2)?, num(3)?),
             output: args.get(i + 4).filter(|o| !o.starts_with("--")).cloned(),
         })
     }
@@ -94,7 +95,7 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             _ => false,
         };
         let path = match (w.pid, w.surface) {
-            (Some(pid), Some(surface)) if w.app_id != "olo.tracker" => olo_kit::commands::path(pid as u32, surface),
+            (Some(pid), Some(surface)) if w.app_id != "olo.tracker" => olo_ui::commands::path(pid as u32, surface),
             _ => None,
         };
         let (rolled, grouped, floating) = (w.rolled, w.group.is_some(), w.floating);
@@ -113,7 +114,7 @@ fn keys(f: &Facts, id: &str) -> Option<String> {
 pub fn build(f: &Facts) -> Menu {
     // A shortcut's item, by its id, with its keys.
     let shortcut = |m: Menu, id: &str, label: &str| {
-        let m = m.item(label, format!("shortcut:{id}"), None);
+        let m = m.item(label, format!("shortcut:{id}"));
         match keys(f, id) {
             Some(k) => m.keys(k),
             None => m,
@@ -153,7 +154,7 @@ pub fn build(f: &Facts) -> Menu {
                 Some(o) => format!("workspace:{n}:{o}"),
                 None => format!("workspace:{n}"),
             };
-            spaces = spaces.item(olo_protocol::workspace_name(number, n), command, None);
+            spaces = spaces.item(olo_protocol::workspace_name(number, n), command);
             if output.is_some() {
                 continue;
             }
@@ -184,13 +185,13 @@ pub fn build(f: &Facts) -> Menu {
     }
     m = m.separator();
     if f.path.is_some() {
-        m = m.item(tracker::LABEL, tracker::COMMAND, None).separator();
+        m = m.item(tracker::LABEL, tracker::COMMAND).separator();
     }
     if f.grouped {
         // As ⌘-dragging its tab out of the group does.
-        m = m.item("Remove from Group", "ungroup", None);
+        m = m.item("Remove from Group", "ungroup");
     }
-    m.item("Send to Back", "send-to-back", None).separator().item("Close", "close", None)
+    m.item("Send to Back", "send-to-back").separator().item("Close", "close")
 }
 
 /// Do `command` to `window`, off the UI thread.
@@ -219,68 +220,81 @@ pub fn perform(window: u64, command: &str) {
     });
 }
 
-/// The menu's clear layer, while it shows.
-pub struct Shown {
-    pub win: WindowId,
-    pub window: u64,
-    pub path: Option<PathBuf>,
-    pub at: Pos2,
-    pub menu: Menu,
-    /// The popup has been asked for, and has been seen open.
-    pub asked: bool,
-    pub seen: bool,
+/// The menu's clear layer: it pops the menu as it is first drawn, and
+/// goes when the menu does (chosen from, put away with Escape, or a
+/// click on the layer: elsewhere on the screen).
+struct Layer {
+    window: u64,
+    path: Option<PathBuf>,
+    at: Point<Pixels>,
+    menu: Option<Menu>,
+    popup: Option<WindowHandle<MenuPopup>>,
 }
 
-pub fn open(cx: &mut Cx, facts: Facts) -> Shown {
-    let win = cx.open_window(WindowOptions {
-        title: "Window Menu".into(),
-        size: (1, 1),
-        kind: WindowKind::Layer(LayerOptions {
-            layer: Layer::Overlay,
-            anchor: (true, true, true, true),
-            exclusive_zone: -1,
-            margin: (0, 0, 0, 0),
-            keyboard: Keyboard::Exclusive,
-            namespace: "window-menu".into(),
-            output: facts.ask.output.clone().filter(|o| cx.outputs().contains(o)),
-        }),
-        panel: false,
-        ..Default::default()
-    });
-    Shown { win, window: facts.ask.window, at: facts.ask.at, menu: build(&facts), path: facts.path, asked: false, seen: false }
+impl Render for Layer {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let me = cx.entity();
+        canvas(
+            |_, _, _| {},
+            move |_, _, window, cx| {
+                // A click off the menu lands here (the same program's, so
+                // the menu's grab lets it through): away with it.
+                let clicked = me.clone();
+                window.on_mouse_event(move |_: &MouseDownEvent, phase, window, cx| {
+                    if !phase.bubble() {
+                        return;
+                    }
+                    match clicked.update(cx, |l, _| l.popup.take()) {
+                        Some(popup) => {
+                            let _ = popup.update(cx, |m, window, cx| m.close(window, cx));
+                        }
+                        None => window.remove_window(),
+                    }
+                });
+                let Some(menu) = me.update(cx, |l, _| l.menu.take()) else { return };
+                let (target, path, at) = me.read_with(cx, |l, _| (l.window, l.path.clone(), l.at));
+                let layer = window.window_handle();
+                // After this frame: a window opened while one paints
+                // would draw into the frame's arena.
+                let shown = me.clone();
+                window.defer(cx, move |window, cx| {
+                    let popup = menu::context_menu_then(
+                        window,
+                        cx,
+                        menu,
+                        at,
+                        move |cmd, _, _| match &path {
+                            Some(path) if cmd == tracker::COMMAND => {
+                                if let Err(e) = tracker::open(path) {
+                                    tracing::warn!("couldn't show {} in Tracker: {e}", path.display());
+                                }
+                            }
+                            _ => perform(target, cmd),
+                        },
+                        move |cx: &mut App| {
+                            let _ = layer.update(cx, |_, window, _| window.remove_window());
+                        },
+                    );
+                    match popup {
+                        Some(popup) => shown.update(cx, |l, _| l.popup = Some(popup)),
+                        // No menu: no layer.
+                        None => window.remove_window(),
+                    }
+                });
+            },
+        )
+        .size_full()
+    }
 }
 
-/// Draw the layer: pop the menu, and say when it's done (chosen or not).
-pub fn ui(shown: &mut Shown, ui: &mut egui::Ui) -> bool {
-    let ctx = ui.ctx().clone();
-    let source = egui::Id::unique("window-menu");
-    if !shown.asked {
-        shown.asked = true;
-        widgets::popup_menu_at(&ctx, source, shown.at, shown.menu.clone());
-        ctx.request_repaint();
-        return false;
-    }
-    if let Some(cmd) = widgets::popup_result(&ctx, source) {
-        match &shown.path {
-            Some(path) if cmd == tracker::COMMAND => {
-                if let Err(e) = tracker::open(path) {
-                    tracing::warn!("couldn't show {} in Tracker: {e}", path.display());
-                }
-            }
-            _ => perform(shown.window, &cmd),
-        }
-        return true;
-    }
-    if menu::is_open(&ctx, source) {
-        shown.seen = true;
-        return false;
-    }
-    // Put away without a choice (a click outside, or Escape).
-    if shown.seen {
-        return true;
-    }
-    ctx.request_repaint();
-    false
+/// Covers the window's output with the clear layer and pops its menu.
+pub fn open(facts: Facts, cx: &mut App) -> Option<WindowHandle<Frame>> {
+    let output = facts.ask.output.clone().filter(|o| cx.displays().iter().any(|d| d.name().as_deref() == Some(o.as_str())));
+    let layer = cx.new(|_| Layer { window: facts.ask.window, path: facts.path.clone(), at: point(px(facts.ask.at.0), px(facts.ask.at.1)), menu: Some(build(&facts)), popup: None });
+    // The menu is a popup of the layer and takes the keyboard itself
+    // (app_server gives every key to a layer that holds it exclusively).
+    let options = crate::overlay("Window Menu", "window-menu", output).layer_options(|l| l.keyboard = LayerKeyboard::OnDemand);
+    olo_ui::open_window(cx, options, move |_, _| layer)
 }
 
 #[cfg(test)]
@@ -291,7 +305,7 @@ mod tests {
     fn asks_and_items() {
         let args: Vec<String> = ["--window-menu", "7", "120", "40.5", "HEADLESS-1"].iter().map(|s| s.to_string()).collect();
         let ask = Ask::parse(&args).unwrap();
-        assert_eq!(ask, Ask { window: 7, at: pos2(120.0, 40.5), output: Some("HEADLESS-1".into()) });
+        assert_eq!(ask, Ask { window: 7, at: (120.0, 40.5), output: Some("HEADLESS-1".into()) });
         assert_eq!(Ask::parse(&args[..4]).unwrap().output, None);
         // Every item is a shortcut app_server knows, or one of ours.
         let mut changed = KeyboardProfile::default();
@@ -335,7 +349,7 @@ mod tests {
         let menu = build(&facts);
         let keys_of = |label: &str| {
             menu.items.iter().find_map(|i| match i {
-                menu::MenuItem::Action(a) if a.label == label => Some(a.key_label()),
+                menu::MenuItem::Action(a) if a.label == label => Some(a.keys.clone()),
                 _ => None,
             })
         };
@@ -348,10 +362,10 @@ mod tests {
         // own with keys and a check, another's moving it there.
         assert_eq!(first.label, "D0 Workspace 1");
         assert_eq!(first.command, "workspace:0:HDMI-A-1");
-        assert_eq!(first.key_label(), None);
+        assert_eq!(first.keys.clone(), None);
         let own: Vec<&menu::Action> = spaces.items.iter().filter_map(|i| if let menu::MenuItem::Action(a) = i { Some(a) } else { None }).filter(|a| a.label.starts_with("D1")).collect();
         assert_eq!(own.len(), 3);
-        assert_eq!((own[0].command.as_str(), own[0].key_label().as_deref()), ("workspace:0", Some("⌃⇧1")));
+        assert_eq!((own[0].command.as_str(), own[0].keys.as_deref()), ("workspace:0", Some("⌃⇧1")));
         assert!(own[1].checked && !own[0].checked);
     }
 }

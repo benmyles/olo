@@ -8,10 +8,10 @@ use std::{
     time::Duration,
 };
 
-use olo_kit::{
-    Proxy,
+use olo_ui::{Proxy, commands};
+use olo_xdg::{
     apps::{OUR_APPS, PREFERENCE_PANELS, our_app},
-    commands, desktop_entry,
+    desktop_entry,
 };
 use olo_protocol::{Client, Reply, Request, WindowInfo, shortcuts};
 
@@ -150,7 +150,7 @@ pub enum Found {
 pub fn fixed() -> Vec<Item> {
     let mut items = Vec::new();
     let mut ours = Vec::new();
-    for (bin, name, icon) in OUR_APPS.iter().filter(|(bin, _, _)| olo_kit::find_program(bin).is_some()) {
+    for (bin, name, icon) in OUR_APPS.iter().filter(|(bin, _, _)| olo_xdg::find_program(bin).is_some()) {
         ours.push(*bin);
         items.push(Item::new(Kind::Application, *name, Action::Spawn(vec![bin.to_string()])).icon(*icon).keywords(bin.trim_start_matches("olo-")));
     }
@@ -260,7 +260,7 @@ const MAX_DEPTH: usize = 12;
 
 /// Files under home, for finding by name (hidden files and what
 /// .gitignore files exclude are left out): walked once, then each folder
-/// is followed (`olo_kit::watch`) and only a folder that changed is
+/// is followed (`olo_ui::watch`) and only a folder that changed is
 /// listed again, so a new download is found at once and nothing is
 /// walked on a timer. The kernel's watches are shared by every program:
 /// past a share of them the index is walked again instead, when asked
@@ -450,8 +450,8 @@ pub fn perform(action: Action, front: Option<u64>) {
             }
         };
         let result = match action {
-            Action::Launch(cmd, id) => olo_kit::spawn_detached_app(&cmd, &id).map_err(|e| e.to_string()),
-            Action::Spawn(argv) => match olo_kit::find_program(&argv[0]) {
+            Action::Launch(cmd, id) => olo_xdg::spawn_detached_app(&cmd, &id).map_err(|e| e.to_string()),
+            Action::Spawn(argv) => match olo_xdg::find_program(&argv[0]) {
                 Some(path) => std::process::Command::new(path).args(&argv[1..]).spawn().map(|mut c| {
                     std::thread::spawn(move || c.wait());
                 }).map_err(|e| e.to_string()),
@@ -473,11 +473,11 @@ pub fn perform(action: Action, front: Option<u64>) {
                 }
                 if commands::invoke(pid, &command) { Ok(()) } else { Err(format!("the app didn’t do “{command}”")) }
             }
-            Action::Open(path) => olo_kit::open::open(&olo_kit::open::Target::Path(path)).map_err(|e| e.to_string()),
+            Action::Open(path) => olo_xdg::open::open(&olo_xdg::open::Target::Path(path)).map_err(|e| e.to_string()),
             Action::Password { vault, id } => {
                 // Passwords may be quit: start it, then ask.
                 if olo_keychain::call(&olo_keychain::Request::Show { vault: vault.clone(), id: id.clone() }).is_err()
-                    && let Some(p) = olo_kit::find_program("olo-passwords")
+                    && let Some(p) = olo_xdg::find_program("olo-passwords")
                 {
                     let _ = std::process::Command::new(p).spawn();
                     for _ in 0..40 {
@@ -499,7 +499,7 @@ pub fn perform(action: Action, front: Option<u64>) {
                 }
                 Ok(())
             }
-            Action::Search(text) => olo_kit::open::open(&olo_kit::open::Target::Url(search_url(&text))).map_err(|e| e.to_string()),
+            Action::Search(text) => olo_xdg::open::open(&olo_xdg::open::Target::Url(search_url(&text))).map_err(|e| e.to_string()),
         };
         if let Err(e) = result {
             tracing::warn!("palette: {e}");
@@ -558,7 +558,7 @@ pub fn workers(proxy: Proxy) -> Workers {
         let follow = folders.len() <= budget;
         let watch = if follow {
             let tx = changed_tx.clone();
-            olo_kit::watch::watch(folders.clone(), move |dirs| {
+            olo_ui::watch::watch(folders.clone(), move |dirs| {
                 let _ = tx.send(dirs.to_vec());
             })
         } else {

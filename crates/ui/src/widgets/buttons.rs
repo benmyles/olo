@@ -84,7 +84,7 @@ impl Button {
 
 /// A button's width for `label` (on the two-point grid).
 pub fn button_width(window: &mut Window, label: &str, small: bool) -> f32 {
-    let size = if small { style::SMALL_SIZE } else { style::PLAIN_SIZE };
+    let size = if small { style::DETAIL_SIZE } else { style::PLAIN_SIZE };
     let pad = if small { m::CONTROL_PAD * 0.6 } else { m::CONTROL_PAD };
     let min = if small { 48.0 } else { m::BUTTON_MIN_WIDTH };
     let tw = f32::from(style::text_width(window, label.to_string(), size, style::ui_font(FontWeight::NORMAL)));
@@ -93,7 +93,7 @@ pub fn button_width(window: &mut Window, label: &str, small: bool) -> f32 {
 
 impl RenderOnce for Button {
     fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
-        let font_size = if self.small { style::SMALL_SIZE } else { style::PLAIN_SIZE };
+        let font_size = if self.small { style::DETAIL_SIZE } else { style::PLAIN_SIZE };
         let pad = if self.small { m::CONTROL_PAD * 0.6 } else { m::CONTROL_PAD };
         let tw = f32::from(style::text_width(window, self.label.clone(), font_size, style::ui_font(FontWeight::NORMAL)));
         let w = (((tw + 2.0 * pad).max(self.min_width)) / 2.0).ceil() * 2.0;

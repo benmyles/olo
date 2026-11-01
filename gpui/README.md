@@ -97,6 +97,18 @@ What Olo changed, so far:
 - The GPU device is made with the first window: an app with none (the
   polkit agent waiting for a request) holds no driver threads, and
   half the memory (13 MB against 24).
+- Windows share the device's pipelines and its atlas (`BladeContext`'s
+  `PipelineCache`, by surface format, alpha and paths' sample count, and
+  one `BladeAtlas`): upstream made both for every window, so each menu
+  and each ⌘Space compiled the shaders and built ten pipelines (28 ms)
+  and rasterized and uploaded every glyph and icon again for its first
+  frame. A tile's key holds all it depends on (size, scale, the
+  display's text rendering). A window's surface is committed (and the
+  connection flushed) before its renderer is made, so the compositor's
+  first configure comes back meanwhile; nothing is drawn before that
+  configure is acknowledged (a scale sent to a new surface asked for a
+  frame early: a protocol error that ended the program). The command
+  palette opens in 28 ms (egui's: 47).
 - Background threads start when there's work and none is free, and
   leave after 10 s without any (upstream kept one per core).
 - Olo's text (`gpui/src/platform/linux/text_system.rs`), the same as
@@ -108,7 +120,13 @@ What Olo changed, so far:
   DejaVu Sans, CJK, colour emoji), on the line's one baseline. GPUI's
   cosmic-text and font-kit are gone (swash has no autohinter, so Noto
   drew unhinted, and cosmic-text 0.14 had no variable weights). The
-  system's fonts load only when something needs them.
+  system's fonts load only when something needs them. Small text is
+  darkened (stem darkening, `darkening`) by growing its outline a
+  little all round, FreeType's emboldening (`embolden`: each point
+  moved out along its corner's bisector), then filled: a stroke round
+  the outline did the same at three times the cost (40 µs a glyph
+  against 13), and two layers' blending made its fringes a shade
+  heavier (total ink within 1%, the same look at every scale).
 - Text drawn for the display a window is on (`TextRendering`, chosen by
   `olo_protocol::panels::text_mode` from the display's density, colour
   stripes and rotation): grey-scale unhinted at Retina density (as

@@ -1,7 +1,7 @@
 // Doing `if let` gives you nice scoping with passes/encoders
 #![allow(irrefutable_let_patterns)]
 
-use super::{BladeAtlas, BladeContext};
+use super::{BladeAtlas, BladeContext, blade_context::PipelineCache};
 use crate::{
     Background, Bounds, DevicePixels, GpuSpecs, MonochromeSprite, Path, Point, PolychromeSprite,
     PrimitiveBatch, Quad, ScaledPixels, Scene, Sector, Segment, Shadow, Size, Underline,
@@ -11,7 +11,7 @@ use blade_util::{BufferBelt, BufferBeltDescriptor};
 use bytemuck::{Pod, Zeroable};
 #[cfg(target_os = "macos")]
 use media::core_video::CVMetalTextureCache;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 const MAX_FRAME_TIME_MS: u32 = 10000;
 
@@ -134,7 +134,7 @@ struct PathRasterizationVertex {
     bounds: Bounds<ScaledPixels>,
 }
 
-struct BladePipelines {
+pub(super) struct BladePipelines {
     quads: gpu::RenderPipeline,
     shadows: gpu::RenderPipeline,
     path_rasterization: gpu::RenderPipeline,
@@ -347,18 +347,6 @@ impl BladePipelines {
         }
     }
 
-    fn destroy(&mut self, gpu: &gpu::Context) {
-        gpu.destroy_render_pipeline(&mut self.quads);
-        gpu.destroy_render_pipeline(&mut self.shadows);
-        gpu.destroy_render_pipeline(&mut self.path_rasterization);
-        gpu.destroy_render_pipeline(&mut self.paths);
-        gpu.destroy_render_pipeline(&mut self.underlines);
-        gpu.destroy_render_pipeline(&mut self.segments);
-        gpu.destroy_render_pipeline(&mut self.sectors);
-        gpu.destroy_render_pipeline(&mut self.mono_sprites);
-        gpu.destroy_render_pipeline(&mut self.poly_sprites);
-        gpu.destroy_render_pipeline(&mut self.surfaces);
-    }
 }
 
 pub struct BladeSurfaceConfig {
@@ -376,7 +364,8 @@ pub struct BladeRenderer {
     surface_config: gpu::SurfaceConfig,
     command_encoder: gpu::CommandEncoder,
     last_sync_point: Option<gpu::SyncPoint>,
-    pipelines: BladePipelines,
+    pipelines: Arc<BladePipelines>,
+    pipeline_cache: Arc<Mutex<PipelineCache>>,
     instance_belt: BufferBelt,
     atlas: Arc<BladeAtlas>,
     atlas_sampler: gpu::Sampler,
@@ -388,8 +377,20 @@ pub struct BladeRenderer {
     path_targets: Option<PathTargets>,
     /// Olo: for LCD subpixel glyphs, made the first time a frame has
     /// some (only where the GPU blends with a second source).
-    subpixel_sprites: Option<gpu::RenderPipeline>,
+    subpixel_sprites: Option<Arc<gpu::RenderPipeline>>,
     rendering_parameters: RenderingParameters,
+}
+
+/// Olo: the pipelines for a surface like `info`, from the context's
+/// cache (made the first time).
+fn shared_pipelines(gpu: &gpu::Context, cache: &Mutex<PipelineCache>, info: gpu::SurfaceInfo, path_sample_count: u32) -> Arc<BladePipelines> {
+    let mut cache = cache.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((_, set)) = cache.sets.iter().find(|(key, _)| *key == (info, path_sample_count)) {
+        return set.clone();
+    }
+    let set = Arc::new(BladePipelines::new(gpu, info, path_sample_count));
+    cache.sets.push(((info, path_sample_count), set.clone()));
+    set
 }
 
 impl BladeRenderer {
@@ -416,17 +417,13 @@ impl BladeRenderer {
             buffer_count: 2,
         });
         let rendering_parameters = RenderingParameters::from_env(context);
-        let pipelines = BladePipelines::new(
-            &context.gpu,
-            surface.info(),
-            rendering_parameters.path_sample_count,
-        );
+        let pipelines = shared_pipelines(&context.gpu, &context.pipelines, surface.info(), rendering_parameters.path_sample_count);
         let instance_belt = BufferBelt::new(BufferBeltDescriptor {
             memory: gpu::Memory::Shared,
             min_chunk_size: 0x1000,
             alignment: 0x40, // Vulkan `minStorageBufferOffsetAlignment` on Intel Xe
         });
-        let atlas = Arc::new(BladeAtlas::new(&context.gpu));
+        let atlas = context.atlas.clone();
         let atlas_sampler = context.gpu.create_sampler(gpu::SamplerDesc {
             name: "path rasterization sampler",
             mag_filter: gpu::FilterMode::Linear,
@@ -449,6 +446,7 @@ impl BladeRenderer {
             command_encoder,
             last_sync_point: None,
             pipelines,
+            pipeline_cache: context.pipelines.clone(),
             instance_belt,
             atlas,
             atlas_sampler,
@@ -519,12 +517,8 @@ impl BladeRenderer {
             self.surface_config.transparent = transparent;
             self.gpu
                 .reconfigure_surface(&mut self.surface, self.surface_config);
-            self.pipelines.destroy(&self.gpu);
-            self.pipelines = BladePipelines::new(
-                &self.gpu,
-                self.surface.info(),
-                self.rendering_parameters.path_sample_count,
-            );
+            self.pipelines = shared_pipelines(&self.gpu, &self.pipeline_cache, self.surface.info(), self.rendering_parameters.path_sample_count);
+            self.subpixel_sprites = None;
         }
     }
 
@@ -625,16 +619,13 @@ impl BladeRenderer {
 
     pub fn destroy(&mut self) {
         self.wait_for_gpu();
-        self.atlas.destroy();
+        // (The atlas is the context's, kept for the next window.)
         self.gpu.destroy_sampler(self.atlas_sampler);
         self.instance_belt.destroy(&self.gpu);
         self.gpu.destroy_command_encoder(&mut self.command_encoder);
-        self.pipelines.destroy(&self.gpu);
+        // (The pipelines are the context's, kept for the next window.)
         self.gpu.destroy_surface(&mut self.surface);
         self.destroy_path_targets();
-        if let Some(mut pipeline) = self.subpixel_sprites.take() {
-            self.gpu.destroy_render_pipeline(&mut pipeline);
-        }
     }
 
     /// Whether this GPU can draw LCD subpixel glyphs.
@@ -654,6 +645,13 @@ impl BladeRenderer {
         {
             return;
         }
+        let info = self.surface.info();
+        let cache = self.pipeline_cache.clone();
+        let mut cache = cache.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((_, pipeline)) = cache.subpixel.iter().find(|(format, _)| *format == info.format) {
+            self.subpixel_sprites = Some(pipeline.clone());
+            return;
+        }
         let source = format!(
             "enable dual_source_blending;\n{}\n{}",
             include_str!("shaders.wgsl"),
@@ -663,8 +661,7 @@ impl BladeRenderer {
             log::error!("the LCD subpixel glyph shader didn't compile");
             return;
         };
-        let info = self.surface.info();
-        self.subpixel_sprites = Some(self.gpu.create_render_pipeline(gpu::RenderPipelineDesc {
+        let pipeline = Arc::new(self.gpu.create_render_pipeline(gpu::RenderPipelineDesc {
             name: "subpixel-sprites",
             data_layouts: &[&ShaderMonoSpritesData::layout()],
             vertex: shader.at("vs_mono_sprite"),
@@ -693,6 +690,8 @@ impl BladeRenderer {
             }],
             multisample_state: gpu::MultisampleState::default(),
         }));
+        cache.subpixel.push((info.format, pipeline.clone()));
+        self.subpixel_sprites = Some(pipeline);
     }
 
     /// The textures paths are drawn into, made if not yet.
@@ -899,7 +898,7 @@ impl BladeRenderer {
                         unsafe { self.instance_belt.alloc_typed(sprites, &self.gpu) };
                     let pipeline = match &self.subpixel_sprites {
                         Some(subpixel) if texture_id.kind == crate::AtlasTextureKind::Subpixel => {
-                            subpixel
+                            &**subpixel
                         }
                         _ => &self.pipelines.mono_sprites,
                     };

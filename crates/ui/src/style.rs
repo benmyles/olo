@@ -13,6 +13,9 @@ use olo_theme::{Palette, Rgba};
 /// monospaced face's.
 pub const PLAIN_SIZE: f32 = 12.0;
 pub const SMALL_SIZE: f32 = 10.5;
+/// Secondary text a point under the plain size: a row's subtitle and
+/// kind, a chip, a caption (the egui kit's `small_font`).
+pub const DETAIL_SIZE: f32 = PLAIN_SIZE - 1.0;
 pub const MONO_SIZE: f32 = 12.0;
 
 /// Olo's faces.
@@ -289,6 +292,101 @@ pub fn fit(window: &mut Window, text: SharedString, font_size: f32, font: &Font,
             return cut;
         }
         end = text[..end].char_indices().next_back().map_or(0, |(i, _)| i);
+    }
+}
+
+/// Keys as menus and the shortcuts sheet write them ("⇧⌘P", "Ctrl+Q"),
+/// in the plain size, `right_center` their right edge and middle: each
+/// symbol laid out on its own, ⌘ and ⇧ a point closer to what follows
+/// than their advance, all on one baseline on a device pixel. Returns
+/// where they were drawn.
+pub fn key_combo(window: &mut Window, cx: &mut App, right_center: Point<Pixels>, keys: &str, color: Hsla) -> Bounds<Pixels> {
+    let font = ui_font(FontWeight::NORMAL);
+    let parts = combo_parts(keys);
+    let mut x = right_center.x;
+    for (i, part) in parts.iter().enumerate().rev() {
+        let lift = px(symbol_lift(window, part, &font));
+        let lift = snap_coord(window, lift);
+        let at = label(window, cx, x, right_center.y + lift, Align::Right, part.clone(), PLAIN_SIZE, font.clone(), color);
+        x = at.left();
+        if i > 0 {
+            x += px(SHORTCUT_KERN);
+        }
+    }
+    Bounds::from_corners(point(x, right_center.y - px(PLAIN_SIZE / 2.0)), point(right_center.x, right_center.y + px(PLAIN_SIZE / 2.0)))
+}
+
+/// The width of keys as [`key_combo`] draws them.
+pub fn key_combo_width(window: &mut Window, keys: &str) -> f32 {
+    let font = ui_font(FontWeight::NORMAL);
+    let parts = combo_parts(keys);
+    parts.iter().map(|t| f32::from(text_width(window, t.clone(), PLAIN_SIZE, font.clone()))).sum::<f32>() - SHORTCUT_KERN * parts.len().saturating_sub(1) as f32
+}
+
+/// ⌘ and ⇧ sit this much closer to what follows than their advance width.
+const SHORTCUT_KERN: f32 = 1.0;
+
+thread_local! {
+    static LIFTS: std::cell::RefCell<std::collections::HashMap<char, f32>> = Default::default();
+}
+
+/// How far down (in points) to set a key symbol about as tall as the
+/// capitals (⇧ ⌘ ↵ ⌫ ⏏) so it stands on their line, by its outline: its
+/// face may set it a pixel off (Noto's ⇧ is one low). Smaller ones
+/// (← ⌥ ⌃ ⇥) and letters sit as their face has them. Kept per symbol.
+fn symbol_lift(window: &Window, part: &str, font: &Font) -> f32 {
+    let mut chars = part.chars();
+    let (Some(ch), None) = (chars.next(), chars.next()) else { return 0.0 };
+    if ch.is_ascii() {
+        return 0.0;
+    }
+    if let Some(lift) = LIFTS.with(|l| l.borrow().get(&ch).copied()) {
+        return lift;
+    }
+    let ts = window.text_system().clone();
+    let size = px(PLAIN_SIZE);
+    let run = TextRun { len: part.len(), font: font.clone(), color: Hsla::default(), background_color: None, underline: None, strikethrough: None };
+    // The face it comes from (a fallback, often).
+    let line = ts.shape_line(SharedString::from(part.to_owned()), size, &[run], None);
+    let lift = match (line.runs.first().map(|r| ts.typographic_bounds(r.font_id, size, ch)), ts.typographic_bounds(ts.resolve_font(font), size, 'H')) {
+        // (Bounds rise from the baseline: their origin is the foot.)
+        (Some(Ok(g)), Ok(h)) if (g.size.height - h.size.height).abs() <= px(2.0) => f32::from(g.origin.y - h.origin.y),
+        _ => 0.0,
+    };
+    LIFTS.with(|l| l.borrow_mut().insert(ch, lift));
+    lift
+}
+
+/// The keys split so each symbol (⌘ ⇧ ↑ ⌫ …) is laid out on its own.
+fn combo_parts(label: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut run = String::new();
+    for ch in label.chars() {
+        if ch.is_ascii() {
+            run.push(ch);
+        } else {
+            if !run.is_empty() {
+                parts.push(std::mem::take(&mut run));
+            }
+            parts.push(ch.to_string());
+        }
+    }
+    if !run.is_empty() {
+        parts.push(run);
+    }
+    parts
+}
+
+/// A soft shadow under a panel floating over everything (the command
+/// palette, the shortcuts sheet): rings of the look's drop shadow, each
+/// a point wider and fainter, a little lower.
+pub fn soft_shadow(window: &mut Window, r: Bounds<Pixels>, palette: &Palette) {
+    let [red, green, blue, alpha] = palette.drop_shadow;
+    for i in 1..=6u32 {
+        let a = (alpha as u32 * (26 - i * 4) / 40) as u8;
+        let grow = px(i as f32);
+        let ring = snap(window, Bounds::from_corners(point(r.left() - grow, r.top() - grow + grow * 0.5), point(r.right() + grow, r.bottom() + grow + grow * 0.5)));
+        window.paint_quad(gpui::fill(ring, c([red, green, blue, a])).corner_radii(px(4.0 + i as f32)));
     }
 }
 

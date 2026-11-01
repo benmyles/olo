@@ -953,7 +953,7 @@ impl DiskUsage {
                 let mut chips = Vec::new();
                 for (k, (id, name, size, dir)) in items.iter().enumerate() {
                     let text = format!("{name}  {}", format_size(*size));
-                    let w = (f32::from(style::text_width(window, text.clone(), style::SMALL_SIZE, font.clone())) + 16.0 + 6.0 + 14.0 + 8.0).min(220.0);
+                    let w = (f32::from(style::text_width(window, text.clone(), style::DETAIL_SIZE, font.clone())) + 16.0 + 6.0 + 14.0 + 8.0).min(220.0);
                     let left = items.len() - k;
                     if x + px(w) > inner.right() - px(if left > 1 { 60.0 } else { 0.0 }) {
                         chips.push((None, Bounds { origin: point(x, y), size: size_of(0.0, CHIP_HEIGHT) }, format!("+{left} more"), false, None));
@@ -978,7 +978,7 @@ impl DiskUsage {
                 let font = style::ui_font(FontWeight::NORMAL);
                 for (id, chip, text, dir, close) in &chips {
                     let Some(id) = id else {
-                        style::label(window, cx, chip.left() + px(2.0), chip.center().y, style::Align::Left, text.clone(), style::SMALL_SIZE, font.clone(), style::c(p.document_text));
+                        style::label(window, cx, chip.left() + px(2.0), chip.center().y, style::Align::Left, text.clone(), style::DETAIL_SIZE, font.clone(), style::c(p.document_text));
                         continue;
                     };
                     let chip_r = style::snap(window, *chip);
@@ -986,7 +986,7 @@ impl DiskUsage {
                     window.paint_quad(gpui::outline(chip_r, style::c(mix(p.panel_text, p.panel_background, 0.6)), gpui::BorderStyle::Solid).corner_radii(px(3.0)));
                     icons::paint(window, style::snap(window, Bounds { origin: point(chip.left() + px(3.0), chip.center().y - px(8.0)), size: size_of(16.0, 16.0) }), icon_for(text.split("  ").next().unwrap_or_default(), *dir));
                     if let Some((close, hit)) = close {
-                        style::label_fit(window, cx, chip.left() + px(22.0), chip.center().y, style::Align::Left, text.clone(), style::SMALL_SIZE, font.clone(), style::c(p.document_text), close.left() - chip.left() - px(24.0));
+                        style::label_fit(window, cx, chip.left() + px(22.0), chip.center().y, style::Align::Left, text.clone(), style::DETAIL_SIZE, font.clone(), style::c(p.document_text), close.left() - chip.left() - px(24.0));
                         let xc = if hit.is_hovered(window) { p.panel_text } else { mix(p.panel_text, p.panel_background, 0.4) };
                         let (a, z) = (point(close.left() + px(3.0), close.top() + px(3.0)), point(close.right() - px(3.0), close.bottom() - px(3.0)));
                         window.paint_segment(a, z, px(1.5), true, style::c(xc));

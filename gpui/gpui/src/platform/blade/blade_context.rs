@@ -1,11 +1,31 @@
 use anyhow::Context as _;
 use blade_graphics as gpu;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use util::ResultExt;
 
 #[cfg_attr(target_os = "macos", derive(Clone))]
 pub struct BladeContext {
     pub(super) gpu: Arc<gpu::Context>,
+    /// Olo: the pipelines windows draw with, shared (see [`PipelineCache`]).
+    pub(super) pipelines: Arc<Mutex<PipelineCache>>,
+    /// Olo: the glyphs and pictures windows draw, one atlas for them all:
+    /// a window opened (a menu, the command palette) finds what the
+    /// others put there, rather than rasterizing and uploading it all
+    /// again for its first frame. Its keys hold all a tile depends on
+    /// (size, scale, the display's text rendering).
+    pub(super) atlas: Arc<super::BladeAtlas>,
+}
+
+/// Olo: the pipelines windows draw with, made once for each kind of
+/// surface (its format and alpha, and the paths' sample count) and kept
+/// while the GPU is: making them (the shader compiled, ten pipelines)
+/// took about 30 ms, which every window opened paid (a menu, the command
+/// palette at each ⌘Space).
+#[derive(Default)]
+pub(super) struct PipelineCache {
+    pub(super) sets: Vec<((gpu::SurfaceInfo, u32), Arc<super::blade_renderer::BladePipelines>)>,
+    /// LCD subpixel glyphs' (the second-source blend), by format.
+    pub(super) subpixel: Vec<(gpu::TextureFormat, Arc<gpu::RenderPipeline>)>,
 }
 
 impl BladeContext {
@@ -32,7 +52,8 @@ impl BladeContext {
             }
             .map_err(|e| anyhow::anyhow!("{e:?}"))?,
         );
-        Ok(Self { gpu })
+        let atlas = Arc::new(super::BladeAtlas::new(&gpu));
+        Ok(Self { gpu, pipelines: Arc::default(), atlas })
     }
 }
 

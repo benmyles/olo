@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-31
 
+### The command palette on GPUI
+
+*22:46* — The command palette, its window menu and the shortcuts sheet move to the GPUI kit. Same look; key symbols (⇧ ⌘ ↵) set on the capitals' line by their outlines, the subtitle and kind on the title's baseline, the query lined up with the titles. It opens in 28 ms (egui: 47) and holds 40 MB less; small text's darkening is now an emboldened outline rather than a stroke (the same look, a third of the time).
+
+![The command palette on GPUI](2026-10-31/224642-the-command-palette-on-gpui.png)
+
 ### DriveSetup on GPUI
 
 *21:41* — DriveSetup moves to the GPUI kit: the disk map (segments to scale, hatched free space, the unlocked contents under a purple band) over the list of disks and volumes, the status line with progress and Stop, and its forms (Format, Create with a size slider, Resize, Rename, Unlock, New Partition Table) as alert windows that grow and shrink with their fields. Here on the test UDisks (udisks-fake). The kit gains BeOS keyboard navigation for it: Tab moves through fields, lists and controls (the focused control's label underlined in blue, Space presses it), and a default button answers Return from anywhere in its window.

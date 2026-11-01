@@ -125,7 +125,7 @@ pub fn paint(window: &mut Window, cx: &mut App, rect: Bounds<Pixels>, hitbox: &H
             let inset = px(olo_ui::metrics::CELL_INSET);
             let w = r.size.width - inset * 2.0;
             style::label_fit(window, cx, r.left() + inset, mid - px(7.0), style::Align::Left, title, style::PLAIN_SIZE - 1.0, style::ui_font(FontWeight::BOLD), color, w);
-            style::label_fit(window, cx, r.left() + inset, mid + px(7.0), style::Align::Left, detail, style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), color, w);
+            style::label_fit(window, cx, r.left() + inset, mid + px(7.0), style::Align::Left, detail, style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), color, w);
         }
     }
     style::sunken(window, rect, &p, false);

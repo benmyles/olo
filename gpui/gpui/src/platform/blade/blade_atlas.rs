@@ -30,13 +30,6 @@ struct BladeAtlasState {
 #[cfg(gles)]
 unsafe impl Send for BladeAtlasState {}
 
-impl BladeAtlasState {
-    fn destroy(&mut self) {
-        self.storage.destroy(&self.gpu);
-        self.upload_belt.destroy(&self.gpu);
-    }
-}
-
 pub struct BladeTextureInfo {
     pub raw_view: gpu::TextureView,
 }
@@ -55,10 +48,6 @@ impl BladeAtlas {
             initializations: Vec::new(),
             uploads: Vec::new(),
         }))
-    }
-
-    pub(crate) fn destroy(&self) {
-        self.0.lock().destroy();
     }
 
     pub fn before_frame(&self, gpu_encoder: &mut gpu::CommandEncoder) {
@@ -301,20 +290,6 @@ impl ops::Index<AtlasTextureId> for BladeAtlasStorage {
             crate::AtlasTextureKind::Subpixel => &self.subpixel_textures,
         };
         textures[id.index as usize].as_ref().unwrap()
-    }
-}
-
-impl BladeAtlasStorage {
-    fn destroy(&mut self, gpu: &gpu::Context) {
-        for mut texture in self.monochrome_textures.drain().flatten() {
-            texture.destroy(gpu);
-        }
-        for mut texture in self.polychrome_textures.drain().flatten() {
-            texture.destroy(gpu);
-        }
-        for mut texture in self.subpixel_textures.drain().flatten() {
-            texture.destroy(gpu);
-        }
     }
 }
 

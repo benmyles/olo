@@ -206,6 +206,9 @@ pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, bu
                 gpui::WindowKind::Normal
             },
             session_lock_output: options.lock_output.clone(),
+            // A layer that draws no panel (an overlay drawing its own
+            // panel, the command palette's) shows what's under it.
+            window_background: if options.layer.is_some() && !options.panel { gpui::WindowBackgroundAppearance::Transparent } else { gpui::WindowBackgroundAppearance::Opaque },
             layer_shell: options.layer.clone(),
             dialog: options.dialog,
             is_resizable: !options.fixed,

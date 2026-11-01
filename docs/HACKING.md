@@ -968,7 +968,8 @@ labelled with the prompt, focused while PAM waits, and under it
 Checking…, the error or PAM's message; true when entered with Return.
 
 Cards of different sizes (`olo_kit::masonry`, the history's Cards
-view): `masonry::columns(width, min, gap)` fits columns of at least
+view; the layout is `olo_kit_base::masonry`, on plain `Place`s, which
+the GPUI kit's apps use as it is): `masonry::columns(width, min, gap)` fits columns of at least
 `min`; each item gives (span, height at that width) and
 `masonry::arrange(cols, column, gap, &items)` places them in order, each
 where the columns are lowest, filling the hole a wide one would leave
@@ -1619,6 +1620,16 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   as shaped), `style::selection_band`, `style::selection_wash` (a thing
   selected in place: the selection colour see-through, its edge
   inside) and `style::snap_centred`.
+- `style::key_combo(window, cx, right_center, keys, color)` and
+  `key_combo_width`: keys as menus write them ("⇧⌘P"), each symbol
+  laid out on its own a point closer to what follows; one about as tall
+  as the capitals (⇧ ⌘ ↵ ⌫ ⏏) is set on their line by its outline
+  (Noto's ⇧ sits a pixel low; kept per symbol), as the egui kit does by
+  its ink. `style::DETAIL_SIZE` (11 points, the egui kit's
+  `small_font`) is for secondary words (a row's subtitle and kind, a
+  chip, a caption, a small button); `SMALL_SIZE` (10.5) for graphs'
+  labels and headings in capitals. `style::soft_shadow` (an overlay
+  panel's), `icons::paint_faded` (an icon of something unusable).
 - `widgets::Graph::new(id, series, now)` (live series of timed samples,
   as the egui kit's `graph`: lines drawn as GPU segments over faint
   fills, a grid in quarters and time lines that move with the samples,
@@ -1696,8 +1707,17 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   makes a layer surface (Deskbar, notifications, an overlay) instead of
   a window; `layer_options(|l| ...)` sets its exclusive zone, margins,
   keyboard (`LayerKeyboard::OnDemand` for the desktop, `Exclusive` for a
-  modal overlay) and output; `no_panel()` leaves its background to it.
-  Menus open over it as over a window (`examples/layer.rs`).
+  modal overlay) and output; `no_panel()` leaves its background to it
+  (transparent: what's under it shows). Menus open over it as over a
+  window (`examples/layer.rs`); a layer that only carries a menu takes
+  the keyboard `OnDemand`, as app_server gives every key to an
+  exclusive one, past the menu's grab. `menu::context_menu_then(window,
+  cx, menu, at, on_choose, on_close)` is `context_menu` with word when
+  it has gone (to take such a layer away; `MenuPopup::close` puts it
+  away, for a click on the layer, which the grab lets through as the
+  same program's). Open a window from a paint after the frame
+  (`window.defer`): opened during it, the new window's first draw
+  clears the frame's element arena under the one painting.
 - Upgrades: GPUI kit apps reach app_server through olo-wlproxy, which
   keeps their windows when app_server restarts in place; when
   olo-session signals an upgrade (SIGURG) and the app's binary was
@@ -5351,6 +5371,11 @@ its bell's click reaches your own notification service. Unit tests:
 
 ## The command palette (apps/palette)
 
+On the GPUI kit (olo-ui). Released, it opens in 28 ms from the forward
+to the first frame (egui's 47), typing's frames take at most 2 ms once
+its glyphs are drawn (5.3 the first time; egui's 5–6.6 each time), and
+shown it holds 113.6 MB (egui's 154.1); hidden, nothing wakes it.
+
 ⌘Space (`Shortcut::Palette`, the profile's: ⊞S on Windows, Alt+Space
 on BeOS; Find moved to ⌥⌘Space) or a tap of the Super key (if chosen in
 the keyboard profile; Windows' does) has app_server start
@@ -5364,7 +5389,9 @@ others back). It opens a full-screen transparent overlay layer that takes the
 keyboard, on the display in use (the focused window's, else the
 pointer's), with the BeOS panel a fifth of the way down (over a soft
 shadow on device pixels, `style::soft_shadow`, as the shortcuts sheet's;
-the query's capitals on the field's middle, `style::text_origin`): a
+the query's capitals on the field's middle, its text where the
+results' titles start; each row's icon and words on one middle on the
+device grid, the subtitle and kind on the title's baseline): a
 click outside the panel, Escape or ⌘Space again
 put it away.
 

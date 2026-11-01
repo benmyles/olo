@@ -589,7 +589,7 @@ impl Render for Bench {
                 let top = olo_ui::widgets::nice_ceiling(samples.iter().copied().fold(0.0, f64::max));
                 if !samples.is_empty() {
                     let faint = c(mix(p.document_text, p.document_background, 0.4));
-                    style::label(window, cx, inner.left() + px(4.0), inner.top() + px(8.0), style::Align::Left, rate_text(top), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), faint);
+                    style::label(window, cx, inner.left() + px(4.0), inner.top() + px(8.0), style::Align::Left, rate_text(top), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), faint);
                 }
                 if samples.len() > 1 {
                     let step = f32::from(inner.size.width) / (BENCH_SAMPLES - 1) as f32;

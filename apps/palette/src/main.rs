@@ -4,7 +4,7 @@
 //! desktop's shortcuts (with their keys, so it doubles as a reminder),
 //! preference panels, settings, Passwords' items and files, and works out
 //! sums. Return does the selected one; Escape, a click outside or ⌘Space
-//! again puts it away.
+//! again puts it away. On the GPUI kit (olo-ui).
 //!
 //! It stays running between uses so it opens at once: app_server starts
 //! `olo-palette --toggle`, which hands the toggle to the running copy.
@@ -20,17 +20,21 @@ mod window_menu;
 
 use std::{collections::HashMap, path::PathBuf};
 
-use serde::{Deserialize, Serialize};
-use sources::{Action, Found, Item, Kind, Workers};
-use olo_kit::{
-    App, Cx, Keyboard, Layer, LayerOptions, WindowId, WindowKind, WindowOptions,
-    egui::{self, Align, Color32, Key, Rect, Sense, pos2, vec2},
+use olo_protocol::WindowInfo;
+use olo_ui::{
+    Frame, WindowOptions,
+    gpui::{
+        App, AppContext as _, Bounds, ClipboardItem, Context, Entity, Focusable as _, FontWeight, HitboxBehavior, InteractiveElement as _, IntoElement, KeyDownEvent, LayerKeyboard, LayerShellLayer, ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Render, ScrollWheelEvent, Styled as _, Window, WindowHandle, canvas, div, point, px, size,
+    },
     icons,
     instance::{self, Launch},
     metrics as m,
     style::{self, c},
+    theme, tracker,
+    widgets::{TextField, TextFieldEvent, text_field},
 };
-use olo_protocol::WindowInfo;
+use serde::{Deserialize, Serialize};
+use sources::{Action, Found, Item, Kind, Workers};
 
 const APP_ID: &str = "olo.palette";
 /// The panel's width, and how far down the screen it sits.
@@ -51,7 +55,7 @@ struct Recents {
 
 impl Recents {
     fn path() -> PathBuf {
-        olo_kit::config_dir().join("palette.json")
+        olo_xdg::config_dir().join("palette.json")
     }
     fn load() -> Recents {
         let read = |p: PathBuf| std::fs::read_to_string(p).ok().and_then(|s| serde_json::from_str::<Recents>(&s).ok());
@@ -59,7 +63,7 @@ impl Recents {
         // our programs by their old names.
         read(Self::path())
             .or_else(|| {
-                let mut old = read(olo_kit::config_dir().join(olo_kit::legacy::OLD).join("palette.json"))?;
+                let mut old = read(olo_xdg::config_dir().join(olo_xdg::legacy::OLD).join("palette.json"))?;
                 old.chosen = old.chosen.into_iter().map(|(k, v)| (k.replace("tabula-", "olo-").replace("tabula.", "olo."), v)).collect();
                 Some(old)
             })
@@ -99,16 +103,19 @@ impl Recents {
 }
 
 struct Palette {
-    win: Option<WindowId>,
+    win: Option<WindowHandle<Frame>>,
     /// Asked to show; opens once the window in front is known.
     opening: bool,
-    query: String,
+    query: Entity<TextField>,
+    /// The query's text, as last seen.
+    query_text: String,
     /// Bumped with each change to the query, so late answers are dropped.
     asked: u64,
     selected: usize,
     /// Scrolled this many rows down.
     top: usize,
-    focus_field: bool,
+    /// ⌘ held: a file's row says Open in Tracker.
+    command: bool,
     fixed: Vec<Item>,
     context: Vec<Item>,
     menus: Vec<Item>,
@@ -119,23 +126,42 @@ struct Palette {
     recents: Recents,
     workers: Workers,
     /// A window's menu, while it shows.
-    window_menu: Option<window_menu::Shown>,
+    window_menu: Option<WindowHandle<Frame>>,
     /// The shortcuts sheet, while it shows.
-    sheet: Option<sheet::Shown>,
+    sheet: Option<WindowHandle<Frame>>,
+}
+
+/// Closes `w` (from outside an update of it).
+fn close(w: WindowHandle<Frame>, cx: &mut App) {
+    let _ = w.update(cx, |_, window, _| window.remove_window());
+}
+
+/// The overlay over a whole output that the palette, the sheet and a
+/// window's menu sit on: the keyboard is theirs.
+fn overlay(title: &str, namespace: &str, output: Option<String>) -> WindowOptions {
+    let mut options = WindowOptions::new(title.to_owned(), 1.0, 1.0)
+        .layer(namespace, LayerShellLayer::Overlay, (true, true, true, true))
+        .layer_options(|l| {
+            l.exclusive_zone = -1;
+            l.keyboard = LayerKeyboard::Exclusive;
+            l.output = output;
+        })
+        .no_panel();
+    options.fixed = true;
+    options
 }
 
 impl Palette {
-    fn toggle(&mut self, cx: &mut Cx) {
+    fn toggle(&mut self, cx: &mut Context<Self>) {
         if self.win.is_some() {
-            self.hide(cx);
-            return;
+            return self.hide(cx);
         }
         if self.opening {
             return;
         }
         self.opening = true;
         // Learn which window is in front before taking the keyboard from it.
-        let proxy = cx.proxy();
+        let proxy = olo_ui::proxy(cx);
         let _ = std::thread::Builder::new().name("palette-context".into()).spawn(move || {
             let (front, items) = sources::context();
             proxy.send(Found::Context { front: front.clone(), items });
@@ -145,62 +171,60 @@ impl Palette {
         });
     }
 
-    fn show(&mut self, cx: &mut Cx) {
+    fn show(&mut self, cx: &mut Context<Self>) {
         self.opening = false;
-        self.query.clear();
+        // (Setting the field's text sends no change.)
+        self.query.update(cx, |f, cx| f.set_text("", cx));
+        self.query_text.clear();
+        self.asked += 1;
         self.files.clear();
         self.passwords.clear();
         self.selected = 0;
         self.top = 0;
-        self.focus_field = true;
-        let win = cx.open_window(WindowOptions {
-            title: "Command Palette".into(),
-            size: (1, 1),
-            kind: WindowKind::Layer(LayerOptions {
-                layer: Layer::Overlay,
-                anchor: (true, true, true, true),
-                exclusive_zone: -1,
-                margin: (0, 0, 0, 0),
-                keyboard: Keyboard::Exclusive,
-                namespace: "palette".into(),
-                output: None,
-            }),
-            panel: false,
-            ..Default::default()
-        });
-        self.win = Some(win);
+        self.command = false;
         self.refresh();
+        let me = cx.entity();
+        let query = self.query.clone();
+        cx.defer(move |cx| {
+            let view = me.clone();
+            let w = olo_ui::open_window(cx, overlay("Command Palette", "palette", None), move |window, cx| {
+                window.focus(&query.focus_handle(cx));
+                view
+            });
+            me.update(cx, |p, _| p.win = w);
+        });
     }
 
-    fn hide(&mut self, cx: &mut Cx) {
+    fn hide(&mut self, cx: &mut Context<Self>) {
         if let Some(w) = self.win.take() {
-            cx.close_window(w);
+            cx.defer(move |cx| close(w, cx));
         }
         self.menus.clear();
         self.front = None;
+        cx.notify();
     }
 
     /// The results for the query now.
     fn refresh(&mut self) {
-        let words = rank::words(&self.query);
+        let query = self.query_text.clone();
+        let words = rank::words(&query);
         let mut scored: Vec<(i32, Item)> = Vec::new();
         if words.is_empty() {
             // Nothing typed: what was chosen lately.
             let all = self.fixed.iter().chain(&self.context);
-            let mut recent: Vec<(i32, Item)> =
-                all.filter_map(|i| i.action.key().map(|k| (self.recents.boost(&k), i.clone()))).filter(|(b, _)| *b > 0).collect();
+            let mut recent: Vec<(i32, Item)> = all.filter_map(|i| i.action.key().map(|k| (self.recents.boost(&k), i.clone()))).filter(|(b, _)| *b > 0).collect();
             recent.sort_by_key(|r| std::cmp::Reverse(r.0));
             scored = recent.into_iter().take(ROWS).collect();
         } else {
-            if let Some(v) = calc::eval(&self.query) {
+            if let Some(v) = calc::eval(&query) {
                 let shown = calc::show(v);
-                let mut item = Item::new(Kind::Calculator, format!("= {shown}"), Action::Copy(shown)).subtitle(format!("{} — Return copies it", self.query.trim())).icon("calculator");
+                let mut item = Item::new(Kind::Calculator, format!("= {shown}"), Action::Copy(shown)).subtitle(format!("{} — Return copies it", query.trim())).icon("calculator");
                 item.keywords = String::new();
                 scored.push((i32::MAX / 2, item));
             }
             let all = self.fixed.iter().chain(&self.context).chain(&self.menus).chain(&self.passwords).chain(&self.files);
             scored.extend(sources::ranked(&words, all, |k| self.recents.boost(k)));
-            let q = self.query.trim().to_owned();
+            let q = query.trim().to_owned();
             scored.push((i32::MIN, Item::new(Kind::Web, format!("Search the web for “{q}”"), Action::Search(q)).icon("browser").subtitle("Web browser")));
         }
         self.results = scored.into_iter().map(|(_, i)| i).collect();
@@ -210,17 +234,23 @@ impl Palette {
         }
     }
 
-    fn query_changed(&mut self) {
+    fn query_changed(&mut self, cx: &mut Context<Self>) {
+        let text = self.query.read(cx).text().to_owned();
+        if text == self.query_text {
+            return;
+        }
+        self.query_text = text;
         self.asked += 1;
         self.selected = 0;
         self.top = 0;
-        let words = rank::words(&self.query);
+        let words = rank::words(&self.query_text);
         let _ = self.workers.files.send((self.asked, words));
-        let _ = self.workers.passwords.send((self.asked, self.query.clone()));
+        let _ = self.workers.passwords.send((self.asked, self.query_text.clone()));
         self.refresh();
+        cx.notify();
     }
 
-    fn choose(&mut self, cx: &mut Cx, index: usize) {
+    fn choose(&mut self, index: usize, cx: &mut Context<Self>) {
         let Some(item) = self.results.get(index).cloned() else { return };
         if !item.enabled {
             return;
@@ -229,7 +259,7 @@ impl Palette {
             self.recents.note(k);
         }
         if let Action::Copy(text) = &item.action {
-            cx.copy(text.clone());
+            cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
         }
         let front = self.front.as_ref().map(|f| f.id);
         self.hide(cx);
@@ -238,41 +268,44 @@ impl Palette {
 
     /// ⌘↩ or ⌘-click: a file or folder found shown in Tracker rather than
     /// opened; anything else chosen as usual.
-    fn reveal(&mut self, cx: &mut Cx, index: usize) {
+    fn reveal(&mut self, index: usize, cx: &mut Context<Self>) {
         let Some(Item { action: Action::Open(path), enabled: true, .. }) = self.results.get(index).cloned() else {
-            return self.choose(cx, index);
+            return self.choose(index, cx);
         };
         if let Some(k) = Action::Open(path.clone()).key() {
             self.recents.note(k);
         }
         self.hide(cx);
-        if let Err(e) = olo_kit::tracker::open(&path) {
+        if let Err(e) = tracker::open(&path) {
             tracing::warn!("couldn't show {} in Tracker: {e}", path.display());
         }
     }
 
     /// The shortcuts sheet, or away with it if it shows.
-    fn toggle_sheet(&mut self, cx: &mut Cx) {
-        if let Some(old) = self.sheet.take() {
-            cx.close_window(old.win);
+    fn toggle_sheet(&mut self, cx: &mut Context<Self>) {
+        // (Unless it put itself away: Escape, a click outside.)
+        if let Some(old) = self.sheet.take()
+            && cx.windows().iter().any(|w| w.window_id() == old.window_id())
+        {
+            cx.defer(move |cx| close(old, cx));
             return;
         }
         if self.win.is_some() {
             self.hide(cx);
         }
-        sheet::learn(cx.proxy());
+        sheet::learn(olo_ui::proxy(cx));
     }
 
     /// A right-click on a window's tab: put the palette away and learn
     /// what the menu needs.
-    fn ask_window_menu(&mut self, cx: &mut Cx, ask: window_menu::Ask) {
+    fn ask_window_menu(&mut self, ask: window_menu::Ask, cx: &mut Context<Self>) {
         if self.win.is_some() {
             self.hide(cx);
         }
         if let Some(old) = self.window_menu.take() {
-            cx.close_window(old.win);
+            cx.defer(move |cx| close(old, cx));
         }
-        window_menu::learn(ask, cx.proxy());
+        window_menu::learn(ask, olo_ui::proxy(cx));
     }
 
     fn step(&mut self, by: isize) {
@@ -294,196 +327,38 @@ impl Palette {
             self.top = self.selected + 1 - ROWS;
         }
     }
-}
 
-impl App for Palette {
-    /// Nothing to keep but that this is a new version of a running copy:
-    /// it re-executes with the arguments it first started with
-    /// (`--toggle`, from the first ⌘Space), which must not open it again
-    /// by themselves (on whichever display app_server knew of first,
-    /// while an upgrade brought them back).
-    fn save_state(&mut self, _cx: &Cx) -> Option<String> {
-        Some("{}".into())
+    /// Arrows, Page Up and Down, Escape and ⌘↩ belong to the list, not
+    /// the text (Return comes as the field's).
+    fn key(&mut self, e: &KeyDownEvent, cx: &mut Context<Self>) -> bool {
+        let k = &e.keystroke;
+        if olo_kit_base::keys::shortcut("alternate").is_some_and(|s| olo_ui::keys::pressed(&s, k)) {
+            let i = self.selected;
+            self.reveal(i, cx);
+            return true;
+        }
+        if k.modifiers.modified() {
+            return false;
+        }
+        match k.key.as_str() {
+            "escape" => self.hide(cx),
+            "up" => self.step(-1),
+            "down" => self.step(1),
+            "pageup" => self.step(-(ROWS as isize)),
+            "pagedown" => self.step(ROWS as isize),
+            _ => return false,
+        }
+        cx.notify();
+        true
     }
 
-    fn ui(&mut self, cx: &mut Cx, window: olo_kit::WindowId, ui: &mut egui::Ui) {
-        if let Some(shown) = self.sheet.as_mut().filter(|s| s.win == window) {
-            if sheet::ui(shown, ui) {
-                cx.close_window(window);
-                self.sheet = None;
-            }
-            return;
-        }
-        if let Some(shown) = self.window_menu.as_mut().filter(|s| s.win == window) {
-            if window_menu::ui(shown, ui) {
-                cx.close_window(window);
-                self.window_menu = None;
-            }
-            return;
-        }
-        let p = style::palette(ui.ctx());
-        let screen = ui.max_rect();
-        let shown = self.results.len().min(ROWS);
-        let list_h = if self.query.trim().is_empty() && shown == 0 { 0.0 } else { shown as f32 * ROW + if shown > 0 { m::TIGHT * 2.0 } else { 0.0 } };
-        let width = WIDTH.min(screen.width() - 32.0);
-        let height = FIELD_HEIGHT + 2.0 * m::SPACING + list_h + if self.results.is_empty() { 0.0 } else { m::SPACING };
-        let panel = Rect::from_min_size(pos2(screen.center().x - width / 2.0, screen.top() + (screen.height() * TOP).round()), vec2(width, height));
-        let panel = style::snap(ui.ctx(), panel);
-
-        // Outside the panel: a click puts it away.
-        let outside = ui.interact(screen, ui.make_persistent_id("outside"), Sense::click());
-        if outside.clicked() && !outside.interact_pointer_pos().is_some_and(|pos| panel.contains(pos)) {
-            self.hide(cx);
-            return;
-        }
-
-        let painter = ui.painter().clone();
-        // A soft shadow, then the BeOS panel.
-        style::soft_shadow(&painter, panel, &p);
-        painter.rect_filled(panel, 0.0, c(p.panel_background));
-        style::frame_rect(&painter, panel, style::darken(p.panel_background, 1.6));
-        style::raised(&painter, panel.shrink(1.0), &p);
-
-        // The query.
-        let field = Rect::from_min_size(panel.min + vec2(m::SPACING, m::SPACING), vec2(width - 2.0 * m::SPACING, FIELD_HEIGHT));
-        painter.rect_filled(field, 0.0, c(p.document_background));
-        style::sunken(&painter, field, &p, true);
-        let glass = Rect::from_center_size(pos2(field.left() + 8.0 + 12.0, field.center().y), vec2(24.0, 24.0));
-        icons::paint(&painter, glass, "query");
-        let line = ui.fonts_mut(|f| f.row_height(&egui::FontId::proportional(QUERY_SIZE)));
-        // The capitals on the field's middle, as the glass is, on device
-        // pixels (`style::text_origin`, from where a row of the type puts
-        // them).
-        let probe = painter.layout_no_wrap("H".into(), egui::FontId::proportional(QUERY_SIZE), Color32::WHITE);
-        let top = style::text_origin(ui.ctx(), &probe, 0.0, field.center().y, QUERY_SIZE).y;
-        let text_rect = Rect::from_min_max(pos2(glass.right() + 8.0, top), pos2(field.right() - 8.0, top + line));
-        // Arrows and Return belong to the list, not the text.
-        let (up, down, enter, reveal, escape, page_up, page_down) = ui.input_mut(|i| {
-            (
-                i.consume_key(egui::Modifiers::NONE, Key::ArrowUp),
-                i.consume_key(egui::Modifiers::NONE, Key::ArrowDown),
-                i.consume_key(egui::Modifiers::NONE, Key::Enter),
-                olo_kit::keyboard::consume(i, "alternate"),
-                i.consume_key(egui::Modifiers::NONE, Key::Escape),
-                i.consume_key(egui::Modifiers::NONE, Key::PageUp),
-                i.consume_key(egui::Modifiers::NONE, Key::PageDown),
-            )
-        });
-        if escape {
-            self.hide(cx);
-            return;
-        }
-        if up {
-            self.step(-1);
-        }
-        if down {
-            self.step(1);
-        }
-        if page_up {
-            self.step(-(ROWS as isize));
-        }
-        if page_down {
-            self.step(ROWS as isize);
-        }
-        if enter {
-            let i = self.selected;
-            self.choose(cx, i);
-            return;
-        }
-        if reveal {
-            let i = self.selected;
-            self.reveal(cx, i);
-            return;
-        }
-        let edit_id = ui.make_persistent_id("query");
-        let before = self.query.clone();
-        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
-        let out = egui::TextEdit::singleline(&mut self.query)
-            .id(edit_id)
-            .frame(egui::Frame::NONE)
-            .font(egui::FontId::proportional(QUERY_SIZE))
-            .text_color(c(p.document_text))
-            .hint_text(egui::RichText::new("Search apps, commands, files and more").font(egui::FontId::proportional(QUERY_SIZE)).color(style::disabled_text(&p)))
-            .desired_width(text_rect.width())
-            .min_size(text_rect.size())
-            .show(&mut child);
-        if std::mem::take(&mut self.focus_field) || !out.response.has_focus() {
-            out.response.request_focus();
-        }
-        if self.query != before {
-            self.query_changed();
-        }
-
-        // The results.
-        if !self.results.is_empty() {
-            let list = Rect::from_min_size(pos2(field.left(), field.bottom() + m::SPACING), vec2(field.width(), list_h));
-            if ui.rect_contains_pointer(list) {
-                let scroll = ui.input(|i| i.smooth_scroll_delta.y);
-                if scroll.abs() > 0.5 {
-                    let max_top = self.results.len().saturating_sub(ROWS);
-                    let rows = (-scroll / ROW).round() as isize;
-                    self.top = (self.top as isize + rows.signum() * rows.abs().max(1)).clamp(0, max_top as isize) as usize;
-                }
-            }
-            let mut chosen = None;
-            // ⌘ held: a file's ⌘↩ (or ⌘-click) shows it in Tracker, and
-            // its row says so.
-            let command = ui.input(|i| i.modifiers.command);
-            for (row, index) in (self.top..self.results.len()).take(ROWS).enumerate() {
-                let item = &self.results[index];
-                let r = Rect::from_min_size(pos2(list.left(), list.top() + m::TIGHT + row as f32 * ROW), vec2(list.width(), ROW));
-                let resp = ui.interact(r, ui.make_persistent_id(("row", index)), Sense::click());
-                if resp.hovered() && ui.input(|i| i.pointer.delta().length_sq() > 0.0) && item.enabled {
-                    self.selected = index;
-                }
-                if resp.clicked() {
-                    chosen = Some(index);
-                }
-                let selected = index == self.selected;
-                let (fg, dim) = if selected {
-                    painter.rect_filled(r, 0.0, c(p.menu_selected_background));
-                    (c(p.menu_selected_item_text), c(p.menu_selected_item_text).gamma_multiply(0.75))
-                } else {
-                    (c(p.panel_text), style::disabled_text(&p))
-                };
-                let fg = if item.enabled { fg } else { dim };
-                let icon_r = Rect::from_center_size(pos2(r.left() + 8.0 + ICON / 2.0, r.center().y), vec2(ICON, ICON));
-                let drew = item.icon.as_deref().is_some_and(|i| icons::paint_tinted(&painter, icon_r, i, if item.enabled { Color32::WHITE } else { Color32::from_white_alpha(110) }));
-                if !drew {
-                    icons::paint(&painter, icon_r, "application");
-                }
-                // Right side: the kind (on the subtitle's line), and keys
-                // before it.
-                let label = if selected && command && matches!(item.action, Action::Open(_)) { olo_kit::tracker::LABEL } else { item.kind.label() };
-                let kind = style::label_fit(&painter, r.right() - 8.0, r.center().y + 1.0, Align::Max, label, style::small_font(), dim, f32::INFINITY);
-                let mut right = kind.left() - m::SPACING;
-                if let Some(keys) = &item.keys {
-                    let w = style::key_combo_width(ui.ctx(), keys);
-                    style::key_combo(&painter, pos2(right, r.center().y), keys, fg);
-                    right -= w + m::SPACING;
-                }
-                // Title, and the subtitle after it in grey.
-                let x = icon_r.right() + 10.0;
-                let avail = (right - x).max(40.0);
-                let title = style::label_fit(&painter, x, r.center().y, Align::Min, &item.title, style::plain_font(), fg, avail);
-                let sx = title.right() + 8.0;
-                if !item.subtitle.is_empty() && right - sx > 40.0 {
-                    style::label_fit(&painter, sx, r.center().y + 1.0, Align::Min, &item.subtitle, style::small_font(), dim, right - sx);
-                }
-            }
-            if let Some(i) = chosen {
-                if command { self.reveal(cx, i) } else { self.choose(cx, i) }
-            }
-        }
-    }
-
-    fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
+    fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
         let message = match message.downcast::<Launch>() {
             Ok(launch) if launch.args.iter().any(|a| a == "--toggle") => return self.toggle(cx),
             Ok(launch) if launch.args.iter().any(|a| a == "--shortcuts") => return self.toggle_sheet(cx),
             Ok(launch) => {
                 if let Some(ask) = window_menu::Ask::parse(&launch.args) {
-                    self.ask_window_menu(cx, ask);
+                    self.ask_window_menu(ask, cx);
                 }
                 return;
             }
@@ -492,9 +367,13 @@ impl App for Palette {
         let message = match message.downcast::<sheet::Learned>() {
             Ok(learned) => {
                 if let Some(old) = self.sheet.take() {
-                    cx.close_window(old.win);
+                    cx.defer(move |cx| close(old, cx));
                 }
-                self.sheet = Some(sheet::open(cx, *learned));
+                let me = cx.entity();
+                cx.defer(move |cx| {
+                    let w = sheet::open(*learned, cx);
+                    me.update(cx, |p, _| p.sheet = w);
+                });
                 return;
             }
             Err(m) => m,
@@ -502,9 +381,13 @@ impl App for Palette {
         let message = match message.downcast::<window_menu::Facts>() {
             Ok(facts) => {
                 if let Some(old) = self.window_menu.take() {
-                    cx.close_window(old.win);
+                    cx.defer(move |cx| close(old, cx));
                 }
-                self.window_menu = Some(window_menu::open(cx, *facts));
+                let me = cx.entity();
+                cx.defer(move |cx| {
+                    let w = window_menu::open(*facts, cx);
+                    me.update(cx, |p, _| p.window_menu = w);
+                });
                 return;
             }
             Err(m) => m,
@@ -533,16 +416,199 @@ impl App for Palette {
             {
                 self.selected = i;
             }
+            cx.notify();
         }
-        if let Some(w) = self.win {
-            cx.redraw(w);
-        }
+    }
+}
+
+impl Render for Palette {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let me = cx.entity();
+        let screen = window.viewport_size();
+        let shown = self.results.len().min(ROWS);
+        let list_h = if self.query_text.trim().is_empty() && shown == 0 { 0.0 } else { shown as f32 * ROW + if shown > 0 { m::TIGHT * 2.0 } else { 0.0 } };
+        let width = WIDTH.min(f32::from(screen.width) - 32.0);
+        let height = FIELD_HEIGHT + 2.0 * m::SPACING + list_h + if self.results.is_empty() { 0.0 } else { m::SPACING };
+        let panel = style::snap(window, Bounds { origin: point((screen.width - px(width)) / 2.0, (screen.height * TOP).round()), size: size(px(width), px(height)) });
+        let field = Bounds { origin: point(panel.left() + px(m::SPACING), panel.top() + px(m::SPACING)), size: size(px(width - 2.0 * m::SPACING), px(FIELD_HEIGHT)) };
+        let glass = style::snap_centred(window, point(field.left() + px(8.0 + 12.0), field.center().y), 24.0, 24.0);
+        let list = Bounds { origin: point(field.left(), field.bottom() + px(m::SPACING)), size: size(field.size.width, px(list_h)) };
+
+        // The panel, and the clicks around it (outside: put away).
+        let backdrop_me = me.clone();
+        let backdrop = canvas(
+            move |b, window, _| window.insert_hitbox(b, HitboxBehavior::Normal),
+            move |_, hitbox, window, cx| {
+                let p = theme::palette(cx);
+                // A soft shadow, then the BeOS panel.
+                style::soft_shadow(window, panel, &p);
+                style::fill_rect(window, panel, c(p.panel_background));
+                style::frame_rect(window, panel, style::tint(p.panel_background, 1.6));
+                style::raised(window, style::inset(window, panel, 1.0), &p);
+                // The query's well, and the glass.
+                style::fill_rect(window, field, c(p.document_background));
+                style::sunken(window, field, &p, true);
+                icons::paint(window, glass, "query");
+                let m2 = backdrop_me.clone();
+                window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
+                    if phase.bubble() && hitbox.is_hovered(window) && !panel.contains(&e.position) {
+                        m2.update(cx, |p, cx| p.hide(cx));
+                    }
+                });
+            },
+        )
+        .absolute()
+        .inset_0();
+
+        // The query, its capitals on the field's middle as the glass is.
+        // (Where the results' titles start: the glass is as wide as their
+        // icons.)
+        let text_left = glass.right() + px(10.0);
+        let line = px((QUERY_SIZE * style::LINE_HEIGHT).ceil());
+        let query = div()
+            .absolute()
+            .left(text_left)
+            .top(field.center().y - line / 2.0)
+            .w(field.right() - px(8.0) - text_left)
+            .h(line)
+            .child(self.query.clone());
+
+        // The results.
+        let rows: Vec<(usize, Item)> = (self.top..self.results.len()).take(ROWS).map(|i| (i, self.results[i].clone())).collect();
+        let (selected, command) = (self.selected, self.command);
+        let rows_me = me.clone();
+        let total = self.results.len();
+        let results = canvas(
+            move |_, window, _| window.insert_hitbox(list, HitboxBehavior::Normal),
+            move |_, hitbox, window, cx| {
+                let p = theme::palette(cx);
+                let row_at = move |y: Pixels| {
+                    let k = (f32::from(y - list.top()) - m::TIGHT) / ROW;
+                    (k >= 0.0).then_some(k as usize)
+                };
+                for (n, (index, item)) in rows.iter().enumerate() {
+                    let r = Bounds { origin: point(list.left(), list.top() + px(m::TIGHT + n as f32 * ROW)), size: size(list.size.width, px(ROW)) };
+                    let is_selected = *index == selected;
+                    let (fg, dim) = if is_selected {
+                        style::fill_rect(window, r, c(p.menu_selected_background));
+                        (c(p.menu_selected_item_text), c(p.menu_selected_item_text).opacity(0.75))
+                    } else {
+                        (c(p.panel_text), style::disabled_text(&p))
+                    };
+                    let fg = if item.enabled { fg } else { dim };
+                    // One middle on the device grid for the icon and the
+                    // words (a row can start between pixels at 1.25×).
+                    let mid = style::snap_coord(window, r.center().y);
+                    let icon_r = style::snap_centred(window, point(r.left() + px(8.0 + ICON / 2.0), mid), ICON, ICON);
+                    let drew = item.icon.as_deref().is_some_and(|i| if item.enabled { icons::paint(window, icon_r, i) } else { icons::paint_faded(window, icon_r, i, 110.0 / 255.0) });
+                    if !drew {
+                        icons::paint(window, icon_r, "application");
+                    }
+                    // The smaller words (subtitle, kind) stand on the
+                    // title's baseline.
+                    let detail_y = mid + px((style::PLAIN_SIZE - style::DETAIL_SIZE) * style::CAP_HEIGHT / 2.0);
+                    // Right side: the kind (on the subtitle's line), and keys
+                    // before it.
+                    let label = if is_selected && command && matches!(item.action, Action::Open(_)) { tracker::LABEL } else { item.kind.label() };
+                    let small = style::ui_font(FontWeight::NORMAL);
+                    let kind = style::label(window, cx, r.right() - px(8.0), detail_y, style::Align::Right, label, style::DETAIL_SIZE, small.clone(), dim);
+                    let mut right = kind.left() - px(m::SPACING);
+                    if let Some(keys) = &item.keys {
+                        let w = style::key_combo_width(window, keys);
+                        style::key_combo(window, cx, point(right, mid), keys, fg);
+                        right -= px(w + m::SPACING);
+                    }
+                    // Title, and the subtitle after it in grey.
+                    let x = icon_r.right() + px(10.0);
+                    let avail = (right - x).max(px(40.0));
+                    let title = style::label_fit(window, cx, x, mid, style::Align::Left, item.title.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), fg, avail);
+                    let sx = title.right() + px(8.0);
+                    if !item.subtitle.is_empty() && right - sx > px(40.0) {
+                        style::label_fit(window, cx, sx, detail_y, style::Align::Left, item.subtitle.clone(), style::DETAIL_SIZE, small, dim, right - sx);
+                    }
+                    // For agents: the title, and what else the row says.
+                    let said: Vec<&str> = [item.subtitle.as_str(), item.keys.as_deref().unwrap_or(""), label].into_iter().filter(|s| !s.is_empty()).collect();
+                    olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Row", name: Some(item.title.clone().into()), value: Some(said.join(" · ").into()), bounds: r, enabled: item.enabled, clickable: item.enabled, selected: Some(is_selected), ..Default::default() });
+                }
+                // The pointer moving over a row selects it; a click
+                // chooses (with ⌘, shows a file in Tracker); the wheel
+                // scrolls.
+                let first = rows.first().map_or(0, |r| r.0);
+                let enabled: Vec<bool> = rows.iter().map(|r| r.1.enabled).collect();
+                let (m1, hb) = (rows_me.clone(), hitbox.clone());
+                let en = enabled.clone();
+                window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, cx| {
+                    if phase.bubble()
+                        && hb.is_hovered(window)
+                        && let Some(n) = row_at(e.position.y).filter(|n| en.get(*n).copied().unwrap_or(false))
+                        && first + n != selected
+                    {
+                        m1.update(cx, |p, cx| {
+                            p.selected = first + n;
+                            cx.notify();
+                        });
+                    }
+                });
+                let (m2, hb) = (rows_me.clone(), hitbox.clone());
+                window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
+                    if phase.bubble()
+                        && e.button == MouseButton::Left
+                        && hb.is_hovered(window)
+                        && let Some(n) = row_at(e.position.y).filter(|n| *n < enabled.len())
+                    {
+                        let cmd = e.modifiers.platform || e.modifiers.control;
+                        m2.update(cx, |p, cx| if cmd { p.reveal(first + n, cx) } else { p.choose(first + n, cx) });
+                    }
+                });
+                let (m3, hb) = (rows_me.clone(), hitbox.clone());
+                window.on_mouse_event(move |e: &ScrollWheelEvent, phase, window, cx| {
+                    if !phase.bubble() || !hb.is_hovered(window) {
+                        return;
+                    }
+                    let dy = f32::from(e.delta.pixel_delta(px(ROW)).y);
+                    if dy.abs() < 0.5 {
+                        return;
+                    }
+                    m3.update(cx, |p, cx| {
+                        let max_top = total.saturating_sub(ROWS);
+                        let rows = (-dy / ROW).round() as isize;
+                        p.top = (p.top as isize + rows.signum() * rows.abs().max(1)).clamp(0, max_top as isize) as usize;
+                        cx.notify();
+                    });
+                });
+            },
+        )
+        .absolute()
+        .inset_0();
+
+        let keys = me.clone();
+        let mods = me.clone();
+        div()
+            .size_full()
+            .relative()
+            .child(backdrop)
+            .child(results)
+            .child(query)
+            .capture_key_down(move |e: &KeyDownEvent, _, cx| {
+                if keys.update(cx, |p, cx| p.key(e, cx)) {
+                    cx.stop_propagation();
+                }
+            })
+            .on_modifiers_changed(move |e: &ModifiersChangedEvent, _, cx| {
+                let held = e.modifiers.platform || e.modifiers.control;
+                mods.update(cx, |p, cx| {
+                    if p.command != held {
+                        p.command = held;
+                        cx.notify();
+                    }
+                });
+            })
     }
 }
 
 fn main() {
     // A session or install from before the rename (Tabula) carries on.
-    olo_kit::legacy::adopt();
+    olo_xdg::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if instance::forward(APP_ID, &args) {
         return;
@@ -550,49 +616,69 @@ fn main() {
     let toggle = args.iter().any(|a| a == "--toggle");
     let shortcuts = args.iter().any(|a| a == "--shortcuts");
     let ask = window_menu::Ask::parse(&args);
-    olo_kit::run(APP_ID, move |cx| {
-        cx.stay_resident();
-        instance::listen(APP_ID, cx.proxy());
-        let proxy = cx.proxy();
+    olo_ui::run(APP_ID, move |cx| {
+        olo_ui::stay_resident(cx);
+        instance::listen(APP_ID, olo_ui::proxy(cx));
+        let proxy = olo_ui::proxy(cx);
         let _ = std::thread::Builder::new().name("palette-fixed".into()).spawn(move || {
             proxy.send(Found::Fixed(sources::fixed()));
             // Applications installed or removed: listed again at once.
-            if let Some(w) = olo_kit::watch::watch(olo_kit::desktop_entry::app_dirs(), move |_| proxy.send(Found::Fixed(sources::fixed()))) {
+            if let Some(w) = olo_ui::watch::watch(olo_xdg::desktop_entry::app_dirs(), move |_| proxy.send(Found::Fixed(sources::fixed()))) {
                 std::mem::forget(w);
             }
         });
-        let mut palette = Palette {
-            win: None,
-            opening: false,
-            query: String::new(),
-            asked: 0,
-            selected: 0,
-            top: 0,
-            focus_field: false,
-            fixed: Vec::new(),
-            context: Vec::new(),
-            menus: Vec::new(),
-            files: Vec::new(),
-            passwords: Vec::new(),
-            results: Vec::new(),
-            front: None,
-            recents: Recents::load(),
-            workers: sources::workers(cx.proxy()),
-            window_menu: None,
-            sheet: None,
-        };
-        // Upgraded (`save_state`): its first launch's asks were done then.
-        if cx.restored_state().is_none() {
-            if let Some(ask) = ask {
-                palette.ask_window_menu(cx, ask);
+        let query = text_field(cx, |f| f.name("Search").font_size(QUERY_SIZE).hint("Search apps, commands, files and more"));
+        let workers = sources::workers(olo_ui::proxy(cx));
+        let palette = cx.new(|cx| {
+            cx.subscribe(&query, |p: &mut Palette, _, e: &TextFieldEvent, cx| match e {
+                TextFieldEvent::Entered => {
+                    let i = p.selected;
+                    p.choose(i, cx);
+                }
+                _ => p.query_changed(cx),
+            })
+            .detach();
+            Palette {
+                win: None,
+                opening: false,
+                query,
+                query_text: String::new(),
+                asked: 0,
+                selected: 0,
+                top: 0,
+                command: false,
+                fixed: Vec::new(),
+                context: Vec::new(),
+                menus: Vec::new(),
+                files: Vec::new(),
+                passwords: Vec::new(),
+                results: Vec::new(),
+                front: None,
+                recents: Recents::load(),
+                workers,
+                window_menu: None,
+                sheet: None,
             }
-            if toggle {
-                palette.toggle(cx);
-            }
-            if shortcuts {
-                palette.toggle_sheet(cx);
-            }
+        });
+        let messages = palette.clone();
+        olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |p, cx| p.message(message, cx)));
+        // Nothing to keep but that this is a new version of a running
+        // copy: it re-executes with the arguments it first started with
+        // (`--toggle`, from the first ⌘Space), which must not open it
+        // again by themselves.
+        olo_ui::on_upgrade(cx, |_| Some("{}".into()));
+        if olo_ui::restored_state().is_none() {
+            palette.update(cx, |p, cx| {
+                if let Some(ask) = ask {
+                    p.ask_window_menu(ask, cx);
+                }
+                if toggle {
+                    p.toggle(cx);
+                }
+                if shortcuts {
+                    p.toggle_sheet(cx);
+                }
+            });
         }
-        palette
     });
 }

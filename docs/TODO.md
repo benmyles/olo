@@ -266,7 +266,10 @@ as they land (with the commit), add new ones as they come up.
      against 83 MB; 42 frames for 20 clicks against 210), the polkit
      agent, the lock screen, Supervisor, Token Pool, DiskUsage (ring
      slices as GPU sectors), Screenshot (and its region and colour
-     pickers), DriveSetup. Next: Palette, Logs, the Chrome app, then
+     pickers), DriveSetup, the command palette (with its window menu
+     and shortcuts sheet; windows now share the GPU pipelines and the
+     glyph atlas, so a window or menu opens without building them: the
+     palette in 28 ms against egui's 47). Next: Logs, the Chrome app, then
      Deskbar, Telegram, Viewer, Notifications, the portal, Agent
      Screens, StyledEdit, Activity Monitor, Tracker, Passwords,
      Preferences (with the screen saver and its modules) and Terminal.
@@ -278,7 +281,8 @@ as they land (with the commit), add new ones as they come up.
   he'd want to fire his team at apple because we put them to shame".
   *Done so far*: Olo's GPUI draws text as the kit does (hinted Noto,
   variable weights, the fallback chain; 13e20c7) plus a touch of stem
-  darkening for small text (747a25d). Icons in the GPUI kit: the
+  darkening for small text (747a25d; now an emboldened outline, a third
+  of the time a glyph took). Icons in the GPUI kit: the
   pre-scaled icon for the device size, on whole device pixels, never
   resampled; checked by the layout review at every scale.
 - **Rendering made for each display** (Ben, 2026-10-31): "we should also

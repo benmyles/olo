@@ -352,6 +352,14 @@ pub fn context_menu(window: &mut Window, cx: &mut App, menu: Menu, position: gpu
     popup(window, cx, menu, anchor, Corner::TopLeft, on_choose)
 }
 
+/// [`context_menu`], and `on_close` once it has gone, chosen from or not
+/// (after `on_choose`): for a menu that is all its window is for (a
+/// window's menu over a clear layer).
+pub fn context_menu_then(window: &mut Window, cx: &mut App, menu: Menu, position: gpui::Point<Pixels>, on_choose: impl Fn(&str, &mut Window, &mut App) + 'static, on_close: impl Fn(&mut App) + 'static) -> Option<WindowHandle<MenuPopup>> {
+    let anchor = Bounds { origin: position, size: size(px(1.0), px(1.0)) };
+    open(window, cx, menu, Place { anchor, ..Place::default() }, Rc::new(on_choose), None, Some(Rc::new(on_close)))
+}
+
 fn open(window: &mut Window, cx: &mut App, menu: Menu, place: Place, on_choose: OnChoose, parent_menu: Option<WindowHandle<MenuPopup>>, on_close: Option<Rc<dyn Fn(&mut App)>>) -> Option<WindowHandle<MenuPopup>> {
     let (w, h) = popup_size(window, &menu);
     let w = w.max(place.min_width);
@@ -466,8 +474,9 @@ impl MenuPopup {
         }
     }
 
-    /// Closes this menu and its submenus.
-    fn close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Closes this menu and its submenus (as a click elsewhere in a
+    /// clear layer it popped from: a window's menu).
+    pub fn close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.close_sub(cx);
         window.remove_window();
     }

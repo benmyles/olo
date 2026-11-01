@@ -163,6 +163,12 @@ fn image(name: &str, px: u32) -> Option<Arc<RenderImage>> {
 /// Draws icon `name` filling `b` (square), from the bitmap made for its
 /// device size, a texture pixel to a device pixel, centred on whole
 /// pixels. Returns false if there's no such icon (true while it loads).
+/// [`paint`], see-through (`opacity`, 0 to 1): an icon of something that
+/// can't be used now.
+pub fn paint_faded(window: &mut Window, b: Bounds<Pixels>, name: &str, opacity: f32) -> bool {
+    window.with_element_opacity(Some(opacity), |window| paint(window, b, name))
+}
+
 pub fn paint(window: &mut Window, b: Bounds<Pixels>, name: &str) -> bool {
     let scale = window.scale_factor();
     let logical = f32::from(b.size.width.max(b.size.height));

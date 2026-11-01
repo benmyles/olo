@@ -6038,8 +6038,10 @@ version = "0.1.0"
 dependencies = [
  "ignore",
  "olo-keychain",
- "olo-kit",
+ "olo-kit-base",
  "olo-protocol",
+ "olo-ui",
+ "olo-xdg",
  "serde",
  "serde_json",
  "tracing",
