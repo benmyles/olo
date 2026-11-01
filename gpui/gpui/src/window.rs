@@ -1021,6 +1021,7 @@ impl Window {
             window_decorations,
             #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
             tabbing_identifier,
+            toplevel_tag,
         } = options;
 
         let bounds = window_bounds
@@ -1041,6 +1042,7 @@ impl Window {
                 show,
                 display_id,
                 window_min_size,
+                toplevel_tag,
                 #[cfg(target_os = "macos")]
                 tabbing_identifier,
             },

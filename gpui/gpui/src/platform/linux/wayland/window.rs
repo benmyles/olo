@@ -378,8 +378,7 @@ impl WaylandWindow {
                     (xdg_positioner::ConstraintAdjustment::FlipX
                         | xdg_positioner::ConstraintAdjustment::FlipY
                         | xdg_positioner::ConstraintAdjustment::SlideX
-                        | xdg_positioner::ConstraintAdjustment::SlideY)
-                        .bits(),
+                        | xdg_positioner::ConstraintAdjustment::SlideY),
                 );
                 let popup =
                     xdg_surface.get_popup(Some(&parent_surface), &positioner, &globals.qh, surface.id());
@@ -394,6 +393,9 @@ impl WaylandWindow {
                 }
                 if let Some(size) = params.window_min_size {
                     toplevel.set_min_size(size.width.0 as i32, size.height.0 as i32);
+                }
+                if let (Some(tags), Some(tag)) = (&globals.toplevel_tags, &params.toplevel_tag) {
+                    tags.set_toplevel_tag(&toplevel, tag.clone());
                 }
                 (Some(toplevel), None)
             }

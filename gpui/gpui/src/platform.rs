@@ -1118,6 +1118,11 @@ pub struct WindowOptions {
     /// Application identifier of the window. Can by used by desktop environments to group applications together.
     pub app_id: Option<String>,
 
+    /// Olo: the window's tags for the compositor (xdg-toplevel-tag:
+    /// `floating` for a utility window that floats over tiled ones,
+    /// `under-pointer`), space-separated.
+    pub toplevel_tag: Option<String>,
+
     /// Window minimum size
     pub window_min_size: Option<Size<Pixels>>,
 
@@ -1172,6 +1177,9 @@ pub(crate) struct WindowParams {
 
     #[cfg_attr(feature = "wayland", allow(dead_code))]
     pub display_id: Option<DisplayId>,
+
+    /// Olo: the window's tags (`WindowOptions::toplevel_tag`).
+    pub toplevel_tag: Option<String>,
 
     pub window_min_size: Option<Size<Pixels>>,
     #[cfg(target_os = "macos")]
@@ -1231,6 +1239,7 @@ impl Default for WindowOptions {
             display_id: None,
             window_background: WindowBackgroundAppearance::default(),
             app_id: None,
+            toplevel_tag: None,
             window_min_size: None,
             window_decorations: None,
             tabbing_identifier: None,

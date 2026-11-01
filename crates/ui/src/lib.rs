@@ -11,11 +11,15 @@
 
 pub mod agent;
 mod app;
+pub mod menu;
 pub mod style;
 pub mod theme;
+mod upgrade;
 pub mod widgets;
 
-pub use app::{Frame, WindowOptions, message_handler, open_window, proxy, run};
+pub use app::{Frame, WindowOptions, app_id, message_handler, open_window, proxy, run};
+pub use menu::{Menu, MenuItem};
+pub use upgrade::{on_upgrade, restored_state};
 pub use gpui;
 pub use olo_kit_base::{Proxy, commands, files, instance, metrics, notify, places, settings, tracker, watch};
 pub use olo_theme as palette;

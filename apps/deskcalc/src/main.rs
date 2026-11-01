@@ -15,7 +15,7 @@ use std::{
 
 use expr::Angle;
 use olo_ui::{
-    WindowOptions, agent,
+    Menu, WindowOptions, agent,
     gpui::{
         self, App, AppContext as _, Bounds, Context, Entity, Focusable, FontWeight, InteractiveElement as _, IntoElement, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Render, Styled as _, Subscription, Window, actions, canvas, div, point, px, size,
     },
@@ -274,6 +274,26 @@ impl DeskCalc {
         cx.notify();
     }
 
+    /// The keypad's context menu, as in Haiku.
+    fn menu(&self) -> Menu {
+        let s = &self.settings;
+        Menu::new("DeskCalc")
+            .item("Copy", "copy")
+            .item("Paste", "paste")
+            .separator()
+            .item("Basic Keypad", "keypad-basic")
+            .checked(s.keypad == Keypad::Basic)
+            .item("Scientific Keypad", "keypad-scientific")
+            .checked(s.keypad == Keypad::Scientific)
+            .item("No Keypad", "keypad-compact")
+            .checked(s.keypad == Keypad::Compact)
+            .separator()
+            .item("Radians", "radians")
+            .checked(s.angle == Angle::Radians)
+            .item("Degrees", "degrees")
+            .checked(s.angle == Angle::Degrees)
+    }
+
     /// The menu commands (for the command palette and agents).
     fn command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let keypad = match command {
@@ -428,6 +448,18 @@ impl Render for DeskCalc {
             .on_action(cx.listener(|this, _: &Forward, _, cx| this.step_history(false, cx)))
             .on_action(cx.listener(|this, _: &Clear, _, cx| this.press("C", cx)))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::mouse_down))
+            // The context menu, anywhere in the window.
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|this, e: &MouseDownEvent, window, cx| {
+                    let view = cx.entity();
+                    olo_ui::menu::context_menu(window, cx, this.menu(), e.position, move |command, window, cx| {
+                        view.update(cx, |calc, cx| {
+                            calc.command(command, window, cx);
+                        });
+                    });
+                }),
+            )
             .on_mouse_up(MouseButton::Left, cx.listener(Self::mouse_up))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::mouse_up))
             .on_mouse_move(cx.listener(Self::mouse_move))
@@ -479,12 +511,23 @@ fn main() {
         let (min_w, min_h) = Keypad::Compact.size();
         let calc: Rc<RefCell<Option<Entity<DeskCalc>>>> = Rc::default();
         let made = calc.clone();
-        let handle = olo_ui::open_window(cx, WindowOptions::new("DeskCalc", w, h).min_size(min_w - 50.0, min_h), move |window, cx| {
+        let handle = olo_ui::open_window(cx, WindowOptions::new("DeskCalc", w, h).min_size(min_w - 50.0, min_h).floating(), move |window, cx| {
             let view = cx.new(|cx| DeskCalc::new(window, cx));
             *made.borrow_mut() = Some(view.clone());
             view
         });
         instance::listen(APP_ID, olo_ui::proxy(cx));
+        // Everything worth keeping is in the settings: stored before
+        // becoming the new version.
+        let calc_for_upgrade = calc.clone();
+        olo_ui::on_upgrade(cx, move |cx| {
+            if let Some(view) = calc_for_upgrade.borrow().as_ref() {
+                let calc = view.read(cx);
+                let text = serde_json::to_string_pretty(&calc.settings).unwrap_or_default();
+                let _ = std::fs::write(settings_path(), text);
+            }
+            Some(String::new())
+        });
         olo_ui::message_handler(cx, move |message, cx| {
             if message.is::<Launch>()
                 && let Some(handle) = handle
@@ -496,10 +539,7 @@ fn main() {
         let calc_for_menus = calc.clone();
         agent::set_menus(
             cx,
-            move |cx| {
-                let s = calc_for_menus.borrow().as_ref().map(|c| (c.read(cx).settings.keypad, c.read(cx).settings.angle));
-                menus(s)
-            },
+            move |cx| calc_for_menus.borrow().as_ref().map(|c| c.read(cx).menu().entries(APP_ID)).unwrap_or_default(),
             move |command, cx| {
                 let Some(view) = calc.borrow().clone() else { return false };
                 let Some(handle) = handle else { return false };
@@ -507,25 +547,6 @@ fn main() {
             },
         );
     });
-}
-
-/// The context menu's commands, flattened for the command palette.
-fn menus(state: Option<(Keypad, Angle)>) -> olo_ui::commands::Menus {
-    use olo_ui::commands::{Entry, Menus};
-    let (keypad, angle) = state.unwrap_or((Keypad::Basic, Angle::Radians));
-    let entry = |label: &str, command: &str, checked: bool| Entry { path: vec!["DeskCalc".into()], label: label.into(), command: command.into(), keys: None, enabled: true, checked };
-    Menus {
-        app_id: APP_ID.into(),
-        entries: vec![
-            entry("Copy", "copy", false),
-            entry("Paste", "paste", false),
-            entry("Basic Keypad", "keypad-basic", keypad == Keypad::Basic),
-            entry("Scientific Keypad", "keypad-scientific", keypad == Keypad::Scientific),
-            entry("No Keypad", "keypad-compact", keypad == Keypad::Compact),
-            entry("Radians", "radians", angle == Angle::Radians),
-            entry("Degrees", "degrees", angle == Angle::Degrees),
-        ],
-    }
 }
 
 /// Settings from before the rename (Tabula) carry on.

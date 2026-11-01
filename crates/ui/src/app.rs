@@ -17,11 +17,21 @@ pub struct WindowOptions {
     pub min_size: Option<(f32, f32)>,
     /// Paint the panel colour behind the content (most windows want it).
     pub panel: bool,
+    /// A utility window (a small tool such as DeskCalc) that floats over
+    /// auto-tiled windows rather than taking a tile (the xdg-toplevel-tag
+    /// `floating`).
+    pub floating: bool,
 }
 
 impl WindowOptions {
     pub fn new(title: impl Into<SharedString>, width: f32, height: f32) -> Self {
-        WindowOptions { title: title.into(), size: (width, height), min_size: None, panel: true }
+        WindowOptions { title: title.into(), size: (width, height), min_size: None, panel: true, floating: false }
+    }
+
+    /// Floats over auto-tiled windows (see [`Self::floating`]).
+    pub fn floating(mut self) -> Self {
+        self.floating = true;
+        self
     }
 
     pub fn min_size(mut self, width: f32, height: f32) -> Self {
@@ -79,6 +89,7 @@ pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, bu
             titlebar: Some(TitlebarOptions { title: Some(title.clone()), ..Default::default() }),
             app_id: Some(app_id(cx)),
             window_min_size: options.min_size.map(|(w, h)| size(px(w), px(h))),
+            toplevel_tag: options.floating.then(|| "floating".to_string()),
             ..Default::default()
         },
         move |window, cx| {
@@ -120,6 +131,7 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
         theme::init(cx);
         agent::init(cx, &app_id);
         crate::widgets::bind_keys(cx);
+        crate::upgrade::init(cx);
         let (tx, mut rx) = mpsc::unbounded::<Box<dyn Any + Send>>();
         let proxy = Proxy::new(move |m| {
             let _ = tx.unbounded_send(m);

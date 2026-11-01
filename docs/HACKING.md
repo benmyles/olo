@@ -1527,6 +1527,25 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   pixels, blinking only while it has the keyboard in an active window;
   `TextFieldEvent::Changed` and `Typed`. No frame: callers draw the
   well.
+- `menu`: BeOS menus (`Menu::new(title).item(label, command).checked(
+  on).separator().submenu(m)`), shown as Wayland popups (GPUI's
+  `WindowKind::Popup`, an xdg_popup over the window at a corner of an
+  anchor rectangle, flipped or slid by app_server to stay on screen):
+  `menu::context_menu(window, cx, menu, position, on_choose)` and
+  `menu::popup(window, cx, menu, anchor, corner, on_choose)`. Drawn as
+  the egui kit draws them; ↑ ↓ → ← Enter Space Escape; a submenu opens
+  beside its item; items are `MenuItem`s to agents. `Menu::entries`
+  flattens one for the palette (`agent::set_menus`). (Still to come:
+  icons, keys drawn as the kit's key combos, scrolling a menu taller
+  than the screen, and press-drag-release choosing from the press that
+  opened it.)
+- `WindowOptions::floating()`: the xdg-toplevel-tag `floating`, so
+  app_server floats it over auto-tiled windows.
+- Upgrades: GPUI kit apps reach app_server through olo-wlproxy, which
+  keeps their windows when app_server restarts in place; when
+  olo-session signals an upgrade (SIGURG) and the app's binary was
+  replaced, `on_upgrade`'s state is saved and the app re-executes as
+  the new version, finding it in `restored_state()`.
 
 ## The session and in-place reload
 

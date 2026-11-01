@@ -3124,7 +3124,7 @@ dependencies = [
  "wayland-backend",
  "wayland-client",
  "wayland-cursor",
- "wayland-protocols 0.31.2",
+ "wayland-protocols 0.32.13",
  "wayland-protocols-plasma 0.2.0",
  "xkbcommon 0.8.0",
 ]
@@ -6436,6 +6436,7 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "gpui",
+ "libc",
  "olo-kit-base",
  "olo-protocol",
  "olo-theme",
