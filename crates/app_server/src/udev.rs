@@ -723,7 +723,7 @@ fn choose_primary_gpu(seat: &str) -> Option<DrmNode> {
 pub fn run_udev() {
     // Where each frame's time goes inside Smithay's compositor, for the
     // timings and the record of dropped frames (frames.rs).
-    let _ = smithay::backend::drm::compositor::PHASE_HOOK.set(crate::render::add_part);
+    let _ = smithay::backend::renderer::PHASE_HOOK.set(crate::render::add_part);
     let mut event_loop = EventLoop::try_new().unwrap();
     let display = Display::new().unwrap();
     let mut display_handle = display.handle();

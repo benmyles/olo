@@ -14,9 +14,27 @@ upstream.
 Upstream's examples (anvil, smallvil), its test clients, benches and
 docs aren't here: app_server (`crates/app_server`) is Olo's anvil.
 
-What Olo changed, so far:
+What Olo changed, so far (see "Every frame on time" in
+[docs/HACKING.md](../docs/HACKING.md)):
 
-- (Nothing yet beyond the move; the DRM compositor's plane handling and
-  frame timing are first in line: see "Every frame on time" in
-  [docs/HACKING.md](../docs/HACKING.md) and `apple-drm` in
-  [docs/TODO.md](../docs/TODO.md).)
+- No default features: Olo is Wayland only, and a workspace build
+  unifies a package's features across members, so upstream's default
+  (X11, Xwayland, winit with X11) reached app_server. It names what it
+  uses.
+- Where a frame's time goes is told to `backend::renderer::PHASE_HOOK`:
+  the DRM compositor's "planes", "atomic test" and "render_output", the
+  damage tracker's "draws" and "finish" (the flush to the GPU and its
+  fence).
+- An element refused an overlay plane without a test says why
+  (`RenderingReason::Overlaps`, `Underlay`, `PlaneTaken`; upstream gave
+  no reason), so a frame's record can say what was drawn and why.
+- A window's own surfaces are `Kind::ScanoutCandidate` (upstream:
+  `Unspecified`, which the compositor never tries on a plane), so a
+  window whose buffer changes every frame can go straight to an overlay
+  plane. Its popups stay as they were.
+- The cursor plane is kept on the display: clipped at an edge (the
+  destination the part of the pointer on the display, the source the
+  same part of its buffer), tested when its size changes, no plane at
+  all when the pointer is wholly off the display. apple-drm's overlay
+  plane standing in for a cursor plane refused one hanging off the
+  display with EINVAL.

@@ -4469,16 +4469,10 @@ fn drm_compositor_is_send() {
     );
 }
 
-/// (Olo) Where a frame's time goes in [`DrmCompositor::render_frame`]:
-/// "planes" (every element tried for a plane), "atomic test" (the
-/// planes' state tested with the driver), "render_output" (what is left
-/// drawn with the renderer), each told to the hook set here, if any
-/// (app_server's `render::add_part`, for its timings and its record of
-/// dropped frames).
-pub static PHASE_HOOK: std::sync::OnceLock<fn(&'static str, std::time::Duration)> = std::sync::OnceLock::new();
-
-fn phase(name: &'static str, start: std::time::Instant) {
-    if let Some(f) = PHASE_HOOK.get() {
-        f(name, start.elapsed());
-    }
-}
+// (Olo) Where a frame's time goes in [`DrmCompositor::render_frame`]:
+// "planes" (every element tried for a plane), "atomic test" (the planes'
+// state tested with the driver), "render_output" (what is left drawn with
+// the renderer; its own parts "draws" and "finish" from the damage
+// tracker), each told to `crate::backend::renderer::PHASE_HOOK`.
+use crate::backend::renderer::phase;
+pub use crate::backend::renderer::PHASE_HOOK;

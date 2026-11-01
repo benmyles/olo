@@ -4139,7 +4139,30 @@ moves that, the frame underneath untouched. The log says
 set up so, and `the pointer is on a plane of the display's own` the first
 time it goes there; a pointer the plane refuses (bigger than 64 px, a
 client's cursor it can't hold) is drawn into the frame as before.
-`OLO_CURSOR_PLANE=0` keeps the overlay planes as they are.
+`OLO_CURSOR_PLANE=0` keeps the overlay planes as they are. Olo's Smithay
+keeps the plane on the display (clipped at an edge; apple-drm refused a
+plane hanging off the display with EINVAL on the page flip, and the
+first try took the desktop down with it), and a display that refuses a
+frame's commit draws everything from then on (`planes_refused`), the
+pointer too: a refusal costs a frame, never a restart.
+
+Where a frame's time goes: measured on Ben's session (2026-11-01,
+read-only stack samples of app_server's main thread, and Smithay's
+phases through `PHASE_HOOK`), the 5 ms a 5K frame costs is all
+`render_output`, and inside it the GPU submit (Mesa's asahi driver
+flushing the batch for the fence Smithay makes finishing a frame) and
+syncobj waits: app_server sits in the kernel handing the composite to
+the GPU, about 3 ms a frame, 48 times a second for a video call, which
+is its 20% of a core. Plane assignment and the atomic test cost 0.0 ms.
+So the way out is fewer composites: the pointer on its plane, and a
+window whose buffer changes every frame (the call) straight to an
+overlay plane, which Olo's Smithay now tries for every window's own
+surfaces (`Kind::ScanoutCandidate`); the display's "scan-out" record
+(`DisplayFrames::scanout`, Activity Monitor ▸ Displays) says how many
+elements went to a plane and why the rest were drawn ("overlaps": an
+element above it on the primary plane; "format": its buffer isn't one
+the plane takes; "the driver refused": the atomic test failed; "not
+tried": not a candidate).
 
 `{"type":"frames"}` (`tsession ipc NAME '{"type":"frames"}'`) answers
 each display's record (`DisplayFrames`): frames a second, dropped in the
@@ -4980,6 +5003,19 @@ Performance Settings…) or `olo-supervisor --on`. Then every two seconds
 (about 6 ms on its own thread; each command line read once a process)
 it looks at the person's own processes in /proc (`sample.rs`) and:
 
+- **Tiers first** (`olo_protocol::performance::tier`, Ben, 2026-11-01):
+  what keeps the desktop responsive runs above everything else, always,
+  supervisor or not: app_server's main thread (every input event and
+  frame) at nice −10, olo-session, Deskbar and olo-wlproxy at −5, each
+  asking rtkit for itself as it starts (`olo_system::priority::raise_self`:
+  `org.freedesktop.RealtimeKit1`'s `MakeThreadHighPriorityWithPID`, the
+  one way an unprivileged process gets a negative nice, down to its
+  `MinNiceLevel`, −15 here). The supervisor re-asserts a tier for a
+  program found above it (rtkit refused at its start, or a thread made
+  since; `priority::raise_process`, every thread), publishes what it
+  raised (`SupervisorState::raised`; Activity Monitor's "Olo's own" row)
+  and notes once a program it couldn't. Only then the focused app over
+  background work, which is the lowering below.
 - **Priorities** (`priority.rs`): background work, known by name (the
   settings' list: compilers, linkers, build tools, indexers) or a
   terminal's job busy for a minute and more, has every thread lowered:

@@ -867,6 +867,7 @@ impl OutputDamageTracker {
             self.damage, self.opaque_regions
         );
 
+        let olo_t = std::time::Instant::now();
         let render_res = (|| {
             // we have to take the element damage to be able to move it around
             let mut element_damage = std::mem::take(&mut self.element_damage);
@@ -954,7 +955,11 @@ impl OutputDamageTracker {
             // return the element damage so that we can re-use the allocation
             std::mem::swap(&mut self.element_damage, &mut element_damage);
             std::mem::swap(&mut self.element_opaque_regions, &mut element_opaque_regions);
-            frame.finish()
+            crate::backend::renderer::phase("draws", olo_t);
+            let olo_t = std::time::Instant::now();
+            let finished = frame.finish();
+            crate::backend::renderer::phase("finish", olo_t);
+            finished
         })();
 
         match render_res {

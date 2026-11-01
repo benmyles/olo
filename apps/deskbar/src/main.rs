@@ -471,6 +471,10 @@ impl Deskbar {
         // bar reads this; the new ones first, so the app always has one.)
         let model = cx.entity();
         cx.defer(move |cx| {
+            // A bar whose window the compositor closed (its display went,
+            // or came back as another) is no bar: its display gets a new
+            // one below. (Kept, it hid the Dell's missing Deskbar, 2026-11-01.)
+            model.update(cx, |d, cx| d.bars.retain(|b| b.win.update(cx, |_, _, _| ()).is_ok()));
             for output in &wanted {
                 if model.read(cx).bars.iter().any(|b| b.view.read(cx).output == *output) {
                     continue;
@@ -1189,6 +1193,12 @@ impl Deskbar {
             Msg::Outputs(outputs) => {
                 self.outputs = outputs;
                 self.sync_bars(cx);
+                // Each bar draws its display's number and name: drawn
+                // again now (a display told who it is, the main one
+                // changed), not when something else happens to.
+                for view in self.bars.iter().map(|b| b.view.clone()).collect::<Vec<_>>() {
+                    view.update(cx, |_, cx| cx.notify());
+                }
             }
             Msg::Installed(installed) => {
                 self.installed = installed;
@@ -2508,6 +2518,10 @@ fn main() {
         let outputs = if outputs.is_empty() { vec![None] } else { outputs };
         let bars: Vec<Bar> = outputs.into_iter().filter_map(|o| open_bar(cx, model.clone(), o)).collect();
         model.update(cx, |d, _| d.bars = bars);
+        // A bar closed under it (the compositor took its display's
+        // surface) is replaced as soon as its display is listed again.
+        let reopen = model.clone();
+        cx.on_window_closed(move |cx| reopen.update(cx, |d, cx| d.sync_bars(cx))).detach();
         let messages = model.clone();
         olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |d, cx| d.message(message, cx)));
         // Its applications' order, for the Deskbar it re-executes as (an

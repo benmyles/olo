@@ -56,6 +56,20 @@ pub mod utils;
 
 pub mod element;
 
+/// (Olo) Where a frame's time goes, told to whoever sets this: the DRM
+/// compositor's "planes", "atomic test" and "render_output", and the
+/// damage tracker's "draws" (every element drawn) and "finish" (the
+/// frame flushed to the GPU and its fence made). app_server sets it to
+/// its `render::add_part`, for its timings and its record of dropped
+/// frames.
+pub static PHASE_HOOK: std::sync::OnceLock<fn(&'static str, std::time::Duration)> = std::sync::OnceLock::new();
+
+pub(crate) fn phase(name: &'static str, start: std::time::Instant) {
+    if let Some(f) = PHASE_HOOK.get() {
+        f(name, start.elapsed());
+    }
+}
+
 pub mod damage;
 
 pub mod sync;

@@ -120,13 +120,16 @@ where
 
                 render_elements.extend(popup_render_elements);
 
+                // (Olo) The window's own surfaces may go straight to an
+                // overlay plane (a video call's window, its buffer new
+                // every frame); the compositor tries only candidates.
                 render_elements.extend(render_elements_from_surface_tree(
                     renderer,
                     surface,
                     location,
                     scale,
                     alpha,
-                    Kind::Unspecified,
+                    Kind::ScanoutCandidate,
                 ));
 
                 render_elements
