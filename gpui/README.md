@@ -69,6 +69,9 @@ What Olo changed, so far:
   chunks to 128 MB: hello_world held 96 MB, mostly empty), and the
   textures paths are drawn through (window-sized, one of them 4×
   multisampled) are made only when a window first draws a path.
+- The GPU device is made with the first window: an app with none (the
+  polkit agent waiting for a request) holds no driver threads, and
+  half the memory (13 MB against 24).
 - Background threads start when there's work and none is free, and
   leave after 10 s without any (upstream kept one per core).
 - Olo's text (`gpui/src/platform/linux/text_system.rs`), the same as

@@ -286,7 +286,10 @@ impl Output {
 pub(crate) struct WaylandClientState {
     serial_tracker: SerialTracker,
     globals: Globals,
-    gpu_context: BladeContext,
+    /// Olo: made with the first window (an agent with none, the polkit
+    /// agent's resident self, holds no GPU device: no driver threads, a
+    /// third of the memory).
+    gpu_context: Option<BladeContext>,
     wl_seat: wl_seat::WlSeat, // TODO: Multi seat support
     wl_pointer: Option<wl_pointer::WlPointer>,
     wl_keyboard: Option<wl_keyboard::WlKeyboard>,
@@ -598,7 +601,6 @@ impl WaylandClient {
             })
             .unwrap();
 
-        let gpu_context = BladeContext::new().expect("Unable to init GPU context");
 
         let seat = seat.unwrap();
         let globals = Globals::new(
@@ -653,7 +655,7 @@ impl WaylandClient {
         let mut state = Rc::new(RefCell::new(WaylandClientState {
             serial_tracker: SerialTracker::new(),
             globals,
-            gpu_context,
+            gpu_context: None,
             wl_seat: seat,
             wl_pointer: None,
             wl_keyboard: None,
@@ -821,10 +823,14 @@ impl LinuxClient for WaylandClient {
             .and_then(|name| state.outputs.iter().find(|(_, o)| o.name.as_ref() == Some(name)))
             .and_then(|(id, _)| state.wl_outputs.get(id).cloned());
 
+        if state.gpu_context.is_none() {
+            state.gpu_context = Some(BladeContext::new()?);
+        }
+        let gpu_context = state.gpu_context.as_ref().expect("made above");
         let (window, surface_id) = WaylandWindow::new(
             handle,
             state.globals.clone(),
-            &state.gpu_context,
+            gpu_context,
             WaylandClientStatePtr(Rc::downgrade(&self.0)),
             params,
             state.common.appearance,
