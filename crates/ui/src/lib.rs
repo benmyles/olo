@@ -13,6 +13,7 @@ pub mod agent;
 mod app;
 pub mod icons;
 pub mod menu;
+pub mod review;
 pub mod style;
 pub mod theme;
 mod upgrade;

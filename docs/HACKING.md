@@ -2197,12 +2197,21 @@ under `cfg(test)` and their shared state starts filled
 `about::State::sample()`, `Server::detached()`, …). A new fixed-size
 window or dialog gets a lint test the same way.
 
-### Layout review (`olo_kit::layout_review`)
+### Layout review (`olo_kit::layout_review`, `olo_ui::review`)
 
 Where the lint proves things fit, the review reads one frame's painted
 shapes (text with its baseline, filled bands, lines, icons) at the scale
 it was drawn at and flags what tends to look off: what you should look
 at closely before calling a view done.
+
+The checks are `olo_kit_base::layout_review`'s, shared by both kits:
+each collects what it drew into `Parts`. The egui kit reads them from
+egui's shapes for the frame; the GPUI kit, asked for a review, draws
+each window once more (`Window::draw_now`, even one out of sight) while
+its `style` primitives, labels, text fields and icons record what they
+drew, and the `Frame`'s last element hands that to the checks. Nothing
+is recorded otherwise. `olo_ui::review::own_grid` and `band` mark what
+the egui kit's do.
 
 - **Errors** (tests fail on them):
   - `blurry-icon`: an icon off device pixels, not a whole number of them,

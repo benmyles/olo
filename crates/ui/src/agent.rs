@@ -163,9 +163,7 @@ fn answer(query: Query, cx: &mut App) {
             let times = cx.windows().into_iter().filter_map(|w| frames(w, cx)).collect();
             let _ = reply.send(times);
         }
-        Query::Review(reply) => {
-            let _ = reply.send(Vec::new());
-        }
+        Query::Review(reply) => crate::review::start(cx, reply),
         Query::Path(_, reply) => {
             let _ = reply.send(None);
         }

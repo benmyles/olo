@@ -1472,6 +1472,14 @@ impl Window {
         }
     }
 
+    /// Olo: draws the whole window again now, even out of sight (where
+    /// the compositor holds back its frame callbacks): for a frame wanted
+    /// for itself, a layout review's.
+    pub fn draw_now(&mut self) {
+        self.refresh();
+        self.platform_window.draw_now();
+    }
+
     /// Close this window.
     pub fn remove_window(&mut self) {
         self.removed = true;

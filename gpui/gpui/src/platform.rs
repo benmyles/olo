@@ -475,6 +475,10 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn frame_waker(&self) -> Option<Rc<dyn Fn()>> {
         None
     }
+    /// Draws the window's next frame now, though the compositor hasn't
+    /// said the last is showing (it may never, for a window out of
+    /// sight): for a frame wanted for itself, as a layout review's (Olo).
+    fn draw_now(&self) {}
     /// How to draw text for the display the window is on (Olo).
     fn text_rendering(&self) -> crate::TextRendering {
         crate::TextRendering::default()

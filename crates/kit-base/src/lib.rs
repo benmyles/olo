@@ -7,6 +7,7 @@
 pub mod commands;
 pub mod files;
 pub mod instance;
+pub mod layout_review;
 pub mod metrics;
 pub mod notify;
 pub mod places;

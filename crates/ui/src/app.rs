@@ -3,7 +3,7 @@
 use std::any::Any;
 
 use futures::{StreamExt, channel::mpsc};
-use gpui::{AnyView, App, AppContext as _, Application, Bounds, Context, Entity, Global, IntoElement, ParentElement as _, Render, SharedString, Styled as _, TitlebarOptions, Window, WindowBounds, WindowHandle, div, px, size};
+use gpui::{AnyView, App, AppContext as _, Application, Bounds, Context, Entity, Global, IntoElement, ParentElement as _, Render, SharedString, Styled as _, TitlebarOptions, Window, WindowBounds, WindowHandle, canvas, div, px, size};
 use olo_kit_base::Proxy;
 
 use crate::{agent, style, theme};
@@ -64,7 +64,10 @@ impl Render for Frame {
         if self.panel {
             root = root.bg(style::c(p.panel_background));
         }
-        root.child(self.content.clone())
+        let title = self.title.clone();
+        // Last: the frame is drawn (for a review asked for).
+        let done = canvas(|_, _, _| {}, move |_, _, window, _| crate::review::finish(window, &title)).absolute().size_0();
+        root.child(self.content.clone()).child(done)
     }
 }
 

@@ -1258,6 +1258,15 @@ impl PlatformWindow for WaylandWindow {
         self.0.frames.text_rendering.get()
     }
 
+    fn draw_now(&self) {
+        let frames = &self.0.frames;
+        if frames.callback.get() == FrameCallback::Committed {
+            frames.callback.set(FrameCallback::Asked);
+        }
+        frames.queued.set(false);
+        self.0.schedule_frame();
+    }
+
     fn frame_waker(&self) -> Option<Rc<dyn Fn()>> {
         let this = self.0.downgrade();
         Some(Rc::new(move || {

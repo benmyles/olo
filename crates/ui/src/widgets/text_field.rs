@@ -656,6 +656,7 @@ impl Element for FieldElement {
                 style::fill_rect(window, sel, ink);
             }
             let _ = line.paint(point(left, top), height, window, cx);
+            crate::review::text(window, drawn, baseline, &text, size_px);
             if focused && selected.is_empty() && caret_on {
                 let x = style::snap_coord(window, left + line.x_for_index(caret));
                 let w = style::hairline(window);

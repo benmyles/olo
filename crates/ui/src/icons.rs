@@ -179,5 +179,6 @@ pub fn paint(window: &mut Window, b: Bounds<Pixels>, name: &str) -> bool {
     let y = px(((f32::from(c.y) - h / 2.0) * scale).round() / scale);
     let at = Bounds { origin: point(x, y), size: size(px(w), px(h)) };
     let _ = window.paint_image(at, Corners::default(), img, 0, false);
+    crate::review::icon(window, at, [s.width.0 as usize, s.height.0 as usize]);
     true
 }

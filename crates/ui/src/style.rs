@@ -78,7 +78,11 @@ pub fn inset(window: &Window, b: Bounds<Pixels>, lines: f32) -> Bounds<Pixels> {
 
 fn rect(window: &mut Window, min: Point<Pixels>, max: Point<Pixels>, color: Hsla) {
     if max.x > min.x && max.y > min.y {
-        window.paint_quad(fill(Bounds::from_corners(min, max), color));
+        let b = Bounds::from_corners(min, max);
+        window.paint_quad(fill(b, color));
+        if color.a > 0.0 {
+            crate::review::fill(window, b);
+        }
     }
 }
 
@@ -181,6 +185,9 @@ pub fn vgradient(window: &mut Window, b: Bounds<Pixels>, top: Hsla, bottom: Hsla
     let d = snap(window, b);
     if d.size.width > px(0.0) && d.size.height > px(0.0) {
         window.paint_quad(fill(d, linear_gradient(180.0, linear_color_stop(top, 0.0), linear_color_stop(bottom, 1.0))));
+        if top.a >= 1.0 && bottom.a >= 1.0 {
+            crate::review::gradient(window, d);
+        }
     }
 }
 
@@ -211,7 +218,7 @@ pub fn text_width(window: &mut Window, text: impl Into<SharedString>, size: f32,
 pub fn label(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pixels, align: Align, text: impl Into<SharedString>, font_size: f32, font: Font, color: Hsla) -> Bounds<Pixels> {
     let text = text.into();
     let run = TextRun { len: text.len(), font, color, background_color: None, underline: None, strikethrough: None };
-    let line = window.text_system().shape_line(text, px(font_size), &[run], None);
+    let line = window.text_system().shape_line(text.clone(), px(font_size), &[run], None);
     let left = match align {
         Align::Left => x,
         Align::Center => x - line.width / 2.0,
@@ -222,5 +229,7 @@ pub fn label(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pixels, ali
     let top = baseline - line.ascent;
     let height = line.ascent + line.descent;
     let _ = line.paint(point(left, top), height, window, cx);
-    Bounds { origin: point(left, top), size: size(line.width, height) }
+    let at = Bounds { origin: point(left, top), size: size(line.width, height) };
+    crate::review::text(window, at, baseline, &text, font_size);
+    at
 }
