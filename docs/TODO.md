@@ -2570,6 +2570,23 @@ as they land (with the commit), add new ones as they come up.
   method, natural scroll, speed; udev only); ~~centred alerts~~
   (`WindowOptions::alert`, set_parent, placed over the parent).
 
+## Networking
+
+- **Wi-Fi that joins reliably, supervised and healed** (Ben, 2026-10-31;
+  after the move to GPUI is done): "something is wrong with the wifi- if
+  i try to connect to the normal Home-WPA3 it just says network cannot
+  be joined and if i try to connect to another like Home it says it
+  is connecting but then fails to connect. idk if the driver is flaky or
+  if it's something else but whatever it is please root cause it and make
+  it so it will reliably work -- olo should supervise this stuff and
+  fix/heal anything it needs to fix/heal (if it's something outside olo
+  itself causing it)". Root-cause both failures (Olo's join path through
+  NetworkManager in olo-system, the secrets agent, NetworkManager's and
+  wpa_supplicant/iwd's logs, the brcmfmac driver and firmware on the
+  Apple machine), fix what is Olo's, and have the supervisor watch Wi-Fi
+  and heal what isn't (a stuck supplicant, a wedged driver, a stale
+  connection profile), saying what it did.
+
 ## Lock, screensaver, caffeinated
 
 - ~~**Screen lock**~~: ext-session-lock in app_server, `olo-lock`
