@@ -491,6 +491,37 @@ impl WaylandClientStatePtr {
         }
     }
 
+    /// Olo: before a menu opens over `parent`: our menus showing anywhere
+    /// but along `parent`'s own chain (`parent`, the menu it opened over,
+    /// …) go first. xdg-shell lets a grabbing popup open only on the
+    /// topmost one, and the compositor ends the connection of a program
+    /// that breaks that; an app that forgot a menu it had open (Olo's
+    /// menu bar, switching menus, 2026-11-01) loses that menu, not its
+    /// windows. Each goes now from the screen, its window as the loop
+    /// next turns.
+    pub fn withdraw_stray_menus(&self, parent: &xdg_surface::XdgSurface) {
+        let Some(client) = self.0.upgrade() else { return };
+        let (windows, executor) = match client.try_borrow() {
+            Ok(state) => (state.windows.values().cloned().collect::<Vec<_>>(), state.common.foreground_executor.clone()),
+            Err(_) => return,
+        };
+        let mut chain = vec![parent.clone()];
+        while let Some(up) = windows.iter().find(|w| w.xdg_surface().as_ref() == chain.last()).and_then(|w| w.popup_of()) {
+            if chain.contains(&up) {
+                break;
+            }
+            chain.push(up);
+        }
+        for w in windows {
+            if !w.is_grabbing_popup() || w.xdg_surface().is_some_and(|x| chain.contains(&x)) {
+                continue;
+            }
+            log::warn!("a menu was still showing where another opened: taking it down first");
+            w.withdraw_popup(self);
+            executor.spawn(async move { w.close() }).detach();
+        }
+    }
+
     pub fn get_client(&self) -> Rc<RefCell<WaylandClientState>> {
         self.0
             .upgrade()
@@ -958,6 +989,13 @@ impl LinuxClient for WaylandClient {
         handle: AnyWindowHandle,
         params: WindowParams,
     ) -> anyhow::Result<Box<dyn PlatformWindow>> {
+        // Olo: a menu opens only over the menus along its own chain.
+        if let crate::WindowKind::Popup { parent, .. } = params.kind {
+            let over = self.0.borrow().windows.values().find(|w| w.handle() == parent).and_then(|w| w.xdg_surface());
+            if let Some(over) = over {
+                WaylandClientStatePtr(Rc::downgrade(&self.0)).withdraw_stray_menus(&over);
+            }
+        }
         let mut state = self.0.borrow_mut();
         // Olo: a window again (launched while lingering): it runs on.
         state.lingering = false;
@@ -2884,8 +2922,11 @@ fn connect() -> Result<Connection, wayland_client::ConnectError> {
 
 /// (Olo) The compositor's connection gone (hung up, or in protocol
 /// error): told once to whoever asked (`Platform::on_compositor_lost`:
-/// olo-ui re-executes the program with its state saved), with no borrow
-/// held; without anyone, the loop stops.
+/// olo-ui re-executes the program with its state saved, and doesn't
+/// come back), with no borrow held; then the loop stops. Nothing can
+/// come of the connection again, and its socket, readable for ever,
+/// would wake the loop at once each turn (a program outside a session,
+/// where nobody re-executes, spun printing the error, 2026-11-01).
 fn compositor_lost_check(state: &Rc<RefCell<WaylandClientState>>) {
     let dead = {
         let st = state.borrow();
@@ -2897,11 +2938,9 @@ fn compositor_lost_check(state: &Rc<RefCell<WaylandClientState>>) {
     state.borrow_mut().lost = true;
     log::error!("the compositor's connection is gone");
     let callback = state.borrow_mut().common.callbacks.compositor_lost.take();
-    match callback {
-        Some(mut f) => {
-            f();
-            state.borrow_mut().common.callbacks.compositor_lost = Some(f);
-        }
-        None => state.borrow().common.signal.stop(),
+    if let Some(mut f) = callback {
+        f();
+        state.borrow_mut().common.callbacks.compositor_lost = Some(f);
     }
+    state.borrow().common.signal.stop();
 }

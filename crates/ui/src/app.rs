@@ -197,7 +197,7 @@ impl Render for Frame {
             .size_full()
             .track_focus(&self.focus)
             // A press anywhere in the window puts away a menu open over it.
-            .capture_any_mouse_down(|_, window, cx| crate::menu::press_in(window, cx))
+            .capture_any_mouse_down(|e, window, cx| crate::menu::press_in(e.position, window, cx))
             .on_action(|_: &FocusNext, window, _| window.focus_next())
             .on_action(|_: &FocusPrev, window, _| window.focus_prev())
             // The menu bar's keys, when nothing in the window took them

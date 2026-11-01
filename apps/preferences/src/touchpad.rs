@@ -1,9 +1,11 @@
 //! Touchpad and mouse. The Touchpad tab names the pad app_server found and
 //! the tuning profile that suits it; Touch is Olo's palm and hover filter
 //! and the click pressure; Gestures is scrolling, momentum, dragging and
-//! what two and three fingers do; Mouse is mice. The profile sets how the
-//! pad feels (protocol `touchpad.rs`); changing any of that by hand makes
-//! it "Custom". See docs/TOUCHPAD.md.
+//! what two and three fingers do; Mouse is each mouse by make and model,
+//! with the profile that suits it, what is known about it and what gets
+//! in its way (fixed by Olo Doctor), then the other mice. The profile
+//! sets how the pad feels (protocol `touchpad.rs`; mice: `mice.rs`);
+//! changing any of that by hand makes it "Custom". See docs/TOUCHPAD.md.
 
 use std::{
     sync::{Arc, Mutex},
@@ -12,11 +14,12 @@ use std::{
 
 use olo_kit::{
     egui::{self, Ui},
-    metrics as m,
-    widgets::{BBox, Button, CheckBox, MenuField, Slider, StringView, TabView},
+    metrics as m, style,
+    widgets::{BBox, Button, CheckBox, MenuField, SCROLL_BAR, ScrollView, Slider, StringView, TabView},
 };
 use olo_protocol::{
-    Client, Reply, Request, Settings, TouchpadSettings,
+    Client, Event, EventKind, Reply, Request, Settings, TouchpadSettings,
+    mice::{self, Class, MouseTuning, Quirk},
     touchpad::{CLICK_PRESSURES, DeviceKind, InputDeviceInfo, PROFILES},
 };
 
@@ -37,28 +40,47 @@ impl State {
     }
 }
 
-/// Asks app_server for its devices now and every few seconds (a Magic
-/// Trackpad may come and go), until the panel closes.
-fn poll(ctx: &egui::Context) -> Shared {
+/// Asks app_server for its devices, then hears of each one that comes or
+/// goes (an event: nothing is polled). The thread waits on app_server and
+/// ends at the first event after the panel has closed.
+fn watch(ctx: &egui::Context) -> Shared {
     let devices: Shared = Default::default();
     let (out, ctx) = (Arc::downgrade(&devices), ctx.clone());
     std::thread::Builder::new()
         .name("input-devices".into())
         .spawn(move || {
-            while let Some(shared) = out.upgrade() {
-                let found = Client::connect().ok().and_then(|mut c| match c.request(&Request::InputDevices) {
+            let store = |found: Vec<InputDeviceInfo>| {
+                let Some(shared) = out.upgrade() else { return false };
+                let mut slot = shared.lock().unwrap();
+                if slot.as_ref() != Some(&found) {
+                    *slot = Some(found);
+                    ctx.request_repaint();
+                }
+                true
+            };
+            loop {
+                // Subscribed before asking, so nothing comes between.
+                let events = Client::connect().ok().and_then(|c| c.into_events_of(&[EventKind::InputDevices]).ok());
+                let now = Client::connect().ok().and_then(|mut c| match c.request(&Request::InputDevices) {
                     Ok(Reply::InputDevices { devices }) => Some(devices),
                     _ => None,
                 });
-                if let Some(found) = found {
-                    let mut slot = shared.lock().unwrap();
-                    if slot.as_ref() != Some(&found) {
-                        *slot = Some(found);
-                        ctx.request_repaint();
+                if let Some(now) = now
+                    && !store(now)
+                {
+                    return;
+                }
+                for e in events.into_iter().flatten() {
+                    let Ok(Event::InputDevicesChanged { devices }) = e else { break };
+                    if !store(devices) {
+                        return;
                     }
                 }
-                drop(shared);
-                std::thread::sleep(Duration::from_secs(3));
+                if out.strong_count() == 0 {
+                    return;
+                }
+                // app_server went (a restart): connect again once it's back.
+                std::thread::sleep(Duration::from_secs(1));
             }
         })
         .expect("thread");
@@ -66,7 +88,7 @@ fn poll(ctx: &egui::Context) -> Shared {
 }
 
 pub fn ui(ui: &mut Ui, s: &mut Settings, st: &mut State) {
-    let devices = st.devices.get_or_insert_with(|| poll(ui.ctx())).lock().unwrap().clone();
+    let devices = st.devices.get_or_insert_with(|| watch(ui.ctx())).lock().unwrap().clone();
     let pad = devices.as_ref().and_then(|d| d.iter().find(|d| d.kind != DeviceKind::Mouse).cloned());
     let mut tab = st.tab;
     TabView::new(&mut tab, &["Touchpad", "Touch", "Gestures", "Mouse"]).show(ui, |ui, tab| {
@@ -78,7 +100,7 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, st: &mut State) {
                 0 => touchpad(ui, &mut s.touchpad, devices.is_some(), pad.as_ref()),
                 1 => touch(ui, &mut s.touchpad, pad.as_ref()),
                 2 => gestures(ui, &mut s.touchpad),
-                _ => mouse(ui, s),
+                _ => mouse(ui, s, devices.as_deref()),
             }
             let t = &mut s.touchpad;
             if *t != before && t.profile == before.profile && t.profile != "custom" && !t.matches_profile(&t.profile) {
@@ -220,8 +242,56 @@ fn gestures(ui: &mut Ui, t: &mut TouchpadSettings) {
     });
 }
 
-fn mouse(ui: &mut Ui, s: &mut Settings) {
-    BBox::new("Mouse").show(ui, |ui| {
+fn mouse(ui: &mut Ui, s: &mut Settings, devices: Option<&[InputDeviceInfo]>) {
+    let rect = ui.available_rect_before_wrap();
+    // Room for the scroll bar only while it shows (as tall as last drawn).
+    let tall = egui::Id::new("mouse-tab-height");
+    let over = ui.ctx().data(|d| d.get_temp::<f32>(tall)).is_some_and(|h| h > rect.height());
+    ScrollView::new("mouse-tab").border(false).auto_hide(true).show_in(ui, rect, |ui, _| {
+        ui.set_width(rect.width() - if over { SCROLL_BAR + m::TIGHT } else { 0.0 });
+        ui.spacing_mut().item_spacing.y = m::SPACING;
+        let top = ui.min_rect().top();
+        mice_boxes(ui, s, devices);
+        let h = ui.min_rect().bottom() - top;
+        ui.ctx().data_mut(|d| d.insert_temp(tall, h));
+    });
+}
+
+/// A remapper's own pointer ("keyd virtual pointer"): the mice it has
+/// grabbed move through it.
+fn remapper(d: &InputDeviceInfo) -> Option<&str> {
+    d.name.strip_suffix(" virtual pointer").filter(|_| d.kind == DeviceKind::Mouse)
+}
+
+fn open_doctor() {
+    let _ = olo_kit::open::spawn_app(&["olo-doctor".into()], "olo.doctor");
+}
+
+/// A problem in `failure`'s colour, and the button that fixes it.
+fn problem(ui: &mut Ui, text: &str) {
+    let p = style::palette(ui.ctx());
+    ui.add(StringView::new(text).color(style::c(p.failure)).wrap(true));
+    if ui.add(Button::new("Fix in Olo Doctor…")).clicked() {
+        open_doctor();
+    }
+}
+
+fn mice_boxes(ui: &mut Ui, s: &mut Settings, devices: Option<&[InputDeviceInfo]>) {
+    let all = devices.unwrap_or(&[]);
+    let grabbing = all.iter().find_map(remapper);
+    if let Some(r) = grabbing {
+        problem(ui, &format!("{r} is grabbing input devices: a mouse it has grabbed moves through its virtual pointer, and settings made here don't reach it."));
+    }
+    let found: Vec<&InputDeviceInfo> = all.iter().filter(|d| d.kind == DeviceKind::Mouse && remapper(d).is_none() && d.bus != "virtual").collect();
+    for d in &found {
+        one_mouse(ui, s, d);
+    }
+    BBox::new(if found.is_empty() { "Mice" } else { "Other Mice" }).show(ui, |ui| {
+        match devices {
+            None => drop(ui.add(StringView::new("Looking…").dim(true))),
+            Some(_) if found.is_empty() => drop(ui.add(StringView::new("No mouse is connected. These settings are for any you connect.").dim(true).wrap(true))),
+            Some(_) => drop(ui.add(StringView::new("For the mice set to follow the others, and any you connect.").dim(true).wrap(true))),
+        }
         let mut speed = s.mouse_speed as f32;
         ui.add(Slider::new(&mut speed, -1.0..=1.0).step(0.05).label("Mouse speed").limits("Slow", "Fast"));
         s.mouse_speed = speed as f64;
@@ -229,11 +299,81 @@ fn mouse(ui: &mut Ui, s: &mut Settings) {
         let mut accel = t.mouse_accel_profile.clone();
         menu(ui, "mouse-accel", "Acceleration:", &[("adaptive".into(), "Adaptive"), ("flat".into(), "None (flat)")], &mut accel, true);
         t.mouse_accel_profile = accel;
+    });
+    BBox::new("Buttons").show(ui, |ui| {
+        let t = &mut s.touchpad;
         ui.add(CheckBox::new(&mut t.left_handed, "Left-handed (swap the buttons)"));
         ui.add(CheckBox::new(&mut t.middle_emulation, "Press both buttons for a middle click"));
     });
     BBox::new("Focus").show(ui, |ui| {
         ui.add(CheckBox::new(&mut s.focus_follows_mouse, "Focus follows the pointer"));
+    });
+}
+
+/// A mouse: what it is, how it's set up, what is known about it.
+fn one_mouse(ui: &mut Ui, s: &mut Settings, d: &InputDeviceInfo) {
+    let model = mice::identify(&d.name, d.vendor, d.product);
+    let title = model.map_or_else(|| d.name.clone(), mice::Model::full_name);
+    let key = mice::key(d.vendor, d.product);
+    BBox::new(&title).show(ui, |ui| {
+        let mut facts: Vec<String> = Vec::new();
+        match model {
+            Some(m) => {
+                facts.extend(m.sensor.map(|s| format!("{s} sensor")));
+                facts.extend(m.max_dpi.map(|n| format!("up to {} dpi", mice::thousands(n))));
+            }
+            None => facts.extend(mice::maker(d.vendor).filter(|maker| !d.name.contains(maker)).map(str::to_owned)),
+        }
+        facts.extend(d.dpi.map(|n| format!("{} dpi as it comes", mice::thousands(n))));
+        let receiver = model.is_some_and(|m| m.quirks.contains(&Quirk::Receiver));
+        match d.bus.as_str() {
+            "usb" if receiver => facts.push("USB receiver".into()),
+            "usb" => facts.push("USB".into()),
+            "bluetooth" => facts.push("Bluetooth".into()),
+            _ => {}
+        }
+        if d.vendor != 0 {
+            facts.push(key.clone());
+        }
+        ui.add(StringView::new(&facts.join(" · ")).dim(true).wrap(true));
+        // Following the others, its model's profile, or its own.
+        let current = match s.mice.get(&key) {
+            None => "others",
+            Some(t) if t.profile == "custom" => "custom",
+            Some(_) => "recommended",
+        };
+        let mut chosen = current.to_owned();
+        menu(ui, &format!("mouse-{key}"), "Settings:", &[("recommended".into(), "Recommended for it"), ("others".into(), "As the other mice"), ("custom".into(), "Its own")], &mut chosen, true);
+        if chosen != current {
+            match chosen.as_str() {
+                "others" => drop(s.mice.remove(&key)),
+                "recommended" => drop(s.mice.insert(key.clone(), MouseTuning::default())),
+                _ => {
+                    // Its own, starting from what it has now.
+                    let (speed, accel) = mice::effective(s, &d.name, d.vendor, d.product);
+                    s.mice.insert(key.clone(), MouseTuning { profile: "custom".into(), speed, accel });
+                }
+            }
+        }
+        let class = model.map_or(Class::Everyday, |m| m.class);
+        match s.mice.get_mut(&key) {
+            None => drop(ui.add(StringView::new(&format!("Follows Other Mice below. Recommended for it: {}.", class.short())).dim(true).wrap(true))),
+            Some(t) if t.profile == "custom" => {
+                let mut speed = t.speed as f32;
+                ui.add(Slider::new(&mut speed, -1.0..=1.0).step(0.05).label("Speed").limits("Slow", "Fast"));
+                t.speed = speed as f64;
+                let mut accel = t.accel.clone();
+                menu(ui, &format!("mouse-accel-{key}"), "Acceleration:", &[("adaptive".into(), "Adaptive"), ("flat".into(), "None (flat)")], &mut accel, true);
+                t.accel = accel;
+            }
+            Some(_) => drop(ui.add(StringView::new(&format!("{}.", class.describe())).dim(true).wrap(true))),
+        }
+        for q in model.map_or(&[][..], |m| m.quirks) {
+            ui.add(StringView::new(&format!("• {}", q.describe())).wrap(true));
+        }
+        if d.may_sleep {
+            problem(ui, "USB power management may put it to sleep, and then it loses the first movement when the hand moves again.");
+        }
     });
 }
 

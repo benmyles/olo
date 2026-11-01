@@ -121,6 +121,9 @@ pub struct WaylandWindowState {
     popup: Option<xdg_popup::XdgPopup>,
     /// Olo: the popup this one opened over (a submenu's menu), if any.
     popup_of: Option<xdg_surface::XdgSurface>,
+    /// Olo: a popup that grabbed the pointer and keyboard (a menu; not a
+    /// tip).
+    grabbing: bool,
     viewport: Option<wp_viewport::WpViewport>,
     outputs: HashMap<ObjectId, Output>,
     display: Option<(ObjectId, Output)>,
@@ -275,6 +278,7 @@ impl WaylandWindowState {
             toplevel,
             popup,
             popup_of: None,
+            grabbing: false,
             viewport,
             globals,
             outputs: HashMap::default(),
@@ -619,11 +623,13 @@ impl WaylandWindow {
             }
         };
 
+        let grabbing = popup.is_some() && matches!(params.kind, WindowKind::Popup { .. });
         let made = Self::finish(handle, globals, gpu_context, client, params, appearance, loop_handle, signal, surface, Some(xdg_surface), None, toplevel, popup, (scale, displays))?;
         let mut state = made.0.0.state.borrow_mut();
         state.dialog = dialog_object;
         state.imported = imported;
         state.popup_of = popup_of;
+        state.grabbing = grabbing;
         drop(state);
         Ok(made)
     }
@@ -774,6 +780,21 @@ impl WaylandWindowStatePtr {
             // (Destroyed again with its window: nothing, once dead.)
             popup.destroy();
         }
+    }
+
+    /// Olo: its xdg surface (a window's or a popup's), and the popup it
+    /// opened over, if it is one.
+    pub fn xdg_surface(&self) -> Option<xdg_surface::XdgSurface> {
+        self.state.try_borrow().ok()?.xdg_surface.clone()
+    }
+
+    pub fn popup_of(&self) -> Option<xdg_surface::XdgSurface> {
+        self.state.try_borrow().ok()?.popup_of.clone()
+    }
+
+    /// Olo: a menu showing (a grabbing popup not yet taken down).
+    pub fn is_grabbing_popup(&self) -> bool {
+        self.state.try_borrow().is_ok_and(|s| s.grabbing && s.popup.as_ref().is_some_and(|p| p.is_alive()))
     }
 
     /// What a popup opens over, on this window.

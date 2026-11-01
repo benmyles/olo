@@ -71,7 +71,12 @@ fn outputs() -> Vec<OutputInfo> {
 
 /// A pad of `kind` called `name`.
 fn pad(kind: DeviceKind, name: &str, pressure: bool, driver_click: Option<(u32, u32)>) -> InputDeviceInfo {
-    InputDeviceInfo { name: name.into(), kind, size_mm: Some((160.0, 115.0)), pressure, recommended: kind.recommended().into(), driver_click }
+    InputDeviceInfo { name: name.into(), kind, size_mm: Some((160.0, 115.0)), pressure, recommended: kind.recommended().into(), driver_click, vendor: 0x05ac, product: 0x0353, bus: "spi".into(), dpi: None, may_sleep: false }
+}
+
+/// A mouse called `name`.
+fn mouse(name: &str, vendor: u32, product: u32, may_sleep: bool) -> InputDeviceInfo {
+    InputDeviceInfo { name: name.into(), kind: DeviceKind::Mouse, size_mm: None, pressure: false, recommended: "standard".into(), driver_click: None, vendor, product, bus: "usb".into(), dpi: Some(800), may_sleep }
 }
 
 #[test]
@@ -83,6 +88,17 @@ fn ui_lint_touchpad() {
         ("MacBook pad", vec![pad(DeviceKind::AppleMtp, "Apple MTP multi-touch", true, Some((1500, 1000)))]),
         ("other pad", vec![pad(DeviceKind::Touchpad, "SYNA30B4:00 06CB:CE7E Touchpad with a Very Long Kernel Name", true, None)]),
         ("no pad", Vec::new()),
+        // The Mouse tab: a known mouse grabbed by keyd and allowed to
+        // sleep, and one that isn't known, with a very long name.
+        (
+            "mice",
+            vec![
+                pad(DeviceKind::AppleMtp, "Apple MTP multi-touch", true, Some((1500, 1000))),
+                mouse("Logitech G309", 0x046d, 0x40b1, true),
+                mouse("keyd virtual pointer", 0x0fac, 0x1ade, false),
+                mouse("Some Maker's Wireless Optical Mouse with a Very Long Kernel Name", 0x1234, 0x5678, false),
+            ],
+        ),
     ];
     let mut problems = Vec::new();
     for (name, devices) in &pads {
@@ -91,6 +107,11 @@ fn ui_lint_touchpad() {
             for (profile, which) in [(devices.first().map_or("default", |d| d.recommended.as_str()), "its profile"), ("custom", "custom")] {
                 let mut settings = Settings::default();
                 settings.touchpad.profile = profile.into();
+                if which == "custom" {
+                    // A mouse with its own settings, one following its profile.
+                    settings.mice.insert("046d:40b1".into(), olo_protocol::mice::MouseTuning { profile: "custom".into(), speed: 0.2, accel: "flat".into() });
+                    settings.mice.insert("1234:5678".into(), olo_protocol::mice::MouseTuning::default());
+                }
                 let state = State::Touchpad(touchpad::State::showing(tab, devices.clone()));
                 problems.extend(lint(Panel::Touchpad, &format!("{name}, {which}, tab {}", tab + 1), state, settings));
             }

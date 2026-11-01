@@ -271,10 +271,15 @@ fn on_input_event(data: &mut AnvilState<UdevData>, mut event: InputEvent<Libinpu
                 configure_pointer(device, settings);
             }
             data.backend_data.pointers.push(device.clone());
+            data.ipc.broadcast(olo_protocol::Event::InputDevicesChanged { devices: data.backend_data.input_devices() });
         }
     } else if let InputEvent::DeviceRemoved { ref device } = event {
         data.backend_data.keyboards.retain(|item| item != device);
+        let pointers = data.backend_data.pointers.len();
         data.backend_data.pointers.retain(|item| item != device);
+        if data.backend_data.pointers.len() != pointers {
+            data.ipc.broadcast(olo_protocol::Event::InputDevicesChanged { devices: data.backend_data.input_devices() });
+        }
     }
     data.process_input_event(&dh, event)
 }
@@ -289,6 +294,7 @@ fn device_info(device: &smithay::reexports::input::Device) -> olo_protocol::touc
         let param = |name: &str| std::fs::read_to_string(format!("/sys/module/hid_magicmouse/parameters/{name}")).ok()?.trim().parse::<u32>().ok();
         Some((param("haptic_press_threshold")?, param("haptic_release_threshold")?))
     });
+    let (bus, dpi, may_sleep) = device_facts(device.sysname());
     InputDeviceInfo {
         name: device.name().into_owned(),
         kind,
@@ -296,7 +302,50 @@ fn device_info(device: &smithay::reexports::input::Device) -> olo_protocol::touc
         pressure,
         recommended: kind.recommended().to_owned(),
         driver_click: driver_click.flatten(),
+        vendor: device.id_vendor(),
+        product: device.id_product(),
+        bus,
+        dpi,
+        may_sleep,
     }
+}
+
+/// What sysfs and udev's database say of input device `sysname`
+/// (event8): how it's connected, its resolution in the hardware
+/// database, and whether its USB device (a receiver's) may be put to
+/// sleep. Read when asked (Preferences), never per event.
+fn device_facts(sysname: &str) -> (String, Option<u32>, bool) {
+    let read = |p: &std::path::Path| std::fs::read_to_string(p).ok().map(|s| s.trim().to_owned());
+    let dir = std::path::PathBuf::from(format!("/sys/class/input/{sysname}/device"));
+    // linux/input.h's BUS_*.
+    let bus = match read(&dir.join("id/bustype")).and_then(|b| u32::from_str_radix(&b, 16).ok()) {
+        Some(0x03) => "usb",
+        Some(0x05) => "bluetooth",
+        Some(0x06) => "virtual",
+        Some(0x18) => "i2c",
+        Some(0x19) => "host",
+        Some(0x1c) => "spi",
+        _ => "",
+    };
+    let dpi = read(std::path::Path::new(&format!("/sys/class/input/{sysname}/dev")))
+        .and_then(|dev| std::fs::read_to_string(format!("/run/udev/data/c{dev}")).ok())
+        .and_then(|db| db.lines().find_map(|l| l.strip_prefix("E:MOUSE_DPI=").map(mouse_dpi)))
+        .flatten();
+    let may_sleep = bus == "usb"
+        && std::fs::canonicalize(&dir)
+            .ok()
+            .and_then(|d| d.ancestors().find(|a| a.join("idVendor").is_file() && a.join("power/control").is_file()).map(|a| a.join("power/control")))
+            .and_then(|c| read(&c))
+            .is_some_and(|c| c != "on");
+    (bus.to_owned(), dpi, may_sleep)
+}
+
+/// The default resolution in a `MOUSE_DPI` value: "800@1000", or a list
+/// with the default starred ("400 *800 1600@1000").
+fn mouse_dpi(value: &str) -> Option<u32> {
+    let words: Vec<&str> = value.split_whitespace().collect();
+    let word = words.iter().find(|w| w.starts_with('*')).or(words.first())?;
+    word.trim_start_matches('*').split('@').next()?.parse().ok()
 }
 
 /// Whether input device `sysname` (event1) reports absolute axis `code`.
@@ -645,9 +694,10 @@ fn configure_pointer(device: &mut smithay::reexports::input::Device, settings: &
         let _ = device.config_scroll_set_natural_scroll_enabled(t.natural_scroll);
     }
     if device.config_accel_is_available() {
-        let speed = if touchpad { t.speed } else { settings.mouse_speed };
+        // A mouse: its own settings, its model's profile or the other
+        // mice's (protocol mice.rs).
+        let (speed, profile) = if touchpad { (t.speed, t.accel_profile.clone()) } else { olo_protocol::mice::effective(settings, &device.name(), device.id_vendor(), device.id_product()) };
         let _ = device.config_accel_set_speed(speed.clamp(-1.0, 1.0));
-        let profile = if touchpad { &t.accel_profile } else { &t.mouse_accel_profile };
         let _ = device.config_accel_set_profile(if profile == "flat" { AccelProfile::Flat } else { AccelProfile::Adaptive });
     }
     info!(device = %device.name(), touchpad, "applied pointer settings");
@@ -2625,4 +2675,15 @@ fn render_surface<'a>(
     }
 
     Ok((rendered, states, cursor_on_plane))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn mouse_dpi_reads_the_default() {
+        assert_eq!(super::mouse_dpi("800@1000"), Some(800));
+        assert_eq!(super::mouse_dpi("400 *800 1600@1000"), Some(800));
+        assert_eq!(super::mouse_dpi("1600"), Some(1600));
+        assert_eq!(super::mouse_dpi(""), None);
+    }
 }

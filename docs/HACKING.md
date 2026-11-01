@@ -1827,7 +1827,16 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
 - `MenuBar::new(menus, on_command)` at the top of a window's view: the
   BeOS menu bar as the egui kit draws it. A press on a title opens its
   menu under it; with one open, sliding across the bar opens the
-  others; a press on the open title puts it away. Items take keys with
+  others; a press on the open title puts it away (one that slid open
+  stays for its first press, as on BeOS), and so does a press anywhere
+  else in the window (`press_in`). The bar knows its menu by its popup,
+  not its place: the popup a slide replaced goes after the new one
+  opens, and taken by place the bar forgot the new menu and opened
+  another over it, which xdg-shell forbids (a menu may open only on the
+  topmost), so app_server ended the app's connection (Olo Doctor,
+  2026-11-01). GPUI guards against any app doing that: before a menu
+  opens, our menus showing outside its parent's chain are taken down
+  (`withdraw_stray_menus`, with a warning). Items take keys with
   `Menu::key("w")` / `shift_key("z")` / `shortcut(..)` (a Mac's, as
   for the egui kit: the command key is Ctrl to an app), and
   `menu::resolve` gives every item the keys its command has in the
@@ -2067,7 +2076,9 @@ turn of its loop GPUI asks the connection's socket whether it hung up
 and the connection whether it holds a protocol error, since calloop
 drops a failing source and the loop would sleep on with its windows
 gone, as Deskbar did, or spin on a stored protocol error, as
-Notifications did, 2026-11-01); GPUI's connect waits up to 15 s for
+Notifications did, 2026-11-01; once told, the loop stops, so a program
+nobody re-executes, outside a session, ends rather than waking for ever
+on the dead socket); GPUI's connect waits up to 15 s for
 the compositor to be back. And it connects to app_server's direct
 socket (`olo-<display>-direct`), as the egui kit does, not to
 `WAYLAND_DISPLAY`, which in a session is olo-wlproxy's: the proxy keeps
@@ -4298,7 +4309,32 @@ Preferences ▸ Touchpad & Mouse has four tabs (Touchpad, Touch, Gestures, Mouse
 and a tuning profile (protocol `touchpad.rs`: `PROFILES`,
 `apply_profile`; changing any tuning by hand makes it "custom"); the
 pad and the profile it suits come from `Request::InputDevices`
-(`DeviceKind::detect`). On MacBook pads (Apple MTP) app_server loads
+(`DeviceKind::detect`), and again from `Event::InputDevicesChanged`
+whenever a pointing device comes or goes (`EventKind::InputDevices`:
+the panel waits on it, nothing is polled). Headless, a test names the
+devices in a JSON file (`OLO_HEADLESS_INPUT_DEVICES`, as
+`Reply::InputDevices` lists them).
+
+**Mice** (protocol `mice.rs`, the Mouse tab): each mouse is named by
+maker and model (`mice::identify`: its USB or Bluetooth ids first, then
+the name its driver gives it, with the maker's vendor id; `MODELS` holds
+only ids seen on real devices and names as drivers give them; `maker`
+names the rest by vendor), with its sensor and resolution, the
+hardware database's `MOUSE_DPI` (read from udev's database by
+`device_facts`, with the bus and whether its USB device may sleep), and
+its quirks (`Quirk`: buttons on its motion node, which key remappers
+grab; a receiver that must stay awake; a report rate above the
+displays'; free-spinning and thumb wheels; a touch surface). A mouse
+follows the other mice (`Settings::mouse_speed`,
+`touchpad.mouse_accel_profile`), its model's profile
+(`Settings::mice[key] = MouseTuning { profile: "recommended" }`:
+`Class::Gaming` no acceleration, `Class::Everyday` adaptive), or its
+own speed and acceleration (`profile: "custom"`); app_server's
+`configure_pointer` takes `mice::effective`. What gets in a mouse's way
+(a remapper's virtual pointer in the list, a receiver allowed to sleep)
+is shown with a button that opens Olo Doctor, which fixes it.
+
+On MacBook pads (Apple MTP) app_server loads
 **Olo's touch filter** into its libinput: `touchpad.lua`, a libinput
 1.30 Lua plugin written with the settings filled in to
 `$XDG_RUNTIME_DIR/olo/libinput-plugins` (`touch_filter::install`). It

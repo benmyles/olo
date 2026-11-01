@@ -125,6 +125,15 @@ impl Backend for HeadlessData {
     fn seat_name(&self) -> String {
         "headless".into()
     }
+    /// (Tests: the pointing devices a JSON file names, as
+    /// `Reply::InputDevices` has them: `OLO_HEADLESS_INPUT_DEVICES`. Read
+    /// when asked.)
+    fn input_devices(&self) -> Vec<olo_protocol::touchpad::InputDeviceInfo> {
+        std::env::var_os("OLO_HEADLESS_INPUT_DEVICES")
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_default()
+    }
     fn reset_buffers(&mut self, _output: &Output) {}
     fn wake(&mut self, outputs: Option<&[Output]>) {
         let now = std::time::Instant::now();

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-01
 
+### Mice by make and model
+
+*15:39* — Preferences ▸ Touchpad & Mouse ▸ Mouse names each mouse by maker and model (sensor, resolution, how it's connected), offers the profile recommended for it or settings of its own, says what is known about it, and points at Olo Doctor for what gets in its way (a key remapper grabbing it, a receiver allowed to sleep). The device list now comes by event, not every 3 s.
+
+![Mice by make and model](2026-11-01/153934-mice-by-make-and-model.png)
+
 ### Olo Doctor
 
 *15:17* — A new app that looks the computer over for what gets in Olo's way (an input remapper grabbing the mice, USB receivers allowed to sleep, Olo's udev rules missing, rtkit down, another desktop's daemons, programs on an old version) and fixes each with a button, or all at once with one password.

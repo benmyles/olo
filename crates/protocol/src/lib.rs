@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod notifications;
 pub mod panels;
+pub mod mice;
 pub mod performance;
 pub mod sharing;
 pub mod app_keys;
@@ -542,6 +543,8 @@ pub enum EventKind {
     Outputs,
     Power,
     ShortcutRecorded,
+    /// [`Event::InputDevicesChanged`].
+    InputDevices,
     /// [`Event::Painted`]: only when asked for by name (not with
     /// [`Request::Subscribe`]), as it comes as often as frames do.
     Painted,
@@ -568,6 +571,9 @@ pub enum Event {
     /// ("Shift+Cmd+Left"); "" for Backspace or Delete alone (no keys);
     /// None if it was cancelled (Escape alone, or nothing for a while).
     ShortcutRecorded { keys: Option<String> },
+    /// A pointing device came or went: every one now, as
+    /// [`Reply::InputDevices`].
+    InputDevicesChanged { devices: Vec<touchpad::InputDeviceInfo> },
     /// A key taken with [`Request::GrabKeys`] went down or up (sent only
     /// to the connection that took it).
     KeyGrab { id: String, pressed: bool },
@@ -589,6 +595,7 @@ impl Event {
             Event::PowerChanged { .. } => EventKind::Power,
             Event::ShortcutRecorded { .. } => EventKind::ShortcutRecorded,
             Event::Painted { .. } => EventKind::Painted,
+            Event::InputDevicesChanged { .. } => EventKind::InputDevices,
             Event::KeyGrab { .. } => return None,
         })
     }
@@ -970,6 +977,10 @@ pub struct Settings {
     pub touchpad: TouchpadSettings,
     pub keyboard: KeyboardSettings,
     pub mouse_speed: f64,
+    /// Mice with settings of their own, or following their model's
+    /// profile, by `mice::key` ("046d:40b1"); the rest follow
+    /// `mouse_speed` and `touchpad.mouse_accel_profile`.
+    pub mice: std::collections::BTreeMap<String, mice::MouseTuning>,
     /// Font size (logical pixels) used for window tab titles.
     pub tab_font_size: f32,
     /// A tab shows at most this many characters of its window's title,
@@ -1612,6 +1623,7 @@ impl Default for Settings {
             touchpad: TouchpadSettings::default(),
             keyboard: KeyboardSettings::default(),
             mouse_speed: 0.0,
+            mice: Default::default(),
             tab_font_size: 12.0,
             tab_title_chars: 100,
             appearance: Appearance::default(),

@@ -25,6 +25,23 @@ pub struct InputDeviceInfo {
     /// silicon, where the driver makes the click from summed pressure):
     /// (press, release). Read only: they belong to the driver.
     pub driver_click: Option<(u32, u32)>,
+    /// Its USB or Bluetooth vendor and product ids (`mice::key`).
+    #[serde(default)]
+    pub vendor: u32,
+    #[serde(default)]
+    pub product: u32,
+    /// How it is connected: "usb", "bluetooth", "i2c", "spi", or
+    /// "virtual" (a remapper's or a test's device).
+    #[serde(default)]
+    pub bus: String,
+    /// Its sensor's resolution as the hardware database has it
+    /// (`MOUSE_DPI`'s default); libinput scales its movement by it.
+    #[serde(default)]
+    pub dpi: Option<u32>,
+    /// Its USB device (a receiver's, for a wireless mouse) may be put
+    /// to sleep by USB power management (`power/control` isn't "on").
+    #[serde(default)]
+    pub may_sleep: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

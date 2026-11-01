@@ -375,12 +375,28 @@ impl gpui::Global for Popped {}
 /// a menu open over it goes, as a press outside a menu puts it away
 /// (the compositor hands an app's own window the presses outside its
 /// menu); and that press doesn't open it again, on what opened it.
-pub(crate) fn press_in(window: &Window, cx: &mut App) {
+pub(crate) fn press_in(at: gpui::Point<Pixels>, window: &Window, cx: &mut App) {
     let id = window.window_handle().window_id();
     let popped = cx.default_global::<Popped>();
     let taken = popped.menus.remove(&id);
     popped.closed = taken.as_ref().map(|(_, anchor)| (id, *anchor));
     if let Some((handle, _)) = taken {
+        let _ = handle.update(cx, |m, window, cx| m.close(window, cx));
+    }
+    // The menu bar's menu too: a press anywhere in the window puts it
+    // away, its own title's included (which then leaves it away), but
+    // for the first press on the title of one that slid open.
+    let open = cx.default_global::<Bars>().0.get_mut(&id).and_then(|bar| {
+        bar.closed = None;
+        let (i, _) = bar.open?;
+        if !bar.pressed && bar.titles.get(i).is_some_and(|t| t.contains(&at)) {
+            bar.pressed = true;
+            return None;
+        }
+        bar.closed = Some(i);
+        bar.open.take()
+    });
+    if let Some((_, handle)) = open {
         let _ = handle.update(cx, |m, window, cx| m.close(window, cx));
     }
 }
@@ -776,9 +792,15 @@ struct Bar {
     on_command: OnChoose,
     /// The menu open, and its popup.
     open: Option<(usize, WindowHandle<MenuPopup>)>,
-    /// The open menu's title was pressed since it opened, so the next
-    /// press there puts it away (one that slid open stays for its press).
+    /// The open menu's title was pressed since it opened: the next press
+    /// there puts it away (one that slid open stays for its press, as on
+    /// BeOS).
     pressed: bool,
+    /// The titles, where the bar last drew them (in the window).
+    titles: Vec<Bounds<Pixels>>,
+    /// The menu the press now under way put away (`press_in`), so a
+    /// press on its own title doesn't open it again.
+    closed: Option<usize>,
 }
 
 #[derive(Default)]
@@ -834,26 +856,33 @@ pub(crate) fn forget_closed(cx: &mut App) {
     cx.default_global::<Bars>().0.retain(|id, _| open.contains(id));
 }
 
-/// Opens bar menu `i` under its title `title` (in the window).
+/// Opens bar menu `i` under its title `title` (in the window), by a
+/// press on it or sliding onto it.
 fn open_bar_menu(window: &mut Window, cx: &mut App, i: usize, title: Bounds<Pixels>, pressed: bool) {
     let id = window.window_handle().window_id();
     let Some((menu, on_command)) = cx.try_global::<Bars>().and_then(|b| b.0.get(&id)).and_then(|b| Some((b.menus.get(i)?.clone(), b.on_command.clone()))) else { return };
     close_bar_menu(window, cx);
     let me = window.window_handle();
     // Its popup gone (chosen, put away, a click elsewhere): no menu open,
-    // unless another has opened since.
+    // unless another has opened since. By its popup, not its place: the
+    // menu it replaced goes after the new one opens, and a menu that
+    // slid open and then was pressed open again is the same menu; taken
+    // by its place, the bar forgot the new one and opened another over
+    // it, which ended the program's connection (2026-11-01).
+    let mine: Rc<std::cell::Cell<Option<gpui::AnyWindowHandle>>> = Rc::default();
+    let closing = mine.clone();
     let on_close: Rc<dyn Fn(&mut App)> = Rc::new(move |cx: &mut App| {
         let bars = cx.default_global::<Bars>();
         if let Some(bar) = bars.0.get_mut(&id)
-            && bar.open.is_some_and(|(o, _)| o == i)
+            && bar.open.is_some_and(|(_, h)| Some(gpui::AnyWindowHandle::from(h)) == closing.get())
         {
             bar.open = None;
-            bar.pressed = false;
             let _ = me.update(cx, |_, window, _| window.refresh());
         }
     });
     let place = Place { anchor: title, corner: Corner::BottomLeft, ..Place::default() };
     let handle = open(window, cx, menu, place, on_command, None, Some(on_close));
+    mine.set(handle.map(Into::into));
     if let Some(bar) = cx.default_global::<Bars>().0.get_mut(&id) {
         bar.open = handle.map(|h| (i, h));
         bar.pressed = pressed;
@@ -883,7 +912,7 @@ impl RenderOnce for MenuBar {
                 bar.on_command = self.on_command;
             }
             None => {
-                bars.0.insert(id, Bar { menus: menus.clone(), on_command: self.on_command, open: None, pressed: false });
+                bars.0.insert(id, Bar { menus: menus.clone(), on_command: self.on_command, open: None, pressed: false, titles: Vec::new(), closed: None });
             }
         }
         let titles: Vec<SharedString> = menus.iter().map(|m| SharedString::from(m.title.clone())).collect();
@@ -926,18 +955,24 @@ impl RenderOnce for MenuBar {
                 }
 
                 let hits: Vec<(Bounds<Pixels>, gpui::Hitbox)> = items.iter().map(|(_, r, h)| (*r, h.clone())).collect();
+                if let Some(bar) = cx.default_global::<Bars>().0.get_mut(&id) {
+                    bar.titles = hits.iter().map(|(r, _)| *r).collect();
+                }
                 let down = hits.clone();
                 // Menus open on the press, as on BeOS.
                 window.on_mouse_event(move |e: &gpui::MouseDownEvent, phase, window, cx| {
                     if !phase.bubble() || e.button != MouseButton::Left {
                         return;
                     }
-                    let Some(i) = down.iter().position(|(_, h)| h.is_hovered(window)) else { return };
-                    let bar = cx.try_global::<Bars>().and_then(|bars| bars.0.get(&id));
-                    let (open_here, pressed) = bar.map_or((false, false), |b| (b.open.is_some_and(|(o, _)| o == i), b.pressed));
-                    if open_here && pressed {
-                        close_bar_menu(window, cx);
-                    } else {
+                    // By where the press is: the hover a menu's grab
+                    // left behind can still be on the title it opened from.
+                    let Some(i) = down.iter().position(|(r, _)| r.contains(&e.position)) else { return };
+                    // Its menu was open: the press put it away
+                    // (`press_in`), and away it stays; or it slid open,
+                    // and stays for this press.
+                    let bar = cx.default_global::<Bars>().0.get_mut(&id);
+                    let (put_away, showing) = bar.map_or((false, false), |b| (b.closed.take() == Some(i), b.open.is_some_and(|(o, _)| o == i)));
+                    if !put_away && !showing {
                         open_bar_menu(window, cx, i, down[i].0, true);
                     }
                     cx.stop_propagation();
