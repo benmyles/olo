@@ -196,6 +196,25 @@ pub fn vgradient(window: &mut Window, b: Bounds<Pixels>, top: Hsla, bottom: Hsla
     }
 }
 
+/// A horizontal gradient filling `b`, `left` to `right`.
+pub fn hgradient(window: &mut Window, b: Bounds<Pixels>, left: Hsla, right: Hsla) {
+    let d = snap(window, b);
+    if d.size.width > px(0.0) && d.size.height > px(0.0) {
+        window.paint_quad(fill(d, linear_gradient(90.0, linear_color_stop(left, 0.0), linear_color_stop(right, 1.0))));
+        if left.a >= 1.0 && right.a >= 1.0 {
+            crate::review::gradient(window, d);
+        }
+    }
+}
+
+/// The width of `text` in `font` at `size` points, without a window (to
+/// size one before it opens): its characters' advances.
+pub fn text_width_app(cx: &App, text: &str, size: f32, font: &Font) -> f32 {
+    let ts = cx.text_system();
+    let id = ts.resolve_font(font);
+    text.chars().filter_map(|ch| ts.advance(id, px(size), ch).ok()).map(|a| f32::from(a.width)).sum()
+}
+
 /// Which edge of the text `x` is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Align {

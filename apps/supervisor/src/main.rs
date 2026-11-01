@@ -30,7 +30,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use olo_kit::{App, Cx, WindowId, WindowOptions, egui, instance, widgets};
+use olo_ui::{gpui::App, instance, widgets};
 use olo_protocol::performance::{Finding, FindingKind, LogEntry, Lowered, PerformanceSettings, SupervisorState};
 
 const APP_ID: &str = "olo.supervisor";
@@ -78,7 +78,7 @@ struct Supervisor {
     settings: Arc<Mutex<PerformanceSettings>>,
     /// The active window's app: its pid and name.
     focus: Arc<Mutex<Option<(i32, String)>>>,
-    proxy: olo_kit::Proxy,
+    proxy: olo_ui::Proxy,
     uid: u32,
     clock: Instant,
     followed: HashMap<i32, Followed>,
@@ -429,7 +429,7 @@ fn follow_focus(focus: Arc<Mutex<Option<(i32, String)>>>) {
 /// Follow `performance.json` as Preferences and Deskbar change it.
 fn follow_settings(settings: Arc<Mutex<PerformanceSettings>>, wake: Arc<(Mutex<bool>, std::sync::Condvar)>) {
     let path = PerformanceSettings::path();
-    let watch = olo_kit::watch::watch([path], move |_| {
+    let watch = olo_ui::watch::watch([path], move |_| {
         *settings.lock().unwrap() = PerformanceSettings::load();
         let (lock, cv) = &*wake;
         *lock.lock().unwrap() = true;
@@ -437,11 +437,6 @@ fn follow_settings(settings: Arc<Mutex<PerformanceSettings>>, wake: Arc<(Mutex<b
     });
     // For as long as the app runs.
     std::mem::forget(watch);
-}
-
-struct SupervisorApp {
-    windows: HashMap<WindowId, Finding>,
-    settings: Arc<Mutex<PerformanceSettings>>,
 }
 
 /// The alert's choices: the last (Enter) stops it.
@@ -453,45 +448,33 @@ fn alert_text(f: &Finding) -> String {
     format!("“{}” ({}): {}\n{}\n({:.0}% sure.)", f.name, f.pid, f.summary, evidence.join("\n"), f.confidence * 100.0)
 }
 
-impl App for SupervisorApp {
-    fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
-        let Some(f) = self.windows.get(&window).cloned() else { return };
-        let icon = if f.kind == FindingKind::Zombies { "warning" } else { "stop" };
-        let Some(choice) = widgets::alert(ui, icon, &alert_text(&f), BUTTONS) else { return };
-        self.windows.remove(&window);
-        cx.close_window(window);
-        match choice {
-            0 => {
-                let mut s = self.settings.lock().unwrap().clone();
-                if !s.ignored.contains(&f.name) {
-                    s.ignored.push(f.name.clone());
-                }
-                if let Err(e) = s.save() {
-                    tracing::warn!("supervisor: can't save the ignore list: {e}");
-                }
+/// What the person chose for a finding.
+fn chose(f: &Finding, choice: usize, settings: &Mutex<PerformanceSettings>) {
+    match choice {
+        0 => {
+            let mut s = settings.lock().unwrap().clone();
+            if !s.ignored.contains(&f.name) {
+                s.ignored.push(f.name.clone());
             }
-            1 => show_in_activity_monitor(f.pid),
-            _ => stop(f.pid, f.name.clone()),
-        }
-    }
-
-    fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
-        self.windows.remove(&window);
-        cx.close_window(window);
-    }
-
-    fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
-        if message.is::<instance::Launch>() {
-            return;
-        }
-        let Ok(msg) = message.downcast::<Msg>() else { return };
-        match *msg {
-            Msg::Urgent(f) => {
-                let id = cx.open_window(WindowOptions::alert_buttons(f.kind.title(), &alert_text(&f), BUTTONS));
-                self.windows.insert(id, f);
+            if let Err(e) = s.save() {
+                tracing::warn!("supervisor: can't save the ignore list: {e}");
             }
         }
+        1 => show_in_activity_monitor(f.pid),
+        _ => stop(f.pid, f.name.clone()),
     }
+}
+
+/// Asks the person about an urgent finding (an alert; closing it from
+/// its tab is no choice).
+fn ask(cx: &mut App, f: Finding, settings: Arc<Mutex<PerformanceSettings>>) {
+    let icon = if f.kind == FindingKind::Zombies { "warning" } else { "stop" };
+    let text = alert_text(&f);
+    widgets::open_alert(cx, f.kind.title(), icon, &text, BUTTONS, move |choice, _| {
+        if let Some(choice) = choice {
+            chose(&f, choice, &settings);
+        }
+    });
 }
 
 /// Activity Monitor, at the process (its inspector).
@@ -500,10 +483,10 @@ fn show_in_activity_monitor(pid: i32) {
     if instance::forward("olo.activity", &args) {
         return;
     }
-    if let Some(exe) = olo_kit::find_program("olo-activity") {
+    if let Some(exe) = olo_xdg::find_program("olo-activity") {
         let mut argv = vec![exe.into_os_string()];
         argv.extend(args.iter().map(Into::into));
-        if let Err(e) = olo_kit::open::spawn(&argv) {
+        if let Err(e) = olo_xdg::open::spawn(&argv) {
             tracing::warn!("supervisor: can't open Activity Monitor: {e}");
         }
     }
@@ -580,9 +563,9 @@ fn main() -> std::process::ExitCode {
     if instance::forward(APP_ID, &args) {
         return std::process::ExitCode::SUCCESS;
     }
-    olo_kit::run(APP_ID, move |cx| {
-        cx.stay_resident();
-        instance::listen(APP_ID, cx.proxy());
+    olo_ui::run(APP_ID, move |cx| {
+        olo_ui::stay_resident(cx);
+        instance::listen(APP_ID, olo_ui::proxy(cx));
         let settings = Arc::new(Mutex::new(PerformanceSettings::load()));
         let focus = Arc::new(Mutex::new(None));
         let wake = Arc::new((Mutex::new(false), std::sync::Condvar::new()));
@@ -591,7 +574,7 @@ fn main() -> std::process::ExitCode {
         let mut sup = Supervisor {
             settings: settings.clone(),
             focus,
-            proxy: cx.proxy(),
+            proxy: olo_ui::proxy(cx),
             // SAFETY: plain getuid.
             uid: unsafe { libc::getuid() },
             clock: Instant::now(),
@@ -624,7 +607,12 @@ fn main() -> std::process::ExitCode {
                 *woke = false;
             }
         });
-        SupervisorApp { windows: HashMap::new(), settings }
+        olo_ui::message_handler(cx, move |message, cx| {
+            if let Ok(msg) = message.downcast::<Msg>() {
+                let Msg::Urgent(f) = *msg;
+                ask(cx, f, settings.clone());
+            }
+        });
     });
     std::process::ExitCode::SUCCESS
 }

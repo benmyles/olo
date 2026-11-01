@@ -1561,6 +1561,20 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   `TextField::password(true)` shows bullets and keeps no copies (no
   undo, no copy); `clear_secret` zeroes it; `set_enabled(false)` dims
   it and takes no typing.
+- `widgets::open_alert(cx, title, icon, message, buttons, on_choose)`:
+  a whole BAlert (sized from its message and buttons before it opens;
+  Return the last, Escape the first of several; `on_choose(None)` when
+  closed from its tab).
+- `widgets::ScrollView::new(id, &handle)` (a `ScrollHandle` kept in the
+  view's state): what it holds scrolled in a sunken frame with BeOS
+  scroll bars (`horizontal`, `vertical`, `border`, `focused`,
+  `background`); `ScrollBar::vertical(id, handle)` drives any
+  `ScrollHandle` (a `uniform_list`'s too): arrows that scroll on while
+  held, a track click pages, the knob drags; agents read it as a
+  `ScrollBar` with its position, 0 to 1. In a frame it places itself
+  inside the frame's two lines on device pixels (`in_frame`).
+- `widgets::StatusBar::new(fraction).label(..).trailing(..)` and
+  `level_bar` (the bar alone).
 - `widgets::tooltip(text)` for an element's `.tooltip(..)` (the
   palette's tooltip colours, BeOS's pale yellow in light mode).
 - `olo_ui::stay_resident(cx)`: the app keeps running with no windows

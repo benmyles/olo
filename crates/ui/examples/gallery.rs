@@ -4,9 +4,9 @@
 
 use olo_ui::{
     WindowOptions,
-    gpui::{AppContext as _, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _, Render, StatefulInteractiveElement as _, Styled as _, Window, div, px},
+    gpui::{AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, ScrollHandle, Styled as _, Window, div, px},
     metrics as m,
-    widgets::{BBox, Button, CheckBox, MenuField, RadioButton, StringView, TextControl, TextField, text_field},
+    widgets::{BBox, Button, CheckBox, MenuField, RadioButton, ScrollView, StatusBar, StringView, TextControl, TextField, open_alert, text_field},
 };
 
 const FONTS: &[&str] = &["Nimbus Sans", "DejaVu Sans", "Noto Sans", "Liberation Sans"];
@@ -17,6 +17,8 @@ struct Gallery {
     sound: bool,
     radio: usize,
     choice: usize,
+    rows: ScrollHandle,
+    answer: String,
 }
 
 impl Render for Gallery {
@@ -80,21 +82,34 @@ impl Render for Gallery {
                     .mt(px(6.0))
                     .flex()
                     .gap(px(m::SPACING))
+                    .child(Button::new("Alert…").on_click({
+                        let view = cx.entity();
+                        move |_, cx| {
+                            let view = view.clone();
+                            open_alert(cx, "Gallery", "warning", "Something needs an answer. This alert's message is long enough to wrap onto a second line.", &["Cancel", "Other", "OK"], move |choice, cx| {
+                                view.update(cx, |g, cx| {
+                                    g.answer = format!("{choice:?}");
+                                    cx.notify();
+                                })
+                            });
+                        }
+                    }))
                     .child(Button::new("Copy Name"))
                     .child(Button::new("Disabled").enabled(false))
                     .child(Button::new("OK").default(true)),
             )
-            .child(StringView::new("Dim text for hints.").dim(true))
-            .child(div().id("rows").h(px(100.0)).w(px(200.0)).overflow_y_scroll().children((1..=40).map(|i| StringView::new(format!("Row {i}")))))
+            .child(StringView::new(format!("Alert answer: {}", self.answer)).dim(true))
+            .child(div().w(px(300.0)).child(StatusBar::new(0.42).label("Copying files…").trailing("3 of 7")))
+            .child(div().h(px(100.0)).w(px(220.0)).child(ScrollView::new("rows", &self.rows).child(div().px(px(6.0)).children((1..=40).map(|i| StringView::new(format!("Row {i}")))))))
     }
 }
 
 fn main() {
     olo_ui::run("olo.gallery", |cx| {
-        olo_ui::open_window(cx, WindowOptions::new("Gallery", 460.0, 360.0), |_, cx| {
+        olo_ui::open_window(cx, WindowOptions::new("Gallery", 460.0, 440.0), |_, cx| {
             let name = text_field(cx, |f| f.name("Name"));
             name.update(cx, |f, cx| f.set_text("Hello, BeOS", cx));
-            cx.new(|_| Gallery { name, wrap: true, sound: false, radio: 0, choice: 0 })
+            cx.new(|_| Gallery { name, wrap: true, sound: false, radio: 0, choice: 0, rows: ScrollHandle::new(), answer: "none".into() })
         });
     });
 }

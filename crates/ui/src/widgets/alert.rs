@@ -209,3 +209,104 @@ pub fn paragraph_height(cx: &App, text: &str, width: f32) -> f32 {
         .sum();
     (lines as f32 * style::PLAIN_SIZE * style::LINE_HEIGHT).ceil()
 }
+
+/// How wide an alert with `buttons` side by side must be (at least
+/// [`ALERT_WIDTH`]): long labels widen it rather than run off its left.
+pub fn alert_width(cx: &App, buttons: &[&str]) -> f32 {
+    let font = style::ui_font(FontWeight::NORMAL);
+    let each = |label: &str| ((style::text_width_app(cx, label, style::PLAIN_SIZE, &font) + 2.0 * m::CONTROL_PAD).max(m::BUTTON_MIN_WIDTH) / 2.0).ceil() * 2.0;
+    let row = buttons.iter().map(|b| each(b)).sum::<f32>() + (m::SPACING + 2.0) * buttons.len().saturating_sub(1) as f32;
+    ((ALERT_TEXT_X + row + m::WINDOW_INSET + 4.0).ceil()).max(ALERT_WIDTH)
+}
+
+/// How tall an alert of `width` with `message` must be.
+pub fn alert_height(cx: &App, message: &str, width: f32) -> f32 {
+    let text = paragraph_height(cx, message, width - ALERT_TEXT_X - m::WINDOW_INSET);
+    (m::WINDOW_INSET + text.max(ALERT_ICON) + m::WINDOW_INSET + m::CONTROL_HEIGHT + m::WINDOW_INSET).ceil()
+}
+
+type OnChoose = std::rc::Rc<dyn Fn(Option<usize>, &mut App)>;
+
+/// An alert's window: its message and buttons.
+struct Alert {
+    icon: SharedString,
+    message: SharedString,
+    buttons: Vec<SharedString>,
+    on_choose: OnChoose,
+    focus: gpui::FocusHandle,
+    /// Answered (or closed): later clicks and keys do nothing.
+    done: bool,
+}
+
+impl Alert {
+    fn choose(&mut self, choice: Option<usize>, window: &mut Window, cx: &mut gpui::Context<Self>) {
+        if std::mem::replace(&mut self.done, true) {
+            return;
+        }
+        (self.on_choose)(choice, cx);
+        window.remove_window();
+    }
+}
+
+impl gpui::Render for Alert {
+    fn render(&mut self, window: &mut Window, cx: &mut gpui::Context<Self>) -> impl IntoElement {
+        use gpui::InteractiveElement as _;
+        if !self.focus.is_focused(window) {
+            window.focus(&self.focus);
+        }
+        let n = self.buttons.len();
+        let view = cx.entity();
+        let mut row = button_row();
+        for (i, label) in self.buttons.iter().enumerate() {
+            let view = view.clone();
+            row = row.child(super::Button::new(label.clone()).default(i + 1 == n).on_click(move |window, cx| view.update(cx, |a, cx| a.choose(Some(i), window, cx))));
+        }
+        div()
+            .size_full()
+            .key_context(CONTEXT)
+            .track_focus(&self.focus)
+            // Return takes the last; Escape the first when there's more
+            // than one (usually Cancel).
+            .on_action(cx.listener(move |a, _: &Default, window, cx| a.choose(Some(n.saturating_sub(1)), window, cx)))
+            .on_action(cx.listener(move |a, _: &Cancel, window, cx| {
+                if n > 1 {
+                    a.choose(Some(0), window, cx)
+                }
+            }))
+            .child(AlertFrame::new(self.icon.clone()).child(paragraph(self.message.clone())).child(div().flex_1()).child(row))
+    }
+}
+
+/// Opens a BAlert: `message` beside `icon`, `buttons` along the bottom
+/// (the last the default, Return; Escape the first when there's more than
+/// one); `on_choose` gets the one chosen, or None if it was closed from
+/// its tab.
+pub fn open_alert(cx: &mut App, title: &str, icon: &str, message: &str, buttons: &[&str], on_choose: impl Fn(Option<usize>, &mut App) + 'static) -> Option<gpui::WindowHandle<crate::Frame>> {
+    use gpui::AppContext as _;
+    let width = alert_width(cx, buttons);
+    let height = alert_height(cx, message, width);
+    let on_choose: OnChoose = std::rc::Rc::new(on_choose);
+    let alert = cx.new(|cx| Alert {
+        icon: SharedString::from(icon.to_owned()),
+        message: SharedString::from(message.to_owned()),
+        buttons: buttons.iter().map(|b| SharedString::from(b.to_string())).collect(),
+        on_choose: on_choose.clone(),
+        focus: cx.focus_handle(),
+        done: false,
+    });
+    let a = alert.clone();
+    crate::open_window(cx, crate::WindowOptions::alert(title.to_owned(), width, height), move |window, cx| {
+        window.activate_window();
+        let closing = a.clone();
+        window.on_window_should_close(cx, move |_, cx| {
+            closing.update(cx, |a, cx| {
+                if !std::mem::replace(&mut a.done, true) {
+                    (a.on_choose)(None, cx);
+                }
+            });
+            true
+        });
+        a
+    })
+}
+
