@@ -131,6 +131,27 @@ else
     tools/install-session.sh
     ok "built, and installed in ~/.local/bin"
 fi
+# Builds leave the last build's artifacts behind under target/ (hundreds
+# of GB in a week): a daily sweep keeps only what a recent build used.
+if systemctl --user is-enabled olo-sweep.timer > /dev/null 2>&1; then
+    ok "target/ swept daily (olo-sweep.timer)"
+elif [ $CHECK = 1 ]; then
+    todo "no daily sweep of target/ yet (tools/dev/sweep --install)"
+else
+    tools/dev/sweep --install > /dev/null
+    ok "target/ swept daily (olo-sweep.timer)"
+fi
+# kache caches rustc's outputs (~/.cargo/config.toml names it as the
+# wrapper); its login service keeps the cache under its size.
+if command -v kache > /dev/null 2>&1; then
+    if kache daemon --json 2>/dev/null | grep -q '"service": *"installed"' || systemctl --user is-enabled kache.service > /dev/null 2>&1; then
+        ok "kache's daemon runs at login"
+    elif [ $CHECK = 1 ]; then
+        todo "kache's daemon isn't a login service yet (kache daemon install)"
+    else
+        kache daemon install > /dev/null 2>&1 && ok "kache's daemon runs at login" || todo "kache daemon install failed; run it by hand"
+    fi
+fi
 
 say "Login screen"
 if [ -f /usr/local/share/wayland-sessions/olo.desktop ]; then

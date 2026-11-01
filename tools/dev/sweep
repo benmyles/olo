@@ -1,0 +1,190 @@
+#!/usr/bin/python3
+"""Sweep: remove the build artifacts no recent build used, so target/
+stays about one build's size instead of growing with every edit.
+
+  tools/dev/sweep [--days N] [--dry-run] [--install] [DIR...]
+
+Cargo never deletes anything: each edit, flag or dependency change
+leaves the previous crate's rlib, binary and incremental state behind
+under a new hash, and this workspace's target/ reached 435 GB that way
+(2026-11-01). Each profile directory (target/debug, target/release, a
+custom profile, target/<triple>/<profile>) keeps a fingerprint for every
+unit it built, .fingerprint/<unit>-<hash>/invoked.timestamp, which cargo
+touches on every build that considers the unit, whether or not it
+recompiles it. A unit whose stamp is older than --days (2) is one no
+build has wanted since; its fingerprint, and everything in deps/,
+build/, examples/ and incremental/ named with its hash, go. Outputs
+without a hash (target/release/olo-deskcalc, lib*.rlib) are the
+uplifted copies, hard links of the live units, and stay.
+
+With no DIR it sweeps this workspace's target directory (or
+$CARGO_TARGET_DIR) and its rust-analyzer one. A directory is only swept
+when it has cargo's CACHEDIR.TAG, so nothing else can be hit by a typo.
+
+--install puts a timer in the person's systemd (user) that runs this
+sweep every day; tools/setup.sh does the same. --dry-run only reports.
+"""
+import argparse, os, re, shutil, subprocess, sys, time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+HASHED = re.compile(r"^(?:lib)?(.+?)-([0-9a-f]{16})(?:[.-].*)?$")
+# What cargo writes under a profile directory, named by the unit's hash.
+HASHED_DIRS = ("deps", "build", "examples", "incremental")
+
+
+def unit_hash(name):
+    """The 16-hex unit hash in an artifact's name, or None."""
+    m = HASHED.match(name)
+    return m.group(2) if m else None
+
+
+def size_of(path):
+    """Bytes a file or tree frees once removed (a hard link's other names keep theirs)."""
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return 0
+    if not os.path.isdir(path) or os.path.islink(path):
+        return st.st_size if st.st_nlink <= 1 else 0
+    total = 0
+    for dirpath, _, files in os.walk(path):
+        for f in files:
+            try:
+                s = os.lstat(os.path.join(dirpath, f))
+            except OSError:
+                continue
+            if s.st_nlink <= 1:
+                total += s.st_size
+    return total
+
+
+def profile_dirs(target):
+    """Every directory under TARGET with a .fingerprint (profiles, and triples' profiles)."""
+    found = []
+    for depth1 in sorted(os.scandir(target), key=lambda e: e.name):
+        if not depth1.is_dir(follow_symlinks=False):
+            continue
+        if os.path.isdir(os.path.join(depth1.path, ".fingerprint")):
+            found.append(depth1.path)
+            continue
+        try:
+            for depth2 in os.scandir(depth1.path):
+                if depth2.is_dir(follow_symlinks=False) and os.path.isdir(os.path.join(depth2.path, ".fingerprint")):
+                    found.append(depth2.path)
+        except OSError:
+            pass
+    return found
+
+
+def sweep_profile(profile, cutoff, dry_run):
+    """Removes the units of PROFILE unused since CUTOFF; returns (units, bytes)."""
+    fingerprints = os.path.join(profile, ".fingerprint")
+    live, stale = set(), set()
+    for entry in os.scandir(fingerprints):
+        h = unit_hash(entry.name)
+        if h is None or not entry.is_dir(follow_symlinks=False):
+            continue
+        try:
+            stamp = os.stat(os.path.join(entry.path, "invoked.timestamp")).st_mtime
+        except OSError:
+            stamp = entry.stat().st_mtime
+        (live if stamp >= cutoff else stale).add(h)
+    # A hash cargo still considers live anywhere in the profile stays, even if
+    # another, older fingerprint shares it.
+    stale -= live
+    if not stale:
+        return 0, 0
+    freed = 0
+    victims = []
+    for sub in HASHED_DIRS + (".fingerprint",):
+        d = os.path.join(profile, sub)
+        if not os.path.isdir(d):
+            continue
+        for entry in os.scandir(d):
+            h = unit_hash(entry.name)
+            if h in stale:
+                victims.append(entry.path)
+    for path in victims:
+        freed += size_of(path)
+        if dry_run:
+            continue
+        try:
+            if os.path.isdir(path) and not os.path.islink(path):
+                shutil.rmtree(path)
+            else:
+                os.remove(path)
+        except OSError as e:
+            print(f"sweep: {path}: {e}", file=sys.stderr)
+    return len(stale), freed
+
+
+def sweep(target, days, dry_run):
+    if not os.path.isfile(os.path.join(target, "CACHEDIR.TAG")):
+        print(f"sweep: {target}: not a cargo target directory (no CACHEDIR.TAG); left alone", file=sys.stderr)
+        return 0
+    cutoff = time.time() - days * 86400
+    total = 0
+    for profile in profile_dirs(target):
+        units, freed = sweep_profile(profile, cutoff, dry_run)
+        total += freed
+        if units:
+            verb = "would free" if dry_run else "freed"
+            print(f"{os.path.relpath(profile)}: {units} units unused for {days} days, {verb} {freed / 1e9:.1f} GB")
+    return total
+
+
+def install_timer():
+    """A daily sweep of this workspace from the person's systemd (user)."""
+    unit_dir = os.path.expanduser("~/.config/systemd/user")
+    os.makedirs(unit_dir, exist_ok=True)
+    me = os.path.abspath(__file__)
+    with open(os.path.join(unit_dir, "olo-sweep.service"), "w") as f:
+        f.write(f"""[Unit]
+Description=Sweep Olo's build directory of artifacts no recent build used
+
+[Service]
+Type=oneshot
+Nice=19
+IOSchedulingClass=idle
+ExecStart=/usr/bin/python3 {me}
+""")
+    with open(os.path.join(unit_dir, "olo-sweep.timer"), "w") as f:
+        f.write("""[Unit]
+Description=Daily sweep of Olo's build directory
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=1h
+
+[Install]
+WantedBy=timers.target
+""")
+    subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
+    subprocess.run(["systemctl", "--user", "enable", "--now", "olo-sweep.timer"], check=True)
+    print("olo-sweep.timer: a daily sweep of", os.path.join(ROOT, "target"))
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--days", type=float, default=2, help="keep units a build used within this many days (2)")
+    ap.add_argument("--dry-run", "-n", action="store_true", help="report, remove nothing")
+    ap.add_argument("--install", action="store_true", help="put a daily sweep in systemd (user)")
+    ap.add_argument("dirs", nargs="*", help="target directories (default: this workspace's)")
+    args = ap.parse_args()
+    if args.install:
+        install_timer()
+        return
+    dirs = args.dirs or [
+        os.environ.get("CARGO_TARGET_DIR") or os.path.join(ROOT, "target"),
+        os.path.join(ROOT, "target", "rust-analyzer"),
+    ]
+    total = 0
+    for d in dirs:
+        if os.path.isdir(d):
+            total += sweep(d, args.days, args.dry_run)
+    print(f"{'would free' if args.dry_run else 'freed'} {total / 1e9:.1f} GB in all")
+
+
+if __name__ == "__main__":
+    main()

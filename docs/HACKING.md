@@ -302,14 +302,40 @@ compiler cache (`cargo install kache --locked`, then
 restored instead of rebuilt, in any target directory or worktree. It is
 ben's setup, so build as ben (as above); `kache doctor` checks it,
 `kache stats --last-build` shows the hits, `KACHE_DISABLED=1` bypasses it.
+Know what it is for: a cache pays off when the same inputs come back
+(a branch switched and switched back, a revert, a second checkout or
+target directory), not in a straight edit-build loop, where every build's
+inputs are new; over a day of such work it served 0.6% of crates for ~2%
+overhead (measured 2026-11-01: ~2 min of key hashing and ~12 min of
+storing in 12.6 h of compiling). Its daemon is a login service (`kache
+daemon install`, done by `tools/setup.sh`), so the cache stays under its
+cap without anyone running it by hand. Blaze (indexable-inc/blaze, a
+build daemon with its own compiler) was tried the same day and dropped:
+it needs more memory than this laptop can spare (OOM at a 10 GB cap
+loading the workspace) and could not compile GPUI's styles
+(`<f64 as Into<f32>>::into` in `ToTaffy`); cargo's loop is 1–3 s for an
+edit to an app, the kit or GPUI in a debug build, and ~90 s for a
+release build of every app after a GPUI edit, which is linking 26
+binaries of 200 MB.
 Builds are kept lean on memory and disk. Dev builds keep only line tables (file and
 line in panics and backtraces), and dependencies keep no debuginfo, so debug binaries
 stay small and cheap to link. Full debuginfo made each one 600–850 MB, and twelve
 links at once ran a 30 GiB laptop out of memory. On ben's machine,
 `~/.cargo/config.toml` also caps `build.jobs` at 6 and links with lld
 (`-C link-arg=-fuse-ld=lld`). `~/.config/kache/config.toml` caps the cache at
-15 GiB and has kache prune units no build used for 3 days and target dirs idle
-for 14 days; otherwise a target dir only grows (olo's reached 439 GiB).
+15 GiB. The target directory is swept by `tools/dev/sweep`: cargo never
+deletes an artifact, so every edit to a flag, feature or dependency leaves
+the old crate's rlib, binaries and build script behind under a new hash
+(olo's `target/` reached 435 GB; one build's live set is ~110 GB, debug
+and release together). The sweep removes every unit no build has
+considered for two days (cargo touches `.fingerprint/<unit>/invoked.timestamp`
+on each build that wants a unit, compiled or fresh), with everything in
+`deps/`, `build/`, `examples/` and `incremental/` carrying its hash; the
+first run freed 172 GB in 11 s. `tools/dev/sweep --install` (also done by
+`tools/setup.sh`) puts it on a daily systemd user timer, `olo-sweep.timer`;
+`--dry-run` reports, `--days N` changes the window, and a directory is only
+swept when it has cargo's `CACHEDIR.TAG`. Scratch target directories
+elsewhere (`/var/tmp/...`) are the person who made them's to remove.
 
 ## Writing an app
 

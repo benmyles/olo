@@ -331,6 +331,20 @@ as they land (with the commit), add new ones as they come up.
      its own `Bitmap`s, and its egui views are behind its `egui`
      feature, for Tracker and the Viewer until they move; Telegram no
      longer links egui.)
+   - **The kit takes over what every app re-implements** (Ben,
+     2026-11-01: "anything these windows/apps are doing that's reusable
+     should be made reusable so that we aren't reinventing the wheel
+     everywhere"). A pass over the GPUI apps, each pattern moved into
+     olo-ui (documented in HACKING) and every app switched to it: a
+     window's content scrolling when it doesn't fit (in `Frame`, so no
+     panel needs its own); an app's settings JSON read and written
+     atomically; "open this window, or bring it forward"; closing with
+     unsaved changes (ask, then close or carry on); a status line whose
+     message clears itself; single-instance launches; one timer for the
+     next thing due; list + search + filter bar wiring; upgrade state
+     saved and restored; window size kept. Done so far (2026-11-01):
+     popups closing in any order, quitting taking windows down, window
+     parts (`part::Part`), secrets on the clipboard (`copy::secret`).
    - **Glyphs drawn in a frame are slow the first time** (found
      measuring Telegram, 2026-11-01): a chat opened with 230 glyphs new
      to the process spent 6–9 ms of its frame (release) on first-time
