@@ -326,6 +326,14 @@ pub enum Request {
         #[serde(default)]
         quiet: bool,
     },
+    /// How each display keeps up ([`DisplayFrames`]: its frames a second,
+    /// the ones presented late, what its frames cost), for Activity
+    /// Monitor's Displays. Counted always, at no cost worth measuring.
+    Frames,
+    /// Log what went into every frame that misses its vblank (`on`), as
+    /// a `frames` record in the log: Activity Monitor's "Capture debug
+    /// information". Until app_server restarts.
+    CaptureDrops { on: bool },
     Quit,
 }
 
@@ -391,6 +399,8 @@ pub enum Reply {
     /// [`Request::AutoApproveSecret`]'s answer.
     Secret { password: String },
     Timings { timings: Timings },
+    /// [`Request::Frames`]: each display, and whether drops are captured.
+    Frames { displays: Vec<DisplayFrames>, capture: bool },
     Event { event: Event },
 }
 
@@ -424,6 +434,41 @@ pub struct PhaseTimings {
     pub count: u32,
     pub total_us: u64,
     pub slowest_us: u64,
+}
+
+/// How one display keeps up ([`Request::Frames`]): what app_server
+/// counts at every vblank and frame, always. Times in microseconds.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct DisplayFrames {
+    pub output: String,
+    /// The mode's refresh rate, in millihertz (59 940 for 59.94 Hz).
+    pub refresh_mhz: u32,
+    /// Frames presented in the last second. A display with nothing new
+    /// presents none (it rests), so 0 on an idle display is right.
+    pub fps: f64,
+    /// Frames presented since app_server started, and of them the ones
+    /// presented a vblank or more after the one they were drawn for
+    /// (dropped: whoever watched saw the one before held a frame longer).
+    pub frames: u64,
+    pub late: u64,
+    /// Late ones in the last minute.
+    pub late_minute: u32,
+    /// What its last frames cost app_server to draw (CPU, from gathering
+    /// what shows to handing the frame to the GPU), over the last 120.
+    pub render_min_us: u64,
+    pub render_p50_us: u64,
+    pub render_p95_us: u64,
+    pub render_max_us: u64,
+    /// How much of a frame's time is kept for drawing (`budget`), and so
+    /// how long after a vblank the next frame starts (`delay`): the
+    /// pacing's current choice (app_server frames.rs).
+    pub budget_us: u64,
+    pub delay_us: u64,
+    /// The pointer is on a plane of the display's own, so moving it
+    /// draws nothing.
+    pub cursor_plane: bool,
+    /// Resting: nothing new, looking only now and then.
+    pub resting: bool,
 }
 
 /// How long one display's frames took to draw: from gathering what is on

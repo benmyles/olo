@@ -370,6 +370,8 @@ impl<B: Backend + 'static> AnvilState<B> {
                 | Request::PowerStatus
                 | Request::ActivationToken
                 | Request::Timings { .. }
+                | Request::Frames
+                | Request::CaptureDrops { .. }
                 // (Input wakes the displays it changes: `synthetic_input`.)
                 | Request::Synthetic { .. }
         );
@@ -723,6 +725,16 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Reply::Ok
             }
             Request::Timings { quiet } => Reply::Timings { timings: self.take_timings(quiet) },
+            Request::Frames => Reply::Frames { displays: self.backend_data.frames(), capture: crate::frames::capture() },
+            Request::CaptureDrops { on } => {
+                crate::frames::set_capture(on);
+                if on {
+                    // (What held the loop goes in each drop's record.)
+                    self.timings.watch_quietly();
+                }
+                tracing::info!(on, "capturing dropped frames");
+                Reply::Ok
+            }
             Request::SetResting { on } => {
                 crate::render::set_rests(on);
                 info!(?on, "displays resting");

@@ -4096,6 +4096,58 @@ clears every CRTC on DRM (DPMS off) and rendering stops, since any frame
 would turn them back on; input, waking from sleep or a returning session
 calls it with `true` and renders again.
 
+## Every frame on time (app_server frames.rs; Activity Monitor ▸ Displays)
+
+A display's frames are paced by app_server from each vblank: it waits,
+then draws, so that clients told to draw at the vblank have time to hand
+in their buffers and still make the next one. Smithay waits 60% of the
+frame and draws in the last 40% (6.7 ms at 60 Hz, 3.3 ms at 120 Hz),
+whatever the frame costs. A 5K frame with a video playing cost 5–9 ms of
+CPU on asahi (2026-11-01), so a third of the Studio Display's vblanks
+were missed, each a frame shown twice: the pointer jerked and scrolls
+stuttered, and on the 120 Hz built-in display the 95th-percentile frame
+(2.9 ms) was within a hair of the budget.
+
+`frames::Pacing`, one per display, sets the split from what its frames
+cost. Forward: the budget is at least the 95th percentile of the last
+120 frames' CPU time, and a quarter more, plus 0.5 ms for the GPU. Back:
+the vblank's hardware timestamp against the vblank the frame on its way
+was drawn for says whether it made it; a frame or more late is a drop,
+and a drop widens the budget by a quarter frame at once, since the GPU's
+share isn't measured. Six hundred frames on time in a row narrow it by a
+sixteenth, down to Smithay's split, because a narrower budget is a later
+draw and less latency for everyone. The pacing costs nothing while a
+display rests, and a look of a display's own (woken, or its idle look)
+isn't judged, since it wasn't drawn for a vblank.
+
+The pointer goes on a plane of the display's own where there is one.
+Apple's display controller (apple-drm) has no cursor plane, so every move
+of the pointer was a frame of the whole screen, and when one ran long the
+pointer waited with it. It has two overlay planes a CRTC that take
+ARGB8888 (how macOS shows its pointer): the topmost becomes the cursor
+plane, and Smithay draws the pointer into a 64×64 buffer of its own and
+moves that, the frame underneath untouched. The log says
+`no cursor plane; an overlay plane holds the pointer` when a display is
+set up so, and `the pointer is on a plane of the display's own` the first
+time it goes there; a pointer the plane refuses (bigger than 64 px, a
+client's cursor it can't hold) is drawn into the frame as before.
+`OLO_CURSOR_PLANE=0` keeps the overlay planes as they are.
+
+`{"type":"frames"}` (`tsession ipc NAME '{"type":"frames"}'`) answers
+each display's record (`DisplayFrames`): frames a second, dropped in the
+last minute and in all, the draw's percentiles, the budget and delay,
+whether the pointer is on its own plane, resting. Activity Monitor's
+Displays section shows it, a card a display, asked every second while
+the section shows and never otherwise. Its check box, "Capture debug
+information whenever a frame drops" (`{"type":"capture_drops","on":true}`),
+has app_server log every drop as a `frames` record: how late, how long
+the draw took and its parts (gathering, `drm render_frame`, …), the
+budget, and what else held the loop meanwhile (the slowest request,
+input event or commit since the last vblank); Logs filtered for
+"frames" shows them. It stays on until app_server restarts.
+`OLO_ACTIVITY_DEMO_FRAMES=1` gives Activity Monitor made-up displays to
+look at in a headless session, which has none.
+
 ## Caffeinated mode and the level indicator (power.rs, osd.rs)
 
 Caffeinated mode holds a logind block inhibitor ("sleep:idle", plus

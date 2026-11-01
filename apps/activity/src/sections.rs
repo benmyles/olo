@@ -16,7 +16,7 @@ use olo_ui::{
     style::{self, c},
     theme,
     widgets::{
-        Button, Column, ColumnListView, Graph, HEADER_HEIGHT, LegendItem, MenuField, SCROLL_BAR, ScrollView, Series, StringView, TextControl,
+        Button, CheckBox, Column, ColumnListView, Graph, HEADER_HEIGHT, LegendItem, MenuField, SCROLL_BAR, ScrollView, Series, StringView, TextControl,
         charts::FACT_ROW,
         dashboard::{self, Card, Facts, GAP, meter},
         legend, legend_height, nice_ceiling,
@@ -246,6 +246,11 @@ pub fn sidebar_value(app: &Activity, s: Section) -> String {
             (true, 0) => "On".to_owned(),
             (true, n) => n.to_string(),
         },
+        // Dropped frames in the last minute, if any.
+        Section::Displays => match app.displays.iter().map(|d| d.late_minute).sum::<u32>() {
+            0 => String::new(),
+            n => format!("{n} dropped"),
+        },
         _ => String::new(),
     }
 }
@@ -280,6 +285,7 @@ pub fn view(app: &mut Activity, s: Section, width: f32, cx: &mut Context<Activit
         Section::Disks => disks(app, &me, inner, cx),
         Section::Network => network(app, &me, inner, cx),
         Section::Gpu => gpu(app, &me, area, inner, cx),
+        Section::Displays => displays(app, &me, cx),
         Section::Sensors => sensors(app, inner, cx),
         Section::System => system(app, &me, inner, cx),
         Section::Supervisor => supervisor(app, &me, cx),
@@ -947,6 +953,65 @@ fn gpu(app: &Activity, me: &Me, area: f32, inner: f32, cx: &App) -> Vec<AnyEleme
         Card::new("gpu-programs", "Programs Using the GPU")
             .caption(if app.access == Access::Full { "Its memory each holds" } else { "Its memory each holds (other users' need full access)" })
             .child(process_rows(me, "Memory on the GPU", rows))
+            .into_any_element(),
+    );
+    out
+}
+
+// ---- Displays --------------------------------------------------------
+
+/// Each display: its frames a second, the ones dropped, what its frames
+/// cost app_server and how it paces them (app_server frames.rs), and the
+/// switch that has every drop logged with what went into it.
+fn displays(app: &Activity, me: &Me, cx: &App) -> Vec<AnyElement> {
+    let p = theme::palette(cx);
+    let ink = style::card_ink(&p);
+    let ms = |us: u64| format!("{:.1} ms", us as f64 / 1000.0);
+    let mut out = Vec::new();
+    if app.displays.is_empty() {
+        out.push(
+            Card::new("displays-none", "Displays")
+                .caption("Nothing to show yet")
+                .child(para("app_server hasn't said yet, or this session has no displays of its own (a headless one).", ink.dim))
+                .into_any_element(),
+        );
+    }
+    for d in &app.displays {
+        let hz = d.refresh_mhz as f64 / 1000.0;
+        let frame_ms = 1000.0 / hz.max(1.0);
+        let rows: Vec<(String, String)> = vec![
+            ("Refresh".into(), format!("{hz:.0} Hz, {frame_ms:.1} ms a frame")),
+            ("Now".into(), if d.resting { "Resting: nothing new on it".into() } else { format!("{:.0} frames a second", d.fps) }),
+            ("Dropped".into(), format!("{} in the last minute, {} of {} in all", d.late_minute, style::thousands(d.late as usize), style::thousands(d.frames as usize))),
+            ("Drawing".into(), format!("{} typically, {} at the 95th percentile, {} to {}", ms(d.render_p50_us), ms(d.render_p95_us), ms(d.render_min_us), ms(d.render_max_us))),
+            ("Pacing".into(), format!("{} of each frame kept for drawing: a frame starts {} after the vblank", ms(d.budget_us), ms(d.delay_us))),
+            ("Pointer".into(), if d.cursor_plane { "On a plane of its own: moving it draws nothing".into() } else { "Drawn into each frame".into() }),
+        ];
+        let figure = if d.resting { "resting".to_owned() } else { format!("{:.0} fps", d.fps) };
+        let caption = match d.late_minute {
+            0 => "Every frame on time this last minute".to_owned(),
+            1 => "A frame dropped in the last minute".to_owned(),
+            n => format!("{n} frames dropped in the last minute"),
+        };
+        let mut card = Card::new(format!("display-{}", d.output), d.output.clone()).figure(figure).caption(caption);
+        if d.late_minute > 0 {
+            card = card.figure_ink(c(p.hue(olo_theme::Hue::Red)));
+        }
+        out.push(card.child(facts(rows)).into_any_element());
+    }
+    let toggle = me.clone();
+    out.push(
+        Card::new("displays-capture", "When a Frame Drops")
+            .caption("For finding out why")
+            .child(
+                CheckBox::new("Capture debug information whenever a frame drops", app.frames_capture)
+                    .on_toggle(move |on, _, cx| toggle.update(cx, |a, cx| a.set_frames_capture(on, cx))),
+            )
+            .child(div().h(px(m::TIGHT)))
+            .child(para(
+                "Every dropped frame is then logged with what went into it: how long it took to draw and the parts of that, how far past its vblank it showed, and what else held app_server up meanwhile. Open Logs and filter for \"frames\". It stays on until app_server restarts.",
+                ink.dim,
+            ))
             .into_any_element(),
     );
     out

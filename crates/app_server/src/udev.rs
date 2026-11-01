@@ -314,6 +314,13 @@ impl Backend for UdevData {
     const HAS_RELATIVE_MOTION: bool = true;
     const HAS_GESTURES: bool = true;
     const IS_SESSION: bool = true;
+    fn frames(&mut self) -> Vec<olo_protocol::DisplayFrames> {
+        self.backends
+            .values_mut()
+            .flat_map(|b| b.surfaces.values_mut())
+            .map(|s| s.pacing.stats(&s.output.name(), s.output.current_mode().map_or(0, |m| m.refresh.max(0) as u32), s.asleep))
+            .collect()
+    }
 
     fn seat_name(&self) -> String {
         self.session.seat()
@@ -1168,6 +1175,8 @@ struct SurfaceData {
     retest: Option<RegistrationToken>,
     /// When it last looked, so a wake comes no sooner than a frame after.
     last_look: Option<Instant>,
+    /// Its frames' pacing and record (frames.rs).
+    pacing: crate::frames::Pacing,
 }
 
 /// Look at `crtc`'s display when `timer` fires, for `target` (now, if
@@ -1697,6 +1706,34 @@ impl AnvilState<UdevData> {
                 planes.overlay = vec![];
             }
 
+            // A display without a cursor plane draws the pointer into every
+            // frame: each move is a frame of the whole screen, and when one
+            // runs long the pointer waits with it. Apple's display
+            // controller (apple-drm) has no cursor plane but two overlay
+            // planes a CRTC that take ARGB8888, which is how macOS shows
+            // its pointer: the topmost of them becomes the cursor plane,
+            // and Smithay draws the pointer into a buffer of its own and
+            // moves that, the frame underneath untouched. One that refuses
+            // the pointer (too big, or a client's cursor it can't hold) has
+            // it drawn into the frame as before. OLO_CURSOR_PLANE=0 keeps
+            // the overlay planes as they are.
+            if planes.cursor.is_empty() && std::env::var_os("OLO_CURSOR_PLANE").is_none_or(|v| v != "0") {
+                let wanted = smithay::backend::allocator::Format { code: Fourcc::Argb8888, modifier: Modifier::Linear };
+                let topmost = planes
+                    .overlay
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, p)| p.formats.contains(&wanted))
+                    .max_by_key(|(_, p)| p.zpos.unwrap_or_default())
+                    .map(|(i, _)| i);
+                if let Some(i) = topmost {
+                    let mut plane = planes.overlay.remove(i);
+                    info!(output = output.name(), plane = ?plane.handle, zpos = ?plane.zpos, "no cursor plane; an overlay plane holds the pointer");
+                    plane.type_ = smithay::reexports::drm::control::PlaneType::Cursor;
+                    planes.cursor.push(plane);
+                }
+            }
+
             let drm_output = match device
                 .drm_output_manager
                 .lock()
@@ -1750,6 +1787,7 @@ impl AnvilState<UdevData> {
                 asleep: false,
                 retest: None,
                 last_look: None,
+                pacing: Default::default(),
             };
 
             device.surfaces.insert(crtc, surface);
@@ -1989,6 +2027,21 @@ impl AnvilState<UdevData> {
                 return;
             }
         surface.last_presentation_time = Some(clock);
+        // The frame on its way is up: on time, or a vblank late (dropped).
+        if let Some(drop) = surface.pacing.presented(clock, frame_duration) && crate::frames::capture() {
+            let held = self.timings.take_slowest().map(|(what, t)| format!("{what} {:.1} ms", t.as_secs_f64() * 1e3)).unwrap_or_else(|| "nothing".into());
+            self.timings.watch_quietly();
+            warn!(
+                target: "frames",
+                output = output.name(),
+                late_ms = format_args!("{:.1}", drop.late.as_secs_f64() * 1e3),
+                drew_ms = format_args!("{:.1}", drop.took.as_secs_f64() * 1e3),
+                budget_ms = format_args!("{:.1}", drop.budget.as_secs_f64() * 1e3),
+                parts = %drop.parts_text(),
+                held = %held,
+                "a frame dropped"
+            );
+        }
 
         let submit_result = surface
             .drm_output
@@ -2057,7 +2110,11 @@ impl AnvilState<UdevData> {
             //
             // A more complete solution could work on a sliding window analyzing past repaints
             // and do some prediction for the next repaint.
-            let repaint_delay = Duration::from_secs_f64(frame_duration.as_secs_f64() * 0.6f64);
+            //
+            // (Olo: that is frames.rs. The split is this display's own,
+            // from what its last frames cost and whether they made their
+            // vblank; 60/40 when its frames are cheap.)
+            let repaint_delay = surface.pacing.delay(frame_duration);
 
             let timer = if surface
                 .render_node
@@ -2079,6 +2136,9 @@ impl AnvilState<UdevData> {
 
             self.handle
                 .insert_source(timer, move |_, _, data| {
+                    if let Some(s) = data.backend_data.backends.get_mut(&dev_id).and_then(|b| b.surfaces.get_mut(&crtc)) {
+                        s.pacing.expect(next_frame_target);
+                    }
                     data.render(dev_id, Some(crtc), next_frame_target);
                     TimeoutAction::Drop
                 })
@@ -2091,9 +2151,6 @@ impl AnvilState<UdevData> {
         let t = Instant::now();
         self.render_inner(node, crtc, frame_target);
         self.timings.phase("look (whole)", t);
-        for (name, took) in crate::render::take_parts() {
-            self.timings.add(name, took);
-        }
     }
 
     fn render_inner(&mut self, node: DrmNode, crtc: Option<crtc::Handle>, frame_target: Time<Monotonic>) {
@@ -2247,9 +2304,24 @@ impl AnvilState<UdevData> {
             locked,
             fit,
         );
-        self.timings.frame(&output.name(), start.elapsed());
+        let took = start.elapsed();
+        self.timings.frame(&output.name(), took);
+        let parts = crate::render::take_parts();
+        for (name, d) in &parts {
+            self.timings.add(name, *d);
+        }
         let reschedule = match result {
-            Ok((has_rendered, states)) => {
+            Ok((has_rendered, states, cursor_on_plane)) => {
+                surface.pacing.drawn(took, &parts, has_rendered);
+                if cursor_on_plane != surface.pacing.cursor_plane {
+                    surface.pacing.cursor_plane = cursor_on_plane;
+                    static FIRST: Once = Once::new();
+                    if cursor_on_plane && !FIRST.is_completed() {
+                        FIRST.call_once(|| info!(output = output.name(), "the pointer is on a plane of the display's own: moving it draws nothing"));
+                    } else {
+                        debug!(output = output.name(), on_plane = cursor_on_plane, "the pointer's plane");
+                    }
+                }
                 let dmabuf_feedback = surface.dmabuf_feedback.clone();
                 // (A resting look that found only the keep-warm pixel
                 // changed rests on.)
@@ -2349,7 +2421,9 @@ fn render_surface<'a>(
     overlays: Vec<CustomRenderElements<UdevRenderer<'a>>>,
     locked: bool,
     fit: Option<crate::render::Fit>,
-) -> Result<(bool, RenderElementStates), SwapBuffersError> {
+    // (Drawn anything, each element's state, the pointer went on the
+    // cursor plane.)
+) -> Result<(bool, RenderElementStates, bool), SwapBuffersError> {
     let output_geometry = space.output_geometry(output).unwrap();
     let scale = Scale::from(output.current_scale().fractional_scale());
 
@@ -2428,7 +2502,7 @@ fn render_surface<'a>(
     } else {
         FrameFlags::DEFAULT
     };
-    let (rendered, states) = surface
+    let (rendered, states, cursor_on_plane) = surface
         .drm_output
         .render_frame(renderer, &elements, clear_color, frame_mode)
         .map(|render_frame_result| {
@@ -2438,7 +2512,7 @@ fn render_surface<'a>(
             }
             crate::render::frame_done(!render_frame_result.is_empty);
             crate::render::part("drm render_frame", t);
-            (!render_frame_result.is_empty, render_frame_result.states)
+            (!render_frame_result.is_empty, render_frame_result.states, render_frame_result.cursor_element.is_some())
         })
         .map_err(|err| match err {
             smithay::backend::drm::compositor::RenderFrameError::PrepareFrame(err) => {
@@ -2469,5 +2543,5 @@ fn render_surface<'a>(
             .map_err(Into::<SwapBuffersError>::into)?;
     }
 
-    Ok((rendered, states))
+    Ok((rendered, states, cursor_on_plane))
 }

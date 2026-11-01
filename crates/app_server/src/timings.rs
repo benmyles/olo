@@ -80,6 +80,20 @@ impl Timings {
         }
     }
 
+    /// Keep counting for a minute, without the heartbeat (capturing
+    /// drops: what held the loop, `take_slowest`).
+    pub fn watch_quietly(&mut self) {
+        if !self.watching() {
+            self.slowest = None;
+        }
+        self.watched_until = Some(Instant::now() + WATCH);
+    }
+
+    /// The slowest thing done since the last take (`handled`).
+    pub fn take_slowest(&mut self) -> Option<(String, Duration)> {
+        self.slowest.take()
+    }
+
     fn take(&mut self) -> Answer {
         let answer = Answer {
             outputs: std::mem::take(&mut self.frames).into_values().collect(),

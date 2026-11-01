@@ -50,6 +50,7 @@ pub mod sockfile;
 pub mod text;
 pub mod theme;
 pub mod timings;
+pub mod frames;
 pub mod toolkits;
 pub mod touch_filter;
 pub mod twitcher;

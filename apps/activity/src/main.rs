@@ -72,14 +72,28 @@ pub enum Section {
     Disks,
     Network,
     Gpu,
+    /// Each display's frames: how app_server keeps up (`Request::Frames`).
+    Displays,
     Sensors,
     System,
     Graphs,
 }
 
 impl Section {
-    const ALL: [Section; 11] =
-        [Section::Overview, Section::Processes, Section::Supervisor, Section::Cpu, Section::Memory, Section::Disks, Section::Network, Section::Gpu, Section::Sensors, Section::System, Section::Graphs];
+    const ALL: [Section; 12] = [
+        Section::Overview,
+        Section::Processes,
+        Section::Supervisor,
+        Section::Cpu,
+        Section::Memory,
+        Section::Disks,
+        Section::Network,
+        Section::Gpu,
+        Section::Displays,
+        Section::Sensors,
+        Section::System,
+        Section::Graphs,
+    ];
     /// The sections with keys, ⌘1 to ⌘9 in this order (as
     /// `olo_protocol::app_keys` lists them).
     const KEYED: [Section; 9] = [Section::Overview, Section::Processes, Section::Cpu, Section::Memory, Section::Disks, Section::Network, Section::Gpu, Section::Sensors, Section::System];
@@ -94,6 +108,7 @@ impl Section {
             Section::Disks => "Disks",
             Section::Network => "Network",
             Section::Gpu => "GPU",
+            Section::Displays => "Displays",
             Section::Sensors => "Sensors",
             Section::System => "System",
             Section::Graphs => "Graphs",
@@ -110,6 +125,7 @@ impl Section {
             Section::Disks => "disk",
             Section::Network => "network",
             Section::Gpu => "gpu",
+            Section::Displays => "display",
             Section::Sensors => "sensors",
             Section::System => "system",
             Section::Graphs => "disk-usage",
@@ -209,6 +225,73 @@ pub enum Msg {
     Helper(Option<FromHelper>),
     /// What the supervisor published (`olo-supervisor.json`).
     Supervisor(Box<olo_protocol::performance::SupervisorState>),
+    /// How each display keeps up, and whether drops are captured
+    /// (`Request::Frames`, from `frames_poller`).
+    Frames(Vec<olo_protocol::DisplayFrames>, bool),
+}
+
+/// Displays to look at under OLO_ACTIVITY_DEMO_FRAMES (a headless
+/// session has none): a 5K at 60 Hz with a video playing and drops, a
+/// 120 Hz built-in, a resting one.
+fn demo_frames() -> Vec<olo_protocol::DisplayFrames> {
+    use olo_protocol::DisplayFrames;
+    vec![
+        DisplayFrames { output: "DP-1".into(), refresh_mhz: 60_000, fps: 48.0, frames: 184_211, late: 1_902, late_minute: 7, render_min_us: 410, render_p50_us: 4_900, render_p95_us: 7_400, render_max_us: 9_600, budget_us: 9_750, delay_us: 6_917, cursor_plane: true, resting: false },
+        DisplayFrames { output: "eDP-1".into(), refresh_mhz: 120_000, fps: 120.0, frames: 402_118, late: 3, late_minute: 0, render_min_us: 180, render_p50_us: 700, render_p95_us: 2_900, render_max_us: 4_100, budget_us: 4_125, delay_us: 4_208, cursor_plane: true, resting: false },
+        DisplayFrames { output: "DP-2".into(), refresh_mhz: 60_000, fps: 0.0, frames: 9_120, late: 0, late_minute: 0, render_min_us: 90, render_p50_us: 110, render_p95_us: 700, render_max_us: 1_300, budget_us: 6_667, delay_us: 10_000, cursor_plane: false, resting: true },
+    ]
+}
+
+/// To `frames_poller`: whether the Displays section shows (asking every
+/// second while it does), and to capture drops or not.
+enum FramesAsk {
+    Want(bool),
+    Capture(bool),
+}
+
+/// Asks app_server how each display keeps up, every second while the
+/// Displays section shows and at once when it comes to show; nothing
+/// otherwise. Capturing drops is app_server's to do (`CaptureDrops`).
+fn frames_poller(send: impl Fn(Msg) + Send + 'static, rx: mpsc::Receiver<FramesAsk>) {
+    use olo_protocol::{Client, Reply, Request};
+    let mut want = false;
+    let mut capture = false;
+    let mut client: Option<Client> = None;
+    loop {
+        let ask = if want { rx.recv_timeout(std::time::Duration::from_secs(1)) } else { rx.recv().map_err(|_| mpsc::RecvTimeoutError::Disconnected) };
+        match ask {
+            Ok(FramesAsk::Want(w)) => want = w,
+            Ok(FramesAsk::Capture(on)) => {
+                capture = on;
+                if client.is_none() {
+                    client = Client::connect().ok();
+                }
+                if let Some(c) = client.as_mut()
+                    && c.request(&Request::CaptureDrops { on }).is_err()
+                {
+                    client = None;
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => return,
+        }
+        if !want {
+            continue;
+        }
+        // (Headless test sessions have no displays: made-up ones to look at.)
+        if std::env::var_os("OLO_ACTIVITY_DEMO_FRAMES").is_some() {
+            send(Msg::Frames(demo_frames(), capture));
+            continue;
+        }
+        if client.is_none() {
+            client = Client::connect().ok();
+        }
+        let Some(c) = client.as_mut() else { continue };
+        match c.request(&Request::Frames) {
+            Ok(Reply::Frames { displays, capture }) => send(Msg::Frames(displays, capture)),
+            _ => client = None,
+        }
+    }
 }
 
 /// What this app may see and do.
@@ -275,6 +358,11 @@ pub struct Activity {
     pub tunables_list: Entity<ListModel>,
     /// What the supervisor is doing, as it published it.
     pub supervisor: olo_protocol::performance::SupervisorState,
+    /// How each display keeps up (the Displays section), as app_server
+    /// last said, and whether it captures drops.
+    pub displays: Vec<olo_protocol::DisplayFrames>,
+    pub frames_capture: bool,
+    frames: mpsc::Sender<FramesAsk>,
     proxy: Proxy,
     /// The sections' scrolling, kept while each shows.
     pub scroll: olo_ui::gpui::ScrollHandle,
@@ -443,9 +531,17 @@ impl Activity {
         self.control.want_processes.store(true, Ordering::Relaxed);
         self.control.want_connections.store(section == Section::Network, Ordering::Relaxed);
         self.control.want_gpu_clients.store(section == Section::Gpu, Ordering::Relaxed);
+        let _ = self.frames.send(FramesAsk::Want(section == Section::Displays));
         if let (Some(h), Access::Full) = (&self.helper, self.access) {
             h.send(&ToHelper::Wants(self.control.wants()));
         }
+    }
+
+    /// Have app_server log what went into every dropped frame (`on`).
+    pub fn set_frames_capture(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.frames_capture = on;
+        let _ = self.frames.send(FramesAsk::Capture(on));
+        cx.notify();
     }
 
     /// `--section NAME`: that section; `--inspect PID`: that process's
@@ -825,6 +921,8 @@ impl Activity {
             .into_iter()
             .filter(|s| match s {
                 Section::Gpu => self.source("gpu-busy").is_some(),
+                // (Under app_server: a window of its own to ask.)
+                Section::Displays => olo_protocol::socket_path().is_some(),
                 Section::Sensors => self.sources.iter().any(|s| s.group == sample::Group::Sensors) || self.source("battery").is_some(),
                 _ => true,
             })
@@ -921,6 +1019,10 @@ impl Activity {
             }
             Msg::Helper(m) => return self.heard(m, cx),
             Msg::Supervisor(s) => self.supervisor = *s,
+            Msg::Frames(displays, capture) => {
+                self.displays = displays;
+                self.frames_capture = capture;
+            }
         }
         cx.notify();
     }
@@ -1119,6 +1221,10 @@ fn main() {
         let control = sample::Control::new(settings.interval_ms);
         let (p1, p2) = (proxy.clone(), proxy.clone());
         sample::start(control.clone(), move |s| p1.send(Msg::Sources(s, false)), move |s| p2.send(Msg::Sample(Box::new(s), false)));
+        // How the displays keep up, asked while the Displays section shows.
+        let (frames_tx, frames_rx) = mpsc::channel::<FramesAsk>();
+        let p3 = proxy.clone();
+        std::thread::Builder::new().name("activity-frames".into()).spawn(move || frames_poller(move |m| p3.send(m), frames_rx)).expect("spawn");
         // Inspectors' details, read off the UI thread.
         let (inspect_tx, inspect_rx) = mpsc::channel::<i32>();
         let details_proxy = proxy.clone();
@@ -1198,6 +1304,9 @@ fn main() {
                 inspect_tx,
                 tunables_list: ListModel::new(cx, false),
                 supervisor: Default::default(),
+                displays: Vec::new(),
+                frames_capture: false,
+                frames: frames_tx,
                 proxy: proxy.clone(),
                 scroll: Default::default(),
                 shelf: GraphShelf::default(),

@@ -1727,6 +1727,10 @@ pub trait Backend {
     fn set_mode(&mut self, _output: &Output, _mode: smithay::output::Mode) -> Result<(), String> {
         Err("This display's resolution can't be changed.".into())
     }
+    /// How each display keeps up (`Request::Frames`, frames.rs).
+    fn frames(&mut self) -> Vec<olo_protocol::DisplayFrames> {
+        Vec::new()
+    }
 }
 
 /// The socket olo-wlproxy connects to for other programs

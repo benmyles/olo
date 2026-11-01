@@ -331,6 +331,36 @@ as they land (with the commit), add new ones as they come up.
      its own `Bitmap`s, and its egui views are behind its `egui`
      feature, for Tracker and the Viewer until they move; Telegram no
      longer links egui.)
+   - **Every frame on time, every display** (Ben, 2026-11-01: "dropping
+     frames is never acceptable: olo must be buttery smooth on all
+     displays all the time"; the pointer "definitely way slow/stuttery",
+     worst on the Studio Display). Found: app_server drew every frame
+     60% into the frame whatever it cost, and a 5K frame with video
+     costs 5–9 ms of CPU (p95 7.4 ms against a 6.7 ms budget), so a
+     third of DP-1's vblanks were missed; apple-drm has no cursor plane,
+     so every pointer move was a frame of the whole screen. Done
+     (2026-11-01, frames.rs; HACKING "Every frame on time"): per-display
+     pacing from measured cost and observed drops; the pointer on an
+     overlay plane as the cursor plane; `{"type":"frames"}`,
+     `capture_drops`; Activity Monitor ▸ Displays. **To verify on the
+     hardware** (needs the session upgraded): the log's "an overlay
+     plane holds the pointer" and "the pointer is on a plane of the
+     display's own" lines, Displays showing 0 dropped a minute on DP-1
+     and eDP-1 with video playing, and the pointer smooth. Then: why
+     `drm render_frame` costs 5 ms of CPU at 5K (Smithay's per-element
+     plane tests? dmabuf imports? damage over many elements), measured
+     with capture on; the GPU's share of the frame (unmeasured: a
+     fence's completion time would say); `split-debuginfo = "unpacked"`
+     for release builds halves binaries (219→120 MB) but measured no
+     faster (132 s packed, 151 s unpacked for a GPUI edit; both noisy).
+   - **Supervisor priority tiers** (Ben, 2026-11-01: "it should always
+     give the highest priority to the core olo processes and any
+     system+input processes important for responsiveness/smoothness,
+     and only then should it raise the relative priority of the focused
+     app vs other background processes"). apps/supervisor.
+   - **Notification banners draw over Deskbar's menus** (seen
+     2026-11-01: a banner's layer sits above a menu popup). Menus should
+     be above banners, or banners should keep off an open menu.
    - **The kit takes over what every app re-implements** (Ben,
      2026-11-01: "anything these windows/apps are doing that's reusable
      should be made reusable so that we aren't reinventing the wheel

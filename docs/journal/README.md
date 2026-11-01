@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-01
 
+### Activity Monitor ▸ Displays
+
+*12:06* — Each display's frames a second, the ones dropped (a vblank or more late), what its frames cost app_server to draw and how app_server paces them (frames.rs: the draw's share of the frame set from its cost and from drops), whether the pointer is on a plane of its own; and the check box that has every drop logged with what went into it. Made-up displays here (OLO_ACTIVITY_DEMO_FRAMES); a headless session has none.
+
+![Activity Monitor ▸ Displays](2026-11-01/120636-activity-monitor-displays.png)
+
 ### Passwords on GPUI
 
 *10:49* — Passwords moves to the GPUI kit: its panes are cached parts of the window, so a one-time code counting down redraws the item pane alone, once a second; half the CPU of the egui version in every interaction and 90 MB against 124. Synthetic items from the test 1Password.
