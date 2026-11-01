@@ -1748,12 +1748,15 @@ impl AnvilState<UdevData> {
                 }
             }
             // The overlay planes: a window whose buffer changes every
-            // frame (a video call) goes straight to one, and the frame
-            // costs app_server nothing (what macOS does). Whether one
-            // gets there, and why not, is the display's "scan-out" record
-            // (frames::scanout_summary). OLO_OVERLAY_PLANES=0 does
-            // without them, drawing everything.
-            if std::env::var_os("OLO_OVERLAY_PLANES").is_some_and(|v| v == "0") {
+            // frame (a video call) could go straight to one, and the
+            // frame would cost app_server nothing (what macOS does). Off
+            // until the pointer and such a plane agree: a client's cursor
+            // is drawn into the frame (the primary plane), which a window
+            // on an overlay plane covers, and the window flips between
+            // the plane and the frame as the pointer crosses it (Ben,
+            // 2026-11-01: "all messed up"). OLO_OVERLAY_PLANES=1 tries
+            // them; the display's "scan-out" record says what happens.
+            if std::env::var_os("OLO_OVERLAY_PLANES").is_none_or(|v| v != "1") {
                 planes.overlay.clear();
             }
 
