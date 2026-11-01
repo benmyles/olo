@@ -957,6 +957,15 @@ impl Deskbar {
         if let Some(w) = self.upgrade_ask.take() {
             let _ = w.update(cx, |_, window, _| window.remove_window());
         }
+        // Already asked for, while a build runs: it says so.
+        if self.status.upgrade_waiting {
+            let model = cx.entity().downgrade();
+            let message = "A build of Olo is still running. Olo upgrades as soon as it has finished: your windows stay open.";
+            self.upgrade_ask = olo_ui::widgets::open_alert(cx, "Upgrade Olo", "system", message, &["OK"], move |_, cx| {
+                let _ = model.update(cx, |d, _| d.upgrade_ask = None);
+            });
+            return;
+        }
         // A new app_server means a reload, which programs it can't keep
         // (ones that came before olo-wlproxy, or without it) don't
         // survive.
@@ -1619,7 +1628,7 @@ impl Deskbar {
         let items = apps.len()
             + [
                 display_number.is_some(),
-                !st.upgrade.is_empty(),
+                !st.upgrade.is_empty() || st.upgrade_waiting,
                 !st.sharing.is_empty(),
                 st.agent_screens > 0,
                 st.supervisor.is_some(),
@@ -1783,9 +1792,13 @@ impl Deskbar {
                 .into_any_element(),
             );
         }
-        if !st.upgrade.is_empty() {
+        if !st.upgrade.is_empty() || st.upgrade_waiting {
             let n = st.upgrade.len();
-            let tip_text = format!("A new build of Olo is ready ({n} program{}). Click to upgrade.", if n == 1 { "" } else { "s" });
+            let tip_text = if st.upgrade_waiting {
+                "A build of Olo is running: Olo upgrades as soon as it has finished.".to_owned()
+            } else {
+                format!("A new build of Olo is ready ({n} program{}). Click to upgrade.", if n == 1 { "" } else { "s" })
+            };
             let (_, h) = tray_item(&mut d, "upgrade", tip_text, Box::new(|window, cx, r| status::draw_upgrade(window, r, &theme::palette(cx))));
             let m = model.clone();
             d.hits.push(

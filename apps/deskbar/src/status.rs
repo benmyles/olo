@@ -46,6 +46,9 @@ pub struct Status {
     pub volume: Option<Volume>,
     /// Programs a newer build would replace (olo-session's offer).
     pub upgrade: Vec<String>,
+    /// Upgrading was asked for while a build was running: olo-session
+    /// upgrades once it has finished.
+    pub upgrade_waiting: bool,
     /// Unread notifications and Do Not Disturb (None: no notification
     /// service).
     pub notifications: Option<NotificationState>,
@@ -71,10 +74,13 @@ fn upgrade_path() -> PathBuf {
     dir.join(format!("olo-upgrade-{}.json", olo_xdg::display_name()))
 }
 
-fn upgrade() -> Vec<String> {
-    let Ok(text) = std::fs::read_to_string(upgrade_path()) else { return Vec::new() };
+/// What's on offer, and whether olo-session waits for a build to finish
+/// to upgrade.
+fn upgrade() -> (Vec<String>, bool) {
+    let Ok(text) = std::fs::read_to_string(upgrade_path()) else { return (Vec::new(), false) };
     let v: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
-    v["programs"].as_array().map(|a| a.iter().filter_map(|p| p.as_str().map(str::to_owned)).collect()).unwrap_or_default()
+    let programs = v["programs"].as_array().map(|a| a.iter().filter_map(|p| p.as_str().map(str::to_owned)).collect()).unwrap_or_default();
+    (programs, v["waiting"].as_bool().unwrap_or(false))
 }
 
 /// The agent screens running: those `olo-screen` lists in
@@ -231,8 +237,9 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
                 if let Some(n) = n {
                     s.agent_screens = n;
                 }
-                if let Some(up) = up {
+                if let Some((up, waiting)) = up {
                     s.upgrade = up;
+                    s.upgrade_waiting = waiting;
                 }
             });
         }

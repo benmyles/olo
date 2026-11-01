@@ -5,7 +5,8 @@
 //! (`$XDG_RUNTIME_DIR/olo-upgrade-<display>.json`), which shows a tray
 //! icon. Choosing to upgrade there signals us (SIGUSR2, or
 //! `olo-session upgrade`): we install the new programs beside ours and
-//! reload in place.
+//! reload in place. Asked while a build is running, we say so in the
+//! same file (`waiting`) and upgrade as soon as it has finished.
 
 use std::{
     os::{fd::AsRawFd, unix::fs::PermissionsExt},
@@ -25,6 +26,10 @@ const SETTLE: Duration = Duration::from_secs(3);
 pub struct Available {
     /// The programs that would change, by name.
     pub programs: Vec<String>,
+    /// Upgrading was asked for while a build was running: it happens
+    /// once the build has finished.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub waiting: bool,
 }
 
 pub fn state_path(display: &str) -> PathBuf {
@@ -37,6 +42,8 @@ pub struct Watcher {
     state: PathBuf,
     pending: Vec<String>,
     last: Option<Instant>,
+    /// Asked to upgrade while a build was running.
+    wanted: bool,
 }
 
 impl Watcher {
@@ -52,32 +59,40 @@ impl Watcher {
             return None;
         }
         crate::log(format!("watching {} for upgrades", from.display()));
-        Some(Watcher { from, to: to.to_owned(), state: state_path(display), pending: Vec::new(), last: None })
+        Some(Watcher { from, to: to.to_owned(), state: state_path(display), pending: Vec::new(), last: None, wanted: false })
     }
 
-    /// Look again (now and then), and tell Deskbar if what's on offer changed.
-    pub fn check(&mut self) {
+    /// Look again (now and then), and tell Deskbar if what's on offer
+    /// changed; true when an upgrade asked for during a build can go
+    /// ahead now that it has finished.
+    pub fn check(&mut self) -> bool {
         if self.last.is_some_and(|t| t.elapsed() < EVERY) {
-            return;
+            return false;
         }
         self.last = Some(Instant::now());
         if building(&self.from) {
-            return;
+            return false;
         }
-        let Some(now) = newer(&self.from, &self.to) else { return };
+        // (None while a program it left is too fresh to trust.)
+        let Some(now) = newer(&self.from, &self.to) else { return false };
         if now != self.pending {
             self.pending = now;
             self.publish();
         }
+        std::mem::take(&mut self.wanted)
     }
 
     fn publish(&self) {
-        if self.pending.is_empty() {
+        if self.pending.is_empty() && !self.wanted {
             let _ = std::fs::remove_file(&self.state);
             return;
         }
-        crate::log(format!("upgrade available: {}", self.pending.join(", ")));
-        let json = serde_json::to_string(&Available { programs: self.pending.clone() }).unwrap_or_default();
+        if self.wanted {
+            crate::log("upgrading once the build has finished");
+        } else {
+            crate::log(format!("upgrade available: {}", self.pending.join(", ")));
+        }
+        let json = serde_json::to_string(&Available { programs: self.pending.clone(), waiting: self.wanted }).unwrap_or_default();
         let tmp = self.state.with_extension("new");
         if std::fs::write(&tmp, json).is_ok() {
             let _ = std::fs::rename(&tmp, &self.state);
@@ -87,9 +102,14 @@ impl Watcher {
     /// Install what's newer; the programs that were.
     pub fn install(&mut self) -> Vec<String> {
         if building(&self.from) {
-            crate::log("a build is still running; not upgrading yet");
+            // Asked for now, done when it has finished (`check`), and
+            // said so meanwhile.
+            crate::log("a build is still running; upgrading as soon as it has finished");
+            self.wanted = true;
+            self.publish();
             return Vec::new();
         }
+        self.wanted = false;
         let programs = newer(&self.from, &self.to).unwrap_or_default();
         let mut done = Vec::new();
         for name in &programs {
@@ -400,6 +420,33 @@ mod tests {
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
         let t = SystemTime::now() - Duration::from_secs(age);
         std::fs::File::options().write(true).open(&p).unwrap().set_modified(t).unwrap();
+    }
+
+    #[test]
+    fn an_upgrade_asked_for_during_a_build_waits_for_it() {
+        let base = std::env::temp_dir().join(format!("olo-waiting-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (from, to) = (base.join("build"), base.join("bin"));
+        std::fs::create_dir_all(&from).unwrap();
+        std::fs::create_dir_all(&to).unwrap();
+        program(&from, "olo-deskbar", 60);
+        let state = base.join("olo-upgrade-test.json");
+        let mut w = Watcher { from: from.clone(), to, state: state.clone(), pending: Vec::new(), last: None, wanted: false };
+        // Cargo holds its lock while it builds.
+        let lock = std::fs::File::create(from.join(".cargo-lock")).unwrap();
+        // SAFETY: flock on a file we own.
+        assert_eq!(unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) }, 0);
+        assert!(w.install().is_empty());
+        let said: Available = serde_json::from_str(&std::fs::read_to_string(&state).unwrap()).unwrap();
+        assert!(said.waiting);
+        assert!(!w.check());
+        // The build done: once.
+        drop(lock);
+        w.last = None;
+        assert!(w.check());
+        w.last = None;
+        assert!(!w.check());
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

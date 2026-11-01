@@ -527,8 +527,9 @@ impl Session {
             if !self.stopping {
                 self.watchdog.check(self.server.pid);
             }
-            if let Some(w) = &mut self.upgrades {
-                w.check();
+            // An upgrade asked for while a build ran, now it has finished.
+            if self.upgrades.as_mut().is_some_and(|w| w.check()) {
+                self.upgrade();
             }
             // `keyd reload` forgets what we asked.
             if self.real && self.keyd_at.elapsed() > Duration::from_secs(60) {
