@@ -4055,6 +4055,8 @@ where
                 })
                 .unwrap_or(false);
 
+        // (Olo) What was asked, for the log when the driver says no.
+        let asked = (config.properties.format, config.properties.src, config.properties.dst);
         let plane_state = PlaneState {
             skip,
             needs_test: true,
@@ -4075,15 +4077,31 @@ where
             frame_state.set_state(plane.handle, plane_state);
             true
         } else {
-            frame_state
-                .test_state(
-                    &self.surface,
-                    self.supports_fencing,
-                    plane.handle,
-                    plane_state,
-                    false,
-                )
-                .is_ok()
+            match frame_state.test_state(&self.surface, self.supports_fencing, plane.handle, plane_state, false) {
+                Ok(()) => true,
+                Err(err) => {
+                    // (Olo) Said once a plane, format and size, so the
+                    // session's log tells why a window stays drawn.
+                    static SAID: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+                        std::sync::OnceLock::new();
+                    let key = format!(
+                        "{:?} {:?}/{:?} {}x{}",
+                        plane.handle, asked.0.code, asked.0.modifier, asked.2.size.w, asked.2.size.h
+                    );
+                    if SAID.get_or_init(Default::default).lock().unwrap().insert(key) {
+                        info!(
+                            plane = ?plane.handle,
+                            zpos = ?plane.zpos,
+                            format = ?asked.0.code,
+                            modifier = ?asked.0.modifier,
+                            src = ?asked.1,
+                            dst = ?asked.2,
+                            "the driver refused the element on this plane: {err}"
+                        );
+                    }
+                    false
+                }
+            }
         };
 
         if res {

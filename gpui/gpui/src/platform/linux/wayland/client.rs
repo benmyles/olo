@@ -324,6 +324,8 @@ pub(crate) struct WaylandClientState {
     /// connection (to send its end at once).
     session_lock: Option<ext_session_lock_v1::ExtSessionLockV1>,
     connection: Connection,
+    /// Olo: the compositor's connection is gone (told once).
+    lost: bool,
     /// Olo: made with the first window (an agent with none, the polkit
     /// agent's resident self, holds no GPU device: no driver threads, a
     /// third of the memory).
@@ -692,7 +694,25 @@ fn wl_output_version(version: u32) -> u32 {
 
 impl WaylandClient {
     pub(crate) fn new() -> Self {
-        let conn = Connection::connect_to_env().unwrap();
+        // Olo: a compositor restarting in place (an upgrade) is back
+        // within a second or two; a program re-executing to reconnect
+        // waits for it rather than fail.
+        let conn = {
+            let mut tries = 0;
+            loop {
+                match Connection::connect_to_env() {
+                    Ok(c) => break c,
+                    Err(e) if tries < 150 => {
+                        if tries == 0 {
+                            log::warn!("no compositor yet ({e}); waiting for it");
+                        }
+                        tries += 1;
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                    }
+                    Err(e) => panic!("could not connect to the compositor: {e}"),
+                }
+            }
+        };
 
         let (globals, mut event_queue) =
             registry_queue_init::<WaylandClientStatePtr>(&conn).unwrap();
@@ -853,6 +873,7 @@ impl WaylandClient {
             event_loop: Some(event_loop),
             selection_source: None,
             lingering: false,
+            lost: false,
         }));
 
         CLIENT.with(|c| *c.borrow_mut() = Rc::downgrade(&state));
@@ -1100,7 +1121,30 @@ impl LinuxClient for WaylandClient {
             .run(
                 None,
                 &mut WaylandClientStatePtr(Rc::downgrade(&self.0)),
-                |_| {},
+                |ptr| {
+                    // Olo: the compositor gone (restarted in place, or
+                    // the connection in error) ends nothing by itself:
+                    // calloop drops the failing source and the loop
+                    // sleeps on with nothing to wake it, windows gone
+                    // (Deskbar, 2026-11-01), or spins on a stored
+                    // protocol error (Notifications). Seen here, after
+                    // each turn, the program hands over to whoever asked
+                    // (olo-ui: re-execute with the state saved, and
+                    // reconnect), or stops its loop.
+                    let Some(state) = ptr.0.upgrade() else { return };
+                    let dead = {
+                        let st = state.borrow();
+                        !st.lost && (st.connection.protocol_error().is_some() || hung_up(&st.connection))
+                    };
+                    if dead {
+                        state.borrow_mut().lost = true;
+                        log::error!("the compositor's connection is gone");
+                        match crate::ON_COMPOSITOR_LOST.get() {
+                            Some(f) => f(),
+                            None => state.borrow().common.signal.stop(),
+                        }
+                    }
+                },
             )
             .log_err();
         // Olo: what the last turn asked (the windows quitting destroyed)
@@ -2798,4 +2842,13 @@ impl Dispatch<xdg_activation_token_v1::XdgActivationTokenV1, u64> for WaylandCli
         }
         token.destroy();
     }
+}
+
+/// (Olo) Whether the connection's socket is hung up or in error, asked
+/// without waiting.
+fn hung_up(connection: &Connection) -> bool {
+    use std::os::fd::{AsFd as _, AsRawFd as _};
+    let mut fd = libc::pollfd { fd: connection.as_fd().as_raw_fd(), events: 0, revents: 0 };
+    // SAFETY: one pollfd, no wait.
+    unsafe { libc::poll(&mut fd, 1, 0) == 1 && fd.revents & (libc::POLLHUP | libc::POLLERR | libc::POLLNVAL) != 0 }
 }

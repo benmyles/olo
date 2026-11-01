@@ -110,6 +110,12 @@ where
                 }
             }
             CursorImageStatus::Surface(surface) => {
+                // A client's own cursor (Chrome's over its windows) is
+                // drawn into the frame, not put on the cursor plane: on
+                // apple-drm's plane it came out invisible after Chrome hid
+                // and showed it over a video, until the pointer left the
+                // window and Olo's own cursor took the plane (2026-11-01).
+                // Olo's cursors, the ones that move all day, keep it.
                 let elements: Vec<PointerRenderElement<R>> =
                     smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
                         renderer,
@@ -117,7 +123,7 @@ where
                         location,
                         scale,
                         alpha,
-                        Kind::Cursor,
+                        Kind::Unspecified,
                     );
                 elements.into_iter().map(E::from).collect()
             }

@@ -2058,6 +2058,19 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
 Olo upgrades without logging out. `olo-session` (what the login
 screen runs) owns the Wayland socket (`wayland-N`) and the IPC socket and
 hands both to app_server, so clients never see the sockets disappear.
+Their connections do end when app_server restarts in place, and each
+kind of client has its way back: the egui kit reconnects and recreates
+its windows (`olo_kit::platform`); a GPUI app re-executes itself with
+its state saved, as for an upgrade, and reconnects (olo-ui
+`upgrade::lost_compositor`, from GPUI's `ON_COMPOSITOR_LOST`: after each
+turn of its loop GPUI asks the connection's socket whether it hung up
+and the connection whether it holds a protocol error, since calloop
+drops a failing source and the loop would sleep on with its windows
+gone, as Deskbar did, or spin on a stored protocol error, as
+Notifications did, 2026-11-01); GPUI's connect waits up to 15 s for
+the compositor to be back. Test it: `tsession start NAME --session
+--shell`, start apps in it, `tsession reload NAME`, and they are all
+there after.
 
 Login items (`session/src/autostart.rs`, the freedesktop Autostart
 spec): once a real session's graphical side is up (the environment

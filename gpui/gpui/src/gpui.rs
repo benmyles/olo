@@ -311,3 +311,9 @@ pub struct GpuSpecs {
     /// Further information about the driver, as reported by Vulkan.
     pub driver_info: String,
 }
+
+/// (Olo) Called once when the compositor's connection is gone: restarted
+/// in place, or in protocol error. Set by olo-ui, which re-executes the
+/// program with its state saved so it reconnects. Without it the
+/// program's loop stops.
+pub static ON_COMPOSITOR_LOST: std::sync::OnceLock<fn()> = std::sync::OnceLock::new();

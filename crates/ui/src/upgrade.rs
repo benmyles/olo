@@ -16,14 +16,30 @@ use std::{
 use futures::{StreamExt, channel::mpsc};
 use gpui::{App, Global};
 
-/// Where SIGURG lands.
+/// Where SIGURG lands (and the compositor's loss, `lost_compositor`).
 static PIPE: AtomicI32 = AtomicI32::new(-1);
+/// What came down the pipe.
+const UPGRADE: u8 = 1;
+const LOST: u8 = 2;
 
 extern "C" fn on_signal(_: libc::c_int) {
     let fd = PIPE.load(Ordering::Relaxed);
     if fd >= 0 {
         // SAFETY: write(2) is async-signal-safe.
-        unsafe { libc::write(fd, [1u8].as_ptr().cast(), 1) };
+        unsafe { libc::write(fd, [UPGRADE].as_ptr().cast(), 1) };
+    }
+}
+
+/// The compositor's connection is gone (app_server restarted in place,
+/// or a protocol error): the app re-executes as it does for an upgrade,
+/// with its state saved, and reconnects to the app_server now there;
+/// at once, whatever it was busy with (no compositor, nothing to show
+/// it on).
+fn lost_compositor() {
+    let fd = PIPE.load(Ordering::Relaxed);
+    if fd >= 0 {
+        // SAFETY: write(2) to our own pipe.
+        unsafe { libc::write(fd, [LOST].as_ptr().cast(), 1) };
     }
 }
 
@@ -126,7 +142,8 @@ pub(crate) fn init(cx: &mut App) {
         libc::sigaction(libc::SIGURG, &action, std::ptr::null_mut());
         std::fs::File::from_raw_fd(fds[0])
     };
-    let (tx, mut rx) = mpsc::unbounded::<()>();
+    let _ = gpui::ON_COMPOSITOR_LOST.set(lost_compositor);
+    let (tx, mut rx) = mpsc::unbounded::<u8>();
     // (A thread that sleeps in read(2) until a signal comes.)
     std::thread::Builder::new()
         .name("upgrade-watch".into())
@@ -134,33 +151,44 @@ pub(crate) fn init(cx: &mut App) {
             use std::io::Read as _;
             let mut read = read;
             let mut buf = [0u8; 16];
-            while read.read(&mut buf).is_ok_and(|n| n > 0) {
-                if tx.unbounded_send(()).is_err() {
-                    return;
+            loop {
+                let n = match read.read(&mut buf) {
+                    Ok(n) if n > 0 => n,
+                    _ => return,
+                };
+                for &what in &buf[..n] {
+                    if tx.unbounded_send(what).is_err() {
+                        return;
+                    }
                 }
             }
         })
         .ok();
     let binary = Binary::current();
     cx.spawn(async move |cx| {
-        while rx.next().await.is_some() {
-            if !binary.changed() {
+        while let Some(what) = rx.next().await {
+            let lost = what == LOST;
+            if !lost && !binary.changed() {
                 continue;
             }
-            // Told, then waited for while busy.
-            let _ = cx.update(|cx| {
-                let due = cx.try_global::<Waiting>().is_some().then(|| cx.global_mut::<Waiting>().due.take()).flatten();
-                if let Some(due) = due {
-                    due(cx);
-                    cx.global_mut::<Waiting>().due = Some(due);
+            if lost {
+                tracing::warn!("the compositor is gone: re-executing to reconnect, with the state saved");
+            } else {
+                // Told, then waited for while busy.
+                let _ = cx.update(|cx| {
+                    let due = cx.try_global::<Waiting>().is_some().then(|| cx.global_mut::<Waiting>().due.take()).flatten();
+                    if let Some(due) = due {
+                        due(cx);
+                        cx.global_mut::<Waiting>().due = Some(due);
+                    }
+                });
+                loop {
+                    let busy = cx.update(|cx| cx.try_global::<Waiting>().and_then(|w| w.busy.as_ref()).is_some_and(|busy| busy(cx))).unwrap_or(false);
+                    if !busy {
+                        break;
+                    }
+                    cx.background_executor().timer(std::time::Duration::from_millis(250)).await;
                 }
-            });
-            loop {
-                let busy = cx.update(|cx| cx.try_global::<Waiting>().and_then(|w| w.busy.as_ref()).is_some_and(|busy| busy(cx))).unwrap_or(false);
-                if !busy {
-                    break;
-                }
-                cx.background_executor().timer(std::time::Duration::from_millis(250)).await;
             }
             let state = cx
                 .update(|cx| {
