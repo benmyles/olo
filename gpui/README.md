@@ -60,6 +60,10 @@ What Olo changed, so far:
   (Deskbar's menus).
 - `Window::draw_now` draws a window even out of sight (for a layout
   review).
+- The fractional scale is the window's scale: on a wl_compositor
+  before version 6 (app_server's), entering a display set its integer
+  scale over the fractional one (2 over 1.5), and the compositor shrank
+  the 2× buffers to fit, every line smeared over two pixels.
 - `Window::with_element_opacity` is public (a disabled control,
   faded), and popups (`WindowKind::Popup`) take an `offset` from their
   anchor (a menu field's menu, its current item over the field).

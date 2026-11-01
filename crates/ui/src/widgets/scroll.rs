@@ -445,9 +445,11 @@ impl ParentElement for ScrollView {
 }
 
 impl RenderOnce for ScrollView {
-    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        // Inside the sunken frame's two lines.
-        let inset = if self.border { 2.0 } else { 0.0 };
+    fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
+        // Inside the sunken frame's two lines, on device pixels (two
+        // points would be three device pixels at 1.5×, a gap of one).
+        let s = window.scale_factor();
+        let inset = if self.border { style::line_pixels(s) * 2.0 / s } else { 0.0 };
         let (vbar, hbar) = (self.vertical, self.horizontal);
         let right = inset + if vbar { SCROLL_BAR } else { 0.0 };
         let bottom = inset + if hbar { SCROLL_BAR } else { 0.0 };

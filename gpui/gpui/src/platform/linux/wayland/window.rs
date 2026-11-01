@@ -1117,7 +1117,11 @@ impl WaylandWindowStatePtr {
                 let state = self.state.borrow_mut();
 
                 // We use `PreferredBufferScale` instead to set the scale if it's available
-                if state.surface.version() < wl_surface::EVT_PREFERRED_BUFFER_SCALE_SINCE {
+                // (Olo: and the fractional scale before either: on a
+                // wl_compositor before version 6, as app_server's, entering
+                // a 1.5x display set 2 over 1.5, and app_server shrank the
+                // 2x buffers to fit, every line smeared over two pixels).
+                if state.globals.fractional_scale_manager.is_none() && state.surface.version() < wl_surface::EVT_PREFERRED_BUFFER_SCALE_SINCE {
                     state.surface.set_buffer_scale(scale);
                     drop(state);
                     self.rescale(scale as f32);
@@ -1132,7 +1136,11 @@ impl WaylandWindowStatePtr {
                 let state = self.state.borrow_mut();
 
                 // We use `PreferredBufferScale` instead to set the scale if it's available
-                if state.surface.version() < wl_surface::EVT_PREFERRED_BUFFER_SCALE_SINCE {
+                // (Olo: and the fractional scale before either: on a
+                // wl_compositor before version 6, as app_server's, entering
+                // a 1.5x display set 2 over 1.5, and app_server shrank the
+                // 2x buffers to fit, every line smeared over two pixels).
+                if state.globals.fractional_scale_manager.is_none() && state.surface.version() < wl_surface::EVT_PREFERRED_BUFFER_SCALE_SINCE {
                     state.surface.set_buffer_scale(scale);
                     drop(state);
                     self.rescale(scale as f32);

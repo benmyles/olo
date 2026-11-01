@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-31
 
+### GPUI kit: the column list view
+
+*19:39* — olo-ui gains BColumnListView (right), as the egui kit draws it (left, the demo's Lists tab): header sorting and dividers, the file-manager selection (shared now as olo_kit_base::list), bands, type-select, BeOS scroll bars; at 1.5x, where GPUI windows had been drawn at 2x and shrunk (fixed here).
+
+![GPUI kit: the column list view](2026-10-31/193916-gpui-kit-the-column-list-view.png)
+
 ### Preferences ▸ Display: each display's panel
 
 *17:19* — What the display is (make, size, density, refresh), what Olo works out about its panel (technology, colour stripes) and how it draws text on it, with why, each correctable (Automatic or a choice). Shown on a simulated 24-inch 1080p LCD (92 ppi): subpixel text.

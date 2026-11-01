@@ -2536,5 +2536,11 @@
   "title": "Preferences \u25b8 Display: each display's panel",
   "caption": "What the display is (make, size, density, refresh), what Olo works out about its panel (technology, colour stripes) and how it draws text on it, with why, each correctable (Automatic or a choice). Shown on a simulated 24-inch 1080p LCD (92 ppi): subpixel text.",
   "image": "2026-10-31/171914-preferences-display-each-display-s-panel.png"
+ },
+ {
+  "time": "2026-10-31T19:39:16",
+  "title": "GPUI kit: the column list view",
+  "caption": "olo-ui gains BColumnListView (right), as the egui kit draws it (left, the demo's Lists tab): header sorting and dividers, the file-manager selection (shared now as olo_kit_base::list), bands, type-select, BeOS scroll bars; at 1.5x, where GPUI windows had been drawn at 2x and shrunk (fixed here).",
+  "image": "2026-10-31/193916-gpui-kit-the-column-list-view.png"
  }
 ]

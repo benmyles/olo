@@ -176,7 +176,7 @@ pub fn columns_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, actions: &mut 
     for ev in events {
         match ev {
             Event::Click { col, row: Some(row), mods } if mods.ctrl || mods.shift => {
-                column_mut(f, col).1.click(row, mods);
+                column_mut(f, col).1.click(row, widgets::mods(mods));
                 f.active = col;
                 f.panes.truncate(col);
             }
@@ -322,7 +322,7 @@ fn draw_column(
         if resp.drag_started() && resp.dragged_by(egui::PointerButton::Primary)
             && let Some(at) = ui.input(|i| i.pointer.press_origin()).filter(|&at| row_at(at).is_none())
         {
-            ui.ctx().data_mut(|d| d.insert_temp(band_id, (pos2(at.x, at.y - origin), list.band(mods))));
+            ui.ctx().data_mut(|d| d.insert_temp(band_id, (pos2(at.x, at.y - origin), list.band(widgets::mods(mods)))));
         }
         let band = ui.ctx().data(|d| d.get_temp::<(Pos2, widgets::SelectionBand)>(band_id));
         match (band, resp.dragged(), ui.input(|i| i.pointer.latest_pos())) {

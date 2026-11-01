@@ -3,6 +3,7 @@
 pub mod alert;
 pub mod buttons;
 pub mod control;
+pub mod list;
 pub mod menu_field;
 pub mod scroll;
 pub mod status;
@@ -16,6 +17,7 @@ pub use scroll::{SCROLL_BAR, ScrollBar, ScrollView};
 pub use status::{StatusBar, level_bar};
 pub use buttons::{Button, CheckBox, RadioButton, button_width};
 pub use control::{Control, ControlState, control};
+pub use list::{Cell, Column, ColumnListView, HEADER_HEIGHT, ListModel};
 pub use menu_field::MenuField;
 pub use text_control::TextControl;
 pub use text_field::{TextField, TextFieldEvent, text_field};
@@ -26,4 +28,5 @@ pub use views::{BBox, StringView};
 pub(crate) fn bind_keys(cx: &mut gpui::App) {
     text_field::bind_keys(cx);
     alert::bind_keys(cx);
+    list::bind_keys(cx);
 }

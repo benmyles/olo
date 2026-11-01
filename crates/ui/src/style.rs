@@ -257,3 +257,43 @@ pub fn label(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pixels, ali
     crate::review::text(window, at, baseline, &text, font_size);
     at
 }
+
+/// `text` cut short with "…" to fit `max_width` (whole as it is when it
+/// fits), measured as it's shaped, kerning and all.
+pub fn fit(window: &mut Window, text: SharedString, font_size: f32, font: &Font, max_width: Pixels) -> SharedString {
+    let shape = |window: &mut Window, t: SharedString| {
+        let run = TextRun { len: t.len(), font: font.clone(), color: Hsla::default(), background_color: None, underline: None, strikethrough: None };
+        window.text_system().shape_line(t, px(font_size), &[run], None)
+    };
+    let line = shape(window, text.clone());
+    if line.width <= max_width {
+        return text;
+    }
+    let ellipsis = shape(window, "…".into()).width;
+    let mut end = line.index_for_x(max_width - ellipsis).unwrap_or(text.len());
+    // Shaped as a whole, a cut can still come out a little wider (a
+    // kern, a ligature taken apart): one character back until it fits.
+    loop {
+        let cut: SharedString = format!("{}…", text[..end].trim_end()).into();
+        if end == 0 || shape(window, cut.clone()).width <= max_width {
+            return cut;
+        }
+        end = text[..end].char_indices().next_back().map_or(0, |(i, _)| i);
+    }
+}
+
+/// [`label`] cut short with "…" to fit `max_width` ([`fit`]).
+#[allow(clippy::too_many_arguments)]
+pub fn label_fit(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pixels, align: Align, text: impl Into<SharedString>, font_size: f32, font: Font, color: Hsla, max_width: Pixels) -> Bounds<Pixels> {
+    let text = fit(window, text.into(), font_size, &font, max_width.max(px(0.0)));
+    label(window, cx, x, center_y, align, text, font_size, font, color)
+}
+
+/// A rubber-band selection rectangle (Tracker, desktop, any list): a
+/// one-pixel navigation-blue frame over a faint tint of the same colour.
+pub fn selection_band(window: &mut Window, r: Bounds<Pixels>, palette: &Palette) {
+    let r = snap(window, r);
+    let [red, green, blue, _] = palette.keyboard_navigation;
+    fill_rect(window, r, c([red, green, blue, 40]));
+    frame_rect(window, r, c(palette.keyboard_navigation));
+}

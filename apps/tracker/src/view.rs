@@ -776,7 +776,7 @@ fn icon_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, look: Look, actions: 
                 }
                 // Alone; ⌘ adds or takes away; ⇧ everything from the
                 // anchor to it (in the folder's order), as everywhere else.
-                Some(i) if response.clicked() => f.list.click(i, mods),
+                Some(i) if response.clicked() => f.list.click(i, widgets::mods(mods)),
                 // A drag takes what's selected, it too (with ⌘ or ⇧, added
                 // to them).
                 Some(i) => {
@@ -807,7 +807,7 @@ fn icon_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, look: Look, actions: 
                     // A band: with ⇧ adding to what's selected, with ⌘
                     // flipping what it covers.
                     if response.drag_started() {
-                        f.band = Some((pos - origin.to_vec2(), f.list.band(mods)));
+                        f.band = Some((pos - origin.to_vec2(), f.list.band(widgets::mods(mods))));
                     }
                     if !(mods.ctrl || mods.shift) {
                         f.list.selected.clear();

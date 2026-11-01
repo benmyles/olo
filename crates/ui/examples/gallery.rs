@@ -4,10 +4,11 @@
 
 use olo_ui::{
     WindowOptions,
-    gpui::{AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, ScrollHandle, Styled as _, Window, div, px},
+    gpui::{AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, ScrollHandle, SharedString, Styled as _, Window, div, px},
     metrics as m,
-    widgets::{BBox, Button, CheckBox, MenuField, RadioButton, ScrollView, StatusBar, StringView, TextControl, TextField, open_alert, text_field},
+    widgets::{BBox, Button, CheckBox, Column, ColumnListView, ListModel, MenuField, RadioButton, ScrollView, StatusBar, StringView, TextControl, TextField, open_alert, text_field},
 };
+use std::rc::Rc;
 
 const FONTS: &[&str] = &["Nimbus Sans", "DejaVu Sans", "Noto Sans", "Liberation Sans"];
 
@@ -19,6 +20,20 @@ struct Gallery {
     choice: usize,
     rows: ScrollHandle,
     answer: String,
+    files: Entity<ListModel>,
+    /// Name, size in bytes, kind: sorted as the list's header says.
+    entries: Rc<Vec<(SharedString, u64, SharedString)>>,
+}
+
+/// Some files for the list.
+fn entries() -> Vec<(SharedString, u64, SharedString)> {
+    let kinds = ["Text", "Folder", "Picture", "Application", "Archive"];
+    let names = ["apps", "Cargo.toml", "crates", "docs", "gpui", "README.md", "screenshot.png", "olo-terminal", "notes.txt", "backup.tar.zst", "tools", "vendor", "wallpaper.jpg", "a file whose name is too long to fit its column", "LICENSE", "target"];
+    names.iter().enumerate().map(|(i, n)| ((*n).into(), (i as u64 * 7919 + 13).pow(2) % 9_000_000, kinds[i % kinds.len()].into())).collect()
+}
+
+fn size_text(bytes: u64) -> String {
+    if bytes >= 1_000_000 { format!("{:.1} MB", bytes as f64 / 1e6) } else { format!("{} KB", bytes.div_ceil(1000)) }
 }
 
 impl Render for Gallery {
@@ -100,16 +115,70 @@ impl Render for Gallery {
             )
             .child(StringView::new(format!("Alert answer: {}", self.answer)).dim(true))
             .child(div().w(px(300.0)).child(StatusBar::new(0.42).label("Copying files…").trailing("3 of 7")))
-            .child(div().h(px(100.0)).w(px(220.0)).child(ScrollView::new("rows", &self.rows).child(div().px(px(6.0)).children((1..=40).map(|i| StringView::new(format!("Row {i}")))))))
+            .child(
+                div()
+                    .flex()
+                    .gap(px(m::SPACING))
+                    .child(div().h(px(140.0)).w(px(120.0)).child(ScrollView::new("rows", &self.rows).child(div().px(px(6.0)).children((1..=40).map(|i| StringView::new(format!("Row {i}")))))))
+                    .child(div().h(px(140.0)).w(px(300.0)).child(self.list(cx))),
+            )
+    }
+}
+
+impl Gallery {
+    fn list(&self, cx: &mut Context<Self>) -> ColumnListView {
+        let columns = [Column::new("Name", 150.0), Column::new("Size", 64.0).right(), Column::new("Kind", 80.0)];
+        let (cells, names) = (self.entries.clone(), self.entries.clone());
+        let view = cx.entity();
+        ColumnListView::new("files", &self.files, columns, self.entries.len(), move |cell, window, cx| {
+            let (name, size, kind) = &cells[cell.row];
+            match cell.column {
+                0 => cell.text(window, cx, name.clone()),
+                1 => cell.text(window, cx, size_text(*size)),
+                _ => cell.text(window, cx, kind.clone()),
+            }
+        })
+        .type_select(move |r| names[r].0.clone())
+        .empty_text("No files.")
+        .on_sort(move |_, cx| {
+            view.update(cx, |g, cx| {
+                g.sort(cx);
+                cx.notify();
+            })
+        })
+    }
+
+    /// The entries in the header's order, the selection kept on them.
+    fn sort(&mut self, cx: &mut Context<Self>) {
+        let state = self.files.read(cx).state.clone();
+        let Some((col, ascending)) = state.sort else { return };
+        let selected: Vec<SharedString> = state.selected.iter().map(|&r| self.entries[r].0.clone()).collect();
+        let mut entries = (*self.entries).clone();
+        entries.sort_by(|a, b| {
+            let o = match col {
+                0 => a.0.to_lowercase().cmp(&b.0.to_lowercase()),
+                1 => a.1.cmp(&b.1),
+                _ => a.2.cmp(&b.2).then_with(|| a.0.cmp(&b.0)),
+            };
+            if ascending { o } else { o.reverse() }
+        });
+        self.files.update(cx, |m, _| m.state.selected = entries.iter().enumerate().filter(|(_, e)| selected.contains(&e.0)).map(|(i, _)| i).collect());
+        self.entries = Rc::new(entries);
     }
 }
 
 fn main() {
     olo_ui::run("olo.gallery", |cx| {
-        olo_ui::open_window(cx, WindowOptions::new("Gallery", 460.0, 440.0), |_, cx| {
+        olo_ui::open_window(cx, WindowOptions::new("Gallery", 480.0, 480.0), |_, cx| {
             let name = text_field(cx, |f| f.name("Name"));
             name.update(cx, |f, cx| f.set_text("Hello, BeOS", cx));
-            cx.new(|_| Gallery { name, wrap: true, sound: false, radio: 0, choice: 0, rows: ScrollHandle::new(), answer: "none".into() })
+            let files = ListModel::new(cx, true);
+            files.update(cx, |m, _| m.state.sort = Some((0, true)));
+            let mut g = Gallery { name, wrap: true, sound: false, radio: 0, choice: 0, rows: ScrollHandle::new(), answer: "none".into(), files, entries: Rc::new(entries()) };
+            cx.new(|cx| {
+                g.sort(cx);
+                g
+            })
         });
     });
 }

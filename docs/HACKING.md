@@ -1575,6 +1575,27 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   inside the frame's two lines on device pixels (`in_frame`).
 - `widgets::StatusBar::new(fraction).label(..).trailing(..)` and
   `level_bar` (the bar alone).
+- `widgets::ColumnListView::new(id, &model, columns, rows, cell)`:
+  BColumnListView as the egui kit's, its state in a `ListModel` entity
+  the app keeps (`ListModel::new(cx, multiple)`; `state` is the shared
+  `olo_kit_base::list::ListState`, the egui kit's too: its selection,
+  anchor, cursor and sort). Only the rows in view are built
+  (`uniform_list`); `cell(&mut Cell, window, cx)` draws each
+  (`cell.text(..)`/`text_with(..)`, cut short with "…"). A header
+  click sorts (`on_sort`), the dividers drag; a click, ⇧ and ⌘ clicks,
+  a band, the arrows, Page Up and Down, Home and End (⇧ grows), ⌘A,
+  and typing a name (`type_select`) select (`on_select`); a press on a
+  selected row keeps the selection until the release (for dragging);
+  double click or Return opens (`on_open`); a right click keeps or
+  makes the selection and calls `on_context` with where. Columns wider
+  together than the view scroll sideways under a horizontal bar.
+  `ListModel::reveal(row)` scrolls a row selected in code into the
+  middle; `typing()` says a name is being typed (a space is part of
+  it). Agents read `Row`s (named by their cells' text, selected or
+  not) and `ColumnHeader`s. `examples/list.rs` is the egui demo's
+  Lists tab, for comparing.
+- `style::label_fit` (a label cut short with "…" to a width, measured
+  as shaped) and `style::selection_band`.
 - `widgets::tooltip(text)` for an element's `.tooltip(..)` (the
   palette's tooltip colours, BeOS's pale yellow in light mode).
 - `olo_ui::stay_resident(cx)`: the app keeps running with no windows
