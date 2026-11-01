@@ -24,12 +24,16 @@ use std::{
 };
 
 use install::Progress;
-use olo_kit::{
-    App, Cx, WindowId, WindowOptions,
-    egui::{self, Rect, pos2},
+use olo_ui::{
+    WindowOptions,
+    gpui::{AppContext as _, Context, Entity, FocusHandle, InteractiveElement as _, IntoElement, ParentElement as _, Render, Styled as _, Window, WindowHandle, div, px},
     instance::{self, Launch},
     metrics as m,
-    widgets::{self, Button, StatusBar},
+    widgets::{
+        AlertFrame, Button, StatusBar, StringView,
+        alert::{self, ALERT_WIDTH},
+        alert_height, button_row, paragraph,
+    },
 };
 
 const APP_ID: &str = "olo.chrome";
@@ -45,86 +49,52 @@ enum State {
 
 struct Installer {
     args: Vec<String>,
-    window: Option<WindowId>,
+    window: Option<WindowHandle<olo_ui::Frame>>,
     state: State,
     cancel: Arc<AtomicBool>,
+    /// The window's keyboard (Return and Escape are the alert's).
+    focus: FocusHandle,
 }
 
 impl Installer {
-    fn open(&mut self, cx: &mut Cx) {
-        if let Some(w) = self.window.filter(|w| cx.is_open(*w)) {
-            cx.activate(w);
+    fn open(&mut self, cx: &mut Context<Self>) {
+        if let Some(w) = self.window
+            && w.update(cx, |_, window, _| window.activate_window()).is_ok()
+        {
             return;
         }
-        let h = widgets::alert_height(OFFER) + 8;
-        self.window = Some(cx.open_window(WindowOptions::new("Google Chrome", widgets::ALERT_WIDTH, h).min_size(widgets::ALERT_WIDTH, h)));
+        let me = cx.entity();
+        cx.defer(move |cx| {
+            let h = alert_height(cx, OFFER, ALERT_WIDTH) + 8.0;
+            let view = me.clone();
+            let w = olo_ui::open_window(cx, WindowOptions::new("Google Chrome", ALERT_WIDTH, h).min_size(ALERT_WIDTH, h), move |_, _| view);
+            me.update(cx, |i, _| i.window = w);
+        });
     }
 
-    fn start(&mut self, cx: &mut Cx) {
+    fn start(&mut self, cx: &mut Context<Self>) {
         self.cancel = Arc::new(AtomicBool::new(false));
         self.state = State::Working(Progress::Looking);
-        let (proxy, cancel) = (cx.proxy(), self.cancel.clone());
+        let (proxy, cancel) = (olo_ui::proxy(cx), self.cancel.clone());
         std::thread::Builder::new()
             .name("install".into())
             .spawn(move || install::install(&cancel, &|p| proxy.send(p)))
             .expect("thread");
+        cx.notify();
     }
-}
 
-impl App for Installer {
-    fn ui(&mut self, cx: &mut Cx, _window: WindowId, ui: &mut egui::Ui) {
-        match &self.state {
-            State::Offer => match widgets::alert(ui, "installer", OFFER, &["Cancel", "Download"]) {
-                Some(0) => cx.quit(),
-                Some(_) => self.start(cx),
-                None => {}
-            },
-            State::Failed(why) => {
-                let message = format!("Google Chrome couldn't be installed.\n\n{why}");
-                match widgets::alert(ui, "installer", &message, &["Cancel", "Try Again"]) {
-                    Some(0) => cx.quit(),
-                    Some(_) => self.start(cx),
-                    None => {}
-                }
-            }
-            State::Working(progress) => {
-                let full = ui.available_rect_before_wrap();
-                let column = widgets::alert_frame(ui, "installer");
-                let (title, fraction, amount, version) = match progress {
-                    Progress::Downloading { version, got, total } => (
-                        "Downloading Google Chrome…",
-                        if *total > 0 { *got as f32 / *total as f32 } else { 0.0 },
-                        format!("{} of {}", size_text(*got), size_text(*total)),
-                        Some(version),
-                    ),
-                    Progress::Unpacking { version } => ("Installing Google Chrome…", 1.0, String::new(), Some(version)),
-                    _ => ("Looking for the newest Google Chrome…", 0.0, String::new(), None),
-                };
-                let mut child = ui.new_child(egui::UiBuilder::new().max_rect(column).layout(egui::Layout::top_down(egui::Align::Min)));
-                child.spacing_mut().item_spacing.y = m::SPACING;
-                child.add(StatusBar::new(fraction).label(title).trailing(&amount));
-                if let Some(v) = version {
-                    child.add(widgets::StringView::new(&format!("Version {v}, from Google's repository")).dim(true));
-                }
-                let row = Rect::from_min_max(pos2(column.left(), full.bottom() - m::WINDOW_INSET - m::CONTROL_HEIGHT), pos2(column.right(), column.bottom()));
-                let unpacking = matches!(progress, Progress::Unpacking { .. });
-                ui.scope_builder(egui::UiBuilder::new().max_rect(row), |ui| {
-                    widgets::button_row(ui, |ui| {
-                        if ui.add_enabled(!unpacking, Button::new("Cancel")).clicked() {
-                            self.cancel.store(true, Ordering::Relaxed);
-                        }
-                    });
-                });
-            }
+    /// The offer's or the failure's buttons: Cancel quits, the other
+    /// (the default) starts the download.
+    fn choose(&mut self, i: usize, cx: &mut Context<Self>) {
+        if i == 0 {
+            self.cancel.store(true, Ordering::Relaxed);
+            cx.quit();
+        } else {
+            self.start(cx);
         }
     }
 
-    fn close_requested(&mut self, cx: &mut Cx, _window: WindowId) {
-        self.cancel.store(true, Ordering::Relaxed);
-        cx.quit();
-    }
-
-    fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
+    fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
         let message = match message.downcast::<Progress>() {
             Ok(p) => {
                 match *p {
@@ -137,9 +107,7 @@ impl App for Installer {
                     Progress::Failed(why) => self.state = State::Failed(why),
                     p => self.state = State::Working(p),
                 }
-                if let Some(w) = self.window {
-                    cx.redraw(w);
-                }
+                cx.notify();
                 return;
             }
             Err(m) => m,
@@ -147,6 +115,74 @@ impl App for Installer {
         if message.is::<Launch>() {
             self.open(cx);
         }
+    }
+}
+
+impl Render for Installer {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if !self.focus.is_focused(window) {
+            window.focus(&self.focus);
+        }
+        let me = cx.entity();
+        let alert_buttons = |labels: [&'static str; 2], me: Entity<Installer>| {
+            let mut row = button_row();
+            for (i, label) in labels.into_iter().enumerate() {
+                let me = me.clone();
+                row = row.child(Button::new(label).default(i == 1).on_click(move |_, cx| me.update(cx, |a, cx| a.choose(i, cx))));
+            }
+            row
+        };
+        let frame = AlertFrame::new("installer");
+        let content = match &self.state {
+            State::Offer => frame.child(paragraph(OFFER)).child(div().flex_1()).child(alert_buttons(["Cancel", "Download"], me.clone())),
+            State::Failed(why) => frame
+                .child(paragraph(format!("Google Chrome couldn't be installed.\n\n{why}")))
+                .child(div().flex_1())
+                .child(alert_buttons(["Cancel", "Try Again"], me.clone())),
+            State::Working(progress) => {
+                let (title, fraction, amount, version) = match progress {
+                    Progress::Downloading { version, got, total } => (
+                        "Downloading Google Chrome…",
+                        if *total > 0 { *got as f32 / *total as f32 } else { 0.0 },
+                        format!("{} of {}", size_text(*got), size_text(*total)),
+                        Some(version.clone()),
+                    ),
+                    Progress::Unpacking { version } => ("Installing Google Chrome…", 1.0, String::new(), Some(version.clone())),
+                    _ => ("Looking for the newest Google Chrome…", 0.0, String::new(), None),
+                };
+                let unpacking = matches!(progress, Progress::Unpacking { .. });
+                let cancel = self.cancel.clone();
+                let mut col = div().flex().flex_col().gap(px(m::SPACING)).child(StatusBar::new(fraction).label(title).trailing(amount));
+                if let Some(v) = version {
+                    col = col.child(StringView::new(format!("Version {v}, from Google's repository")).dim(true));
+                }
+                frame
+                    .child(col)
+                    .child(div().flex_1())
+                    .child(button_row().child(Button::new("Cancel").enabled(!unpacking).on_click(move |_, _| cancel.store(true, Ordering::Relaxed))))
+            }
+        };
+        // Return takes the default, Escape cancels, as an alert's.
+        let (ok, cancel) = (me.clone(), me.clone());
+        let offering = !matches!(self.state, State::Working(_));
+        let working_cancel = self.cancel.clone();
+        div()
+            .size_full()
+            .key_context(alert::CONTEXT)
+            .track_focus(&self.focus)
+            .on_action(move |_: &alert::Default, _, cx| {
+                if offering {
+                    ok.update(cx, |a, cx| a.choose(1, cx));
+                }
+            })
+            .on_action(move |_: &alert::Cancel, _, cx| {
+                if offering {
+                    cancel.update(cx, |a, cx| a.choose(0, cx));
+                } else {
+                    working_cancel.store(true, Ordering::Relaxed);
+                }
+            })
+            .child(content)
     }
 }
 
@@ -195,7 +231,7 @@ fn start_chrome(chrome: &Path, args: &[String]) {
 
 fn main() {
     // A session or install from before the rename (Tabula) carries on.
-    olo_kit::legacy::adopt();
+    olo_xdg::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     // Chrome starting us as the Passwords extension's host.
     if args.first().is_some_and(|a| a.starts_with("chrome-extension://")) {
@@ -251,10 +287,18 @@ fn main() {
     if instance::forward(APP_ID, &args) {
         return;
     }
-    olo_kit::run(APP_ID, |cx| {
-        instance::listen(APP_ID, cx.proxy());
-        let mut app = Installer { args, window: None, state: State::Offer, cancel: Arc::new(AtomicBool::new(false)) };
-        app.open(cx);
-        app
+    olo_ui::run(APP_ID, move |cx| {
+        instance::listen(APP_ID, olo_ui::proxy(cx));
+        let app = cx.new(|cx| Installer { args, window: None, state: State::Offer, cancel: Arc::new(AtomicBool::new(false)), focus: cx.focus_handle() });
+        app.update(cx, |a, cx| a.open(cx));
+        let messages = app.clone();
+        olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |a, cx| a.message(message, cx)));
+        // Closed from its tab: the download stops.
+        let closing = app.clone();
+        cx.on_app_quit(move |cx| {
+            closing.read(cx).cancel.store(true, Ordering::Relaxed);
+            async {}
+        })
+        .detach();
     });
 }

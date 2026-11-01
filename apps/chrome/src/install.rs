@@ -509,9 +509,9 @@ pub fn set_up(dir: &Path) -> Result<(), String> {
     let apps = data_home().join("applications");
     fs::create_dir_all(&apps).map_err(|e| e.to_string())?;
     let tmp = apps.join(".google-chrome.desktop.new");
-    fs::write(&tmp, desktop_entry(&exe)).and_then(|_| fs::rename(&tmp, apps.join(olo_kit::open::CHROME_ENTRY))).map_err(|e| e.to_string())?;
+    fs::write(&tmp, desktop_entry(&exe)).and_then(|_| fs::rename(&tmp, apps.join(olo_xdg::open::CHROME_ENTRY))).map_err(|e| e.to_string())?;
     // The default browser, unless the person chose another.
-    olo_kit::open::offer_browser(&apps).map(drop).map_err(|e| e.to_string())
+    olo_xdg::open::offer_browser(&apps).map(drop).map_err(|e| e.to_string())
 }
 
 /// Whether the desktop entry is ours (starts Chrome through `exe`).

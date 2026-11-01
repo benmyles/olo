@@ -270,7 +270,8 @@ as they land (with the commit), add new ones as they come up.
      and shortcuts sheet; windows now share the GPU pipelines and the
      glyph atlas, so a window or menu opens without building them: the
      palette in 28 ms against egui's 47), Log Viewer (with the GPUI
-     kit's search field, filter bar and text view). Next: the Chrome app, then
+     kit's search field, filter bar and text view), the Chrome app's
+     installer. Next:
      Deskbar, Telegram, Viewer, Notifications, the portal, Agent
      Screens, StyledEdit, Activity Monitor, Tracker, Passwords,
      Preferences (with the screen saver and its modules) and Terminal.

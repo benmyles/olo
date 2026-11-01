@@ -5745,7 +5745,10 @@ With Chrome installed it execs Chrome's own launcher
 (`~/.local/share/olo/chrome/current/google-chrome`) with its arguments,
 adding `--ozone-platform=wayland` under Wayland (Chrome otherwise goes by
 `XDG_SESSION_TYPE` and falls back to X11). Without it, it offers to
-download it (`install.rs`, on a worker thread, cancellable): Google's rpm
+download it in a window on the GPUI kit (an `AlertFrame` with the
+installer icon: the offer, the download's `StatusBar` with Cancel, or
+why it failed with Try Again; Return and Escape as an alert's; 54 MB
+against egui's 77) (`install.rs`, on a worker thread, cancellable): Google's rpm
 repository for this CPU (`repomd.xml` → the primary index → the newest
 `google-chrome-stable`), the package downloaded with live progress and
 its sha256 checked against the index, then unpacked natively (the rpm

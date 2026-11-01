@@ -4,13 +4,13 @@
 //! finishes or fails. Deskbar shows how far along they are on Chrome's
 //! entry (a `com.canonical.Unity.LauncherEntry` update, as Chrome itself
 //! would send through libunity), the file being written is marked with
-//! the size it will be (`olo_kit::files::EXPECTED_SIZE`, which Tracker
+//! the size it will be (`olo_kit_base::files::EXPECTED_SIZE`, which Tracker
 //! shows it by), and a
 //! finished one is an Olo notification: Open, Open in Tracker.
 
 use std::{collections::HashMap, path::{Path, PathBuf}};
 
-use olo_kit::notify::{Note, NoteEvent, NoteId, NoteKind, Notifier};
+use olo_kit_base::notify::{Note, NoteEvent, NoteId, NoteKind, Notifier};
 use serde::Deserialize;
 use zbus::zvariant::Value;
 
@@ -52,8 +52,8 @@ impl Downloads {
             let NoteEvent::Action { id, key, .. } = e else { return };
             let Some(file) = about.lock().unwrap_or_else(|e| e.into_inner()).get(&id).cloned() else { return };
             let done = match key.as_str() {
-                "reveal" => olo_kit::tracker::open(&file),
-                _ => olo_kit::open::open(&olo_kit::open::Target::Path(file)),
+                "reveal" => olo_kit_base::tracker::open(&file),
+                _ => olo_xdg::open::open(&olo_xdg::open::Target::Path(file)),
             };
             if let Err(e) = done {
                 eprintln!("olo-chrome: {e}");
@@ -67,7 +67,7 @@ impl Downloads {
         for d in list {
             if let Some(total) = d.total
                 && !self.marked.contains(&d.id)
-                && olo_kit::files::set_expected_size(&partial_of(&d.file), total)
+                && olo_kit_base::files::set_expected_size(&partial_of(&d.file), total)
             {
                 self.marked.push(d.id);
             }
@@ -93,7 +93,7 @@ impl Downloads {
                 if is_picture(&d.file) {
                     note = note.image(&d.file);
                 }
-                note.action("default", "Open").action("open", "Open").action("reveal", olo_kit::tracker::LABEL)
+                note.action("default", "Open").action("open", "Open").action("reveal", olo_kit_base::tracker::LABEL)
             }
             // Stopped by the person (or by Chrome quitting): nothing to say.
             Some("USER_CANCELED" | "USER_SHUTDOWN") => return,
@@ -112,7 +112,7 @@ impl Downloads {
         props.insert("count-visible", Value::from(count > 0));
         props.insert("progress", Value::from(progress.unwrap_or(0.0)));
         props.insert("progress-visible", Value::from(progress.is_some()));
-        let app = format!("application://{}", olo_kit::open::CHROME_ENTRY);
+        let app = format!("application://{}", olo_xdg::open::CHROME_ENTRY);
         if let Err(e) = bus.emit_signal(None::<&str>, "/com/olodesktop/chrome/downloads", "com.canonical.Unity.LauncherEntry", "Update", &(app, props)) {
             eprintln!("olo-chrome: can't tell Deskbar about downloads: {e}");
         }
@@ -133,7 +133,7 @@ fn progress(list: &[Download]) -> Option<f64> {
 /// The file Chrome writes `file` to until it is done.
 pub fn partial_of(file: &Path) -> PathBuf {
     let mut p = file.as_os_str().to_owned();
-    p.push(olo_kit::files::DOWNLOADING);
+    p.push(olo_kit_base::files::DOWNLOADING);
     PathBuf::from(p)
 }
 
@@ -145,7 +145,7 @@ fn host_of(url: &str) -> Option<String> {
 }
 
 fn is_picture(file: &Path) -> bool {
-    olo_kit::mime::for_path(file).starts_with("image/")
+    olo_xdg::mime::for_path(file).starts_with("image/")
 }
 
 /// Chrome's reason, in words.

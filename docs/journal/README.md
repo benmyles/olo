@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-31
 
+### Google Chrome's installer on GPUI
+
+*23:18* — The offer to download Google Chrome (shown when it isn't installed) moves to the GPUI kit, now with its installer icon, which the egui window never found. 54 MB against 77.
+
+![Google Chrome's installer on GPUI](2026-10-31/231841-google-chrome-s-installer-on-gpui.png)
+
 ### Log Viewer on GPUI
 
 *23:12* — Log Viewer moves to the GPUI kit, with the kit's new search field (filters coloured, suggested as they're typed), filter bar and text view; the Message column now fits beside the scroll bar (no sideways scrolling). Loading 160,000 lines its slowest frame is 3 ms (egui's 34). A made-up log file, not a real journal.

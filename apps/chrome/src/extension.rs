@@ -89,7 +89,7 @@ fn key(root: &Path) -> std::io::Result<SigningKey> {
 /// host (`host.rs`) each time the popup opens, so a look chosen since
 /// shows at once.
 pub fn palette_css() -> String {
-    let a = olo_kit::settings::current().map(|s| s.appearance).unwrap_or_default();
+    let a = olo_kit_base::settings::current().map(|s| s.appearance).unwrap_or_default();
     let [light, dark] = [olo_theme::ThemeMode::Light, olo_theme::ThemeMode::Dark].map(|m| olo_theme::looks::palette(&a.icon_theme, &a.colors, m));
     css_of(&light, &dark)
 }

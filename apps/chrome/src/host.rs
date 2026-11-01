@@ -32,7 +32,7 @@ use std::{
 
 use serde_json::{Value, json};
 use olo_keychain::{CallError, Request, Response};
-use olo_kit::commands::{self, WindowTree};
+use olo_kit_base::commands::{self, WindowTree};
 
 use crate::downloads::{Download, Downloads};
 use crate::profile;
@@ -161,8 +161,8 @@ fn allowed(r: &Request) -> bool {
 
 /// Start Passwords (or bring it forward: it is a single instance).
 fn open_passwords() -> Result<(), String> {
-    let program = olo_kit::find_program("olo-passwords").ok_or("Passwords isn't installed.")?;
-    olo_kit::open::spawn(&[program.into_os_string()]).map_err(|e| format!("Passwords couldn't be started: {e}"))
+    let program = olo_xdg::find_program("olo-passwords").ok_or("Passwords isn't installed.")?;
+    olo_xdg::open::spawn(&[program.into_os_string()]).map_err(|e| format!("Passwords couldn't be started: {e}"))
 }
 
 fn answer(m: &Value) -> Value {
