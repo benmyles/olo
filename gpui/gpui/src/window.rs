@@ -1870,6 +1870,22 @@ impl Window {
         self.platform_window.start_window_move()
     }
 
+    /// Olo: drags `drag` out of the window to another app or a folder
+    /// (call it while the pointer's button is held, as a drag begins):
+    /// what it was dropped as comes when it's over (None: cancelled, or
+    /// it couldn't start).
+    pub fn start_drag(&self, drag: crate::OutgoingDrag) -> futures::channel::oneshot::Receiver<Option<crate::DragAction>> {
+        let (done, over) = futures::channel::oneshot::channel();
+        self.platform_window.start_drag(drag, done);
+        over
+    }
+
+    /// Olo: the window's surface's protocol id (Wayland's `wl_surface`),
+    /// which app_server names it by (its keyboard hints ask about it).
+    pub fn surface_id(&self) -> Option<u32> {
+        self.platform_window.surface_id()
+    }
+
     /// When using client side decorations, set this to the width of the invisible decorations (Wayland and X11)
     pub fn set_client_inset(&mut self, inset: Pixels) {
         self.client_inset = Some(inset);

@@ -11,6 +11,8 @@
 
 pub mod agent;
 mod app;
+pub mod brand;
+pub mod dnd;
 pub mod file_panel;
 mod lock;
 pub mod icons;
@@ -20,6 +22,7 @@ pub mod review;
 pub mod search;
 pub mod style;
 pub mod theme;
+pub mod tip;
 mod upgrade;
 pub mod widgets;
 

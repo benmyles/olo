@@ -319,6 +319,8 @@ pub(crate) struct WaylandClientState {
     keymap_state: Option<xkb::State>,
     compose_state: Option<xkb::compose::State>,
     drag: DragState,
+    /// Olo: a drag out of one of our windows, while it lasts.
+    drag_out: Option<DragOut>,
     click: ClickState,
     repeat: KeyRepeat,
     pub modifiers: Modifiers,
@@ -351,10 +353,60 @@ pub(crate) struct WaylandClientState {
     common: LinuxCommon,
 }
 
+/// Olo: a drag out of one of our windows (`PlatformWindow::start_drag`):
+/// its source, data, the action the place under it would take, the
+/// surface showing its picture (with the buffer and pool behind it), and
+/// who to tell when it's over.
+struct DragOut {
+    source: wl_data_source::WlDataSource,
+    types: Vec<(String, std::sync::Arc<[u8]>)>,
+    action: Option<crate::DragAction>,
+    icon: Option<(wl_surface::WlSurface, wl_buffer::WlBuffer, wl_shm_pool::WlShmPool)>,
+    done: Option<futures::channel::oneshot::Sender<Option<crate::DragAction>>>,
+}
+
 pub struct DragState {
     data_offer: Option<wl_data_offer::WlDataOffer>,
     window: Option<WaylandWindowStatePtr>,
     position: Point<Pixels>,
+}
+
+/// Olo: a surface showing a drag's picture, from shared memory: the
+/// surface, its buffer and the pool (kept until the drag is over).
+fn drag_icon(globals: &Globals, image: &crate::DragImage) -> Option<(wl_surface::WlSurface, wl_buffer::WlBuffer, wl_shm_pool::WlShmPool)> {
+    use std::{io::Write as _, os::fd::{AsFd as _, FromRawFd as _, OwnedFd}};
+    let (w, h) = (image.width as usize, image.height as usize);
+    if w == 0 || h == 0 || image.rgba.len() < w * h * 4 {
+        return None;
+    }
+    // SAFETY: a new anonymous file, owned from here.
+    let fd = unsafe {
+        let fd = libc::memfd_create(c"olo-drag-icon".as_ptr(), libc::MFD_CLOEXEC);
+        if fd < 0 {
+            return None;
+        }
+        OwnedFd::from_raw_fd(fd)
+    };
+    // Premultiplied BGRA in memory, as ARGB8888 is.
+    let bgra: Vec<u8> = image.rgba[..w * h * 4].chunks_exact(4).flat_map(|p| [p[2], p[1], p[0], p[3]]).collect();
+    let mut file = std::fs::File::from(fd);
+    file.write_all(&bgra).ok()?;
+    let size = (w * h * 4) as i32;
+    let pool = globals.shm.create_pool(file.as_fd(), size, &globals.qh, ());
+    let buffer = pool.create_buffer(0, w as i32, h as i32, w as i32 * 4, wl_shm::Format::Argb8888, &globals.qh, ());
+    let surface = globals.compositor.create_surface(&globals.qh, ());
+    surface.set_buffer_scale(image.scale.max(1) as i32);
+    // The pointer's place on it: the picture is drawn up and left of it.
+    let (dx, dy) = (-(f32::from(image.hotspot.x).round() as i32), -(f32::from(image.hotspot.y).round() as i32));
+    if surface.version() >= 5 {
+        surface.attach(Some(&buffer), 0, 0);
+        surface.offset(dx, dy);
+    } else {
+        surface.attach(Some(&buffer), dx, dy);
+    }
+    surface.damage_buffer(0, 0, w as i32, h as i32);
+    surface.commit();
+    Some((surface, buffer, pool))
 }
 
 pub struct ClickState {
@@ -390,6 +442,38 @@ impl WaylandClientStatePtr {
         self.0
             .upgrade()
             .expect("The pointer should always be valid when dispatching in wayland")
+    }
+
+    /// Olo: drags `drag` out of `origin` (see `PlatformWindow::start_drag`).
+    pub fn start_drag(&self, origin: &wl_surface::WlSurface, drag: crate::OutgoingDrag, done: futures::channel::oneshot::Sender<Option<crate::DragAction>>) {
+        let client = self.get_client();
+        let mut state = client.borrow_mut();
+        let (Some(manager), Some(device)) = (state.globals.data_device_manager.clone(), state.data_device.clone()) else { return };
+        if state.drag_out.is_some() || drag.types.is_empty() {
+            return;
+        }
+        let qh = state.globals.qh.clone();
+        let source = manager.create_data_source(&qh, ());
+        for (mime, _) in &drag.types {
+            source.offer(mime.clone());
+        }
+        let mut actions = DndAction::empty();
+        if drag.copy {
+            actions |= DndAction::Copy;
+        }
+        if drag.move_ {
+            actions |= DndAction::Move;
+        }
+        if drag.ask {
+            actions |= DndAction::Ask;
+        }
+        if source.version() >= 3 {
+            source.set_actions(if actions.is_empty() { DndAction::Copy } else { actions });
+        }
+        let icon = drag.icon.as_ref().and_then(|image| drag_icon(&state.globals, image));
+        let serial = state.serial_tracker.get(SerialKind::MousePress);
+        device.start_drag(Some(&source), origin, icon.as_ref().map(|(surface, ..)| surface), serial);
+        state.drag_out = Some(DragOut { source, types: drag.types, action: None, icon, done: Some(done) });
     }
 
     pub fn get_serial(&self, kind: SerialKind) -> u32 {
@@ -664,6 +748,7 @@ impl WaylandClient {
                 window: None,
                 position: Point::default(),
             },
+            drag_out: None,
             click: ClickState {
                 last_click: Instant::now(),
                 last_mouse_button: None,
@@ -793,7 +878,7 @@ impl LinuxClient for WaylandClient {
         // Olo: a popup opens over its parent window's surface, grabbing
         // the press that opened it.
         let popup_parent = match params.kind {
-            crate::WindowKind::Popup { parent, .. } => state
+            crate::WindowKind::Popup { parent, .. } | crate::WindowKind::Tip { parent, .. } => state
                 .windows
                 .values()
                 .find(|w| w.handle() == parent)
@@ -2212,6 +2297,17 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for WaylandClientStatePtr {
                 id: data_offer,
             } => {
                 state.serial_tracker.update(SerialKind::DataDevice, serial);
+                // Olo: our own drag out isn't dropped back on us (an app
+                // dragged out of Deskbar onto its own row).
+                if state.drag_out.is_some() {
+                    if let Some(offer) = data_offer {
+                        offer.accept(serial, None);
+                        if offer.version() >= 3 {
+                            offer.set_actions(DndAction::empty(), DndAction::empty());
+                        }
+                    }
+                    return;
+                }
                 if let Some(data_offer) = data_offer {
                     let Some(drag_window) = get_window(&mut state, &surface.id()) else {
                         return;
@@ -2371,6 +2467,49 @@ impl Dispatch<wl_data_source::WlDataSource, ()> for WaylandClientStatePtr {
         let client = this.get_client();
         let mut state = client.borrow_mut();
 
+        // Olo: our drag out.
+        if state.drag_out.as_ref().is_some_and(|d| &d.source == data_source) {
+            match event {
+                wl_data_source::Event::Send { mime_type, fd } => {
+                    let bytes = state.drag_out.as_ref().and_then(|d| d.types.iter().find(|(t, _)| *t == mime_type)).map(|(_, b)| b.to_vec());
+                    if let Some(bytes) = bytes {
+                        state.clipboard.send_bytes(fd, bytes);
+                    }
+                }
+                wl_data_source::Event::Action { dnd_action } => {
+                    let a = dnd_action.into_result().unwrap_or(DndAction::empty());
+                    let action = if a.contains(DndAction::Move) {
+                        Some(crate::DragAction::Move)
+                    } else if a.contains(DndAction::Copy) {
+                        Some(crate::DragAction::Copy)
+                    } else if a.contains(DndAction::Ask) {
+                        Some(crate::DragAction::Ask)
+                    } else {
+                        None
+                    };
+                    if let Some(d) = &mut state.drag_out {
+                        d.action = action;
+                    }
+                }
+                // Dropped and taken, or not: over.
+                wl_data_source::Event::DndFinished | wl_data_source::Event::Cancelled => {
+                    let finished = matches!(event, wl_data_source::Event::DndFinished);
+                    if let Some(mut d) = state.drag_out.take() {
+                        if let Some((surface, buffer, pool)) = d.icon.take() {
+                            surface.destroy();
+                            buffer.destroy();
+                            pool.destroy();
+                        }
+                        d.source.destroy();
+                        if let Some(done) = d.done.take() {
+                            let _ = done.send(if finished { d.action } else { None });
+                        }
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
         match event {
             wl_data_source::Event::Send { mime_type, fd } => {
                 state.clipboard.send(mime_type, fd);

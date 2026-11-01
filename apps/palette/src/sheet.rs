@@ -184,7 +184,7 @@ impl Render for Sheet {
                 style::label(window, cx, panel.right() - px(GAP), foot_y, style::Align::Right, more, style::DETAIL_SIZE, small, dim);
                 window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
                     if phase.bubble() && hitbox.is_hovered(window) && !panel.contains(&e.position) {
-                        let _ = window_handle.update(cx, |_, window, _| window.remove_window());
+                        cx.close_window(window_handle);
                     }
                 });
             },

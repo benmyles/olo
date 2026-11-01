@@ -75,6 +75,21 @@ What Olo changed, so far:
   (Deskbar's menus).
 - `Window::draw_now` draws a window even out of sight (for a layout
   review).
+- Drags out of a window (`Window::start_drag(OutgoingDrag)`): a Wayland
+  data source offering each type with its data, the actions allowed and
+  a picture under the pointer (a surface from shared memory, at the
+  window's whole scale); what it was dropped as comes back on a
+  channel. An app's own drag isn't turned into a file drop on it.
+  `TextSystem::line_mask` draws a line of text on the CPU (a drag's
+  picture's name).
+- Tips (`WindowKind::Tip`): an xdg_popup with an empty input region and
+  no grab, below its anchor (else above, slid on screen), for tooltips
+  that reach past a small window's edges.
+- `App::close_window` closes a window even from inside an update of it
+  (upstream's `handle.update(.., remove_window)` silently does nothing
+  there: a window's own Cancel button or key).
+- `Window::surface_id`: the wl_surface's protocol id, which app_server
+  names windows by (its keyboard hints).
 - No desktop portal watched (the colour scheme, the cursor's theme and
   size): olo-ui follows app_server, which draws the pointer, and the
   portal's settings over D-Bus kept a `blocking` pool thread waking in

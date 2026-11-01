@@ -539,6 +539,15 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn show_window_menu(&self, _position: Point<Pixels>) {}
     fn start_window_move(&self) {}
     fn start_window_resize(&self, _edge: ResizeEdge) {}
+    /// Olo: drags `drag` out of the window, under the pointer (only while
+    /// a button is held), to wherever it's dropped; `done` gets the
+    /// action it was dropped as, or None.
+    fn start_drag(&self, _drag: OutgoingDrag, _done: futures::channel::oneshot::Sender<Option<DragAction>>) {}
+    /// Olo: the window's surface's protocol id (Wayland's `wl_surface`),
+    /// which app_server names it by.
+    fn surface_id(&self) -> Option<u32> {
+        None
+    }
     fn window_decorations(&self) -> Decorations {
         Decorations::Server
     }
@@ -558,6 +567,52 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn as_test(&mut self) -> Option<&mut TestWindow> {
         None
     }
+}
+
+/// Olo: data dragged out of a window to another app or a folder (the
+/// platform's drag and drop, Wayland's data device): the same data in
+/// each type, most faithful first, the actions the place it's dropped on
+/// may take, and a picture under the pointer.
+#[derive(Clone, Debug, Default)]
+pub struct OutgoingDrag {
+    /// Each MIME type and the data in it.
+    pub types: Vec<(String, Arc<[u8]>)>,
+    /// It may be copied.
+    pub copy: bool,
+    /// It may be moved.
+    pub move_: bool,
+    /// Let the place it's dropped on ask (Move, Copy or Link).
+    pub ask: bool,
+    /// Drawn under the pointer.
+    pub icon: Option<DragImage>,
+}
+
+/// Olo: a picture dragged under the pointer: premultiplied RGBA,
+/// `width` × `height` device pixels at `scale`, the pointer at `hotspot`
+/// (logical pixels from its top left).
+#[derive(Clone, Debug)]
+pub struct DragImage {
+    /// Premultiplied RGBA, row by row.
+    pub rgba: Arc<[u8]>,
+    /// In device pixels.
+    pub width: u32,
+    /// In device pixels.
+    pub height: u32,
+    /// Device pixels to a logical pixel.
+    pub scale: u32,
+    /// Where the pointer is on it.
+    pub hotspot: Point<Pixels>,
+}
+
+/// Olo: what a drag out was dropped as.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DragAction {
+    /// Copied.
+    Copy,
+    /// Moved.
+    Move,
+    /// Asked about (a menu of Move, Copy or Link).
+    Ask,
 }
 
 /// This type is public so that our test macro can generate and use it, but it should not
@@ -1405,6 +1460,17 @@ pub enum WindowKind {
         /// item over the field). With an offset, it's slid to stay on
         /// screen rather than flipped, since it belongs where it is.
         offset: Point<Pixels>,
+    },
+
+    /// Olo: a tooltip over a window: a popup (Wayland's xdg_popup) that
+    /// takes no input and grabs nothing, below `anchor` (in the parent's
+    /// content), else above it, slid to stay on screen: it may reach past
+    /// its window's edges (Deskbar's tray, narrower than what it says).
+    Tip {
+        /// The window it belongs to.
+        parent: AnyWindowHandle,
+        /// What it tells about.
+        anchor: Bounds<Pixels>,
     },
 }
 

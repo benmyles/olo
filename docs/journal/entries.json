@@ -2584,5 +2584,11 @@
   "title": "Google Chrome's installer on GPUI",
   "caption": "The offer to download Google Chrome (shown when it isn't installed) moves to the GPUI kit, now with its installer icon, which the egui window never found. 54 MB against 77.",
   "image": "2026-10-31/231841-google-chrome-s-installer-on-gpui.png"
+ },
+ {
+  "time": "2026-11-01T00:00:24",
+  "title": "Deskbar on GPUI",
+  "caption": "Deskbar moves to Olo's GPUI kit: the same tile, tray and workspaces, drawn on device pixels at every scale (the tray's glyphs as exact paths and GPU arcs), its menus' keys laid out as the egui kit's key combos, tips in popups of their own, applications dragged out as links with their icon and name. 57 MB against 141, and 32 frames for 30 pointer moves against 150.",
+  "image": "2026-11-01/000024-deskbar-on-gpui.png"
  }
 ]

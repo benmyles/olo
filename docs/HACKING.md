@@ -1715,10 +1715,19 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   `menu::popup(window, cx, menu, anchor, corner, on_choose)`. Drawn as
   the egui kit draws them; ↑ ↓ → ← Enter Space Escape; a submenu opens
   beside its item; items are `MenuItem`s to agents. `Menu::entries`
-  flattens one for the palette (`agent::set_menus`). (Still to come:
-  keys drawn as the kit's key combos, scrolling a menu taller than the
-  screen, and press-drag-release choosing from the press that opened
-  it.)
+  flattens one for the palette (`agent::set_menus`). Keys are drawn as
+  the kit's key combos (`style::key_combo`: each symbol on its own, ⌘
+  and ⇧ tightened and lifted onto the capitals' line). `.minimized(on)`
+  marks an item a minimized window (a hollow diamond where the check
+  goes, a lighter label, `minimized` to agents), as a Mac's Window menu
+  does. A press anywhere in the window a menu opened over puts it away
+  (the `Frame` sees it first: app_server's popup grab hands an app's
+  own window the presses outside its menu), and that press doesn't
+  open it again on what opened it, so a second click on a button
+  closes its menu. `menu::popup_then(.., on_close)` is `popup` with
+  word when it has gone, for what shows its menu open (Deskbar's rows).
+  (Still to come: scrolling a menu taller than the screen, and
+  press-drag-release choosing from the press that opened it.)
 - `MenuBar::new(menus, on_command)` at the top of a window's view: the
   BeOS menu bar as the egui kit draws it. A press on a title opens its
   menu under it; with one open, sliding across the bar opens the
@@ -1750,6 +1759,40 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   same program's). Open a window from a paint after the frame
   (`window.defer`): opened during it, the new window's first draw
   clears the frame's element arena under the one painting.
+- `tip::hover(window, cx, key, text, anchor, hovered)` (from an
+  element's `on_hover`) and `tip::pressed(window, cx, key)`: tips in a
+  popup of their own (GPUI's `WindowKind::Tip`, an xdg_popup that takes
+  no input and grabs nothing), for a window too small to hold them
+  (Deskbar's tray): after the pointer rests half a second, at once if
+  one showed a moment ago, not after a press; below the anchor, else
+  above, slid to stay on screen; in the tooltip colours, wrapping past
+  360 points. `widgets::tooltip` is GPUI's own, inside the window, for
+  the rest.
+- `dnd`: dragging out to another app or a folder, as the egui kit's
+  `dnd` (GPUI's `Window::start_drag`, Wayland's data source with a
+  picture surface): `dnd::files(paths, copy, move)` (text/uri-list and
+  the paths as text), `dnd::as_link` (Olo's make-a-link type, for an
+  application dragged out of Deskbar), `dnd::picture(window, cx, icon,
+  size, label, hotspot)` (the icon faded a little, its name below in
+  the selection's colours, on whole device pixels; the name drawn on
+  the CPU by `TextSystem::line_mask`), and `dnd::start(window, cx, drag,
+  done)` while the press is down (`done` gets what it was dropped as).
+  Ask for the icon's bitmap ahead (`icons::bitmap`) as the press comes,
+  so it's decoded when the drag starts. Drops come as GPUI's
+  `on_drop::<ExternalPaths>` (an app's own drag isn't dropped back on
+  it).
+- `brand::wordmark_centred(window, bounds, dark)`: the wordmark (the
+  theme's, light or dark), decoded and trimmed once on a thread,
+  averaged down to each height once, a texel to a device pixel;
+  `Drawn::Loading` keeps its place, `Missing` asks for the name instead.
+- `style::lit_ground`/`lit_edges`: a group current as a whole
+  (Deskbar's workspace showing), as the egui kit's.
+- `cx.close_window(handle)` (GPUI): closes a window even from inside an
+  update of it (its own button, key or menu command), where
+  `handle.update(.., remove_window)` silently does nothing.
+- Keyboard hints: app_server asks by surface (`{"hints":[ids]}`); each
+  window answers with its `Window::surface_id()` and what can be picked
+  in it. A layer surface's tree carries its namespace (`layer`).
 - Upgrades: GPUI kit apps reach app_server through olo-wlproxy, which
   keeps their windows when app_server restarts in place; when
   olo-session signals an upgrade (SIGURG) and the app's binary was
@@ -6035,6 +6078,36 @@ typed in the window's search and the others its filters (JSON lines:
 time in UTC, program, pid, level, message). Tests: `cargo test -p olo-logs` (synthetic journal files
 in both layouts); `-- --include-ignored` also reads this machine's
 journal and highlights every line in it.
+
+## Deskbar (apps/deskbar)
+
+The Olo menu, the tray and the running applications, in the top-right
+corner of every display (a layer surface each, namespace `deskbar`, no
+keyboard: its menus take the keys as they open), on the GPUI kit. One
+model (`Deskbar`: app_server's windows, workspaces and displays as
+events say, the tray's status, other programs' tray items and launcher
+badges) that every display's bar (`BarView`, which keeps only what the
+pointer is doing over it) draws: a bar draws again when the model
+changes, the pointer moves onto something else in it (only that bar),
+a dot shakes or drains, or the clock's minute (or second) comes; idle,
+nothing runs. Each bar is painted in one `canvas` (the egui drawing,
+moved over: the tile and wordmark, the tray's well, headings, rows,
+the lit workspace), with transparent hit areas over it for the pointer:
+a left click as a click, the right and middle buttons as they're
+pressed (menus open on the press, as BeOS's), hovering that lights and
+a tip in a popup of its own (`olo_ui::tip`: the bar is narrower than
+what its icons say). The tray's glyphs (status.rs) are exact-coverage
+paths and the GPU's discs, rings and arcs (`paint_sector`), straight
+lines on device pixels. An application dragged out is a link to its
+program (`olo_ui::dnd`, its icon and name under the pointer); files
+dropped on one open with it, its row lit as they come over it. Bars
+for displays that come are opened once the model's update is over (a
+window draws as it opens, and its bar reads the model), before those
+going are closed, so the app always has one. Approve Without Asking's
+window (approve.rs) is the kit's alert frame with a `MenuField` and a
+`ConversationField`. Release build, against the egui one: first frame
+58–73 ms (egui 69–87), 57 MB resident (141), 30 pointer moves across it
+32 frames, 0.8 ms each (egui drew 150).
 
 ## The lock screen (crates/app_server/src/lock.rs, apps/lock)
 

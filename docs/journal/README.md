@@ -3,6 +3,14 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-01
+
+### Deskbar on GPUI
+
+*00:00* — Deskbar moves to Olo's GPUI kit: the same tile, tray and workspaces, drawn on device pixels at every scale (the tray's glyphs as exact paths and GPU arcs), its menus' keys laid out as the egui kit's key combos, tips in popups of their own, applications dragged out as links with their icon and name. 57 MB against 141, and 32 frames for 30 pointer moves against 150.
+
+![Deskbar on GPUI](2026-11-01/000024-deskbar-on-gpui.png)
+
 ## 2026-10-31
 
 ### Google Chrome's installer on GPUI

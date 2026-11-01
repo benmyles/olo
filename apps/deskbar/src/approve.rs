@@ -3,14 +3,14 @@
 //! window that turns it on, which takes the account password (Terminal
 //! answers sudo with it, so Touch ID can't stand in for it).
 
-use olo_kit::{
-    Cx, Menu, Proxy, WindowId, WindowOptions,
-    egui::{self, Align, Rect, pos2},
-    metrics as m,
-    style::{self, c},
-    widgets::{self, Conversation, MenuField},
-};
 use olo_protocol::{ClientError, ClockSettings, Request};
+use olo_ui::{
+    Frame, Menu, WindowOptions,
+    gpui::{App, AppContext as _, Context, Entity, FocusHandle, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Render, Styled as _, Window, WindowHandle, div, px},
+    metrics as m,
+    style,
+    widgets::{self, AlertFrame, Button, Conversation, ConversationField, MenuField, TextField, TextFieldEvent, alert, button_row, paragraph, paragraph_height, text_field},
+};
 use zeroize::Zeroize;
 
 use crate::status;
@@ -27,12 +27,12 @@ pub const LENGTHS: [(&str, &str, u32); 5] = [
 /// What clicking the key turns it on for.
 pub const USUAL: u32 = 15;
 
-const WIDTH: u32 = 420;
+const WIDTH: f32 = 420.0;
 const ICON: &str = "key";
 const TITLE: &str = "Approve Without Asking";
 const MESSAGE: &str = "While this is on, sudo in Terminal gets your password, and Passwords unlocks and lets op in, without asking you, for people and agents alike. Each is still shown in a quiet notification. It ends at its time, or when the screen locks.";
 /// Text column: the alert's width less its stripe, icon and margins.
-const COLUMN: f32 = WIDTH as f32 - widgets::ALERT_TEXT_X - m::WINDOW_INSET;
+const COLUMN: f32 = WIDTH - widgets::ALERT_TEXT_X - m::WINDOW_INSET;
 
 /// "12 min", "3 h 5 min": what is left until `until` (seconds since the
 /// epoch).
@@ -52,13 +52,13 @@ pub fn menu(until: Option<u64>, clock: &ClockSettings) -> Menu {
     let mut menu = Menu::new(TITLE);
     for (label, _, minutes) in LENGTHS {
         let label = if until.is_some() { label.to_owned() } else { format!("{label}…") };
-        menu = menu.item(label, format!("approve:{minutes}"), None);
+        menu = menu.item(label, format!("approve:{minutes}"));
     }
     let label = match until {
         Some(t) => format!("Ask Again ({} left, until {})", left(t), status::time_of_day(t, clock)),
         None => "Ask Again".into(),
     };
-    menu.separator().item(label, "approve:off", None).enabled(until.is_some())
+    menu.separator().item(label, "approve:off").enabled(until.is_some())
 }
 
 /// app_server's answer to turning it on.
@@ -66,68 +66,74 @@ pub struct Answer(pub Result<(), String>);
 
 /// The window turning it on.
 pub struct Ask {
-    pub win: WindowId,
+    pub window: Option<WindowHandle<Frame>>,
     length: usize,
     conv: Conversation,
+    field: Entity<TextField>,
+    focus: FocusHandle,
 }
 
 impl Ask {
-    pub fn open(cx: &mut Cx, minutes: u32) -> Ask {
-        let size = (WIDTH, height());
-        let win = cx.open_window(WindowOptions { size, min_size: Some(size), max_size: Some(size), ..WindowOptions::alert(TITLE, MESSAGE) });
-        cx.activate(win);
+    /// Opens the window, `minutes` chosen.
+    pub fn open(cx: &mut App, minutes: u32) -> Option<Entity<Ask>> {
+        let field = text_field(cx, |f| f.name("Password").password(true));
         let mut conv = Conversation::default();
         conv.ask("Password".into(), false);
         let length = LENGTHS.iter().position(|l| l.2 == minutes).unwrap_or(1);
-        Ask { win, length, conv }
+        let ask = cx.new(|cx| {
+            cx.subscribe(&field, |a: &mut Ask, _, e: &TextFieldEvent, cx| match e {
+                TextFieldEvent::Entered => a.submit(cx),
+                _ => cx.notify(),
+            })
+            .detach();
+            Ask { window: None, length, conv, field: field.clone(), focus: cx.focus_handle() }
+        });
+        let h = height(cx);
+        let view = ask.clone();
+        let window = olo_ui::open_window(cx, WindowOptions::alert(TITLE.to_owned(), WIDTH, h), move |window, cx| {
+            window.activate_window();
+            let closing = view.clone();
+            window.on_window_should_close(cx, move |_, cx| {
+                closing.update(cx, |a, cx| a.forget(cx));
+                true
+            });
+            let focus = olo_ui::gpui::Focusable::focus_handle(&field, cx);
+            window.focus(&focus);
+            view
+        })?;
+        ask.update(cx, |a, _| a.window = Some(window));
+        Some(ask)
     }
 
-    /// Chosen again from the menu: that length.
-    pub fn choose(&mut self, minutes: u32) {
+    /// Chosen again from the menu: that length, and the window forward.
+    pub fn choose(&mut self, minutes: u32, cx: &mut Context<Self>) {
         if let Some(i) = LENGTHS.iter().position(|l| l.2 == minutes) {
             self.length = i;
         }
+        if let Some(w) = self.window {
+            let _ = w.update(cx, |_, window, _| window.activate_window());
+        }
+        cx.notify();
     }
 
-    /// Draw it; true once it is cancelled.
-    pub fn ui(&mut self, ui: &mut egui::Ui, proxy: &Proxy) -> bool {
-        let p = style::palette(ui.ctx());
-        let col = widgets::alert_frame(ui, ICON);
-        let painter = ui.painter().clone();
-        let mut y = col.top();
-        style::label(&painter, col.left(), y + style::PLAIN_SIZE / 2.0 + 2.0, Align::Min, TITLE, style::bold_font(), c(p.panel_text));
-        y += m::LABEL_ROW + m::TIGHT;
-        let bottom = widgets::alert_text(ui, col, y, MESSAGE);
-        style::describe_text(ui.ctx(), egui::accesskit::Role::Label, MESSAGE, Rect::from_min_max(pos2(col.left(), y), pos2(col.right(), bottom)), None);
-        y = bottom + m::SPACING;
-
-        let form = Rect::from_min_max(pos2(col.left(), y), pos2(col.right(), col.bottom() - m::CONTROL_HEIGHT - m::SPACING));
-        let mut submit = false;
-        ui.scope_builder(egui::UiBuilder::new().max_rect(form).layout(egui::Layout::top_down(Align::Min)), |ui| {
-            ui.spacing_mut().item_spacing.y = m::SPACING;
-            let divider = widgets::divider_for(ui, &["For:", "Password:"]);
-            let names = LENGTHS.map(|l| l.1);
-            ui.add_enabled(!self.conv.checking, MenuField::new("approve-length", &mut self.length, &names).label("For:").divider(divider));
-            submit = widgets::conversation(ui, &mut self.conv, divider, form.width());
-        });
-        match widgets::alert_buttons(ui, col, &["Cancel", "Turn On"], self.conv.can_submit()) {
-            Some(0) => return true,
-            Some(_) => submit = true,
-            None => {}
-        }
-        if submit && self.conv.can_submit() {
-            self.send(proxy);
-        }
-        false
+    fn can_submit(&self, cx: &App) -> bool {
+        self.conv.ready() && !self.field.read(cx).text().is_empty()
     }
 
     /// To app_server, which checks the password (on a thread here: that
     /// takes PAM a moment).
-    fn send(&mut self, proxy: &Proxy) {
-        let password = std::mem::take(&mut self.conv.answer);
+    fn submit(&mut self, cx: &mut Context<Self>) {
+        if !self.can_submit(cx) {
+            return;
+        }
+        let password = self.field.read(cx).text().to_owned();
+        self.field.update(cx, |f, cx| {
+            f.clear_secret(cx);
+            f.set_enabled(false, cx);
+        });
         self.conv.sent();
         let minutes = LENGTHS[self.length].2;
-        let proxy = proxy.clone();
+        let proxy = olo_ui::proxy(cx);
         std::thread::spawn(move || {
             let mut req = Request::SetAutoApprove { minutes: Some(minutes), password: Some(password) };
             let answer = olo_protocol::Client::connect().and_then(|mut c| c.request(&req)).map(|_| ()).map_err(|e| match e {
@@ -139,26 +145,93 @@ impl Ask {
             }
             proxy.send(Answer(answer));
         });
+        cx.notify();
     }
 
     /// app_server answered: true when it is on (the window can go).
-    pub fn answer(&mut self, answer: Answer) -> bool {
+    pub fn answer(&mut self, answer: Answer, cx: &mut Context<Self>) -> bool {
         match answer.0 {
-            Ok(()) => true,
+            Ok(()) => {
+                self.close(cx);
+                true
+            }
             Err(e) => {
                 self.conv.error = e;
                 self.conv.ask("Password".into(), false);
+                self.field.update(cx, |f, cx| f.set_enabled(true, cx));
+                if let Some(w) = self.window {
+                    let focus = olo_ui::gpui::Focusable::focus_handle(&self.field, cx);
+                    let _ = w.update(cx, |_, window, _| window.focus(&focus));
+                }
+                cx.notify();
                 false
             }
         }
     }
+
+    /// The window is going: what was typed goes with it.
+    fn forget(&mut self, cx: &mut Context<Self>) {
+        self.field.update(cx, |f, cx| f.clear_secret(cx));
+        self.window = None;
+    }
+
+    /// Closes the window (cancelled, or on; from its own key or button
+    /// too: `close_window`).
+    pub fn close(&mut self, cx: &mut Context<Self>) {
+        self.field.update(cx, |f, cx| f.clear_secret(cx));
+        if let Some(w) = self.window.take() {
+            cx.close_window(w);
+        }
+    }
+}
+
+impl Render for Ask {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let view = cx.entity();
+        let font = style::ui_font(FontWeight::NORMAL);
+        let divider = ["For:", "Password:"].iter().map(|l| style::text_width_app(cx, l, style::PLAIN_SIZE, &font).ceil()).fold(0.0, f32::max) + m::LABEL_GAP;
+        let names = LENGTHS.iter().map(|l| l.1.into()).collect();
+        let pick = view.clone();
+        let form = div()
+            .flex()
+            .flex_col()
+            .gap(px(m::SPACING))
+            .child(MenuField::new("approve-length", names, self.length).label("For:").divider(divider).width(COLUMN).enabled(!self.conv.checking).on_change(move |i, _, cx| {
+                pick.update(cx, |a, cx| {
+                    a.length = i;
+                    cx.notify();
+                })
+            }))
+            .child(ConversationField::new(&self.conv, self.field.clone(), divider));
+        let can = self.can_submit(cx);
+        let (cancel, submit) = (view.clone(), view);
+        div()
+            .size_full()
+            .key_context(alert::CONTEXT)
+            .track_focus(&self.focus)
+            .on_action(cx.listener(|a, _: &alert::Cancel, _, cx| a.close(cx)))
+            .on_action(cx.listener(|a, _: &alert::Default, _, cx| a.submit(cx)))
+            .child(
+                AlertFrame::new(ICON)
+                    .child(widgets::alert_title(TITLE))
+                    .child(div().h(px(m::TIGHT)))
+                    .child(paragraph(MESSAGE))
+                    .child(div().h(px(m::SPACING)))
+                    .child(form)
+                    .child(div().flex_1())
+                    .child(
+                        button_row()
+                            .child(Button::new("Cancel").on_click(move |_, cx| cancel.update(cx, |a, cx| a.close(cx))))
+                            .child(Button::new("Turn On").default(true).enabled(can).on_click(move |_, cx| submit.update(cx, |a, cx| a.submit(cx)))),
+                    ),
+            )
+    }
 }
 
 /// The window's height for its message.
-fn height() -> u32 {
-    let message = style::plain_text_height(MESSAGE, COLUMN);
+fn height(cx: &App) -> f32 {
     let fixed = 2.0 * m::WINDOW_INSET + m::LABEL_ROW + m::TIGHT + 3.0 * m::SPACING + 3.0 * m::CONTROL_HEIGHT + m::LABEL_ROW;
-    (fixed + message).ceil() as u32
+    (fixed + paragraph_height(cx, MESSAGE, COLUMN)).ceil()
 }
 
 #[cfg(test)]

@@ -14,10 +14,10 @@ use std::{
 use olo_protocol::NotificationState;
 use olo_system::audio;
 
-use olo_kit::{
-    egui::{self, Color32, Painter, Rect, Shape, Stroke, pos2, vec2},
+use olo_ui::{
+    gpui::{App, BorderStyle, Bounds, FontWeight, Hsla, PathBuilder, Pixels, Point, Window, point, px, quad, size, transparent_black},
+    palette::{Hue, Palette, ThemeMode},
     style::{self, c},
-    theme::Palette,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -67,7 +67,7 @@ pub struct Supervisor {
 /// What olo-session offers to upgrade (see its upgrade.rs).
 fn upgrade_path() -> PathBuf {
     let dir = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
-    dir.join(format!("olo-upgrade-{}.json", olo_kit::display_name()))
+    dir.join(format!("olo-upgrade-{}.json", olo_xdg::display_name()))
 }
 
 fn upgrade() -> Vec<String> {
@@ -81,7 +81,7 @@ fn upgrade() -> Vec<String> {
 /// `Screen::alive` judges), leaving out the screen this Deskbar is on.
 fn screens_dir() -> PathBuf {
     let dir = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
-    olo_kit::legacy::runtime_file(&dir, "olo-screens")
+    olo_xdg::legacy::runtime_file(&dir, "olo-screens")
 }
 
 /// A screen's own file in the screens' folder (not a viewer's frame).
@@ -91,7 +91,7 @@ fn screen_file(p: &std::path::Path) -> bool {
 }
 
 fn agent_screens() -> usize {
-    let own = olo_kit::display_name();
+    let own = olo_xdg::display_name();
     let Ok(read) = std::fs::read_dir(screens_dir()) else { return 0 };
     read.flatten()
         .filter(|e| {
@@ -212,7 +212,7 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     let (notes, screens, upgrades, sharing) = (NotificationState::path(), screens_dir(), upgrade_path(), olo_protocol::SharingState::path());
     use olo_protocol::performance::{PerformanceSettings, SupervisorState};
     let (perf, supervising) = (PerformanceSettings::path(), SupervisorState::path());
-    let installed = olo_kit::find_program("olo-supervisor").is_some();
+    let installed = olo_xdg::find_program("olo-supervisor").is_some();
     let read = {
         let (notes, screens, upgrades, sharing, shared) = (notes.clone(), screens.clone(), upgrades.clone(), sharing.clone(), shared.clone());
         let (perf, supervising) = (perf.clone(), supervising.clone());
@@ -252,7 +252,7 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     read(&[]);
     let read = Arc::new(read);
     let on_change = read.clone();
-    if let Some(w) = olo_kit::watch::watch([notes, screens, upgrades, sharing, perf, supervising], move |changed| on_change(changed)) {
+    if let Some(w) = olo_ui::watch::watch([notes, screens, upgrades, sharing, perf, supervising], move |changed| on_change(changed)) {
         // Deskbar's for as long as it runs.
         std::mem::forget(w);
     }
@@ -358,33 +358,102 @@ pub fn until_next_tick(seconds: bool) -> Duration {
 }
 
 // ---- glyphs -------------------------------------------------------------------
+//
+// Each is drawn in a 16-point square `r`: lines that run straight are on
+// device pixels at every scale (`style`'s lines and snapped boxes), the
+// rest exact-coverage paths (`PathBuilder`) and the GPU's discs, rings
+// and arcs (`paint_sector`).
 
-fn ink(p: &Palette) -> Color32 {
+fn ink(p: &Palette) -> Hsla {
     c(p.panel_text)
 }
 
 /// Ink for an off or empty part: halfway to the background, so it reads in
 /// light and dark alike (a darker shade vanishes on a dark tray).
-fn dim(p: &Palette) -> Color32 {
-    ink(p).lerp_to_gamma(c(p.panel_background), 0.6)
+fn dim(p: &Palette) -> Hsla {
+    c(olo_ui::palette::mix(p.panel_text, p.panel_background, 0.6))
 }
 
 /// `v` points as whole device pixels.
-fn whole(painter: &Painter, v: f32) -> f32 {
-    let ppp = painter.pixels_per_point();
-    (v * ppp).round() / ppp
+fn whole(window: &Window, v: f32) -> f32 {
+    let s = window.scale_factor();
+    (v * s).round() / s
 }
 
-pub fn draw_battery(painter: &Painter, r: Rect, p: &Palette, percent: u32, charging: bool) {
+fn pt(x: f32, y: f32) -> Point<Pixels> {
+    point(px(x), px(y))
+}
+
+fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<Pixels> {
+    Bounds { origin: pt(x, y), size: size(px(w), px(h)) }
+}
+
+fn corners(min: (f32, f32), max: (f32, f32)) -> Bounds<Pixels> {
+    Bounds::from_corners(pt(min.0, min.1), pt(max.0, max.1))
+}
+
+/// `pts` filled.
+fn polygon(window: &mut Window, pts: &[(f32, f32)], color: Hsla) {
+    let mut path = PathBuilder::fill();
+    path.move_to(pt(pts[0].0, pts[0].1));
+    for &(x, y) in &pts[1..] {
+        path.line_to(pt(x, y));
+    }
+    path.close();
+    if let Ok(path) = path.build() {
+        window.paint_path(path, color);
+    }
+}
+
+/// A line through `pts`, `width` wide (closed back to the first).
+fn polyline(window: &mut Window, pts: &[(f32, f32)], width: f32, closed: bool, color: Hsla) {
+    let mut path = PathBuilder::stroke(px(width));
+    path.move_to(pt(pts[0].0, pts[0].1));
+    for &(x, y) in &pts[1..] {
+        path.line_to(pt(x, y));
+    }
+    if closed {
+        path.close();
+    }
+    if let Ok(path) = path.build() {
+        window.paint_path(path, color);
+    }
+}
+
+fn disc(window: &mut Window, c: (f32, f32), r: f32, color: Hsla) {
+    window.paint_sector(pt(c.0, c.1), px(0.0), px(r), 0.0, std::f32::consts::TAU, color);
+}
+
+/// A line `width` wide round `c` at `radius`, from `start` radians
+/// clockwise from 12 o'clock, `sweep` round.
+fn arc(window: &mut Window, c: (f32, f32), radius: f32, width: f32, start: f32, sweep: f32, color: Hsla) {
+    window.paint_sector(pt(c.0, c.1), px(radius - width / 2.0), px(radius + width / 2.0), start, sweep, color);
+}
+
+/// `b` filled, its corners rounded `radius`.
+fn round_rect(window: &mut Window, b: Bounds<Pixels>, radius: f32, color: Hsla) {
+    window.paint_quad(quad(b, px(radius), color, px(0.0), transparent_black(), BorderStyle::Solid));
+}
+
+/// `b`'s outline, a hairline inside it, its corners rounded `radius`
+/// (and filled `fill`).
+fn round_frame(window: &mut Window, b: Bounds<Pixels>, radius: f32, fill: Hsla, line: Hsla) {
+    window.paint_quad(quad(b, px(radius), fill, style::hairline(window), line, BorderStyle::Solid));
+}
+
+fn left_top(r: Bounds<Pixels>) -> (f32, f32) {
+    (f32::from(r.left()), f32::from(r.top()))
+}
+
+pub fn draw_battery(window: &mut Window, r: Bounds<Pixels>, p: &Palette, percent: u32, charging: bool) {
     // On device pixels at any scale: the body's outline a hairline, the
     // nub as far from its top as its bottom, the charge a line inside.
-    let ctx = painter.ctx();
-    let body = style::snap(ctx, Rect::from_min_size(pos2(r.left(), r.top() + 3.0), vec2(14.0, 10.0)));
-    painter.rect_stroke(body, 1.5, Stroke::new(style::hairline(ctx), ink(p)), egui::StrokeKind::Inside);
-    let gap = whole(painter, 3.0);
-    let nub = Rect::from_min_max(pos2(body.right(), body.top() + gap), pos2(body.right() + whole(painter, 1.5), body.bottom() - gap));
-    painter.rect_filled(nub, 0.5, ink(p));
-    let level = (percent.min(100) as f32) / 100.0;
+    let (l, t) = left_top(r);
+    let body = style::snap(window, rect(l, t + 3.0, 14.0, 10.0));
+    round_frame(window, body, 1.5, transparent_black(), ink(p));
+    let gap = whole(window, 3.0);
+    let (bl, bt, br, bb) = (f32::from(body.left()), f32::from(body.top()), f32::from(body.right()), f32::from(body.bottom()));
+    round_rect(window, corners((br, bt + gap), (br + whole(window, 1.5), bb - gap)), 0.5, ink(p));
     let fill = if charging {
         c(p.success)
     } else if percent <= 10 {
@@ -394,172 +463,141 @@ pub fn draw_battery(painter: &Painter, r: Rect, p: &Palette, percent: u32, charg
     } else {
         ink(p)
     };
-    let inner = style::inset(ctx, body, 2.0);
-    let w = whole(painter, inner.width() * level).max(style::hairline(ctx));
-    painter.rect_filled(Rect::from_min_size(inner.min, vec2(w, inner.height())), 0.5, fill);
+    let inner = style::inset(window, body, 2.0);
+    let level = (percent.min(100) as f32) / 100.0;
+    let w = whole(window, f32::from(inner.size.width) * level).max(f32::from(style::hairline(window)));
+    round_rect(window, Bounds { origin: inner.origin, size: size(px(w), inner.size.height) }, 0.5, fill);
     if charging {
-        let cx = body.center().x;
-        let cy = body.center().y;
-        let bolt = [pos2(cx + 1.0, cy - 5.0),
-            pos2(cx - 2.5, cy + 0.5),
-            pos2(cx - 0.2, cy + 0.5),
-            pos2(cx - 1.0, cy + 5.0),
-            pos2(cx + 2.5, cy - 0.5),
-            pos2(cx + 0.2, cy - 0.5)];
-        painter.add(Shape::convex_polygon(bolt[..3].to_vec(), c(p.hue(olo_kit::theme::Hue::Yellow)), Stroke::NONE));
-        painter.add(Shape::line(bolt.iter().copied().chain([bolt[0]]).collect(), Stroke::new(0.8, ink(p))));
+        let (cx, cy) = ((bl + br) / 2.0, (bt + bb) / 2.0);
+        let bolt = [(cx + 1.0, cy - 5.0), (cx - 2.5, cy + 0.5), (cx - 0.2, cy + 0.5), (cx - 1.0, cy + 5.0), (cx + 2.5, cy - 0.5), (cx + 0.2, cy - 0.5)];
+        polygon(window, &bolt, c(p.hue(Hue::Yellow)));
+        polyline(window, &bolt, 0.8, true, ink(p));
     }
 }
 
-pub fn draw_wifi(painter: &Painter, r: Rect, p: &Palette, signal: Option<u32>) {
-    let origin = pos2(r.center().x, r.bottom() - 2.5);
+pub fn draw_wifi(window: &mut Window, r: Bounds<Pixels>, p: &Palette, signal: Option<u32>) {
+    let origin = (f32::from(r.center().x), f32::from(r.bottom()) - 2.5);
     let bars = match signal {
         None => 0,
         Some(s) if s >= 67 => 3,
         Some(s) if s >= 34 => 2,
         Some(_) => 1,
     };
-    painter.circle_filled(origin, 1.4, if signal.is_some() { ink(p) } else { dim(p) });
+    disc(window, origin, 1.4, if signal.is_some() { ink(p) } else { dim(p) });
+    // A quarter turn each, centred on straight up.
+    let pi = std::f32::consts::PI;
     for i in 1..=3 {
-        let radius = 3.5 * i as f32;
         let color = if i <= bars { ink(p) } else { dim(p) };
-        let pts: Vec<_> = (0..=12)
-            .map(|k| {
-                let a = std::f32::consts::PI * (1.25 + 0.5 * k as f32 / 12.0);
-                origin + vec2(a.cos(), a.sin()) * radius
-            })
-            .collect();
-        painter.add(Shape::line(pts, Stroke::new(1.5, color)));
+        arc(window, origin, 3.5 * i as f32, 1.5, 1.75 * pi, 0.5 * pi, color);
     }
 }
 
-pub fn draw_volume(painter: &Painter, r: Rect, p: &Palette, level: f32, muted: bool) {
-    let x = r.left() + 1.0;
-    let cy = r.center().y;
-    let speaker = vec![
-        pos2(x, cy - 2.5),
-        pos2(x + 3.0, cy - 2.5),
-        pos2(x + 7.0, cy - 6.0),
-        pos2(x + 7.0, cy + 6.0),
-        pos2(x + 3.0, cy + 2.5),
-        pos2(x, cy + 2.5),
-    ];
-    painter.add(Shape::convex_polygon(speaker, ink(p), Stroke::NONE));
+pub fn draw_volume(window: &mut Window, r: Bounds<Pixels>, p: &Palette, level: f32, muted: bool) {
+    let x = f32::from(r.left()) + 1.0;
+    let cy = f32::from(r.center().y);
+    polygon(window, &[(x, cy - 2.5), (x + 3.0, cy - 2.5), (x + 7.0, cy - 6.0), (x + 7.0, cy + 6.0), (x + 3.0, cy + 2.5), (x, cy + 2.5)], ink(p));
     if muted {
-        let s = Stroke::new(1.4, c(p.failure));
-        painter.line_segment([pos2(x + 9.5, cy - 3.0), pos2(x + 14.5, cy + 3.0)], s);
-        painter.line_segment([pos2(x + 9.5, cy + 3.0), pos2(x + 14.5, cy - 3.0)], s);
+        let red = c(p.failure);
+        window.paint_segment(pt(x + 9.5, cy - 3.0), pt(x + 14.5, cy + 3.0), px(1.4), false, red);
+        window.paint_segment(pt(x + 9.5, cy + 3.0), pt(x + 14.5, cy - 3.0), px(1.4), false, red);
         return;
     }
     let waves = if level <= 0.01 { 0 } else if level < 0.34 { 1 } else if level < 0.67 { 2 } else { 3 };
+    // Round 3 o'clock, 0.8 radians each way.
+    let half_turn = std::f32::consts::FRAC_PI_2;
     for i in 1..=3 {
-        let radius = 2.5 + 2.6 * i as f32;
         let color = if i <= waves { ink(p) } else { dim(p) };
-        let center = pos2(x + 6.0, cy);
-        let pts: Vec<_> = (0..=10)
-            .map(|k| {
-                let a = -0.8 + 1.6 * k as f32 / 10.0;
-                center + vec2(a.cos(), a.sin()) * radius
-            })
-            .collect();
-        painter.add(Shape::line(pts, Stroke::new(1.3, color)));
+        arc(window, (x + 6.0, cy), 2.5 + 2.6 * i as f32, 1.3, half_turn - 0.8, 1.6, color);
     }
 }
 
 /// A newer build is ready: a green arrow rising out of a tray.
-pub fn draw_upgrade(painter: &Painter, r: Rect, p: &Palette) {
-    let cx = r.center().x;
-    let green = c(p.success);
-    let outline = Stroke::new(1.0, ink(p));
-    // The arrow: head and shaft (each convex), then one outline round both.
-    let (top, neck, foot) = (r.top() + 1.5, r.top() + 7.5, r.bottom() - 4.5);
-    let head = vec![pos2(cx, top), pos2(cx + 5.5, neck), pos2(cx - 5.5, neck)];
-    let shaft = Rect::from_min_max(pos2(cx - 2.5, neck), pos2(cx + 2.5, foot));
-    painter.add(Shape::convex_polygon(head, green, Stroke::NONE));
-    painter.rect_filled(shaft, 0.0, green);
-    let edge = vec![
-        pos2(cx, top),
-        pos2(cx + 5.5, neck),
-        pos2(cx + 2.5, neck),
-        pos2(cx + 2.5, foot),
-        pos2(cx - 2.5, foot),
-        pos2(cx - 2.5, neck),
-        pos2(cx - 5.5, neck),
-        pos2(cx, top),
-    ];
-    painter.add(Shape::line(edge, outline));
+pub fn draw_upgrade(window: &mut Window, r: Bounds<Pixels>, p: &Palette) {
+    let cx = f32::from(r.center().x);
+    let (rt, rb) = (f32::from(r.top()), f32::from(r.bottom()));
+    // The arrow, filled, then its outline.
+    let (top, neck, foot) = (rt + 1.5, rt + 7.5, rb - 4.5);
+    let edge = [(cx, top), (cx + 5.5, neck), (cx + 2.5, neck), (cx + 2.5, foot), (cx - 2.5, foot), (cx - 2.5, neck), (cx - 5.5, neck)];
+    polygon(window, &edge, c(p.success));
+    polyline(window, &edge, 1.0, true, ink(p));
     // The tray it rises from.
-    let (l, rt, b) = (whole(painter, r.left() + 1.0), whole(painter, r.right() - 1.0), whole(painter, r.bottom() - 1.0));
-    let post = b - whole(painter, 4.0);
-    style::hline_above(painter, l, rt, b, ink(p));
-    style::vline(painter, l, post, b, ink(p));
-    style::vline_left_of(painter, rt, post, b, ink(p));
+    let (l, right, b) = (whole(window, f32::from(r.left()) + 1.0), whole(window, f32::from(r.right()) - 1.0), whole(window, rb - 1.0));
+    let post = b - whole(window, 4.0);
+    style::hline_above(window, px(l), px(right), px(b), ink(p));
+    style::vline(window, px(l), px(post), px(b), ink(p));
+    style::vline_left_of(window, px(right), px(post), px(b), ink(p));
 }
 
 /// A bell, with a count of unread notifications; struck through and dim
 /// while Do Not Disturb is on.
-pub fn draw_bell(painter: &Painter, r: Rect, p: &Palette, unread: u32, quiet: bool) {
+pub fn draw_bell(window: &mut Window, cx_: &mut App, r: Bounds<Pixels>, p: &Palette, unread: u32, quiet: bool) {
     let color = if quiet { dim(p) } else { ink(p) };
-    let cx = r.center().x - 0.5;
+    let cx = f32::from(r.center().x) - 0.5;
     // The body: a dome widening to a lip.
-    let top = r.top() + 2.5;
-    let lip = r.bottom() - 4.0;
-    let mut outline = Vec::new();
-    for k in 0..=12 {
-        let t = k as f32 / 12.0;
-        let a = std::f32::consts::PI * (1.0 + t);
-        outline.push(pos2(cx + a.cos() * 3.6, top + 3.6 + a.sin() * 3.6));
-    }
-    outline.extend([pos2(cx + 4.4, lip - 1.5), pos2(cx - 4.4, lip - 1.5)]);
-    painter.add(Shape::convex_polygon(outline, color, Stroke::NONE));
-    painter.rect_filled(style::snap(painter.ctx(), Rect::from_min_max(pos2(cx - 6.0, lip - 2.0), pos2(cx + 6.0, lip))), 1.0, color);
+    let top = f32::from(r.top()) + 2.5;
+    let lip = f32::from(r.bottom()) - 4.0;
+    let mut outline: Vec<(f32, f32)> = (0..=12)
+        .map(|k| {
+            let a = std::f32::consts::PI * (1.0 + k as f32 / 12.0);
+            (cx + a.cos() * 3.6, top + 3.6 + a.sin() * 3.6)
+        })
+        .collect();
+    outline.extend([(cx + 4.4, lip - 1.5), (cx - 4.4, lip - 1.5)]);
+    polygon(window, &outline, color);
+    let base = style::snap(window, corners((cx - 6.0, lip - 2.0), (cx + 6.0, lip)));
+    round_rect(window, base, 1.0, color);
     // The clapper.
-    painter.circle_filled(pos2(cx, lip + 1.6), 1.6, color);
+    disc(window, (cx, lip + 1.6), 1.6, color);
     if quiet {
-        let s = Stroke::new(1.4, ink(p));
-        painter.line_segment([pos2(cx - 6.0, top - 0.5), pos2(cx + 6.0, lip + 3.0)], Stroke::new(3.0, c(p.panel_background)));
-        painter.line_segment([pos2(cx - 6.0, top - 0.5), pos2(cx + 6.0, lip + 3.0)], s);
+        let (a, b) = (pt(cx - 6.0, top - 0.5), pt(cx + 6.0, lip + 3.0));
+        window.paint_segment(a, b, px(3.0), false, c(p.panel_background));
+        window.paint_segment(a, b, px(1.4), false, ink(p));
     }
     if unread > 0 {
-        badge(painter, r, p, unread as usize, c(p.failure));
+        badge(window, cx_, r, p, unread as usize, c(p.failure));
     }
 }
 
 /// A count in a pill on a glyph's top-right corner.
-fn badge(painter: &Painter, r: Rect, p: &Palette, n: usize, fill: Color32) {
+fn badge(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, p: &Palette, n: usize, fill: Hsla) {
     let text = if n > 99 { "99+".to_string() } else { n.to_string() };
-    let font = egui::FontId::new(8.5, olo_kit::style::bold());
-    let galley = painter.layout_no_wrap(text, font, Color32::WHITE);
-    let w = (galley.size().x + 4.0).max(10.0);
-    let badge = style::snap(painter.ctx(), Rect::from_min_size(pos2(r.right() + 3.0 - w, r.top() - 1.5), vec2(w, 10.0)));
+    let font = style::ui_font(FontWeight::BOLD);
+    let w = (f32::from(style::text_width(window, text.clone(), 8.5, font.clone())) + 4.0).max(10.0);
+    let b = style::snap(window, rect(f32::from(r.right()) + 3.0 - w, f32::from(r.top()) - 1.5, w, 10.0));
     // Ringed in the panel's colour, a line wide (whole device pixels).
-    let ring = style::hairline(painter.ctx());
-    painter.rect_filled(badge.expand(ring), 5.0 + ring, c(p.panel_background));
-    painter.rect_filled(badge, 5.0, fill);
-    painter.galley(badge.center() - galley.size() / 2.0, galley, Color32::WHITE);
+    let ring = style::hairline(window);
+    let outer = Bounds::from_corners(point(b.left() - ring, b.top() - ring), point(b.right() + ring, b.bottom() + ring));
+    round_rect(window, outer, 5.0 + f32::from(ring), c(p.panel_background));
+    round_rect(window, b, 5.0, fill);
+    style::label(window, cx, b.center().x, b.center().y, style::Align::Center, text, 8.5, font, olo_ui::gpui::white());
+}
+
+/// A monitor: its screen (`fill` behind a hairline), on a stand on
+/// device pixels; the screen an odd number of points wide, so the stand
+/// stands in the middle. Its screen.
+fn monitor(window: &mut Window, r: Bounds<Pixels>, p: &Palette, fill: Hsla) -> Bounds<Pixels> {
+    let hair = f32::from(style::hairline(window));
+    let (l, t) = left_top(r);
+    let screen = style::snap(window, rect(l + 0.5, t + 2.0, 15.0, 10.0));
+    round_frame(window, screen, 1.5, fill, ink(p));
+    let cx = f32::from(screen.center().x);
+    let stand = whole(window, cx - hair / 2.0);
+    let foot = whole(window, f32::from(r.bottom()) - 1.0);
+    style::vline(window, px(stand), screen.bottom(), px(foot), ink(p));
+    style::hline_above(window, px(whole(window, cx - 4.0)), px(whole(window, cx + 4.0)), px(foot), ink(p));
+    screen
 }
 
 /// Agent screens are running: a monitor with a pointer on it, and their
 /// count when there is more than one.
-pub fn draw_screens(painter: &Painter, r: Rect, p: &Palette, count: usize) {
-    // Lines are hairlines on device pixels; the screen is an odd number
-    // of points wide, so its stand can stand in the middle.
-    let hair = style::hairline(painter.ctx());
-    let screen = style::snap(painter.ctx(), Rect::from_min_size(pos2(r.left() + 0.5, r.top() + 2.0), vec2(15.0, 10.0)));
-    painter.rect_filled(screen, 1.5, c(p.keyboard_navigation).gamma_multiply(0.35));
-    painter.rect_stroke(screen, 1.5, Stroke::new(hair, ink(p)), egui::StrokeKind::Inside);
-    // The stand.
-    let cx = screen.center().x;
-    let stand = whole(painter, cx - hair / 2.0);
-    let foot = whole(painter, r.bottom() - 1.0);
-    style::vline(painter, stand, screen.bottom(), foot, ink(p));
-    style::hline_above(painter, whole(painter, cx - 4.0), whole(painter, cx + 4.0), foot, ink(p));
+pub fn draw_screens(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, p: &Palette, count: usize) {
+    let screen = monitor(window, r, p, c(p.keyboard_navigation).opacity(0.35));
     // The agent's pointer, in the middle of the screen.
-    let (x, y) = (cx - 2.5, screen.top() + 1.5);
-    painter.add(Shape::convex_polygon(vec![pos2(x, y), pos2(x, y + 5.5), pos2(x + 4.2, y + 4.2)], ink(p), Stroke::NONE));
-    painter.line_segment([pos2(x + 1.8, y + 4.0), pos2(x + 3.4, y + 6.6)], Stroke::new(1.3, ink(p)));
+    let (x, y) = (f32::from(screen.center().x) - 2.5, f32::from(screen.top()) + 1.5);
+    polygon(window, &[(x, y), (x, y + 5.5), (x + 4.2, y + 4.2)], ink(p));
+    window.paint_segment(pt(x + 1.8, y + 4.0), pt(x + 3.4, y + 6.6), px(1.3), false, ink(p));
     if count > 1 {
-        badge(painter, r, p, count, c(p.keyboard_navigation));
+        badge(window, cx, r, p, count, c(p.keyboard_navigation));
     }
 }
 
@@ -567,164 +605,158 @@ pub fn draw_screens(painter: &Painter, r: Rect, p: &Palette, count: usize) {
 /// at the bottom with its needle up at speed (the dial tinted) while it's
 /// on, resting low and dim while off; what it found as a count, red if
 /// any is urgent.
-pub fn draw_gauge(painter: &Painter, r: Rect, p: &Palette, on: bool, findings: usize, urgent: bool) {
+pub fn draw_gauge(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, p: &Palette, on: bool, findings: usize, urgent: bool) {
     let line = if on { ink(p) } else { dim(p) };
-    let centre = style::snap_centred(painter.ctx(), pos2(r.center().x, r.top() + 8.5), vec2(1.0, 1.0)).center();
+    let centre = style::snap_centred(window, pt(f32::from(r.center().x), f32::from(r.top()) + 8.5), 1.0, 1.0).center();
+    let centre = (f32::from(centre.x), f32::from(centre.y));
     let radius = 6.6;
     let pi = std::f32::consts::PI;
     // From the lower left over the top to the lower right.
-    let rim: Vec<egui::Pos2> = (0..=24).map(|i| 1.25 * pi - 1.5 * pi * i as f32 / 24.0).map(|a| centre + radius * vec2(a.cos(), -a.sin())).collect();
     if on {
-        painter.add(Shape::convex_polygon(rim.clone(), c(p.keyboard_navigation).gamma_multiply(0.3), Stroke::NONE));
+        let rim: Vec<(f32, f32)> = (0..=24).map(|i| 1.25 * pi - 1.5 * pi * i as f32 / 24.0).map(|a| (centre.0 + radius * a.cos(), centre.1 - radius * a.sin())).collect();
+        polygon(window, &rim, c(p.keyboard_navigation).opacity(0.3));
     }
-    painter.add(Shape::line(rim, Stroke::new(1.3, line)));
+    arc(window, centre, radius, 1.3, 1.25 * pi, 1.5 * pi, line);
     // (Straight up, clear of the count beside it.)
     let a = if on { pi * 0.5 } else { pi * 1.1 };
-    painter.line_segment([centre, centre + vec2(a.cos(), -a.sin()) * (radius - 1.6)], Stroke::new(1.4, line));
-    painter.circle_filled(centre, 1.4, line);
+    let tip = (centre.0 + a.cos() * (radius - 1.6), centre.1 - a.sin() * (radius - 1.6));
+    window.paint_segment(pt(centre.0, centre.1), pt(tip.0, tip.1), px(1.4), false, line);
+    disc(window, centre, 1.4, line);
     if on && findings > 0 {
-        badge(painter, r, p, findings, c(if urgent { p.failure } else { p.warning }));
+        badge(window, cx, r, p, findings, c(if urgent { p.failure } else { p.warning }));
     }
 }
 
 /// This Deskbar's display, of several: a monitor with the display's
 /// number in it ("D1" in its workspaces' names).
-pub fn draw_display(painter: &Painter, r: Rect, p: &Palette, number: u32) {
-    let hair = style::hairline(painter.ctx());
-    let screen = style::snap(painter.ctx(), Rect::from_min_size(pos2(r.left() + 0.5, r.top() + 2.0), vec2(15.0, 10.0)));
-    painter.rect_filled(screen, 1.5, c(p.panel_background));
-    painter.rect_stroke(screen, 1.5, Stroke::new(hair, ink(p)), egui::StrokeKind::Inside);
-    let cx = screen.center().x;
-    let stand = whole(painter, cx - hair / 2.0);
-    let foot = whole(painter, r.bottom() - 1.0);
-    style::vline(painter, stand, screen.bottom(), foot, ink(p));
-    style::hline_above(painter, whole(painter, cx - 4.0), whole(painter, cx + 4.0), foot, ink(p));
-    // The number, on whole pixels, in the middle of the screen.
-    let font = egui::FontId::new(8.0, olo_kit::style::bold());
-    let galley = painter.layout_no_wrap(number.to_string(), font, ink(p));
-    let at = style::snap_centred(painter.ctx(), screen.center(), galley.size()).min;
-    painter.galley(at, galley, ink(p));
+pub fn draw_display(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, p: &Palette, number: u32) {
+    let screen = monitor(window, r, p, c(p.panel_background));
+    style::label(window, cx, screen.center().x, screen.center().y, style::Align::Center, number.to_string(), 8.0, style::ui_font(FontWeight::BOLD), ink(p));
 }
 
 /// A screen being shared: the screen, with the red dot of a recording
 /// in its corner (it is being seen elsewhere: never easy to miss).
-pub fn draw_sharing(painter: &Painter, r: Rect, p: &Palette) {
-    let hair = style::hairline(painter.ctx());
-    let screen = style::snap(painter.ctx(), Rect::from_min_size(pos2(r.left() + 0.5, r.top() + 2.0), vec2(15.0, 10.0)));
-    painter.rect_filled(screen, 1.5, c(p.failure).gamma_multiply(0.18));
-    painter.rect_stroke(screen, 1.5, Stroke::new(hair, ink(p)), egui::StrokeKind::Inside);
-    let cx = screen.center().x;
-    let stand = whole(painter, cx - hair / 2.0);
-    let foot = whole(painter, r.bottom() - 1.0);
-    style::vline(painter, stand, screen.bottom(), foot, ink(p));
-    style::hline_above(painter, whole(painter, cx - 4.0), whole(painter, cx + 4.0), foot, ink(p));
+pub fn draw_sharing(window: &mut Window, r: Bounds<Pixels>, p: &Palette) {
+    let screen = monitor(window, r, p, c(p.failure).opacity(0.18));
     // The dot, ringed in the panel's colour so it stands off the frame.
-    let at = style::snap_centred(painter.ctx(), pos2(screen.right() - 1.0, screen.top() + 1.0), vec2(5.0, 5.0)).center();
-    painter.circle_filled(at, 3.4, c(p.panel_background));
-    painter.circle_filled(at, 2.5, c(p.failure));
+    let at = style::snap_centred(window, pt(f32::from(screen.right()) - 1.0, f32::from(screen.top()) + 1.0), 5.0, 5.0).center();
+    let at = (f32::from(at.x), f32::from(at.y));
+    disc(window, at, 3.4, c(p.panel_background));
+    disc(window, at, 2.5, c(p.failure));
+}
+
+/// A box's outline in hairlines on device pixels (its edges inside it).
+fn outline(window: &mut Window, b: Bounds<Pixels>, color: Hsla) {
+    style::hline(window, b.left(), b.right(), b.top(), color);
+    style::hline_above(window, b.left(), b.right(), b.bottom(), color);
+    style::vline(window, b.left(), b.top(), b.bottom(), color);
+    style::vline_left_of(window, b.right(), b.top(), b.bottom(), color);
 }
 
 /// The windowing mode: Standard, two windows one over the other, in
 /// outline; Auto-Tiling, a screen in tiles (a half beside two quarters);
 /// Focus, one window in a viewfinder's corners. The tiles are filled in the
 /// status-bar blue (the mode isn't Standard).
-pub fn draw_mode(painter: &Painter, r: Rect, p: &Palette, mode: olo_protocol::WindowingMode) {
+pub fn draw_mode(window: &mut Window, r: Bounds<Pixels>, p: &Palette, mode: olo_protocol::WindowingMode) {
     use olo_protocol::WindowingMode as M;
-    let ctx = painter.ctx();
     let on = mode != M::Standard;
     let line = if on { ink(p) } else { dim(p) };
-    let (l, t) = (r.left() + 1.0, r.top() + 2.0);
-    let rect = |x0: f32, y0: f32, x1: f32, y1: f32| Rect::from_min_max(pos2(l + x0, t + y0), pos2(l + x1, t + y1));
+    let (l, t) = left_top(r);
+    let (l, t) = (l + 1.0, t + 2.0);
+    let at = |x0: f32, y0: f32, x1: f32, y1: f32| corners((l + x0, t + y0), (l + x1, t + y1));
     let tiles = match mode {
         M::Standard => {
             // The window behind, as far as the one in front lets it show.
-            let (back, front) = (olo_kit::style::snap(ctx, rect(0.0, 0.0, 9.0, 8.0)), olo_kit::style::snap(ctx, rect(5.0, 4.0, 14.0, 12.0)));
-            olo_kit::style::hline(painter, back.left(), back.right(), back.top(), line);
-            olo_kit::style::vline(painter, back.left(), back.top(), back.bottom(), line);
-            olo_kit::style::vline_left_of(painter, back.right(), back.top(), front.top(), line);
-            olo_kit::style::hline_above(painter, back.left(), front.left(), back.bottom(), line);
+            let (back, front) = (style::snap(window, at(0.0, 0.0, 9.0, 8.0)), style::snap(window, at(5.0, 4.0, 14.0, 12.0)));
+            style::hline(window, back.left(), back.right(), back.top(), line);
+            style::vline(window, back.left(), back.top(), back.bottom(), line);
+            style::vline_left_of(window, back.right(), back.top(), front.top(), line);
+            style::hline_above(window, back.left(), front.left(), back.bottom(), line);
             vec![front]
         }
-        M::AutoTiling => vec![rect(0.0, 0.0, 6.0, 12.0), rect(7.0, 0.0, 14.0, 5.5), rect(7.0, 6.5, 14.0, 12.0)],
+        M::AutoTiling => vec![at(0.0, 0.0, 6.0, 12.0), at(7.0, 0.0, 14.0, 5.5), at(7.0, 6.5, 14.0, 12.0)],
         M::Focus => {
-            let f = olo_kit::style::snap(ctx, rect(0.0, 0.0, 14.0, 12.0));
-            let (ax, ay) = (whole(painter, 4.0), whole(painter, 3.0));
-            olo_kit::style::hline(painter, f.left(), f.left() + ax, f.top(), line);
-            olo_kit::style::vline(painter, f.left(), f.top(), f.top() + ay, line);
-            olo_kit::style::hline(painter, f.right() - ax, f.right(), f.top(), line);
-            olo_kit::style::vline_left_of(painter, f.right(), f.top(), f.top() + ay, line);
-            olo_kit::style::hline_above(painter, f.left(), f.left() + ax, f.bottom(), line);
-            olo_kit::style::vline(painter, f.left(), f.bottom() - ay, f.bottom(), line);
-            olo_kit::style::hline_above(painter, f.right() - ax, f.right(), f.bottom(), line);
-            olo_kit::style::vline_left_of(painter, f.right(), f.bottom() - ay, f.bottom(), line);
-            vec![rect(3.0, 3.0, 11.0, 9.0)]
+            let f = style::snap(window, at(0.0, 0.0, 14.0, 12.0));
+            let (ax, ay) = (px(whole(window, 4.0)), px(whole(window, 3.0)));
+            style::hline(window, f.left(), f.left() + ax, f.top(), line);
+            style::vline(window, f.left(), f.top(), f.top() + ay, line);
+            style::hline(window, f.right() - ax, f.right(), f.top(), line);
+            style::vline_left_of(window, f.right(), f.top(), f.top() + ay, line);
+            style::hline_above(window, f.left(), f.left() + ax, f.bottom(), line);
+            style::vline(window, f.left(), f.bottom() - ay, f.bottom(), line);
+            style::hline_above(window, f.right() - ax, f.right(), f.bottom(), line);
+            style::vline_left_of(window, f.right(), f.bottom() - ay, f.bottom(), line);
+            vec![at(3.0, 3.0, 11.0, 9.0)]
         }
     };
     for tile in tiles {
-        let tile = olo_kit::style::snap(ctx, tile);
+        let tile = style::snap(window, tile);
         if on {
-            painter.rect_filled(tile, 0.0, c(p.status_bar));
+            style::fill_rect(window, tile, c(p.status_bar));
         }
-        olo_kit::style::hline(painter, tile.left(), tile.right(), tile.top(), line);
-        olo_kit::style::hline_above(painter, tile.left(), tile.right(), tile.bottom(), line);
-        olo_kit::style::vline(painter, tile.left(), tile.top(), tile.bottom(), line);
-        olo_kit::style::vline_left_of(painter, tile.right(), tile.top(), tile.bottom(), line);
+        outline(window, tile, line);
     }
 }
 
 /// A coffee cup; full and steaming when `on` (caffeinated). Its lines are
 /// hairlines, the cup's sides on device pixels.
-pub fn draw_cup(painter: &Painter, r: Rect, p: &Palette, on: bool) {
+pub fn draw_cup(window: &mut Window, r: Bounds<Pixels>, p: &Palette, on: bool) {
     let color = if on { ink(p) } else { dim(p) };
-    let hair = style::hairline(painter.ctx());
-    let s = Stroke::new(hair, color);
-    let bowl = egui::CornerRadius { nw: 0, ne: 0, sw: 3, se: 3 };
-    let cup = style::snap(painter.ctx(), Rect::from_min_size(pos2(r.left() + 1.0, r.top() + 6.0), vec2(10.0, 9.0)));
+    let hair = f32::from(style::hairline(window));
+    let (l, t) = left_top(r);
+    let cup = style::snap(window, rect(l + 1.0, t + 6.0, 10.0, 9.0));
+    // A bowl: square at the top, round at the bottom.
+    let bowl = olo_ui::gpui::Corners { top_left: px(0.0), top_right: px(0.0), bottom_left: px(3.0), bottom_right: px(3.0) };
     if on {
-        let coffee = Rect::from_min_max(pos2(cup.left(), cup.top() + whole(painter, 2.0)), cup.max);
-        painter.rect_filled(coffee, bowl, c(p.hue(olo_kit::theme::Hue::Brown)));
+        let coffee = Bounds::from_corners(point(cup.left(), cup.top() + px(whole(window, 2.0))), cup.bottom_right());
+        window.paint_quad(quad(coffee, bowl, c(p.hue(Hue::Brown)), px(0.0), transparent_black(), BorderStyle::Solid));
     }
-    painter.rect_stroke(cup, bowl, s, egui::StrokeKind::Inside);
+    window.paint_quad(quad(cup, bowl, transparent_black(), px(hair), color, BorderStyle::Solid));
     // The handle, from the middle of the cup's side.
-    let c0 = pos2(cup.right() - hair / 2.0, cup.top() + 4.0);
-    let handle: Vec<_> = (0..=8)
+    let c0 = (f32::from(cup.right()) - hair / 2.0, f32::from(cup.top()) + 4.0);
+    let handle: Vec<(f32, f32)> = (0..=8)
         .map(|k| {
             let a = -std::f32::consts::FRAC_PI_2 + std::f32::consts::PI * k as f32 / 8.0;
-            c0 + vec2(a.cos() * 2.8, a.sin() * 2.3)
+            (c0.0 + a.cos() * 2.8, c0.1 + a.sin() * 2.3)
         })
         .collect();
-    painter.add(Shape::line(handle, s));
+    polyline(window, &handle, hair, false, color);
     if on {
         for dx in [3.5, 6.5] {
-            let x = cup.left() + dx;
-            let steam: Vec<_> = (0..=6)
+            let x = f32::from(cup.left()) + dx;
+            let steam: Vec<(f32, f32)> = (0..=6)
                 .map(|k| {
                     let t = k as f32 / 6.0;
-                    pos2(x + (t * std::f32::consts::TAU).sin() * 0.9, cup.top() - 1.5 - t * 4.5)
+                    (x + (t * std::f32::consts::TAU).sin() * 0.9, f32::from(cup.top()) - 1.5 - t * 4.5)
                 })
                 .collect();
-            painter.add(Shape::line(steam, s));
+            polyline(window, &steam, hair, false, color);
         }
     }
 }
 
 /// A key, its bow gold while requests are approved without asking. Its
 /// lines are hairlines, the shaft and teeth on device pixels.
-pub fn draw_key(painter: &Painter, r: Rect, p: &Palette, on: bool) {
+pub fn draw_key(window: &mut Window, r: Bounds<Pixels>, p: &Palette, on: bool) {
     let color = if on { ink(p) } else { dim(p) };
-    let hair = style::hairline(painter.ctx());
-    let y = whole(painter, r.center().y);
-    let bow = pos2(r.left() + 4.5, y + hair / 2.0);
+    let hair = f32::from(style::hairline(window));
+    let y = whole(window, f32::from(r.center().y));
+    let bow = (f32::from(r.left()) + 4.5, y + hair / 2.0);
     if on {
-        painter.circle_filled(bow, 3.8, c(p.hue(olo_kit::theme::Hue::Yellow)));
+        disc(window, bow, 3.8, c(p.hue(Hue::Yellow)));
     }
-    painter.circle_stroke(bow, 3.8 - hair / 2.0, Stroke::new(hair, color));
-    painter.circle_filled(bow, 1.1, color);
+    window.paint_sector(pt(bow.0, bow.1), px(3.8 - hair), px(3.8), 0.0, std::f32::consts::TAU, color);
+    disc(window, bow, 1.1, color);
     // The shaft from the bow, its teeth hanging from the end.
-    let end = whole(painter, r.right() - 0.5);
-    style::hline(painter, whole(painter, bow.x + 3.8), end, y, color);
-    style::vline(painter, end - hair, y, y + whole(painter, 4.0), color);
-    style::vline(painter, end - whole(painter, 3.0), y, y + whole(painter, 3.0), color);
+    let end = whole(window, f32::from(r.right()) - 0.5);
+    style::hline(window, px(whole(window, bow.0 + 3.8)), px(end), px(y), color);
+    style::vline(window, px(end - hair), px(y), px(y + whole(window, 4.0)), color);
+    style::vline(window, px(end - whole(window, 3.0)), px(y), px(y + whole(window, 3.0)), color);
+}
+
+/// Whether the palette is dark (the wordmark's version).
+pub fn dark(p: &Palette) -> bool {
+    p.mode == ThemeMode::Dark
 }
 
 #[cfg(test)]

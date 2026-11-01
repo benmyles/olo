@@ -18,7 +18,7 @@ use std::{
     sync::{Arc, mpsc},
 };
 
-use olo_kit::egui as egui_image;
+use olo_ui::gpui::RenderImage;
 use zbus::{
     blocking::Connection,
     message::Header,
@@ -688,40 +688,52 @@ fn mnemonic_free(label: &str) -> String {
 
 /// The item's picture for `px` device pixels square: the smallest size it
 /// sent that is as big (else its biggest), scaled to fit exactly, aspect
-/// kept, so it is drawn a texel to a device pixel. None if it sent none.
-pub fn picture(item: &Item, px: u32) -> Option<egui_image::ColorImage> {
+/// kept, so it is drawn a texel to a device pixel; as GPUI wants it
+/// (BGRA, straight alpha). None if it sent none.
+pub fn picture(item: &Item, px: u32) -> Option<std::sync::Arc<RenderImage>> {
     let best = item.pixmaps.iter().filter(|p| p.width >= px && p.height >= px).min_by_key(|p| p.width * p.height).or_else(|| item.pixmaps.iter().max_by_key(|p| p.width * p.height))?;
     let k = (px as f32 / best.width as f32).min(px as f32 / best.height as f32);
     let (w, h) = (((best.width as f32 * k).round() as u32).max(1), ((best.height as f32 * k).round() as u32).max(1));
-    let rgba = if (w, h) == (best.width, best.height) {
+    let mut rgba = if (w, h) == (best.width, best.height) {
         best.rgba.as_ref().clone()
     } else {
         let src = image::RgbaImage::from_raw(best.width, best.height, best.rgba.as_ref().clone())?;
         // (Premultiplied, so edges don't fringe as it shrinks.)
         image::imageops::resize(&src, w, h, image::imageops::FilterType::CatmullRom).into_raw()
     };
-    Some(egui_image::ColorImage::from_rgba_premultiplied([w as usize, h as usize], &rgba))
+    // Straight alpha, blue first.
+    for p in rgba.chunks_exact_mut(4) {
+        let a = u32::from(p[3]);
+        if a > 0 && a < 255 {
+            for c in &mut p[..3] {
+                *c = ((u32::from(*c) * 255 + a / 2) / a).min(255) as u8;
+            }
+        }
+        p.swap(0, 2);
+    }
+    let buffer = image::RgbaImage::from_raw(w, h, rgba)?;
+    Some(std::sync::Arc::new(RenderImage::new([image::Frame::new(buffer)])))
 }
 
 /// An item's menu as an Olo menu: each entry's command is `sni:ID`.
-pub fn menu(title: &str, entries: &[Entry]) -> olo_kit::Menu {
-    let mut m = olo_kit::Menu::new(title);
+pub fn menu(title: &str, entries: &[Entry]) -> olo_ui::Menu {
+    let mut m = olo_ui::Menu::new(title);
     for e in entries {
         if e.separator {
             // Not first, last or twice in a row.
-            if !m.items.is_empty() && !matches!(m.items.last(), Some(olo_kit::MenuItem::Separator)) {
+            if !m.items.is_empty() && !matches!(m.items.last(), Some(olo_ui::MenuItem::Separator)) {
                 m = m.separator();
             }
         } else if !e.children.is_empty() {
             m = m.submenu(menu(&e.label, &e.children));
         } else {
-            m = m.item(&e.label, format!("sni:{}", e.id), None).enabled(e.enabled).checked(e.check == Some(true));
+            m = m.item(&e.label, format!("sni:{}", e.id)).enabled(e.enabled).checked(e.check == Some(true));
             if let Some(icon) = &e.icon {
                 m = m.icon(icon);
             }
         }
     }
-    while matches!(m.items.last(), Some(olo_kit::MenuItem::Separator)) {
+    while matches!(m.items.last(), Some(olo_ui::MenuItem::Separator)) {
         m.items.pop();
     }
     m
@@ -784,9 +796,9 @@ mod tests {
         let entries = vec![sep.clone(), e(1, "Show Slack"), sep.clone(), sep.clone(), Entry { check: Some(true), ..e(2, "Launch at login") }, Entry { children: vec![e(4, "Away")], ..e(3, "Status") }, sep.clone()];
         let m = menu("Slack", &entries);
         assert_eq!(m.items.len(), 4);
-        assert!(matches!(&m.items[0], olo_kit::MenuItem::Action(a) if a.command == "sni:1"));
-        assert!(matches!(&m.items[1], olo_kit::MenuItem::Separator));
-        assert!(matches!(&m.items[2], olo_kit::MenuItem::Action(a) if a.checked));
-        assert!(matches!(&m.items[3], olo_kit::MenuItem::Submenu(s) if s.title == "Status"));
+        assert!(matches!(&m.items[0], olo_ui::MenuItem::Action(a) if a.command == "sni:1"));
+        assert!(matches!(&m.items[1], olo_ui::MenuItem::Separator));
+        assert!(matches!(&m.items[2], olo_ui::MenuItem::Action(a) if a.checked));
+        assert!(matches!(&m.items[3], olo_ui::MenuItem::Submenu(s) if s.title == "Status"));
     }
 }

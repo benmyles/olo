@@ -90,6 +90,10 @@ pub struct Action {
     /// with any gives them all a column, between the check marks and the
     /// labels.
     pub icon: Option<String>,
+    /// It stands for a minimized window, in a list of windows: a hollow
+    /// diamond where the check mark goes and a lighter label, as a Mac's
+    /// Window menu shows one. It can still be chosen (to bring it back).
+    pub minimized: bool,
 }
 
 impl Menu {
@@ -129,6 +133,14 @@ impl Menu {
 
     pub fn submenu(mut self, menu: Menu) -> Menu {
         self.items.push(MenuItem::Submenu(menu));
+        self
+    }
+
+    /// Marks the last item a minimized window (see [`Action::minimized`]).
+    pub fn minimized(mut self, on: bool) -> Menu {
+        if let Some(MenuItem::Action(a)) = self.items.last_mut() {
+            a.minimized = on;
+        }
         self
     }
 
@@ -291,7 +303,7 @@ fn popup_size(window: &mut Window, menu: &Menu) -> (f32, f32) {
             MenuItem::Action(a) => {
                 label_w = label_w.max(f32::from(style::text_width(window, a.label.clone(), style::PLAIN_SIZE, font.clone())));
                 if let Some(keys) = &a.keys {
-                    key_w = key_w.max(f32::from(style::text_width(window, keys.clone(), style::PLAIN_SIZE, font.clone())));
+                    key_w = key_w.max(style::key_combo_width(window, keys));
                 }
                 h += ITEM_HEIGHT;
             }
@@ -313,7 +325,14 @@ fn popup_size(window: &mut Window, menu: &Menu) -> (f32, f32) {
 /// the window's content). `on_choose` gets the command chosen, in
 /// `window`.
 pub fn popup(window: &mut Window, cx: &mut App, menu: Menu, anchor: Bounds<Pixels>, corner: Corner, on_choose: impl Fn(&str, &mut Window, &mut App) + 'static) -> Option<WindowHandle<MenuPopup>> {
-    open(window, cx, menu, Place { anchor, corner, ..Place::default() }, Rc::new(on_choose), None, None)
+    open_first(window, cx, menu, Place { anchor, corner, ..Place::default() }, Rc::new(on_choose), None)
+}
+
+/// [`popup`], and `on_close` once it has gone, chosen from or not (after
+/// `on_choose`): what opened it shows it open until then (Deskbar's
+/// rows).
+pub fn popup_then(window: &mut Window, cx: &mut App, menu: Menu, anchor: Bounds<Pixels>, corner: Corner, on_choose: impl Fn(&str, &mut Window, &mut App) + 'static, on_close: impl Fn(&mut App) + 'static) -> Option<WindowHandle<MenuPopup>> {
+    open_first(window, cx, menu, Place { anchor, corner, ..Place::default() }, Rc::new(on_choose), Some(Rc::new(on_close)))
 }
 
 /// Opens `menu` over `field` (in the window's content) with item
@@ -322,7 +341,60 @@ pub fn popup(window: &mut Window, cx: &mut App, menu: Menu, anchor: Bounds<Pixel
 pub fn popup_over(window: &mut Window, cx: &mut App, menu: Menu, field: Bounds<Pixels>, current: usize, on_choose: impl Fn(&str, &mut Window, &mut App) + 'static) -> Option<WindowHandle<MenuPopup>> {
     let dy = POPUP_PAD + item_offset(&menu, current) - (f32::from(field.size.height) - ITEM_HEIGHT) / 2.0;
     let place = Place { anchor: field, corner: Corner::TopLeft, offset: point(px(0.0), px(-dy.round())), min_width: f32::from(field.size.width).round(), selected: Some(current) };
-    open(window, cx, menu, place, Rc::new(on_choose), None, None)
+    open_first(window, cx, menu, place, Rc::new(on_choose), None)
+}
+
+/// The menu open over each window (not a menu bar's, which keeps its
+/// own), from where, and the one a press in its window just put away.
+#[derive(Default)]
+struct Popped {
+    menus: std::collections::HashMap<gpui::WindowId, (WindowHandle<MenuPopup>, Bounds<Pixels>)>,
+    closed: Option<(gpui::WindowId, Bounds<Pixels>)>,
+}
+
+impl gpui::Global for Popped {}
+
+/// A press in `window` (its frame sees it before anything in it does):
+/// a menu open over it goes, as a press outside a menu puts it away
+/// (the compositor hands an app's own window the presses outside its
+/// menu); and that press doesn't open it again, on what opened it.
+pub(crate) fn press_in(window: &Window, cx: &mut App) {
+    let id = window.window_handle().window_id();
+    let popped = cx.default_global::<Popped>();
+    let taken = popped.menus.remove(&id);
+    popped.closed = taken.as_ref().map(|(_, anchor)| (id, *anchor));
+    if let Some((handle, _)) = taken {
+        let _ = handle.update(cx, |m, window, cx| m.close(window, cx));
+    }
+}
+
+/// Opens a first menu over the window (see [`Popped`]).
+fn open_first(window: &mut Window, cx: &mut App, menu: Menu, place: Place, on_choose: OnChoose, on_close: Option<Rc<dyn Fn(&mut App)>>) -> Option<WindowHandle<MenuPopup>> {
+    let id = window.window_handle().window_id();
+    let popped = cx.default_global::<Popped>();
+    // The press that put it away, on what opened it: away it stays.
+    if popped.closed.take() == Some((id, place.anchor)) {
+        if let Some(f) = on_close {
+            f(cx);
+        }
+        return None;
+    }
+    if let Some((old, _)) = popped.menus.remove(&id) {
+        let _ = old.update(cx, |m, window, cx| m.close(window, cx));
+    }
+    let anchor = place.anchor;
+    let handle = open(window, cx, menu, place, on_choose, None, on_close)?;
+    cx.default_global::<Popped>().menus.insert(id, (handle, anchor));
+    if let Ok(view) = handle.update(cx, |_, _, cx| cx.entity()) {
+        cx.observe_release(&view, move |_, cx| {
+            let popped = cx.default_global::<Popped>();
+            if popped.menus.get(&id).is_some_and(|(h, _)| *h == handle) {
+                popped.menus.remove(&id);
+            }
+        })
+        .detach();
+    }
+    Some(handle)
 }
 
 /// Where item `i` begins below the menu's first.
@@ -357,7 +429,7 @@ pub fn context_menu(window: &mut Window, cx: &mut App, menu: Menu, position: gpu
 /// window's menu over a clear layer).
 pub fn context_menu_then(window: &mut Window, cx: &mut App, menu: Menu, position: gpui::Point<Pixels>, on_choose: impl Fn(&str, &mut Window, &mut App) + 'static, on_close: impl Fn(&mut App) + 'static) -> Option<WindowHandle<MenuPopup>> {
     let anchor = Bounds { origin: position, size: size(px(1.0), px(1.0)) };
-    open(window, cx, menu, Place { anchor, ..Place::default() }, Rc::new(on_choose), None, Some(Rc::new(on_close)))
+    open_first(window, cx, menu, Place { anchor, ..Place::default() }, Rc::new(on_choose), Some(Rc::new(on_close)))
 }
 
 fn open(window: &mut Window, cx: &mut App, menu: Menu, place: Place, on_choose: OnChoose, parent_menu: Option<WindowHandle<MenuPopup>>, on_close: Option<Rc<dyn Fn(&mut App)>>) -> Option<WindowHandle<MenuPopup>> {
@@ -589,20 +661,22 @@ impl Render for MenuPopup {
                             if lit {
                                 style::fill_rect(window, face, style::c(p.menu_selected_background));
                             }
-                            let ink = text(a.enabled);
+                            let ink = if a.minimized && a.enabled && !lit { style::c(olo_theme::mix(p.menu_item_text, p.menu_background, 0.38)) } else { text(a.enabled) };
+                            let m = Bounds { origin: point(row.left() + px(10.0 - 4.5), cy - px(4.5)), size: size(px(9.0), px(9.0)) };
                             if a.checked {
-                                let m = Bounds { origin: point(row.left() + px(10.0 - 4.5), cy - px(4.5)), size: size(px(9.0), px(9.0)) };
                                 check_mark(window, m, ink);
+                            } else if a.minimized {
+                                diamond(window, m, ink);
                             }
                             if let (Some(left), Some(icon)) = (icon_left, &a.icon) {
                                 item_icon(window, row, left, icon, a.enabled);
                             }
                             let r = style::label(window, cx, row.left() + px(label_left), cy, style::Align::Left, a.label.clone(), style::PLAIN_SIZE, font.clone(), ink);
                             if let Some(keys) = &a.keys {
-                                style::label(window, cx, row.right() - px(ITEM_RIGHT), cy, style::Align::Right, keys.clone(), style::PLAIN_SIZE, font.clone(), ink);
+                                style::key_combo(window, cx, point(row.right() - px(ITEM_RIGHT), cy), keys, ink);
                             }
                             let _ = r;
-                            agent::record(window, cx, agent::Node { role: "MenuItem", name: Some(SharedString::from(a.label.clone())), bounds: row, enabled: a.enabled, clickable: a.enabled, checked: a.checked.then_some(true), selected: Some(lit), ..Default::default() });
+                            agent::record(window, cx, agent::Node { role: "MenuItem", name: Some(SharedString::from(a.label.clone())), bounds: row, enabled: a.enabled, clickable: a.enabled, checked: a.checked.then_some(true), selected: Some(lit), minimized: a.minimized, ..Default::default() });
                         }
                         MenuItem::Submenu(m) => {
                             if lit {
@@ -648,6 +722,22 @@ pub fn check_mark(window: &mut Window, r: Bounds<Pixels>, color: Hsla) {
     path.move_to(point(r.left(), r.top() + r.size.height * 0.5));
     path.line_to(point(r.left() + r.size.width * 0.38, r.bottom()));
     path.line_to(point(r.right(), r.top()));
+    if let Ok(path) = path.build() {
+        window.paint_path(path, color);
+    }
+}
+
+/// A minimized window's mark: a hollow diamond, its middle on the
+/// device grid, a line 1.2 points wide.
+pub fn diamond(window: &mut Window, r: Bounds<Pixels>, color: Hsla) {
+    let m = style::snap_centred(window, r.center(), 8.0, 8.0).center();
+    let h = f32::from(r.size.width.min(r.size.height)) / 2.0 - 0.5;
+    let mut path = PathBuilder::stroke(px(1.2));
+    path.move_to(point(m.x, m.y - px(h)));
+    path.line_to(point(m.x + px(h), m.y));
+    path.line_to(point(m.x, m.y + px(h)));
+    path.line_to(point(m.x - px(h), m.y));
+    path.close();
     if let Ok(path) = path.build() {
         window.paint_path(path, color);
     }

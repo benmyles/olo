@@ -5821,9 +5821,10 @@ version = "0.1.0"
 dependencies = [
  "image",
  "libc",
- "olo-kit",
  "olo-protocol",
  "olo-system",
+ "olo-ui",
+ "olo-xdg",
  "serde_json",
  "tracing",
  "zbus",

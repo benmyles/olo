@@ -535,6 +535,9 @@ pub struct App {
     pub(crate) globals_by_type: FxHashMap<TypeId, Box<dyn Any>>,
     pub(crate) entities: EntityMap,
     pub(crate) window_update_stack: Vec<WindowId>,
+    /// Olo: windows to close as the update of them under way ends
+    /// (`close_window` from inside it).
+    pub(crate) closing_windows: FxHashSet<WindowId>,
     pub(crate) new_entity_observers: SubscriberSet<TypeId, NewEntityListener>,
     pub(crate) windows: SlotMap<WindowId, Option<Box<Window>>>,
     pub(crate) window_handles: FxHashMap<WindowId, AnyWindowHandle>,
@@ -611,6 +614,7 @@ impl App {
                 new_entity_observers: SubscriberSet::new(),
                 windows: SlotMap::with_key(),
                 window_update_stack: Vec::new(),
+                closing_windows: FxHashSet::default(),
                 window_handles: FxHashMap::default(),
                 focus_handles: Arc::new(RwLock::new(SlotMap::with_key())),
                 keymap: Rc::new(RefCell::new(Keymap::default())),
@@ -1341,6 +1345,9 @@ impl App {
             cx.window_update_stack.push(window.handle.id);
             let result = update(root_view, &mut window, cx);
             cx.window_update_stack.pop();
+            if cx.closing_windows.remove(&id) {
+                window.removed = true;
+            }
 
             if window.removed {
                 cx.window_handles.remove(&id);
@@ -1357,6 +1364,18 @@ impl App {
             Some(result)
         })
         .context("window not found")
+    }
+
+    /// Olo: closes `window`, at once, or as the update of it under way
+    /// ends (a button in it closing it, an action of its own): updating a
+    /// window from inside an update of it does nothing.
+    pub fn close_window(&mut self, window: impl Into<AnyWindowHandle>) {
+        let window = window.into();
+        if self.window_update_stack.contains(&window.window_id()) {
+            self.closing_windows.insert(window.window_id());
+        } else {
+            let _ = window.update(self, |_, window, _| window.remove_window());
+        }
     }
 
     /// Creates an `AsyncApp`, which can be cloned and has a static lifetime

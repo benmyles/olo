@@ -26,6 +26,8 @@ pub struct Node {
     pub focused: bool,
     pub checked: Option<bool>,
     pub selected: Option<bool>,
+    /// A menu item standing for a minimized window.
+    pub minimized: bool,
 }
 
 impl Node {
@@ -44,6 +46,8 @@ impl Node {
 struct Painted {
     title: String,
     nodes: Vec<Node>,
+    /// A layer surface's namespace ("deskbar").
+    layer: Option<String>,
 }
 
 /// Every window's widgets as last painted, and how to take the app's
@@ -71,6 +75,12 @@ pub(crate) fn begin_frame(window: &Window, cx: &mut App, title: &str) {
     if painted.title != title {
         painted.title = title.to_owned();
     }
+}
+
+/// The window is a layer surface, `namespace` ("deskbar"): agents and
+/// app_server's hints tell it from windows by it.
+pub(crate) fn set_layer(window: &Window, cx: &mut App, namespace: &str) {
+    cx.default_global::<Agents>().windows.entry(window.window_handle().window_id()).or_default().layer = Some(namespace.to_owned());
 }
 
 /// A window closed: what it showed goes.
@@ -110,10 +120,11 @@ fn tree(handle: AnyWindowHandle, cx: &mut App) -> Option<WindowTree> {
             focused: n.focused,
             checked: n.checked,
             selected: n.selected,
+            minimized: n.minimized,
             ..Default::default()
         });
     }
-    Some(WindowTree { title: painted.title.clone(), width: w as u32, height: h as u32, active, nodes, ..Default::default() })
+    Some(WindowTree { title: painted.title.clone(), width: w as u32, height: h as u32, active, nodes, layer: painted.layer.clone(), ..Default::default() })
 }
 
 fn frames(handle: AnyWindowHandle, cx: &mut App) -> Option<FrameTimes> {
@@ -167,10 +178,20 @@ fn answer(query: Query, cx: &mut App) {
             let trees = cx.windows().into_iter().filter_map(|w| tree(w, cx)).collect();
             let _ = reply.send(trees);
         }
-        // (app_server's keyboard hints name surfaces; GPUI windows don't
-        // say which is theirs yet.)
-        Query::Hints(_, reply) => {
-            let _ = reply.send(Vec::new());
+        // app_server's keyboard hints: the windows it names by surface,
+        // what can be picked in each.
+        Query::Hints(ids, reply) => {
+            let trees = cx
+                .windows()
+                .into_iter()
+                .filter_map(|w| {
+                    let id = w.update(cx, |_, window, _| window.surface_id()).ok().flatten()?;
+                    let mut t = tree(w, cx).filter(|_| ids.contains(&id))?;
+                    t.surface = Some(id);
+                    Some(t.pickable())
+                })
+                .collect();
+            let _ = reply.send(trees);
         }
         Query::Frames(reply) => {
             let times = cx.windows().into_iter().filter_map(|w| frames(w, cx)).collect();

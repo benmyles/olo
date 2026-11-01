@@ -185,7 +185,7 @@ impl Auth {
         self.field.update(cx, |f, cx| f.clear_secret(cx));
         if let Some(window) = self.window.take() {
             forget(cx, window.window_id());
-            let _ = window.update(cx, |_, window, _| window.remove_window());
+            cx.close_window(window);
         }
     }
 }

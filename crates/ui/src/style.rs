@@ -465,6 +465,27 @@ pub fn selection_wash(window: &mut Window, r: Bounds<Pixels>, palette: &Palette)
     frame_rect(window, r, c(palette.selection_edge()));
 }
 
+/// The ground of a group that is current as a whole (Deskbar's workspace
+/// showing): a BListView selection as big as the group, its heading and
+/// rows together. It is `under`, the ground it sits on, taken most of the
+/// way to the selection's, so the rows in it still mark their own focus,
+/// hover and separators (shading this ground as they would `under`); a
+/// row chosen inside it takes the menu's selection, which stands out on
+/// it where the list's would not. Edge it with [`lit_edges`].
+pub fn lit_ground(palette: &Palette, under: olo_theme::Rgba) -> olo_theme::Rgba {
+    olo_theme::mix(under, palette.list_selected_background, 0.7)
+}
+
+/// A lit group's edges (see [`lit_ground`]): a hairline in the
+/// selection's edge colour across the top and bottom of `r`, its sides
+/// running off the panel's. Paint them after its rows, whose fills and
+/// separators would cover the bottom one.
+pub fn lit_edges(window: &mut Window, r: Bounds<Pixels>, palette: &Palette) {
+    let edge = c(palette.selection_edge());
+    hline(window, r.left(), r.right(), r.top(), edge);
+    hline_above(window, r.left(), r.right(), r.bottom(), edge);
+}
+
 /// A rubber-band selection rectangle (Tracker, desktop, any list): a
 /// one-pixel navigation-blue frame over a faint tint of the same colour.
 pub fn selection_band(window: &mut Window, r: Bounds<Pixels>, palette: &Palette) {

@@ -123,6 +123,14 @@ fn worker() -> &'static Mutex<mpsc::Sender<Key>> {
 /// Draws the windows again once icons arrive (set by `init`).
 static WAKE: OnceLock<Box<dyn Fn() + Send + Sync>> = OnceLock::new();
 
+/// Draws the windows again: a picture loaded off the UI thread (an
+/// icon, the wordmark) is ready.
+pub(crate) fn wake() {
+    if let Some(wake) = WAKE.get() {
+        wake();
+    }
+}
+
 pub(crate) fn init(cx: &mut App) {
     let (tx, mut rx) = futures::channel::mpsc::unbounded::<()>();
     let _ = WAKE.set(Box::new(move || {
@@ -158,6 +166,13 @@ fn image(name: &str, px: u32) -> Option<Arc<RenderImage>> {
     drop(c);
     let _ = worker().lock().unwrap().send(key);
     None
+}
+
+/// Icon `name`'s bitmap for `px` device pixels (BGRA, straight alpha),
+/// if it's loaded; asked for if not (a drag's picture, asked for ahead
+/// as the press that may start one comes).
+pub fn bitmap(name: &str, px: u32) -> Option<Arc<RenderImage>> {
+    image(name, px)
 }
 
 /// Draws icon `name` filling `b` (square), from the bitmap made for its

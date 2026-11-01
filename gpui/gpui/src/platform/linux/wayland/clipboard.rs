@@ -232,6 +232,11 @@ impl Clipboard {
         Some(item)
     }
 
+    /// Olo: writes `bytes` to `fd` as the event loop can (a drag's data).
+    pub fn send_bytes(&self, fd: OwnedFd, bytes: Vec<u8>) {
+        self.send_internal(fd, bytes);
+    }
+
     fn send_internal(&self, fd: OwnedFd, bytes: Vec<u8>) {
         let mut written = 0;
         self.loop_handle

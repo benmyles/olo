@@ -143,6 +143,8 @@ impl Render for Frame {
         let mut root = div()
             .size_full()
             .track_focus(&self.focus)
+            // A press anywhere in the window puts away a menu open over it.
+            .capture_any_mouse_down(|_, window, cx| crate::menu::press_in(window, cx))
             .on_action(|_: &FocusNext, window, _| window.focus_next())
             .on_action(|_: &FocusPrev, window, _| window.focus_prev())
             // The menu bar's keys, when nothing in the window took them
@@ -191,6 +193,7 @@ pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, bu
     let bounds = Bounds::centered(None, size(px(w), px(h)), cx);
     let title = options.title.clone();
     let panel = options.panel;
+    let namespace = options.layer.as_ref().map(|l| l.namespace.clone());
     cx.open_window(
         gpui::WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -216,6 +219,9 @@ pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, bu
             ..Default::default()
         },
         move |window, cx| {
+            if let Some(n) = &namespace {
+                agent::set_layer(window, cx, n);
+            }
             let content = build(window, cx).into();
             let frame = cx.new(|cx| Frame { title, content, panel, focus: cx.focus_handle() });
             if window.focused(cx).is_none() {

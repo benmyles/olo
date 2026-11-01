@@ -131,9 +131,9 @@ struct Palette {
     sheet: Option<WindowHandle<Frame>>,
 }
 
-/// Closes `w` (from outside an update of it).
+/// Closes `w`.
 fn close(w: WindowHandle<Frame>, cx: &mut App) {
-    let _ = w.update(cx, |_, window, _| window.remove_window());
+    cx.close_window(w);
 }
 
 /// The overlay over a whole output that the palette, the sheet and a

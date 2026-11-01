@@ -15,28 +15,43 @@
 //!
 //! Clicking an application brings it forward, every window of it there;
 //! the right button opens the menu of its windows, to choose one.
+//!
+//! On Olo's GPUI: one model (`Deskbar`) that every display's bar
+//! (`BarView`, a layer surface) draws, each keeping only what the pointer
+//! is doing over it. A bar is drawn again when the model changes or the
+//! pointer moves onto something else in it, and the clock ticks on the
+//! minute (or second): nothing runs while nothing changes.
 
 mod approve;
 mod sni;
 mod status;
 
-use std::{collections::HashMap, time::{Duration, Instant}};
-
-use olo_kit::{
-    App, Cx, Layer, LayerOptions, Menu, WindowId, WindowKind, WindowOptions,
-    desktop_entry::{self, DesktopEntry},
-    egui::{self, Color32, Rect, Sense, pos2, vec2},
-    icons,
-    menu::{self, MenuAnchor, MenuItem, MenuRequest},
-    style::{self, c, hline, hline_above, shade, vline},
-    theme::Palette,
-    tip::Tip,
-    widgets,
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::Arc,
+    time::{Duration, Instant},
 };
+
 use olo_protocol::{Client, DisplayWorkspace, Event, KeyboardProfile, NoteApp, OutputInfo, Reply, Request, WindowInfo, WindowingMode, shortcuts};
+use olo_ui::{
+    Frame, Menu, MenuItem, WindowOptions, agent, dnd,
+    gpui::{
+        AnyElement, App, AppContext as _, Bounds, ClickEvent, ContentMask, Context, Corner, Entity, ExternalPaths, FontWeight, InteractiveElement as _, IntoElement, LayerKeyboard, LayerShellLayer, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Point, Render, RenderImage, ScrollWheelEvent, SharedString, StatefulInteractiveElement as _, Styled as _, Task, Window, WindowHandle, canvas, div, point, px, size,
+    },
+    icons, menu,
+    palette::{Palette, Rgba},
+    style::{self, Align, c, shade},
+    theme, tip,
+};
+use olo_xdg::{
+    apps::{OUR_APPS, PREFERENCE_PANELS, our_app},
+    desktop_entry::{self, DesktopEntry},
+    open::Handler,
+};
 
 /// Logical width of the vertical Deskbar.
-const WIDTH: f32 = olo_kit::metrics::DESKBAR_WIDTH;
+const WIDTH: f32 = olo_ui::metrics::DESKBAR_WIDTH;
 const TILE_H: f32 = 30.0;
 /// How long a gone application keeps its place in the order.
 const GONE_KEEP: Duration = Duration::from_secs(20);
@@ -79,13 +94,13 @@ const TRAY_PITCH: f32 = 22.0;
 /// Below the well, before the applications (on the 2-point grid, so
 /// the rows below land on pixels at 1.5×).
 const TRAY_FOOT: f32 = 4.0;
+/// How far a press on an application moves before it's a drag (a link
+/// to the program, dragged out).
+const DRAG_START: f32 = 6.0;
 /// The tray's height with `rows` rows of icons.
 fn tray_height(rows: usize) -> f32 {
     CLOCK_H + rows as f32 * TRAY_PITCH + TRAY_FOOT
 }
-
-
-use olo_kit::apps::{OUR_APPS, PREFERENCE_PANELS, our_app};
 
 #[derive(Debug, Clone, Copy)]
 enum Power {
@@ -135,10 +150,10 @@ struct Installed {
 }
 
 /// Look for what is installed on a worker, and tell the app.
-fn scan_installed(proxy: olo_kit::Proxy) {
+fn scan_installed(proxy: olo_ui::Proxy) {
     std::thread::spawn(move || {
-        let ours = OUR_APPS.iter().map(|(bin, _, _)| *bin).filter(|bin| olo_kit::find_program(bin).is_some()).collect();
-        let preferences = olo_kit::find_program("olo-preferences").is_some();
+        let ours = OUR_APPS.iter().map(|(bin, _, _)| *bin).filter(|bin| olo_xdg::find_program(bin).is_some()).collect();
+        let preferences = olo_xdg::find_program("olo-preferences").is_some();
         proxy.send(Msg::Installed(Installed { entries: desktop_entry::all(), ours, preferences }));
     });
 }
@@ -156,37 +171,12 @@ struct Settings {
 
 /// A Deskbar on a display.
 struct Bar {
-    win: WindowId,
-    /// The display it is on (a connector); None for one opened before the
-    /// displays were known (app_server keeps it on the main display), put
-    /// away for named ones once they are.
-    output: Option<String>,
-    height: f32,
-}
-
-impl Bar {
-    fn open(cx: &mut Cx, output: Option<String>) -> Bar {
-        let height = TILE_H + tray_height(1);
-        let win = cx.open_window(WindowOptions {
-            title: "Deskbar".into(),
-            size: (WIDTH as u32, height as u32),
-            kind: WindowKind::Layer(LayerOptions {
-                layer: Layer::Top,
-                anchor: (true, false, false, true),
-                exclusive_zone: 0,
-                margin: (0, 0, 0, 0),
-                keyboard: olo_kit::Keyboard::None,
-                namespace: "deskbar".into(),
-                output: output.clone(),
-            }),
-            panel: true,
-            ..Default::default()
-        });
-        Bar { win, output, height }
-    }
+    win: WindowHandle<Frame>,
+    view: Entity<BarView>,
 }
 
 /// A team: the windows of one application.
+#[derive(Clone)]
 struct Team {
     key: String,
     name: String,
@@ -195,7 +185,7 @@ struct Team {
 }
 
 struct Deskbar {
-    proxy: olo_kit::Proxy,
+    proxy: olo_ui::Proxy,
     /// One on each display.
     bars: Vec<Bar>,
     outputs: Vec<OutputInfo>,
@@ -222,9 +212,8 @@ struct Deskbar {
     /// A look for what is installed under way (`scan_installed`), and
     /// when the last one started.
     scanning: bool,
-    scanned_at: Option<std::time::Instant>,
+    scanned_at: Option<Instant>,
     entries: HashMap<String, Option<DesktopEntry>>,
-    scroll_acc: f32,
     /// The window that last had the focus: still "this window" for the
     /// Olo menu's commands while the menu holds the keyboard.
     last_focused: Option<u64>,
@@ -242,14 +231,14 @@ struct Deskbar {
     /// Olo menu shows.
     keys: KeyboardProfile,
     /// The Restart / Shut Down confirmation, while it is open.
-    confirm: Option<(WindowId, Power)>,
-    /// The "upgrade and reload?" alert, while it is open, with its message.
-    upgrade_ask: Option<(WindowId, String)>,
+    confirm: Option<WindowHandle<Frame>>,
+    /// The "upgrade and reload?" alert, while it is open.
+    upgrade_ask: Option<WindowHandle<Frame>>,
     /// Approving requests without asking until then (seconds since the
     /// epoch; app_server's approve.rs).
     approve_until: Option<u64>,
     /// The window turning it on, while it is open.
-    approve: Option<approve::Ask>,
+    approve: Option<Entity<approve::Ask>>,
     /// The newest unread notification seen (None until the first word
     /// from the service: what is unread then was there before Deskbar).
     notes_seen: Option<(u64, u32)>,
@@ -263,7 +252,9 @@ struct Deskbar {
     /// desktop entry.
     badges: Vec<sni::Badge>,
     /// Their pictures, by item, picture and size in device pixels.
-    tray_pictures: HashMap<(String, u64, u32), Option<egui::TextureHandle>>,
+    tray_pictures: HashMap<(String, u64, u32), Option<Arc<RenderImage>>>,
+    /// Draws the bars again as the clock's next minute (or second) comes.
+    ticking: Option<Task<()>>,
 }
 
 /// An application's dot: how far its shake has gone if one just came
@@ -334,6 +325,16 @@ fn requests(reqs: Vec<Request>) {
     });
 }
 
+fn spawn(command: &str) {
+    if let Err(e) = olo_xdg::spawn_detached(command) {
+        tracing::warn!("launch {command}: {e}");
+    }
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
 impl Deskbar {
     /// The installed application `app_id` is, from what was found
     /// installed; one not found starts a new look (an app just installed).
@@ -348,54 +349,42 @@ impl Deskbar {
     /// Look for what is installed again, on a worker.
     fn rescan(&mut self) {
         if !std::mem::replace(&mut self.scanning, true) {
-            self.scanned_at = Some(std::time::Instant::now());
+            self.scanned_at = Some(Instant::now());
             scan_installed(self.proxy.clone());
         }
     }
 
     /// Who opens files dropped on the team `key`: the app itself.
-    fn handler(&mut self, key: &str) -> Option<olo_kit::open::Handler> {
+    fn handler(&mut self, key: &str) -> Option<Handler> {
         let app_id = self.windows.iter().find(|w| team_key(w) == key)?.app_id.clone();
         let short = app_id.strip_prefix("olo.").unwrap_or(&app_id);
         if let Some((bin, _, _)) = OUR_APPS.iter().find(|(bin, _, _)| bin.strip_prefix("olo-") == Some(short)) {
-            return Some(olo_kit::open::Handler::Ours(bin));
+            return Some(Handler::Ours(bin));
         }
         if short == "preferences" {
-            return Some(olo_kit::open::Handler::Ours("olo-preferences"));
+            return Some(Handler::Ours("olo-preferences"));
         }
-        self.entry(&app_id).filter(|e| e.exec.is_some()).map(|e| olo_kit::open::Handler::Entry(Box::new(e)))
+        self.entry(&app_id).filter(|e| e.exec.is_some()).map(|e| Handler::Entry(Box::new(e)))
     }
 
     /// The program of the team `key`, to drag out as a link: ours, or an
     /// installed application whose command is a program alone.
-    fn program(&mut self, key: &str) -> Option<std::path::PathBuf> {
+    fn program(&mut self, key: &str) -> Option<PathBuf> {
         match self.handler(key)? {
-            olo_kit::open::Handler::Ours(bin) => olo_kit::find_program(bin),
-            olo_kit::open::Handler::Entry(e) => {
+            Handler::Ours(bin) => olo_xdg::find_program(bin),
+            Handler::Entry(e) => {
                 let command = e.command()?;
                 let mut words = command.split_whitespace();
                 let (program, None) = (words.next()?, words.next()) else { return None };
                 let path = std::path::Path::new(program);
-                if path.is_absolute() { path.is_file().then(|| path.to_owned()) } else { olo_kit::find_program(program) }
+                if path.is_absolute() { path.is_file().then(|| path.to_owned()) } else { olo_xdg::find_program(program) }
             }
         }
     }
 
-    /// Dragging the team `team` out: a link to its program, wherever it
-    /// is dropped (BeOS's Deskbar made links the same way).
-    fn app_drag(&mut self, ctx: &egui::Context, team: &Team) -> Option<olo_kit::dnd::DragData> {
-        let program = self.program(&team.key)?;
-        let data = olo_kit::dnd::DragData::files(&[program], olo_kit::dnd::Actions::COPY).as_link();
-        let icon = team.icon.as_deref().unwrap_or("application");
-        Some(match icons::drag_icon(ctx, icon, 32.0, 1, vec2(16.0, 16.0), icons::DragLabel::Below(&team.name)) {
-            Some(i) => data.icon(i),
-            None => data,
-        })
-    }
-
-    /// The display whose applications `bar` shows.
-    fn shown_on(&self, bar: &Bar) -> Option<String> {
-        bar.output.clone().or_else(|| self.main_output())
+    /// The display whose applications a bar on `output` shows.
+    fn shown_on(&self, output: Option<&str>) -> Option<String> {
+        output.map(str::to_owned).or_else(|| self.main_output())
     }
 
     /// The workspace display `display` shows (the active one's, if it
@@ -436,9 +425,9 @@ impl Deskbar {
         for o in displays {
             let n = olo_protocol::display_number(&self.outputs, &o.name).map(|n| format!("D{n}  ")).unwrap_or_default();
             let here = o.name == own;
-            m = m.item(format!("{n}{}", o.display_name()), format!("display:{}", o.name), None).checked(here).enabled(!here);
+            m = m.item(format!("{n}{}", o.display_name()), format!("display:{}", o.name)).checked(here).enabled(!here);
         }
-        m.separator().item("Displays Preferences…", "pref:display", None)
+        m.separator().item("Displays Preferences…", "pref:display")
     }
 
     /// The displays whose workspaces a Deskbar on `own` lists: its own
@@ -469,21 +458,33 @@ impl Deskbar {
     /// asking for its display by name: one that didn't (opened before the
     /// displays were known) would follow the main display about, and its
     /// own would be left without.
-    fn sync_bars(&mut self, cx: &mut Cx) {
+    fn sync_bars(&mut self, cx: &mut Context<Self>) {
         if self.outputs.is_empty() {
             return;
         }
         let wanted: Vec<Option<String>> = self.outputs.iter().filter(|o| o.mirror_of.is_none()).map(|o| Some(o.name.clone())).collect();
-        let (keep, gone): (Vec<Bar>, Vec<Bar>) = std::mem::take(&mut self.bars).into_iter().partition(|b| wanted.contains(&b.output));
-        self.bars = keep;
-        for output in wanted {
-            if !self.bars.iter().any(|b| b.output == output) {
-                self.bars.push(Bar::open(cx, output));
+        tracing::debug!(?wanted, have = ?self.bars.iter().map(|b| b.view.read(cx).output.clone()).collect::<Vec<_>>(), "displays");
+        // (Once this update is over: a window draws as it opens, and its
+        // bar reads this; the new ones first, so the app always has one.)
+        let model = cx.entity();
+        cx.defer(move |cx| {
+            for output in &wanted {
+                if model.read(cx).bars.iter().any(|b| b.view.read(cx).output == *output) {
+                    continue;
+                }
+                if let Some(bar) = open_bar(cx, model.clone(), output.clone()) {
+                    model.update(cx, |d, _| d.bars.push(bar));
+                }
             }
-        }
-        for bar in gone {
-            cx.close_window(bar.win);
-        }
+            let gone: Vec<Bar> = model.update(cx, |d, cx| {
+                let (keep, gone): (Vec<Bar>, Vec<Bar>) = std::mem::take(&mut d.bars).into_iter().partition(|b| wanted.contains(&b.view.read(cx).output));
+                d.bars = keep;
+                gone
+            });
+            for bar in gone {
+                let _ = bar.win.update(cx, |_, window, _| window.remove_window());
+            }
+        });
     }
 
     /// The applications with windows on display `on` (all for None), and
@@ -556,12 +557,12 @@ impl Deskbar {
         let mut apps = Menu::new("Applications");
         // Only the ones that are installed (the suite is still growing).
         for (bin, name, icon) in OUR_APPS.iter().filter(|(bin, _, _)| self.installed.ours.contains(bin)) {
-            apps = apps.item(*name, format!("run:{bin}"), None).icon(*icon);
+            apps = apps.item(*name, format!("run:{bin}")).icon(*icon);
         }
         let have_prefs = self.installed.preferences;
         let mut prefs = Menu::new("Preferences");
         for (arg, name, icon) in PREFERENCE_PANELS {
-            prefs = prefs.item(*name, format!("pref:{arg}"), None).enabled(have_prefs).icon(*icon);
+            prefs = prefs.item(*name, format!("pref:{arg}")).enabled(have_prefs).icon(*icon);
         }
         // Everything else installed, by freedesktop category.
         let groups: &[(&str, &str, &[&str])] = &[
@@ -582,7 +583,7 @@ impl Deskbar {
             let mut m = Menu::new(*title);
             for (i, e) in all.iter().enumerate() {
                 if !used[i] && e.categories.iter().any(|c| cats.contains(&c.as_str())) {
-                    m = m.item(&e.name, format!("desktop:{}", e.id), None).icon(entry_icon(e));
+                    m = m.item(&e.name, format!("desktop:{}", e.id)).icon(entry_icon(e));
                     used[i] = true;
                 }
             }
@@ -594,35 +595,35 @@ impl Deskbar {
         if !rest.is_empty() {
             let mut m = Menu::new("Other");
             for e in rest {
-                m = m.item(&e.name, format!("desktop:{}", e.id), None).icon(entry_icon(e));
+                m = m.item(&e.name, format!("desktop:{}", e.id)).icon(entry_icon(e));
             }
             other = other.submenu(m).icon("folder");
         }
 
         Menu::new("Olo")
-            .item("About Olo Desktop", "about", None)
+            .item("About Olo Desktop", "about")
             .icon("olo")
-            .item("Find…", "find", None)
+            .item("Find…", "find")
             .icon("query")
             .separator()
             .submenu(self.arrange_menu(mode))
             .icon("display")
             .submenu(self.workspaces_menu(self.menu_output.as_deref()))
             .icon("workspaces")
-            .item("Show or Hide All Windows", "arrange:show-desktop", None)
+            .item("Show or Hide All Windows", "arrange:show-desktop")
             .icon("desktop")
             .separator()
             .submenu(self.caffeine_menu())
             .icon("stay-awake")
             .submenu(approve::menu(self.approve_until, &self.clock))
             .icon("key")
-            .item("Lock Screen", "lock", None)
+            .item("Lock Screen", "lock")
             .icon("lock-screen")
-            .item("Log Out", "logout", None)
+            .item("Log Out", "logout")
             .icon("log-out")
-            .item("Restart", "restart", None)
+            .item("Restart", "restart")
             .icon("restart")
-            .item("Shut Down", "shutdown", None)
+            .item("Shut Down", "shutdown")
             .icon("shut-down")
             .separator()
             .submenu(apps)
@@ -648,27 +649,27 @@ impl Deskbar {
         let mut menu = self.modes_menu(mode);
         menu.title = "Window Arrangement".into();
         menu.separator()
-            .item("Tile All", "arrange:tile-all", None)
-            .item("Smart Tile", "arrange:smart-tile", None)
-            .item("Zoom All", "arrange:zoom-all", None)
-            .item("Cascade All", "arrange:cascade-all", None)
-            .item("Fan Out", "arrange:fan-out", None)
+            .item("Tile All", "arrange:tile-all")
+            .item("Smart Tile", "arrange:smart-tile")
+            .item("Zoom All", "arrange:zoom-all")
+            .item("Cascade All", "arrange:cascade-all")
+            .item("Fan Out", "arrange:fan-out")
             .separator()
-            .item("Cascade Others", "arrange:cascade-others", None)
+            .item("Cascade Others", "arrange:cascade-others")
             .enabled(focused)
-            .item("Fan Out Others", "arrange:fan-out-others", None)
+            .item("Fan Out Others", "arrange:fan-out-others")
             .enabled(focused)
             .separator()
-            .item("Undo Window Arrangement", "arrange:undo-arrangement", None)
+            .item("Undo Window Arrangement", "arrange:undo-arrangement")
             .separator()
-            .item("Windows Preferences…", "pref:windows", None)
+            .item("Windows Preferences…", "pref:windows")
     }
 
     /// The windowing modes (`mode:` and its id), `mode` checked.
     fn modes_menu(&self, mode: WindowingMode) -> Menu {
         let mut menu = Menu::new("Windowing Mode");
         for m in WindowingMode::ALL {
-            menu = menu.item(m.title(), format!("mode:{}", m.id()), None).checked(m == mode);
+            menu = menu.item(m.title(), format!("mode:{}", m.id())).checked(m == mode);
         }
         menu
     }
@@ -679,7 +680,7 @@ impl Deskbar {
         let (current, count) = (self.showing(display), self.workspace.1.clamp(1, 9));
         let mut m = Menu::new("Workspaces");
         for i in 0..count {
-            m = m.item(self.workspace_name(display, i), format!("workspace:{i}"), None).checked(i == current);
+            m = m.item(self.workspace_name(display, i), format!("workspace:{i}")).checked(i == current);
             if let Some(keys) = shortcuts::by_id(&format!("workspace-{}", i + 1)).and_then(|info| shortcuts::keys_for(info, &self.keys).first().map(|c| c.label(self.keys.platform))) {
                 m = m.keys(keys);
             }
@@ -690,11 +691,11 @@ impl Deskbar {
             let mut to = Menu::new("Move Window To");
             for i in 0..count {
                 let name = self.workspace_name(w.output.as_deref(), i);
-                to = to.item(name, format!("arrange:window-to-workspace-{}", i + 1), None).enabled(i != w.workspace);
+                to = to.item(name, format!("arrange:window-to-workspace-{}", i + 1)).enabled(i != w.workspace);
             }
             m = m.separator().submenu(to);
         }
-        m.separator().item("Workspaces Preferences…", "pref:workspaces", None)
+        m.separator().item("Workspaces Preferences…", "pref:workspaces")
     }
 
     /// A workspace heading's menu, for `display`'s workspace `ws`: all its
@@ -703,17 +704,17 @@ impl Deskbar {
     fn heading_menu(&self, display: Option<&str>, ws: u32) -> Menu {
         let any = self.windows_on(display).any(|w| w.workspace == ws);
         let mut m = Menu::new(self.workspace_name(display, ws))
-            .item("Show All", format!("ws-show:{ws}"), None)
+            .item("Show All", format!("ws-show:{ws}"))
             .enabled(any)
-            .item("Hide All", format!("ws-hide:{ws}"), None)
+            .item("Hide All", format!("ws-hide:{ws}"))
             .enabled(any)
-            .item("Close All", format!("ws-close:{ws}"), None)
+            .item("Close All", format!("ws-close:{ws}"))
             .enabled(any)
             .separator();
         let mut displays: Vec<&OutputInfo> = self.outputs.iter().filter(|o| o.mirror_of.is_none()).collect();
         displays.sort_by_key(|o| o.position);
         for d in displays.iter().filter(|d| Some(d.name.as_str()) != display) {
-            m = m.item(format!("Move to {}", self.workspace_name(Some(&d.name), ws)), format!("ws-move:{ws}:{ws}:{}", d.name), None).enabled(any);
+            m = m.item(format!("Move to {}", self.workspace_name(Some(&d.name), ws)), format!("ws-move:{ws}:{ws}:{}", d.name)).enabled(any);
         }
         let mut to = Menu::new("Move All Windows To");
         for (k, d) in displays.iter().enumerate() {
@@ -722,10 +723,10 @@ impl Deskbar {
             }
             for i in 0..self.workspace.1.clamp(1, 9) {
                 let here = Some(d.name.as_str()) == display && i == ws;
-                to = to.item(self.workspace_name(Some(&d.name), i), format!("ws-move:{ws}:{i}:{}", d.name), None).enabled(any && !here);
+                to = to.item(self.workspace_name(Some(&d.name), i), format!("ws-move:{ws}:{i}:{}", d.name)).enabled(any && !here);
             }
         }
-        m.submenu(to).separator().item("Workspaces Preferences…", "pref:workspaces", None)
+        m.submenu(to).separator().item("Workspaces Preferences…", "pref:workspaces")
     }
 
     /// A command from `display`'s workspace heading's menu
@@ -752,20 +753,16 @@ impl Deskbar {
         let mut m = Menu::new(&team.name);
         for w in &team.windows {
             let title = if w.title.is_empty() { team.name.clone() } else { w.title.clone() };
-            let label = if w.workspace != self.showing(w.output.as_deref()) {
-                format!("{title}  ({})", w.workspace + 1)
-            } else {
-                title
-            };
-            m = m.item(label, format!("win:{}", w.id), None).checked(w.focused).minimized(w.minimized);
+            let label = if w.workspace != self.showing(w.output.as_deref()) { format!("{title}  ({})", w.workspace + 1) } else { title };
+            m = m.item(label, format!("win:{}", w.id)).checked(w.focused).minimized(w.minimized);
         }
         // An app of ours with several windows opens another, as BeOS's
         // Deskbar offered.
         if team.windows.first().is_some_and(|w| new_window_app(&w.app_id)) {
-            m = m.separator().item("New Window", "new-window", None);
+            m = m.separator().item("New Window", "new-window");
         }
         let app = team.windows.first().map(|w| w.app_id.clone()).unwrap_or_default();
-        m = m.separator().item("Hide All", "hide-all", None).item("Show All", "show-all", None).item("Close All", "close-all", None).separator();
+        m = m.separator().item("Hide All", "hide-all").item("Show All", "show-all").item("Close All", "close-all").separator();
         // Its windows to any workspace of any display, as their tabs'
         // menus move one.
         let several = team.windows.len() > 1;
@@ -778,43 +775,35 @@ impl Deskbar {
             }
             for i in 0..self.workspace.1.clamp(1, 9) {
                 let there = team.windows.iter().all(|w| w.output.as_deref() == Some(d.name.as_str()) && w.workspace == i);
-                to = to.item(self.workspace_name(Some(&d.name), i), format!("move:{i}:{}", d.name), None).checked(there).enabled(!there);
+                to = to.item(self.workspace_name(Some(&d.name), i), format!("move:{i}:{}", d.name)).checked(there).enabled(!there);
             }
         }
         m = m.submenu(to);
         if displays.len() > 1 {
             m = m
-                .item(if several { "All to the Next Display" } else { "To the Next Display" }, "shortcut:next-display", None)
-                .item(if several { "All to the Previous Display" } else { "To the Previous Display" }, "shortcut:previous-display", None);
+                .item(if several { "All to the Next Display" } else { "To the Next Display" }, "shortcut:next-display")
+                .item(if several { "All to the Previous Display" } else { "To the Previous Display" }, "shortcut:previous-display");
         }
-        m.separator()
-            .item("Group Windows", "group-windows", None)
-            .checked(!self.tiling.ungrouped_apps.contains(&app))
-            .enabled(!app.is_empty())
+        m.separator().item("Group Windows", "group-windows").checked(!self.tiling.ungrouped_apps.contains(&app)).enabled(!app.is_empty())
     }
 
     /// Caffeinated mode: indefinitely or for a while, with the lid too.
     fn caffeine_menu(&self) -> Menu {
         let on = self.caffeinated;
-        let mut m = Menu::new("Stay Awake").item("Until Turned Off", "caff:on", None).checked(on && self.caffeinated_until.is_none());
+        let mut m = Menu::new("Stay Awake").item("Until Turned Off", "caff:on").checked(on && self.caffeinated_until.is_none());
         for (label, minutes) in [("For 1 Hour", 60), ("For 2 Hours", 120), ("For 4 Hours", 240), ("For 8 Hours", 480)] {
-            m = m.item(label, format!("caff:{minutes}"), None);
+            m = m.item(label, format!("caff:{minutes}"));
         }
         let label = match self.caffeinated_until {
             Some(t) if on => format!("Allow Sleep (awake until {})", status::time_of_day(t, &self.clock)),
             _ => "Allow Sleep".into(),
         };
-        m.separator()
-            .item("Even With the Lid Closed", "caff:lid", None)
-            .checked(self.caffeinated_lid)
-            .separator()
-            .item(label, "caff:off", None)
-            .enabled(on)
+        m.separator().item("Even With the Lid Closed", "caff:lid").checked(self.caffeinated_lid).separator().item(label, "caff:off").enabled(on)
     }
 
     /// A caffeinated-menu command (after `caff:`).
     fn caffeine_command(&mut self, arg: &str) {
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let now = now_secs();
         // What's left of a timed stretch, to keep it when only the lid changes.
         let left = self.caffeinated_until.filter(|_| self.caffeinated).map(|t| t.saturating_sub(now).div_ceil(60).max(1) as u32);
         let (on, minutes, lid) = match arg {
@@ -835,7 +824,7 @@ impl Deskbar {
     /// An approve-without-asking command (after `approve:`): `off`, or
     /// minutes. Turning it on takes the password (the window); on
     /// already, only the length changes.
-    fn approve_command(&mut self, cx: &mut Cx, arg: &str) {
+    fn approve_command(&mut self, arg: &str, cx: &mut Context<Self>) {
         if arg == "off" {
             self.approve_until = None;
             request(Request::SetAutoApprove { minutes: None, password: None });
@@ -844,12 +833,10 @@ impl Deskbar {
         let Ok(minutes) = arg.parse::<u32>() else { return };
         if self.approve_until.is_some() {
             request(Request::SetAutoApprove { minutes: Some(minutes), password: None });
-        } else if let Some(a) = &mut self.approve {
-            a.choose(minutes);
-            cx.activate(a.win);
-            cx.redraw(a.win);
+        } else if let Some(a) = self.approve.clone().filter(|a| a.read(cx).window.is_some()) {
+            a.update(cx, |a, cx| a.choose(minutes, cx));
         } else {
-            self.approve = Some(approve::Ask::open(cx, minutes));
+            self.approve = approve::Ask::open(cx, minutes);
         }
     }
 
@@ -857,7 +844,7 @@ impl Deskbar {
     /// or minutes. Written to the notification settings, which the service
     /// follows.
     fn do_not_disturb(&mut self, arg: &str) {
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let now = now_secs();
         let (on, until) = match arg {
             "on" => (true, None),
             "off" => (false, None),
@@ -880,12 +867,7 @@ impl Deskbar {
         });
     }
 
-    fn run_command(&mut self, cx: &mut Cx, cmd: &str) {
-        let spawn = |s: &str| {
-            if let Err(e) = olo_kit::spawn_detached(s) {
-                tracing::warn!("launch {s}: {e}");
-            }
-        };
+    fn run_command(&mut self, cmd: &str, cx: &mut Context<Self>) {
         match cmd.split_once(':') {
             Some(("run", bin)) => spawn(bin),
             Some(("pref", panel)) => spawn(&format!("olo-preferences {panel}")),
@@ -912,7 +894,7 @@ impl Deskbar {
                     });
                 }
             }
-            Some(("approve", arg)) => self.approve_command(cx, arg),
+            Some(("approve", arg)) => self.approve_command(arg, cx),
             Some(("display", output)) => request(Request::FocusDisplay { output: output.to_owned() }),
             // For the display of the Deskbar it was chosen on, and the
             // workspace whose heading it was chosen from.
@@ -939,53 +921,41 @@ impl Deskbar {
                 "find" => spawn("olo-tracker --find"),
                 "lock" => request(Request::Lock),
                 "logout" => request(Request::Quit),
-                "restart" => self.confirm_power(cx, Power::Restart),
-                "shutdown" => self.confirm_power(cx, Power::ShutDown),
+                "restart" => self.confirm_power(Power::Restart, cx),
+                "shutdown" => self.confirm_power(Power::ShutDown, cx),
                 _ => {}
             },
         }
-        self.redraw(cx);
-    }
-
-    fn redraw(&self, cx: &mut Cx) {
-        for bar in &self.bars {
-            cx.redraw(bar.win);
-        }
+        cx.notify();
     }
 
     /// Ask before restarting or shutting down, as BeOS did.
-    fn confirm_power(&mut self, cx: &mut Cx, action: Power) {
-        if let Some((win, _)) = self.confirm.take() {
-            cx.close_window(win);
+    fn confirm_power(&mut self, action: Power, cx: &mut Context<Self>) {
+        if let Some(w) = self.confirm.take() {
+            let _ = w.update(cx, |_, window, _| window.remove_window());
         }
-        let message = action.question();
-        let win = cx.open_window(WindowOptions::alert(action.label(), message));
-        self.confirm = Some((win, action));
-    }
-
-    fn confirm_ui(&mut self, cx: &mut Cx, win: WindowId, ui: &mut egui::Ui) {
-        let Some((_, action)) = self.confirm else { return };
-        let Some(choice) = widgets::alert(ui, "system", action.question(), &["Cancel", action.label()]) else { return };
-        self.confirm = None;
-        cx.close_window(win);
-        if choice == 1 {
-            // logind may take a moment (and polkit may ask): not on the UI thread.
-            std::thread::spawn(move || {
-                let r = match action {
-                    Power::Restart => olo_system::power::reboot(),
-                    Power::ShutDown => olo_system::power::power_off(),
-                };
-                if let Err(e) = r {
-                    tracing::warn!("{}: {e}", action.label());
-                }
-            });
-        }
+        let model = cx.entity().downgrade();
+        self.confirm = olo_ui::widgets::open_alert(cx, action.label(), "system", action.question(), &["Cancel", action.label()], move |choice, cx| {
+            let _ = model.update(cx, |d, _| d.confirm = None);
+            if choice == Some(1) {
+                // logind may take a moment (and polkit may ask): not on the UI thread.
+                std::thread::spawn(move || {
+                    let r = match action {
+                        Power::Restart => olo_system::power::reboot(),
+                        Power::ShutDown => olo_system::power::power_off(),
+                    };
+                    if let Err(e) = r {
+                        tracing::warn!("{}: {e}", action.label());
+                    }
+                });
+            }
+        });
     }
 
     /// Offer the newer build olo-session found.
-    fn ask_upgrade(&mut self, cx: &mut Cx) {
-        if let Some((win, _)) = self.upgrade_ask.take() {
-            cx.close_window(win);
+    fn ask_upgrade(&mut self, cx: &mut Context<Self>) {
+        if let Some(w) = self.upgrade_ask.take() {
+            let _ = w.update(cx, |_, window, _| window.remove_window());
         }
         // A new app_server means a reload, which programs it can't keep
         // (ones that came before olo-wlproxy, or without it) don't
@@ -996,32 +966,20 @@ impl Deskbar {
             Vec::new()
         };
         let message = upgrade_message(&self.status.upgrade, &closing);
-        let win = cx.open_window(WindowOptions::alert("Upgrade Olo", &message));
-        self.upgrade_ask = Some((win, message));
-    }
-
-    fn upgrade_ui(&mut self, cx: &mut Cx, win: WindowId, ui: &mut egui::Ui) {
-        let Some((_, message)) = &self.upgrade_ask else { return };
-        let Some(choice) = widgets::alert(ui, "system", message, &["Later", "Upgrade"]) else { return };
-        self.upgrade_ask = None;
-        cx.close_window(win);
-        if choice == 1 {
-            // olo-session installs the programs and reloads in place.
-            match std::env::var("OLO_SESSION_PID").ok().and_then(|p| p.parse::<i32>().ok()) {
-                // SAFETY: sending a signal.
-                Some(pid) if unsafe { libc::kill(pid, libc::SIGUSR2) } == 0 => {}
-                _ => tracing::warn!("no session to upgrade"),
+        let model = cx.entity().downgrade();
+        self.upgrade_ask = olo_ui::widgets::open_alert(cx, "Upgrade Olo", "system", &message, &["Later", "Upgrade"], move |choice, cx| {
+            let _ = model.update(cx, |d, _| d.upgrade_ask = None);
+            if choice == Some(1) {
+                // olo-session installs the programs and reloads in place.
+                match std::env::var("OLO_SESSION_PID").ok().and_then(|p| p.parse::<i32>().ok()) {
+                    // SAFETY: sending a signal.
+                    Some(pid) if unsafe { libc::kill(pid, libc::SIGUSR2) } == 0 => {}
+                    _ => tracing::warn!("no session to upgrade"),
+                }
             }
-        }
+        });
     }
 
-    /// An application's row at `row`: its icon and name, recessed while
-    /// it has the focus, highlighted while Twitcher is on it. A click
-    /// brings it forward, all its windows; the right button opens the
-    /// menu of them; files dropped on it open with it; dragged out, it is
-    /// a link to the program. Under workspace `ws`'s heading, it is its
-    /// windows there.
-    #[allow(clippy::too_many_arguments)]
     /// New word from the notification service: the apps a notification
     /// arrived for since the last shake their dots (not while Do Not
     /// Disturb keeps things quiet).
@@ -1057,7 +1015,7 @@ impl Deskbar {
         let shake = keys.iter().filter_map(|k| self.shaking.get(k)).map(|at| now.duration_since(*at).as_secs_f32() / SHAKE.as_secs_f32()).filter(|t| *t < 1.0).reduce(f32::min);
         // Each notification its share, however many apps' they are (a
         // browser's sites); a badge alone is full.
-        let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let secs = now_secs();
         let weight = |a: &NoteApp| a.count.max(1) as f32;
         let total: f32 = mine.iter().map(|a| weight(a)).sum();
         let fresh = if total > 0.0 { mine.iter().map(|a| a.freshness(fade, secs) * weight(a)).sum::<f32>() / total } else { 1.0 };
@@ -1077,241 +1035,6 @@ impl Deskbar {
             .cloned()
     }
 
-    fn team_row(&mut self, cx: &mut Cx, w: WindowId, ui: &mut egui::Ui, row: Rect, team: &Team, display: Option<&str>, ws: Option<u32>) {
-        let pal = style::palette(ui.ctx());
-        let notes = self.notes_of(team);
-        let badge = self.badge_of(team);
-        let painter = ui.painter().clone();
-        let pointer = ui.input(|i| i.pointer.hover_pos());
-        let hover = olo_kit::dnd::hover(ui.ctx()).filter(|h| h.has_files() && h.actions.copy && !h.has(olo_kit::dnd::LINK_TYPE));
-        // Files dragged onto an application open with it.
-        let drop_here = hover.as_ref().is_some_and(|h| row.contains(h.pos)) && self.handler(&team.key).is_some();
-        if drop_here {
-            olo_kit::dnd::accept(ui.ctx(), format!("team:{}", team.key), "text/uri-list", olo_kit::dnd::Action::Copy);
-        }
-        let id = egui::Id::unique(("team", display, ws, &team.key));
-        let resp = ui.interact(row, id, Sense::click_and_drag());
-        if resp.drag_started()
-            && let Some(data) = self.app_drag(ui.ctx(), team)
-        {
-            cx.start_drag(w, data);
-        }
-        let open = menu::is_open(ui.ctx(), id);
-        // A click brings the application forward, every window of it;
-        // the right button (or a long touch) opens the menu of them, to
-        // choose one.
-        if resp.clicked() && !open {
-            self.bring_forward(&team.key, display, ws);
-        }
-        if (resp.secondary_clicked() || resp.long_touched()) && !open {
-            menu::request_popup(ui.ctx(), MenuRequest { menu: self.team_menu(team), source: id, anchor: MenuAnchor::Below(row), selected: None });
-        }
-        if let Some(cmd) = menu::take_chosen(ui.ctx(), id) {
-            self.team_command(&team.key, &cmd, display, ws);
-        }
-        let focused = team.windows.iter().any(|w| w.focused);
-        let hidden = team.windows.iter().all(|w| w.minimized);
-        let hover = pointer.is_some_and(|p| row.contains(p));
-        // Twitcher's choice, while ⌘Tab (or ⌥Tab, ⌘`) is held.
-        let chosen = team.windows.iter().any(|w| w.chosen);
-        // What agents read of it: its unread count, notifications, progress.
-        let said: Vec<String> = [
-            badge.as_ref().and_then(|b| b.count).map(|n| format!("{n} unread")),
-            notes.map(|d| match (d.count, d.fresh < 1.0) {
-                (0, _) => "has notifications".to_owned(),
-                (n, false) => format!("has notifications ({n})"),
-                (n, true) => format!("has notifications ({n}, the dot {}% full)", (d.fresh * 100.0).round()),
-            }),
-            badge.as_ref().and_then(|b| b.progress).map(|p| format!("{}% done", (p * 100.0).round())),
-        ]
-        .into_iter()
-        .flatten()
-        .collect();
-        resp.widget_info(|| egui::WidgetInfo {
-            selected: Some(chosen),
-            current_text_value: (!said.is_empty()).then(|| said.join(", ")),
-            ..egui::WidgetInfo::labeled(egui::Role::Button, true, team.name.clone())
-        });
-        // In the workspace showing, the row is on its lit ground.
-        let lit = self.lit(display, ws);
-        let ground = self.ground(&pal, display, ws);
-        if open || drop_here || (chosen && lit) {
-            // (Twitcher's choice in the workspace showing takes the menu's
-            // selection, as the list's would be lost on its lit ground.)
-            painter.rect_filled(row, 0.0, c(pal.menu_selected_background));
-        } else if chosen {
-            // As Twitcher marks it, in the selection's colours.
-            style::selection_wash(&painter, row, &pal);
-        } else if focused {
-            // The active application sits slightly recessed.
-            painter.rect_filled(row, 0.0, shade(&pal, ground, 1.1));
-            hline(&painter, row.left(), row.right(), row.top(), shade(&pal, ground, 1.25));
-        } else if hover {
-            painter.rect_filled(row, 0.0, c(olo_theme_tint(ground, 0.8)));
-        }
-        // (The wash's own edge is the chosen row's.)
-        if !chosen {
-            hline_above(&painter, row.left(), row.right(), row.bottom(), shade(&pal, ground, 1.14));
-        }
-        let icon_r = Rect::from_center_size(pos2(row.left() + ICON_INSET + ICON / 2.0, row.center().y), vec2(ICON, ICON));
-        let tint = if hidden { Color32::from_white_alpha(120) } else { Color32::WHITE };
-        let drawn = team.icon.as_deref().is_some_and(|i| icons::paint_tinted(&painter, icon_r, i, tint));
-        if !drawn {
-            icons::paint_tinted(&painter, icon_r, "application", tint);
-        }
-        let text_color = if open || drop_here || (chosen && lit) {
-            c(pal.menu_selected_item_text)
-        } else if chosen {
-            style::selection_ink(&pal).text
-        } else if hidden {
-            style::disabled_text(&pal)
-        } else {
-            c(pal.panel_text)
-        };
-        let font = if focused { egui::FontId::new(style::PLAIN_SIZE, style::bold()) } else { style::plain_font() };
-        // The count beside the dot, when asked for.
-        let show_count = self.status.notifications.as_ref().is_some_and(|n| n.show_count);
-        let count = notes.filter(|d| show_count && d.count > 0).map(|d| {
-            let color = if open || drop_here || chosen { text_color } else { c(pal.keyboard_navigation) };
-            painter.layout_no_wrap(count_text(d.count), style::small_font(), color)
-        });
-        let count_w = count.as_ref().map_or(0.0, |g| g.size().x + NOTE_COUNT_GAP);
-        let dot = if notes.is_some() { NOTE_DOT + NOTE_DOT_GAP + count_w } else { 0.0 };
-        let max_w = row.right() - (icon_r.right() + 8.0) - 6.0 - dot;
-        let mut job = egui::text::LayoutJob::simple_singleline(team.name.clone(), font, text_color);
-        job.wrap = egui::text::TextWrapping::truncate_at_width(max_w);
-        let g = painter.layout_job(job);
-        let pos = style::text_origin(ui.ctx(), &g, icon_r.right() + 8.0, row.center().y, style::PLAIN_SIZE);
-        painter.galley(pos, g, text_color);
-        // Notifications unread: a dot at the right end, in the history's
-        // mark for what is unread (on a selected row, in its text's
-        // colour); one just in shakes it a moment.
-        // As they fade it drains from its right, to a floor (the rest a
-        // faint well of its colour); the count, when shown, beside it.
-        if let Some(d) = notes {
-            let at = style::snap_centred(ui.ctx(), pos2(row.right() - NOTE_DOT_INSET - NOTE_DOT / 2.0, row.center().y), vec2(NOTE_DOT, NOTE_DOT));
-            let ppp = ui.ctx().pixels_per_point();
-            // (Whole device pixels: the shake too, so the edge stays sharp.)
-            let dx = d.shake.map_or(0.0, |t| (SHAKE_PX * (t * SHAKE_TIMES * std::f32::consts::TAU).sin() * (1.0 - t).powi(2) * ppp).round() / ppp);
-            let color = if open || drop_here || chosen { text_color } else { c(pal.keyboard_navigation) };
-            let (centre, r) = (at.center() + vec2(dx, 0.0), at.width() / 2.0);
-            let fill = NOTE_DOT_FLOOR + (1.0 - NOTE_DOT_FLOOR) * d.fresh.clamp(0.0, 1.0);
-            let edge = ((centre.x - r + fill * 2.0 * r) * ppp).round() / ppp;
-            if edge >= centre.x + r - 0.5 / ppp {
-                painter.circle_filled(centre, r, color);
-            } else {
-                painter.circle_filled(centre, r, color.gamma_multiply(NOTE_DOT_WELL));
-                let left = Rect::from_min_max(pos2(centre.x - r - 1.0, centre.y - r - 1.0), pos2(edge, centre.y + r + 1.0));
-                painter.with_clip_rect(left.intersect(painter.clip_rect())).circle_filled(centre, r, color);
-                // (Fresh again as they fade: no faster than a device pixel
-                // of it can change.)
-                ui.ctx().request_repaint_after(Duration::from_secs(20));
-            }
-            if let Some(g) = count {
-                let x = at.left() + dx - NOTE_COUNT_GAP - g.size().x;
-                let pos = style::text_origin(ui.ctx(), &g, x, row.center().y, style::SMALL_SIZE);
-                painter.galley(pos, g, color);
-            }
-            if d.shake.is_some() {
-                ui.ctx().request_repaint();
-            }
-        }
-        // Something under way (a download): a thin bar along the row's
-        // foot, under the name, in the selection's colour on a faint track.
-        if let Some(p) = badge.as_ref().and_then(|b| b.progress) {
-            let ppp = ui.ctx().pixels_per_point();
-            let snap = |v: f32| (v * ppp).round() / ppp;
-            let (left, right) = (snap(icon_r.right() + 8.0), snap(row.right() - NOTE_DOT_INSET));
-            // (Clear of the names' descenders, a device pixel above the
-            // row's line.)
-            let bottom = snap(row.bottom()) - 2.0 / ppp;
-            let track = Rect::from_min_max(pos2(left, bottom - 2.0), pos2(right, bottom));
-            painter.rect_filled(track, 0.0, shade(&pal, pal.panel_background, 1.2));
-            let done = Rect::from_min_max(track.min, pos2(snap(left + (right - left) * p as f32), track.max.y));
-            painter.rect_filled(done, 0.0, c(pal.keyboard_navigation));
-        }
-    }
-
-    /// Workspace `ws`'s heading at `r`, on `display`'s Deskbar, its
-    /// applications under it: its name as a quiet caption over their
-    /// icons, the one showing's in the selection's text on its lit ground
-    /// (`ui` lights the whole workspace, `style::lit_ground`), and at its
-    /// right end the workspace's windowing mode (click: the modes, and on
-    /// the one showing, the arranging commands). A click goes there; on
-    /// the workspace showing, the Workspaces menu; the right button, the
-    /// heading's menu (`heading_menu`).
-    fn workspace_heading(&mut self, cx: &mut Cx, ui: &mut egui::Ui, r: Rect, display: Option<&str>, ws: u32) {
-        let pal = style::palette(ui.ctx());
-        let painter = ui.painter().clone();
-        let id = egui::Id::unique(("workspace", display, ws));
-        let name = self.workspace_name(display, ws);
-        let here = ws == self.showing(display);
-        // The windowing mode, square at the right end, as far in as the
-        // caption is from the left.
-        let mode = self.mode(display, ws);
-        let mode_r = Rect::from_center_size(pos2(r.right() - ICON_INSET - ICON / 2.0, r.center().y), vec2(ICON, ICON));
-        let mode_id = egui::Id::unique(("workspace-mode", display, ws));
-        let resp = ui.interact(r, id, Sense::click());
-        resp.widget_info(|| egui::WidgetInfo { selected: Some(here), ..egui::WidgetInfo::labeled(egui::Role::Button, true, name.clone()) });
-        let tip = match mode {
-            WindowingMode::Standard => format!("{name}: windows stay where you put them. Click to choose a windowing mode."),
-            WindowingMode::AutoTiling => format!("{name}: Auto-Tiling, every window takes a tile. Click to choose a windowing mode."),
-            WindowingMode::Focus => format!("{name}: Focus, only the active window shows, zoomed. Click to choose a windowing mode."),
-        };
-        let mode_resp = ui.interact(mode_r.expand(2.0), mode_id, Sense::click()).tip(tip);
-        let mode_open = menu::is_open(ui.ctx(), mode_id);
-        let open = menu::is_open(ui.ctx(), id);
-        if (mode_resp.clicked() || mode_resp.secondary_clicked()) && !mode_open {
-            self.menu_output = display.map(str::to_owned);
-            self.menu_workspace = Some(ws);
-            let mut m = if here { self.arrange_menu(mode) } else { self.modes_menu(mode) };
-            add_keys(&mut m, &self.keys);
-            menu::request_popup(ui.ctx(), MenuRequest { menu: m, source: mode_id, anchor: MenuAnchor::Below(r), selected: None });
-        } else if !open && !mode_resp.hovered() && (resp.secondary_clicked() || resp.long_touched()) {
-            menu::request_popup(ui.ctx(), MenuRequest { menu: self.heading_menu(display, ws), source: id, anchor: MenuAnchor::Below(r), selected: None });
-        } else if !open && !mode_resp.hovered() && resp.clicked() {
-            if here {
-                self.menu_output = display.map(str::to_owned);
-                menu::request_popup(ui.ctx(), MenuRequest { menu: self.workspaces_menu(display), source: id, anchor: MenuAnchor::Below(r), selected: None });
-            } else {
-                request(Request::SwitchWorkspace { index: ws, output: display.map(str::to_owned) });
-            }
-        }
-        if let Some(cmd) = menu::take_chosen(ui.ctx(), id)
-            && !self.heading_command(display, &cmd)
-        {
-            self.run_command(cx, &cmd);
-        }
-        if let Some(cmd) = menu::take_chosen(ui.ctx(), mode_id) {
-            self.run_command(cx, &cmd);
-        }
-        if open || mode_open {
-            painter.rect_filled(r, 0.0, c(pal.menu_selected_background));
-        } else if resp.hovered() {
-            painter.rect_filled(r, 0.0, c(olo_theme_tint(self.ground(&pal, display, Some(ws)), 0.8)));
-        }
-        let ink = if open || mode_open {
-            c(pal.menu_selected_item_text)
-        } else if here {
-            style::selection_ink(&pal).text
-        } else if resp.hovered() {
-            c(pal.panel_text)
-        } else {
-            c(olo_kit::theme::mix(pal.panel_text, pal.panel_background, 0.45))
-        };
-        let font = egui::FontId::new(style::SMALL_SIZE, style::bold());
-        let room = mode_r.left() - 4.0 - (r.left() + ICON_INSET);
-        let mut job = egui::text::LayoutJob::simple_singleline(name, font, ink);
-        job.wrap = egui::text::TextWrapping::truncate_at_width(room);
-        let g = painter.layout_job(job);
-        let pos = style::text_origin(ui.ctx(), &g, r.left() + ICON_INSET, r.center().y, style::SMALL_SIZE);
-        painter.galley(pos, g, ink);
-        if mode_resp.hovered() && !mode_open {
-            painter.rect_filled(mode_r.expand(2.0), 2.0, c(olo_theme_tint(self.ground(&pal, display, Some(ws)), 0.7)));
-        }
-        status::draw_mode(&painter, mode_r, &pal, mode);
-    }
-
     /// Whether the applications under `display`'s workspace `ws`'s
     /// heading are the workspace showing's, which is lit.
     fn lit(&self, display: Option<&str>, ws: Option<u32>) -> bool {
@@ -1320,15 +1043,15 @@ impl Deskbar {
 
     /// The ground of the rows under workspace `ws`'s heading: the panel,
     /// or the workspace showing's lit ground (`style::lit_ground`).
-    fn ground(&self, pal: &Palette, display: Option<&str>, ws: Option<u32>) -> olo_kit::theme::Rgba {
+    fn ground(&self, pal: &Palette, display: Option<&str>, ws: Option<u32>) -> Rgba {
         if self.lit(display, ws) { style::lit_ground(pal, pal.panel_background) } else { pal.panel_background }
     }
 
     /// Show an application's windows on this workspace together
     /// (minimized ones too), the one it used last in front; with none
     /// here, go to its newest.
-    fn bring_forward(&self, team_key: &str, on: Option<&str>, ws: Option<u32>) {
-        let team: Vec<&WindowInfo> = self.windows_on(on).filter(|w| team_key == team_key_of(w) && ws.is_none_or(|ws| w.workspace == ws)).collect();
+    fn bring_forward(&self, team_key_: &str, on: Option<&str>, ws: Option<u32>) {
+        let team: Vec<&WindowInfo> = self.windows_on(on).filter(|w| team_key_ == team_key(w) && ws.is_none_or(|ws| w.workspace == ws)).collect();
         // Under another workspace's heading: its windows there (and so
         // to that workspace).
         let at = ws.unwrap_or_else(|| self.showing(on));
@@ -1341,21 +1064,21 @@ impl Deskbar {
         }
     }
 
-    fn team_command(&mut self, team_key: &str, cmd: &str, on: Option<&str>, ws: Option<u32>) {
-        let ids: Vec<u64> = self.windows_on(on).filter(|w| team_key == team_key_of(w) && ws.is_none_or(|ws| w.workspace == ws)).map(|w| w.id).collect();
+    fn team_command(&mut self, team_key_: &str, cmd: &str, on: Option<&str>, ws: Option<u32>) {
+        let ids: Vec<u64> = self.windows_on(on).filter(|w| team_key_ == team_key(w) && ws.is_none_or(|ws| w.workspace == ws)).map(|w| w.id).collect();
         if let Some(id) = cmd.strip_prefix("win:").and_then(|s| s.parse().ok()) {
             request(Request::Activate { id });
             return;
         }
         if cmd == "group-windows" {
-            if let Some(app) = self.windows.iter().find(|w| team_key == team_key_of(w)).map(|w| w.app_id.clone()) {
-                olo_kit::settings::set_groups_windows(&app, self.tiling.ungrouped_apps.contains(&app));
+            if let Some(app) = self.windows.iter().find(|w| team_key_ == team_key(w)).map(|w| w.app_id.clone()) {
+                olo_ui::settings::set_groups_windows(&app, self.tiling.ungrouped_apps.contains(&app));
             }
             return;
         }
         if cmd == "new-window" {
-            if let Some(app) = self.windows.iter().find(|w| team_key == team_key_of(w)).map(|w| w.app_id.clone()) {
-                std::thread::spawn(move || olo_kit::instance::forward(&app, &["--new-window".to_owned()]));
+            if let Some(app) = self.windows.iter().find(|w| team_key_ == team_key(w)).map(|w| w.app_id.clone()) {
+                std::thread::spawn(move || olo_ui::instance::forward(&app, &["--new-window".to_owned()]));
             }
             return;
         }
@@ -1382,19 +1105,106 @@ impl Deskbar {
             }
         }
     }
+
+    /// Files dropped on the team `key` open with its application.
+    fn dropped(&mut self, key: &str, paths: Vec<PathBuf>) {
+        if paths.is_empty() {
+            return;
+        }
+        let Some(handler) = self.handler(key) else { return };
+        tracing::debug!(key, ?paths, "dropped");
+        std::thread::spawn(move || {
+            if let Err(e) = olo_xdg::open::open_with(&handler, &paths) {
+                tracing::warn!("couldn't open the dropped files with {}: {e}", handler.name());
+            }
+        });
+    }
+
+    /// Ticks the clock: every bar drawn again on the next minute (or
+    /// second, when it shows them), and nothing between.
+    fn tick(&mut self, cx: &mut Context<Self>) {
+        let wait = status::until_next_tick(self.clock.show_seconds);
+        self.ticking = Some(cx.spawn(async move |model, cx| {
+            cx.background_executor().timer(wait).await;
+            let _ = model.update(cx, |d, cx| {
+                cx.notify();
+                d.tick(cx);
+            });
+        }));
+    }
+
+    fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
+        let message = match message.downcast::<approve::Answer>() {
+            Ok(answer) => {
+                if let Some(a) = self.approve.clone()
+                    && a.update(cx, |a, cx| a.answer(*answer, cx))
+                {
+                    self.approve = None;
+                }
+                return;
+            }
+            Err(m) => m,
+        };
+        let Ok(m) = message.downcast::<Msg>() else { return };
+        match *m {
+            Msg::Windows(w) => self.set_windows(w),
+            Msg::Workspace(cur, count, showing) => {
+                self.workspace = (cur, count);
+                self.showing = showing;
+            }
+            Msg::Status(s) => {
+                self.note_arrivals(&s);
+                self.status = s;
+            }
+            Msg::Power(p) => {
+                self.caffeinated = p.caffeinated;
+                self.caffeinated_until = p.caffeinated_until;
+                self.caffeinated_lid = p.caffeinated_lid;
+                self.approve_until = p.auto_approve_until;
+            }
+            Msg::Settings(s) => {
+                let seconds = s.clock.show_seconds != self.clock.show_seconds;
+                self.clock = s.clock;
+                self.menu_icons = s.menu_icons;
+                self.tiling = s.tiling;
+                self.keys = s.keys;
+                if seconds {
+                    self.tick(cx);
+                }
+            }
+            Msg::Outputs(outputs) => {
+                self.outputs = outputs;
+                self.sync_bars(cx);
+            }
+            Msg::Installed(installed) => {
+                self.installed = installed;
+                self.scanning = false;
+                self.entries.clear();
+            }
+            Msg::Tray(tray) => {
+                // Pictures no item has any more go.
+                self.tray_pictures.retain(|(key, serial, _), _| tray.items.iter().any(|i| i.key == *key && i.serial == *serial));
+                self.tray_apps = tray.items;
+                // More unread (or a wish for attention) shakes the dot.
+                let now = Instant::now();
+                for b in &tray.badges {
+                    let before = self.badges.iter().find(|o| o.app == b.app);
+                    if b.count.unwrap_or(0) > before.and_then(|o| o.count).unwrap_or(0) || (b.urgent && !before.is_some_and(|o| o.urgent)) {
+                        self.shaking.insert(badge_key(&b.app), now);
+                    }
+                }
+                self.badges = tray.badges;
+            }
+        }
+        cx.notify();
+    }
 }
 
 /// Whether `app_id` is one of ours that opens a new window when asked.
 fn new_window_app(app_id: &str) -> bool {
-    app_id.strip_prefix("olo.").is_some_and(|rest| olo_kit::apps::NEW_WINDOW.contains(&format!("olo-{rest}").as_str()))
+    app_id.strip_prefix("olo.").is_some_and(|rest| olo_xdg::apps::NEW_WINDOW.contains(&format!("olo-{rest}").as_str()))
 }
 
-fn team_key_of(w: &WindowInfo) -> String {
-    team_key(w)
-}
-
-/// `menu` and its submenus with no icons (Appearance ▸ Show icons in the
-/// Deskbar menu, off).
 /// Show beside each of the Olo menu's commands that app_server also has
 /// as a shortcut (`find`, `lock`, `arrange:` and a shortcut id) the keys
 /// the person has for it.
@@ -1419,14 +1229,11 @@ fn add_keys(menu: &mut Menu, profile: &KeyboardProfile) {
 }
 
 fn settings_msg(settings: olo_protocol::Settings) -> Msg {
-    Msg::Settings(Settings {
-        clock: settings.clock,
-        menu_icons: settings.appearance.menu_icons,
-        tiling: settings.tiling,
-        keys: settings.keyboard.profile,
-    })
+    Msg::Settings(Settings { clock: settings.clock, menu_icons: settings.appearance.menu_icons, tiling: settings.tiling, keys: settings.keyboard.profile })
 }
 
+/// `menu` and its submenus with no icons (Appearance ▸ Show icons in the
+/// Deskbar menu, off).
 fn without_icons(mut menu: Menu) -> Menu {
     menu.icon = None;
     menu.items = menu
@@ -1444,7 +1251,6 @@ fn without_icons(mut menu: Menu) -> Menu {
     menu
 }
 
-/// The bell's menu.
 /// Each share, said, with Stop Sharing under it.
 fn sharing_menu(shares: &[olo_protocol::sharing::Share]) -> Menu {
     let mut m = Menu::new("Sharing");
@@ -1452,10 +1258,10 @@ fn sharing_menu(shares: &[olo_protocol::sharing::Share]) -> Menu {
         if i > 0 {
             m = m.separator();
         }
-        m = m.item(format!("Sharing {}", olo_protocol::SharingState::describe(s)), "", None).enabled(false).item("Stop Sharing", format!("share:{}", s.session), None);
+        m = m.item(format!("Sharing {}", olo_protocol::SharingState::describe(s)), "").enabled(false).item("Stop Sharing", format!("share:{}", s.session));
     }
     if shares.len() > 1 {
-        m = m.separator().item("Stop All", "share:all", None);
+        m = m.separator().item("Stop All", "share:all");
     }
     m
 }
@@ -1464,38 +1270,39 @@ fn sharing_menu(shares: &[olo_protocol::sharing::Share]) -> Menu {
 /// process in Activity Monitor), and the way to all of it.
 fn supervisor_menu(sup: &status::Supervisor) -> Menu {
     const SHOWN: usize = 6;
-    let mut m = Menu::new("Supervisor").item("Keep the Desktop Responsive", "perf:toggle", None).checked(sup.on).separator();
+    let mut m = Menu::new("Supervisor").item("Keep the Desktop Responsive", "perf:toggle").checked(sup.on).separator();
     let st = &sup.state;
     if !sup.on {
-        m = m.item("Off", "", None).enabled(false);
+        m = m.item("Off", "").enabled(false);
     } else if st.findings.is_empty() {
-        m = m.item("Nothing Found", "", None).enabled(false);
+        m = m.item("Nothing Found", "").enabled(false);
     }
     if sup.on {
         for f in st.findings.iter().take(SHOWN) {
-            m = m.item(format!("{}: {} ({}){}", f.kind.title(), f.name, f.pid, if f.urgent { ", Urgent" } else { "" }), format!("run:olo-activity --inspect {}", f.pid), None);
+            m = m.item(format!("{}: {} ({}){}", f.kind.title(), f.name, f.pid, if f.urgent { ", Urgent" } else { "" }), format!("run:olo-activity --inspect {}", f.pid));
         }
         if st.findings.len() > SHOWN {
-            m = m.item(format!("And {} More", st.findings.len() - SHOWN), "run:olo-activity --section supervisor", None);
+            m = m.item(format!("And {} More", st.findings.len() - SHOWN), "run:olo-activity --section supervisor");
         }
         if !st.lowered.is_empty() {
             let n = st.lowered.len();
-            m = m.item(format!("{n} Background Process{} Lowered", if n == 1 { "" } else { "es" }), "run:olo-activity --section supervisor", None);
+            m = m.item(format!("{n} Background Process{} Lowered", if n == 1 { "" } else { "es" }), "run:olo-activity --section supervisor");
         }
     }
-    m.separator().item("Show in Activity Monitor", "run:olo-activity --section supervisor", None).item("Performance Settings…", "pref:performance", None)
+    m.separator().item("Show in Activity Monitor", "run:olo-activity --section supervisor").item("Performance Settings…", "pref:performance")
 }
 
+/// The bell's menu.
 fn notifications_menu(quiet: bool) -> Menu {
     Menu::new("Notifications")
-        .item("Show History", "notif:history", None)
+        .item("Show History", "notif:history")
         .separator()
-        .item("Do Not Disturb", if quiet { "notif:off" } else { "notif:on" }, None)
+        .item("Do Not Disturb", if quiet { "notif:off" } else { "notif:on" })
         .checked(quiet)
-        .item("Quiet for 1 Hour", "notif:60", None)
-        .item("Quiet Until Morning", "notif:tomorrow", None)
+        .item("Quiet for 1 Hour", "notif:60")
+        .item("Quiet Until Morning", "notif:tomorrow")
         .separator()
-        .item("Notification Settings…", "pref:notifications", None)
+        .item("Notification Settings…", "pref:notifications")
 }
 
 /// "Terminal, Deskbar and 3 others", for the upgrade alert.
@@ -1517,10 +1324,7 @@ fn upgrade_message(programs: &[String], closing: &[String]) -> String {
     if closing.is_empty() {
         return format!("A new build of Olo is ready ({list}). Install it now? Your windows stay open.");
     }
-    format!(
-        "A new build of Olo is ready ({list}). Installing it restarts the window server: Olo's windows stay open, but {} will close.",
-        listing(closing)
-    )
+    format!("A new build of Olo is ready ({list}). Installing it restarts the window server: Olo's windows stay open, but {} will close.", listing(closing))
 }
 
 /// "A", "A and B", "A, B and C", "A, B, C and 2 others".
@@ -1533,129 +1337,285 @@ fn listing(names: &[String]) -> String {
     }
 }
 
-// ---- drawing ----------------------------------------------------------------
+// ---- the bars -----------------------------------------------------------------
 
-fn section_bevel(p: &egui::Painter, r: Rect, pal: &Palette) {
-    hline(p, r.left(), r.right(), r.top(), c(pal.shine));
-    vline(p, r.left(), r.top(), r.bottom(), c(pal.shine));
-    hline_above(p, r.left(), r.right(), r.bottom(), shade(pal, pal.panel_background, 1.3));
+/// Opens a Deskbar on `output` (None: where app_server puts it, until the
+/// displays are known).
+fn open_bar(cx: &mut App, model: Entity<Deskbar>, output: Option<String>) -> Option<Bar> {
+    let height = TILE_H + tray_height(1);
+    let view = cx.new(|cx| {
+        cx.observe(&model, |_, _, cx| cx.notify()).detach();
+        BarView { model: model.clone(), output: output.clone(), hot: None, open: None, press: None, height, scroll: 0.0, fading: None }
+    });
+    let options = WindowOptions::new("Deskbar", WIDTH, height).layer("deskbar", LayerShellLayer::Top, (true, false, false, true)).layer_options(|l| {
+        l.keyboard = LayerKeyboard::None;
+        l.output = output.clone();
+    });
+    let v = view.clone();
+    let win = olo_ui::open_window(cx, options, move |_, _| v)?;
+    Some(Bar { win, view })
 }
 
-impl App for Deskbar {
-    /// Its applications' order, for the Deskbar it re-executes as (an
-    /// upgrade, a lost GPU): they come back in the order they were.
-    fn save_state(&mut self, _cx: &Cx) -> Option<String> {
-        serde_json::to_string(&self.order).ok()
+/// A press on an application that may become a drag out of it.
+#[derive(Clone)]
+struct Press {
+    at: Point<Pixels>,
+    team: String,
+    icon: String,
+    name: String,
+}
+
+/// A Deskbar on a display: what the pointer is doing over it.
+struct BarView {
+    model: Entity<Deskbar>,
+    /// The display it is on (a connector); None for one opened before the
+    /// displays were known (app_server keeps it on the main display).
+    output: Option<String>,
+    /// What the pointer is over, by its key.
+    hot: Option<SharedString>,
+    /// What a menu is open from.
+    open: Option<SharedString>,
+    press: Option<Press>,
+    /// Its height, as last asked of the compositor.
+    height: f32,
+    /// Wheel movement over the volume, towards the next 5% step.
+    scroll: f32,
+    /// Drawn again as a dot drains (no faster than a device pixel of it
+    /// can change).
+    fading: Option<Task<()>>,
+}
+
+impl BarView {
+    fn set_hot(&mut self, key: &SharedString, on: bool, cx: &mut Context<Self>) {
+        let hot = if on { Some(key.clone()) } else if self.hot.as_ref() == Some(key) { None } else { return };
+        if hot != self.hot {
+            self.hot = hot;
+            cx.notify();
+        }
+    }
+}
+
+/// What a bar's drawing needs to know of the pointer.
+#[derive(Clone)]
+struct Pointer {
+    hot: Option<SharedString>,
+    open: Option<SharedString>,
+}
+
+impl Pointer {
+    fn hot(&self, key: &str) -> bool {
+        self.hot.as_ref().is_some_and(|h| h.as_ref() == key)
     }
 
-    fn dropped(&mut self, _cx: &mut Cx, _window: WindowId, drop: olo_kit::dnd::Drop) {
-        let Some(key) = drop.target.strip_prefix("team:") else { return };
-        let paths = drop.paths();
-        if paths.is_empty() {
-            return;
-        }
-        let Some(handler) = self.handler(key) else { return };
-        std::thread::spawn(move || {
-            if let Err(e) = olo_kit::open::open_with(&handler, &paths) {
-                tracing::warn!("couldn't open the dropped files with {}: {e}", handler.name());
+    fn open(&self, key: &str) -> bool {
+        self.open.as_ref().is_some_and(|o| o.as_ref() == key)
+    }
+}
+
+/// Drawing a bar: what to paint, in order, and where the pointer can do
+/// things.
+struct Drawing {
+    paint: Vec<Box<dyn FnOnce(&mut Window, &mut App)>>,
+    hits: Vec<AnyElement>,
+    /// A dot is shaking: drawn again next frame.
+    animating: bool,
+    /// A dot has begun to drain.
+    fading: bool,
+}
+
+impl Drawing {
+    fn paint(&mut self, f: impl FnOnce(&mut Window, &mut App) + 'static) {
+        self.paint.push(Box::new(f));
+    }
+}
+
+fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<Pixels> {
+    Bounds { origin: point(px(x), px(y)), size: size(px(w), px(h)) }
+}
+
+fn expand(r: Bounds<Pixels>, by: f32) -> Bounds<Pixels> {
+    Bounds { origin: point(r.left() - px(by), r.top() - px(by)), size: size(r.size.width + px(2.0 * by), r.size.height + px(2.0 * by)) }
+}
+
+/// The mouse button used on an area of the bar.
+fn button(e: &MouseButton) -> MouseButton {
+    *e
+}
+
+/// The buttons on an area of the bar: a left click (pressed and let go
+/// on it), and the right and middle buttons as they're pressed (menus
+/// open on the press, as BeOS's do).
+trait Buttons {
+    fn on_any_button(self, f: impl Fn(&MouseButton, &mut Window, &mut App) + 'static) -> Self;
+}
+
+impl Buttons for olo_ui::gpui::Stateful<olo_ui::gpui::Div> {
+    fn on_any_button(self, f: impl Fn(&MouseButton, &mut Window, &mut App) + 'static) -> Self {
+        let f = std::rc::Rc::new(f);
+        let (left, right, middle) = (f.clone(), f.clone(), f);
+        self.on_click(move |e: &ClickEvent, window, cx| {
+            if e.standard_click() {
+                left(&MouseButton::Left, window, cx)
             }
+        })
+        .on_mouse_down(MouseButton::Right, move |_, window, cx| right(&MouseButton::Right, window, cx))
+        .on_mouse_down(MouseButton::Middle, move |_, window, cx| middle(&MouseButton::Middle, window, cx))
+    }
+}
+
+/// An area of the bar the pointer can use, `key` its name: hovering it
+/// lights it (and shows `tip` a moment later, in a popup of its own:
+/// the bar is narrower than what it says), a press puts the tip away.
+fn hit(view: &Entity<BarView>, key: &str, r: Bounds<Pixels>, tip_text: Option<String>) -> olo_ui::gpui::Stateful<olo_ui::gpui::Div> {
+    let key = SharedString::from(key.to_owned());
+    let (v, k, t) = (view.clone(), key.clone(), tip_text.clone());
+    let (pk, rk) = (key.clone(), key.clone());
+    div()
+        .id(key)
+        .absolute()
+        .left(r.left())
+        .top(r.top())
+        .w(r.size.width)
+        .h(r.size.height)
+        .on_hover(move |on: &bool, window, cx| {
+            v.update(cx, |v, cx| v.set_hot(&k, *on, cx));
+            if let Some(t) = &t {
+                tip::hover(window, cx, k.clone(), t.clone(), r, *on);
+            }
+        })
+        .on_mouse_down(MouseButton::Left, move |_, window, cx| tip::pressed(window, cx, pk.clone()))
+        .on_mouse_down(MouseButton::Right, move |_, window, cx| tip::pressed(window, cx, rk.clone()))
+}
+
+/// Opens `menu` under `r`, from the bar's element `key` (shown open
+/// until it goes); commands go to `then`.
+fn open_menu(window: &mut Window, cx: &mut App, view: &Entity<BarView>, key: &str, r: Bounds<Pixels>, menu: Menu, then: impl Fn(&str, &mut App) + 'static) {
+    let key = SharedString::from(key.to_owned());
+    let (v, k) = (view.clone(), key.clone());
+    let handle = menu::popup_then(
+        window,
+        cx,
+        menu,
+        r,
+        Corner::BottomLeft,
+        move |cmd, _, cx| then(cmd, cx),
+        move |cx| {
+            v.update(cx, |v, cx| {
+                if v.open.as_ref() == Some(&k) {
+                    v.open = None;
+                    cx.notify();
+                }
+            })
+        },
+    );
+    if handle.is_some() {
+        view.update(cx, |v, cx| {
+            v.open = Some(key);
+            cx.notify();
         });
     }
+}
 
-    fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
-        if self.confirm.is_some_and(|(w, _)| w == window) {
-            self.confirm = None;
+impl Render for BarView {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let view = cx.entity();
+        let pointer = Pointer { hot: self.hot.clone(), open: self.open.clone() };
+        let output = self.output.clone();
+        let (drawing, height) = self.model.clone().update(cx, |d, cx| d.draw_bar(output.as_deref(), &pointer, &view, window, cx));
+        // Its height follows what it shows (after this frame: the
+        // compositor sizes a layer surface).
+        if (height - self.height).abs() > 0.5 {
+            self.height = height;
+            window.defer(cx, move |window, _| window.resize(size(px(WIDTH), px(height))));
         }
-        if self.upgrade_ask.as_ref().is_some_and(|(w, _)| *w == window) {
-            self.upgrade_ask = None;
+        if drawing.animating {
+            window.request_animation_frame();
         }
-        if self.approve.as_ref().is_some_and(|a| a.win == window) {
-            self.approve = None;
+        if drawing.fading && self.fading.is_none() {
+            self.fading = Some(cx.spawn(async move |v, cx| {
+                cx.background_executor().timer(Duration::from_secs(20)).await;
+                let _ = v.update(cx, |v, cx| {
+                    v.fading = None;
+                    cx.notify();
+                });
+            }));
         }
-        if !self.bars.iter().any(|b| b.win == window) {
-            cx.close_window(window);
-        }
+        let paint = drawing.paint;
+        div()
+            .relative()
+            .w(px(WIDTH))
+            .h(px(height))
+            .child(
+                canvas(
+                    |_, _, _| {},
+                    move |_, _, window, cx| {
+                        for f in paint {
+                            f(window, cx);
+                        }
+                    },
+                )
+                .absolute()
+                .inset_0(),
+            )
+            .children(drawing.hits)
     }
+}
 
-    fn ui(&mut self, cx: &mut Cx, w: WindowId, ui: &mut egui::Ui) {
-        if self.confirm.is_some_and(|(win, _)| win == w) {
-            self.confirm_ui(cx, w, ui);
-            return;
-        }
-        if self.upgrade_ask.as_ref().is_some_and(|(win, _)| *win == w) {
-            self.upgrade_ui(cx, w, ui);
-            return;
-        }
-        if let Some(a) = self.approve.as_mut().filter(|a| a.win == w) {
-            if a.ui(ui, &self.proxy) {
-                self.approve = None;
-                cx.close_window(w);
-            }
-            return;
-        }
-        let Some(bar) = self.bars.iter().position(|b| b.win == w) else { return };
-        let display = self.shown_on(&self.bars[bar]);
-        let pal = style::palette(ui.ctx());
-        let full = ui.max_rect();
-        let painter = ui.painter().clone();
-        painter.rect_filled(full, 0.0, c(pal.panel_background));
+impl Deskbar {
+    /// Draws the bar on `output`: the Olo tile, the tray, and the
+    /// applications by display and workspace. Its height.
+    fn draw_bar(&mut self, output: Option<&str>, pointer: &Pointer, view: &Entity<BarView>, window: &mut Window, cx: &mut Context<Self>) -> (Drawing, f32) {
+        let model = cx.entity();
+        let p = theme::palette(cx);
+        let display = self.shown_on(output);
+        let mut d = Drawing { paint: Vec::new(), hits: Vec::new(), animating: false, fading: false };
 
         // ---- the Olo tile
-        let tile = Rect::from_min_size(full.min, vec2(full.width(), TILE_H));
-        let tile_id = egui::Id::unique("olo-tile");
-        let tile_resp = ui.interact(tile, tile_id, Sense::click());
-        let tile_open = menu::is_open(ui.ctx(), tile_id);
+        let tile = rect(0.0, 0.0, WIDTH, TILE_H);
         let mode = self.mode(display.as_deref(), self.showing(display.as_deref()));
-        if tile_resp.clicked() && !tile_open {
-            self.menu_output = display.clone();
-            self.menu_workspace = None;
-            menu::request_popup(
-                ui.ctx(),
-                MenuRequest { menu: self.olo_menu(mode), source: tile_id, anchor: MenuAnchor::Below(tile), selected: None },
+        let hot = pointer.hot("tile") || pointer.open("tile");
+        d.paint(move |window, cx| {
+            let p = theme::palette(cx);
+            style::vgradient(window, tile, style::tint(p.panel_background, if hot { 0.75 } else { 0.85 }), shade(&p, p.panel_background, 1.04));
+            section_bevel(window, tile, &p);
+            // The wordmark alone, centred (beside the mark it read as "o olo").
+            let word = rect(0.0, f32::from(tile.center().y) - 9.0, WIDTH, 18.0);
+            if let olo_ui::brand::Drawn::Missing = olo_ui::brand::wordmark_centred(window, word, status::dark(&p)) {
+                style::label(window, cx, tile.center().x, tile.center().y, Align::Center, "Olo", 14.0, style::ui_font(FontWeight::BOLD), c(p.panel_text));
+            }
+            agent::record(window, cx, agent::Node { role: "Button", name: Some("Olo".into()), bounds: tile, enabled: true, clickable: true, ..Default::default() });
+        });
+        {
+            let (m, v, dsp) = (model.clone(), view.clone(), display.clone());
+            d.hits.push(
+                hit(view, "tile", tile, None)
+                    .on_any_button(move |e, window, cx| {
+                        if button(e) != MouseButton::Left {
+                            return;
+                        }
+                        let menu = m.update(cx, |d, _| {
+                            d.menu_output = dsp.clone();
+                            d.menu_workspace = None;
+                            d.olo_menu(mode)
+                        });
+                        let m2 = m.clone();
+                        open_menu(window, cx, &v, "tile", tile, menu, move |cmd, cx| m2.update(cx, |d, cx| d.run_command(cmd, cx)));
+                    })
+                    .into_any_element(),
             );
-        }
-        if let Some(cmd) = menu::take_chosen(ui.ctx(), tile_id) {
-            self.run_command(cx, &cmd);
-        }
-        let hot = tile_resp.hovered() || tile_open;
-        style::vgradient(
-            &painter,
-            tile,
-            c(olo_theme_tint(pal.panel_background, if hot { 0.75 } else { 0.85 })),
-            shade(&pal, pal.panel_background, 1.04),
-        );
-        section_bevel(&painter, tile, &pal);
-        // The wordmark alone, centred (beside the mark it read as "o olo").
-        let dark = pal.mode == olo_kit::theme::ThemeMode::Dark;
-        let word_h = 18.0;
-        let word_w = olo_kit::brand::wordmark_width(word_h, dark);
-        let word = Rect::from_min_size(pos2(tile.center().x - word_w / 2.0, tile.center().y - word_h / 2.0), vec2(word_w, word_h));
-        if olo_kit::brand::wordmark(&painter, word, dark).is_none() {
-            style::label(&painter, tile.center().x, tile.center().y, egui::Align::Center, "Olo", egui::FontId::new(14.0, style::bold()), c(pal.panel_text));
         }
 
         // ---- tray: the date and time, then the status icons
         let st = self.status.clone();
-        // Other programs' icons (those with something to say), each with
-        // its picture for this scale, made once.
         let mut apps: Vec<sni::Item> = self.tray_apps.iter().filter(|i| i.status != sni::Status::Passive).cloned().collect();
         // Untitled (Electron's): named by their program, as its row is.
         for it in apps.iter_mut().filter(|i| i.title.is_empty() && !i.program.is_empty()) {
             it.title = self.app_name(&it.program.clone()).0;
         }
-        let px = (ICON * ui.ctx().pixels_per_point()).round() as u32;
-        let pictures: Vec<Option<egui::TextureHandle>> = apps
-            .iter()
-            .map(|it| {
-                let ctx = ui.ctx().clone();
-                self.tray_pictures
-                    .entry((it.key.clone(), it.serial, px))
-                    .or_insert_with(|| sni::picture(it, px).map(|img| ctx.load_texture(format!("tray:{}@{px}", it.key), img, egui::TextureOptions::LINEAR)))
-                    .clone()
-            })
-            .collect();
+        let px_size = (ICON * window.scale_factor()).round() as u32;
+        let pictures: Vec<Option<Arc<RenderImage>>> = apps.iter().map(|it| self.tray_pictures.entry((it.key.clone(), it.serial, px_size)).or_insert_with(|| sni::picture(it, px_size)).clone()).collect();
         // This Deskbar's display, with several: its number, to go to another.
-        let display_number = display.as_deref().and_then(|d| olo_protocol::display_number(&self.outputs, d));
+        let display_number = display.as_deref().and_then(|dn| olo_protocol::display_number(&self.outputs, dn));
         let items = apps.len()
             + [
                 display_number.is_some(),
@@ -1673,320 +1633,385 @@ impl App for Deskbar {
             .iter()
             .filter(|on| **on)
             .count();
-        let well_w = full.width() - 2.0 * TRAY_INSET;
+        let well_w = WIDTH - 2.0 * TRAY_INSET;
         // As many rows as it takes, the icons shared out evenly among them
         // (eight are two rows of four, not seven and one left over).
         let fit = ((well_w / TRAY_PITCH).floor() as usize).max(1);
         let rows = items.div_ceil(fit);
         let per_row = items.div_ceil(rows.max(1)).max(1);
-        let tray = Rect::from_min_size(pos2(full.left(), tile.bottom()), vec2(full.width(), tray_height(rows)));
-        painter.rect_filled(tray, 0.0, shade(&pal, pal.panel_background, 1.03));
-        let clock_row = Rect::from_min_size(tray.min, vec2(tray.width(), CLOCK_H));
+        let tray = rect(0.0, TILE_H, WIDTH, tray_height(rows));
+        let clock_row = rect(0.0, TILE_H, WIDTH, CLOCK_H);
         let (date, time) = status::clock_text(&self.clock);
-        let font = style::plain_font();
-        let text_left = clock_row.left() + TRAY_TEXT;
-        let text_right = clock_row.right() - TRAY_TEXT;
-        style::label(&painter, text_left, clock_row.center().y, egui::Align::Min, date, font.clone(), c(pal.panel_text));
-        style::label(&painter, text_right, clock_row.center().y, egui::Align::Max, time, font, c(pal.panel_text));
-        if ui.interact(clock_row, egui::Id::unique("clock"), Sense::click()).tip("Date & Time preferences").clicked() {
-            self.run_command(cx, "pref:datetime");
+        let well = rect(TRAY_INSET, TILE_H + CLOCK_H, well_w, rows as f32 * TRAY_PITCH);
+        {
+            let (date, time) = (date.clone(), time.clone());
+            d.paint(move |window, cx| {
+                let p = theme::palette(cx);
+                style::fill_rect(window, tray, shade(&p, p.panel_background, 1.03));
+                let font = style::ui_font(FontWeight::NORMAL);
+                let cy = clock_row.center().y;
+                style::label(window, cx, px(TRAY_TEXT), cy, Align::Left, date, style::PLAIN_SIZE, font.clone(), c(p.panel_text));
+                style::label(window, cx, px(WIDTH - TRAY_TEXT), cy, Align::Right, time, style::PLAIN_SIZE, font, c(p.panel_text));
+                style::bevel(window, well, shade(&p, p.panel_background, 1.25), c(p.shine));
+            });
         }
-        let well = Rect::from_min_size(pos2(tray.left() + TRAY_INSET, clock_row.bottom()), vec2(well_w, rows as f32 * TRAY_PITCH));
-        style::bevel(&painter, well, shade(&pal, pal.panel_background, 1.25), c(pal.shine));
+        {
+            let m = model.clone();
+            let said = format!("{date} {time}");
+            d.paint(move |window, cx| agent::record(window, cx, agent::Node { role: "Button", name: Some("Date & Time preferences".into()), value: Some(said.into()), bounds: clock_row, enabled: true, clickable: true, ..Default::default() }));
+            d.hits.push(
+                hit(view, "clock", clock_row, Some("Date & Time preferences".into()))
+                    .on_any_button(move |e, _, cx| {
+                        if button(e) == MouseButton::Left {
+                            m.update(cx, |d, cx| d.run_command("pref:datetime", cx));
+                        }
+                    })
+                    .into_any_element(),
+            );
+        }
         // Each icon's place: rows filled in turn, each row centred, all on
         // whole pixels.
-        let slots: Vec<Rect> = (0..items)
+        let slots: Vec<Bounds<Pixels>> = (0..items)
             .map(|i| {
                 let (row, col) = (i / per_row, i % per_row);
                 let in_row = (items - row * per_row).min(per_row);
-                let left = well.left() + ((well.width() - in_row as f32 * TRAY_PITCH) / 2.0).floor();
-                Rect::from_min_size(pos2(left + col as f32 * TRAY_PITCH + 3.0, well.top() + row as f32 * TRAY_PITCH + 3.0), vec2(ICON, ICON))
+                let left = TRAY_INSET + ((well_w - in_row as f32 * TRAY_PITCH) / 2.0).floor();
+                rect(left + col as f32 * TRAY_PITCH + 3.0, TILE_H + CLOCK_H + row as f32 * TRAY_PITCH + 3.0, ICON, ICON)
             })
             .collect();
-        let mut slot = slots.iter();
-        let mut tray_item = |ui: &mut egui::Ui, id: &str, draw: &dyn Fn(&egui::Painter, Rect), tip: String| {
-            let r = *slot.next().expect("a slot for each tray item");
-            draw(&painter, r);
-            ui.interact(r.expand(3.0), egui::Id::unique(("tray", id)), Sense::click()).tip(tip)
+        let mut slot = slots.into_iter();
+        // A tray item: its glyph drawn (lit while hot or its menu is
+        // open), its tip, and what the pointer does on it.
+        let mut tray_item = |d: &mut Drawing, id: &str, tip_text: String, draw: Box<dyn FnOnce(&mut Window, &mut App, Bounds<Pixels>)>| -> (Bounds<Pixels>, olo_ui::gpui::Stateful<olo_ui::gpui::Div>) {
+            let r = slot.next().expect("a slot for each tray item");
+            let key = format!("tray:{id}");
+            let lit = pointer.open(&key);
+            let said = tip_text.clone();
+            d.paint(move |window, cx| {
+                if lit {
+                    let p = theme::palette(cx);
+                    style::fill_rect(window, expand(r, 3.0), c(p.menu_selected_background));
+                }
+                draw(window, cx, r);
+                agent::record(window, cx, agent::Node { role: "Button", name: Some(said.into()), bounds: expand(r, 3.0), enabled: true, clickable: true, ..Default::default() });
+            });
+            (r, hit(view, &key, expand(r, 3.0), Some(tip_text)))
         };
-        for (it, picture) in apps.iter().zip(&pictures) {
-            let draw = |p: &egui::Painter, r: Rect| {
-                // Its theme icon if it names one we have, else its picture.
-                if !it.icon.is_empty() && icons::paint(p, r, &it.icon) {
-                    return;
-                }
-                match picture {
-                    Some(tex) => {
-                        let at = icons::fit(p.ctx(), tex, r);
-                        p.image(tex.id(), at, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
-                    }
-                    None => {
-                        icons::paint(p, r, "application");
-                    }
-                }
-            };
-            let tip = match (it.title.as_str(), it.tooltip.as_str()) {
+        for (it, picture) in apps.iter().zip(pictures) {
+            let tip_text = match (it.title.as_str(), it.tooltip.as_str()) {
                 (t, "") => t.to_owned(),
                 ("", tip) => tip.to_owned(),
                 (t, tip) if tip.starts_with(t) => tip.to_owned(),
                 (t, tip) => format!("{t}: {tip}"),
             };
-            let resp = tray_item(ui, &it.key, &draw, tip);
-            let menu_id = egui::Id::unique(("tray-menu", &it.key));
-            let show_menu = |ui: &egui::Ui| {
-                if let Some(entries) = &it.menu
-                    && !menu::is_open(ui.ctx(), menu_id)
-                {
-                    menu::request_popup(ui.ctx(), MenuRequest { menu: sni::menu(&it.title, entries), source: menu_id, anchor: MenuAnchor::Below(resp.rect), selected: None });
-                }
-            };
-            let host = &self.tray_host;
-            let has_menu = it.menu.as_ref().is_some_and(|m| !m.is_empty());
-            if resp.clicked() {
-                if it.item_is_menu && has_menu {
-                    show_menu(ui);
-                    host.send(&it.key, sni::Do::MenuShown);
-                } else {
-                    host.send(&it.key, sni::Do::Activate);
-                }
-            }
-            if resp.secondary_clicked() {
-                if has_menu {
-                    show_menu(ui);
-                    host.send(&it.key, sni::Do::MenuShown);
-                } else {
-                    host.send(&it.key, sni::Do::ContextMenu);
-                }
-            }
-            if resp.middle_clicked() {
-                host.send(&it.key, sni::Do::SecondaryActivate);
-            }
-            if resp.hovered() {
-                let dy: f32 = ui.input(|i| {
-                    i.events
-                        .iter()
-                        .map(|e| match e {
-                            egui::Event::MouseWheel { delta, unit: egui::MouseWheelUnit::Point, .. } => delta.y,
-                            egui::Event::MouseWheel { delta, .. } => delta.y * 24.0,
-                            _ => 0.0,
-                        })
-                        .sum()
-                });
-                if dy.abs() >= 1.0 {
-                    host.send(&it.key, sni::Do::Scroll(-dy.round() as i32));
-                }
-            }
-            if let Some(id) = menu::take_chosen(ui.ctx(), menu_id).and_then(|cmd| cmd.strip_prefix("sni:").and_then(|n| n.parse::<i32>().ok())) {
-                host.send(&it.key, sni::Do::Chosen(id));
-            }
+            let icon = it.icon.clone();
+            let (r, h) = tray_item(
+                &mut d,
+                &it.key,
+                tip_text,
+                Box::new(move |window, _, r| {
+                    // Its theme icon if it names one we have, else its picture.
+                    if !icon.is_empty() && icons::paint(window, r, &icon) {
+                        return;
+                    }
+                    match picture {
+                        Some(img) => {
+                            let s = img.size(0);
+                            let scale = window.scale_factor();
+                            let (w, h) = (s.width.0 as f32 / scale, s.height.0 as f32 / scale);
+                            let at = style::snap_centred(window, r.center(), w, h);
+                            let _ = window.paint_image(at, Default::default(), img, 0, false);
+                        }
+                        None => {
+                            icons::paint(window, r, "application");
+                        }
+                    }
+                }),
+            );
+            let key = format!("tray:{}", it.key);
+            let (item_key, title, entries, is_menu) = (it.key.clone(), it.title.clone(), it.menu.clone().filter(|m| !m.is_empty()), it.item_is_menu);
+            let (m, v, m2) = (model.clone(), view.clone(), model.clone());
+            let wheel_key = it.key.clone();
+            d.hits.push(
+                h.on_any_button(move |e, window, cx| {
+                    let b = button(e);
+                    let show = match b {
+                        MouseButton::Left => is_menu && entries.is_some(),
+                        MouseButton::Right => entries.is_some(),
+                        _ => false,
+                    };
+                    if show && let Some(entries) = &entries {
+                        let ik = item_key.clone();
+                        let mm = m.clone();
+                        open_menu(window, cx, &v, &key, r, sni::menu(&title, entries), move |cmd, cx| {
+                            if let Some(id) = cmd.strip_prefix("sni:").and_then(|n| n.parse::<i32>().ok()) {
+                                mm.read(cx).tray_host.send(&ik, sni::Do::Chosen(id));
+                            }
+                        });
+                        m.read(cx).tray_host.send(&item_key, sni::Do::MenuShown);
+                        return;
+                    }
+                    let what = match b {
+                        MouseButton::Left => sni::Do::Activate,
+                        MouseButton::Right => sni::Do::ContextMenu,
+                        MouseButton::Middle => sni::Do::SecondaryActivate,
+                        _ => return,
+                    };
+                    m.read(cx).tray_host.send(&item_key, what);
+                })
+                .on_scroll_wheel(move |e: &ScrollWheelEvent, _, cx| {
+                    let dy = f32::from(e.delta.pixel_delta(px(24.0)).y);
+                    if dy.abs() >= 1.0 {
+                        m2.read(cx).tray_host.send(&wheel_key, sni::Do::Scroll(-dy.round() as i32));
+                    }
+                })
+                .into_any_element(),
+            );
         }
-        if let (Some(n), Some(own)) = (display_number, display.as_deref()) {
+        if let (Some(n), Some(own)) = (display_number, display.clone()) {
             let name = self.outputs.iter().find(|o| o.name == own).map(|o| o.display_name()).unwrap_or_default();
-            let tip = format!("Display {n}: {name}. Click to go to another display.");
-            let item = tray_item(ui, "display", &|p, r| status::draw_display(p, r, &pal, n), tip);
-            let menu_id = egui::Id::unique("display-menu");
-            if (item.clicked() || item.secondary_clicked()) && !menu::is_open(ui.ctx(), menu_id) {
-                menu::request_popup(ui.ctx(), MenuRequest { menu: self.display_menu(own), source: menu_id, anchor: MenuAnchor::Below(item.rect), selected: None });
-            }
-            if let Some(cmd) = menu::take_chosen(ui.ctx(), menu_id) {
-                self.run_command(cx, &cmd);
-            }
+            let (r, h) = tray_item(&mut d, "display", format!("Display {n}: {name}. Click to go to another display."), Box::new(move |window, cx, r| status::draw_display(window, cx, r, &theme::palette(cx), n)));
+            let (m, v) = (model.clone(), view.clone());
+            d.hits.push(
+                h.on_any_button(move |e, window, cx| {
+                    if matches!(button(e), MouseButton::Left | MouseButton::Right) {
+                        let menu = m.read(cx).display_menu(&own);
+                        let mm = m.clone();
+                        open_menu(window, cx, &v, "tray:display", r, menu, move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
+                    }
+                })
+                .into_any_element(),
+            );
         }
         if !st.upgrade.is_empty() {
             let n = st.upgrade.len();
-            let tip = format!("A new build of Olo is ready ({n} program{}). Click to upgrade.", if n == 1 { "" } else { "s" });
-            if tray_item(ui, "upgrade", &|p, r| status::draw_upgrade(p, r, &pal), tip).clicked() {
-                self.ask_upgrade(cx);
-            }
+            let tip_text = format!("A new build of Olo is ready ({n} program{}). Click to upgrade.", if n == 1 { "" } else { "s" });
+            let (_, h) = tray_item(&mut d, "upgrade", tip_text, Box::new(|window, cx, r| status::draw_upgrade(window, r, &theme::palette(cx))));
+            let m = model.clone();
+            d.hits.push(
+                h.on_any_button(move |e, _, cx| {
+                    if button(e) == MouseButton::Left {
+                        m.update(cx, |d, cx| d.ask_upgrade(cx));
+                    }
+                })
+                .into_any_element(),
+            );
         }
         // A screen being shared: what, with whom, and Stop.
         if !st.sharing.is_empty() {
-            let tip = match st.sharing.as_slice() {
+            let tip_text = match st.sharing.as_slice() {
                 [one] => format!("Sharing {}. Click to stop.", olo_protocol::SharingState::describe(one)),
                 many => format!("{} screen shares. Click to stop them.", many.len()),
             };
-            let item = tray_item(ui, "sharing", &|p, r| status::draw_sharing(p, r, &pal), tip);
-            let menu_id = egui::Id::unique("sharing-menu");
-            if (item.clicked() || item.secondary_clicked()) && !menu::is_open(ui.ctx(), menu_id) {
-                menu::request_popup(ui.ctx(), MenuRequest { menu: sharing_menu(&st.sharing), source: menu_id, anchor: MenuAnchor::Below(item.rect), selected: None });
-            }
-            if let Some(cmd) = menu::take_chosen(ui.ctx(), menu_id) {
-                self.run_command(cx, &cmd);
-            }
+            let (r, h) = tray_item(&mut d, "sharing", tip_text, Box::new(|window, cx, r| status::draw_sharing(window, r, &theme::palette(cx))));
+            let (m, v, shares) = (model.clone(), view.clone(), st.sharing.clone());
+            d.hits.push(
+                h.on_any_button(move |e, window, cx| {
+                    if matches!(button(e), MouseButton::Left | MouseButton::Right) {
+                        let mm = m.clone();
+                        open_menu(window, cx, &v, "tray:sharing", r, sharing_menu(&shares), move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
+                    }
+                })
+                .into_any_element(),
+            );
         }
         // Agents at work on screens of their own: click to watch them.
         if st.agent_screens > 0 {
             let n = st.agent_screens;
-            let tip = if n == 1 { "An agent screen is running. Click to watch it.".to_string() } else { format!("{n} agent screens are running. Click to watch them.") };
-            if tray_item(ui, "agent-screens", &|p, r| status::draw_screens(p, r, &pal, n), tip).clicked() {
-                self.run_command(cx, "run:olo-screen watch");
-            }
+            let tip_text = if n == 1 { "An agent screen is running. Click to watch it.".to_string() } else { format!("{n} agent screens are running. Click to watch them.") };
+            let (_, h) = tray_item(&mut d, "agent-screens", tip_text, Box::new(move |window, cx, r| status::draw_screens(window, cx, r, &theme::palette(cx), n)));
+            let m = model.clone();
+            d.hits.push(
+                h.on_any_button(move |e, _, cx| {
+                    if button(e) == MouseButton::Left {
+                        m.update(cx, |d, cx| d.run_command("run:olo-screen watch", cx));
+                    }
+                })
+                .into_any_element(),
+            );
         }
         // The supervisor: click to turn it on or off, its menu for more.
-        if let Some(sup) = &st.supervisor {
+        if let Some(sup) = st.supervisor.clone() {
             let (n, urgent) = (sup.state.findings.len(), sup.state.urgent());
-            let tip = match (sup.on, n, urgent) {
+            let tip_text = match (sup.on, n, urgent) {
                 (false, ..) => "Performance supervisor: off. Click to turn on.".to_owned(),
                 (true, 0, _) => "Performance supervisor: on, nothing found. Click to turn off.".to_owned(),
                 (true, n, 0) => format!("Performance supervisor: {n} finding{}. Click to turn off.", if n == 1 { "" } else { "s" }),
                 (true, _, u) => format!("Performance supervisor: {u} urgent finding{}. Click to turn off.", if u == 1 { "" } else { "s" }),
             };
-            let item = tray_item(ui, "supervisor", &|p, r| status::draw_gauge(p, r, &pal, sup.on, n, urgent > 0), tip);
-            let menu_id = egui::Id::unique("supervisor-menu");
-            if item.clicked() {
-                self.run_command(cx, "perf:toggle");
-            }
-            if item.secondary_clicked() && !menu::is_open(ui.ctx(), menu_id) {
-                menu::request_popup(ui.ctx(), MenuRequest { menu: supervisor_menu(sup), source: menu_id, anchor: MenuAnchor::Below(item.rect), selected: None });
-            }
-            if let Some(cmd) = menu::take_chosen(ui.ctx(), menu_id) {
-                self.run_command(cx, &cmd);
-            }
+            let on = sup.on;
+            let (r, h) = tray_item(&mut d, "supervisor", tip_text, Box::new(move |window, cx, r| status::draw_gauge(window, cx, r, &theme::palette(cx), on, n, urgent > 0)));
+            let (m, v) = (model.clone(), view.clone());
+            d.hits.push(
+                h.on_any_button(move |e, window, cx| match button(e) {
+                    MouseButton::Left => m.update(cx, |d, cx| d.run_command("perf:toggle", cx)),
+                    MouseButton::Right => {
+                        let mm = m.clone();
+                        open_menu(window, cx, &v, "tray:supervisor", r, supervisor_menu(&sup), move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
+                    }
+                    _ => {}
+                })
+                .into_any_element(),
+            );
         }
         if let Some(b) = st.battery {
-            let resp = tray_item(
-                ui,
-                "battery",
-                &|p, r| status::draw_battery(p, r, &pal, b.percent, b.charging),
-                format!("{}%{}", b.percent, if b.charging { " — charging" } else { "" }),
+            let tip_text = format!("{}%{}", b.percent, if b.charging { " — charging" } else { "" });
+            let (_, h) = tray_item(&mut d, "battery", tip_text, Box::new(move |window, cx, r| status::draw_battery(window, r, &theme::palette(cx), b.percent, b.charging)));
+            let m = model.clone();
+            d.hits.push(
+                h.on_any_button(move |e, _, cx| {
+                    if button(e) == MouseButton::Left {
+                        m.update(cx, |d, cx| d.run_command("pref:power", cx));
+                    }
+                })
+                .into_any_element(),
             );
-            if resp.clicked() {
-                self.run_command(cx, "pref:power");
-            }
         }
         if let Some(w) = st.wifi.clone() {
-            let tip = match &w.ssid {
+            let tip_text = match &w.ssid {
                 Some(s) => format!("{s} ({}%)", w.signal),
                 None => "Not connected".into(),
             };
-            let resp = tray_item(ui, "wifi", &|p, r| status::draw_wifi(p, r, &pal, w.ssid.as_ref().map(|_| w.signal)), tip);
-            if resp.clicked() {
-                self.run_command(cx, "pref:network");
-            }
-        }
-        if let Some(v) = st.volume {
-            let resp = tray_item(
-                ui,
-                "volume",
-                &|p, r| status::draw_volume(p, r, &pal, v.level, v.muted),
-                if v.muted { "Muted".into() } else { format!("Volume {}%", (v.level * 100.0).round()) },
+            let signal = w.ssid.as_ref().map(|_| w.signal);
+            let (_, h) = tray_item(&mut d, "wifi", tip_text, Box::new(move |window, cx, r| status::draw_wifi(window, r, &theme::palette(cx), signal)));
+            let m = model.clone();
+            d.hits.push(
+                h.on_any_button(move |e, _, cx| {
+                    if button(e) == MouseButton::Left {
+                        m.update(cx, |d, cx| d.run_command("pref:network", cx));
+                    }
+                })
+                .into_any_element(),
             );
-            if resp.clicked() {
-                status::toggle_mute();
-                self.status.volume = Some(status::Volume { muted: !v.muted, ..v });
-            }
-            if resp.hovered() {
-                // One notch (or a trackpad swipe's worth) per 5% step.
-                self.scroll_acc += ui.input(|i| {
-                    i.events
-                        .iter()
-                        .map(|e| match e {
-                            egui::Event::MouseWheel { delta, unit, .. } => match unit {
-                                egui::MouseWheelUnit::Point => delta.y,
-                                _ => delta.y * 24.0,
-                            },
-                            _ => 0.0,
-                        })
-                        .sum::<f32>()
-                });
-                let dy = if self.scroll_acc.abs() >= 24.0 {
-                    let d = self.scroll_acc.signum();
-                    self.scroll_acc = 0.0;
-                    d
-                } else {
-                    0.0
-                };
-                if dy != 0.0 {
-                    let level = (v.level + dy.signum() * 0.05).clamp(0.0, 1.0);
-                    status::set_volume(level);
-                    self.status.volume = Some(status::Volume { level, ..v });
-                }
-            }
         }
-
+        if let Some(vol) = st.volume {
+            let tip_text = if vol.muted { "Muted".into() } else { format!("Volume {}%", (vol.level * 100.0).round()) };
+            let (_, h) = tray_item(&mut d, "volume", tip_text, Box::new(move |window, cx, r| status::draw_volume(window, r, &theme::palette(cx), vol.level, vol.muted)));
+            let (m, m2, v) = (model.clone(), model.clone(), view.clone());
+            d.hits.push(
+                h.on_any_button(move |e, _, cx| {
+                    if button(e) == MouseButton::Left {
+                        status::toggle_mute();
+                        m.update(cx, |d, cx| {
+                            if let Some(v) = &mut d.status.volume {
+                                v.muted = !v.muted;
+                            }
+                            cx.notify();
+                        });
+                    }
+                })
+                // One notch (or a trackpad swipe's worth) per 5% step.
+                .on_scroll_wheel(move |e: &ScrollWheelEvent, _, cx| {
+                    let dy = f32::from(e.delta.pixel_delta(px(24.0)).y);
+                    let step = v.update(cx, |v, _| {
+                        v.scroll += dy;
+                        if v.scroll.abs() >= 24.0 {
+                            let s = v.scroll.signum();
+                            v.scroll = 0.0;
+                            s
+                        } else {
+                            0.0
+                        }
+                    });
+                    if step != 0.0 {
+                        m2.update(cx, |d, cx| {
+                            if let Some(v) = &mut d.status.volume {
+                                v.level = (v.level + step * 0.05).clamp(0.0, 1.0);
+                                status::set_volume(v.level);
+                            }
+                            cx.notify();
+                        });
+                    }
+                })
+                .into_any_element(),
+            );
+        }
         // Notifications: a bell with the unread count. Click for the
         // history; right-click for Do Not Disturb.
         if let Some(n) = st.notifications.clone() {
-            let tip = match (n.quiet, n.unread) {
+            let tip_text = match (n.quiet, n.unread) {
                 (true, 0) => "Do Not Disturb is on".to_string(),
                 (true, u) => format!("Do Not Disturb is on — {u} unread"),
                 (false, 0) => "No new notifications".to_string(),
                 (false, 1) => "1 new notification".to_string(),
                 (false, u) => format!("{u} new notifications"),
             };
-            let bell = tray_item(ui, "notifications", &|p, r| status::draw_bell(p, r, &pal, n.unread, n.quiet), tip);
-            let bell_id = egui::Id::unique("notifications-menu");
-            if bell.clicked() {
-                self.run_command(cx, "notif:history");
-            }
-            if bell.secondary_clicked() && !menu::is_open(ui.ctx(), bell_id) {
-                menu::request_popup(
-                    ui.ctx(),
-                    MenuRequest { menu: notifications_menu(n.quiet), source: bell_id, anchor: MenuAnchor::Below(bell.rect), selected: None },
-                );
-            }
-            if let Some(cmd) = menu::take_chosen(ui.ctx(), bell_id) {
-                self.run_command(cx, &cmd);
-            }
-        }
-
-        // Caffeinated: a cup, steaming while the machine is kept awake.
-        // Right-click for a set time or to stay awake with the lid closed.
-        let on = self.caffeinated;
-        let tip = match (on, self.caffeinated_until) {
-            (true, Some(t)) => format!("Caffeinated until {}. Click to allow sleep.", status::time_of_day(t, &self.clock)),
-            (true, None) => "Caffeinated: staying awake. Click to allow sleep.".into(),
-            _ => "Click to stay awake (caffeinated); right-click for more".into(),
-        };
-        let cup = tray_item(ui, "caffeine", &|p, r| status::draw_cup(p, r, &pal, on), tip);
-        let cup_id = egui::Id::unique("caffeine-menu");
-        if cup.clicked() {
-            self.caffeinated = !on;
-            request(Request::SetCaffeinated { on: !on, minutes: None, lid: false });
-        }
-        if cup.secondary_clicked() && !menu::is_open(ui.ctx(), cup_id) {
-            menu::request_popup(
-                ui.ctx(),
-                MenuRequest { menu: self.caffeine_menu(), source: cup_id, anchor: MenuAnchor::Below(cup.rect), selected: None },
+            let (unread, quiet) = (n.unread, n.quiet);
+            let (r, h) = tray_item(&mut d, "notifications", tip_text, Box::new(move |window, cx, r| status::draw_bell(window, cx, r, &theme::palette(cx), unread, quiet)));
+            let (m, v) = (model.clone(), view.clone());
+            d.hits.push(
+                h.on_any_button(move |e, window, cx| match button(e) {
+                    MouseButton::Left => m.update(cx, |d, cx| d.run_command("notif:history", cx)),
+                    MouseButton::Right => {
+                        let mm = m.clone();
+                        open_menu(window, cx, &v, "tray:notifications", r, notifications_menu(quiet), move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
+                    }
+                    _ => {}
+                })
+                .into_any_element(),
             );
         }
-        if let Some(cmd) = menu::take_chosen(ui.ctx(), cup_id) {
-            self.run_command(cx, &cmd);
+        // Caffeinated: a cup, steaming while the machine is kept awake.
+        // Right-click for a set time or to stay awake with the lid closed.
+        {
+            let on = self.caffeinated;
+            let tip_text = match (on, self.caffeinated_until) {
+                (true, Some(t)) => format!("Caffeinated until {}. Click to allow sleep.", status::time_of_day(t, &self.clock)),
+                (true, None) => "Caffeinated: staying awake. Click to allow sleep.".into(),
+                _ => "Click to stay awake (caffeinated); right-click for more".into(),
+            };
+            let (r, h) = tray_item(&mut d, "caffeine", tip_text, Box::new(move |window, cx, r| status::draw_cup(window, r, &theme::palette(cx), on)));
+            let (m, v) = (model.clone(), view.clone());
+            d.hits.push(
+                h.on_any_button(move |e, window, cx| match button(e) {
+                    MouseButton::Left => m.update(cx, |d, cx| {
+                        d.caffeinated = !on;
+                        request(Request::SetCaffeinated { on: !on, minutes: None, lid: false });
+                        cx.notify();
+                    }),
+                    MouseButton::Right => {
+                        let menu = m.read(cx).caffeine_menu();
+                        let mm = m.clone();
+                        open_menu(window, cx, &v, "tray:caffeine", r, menu, move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
+                    }
+                    _ => {}
+                })
+                .into_any_element(),
+            );
         }
-
         // Approving without asking: a key, gold while requests go ahead
         // without asking. Click to turn it on (it takes the password) or
         // off; right-click for how long.
-        let tip = match self.approve_until {
-            Some(t) => format!(
-                "Approving without asking: {} left (until {}). Click to ask again.",
-                approve::left(t),
-                status::time_of_day(t, &self.clock)
-            ),
-            None => "Click to approve requests without asking for a while; right-click for how long".into(),
-        };
-        let on = self.approve_until.is_some();
-        let key = tray_item(ui, "approve", &|p, r| status::draw_key(p, r, &pal, on), tip);
-        let key_id = egui::Id::unique("approve-menu");
-        if key.clicked() {
-            let cmd = if on { "approve:off".to_owned() } else { format!("approve:{}", approve::USUAL) };
-            self.run_command(cx, &cmd);
-        }
-        if key.secondary_clicked() && !menu::is_open(ui.ctx(), key_id) {
-            menu::request_popup(
-                ui.ctx(),
-                MenuRequest { menu: approve::menu(self.approve_until, &self.clock), source: key_id, anchor: MenuAnchor::Below(key.rect), selected: None },
+        {
+            let tip_text = match self.approve_until {
+                Some(t) => format!("Approving without asking: {} left (until {}). Click to ask again.", approve::left(t), status::time_of_day(t, &self.clock)),
+                None => "Click to approve requests without asking for a while; right-click for how long".into(),
+            };
+            let on = self.approve_until.is_some();
+            let (r, h) = tray_item(&mut d, "approve", tip_text, Box::new(move |window, cx, r| status::draw_key(window, r, &theme::palette(cx), on)));
+            let (m, v) = (model.clone(), view.clone());
+            d.hits.push(
+                h.on_any_button(move |e, window, cx| match button(e) {
+                    MouseButton::Left => {
+                        let cmd = if on { "approve:off".to_owned() } else { format!("approve:{}", approve::USUAL) };
+                        m.update(cx, |d, cx| d.run_command(&cmd, cx));
+                    }
+                    MouseButton::Right => {
+                        let menu = { let d = m.read(cx); approve::menu(d.approve_until, &d.clock) };
+                        let mm = m.clone();
+                        open_menu(window, cx, &v, "tray:approve", r, menu, move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
+                    }
+                    _ => {}
+                })
+                .into_any_element(),
             );
-        }
-        if let Some(cmd) = menu::take_chosen(ui.ctx(), key_id) {
-            self.run_command(cx, &cmd);
         }
 
         // ---- the applications: by display (its own first, then the
         // others left to right), by workspace, in order, each under its
         // heading (each display's workspaces with windows, and the one it
         // shows)
-        let mut y = tray.bottom();
+        let mut y = TILE_H + tray_height(rows);
         for on in self.displays_from(display.as_deref()) {
             let on = on.as_deref();
             let current = self.showing(on);
@@ -1998,112 +2023,350 @@ impl App for Deskbar {
                 // The workspace showing is lit, its heading and
                 // applications together, as one selection: on its own
                 // ground, edged above and below.
-                let group = Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), HEADING_H + teams.len() as f32 * ROW_H));
+                let group = rect(0.0, y, WIDTH, HEADING_H + teams.len() as f32 * ROW_H);
                 let lit = self.lit(on, Some(ws));
                 if lit {
-                    painter.rect_filled(style::snap(ui.ctx(), group), 0.0, c(self.ground(&pal, on, Some(ws))));
+                    let ground = self.ground(&p, on, Some(ws));
+                    d.paint(move |window, _| style::fill_rect(window, group, c(ground)));
                 }
-                self.workspace_heading(cx, ui, Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), HEADING_H)), on, ws);
+                self.workspace_heading(&mut d, &p, rect(0.0, y, WIDTH, HEADING_H), on, ws, pointer, view, &model);
                 y += HEADING_H;
                 for team in teams {
-                    let row = Rect::from_min_size(pos2(full.left(), y), vec2(full.width(), ROW_H));
-                    self.team_row(cx, w, ui, row, &team, on, Some(ws));
+                    self.team_row(&mut d, &p, rect(0.0, y, WIDTH, ROW_H), &team, on, Some(ws), pointer, view, &model);
                     y += ROW_H;
                 }
                 if lit {
-                    style::lit_edges(&painter, group, &pal);
+                    d.paint(move |window, cx| style::lit_edges(window, group, &theme::palette(cx)));
                 }
             }
         }
 
         // Outer frame: a dark line on the left and bottom, where the
         // Deskbar meets the desktop.
-        let body = Rect::from_min_max(full.min, pos2(full.right(), y));
-        vline(&painter, body.left(), body.top(), body.bottom(), shade(&pal, pal.panel_background, 1.6));
-        hline_above(&painter, body.left(), body.right(), body.bottom(), shade(&pal, pal.panel_background, 1.6));
-
-        let want = (y - full.top()).ceil();
-        let bar = &mut self.bars[bar];
-        if (want - bar.height).abs() > 0.5 {
-            bar.height = want;
-            cx.resize(w, (WIDTH as u32, want as u32));
-        }
-        // Tick the clock on the minute (or second).
-        ui.ctx().request_repaint_after(status::until_next_tick(self.clock.show_seconds));
+        let bottom = y;
+        d.paint(move |window, cx| {
+            let p = theme::palette(cx);
+            let edge = shade(&p, p.panel_background, 1.6);
+            style::vline(window, px(0.0), px(0.0), px(bottom), edge);
+            style::hline_above(window, px(0.0), px(WIDTH), px(bottom), edge);
+        });
+        (d, y.ceil())
     }
 
-    fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
-        let message = match message.downcast::<approve::Answer>() {
-            Ok(answer) => {
-                if let Some(a) = &mut self.approve {
-                    if a.answer(*answer) {
-                        cx.close_window(a.win);
-                        self.approve = None;
-                    } else {
-                        cx.redraw(a.win);
-                    }
-                }
-                return;
-            }
-            Err(m) => m,
+    /// Workspace `ws`'s heading at `r`, on `display`'s Deskbar, its
+    /// applications under it: its name as a quiet caption over their
+    /// icons, the one showing's in the selection's text on its lit ground
+    /// (`draw_bar` lights the whole workspace, `style::lit_ground`), and
+    /// at its right end the workspace's windowing mode (click: the modes,
+    /// and on the one showing, the arranging commands). A click goes
+    /// there; on the workspace showing, the Workspaces menu; the right
+    /// button, the heading's menu (`heading_menu`).
+    #[allow(clippy::too_many_arguments)]
+    fn workspace_heading(&self, d: &mut Drawing, p: &Palette, r: Bounds<Pixels>, display: Option<&str>, ws: u32, pointer: &Pointer, view: &Entity<BarView>, model: &Entity<Deskbar>) {
+        let name = self.workspace_name(display, ws);
+        let here = ws == self.showing(display);
+        let mode = self.mode(display, ws);
+        // The windowing mode, square at the right end, as far in as the
+        // caption is from the left.
+        let mode_r = rect(f32::from(r.right()) - ICON_INSET - ICON, f32::from(r.center().y) - ICON / 2.0, ICON, ICON);
+        let key = format!("ws:{}:{ws}", display.unwrap_or(""));
+        let mode_key = format!("mode:{}:{ws}", display.unwrap_or(""));
+        let (open, mode_open) = (pointer.open(&key), pointer.open(&mode_key));
+        let (hovered, mode_hovered) = (pointer.hot(&key), pointer.hot(&mode_key));
+        let tip_text = match mode {
+            WindowingMode::Standard => format!("{name}: windows stay where you put them. Click to choose a windowing mode."),
+            WindowingMode::AutoTiling => format!("{name}: Auto-Tiling, every window takes a tile. Click to choose a windowing mode."),
+            WindowingMode::Focus => format!("{name}: Focus, only the active window shows, zoomed. Click to choose a windowing mode."),
         };
-        if let Ok(m) = message.downcast::<Msg>() {
-            match *m {
-                Msg::Windows(w) => self.set_windows(w),
-                Msg::Workspace(cur, count, showing) => {
-                    self.workspace = (cur, count);
-                    self.showing = showing;
+        let ground = self.ground(p, display, Some(ws));
+        {
+            let (name, tip_text) = (name.clone(), tip_text.clone());
+            d.paint(move |window, cx| {
+                let p = theme::palette(cx);
+                if open || mode_open {
+                    style::fill_rect(window, r, c(p.menu_selected_background));
+                } else if hovered {
+                    style::fill_rect(window, r, style::tint(ground, 0.8));
                 }
-                Msg::Status(s) => {
-                    self.note_arrivals(&s);
-                    self.status = s;
+                let ink = if open || mode_open {
+                    c(p.menu_selected_item_text)
+                } else if here {
+                    c(p.list_selected_item_text)
+                } else if hovered {
+                    c(p.panel_text)
+                } else {
+                    c(olo_ui::palette::mix(p.panel_text, p.panel_background, 0.45))
+                };
+                let room = f32::from(mode_r.left()) - 4.0 - ICON_INSET;
+                style::label_fit(window, cx, px(ICON_INSET), r.center().y, Align::Left, name.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::BOLD), ink, px(room));
+                if mode_hovered && !mode_open {
+                    let at = expand(mode_r, 2.0);
+                    window.paint_quad(olo_ui::gpui::quad(style::snap(window, at), px(2.0), style::tint(ground, 0.7), px(0.0), olo_ui::gpui::transparent_black(), olo_ui::gpui::BorderStyle::Solid));
                 }
-                Msg::Power(p) => {
-                    self.caffeinated = p.caffeinated;
-                    self.caffeinated_until = p.caffeinated_until;
-                    self.caffeinated_lid = p.caffeinated_lid;
-                    self.approve_until = p.auto_approve_until;
-                }
-                Msg::Settings(s) => {
-                    self.clock = s.clock;
-                    self.menu_icons = s.menu_icons;
-                    self.tiling = s.tiling;
-                    self.keys = s.keys;
-                }
-                Msg::Outputs(outputs) => {
-                    self.outputs = outputs;
-                    self.sync_bars(cx);
-                }
-                Msg::Installed(installed) => {
-                    self.installed = installed;
-                    self.scanning = false;
-                    self.entries.clear();
-                }
-                Msg::Tray(tray) => {
-                    // Pictures no item has any more go.
-                    self.tray_pictures.retain(|(key, serial, _), _| tray.items.iter().any(|i| i.key == *key && i.serial == *serial));
-                    self.tray_apps = tray.items;
-                    // More unread (or a wish for attention) shakes the dot.
-                    let now = Instant::now();
-                    for b in &tray.badges {
-                        let before = self.badges.iter().find(|o| o.app == b.app);
-                        if b.count.unwrap_or(0) > before.and_then(|o| o.count).unwrap_or(0) || (b.urgent && !before.is_some_and(|o| o.urgent)) {
-                            self.shaking.insert(badge_key(&b.app), now);
+                status::draw_mode(window, mode_r, &p, mode);
+                agent::record(window, cx, agent::Node { role: "Button", name: Some(name.into()), bounds: r, enabled: true, clickable: true, selected: Some(here), ..Default::default() });
+                agent::record(window, cx, agent::Node { role: "Button", name: Some(tip_text.into()), bounds: expand(mode_r, 2.0), enabled: true, clickable: true, ..Default::default() });
+            });
+        }
+        let dsp = display.map(str::to_owned);
+        {
+            let (m, v, dsp, k) = (model.clone(), view.clone(), dsp.clone(), key.clone());
+            d.hits.push(
+                hit(view, &key, r, None)
+                    .on_any_button(move |e, window, cx| match button(e) {
+                        MouseButton::Right => {
+                            let menu = m.read(cx).heading_menu(dsp.as_deref(), ws);
+                            let (mm, dd) = (m.clone(), dsp.clone());
+                            open_menu(window, cx, &v, &k, r, menu, move |cmd, cx| {
+                                mm.update(cx, |d, cx| {
+                                    if !d.heading_command(dd.as_deref(), cmd) {
+                                        d.run_command(cmd, cx);
+                                    }
+                                })
+                            });
                         }
-                    }
-                    self.badges = tray.badges;
+                        MouseButton::Left if here => {
+                            let menu = m.update(cx, |d, _| {
+                                d.menu_output = dsp.clone();
+                                d.workspaces_menu(dsp.as_deref())
+                            });
+                            let mm = m.clone();
+                            open_menu(window, cx, &v, &k, r, menu, move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
+                        }
+                        MouseButton::Left => request(Request::SwitchWorkspace { index: ws, output: dsp.clone() }),
+                        _ => {}
+                    })
+                    .into_any_element(),
+            );
+        }
+        {
+            let (m, v, k) = (model.clone(), view.clone(), mode_key.clone());
+            d.hits.push(
+                hit(view, &mode_key, expand(mode_r, 2.0), Some(tip_text))
+                    .occlude()
+                    .on_any_button(move |e, window, cx| {
+                        if !matches!(button(e), MouseButton::Left | MouseButton::Right) {
+                            return;
+                        }
+                        let menu = m.update(cx, |d, _| {
+                            d.menu_output = dsp.clone();
+                            d.menu_workspace = Some(ws);
+                            let mut menu = if here { d.arrange_menu(mode) } else { d.modes_menu(mode) };
+                            add_keys(&mut menu, &d.keys);
+                            menu
+                        });
+                        let mm = m.clone();
+                        open_menu(window, cx, &v, &k, r, menu, move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
+                    })
+                    .into_any_element(),
+            );
+        }
+    }
+
+    /// An application's row at `r`: its icon and name, recessed while
+    /// it has the focus, highlighted while Twitcher is on it. A click
+    /// brings it forward, all its windows; the right button opens the
+    /// menu of them; files dropped on it open with it; dragged out, it is
+    /// a link to the program. Under workspace `ws`'s heading, it is its
+    /// windows there.
+    #[allow(clippy::too_many_arguments)]
+    fn team_row(&mut self, d: &mut Drawing, p: &Palette, r: Bounds<Pixels>, team: &Team, display: Option<&str>, ws: Option<u32>, pointer: &Pointer, view: &Entity<BarView>, model: &Entity<Deskbar>) {
+        let notes = self.notes_of(team);
+        let badge = self.badge_of(team);
+        let takes_drops = self.handler(&team.key).is_some();
+        let key = format!("team:{}:{}:{}", display.unwrap_or(""), ws.map_or(String::new(), |w| w.to_string()), team.key);
+        let open = pointer.open(&key);
+        let hovered = pointer.hot(&key);
+        let focused = team.windows.iter().any(|w| w.focused);
+        let hidden = team.windows.iter().all(|w| w.minimized);
+        // Twitcher's choice, while ⌘Tab (or ⌥Tab, ⌘`) is held.
+        let chosen = team.windows.iter().any(|w| w.chosen);
+        // What agents read of it: its unread count, notifications, progress.
+        let said: Vec<String> = [
+            badge.as_ref().and_then(|b| b.count).map(|n| format!("{n} unread")),
+            notes.map(|d| match (d.count, d.fresh < 1.0) {
+                (0, _) => "has notifications".to_owned(),
+                (n, false) => format!("has notifications ({n})"),
+                (n, true) => format!("has notifications ({n}, the dot {}% full)", (d.fresh * 100.0).round()),
+            }),
+            badge.as_ref().and_then(|b| b.progress).map(|p| format!("{}% done", (p * 100.0).round())),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        // In the workspace showing, the row is on its lit ground.
+        let lit = self.lit(display, ws);
+        let ground = self.ground(p, display, ws);
+        let show_count = self.status.notifications.as_ref().is_some_and(|n| n.show_count);
+        if notes.is_some_and(|n| n.shake.is_some()) {
+            d.animating = true;
+        }
+        if notes.is_some_and(|n| n.fresh < 1.0) {
+            d.fading = true;
+        }
+        let (name, icon) = (team.name.clone(), team.icon.clone());
+        let progress = badge.as_ref().and_then(|b| b.progress);
+        d.paint(move |window, cx| {
+            let p = theme::palette(cx);
+            // Files dragged onto an application open with it.
+            let drop_here = takes_drops && cx.has_active_drag() && r.contains(&window.mouse_position());
+            let selected = open || drop_here || (chosen && lit);
+            if selected {
+                // (Twitcher's choice in the workspace showing takes the
+                // menu's selection, as the list's would be lost on its lit
+                // ground.)
+                style::fill_rect(window, r, c(p.menu_selected_background));
+            } else if chosen {
+                // As Twitcher marks it, in the selection's colours.
+                style::selection_wash(window, style::snap(window, r), &p);
+            } else if focused {
+                // The active application sits slightly recessed.
+                style::fill_rect(window, r, shade(&p, ground, 1.1));
+                style::hline(window, r.left(), r.right(), r.top(), shade(&p, ground, 1.25));
+            } else if hovered {
+                style::fill_rect(window, r, style::tint(ground, 0.8));
+            }
+            // (The wash's own edge is the chosen row's.)
+            if !chosen {
+                style::hline_above(window, r.left(), r.right(), r.bottom(), shade(&p, ground, 1.14));
+            }
+            let icon_r = rect(ICON_INSET, f32::from(r.center().y) - ICON / 2.0, ICON, ICON);
+            let opacity = if hidden { 120.0 / 255.0 } else { 1.0 };
+            let drawn = icon.as_deref().is_some_and(|i| icons::paint_faded(window, icon_r, i, opacity));
+            if !drawn {
+                icons::paint_faded(window, icon_r, "application", opacity);
+            }
+            let text_color = if selected {
+                c(p.menu_selected_item_text)
+            } else if chosen {
+                c(p.list_selected_item_text)
+            } else if hidden {
+                style::disabled_text(&p)
+            } else {
+                c(p.panel_text)
+            };
+            let font = style::ui_font(if focused { FontWeight::BOLD } else { FontWeight::NORMAL });
+            let count_font = style::ui_font(FontWeight::NORMAL);
+            // The count beside the dot, when asked for.
+            let count = notes.filter(|d| show_count && d.count > 0).map(|d| count_text(d.count));
+            let count_w = count.as_ref().map_or(0.0, |t| f32::from(style::text_width(window, t.clone(), style::DETAIL_SIZE, count_font.clone())) + NOTE_COUNT_GAP);
+            let dot_room = if notes.is_some() { NOTE_DOT + NOTE_DOT_GAP + count_w } else { 0.0 };
+            let text_x = f32::from(icon_r.right()) + 8.0;
+            let max_w = f32::from(r.right()) - text_x - 6.0 - dot_room;
+            style::label_fit(window, cx, px(text_x), r.center().y, Align::Left, name.clone(), style::PLAIN_SIZE, font, text_color, px(max_w));
+            // Notifications unread: a dot at the right end, in the
+            // history's mark for what is unread (on a selected row, in its
+            // text's colour); one just in shakes it a moment. As they fade
+            // it drains from its right, to a floor (the rest a faint well
+            // of its colour); the count, when shown, beside it.
+            if let Some(dot) = notes {
+                let at = style::snap_centred(window, point(r.right() - px(NOTE_DOT_INSET + NOTE_DOT / 2.0), r.center().y), NOTE_DOT, NOTE_DOT);
+                let scale = window.scale_factor();
+                // (Whole device pixels: the shake too, so the edge stays sharp.)
+                let dx = dot.shake.map_or(0.0, |t| (SHAKE_PX * (t * SHAKE_TIMES * std::f32::consts::TAU).sin() * (1.0 - t).powi(2) * scale).round() / scale);
+                let color = if open || drop_here || chosen { text_color } else { c(p.keyboard_navigation) };
+                let centre = point(at.center().x + px(dx), at.center().y);
+                let radius = f32::from(at.size.width) / 2.0;
+                let fill = NOTE_DOT_FLOOR + (1.0 - NOTE_DOT_FLOOR) * dot.fresh.clamp(0.0, 1.0);
+                let cx_ = f32::from(centre.x);
+                let edge = ((cx_ - radius + fill * 2.0 * radius) * scale).round() / scale;
+                let tau = std::f32::consts::TAU;
+                if edge >= cx_ + radius - 0.5 / scale {
+                    window.paint_sector(centre, px(0.0), px(radius), 0.0, tau, color);
+                } else {
+                    window.paint_sector(centre, px(0.0), px(radius), 0.0, tau, color.opacity(NOTE_DOT_WELL));
+                    let left = Bounds::from_corners(point(px(cx_ - radius - 1.0), centre.y - px(radius + 1.0)), point(px(edge), centre.y + px(radius + 1.0)));
+                    window.with_content_mask(Some(ContentMask { bounds: left }), |window| window.paint_sector(centre, px(0.0), px(radius), 0.0, tau, color));
+                }
+                if let Some(t) = count {
+                    style::label(window, cx, at.left() + px(dx - NOTE_COUNT_GAP), r.center().y, Align::Right, t, style::DETAIL_SIZE, count_font, color);
                 }
             }
-            self.redraw(cx);
+            // Something under way (a download): a thin bar along the row's
+            // foot, under the name, in the selection's colour on a faint
+            // track.
+            if let Some(done) = progress {
+                let scale = window.scale_factor();
+                let snap = |v: f32| (v * scale).round() / scale;
+                let (left, right) = (snap(f32::from(icon_r.right()) + 8.0), snap(f32::from(r.right()) - NOTE_DOT_INSET));
+                // (Clear of the names' descenders, a device pixel above the
+                // row's line.)
+                let bottom = snap(f32::from(r.bottom())) - 2.0 / scale;
+                let track = Bounds::from_corners(point(px(left), px(bottom - 2.0)), point(px(right), px(bottom)));
+                style::fill_rect(window, track, shade(&p, p.panel_background, 1.2));
+                let fill_to = snap(left + (right - left) * done as f32);
+                style::fill_rect(window, Bounds::from_corners(track.origin, point(px(fill_to), px(bottom))), c(p.keyboard_navigation));
+            }
+            agent::record(
+                window,
+                cx,
+                agent::Node { role: "Button", name: Some(name.into()), value: (!said.is_empty()).then(|| said.join(", ").into()), bounds: r, enabled: true, clickable: true, selected: Some(chosen), ..Default::default() },
+            );
+        });
+
+        let team_key_ = team.key.clone();
+        let dsp = display.map(str::to_owned);
+        let (m, v, k) = (model.clone(), view.clone(), key.clone());
+        let menu_team = team.clone();
+        let (m_down, v_down, m_move, v_move, v_up) = (model.clone(), view.clone(), model.clone(), view.clone(), view.clone());
+        let press = Press { at: point(px(0.0), px(0.0)), team: team.key.clone(), icon: team.icon.clone().unwrap_or_else(|| "application".into()), name: team.name.clone() };
+        let mut row = hit(view, &key, r, None)
+            .on_any_button(move |e, window, cx| match button(e) {
+                // A click brings the application forward, every window of
+                // it; the right button opens the menu of them, to choose one.
+                MouseButton::Left => m.read(cx).bring_forward(&team_key_, dsp.as_deref(), ws),
+                MouseButton::Right => {
+                    let menu = m.read(cx).team_menu(&menu_team);
+                    let (mm, tk, dd) = (m.clone(), team_key_.clone(), dsp.clone());
+                    open_menu(window, cx, &v, &k, r, menu, move |cmd, cx| mm.update(cx, |d, _| d.team_command(&tk, cmd, dd.as_deref(), ws)));
+                }
+                _ => {}
+            })
+            // Dragged out: a link to its program, wherever it's dropped
+            // (BeOS's Deskbar made links the same way).
+            .on_mouse_down(MouseButton::Left, move |e: &MouseDownEvent, window, cx| {
+                let side = (32.0 * window.scale_factor().ceil()).round() as u32;
+                let _ = icons::bitmap(&press.icon, side);
+                let _ = &m_down;
+                v_down.update(cx, |v, _| v.press = Some(Press { at: e.position, ..press.clone() }));
+            })
+            .on_mouse_move(move |e: &MouseMoveEvent, window, cx| {
+                if e.pressed_button != Some(MouseButton::Left) {
+                    return;
+                }
+                let Some(p) = v_move.read(cx).press.clone() else { return };
+                let moved = e.position - p.at;
+                if f32::from(moved.x).hypot(f32::from(moved.y)) < DRAG_START {
+                    return;
+                }
+                v_move.update(cx, |v, _| v.press = None);
+                let Some(program) = m_move.update(cx, |d, _| d.program(&p.team)) else { return };
+                let mut drag = dnd::as_link(dnd::files(&[program], true, false));
+                drag.icon = dnd::picture(window, cx, &p.icon, 32.0, Some(&p.name), point(px(16.0), px(16.0)));
+                tip::hide(cx);
+                dnd::start(window, cx, drag, |_, _| {});
+            })
+            .on_mouse_up(MouseButton::Left, move |_, _, cx| v_up.update(cx, |v, _| v.press = None));
+        if takes_drops {
+            let (m, tk) = (model.clone(), team.key.clone());
+            row = row.on_drop(move |paths: &ExternalPaths, _, cx| {
+                let paths = paths.paths().to_vec();
+                m.update(cx, |d, _| d.dropped(&tk, paths));
+            });
         }
+        d.hits.push(row.into_any_element());
     }
 }
 
-fn olo_theme_tint(rgba: olo_kit::theme::Rgba, t: f32) -> olo_kit::theme::Rgba {
-    olo_kit::theme::tint(rgba, t)
+/// A section's bevel: light along the top and left, dark along the
+/// bottom.
+fn section_bevel(window: &mut Window, r: Bounds<Pixels>, p: &Palette) {
+    style::hline(window, r.left(), r.right(), r.top(), c(p.shine));
+    style::vline(window, r.left(), r.top(), r.bottom(), c(p.shine));
+    style::hline_above(window, r.left(), r.right(), r.bottom(), shade(p, p.panel_background, 1.3));
 }
 
-fn watch_server(proxy: olo_kit::Proxy) {
+fn watch_server(proxy: olo_ui::Proxy) {
     std::thread::Builder::new()
         .name("deskbar-events".into())
         .spawn(move || {
@@ -2140,16 +2403,14 @@ fn watch_server(proxy: olo_kit::Proxy) {
                                 Event::WindowsChanged { windows } => proxy.send(Msg::Windows(windows)),
                                 Event::WorkspaceChanged { current, count, displays } => proxy.send(Msg::Workspace(current, count, displays)),
                                 Event::PowerChanged { status } => proxy.send(Msg::Power(status)),
-                                Event::SettingsChanged { settings } => {
-                                    proxy.send(settings_msg(settings))
-                                }
+                                Event::SettingsChanged { settings } => proxy.send(settings_msg(settings)),
                                 Event::OutputsChanged { outputs } => proxy.send(Msg::Outputs(outputs)),
                                 _ => {}
                             }
                         }
                     }
                 }
-                std::thread::sleep(std::time::Duration::from_secs(1));
+                std::thread::sleep(Duration::from_secs(1));
             }
         })
         .expect("thread");
@@ -2157,19 +2418,14 @@ fn watch_server(proxy: olo_kit::Proxy) {
 
 fn main() {
     // A session or install from before the rename (Tabula) carries on.
-    olo_kit::legacy::adopt();
-    olo_kit::run("olo.deskbar", |cx| {
-        // One on each display, by name (mirrors are known later, and put
-        // away then); with none known yet, one app_server puts on the main
-        // display, until they are.
-        let outputs: Vec<Option<String>> = cx.outputs().iter().cloned().map(Some).collect();
-        let bars: Vec<Bar> = if outputs.is_empty() { vec![Bar::open(cx, None)] } else { outputs.into_iter().map(|o| Bar::open(cx, o)).collect() };
-        watch_server(cx.proxy());
-        let proxy = cx.proxy();
+    olo_xdg::legacy::adopt();
+    olo_ui::run("olo.deskbar", |cx| {
+        let proxy = olo_ui::proxy(cx);
+        watch_server(proxy.clone());
         scan_installed(proxy.clone());
         // Applications installed or removed: listed again at once.
         let rescan = proxy.clone();
-        if let Some(w) = olo_kit::watch::watch(desktop_entry::app_dirs(), move |_| scan_installed(rescan.clone())) {
+        if let Some(w) = olo_ui::watch::watch(desktop_entry::app_dirs(), move |_| scan_installed(rescan.clone())) {
             std::mem::forget(w);
         }
         status::spawn({
@@ -2180,42 +2436,60 @@ fn main() {
             let proxy = proxy.clone();
             move |items| proxy.send(Msg::Tray(items))
         });
-        Deskbar {
-            proxy,
-            bars,
-            outputs: Vec::new(),
-            windows: Vec::new(),
-            order: cx.restored_state().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default(),
-            gone: HashMap::new(),
-            workspace: (0, 1),
-            showing: Vec::new(),
-            status: status::Status::default(),
-            caffeinated: false,
-            caffeinated_until: None,
-            caffeinated_lid: false,
-            clock: Default::default(),
-            menu_icons: true,
-            installed: Installed::default(),
-            scanning: true,
-            scanned_at: Some(std::time::Instant::now()),
-            entries: HashMap::new(),
-            scroll_acc: 0.0,
-            last_focused: None,
-            tiling: Default::default(),
-            menu_output: None,
-            menu_workspace: None,
-            keys: KeyboardProfile::default(),
-            confirm: None,
-            upgrade_ask: None,
-            approve_until: None,
-            approve: None,
-            notes_seen: None,
-            tray_apps: Vec::new(),
-            tray_host,
-            badges: Vec::new(),
-            tray_pictures: HashMap::new(),
-            shaking: HashMap::new(),
-        }
+        let order = olo_ui::restored_state().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        let model = cx.new(|cx| {
+            let mut d = Deskbar {
+                proxy,
+                bars: Vec::new(),
+                outputs: Vec::new(),
+                windows: Vec::new(),
+                order,
+                gone: HashMap::new(),
+                workspace: (0, 1),
+                showing: Vec::new(),
+                status: status::Status::default(),
+                caffeinated: false,
+                caffeinated_until: None,
+                caffeinated_lid: false,
+                clock: Default::default(),
+                menu_icons: true,
+                installed: Installed::default(),
+                scanning: true,
+                scanned_at: Some(Instant::now()),
+                entries: HashMap::new(),
+                last_focused: None,
+                tiling: Default::default(),
+                menu_output: None,
+                menu_workspace: None,
+                keys: KeyboardProfile::default(),
+                confirm: None,
+                upgrade_ask: None,
+                approve_until: None,
+                approve: None,
+                notes_seen: None,
+                shaking: HashMap::new(),
+                tray_apps: Vec::new(),
+                tray_host,
+                badges: Vec::new(),
+                tray_pictures: HashMap::new(),
+                ticking: None,
+            };
+            d.tick(cx);
+            d
+        });
+        // One on each display, by name (mirrors are known later, and put
+        // away then); with none known yet, one app_server puts on the main
+        // display, until they are.
+        let outputs: Vec<Option<String>> = cx.displays().iter().filter_map(|d| d.name()).map(Some).collect();
+        let outputs = if outputs.is_empty() { vec![None] } else { outputs };
+        let bars: Vec<Bar> = outputs.into_iter().filter_map(|o| open_bar(cx, model.clone(), o)).collect();
+        model.update(cx, |d, _| d.bars = bars);
+        let messages = model.clone();
+        olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |d, cx| d.message(message, cx)));
+        // Its applications' order, for the Deskbar it re-executes as (an
+        // upgrade, a lost GPU): they come back in the order they were.
+        let saving = model.clone();
+        olo_ui::on_upgrade(cx, move |cx| serde_json::to_string(&saving.read(cx).order).ok());
     });
 }
 
@@ -2239,5 +2513,13 @@ mod tests {
         // Else by name, a website's by its browser's.
         assert!(same_app(&note(None, "Google Chrome"), "google-chrome", None, "Google Chrome"));
         assert!(!same_app(&note(Some("org.gnome.Calendar"), "Calendar"), "olo.deskcalc", None, "DeskCalc"));
+    }
+
+    #[test]
+    fn listings_read_well() {
+        let n = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(listing(&n(&["A"])), "A");
+        assert_eq!(listing(&n(&["A", "B", "C"])), "A, B and C");
+        assert_eq!(listing(&n(&["A", "B", "C", "D", "E", "F"])), "A, B, C and 3 others");
     }
 }

@@ -68,7 +68,7 @@ pub fn event(cx: &mut App, e: Event) {
                     a.clear(cx);
                     if let Some(w) = a.window.take() {
                         cx.default_global::<Agents>().asks.remove(&w.window_id());
-                        let _ = w.update(cx, |_, window, _| window.remove_window());
+                        cx.close_window(w);
                     }
                 });
             }

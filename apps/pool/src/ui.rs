@@ -258,7 +258,7 @@ impl PoolApp {
             "clients" => self.open_clients(cx),
             "close" => {
                 if let Some(w) = self.win.take() {
-                    let _ = w.update(cx, |_, window, _| window.remove_window());
+                    cx.close_window(w);
                 }
             }
             _ => self.add_command(command),

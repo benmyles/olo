@@ -328,6 +328,61 @@ impl TextSystem {
     }
 }
 
+impl TextSystem {
+    /// Olo: a line of text in `font` at `font_size`, `scale` device
+    /// pixels to a point, drawn on the CPU as a coverage mask (a byte a
+    /// device pixel, grey-scale; hinted under 2×, as on screen): for a
+    /// picture made off screen (a drag's). Its size, the mask, and its
+    /// baseline from the top. Colour glyphs (emoji) are left out.
+    pub fn line_mask(&self, text: &str, font: &Font, font_size: Pixels, scale: f32) -> Option<(Size<DevicePixels>, Vec<u8>, i32)> {
+        let font_id = self.resolve_font(font);
+        let layout = self.platform_text_system.layout_line(text, font_size, &[FontRun { len: text.len(), font_id }]);
+        let rendering = if scale < 2.0 { TextRendering::Hinted } else { TextRendering::Unhinted };
+        let ascent = (f32::from(layout.ascent) * scale).ceil() as i32;
+        let height = ascent + (f32::from(layout.descent) * scale).ceil() as i32;
+        let width = (f32::from(layout.width) * scale).ceil() as i32 + 2;
+        if width <= 2 || height <= 0 {
+            return None;
+        }
+        let mut mask = vec![0u8; (width * height) as usize];
+        for run in &layout.runs {
+            for glyph in run.glyphs.iter().filter(|g| !g.is_emoji) {
+                let x = f32::from(glyph.position.x) * scale;
+                let params = RenderGlyphParams {
+                    font_id: run.font_id,
+                    glyph_id: glyph.id,
+                    font_size,
+                    subpixel_variant: Point { x: (x.fract() * SUBPIXEL_VARIANTS_X as f32).floor() as u8, y: 0 },
+                    scale_factor: scale,
+                    is_emoji: false,
+                    rendering,
+                };
+                let Ok(bounds) = self.raster_bounds(&params) else { continue };
+                if bounds.size.width.0 <= 0 || bounds.size.height.0 <= 0 {
+                    continue;
+                }
+                let Ok((size, bytes)) = self.rasterize_glyph(&params) else { continue };
+                let (gw, gh) = (size.width.0, size.height.0);
+                if bytes.len() < (gw * gh) as usize {
+                    continue;
+                }
+                let (ox, oy) = (x.floor() as i32 + bounds.origin.x.0, ascent + bounds.origin.y.0);
+                for gy in 0..gh {
+                    for gx in 0..gw {
+                        let (tx, ty) = (ox + gx, oy + gy);
+                        if tx < 0 || ty < 0 || tx >= width || ty >= height {
+                            continue;
+                        }
+                        let at = &mut mask[(ty * width + tx) as usize];
+                        *at = at.saturating_add(bytes[(gy * gw + gx) as usize]);
+                    }
+                }
+            }
+        }
+        Some((crate::size(DevicePixels(width), DevicePixels(height)), mask, ascent))
+    }
+}
+
 /// The GPUI text layout subsystem.
 #[derive(Deref)]
 pub struct WindowTextSystem {

@@ -435,7 +435,18 @@ impl WaylandWindow {
             .wm_base
             .get_xdg_surface(&surface, &globals.qh, surface.id());
         let (toplevel, popup) = match (params.kind, popup_parent) {
-            (WindowKind::Popup { anchor, corner, offset, .. }, Some((parent_surface, serial))) => {
+            (kind @ (WindowKind::Popup { .. } | WindowKind::Tip { .. }), Some((parent_surface, serial))) => {
+                // Olo: a tip, below what it tells about (a gap away), or
+                // above; taking no input, grabbing nothing.
+                const TIP_GAP: f32 = 4.0;
+                let (anchor, corner, offset, tip) = match kind {
+                    WindowKind::Popup { anchor, corner, offset, .. } => (anchor, corner, offset, false),
+                    WindowKind::Tip { anchor, .. } => {
+                        let a = Bounds { origin: crate::point(anchor.origin.x, anchor.origin.y - px(TIP_GAP)), size: size(anchor.size.width, anchor.size.height + px(2.0 * TIP_GAP)) };
+                        (a, crate::Corner::BottomLeft, Point::default(), true)
+                    }
+                    _ => unreachable!(),
+                };
                 // Olo: where it opens, and how the compositor may move it
                 // to keep it on screen.
                 let positioner = globals.wm_base.create_positioner(&globals.qh, ());
@@ -482,7 +493,13 @@ impl WaylandWindow {
                     }
                 };
                 positioner.destroy();
-                popup.grab(&globals.seat, serial);
+                if tip {
+                    let region = globals.compositor.create_region(&globals.qh, ());
+                    surface.set_input_region(Some(&region));
+                    region.destroy();
+                } else {
+                    popup.grab(&globals.seat, serial);
+                }
                 (None, Some(popup))
             }
             _ => {
@@ -1636,6 +1653,18 @@ impl PlatformWindow for WaylandWindow {
         if let Some(toplevel) = &state.toplevel {
             toplevel._move(&state.globals.seat, serial);
         }
+    }
+
+    fn start_drag(&self, drag: crate::OutgoingDrag, done: futures::channel::oneshot::Sender<Option<crate::DragAction>>) {
+        let (client, surface) = {
+            let state = self.borrow();
+            (state.client.clone(), state.surface.clone())
+        };
+        client.start_drag(&surface, drag, done);
+    }
+
+    fn surface_id(&self) -> Option<u32> {
+        Some(self.borrow().surface.id().protocol_id())
     }
 
     fn start_window_resize(&self, edge: crate::ResizeEdge) {

@@ -355,49 +355,7 @@ pub(crate) fn end_frame(ctx: &Context) -> Option<Accepted> {
     ctx.data(|d| d.get_temp::<Option<Accepted>>(accept_id())).flatten()
 }
 
-/// `file:///path`, with what URIs can't hold percent-encoded.
-pub fn file_uri(path: &std::path::Path) -> String {
-    use std::os::unix::ffi::OsStrExt;
-    let mut out = String::from("file://");
-    for &b in path.as_os_str().as_bytes() {
-        if b.is_ascii_alphanumeric() || b"/-._~!$&'()*+,;=:@".contains(&b) {
-            out.push(b as char);
-        } else {
-            out.push_str(&format!("%{b:02X}"));
-        }
-    }
-    out
-}
-
-/// The local paths in a `text/uri-list`: one URI a line, `#` comments.
-pub fn uri_list_paths(list: &str) -> Vec<std::path::PathBuf> {
-    use std::os::unix::ffi::OsStringExt;
-    list.lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty() && !l.starts_with('#'))
-        .filter_map(|l| {
-            let rest = l.strip_prefix("file://")?;
-            // file://host/path: only this computer's.
-            let path = if rest.starts_with('/') { rest } else { &rest[rest.find('/')?..] };
-            let bytes = path.as_bytes();
-            let mut out = Vec::with_capacity(bytes.len());
-            let mut i = 0;
-            while i < bytes.len() {
-                if bytes[i] == b'%'
-                    && i + 2 < bytes.len()
-                    && let Ok(b) = u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).ok()?, 16)
-                {
-                    out.push(b);
-                    i += 3;
-                } else {
-                    out.push(bytes[i]);
-                    i += 1;
-                }
-            }
-            Some(std::path::PathBuf::from(std::ffi::OsString::from_vec(out)))
-        })
-        .collect()
-}
+pub use olo_kit_base::files::{file_uri, uri_list_paths};
 
 #[cfg(test)]
 mod tests {

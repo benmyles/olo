@@ -257,8 +257,9 @@ as they land (with the commit), add new ones as they come up.
      wheel, tabs), the menu bar, keys from the keyboard profile, layer
      shell (Deskbar, the desktop, notifications, Screenshot's overlay),
      session lock, xdg-dialog alerts, xdg-foreign parents, idle
-     inhibition, the hints protocol (surface ids), menus' icons and
-     scrolling and press-drag-release.
+     inhibition, menus' scrolling and press-drag-release. (Done since:
+     layer shell, the hints protocol by surface, menus' icons and key
+     combos, drags out.)
   4. The apps one by one, small first (DeskCalc, Screenshot, the lock
      screen, Preferences' panels) to the largest (Terminal, StyledEdit,
      Tracker), each checked at every scale and theme and benchmarked;
@@ -271,10 +272,16 @@ as they land (with the commit), add new ones as they come up.
      glyph atlas, so a window or menu opens without building them: the
      palette in 28 ms against egui's 47), Log Viewer (with the GPUI
      kit's search field, filter bar and text view), the Chrome app's
-     installer. Next:
-     Deskbar, Telegram, Viewer, Notifications, the portal, Agent
+     installer, Deskbar (with the GPUI kit's drags out, tips in popups
+     of their own, the wordmark, minimized windows in menus, menus put
+     away by a press in their window, keyboard hints by surface; 57 MB
+     against 141, 32 frames for 30 pointer moves against 150). Next:
+     Telegram, Viewer, Notifications, the portal, Agent
      Screens, StyledEdit, Activity Monitor, Tracker, Passwords,
      Preferences (with the screen saver and its modules) and Terminal.
+     Deskbar's battery and Wi-Fi are still read every 4 s (5 wakeups a
+     second idle, as egui's did): to follow UPower's and
+     NetworkManager's signals instead.
 - **Text and everything drawn, better than Apple's** (Ben, 2026-10-31):
   "make sure our text system is SOTA -- rivalling apple's or anything
   else out there. perfect looking, adorably beautiful text is essential";
