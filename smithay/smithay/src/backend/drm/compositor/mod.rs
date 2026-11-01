@@ -2122,6 +2122,26 @@ where
                     continue;
                 };
 
+                // (Olo) Said once a plane, format and size, so the session's
+                // log tells why a window stays drawn: the whole frame's
+                // test failed with this element on this plane.
+                if let Some(c) = state.config.as_ref() {
+                    static SAID: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+                        std::sync::OnceLock::new();
+                    let key = format!("{:?} {:?}/{:?} {}x{}", plane, c.properties.format.code, c.properties.format.modifier, c.properties.dst.size.w, c.properties.dst.size.h);
+                    if SAID.get_or_init(Default::default).lock().unwrap().insert(key) {
+                        info!(
+                            plane = ?plane,
+                            format = ?c.properties.format.code,
+                            modifier = ?c.properties.format.modifier,
+                            src = ?c.properties.src,
+                            dst = ?c.properties.dst,
+                            error = ?olo_test.as_ref().err(),
+                            "the frame's test failed with the element on this plane; drawn instead"
+                        );
+                    }
+                }
+
                 // Reset the plane config and state
                 state.config = None;
                 state.skip = false;
