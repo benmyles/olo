@@ -166,9 +166,12 @@ impl Pacing {
         let (target, took) = self.queued.take()?;
         let target = target?;
         let late = Duration::from(at).saturating_sub(Duration::from(target));
-        // Half a frame: a vblank's timestamp jitters by far less, and a
-        // frame that made the next vblank is a whole frame late.
-        if late < frame / 2 {
+        // Three quarters of a frame: a frame that made the next vblank is a
+        // whole frame late, and a panel with a rate of its own (the
+        // MacBook's ProMotion at 120 Hz) stamps a vblank up to half a
+        // frame off now and then (seen 2026-11-01: 4.2–4.8 ms at 8.3 ms a
+        // frame, with the draw well inside the frame).
+        if late < frame * 3 / 4 {
             self.clean += 1;
             if self.clean >= SETTLE {
                 self.clean = 0;

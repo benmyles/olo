@@ -1715,9 +1715,17 @@ impl AnvilState<UdevData> {
             // and Smithay draws the pointer into a buffer of its own and
             // moves that, the frame underneath untouched. One that refuses
             // the pointer (too big, or a client's cursor it can't hold) has
-            // it drawn into the frame as before. OLO_CURSOR_PLANE=0 keeps
-            // the overlay planes as they are.
-            if planes.cursor.is_empty() && std::env::var_os("OLO_CURSOR_PLANE").is_none_or(|v| v != "0") {
+            // it drawn into the frame as before.
+            //
+            // Off unless OLO_CURSOR_PLANE=1: the first try (2026-11-01)
+            // had apple-drm refuse the page flip (EINVAL) within seconds
+            // to minutes, as the pointer crossed a display's edge with the
+            // plane hanging off it (Smithay commits a reposition untested,
+            // as a real cursor plane takes any), and app_server took a
+            // refused flip as fatal, so the desktop restarted over and
+            // over. The plane comes back once Olo's Smithay keeps the
+            // plane on the screen and tests what it isn't sure of.
+            if planes.cursor.is_empty() && std::env::var_os("OLO_CURSOR_PLANE").is_some_and(|v| v == "1") {
                 let wanted = smithay::backend::allocator::Format { code: Fourcc::Argb8888, modifier: Modifier::Linear };
                 let topmost = planes
                     .overlay
@@ -1732,6 +1740,16 @@ impl AnvilState<UdevData> {
                     plane.type_ = smithay::reexports::drm::control::PlaneType::Cursor;
                     planes.cursor.push(plane);
                 }
+            }
+            // The overlay planes that are left are not used: Smithay
+            // tests every dmabuf-backed element against them with an
+            // atomic TEST_ONLY commit as its buffers change, and on
+            // apple-drm those go through the display coprocessor;
+            // `drm render_frame` cost 4–7 ms of CPU a frame on the 4K and
+            // 5K displays with them (2026-11-01). OLO_OVERLAY_PLANES=1
+            // tries them (video straight to a plane, one day).
+            if std::env::var_os("OLO_OVERLAY_PLANES").is_none_or(|v| v != "1") {
+                planes.overlay.clear();
             }
 
             let drm_output = match device
@@ -2351,6 +2369,16 @@ impl AnvilState<UdevData> {
                         true
                     }
                     SwapBuffersError::ContextLost(err) => match err.downcast_ref::<DrmError>() {
+                        // The driver refused the commit (EINVAL from
+                        // apple-drm for a plane off the screen): not the
+                        // end of the loop. Start the surface over and
+                        // draw again; whoever watches loses a frame, not
+                        // the desktop.
+                        Some(DrmError::Access(_)) => {
+                            warn!(output = output.name(), "the display refused the frame's commit; drawing it again from scratch");
+                            surface.drm_output.reset_buffers();
+                            true
+                        }
                         Some(DrmError::TestFailed(_)) => {
                             // reset the complete state, disabling all connectors and planes in case we hit a test failed
                             // most likely we hit this after a tty switch when a foreign master changed CRTC <-> connector bindings
