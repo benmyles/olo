@@ -153,6 +153,14 @@ impl Track {
     /// where it is now (`now`): ahead along its last motion, or just
     /// `now` when it isn't moving or the reports are too few or old.
     pub fn at(&self, target: std::time::Duration, now: Point<f64, Logical>) -> Point<f64, Logical> {
+        // Off unless asked for (OLO_POINTER_AHEAD=1): tried on Ben's
+        // session (2026-11-01) it made the pointer feel worse, not
+        // better; it wants a measured trace of reports against vblanks
+        // before another try.
+        static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        if !*ON.get_or_init(|| std::env::var_os("OLO_POINTER_AHEAD").is_some_and(|v| v == "1")) {
+            return now;
+        }
         let (Some((t1, p1)), Some((t0, p0))) = (self.last, self.before) else { return now };
         if target <= t1 || target - t1 > STALE || t1 <= t0 || t1 - t0 > STALE || p1 != now {
             return now;
@@ -174,6 +182,8 @@ mod track_tests {
 
     #[test]
     fn moves_ahead_along_the_last_motion() {
+        // SAFETY: a test's own environment, before the switch is read.
+        unsafe { std::env::set_var("OLO_POINTER_AHEAD", "1") };
         let mut t = Track::default();
         t.note(ms(100), Point::from((10.0, 10.0)));
         t.note(ms(108), Point::from((18.0, 10.0)));
@@ -198,6 +208,8 @@ mod track_tests {
 
     #[test]
     fn at_most_a_frame_ahead() {
+        // SAFETY: a test's own environment, before the switch is read.
+        unsafe { std::env::set_var("OLO_POINTER_AHEAD", "1") };
         let mut t = Track::default();
         t.note(ms(100), Point::from((0.0, 0.0)));
         t.note(ms(101), Point::from((10.0, 0.0)));

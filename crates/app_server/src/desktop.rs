@@ -554,7 +554,17 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// Called once per loop iteration: drop dead windows and tell
     /// subscribers (Deskbar) when the window list changed.
     pub fn tick(&mut self) {
+        // After every turn of the loop was 500 times a second with a
+        // video call on, each rebuilding the window infos and groups
+        // whether anything changed or not: 5% of a core (2026-11-01).
+        // At most once a frame of the fastest display: a change still
+        // goes out within a frame.
+        const TICK: std::time::Duration = std::time::Duration::from_millis(8);
         let t = std::time::Instant::now();
+        if self.last_tick.is_some_and(|last| t.duration_since(last) < TICK) {
+            return;
+        }
+        self.last_tick = Some(t);
         self.parked.0.borrow_mut().retain(|w| w.alive());
         self.sync_groups();
         crate::render::part("tick: groups", t);
