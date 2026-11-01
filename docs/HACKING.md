@@ -4132,8 +4132,28 @@ reports at its own rate (125 Hz, 1000 Hz) against the display's (60,
 120 Hz): drawn at the last position, one frame got two reports' worth
 of motion and the next three, and the pointer moved unevenly though the
 hand didn't (Ben, 2026-11-01: "jittery/off"); as `pace.rs` does for
-scrolling, the frame clock gets the position for its time. Hit-testing,
-focus and what clients get use the real position.
+scrolling, the frame clock gets the position for its time: where it was
+4 ms before the vblank, interpolated between the reports either side of
+then, or past the last report along the velocity of the last 6 ms of
+reports by at most 4 ms (a frame's extrapolation at the last two
+reports' velocity overshot every turn and was noisier than the real
+position with a 1 kHz mouse: measured, `{"type":"pointer_trace",
+"output":"DP-1"}` answers the last 120 frames that drew the pointer,
+vblank, real and drawn position, the last report's age and interval).
+Hit-testing, focus and what clients get use the real position.
+`OLO_POINTER_AHEAD=0` draws the real position.
+
+The pointer's reports themselves are watched (`Track::health`,
+`PointerHealth` in `{"type":"frames"}`, Activity Monitor ▸ Displays'
+Pointer card): reports a second, the device's interval (1 ms for a
+1 kHz mouse), gaps over 5 ms within a run of motion in the last minute
+and the longest. A gap is the mouse's, not a frame's: a receiver asleep
+(USB autosuspend; `data/udev/71-olo-input.rules`, installed by
+`tools/install-session.sh`, keeps every USB HID interface's device
+awake) or a 2.4 GHz link dropping packets (Ben's Razer receiver on a
+hub, 2026-11-01: frames of 67, 10, 50 px with reports 1 ms apart, and
+"stuck for a second" after a pause). No frame can make up for a report
+that never came.
 
 The pointer is Haiku's system cursor set (`crates/hvif/cursors`, from
 Haiku's CursorData.cpp, MIT; see the LICENSE there). `olo-hvif` reads

@@ -402,8 +402,14 @@ pub enum Reply {
     /// [`Request::AutoApproveSecret`]'s answer.
     Secret { password: String },
     Timings { timings: Timings },
-    /// [`Request::Frames`]: each display, and whether drops are captured.
-    Frames { displays: Vec<DisplayFrames>, capture: bool },
+    /// [`Request::Frames`]: each display, the pointer's reports, and
+    /// whether drops are captured.
+    Frames {
+        displays: Vec<DisplayFrames>,
+        capture: bool,
+        #[serde(default)]
+        pointer: PointerHealth,
+    },
     PointerTrace { frames: Vec<PointerFrame> },
     Event { event: Event },
 }
@@ -478,6 +484,18 @@ pub struct DisplayFrames {
     pub scanout: String,
     /// Resting: nothing new, looking only now and then.
     pub resting: bool,
+}
+
+/// The pointer's reports as app_server gets them ([`Reply::Frames`]):
+/// how many a second, gaps between reports within a run of motion (over
+/// 5 ms; a receiver asleep or dropping packets), the longest in the
+/// last minute, and the device's usual interval (1 ms for a 1 kHz mouse).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct PointerHealth {
+    pub reports_second: u32,
+    pub gaps_minute: u32,
+    pub longest_gap_us: u64,
+    pub interval_us: u64,
 }
 
 /// One frame that drew the pointer ([`Request::PointerTrace`]): the

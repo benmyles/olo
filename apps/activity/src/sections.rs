@@ -1000,6 +1000,28 @@ fn displays(app: &Activity, me: &Me, cx: &App) -> Vec<AnyElement> {
         }
         out.push(card.child(facts(rows)).into_any_element());
     }
+    // The pointer's reports, as app_server gets them: the mouse and its
+    // link, which no frame can make up for.
+    {
+        let h = &app.pointer_health;
+        let rate = if h.interval_us > 0 { format!("{} Hz", (1_000_000 / h.interval_us.max(1)).min(8000)) } else { "—".to_owned() };
+        let ms = |us: u64| format!("{:.0} ms", us as f64 / 1000.0);
+        let rows: Vec<(String, String)> = vec![
+            ("Reports".into(), format!("{} in the last second, at {rate}", h.reports_second)),
+            ("Gaps".into(), if h.gaps_minute == 0 { "None in the last minute".into() } else { format!("{} over 5 ms in the last minute, the longest {}", h.gaps_minute, ms(h.longest_gap_us)) }),
+        ];
+        let figure = if h.reports_second > 0 { rate.clone() } else { "still".to_owned() };
+        let caption = if h.gaps_minute > 0 {
+            "Reports going missing while the mouse moves: a receiver asleep (USB autosuspend; Olo's udev rule keeps it awake) or a 2.4 GHz link dropping packets (move the receiver nearer)"
+        } else {
+            "The mouse's reports arrive as they should"
+        };
+        let mut card = Card::new("displays-pointer", "Pointer").figure(figure).caption(caption);
+        if h.gaps_minute > 0 {
+            card = card.figure_ink(c(p.hue(olo_theme::Hue::Red)));
+        }
+        out.push(card.child(facts(rows)).into_any_element());
+    }
     let toggle = me.clone();
     out.push(
         Card::new("displays-capture", "When a Frame Drops")

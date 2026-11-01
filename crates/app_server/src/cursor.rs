@@ -139,6 +139,11 @@ pub struct Track {
     /// The last reports, oldest first: when (the input clock, monotonic,
     /// the vblanks' too) and where.
     reports: std::collections::VecDeque<(std::time::Duration, Point<f64, Logical>)>,
+    /// Reports in the last second (their times), for the rate.
+    recent: std::collections::VecDeque<std::time::Duration>,
+    /// Gaps over `GAP` within a burst of motion, in the last minute:
+    /// when, and how long.
+    gaps: std::collections::VecDeque<(std::time::Duration, std::time::Duration)>,
 }
 
 /// Reports older than this say nothing about now (the mouse stopped).
@@ -148,15 +153,54 @@ const STALE: std::time::Duration = std::time::Duration::from_millis(40);
 const LATENCY: std::time::Duration = std::time::Duration::from_millis(4);
 /// At most this far past the last report, along its motion.
 const AHEAD: std::time::Duration = std::time::Duration::from_millis(4);
-const KEPT: usize = 8;
+const KEPT: usize = 16;
+/// The velocity is taken over at least this span of reports: two reports
+/// a millisecond apart say little (a 1 kHz mouse's noise).
+const VELOCITY_SPAN: std::time::Duration = std::time::Duration::from_millis(6);
+/// A gap between reports longer than this, while moving, is one worth
+/// counting (a 2.4 GHz receiver dropping packets, a receiver asleep).
+const GAP: std::time::Duration = std::time::Duration::from_millis(5);
+/// Gaps are counted over this long.
+const GAP_WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
 
 impl Track {
     /// A pointer report: at `at` the pointer was at `pos`.
     pub fn note(&mut self, at: std::time::Duration, pos: Point<f64, Logical>) {
+        if let Some(&(last, _)) = self.reports.back()
+            && at > last
+        {
+            let gap = at - last;
+            // (A pause of the hand is no gap: only within a run of reports,
+            // the one before this gap recent.)
+            if gap > GAP && gap < STALE {
+                self.gaps.push_back((at, gap));
+            }
+        }
         if self.reports.len() == KEPT {
             self.reports.pop_front();
         }
         self.reports.push_back((at, pos));
+        self.recent.push_back(at);
+        while self.recent.front().is_some_and(|&t| at.saturating_sub(t) > std::time::Duration::from_secs(1)) {
+            self.recent.pop_front();
+        }
+        while self.gaps.front().is_some_and(|&(t, _)| at.saturating_sub(t) > GAP_WINDOW) {
+            self.gaps.pop_front();
+        }
+    }
+
+    /// The pointer's reports: how many in the last second, how many gaps
+    /// in the last minute (over `GAP`, within a run of motion), the
+    /// longest of them, and the usual interval between reports.
+    pub fn health(&self) -> olo_protocol::PointerHealth {
+        let n = self.reports.len();
+        let interval = (1..n).map(|i| self.reports[i].0.saturating_sub(self.reports[i - 1].0)).filter(|d| *d < STALE).min().unwrap_or_default();
+        olo_protocol::PointerHealth {
+            reports_second: self.recent.len() as u32,
+            gaps_minute: self.gaps.len() as u32,
+            longest_gap_us: self.gaps.iter().map(|(_, g)| g.as_micros() as u64).max().unwrap_or(0),
+            interval_us: interval.as_micros() as u64,
+        }
     }
 
     /// The last report's time, and the interval from the one before.
@@ -184,9 +228,13 @@ impl Track {
         }
         let t = target.saturating_sub(LATENCY);
         if t >= t1 {
-            // Past the last report: on at its velocity, a little.
-            let (t0, p0) = self.reports[n - 2];
-            if t1 <= t0 || t1 - t0 > STALE {
+            // Past the last report: on at its velocity, a little. The
+            // velocity over the last `VELOCITY_SPAN` of reports, not the
+            // last two (a 1 kHz mouse's two reports a millisecond apart
+            // are noise; this made the drawn steps less even than the
+            // real ones, 2026-11-01).
+            let Some(&(t0, p0)) = self.reports.iter().rev().skip(1).find(|(t, _)| t1.saturating_sub(*t) >= VELOCITY_SPAN).or_else(|| self.reports.front()) else { return now };
+            if t1 <= t0 || t1 - t0 > STALE || t1 - t0 < std::time::Duration::from_millis(2) {
                 return now;
             }
             let lead = (t - t1).min(AHEAD).as_secs_f64();

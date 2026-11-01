@@ -225,9 +225,9 @@ pub enum Msg {
     Helper(Option<FromHelper>),
     /// What the supervisor published (`olo-supervisor.json`).
     Supervisor(Box<olo_protocol::performance::SupervisorState>),
-    /// How each display keeps up, and whether drops are captured
-    /// (`Request::Frames`, from `frames_poller`).
-    Frames(Vec<olo_protocol::DisplayFrames>, bool),
+    /// How each display keeps up, whether drops are captured, and the
+    /// pointer's reports (`Request::Frames`, from `frames_poller`).
+    Frames(Vec<olo_protocol::DisplayFrames>, bool, olo_protocol::PointerHealth),
 }
 
 /// Displays to look at under OLO_ACTIVITY_DEMO_FRAMES (a headless
@@ -280,7 +280,7 @@ fn frames_poller(send: impl Fn(Msg) + Send + 'static, rx: mpsc::Receiver<FramesA
         }
         // (Headless test sessions have no displays: made-up ones to look at.)
         if std::env::var_os("OLO_ACTIVITY_DEMO_FRAMES").is_some() {
-            send(Msg::Frames(demo_frames(), capture));
+            send(Msg::Frames(demo_frames(), capture, olo_protocol::PointerHealth { reports_second: 998, gaps_minute: 3, longest_gap_us: 31_000, interval_us: 1_000 }));
             continue;
         }
         if client.is_none() {
@@ -288,7 +288,7 @@ fn frames_poller(send: impl Fn(Msg) + Send + 'static, rx: mpsc::Receiver<FramesA
         }
         let Some(c) = client.as_mut() else { continue };
         match c.request(&Request::Frames) {
-            Ok(Reply::Frames { displays, capture }) => send(Msg::Frames(displays, capture)),
+            Ok(Reply::Frames { displays, capture, pointer }) => send(Msg::Frames(displays, capture, pointer)),
             _ => client = None,
         }
     }
@@ -362,6 +362,7 @@ pub struct Activity {
     /// last said, and whether it captures drops.
     pub displays: Vec<olo_protocol::DisplayFrames>,
     pub frames_capture: bool,
+    pub pointer_health: olo_protocol::PointerHealth,
     frames: mpsc::Sender<FramesAsk>,
     proxy: Proxy,
     /// The sections' scrolling, kept while each shows.
@@ -1019,9 +1020,10 @@ impl Activity {
             }
             Msg::Helper(m) => return self.heard(m, cx),
             Msg::Supervisor(s) => self.supervisor = *s,
-            Msg::Frames(displays, capture) => {
+            Msg::Frames(displays, capture, pointer) => {
                 self.displays = displays;
                 self.frames_capture = capture;
+                self.pointer_health = pointer;
             }
         }
         cx.notify();
@@ -1306,6 +1308,7 @@ fn main() {
                 supervisor: Default::default(),
                 displays: Vec::new(),
                 frames_capture: false,
+                pointer_health: Default::default(),
                 frames: frames_tx,
                 proxy: proxy.clone(),
                 scroll: Default::default(),

@@ -726,7 +726,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Reply::Ok
             }
             Request::Timings { quiet } => Reply::Timings { timings: self.take_timings(quiet) },
-            Request::Frames => Reply::Frames { displays: self.backend_data.frames(), capture: crate::frames::capture() },
+            Request::Frames => Reply::Frames { displays: self.backend_data.frames(), capture: crate::frames::capture(), pointer: self.pointer_track.health() },
             Request::PointerTrace { output } => Reply::PointerTrace { frames: self.backend_data.pointer_trace(&output) },
             Request::CaptureDrops { on } => {
                 crate::frames::set_capture(on);
