@@ -369,8 +369,8 @@ as they land (with the commit), add new ones as they come up.
      window closed under them: GPUI handles kept to windows the
      compositor closed. Deskbar's bars are pruned now; the palette's
      and any other app's handles want the same at the kit level.
-   - **Olo's own login and boot** (Ben, 2026-11-01, for after the frame
-     and reliability work): replace GDM with an Olo-native display
+   - **Olo's own login and boot** (Ben, 2026-11-01, for after the GPUI
+     refactor is complete): replace GDM with an Olo-native display
      manager, and have Olo take over the boot visuals as early as it can
      (Plymouth's place): an "Olo starting up" screen that is an homage
      to BeOS's boot screen, drawn with sunburst-made graphics

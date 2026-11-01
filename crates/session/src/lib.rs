@@ -144,6 +144,11 @@ struct Resume {
     /// Then nudge the programs whose files were replaced (see `bridge`).
     #[serde(default)]
     nudge: bool,
+    /// An upgrade's programs still to be checked for being the old
+    /// version (`check_stale`): when it was (seconds since the epoch),
+    /// and how far the checking got.
+    #[serde(default)]
+    stale: Option<(u64, u8)>,
 }
 
 /// olo-wlproxy and app_server's two other sockets: one for Olo's own
@@ -173,6 +178,9 @@ struct Session {
     backend: Vec<String>,
     server: Child,
     shell: Vec<Child>,
+    /// Programs an upgrade may have left on the old version: looked at
+    /// 20 s after (asked again) and 90 s after (stopped).
+    stale_check: Option<(Instant, u8)>,
     /// Our own binary when we started, to notice upgrades.
     binary: Option<(u64, SystemTime)>,
     stopping: bool,
@@ -243,6 +251,7 @@ impl Session {
             backend,
             server: Child { argv: Vec::new(), pid: 0, crashes: VecDeque::new() },
             shell: Vec::new(),
+            stale_check: None,
             binary: own_binary(),
             stopping: false,
             real: false,
@@ -321,6 +330,7 @@ impl Session {
             backend: r.backend,
             server: r.server,
             shell: r.shell,
+            stale_check: r.stale.map(|(at, stage)| (Instant::now() - Duration::from_secs(now_secs().saturating_sub(at)), stage)),
             binary: own_binary(),
             stopping: false,
             real,
@@ -531,6 +541,7 @@ impl Session {
             self.reap();
             if !self.stopping {
                 self.watchdog.check(self.server.pid);
+                self.check_stale();
             }
             // An upgrade asked for while a build ran, now it has finished.
             if self.upgrades.as_mut().is_some_and(|w| w.check()) {
@@ -558,6 +569,7 @@ impl Session {
             return;
         }
         w.nudge(&[std::process::id() as i32, self.server.pid]);
+        self.stale_check = Some((Instant::now(), 0));
         if done.iter().any(|p| p == "olo-app-server") {
             self.reload();
         } else if own_binary().is_some() && own_binary() != self.binary {
@@ -565,6 +577,55 @@ impl Session {
         }
         // (A new session does this as it resumes.)
         self.renew_proxy_if_upgraded();
+    }
+
+    /// What an upgrade left on the old version (Ben, 2026-11-01): 20 s
+    /// after the programs were asked to re-execute, those of this session
+    /// still running a replaced binary are named and asked again; 90 s
+    /// after, what is still old is stopped (a service of ours is
+    /// restarted by `reap`, an app starts as the new version when next
+    /// opened). Never the proxies (a retired one serves the outside
+    /// programs it had until they close), nor olo-portal, which may be
+    /// waiting out a screen share (`upgrade_waits_while`).
+    fn check_stale(&mut self) {
+        let Some((since, stage)) = self.stale_check else { return };
+        let Some(w) = &self.upgrades else {
+            self.stale_check = None;
+            return;
+        };
+        let elapsed = since.elapsed();
+        if (stage == 0 && elapsed < Duration::from_secs(20)) || (stage == 1 && elapsed < Duration::from_secs(90)) {
+            return;
+        }
+        let mut skip: Vec<i32> = vec![std::process::id() as i32, self.server.pid];
+        skip.extend(self.proxy.as_ref().map(|p| p.2.pid));
+        skip.extend(self.retired.iter().copied());
+        let stale = w.stale(&skip, &self.display);
+        if stale.is_empty() {
+            if stage == 0 {
+                log("every program is the new version");
+            }
+            self.stale_check = None;
+            return;
+        }
+        for (pid, name) in stale {
+            if stage == 0 {
+                log(format!("{name} (pid {pid}) is still the old version 20 s after the upgrade; asking it again"));
+                // SAFETY: SIGURG (ignored unless handled) to our own program.
+                unsafe { libc::kill(pid, libc::SIGURG) };
+            } else if name == "olo-portal" {
+                log(format!("{name} (pid {pid}) is still the old version; left alone (it may be sharing a screen)"));
+            } else if self.shell.iter().any(|c| c.pid == pid) {
+                log(format!("{name} (pid {pid}) is still the old version 90 s after the upgrade; restarting it"));
+                // SAFETY: SIGTERM to our own child.
+                unsafe { libc::kill(pid, libc::SIGTERM) };
+            } else {
+                log(format!("{name} (pid {pid}) is still the old version 90 s after the upgrade; stopping it (it starts as the new version when next opened)"));
+                // SAFETY: SIGTERM to our own program.
+                unsafe { libc::kill(pid, libc::SIGTERM) };
+            }
+        }
+        self.stale_check = if stage == 0 { Some((since, 1)) } else { None };
     }
 
     fn wayland_path(&self) -> PathBuf {
@@ -670,6 +731,7 @@ impl Session {
             backend: self.backend.clone(),
             server: self.server.clone(),
             shell: self.shell.clone(),
+            stale: self.stale_check.map(|(at, stage)| (now_secs().saturating_sub(at.elapsed().as_secs()), stage)),
             reloading,
             proxy,
             nudge,
@@ -1005,4 +1067,9 @@ fn export_environment() {
         // come this way).
         autostart::start();
     });
+}
+
+/// Seconds since the epoch.
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
 }

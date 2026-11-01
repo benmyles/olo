@@ -2086,6 +2086,17 @@ connection doesn't know yet is refused by GPUI (not stood in for by the
 compositor's choice, which put the Dell's bar on the Studio Display)
 and asked for again from `olo_ui::on_displays_changed`.
 
+What an upgrade leaves behind is looked at (`Session::check_stale`,
+Ben, 2026-11-01): 20 s after the programs were asked to re-execute,
+those of this session still running a replaced binary (`/proc/PID/exe`
+"(deleted)" under the install directory, `WAYLAND_DISPLAY` ours) are
+named in the log and asked again; 90 s after, what is still old is
+stopped: a service of the session's is restarted by it, an app starts
+as the new version when next opened. The proxies are never touched
+(a retired one serves the outside programs it had until they close),
+nor olo-portal (it may be waiting out a screen share,
+`upgrade_waits_while`), which is only named.
+
 Login items (`session/src/autostart.rs`, the freedesktop Autostart
 spec): once a real session's graphical side is up (the environment
 exported, the portals set), olo-session starts what the person asked

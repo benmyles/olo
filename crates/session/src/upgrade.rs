@@ -174,6 +174,34 @@ impl Watcher {
         }
     }
 
+    /// The session's programs (by `display` in their environment) still
+    /// running a binary of ours that was replaced, by pid and name, but
+    /// for `skip`: what an upgrade left behind (`Session::check_stale`).
+    pub fn stale(&self, skip: &[i32], display: &str) -> Vec<(i32, String)> {
+        let uid = unsafe { libc::getuid() };
+        let mut out = Vec::new();
+        let Ok(dir) = std::fs::read_dir("/proc") else { return out };
+        for e in dir.flatten() {
+            let Some(pid) = e.file_name().to_str().and_then(|n| n.parse::<i32>().ok()) else { continue };
+            if skip.contains(&pid) || std::fs::metadata(e.path()).map(|m| std::os::unix::fs::MetadataExt::uid(&m)).ok() != Some(uid) {
+                continue;
+            }
+            let Ok(exe) = std::fs::read_link(e.path().join("exe")) else { continue };
+            if !replaced(&exe, &self.to) {
+                continue;
+            }
+            let Ok(env) = std::fs::read(e.path().join("environ")) else { continue };
+            let wanted = format!("WAYLAND_DISPLAY={display}");
+            if !env.split(|&b| b == 0).any(|v| v == wanted.as_bytes()) {
+                continue;
+            }
+            let name = exe.file_name().and_then(|n| n.to_str()).unwrap_or_default().trim_end_matches(" (deleted)").to_owned();
+            out.push((pid, name));
+        }
+        out.sort();
+        out
+    }
+
     pub fn forget(&self) {
         let _ = std::fs::remove_file(&self.state);
     }
