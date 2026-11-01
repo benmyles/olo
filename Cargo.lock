@@ -6258,8 +6258,9 @@ version = "0.1.0"
 dependencies = [
  "image",
  "olo-ai",
- "olo-kit",
+ "olo-kit-base",
  "olo-protocol",
+ "olo-xdg",
  "serde_json",
 ]
 

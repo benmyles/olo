@@ -13,7 +13,7 @@ use std::{
 };
 
 use serde_json::{Value, json};
-use olo_kit::{
+use olo_kit_base::{
     commands,
     notify::{Note, NoteEvent, NoteKind, Notifier},
 };
@@ -40,7 +40,7 @@ tiling area (0–100) from its top left. Also say in one short sentence how you 
 
 fn main() -> ExitCode {
     // A session or install from before the rename (Tabula) carries on.
-    olo_kit::legacy::adopt();
+    olo_xdg::legacy::adopt();
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
@@ -74,7 +74,7 @@ fn run() -> Result<(), String> {
                     "cancel" => a.cancel = true,
                     "undo" => a.undo = true,
                     "preferences" => {
-                        let _ = olo_kit::spawn_detached("olo-preferences ai");
+                        let _ = olo_xdg::spawn_detached("olo-preferences ai");
                     }
                     _ => {}
                 }

@@ -11,7 +11,8 @@ path = "src/main.rs"
 
 [dependencies]
 olo-ai.workspace = true
-olo-kit.workspace = true
+olo-kit-base.workspace = true
+olo-xdg.workspace = true
 olo-protocol.workspace = true
 serde_json.workspace = true
 image = { version = "0.25", default-features = false, features = ["png"] }
