@@ -18,6 +18,7 @@ pub const OUR_APPS: &[(&str, &str, &str)] = &[
     ("olo-screenshot", "Screenshot", "screenshot"),
     ("olo-pool", "Token Pool", "token-pool"),
     ("olo-telegram", "Telegram", "telegram"),
+    ("olo-doctor", "Olo Doctor", "doctor"),
 ];
 
 /// Our applications that open another window when asked while running

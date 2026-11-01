@@ -51,6 +51,7 @@ const DISK_USAGE: Option<&str> = Some("olo.disk-usage");
 const NOTIFICATIONS: Option<&str> = Some("olo.notifications");
 const PALETTE: Option<&str> = Some("olo.palette");
 const TELEGRAM: Option<&str> = Some("olo.telegram");
+const DOCTOR: Option<&str> = Some("olo.doctor");
 
 /// The apps with keys of their own, as Preferences names them.
 pub const APPS: &[(&str, &str)] = &[
@@ -68,6 +69,7 @@ pub const APPS: &[(&str, &str)] = &[
     ("olo.notifications", "Notifications"),
     ("olo.palette", "Command Palette"),
     ("olo.telegram", "Telegram"),
+    ("olo.doctor", "Olo Doctor"),
 ];
 
 /// The name of the group of every app's commands.
@@ -196,6 +198,8 @@ pub const APP_KEYS: &[AppKey] = &[
     k("disk-usage.trash", DISK_USAGE, "trash", "Move to Trash", &["Cmd+Backspace"], &["Delete"], &["Alt+T"]),
     k("disk-usage.up", DISK_USAGE, "up", "Up a level", &["Cmd+Up"], &["Alt+Up"], &["Alt+Up"]),
     k("drive-setup.eject", Some("olo.drive-setup"), "eject", "Eject", &["Cmd+E"], &["Ctrl+E"], &["Alt+E"]),
+    k("doctor.check", DOCTOR, "check", "Check Again", &["Cmd+R"], &["F5"], &["Alt+R"]),
+    k("doctor.fix-all", DOCTOR, "fix-all", "Fix All", &["Shift+Cmd+F"], &["Ctrl+Shift+F"], &["Shift+Alt+F"]),
     k("pool.refresh", Some("olo.pool"), "refresh", "Read Quota Now", &["Cmd+R"], &["F5"], &["Alt+R"]),
     k("screen.control", Some("olo.screen"), "control", "Take or give back control", &["Cmd+K"], &["Ctrl+K"], &["Alt+K"]),
     k("screen.export", Some("olo.screen"), "export", "Export Video", &["Cmd+E"], &["Ctrl+E"], &["Alt+E"]),

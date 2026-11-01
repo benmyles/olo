@@ -5061,6 +5061,53 @@ found by its exact ID (`pid:N` in the search).**
 inspector, at its Supervisor tab (the supervisor's alert and Deskbar's
 gauge menu use it; with a copy running, both are handed to it).
 
+## Olo Doctor (apps/doctor)
+
+Looks the computer over for what gets in Olo's way and fixes it with a
+button: each finding's own, or Fix All (one password for everything that
+needs root). `checks.rs` finds; each `Finding` carries its `Fix` as
+`Step`s (`fix.rs`: write a file, set a sysfs knob, remove a file, start,
+stop, enable or disable a system unit through `olo_system::systemd`,
+signal a process), all done in process. What it looks for:
+
+- **Input remappers** (keyd, xremap, Input Remapper, evremap, kmonad,
+  Interception Tools): they grab the keyboards, and any mouse whose motion
+  node has keys (a Logitech G309), and type through a virtual device, so
+  Olo's key mapping and its per-mouse settings never reach them. Fixed by
+  stopping and disabling the unit (or signalling a copy started by hand);
+  one installed by hand under /usr/local is removed too (its /etc
+  configuration is left).
+- **Another desktop's daemons** in this session (GNOME Shell, Mutter,
+  KWin, gsd-*): quit. Never another login's: a desktop shell of this user
+  in another `session-N.scope` means that desktop is logged in there, and
+  everything of it is its own.
+- **USB input devices allowed to sleep** (an interface of class 03 with
+  an input node under it, a receiver's paired devices a level down;
+  `power/control` not `on`), and **Olo's udev rules** (71-olo-input,
+  70-olo-displays; the Doctor carries them with `include_str!`) missing or
+  out of date: installed and applied to what is plugged in now.
+- **rtkit** not running (the supervisor's priority tiers need it).
+- **Olo programs on an old version** (their `exe` is a replaced file in
+  ~/.local/bin; never the session, app_server or the proxies): quit.
+- **The login screen's entry** (/usr/local/share/wayland-sessions)
+  missing or pointing at nothing.
+
+Root is reached as Activity Monitor's is: the program run again through
+pkexec (`olo-doctor --helper`, JSON lines of `ToHelper::Run { id, steps }`
+and `FromHelper::Done`), asked for only in the person's own session;
+`OLO_DOCTOR_HELPER=direct|off` as `OLO_ACTIVITY_HELPER`. After a fix the
+report is taken again; what was fixed and is gone is listed under Fixed.
+Scans run on a thread; nothing is polled: Check Again (⌘R), a fix, or
+the app opened again looks again.
+
+`olo-doctor --report` prints the report as JSON (agents, scripts).
+`olo-doctor --notify` is what the session runs once at login: after 20 s
+it looks, and a problem not told of before (remembered in
+`~/.local/state/olo/doctor.json`; one fixed and back is told again) is
+told in a notification whose click opens Olo Doctor. Tests build a
+machine in a folder (`Roots { fs, bin, uid, scope, units }`) and check
+the findings and their steps exactly.
+
 ## The supervisor (apps/supervisor, Preferences ▸ Performance)
 
 Keeps the desktop responsive; off by default. `olo-supervisor` is one of

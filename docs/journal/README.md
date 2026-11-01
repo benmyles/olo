@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-01
 
+### Olo Doctor
+
+*15:17* — A new app that looks the computer over for what gets in Olo's way (an input remapper grabbing the mice, USB receivers allowed to sleep, Olo's udev rules missing, rtkit down, another desktop's daemons, programs on an old version) and fixes each with a button, or all at once with one password.
+
+![Olo Doctor](2026-11-01/151718-olo-doctor.png)
+
 ### Activity Monitor ▸ Displays
 
 *12:06* — Each display's frames a second, the ones dropped (a vblank or more late), what its frames cost app_server to draw and how app_server paces them (frames.rs: the draw's share of the frame set from its cost and from drops), whether the pointer is on a plane of its own; and the check box that has every drop logged with what went into it. Made-up displays here (OLO_ACTIVITY_DEMO_FRAMES); a headless session has none.

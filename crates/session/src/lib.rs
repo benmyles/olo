@@ -1066,6 +1066,11 @@ fn export_environment() {
         // items now (once: a session resumed after an upgrade doesn't
         // come this way).
         autostart::start();
+        // Olo Doctor looks the computer over once the session settles,
+        // and says so if something gets in Olo's way.
+        if let Err(e) = olo_xdg::open::spawn_app(&["olo-doctor".into(), "--notify".into()], "olo.doctor") {
+            log(format!("could not start olo-doctor: {e}"));
+        }
     });
 }
 
