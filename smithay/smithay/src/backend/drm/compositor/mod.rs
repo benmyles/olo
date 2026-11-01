@@ -3141,6 +3141,29 @@ where
             .transform_point_in(element.location(scale), &output_geometry.size)
             - output_transform.transform_point_in(Point::default(), &cursor_plane_size);
 
+        // (Olo) The plane kept on the screen. Only a real cursor plane
+        // may hang off the display; an overlay plane standing in for one
+        // (apple-drm has none) is refused with EINVAL on the page flip
+        // when it does, which took the desktop down as the pointer
+        // crossed an edge (2026-11-01). So the destination is the part
+        // of the cursor on the display and the source the same part of
+        // its buffer; a pointer wholly off it (on the display next door)
+        // takes no plane here.
+        let Some(cursor_plane_dst) = Rectangle::new(cursor_plane_location, cursor_plane_size)
+            .intersection(Rectangle::from_size(output_geometry.size))
+        else {
+            trace!("element {:?} is off the display, skipping cursor plane", element.id());
+            return None;
+        };
+        let cursor_plane_src = Rectangle::<i32, BufferCoords>::new(
+            Point::from((
+                cursor_plane_dst.loc.x - cursor_plane_location.x,
+                cursor_plane_dst.loc.y - cursor_plane_location.y,
+            )),
+            Size::from((cursor_plane_dst.size.w, cursor_plane_dst.size.h)),
+        )
+        .to_f64();
+
         let previous_state = self
             .pending_frame
             .as_ref()
@@ -3170,22 +3193,18 @@ where
                 .unwrap_or(true)
             || previous_state
                 .plane_state(plane_info.handle)
-                .and_then(|state| {
-                    state
-                        .config
-                        .as_ref()
-                        .map(|config| config.properties.dst.size != cursor_plane_size)
-                })
+                .and_then(|state| state.config.as_ref().map(|config| config.properties.src.size.w as i32 > cursor_plane_size.w || config.properties.src.size.h as i32 > cursor_plane_size.h))
                 .unwrap_or(true);
 
-        // check if the cursor plane location changed
+        // check if the cursor plane location (or, at an edge, its part on
+        // the display) changed
         let reposition = previous_state
             .plane_state(plane_info.handle)
             .and_then(|state| {
                 state
                     .config
                     .as_ref()
-                    .map(|config| config.properties.dst.loc != cursor_plane_location)
+                    .map(|config| config.properties.dst != cursor_plane_dst || config.properties.src != cursor_plane_src)
             })
             .unwrap_or(true);
 
@@ -3208,10 +3227,12 @@ where
             plane_state.skip = false;
             // Note: we know that we had a cursor plane in the
             // previous frame, so we assume a simple location change
-            // does not not to be tested
-            plane_state.needs_test = false;
+            // does not not to be tested. (Olo: a change of size, at
+            // the display's edge, is tested.)
             let config = plane_state.config.as_mut().unwrap();
-            config.properties.dst.loc = cursor_plane_location;
+            plane_state.needs_test = config.properties.dst.size != cursor_plane_dst.size;
+            config.properties.dst = cursor_plane_dst;
+            config.properties.src = cursor_plane_src;
             frame_state.set_state(plane_info.handle, plane_state);
             return Some(plane_info.into());
         }
@@ -3374,8 +3395,8 @@ where
             }
         };
 
-        let src = Rectangle::from_size(cursor_buffer_size).to_f64();
-        let dst = Rectangle::new(cursor_plane_location, cursor_plane_size);
+        let src = cursor_plane_src;
+        let dst = cursor_plane_dst;
 
         let config = PlaneConfig {
             properties: PlaneProperties {

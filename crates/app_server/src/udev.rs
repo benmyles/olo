@@ -1180,6 +1180,9 @@ struct SurfaceData {
     last_look: Option<Instant>,
     /// Its frames' pacing and record (frames.rs).
     pacing: crate::frames::Pacing,
+    /// The display refused a frame's commit (planes it wouldn't take):
+    /// from then on everything is drawn into the frame, the pointer too.
+    planes_refused: bool,
 }
 
 /// Look at `crtc`'s display when `timer` fires, for `target` (now, if
@@ -1720,15 +1723,15 @@ impl AnvilState<UdevData> {
             // the pointer (too big, or a client's cursor it can't hold) has
             // it drawn into the frame as before.
             //
-            // Off unless OLO_CURSOR_PLANE=1: the first try (2026-11-01)
-            // had apple-drm refuse the page flip (EINVAL) within seconds
-            // to minutes, as the pointer crossed a display's edge with the
-            // plane hanging off it (Smithay commits a reposition untested,
-            // as a real cursor plane takes any), and app_server took a
-            // refused flip as fatal, so the desktop restarted over and
-            // over. The plane comes back once Olo's Smithay keeps the
-            // plane on the screen and tests what it isn't sure of.
-            if planes.cursor.is_empty() && std::env::var_os("OLO_CURSOR_PLANE").is_some_and(|v| v == "1") {
+            // The first try (2026-11-01) had apple-drm refuse the page
+            // flip (EINVAL) as the pointer crossed a display's edge with
+            // the plane hanging off it, and app_server took a refused
+            // flip as fatal, so the desktop restarted over and over.
+            // Olo's Smithay now keeps the plane on the display (clipped at
+            // an edge, tested when its size changes), a refused commit is
+            // drawn again without planes (`planes_refused`), and
+            // OLO_CURSOR_PLANE=0 leaves the overlay planes as they are.
+            if planes.cursor.is_empty() && std::env::var_os("OLO_CURSOR_PLANE").is_none_or(|v| v != "0") {
                 let wanted = smithay::backend::allocator::Format { code: Fourcc::Argb8888, modifier: Modifier::Linear };
                 let topmost = planes
                     .overlay
@@ -1808,6 +1811,7 @@ impl AnvilState<UdevData> {
                 retest: None,
                 last_look: None,
                 pacing: Default::default(),
+                planes_refused: false,
             };
 
             device.surfaces.insert(crtc, surface);
@@ -2386,7 +2390,12 @@ impl AnvilState<UdevData> {
                         // draw again; whoever watches loses a frame, not
                         // the desktop.
                         Some(DrmError::Access(_)) => {
-                            warn!(output = output.name(), "the display refused the frame's commit; drawing it again from scratch");
+                            if surface.planes_refused {
+                                warn!(output = output.name(), "the display refused the frame's commit again, with nothing on a plane; drawing it again from scratch");
+                            } else {
+                                warn!(output = output.name(), "the display refused the frame's commit: from now on everything on it is drawn into the frame, the pointer too");
+                                surface.planes_refused = true;
+                            }
                             surface.drm_output.reset_buffers();
                             true
                         }
@@ -2536,7 +2545,7 @@ fn render_surface<'a>(
     crate::render::part("gather (all)", t);
     let t = Instant::now();
 
-    let frame_mode = if surface.disable_direct_scanout {
+    let frame_mode = if surface.disable_direct_scanout || surface.planes_refused {
         FrameFlags::empty()
     } else {
         FrameFlags::DEFAULT

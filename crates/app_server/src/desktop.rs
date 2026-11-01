@@ -1359,7 +1359,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     refresh: m.refresh,
                 };
                 let source = crate::render::mirror_source(o);
-                let mirror = source.is_some();
+                let _mirror = source.is_some();
                 let placed = source.as_ref().unwrap_or(o);
                 let loc = self.space.output_geometry(placed).map(|g| g.loc).unwrap_or_default();
                 OutputInfo {
