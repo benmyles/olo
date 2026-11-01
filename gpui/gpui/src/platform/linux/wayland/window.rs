@@ -1370,6 +1370,13 @@ impl WaylandWindowStatePtr {
     }
 
     pub fn set_size_and_scale(&self, size: Option<Size<Pixels>>, scale: Option<f32>) {
+        // Olo: a resize queued for a window since closed (Deskbar's bars
+        // as the displays went with a restarting app_server) would make
+        // a swapchain for a surface that is gone: libwayland segfaulted
+        // in wl_proxy_create_wrapper (2026-11-01).
+        if self.frames.closed.get() {
+            return;
+        }
         let (size, scale) = {
             let mut state = self.state.borrow_mut();
             if size.is_none_or(|size| size == state.bounds.size)

@@ -154,10 +154,18 @@ impl super::Context {
     pub fn reconfigure_surface(&self, surface: &mut super::Surface, config: crate::SurfaceConfig) {
         let khr_surface = self.instance.surface.as_ref().unwrap();
 
-        let capabilities = unsafe {
-            khr_surface
-                .get_physical_device_surface_capabilities(self.physical_device, surface.raw)
-                .unwrap()
+        // Olo: a surface whose window or compositor is gone answers with
+        // an error (ERROR_EXTENSION_NOT_PRESENT was seen as app_server
+        // restarted under Deskbar); it keeps the swapchain it has, which
+        // nothing will present to, rather than taking the program down.
+        let capabilities = match unsafe {
+            khr_surface.get_physical_device_surface_capabilities(self.physical_device, surface.raw)
+        } {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!("the surface can't be reconfigured ({e:?}): its window or compositor is gone");
+                return;
+            }
         };
         if config.size.width < capabilities.min_image_extent.width
             || config.size.width > capabilities.max_image_extent.width
