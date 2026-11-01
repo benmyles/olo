@@ -4,14 +4,17 @@
 //! change its priority. Rows are sorted only when the list or the query
 //! changes, not each frame, and only the rows on screen are drawn.
 
-use olo_kit::{
-    Cx, Menu,
-    egui::{self, Align, Id, Rect, Shape, Stroke, Ui, pos2, vec2},
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
+
+use olo_ui::{
+    Menu,
     files::format_size,
-    metrics as m,
-    search::{Facet, FilterBar, Query, SearchField},
+    gpui::{AnyElement, AnyView, Bounds, Context, FontWeight, IntoElement, ParentElement as _, PathBuilder, Pixels, SharedString, StyleRefinement, Styled as _, Window, canvas, div, point, px},
+    menu, metrics as m,
+    search::{Facet, FilterBar, Query},
     style::{self, c},
-    widgets::{self, Button, Cell, CheckBox, Column, ColumnListView},
+    theme,
+    widgets::{Button, CheckBox, Column, ColumnListView},
 };
 
 use crate::{
@@ -28,6 +31,14 @@ pub struct RowsKey {
     search: String,
     tree: bool,
     collapsed: usize,
+}
+
+/// The rows shown, made when the list or the query changes: each one's
+/// place, process and name (for typing to select).
+pub struct Rows {
+    pub refs: Vec<RowRef>,
+    pub pids: Vec<i32>,
+    pub names: Vec<SharedString>,
 }
 
 /// A row: which process, how deep in the tree, whether it has children.
@@ -60,7 +71,7 @@ fn kernel(p: &Proc) -> bool {
 
 const KEYS: &[&str] = &["user", "state", "kind", "pid"];
 
-fn facets(app: &Activity) -> Vec<Facet> {
+fn facets(app: &Activity) -> Rc<Vec<Facet>> {
     let mut users: std::collections::BTreeMap<&str, usize> = Default::default();
     for p in &app.processes {
         *users.entry(p.user.as_str()).or_default() += 1;
@@ -76,7 +87,7 @@ fn facets(app: &Activity) -> Vec<Facet> {
     }
     let k = app.processes.iter().filter(|p| kernel(p)).count();
     let kind = Facet::new("kind", "Kind").any("All Kinds").value("program", "Programs", Some(app.processes.len() - k)).value("kernel", "Kernel Threads", Some(k));
-    vec![user, state, kind, Facet::new("pid", "Process").typed_only()]
+    Rc::new(vec![user, state, kind, Facet::new("pid", "Process").typed_only()])
 }
 
 fn matches(q: &Query, p: &Proc) -> bool {
@@ -92,7 +103,7 @@ fn matches(q: &Query, p: &Proc) -> bool {
 
 fn compare(col: usize, a: &Proc, b: &Proc) -> std::cmp::Ordering {
     let o = match col {
-        0 => olo_kit::files::natural_cmp(&a.name, &b.name),
+        0 => olo_ui::files::natural_cmp(&a.name, &b.name),
         1 => a.pid.cmp(&b.pid),
         2 => a.user.cmp(&b.user),
         3 => a.cpu.total_cmp(&b.cpu),
@@ -204,7 +215,7 @@ fn started(app: &Activity, since_boot: f64) -> String {
 pub fn signal_menu(pid: i32) -> Menu {
     let mut menu = Menu::new("Send Signal");
     for (n, name, what) in SIGNALS {
-        menu = menu.item(format!("{what} ({name})"), format!("signal:{pid}:{n}"), None);
+        menu = menu.item(format!("{what} ({name})"), format!("signal:{pid}:{n}"));
     }
     menu
 }
@@ -215,7 +226,7 @@ pub const PRIORITIES: [(i32, &str); 7] = [(-20, "Highest"), (-10, "High"), (-5, 
 pub fn priority_menu(pid: i32, nice: i32) -> Menu {
     let mut menu = Menu::new("Priority");
     for (n, name) in PRIORITIES {
-        menu = menu.item(format!("{name} ({n})"), format!("nice:{pid}:{n}"), None).checked(nice == n);
+        menu = menu.item(format!("{name} ({n})"), format!("nice:{pid}:{n}")).checked(nice == n);
     }
     menu
 }
@@ -223,74 +234,123 @@ pub fn priority_menu(pid: i32, nice: i32) -> Menu {
 fn row_menu(app: &Activity, p: &Proc) -> Menu {
     let pid = p.pid;
     let mut menu = Menu::new("")
-        .item("Inspect", format!("inspect:{pid}"), None)
+        .item("Inspect", format!("inspect:{pid}"))
         .separator()
-        .item("Quit", format!("quit:{pid}"), None)
-        .item("Force Quit…", format!("force-quit:{pid}"), None)
+        .item("Quit", format!("quit:{pid}"))
+        .item("Force Quit…", format!("force-quit:{pid}"))
         .separator()
         .submenu(signal_menu(pid))
         .submenu(priority_menu(pid, p.nice))
         .separator()
-        .item("Show Program in Tracker", format!("show-program:{pid}"), None)
-        .item("Copy Process ID", format!("copy-pid:{pid}"), None)
-        .item("Copy Command Line", format!("copy-command:{pid}"), None);
+        .item("Show Program in Tracker", format!("show-program:{pid}"))
+        .item("Copy Process ID", format!("copy-pid:{pid}"))
+        .item("Copy Command Line", format!("copy-command:{pid}"));
     if app.access != Access::Full && p.uid != app.uid {
-        menu = menu.separator().item("Get Full Access…", "full-access", None).enabled(app.access == Access::Mine);
+        menu = menu.separator().item("Get Full Access…", "full-access").enabled(app.access == Access::Mine);
     }
     menu
 }
 
-pub fn show(app: &mut Activity, cx: &mut Cx, ui: &mut Ui, area: Rect) {
-    let p = style::palette(ui.ctx());
-    ui.painter().rect_filled(area, 0.0, c(p.panel_background));
-    let inner = area.shrink(m::WINDOW_INSET - 2.0);
-    // The search, its filters and Tree, over the list.
-    let facets = facets(app);
-    let top = Rect::from_min_size(inner.min, vec2(inner.width(), m::CONTROL_HEIGHT));
-    let tree_w = 64.0;
-    let bar_w = FilterBar::width(ui, &app.settings.search, &facets) + m::SPACING + 40.0;
-    let one_row = top.width() - bar_w - tree_w - 2.0 * m::SPACING >= 220.0;
-    let field_w = if one_row { top.width() - bar_w - tree_w - 2.0 * m::SPACING } else { top.width() - tree_w - m::SPACING };
-    let field = Rect::from_min_size(top.min, vec2(field_w, m::CONTROL_HEIGHT));
-    if std::mem::take(&mut app.focus_search) {
-        SearchField::focus(ui.ctx(), "activity-processes-search");
-    }
-    let mut changed = ui.put(field, SearchField::new("activity-processes-search", &mut app.settings.search).hint("Search: name, command, user:, state:, kind:").facets(&facets)).changed();
-    let bar = if one_row {
-        Rect::from_min_max(pos2(field.right() + m::SPACING, top.top()), pos2(top.right() - tree_w - m::SPACING, top.bottom()))
-    } else {
-        // Under the search, its first menu's text over the list's first
-        // column's (inside the list's two lines of frame), as Logs has it.
-        let frame = style::inset(ui.ctx(), top, 2.0).left() - top.left();
-        let indent = frame + m::CELL_INSET - m::TEXT_INSET;
-        Rect::from_min_size(pos2(top.left() + indent, top.bottom() + m::SPACING), vec2(top.width() - indent, m::CONTROL_HEIGHT))
-    };
-    // (The search field clears it all.)
-    changed |= ui.put(bar, FilterBar::new("activity-processes", &mut app.settings.search, &facets).no_clear()).changed();
-    let tree_r = Rect::from_min_size(pos2(top.right() - tree_w, top.top() + (m::CONTROL_HEIGHT - m::MARK_ROW) / 2.0), vec2(tree_w, m::MARK_ROW));
-    let mut tree = app.settings.tree;
-    if ui.put(tree_r, CheckBox::new(&mut tree, "Tree")).changed() {
-        app.settings.tree = tree;
-        changed = true;
-    }
-    if changed {
-        app.rows_cache = None;
-        app.store();
-    }
-    let controls_bottom = if one_row { top.bottom() } else { bar.bottom() };
 
-    let bottom = Rect::from_min_max(pos2(inner.left(), inner.bottom() - m::CONTROL_HEIGHT), inner.max);
-    let list_r = Rect::from_min_max(pos2(inner.left(), controls_bottom + m::SPACING), pos2(inner.right(), bottom.top() - m::SPACING));
-    let key = RowsKey { sort: app.settings.sort, search: app.settings.search.clone(), tree: app.settings.tree, collapsed: app.collapsed.len() };
-    let fresh = app.rows_cache.as_ref().is_some_and(|(g, k, _)| *g == app.generation && *k == key);
-    if !fresh {
-        let rows = make_rows(app);
-        app.rows_cache = Some((app.generation, key, rows));
+/// The filters' menus for the processes now (made again when they change).
+fn facets_now(app: &mut Activity, cx: &mut Context<Activity>) -> Rc<Vec<Facet>> {
+    if let Some((g, f)) = &app.facets
+        && *g == app.generation
+    {
+        return f.clone();
     }
-    let rows = app.rows_cache.as_ref().map(|(_, _, r)| r.clone()).unwrap_or_default();
-    let columns = [
+    let f = facets(app);
+    app.facets = Some((app.generation, f.clone()));
+    app.search.update(cx, |s, cx| s.set_facets(f.clone(), cx));
+    f
+}
+
+/// The rows, made again only when the processes, sort, query, tree or
+/// what's folded changed.
+fn rows_now(app: &mut Activity) -> Rc<Rows> {
+    let key = RowsKey { sort: app.settings.sort, search: app.settings.search.clone(), tree: app.settings.tree, collapsed: app.collapsed.len() };
+    if let Some((g, k, rows)) = &app.rows_cache
+        && *g == app.generation
+        && *k == key
+    {
+        return rows.clone();
+    }
+    let refs = make_rows(app);
+    let pids = refs.iter().map(|r| app.processes[r.index].pid).collect();
+    let names = refs.iter().map(|r| SharedString::from(app.processes[r.index].name.clone())).collect();
+    let rows = Rc::new(Rows { refs, pids, names });
+    app.rows_cache = Some((app.generation, key, rows.clone()));
+    rows
+}
+
+/// A cell's text, and for a tree's first column how deep it is and
+/// whether it has a triangle (open or not).
+fn cell_text(app: &Activity, r: RowRef, column: usize) -> (String, Option<(u16, Option<bool>)>) {
+    let Some(pr) = app.processes.get(r.index) else { return (String::new(), None) };
+    let unknown = || "—".to_owned();
+    let text = match column {
+        0 if app.settings.tree => return (pr.name.clone(), Some((r.depth, r.children.then(|| !app.collapsed.contains(&pr.pid))))),
+        0 => pr.name.clone(),
+        1 => pr.pid.to_string(),
+        2 => pr.user.clone(),
+        3 => format!("{:.1}", pr.cpu),
+        // Kernel threads have no memory of their own.
+        4 if pr.memory == 0 => unknown(),
+        4 => format_size(pr.memory),
+        5 => pr.threads.to_string(),
+        6 => pr.read.map_or_else(unknown, |v| Unit::Rate.format(v)),
+        7 => pr.written.map_or_else(unknown, |v| Unit::Rate.format(v)),
+        8 => pr.sent.map_or_else(unknown, |v| Unit::Rate.format(v)),
+        9 => pr.received.map_or_else(unknown, |v| Unit::Rate.format(v)),
+        10 => pr.nice.to_string(),
+        11 => state_name(pr.state).to_owned(),
+        12 => cpu_time(pr.cpu_time),
+        _ => started(app, pr.started),
+    };
+    (text, None)
+}
+
+/// An open triangle points down, a closed one right.
+fn triangle(window: &mut Window, mid: olo_ui::gpui::Point<Pixels>, open: bool, color: olo_ui::gpui::Hsla) {
+    let pts = if open { [(-4.0, -2.0), (4.0, -2.0), (0.0, 3.0)] } else { [(-2.0, -4.0), (3.0, 0.0), (-2.0, 4.0)] };
+    let mut path = PathBuilder::fill();
+    path.move_to(mid + point(px(pts[0].0), px(pts[0].1)));
+    path.line_to(mid + point(px(pts[1].0), px(pts[1].1)));
+    path.line_to(mid + point(px(pts[2].0), px(pts[2].1)));
+    path.close();
+    if let Ok(path) = path.build() {
+        window.paint_path(path, color);
+    }
+}
+
+/// The list of processes, for a cached `Part` of its own.
+pub fn list(app: &mut Activity, _: &mut Window, cx: &mut Context<Activity>) -> AnyElement {
+    let me = cx.entity();
+    let rows = rows_now(app);
+    // The selection follows its process as rows move, and goes when it
+    // leaves the list (filtered out or quit), so Quit never acts on a
+    // process you can't see.
+    if app.selected.is_some_and(|pid| !rows.pids.contains(&pid)) && !app.reveal_selected {
+        app.selected = None;
+    }
+    let at = app.selected.and_then(|pid| rows.pids.iter().position(|&p| p == pid));
+    let reveal = std::mem::take(&mut app.reveal_selected);
+    let sort = app.settings.sort;
+    app.list.update(cx, |l, _| {
+        l.state.sort = sort;
+        l.state.selected = at.into_iter().collect();
+        if l.state.cursor.is_none_or(|c| Some(c) != at) {
+            l.state.cursor = at;
+            l.state.anchor = at;
+        }
+        if reveal && let Some(r) = at {
+            l.reveal(r);
+        }
+    });
+
+    let columns = vec![
         Column::new("Name", 200.0),
-        Column::new("ID", 60.0).right(),
+        Column::new("ID", 64.0).right(),
         Column::new("User", 72.0),
         Column::new("% CPU", 72.0).right(),
         Column::new("Memory", 76.0).right(),
@@ -304,153 +364,181 @@ pub fn show(app: &mut Activity, cx: &mut Cx, ui: &mut Ui, area: Rect) {
         Column::new("CPU Time", 76.0).right(),
         Column::new("Started", 120.0),
     ];
-    let pids: Vec<i32> = rows.iter().map(|r| app.processes[r.index].pid).collect();
-    // The selection follows its process as rows move, and goes when it
-    // leaves the list (filtered out or quit), so Quit never acts on a
-    // process you can't see.
-    if app.selected.is_some_and(|pid| !pids.contains(&pid)) && !app.reveal_selected {
-        app.selected = None;
-    }
-    app.list.sort = app.settings.sort;
-    let at = app.selected.and_then(|pid| pids.iter().position(|&p| p == pid));
-    app.list.selected = at.into_iter().collect();
-    if app.list.cursor.is_none_or(|c| Some(c) != at) {
-        app.list.cursor = at;
-        app.list.anchor = at;
-    }
-    let reveal = if std::mem::take(&mut app.reveal_selected) { at } else { None };
-    // The list's state, out of the app while its cells read the app.
-    let mut list = std::mem::take(&mut app.list);
-    let procs = &app.processes;
-    let tree_mode = app.settings.tree;
-    let collapsed = &app.collapsed;
-    let names: Vec<&str> = rows.iter().map(|r| procs[r.index].name.as_str()).collect();
-    let name_of = |i: usize| names[i];
-    let unknown = "—".to_owned();
-    let app_ref: &Activity = app;
-    let out = ui
-        .scope_builder(egui::UiBuilder::new().max_rect(list_r), |ui| {
-            ColumnListView::new("activity-processes", &columns, rows.len(), &mut list)
-                .reveal(reveal)
-                .empty_text("No processes match.")
-                .type_select(&name_of)
-                .show(ui, |cell: &Cell| {
-                    let r = rows[cell.row];
-                    let pr = &procs[r.index];
-                    let text = match cell.column {
-                        0 => {
-                            if !tree_mode {
-                                return cell.text(&pr.name);
-                            }
-                            let x = cell.rect.left() + m::CELL_INSET - 4.0 + r.depth as f32 * INDENT;
-                            if r.children {
-                                let open = !collapsed.contains(&pr.pid);
-                                let mid = pos2(x + TRIANGLE / 2.0, cell.rect.center().y);
-                                let pts = if open {
-                                    vec![mid + vec2(-4.0, -2.0), mid + vec2(4.0, -2.0), mid + vec2(0.0, 3.0)]
-                                } else {
-                                    vec![mid + vec2(-2.0, -4.0), mid + vec2(3.0, 0.0), mid + vec2(-2.0, 4.0)]
-                                };
-                                cell.painter.add(Shape::convex_polygon(pts, cell.text_color, Stroke::NONE));
-                            }
-                            let rect = Rect::from_min_max(pos2(x + TRIANGLE + 2.0 - m::CELL_INSET, cell.rect.top()), cell.rect.max);
-                            let shifted = Cell { painter: cell.painter, rect, row: cell.row, column: cell.column, selected: cell.selected, text_color: cell.text_color, align: cell.align };
-                            return shifted.text(&pr.name);
-                        }
-                        1 => pr.pid.to_string(),
-                        2 => pr.user.clone(),
-                        3 => format!("{:.1}", pr.cpu),
-                        // Kernel threads have no memory of their own.
-                        4 if pr.memory == 0 => unknown.clone(),
-                        4 => format_size(pr.memory),
-                        5 => pr.threads.to_string(),
-                        6 => pr.read.map_or_else(|| unknown.clone(), |v| Unit::Rate.format(v)),
-                        7 => pr.written.map_or_else(|| unknown.clone(), |v| Unit::Rate.format(v)),
-                        8 => pr.sent.map_or_else(|| unknown.clone(), |v| Unit::Rate.format(v)),
-                        9 => pr.received.map_or_else(|| unknown.clone(), |v| Unit::Rate.format(v)),
-                        10 => pr.nice.to_string(),
-                        11 => state_name(pr.state).to_owned(),
-                        12 => cpu_time(pr.cpu_time),
-                        _ => started(app_ref, pr.started),
-                    };
-                    cell.text(&text);
-                })
+    // Where each tree row's triangle was drawn, for a press on it.
+    let triangles: Rc<RefCell<HashMap<usize, Bounds<Pixels>>>> = Rc::default();
+    let (cell_me, cell_rows, cell_triangles) = (me.clone(), rows.clone(), triangles.clone());
+    let names = rows.clone();
+    let (press_me, press_rows) = (me.clone(), rows.clone());
+    let (select_me, select_rows) = (me.clone(), rows.clone());
+    let (open_me, open_rows) = (me.clone(), rows.clone());
+    let (menu_me, menu_rows) = (me.clone(), rows.clone());
+    let sort_me = me.clone();
+    let list = ColumnListView::new("activity-processes", &app.list, columns, rows.refs.len(), move |cell, window, cx| {
+        let Some(&r) = cell_rows.refs.get(cell.row) else { return };
+        let (text, tree) = cell_text(cell_me.read(cx), r, cell.column);
+        if let Some((depth, open)) = tree {
+            let x = cell.bounds.left() + px(m::CELL_INSET - 4.0 + depth as f32 * INDENT);
+            if let Some(open) = open {
+                let mid = point(x + px(TRIANGLE / 2.0), cell.bounds.center().y);
+                triangle(window, mid, open, cell.text_color);
+                let hit = Bounds::from_corners(point(x - px(2.0), cell.bounds.top()), point(x + px(TRIANGLE + 2.0), cell.bounds.bottom()));
+                cell_triangles.borrow_mut().insert(cell.row, hit);
+            } else {
+                cell_triangles.borrow_mut().remove(&cell.row);
+            }
+            cell.bounds = Bounds::from_corners(point(x + px(TRIANGLE + 2.0 - m::CELL_INSET), cell.bounds.top()), cell.bounds.bottom_right());
+        }
+        cell.text(window, cx, text);
+    })
+    .empty_text("No processes match.")
+    .type_select(move |i| names.names.get(i).cloned().unwrap_or_default())
+    .on_sort(move |_, cx| {
+        sort_me.update(cx, |a, cx| {
+            a.settings.sort = a.list.read(cx).state.sort;
+            a.rows_cache = None;
+            a.store();
+            cx.notify();
         })
-        .inner;
-    app.list = list;
-    handle(app, cx, ui, &out, &rows, &pids, list_r);
+    })
+    .on_select(move |_, cx| {
+        let pid = select_me.read(cx).list.read(cx).state.single().and_then(|r| select_rows.pids.get(r).copied());
+        select_me.update(cx, |a, cx| {
+            a.selected = pid;
+            cx.notify();
+        });
+    })
+    // A press on a tree row's triangle opens or closes it.
+    .on_press(move |row, at, _, cx| {
+        let hit = triangles.borrow().get(&row).is_some_and(|b| b.contains(&at));
+        if !hit {
+            return false;
+        }
+        let Some(&pid) = press_rows.pids.get(row) else { return false };
+        press_me.update(cx, |a, cx| {
+            if !a.collapsed.remove(&pid) {
+                a.collapsed.insert(pid);
+            }
+            a.rows_cache = None;
+            cx.notify();
+        });
+        true
+    })
+    .on_open(move |row, _, cx| {
+        if let Some(&pid) = open_rows.pids.get(row) {
+            open_me.update(cx, |a, cx| a.inspect(pid, cx));
+        }
+    })
+    .on_context(move |row, at, window, cx| {
+        let Some(&pid) = menu_rows.pids.get(row) else { return };
+        let menu = menu_me.update(cx, |a, cx| {
+            a.selected = Some(pid);
+            cx.notify();
+            a.proc(pid).map(|pr| row_menu(a, pr))
+        });
+        let Some(menu) = menu else { return };
+        let to = menu_me.clone();
+        menu::context_menu(window, cx, menu, at, move |cmd, window, cx| to.update(cx, |a, cx| a.command(cmd, Some(window), cx)));
+    });
 
-    // The totals and the buttons under the list.
-    let threads: u64 = app.processes.iter().map(|p| p.threads as u64).sum();
-    let summary = format!("{} of {} processes, {threads} threads · {} CPU", rows.len(), app.processes.len(), app.latest("cpu").map(|v| format!("{v:.0}%")).unwrap_or_default());
-    let bw = 96.0;
-    let force_r = Rect::from_min_size(pos2(bottom.right() - bw, bottom.top()), vec2(bw, m::CONTROL_HEIGHT));
-    let quit_r = force_r.translate(vec2(-(bw + m::SPACING), 0.0));
-    let inspect_r = quit_r.translate(vec2(-(bw + m::SPACING), 0.0));
-    style::label_fit(ui.painter(), bottom.left(), bottom.center().y, Align::Min, &summary, style::plain_font(), c(p.panel_text), inspect_r.left() - bottom.left() - m::SPACING);
-    let sel = app.selected_proc().map(|p| p.pid);
-    let any = sel.is_some();
-    let mut cmd = None;
-    if ui.add_enabled_ui(any, |ui| ui.put(inspect_r, Button::new("Inspect").min_width(inspect_r.width()))).inner.clicked() {
-        cmd = sel.map(|pid| format!("inspect:{pid}"));
-    }
-    if ui.add_enabled_ui(any, |ui| ui.put(quit_r, Button::new("Quit").min_width(quit_r.width()))).inner.clicked() {
-        cmd = sel.map(|pid| format!("quit:{pid}"));
-    }
-    if ui.add_enabled_ui(any, |ui| ui.put(force_r, Button::new("Force Quit…").min_width(force_r.width()))).inner.clicked() {
-        cmd = sel.map(|pid| format!("force-quit:{pid}"));
-    }
-    if let Some(cmd) = cmd {
-        app.command(cx, None, &cmd);
-    }
+    div().size_full().flex().flex_col().child(list).into_any_element()
 }
 
-/// Clicks, keys and menus on the list.
-fn handle(app: &mut Activity, cx: &mut Cx, ui: &mut Ui, out: &widgets::ListResponse, rows: &[RowRef], pids: &[i32], list_r: Rect) {
-    if out.sort_changed {
-        app.settings.sort = app.list.sort;
-        app.rows_cache = None;
-        app.store();
-    }
-    if out.selection_changed {
-        app.selected = app.list.single().and_then(|r| pids.get(r).copied());
-    }
-    if let Some((row, _)) = out.context {
-        app.selected = pids.get(row).copied();
-    }
-    // A click on a tree row's triangle opens or closes it.
-    if app.settings.tree
-        && ui.input(|i| i.pointer.primary_clicked())
-        && let Some(pos) = ui.input(|i| i.pointer.interact_pos())
-        && list_r.contains(pos)
-        && let Some(row) = out.row_at(pos)
-        && let Some(r) = rows.get(row)
-        && r.children
-        && let Some((_, rr)) = out.visible.iter().find(|(n, _)| *n == row)
-    {
-        let x = rr.left() + m::CELL_INSET - 4.0 + r.depth as f32 * INDENT;
-        if (x - 2.0..x + TRIANGLE + 2.0).contains(&pos.x) {
-            let pid = app.processes[r.index].pid;
-            if !app.collapsed.remove(&pid) {
-                app.collapsed.insert(pid);
+pub fn view(app: &mut Activity, width: f32, list: AnyView, window: &mut Window, cx: &mut Context<Activity>) -> AnyElement {
+    let me = cx.entity();
+    let p = theme::palette(cx);
+    let inset = m::WINDOW_INSET - 2.0;
+    let inner_w = width - 2.0 * inset;
+
+    // The search, its filters and Tree, over the list.
+    let facets = facets_now(app, cx);
+    let tree_w = 64.0;
+    let bar_w = FilterBar::width(cx, &app.settings.search, &facets) + m::SPACING + 40.0;
+    let one_row = inner_w - bar_w - tree_w - 2.0 * m::SPACING >= 220.0;
+    let filters_me = me.clone();
+    // (The search field clears it all.)
+    let filters = FilterBar::new("activity-processes", app.settings.search.clone(), facets).no_clear().on_change(move |text, _, cx| {
+        filters_me.update(cx, |a, cx| {
+            a.search.update(cx, |s, cx| s.set_text(text.clone(), cx));
+            a.settings.search = text;
+            a.rows_cache = None;
+            a.store();
+            cx.notify();
+        })
+    });
+    let tree_me = me.clone();
+    let tree = div().w(px(tree_w)).flex_shrink_0().child(CheckBox::new("Tree", app.settings.tree).id("activity-tree").height(m::CONTROL_HEIGHT).on_toggle(move |on, _, cx| {
+        tree_me.update(cx, |a, cx| {
+            a.settings.tree = on;
+            a.rows_cache = None;
+            a.store();
+            cx.notify();
+        })
+    }));
+    let search = div().flex_1().min_w_0().child(app.search.clone());
+    let controls = if one_row {
+        div().flex().flex_row().items_center().gap(px(m::SPACING)).child(search).child(filters.max_width(bar_w)).child(tree)
+    } else {
+        // Under the search, its first menu's text over the list's first
+        // column's (inside the list's two lines of frame), as Logs has it.
+        let frame = f32::from(style::inset(window, Bounds::default(), 2.0).left());
+        let indent = frame + m::CELL_INSET - m::TEXT_INSET;
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(m::SPACING))
+            .child(div().flex().flex_row().items_center().gap(px(m::SPACING)).child(search).child(tree))
+            .child(div().pl(px(indent)).child(filters.max_width(inner_w - indent)))
+    };
+
+    let rows = rows_now(app);
+    // The totals and the buttons under the list.
+    let threads: u64 = app.processes.iter().map(|p| p.threads as u64).sum();
+    let summary: SharedString = format!("{} of {} processes, {threads} threads · {} CPU", rows.refs.len(), app.processes.len(), app.latest("cpu").map(|v| format!("{v:.0}%")).unwrap_or_default()).into();
+    let sel = app.selected_proc().map(|p| p.pid);
+    let bw = 96.0;
+    let button = |label: &'static str, cmd: &'static str| {
+        let me = me.clone();
+        Button::new(label).min_width(bw).enabled(sel.is_some()).on_click(move |window, cx| {
+            if let Some(pid) = sel {
+                me.update(cx, |a, cx| a.command(&format!("{cmd}:{pid}"), Some(window), cx));
             }
-            app.rows_cache = None;
-        }
-    }
-    if let Some(row) = out.activated
-        && let Some(&pid) = pids.get(row)
-    {
-        app.inspect(cx, pid);
-    }
-    if let Some((row, pos)) = out.context
-        && let Some(r) = rows.get(row)
-    {
-        let menu = row_menu(app, &app.processes[r.index]);
-        widgets::popup_menu_at(ui.ctx(), Id::unique("activity-row-menu"), pos, menu);
-    }
-    if let Some(cmd) = widgets::popup_result(ui.ctx(), Id::unique("activity-row-menu")) {
-        app.command(cx, None, &cmd);
-    }
+        })
+    };
+    let text = style::c(p.panel_text);
+    let summary_el = canvas(
+        |_, _, _| {},
+        move |b, _, window, cx| {
+            let r = style::label_fit(window, cx, b.left(), b.center().y, style::Align::Left, summary.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), text, b.size.width);
+            olo_ui::agent::record(window, cx, olo_ui::agent::Node::label(summary.clone(), r));
+        },
+    )
+    .flex_1()
+    .min_w_0()
+    .h_full();
+    let foot = div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap(px(m::SPACING))
+        .h(px(m::CONTROL_HEIGHT))
+        .flex_shrink_0()
+        .child(summary_el)
+        .child(button("Inspect", "inspect"))
+        .child(button("Quit", "quit"))
+        .child(button("Force Quit…", "force-quit"));
+    div()
+        .size_full()
+        .flex()
+        .flex_col()
+        .gap(px(m::SPACING))
+        .p(px(inset))
+        .bg(c(p.panel_background))
+        .child(controls)
+        // (Its own part, cached: a caret blinking in the search above
+        // doesn't draw the rows again.)
+        .child(div().flex_1().min_h_0().child(list.cached(StyleRefinement::default().size_full())))
+        .child(foot)
+        .into_any_element()
 }
 
 #[cfg(test)]

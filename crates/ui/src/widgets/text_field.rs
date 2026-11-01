@@ -127,6 +127,10 @@ pub enum Align {
 
 /// How long the caret shows and hides.
 const BLINK: Duration = Duration::from_millis(530);
+/// How long it blinks after the last keystroke or click; then it stays,
+/// and a window left with a field that has the keyboard draws nothing
+/// (GTK's `gtk-cursor-blink-timeout` is the same 10 seconds).
+const BLINK_FOR: Duration = Duration::from_secs(10);
 /// How many steps undo keeps.
 const UNDO: usize = 100;
 
@@ -841,17 +845,24 @@ impl TextField {
     }
 
     /// The caret shows (after a keystroke or click), and blinks from
-    /// there while the field has the keyboard.
+    /// there while the field has the keyboard, for [`BLINK_FOR`].
     fn show_caret(&mut self, cx: &mut Context<Self>) {
         self.caret_on = true;
         self.blink = Some(cx.spawn(async move |this, cx| {
+            let mut shown = Duration::ZERO;
             loop {
                 cx.background_executor().timer(BLINK).await;
+                shown += BLINK;
+                let stop = shown >= BLINK_FOR;
                 let keep = this
                     .update(cx, |field, cx| {
-                        field.caret_on = !field.caret_on;
-                        cx.notify();
-                        true
+                        // (Shown when it stops.)
+                        let on = stop || !field.caret_on;
+                        if field.caret_on != on {
+                            field.caret_on = on;
+                            cx.notify();
+                        }
+                        !stop
                     })
                     .unwrap_or(false);
                 if !keep {

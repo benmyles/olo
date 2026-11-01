@@ -130,8 +130,17 @@ impl SearchField {
         }
     }
 
-    /// The filters it colours and suggests.
+    /// The filters it colours and suggests. (Only what they are matters
+    /// to it, not how many have each, which changes with every new list:
+    /// for counts alone it isn't drawn again.)
     pub fn set_facets(&mut self, facets: Rc<Vec<Facet>>, cx: &mut Context<Self>) {
+        let alike = |a: &Facet, b: &Facet| {
+            a.key == b.key && a.label == b.label && a.any == b.any && a.multiple == b.multiple && a.bar == b.bar && a.values.len() == b.values.len() && a.values.iter().zip(&b.values).all(|(x, y)| x.value == y.value && x.label == y.label)
+        };
+        if facets.len() == self.facets.len() && facets.iter().zip(self.facets.iter()).all(|(a, b)| alike(a, b)) {
+            self.facets = facets;
+            return;
+        }
         let keys: Vec<String> = keys(&facets).iter().map(|k| k.to_string()).collect();
         self.field.update(cx, |f, cx| {
             f.set_colors(
@@ -488,10 +497,23 @@ fn pill_text(f: &Facet, q: &Query) -> String {
     if f.label.is_empty() { summary } else { format!("{}: {summary}", f.label) }
 }
 
-/// How wide a menu is for `text` (in bold when it filters).
+/// How wide a menu is for `text` (in bold when it filters), about.
 fn pill_width(cx: &App, text: &str, bold: bool) -> f32 {
     let font = style::ui_font(if bold { FontWeight::BOLD } else { FontWeight::NORMAL });
-    (style::text_width_app(cx, text, style::PLAIN_SIZE, &font) + m::TEXT_INSET + 15.0 + m::TIGHT).ceil()
+    pill_around(style::text_width_app(cx, text, style::PLAIN_SIZE, &font))
+}
+
+/// How wide it is drawn in `window`: its text as shaped there (kerned,
+/// for the display's scale), so it's never cut short.
+fn pill_width_in(window: &mut Window, text: &SharedString, bold: bool) -> f32 {
+    let font = style::ui_font(if bold { FontWeight::BOLD } else { FontWeight::NORMAL });
+    pill_around(f32::from(style::text_width(window, text.clone(), style::PLAIN_SIZE, font)))
+}
+
+fn pill_around(text: f32) -> f32 {
+    // (And a pixel more: laid out on device pixels, its edges can each
+    // move a fraction of one, taking it from the text's room.)
+    (text + m::TEXT_INSET + 15.0 + m::TIGHT + 1.0).ceil()
 }
 
 /// A number with thousands set apart ("12,345"), as counts in menus are.
@@ -508,7 +530,7 @@ fn thousands(n: usize) -> String {
 }
 
 impl RenderOnce for FilterBar {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
         let keys_owned: Vec<String> = keys(&self.facets).iter().map(|k| k.to_string()).collect();
         let q = Query::parse(&self.text, &keys(&self.facets));
         let mut row = div().flex().flex_row().gap(px(m::SPACING)).h(px(m::CONTROL_HEIGHT));
@@ -516,7 +538,7 @@ impl RenderOnce for FilterBar {
         for f in self.facets.iter().filter(|f| f.bar) {
             let chosen = chosen_values(f, &q);
             let label: SharedString = pill_text(f, &q).into();
-            let w = pill_width(cx, &label, !chosen.is_empty()).min(room.max(0.0));
+            let w = pill_width_in(window, &label, !chosen.is_empty()).min(room.max(0.0));
             if w < 40.0 {
                 break;
             }
@@ -589,7 +611,7 @@ impl RenderOnce for FilterBar {
             row = row.child(pill);
         }
         if self.clear && !self.text.trim().is_empty() {
-            let w = (style::text_width_app(cx, "Clear", style::PLAIN_SIZE, &style::ui_font(FontWeight::NORMAL)) + 2.0 * m::TEXT_INSET).ceil();
+            let w = (f32::from(style::text_width(window, "Clear", style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))) + 2.0 * m::TEXT_INSET).ceil();
             if w <= room {
                 let on_change = self.on_change.clone();
                 row = row.child(

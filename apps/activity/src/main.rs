@@ -32,12 +32,20 @@ use std::{
 use actions::{Action, Refusal};
 use details::Details;
 use helper::{FromHelper, Helper, ToHelper, Way};
-use olo_kit::{
-    App, Cx, Menu, WindowId, WindowOptions,
-    egui::{self, Key, Rect, Ui, pos2, vec2},
+use olo_ui::{
+    Frame, Menu, MenuBar, Proxy, WindowOptions, menu,
+    gpui::{
+        AnyElement, AnyView, App, AppContext as _, ClipboardItem, Context, Entity, FocusHandle, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render, StyleRefinement, Styled as _,
+        Subscription, Window, WindowHandle, div, px,
+    },
     instance::{self, Launch},
-    sidebar::{Row, Sidebar},
-    widgets::{self, ListState, TextControl},
+    metrics as m,
+    search::{SearchEvent, SearchField, search_field},
+    widgets::{
+        AlertFrame, Button, GraphLayer, GraphShelf, ListModel, Sidebar, TextControl, TextField, TextFieldEvent, button_row, open_alert, paragraph,
+        sidebar::Row,
+        text_field,
+    },
 };
 use sample::{Connection, Proc, Sample, Source, System};
 use serde::{Deserialize, Serialize};
@@ -71,6 +79,9 @@ pub enum Section {
 impl Section {
     const ALL: [Section; 11] =
         [Section::Overview, Section::Processes, Section::Supervisor, Section::Cpu, Section::Memory, Section::Disks, Section::Network, Section::Gpu, Section::Sensors, Section::System, Section::Graphs];
+    /// The sections with keys, ⌘1 to ⌘9 in this order (as
+    /// `olo_protocol::app_keys` lists them).
+    const KEYED: [Section; 9] = [Section::Overview, Section::Processes, Section::Cpu, Section::Memory, Section::Disks, Section::Network, Section::Gpu, Section::Sensors, Section::System];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -173,7 +184,20 @@ impl Default for Settings {
 }
 
 fn settings_path() -> std::path::PathBuf {
-    olo_kit::config_dir().join("activity.json")
+    olo_ui::config_dir().join("activity.json")
+}
+
+/// Written whole or not at all: to a file beside it, then put in its
+/// place.
+fn write_settings(text: &str) {
+    let path = settings_path();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let new = path.with_extension("json.new");
+    if std::fs::write(&new, text).is_ok() {
+        let _ = std::fs::rename(&new, &path);
+    }
 }
 
 pub enum Msg {
@@ -196,17 +220,6 @@ pub enum Access {
     Full,
 }
 
-enum Win {
-    Main,
-    Inspector(Box<inspector::Inspector>),
-    Confirm { pid: i32, message: String },
-    Error { message: String },
-    /// An action this account may not do: Cancel, or Get Full Access and
-    /// do it then.
-    NeedsAccess { action: Action, message: String },
-    Tune { name: String, value: String },
-}
-
 /// The busiest processes at a moment, for looking back from a graph.
 pub struct Moment {
     pub at: f64,
@@ -215,13 +228,14 @@ pub struct Moment {
 }
 
 pub struct Activity {
-    windows: HashMap<WindowId, Win>,
-    main: Option<WindowId>,
+    main: Option<WindowHandle<Frame>>,
+    /// Each inspector open: its process, window and view.
+    inspectors: Vec<(i32, WindowHandle<Frame>, Entity<inspector::Inspector>)>,
     pub settings: Settings,
     control: sample::Control,
     pub sources: Vec<Source>,
     /// Each source's samples, (time, value), oldest first.
-    pub history: Vec<VecDeque<(f64, f64)>>,
+    pub history: Vec<std::rc::Rc<VecDeque<(f64, f64)>>>,
     by_key: HashMap<String, usize>,
     /// Each sampler's source order into ours.
     map_local: Vec<usize>,
@@ -238,14 +252,17 @@ pub struct Activity {
     /// A time chosen on a graph, to see what was busy then.
     pub drill: Option<f64>,
     /// CPU and memory of inspected processes over time.
-    pub proc_history: HashMap<i32, VecDeque<(f64, f64)>>,
-    pub list: ListState,
+    pub proc_history: HashMap<i32, std::rc::Rc<VecDeque<(f64, f64)>>>,
+    pub list: Entity<ListModel>,
     pub selected: Option<i32>,
     pub collapsed: HashSet<i32>,
-    pub rows_cache: Option<(u64, processes::RowsKey, Vec<processes::RowRef>)>,
+    pub rows_cache: Option<(u64, processes::RowsKey, std::rc::Rc<processes::Rows>)>,
+    /// The process list's filters, for the processes of a generation.
+    pub facets: Option<(u64, std::rc::Rc<Vec<olo_ui::search::Facet>>)>,
     pub reveal_selected: bool,
-    pub connections_list: ListState,
-    pub connections_search: String,
+    pub search: Entity<SearchField>,
+    pub connections_list: Entity<ListModel>,
+    pub connections_search: Entity<TextField>,
     pub uid: u32,
     pub hz: f64,
     pub access: Access,
@@ -254,32 +271,51 @@ pub struct Activity {
     after_access: Vec<Action>,
     next_action: u64,
     inspect_tx: mpsc::Sender<i32>,
-    pub tunables_list: ListState,
+    pub tunables_list: Entity<ListModel>,
     /// What the supervisor is doing, as it published it.
     pub supervisor: olo_protocol::performance::SupervisorState,
-    /// Find: the search takes the keyboard next frame.
-    pub focus_search: bool,
+    proxy: Proxy,
+    /// The sections' scrolling, kept while each shows.
+    pub scroll: olo_ui::gpui::ScrollHandle,
+    /// Where the section's graphs go on their layer.
+    pub shelf: GraphShelf,
+    parts: Option<Parts>,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl Activity {
+    /// The settings kept, on a worker.
     fn store(&self) {
         let text = serde_json::to_string_pretty(&self.settings).unwrap_or_default();
-        std::thread::spawn(move || {
-            let path = settings_path();
-            if let Some(dir) = path.parent() {
-                let _ = std::fs::create_dir_all(dir);
-            }
-            let _ = std::fs::write(path, text);
-        });
+        std::thread::spawn(move || write_settings(&text));
     }
 
-    fn open(&mut self, cx: &mut Cx) {
-        if let Some(id) = self.main {
-            return cx.activate(id);
+    /// The settings kept now (before the process ends or is replaced).
+    fn store_now(&self) {
+        write_settings(&serde_json::to_string_pretty(&self.settings).unwrap_or_default());
+    }
+
+    /// The main window: opened, or brought forward.
+    fn open(&mut self, cx: &mut Context<Self>) {
+        if let Some(w) = self.main {
+            cx.defer(move |cx| {
+                let _ = w.update(cx, |_, window, _| window.activate_window());
+            });
+            return;
         }
-        let id = cx.open_window(WindowOptions::new("Activity Monitor", 900, 620).min_size(560, 400));
-        self.windows.insert(id, Win::Main);
-        self.main = Some(id);
+        let me = cx.entity();
+        cx.defer(move |cx| {
+            let view = me.clone();
+            let w = olo_ui::open_window(cx, WindowOptions::new("Activity Monitor", 900.0, 620.0).min_size(560.0, 400.0), move |window, cx| {
+                let closing = view.clone();
+                window.on_window_should_close(cx, move |_, cx| {
+                    closing.update(cx, |a, cx| a.quit(cx));
+                    true
+                });
+                view
+            });
+            me.update(cx, |a, _| a.main = w);
+        });
     }
 
     /// Seconds since the app started: samples' times.
@@ -313,7 +349,7 @@ impl Activity {
                 None => {
                     self.by_key.insert(s.key.clone(), self.sources.len());
                     self.sources.push(s);
-                    self.history.push(VecDeque::new());
+                    self.history.push(Default::default());
                     self.sources.len() - 1
                 }
             };
@@ -326,22 +362,28 @@ impl Activity {
         }
     }
 
-    fn take_sample(&mut self, cx: &mut Cx, s: Sample, from_helper: bool) {
+    fn take_sample(&mut self, s: Sample, from_helper: bool, cx: &mut Context<Self>) {
         // A sample from whoever isn't measuring now (one in flight as the
         // helper came or went) is dropped.
         if from_helper != (self.access == Access::Full) {
             return;
         }
         let at = self.t();
+        // (The graphs shown hold the samples: let go, they're added to in
+        // place rather than copied. The section puts them back as it draws.)
+        self.shelf.clear();
         let map = if from_helper { &self.map_helper } else { &self.map_local };
         for (i, v) in s.values.iter().enumerate() {
             if let Some(&j) = map.get(i) {
-                self.history[j].push_back((at, *v));
+                std::rc::Rc::make_mut(&mut self.history[j]).push_back((at, *v));
             }
         }
         for h in &mut self.history {
-            while h.front().is_some_and(|(t, _)| *t < at - KEEP_SECONDS) {
-                h.pop_front();
+            if h.front().is_some_and(|(t, _)| *t < at - KEEP_SECONDS) {
+                let h = std::rc::Rc::make_mut(h);
+                while h.front().is_some_and(|(t, _)| *t < at - KEEP_SECONDS) {
+                    h.pop_front();
+                }
             }
         }
         self.last = Some(at);
@@ -360,7 +402,7 @@ impl Activity {
             let inspected: HashSet<i32> = self.inspected().collect();
             self.proc_history.retain(|pid, _| inspected.contains(pid));
             for p in list.iter().filter(|p| inspected.contains(&p.pid)) {
-                let h = self.proc_history.entry(p.pid).or_default();
+                let h = std::rc::Rc::make_mut(self.proc_history.entry(p.pid).or_default());
                 h.push_back((at, p.cpu));
                 while h.front().is_some_and(|(t, _)| *t < at - KEEP_SECONDS) {
                     h.pop_front();
@@ -375,11 +417,11 @@ impl Activity {
         for pid in self.inspected().collect::<HashSet<_>>() {
             self.request_details(pid);
         }
-        cx.redraw_all();
+        cx.notify();
     }
 
     fn inspected(&self) -> impl Iterator<Item = i32> + '_ {
-        self.windows.values().filter_map(|w| if let Win::Inspector(i) = w { Some(i.pid) } else { None })
+        self.inspectors.iter().map(|(pid, ..)| *pid)
     }
 
     fn request_details(&self, pid: i32) {
@@ -405,73 +447,73 @@ impl Activity {
         }
     }
 
-    /// `--inspect PID` (a process's inspector) and `--section NAME`.
     /// `--section NAME`: that section; `--inspect PID`: that process's
     /// inspector, at what the supervisor found.
-    fn follow_args(&mut self, cx: &mut Cx, args: &[String]) {
+    fn follow_args(&mut self, args: &[String], cx: &mut Context<Self>) {
         let after = |flag: &str| args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1));
         if let Some(name) = after("--section")
             && let Some(s) = Section::ALL.into_iter().find(|s| s.name().eq_ignore_ascii_case(name))
         {
-            self.set_section(s);
+            self.set_section(s, cx);
         }
         // (From the supervisor: at what it found.)
         if let Some(pid) = after("--inspect").and_then(|p| p.parse().ok()) {
-            self.inspect_at(cx, pid, inspector::SUPERVISOR_TAB);
+            self.inspect_at(pid, inspector::SUPERVISOR_TAB, cx);
         }
     }
 
-    pub fn set_section(&mut self, section: Section) {
+    pub fn set_section(&mut self, section: Section, cx: &mut Context<Self>) {
+        if self.settings.section != section {
+            self.scroll = Default::default();
+        }
         self.settings.section = section;
         self.wants_changed();
         self.store();
+        cx.notify();
     }
 
     /// Ask for full access (polkit asks for the password).
-    pub fn get_full_access(&mut self, cx: &mut Cx) {
+    pub fn get_full_access(&mut self, cx: &mut Context<Self>) {
         if self.helper.is_some() {
             return;
         }
-        let proxy = cx.proxy();
+        let proxy = self.proxy.clone();
         match Helper::start(helper::way(), move |m| proxy.send(Msg::Helper(m))) {
             Ok(h) => {
                 self.helper = Some(h);
                 self.access = Access::Asking;
             }
-            Err(e) => {
-                let message = format!("Full access couldn't be asked for. {e}");
-                self.alert(cx, Win::Error { message: message.clone() }, &message);
-            }
+            Err(e) => self.alert(&format!("Full access couldn't be asked for. {e}"), cx),
         }
-        cx.redraw_all();
+        cx.notify();
     }
 
-    fn give_up_access(&mut self, cx: &mut Cx) {
+    fn give_up_access(&mut self, cx: &mut Context<Self>) {
         self.helper = None;
         self.access = Access::Mine;
         self.control.paused.store(false, Ordering::Relaxed);
-        cx.redraw_all();
+        cx.notify();
     }
 
-    fn heard(&mut self, cx: &mut Cx, m: Option<FromHelper>) {
+    fn heard(&mut self, m: Option<FromHelper>, cx: &mut Context<Self>) {
         match m {
             Some(FromHelper::Ready) => {
                 self.access = Access::Full;
                 self.control.paused.store(true, Ordering::Relaxed);
                 self.wants_changed();
                 for a in std::mem::take(&mut self.after_access) {
-                    self.act(cx, a);
+                    self.act(a, cx);
                 }
                 for pid in self.inspected().collect::<HashSet<_>>() {
                     self.request_details(pid);
                 }
             }
             Some(FromHelper::Sources(s)) => self.take_sources(s, true),
-            Some(FromHelper::Sample(s)) => self.take_sample(cx, *s, true),
-            Some(FromHelper::Details { pid, details }) => self.take_details(pid, details.map(|d| *d)),
+            Some(FromHelper::Sample(s)) => self.take_sample(*s, true, cx),
+            Some(FromHelper::Details { pid, details }) => self.take_details(pid, details.map(|d| *d), cx),
             Some(FromHelper::Done { result, .. }) => {
                 if let Err(r) = result {
-                    self.alert(cx, Win::Error { message: r.message.clone() }, &r.message);
+                    self.alert(&r.message, cx);
                 }
                 self.refresh_soon();
             }
@@ -481,16 +523,14 @@ impl Activity {
                 self.give_up_access(cx);
             }
         }
-        cx.redraw_all();
+        cx.notify();
     }
 
-    fn take_details(&mut self, pid: i32, details: Result<Details, String>) {
+    fn take_details(&mut self, pid: i32, details: Result<Details, String>, cx: &mut Context<Self>) {
         let hz = self.hz;
-        for w in self.windows.values_mut() {
-            if let Win::Inspector(i) = w
-                && i.pid == pid
-            {
-                i.take(details.clone(), hz);
+        for (p, _, i) in &self.inspectors {
+            if *p == pid {
+                i.update(cx, |i, cx| i.take(details.clone(), hz, cx));
             }
         }
     }
@@ -504,7 +544,7 @@ impl Activity {
     }
 
     /// Do `action`: here when this account may, else by the helper.
-    pub fn act(&mut self, cx: &mut Cx, action: Action) {
+    pub fn act(&mut self, action: Action, cx: &mut Context<Self>) {
         if let (Some(h), Access::Full) = (&self.helper, self.access) {
             self.next_action += 1;
             h.send(&ToHelper::Act { id: self.next_action, action });
@@ -514,16 +554,27 @@ impl Activity {
             Ok(()) => self.refresh_soon(),
             Err(Refusal { message, needs_access: true }) if helper::way() != Way::Off => {
                 let message = format!("{message} Activity Monitor can do it once you give it full access, with an administrator's password.");
-                let id = cx.open_window(WindowOptions::alert("Activity Monitor", &message));
-                self.windows.insert(id, Win::NeedsAccess { action, message });
+                let me = cx.entity();
+                cx.defer(move |cx| {
+                    open_alert(cx, "Activity Monitor", "authentication", &message, &["Cancel", "Get Full Access…"], move |choice, cx| {
+                        if choice == Some(1) {
+                            me.update(cx, |a, cx| {
+                                a.after_access.push(action.clone());
+                                a.get_full_access(cx);
+                            });
+                        }
+                    });
+                });
             }
-            Err(r) => self.alert(cx, Win::Error { message: r.message.clone() }, &r.message),
+            Err(r) => self.alert(&r.message, cx),
         }
     }
 
-    fn alert(&mut self, cx: &mut Cx, win: Win, message: &str) {
-        let id = cx.open_window(WindowOptions::alert("Activity Monitor", message));
-        self.windows.insert(id, win);
+    fn alert(&mut self, message: &str, cx: &mut Context<Self>) {
+        let message = message.to_owned();
+        cx.defer(move |cx| {
+            open_alert(cx, "Activity Monitor", "stop", &message, &["OK"], |_, _| {});
+        });
     }
 
     pub fn selected_proc(&self) -> Option<&Proc> {
@@ -534,43 +585,88 @@ impl Activity {
         self.processes.iter().find(|p| p.pid == pid)
     }
 
-    pub fn quit_process(&mut self, cx: &mut Cx, pid: i32, force: bool) {
+    pub fn quit_process(&mut self, pid: i32, force: bool, cx: &mut Context<Self>) {
         let name = self.proc(pid).map_or_else(|| pid.to_string(), |p| p.name.clone());
-        if force {
-            let message = format!("Force “{name}” ({pid}) to quit? Any unsaved work in it will be lost.");
-            self.alert(cx, Win::Confirm { pid, message: message.clone() }, &message);
-        } else {
-            self.act(cx, Action::Signal { pid, signal: libc::SIGTERM });
+        if !force {
+            return self.act(Action::Signal { pid, signal: libc::SIGTERM }, cx);
         }
+        let message = format!("Force “{name}” ({pid}) to quit? Any unsaved work in it will be lost.");
+        let me = cx.entity();
+        cx.defer(move |cx| {
+            open_alert(cx, "Activity Monitor", "warning", &message, &["Cancel", "Force Quit"], move |choice, cx| {
+                if choice == Some(1) {
+                    me.update(cx, |a, cx| a.act(Action::Signal { pid, signal: libc::SIGKILL }, cx));
+                }
+            });
+        });
     }
 
     /// Open (or bring forward) the inspector of `pid`.
-    pub fn inspect(&mut self, cx: &mut Cx, pid: i32) {
-        self.inspect_at(cx, pid, 0);
+    pub fn inspect(&mut self, pid: i32, cx: &mut Context<Self>) {
+        self.inspect_at(pid, 0, cx);
     }
 
     /// The inspector of `pid` at `tab` (the supervisor's, from its alert).
-    pub fn inspect_at(&mut self, cx: &mut Cx, pid: i32, tab: usize) {
-        if let Some((&id, w)) = self.windows.iter_mut().find(|(_, w)| matches!(w, Win::Inspector(i) if i.pid == pid)) {
-            if let (Win::Inspector(i), true) = (w, tab > 0) {
-                i.set_tab(tab);
+    pub fn inspect_at(&mut self, pid: i32, tab: usize, cx: &mut Context<Self>) {
+        if let Some((_, w, i)) = self.inspectors.iter().find(|(p, ..)| *p == pid) {
+            if tab > 0 {
+                i.update(cx, |i, cx| i.set_tab(tab, cx));
             }
-            return cx.activate(id);
+            let w = *w;
+            cx.defer(move |cx| {
+                let _ = w.update(cx, |_, window, _| window.activate_window());
+            });
+            return;
         }
         // (Before the first sample, its name as the kernel has it.)
         let name = self.proc(pid).map(|p| p.name.clone()).or_else(|| Some(std::fs::read_to_string(format!("/proc/{pid}/comm")).ok()?.trim().to_owned())).unwrap_or_else(|| pid.to_string());
-        let id = cx.open_window(WindowOptions::new(format!("{name} ({pid})"), 620, 520).min_size(460, 380));
-        self.windows.insert(id, Win::Inspector(Box::new(inspector::Inspector::new(pid, name, tab))));
-        self.request_details(pid);
+        let me = cx.entity();
+        let view = cx.new(|cx| inspector::Inspector::new(pid, name.clone(), tab, me.clone(), cx));
+        cx.defer(move |cx| {
+            let v = view.clone();
+            let opened = me.clone();
+            let w = olo_ui::open_window(cx, WindowOptions::new(format!("{name} ({pid})"), 620.0, 520.0).min_size(460.0, 380.0), move |window, cx| {
+                let closing = opened.clone();
+                window.on_window_should_close(cx, move |window, cx| {
+                    let id = window.window_handle().window_id();
+                    closing.update(cx, |a, cx| a.inspector_closed(id, cx));
+                    true
+                });
+                v
+            });
+            if let Some(w) = w {
+                me.update(cx, |a, _| {
+                    a.inspectors.push((pid, w, view));
+                    a.request_details(pid);
+                });
+            }
+        });
     }
 
-    pub fn tune(&mut self, cx: &mut Cx, name: &str) {
+    fn inspector_closed(&mut self, id: olo_ui::gpui::WindowId, cx: &mut Context<Self>) {
+        self.inspectors.retain(|(_, w, _)| w.window_id() != id);
+        // (Started for an inspector alone: its last window gone.)
+        if self.main.is_none() && self.inspectors.is_empty() {
+            self.quit(cx);
+        }
+    }
+
+    /// A dialog to set one of the kernel's tunables.
+    pub fn tune(&mut self, name: &str, cx: &mut Context<Self>) {
         let value = self.system.tunables.iter().find(|(n, _)| n == name).map(|(_, v)| v.clone()).unwrap_or_default();
-        let id = cx.open_window(WindowOptions::new(format!("Set {name}"), 420, 150).min_size(420, 150).max_size(420, 150).dialog());
-        self.windows.insert(id, Win::Tune { name: name.into(), value });
+        let (me, name) = (cx.entity(), name.to_owned());
+        cx.defer(move |cx| {
+            let title = format!("Set {name}");
+            olo_ui::open_window(cx, WindowOptions { fixed: true, ..WindowOptions::new(title, 420.0, 150.0).dialog() }, move |window, cx| {
+                let view = cx.new(|cx| Tune::new(name, value, me, cx));
+                let field = view.read(cx).field.clone();
+                field.read(cx).focus(window);
+                view
+            });
+        });
     }
 
-    pub fn command(&mut self, cx: &mut Cx, window: Option<WindowId>, command: &str) {
+    pub fn command(&mut self, command: &str, window: Option<&mut Window>, cx: &mut Context<Self>) {
         if let Some(rest) = command.strip_prefix("toggle:")
             && let Some((v, key)) = rest.split_once(':')
             && let Ok(v) = v.parse::<usize>()
@@ -582,44 +678,48 @@ impl Activity {
                 }
                 None => view.push(key.to_owned()),
             }
+            cx.notify();
             return self.store();
         }
         if let Some(v) = command.strip_prefix("remove-graph:").and_then(|v| v.parse::<usize>().ok()) {
             if self.settings.views.len() > 1 && v < self.settings.views.len() {
                 self.settings.views.remove(v);
                 self.store();
+                cx.notify();
             }
             return;
         }
         if let Some(ms) = command.strip_prefix("interval:").and_then(|v| v.parse::<u64>().ok()) {
             self.settings.interval_ms = ms;
             self.wants_changed();
+            cx.notify();
             return self.store();
         }
         if let Some(s) = command.strip_prefix("span:").and_then(|v| v.parse::<u32>().ok()) {
             self.settings.span = s;
+            cx.notify();
             return self.store();
         }
         if let Some(name) = command.strip_prefix("section:")
             && let Ok(s) = serde_json::from_str::<Section>(&format!("\"{name}\""))
         {
-            return self.set_section(s);
+            return self.set_section(s, cx);
         }
         // A process's commands: "signal:PID:N", "nice:PID:N".
         if let Some(rest) = command.strip_prefix("signal:")
             && let Some((pid, sig)) = rest.split_once(':')
             && let (Ok(pid), Ok(signal)) = (pid.parse(), sig.parse())
         {
-            return self.act(cx, Action::Signal { pid, signal });
+            return self.act(Action::Signal { pid, signal }, cx);
         }
         if let Some(rest) = command.strip_prefix("nice:")
             && let Some((pid, n)) = rest.split_once(':')
             && let (Ok(pid), Ok(nice)) = (pid.parse(), n.parse())
         {
-            return self.act(cx, Action::Nice { pid, nice });
+            return self.act(Action::Nice { pid, nice }, cx);
         }
         if let Some(pid) = command.strip_prefix("inspect:").and_then(|p| p.parse().ok()) {
-            return self.inspect(cx, pid);
+            return self.inspect(pid, cx);
         }
         if command == "supervisor-preferences" {
             return sections::supervise(sections::Supervise::Preferences);
@@ -628,62 +728,58 @@ impl Activity {
             return sections::supervise(sections::Supervise::Ignore(name.to_owned()));
         }
         if let Some(pid) = command.strip_prefix("quit:").and_then(|p| p.parse().ok()) {
-            return self.quit_process(cx, pid, false);
+            return self.quit_process(pid, false, cx);
         }
         if let Some(pid) = command.strip_prefix("force-quit:").and_then(|p| p.parse().ok()) {
-            return self.quit_process(cx, pid, true);
+            return self.quit_process(pid, true, cx);
         }
         if let Some(pid) = command.strip_prefix("copy-pid:").and_then(|p| p.parse::<i32>().ok()) {
-            return cx.copy(pid.to_string());
+            return cx.write_to_clipboard(ClipboardItem::new_string(pid.to_string()));
         }
         if let Some(pid) = command.strip_prefix("copy-command:").and_then(|p| p.parse::<i32>().ok()) {
             let text = self.proc(pid).map(|p| p.command.clone()).unwrap_or_default();
-            return cx.copy(text);
+            return cx.write_to_clipboard(ClipboardItem::new_string(text));
         }
         if let Some(pid) = command.strip_prefix("show-program:").and_then(|p| p.parse::<i32>().ok()) {
             if let Ok(exe) = std::fs::read_link(format!("/proc/{pid}/exe")) {
-                let _ = olo_kit::tracker::open(&exe);
+                let _ = olo_ui::tracker::open(&exe);
             }
             return;
         }
         if let Some(path) = command.strip_prefix("open-path:") {
-            let _ = olo_kit::tracker::open(std::path::Path::new(path));
+            let _ = olo_ui::tracker::open(std::path::Path::new(path));
             return;
         }
         if let Some(text) = command.strip_prefix("copy-text:") {
-            return cx.copy(text.to_owned());
+            return cx.write_to_clipboard(ClipboardItem::new_string(text.to_owned()));
         }
         if let Some(name) = command.strip_prefix("tune:") {
-            return self.tune(cx, name);
+            return self.tune(name, cx);
         }
         if let Some(pid) = command.strip_prefix("select:").and_then(|p| p.parse::<i32>().ok()) {
             self.selected = Some(pid);
             self.reveal_selected = true;
-            return self.set_section(Section::Processes);
+            return self.set_section(Section::Processes, cx);
         }
-        let target = window.and_then(|w| match self.windows.get(&w) {
-            Some(Win::Inspector(i)) => Some(i.pid),
-            _ => None,
-        });
-        let pid = target.or(self.selected.filter(|_| self.settings.section == Section::Processes));
+        let pid = self.selected.filter(|_| self.settings.section == Section::Processes);
         match command {
             "add-graph" => {
                 self.settings.views.push(vec!["cpu".into()]);
-                self.set_section(Section::Graphs);
+                self.set_section(Section::Graphs, cx);
             }
             "quit-process" => {
                 if let Some(pid) = pid {
-                    self.quit_process(cx, pid, false);
+                    self.quit_process(pid, false, cx);
                 }
             }
             "force-quit-process" => {
                 if let Some(pid) = pid {
-                    self.quit_process(cx, pid, true);
+                    self.quit_process(pid, true, cx);
                 }
             }
             "inspect-process" => {
                 if let Some(pid) = pid {
-                    self.inspect(cx, pid);
+                    self.inspect(pid, cx);
                 }
             }
             "tree" => {
@@ -701,17 +797,26 @@ impl Activity {
                 self.store();
             }
             "find" => {
-                self.set_section(Section::Processes);
-                self.focus_search = true;
-            }
-            "close" => {
-                if let Some(w) = window {
-                    self.close_requested(cx, w);
+                self.set_section(Section::Processes, cx);
+                if let Some(window) = window {
+                    let search = self.search.clone();
+                    cx.defer_in(window, move |_, window, cx| search.update(cx, |s, cx| s.focus(window, cx)));
                 }
             }
-            "quit" => cx.quit(),
+            "close" => {
+                if let Some(window) = window {
+                    window.remove_window();
+                }
+            }
+            "quit" => self.quit(cx),
             _ => {}
         }
+        cx.notify();
+    }
+
+    fn quit(&mut self, cx: &mut Context<Self>) {
+        self.store_now();
+        cx.quit();
     }
 
     fn sections(&self) -> Vec<Section> {
@@ -725,154 +830,44 @@ impl Activity {
             .collect()
     }
 
-    fn main_ui(&mut self, cx: &mut Cx, ui: &mut Ui) {
-        let full = ui.max_rect();
-        let side = Rect::from_min_size(full.min, vec2(SIDEBAR_WIDTH, full.height()));
-        let content = Rect::from_min_max(pos2(side.right(), full.top()), full.max);
-        let sections = self.sections();
-        if !sections.contains(&self.settings.section) {
-            self.settings.section = Section::Overview;
-        }
-        // The sidebar, each row with its figure now.
-        let values: Vec<String> = sections.iter().map(|s| sections::sidebar_value(self, *s)).collect();
-        let headings = [(0, "Activity"), (3, "Hardware"), (sections.len() - 2, "System")];
-        let mut rows: Vec<Row> = Vec::new();
-        let mut index_of = Vec::new();
-        for (i, s) in sections.iter().enumerate() {
-            if let Some((_, h)) = headings.iter().find(|(at, _)| *at == i) {
-                rows.push(Row::heading(h));
-                index_of.push(None);
-            }
-            let row = Row::new(s.icon(), s.name());
-            rows.push(if values[i].is_empty() { row } else { row.value(&values[i]) });
-            index_of.push(Some(*s));
-        }
-        let mut chosen = index_of.iter().position(|s| *s == Some(self.settings.section)).unwrap_or(1);
-        let before = chosen;
-        Sidebar::new("activity-sections", &rows, &mut chosen).show(ui, side);
-        if chosen != before
-            && let Some(Some(s)) = index_of.get(chosen)
-        {
-            self.set_section(*s);
-        }
-        if self.sources.is_empty() {
-            return;
-        }
-        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(content));
-        child.set_clip_rect(content);
-        match self.settings.section {
-            Section::Processes => processes::show(self, cx, &mut child, content),
-            s => sections::show(self, cx, &mut child, content, s),
-        }
-    }
-}
-
-impl App for Activity {
-    fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut Ui) {
-        let Some(win) = self.windows.get_mut(&window) else { return };
-        match win {
-            Win::Main => self.main_ui(cx, ui),
-            Win::Inspector(_) => {
-                let Some(Win::Inspector(mut i)) = self.windows.remove(&window) else { return };
-                let ask = i.ui(self, ui);
-                self.windows.insert(window, Win::Inspector(i));
-                match ask {
-                    Some(inspector::Ask::Command(cmd)) => self.command(cx, Some(window), &cmd),
-                    Some(inspector::Ask::Act(a)) => self.act(cx, a),
-                    None => {}
-                }
-            }
-            Win::Confirm { pid, message, .. } => {
-                let (pid, message) = (*pid, message.clone());
-                let Some(choice) = widgets::alert(ui, "warning", &message, &["Cancel", "Force Quit"]) else { return };
-                self.windows.remove(&window);
-                cx.close_window(window);
-                if choice == 1 {
-                    self.act(cx, Action::Signal { pid, signal: libc::SIGKILL });
-                }
-            }
-            Win::Error { message } => {
-                let message = message.clone();
-                if widgets::alert(ui, "stop", &message, &["OK"]).is_some() {
-                    self.windows.remove(&window);
-                    cx.close_window(window);
-                }
-            }
-            Win::NeedsAccess { action, message } => {
-                let (action, message) = (action.clone(), message.clone());
-                let Some(choice) = widgets::alert(ui, "authentication", &message, &["Cancel", "Get Full Access…"]) else { return };
-                self.windows.remove(&window);
-                cx.close_window(window);
-                if choice == 1 {
-                    self.after_access.push(action);
-                    self.get_full_access(cx);
-                }
-            }
-            Win::Tune { name, value } => {
-                let name = name.clone();
-                let column = widgets::alert_frame(ui, "system");
-                let about = sample::TUNABLES.iter().find(|(n, _)| *n == name).map_or("", |(_, d)| *d);
-                let top = widgets::alert_text(ui, column, column.top(), &format!("Set {name} ({}).", about.to_lowercase()));
-                let field = Rect::from_min_size(pos2(column.left(), top + olo_kit::metrics::SPACING), vec2(column.width(), olo_kit::metrics::CONTROL_HEIGHT));
-                let resp = ui.put(field, TextControl::new(value).label("Value:").hint("A value"));
-                if !resp.has_focus() && ui.ctx().memory(|m| m.focused().is_none()) {
-                    resp.request_focus();
-                }
-                let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
-                let ready = !value.trim().is_empty();
-                let choice = widgets::alert_buttons(ui, column, &["Cancel", "Set"], ready).or(if enter && ready { Some(1) } else { None });
-                if let Some(choice) = choice {
-                    let value = value.trim().to_owned();
-                    self.windows.remove(&window);
-                    cx.close_window(window);
-                    if choice == 1 {
-                        self.act(cx, Action::Sysctl { name, value });
-                    }
-                }
-            }
-        }
-    }
-
-    fn menu_bar(&mut self, window: WindowId) -> Option<Vec<Menu>> {
-        let inspector = matches!(self.windows.get(&window), Some(Win::Inspector(_)));
-        if !matches!(self.windows.get(&window), Some(Win::Main)) && !inspector {
-            return None;
-        }
+    /// The menu bar: the main window's (`pid`: an inspector's process).
+    pub fn menus(&self, inspected: Option<i32>) -> Vec<Menu> {
         let mut interval = Menu::new("Update Interval");
         for (ms, label) in INTERVALS {
-            interval = interval.item(label, format!("interval:{ms}"), None).checked(self.settings.interval_ms == ms);
+            interval = interval.item(label, format!("interval:{ms}")).checked(self.settings.interval_ms == ms);
         }
         let mut span = Menu::new("Graphs Show");
         for (s, label) in SPANS {
-            span = span.item(label, format!("span:{s}"), None).checked(self.settings.span == s);
+            span = span.item(label, format!("span:{s}")).checked(self.settings.span == s);
         }
         let mut view = Menu::new("View");
         for s in self.sections() {
             // Each section's key is its own, whichever this machine has.
-            let key = [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7, Key::Num8, Key::Num9].get(Section::ALL.iter().position(|x| *x == s).unwrap_or(9)).copied();
-            view = view.item(s.name(), s.command(), key).checked(self.settings.section == s);
+            view = view.item(s.name(), s.command());
+            if let Some(n) = Section::KEYED.iter().position(|x| *x == s) {
+                view = view.key(&(n + 1).to_string());
+            }
+            view = view.checked(self.settings.section == s);
         }
         let view = view
             .separator()
-            .item("Processes as a Tree", "tree", None)
+            .item("Processes as a Tree", "tree")
             .checked(self.settings.tree)
-            .item("Smooth Scrolling Graphs", "smooth", None)
+            .item("Smooth Scrolling Graphs", "smooth")
             .checked(self.settings.smooth)
             .separator()
             .submenu(span)
             .submenu(interval);
-        let pid = match self.windows.get(&window) {
-            Some(Win::Inspector(i)) => Some(i.pid),
-            _ => self.selected.filter(|_| self.settings.section == Section::Processes && self.selected_proc().is_some()),
-        };
+        let pid = inspected.or(self.selected.filter(|_| self.settings.section == Section::Processes && self.selected_proc().is_some()));
         let any = pid.is_some();
         let mut process = Menu::new("Process")
-            .item("Inspect", "inspect-process", Some(Key::I))
-            .enabled(any && !inspector)
+            .item("Inspect", "inspect-process")
+            .key("i")
+            .enabled(any && inspected.is_none())
             .separator()
-            .item("Quit", "quit-process", None)
+            .item("Quit", "quit-process")
             .enabled(any)
-            .item("Force Quit…", "force-quit-process", None)
+            .item("Force Quit…", "force-quit-process")
             .enabled(any);
         if let Some(pid) = pid {
             process = process.separator().submenu(processes::signal_menu(pid)).submenu(processes::priority_menu(pid, self.proc(pid).map_or(0, |p| p.nice)));
@@ -882,76 +877,257 @@ impl App for Activity {
             Access::Asking => "Asking for Full Access…",
             Access::Mine => "Get Full Access…",
         };
-        Some(vec![
+        vec![
             Menu::new("File")
-                .item("Find Process…", "find", Some(Key::F))
+                .item("Find Process…", "find")
+                .key("f")
                 .separator()
-                .item("Add Graph", "add-graph", None)
+                .item("Add Graph", "add-graph")
                 .separator()
-                .item(full, "full-access", None)
+                .item(full, "full-access")
                 .enabled(self.access == Access::Mine && helper::way() != Way::Off)
                 .checked(self.access == Access::Full)
-                .item("Ask for Full Access at Start", "ask-full-access", None)
+                .item("Ask for Full Access at Start", "ask-full-access")
                 .checked(self.settings.ask_full_access)
                 .separator()
-                .item("Close", "close", Some(Key::W))
-                .item("Quit", "quit", Some(Key::Q)),
+                .item("Close", "close")
+                .key("w")
+                .item("Quit", "quit")
+                .key("q"),
             view,
             process,
-        ])
+        ]
     }
 
-    fn command(&mut self, cx: &mut Cx, window: WindowId, command: &str) {
-        Activity::command(self, cx, Some(window), command);
-    }
-
-    fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
-        if matches!(self.windows.get(&window), Some(Win::Main)) {
-            self.store();
-            return cx.quit();
-        }
-        self.windows.remove(&window);
-        cx.close_window(window);
-        // (Started for an inspector alone: its last window gone.)
-        if self.windows.is_empty() {
-            self.store();
-            cx.quit();
-        }
-    }
-
-    fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
+    fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
         if let Some(launch) = message.downcast_ref::<Launch>() {
             let args = launch.args.clone();
             if !inspecting(&args) {
                 self.open(cx);
             }
-            return self.follow_args(cx, &args);
+            return self.follow_args(&args, cx);
         }
         let Ok(msg) = message.downcast::<Msg>() else { return };
         match *msg {
             Msg::Sources(s, from_helper) => self.take_sources(s, from_helper),
-            Msg::Sample(s, from_helper) => self.take_sample(cx, *s, from_helper),
+            Msg::Sample(s, from_helper) => return self.take_sample(*s, from_helper, cx),
             Msg::Details(pid, d) => {
                 // Full access answers for inspectors now.
                 if self.access != Access::Full {
-                    self.take_details(pid, d.map(|d| *d));
+                    self.take_details(pid, d.map(|d| *d), cx);
                 }
+                return;
             }
-            Msg::Helper(m) => return self.heard(cx, m),
+            Msg::Helper(m) => return self.heard(m, cx),
             Msg::Supervisor(s) => self.supervisor = *s,
         }
-        cx.redraw_all();
+        cx.notify();
+    }
+}
+
+impl Activity {
+    fn menu_bar(&mut self, _: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let me = cx.entity();
+        MenuBar::new(self.menus(None), move |cmd, window, cx| me.update(cx, |a, cx| a.command(cmd, Some(window), cx))).into_any_element()
     }
 
-    fn save_state(&mut self, _cx: &Cx) -> Option<String> {
-        self.store();
-        Some(String::new())
+    /// The sidebar, each row with its figure now.
+    fn sidebar(&mut self, _: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let sections = self.sections();
+        let headings = [(0, "Activity"), (3, "Hardware"), (sections.len() - 2, "System")];
+        let mut rows: Vec<Row> = Vec::new();
+        let mut index_of: Vec<Option<Section>> = Vec::new();
+        for (i, s) in sections.iter().enumerate() {
+            if let Some((_, h)) = headings.iter().find(|(at, _)| *at == i) {
+                rows.push(Row::heading(*h));
+                index_of.push(None);
+            }
+            let value = sections::sidebar_value(self, *s);
+            let row = Row::new(s.icon(), s.name());
+            rows.push(if value.is_empty() { row } else { row.value(value) });
+            index_of.push(Some(*s));
+        }
+        let chosen = index_of.iter().position(|s| *s == Some(self.settings.section)).unwrap_or(1);
+        let pick = cx.entity();
+        Sidebar::new("activity-sections", rows, chosen)
+            .on_choose(move |i, _, cx| {
+                if let Some(Some(s)) = index_of.get(i) {
+                    let s = *s;
+                    pick.update(cx, |a, cx| a.set_section(s, cx));
+                }
+            })
+            .into_any_element()
+    }
+}
+
+/// A part of the window drawn from the app, cached (`AnyView::cached`):
+/// drawn again as the app changes (or a list it shows), its last frame
+/// kept otherwise. GPUI draws again every view above one that changed:
+/// the section's graphs moving a pixel redraw their layer and, around
+/// it, only the window's few boxes; these parts are kept.
+struct Part {
+    app: Entity<Activity>,
+    draw: fn(&mut Activity, &mut Window, &mut Context<Activity>) -> AnyElement,
+    _observe: Vec<Subscription>,
+}
+
+impl Part {
+    fn new(app: &Entity<Activity>, lists: &[Entity<ListModel>], draw: fn(&mut Activity, &mut Window, &mut Context<Activity>) -> AnyElement, cx: &mut Context<Self>) -> Part {
+        // (A cached view isn't drawn again for a model it reads, only for
+        // what it observes.)
+        let mut observe = vec![cx.observe(app, |_, _, cx| cx.notify())];
+        observe.extend(lists.iter().map(|l| cx.observe(l, |_, _, cx| cx.notify())));
+        Part { app: app.clone(), draw, _observe: observe }
+    }
+}
+
+impl Render for Part {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let draw = self.draw;
+        self.app.update(cx, |a, cx| draw(a, window, cx))
+    }
+}
+
+/// The window's cached parts, and the section's graphs' layer.
+struct Parts {
+    menus: Entity<Part>,
+    sidebar: Entity<Part>,
+    processes: Entity<Part>,
+    cards: Entity<Part>,
+    graphs: Entity<GraphLayer>,
+}
+
+impl Parts {
+    fn new(app: &Entity<Activity>, cx: &mut App) -> Parts {
+        let (lists, list) = {
+            let a = app.read(cx);
+            ([a.connections_list.clone(), a.tunables_list.clone()], a.list.clone())
+        };
+        let menus = cx.new(|cx| Part::new(app, &[], Activity::menu_bar, cx));
+        let sidebar = cx.new(|cx| Part::new(app, &[], Activity::sidebar, cx));
+        let processes = cx.new(|cx| Part::new(app, &[list], processes::list, cx));
+        let cards = cx.new(|cx| Part::new(app, &lists, sections::cards, cx));
+        let (shelf, now_of) = (app.read(cx).shelf.clone(), app.downgrade());
+        let graphs = cx.new(|cx| {
+            cx.observe(app, |_, _, cx| cx.notify()).detach();
+            GraphLayer::new(shelf, move |cx| now_of.upgrade().map_or(0.0, |a| a.read(cx).now()))
+        });
+        Parts { menus, sidebar, processes, cards, graphs }
+    }
+}
+
+impl Render for Activity {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if !self.sections().contains(&self.settings.section) {
+            self.settings.section = Section::Overview;
+        }
+        let Some(parts) = &self.parts else { return div().into_any_element() };
+        let cached = |part: AnyView, style: StyleRefinement| part.cached(style);
+        let (menus, sidebar, list, cards, graphs) = (parts.menus.clone(), parts.sidebar.clone(), parts.processes.clone(), parts.cards.clone(), parts.graphs.clone());
+        let width = f32::from(window.viewport_size().width) - SIDEBAR_WIDTH;
+        let content = if self.sources.is_empty() {
+            div().into_any_element()
+        } else if self.settings.section == Section::Processes {
+            processes::view(self, width, list.into(), window, cx)
+        } else {
+            // The cards, and their graphs moving over them.
+            div()
+                .relative()
+                .size_full()
+                .child(cached(cards.into(), StyleRefinement::default().size_full()))
+                .child(cached(graphs.into(), StyleRefinement::default().absolute().inset_0()))
+                .into_any_element()
+        };
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .child(cached(menus.into(), StyleRefinement::default().w_full().h(px(menu::BAR_HEIGHT)).flex_shrink_0()))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .flex()
+                    .flex_row()
+                    .child(cached(sidebar.into(), StyleRefinement::default().w(px(SIDEBAR_WIDTH)).h_full().flex_shrink_0()))
+                    .child(div().flex_1().min_w_0().h_full().child(content)),
+            )
+            .into_any_element()
+    }
+}
+
+/// The dialog setting one of the kernel's tunables.
+struct Tune {
+    name: String,
+    field: Entity<TextField>,
+    app: Entity<Activity>,
+    focus: FocusHandle,
+    _sub: Subscription,
+}
+
+impl Tune {
+    fn new(name: String, value: String, app: Entity<Activity>, cx: &mut Context<Self>) -> Tune {
+        let field = text_field(cx, |f| f.name("Value").hint("A value"));
+        field.update(cx, |f, cx| {
+            f.set_text(value, cx);
+            f.select_all_text(cx);
+        });
+        // (Set only once there's a value.)
+        let sub = cx.subscribe(&field, |_: &mut Tune, _, _: &TextFieldEvent, cx| cx.notify());
+        Tune { name, field, app, focus: cx.focus_handle(), _sub: sub }
+    }
+
+    fn done(&mut self, set: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let value = self.field.read(cx).text().trim().to_owned();
+        if set && value.is_empty() {
+            return;
+        }
+        if set {
+            let name = self.name.clone();
+            self.app.update(cx, |a, cx| a.act(Action::Sysctl { name, value }, cx));
+        }
+        window.remove_window();
+    }
+}
+
+impl Render for Tune {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let me = cx.entity();
+        let about = sample::TUNABLES.iter().find(|(n, _)| *n == self.name).map_or("", |(_, d)| *d);
+        let ready = !self.field.read(cx).text().trim().is_empty();
+        let (cancel, set) = (me.clone(), me);
+        div()
+            .size_full()
+            .track_focus(&self.focus)
+            // Return and Escape before the field has them.
+            .capture_key_down(cx.listener(|t, e: &KeyDownEvent, window, cx| match e.keystroke.key.as_str() {
+                "escape" => {
+                    t.done(false, window, cx);
+                    cx.stop_propagation();
+                }
+                "enter" => {
+                    t.done(true, window, cx);
+                    cx.stop_propagation();
+                }
+                _ => {}
+            }))
+            .child(
+                AlertFrame::new("system")
+                    .child(paragraph(format!("Set {} ({}).", self.name, about.to_lowercase())))
+                    .child(div().mt(px(m::SPACING)).child(TextControl::new(self.field.clone()).label("Value:")))
+                    .child(div().flex_1())
+                    .child(
+                        button_row()
+                            .child(Button::new("Cancel").on_click(move |window, cx| cancel.update(cx, |t, cx| t.done(false, window, cx))))
+                            .child(Button::new("Set").default(true).enabled(ready).on_click(move |window, cx| set.update(cx, |t, cx| t.done(true, window, cx)))),
+                    ),
+            )
     }
 }
 
 fn main() {
     // A session or install from before the rename (Tabula) carries on.
-    olo_kit::legacy::adopt();
+    olo_xdg::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) == Some("--helper") {
         helper::serve();
@@ -959,16 +1135,17 @@ fn main() {
     if instance::forward(APP_ID, &args) {
         return;
     }
-    olo_kit::run(APP_ID, |cx| {
-        instance::listen(APP_ID, cx.proxy());
+    olo_ui::run(APP_ID, move |cx| {
+        let proxy = olo_ui::proxy(cx);
+        instance::listen(APP_ID, proxy.clone());
         let settings: Settings =
             std::fs::read_to_string(settings_path()).ok().and_then(|t| serde_json::from_str::<Settings>(&t).ok()).map(Settings::migrate).unwrap_or_default();
         let control = sample::Control::new(settings.interval_ms);
-        let (p1, p2) = (cx.proxy(), cx.proxy());
+        let (p1, p2) = (proxy.clone(), proxy.clone());
         sample::start(control.clone(), move |s| p1.send(Msg::Sources(s, false)), move |s| p2.send(Msg::Sample(Box::new(s), false)));
         // Inspectors' details, read off the UI thread.
         let (inspect_tx, inspect_rx) = mpsc::channel::<i32>();
-        let proxy = cx.proxy();
+        let details_proxy = proxy.clone();
         std::thread::Builder::new()
             .name("activity-inspect".into())
             .spawn(move || {
@@ -979,77 +1156,115 @@ fn main() {
                     pids.sort_unstable();
                     pids.dedup();
                     for pid in pids {
-                        proxy.send(Msg::Details(pid, details::read_details(pid).map(Box::new)));
+                        details_proxy.send(Msg::Details(pid, details::read_details(pid).map(Box::new)));
                     }
                 }
             })
             .expect("the inspect thread");
         let ask = settings.ask_full_access;
-        let mut app = Activity {
-            windows: HashMap::new(),
-            main: None,
-            settings,
-            control,
-            sources: Vec::new(),
-            history: Vec::new(),
-            by_key: HashMap::new(),
-            map_local: Vec::new(),
-            map_helper: Vec::new(),
-            clock: Instant::now(),
-            last: None,
-            system: Box::default(),
-            processes: Vec::new(),
-            generation: 0,
-            connections: Vec::new(),
-            moments: VecDeque::new(),
-            drill: None,
-            proc_history: HashMap::new(),
-            list: ListState::default(),
-            selected: None,
-            collapsed: HashSet::new(),
-            rows_cache: None,
-            reveal_selected: false,
-            connections_list: ListState::default(),
-            connections_search: String::new(),
-            // SAFETY: getuid has no preconditions.
-            uid: unsafe { libc::getuid() },
-            // SAFETY: sysconf has no preconditions.
-            hz: unsafe { libc::sysconf(libc::_SC_CLK_TCK) }.max(1) as f64,
-            access: Access::Mine,
-            helper: None,
-            after_access: Vec::new(),
-            next_action: 0,
-            inspect_tx,
-            tunables_list: ListState::default(),
-            focus_search: false,
-            supervisor: Default::default(),
-        };
+        let search_text = settings.search.clone();
+        let app = cx.new(|cx| {
+            let list = ListModel::new(cx, false);
+            let search = search_field(cx, "Search: name, command, user:, state:, kind:");
+            search.update(cx, |s, cx| s.set_text(search_text, cx));
+            let connections_search = text_field(cx, |f| f.name("Search").hint("Address, port, program or state"));
+            let subs = vec![
+                cx.subscribe(&search, |a: &mut Activity, s, e: &SearchEvent, cx| {
+                    if let SearchEvent::Changed = e {
+                        a.settings.search = s.read(cx).text(cx).to_owned();
+                        a.rows_cache = None;
+                        a.store();
+                        cx.notify();
+                    }
+                }),
+                cx.subscribe(&connections_search, |_: &mut Activity, _, e: &TextFieldEvent, cx| {
+                    if let TextFieldEvent::Changed = e {
+                        cx.notify();
+                    }
+                }),
+            ];
+            Activity {
+                main: None,
+                inspectors: Vec::new(),
+                settings,
+                control,
+                sources: Vec::new(),
+                history: Vec::new(),
+                by_key: HashMap::new(),
+                map_local: Vec::new(),
+                map_helper: Vec::new(),
+                clock: Instant::now(),
+                last: None,
+                system: Box::default(),
+                processes: Vec::new(),
+                generation: 0,
+                connections: Vec::new(),
+                moments: VecDeque::new(),
+                drill: None,
+                proc_history: HashMap::new(),
+                list,
+                selected: None,
+                collapsed: HashSet::new(),
+                rows_cache: None,
+                facets: None,
+                reveal_selected: false,
+                search,
+                connections_list: ListModel::new(cx, false),
+                connections_search,
+                // SAFETY: getuid has no preconditions.
+                uid: unsafe { libc::getuid() },
+                // SAFETY: sysconf has no preconditions.
+                hz: unsafe { libc::sysconf(libc::_SC_CLK_TCK) }.max(1) as f64,
+                access: Access::Mine,
+                helper: None,
+                after_access: Vec::new(),
+                next_action: 0,
+                inspect_tx,
+                tunables_list: ListModel::new(cx, false),
+                supervisor: Default::default(),
+                proxy: proxy.clone(),
+                scroll: Default::default(),
+                shelf: GraphShelf::default(),
+                parts: None,
+                _subscriptions: subs,
+            }
+        });
+        let parts = Parts::new(&app, cx);
+        app.update(cx, |a, _| a.parts = Some(parts));
+        let messages = app.clone();
+        olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |a, cx| a.message(message, cx)));
+        // Its settings kept as it ends, by hand or for an upgrade.
+        let saving = app.clone();
+        olo_ui::on_upgrade(cx, move |cx| {
+            saving.read(cx).store_now();
+            Some(String::new())
+        });
         // The supervisor's work, followed as it publishes it.
         {
-            let proxy = cx.proxy();
             let read = move || proxy.send(Msg::Supervisor(Box::new(olo_protocol::performance::SupervisorState::load())));
             let read = std::sync::Arc::new(read);
             let first = read.clone();
             std::thread::spawn(move || first());
-            if let Some(w) = olo_kit::watch::watch([olo_protocol::performance::SupervisorState::path()], move |_| read()) {
+            if let Some(w) = olo_ui::watch::watch([olo_protocol::performance::SupervisorState::path()], move |_| read()) {
                 // For as long as the app runs.
                 std::mem::forget(w);
             }
         }
         // Started to show a process (the supervisor's alert), or a section.
         let start_args: Vec<String> = std::env::args().skip(1).collect();
-        app.wants_changed();
-        // (Asked for a process: its inspector alone, in front.)
-        if !inspecting(&start_args) {
-            app.open(cx);
-        }
-        app.follow_args(cx, &start_args);
-        // SAFETY: geteuid has no preconditions.
-        let root = unsafe { libc::geteuid() } == 0;
-        if ask && !root && helper::way() != Way::Off {
-            app.get_full_access(cx);
-        }
-        app
+        app.update(cx, |a, cx| {
+            a.wants_changed();
+            // (Asked for a process: its inspector alone, in front.)
+            if !inspecting(&start_args) {
+                a.open(cx);
+            }
+            a.follow_args(&start_args, cx);
+            // SAFETY: geteuid has no preconditions.
+            let root = unsafe { libc::geteuid() } == 0;
+            if ask && !root && helper::way() != Way::Off {
+                a.get_full_access(cx);
+            }
+        });
     });
 }
 

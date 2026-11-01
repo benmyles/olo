@@ -1158,7 +1158,7 @@ struct Segment {
     start: vec2<f32>,
     end: vec2<f32>,
     half_width: f32,
-    pad: u32,
+    bottom: f32,
 }
 var<storage, read> b_segments: array<Segment>;
 
@@ -1175,6 +1175,20 @@ struct SegmentVarying {
 fn vs_segment(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) instance_id: u32) -> SegmentVarying {
     let unit_vertex = vec2<f32>(f32(vertex_id & 1u), 0.5 * f32(vertex_id & 2u));
     let segment = b_segments[instance_id];
+    if (segment.round == 2u) {
+        // What's under it: from a pixel above its top to the bottom,
+        // exactly as wide as it is (its sides take the pixels whose
+        // middles they hold, so the next one's start takes the rest).
+        let top = min(segment.start.y, segment.end.y) - 1.0;
+        let position = vec2<f32>(mix(segment.start.x, segment.end.x, unit_vertex.x), mix(top, max(segment.bottom, top), unit_vertex.y));
+        var area = SegmentVarying();
+        area.position = to_device_position_impl(position);
+        area.local = position;
+        area.color = hsla_to_rgba(segment.color);
+        area.segment_id = instance_id;
+        area.clip_distances = distance_from_clip_rect_impl(position, segment.content_mask);
+        return area;
+    }
     let along = segment.end - segment.start;
     let len = length(along);
     let d = select(vec2<f32>(1.0, 0.0), along / len, len > 0.0);
@@ -1201,6 +1215,16 @@ fn fs_segment(input: SegmentVarying) -> @location(0) vec4<f32> {
         return vec4<f32>(0.0);
     }
     let segment = b_segments[input.segment_id];
+    if (segment.round == 2u) {
+        // Below the line by its distance to it (across it, not down), and
+        // above the bottom.
+        let along = segment.end - segment.start;
+        let p = input.local;
+        let t = (p.x - segment.start.x) / along.x;
+        let below = (p.y - mix(segment.start.y, segment.end.y, t)) * along.x / length(along);
+        let alpha = saturate(0.5 + below) * saturate(0.5 + segment.bottom - p.y);
+        return blend_color(input.color, alpha);
+    }
     let len = length(segment.end - segment.start);
     let u = input.local.x;
     let v = abs(input.local.y);

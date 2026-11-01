@@ -563,7 +563,8 @@ impl From<Underline> for Primitive {
 #[repr(C)]
 pub(crate) struct Segment {
     pub order: DrawOrder,
-    /// 1 for round ends, 0 for butt ends.
+    /// 1 for round ends, 0 for butt ends; 2 for what's under it, down
+    /// to `bottom` (`Window::paint_area`).
     pub round: u32,
     /// What it covers (for ordering and clipping).
     pub bounds: Bounds<ScaledPixels>,
@@ -572,7 +573,8 @@ pub(crate) struct Segment {
     pub from: Point<ScaledPixels>,
     pub to: Point<ScaledPixels>,
     pub half_width: ScaledPixels,
-    pub pad: u32,
+    /// How far down what's under it goes (an area's).
+    pub bottom: ScaledPixels,
 }
 
 impl From<Segment> for Primitive {

@@ -312,9 +312,16 @@ as they land (with the commit), add new ones as they come up.
      2.2%; an agent clicking four times a second 2.4% against 3.5–4.7%,
      each change shown as it comes rather than at the next of eight
      polls a second; playing a history back 3 frames a second and
-     1.4–2.4% against 60 and 7–8%; 115–130 MB against 143). Next:
-     StyledEdit, Activity Monitor, Tracker, Passwords, Preferences (with
-     the screen saver and its modules) and Terminal.
+     1.4–2.4% against 60 and 7–8%; 115–130 MB against 143). Activity
+     Monitor (its window cached parts with its graphs on a layer of
+     their own, the kit's `GraphLayer`; graphs' fills drawn by a new
+     GPU primitive, `paint_area`, and all of a window's graphs moving
+     on one clock; on release at 2×, its UI thread at or under egui's in
+     every section with graphs, CPU 3.9% of a core against 5.2, Graphs
+     2.2 against 2.9, the same frames a second, 93–96 MB against
+     119–123; Processes 0.7% against 0.4: its frame for each sample is
+     6 ms against 3.7). Next: StyledEdit, Tracker, Passwords,
+     Preferences (with the screen saver and its modules) and Terminal.
      (`olo-preview`'s decoding no longer needs a toolkit: pictures are
      its own `Bitmap`s, and its egui views are behind its `egui`
      feature, for Tracker and the Viewer until they move; Telegram no

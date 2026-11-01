@@ -91,6 +91,9 @@ impl RenderOnce for TabView {
                 style::vline_left_of(window, in_panel.right(), in_panel.top(), in_panel.bottom(), style::shade(&p, bg, 1.12));
                 style::hline_above(window, in_panel.left(), in_panel.right(), in_panel.bottom(), style::shade(&p, bg, 1.12));
                 let (plain, bold) = (style::ui_font(FontWeight::NORMAL), style::ui_font(FontWeight::BOLD));
+                // (The tabs go where their names' lengths put them: lined
+                // up with what's under them only by chance.)
+                crate::review::own_grid(window, Bounds::from_corners(outer.origin, point(outer.right(), outer.top() + px(TAB_HEIGHT))));
                 let draw = |window: &mut Window, cx: &mut App, i: usize, r: Bounds<Pixels>| {
                     let on = i == selected;
                     let top = if on { r.top() } else { style::snap_coord(window, r.top() + px(2.0)) };

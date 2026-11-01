@@ -2,17 +2,26 @@
 //! Supervisor's work, CPU, Memory, Disks, Network, GPU, Sensors, System
 //! and the Graphs of your choosing. (Processes is processes.rs.)
 
-use olo_kit::{
-    Cx, Menu,
-    dashboard::{self, Card, LegendItem, facts, facts_two, flow, flow_rows, legend, legend_height, meter},
-    egui::{self, Align, Color32, Id, Pos2, Rect, Sense, Ui, pos2, vec2},
-    files::format_size,
-    graph::{Graph, Series},
-    metrics as m,
-    style::{self, c},
-    widgets::{self, Button, Cell, Column, ColumnListView, MenuField, ScrollView, TextControl},
-};
+use std::rc::Rc;
+
 use olo_theme::Palette;
+use olo_ui::{
+    Menu, agent,
+    files::format_size,
+    gpui::{
+        AnyElement, App, Bounds, Context, Entity, FontWeight, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, SharedString,
+        Styled as _, Window, canvas, div, point, px, transparent_black,
+    },
+    menu, metrics as m,
+    style::{self, c},
+    theme,
+    widgets::{
+        Button, Column, ColumnListView, Graph, HEADER_HEIGHT, LegendItem, MenuField, SCROLL_BAR, ScrollView, Series, StringView, TextControl,
+        charts::FACT_ROW,
+        dashboard::{self, Card, Facts, GAP, meter},
+        legend, legend_height, nice_ceiling,
+    },
+};
 
 use crate::{
     Access, Activity, Section,
@@ -20,19 +29,22 @@ use crate::{
     sample::{Group, Unit},
 };
 
-const GAP: f32 = dashboard::GAP;
 /// A big graph's height in a card.
 const GRAPH: f32 = 120.0;
 /// A small one's (each core, each sensor).
 const MINI_GRAPH: f32 = 44.0;
 const MINI_CELL: f32 = 16.0 + MINI_GRAPH + 4.0;
 const MINI_MIN_WIDTH: f32 = 150.0;
+const OVERVIEW_CARD: f32 = 196.0;
+const CONNECTIONS_HEIGHT: f32 = 320.0;
+
+type Me = Entity<Activity>;
 
 /// A source's series for a graph: its name, colour and samples.
-fn series<'a>(app: &'a Activity, p: &Palette, key: &str, fill: bool) -> Option<Series<'a>> {
+fn series(app: &Activity, p: &Palette, key: &str, fill: bool) -> Option<Series> {
     let i = app.source(key)?;
     let s = &app.sources[i];
-    Some(Series::new(&s.name, c(p.hue(s.color)), &app.history[i]).fill(fill))
+    Some(Series::new(s.name.clone(), c(p.hue(s.color)), app.history[i].clone()).fill(fill))
 }
 
 fn value(app: &Activity, key: &str) -> String {
@@ -43,27 +55,43 @@ fn value(app: &Activity, key: &str) -> String {
     }
 }
 
-fn legend_items<'a>(app: &'a Activity, p: &Palette, keys: &[&str], names: &[&'a str]) -> Vec<LegendItem<'a>> {
+fn legend_items(app: &Activity, p: &Palette, keys: &[&str], names: &[&str]) -> Vec<LegendItem> {
     keys.iter()
         .zip(names)
         .filter_map(|(k, n)| {
             let i = app.source(k)?;
-            Some(LegendItem { color: c(p.hue(app.sources[i].color)), name: n, value: value(app, k) })
+            Some(LegendItem { color: c(p.hue(app.sources[i].color)), name: SharedString::from(n.to_string()), value: value(app, k).into() })
         })
         .collect()
 }
 
-/// A graph of `keys` in `r` (the first filled), scaled to `max` or what
-/// it shows. Returns the time clicked, for looking back.
-fn graph(app: &Activity, ui: &mut Ui, id: &str, r: Rect, keys: &[&str], max: Option<f64>, unit: Unit) -> Option<f64> {
-    let p = style::palette(ui.ctx());
+/// A figure with no line on the graph: no swatch.
+fn figure(name: &str, value: impl Into<SharedString>) -> LegendItem {
+    LegendItem { color: transparent_black(), name: SharedString::from(name.to_owned()), value: value.into() }
+}
+
+/// A graph of `keys` (the first filled, its unit the graph's), scaled
+/// to `max` or what it shows, `h` tall; a click looks back to then
+/// (`drill`: the app to tell).
+fn graph(app: &Activity, drill: Option<&Me>, keys: &[&str], max: Option<f64>, h: f32, cx: &App) -> AnyElement {
+    let p = theme::palette(cx);
     let s: Vec<Series> = keys.iter().enumerate().filter_map(|(i, k)| series(app, &p, k, i == 0)).collect();
-    let fmt = move |v: f64| unit.format(v);
-    let mut g = Graph::new(id, &s, app.now()).span(app.settings.span as f64).grid(grid_for(app.settings.span)).unit(&fmt).smooth(app.settings.smooth).plain();
+    let unit = keys.first().and_then(|k| app.source(k)).map_or(Unit::Percent, |i| app.sources[i].unit);
+    let id = SharedString::from(format!("activity-{}", keys.join(",")));
+    let mut g = Graph::new(id, s, app.now()).span(app.settings.span as f64).grid(grid_for(app.settings.span)).unit(move |v| unit.format(v)).smooth(app.settings.smooth).plain();
     if let Some(m) = max {
         g = g.max(m);
     }
-    g.show(ui, r).clicked
+    if let Some(me) = drill {
+        let me = me.clone();
+        g = g.on_click(move |t, _, cx| {
+            me.update(cx, |a, cx| {
+                a.drill = Some(t);
+                cx.notify();
+            })
+        });
+    }
+    div().h(px(h)).flex_shrink_0().child(g.on_layer(&app.shelf)).into_any_element()
 }
 
 /// Time lines: every 10 s over a minute, a minute over 5, 5 over 30.
@@ -76,26 +104,84 @@ fn grid_for(span: u32) -> f64 {
     }
 }
 
-/// A small graph with its name and value over it (a core, a sensor).
-fn mini(app: &Activity, ui: &mut Ui, r: Rect, key: &str, label: &str, max: Option<f64>) {
-    let p = style::palette(ui.ctx());
-    let ink = style::card_ink(&p);
-    let Some(i) = app.source(key) else { return };
-    let unit = app.sources[i].unit;
-    let mid = r.top() + 8.0;
-    let v = value(app, key);
-    let vw = style::label_width(ui.ctx(), &v, style::small_font());
-    style::label_fit(ui.painter(), r.left(), mid, Align::Min, label, style::small_font(), ink.dim, r.width() - vw - m::SPACING);
-    style::label(ui.painter(), r.right(), mid, Align::Max, &v, style::small_font(), ink.text);
-    let g = Rect::from_min_size(pos2(r.left(), r.top() + 16.0), vec2(r.width(), MINI_GRAPH));
-    let _ = graph(app, ui, key, g, &[key], max, unit);
+/// A legend of `items`, as wide as `width`.
+fn legend_el(items: Vec<LegendItem>, width: f32, cx: &App) -> AnyElement {
+    let h = legend_height(cx, width, &items);
+    canvas(|_, _, _| {}, move |b, _, window, cx| legend(window, cx, b, &items)).w_full().h(px(h)).flex_shrink_0().into_any_element()
 }
 
-/// Cells for `n` small graphs across `width`: their rects from `top`.
-fn mini_grid(area_left: f32, width: f32, top: f32, n: usize) -> (Vec<Rect>, f32) {
-    let area = Rect::from_min_size(pos2(area_left, top), vec2(width, 0.0));
-    let rows = flow_rows(width, n, MINI_MIN_WIDTH, 8);
-    (flow(area, n, MINI_MIN_WIDTH, 8, MINI_CELL), rows as f32 * (MINI_CELL + GAP) - GAP)
+/// A bar of parts of a whole (`dashboard::meter`), `h` tall.
+fn meter_el(parts: Vec<(Hsla, f64)>, total: f64, h: f32) -> AnyElement {
+    canvas(|_, _, _| {}, move |b, _, window, cx| meter(window, cx, b, &parts, total)).w_full().h(px(h)).flex_shrink_0().into_any_element()
+}
+
+fn facts(rows: Vec<(String, String)>) -> Facts {
+    Facts::new(rows.into_iter().map(|(a, b)| (SharedString::from(a), SharedString::from(b))).collect::<Vec<_>>())
+}
+
+/// Facts in two columns side by side (the first takes the odd one).
+fn facts_two(rows: Vec<(String, String)>) -> AnyElement {
+    let half = rows.len().div_ceil(2);
+    let mut rows = rows;
+    let right = rows.split_off(half);
+    div().flex().flex_row().gap(px(2.0 * m::SPACING)).child(div().flex_1().min_w_0().child(facts(rows))).child(div().flex_1().min_w_0().child(facts(right))).into_any_element()
+}
+
+/// Text wrapped to the card, quiet or not.
+fn para(text: impl Into<SharedString>, color: Hsla) -> AnyElement {
+    StringView::new(text).wrap(true).color(color).into_any_element()
+}
+
+/// A small graph with its name and value over it (a core, a sensor).
+fn mini(app: &Activity, key: &str, label: String, max: Option<f64>, cx: &App) -> AnyElement {
+    if app.source(key).is_none() {
+        return div().into_any_element();
+    }
+    let v = value(app, key);
+    let head = canvas(
+        |_, _, _| {},
+        move |b, _, window, cx| {
+            let p = theme::palette(cx);
+            let ink = style::card_ink(&p);
+            let font = style::ui_font(FontWeight::NORMAL);
+            let vr = style::label(window, cx, b.right(), b.top() + px(8.0), style::Align::Right, v.clone(), style::SMALL_SIZE, font.clone(), ink.text);
+            let l = style::label_fit(window, cx, b.left(), b.top() + px(8.0), style::Align::Left, label.clone(), style::SMALL_SIZE, font, ink.dim, (vr.left() - px(m::SPACING) - b.left()).max(px(0.0)));
+            agent::record(window, cx, agent::Node { value: Some(v.clone().into()), ..agent::Node::label(label.clone(), l) });
+        },
+    )
+    .w_full()
+    .h(px(16.0))
+    .flex_shrink_0();
+    div().flex().flex_col().h(px(MINI_CELL)).child(head).child(graph(app, None, &[key], max, MINI_GRAPH, cx)).into_any_element()
+}
+
+/// How many columns of at least `min` go in `width` (at most `max`), and
+/// each one's width (the last takes what rounding left).
+fn columns(width: f32, n: usize, min: f32, max: usize) -> Vec<f32> {
+    let cols = (((width + GAP) / (min + GAP)).floor() as usize).clamp(1, max.max(1)).min(n.max(1));
+    let w = ((width - GAP * (cols - 1) as f32) / cols as f32).floor();
+    (0..cols).map(|i| if i == cols - 1 { width - w * (cols - 1) as f32 - GAP * (cols - 1) as f32 } else { w }).collect()
+}
+
+/// `items` in rows of as many columns as fit, cells in a row as tall as
+/// the tallest.
+fn flow(items: Vec<AnyElement>, width: f32, min: f32, max: usize) -> AnyElement {
+    let widths = columns(width, items.len(), min, max);
+    let mut out = div().flex().flex_col().gap(px(GAP));
+    let mut items = items.into_iter().peekable();
+    while items.peek().is_some() {
+        let mut row = div().flex().flex_row().gap(px(GAP));
+        for (w, item) in widths.iter().zip(items.by_ref()) {
+            row = row.child(div().w(px(*w)).flex_shrink_0().flex().flex_col().child(item));
+        }
+        out = out.child(row);
+    }
+    out.into_any_element()
+}
+
+/// Small graphs in a grid across `width`.
+fn mini_grid(cells: Vec<AnyElement>, width: f32) -> AnyElement {
+    flow(cells, width, MINI_MIN_WIDTH, 8)
 }
 
 fn clock(secs: f64) -> String {
@@ -133,6 +219,14 @@ fn ghz(mhz: f64) -> String {
     if mhz >= 1000.0 { format!("{:.2} GHz", mhz / 1000.0) } else { format!("{mhz:.0} MHz") }
 }
 
+/// The section shown (but Processes): its cards, for a cached `Part`
+/// under its graphs' layer.
+pub fn cards(app: &mut Activity, window: &mut Window, cx: &mut Context<Activity>) -> AnyElement {
+    let width = f32::from(window.viewport_size().width) - crate::SIDEBAR_WIDTH;
+    let s = app.settings.section;
+    view(app, s, width, cx)
+}
+
 /// The sidebar's figure for a section.
 pub fn sidebar_value(app: &Activity, s: Section) -> String {
     let rate = |a: &str, b: &str| app.latest(a).unwrap_or(0.0) + app.latest(b).unwrap_or(0.0);
@@ -166,60 +260,39 @@ fn hottest(app: &Activity) -> Option<(String, f64)> {
         .max_by(|a, b| a.1.total_cmp(&b.1))
 }
 
-/// Draw section `s` in `rect`: cards on the gutter, scrolling.
-pub fn show(app: &mut Activity, cx: &mut Cx, ui: &mut Ui, rect: Rect, s: Section) {
-    dashboard::gutter(ui, rect);
+/// Section `s`, `width` wide: cards on the gutter, scrolling.
+pub fn view(app: &mut Activity, s: Section, width: f32, cx: &mut Context<Activity>) -> AnyElement {
+    let me = cx.entity();
+    // Its graphs put on the layer anew as it's laid out.
+    app.shelf.clear();
+    let p = theme::palette(cx);
+    // Inside the gutter round the cards (and the scroll bar, but for the
+    // Graphs, which fit), and the cards' inset.
     if s == Section::Graphs {
-        return graphs(app, cx, ui, rect.shrink(GAP));
+        return graphs(app, &me, width - 2.0 * GAP - 2.0 * m::CARD_INSET, cx);
     }
-    let p = style::palette(ui.ctx());
-    let mut todo: Vec<Todo> = Vec::new();
-    ScrollView::new(("activity-section", s)).border(false).background(style::card_paper(&p).0).show_in(ui, rect, |ui, _| {
-        let area = Rect::from_min_max(ui.max_rect().min + vec2(GAP, GAP), pos2(ui.max_rect().right() - GAP, ui.max_rect().top() + 100_000.0));
-        let used = match s {
-            Section::Overview => overview(app, ui, area, &mut todo),
-            Section::Cpu => cpu(app, ui, area, &mut todo),
-            Section::Memory => memory(app, ui, area),
-            Section::Disks => disks(app, ui, area, &mut todo),
-            Section::Network => network(app, ui, area, &mut todo),
-            Section::Gpu => gpu(app, ui, area, &mut todo),
-            Section::Sensors => sensors(app, ui, area),
-            Section::System => system(app, ui, area, &mut todo),
-            Section::Supervisor => supervisor(app, ui, area, &mut todo),
-            Section::Processes | Section::Graphs => 0.0,
-        };
-        ui.allocate_rect(Rect::from_min_size(ui.max_rect().min, vec2(area.width(), used + 2.0 * GAP)), Sense::hover());
-    });
-    for t in todo {
-        match t {
-            Todo::Go(s) => app.set_section(s),
-            Todo::Drill(t) => app.drill = t,
-            Todo::Command(cmd) => app.command(cx, None, &cmd),
-            Todo::Act(a) => app.act(cx, a),
-            Todo::FullAccess => app.get_full_access(cx),
-            Todo::Inspect(pid) => app.inspect_at(cx, pid, crate::inspector::SUPERVISOR_TAB),
-            Todo::Supervise(change) => supervise(change),
-        }
-    }
-}
-
-/// What a click asks for, done once drawing is over.
-enum Todo {
-    Go(Section),
-    Drill(Option<f64>),
-    Command(String),
-    Act(Action),
-    FullAccess,
-    Inspect(i32),
-    Supervise(Supervise),
+    let area = width - SCROLL_BAR - 2.0 * GAP;
+    let inner = area - 2.0 * m::CARD_INSET;
+    let cards: Vec<AnyElement> = match s {
+        Section::Overview => overview(app, &me, area, cx),
+        Section::Cpu => cpu(app, &me, inner, cx),
+        Section::Memory => memory(app, area, inner, cx),
+        Section::Disks => disks(app, &me, inner, cx),
+        Section::Network => network(app, &me, inner, cx),
+        Section::Gpu => gpu(app, &me, area, inner, cx),
+        Section::Sensors => sensors(app, inner, cx),
+        Section::System => system(app, &me, inner, cx),
+        Section::Supervisor => supervisor(app, &me, cx),
+        Section::Processes | Section::Graphs => Vec::new(),
+    };
+    let body = div().flex().flex_col().gap(px(GAP)).p(px(GAP)).children(cards);
+    ScrollView::new(SharedString::from(format!("activity-section-{}", s.name())), &app.scroll).border(false).background(dashboard::gutter(&p)).child(body).into_any_element()
 }
 
 // ---- Overview --------------------------------------------------------
 
-const OVERVIEW_CARD: f32 = 196.0;
-
-fn overview(app: &Activity, ui: &mut Ui, area: Rect, todo: &mut Vec<Todo>) -> f32 {
-    let p = style::palette(ui.ctx());
+fn overview(app: &Activity, me: &Me, area: f32, cx: &App) -> Vec<AnyElement> {
+    let p = theme::palette(cx);
     let sys = &app.system;
     let mut cards: Vec<Section> = vec![Section::Cpu, Section::Memory, Section::Network, Section::Disks];
     if app.source("gpu-busy").is_some() {
@@ -228,12 +301,12 @@ fn overview(app: &Activity, ui: &mut Ui, area: Rect, todo: &mut Vec<Todo>) -> f3
     if app.source("battery").is_some() || hottest(app).is_some() {
         cards.push(Section::Sensors);
     }
-    let rects = flow(area, cards.len(), 250.0, 3, OVERVIEW_CARD);
-    let mut bottom = area.top();
-    for (s, r) in cards.iter().zip(&rects) {
-        bottom = bottom.max(r.bottom());
+    let widths = columns(area, cards.len(), 250.0, 3);
+    let mut out = Vec::new();
+    for (k, s) in cards.iter().enumerate() {
+        let card_inner = widths[k % widths.len()] - 2.0 * m::CARD_INSET;
         let mem_total = sys.memory.iter().find(|(k, _)| k == "MemTotal").map_or(0, |(_, v)| *v);
-        let (title, figure, caption, keys, names, max, unit): (&str, String, String, Vec<&str>, Vec<&str>, Option<f64>, Unit) = match s {
+        let (title, figure_text, caption, keys, names, max): (&str, String, String, Vec<&str>, Vec<&str>, Option<f64>) = match s {
             Section::Cpu => (
                 "CPU",
                 value(app, "cpu"),
@@ -241,7 +314,6 @@ fn overview(app: &Activity, ui: &mut Ui, area: Rect, todo: &mut Vec<Todo>) -> f3
                 vec!["cpu", "cpu-system", "cpu-iowait"],
                 vec!["Busy", "System", "I/O wait"],
                 Some(100.0),
-                Unit::Percent,
             ),
             Section::Memory => (
                 "Memory",
@@ -250,7 +322,6 @@ fn overview(app: &Activity, ui: &mut Ui, area: Rect, todo: &mut Vec<Todo>) -> f3
                 vec!["memory", "cached"],
                 vec!["Used", "Cached"],
                 Some(mem_total as f64),
-                Unit::Bytes,
             ),
             Section::Network => (
                 "Network",
@@ -259,7 +330,6 @@ fn overview(app: &Activity, ui: &mut Ui, area: Rect, todo: &mut Vec<Todo>) -> f3
                 vec!["net-rx", "net-tx"],
                 vec!["In", "Out"],
                 None,
-                Unit::Rate,
             ),
             Section::Disks => (
                 "Disks",
@@ -271,7 +341,6 @@ fn overview(app: &Activity, ui: &mut Ui, area: Rect, todo: &mut Vec<Todo>) -> f3
                 vec!["disk-read", "disk-write"],
                 vec!["Read", "Written"],
                 None,
-                Unit::Rate,
             ),
             Section::Gpu => (
                 "GPU",
@@ -280,28 +349,15 @@ fn overview(app: &Activity, ui: &mut Ui, area: Rect, todo: &mut Vec<Todo>) -> f3
                 vec!["gpu-busy"],
                 vec!["Busy"],
                 Some(100.0),
-                Unit::Percent,
             ),
             _ => match &sys.battery {
-                Some(b) => (
-                    "Battery",
-                    value(app, "battery"),
-                    format!("{} · {}", b.status, Unit::Watts.format(b.watts.abs())),
-                    vec!["battery"],
-                    vec!["Charge"],
-                    Some(100.0),
-                    Unit::Percent,
-                ),
+                Some(b) => ("Battery", value(app, "battery"), format!("{} · {}", b.status, Unit::Watts.format(b.watts.abs())), vec!["battery"], vec!["Charge"], Some(100.0)),
                 None => {
                     let (name, v) = hottest(app).unwrap_or_default();
-                    ("Temperature", Unit::Celsius.format(v), format!("Hottest: {name}"), vec![], vec![], None, Unit::Celsius)
+                    ("Temperature", Unit::Celsius.format(v), format!("Hottest: {name}"), vec![], vec![], None)
                 }
             },
         };
-        let card = Card::new(title).figure(&figure).caption(&caption).clickable(true).show(ui, *r);
-        if card.clicked {
-            todo.push(Todo::Go(*s));
-        }
         let mut items = legend_items(app, &p, &keys, &names);
         if *s == Section::Gpu {
             items.extend(legend_items(app, &p, &["gpu-power"], &["Power"]));
@@ -309,34 +365,34 @@ fn overview(app: &Activity, ui: &mut Ui, area: Rect, todo: &mut Vec<Todo>) -> f3
         if *s == Section::Sensors && sys.battery.is_some() {
             items.extend(legend_items(app, &p, &["battery-power"], &["Power"]));
         }
-        let lh = legend_height(ui, card.content.width(), &items);
-        let g = Rect::from_min_max(card.content.min, pos2(card.content.right(), card.content.bottom() - lh - m::TIGHT));
+        let lh = legend_height(cx, card_inner, &items);
+        let head = dashboard::Card::height(0.0, !caption.is_empty());
+        let graph_h = (OVERVIEW_CARD - head - lh - m::TIGHT).max(20.0);
+        let go = me.clone();
+        let section = *s;
+        let mut card = Card::new(format!("overview-{title}"), title).figure(figure_text).caption(caption).on_click(move |_, cx| go.update(cx, |a, cx| a.set_section(section, cx)));
         if !keys.is_empty() {
-            if let Some(t) = graph(app, ui, &format!("overview-{title}"), g, &keys, max, unit) {
-                todo.push(Todo::Drill(Some(t)));
-            }
-        } else if let Some(Section::Sensors) = Some(*s) {
+            card = card.child(graph(app, Some(me), &keys, max, graph_h, cx));
+        } else if *s == Section::Sensors {
             // No battery: the hottest few sensors' graph.
             let mut temps: Vec<(usize, f64)> =
                 app.sources.iter().enumerate().filter(|(_, s)| s.unit == Unit::Celsius).filter_map(|(i, _)| Some((i, app.history[i].back()?.1))).collect();
             temps.sort_by(|a, b| b.1.total_cmp(&a.1));
             let keys: Vec<&str> = temps.iter().take(3).map(|(i, _)| app.sources[*i].key.as_str()).collect();
-            let _ = graph(app, ui, "overview-temps", g, &keys, None, Unit::Celsius);
+            card = card.child(graph(app, None, &keys, None, graph_h, cx));
         }
-        legend(ui, Rect::from_min_max(pos2(card.content.left(), card.content.bottom() - lh), card.content.max), &items);
+        card = card.child(div().h(px(m::TIGHT))).child(legend_el(items, card_inner, cx));
+        out.push(div().h(px(OVERVIEW_CARD)).flex().flex_col().child(card).into_any_element());
     }
-    let top = bottom + GAP;
-    top - area.top() + busiest(app, ui, Rect::from_min_size(pos2(area.left(), top), vec2(area.width(), 0.0)), todo)
+    vec![flow(out, area, 250.0, 3), busiest(app, me)]
 }
 
 /// A process and its figure: (pid, name, figure).
 type Busy = (i32, String, String);
 
 /// The busiest processes now, or at the moment chosen on a graph.
-fn busiest(app: &Activity, ui: &mut Ui, area: Rect, todo: &mut Vec<Todo>) -> f32 {
+fn busiest(app: &Activity, me: &Me) -> AnyElement {
     let rows = 6;
-    let h = Card::height(rows as f32 * dashboard::FACT_ROW + dashboard::FACT_ROW, true);
-    let r = Rect::from_min_size(area.min, vec2(area.width(), h));
     let moment = app.drill.and_then(|t| app.moments.iter().rev().find(|m| m.at <= t + 0.01).or(app.moments.front()));
     let (title, caption) = match moment {
         Some(m) => {
@@ -345,16 +401,6 @@ fn busiest(app: &Activity, ui: &mut Ui, area: Rect, todo: &mut Vec<Todo>) -> f32
         }
         None => ("Busiest Now".to_owned(), "Click a graph to see what was busy then".to_owned()),
     };
-    let card = Card::new(&title).caption(&caption).show(ui, r);
-    if moment.is_some() {
-        let b = Rect::from_min_size(pos2(r.right() - m::CARD_INSET - m::BUTTON_MIN_WIDTH, r.top() + m::CARD_INSET - 2.0), vec2(m::BUTTON_MIN_WIDTH, m::CONTROL_HEIGHT));
-        if ui.put(b, Button::new("Now").min_width(b.width())).clicked() {
-            todo.push(Todo::Drill(None));
-        }
-    }
-    let half = ((card.content.width() - 2.0 * m::SPACING) / 2.0).floor();
-    let left = Rect::from_min_size(card.content.min, vec2(half, card.content.height()));
-    let right = Rect::from_min_size(pos2(card.content.left() + half + 2.0 * m::SPACING, card.content.top()), vec2(card.content.width() - half - 2.0 * m::SPACING, card.content.height()));
     let (cpu, other, other_title): (Vec<Busy>, Vec<Busy>, &str) = match moment {
         Some(m) => (
             m.cpu.iter().take(rows).map(|(pid, n, v)| (*pid, n.clone(), format!("{v:.1}%"))).collect(),
@@ -373,97 +419,153 @@ fn busiest(app: &Activity, ui: &mut Ui, area: Rect, todo: &mut Vec<Todo>) -> f32
             )
         }
     };
-    for (col, list, head) in [(left, &cpu, "CPU"), (right, &other, other_title)] {
-        process_rows(ui, col, head, list, todo);
+    let lists = div()
+        .flex()
+        .flex_row()
+        .gap(px(2.0 * m::SPACING))
+        .child(div().flex_1().min_w_0().child(process_rows(me, "CPU", cpu)))
+        .child(div().flex_1().min_w_0().child(process_rows(me, other_title, other)));
+    let card = Card::new("busiest", title).caption(caption).child(lists);
+    if moment.is_none() {
+        return card.into_any_element();
     }
-    h
+    // Now, at the head's right, back to the present.
+    let now = me.clone();
+    div()
+        .relative()
+        .flex()
+        .flex_col()
+        .child(card)
+        .child(div().absolute().top(px(m::CARD_INSET - 2.0)).right(px(m::CARD_INSET)).child(Button::new("Now").on_click(move |_, cx| {
+            now.update(cx, |a, cx| {
+                a.drill = None;
+                cx.notify();
+            })
+        })))
+        .into_any_element()
 }
 
-/// A small list of processes (name and a figure), each a way to it in
-/// Processes.
-fn process_rows(ui: &mut Ui, r: Rect, head: &str, rows: &[(i32, String, String)], todo: &mut Vec<Todo>) {
-    let p = style::palette(ui.ctx());
-    let ink = style::card_ink(&p);
-    let row_h = dashboard::FACT_ROW;
-    style::label(ui.painter(), r.left(), r.top() + row_h / 2.0, Align::Min, head, style::small_font(), ink.dim);
-    for (i, (pid, name, fig)) in rows.iter().enumerate() {
-        let rr = Rect::from_min_size(pos2(r.left(), r.top() + (i + 1) as f32 * row_h), vec2(r.width(), row_h));
-        let resp = ui.interact(rr, Id::unique(("busiest", head, i)), Sense::click());
-        if resp.hovered() {
-            ui.painter().rect_filled(rr.expand2(vec2(4.0, 0.0)), 3.0, ink.hover);
-        }
-        let fw = style::label_width(ui.ctx(), fig, style::plain_font());
-        style::label_fit(ui.painter(), rr.left(), rr.center().y, Align::Min, name, style::plain_font(), ink.text, rr.width() - fw - m::SPACING);
-        style::label(ui.painter(), rr.right(), rr.center().y, Align::Max, fig, style::plain_font(), ink.text);
-        resp.widget_info(|| egui::WidgetInfo { current_text_value: Some(fig.clone()), ..egui::WidgetInfo::labeled(egui::Role::Button, true, name) });
-        if resp.clicked() {
-            todo.push(Todo::Command(format!("select:{pid}")));
-        }
-    }
+/// A small list of processes (name and a figure) under a quiet head,
+/// each a way to it in Processes: drawn as one, each row `FACT_ROW` from
+/// the last as facts are (rows laid out apart came out a pixel uneven).
+fn process_rows(me: &Me, head: &str, rows: Vec<Busy>) -> AnyElement {
+    let head = SharedString::from(head.to_owned());
+    let n = rows.len();
+    let row = |b: Bounds<Pixels>, i: usize| Bounds::from_corners(point(b.left(), b.top() + px((i + 1) as f32 * FACT_ROW)), point(b.right(), b.top() + px((i + 2) as f32 * FACT_ROW)));
+    let me = me.clone();
+    canvas(
+        move |b, window, _| (0..n).map(|i| window.insert_hitbox(row(b, i), HitboxBehavior::Normal)).collect::<Vec<_>>(),
+        move |b, hitboxes, window, cx| {
+            let p = theme::palette(cx);
+            let ink = style::card_ink(&p);
+            let font = style::ui_font(FontWeight::NORMAL);
+            let h = style::label(window, cx, b.left(), b.top() + px(FACT_ROW / 2.0), style::Align::Left, head.clone(), style::SMALL_SIZE, font.clone(), ink.dim);
+            agent::record(window, cx, agent::Node::label(head.clone(), h));
+            let hovered = hitboxes.iter().position(|h| h.is_hovered(window));
+            for (i, (_, name, fig)) in rows.iter().enumerate() {
+                let r = row(b, i);
+                if hovered == Some(i) {
+                    let lit = Bounds::from_corners(point(r.left() - px(4.0), r.top()), point(r.right() + px(4.0), r.bottom()));
+                    window.paint_quad(olo_ui::gpui::fill(style::snap(window, lit), ink.hover).corner_radii(px(3.0)));
+                }
+                let mid = r.top() + px(FACT_ROW / 2.0);
+                let f = style::label(window, cx, r.right(), mid, style::Align::Right, fig.clone(), style::PLAIN_SIZE, font.clone(), ink.text);
+                style::label_fit(window, cx, r.left(), mid, style::Align::Left, name.clone(), style::PLAIN_SIZE, font.clone(), ink.text, (f.left() - px(m::SPACING) - r.left()).max(px(0.0)));
+                agent::record(window, cx, agent::Node { value: Some(fig.clone().into()), ..agent::Node::button(name.clone(), r) });
+            }
+            // The pointer moving onto another row: drawn again.
+            let hbs = hitboxes.clone();
+            window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, _| {
+                if phase.bubble() && hbs.iter().position(|h| h.is_hovered(window)) != hovered {
+                    window.refresh();
+                }
+            });
+            let (me, pids): (Me, Vec<i32>) = (me.clone(), rows.iter().map(|(pid, ..)| *pid).collect());
+            window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
+                if phase.bubble()
+                    && e.button == MouseButton::Left
+                    && let Some(i) = hitboxes.iter().position(|h| h.is_hovered(window))
+                {
+                    let pid = pids[i];
+                    me.update(cx, |a, cx| a.command(&format!("select:{pid}"), None, cx));
+                }
+            });
+        },
+    )
+    .w_full()
+    .h(px((n + 1) as f32 * FACT_ROW))
+    .flex_shrink_0()
+    .into_any_element()
 }
 
 // ---- CPU -------------------------------------------------------------
 
-fn cpu(app: &Activity, ui: &mut Ui, area: Rect, todo: &mut Vec<Todo>) -> f32 {
-    let p = style::palette(ui.ctx());
+fn cpu(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
+    let p = theme::palette(cx);
     let sys = &app.system;
-    let mut y = area.top();
+    let mut out = Vec::new();
     // Everything.
     let keys = ["cpu", "cpu-user", "cpu-system", "cpu-iowait"];
     let items = legend_items(app, &p, &keys, &["Busy", "User", "System", "I/O wait"]);
-    let lh = legend_height(ui, area.width() - 2.0 * m::CARD_INSET, &items);
     let caption = if sys.cpu_model.is_empty() { format!("{} cores", sys.cores) } else { sys.cpu_model.clone() };
-    let h = Card::height(GRAPH + 40.0 + m::TIGHT + lh, true);
-    let card = Card::new("CPU").figure(&value(app, "cpu")).caption(&caption).show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
-    let g = Rect::from_min_size(card.content.min, vec2(card.content.width(), GRAPH + 40.0));
-    if let Some(t) = graph(app, ui, "cpu-all", g, &keys, Some(100.0), Unit::Percent) {
-        todo.push(Todo::Drill(Some(t)));
-    }
-    legend(ui, Rect::from_min_size(pos2(card.content.left(), g.bottom() + m::TIGHT), vec2(card.content.width(), lh)), &items);
-    y += h + GAP;
+    out.push(
+        Card::new("cpu", "CPU")
+            .figure(value(app, "cpu"))
+            .caption(caption)
+            .child(graph(app, Some(me), &keys, Some(100.0), GRAPH + 40.0, cx))
+            .child(div().h(px(m::TIGHT)))
+            .child(legend_el(items, inner, cx))
+            .into_any_element(),
+    );
 
     // Each core.
     let cores: Vec<usize> = app.sources.iter().enumerate().filter(|(_, s)| s.group == Group::Cpus).map(|(i, _)| i).collect();
-    let inner_w = area.width() - 2.0 * m::CARD_INSET;
-    let (_, grid_h) = mini_grid(0.0, inner_w, 0.0, cores.len());
-    let h = Card::height(grid_h, false);
-    let card = Card::new("Cores").show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
-    let (cells, _) = mini_grid(card.content.left(), card.content.width(), card.content.top(), cores.len());
-    for (k, (&i, r)) in cores.iter().zip(&cells).enumerate() {
-        let freq = app.latest(&format!("freq{k}")).map(|f| format!(" · {}", ghz(f))).unwrap_or_default();
-        let label = format!("{}{freq}", app.sources[i].name);
-        mini(app, ui, *r, &app.sources[i].key.clone(), &label, Some(100.0));
-    }
-    y += h + GAP;
+    let cells: Vec<AnyElement> = cores
+        .iter()
+        .enumerate()
+        .map(|(k, &i)| {
+            let freq = app.latest(&format!("freq{k}")).map(|f| format!(" · {}", ghz(f))).unwrap_or_default();
+            mini(app, &app.sources[i].key, format!("{}{freq}", app.sources[i].name), Some(100.0), cx)
+        })
+        .collect();
+    out.push(Card::new("cores", "Cores").child(mini_grid(cells, inner)).into_any_element());
 
     // Clusters: frequencies and governors.
     if !sys.policies.is_empty() {
-        let rows = sys.policies.len();
         let freq_keys: Vec<String> = sys.policies.iter().filter_map(|pol| pol.cores.first().map(|c| format!("freq{c}"))).collect();
         let fk: Vec<&str> = freq_keys.iter().map(String::as_str).collect();
         let names: Vec<String> = sys.policies.iter().map(cluster_name).collect();
         let nk: Vec<&str> = names.iter().map(String::as_str).collect();
         let items = legend_items(app, &p, &fk, &nk);
-        let lh = legend_height(ui, inner_w, &items);
-        let h = Card::height(rows as f32 * (m::CONTROL_HEIGHT + m::TIGHT) + m::TIGHT + GRAPH + m::TIGHT + lh, true);
-        let card = Card::new("Frequencies").caption("Each cluster's cores change speed together; the governor decides how").show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
-        let ink = style::card_ink(&p);
+        let mut card = Card::new("frequencies", "Frequencies").caption("Each cluster's cores change speed together; the governor decides how");
+        let field_w = 220.0f32.min(inner / 2.0);
         for (k, pol) in sys.policies.iter().enumerate() {
-            let row = Rect::from_min_size(pos2(card.content.left(), card.content.top() + k as f32 * (m::CONTROL_HEIGHT + m::TIGHT)), vec2(card.content.width(), m::CONTROL_HEIGHT));
-            let label = format!("{}: {} – {}, now {}", names[k], ghz(pol.min), ghz(pol.max), ghz(pol.now));
-            let field_w = 220.0f32.min(row.width() / 2.0);
-            style::label_fit(ui.painter(), row.left(), row.center().y, Align::Min, &label, style::plain_font(), ink.text, row.width() - field_w - m::SPACING);
-            let mut chosen = pol.governors.iter().position(|g| *g == pol.governor).unwrap_or(0);
-            let options: Vec<&str> = pol.governors.iter().map(String::as_str).collect();
-            let field = Rect::from_min_size(pos2(row.right() - field_w, row.top()), vec2(field_w, m::CONTROL_HEIGHT));
-            if !options.is_empty() && ui.put(field, MenuField::new(("governor", pol.id), &mut chosen, &options).label("Governor:").width(field_w)).changed() {
-                todo.push(Todo::Act(Action::Governor { policy: pol.id, governor: pol.governors[chosen].clone() }));
+            let label: SharedString = format!("{}: {} – {}, now {}", names[k], ghz(pol.min), ghz(pol.max), ghz(pol.now)).into();
+            let chosen = pol.governors.iter().position(|g| *g == pol.governor).unwrap_or(0);
+            let options: Vec<SharedString> = pol.governors.iter().map(|g| SharedString::from(g.clone())).collect();
+            let text = canvas(
+                |_, _, _| {},
+                move |b, _, window, cx| {
+                    let p = theme::palette(cx);
+                    let r = style::label_fit(window, cx, b.left(), b.center().y, style::Align::Left, label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::card_ink(&p).text, b.size.width);
+                    agent::record(window, cx, agent::Node::label(label.clone(), r));
+                },
+            )
+            .flex_1()
+            .min_w_0()
+            .h_full();
+            let mut row = div().flex().flex_row().items_center().gap(px(m::SPACING)).h(px(m::CONTROL_HEIGHT)).mb(px(m::TIGHT)).child(text);
+            if !options.is_empty() {
+                let (policy, governors, act) = (pol.id, pol.governors.clone(), me.clone());
+                row = row.child(MenuField::new(SharedString::from(format!("governor-{}", pol.id)), options, chosen).label("Governor:").width(field_w).on_change(move |i, _, cx| {
+                    let governor = governors[i].clone();
+                    act.update(cx, |a, cx| a.act(Action::Governor { policy, governor }, cx));
+                }));
             }
+            card = card.child(row);
         }
-        let g = Rect::from_min_size(pos2(card.content.left(), card.content.top() + rows as f32 * (m::CONTROL_HEIGHT + m::TIGHT) + m::TIGHT), vec2(card.content.width(), GRAPH));
-        let _ = graph(app, ui, "cpu-freqs", g, &fk, None, Unit::Megahertz);
-        legend(ui, Rect::from_min_size(pos2(card.content.left(), g.bottom() + m::TIGHT), vec2(card.content.width(), lh)), &items);
-        y += h + GAP;
+        card = card.child(div().h(px(m::TIGHT))).child(graph(app, None, &fk, None, GRAPH, cx)).child(div().h(px(m::TIGHT))).child(legend_el(items, inner, cx));
+        out.push(card.into_any_element());
     }
 
     // Idle states: how deeply the cores sleep when there's nothing to do.
@@ -474,37 +576,36 @@ fn cpu(app: &Activity, ui: &mut Ui, area: Rect, todo: &mut Vec<Todo>) -> f32 {
             let what = if st.what.is_empty() { st.name.clone() } else { format!("{} ({})", st.name, st.what) };
             rows.push((what, format!("{:.1}% of the time, waking in {} µs", st.share, st.latency_us)));
         }
-        let rr: Vec<(&str, &str)> = rows.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
-        let fh = dashboard::facts_height(rr.len());
-        let h = Card::height(10.0 + m::SPACING + fh, true);
-        let card = Card::new("Idle States").caption("Where the cores' time goes: the deeper a state, the less power and the slower to wake").show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
         let hues = [olo_theme::Hue::Blue, olo_theme::Hue::Teal, olo_theme::Hue::Green, olo_theme::Hue::Purple, olo_theme::Hue::Gray];
         let mut parts = vec![(c(p.hue(hues[0])), busy)];
         parts.extend(sys.idle_states.iter().enumerate().map(|(i, st)| (c(p.hue(hues[(i + 1) % hues.len()])), st.share)));
-        meter(ui, Rect::from_min_size(card.content.min, vec2(card.content.width(), 10.0)), &parts, 100.0);
-        facts(ui, Rect::from_min_size(pos2(card.content.left(), card.content.top() + 10.0 + m::SPACING), vec2(card.content.width(), fh)), &rr);
-        y += h + GAP;
+        out.push(
+            Card::new("idle", "Idle States")
+                .caption("Where the cores' time goes: the deeper a state, the less power and the slower to wake")
+                .child(meter_el(parts, 100.0, 10.0))
+                .child(div().h(px(m::SPACING)))
+                .child(facts(rows))
+                .into_any_element(),
+        );
     }
 
     // Load.
-    let keys = ["load", "switches", "interrupts"];
-    let rows: Vec<(&str, String)> = vec![
-        ("Load average", format!("{:.2}, {:.2}, {:.2} (1, 5 and 15 minutes)", sys.load[0], sys.load[1], sys.load[2])),
-        ("Processes", value(app, "processes")),
-        ("Threads", value(app, "threads")),
-        ("Context switches", value(app, "switches")),
-        ("Interrupts", value(app, "interrupts")),
-        ("Page faults", value(app, "faults")),
+    let rows: Vec<(String, String)> = vec![
+        ("Load average".into(), format!("{:.2}, {:.2}, {:.2} (1, 5 and 15 minutes)", sys.load[0], sys.load[1], sys.load[2])),
+        ("Processes".into(), value(app, "processes")),
+        ("Threads".into(), value(app, "threads")),
+        ("Context switches".into(), value(app, "switches")),
+        ("Interrupts".into(), value(app, "interrupts")),
+        ("Page faults".into(), value(app, "faults")),
     ];
-    let rr: Vec<(&str, &str)> = rows.iter().map(|(a, b)| (*a, b.as_str())).collect();
-    let fh = dashboard::facts_height(rr.len().div_ceil(2));
-    let h = Card::height(fh + m::SPACING + GRAPH, false);
-    let card = Card::new("Load").show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
-    facts_two(ui, card.content, &rr);
-    let g = Rect::from_min_size(pos2(card.content.left(), card.content.top() + fh + m::SPACING), vec2(card.content.width(), GRAPH));
-    let _ = graph(app, ui, "cpu-load", g, &keys[..1], None, Unit::Load);
-    y += h;
-    y - area.top()
+    out.push(
+        Card::new("load", "Load")
+            .child(facts_two(rows))
+            .child(div().h(px(m::SPACING)))
+            .child(graph(app, None, &["load"], None, GRAPH, cx))
+            .into_any_element(),
+    );
+    out
 }
 
 fn cluster_name(pol: &crate::sample::Policy) -> String {
@@ -517,31 +618,32 @@ fn cluster_name(pol: &crate::sample::Policy) -> String {
 
 // ---- Memory ----------------------------------------------------------
 
-fn memory(app: &Activity, ui: &mut Ui, area: Rect) -> f32 {
-    let p = style::palette(ui.ctx());
+fn memory(app: &Activity, area: f32, inner: f32, cx: &App) -> Vec<AnyElement> {
+    let p = theme::palette(cx);
     let sys = &app.system;
     let field = |k: &str| sys.memory.iter().find(|(n, _)| n == k).map_or(0, |(_, v)| *v);
     let total = field("MemTotal");
-    let mut y = area.top();
+    let mut out = Vec::new();
     let keys = ["memory", "cached", "swap"];
     let items = legend_items(app, &p, &keys, &["Used", "Cached", "Swap"]);
-    let lh = legend_height(ui, area.width() - 2.0 * m::CARD_INSET, &items);
     let caption = format!("of {} · {} available", format_size(total), format_size(field("MemAvailable")));
-    let h = Card::height(GRAPH + 40.0 + m::SPACING + 10.0 + m::TIGHT + lh, true);
-    let card = Card::new("Memory").figure(&value(app, "memory")).caption(&caption).show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
-    let g = Rect::from_min_size(card.content.min, vec2(card.content.width(), GRAPH + 40.0));
-    let _ = graph(app, ui, "memory-all", g, &keys, Some(total as f64), Unit::Bytes);
     let used = app.latest("memory").unwrap_or(0.0);
     let cached = app.latest("cached").unwrap_or(0.0);
-    let bar = Rect::from_min_size(pos2(card.content.left(), g.bottom() + m::SPACING), vec2(card.content.width(), 10.0));
-    let hue = |k: &str| app.source(k).map_or(Color32::GRAY, |i| c(p.hue(app.sources[i].color)));
-    meter(ui, bar, &[(hue("memory"), used), (hue("cached"), cached)], total as f64);
-    legend(ui, Rect::from_min_size(pos2(card.content.left(), bar.bottom() + m::TIGHT), vec2(card.content.width(), lh)), &items);
-    y += h + GAP;
+    let hue = |k: &str| app.source(k).map_or(olo_ui::gpui::opaque_grey(0.5, 1.0), |i| c(p.hue(app.sources[i].color)));
+    out.push(
+        Card::new("memory", "Memory")
+            .figure(value(app, "memory"))
+            .caption(caption)
+            .child(graph(app, None, &keys, Some(total as f64), GRAPH + 40.0, cx))
+            .child(div().h(px(m::SPACING)))
+            .child(meter_el(vec![(hue("memory"), used), (hue("cached"), cached)], total as f64, 10.0))
+            .child(div().h(px(m::TIGHT)))
+            .child(legend_el(items, inner, cx))
+            .into_any_element(),
+    );
 
     // zram and pressure, side by side when there's room.
-    let pair = flow(Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), 0.0)), 2, 300.0, 2, 0.0);
-    let zram_rows: Vec<(String, String)> = sys
+    let mut rows: Vec<(String, String)> = sys
         .zram
         .iter()
         .flat_map(|z| {
@@ -553,13 +655,13 @@ fn memory(app: &Activity, ui: &mut Ui, area: Rect) -> f32 {
             ]
         })
         .collect();
-    let mut rows: Vec<(String, String)> = zram_rows;
     if rows.is_empty() {
         rows.push(("Swap".into(), format!("{} of {}", value(app, "swap"), format_size(field("SwapTotal")))));
     }
-    let rr: Vec<(&str, &str)> = rows.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
-    let pressure = sys.pressure.iter().find(|p| p.resource == "memory");
-    let prow: Vec<(String, String)> = pressure
+    let prow: Vec<(String, String)> = sys
+        .pressure
+        .iter()
+        .find(|p| p.resource == "memory")
         .map(|pr| {
             let mut v = vec![("Some waiting".to_owned(), format!("{:.1}%, {:.1}%, {:.1}%", pr.some[0], pr.some[1], pr.some[2]))];
             if let Some(f) = pr.full {
@@ -568,48 +670,35 @@ fn memory(app: &Activity, ui: &mut Ui, area: Rect) -> f32 {
             v
         })
         .unwrap_or_default();
-    let pr: Vec<(&str, &str)> = prow.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
-    let side = pair[0].top() != pair[1].top();
-    let zh = Card::height(dashboard::facts_height(rr.len()), true);
-    let ph = Card::height(dashboard::facts_height(pr.len()) + m::SPACING + GRAPH * 0.6, true);
-    let (zr, prr) = if side {
-        (Rect::from_min_size(pair[0].min, vec2(area.width(), zh)), Rect::from_min_size(pos2(area.left(), y + zh + GAP), vec2(area.width(), ph)))
-    } else {
-        let h = zh.max(ph);
-        (Rect::from_min_size(pair[0].min, vec2(pair[0].width(), h)), Rect::from_min_size(pair[1].min, vec2(pair[1].width(), h)))
-    };
     let zcap = if sys.zram.is_empty() { "No compressed swap" } else { "Swap in memory, compressed" };
-    let card = Card::new("Compressed Swap").caption(zcap).show(ui, zr);
-    facts(ui, card.content, &rr);
-    let card = Card::new("Memory Pressure").caption("Time tasks waited for memory: 10 s, 1 min, 5 min").show(ui, prr);
-    facts(ui, card.content, &pr);
-    let g = Rect::from_min_max(pos2(card.content.left(), card.content.top() + dashboard::facts_height(pr.len()) + m::SPACING), card.content.max);
-    let _ = graph(app, ui, "memory-psi", g, &["psi-memory", "psi-memory-full"], None, Unit::Percent);
-    y = zr.bottom().max(prr.bottom()) + GAP;
+    let zram = Card::new("zram", "Compressed Swap").caption(zcap).child(facts(rows)).into_any_element();
+    let pressure = Card::new("memory-pressure", "Memory Pressure")
+        .caption("Time tasks waited for memory: 10 s, 1 min, 5 min")
+        .child(facts(prow))
+        .child(div().h(px(m::SPACING)))
+        .child(graph(app, None, &["psi-memory", "psi-memory-full"], None, GRAPH * 0.6, cx))
+        .into_any_element();
+    out.push(flow(vec![zram, pressure], area, 300.0, 2));
 
     // Every counter the kernel keeps.
     let all: Vec<(String, String)> = sys.memory.iter().map(|(k, v)| (k.clone(), if k.starts_with("HugePages_") { v.to_string() } else { format_size(*v) })).collect();
-    let ar: Vec<(&str, &str)> = all.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
-    let h = Card::height(dashboard::facts_height(ar.len().div_ceil(2)), true);
-    let card = Card::new("Every Counter").caption("/proc/meminfo").show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
-    facts_two(ui, card.content, &ar);
-    y + h - area.top()
+    out.push(Card::new("meminfo", "Every Counter").caption("/proc/meminfo").child(facts_two(all)).into_any_element());
+    out
 }
 
 // ---- Disks -----------------------------------------------------------
 
-fn disks(app: &Activity, ui: &mut Ui, area: Rect, todo: &mut Vec<Todo>) -> f32 {
-    let p = style::palette(ui.ctx());
+fn disks(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
+    let p = theme::palette(cx);
     let sys = &app.system;
-    let mut y = area.top();
+    let mut out = Vec::new();
     for d in &sys.disks {
         let keys = [format!("disk:{}:read", d.name), format!("disk:{}:write", d.name), format!("disk:{}:busy", d.name)];
         let k: Vec<&str> = keys.iter().map(String::as_str).collect();
         let mut items = legend_items(app, &p, &k[..2], &["Read", "Written"]);
-        items.push(LegendItem { color: Color32::TRANSPARENT, name: "Busy", value: value(app, &keys[2]) });
-        items.push(LegendItem { color: Color32::TRANSPARENT, name: "Requests", value: format!("{:.0}/s", d.iops) });
-        items.push(LegendItem { color: Color32::TRANSPARENT, name: "Each takes", value: format!("{:.2} ms", d.latency_ms) });
-        let lh = legend_height(ui, area.width() - 2.0 * m::CARD_INSET, &items);
+        items.push(figure("Busy", value(app, &keys[2])));
+        items.push(figure("Requests", format!("{:.0}/s", d.iops)));
+        items.push(figure("Each takes", format!("{:.2} ms", d.latency_ms)));
         // Its own account of its health (NVMe), with full access.
         let ctrl = crate::smart::controller_of(&d.name);
         let health = ctrl.as_ref().and_then(|c| sys.health.iter().find(|(n, _)| n == c)).map(|(_, h)| h.clone());
@@ -627,128 +716,132 @@ fn disks(app: &Activity, ui: &mut Ui, area: Rect, todo: &mut Vec<Todo>) -> f32 {
             Some(None) => vec![("Health".into(), "Needs full access".into())],
             None => Vec::new(),
         };
-        let hr: Vec<(&str, &str)> = hrows.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
-        let hh = if hr.is_empty() { 0.0 } else { m::SPACING + dashboard::facts_height(hr.len().div_ceil(2)) };
         let kind = if d.rotational { "hard disk" } else if d.removable { "removable" } else { "solid-state" };
         let caption = format!("{} · {} {kind}", if d.model.is_empty() { "Disk" } else { &d.model }, format_size(d.size));
-        let figure = Unit::Rate.format(app.latest(&keys[0]).unwrap_or(0.0) + app.latest(&keys[1]).unwrap_or(0.0));
-        let h = Card::height(GRAPH + m::TIGHT + lh + hh, true);
-        let card = Card::new(&d.name).figure(&figure).caption(&caption).show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
-        let g = Rect::from_min_size(card.content.min, vec2(card.content.width(), GRAPH));
-        if let Some(t) = graph(app, ui, &keys[0], g, &k[..2], None, Unit::Rate) {
-            todo.push(Todo::Drill(Some(t)));
+        let figure_text = Unit::Rate.format(app.latest(&keys[0]).unwrap_or(0.0) + app.latest(&keys[1]).unwrap_or(0.0));
+        let mut card = Card::new(format!("disk-{}", d.name), d.name.clone())
+            .figure(figure_text)
+            .caption(caption)
+            .child(graph(app, Some(me), &k[..2], None, GRAPH, cx))
+            .child(div().h(px(m::TIGHT)))
+            .child(legend_el(items, inner, cx));
+        if !hrows.is_empty() {
+            card = card.child(div().h(px(m::SPACING))).child(facts_two(hrows));
         }
-        legend(ui, Rect::from_min_size(pos2(card.content.left(), g.bottom() + m::TIGHT), vec2(card.content.width(), lh)), &items);
-        if !hr.is_empty() {
-            facts_two(ui, Rect::from_min_max(pos2(card.content.left(), g.bottom() + m::TIGHT + lh + m::SPACING), card.content.max), &hr);
-        }
-        y += h + GAP;
+        out.push(card.into_any_element());
     }
     // Volumes.
-    let ink = style::card_ink(&p);
-    let row = 40.0;
-    let h = Card::height(sys.volumes.len() as f32 * row, false);
-    let card = Card::new("Volumes").show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
-    for (i, v) in sys.volumes.iter().enumerate() {
-        let r = Rect::from_min_size(pos2(card.content.left(), card.content.top() + i as f32 * row), vec2(card.content.width(), row));
-        let title = format!("{}{}", v.mount, if v.read_only { " (read-only)" } else { "" });
-        let detail = match (v.size, v.free) {
+    let mut volumes = Card::new("volumes", "Volumes");
+    for v in &sys.volumes {
+        let title: SharedString = format!("{}{}", v.mount, if v.read_only { " (read-only)" } else { "" }).into();
+        let detail: SharedString = match (v.size, v.free) {
             (Some(s), Some(f)) => format!("{} free of {}", format_size(f), format_size(s)),
             _ => "On the network".into(),
-        };
-        let dw = style::label_width(ui.ctx(), &detail, style::plain_font());
-        style::label_fit(ui.painter(), r.left(), r.top() + 9.0, Align::Min, &title, style::bold_font(), ink.text, r.width() - dw - m::SPACING);
-        style::label(ui.painter(), r.right(), r.top() + 9.0, Align::Max, &detail, style::plain_font(), ink.text);
-        let sub = format!("{} · {}", v.kind, v.device);
-        style::label_fit(ui.painter(), r.left(), r.top() + 24.0, Align::Min, &sub, style::small_font(), ink.dim, r.width() * 0.5);
-        if let (Some(s), Some(f)) = (v.size, v.free) {
-            let bar = Rect::from_min_max(pos2(r.left() + r.width() * 0.5, r.top() + 21.0), pos2(r.right(), r.top() + 27.0));
-            let used = s.saturating_sub(f) as f64;
-            let full = used / s.max(1) as f64;
-            let hue = if full > 0.9 { p.hue(olo_theme::Hue::Red) } else { p.hue(olo_theme::Hue::Blue) };
-            meter(ui, bar, &[(c(hue), used)], s as f64);
         }
+        .into();
+        let sub: SharedString = format!("{} · {}", v.kind, v.device).into();
+        let bar = match (v.size, v.free) {
+            (Some(s), Some(f)) => {
+                let used = s.saturating_sub(f) as f64;
+                let hue = if used / s.max(1) as f64 > 0.9 { p.hue(olo_theme::Hue::Red) } else { p.hue(olo_theme::Hue::Blue) };
+                Some((vec![(c(hue), used)], s as f64))
+            }
+            _ => None,
+        };
+        volumes = volumes.child(
+            canvas(
+                |_, _, _| {},
+                move |r, _, window, cx| {
+                    let p = theme::palette(cx);
+                    let ink = style::card_ink(&p);
+                    let (plain, bold) = (style::ui_font(FontWeight::NORMAL), style::ui_font(FontWeight::BOLD));
+                    let d = style::label(window, cx, r.right(), r.top() + px(9.0), style::Align::Right, detail.clone(), style::PLAIN_SIZE, plain.clone(), ink.text);
+                    let t = style::label_fit(window, cx, r.left(), r.top() + px(9.0), style::Align::Left, title.clone(), style::PLAIN_SIZE, bold, ink.text, (d.left() - px(m::SPACING) - r.left()).max(px(0.0)));
+                    let s = style::label_fit(window, cx, r.left(), r.top() + px(24.0), style::Align::Left, sub.clone(), style::SMALL_SIZE, plain, ink.dim, r.size.width * 0.5);
+                    agent::record(window, cx, agent::Node { value: Some(detail.clone()), ..agent::Node::label(title.clone(), t) });
+                    agent::record(window, cx, agent::Node::label(sub.clone(), s));
+                    if let Some((parts, total)) = &bar {
+                        let b = olo_ui::gpui::Bounds::from_corners(olo_ui::gpui::point(r.left() + r.size.width * 0.5, r.top() + px(21.0)), olo_ui::gpui::point(r.right(), r.top() + px(27.0)));
+                        meter(window, cx, b, parts, *total);
+                    }
+                },
+            )
+            .w_full()
+            .h(px(40.0))
+            .flex_shrink_0(),
+        );
     }
-    y += h + GAP;
+    out.push(volumes.into_any_element());
     let items = legend_items(app, &p, &["psi-io", "psi-io-full"], &["Some waiting", "All waiting"]);
-    let lh = legend_height(ui, area.width() - 2.0 * m::CARD_INSET, &items);
-    let h = Card::height(GRAPH * 0.7 + m::TIGHT + lh, true);
-    let card = Card::new("I/O Pressure").caption("Time tasks waited for disks").show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
-    let g = Rect::from_min_size(card.content.min, vec2(card.content.width(), GRAPH * 0.7));
-    let _ = graph(app, ui, "io-psi", g, &["psi-io", "psi-io-full"], None, Unit::Percent);
-    legend(ui, Rect::from_min_size(pos2(card.content.left(), g.bottom() + m::TIGHT), vec2(card.content.width(), lh)), &items);
-    y + h - area.top()
+    out.push(
+        Card::new("io-pressure", "I/O Pressure")
+            .caption("Time tasks waited for disks")
+            .child(graph(app, None, &["psi-io", "psi-io-full"], None, GRAPH * 0.7, cx))
+            .child(div().h(px(m::TIGHT)))
+            .child(legend_el(items, inner, cx))
+            .into_any_element(),
+    );
+    out
 }
 
 // ---- Network ---------------------------------------------------------
 
-const CONNECTIONS_HEIGHT: f32 = 320.0;
-
-fn network(app: &mut Activity, ui: &mut Ui, area: Rect, todo: &mut Vec<Todo>) -> f32 {
-    let p = style::palette(ui.ctx());
-    let mut y = area.top();
-    let interfaces = app.system.interfaces.clone();
-    for n in &interfaces {
+fn network(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
+    let p = theme::palette(cx);
+    let mut out = Vec::new();
+    for n in &app.system.interfaces {
         let keys = [format!("net:{}:rx", n.name), format!("net:{}:tx", n.name)];
         let k: Vec<&str> = keys.iter().map(String::as_str).collect();
         let mut items = legend_items(app, &p, &k, &["In", "Out"]);
-        items.push(LegendItem { color: Color32::TRANSPARENT, name: "Received", value: format_size(n.received) });
-        items.push(LegendItem { color: Color32::TRANSPARENT, name: "Sent", value: format_size(n.sent) });
+        items.push(figure("Received", format_size(n.received)));
+        items.push(figure("Sent", format_size(n.sent)));
         if n.errors + n.drops > 0 {
-            items.push(LegendItem { color: Color32::TRANSPARENT, name: "Errors", value: n.errors.to_string() });
-            items.push(LegendItem { color: Color32::TRANSPARENT, name: "Dropped", value: n.drops.to_string() });
+            items.push(figure("Errors", n.errors.to_string()));
+            items.push(figure("Dropped", n.drops.to_string()));
         }
-        let lh = legend_height(ui, area.width() - 2.0 * m::CARD_INSET, &items);
         let mut cap = vec![if n.up { "Connected".to_owned() } else { "Not connected".to_owned() }];
         cap.extend(n.addresses.iter().filter(|a| !a.starts_with("fe80")).cloned());
         if !n.mac.is_empty() && n.mac != "00:00:00:00:00:00" {
             cap.push(n.mac.clone());
         }
         cap.push(format!("MTU {}", n.mtu));
-        let caption = cap.join(" · ");
-        let figure = Unit::Rate.format(app.latest(&keys[0]).unwrap_or(0.0) + app.latest(&keys[1]).unwrap_or(0.0));
-        let h = Card::height(GRAPH * 0.8 + m::TIGHT + lh, true);
-        let card = Card::new(&n.name).figure(&figure).caption(&caption).show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
-        let g = Rect::from_min_size(card.content.min, vec2(card.content.width(), GRAPH * 0.8));
-        if let Some(t) = graph(app, ui, &keys[0], g, &k, None, Unit::Rate) {
-            todo.push(Todo::Drill(Some(t)));
-        }
-        legend(ui, Rect::from_min_size(pos2(card.content.left(), g.bottom() + m::TIGHT), vec2(card.content.width(), lh)), &items);
-        y += h + GAP;
+        let figure_text = Unit::Rate.format(app.latest(&keys[0]).unwrap_or(0.0) + app.latest(&keys[1]).unwrap_or(0.0));
+        out.push(
+            Card::new(format!("net-{}", n.name), n.name.clone())
+                .figure(figure_text)
+                .caption(cap.join(" · "))
+                .child(graph(app, Some(me), &k, None, GRAPH * 0.8, cx))
+                .child(div().h(px(m::TIGHT)))
+                .child(legend_el(items, inner, cx))
+                .into_any_element(),
+        );
     }
     // Who uses it most (TCP's bytes, `netdiag`).
     let mut busy: Vec<&crate::sample::Proc> = app.processes.iter().filter(|pr| pr.sent.unwrap_or(0.0) + pr.received.unwrap_or(0.0) > 0.0).collect();
     busy.sort_by(|a, b| (b.sent.unwrap_or(0.0) + b.received.unwrap_or(0.0)).total_cmp(&(a.sent.unwrap_or(0.0) + a.received.unwrap_or(0.0))));
-    let rows: Vec<(i32, String, String)> = busy
+    let rows: Vec<Busy> = busy
         .iter()
         .take(8)
         .map(|pr| (pr.pid, format!("{} ({})", pr.name, pr.pid), format!("{} in · {} out", Unit::Rate.format(pr.received.unwrap_or(0.0)), Unit::Rate.format(pr.sent.unwrap_or(0.0)))))
         .collect();
-    let h = Card::height((rows.len().max(1) + 1) as f32 * dashboard::FACT_ROW, true);
     let caption = if app.access == Access::Full { "TCP's bytes, each second" } else { "TCP's bytes, each second (other users' need full access)" };
-    let card = Card::new("Programs Using the Network").caption(caption).show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
-    if rows.is_empty() {
-        let ink = style::card_ink(&p);
-        style::label(ui.painter(), card.content.left(), card.content.top() + dashboard::FACT_ROW / 2.0, Align::Min, "None just now", style::plain_font(), ink.dim);
+    let mut card = Card::new("net-programs", "Programs Using the Network").caption(caption);
+    card = if rows.is_empty() {
+        card.child(StringView::new("None just now").height(FACT_ROW).color(style::card_ink(&p).dim))
     } else {
-        process_rows(ui, card.content, "Received and sent", &rows, todo);
-    }
-    y += h + GAP;
+        card.child(process_rows(me, "Received and sent", rows))
+    };
+    out.push(card.into_any_element());
     // Connections: who talks to whom.
-    let h = Card::height(m::CONTROL_HEIGHT + m::SPACING + CONNECTIONS_HEIGHT, true);
     let full = app.access == Access::Full;
     let caption = if full { "Every program's" } else { "Programs of other users show no name without full access" };
-    let card = Card::new("Connections").caption(caption).show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
-    let field = Rect::from_min_size(card.content.min, vec2(card.content.width().min(320.0), m::CONTROL_HEIGHT));
-    ui.put(field, TextControl::new(&mut app.connections_search).label("Search:").hint("Address, port, program or state"));
-    let list = Rect::from_min_max(pos2(card.content.left(), field.bottom() + m::SPACING), card.content.max);
-    let needle = olo_kit::search::Needle::new(app.connections_search.trim());
+    let needle = olo_ui::search::Needle::new(app.connections_search.read(cx).text().trim());
     let mut rows: Vec<&crate::sample::Connection> = app
         .connections
         .iter()
         .filter(|cn| needle.is_empty() || [cn.local.as_str(), &cn.remote, &cn.state, &cn.process, cn.proto.as_str()].iter().any(|f| needle.in_text(f)))
         .collect();
-    let (col, asc) = app.settings.connections_sort.unwrap_or((4, true));
+    let (col, asc) = app.connections_list.read(cx).state.sort.or(app.settings.connections_sort).unwrap_or((4, true));
     rows.sort_by(|a, b| {
         let o = match col {
             0 => a.proto.cmp(&b.proto),
@@ -760,184 +853,187 @@ fn network(app: &mut Activity, ui: &mut Ui, area: Rect, todo: &mut Vec<Todo>) ->
         let o = o.then(a.local.cmp(&b.local));
         if asc { o } else { o.reverse() }
     });
-    let columns = [Column::new("Protocol", 64.0), Column::new("Local", 170.0), Column::new("Remote", 170.0), Column::new("State", 90.0), Column::new("Program", 150.0)];
-    app.connections_list.sort = Some((col, asc));
-    let cells: Vec<[String; 5]> = rows
-        .iter()
-        .map(|cn| {
-            let prog = match cn.pid {
-                Some(pid) => format!("{} ({pid})", cn.process),
-                None => "—".into(),
-            };
-            // Not connected to anything (listening, or UDP unconnected).
-            let remote = if cn.remote.ends_with(":0") && (cn.remote.starts_with("0.0.0.0") || cn.remote.starts_with("[::]")) { "—".into() } else { cn.remote.clone() };
-            [cn.proto.clone(), cn.local.clone(), remote, cn.state.clone(), prog]
-        })
-        .collect();
+    let cells: Rc<Vec<[String; 5]>> = Rc::new(
+        rows.iter()
+            .map(|cn| {
+                let prog = match cn.pid {
+                    Some(pid) => format!("{} ({pid})", cn.process),
+                    None => "—".into(),
+                };
+                // Not connected to anything (listening, or UDP unconnected).
+                let remote = if cn.remote.ends_with(":0") && (cn.remote.starts_with("0.0.0.0") || cn.remote.starts_with("[::]")) { "—".into() } else { cn.remote.clone() };
+                [cn.proto.clone(), cn.local.clone(), remote, cn.state.clone(), prog]
+            })
+            .collect(),
+    );
     let pids: Vec<Option<i32>> = rows.iter().map(|cn| cn.pid).collect();
-    let out = ui
-        .scope_builder(egui::UiBuilder::new().max_rect(list), |ui| {
-            ColumnListView::new("activity-connections", &columns, cells.len(), &mut app.connections_list)
-                .empty_text("No connections match.")
-                .show(ui, |cell: &Cell| cell.text(&cells[cell.row][cell.column]))
+    let columns = vec![Column::new("Protocol", 64.0), Column::new("Local", 170.0), Column::new("Remote", 170.0), Column::new("State", 90.0), Column::new("Program", 150.0)];
+    let list_cells = cells.clone();
+    let (sorted, opened) = (me.clone(), me.clone());
+    let list = ColumnListView::new("activity-connections", &app.connections_list, columns, cells.len(), move |cell, window, cx| {
+        if let Some(row) = list_cells.get(cell.row) {
+            cell.text(window, cx, row[cell.column].clone());
+        }
+    })
+    .empty_text("No connections match.")
+    .on_sort(move |_, cx| {
+        sorted.update(cx, |a, cx| {
+            a.settings.connections_sort = a.connections_list.read(cx).state.sort;
+            a.store();
+            cx.notify();
         })
-        .inner;
-    if out.sort_changed {
-        app.settings.connections_sort = app.connections_list.sort;
-    }
-    if let Some(row) = out.activated
-        && let Some(Some(pid)) = pids.get(row)
-    {
-        todo.push(Todo::Command(format!("inspect:{pid}")));
-    }
-    y + h - area.top()
+    })
+    .on_open(move |row, _, cx| {
+        if let Some(Some(pid)) = pids.get(row) {
+            let pid = *pid;
+            opened.update(cx, |a, cx| a.inspect(pid, cx));
+        }
+    });
+    out.push(
+        Card::new("connections", "Connections")
+            .caption(caption)
+            .child(div().w(px(320.0f32.min(inner))).child(TextControl::new(app.connections_search.clone()).label("Search:")))
+            .child(div().h(px(m::SPACING)))
+            .child(div().h(px(CONNECTIONS_HEIGHT)).flex().flex_col().child(div().flex_1().min_h_0().flex().flex_col().child(list)))
+            .into_any_element(),
+    );
+    out
 }
 
 // ---- GPU -------------------------------------------------------------
 
-fn gpu(app: &Activity, ui: &mut Ui, area: Rect, todo: &mut Vec<Todo>) -> f32 {
-    let p = style::palette(ui.ctx());
+fn gpu(app: &Activity, me: &Me, area: f32, inner: f32, cx: &App) -> Vec<AnyElement> {
+    let p = theme::palette(cx);
     let sys = &app.system;
-    let mut y = area.top();
+    let mut out = Vec::new();
     let g_info = sys.gpu.clone().unwrap_or_default();
     let keys = ["gpu-busy"];
     let mut items = legend_items(app, &p, &keys, &["Busy"]);
     items.extend(legend_items(app, &p, &["gpu-jobs"], &["Jobs"]));
-    let lh = legend_height(ui, area.width() - 2.0 * m::CARD_INSET, &items);
-    let h = Card::height(GRAPH + 40.0 + m::TIGHT + lh, true);
-    let caption = format!("{} · {} driver", g_info.name, g_info.driver);
-    let card = Card::new("GPU").figure(&value(app, "gpu-busy")).caption(&caption).show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
-    let g = Rect::from_min_size(card.content.min, vec2(card.content.width(), GRAPH + 40.0));
-    if let Some(t) = graph(app, ui, "gpu-busy", g, &keys, Some(100.0), Unit::Percent) {
-        todo.push(Todo::Drill(Some(t)));
-    }
-    legend(ui, Rect::from_min_size(pos2(card.content.left(), g.bottom() + m::TIGHT), vec2(card.content.width(), lh)), &items);
-    y += h + GAP;
-    let pair = flow(Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), 0.0)), 2, 300.0, 2, Card::height(GRAPH * 0.8 + 16.0, true));
+    out.push(
+        Card::new("gpu", "GPU")
+            .figure(value(app, "gpu-busy"))
+            .caption(format!("{} · {} driver", g_info.name, g_info.driver))
+            .child(graph(app, Some(me), &keys, Some(100.0), GRAPH + 40.0, cx))
+            .child(div().h(px(m::TIGHT)))
+            .child(legend_el(items, inner, cx))
+            .into_any_element(),
+    );
+    let mut pair = Vec::new();
     if app.source("gpu-power").is_some() {
-        let card = Card::new("Power").figure(&value(app, "gpu-power")).caption("What the GPU draws").show(ui, pair[0]);
-        let _ = graph(app, ui, "gpu-power", card.content, &["gpu-power"], None, Unit::Watts);
+        pair.push(Card::new("gpu-power", "Power").figure(value(app, "gpu-power")).caption("What the GPU draws").child(graph(app, None, &["gpu-power"], None, GRAPH * 0.8 + 16.0, cx)).into_any_element());
     }
     if app.source("gpu-memory").is_some() {
         let caption = if g_info.memory_limit > 0 { format!("of {} it may use", format_size(g_info.memory_limit)) } else { String::new() };
-        let card = Card::new("Memory").figure(&value(app, "gpu-memory")).caption(&caption).show(ui, pair[1]);
-        let bar = Rect::from_min_size(card.content.min, vec2(card.content.width(), 8.0));
+        let mut card = Card::new("gpu-memory", "Memory").figure(value(app, "gpu-memory")).caption(caption);
         if g_info.memory_limit > 0 {
-            let hue = c(p.hue(olo_theme::Hue::Red));
-            meter(ui, bar, &[(hue, g_info.memory_used as f64)], g_info.memory_limit as f64);
+            card = card.child(meter_el(vec![(c(p.hue(olo_theme::Hue::Red)), g_info.memory_used as f64)], g_info.memory_limit as f64, 8.0)).child(div().h(px(m::SPACING)));
         }
-        let g = Rect::from_min_max(pos2(card.content.left(), bar.bottom() + m::SPACING), card.content.max);
-        let _ = graph(app, ui, "gpu-memory", g, &["gpu-memory"], None, Unit::Bytes);
+        pair.push(card.child(graph(app, None, &["gpu-memory"], None, GRAPH * 0.8, cx)).into_any_element());
     }
-    y = pair[1].bottom() + GAP;
+    if !pair.is_empty() {
+        out.push(flow(pair, area, 300.0, 2));
+    }
     // Who uses it.
     let clients = sys.gpu_clients.clone().unwrap_or_default();
-    let rows: Vec<(i32, String, String)> = clients
+    let rows: Vec<Busy> = clients
         .iter()
         .map(|cl| {
             let busy = cl.busy.map(|b| format!(" · {b:.0}%")).unwrap_or_default();
             (cl.pid, format!("{} ({})", cl.name, cl.pid), format!("{}{busy}", format_size(cl.memory)))
         })
         .collect();
-    let h = Card::height((rows.len().max(1) + 1) as f32 * dashboard::FACT_ROW, true);
-    let card = Card::new("Programs Using the GPU")
-        .caption(if app.access == Access::Full { "Its memory each holds" } else { "Its memory each holds (other users' need full access)" })
-        .show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
-    process_rows(ui, card.content, "Memory on the GPU", &rows, todo);
-    y + h - area.top()
+    out.push(
+        Card::new("gpu-programs", "Programs Using the GPU")
+            .caption(if app.access == Access::Full { "Its memory each holds" } else { "Its memory each holds (other users' need full access)" })
+            .child(process_rows(me, "Memory on the GPU", rows))
+            .into_any_element(),
+    );
+    out
 }
 
 // ---- Sensors ---------------------------------------------------------
 
-fn sensors(app: &Activity, ui: &mut Ui, area: Rect) -> f32 {
-    let p = style::palette(ui.ctx());
+fn sensors(app: &Activity, inner: f32, cx: &App) -> Vec<AnyElement> {
+    let p = theme::palette(cx);
     let sys = &app.system;
-    let mut y = area.top();
+    let mut out = Vec::new();
     if let Some(b) = &sys.battery {
-        let mut rows: Vec<(&str, String)> = vec![("Status", b.status.clone())];
+        let mut rows: Vec<(String, String)> = vec![("Status".into(), b.status.clone())];
         if !b.health.is_empty() {
-            rows.push(("Health", b.health.clone()));
+            rows.push(("Health".into(), b.health.clone()));
         }
         if b.design > 0.0 {
-            rows.push(("Holds", format!("{:.1} Wh of {:.1} Wh new ({:.0}%)", b.full, b.design, b.full / b.design * 100.0)));
+            rows.push(("Holds".into(), format!("{:.1} Wh of {:.1} Wh new ({:.0}%)", b.full, b.design, b.full / b.design * 100.0)));
         }
-        rows.push(("Now", format!("{:.1} Wh", b.energy)));
-        rows.push(("Cycles", b.cycles.to_string()));
-        rows.push(("Power", Unit::Watts.format(b.watts.abs())));
-        rows.push(("Voltage", format!("{:.2} V", b.volts)));
+        rows.push(("Now".into(), format!("{:.1} Wh", b.energy)));
+        rows.push(("Cycles".into(), b.cycles.to_string()));
+        rows.push(("Power".into(), Unit::Watts.format(b.watts.abs())));
+        rows.push(("Voltage".into(), format!("{:.2} V", b.volts)));
         if b.watts.abs() > 0.5 {
             let hours = if b.status == "Charging" { (b.full - b.energy) / b.watts.abs() } else { b.energy / b.watts.abs() };
             let label = if b.status == "Charging" { "Full in" } else { "Lasts" };
-            rows.push((label, duration(hours * 3600.0)));
+            rows.push((label.into(), duration(hours * 3600.0)));
         }
-        let rr: Vec<(&str, &str)> = rows.iter().map(|(a, b)| (*a, b.as_str())).collect();
-        let fh = dashboard::facts_height(rr.len().div_ceil(2));
-        let h = Card::height(10.0 + m::SPACING + fh + m::SPACING + GRAPH, true);
-        let card = Card::new("Battery").figure(&value(app, "battery")).caption(&b.model).show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
-        let bar = Rect::from_min_size(card.content.min, vec2(card.content.width(), 10.0));
         let hue = if b.capacity < 15.0 { olo_theme::Hue::Red } else { olo_theme::Hue::Green };
-        meter(ui, bar, &[(c(p.hue(hue)), b.capacity)], 100.0);
-        facts_two(ui, Rect::from_min_size(pos2(card.content.left(), bar.bottom() + m::SPACING), vec2(card.content.width(), fh)), &rr);
-        let g = Rect::from_min_max(pos2(card.content.left(), bar.bottom() + m::SPACING + fh + m::SPACING), card.content.max);
-        let _ = graph(app, ui, "battery", g, &["battery"], Some(100.0), Unit::Percent);
-        y += h + GAP;
+        out.push(
+            Card::new("battery", "Battery")
+                .figure(value(app, "battery"))
+                .caption(b.model.clone())
+                .child(meter_el(vec![(c(p.hue(hue)), b.capacity)], 100.0, 10.0))
+                .child(div().h(px(m::SPACING)))
+                .child(facts_two(rows))
+                .child(div().h(px(m::SPACING)))
+                .child(graph(app, None, &["battery"], Some(100.0), GRAPH, cx))
+                .into_any_element(),
+        );
     }
     for (unit, title, caption) in [(Unit::Celsius, "Temperatures", "Every thermal sensor"), (Unit::Watts, "Power", "What each part draws"), (Unit::Rpm, "Fans", "")] {
-        let keys: Vec<(String, String)> =
-            app.sources.iter().filter(|s| s.group == Group::Sensors && s.unit == unit).map(|s| (s.key.clone(), s.name.clone())).collect();
+        let keys: Vec<(String, String)> = app.sources.iter().filter(|s| s.group == Group::Sensors && s.unit == unit).map(|s| (s.key.clone(), s.name.clone())).collect();
         if keys.is_empty() {
             continue;
         }
-        let inner_w = area.width() - 2.0 * m::CARD_INSET;
-        let (_, gh) = mini_grid(0.0, inner_w, 0.0, keys.len());
-        let h = Card::height(gh, !caption.is_empty());
-        let card = Card::new(title).caption(caption).show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
-        let (cells, _) = mini_grid(card.content.left(), card.content.width(), card.content.top(), keys.len());
-        for ((key, name), r) in keys.iter().zip(&cells) {
-            // The card says what kind; each says which.
-            let short = ["temperature", "Temperature", "Temp", "temp", "power", "Power", "fan"].iter().fold(name.clone(), |n, w| n.replace(&format!(" {w}"), ""));
-            mini(app, ui, *r, key, &short, None);
-        }
-        y += h + GAP;
+        let cells: Vec<AnyElement> = keys
+            .iter()
+            .map(|(key, name)| {
+                // The card says what kind; each says which.
+                let short = ["temperature", "Temperature", "Temp", "temp", "power", "Power", "fan"].iter().fold(name.clone(), |n, w| n.replace(&format!(" {w}"), ""));
+                mini(app, key, short, None, cx)
+            })
+            .collect();
+        out.push(Card::new(format!("sensors-{title}"), title).caption(caption).child(mini_grid(cells, inner)).into_any_element());
     }
-    y - GAP - area.top()
+    out
 }
 
 // ---- System ----------------------------------------------------------
 
-fn system(app: &mut Activity, ui: &mut Ui, area: Rect, todo: &mut Vec<Todo>) -> f32 {
-    let p = style::palette(ui.ctx());
-    let mut y = area.top();
-    let sys = app.system.clone();
+fn system(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
+    let p = theme::palette(cx);
+    let mut out = Vec::new();
+    let sys = &app.system;
     let mem = sys.memory.iter().find(|(k, _)| k == "MemTotal").map_or(0, |(_, v)| *v);
     let access = match app.access {
         Access::Full => "Full: every process, every setting",
         Access::Asking => "Asking for the password…",
         Access::Mine => "This account's processes",
     };
-    let rows: Vec<(&str, String)> = vec![
-        ("Model", sys.model.clone()),
-        ("Name", sys.host.clone()),
-        ("Kernel", sys.kernel.clone()),
-        ("Up for", duration(sys.uptime)),
-        ("Processor", if sys.cpu_model.is_empty() { format!("{} cores", sys.cores) } else { sys.cpu_model.clone() }),
-        ("Memory", format_size(mem)),
-        ("Open files", if sys.open_files.1 >= 1 << 62 { format!("{}, no limit", sys.open_files.0) } else { format!("{} of {}", sys.open_files.0, sys.open_files.1) }),
-        ("Access", access.to_owned()),
+    let rows: Vec<(String, String)> = vec![
+        ("Model".into(), sys.model.clone()),
+        ("Name".into(), sys.host.clone()),
+        ("Kernel".into(), sys.kernel.clone()),
+        ("Up for".into(), duration(sys.uptime)),
+        ("Processor".into(), if sys.cpu_model.is_empty() { format!("{} cores", sys.cores) } else { sys.cpu_model.clone() }),
+        ("Memory".into(), format_size(mem)),
+        ("Open files".into(), if sys.open_files.1 >= 1 << 62 { format!("{}, no limit", sys.open_files.0) } else { format!("{} of {}", sys.open_files.0, sys.open_files.1) }),
+        ("Access".into(), access.to_owned()),
     ];
-    let rr: Vec<(&str, &str)> = rows.iter().map(|(a, b)| (*a, b.as_str())).collect();
-    let fh = dashboard::facts_height(rr.len().div_ceil(2));
-    let button = app.access == Access::Mine && crate::helper::way() != crate::helper::Way::Off;
-    let h = Card::height(fh + if button { m::SPACING + m::CONTROL_HEIGHT } else { 0.0 }, false);
-    let card = Card::new("This Computer").show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
-    facts_two(ui, card.content, &rr);
-    if button {
-        let b = Rect::from_min_size(pos2(card.content.left(), card.content.top() + fh + m::SPACING), vec2(140.0, m::CONTROL_HEIGHT));
-        if ui.put(b, Button::new("Get Full Access…").min_width(b.width())).clicked() {
-            todo.push(Todo::FullAccess);
-        }
+    let mut card = Card::new("this-computer", "This Computer").child(facts_two(rows));
+    if app.access == Access::Mine && crate::helper::way() != crate::helper::Way::Off {
+        let me = me.clone();
+        card = card.child(div().h(px(m::SPACING))).child(div().flex().child(Button::new("Get Full Access…").min_width(140.0).on_click(move |_, cx| me.update(cx, |a, cx| a.get_full_access(cx)))));
     }
-    y += h + GAP;
+    out.push(card.into_any_element());
 
     // Pressure: how much time went waiting.
     let rows: Vec<(String, String)> = sys
@@ -955,125 +1051,113 @@ fn system(app: &mut Activity, ui: &mut Ui, area: Rect, todo: &mut Vec<Todo>) -> 
             (name.to_owned(), format!("some: {:.1}%, {:.1}%, {:.1}%{full}", pr.some[0], pr.some[1], pr.some[2]))
         })
         .collect();
-    let rr: Vec<(&str, &str)> = rows.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
     let keys = ["psi-cpu", "psi-memory", "psi-io"];
     let items = legend_items(app, &p, &keys, &["CPU", "Memory", "I/O"]);
-    let lh = legend_height(ui, area.width() - 2.0 * m::CARD_INSET, &items);
-    let fh = dashboard::facts_height(rr.len());
-    let h = Card::height(fh + m::SPACING + GRAPH + m::TIGHT + lh, true);
-    let card = Card::new("Pressure").caption("Time tasks waited for each, over 10 s, 1 min and 5 min").show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
-    facts(ui, card.content, &rr);
-    let g = Rect::from_min_size(pos2(card.content.left(), card.content.top() + fh + m::SPACING), vec2(card.content.width(), GRAPH));
-    let _ = graph(app, ui, "psi", g, &keys, None, Unit::Percent);
-    legend(ui, Rect::from_min_size(pos2(card.content.left(), g.bottom() + m::TIGHT), vec2(card.content.width(), lh)), &items);
-    y += h + GAP;
+    out.push(
+        Card::new("pressure", "Pressure")
+            .caption("Time tasks waited for each, over 10 s, 1 min and 5 min")
+            .child(facts(rows))
+            .child(div().h(px(m::SPACING)))
+            .child(graph(app, None, &keys, None, GRAPH, cx))
+            .child(div().h(px(m::TIGHT)))
+            .child(legend_el(items, inner, cx))
+            .into_any_element(),
+    );
 
     // Tuning: the kernel's knobs.
-    let list_h = (sys.tunables.len() as f32 * m::LIST_ROW + widgets::HEADER_HEIGHT + 6.0).min(360.0);
-    let h = Card::height(list_h, true);
+    let list_h = (sys.tunables.len() as f32 * m::LIST_ROW + HEADER_HEIGHT + 6.0).min(360.0);
     let caption = if app.access == Access::Full { "Double-click one to change it" } else { "Double-click one to change it (with full access)" };
-    let card = Card::new("Tuning").caption(caption).show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
-    let columns = [Column::new("Setting", 230.0), Column::new("Value", 100.0), Column::new("What it does", 320.0)];
-    let cells: Vec<[String; 3]> = sys
-        .tunables
-        .iter()
-        .map(|(k, v)| [k.clone(), v.clone(), crate::sample::TUNABLES.iter().find(|(n, _)| n == k).map_or("", |(_, d)| *d).to_owned()])
-        .collect();
-    let out = ui
-        .scope_builder(egui::UiBuilder::new().max_rect(card.content), |ui| {
-            ColumnListView::new("activity-tunables", &columns, cells.len(), &mut app.tunables_list).show(ui, |cell: &Cell| cell.text(&cells[cell.row][cell.column]))
-        })
-        .inner;
-    if let Some(row) = out.activated
-        && let Some(cl) = cells.get(row)
-    {
-        todo.push(Todo::Command(format!("tune:{}", cl[0])));
-    }
-    if let Some((row, pos)) = out.context
-        && let Some(cl) = cells.get(row)
-    {
-        app.tunables_list.select(row);
-        widgets::popup_menu_at(ui.ctx(), Id::unique("activity-tune-menu"), pos, Menu::new("").item("Change…", format!("tune:{}", cl[0]), None));
-    }
-    if let Some(cmd) = widgets::popup_result(ui.ctx(), Id::unique("activity-tune-menu")) {
-        todo.push(Todo::Command(cmd));
-    }
-    y + h - area.top()
+    let cells: Rc<Vec<[String; 3]>> = Rc::new(
+        sys.tunables.iter().map(|(k, v)| [k.clone(), v.clone(), crate::sample::TUNABLES.iter().find(|(n, _)| n == k).map_or("", |(_, d)| *d).to_owned()]).collect(),
+    );
+    let columns = vec![Column::new("Setting", 230.0), Column::new("Value", 100.0), Column::new("What it does", 320.0)];
+    let (list_cells, open_cells, menu_cells) = (cells.clone(), cells.clone(), cells.clone());
+    let (opened, menued) = (me.clone(), me.clone());
+    let list = ColumnListView::new("activity-tunables", &app.tunables_list, columns, cells.len(), move |cell, window, cx| {
+        if let Some(row) = list_cells.get(cell.row) {
+            cell.text(window, cx, row[cell.column].clone());
+        }
+    })
+    .on_open(move |row, _, cx| {
+        if let Some(cl) = open_cells.get(row) {
+            let name = cl[0].clone();
+            opened.update(cx, |a, cx| a.tune(&name, cx));
+        }
+    })
+    .on_context(move |row, at, window, cx| {
+        let Some(cl) = menu_cells.get(row) else { return };
+        let to = menued.clone();
+        menu::context_menu(window, cx, Menu::new("").item("Change…", format!("tune:{}", cl[0])), at, move |cmd, window, cx| to.update(cx, |a, cx| a.command(cmd, Some(window), cx)));
+    });
+    out.push(Card::new("tuning", "Tuning").caption(caption).child(div().h(px(list_h)).flex().flex_col().child(div().flex_1().min_h_0().flex().flex_col().child(list))).into_any_element());
+    out
 }
 
 // ---- Graphs ----------------------------------------------------------
 
 /// Haiku's ActivityMonitor: graphs of whatever you choose (right-click a
-/// graph to choose; add and remove graphs).
-fn graphs(app: &mut Activity, cx: &mut Cx, ui: &mut Ui, area: Rect) {
-    let p = style::palette(ui.ctx());
-    let n = app.settings.views.len().max(1);
-    let legends: Vec<Vec<LegendItem>> = app
-        .settings
-        .views
-        .iter()
-        .map(|v| {
-            v.iter()
-                .filter_map(|k| {
-                    let i = app.source(k)?;
-                    Some(LegendItem { color: c(p.hue(app.sources[i].color)), name: &app.sources[i].name, value: value(app, k) })
-                })
-                .collect()
-        })
-        .collect();
-    let inner_w = area.width() - 2.0 * m::CARD_INSET;
-    let lhs: Vec<f32> = legends.iter().map(|l| legend_height(ui, inner_w, l).max(dashboard::FACT_ROW)).collect();
-    // Untitled cards: the graph and its legend, inset.
-    let card_h = |graph: f32, lh: f32| 2.0 * m::CARD_INSET + graph + m::TIGHT + lh;
-    let fixed: f32 = lhs.iter().map(|lh| card_h(0.0, *lh)).sum::<f32>() + (n - 1) as f32 * GAP;
-    let graph_h = ((area.height() - fixed) / n as f32).max(48.0).floor();
-    let mut y = area.top();
-    let mut chosen = None;
-    let views = app.settings.views.clone();
-    for (v, keys) in views.iter().enumerate() {
-        let h = card_h(graph_h, lhs[v]);
-        let r = Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h));
-        y += h + GAP;
-        style::card(ui.painter(), r, &p, false, false);
-        let content = r.shrink(m::CARD_INSET);
-        let g = Rect::from_min_size(content.min, vec2(content.width(), graph_h));
-        // Each source scaled to its own range (its fixed top, or what it
-        // shows), so CPU and memory share a graph.
-        let span = app.settings.span as f64;
-        let now = app.now();
-        let picked: Vec<usize> = keys.iter().filter_map(|k| app.source(k)).collect();
-        let formats: Vec<Box<dyn Fn(f64) -> String>> = picked.iter().map(|&i| {
-            let unit = app.sources[i].unit;
-            Box::new(move |x: f64| unit.format(x)) as Box<dyn Fn(f64) -> String>
-        }).collect();
-        let s: Vec<Series> = picked
+/// graph to choose; add and remove graphs), sharing the window's height
+/// (each card's graph as tall as the others').
+fn graphs(app: &Activity, me: &Me, inner: f32, cx: &App) -> AnyElement {
+    let p = theme::palette(cx);
+    let span = app.settings.span as f64;
+    let now = app.now();
+    let mut col = div().flex().flex_col().gap(px(GAP)).p(px(GAP)).size_full().bg(c(dashboard::gutter(&p)));
+    for (v, keys) in app.settings.views.iter().enumerate() {
+        let items: Vec<LegendItem> = keys
             .iter()
-            .zip(&formats)
-            .map(|(&i, f)| {
-                let src = &app.sources[i];
-                let seen = app.history[i].iter().filter(|(t, _)| *t >= now - span).map(|(_, v)| *v).filter(|v| v.is_finite()).fold(0.0, f64::max);
-                Series::new(&src.name, c(p.hue(src.color)), &app.history[i]).top(src.max.unwrap_or_else(|| olo_kit::graph::nice_ceiling(seen))).format(f.as_ref())
+            .filter_map(|k| {
+                let i = app.source(k)?;
+                Some(LegendItem { color: c(p.hue(app.sources[i].color)), name: app.sources[i].name.clone().into(), value: value(app, k).into() })
             })
             .collect();
-        let resp = Graph::new(("view", v), &s, now).span(span).grid(grid_for(app.settings.span)).smooth(app.settings.smooth).plain().show(ui, g);
-        legend(ui, Rect::from_min_size(pos2(content.left(), g.bottom() + m::TIGHT), vec2(content.width(), lhs[v])), &legends[v]);
-        let whole = ui.interact(r, Id::unique(("activity-view", v)), Sense::click());
-        let menu = view_menu(app, v);
-        for resp in [resp.response, Some(whole)].into_iter().flatten() {
-            if let Some(cmd) = widgets::context_menu(&resp, || menu.clone()) {
-                chosen = Some(cmd);
-            }
-        }
+        let lh = legend_height(cx, inner, &items).max(FACT_ROW);
+        // Each source scaled to its own range (its fixed top, or what it
+        // shows), so CPU and memory share a graph.
+        let s: Vec<Series> = keys
+            .iter()
+            .filter_map(|k| app.source(k))
+            .map(|i| {
+                let src = &app.sources[i];
+                let unit = src.unit;
+                let seen = app.history[i].iter().filter(|(t, _)| *t >= now - span).map(|(_, v)| *v).filter(|v| v.is_finite()).fold(0.0, f64::max);
+                Series::new(src.name.clone(), c(p.hue(src.color)), app.history[i].clone()).top(src.max.unwrap_or_else(|| nice_ceiling(seen))).format(move |x| unit.format(x))
+            })
+            .collect();
+        let g = Graph::new(SharedString::from(format!("activity-view-{v}")), s, now).span(span).grid(grid_for(app.settings.span)).smooth(app.settings.smooth).plain();
+        let menu_me = me.clone();
+        let card = canvas(|_, _, _| {}, |b, _, window, cx| style::card(window, b, &theme::palette(cx), false, false)).absolute().inset_0();
+        // (Untitled cards: what isn't graph is the same in each, so the
+        // room left is shared evenly between the graphs.)
+        let fixed = 2.0 * m::CARD_INSET + m::TIGHT + lh;
+        col = col.child(
+            div()
+                .id(SharedString::from(format!("activity-view-card-{v}")))
+                .relative()
+                .flex()
+                .flex_col()
+                .flex_grow()
+                .flex_basis(px(fixed))
+                .min_h(px(fixed + 48.0))
+                .p(px(m::CARD_INSET))
+                .on_mouse_down(MouseButton::Right, move |e: &MouseDownEvent, window, cx| {
+                    let menu = view_menu(menu_me.read(cx), v);
+                    let to = menu_me.clone();
+                    menu::context_menu(window, cx, menu, e.position, move |cmd, window, cx| to.update(cx, |a, cx| a.command(cmd, Some(window), cx)));
+                })
+                .child(card)
+                .child(div().flex_1().min_h_0().child(g.on_layer(&app.shelf)))
+                .child(div().h(px(m::TIGHT)).flex_shrink_0())
+                .child(legend_el(items, inner, cx)),
+        );
     }
-    if let Some(cmd) = chosen {
-        app.command(cx, None, &cmd);
-    }
+    col.into_any_element()
 }
 
 /// The context menu of graph `v`: every source, by what it's about.
 fn view_menu(app: &Activity, v: usize) -> Menu {
     let shown = &app.settings.views[v];
-    let item = |menu: Menu, s: &crate::sample::Source| menu.item(s.name.clone(), format!("toggle:{v}:{}", s.key), None).checked(shown.contains(&s.key));
+    let item = |menu: Menu, s: &crate::sample::Source| menu.item(s.name.clone(), format!("toggle:{v}:{}", s.key)).checked(shown.contains(&s.key));
     let mut menu = Menu::new("");
     let groups = [
         (Group::Cpus, "Processors"),
@@ -1097,23 +1181,7 @@ fn view_menu(app: &Activity, v: usize) -> Menu {
             menu = menu.submenu(sub);
         }
     }
-    menu.separator().item("Add Graph", "add-graph", None).item("Remove Graph", format!("remove-graph:{v}"), None).enabled(app.settings.views.len() > 1)
-}
-
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn durations() {
-        assert_eq!(duration(42.0), "42 seconds");
-        assert_eq!(duration(61.0), "1 minute");
-        assert_eq!(duration(3.0 * 3600.0 + 120.0), "3 hours, 2 minutes");
-        assert_eq!(duration(2.0 * 86400.0 + 3600.0), "2 days, 1 hour");
-        assert_eq!(ghz(2424.0), "2.42 GHz");
-        assert_eq!(grid_for(300), 60.0);
-    }
+    menu.separator().item("Add Graph", "add-graph").item("Remove Graph", format!("remove-graph:{v}")).enabled(app.settings.views.len() > 1)
 }
 
 /// What the supervisor is asked to change (on a worker: its settings
@@ -1128,7 +1196,7 @@ pub enum Supervise {
 /// worker (the supervisor follows it).
 pub fn supervise(change: Supervise) {
     if let Supervise::Preferences = change {
-        if let Err(e) = olo_kit::spawn_detached("olo-preferences performance") {
+        if let Err(e) = olo_xdg::spawn_detached("olo-preferences performance") {
             tracing::warn!("activity: can't open Preferences: {e}");
         }
         return;
@@ -1146,149 +1214,128 @@ pub fn supervise(change: Supervise) {
     });
 }
 
-/// A paragraph wrapped to `width`: its galley.
-fn paragraph(ui: &Ui, text: &str, width: f32, color: Color32) -> std::sync::Arc<egui::Galley> {
-    ui.painter().layout(text.to_owned(), style::plain_font(), color, width)
+/// Buttons in a row that wraps (`button_flow`'s).
+fn buttons(row: Vec<Button>) -> AnyElement {
+    div().flex().flex_row().flex_wrap().gap(px(m::SPACING)).children(row).into_any_element()
 }
 
 /// The supervisor (Preferences ▸ Performance): whether it's on and what
 /// it favours; each finding with how sure it is, why, and what can be
 /// done; what it lowered; what it did lately.
-fn supervisor(app: &mut Activity, ui: &mut Ui, area: Rect, todo: &mut Vec<Todo>) -> f32 {
-    let p = style::palette(ui.ctx());
+fn supervisor(app: &Activity, me: &Me, cx: &App) -> Vec<AnyElement> {
+    let p = theme::palette(cx);
     let ink = style::card_ink(&p);
     let st = app.supervisor.clone();
-    let mut y = area.top();
-    let inner_w = area.width() - 2.0 * m::CARD_INSET;
+    let mut out = Vec::new();
 
     // On or off, and what it favours.
     let urgent = st.urgent();
     let favoured = st.favoured.as_ref().map_or_else(|| "—".to_owned(), |(pid, app_id)| format!("{app_id} ({pid})"));
-    let rows: Vec<(&str, String)> = if st.running {
+    let rows: Vec<(String, String)> = if st.running {
         vec![
-            ("Favoured", favoured),
-            ("Lowered", match st.lowered.len() {
-                0 => "Nothing".to_owned(),
-                1 => "1 process".to_owned(),
-                n => format!("{n} processes"),
-            }),
-            ("Memory free", format!("{:.0}%", st.memory_available)),
-            ("Memory stalls", format!("{:.0}%", st.memory_stall)),
+            ("Favoured".into(), favoured),
+            (
+                "Lowered".into(),
+                match st.lowered.len() {
+                    0 => "Nothing".to_owned(),
+                    1 => "1 process".to_owned(),
+                    n => format!("{n} processes"),
+                },
+            ),
+            ("Memory free".into(), format!("{:.0}%", st.memory_available)),
+            ("Memory stalls".into(), format!("{:.0}%", st.memory_stall)),
         ]
     } else {
         Vec::new()
     };
-    let rr: Vec<(&str, &str)> = rows.iter().map(|(a, b)| (*a, b.as_str())).collect();
     let about = if st.running {
         "Builds and other background work are lowered so the active window’s app and Olo itself stay quick; stuck processes, leaks and memory hogs are watched for."
     } else {
         "Off. Turned on, it lowers builds and other background work so the active window’s app and Olo itself stay quick, and watches for stuck processes, leaks and memory hogs."
     };
-    let about_g = paragraph(ui, about, inner_w, ink.dim);
-    let fh = if rr.is_empty() { 0.0 } else { dashboard::facts_height(rr.len().div_ceil(2)) + m::SPACING };
-    let labels = [if st.running { "Turn Off" } else { "Turn On" }, "Performance Preferences…"];
-    let (_, bh) = widgets::button_flow(ui.ctx(), Pos2::ZERO, inner_w, &labels);
-    let h = Card::height(about_g.size().y + m::SPACING + fh + bh, true);
-    let figure = if st.running { "On" } else { "Off" };
+    let figure_text = if st.running { "On" } else { "Off" };
     let caption = match (st.running, urgent, st.findings.len()) {
         (false, ..) => String::new(),
         (true, 0, 0) => "Nothing found".to_owned(),
         (true, 0, n) => format!("{n} finding{}", if n == 1 { "" } else { "s" }),
         (true, u, n) => format!("{n} finding{}, {u} urgent", if n == 1 { "" } else { "s" }),
     };
-    let card = Card::new("Supervisor").figure(figure).caption(&caption).show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
-    let mut cy = card.content.top();
-    ui.painter().galley(pos2(card.content.left(), cy), about_g.clone(), ink.dim);
-    style::describe_text(ui.ctx(), egui::accesskit::Role::Label, about, Rect::from_min_size(pos2(card.content.left(), cy), about_g.size()), None);
-    cy += about_g.size().y + m::SPACING;
-    if !rr.is_empty() {
-        facts_two(ui, Rect::from_min_size(pos2(card.content.left(), cy), vec2(card.content.width(), fh)), &rr);
-        cy += fh;
+    let mut card = Card::new("supervisor", "Supervisor").figure(figure_text).caption(caption).child(para(about, ink.dim)).child(div().h(px(m::SPACING)));
+    if !rows.is_empty() {
+        card = card.child(facts_two(rows)).child(div().h(px(m::SPACING)));
     }
-    let (rects, _) = widgets::button_flow(ui.ctx(), pos2(card.content.left(), cy), card.content.width(), &labels);
-    if ui.put(rects[0], Button::new(labels[0])).clicked() {
-        todo.push(Todo::Supervise(Supervise::On(!st.running)));
-    }
-    if ui.put(rects[1], Button::new(labels[1])).clicked() {
-        todo.push(Todo::Supervise(Supervise::Preferences));
-    }
-    y += h + GAP;
+    let on = st.running;
+    card = card.child(buttons(vec![
+        Button::new(if st.running { "Turn Off" } else { "Turn On" }).on_click(move |_, _| supervise(Supervise::On(!on))),
+        Button::new("Performance Preferences…").on_click(|_, _| supervise(Supervise::Preferences)),
+    ]));
+    out.push(card.into_any_element());
 
     // Each finding: why, how sure, and what to do.
     for f in &st.findings {
-        let summary = paragraph(ui, &f.summary, inner_w, ink.text);
-        let evidence: Vec<String> = f.evidence.iter().map(|e| format!("•  {e}")).collect();
-        let lines: Vec<_> = evidence.iter().map(|e| paragraph(ui, e, inner_w, ink.dim)).collect();
-        let lines_h: f32 = lines.iter().map(|g| g.size().y).sum();
-        const LABELS: [&str; 3] = ["Inspect", "Stop Process", "Ignore This Process"];
-        let (_, bh) = widgets::button_flow(ui.ctx(), Pos2::ZERO, inner_w, &LABELS);
-        let h = Card::height(summary.size().y + m::TIGHT + lines_h + m::SPACING + bh, true);
         let title = format!("{}: {}", f.kind.title(), f.name);
-        let figure = format!("{:.0}% sure", f.confidence * 100.0);
         let since = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(f.since);
         let ago = std::time::SystemTime::now().duration_since(since).map(|d| d.as_secs_f64()).unwrap_or(0.0);
         let caption = format!("{}pid {} · found {} ago", if f.urgent { "Urgent · " } else { "" }, f.pid, duration(ago));
         let alarm = c(if f.urgent { p.failure } else { p.warning });
-        let card = Card::new(&title).figure(&figure).figure_ink(alarm).caption(&caption).show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
-        let mut cy = card.content.top();
-        ui.painter().galley(pos2(card.content.left(), cy), summary.clone(), ink.text);
-        style::describe_text(ui.ctx(), egui::accesskit::Role::Label, &f.summary, Rect::from_min_size(pos2(card.content.left(), cy), summary.size()), None);
-        cy += summary.size().y + m::TIGHT;
-        for (g, text) in lines.iter().zip(&evidence) {
-            ui.painter().galley(pos2(card.content.left(), cy), g.clone(), ink.dim);
-            style::describe_text(ui.ctx(), egui::accesskit::Role::Label, text, Rect::from_min_size(pos2(card.content.left(), cy), g.size()), None);
-            cy += g.size().y;
+        let mut card = Card::new(format!("finding-{}-{}", f.pid, f.kind as u8), title).figure(format!("{:.0}% sure", f.confidence * 100.0)).figure_ink(alarm).caption(caption).child(para(f.summary.clone(), ink.text)).child(div().h(px(m::TIGHT)));
+        for e in &f.evidence {
+            card = card.child(para(format!("•  {e}"), ink.dim));
         }
-        cy += m::SPACING;
-        let (rects, _) = widgets::button_flow(ui.ctx(), pos2(card.content.left(), cy), card.content.width(), &LABELS);
-        for (i, (r, label)) in rects.into_iter().zip(LABELS).enumerate() {
-            if ui.push_id((i, f.pid, f.kind as u8), |ui| ui.put(r, Button::new(label)).clicked()).inner {
-                todo.push(match i {
-                    0 => Todo::Inspect(f.pid),
-                    1 => Todo::Act(Action::Signal { pid: f.pid, signal: libc::SIGTERM }),
-                    _ => Todo::Supervise(Supervise::Ignore(f.name.clone())),
-                });
-            }
-        }
-        y += h + GAP;
+        let (pid, name) = (f.pid, f.name.clone());
+        let (inspect, stop) = (me.clone(), me.clone());
+        card = card.child(div().h(px(m::SPACING))).child(buttons(vec![
+            Button::new("Inspect").id(format!("finding-inspect-{pid}")).on_click(move |_, cx| inspect.update(cx, |a, cx| a.inspect_at(pid, crate::inspector::SUPERVISOR_TAB, cx))),
+            Button::new("Stop Process").id(format!("finding-stop-{pid}")).on_click(move |_, cx| stop.update(cx, |a, cx| a.act(Action::Signal { pid, signal: libc::SIGTERM }, cx))),
+            Button::new("Ignore This Process").id(format!("finding-ignore-{pid}")).on_click(move |_, _| supervise(Supervise::Ignore(name.clone()))),
+        ]));
+        out.push(card.into_any_element());
     }
 
     // What it lowered.
     if st.running && !st.lowered.is_empty() {
         const SHOWN: usize = 12;
         // Each wrapped: what it is, then what was done and why.
-        let mut texts: Vec<String> = st
-            .lowered
-            .iter()
-            .take(SHOWN)
-            .map(|l| format!("{} ({}): nice {} → {}, {} scheduling, {} I/O, as {}", l.name, l.pid, l.nice_before, l.nice, l.policy, l.io, l.why))
-            .collect();
+        let mut card = Card::new("lowered", "Lowered").caption("Background work, so the rest stays quick");
+        for l in st.lowered.iter().take(SHOWN) {
+            card = card.child(para(format!("{} ({}): nice {} → {}, {} scheduling, {} I/O, as {}", l.name, l.pid, l.nice_before, l.nice, l.policy, l.io, l.why), ink.text));
+        }
         let more = st.lowered.len().saturating_sub(SHOWN);
         if more > 0 {
-            texts.push(format!("And {more} more"));
+            card = card.child(para(format!("And {more} more"), ink.text));
         }
-        let lines: Vec<_> = texts.iter().map(|t| paragraph(ui, t, inner_w, ink.text)).collect();
-        let h = Card::height(lines.iter().map(|g| g.size().y).sum(), true);
-        let card = Card::new("Lowered").caption("Background work, so the rest stays quick").show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
-        let mut cy = card.content.top();
-        for (g, text) in lines.into_iter().zip(&texts) {
-            let r = Rect::from_min_size(pos2(card.content.left(), cy), g.size());
-            style::describe_text(ui.ctx(), egui::accesskit::Role::Label, text, r, None);
-            cy += g.size().y;
-            ui.painter().galley(r.min, g, ink.text);
-        }
-        y += h + GAP;
+        out.push(card.into_any_element());
     }
 
     // What it did lately, newest first.
     if !st.log.is_empty() {
         const SHOWN: usize = 12;
         let rows: Vec<(String, String)> = st.log.iter().rev().take(SHOWN).map(|e| (clock(e.at as f64), e.text.clone())).collect();
-        let rr: Vec<(&str, &str)> = rows.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
-        let h = Card::height(dashboard::facts_height(rr.len()), false);
-        let card = Card::new("Lately").show(ui, Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), h)));
-        facts(ui, card.content, &rr);
-        y += h + GAP;
+        out.push(Card::new("lately", "Lately").child(facts(rows)).into_any_element());
     }
-    y - area.top() - GAP
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn durations() {
+        assert_eq!(duration(42.0), "42 seconds");
+        assert_eq!(duration(61.0), "1 minute");
+        assert_eq!(duration(3.0 * 3600.0 + 120.0), "3 hours, 2 minutes");
+        assert_eq!(duration(2.0 * 86400.0 + 3600.0), "2 days, 1 hour");
+        assert_eq!(ghz(2424.0), "2.42 GHz");
+        assert_eq!(grid_for(300), 60.0);
+    }
+
+    #[test]
+    fn columns_fit() {
+        let w = columns(800.0, 6, 250.0, 3);
+        assert_eq!(w.len(), 3);
+        assert_eq!(w.iter().sum::<f32>() + 2.0 * GAP, 800.0);
+        assert_eq!(columns(400.0, 6, 250.0, 3).len(), 1);
+        assert_eq!(columns(800.0, 2, 250.0, 3).len(), 2);
+    }
 }

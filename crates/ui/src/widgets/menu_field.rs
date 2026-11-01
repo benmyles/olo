@@ -16,6 +16,7 @@ type OnChange = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 pub struct MenuField {
     id: SharedString,
     label: Option<SharedString>,
+    quiet: bool,
     divider: Option<f32>,
     options: Vec<SharedString>,
     selected: usize,
@@ -26,11 +27,18 @@ pub struct MenuField {
 
 impl MenuField {
     pub fn new(id: impl Into<SharedString>, options: Vec<SharedString>, selected: usize) -> MenuField {
-        MenuField { id: id.into(), label: None, divider: None, options, selected, width: None, enabled: true, on_change: None }
+        MenuField { id: id.into(), label: None, quiet: false, divider: None, options, selected, width: None, enabled: true, on_change: None }
     }
 
     pub fn label(mut self, label: impl Into<SharedString>) -> Self {
         self.label = Some(label.into());
+        self
+    }
+
+    /// Its label quiet, as facts' are (a field set among them, its
+    /// choice on their values' line with [`Self::divider`]).
+    pub fn quiet_label(mut self) -> Self {
+        self.quiet = true;
         self
     }
 
@@ -72,10 +80,12 @@ impl RenderOnce for MenuField {
         let (options, selected, on_change) = (self.options.clone(), self.selected, self.on_change.clone());
         let id = self.id.clone();
         let shown = current.clone();
+        let quiet = self.quiet;
         control(self.id.clone(), width, m::CONTROL_HEIGHT, move |r, s, window, cx| {
             let p = theme::palette(cx);
             let color = if s.enabled { style::c(p.panel_text) } else { style::disabled_text(&p) };
-            let named = label.as_ref().map(|l| style::label(window, cx, r.left(), r.center().y, style::Align::Left, l.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color));
+            let label_color = if quiet || !s.enabled { style::disabled_text(&p) } else { color };
+            let named = label.as_ref().map(|l| style::label(window, cx, r.left(), r.center().y, style::Align::Left, l.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), label_color));
             let field = field_bounds(r, label_w);
             // A raised field with a drop-down mark.
             let base = p.menu_background;

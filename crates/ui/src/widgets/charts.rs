@@ -13,10 +13,10 @@
 //! sunken wells, as Pulse's LED meters on BeOS: a heatmap of things going
 //! on. [`legend`] lays out swatches, names and values in rows.
 
-use std::{collections::VecDeque, rc::Rc, time::Duration};
+use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 use gpui::{
-    App, Bounds, Entity, FontWeight, HitboxBehavior, Hsla, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, PathBuilder, Pixels, Point, RenderOnce, SharedString, Styled as _, Task, Window, canvas, point, px, size,
+    App, Bounds, Context, Entity, FontWeight, HitboxBehavior, Hsla, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, Point, Render, RenderOnce, SharedString, Styled as _, Window, canvas, point, px, size,
 };
 use olo_kit_base::metrics as m;
 
@@ -91,12 +91,11 @@ fn ago(seconds: f64) -> String {
     }
 }
 
-/// A graph's state from frame to frame: the pointer over it, and the
-/// frame asked for when its samples will have moved a device pixel.
+/// A graph's state from frame to frame: the pointer over it, and how
+/// far its samples move in a device pixel.
 #[derive(Default)]
 struct GraphState {
     hover: Option<Point<Pixels>>,
-    next: Option<Task<()>>,
     /// Seconds a device pixel stands for, as last drawn.
     per_pixel: f64,
 }
@@ -104,7 +103,7 @@ struct GraphState {
 type TimeFn = Rc<dyn Fn(f64, &mut Window, &mut App)>;
 
 /// A live graph of [`Series`]; it fills the box it's given.
-#[derive(IntoElement)]
+#[derive(Clone, IntoElement)]
 pub struct Graph {
     id: SharedString,
     series: Rc<[Series]>,
@@ -175,26 +174,92 @@ impl Graph {
         self.on_hover = Some(Rc::new(f));
         self
     }
+
+    /// At another time (a [`GraphLayer`]'s now).
+    pub fn at(mut self, now: f64) -> Self {
+        self.now = now;
+        self
+    }
+
+    /// Drawn on `shelf`'s [`GraphLayer`], not here: this keeps its place
+    /// (filling the box it's given, as the graph would) and says where it
+    /// is, and what it's clipped to, as it's laid out.
+    pub fn on_layer(self, shelf: &GraphShelf) -> impl IntoElement {
+        let shelf = shelf.clone();
+        canvas(move |b, window, _| shelf.0.borrow_mut().push(Placed { bounds: b, clip: window.content_mask(), graph: self }), |_, _, _, _| {}).size_full()
+    }
+}
+
+/// Where a view's graphs go on its [`GraphLayer`]: the view puts each
+/// with [`Graph::on_layer`] and empties it as it renders again.
+#[derive(Clone, Default)]
+pub struct GraphShelf(Rc<RefCell<Vec<Placed>>>);
+
+struct Placed {
+    bounds: Bounds<Pixels>,
+    clip: gpui::ContentMask<Pixels>,
+    graph: Graph,
+}
+
+impl GraphShelf {
+    pub fn clear(&self) {
+        self.0.borrow_mut().clear();
+    }
+}
+
+/// Graphs moving over a view that stays still. A graph scrolling a
+/// device pixel at a time otherwise redraws the view it's in each time
+/// (every card, legend and figure of a dashboard: its layout, text and
+/// paint) for the graph alone to move. Put the view under its layer, both
+/// cached (`AnyView::cached`), the view's graphs on the layer's shelf
+/// (`Graph::on_layer`): as the graphs move, only the layer draws again
+/// and the view's last frame is kept. The view lays the graphs out
+/// before the layer draws them (in its prepaint), so moving it (a scroll)
+/// moves them with it. The layer draws each at `now`, and must be told
+/// when the samples change (`cx.notify()`, or observing what has them).
+pub struct GraphLayer {
+    shelf: GraphShelf,
+    now: Rc<dyn Fn(&App) -> f64>,
+}
+
+impl GraphLayer {
+    pub fn new(shelf: GraphShelf, now: impl Fn(&App) -> f64 + 'static) -> GraphLayer {
+        GraphLayer { shelf, now: Rc::new(now) }
+    }
+}
+
+impl Render for GraphLayer {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let (shelf, now) = (self.shelf.clone(), (self.now)(cx));
+        canvas(
+            move |_, window, cx| {
+                let placed: Vec<(gpui::ContentMask<Pixels>, Bounds<Pixels>, Graph)> = shelf.0.borrow().iter().map(|p| (p.clip.clone(), p.bounds, p.graph.clone())).collect();
+                placed
+                    .into_iter()
+                    .map(|(clip, b, graph)| {
+                        let mut el = graph.at(now).into_any_element();
+                        window.with_content_mask(Some(clip.clone()), |window| el.prepaint_as_root(b.origin, b.size.into(), window, cx));
+                        (clip, el)
+                    })
+                    .collect::<Vec<_>>()
+            },
+            |_, graphs, window, cx| {
+                for (clip, mut el) in graphs {
+                    window.with_content_mask(Some(clip), |window| el.paint(window, cx));
+                }
+            },
+        )
+        .size_full()
+    }
 }
 
 impl RenderOnce for Graph {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let state: Entity<GraphState> = window.use_keyed_state(SharedString::from(format!("olo-graph-{}", self.id)), cx, |_, _| GraphState::default());
-        // The next frame when the samples have moved a device pixel: the
-        // smallest step there is, so it's as smooth as it can be (a minute
-        // across 600 pixels is 10 frames a second, not 120 that would draw
-        // the same pixels).
-        if self.smooth && state.read(cx).next.is_none() && state.read(cx).per_pixel > 0.0 {
-            let wait = Duration::from_secs_f64(state.read(cx).per_pixel.clamp(1.0 / 240.0, 1.0));
-            let s = state.clone();
-            let task = cx.spawn(async move |cx| {
-                cx.background_executor().timer(wait).await;
-                let _ = s.update(cx, |st, cx| {
-                    st.next = None;
-                    cx.notify();
-                });
-            });
-            state.update(cx, |st, _| st.next = Some(task));
+        // The next frame when the samples have moved a device pixel.
+        let per_pixel = state.read(cx).per_pixel;
+        if self.smooth && per_pixel > 0.0 {
+            clock::tick_within(window, cx, per_pixel);
         }
         let hover = state.read(cx).hover;
         let Graph { series, now, span, max, unit, grid_seconds, well, on_click, on_hover, .. } = self;
@@ -221,79 +286,74 @@ impl RenderOnce for Graph {
                     (None, None) => format!("{v:.1}"),
                 };
                 window.with_content_mask(Some(gpui::ContentMask { bounds: inner }), |window| {
-                    // The grid: quarters across, and a time line every so
-                    // often that moves with the samples.
-                    let grid = style::c(olo_theme::mix(p.document_text, p.document_background, 0.9));
-                    for k in 1..4 {
-                        style::hline(window, inner.left(), inner.right(), inner.top() + inner.size.height * (k as f32 / 4.0), grid);
-                    }
-                    if !well {
-                        let base = style::c(olo_theme::mix(p.document_text, p.document_background, 0.75));
-                        style::hline_above(window, inner.left(), inner.right(), inner.bottom(), base);
-                    }
-                    let mut t = (now / grid_seconds).floor() * grid_seconds;
-                    while t > now - span {
-                        style::vline(window, x_of(t), inner.top(), inner.bottom(), grid);
-                        t -= grid_seconds;
-                    }
-                    // The top: fixed, or the nice number over what shows.
-                    let shown = |series: &Series| series.samples.iter().filter(|(t, _)| *t >= now - span).map(|(_, v)| *v).filter(|v| v.is_finite()).fold(0.0f64, f64::max);
-                    let top = max.unwrap_or_else(|| nice_ceiling(series.iter().filter(|s| s.top.is_none()).map(shown).fold(0.0, f64::max)));
-                    for line in series.iter() {
-                        let top = line.top.unwrap_or(top);
-                        let h = f32::from(inner.size.height);
-                        let y_of = |v: f64| inner.bottom() - px(1.5 + (v / top).clamp(0.0, 1.0) as f32 * (h - 3.0));
-                        // At most a point a device pixel: past that a line
-                        // only frays.
-                        let mut runs: Vec<Vec<Point<Pixels>>> = vec![Vec::new()];
-                        let mut last_col = i64::MIN;
-                        let start = line.samples.partition_point(|(t, _)| *t < now - span).saturating_sub(1);
-                        for &(t, v) in line.samples.iter().skip(start) {
-                            if !v.is_finite() {
-                                runs.push(Vec::new());
-                                continue;
-                            }
-                            let x = x_of(t);
-                            let col = (f32::from(x) * s) as i64;
-                            let pt = point(x, y_of(v));
-                            let run = runs.last_mut().expect("a run");
-                            if col == last_col && !run.is_empty() {
-                                // Keep the highest of a column (peaks show).
-                                let last = run.last_mut().expect("a point");
-                                if pt.y < last.y {
-                                    last.y = pt.y;
-                                }
-                            } else {
-                                run.push(pt);
-                            }
-                            last_col = col;
+                    // The grid, the fills and the lines in one layer: one
+                    // place in the scene's order for all of them rather
+                    // than one each, found among everything drawn before
+                    // (in a layer, quads go under paths under segments).
+                    window.paint_layer(inner, |window| {
+                        // The grid: quarters across, and a time line every so
+                        // often that moves with the samples.
+                        let grid = style::c(olo_theme::mix(p.document_text, p.document_background, 0.9));
+                        for k in 1..4 {
+                            style::hline(window, inner.left(), inner.right(), inner.top() + inner.size.height * (k as f32 / 4.0), grid);
                         }
-                        let runs: Vec<_> = runs.into_iter().filter(|r| r.len() > 1).collect();
-                        if line.fill {
-                            for run in &runs {
-                                let mut path = PathBuilder::fill();
-                                path.move_to(point(run[0].x, inner.bottom()));
-                                for pt in run {
-                                    path.line_to(*pt);
+                        if !well {
+                            let base = style::c(olo_theme::mix(p.document_text, p.document_background, 0.75));
+                            style::hline_above(window, inner.left(), inner.right(), inner.bottom(), base);
+                        }
+                        let mut t = (now / grid_seconds).floor() * grid_seconds;
+                        while t > now - span {
+                            style::vline(window, x_of(t), inner.top(), inner.bottom(), grid);
+                            t -= grid_seconds;
+                        }
+                        // The top: fixed, or the nice number over what shows.
+                        let shown = |series: &Series| series.samples.iter().filter(|(t, _)| *t >= now - span).map(|(_, v)| *v).filter(|v| v.is_finite()).fold(0.0f64, f64::max);
+                        let top = max.unwrap_or_else(|| nice_ceiling(series.iter().filter(|s| s.top.is_none()).map(shown).fold(0.0, f64::max)));
+                        for line in series.iter() {
+                            let top = line.top.unwrap_or(top);
+                            let h = f32::from(inner.size.height);
+                            let y_of = |v: f64| inner.bottom() - px(1.5 + (v / top).clamp(0.0, 1.0) as f32 * (h - 3.0));
+                            // At most a point a device pixel: past that a line
+                            // only frays.
+                            let mut runs: Vec<Vec<Point<Pixels>>> = vec![Vec::new()];
+                            let mut last_col = i64::MIN;
+                            let start = line.samples.partition_point(|(t, _)| *t < now - span).saturating_sub(1);
+                            for &(t, v) in line.samples.iter().skip(start) {
+                                if !v.is_finite() {
+                                    runs.push(Vec::new());
+                                    continue;
                                 }
-                                path.line_to(point(run[run.len() - 1].x, inner.bottom()));
-                                path.close();
-                                if let Ok(path) = path.build() {
-                                    window.paint_path(path, line.color.opacity(40.0 / 255.0));
+                                let x = x_of(t);
+                                let col = (f32::from(x) * s) as i64;
+                                let pt = point(x, y_of(v));
+                                let run = runs.last_mut().expect("a run");
+                                if col == last_col && !run.is_empty() {
+                                    // Keep the highest of a column (peaks show).
+                                    let last = run.last_mut().expect("a point");
+                                    if pt.y < last.y {
+                                        last.y = pt.y;
+                                    }
+                                } else {
+                                    run.push(pt);
+                                }
+                                last_col = col;
+                            }
+                            let runs: Vec<_> = runs.into_iter().filter(|r| r.len() > 1).collect();
+                            if line.fill {
+                                let under = line.color.opacity(40.0 / 255.0);
+                                for run in &runs {
+                                    for w in run.windows(2) {
+                                        window.paint_area(w[0], w[1], inner.bottom(), under);
+                                    }
                                 }
                             }
-                        }
-                        // The line's segments in a layer: one place in the
-                        // scene's order for them all rather than one each
-                        // (over the fill, which is drawn before it).
-                        window.paint_layer(inner, |window| {
                             for run in &runs {
                                 for w in run.windows(2) {
                                     window.paint_segment(w[0], w[1], px(1.5), true, line.color);
                                 }
                             }
-                        });
-                    }
+                        }
+                    });
                     // Hovering: the time under the pointer and each value
                     // then.
                     if let Some(pos) = hover.filter(|pos| inner.contains(pos)) {
@@ -328,12 +388,81 @@ impl RenderOnce for Graph {
                     window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
                         if phase.bubble() && e.button == MouseButton::Left && hitbox.is_hovered(window) && inner.contains(&e.position) {
                             f(time_at(e.position.x), window, cx);
+                            // (Its own: not the card's it's on too.)
+                            cx.stop_propagation();
                         }
                     });
                 }
             },
         )
         .size_full()
+    }
+}
+
+/// When a window's graphs move: one clock for all of them, so they move
+/// together. Each graph drawn says how often its samples move a device
+/// pixel; the clock ticks at the finest of those (a minute across 600
+/// pixels is 10 frames a second, not 120 that would draw the same
+/// pixels), and each tick redraws the views that have graphs. Graphs of
+/// many sizes ticking on their own made a frame for each (twelve small
+/// ones and a large one: twice the frames, all but the large one's
+/// moving nothing a pixel). Once no graph is drawn, it stops.
+mod clock {
+    use std::{collections::HashMap, time::Duration};
+
+    use gpui::{App, EntityId, Global, Task, Window, WindowId};
+
+    struct Clock {
+        /// The finest step of the graphs drawn before the last tick, and
+        /// since.
+        pace: f64,
+        finest: f64,
+        /// The views drawn with graphs since the last tick.
+        views: Vec<EntityId>,
+        next: Option<Task<()>>,
+    }
+
+    #[derive(Default)]
+    struct Clocks(HashMap<WindowId, Clock>);
+
+    impl Global for Clocks {}
+
+    /// A graph is being drawn whose samples move a device pixel every
+    /// `per_pixel` seconds.
+    pub fn tick_within(window: &mut Window, cx: &mut App, per_pixel: f64) {
+        let (id, view) = (window.window_handle().window_id(), window.current_view());
+        let clock = cx.default_global::<Clocks>().0.entry(id).or_insert_with(|| Clock { pace: f64::MAX, finest: f64::MAX, views: Vec::new(), next: None });
+        clock.finest = clock.finest.min(per_pixel);
+        if !clock.views.contains(&view) {
+            clock.views.push(view);
+        }
+        if clock.next.is_some() {
+            return;
+        }
+        let wait = Duration::from_secs_f64(clock.pace.min(clock.finest).clamp(1.0 / 240.0, 1.0));
+        let task = cx.spawn(async move |cx| {
+            cx.background_executor().timer(wait).await;
+            let _ = cx.update(|cx| tick(id, cx));
+        });
+        if let Some(clock) = cx.default_global::<Clocks>().0.get_mut(&id) {
+            clock.next = Some(task);
+        }
+    }
+
+    fn tick(id: WindowId, cx: &mut App) {
+        let clocks = &mut cx.default_global::<Clocks>().0;
+        let Some(clock) = clocks.get_mut(&id) else { return };
+        clock.next = None;
+        let views = std::mem::take(&mut clock.views);
+        if views.is_empty() {
+            clocks.remove(&id);
+            return;
+        }
+        clock.pace = clock.finest;
+        clock.finest = f64::MAX;
+        for view in views {
+            cx.notify(view);
+        }
     }
 }
 
@@ -509,6 +638,7 @@ impl RenderOnce for CellGrid {
                         }
                         if let Some(i) = wells.iter().take(n).position(|(_, h)| h.is_hovered(window)) {
                             f(i, window, cx);
+                            cx.stop_propagation();
                         }
                     });
                 }
@@ -570,6 +700,9 @@ pub fn legend(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, items: &[Leg
     let text = style::c(p.document_text);
     let dim = text.opacity(0.52);
     let places = legend_places(cx, f32::from(r.size.width), items);
+    // (Its items go where their lengths put them: lined up with what's
+    // above or below only by chance.)
+    crate::review::own_grid(window, r);
     let (plain, bold) = (style::ui_font(FontWeight::NORMAL), style::ui_font(FontWeight::BOLD));
     window.with_content_mask(Some(gpui::ContentMask { bounds: r }), |window| {
         for (it, (x, row)) in items.iter().zip(&places) {
@@ -579,8 +712,10 @@ pub fn legend(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, items: &[Leg
                 let swatch = style::snap_centred(window, point(left + px(SWATCH / 2.0), mid), SWATCH, SWATCH);
                 window.paint_quad(gpui::fill(swatch, it.color).corner_radii(px(2.0)));
             }
-            let name = style::label(window, cx, left + px(swatch_w(it)), mid, style::Align::Left, it.name.clone(), style::DETAIL_SIZE, plain.clone(), dim);
-            style::label(window, cx, name.right() + px(6.0), mid, style::Align::Left, it.value.clone(), style::SMALL_SIZE, bold.clone(), text);
+            // Name and value on one baseline (their sizes differ).
+            let baseline = style::baseline_at(window, mid, style::DETAIL_SIZE);
+            let name = style::label_on_baseline(window, cx, left + px(swatch_w(it)), baseline, style::Align::Left, it.name.clone(), style::DETAIL_SIZE, plain.clone(), dim);
+            style::label_on_baseline(window, cx, name.right() + px(6.0), baseline, style::Align::Left, it.value.clone(), style::SMALL_SIZE, bold.clone(), text);
         }
     });
 }

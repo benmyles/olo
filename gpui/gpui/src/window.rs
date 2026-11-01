@@ -3101,7 +3101,38 @@ impl Window {
             from: a,
             to: b,
             half_width: half,
-            pad: 0,
+            bottom: ScaledPixels(0.0),
+        });
+    }
+
+    /// Olo: paints what's under the line from `from` to `to` (left to
+    /// right), down to `bottom`: a graph's fill, a column of it a
+    /// segment. Drawn on the GPU in one instance, its slanted top
+    /// antialiased by each pixel's distance to the line, and its sides
+    /// taking the pixels whose middles they hold, so areas side by side
+    /// share each pixel once (no seam, nothing drawn twice) — where a path
+    /// would be tessellated, or filled multisampled through textures as
+    /// large as the window.
+    pub fn paint_area(&mut self, from: Point<Pixels>, to: Point<Pixels>, bottom: Pixels, color: Hsla) {
+        self.invalidator.debug_assert_paint();
+        let scale = self.scale_factor();
+        let (a, b, bottom) = (from.scale(scale), to.scale(scale), bottom.scale(scale));
+        if b.x <= a.x {
+            return;
+        }
+        let top = a.y.min(b.y) - ScaledPixels(1.0);
+        let opacity = self.element_opacity();
+        let content_mask = self.content_mask().scale(scale);
+        self.next_frame.scene.insert_primitive(Segment {
+            order: 0,
+            round: 2,
+            bounds: Bounds::from_corners(point(a.x, top), point(b.x, bottom.max(top))),
+            content_mask,
+            color: color.opacity(opacity),
+            from: a,
+            to: b,
+            half_width: ScaledPixels(0.0),
+            bottom,
         });
     }
 

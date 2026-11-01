@@ -276,9 +276,13 @@ struct Handlers {
     /// A row dragged out of the list (Disk Usage's Collector, Tracker).
     drag: Option<RowFn>,
     context: Option<AtFn>,
+    /// A press on a row, before it selects: taken (true) or not.
+    press: Option<PressFn>,
     select: Option<Handler>,
     sort: Option<Handler>,
 }
+
+type PressFn = Rc<dyn Fn(usize, Point<Pixels>, &mut Window, &mut App) -> bool>;
 
 impl Handlers {
     fn selected(&self, window: &mut Window, cx: &mut App) {
@@ -344,6 +348,13 @@ impl ColumnListView {
     /// it); elsewhere a press that moves draws a band.
     pub fn on_drag(mut self, f: impl Fn(usize, &mut Window, &mut App) + 'static) -> Self {
         self.handlers.drag = Some(Rc::new(f));
+        self
+    }
+
+    /// A row pressed (the left button), where: `f` takes it (true: an
+    /// outline's disclosure triangle, say) or leaves it to select.
+    pub fn on_press(mut self, f: impl Fn(usize, Point<Pixels>, &mut Window, &mut App) -> bool + 'static) -> Self {
+        self.handlers.press = Some(Rc::new(f));
         self
     }
 
@@ -529,6 +540,12 @@ impl RenderOnce for ColumnListView {
                             }
                         }
                         MouseButton::Left => {
+                            if let (Some(r), Some(f)) = (row, &h.press)
+                                && f(r, e.position, window, cx)
+                            {
+                                window.refresh();
+                                return;
+                            }
                             let changed = m.update(cx, |m, _| {
                                 let base = m.state.band(mods);
                                 let before = m.state.selected.clone();
@@ -680,7 +697,12 @@ impl RenderOnce for ColumnListView {
                         if let Some((_, ascending)) = sorted {
                             sort_arrow(window, r.right() - px(10.0), style::snap_coord(window, r.center().y), ascending, style::c(p.panel_text));
                         }
-                        agent::record(window, cx, agent::Node { role: "ColumnHeader", name: Some(col.title.clone()), bounds: r.intersect(&shown), enabled: true, clickable: true, selected: Some(sorted.is_some()), ..Default::default() });
+                        // (One scrolled out of view is there, none wide,
+                        // at the view's edge: not to be clicked.)
+                        let seen = r.intersect(&shown);
+                        let seen = Bounds { origin: seen.origin, size: size(seen.size.width.max(px(0.0)), seen.size.height.max(px(0.0))) };
+                        let clickable = seen.size.width > px(0.0);
+                        agent::record(window, cx, agent::Node { role: "ColumnHeader", name: Some(col.title.clone()), bounds: seen, enabled: true, clickable, selected: Some(sorted.is_some()), ..Default::default() });
                     }
                 });
                 // Above the scroll bar: a blank header cell.

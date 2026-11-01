@@ -1217,12 +1217,17 @@ In the GPUI kit (`olo_ui::search`): `search_field(cx, hint)` makes an
 `Entity<SearchField>` (the same field: magnifier, coloured filters through
 `TextField::set_colors`, clear button, suggestions drawn over what's
 below with `deferred`); it says `SearchEvent::Changed` and `Entered`;
-`set_facets(Rc<Vec<Facet>>)`, `set_text` (no event: a bar's choice),
+`set_facets(Rc<Vec<Facet>>)` (drawn again only when the filters or
+their values change, not their counts, which change with every new
+list), `set_text` (no event: a bar's choice),
 `focus` (⌘F, its text selected). Tab and Return take suggestions by
 capturing the field's own actions (`FocusNext`, the field's `Enter`):
 bindings run before key listeners. `FilterBar::new(id, text,
 facets).max_width(w).on_change(|text, window, cx| …)` is the bar as an
-element (`FilterBar::width(cx, text, facets)`); its menus are kit popups.
+element (`FilterBar::width(cx, text, facets)`, about: each menu is
+sized from its text as shaped in the window, and a pixel more, so
+rounding to device pixels never cuts it short); its menus are kit
+popups.
 `search::runs(text, font, color, spans, marks, mark)` makes text runs
 from colour spans and marks (marks are runs' backgrounds),
 `search::highlight` the marks alone.
@@ -1549,7 +1554,10 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   egui kit's `Cx::set_path`.
 - `widgets::TextField`: one line, input methods, selection by keyboard
   and pointer, words, clipboard, undo; the caret a line wide on device
-  pixels, blinking only while it has the keyboard in an active window;
+  pixels, blinking only while it has the keyboard in an active window,
+  and for ten seconds after the last keystroke or click (then it stays:
+  a window left with a field that has the keyboard draws nothing, as
+  GTK's `gtk-cursor-blink-timeout`);
   `TextFieldEvent::Changed` and `Typed`. No frame: callers draw the
   well (`TextControl` does). `set_colors` colours parts of its text from
   the text (a search's filters), `selection`/`set_selection`,
@@ -1580,8 +1588,10 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   `cargo run -p olo-ui --example gallery` beside `-p olo-kit --example
   demo`): `Button` (`default`, `pushed`, `small`, `on_click`),
   `CheckBox` (`mixed`, `on_toggle`), `RadioButton` (`on_select`),
-  `MenuField` (label, divider; its menu opens with the current choice
-  over the field: `menu::popup_over`), `TextControl` (label, divider,
+  `MenuField` (label, divider, `quiet_label`: a field set among facts,
+  its label theirs and its choice on their values' line; its menu opens
+  with the current choice over the field: `menu::popup_over`),
+  `TextControl` (label, divider,
   the sunken well around a `TextField`), `StringView` (`dim`, `bold`),
   `BBox` (etched frame, bold label in its top line, `content_width`),
   `EmptyState` (an icon, a line, a detail and an action button,
@@ -1609,7 +1619,13 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   `style::label` (text), `icons::paint`, `PathBuilder` (filled or stroked
   shapes, small ones with exact coverage), `window.paint_segment`
   (lines of any angle on the GPU, for graphs and strokes:
-  `examples/lines.rs`) and `window.paint_sector` (a ring's slice, a
+  `examples/lines.rs`), `window.paint_area(from, to, bottom, color)`
+  (what's under a segment down to `bottom`, on the GPU in one instance:
+  its slanted top antialiased by distance, its sides taking the pixels
+  whose middles they hold, so a run of them side by side fills under a
+  line with no seam: a graph's fill, where a path would be tessellated
+  each frame and filled multisampled through textures as big as the
+  window, 45 MB of them for Activity Monitor's) and `window.paint_sector` (a ring's slice, a
   pie's, a disc or a circle's outline on the GPU, analytically
   antialiased: charts, dials, round marks). Many lines or slices go in
   a `window.paint_layer(bounds, ..)`: one place in the scene's order for
@@ -1662,14 +1678,18 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   and typing a name (`type_select`) select (`on_select`); a press on a
   selected row keeps the selection until the release (for dragging);
   double click or Return opens (`on_open`); a right click keeps or
-  makes the selection and calls `on_context` with where; a press on a
+  makes the selection and calls `on_context` with where; `on_press`
+  sees a left press first, with the row and where, and takes it by
+  answering true (a tree's disclosure triangle, drawn by the cell: the
+  press opens or closes the row and leaves the selection); a press on a
   selected row, or on a name, that moves three points calls `on_drag`
   with the row (for the app to carry it: DiskUsage's Collector). Columns
   wider together than the view scroll sideways under a horizontal bar.
   `ListModel::reveal(row)` scrolls a row selected in code into the
   middle; `typing()` says a name is being typed (a space is part of
   it). Agents read `Row`s (named by their cells' text, selected or
-  not) and `ColumnHeader`s. `examples/list.rs` is the egui demo's
+  not) and `ColumnHeader`s (one scrolled out of view sideways is none
+  wide at the view's edge, not clickable). `examples/list.rs` is the egui demo's
   Lists tab, for comparing.
 - `style::label_fit` (a label cut short with "…" to a width, measured
   as shaped), `style::selection_band`, `style::selection_wash` (a thing
@@ -1691,9 +1711,21 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   a hover readout, `on_click`/`on_hover` with the time, the next frame
   when the samples have moved a device pixel when `smooth`; agents read
   each series' latest value), `widgets::CellGrid` (Pulse's LED wells,
-  `GridCell`s lit in colours, `on_click` with the cell), and
+  `GridCell`s lit in colours, `on_click` with the cell; a click either
+  takes is its own, not the clickable card's it's on), and
   `widgets::legend`/`legend_height` (swatches, names and values in
-  wrapping rows).
+  wrapping rows, each name and value on one baseline; laid out by their
+  lengths, the review keeps them on a grid of their own, as it does a
+  `TabView`'s tabs). A window's graphs move together on one clock,
+  ticking at the finest step of those drawn (graphs of many sizes each
+  on its own timer drew a frame for each: twice the frames); each
+  graph's grid, fills (`paint_area`) and lines are one layer.
+  `GraphLayer::new(shelf, now)` draws graphs over a view that stays
+  still: the view puts each with `graph.on_layer(&shelf)` (it keeps the
+  graph's place and says where it is, and its clip, as it's laid out)
+  and empties the `GraphShelf` as it renders; with both cached, a graph
+  moving a pixel redraws the layer, not the cards, legends and figures
+  around it (Activity Monitor's CPU section: 4.2 ms a frame to 1.4).
 - `StringView::wrap(true)` (a paragraph, as tall as it wraps to),
   `widgets::heading(text)` (bold, a label row tall) and
   `widgets::separator()` (a groove across).
@@ -1778,6 +1810,16 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   (`Window::push_paint_record`), so a replayed view still says what it
   shows. A cached view's root is laid out as a root (its offsets
   ignored): put what places its content inside it (Telegram's panes).
+  Its size comes from the style it's given, not its content. It's
+  drawn again when it's notified, not when a model it reads (a
+  `ListModel`) is: observe those (`cx.observe(&model, |_, _, cx|
+  cx.notify())`). And GPUI draws again every view above one that
+  changed (their renders run; their cached children are replayed): so
+  keep what changes often (a caret, a graph moving a pixel) in a small
+  view, and what's costly beside it in cached views, not around it.
+  Activity Monitor's window is cached parts (menu bar, sidebar, the
+  section's cards, the process list) and a `GraphLayer`: a graph's
+  tick redraws the graphs and the window's few boxes around them.
 - `Window::warm_glyphs(font, size)` (Olo's GPUI) has a face and size's
   printable characters drawn ahead, off the UI thread, so the frame that
   first shows them only copies them (a glyph drawn the first time costs
@@ -4727,6 +4769,40 @@ its own range, from the context menu). ⌘1 to ⌘9 are the sections
 (`app_keys`: `activity.overview` and on). Click any graph to look back:
 the Overview's last card says what was busiest at that moment (top CPU
 and disk processes are kept for each sample, half an hour of them).
+
+It is on the GPUI kit (olo-ui). `main.rs` has the app, an `Activity`
+entity: the sampler's messages, the menus, the section shown, the Tune
+dialog. Its window is cached `Part`s, each drawn from the app as it
+changes (a sample, a choice) and replayed otherwise: the menu bar, the
+`Sidebar`, the process list, the section's cards; and over the cards
+a `GraphLayer` (GPUI draws again every view above one that changed:
+this way a graph moving a pixel redraws the graphs and the window's few
+boxes, and a caret blinking in the search the row it's in, not the
+list). `sections.rs` draws the cards from the kit's dashboard (`Card`s
+on the gutter in a `ScrollView`, `legend`s, `Facts` in one or two
+columns, `meter`s, small lists of processes drawn as facts are; cards
+side by side flow in as many columns as fit, given the room left of
+the scroll bar), its graphs put on the layer (`Graph::on_layer`); the
+Graphs section's cards share the window's height evenly between their
+graphs. `processes.rs` is a `ColumnListView` whose rows (`Rows`: each
+row's place, process and name) are made only when the processes, the
+sort, the query, Tree or what's folded change; its cells read the
+processes from the app as they're drawn, and a tree's triangles are
+drawn by the Name cell and taken by `on_press` where they were drawn.
+The filters' menus are made again only for a new list of processes.
+Each inspector is an entity in a window of its own (as a tab of the
+app's window where the session groups them), following the app's
+samples (`observe`); its Process menu acts on its process. Settings
+are written whole (beside, then renamed), on a worker as they change
+and at once at Quit and before an upgrade replaces the program.
+
+Against the egui Activity Monitor (release, 2× on a headless screen,
+each section 20 s, the UI thread alone; the sampler thread is the same
+code): Overview 1.8% of a core (egui 2.0), CPU 3.9 (5.2), Memory 2.7
+(3.5), Disks 2.6 (3.4), Network 2.8 (3.9), Sensors 3.4 (4.7), System
+3.2 (3.5), Graphs 2.2 (2.9), Processes 0.7 (0.4: its once-a-second
+frame is 6 ms to egui's 3.7); the same frames a second (a graph's
+pixel at a time: 11 to 23); 93–96 MB resident (119–123).
 
 `sample.rs` reads /proc and /sys on a worker: `probe` finds the sources
 once (cores, frequencies, disks of a gigabyte and up, interfaces, the

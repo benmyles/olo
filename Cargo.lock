@@ -5769,9 +5769,11 @@ name = "olo-activity"
 version = "0.1.0"
 dependencies = [
  "libc",
- "olo-kit",
+ "olo-kit-base",
  "olo-protocol",
  "olo-theme",
+ "olo-ui",
+ "olo-xdg",
  "serde",
  "serde_json",
  "tracing",

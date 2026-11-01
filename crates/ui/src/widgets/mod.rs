@@ -36,7 +36,7 @@ pub use sidebar::Sidebar;
 pub use tabs::{TAB_HEIGHT, TabView};
 pub use thumbs::{Thumbnail, ThumbnailPicker};
 pub use tooltip::tooltip;
-pub use charts::{CellGrid, Graph, GridCell, LegendItem, Series, legend, legend_height, nice_ceiling};
+pub use charts::{CellGrid, Graph, GraphLayer, GraphShelf, GridCell, LegendItem, Series, legend, legend_height, nice_ceiling};
 pub use views::{BBox, EmptyState, Separator, StringView, heading, separator};
 
 /// The widgets' keys.
