@@ -30,12 +30,40 @@ const SHORTCUT_GAP: f32 = 28.0;
 const POPUP_BORDER: f32 = 1.0;
 const POPUP_PAD: f32 = 4.0;
 const MIN_WIDTH: f32 = 120.0;
+/// Item icons, and the room between one and its label.
+const ICON_SIZE: f32 = 16.0;
+const ICON_GAP: f32 = olo_kit_base::metrics::MARK_GAP;
+
+/// Where a popup's item icons go (their left edge, if the menu has any)
+/// and where the labels start, from the item's left. Check marks keep
+/// their column in front of the icons when the menu has both.
+fn columns(menu: &Menu) -> (Option<f32>, f32) {
+    if !menu.has_icons() {
+        return (None, ITEM_LEFT);
+    }
+    let checks = menu.items.iter().any(|item| matches!(item, MenuItem::Action(a) if a.checked));
+    let icon = if checks { ITEM_LEFT } else { 6.0 };
+    (Some(icon), icon + ICON_SIZE + ICON_GAP)
+}
+
+/// An item's icon in its column (the generic application's if there's
+/// no such icon), faded when it can't be chosen.
+fn item_icon(window: &mut Window, row: Bounds<Pixels>, left: f32, name: &str, enabled: bool) {
+    let r = style::snap_centred(window, point(row.left() + px(left + ICON_SIZE / 2.0), row.center().y), ICON_SIZE, ICON_SIZE);
+    window.with_element_opacity(Some(if enabled { 1.0 } else { 110.0 / 255.0 }), |window| {
+        if !crate::icons::paint(window, r, name) {
+            crate::icons::paint(window, r, "application");
+        }
+    });
+}
 
 /// A menu: its title (a menu bar's, a submenu's item) and items.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Menu {
     pub title: String,
     pub items: Vec<MenuItem>,
+    /// Drawn beside the title where this is a submenu (an icon name).
+    pub icon: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -58,11 +86,34 @@ pub struct Action {
     /// Its keys as shown ("⌘C", "Ctrl+C"): the shortcut's, or keys the
     /// window doesn't take itself (a desktop shortcut, a chord).
     pub keys: Option<String>,
+    /// Drawn at its left (an icon name, as for `icons::paint`). A menu
+    /// with any gives them all a column, between the check marks and the
+    /// labels.
+    pub icon: Option<String>,
 }
 
 impl Menu {
     pub fn new(title: impl Into<String>) -> Menu {
-        Menu { title: title.into(), items: Vec::new() }
+        Menu { title: title.into(), items: Vec::new(), icon: None }
+    }
+
+    /// The last item's (an action's or a submenu's) icon.
+    pub fn icon(mut self, name: impl Into<String>) -> Menu {
+        match self.items.last_mut() {
+            Some(MenuItem::Action(a)) => a.icon = Some(name.into()),
+            Some(MenuItem::Submenu(m)) => m.icon = Some(name.into()),
+            _ => {}
+        }
+        self
+    }
+
+    /// Whether any item has an icon, so the popup has an icon column.
+    pub fn has_icons(&self) -> bool {
+        self.items.iter().any(|item| match item {
+            MenuItem::Action(a) => a.icon.is_some(),
+            MenuItem::Submenu(m) => m.icon.is_some(),
+            MenuItem::Separator => false,
+        })
     }
 
     /// Adds a command.
@@ -254,7 +305,7 @@ fn popup_size(window: &mut Window, menu: &Menu) -> (f32, f32) {
     }
     let gap = if key_w > 0.0 { SHORTCUT_GAP } else { 0.0 };
     // On the two-point grid: whole device pixels at 1×, 1.5× and 2×.
-    let w = ((ITEM_LEFT + label_w + gap + key_w + ITEM_RIGHT).max(MIN_WIDTH) / 2.0).ceil() * 2.0;
+    let w = ((columns(menu).1 + label_w + gap + key_w + ITEM_RIGHT).max(MIN_WIDTH) / 2.0).ceil() * 2.0;
     (w + 2.0 * POPUP_BORDER, h + 2.0 * POPUP_PAD)
 }
 
@@ -487,6 +538,7 @@ impl Render for MenuPopup {
         let open = self.sub.map(|(i, _)| i);
         let rows = self.rows.clone();
         let selectable: Vec<bool> = (0..menu.items.len()).map(|i| self.selectable(i)).collect();
+        let (icon_left, label_left) = columns(&menu);
         let paint = canvas(
             |_, _, _| {},
             move |b, _, window, cx| {
@@ -533,7 +585,10 @@ impl Render for MenuPopup {
                                 let m = Bounds { origin: point(row.left() + px(10.0 - 4.5), cy - px(4.5)), size: size(px(9.0), px(9.0)) };
                                 check_mark(window, m, ink);
                             }
-                            let r = style::label(window, cx, row.left() + px(ITEM_LEFT), cy, style::Align::Left, a.label.clone(), style::PLAIN_SIZE, font.clone(), ink);
+                            if let (Some(left), Some(icon)) = (icon_left, &a.icon) {
+                                item_icon(window, row, left, icon, a.enabled);
+                            }
+                            let r = style::label(window, cx, row.left() + px(label_left), cy, style::Align::Left, a.label.clone(), style::PLAIN_SIZE, font.clone(), ink);
                             if let Some(keys) = &a.keys {
                                 style::label(window, cx, row.right() - px(ITEM_RIGHT), cy, style::Align::Right, keys.clone(), style::PLAIN_SIZE, font.clone(), ink);
                             }
@@ -545,7 +600,10 @@ impl Render for MenuPopup {
                                 style::fill_rect(window, face, style::c(p.menu_selected_background));
                             }
                             let ink = text(selectable[i]);
-                            style::label(window, cx, row.left() + px(ITEM_LEFT), cy, style::Align::Left, m.title.clone(), style::PLAIN_SIZE, font.clone(), ink);
+                            if let (Some(left), Some(icon)) = (icon_left, &m.icon) {
+                                item_icon(window, row, left, icon, selectable[i]);
+                            }
+                            style::label(window, cx, row.left() + px(label_left), cy, style::Align::Left, m.title.clone(), style::PLAIN_SIZE, font.clone(), ink);
                             // A triangle pointing right.
                             let tx = row.right() - px(ITEM_RIGHT);
                             let mut path = PathBuilder::fill();

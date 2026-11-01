@@ -11,6 +11,7 @@
 
 pub mod agent;
 mod app;
+pub mod file_panel;
 mod lock;
 pub mod icons;
 pub mod keys;

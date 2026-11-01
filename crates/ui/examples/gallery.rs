@@ -6,7 +6,7 @@ use olo_ui::{
     WindowOptions,
     gpui::{AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, ScrollHandle, SharedString, Styled as _, Window, div, px},
     metrics as m,
-    widgets::{BBox, Button, CheckBox, Column, ColumnListView, ListModel, MenuField, RadioButton, ScrollView, StatusBar, StringView, TextControl, TextField, open_alert, text_field},
+    widgets::{BBox, Button, CheckBox, Column, ColumnListView, ListModel, MenuField, RadioButton, ScrollView, Slider, StatusBar, StringView, TextControl, TextField, open_alert, text_field},
 };
 use std::rc::Rc;
 
@@ -20,6 +20,7 @@ struct Gallery {
     choice: usize,
     rows: ScrollHandle,
     answer: String,
+    volume: f32,
     files: Entity<ListModel>,
     /// Name, size in bytes, kind: sorted as the list's header says.
     entries: Rc<Vec<(SharedString, u64, SharedString)>>,
@@ -114,6 +115,15 @@ impl Render for Gallery {
                     .child(Button::new("OK").default(true)),
             )
             .child(StringView::new(format!("Alert answer: {}", self.answer)).dim(true))
+            .child(div().w(px(300.0)).child({
+                let view = cx.entity();
+                Slider::new("volume", self.volume, 0.0..=100.0).label("Volume").value_text(format!("{:.0} %", self.volume)).limits("Quiet", "Loud").step(1.0).on_change(move |v, _, cx| {
+                    view.update(cx, |g, cx| {
+                        g.volume = v;
+                        cx.notify();
+                    })
+                })
+            }))
             .child(div().w(px(300.0)).child(StatusBar::new(0.42).label("Copying files…").trailing("3 of 7")))
             .child(div().h(px(100.0)).w(px(220.0)).child(ScrollView::new("rows", &self.rows).child(div().px(px(6.0)).children((1..=40).map(|i| StringView::new(format!("Row {i}")))))))
             .child(div().h(px(140.0)).w(px(300.0)).child(self.list(cx)))
@@ -164,12 +174,12 @@ impl Gallery {
 
 fn main() {
     olo_ui::run("olo.gallery", |cx| {
-        olo_ui::open_window(cx, WindowOptions::new("Gallery", 480.0, 610.0), |_, cx| {
+        olo_ui::open_window(cx, WindowOptions::new("Gallery", 480.0, 680.0), |_, cx| {
             let name = text_field(cx, |f| f.name("Name"));
             name.update(cx, |f, cx| f.set_text("Hello, BeOS", cx));
             let files = ListModel::new(cx, true);
             files.update(cx, |m, _| m.state.sort = Some((0, true)));
-            let mut g = Gallery { name, wrap: true, sound: false, radio: 0, choice: 0, rows: ScrollHandle::new(), answer: "none".into(), files, entries: Rc::new(entries()) };
+            let mut g = Gallery { name, wrap: true, sound: false, radio: 0, choice: 0, rows: ScrollHandle::new(), answer: "none".into(), volume: 42.0, files, entries: Rc::new(entries()) };
             cx.new(|cx| {
                 g.sort(cx);
                 g

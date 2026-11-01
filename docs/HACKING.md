@@ -1608,6 +1608,23 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
 - `StringView::wrap(true)` (a paragraph, as tall as it wraps to),
   `widgets::heading(text)` (bold, a label row tall) and
   `widgets::separator()` (a groove across).
+- `widgets::Slider::new(id, value, range)`: BSlider (label and value
+  above, the bar filled to a raised thumb, `limits` under the ends;
+  `step`, `fill`, `width`); a press or a drag sets it, the arrows, Home
+  and End once it has the keyboard; `on_change` gets each value.
+- `file_panel::show(cx, title, FilePanel::open(dir) / save(dir, name) /
+  folder(dir), on_done)`: the shared Open, Save and folder panels, as
+  the egui kit's, in a dialog window of their own; `on_done` gets an
+  `Answer` (the `PanelResult`, the filter and choices made, the folder)
+  once, Cancelled if the window is closed. `types`, `filters` (a Show
+  pop-up), `multiple`, and the app's `choices` (check boxes or
+  pop-ups). Listing on a worker, following the folder as it changes;
+  the folder pop-up goes up, to the standard folders, favourites and
+  recent ones; Save asks before replacing; Space looks in the Viewer.
+  `examples/panel.rs` opens each.
+- Menu items take icons (`Menu::icon(name)`, an item's or a submenu's):
+  a column of them between the check marks and the labels, faded when
+  the item can't be chosen.
 - `Button::on_click_at(|bounds, window, cx| ..)`: told where the button
   is, to open a menu under it (`menu::popup(.., bounds,
   Corner::BottomLeft, ..)`).
@@ -1633,9 +1650,9 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   the egui kit draws them; ↑ ↓ → ← Enter Space Escape; a submenu opens
   beside its item; items are `MenuItem`s to agents. `Menu::entries`
   flattens one for the palette (`agent::set_menus`). (Still to come:
-  icons, keys drawn as the kit's key combos, scrolling a menu taller
-  than the screen, and press-drag-release choosing from the press that
-  opened it.)
+  keys drawn as the kit's key combos, scrolling a menu taller than the
+  screen, and press-drag-release choosing from the press that opened
+  it.)
 - `MenuBar::new(menus, on_command)` at the top of a window's view: the
   BeOS menu bar as the egui kit draws it. A press on a title opens its
   menu under it; with one open, sliding across the bar opens the
