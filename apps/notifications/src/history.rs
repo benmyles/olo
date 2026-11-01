@@ -26,7 +26,7 @@ use olo_protocol::{CardSize, HistoryView, NoteStyle};
 use olo_ui::{
     Menu, MenuBar, agent,
     gpui::{
-        self, App, Bounds, BoxShadow, Context, Corners, Entity, FocusHandle, Focusable as _, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Point, Render,
+        self, App, Bounds, Context, Corners, Entity, FocusHandle, Focusable as _, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Point, Render,
         ScrollHandle, StatefulInteractiveElement as _, Styled as _, Subscription, Window, canvas, div, point, px, size,
     },
     style::{self, Align},
@@ -280,19 +280,6 @@ fn paint_icon(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, e: &store::E
 /// every note).
 fn unread_dot(window: &mut Window, center: Point<Pixels>, p: &olo_theme::Palette) {
     window.paint_sector(center, px(0.0), px(3.5), 0.0, std::f32::consts::TAU, style::c(p.keyboard_navigation));
-}
-
-/// A card's paper, its shadow under it, as the egui kit's `style::card`.
-fn paint_card(window: &mut Window, r: Bounds<Pixels>, p: &olo_theme::Palette, hover: bool, selected: bool) {
-    let ink = style::card_ink(p);
-    let r = style::snap(window, r);
-    let radius = px(m::CARD_RADIUS);
-    let dark = p.mode == olo_theme::ThemeMode::Dark;
-    let (y, blur, a) = if selected { (2.0, 10.0, if dark { 110 } else { 40 }) } else { (1.0, 4.0, if dark { 70 } else { 22 }) };
-    let shadow = BoxShadow { color: style::c([0, 0, 0, a]), offset: point(px(0.0), px(y)), blur_radius: px(blur / 2.0), spread_radius: px(0.0) };
-    window.paint_shadows(r, Corners::all(radius), &[shadow]);
-    let (fill, edge) = if selected { (style::c(p.list_selected_background), style::c(p.selection_edge())) } else { (if hover { ink.hover } else { ink.card }, ink.edge) };
-    window.paint_quad(gpui::fill(r, fill).corner_radii(radius).border_widths(style::hairline(window)).border_color(edge));
 }
 
 /// A row laid out.
@@ -858,7 +845,7 @@ impl Render for HistoryWindow {
                         let is_sel = sel_id == Some(e.id);
                         let opacity = if !is_sel && !hovered { fade_opacity(strength(e)) } else { 1.0 };
                         window.with_element_opacity(Some(opacity), |window| {
-                            paint_card(window, r, &p, hovered, is_sel);
+                            style::card(window, r, &p, hovered, is_sel);
                             let ink = style::card_ink(&p);
                             let inner = Bounds::from_corners(r.origin + point(px(m::CARD_INSET), px(m::CARD_INSET)), r.bottom_right() - point(px(m::CARD_INSET), px(m::CARD_INSET)));
                             // Whose and when: the app's mark and name, the time at the right.

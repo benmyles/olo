@@ -1,39 +1,48 @@
 //! Agent Screens, the window: the agents' screens in a sidebar (running,
 //! then stopped ones with a history kept), and the one chosen under a
 //! header saying what it is and how it's doing, in three tabs: Live (the
-//! screen as it is, about eight frames a second with the agent's pointer,
-//! and Take Control to step in: the person's pointer and keys over the
-//! picture then go to that screen, never to their own, until they choose
-//! Stop Controlling), History (`replay`: its actions as they come, to
-//! search, filter and play back) and Stats (`stats`).
+//! screen as it is, with the agent's pointer, and Take Control to step
+//! in: the person's pointer and keys over the picture then go to that
+//! screen, never to their own, until they choose Stop Controlling),
+//! History (`replay`: its actions as they come, to search, filter and
+//! play back) and Stats (`stats`).
 //!
-//! Frames come from a worker (the screen's app_server writes raw pixels,
-//! read back here), input goes out through another and the history is
-//! followed by a third, so the window never waits on a screen or a disk.
+//! Live takes a picture only when the screen has drawn something new
+//! (its app_server says so, `EventKind::Painted`), at most eight a second:
+//! a screen at rest costs nothing to watch. The pictures are taken by a
+//! worker, input goes out through another (moves run together, over one
+//! connection) and the history is followed by a third, so the window
+//! never waits on a screen or a disk.
 
 use std::{
-    collections::HashMap,
+    collections::HashSet,
+    os::unix::net::UnixStream,
     path::PathBuf,
     sync::{
-        Arc, Mutex,
+        Arc, Condvar, Mutex,
+        atomic::{AtomicBool, Ordering},
         mpsc::{Receiver, Sender, channel},
     },
     time::{Duration, Instant},
 };
 
-use olo_kit::egui::{self, Align, ColorImage, FontId, Key, Pos2, Rect, TextureHandle, TextureOptions, Ui, pos2, vec2};
-use serde::{Deserialize, Serialize};
-use olo_kit::{
-    App, Cx, Menu, Proxy, WindowId, WindowOptions, icons,
-    metrics as m,
-    sidebar::{self, Sidebar},
+use olo_protocol::{Client, Event, EventKind, ImageFormat, Reply, Request, SyntheticEvent};
+use olo_ui::{
+    Frame, Menu, MenuBar, Proxy, agent, file_panel,
+    gpui::{
+        App, AppContext as _, Context, Entity, FocusHandle, FontWeight, HitboxBehavior, InteractiveElement as _, IntoElement, KeyDownEvent, KeyUpEvent, Modifiers, ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Render, ScrollDelta,
+        ScrollHandle, ScrollWheelEvent, SharedString, Styled as _, Subscription, Task, Window, WindowHandle, canvas, div, point, px, size,
+    },
+    icons, keys, metrics as m,
     style::{self, c},
-    widgets::{self, Button, EmptyState, ScrollView, TabView},
+    theme,
+    widgets::{Button, EmptyState, Sidebar, TabView, open_alert, sidebar},
 };
-use olo_protocol::{ImageFormat, SyntheticEvent};
+use serde::{Deserialize, Serialize};
 
 use crate::{
-    replay::{self, Replay},
+    picture::{PictureWell, Shot},
+    replay::{self, Exported, Replay, ReplayMsg},
     screens::{self, Screen},
     stats,
 };
@@ -44,13 +53,18 @@ const FPS: f64 = 8.0;
 const SIDEBAR_W: f32 = 196.0;
 const SIDEBAR_MIN_W: f32 = 160.0;
 const HEADER_H: f32 = 40.0;
+/// New Screen's place under the sidebar.
+const FOOTER_H: f32 = m::CONTROL_HEIGHT + 2.0 * m::SPACING;
+/// The key context of the picture being controlled: Tab and ⇧Tab go to
+/// the screen there, not round the window's controls.
+pub const CONTROLLED: &str = "AgentScreen";
 
-enum Msg {
+pub enum Msg {
     Screens(Vec<Screen>),
     /// Every screen to list: running, or stopped with a history kept;
     /// each with when it was last used, most recent first.
     Rows(Vec<Row>),
-    Frame { name: String, image: ColorImage },
+    Frame { name: String, shot: Arc<Shot> },
     Failed { name: String, message: String },
     Started(Result<Screen, String>),
     Stopped(Result<(), String>),
@@ -81,41 +95,6 @@ struct Saved {
     selected: Option<String>,
     #[serde(default)]
     tab: Tab,
-}
-
-enum Win {
-    Main,
-    /// What to do once asked: stop the screen, or clear its history; the
-    /// screen's name, and the question.
-    ConfirmStop(String, String),
-    ConfirmClear(String, String),
-    Alert(String),
-    /// Where to save a screen's history as a video.
-    ExportTo(Box<olo_kit::file_panel::FilePanel>),
-    /// A video saved there, to show.
-    Exported(PathBuf, String),
-}
-
-pub struct Viewer {
-    windows: HashMap<WindowId, Win>,
-    main: Option<WindowId>,
-    screens: Vec<Screen>,
-    selected: Option<String>,
-    tab: Tab,
-    /// Which screen the frame worker shows (shared with it).
-    watching: Arc<Mutex<Option<String>>>,
-    texture: Option<(String, TextureHandle)>,
-    /// The newest frame, until the window draws it.
-    frame: Option<(String, ColorImage)>,
-    failure: Option<String>,
-    controlling: bool,
-    /// Modifiers held down on the screen while controlling.
-    held: [bool; 3],
-    input: Sender<(Screen, Vec<SyntheticEvent>)>,
-    busy: bool,
-    /// The chosen screen's history, followed as it grows.
-    replay: Option<Replay>,
-    rows: Vec<Row>,
 }
 
 /// A screen in the list.
@@ -154,6 +133,12 @@ fn ago_short(ms: u64, now: u64) -> String {
     }
 }
 
+/// When what's said of a time `age` ms ago next changes ("12 s ago",
+/// "3 min ago"): a second on while under a minute, else the next minute.
+fn next_change(age: u64) -> Duration {
+    if age < 60_000 { Duration::from_millis(1000 - age % 1000) } else { Duration::from_millis(60_000 - age % 60_000) }
+}
+
 /// The screens to show: all but the one this viewer itself is on, if it
 /// runs on one (it would show itself, endlessly).
 fn listed() -> Vec<Screen> {
@@ -161,9 +146,9 @@ fn listed() -> Vec<Screen> {
     screens::list().into_iter().filter(|s| Some(&s.name) != own.as_ref()).collect()
 }
 
-/// Follow the list of screens as their files come and go
-/// (`olo_kit::watch`), and now and then for one whose session was killed
-/// without a word (its file left behind).
+/// Follow the list of screens as their files come and go (`watch`), and
+/// now and then for one whose session was killed without a word (its
+/// file left behind).
 fn watch_list(proxy: Proxy) {
     let last = Arc::new(Mutex::new(None::<Vec<Screen>>));
     let look = move || {
@@ -179,7 +164,7 @@ fn watch_list(proxy: Proxy) {
     let on_change = look.clone();
     let dir = screens::dir();
     let followed = dir.clone();
-    if let Some(w) = olo_kit::watch::watch([dir], move |changed| {
+    if let Some(w) = olo_ui::watch::watch([dir], move |changed| {
         // A screen's own file, not a viewer's frame passing through.
         let items: Vec<&std::path::PathBuf> = changed.iter().filter(|p| p.parent() == Some(followed.as_path())).collect();
         if items.is_empty() || items.iter().any(|p| p.extension().is_some_and(|e| e == "json")) {
@@ -197,215 +182,322 @@ fn watch_list(proxy: Proxy) {
     });
 }
 
-/// Fetch frames of whichever screen is being watched.
-fn watch_frames(proxy: Proxy, watching: Arc<Mutex<Option<String>>>) {
-    std::thread::spawn(move || {
-        // In a folder of their own: the screens' folder is followed for
-        // screens coming and going, not for frames.
-        let views = screens::dir().join("views");
-        let path = views.join(format!("view-{}.rgba", std::process::id()));
-        let _ = std::fs::create_dir_all(&views);
-        loop {
-            let began = Instant::now();
-            let name = watching.lock().unwrap_or_else(|e| e.into_inner()).clone();
-            if let Some(name) = name {
-                let frame = screens::get(&name).and_then(|s| {
+/// A screen being watched for the Live tab: a picture is taken each time
+/// it draws something new, at most [`FPS`] a second, until it's dropped.
+struct Watching {
+    name: String,
+    stop: Arc<AtomicBool>,
+    /// The connection the screen's events come on (shut to stop).
+    events: Arc<Mutex<Option<UnixStream>>>,
+    /// Something new to take a picture of.
+    dirty: Arc<(Mutex<bool>, Condvar)>,
+}
+
+impl Drop for Watching {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(s) = self.events.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            let _ = s.shutdown(std::net::Shutdown::Both);
+        }
+        let (_, woken) = &*self.dirty;
+        woken.notify_all();
+    }
+}
+
+fn mark(dirty: &(Mutex<bool>, Condvar)) {
+    *dirty.0.lock().unwrap_or_else(|e| e.into_inner()) = true;
+    dirty.1.notify_all();
+}
+
+/// Watch screen `name`: one worker hears when it draws something new
+/// (`Painted`; from an app_server before those, every frame's time), the
+/// other takes the picture then.
+fn watch_screen(name: &str, proxy: Proxy) -> Watching {
+    let w = Watching { name: name.to_owned(), stop: Arc::default(), events: Arc::default(), dirty: Arc::new((Mutex::new(true), Condvar::new())) };
+    let period = Duration::from_secs_f64(1.0 / FPS);
+    {
+        let (name, proxy, stop, dirty) = (name.to_owned(), proxy.clone(), w.stop.clone(), w.dirty.clone());
+        let _ = std::thread::Builder::new().name("screen-picture".into()).spawn(move || {
+            // In a folder of their own: the screens' folder is followed
+            // for screens coming and going, not for frames.
+            let views = screens::dir().join("views");
+            let path = views.join(format!("view-{}.rgba", std::process::id()));
+            let _ = std::fs::create_dir_all(&views);
+            loop {
+                {
+                    let mut d = dirty.0.lock().unwrap_or_else(|e| e.into_inner());
+                    while !*d && !stop.load(Ordering::Relaxed) {
+                        d = dirty.1.wait(d).unwrap_or_else(|e| e.into_inner());
+                    }
+                    if stop.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    *d = false;
+                }
+                let began = Instant::now();
+                let shot = screens::get(&name).and_then(|s| {
                     s.picture(&path, None, true, ImageFormat::Rgba)?;
                     let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
-                    decode(&bytes).ok_or_else(|| "the picture was cut short".to_owned())
+                    decode(bytes).ok_or_else(|| "the picture was cut short".to_owned())
                 });
-                match frame {
-                    Ok(image) => proxy.send(Msg::Frame { name, image }),
-                    Err(message) => proxy.send(Msg::Failed { name, message }),
+                if stop.load(Ordering::Relaxed) {
+                    break;
+                }
+                match shot {
+                    Ok(shot) => proxy.send(Msg::Frame { name: name.clone(), shot: Arc::new(shot) }),
+                    Err(message) => proxy.send(Msg::Failed { name: name.clone(), message }),
+                }
+                std::thread::sleep(period.saturating_sub(began.elapsed()));
+            }
+            let _ = std::fs::remove_file(&path);
+        });
+    }
+    {
+        let (name, stop, events, dirty) = (name.to_owned(), w.stop.clone(), w.events.clone(), w.dirty.clone());
+        let _ = std::thread::Builder::new().name("screen-events".into()).spawn(move || {
+            let client = screens::get(&name).and_then(|s| Client::connect_to(&s.olo_socket).map_err(|e| e.to_string()));
+            let Ok(mut client) = client else { return };
+            *events.lock().unwrap_or_else(|e| e.into_inner()) = client.closer().ok();
+            if stop.load(Ordering::Relaxed) {
+                return;
+            }
+            match client.request(&Request::SubscribeTo { events: vec![EventKind::Painted] }) {
+                Ok(Reply::Ok) => {
+                    while let Ok(reply) = client.read() {
+                        if stop.load(Ordering::Relaxed) {
+                            return;
+                        }
+                        if let Reply::Event { event: Event::Painted { .. } } = reply {
+                            mark(&dirty);
+                        }
+                    }
+                }
+                // An app_server from before it said when it drew: a
+                // picture each frame's time.
+                _ => {
+                    while !stop.load(Ordering::Relaxed) {
+                        mark(&dirty);
+                        std::thread::sleep(period);
+                    }
                 }
             }
-            let period = Duration::from_secs_f64(1.0 / FPS);
-            std::thread::sleep(period.saturating_sub(began.elapsed()));
-        }
-    });
+        });
+    }
+    w
 }
 
-/// Width, height (little-endian u32), then straight RGBA rows.
-fn decode(bytes: &[u8]) -> Option<ColorImage> {
+/// Width, height (little-endian u32), then straight RGBA rows (opaque).
+fn decode(mut bytes: Vec<u8>) -> Option<Shot> {
     let w = u32::from_le_bytes(bytes.get(0..4)?.try_into().ok()?) as usize;
     let h = u32::from_le_bytes(bytes.get(4..8)?.try_into().ok()?) as usize;
-    let pixels = bytes.get(8..8 + w * h * 4)?;
-    Some(ColorImage::from_rgba_unmultiplied([w, h], pixels))
+    if bytes.len() < 8 + w * h * 4 {
+        return None;
+    }
+    bytes.drain(..8);
+    bytes.truncate(w * h * 4);
+    Some(Shot { size: [w, h], rgba: bytes })
 }
 
-/// Send the person's input on, in order, off the UI thread.
+/// Send the person's input on, in order, off the UI thread: what has
+/// come by the time the last was sent goes in one request (moves run
+/// together to the last), over a connection kept to the screen.
 fn send_input() -> Sender<(Screen, Vec<SyntheticEvent>)> {
     let (tx, rx): (Sender<(Screen, Vec<SyntheticEvent>)>, Receiver<_>) = channel();
     std::thread::spawn(move || {
-        for (screen, events) in rx {
-            if let Err(e) = screen.input(events) {
-                tracing::warn!("input to screen {}: {e}", screen.name);
+        let mut client: Option<(String, Client)> = None;
+        while let Ok((mut screen, mut events)) = rx.recv() {
+            while let Ok((next, more)) = rx.try_recv() {
+                if next.name != screen.name {
+                    send(&mut client, &screen, std::mem::take(&mut events));
+                    screen = next;
+                }
+                events.extend(more);
             }
+            send(&mut client, &screen, events);
         }
     });
     tx
 }
 
-/// The evdev code of a key the person pressed (by its place on the
-/// keyboard where egui knows it).
-fn evdev(key: Key) -> Option<u32> {
-    use Key::*;
-    Some(match key {
-        Escape => 1,
-        Num1 => 2,
-        Num2 => 3,
-        Num3 => 4,
-        Num4 => 5,
-        Num5 => 6,
-        Num6 => 7,
-        Num7 => 8,
-        Num8 => 9,
-        Num9 => 10,
-        Num0 => 11,
-        Minus => 12,
-        Equals | Plus => 13,
-        Backspace => 14,
-        Tab => 15,
-        Q => 16,
-        W => 17,
-        E => 18,
-        R => 19,
-        T => 20,
-        Y => 21,
-        U => 22,
-        I => 23,
-        O => 24,
-        P => 25,
-        OpenBracket | OpenCurlyBracket => 26,
-        CloseBracket | CloseCurlyBracket => 27,
-        Enter => 28,
-        A => 30,
-        S => 31,
-        D => 32,
-        F => 33,
-        G => 34,
-        H => 35,
-        J => 36,
-        K => 37,
-        L => 38,
-        Semicolon | Colon => 39,
-        Quote => 40,
-        Backtick => 41,
-        Backslash | Pipe => 43,
-        Z => 44,
-        X => 45,
-        C => 46,
-        V => 47,
-        B => 48,
-        N => 49,
-        M => 50,
-        Comma => 51,
-        Period => 52,
-        Slash | Questionmark => 53,
-        Space => 57,
-        F1 => 59,
-        F2 => 60,
-        F3 => 61,
-        F4 => 62,
-        F5 => 63,
-        F6 => 64,
-        F7 => 65,
-        F8 => 66,
-        F9 => 67,
-        F10 => 68,
-        F11 => 87,
-        F12 => 88,
-        Home => 102,
-        ArrowUp => 103,
-        PageUp => 104,
-        ArrowLeft => 105,
-        ArrowRight => 106,
-        End => 107,
-        ArrowDown => 108,
-        PageDown => 109,
-        Insert => 110,
-        Delete => 111,
-        _ => return None,
-    })
+/// Moves one after another: only the last counts.
+fn run_together(events: &mut Vec<SyntheticEvent>) {
+    events.dedup_by(|b, a| {
+        let moves = matches!((&*a, &*b), (SyntheticEvent::Move { .. }, SyntheticEvent::Move { .. }));
+        if moves {
+            *a = b.clone();
+        }
+        moves
+    });
+}
+
+fn send(client: &mut Option<(String, Client)>, screen: &Screen, mut events: Vec<SyntheticEvent>) {
+    run_together(&mut events);
+    if events.is_empty() {
+        return;
+    }
+    for _ in 0..2 {
+        if client.as_ref().is_none_or(|(n, _)| *n != screen.name) {
+            *client = Client::connect_to(&screen.olo_socket).ok().map(|c| (screen.name.clone(), c));
+        }
+        let Some((_, c)) = client.as_mut() else { break };
+        match c.request(&Request::Synthetic { events: events.clone() }) {
+            Ok(_) => return,
+            // (Closed: the screen restarted; once more on a new one.)
+            Err(e) => {
+                tracing::warn!("input to screen {}: {e}", screen.name);
+                *client = None;
+            }
+        }
+    }
+}
+
+/// The evdev code of the key GPUI names `key` ("a", "f3", "!"): its place
+/// on a US keyboard (the agent's), Shift aside.
+fn evdev(key: &str) -> Option<u32> {
+    match key {
+        "insert" => return Some(110),
+        "space" => return Some(57),
+        _ => {}
+    }
+    match keys::evdev(key) {
+        0 => {
+            let mut chars = key.chars();
+            let (Some(ch), None) = (chars.next(), chars.next()) else { return None };
+            screens::key_for(ch).map(|(code, _)| code)
+        }
+        code => Some(code),
+    }
+}
+
+/// A wheel's notches one way or the other: 1, −1, or none (`signum`
+/// makes 0 one).
+fn notch(v: f32) -> i32 {
+    if v > 0.0 {
+        1
+    } else if v < 0.0 {
+        -1
+    } else {
+        0
+    }
+}
+
+/// The modifiers the screen is kept in step with: Ctrl, Shift, Alt.
+const MODIFIERS: [u32; 3] = [29, 42, 56];
+
+pub struct Viewer {
+    win: Option<WindowHandle<Frame>>,
+    screens: Vec<Screen>,
+    rows: Vec<Row>,
+    selected: Option<String>,
+    tab: Tab,
+    /// The screen the Live tab shows, being watched.
+    watching: Option<Watching>,
+    live: Entity<PictureWell>,
+    failure: Option<String>,
+    controlling: bool,
+    /// Modifiers held down on the screen while controlling, and keys.
+    held: [bool; 3],
+    down: Vec<(String, u32)>,
+    /// A button held on the screen (a drag goes on outside the picture).
+    pressed: HashSet<u32>,
+    live_focus: FocusHandle,
+    input: Sender<(Screen, Vec<SyntheticEvent>)>,
+    busy: bool,
+    /// The chosen screen's history, followed as it grows.
+    replay: Option<(Entity<Replay>, Subscription)>,
+    stats_scroll: ScrollHandle,
+    /// Times said ("3 s ago") move on: when the next changes, and its
+    /// timer.
+    ticking: Option<(Instant, Task<()>)>,
+    proxy: Proxy,
 }
 
 impl Viewer {
-    pub fn new(cx: &mut Cx) -> Viewer {
-        let saved: Saved = cx.restored_state().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
-        let watching = Arc::new(Mutex::new(None));
-        watch_list(cx.proxy());
-        watch_frames(cx.proxy(), watching.clone());
+    pub fn new(cx: &mut Context<Viewer>) -> Viewer {
+        let saved: Saved = olo_ui::restored_state().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        let proxy = olo_ui::proxy(cx);
+        watch_list(proxy.clone());
+        let screens = listed();
+        let selected = saved.selected.filter(|s| screens.iter().any(|x| &x.name == s) || crate::history::dir(s).is_dir()).or_else(|| screens.first().map(|s| s.name.clone()));
         let mut v = Viewer {
-            windows: HashMap::new(),
-            main: None,
-            screens: listed(),
-            selected: saved.selected,
+            win: None,
+            screens,
+            rows: Vec::new(),
+            selected,
             tab: saved.tab,
-            watching,
-            texture: None,
-            frame: None,
+            watching: None,
+            live: cx.new(|_| PictureWell::new("Screen")),
             failure: None,
             controlling: false,
             held: [false; 3],
+            down: Vec::new(),
+            pressed: HashSet::new(),
+            live_focus: cx.focus_handle(),
             input: send_input(),
             busy: false,
             replay: None,
-            rows: Vec::new(),
+            stats_scroll: ScrollHandle::new(),
+            ticking: None,
+            proxy,
         };
-        if v.selected.as_ref().is_none_or(|s| !v.screens.iter().any(|x| &x.name == s)) {
-            v.selected = v.screens.first().map(|s| s.name.clone());
-        }
-        v.watch();
-        v.open_main(cx);
+        v.watch(cx);
         v
     }
 
-    pub fn open_main(&mut self, cx: &mut Cx) {
-        if let Some(id) = self.main {
-            cx.activate(id);
-            return;
-        }
-        let id = cx.open_window(WindowOptions::new("Agent Screens", 1000, 640).min_size(660, 420));
-        self.windows.insert(id, Win::Main);
-        self.main = Some(id);
+    pub fn set_window(&mut self, win: Option<WindowHandle<Frame>>) {
+        self.win = win;
     }
 
-    /// Choose `name` (from the command line, or a forwarded start).
-    pub fn show(&mut self, cx: &mut Cx, name: Option<String>) {
+    /// Choose `name` (from the command line, or a forwarded start), and
+    /// bring the window forward.
+    pub fn show(&mut self, name: Option<String>, cx: &mut Context<Self>) {
         if let Some(name) = name {
-            self.select(Some(name));
-            self.set_tab(Tab::Live);
+            self.select(Some(name), cx);
+            self.set_tab(Tab::Live, cx);
         }
-        self.open_main(cx);
+        if let Some(w) = self.win {
+            cx.defer(move |cx| {
+                let _ = w.update(cx, |_, window, _| window.activate_window());
+            });
+        }
+    }
+
+    /// The window closed, or Quit: let go of the screen, and end.
+    pub fn quit(&mut self, cx: &mut Context<Self>) {
+        self.stop_controlling();
+        self.watching = None;
+        cx.quit();
+    }
+
+    /// What to keep over an upgrade.
+    pub fn saved(&self) -> String {
+        serde_json::to_string(&Saved { selected: self.selected.clone(), tab: self.tab }).unwrap_or_default()
     }
 
     fn screen(&self) -> Option<&Screen> {
         self.selected.as_ref().and_then(|n| self.screens.iter().find(|s| &s.name == n))
     }
 
-    fn select(&mut self, name: Option<String>) {
+    fn select(&mut self, name: Option<String>, cx: &mut Context<Self>) {
         if self.selected != name {
             self.stop_controlling();
             self.selected = name;
             self.failure = None;
-            self.watch();
+            self.live.update(cx, |w, cx| w.clear(None, cx));
+            self.watch(cx);
+            cx.notify();
         }
     }
 
-    /// Point the frame worker at the chosen screen while its Live tab
-    /// shows (it pulls nothing otherwise).
-    fn watch(&self) {
-        let live = (self.shown_tab() == Tab::Live).then(|| self.selected.clone()).flatten();
-        let mut watching = self.watching.lock().unwrap_or_else(|e| e.into_inner());
-        if *watching != live {
-            *watching = live;
+    /// Watch the chosen screen while its Live tab shows (nothing is
+    /// taken otherwise).
+    fn watch(&mut self, cx: &mut Context<Self>) {
+        let live = (self.shown_tab() == Tab::Live).then(|| self.screen().map(|s| s.name.clone())).flatten();
+        if self.watching.as_ref().map(|w| &w.name) != live.as_ref() {
+            self.watching = live.map(|n| watch_screen(&n, self.proxy.clone()));
         }
-    }
-
-    fn redraw(&self, cx: &mut Cx) {
-        if let Some(id) = self.main {
-            cx.redraw(id);
-        }
+        let shape = self.screen().map(|s| (s.width as f32, s.height as f32));
+        self.live.update(cx, |w, _| w.set_shape(shape));
     }
 
     /// The tab showing: Live only for a running screen.
@@ -413,12 +505,13 @@ impl Viewer {
         if self.tab == Tab::Live && self.screen().is_none() { Tab::History } else { self.tab }
     }
 
-    fn set_tab(&mut self, tab: Tab) {
+    fn set_tab(&mut self, tab: Tab, cx: &mut Context<Self>) {
         if tab != Tab::Live {
             self.stop_controlling();
         }
         self.tab = tab;
-        self.watch();
+        self.watch(cx);
+        cx.notify();
     }
 
     fn stop_controlling(&mut self) {
@@ -426,12 +519,9 @@ impl Viewer {
             return;
         }
         // Nothing left held down on the screen.
-        let up: Vec<SyntheticEvent> = [29, 42, 56]
-            .iter()
-            .zip(self.held)
-            .filter(|(_, held)| *held)
-            .map(|(&key, _)| SyntheticEvent::Key { key, pressed: false })
-            .collect();
+        let mut up: Vec<SyntheticEvent> = self.down.drain(..).map(|(_, key)| SyntheticEvent::Key { key, pressed: false }).collect();
+        up.extend(MODIFIERS.iter().zip(self.held).filter(|(_, held)| *held).map(|(&key, _)| SyntheticEvent::Key { key, pressed: false }));
+        up.extend(self.pressed.drain().map(|button| SyntheticEvent::Button { button, pressed: false }));
         if let Some(screen) = self.screen().cloned()
             && !up.is_empty()
         {
@@ -441,543 +531,131 @@ impl Viewer {
         self.controlling = false;
     }
 
-    fn alert(&mut self, cx: &mut Cx, message: &str) {
-        let id = cx.open_window(WindowOptions::alert("Agent Screens", message).parent_opt(self.main));
-        self.windows.insert(id, Win::Alert(message.to_owned()));
+    fn take_control(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.screen().is_none() {
+            return;
+        }
+        self.set_tab(Tab::Live, cx);
+        self.controlling = true;
+        window.focus(&self.live_focus);
+        cx.notify();
     }
 
-    fn new_screen(&mut self, cx: &mut Cx) {
+    fn alert(&mut self, message: &str, cx: &mut Context<Self>) {
+        let message = message.to_owned();
+        cx.defer(move |cx| {
+            open_alert(cx, "Agent Screens", "stop", &message, &["OK"], |_, _| {});
+        });
+    }
+
+    fn new_screen(&mut self, cx: &mut Context<Self>) {
         if self.busy {
             return;
         }
         self.busy = true;
-        let proxy = cx.proxy();
+        let proxy = self.proxy.clone();
         std::thread::spawn(move || proxy.send(Msg::Started(screens::start(&screens::free_name(), &screens::Options::default()))));
-        self.redraw(cx);
+        cx.notify();
     }
 
-    fn ask_stop(&mut self, cx: &mut Cx) {
-        if let Some(name) = self.screen().map(|s| s.name.clone()) {
-            let message = format!("Stop the screen “{name}”? The agent’s programs on it are closed, and anything it hasn’t saved is lost. Its history is kept.");
-            let id = cx.open_window(WindowOptions::alert("Stop Screen", &message).parent_opt(self.main));
-            self.windows.insert(id, Win::ConfirmStop(name, message));
+    fn ask_stop(&mut self, cx: &mut Context<Self>) {
+        let Some(name) = self.screen().map(|s| s.name.clone()) else { return };
+        let message = format!("Stop the screen “{name}”? The agent’s programs on it are closed, and anything it hasn’t saved is lost. Its history is kept.");
+        let me = cx.entity();
+        cx.defer(move |cx| {
+            open_alert(cx, "Stop Screen", "warning", &message, &["Cancel", "Stop Screen"], move |choice, cx| {
+                if choice != Some(1) {
+                    return;
+                }
+                me.update(cx, |v, cx| {
+                    if v.selected.as_ref() == Some(&name) {
+                        v.stop_controlling();
+                    }
+                    let (proxy, name) = (v.proxy.clone(), name.clone());
+                    std::thread::spawn(move || proxy.send(Msg::Stopped(screens::stop(&name))));
+                    cx.notify();
+                });
+            });
+        });
+    }
+
+    fn ask_clear(&mut self, cx: &mut Context<Self>) {
+        let Some(name) = self.selected.clone().filter(|_| self.screen().is_none()) else { return };
+        let message = format!("Clear the history of “{name}”? Its actions and the frames kept with them are deleted. This can’t be undone.");
+        let me = cx.entity();
+        cx.defer(move |cx| {
+            open_alert(cx, "Clear History", "warning", &message, &["Cancel", "Clear History"], move |choice, cx| {
+                if choice != Some(1) {
+                    return;
+                }
+                let proxy = me.read(cx).proxy.clone();
+                let name = name.clone();
+                std::thread::spawn(move || proxy.send(Msg::Cleared(crate::history::clear(&name))));
+            });
+        });
+    }
+
+    fn can_export(&self, cx: &App) -> bool {
+        self.replay.as_ref().is_some_and(|(r, _)| {
+            let r = r.read(cx);
+            r.loaded() && !r.exporting() && !r.actions().is_empty()
+        })
+    }
+
+    fn ask_export(&mut self, cx: &mut Context<Self>) {
+        if !self.can_export(cx) {
+            return;
         }
-    }
-
-    fn ask_clear(&mut self, cx: &mut Cx) {
-        if let Some(name) = self.selected.clone().filter(|_| self.screen().is_none()) {
-            let message = format!("Clear the history of “{name}”? Its actions and the frames kept with them are deleted. This can’t be undone.");
-            let id = cx.open_window(WindowOptions::alert("Clear History", &message).parent_opt(self.main));
-            self.windows.insert(id, Win::ConfirmClear(name, message));
-        }
-    }
-
-    fn ask_export(&mut self, cx: &mut Cx) {
-        let Some(name) = self.replay.as_ref().filter(|r| r.loaded() && !r.exporting() && !r.actions().is_empty()).map(|r| r.name.clone()) else { return };
+        let Some(replay) = self.replay.as_ref().map(|(r, _)| r.clone()) else { return };
+        let name = replay.read(cx).name.clone();
         let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
         let dir = [home.join("Videos"), home.clone()].into_iter().find(|d| d.is_dir()).unwrap_or(home);
-        let panel = olo_kit::file_panel::FilePanel::save(dir, format!("{name}.mp4"));
-        let (w, h) = olo_kit::file_panel::PANEL_SIZE;
-        let id = cx.open_window(WindowOptions::new("Export Video", w, h).min_size(420, 300).parent_opt(self.main));
-        self.windows.insert(id, Win::ExportTo(Box::new(panel)));
-    }
-
-    fn main_ui(&mut self, cx: &mut Cx, ui: &mut Ui) {
-        // The person's input, for a screen they control, before the tabs
-        // take theirs (⌃Tab goes to the screen then).
-        let events = if self.controlling { ui.input(|i| i.events.clone()) } else { Vec::new() };
-        let full = ui.max_rect();
-        if self.rows.is_empty() {
-            let area = full.shrink(m::WINDOW_INSET);
-            let text = "No agent screens yet. An agent starts one with “olo-screen start”, or start one yourself.";
-            let r = Rect::from_min_max(area.min, pos2(area.right(), area.center().y + m::CONTROL_HEIGHT));
-            ui.put(r, EmptyState::new(text).icon("agent-screens"));
-            let b = Rect::from_min_size(pos2(area.center().x - 60.0, r.bottom() + m::SPACING), vec2(120.0, m::CONTROL_HEIGHT));
-            let label = if self.busy { "Starting…" } else { "New Screen" };
-            if ui.add_enabled_ui(!self.busy, |ui| ui.put(b, Button::new(label).min_width(120.0))).inner.clicked() {
-                self.new_screen(cx);
-            }
-            return;
-        }
-        let side_w = (full.width() * 0.2).round().clamp(SIDEBAR_MIN_W, SIDEBAR_W);
-        let side = Rect::from_min_size(full.min, vec2(side_w, full.height()));
-        self.sidebar_ui(cx, ui, side);
-        let content = Rect::from_min_max(pos2(side.right(), full.top()), full.max).shrink(m::WINDOW_INSET);
-        let Some(name) = self.selected.clone() else { return };
-        if self.replay.as_ref().is_none_or(|r| r.name != name) {
-            self.replay = Some(Replay::new(&name, cx.proxy()));
-        }
-        let header = Rect::from_min_size(content.min, vec2(content.width(), HEADER_H));
-        self.header_ui(cx, ui, header, &name);
-        let below = Rect::from_min_max(pos2(content.left(), header.bottom() + m::SPACING), content.max);
-        let running = self.screen().is_some();
-        let tabs: &[Tab] = if running { &[Tab::Live, Tab::History, Tab::Stats] } else { &[Tab::History, Tab::Stats] };
-        let labels: Vec<&str> = tabs.iter().map(|t| t.label()).collect();
-        let shown = self.shown_tab();
-        let mut i = tabs.iter().position(|t| *t == shown).unwrap_or(0);
-        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(below));
-        TabView::new(&mut i, &labels).show(&mut child, |ui, i| {
-            let area = ui.max_rect();
-            match tabs[i] {
-                Tab::Live => self.live_ui(ui, area, &events),
-                Tab::History => {
-                    if let Some(r) = self.replay.as_mut() {
-                        r.ui(ui, area, running);
-                    }
+        let panel = file_panel::FilePanel::save(dir, format!("{name}.mp4"));
+        let proxy = self.proxy.clone();
+        cx.defer(move |cx| {
+            file_panel::show(cx, "Export Video", panel, move |a, cx| {
+                if let file_panel::PanelResult::Chosen(path) = a.result {
+                    replay.update(cx, |r, cx| r.start_export(path, proxy, cx));
                 }
-                Tab::Stats => {
-                    if let Some(r) = self.replay.as_mut() {
-                        stats::ui(ui, area, r, running);
-                    }
-                }
-            }
-        });
-        if tabs[i] != shown {
-            self.set_tab(tabs[i]);
-        }
-        if let Some(r) = self.replay.as_mut()
-            && let Some(result) = r.take_exported()
-        {
-            match result {
-                Ok(path) => {
-                    let message = format!("The video “{}” is saved.", path.file_name().and_then(|n| n.to_str()).unwrap_or(""));
-                    let id = cx.open_window(WindowOptions::alert("Export Video", &message).parent_opt(self.main));
-                    self.windows.insert(id, Win::Exported(path, message));
-                }
-                Err(e) if e == "cancelled" => {}
-                Err(e) => self.alert(cx, &format!("The video couldn’t be made: {e}")),
-            }
-        }
-        // "2 s ago" moves on.
-        if running {
-            ui.ctx().request_repaint_after(Duration::from_secs(1));
-        }
-    }
-
-    /// The screens: running, then stopped ones with a history; New Screen
-    /// under them.
-    fn sidebar_ui(&mut self, cx: &mut Cx, ui: &mut Ui, side: Rect) {
-        let p = style::palette(ui.ctx());
-        let now = crate::history::now_ms();
-        let footer_h = m::CONTROL_HEIGHT + 2.0 * m::SPACING;
-        let list = Rect::from_min_max(side.min, pos2(side.right(), side.bottom() - footer_h));
-        let footer = Rect::from_min_max(pos2(side.left(), list.bottom()), side.max);
-        // The chosen one's last use as it happens; the others' as listed.
-        let latest = self.replay.as_ref().and_then(|r| r.actions().last().map(|a| (r.name.clone(), a.at + a.ms)));
-        let last_used = |r: &Row| match &latest {
-            Some((n, t)) if *n == r.name => Some(*t),
-            _ => r.last_used,
-        };
-        let running = |n: &str| self.screens.iter().any(|s| s.name == n);
-        let groups: [(&str, Vec<&Row>); 2] =
-            [("Running", self.rows.iter().filter(|r| running(&r.name)).collect()), ("Stopped", self.rows.iter().filter(|r| !running(&r.name)).collect())];
-        let values: Vec<Vec<String>> = groups.iter().map(|(_, rs)| rs.iter().map(|r| last_used(r).map(|t| ago_short(t, now)).unwrap_or_default()).collect()).collect();
-        let mut items = Vec::new();
-        let mut names: Vec<Option<&str>> = Vec::new();
-        for ((heading, rs), values) in groups.iter().zip(&values) {
-            if rs.is_empty() {
-                continue;
-            }
-            items.push(sidebar::Row::heading(heading));
-            names.push(None);
-            for (r, v) in rs.iter().zip(values) {
-                let row = sidebar::Row::new("agent-screens", &r.name);
-                items.push(if v.is_empty() { row } else { row.value(v) });
-                names.push(Some(&r.name));
-            }
-        }
-        let first = names.iter().position(Option::is_some).unwrap_or(0);
-        let mut chosen = names.iter().position(|n| *n == self.selected.as_deref()).unwrap_or(first);
-        let before = chosen;
-        let height = sidebar::height(&items);
-        if height <= list.height() {
-            Sidebar::new("screens", &items, &mut chosen).show(ui, list);
-        } else {
-            ui.painter().rect_filled(list, 0.0, style::shade(&p, p.panel_background, 1.04));
-            ScrollView::new("screens-scroll").border(false).show_in(ui, list, |ui, _| {
-                let r = Rect::from_min_size(ui.max_rect().min, vec2(ui.max_rect().width(), height));
-                Sidebar::new("screens", &items, &mut chosen).show(ui, r);
-                ui.allocate_rect(r, egui::Sense::hover());
             });
-        }
-        let picked = (chosen != before).then(|| names.get(chosen).copied().flatten().map(str::to_owned)).flatten();
-        // New Screen, on the sidebar's ground.
-        let painter = ui.painter();
-        painter.rect_filled(footer, 0.0, style::shade(&p, p.panel_background, 1.04));
-        style::vline_left_of(painter, footer.right(), footer.top(), footer.bottom(), style::shade(&p, p.panel_background, 1.25));
-        style::hline(painter, footer.left(), footer.right() - 1.0, footer.top(), style::shade(&p, p.panel_background, 1.18));
-        let b = Rect::from_min_size(pos2(footer.left() + m::WINDOW_INSET, footer.top() + m::SPACING), vec2(footer.width() - 2.0 * m::WINDOW_INSET, m::CONTROL_HEIGHT));
-        let label = if self.busy { "Starting…" } else { "New Screen" };
-        if ui.add_enabled_ui(!self.busy, |ui| ui.put(b, Button::new(label))).inner.clicked() {
-            self.new_screen(cx);
-        }
-        if let Some(name) = picked {
-            self.select(Some(name));
+        });
+    }
+
+    /// An export ended: where the video is, or why not.
+    fn exported(&mut self, result: &Result<PathBuf, String>, cx: &mut Context<Self>) {
+        match result {
+            Ok(path) => {
+                let message = format!("The video “{}” is saved.", path.file_name().and_then(|n| n.to_str()).unwrap_or(""));
+                let path = path.clone();
+                let me = cx.entity();
+                cx.defer(move |cx| {
+                    open_alert(cx, "Export Video", "video", &message, &[olo_ui::tracker::LABEL, "OK"], move |choice, cx| {
+                        if choice == Some(0)
+                            && let Err(e) = olo_ui::tracker::open(&path)
+                        {
+                            me.update(cx, |v, cx| v.alert(&format!("Tracker couldn’t show it: {e}"), cx));
+                        }
+                    });
+                });
+            }
+            Err(e) if e == "cancelled" => {}
+            Err(e) => self.alert(&format!("The video couldn’t be made: {e}"), cx),
         }
     }
 
-    /// The chosen screen's name, how it's doing, and what can be done
-    /// with it.
-    fn header_ui(&mut self, cx: &mut Cx, ui: &mut Ui, r: Rect, name: &str) {
-        let p = style::palette(ui.ctx());
-        let now = crate::history::now_ms();
-        let screen = self.screen().cloned();
-        let icon = style::snap(ui.ctx(), Rect::from_min_size(pos2(r.left(), r.center().y - 16.0), vec2(32.0, 32.0)));
-        icons::paint(ui.painter(), icon, "agent-screens");
-        // The buttons, from the right.
-        let mut right = r.right();
-        let mut button = |ui: &mut Ui, label: &str, enabled: bool| {
-            let w = style::label_width(ui.ctx(), label, style::plain_font()).ceil() + 2.0 * m::CONTROL_PAD;
-            let w = w.max(96.0);
-            let b = Rect::from_min_size(pos2(right - w, r.center().y - m::CONTROL_HEIGHT / 2.0), vec2(w, m::CONTROL_HEIGHT));
-            right = b.left() - m::SPACING;
-            ui.add_enabled_ui(enabled, |ui| ui.put(b, Button::new(label).min_width(w))).inner.clicked()
-        };
-        let can_export = self.replay.as_ref().is_some_and(|r| r.loaded() && !r.exporting() && !r.actions().is_empty());
-        if screen.is_some() {
-            if button(ui, "Stop Screen…", true) {
-                self.ask_stop(cx);
-            }
-        } else if button(ui, "Clear History…", true) {
-            self.ask_clear(cx);
-        }
-        if button(ui, "Export Video…", can_export) {
-            self.ask_export(cx);
-        }
-        // The name, and a line on how it is.
-        let x = icon.right() + m::SPACING;
-        let w = (right - m::SPACING - x).max(0.0);
-        let title = FontId::new(15.0, style::bold());
-        style::label_fit(ui.painter(), x, r.top() + 11.0, Align::Min, name, title, c(p.panel_text), w);
-        let actions = self.replay.as_ref().map(|r| r.actions()).unwrap_or_default();
-        let mut parts = Vec::new();
-        let dot = if let Some(s) = &screen {
-            parts.push("Running".to_owned());
-            parts.push(format!("{} × {}", s.width, s.height));
-            if let Some(t) = self.replay.as_ref().and_then(Replay::started) {
-                parts.push(format!("up {}", stats::span(now.saturating_sub(t))));
-            }
-            c(p.success)
-        } else {
-            parts.push("Stopped".to_owned());
-            style::disabled_text(&p)
-        };
-        if !actions.is_empty() {
-            parts.push(format!("{} action{}", style::thousands(actions.len()), if actions.len() == 1 { "" } else { "s" }));
-        }
-        if let Some(t) = actions.last().map(|a| a.at + a.ms) {
-            parts.push(format!("last {}", stats::ago(t, now)));
-        }
-        let line_y = r.top() + 29.0;
-        let d = style::snap_centred(ui.ctx(), pos2(x + 4.0, line_y), vec2(8.0, 8.0));
-        ui.painter().circle_filled(d.center(), 4.0, dot);
-        style::label_fit(ui.painter(), x + 14.0, line_y, Align::Min, &parts.join("  ·  "), style::plain_font(), style::disabled_text(&p), (w - 14.0).max(0.0));
-    }
-
-    /// The screen as it is now, and Take Control.
-    fn live_ui(&mut self, ui: &mut Ui, area: Rect, events: &[egui::Event]) {
-        let p = style::palette(ui.ctx());
-        let Some(screen) = self.screen().cloned() else { return };
-        if let Some((name, image)) = self.frame.take() {
-            match &mut self.texture {
-                Some((n, tex)) if *n == name => tex.set(image, TextureOptions::LINEAR),
-                _ => self.texture = Some((name.clone(), ui.ctx().load_texture(format!("screen-{name}"), image, TextureOptions::LINEAR))),
-            }
-        }
-        let bar = Rect::from_min_max(pos2(area.left(), area.bottom() - m::CONTROL_HEIGHT), area.max);
-        let well = Rect::from_min_max(area.min, pos2(area.right(), bar.top() - m::SPACING));
-        let tex = self.texture.as_ref().filter(|(n, _)| *n == screen.name).map(|(_, t)| t);
-        let text = match tex {
-            Some(_) => None,
-            None => Some(self.failure.as_deref().unwrap_or("Connecting…")),
-        };
-        let pic = replay::picture_well(ui, well, Some(vec2(screen.width as f32, screen.height as f32)), tex, text);
-        let target = pic.unwrap_or(well);
-        if self.controlling {
-            // A ring in the selection colour says the keys go there.
-            ui.painter().rect_stroke(target.expand(2.0), 0.0, egui::Stroke::new(2.0, c(p.keyboard_navigation)), egui::StrokeKind::Middle);
-        }
-        let response = ui.allocate_rect(target, egui::Sense::click_and_drag());
-        if self.controlling {
-            self.forward(ui, &screen, target, &response, events);
-        }
-
-        // What is going on, and the control button.
-        let label = if self.controlling { "Stop Controlling" } else { "Take Control" };
-        let b = Rect::from_min_size(pos2(bar.right() - 140.0, bar.top()), vec2(140.0, m::CONTROL_HEIGHT));
-        if ui.put(b, Button::new(label).min_width(140.0).pushed(self.controlling)).clicked() {
-            if self.controlling {
-                self.stop_controlling();
-            } else {
-                self.controlling = true;
-                response.request_focus();
-            }
-        }
-        let now = crate::history::now_ms();
-        let (text, color) = if self.controlling {
-            ("You have control: your pointer and keys go to this screen.".to_owned(), c(p.panel_text))
-        } else {
-            let latest = self.replay.as_ref().and_then(|r| r.actions().last());
-            match latest {
-                Some(a) => {
-                    let what = replay::command(a);
-                    let mark = if a.error.is_some() { "  ✗" } else { "" };
-                    (format!("Latest: {what}{mark}  ·  {}", stats::ago(a.at + a.ms, now)), style::disabled_text(&p))
-                }
-                None => ("Watching. Nothing has been done on it yet.".to_owned(), style::disabled_text(&p)),
-            }
-        };
-        let w = (b.left() - m::SPACING - bar.left()).max(0.0);
-        style::label_fit(ui.painter(), bar.left(), bar.center().y, Align::Min, &text, style::plain_font(), color, w);
-    }
-
-    /// Press or let go of Ctrl, Shift and Alt on the screen to match
-    /// `modifiers`.
-    fn sync_modifiers(&mut self, modifiers: egui::Modifiers, out: &mut Vec<SyntheticEvent>) {
-        let now = [modifiers.ctrl, modifiers.shift, modifiers.alt];
-        for (i, key) in [29u32, 42, 56].into_iter().enumerate() {
-            if now[i] != self.held[i] {
-                out.push(SyntheticEvent::Key { key, pressed: now[i] });
-                self.held[i] = now[i];
-            }
-        }
-    }
-
-    /// The person's pointer and keys (`events`, this frame's), onto the
-    /// screen.
-    fn forward(&mut self, ui: &mut Ui, screen: &Screen, pic: Rect, response: &egui::Response, events: &[egui::Event]) {
-        let to_screen = |pos: Pos2| -> (f64, f64) {
-            let x = ((pos.x - pic.left()) / pic.width()).clamp(0.0, 1.0) as f64 * screen.width as f64;
-            let y = ((pos.y - pic.top()) / pic.height()).clamp(0.0, 1.0) as f64 * screen.height as f64;
-            (x, y)
-        };
-        if response.hovered() || response.dragged() {
-            response.request_focus();
-        }
-        let keys = response.has_focus();
-        let modifiers = ui.input(|i| i.modifiers);
-        let mut out = Vec::new();
-        let mut moved = None;
-        for e in events {
-            match e {
-                egui::Event::PointerMoved(pos) if pic.contains(*pos) || response.dragged() => moved = Some(to_screen(*pos)),
-                egui::Event::PointerButton { pos, button, pressed, .. } if pic.contains(*pos) || !pressed => {
-                    let button = match button {
-                        egui::PointerButton::Primary => screens::LEFT,
-                        egui::PointerButton::Secondary => screens::RIGHT,
-                        egui::PointerButton::Middle => screens::MIDDLE,
-                        _ => continue,
-                    };
-                    let (x, y) = to_screen(*pos);
-                    moved = None;
-                    out.push(SyntheticEvent::Move { x, y });
-                    out.push(SyntheticEvent::Button { button, pressed: *pressed });
-                }
-                egui::Event::MouseWheel { unit, delta, .. } if response.hovered() => {
-                    if let Some((x, y)) = moved.take() {
-                        out.push(SyntheticEvent::Move { x, y });
-                    }
-                    match unit {
-                        egui::MouseWheelUnit::Point => out.push(SyntheticEvent::Scroll { dx: -delta.x as f64, dy: -delta.y as f64 }),
-                        _ => out.push(SyntheticEvent::Wheel { dx: -delta.x.signum() as i32, dy: -delta.y.signum() as i32 }),
-                    }
-                }
-                egui::Event::Key { key, physical_key, pressed, modifiers, .. } if keys => {
-                    if let Some(code) = evdev(physical_key.unwrap_or(*key)) {
-                        // The modifiers as they were for this key (a
-                        // frame can hold Shift going down and up again).
-                        self.sync_modifiers(*modifiers, &mut out);
-                        out.push(SyntheticEvent::Key { key: code, pressed: *pressed });
-                    }
-                }
-                _ => {}
-            }
-        }
-        if let Some((x, y)) = moved {
-            out.insert(0, SyntheticEvent::Move { x, y });
-        }
-        // And as they are now, once the keys are through.
-        if keys {
-            self.sync_modifiers(modifiers, &mut out);
-        }
-        if !out.is_empty() {
-            let _ = self.input.send((screen.clone(), out));
-        }
-    }
-}
-
-impl App for Viewer {
-    fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut Ui) {
-        match self.windows.get(&window) {
-            Some(Win::Main) => self.main_ui(cx, ui),
-            Some(Win::ConfirmStop(name, message)) => {
-                let (name, message) = (name.clone(), message.clone());
-                let Some(choice) = widgets::alert(ui, "warning", &message, &["Cancel", "Stop Screen"]) else { return };
-                self.windows.remove(&window);
-                cx.close_window(window);
-                if choice == 1 {
-                    if self.selected.as_ref() == Some(&name) {
-                        self.stop_controlling();
-                    }
-                    let proxy = cx.proxy();
-                    std::thread::spawn(move || proxy.send(Msg::Stopped(screens::stop(&name))));
-                }
-            }
-            Some(Win::ConfirmClear(name, message)) => {
-                let (name, message) = (name.clone(), message.clone());
-                let Some(choice) = widgets::alert(ui, "warning", &message, &["Cancel", "Clear History"]) else { return };
-                self.windows.remove(&window);
-                cx.close_window(window);
-                if choice == 1 {
-                    let proxy = cx.proxy();
-                    std::thread::spawn(move || proxy.send(Msg::Cleared(crate::history::clear(&name))));
-                }
-            }
-            Some(Win::ExportTo(_)) => {
-                let Some(Win::ExportTo(panel)) = self.windows.get_mut(&window) else { return };
-                let Some(result) = panel.ui(ui) else { return };
-                self.windows.remove(&window);
-                cx.close_window(window);
-                if let (olo_kit::file_panel::PanelResult::Chosen(path), Some(r)) = (result, self.replay.as_mut()) {
-                    r.start_export(path, cx.proxy());
-                }
-            }
-            Some(Win::Exported(path, message)) => {
-                let (path, message) = (path.clone(), message.clone());
-                let Some(choice) = widgets::alert(ui, "video", &message, &[olo_kit::tracker::LABEL, "OK"]) else { return };
-                self.windows.remove(&window);
-                cx.close_window(window);
-                if choice == 0
-                    && let Err(e) = olo_kit::tracker::open(&path)
-                {
-                    self.alert(cx, &format!("Tracker couldn’t show it: {e}"));
-                }
-            }
-            Some(Win::Alert(message)) => {
-                let message = message.clone();
-                if widgets::alert(ui, "stop", &message, &["OK"]).is_some() {
-                    self.windows.remove(&window);
-                    cx.close_window(window);
-                }
-            }
-            None => {}
-        }
-    }
-
-    fn menu_bar(&mut self, window: WindowId) -> Option<Vec<Menu>> {
-        if !matches!(self.windows.get(&window), Some(Win::Main)) {
-            return None;
-        }
-        let running = self.screen().is_some();
-        let chosen = self.selected.is_some();
-        let tab = self.shown_tab();
-        let history = tab == Tab::History && self.replay.as_ref().is_some_and(|r| r.loaded() && !r.actions().is_empty());
-        let can_export = self.replay.as_ref().is_some_and(|r| r.loaded() && !r.exporting() && !r.actions().is_empty());
-        let playing = self.replay.as_ref().is_some_and(Replay::playing);
-        Some(vec![
-            Menu::new("Screen")
-                .item("New Screen", "new", Some(Key::N))
-                .enabled(!self.busy)
-                .item("Stop Screen…", "stop", None)
-                .enabled(running)
-                .item("Clear History…", "clear", None)
-                .enabled(chosen && !running)
-                .separator()
-                .item("Export Video…", "export", Some(Key::E))
-                .enabled(can_export)
-                .separator()
-                .item("Quit", "quit", Some(Key::Q)),
-            Menu::new("View")
-                .item("Live", "tab-live", Some(Key::Num1))
-                .enabled(running)
-                .checked(tab == Tab::Live)
-                .item("History", "tab-history", Some(Key::Num2))
-                .enabled(chosen)
-                .checked(tab == Tab::History)
-                .item("Stats", "tab-stats", Some(Key::Num3))
-                .enabled(chosen)
-                .checked(tab == Tab::Stats)
-                .separator()
-                .item("Find", "find", Some(Key::F))
-                .enabled(chosen),
-            Menu::new("Playback")
-                .item(if playing { "Pause" } else { "Play" }, "play", None)
-                .enabled(history)
-                .item("Previous Action", "previous", None)
-                .enabled(history)
-                .item("Next Action", "next", None)
-                .enabled(history)
-                .separator()
-                .item(if running { "Go Live" } else { "Go to Latest" }, "latest", None)
-                .enabled(history),
-            Menu::new("Control")
-                .item(if self.controlling { "Stop Controlling" } else { "Take Control" }, "control", Some(Key::K))
-                .enabled(running),
-        ])
-    }
-
-    fn command(&mut self, cx: &mut Cx, _window: WindowId, command: &str) {
-        match command {
-            "new" => self.new_screen(cx),
-            "stop" => self.ask_stop(cx),
-            "clear" => self.ask_clear(cx),
-            "export" => self.ask_export(cx),
-            "tab-live" if self.screen().is_some() => self.set_tab(Tab::Live),
-            "tab-history" => self.set_tab(Tab::History),
-            "tab-stats" => self.set_tab(Tab::Stats),
-            "find" => {
-                self.set_tab(Tab::History);
-                if let Some(r) = self.replay.as_mut() {
-                    r.focus_search();
-                }
-            }
-            "play" | "previous" | "next" | "latest" => {
-                if let Some(r) = self.replay.as_mut() {
-                    match command {
-                        "play" => r.play_pause(),
-                        "previous" => r.step(-1),
-                        "next" => r.step(1),
-                        _ => r.latest(),
-                    }
-                }
-            }
-            "control" => {
-                if self.controlling {
-                    self.stop_controlling();
-                } else if self.screen().is_some() {
-                    self.set_tab(Tab::Live);
-                    self.controlling = true;
-                }
-            }
-            "quit" => cx.quit(),
-            _ => {}
-        }
-        self.watch();
-        self.redraw(cx);
-    }
-
-    fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
-        if Some(window) == self.main {
-            self.stop_controlling();
-            cx.quit();
-        } else {
-            self.windows.remove(&window);
-            cx.close_window(window);
-        }
-    }
-
-    fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
+    pub fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
         // Another start: `olo-screen [watch NAME]`.
-        if let Some(launch) = message.downcast_ref::<olo_kit::instance::Launch>() {
-            self.show(cx, launch.args.get(1).cloned());
+        if let Some(launch) = message.downcast_ref::<olo_ui::instance::Launch>() {
+            self.show(launch.args.get(1).cloned(), cx);
             return;
         }
-        let message = match message.downcast::<replay::ReplayMsg>() {
+        let message = match message.downcast::<ReplayMsg>() {
             Ok(m) => {
-                if let Some(r) = self.replay.as_mut() {
-                    r.message(*m);
+                if let Some((r, _)) = &self.replay {
+                    r.update(cx, |r, cx| r.message(*m, cx));
                 }
-                self.redraw(cx);
+                // (The header and sidebar say the newest action.)
+                cx.notify();
                 return;
             }
             Err(m) => m,
@@ -986,7 +664,7 @@ impl App for Viewer {
         match *msg {
             Msg::Screens(list) => {
                 self.screens = list;
-                let (proxy, running) = (cx.proxy(), self.screens.clone());
+                let (proxy, running) = (self.proxy.clone(), self.screens.clone());
                 std::thread::spawn(move || proxy.send(Msg::Rows(rows(&running))));
             }
             Msg::Rows(rows) => {
@@ -995,14 +673,15 @@ impl App for Viewer {
                     let first = self.rows.first().map(|r| r.name.clone());
                     self.stop_controlling();
                     self.selected = None;
-                    self.select(first);
+                    self.select(first, cx);
                 }
             }
-            Msg::Frame { name, image } => {
-                if self.selected.as_ref() == Some(&name) {
+            Msg::Frame { name, shot } => {
+                if self.selected.as_ref() == Some(&name) && self.watching.as_ref().is_some_and(|w| w.name == name) {
                     self.failure = None;
-                    self.frame = Some((name, image));
+                    self.live.update(cx, |w, cx| w.set_shot(shot, cx));
                 }
+                return;
             }
             Msg::Failed { name, message } => {
                 if self.selected.as_ref() == Some(&name) {
@@ -1016,35 +695,613 @@ impl App for Viewer {
                         if !self.screens.contains(&screen) {
                             self.screens.push(screen.clone());
                         }
-                        self.select(Some(screen.name));
-                        self.set_tab(Tab::Live);
+                        self.select(Some(screen.name), cx);
+                        self.set_tab(Tab::Live, cx);
                     }
-                    Err(e) => self.alert(cx, &format!("The screen couldn't be started: {e}")),
+                    Err(e) => self.alert(&format!("The screen couldn't be started: {e}"), cx),
                 }
             }
             Msg::Stopped(r) => {
                 if let Err(e) = r {
-                    self.alert(cx, &e);
+                    self.alert(&e, cx);
                 }
                 self.screens = listed();
-                let (proxy, running) = (cx.proxy(), self.screens.clone());
+                let (proxy, running) = (self.proxy.clone(), self.screens.clone());
                 std::thread::spawn(move || proxy.send(Msg::Rows(rows(&running))));
             }
             Msg::Cleared(r) => {
                 if let Err(e) = r {
-                    self.alert(cx, &e);
+                    self.alert(&e, cx);
                 }
                 self.replay = None;
-                let (proxy, running) = (cx.proxy(), self.screens.clone());
+                let (proxy, running) = (self.proxy.clone(), self.screens.clone());
                 std::thread::spawn(move || proxy.send(Msg::Rows(rows(&running))));
             }
         }
         // A screen come or gone changes what Live shows.
-        self.watch();
-        self.redraw(cx);
+        self.watch(cx);
+        cx.notify();
     }
 
-    fn save_state(&mut self, _cx: &Cx) -> Option<String> {
-        serde_json::to_string(&Saved { selected: self.selected.clone(), tab: self.tab }).ok()
+    fn menus(&self, cx: &App) -> Vec<Menu> {
+        let running = self.screen().is_some();
+        let chosen = self.selected.is_some();
+        let tab = self.shown_tab();
+        let replay = self.replay.as_ref().map(|(r, _)| r.read(cx));
+        let history = tab == Tab::History && replay.is_some_and(|r| r.loaded() && !r.actions().is_empty());
+        let playing = replay.is_some_and(Replay::playing);
+        vec![
+            Menu::new("Screen")
+                .item("New Screen", "new")
+                .key("n")
+                .enabled(!self.busy)
+                .item("Stop Screen…", "stop")
+                .enabled(running)
+                .item("Clear History…", "clear")
+                .enabled(chosen && !running)
+                .separator()
+                .item("Export Video…", "export")
+                .key("e")
+                .enabled(self.can_export(cx))
+                .separator()
+                .item("Quit", "quit")
+                .key("q"),
+            Menu::new("View")
+                .item("Live", "tab-live")
+                .key("1")
+                .enabled(running)
+                .checked(tab == Tab::Live)
+                .item("History", "tab-history")
+                .key("2")
+                .enabled(chosen)
+                .checked(tab == Tab::History)
+                .item("Stats", "tab-stats")
+                .key("3")
+                .enabled(chosen)
+                .checked(tab == Tab::Stats)
+                .separator()
+                .item("Find", "find")
+                .key("f")
+                .enabled(chosen),
+            Menu::new("Playback")
+                .item(if playing { "Pause" } else { "Play" }, "play")
+                .enabled(history)
+                .item("Previous Action", "previous")
+                .enabled(history)
+                .item("Next Action", "next")
+                .enabled(history)
+                .separator()
+                .item(if running { "Go Live" } else { "Go to Latest" }, "latest")
+                .enabled(history),
+            Menu::new("Control").item(if self.controlling { "Stop Controlling" } else { "Take Control" }, "control").key("k").enabled(running),
+        ]
+    }
+
+    fn command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) {
+        match command {
+            "new" => self.new_screen(cx),
+            "stop" => self.ask_stop(cx),
+            "clear" => self.ask_clear(cx),
+            "export" => self.ask_export(cx),
+            "tab-live" if self.screen().is_some() => self.set_tab(Tab::Live, cx),
+            "tab-history" => self.set_tab(Tab::History, cx),
+            "tab-stats" => self.set_tab(Tab::Stats, cx),
+            "find" => {
+                self.set_tab(Tab::History, cx);
+                if let Some((r, _)) = &self.replay {
+                    let r = r.clone();
+                    // Once the tab has drawn its search.
+                    cx.defer_in(window, move |_, window, cx| {
+                        let search = r.clone();
+                        search.update(cx, |r, cx| r.focus_search(window, cx));
+                    });
+                }
+            }
+            "play" | "previous" | "next" | "latest" => {
+                if let Some((r, _)) = &self.replay {
+                    r.update(cx, |r, cx| match command {
+                        "play" => r.play_pause(cx),
+                        "previous" => r.step(-1, cx),
+                        "next" => r.step(1, cx),
+                        _ => r.latest(cx),
+                    });
+                }
+            }
+            "control" => {
+                if self.controlling {
+                    self.stop_controlling();
+                } else {
+                    self.take_control(window, cx);
+                }
+            }
+            "quit" => self.quit(cx),
+            _ => {}
+        }
+        cx.notify();
+    }
+
+    /// The history of the chosen screen, made when it's first wanted.
+    fn replay(&mut self, name: &str, cx: &mut Context<Self>) -> Entity<Replay> {
+        if let Some((r, _)) = &self.replay
+            && r.read(cx).name == name
+        {
+            return r.clone();
+        }
+        let proxy = self.proxy.clone();
+        let replay = cx.new(|cx| Replay::new(name, proxy, cx));
+        let sub = cx.subscribe(&replay, |v: &mut Viewer, _, e: &Exported, cx| v.exported(&e.0, cx));
+        self.replay = Some((replay.clone(), sub));
+        replay
+    }
+
+    /// Times said move on: draw again when the next one changes.
+    fn tick(&mut self, ages: impl IntoIterator<Item = u64>, cx: &mut Context<Self>) {
+        let Some(wait) = ages.into_iter().map(next_change).min() else {
+            self.ticking = None;
+            return;
+        };
+        // (Drawn again before then: the timer set stands.)
+        let due = Instant::now() + wait;
+        if self.ticking.as_ref().is_some_and(|(at, _)| *at <= due + Duration::from_millis(20)) {
+            return;
+        }
+        let task = cx.spawn(async move |me, cx| {
+            cx.background_executor().timer(wait).await;
+            let _ = me.update(cx, |v, cx| {
+                v.ticking = None;
+                cx.notify();
+            });
+        });
+        self.ticking = Some((due, task));
+    }
+
+    /// The screens: running, then stopped ones with a history; New
+    /// Screen under them.
+    fn sidebar(&mut self, side_w: f32, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let now = crate::history::now_ms();
+        // The chosen one's last use as it happens; the others' as listed.
+        let latest = self.replay.as_ref().and_then(|(r, _)| {
+            let r = r.read(cx);
+            r.actions().last().map(|a| (r.name.clone(), a.at + a.ms))
+        });
+        let last_used = |r: &Row| match &latest {
+            Some((n, t)) if *n == r.name => Some(*t),
+            _ => r.last_used,
+        };
+        let running = |n: &str| self.screens.iter().any(|s| s.name == n);
+        let groups: [(&str, Vec<&Row>); 2] = [("Running", self.rows.iter().filter(|r| running(&r.name)).collect()), ("Stopped", self.rows.iter().filter(|r| !running(&r.name)).collect())];
+        let mut items = Vec::new();
+        let mut names: Vec<Option<String>> = Vec::new();
+        for (heading, rs) in &groups {
+            if rs.is_empty() {
+                continue;
+            }
+            items.push(sidebar::Row::heading(*heading));
+            names.push(None);
+            for r in rs {
+                let row = sidebar::Row::new("agent-screens", r.name.clone());
+                items.push(match last_used(r) {
+                    Some(t) => row.value(ago_short(t, now)),
+                    None => row,
+                });
+                names.push(Some(r.name.clone()));
+            }
+        }
+        let first = names.iter().position(Option::is_some).unwrap_or(0);
+        let chosen = names.iter().position(|n| n.as_deref() == self.selected.as_deref()).unwrap_or(first);
+        let me = cx.entity();
+        let pick = me.clone();
+        let list = Sidebar::new("screens", items, chosen).on_choose(move |i, _, cx| {
+            if let Some(Some(name)) = names.get(i) {
+                let name = name.clone();
+                pick.update(cx, |v, cx| v.select(Some(name), cx));
+            }
+        });
+        // The sidebar's ground down the column, and the line over New
+        // Screen, from the column's own box (its two parts are laid out
+        // a device pixel apart at some scales).
+        let ground = canvas(
+            |_, _, _| {},
+            |b, _, window, cx| {
+                let p = theme::palette(cx);
+                style::fill_rect(window, b, sidebar::ground(&p));
+                style::vline_left_of(window, b.right(), b.top(), b.bottom(), sidebar::edge(&p));
+                let top = b.bottom() - px(FOOTER_H);
+                style::hline(window, b.left(), b.right() - style::hairline(window), top, style::shade(&p, p.panel_background, 1.18));
+            },
+        )
+        .absolute()
+        .inset_0();
+        let busy = self.busy;
+        let new = Button::new(if busy { "Starting…" } else { "New Screen" }).id("new-screen").enabled(!busy).on_click(move |_, cx| me.update(cx, |v, cx| v.new_screen(cx)));
+        div()
+            .w(px(side_w))
+            .h_full()
+            .flex_shrink_0()
+            .flex()
+            .flex_col()
+            .relative()
+            .child(ground)
+            .child(div().flex_1().min_h_0().child(list))
+            .child(div().h(px(FOOTER_H)).flex_shrink_0().flex().justify_center().pt(px(m::SPACING)).child(new))
+    }
+
+    /// The chosen screen's name, how it's doing, and what can be done
+    /// with it.
+    fn header(&mut self, name: &str, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let now = crate::history::now_ms();
+        let screen = self.screen().cloned();
+        let (actions, last, started) = match &self.replay {
+            Some((r, _)) => {
+                let r = r.read(cx);
+                (r.actions().len(), r.actions().last().map(|a| a.at + a.ms), r.started())
+            }
+            None => (0, None, None),
+        };
+        let mut parts = Vec::new();
+        let running = screen.is_some();
+        if let Some(s) = &screen {
+            parts.push("Running".to_owned());
+            parts.push(format!("{} × {}", s.width, s.height));
+            if let Some(t) = started {
+                parts.push(format!("up {}", stats::span(now.saturating_sub(t))));
+            }
+        } else {
+            parts.push("Stopped".to_owned());
+        }
+        if actions > 0 {
+            parts.push(format!("{} action{}", style::thousands(actions), if actions == 1 { "" } else { "s" }));
+        }
+        if let Some(t) = last {
+            parts.push(format!("last {}", stats::ago(t, now)));
+        }
+        let line = parts.join("  ·  ");
+        let title = SharedString::from(name.to_owned());
+        let face = canvas(
+            |_, _, _| {},
+            move |r, _, window, cx| {
+                let p = theme::palette(cx);
+                let icon = style::snap(window, olo_ui::gpui::Bounds { origin: point(r.left(), r.center().y - px(16.0)), size: size(px(32.0), px(32.0)) });
+                icons::paint(window, icon, "agent-screens");
+                let x = icon.right() + px(m::SPACING);
+                let w = (r.right() - x).max(px(0.0));
+                let t = style::label_fit(window, cx, x, r.top() + px(11.0), style::Align::Left, title.clone(), 15.0, style::ui_font(FontWeight::BOLD), c(p.panel_text), w);
+                agent::record(window, cx, agent::Node { role: "Heading", name: Some(title.clone()), bounds: t, enabled: true, ..Default::default() });
+                let line_y = r.top() + px(29.0);
+                let dot = if running { c(p.success) } else { style::disabled_text(&p) };
+                let d = style::snap_centred(window, point(x + px(4.0), line_y), 8.0, 8.0);
+                window.paint_quad(olo_ui::gpui::fill(d, dot).corner_radii(d.size.width / 2.0));
+                let t = style::label_fit(window, cx, x + px(14.0), line_y, style::Align::Left, line.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p), (w - px(14.0)).max(px(0.0)));
+                agent::record(window, cx, agent::Node::label(line.clone(), t));
+            },
+        )
+        .flex_1()
+        .min_w_0()
+        .h_full();
+        let me = cx.entity();
+        let (stop, export) = (me.clone(), me);
+        let first = if running {
+            Button::new("Stop Screen…").min_width(96.0).on_click(move |_, cx| stop.update(cx, |v, cx| v.ask_stop(cx)))
+        } else {
+            Button::new("Clear History…").min_width(96.0).on_click(move |_, cx| stop.update(cx, |v, cx| v.ask_clear(cx)))
+        };
+        let export = Button::new("Export Video…").min_width(96.0).enabled(self.can_export(cx)).on_click(move |_, cx| export.update(cx, |v, cx| v.ask_export(cx)));
+        div().flex().flex_row().items_center().gap(px(m::SPACING)).h(px(HEADER_H)).flex_shrink_0().child(face).child(export).child(first)
+    }
+
+    /// The screen as it is now, and Take Control.
+    fn live_tab(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let Some(screen) = self.screen().cloned() else { return div().into_any_element() };
+        let p = theme::palette(cx);
+        let text: Option<SharedString> = if self.live.read(cx).has_shot() { None } else { Some(self.failure.clone().unwrap_or_else(|| "Connecting…".into()).into()) };
+        if let Some(t) = text {
+            self.live.update(cx, |w, cx| w.clear(Some(t), cx));
+        }
+        let controlling = self.controlling;
+        let me = cx.entity();
+        // Over the picture: the ring saying the keys go there, and the
+        // person's pointer and keys sent on to the screen.
+        let well = self.live.clone();
+        let forward = me.clone();
+        let input = canvas(
+            move |b, window, _| window.insert_hitbox(b, HitboxBehavior::Normal),
+            move |_, hitbox, window, cx| {
+                let Some(pic) = well.read(cx).shown() else { return };
+                if !controlling {
+                    return;
+                }
+                let p = theme::palette(cx);
+                let ring = pic.dilate(px(3.0));
+                window.paint_quad(olo_ui::gpui::outline(ring, c(p.keyboard_navigation), olo_ui::gpui::BorderStyle::Solid).border_widths(px(2.0)));
+                let (sw, sh) = (screen.width as f64, screen.height as f64);
+                let to_screen = move |pos: olo_ui::gpui::Point<olo_ui::gpui::Pixels>| -> (f64, f64) {
+                    let x = (f32::from(pos.x - pic.left()) / f32::from(pic.size.width)).clamp(0.0, 1.0) as f64 * sw;
+                    let y = (f32::from(pos.y - pic.top()) / f32::from(pic.size.height)).clamp(0.0, 1.0) as f64 * sh;
+                    (x, y)
+                };
+                let button = |b: MouseButton| match b {
+                    MouseButton::Left => Some(screens::LEFT),
+                    MouseButton::Right => Some(screens::RIGHT),
+                    MouseButton::Middle => Some(screens::MIDDLE),
+                    _ => None,
+                };
+                let (h, f) = (hitbox.clone(), forward.clone());
+                window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, cx| {
+                    if !phase.bubble() {
+                        return;
+                    }
+                    let held = !f.read(cx).pressed.is_empty();
+                    if (h.is_hovered(window) && pic.contains(&e.position)) || held {
+                        let (x, y) = to_screen(e.position);
+                        f.update(cx, |v, _| v.send(vec![SyntheticEvent::Move { x, y }]));
+                    }
+                });
+                let (h, f) = (hitbox.clone(), forward.clone());
+                window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
+                    if !phase.bubble() || !h.is_hovered(window) || !pic.contains(&e.position) {
+                        return;
+                    }
+                    let Some(button) = button(e.button) else { return };
+                    let (x, y) = to_screen(e.position);
+                    f.update(cx, |v, cx| {
+                        window.focus(&v.live_focus);
+                        v.pressed.insert(button);
+                        v.send(vec![SyntheticEvent::Move { x, y }, SyntheticEvent::Button { button, pressed: true }]);
+                        cx.stop_propagation();
+                    });
+                });
+                let f = forward.clone();
+                window.on_mouse_event(move |e: &MouseUpEvent, phase, _, cx| {
+                    if !phase.bubble() {
+                        return;
+                    }
+                    let Some(button) = button(e.button) else { return };
+                    if !f.read(cx).pressed.contains(&button) {
+                        return;
+                    }
+                    let (x, y) = to_screen(e.position);
+                    f.update(cx, |v, _| {
+                        v.pressed.remove(&button);
+                        v.send(vec![SyntheticEvent::Move { x, y }, SyntheticEvent::Button { button, pressed: false }]);
+                    });
+                });
+                let (h, f) = (hitbox, forward.clone());
+                window.on_mouse_event(move |e: &ScrollWheelEvent, phase, window, cx| {
+                    if !phase.bubble() || !h.is_hovered(window) {
+                        return;
+                    }
+                    let (x, y) = to_screen(e.position);
+                    let scroll = match e.delta {
+                        ScrollDelta::Pixels(d) => SyntheticEvent::Scroll { dx: -f64::from(f32::from(d.x)), dy: -f64::from(f32::from(d.y)) },
+                        ScrollDelta::Lines(d) => SyntheticEvent::Wheel { dx: -notch(d.x), dy: -notch(d.y) },
+                    };
+                    f.update(cx, |v, _| v.send(vec![SyntheticEvent::Move { x, y }, scroll]));
+                });
+            },
+        )
+        .absolute()
+        .inset_0();
+        let picture = div()
+            .id("live-picture")
+            .key_context(CONTROLLED)
+            .track_focus(&self.live_focus)
+            .flex_1()
+            .min_h_0()
+            .relative()
+            .on_key_down(cx.listener(|v, e: &KeyDownEvent, window, cx| v.key(e.keystroke.clone(), true, e.is_held, window, cx)))
+            .on_key_up(cx.listener(|v, e: &KeyUpEvent, window, cx| v.key(e.keystroke.clone(), false, false, window, cx)))
+            .on_modifiers_changed(cx.listener(|v, e: &ModifiersChangedEvent, _, cx| {
+                if v.controlling {
+                    let mut out = Vec::new();
+                    v.sync_modifiers(&e.modifiers, &mut out);
+                    v.send(out);
+                    cx.stop_propagation();
+                }
+            }))
+            .child(self.live.clone())
+            .child(input);
+
+        // What is going on, and the control button.
+        let now = crate::history::now_ms();
+        let (status, color) = if controlling {
+            ("You have control: your pointer and keys go to this screen.".to_owned(), c(p.panel_text))
+        } else {
+            let latest = self.replay.as_ref().and_then(|(r, _)| r.read(cx).actions().last().cloned());
+            match latest {
+                Some(a) => {
+                    let what = replay::command(&a);
+                    let mark = if a.error.is_some() { "  ✗" } else { "" };
+                    (format!("Latest: {what}{mark}  ·  {}", stats::ago(a.at + a.ms, now)), style::disabled_text(&p))
+                }
+                None => ("Watching. Nothing has been done on it yet.".to_owned(), style::disabled_text(&p)),
+            }
+        };
+        let status = canvas(
+            |_, _, _| {},
+            move |b, _, window, cx| {
+                let t = style::label_fit(window, cx, b.left(), b.center().y, style::Align::Left, status.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color, b.size.width);
+                agent::record(window, cx, agent::Node::label(status.clone(), t));
+            },
+        )
+        .flex_1()
+        .min_w_0()
+        .h_full();
+        let control = Button::new(if controlling { "Stop Controlling" } else { "Take Control" }).id("take-control").min_width(140.0).pushed(controlling).on_click(move |window, cx| {
+            me.update(cx, |v, cx| {
+                if v.controlling {
+                    v.stop_controlling();
+                    cx.notify();
+                } else {
+                    v.take_control(window, cx);
+                }
+            })
+        });
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .gap(px(m::SPACING))
+            .child(picture)
+            .child(div().flex().flex_row().items_center().gap(px(m::SPACING)).h(px(m::CONTROL_HEIGHT)).flex_shrink_0().child(status).child(control))
+            .into_any_element()
+    }
+
+    /// Send `events` to the screen being controlled.
+    fn send(&self, events: Vec<SyntheticEvent>) {
+        if !self.controlling || events.is_empty() {
+            return;
+        }
+        if let Some(screen) = self.screen().cloned() {
+            let _ = self.input.send((screen, events));
+        }
+    }
+
+    /// Press or let go of Ctrl, Shift and Alt on the screen to match
+    /// `modifiers`.
+    fn sync_modifiers(&mut self, modifiers: &Modifiers, out: &mut Vec<SyntheticEvent>) {
+        let now = [modifiers.control, modifiers.shift, modifiers.alt];
+        for (i, key) in MODIFIERS.into_iter().enumerate() {
+            if now[i] != self.held[i] {
+                out.push(SyntheticEvent::Key { key, pressed: now[i] });
+                self.held[i] = now[i];
+            }
+        }
+    }
+
+    /// A key on the picture being controlled: to the screen, but for the
+    /// one that stops controlling (⌘K).
+    fn key(&mut self, k: olo_ui::gpui::Keystroke, pressed: bool, held: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.controlling {
+            return;
+        }
+        if pressed && olo_ui::menu::shortcut_command(window, cx, &k).as_deref() == Some("control") {
+            return;
+        }
+        cx.stop_propagation();
+        // (The screen repeats a key held itself.)
+        if held {
+            return;
+        }
+        let mut out = Vec::new();
+        self.sync_modifiers(&k.modifiers, &mut out);
+        // A character that needs Shift on the agent's keyboard come
+        // without it (typed by an input method, a virtual keyboard):
+        // typed there with Shift, at once.
+        let mut chars = k.key.chars();
+        let shifted = match (chars.next(), chars.next()) {
+            (Some(ch), None) => screens::key_for(ch).is_some_and(|(_, shift)| shift) && !k.modifiers.shift,
+            _ => false,
+        };
+        if shifted {
+            if pressed && let Some(code) = evdev(&k.key) {
+                out.extend([(42, true), (code, true), (code, false), (42, false)].map(|(key, pressed)| SyntheticEvent::Key { key, pressed }));
+            }
+        } else if pressed {
+            if let Some(code) = evdev(&k.key) {
+                self.down.push((k.key.clone(), code));
+                out.push(SyntheticEvent::Key { key: code, pressed: true });
+            }
+        } else if let Some(i) = self.down.iter().position(|(name, _)| *name == k.key).or_else(|| evdev(&k.key).and_then(|code| self.down.iter().position(|(_, c)| *c == code))) {
+            let (_, code) = self.down.remove(i);
+            out.push(SyntheticEvent::Key { key: code, pressed: false });
+        }
+        self.send(out);
+    }
+}
+
+impl Render for Viewer {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let me = cx.entity();
+        let bar_me = me.clone();
+        let bar = MenuBar::new(self.menus(cx), move |cmd, window, cx| bar_me.update(cx, |v, cx| v.command(cmd, window, cx)));
+        let root = div().size_full().flex().flex_col().child(bar);
+        if self.rows.is_empty() {
+            let busy = self.busy;
+            let empty = EmptyState::new("No agent screens yet. An agent starts one with “olo-screen start”, or start one yourself.")
+                .icon("agent-screens")
+                .action(if busy { "Starting…" } else { "New Screen" }, move |_, cx| me.update(cx, |v, cx| v.new_screen(cx)));
+            self.tick(None, cx);
+            return root.child(div().flex_1().min_h_0().p(px(m::WINDOW_INSET)).child(empty));
+        }
+        let full_w = f32::from(window.viewport_size().width);
+        let side_w = (full_w * 0.2).round().clamp(SIDEBAR_MIN_W, SIDEBAR_W);
+        let sidebar = self.sidebar(side_w, cx);
+        let Some(name) = self.selected.clone() else {
+            return root.child(div().flex_1().min_h_0().flex().flex_row().child(sidebar));
+        };
+        let replay = self.replay(&name, cx);
+        let running = self.screen().is_some();
+        // The tab's area: inside the window's inset, then the tab view's.
+        let area_w = full_w - side_w - 4.0 * m::WINDOW_INSET;
+        replay.update(cx, |r, _| {
+            r.width = area_w;
+            r.running = running;
+        });
+        let header = self.header(&name, cx);
+        let tabs: Vec<Tab> = if running { vec![Tab::Live, Tab::History, Tab::Stats] } else { vec![Tab::History, Tab::Stats] };
+        let labels: Vec<SharedString> = tabs.iter().map(|t| SharedString::from(t.label())).collect();
+        let shown = self.shown_tab();
+        let i = tabs.iter().position(|t| *t == shown).unwrap_or(0);
+        let content = match shown {
+            Tab::Live => self.live_tab(cx).into_any_element(),
+            Tab::History => replay.clone().into_any_element(),
+            Tab::Stats => stats::view(&replay, running, area_w, &self.stats_scroll, cx),
+        };
+        let pick = me.clone();
+        let tab_view = TabView::new("screen-tabs", labels, i).on_select(move |i, _, cx| {
+            let tab = tabs[i];
+            pick.update(cx, |v, cx| v.set_tab(tab, cx));
+        });
+        // Times said move on ("3 s ago", "up 2 min").
+        let now = crate::history::now_ms();
+        let (last, started) = {
+            let r = replay.read(cx);
+            (r.actions().last().map(|a| a.at + a.ms), r.started())
+        };
+        let mut ages: Vec<u64> = self.rows.iter().filter_map(|r| r.last_used).chain(last).map(|t| now.saturating_sub(t)).collect();
+        if running {
+            ages.extend(started.map(|t| now.saturating_sub(t)));
+        }
+        self.tick(ages, cx);
+        root.child(
+            div()
+                .flex_1()
+                .min_h_0()
+                .flex()
+                .flex_row()
+                .child(sidebar)
+                .child(div().flex_1().min_w_0().p(px(m::WINDOW_INSET)).flex().flex_col().gap(px(m::SPACING)).child(header).child(div().flex_1().min_h_0().child(tab_view.child(content)))),
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keys_and_notches() {
+        assert_eq!(evdev("a"), Some(30));
+        assert_eq!(evdev("!"), Some(2));
+        assert_eq!(evdev("?"), Some(53));
+        assert_eq!(evdev("enter"), Some(28));
+        assert_eq!(evdev("space"), Some(57));
+        assert_eq!(evdev("f12"), Some(88));
+        assert_eq!(evdev("insert"), Some(110));
+        assert_eq!(evdev("é"), None);
+        assert_eq!((notch(0.0), notch(-3.0), notch(0.5)), (0, -1, 1));
+    }
+
+    #[test]
+    fn moves_run_together() {
+        let mut events = vec![
+            SyntheticEvent::Move { x: 1.0, y: 1.0 },
+            SyntheticEvent::Move { x: 2.0, y: 2.0 },
+            SyntheticEvent::Button { button: screens::LEFT, pressed: true },
+            SyntheticEvent::Move { x: 3.0, y: 3.0 },
+            SyntheticEvent::Move { x: 4.0, y: 4.0 },
+        ];
+        run_together(&mut events);
+        assert_eq!(events, vec![SyntheticEvent::Move { x: 2.0, y: 2.0 }, SyntheticEvent::Button { button: screens::LEFT, pressed: true }, SyntheticEvent::Move { x: 4.0, y: 4.0 }]);
     }
 }

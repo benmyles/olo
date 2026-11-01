@@ -141,7 +141,11 @@ struct Subscriber {
 
 impl Subscriber {
     fn wants(&self, kind: EventKind) -> bool {
-        self.kinds.as_ref().is_none_or(|k| k.contains(&kind))
+        match &self.kinds {
+            Some(k) => k.contains(&kind),
+            // (Frames only by name: they come as often as frames do.)
+            None => kind != EventKind::Painted,
+        }
     }
 }
 
@@ -150,6 +154,12 @@ impl IpcState {
         self.subscribers.retain(|s| !Rc::ptr_eq(&s.conn, conn));
         let pid = conn.peer_pid();
         self.subscribers.push(Subscriber { conn: conn.clone(), kinds, pid, sent: None });
+    }
+
+    /// Whether anyone takes `kind` (to skip making an event no one reads).
+    pub fn wanted(&mut self, kind: EventKind) -> bool {
+        self.subscribers.retain(|s| !s.conn.is_dead());
+        self.subscribers.iter().any(|s| s.wants(kind))
     }
 
     /// Send `event` to the connections that want it, written out once.

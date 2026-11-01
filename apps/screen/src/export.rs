@@ -132,14 +132,32 @@ fn crop(f: &Frame, w: usize, h: usize) -> Vec<u8> {
     out
 }
 
+/// Olo's UI face (Olo's own fonts first, then the system's): its file's
+/// bytes and the face's index in it, read once.
+fn ui_font() -> Option<&'static (Vec<u8>, u32)> {
+    static FONT: std::sync::OnceLock<Option<(Vec<u8>, u32)>> = std::sync::OnceLock::new();
+    FONT.get_or_init(|| {
+        let query = fontdb::Query { families: &[fontdb::Family::Name("Noto Sans"), fontdb::Family::SansSerif], weight: fontdb::Weight::NORMAL, ..Default::default() };
+        let mut own = fontdb::Database::new();
+        if let Some(dir) = olo_xdg::fonts_dir() {
+            own.load_fonts_dir(dir);
+        }
+        let mut system = fontdb::Database::new();
+        system.load_system_fonts();
+        [own, system].into_iter().find_map(|db| {
+            let id = db.query(&query)?;
+            db.with_face_data(id, |data, index| (data.to_vec(), index))
+        })
+    })
+    .as_ref()
+}
+
 /// A dark card with `text` in the middle, in the kit's own type.
 fn card(w: usize, h: usize, text: &str) -> Frame {
     use ab_glyph::{Font, FontRef, PxScale, ScaleFont};
     let mut rgba = [28u8, 30, 36, 255].repeat(w * h);
-    let defs = olo_kit::style::all_font_definitions();
-    let family = defs.families.get(&olo_kit::egui::FontFamily::Proportional).and_then(|f| f.first()).cloned();
-    if let Some(font) = family.and_then(|k| defs.font_data.get(&k).cloned())
-        && let Ok(font) = FontRef::try_from_slice((*font.font).as_ref())
+    if let Some(data) = ui_font()
+        && let Ok(font) = FontRef::try_from_slice_and_index(&data.0, data.1)
     {
         let scale = PxScale::from((h as f32 / 18.0).max(16.0));
         let sf = font.as_scaled(scale);

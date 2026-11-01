@@ -587,6 +587,35 @@ pub fn card_ink(palette: &Palette) -> CardInk {
     }
 }
 
+/// A card's paper over its shadow (a dashboard's card, a note in
+/// Notifications' history), as the egui kit's `style::card`: lifted a
+/// little more under the pointer (`hover`), in the selection's colours
+/// and lifted more when `selected`.
+pub fn card(window: &mut Window, r: Bounds<Pixels>, palette: &Palette, hover: bool, selected: bool) {
+    let ink = card_ink(palette);
+    let r = snap(window, r);
+    let radius = px(olo_kit_base::metrics::CARD_RADIUS);
+    let dark = palette.mode == olo_theme::ThemeMode::Dark;
+    let (y, blur, a) = if selected { (2.0, 10.0, if dark { 110 } else { 40 }) } else { (1.0, 4.0, if dark { 70 } else { 22 }) };
+    let shadow = gpui::BoxShadow { color: c([0, 0, 0, a]), offset: point(px(0.0), px(y)), blur_radius: px(blur / 2.0), spread_radius: px(0.0) };
+    window.paint_shadows(r, gpui::Corners::all(radius), &[shadow]);
+    let (fill, edge) = if selected { (c(palette.list_selected_background), c(palette.selection_edge())) } else { (if hover { ink.hover } else { ink.card }, ink.edge) };
+    window.paint_quad(gpui::fill(r, fill).corner_radii(radius).border_widths(hairline(window)).border_color(edge));
+}
+
+/// `n` with commas between its thousands ("12,345").
+pub fn thousands(n: usize) -> String {
+    let s = n.to_string();
+    let mut out = String::new();
+    for (i, ch) in s.chars().enumerate() {
+        if i > 0 && (s.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(ch);
+    }
+    out
+}
+
 /// A rubber-band selection rectangle (Tracker, desktop, any list): a
 /// one-pixel navigation-blue frame over a faint tint of the same colour.
 pub fn selection_band(window: &mut Window, r: Bounds<Pixels>, palette: &Palette) {

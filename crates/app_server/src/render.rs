@@ -670,6 +670,7 @@ where
     let (elements, clear_color) =
         output_elements(output, space, custom_elements, renderer, overview, desktop_color, locked);
     let elements = frame(elements, fit);
+    note_content(output, &elements);
     let gathered = start.elapsed();
     part("gather (all)", start);
     let t = std::time::Instant::now();
@@ -707,6 +708,46 @@ where
         );
     }
     result
+}
+
+/// One element of a frame, as far as what it shows goes: which, its
+/// content's commit, where, how see-through.
+type Shown = (Id, CommitCounter, Rectangle<i32, Physical>, u32);
+
+thread_local! {
+    /// Whether the frames drawn now are watched (`watch_content`).
+    static WATCHED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// Each watched display's last frame, the keep-warm pixel aside.
+    static CONTENT: std::cell::RefCell<std::collections::HashMap<String, Vec<Shown>>> = Default::default();
+    /// Whether the frame just gathered shows something new.
+    static CHANGED: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
+}
+
+/// Whether the next frames are watched for what they show (someone takes
+/// `EventKind::Painted`): only then is each compared with the last.
+pub fn watch_content(on: bool) {
+    WATCHED.with(|w| w.set(on));
+}
+
+/// Whether the frame just drawn showed anything new, `keep_warm`'s
+/// pixel aside (it damages as much as the whole display: smithay counts
+/// an element's place in the stack from the top, so one coming and
+/// going there moves all the others'). True when not watched.
+pub fn content_changed() -> bool {
+    CHANGED.with(|c| c.get())
+}
+
+fn note_content<E: Element>(output: &Output, elements: &[E]) {
+    if !WATCHED.with(|w| w.get()) {
+        CHANGED.with(|c| c.set(true));
+        return;
+    }
+    let scale = output.current_scale().fractional_scale();
+    let name = output.name();
+    let warm = WARM.with(|w| w.borrow().ids.get(&name).cloned());
+    let now: Vec<Shown> = elements.iter().filter(|e| Some(e.id()) != warm.as_ref()).map(|e| (e.id().clone(), e.current_commit(), e.geometry(scale.into()), e.alpha().to_bits())).collect();
+    let changed = CONTENT.with(|c| c.borrow_mut().insert(name, now.clone()).is_none_or(|last| last != now));
+    CHANGED.with(|c| c.set(changed));
 }
 
 /// What this thread has used: CPU time, and how often it gave the CPU up

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-01
 
+### Agent Screens on GPUI
+
+*07:37* — Agent Screens moved to Olo's GPUI: the sidebar, header and Live/History/Stats tabs as before, now with the kit's GPUI Sidebar, TabView and dashboard cards. Live takes a picture only when the screen draws something new (app_server's new Painted event), each resampled to the exact device size on a worker; History plays back drawing only what changes.
+
+![Agent Screens on GPUI](2026-11-01/073708-agent-screens-on-gpui.png)
+
 ### The share picker on GPUI
 
 *06:15* — olo-portal's dialogs move to the GPUI kit: the share picker (live thumbnails in the kit's new ThumbnailPicker), permission, wallpaper, shortcuts and Open With questions, and the file and Print panels, each over the asking app's window by xdg-foreign. Its thumbnails no longer pile up in the GPU's atlas; a permission dialog opens in ~8 ms.

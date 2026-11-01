@@ -6,18 +6,23 @@
 
 use std::collections::VecDeque;
 
-use olo_kit::{
-    dashboard::{self, Card, GAP},
-    egui::{Align, Rect, Sense, Ui, pos2, vec2},
-    graph::{Graph, Series},
+use std::rc::Rc;
+
+use olo_ui::{
+    agent,
+    gpui::{AnyElement, App, Bounds, Entity, FontWeight, IntoElement, ParentElement as _, ScrollHandle, SharedString, Styled as _, canvas, div, point, px},
     metrics as m,
     style::{self, c},
-    widgets::{self, ScrollView},
+    theme,
+    widgets::{
+        self, EmptyState, Graph, ScrollView, Series, StringView,
+        dashboard::{self, Card, FACT_ROW, Facts, GAP},
+    },
 };
 
 use crate::{
     history::{self, Action},
-    replay::KINDS,
+    replay::{KINDS, Replay},
 };
 
 const MIN_CARD: f32 = 250.0;
@@ -56,109 +61,104 @@ pub fn ago(ms: u64, now: u64) -> String {
     }
 }
 
-pub fn ui(ui: &mut Ui, rect: Rect, replay: &mut crate::replay::Replay, running: bool) {
-    let name = replay.name.clone();
-    let st = replay.stats(running).clone();
-    let actions = replay.actions();
-    let p = style::palette(ui.ctx());
-    if actions.is_empty() {
-        ui.put(rect, widgets::EmptyState::new("Nothing has been done on this screen yet.").icon("agent-screens"));
-        return;
-    }
-    let now = history::now_ms();
-    dashboard::gutter(ui, rect);
-    ScrollView::new(("screen-stats", &name)).border(false).auto_hide(true).background(style::card_paper(&p).0).show_in(ui, rect, |ui, _| {
-        let area = Rect::from_min_max(ui.max_rect().min + vec2(GAP, GAP), pos2(ui.max_rect().right() - GAP, ui.max_rect().top() + 100_000.0));
-        let columns = if area.width() >= 2.0 * MIN_CARD + GAP { 2 } else { 1 };
-        let w = ((area.width() - GAP * (columns - 1) as f32) / columns as f32).floor();
-        let total: usize = st.actions.values().sum();
-
-        // Use.
-        let mut facts: Vec<(&str, String)> = Vec::new();
-        if let Some(t) = st.started {
-            facts.push(("Started", format!("{} ({})", when(t, now), ago(t, now))));
-        }
-        if let Some(t) = st.last_used {
-            facts.push(("Last used", format!("{} ({})", when(t, now), ago(t, now))));
-        }
-        facts.push(("Ran for", span(st.ran_ms)));
-        facts.push(("In use", span(st.active_ms)));
-        let use_h = Card::height(dashboard::facts_height(facts.len()), true);
-        // Actions by kind.
-        let kinds: Vec<(&str, usize)> = KINDS.iter().map(|(_, label, ks)| (*label, ks.iter().map(|k| st.actions.get(*k).copied().unwrap_or(0)).sum())).filter(|(_, n)| *n > 0).collect();
-        let kinds_h = Card::height(kinds.len().max(1) as f32 * dashboard::FACT_ROW, true);
-        // Programs.
-        let programs: Vec<(String, String)> = st.programs.iter().map(|(p, n)| (p.clone(), if *n == 1 { "once".to_owned() } else { format!("{n} times") })).collect();
-        let programs_h = Card::height(dashboard::facts_height(programs.len().max(1)), true);
-        let activity_h = Card::height(GRAPH_H, true);
-
-        let mut y = area.top();
-        let mut place = |heights: &[f32]| -> Vec<Rect> {
-            let mut out = Vec::new();
-            for row in heights.chunks(columns) {
-                let h = row.iter().copied().fold(0.0, f32::max);
-                for (i, _) in row.iter().enumerate() {
-                    out.push(Rect::from_min_size(pos2(area.left() + i as f32 * (w + GAP), y), vec2(w, h)));
-                }
-                y += h + GAP;
-            }
-            out
-        };
-        let rects = place(&[use_h, kinds_h, activity_h, programs_h]);
-
-        let in_use = span(st.active_ms);
-        let caption = if running { "Running now" } else { "Stopped" };
-        let card = Card::new("Use").figure(&in_use).caption(caption).show(ui, rects[0]);
-        let rows: Vec<(&str, &str)> = facts.iter().map(|(l, v)| (*l, v.as_str())).collect();
-        dashboard::facts(ui, card.content, &rows);
-
-        let n = style::thousands(total);
-        let failed = match st.failed {
-            0 => "None failed".to_owned(),
-            1 => "1 failed".to_owned(),
-            f => format!("{f} failed"),
-        };
-        let card = Card::new("Actions").figure(&n).caption(&failed).show(ui, rects[1]);
-        kind_bars(ui, card.content, &kinds);
-
+/// The Stats tab for `replay`'s screen: its cards, two abreast when
+/// `width` has room, scrolled with `scroll`.
+pub fn view(replay: &Entity<Replay>, running: bool, width: f32, scroll: &ScrollHandle, cx: &mut App) -> AnyElement {
+    let (name, st, (series, busiest), end, empty) = replay.update(cx, |r, _| {
+        let st = r.stats(running).clone();
+        let now = history::now_ms();
         let end = if running { now } else { st.last_used.unwrap_or(now) };
-        let (series, busiest) = per_minute(actions, end);
-        let busiest = format!("{busiest} at most");
-        let card = Card::new("Actions a Minute").figure(&busiest).caption("The last hour of use").show(ui, rects[2]);
-        let fmt = |v: f64| format!("{v:.0}");
-        let lines = [Series::new("Actions", c(p.keyboard_navigation), &series).fill(true)];
-        Graph::new(("screen-activity", &name), &lines, end as f64 / 1000.0).span(3600.0).grid(600.0).unit(&fmt).smooth(false).plain().show(ui, card.content);
-
-        let count = st.programs.len().to_string();
-        let card = Card::new("Programs").figure(&count).caption("Run on it with “olo-screen run”").show(ui, rects[3]);
-        if programs.is_empty() {
-            style::label(ui.painter(), card.content.left(), card.content.top() + dashboard::FACT_ROW / 2.0, Align::Min, "None run.", style::plain_font(), style::card_ink(&p).dim);
-        } else {
-            let rows: Vec<(&str, &str)> = programs.iter().map(|(l, v)| (l.as_str(), v.as_str())).collect();
-            dashboard::facts(ui, card.content, &rows);
-        }
-        ui.allocate_rect(Rect::from_min_size(ui.max_rect().min, vec2(area.width(), y - ui.max_rect().top())), Sense::hover());
+        (r.name.clone(), st, per_minute(r.actions(), end), end, r.actions().is_empty())
     });
+    if empty {
+        return div().size_full().child(EmptyState::new("Nothing has been done on this screen yet.").icon("agent-screens")).into_any_element();
+    }
+    let p = theme::palette(cx);
+    let now = history::now_ms();
+    let inner = width - 2.0 * GAP;
+    let columns = if inner >= 2.0 * MIN_CARD + GAP { 2 } else { 1 };
+    let w = ((inner - GAP * (columns - 1) as f32) / columns as f32).floor();
+    let total: usize = st.actions.values().sum();
+
+    // Use.
+    let mut facts: Vec<(SharedString, SharedString)> = Vec::new();
+    if let Some(t) = st.started {
+        facts.push(("Started".into(), format!("{} ({})", when(t, now), ago(t, now)).into()));
+    }
+    if let Some(t) = st.last_used {
+        facts.push(("Last used".into(), format!("{} ({})", when(t, now), ago(t, now)).into()));
+    }
+    facts.push(("Ran for".into(), span(st.ran_ms).into()));
+    facts.push(("In use".into(), span(st.active_ms).into()));
+    let caption = if running { "Running now" } else { "Stopped" };
+    let use_card = Card::new(format!("stats-use-{name}"), "Use").figure(span(st.active_ms)).caption(caption).child(Facts::new(facts));
+
+    // Actions by kind.
+    let kinds: Vec<(&str, usize)> = KINDS.iter().map(|(_, label, ks)| (*label, ks.iter().map(|k| st.actions.get(*k).copied().unwrap_or(0)).sum())).filter(|(_, n)| *n > 0).collect();
+    let failed = match st.failed {
+        0 => "None failed".to_owned(),
+        1 => "1 failed".to_owned(),
+        f => format!("{f} failed"),
+    };
+    let actions_card = Card::new(format!("stats-actions-{name}"), "Actions").figure(style::thousands(total)).caption(failed).child(kind_bars(kinds));
+
+    // How busy, minute by minute.
+    let fmt = |v: f64| format!("{v:.0}");
+    let lines = vec![Series::new("Actions", c(p.keyboard_navigation), Rc::new(series)).fill(true)];
+    let graph = Graph::new(format!("screen-activity-{name}"), lines, end as f64 / 1000.0).span(3600.0).grid(600.0).unit(fmt).smooth(false).plain();
+    let activity_card = Card::new(format!("stats-activity-{name}"), "Actions a Minute").figure(format!("{busiest} at most")).caption("The last hour of use").child(div().h(px(GRAPH_H)).child(graph));
+
+    // Programs.
+    let programs: Vec<(SharedString, SharedString)> = st.programs.iter().map(|(p, n)| (SharedString::from(p.clone()), SharedString::from(if *n == 1 { "once".to_owned() } else { format!("{n} times") }))).collect();
+    let mut programs_card = Card::new(format!("stats-programs-{name}"), "Programs").figure(st.programs.len().to_string()).caption("Run on it with “olo-screen run”");
+    programs_card = if programs.is_empty() {
+        let ink = style::card_ink(&p);
+        programs_card.child(StringView::new("None run.").height(FACT_ROW).color(ink.dim))
+    } else {
+        programs_card.child(Facts::new(programs))
+    };
+
+    let cards = vec![use_card.into_any_element(), actions_card.into_any_element(), activity_card.into_any_element(), programs_card.into_any_element()];
+    let mut grid = div().flex().flex_col().gap(px(GAP)).p(px(GAP));
+    let mut cards = cards.into_iter().peekable();
+    while cards.peek().is_some() {
+        let mut row = div().flex().flex_row().gap(px(GAP));
+        for card in cards.by_ref().take(columns) {
+            row = row.child(div().w(px(w)).flex().flex_col().child(card));
+        }
+        grid = grid.child(row);
+    }
+    ScrollView::new(SharedString::from(format!("screen-stats-{name}")), scroll).border(false).auto_hide(true).background(dashboard::gutter(&p)).child(grid).into_any_element()
 }
 
 /// Each kind of action: its name, a bar as long as its share of the
 /// most, and how many.
-fn kind_bars(ui: &Ui, r: Rect, kinds: &[(&str, usize)]) {
-    let p = style::palette(ui.ctx());
-    let ink = style::card_ink(&p);
-    let most = kinds.iter().map(|(_, n)| *n).max().unwrap_or(1).max(1);
-    let label_w = kinds.iter().map(|(l, _)| style::label_width(ui.ctx(), l, style::plain_font())).fold(0.0, f32::max).ceil() + m::SPACING;
-    let count_w = kinds.iter().map(|(_, n)| style::label_width(ui.ctx(), &n.to_string(), style::plain_font())).fold(0.0, f32::max).ceil() + m::SPACING;
-    for (i, (label, n)) in kinds.iter().enumerate() {
-        let y = r.top() + i as f32 * dashboard::FACT_ROW;
-        let mid = y + dashboard::FACT_ROW / 2.0;
-        style::label(ui.painter(), r.left(), mid, Align::Min, *label, style::plain_font(), ink.dim);
-        style::label(ui.painter(), r.right(), mid, Align::Max, &n.to_string(), style::plain_font(), ink.text);
-        let bar = Rect::from_min_max(pos2(r.left() + label_w, mid - 4.0), pos2(r.right() - count_w, mid + 4.0));
-        if bar.width() > 8.0 {
-            widgets::level_bar(ui.painter(), style::snap(ui.ctx(), bar), *n as f32 / most as f32, Some(c(p.keyboard_navigation)));
-        }
-    }
+fn kind_bars(kinds: Vec<(&'static str, usize)>) -> impl IntoElement {
+    let h = kinds.len().max(1) as f32 * FACT_ROW;
+    canvas(
+        |_, _, _| {},
+        move |r, _, window, cx| {
+            let p = theme::palette(cx);
+            let ink = style::card_ink(&p);
+            let font = style::ui_font(FontWeight::NORMAL);
+            let most = kinds.iter().map(|(_, n)| *n).max().unwrap_or(1).max(1);
+            let label_w = kinds.iter().map(|(l, _)| style::text_width_app(cx, l, style::PLAIN_SIZE, &font)).fold(0.0, f32::max).ceil() + m::SPACING;
+            let count_w = kinds.iter().map(|(_, n)| style::text_width_app(cx, &n.to_string(), style::PLAIN_SIZE, &font)).fold(0.0, f32::max).ceil() + m::SPACING;
+            for (i, (label, n)) in kinds.iter().enumerate() {
+                let mid = r.top() + px(i as f32 * FACT_ROW + FACT_ROW / 2.0);
+                let l = style::label(window, cx, r.left(), mid, style::Align::Left, *label, style::PLAIN_SIZE, font.clone(), ink.dim);
+                let v = style::label(window, cx, r.right(), mid, style::Align::Right, n.to_string(), style::PLAIN_SIZE, font.clone(), ink.text);
+                agent::record(window, cx, agent::Node { value: Some(n.to_string().into()), ..agent::Node::label(*label, l.union(&v)) });
+                let bar = Bounds::from_corners(point(r.left() + px(label_w), mid - px(4.0)), point(r.right() - px(count_w), mid + px(4.0)));
+                if bar.size.width > px(8.0) {
+                    widgets::level_bar(window, style::snap(window, bar), *n as f32 / most as f32, Some(c(p.keyboard_navigation)), &p);
+                }
+            }
+        },
+    )
+    .w_full()
+    .h(px(h))
+    .flex_shrink_0()
 }
 
 /// Actions begun each minute over the hour up to `end` (ms), as a graph's

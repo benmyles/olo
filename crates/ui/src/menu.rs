@@ -816,6 +816,12 @@ pub(crate) fn bar_shortcut(window: &Window, cx: &App, k: &gpui::Keystroke) -> Op
     Some((find_shortcut(&bar.menus, k)?, bar.on_command.clone()))
 }
 
+/// The command of `window`'s menu bar that keystroke `k` chooses, if any
+/// (for a view that takes the keys for itself, to let one through).
+pub fn shortcut_command(window: &Window, cx: &App, k: &gpui::Keystroke) -> Option<String> {
+    bar_shortcut(window, cx, k).map(|(command, _)| command)
+}
+
 /// The menus of `window`'s bar (for the command palette) and where its
 /// commands go.
 pub(crate) fn bar_menus(window: gpui::WindowId, cx: &App) -> Option<(Vec<Menu>, OnChoose)> {

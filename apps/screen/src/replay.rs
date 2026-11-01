@@ -8,12 +8,14 @@
 //! a ring where it went and each key or text under the picture. Stretches
 //! where nothing happened are skipped while playing. At the newest action
 //! the history follows the screen (Latest), each new action chosen as it
-//! comes. Frames are built on a worker (`record::frame_at`), the latest
-//! asked for winning; the window never waits on the disk.
+//! comes. Frames are built on a worker (`record::Player`: played forward
+//! from the last, back to a keyframe only on a jump), the latest asked
+//! for winning; the window never waits on the disk.
 
 use std::{
     collections::HashMap,
     path::PathBuf,
+    rc::Rc,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -22,17 +24,19 @@ use std::{
     time::{Duration, Instant},
 };
 
-use olo_kit::{
+use olo_ui::{
     Proxy,
-    egui::{self, Align, Color32, ColorImage, Rect, TextureHandle, TextureOptions, Ui, pos2, vec2},
-    metrics as m,
-    search::{self, Facet, FilterBar, Query, SearchField},
+    gpui::{App, AppContext as _, Context, Entity, EventEmitter, FontWeight, IntoElement, ParentElement as _, Render, SharedString, Styled as _, Task, TextRun, Window, canvas, div, point, px},
+    agent, metrics as m,
+    search::{self, Facet, FilterBar, Query, SearchEvent, SearchField, search_field},
     style::{self, c},
-    widgets::{Button, Cell, Column, ColumnListView, EmptyState, ListState, MenuField, Slider, StatusBar},
+    theme,
+    widgets::{Button, Column, ColumnListView, EmptyState, ListModel, MenuField, Slider, StatusBar},
 };
 
 use crate::{
     history::{self, Action},
+    picture::{PictureWell, Shot},
     record,
 };
 
@@ -40,11 +44,16 @@ pub enum ReplayMsg {
     /// What was added to the history (or all of it, `reset`), and the
     /// frames kept so far.
     Loaded { name: String, actions: Vec<Action>, texts: Vec<String>, reset: bool, segments: Arc<Vec<record::Segment>> },
-    Frame { name: String, at: u64, image: ColorImage },
+    Frame { name: String, at: u64, shot: Arc<Shot> },
     /// Exporting: how far it has got (0–1), then how it ended.
     Progress { name: String, done: f32 },
     Exported { name: String, result: Result<PathBuf, String> },
 }
+
+/// What the window hears from a history: an export ended.
+pub struct Exported(pub Result<PathBuf, String>);
+
+impl EventEmitter<Exported> for Replay {}
 
 /// How long a click's ring and a key's caption stay over the picture.
 const RING_MS: u64 = 700;
@@ -78,6 +87,11 @@ const KEYS: [&str; 3] = ["kind", "result", "since"];
 const TRANSPORT_ONE_ROW: f32 = 470.0;
 /// How much of a frame picking the actions to show may take.
 const PICK_BUDGET: Duration = Duration::from_millis(2);
+/// The transport's buttons.
+const STEP_W: f32 = 30.0;
+const PLAY_W: f32 = 64.0;
+const SPEED_W: f32 = 58.0;
+const LATEST_W: f32 = 64.0;
 
 pub struct Replay {
     pub name: String,
@@ -96,46 +110,54 @@ pub struct Replay {
     parsed: Query,
     shown: Vec<usize>,
     /// The filters' menus, for the actions there were when made.
-    facets: Option<(usize, Vec<Facet>)>,
+    facets: Option<(usize, Rc<Vec<Facet>>)>,
     /// When the shown actions were picked (a time filter moves on).
     picked: Instant,
-    list: ListState,
+    list: Entity<ListModel>,
+    search: Entity<SearchField>,
+    pub well: Entity<PictureWell>,
     playhead: u64,
     playing: bool,
+    /// When playing last moved the playhead on, and when it's drawn
+    /// next (`play_on`).
+    played: Option<Instant>,
+    play_next: Option<(Instant, Task<()>)>,
+    /// Live, rings and captions drawn again as they change (`overlay`).
+    live_next: Option<Task<()>>,
     speed: usize,
     /// At the newest action: new ones are chosen as they come.
     follow: bool,
     /// The action last brought into view in the list (only a new one is,
     /// so the list scrolls freely otherwise).
     revealed: Option<usize>,
-    texture: Option<TextureHandle>,
     /// The time of the frame showing, and the one last asked for.
     showing: Option<u64>,
     asked: Option<u64>,
     frames: Sender<(Arc<Vec<record::Segment>>, u64)>,
-    /// A frame come from the worker, until drawn.
-    pending: Option<ColorImage>,
     /// The screen's logical size, from its start (for placing clicks).
     size: Option<(f32, f32)>,
-    /// An export under way (how far, and its Cancel), or how the last
-    /// one ended.
+    /// An export under way (how far, and its Cancel).
     exporting: Option<(f32, Arc<AtomicBool>)>,
-    exported: Option<Result<PathBuf, String>>,
-    focus_search: bool,
     /// The first and last times in it, and its stats (for how many
     /// actions, and when).
     bounds: (u64, u64),
     stats: Option<(usize, Instant, history::Stats)>,
     /// When the screen was last started.
     started: Option<u64>,
+    /// The width it's shown in (the window lays it out).
+    pub width: f32,
+    /// The screen is running (its history grows; Latest is Live).
+    pub running: bool,
+    /// A time filter moving on with the clock: picked again each second.
+    ticking: Option<Task<()>>,
     /// Following the history's folder, for as long as this is shown.
-    _watch: Option<olo_kit::watch::Watch>,
+    _watch: Option<olo_ui::watch::Watch>,
 }
 
 /// Read screen `name`'s history and frames, and again whenever its folder
 /// changes: only what was added, on a worker, for as long as the returned
 /// watch is kept.
-fn follow(name: &str, proxy: Proxy) -> Option<olo_kit::watch::Watch> {
+fn follow(name: &str, proxy: Proxy) -> Option<olo_ui::watch::Watch> {
     let (tx, rx) = channel::<()>();
     let n = name.to_owned();
     let spawned = std::thread::Builder::new().name("screen-history".into()).spawn(move || {
@@ -185,9 +207,50 @@ fn follow(name: &str, proxy: Proxy) -> Option<olo_kit::watch::Watch> {
     if spawned.is_err() {
         return None;
     }
-    olo_kit::watch::watch([history::dir(name)], move |_| {
+    olo_ui::watch::watch([history::dir(name)], move |_| {
         let _ = tx.send(());
     })
+}
+
+/// The time of the frame showing the screen at `t` (segments and their
+/// frames are in time order).
+fn frame_time(segments: &[record::Segment], t: u64) -> Option<u64> {
+    let seg = segments.iter().rev().find(|s| s.frames.first().is_some_and(|f| f.at <= t))?;
+    let i = seg.frames.partition_point(|f| f.at <= t);
+    seg.frames.get(i.checked_sub(1)?).map(|f| f.at)
+}
+
+/// Build the frames asked for, the latest winning: played on from the
+/// last one shown while the frames kept stay the same.
+fn make_frames(name: String, proxy: Proxy) -> Sender<(Arc<Vec<record::Segment>>, u64)> {
+    let (tx, rx) = channel::<(Arc<Vec<record::Segment>>, u64)>();
+    let _ = std::thread::Builder::new().name("screen-frames".into()).spawn(move || {
+        let latest = |mut ask: (Arc<Vec<record::Segment>>, u64)| {
+            while let Ok(newer) = rx.try_recv() {
+                ask = newer;
+            }
+            ask
+        };
+        let Ok(first) = rx.recv() else { return };
+        let mut next = Some(latest(first));
+        while let Some((segments, mut t)) = next.take() {
+            let mut player = record::Player::new(&segments);
+            loop {
+                if let (Some(at), Some(f)) = (frame_time(&segments, t), player.at(t)) {
+                    let shot = Shot { size: [f.width, f.height], rgba: f.rgba.clone() };
+                    proxy.send(ReplayMsg::Frame { name: name.clone(), at, shot: Arc::new(shot) });
+                }
+                let Ok(ask) = rx.recv() else { return };
+                let ask = latest(ask);
+                if !Arc::ptr_eq(&ask.0, &segments) {
+                    next = Some(ask);
+                    break;
+                }
+                t = ask.1;
+            }
+        }
+    });
+    tx
 }
 
 /// `ms` as minutes and seconds ("3:07"), or hours too ("1:03:07").
@@ -235,23 +298,18 @@ pub fn outcome(a: &Action) -> Option<String> {
 }
 
 impl Replay {
-    pub fn new(name: &str, proxy: Proxy) -> Replay {
-        let (tx, rx) = channel::<(Arc<Vec<record::Segment>>, u64)>();
-        {
-            let (name, proxy) = (name.to_owned(), proxy.clone());
-            let _ = std::thread::Builder::new().name("screen-frames".into()).spawn(move || {
-                while let Ok(mut ask) = rx.recv() {
-                    // Only the latest matters.
-                    while let Ok(newer) = rx.try_recv() {
-                        ask = newer;
-                    }
-                    if let Some((at, f)) = record::frame_at(&ask.0, ask.1) {
-                        let image = ColorImage::from_rgba_unmultiplied([f.width, f.height], &f.rgba);
-                        proxy.send(ReplayMsg::Frame { name: name.clone(), at, image });
-                    }
-                }
-            });
-        }
+    pub fn new(name: &str, proxy: Proxy, cx: &mut Context<Replay>) -> Replay {
+        let search = search_field(cx, "Search: words, kind:, result:, since:");
+        cx.subscribe(&search, |r: &mut Replay, s, e: &SearchEvent, cx| {
+            if let SearchEvent::Changed = e {
+                r.query = s.read(cx).text(cx).to_owned();
+                r.pick();
+                r.revealed = None;
+                cx.notify();
+            }
+        })
+        .detach();
+        let list = ListModel::new(cx, false);
         Replay {
             name: name.to_owned(),
             actions: Vec::new(),
@@ -266,24 +324,28 @@ impl Replay {
             shown: Vec::new(),
             facets: None,
             picked: Instant::now(),
-            list: ListState::default(),
+            list,
+            search,
+            well: cx.new(|_| PictureWell::new("Screen")),
             playhead: 0,
             playing: false,
+            played: None,
+            play_next: None,
+            live_next: None,
             speed: 0,
             follow: true,
             revealed: None,
-            texture: None,
             showing: None,
             asked: None,
-            frames: tx,
-            pending: None,
+            frames: make_frames(name.to_owned(), proxy.clone()),
             size: None,
             exporting: None,
-            exported: None,
-            focus_search: false,
             bounds: (0, 0),
             stats: None,
             started: None,
+            width: 600.0,
+            running: false,
+            ticking: None,
             _watch: follow(name, proxy),
         }
     }
@@ -301,7 +363,7 @@ impl Replay {
         self.started
     }
 
-    pub fn message(&mut self, msg: ReplayMsg) {
+    pub fn message(&mut self, msg: ReplayMsg, cx: &mut Context<Self>) {
         match msg {
             ReplayMsg::Loaded { name, actions, texts, reset, segments } if name == self.name => {
                 let from = if reset { 0 } else { self.actions.len() };
@@ -324,6 +386,8 @@ impl Replay {
                 }
                 if self.size.is_none() || reset {
                     self.size = self.actions.iter().rev().find(|a| a.kind == "start" && a.error.is_none()).and_then(|a| a.result.as_ref()).and_then(|r| Some((r["width"].as_f64()? as f32, r["height"].as_f64()? as f32)));
+                    let shape = self.size;
+                    self.well.update(cx, |w, _| w.set_shape(shape));
                 }
                 self.loaded = true;
                 if from == 0 {
@@ -340,29 +404,31 @@ impl Replay {
                 } else {
                     self.playhead = self.playhead.clamp(start, end);
                 }
+                cx.notify();
             }
-            ReplayMsg::Frame { name, at, image } if name == self.name => {
-                self.pending = Some(image);
+            ReplayMsg::Frame { name, at, shot } if name == self.name => {
                 self.showing = Some(at);
+                self.well.update(cx, |w, cx| w.set_shot(shot, cx));
             }
             ReplayMsg::Progress { name, done } if name == self.name => {
                 if let Some((d, _)) = &mut self.exporting {
                     *d = done;
+                    cx.notify();
                 }
             }
             ReplayMsg::Exported { name, result } if name == self.name => {
                 self.exporting = None;
-                self.exported = Some(result);
+                cx.emit(Exported(result));
+                cx.notify();
             }
             _ => {}
         }
     }
 
     /// Make the history a video at `path`, on a worker.
-    pub fn start_export(&mut self, path: PathBuf, proxy: Proxy) {
+    pub fn start_export(&mut self, path: PathBuf, proxy: Proxy, cx: &mut Context<Self>) {
         let cancel = Arc::new(AtomicBool::new(false));
         self.exporting = Some((0.0, cancel.clone()));
-        self.exported = None;
         let name = self.name.clone();
         std::thread::spawn(move || {
             let mut told = -1;
@@ -379,6 +445,7 @@ impl Replay {
             }
             proxy.send(ReplayMsg::Exported { name, result: result.map(|()| path) });
         });
+        cx.notify();
     }
 
     pub fn exporting(&self) -> bool {
@@ -442,8 +509,9 @@ impl Replay {
         }
     }
 
-    /// The filters' menus, each value with how many actions have it.
-    fn facets(&mut self) -> &[Facet] {
+    /// The filters' menus, each value with how many actions have it (the
+    /// search's too).
+    fn facets(&mut self, cx: &mut Context<Self>) -> Rc<Vec<Facet>> {
         if self.facets.as_ref().is_none_or(|(n, _)| *n != self.actions.len()) {
             let mut kind = Facet::new("kind", "Kind").any("All Actions").multiple();
             for ((v, label, _), n) in KINDS.iter().zip(self.kind_counts) {
@@ -454,9 +522,11 @@ impl Replay {
             for (v, label, _) in TIMES {
                 since = since.value(v, label, None);
             }
-            self.facets = Some((self.actions.len(), vec![kind, result, since]));
+            let facets = Rc::new(vec![kind, result, since]);
+            self.search.update(cx, |s, cx| s.set_facets(facets.clone(), cx));
+            self.facets = Some((self.actions.len(), facets));
         }
-        &self.facets.as_ref().expect("made above").1
+        self.facets.as_ref().expect("made above").1.clone()
     }
 
     /// From the first thing kept to the last (worked out as they come).
@@ -469,14 +539,6 @@ impl Replay {
         let actions = self.actions.iter().flat_map(|a| [a.at, a.at + a.ms]);
         let (lo, hi) = frames.chain(actions).fold((u64::MAX, 0), |(lo, hi), t| (lo.min(t), hi.max(t)));
         if lo > hi { (0, 0) } else { (lo, hi) }
-    }
-
-    /// The time of the frame showing the screen at `t` (segments and their
-    /// frames are in time order).
-    fn frame_for(&self, t: u64) -> Option<u64> {
-        let seg = self.segments.iter().rev().find(|s| s.frames.first().is_some_and(|f| f.at <= t))?;
-        let i = seg.frames.partition_point(|f| f.at <= t);
-        seg.frames.get(i.checked_sub(1)?).map(|f| f.at)
     }
 
     /// The next thing after `t`: a frame or an action.
@@ -504,7 +566,7 @@ impl Replay {
     }
 
     /// Go `by` actions on (or back) among those shown.
-    pub fn step(&mut self, by: isize) {
+    pub fn step(&mut self, by: isize, cx: &mut Context<Self>) {
         let now = self.action_at(self.playhead);
         let pos = now.map(|i| self.shown.partition_point(|&s| s <= i) as isize - 1);
         let to = match pos {
@@ -517,17 +579,20 @@ impl Replay {
             self.playing = false;
             self.follow = self.playhead >= self.range().1;
         }
+        cx.notify();
     }
 
-    pub fn play_pause(&mut self) {
+    pub fn play_pause(&mut self, cx: &mut Context<Self>) {
         let (start, end) = self.range();
         self.playing = !self.playing;
+        self.played = None;
         if self.playing {
             self.follow = false;
             if self.playhead >= end {
                 self.playhead = start;
             }
         }
+        cx.notify();
     }
 
     pub fn playing(&self) -> bool {
@@ -535,83 +600,384 @@ impl Replay {
     }
 
     /// To the newest action, and on with the screen from there.
-    pub fn latest(&mut self) {
+    pub fn latest(&mut self, cx: &mut Context<Self>) {
         self.follow = true;
         self.playing = false;
         self.playhead = self.range().1;
+        cx.notify();
     }
 
-    pub fn focus_search(&mut self) {
-        self.focus_search = true;
+    pub fn focus_search(&self, window: &mut Window, cx: &mut App) {
+        self.search.update(cx, |s, cx| s.focus(window, cx));
     }
 
-    pub fn ui(&mut self, ui: &mut Ui, rect: Rect, running: bool) {
-        let p = style::palette(ui.ctx());
-        if let Some(image) = self.pending.take() {
-            match &mut self.texture {
-                Some(t) => t.set(image, TextureOptions::LINEAR),
-                None => self.texture = Some(ui.ctx().load_texture(format!("replay-{}", self.name), image, TextureOptions::LINEAR)),
+    fn scrub(&mut self, secs: f32, cx: &mut Context<Self>) {
+        let (start, end) = self.range();
+        self.playhead = start + (secs.max(0.0) * 1000.0) as u64;
+        self.playing = false;
+        self.follow = self.playhead >= end;
+        cx.notify();
+    }
+
+    /// The actions shown, the one at the playhead chosen; a row chosen
+    /// moves the playhead there.
+    fn list_view(&mut self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let current = self.action_at(self.playhead);
+        let selected = current.and_then(|i| self.shown.iter().position(|&s| s == i));
+        // Only an action newly at the playhead is brought into view (as it
+        // plays, or comes in live), so the list scrolls freely otherwise.
+        let reveal = if current != self.revealed {
+            self.revealed = current;
+            selected
+        } else {
+            None
+        };
+        self.list.update(cx, |l, _| {
+            if l.state.single() != selected {
+                match selected {
+                    Some(r) => l.state.select(r),
+                    None => l.state.selected.clear(),
+                }
+                l.state.cursor = selected;
+                l.state.anchor = selected;
+            }
+            if let Some(r) = reveal {
+                l.reveal(r);
+            }
+        });
+        let columns = vec![Column::new("Time", 72.0), Column::new("Action", 80.0)];
+        let empty = if self.actions.is_empty() { "No actions yet." } else { "No actions match." };
+        let me = cx.entity();
+        let (cells, chosen) = (me.clone(), me);
+        ColumnListView::new(format!("replay-list-{}", self.name), &self.list, columns, self.shown.len(), move |cell, window, cx| {
+            let (time, line, after) = {
+                let r = cells.read(cx);
+                let Some(a) = r.shown.get(cell.row).and_then(|&i| r.actions.get(i)) else { return };
+                let after = match (&a.error, a.matched()) {
+                    (Some(e), _) => Some((format!("  ✗ {e}"), true)),
+                    (None, Some(m)) => Some((format!("  → {m}"), false)),
+                    _ => None,
+                };
+                (history::clock(a.at).get(11..19).unwrap_or("").to_owned(), command(a), after)
+            };
+            if cell.column == 0 {
+                cell.text(window, cx, time);
+                return;
+            }
+            let p = theme::palette(cx);
+            let font = style::ui_font(FontWeight::NORMAL);
+            let mut runs: Vec<TextRun> = if cell.selected {
+                vec![TextRun { len: line.len(), font: font.clone(), color: cell.text_color, background_color: None, underline: None, strikethrough: None, size: None }]
+            } else {
+                let query = cells.read(cx).parsed.clone();
+                search::highlight(&line, &query, &font, cell.text_color, search::mark_color(&p))
+            };
+            let mut text = line;
+            if let Some((after, failed)) = after {
+                let color = if cell.selected {
+                    cell.text_color
+                } else if failed {
+                    c(p.failure)
+                } else {
+                    style::disabled_text(&p)
+                };
+                runs.push(TextRun { len: after.len(), font, color, background_color: None, underline: None, strikethrough: None, size: None });
+                text.push_str(&after);
+            }
+            cell.text_runs(window, cx, text, &runs);
+        })
+        .empty_text(empty)
+        .on_select(move |_, cx| {
+            chosen.update(cx, |r, cx| {
+                let Some(i) = r.list.read(cx).state.single().and_then(|row| r.shown.get(row)).copied() else { return };
+                let Some(a) = r.actions.get(i) else { return };
+                r.playhead = a.at + a.ms;
+                r.playing = false;
+                r.follow = r.playhead >= r.range().1;
+                // Chosen here, so already in view.
+                r.revealed = Some(i);
+                cx.notify();
+            })
+        })
+    }
+
+    /// Stepping, play, speed, the scrubber and Latest; or the export
+    /// under way in the scrubber's place.
+    fn transport(&mut self, width: f32, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let me = cx.entity();
+        let (start, end) = self.range();
+        let following = self.follow && self.playhead >= end;
+        let running = self.running;
+        let two_rows = width < TRANSPORT_ONE_ROW;
+        let on = |me: &Entity<Replay>, f: fn(&mut Replay, &mut Context<Replay>)| {
+            let me = me.clone();
+            move |_: &mut Window, cx: &mut App| me.update(cx, f)
+        };
+        let mut buttons = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .h(px(m::CONTROL_HEIGHT))
+            .gap(px(m::TIGHT))
+            .child(Button::new("◀").id("replay-back").min_width(STEP_W).on_click(on(&me, |r, cx| r.step(-1, cx))))
+            .child(Button::new(if self.playing { "Pause" } else { "Play" }).id("replay-play").min_width(PLAY_W).on_click(on(&me, Replay::play_pause)))
+            .child(Button::new("▶").id("replay-next").min_width(STEP_W).on_click(on(&me, |r, cx| r.step(1, cx))));
+        // The speed where there's room for it.
+        let used = 2.0 * STEP_W + PLAY_W + 2.0 * m::TIGHT;
+        if used + m::TIGHT + SPEED_W + m::SPACING + LATEST_W <= width {
+            let speeds: Vec<SharedString> = SPEEDS.iter().map(|s| SharedString::from(*s)).collect();
+            let set = me.clone();
+            buttons = buttons.child(
+                div().child(MenuField::new(format!("replay-speed-{}", self.name), speeds, self.speed).width(SPEED_W).on_change(move |i, _, cx| {
+                    set.update(cx, |r, cx| {
+                        r.speed = i;
+                        cx.notify();
+                    })
+                })),
+            );
+        }
+        let latest = Button::new(if running { "Live" } else { "Latest" }).id("replay-latest").min_width(LATEST_W).pushed(following).enabled(!following || running).on_click(on(&me, Replay::latest));
+        // The scrubber and the time; or the export under way.
+        let middle = if let Some((done, cancel)) = &self.exporting {
+            let cancel = cancel.clone();
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(m::SPACING))
+                .h(px(m::CONTROL_HEIGHT))
+                .child(div().flex_1().child(StatusBar::new(*done).label(format!("Exporting… {:.0}%", done * 100.0)).bar_height(6.0)))
+                .child(Button::new("Cancel").id("replay-cancel-export").min_width(72.0).on_click(move |_, _| cancel.store(true, Ordering::Relaxed)))
+        } else {
+            let time = format!("{} / {}", duration(self.playhead.saturating_sub(start)), duration(end - start));
+            let widest = format!("{} / {}", duration(end - start), duration(end - start));
+            let time_w = style::text_width_app(cx, &widest, style::PLAIN_SIZE, &style::ui_font(FontWeight::NORMAL)).ceil();
+            let total = ((end - start) as f32 / 1000.0).max(0.001);
+            let secs = self.playhead.saturating_sub(start) as f32 / 1000.0;
+            let scrub = me.clone();
+            let label = canvas(
+                |_, _, _| {},
+                move |b, _, window, cx| {
+                    let p = theme::palette(cx);
+                    let r = style::label(window, cx, b.right(), b.center().y, style::Align::Right, time.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
+                    agent::record(window, cx, agent::Node::label(time.clone(), r));
+                },
+            )
+            .w(px(time_w))
+            .h(px(m::CONTROL_HEIGHT))
+            .flex_shrink_0();
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(m::SPACING))
+                .h(px(m::CONTROL_HEIGHT))
+                .child(div().flex_1().min_w_0().child(Slider::new(format!("replay-scrub-{}", self.name), secs.min(total), 0.0..=total).on_change(move |v, _, cx| scrub.update(cx, |r, cx| r.scrub(v, cx)))))
+                .child(label)
+        };
+        if two_rows {
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(m::TIGHT))
+                .child(middle)
+                .child(div().flex().flex_row().items_center().child(buttons).child(div().flex_1()).child(latest))
+        } else {
+            div().flex().flex_row().items_center().gap(px(m::SPACING)).child(buttons).child(div().flex_1().min_w_0().child(middle)).child(latest)
+        }
+    }
+
+    /// The action at the playhead: what was asked, and what came of it.
+    fn detail(&self) -> impl IntoElement + use<> {
+        let action = self.action_at(self.playhead).and_then(|i| self.actions.get(i)).cloned();
+        canvas(
+            |_, _, _| {},
+            move |r, _, window, cx| {
+                let p = theme::palette(cx);
+                let (plain, bold) = (style::ui_font(FontWeight::NORMAL), style::ui_font(FontWeight::BOLD));
+                let (y1, y2) = (r.top() + px(m::LABEL_ROW / 2.0), r.top() + px(m::LABEL_ROW * 1.5));
+                window.with_content_mask(Some(olo_ui::gpui::ContentMask { bounds: r }), |window| {
+                    let Some(a) = &action else {
+                        let t = style::label_fit(window, cx, r.left(), y1, style::Align::Left, "Before the first action.", style::PLAIN_SIZE, plain.clone(), style::disabled_text(&p), r.size.width);
+                        agent::record(window, cx, agent::Node::label("Before the first action.", t));
+                        return;
+                    };
+                    // Narrow, the time is shorter, so the command keeps its room.
+                    let when = if f32::from(r.size.width) < 380.0 {
+                        format!("{}  ·  {} ms", history::clock(a.at).get(11..19).unwrap_or(""), a.ms)
+                    } else {
+                        format!("{}  ·  took {} ms", history::clock(a.at).get(11..).unwrap_or(""), a.ms)
+                    };
+                    let w = style::label(window, cx, r.right(), y1, style::Align::Right, when.clone(), style::PLAIN_SIZE, plain.clone(), style::disabled_text(&p));
+                    let cmd = command(a);
+                    let t = style::label_fit(window, cx, r.left(), y1, style::Align::Left, cmd.clone(), style::PLAIN_SIZE, bold.clone(), c(p.panel_text), (w.left() - px(m::SPACING) - r.left()).max(px(0.0)));
+                    agent::record(window, cx, agent::Node { value: Some(when.into()), ..agent::Node::label(cmd, t) });
+                    let (text, color) = match (&a.error, outcome(a)) {
+                        (Some(e), _) => (format!("✗ Failed: {e}"), c(p.failure)),
+                        (None, Some(o)) => (format!("→ {o}"), c(p.panel_text)),
+                        (None, None) => ("Done.".to_owned(), style::disabled_text(&p)),
+                    };
+                    let t = style::label_fit(window, cx, r.left(), y2, style::Align::Left, text.clone(), style::PLAIN_SIZE, plain.clone(), color, r.size.width);
+                    agent::record(window, cx, agent::Node::label(text, t));
+                });
+            },
+        )
+        .w_full()
+        .h(px(2.0 * m::LABEL_ROW))
+        .flex_shrink_0()
+    }
+
+    /// Whether a click's ring is growing or a caption fading at `t` (drawn
+    /// every frame then), and else how long until a caption shown now
+    /// starts to fade.
+    fn overlay_motion(&self, t: u64) -> (bool, Option<u64>) {
+        let fade_from = CAPTION_MS - CAPTION_MS / 4;
+        let mut still = None;
+        let mut captioned = false;
+        for a in self.actions[..self.actions.partition_point(|a| a.at <= t)].iter().rev().take_while(|a| t - a.at < CAPTION_MS.max(RING_MS)) {
+            let since = t - a.at;
+            if since < RING_MS && a.result.as_ref().is_some_and(|r| r.get("clicked").is_some()) {
+                return (true, None);
+            }
+            if (a.kind == "key" || a.kind == "type") && !captioned {
+                captioned = true;
+                if since >= fade_from {
+                    return (true, None);
+                }
+                still = Some(fade_from - since);
             }
         }
-        let empty = |ui: &mut Ui, text: &str| {
-            ui.put(rect, EmptyState::new(text).icon("agent-screens"));
-        };
+        (false, still)
+    }
+
+    /// Playing: drawn again when something shown next changes (the next
+    /// frame or action, the scrubber's next device pixel, the time's next
+    /// second; every frame while a ring or caption fades), not every
+    /// frame: a long history plays at a few frames a second.
+    fn play_on(&mut self, scrub_w: f32, window: &mut Window, cx: &mut Context<Self>) {
+        let (start, end) = self.range();
+        let t = self.playhead;
+        let (moving, still) = self.overlay_motion(t);
+        if moving {
+            self.play_next = None;
+            window.request_animation_frame();
+            return;
+        }
+        let pixel = (end - start) as f32 / (scrub_w * window.scale_factor()).max(1.0);
+        let second = 1000 - t.saturating_sub(start) % 1000;
+        let next = self.next_after(t).map_or(u64::MAX, |n| n - t);
+        let wait = (pixel.min(second as f32).min(next as f32).min(still.unwrap_or(u64::MAX) as f32) / SPEED[self.speed]).max(1000.0 / 120.0);
+        let due = Instant::now() + Duration::from_secs_f32(wait / 1000.0);
+        // (Drawn again before then, say as a frame came: the timer set
+        // stands, unless this is sooner.)
+        if self.play_next.as_ref().is_some_and(|(at, _)| *at <= due) {
+            return;
+        }
+        let timer = cx.spawn(async move |me, cx| {
+            cx.background_executor().timer(Duration::from_secs_f32(wait / 1000.0)).await;
+            let _ = me.update(cx, |r, cx| {
+                r.play_next = None;
+                cx.notify();
+            });
+        });
+        self.play_next = Some((due, timer));
+    }
+
+    /// Each click as a ring where it went, and the newest key or text
+    /// under the picture, for a moment after it (`t`; `live`: on the
+    /// clock, so drawn again as they fade).
+    fn overlay(&mut self, t: u64, live: bool, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let recent: Vec<Action> = self.actions.iter().rev().filter(|a| a.at <= t).take_while(|a| t - a.at < CAPTION_MS.max(RING_MS)).cloned().collect();
+        // Live, rings and captions go on the clock: every frame while
+        // they move, else once as a caption starts to fade and once as
+        // the last goes.
+        if live && !recent.is_empty() {
+            match self.overlay_motion(t) {
+                (true, _) => window.request_animation_frame(),
+                (false, still) => {
+                    let gone = recent.iter().map(|a| CAPTION_MS.max(RING_MS) - (t - a.at)).max().unwrap_or(0);
+                    let wait = still.unwrap_or(gone).min(gone).max(8);
+                    self.live_next = Some(cx.spawn(async move |me, cx| {
+                        cx.background_executor().timer(Duration::from_millis(wait)).await;
+                        let _ = me.update(cx, |_, cx| cx.notify());
+                    }));
+                }
+            }
+        }
+        let (size, well) = (self.size, self.well.clone());
+        canvas(
+            |_, _, _| {},
+            move |_, _, window, cx| {
+                let Some(pic) = well.read(cx).shown() else { return };
+                let p = theme::palette(cx);
+                let bold = style::ui_font(FontWeight::BOLD);
+                window.with_content_mask(Some(olo_ui::gpui::ContentMask { bounds: pic }), |window| {
+                    let mut captioned = false;
+                    for a in &recent {
+                        let since = t - a.at;
+                        let at = a.result.as_ref().and_then(|r| r.get("clicked")).and_then(|c| Some((c.get(0)?.as_f64()? as f32, c.get(1)?.as_f64()? as f32)));
+                        if let (Some((x, y)), Some((sw, sh))) = (at, size)
+                            && since < RING_MS
+                        {
+                            let center = point(pic.left() + pic.size.width * (x / sw), pic.top() + pic.size.height * (y / sh));
+                            let grow = since as f32 / RING_MS as f32;
+                            let color = c(p.keyboard_navigation).opacity(1.0 - grow);
+                            let radius = px(6.0 + 10.0 * grow);
+                            window.paint_quad(olo_ui::gpui::outline(olo_ui::gpui::Bounds::centered_at(center, olo_ui::gpui::size(radius * 2.0 + px(2.0), radius * 2.0 + px(2.0))), color, olo_ui::gpui::BorderStyle::Solid).corner_radii(radius + px(1.0)).border_widths(px(2.0)));
+                        }
+                        if (a.kind == "key" || a.kind == "type") && since < CAPTION_MS && !captioned {
+                            captioned = true;
+                            let text = if a.kind == "type" { format!("“{}”", a.args.join(" ")) } else { a.args.join(" ") };
+                            // Fades out over its last quarter.
+                            let fade = ((CAPTION_MS - since) as f32 / (CAPTION_MS as f32 / 4.0)).min(1.0);
+                            let w = f32::from(style::text_width(window, text.clone(), style::PLAIN_SIZE, bold.clone()));
+                            let plate = style::snap_centred(window, point(pic.center().x, pic.bottom() - px(24.0)), w + 16.0, style::PLAIN_SIZE * style::LINE_HEIGHT + 8.0);
+                            window.paint_quad(olo_ui::gpui::fill(plate, style::c([0, 0, 0, (170.0 * fade) as u8])).corner_radii(px(6.0)));
+                            style::label(window, cx, plate.center().x, plate.center().y, style::Align::Center, text, style::PLAIN_SIZE, bold.clone(), olo_ui::gpui::white().opacity(fade));
+                        }
+                    }
+                });
+            },
+        )
+        .absolute()
+        .inset_0()
+    }
+}
+
+impl Render for Replay {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let empty = |text: &'static str| div().size_full().child(EmptyState::new(text).icon("agent-screens")).into_any_element();
         if !self.loaded {
-            return empty(ui, "Reading the history…");
+            return empty("Reading the history…");
         }
         if self.go_on_picking() {
-            ui.ctx().request_repaint();
+            window.request_animation_frame();
         }
-        let (start, end) = self.range();
+        let (_, end) = self.range();
         if end == 0 {
-            return empty(ui, "Nothing has been done on this screen yet. Its actions show here as an agent takes them.");
+            return empty("Nothing has been done on this screen yet. Its actions show here as an agent takes them.");
         }
         // A time filter moves on with the clock.
-        if self.parsed.terms.iter().any(|t| t.key.as_deref() == Some("since")) && self.picked.elapsed() >= Duration::from_secs(1) {
-            self.pick();
+        let timed = self.parsed.terms.iter().any(|t| t.key.as_deref() == Some("since"));
+        if timed && self.ticking.is_none() {
+            self.ticking = Some(cx.spawn(async move |me, cx| {
+                cx.background_executor().timer(Duration::from_secs(1)).await;
+                let _ = me.update(cx, |r, cx| {
+                    r.ticking = None;
+                    if r.parsed.terms.iter().any(|t| t.key.as_deref() == Some("since")) {
+                        r.pick();
+                        cx.notify();
+                    }
+                });
+            }));
         }
-        if self.parsed.terms.iter().any(|t| t.key.as_deref() == Some("since")) {
-            ui.ctx().request_repaint_after(Duration::from_secs(1));
-        }
-
-        // The search and its filters, and how many actions they keep.
-        let facets = self.facets().to_vec();
-        let count = if self.shown.len() == self.actions.len() {
-            format!("{} action{}", style::thousands(self.actions.len()), if self.actions.len() == 1 { "" } else { "s" })
-        } else {
-            format!("{} of {}", style::thousands(self.shown.len()), style::thousands(self.actions.len()))
-        };
-        let count_w = style::label_width(ui.ctx(), &count, style::plain_font()).ceil();
-        let top = Rect::from_min_size(rect.min, vec2(rect.width(), m::CONTROL_HEIGHT));
-        let bar_w = FilterBar::width(ui, &self.query, &facets) + m::SPACING + 40.0;
-        let one_row = top.width() - bar_w - count_w - 2.0 * m::SPACING >= 220.0;
-        let field_w = if one_row { top.width() - bar_w - count_w - 2.0 * m::SPACING } else { top.width() - count_w - m::SPACING };
-        let field = Rect::from_min_size(top.min, vec2(field_w, m::CONTROL_HEIGHT));
-        let id = ("replay-search", self.name.as_str());
-        if std::mem::take(&mut self.focus_search) {
-            SearchField::focus(ui.ctx(), id);
-        }
-        let mut changed = ui.put(field, SearchField::new(id, &mut self.query).hint("Search: words, kind:, result:, since:").facets(&facets)).changed();
-        let bar = if one_row {
-            Rect::from_min_max(pos2(field.right() + m::SPACING, top.top()), pos2(top.right() - count_w - m::SPACING, top.bottom()))
-        } else {
-            // Under the search, its first menu's text over the list's
-            // first column's, as Log Viewer has it.
-            let frame = style::inset(ui.ctx(), top, 2.0).left() - top.left();
-            let indent = frame + m::CELL_INSET - m::TEXT_INSET;
-            Rect::from_min_size(pos2(top.left() + indent, top.bottom() + m::SPACING), vec2(top.width() - indent, m::CONTROL_HEIGHT))
-        };
-        changed |= ui.put(bar, FilterBar::new(("replay", self.name.as_str()), &mut self.query, &facets).no_clear()).changed();
-        if changed {
-            self.pick();
-            self.revealed = None;
-        }
-        style::label(ui.painter(), top.right(), top.center().y, Align::Max, &count, style::plain_font(), style::disabled_text(&p));
-        let controls_bottom = if one_row { top.bottom() } else { bar.bottom() };
 
         // Playing: on through time, past stretches where nothing happens.
         if self.playing {
-            let dt = ui.input(|i| i.stable_dt).min(0.1);
+            let now = Instant::now();
+            // (A stall of seconds doesn't jump the playhead as far.)
+            let dt = self.played.map_or(0.0, |t| now.duration_since(t).as_secs_f32().min(2.0));
+            self.played = Some(now);
             self.playhead += (dt * 1000.0 * SPEED[self.speed]) as u64;
             if let Some(next) = self.next_after(self.playhead)
                 && next > self.playhead + SKIP_MS
@@ -623,261 +989,114 @@ impl Replay {
                 self.playing = false;
                 self.follow = true;
             }
-            ui.ctx().request_repaint();
+        }
+        if !self.playing {
+            self.play_next = None;
         }
 
-        let body = Rect::from_min_max(pos2(rect.left(), controls_bottom + m::SPACING), rect.max);
-        let list_w = (body.width() * 0.42).clamp(260.0, 440.0).min(body.width() - 240.0).max(200.0);
-        let list_r = Rect::from_min_size(body.min, vec2(list_w, body.height()));
-        self.list_ui(ui, list_r);
+        // The search and its filters, and how many actions they keep.
+        let me = cx.entity();
+        let facets = self.facets(cx);
+        let width = self.width;
+        let count = if self.shown.len() == self.actions.len() {
+            format!("{} action{}", style::thousands(self.actions.len()), if self.actions.len() == 1 { "" } else { "s" })
+        } else {
+            format!("{} of {}", style::thousands(self.shown.len()), style::thousands(self.actions.len()))
+        };
+        let font = style::ui_font(FontWeight::NORMAL);
+        let count_w = style::text_width_app(cx, &count, style::PLAIN_SIZE, &font).ceil();
+        let bar_w = FilterBar::width(cx, &self.query, &facets) + m::SPACING + 40.0;
+        let one_row = width - bar_w - count_w - 2.0 * m::SPACING >= 220.0;
+        let field_w = if one_row { width - bar_w - count_w - 2.0 * m::SPACING } else { width - count_w - m::SPACING };
+        let filters_me = me.clone();
+        let filters = FilterBar::new(format!("replay-{}", self.name), self.query.clone(), facets).no_clear().on_change(move |text, _, cx| {
+            filters_me.update(cx, |r, cx| {
+                r.search.update(cx, |s, cx| s.set_text(text.clone(), cx));
+                r.query = text;
+                r.pick();
+                r.revealed = None;
+                cx.notify();
+            })
+        });
+        let count_label = canvas(
+            |_, _, _| {},
+            move |b, _, window, cx| {
+                let p = theme::palette(cx);
+                let r = style::label(window, cx, b.right(), b.center().y, style::Align::Right, count.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
+                agent::record(window, cx, agent::Node::label(count.clone(), r));
+            },
+        )
+        .w(px(count_w))
+        .h(px(m::CONTROL_HEIGHT))
+        .flex_shrink_0();
+        let mut top = div().flex().flex_row().items_center().gap(px(m::SPACING)).h(px(m::CONTROL_HEIGHT)).child(div().w(px(field_w)).child(self.search.clone()));
+        let controls = if one_row {
+            top = top.child(div().flex_1().min_w_0().child(filters.max_width(bar_w))).child(count_label);
+            div().child(top)
+        } else {
+            // Under the search, its first menu's text over the list's
+            // first column's, as Log Viewer has it.
+            top = top.child(div().flex_1()).child(count_label);
+            let frame = f32::from(style::inset(window, olo_ui::gpui::Bounds::default(), 2.0).left());
+            let indent = frame + m::CELL_INSET - m::TEXT_INSET;
+            div().flex().flex_col().gap(px(m::SPACING)).child(top).child(div().pl(px(indent)).child(filters.max_width(width - indent)))
+        };
 
         // The screen as it was, the action under it, and the transport.
-        let right = Rect::from_min_max(pos2(list_r.right() + m::SPACING, body.top()), body.max);
-        let transport = Rect::from_min_max(pos2(right.left(), right.bottom() - Self::transport_height(right.width())), right.max);
-        let detail = Rect::from_min_max(pos2(right.left(), transport.top() - m::SPACING - 2.0 * m::LABEL_ROW), pos2(right.right(), transport.top() - m::SPACING));
-        let well = Rect::from_min_max(right.min, pos2(right.right(), detail.top() - m::SPACING));
-        let want = self.frame_for(self.playhead);
+        let list_w = (width * 0.42).clamp(260.0, 440.0).min(width - 240.0).max(200.0);
+        let right_w = width - list_w - m::SPACING;
+        if self.playing {
+            self.play_on(right_w, window, cx);
+        }
+        let want = frame_time(&self.segments, self.playhead);
         if want.is_some() && want != self.showing && want != self.asked {
             self.asked = want;
             let _ = self.frames.send((self.segments.clone(), self.playhead));
         }
-        let size = self.texture.as_ref().map(|t| t.size_vec2()).or(self.size.map(|(w, h)| vec2(w, h)));
-        let text = if want.is_none() { Some("No picture from then") } else if self.texture.is_none() { Some("Reading…") } else { None };
-        let pic = picture_well(ui, well, size, self.texture.as_ref().filter(|_| want.is_some()), text);
-        if let Some(pic) = pic {
-            // Following a running screen, rings and captions fade as time
-            // goes on, not at the playhead (which waits at the newest).
-            let live = running && self.follow && self.playhead >= end;
-            self.overlay(ui, pic, if live { history::now_ms().max(self.playhead) } else { self.playhead }, live);
-        }
-        self.detail_ui(ui, detail);
-        self.transport_ui(ui, transport, (start, end), running);
-    }
-
-    /// The actions shown, the one at the playhead chosen.
-    fn list_ui(&mut self, ui: &mut Ui, list_r: Rect) {
-        let p = style::palette(ui.ctx());
-        let current = self.action_at(self.playhead);
-        let selected = current.and_then(|i| self.shown.iter().position(|&s| s == i));
-        if selected != self.list.single() {
-            self.list.selected = selected.into_iter().collect();
-            self.list.cursor = selected;
-            self.list.anchor = selected;
-        }
-        // Only an action newly at the playhead is brought into view (as it
-        // plays, or comes in live), so the list scrolls freely otherwise.
-        let reveal = if current != self.revealed {
-            self.revealed = current;
-            selected
+        let text: Option<SharedString> = if want.is_none() {
+            Some("No picture from then".into())
+        } else if !self.well.read(cx).has_shot() {
+            Some("Reading…".into())
         } else {
             None
         };
-        let columns = [Column::new("Time", 72.0), Column::new("Action", 80.0)];
-        let (actions, shown, query) = (&self.actions, &self.shown, &self.parsed);
-        let failure = c(p.failure);
-        let dim = style::disabled_text(&p);
-        let empty = if self.actions.is_empty() { "No actions yet." } else { "No actions match." };
-        let out = ui
-            .scope_builder(egui::UiBuilder::new().max_rect(list_r), |ui| {
-                ColumnListView::new(("replay-list", &self.name), &columns, shown.len(), &mut self.list).reveal(reveal).empty_text(empty).show(ui, |cell: &Cell| {
-                    let a = &actions[shown[cell.row]];
-                    match cell.column {
-                        0 => cell.text(history::clock(a.at).get(11..19).unwrap_or("")),
-                        _ => {
-                            let font = style::plain_font();
-                            let mut job = if cell.selected {
-                                egui::text::LayoutJob::simple_singleline(command(a), font.clone(), cell.text_color)
-                            } else {
-                                search::highlight(&command(a), query, font.clone(), cell.text_color, search::mark_color(&p))
-                            };
-                            let (after, color) = match (&a.error, a.matched()) {
-                                (Some(e), _) => (format!("  ✗ {e}"), if cell.selected { cell.text_color } else { failure }),
-                                (None, Some(m)) => (format!("  → {m}"), if cell.selected { cell.text_color } else { dim }),
-                                _ => (String::new(), dim),
-                            };
-                            job.append(&after, 0.0, egui::TextFormat::simple(font, color));
-                            cell.text_job(job);
-                        }
-                    }
-                })
-            })
-            .inner;
-        if out.selection_changed
-            && let Some(i) = self.list.single().and_then(|r| self.shown.get(r)).copied()
-            && let Some(a) = self.actions.get(i)
-        {
-            self.playhead = a.at + a.ms;
-            self.playing = false;
-            self.follow = self.playhead >= self.range().1;
-            // Chosen here, so already in view.
-            self.revealed = Some(i);
-        }
-    }
-
-    /// The action at the playhead: what was asked, and what came of it.
-    fn detail_ui(&self, ui: &Ui, r: Rect) {
-        let p = style::palette(ui.ctx());
-        let painter = ui.painter().with_clip_rect(r);
-        let (y1, y2) = (r.top() + m::LABEL_ROW / 2.0, r.top() + m::LABEL_ROW * 1.5);
-        let Some(a) = self.action_at(self.playhead).and_then(|i| self.actions.get(i)) else {
-            style::label_fit(&painter, r.left(), y1, Align::Min, "Before the first action.", style::plain_font(), style::disabled_text(&p), r.width());
-            return;
-        };
-        // Narrow, the time is shorter, so the command keeps its room.
-        let when = if r.width() < 380.0 {
-            format!("{}  ·  {} ms", history::clock(a.at).get(11..19).unwrap_or(""), a.ms)
-        } else {
-            format!("{}  ·  took {} ms", history::clock(a.at).get(11..).unwrap_or(""), a.ms)
-        };
-        let when_w = style::label_width(ui.ctx(), &when, style::plain_font()).ceil();
-        style::label(&painter, r.right(), y1, Align::Max, &when, style::plain_font(), style::disabled_text(&p));
-        style::label_fit(&painter, r.left(), y1, Align::Min, &command(a), style::bold_font(), c(p.panel_text), (r.width() - when_w - m::SPACING).max(0.0));
-        let (text, color) = match (&a.error, outcome(a)) {
-            (Some(e), _) => (format!("✗ Failed: {e}"), c(p.failure)),
-            (None, Some(o)) => (format!("→ {o}"), c(p.panel_text)),
-            (None, None) => ("Done.".to_owned(), style::disabled_text(&p)),
-        };
-        style::label_fit(&painter, r.left(), y2, Align::Min, &text, style::plain_font(), color, r.width());
-    }
-
-    /// How tall the transport is `width` wide: one row, or (narrow) the
-    /// scrubber over the buttons.
-    fn transport_height(width: f32) -> f32 {
-        if width < TRANSPORT_ONE_ROW { 2.0 * m::CONTROL_HEIGHT + m::TIGHT } else { m::CONTROL_HEIGHT }
-    }
-
-    /// Stepping, play, speed, the scrubber and Latest; or the export
-    /// under way in the scrubber's place.
-    fn transport_ui(&mut self, ui: &mut Ui, r: Rect, (start, end): (u64, u64), running: bool) {
-        let p = style::palette(ui.ctx());
-        let buttons = Rect::from_min_max(pos2(r.left(), r.bottom() - m::CONTROL_HEIGHT), r.max);
-        let mut x = r.left();
-        let mut button = |ui: &mut Ui, label: &str, w: f32| {
-            let b = Rect::from_min_size(pos2(x, buttons.top()), vec2(w, m::CONTROL_HEIGHT));
-            x += w + m::TIGHT;
-            ui.put(b, Button::new(label).min_width(w)).clicked()
-        };
-        if button(ui, "◀", 30.0) {
-            self.step(-1);
-        }
-        if button(ui, if self.playing { "Pause" } else { "Play" }, 64.0) {
-            self.play_pause();
-        }
-        if button(ui, "▶", 30.0) {
-            self.step(1);
-        }
-        // At the right: Latest (pushed while following); the speed where
-        // there's room for it.
-        let latest_w = 64.0;
-        let speed_r = Rect::from_min_size(pos2(x, buttons.top()), vec2(58.0, m::CONTROL_HEIGHT));
-        let speed_r = if speed_r.right() + m::SPACING + latest_w <= buttons.right() {
-            ui.put(speed_r, MenuField::new(("replay-speed", self.name.as_str()), &mut self.speed, &SPEEDS).width(58.0));
-            speed_r
-        } else {
-            Rect::from_min_size(pos2(x - m::TIGHT, buttons.top()), vec2(0.0, m::CONTROL_HEIGHT))
-        };
-        let latest_r = Rect::from_min_size(pos2(buttons.right() - latest_w, buttons.top()), vec2(latest_w, m::CONTROL_HEIGHT));
-        let following = self.follow && self.playhead >= end;
-        if ui.add_enabled_ui(!following || running, |ui| ui.put(latest_r, Button::new(if running { "Live" } else { "Latest" }).min_width(latest_w).pushed(following))).inner.clicked() {
-            self.latest();
-        }
-        // The scrubber and the time: between them, or over them.
-        let row = if r.height() > m::CONTROL_HEIGHT {
-            Rect::from_min_size(r.min, vec2(r.width(), m::CONTROL_HEIGHT))
-        } else {
-            Rect::from_min_max(pos2(speed_r.right() + m::SPACING, r.top()), pos2(latest_r.left() - m::SPACING, r.bottom()))
-        };
-        if let Some((done, cancel)) = &self.exporting {
-            let cancel_r = Rect::from_min_size(pos2(row.right() - 72.0, row.top()), vec2(72.0, m::CONTROL_HEIGHT));
-            if ui.put(cancel_r, Button::new("Cancel").min_width(72.0)).clicked() {
-                cancel.store(true, Ordering::Relaxed);
-            }
-            let status = Rect::from_min_max(row.min, pos2(cancel_r.left() - m::SPACING, row.bottom()));
-            let label = format!("Exporting… {:.0}%", done * 100.0);
-            ui.put(status, StatusBar::new(*done).label(&label).bar_height(6.0));
-            ui.ctx().request_repaint_after(Duration::from_millis(100));
-            return;
-        }
-        let time = format!("{} / {}", duration(self.playhead.saturating_sub(start)), duration(end - start));
-        let time_w = style::label_width(ui.ctx(), &format!("{} / {}", duration(end - start), duration(end - start)), style::plain_font()).ceil();
-        style::label(ui.painter(), row.right(), row.center().y, Align::Max, &time, style::plain_font(), style::disabled_text(&p));
-        let scrub = Rect::from_min_max(row.min, pos2(row.right() - time_w - m::SPACING, row.bottom()));
-        if scrub.width() > 40.0 {
-            let mut secs = self.playhead.saturating_sub(start) as f32 / 1000.0;
-            let total = (end - start) as f32 / 1000.0;
-            let slider = Rect::from_center_size(scrub.center(), vec2(scrub.width(), 20.0));
-            if ui.put(slider, Slider::new(&mut secs, 0.0..=total.max(0.001))).changed() {
-                self.playhead = start + (secs * 1000.0) as u64;
-                self.playing = false;
-                self.follow = self.playhead >= end;
-            }
-        }
-    }
-
-    /// How the last export ended, for the window to say.
-    pub fn take_exported(&mut self) -> Option<Result<PathBuf, String>> {
-        self.exported.take()
-    }
-
-    /// Each click as a ring where it went, and the newest key or text
-    /// under the picture, for a moment after it (`t`; `live`: on the
-    /// clock, so drawn again as they fade).
-    fn overlay(&self, ui: &Ui, pic: Rect, t: u64, live: bool) {
-        let p = style::palette(ui.ctx());
-        let painter = ui.painter().with_clip_rect(pic);
-        let recent = self.actions.iter().rev().filter(|a| a.at <= t).take_while(|a| t - a.at < CAPTION_MS.max(RING_MS));
-        let mut captioned = false;
-        for a in recent {
-            let since = t - a.at;
-            let point = a.result.as_ref().and_then(|r| r.get("clicked")).and_then(|c| Some((c.get(0)?.as_f64()? as f32, c.get(1)?.as_f64()? as f32)));
-            if let (Some((x, y)), Some((sw, sh))) = (point, self.size)
-                && since < RING_MS
-            {
-                let at = pos2(pic.left() + x / sw * pic.width(), pic.top() + y / sh * pic.height());
-                let grow = since as f32 / RING_MS as f32;
-                let color = c(p.keyboard_navigation).gamma_multiply(1.0 - grow);
-                painter.circle_stroke(at, 6.0 + 10.0 * grow, egui::Stroke::new(2.0, color));
-            }
-            if (a.kind == "key" || a.kind == "type") && since < CAPTION_MS && !captioned {
-                captioned = true;
-                let text = if a.kind == "type" { format!("“{}”", a.args.join(" ")) } else { a.args.join(" ") };
-                let g = painter.layout_no_wrap(text, style::bold_font(), Color32::WHITE);
-                let r = style::snap(ui.ctx(), Rect::from_center_size(pos2(pic.center().x, pic.bottom() - 24.0), g.size() + vec2(16.0, 8.0)));
-                // Fades out over its last quarter.
-                let fade = ((CAPTION_MS - since) as f32 / (CAPTION_MS as f32 / 4.0)).min(1.0);
-                painter.rect_filled(r, 6.0, Color32::from_black_alpha((170.0 * fade) as u8));
-                painter.galley(pos2(r.left() + 8.0, r.top() + 4.0), g, Color32::WHITE.gamma_multiply(fade));
-            }
-        }
-        if live && t.saturating_sub(self.actions.last().map_or(0, |a| a.at)) < CAPTION_MS.max(RING_MS) {
-            ui.ctx().request_repaint_after(Duration::from_millis(33));
-        }
-    }
-}
-
-/// A screen's picture fitted into `well` (sunken, the picture centred in
-/// it), or `text` in its place. Where the picture went.
-pub fn picture_well(ui: &Ui, well: Rect, size: Option<egui::Vec2>, texture: Option<&TextureHandle>, text: Option<&str>) -> Option<Rect> {
-    let p = style::palette(ui.ctx());
-    let painter = ui.painter();
-    style::sunken(painter, well, &p, false);
-    let inner = style::inset(ui.ctx(), well, 2.0);
-    painter.rect_filled(inner, 0.0, style::shade(&p, p.panel_background, 1.18));
-    let size = size.unwrap_or(vec2(16.0, 10.0));
-    let aspect = size.x / size.y.max(1.0);
-    let room = inner.shrink(m::SPACING);
-    let (w, h) = if room.width() / room.height().max(1.0) > aspect { (room.height() * aspect, room.height()) } else { (room.width(), room.width() / aspect) };
-    let pic = style::snap(ui.ctx(), Rect::from_center_size(room.center(), vec2(w, h)));
-    match (texture, text) {
-        (Some(t), None) => {
-            painter.rect_filled(pic.expand(1.0), 0.0, c(p.control_border));
-            painter.image(t.id(), pic, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
-            Some(pic)
-        }
-        (_, text) => {
-            let text = text.unwrap_or("");
-            style::label_fit(&painter.with_clip_rect(inner), inner.center().x, inner.center().y, Align::Center, text, style::plain_font(), style::disabled_text(&p), inner.width() - 2.0 * m::SPACING);
-            None
-        }
+        self.well.update(cx, |w, cx| w.set_text(text, cx));
+        // Following a running screen, rings and captions fade as time
+        // goes on, not at the playhead (which waits at the newest).
+        let live = self.running && self.follow && self.playhead >= end;
+        let t = if live { history::now_ms().max(self.playhead) } else { self.playhead };
+        let overlay = self.overlay(t, live, window, cx);
+        let list = self.list_view(cx);
+        let detail = self.detail();
+        let transport = self.transport(right_w, cx);
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .gap(px(m::SPACING))
+            .child(controls)
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .flex()
+                    .flex_row()
+                    .gap(px(m::SPACING))
+                    // (A list fills a flex column: in a plain box stretched to
+                    // its width, its own `size_full` comes out none wide.)
+                    .child(div().w(px(list_w)).flex_shrink_0().flex().flex_col().child(div().flex_1().min_h_0().flex().flex_col().child(list)))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .gap(px(m::SPACING))
+                            .child(div().flex_1().min_h_0().relative().child(self.well.clone()).child(overlay))
+                            .child(detail)
+                            .child(transport),
+                    ),
+            )
+            .into_any_element()
     }
 }

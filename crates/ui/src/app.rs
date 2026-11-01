@@ -149,6 +149,36 @@ pub(crate) fn set_default_button(window: &Window, cx: &mut App, click: DefaultCl
     cx.default_global::<DefaultButtons>().0.insert(window.window_handle().window_id(), click);
 }
 
+type TabStep = std::rc::Rc<dyn Fn(i32, &mut Window, &mut App)>;
+
+/// Each window's tab keys' taker (its first tab view), as last drawn.
+#[derive(Default)]
+struct TabKeys(std::collections::HashMap<gpui::WindowId, TabStep>);
+
+impl Global for TabKeys {}
+
+/// A tab view is drawn: Next and Previous Tab step it, unless one drawn
+/// before it in the window has them.
+pub(crate) fn set_tab_keys(window: &Window, cx: &mut App, step: TabStep) {
+    cx.default_global::<TabKeys>().0.entry(window.window_handle().window_id()).or_insert(step);
+}
+
+/// Next Tab (+1: ⌃Tab, ⌃Page Down) or Previous Tab (−1: ⌃⇧Tab, ⌃Page Up),
+/// as the egui kit's `tab_keys` reads them; 0 for any other key.
+pub fn tab_step(k: &gpui::Keystroke) -> i32 {
+    let m = &k.modifiers;
+    if !m.control || m.alt || m.platform {
+        return 0;
+    }
+    match k.key.as_str() {
+        "tab" if m.shift => -1,
+        "tab" => 1,
+        "pageup" if !m.shift => -1,
+        "pagedown" if !m.shift => 1,
+        _ => 0,
+    }
+}
+
 /// Tab and ⇧Tab move the keyboard through the window's controls, fields
 /// and lists, as BeOS's keyboard navigation does (a view of its own that
 /// takes Tab, a terminal or an editor, binds it in its key context).
@@ -161,6 +191,7 @@ impl Render for Frame {
         agent::begin_frame(window, cx, &self.title);
         // Drawn again below if there still is one.
         cx.default_global::<DefaultButtons>().0.remove(&window.window_handle().window_id());
+        cx.default_global::<TabKeys>().0.remove(&window.window_handle().window_id());
         let p = theme::palette(cx);
         let mut root = div()
             .size_full()
@@ -174,6 +205,15 @@ impl Render for Frame {
             .on_key_down(|e: &KeyDownEvent, window, cx| {
                 if let Some((command, on_command)) = crate::menu::bar_shortcut(window, cx, &e.keystroke) {
                     on_command(&command, window, cx);
+                    cx.stop_propagation();
+                    return;
+                }
+                // Next and Previous Tab: the window's tab view.
+                let step = tab_step(&e.keystroke);
+                if step != 0
+                    && let Some(f) = cx.try_global::<TabKeys>().and_then(|t| t.0.get(&window.window_handle().window_id())).cloned()
+                {
+                    f(step, window, cx);
                     cx.stop_propagation();
                     return;
                 }
@@ -329,6 +369,7 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
             agent::forget_closed(cx);
             let open: std::collections::HashSet<gpui::WindowId> = cx.windows().iter().map(|w| w.window_id()).collect();
             cx.default_global::<DefaultButtons>().0.retain(|id, _| open.contains(id));
+            cx.default_global::<TabKeys>().0.retain(|id, _| open.contains(id));
             crate::menu::forget_closed(cx);
             if cx.windows().is_empty() && !cx.has_global::<Resident>() {
                 cx.quit();

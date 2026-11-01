@@ -498,9 +498,11 @@ fn to_bgra(px: &mut [u8]) {
     }
 }
 
-/// `src` resampled to `(w, h)` device pixels (Lanczos, on its
-/// premultiplied colours), as an image to draw a texel a device pixel
-/// (a cover, a poster; call it off the UI thread).
+/// `src` resampled to `(w, h)` device pixels (on its premultiplied
+/// colours: Lanczos made smaller; Catmull-Rom made bigger, as sharp to
+/// the eye at a third of the cost, 3 ms against 9 for a 1024 × 640
+/// screen at 1.4×), as an image to draw a texel a device pixel (a
+/// cover, a poster, an agent's screen; call it off the UI thread).
 pub fn resampled(src: &dyn Rgba, (w, h): (u32, u32)) -> Option<Arc<RenderImage>> {
     use fast_image_resize::{FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer, images::{Image, ImageRef}};
     let [sw, sh] = src.size();
@@ -509,7 +511,8 @@ pub fn resampled(src: &dyn Rgba, (w, h): (u32, u32)) -> Option<Arc<RenderImage>>
     } else {
         let from = ImageRef::new(sw as u32, sh as u32, src.rgba(), PixelType::U8x4).ok()?;
         let mut to = Image::new(w, h, PixelType::U8x4);
-        let options = ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FilterType::Lanczos3)).use_alpha(false);
+        let filter = if w as usize > sw || h as usize > sh { FilterType::CatmullRom } else { FilterType::Lanczos3 };
+        let options = ResizeOptions::new().resize_alg(ResizeAlg::Convolution(filter)).use_alpha(false);
         Resizer::new().resize(&from, &mut to, &options).ok()?;
         to.into_vec()
     };
@@ -566,5 +569,31 @@ impl Render for ImageView {
                     }
                 }),
             )
+    }
+}
+
+/// What resampling costs, by filter (`cargo test --release -p olo-ui
+/// resample_timing -- --ignored --nocapture`).
+#[cfg(test)]
+mod resample_timing {
+    #[test]
+    #[ignore]
+    fn filters() {
+        use fast_image_resize::{FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer, images::{Image, ImageRef}};
+        let (sw, sh) = (1024u32, 640u32);
+        let src: Vec<u8> = (0..sw * sh * 4).map(|i| (i * 7 % 251) as u8).collect();
+        for (to_w, to_h) in [(1421u32, 888u32), (710, 444)] {
+            for f in [FilterType::Lanczos3, FilterType::CatmullRom, FilterType::Bilinear] {
+                let from = ImageRef::new(sw, sh, &src, PixelType::U8x4).unwrap();
+                let mut to = Image::new(to_w, to_h, PixelType::U8x4);
+                let options = ResizeOptions::new().resize_alg(ResizeAlg::Convolution(f)).use_alpha(false);
+                let mut r = Resizer::new();
+                let t = std::time::Instant::now();
+                for _ in 0..10 {
+                    r.resize(&from, &mut to, &options).unwrap();
+                }
+                eprintln!("{to_w}x{to_h} {f:?}: {:.2} ms", t.elapsed().as_secs_f64() * 100.0);
+            }
+        }
     }
 }

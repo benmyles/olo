@@ -73,7 +73,10 @@ like pixel alignment is.
    second, so only what shows windows asks for it (Deskbar); `OwnWindows`
    is the program's own, only when where they are changes (the kit's
    `theme-watch`), and `Focus` the focused one as the focus moves (the
-   supervisor). app_server writes each event out once for everyone.
+   supervisor). `Painted` says a display drew something new (headless
+   screens; only to whoever names it, as it comes with frames): Agent
+   Screens' Live takes a picture then rather than on a timer.
+   app_server writes each event out once for everyone.
 8. **app_server never deadlocks.** A hang there freezes the whole desktop.
    Smithay's per-surface lock isn't re-entrant: inside a closure given to
    `with_pending_state`, `with_states`, `with_committed_state` or
@@ -1835,7 +1838,14 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   Transparency shows over a checkerboard. `picture_bounds` says where it
   is drawn (an overlay's place), `set_still` stops pan and zoom,
   `on_drag_out` takes a drag where it doesn't pan; `resampled(src,
-  size)` is the resampling alone.
+  size)` is the resampling alone (Lanczos made smaller, Catmull-Rom made
+  bigger: a 1024 × 640 screen magnified to 1421 × 888 in 3 ms against
+  9, `resample_timing`).
+- A view that fills its box (`size_full`: a `ColumnListView`, a
+  `ScrollView`) put in a plain `div` its flex parent stretches comes
+  out none wide in GPUI's layout: make that `div` a flex column
+  (`flex().flex_col()`, the view's place `flex_1`), as Agent Screens'
+  History list sits.
 - `style::spinner(window, centre, radius, colour)` (a busy spinner, a
   turning arc as a GPU ring slice; ask for the next frame while it
   shows),
@@ -1929,6 +1939,29 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   draws only when it shows, so the agent socket has each window draw
   what changed (`Window::draw_if_dirty`, which doesn't show it; the next
   frame does) before it answers `tree`, `menus`, `invoke` or `review`.
+- `widgets::Sidebar::new(id, rows, chosen).on_choose(f)` (a source
+  list filling its box, as the egui kit's: `sidebar::Row::new(icon,
+  label).value(v)` and `Row::heading(label)`, `sidebar::height(rows)`,
+  its `ground` and `edge` colours for what sits on it; ↑ ↓ step over
+  headings, rows past its height scroll, the chosen one is brought into
+  view; `ListItem`s and `Heading`s to agents).
+- `widgets::TabView::new(id, labels, selected).on_select(f)` with the
+  chosen tab's content as its child (BTabView: slanted folder tabs over
+  a raised panel, the content inside `WINDOW_INSET`; `Tab`s to agents).
+  Next and Previous Tab (`app::tab_step`: ⌃Tab, ⌃⇧Tab, ⌃Page Down and
+  ⌃Page Up) step the window's first tab view from wherever the keyboard
+  is, unless what has it stops them (a screen being controlled).
+- `widgets::dashboard` (as the egui kit's): `Card::new(id, title)
+  .figure(..).caption(..).selected(..).figure_ink(..).on_click(..)`
+  holds its content as children under its head (`Card::height(content,
+  caption)`), `Facts::new(rows)` (label: value rows, `.colors(label,
+  value)` on a panel), `meter`, `flow`/`flow_rows` for cards placed by
+  hand, `GAP`, `FACT_ROW`, `gutter(p)`. Cards in a flex row are as tall
+  as the tallest. `style::card(window, r, p, hover, selected)` paints a
+  card's paper and shadow; `style::thousands(n)` writes "12,345".
+- `menu::shortcut_command(window, cx, keystroke)`: the menu bar command
+  a keystroke chooses, for a view that takes the keys itself and lets
+  one through (Agent Screens' ⌘K while controlling).
 
 ## The session and in-place reload
 
@@ -2820,7 +2853,10 @@ launcher lists them. The panel list Deskbar shows is
   within it: a transparent pixel in each screen's corner shows for a
   frame every second while the desktop is in use (`render::keep_warm`,
   not while idle for two minutes, and only for a frame, so a
-  full-screen window still goes straight to the display), with an upload
+  full-screen window still goes straight to the display; smithay counts
+  an element's place from the top of the stack, so its coming and going
+  damages what's under it whole: a headless screen's watchers compare
+  what a frame shows, `render::content_changed`), with an upload
   of a spare tab buffer of each size (`deco::warm_tab_upload`); tab looks
   are drawn into buffers of two widths, written whole, taken from spares
   made for each tab height at its first window (`SPARE_TABS`), so a new
@@ -5884,7 +5920,7 @@ heads, `frame_at` builds the screen as it was at a time from its
 keyframe; `history NAME --look N [OUT.png]` writes it as it was when
 action N ended. In the window, History (a tab beside Live and Stats;
 `replay.rs`) lists its actions as they come: a worker follows the
-history's folder (`olo_kit::watch`) and reads only what was added
+history's folder (`olo_ui::watch`) and reads only what was added
 (`history::Reader`, from where it last read to the end of its last
 whole line; all again when the file was cut down or replaced) and the
 frames' segments that changed (`record::index_known`; records still
@@ -5896,17 +5932,22 @@ command's own name; `result:failed|ok`; `since:5m|1h|today`), picked
 within 2 ms a frame however long the history (`go_on_picking`), the
 count of shown and all at the right. It shows the screen as it was at
 the action chosen or wherever the scrubber is (in a sunken well,
-`picture_well`), what the action was and what came of it under it
+`picture::PictureWell`), what the action was and what came of it under it
 (what it matched, the program's pid, the window in front after, or why
 it failed), and plays it back in time with them (Play/Pause, 1× to 8×,
 ◀ ▶ action by action among those shown; stretches of more than 3 s with
 nothing in them skipped), each click a ring where it went and the
-newest key or text a caption under the picture. At the newest action it
+newest key or text a caption under the picture. Playing draws again
+only when something shown changes (`Replay::play_on`: the next frame or
+action, the scrubber's next device pixel, the time's next second;
+every frame only while a ring grows or a caption fades), so a long
+history plays at a few frames a second. At the newest action it
 follows the screen (Live, or Latest for a stopped one, pushed while it
 does): each new action is chosen as it comes and brought into view
 once, so the list scrolls freely otherwise, and rings and captions fade
 on the clock. Narrow, the scrubber goes over the buttons. Frames are
-built on a worker, the latest asked for winning.
+built on a worker, the latest asked for winning, played on from the
+last (`record::Player`) rather than from a keyframe each time.
 `history NAME --export OUT.mp4` (`export.rs`) makes it a video in
 process: the frames at 10 a second (`record::Player`, each record
 applied once in order), H.264 from OpenH264, in an MP4 of our own
@@ -5967,15 +6008,23 @@ requests; `resize` and `place` are `Request::Place` (a frame, as
 file, and `--crop` cuts an RGBA picture down in process (png crate).
 
 The person's side is the window (`olo-screen`, or `olo-screen
-watch NAME`): the screens in a sidebar and the chosen one's Live tab,
-about eight frames a second with the agent's pointer drawn in and its
-latest action under it (a worker asks for `format: "rgba"` pictures and
-reads them back, only while Live shows; the window never waits on a
-screen). Take Control (⌘K) steps in: the person's pointer,
+watch NAME`; on the GPUI kit): the screens in a sidebar and the chosen
+one's Live tab, the screen with the agent's pointer drawn in and its
+latest action under it. A picture is taken only when the screen has
+drawn something new (`viewer::watch_screen`: one worker follows the
+screen's `EventKind::Painted`, another asks for a `format: "rgba"`
+picture then, at most eight a second, and reads it back; from an
+app_server before `Painted`, eight a second), only while Live shows, so
+a screen at rest costs nothing to watch; each is resampled on a worker
+to the device size it's shown at (`picture.rs`, the last standing in
+until it's made). Take Control (⌘K) steps in: the person's pointer,
 wheel and keys over the picture go to that screen through another worker
-(keys by their evdev codes, Ctrl, Shift and Alt pressed and let go as
-each key event says), with a ring in the keyboard-navigation colour
-round the picture, until Stop Controlling. New Screen starts one; Stop
+over a connection kept to it, moves run together to the last (keys by
+their evdev codes on a US keyboard, the agent's, from the keys GPUI
+names; Ctrl, Shift and Alt pressed and let go as each key event says, a
+held key repeated by the screen, Tab and ⌃Tab to the screen too, ⌘K
+still stopping), with a ring in the keyboard-navigation colour round
+the picture, until Stop Controlling (everything held let go). New Screen starts one; Stop
 Screen… ends one after asking. A viewer running on an agent screen
 leaves that screen out of its list. While any screen runs (other than
 the one a Deskbar is on), Deskbar's tray shows a monitor with a pointer,

@@ -303,9 +303,18 @@ as they land (with the commit), add new ones as they come up.
      at 2×: a permission dialog in 7–13 ms against 17–34, 61 MB after ten
      of them against 91 and growing, 191 MB with the picker open against
      210 and 97–120 after against 172; the picker's thumbnails no longer
-     fill the GPU's atlas). Next:
-     Agent Screens, StyledEdit, Activity Monitor, Tracker, Passwords,
-     Preferences (with the screen saver and its modules) and Terminal.
+     fill the GPU's atlas). Agent Screens (with the GPUI kit's
+     `Sidebar`, `TabView` and dashboard cards; Live takes a picture
+     only when the screen draws something new, app_server's `Painted`
+     event, and History plays back drawing only what changes; on
+     release at 2×: watching a screen at rest 0.4% of a core and 10
+     wakeups a second against 4.1% and 48, its app_server 0.5% against
+     2.2%; an agent clicking four times a second 2.4% against 3.5–4.7%,
+     each change shown as it comes rather than at the next of eight
+     polls a second; playing a history back 3 frames a second and
+     1.4–2.4% against 60 and 7–8%; 115–130 MB against 143). Next:
+     StyledEdit, Activity Monitor, Tracker, Passwords, Preferences (with
+     the screen saver and its modules) and Terminal.
      (`olo-preview`'s decoding no longer needs a toolkit: pictures are
      its own `Bitmap`s, and its egui views are behind its `egui`
      feature, for Tracker and the Viewer until they move; Telegram no
@@ -426,6 +435,19 @@ as they land (with the commit), add new ones as they come up.
   smart tiling does, the model chosen in Preferences ▸ AI) for five
   suggestions from a description, shown as a row to pick from or search
   again; keyboard first, agent-readable.
+- **The keep-warm pixel redraws whole displays** (found porting Agent
+  Screens, 2026-11-01): `render::keep_warm` puts a transparent pixel at
+  the top of each display's elements for a frame every second (while
+  the desktop was used in the last two minutes), and removes it again
+  so a full-screen window can go straight to the display. smithay's
+  damage tracker counts an element's place from the top of the stack,
+  so the pixel coming and going moves every other element's place and
+  damages it whole: two full redraws a second instead of a pixel
+  (headless: the whole 1024 × 640 screen each time). Keep the warm work
+  to one pixel's damage without blocking direct scanout (an element
+  that keeps its place, or the damage of a changed place limited to
+  what moved, in smithay's tracker), and measure on a display before
+  and after (`timings`).
 - **Agent Screens: Take Control is laggy** (Ben, 2026-10-31): "when using
   take control in agent screens it is very laggy -- this needs to feel as
   buttery smooth and be as performant as if we were using the desktop

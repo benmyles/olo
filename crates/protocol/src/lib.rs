@@ -456,6 +456,9 @@ pub enum EventKind {
     Outputs,
     Power,
     ShortcutRecorded,
+    /// [`Event::Painted`]: only when asked for by name (not with
+    /// [`Request::Subscribe`]), as it comes as often as frames do.
+    Painted,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -482,6 +485,10 @@ pub enum Event {
     /// A key taken with [`Request::GrabKeys`] went down or up (sent only
     /// to the connection that took it).
     KeyGrab { id: String, pressed: bool },
+    /// A display drew a frame with something new on it: what a
+    /// screenshot shows has changed (headless screens: Agent Screens'
+    /// watchers take a picture then, not on a timer).
+    Painted { output: String },
 }
 
 impl Event {
@@ -495,6 +502,7 @@ impl Event {
             Event::OutputsChanged { .. } => EventKind::Outputs,
             Event::PowerChanged { .. } => EventKind::Power,
             Event::ShortcutRecorded { .. } => EventKind::ShortcutRecorded,
+            Event::Painted { .. } => EventKind::Painted,
             Event::KeyGrab { .. } => return None,
         })
     }

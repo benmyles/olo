@@ -9,7 +9,7 @@ name = "olo-screen"
 path = "src/main.rs"
 
 [dependencies]
-olo-kit.workspace = true
+olo-ui.workspace = true
 olo-theme.workspace = true
 olo-protocol.workspace = true
 olo-xdg.workspace = true
@@ -22,3 +22,4 @@ png = "0.18"
 zstd = "0.14"
 openh264 = "0.9"
 ab_glyph = "0.2"
+fontdb = "0.23"

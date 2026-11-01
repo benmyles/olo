@@ -580,6 +580,9 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) -> bool {
     let desktop_color = state.desktop_color(output);
     let overlay = twitcher_overlay(state, output);
     let locked = state.lock.locked();
+    // (Compared with the last frame only while someone watches.)
+    let watched = state.ipc.wanted(olo_protocol::EventKind::Painted);
+    crate::render::watch_content(watched);
     let data = &mut state.backend_data;
     let screen = &mut data.screens[index];
     let result = {
@@ -610,6 +613,8 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) -> bool {
     let new = match result {
         Ok(r) => {
             let (damaged, sync, states) = (r.damage.is_some(), r.sync, r.states);
+            // Something new to see, not just the keep-warm pixel.
+            let seen = damaged && watched && crate::render::content_changed();
             state.backend_data.screens[index].drawn = Some(sync);
             // Without this every surface counts as off-screen and Smithay
             // throttles its frame callbacks to one a second.
@@ -626,6 +631,10 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) -> bool {
             let t = std::time::Instant::now();
             state.post_repaint(output, None, &states);
             state.timings.phase("post_repaint", t);
+            // Watchers take a picture now (Agent Screens' Live).
+            if seen {
+                state.ipc.broadcast(olo_protocol::Event::Painted { output: name.clone() });
+            }
             damaged
         }
         Err(e) => {
