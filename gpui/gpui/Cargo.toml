@@ -120,6 +120,7 @@ fontdb = "0.23"
 harfrust = "0.12"
 skrifa = { version = "0.44", default-features = false, features = ["std", "autohint_shaping"] }
 vello_cpu = { version = "0.2", default-features = false, features = ["std", "u8_pipeline", "f32_pipeline", "text", "png"] }
+ab_glyph_rasterizer = "0.1.10"
 memmap2 = "0.9"
 olo-theme = { path = "../../crates/theme" }
 olo-protocol = { path = "../../crates/protocol" }

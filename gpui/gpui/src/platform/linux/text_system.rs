@@ -2,7 +2,8 @@
 //! (data/fonts: Noto Sans, Noto Sans Mono, their symbols) before the
 //! system's copies of them, shaped by harfrust, their outlines hinted by
 //! skrifa (vertically only, "light", as FreeType's autohinter, GTK and
-//! Chrome do it: Noto ships unhinted) and filled by vello_cpu. Variable
+//! Chrome do it: Noto ships unhinted) and filled to each pixel's exact
+//! coverage (`fill`; colour glyphs drawn by vello_cpu). Variable
 //! faces give each weight from their axis. A character a face lacks comes
 //! from the kit's chain of others (Olo's symbol faces, the other of Noto
 //! Sans and Noto Sans Mono, DejaVu Sans, CJK, emoji), every glyph on the
@@ -82,6 +83,8 @@ struct State {
     /// Glyphs drawn for their bounds, until GPUI asks for their pixels.
     drawn: HashMap<RenderGlyphParams, (Bounds<DevicePixels>, Vec<u8>)>,
     buffer: Option<harfrust::UnicodeBuffer>,
+    /// Fills glyphs' outlines: one, kept, as every glyph is small.
+    raster: ab_glyph_rasterizer::Rasterizer,
 }
 
 /// Olo's families, for GPUI's own names and the generic ones.
@@ -121,6 +124,7 @@ impl OloTextSystem {
             hinting: HashMap::default(),
             drawn: HashMap::default(),
             buffer: Some(harfrust::UnicodeBuffer::new()),
+            raster: ab_glyph_rasterizer::Rasterizer::new(0, 0),
         }))
     }
 }
@@ -703,22 +707,8 @@ impl State {
             return None;
         }
         let samples = (f64::from(width) * across) as u16;
-        let mut ctx = vello_cpu::RenderContext::new(samples, height);
-        ctx.set_transform(kurbo::Affine::translate((-x0 * across, -y0)));
-        ctx.set_paint(vello_cpu::color::OpaqueColor::<vello_cpu::color::Srgb>::WHITE);
-        if darken > 0.0 {
-            ctx.fill_path(&embolden(&path, reach));
-        } else {
-            ctx.fill_path(&path);
-        }
-        let mut pixmap = vello_cpu::Pixmap::new(samples, height);
-        let mut resources = vello_cpu::Resources::new();
-        ctx.render(&mut pixmap, &mut resources);
-        let coverage: Vec<u8> = pixmap
-            .data_as_u8_slice()
-            .chunks_exact(4)
-            .map(|p| p[3])
-            .collect();
+        let path = if darken > 0.0 { embolden(&path, reach) } else { path };
+        let coverage = fill(&mut self.raster, &path, (-x0 * across, -y0), samples.into(), height.into());
         let pixels = match lcd {
             Some(layout) => lcd_filter(&coverage, width.into(), height.into(), layout),
             None => coverage,
@@ -884,6 +874,51 @@ fn emoji(ch: char, next: Option<char>) -> bool {
     matches!(ch as u32, 0x1F000..=0x1FAFF) || next == Some('\u{FE0F}')
 }
 
+/// The coverage of `path`, moved by `offset`, on a `width` × `height`
+/// grid of pixels: each pixel's area inside it, exactly (the signed area
+/// each edge sweeps, summed along the row, as FreeType's and font-rs's
+/// rasterizers do), its curves as lines within a fiftieth of a pixel
+/// (kurbo's flattening: the rasterizer's own leaves a gentle curve a
+/// single line, a sixth of a pixel off at text sizes). A glyph is small,
+/// so this takes a few microseconds where a vector renderer's setup alone
+/// took tens.
+fn fill(raster: &mut ab_glyph_rasterizer::Rasterizer, path: &kurbo::BezPath, offset: (f64, f64), width: usize, height: usize) -> Vec<u8> {
+    use ab_glyph_rasterizer::point as pt;
+    use kurbo::PathEl;
+    raster.reset(width, height);
+    let at = |p: kurbo::Point| pt((p.x + offset.0) as f32, (p.y + offset.1) as f32);
+    let (mut start, mut now) = (pt(0.0, 0.0), pt(0.0, 0.0));
+    kurbo::flatten(path, 0.02, |el| match el {
+        PathEl::MoveTo(p) => {
+            // An open contour is closed.
+            if now != start {
+                raster.draw_line(now, start);
+            }
+            start = at(p);
+            now = start;
+        }
+        PathEl::LineTo(p) => {
+            let p = at(p);
+            raster.draw_line(now, p);
+            now = p;
+        }
+        PathEl::ClosePath => {
+            if now != start {
+                raster.draw_line(now, start);
+            }
+            now = start;
+        }
+        // (Flattened: lines only.)
+        PathEl::QuadTo(..) | PathEl::CurveTo(..) => {}
+    });
+    if now != start {
+        raster.draw_line(now, start);
+    }
+    let mut coverage = vec![0u8; width * height];
+    raster.for_each_pixel(|i, a| coverage[i] = (a.clamp(0.0, 1.0) * 255.0 + 0.5) as u8);
+    coverage
+}
+
 /// `path` grown by `r` all round, as filling it and stroking it `2r`
 /// wide does (stem darkening): FreeType's emboldening, each point moved
 /// out along its corner's bisector so the edges either side of it move
@@ -995,6 +1030,46 @@ impl OutlinePen for Pen<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Glyphs are filled to their true coverage: each pixel of Noto
+    /// Sans's letters, emboldened as small text is, at the sizes text
+    /// takes at every scale and a subpixel offset, within a few levels of
+    /// grey of 16 × 16 samples of the outline (vello_cpu's fill, before,
+    /// was up to 57 levels off on curves).
+    #[test]
+    fn fill_is_exact() {
+        use kurbo::Shape as _;
+        let data = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/fonts/NotoSans[wght].ttf")).expect("Olo's Noto Sans");
+        let font = FontRef::new(&data).expect("a font");
+        let outlines = font.outline_glyphs();
+        let charmap = font.charmap();
+        let mut raster = ab_glyph_rasterizer::Rasterizer::new(0, 0);
+        let (mut worst, mut total, mut n) = (0u32, 0u64, 0u64);
+        for ppem in [10.5f32, 13.0, 16.5, 22.0, 36.0] {
+            for ch in "AaBgQ@&8e(ß".chars() {
+                let Some(glyph) = charmap.map(ch).and_then(|g| outlines.get(g)) else { continue };
+                let mut path = kurbo::BezPath::new();
+                let mut pen = Pen { path: &mut path, x: 0.3, across: 1.0 };
+                glyph.draw(DrawSettings::unhinted(Ppem::new(ppem), &Location::default()), &mut pen).expect("an outline");
+                let path = embolden(&path, 0.05);
+                let b = path.control_box();
+                let (x0, y0) = (b.x0.floor(), b.y0.floor());
+                let (w, h) = ((b.x1.ceil() - x0) as usize, (b.y1.ceil() - y0) as usize);
+                let ours = fill(&mut raster, &path, (-x0, -y0), w, h);
+                for (i, &a) in ours.iter().enumerate() {
+                    let (x, y) = ((i % w) as f64 + x0, (i / w) as f64 + y0);
+                    let inside = (0..256).filter(|k| path.winding(kurbo::Point::new(x + (k % 16) as f64 / 16.0 + 1.0 / 32.0, y + (k / 16) as f64 / 16.0 + 1.0 / 32.0)) != 0).count();
+                    let d = (i32::from(a) - (inside as f64 * 255.0 / 256.0).round() as i32).unsigned_abs();
+                    worst = worst.max(d);
+                    total += u64::from(d);
+                    n += 1;
+                }
+            }
+        }
+        let mean = total as f64 / n as f64;
+        // (The samples are within a few levels themselves.)
+        assert!(worst <= 10 && mean < 1.5, "worst {worst}/255, mean {mean:.3}/255 over {n} pixels");
+    }
 
     /// Emboldening grows a square by `r` on every side, and shrinks a
     /// hole in it, whichever way its contours run.

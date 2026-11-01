@@ -137,7 +137,10 @@ What Olo changed, so far:
 - Olo's text (`gpui/src/platform/linux/text_system.rs`), the same as
   the egui kit's: Olo's own faces (data/fonts) before the system's,
   shaped by harfrust, outlines hinted by skrifa's autohinter (vertical
-  only, "light") and filled by vello_cpu; variable faces give every
+  only, "light") and filled to each pixel's exact coverage by an area
+  rasterizer kept between glyphs (`fill`: 5.9 µs a glyph against
+  vello_cpu's 7.6–9.7, whose coverage was up to 57 levels of grey off
+  on curves; colour glyphs are still vello_cpu's); variable faces give every
   weight on their axis; a character a face lacks comes from the kit's
   chain (Olo's symbol faces, the other of Noto Sans and Noto Sans Mono,
   DejaVu Sans, CJK, colour emoji), on the line's one baseline. GPUI's

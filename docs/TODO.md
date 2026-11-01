@@ -288,13 +288,17 @@ as they land (with the commit), add new ones as they come up.
      links the egui kit through it until the viewers move with the
      Viewer.)
    - **Glyphs drawn in a frame are slow the first time** (found
-     measuring Telegram, 2026-11-01): Olo's text system draws each new
-     glyph with a fresh vello_cpu context, pixmap and resources, ~33 µs
-     a glyph, so a chat opened with 229 glyphs new to the process spent
-     7.5 ms of its frame on them (a colour emoji 0.06–0.4 ms). Draw
-     them far faster (a context kept and reused, or an area-coverage
-     rasterizer for small glyphs), the same pixels, A/B'd at every
-     scale.
+     measuring Telegram, 2026-11-01): a chat opened with 230 glyphs new
+     to the process spent 6–9 ms of its frame (release) on first-time
+     work, ~3 ms of it drawing glyphs (12 µs each: outline, hinting,
+     emboldening, filling) and up to 0.4 ms a colour emoji. *Done so
+     far*: glyphs are filled to their exact coverage by an area
+     rasterizer kept between glyphs (5.9 µs a glyph against vello_cpu's
+     7.6–9.7, and true to the outline: vello's was up to 57 levels of
+     grey off on curves). Next: draw the glyphs a window will need
+     before it needs them (the UI font's printable ASCII at the sizes
+     in use, in the background, into the text system's drawn glyphs),
+     so a frame only copies them.
      Deskbar's battery and Wi-Fi now follow UPower's and
      NetworkManager's signals (idle: 0 wakeups a second, from 7–9).
 - **Text and everything drawn, better than Apple's** (Ben, 2026-10-31):
