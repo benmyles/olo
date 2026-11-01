@@ -586,6 +586,10 @@ impl crate::BlendFactor {
             Self::SrcAlphaSaturated => glow::SRC_ALPHA_SATURATE,
             Self::Constant => glow::CONSTANT_ALPHA,
             Self::OneMinusConstant => glow::ONE_MINUS_CONSTANT_ALPHA,
+            Self::Src1 => glow::SRC1_COLOR,
+            Self::OneMinusSrc1 => glow::ONE_MINUS_SRC1_COLOR,
+            Self::Src1Alpha => glow::SRC1_ALPHA,
+            Self::OneMinusSrc1Alpha => glow::ONE_MINUS_SRC1_ALPHA,
         }
     }
 }

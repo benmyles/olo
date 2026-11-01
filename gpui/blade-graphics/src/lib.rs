@@ -126,6 +126,10 @@ pub struct Capabilities {
     pub ray_query: ShaderVisibility,
     /// Bit mask of supported MSAA sample counts.
     pub sample_count_mask: u32,
+    /// Olo: a fragment shader can give blending a second colour
+    /// (`BlendFactor::Src1` and the like): text with LCD subpixel
+    /// coverage, a factor for each channel.
+    pub dual_source_blending: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -913,6 +917,15 @@ pub enum BlendFactor {
     Constant,
     /// 1.0 - Constant
     OneMinusConstant,
+    /// Olo: the second source's component (dual-source blending, where
+    /// `Capabilities::dual_source_blending` says so).
+    Src1,
+    /// 1.0 - the second source's component
+    OneMinusSrc1,
+    /// The second source's alpha
+    Src1Alpha,
+    /// 1.0 - the second source's alpha
+    OneMinusSrc1Alpha,
 }
 
 /// Alpha blend operation.

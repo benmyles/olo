@@ -340,6 +340,9 @@ pub struct BladeRenderer {
     /// window resizes; most windows never draw a path, and these are
     /// window-sized (the multisampled one four times over).
     path_targets: Option<PathTargets>,
+    /// Olo: for LCD subpixel glyphs, made the first time a frame has
+    /// some (only where the GPU blends with a second source).
+    subpixel_sprites: Option<gpu::RenderPipeline>,
     rendering_parameters: RenderingParameters,
 }
 
@@ -406,6 +409,7 @@ impl BladeRenderer {
             #[cfg(target_os = "macos")]
             core_video_texture_cache,
             path_targets: None,
+            subpixel_sprites: None,
             rendering_parameters,
         })
     }
@@ -582,6 +586,67 @@ impl BladeRenderer {
         self.pipelines.destroy(&self.gpu);
         self.gpu.destroy_surface(&mut self.surface);
         self.destroy_path_targets();
+        if let Some(mut pipeline) = self.subpixel_sprites.take() {
+            self.gpu.destroy_render_pipeline(&mut pipeline);
+        }
+    }
+
+    /// Whether this GPU can draw LCD subpixel glyphs.
+    pub fn supports_subpixel_text(&self) -> bool {
+        self.gpu.capabilities().dual_source_blending
+    }
+
+    /// Makes the pipeline for LCD subpixel glyphs, if needed and possible.
+    fn prepare_subpixel_sprites(&mut self, scene: &Scene) {
+        use gpu::ShaderData as _;
+        if self.subpixel_sprites.is_some()
+            || !self.supports_subpixel_text()
+            || !scene
+                .monochrome_sprites
+                .iter()
+                .any(|s| s.tile.texture_id.kind == crate::AtlasTextureKind::Subpixel)
+        {
+            return;
+        }
+        let source = format!(
+            "enable dual_source_blending;\n{}\n{}",
+            include_str!("shaders.wgsl"),
+            include_str!("subpixel.wgsl")
+        );
+        let Ok(shader) = self.gpu.try_create_shader(gpu::ShaderDesc { source: &source }) else {
+            log::error!("the LCD subpixel glyph shader didn't compile");
+            return;
+        };
+        let info = self.surface.info();
+        self.subpixel_sprites = Some(self.gpu.create_render_pipeline(gpu::RenderPipelineDesc {
+            name: "subpixel-sprites",
+            data_layouts: &[&ShaderMonoSpritesData::layout()],
+            vertex: shader.at("vs_mono_sprite"),
+            vertex_fetches: &[],
+            primitive: gpu::PrimitiveState {
+                topology: gpu::PrimitiveTopology::TriangleStrip,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            fragment: Some(shader.at("fs_subpixel_sprite")),
+            color_targets: &[gpu::ColorTargetState {
+                format: info.format,
+                blend: Some(gpu::BlendState {
+                    color: gpu::BlendComponent {
+                        src_factor: gpu::BlendFactor::One,
+                        dst_factor: gpu::BlendFactor::OneMinusSrc1,
+                        operation: gpu::BlendOperation::Add,
+                    },
+                    alpha: gpu::BlendComponent {
+                        src_factor: gpu::BlendFactor::One,
+                        dst_factor: gpu::BlendFactor::OneMinusSrc1Alpha,
+                        operation: gpu::BlendOperation::Add,
+                    },
+                }),
+                write_mask: gpu::ColorWrites::default(),
+            }],
+            multisample_state: gpu::MultisampleState::default(),
+        }));
     }
 
     /// The textures paths are drawn into, made if not yet.
@@ -621,6 +686,7 @@ impl BladeRenderer {
     }
 
     pub fn draw(&mut self, scene: &Scene) {
+        self.prepare_subpixel_sprites(scene);
         self.command_encoder.start();
         self.atlas.before_frame(&mut self.command_encoder);
 
@@ -759,7 +825,13 @@ impl BladeRenderer {
                     let tex_info = self.atlas.get_texture_info(texture_id);
                     let instance_buf =
                         unsafe { self.instance_belt.alloc_typed(sprites, &self.gpu) };
-                    let mut encoder = pass.with(&self.pipelines.mono_sprites);
+                    let pipeline = match &self.subpixel_sprites {
+                        Some(subpixel) if texture_id.kind == crate::AtlasTextureKind::Subpixel => {
+                            subpixel
+                        }
+                        _ => &self.pipelines.mono_sprites,
+                    };
+                    let mut encoder = pass.with(pipeline);
                     encoder.bind(
                         0,
                         &ShaderMonoSpritesData {

@@ -140,6 +140,10 @@ struct FrameLoop {
     /// When the frame last committed (a callback that never comes, as
     /// for a hidden window, holds changes back for a second at most).
     committed_at: Cell<std::time::Instant>,
+    /// Draw everything again (the text is to be drawn another way).
+    force: Cell<bool>,
+    /// How text is drawn, for the display the window is on.
+    text_rendering: Cell<crate::TextRendering>,
     handle: LoopHandle<'static, WaylandClientStatePtr>,
 }
 
@@ -379,6 +383,8 @@ impl WaylandWindow {
                 queued: Cell::new(false),
                 needs_commit: Cell::new(false),
                 committed_at: Cell::new(std::time::Instant::now()),
+                force: Cell::new(false),
+                text_rendering: Cell::new(crate::TextRendering::default()),
                 handle: loop_handle,
             }),
         });
@@ -426,8 +432,12 @@ impl WaylandWindowStatePtr {
         drop(state);
 
         let mut cb = self.callbacks.borrow_mut();
+        let options = RequestFrameOptions {
+            force_render: frames.force.take(),
+            ..Default::default()
+        };
         let drew = match cb.request_frame.as_mut() {
-            Some(fun) => fun(Default::default()),
+            Some(fun) => fun(options),
             None => false,
         };
         drop(cb);
@@ -547,6 +557,36 @@ impl WaylandWindowStatePtr {
             } else {
                 self.schedule_frame();
             }
+        }
+    }
+
+    /// One of the displays changed (its scale, its subpixel layout).
+    pub fn output_changed(&self, id: ObjectId, output: &Output) {
+        let mut state = self.state.borrow_mut();
+        if let Some(known) = state.outputs.get_mut(&id) {
+            *known = output.clone();
+            state.primary_output_scale();
+            drop(state);
+            self.update_text_rendering();
+        }
+    }
+
+    /// Chooses how the window's text is drawn, for the display it's on
+    /// (the one with the highest scale, which its buffers are for), and
+    /// draws it again if that changed.
+    pub fn update_text_rendering(&self) {
+        let state = self.state.borrow();
+        // LCD coverage needs what's under the text to be what shows.
+        let lcd_possible = !state.is_transparent() && state.renderer.supports_subpixel_text();
+        let rendering = state
+            .display
+            .as_ref()
+            .map(|(_, output)| output.text_rendering(lcd_possible))
+            .unwrap_or_default();
+        drop(state);
+        if rendering != self.frames.text_rendering.replace(rendering) {
+            self.frames.force.set(true);
+            self.schedule_frame();
         }
     }
 
@@ -712,6 +752,9 @@ impl WaylandWindowStatePtr {
                 state.outputs.insert(id, output.clone());
 
                 let scale = state.primary_output_scale();
+                drop(state);
+                self.update_text_rendering();
+                let state = self.state.borrow_mut();
 
                 // We use `PreferredBufferScale` instead to set the scale if it's available
                 if state.surface.version() < wl_surface::EVT_PREFERRED_BUFFER_SCALE_SINCE {
@@ -724,6 +767,9 @@ impl WaylandWindowStatePtr {
                 state.outputs.remove(&output.id());
 
                 let scale = state.primary_output_scale();
+                drop(state);
+                self.update_text_rendering();
+                let state = self.state.borrow_mut();
 
                 // We use `PreferredBufferScale` instead to set the scale if it's available
                 if state.surface.version() < wl_surface::EVT_PREFERRED_BUFFER_SCALE_SINCE {
@@ -1091,6 +1137,10 @@ impl PlatformWindow for WaylandWindow {
 
     fn on_request_frame(&self, callback: Box<dyn FnMut(RequestFrameOptions) -> bool>) {
         self.0.callbacks.borrow_mut().request_frame = Some(callback);
+    }
+
+    fn text_rendering(&self) -> crate::TextRendering {
+        self.0.frames.text_rendering.get()
     }
 
     fn frame_waker(&self) -> Option<Rc<dyn Fn()>> {

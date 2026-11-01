@@ -12,7 +12,7 @@
 use crate::{
     Bounds, DevicePixels, Font, FontId, FontMetrics, FontRun, FontStyle, GlyphId, LineLayout,
     Pixels, PlatformTextSystem, RenderGlyphParams, SUBPIXEL_VARIANTS_X, ShapedGlyph, ShapedRun,
-    Size, point, px, size,
+    Size, SubpixelLayout, TextRendering, point, px, size,
 };
 use anyhow::{Context as _, Result, anyhow};
 use collections::HashMap;
@@ -646,61 +646,128 @@ impl State {
         let font = source.font()?;
         let outlines = font.outline_glyphs();
         let glyph = outlines.get(skrifa::GlyphId::new(params.glyph_id.0))?;
-        let key = (params.font_id.0, ppem.to_bits());
-        if !self.hinting.contains_key(&key) {
-            let hinting = HintingInstance::new(
-                &outlines,
-                Ppem::new(ppem),
-                &instance.location,
-                Target::Smooth {
-                    mode: SmoothMode::Light,
-                    symmetric_rendering: true,
-                    preserve_linear_metrics: true,
-                },
-            )
-            .ok()?;
-            self.hinting.insert(key, hinting);
-        }
-        let hinting = &self.hinting[&key];
+        // LCD subpixel glyphs are drawn three times as wide, a sample per
+        // colour stripe.
+        let (lcd, unhinted) = match params.rendering {
+            TextRendering::Subpixel(layout) => (Some(layout), false),
+            TextRendering::Unhinted => (None, true),
+            TextRendering::Hinted => (None, false),
+        };
+        let across = if lcd.is_some() { 3.0 } else { 1.0 };
         let mut path = kurbo::BezPath::new();
         let mut pen = Pen {
             path: &mut path,
-            x: f64::from(params.subpixel_variant.x) / f64::from(SUBPIXEL_VARIANTS_X),
+            x: f64::from(params.subpixel_variant.x) / f64::from(SUBPIXEL_VARIANTS_X) * across,
+            across,
         };
-        glyph
-            .draw(DrawSettings::hinted(hinting, false), &mut pen)
-            .ok()?;
+        if unhinted {
+            glyph
+                .draw(
+                    DrawSettings::unhinted(Ppem::new(ppem), &instance.location),
+                    &mut pen,
+                )
+                .ok()?;
+        } else {
+            let key = (params.font_id.0, ppem.to_bits());
+            if !self.hinting.contains_key(&key) {
+                let hinting = HintingInstance::new(
+                    &outlines,
+                    Ppem::new(ppem),
+                    &instance.location,
+                    Target::Smooth {
+                        mode: SmoothMode::Light,
+                        symmetric_rendering: true,
+                        preserve_linear_metrics: true,
+                    },
+                )
+                .ok()?;
+                self.hinting.insert(key, hinting);
+            }
+            glyph
+                .draw(DrawSettings::hinted(&self.hinting[&key], false), &mut pen)
+                .ok()?;
+        }
         let darken = darkening(params.font_size.0) * params.scale_factor;
         let reach = f64::from(darken / 2.0);
-        let b = path.control_box().inflate(reach, reach).expand();
-        let (width, height) = (b.width() as u16, b.height() as u16);
+        let b = path.control_box().inflate(reach * across, reach);
+        // Whole pixels, and for LCD glyphs one more each side, where the
+        // filter spreads them.
+        let spread = if lcd.is_some() { 1.0 } else { 0.0 };
+        let (x0, x1) = (
+            (b.x0 / across).floor() - spread,
+            (b.x1 / across).ceil() + spread,
+        );
+        let (y0, y1) = (b.y0.floor(), b.y1.ceil());
+        let (width, height) = ((x1 - x0) as u16, (y1 - y0) as u16);
         if width == 0 || height == 0 {
             return None;
         }
-        let mut ctx = vello_cpu::RenderContext::new(width, height);
-        ctx.set_transform(kurbo::Affine::translate((-b.x0, -b.y0)));
+        let samples = (f64::from(width) * across) as u16;
+        let mut ctx = vello_cpu::RenderContext::new(samples, height);
+        ctx.set_transform(kurbo::Affine::translate((-x0 * across, -y0)));
         ctx.set_paint(vello_cpu::color::OpaqueColor::<vello_cpu::color::Srgb>::WHITE);
         ctx.fill_path(&path);
         if darken > 0.0 {
             ctx.set_stroke(kurbo::Stroke::new(f64::from(darken)));
             ctx.stroke_path(&path);
         }
-        let mut pixmap = vello_cpu::Pixmap::new(width, height);
+        let mut pixmap = vello_cpu::Pixmap::new(samples, height);
         let mut resources = vello_cpu::Resources::new();
         ctx.render(&mut pixmap, &mut resources);
-        let coverage = pixmap
+        let coverage: Vec<u8> = pixmap
             .data_as_u8_slice()
             .chunks_exact(4)
             .map(|p| p[3])
             .collect();
+        let pixels = match lcd {
+            Some(layout) => lcd_filter(&coverage, width.into(), height.into(), layout),
+            None => coverage,
+        };
         Some((
             Bounds {
-                origin: point(DevicePixels(b.x0 as i32), DevicePixels(b.y0 as i32)),
+                origin: point(DevicePixels(x0 as i32), DevicePixels(y0 as i32)),
                 size: size(DevicePixels(width.into()), DevicePixels(height.into())),
             },
-            coverage,
+            pixels,
         ))
     }
+}
+
+/// Three samples a pixel across, one per colour stripe, into a pixel's
+/// red, green and blue coverage (RGBA, alpha the most of them), through
+/// FreeType's default LCD filter (a five-tap FIR, 8 77 86 77 8 over
+/// 256): sharp, yet with no colour fringes a person sees.
+fn lcd_filter(samples: &[u8], width: usize, height: usize, layout: SubpixelLayout) -> Vec<u8> {
+    const TAPS: [u32; 5] = [8, 77, 86, 77, 8];
+    let across = width * 3;
+    let mut out = Vec::with_capacity(width * height * 4);
+    for row in samples.chunks_exact(across).take(height) {
+        let at = |k: isize| -> u32 {
+            if k < 0 || k as usize >= across {
+                0
+            } else {
+                u32::from(row[k as usize])
+            }
+        };
+        let filtered = |k: usize| -> u8 {
+            let k = k as isize;
+            let sum: u32 = TAPS
+                .iter()
+                .enumerate()
+                .map(|(t, w)| w * at(k + t as isize - 2))
+                .sum();
+            ((sum + 128) / 256).min(255) as u8
+        };
+        for i in 0..width {
+            let (a, b, c) = (filtered(3 * i), filtered(3 * i + 1), filtered(3 * i + 2));
+            let (r, g, bl) = match layout {
+                SubpixelLayout::Rgb => (a, b, c),
+                SubpixelLayout::Bgr => (c, b, a),
+            };
+            out.extend_from_slice(&[r, g, bl, r.max(g).max(bl)]);
+        }
+    }
+    out
 }
 
 /// How much text is thickened, in logical pixels: the stroke drawn
@@ -817,34 +884,39 @@ fn emoji(ch: char, next: Option<char>) -> bool {
     matches!(ch as u32, 0x1F000..=0x1FAFF) || next == Some('\u{FE0F}')
 }
 
-/// An outline into a path, y down, `x` pixels to the right.
+/// An outline into a path, y down, `x` pixels to the right, stretched
+/// `across` times as wide.
 struct Pen<'a> {
     path: &'a mut kurbo::BezPath,
     x: f64,
+    across: f64,
+}
+
+impl Pen<'_> {
+    fn at(&self, x: f32, y: f32) -> (f64, f64) {
+        (f64::from(x) * self.across + self.x, -f64::from(y))
+    }
 }
 
 impl OutlinePen for Pen<'_> {
     fn move_to(&mut self, x: f32, y: f32) {
-        self.path.move_to((f64::from(x) + self.x, -f64::from(y)));
+        let p = self.at(x, y);
+        self.path.move_to(p);
     }
 
     fn line_to(&mut self, x: f32, y: f32) {
-        self.path.line_to((f64::from(x) + self.x, -f64::from(y)));
+        let p = self.at(x, y);
+        self.path.line_to(p);
     }
 
     fn quad_to(&mut self, cx0: f32, cy0: f32, x: f32, y: f32) {
-        self.path.quad_to(
-            (f64::from(cx0) + self.x, -f64::from(cy0)),
-            (f64::from(x) + self.x, -f64::from(y)),
-        );
+        let (c, p) = (self.at(cx0, cy0), self.at(x, y));
+        self.path.quad_to(c, p);
     }
 
     fn curve_to(&mut self, cx0: f32, cy0: f32, cx1: f32, cy1: f32, x: f32, y: f32) {
-        self.path.curve_to(
-            (f64::from(cx0) + self.x, -f64::from(cy0)),
-            (f64::from(cx1) + self.x, -f64::from(cy1)),
-            (f64::from(x) + self.x, -f64::from(y)),
-        );
+        let (c0, c1, p) = (self.at(cx0, cy0), self.at(cx1, cy1), self.at(x, y));
+        self.path.curve_to(c0, c1, p);
     }
 
     fn close(&mut self) {

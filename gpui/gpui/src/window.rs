@@ -11,7 +11,7 @@ use crate::{
     MouseMoveEvent, MouseUpEvent, Path, Pixels, PlatformAtlas, PlatformDisplay, PlatformInput,
     PlatformInputHandler, PlatformWindow, Point, PolychromeSprite, PromptButton, PromptLevel, Quad,
     Render, RenderGlyphParams, RenderImage, RenderImageParams, RenderSvgParams, Replay, ResizeEdge,
-    SMOOTH_SVG_SCALE_FACTOR, SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Shadow,
+    SMOOTH_SVG_SCALE_FACTOR, SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Shadow, TextRendering,
     SharedString, Size, StrikethroughStyle, Style, SubscriberSet, Subscription, SystemWindowTab,
     SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task, TextStyle, TextStyleRefinement,
     TransformationMatrix, Underline, UnderlineStyle, WindowAppearance, WindowBackgroundAppearance,
@@ -3007,6 +3007,7 @@ impl Window {
             subpixel_variant,
             scale_factor,
             is_emoji: false,
+            rendering: self.platform_window.text_rendering(),
         };
 
         let raster_bounds = self.text_system().raster_bounds(&params)?;
@@ -3063,6 +3064,7 @@ impl Window {
             subpixel_variant: Default::default(),
             scale_factor,
             is_emoji: true,
+            rendering: TextRendering::default(),
         };
 
         let raster_bounds = self.text_system().raster_bounds(&params)?;

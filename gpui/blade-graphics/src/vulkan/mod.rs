@@ -66,6 +66,7 @@ struct Device {
     command_scope: Option<CommandScopeDevice>,
     timing: Option<TimingDevice>,
     workarounds: Workarounds,
+    dual_source_blending: bool,
 }
 
 struct MemoryManager {

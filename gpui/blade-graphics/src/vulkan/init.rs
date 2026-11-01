@@ -60,6 +60,7 @@ struct AdapterCapabilities {
     external_memory: bool,
     timing: bool,
     bugs: SystemBugs,
+    dual_source_blending: bool,
 }
 
 // See https://github.com/canonical/nvidia-prime/blob/587c5012be9dddcc17ab4d958f10a24fa3342b4d/prime-select#L56
@@ -169,6 +170,7 @@ unsafe fn inspect_adapter(
     instance
         .get_physical_device_properties2
         .get_physical_device_features2(phd, &mut features2_khr);
+    let dual_source_blending = features2_khr.features.dual_src_blend != 0;
 
     if inline_uniform_block_properties.max_inline_uniform_block_size
         < crate::limits::PLAIN_DATA_SIZE
@@ -290,6 +292,7 @@ unsafe fn inspect_adapter(
         external_memory,
         timing,
         bugs,
+        dual_source_blending,
     })
 }
 
@@ -517,9 +520,18 @@ impl super::Context {
                 dynamic_rendering: vk::TRUE,
                 ..Default::default()
             };
+            let core_features = vk::PhysicalDeviceFeatures {
+                dual_src_blend: if capabilities.dual_source_blending {
+                    vk::TRUE
+                } else {
+                    vk::FALSE
+                },
+                ..Default::default()
+            };
             let mut device_create_info = vk::DeviceCreateInfo::default()
                 .queue_create_infos(&family_infos)
                 .enabled_extension_names(&str_pointers)
+                .enabled_features(&core_features)
                 .push_next(&mut ext_inline_uniform_block)
                 .push_next(&mut khr_timeline_semaphore)
                 .push_next(&mut khr_dynamic_rendering);
@@ -644,6 +656,7 @@ impl super::Context {
                     vk::DescriptorPoolCreateFlags::empty()
                 },
             },
+            dual_source_blending: capabilities.dual_source_blending,
         };
 
         let memory_manager = {
@@ -797,6 +810,7 @@ impl super::Context {
                 None => crate::ShaderVisibility::empty(),
             },
             sample_count_mask: self.sample_count_flags.as_raw(),
+            dual_source_blending: self.device.dual_source_blending,
         }
     }
 

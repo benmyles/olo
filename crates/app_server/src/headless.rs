@@ -259,16 +259,21 @@ pub fn run_headless(size_arg: Option<&str>) {
     for (i, &size) in sizes.iter().enumerate() {
         let modes = modes_for(size);
         let (make, model) = if anonymous.is_some() { ("Unknown", "Unknown") } else { ("Olo", "Headless") };
+        // A panel to test display-aware drawing with: its size in
+        // millimetres and its stripes' order, for every screen
+        // (`OLO_HEADLESS_PANEL=530x300,rgb`, a 24" 1080p LCD's).
+        let (mm, subpixel) = headless_panel();
         let output = Output::new(
             format!("HEADLESS-{}", i + 1),
             PhysicalProperties {
-                size: (0, 0).into(),
-                subpixel: Subpixel::Unknown,
+                size: mm.into(),
+                subpixel,
                 make: make.into(),
                 model: model.into(),
                 serial_number: i.to_string(),
             },
         );
+        output.user_data().insert_if_missing(|| crate::desktop::DrmSubpixel(subpixel));
         // (Late, as DRM's come, for tests: `OLO_HEADLESS_LATE_MS`.)
         if late.is_none() {
             let _global = output.create_global::<AnvilState<HeadlessData>>(&display_handle);
@@ -713,4 +718,27 @@ mod gpu_timing {
         }
         report("a full frame's commands", &mut frames);
     }
+}
+
+/// `OLO_HEADLESS_PANEL`: "WxH" millimetres, then a stripe order (`rgb`,
+/// `bgr`, `vrgb`, `vbgr`, `none`), for every headless screen.
+fn headless_panel() -> ((i32, i32), Subpixel) {
+    let Ok(v) = std::env::var("OLO_HEADLESS_PANEL") else {
+        return ((0, 0), Subpixel::Unknown);
+    };
+    let mut parts = v.split(',');
+    let mm = parts
+        .next()
+        .and_then(|s| s.split_once('x'))
+        .and_then(|(w, h)| Some((w.trim().parse().ok()?, h.trim().parse().ok()?)))
+        .unwrap_or((0, 0));
+    let subpixel = match parts.next().map(str::trim) {
+        Some("rgb") => Subpixel::HorizontalRgb,
+        Some("bgr") => Subpixel::HorizontalBgr,
+        Some("vrgb") => Subpixel::VerticalRgb,
+        Some("vbgr") => Subpixel::VerticalBgr,
+        Some("none") => Subpixel::None,
+        _ => Subpixel::Unknown,
+    };
+    (mm, subpixel)
 }

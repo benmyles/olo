@@ -475,6 +475,10 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn frame_waker(&self) -> Option<Rc<dyn Fn()>> {
         None
     }
+    /// How to draw text for the display the window is on (Olo).
+    fn text_rendering(&self) -> crate::TextRendering {
+        crate::TextRendering::default()
+    }
     fn on_input(&self, callback: Box<dyn FnMut(PlatformInput) -> DispatchEventResult>);
     fn on_active_status_change(&self, callback: Box<dyn FnMut(bool)>);
     fn on_hover_status_change(&self, callback: Box<dyn FnMut(bool)>);
@@ -718,6 +722,8 @@ impl AtlasKey {
             AtlasKey::Glyph(params) => {
                 if params.is_emoji {
                     AtlasTextureKind::Polychrome
+                } else if matches!(params.rendering, crate::TextRendering::Subpixel(_)) {
+                    AtlasTextureKind::Subpixel
                 } else {
                     AtlasTextureKind::Monochrome
                 }
@@ -819,6 +825,8 @@ pub(crate) struct AtlasTextureId {
 pub(crate) enum AtlasTextureKind {
     Monochrome = 0,
     Polychrome = 1,
+    /// Olo: glyphs with a coverage for each colour stripe (RGBA).
+    Subpixel = 2,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]

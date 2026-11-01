@@ -46,3 +46,12 @@ What Olo changed, so far:
   cosmic-text and font-kit are gone (swash has no autohinter, so Noto
   drew unhinted, and cosmic-text 0.14 had no variable weights). The
   system's fonts load only when something needs them.
+- Text drawn for the display a window is on (`TextRendering`, chosen by
+  `olo_protocol::panels::text_mode` from the display's density, colour
+  stripes and rotation): grey-scale unhinted at Retina density (as
+  macOS), LCD subpixel coverage on low-density striped LCDs (FreeType's
+  LCD filter, blended per channel with dual-source blending, which
+  blade-graphics gained), hinted grey-scale in between. A window drawn
+  again when it moves to a display that wants another.
+  `set_display_text_rendering` takes the person's choice from
+  Preferences ▸ Display; `OLO_TEXT_RENDERING` forces one for tests.

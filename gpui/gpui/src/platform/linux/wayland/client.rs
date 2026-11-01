@@ -166,6 +166,9 @@ pub struct InProgressOutput {
     scale: Option<i32>,
     position: Option<Point<DevicePixels>>,
     size: Option<Size<DevicePixels>>,
+    physical_mm: Size<i32>,
+    subpixel: Option<wl_output::Subpixel>,
+    transform: Option<wl_output::Transform>,
 }
 
 impl InProgressOutput {
@@ -176,6 +179,9 @@ impl InProgressOutput {
                 name: self.name.clone(),
                 scale,
                 bounds: Bounds::new(position, size),
+                physical_mm: self.physical_mm,
+                subpixel: self.subpixel,
+                transform: self.transform,
             })
         } else {
             None
@@ -188,6 +194,72 @@ pub struct Output {
     pub name: Option<String>,
     pub scale: i32,
     pub bounds: Bounds<DevicePixels>,
+    /// Olo: its size in millimetres (0 if unknown), its colour stripes'
+    /// order (as app_server knows or guesses it) and its rotation: what
+    /// a window's text is drawn for.
+    pub physical_mm: Size<i32>,
+    pub subpixel: Option<wl_output::Subpixel>,
+    pub transform: Option<wl_output::Transform>,
+}
+
+impl Output {
+    /// How text is best drawn on it, as Olo decides for every display
+    /// (`olo_protocol::panels::text_mode`: Preferences ▸ Display shows the
+    /// same choice and why), unless the person chose otherwise
+    /// (`crate::set_display_text_rendering`). `OLO_TEXT_RENDERING`
+    /// (`hinted`, `unhinted`, `rgb`, `bgr`) says otherwise, for tests.
+    pub fn text_rendering(&self, lcd_possible: bool) -> crate::TextRendering {
+        use crate::{SubpixelLayout, TextRendering};
+        use olo_protocol::panels::{self, Subpixel, TextMode};
+        let chosen = std::env::var("OLO_TEXT_RENDERING")
+            .ok()
+            .and_then(|forced| match forced.as_str() {
+                "hinted" => Some(TextRendering::Hinted),
+                "unhinted" => Some(TextRendering::Unhinted),
+                "rgb" => Some(TextRendering::Subpixel(SubpixelLayout::Rgb)),
+                "bgr" => Some(TextRendering::Subpixel(SubpixelLayout::Bgr)),
+                _ => None,
+            })
+            .or_else(|| {
+                self.name
+                    .as_deref()
+                    .and_then(crate::text_system::display_text_rendering)
+            });
+        let rendering = chosen.unwrap_or_else(|| {
+            let (rotation, mirrored) = match self.transform {
+                Some(wl_output::Transform::_90) => (90, false),
+                Some(wl_output::Transform::_180) => (180, false),
+                Some(wl_output::Transform::_270) => (270, false),
+                Some(wl_output::Transform::Flipped) => (0, true),
+                Some(wl_output::Transform::Flipped90) => (90, true),
+                Some(wl_output::Transform::Flipped180) => (180, true),
+                Some(wl_output::Transform::Flipped270) => (270, true),
+                _ => (0, false),
+            };
+            // (Mirrored across, a display's stripes run the other way.)
+            let subpixel = match (self.subpixel, mirrored) {
+                (Some(wl_output::Subpixel::HorizontalRgb), false) => Subpixel::Rgb,
+                (Some(wl_output::Subpixel::HorizontalRgb), true) => Subpixel::Bgr,
+                (Some(wl_output::Subpixel::HorizontalBgr), false) => Subpixel::Bgr,
+                (Some(wl_output::Subpixel::HorizontalBgr), true) => Subpixel::Rgb,
+                (Some(wl_output::Subpixel::VerticalRgb), _) => Subpixel::VerticalRgb,
+                (Some(wl_output::Subpixel::VerticalBgr), _) => Subpixel::VerticalBgr,
+                (Some(wl_output::Subpixel::None), _) => Subpixel::None,
+                _ => Subpixel::Unknown,
+            };
+            let ppi = panels::ppi(self.bounds.size.width.0, self.physical_mm.width);
+            match panels::text_mode(ppi, f64::from(self.scale), subpixel, rotation).0 {
+                TextMode::Hinted => TextRendering::Hinted,
+                TextMode::Unhinted => TextRendering::Unhinted,
+                TextMode::Subpixel(Subpixel::Bgr) => TextRendering::Subpixel(SubpixelLayout::Bgr),
+                TextMode::Subpixel(_) => TextRendering::Subpixel(SubpixelLayout::Rgb),
+            }
+        });
+        match rendering {
+            TextRendering::Subpixel(_) if !lcd_possible => TextRendering::Hinted,
+            rendering => rendering,
+        }
+    }
 }
 
 pub(crate) struct WaylandClientState {
@@ -1027,17 +1099,33 @@ impl Dispatch<wl_output::WlOutput, ()> for WaylandClientStatePtr {
             wl_output::Event::Scale { factor } => {
                 in_progress_output.scale = Some(factor);
             }
-            wl_output::Event::Geometry { x, y, .. } => {
-                in_progress_output.position = Some(point(DevicePixels(x), DevicePixels(y)))
+            wl_output::Event::Geometry {
+                x,
+                y,
+                physical_width,
+                physical_height,
+                subpixel,
+                transform,
+                ..
+            } => {
+                in_progress_output.position = Some(point(DevicePixels(x), DevicePixels(y)));
+                in_progress_output.physical_mm = size(physical_width, physical_height);
+                in_progress_output.subpixel = subpixel.into_result().ok();
+                in_progress_output.transform = transform.into_result().ok();
             }
             wl_output::Event::Mode { width, height, .. } => {
                 in_progress_output.size = Some(size(DevicePixels(width), DevicePixels(height)))
             }
+            // (Olo: kept, so later changes are followed too.)
             wl_output::Event::Done => {
                 if let Some(complete) = in_progress_output.complete() {
-                    state.outputs.insert(output.id(), complete);
+                    state.outputs.insert(output.id(), complete.clone());
+                    let windows: Vec<_> = state.windows.values().cloned().collect();
+                    drop(state);
+                    for window in windows {
+                        window.output_changed(output.id(), &complete);
+                    }
                 }
-                state.in_progress_outputs.remove(&output.id());
             }
             _ => {}
         }

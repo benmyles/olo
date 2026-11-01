@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 pub mod notifications;
+pub mod panels;
 pub mod performance;
 pub mod sharing;
 pub mod app_keys;
@@ -753,6 +754,10 @@ pub struct OutputInfo {
     /// (`DisplaySettings::numbers`).
     #[serde(default)]
     pub number: Option<u32>,
+    /// What kind of panel it is and how Olo draws for it
+    /// ([`panels`]).
+    #[serde(default)]
+    pub panel: Option<panels::Panel>,
 }
 
 /// The number display `output` (a connector) goes by, "D0", "D1", …:
@@ -816,6 +821,14 @@ pub struct OutputConfig {
     /// built-in one, a USB-controlled monitor). None: full brightness.
     #[serde(default)]
     pub brightness: Option<f32>,
+    /// Corrections to what Olo works out about the panel ([`panels`]):
+    /// its colour stripes' order, its technology, how its text is drawn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subpixel: Option<panels::Subpixel>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub technology: Option<panels::Technology>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<panels::TextMode>,
 }
 
 impl OutputConfig {
@@ -828,6 +841,9 @@ impl OutputConfig {
             rotation: self.rotation.or(other.rotation),
             mirror: self.mirror.or_else(|| other.mirror.clone()),
             brightness: self.brightness.or(other.brightness),
+            subpixel: self.subpixel.or(other.subpixel),
+            technology: self.technology.or(other.technology),
+            text: self.text.or(other.text),
         }
     }
 }
@@ -1841,6 +1857,7 @@ mod tests {
             mirror_of: mirror.map(Into::into),
             brightness: None,
             number: None,
+            panel: None,
         };
         let one = [out("eDP-1", 0, None), out("HDMI-A-1", 0, Some("eDP-1"))];
         assert_eq!(display_number(&one, "eDP-1"), None);

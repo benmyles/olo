@@ -121,6 +121,7 @@ skrifa = { version = "0.44", default-features = false, features = ["std", "autoh
 vello_cpu = { version = "0.2", default-features = false, features = ["std", "u8_pipeline", "f32_pipeline", "text", "png"] }
 memmap2 = "0.9"
 olo-theme = { path = "../../crates/theme" }
+olo-protocol = { path = "../../crates/protocol" }
 olo-xdg = { path = "../../crates/xdg" }
 bytemuck = { version = "1", optional = true }
 calloop = "0.13.0"

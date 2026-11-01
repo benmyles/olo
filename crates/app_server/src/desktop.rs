@@ -315,6 +315,96 @@ pub fn display_key(output: &Output) -> String {
 /// late): make, model, serial (`display_identified`).
 pub struct Identity(RefCell<Option<(String, String, String)>>);
 
+/// Who a display's monitor is: make, model, serial, as told late or from
+/// its EDID when it was set up.
+pub fn display_identity(output: &Output) -> (String, String, String) {
+    if let Some(Identity(told)) = output.user_data().get::<Identity>()
+        && let Some(who) = told.borrow().as_ref()
+    {
+        return who.clone();
+    }
+    let p = output.physical_properties();
+    (p.make, p.model, p.serial_number)
+}
+
+/// The order of a display's colour stripes as the kernel had it from the
+/// display when it was set up (what wl_output says may be a guess).
+pub struct DrmSubpixel(pub smithay::output::Subpixel);
+
+pub fn to_panel_subpixel(s: smithay::output::Subpixel) -> olo_protocol::panels::Subpixel {
+    use olo_protocol::panels::Subpixel as P;
+    use smithay::output::Subpixel as S;
+    match s {
+        S::Unknown => P::Unknown,
+        S::None => P::None,
+        S::HorizontalRgb => P::Rgb,
+        S::HorizontalBgr => P::Bgr,
+        S::VerticalRgb => P::VerticalRgb,
+        S::VerticalBgr => P::VerticalBgr,
+    }
+}
+
+pub fn from_panel_subpixel(s: olo_protocol::panels::Subpixel) -> smithay::output::Subpixel {
+    use olo_protocol::panels::Subpixel as P;
+    use smithay::output::Subpixel as S;
+    match s {
+        P::Unknown => S::Unknown,
+        P::None => S::None,
+        P::Rgb => S::HorizontalRgb,
+        P::Bgr => S::HorizontalBgr,
+        P::VerticalRgb => S::VerticalRgb,
+        P::VerticalBgr => S::VerticalBgr,
+    }
+}
+
+/// What a display's panel is, from what it says, Olo's guesses and the
+/// person's settings (`config`), and how its text is drawn, with why.
+pub fn panel(
+    connector: &str,
+    make: &str,
+    model: &str,
+    size_mm: (i32, i32),
+    mode_width: Option<i32>,
+    refresh_mhz: i32,
+    drm_subpixel: smithay::output::Subpixel,
+    scale: f64,
+    rotation: u16,
+    config: Option<&olo_protocol::OutputConfig>,
+) -> olo_protocol::panels::Panel {
+    use olo_protocol::panels::{self, Source, Subpixel};
+    let internal = crate::power::is_internal(connector);
+    let ppi = mode_width.and_then(|w| panels::ppi(w, size_mm.0));
+    let (technology, technology_from) = match config.and_then(|c| c.technology) {
+        Some(t) => (t, Source::Setting),
+        None => (panels::guess_technology(make, model, internal, ppi), Source::Guess),
+    };
+    let told = to_panel_subpixel(drm_subpixel);
+    let (subpixel, subpixel_from) = match config.and_then(|c| c.subpixel) {
+        Some(s) => (s, Source::Setting),
+        None if told != Subpixel::Unknown => (told, Source::Display),
+        None => (panels::guess_subpixel(technology), Source::Guess),
+    };
+    let (text, text_from, text_why) = match config.and_then(|c| c.text) {
+        Some(t) => (t, Source::Setting, "Chosen in Preferences.".to_string()),
+        None => {
+            let (t, why) = panels::text_mode(ppi, scale, subpixel, rotation);
+            (t, Source::Guess, why)
+        }
+    };
+    panels::Panel {
+        ppi,
+        internal,
+        technology,
+        technology_from,
+        subpixel,
+        subpixel_from,
+        refresh_hz: refresh_mhz as f32 / 1000.0,
+        text: Some(text),
+        text_from,
+        text_why,
+    }
+}
+
 /// Minutes since local midnight.
 fn local_minutes() -> u32 {
     // SAFETY: plain libc time calls with valid pointers.
@@ -1244,6 +1334,24 @@ impl<B: Backend + 'static> AnvilState<B> {
             .chain(self.mirrors.iter())
             .map(|o| {
                 let props = o.physical_properties();
+                let (make, model, _) = display_identity(o);
+                let key = display_key(o);
+                let rotation = self.settings.display.rotation_for(&key, &o.name());
+                let current = o.current_mode();
+                let drm_subpixel = o.user_data().get::<DrmSubpixel>().map_or(props.subpixel, |d| d.0);
+                let config = self.settings.display.config(&key, &o.name());
+                let panel = panel(
+                    &o.name(),
+                    &make,
+                    &model,
+                    (props.size.w, props.size.h),
+                    current.map(|m| m.size.w),
+                    current.map_or(0, |m| m.refresh),
+                    drm_subpixel,
+                    o.current_scale().fractional_scale(),
+                    rotation,
+                    config.as_ref(),
+                );
                 let to_mode = |m: smithay::output::Mode| olo_protocol::Mode {
                     width: m.size.w,
                     height: m.size.h,
@@ -1255,19 +1363,20 @@ impl<B: Backend + 'static> AnvilState<B> {
                 let loc = self.space.output_geometry(placed).map(|g| g.loc).unwrap_or_default();
                 OutputInfo {
                     name: o.name(),
-                    key: display_key(o),
-                    make: props.make,
-                    model: props.model,
+                    key,
+                    make,
+                    model,
                     physical_size_mm: (props.size.w, props.size.h),
                     modes: o.modes().into_iter().map(to_mode).collect(),
                     current_mode: o.current_mode().map(to_mode),
                     scale: o.current_scale().fractional_scale(),
                     position: (loc.x, loc.y),
-                    rotation: self.settings.display.rotation_for(&display_key(o), &o.name()),
+                    rotation,
                     main: main.as_ref() == Some(o),
                     mirror_of: source.map(|s| s.name()),
                     brightness: if crate::power::is_internal(&o.name()) { self.power.brightness } else { self.power.display_brightness(&o.name()) },
                     number: (!mirror).then(|| self.settings.display.numbers.get(&display_key(o)).copied()).flatten(),
+                    panel: Some(panel),
                 }
             })
             .collect()

@@ -3090,6 +3090,7 @@ dependencies = [
  "memmap2",
  "naga 25.0.1",
  "num_cpus",
+ "olo-protocol",
  "olo-theme",
  "olo-xdg",
  "oo7",

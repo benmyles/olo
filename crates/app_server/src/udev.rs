@@ -1617,16 +1617,34 @@ impl AnvilState<UdevData> {
             let wl_mode = WlMode::from(drm_mode);
 
             let (phys_w, phys_h) = connector.size().unwrap_or((0, 0));
+            // The order of its colour stripes for other programs too (in
+            // wl_output): the person's setting, else the display's own,
+            // else Olo's guess from what it is (`panels`).
+            let told: smithay::output::Subpixel = connector.subpixel().into();
+            let config = self.settings.display.config(&key, &output_name);
+            let panel = crate::desktop::panel(
+                &output_name,
+                &make,
+                &model,
+                (phys_w as i32, phys_h as i32),
+                Some(wl_mode.size.w),
+                wl_mode.refresh,
+                told,
+                1.0,
+                0,
+                config.as_ref(),
+            );
             let output = Output::new(
                 output_name,
                 PhysicalProperties {
                     size: (phys_w as i32, phys_h as i32).into(),
-                    subpixel: connector.subpixel().into(),
+                    subpixel: crate::desktop::from_panel_subpixel(panel.subpixel),
                     make,
                     model,
                     serial_number,
                 },
             );
+            output.user_data().insert_if_missing(|| crate::desktop::DrmSubpixel(told));
             let global = output.create_global::<AnvilState<UdevData>>(&self.display_handle);
 
             // Right of the others until the saved arrangement is applied.

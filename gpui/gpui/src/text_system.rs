@@ -767,6 +767,55 @@ pub(crate) struct RenderGlyphParams {
     pub(crate) subpixel_variant: Point<u8>,
     pub(crate) scale_factor: f32,
     pub(crate) is_emoji: bool,
+    pub(crate) rendering: TextRendering,
+}
+
+/// Olo: how a window's text is drawn, chosen for the display it's on
+/// (its density and subpixel layout; app_server says which, and
+/// Preferences ▸ Display can say otherwise).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum TextRendering {
+    /// Grey-scale, hinted vertically ("light"): stems and the baseline on
+    /// device pixels. For displays between low and Retina density.
+    #[default]
+    Hinted,
+    /// Grey-scale, unhinted: the outlines as designed, as macOS draws
+    /// them, for Retina density, where pixels are too small to need it.
+    Unhinted,
+    /// A coverage for each of a pixel's red, green and blue stripes
+    /// (ClearType's way, with FreeType's LCD filter), tripling the
+    /// horizontal resolution: for low-density LCDs with stripes in
+    /// this order, behind an opaque window.
+    Subpixel(SubpixelLayout),
+}
+
+static DISPLAY_TEXT_RENDERING: std::sync::LazyLock<
+    parking_lot::RwLock<collections::HashMap<String, TextRendering>>,
+> = std::sync::LazyLock::new(Default::default);
+
+/// Olo: the person's choice of how text is drawn on the display named
+/// `name` (its connector, "DP-2"), from Preferences ▸ Display (`None`:
+/// Olo's own). Windows on it draw again the next time they draw.
+pub fn set_display_text_rendering(name: &str, rendering: Option<TextRendering>) {
+    let mut chosen = DISPLAY_TEXT_RENDERING.write();
+    match rendering {
+        Some(r) => chosen.insert(name.to_owned(), r),
+        None => chosen.remove(name),
+    };
+}
+
+pub(crate) fn display_text_rendering(name: &str) -> Option<TextRendering> {
+    DISPLAY_TEXT_RENDERING.read().get(name).copied()
+}
+
+/// The order of a display's colour stripes, as the window sees them
+/// (the display's rotation taken into account).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum SubpixelLayout {
+    /// Red, green, blue, left to right.
+    Rgb,
+    /// Blue, green, red, left to right.
+    Bgr,
 }
 
 impl Eq for RenderGlyphParams {}
@@ -779,6 +828,7 @@ impl Hash for RenderGlyphParams {
         self.subpixel_variant.hash(state);
         self.scale_factor.to_bits().hash(state);
         self.is_emoji.hash(state);
+        self.rendering.hash(state);
     }
 }
 

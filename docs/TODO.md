@@ -251,6 +251,49 @@ as they land (with the commit), add new ones as they come up.
      screen, Preferences' panels) to the largest (Terminal, StyledEdit,
      Tracker), each checked at every scale and theme and benchmarked;
      egui leaves the workspace with the last.
+- **Text and everything drawn, better than Apple's** (Ben, 2026-10-31):
+  "make sure our text system is SOTA -- rivalling apple's or anything
+  else out there. perfect looking, adorably beautiful text is essential";
+  "also the same applies to icons and everything in olo: everything must
+  render absolutely beautifully, good enough that if steve jobs saw it
+  he'd want to fire his team at apple because we put them to shame".
+  *Done so far*: Olo's GPUI draws text as the kit does (hinted Noto,
+  variable weights, the fallback chain; 13e20c7) plus a touch of stem
+  darkening for small text (747a25d). Icons in the GPUI kit: the
+  pre-scaled icon for the device size, on whole device pixels, never
+  resampled; checked by the layout review at every scale.
+- **Rendering made for each display** (Ben, 2026-10-31): "we should also
+  detect the display types and optimize rendering for the specific
+  displays and their types/characteristics don't just assume all
+  displays are the same". Each display's density (pixels per inch from
+  its size), subpixel layout (DRM's, else a guess: a low-density external
+  LCD is RGB stripes, an OLED by its model has none) and refresh rate,
+  with Preferences ▸ Display to correct the layout (a ClearType-tuner
+  style picker); told to clients in wl_output's geometry, so other
+  toolkits benefit too. Olo's GPUI picks per window, by the display it's
+  on: LCD subpixel text (FreeType's LCD filter, dual-source blending) on
+  low-density striped LCDs over opaque backgrounds; grey-scale with light
+  hinting in between; grey-scale unhinted, as macOS, at Retina density.
+  Ben's displays: the MacBook's XDR (254 ppi, 120 Hz), a Studio Display
+  (218 ppi) and a Dell S2425HS (92 ppi, 1x: where it matters most).
+  Preferences ▸ Display (Ben, 2026-10-31): "in the display prefs app we
+  should show each display name/manufacturer/model and
+  technology/features/characteristics and all the settings we've
+  selected/tuned for each one and a little help hint or something
+  explaining why but give the user the ability to override if they
+  want". app_server makes the choices (one place), tells apps and
+  Preferences (`OutputInfo`), and keeps overrides in the display's
+  settings.
+  *Done*: `olo_protocol::panels` (each display's density, technology
+  guessed from what it is, stripe order from the display or guessed,
+  and the text rendering with why; overrides in `OutputConfig`),
+  reported in `OutputInfo::panel` and in wl_output's subpixel; Olo's
+  GPUI draws by it (LCD subpixel text with dual-source blending,
+  unhinted at Retina density). `OLO_HEADLESS_PANEL=530x300,rgb` tests
+  it headless. Still to do: the Preferences ▸ Display page, the kit
+  passing overrides to GPUI (`set_display_text_rendering`) and
+  redrawing, and make/model shown right after a late EDID (fixed in
+  `OutputInfo`).
 
 ## Apps
 

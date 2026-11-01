@@ -64,6 +64,7 @@ fn outputs() -> Vec<OutputInfo> {
         mirror_of: None,
         brightness: Some(0.7),
         number: None,
+        panel: None,
     };
     vec![output("eDP-1", "", (345, 223), true), output("DP-2", "Studio Display XDR Pro (27-inch, 5K Retina)", (600, 340), false)]
 }
