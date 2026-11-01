@@ -471,11 +471,24 @@ impl WaylandWindow {
             }
             _ => {
                 let toplevel = xdg_surface.get_toplevel(&globals.qh, surface.id());
-                if params.kind == WindowKind::Floating {
+                if params.kind == WindowKind::Floating || params.dialog.is_some() {
                     toplevel.set_parent(parent.as_ref());
                 }
                 if let Some(size) = params.window_min_size {
                     toplevel.set_min_size(size.width.0 as i32, size.height.0 as i32);
+                }
+                // Olo: a window of fixed size (an alert) is never resized.
+                if !params.is_resizable {
+                    let (w, h) = (params.bounds.size.width.0 as i32, params.bounds.size.height.0 as i32);
+                    toplevel.set_min_size(w, h);
+                    toplevel.set_max_size(w, h);
+                }
+                // Olo: a dialog, never a tab; an alert, modal.
+                if let (Some(dialog), Some(wm)) = (params.dialog, &globals.wm_dialog) {
+                    let d = wm.get_xdg_dialog(&toplevel, &globals.qh, ());
+                    if dialog == crate::Dialog::Modal {
+                        d.set_modal();
+                    }
                 }
                 if let (Some(tags), Some(tag)) = (&globals.toplevel_tags, &params.toplevel_tag) {
                     tags.set_toplevel_tag(&toplevel, tag.clone());

@@ -19,7 +19,7 @@ pub mod theme;
 mod upgrade;
 pub mod widgets;
 
-pub use app::{Frame, WindowOptions, app_id, message_handler, open_window, proxy, run};
+pub use app::{Frame, WindowOptions, app_id, message_handler, open_window, proxy, run, stay_resident};
 pub use menu::{Menu, MenuItem};
 pub use upgrade::{on_upgrade, restored_state};
 pub use gpui;

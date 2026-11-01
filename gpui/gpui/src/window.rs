@@ -1025,6 +1025,7 @@ impl Window {
             tabbing_identifier,
             toplevel_tag,
             layer_shell,
+            dialog,
         } = options;
 
         let bounds = window_bounds
@@ -1047,6 +1048,7 @@ impl Window {
                 window_min_size,
                 toplevel_tag,
                 layer_shell,
+                dialog,
                 #[cfg(target_os = "macos")]
                 tabbing_identifier,
             },

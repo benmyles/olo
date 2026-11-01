@@ -183,6 +183,11 @@ impl DeskCalc {
                 self.settings.expression = field.read(cx).text().to_owned();
                 self.recall = None;
             }
+            // (Return in the field: as = .)
+            TextFieldEvent::Entered => {
+                self.evaluate(cx);
+                self.flash_key("=", cx);
+            }
         }
         cx.notify();
     }

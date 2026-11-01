@@ -1132,6 +1132,10 @@ pub struct WindowOptions {
     /// Olo: where a [`WindowKind::LayerShell`] surface sits.
     pub layer_shell: Option<LayerShellOptions>,
 
+    /// Olo: a dialog (xdg-dialog: never a tab, floated over tiled
+    /// windows by app_server), modal to the window it's over or not.
+    pub dialog: Option<Dialog>,
+
     /// Window minimum size
     pub window_min_size: Option<Size<Pixels>>,
 
@@ -1193,6 +1197,9 @@ pub(crate) struct WindowParams {
     /// Olo: where a layer surface sits (`WindowOptions::layer_shell`).
     pub layer_shell: Option<LayerShellOptions>,
 
+    /// Olo: a dialog (`WindowOptions::dialog`).
+    pub dialog: Option<Dialog>,
+
     pub window_min_size: Option<Size<Pixels>>,
     #[cfg(target_os = "macos")]
     pub tabbing_identifier: Option<String>,
@@ -1253,6 +1260,7 @@ impl Default for WindowOptions {
             app_id: None,
             toplevel_tag: None,
             layer_shell: None,
+            dialog: None,
             window_min_size: None,
             window_decorations: None,
             tabbing_identifier: None,
@@ -1292,6 +1300,16 @@ pub struct LayerShellOptions {
     pub namespace: String,
     /// The output to sit on, by name; None lets the compositor choose.
     pub output: Option<String>,
+}
+
+/// Olo: a dialog window (xdg-dialog), over the window that has the
+/// keyboard.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Dialog {
+    /// A dialog (a file panel, a settings sheet).
+    Plain,
+    /// Modal: its parent takes nothing until it's answered (an alert).
+    Modal,
 }
 
 /// Which of the compositor's layers a layer surface is in.

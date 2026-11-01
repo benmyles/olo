@@ -16,11 +16,19 @@ pub struct StringView {
     dim: bool,
     bold: bool,
     color: Option<Hsla>,
+    height: f32,
 }
 
 impl StringView {
     pub fn new(text: impl Into<SharedString>) -> StringView {
-        StringView { text: text.into(), dim: false, bold: false, color: None }
+        StringView { text: text.into(), dim: false, bold: false, color: None, height: m::CONTROL_HEIGHT }
+    }
+
+    /// The row it's centred in (a control's height unless said: a
+    /// note's `LABEL_ROW`).
+    pub fn height(mut self, h: f32) -> Self {
+        self.height = h;
+        self
     }
 
     /// Secondary text (status, hints), in the disabled text's colour.
@@ -45,7 +53,7 @@ impl RenderOnce for StringView {
     fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
         let weight = if self.bold { FontWeight::BOLD } else { FontWeight::NORMAL };
         let w = f32::from(style::text_width(window, self.text.clone(), style::PLAIN_SIZE, style::ui_font(weight))).ceil();
-        let (text, dim, color) = (self.text, self.dim, self.color);
+        let (text, dim, color, height) = (self.text, self.dim, self.color, self.height);
         canvas(
             |_, _, _| {},
             move |b, _, window, cx| {
@@ -56,7 +64,7 @@ impl RenderOnce for StringView {
             },
         )
         .w(px(w))
-        .h(px(m::CONTROL_HEIGHT))
+        .h(px(height))
         .flex_shrink_0()
     }
 }

@@ -1548,6 +1548,24 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   shapes, small ones with exact coverage), and `window.paint_segment`
   (lines of any angle on the GPU, for graphs and strokes:
   `examples/lines.rs`).
+- Alerts: `WindowOptions::alert(title, width, height)` (fixed size,
+  xdg-dialog modal over the app's window with the keyboard, floated);
+  `widgets::AlertFrame::new(icon)` (the stripe with the icon over it,
+  children in the column beside it), `alert_title`, `paragraph(text)`
+  (wrapped, the egui kit's line height; `paragraph_height` sizes the
+  window before it opens), `button_row()` (right-aligned, default
+  last), and `Conversation` with `ConversationField` for PAM's prompts
+  (polkit, sudo). The alert's root takes `alert::CONTEXT` and handles
+  `alert::Cancel` (Escape) and `alert::Default` (Return); a text field
+  emits `TextFieldEvent::Entered` for Return first.
+  `TextField::password(true)` shows bullets and keeps no copies (no
+  undo, no copy); `clear_secret` zeroes it; `set_enabled(false)` dims
+  it and takes no typing.
+- `widgets::tooltip(text)` for an element's `.tooltip(..)` (the
+  palette's tooltip colours, BeOS's pale yellow in light mode).
+- `olo_ui::stay_resident(cx)`: the app keeps running with no windows
+  (an agent); otherwise it quits when its last window closes (GPUI's
+  own quit-on-last-window is gone: olo-ui decides).
 - `icons::paint(window, bounds, name)`: Olo's icon set (or a theme's,
   or a file's), from the bitmap made for the device size it's shown at,
   a texture pixel to a device pixel; decoded once, on a worker, the
@@ -4889,7 +4907,12 @@ it serves only its own process and asks polkitd about ACTION with
 `CheckAuthorization` (which changes nothing), printing the outcome to
 its log. **Cancel; never type the user's password, and only check
 actions, never perform them.** `OLO_POLKIT_HELPER` points at a fake
-helper for unit tests.
+helper (a script speaking polkit-agent-helper-1's lines: `read cookie`,
+`PAM_PROMPT_ECHO_OFF Password: `, `read pw`, `SUCCESS` or `FAILURE`):
+for unit tests, and with `--self-test` to drive the whole dialog
+(wrong answer, retry, success) with no PAM at all; polkitd still says
+"not authorized", as only the real helper can vouch for the cookie.
+The self-test ends once polkitd has answered and its window is gone.
 
 **The keyring's prompts** (`olo_system::keyring_prompt`, the agent's
 `keyring.rs`): gnome-keyring-daemon asks for the login keyring's password

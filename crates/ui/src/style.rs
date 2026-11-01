@@ -19,6 +19,11 @@ pub const MONO_SIZE: f32 = 12.0;
 pub const UI_FONT: &str = "Noto Sans";
 pub const MONO_FONT: &str = "Noto Sans Mono";
 
+/// The line height of wrapped text, as a fraction of the font size
+/// (Noto Sans's ascent and descent: 1362 of its 1000 units, as egui
+/// spaces it).
+pub const LINE_HEIGHT: f32 = 1.362;
+
 /// Cap height as a fraction of the font size (Noto Sans's: 714 of its
 /// 1000 units).
 pub const CAP_HEIGHT: f32 = 0.714;

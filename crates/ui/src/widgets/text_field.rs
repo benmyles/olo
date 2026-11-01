@@ -41,6 +41,7 @@ actions!(
         Paste,
         Undo,
         Redo,
+        Enter,
     ]
 );
 
@@ -78,6 +79,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-z", Undo, c),
         KeyBinding::new("ctrl-shift-z", Redo, c),
         KeyBinding::new("ctrl-y", Redo, c),
+        KeyBinding::new("enter", Enter, c),
     ]);
 }
 
@@ -88,6 +90,8 @@ pub enum TextFieldEvent {
     Changed,
     /// Text typed into it (not pasted): the characters.
     Typed(SharedString),
+    /// Return pressed in it.
+    Entered,
 }
 
 /// Which side the text keeps to.
@@ -122,7 +126,14 @@ pub struct TextField {
     selecting: bool,
     caret_on: bool,
     blink: Option<Task<()>>,
+    /// Shown as bullets, never copied (a password).
+    password: bool,
+    /// Can't be typed in now (a password while PAM checks the last).
+    enabled: bool,
 }
+
+/// What a password field shows for each character.
+const BULLET: char = '•';
 
 impl EventEmitter<TextFieldEvent> for TextField {}
 
@@ -151,7 +162,66 @@ impl TextField {
             selecting: false,
             caret_on: true,
             blink: None,
+            password: false,
+            enabled: true,
         }
+    }
+
+    /// Shows bullets for its characters and never copies them.
+    pub fn password(mut self, on: bool) -> Self {
+        self.password = on;
+        self
+    }
+
+    /// Bullets or the text (PAM asks a password, or a name to echo).
+    pub fn set_password(&mut self, on: bool, cx: &mut Context<Self>) {
+        if self.password != on {
+            self.password = on;
+            cx.notify();
+        }
+    }
+
+    /// Whether it takes typing and the keyboard (drawn dim when not).
+    pub fn set_enabled(&mut self, on: bool, cx: &mut Context<Self>) {
+        if self.enabled != on {
+            self.enabled = on;
+            cx.notify();
+        }
+    }
+
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    /// Forgets the text, leaving no copy in freed memory (a password,
+    /// once used): no undo of it either.
+    pub fn clear_secret(&mut self, cx: &mut Context<Self>) {
+        // SAFETY: zero bytes keep the strings valid UTF-8.
+        unsafe { self.text.as_bytes_mut().fill(0) };
+        for (t, _) in self.undo.iter_mut().chain(self.redo.iter_mut()) {
+            unsafe { t.as_bytes_mut().fill(0) };
+        }
+        self.text.clear();
+        self.undo.clear();
+        self.redo.clear();
+        self.selected = 0..0;
+        self.marked = None;
+        cx.notify();
+    }
+
+    /// What it shows: its text, or a bullet for each character.
+    fn shown(&self) -> String {
+        if self.password { std::iter::repeat_n(BULLET, self.text.chars().count()).collect() } else { self.text.clone() }
+    }
+
+    /// Where byte `i` of the text is in what's shown.
+    fn to_shown(&self, i: usize) -> usize {
+        if self.password { self.text[..i.min(self.text.len())].chars().count() * BULLET.len_utf8() } else { i }
+    }
+
+    /// Byte `i` of what's shown, in the text.
+    fn from_shown(&self, i: usize) -> usize {
+        if self.password { self.text.char_indices().nth(i / BULLET.len_utf8()).map_or(self.text.len(), |(b, _)| b) } else { i }
     }
 
     pub fn font_size(mut self, size: f32) -> Self {
@@ -243,9 +313,15 @@ impl TextField {
 
     /// Replaces `range` with `new`, as an undo step, the caret after it.
     fn replace(&mut self, range: Range<usize>, new: &str, cx: &mut Context<Self>) {
-        self.undo.push((self.text.clone(), self.selected.clone()));
-        if self.undo.len() > UNDO {
-            self.undo.remove(0);
+        if !self.enabled {
+            return;
+        }
+        // (A password keeps no copies to undo to.)
+        if !self.password {
+            self.undo.push((self.text.clone(), self.selected.clone()));
+            if self.undo.len() > UNDO {
+                self.undo.remove(0);
+            }
         }
         self.redo.clear();
         self.text.replace_range(range.clone(), new);
@@ -346,13 +422,13 @@ impl TextField {
     }
 
     fn copy(&mut self, _: &Copy, _: &mut Window, cx: &mut Context<Self>) {
-        if !self.selected.is_empty() {
+        if !self.selected.is_empty() && !self.password {
             cx.write_to_clipboard(ClipboardItem::new_string(self.text[self.selected.clone()].to_string()));
         }
     }
 
     fn cut(&mut self, _: &Cut, _: &mut Window, cx: &mut Context<Self>) {
-        if !self.selected.is_empty() {
+        if !self.selected.is_empty() && !self.password {
             cx.write_to_clipboard(ClipboardItem::new_string(self.text[self.selected.clone()].to_string()));
             self.replace(self.selected.clone(), "", cx);
         }
@@ -370,6 +446,12 @@ impl TextField {
     pub fn insert(&mut self, text: &str, cx: &mut Context<Self>) {
         let text = text.replace(['\n', '\r'], " ");
         self.replace(self.selected.clone(), &text, cx);
+    }
+
+    fn enter(&mut self, _: &Enter, _: &mut Window, cx: &mut Context<Self>) {
+        if self.enabled {
+            cx.emit(TextFieldEvent::Entered);
+        }
     }
 
     fn undo(&mut self, _: &Undo, _: &mut Window, cx: &mut Context<Self>) {
@@ -392,7 +474,7 @@ impl TextField {
 
     fn index_at(&self, x: Pixels) -> usize {
         match (&self.line, &self.drawn) {
-            (Some(line), Some(drawn)) => line.closest_index_for_x(x - drawn.origin.x),
+            (Some(line), Some(drawn)) => self.from_shown(line.closest_index_for_x(x - drawn.origin.x)),
             _ => 0,
         }
     }
@@ -524,7 +606,8 @@ impl EntityInputHandler for TextField {
     fn bounds_for_range(&mut self, range: Range<usize>, _: Bounds<Pixels>, _: &mut Window, _: &mut Context<Self>) -> Option<Bounds<Pixels>> {
         let (line, drawn) = (self.line.as_ref()?, self.drawn?);
         let range = self.range_from_utf16(&range);
-        Some(Bounds::from_corners(point(drawn.origin.x + line.x_for_index(range.start), drawn.top()), point(drawn.origin.x + line.x_for_index(range.end), drawn.bottom())))
+        let x = |i: usize| drawn.origin.x + line.x_for_index(self.to_shown(i));
+        Some(Bounds::from_corners(point(x(range.start), drawn.top()), point(x(range.end), drawn.bottom())))
     }
 
     fn character_index_for_point(&mut self, p: gpui::Point<Pixels>, _: &mut Window, _: &mut Context<Self>) -> Option<usize> {
@@ -547,6 +630,7 @@ impl Render for TextField {
             .key_context(CONTEXT)
             .track_focus(&self.focus)
             .cursor(CursorStyle::IBeam)
+            .on_action(cx.listener(Self::enter))
             .on_action(cx.listener(Self::backspace))
             .on_action(cx.listener(Self::delete))
             .on_action(cx.listener(Self::delete_word_left))
@@ -614,10 +698,10 @@ impl Element for FieldElement {
     fn paint(&mut self, _: Option<&GlobalElementId>, _: Option<&InspectorElementId>, bounds: Bounds<Pixels>, _: &mut (), _: &mut (), window: &mut Window, cx: &mut App) {
         let palette = theme::palette(cx);
         let field = self.field.read(cx);
-        let color = field.color.unwrap_or(style::c(palette.document_text));
-        let text: SharedString = field.text.clone().into();
+        let color = if field.enabled { field.color.unwrap_or(style::c(palette.document_text)) } else { style::disabled_text(&palette) };
+        let text: SharedString = field.shown().into();
         let run = TextRun { len: text.len(), font: style::ui_font(gpui::FontWeight::NORMAL), color, background_color: None, underline: None, strikethrough: None };
-        let runs = match field.marked.clone() {
+        let runs = match field.marked.clone().filter(|_| !field.password) {
             Some(m) => [
                 TextRun { len: m.start, ..run.clone() },
                 TextRun { len: m.end - m.start, underline: Some(UnderlineStyle { color: Some(color), thickness: style::hairline(window), wavy: false }), ..run.clone() },
@@ -642,9 +726,12 @@ impl Element for FieldElement {
         let height = line.ascent + line.descent;
         let drawn = Bounds { origin: point(left, top), size: size(line.width, height) };
         let focused = field.focus.is_focused(window);
-        let (selected, caret, caret_on) = (field.selected.clone(), field.caret(), field.caret_on);
+        let selected = field.to_shown(field.selected.start)..field.to_shown(field.selected.end);
+        let (caret, caret_on) = (field.to_shown(field.caret()), field.caret_on && field.enabled);
         let name = field.name.clone();
-        window.handle_input(&field.focus.clone(), ElementInputHandler::new(bounds, self.field.clone()), cx);
+        if field.enabled {
+            window.handle_input(&field.focus.clone(), ElementInputHandler::new(bounds, self.field.clone()), cx);
+        }
         window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| {
             if !selected.is_empty() {
                 let x0 = left + line.x_for_index(selected.start);

@@ -22,42 +22,37 @@
 //! owns (`olo_system::keyring_prompt`), so they come up here rather
 //! than in GTK's gcr-prompter.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
-use olo_kit::{
-    App, Cx, WindowId, WindowOptions,
-    egui::{self, Key, Rect, pos2, vec2},
-    instance::{self, Launch},
-    metrics as m,
-    style::{self, c},
-    widgets::{self, Button, MenuField},
-};
 use olo_system::{
     keyring_prompt::{self, Prompter},
     polkit::{Agent, Event, Helper, HelperEvent, Request, Subject},
+};
+use olo_ui::{
+    Frame, WindowOptions,
+    gpui::{AnyWindowHandle, App, AppContext as _, Context, Entity, FocusHandle, Global, InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _, Window, WindowHandle, WindowId, div, px},
+    instance::{self, Launch},
+    metrics as m,
+    widgets::{self, AlertFrame, Button, Conversation, ConversationField, MenuField, TextField, TextFieldEvent, alert, button_row, paragraph, paragraph_height, text_field},
 };
 
 mod keyring;
 
 const APP_ID: &str = "olo.polkit-agent";
-pub const WIDTH: u32 = 420;
+pub const WIDTH: f32 = 420.0;
 const ICON: &str = "authentication";
 /// Text column: the alert's width less its stripe, icon and margins.
-pub const COLUMN: f32 = WIDTH as f32 - widgets::ALERT_TEXT_X - m::WINDOW_INSET;
-
-/// A fixed alert window of `height` (never resized, tiled or grouped).
-pub fn alert_options(title: &str, height: u32) -> WindowOptions {
-    let size = (WIDTH, height);
-    WindowOptions { size, min_size: Some(size), max_size: Some(size), ..WindowOptions::alert(title, "") }
-}
+pub const COLUMN: f32 = WIDTH - widgets::ALERT_TEXT_X - m::WINDOW_INSET;
+/// Where the fields begin after their labels.
+pub const DIVIDER: f32 = 72.0;
 
 /// The window's height: the title, `message`, an Identity menu when
 /// more than one user may answer, the password and the note under it,
 /// and the buttons.
-fn height(message: &str, identities: bool) -> u32 {
+fn height(cx: &App, message: &str, identities: bool) -> f32 {
     let fixed = 2.0 * m::WINDOW_INSET + m::LABEL_ROW + m::TIGHT + 3.0 * m::SPACING + 2.0 * m::CONTROL_HEIGHT + m::LABEL_ROW;
     let menu = if identities { m::CONTROL_HEIGHT + m::SPACING } else { 0.0 };
-    (fixed + menu + style::plain_text_height(message, COLUMN)).ceil() as u32
+    (fixed + menu + paragraph_height(cx, message, COLUMN)).ceil()
 }
 
 enum Msg {
@@ -65,263 +60,307 @@ enum Msg {
     Helper(WindowId, u64, HelperEvent),
     Registered(Result<(), String>),
     Keyring(keyring_prompt::Event),
-    Prompter(Result<std::sync::Arc<Prompter>, String>),
+    Prompter(Result<Arc<Prompter>, String>),
+    /// The self-test's question is answered.
+    Checked,
 }
 
+/// The agent: its windows (one for each request and keyring prompt).
+#[derive(Default)]
+struct Agents {
+    auths: HashMap<WindowId, Entity<Auth>>,
+    asks: HashMap<WindowId, Entity<keyring::Ask>>,
+    prompter: Option<Arc<Prompter>>,
+    /// `--self-test`: quit once its one request is done.
+    self_test: bool,
+}
+
+impl Global for Agents {}
+
+/// One request's window.
 struct Auth {
+    window: Option<AnyWindowHandle>,
     request: Option<Request>,
     cookie: String,
-    message: String,
-    action_id: String,
-    users: Vec<String>,
+    message: SharedString,
+    action_id: SharedString,
+    users: Vec<SharedString>,
     user: usize,
     helper: Option<Helper>,
     /// Which run of the helper is current; events from older runs are
     /// ignored.
     run: u64,
-    conv: widgets::Conversation,
+    conv: Conversation,
+    field: Entity<TextField>,
+    focus: FocusHandle,
 }
 
-struct AgentApp {
-    windows: HashMap<WindowId, Auth>,
-    /// The keyring's prompts.
-    asks: HashMap<WindowId, keyring::Ask>,
-    prompter: Option<std::sync::Arc<Prompter>>,
-    /// `--self-test`: quit once its one request is done.
-    self_test: bool,
+impl Auth {
+    /// (Re)starts the helper for the chosen user.
+    fn start_helper(&mut self, cx: &mut Context<Self>) {
+        self.helper = None;
+        self.conv.prompt = None;
+        self.conv.checking = false;
+        self.conv.info.clear();
+        self.run += 1;
+        self.sync_field(cx);
+        let (Some(user), Some(window)) = (self.users.get(self.user), self.window) else { return };
+        let (proxy, run, id) = (olo_ui::proxy(cx), self.run, window.window_id());
+        match Helper::start(user, &self.cookie, move |e| proxy.send(Msg::Helper(id, run, e))) {
+            Ok(h) => self.helper = Some(h),
+            Err(e) => {
+                tracing::warn!("polkit helper: {e}");
+                self.conv.error = "The authentication helper couldn't be started.".into();
+            }
+        }
+        cx.notify();
+    }
+
+    /// The field takes typing while PAM waits for it, showing bullets
+    /// unless PAM echoes; it has the keyboard then.
+    fn sync_field(&mut self, cx: &mut Context<Self>) {
+        let (ready, echo) = (self.conv.ready(), self.conv.prompt.as_ref().is_some_and(|(_, e)| *e));
+        self.field.update(cx, |f, cx| {
+            f.set_enabled(ready, cx);
+            f.set_password(!echo, cx);
+        });
+        if ready && let Some(window) = self.window {
+            let focus = olo_ui::gpui::Focusable::focus_handle(&self.field, cx);
+            let _ = window.update(cx, |_, window, _| window.focus(&focus));
+        }
+    }
+
+    fn helper_event(&mut self, run: u64, e: HelperEvent, cx: &mut Context<Self>) {
+        if run != self.run {
+            return;
+        }
+        match e {
+            HelperEvent::Prompt { text, echo } => {
+                self.conv.ask(text, echo);
+                self.sync_field(cx);
+            }
+            HelperEvent::Info(t) => self.conv.info = t,
+            HelperEvent::Error(t) => self.conv.error = t,
+            HelperEvent::Done(true) => {
+                if let Some(r) = self.request.take() {
+                    r.finish(true);
+                }
+                self.close(cx);
+            }
+            HelperEvent::Done(false) => {
+                self.field.update(cx, |f, cx| f.clear_secret(cx));
+                if self.conv.error.is_empty() || self.conv.checking {
+                    self.conv.error = "Sorry, that didn't work. Please try again.".into();
+                }
+                // Another go, as GNOME and KDE allow.
+                self.start_helper(cx);
+            }
+        }
+        cx.notify();
+    }
+
+    fn can_submit(&self, cx: &App) -> bool {
+        self.conv.ready() && !self.field.read(cx).text().is_empty()
+    }
+
+    fn submit(&mut self, cx: &mut Context<Self>) {
+        if !self.can_submit(cx) {
+            return;
+        }
+        let answer = self.field.read(cx).text().to_owned();
+        let r = self.helper.as_mut().map(|h| h.respond(&answer));
+        drop(zeroed(answer));
+        self.field.update(cx, |f, cx| f.clear_secret(cx));
+        self.conv.sent();
+        if !matches!(r, Some(Ok(()))) {
+            self.conv.checking = false;
+            self.conv.error = "The authentication helper stopped.".into();
+        }
+        self.sync_field(cx);
+        cx.notify();
+    }
+
+    /// Closes the window; an unanswered request is cancelled (dropped).
+    fn close(&mut self, cx: &mut Context<Self>) {
+        self.field.update(cx, |f, cx| f.clear_secret(cx));
+        if let Some(window) = self.window.take() {
+            forget(cx, window.window_id());
+            let _ = window.update(cx, |_, window, _| window.remove_window());
+        }
+    }
 }
 
-impl AgentApp {
-    fn begin(&mut self, cx: &mut Cx, request: Request) {
-        let id = cx.open_window(alert_options("Authenticate", height(&request.message, request.users.len() > 1)));
-        let mut auth = Auth {
+/// A copy of a password, its bytes zeroed before it goes.
+fn zeroed(mut s: String) -> String {
+    // SAFETY: zero bytes keep the string valid UTF-8.
+    unsafe { s.as_bytes_mut().fill(0) };
+    s.clear();
+    s
+}
+
+/// A window of ours closed: what was in it goes, and the self-test ends
+/// with its one request.
+fn forget(cx: &mut App, id: WindowId) {
+    let agents = cx.default_global::<Agents>();
+    agents.auths.remove(&id);
+    agents.asks.remove(&id);
+    if agents.self_test && agents.auths.is_empty() {
+        cx.quit();
+    }
+}
+
+impl Render for Auth {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let view = cx.entity();
+        let mut form = div().flex().flex_col().gap(px(m::SPACING));
+        if self.users.len() > 1 {
+            let view = view.clone();
+            form = form.child(MenuField::new("identity", self.users.clone(), self.user).label("Identity:").divider(DIVIDER).width(COLUMN).on_change(move |i, _, cx| {
+                view.update(cx, |a, cx| {
+                    a.user = i;
+                    a.conv.error.clear();
+                    a.start_helper(cx);
+                })
+            }));
+        }
+        form = form.child(ConversationField::new(&self.conv, self.field.clone(), DIVIDER));
+        let can = self.can_submit(cx);
+        let (cancel, submit) = (view.clone(), view.clone());
+        div()
+            .size_full()
+            .key_context(alert::CONTEXT)
+            .track_focus(&self.focus)
+            .on_action(cx.listener(|a, _: &alert::Cancel, _, cx| a.close(cx)))
+            .on_action(cx.listener(|a, _: &alert::Default, _, cx| a.submit(cx)))
+            .child(
+                AlertFrame::new(ICON)
+                    .child(widgets::alert_title("Authentication Required"))
+                    .child(div().h(px(m::TIGHT)))
+                    .child(paragraph(self.message.clone()).id("message").tooltip(widgets::tooltip(self.action_id.clone())))
+                    .child(div().h(px(m::SPACING)))
+                    .child(form)
+                    .child(div().flex_1())
+                    .child(
+                        button_row()
+                            .child(Button::new("Cancel").on_click(move |_, cx| cancel.update(cx, |a, cx| a.close(cx))))
+                            .child(Button::new("Authenticate").default(true).enabled(can).on_click(move |_, cx| submit.update(cx, |a, cx| a.submit(cx)))),
+                    ),
+            )
+    }
+}
+
+/// Opens a window for polkit's request.
+fn begin(cx: &mut App, request: Request) {
+    let h = height(cx, &request.message, request.users.len() > 1);
+    let field = text_field(cx, |f| f.name("Password").password(true));
+    let mut conv = Conversation::default();
+    if request.users.is_empty() {
+        conv.error = "Nobody is allowed to authorize this.".into();
+    }
+    let auth = cx.new(|cx| {
+        cx.subscribe(&field, |a: &mut Auth, _, e: &TextFieldEvent, cx| match e {
+            TextFieldEvent::Entered => a.submit(cx),
+            _ => cx.notify(),
+        })
+        .detach();
+        Auth {
+            window: None,
             cookie: request.cookie.clone(),
-            message: request.message.clone(),
-            action_id: request.action_id.clone(),
-            users: request.users.clone(),
+            message: request.message.clone().into(),
+            action_id: request.action_id.clone().into(),
+            users: request.users.iter().map(|u| u.clone().into()).collect(),
             user: 0,
             request: Some(request),
             helper: None,
             run: 0,
-            conv: widgets::Conversation::default(),
-        };
-        if auth.users.is_empty() {
-            auth.conv.error = "Nobody is allowed to authorize this.".into();
+            conv,
+            field,
+            focus: cx.focus_handle(),
         }
-        self.windows.insert(id, auth);
-        self.start_helper(cx, id);
-        cx.activate(id);
-    }
+    });
+    let Some(handle) = open(cx, "Authenticate", h, auth.clone()) else { return };
+    let id = handle.window_id();
+    cx.default_global::<Agents>().auths.insert(id, auth.clone());
+    auth.update(cx, |a, cx| {
+        a.window = Some(handle.into());
+        a.start_helper(cx);
+    });
+}
 
-    /// (Re)start the helper for the chosen user.
-    fn start_helper(&mut self, cx: &mut Cx, id: WindowId) {
-        let Some(a) = self.windows.get_mut(&id) else { return };
-        a.helper = None;
-        a.conv.prompt = None;
-        a.conv.checking = false;
-        a.conv.info.clear();
-        a.run += 1;
-        let Some(user) = a.users.get(a.user) else { return };
-        let (proxy, run) = (cx.proxy(), a.run);
-        match Helper::start(user, &a.cookie, move |e| proxy.send(Msg::Helper(id, run, e))) {
-            Ok(h) => a.helper = Some(h),
-            Err(e) => {
-                tracing::warn!("polkit helper: {e}");
-                a.conv.error = "The authentication helper couldn't be started.".into();
-            }
-        }
-    }
+/// Opens an alert window showing `view`, which has the keyboard; closing
+/// it from its tab is as its Cancel.
+pub fn open<V: Render + 'static>(cx: &mut App, title: &str, height: f32, view: Entity<V>) -> Option<WindowHandle<Frame>>
+where
+    V: Cancel,
+{
+    let v = view.clone();
+    olo_ui::open_window(cx, WindowOptions::alert(title.to_owned(), WIDTH, height), move |window, cx| {
+        window.activate_window();
+        let closing = v.clone();
+        window.on_window_should_close(cx, move |_, cx| closing.update(cx, |v, cx| v.cancel(cx)));
+        v
+    })
+}
 
-    fn helper_event(&mut self, cx: &mut Cx, id: WindowId, run: u64, e: HelperEvent) {
-        let Some(a) = self.windows.get_mut(&id) else { return };
-        if run != a.run {
-            return;
-        }
-        match e {
-            HelperEvent::Prompt { text, echo } => a.conv.ask(text, echo),
-            HelperEvent::Info(t) => a.conv.info = t,
-            HelperEvent::Error(t) => a.conv.error = t,
-            HelperEvent::Done(true) => {
-                if let Some(r) = a.request.take() {
-                    r.finish(true);
-                }
-                self.close(cx, id);
-            }
-            HelperEvent::Done(false) => {
-                a.conv.clear_answer();
-                if a.conv.error.is_empty() || a.conv.checking {
-                    a.conv.error = "Sorry, that didn't work. Please try again.".into();
-                }
-                // Another go, as GNOME and KDE allow.
-                self.start_helper(cx, id);
-            }
-        }
-        cx.redraw(id);
-    }
+/// What closing an alert from its tab does: true if it may close now.
+pub trait Cancel {
+    fn cancel(&mut self, cx: &mut Context<Self>) -> bool
+    where
+        Self: Sized;
+}
 
-    fn submit(&mut self, id: WindowId) {
-        let Some(a) = self.windows.get_mut(&id) else { return };
-        if !a.conv.ready() {
-            return;
+impl Cancel for Auth {
+    fn cancel(&mut self, cx: &mut Context<Self>) -> bool {
+        self.field.update(cx, |f, cx| f.clear_secret(cx));
+        if let Some(w) = self.window.take() {
+            forget(cx, w.window_id());
         }
-        let r = a.helper.as_mut().map(|h| h.respond(&a.conv.answer));
-        a.conv.sent();
-        if !matches!(r, Some(Ok(()))) {
-            a.conv.checking = false;
-            a.conv.error = "The authentication helper stopped.".into();
-        }
-    }
-
-    /// Close a window; an unanswered request is cancelled.
-    fn close(&mut self, cx: &mut Cx, id: WindowId) {
-        if let Some(mut a) = self.windows.remove(&id) {
-            a.conv.clear_answer();
-        }
-        cx.close_window(id);
-        if self.self_test && self.windows.is_empty() {
-            cx.quit();
-        }
-    }
-
-    fn keyring_event(&mut self, cx: &mut Cx, e: keyring_prompt::Event) {
-        match e {
-            keyring_prompt::Event::Show { id, kind, props } => {
-                if let Some((&win, ask)) = self.asks.iter_mut().find(|(_, a)| a.id == id) {
-                    ask.again(kind, props);
-                    cx.redraw(win);
-                    cx.activate(win);
-                } else {
-                    let (win, ask) = keyring::open(cx, id, kind, props);
-                    self.asks.insert(win, ask);
-                    cx.activate(win);
-                }
-            }
-            keyring_prompt::Event::Close(id) => {
-                let wins: Vec<WindowId> = self.asks.iter().filter(|(_, a)| a.id == id).map(|(w, _)| *w).collect();
-                for win in wins {
-                    self.asks.remove(&win);
-                    cx.close_window(win);
-                }
-            }
-        }
-    }
-
-    /// The user answered (or closed) a keyring prompt; its window stays
-    /// until the keyring is done with it.
-    fn keyring_answer(&mut self, win: WindowId, action: keyring::Action) {
-        let (Some(ask), Some(p)) = (self.asks.get(&win), &self.prompter) else { return };
-        let keyring::Action::Answer(answer, choice) = action;
-        p.answer(ask.id, answer, choice);
+        true
     }
 }
 
-impl App for AgentApp {
-    fn ui(&mut self, cx: &mut Cx, win: WindowId, ui: &mut egui::Ui) {
-        if let Some(ask) = self.asks.get_mut(&win) {
-            if let Some(action) = ask.ui(ui) {
-                self.keyring_answer(win, action);
-            }
-            return;
-        }
-        let Some(a) = self.windows.get_mut(&win) else { return };
-        let p = style::palette(ui.ctx());
-        let full = ui.available_rect_before_wrap();
-        let col = widgets::alert_frame(ui, ICON);
-        let mut y = col.top();
-        style::label(ui.painter(), col.left(), y + style::PLAIN_SIZE / 2.0 + 2.0, egui::Align::Min, "Authentication Required", style::bold_font(), c(p.panel_text));
-        y += m::LABEL_ROW + m::TIGHT;
-        let mut job = egui::text::LayoutJob::single_section(a.message.clone(), egui::TextFormat::simple(style::plain_font(), c(p.panel_text)));
-        job.wrap.max_width = col.width();
-        let g = ui.painter().layout_job(job);
-        let text_h = g.size().y;
-        let pos = style::text_origin(ui.ctx(), &g, col.left(), y + style::PLAIN_SIZE / 2.0 + 2.0, style::PLAIN_SIZE);
-        ui.painter().galley(pos, g, c(p.panel_text));
-        let message = Rect::from_min_size(pos2(col.left(), y), vec2(col.width(), text_h));
-        ui.interact(message, ui.scope_id().with("message"), egui::Sense::hover()).on_hover_text(&a.action_id);
-        y += text_h + m::SPACING;
-
-        let mut submit = false;
-        let mut user_changed = false;
-        let form = Rect::from_min_max(pos2(col.left(), y), pos2(col.right(), col.bottom() - m::CONTROL_HEIGHT - m::SPACING));
-        ui.scope_builder(egui::UiBuilder::new().max_rect(form).layout(egui::Layout::top_down(egui::Align::Min)), |ui| {
-            ui.spacing_mut().item_spacing.y = m::SPACING;
-            let divider = 72.0;
-            if a.users.len() > 1 {
-                let names: Vec<&str> = a.users.iter().map(String::as_str).collect();
-                let before = a.user;
-                ui.add(MenuField::new(("identity", win), &mut a.user, &names).label("Identity:").divider(divider).width(form.width()));
-                user_changed = a.user != before;
-            }
-            submit = widgets::conversation(ui, &mut a.conv, divider, form.width());
-        });
-
-        let row = Rect::from_min_max(pos2(col.left(), col.bottom() - m::CONTROL_HEIGHT), pos2(full.right() - m::WINDOW_INSET, col.bottom()));
-        let mut cancel = ui.input(|i| i.key_pressed(Key::Escape));
-        ui.scope_builder(egui::UiBuilder::new().max_rect(row), |ui| {
-            widgets::button_row(ui, |ui| {
-                let can = a.conv.can_submit();
-                if ui.add_enabled_ui(can, |ui| ui.add(Button::new("Authenticate").default(true))).inner.clicked() {
-                    submit = true;
-                }
-                if ui.add(Button::new("Cancel")).clicked() {
-                    cancel = true;
-                }
-            });
-        });
-        if cancel {
-            self.close(cx, win);
-            return;
-        }
-        if user_changed {
-            if let Some(a) = self.windows.get_mut(&win) {
-                a.conv.error.clear();
-            }
-            self.start_helper(cx, win);
-        }
-        if submit {
-            self.submit(win);
-        }
-    }
-
-    fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
-        if self.asks.contains_key(&window) {
-            self.keyring_answer(window, keyring::Action::Answer(keyring_prompt::Answer::Cancel, false));
-            return;
-        }
-        self.close(cx, window);
-    }
-
-    fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
-        let message = match message.downcast::<Launch>() {
-            // A second start: we are already serving the session.
-            Ok(_) => return,
-            Err(other) => other,
-        };
-        let Ok(m) = message.downcast::<Msg>() else { return };
-        match *m {
-            Msg::Polkit(Event::Begin(r)) => self.begin(cx, r),
-            Msg::Polkit(Event::Cancel(cookie)) => {
-                let ids: Vec<WindowId> = self.windows.iter().filter(|(_, a)| a.cookie == cookie).map(|(id, _)| *id).collect();
-                for id in ids {
-                    self.close(cx, id);
+fn message(message: Box<dyn std::any::Any + Send>, cx: &mut App) {
+    let message = match message.downcast::<Launch>() {
+        // A second start: we are already serving the session.
+        Ok(_) => return,
+        Err(other) => other,
+    };
+    let Ok(m) = message.downcast::<Msg>() else { return };
+    match *m {
+        Msg::Polkit(Event::Begin(r)) => begin(cx, r),
+        Msg::Polkit(Event::Cancel(cookie)) => {
+            let views: Vec<Entity<Auth>> = cx.default_global::<Agents>().auths.values().cloned().collect();
+            for v in views {
+                if v.read(cx).cookie == cookie {
+                    v.update(cx, |a, cx| a.close(cx));
                 }
             }
-            Msg::Helper(id, run, e) => self.helper_event(cx, id, run, e),
-            Msg::Registered(Err(e)) => {
-                eprintln!("olo-polkit-agent: couldn't register with polkit: {e}");
+        }
+        Msg::Helper(id, run, e) => {
+            if let Some(v) = cx.default_global::<Agents>().auths.get(&id).cloned() {
+                v.update(cx, |a, cx| a.helper_event(run, e, cx));
+            }
+        }
+        Msg::Registered(Err(e)) => {
+            eprintln!("olo-polkit-agent: couldn't register with polkit: {e}");
+            cx.quit();
+        }
+        Msg::Registered(Ok(())) => {}
+        Msg::Keyring(e) => keyring::event(cx, e),
+        Msg::Prompter(Ok(p)) => cx.default_global::<Agents>().prompter = Some(p),
+        Msg::Prompter(Err(e)) => eprintln!("olo-polkit-agent: couldn't serve the keyring's prompts: {e}"),
+        // (Answered without asking, or after its window closed.)
+        Msg::Checked => {
+            if cx.default_global::<Agents>().auths.is_empty() {
                 cx.quit();
             }
-            Msg::Registered(Ok(())) => {}
-            Msg::Keyring(e) => self.keyring_event(cx, e),
-            Msg::Prompter(Ok(p)) => self.prompter = Some(p),
-            Msg::Prompter(Err(e)) => eprintln!("olo-polkit-agent: couldn't serve the keyring's prompts: {e}"),
         }
     }
 }
 
 fn main() -> std::process::ExitCode {
     // A session or install from before the rename (Tabula) carries on.
-    olo_kit::legacy::adopt();
+    olo_xdg::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (self_test, keyring_test) = match args.as_slice() {
         [flag, action] if flag == "--self-test" => (Some(action.clone()), false),
@@ -345,13 +384,15 @@ fn main() -> std::process::ExitCode {
     if self_test.is_none() && !keyring_test && instance::forward(APP_ID, &args) {
         return std::process::ExitCode::SUCCESS;
     }
-    olo_kit::run(APP_ID, |cx| {
-        cx.stay_resident();
+    olo_ui::run(APP_ID, move |cx| {
+        olo_ui::stay_resident(cx);
+        cx.set_global(Agents { self_test: self_test.is_some(), ..Default::default() });
+        olo_ui::message_handler(cx, message);
         if self_test.is_none() && !keyring_test {
-            instance::listen(APP_ID, cx.proxy());
+            instance::listen(APP_ID, olo_ui::proxy(cx));
         }
         if self_test.is_none() {
-            let proxy = cx.proxy();
+            let proxy = olo_ui::proxy(cx);
             std::thread::Builder::new()
                 .name("keyring-prompt".into())
                 .spawn(move || {
@@ -359,14 +400,14 @@ fn main() -> std::process::ExitCode {
                         let proxy = proxy.clone();
                         move |e| proxy.send(Msg::Keyring(e))
                     };
-                    proxy.send(Msg::Prompter(Prompter::serve(on).map(std::sync::Arc::new).map_err(|e| e.to_string())));
+                    proxy.send(Msg::Prompter(Prompter::serve(on).map(Arc::new).map_err(|e| e.to_string())));
                 })
                 .expect("thread");
         }
         if keyring_test {
-            return AgentApp { windows: HashMap::new(), asks: HashMap::new(), prompter: None, self_test: false };
+            return;
         }
-        let proxy = cx.proxy();
+        let proxy = olo_ui::proxy(cx);
         let action = self_test.clone();
         std::thread::Builder::new()
             .name("polkit-agent".into())
@@ -393,6 +434,7 @@ fn main() -> std::process::ExitCode {
                         Err(e) => println!("self-test: {action}: {e}"),
                     }
                     drop(agent);
+                    proxy.send(Msg::Checked);
                     return;
                 }
                 // Serve until the app exits.
@@ -401,7 +443,6 @@ fn main() -> std::process::ExitCode {
                 }
             })
             .expect("thread");
-        AgentApp { windows: HashMap::new(), asks: HashMap::new(), prompter: None, self_test: self_test.is_some() }
     });
     std::process::ExitCode::SUCCESS
 }

@@ -24,11 +24,28 @@ pub struct WindowOptions {
     /// A surface of the desktop's own (Deskbar, notifications, an
     /// overlay) rather than a window: where it sits.
     pub layer: Option<gpui::LayerShellOptions>,
+    /// A dialog (never a tab), modal or not.
+    pub dialog: Option<gpui::Dialog>,
+    /// Never resized (an alert).
+    pub fixed: bool,
 }
 
 impl WindowOptions {
     pub fn new(title: impl Into<SharedString>, width: f32, height: f32) -> Self {
-        WindowOptions { title: title.into(), size: (width, height), min_size: None, panel: true, floating: false, layer: None }
+        WindowOptions { title: title.into(), size: (width, height), min_size: None, panel: true, floating: false, layer: None, dialog: None, fixed: false }
+    }
+
+    /// A BAlert window `width` × `height`: fixed, modal over the app's
+    /// window that has the keyboard (if any), never tiled or a tab.
+    pub fn alert(title: impl Into<SharedString>, width: f32, height: f32) -> Self {
+        WindowOptions { floating: true, dialog: Some(gpui::Dialog::Modal), fixed: true, ..WindowOptions::new(title, width, height) }
+    }
+
+    /// A dialog (a panel, a sheet): floats, never a tab.
+    pub fn dialog(mut self) -> Self {
+        self.floating = true;
+        self.dialog = Some(gpui::Dialog::Plain);
+        self
     }
 
     /// A layer surface (see [`Self::layer`]), `namespace` saying what it
@@ -94,7 +111,12 @@ impl Render for Frame {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         agent::begin_frame(window, cx, &self.title);
         let p = theme::palette(cx);
-        let mut root = div().size_full().font_family(style::UI_FONT).text_size(px(style::PLAIN_SIZE)).text_color(style::c(p.panel_text));
+        let mut root = div()
+            .size_full()
+            .font_family(style::UI_FONT)
+            .text_size(px(style::PLAIN_SIZE))
+            .line_height(gpui::relative(style::LINE_HEIGHT))
+            .text_color(style::c(p.panel_text));
         if self.panel {
             root = root.bg(style::c(p.panel_background));
         }
@@ -129,6 +151,8 @@ pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, bu
             toplevel_tag: options.floating.then(|| "floating".to_string()),
             kind: if options.layer.is_some() { gpui::WindowKind::LayerShell } else { gpui::WindowKind::Normal },
             layer_shell: options.layer.clone(),
+            dialog: options.dialog,
+            is_resizable: !options.fixed,
             focus: options.layer.as_ref().is_none_or(|l| l.keyboard != gpui::LayerKeyboard::None),
             ..Default::default()
         },
@@ -158,6 +182,16 @@ pub fn proxy(cx: &App) -> Proxy {
 /// Takes the messages sent through [`proxy`].
 pub fn message_handler(cx: &mut App, handler: impl FnMut(Box<dyn Any + Send>, &mut App) + 'static) {
     cx.global_mut::<Messages>().handler = Some(Box::new(handler));
+}
+
+struct Resident;
+
+impl Global for Resident {}
+
+/// Keeps the app running with no windows open (an agent that opens them
+/// when asked: the polkit agent, Notifications).
+pub fn stay_resident(cx: &mut App) {
+    cx.set_global(Resident);
 }
 
 /// Runs the app: its theme, its socket for agents, and `build`, which
@@ -192,7 +226,7 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
         .detach();
         cx.on_window_closed(|cx| {
             agent::forget_closed(cx);
-            if cx.windows().is_empty() {
+            if cx.windows().is_empty() && !cx.has_global::<Resident>() {
                 cx.quit();
             }
         })

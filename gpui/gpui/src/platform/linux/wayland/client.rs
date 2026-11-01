@@ -62,6 +62,7 @@ use wayland_protocols::xdg::decoration::zv1::client::{
 };
 use wayland_protocols::xdg::shell::client::{xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base};
 use wayland_protocols::xdg::toplevel_tag::v1::client::xdg_toplevel_tag_manager_v1;
+use wayland_protocols::xdg::dialog::v1::client::{xdg_dialog_v1, xdg_wm_dialog_v1};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 use wayland_protocols_plasma::blur::client::{org_kde_kwin_blur, org_kde_kwin_blur_manager};
 use xkbcommon::xkb::ffi::XKB_KEYMAP_FORMAT_TEXT_V1;
@@ -123,6 +124,8 @@ pub struct Globals {
     /// Olo: tags for windows (`floating`, `under-pointer`), which
     /// app_server places and tiles by.
     pub toplevel_tags: Option<xdg_toplevel_tag_manager_v1::XdgToplevelTagManagerV1>,
+    /// Olo: dialogs (alerts, panels): never tabs, modal or not.
+    pub wm_dialog: Option<xdg_wm_dialog_v1::XdgWmDialogV1>,
     /// Olo: surfaces of the desktop's own (Deskbar, notifications).
     pub layer_shell: Option<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
     pub blur_manager: Option<org_kde_kwin_blur_manager::OrgKdeKwinBlurManager>,
@@ -164,6 +167,7 @@ impl Globals {
             decoration_manager: globals.bind(&qh, 1..=1, ()).ok(),
             toplevel_tags: globals.bind(&qh, 1..=1, ()).ok(),
             layer_shell: globals.bind(&qh, 1..=4, ()).ok(),
+            wm_dialog: globals.bind(&qh, 1..=1, ()).ok(),
             blur_manager: globals.bind(&qh, 1..=1, ()).ok(),
             text_input_manager: globals.bind(&qh, 1..=1, ()).ok(),
             executor,
@@ -481,9 +485,8 @@ impl WaylandClientStatePtr {
         {
             state.keyboard_focused_window = Some(window);
         }
-        if state.windows.is_empty() {
-            state.common.signal.stop();
-        }
+        // (Olo: an app with no windows left decides itself whether it
+        // ends: olo-ui quits unless it stays resident, as an agent does.)
     }
 }
 
@@ -1254,6 +1257,8 @@ impl Dispatch<xdg_popup::XdgPopup, ObjectId> for WaylandClientStatePtr {
 delegate_noop!(WaylandClientStatePtr: ignore xdg_positioner::XdgPositioner);
 delegate_noop!(WaylandClientStatePtr: ignore xdg_toplevel_tag_manager_v1::XdgToplevelTagManagerV1);
 delegate_noop!(WaylandClientStatePtr: ignore zwlr_layer_shell_v1::ZwlrLayerShellV1);
+delegate_noop!(WaylandClientStatePtr: ignore xdg_wm_dialog_v1::XdgWmDialogV1);
+delegate_noop!(WaylandClientStatePtr: ignore xdg_dialog_v1::XdgDialogV1);
 
 impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ObjectId> for WaylandClientStatePtr {
     fn event(
