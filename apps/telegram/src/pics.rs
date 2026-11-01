@@ -1,7 +1,8 @@
 //! Pictures (people's and chats', messages' photos, videos' first frames,
 //! stickers): asked of the backend the first time they're drawn, decoded
-//! on two workers once downloaded, then kept as textures. Files fetched
-//! whole (to open or play) are remembered by path.
+//! on two workers once downloaded, then kept as GPUI images (BGRA,
+//! straight alpha). Files fetched whole (to open or play) are remembered
+//! by path.
 
 use std::{
     collections::HashMap,
@@ -9,16 +10,16 @@ use std::{
     sync::{Arc, Mutex, mpsc},
 };
 
-use olo_kit::{Proxy, egui};
 use olo_tg::{Backend, Cmd, Pic};
+use olo_ui::{Proxy, gpui::RenderImage};
 
 /// A picture decoded on a worker (sent to the app).
-pub struct Decoded(pub Pic, pub Result<egui::ColorImage, String>);
+pub struct Decoded(pub Pic, pub Result<Arc<RenderImage>, String>);
 
 enum Slot {
     Fetching,
     Decoding,
-    Ready(egui::TextureHandle),
+    Ready(Arc<RenderImage>),
     Failed,
 }
 
@@ -39,12 +40,15 @@ fn most(pic: &Pic) -> u32 {
     }
 }
 
-fn decode(pic: &Pic, path: &Path) -> Result<egui::ColorImage, String> {
-    let (img, _) = olo_kit::images::open(path)?;
+fn decode(pic: &Pic, path: &Path) -> Result<Arc<RenderImage>, String> {
+    let (img, _) = olo_images::open(path)?;
     let m = most(pic);
     let img = if img.width().max(img.height()) > m { img.thumbnail(m, m) } else { img };
-    let rgba = img.to_rgba8();
-    Ok(egui::ColorImage::from_rgba_unmultiplied([rgba.width() as usize, rgba.height() as usize], rgba.as_raw()))
+    let mut bgra = img.to_rgba8();
+    for p in bgra.as_chunks_mut::<4>().0 {
+        p.swap(0, 2);
+    }
+    Ok(Arc::new(RenderImage::new([image::Frame::new(bgra)])))
 }
 
 impl Pics {
@@ -65,15 +69,15 @@ impl Pics {
         Pics { slots: HashMap::new(), files: HashMap::new(), progress: HashMap::new(), work }
     }
 
-    /// `pic`'s texture once it's here (asked for the first time it's wanted).
-    pub fn get(&mut self, pic: &Pic, backend: &Backend) -> Option<&egui::TextureHandle> {
+    /// `pic` once it's here (asked for the first time it's wanted).
+    pub fn get(&mut self, pic: &Pic, backend: &Backend) -> Option<Arc<RenderImage>> {
         if !self.slots.contains_key(pic) {
             self.slots.insert(pic.clone(), Slot::Fetching);
             backend.send(Cmd::Fetch(pic.clone()));
             return None;
         }
         match self.slots.get(pic) {
-            Some(Slot::Ready(t)) => Some(t),
+            Some(Slot::Ready(t)) => Some(t.clone()),
             _ => None,
         }
     }
@@ -94,9 +98,9 @@ impl Pics {
         self.slots.insert(pic, Slot::Failed);
     }
 
-    pub fn decoded(&mut self, ctx: &egui::Context, d: Decoded) {
+    pub fn decoded(&mut self, d: Decoded) {
         let slot = match d.1 {
-            Ok(image) => Slot::Ready(ctx.load_texture(format!("{:?}", d.0), image, egui::TextureOptions::LINEAR)),
+            Ok(image) => Slot::Ready(image),
             Err(e) => {
                 tracing::debug!("telegram: a picture couldn’t be read: {e}");
                 Slot::Failed

@@ -30,11 +30,14 @@ pub struct WindowOptions {
     pub fixed: bool,
     /// Covers this output while the session is locked (`lock_session`).
     pub lock_output: Option<String>,
+    /// Belongs to the app's window that has the keyboard (a chat's Info
+    /// over its chat): opens over it, never a tab beside it.
+    pub child: bool,
 }
 
 impl WindowOptions {
     pub fn new(title: impl Into<SharedString>, width: f32, height: f32) -> Self {
-        WindowOptions { title: title.into(), size: (width, height), min_size: None, panel: true, floating: false, layer: None, dialog: None, fixed: false, lock_output: None }
+        WindowOptions { title: title.into(), size: (width, height), min_size: None, panel: true, floating: false, layer: None, dialog: None, fixed: false, lock_output: None, child: false }
     }
 
     /// A BAlert window `width` × `height`: fixed, modal over the app's
@@ -84,6 +87,13 @@ impl WindowOptions {
     /// Floats over auto-tiled windows (see [`Self::floating`]).
     pub fn floating(mut self) -> Self {
         self.floating = true;
+        self
+    }
+
+    /// Opens over the app's window that has the keyboard, as its own
+    /// (see [`Self::child`]).
+    pub fn child(mut self) -> Self {
+        self.child = true;
         self
     }
 
@@ -205,6 +215,9 @@ pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, bu
                 gpui::WindowKind::SessionLock
             } else if options.layer.is_some() {
                 gpui::WindowKind::LayerShell
+            } else if options.child {
+                // (Its parent is the window with the keyboard.)
+                gpui::WindowKind::Floating
             } else {
                 gpui::WindowKind::Normal
             },

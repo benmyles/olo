@@ -2,26 +2,26 @@
 //! tint of the keyboard's blue, theirs on the left on the card colour),
 //! with who sent it in a group, what it forwards or answers, its picture
 //! or file, its text (bold, italic, code, links, spoilers; emoji in
-//! colour), its time (edited, read ticks, views) and reactions under it.
-//! Stickers and a few emoji alone stand on the background with no
-//! balloon; service messages are a pill in the middle. Laying out is
-//! done once per message and width (`Laid`, cached by the view); painting
-//! reads it.
+//! colour, as Olo's GPUI draws them), its time (edited, read ticks,
+//! views) and reactions under it. Stickers and a few emoji alone stand on
+//! the background with no balloon; service messages are a pill in the
+//! middle. Laying out is done once per message and width (`Laid`, cached
+//! by the view); painting reads it.
 
 use std::sync::Arc;
 
-use olo_kit::{
-    egui::{self, Align2, Color32, FontFamily, FontId, Galley, Painter, Pos2, Rect, Stroke, Vec2, pos2, text::LayoutJob, vec2},
-    emoji, style,
-};
 use olo_tg::{EntityKind, Media, Message, Pending};
+use olo_ui::{
+    gpui::{App, BorderStyle, Bounds, Corners, Font, FontStyle, FontWeight, Hsla, PathBuilder, Pixels, Point, RenderImage, ShapedLine, SharedString, StrikethroughStyle, TextAlign, TextRun, UnderlineStyle, Window, WrappedLine, hsla, point, px, quad, rgb, size, transparent_black, white},
+    style::{self, Align},
+};
 
 /// Message text's size.
 pub const TEXT: f32 = 13.0;
 /// The time and other small print.
 pub const META: f32 = 10.5;
 /// Inside a balloon.
-pub const PAD: Vec2 = vec2(10.0, 6.0);
+pub const PAD: (f32, f32) = (10.0, 6.0);
 pub const RADIUS: f32 = 12.0;
 /// A corner where the balloon joins the next of the same sender's.
 pub const JOINED: f32 = 4.0;
@@ -33,42 +33,73 @@ pub const AVATAR: f32 = 32.0;
 pub const STICKER: f32 = 168.0;
 const REACTION_H: f32 = 24.0;
 
+/// A rectangle in points (laid out from a message's top left).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct R {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
+impl R {
+    pub fn new(x: f32, y: f32, w: f32, h: f32) -> R {
+        R { x, y, w, h }
+    }
+
+    pub fn right(&self) -> f32 {
+        self.x + self.w
+    }
+
+    pub fn bottom(&self) -> f32 {
+        self.y + self.h
+    }
+
+    pub fn at(&self, o: Point<Pixels>) -> Bounds<Pixels> {
+        Bounds { origin: point(o.x + px(self.x), o.y + px(self.y)), size: size(px(self.w), px(self.h)) }
+    }
+
+    fn shift(self, dx: f32) -> R {
+        R { x: self.x + dx, ..self }
+    }
+}
+
 /// The colours of a conversation.
 #[derive(Clone)]
 pub struct Look {
-    pub ground: Color32,
-    pub theirs: Color32,
-    pub theirs_edge: Color32,
-    pub ours: Color32,
-    pub ours_edge: Color32,
-    pub text: Color32,
-    pub dim: Color32,
-    pub link: Color32,
-    pub accent: Color32,
-    pub pill: Color32,
-    pub pill_text: Color32,
+    pub ground: Hsla,
+    pub theirs: Hsla,
+    pub theirs_edge: Hsla,
+    pub ours: Hsla,
+    pub ours_edge: Hsla,
+    pub text: Hsla,
+    pub dim: Hsla,
+    pub link: Hsla,
+    pub accent: Hsla,
+    pub pill: Hsla,
+    pub pill_text: Hsla,
     pub dark: bool,
 }
 
 impl Look {
-    pub fn of(p: &olo_theme::Palette) -> Look {
+    pub fn of(p: &olo_ui::palette::Palette) -> Look {
         let ink = style::card_ink(p);
-        let dark = p.mode == olo_theme::ThemeMode::Dark;
-        let card = [ink.card.r(), ink.card.g(), ink.card.b(), 255];
-        let ours = olo_theme::mix(card, p.keyboard_navigation, if dark { 0.30 } else { 0.15 });
-        let link = olo_theme::mix(p.keyboard_navigation, p.document_text, if dark { 0.0 } else { 0.15 });
+        let dark = p.mode == olo_ui::palette::ThemeMode::Dark;
+        let (_, card) = style::card_paper(p);
+        let ours = olo_ui::palette::mix(card, p.keyboard_navigation, if dark { 0.30 } else { 0.15 });
+        let link = olo_ui::palette::mix(p.keyboard_navigation, p.document_text, if dark { 0.0 } else { 0.15 });
         Look {
             ground: ink.gutter,
             theirs: ink.card,
             theirs_edge: ink.edge,
             ours: style::c(ours),
-            ours_edge: style::c(olo_theme::mix(ours, p.keyboard_navigation, 0.35)),
+            ours_edge: style::c(olo_ui::palette::mix(ours, p.keyboard_navigation, 0.35)),
             text: ink.text,
             dim: ink.dim,
             link: style::c(link),
             accent: style::c(p.keyboard_navigation),
-            pill: style::c(olo_theme::mix(p.document_text, p.document_background, if dark { 0.75 } else { 0.62 })).gamma_multiply(0.85),
-            pill_text: if dark { Color32::from_gray(235) } else { Color32::WHITE },
+            pill: style::c(olo_ui::palette::mix(p.document_text, p.document_background, if dark { 0.75 } else { 0.62 })).opacity(0.85),
+            pill_text: if dark { style::c([235, 235, 235, 255]) } else { white() },
             dark,
         }
     }
@@ -76,37 +107,34 @@ impl Look {
 
 /// Telegram's seven colours for people and chats (names in groups,
 /// pictures that are initials): bright for fills, and a readable ink.
-pub fn peer_color(id: i64, dark: bool) -> (Color32, Color32) {
-    const FILL: [[u8; 3]; 7] = [[0xFF, 0x84, 0x5E], [0xFE, 0xBB, 0x5B], [0xB6, 0x94, 0xF9], [0x9A, 0xD1, 0x64], [0x5B, 0xCB, 0xE3], [0x5C, 0xAF, 0xFA], [0xFF, 0x8A, 0xAC]];
-    const INK_LIGHT: [[u8; 3]; 7] = [[0xCC, 0x50, 0x49], [0xD6, 0x77, 0x22], [0x95, 0x5C, 0xDB], [0x40, 0xA9, 0x20], [0x30, 0x9E, 0xBA], [0x36, 0x8A, 0xD1], [0xC7, 0x50, 0x8B]];
-    const INK_DARK: [[u8; 3]; 7] = [[0xFF, 0x8E, 0x86], [0xFF, 0xA3, 0x57], [0xB1, 0x8F, 0xFF], [0x7C, 0xD6, 0x5F], [0x45, 0xD8, 0xE8], [0x7A, 0xC9, 0xFF], [0xFF, 0x7F, 0xD5]];
+pub fn peer_color(id: i64, dark: bool) -> (Hsla, Hsla) {
+    const FILL: [u32; 7] = [0xFF845E, 0xFEBB5B, 0xB694F9, 0x9AD164, 0x5BCBE3, 0x5CAFFA, 0xFF8AAC];
+    const INK_LIGHT: [u32; 7] = [0xCC5049, 0xD67722, 0x955CDB, 0x40A920, 0x309EBA, 0x368AD1, 0xC7508B];
+    const INK_DARK: [u32; 7] = [0xFF8E86, 0xFFA357, 0xB18FFF, 0x7CD65F, 0x45D8E8, 0x7AC9FF, 0xFF7FD5];
     let i = (id.unsigned_abs() % 7) as usize;
-    let rgb = |c: [u8; 3]| Color32::from_rgb(c[0], c[1], c[2]);
-    (rgb(FILL[i]), rgb(if dark { INK_DARK[i] } else { INK_LIGHT[i] }))
+    (rgb(FILL[i]).into(), rgb(if dark { INK_DARK[i] } else { INK_LIGHT[i] }).into())
 }
 
 /// A person's or chat's picture: their photo when it's here, else their
 /// initials on their colour, round.
-pub fn avatar(p: &Painter, r: Rect, id: i64, name: &str, tex: Option<&egui::TextureHandle>, dark: bool) {
-    let r = style::snap(p.ctx(), r);
-    if let Some(t) = tex {
-        olo_kit::icons::paint_round(p, r, t, Color32::from_black_alpha(30));
+pub fn avatar(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, id: i64, name: &str, img: Option<&Arc<RenderImage>>, dark: bool) {
+    let r = style::snap(window, r);
+    let radius = r.size.width.min(r.size.height) / 2.0;
+    let c = r.center();
+    if let Some(img) = img {
+        let _ = window.paint_image(r, Corners::all(radius), img.clone(), 0, false);
+        let hair = style::hairline(window);
+        window.paint_sector(c, radius - hair, radius, 0.0, std::f32::consts::TAU, hsla(0.0, 0.0, 0.0, 30.0 / 255.0));
         return;
     }
     let (fill, _) = peer_color(id, dark);
-    let c = r.center();
-    let radius = r.width().min(r.height()) / 2.0;
+    window.paint_sector(c, px(0.0), radius, 0.0, std::f32::consts::TAU, fill);
     // Lit from above: a lighter top half of the same colour.
-    p.circle_filled(c, radius, fill);
-    let top = Color32::from_rgba_unmultiplied(255, 255, 255, 28);
-    p.add(egui::Shape::convex_polygon(
-        (0..=32).map(|i| c + egui::Vec2::angled(std::f32::consts::PI + i as f32 / 32.0 * std::f32::consts::PI) * radius).collect(),
-        top,
-        Stroke::NONE,
-    ));
+    window.paint_sector(c, px(0.0), radius, 1.5 * std::f32::consts::PI, std::f32::consts::PI, hsla(0.0, 0.0, 1.0, 28.0 / 255.0));
     let letters = initials(name);
-    let size = (r.height() * if letters.chars().count() > 1 { 0.38 } else { 0.44 }).round();
-    style::label(p, c.x, c.y, egui::Align::Center, letters, FontId::new(size, style::bold()), Color32::WHITE);
+    let h = f32::from(r.size.height);
+    let size = (h * if letters.chars().count() > 1 { 0.38 } else { 0.44 }).round();
+    style::label(window, cx, c.x, c.y, Align::Center, letters, size, style::ui_font(FontWeight::BOLD), white());
 }
 
 /// "MO" for "Mira Okafor", "D" for "Design".
@@ -153,46 +181,194 @@ pub enum Hit {
     Sender(i64),
 }
 
+/// A line of text, shaped once: painted with its top at a point.
+#[derive(Clone)]
+pub struct Line {
+    pub shaped: ShapedLine,
+    pub w: f32,
+    pub h: f32,
+}
+
+impl Line {
+    /// From the top to the baseline.
+    pub fn baseline(&self) -> f32 {
+        let (a, d) = (f32::from(self.shaped.ascent), f32::from(self.shaped.descent));
+        (self.h - a - d) / 2.0 + a
+    }
+
+    pub fn paint(&self, window: &mut Window, cx: &mut App, at: Point<Pixels>) {
+        let _ = self.shaped.paint(at, px(self.h), window, cx);
+    }
+}
+
+/// The height of a line of `size` text.
+pub fn line_height(size: f32) -> f32 {
+    (size * style::LINE_HEIGHT).ceil()
+}
+
+pub fn font(weight: FontWeight) -> Font {
+    style::ui_font(weight)
+}
+
+fn italic() -> Font {
+    Font { style: FontStyle::Italic, ..style::ui_font(FontWeight::NORMAL) }
+}
+
+/// `text` on one line, cut short with "…" past `max_w`.
+pub fn line(window: &mut Window, text: &str, size: f32, font: Font, color: Hsla, max_w: Option<f32>) -> Line {
+    let text: SharedString = text.replace('\n', " ").into();
+    let text = match max_w {
+        Some(w) => style::fit(window, text, size, &font, px(w.max(10.0))),
+        None => text,
+    };
+    let run = TextRun { len: text.len(), font, color, background_color: None, underline: None, strikethrough: None };
+    let shaped = window.text_system().shape_line(text, px(size), &[run], None);
+    Line { w: f32::from(shaped.width), h: line_height(size), shaped }
+}
+
+/// Text wrapped to a width, paragraph by paragraph.
+#[derive(Clone)]
+pub struct Para {
+    pub lines: Vec<WrappedLine>,
+    pub lh: f32,
+    pub w: f32,
+    pub h: f32,
+    pub align: TextAlign,
+}
+
+/// Where each line of a wrapped paragraph starts (bytes in it).
+fn row_starts(p: &WrappedLine) -> Vec<usize> {
+    let layout = &p.unwrapped_layout;
+    std::iter::once(0).chain(p.wrap_boundaries().iter().map(|b| layout.runs[b.run_ix].glyphs[b.glyph_ix].index)).collect()
+}
+
+impl Para {
+    pub fn new(window: &mut Window, text: &str, size: f32, runs: &[TextRun], width: f32, lines_at_most: Option<usize>) -> Para {
+        let lh = line_height(size);
+        let lines: Vec<WrappedLine> = window.text_system().shape_text(SharedString::from(text.to_owned()), px(size), runs, Some(px(width)), lines_at_most).map(|l| l.into_vec()).unwrap_or_default();
+        // As wide as its widest line (not the width it was wrapped to).
+        let mut w: f32 = 0.0;
+        let mut rows = 0;
+        for p in &lines {
+            let starts = row_starts(p);
+            for (r, &s) in starts.iter().enumerate() {
+                let e = starts.get(r + 1).copied().unwrap_or(p.len());
+                let x0 = p.unwrapped_layout.x_for_index(s);
+                // (A wrap's trailing space isn't the line's.)
+                let end = if r + 1 < starts.len() { p.text[..e].trim_end().len().max(s) } else { e };
+                w = w.max(f32::from(p.unwrapped_layout.x_for_index(end) - x0));
+                rows += 1;
+            }
+        }
+        Para { lines, lh, w: w.ceil(), h: lh * rows.max(1) as f32, align: TextAlign::Left }
+    }
+
+    /// One run of `color` over all of `text`.
+    pub fn plain(window: &mut Window, text: &str, size: f32, font: Font, color: Hsla, width: f32, lines_at_most: Option<usize>) -> Para {
+        let run = TextRun { len: text.len(), font, color, background_color: None, underline: None, strikethrough: None };
+        Para::new(window, text, size, &[run], width, lines_at_most)
+    }
+
+    fn tops(&self) -> Vec<(usize, f32)> {
+        let (mut start, mut y) = (0, 0.0);
+        self.lines
+            .iter()
+            .map(|p| {
+                let out = (start, y);
+                start += p.len() + 1;
+                y += self.lh * (p.wrap_boundaries().len() + 1) as f32;
+                out
+            })
+            .collect()
+    }
+
+    pub fn paint(&self, window: &mut Window, cx: &mut App, at: Point<Pixels>) {
+        let width = px(self.w);
+        for (p, (_, y)) in self.lines.iter().zip(self.tops()) {
+            let origin = point(at.x, at.y + px(y));
+            let bounds = (self.align != TextAlign::Left).then(|| Bounds { origin, size: size(width, px(self.lh)) });
+            // (Code's and a hidden spoiler's grounds, under the glyphs.)
+            let _ = p.paint_background(origin, px(self.lh), self.align, bounds, window, cx);
+            let _ = p.paint(origin, px(self.lh), self.align, bounds, window, cx);
+        }
+    }
+
+    /// The byte of the text under `q` (from the text's top left), if any.
+    pub fn index_at(&self, q: Point<Pixels>) -> Option<usize> {
+        for (p, (start, y)) in self.lines.iter().zip(self.tops()) {
+            let h = self.lh * (p.wrap_boundaries().len() + 1) as f32;
+            let local = point(q.x, q.y - px(y));
+            if f32::from(local.y) >= 0.0 && f32::from(local.y) < h {
+                return p.index_for_position(local, px(self.lh)).ok().map(|i| start + i);
+            }
+        }
+        None
+    }
+
+    /// Where its last line ends, and that line's baseline (from the top).
+    pub fn last_line(&self) -> (f32, f32) {
+        let Some(p) = self.lines.last() else { return (0.0, self.h * 0.8) };
+        let starts = row_starts(p);
+        let x0 = p.unwrapped_layout.x_for_index(*starts.last().unwrap_or(&0));
+        let right = f32::from(p.unwrapped_layout.x_for_index(p.len()) - x0);
+        let (a, d) = (f32::from(p.unwrapped_layout.ascent), f32::from(p.unwrapped_layout.descent));
+        (right, self.h - self.lh + (self.lh - a - d) / 2.0 + a)
+    }
+
+    /// The span of lines (top and bottom) each byte range covers.
+    fn rows_of(&self, range: std::ops::Range<usize>) -> Option<(f32, f32)> {
+        let mut span: Option<(f32, f32)> = None;
+        for (p, (start, y)) in self.lines.iter().zip(self.tops()) {
+            let starts = row_starts(p);
+            for (r, &s) in starts.iter().enumerate() {
+                let e = starts.get(r + 1).copied().unwrap_or(p.len() + 1);
+                if start + s < range.end && start + e > range.start {
+                    let top = y + self.lh * r as f32;
+                    span = Some(span.map_or((top, top + self.lh), |(a, b)| (a.min(top), b.max(top + self.lh))));
+                }
+            }
+        }
+        span
+    }
+}
+
 /// A message laid out at a width.
 pub struct Laid {
     pub shape: Shape,
     /// Its whole height in the list (without the gap after it).
     pub height: f32,
     /// The balloon (or the bare thing), from the column's left.
-    pub bubble: Rect,
-    pub name: Option<(Arc<Galley>, Pos2)>,
-    pub forward: Option<(Arc<Galley>, Pos2)>,
+    pub bubble: R,
+    pub name: Option<(Line, (f32, f32))>,
+    pub forward: Option<(Line, (f32, f32))>,
     /// The quote: its box, the name and the text.
-    pub reply: Option<(Rect, Arc<Galley>, Arc<Galley>)>,
-    pub media: Option<Rect>,
+    pub reply: Option<(R, Line, Line)>,
+    pub media: Option<R>,
     /// File, voice and audio rows: their title and detail.
-    pub media_text: Option<(Arc<Galley>, Arc<Galley>)>,
-    /// A web page's preview: site, title, description.
-    pub page: Option<(Rect, Vec<(Arc<Galley>, Pos2)>)>,
-    pub poll: Option<Vec<(Arc<Galley>, Arc<Galley>, f32, Rect)>>,
-    pub text: Option<(Arc<Galley>, Pos2, Vec<String>)>,
-    pub meta: (Arc<Galley>, Pos2),
+    pub media_text: Option<(Line, Line)>,
+    /// A web page's preview: its bar and the site, title, description.
+    pub page: Option<(R, Vec<Placed>)>,
+    /// A poll: the question and kind, then each answer, its share and box.
+    pub poll: Option<Poll>,
+    pub text: Option<(Para, (f32, f32))>,
+    pub meta: (Line, (f32, f32)),
     /// The time sits on the picture (no text under it).
     pub meta_over: bool,
-    pub reactions: Vec<(Rect, String, Arc<Galley>, bool)>,
-    pub big_emoji: Option<(Arc<Galley>, Pos2, Vec<String>)>,
+    pub reactions: Vec<(R, Line, Line, String, bool)>,
+    pub big_emoji: Option<(Line, (f32, f32))>,
     pub avatar: bool,
 }
 
-fn galley(ctx: &egui::Context, job: LayoutJob) -> Arc<Galley> {
-    ctx.fonts_mut(|f| f.layout_job(job))
-}
+/// A paragraph and where it goes in the bubble.
+pub type Placed = (Para, (f32, f32));
 
-fn plain(ctx: &egui::Context, text: &str, font: FontId, color: Color32, width: f32) -> Arc<Galley> {
-    let mut job = LayoutJob::simple(text.to_owned(), font, color, width);
-    job.wrap.max_rows = 1;
-    job.wrap.break_anywhere = true;
-    let (job, _) = emoji::make_room(&job);
-    galley(ctx, job)
-}
+/// A poll laid out: the question, its kind and votes, where it heads the
+/// bubble, then each answer (its text, its share as text, the share, its
+/// row).
+pub type Poll = (Para, Line, R, Vec<(Line, Line, f32, R)>);
 
-/// The text with its formatting, as a layout job.
-pub fn text_job(m: &Message, look: &Look, width: f32, revealed: bool) -> LayoutJob {
+/// The text with its formatting, as runs over it.
+pub fn text_runs(m: &Message, look: &Look, revealed: bool) -> Vec<TextRun> {
     let text = &m.text;
     let mut cuts: Vec<usize> = vec![0, text.len()];
     for e in &m.entities {
@@ -201,40 +377,45 @@ pub fn text_job(m: &Message, look: &Look, width: f32, revealed: bool) -> LayoutJ
     }
     cuts.sort_unstable();
     cuts.dedup();
-    let mut job = LayoutJob { wrap: egui::text::TextWrapping { max_width: width, ..Default::default() }, ..Default::default() };
+    let mut runs = Vec::new();
     for w in cuts.windows(2) {
         let (a, b) = (w[0], w[1]);
         if a >= b || !text.is_char_boundary(a) || !text.is_char_boundary(b) {
             continue;
         }
-        let mut fmt = egui::TextFormat { font_id: FontId::proportional(TEXT), color: look.text, ..Default::default() };
+        let mut run = TextRun { len: b - a, font: font(FontWeight::NORMAL), color: look.text, background_color: None, underline: None, strikethrough: None };
         let mut bold = false;
         for e in m.entities.iter().filter(|e| e.start <= a && e.end >= b) {
             match &e.kind {
                 EntityKind::Bold => bold = true,
-                EntityKind::Italic | EntityKind::Quote => fmt.font_id.family = style::italic(),
-                EntityKind::Underline => fmt.underline = Stroke::new(1.0, look.text),
-                EntityKind::Strike => fmt.strikethrough = Stroke::new(1.0, look.text),
+                EntityKind::Italic | EntityKind::Quote => run.font = italic(),
+                EntityKind::Underline => run.underline = Some(UnderlineStyle { color: Some(look.text), thickness: px(1.0), wavy: false }),
+                EntityKind::Strike => run.strikethrough = Some(StrikethroughStyle { color: Some(look.text), thickness: px(1.0) }),
                 EntityKind::Code => {
-                    fmt.font_id = FontId::monospace(TEXT - 1.0);
-                    fmt.background = look.text.gamma_multiply(0.07);
+                    run.font = style::mono_font(FontWeight::NORMAL);
+                    run.background_color = Some(look.text.opacity(0.07));
                 }
                 // A block: one box behind its rows (`pre_boxes`).
-                EntityKind::Pre(_) => fmt.font_id = FontId::monospace(TEXT - 1.0),
+                EntityKind::Pre(_) => run.font = style::mono_font(FontWeight::NORMAL),
                 EntityKind::Spoiler if !revealed => {
-                    fmt.color = Color32::TRANSPARENT;
-                    fmt.background = look.dim;
+                    run.color = transparent_black();
+                    run.background_color = Some(look.dim);
                 }
-                k if k.is_link() => fmt.color = look.link,
+                k if k.is_link() => run.color = look.link,
                 _ => {}
             }
         }
-        if bold && fmt.font_id.family == FontFamily::Proportional {
-            fmt.font_id.family = style::bold();
+        if bold && run.font.family == font(FontWeight::NORMAL).family {
+            run.font.weight = FontWeight::BOLD;
         }
-        job.append(&text[a..b], 0.0, fmt);
+        runs.push(run);
     }
-    job
+    // (Runs cover every byte, joined where nothing changes.)
+    let covered: usize = runs.iter().map(|r| r.len).sum();
+    if covered < text.len() {
+        runs.push(TextRun { len: text.len() - covered, font: font(FontWeight::NORMAL), color: look.text, background_color: None, underline: None, strikethrough: None });
+    }
+    runs
 }
 
 /// The time, "edited", views: as it reads at the bottom of a balloon.
@@ -270,48 +451,47 @@ fn big_emoji(m: &Message) -> bool {
     if m.media.is_some() || t.is_empty() || t.chars().count() > 24 {
         return false;
     }
-    let found = emoji::clusters(t);
+    let found = olo_emoji::clusters(t);
     let covered: usize = found.iter().map(|r| r.len()).sum();
     !found.is_empty() && found.len() <= 3 && covered == t.chars().filter(|c| !c.is_whitespace()).map(char::len_utf8).sum::<usize>()
 }
 
 /// Lay out `m` for a column `col` wide.
 #[allow(clippy::too_many_arguments)]
-pub fn lay(ctx: &egui::Context, m: &Message, place: Place, look: &Look, col: f32, time: &str, sender_name: Option<&str>, revealed: bool) -> Laid {
-    let small = FontId::proportional(META);
+pub fn lay(window: &mut Window, m: &Message, place: Place, look: &Look, col: f32, time: &str, sender_name: Option<&str>, revealed: bool) -> Laid {
+    let normal = font(FontWeight::NORMAL);
+    let bold = font(FontWeight::BOLD);
     let ours = m.out;
     let left_room = if place.many && !ours { AVATAR + 8.0 } else { 0.0 };
     let max_w = (col - left_room - 48.0).clamp(120.0, MAX_WIDTH);
-    let meta_g = plain(ctx, &meta_text(m, time), small.clone(), look.dim, f32::INFINITY);
-    let meta_w = meta_g.size().x + if ours { TICKS + 2.0 } else { 0.0 };
+    let meta_g = line(window, &meta_text(m, time), META, normal.clone(), look.dim, None);
+    let meta_w = meta_g.w + if ours { TICKS + 2.0 } else { 0.0 };
+    let empty = |meta_g: Line| Laid {
+        shape: Shape::Service,
+        height: 0.0,
+        bubble: R::default(),
+        name: None,
+        forward: None,
+        reply: None,
+        media: None,
+        media_text: None,
+        page: None,
+        poll: None,
+        text: None,
+        meta: (meta_g, (0.0, 0.0)),
+        meta_over: false,
+        reactions: Vec::new(),
+        big_emoji: None,
+        avatar: false,
+    };
 
     // A service message: a pill in the middle.
     if let Some(s) = &m.service {
-        let g = {
-            let mut job = LayoutJob::simple(s.clone(), FontId::proportional(META + 0.5), look.pill_text, (col - 80.0).max(100.0));
-            job.halign = egui::Align::Center;
-            galley(ctx, job)
-        };
-        let size = g.size() + vec2(20.0, 8.0);
-        let r = Rect::from_center_size(pos2(col / 2.0, size.y / 2.0), size);
-        return Laid {
-            shape: Shape::Service,
-            height: size.y,
-            bubble: r,
-            name: None,
-            forward: None,
-            reply: None,
-            media: None,
-            media_text: None,
-            page: None,
-            poll: None,
-            text: Some((g, pos2(r.center().x, r.top() + 4.0), Vec::new())),
-            meta: (meta_g, Pos2::ZERO),
-            meta_over: false,
-            reactions: Vec::new(),
-            big_emoji: None,
-            avatar: false,
-        };
+        let mut g = Para::plain(window, s, META + 0.5, normal.clone(), look.pill_text, (col - 80.0).max(100.0), None);
+        g.align = TextAlign::Center;
+        let (w, h) = (g.w + 20.0, g.h + 8.0);
+        let r = R::new(col / 2.0 - w / 2.0, 0.0, w, h);
+        return Laid { shape: Shape::Service, height: h, bubble: r, text: Some((g, (r.x + 10.0, 4.0))), ..empty(meta_g) };
     }
 
     let bare_sticker = matches!(m.media, Some(Media::Sticker { .. }) | Some(Media::Dice { .. })) && m.text.is_empty() && m.reply_to.is_none() && m.forwarded.is_none();
@@ -322,74 +502,69 @@ pub fn lay(ctx: &egui::Context, m: &Message, place: Place, look: &Look, col: f32
                 _ => (1.0, 1.0),
             };
             let k = (STICKER / w).min(STICKER / h);
-            (vec2(w * k, h * k), None)
+            ((w * k, h * k), None)
         } else {
-            let n = emoji::clusters(m.text.trim()).len();
+            let n = olo_emoji::clusters(m.text.trim()).len();
             let size = [48.0, 40.0, 32.0][n.clamp(1, 3) - 1];
-            let job = LayoutJob::simple_singleline(m.text.trim().to_owned(), FontId::proportional(size), look.text);
-            let (job, found) = emoji::make_room(&job);
-            let g = galley(ctx, job);
-            (g.size(), Some((g, found)))
+            let g = line(window, m.text.trim(), size, normal.clone(), look.text, None);
+            ((g.w, g.h), Some(g))
         };
-        let meta_size = meta_g.size() + vec2(12.0 + if ours { TICKS } else { 0.0 }, 4.0);
-        let h = content.y + 4.0 + meta_size.y;
-        let x = if ours { col - content.x.max(meta_size.x) } else { left_room };
-        let bubble = Rect::from_min_size(pos2(x, 0.0), vec2(content.x.max(meta_size.x), h));
-        let media = Rect::from_min_size(pos2(if ours { bubble.right() - content.x } else { x }, 0.0), content);
-        let meta_pos = pos2(if ours { bubble.right() - meta_size.x } else { x }, content.y + 4.0);
-        let reactions = lay_reactions(ctx, m, look, bubble.left(), h + 4.0, MAX_WIDTH);
+        let meta_size = (meta_g.w + 12.0 + if ours { TICKS } else { 0.0 }, meta_g.h + 4.0);
+        let h = content.1 + 4.0 + meta_size.1;
+        let bw = content.0.max(meta_size.0);
+        let x = if ours { col - bw } else { left_room };
+        let bubble = R::new(x, 0.0, bw, h);
+        let media = R::new(if ours { bubble.right() - content.0 } else { x }, 0.0, content.0, content.1);
+        let meta_pos = (if ours { bubble.right() - meta_size.0 } else { x }, content.1 + 4.0);
+        let reactions = lay_reactions(window, m, look, bubble.x, h + 4.0, MAX_WIDTH);
         let height = reactions.last().map_or(h, |r| r.0.bottom());
         return Laid {
             shape: Shape::Bare,
             height,
             bubble,
-            name: None,
-            forward: None,
-            reply: None,
             media: big.is_none().then_some(media),
-            media_text: None,
-            page: None,
-            poll: None,
-            text: None,
             meta: (meta_g, meta_pos),
             meta_over: true,
             reactions,
-            big_emoji: big.map(|(g, f)| (g, media.min, f)),
+            big_emoji: big.map(|g| (g, (media.x, media.y))),
             avatar: place.many && !ours && place.last,
+            ..empty(line(window, "", META, normal.clone(), look.dim, None))
         };
     }
 
     // A balloon: its parts top to bottom, at widths up to `inner`.
-    let inner = max_w - 2.0 * PAD.x;
-    let mut y = PAD.y;
+    let (pad_x, pad_y) = PAD;
+    let inner = max_w - 2.0 * pad_x;
+    let mut y = pad_y;
     let mut width: f32 = 0.0;
     let name = (place.many && !ours && place.first)
-        .then(|| sender_name.map(|n| {
-            let ink = peer_color(m.from.as_ref().map_or(0, |f| f.id), look.dark).1;
-            plain(ctx, n, FontId::new(META + 1.0, style::bold()), ink, inner)
-        }))
+        .then(|| {
+            sender_name.map(|n| {
+                let ink = peer_color(m.from.as_ref().map_or(0, |f| f.id), look.dark).1;
+                line(window, n, META + 1.0, bold.clone(), ink, Some(inner))
+            })
+        })
         .flatten()
         .map(|g| {
-            let p = pos2(PAD.x, y);
-            y += g.size().y + 2.0;
-            width = width.max(g.size().x);
+            let p = (pad_x, y);
+            y += g.h + 2.0;
+            width = width.max(g.w);
             (g, p)
         });
     let forward = m.forwarded.as_ref().map(|f| {
-        let g = plain(ctx, &format!("Forwarded from {f}"), FontId::new(META + 0.5, style::bold()), look.link, inner);
-        let p = pos2(PAD.x, y);
-        y += g.size().y + 3.0;
-        width = width.max(g.size().x);
+        let g = line(window, &format!("Forwarded from {f}"), META + 0.5, bold.clone(), look.link, Some(inner));
+        let p = (pad_x, y);
+        y += g.h + 3.0;
+        width = width.max(g.w);
         (g, p)
     });
     let reply = m.reply_to.as_ref().map(|r| {
         let who = r.from.clone().unwrap_or_else(|| "Message".into());
-        let ink = look.link;
-        let ng = plain(ctx, &who, FontId::new(META + 0.5, style::bold()), ink, inner - 12.0);
-        let tg = plain(ctx, r.text.as_deref().unwrap_or("…"), FontId::proportional(META + 1.0), look.text, inner - 12.0);
-        let w = ng.size().x.max(tg.size().x) + 14.0;
-        let h = ng.size().y + tg.size().y + 8.0;
-        let rect = Rect::from_min_size(pos2(PAD.x, y), vec2(w, h));
+        let ng = line(window, &who, META + 0.5, bold.clone(), look.link, Some(inner - 12.0));
+        let tg = line(window, r.text.as_deref().unwrap_or("…"), META + 1.0, normal.clone(), look.text, Some(inner - 12.0));
+        let w = ng.w.max(tg.w) + 14.0;
+        let h = ng.h + tg.h + 8.0;
+        let rect = R::new(pad_x, y, w, h);
         y += h + 5.0;
         width = width.max(w);
         (rect, ng, tg)
@@ -405,66 +580,65 @@ pub fn lay(ctx: &egui::Context, m: &Message, place: Place, look: &Look, col: f32
         Some(Media::Photo { w, h, .. }) | Some(Media::Video { w, h, .. }) => {
             let (w, h) = ((*w).max(1) as f32, (*h).max(1) as f32);
             let round = matches!(m.media, Some(Media::Video { round: true, .. }));
-            let most = if round { vec2(220.0, 220.0) } else { vec2(max_w.min(400.0), 360.0) };
-            let k = (most.x / w).min(most.y / h);
-            let size = vec2((w * k).max(140.0).min(most.x), (h * k).max(80.0).min(most.y));
+            let most = if round { (220.0, 220.0) } else { (max_w.min(400.0), 360.0) };
+            let k = (most.0 / w).min(most.1 / h);
+            let sz = ((w * k).max(140.0).min(most.0), (h * k).max(80.0).min(most.1));
             // A picture opens the balloon edge to edge when it leads.
             if name.is_none() && forward.is_none() && reply.is_none() {
                 photo_top = true;
-                media = Some(Rect::from_min_size(pos2(0.0, 0.0), size));
-                y = size.y + PAD.y;
+                media = Some(R::new(0.0, 0.0, sz.0, sz.1));
+                y = sz.1 + pad_y;
             } else {
-                media = Some(Rect::from_min_size(pos2(PAD.x, y), size));
-                y += size.y + PAD.y;
+                media = Some(R::new(pad_x, y, sz.0, sz.1));
+                y += sz.1 + pad_y;
             }
-            width = width.max(size.x - if photo_top { 2.0 * PAD.x } else { 0.0 });
+            width = width.max(sz.0 - if photo_top { 2.0 * pad_x } else { 0.0 });
         }
         Some(Media::Voice { duration, .. }) => {
-            let r = Rect::from_min_size(pos2(PAD.x, y), vec2(inner.min(240.0), 40.0));
-            media_text = Some((plain(ctx, "", small.clone(), look.text, 10.0), plain(ctx, &olo_tg::clock(*duration), small.clone(), look.dim, 100.0)));
+            let r = R::new(pad_x, y, inner.min(240.0), 40.0);
+            media_text = Some((line(window, "", META, normal.clone(), look.text, None), line(window, &olo_tg::clock(*duration), META, normal.clone(), look.dim, None)));
             media = Some(r);
-            y += r.height() + 4.0;
-            width = width.max(r.width());
+            y += r.h + 4.0;
+            width = width.max(r.w);
         }
-        Some(Media::Audio { size, .. }) | Some(Media::File { size, .. }) => {
+        Some(Media::Audio { size: bytes, .. }) | Some(Media::File { size: bytes, .. }) => {
             let label = m.media.as_ref().map(Media::label).unwrap_or_default();
             let detail = match &m.media {
-                Some(Media::Audio { duration, .. }) => format!("{} · {}", olo_tg::clock(*duration), olo_tg::bytes(*size)),
-                _ => olo_tg::bytes(*size),
+                Some(Media::Audio { duration, .. }) => format!("{} · {}", olo_tg::clock(*duration), olo_tg::bytes(*bytes)),
+                _ => olo_tg::bytes(*bytes),
             };
-            let tg = plain(ctx, &label, FontId::new(TEXT - 0.5, style::bold()), look.text, inner - 52.0);
-            let dg = plain(ctx, &detail, small.clone(), look.dim, inner - 52.0);
-            let w = 52.0 + tg.size().x.max(dg.size().x);
-            let r = Rect::from_min_size(pos2(PAD.x, y), vec2(w.min(inner), 42.0));
+            let tg = line(window, &label, TEXT - 0.5, bold.clone(), look.text, Some(inner - 52.0));
+            let dg = line(window, &detail, META, normal.clone(), look.dim, Some(inner - 52.0));
+            let w = 52.0 + tg.w.max(dg.w);
+            let r = R::new(pad_x, y, w.min(inner), 42.0);
             media_text = Some((tg, dg));
             media = Some(r);
-            y += r.height() + 4.0;
-            width = width.max(r.width());
+            y += r.h + 4.0;
+            width = width.max(r.w);
         }
         Some(Media::WebPage { site, title, description, .. }) => {
             // After the text: laid out below, once the text is.
             page = Some((site.clone(), title.clone(), description.clone()));
         }
         Some(Media::Poll { question, answers, voters, closed, quiz }) => {
-            let qg = galley(ctx, LayoutJob::simple(question.clone(), FontId::new(TEXT, style::bold()), look.text, inner));
-            let mut rows = Vec::new();
+            let qg = Para::plain(window, question, TEXT, bold.clone(), look.text, inner, None);
             let total: u32 = answers.iter().map(|a| a.1).sum::<u32>().max(1);
-            let mut py = y + qg.size().y + 4.0;
             let kind = format!("{}{} · {} votes", if *closed { "Final results · " } else { "" }, if *quiz { "Quiz" } else { "Poll" }, voters);
-            let kg = plain(ctx, &kind, small.clone(), look.dim, inner);
-            py += kg.size().y + 6.0;
+            let kg = line(window, &kind, META, normal.clone(), look.dim, Some(inner));
+            let head = R::new(pad_x, y, inner, qg.h);
+            let mut py = y + qg.h + 4.0 + kg.h + 6.0;
+            let mut rows = Vec::new();
             for (text, votes) in answers {
                 let share = *votes as f32 / total as f32;
-                let tg = plain(ctx, text, FontId::proportional(TEXT - 0.5), look.text, inner - 44.0);
-                let pg = plain(ctx, &format!("{:.0}%", share * 100.0), FontId::new(META + 0.5, style::bold()), look.text, 40.0);
-                let row = Rect::from_min_size(pos2(PAD.x, py), vec2(inner.min(300.0), tg.size().y + 10.0));
+                let tg = line(window, text, TEXT - 0.5, normal.clone(), look.text, Some(inner - 44.0));
+                let pg = line(window, &format!("{:.0}%", share * 100.0), META + 0.5, bold.clone(), look.text, Some(40.0));
+                let row = R::new(pad_x, py, inner.min(300.0), tg.h + 10.0);
                 py = row.bottom() + 4.0;
                 rows.push((tg, pg, share, row));
             }
-            rows.insert(0, (qg, kg, -1.0, Rect::from_min_size(pos2(PAD.x, y), vec2(inner, 0.0))));
             y = py + 2.0;
             width = width.max(inner.min(300.0));
-            poll = Some(rows);
+            poll = Some((qg, kg, head, rows));
         }
         Some(other) if !matches!(other, Media::Sticker { .. }) => {
             let (label, detail) = match other {
@@ -473,57 +647,54 @@ pub fn lay(ctx: &egui::Context, m: &Message, place: Place, look: &Look, col: f32
                 Media::Dice { emoji, value } => (emoji.clone(), format!("rolled {value}")),
                 other => (other.label(), String::new()),
             };
-            let tg = plain(ctx, &label, FontId::new(TEXT - 0.5, style::bold()), look.text, inner);
-            let dg = plain(ctx, &detail, small.clone(), look.dim, inner);
-            let r = Rect::from_min_size(pos2(PAD.x, y), vec2(tg.size().x.max(dg.size().x).min(inner), tg.size().y + dg.size().y + 2.0));
+            let tg = line(window, &label, TEXT - 0.5, bold.clone(), look.text, Some(inner));
+            let dg = line(window, &detail, META, normal.clone(), look.dim, Some(inner));
+            let r = R::new(pad_x, y, tg.w.max(dg.w).min(inner), tg.h + dg.h + 2.0);
             media_text = Some((tg, dg));
             media = Some(r);
-            y += r.height() + 4.0;
-            width = width.max(r.width());
+            y += r.h + 4.0;
+            width = width.max(r.w);
         }
         Some(Media::Sticker { w, h, .. }) => {
             let (w, h) = ((*w).max(1) as f32, (*h).max(1) as f32);
             let k = (120.0 / w).min(120.0 / h);
-            let r = Rect::from_min_size(pos2(PAD.x, y), vec2(w * k, h * k));
+            let r = R::new(pad_x, y, w * k, h * k);
             media = Some(r);
-            y += r.height() + 4.0;
-            width = width.max(r.width());
+            y += r.h + 4.0;
+            width = width.max(r.w);
         }
         _ => {}
     }
 
     // The text, with the time after its last line if there's room.
     let mut text = None;
-    let mut meta_pos;
+    let mut meta_y;
     let mut meta_over = false;
     if !m.text.is_empty() {
-        let job = text_job(m, look, inner, revealed);
-        let (job, found) = emoji::make_room(&job);
-        let g = galley(ctx, job);
-        let last_w = g.rows.last().map_or(0.0, |r| r.rect().right());
+        let g = Para::new(window, &m.text, TEXT, &text_runs(m, look, revealed), inner, None);
+        let (last_w, last_base) = g.last_line();
         let fits_inline = last_w + 10.0 + meta_w <= inner;
-        let tw = g.size().x;
-        width = width.max(tw);
-        let tp = pos2(PAD.x, y);
-        y += g.size().y;
+        width = width.max(g.w);
+        let top = y;
+        y += g.h;
         if fits_inline {
             width = width.max(last_w + 10.0 + meta_w);
             // On the last line's baseline.
-            meta_pos = pos2(f32::NAN, tp.y + last_baseline(&g) - style::baseline_offset(&meta_g));
+            meta_y = top + last_base - meta_g.baseline();
         } else {
-            meta_pos = pos2(f32::NAN, y + 2.0);
-            y += meta_g.size().y + 2.0;
+            meta_y = y + 2.0;
+            y += meta_g.h + 2.0;
         }
-        text = Some((g, tp, found));
+        text = Some((g, (pad_x, top)));
     } else if photo_top && page.is_none() && poll.is_none() {
         // The time on the picture itself.
         meta_over = true;
-        meta_pos = pos2(f32::NAN, y - PAD.y - meta_g.size().y - 8.0);
-        y -= PAD.y;
+        meta_y = y - pad_y - meta_g.h - 8.0;
+        y -= pad_y;
     } else {
         width = width.max(meta_w);
-        meta_pos = pos2(f32::NAN, y);
-        y += meta_g.size().y;
+        meta_y = y;
+        y += meta_g.h;
     }
 
     // A web page's preview, under the text.
@@ -531,53 +702,48 @@ pub fn lay(ctx: &egui::Context, m: &Message, place: Place, look: &Look, col: f32
         y += 6.0;
         let top = y;
         let mut parts = Vec::new();
-        let x = PAD.x + 10.0;
+        let x = pad_x + 10.0;
         let w = inner - 10.0;
-        for (t, font, ink, rows) in [
-            (site, FontId::new(META + 0.5, style::bold()), look.link, 1),
-            (title, FontId::new(TEXT - 0.5, style::bold()), look.text, 2),
-            (description, FontId::proportional(TEXT - 1.0), look.text, 4),
-        ] {
+        for (t, f, ink, rows, sz) in [(site, bold.clone(), look.link, 1, META + 0.5), (title, bold.clone(), look.text, 2, TEXT - 0.5), (description, normal.clone(), look.text, 4, TEXT - 1.0)] {
             let Some(t) = t else { continue };
-            let mut job = LayoutJob::simple(t, font, ink, w);
-            job.wrap.max_rows = rows;
-            let g = galley(ctx, job);
-            parts.push((g.clone(), pos2(x, y)));
-            y += g.size().y + 1.0;
-            width = width.max(g.size().x + 10.0);
+            let g = Para::plain(window, &t, sz, f, ink, w, Some(rows));
+            let h = g.h;
+            width = width.max(g.w + 10.0);
+            parts.push((g, (x, y)));
+            y += h + 1.0;
         }
-        let r = Rect::from_min_max(pos2(PAD.x, top), pos2(PAD.x + 3.0, y));
+        let r = R::new(pad_x, top, 3.0, y - top);
         y += 4.0;
-        meta_pos = pos2(f32::NAN, y);
-        y += meta_g.size().y;
+        meta_y = y;
+        y += meta_g.h;
         (r, parts)
     });
 
-    let w = (width + 2.0 * PAD.x).max(meta_w + 2.0 * PAD.x + 8.0).min(max_w);
+    let w = (width + 2.0 * pad_x).max(meta_w + 2.0 * pad_x + 8.0).min(max_w);
     let w = match media {
-        Some(r) if photo_top => w.max(r.width()),
+        Some(r) if photo_top => w.max(r.w),
         _ => w,
     };
-    let h = y + if meta_over { 0.0 } else { PAD.y };
+    let h = y + if meta_over { 0.0 } else { pad_y };
     let x = if ours { col - w } else { left_room };
-    let bubble = Rect::from_min_size(pos2(x, 0.0), vec2(w, h));
-    meta_pos.x = bubble.right() - PAD.x - meta_w + if meta_over { -6.0 } else { 0.0 };
-    let shift = vec2(x, 0.0);
-    let reactions = lay_reactions(ctx, m, look, bubble.left(), bubble.bottom() + 4.0, max_w);
+    let bubble = R::new(x, 0.0, w, h);
+    let meta_x = bubble.right() - pad_x - meta_w + if meta_over { -6.0 } else { 0.0 };
+    let reactions = lay_reactions(window, m, look, bubble.x, bubble.bottom() + 4.0, max_w);
     let height = reactions.last().map_or(bubble.bottom(), |r| r.0.bottom());
+    let at = |p: (f32, f32)| (p.0 + x, p.1);
     Laid {
         shape: Shape::Bubble,
         height,
         bubble,
-        name: name.map(|(g, p)| (g, p + shift)),
-        forward: forward.map(|(g, p)| (g, p + shift)),
-        reply: reply.map(|(r, a, b)| (r.translate(shift), a, b)),
-        media: media.map(|r| if photo_top { Rect::from_min_size(r.min + shift, vec2(w, r.height())) } else { r.translate(shift) }),
+        name: name.map(|(g, p)| (g, at(p))),
+        forward: forward.map(|(g, p)| (g, at(p))),
+        reply: reply.map(|(r, a, b)| (r.shift(x), a, b)),
+        media: media.map(|r| if photo_top { R::new(r.x + x, r.y, w, r.h) } else { r.shift(x) }),
         media_text,
-        page: page.map(|(r, parts)| (r.translate(shift), parts.into_iter().map(|(g, p)| (g, p + shift)).collect())),
-        poll: poll.map(|rows| rows.into_iter().map(|(a, b, s, r)| (a, b, s, r.translate(shift))).collect()),
-        text: text.map(|(g, p, f)| (g, p + shift, f)),
-        meta: (meta_g, pos2(meta_pos.x, meta_pos.y)),
+        page: page.map(|(r, parts)| (r.shift(x), parts.into_iter().map(|(g, p)| (g, at(p))).collect())),
+        poll: poll.map(|(q, k, head, rows)| (q, k, head.shift(x), rows.into_iter().map(|(a, b, s, r)| (a, b, s, r.shift(x))).collect())),
+        text: text.map(|(g, p)| (g, at(p))),
+        meta: (meta_g, (meta_x, meta_y)),
         meta_over,
         reactions,
         big_emoji: None,
@@ -585,19 +751,20 @@ pub fn lay(ctx: &egui::Context, m: &Message, place: Place, look: &Look, col: f32
     }
 }
 
-fn lay_reactions(ctx: &egui::Context, m: &Message, look: &Look, x: f32, y: f32, max_w: f32) -> Vec<(Rect, String, Arc<Galley>, bool)> {
+fn lay_reactions(window: &mut Window, m: &Message, look: &Look, x: f32, y: f32, max_w: f32) -> Vec<(R, Line, Line, String, bool)> {
     let mut out = Vec::new();
     let (mut cx, mut cy) = (x, y);
     for r in &m.reactions {
-        let g = plain(ctx, &short_count(r.count), FontId::new(META + 0.5, style::bold()), if r.mine { Color32::WHITE } else { look.link }, 60.0);
+        let g = line(window, &short_count(r.count), META + 0.5, font(FontWeight::BOLD), if r.mine { white() } else { look.link }, None);
+        let e = line(window, &r.emoji, 13.0, font(FontWeight::NORMAL), look.text, None);
         // (Its emoji in from the chip's edge as the bubble's text is from
         // the bubble's, so they line up.)
-        let w = PAD.x + 18.0 + 4.0 + g.size().x + PAD.x;
+        let w = PAD.0 + 18.0 + 4.0 + g.w + PAD.0;
         if cx + w > x + max_w && cx > x {
             cx = x;
             cy += REACTION_H + 4.0;
         }
-        out.push((Rect::from_min_size(pos2(cx, cy), vec2(w, REACTION_H)), r.emoji.clone(), g, r.mine));
+        out.push((R::new(cx, cy, w, REACTION_H), e, g, r.emoji.clone(), r.mine));
         cx += w + 4.0;
     }
     out
@@ -605,10 +772,10 @@ fn lay_reactions(ctx: &egui::Context, m: &Message, look: &Look, x: f32, y: f32, 
 
 /// The balloon's corners: rounded fully, but a little where it joins
 /// the next or previous of the same sender's.
-fn corners(place: Place, ours: bool) -> egui::CornerRadius {
-    let (r, j) = (RADIUS as u8, JOINED as u8);
+fn corners(place: Place, ours: bool) -> Corners<Pixels> {
+    let (r, j) = (px(RADIUS), px(JOINED));
     let (top, bottom) = (if place.first { r } else { j }, if place.last { r } else { j });
-    if ours { egui::CornerRadius { nw: r, ne: top, sw: r, se: bottom } } else { egui::CornerRadius { nw: top, ne: r, sw: bottom, se: r } }
+    if ours { Corners { top_left: r, top_right: top, bottom_left: r, bottom_right: bottom } } else { Corners { top_left: top, top_right: r, bottom_left: bottom, bottom_right: r } }
 }
 
 /// What the painter needs besides the layout.
@@ -616,9 +783,9 @@ pub struct Paint<'a> {
     pub look: &'a Look,
     pub place: Place,
     /// The message's picture, when it's here.
-    pub picture: Option<&'a egui::TextureHandle>,
+    pub picture: Option<Arc<RenderImage>>,
     /// The sender's picture (groups), when it's here.
-    pub sender_pic: Option<&'a egui::TextureHandle>,
+    pub sender_pic: Option<Arc<RenderImage>>,
     /// How far a download or upload has got.
     pub progress: Option<f32>,
     /// Ours, read by them.
@@ -628,55 +795,132 @@ pub struct Paint<'a> {
     pub selected: bool,
 }
 
-/// Paint `laid` with its top-left at `o`; what's under the pointer.
-pub fn paint(p: &Painter, o: Pos2, m: &Message, laid: &Laid, pp: &Paint, pointer: Option<Pos2>) -> Option<Hit> {
+fn fill(window: &mut Window, b: Bounds<Pixels>, radius: impl Into<Corners<Pixels>>, color: Hsla) {
+    window.paint_quad(quad(b, radius.into(), color, px(0.0), transparent_black(), BorderStyle::Solid));
+}
+
+fn disc(window: &mut Window, c: Point<Pixels>, r: f32, color: Hsla) {
+    window.paint_sector(c, px(0.0), px(r), 0.0, std::f32::consts::TAU, color);
+}
+
+fn pt(o: Point<Pixels>, p: (f32, f32)) -> Point<Pixels> {
+    point(o.x + px(p.0), o.y + px(p.1))
+}
+
+/// What clicking `q` does in `laid`, painted with its top-left at `o`:
+/// a link or mention in the text, else the topmost area under it.
+pub fn hit_at(o: Point<Pixels>, m: &Message, laid: &Laid, q: Point<Pixels>) -> Option<Hit> {
+    let mut areas: Vec<(Bounds<Pixels>, Hit)> = Vec::new();
+    if laid.shape == Shape::Service {
+        return None;
+    }
+    // (A sticker or a picture alone has only itself and its reactions.)
+    let whole = laid.shape == Shape::Bubble;
+    if whole
+        && laid.avatar
+        && let Some(f) = &m.from
+    {
+        let bottom = laid.bubble.at(o).bottom();
+        areas.push((Bounds { origin: point(o.x, bottom - px(AVATAR)), size: size(px(AVATAR), px(AVATAR)) }, Hit::Sender(f.id)));
+    }
+    if whole
+        && let Some((g, p)) = &laid.name
+        && let Some(f) = &m.from
+    {
+        areas.push((Bounds { origin: pt(o, *p), size: size(px(g.w), px(g.h)) }, Hit::Sender(f.id)));
+    }
+    if whole
+        && let Some((r, ..)) = &laid.reply
+        && let Some(rt) = &m.reply_to
+    {
+        areas.push((r.at(o), Hit::Reply(rt.id)));
+    }
+    if let Some(r) = laid.media {
+        areas.push((r.at(o), Hit::Media));
+    }
+    if let Some((r, parts)) = &laid.page
+        && let Some(Media::WebPage { url, .. }) = &m.media
+    {
+        let whole = parts.iter().fold(r.at(o), |w, (g, p)| w.union(&Bounds { origin: pt(o, *p), size: size(px(g.w), px(g.h)) }));
+        areas.push((whole, Hit::Link(url.clone())));
+    }
+    for (r, _, _, emoji, _) in &laid.reactions {
+        areas.push((r.at(o), Hit::Reaction(emoji.clone())));
+    }
+    if whole
+        && let Some((g, p)) = &laid.text
+    {
+        let at = pt(o, *p);
+        if let Some(byte) = g.index_at(point(q.x - at.x, q.y - at.y))
+            && let Some(e) = m.entities.iter().find(|e| e.start <= byte && byte < e.end)
+        {
+            let word = m.text.get(e.start..e.end).unwrap_or("").to_owned();
+            let link = match &e.kind {
+                EntityKind::Url => Some(Hit::Link(word)),
+                EntityKind::Email => Some(Hit::Link(format!("mailto:{word}"))),
+                EntityKind::Phone => Some(Hit::Link(format!("tel:{word}"))),
+                EntityKind::TextUrl(u) => Some(Hit::Link(u.clone())),
+                EntityKind::Mention => Some(Hit::Mention(word)),
+                EntityKind::MentionName(id) => Some(Hit::MentionId(*id)),
+                EntityKind::Hashtag | EntityKind::Cashtag | EntityKind::BotCommand => Some(Hit::Hashtag(word)),
+                EntityKind::Spoiler => Some(Hit::Spoiler),
+                _ => None,
+            };
+            if link.is_some() {
+                return link;
+            }
+        }
+    }
+    areas.iter().rev().find(|(r, _)| r.contains(&q)).map(|(_, h)| h.clone())
+}
+
+/// Paint `laid` with its top-left at `o`.
+pub fn paint(window: &mut Window, cx: &mut App, o: Point<Pixels>, m: &Message, laid: &Laid, pp: &Paint) {
     let look = pp.look;
-    let at = |r: Rect| r.translate(o.to_vec2());
-    let mut areas: Vec<(Rect, Hit)> = Vec::new();
-    let mut over = |r: Rect, h: Hit| areas.push((r, h));
-    let mut link = None;
-    let bubble = at(laid.bubble);
+    let bubble = laid.bubble.at(o);
     match laid.shape {
         Shape::Service => {
-            p.rect_filled(style::snap(p.ctx(), bubble), bubble.height() / 2.0, look.pill);
-            if let Some((g, pos, _)) = &laid.text {
-                p.galley(pos2(o.x + pos.x - g.size().x / 2.0, o.y + pos.y), g.clone(), look.pill_text);
+            let b = style::snap(window, bubble);
+            fill(window, b, b.size.height / 2.0, look.pill);
+            if let Some((g, p)) = &laid.text {
+                g.paint(window, cx, pt(o, *p));
             }
-            return None;
+            return;
         }
         Shape::Bare => {
             if let Some(r) = laid.media {
-                let r = at(r);
-                match pp.picture {
-                    Some(t) => {
-                        p.image(t.id(), style::snap(p.ctx(), r), Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+                let r = r.at(o);
+                match &pp.picture {
+                    Some(img) => {
+                        let _ = window.paint_image(style::snap(window, r), Corners::default(), img.clone(), 0, false);
                     }
                     None => {
                         let label = match &m.media {
                             Some(Media::Sticker { emoji, .. }) | Some(Media::Dice { emoji, .. }) => emoji.clone(),
                             _ => String::new(),
                         };
-                        if !emoji::paint(p, r.shrink(r.width() * 0.2), &label) {
-                            p.rect_filled(r, 12.0, look.theirs.gamma_multiply(0.6));
+                        if label.is_empty() {
+                            fill(window, r, px(12.0), look.theirs.opacity(0.6));
+                        } else {
+                            let size = f32::from(r.size.width) * 0.5;
+                            style::label(window, cx, r.center().x, r.center().y, Align::Center, label, size, font(FontWeight::NORMAL), look.text);
                         }
                     }
                 }
-                over(r, Hit::Media);
             }
-            if let Some((g, pos, found)) = &laid.big_emoji {
-                let pos = o + pos.to_vec2();
-                p.galley(pos, g.clone(), look.text);
-                emoji::paint_in(p, pos, g, found, look.text);
+            if let Some((g, p)) = &laid.big_emoji {
+                g.paint(window, cx, pt(o, *p));
             }
             let (g, mp) = &laid.meta;
-            let mr = Rect::from_min_size(o + mp.to_vec2(), g.size() + vec2(12.0 + if m.out { TICKS } else { 0.0 }, 4.0));
-            p.rect_filled(style::snap(p.ctx(), mr), mr.height() / 2.0, look.pill);
-            p.galley(mr.min + vec2(6.0, 2.0), g.clone(), look.pill_text);
+            let mr = Bounds { origin: pt(o, *mp), size: size(px(g.w + 12.0 + if m.out { TICKS } else { 0.0 }), px(g.h + 4.0)) };
+            let mr = style::snap(window, mr);
+            fill(window, mr, mr.size.height / 2.0, look.pill);
+            g.paint(window, cx, point(mr.origin.x + px(6.0), mr.origin.y + px(2.0)));
             if m.out {
-                ticks(p, pos2(mr.right() - 6.0 - TICKS + 2.0, mr.center().y), pp.read, m.pending, look.pill_text);
+                ticks(window, cx, point(mr.right() - px(6.0 + TICKS - 2.0), mr.center().y), pp.read, m.pending, look.pill_text);
             }
-            paint_reactions(p, o, laid, look, &mut over);
-            return under(&areas, pointer);
+            paint_reactions(window, cx, o, laid, look);
+            return;
         }
         Shape::Bubble => {}
     }
@@ -685,359 +929,316 @@ pub fn paint(p: &Painter, o: Pos2, m: &Message, laid: &Laid, pp: &Paint, pointer
     if laid.avatar
         && let Some(f) = &m.from
     {
-        let r = Rect::from_min_size(pos2(o.x, bubble.bottom() - AVATAR), vec2(AVATAR, AVATAR));
-        avatar(p, r, f.id, &f.name, pp.sender_pic, look.dark);
-        over(r, Hit::Sender(f.id));
+        let r = Bounds { origin: point(o.x, bubble.bottom() - px(AVATAR)), size: size(px(AVATAR), px(AVATAR)) };
+        avatar(window, cx, r, f.id, &f.name, pp.sender_pic.as_ref(), look.dark);
     }
-    let (fill, edge) = if m.out { (look.ours, look.ours_edge) } else { (look.theirs, look.theirs_edge) };
+    let (fill_c, edge) = if m.out { (look.ours, look.ours_edge) } else { (look.theirs, look.theirs_edge) };
     let corners = corners(pp.place, m.out);
-    let br = style::snap(p.ctx(), bubble);
+    let br = style::snap(window, bubble);
     // A soft lift, as a card's: a whole device pixel or two down.
-    let ppp = p.ctx().pixels_per_point();
-    p.rect_filled(br.translate(vec2(0.0, ppp.round().max(1.0) / ppp)), corners, Color32::from_black_alpha(if look.dark { 50 } else { 14 }));
-    p.rect(br, corners, if pp.selected { fill.lerp_to_gamma(look.accent, 0.25) } else { fill }, Stroke::new(style::hairline(p.ctx()), edge), egui::StrokeKind::Inside);
+    let s = window.scale_factor();
+    let lift = Bounds { origin: point(br.origin.x, br.origin.y + px(s.round().max(1.0) / s)), size: br.size };
+    fill(window, lift, corners, hsla(0.0, 0.0, 0.0, if look.dark { 50.0 } else { 14.0 } / 255.0));
+    let face = if pp.selected { blend(fill_c, look.accent, 0.25) } else { fill_c };
+    window.paint_quad(quad(br, corners, face, style::hairline(window), edge, BorderStyle::Solid));
 
-    if let Some((g, pos)) = &laid.name {
-        let r = Rect::from_min_size(o + pos.to_vec2(), g.size());
-        p.galley(r.min, g.clone(), look.text);
-        if let Some(f) = &m.from {
-            over(r, Hit::Sender(f.id));
-        }
+    if let Some((g, p)) = &laid.name {
+        g.paint(window, cx, pt(o, *p));
     }
-    if let Some((g, pos)) = &laid.forward {
-        p.galley(o + pos.to_vec2(), g.clone(), look.link);
+    if let Some((g, p)) = &laid.forward {
+        g.paint(window, cx, pt(o, *p));
     }
     if let Some((r, ng, tg)) = &laid.reply {
-        let r = at(*r);
-        p.rect_filled(style::snap(p.ctx(), r), 4.0, look.link.gamma_multiply(0.10));
-        p.rect_filled(style::snap(p.ctx(), Rect::from_min_size(r.min, vec2(3.0, r.height()))), egui::CornerRadius { nw: 4, sw: 4, ne: 0, se: 0 }, look.link);
-        p.galley(r.min + vec2(9.0, 3.0), ng.clone(), look.link);
-        p.galley(r.min + vec2(9.0, 4.0 + ng.size().y), tg.clone(), look.text);
-        if let Some(rt) = &m.reply_to {
-            over(r, Hit::Reply(rt.id));
-        }
+        let r = style::snap(window, r.at(o));
+        fill(window, r, px(4.0), look.link.opacity(0.10));
+        let bar = style::snap(window, Bounds { origin: r.origin, size: size(px(3.0), r.size.height) });
+        fill(window, bar, Corners { top_left: px(4.0), bottom_left: px(4.0), top_right: px(0.0), bottom_right: px(0.0) }, look.link);
+        ng.paint(window, cx, point(r.origin.x + px(9.0), r.origin.y + px(3.0)));
+        tg.paint(window, cx, point(r.origin.x + px(9.0), r.origin.y + px(4.0 + ng.h)));
     }
     if let Some(r) = laid.media {
-        let r = at(r);
-        paint_media(p, r, m, laid, pp, corners);
-        over(r, Hit::Media);
+        let r = r.at(o);
+        paint_media(window, cx, r, m, laid, pp, corners);
     }
     if let Some((r, parts)) = &laid.page {
-        let r = at(*r);
-        p.rect_filled(style::snap(p.ctx(), r), 1.5, look.link);
-        for (g, pos) in parts {
-            p.galley(o + pos.to_vec2(), g.clone(), look.text);
-        }
-        if let Some(Media::WebPage { url, .. }) = &m.media {
-            let whole = parts.iter().fold(r, |acc, (g, pos)| acc.union(Rect::from_min_size(o + pos.to_vec2(), g.size())));
-            over(whole, Hit::Link(url.clone()));
+        let rr = style::snap(window, r.at(o));
+        fill(window, rr, px(1.5), look.link);
+        for (g, p) in parts {
+            g.paint(window, cx, pt(o, *p));
         }
     }
-    if let Some(rows) = &laid.poll {
-        for (i, (a, b, share, r)) in rows.iter().enumerate() {
-            let r = at(*r);
-            if i == 0 {
-                p.galley(r.min, a.clone(), look.text);
-                p.galley(r.min + vec2(0.0, a.size().y + 2.0), b.clone(), look.dim);
-                continue;
-            }
+    if let Some((qg, kg, head, rows)) = &laid.poll {
+        let h = head.at(o);
+        qg.paint(window, cx, h.origin);
+        kg.paint(window, cx, point(h.origin.x, h.origin.y + px(qg.h + 2.0)));
+        for (a, b, share, r) in rows {
+            let r = r.at(o);
             // The answer and its share on one baseline.
-            let baseline = style::snap_coord(p.ctx(), r.top() + style::baseline_offset(a));
-            p.galley(style::galley_on_baseline(p.ctx(), a, r.left() + 40.0, baseline), a.clone(), look.text);
-            p.galley(style::galley_on_baseline(p.ctx(), b, r.left() + 34.0 - b.size().x, baseline), b.clone(), look.text);
-            let bar = Rect::from_min_size(pos2(r.left() + 40.0, r.bottom() - 5.0), vec2((r.width() - 40.0) * share.max(0.02), 3.0));
-            p.rect_filled(style::snap(p.ctx(), bar), 1.5, look.link);
+            let baseline = style::snap_coord(window, r.origin.y + px(a.baseline()));
+            a.paint(window, cx, point(r.origin.x + px(40.0), baseline - px(a.baseline())));
+            b.paint(window, cx, point(r.origin.x + px(34.0 - b.w), baseline - px(b.baseline())));
+            let bar = Bounds { origin: point(r.origin.x + px(40.0), r.bottom() - px(5.0)), size: size((r.size.width - px(40.0)) * share.max(0.02), px(3.0)) };
+            fill(window, style::snap(window, bar), px(1.5), look.link);
         }
     }
-    if let Some((g, pos, found)) = &laid.text {
-        let pos = o + pos.to_vec2();
-        for r in pre_boxes(m, g) {
-            let r = Rect::from_min_max(pos2(pos.x - 4.0, pos.y + r.top() - 2.0), pos2(pos.x + g.size().x + 4.0, pos.y + r.bottom() + 2.0));
-            p.rect_filled(style::snap(p.ctx(), r), 6.0, look.text.gamma_multiply(0.06));
-        }
-        p.galley(pos, g.clone(), look.text);
-        emoji::paint_in(p, pos, g, found, look.text);
-        if let Some(q) = pointer {
-            let r = Rect::from_min_size(pos, g.size());
-            if r.contains(q) {
-                let c = g.cursor_from_pos(q - pos);
-                let byte = m.text.char_indices().nth(c.index.0).map_or(m.text.len(), |(b, _)| b);
-                if let Some(e) = m.entities.iter().find(|e| e.start <= byte && byte < e.end) {
-                    let word = m.text.get(e.start..e.end).unwrap_or("").to_owned();
-                    let h = match &e.kind {
-                        EntityKind::Url => Some(Hit::Link(word)),
-                        EntityKind::Email => Some(Hit::Link(format!("mailto:{word}"))),
-                        EntityKind::Phone => Some(Hit::Link(format!("tel:{word}"))),
-                        EntityKind::TextUrl(u) => Some(Hit::Link(u.clone())),
-                        EntityKind::Mention => Some(Hit::Mention(word)),
-                        EntityKind::MentionName(id) => Some(Hit::MentionId(*id)),
-                        EntityKind::Hashtag | EntityKind::Cashtag | EntityKind::BotCommand => Some(Hit::Hashtag(word)),
-                        EntityKind::Spoiler => Some(Hit::Spoiler),
-                        _ => None,
-                    };
-                    if let Some(h) = h {
-                        link = Some(h);
-                    }
-                }
+    if let Some((g, p)) = &laid.text {
+        let at = pt(o, *p);
+        for e in m.entities.iter().filter(|e| matches!(e.kind, EntityKind::Pre(_))) {
+            if let Some((top, bottom)) = g.rows_of(e.start..e.end) {
+                let r = Bounds::from_corners(point(at.x - px(4.0), at.y + px(top - 2.0)), point(at.x + px(g.w + 4.0), at.y + px(bottom + 2.0)));
+                fill(window, style::snap(window, r), px(6.0), look.text.opacity(0.06));
             }
         }
+        g.paint(window, cx, at);
     }
     let (g, mp) = &laid.meta;
-    let mp = o + mp.to_vec2();
-    let ppp = p.ctx().pixels_per_point();
-    let mp = pos2((mp.x * ppp).round() / ppp, (mp.y * ppp).round() / ppp);
-    let ink = if laid.meta_over { Color32::WHITE } else if m.pending == Some((0, Pending::Failed)) { Color32::RED } else { look.dim };
+    let mp = pt(o, *mp);
+    let mp = point(style::snap_coord(window, mp.x), style::snap_coord(window, mp.y));
+    let ink = if laid.meta_over {
+        white()
+    } else if m.pending == Some((0, Pending::Failed)) {
+        rgb(0xFF0000).into()
+    } else {
+        look.dim
+    };
     if laid.meta_over {
-        let mr = Rect::from_min_size(mp - vec2(6.0, 2.0), g.size() + vec2(12.0 + if m.out { TICKS } else { 0.0 }, 4.0));
-        p.rect_filled(style::snap(p.ctx(), mr), mr.height() / 2.0, Color32::from_black_alpha(110));
+        let mr = Bounds { origin: point(mp.x - px(6.0), mp.y - px(2.0)), size: size(px(g.w + 12.0 + if m.out { TICKS } else { 0.0 }), px(g.h + 4.0)) };
+        let mr = style::snap(window, mr);
+        fill(window, mr, mr.size.height / 2.0, hsla(0.0, 0.0, 0.0, 110.0 / 255.0));
     }
     if m.views.is_some() {
-        eye(p, pos2(mp.x - 9.0, mp.y + g.size().y / 2.0), ink);
+        eye(window, point(mp.x - px(9.0), mp.y + px(g.h / 2.0)), ink);
     }
-    p.galley(mp, g.clone(), ink);
+    g.paint(window, cx, mp);
     if m.out {
-        let tick_ink = if laid.meta_over { Color32::WHITE } else if pp.read { look.link } else { look.dim };
-        ticks(p, pos2(mp.x + g.size().x + 3.0, mp.y + g.size().y / 2.0), pp.read, m.pending, tick_ink);
+        let tick_ink = if laid.meta_over { white() } else if pp.read { look.link } else { look.dim };
+        ticks(window, cx, point(mp.x + px(g.w + 3.0), mp.y + px(g.h / 2.0)), pp.read, m.pending, tick_ink);
     }
-    paint_reactions(p, o, laid, look, &mut over);
-    link.or_else(|| under(&areas, pointer))
+    paint_reactions(window, cx, o, laid, look);
 }
 
-/// Where a galley's last line has its baseline, from its top (as
-/// `style::baseline_offset` has the first's).
-fn last_baseline(g: &Galley) -> f32 {
-    g.rows
-        .last()
-        .and_then(|r| r.row.glyphs.first().map(|gl| r.pos.y + gl.pos.y + gl.font_ascent - gl.font_face_ascent - 0.5 * (gl.font_height - gl.font_face_height)))
-        .unwrap_or(g.size().y * 0.8)
+/// `a` taken `t` of the way to `b`.
+pub fn blend(a: Hsla, b: Hsla, t: f32) -> Hsla {
+    let (a, b) = (a.to_rgb(), b.to_rgb());
+    olo_ui::gpui::Rgba { r: a.r + (b.r - a.r) * t, g: a.g + (b.g - a.g) * t, b: a.b + (b.b - a.b) * t, a: a.a + (b.a - a.a) * t }.into()
 }
 
-/// The rows each code block (a `Pre` entity) takes in `g`, as one
-/// rect (in the galley's coordinates) per block.
-fn pre_boxes(m: &Message, g: &Galley) -> Vec<Rect> {
-    let mut out = Vec::new();
-    for e in m.entities.iter().filter(|e| matches!(e.kind, EntityKind::Pre(_))) {
-        let chars = |b: usize| m.text.get(..b.min(m.text.len())).map_or(0, |t| t.chars().count());
-        let (from, to) = (chars(e.start), chars(e.end));
-        let mut at = 0;
-        let mut rect: Option<Rect> = None;
-        for row in &g.rows {
-            let n = row.char_count_including_newline().0;
-            if at + n > from && at < to {
-                let r = row.rect();
-                rect = Some(rect.map_or(r, |x| x.union(r)));
-            }
-            at += n;
-        }
-        out.extend(rect);
-    }
-    out
-}
-
-/// The last of `areas` under the pointer (later ones are on top).
-fn under(areas: &[(Rect, Hit)], pointer: Option<Pos2>) -> Option<Hit> {
-    let q = pointer?;
-    areas.iter().rev().find(|(r, _)| r.contains(q)).map(|(_, h)| h.clone())
-}
-
-fn paint_reactions(p: &Painter, o: Pos2, laid: &Laid, look: &Look, over: &mut impl FnMut(Rect, Hit)) {
-    for (r, e, g, mine) in &laid.reactions {
-        let r = r.translate(o.to_vec2());
-        let fill = if *mine { look.accent } else { look.link.gamma_multiply(0.14) };
-        p.rect_filled(style::snap(p.ctx(), r), r.height() / 2.0, fill);
+fn paint_reactions(window: &mut Window, cx: &mut App, o: Point<Pixels>, laid: &Laid, look: &Look) {
+    for (r, e, g, _, mine) in &laid.reactions {
+        let r = style::snap(window, r.at(o));
+        let face = if *mine { look.accent } else { look.link.opacity(0.14) };
+        fill(window, r, r.size.height / 2.0, face);
         // The count centred in the chip by its figures, the emoji on
         // their middle (as a mark beside text is).
-        let size = META + 0.5;
-        let baseline = style::baseline_at(p.ctx(), r.center().y, size);
-        let caps = baseline - size * style::CAP_HEIGHT / 2.0;
-        let er = style::snap_centred(p.ctx(), pos2(r.left() + PAD.x + 9.0, caps), vec2(18.0, 18.0));
-        if !emoji::paint(p, er, e) {
-            p.text(er.center(), Align2::CENTER_CENTER, e, FontId::proportional(13.0), look.text);
-        }
-        p.galley(style::galley_on_baseline(p.ctx(), g, er.right() + 4.0, baseline), g.clone(), if *mine { Color32::WHITE } else { look.link });
-        over(r, Hit::Reaction(e.clone()));
+        let size_ = META + 0.5;
+        let baseline = style::baseline_at(window, r.center().y, size_);
+        let caps = baseline - px(size_ * style::CAP_HEIGHT / 2.0);
+        let ex = r.origin.x + px(PAD.0);
+        e.paint(window, cx, point(ex, caps - px(e.h / 2.0)));
+        g.paint(window, cx, point(ex + px(18.0 + 4.0), baseline - px(g.baseline())));
     }
 }
 
-fn paint_media(p: &Painter, r: Rect, m: &Message, laid: &Laid, pp: &Paint, corners: egui::CornerRadius) {
+fn triangle(window: &mut Window, pts: [(f32, f32); 3], c: Point<Pixels>, color: Hsla) {
+    let mut path = PathBuilder::fill();
+    path.move_to(point(c.x + px(pts[0].0), c.y + px(pts[0].1)));
+    path.line_to(point(c.x + px(pts[1].0), c.y + px(pts[1].1)));
+    path.line_to(point(c.x + px(pts[2].0), c.y + px(pts[2].1)));
+    path.close();
+    if let Ok(path) = path.build() {
+        window.paint_path(path, color);
+    }
+}
+
+fn paint_media(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, m: &Message, laid: &Laid, pp: &Paint, corners: Corners<Pixels>) {
     let look = pp.look;
     match &m.media {
         Some(Media::Photo { .. }) | Some(Media::Video { .. }) => {
             let round = matches!(m.media, Some(Media::Video { round: true, .. }));
             let leads = laid.name.is_none() && laid.forward.is_none() && laid.reply.is_none();
-            let mut c = if leads { egui::CornerRadius { sw: 0, se: 0, ..corners } } else { egui::CornerRadius::same(6) };
+            let mut c = if leads { Corners { bottom_left: px(0.0), bottom_right: px(0.0), ..corners } } else { Corners::all(px(6.0)) };
             if leads && laid.text.is_none() && laid.page.is_none() {
                 c = corners;
             }
-            let rr = style::snap(p.ctx(), r);
-            match pp.picture {
-                Some(t) if round => olo_kit::icons::paint_round(p, rr, t, Color32::TRANSPARENT),
-                Some(t) => {
-                    let k = (rr.width() / rr.height().max(1.0)) / (t.size_vec2().x / t.size_vec2().y.max(1.0));
-                    let uv = if k > 1.0 {
-                        let h = 1.0 / k;
-                        Rect::from_min_max(pos2(0.0, (1.0 - h) / 2.0), pos2(1.0, (1.0 + h) / 2.0))
+            let rr = style::snap(window, r);
+            match &pp.picture {
+                Some(img) if round => {
+                    let _ = window.paint_image(rr, Corners::all(rr.size.width / 2.0), img.clone(), 0, false);
+                }
+                Some(img) => {
+                    // Filling the box, cut to it where its shape differs.
+                    let s = img.size(0);
+                    let (iw, ih) = (s.width.0.max(1) as f32, s.height.0.max(1) as f32);
+                    let (bw, bh) = (f32::from(rr.size.width), f32::from(rr.size.height).max(1.0));
+                    let k = (bw / bh) / (iw / ih);
+                    if (k - 1.0).abs() < 0.02 {
+                        let _ = window.paint_image(rr, c, img.clone(), 0, false);
                     } else {
-                        Rect::from_min_max(pos2((1.0 - k) / 2.0, 0.0), pos2((1.0 + k) / 2.0, 1.0))
-                    };
-                    p.add(egui::epaint::RectShape::filled(rr, c, Color32::WHITE).with_texture(t.id(), uv));
+                        let (w, h) = if k > 1.0 { (bw, bw * ih / iw) } else { (bh * iw / ih, bh) };
+                        let full = Bounds { origin: point(rr.center().x - px(w / 2.0), rr.center().y - px(h / 2.0)), size: size(px(w), px(h)) };
+                        window.with_content_mask(Some(olo_ui::gpui::ContentMask { bounds: rr }), |window| {
+                            let _ = window.paint_image(full, Corners::default(), img.clone(), 0, false);
+                        });
+                    }
                 }
-                None => {
-                    p.rect_filled(rr, c, look.text.gamma_multiply(0.08));
-                }
+                None => fill(window, rr, if round { Corners::all(rr.size.width / 2.0) } else { c }, look.text.opacity(0.08)),
             }
             if let Some(Media::Video { duration, .. }) = &m.media {
                 // A play button and the length.
                 let cc = rr.center();
-                p.circle_filled(cc, 22.0, Color32::from_black_alpha(120));
-                let tri = vec![cc + vec2(-6.0, -9.0), cc + vec2(-6.0, 9.0), cc + vec2(10.0, 0.0)];
-                p.add(egui::Shape::convex_polygon(tri, Color32::WHITE, Stroke::NONE));
-                let t = olo_tg::clock(*duration);
-                let g = plain(p.ctx(), &t, FontId::proportional(META), Color32::WHITE, 80.0);
-                let tr = Rect::from_min_size(rr.min + vec2(6.0, 6.0), g.size() + vec2(10.0, 4.0));
-                p.rect_filled(tr, tr.height() / 2.0, Color32::from_black_alpha(120));
-                p.galley(tr.min + vec2(5.0, 2.0), g, Color32::WHITE);
+                disc(window, cc, 22.0, hsla(0.0, 0.0, 0.0, 120.0 / 255.0));
+                triangle(window, [(-6.0, -9.0), (-6.0, 9.0), (10.0, 0.0)], cc, white());
+                let g = line(window, &olo_tg::clock(*duration), META, font(FontWeight::NORMAL), white(), None);
+                let tr = Bounds { origin: point(rr.origin.x + px(6.0), rr.origin.y + px(6.0)), size: size(px(g.w + 10.0), px(g.h + 4.0)) };
+                fill(window, tr, tr.size.height / 2.0, hsla(0.0, 0.0, 0.0, 120.0 / 255.0));
+                g.paint(window, cx, point(tr.origin.x + px(5.0), tr.origin.y + px(2.0)));
             }
             if let Some(f) = pp.progress {
-                ring(p, rr.center(), 20.0, f, Color32::WHITE);
+                ring(window, rr.center(), 20.0, f, white());
             }
         }
         Some(Media::Voice { waveform, duration, .. }) => {
-            let c = pos2(r.left() + 20.0, r.center().y);
-            p.circle_filled(c, 18.0, look.accent);
+            let c = point(r.origin.x + px(20.0), r.center().y);
+            disc(window, c, 18.0, look.accent);
             if pp.playing.is_some() {
                 for dx in [-4.0, 4.0] {
-                    p.rect_filled(Rect::from_center_size(c + vec2(dx, 0.0), vec2(4.0, 13.0)), 1.0, Color32::WHITE);
+                    fill(window, Bounds { origin: point(c.x + px(dx - 2.0), c.y - px(6.5)), size: size(px(4.0), px(13.0)) }, px(1.0), white());
                 }
             } else {
-                let tri = vec![c + vec2(-5.0, -8.0), c + vec2(-5.0, 8.0), c + vec2(9.0, 0.0)];
-                p.add(egui::Shape::convex_polygon(tri, Color32::WHITE, Stroke::NONE));
+                triangle(window, [(-5.0, -8.0), (-5.0, 8.0), (9.0, 0.0)], c, white());
             }
             if let Some(f) = pp.progress {
-                ring(p, c, 18.0, f, Color32::WHITE);
+                ring(window, c, 18.0, f, white());
             }
-            // The waveform: bars of its samples, the part played in the accent.
-            let wr = Rect::from_min_max(pos2(r.left() + 46.0, r.top() + 4.0), pos2(r.right(), r.top() + 24.0));
-            let n = ((wr.width() / 3.0) as usize).max(1);
+            // The waveform: bars of its samples, the part played in the
+            // accent; each on device pixels, two points wide, its height
+            // whole pixels standing on the same line.
+            let (left, top, right) = (r.origin.x + px(46.0), r.origin.y + px(4.0), r.right());
+            let wh = 20.0;
+            let n = ((f32::from(right - left) / 3.0) as usize).max(1);
             let played = pp.playing.unwrap_or(0.0);
-            // Each bar on device pixels, two points wide, its height whole
-            // pixels standing on the same line.
-            let ppp = p.ctx().pixels_per_point();
-            let bottom = style::snap_coord(p.ctx(), wr.bottom());
-            let (w, step) = ((2.0 * ppp).round() / ppp, (3.0 * ppp).round() / ppp);
+            let s = window.scale_factor();
+            let bottom = style::snap_coord(window, top + px(wh));
+            let (w, step) = ((2.0 * s).round() / s, (3.0 * s).round() / s);
+            let x0 = style::snap_coord(window, left);
             for i in 0..n {
-                let s = if waveform.is_empty() { 4 } else { waveform[i * waveform.len() / n] } as f32;
-                let h = ((2.0 + s / 31.0 * wr.height()).min(wr.height()) * ppp).round().max(1.0) / ppp;
-                let x = style::snap_coord(p.ctx(), wr.left()) + i as f32 * step;
-                let bar = Rect::from_min_max(pos2(x, bottom - h), pos2(x + w, bottom));
-                let ink = if (i as f32 / n as f32) < played { look.accent } else { look.accent.gamma_multiply(0.35) };
-                p.rect_filled(bar, 1.0, ink);
+                let v = if waveform.is_empty() { 4 } else { waveform[i * waveform.len() / n] } as f32;
+                let h = ((2.0 + v / 31.0 * wh).min(wh) * s).round().max(1.0) / s;
+                let x = x0 + px(i as f32 * step);
+                let ink = if (i as f32 / n as f32) < played { look.accent } else { look.accent.opacity(0.35) };
+                fill(window, Bounds::from_corners(point(x, bottom - px(h)), point(x + px(w), bottom)), px(1.0), ink);
             }
             let t = match pp.playing {
                 Some(f) => olo_tg::clock(f * duration),
                 None => olo_tg::clock(*duration),
             };
-            let g = plain(p.ctx(), &t, FontId::proportional(META), look.dim, 100.0);
-            p.galley(pos2(wr.left(), wr.bottom() + 3.0), g, look.dim);
+            let g = line(window, &t, META, font(FontWeight::NORMAL), look.dim, None);
+            g.paint(window, cx, point(left, bottom + px(3.0)));
         }
         Some(Media::Audio { .. }) | Some(Media::File { .. }) => {
-            let icon = Rect::from_min_size(r.min, vec2(42.0, 42.0));
-            p.circle_filled(icon.center(), 20.0, look.accent);
+            let ic = point(r.origin.x + px(21.0), r.origin.y + px(21.0));
+            disc(window, ic, 20.0, look.accent);
             match pp.progress {
-                Some(f) => ring(p, icon.center(), 15.0, f, Color32::WHITE),
-                None if matches!(m.media, Some(Media::Audio { .. })) => {
-                    let c = icon.center();
-                    let tri = vec![c + vec2(-5.0, -8.0), c + vec2(-5.0, 8.0), c + vec2(9.0, 0.0)];
-                    p.add(egui::Shape::convex_polygon(tri, Color32::WHITE, Stroke::NONE));
-                }
-                None => document(p, icon.center(), Color32::WHITE),
+                Some(f) => ring(window, ic, 15.0, f, white()),
+                None if matches!(m.media, Some(Media::Audio { .. })) => triangle(window, [(-5.0, -8.0), (-5.0, 8.0), (9.0, 0.0)], ic, white()),
+                None => document(window, ic, white()),
             }
             if let Some((tg, dg)) = &laid.media_text {
-                p.galley(pos2(r.left() + 52.0, r.top() + 3.0), tg.clone(), look.text);
-                p.galley(pos2(r.left() + 52.0, r.top() + 5.0 + tg.size().y), dg.clone(), look.dim);
+                tg.paint(window, cx, point(r.origin.x + px(52.0), r.origin.y + px(3.0)));
+                dg.paint(window, cx, point(r.origin.x + px(52.0), r.origin.y + px(5.0 + tg.h)));
             }
         }
-        Some(Media::Sticker { .. }) => match pp.picture {
-            Some(t) => {
-                p.image(t.id(), style::snap(p.ctx(), r), Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+        Some(Media::Sticker { .. }) => match &pp.picture {
+            Some(img) => {
+                let _ = window.paint_image(style::snap(window, r), Corners::default(), img.clone(), 0, false);
             }
-            None => {
-                p.rect_filled(r, 8.0, look.text.gamma_multiply(0.06));
-            }
+            None => fill(window, r, px(8.0), look.text.opacity(0.06)),
         },
         _ => {
             if let Some((tg, dg)) = &laid.media_text {
-                p.galley(r.min, tg.clone(), look.text);
-                p.galley(pos2(r.left(), r.top() + tg.size().y + 2.0), dg.clone(), look.dim);
+                tg.paint(window, cx, r.origin);
+                dg.paint(window, cx, point(r.origin.x, r.origin.y + px(tg.h + 2.0)));
             }
         }
     }
 }
 
 /// One tick (sent) or two (read); a clock while sending, "!" if it failed.
-fn ticks(p: &Painter, left_mid: Pos2, read: bool, pending: Option<(u64, Pending)>, ink: Color32) {
-    let s = Stroke::new(1.3, ink);
+fn ticks(window: &mut Window, cx: &mut App, left_mid: Point<Pixels>, read: bool, pending: Option<(u64, Pending)>, ink: Hsla) {
+    let at = |x: f32, y: f32| point(left_mid.x + px(x), left_mid.y + px(y));
+    let w = px(1.3);
     match pending {
         Some((_, Pending::Sending)) => {
-            let c = left_mid + vec2(6.0, 0.0);
-            p.circle_stroke(c, 4.5, s);
-            p.line_segment([c, c + vec2(0.0, -3.0)], s);
-            p.line_segment([c, c + vec2(2.0, 0.0)], s);
+            let c = at(6.0, 0.0);
+            window.paint_sector(c, px(4.5 - 0.65), px(4.5 + 0.65), 0.0, std::f32::consts::TAU, ink);
+            window.paint_segment(c, at(6.0, -3.0), w, false, ink);
+            window.paint_segment(c, at(8.0, 0.0), w, false, ink);
         }
         Some((_, Pending::Failed)) => {
-            let c = left_mid + vec2(6.0, 0.0);
-            p.circle_filled(c, 5.5, Color32::from_rgb(0xE5, 0x3E, 0x3E));
-            p.text(c, Align2::CENTER_CENTER, "!", FontId::new(9.0, style::bold()), Color32::WHITE);
+            let c = at(6.0, 0.0);
+            disc(window, c, 5.5, rgb(0xE53E3E).into());
+            style::label(window, cx, c.x, c.y, Align::Center, "!", 9.0, font(FontWeight::BOLD), white());
         }
         None => {
-            let one = |x: f32| [left_mid + vec2(x, 0.0), left_mid + vec2(x + 3.0, 3.0), left_mid + vec2(x + 9.0, -3.5)];
-            p.line_segment([one(0.0)[0], one(0.0)[1]], s);
-            p.line_segment([one(0.0)[1], one(0.0)[2]], s);
+            let mut path = PathBuilder::stroke(w);
+            path.move_to(at(0.0, 0.0));
+            path.line_to(at(3.0, 3.0));
+            path.line_to(at(9.0, -3.5));
             if read {
-                p.line_segment([one(4.0)[1], one(4.0)[2]], s);
+                path.move_to(at(7.0, 3.0));
+                path.line_to(at(13.0, -3.5));
+            }
+            if let Ok(path) = path.build() {
+                window.paint_path(path, ink);
             }
         }
     }
 }
 
 /// A small eye (a channel post's views), centred at `c`.
-fn eye(p: &Painter, c: Pos2, ink: Color32) {
-    let s = Stroke::new(1.0, ink);
-    let pts: Vec<Pos2> = (0..=12).map(|i| {
-        let t = i as f32 / 12.0 * std::f32::consts::PI;
-        c + vec2(-4.5 * t.cos(), -2.6 * t.sin())
-    }).collect();
-    p.add(egui::Shape::line(pts.clone(), s));
-    p.add(egui::Shape::line(pts.iter().map(|q| pos2(q.x, 2.0 * c.y - q.y)).collect(), s));
-    p.circle_filled(c, 1.4, ink);
+fn eye(window: &mut Window, c: Point<Pixels>, ink: Hsla) {
+    let mut path = PathBuilder::stroke(px(1.0));
+    for side in [-1.0f32, 1.0] {
+        for i in 0..=12 {
+            let t = i as f32 / 12.0 * std::f32::consts::PI;
+            let q = point(c.x + px(-4.5 * t.cos()), c.y + px(-2.6 * t.sin() * side));
+            if i == 0 { path.move_to(q) } else { path.line_to(q) }
+        }
+    }
+    if let Ok(path) = path.build() {
+        window.paint_path(path, ink);
+    }
+    disc(window, c, 1.4, ink);
 }
 
 /// A page with a folded corner (a file), centred at `c`: its edges whole
 /// device pixels, each down the middle of its pixels so it's crisp.
-fn document(p: &Painter, c: Pos2, ink: Color32) {
-    let ppp = p.ctx().pixels_per_point();
-    let px = (1.5 * ppp).round().max(1.0);
-    let s = Stroke::new(px / ppp, ink);
-    // Edges' middles: on a pixel's middle for an odd width, between
-    // pixels for an even one.
-    let at = |v: f32| ((v * ppp - px / 2.0).round() + px / 2.0) / ppp;
-    let r = Rect::from_min_max(pos2(at(c.x - 6.0), at(c.y - 7.5)), pos2(at(c.x + 6.0), at(c.y + 7.5)));
-    let fold = (4.0 * ppp).round() / ppp;
-    let pts = vec![r.left_top(), pos2(r.right() - fold, r.top()), pos2(r.right(), r.top() + fold), r.right_bottom(), r.left_bottom(), r.left_top()];
-    p.add(egui::Shape::line(pts, s));
-    p.line_segment([pos2(r.right() - fold, r.top()), pos2(r.right() - fold, r.top() + fold)], s);
-    p.line_segment([pos2(r.right() - fold, r.top() + fold), pos2(r.right(), r.top() + fold)], s);
+fn document(window: &mut Window, c: Point<Pixels>, ink: Hsla) {
+    let s = window.scale_factor();
+    let dev = (1.5 * s).round().max(1.0);
+    let at = |v: f32| ((v * s - dev / 2.0).round() + dev / 2.0) / s;
+    let (cx_, cy_) = (f32::from(c.x), f32::from(c.y));
+    let (l, t, r, b) = (at(cx_ - 6.0), at(cy_ - 7.5), at(cx_ + 6.0), at(cy_ + 7.5));
+    let fold = (4.0 * s).round() / s;
+    let mut path = PathBuilder::stroke(px(dev / s));
+    let p = |x: f32, y: f32| point(px(x), px(y));
+    path.move_to(p(l, t));
+    path.line_to(p(r - fold, t));
+    path.line_to(p(r, t + fold));
+    path.line_to(p(r, b));
+    path.line_to(p(l, b));
+    path.close();
+    path.move_to(p(r - fold, t));
+    path.line_to(p(r - fold, t + fold));
+    path.line_to(p(r, t + fold));
+    if let Ok(path) = path.build() {
+        window.paint_path(path, ink);
+    }
 }
 
-/// A ring of progress round `c`.
-pub fn ring(p: &Painter, c: Pos2, radius: f32, fraction: f32, ink: Color32) {
-    let n = 48;
-    let end = (fraction.clamp(0.02, 1.0) * n as f32) as usize;
-    let pts: Vec<Pos2> = (0..=end).map(|i| {
-        let a = -std::f32::consts::FRAC_PI_2 + i as f32 / n as f32 * std::f32::consts::TAU;
-        c + egui::Vec2::angled(a) * radius
-    }).collect();
-    p.add(egui::Shape::line(pts, Stroke::new(2.0, ink)));
+/// A ring of progress round `c`, from 12 o'clock.
+pub fn ring(window: &mut Window, c: Point<Pixels>, radius: f32, fraction: f32, ink: Hsla) {
+    window.paint_sector(c, px(radius - 1.0), px(radius + 1.0), 0.0, fraction.clamp(0.02, 1.0) * std::f32::consts::TAU, ink);
 }
 
 #[cfg(test)]
@@ -1058,7 +1259,6 @@ mod tests {
     #[test]
     fn emoji_alone_is_big() {
         let m = |t: &str| Message { text: t.into(), ..Message::default() };
-        // Without the colour font loaded, clusters are still found.
         assert!(big_emoji(&m("🎉")));
         assert!(big_emoji(&m("👍🏽 ❤\u{FE0F}")));
         assert!(!big_emoji(&m("hi 🎉")));

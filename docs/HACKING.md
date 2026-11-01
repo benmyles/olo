@@ -1547,7 +1547,15 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   `TextFieldEvent::Changed` and `Typed`. No frame: callers draw the
   well (`TextControl` does). `set_colors` colours parts of its text from
   the text (a search's filters), `selection`/`set_selection`,
-  `select_all_text` and `focus` for its owner.
+  `select_all_text`, `set_hint` and `focus` for its owner. A right
+  press gives Cut, Copy, Paste and Select All. `multiline(enter_sends)`
+  makes it several lines wrapped to its width (up and down keep their
+  column; Home and End are the line's; ⌘Home and ⌘End the text's;
+  ⇧Return and ⌥Return a new line; Return too unless `enter_sends`,
+  when it emits `Entered`), scrolled to keep the caret in view, each
+  line's baseline on a device pixel; its owner sizes it from
+  `rows_at(window, width)` and `TextField::line_height_for` (Telegram's
+  composer). ⌘↑ and ⌘↓ are left to the window's menu.
 - `widgets::TextView` (`text_view(cx, id, |v| v.mono(true).empty_text(…))`):
   a text to read, the egui kit's `TextView` not editable: wrapped to its
   scroll view, plain or monospaced (`style::mono_font`), coloured by runs
@@ -1569,7 +1577,9 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   `MenuField` (label, divider; its menu opens with the current choice
   over the field: `menu::popup_over`), `TextControl` (label, divider,
   the sunken well around a `TextField`), `StringView` (`dim`, `bold`),
-  `BBox` (etched frame, bold label in its top line, `content_width`).
+  `BBox` (etched frame, bold label in its top line, `content_width`),
+  `EmptyState` (an icon, a line, a detail and an action button,
+  centred in what it's given: a list or pane with nothing in it).
   Each is a `widgets::Control` underneath: an element that keeps
   whether the pointer is over it or holding it down, draws itself from
   that through a closure, takes a click (press and release both on
@@ -1625,6 +1635,13 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   held, a track click pages, the knob drags; agents read it as a
   `ScrollBar` with its position, 0 to 1. In a frame it places itself
   inside the frame's two lines on device pixels (`in_frame`).
+  `auto_hide(true)` shows the vertical bar only while what it holds
+  overflows (panes side by side, as egui's).
+- `style::pill`/`pill_on_baseline`/`pill_width`/`pill_height` (a count
+  or tag in a pill, its text on a label's baseline beside it),
+  `baseline_at` and `label_on_baseline` (things of different sizes on
+  one baseline), `card_ink`/`card_paper` (cards on a gutter, as the
+  egui kit's).
 - `widgets::StatusBar::new(fraction).label(..).trailing(..)` and
   `level_bar` (the bar alone).
 - `widgets::ColumnListView::new(id, &model, columns, rows, cell)`:
@@ -1743,7 +1760,19 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   command palette reads and invokes the front window's bar.
   `Menu::keys_from(bar)` gives a context menu the bar's keys.
 - `WindowOptions::floating()`: the xdg-toplevel-tag `floating`, so
-  app_server floats it over auto-tiled windows.
+  app_server floats it over auto-tiled windows. `child()`: the window
+  belongs to the app's window that has the keyboard (its xdg parent:
+  a chat's Info over its chat), opening over it rather than as a tab
+  beside it; `dialog()` is that and never a tab.
+- Cached views (`AnyView::from(entity).cached(style)`): GPUI replays a
+  view's last paint when nothing it drew changed (it wasn't notified,
+  its bounds are the same). What agents read is kept with the frame
+  (`Window::push_paint_record`), so a replayed view still says what it
+  shows. A cached view's root is laid out as a root (its offsets
+  ignored): put what places its content inside it (Telegram's panes).
+- `Window::activate_window_with_token(token)` (Olo's GPUI) raises a
+  window with an activation token another program gave (a notification
+  clicked: `NoteEvent::Action`'s), which lets it take the focus.
 - `WindowOptions::layer(namespace, layer, (top, bottom, left, right))`
   makes a layer surface (Deskbar, notifications, an overlay) instead of
   a window; `layer_options(|l| ...)` sets its exclusive zone, margins,
@@ -6648,30 +6677,62 @@ A Telegram client of Olo's own: MTProto in process through grammers
   Telegram Desktop's), then signing in by phone or QR, the password if
   asked; Sign Out. The app is told (`--reconnect`) and picks the
   account up.
-* **The app**: `store` is what is known, kept up to date from the
-  events (the list's order, each thread's loaded messages with a
-  version bumped on change, our messages still sending, who's typing);
-  `pics` asks for pictures the first time they are drawn and decodes
-  them on two workers into textures. `list` is the chat list (the
-  search field, folders as chips with the rest under More, pinned
+* **The app** is on the GPUI kit (`olo-ui`). `store` is what is known,
+  kept up to date from the events (the list's order, each thread's
+  loaded messages with a version bumped on change, our messages still
+  sending, who's typing); `pics` asks for pictures the first time they
+  are drawn and decodes them on two workers into GPUI images (BGRA).
+  `list` is the chat list (the search field, asking Telegram after a
+  pause in typing; folders as chips with the rest under More, pinned
   chats, the archive's row, unread and mention counts, typing in place
   of the preview; while searching, matching chats then Telegram's
-  people, chats and messages). `conv` is the conversation: its header,
-  a forum's topics as chips, the messages laid out once per message
-  and width (`bubble::Laid`, cached by thread version) with only those
-  in view painted, older pages loaded as it scrolls up keeping what's
-  in view where it was, and the composer (replying, editing, files
-  going with it, the draft saved). `bubble` lays out and paints a
-  message: replies, forwards, photos and video frames, voice notes'
-  waveforms, files, stickers, polls, link previews, reactions, read
-  ticks, and the text's entities with colour emoji in line
-  (`emoji::make_room`/`paint_in`). Both panes scroll, so each is a
-  grid of its own for the layout review.
+  people, chats and messages): its rows are painted in one canvas,
+  only those near the view, and found under the pointer by arithmetic
+  (60 pt each). `conv` is the conversation: its header, a forum's
+  topics as chips, the messages laid out once per message and width
+  (`bubble::Laid`, kept by a digest of what the layout depends on) and
+  painted in one canvas inside a `ScrollView`, only those within a
+  screen of the view; it stays at the bottom while it was there, keeps
+  what's in view where it was when older pages come in above, and
+  finds what's under the pointer (`bubble::hit_at`: links, mentions,
+  replies, pictures, reactions) from what was last painted, so painting
+  needs no pointer. The composer is a multi-line `TextField` (Return
+  sends, ⇧Return makes a line) under what's being answered or edited
+  and the files going with it; the draft is kept per chat and saved to
+  Telegram on leaving it. `bubble` lays out and paints a message:
+  replies, forwards, photos and video frames, voice notes' waveforms,
+  files, stickers, polls, link previews, reactions, read ticks, and
+  the text's entities (code on its ground, spoilers hidden, links),
+  colour emoji drawn by Olo's GPUI text in line. Both panes scroll, so
+  each is a grid of its own for the layout review (`review::own_grid`),
+  as are avatars and the time in a balloon's corner. A chat's Info is
+  a window over its chat (`WindowOptions::child`; Escape or ⌘W puts it
+  away), Forward To a dialog, Contacts a window of its own; deleting
+  and signing out ask in an alert (`open_alert`). The chat, topic,
+  folder and list width are kept over an upgrade (`on_upgrade`).
+* **What a frame costs**: the list, the conversation and the composer
+  are panes, each a view of its own drawn as a cached view
+  (`AnyView::cached` with its bounds): the account's news (the model
+  notifies) draws them all again, but the pointer over a row, a
+  scroll, or the caret blinking in the composer draws only its own pane
+  (a hover notifies just its pane's view: `cx.notify(id)`), the others
+  replayed from the last frame. The conversation is planned once per
+  change to its thread (each entry's top and height), so a frame does
+  only what's in view; a newly opened chat is laid out newest first,
+  3 ms a frame, the rest guessed until the next; the layouts of the
+  last 12 chats left are kept, so going back costs nothing. Measured on
+  release builds against the egui app (demo account, 2×): 96 MB
+  against 133; 30 pointer moves over the messages 8 frames against
+  157; ten chat switches 43 frames and 115–137 ms against 114 and
+  175–193 ms; 24 notches of scrolling 204–221 frames, 1.5 ms each
+  (egui's 1.2), slowest 3.6 ms; a caret blink 1.2 ms (the window's
+  2.6 before the panes).
 * **Around it**: new messages notify through Olo's notifications,
   answered from the banner (`Note::reply`, `NoteEvent::Replied`); the
   unread count is Deskbar's badge (`Notifier::badge`); folders, chats
   and messages are commands with keys (`app_keys::TELEGRAM`: ⌘1–8 for
   folders, ⌘9 the archive, ⌘↑/⌘↓ the previous and next chat), and
-  every row, bubble and button is in the accessibility tree.
+  every row, bubble and button in view is in the agents' tree (a
+  scrolled list's rows painted beyond its edges aren't).
 * **Not yet**: recording voice notes (no Opus encoder in Rust yet), and
   animated stickers show their first frame.

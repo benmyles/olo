@@ -469,6 +469,12 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
         answers: &[PromptButton],
     ) -> Option<oneshot::Receiver<usize>>;
     fn activate(&self);
+    /// Brings the window forward with an activation token another
+    /// program gave (a notification clicked): unlike [`activate`](Self::activate),
+    /// the compositor lets it take the focus.
+    fn activate_with_token(&self, _token: &str) {
+        self.activate()
+    }
     fn is_active(&self) -> bool;
     fn is_hovered(&self) -> bool;
     fn set_title(&mut self, title: &str);

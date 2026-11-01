@@ -400,6 +400,8 @@ pub struct ScrollView {
     handle: ScrollHandle,
     vertical: bool,
     horizontal: bool,
+    /// The vertical bar only while the content overflows.
+    auto_hide: bool,
     border: bool,
     focused: bool,
     background: Option<olo_theme::Rgba>,
@@ -408,7 +410,15 @@ pub struct ScrollView {
 
 impl ScrollView {
     pub fn new(id: impl Into<ElementId>, handle: &ScrollHandle) -> ScrollView {
-        ScrollView { id: id.into(), handle: handle.clone(), vertical: true, horizontal: false, border: true, focused: false, background: None, children: SmallVec::new() }
+        ScrollView { id: id.into(), handle: handle.clone(), vertical: true, horizontal: false, auto_hide: false, border: true, focused: false, background: None, children: SmallVec::new() }
+    }
+
+    /// Shows the vertical bar only while the content overflows (as the
+    /// content was last laid out): columns of lists side by side, where
+    /// bars on every one would be heavy.
+    pub fn auto_hide(mut self, on: bool) -> Self {
+        self.auto_hide = on;
+        self
     }
 
     pub fn horizontal(mut self, on: bool) -> Self {
@@ -450,7 +460,7 @@ impl RenderOnce for ScrollView {
         // points would be three device pixels at 1.5×, a gap of one).
         let s = window.scale_factor();
         let inset = if self.border { style::line_pixels(s) * 2.0 / s } else { 0.0 };
-        let (vbar, hbar) = (self.vertical, self.horizontal);
+        let (vbar, hbar) = (self.vertical && (!self.auto_hide || self.handle.max_offset().height > px(0.5)), self.horizontal);
         let right = inset + if vbar { SCROLL_BAR } else { 0.0 };
         let bottom = inset + if hbar { SCROLL_BAR } else { 0.0 };
         let (border, focused, background) = (self.border, self.focused, self.background);

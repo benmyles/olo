@@ -90,6 +90,14 @@ What Olo changed, so far:
   there: a window's own Cancel button or key).
 - `Window::surface_id`: the wl_surface's protocol id, which app_server
   names windows by (its keyboard hints).
+- `Window::push_paint_record` and `paint_records`: what the app notes
+  as it paints (olo-ui's agent nodes), kept with the frame and replayed
+  with a cached view's paint, so a view drawn from its last frame still
+  tells agents what it shows.
+- `Window::activate_window_with_token`: raises a window with an
+  xdg-activation token another program handed over (a notification
+  clicked), which lets it take the focus; upstream only asks for one of
+  its own, which compositors refuse.
 - No desktop portal watched (the colour scheme, the cursor's theme and
   size): olo-ui follows app_server, which draws the pointer, and the
   portal's settings over D-Bus kept a `blocking` pool thread waking in

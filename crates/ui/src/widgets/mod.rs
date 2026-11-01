@@ -28,7 +28,7 @@ pub use text_field::{TextField, TextFieldEvent, text_field};
 pub use text_view::{TextView, text_view};
 pub use tooltip::tooltip;
 pub use charts::{CellGrid, Graph, GridCell, LegendItem, Series, legend, legend_height, nice_ceiling};
-pub use views::{BBox, Separator, StringView, heading, separator};
+pub use views::{BBox, EmptyState, Separator, StringView, heading, separator};
 
 /// The widgets' keys.
 pub(crate) fn bind_keys(cx: &mut gpui::App) {

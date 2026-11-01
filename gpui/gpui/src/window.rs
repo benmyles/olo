@@ -750,6 +750,9 @@ pub(crate) struct Frame {
     pub(crate) input_handlers: Vec<Option<PlatformInputHandler>>,
     pub(crate) tooltip_requests: Vec<Option<TooltipRequest>>,
     pub(crate) cursor_styles: Vec<CursorStyleRequest>,
+    /// Olo: what the app noted as it painted (`Window::push_paint_record`),
+    /// replayed with a cached view's paint.
+    pub(crate) paint_records: Vec<Rc<dyn Any>>,
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) debug_bounds: FxHashMap<String, Bounds<Pixels>>,
     #[cfg(any(feature = "inspector", debug_assertions))]
@@ -778,6 +781,7 @@ pub(crate) struct PaintIndex {
     accessed_element_states_index: usize,
     tab_handle_index: usize,
     line_layout_index: LineLayoutIndex,
+    paint_records_index: usize,
 }
 
 impl Frame {
@@ -796,6 +800,7 @@ impl Frame {
             input_handlers: Vec::new(),
             tooltip_requests: Vec::new(),
             cursor_styles: Vec::new(),
+            paint_records: Vec::new(),
 
             #[cfg(any(test, feature = "test-support"))]
             debug_bounds: FxHashMap::default(),
@@ -818,6 +823,7 @@ impl Frame {
         self.input_handlers.clear();
         self.tooltip_requests.clear();
         self.cursor_styles.clear();
+        self.paint_records.clear();
         self.hitboxes.clear();
         self.window_control_hitboxes.clear();
         self.deferred_draws.clear();
@@ -2420,10 +2426,30 @@ impl Window {
             accessed_element_states_index: self.next_frame.accessed_element_states.len(),
             tab_handle_index: self.next_frame.tab_stops.paint_index(),
             line_layout_index: self.text_system.layout_index(),
+            paint_records_index: self.next_frame.paint_records.len(),
         }
     }
 
+    /// Olo: notes `record` as part of what's being painted (what a widget
+    /// is, for agents): kept with the frame, and replayed with a cached
+    /// view's paint as its scene is. Read the last frame's with
+    /// [`Window::paint_records`].
+    pub fn push_paint_record(&mut self, record: Rc<dyn Any>) {
+        self.next_frame.paint_records.push(record);
+    }
+
+    /// Olo: what was noted as the last frame painted
+    /// ([`Window::push_paint_record`]), in painting order.
+    pub fn paint_records(&self) -> &[Rc<dyn Any>] {
+        &self.rendered_frame.paint_records
+    }
+
     pub(crate) fn reuse_paint(&mut self, range: Range<PaintIndex>) {
+        self.next_frame.paint_records.extend(
+            self.rendered_frame.paint_records[range.start.paint_records_index..range.end.paint_records_index]
+                .iter()
+                .cloned(),
+        );
         self.next_frame.cursor_styles.extend(
             self.rendered_frame.cursor_styles
                 [range.start.cursor_styles_index..range.end.cursor_styles_index]
@@ -4367,6 +4393,14 @@ impl Window {
     /// Focus the current window and bring it to the foreground at the platform level.
     pub fn activate_window(&self) {
         self.platform_window.activate();
+    }
+
+    /// Bring the window forward with an activation token from another
+    /// program (a notification clicked, a launcher), which lets it take
+    /// the focus where [`activate_window`](Self::activate_window) may only
+    /// ask for attention.
+    pub fn activate_window_with_token(&self, token: &str) {
+        self.platform_window.activate_with_token(token);
     }
 
     /// Minimize the current window at the platform level.

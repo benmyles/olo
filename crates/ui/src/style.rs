@@ -486,6 +486,93 @@ pub fn lit_edges(window: &mut Window, r: Bounds<Pixels>, palette: &Palette) {
     hline_above(window, r.left(), r.right(), r.bottom(), edge);
 }
 
+/// Where the line of `font_size` text whose capitals are centred on
+/// `center_y` has its baseline, on a device pixel: for setting other
+/// things (a count, a smaller time) on that line.
+pub fn baseline_at(window: &Window, center_y: Pixels, font_size: f32) -> Pixels {
+    snap_coord(window, center_y + px(font_size * CAP_HEIGHT / 2.0))
+}
+
+/// One line of text on `baseline` (beside a label of another size, on
+/// the baseline it was drawn on), `x` its left, centre or right.
+#[allow(clippy::too_many_arguments)]
+pub fn label_on_baseline(window: &mut Window, cx: &mut App, x: Pixels, baseline: Pixels, align: Align, text: impl Into<SharedString>, font_size: f32, font: Font, color: Hsla) -> Bounds<Pixels> {
+    label(window, cx, x, baseline - px(font_size * CAP_HEIGHT / 2.0), align, text, font_size, font, color)
+}
+
+/// How tall a [`pill`] of `font_size` text is.
+pub fn pill_height(font_size: f32) -> f32 {
+    (font_size + 5.0).round()
+}
+
+/// How wide a [`pill`] saying `text` is.
+pub fn pill_width(window: &mut Window, text: &str, font_size: f32, font: &Font) -> f32 {
+    let h = pill_height(font_size);
+    (f32::from(text_width(window, text.to_owned(), font_size, font.clone())) + h * 0.9).max(h).round()
+}
+
+/// A short tag in a pill (a badge, a count), its left edge at `x` and
+/// centred on `cy`, on device pixels. Returns where it is.
+#[allow(clippy::too_many_arguments)]
+pub fn pill(window: &mut Window, cx: &mut App, x: Pixels, cy: Pixels, text: &str, font_size: f32, font: Font, fill: Hsla, ink: Hsla) -> Bounds<Pixels> {
+    let (w, h) = (pill_width(window, text, font_size, &font), pill_height(font_size));
+    let r = snap(window, Bounds { origin: point(x, cy - px(h / 2.0)), size: size(px(w), px(h)) });
+    window.paint_quad(gpui::fill(r, fill).corner_radii(r.size.height / 2.0));
+    label(window, cx, r.center().x, r.center().y, Align::Center, text.to_owned(), font_size, font, ink);
+    r
+}
+
+/// A [`pill`] whose text sits on `baseline` (a count beside a label of
+/// another size: centring each on one middle leaves them a pixel apart
+/// at some scales).
+#[allow(clippy::too_many_arguments)]
+pub fn pill_on_baseline(window: &mut Window, cx: &mut App, x: Pixels, baseline: Pixels, text: &str, font_size: f32, font: Font, fill: Hsla, ink: Hsla) -> Bounds<Pixels> {
+    let (w, h) = (pill_width(window, text, font_size, &font), pill_height(font_size));
+    let cy = baseline - px(font_size * CAP_HEIGHT / 2.0);
+    let r = snap(window, Bounds { origin: point(x, cy - px(h / 2.0)), size: size(px(w), px(h)) });
+    window.paint_quad(gpui::fill(r, fill).corner_radii(r.size.height / 2.0));
+    label_on_baseline(window, cx, r.center().x, baseline, Align::Center, text.to_owned(), font_size, font, ink);
+    r
+}
+
+/// A card's colours, as the egui kit's `card_ink`: the gutter it sits
+/// in, the card, its edge, a well in it, the card under the pointer, and
+/// text on it (the document's, and quieter).
+#[derive(Clone, Copy, Debug)]
+pub struct CardInk {
+    pub gutter: Hsla,
+    pub card: Hsla,
+    pub edge: Hsla,
+    pub well: Hsla,
+    pub hover: Hsla,
+    pub text: Hsla,
+    pub dim: Hsla,
+}
+
+/// The gutter and card colours: in light mode a card is the paper on a
+/// slightly darker gutter, in dark mode a little lighter than its paper.
+pub fn card_paper(palette: &Palette) -> (Rgba, Rgba) {
+    let paper = palette.document_background;
+    let ink = palette.document_text;
+    if palette.mode == olo_theme::ThemeMode::Dark { (paper, olo_theme::mix(paper, ink, 0.055)) } else { (olo_theme::mix(paper, ink, 0.045), paper) }
+}
+
+pub fn card_ink(palette: &Palette) -> CardInk {
+    let (gutter, card) = card_paper(palette);
+    let ink = palette.document_text;
+    let dark = palette.mode == olo_theme::ThemeMode::Dark;
+    let see = |a: f32| c([ink[0], ink[1], ink[2], (a * 255.0).round() as u8]);
+    CardInk {
+        gutter: c(gutter),
+        card: c(card),
+        edge: c(olo_theme::mix(card, ink, if dark { 0.09 } else { 0.13 })),
+        well: see(if dark { 0.06 } else { 0.05 }),
+        hover: c(olo_theme::mix(card, ink, 0.025)),
+        text: c(ink),
+        dim: see(0.52),
+    }
+}
+
 /// A rubber-band selection rectangle (Tracker, desktop, any list): a
 /// one-pixel navigation-blue frame over a faint tint of the same colour.
 pub fn selection_band(window: &mut Window, r: Bounds<Pixels>, palette: &Palette) {

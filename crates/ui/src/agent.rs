@@ -1,6 +1,7 @@
 //! What each window shows, for agents: every widget says what it is
-//! (its role, its name, its value, where it is) as it paints, so each
-//! frame leaves a tree of the window, which the socket agents and the
+//! (its role, its name, its value, where it is) as it paints, kept with
+//! the frame (a cached view's replayed with its paint), so each frame
+//! leaves a tree of the window, which the socket agents and the
 //! command palette read apps through (`olo_kit_base::commands`) answers
 //! from at once (as egui's AccessKit tree did, without a frame drawn for
 //! it). Its frame times too, and the menu commands the app takes.
@@ -45,7 +46,6 @@ impl Node {
 #[derive(Default)]
 struct Painted {
     title: String,
-    nodes: Vec<Node>,
     /// A layer surface's namespace ("deskbar").
     layer: Option<String>,
 }
@@ -62,16 +62,15 @@ struct Agents {
 
 impl Global for Agents {}
 
-/// Says what a widget is, as it paints.
-pub fn record(window: &Window, cx: &mut App, node: Node) {
-    cx.default_global::<Agents>().windows.entry(window.window_handle().window_id()).or_default().nodes.push(node);
+/// Says what a widget is, as it paints. (Kept with the frame: a cached
+/// view drawn from its last paint says it again.)
+pub fn record(window: &mut Window, _cx: &mut App, node: Node) {
+    window.push_paint_record(std::rc::Rc::new(node));
 }
 
-/// A window starts painting a frame (`Frame` does it): what it showed
-/// before goes.
+/// A window starts painting a frame (`Frame` does it): its title.
 pub(crate) fn begin_frame(window: &Window, cx: &mut App, title: &str) {
     let painted = cx.default_global::<Agents>().windows.entry(window.window_handle().window_id()).or_default();
-    painted.nodes.clear();
     if painted.title != title {
         painted.title = title.to_owned();
     }
@@ -98,12 +97,12 @@ pub fn set_menus(cx: &mut App, menus: impl Fn(&mut App) -> Menus + 'static, invo
 }
 
 fn tree(handle: AnyWindowHandle, cx: &mut App) -> Option<WindowTree> {
-    let (size, active) = handle.update(cx, |_, window, _| (window.viewport_size(), window.is_window_active())).ok()?;
+    let (size, active, records) = handle.update(cx, |_, window, _| (window.viewport_size(), window.is_window_active(), window.paint_records().to_vec())).ok()?;
     let agents = cx.try_global::<Agents>()?;
     let painted = agents.windows.get(&handle.window_id())?;
     let (w, h) = (f32::from(size.width), f32::from(size.height));
     let mut nodes = vec![UiNode { id: 1, role: "Window".into(), name: Some(painted.title.clone()), width: w, height: h, enabled: true, ..Default::default() }];
-    for (i, n) in painted.nodes.iter().enumerate() {
+    for (i, n) in records.iter().filter_map(|r| r.downcast_ref::<Node>()).enumerate() {
         let text = |s: &Option<SharedString>| s.as_ref().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
         nodes.push(UiNode {
             id: i as u64 + 2,

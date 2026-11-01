@@ -6337,11 +6337,14 @@ name = "olo-telegram"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "olo-kit",
+ "image",
+ "olo-emoji",
+ "olo-images",
  "olo-preview",
  "olo-protocol",
  "olo-tg",
- "olo-theme",
+ "olo-ui",
+ "olo-xdg",
  "serde",
  "serde_json",
  "tracing",

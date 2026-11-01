@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-01
 
+### Telegram on GPUI
+
+*01:29* — Telegram moves to the GPUI kit: the same list, conversation and composer (a multi-line field: Return sends, Shift-Return a new line), its panes cached views of their own so a hover, a scroll or the caret redraws only its pane. Shown: the demo account's forum with topics, a reply, code and a photo, at 2x.
+
+![Telegram on GPUI](2026-11-01/012944-telegram-on-gpui.png)
+
 ### Deskbar on GPUI
 
 *00:00* — Deskbar moves to Olo's GPUI kit: the same tile, tray and workspaces, drawn on device pixels at every scale (the tray's glyphs as exact paths and GPU arcs), its menus' keys laid out as the egui kit's key combos, tips in popups of their own, applications dragged out as links with their icon and name. 57 MB against 141, and 32 frames for 30 pointer moves against 150.

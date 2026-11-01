@@ -275,10 +275,26 @@ as they land (with the commit), add new ones as they come up.
      installer, Deskbar (with the GPUI kit's drags out, tips in popups
      of their own, the wordmark, minimized windows in menus, menus put
      away by a press in their window, keyboard hints by surface; 57 MB
-     against 141, 32 frames for 30 pointer moves against 150). Next:
-     Telegram, Viewer, Notifications, the portal, Agent
-     Screens, StyledEdit, Activity Monitor, Tracker, Passwords,
+     against 141, 32 frames for 30 pointer moves against 150),
+     Telegram (with the GPUI kit's multi-line text field, empty
+     states, pills on baselines, child windows, activation tokens and
+     agent nodes kept with cached views; its panes cached views of
+     their own: 96 MB against 133, 8 frames for 30 pointer moves over
+     messages against 157). Next: Viewer, Notifications, the portal,
+     Agent Screens, StyledEdit, Activity Monitor, Tracker, Passwords,
      Preferences (with the screen saver and its modules) and Terminal.
+     (`olo-preview` still builds on the egui kit for its viewers:
+     Telegram uses only its audio player, which needs none of it, yet
+     links the egui kit through it until the viewers move with the
+     Viewer.)
+   - **Glyphs drawn in a frame are slow the first time** (found
+     measuring Telegram, 2026-11-01): Olo's text system draws each new
+     glyph with a fresh vello_cpu context, pixmap and resources, ~33 µs
+     a glyph, so a chat opened with 229 glyphs new to the process spent
+     7.5 ms of its frame on them (a colour emoji 0.06–0.4 ms). Draw
+     them far faster (a context kept and reused, or an area-coverage
+     rasterizer for small glyphs), the same pixels, A/B'd at every
+     scale.
      Deskbar's battery and Wi-Fi now follow UPower's and
      NetworkManager's signals (idle: 0 wakeups a second, from 7–9).
 - **Text and everything drawn, better than Apple's** (Ben, 2026-10-31):

@@ -2,24 +2,30 @@
 //! folders as chips, and the chats (pinned first) with their pictures,
 //! latest messages, times and unread counts; the archive behind a row of
 //! its own. While searching: the chats whose names match, then
-//! Telegram's people, chats and messages.
+//! Telegram's people, chats and messages. The rows are painted in one
+//! canvas, only those in view.
 
-use olo_kit::{
+use std::sync::Arc;
+
+use olo_tg::{Chat, ChatId, ChatKind, Message, MsgId, Pic};
+use olo_ui::{
     Menu,
-    egui::{self, Color32, FontId, Rect, Sense, Ui, vec2},
+    gpui::{AnyElement, App, Bounds, ClickEvent, Context, Corner, CursorStyle, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, PathBuilder, Pixels, Point, RenderImage, SharedString, StatefulInteractiveElement as _, Styled as _, TextRun, Window, canvas, div, point, px, rgb, size, transparent_black, white},
     metrics as m,
-    search::SearchField,
-    style,
-    widgets::{self, ScrollView},
+    palette::{self as theme_palette, Palette},
+    style::{self, Align, c},
+    theme,
+    widgets::ScrollView,
 };
-use olo_tg::{Backend, Chat, ChatId, ChatKind, Message, MsgId, Pic};
 
-use crate::{bubble, pics::Pics, store::Store, when};
+use crate::{Tg, bubble, store::Store, when};
 
 pub const ROW: f32 = 60.0;
 const PICTURE: f32 = 46.0;
 pub const WIDTH: f32 = 300.0;
 pub const MIN_WIDTH: f32 = 220.0;
+/// The folders' row.
+const FOLDERS: f32 = 28.0;
 
 /// Which chats the list shows.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -34,7 +40,6 @@ pub enum Act {
     Open(ChatId),
     OpenAt(ChatId, MsgId),
     Command(ChatId, String),
-    Search(String),
 }
 
 /// What a search found on Telegram.
@@ -90,475 +95,633 @@ fn describe(c: &Chat) -> String {
     s
 }
 
-pub struct ListUi<'a> {
-    pub store: &'a Store,
-    pub pics: &'a mut Pics,
-    pub backend: &'a Backend,
-    pub view: &'a mut View,
-    pub selected: Option<ChatId>,
-    pub found: &'a Found,
-    pub h24: bool,
-}
-
-/// What a row draws from.
-struct Rows<'a> {
-    store: &'a Store,
-    pics: &'a mut Pics,
-    backend: &'a Backend,
-    h24: bool,
-}
-
-pub fn show(ui: &mut Ui, rect: Rect, l: ListUi) -> Option<Act> {
-    let p = style::palette(ui.ctx());
-    let mut act = None;
-    let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, 0.0, style::c(p.panel_background));
-    // The search field.
-    let bar = Rect::from_min_size(rect.min, vec2(rect.width(), m::TOOLBAR_HEIGHT));
-    let before = l.view.query.clone();
-    ui.scope_builder(egui::UiBuilder::new().max_rect(bar.shrink2(vec2(m::SPACING, m::TIGHT))), |ui| {
-        ui.add(SearchField::new("chat-search", &mut l.view.query).hint("Search").width(bar.width() - 2.0 * m::SPACING));
-    });
-    if l.view.query != before && !l.view.query.trim().is_empty() {
-        act = Some(Act::Search(l.view.query.trim().to_owned()));
-    }
-    let mut top = bar.bottom();
-    // Folders, as chips (with the archive's back row when in it).
-    let searching = !l.view.query.trim().is_empty();
-    if !searching && (l.view.archive || !l.store.folders.is_empty()) {
-        let row = Rect::from_min_size(egui::pos2(rect.left(), top), vec2(rect.width(), 28.0));
-        if l.view.archive {
-            let r = ui.interact(row, ui.make_persistent_id("archive-back"), Sense::click());
-            let ink = style::c(p.panel_text);
-            back_arrow(&painter, egui::pos2(row.left() + m::SPACING + 4.0, row.center().y), ink);
-            style::label(&painter, row.left() + m::SPACING + 16.0, row.center().y, egui::Align::LEFT, "Archived Chats", style::bold_font(), ink);
-            r.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, "Back to Chats"));
-            if r.clicked() {
-                l.view.archive = false;
-            }
-        } else {
-            let mut x = row.left() + m::SPACING;
-            let chips: Vec<(Option<i32>, String, u32)> = std::iter::once((None, "All Chats".to_owned(), 0))
-                .chain(l.store.folders.iter().map(|f| {
-                    let unread = l.store.chats.values().filter(|c| f.admits(c) && !c.muted).filter(|c| c.unread > 0 || c.marked).count() as u32;
-                    (Some(f.id), f.title.clone(), unread)
-                }))
-                .collect();
-            let font = FontId::proportional(style::SMALL_SIZE + 0.5);
-            let width_of = |title: &str, unread: u32| {
-                let badge = if unread > 0 { style::pill_width(ui.ctx(), &unread.to_string(), FontId::proportional(9.0)) + 4.0 } else { 0.0 };
-                style::label_width(ui.ctx(), title, font.clone()) + badge + 16.0
-            };
-            // As many as fit; the rest behind a last chip with a menu.
-            let room = row.right() - m::SPACING - x;
-            let total: f32 = chips.iter().map(|c| width_of(&c.1, c.2) + 4.0).sum();
-            let mut shown = chips.len();
-            if total > room {
-                let mut used = 0.0;
-                shown = 0;
-                for c in &chips {
-                    let w = width_of(&c.1, c.2) + 4.0;
-                    if used + w > room - 70.0 {
-                        break;
-                    }
-                    used += w;
-                    shown += 1;
-                }
-            }
-            let hidden: Vec<(Option<i32>, String, u32)> = chips[shown..].to_vec();
-            let current = l.view.folder;
-            let chip_ui = |id: Option<i32>, title: &str, unread: u32, x: &mut f32, more: bool| -> egui::Response {
-                let w = width_of(title, unread) + if more { 12.0 } else { 0.0 };
-                let chip = Rect::from_min_size(egui::pos2(*x, row.top() + 3.0), vec2(w, 22.0));
-                let chosen = if more { hidden.iter().any(|h| h.0 == current) } else { current == id };
-                let r = ui.interact(chip, ui.make_persistent_id(("folder", id, more)), Sense::click());
-                let (fill, ink) = if chosen {
-                    let s = style::selection_ink(&p);
-                    (s.fill, s.text)
-                } else if r.hovered() {
-                    (style::c(p.panel_text).gamma_multiply(0.08), style::c(p.panel_text))
-                } else {
-                    (Color32::TRANSPARENT, style::c(p.panel_text))
-                };
-                let chip = style::snap(ui.ctx(), chip);
-                painter.rect_filled(chip, 11.0, fill);
-                let tw = style::label_width(ui.ctx(), title, font.clone());
-                // The count on the name's baseline.
-                let (_, base) = style::label_with_baseline(&painter, chip.left() + 8.0, chip.center().y, egui::Align::LEFT, title, font.clone(), ink);
-                if unread > 0 {
-                    style::pill_on_baseline(&painter, chip.left() + 8.0 + tw + 4.0, base, &unread.to_string(), FontId::proportional(9.0), style::c(p.keyboard_navigation), Color32::WHITE);
-                }
-                if more {
-                    let c = egui::pos2(chip.right() - 10.0, chip.center().y);
-                    let s = egui::Stroke::new(1.3, ink);
-                    painter.line_segment([c + vec2(-3.0, -1.5), c + vec2(0.0, 1.5)], s);
-                    painter.line_segment([c + vec2(0.0, 1.5), c + vec2(3.0, -1.5)], s);
-                }
-                r.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Tab, true, chosen, title));
-                *x = chip.right() + 4.0;
-                r
-            };
-            for (id, title, unread) in &chips[..shown] {
-                if chip_ui(*id, title, *unread, &mut x, false).clicked() {
-                    l.view.folder = *id;
-                }
-            }
-            if !hidden.is_empty() {
-                // The chosen one's name when it's among them.
-                let label = hidden.iter().find(|h| h.0 == l.view.folder).map_or_else(|| "More".to_owned(), |h| h.1.clone());
-                let unread: u32 = hidden.iter().map(|h| h.2).sum();
-                let source = ui.make_persistent_id("more-folders");
-                let r = chip_ui(None, &label, unread, &mut x, true);
-                if r.clicked() {
-                    let mut menu = Menu::new("");
-                    for (id, title, unread) in &hidden {
-                        let t = if *unread > 0 { format!("{title} ({unread})") } else { title.clone() };
-                        menu = menu.item(&t, format!("folder:{}", id.unwrap_or(0)), None).checked(l.view.folder == *id);
-                    }
-                    widgets::popup_menu_at(ui.ctx(), source, r.rect.left_bottom(), menu);
-                }
-                if let Some(cmd) = widgets::popup_result(ui.ctx(), source) {
-                    l.view.folder = cmd.trim_start_matches("folder:").parse().ok();
-                }
-            }
-        }
-        top = row.bottom();
-    }
-    style::hline(&painter, rect.left(), rect.right(), top, style::c(p.shadow).gamma_multiply(0.5));
-    let body = Rect::from_min_max(egui::pos2(rect.left(), top + style::hairline(ui.ctx())), rect.max);
-    // It scrolls: its rows are on a grid of their own, not level with
-    // the conversation's beside it.
-    olo_kit::layout_review::own_grid(ui, body);
-
-    let ids = shown(l.store, l.view);
-    // The archive's row, at the top of all chats.
-    let archived: Vec<&Chat> = if !searching && !l.view.archive && l.view.folder.is_none() {
-        l.store.order.iter().filter_map(|id| l.store.chats.get(id)).filter(|c| c.archived).collect()
-    } else {
-        Vec::new()
-    };
-    let extra = usize::from(!archived.is_empty());
-    let found_rows = if searching { l.found.chats.iter().filter(|c| !ids.contains(&c.id)).count() + l.found.msgs.len() } else { 0 };
-    let total = ids.len() + extra + found_rows + if searching { 2 } else { 0 };
-    let ink = style::c(p.list_item_text);
-    let dim = style::c(olo_theme::mix(p.list_item_text, p.list_background, 0.45));
-    let now = when::now();
-    let accent = style::c(p.keyboard_navigation);
-    let mut pointer_row = None;
-    let found = l.found;
-    let view = l.view;
-    let selected_chat = l.selected;
-    let mut rows = Rows { store: l.store, pics: l.pics, backend: l.backend, h24: l.h24 };
-    ui.scope_builder(egui::UiBuilder::new().max_rect(body), |ui| {
-        ScrollView::new("chat-list").border(false).background(p.list_background).auto_hide(true).show_rows(ui, ROW, total, |ui, range| {
-            ui.spacing_mut().item_spacing.y = 0.0;
-            for i in range {
-                let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), ROW), Sense::hover());
-                let painter = ui.painter();
-                // What row i is.
-                let row: Row = if i < extra {
-                    Row::Archive
-                } else if i - extra < ids.len() {
-                    Row::Chat(ids[i - extra])
-                } else if searching {
-                    let k = i - extra - ids.len();
-                    let more_chats: Vec<&Chat> = found.chats.iter().filter(|c| !ids.contains(&c.id)).collect();
-                    if k == 0 {
-                        Row::Heading(if found.query == view.query.trim() { "Global search" } else { "Searching…" })
-                    } else if k - 1 < more_chats.len() {
-                        Row::Found(more_chats[k - 1])
-                    } else if k - 1 == more_chats.len() {
-                        Row::Heading("Messages")
-                    } else {
-                        match found.msgs.get(k - 2 - more_chats.len()) {
-                            Some(m) => Row::Msg(m),
-                            None => Row::Heading(""),
-                        }
-                    }
-                } else {
-                    Row::Heading("")
-                };
-                match row {
-                    Row::Heading(t) => {
-                        painter.rect_filled(r, 0.0, style::c(p.panel_background));
-                        style::label(painter, r.left() + m::SPACING + 4.0, r.bottom() - 12.0, egui::Align::LEFT, t, FontId::new(style::SMALL_SIZE, style::bold()), dim);
-                    }
-                    Row::Archive => {
-                        let resp = ui.interact(r, ui.make_persistent_id("archive"), Sense::click());
-                        if resp.hovered() {
-                            painter.rect_filled(r, 0.0, ink.gamma_multiply(0.05));
-                        }
-                        let pic = Rect::from_center_size(egui::pos2(r.left() + 10.0 + PICTURE / 2.0, r.center().y), vec2(PICTURE, PICTURE));
-                        painter.circle_filled(pic.center(), PICTURE / 2.0, style::c(olo_theme::mix(p.list_background, p.list_item_text, 0.35)));
-                        olo_kit::icons::paint(painter, Rect::from_center_size(pic.center(), vec2(26.0, 26.0)), "archive");
-                        let x = pic.right() + 12.0;
-                        style::label(painter, x, r.top() + 19.0, egui::Align::LEFT, "Archived Chats", FontId::new(style::PLAIN_SIZE + 0.5, style::bold()), ink);
-                        let names = archived.iter().take(4).map(|c| c.title.as_str()).collect::<Vec<_>>().join(", ");
-                        let g = one_line(ui.ctx(), &names, style::small_font(), dim, r.right() - x - 12.0);
-                        let base2 = style::baseline_at(ui.ctx(), r.top() + 41.0, style::small_font().size);
-                        painter.galley(style::galley_on_baseline(ui.ctx(), &g, x, base2), g, dim);
-                        let unread: u32 = archived.iter().map(|c| c.unread).sum();
-                        if unread > 0 {
-                            let t = unread.to_string();
-                            let w = style::pill_width(ui.ctx(), &t, FontId::proportional(10.0));
-                            style::pill_on_baseline(painter, r.right() - 12.0 - w, base2, &t, FontId::proportional(10.0), dim, Color32::WHITE);
-                        }
-                        resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, "Archived Chats"));
-                        if resp.clicked() {
-                            view.archive = true;
-                        }
-                    }
-                    Row::Found(c) => {
-                        if chat_row(ui, r, c, &mut rows, &p, now, accent, false).clicked() {
-                            act = Some(Act::Open(c.id));
-                        }
-                    }
-                    Row::Msg(msg) => {
-                        let resp = ui.interact(r, ui.make_persistent_id(("msg", msg.chat, msg.id)), Sense::click());
-                        if resp.hovered() {
-                            painter.rect_filled(r, 0.0, ink.gamma_multiply(0.05));
-                        }
-                        let title = rows.store.chats.get(&msg.chat).map_or_else(|| msg.from.as_ref().map(|f| f.name.clone()).unwrap_or_default(), |c| c.title.clone());
-                        let pic = Rect::from_center_size(egui::pos2(r.left() + 10.0 + PICTURE / 2.0, r.center().y), vec2(PICTURE, PICTURE));
-                        let tex = rows.pics.get(&Pic::Avatar(msg.chat), rows.backend).cloned();
-                        bubble::avatar(painter, pic, msg.chat, &title, tex.as_ref(), p.mode == olo_theme::ThemeMode::Dark);
-                        olo_kit::layout_review::own_grid(ui, pic);
-                        let x = pic.right() + 12.0;
-                        let t = when::short(msg.date, now, rows.h24);
-                        let tw = style::label_width(ui.ctx(), &t, style::small_font());
-                        let base1 = style::baseline_at(ui.ctx(), r.top() + 19.0, style::PLAIN_SIZE + 0.5);
-                        let base2 = style::baseline_at(ui.ctx(), r.top() + 41.0, style::small_font().size);
-                        style::label_on_baseline(painter, r.right() - 12.0 - tw, base1, egui::Align::LEFT, &t, style::small_font(), dim);
-                        let g = one_line(ui.ctx(), &title, FontId::new(style::PLAIN_SIZE + 0.5, style::bold()), ink, r.right() - x - tw - 24.0);
-                        painter.galley(style::galley_on_baseline(ui.ctx(), &g, x, base1), g, ink);
-                        let g = one_line(ui.ctx(), &msg.summary(), style::small_font(), dim, r.right() - x - 12.0);
-                        painter.galley(style::galley_on_baseline(ui.ctx(), &g, x, base2), g, dim);
-                        style::describe_item(ui.ctx(), &format!("{title}: {}", msg.summary()), r, false);
-                        if resp.clicked() {
-                            act = Some(Act::OpenAt(msg.chat, msg.id));
-                        }
-                    }
-                    Row::Chat(id) => {
-                        let Some(c) = rows.store.chats.get(&id) else { continue };
-                        let selected = selected_chat == Some(id);
-                        let resp = chat_row(ui, r, c, &mut rows, &p, now, accent, selected);
-                        if resp.hovered() {
-                            pointer_row = Some(id);
-                        }
-                        if resp.clicked() {
-                            act = Some(Act::Open(id));
-                        }
-                        let menu = || {
-                            Menu::new("")
-                                .item(if c.pinned { "Unpin" } else { "Pin" }, "chat:pin", None)
-                                .item(if c.muted { "Unmute" } else { "Mute" }, "chat:mute", None)
-                                .item(if c.unread > 0 || c.marked { "Mark as Read" } else { "Mark as Unread" }, "chat:read", None)
-                                .separator()
-                                .item(if c.archived { "Unarchive" } else { "Archive" }, "chat:archive", None)
-                        };
-                        if let Some(cmd) = widgets::context_menu(&resp, menu) {
-                            act = Some(Act::Command(id, cmd));
-                        }
-                    }
-                }
-            }
-        });
-    });
-    if ids.is_empty() && !searching && rows.store.complete {
-        let msg = if view.archive { "No archived chats." } else if view.folder.is_some() { "No chats in this folder." } else { "No chats yet." };
-        style::label(&painter, body.center().x, body.top() + 40.0, egui::Align::Center, msg, style::plain_font(), dim);
-    }
-    let _ = pointer_row;
-    act
-}
-
-enum Row<'a> {
+/// What row i is.
+#[derive(Clone, Copy, PartialEq)]
+pub enum Row {
     Archive,
     Chat(ChatId),
-    Found(&'a Chat),
-    Msg(&'a Message),
+    /// A chat Telegram's search found (its index there).
+    Found(usize),
+    /// A message it found.
+    Msg(usize),
     Heading(&'static str),
 }
 
-fn one_line(ctx: &egui::Context, text: &str, font: FontId, color: Color32, width: f32) -> std::sync::Arc<egui::Galley> {
-    let mut job = egui::text::LayoutJob::simple(text.replace('\n', " "), font, color, width.max(10.0));
-    job.wrap.max_rows = 1;
-    job.wrap.break_anywhere = true;
-    let (job, found) = olo_kit::emoji::make_room(&job);
-    let g = ctx.fonts_mut(|f| f.layout_job(job));
-    if !found.is_empty() {
-        // Remembered with the galley for painting.
-        ctx.data_mut(|d| d.insert_temp(egui::Id::unique(("emoji", std::sync::Arc::as_ptr(&g) as usize)), found));
+/// The list's rows as the view and a search have them.
+pub fn rows(store: &Store, view: &View, found: &Found) -> Vec<Row> {
+    let searching = !view.query.trim().is_empty();
+    let ids = shown(store, view);
+    let mut rows = Vec::with_capacity(ids.len() + 4);
+    // The archive's row, at the top of all chats.
+    if !searching && !view.archive && view.folder.is_none() && store.chats.values().any(|c| c.archived) {
+        rows.push(Row::Archive);
     }
-    g
+    rows.extend(ids.iter().map(|&id| Row::Chat(id)));
+    if searching {
+        rows.push(Row::Heading(if found.query == view.query.trim() { "Global search" } else { "Searching…" }));
+        rows.extend(found.chats.iter().enumerate().filter(|(_, c)| !ids.contains(&c.id)).map(|(i, _)| Row::Found(i)));
+        rows.push(Row::Heading("Messages"));
+        rows.extend((0..found.msgs.len()).map(Row::Msg));
+    }
+    rows
 }
 
-/// Paint a one-line galley made by `one_line`, its emoji in colour.
-fn put(painter: &egui::Painter, pos: egui::Pos2, g: std::sync::Arc<egui::Galley>, ink: Color32) {
-    let found: Option<Vec<String>> = painter.ctx().data(|d| d.get_temp(egui::Id::unique(("emoji", std::sync::Arc::as_ptr(&g) as usize))));
-    painter.galley(pos, g.clone(), ink);
-    if let Some(found) = found {
-        olo_kit::emoji::paint_in(painter, pos, &g, &found, ink);
+/// What a row paints, gathered for the rows near the view.
+enum Draw {
+    Heading(&'static str),
+    Archive { names: String, unread: u32 },
+    Chat { c: Box<Chat>, pic: Option<Arc<RenderImage>>, selected: bool, typing: Option<String> },
+    Msg { title: String, chat: ChatId, saved: bool, pic: Option<Arc<RenderImage>>, summary: String, date: i64 },
+}
+
+/// The list, filling `rect` (window coordinates).
+pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut Context<Tg>) -> AnyElement {
+    let me = cx.entity();
+    let p = theme::palette(cx);
+    let (x0, y0, w, h) = (f32::from(rect.origin.x), f32::from(rect.origin.y), f32::from(rect.size.width), f32::from(rect.size.height));
+    let r = |x: f32, y: f32, w: f32, h: f32| Bounds { origin: point(px(x), px(y)), size: size(px(w), px(h)) };
+    let mut paint: crate::conv::Paints = Vec::new();
+    let mut hits: Vec<AnyElement> = Vec::new();
+    let hot = tg.hot.clone();
+    let is_hot = move |k: &str| hot.as_ref().is_some_and(|h| h.as_ref() == k);
+
+    // The search field.
+    let bar = r(x0, y0, w, m::TOOLBAR_HEIGHT);
+    paint.push(Box::new(move |window, cx| {
+        let p = theme::palette(cx);
+        style::fill_rect(window, rect, c(p.panel_background));
+        let _ = bar;
+    }));
+    let search = div().absolute().left(px(x0 + m::SPACING)).top(px(y0 + m::TIGHT)).w(px(w - 2.0 * m::SPACING)).h(px(m::CONTROL_HEIGHT)).child(tg.search.clone()).into_any_element();
+    let mut top = y0 + m::TOOLBAR_HEIGHT;
+
+    // Folders, as chips (with the archive's back row when in it).
+    let searching = !tg.view.query.trim().is_empty();
+    if !searching && (tg.view.archive || !tg.store.folders.is_empty()) {
+        let row = r(x0, top, w, FOLDERS);
+        if tg.view.archive {
+            let t = me.clone();
+            hits.push(
+                crate::hit(&me, "archive-back", row)
+                    .on_click(move |_, _, cx| {
+                        t.update(cx, |tg, cx| {
+                            tg.view.archive = false;
+                            cx.notify();
+                        })
+                    })
+                    .into_any_element(),
+            );
+            paint.push(Box::new(move |window, cx| {
+                let p = theme::palette(cx);
+                let ink = c(p.panel_text);
+                back_arrow(window, point(row.origin.x + px(m::SPACING + 4.0), row.center().y), ink);
+                style::label(window, cx, row.origin.x + px(m::SPACING + 16.0), row.center().y, Align::Left, "Archived Chats", style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), ink);
+                olo_ui::agent::record(window, cx, olo_ui::agent::Node::button("Back to Chats", row));
+            }));
+        } else {
+            let chips: Vec<(Option<i32>, String, u32)> = std::iter::once((None, "All Chats".to_owned(), 0))
+                .chain(tg.store.folders.iter().map(|f| {
+                    let unread = tg.store.chats.values().filter(|c| f.admits(c) && !c.muted).filter(|c| c.unread > 0 || c.marked).count() as u32;
+                    (Some(f.id), f.title.clone(), unread)
+                }))
+                .collect();
+            let size_ = style::SMALL_SIZE + 0.5;
+            let font = style::ui_font(FontWeight::NORMAL);
+            let count_font = style::ui_font(FontWeight::NORMAL);
+            let width_of = |window: &mut Window, title: &str, unread: u32| {
+                let badge = if unread > 0 { style::pill_width(window, &unread.to_string(), 9.0, &count_font) + 4.0 } else { 0.0 };
+                f32::from(style::text_width(window, title.to_owned(), size_, font.clone())) + badge + 16.0
+            };
+            // As many as fit; the rest behind a last chip with a menu.
+            let mut x = x0 + m::SPACING;
+            let room = x0 + w - m::SPACING - x;
+            let widths: Vec<f32> = chips.iter().map(|c| width_of(window, &c.1, c.2) + 4.0).collect();
+            let mut fits = chips.len();
+            if widths.iter().sum::<f32>() > room {
+                let mut used = 0.0;
+                fits = 0;
+                for cw in &widths {
+                    if used + cw > room - 70.0 {
+                        break;
+                    }
+                    used += cw;
+                    fits += 1;
+                }
+            }
+            let hidden: Vec<(Option<i32>, String, u32)> = chips[fits..].to_vec();
+            let current = tg.view.folder;
+            let mut drawn = Vec::new();
+            for (i, (id, title, unread)) in chips[..fits].iter().enumerate() {
+                let chip = r(x, top + 3.0, widths[i] - 4.0, 22.0);
+                x += widths[i];
+                let key = format!("folder:{}", id.unwrap_or(0));
+                let (t, id) = (me.clone(), *id);
+                hits.push(
+                    crate::hit(&me, &key, chip)
+                        .on_click(move |_, _, cx| {
+                            t.update(cx, |tg, cx| {
+                                tg.view.folder = id;
+                                cx.notify();
+                            })
+                        })
+                        .into_any_element(),
+                );
+                drawn.push((chip, title.clone(), *unread, current == id, is_hot(&key), false));
+            }
+            if !hidden.is_empty() {
+                // The chosen one's name when it's among them.
+                let label = hidden.iter().find(|h| h.0 == current).map_or_else(|| "More".to_owned(), |h| h.1.clone());
+                let unread: u32 = hidden.iter().map(|h| h.2).sum();
+                let cw = width_of(window, &label, unread) + 12.0;
+                let chip = r(x, top + 3.0, cw, 22.0);
+                let t = me.clone();
+                let hidden2 = hidden.clone();
+                hits.push(
+                    crate::hit(&me, "folder:more", chip)
+                        .on_click(move |_, window, cx| {
+                            let current = t.read(cx).view.folder;
+                            let mut menu = Menu::new("");
+                            for (id, title, unread) in &hidden2 {
+                                let label = if *unread > 0 { format!("{title} ({unread})") } else { title.clone() };
+                                menu = menu.item(label, format!("folder:{}", id.unwrap_or(0))).checked(current == *id);
+                            }
+                            let to = t.clone();
+                            olo_ui::menu::popup(window, cx, menu, chip, Corner::BottomLeft, move |cmd, _, cx| {
+                                to.update(cx, |tg, cx| {
+                                    tg.view.folder = cmd.trim_start_matches("folder:").parse().ok().filter(|&id: &i32| id != 0);
+                                    cx.notify();
+                                })
+                            });
+                        })
+                        .into_any_element(),
+                );
+                drawn.push((chip, label, unread, hidden.iter().any(|h| h.0 == current), is_hot("folder:more"), true));
+            }
+            paint.push(Box::new(move |window, cx| {
+                let p = theme::palette(cx);
+                // A strip of chips, set by their own insets (not the
+                // menu titles' above).
+                olo_ui::review::own_grid(window, row);
+                for (chip, title, unread, chosen, hot, more) in drawn {
+                    let (fill, ink) = if chosen {
+                        (c(p.list_selected_background), c(p.list_selected_item_text))
+                    } else if hot {
+                        (c(p.panel_text).opacity(0.08), c(p.panel_text))
+                    } else {
+                        (transparent_black(), c(p.panel_text))
+                    };
+                    let chip = style::snap(window, chip);
+                    window.paint_quad(olo_ui::gpui::fill(chip, fill).corner_radii(px(11.0)));
+                    // The count on the name's baseline.
+                    let base = style::baseline_at(window, chip.center().y, size_);
+                    let t = style::label_on_baseline(window, cx, chip.origin.x + px(8.0), base, Align::Left, title.clone(), size_, style::ui_font(FontWeight::NORMAL), ink);
+                    if unread > 0 {
+                        style::pill_on_baseline(window, cx, t.right() + px(4.0), base, &unread.to_string(), 9.0, style::ui_font(FontWeight::NORMAL), c(p.keyboard_navigation), white());
+                    }
+                    if more {
+                        let cc = point(chip.right() - px(10.0), chip.center().y);
+                        window.paint_segment(point(cc.x - px(3.0), cc.y - px(1.5)), point(cc.x, cc.y + px(1.5)), px(1.3), true, ink);
+                        window.paint_segment(point(cc.x, cc.y + px(1.5)), point(cc.x + px(3.0), cc.y - px(1.5)), px(1.3), true, ink);
+                    }
+                    olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Tab", name: Some(title.into()), bounds: chip, enabled: true, clickable: true, selected: Some(chosen), ..Default::default() });
+                }
+            }));
+        }
+        top += FOLDERS;
     }
+    {
+        let line_y = px(top);
+        paint.push(Box::new(move |window, cx| {
+            let p = theme::palette(cx);
+            style::hline(window, rect.origin.x, rect.right(), line_y, c(p.shadow).opacity(0.5));
+        }));
+    }
+    let hair = f32::from(style::hairline(window));
+    let body = r(x0, top + hair, w, (y0 + h - top - hair).max(0.0));
+
+    // The rows: those in view gathered to paint.
+    let rows = rows(&tg.store, &tg.view, &tg.found);
+    tg.list_rows = rows.clone();
+    let total = rows.len();
+    let view_h = f32::from(body.size.height);
+    let offset = -f32::from(tg.list_scroll.offset().y);
+    // (Those in view and a row either side: a scroll draws again.)
+    let first = (offset / ROW).floor().max(1.0) as usize - 1;
+    let last = (((offset + view_h) / ROW).ceil() as usize + 1).min(total);
+    let selected_chat = tg.conv.as_ref().map(|c| c.chat);
+    let now = crate::now();
+    let mut draws = Vec::new();
+    for (i, row) in rows.iter().enumerate().take(last).skip(first) {
+        let d = match *row {
+            Row::Heading(t) => Draw::Heading(t),
+            Row::Archive => {
+                let archived: Vec<&Chat> = tg.store.order.iter().filter_map(|id| tg.store.chats.get(id)).filter(|c| c.archived).collect();
+                Draw::Archive { names: archived.iter().take(4).map(|c| c.title.as_str()).collect::<Vec<_>>().join(", "), unread: archived.iter().map(|c| c.unread).sum() }
+            }
+            Row::Chat(id) => {
+                let Some(ch) = tg.store.chats.get(&id) else { continue };
+                let pic = if ch.photo.is_some() && ch.kind != ChatKind::Saved { tg.pics.get(&Pic::Avatar(id), &tg.backend) } else { None };
+                Draw::Chat { c: Box::new(ch.clone()), pic, selected: selected_chat == Some(id), typing: tg.store.doing(id, None, now) }
+            }
+            Row::Found(k) => {
+                let ch = &tg.found.chats[k];
+                let pic = if ch.photo.is_some() { tg.pics.get(&Pic::Avatar(ch.id), &tg.backend) } else { None };
+                Draw::Chat { c: Box::new(ch.clone()), pic, selected: false, typing: None }
+            }
+            Row::Msg(k) => {
+                let msg = &tg.found.msgs[k];
+                let title = tg.store.chats.get(&msg.chat).map_or_else(|| msg.from.as_ref().map(|f| f.name.clone()).unwrap_or_default(), |c| c.title.clone());
+                let saved = tg.store.chats.get(&msg.chat).is_some_and(|c| c.kind == ChatKind::Saved);
+                let pic = if saved { None } else { tg.pics.get(&Pic::Avatar(msg.chat), &tg.backend) };
+                Draw::Msg { title, chat: msg.chat, saved, pic, summary: msg.summary(), date: msg.date }
+            }
+        };
+        draws.push((i, d));
+    }
+    let hover = tg.list_hover.filter(|&i| i < total);
+    let h24 = tg.h24;
+    let top_of = tg.list_top.clone();
+    let canvas_el = canvas(
+        move |b, window, _| window.insert_hitbox(b, HitboxBehavior::Normal),
+        move |b, hitbox: Hitbox, window, cx| {
+            top_of.set(f32::from(b.origin.y));
+            // It scrolls: its rows are on a grid of their own, not level
+            // with the conversation's beside it.
+            olo_ui::review::own_grid(window, window.content_mask().bounds);
+            if hover.is_some() {
+                window.set_cursor_style(CursorStyle::Arrow, &hitbox);
+            }
+            let p = theme::palette(cx);
+            let now = when::now();
+            for (i, d) in draws {
+                let rr = Bounds { origin: point(b.origin.x, b.origin.y + px(i as f32 * ROW)), size: size(b.size.width, px(ROW)) };
+                paint_row(window, cx, rr, d, &p, hover == Some(i), now, h24);
+            }
+        },
+    )
+    .w_full()
+    .h(px(total as f32 * ROW));
+    let (t_move, t_click, t_menu, t_out) = (me.clone(), me.clone(), me.clone(), me.clone());
+    let content = div()
+        .id("chat-rows")
+        .w_full()
+        .h(px(total as f32 * ROW))
+        .child(canvas_el)
+        // (The row under the pointer redraws the list, not the window.)
+        .on_mouse_move(move |e: &MouseMoveEvent, _, cx| {
+            let changed = t_move.update(cx, |tg, _| {
+                let i = tg.list_row_at(e.position);
+                (i != tg.list_hover).then(|| {
+                    tg.list_hover = i;
+                    tg.pane(crate::Kind::List)
+                })
+            });
+            if let Some(pane) = changed.flatten() {
+                cx.notify(pane);
+            }
+        })
+        .on_hover(move |on: &bool, _, cx| {
+            if !*on {
+                let changed = t_out.update(cx, |tg, _| tg.list_hover.take().and(tg.pane(crate::Kind::List)));
+                if let Some(pane) = changed {
+                    cx.notify(pane);
+                }
+            }
+        })
+        .on_click(move |e: &ClickEvent, window, cx| {
+            let ClickEvent::Mouse(mc) = e else { return };
+            t_click.update(cx, |tg, cx| {
+                let Some(row) = tg.list_row_at(mc.up.position).and_then(|i| tg.list_rows.get(i).copied()) else { return };
+                let act = match row {
+                    Row::Archive => {
+                        tg.view.archive = true;
+                        cx.notify();
+                        None
+                    }
+                    Row::Chat(id) => Some(Act::Open(id)),
+                    Row::Found(k) => tg.found.chats.get(k).map(|c| Act::Open(c.id)),
+                    Row::Msg(k) => tg.found.msgs.get(k).map(|m| Act::OpenAt(m.chat, m.id)),
+                    Row::Heading(_) => None,
+                };
+                if let Some(a) = act {
+                    tg.list_act(a, window, cx);
+                }
+            })
+        })
+        .on_mouse_down(MouseButton::Right, move |e: &MouseDownEvent, window, cx| {
+            let menu = t_menu.update(cx, |tg, _| {
+                let Row::Chat(id) = tg.list_row_at(e.position).and_then(|i| tg.list_rows.get(i).copied())? else { return None };
+                let c = tg.store.chats.get(&id)?;
+                Some((
+                    id,
+                    Menu::new("")
+                        .item(if c.pinned { "Unpin" } else { "Pin" }, "chat:pin")
+                        .item(if c.muted { "Unmute" } else { "Mute" }, "chat:mute")
+                        .item(if c.unread > 0 || c.marked { "Mark as Read" } else { "Mark as Unread" }, "chat:read")
+                        .separator()
+                        .item(if c.archived { "Unarchive" } else { "Archive" }, "chat:archive"),
+                ))
+            });
+            if let Some((id, menu)) = menu {
+                let to = t_menu.clone();
+                olo_ui::menu::context_menu(window, cx, menu, e.position, move |cmd, window, cx| to.update(cx, |tg, cx| tg.list_act(Act::Command(id, cmd.to_owned()), window, cx)));
+            }
+        });
+    let list_bg = p.list_background;
+    let list_el = div()
+        .absolute()
+        .left(body.origin.x)
+        .top(body.origin.y)
+        .w(body.size.width)
+        .h(body.size.height)
+        .child(ScrollView::new("chat-list", &tg.list_scroll).border(false).background(list_bg).auto_hide(true).child(content));
+    if total == 0 && !searching && tg.store.complete {
+        let msg = if tg.view.archive { "No archived chats." } else if tg.view.folder.is_some() { "No chats in this folder." } else { "No chats yet." };
+        hits.push(
+            canvas(
+                |_, _, _| {},
+                move |b, _, window, cx| {
+                    let p = theme::palette(cx);
+                    let dim = c(theme_palette::mix(p.list_item_text, p.list_background, 0.45));
+                    style::label(window, cx, b.center().x, b.origin.y + px(40.0), Align::Center, msg, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), dim);
+                    olo_ui::agent::record(window, cx, olo_ui::agent::Node::label(msg, Bounds { origin: point(b.origin.x, b.origin.y + px(30.0)), size: size(b.size.width, px(20.0)) }));
+                },
+            )
+            .absolute()
+            .left(body.origin.x)
+            .top(body.origin.y)
+            .w(body.size.width)
+            .h(px(60.0))
+            .into_any_element(),
+        );
+    }
+    div()
+        .absolute()
+        .inset_0()
+        .child(canvas(|_, _, _| {}, move |_, _, window, cx| paint.into_iter().for_each(|f| f(window, cx))).absolute().inset_0())
+        .child(search)
+        .child(list_el)
+        .children(hits)
+        .into_any_element()
+}
+
+impl Tg {
+    /// The row under `q` (window coordinates), as last painted.
+    fn list_row_at(&self, q: Point<Pixels>) -> Option<usize> {
+        let y = f32::from(q.y) - self.list_top.get();
+        let i = (y / ROW).floor();
+        (y >= 0.0 && (i as usize) < self.list_rows.len()).then_some(i as usize)
+    }
+}
+
+/// The text a one-line preview of `n` characters keeps: the first line's
+/// worth, newlines as spaces.
+fn one_line(text: &str) -> String {
+    text.chars().take(300).map(|ch| if ch == '\n' { ' ' } else { ch }).collect()
 }
 
 #[allow(clippy::too_many_arguments)]
-fn chat_row(ui: &mut Ui, r: Rect, c: &Chat, l: &mut Rows, p: &olo_theme::Palette, now: i64, accent: Color32, selected: bool) -> egui::Response {
-    let resp = ui.interact(r, ui.make_persistent_id(("chat", c.id)), Sense::click());
-    let painter = ui.painter();
-    let sel = style::selection_ink(p);
+fn paint_row(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, d: Draw, p: &Palette, hovered: bool, now: i64, h24: bool) {
+    let ink = c(p.list_item_text);
+    let dim = c(theme_palette::mix(p.list_item_text, p.list_background, 0.45));
+    let dark = p.mode == theme_palette::ThemeMode::Dark;
+    let pic = Bounds { origin: point(r.origin.x + px(10.0), r.center().y - px(PICTURE / 2.0)), size: size(px(PICTURE), px(PICTURE)) };
+    let x = pic.right() + px(12.0);
+    let title_size = style::PLAIN_SIZE + 0.5;
+    let small = style::DETAIL_SIZE;
+    let base1 = style::baseline_at(window, r.origin.y + px(19.0), title_size);
+    let base2 = style::baseline_at(window, r.origin.y + px(41.0), small);
+    let bold = style::ui_font(FontWeight::BOLD);
+    let normal = style::ui_font(FontWeight::NORMAL);
+    match d {
+        Draw::Heading(t) => {
+            style::fill_rect(window, r, c(p.panel_background));
+            style::label(window, cx, r.origin.x + px(m::SPACING + 4.0), r.bottom() - px(12.0), Align::Left, t, style::SMALL_SIZE, bold, dim);
+            if !t.is_empty() {
+                crate::seen(window, cx, olo_ui::agent::Node::label(t, r));
+            }
+        }
+        Draw::Archive { names, unread } => {
+            if hovered {
+                style::fill_rect(window, r, ink.opacity(0.05));
+            }
+            window.paint_sector(pic.center(), px(0.0), px(PICTURE / 2.0), 0.0, std::f32::consts::TAU, c(theme_palette::mix(p.list_background, p.list_item_text, 0.35)));
+            let icon = Bounds { origin: point(pic.center().x - px(13.0), pic.center().y - px(13.0)), size: size(px(26.0), px(26.0)) };
+            olo_ui::icons::paint(window, icon, "archive");
+            style::label_on_baseline(window, cx, x, base1, Align::Left, "Archived Chats", title_size, bold.clone(), ink);
+            let mut room = r.right() - px(12.0) - x;
+            if unread > 0 {
+                let t = unread.to_string();
+                let w = style::pill_width(window, &t, 10.0, &normal);
+                style::pill_on_baseline(window, cx, r.right() - px(12.0 + w), base2, &t, 10.0, normal.clone(), dim, white());
+                room -= px(w + 6.0);
+            }
+            label_fit_on(window, cx, x, base2, one_line(&names), small, normal, dim, room);
+            crate::seen(window, cx, olo_ui::agent::Node::button("Archived Chats", r));
+        }
+        Draw::Msg { title, chat, saved, pic: img, summary, date } => {
+            if hovered {
+                style::fill_rect(window, r, ink.opacity(0.05));
+            }
+            if saved {
+                window.paint_sector(pic.center(), px(0.0), px(PICTURE / 2.0), 0.0, std::f32::consts::TAU, c(p.keyboard_navigation));
+                bookmark(window, pic.center(), PICTURE, white());
+            } else {
+                bubble::avatar(window, cx, pic, chat, &title, img.as_ref(), dark);
+                olo_ui::review::own_grid(window, pic);
+            }
+            let t = when::short(date, now, h24);
+            let tw = style::text_width(window, t.clone(), small, normal.clone());
+            style::label_on_baseline(window, cx, r.right() - px(12.0) - tw, base1, Align::Left, t, small, normal.clone(), dim);
+            label_fit_on(window, cx, x, base1, title.clone(), title_size, bold, ink, r.right() - x - tw - px(24.0));
+            label_fit_on(window, cx, x, base2, one_line(&summary), small, normal, dim, r.right() - x - px(12.0));
+            crate::seen(window, cx, olo_ui::agent::Node { role: "ListItem", name: Some(format!("{title}: {summary}").into()), bounds: r, enabled: true, clickable: true, ..Default::default() });
+        }
+        Draw::Chat { c: ch, pic: img, selected, typing } => chat_row(window, cx, r, &ch, img, selected, typing, hovered, p, now, h24),
+    }
+}
+
+/// One line of text on `baseline`, cut short with "…" to `max_width`.
+#[allow(clippy::too_many_arguments)]
+fn label_fit_on(window: &mut Window, cx: &mut App, x: Pixels, baseline: Pixels, text: impl Into<SharedString>, size_: f32, font: olo_ui::gpui::Font, color: Hsla, max_width: Pixels) -> Bounds<Pixels> {
+    let text = style::fit(window, text.into(), size_, &font, max_width.max(px(0.0)));
+    style::label_on_baseline(window, cx, x, baseline, Align::Left, text, size_, font, color)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn chat_row(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, ch: &Chat, img: Option<Arc<RenderImage>>, selected: bool, typing: Option<String>, hovered: bool, p: &Palette, now: i64, h24: bool) {
+    let accent = c(p.keyboard_navigation);
     let (ink, dim) = if selected {
-        (sel.text, sel.dim)
+        let t = c(p.list_selected_item_text);
+        (t, t.opacity(150.0 / 255.0))
     } else {
-        (style::c(p.list_item_text), style::c(olo_theme::mix(p.list_item_text, p.list_background, 0.45)))
+        (c(p.list_item_text), c(theme_palette::mix(p.list_item_text, p.list_background, 0.45)))
     };
+    let sel_fill = c(p.list_selected_background);
     if selected {
-        painter.rect_filled(r, 0.0, sel.fill);
-    } else if resp.hovered() {
-        painter.rect_filled(r, 0.0, ink.gamma_multiply(0.05));
+        style::fill_rect(window, r, sel_fill);
+    } else if hovered {
+        style::fill_rect(window, r, ink.opacity(0.05));
     }
-    let pic = Rect::from_center_size(egui::pos2(r.left() + 10.0 + PICTURE / 2.0, r.center().y), vec2(PICTURE, PICTURE));
-    if c.kind == ChatKind::Saved {
-        painter.circle_filled(pic.center(), PICTURE / 2.0, accent);
-        bookmark(painter, pic.center(), Color32::WHITE);
+    let pic = Bounds { origin: point(r.origin.x + px(10.0), r.center().y - px(PICTURE / 2.0)), size: size(px(PICTURE), px(PICTURE)) };
+    if ch.kind == ChatKind::Saved {
+        window.paint_sector(pic.center(), px(0.0), px(PICTURE / 2.0), 0.0, std::f32::consts::TAU, accent);
+        bookmark(window, pic.center(), PICTURE, white());
     } else {
-        let tex = if c.photo.is_some() { l.pics.get(&Pic::Avatar(c.id), l.backend).cloned() } else { None };
-        bubble::avatar(painter, pic, c.id, &c.title, tex.as_ref(), p.mode == olo_theme::ThemeMode::Dark);
-        olo_kit::layout_review::own_grid(ui, pic);
+        bubble::avatar(window, cx, pic, ch.id, &ch.title, img.as_ref(), p.mode == theme_palette::ThemeMode::Dark);
+        olo_ui::review::own_grid(window, pic);
     }
-    if c.seen == Some(olo_tg::Seen::Online) {
-        let dot = pic.right_bottom() - vec2(7.0, 7.0);
-        painter.circle_filled(dot, 6.0, if selected { sel.fill } else { style::c(p.list_background) });
-        painter.circle_filled(dot, 4.5, Color32::from_rgb(0x4C, 0xC1, 0x4F));
+    if ch.seen == Some(olo_tg::Seen::Online) {
+        let dot = point(pic.right() - px(7.0), pic.bottom() - px(7.0));
+        window.paint_sector(dot, px(0.0), px(6.0), 0.0, std::f32::consts::TAU, if selected { sel_fill } else { c(p.list_background) });
+        window.paint_sector(dot, px(0.0), px(4.5), 0.0, std::f32::consts::TAU, rgb(0x4CC14F).into());
     }
-    let x = pic.right() + 12.0;
-    let right = r.right() - 12.0;
+    let x = pic.right() + px(12.0);
+    let right = r.right() - px(12.0);
+    let title_size = style::PLAIN_SIZE + 0.5;
+    let small = style::DETAIL_SIZE;
+    let bold = style::ui_font(FontWeight::BOLD);
+    let normal = style::ui_font(FontWeight::NORMAL);
+    // Each line's parts on one baseline: the title and time, the preview
+    // and counts.
+    let base1 = style::baseline_at(window, r.origin.y + px(19.0), title_size);
+    let base2 = style::baseline_at(window, r.origin.y + px(41.0), small);
+    let mid1 = base1 - px(title_size * style::CAP_HEIGHT / 2.0);
     // Time, then the title in what's left of the line.
-    let (t, out_read) = match &c.last {
-        Some(l2) => (when::short(l2.date.max(if c.draft.is_some() { c.order } else { 0 }), now, l.h24), (l2.out && !matches!(c.kind, ChatKind::Saved | ChatKind::Channel)).then(|| c.last_read())),
+    let (t, out_read) = match &ch.last {
+        Some(l2) => (when::short(l2.date.max(if ch.draft.is_some() { ch.order } else { 0 }), now, h24), (l2.out && !matches!(ch.kind, ChatKind::Saved | ChatKind::Channel)).then(|| ch.last_read())),
         None => (String::new(), None),
     };
-    let tw = style::label_width(ui.ctx(), &t, style::small_font());
-    // Each line's parts on one baseline: the title and time, the preview and counts.
-    let base1 = style::baseline_at(ui.ctx(), r.top() + 19.0, style::PLAIN_SIZE + 0.5);
-    let base2 = style::baseline_at(ui.ctx(), r.top() + 41.0, style::small_font().size);
-    style::label_on_baseline(painter, right - tw, base1, egui::Align::LEFT, &t, style::small_font(), dim);
+    let tw = style::text_width(window, t.clone(), small, normal.clone());
+    style::label_on_baseline(window, cx, right - tw, base1, Align::Left, t, small, normal.clone(), dim);
     let mut tx = right - tw;
     if let Some(read) = out_read {
-        tx -= 16.0;
-        let s = egui::Stroke::new(1.3, if read && !selected { accent } else { dim });
-        let at = egui::pos2(tx, r.top() + 19.0);
-        painter.line_segment([at, at + vec2(3.0, 3.0)], s);
-        painter.line_segment([at + vec2(3.0, 3.0), at + vec2(9.0, -3.5)], s);
+        tx -= px(16.0);
+        let ink_t = if read && !selected { accent } else { dim };
+        let at = |dx: f32, dy: f32| point(tx + px(dx), mid1 + px(dy));
+        window.paint_segment(at(0.0, 0.0), at(3.0, 3.0), px(1.3), true, ink_t);
+        window.paint_segment(at(3.0, 3.0), at(9.0, -3.5), px(1.3), true, ink_t);
         if read {
-            painter.line_segment([at + vec2(7.0, 3.0), at + vec2(13.0, -3.5)], s);
+            window.paint_segment(at(7.0, 3.0), at(13.0, -3.5), px(1.3), true, ink_t);
         }
     }
-    let mut title_room = tx - x - 8.0;
     let mut marks = 0.0;
-    if c.muted {
+    if ch.muted {
         marks += 14.0;
     }
-    if c.verified {
+    if ch.verified {
         marks += 16.0;
     }
-    title_room -= marks;
-    let tg = one_line(ui.ctx(), &c.title, FontId::new(style::PLAIN_SIZE + 0.5, style::bold()), ink, title_room);
-    let tsize = tg.size();
-    let at = style::galley_on_baseline(ui.ctx(), &tg, x, base1);
-    put(painter, at, tg, ink);
-    let mut mx = x + tsize.x + 4.0;
-    if c.verified {
-        let cc = egui::pos2(mx + 6.0, r.top() + 19.0);
-        painter.circle_filled(cc, 6.0, accent);
-        let s = egui::Stroke::new(1.4, Color32::WHITE);
-        painter.line_segment([cc + vec2(-3.0, 0.0), cc + vec2(-1.0, 2.2)], s);
-        painter.line_segment([cc + vec2(-1.0, 2.2), cc + vec2(3.0, -2.2)], s);
-        mx += 16.0;
+    let title_room = tx - x - px(8.0 + marks);
+    let tr = label_fit_on(window, cx, x, base1, ch.title.clone(), title_size, bold.clone(), ink, title_room);
+    let mut mx = tr.right() + px(4.0);
+    if ch.verified {
+        let cc = point(mx + px(6.0), mid1);
+        window.paint_sector(cc, px(0.0), px(6.0), 0.0, std::f32::consts::TAU, accent);
+        window.paint_segment(point(cc.x - px(3.0), cc.y), point(cc.x - px(1.0), cc.y + px(2.2)), px(1.4), true, white());
+        window.paint_segment(point(cc.x - px(1.0), cc.y + px(2.2)), point(cc.x + px(3.0), cc.y - px(2.2)), px(1.4), true, white());
+        mx += px(16.0);
     }
-    if c.muted {
-        speaker_off(painter, egui::pos2(mx + 5.0, r.top() + 19.0), dim);
+    if ch.muted {
+        speaker_off(window, point(mx + px(5.0), mid1), dim);
     }
     // The preview, and the counts at its right.
-    let mut px = right;
-    let pill_font = FontId::new(10.0, style::bold());
-    let count = if c.unread > 0 { Some(c.unread.to_string()) } else if c.marked { Some(String::new()) } else { None };
+    let mut pxr = right;
+    let pill_size = 10.0;
+    let count = if ch.unread > 0 { Some(ch.unread.to_string()) } else if ch.marked { Some(String::new()) } else { None };
     if let Some(n) = &count {
-        let fill = if c.muted { style::c(olo_theme::mix(p.list_item_text, p.list_background, 0.55)) } else { accent };
-        let fill = if selected { Color32::WHITE } else { fill };
-        let tint = if selected { sel.fill } else { Color32::WHITE };
-        let w = style::pill_width(ui.ctx(), n, pill_font.clone()).max(18.0);
-        let pr = style::pill_on_baseline(painter, right - w, base2, n, pill_font.clone(), fill, tint);
-        px = pr.left() - 4.0;
+        let fill = if ch.muted { c(theme_palette::mix(p.list_item_text, p.list_background, 0.55)) } else { accent };
+        let fill = if selected { white() } else { fill };
+        let tint = if selected { sel_fill } else { white() };
+        let w = style::pill_width(window, n, pill_size, &bold).max(18.0);
+        let pr = style::pill_on_baseline(window, cx, right - px(w), base2, n, pill_size, bold.clone(), fill, tint);
+        pxr = pr.origin.x - px(4.0);
     }
-    if c.mentions > 0 {
-        let fill = if selected { Color32::WHITE } else { accent };
-        let pr = style::pill_on_baseline(painter, px - 18.0, base2, "@", pill_font.clone(), fill, if selected { sel.fill } else { Color32::WHITE });
-        px = pr.left() - 4.0;
+    if ch.mentions > 0 {
+        let fill = if selected { white() } else { accent };
+        let pr = style::pill_on_baseline(window, cx, pxr - px(18.0), base2, "@", pill_size, bold.clone(), fill, if selected { sel_fill } else { white() });
+        pxr = pr.origin.x - px(4.0);
     }
-    if c.pinned && count.is_none() && c.mentions == 0 && !c.archived {
-        pin(painter, egui::pos2(right - 6.0, r.top() + 41.0), dim);
-        px = right - 16.0;
+    if ch.pinned && count.is_none() && ch.mentions == 0 && !ch.archived {
+        pin(window, point(right - px(6.0), base2 - px(small * style::CAP_HEIGHT / 2.0)), dim);
+        pxr = right - px(16.0);
     }
-    let room = px - x - 6.0;
-    let typing = l.store.doing(c.id, None, crate::now());
-    let mut job = egui::text::LayoutJob { wrap: egui::text::TextWrapping { max_width: room.max(10.0), max_rows: 1, break_anywhere: true, ..Default::default() }, ..Default::default() };
-    let small = style::small_font();
-    let fmt = |color: Color32| egui::TextFormat { font_id: small.clone(), color, ..Default::default() };
-    if let Some(t) = typing {
-        job.append(&t, 0.0, fmt(if selected { ink } else { accent }));
-    } else if let Some(d) = &c.draft {
-        job.append("Draft: ", 0.0, fmt(if selected { ink } else { style::c(p.failure) }));
-        job.append(&d.replace('\n', " "), 0.0, fmt(dim));
-    } else if let Some(last) = &c.last {
-        let who = if last.out && c.kind != ChatKind::Saved && c.kind != ChatKind::Channel {
+    let room = pxr - x - px(6.0);
+    let mut text = String::new();
+    let mut runs: Vec<TextRun> = Vec::new();
+    let mut push = |s: &str, color: Hsla| {
+        text.push_str(s);
+        runs.push(TextRun { len: s.len(), font: normal.clone(), color, background_color: None, underline: None, strikethrough: None });
+    };
+    if let Some(t) = &typing {
+        push(t, if selected { ink } else { accent });
+    } else if let Some(d) = &ch.draft {
+        push("Draft: ", if selected { ink } else { c(p.failure) });
+        push(&one_line(d), dim);
+    } else if let Some(last) = &ch.last {
+        let who = if last.out && ch.kind != ChatKind::Saved && ch.kind != ChatKind::Channel {
             Some("You".to_owned())
-        } else if c.kind.many() {
+        } else if ch.kind.many() {
             last.from.as_ref().map(|f| f.split(' ').next().unwrap_or(f).to_owned())
         } else {
             None
         };
         if let Some(w) = who {
-            job.append(&format!("{w}: "), 0.0, fmt(ink));
+            push(&format!("{w}: "), ink);
         }
-        job.append(&last.text.replace('\n', " "), 0.0, fmt(dim));
+        push(&one_line(&last.text), dim);
     }
-    let (job, found) = olo_kit::emoji::make_room(&job);
-    let g = ui.ctx().fonts_mut(|f| f.layout_job(job));
-    let pp = style::galley_on_baseline(ui.ctx(), &g, x, base2);
-    painter.galley(pp, g.clone(), dim);
-    olo_kit::emoji::paint_in(painter, pp, &g, &found, dim);
+    if !text.is_empty() {
+        let mid2 = base2 - px(small * style::CAP_HEIGHT / 2.0);
+        style::label_runs_fit(window, cx, x, mid2, Align::Left, text.into(), small, &runs, room);
+    }
     // A hairline between rows, from the text's edge.
     if !selected {
-        style::hline(painter, x, r.right(), r.bottom() - style::hairline(ui.ctx()), style::c(p.shadow).gamma_multiply(0.18));
+        style::hline_above(window, x, r.right(), r.bottom(), c(p.shadow).opacity(0.18));
     }
-    style::describe_item(ui.ctx(), &describe(c), r, selected);
-    resp
+    crate::seen(window, cx, olo_ui::agent::Node { role: "ListItem", name: Some(describe(ch).into()), bounds: r, enabled: true, clickable: true, selected: Some(selected), ..Default::default() });
 }
 
-/// Saved Messages' bookmark.
-fn bookmark(p: &egui::Painter, c: egui::Pos2, ink: Color32) {
-    let pts = vec![c + vec2(-7.0, -10.0), c + vec2(7.0, -10.0), c + vec2(7.0, 10.0), c + vec2(0.0, 4.0), c + vec2(-7.0, 10.0)];
-    p.add(egui::Shape::convex_polygon(pts[..3].iter().copied().chain([c + vec2(0.0, 4.0)]).collect(), ink, egui::Stroke::NONE));
-    p.add(egui::Shape::convex_polygon(vec![pts[0], pts[3], pts[4]], ink, egui::Stroke::NONE));
+/// Saved Messages' bookmark, on a picture `d` across.
+pub fn bookmark(window: &mut Window, cc: Point<Pixels>, d: f32, ink: Hsla) {
+    let k = d / PICTURE;
+    let at = |dx: f32, dy: f32| point(cc.x + px(dx * k), cc.y + px(dy * k));
+    let mut path = PathBuilder::fill();
+    path.move_to(at(-7.0, -10.0));
+    path.line_to(at(7.0, -10.0));
+    path.line_to(at(7.0, 10.0));
+    path.line_to(at(0.0, 4.0));
+    path.line_to(at(-7.0, 10.0));
+    path.close();
+    if let Ok(path) = path.build() {
+        window.paint_path(path, ink);
+    }
 }
 
 /// A muted chat's mark: a speaker with a slash.
-fn speaker_off(p: &egui::Painter, c: egui::Pos2, ink: Color32) {
-    let body = vec![c + vec2(-5.0, -2.0), c + vec2(-2.5, -2.0), c + vec2(1.0, -5.0), c + vec2(1.0, 5.0), c + vec2(-2.5, 2.0), c + vec2(-5.0, 2.0)];
-    p.add(egui::Shape::convex_polygon(body, ink, egui::Stroke::NONE));
-    p.line_segment([c + vec2(-5.0, -5.5), c + vec2(5.0, 5.5)], egui::Stroke::new(1.2, ink));
+fn speaker_off(window: &mut Window, cc: Point<Pixels>, ink: Hsla) {
+    let at = |dx: f32, dy: f32| point(cc.x + px(dx), cc.y + px(dy));
+    let mut path = PathBuilder::fill();
+    path.move_to(at(-5.0, -2.0));
+    path.line_to(at(-2.5, -2.0));
+    path.line_to(at(1.0, -5.0));
+    path.line_to(at(1.0, 5.0));
+    path.line_to(at(-2.5, 2.0));
+    path.line_to(at(-5.0, 2.0));
+    path.close();
+    if let Ok(path) = path.build() {
+        window.paint_path(path, ink);
+    }
+    window.paint_segment(at(-5.0, -5.5), at(5.0, 5.5), px(1.2), true, ink);
 }
 
 /// A pinned chat's mark: a pin, leaning.
-fn pin(p: &egui::Painter, c: egui::Pos2, ink: Color32) {
-    let s = egui::Stroke::new(1.4, ink);
-    p.circle_filled(c + vec2(2.0, -2.5), 3.2, ink);
-    p.line_segment([c + vec2(1.0, -1.5), c + vec2(-4.0, 4.5)], s);
+fn pin(window: &mut Window, cc: Point<Pixels>, ink: Hsla) {
+    window.paint_sector(point(cc.x + px(2.0), cc.y - px(2.5)), px(0.0), px(3.2), 0.0, std::f32::consts::TAU, ink);
+    window.paint_segment(point(cc.x + px(1.0), cc.y - px(1.5)), point(cc.x - px(4.0), cc.y + px(4.5)), px(1.4), true, ink);
 }
 
-fn back_arrow(p: &egui::Painter, c: egui::Pos2, ink: Color32) {
-    let s = egui::Stroke::new(1.6, ink);
-    p.line_segment([c + vec2(4.0, -5.0), c + vec2(-1.0, 0.0)], s);
-    p.line_segment([c + vec2(-1.0, 0.0), c + vec2(4.0, 5.0)], s);
+fn back_arrow(window: &mut Window, cc: Point<Pixels>, ink: Hsla) {
+    window.paint_segment(point(cc.x + px(4.0), cc.y - px(5.0)), point(cc.x - px(1.0), cc.y), px(1.6), true, ink);
+    window.paint_segment(point(cc.x - px(1.0), cc.y), point(cc.x + px(4.0), cc.y + px(5.0)), px(1.6), true, ink);
 }

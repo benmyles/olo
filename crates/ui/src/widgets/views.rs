@@ -208,3 +208,67 @@ fn etched(window: &mut Window, frame: Bounds<Pixels>, p: &olo_theme::Palette, ga
     style::vline_left_of(window, i1.right(), f.top(), i1.bottom(), dark);
     style::vline_left_of(window, f.right(), f.top(), f.bottom(), light);
 }
+
+/// What a view shows while it has nothing to show (no chat chosen, an
+/// integration not set up): an icon (32 points) over a line in the
+/// disabled text's colour, a smaller detail under it, and a button,
+/// centred in what it's given, as the egui kit's `EmptyState`.
+#[derive(gpui::IntoElement)]
+pub struct EmptyState {
+    text: SharedString,
+    icon: Option<SharedString>,
+    detail: Option<SharedString>,
+    action: Option<(SharedString, OnAction)>,
+}
+
+type OnAction = std::rc::Rc<dyn Fn(&mut Window, &mut App)>;
+
+impl EmptyState {
+    pub fn new(text: impl Into<SharedString>) -> EmptyState {
+        EmptyState { text: text.into(), icon: None, detail: None, action: None }
+    }
+
+    pub fn icon(mut self, name: impl Into<SharedString>) -> Self {
+        self.icon = Some(name.into());
+        self
+    }
+
+    /// A line or two more, smaller, under the text.
+    pub fn detail(mut self, detail: impl Into<SharedString>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+
+    /// A button under it all ("Open Integrations…").
+    pub fn action(mut self, label: impl Into<SharedString>, on_click: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.action = Some((label.into(), std::rc::Rc::new(on_click)));
+        self
+    }
+}
+
+impl gpui::RenderOnce for EmptyState {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let p = crate::theme::palette(cx);
+        let dim = style::disabled_text(&p);
+        let icon = self.icon.clone();
+        let mut col = div().flex().flex_col().items_center().max_w(px(320.0)).gap(px(m::TIGHT)).text_color(dim);
+        if let Some(name) = icon {
+            col = col.child(
+                gpui::canvas(|_, _, _| {}, move |b, _, window, _| {
+                    crate::icons::paint(window, b, &name);
+                })
+                .w(px(32.0))
+                .h(px(32.0))
+                .mb(px(m::SPACING - m::TIGHT)),
+            );
+        }
+        col = col.child(div().text_center().line_height(gpui::relative(style::LINE_HEIGHT)).child(self.text.clone()));
+        if let Some(d) = self.detail.clone() {
+            col = col.child(div().text_center().text_size(px(style::DETAIL_SIZE)).line_height(gpui::relative(style::LINE_HEIGHT)).child(d));
+        }
+        if let Some((label, f)) = self.action {
+            col = col.child(div().mt(px(m::SPACING * 1.5 - m::TIGHT)).child(super::Button::new(label).on_click(move |window, cx| f(window, cx))));
+        }
+        div().size_full().flex().items_center().justify_center().px(px(m::SPACING)).child(col)
+    }
+}
