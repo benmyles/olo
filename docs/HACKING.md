@@ -4549,9 +4549,15 @@ progress; Stop sets its flag, or cancels the UDisks job), shows UDisks'
 own job progress in the status line, and re-reads on every change.
 Destructive steps are behind an alert or form naming the disk and
 device; nothing destructive is offered for the disk or volumes holding
-the running system (`Volume::system`, `Disk::system`). The forms are
-alert windows with fields (`alert_frame` + `alert_text` +
-`alert_buttons`) that resize to what they show. Agents: `--list` prints
+the running system (`Volume::system`, `Disk::system`). On the GPUI kit
+(olo-ui): the forms (Format, Create, Resize, Rename, Unlock, New
+Partition Table) are `Form` views in dialogs drawn as alerts with
+fields (`AlertFrame`, `paragraph`, `button_row`, the alert's key
+context: Return submits, also from a field, and Escape cancels), each
+window resized to what it shows as fields come and go; the benchmark
+is a window of its own; the map's segments after the first are their
+own grid for the layout review. A periodic re-read that finds nothing
+changed draws nothing. Agents: `--list` prints
 `Status` as JSON; `--mount`, `--unmount` and `--eject DEVICE` do the safe
 steps.
 

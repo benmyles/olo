@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-31
 
+### DriveSetup on GPUI
+
+*21:41* — DriveSetup moves to the GPUI kit: the disk map (segments to scale, hatched free space, the unlocked contents under a purple band) over the list of disks and volumes, the status line with progress and Stop, and its forms (Format, Create with a size slider, Resize, Rename, Unlock, New Partition Table) as alert windows that grow and shrink with their fields. Here on the test UDisks (udisks-fake). The kit gains BeOS keyboard navigation for it: Tab moves through fields, lists and controls (the focused control's label underlined in blue, Space presses it), and a default button answers Return from anywhere in its window.
+
+![DriveSetup on GPUI](2026-10-31/214120-drivesetup-on-gpui.png)
+
 ### Screenshot on GPUI
 
 *21:17* — Screenshot moves to the GPUI kit: the same form and buttons, the preview made at exactly its frame's size in device pixels (remade when the scale changes) and drawn one pixel to a pixel, Copy to clipboard as image/png through GPUI's clipboard (which now offers images and data, not only text), Save closing the window and holding the path on the clipboard until something else is copied. The ⌘⇧4 region picker and the colour picker are GPUI layer overlays showing each output's frozen picture 1:1.

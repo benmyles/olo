@@ -5859,9 +5859,10 @@ dependencies = [
 name = "olo-drive-setup"
 version = "0.1.0"
 dependencies = [
- "olo-kit",
  "olo-system",
  "olo-theme",
+ "olo-ui",
+ "olo-xdg",
  "serde",
  "serde_json",
  "tracing",

@@ -2,10 +2,11 @@
 //! stretch of free space to scale (but never too thin to click), coloured
 //! by what is on it, as in Haiku's DriveSetup.
 
-use olo_kit::{
-    egui::{self, Align, Id, Pos2, Rect, Sense, Ui, pos2, vec2},
+use olo_ui::{
     files::format_size,
+    gpui::{App, Bounds, FontWeight, Hitbox, HitboxBehavior, MouseButton, MouseDownEvent, Pixels, Point, Window, point, px},
     style::{self, c},
+    theme,
 };
 use olo_system::disks::{Disk, Segment, Volume};
 use olo_theme::{Hue, Palette, mix};
@@ -17,10 +18,9 @@ const MIN_W: f32 = 48.0;
 /// Encryption shows as a band along the top of what is inside it.
 const BAND: f32 = 6.0;
 
-pub struct MapResponse {
-    pub clicked: Option<Item>,
-    pub context: Option<(Item, Pos2)>,
-}
+/// What a click on the map does: choose a segment (`context`: with where,
+/// for its menu).
+pub type OnPick = std::rc::Rc<dyn Fn(Item, Option<Point<Pixels>>, &mut Window, &mut App)>;
 
 /// The look's hue for content of `kind` (by family: Linux, Windows and
 /// everywhere, encrypted, swap, other, nothing).
@@ -49,16 +49,10 @@ fn widths(sizes: &[u64], width: f32) -> Vec<f32> {
     sizes.iter().map(|&s| MIN_W + if total == 0 { spare / sizes.len() as f32 } else { spare * s as f32 / total as f32 }).collect()
 }
 
-pub fn show(ui: &mut Ui, rect: Rect, disk: &Disk, selected: Option<&Item>) -> MapResponse {
-    let p = style::palette(ui.ctx());
-    let painter = ui.painter().clone();
-    let inner = rect.shrink(2.0);
-    painter.rect_filled(inner, 0.0, c(p.document_background));
-    style::sunken(&painter, rect, &p, false);
-    let mut out = MapResponse { clicked: None, context: None };
-
-    // A disk without partitions or content is one empty stretch.
-    let mut segments: Vec<(Item, u64)> = disk
+/// The disk's segments, start to end: what each is and its size (a disk
+/// without partitions or content is one empty stretch).
+fn segments(disk: &Disk) -> Vec<(Item, u64)> {
+    let mut out: Vec<(Item, u64)> = disk
         .segments()
         .into_iter()
         .map(|s| match s {
@@ -66,78 +60,124 @@ pub fn show(ui: &mut Ui, rect: Rect, disk: &Disk, selected: Option<&Item>) -> Ma
             Segment::Free { offset, size } => (Item::Free { disk: disk.path.clone(), offset, size }, size),
         })
         .collect();
-    if segments.is_empty() {
-        segments.push((Item::Disk(disk.path.clone()), disk.size));
+    if out.is_empty() {
+        out.push((Item::Disk(disk.path.clone()), disk.size));
     }
+    out
+}
+
+/// Each segment's place in `inner`, on device pixels.
+fn places(window: &Window, inner: Bounds<Pixels>, sizes: &[u64]) -> Vec<Bounds<Pixels>> {
+    let mut x = inner.left();
+    let n = sizes.len();
+    widths(sizes, f32::from(inner.size.width))
+        .into_iter()
+        .enumerate()
+        .map(|(i, w)| {
+            let right = if i + 1 == n { inner.right() } else { style::snap_coord(window, x + px(w)) };
+            let r = Bounds::from_corners(point(x, inner.top()), point(right, inner.bottom()));
+            x = right;
+            r
+        })
+        .collect()
+}
+
+/// Paints the map of `disk` in `rect` (`selected` washed), and takes
+/// clicks on it.
+pub fn paint(window: &mut Window, cx: &mut App, rect: Bounds<Pixels>, hitbox: &Hitbox, disk: &Disk, selected: Option<&Item>, on_pick: OnPick) {
+    let p = theme::palette(cx);
+    let inner = style::inset(window, rect, 2.0);
+    style::fill_rect(window, inner, c(p.document_background));
+    let segments = segments(disk);
     let sizes: Vec<u64> = segments.iter().map(|s| s.1).collect();
     let line = c(mix(p.document_text, p.document_background, 0.55));
-    let mut x = inner.left();
+    let places = places(window, inner, &sizes);
     let n = segments.len();
-    for (i, ((item, size), w)) in segments.iter().zip(widths(&sizes, inner.width())).enumerate() {
-        let right = if i + 1 == n { inner.right() } else { (x + w).round() };
-        let r = Rect::from_min_max(pos2(x, inner.top()), pos2(right, inner.bottom()));
-        x = right;
+    for (i, ((item, size), r)) in segments.iter().zip(places.iter().copied()).enumerate() {
         let volume = match item {
             Item::Volume(path) => disk.volumes.iter().find(|v| &v.path == path),
             _ => None,
         };
         let (title, detail) = match volume {
-            Some(v) => paint_volume(&painter, &p, r, v),
+            Some(v) => paint_volume(window, &p, r, v),
             None => {
-                paint_free(&painter, &p, r);
+                paint_free(window, &p, r);
                 (if matches!(item, Item::Disk(_)) { "Empty".to_owned() } else { "Free".to_owned() }, format_size(*size))
             }
         };
         if i + 1 < n {
-            style::vline(&painter, r.right() - 0.5, r.top(), r.bottom(), line);
+            style::vline_left_of(window, r.right(), r.top(), r.bottom(), line);
         }
         if selected == Some(item) || selected.is_some_and(|s| matches!((s, volume), (Item::Volume(p), Some(v)) if v.cleartext.as_ref().is_some_and(|c| &c.path == p))) {
-            style::selection_wash(&painter, r, &p);
+            style::selection_wash(window, r, &p);
+        }
+        // Where a segment after the first starts follows the sizes, not
+        // the window's grid.
+        if i > 0 {
+            olo_ui::review::own_grid(window, r);
         }
         // Words when they fit.
-        if r.width() >= 44.0 {
+        if f32::from(r.size.width) >= 44.0 {
             let color = c(p.document_text);
             let mid = r.center().y;
-            let w = r.width() - 10.0;
-            style::label_fit(&painter, r.left() + 5.0, mid - 7.0, Align::Min, &title, egui::FontId::new(style::PLAIN_SIZE - 1.0, style::bold()), color, w);
-            style::label_fit(&painter, r.left() + 5.0, mid + 7.0, Align::Min, &detail, style::small_font(), color, w);
-        }
-        let resp = ui.interact(r, Id::unique(("drive-map", disk.path.as_str(), i)), Sense::click());
-        if resp.clicked() {
-            out.clicked = Some(item.clone());
-        }
-        if resp.secondary_clicked()
-            && let Some(pos) = resp.interact_pointer_pos()
-        {
-            out.context = Some((item.clone(), pos));
+            // Inset as the list's cells are, so the first lines up with
+            // its names.
+            let inset = px(olo_ui::metrics::CELL_INSET);
+            let w = r.size.width - inset * 2.0;
+            style::label_fit(window, cx, r.left() + inset, mid - px(7.0), style::Align::Left, title, style::PLAIN_SIZE - 1.0, style::ui_font(FontWeight::BOLD), color, w);
+            style::label_fit(window, cx, r.left() + inset, mid + px(7.0), style::Align::Left, detail, style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), color, w);
         }
     }
-    out
+    style::sunken(window, rect, &p, false);
+
+    let hb = hitbox.clone();
+    let items: Vec<Item> = segments.into_iter().map(|s| s.0).collect();
+    window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
+        if !phase.bubble() || !hb.is_hovered(window) {
+            return;
+        }
+        let Some(i) = places.iter().position(|r| r.contains(&e.position)) else { return };
+        match e.button {
+            MouseButton::Left => on_pick(items[i].clone(), None, window, cx),
+            MouseButton::Right => on_pick(items[i].clone(), Some(e.position), window, cx),
+            _ => {}
+        }
+    });
+}
+
+/// The map's place for hit testing.
+pub fn hitbox(window: &mut Window, rect: Bounds<Pixels>) -> Hitbox {
+    window.insert_hitbox(rect, HitboxBehavior::Normal)
 }
 
 /// A volume: its colour (an encrypted one unlocked shows what is inside,
 /// under a band); its title and detail.
-fn paint_volume(painter: &egui::Painter, p: &Palette, r: Rect, v: &Volume) -> (String, String) {
+fn paint_volume(window: &mut Window, p: &Palette, r: Bounds<Pixels>, v: &Volume) -> (String, String) {
     let shown = v.cleartext.as_deref().unwrap_or(v);
     let content = if shown.content.is_empty() && !shown.usage.is_empty() { "?" } else { shown.content.as_str() };
-    painter.rect_filled(r, 0.0, c(fill(p, content)));
+    style::fill_rect(window, r, c(fill(p, content)));
     if v.cleartext.is_some() {
-        painter.rect_filled(Rect::from_min_size(r.min, vec2(r.width(), BAND)), 0.0, c(fill(p, "crypto_LUKS")));
+        style::fill_rect(window, Bounds::from_corners(r.origin, point(r.right(), r.top() + px(BAND))), c(fill(p, "crypto_LUKS")));
     }
     // A thin lighter edge along the top, as raised.
-    style::hline(painter, r.left(), r.right(), r.top() + 0.5, c(p.gloss));
+    style::hline(window, r.left(), r.right(), r.top(), c(p.gloss));
     (v.title(), format!("{} {}", format_size(v.size), shown.content_name()))
 }
 
-/// Free space: hatched.
-fn paint_free(painter: &egui::Painter, p: &Palette, r: Rect) {
+/// Free space: hatched (one layer for all its lines).
+fn paint_free(window: &mut Window, p: &Palette, r: Bounds<Pixels>) {
     let hatch = c(mix(p.document_text, p.document_background, 0.82));
-    let clip = painter.with_clip_rect(r);
-    let mut x = r.left() - r.height();
-    while x < r.right() {
-        clip.line_segment([pos2(x, r.bottom()), pos2(x + r.height(), r.top())], egui::Stroke::new(1.0, hatch));
-        x += 7.0;
-    }
+    let w = style::hairline(window).max(px(1.0));
+    window.with_content_mask(Some(olo_ui::gpui::ContentMask { bounds: r }), |window| {
+        window.paint_layer(r, |window| {
+            let h = r.size.height;
+            let mut x = r.left() - h;
+            while x < r.right() {
+                window.paint_segment(point(x, r.bottom()), point(x + h, r.top()), w, false, hatch);
+                x += px(7.0);
+            }
+        });
+    });
 }
 
 #[cfg(test)]
