@@ -384,7 +384,7 @@ pub fn panel(
         None if told != Subpixel::Unknown => (told, Source::Display),
         None => (panels::guess_subpixel(technology), Source::Guess),
     };
-    let (text, text_from, text_why) = match config.and_then(|c| c.text) {
+    let (text, text_from, text_why) = match config.and_then(|c| c.text).filter(|t| *t != panels::TextMode::Auto) {
         Some(t) => (t, Source::Setting, "Chosen in Preferences.".to_string()),
         None => {
             let (t, why) = panels::text_mode(ppi, scale, subpixel, rotation);
@@ -1655,6 +1655,17 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         if let Some(m) = config.mirror {
             entry.mirror = (!m.is_empty()).then_some(m);
+        }
+        // The panel's corrections; Unknown, Unknown and Auto give it back
+        // to Olo's own.
+        if let Some(s) = config.subpixel {
+            entry.subpixel = (s != olo_protocol::panels::Subpixel::Unknown).then_some(s);
+        }
+        if let Some(t) = config.technology {
+            entry.technology = (t != olo_protocol::panels::Technology::Unknown).then_some(t);
+        }
+        if let Some(t) = config.text {
+            entry.text = (t != olo_protocol::panels::TextMode::Auto).then_some(t);
         }
         self.apply_output_settings(&output);
         if self.mirrors.contains(&output) || entry_mirrors(&self.settings.display, &output) {

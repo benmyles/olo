@@ -185,7 +185,8 @@ impl Panel {
             Panel::Backup => (420, 400),
             Panel::Bluetooth => (440, 340),
             Panel::DateTime => (460, 370),
-            Panel::Display => (500, 490),
+            // With its panel: what it is, how Olo draws for it and why.
+            Panel::Display => (500, 658),
             Panel::Integrations => (460, 600),
             Panel::Keyboard => (520, 736),
             Panel::Network => (460, 360),

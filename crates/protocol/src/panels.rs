@@ -65,6 +65,8 @@ impl Technology {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TextMode {
+    /// In a setting: Olo's own choice.
+    Auto,
     /// Grey-scale, hinted vertically: stems and the baseline on pixels.
     Hinted,
     /// Grey-scale, the outlines as designed (macOS's way on Retina).
@@ -76,6 +78,7 @@ pub enum TextMode {
 impl TextMode {
     pub fn label(self) -> &'static str {
         match self {
+            TextMode::Auto => "Automatic",
             TextMode::Hinted => "Grey-scale, hinted",
             TextMode::Unhinted => "Grey-scale, as designed",
             TextMode::Subpixel(_) => "Subpixel (ClearType-style)",

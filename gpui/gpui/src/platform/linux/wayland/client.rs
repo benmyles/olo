@@ -249,7 +249,7 @@ impl Output {
             };
             let ppi = panels::ppi(self.bounds.size.width.0, self.physical_mm.width);
             match panels::text_mode(ppi, f64::from(self.scale), subpixel, rotation).0 {
-                TextMode::Hinted => TextRendering::Hinted,
+                TextMode::Hinted | TextMode::Auto => TextRendering::Hinted,
                 TextMode::Unhinted => TextRendering::Unhinted,
                 TextMode::Subpixel(Subpixel::Bgr) => TextRendering::Subpixel(SubpixelLayout::Bgr),
                 TextMode::Subpixel(_) => TextRendering::Subpixel(SubpixelLayout::Rgb),

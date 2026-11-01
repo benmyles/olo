@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-31
 
+### Preferences ▸ Display: each display's panel
+
+*17:19* — What the display is (make, size, density, refresh), what Olo works out about its panel (technology, colour stripes) and how it draws text on it, with why, each correctable (Automatic or a choice). Shown on a simulated 24-inch 1080p LCD (92 ppi): subpixel text.
+
+![Preferences ▸ Display: each display's panel](2026-10-31/171914-preferences-display-each-display-s-panel.png)
+
 ### Telegram: polls and reactions on their baselines
 
 *15:19* — A poll's shares stand on their answers' baseline; a reaction's count is centred in its chip by its figures with the emoji on their middle, and the emoji lines up with the message text above. Voice notes' waveform bars and the file glyph sit on device pixels at every scale. The layout review now judges an emoji inside a line of text with that line, not against the whole bubble.

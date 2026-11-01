@@ -290,7 +290,8 @@ as they land (with the commit), add new ones as they come up.
   reported in `OutputInfo::panel` and in wl_output's subpixel; Olo's
   GPUI draws by it (LCD subpixel text with dual-source blending,
   unhinted at Retina density). `OLO_HEADLESS_PANEL=530x300,rgb` tests
-  it headless. Still to do: the Preferences ▸ Display page, the kit
+  it headless. Preferences ▸ Display's Panel box shows it all, with why,
+  each correctable (Automatic or a choice). Still to do: the kit
   passing overrides to GPUI (`set_display_text_rendering`) and
   redrawing, and make/model shown right after a late EDID (fixed in
   `OutputInfo`).

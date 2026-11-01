@@ -353,7 +353,102 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&
             }
         }
     });
+    panel_box(ui, o, label_w, server);
     keep_band(ui, outputs, server, st);
+}
+
+/// The display's panel: what it is, how Olo draws for it and why, and
+/// the person's corrections (`olo_protocol::panels`).
+fn panel_box(ui: &mut Ui, o: &OutputInfo, label_w: f32, server: &Server) {
+    use olo_protocol::panels::{Source, Subpixel, Technology, TextMode};
+    let Some(panel) = &o.panel else { return };
+    let from = |source: Source| match source {
+        Source::Display => "the display says",
+        Source::Guess => "Olo's guess",
+        Source::Setting => "your choice",
+    };
+    BBox::new("Panel").show(ui, |ui| {
+        // A label in the fields' label column, its value under their text.
+        let row = |ui: &mut Ui, label: &str, value: &str| {
+            ui.horizontal(|ui| {
+                let gap = ui.spacing().item_spacing.x;
+                let at = ui.add(StringView::new(label)).rect.width();
+                ui.add_space((label_w + m::TEXT_INSET - at - 2.0 * gap).max(0.0));
+                ui.add(StringView::new(value));
+            });
+        };
+        let maker = [o.make.as_str(), o.model.as_str()].iter().filter(|s| !s.is_empty() && **s != "Unknown").copied().collect::<Vec<_>>().join(" ");
+        row(ui, "Make:", if maker.is_empty() { "Not told" } else { &maker });
+        let (w, h) = o.physical_size_mm;
+        let size = if w > 0 && h > 0 {
+            let inches = ((w * w + h * h) as f64).sqrt() / 25.4;
+            match panel.ppi {
+                Some(ppi) => format!("{inches:.0}″ ({w} × {h} mm), {ppi:.0} pixels per inch"),
+                None => format!("{inches:.0}″ ({w} × {h} mm)"),
+            }
+        } else {
+            "Not told".into()
+        };
+        row(ui, "Size:", &size);
+        row(ui, "Refresh:", &format!("{:.0} Hz", panel.refresh_hz));
+
+        // Each correction: Automatic (Olo's, with what it is) or a choice.
+        const TECHS: [Technology; 3] = [Technology::Lcd, Technology::MiniLed, Technology::Oled];
+        let auto = |what: &str, why: &str| format!("Automatic: {what} ({why})");
+        let mut names = vec![if panel.technology_from == Source::Setting {
+            "Automatic".to_string()
+        } else {
+            auto(panel.technology.label(), from(panel.technology_from))
+        }];
+        names.extend(TECHS.iter().map(|t| t.label().to_string()));
+        let names: Vec<&str> = names.iter().map(String::as_str).collect();
+        let mut i = if panel.technology_from == Source::Setting { TECHS.iter().position(|t| *t == panel.technology).map_or(0, |i| i + 1) } else { 0 };
+        let before = i;
+        ui.add(MenuField::new(("technology", &o.name), &mut i, &names).label("Technology:").divider(label_w));
+        if i != before {
+            let technology = Some(if i == 0 { Technology::Unknown } else { TECHS[i - 1] });
+            server.configure_output(&o.name, OutputConfig { technology, ..Default::default() });
+        }
+
+        const STRIPES: [Subpixel; 5] = [Subpixel::Rgb, Subpixel::Bgr, Subpixel::VerticalRgb, Subpixel::VerticalBgr, Subpixel::None];
+        let mut names = vec![if panel.subpixel_from == Source::Setting {
+            "Automatic".to_string()
+        } else {
+            auto(panel.subpixel.label(), from(panel.subpixel_from))
+        }];
+        names.extend(STRIPES.iter().map(|s| s.label().to_string()));
+        let names: Vec<&str> = names.iter().map(String::as_str).collect();
+        let mut i = if panel.subpixel_from == Source::Setting { STRIPES.iter().position(|s| *s == panel.subpixel).map_or(0, |i| i + 1) } else { 0 };
+        let before = i;
+        ui.add(MenuField::new(("stripes", &o.name), &mut i, &names).label("Stripes:").divider(label_w));
+        if i != before {
+            let subpixel = Some(if i == 0 { Subpixel::Unknown } else { STRIPES[i - 1] });
+            server.configure_output(&o.name, OutputConfig { subpixel, ..Default::default() });
+        }
+
+        let modes = [TextMode::Hinted, TextMode::Unhinted, TextMode::Subpixel(Subpixel::Rgb), TextMode::Subpixel(Subpixel::Bgr)];
+        let label = |t: TextMode| match t {
+            TextMode::Subpixel(Subpixel::Bgr) => "Subpixel, BGR order".to_string(),
+            TextMode::Subpixel(_) => "Subpixel, RGB order".to_string(),
+            t => t.label().to_string(),
+        };
+        let current = panel.text.unwrap_or(TextMode::Hinted);
+        let mut names = vec![if panel.text_from == Source::Setting { "Automatic".to_string() } else { format!("Automatic: {}", label(current)) }];
+        names.extend(modes.iter().map(|t| label(*t)));
+        let names: Vec<&str> = names.iter().map(String::as_str).collect();
+        let mut i = if panel.text_from == Source::Setting { modes.iter().position(|t| *t == current).map_or(0, |i| i + 1) } else { 0 };
+        let before = i;
+        ui.add(MenuField::new(("text", &o.name), &mut i, &names).label("Text:").divider(label_w));
+        if i != before {
+            let text = Some(if i == 0 { TextMode::Auto } else { modes[i - 1] });
+            server.configure_output(&o.name, OutputConfig { text, ..Default::default() });
+        }
+        // Why, under the fields' text.
+        ui.horizontal(|ui| {
+            ui.add_space(label_w + m::TEXT_INSET);
+            ui.add(StringView::new(&panel.text_why).dim(true).wrap(true));
+        });
+    });
 }
 
 /// Move `name` by `delta` points in the map (`k` points per logical
