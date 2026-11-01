@@ -798,11 +798,18 @@ static DISPLAY_TEXT_RENDERING: std::sync::LazyLock<
 /// Olo's own). Windows on it draw again the next time they draw.
 pub fn set_display_text_rendering(name: &str, rendering: Option<TextRendering>) {
     let mut chosen = DISPLAY_TEXT_RENDERING.write();
-    match rendering {
-        Some(r) => chosen.insert(name.to_owned(), r),
-        None => chosen.remove(name),
+    let changed = match rendering {
+        Some(r) => chosen.insert(name.to_owned(), r) != Some(r),
+        None => chosen.remove(name).is_some(),
     };
+    if changed {
+        DISPLAY_TEXT_RENDERING_GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
 }
+
+/// Bumped when the person's choices change: windows choose again.
+pub(crate) static DISPLAY_TEXT_RENDERING_GENERATION: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
 
 pub(crate) fn display_text_rendering(name: &str) -> Option<TextRendering> {
     DISPLAY_TEXT_RENDERING.read().get(name).copied()

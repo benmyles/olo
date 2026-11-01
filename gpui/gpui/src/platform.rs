@@ -1264,6 +1264,20 @@ pub enum WindowKind {
 
     /// A floating window that appears on top of its parent window
     Floating,
+
+    /// Olo: a popup (a menu, a tip) over `parent`, its top left at
+    /// `corner` of `anchor` (a rectangle in the parent's content, as a
+    /// menu title's or the pointer's), kept on screen by the compositor
+    /// (flipped to the other side, or slid), and taking the pointer and
+    /// keyboard while it's up. Its size is the window's.
+    Popup {
+        /// The window it belongs to.
+        parent: AnyWindowHandle,
+        /// What it opens from.
+        anchor: Bounds<Pixels>,
+        /// Which corner of `anchor` it opens at.
+        corner: crate::Corner,
+    },
 }
 
 /// The appearance of the window, as defined by the operating system.

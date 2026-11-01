@@ -1496,6 +1496,38 @@ centred (beside the `olo` mark it read as "o olo"). Image previews: `icons::thum
    draws a control by hand notes it with `layout_lint::area` /
    `layout_lint::control`, and a new kit widget calls them too.
 
+## The GPUI kit (crates/ui, `olo-ui`)
+
+The kit apps move to from the egui one, app by app (TODO.md, "The
+kit"), on Olo's GPUI (gpui/README.md). An app calls `olo_ui::run(id,
+build)` and opens windows with `open_window(cx, WindowOptions, |window,
+cx| view)`: its GPUI view inside a `Frame`, which paints the panel
+behind it, sets Olo's font (Noto Sans, 12 points) and the palette's
+text colour, and starts each frame for agents. It ends when its last
+window closes. `proxy(cx)` gives any thread a `Proxy` to send messages
+the app takes in `message_handler` (a forwarded `instance::Launch`).
+
+- `theme`: the palette as a GPUI global (`theme::palette(cx)`),
+  following app_server's settings from a thread that sleeps until an
+  event comes; also the person's choice of how text is drawn on each
+  display (Preferences ▸ Display), handed to GPUI.
+- `style`: the egui kit's drawing primitives on whole device pixels at
+  any scale, painted from an element's paint (`canvas`): `fill_rect`,
+  `hline`/`vline` (and `_above`/`_left_of`), `frame_rect`, `bevel`,
+  `sunken`, `raised`, `vgradient`, `inset`, `snap`, `hairline`, and
+  `label` (one line, capitals centred on a y, baseline on a pixel).
+  Colours: `c(rgba)`, `tint`, `shade`.
+- `agent`: widgets say what they are as they paint (`agent::record(
+  window, cx, Node::button(name, bounds))`), so each frame leaves a
+  tree the socket (`olo_kit_base::commands`) answers `{"tree":true}`
+  from at once; `{"frames":true}` from GPUI's `Window::take_frame_stats`;
+  `set_menus` gives the palette and agents the app's commands.
+- `widgets::TextField`: one line, input methods, selection by keyboard
+  and pointer, words, clipboard, undo; the caret a line wide on device
+  pixels, blinking only while it has the keyboard in an active window;
+  `TextFieldEvent::Changed` and `Typed`. No frame: callers draw the
+  well.
+
 ## The session and in-place reload
 
 Olo upgrades without logging out. `olo-session` (what the login
@@ -3967,6 +3999,14 @@ calculator (lexer, recursive descent, `format` for 15 significant digits)
 and is unit-tested; keep new functions in `FUNCTIONS` and on the keypad
 together. After =, a digit starts afresh and an operator carries on.
 Settings, the last expression and history are in `deskcalc.json`.
+The first app on the GPUI kit (`olo-ui`): the keypad is drawn in one
+`canvas` (each key's bounds kept for the pointer, each said to agents
+as a `Button` named by its key), the display is a `style::sunken` well
+holding a right-aligned `TextField` that keeps the keyboard (Enter, ↑,
+↓ and Escape are actions bound in the `DeskCalc` key context, which
+the field's keys pass through); typed characters flash their keys.
+Measured against the egui version (release, 2×): 57 MB against 83 MB,
+42 frames for 20 clicks against 210, each 0.85 ms against 0.6 ms.
 
 ## StyledEdit (apps/styled-edit)
 

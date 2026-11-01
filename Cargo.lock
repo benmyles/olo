@@ -5833,8 +5833,9 @@ dependencies = [
 name = "olo-deskcalc"
 version = "0.1.0"
 dependencies = [
- "olo-kit",
  "olo-theme",
+ "olo-ui",
+ "olo-xdg",
  "serde",
  "serde_json",
 ]
@@ -6427,6 +6428,23 @@ dependencies = [
  "serde_json",
  "tracing",
  "zbus",
+]
+
+[[package]]
+name = "olo-ui"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "gpui",
+ "olo-kit-base",
+ "olo-protocol",
+ "olo-theme",
+ "olo-xdg",
+ "serde",
+ "serde_json",
+ "tracing",
+ "tracing-subscriber",
+ "unicode-segmentation",
 ]
 
 [[package]]

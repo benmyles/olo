@@ -2,21 +2,29 @@
 //! that grows with the window: R5's basic keys, Haiku's scientific rows
 //! above them, or no keypad at all (compact). Type or click; Enter or =
 //! works it out (expr.rs); ↑ and ↓ step through earlier expressions. The
-//! keypad's context menu holds the options, as in Haiku.
+//! keypad's context menu holds the options, as in Haiku. On Olo's GPUI
+//! kit (olo-ui).
 
 mod expr;
 
-use std::time::{Duration, Instant};
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    time::{Duration, Instant},
+};
 
 use expr::Angle;
-use serde::{Deserialize, Serialize};
-use olo_kit::{
-    App, Cx, Menu, WindowId, WindowOptions,
-    egui::{self, Align, FontId, Id, Key, Rect, Sense, emath::GuiRounding, pos2, vec2},
+use olo_ui::{
+    WindowOptions, agent,
+    gpui::{
+        self, App, AppContext as _, Bounds, Context, Entity, Focusable, FontWeight, InteractiveElement as _, IntoElement, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Render, Styled as _, Subscription, Window, actions, canvas, div, point, px, size,
+    },
     instance::{self, Launch},
-    style::{self, c, shade},
-    widgets,
+    style::{self, Align},
+    theme,
+    widgets::{TextField, TextFieldEvent, text_field},
 };
+use serde::{Deserialize, Serialize};
 
 const APP_ID: &str = "olo.deskcalc";
 
@@ -59,10 +67,10 @@ impl Keypad {
     }
 
     /// The window size that shows it at its natural key size.
-    fn size(self) -> (u32, u32) {
+    fn size(self) -> (f32, f32) {
         let rows = self.rows().len() as f32;
         let keys = if rows > 0.0 { INSET + rows * KEY_H + (rows - 1.0) * GAP } else { 0.0 };
-        (WIDTH as u32, (INSET + DISPLAY_H + INSET + keys).round() as u32)
+        (WIDTH, (INSET + DISPLAY_H + INSET + keys).round())
     }
 }
 
@@ -82,15 +90,20 @@ impl Default for Settings {
 }
 
 fn settings_path() -> std::path::PathBuf {
-    olo_kit::config_dir().join("deskcalc.json")
+    olo_ui::config_dir().join("deskcalc.json")
 }
 
 /// How many earlier expressions ↑ remembers.
 const HISTORY: usize = 50;
 
+actions!(deskcalc, [Evaluate, Back, Forward, Clear]);
+
+/// Where each key was drawn, for the pointer.
+type Keys = Rc<RefCell<Vec<(Bounds<Pixels>, &'static str)>>>;
+
 struct DeskCalc {
     settings: Settings,
-    window: Option<WindowId>,
+    field: Entity<TextField>,
     /// Why the last = failed, until the next edit.
     error: Option<String>,
     /// The display shows a result: a digit starts afresh, an operator
@@ -100,11 +113,39 @@ struct DeskCalc {
     recall: Option<usize>,
     /// A key drawn down for a moment because its character was typed.
     flash: Option<(&'static str, Instant)>,
-    /// The cursor should go to the end (after a keypad press).
-    cursor_to_end: bool,
+    /// The key the pointer is on, and the one it went down on.
+    hovered: Option<&'static str>,
+    pressed: Option<&'static str>,
+    keys: Keys,
+    /// The field changes as the expression does.
+    _field_events: Subscription,
 }
 
 impl DeskCalc {
+    fn new(window: &mut Window, cx: &mut Context<Self>) -> DeskCalc {
+        let settings: Settings = std::fs::read_to_string(settings_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        let size = (DISPLAY_H * 0.5).round();
+        let field = text_field(cx, |f| f.font_size(size).align(olo_ui::widgets::text_field::Align::Right).name("Expression"));
+        field.update(cx, |f, cx| f.set_text(settings.expression.clone(), cx));
+        let events = cx.subscribe_in(&field, window, Self::field_event);
+        // The display always has the keyboard.
+        window.focus(&field.focus_handle(cx));
+        // What was left showing last time counts as a result.
+        let shows_result = !settings.expression.is_empty();
+        DeskCalc {
+            settings,
+            field,
+            error: None,
+            shows_result,
+            recall: None,
+            flash: None,
+            hovered: None,
+            pressed: None,
+            keys: Rc::default(),
+            _field_events: events,
+        }
+    }
+
     fn store(&self) {
         let text = serde_json::to_string_pretty(&self.settings).unwrap_or_default();
         std::thread::spawn(move || {
@@ -116,17 +157,52 @@ impl DeskCalc {
         });
     }
 
-    fn open(&mut self, cx: &mut Cx) {
-        if let Some(id) = self.window {
-            cx.activate(id);
-            return;
-        }
-        let (w, h) = self.settings.keypad.size();
-        let min = Keypad::Compact.size();
-        self.window = Some(cx.open_window(WindowOptions::new("DeskCalc", w, h).min_size(min.0 - 50, min.1).floating()));
+    /// Shows `text` in the display, the caret at its end.
+    fn show(&mut self, text: String, cx: &mut Context<Self>) {
+        self.settings.expression = text.clone();
+        self.field.update(cx, |f, cx| f.set_text(text, cx));
     }
 
-    fn evaluate(&mut self) {
+    fn field_event(&mut self, field: &Entity<TextField>, event: &TextFieldEvent, _: &mut Window, cx: &mut Context<Self>) {
+        match event {
+            TextFieldEvent::Typed(typed) => {
+                if let Some(ch) = typed.chars().last()
+                    && let Some(k) = key_for(ch)
+                {
+                    self.flash_key(k, cx);
+                }
+                // Typing a digit over a result starts a new expression.
+                let starts = typed.chars().next().is_some_and(|ch| ch.is_ascii_digit() || ch == '.' || ch == '(');
+                if self.shows_result && starts {
+                    self.show(typed.to_string(), cx);
+                }
+                self.shows_result = false;
+                self.error = None;
+            }
+            TextFieldEvent::Changed => {
+                self.settings.expression = field.read(cx).text().to_owned();
+                self.recall = None;
+            }
+        }
+        cx.notify();
+    }
+
+    fn flash_key(&mut self, key: &'static str, cx: &mut Context<Self>) {
+        self.flash = Some((key, Instant::now()));
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(FLASH).await;
+            let _ = this.update(cx, |calc, cx| {
+                if calc.flash.is_some_and(|(_, at)| at.elapsed() >= FLASH) {
+                    calc.flash = None;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn evaluate(&mut self, cx: &mut Context<Self>) {
         let text = self.settings.expression.trim().to_owned();
         if text.is_empty() {
             return;
@@ -137,20 +213,20 @@ impl DeskCalc {
                 self.settings.history.push(text);
                 let over = self.settings.history.len().saturating_sub(HISTORY);
                 self.settings.history.drain(..over);
-                self.settings.expression = expr::format(v);
+                self.show(expr::format(v), cx);
                 self.shows_result = true;
                 self.error = None;
             }
             Err(e) => self.error = Some(e),
         }
         self.recall = None;
-        self.cursor_to_end = true;
         self.store();
+        cx.notify();
     }
 
     /// A keypad key.
-    fn press(&mut self, key: &str) {
-        let e = &mut self.settings.expression;
+    fn press(&mut self, key: &str, cx: &mut Context<Self>) {
+        let mut e = self.settings.expression.clone();
         let starts_number = key.chars().next().is_some_and(|ch| ch.is_ascii_digit() || ch == '.' || ch == 'π' || ch == '(')
             || matches!(key, "ln" | "log" | "exp" | "sin" | "cos" | "tan" | "asin" | "acos" | "atan" | "sinh" | "cosh" | "tanh" | "sqrt" | "cbrt" | "ceil" | "floor");
         if self.shows_result && starts_number {
@@ -159,7 +235,7 @@ impl DeskCalc {
         self.shows_result = false;
         self.error = None;
         match key {
-            "=" => return self.evaluate(),
+            "=" => return self.evaluate(cx),
             "C" => e.clear(),
             "BS" => {
                 e.pop();
@@ -172,11 +248,12 @@ impl DeskCalc {
             k => e.push_str(k),
         }
         self.recall = None;
-        self.cursor_to_end = true;
+        self.show(e, cx);
+        cx.notify();
     }
 
     /// ↑ / ↓ through the history.
-    fn step_history(&mut self, back: bool) {
+    fn step_history(&mut self, back: bool, cx: &mut Context<Self>) {
         let h = &self.settings.history;
         if h.is_empty() {
             return;
@@ -189,41 +266,26 @@ impl DeskCalc {
             (Some(i), false) if i + 1 < h.len() => Some(i + 1),
             (Some(_), false) => None,
         };
-        self.settings.expression = next.map(|i| h[i].clone()).unwrap_or_default();
+        let text = next.map(|i| h[i].clone()).unwrap_or_default();
+        self.show(text, cx);
         self.recall = next;
         self.shows_result = false;
         self.error = None;
-        self.cursor_to_end = true;
+        cx.notify();
     }
 
-    fn menu(&self) -> Menu {
-        let s = &self.settings;
-        Menu::new("")
-            .item("Copy", "copy", None)
-            .item("Paste", "paste", None)
-            .separator()
-            .item("Basic Keypad", "keypad-basic", None)
-            .checked(s.keypad == Keypad::Basic)
-            .item("Scientific Keypad", "keypad-scientific", None)
-            .checked(s.keypad == Keypad::Scientific)
-            .item("No Keypad", "keypad-compact", None)
-            .checked(s.keypad == Keypad::Compact)
-            .separator()
-            .item("Radians", "radians", None)
-            .checked(s.angle == Angle::Radians)
-            .item("Degrees", "degrees", None)
-            .checked(s.angle == Angle::Degrees)
-    }
-
-    fn command(&mut self, cx: &mut Cx, window: WindowId, command: &str) {
+    /// The menu commands (for the command palette and agents).
+    fn command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let keypad = match command {
             "copy" => {
-                cx.copy(self.settings.expression.clone());
-                return;
+                cx.write_to_clipboard(gpui::ClipboardItem::new_string(self.settings.expression.clone()));
+                return true;
             }
             "paste" => {
-                cx.paste(window);
-                return;
+                if let Some(text) = cx.read_from_clipboard().and_then(|i| i.text()) {
+                    self.field.update(cx, |f, cx| f.insert(&text, cx));
+                }
+                return true;
             }
             "keypad-basic" => Keypad::Basic,
             "keypad-scientific" => Keypad::Scientific,
@@ -231,16 +293,43 @@ impl DeskCalc {
             "radians" | "degrees" => {
                 self.settings.angle = if command == "radians" { Angle::Radians } else { Angle::Degrees };
                 self.store();
-                return;
+                return true;
             }
-            _ => return,
+            _ => return false,
         };
         if keypad != self.settings.keypad {
             self.settings.keypad = keypad;
-            let (w, h) = keypad.size();
-            let width = cx.window_size(window).map_or(w, |s| s.0);
-            cx.resize(window, (width, h));
+            let (_, h) = keypad.size();
+            let width = window.viewport_size().width;
+            window.resize(size(width, px(h)));
             self.store();
+            cx.notify();
+        }
+        true
+    }
+
+    fn key_at(&self, p: gpui::Point<Pixels>) -> Option<&'static str> {
+        self.keys.borrow().iter().find(|(b, _)| b.contains(&p)).map(|(_, k)| *k)
+    }
+
+    fn mouse_down(&mut self, e: &MouseDownEvent, _: &mut Window, cx: &mut Context<Self>) {
+        self.pressed = self.key_at(e.position);
+        cx.notify();
+    }
+
+    fn mouse_up(&mut self, e: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
+        let pressed = self.pressed.take();
+        if let Some(k) = pressed.filter(|k| self.key_at(e.position) == Some(*k)) {
+            self.press(k, cx);
+        }
+        cx.notify();
+    }
+
+    fn mouse_move(&mut self, e: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
+        let over = self.key_at(e.position);
+        if over != self.hovered {
+            self.hovered = over;
+            cx.notify();
         }
     }
 }
@@ -259,208 +348,187 @@ fn key_for(ch: char) -> Option<&'static str> {
     Some(s)
 }
 
-impl App for DeskCalc {
-    fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
-        let p = style::palette(ui.ctx());
-        let full = ui.max_rect();
+impl Render for DeskCalc {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = theme::palette(cx);
         let rows = self.settings.keypad.rows();
-
-        // The context menu, anywhere in the window.
-        let back = ui.interact(full, Id::unique("deskcalc-background"), Sense::click());
-        let menu = self.menu();
-        if let Some(cmd) = widgets::context_menu(&back, || menu) {
-            self.command(cx, window, &cmd);
-        }
-
-        // Keys the display doesn't handle itself.
-        let (enter, up, down, escape, typed) = ui.input(|i| {
-            let typed: Vec<char> = i
-                .events
-                .iter()
-                .filter_map(|e| if let egui::Event::Text(t) = e { Some(t.chars()) } else { None })
-                .flatten()
-                .collect();
-            (
-                i.key_pressed(Key::Enter),
-                i.key_pressed(Key::ArrowUp),
-                i.key_pressed(Key::ArrowDown),
-                i.key_pressed(Key::Escape),
-                typed,
-            )
-        });
-        if let Some(&ch) = typed.last()
-            && let Some(k) = key_for(ch)
-        {
-            self.flash = Some((k, Instant::now()));
-        }
-        if !typed.is_empty() {
-            // Typing a digit over a result starts a new expression.
-            if self.shows_result && typed.first().is_some_and(|ch| ch.is_ascii_digit() || *ch == '.' || *ch == '(') {
-                self.settings.expression.clear();
-                self.cursor_to_end = true;
-            }
-            self.shows_result = false;
-            self.error = None;
-        }
-        if escape {
-            self.press("C");
-        }
-        if up || down {
-            self.step_history(up);
-        }
-
+        let flashing = self.flash.filter(|(_, t)| t.elapsed() < FLASH).map(|(k, _)| k);
+        let (hovered, pressed) = (self.hovered, self.pressed);
+        let error = self.error.clone();
+        let keys = self.keys.clone();
+        let palette = p.clone();
         // The display: a sunken well, the expression right-aligned in it.
-        let display = Rect::from_min_size(full.min + vec2(INSET, INSET), vec2(full.width() - 2.0 * INSET, DISPLAY_H));
-        ui.painter().rect_filled(display, 0.0, c(p.document_background));
-        style::sunken(ui.painter(), display, &p, false);
-        let size = (DISPLAY_H * 0.5).round();
-        // TextEdit sets its line a little high in the well; nudge it down.
-        let text_rect = display.shrink2(vec2(6.0, (DISPLAY_H - size * 1.3) / 2.0)).translate(vec2(0.0, 2.0));
-        let edit_id = Id::unique("deskcalc-expression");
-        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
-        let out = egui::TextEdit::singleline(&mut self.settings.expression)
-            .id(edit_id)
-            .frame(egui::Frame::NONE)
-            .align(egui::Align2::RIGHT_CENTER)
-            .font(FontId::proportional(size))
-            .text_color(c(p.document_text))
-            .desired_width(text_rect.width())
-            .show(&mut child);
-        widgets::edit_menu(ui, edit_id, &out.response, &mut self.settings.expression, true, false);
-        if out.response.changed() {
-            self.recall = None;
-        }
-        if self.cursor_to_end {
-            self.cursor_to_end = false;
-            let mut state = out.state.clone();
-            let end = egui::text::CCursor::new(self.settings.expression.chars().count());
-            state.cursor.set_char_range(Some(egui::text::CCursorRange::one(end)));
-            state.store(ui.ctx(), edit_id);
-        }
-        // The display always has the keyboard.
-        if !out.response.has_focus() {
-            out.response.request_focus();
-        }
-        if enter {
-            self.evaluate();
-            self.flash = Some(("=", Instant::now()));
-        }
-        if let Some(e) = &self.error {
-            style::label(
-                ui.painter(),
-                display.left() + 6.0,
-                display.top() + 9.0,
-                Align::Min,
-                e,
-                FontId::proportional(10.0),
-                c(p.failure),
-            );
-        }
+        let well = canvas(
+            |_, _, _| {},
+            move |b, _, window, cx| {
+                style::fill_rect(window, b, style::c(palette.document_background));
+                style::sunken(window, b, &palette, false);
+                if let Some(e) = &error {
+                    let r = style::label(window, cx, b.origin.x + px(6.0), b.origin.y + px(9.0), Align::Left, e.clone(), 10.0, style::ui_font(FontWeight::NORMAL), style::c(palette.failure));
+                    agent::record(window, cx, agent::Node::label(e.clone(), r));
+                }
+            },
+        )
+        .absolute()
+        .size_full();
+        let display = div()
+            .absolute()
+            .left(px(INSET))
+            .top(px(INSET))
+            .right(px(INSET))
+            .h(px(DISPLAY_H))
+            .child(well)
+            .child(div().absolute().left(px(6.0)).right(px(6.0)).top(px(0.0)).bottom(px(0.0)).child(self.field.clone()));
 
         // The keypad fills the rest.
-        if rows.is_empty() {
-            return;
-        }
-        let pad = Rect::from_min_max(pos2(full.left() + INSET, display.bottom() + INSET), full.max - vec2(INSET, INSET));
-        let n = rows.len() as f32;
-        let kw = (pad.width() - 4.0 * GAP) / 5.0;
-        let kh = (pad.height() - (n - 1.0) * GAP) / n;
-        let font = FontId::proportional((kh * 0.42).clamp(10.0, 28.0).round());
-        let flashing = self.flash.filter(|(_, t)| t.elapsed() < FLASH).map(|(k, _)| k);
-        if flashing.is_some() {
-            ui.ctx().request_repaint_after(FLASH);
-        }
-        let mut pressed = None;
-        for (r, row) in rows.iter().enumerate() {
-            for (col, &label) in row.iter().enumerate() {
-                let rect = Rect::from_min_size(
-                    pos2(pad.left() + col as f32 * (kw + GAP), pad.top() + r as f32 * (kh + GAP)),
-                    vec2(kw, kh),
-                )
-                .round_to_pixels(ui.ctx().pixels_per_point());
-                let resp = ui.interact(rect, Id::unique(("deskcalc-key", label)), Sense::click());
-                // For agents (the widget tree): a button named by its key.
-                resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
-                let down = resp.is_pointer_button_down_on() && resp.hovered() || flashing == Some(label);
-                key(ui, rect, label, &font, down, resp.hovered());
-                if resp.clicked() {
-                    pressed = Some(label);
+        let palette = p.clone();
+        let keypad = canvas(
+            |_, _, _| {},
+            move |pad, _, window, cx| {
+                let mut placed = keys.borrow_mut();
+                placed.clear();
+                if rows.is_empty() {
+                    return;
                 }
-            }
-        }
-        if let Some(k) = pressed {
-            self.press(k);
-        }
-    }
+                let n = rows.len() as f32;
+                let (pw, ph) = (f32::from(pad.size.width), f32::from(pad.size.height));
+                let kw = (pw - 4.0 * GAP) / 5.0;
+                let kh = (ph - (n - 1.0) * GAP) / n;
+                let font_size = (kh * 0.42).clamp(10.0, 28.0).round();
+                for (r, row) in rows.iter().enumerate() {
+                    for (col, &label) in row.iter().enumerate() {
+                        let b = Bounds { origin: point(pad.origin.x + px(col as f32 * (kw + GAP)), pad.origin.y + px(r as f32 * (kh + GAP))), size: size(px(kw), px(kh)) };
+                        let b = style::snap(window, b);
+                        let down = pressed == Some(label) && hovered == Some(label) || flashing == Some(label);
+                        key(window, cx, &palette, b, label, font_size, down, hovered == Some(label));
+                        // For agents: a button named by its key.
+                        agent::record(window, cx, agent::Node::button(label, b));
+                        placed.push((b, label));
+                    }
+                }
+            },
+        )
+        .absolute()
+        .left(px(INSET))
+        .right(px(INSET))
+        .top(px(INSET + DISPLAY_H + INSET))
+        .bottom(px(INSET));
 
-    fn close_requested(&mut self, cx: &mut Cx, _window: WindowId) {
-        self.store();
-        cx.quit();
-    }
-
-    fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
-        if message.is::<Launch>() {
-            self.open(cx);
-        }
-    }
-
-    fn save_state(&mut self, _cx: &Cx) -> Option<String> {
-        // Everything worth keeping is in the settings.
-        self.store();
-        Some(String::new())
+        div()
+            .size_full()
+            .relative()
+            // (The field keeps the keyboard; these keys reach this
+            // from it.)
+            .key_context("DeskCalc")
+            .on_action(cx.listener(|this, _: &Evaluate, _, cx| {
+                this.evaluate(cx);
+                this.flash_key("=", cx);
+            }))
+            .on_action(cx.listener(|this, _: &Back, _, cx| this.step_history(true, cx)))
+            .on_action(cx.listener(|this, _: &Forward, _, cx| this.step_history(false, cx)))
+            .on_action(cx.listener(|this, _: &Clear, _, cx| this.press("C", cx)))
+            .on_mouse_down(MouseButton::Left, cx.listener(Self::mouse_down))
+            .on_mouse_up(MouseButton::Left, cx.listener(Self::mouse_up))
+            .on_mouse_up_out(MouseButton::Left, cx.listener(Self::mouse_up))
+            .on_mouse_move(cx.listener(Self::mouse_move))
+            .child(keypad)
+            .child(display)
     }
 }
 
 /// One key: R5's raised bevel, pushed in while held.
-fn key(ui: &egui::Ui, r: Rect, label: &str, font: &FontId, down: bool, hovered: bool) {
-    let p = style::palette(ui.ctx());
-    let painter = ui.painter();
+#[allow(clippy::too_many_arguments)]
+fn key(window: &mut Window, cx: &mut App, p: &olo_ui::palette::Palette, r: Bounds<Pixels>, label: &'static str, font_size: f32, down: bool, hovered: bool) {
     let base = p.control_background;
     let (top, bottom) = if down {
-        (shade(&p, base, 1.2), shade(&p, base, 1.12))
+        (style::shade(p, base, 1.2), style::shade(p, base, 1.12))
     } else if hovered {
-        (c(olo_theme::tint(base, 0.7)), shade(&p, base, 1.02))
+        (style::tint(base, 0.7), style::shade(p, base, 1.02))
     } else {
-        (c(olo_theme::tint(base, 0.85)), shade(&p, base, 1.06))
+        (style::tint(base, 0.85), style::shade(p, base, 1.06))
     };
-    style::vgradient(painter, r.shrink(1.0), top, bottom);
-    style::frame_rect(painter, r, shade(&p, p.panel_background, 1.6));
-    let inner = r.shrink(1.0);
+    let inner = style::inset(window, r, 1.0);
+    style::vgradient(window, inner, top, bottom);
+    style::frame_rect(window, r, style::shade(p, p.panel_background, 1.6));
     if down {
-        style::bevel(painter, inner, shade(&p, base, 1.35), shade(&p, base, 1.1));
+        style::bevel(window, inner, style::shade(p, base, 1.35), style::shade(p, base, 1.1));
     } else {
-        style::bevel(painter, inner, c(p.shine), shade(&p, base, 1.2));
+        style::bevel(window, inner, style::c(p.shine), style::shade(p, base, 1.2));
     }
-    let off = if down { 1.0 } else { 0.0 };
-    let color = c(p.control_text);
-    let galley = painter.layout_no_wrap(label.to_owned(), font.clone(), color);
-    let pos = style::text_origin(ui.ctx(), &galley, r.center().x - galley.size().x / 2.0 + off, r.center().y + off, font.size);
-    painter.galley(pos, galley, color);
+    let off = if down { px(1.0) } else { px(0.0) };
+    let c = r.center();
+    style::label(window, cx, c.x + off, c.y + off, Align::Center, label, font_size, style::ui_font(FontWeight::NORMAL), style::c(p.control_text));
 }
 
 fn main() {
     // A session or install from before the rename (Tabula) carries on.
-    olo_kit::legacy::adopt();
+    olo_kit_base_adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if instance::forward(APP_ID, &args) {
         return;
     }
-    olo_kit::run(APP_ID, |cx| {
-        instance::listen(APP_ID, cx.proxy());
-        let settings: Settings =
-            std::fs::read_to_string(settings_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
-        // What was left showing last time counts as a result.
-        let shows_result = !settings.expression.is_empty();
-        let mut app = DeskCalc {
-            settings,
-            window: None,
-            error: None,
-            shows_result,
-            recall: None,
-            flash: None,
-            cursor_to_end: true,
-        };
-        app.open(cx);
-        app
+    olo_ui::run(APP_ID, |cx| {
+        cx.bind_keys([
+            KeyBinding::new("enter", Evaluate, Some("DeskCalc")),
+            KeyBinding::new("up", Back, Some("DeskCalc")),
+            KeyBinding::new("down", Forward, Some("DeskCalc")),
+            KeyBinding::new("escape", Clear, Some("DeskCalc")),
+        ]);
+        let settings: Settings = std::fs::read_to_string(settings_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        let (w, h) = settings.keypad.size();
+        let (min_w, min_h) = Keypad::Compact.size();
+        let calc: Rc<RefCell<Option<Entity<DeskCalc>>>> = Rc::default();
+        let made = calc.clone();
+        let handle = olo_ui::open_window(cx, WindowOptions::new("DeskCalc", w, h).min_size(min_w - 50.0, min_h), move |window, cx| {
+            let view = cx.new(|cx| DeskCalc::new(window, cx));
+            *made.borrow_mut() = Some(view.clone());
+            view
+        });
+        instance::listen(APP_ID, olo_ui::proxy(cx));
+        olo_ui::message_handler(cx, move |message, cx| {
+            if message.is::<Launch>()
+                && let Some(handle) = handle
+            {
+                let _ = handle.update(cx, |_, window, _| window.activate_window());
+            }
+        });
+        // The palette's and agents' way to the menu's commands.
+        let calc_for_menus = calc.clone();
+        agent::set_menus(
+            cx,
+            move |cx| {
+                let s = calc_for_menus.borrow().as_ref().map(|c| (c.read(cx).settings.keypad, c.read(cx).settings.angle));
+                menus(s)
+            },
+            move |command, cx| {
+                let Some(view) = calc.borrow().clone() else { return false };
+                let Some(handle) = handle else { return false };
+                handle.update(cx, |_, window, cx| view.update(cx, |calc, cx| calc.command(command, window, cx))).unwrap_or(false)
+            },
+        );
     });
+}
+
+/// The context menu's commands, flattened for the command palette.
+fn menus(state: Option<(Keypad, Angle)>) -> olo_ui::commands::Menus {
+    use olo_ui::commands::{Entry, Menus};
+    let (keypad, angle) = state.unwrap_or((Keypad::Basic, Angle::Radians));
+    let entry = |label: &str, command: &str, checked: bool| Entry { path: vec!["DeskCalc".into()], label: label.into(), command: command.into(), keys: None, enabled: true, checked };
+    Menus {
+        app_id: APP_ID.into(),
+        entries: vec![
+            entry("Copy", "copy", false),
+            entry("Paste", "paste", false),
+            entry("Basic Keypad", "keypad-basic", keypad == Keypad::Basic),
+            entry("Scientific Keypad", "keypad-scientific", keypad == Keypad::Scientific),
+            entry("No Keypad", "keypad-compact", keypad == Keypad::Compact),
+            entry("Radians", "radians", angle == Angle::Radians),
+            entry("Degrees", "degrees", angle == Angle::Degrees),
+        ],
+    }
+}
+
+/// Settings from before the rename (Tabula) carry on.
+fn olo_kit_base_adopt() {
+    olo_xdg::legacy::adopt();
 }

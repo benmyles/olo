@@ -19,6 +19,7 @@ use wayland_protocols::wp::viewporter::client::wp_viewport;
 use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1;
 use wayland_protocols::xdg::shell::client::xdg_surface;
 use wayland_protocols::xdg::shell::client::xdg_toplevel::{self};
+use wayland_protocols::xdg::shell::client::{xdg_popup, xdg_positioner};
 use wayland_protocols::{
     wp::fractional_scale::v1::client::wp_fractional_scale_v1,
     xdg::shell::client::xdg_toplevel::XdgToplevel,
@@ -91,7 +92,9 @@ pub struct WaylandWindowState {
     app_id: Option<String>,
     appearance: WindowAppearance,
     blur: Option<org_kde_kwin_blur::OrgKdeKwinBlur>,
-    toplevel: xdg_toplevel::XdgToplevel,
+    /// A window's role (None for a popup, which has `popup`).
+    toplevel: Option<xdg_toplevel::XdgToplevel>,
+    popup: Option<xdg_popup::XdgPopup>,
     viewport: Option<wp_viewport::WpViewport>,
     outputs: HashMap<ObjectId, Output>,
     display: Option<(ObjectId, Output)>,
@@ -142,8 +145,10 @@ struct FrameLoop {
     committed_at: Cell<std::time::Instant>,
     /// Draw everything again (the text is to be drawn another way).
     force: Cell<bool>,
-    /// How text is drawn, for the display the window is on.
+    /// How text is drawn, for the display the window is on, and the
+    /// generation of the person's choices it was chosen with.
     text_rendering: Cell<crate::TextRendering>,
+    text_generation: Cell<u64>,
     handle: LoopHandle<'static, WaylandClientStatePtr>,
 }
 
@@ -161,7 +166,8 @@ impl WaylandWindowState {
         handle: AnyWindowHandle,
         surface: wl_surface::WlSurface,
         xdg_surface: xdg_surface::XdgSurface,
-        toplevel: xdg_toplevel::XdgToplevel,
+        toplevel: Option<xdg_toplevel::XdgToplevel>,
+        popup: Option<xdg_popup::XdgPopup>,
         decoration: Option<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1>,
         appearance: WindowAppearance,
         viewport: Option<wp_viewport::WpViewport>,
@@ -199,6 +205,7 @@ impl WaylandWindowState {
             app_id: None,
             blur: None,
             toplevel,
+            popup,
             viewport,
             globals,
             outputs: HashMap::default(),
@@ -293,7 +300,12 @@ impl Drop for WaylandWindow {
         if let Some(blur) = &state.blur {
             blur.release();
         }
-        state.toplevel.destroy();
+        if let Some(toplevel) = &state.toplevel {
+            toplevel.destroy();
+        }
+        if let Some(popup) = &state.popup {
+            popup.destroy();
+        }
         if let Some(viewport) = &state.viewport {
             viewport.destroy();
         }
@@ -331,32 +343,72 @@ impl WaylandWindow {
         appearance: WindowAppearance,
         parent: Option<XdgToplevel>,
         loop_handle: LoopHandle<'static, WaylandClientStatePtr>,
+        popup_parent: Option<(xdg_surface::XdgSurface, u32)>,
     ) -> anyhow::Result<(Self, ObjectId)> {
         let surface = globals.compositor.create_surface(&globals.qh, ());
         let xdg_surface = globals
             .wm_base
             .get_xdg_surface(&surface, &globals.qh, surface.id());
-        let toplevel = xdg_surface.get_toplevel(&globals.qh, surface.id());
-
-        if params.kind == WindowKind::Floating {
-            toplevel.set_parent(parent.as_ref());
-        }
-
-        if let Some(size) = params.window_min_size {
-            toplevel.set_min_size(size.width.0 as i32, size.height.0 as i32);
-        }
+        let (toplevel, popup) = match (params.kind, popup_parent) {
+            (WindowKind::Popup { anchor, corner, .. }, Some((parent_surface, serial))) => {
+                // Olo: where it opens, and how the compositor may move it
+                // to keep it on screen.
+                let positioner = globals.wm_base.create_positioner(&globals.qh, ());
+                let size = params.bounds.size;
+                positioner.set_size(
+                    (size.width.0 as i32).max(1),
+                    (size.height.0 as i32).max(1),
+                );
+                positioner.set_anchor_rect(
+                    anchor.origin.x.0 as i32,
+                    anchor.origin.y.0 as i32,
+                    (anchor.size.width.0 as i32).max(1),
+                    (anchor.size.height.0 as i32).max(1),
+                );
+                let (edge, flip) = match corner {
+                    crate::Corner::TopLeft => (xdg_positioner::Anchor::TopLeft, false),
+                    crate::Corner::TopRight => (xdg_positioner::Anchor::TopRight, true),
+                    crate::Corner::BottomLeft => (xdg_positioner::Anchor::BottomLeft, false),
+                    crate::Corner::BottomRight => (xdg_positioner::Anchor::BottomRight, true),
+                };
+                positioner.set_anchor(edge);
+                positioner.set_gravity(xdg_positioner::Gravity::BottomRight);
+                let _ = flip;
+                positioner.set_constraint_adjustment(
+                    (xdg_positioner::ConstraintAdjustment::FlipX
+                        | xdg_positioner::ConstraintAdjustment::FlipY
+                        | xdg_positioner::ConstraintAdjustment::SlideX
+                        | xdg_positioner::ConstraintAdjustment::SlideY)
+                        .bits(),
+                );
+                let popup =
+                    xdg_surface.get_popup(Some(&parent_surface), &positioner, &globals.qh, surface.id());
+                positioner.destroy();
+                popup.grab(&globals.seat, serial);
+                (None, Some(popup))
+            }
+            _ => {
+                let toplevel = xdg_surface.get_toplevel(&globals.qh, surface.id());
+                if params.kind == WindowKind::Floating {
+                    toplevel.set_parent(parent.as_ref());
+                }
+                if let Some(size) = params.window_min_size {
+                    toplevel.set_min_size(size.width.0 as i32, size.height.0 as i32);
+                }
+                (Some(toplevel), None)
+            }
+        };
 
         if let Some(fractional_scale_manager) = globals.fractional_scale_manager.as_ref() {
             fractional_scale_manager.get_fractional_scale(&surface, &globals.qh, surface.id());
         }
 
         // Attempt to set up window decorations based on the requested configuration
-        let decoration = globals
-            .decoration_manager
-            .as_ref()
-            .map(|decoration_manager| {
-                decoration_manager.get_toplevel_decoration(&toplevel, &globals.qh, surface.id())
-            });
+        let decoration = toplevel.as_ref().and_then(|toplevel| {
+            globals.decoration_manager.as_ref().map(|decoration_manager| {
+                decoration_manager.get_toplevel_decoration(toplevel, &globals.qh, surface.id())
+            })
+        });
 
         let viewport = globals
             .viewporter
@@ -369,6 +421,7 @@ impl WaylandWindow {
                 surface.clone(),
                 xdg_surface,
                 toplevel,
+                popup,
                 decoration,
                 appearance,
                 viewport,
@@ -385,6 +438,7 @@ impl WaylandWindow {
                 committed_at: Cell::new(std::time::Instant::now()),
                 force: Cell::new(false),
                 text_rendering: Cell::new(crate::TextRendering::default()),
+                text_generation: Cell::new(0),
                 handle: loop_handle,
             }),
         });
@@ -405,8 +459,34 @@ impl WaylandWindowStatePtr {
         self.state.borrow().surface.clone()
     }
 
-    pub fn toplevel(&self) -> xdg_toplevel::XdgToplevel {
+    pub fn toplevel(&self) -> Option<xdg_toplevel::XdgToplevel> {
         self.state.borrow().toplevel.clone()
+    }
+
+    pub fn xdg_surface(&self) -> xdg_surface::XdgSurface {
+        self.state.borrow().xdg_surface.clone()
+    }
+
+    /// Olo: a popup's events: where the compositor put it, or that it was
+    /// dismissed (a click outside): it closes.
+    pub fn handle_popup_event(&self, event: xdg_popup::Event) -> bool {
+        match event {
+            xdg_popup::Event::Configure { width, height, .. } => {
+                if width > 0 && height > 0 {
+                    let mut state = self.state.borrow_mut();
+                    state.in_progress_configure = Some(InProgressConfigure {
+                        size: Some(size(px(width as f32), px(height as f32))),
+                        fullscreen: false,
+                        maximized: false,
+                        resizing: false,
+                        tiling: Tiling::default(),
+                    });
+                }
+                false
+            }
+            xdg_popup::Event::PopupDone => true,
+            _ => false,
+        }
     }
 
     pub fn ptr_eq(&self, other: &Self) -> bool {
@@ -1094,12 +1174,16 @@ impl PlatformWindow for WaylandWindow {
     }
 
     fn set_title(&mut self, title: &str) {
-        self.borrow().toplevel.set_title(title.to_string());
+        if let Some(toplevel) = &self.borrow().toplevel {
+            toplevel.set_title(title.to_string());
+        }
     }
 
     fn set_app_id(&mut self, app_id: &str) {
         let mut state = self.borrow_mut();
-        state.toplevel.set_app_id(app_id.to_owned());
+        if let Some(toplevel) = &state.toplevel {
+            toplevel.set_app_id(app_id.to_owned());
+        }
         state.app_id = Some(app_id.to_owned());
     }
 
@@ -1110,24 +1194,34 @@ impl PlatformWindow for WaylandWindow {
     }
 
     fn minimize(&self) {
-        self.borrow().toplevel.set_minimized();
+        if let Some(toplevel) = &self.borrow().toplevel {
+            toplevel.set_minimized();
+        }
     }
 
     fn zoom(&self) {
         let state = self.borrow();
         if !state.maximized {
-            state.toplevel.set_maximized();
+            if let Some(toplevel) = &state.toplevel {
+                toplevel.set_maximized();
+            }
         } else {
-            state.toplevel.unset_maximized();
+            if let Some(toplevel) = &state.toplevel {
+                toplevel.unset_maximized();
+            }
         }
     }
 
     fn toggle_fullscreen(&self) {
         let mut state = self.borrow_mut();
         if !state.fullscreen {
-            state.toplevel.set_fullscreen(None);
+            if let Some(toplevel) = &state.toplevel {
+                toplevel.set_fullscreen(None);
+            }
         } else {
-            state.toplevel.unset_fullscreen();
+            if let Some(toplevel) = &state.toplevel {
+                toplevel.unset_fullscreen();
+            }
         }
     }
 
@@ -1140,6 +1234,11 @@ impl PlatformWindow for WaylandWindow {
     }
 
     fn text_rendering(&self) -> crate::TextRendering {
+        let generation = crate::text_system::DISPLAY_TEXT_RENDERING_GENERATION
+            .load(std::sync::atomic::Ordering::Relaxed);
+        if self.0.frames.text_generation.replace(generation) != generation {
+            self.0.update_text_rendering();
+        }
         self.0.frames.text_rendering.get()
     }
 
@@ -1204,27 +1303,33 @@ impl PlatformWindow for WaylandWindow {
     fn show_window_menu(&self, position: Point<Pixels>) {
         let state = self.borrow();
         let serial = state.client.get_serial(SerialKind::MousePress);
-        state.toplevel.show_window_menu(
-            &state.globals.seat,
-            serial,
-            position.x.0 as i32,
-            position.y.0 as i32,
-        );
+        if let Some(toplevel) = &state.toplevel {
+            toplevel.show_window_menu(
+                &state.globals.seat,
+                serial,
+                position.x.0 as i32,
+                position.y.0 as i32,
+            );
+        }
     }
 
     fn start_window_move(&self) {
         let state = self.borrow();
         let serial = state.client.get_serial(SerialKind::MousePress);
-        state.toplevel._move(&state.globals.seat, serial);
+        if let Some(toplevel) = &state.toplevel {
+            toplevel._move(&state.globals.seat, serial);
+        }
     }
 
     fn start_window_resize(&self, edge: crate::ResizeEdge) {
         let state = self.borrow();
-        state.toplevel.resize(
-            &state.globals.seat,
-            state.client.get_serial(SerialKind::MousePress),
-            edge.to_xdg(),
-        )
+        if let Some(toplevel) = &state.toplevel {
+            toplevel.resize(
+                &state.globals.seat,
+                state.client.get_serial(SerialKind::MousePress),
+                edge.to_xdg(),
+            )
+        }
     }
 
     fn window_decorations(&self) -> Decorations {

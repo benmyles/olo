@@ -60,7 +60,7 @@ use wayland_protocols::xdg::activation::v1::client::{xdg_activation_token_v1, xd
 use wayland_protocols::xdg::decoration::zv1::client::{
     zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1,
 };
-use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
+use wayland_protocols::xdg::shell::client::{xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base};
 use wayland_protocols_plasma::blur::client::{org_kde_kwin_blur, org_kde_kwin_blur_manager};
 use xkbcommon::xkb::ffi::XKB_KEYMAP_FORMAT_TEXT_V1;
 use xkbcommon::xkb::{self, KEYMAP_COMPILE_NO_FLAGS, Keycode};
@@ -767,7 +767,20 @@ impl LinuxClient for WaylandClient {
     ) -> anyhow::Result<Box<dyn PlatformWindow>> {
         let mut state = self.0.borrow_mut();
 
-        let parent = state.keyboard_focused_window.as_ref().map(|w| w.toplevel());
+        let parent = state
+            .keyboard_focused_window
+            .as_ref()
+            .and_then(|w| w.toplevel());
+        // Olo: a popup opens over its parent window's surface, grabbing
+        // the press that opened it.
+        let popup_parent = match params.kind {
+            crate::WindowKind::Popup { parent, .. } => state
+                .windows
+                .values()
+                .find(|w| w.handle() == parent)
+                .map(|w| (w.xdg_surface(), state.serial_tracker.get(SerialKind::MousePress))),
+            _ => None,
+        };
 
         let (window, surface_id) = WaylandWindow::new(
             handle,
@@ -778,6 +791,7 @@ impl LinuxClient for WaylandClient {
             state.common.appearance,
             parent,
             state.loop_handle.clone(),
+            popup_parent,
         )?;
         state.windows.insert(surface_id, window.0.clone());
 
@@ -1175,6 +1189,29 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ObjectId> for WaylandClientStatePtr {
         }
     }
 }
+
+impl Dispatch<xdg_popup::XdgPopup, ObjectId> for WaylandClientStatePtr {
+    fn event(
+        this: &mut Self,
+        _: &xdg_popup::XdgPopup,
+        event: xdg_popup::Event,
+        surface_id: &ObjectId,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        let client = this.get_client();
+        let mut state = client.borrow_mut();
+        let Some(window) = get_window(&mut state, surface_id) else {
+            return;
+        };
+        drop(state);
+        if window.handle_popup_event(event) {
+            window.close();
+        }
+    }
+}
+
+delegate_noop!(WaylandClientStatePtr: ignore xdg_positioner::XdgPositioner);
 
 impl Dispatch<xdg_wm_base::XdgWmBase, ()> for WaylandClientStatePtr {
     fn event(

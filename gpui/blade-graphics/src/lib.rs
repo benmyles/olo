@@ -1,3 +1,5 @@
+// Olo: upstream's style, kept as it was.
+#![allow(mismatched_lifetime_syntaxes, deprecated)]
 #![allow(
     // We don't use syntax sugar where it's not necessary.
     clippy::match_like_matches_macro,

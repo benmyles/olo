@@ -148,3 +148,7 @@ unicode-segmentation = "1.10"
 
 [build-dependencies]
 naga = { version = "25.0", features = ["wgsl-in"] }
+
+[lints.rust]
+# (Upstream's cfgs for platforms and features Olo's GPUI dropped.)
+unexpected_cfgs = "allow"

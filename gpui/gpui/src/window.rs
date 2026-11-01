@@ -60,6 +60,50 @@ pub use prompts::*;
 
 pub(crate) const DEFAULT_WINDOW_SIZE: Size<Pixels> = size(px(1536.), px(864.));
 
+/// Olo: how a window kept up, for agents and tools (the kit's
+/// `{"frames":true}`): frames drawn since last taken, their total and
+/// slowest time from starting to draw to handing the frame to the GPU,
+/// and the last [`FrameStats::MARKS`] of them.
+#[derive(Debug, Clone, Default)]
+pub struct FrameStats {
+    /// Frames drawn.
+    pub frames: u32,
+    /// Their time together, in microseconds.
+    pub total_us: u64,
+    /// The slowest one's.
+    pub slowest_us: u64,
+    /// Each frame: when it started (CLOCK_MONOTONIC microseconds), how
+    /// long laying out and painting took, and the whole frame.
+    pub marks: Vec<(u64, u32, u32)>,
+}
+
+impl FrameStats {
+    /// How many frames' marks are kept between takes.
+    pub const MARKS: usize = 1200;
+
+    fn record(&mut self, started: Instant, drawn: Duration, whole: Duration) {
+        let us = whole.as_micros() as u64;
+        self.frames += 1;
+        self.total_us += us;
+        self.slowest_us = self.slowest_us.max(us);
+        if self.marks.len() == Self::MARKS {
+            self.marks.remove(0);
+        }
+        let at = monotonic_us().saturating_sub(started.elapsed().as_micros() as u64);
+        self.marks.push((at, drawn.as_micros() as u32, us as u32));
+    }
+}
+
+fn monotonic_us() -> u64 {
+    let mut ts = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: a valid timespec for the kernel to fill.
+    unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) };
+    ts.tv_sec as u64 * 1_000_000 + ts.tv_nsec as u64 / 1_000
+}
+
 /// Represents the two different phases when dispatching events.
 #[derive(Default, Copy, Clone, Debug, Eq, PartialEq)]
 pub enum DispatchPhase {
@@ -891,6 +935,7 @@ pub struct Window {
     hovered: Rc<Cell<bool>>,
     pub(crate) needs_present: Rc<Cell<bool>>,
     pub(crate) last_input_timestamp: Rc<Cell<Instant>>,
+    pub(crate) frame_stats: FrameStats,
     pub(crate) refreshing: bool,
     pub(crate) activation_observers: SubscriberSet<(), AnyObserver>,
     pub(crate) focus: Option<FocusId>,
@@ -981,6 +1026,8 @@ impl Window {
         let bounds = window_bounds
             .map(|bounds| bounds.get_bounds())
             .unwrap_or_else(|| default_bounds(display_id, cx));
+        // Olo: the title given (Wayland's platform didn't set it).
+        let title = titlebar.as_ref().and_then(|t| t.title.clone());
         let mut platform_window = cx.platform.open_window(
             handle,
             WindowParams {
@@ -1070,10 +1117,13 @@ impl Window {
                     measure("frame duration", || {
                         handle
                             .update(&mut cx, |_, window, cx| {
+                                let started = Instant::now();
                                 let arena_clear_needed = window.draw(cx);
+                                let drawn = started.elapsed();
                                 window.present();
                                 // drop the arena elements after present to reduce latency
                                 arena_clear_needed.clear();
+                                window.frame_stats.record(started, drawn, started.elapsed());
                             })
                             .log_err();
                     });
@@ -1237,6 +1287,9 @@ impl Window {
         if let Some(app_id) = app_id {
             platform_window.set_app_id(&app_id);
         }
+        if let Some(title) = title {
+            platform_window.set_title(&title);
+        }
 
         platform_window.map_window().unwrap();
 
@@ -1282,6 +1335,7 @@ impl Window {
             hovered,
             needs_present,
             last_input_timestamp,
+            frame_stats: FrameStats::default(),
             refreshing: false,
             activation_observers: SubscriberSet::new(),
             focus: None,
@@ -1392,6 +1446,12 @@ impl Window {
         self.root
             .as_ref()
             .map(|view| view.clone().downcast::<E>().ok())
+    }
+
+    /// Olo: how the window kept up since this was last called (and
+    /// starts counting again).
+    pub fn take_frame_stats(&mut self) -> FrameStats {
+        std::mem::take(&mut self.frame_stats)
     }
 
     /// Obtain a handle to the window that belongs to this context.
@@ -4826,7 +4886,7 @@ impl<V: 'static> From<WindowHandle<V>> for AnyWindowHandle {
 }
 
 /// A handle to a window with any root view type, which can be downcast to a window with a specific root view type.
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct AnyWindowHandle {
     pub(crate) id: WindowId,
     state_type: TypeId,

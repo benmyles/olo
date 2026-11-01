@@ -1,0 +1,19 @@
+[package]
+name = "olo-ui"
+description = "Olo's Interface Kit on Olo's GPUI: windows, the theme, BeOS widgets and the agent socket, drawn on the GPU"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+gpui.workspace = true
+olo-kit-base.workspace = true
+olo-protocol.workspace = true
+olo-theme.workspace = true
+olo-xdg.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+futures = "0.3"
+unicode-segmentation = "1.12"
