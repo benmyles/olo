@@ -237,6 +237,8 @@ type Handler = Rc<dyn Fn(&mut Window, &mut App)>;
 #[derive(Clone, Default)]
 struct Handlers {
     open: Option<RowFn>,
+    /// A row dragged out of the list (Disk Usage's Collector, Tracker).
+    drag: Option<RowFn>,
     context: Option<AtFn>,
     select: Option<Handler>,
     sort: Option<Handler>,
@@ -297,6 +299,15 @@ impl ColumnListView {
     /// it, or the rows selected with it.
     pub fn on_context(mut self, f: impl Fn(usize, Point<Pixels>, &mut Window, &mut App) + 'static) -> Self {
         self.handlers.context = Some(Rc::new(f));
+        self
+    }
+
+    /// Rows can be dragged out: a press on a selected row, or on a
+    /// row's first column, that moves starts a drag of it (selected, if
+    /// it wasn't), which `f` takes on (following the pointer, dropping
+    /// it); elsewhere a press that moves draws a band.
+    pub fn on_drag(mut self, f: impl Fn(usize, &mut Window, &mut App) + 'static) -> Self {
+        self.handlers.drag = Some(Rc::new(f));
         self
     }
 
@@ -371,6 +382,7 @@ impl RenderOnce for ColumnListView {
         let base_handle = scroll.0.borrow().base_handle.clone();
         let (rows, row_h, columns, handlers) = (self.rows, self.row_height, self.columns.clone(), self.handlers.clone());
         let total: f32 = widths(model.read(cx), &columns).iter().sum();
+        let first_width = widths(model.read(cx), &columns).first().copied().unwrap_or(0.0);
         // Inside the sunken frame's two lines, on device pixels; the
         // header's bottom and the bars' edges too (layout rounds a box's
         // offset from its parent but its size from where it ends, so a
@@ -521,6 +533,28 @@ impl RenderOnce for ColumnListView {
                 window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, cx| {
                     if !phase.capture() || !e.dragging() {
                         return;
+                    }
+                    // A press on a selected row, or on a row's first
+                    // column, that moves: the row dragged out.
+                    if let (Some(drag), Some(Drag::Press { at, row: Some(r), band: false, .. })) = (&h.drag, m.read(cx).drag.clone()) {
+                        let d = e.position - at;
+                        let on_item = m.read(cx).state.selected.contains(&r) || at.x < m.read(cx).body.left() + px(first_width);
+                        if on_item && f32::from(d.x).hypot(f32::from(d.y)) > 3.0 {
+                            let changed = m.update(cx, |m, _| {
+                                m.drag = None;
+                                let fresh = !m.state.selected.contains(&r);
+                                if fresh {
+                                    m.state.select(r);
+                                }
+                                fresh
+                            });
+                            if changed {
+                                h.selected(window, cx);
+                            }
+                            drag(r, window, cx);
+                            window.refresh();
+                            return;
+                        }
                     }
                     let changed = m.update(cx, |m, _| {
                         let multiple = m.state.multiple;

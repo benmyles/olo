@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-31
 
+### DiskUsage on GPUI
+
+*20:57* — DiskUsage moves to the GPUI kit (olo-ui): the ring chart's slices are GPU sectors (paint_sector) with hairlines over them, the list beside it a ColumnListView whose rows drag into the Collector, Volumes, menus with the keyboard profile's keys, alerts and the folder panel all as before. The chart redraws only when the slice under the pointer changes, in about a millisecond; the list's name column now fits inside its scroll bar (egui's cut Files off), and the Collector's chips show each file's kind.
+
+![DiskUsage on GPUI](2026-10-31/205741-diskusage-on-gpui.png)
+
 ### Token Pool on GPUI
 
 *20:16* — Token Pool moves to olo-ui: the same window (gateway, now-grid, client switches, account cards with quota bars and request strips, Account menu, rename), drawn by GPUI. A test account in a fixture home; 73.6 MB against egui's 91.9 MB, idle with no wakeups.

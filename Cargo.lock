@@ -5846,8 +5846,10 @@ name = "olo-disk-usage"
 version = "0.1.0"
 dependencies = [
  "libc",
- "olo-kit",
+ "olo-kit-base",
  "olo-theme",
+ "olo-ui",
+ "olo-xdg",
  "serde",
  "serde_json",
  "tracing",

@@ -1593,8 +1593,10 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   and typing a name (`type_select`) select (`on_select`); a press on a
   selected row keeps the selection until the release (for dragging);
   double click or Return opens (`on_open`); a right click keeps or
-  makes the selection and calls `on_context` with where. Columns wider
-  together than the view scroll sideways under a horizontal bar.
+  makes the selection and calls `on_context` with where; a press on a
+  selected row, or on a name, that moves three points calls `on_drag`
+  with the row (for the app to carry it: DiskUsage's Collector). Columns
+  wider together than the view scroll sideways under a horizontal bar.
   `ListModel::reveal(row)` scrolls a row selected in code into the
   middle; `typing()` says a name is being typed (a space is part of
   it). Agents read `Row`s (named by their cells' text, selected or
@@ -4545,7 +4547,12 @@ outwards, lighter, files greyer) beside a list of the folder by size
 whose bars wear the slices' colours, and DaisyDisk's Collector along the
 bottom: drag rows or slices into it (or ⌘D, Item ▸ Add to Collector),
 then Move to Trash or Delete… (confirmed) all at once. Click a slice to
-go into it, the middle (or Up, ⌘↑, Backspace) to go back up.
+go into it, the middle (or Up, ⌘↑, Backspace) to go back up. On the
+GPUI kit (olo-ui): each slice is one `window.paint_sector` (the slices
+one paint layer, the hairlines another), so hovering redraws the window
+in about a millisecond and only when the slice under the pointer
+changes; the chart's width is kept on device pixels so the list beside
+it is too.
 
 The start screen lists Home and each disk file system once
 (`volumes.rs`, from /proc/self/mountinfo; statvfs for size and free
@@ -4558,7 +4565,7 @@ mount point only for another part of the same file system (a btrfs
 `/home` under `/`), never `/proc`, `/tmp`, other disks or a bind mount
 of what it already covers. Moving to the Trash (`olo_kit::trash`) and
 deleting run on a thread too; the tree drops what went
-(`Tree::remove`). `save_state` keeps the scanned folder, the folder
+(`Tree::remove`). `on_upgrade` keeps the scanned folder, the folder
 shown and the Collector; after a re-exec it scans again and goes back.
 Test against a fixture home (`fallocate` files under /var/tmp) with
 `tsession run NAME HOME=… target/debug/olo-disk-usage DIR`.

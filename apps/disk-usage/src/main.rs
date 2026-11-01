@@ -5,7 +5,7 @@
 //! along the bottom, as DaisyDisk has: drag what you don't need into it
 //! (or ⌘D), see how much it adds up to, then move it all to the Trash or
 //! delete it. Scanning runs on a thread (scan.rs) and the chart grows as
-//! it goes.
+//! it goes. On the GPUI kit (olo-ui).
 
 mod chart;
 mod scan;
@@ -20,18 +20,19 @@ use std::{
     },
 };
 
-use olo_kit::{
-    App, Cx, Menu, WindowId, WindowOptions,
-    egui::{self, Align, Id, Key, Rect, Sense, Ui, pos2, vec2},
-    file_panel::{FilePanel, PANEL_SIZE, PanelResult},
+use olo_theme::mix;
+use olo_ui::{
+    Frame, Menu, MenuBar, WindowOptions,
+    file_panel::{self, FilePanel, PanelResult},
     files::{format_size, kind_for},
+    gpui::{
+        self, App, AppContext as _, Bounds, ClipboardItem, Context, Entity, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, Render, SharedString, Styled as _, Window, WindowHandle, canvas, div, point, px, size,
+    },
     icons,
     instance::{self, Launch},
-    metrics as m,
-    style::{self, c},
-    widgets::{self, Button, Cell, Column, ColumnListView, ListState, StatusBar},
+    menu, metrics as m, style, theme, tracker,
+    widgets::{Button, Column, ColumnListView, ListModel, SCROLL_BAR, open_alert},
 };
-use olo_theme::mix;
 use scan::{NodeId, ROOT, Scan};
 use serde::{Deserialize, Serialize};
 use volumes::Volume;
@@ -48,13 +49,6 @@ enum Msg {
     Removed { gone: Vec<NodeId>, failed: Vec<(String, String)> },
 }
 
-enum Win {
-    Main,
-    Panel(Box<FilePanel>),
-    ConfirmDelete { items: Vec<NodeId>, message: String },
-    Error { message: String },
-}
-
 /// What comes back after an upgrade or reload.
 #[derive(Serialize, Deserialize, Default)]
 struct Saved {
@@ -63,20 +57,29 @@ struct Saved {
     collected: Vec<PathBuf>,
 }
 
+/// The chart's pointer: where it is, and a press that may become a drag.
+#[derive(Default, Clone, Copy)]
+struct Pointer {
+    at: Option<Point<Pixels>>,
+    pressed: Option<(Point<Pixels>, Option<NodeId>)>,
+}
+
 struct DiskUsage {
-    windows: HashMap<WindowId, Win>,
-    main: Option<WindowId>,
+    window: Option<WindowHandle<Frame>>,
     volumes: Option<Vec<Volume>>,
     scan: Option<Scan>,
     /// The folder shown.
     folder: NodeId,
     selected: Option<NodeId>,
-    list: ListState,
+    list: Entity<ListModel>,
     /// The list's rows: (folder, tree generation, sort) they were made for.
     rows: (NodeId, u64, Option<(usize, bool)>, Vec<NodeId>),
     collected: Vec<NodeId>,
     /// Being dragged towards the Collector.
     drag: Option<NodeId>,
+    /// Where the Collector's well was drawn last (a drop's target).
+    collector: Bounds<Pixels>,
+    pointer: Pointer,
     /// A slice right-clicked, for its menu.
     context: Option<NodeId>,
     /// Moving to the Trash or deleting: what's said meanwhile, and the
@@ -99,21 +102,6 @@ fn display_path(p: &Path) -> String {
     }
 }
 
-/// `text`, cut short with "…" to fit `width`.
-fn ellipsize(ctx: &egui::Context, text: &str, font: egui::FontId, width: f32) -> String {
-    if style::label_width(ctx, text, font.clone()) <= width {
-        return text.to_owned();
-    }
-    let chars: Vec<char> = text.chars().collect();
-    let (mut lo, mut hi) = (0, chars.len());
-    while lo < hi {
-        let mid = (lo + hi).div_ceil(2);
-        let candidate: String = chars[..mid].iter().collect::<String>() + "…";
-        if style::label_width(ctx, &candidate, font.clone()) <= width { lo = mid } else { hi = mid - 1 }
-    }
-    chars[..lo].iter().collect::<String>() + "…"
-}
-
 /// 199,111.
 fn count(n: u64) -> String {
     let digits = n.to_string();
@@ -132,79 +120,67 @@ fn plural(n: u64, one: &str, many: &str) -> String {
 }
 
 impl DiskUsage {
-    fn open(&mut self, cx: &mut Cx) {
-        if let Some(id) = self.main {
-            return cx.activate(id);
-        }
-        let id = cx.open_window(WindowOptions::new("DiskUsage", 780, 560).min_size(600, 440));
-        self.windows.insert(id, Win::Main);
-        self.main = Some(id);
-        self.read_volumes(cx);
+    fn proxy(cx: &App) -> olo_ui::Proxy {
+        olo_ui::proxy(cx)
     }
 
-    fn redraw(&self, cx: &mut Cx) {
-        if let Some(id) = self.main {
-            cx.redraw(id);
-        }
-    }
-
-    fn read_volumes(&self, cx: &Cx) {
-        let proxy = cx.proxy();
+    fn read_volumes(&self, cx: &App) {
+        let proxy = Self::proxy(cx);
         std::thread::spawn(move || proxy.send(Msg::Volumes(volumes::volumes())));
     }
 
-    fn start_scan(&mut self, cx: &mut Cx, root: PathBuf) {
+    /// Retitles the window (deferred: called from the app's updates).
+    fn set_title(&self, title: String, cx: &mut Context<Self>) {
+        let Some(w) = self.window else { return };
+        cx.defer(move |cx| {
+            let _ = w.update(cx, |f, window, _| f.set_title(title, window));
+        });
+    }
+
+    fn start_scan(&mut self, root: PathBuf, cx: &mut Context<Self>) {
         if let Some(old) = self.scan.take() {
             old.cancel();
         }
-        let proxy = cx.proxy();
+        let proxy = Self::proxy(cx);
         self.scan = Some(scan::start(root.clone(), move || proxy.send(Msg::Tick)));
         self.folder = ROOT;
         self.selected = None;
         self.collected.clear();
-        self.list = ListState::default();
+        self.list.update(cx, |l, _| l.state = Default::default());
         self.rows = (ROOT, u64::MAX, None, Vec::new());
-        if let Some(id) = self.main {
-            cx.set_title(id, &format!("DiskUsage: {}", display_path(&root)));
-        }
-        self.redraw(cx);
+        self.set_title(format!("DiskUsage: {}", display_path(&root)), cx);
+        cx.notify();
     }
 
-    fn show_volumes(&mut self, cx: &mut Cx) {
+    fn show_volumes(&mut self, cx: &mut Context<Self>) {
         if let Some(old) = self.scan.take() {
             old.cancel();
         }
         self.collected.clear();
-        if let Some(id) = self.main {
-            cx.set_title(id, "DiskUsage");
-        }
+        self.set_title("DiskUsage".into(), cx);
         self.read_volumes(cx);
+        cx.notify();
     }
 
-    fn alert(&mut self, cx: &mut Cx, win: Win, message: &str) {
-        let id = cx.open_window(WindowOptions::alert("DiskUsage", message));
-        self.windows.insert(id, win);
-    }
-
-    /// Run `f` on what `id` is: its path, whether a folder, its name.
+    /// What `id` is: its path, whether a folder, its name and size.
     fn item(&self, id: NodeId) -> Option<(PathBuf, bool, String, u64)> {
         let t = self.scan.as_ref()?.tree.read().ok()?;
         let n = t.nodes.get(id as usize)?;
         Some((t.path(id), n.dir, n.name.to_string(), n.size))
     }
 
-    fn enter(&mut self, id: NodeId) {
+    fn enter(&mut self, id: NodeId, cx: &mut Context<Self>) {
         let Some(scan) = &self.scan else { return };
         let t = scan.tree.read().unwrap();
         if t.nodes[id as usize].dir && !t.nodes[id as usize].gone {
             drop(t);
             self.folder = id;
             self.selected = None;
-            self.list = ListState::default();
+            self.list.update(cx, |l, _| l.state.selected.clear());
         }
     }
 
-    fn up(&mut self) {
+    fn up(&mut self, cx: &mut Context<Self>) {
         let Some(scan) = &self.scan else { return };
         if self.folder == ROOT {
             return;
@@ -212,16 +188,16 @@ impl DiskUsage {
         let from = self.folder;
         self.folder = scan.tree.read().unwrap().nodes[from as usize].parent;
         self.selected = Some(from);
-        self.list = ListState::default();
+        self.list.update(cx, |l, _| l.state.selected.clear());
     }
 
-    /// Open a file with its application, or go into a folder.
-    fn open_item(&mut self, id: NodeId) {
+    /// Opens a file with its application, or goes into a folder.
+    fn open_item(&mut self, id: NodeId, cx: &mut Context<Self>) {
         let Some((path, dir, _, _)) = self.item(id) else { return };
         if dir {
-            return self.enter(id);
+            return self.enter(id, cx);
         }
-        if let Err(e) = olo_kit::open::open(&olo_kit::open::Target::Path(path)) {
+        if let Err(e) = olo_xdg::open::open(&olo_xdg::open::Target::Path(path)) {
             tracing::warn!("couldn't open: {e}");
         }
     }
@@ -229,12 +205,12 @@ impl DiskUsage {
     /// A folder in its window, a file selected in its folder's.
     fn show_in_tracker(&self, id: NodeId) {
         let Some((path, _, _, _)) = self.item(id) else { return };
-        if let Err(e) = olo_kit::tracker::open(&path) {
+        if let Err(e) = tracker::open(&path) {
             tracing::warn!("couldn't open Tracker: {e}");
         }
     }
 
-    /// Put `id` in the Collector (not the scan's own folder, and not
+    /// Puts `id` in the Collector (not the scan's own folder, and not
     /// something already in it, or holding something in it).
     fn collect(&mut self, id: NodeId) {
         let Some(scan) = &self.scan else { return };
@@ -253,8 +229,8 @@ impl DiskUsage {
         self.collected.iter().map(|&c| t.nodes[c as usize].size).sum()
     }
 
-    /// Move `items` to the Trash (or delete them) on a thread.
-    fn remove(&mut self, cx: &mut Cx, items: Vec<NodeId>, trash: bool) {
+    /// Moves `items` to the Trash (or deletes them) on a thread.
+    fn remove(&mut self, items: Vec<NodeId>, trash: bool, cx: &mut Context<Self>) {
         let Some(scan) = &self.scan else { return };
         if items.is_empty() || self.busy.is_some() {
             return;
@@ -267,7 +243,7 @@ impl DiskUsage {
         let what = if paths.len() == 1 { format!("“{}”", paths[0].2) } else { format!("{} items", paths.len()) };
         let doing = if trash { format!("Moving {what} to the Trash…") } else { format!("Deleting {what}…") };
         self.busy = Some((doing, stop.clone()));
-        let proxy = cx.proxy();
+        let proxy = Self::proxy(cx);
         std::thread::spawn(move || {
             let (mut gone, mut failed) = (Vec::new(), Vec::new());
             for (id, path, name) in paths {
@@ -275,7 +251,7 @@ impl DiskUsage {
                     break;
                 }
                 let result = if trash {
-                    olo_kit::trash::move_to_trash(&path).map(|_| ())
+                    olo_xdg::trash::move_to_trash(&path).map(|_| ())
                 } else if std::fs::symlink_metadata(&path).is_ok_and(|m| m.is_dir()) {
                     std::fs::remove_dir_all(&path)
                 } else {
@@ -283,19 +259,17 @@ impl DiskUsage {
                 };
                 match result {
                     Ok(()) => gone.push(id),
-                    Err(e) if e.raw_os_error() == Some(libc::EXDEV) => {
-                        failed.push((name, "it is on a different volume from the Trash, so it can only be deleted".into()))
-                    }
+                    Err(e) if e.raw_os_error() == Some(libc::EXDEV) => failed.push((name, "it is on a different volume from the Trash, so it can only be deleted".into())),
                     Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => failed.push((name, "you don't have permission".into())),
                     Err(e) => failed.push((name, e.to_string())),
                 }
             }
             proxy.send(Msg::Removed { gone, failed });
         });
-        self.redraw(cx);
+        cx.notify();
     }
 
-    fn confirm_delete(&mut self, cx: &mut Cx, items: Vec<NodeId>) {
+    fn confirm_delete(&mut self, items: Vec<NodeId>, cx: &mut Context<Self>) {
         if items.is_empty() {
             return;
         }
@@ -310,28 +284,42 @@ impl DiskUsage {
         };
         let they = if items.len() == 1 { "It won't" } else { "They won't" };
         let message = format!("Delete {what} ({}) for good? {they} go to the Trash, and this can't be undone.", format_size(size));
-        self.alert(cx, Win::ConfirmDelete { items, message: message.clone() }, &message);
+        let me = cx.entity();
+        cx.defer(move |cx| {
+            open_alert(cx, "DiskUsage", "warning", &message, &["Cancel", "Delete"], move |choice, cx| {
+                if choice == Some(1) {
+                    me.update(cx, |d, cx| d.remove(items.clone(), false, cx));
+                }
+            });
+        });
     }
 
-    fn command(&mut self, cx: &mut Cx, command: &str) {
+    fn command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(path) = command.strip_prefix("scan:") {
-            return self.start_scan(cx, PathBuf::from(path));
+            return self.start_scan(PathBuf::from(path), cx);
         }
         if let Some(id) = command.strip_prefix("uncollect:").and_then(|i| i.parse::<NodeId>().ok()) {
-            return self.collected.retain(|&c| c != id);
+            self.collected.retain(|&c| c != id);
+            return cx.notify();
         }
         // Item commands act on the slice right-clicked, else the selection.
         let target = self.context.take().or(self.selected);
         match command {
-            "scan-home" => self.start_scan(cx, home()),
+            "scan-home" => self.start_scan(home(), cx),
             "scan-folder" => {
-                let id = cx.open_window(WindowOptions::new("Scan a Folder", PANEL_SIZE.0, PANEL_SIZE.1).min_size(420, 300));
-                self.windows.insert(id, Win::Panel(Box::new(FilePanel::folder(home()))));
+                let me = cx.entity();
+                cx.defer(move |cx| {
+                    file_panel::show(cx, "Scan a Folder", FilePanel::folder(home()), move |a, cx| {
+                        if let PanelResult::Chosen(path) = a.result {
+                            me.update(cx, |d, cx| d.start_scan(path, cx));
+                        }
+                    });
+                });
             }
             "rescan" => {
                 if let Some(root) = self.scan.as_ref().map(|s| s.tree.read().unwrap().root.clone()) {
                     let folder = self.item(self.folder).map(|(p, ..)| p);
-                    self.start_scan(cx, root);
+                    self.start_scan(root, cx);
                     self.restore = Some(Saved { root: None, folder, collected: Vec::new() });
                 }
             }
@@ -341,13 +329,13 @@ impl DiskUsage {
                 }
             }
             "volumes" => self.show_volumes(cx),
-            "up" => self.up(),
+            "up" => self.up(cx),
             "open" => {
                 if let Some(id) = target {
-                    self.open_item(id);
+                    self.open_item(id, cx);
                 }
             }
-            olo_kit::tracker::COMMAND => {
+            tracker::COMMAND => {
                 if let Some(id) = target {
                     self.show_in_tracker(id);
                 }
@@ -359,31 +347,34 @@ impl DiskUsage {
             }
             "trash" => {
                 if let Some(id) = target.filter(|&i| i != ROOT) {
-                    self.remove(cx, vec![id], true);
+                    self.remove(vec![id], true, cx);
                 }
             }
             "delete" => {
                 if let Some(id) = target.filter(|&i| i != ROOT) {
-                    self.confirm_delete(cx, vec![id]);
+                    self.confirm_delete(vec![id], cx);
                 }
             }
             "copy-path" => {
                 if let Some((path, ..)) = target.and_then(|id| self.item(id)) {
-                    cx.copy(path.display().to_string());
+                    cx.write_to_clipboard(ClipboardItem::new_string(path.display().to_string()));
                 }
             }
-            "collector-trash" => self.remove(cx, self.collected.clone(), true),
-            "collector-delete" => self.confirm_delete(cx, self.collected.clone()),
+            "collector-trash" => self.remove(self.collected.clone(), true, cx),
+            "collector-delete" => self.confirm_delete(self.collected.clone(), cx),
             "collector-clear" => self.collected.clear(),
             "stop-removing" => {
                 if let Some((_, stop)) = &self.busy {
                     stop.store(true, Ordering::Relaxed);
                 }
             }
-            "close" | "quit" => cx.quit(),
+            "close" | "quit" => {
+                let _ = window;
+                cx.quit();
+            }
             _ => {}
         }
-        self.redraw(cx);
+        cx.notify();
     }
 
     fn item_menu(&self, id: NodeId) -> Menu {
@@ -392,84 +383,86 @@ impl DiskUsage {
             None => (false, false),
         };
         Menu::new("")
-            .item(if dir { "Open Folder" } else { "Open" }, "open", None)
-            .item(olo_kit::tracker::LABEL, olo_kit::tracker::COMMAND, None)
-            .item("Copy Path", "copy-path", None)
+            .item(if dir { "Open Folder" } else { "Open" }, "open")
+            .item(tracker::LABEL, tracker::COMMAND)
+            .item("Copy Path", "copy-path")
             .separator()
-            .item("Add to Collector", "collect", None)
+            .item("Add to Collector", "collect")
             .enabled(!collected && id != ROOT)
-            .item("Move to Trash", "trash", None)
+            .item("Move to Trash", "trash")
             .enabled(id != ROOT && self.busy.is_none())
-            .item("Delete…", "delete", None)
+            .item("Delete…", "delete")
             .enabled(id != ROOT && self.busy.is_none())
     }
 
-    // ---- drawing ------------------------------------------------------
-
-    fn volumes_ui(&mut self, cx: &mut Cx, ui: &mut Ui, area: Rect) {
-        let p = style::palette(ui.ctx());
-        let painter = ui.painter();
-        style::label(painter, area.left(), area.top() + 8.0, Align::Min, "Choose what to scan:", style::bold_font(), c(p.panel_text));
-        let row_h = 56.0;
-        let mut y = area.top() + 24.0;
-        let mut rows: Vec<(String, &str, String, Option<(u64, u64)>, PathBuf)> = Vec::new();
-        rows.push(("Home".into(), "home", display_path(&home()), volumes::space(&home()), home()));
+    fn menus(&self) -> Vec<Menu> {
+        let scanning = self.scan.as_ref().is_some_and(Scan::running);
+        let scanned = self.scan.is_some();
+        let mut volumes = Menu::new("Scan Volume");
         for v in self.volumes.iter().flatten() {
-            rows.push((v.name.clone(), "disk", v.mount.display().to_string(), Some((v.total, v.free)), v.mount.clone()));
+            volumes = volumes.item(v.name.clone(), format!("scan:{}", v.mount.display()));
         }
-        let mut chosen = None;
-        for (name, icon, place, space, path) in rows {
-            let r = Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), row_h));
-            y += row_h + m::SPACING;
-            style::bevel(ui.painter(), r, c(p.shine), c(mix(p.panel_background, p.panel_text, 0.25)));
-            let icon_r = Rect::from_min_size(pos2(r.left() + 10.0, r.center().y - 16.0), vec2(32.0, 32.0));
-            icons::paint(ui.painter(), icon_r, icon);
-            let x = icon_r.right() + 10.0;
-            let button = Rect::from_min_size(pos2(r.right() - 10.0 - 80.0, r.center().y - m::CONTROL_HEIGHT / 2.0), vec2(80.0, m::CONTROL_HEIGHT));
-            // Name and where it is; then how full it is (a volume) or what
-            // it holds (home).
-            let named = style::label(ui.painter(), x, r.top() + 16.0, Align::Min, &name, style::bold_font(), c(p.panel_text));
-            let dim = c(mix(p.panel_text, p.panel_background, 0.45));
-            style::label(ui.painter(), named.right() + m::SPACING, r.top() + 16.0, Align::Min, &place, style::plain_font(), dim);
-            let right = button.left() - 16.0;
-            match (icon, space) {
-                ("home", _) => {
-                    style::label(ui.painter(), x, r.bottom() - 16.0, Align::Min, "Your own files and folders", style::plain_font(), dim);
-                }
-                (_, Some((total, free))) => {
-                    let free_text = format!("{} free of {}", format_size(free), format_size(total));
-                    style::label(ui.painter(), right, r.top() + 16.0, Align::Max, &free_text, style::plain_font(), dim);
-                    let bar = Rect::from_min_max(pos2(x, r.bottom() - 22.0), pos2(right, r.bottom() - 10.0));
-                    ui.put(bar, StatusBar::new(1.0 - free as f32 / total.max(1) as f32).bar_height(10.0));
-                }
-                _ => {}
-            }
-            if ui.put(button, Button::new("Scan")).clicked() {
-                chosen = Some(path);
-            }
-        }
-        if self.volumes.is_none() {
-            style::label(ui.painter(), area.left(), y + 8.0, Align::Min, "Looking for volumes…", style::plain_font(), c(p.panel_text));
-        }
-        let folder = Rect::from_min_size(pos2(area.left(), area.bottom() - m::CONTROL_HEIGHT), vec2(140.0, m::CONTROL_HEIGHT));
-        if ui.put(folder, Button::new("Scan a Folder…").min_width(140.0)).clicked() {
-            self.command(cx, "scan-folder");
-        }
-        if let Some(path) = chosen {
-            self.start_scan(cx, path);
-        }
+        let item = self.selected.is_some_and(|s| s != ROOT);
+        let busy = self.busy.is_some();
+        let any = !self.collected.is_empty();
+        vec![
+            Menu::new("File")
+                .item("Scan Home", "scan-home")
+                .key("h")
+                .item("Scan a Folder…", "scan-folder")
+                .key("o")
+                .submenu(volumes)
+                .separator()
+                .item("Rescan", "rescan")
+                .key("r")
+                .enabled(scanned && !scanning)
+                .item("Stop Scanning", "stop")
+                .key(".")
+                .enabled(scanning)
+                .separator()
+                .item("Close", "close")
+                .key("w")
+                .item("Quit", "quit")
+                .key("q"),
+            Menu::new("Go").item("Enclosing Folder", "up").enabled(scanned && self.folder != ROOT).item("Volumes", "volumes").enabled(scanned),
+            Menu::new("Item")
+                .item("Open", "open")
+                .enabled(item)
+                .item(tracker::LABEL, tracker::COMMAND)
+                .enabled(item)
+                .item("Copy Path", "copy-path")
+                .enabled(item)
+                .separator()
+                .item("Add to Collector", "collect")
+                .key("d")
+                .enabled(item)
+                .item("Move to Trash", "trash")
+                .key("backspace")
+                .enabled(item && !busy)
+                .item("Delete…", "delete")
+                .enabled(item && !busy),
+            Menu::new("Collector")
+                .item("Move All to Trash", "collector-trash")
+                .enabled(any && !busy)
+                .item("Delete All…", "collector-delete")
+                .enabled(any && !busy)
+                .separator()
+                .item("Empty the Collector", "collector-clear")
+                .enabled(any),
+        ]
     }
 
     /// The folder's contents for the list, sorted as asked.
-    fn rows(&mut self) -> Vec<NodeId> {
+    fn rows(&mut self, cx: &App) -> Vec<NodeId> {
         let Some(scan) = &self.scan else { return Vec::new() };
         let t = scan.tree.read().unwrap();
-        let key = (self.folder, t.generation, self.list.sort);
+        let sort = self.list.read(cx).state.sort;
+        let key = (self.folder, t.generation, sort);
         if (self.rows.0, self.rows.1, self.rows.2) == key {
             return self.rows.3.clone();
         }
         let mut rows = t.children(self.folder, 0);
-        if let Some((col, asc)) = self.list.sort {
+        if let Some((col, asc)) = sort {
             let n = |i: &NodeId| &t.nodes[*i as usize];
             match col {
                 0 => rows.sort_by(|a, b| n(a).name.to_lowercase().cmp(&n(b).name.to_lowercase())),
@@ -482,326 +475,6 @@ impl DiskUsage {
         }
         self.rows = (key.0, key.1, key.2, rows.clone());
         rows
-    }
-
-    fn scan_ui(&mut self, cx: &mut Cx, ui: &mut Ui, area: Rect) {
-        let p = style::palette(ui.ctx());
-        let Some(scan) = &self.scan else { return };
-        let running = scan.running();
-        let (tree, progress) = (scan.tree.clone(), scan.progress.clone());
-
-        // The bar along the top: back to the volumes, up, where, and
-        // Rescan or Stop.
-        let top = Rect::from_min_size(area.min, vec2(area.width(), m::CONTROL_HEIGHT));
-        let bw = m::BUTTON_MIN_WIDTH;
-        let at = |i: f32, w: f32| Rect::from_min_size(pos2(top.left() + i, top.top()), vec2(w, m::CONTROL_HEIGHT));
-        if ui.put(at(0.0, bw), Button::new("Volumes")).clicked() {
-            return self.command(cx, "volumes");
-        }
-        if ui.add_enabled_ui(self.folder != ROOT, |ui| ui.put(at(bw + m::SPACING, bw), Button::new("Up"))).inner.clicked() {
-            self.up();
-        }
-        let action = Rect::from_min_size(pos2(top.right() - bw, top.top()), vec2(bw, m::CONTROL_HEIGHT));
-        if ui.put(action, Button::new(if running { "Stop" } else { "Rescan" })).clicked() {
-            return self.command(cx, if running { "stop" } else { "rescan" });
-        }
-        let folder_path = tree.read().unwrap().path(self.folder);
-        let where_x = at(2.0 * (bw + m::SPACING) + 4.0, 0.0).left();
-        let where_r = Rect::from_min_max(pos2(where_x, top.top()), pos2(action.left() - m::SPACING, top.bottom()));
-        let font = style::bold_font();
-        let shown = ellipsize(ui.ctx(), &display_path(&folder_path), font.clone(), where_r.width());
-        style::label(ui.painter(), where_r.left(), where_r.center().y, Align::Min, &shown, font, c(p.panel_text));
-
-        // The Collector along the bottom, the status line above it.
-        let collector = Rect::from_min_max(pos2(area.left(), area.bottom() - COLLECTOR_HEIGHT), area.max);
-        let status = Rect::from_min_max(pos2(area.left(), collector.top() - m::SPACING - 2.0 * style::PLAIN_SIZE - 6.0), pos2(area.right(), collector.top() - m::SPACING));
-        let body = Rect::from_min_max(pos2(area.left(), top.bottom() + m::SPACING), pos2(area.right(), status.top() - m::SPACING));
-
-        // The chart at the left, as large as fits; the list beside it.
-        let side = body.height().min(body.width() * 0.56).floor();
-        let chart_r = Rect::from_min_size(body.min, vec2(side, body.height()));
-        let list_r = Rect::from_min_max(pos2(chart_r.right() + m::SPACING, body.top()), body.max);
-
-        let geometry = chart::Geometry::fit(chart_r.center(), side / 2.0 - 2.0);
-        let slices = chart::layout(&tree.read().unwrap(), self.folder, &p);
-        let resp = ui.interact(chart_r, Id::unique("disk-usage-chart"), Sense::click_and_drag());
-        let hover = resp.hover_pos().and_then(|pos| chart::hit(&slices, &geometry, pos));
-        let on_hub = resp.hover_pos().is_some_and(|pos| geometry.at(pos).is_some_and(|(ring, _)| ring == 0));
-        {
-            let painter = ui.painter().with_clip_rect(chart_r);
-            let line = c(p.panel_background);
-            chart::paint(&painter, &geometry, &slices, hover, self.selected, line);
-            let hub_fill = if on_hub && self.folder != ROOT { mix(p.document_background, p.list_selected_background, 0.3) } else { p.document_background };
-            chart::paint_hub(&painter, &geometry, c(hub_fill), c(mix(p.panel_text, p.panel_background, 0.5)));
-            let t = tree.read().unwrap();
-            let n = &t.nodes[self.folder as usize];
-            let w = geometry.hub * 1.7;
-            let title = if self.folder == ROOT && t.root == home() { "Home".to_owned() } else { n.name.to_string() };
-            let name = ellipsize(ui.ctx(), &title, style::bold_font(), w);
-            style::label(&painter, geometry.center.x, geometry.center.y - 8.0, Align::Center, &name, style::bold_font(), c(p.document_text));
-            style::label(&painter, geometry.center.x, geometry.center.y + 8.0, Align::Center, &format_size(n.size), style::plain_font(), c(p.document_text));
-            style::describe_item(ui.ctx(), &format!("{title} {}", format_size(n.size)), Rect::from_center_size(geometry.center, vec2(geometry.hub, geometry.hub)), false);
-        }
-        for s in slices.iter().filter(|s| s.ring == 1) {
-            // Agents (and hints) can pick the first ring's slices by name.
-            let mid = chart::to_pos(&geometry, 1, (s.start + s.end) / 2.0);
-            if s.end - s.start > 0.15 {
-                let t = tree.read().unwrap();
-                style::describe_item(ui.ctx(), &t.nodes[s.node as usize].name, Rect::from_center_size(mid, vec2(8.0, 8.0)), self.selected == Some(s.node));
-            }
-        }
-        let hovered = hover.map(|i| slices[i].node);
-        if resp.clicked() {
-            match hovered {
-                Some(id) => {
-                    self.selected = Some(id);
-                    self.enter(id);
-                }
-                None if on_hub => self.up(),
-                None => {}
-            }
-        }
-        if resp.secondary_clicked()
-            && let (Some(id), Some(pos)) = (hovered, resp.interact_pointer_pos())
-        {
-            self.context = Some(id);
-            self.selected = Some(id);
-            widgets::popup_menu_at(ui.ctx(), Id::unique("disk-usage-menu"), pos, self.item_menu(id));
-        }
-        if resp.drag_started()
-            && let Some(origin) = ui.input(|i| i.pointer.press_origin())
-            && let Some(i) = chart::hit(&slices, &geometry, origin)
-        {
-            self.drag = Some(slices[i].node);
-        }
-
-        // The list.
-        let rows = self.rows();
-        let columns = [Column::new("Name", (list_r.width() - 206.0).max(120.0)), Column::new("Size", 76.0).right(), Column::new("", 50.0), Column::new("Files", 76.0).right()];
-        self.list.selected = self.selected.and_then(|s| rows.iter().position(|&r| r == s)).into_iter().collect();
-        let (names, total): (Vec<(String, u64, bool, u64, &'static str)>, u64) = {
-            let t = tree.read().unwrap();
-            let names = rows
-                .iter()
-                .map(|&r| {
-                    let n = &t.nodes[r as usize];
-                    let icon = if n.dir { "folder" } else { kind_for(Path::new(&*n.name), false, 0).icon() };
-                    (n.name.to_string(), n.size, n.dir, n.files, icon)
-                })
-                .collect();
-            (names, t.nodes[self.folder as usize].size.max(1))
-        };
-        // Each row's bar in its slice's colour, tying the list to the rings.
-        let hues: HashMap<NodeId, egui::Color32> = slices.iter().filter(|s| s.ring == 1).map(|s| (s.node, s.color)).collect();
-        let bar_other = c(mix(p.document_text, p.document_background, 0.5));
-        let bar_fills: Vec<egui::Color32> = rows.iter().map(|r| hues.get(r).copied().unwrap_or(bar_other)).collect();
-        let bar_back = c(mix(p.document_background, p.document_text, 0.12));
-        let out = ui
-            .scope_builder(egui::UiBuilder::new().max_rect(list_r), |ui| {
-                ColumnListView::new("disk-usage-list", &columns, rows.len(), &mut self.list)
-                    .draggable()
-                    .empty_text(if running { "Scanning…" } else { "Empty" })
-                    .show(ui, |cell: &Cell| {
-                        let (name, size, dir, files, icon) = &names[cell.row];
-                        match cell.column {
-                            0 => {
-                                let icon_r = Rect::from_min_size(pos2(cell.rect.left() + m::CELL_INSET, cell.rect.center().y - 8.0), vec2(16.0, 16.0));
-                                icons::paint(cell.painter, icon_r, icon);
-                                let r = Rect::from_min_max(pos2(icon_r.right() + 2.0, cell.rect.top()), cell.rect.max);
-                                Cell { painter: cell.painter, rect: r, row: cell.row, column: cell.column, selected: cell.selected, text_color: cell.text_color, align: cell.align }.text(name);
-                            }
-                            1 => cell.text(&format_size(*size)),
-                            2 => {
-                                // The share of the folder, as a bar.
-                                let r = Rect::from_min_size(pos2(cell.rect.left() + 4.0, cell.rect.center().y - 4.0), vec2(cell.rect.width() - 8.0, 8.0));
-                                cell.painter.rect_filled(r, 0.0, bar_back);
-                                // Whole device pixels long, at least one for
-                                // anything at all.
-                                let ppp = cell.painter.ctx().pixels_per_point();
-                                let w = ((r.width() * (*size as f32 / total as f32) * ppp).round().max(if *size > 0 { 1.0 } else { 0.0 })) / ppp;
-                                cell.painter.rect_filled(Rect::from_min_size(r.min, vec2(w, r.height())), 0.0, bar_fills[cell.row]);
-                            }
-                            _ => cell.text(&if *dir { count(*files) } else { String::new() }),
-                        }
-                    })
-            })
-            .inner;
-        if out.selection_changed {
-            self.selected = self.list.single().and_then(|r| rows.get(r).copied());
-        }
-        if let Some(r) = out.activated
-            && let Some(&id) = rows.get(r)
-        {
-            self.open_item(id);
-        }
-        if let Some((r, pos)) = out.context
-            && let Some(&id) = rows.get(r)
-        {
-            self.selected = Some(id);
-            self.context = Some(id);
-            widgets::popup_menu_at(ui.ctx(), Id::unique("disk-usage-menu"), pos, self.item_menu(id));
-        }
-        if let Some((r, _)) = out.drag_started {
-            self.drag = rows.get(r).copied();
-        }
-        if let Some(cmd) = widgets::popup_result(ui.ctx(), Id::unique("disk-usage-menu")) {
-            self.command(cx, &cmd);
-        }
-
-        // What the pointer is over, or how the scan is going.
-        let dim = c(mix(p.panel_text, p.panel_background, 0.4));
-        let (line1, line2) = if let Some((what, stop)) = &self.busy {
-            let _ = stop;
-            (what.clone(), String::new())
-        } else if let Some(id) = hovered.or(self.selected) {
-            let t = tree.read().unwrap();
-            let n = &t.nodes[id as usize];
-            let share = n.size as f64 / total as f64 * 100.0;
-            let kind = if n.dir { format!(" — {}", plural(n.files, "file", "files")) } else { String::new() };
-            let floor = if n.unreadable { " (some of it couldn't be read)" } else { "" };
-            (format!("{} — {} ({share:.1}% of this folder){kind}{floor}", n.name, format_size(n.size)), display_path(&t.path(id)))
-        } else if running {
-            let files = progress.files.load(Ordering::Relaxed);
-            let bytes = progress.bytes.load(Ordering::Relaxed);
-            let current = display_path(&progress.current.lock().unwrap());
-            (format!("Scanning… {}, {}", plural(files, "file", "files"), format_size(bytes)), current)
-        } else {
-            let t = tree.read().unwrap();
-            let unreadable = progress.unreadable.load(Ordering::Relaxed);
-            let n = &t.nodes[self.folder as usize];
-            let note = if unreadable > 0 { format!(" — {} couldn't be read", plural(unreadable, "folder", "folders")) } else { String::new() };
-            (format!("{} in {}{note}", format_size(n.size), plural(n.files, "file", "files")), "Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.".into())
-        };
-        let font = style::plain_font();
-        let l1 = ellipsize(ui.ctx(), &line1, font.clone(), status.width());
-        let l2 = ellipsize(ui.ctx(), &line2, font.clone(), status.width());
-        style::label(ui.painter(), status.left(), status.top() + style::PLAIN_SIZE / 2.0 + 1.0, Align::Min, &l1, font.clone(), c(p.panel_text));
-        style::label(ui.painter(), status.left(), status.bottom() - style::PLAIN_SIZE / 2.0 - 1.0, Align::Min, &l2, font, dim);
-
-        self.collector_ui(cx, ui, collector);
-        self.drag_ui(ui, collector);
-    }
-
-    fn collector_ui(&mut self, cx: &mut Cx, ui: &mut Ui, r: Rect) {
-        let p = style::palette(ui.ctx());
-        let bw = 112.0;
-        let buttons = Rect::from_min_max(pos2(r.right() - bw, r.top()), r.max);
-        let well = Rect::from_min_max(r.min, pos2(buttons.left() - m::SPACING, r.bottom()));
-        let target = self.drag.is_some() && ui.input(|i| i.pointer.hover_pos()).is_some_and(|pos| well.contains(pos));
-        let fill = if target { mix(p.document_background, p.list_selected_background, 0.25) } else { p.document_background };
-        ui.painter().rect_filled(well.shrink(2.0), 0.0, c(fill));
-        style::sunken(ui.painter(), well, &p, target);
-        let inner = well.shrink(6.0);
-        let total = self.collected_size();
-        let heading = if self.collected.is_empty() {
-            "Collector: drag files and folders here".to_owned()
-        } else {
-            format!("Collector: {} — {}", plural(self.collected.len() as u64, "item", "items"), format_size(total))
-        };
-        style::label(ui.painter(), inner.left(), inner.top() + 6.0, Align::Min, &heading, style::bold_font(), c(p.document_text));
-        // The items, as chips; those that don't fit are counted.
-        let mut x = inner.left();
-        let y = inner.bottom() - CHIP_HEIGHT;
-        let mut dropped = None;
-        let items: Vec<(NodeId, String, u64, bool)> = match &self.scan {
-            Some(scan) => {
-                let t = scan.tree.read().unwrap();
-                self.collected.iter().map(|&i| (i, t.nodes[i as usize].name.to_string(), t.nodes[i as usize].size, t.nodes[i as usize].dir)).collect()
-            }
-            None => Vec::new(),
-        };
-        let font = style::small_font();
-        for (k, (id, name, size, dir)) in items.iter().enumerate() {
-            let text = format!("{name}  {}", format_size(*size));
-            let w = (style::label_width(ui.ctx(), &text, font.clone()) + 16.0 + 6.0 + 14.0 + 8.0).min(220.0);
-            let left = items.len() - k;
-            if x + w > inner.right() - if left > 1 { 60.0 } else { 0.0 } {
-                style::label(ui.painter(), x + 2.0, y + CHIP_HEIGHT / 2.0, Align::Min, &format!("+{left} more"), font.clone(), c(p.document_text));
-                break;
-            }
-            let chip = Rect::from_min_size(pos2(x, y), vec2(w, CHIP_HEIGHT));
-            ui.painter().rect_filled(chip, 3.0, c(mix(p.panel_background, p.document_background, 0.4)));
-            ui.painter().rect_stroke(chip, 3.0, egui::Stroke::new(1.0, c(mix(p.panel_text, p.panel_background, 0.6))), egui::StrokeKind::Inside);
-            icons::paint(ui.painter(), Rect::from_min_size(pos2(chip.left() + 3.0, chip.center().y - 8.0), vec2(16.0, 16.0)), if *dir { "folder" } else { "document" });
-            let close = Rect::from_center_size(pos2(chip.right() - 9.0, chip.center().y), vec2(12.0, 12.0));
-            let text_w = close.left() - chip.left() - 24.0;
-            let shown = ellipsize(ui.ctx(), &text, font.clone(), text_w);
-            style::label(ui.painter(), chip.left() + 22.0, chip.center().y, Align::Min, &shown, font.clone(), c(p.document_text));
-            let x_resp = ui.interact(close, Id::unique(("uncollect", *id)), Sense::click());
-            let xc = if x_resp.hovered() { p.panel_text } else { mix(p.panel_text, p.panel_background, 0.4) };
-            let stroke = egui::Stroke::new(1.5, c(xc));
-            ui.painter().line_segment([close.left_top() + vec2(3.0, 3.0), close.right_bottom() - vec2(3.0, 3.0)], stroke);
-            ui.painter().line_segment([close.right_top() + vec2(-3.0, 3.0), close.left_bottom() + vec2(3.0, -3.0)], stroke);
-            style::describe_item(ui.ctx(), &format!("Remove {name} from the Collector"), close, false);
-            if x_resp.clicked() {
-                dropped = Some(*id);
-            }
-            x += w + 6.0;
-        }
-        if let Some(id) = dropped {
-            self.collected.retain(|&c| c != id);
-        }
-        let busy = self.busy.is_some();
-        let b = |i: f32| Rect::from_min_size(pos2(buttons.left(), buttons.top() + i * (m::CONTROL_HEIGHT + 6.0) + 2.0), vec2(bw, m::CONTROL_HEIGHT));
-        if busy {
-            if ui.put(b(0.0), Button::new("Stop").min_width(bw)).clicked() {
-                self.command(cx, "stop-removing");
-            }
-            return;
-        }
-        let any = !self.collected.is_empty();
-        if ui.add_enabled_ui(any, |ui| ui.put(b(0.0), Button::new("Move to Trash").min_width(bw))).inner.clicked() {
-            self.command(cx, "collector-trash");
-        }
-        if ui.add_enabled_ui(any, |ui| ui.put(b(1.0), Button::new("Delete…").min_width(bw))).inner.clicked() {
-            self.command(cx, "collector-delete");
-        }
-    }
-
-    /// While something is dragged: its name follows the pointer, and
-    /// letting go over the Collector collects it.
-    fn drag_ui(&mut self, ui: &mut Ui, collector: Rect) {
-        let Some(id) = self.drag else { return };
-        let (down, pos) = ui.input(|i| (i.pointer.primary_down() || i.pointer.secondary_down(), i.pointer.hover_pos()));
-        if !down {
-            self.drag = None;
-            if pos.is_some_and(|p| collector.contains(p)) {
-                self.collect(id);
-            }
-            return;
-        }
-        let (Some(pos), Some((_, dir, name, size))) = (pos, self.item(id)) else { return };
-        let p = style::palette(ui.ctx());
-        let painter = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Tooltip, Id::unique("disk-usage-drag")));
-        let text = format!("{name}  {}", format_size(size));
-        let w = style::label_width(ui.ctx(), &text, style::plain_font()) + 30.0;
-        let r = Rect::from_min_size(pos + vec2(12.0, 6.0), vec2(w, CHIP_HEIGHT + 2.0));
-        painter.rect_filled(r, 3.0, c(p.list_selected_background).gamma_multiply(0.92));
-        icons::paint(&painter, Rect::from_min_size(pos2(r.left() + 4.0, r.center().y - 8.0), vec2(16.0, 16.0)), if dir { "folder" } else { "document" });
-        style::label(&painter, r.left() + 24.0, r.center().y, Align::Min, &text, style::plain_font(), c(p.list_selected_item_text));
-        ui.ctx().request_repaint();
-    }
-
-    fn main_ui(&mut self, cx: &mut Cx, ui: &mut Ui) {
-        let area = ui.max_rect().shrink(m::WINDOW_INSET);
-        if self.scan.is_some() {
-            self.scan_ui(cx, ui, area);
-        } else {
-            self.volumes_ui(cx, ui, area);
-        }
-        // Keys the list doesn't take.
-        let (back, collect) = ui.input_mut(|i| {
-            (
-                olo_kit::keyboard::consume(i, "up") || i.consume_key(egui::Modifiers::NONE, Key::Backspace),
-                olo_kit::keyboard::consume(i, "collect"),
-            )
-        });
-        if back {
-            self.up();
-        }
-        if collect && let Some(id) = self.selected {
-            self.collect(id);
-        }
     }
 
     /// Back to where things were before a reload, once the scan has got
@@ -823,115 +496,16 @@ impl DiskUsage {
             self.collect(c);
         }
     }
-}
 
-impl App for DiskUsage {
-    fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut Ui) {
-        match self.windows.get_mut(&window) {
-            Some(Win::Main) => self.main_ui(cx, ui),
-            Some(Win::Panel(panel)) => {
-                let Some(result) = panel.ui(ui) else { return };
-                self.windows.remove(&window);
-                cx.close_window(window);
-                if let PanelResult::Chosen(path) = result {
-                    self.start_scan(cx, path);
-                }
-            }
-            Some(Win::ConfirmDelete { items, message }) => {
-                let (items, message) = (items.clone(), message.clone());
-                let Some(choice) = widgets::alert(ui, "warning", &message, &["Cancel", "Delete"]) else { return };
-                self.windows.remove(&window);
-                cx.close_window(window);
-                if choice == 1 {
-                    self.remove(cx, items, false);
-                }
-            }
-            Some(Win::Error { message }) => {
-                let message = message.clone();
-                if widgets::alert(ui, "stop", &message, &["OK"]).is_some() {
-                    self.windows.remove(&window);
-                    cx.close_window(window);
-                }
-            }
-            None => {}
-        }
-    }
-
-    fn menu_bar(&mut self, window: WindowId) -> Option<Vec<Menu>> {
-        if !matches!(self.windows.get(&window), Some(Win::Main)) {
-            return None;
-        }
-        let scanning = self.scan.as_ref().is_some_and(Scan::running);
-        let scanned = self.scan.is_some();
-        let mut volumes = Menu::new("Scan Volume");
-        for v in self.volumes.iter().flatten() {
-            volumes = volumes.item(v.name.clone(), format!("scan:{}", v.mount.display()), None);
-        }
-        let item = self.selected.is_some_and(|s| s != ROOT);
-        let busy = self.busy.is_some();
-        let any = !self.collected.is_empty();
-        Some(vec![
-            Menu::new("File")
-                .item("Scan Home", "scan-home", Some(Key::H))
-                .item("Scan a Folder…", "scan-folder", Some(Key::O))
-                .submenu(volumes)
-                .separator()
-                .item("Rescan", "rescan", Some(Key::R))
-                .enabled(scanned && !scanning)
-                .item("Stop Scanning", "stop", Some(Key::Period))
-                .enabled(scanning)
-                .separator()
-                .item("Close", "close", Some(Key::W))
-                .item("Quit", "quit", Some(Key::Q)),
-            Menu::new("Go")
-                .item("Enclosing Folder", "up", None)
-                .enabled(scanned && self.folder != ROOT)
-                .item("Volumes", "volumes", None)
-                .enabled(scanned),
-            Menu::new("Item")
-                .item("Open", "open", None)
-                .enabled(item)
-                .item(olo_kit::tracker::LABEL, olo_kit::tracker::COMMAND, None)
-                .enabled(item)
-                .item("Copy Path", "copy-path", None)
-                .enabled(item)
-                .separator()
-                .item("Add to Collector", "collect", Some(Key::D))
-                .enabled(item)
-                .item("Move to Trash", "trash", Some(Key::Backspace))
-                .enabled(item && !busy)
-                .item("Delete…", "delete", None)
-                .enabled(item && !busy),
-            Menu::new("Collector")
-                .item("Move All to Trash", "collector-trash", None)
-                .enabled(any && !busy)
-                .item("Delete All…", "collector-delete", None)
-                .enabled(any && !busy)
-                .separator()
-                .item("Empty the Collector", "collector-clear", None)
-                .enabled(any),
-        ])
-    }
-
-    fn command(&mut self, cx: &mut Cx, _window: WindowId, command: &str) {
-        DiskUsage::command(self, cx, command);
-    }
-
-    fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
-        if matches!(self.windows.get(&window), Some(Win::Main)) {
-            return cx.quit();
-        }
-        self.windows.remove(&window);
-        cx.close_window(window);
-    }
-
-    fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
+    fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
         let message = match message.downcast::<Launch>() {
             Ok(launch) => {
-                self.open(cx);
+                if let Some(w) = self.window {
+                    let _ = w.update(cx, |_, window, _| window.activate_window());
+                }
                 if let Some(path) = launch.args.iter().find(|a| !a.starts_with('-')) {
                     let path = launch.cwd.unwrap_or_default().join(path);
-                    self.start_scan(cx, path);
+                    self.start_scan(path, cx);
                 }
                 return;
             }
@@ -962,15 +536,17 @@ impl App for DiskUsage {
                     let lines: Vec<String> = failed.iter().take(5).map(|(name, why)| format!("“{name}”: {why}.")).collect();
                     let more = if failed.len() > 5 { format!("\n…and {} more.", failed.len() - 5) } else { String::new() };
                     let message = format!("Some items couldn't be removed.\n{}{more}", lines.join("\n"));
-                    self.alert(cx, Win::Error { message: message.clone() }, &message);
+                    cx.defer(move |cx| {
+                        open_alert(cx, "DiskUsage", "stop", &message, &["OK"], |_, _| {});
+                    });
                 }
                 self.read_volumes(cx);
             }
         }
-        self.redraw(cx);
+        cx.notify();
     }
 
-    fn save_state(&mut self, _cx: &Cx) -> Option<String> {
+    fn save_state(&self) -> Option<String> {
         let saved = match &self.scan {
             Some(scan) => {
                 let t = scan.tree.read().unwrap();
@@ -980,6 +556,550 @@ impl App for DiskUsage {
         };
         serde_json::to_string(&saved).ok()
     }
+
+    // ---- drawing ----------------------------------------------------------
+
+    fn volumes_view(&self, cx: &mut Context<Self>) -> gpui::Div {
+        let mut rows: Vec<(String, &'static str, String, Option<(u64, u64)>, PathBuf)> = vec![("Home".into(), "home", display_path(&home()), volumes::space(&home()), home())];
+        for v in self.volumes.iter().flatten() {
+            rows.push((v.name.clone(), "disk", v.mount.display().to_string(), Some((v.total, v.free)), v.mount.clone()));
+        }
+        let mut out = div().flex().flex_col().gap(px(m::SPACING)).size_full().child(div().h(px(16.0)).child(olo_ui::widgets::StringView::new("Choose what to scan:").bold(true).height(16.0)));
+        for (i, (name, icon, place, space, path)) in rows.into_iter().enumerate() {
+            let me = cx.entity();
+            let scan_it = Button::new("Scan").id(format!("scan-{i}")).on_click(move |_, cx| {
+                let path = path.clone();
+                me.update(cx, |d, cx| d.start_scan(path, cx));
+            });
+            let face = canvas(
+                |_, _, _| {},
+                move |r, _, window, cx| {
+                    let p = theme::palette(cx);
+                    style::bevel(window, r, style::c(p.shine), style::c(mix(p.panel_background, p.panel_text, 0.25)));
+                    let icon_r = Bounds { origin: point(r.left() + px(10.0), r.center().y - px(16.0)), size: size(px(32.0), px(32.0)) };
+                    icons::paint(window, icon_r, icon);
+                    let x = icon_r.right() + px(10.0);
+                    let right = r.right() - px(10.0 + 80.0 + 16.0);
+                    // Name and where it is; then how full it is (a volume)
+                    // or what it holds (home).
+                    let named = style::label(window, cx, x, r.top() + px(16.0), style::Align::Left, name.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), style::c(p.panel_text));
+                    let dim = style::c(mix(p.panel_text, p.panel_background, 0.45));
+                    let plain = style::ui_font(FontWeight::NORMAL);
+                    style::label(window, cx, named.right() + px(m::SPACING), r.top() + px(16.0), style::Align::Left, place.clone(), style::PLAIN_SIZE, plain.clone(), dim);
+                    match (icon, space) {
+                        ("home", _) => {
+                            style::label(window, cx, x, r.bottom() - px(16.0), style::Align::Left, "Your own files and folders", style::PLAIN_SIZE, plain, dim);
+                        }
+                        (_, Some((total, free))) => {
+                            let free_text = format!("{} free of {}", format_size(free), format_size(total));
+                            style::label(window, cx, right, r.top() + px(16.0), style::Align::Right, free_text, style::PLAIN_SIZE, plain, dim);
+                            let bar = Bounds::from_corners(point(x, r.bottom() - px(22.0)), point(right, r.bottom() - px(10.0)));
+                            olo_ui::widgets::level_bar(window, bar, 1.0 - free as f32 / total.max(1) as f32, None, &p);
+                        }
+                        _ => {}
+                    }
+                },
+            )
+            .absolute()
+            .inset_0();
+            out = out.child(div().relative().w_full().h(px(56.0)).flex().items_center().justify_end().pr(px(10.0)).child(face).child(scan_it));
+        }
+        if self.volumes.is_none() {
+            out = out.child(olo_ui::widgets::StringView::new("Looking for volumes…"));
+        }
+        let me = cx.entity();
+        out.child(div().flex_1()).child(Button::new("Scan a Folder…").min_width(140.0).on_click(move |window, cx| me.update(cx, |d, cx| d.command("scan-folder", window, cx))))
+    }
+
+    fn scan_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> gpui::Div {
+        let me = cx.entity();
+        let p = theme::palette(cx);
+        let Some(scan) = &self.scan else { return div() };
+        let running = scan.running();
+        let (tree, progress) = (scan.tree.clone(), scan.progress.clone());
+
+        // The bar along the top: back to the volumes, up, where, and
+        // Rescan or Stop.
+        let folder_path = tree.read().unwrap().path(self.folder);
+        let (vol, upb, act) = (me.clone(), me.clone(), me.clone());
+        let where_text = display_path(&folder_path);
+        let top = div()
+            .flex()
+            .items_center()
+            .gap(px(m::SPACING))
+            .h(px(m::CONTROL_HEIGHT))
+            .child(Button::new("Volumes").on_click(move |window, cx| vol.update(cx, |d, cx| d.command("volumes", window, cx))))
+            .child(Button::new("Up").enabled(self.folder != ROOT).on_click(move |_, cx| {
+                upb.update(cx, |d, cx| {
+                    d.up(cx);
+                    cx.notify();
+                })
+            }))
+            .child(
+                canvas(
+                    |_, _, _| {},
+                    move |b, _, window, cx| {
+                        let p = theme::palette(cx);
+                        style::label_fit(window, cx, b.left() + px(4.0), b.center().y, style::Align::Left, where_text.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), style::c(p.panel_text), b.size.width - px(4.0));
+                    },
+                )
+                .flex_1()
+                .h_full(),
+            )
+            .child(Button::new(if running { "Stop" } else { "Rescan" }).on_click(move |window, cx| act.update(cx, |d, cx| d.command(if running { "stop" } else { "rescan" }, window, cx))));
+
+        // The chart at the left, as large as fits; the list beside it.
+        let slices = Arc::new(chart::layout(&tree.read().unwrap(), self.folder, &p));
+        let folder = self.folder;
+        let selected = self.selected;
+        let hovered = {
+            let at = self.pointer.at;
+            at.and_then(|pos| self.chart_geometry(window).and_then(|g| chart::hit(&slices, &g, pos))).map(|i| slices[i].node)
+        };
+        let chart_el = self.chart(slices.clone(), tree.clone(), folder, selected, cx);
+
+        // The list.
+        let rows = self.rows(cx);
+        let list_w = f32::from(window.viewport_size().width) - 2.0 * m::WINDOW_INSET;
+        let body_h = f32::from(window.viewport_size().height) - olo_ui::menu::BAR_HEIGHT - 2.0 * m::WINDOW_INSET - m::CONTROL_HEIGHT - 3.0 * m::SPACING - (2.0 * style::PLAIN_SIZE + 6.0) - COLLECTOR_HEIGHT;
+        // On whole device pixels, so the list beside it is too (a box a
+        // quarter pixel in leaves layout rounding ties that put the list's
+        // scroll bar a pixel off its rows).
+        let scale = window.scale_factor();
+        let side = (body_h.min(list_w * 0.56) * scale).floor().max(0.0) / scale;
+        let list_w = list_w - side - m::SPACING;
+        // The name takes what the others leave (inside the list's border and
+        // scroll bar), the last filling to the edge.
+        let columns = [Column::new("Name", (list_w - 2.0 - SCROLL_BAR - 208.0).max(120.0)), Column::new("Size", 76.0).right(), Column::new("", 50.0), Column::new("Files", 76.0).right()];
+        let want: Vec<usize> = self.selected.and_then(|s| rows.iter().position(|&r| r == s)).into_iter().collect();
+        self.list.update(cx, |l, _| {
+            if l.state.selected.iter().copied().collect::<Vec<_>>() != want {
+                l.state.selected = want.into_iter().collect();
+            }
+        });
+        let (names, total): (Vec<(String, u64, bool, u64, &'static str)>, u64) = {
+            let t = tree.read().unwrap();
+            let names = rows
+                .iter()
+                .map(|&r| {
+                    let n = &t.nodes[r as usize];
+                    let icon = icon_for(&n.name, n.dir);
+                    (n.name.to_string(), n.size, n.dir, n.files, icon)
+                })
+                .collect();
+            (names, t.nodes[self.folder as usize].size.max(1))
+        };
+        // Each row's bar in its slice's colour, tying the list to the
+        // rings.
+        let hues: HashMap<NodeId, Hsla> = slices.iter().filter(|s| s.ring == 1).map(|s| (s.node, s.color)).collect();
+        let bar_other = style::c(mix(p.document_text, p.document_background, 0.5));
+        let bar_fills: Vec<Hsla> = rows.iter().map(|r| hues.get(r).copied().unwrap_or(bar_other)).collect();
+        let bar_back = style::c(mix(p.document_background, p.document_text, 0.12));
+        let rows = Arc::new(rows);
+        let (sel_rows, open_rows, ctx_rows, drag_rows) = (rows.clone(), rows.clone(), rows.clone(), rows.clone());
+        let (sel, open, ctx, drag) = (me.clone(), me.clone(), me.clone(), me.clone());
+        let list = ColumnListView::new("disk-usage-list", &self.list, columns, rows.len(), move |cell, window, cx| {
+            let (name, size, dir, files, icon) = &names[cell.row];
+            match cell.column {
+                0 => {
+                    let icon_r = Bounds { origin: point(cell.bounds.left() + px(m::CELL_INSET), cell.bounds.center().y - px(8.0)), size: gpui::size(px(16.0), px(16.0)) };
+                    icons::paint(window, style::snap(window, icon_r), icon);
+                    cell.bounds = Bounds::from_corners(point(icon_r.right() + px(2.0), cell.bounds.top()), cell.bounds.bottom_right());
+                    cell.text(window, cx, name.clone());
+                }
+                1 => cell.text(window, cx, format_size(*size)),
+                2 => {
+                    // The share of the folder, as a bar.
+                    let b = cell.bounds;
+                    let r = style::snap(window, Bounds { origin: point(b.left() + px(4.0), b.center().y - px(4.0)), size: gpui::size(b.size.width - px(8.0), px(8.0)) });
+                    style::fill_rect(window, r, bar_back);
+                    // Whole device pixels long, at least one for anything
+                    // at all.
+                    let s = window.scale_factor();
+                    let w = ((f32::from(r.size.width) * (*size as f32 / total as f32) * s).round().max(if *size > 0 { 1.0 } else { 0.0 })) / s;
+                    style::fill_rect(window, Bounds { origin: r.origin, size: gpui::size(px(w), r.size.height) }, bar_fills[cell.row]);
+                }
+                _ => cell.text(window, cx, if *dir { count(*files) } else { String::new() }),
+            }
+        })
+        .empty_text(if running { "Scanning…" } else { "Empty" })
+        .on_select(move |_, cx| {
+            let r = sel.read(cx).list.read(cx).state.single();
+            sel.update(cx, |d, cx| {
+                d.selected = r.and_then(|r| sel_rows.get(r).copied());
+                cx.notify();
+            })
+        })
+        .on_open(move |r, _, cx| {
+            if let Some(&id) = open_rows.get(r) {
+                open.update(cx, |d, cx| {
+                    d.open_item(id, cx);
+                    cx.notify();
+                })
+            }
+        })
+        .on_context(move |r, at, window, cx| {
+            let Some(&id) = ctx_rows.get(r) else { return };
+            let menu = ctx.update(cx, |d, _| {
+                d.selected = Some(id);
+                d.context = Some(id);
+                d.item_menu(id)
+            });
+            let to = ctx.clone();
+            menu::context_menu(window, cx, menu, at, move |cmd, window, cx| to.update(cx, |d, cx| d.command(cmd, window, cx)));
+        })
+        .on_drag(move |r, _, cx| {
+            if let Some(&id) = drag_rows.get(r) {
+                drag.update(cx, |d, cx| {
+                    d.drag = Some(id);
+                    cx.notify();
+                })
+            }
+        });
+
+        // What the pointer is over, or how the scan is going.
+        let (line1, line2) = if let Some((what, _)) = &self.busy {
+            (what.clone(), String::new())
+        } else if let Some(id) = hovered.or(self.selected) {
+            let t = tree.read().unwrap();
+            let n = &t.nodes[id as usize];
+            let share = n.size as f64 / total as f64 * 100.0;
+            let kind = if n.dir { format!(" — {}", plural(n.files, "file", "files")) } else { String::new() };
+            let floor = if n.unreadable { " (some of it couldn't be read)" } else { "" };
+            (format!("{} — {} ({share:.1}% of this folder){kind}{floor}", n.name, format_size(n.size)), display_path(&t.path(id)))
+        } else if running {
+            let files = progress.files.load(Ordering::Relaxed);
+            let bytes = progress.bytes.load(Ordering::Relaxed);
+            let current = display_path(&progress.current.lock().unwrap());
+            (format!("Scanning… {}, {}", plural(files, "file", "files"), format_size(bytes)), current)
+        } else {
+            let t = tree.read().unwrap();
+            let unreadable = progress.unreadable.load(Ordering::Relaxed);
+            let n = &t.nodes[self.folder as usize];
+            let note = if unreadable > 0 { format!(" — {} couldn't be read", plural(unreadable, "folder", "folders")) } else { String::new() };
+            (format!("{} in {}{note}", format_size(n.size), plural(n.files, "file", "files")), "Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.".into())
+        };
+        let status = canvas(
+            |_, _, _| {},
+            move |b, _, window, cx| {
+                let p = theme::palette(cx);
+                let font = style::ui_font(FontWeight::NORMAL);
+                let dim = style::c(mix(p.panel_text, p.panel_background, 0.4));
+                style::label_fit(window, cx, b.left(), b.top() + px(style::PLAIN_SIZE / 2.0 + 1.0), style::Align::Left, line1.clone(), style::PLAIN_SIZE, font.clone(), style::c(p.panel_text), b.size.width);
+                style::label_fit(window, cx, b.left(), b.bottom() - px(style::PLAIN_SIZE / 2.0 + 1.0), style::Align::Left, line2.clone(), style::PLAIN_SIZE, font, dim, b.size.width);
+            },
+        )
+        .w_full()
+        .h(px(2.0 * style::PLAIN_SIZE + 6.0))
+        .flex_shrink_0();
+
+        let collector = self.collector_view(cx);
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .gap(px(m::SPACING))
+            .child(top)
+            .child(div().flex_1().min_h_0().flex().gap(px(m::SPACING)).child(div().w(px(side)).h_full().child(chart_el)).child(div().flex_1().min_w_0().child(list)))
+            .child(status)
+            .child(collector)
+    }
+
+    /// Where the chart is, last laid out (its box is the chart's).
+    fn chart_geometry(&self, _: &Window) -> Option<chart::Geometry> {
+        CHART.with(|c| c.get())
+    }
+
+    fn chart(&self, slices: Arc<Vec<chart::Slice>>, tree: Arc<std::sync::RwLock<scan::Tree>>, folder: NodeId, selected: Option<NodeId>, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let me = cx.entity();
+        let pointer = self.pointer;
+        canvas(
+            move |b, window, _| {
+                let side = f32::from(b.size.width.min(b.size.height));
+                let g = chart::Geometry::fit(b.center(), side / 2.0 - 2.0);
+                CHART.with(|c| c.set(Some(g)));
+                (g, window.insert_hitbox(b, HitboxBehavior::Normal))
+            },
+            move |b, (g, hitbox): (chart::Geometry, Hitbox), window, cx| {
+                let p = theme::palette(cx);
+                let hover = pointer.at.filter(|_| hitbox.is_hovered(window)).and_then(|pos| chart::hit(&slices, &g, pos));
+                let on_hub = pointer.at.is_some_and(|pos| hitbox.is_hovered(window) && g.at(pos).is_some_and(|(ring, _)| ring == 0));
+                window.with_content_mask(Some(gpui::ContentMask { bounds: b }), |window| {
+                    chart::paint(window, &g, &slices, hover, selected, style::c(p.panel_background));
+                    let hub_fill = if on_hub && folder != ROOT { mix(p.document_background, p.list_selected_background, 0.3) } else { p.document_background };
+                    chart::paint_hub(window, &g, style::c(hub_fill), style::c(mix(p.panel_text, p.panel_background, 0.5)));
+                    let t = tree.read().unwrap();
+                    let n = &t.nodes[folder as usize];
+                    let title = if folder == ROOT && t.root == home() { "Home".to_owned() } else { n.name.to_string() };
+                    let w = px(g.hub * 1.7);
+                    style::label_fit(window, cx, g.center.x, g.center.y - px(8.0), style::Align::Center, title.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), style::c(p.document_text), w);
+                    style::label(window, cx, g.center.x, g.center.y + px(8.0), style::Align::Center, format_size(n.size), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::c(p.document_text));
+                    let hub = Bounds { origin: point(g.center.x - px(g.hub / 2.0), g.center.y - px(g.hub / 2.0)), size: size(px(g.hub), px(g.hub)) };
+                    olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Button", name: Some(format!("{title} {}", format_size(n.size)).into()), bounds: hub, enabled: true, clickable: true, ..Default::default() });
+                    // Agents (and hints) can pick the first ring's slices by
+                    // name.
+                    for s in slices.iter().filter(|s| s.ring == 1 && s.end - s.start > 0.15) {
+                        let mid = chart::to_pos(&g, 1, (s.start + s.end) / 2.0);
+                        let at = Bounds { origin: point(mid.x - px(4.0), mid.y - px(4.0)), size: size(px(8.0), px(8.0)) };
+                        olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Button", name: Some(SharedString::from(t.nodes[s.node as usize].name.to_string())), bounds: at, enabled: true, clickable: true, selected: Some(selected == Some(s.node)), ..Default::default() });
+                    }
+                });
+
+                let (m, sl, hb) = (me.clone(), slices.clone(), hitbox.clone());
+                window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, cx| {
+                    if !phase.bubble() {
+                        return;
+                    }
+                    let over = hb.is_hovered(window);
+                    let at = over.then_some(e.position);
+                    let hit_now = at.and_then(|pos| chart::hit(&sl, &g, pos));
+                    let hub_now = at.is_some_and(|pos| g.at(pos).is_some_and(|(r, _)| r == 0));
+                    m.update(cx, |d, cx| {
+                        let before = d.pointer.at;
+                        let hit_before = before.and_then(|pos| chart::hit(&sl, &g, pos));
+                        let hub_before = before.is_some_and(|pos| g.at(pos).is_some_and(|(r, _)| r == 0));
+                        d.pointer.at = at;
+                        // A press on a slice that moves: dragged.
+                        if let Some((from, Some(node))) = d.pointer.pressed
+                            && e.dragging()
+                            && f32::from(e.position.x - from.x).hypot(f32::from(e.position.y - from.y)) > 3.0
+                        {
+                            d.pointer.pressed = None;
+                            d.drag = Some(node);
+                            cx.notify();
+                        }
+                        if hit_now != hit_before || hub_now != hub_before {
+                            cx.notify();
+                        }
+                    });
+                });
+                let (m, sl, hb) = (me.clone(), slices.clone(), hitbox.clone());
+                window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
+                    if !phase.bubble() || !hb.is_hovered(window) {
+                        return;
+                    }
+                    let hit = chart::hit(&sl, &g, e.position).map(|i| sl[i].node);
+                    match e.button {
+                        MouseButton::Left => m.update(cx, |d, _| d.pointer.pressed = Some((e.position, hit))),
+                        MouseButton::Right => {
+                            let Some(id) = hit else { return };
+                            let menu = m.update(cx, |d, cx| {
+                                d.context = Some(id);
+                                d.selected = Some(id);
+                                cx.notify();
+                                d.item_menu(id)
+                            });
+                            let to = m.clone();
+                            menu::context_menu(window, cx, menu, e.position, move |cmd, window, cx| to.update(cx, |d, cx| d.command(cmd, window, cx)));
+                        }
+                        _ => {}
+                    }
+                });
+                let (m, sl) = (me.clone(), slices.clone());
+                window.on_mouse_event(move |e: &MouseUpEvent, phase, _, cx| {
+                    if !phase.bubble() || e.button != MouseButton::Left {
+                        return;
+                    }
+                    let Some((_, pressed)) = m.read(cx).pointer.pressed else { return };
+                    m.update(cx, |d, cx| {
+                        d.pointer.pressed = None;
+                        // A click: into the folder clicked, or up from the
+                        // middle.
+                        let hit = chart::hit(&sl, &g, e.position).map(|i| sl[i].node);
+                        match hit.filter(|h| Some(*h) == pressed) {
+                            Some(id) => {
+                                d.selected = Some(id);
+                                d.enter(id, cx);
+                            }
+                            None if g.at(e.position).is_some_and(|(r, _)| r == 0) => d.up(cx),
+                            None => {}
+                        }
+                        cx.notify();
+                    });
+                });
+            },
+        )
+        .size_full()
+    }
+
+    fn collector_view(&self, cx: &mut Context<Self>) -> gpui::Div {
+        let me = cx.entity();
+        let total = self.collected_size();
+        let heading = if self.collected.is_empty() {
+            "Collector: drag files and folders here".to_owned()
+        } else {
+            format!("Collector: {} — {}", plural(self.collected.len() as u64, "item", "items"), format_size(total))
+        };
+        let items: Vec<(NodeId, String, u64, bool)> = match &self.scan {
+            Some(scan) => {
+                let t = scan.tree.read().unwrap();
+                self.collected.iter().map(|&i| (i, t.nodes[i as usize].name.to_string(), t.nodes[i as usize].size, t.nodes[i as usize].dir)).collect()
+            }
+            None => Vec::new(),
+        };
+        let dragging = self.drag.is_some();
+        let well_me = me.clone();
+        let chip_me = me.clone();
+        let well = canvas(
+            move |b, window, cx| {
+                // (Where a drop lands, for the window's drag.)
+                well_me.update(cx, |d, _| d.collector = b);
+                // Each chip's "×", to take it out.
+                let font = style::ui_font(FontWeight::NORMAL);
+                let inner = style::inset(window, b, 0.0);
+                let inner = Bounds::from_corners(point(inner.left() + px(6.0), inner.top() + px(6.0)), point(inner.right() - px(6.0), inner.bottom() - px(6.0)));
+                let mut x = inner.left();
+                let y = inner.bottom() - px(CHIP_HEIGHT);
+                let mut chips = Vec::new();
+                for (k, (id, name, size, dir)) in items.iter().enumerate() {
+                    let text = format!("{name}  {}", format_size(*size));
+                    let w = (f32::from(style::text_width(window, text.clone(), style::SMALL_SIZE, font.clone())) + 16.0 + 6.0 + 14.0 + 8.0).min(220.0);
+                    let left = items.len() - k;
+                    if x + px(w) > inner.right() - px(if left > 1 { 60.0 } else { 0.0 }) {
+                        chips.push((None, Bounds { origin: point(x, y), size: size_of(0.0, CHIP_HEIGHT) }, format!("+{left} more"), false, None));
+                        break;
+                    }
+                    let chip = Bounds { origin: point(x, y), size: size_of(w, CHIP_HEIGHT) };
+                    let close = Bounds { origin: point(chip.right() - px(15.0), chip.center().y - px(6.0)), size: size_of(12.0, 12.0) };
+                    chips.push((Some(*id), chip, text, *dir, Some((close, window.insert_hitbox(close, HitboxBehavior::Normal)))));
+                    x += px(w + 6.0);
+                }
+                (inner, chips)
+            },
+            move |b, (inner, chips), window, cx| {
+                let p = theme::palette(cx);
+                let pointer = window.mouse_position();
+                let target = dragging && b.contains(&pointer);
+                let fill = if target { mix(p.document_background, p.list_selected_background, 0.25) } else { p.document_background };
+                style::fill_rect(window, style::inset(window, b, 2.0), style::c(fill));
+                style::sunken(window, b, &p, target);
+                // In line with the chips' icons.
+                style::label(window, cx, inner.left() + px(3.0), inner.top() + px(6.0), style::Align::Left, heading.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), style::c(p.document_text));
+                let font = style::ui_font(FontWeight::NORMAL);
+                for (id, chip, text, dir, close) in &chips {
+                    let Some(id) = id else {
+                        style::label(window, cx, chip.left() + px(2.0), chip.center().y, style::Align::Left, text.clone(), style::SMALL_SIZE, font.clone(), style::c(p.document_text));
+                        continue;
+                    };
+                    let chip_r = style::snap(window, *chip);
+                    window.paint_quad(gpui::fill(chip_r, style::c(mix(p.panel_background, p.document_background, 0.4))).corner_radii(px(3.0)));
+                    window.paint_quad(gpui::outline(chip_r, style::c(mix(p.panel_text, p.panel_background, 0.6)), gpui::BorderStyle::Solid).corner_radii(px(3.0)));
+                    icons::paint(window, style::snap(window, Bounds { origin: point(chip.left() + px(3.0), chip.center().y - px(8.0)), size: size_of(16.0, 16.0) }), icon_for(text.split("  ").next().unwrap_or_default(), *dir));
+                    if let Some((close, hit)) = close {
+                        style::label_fit(window, cx, chip.left() + px(22.0), chip.center().y, style::Align::Left, text.clone(), style::SMALL_SIZE, font.clone(), style::c(p.document_text), close.left() - chip.left() - px(24.0));
+                        let xc = if hit.is_hovered(window) { p.panel_text } else { mix(p.panel_text, p.panel_background, 0.4) };
+                        let (a, z) = (point(close.left() + px(3.0), close.top() + px(3.0)), point(close.right() - px(3.0), close.bottom() - px(3.0)));
+                        window.paint_segment(a, z, px(1.5), true, style::c(xc));
+                        window.paint_segment(point(z.x, a.y), point(a.x, z.y), px(1.5), true, style::c(xc));
+                        let name = text.split("  ").next().unwrap_or_default().to_owned();
+                        olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Button", name: Some(format!("Remove {name} from the Collector").into()), bounds: *close, enabled: true, clickable: true, ..Default::default() });
+                        let (hit, id, m) = (hit.clone(), *id, chip_me.clone());
+                        window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
+                            if phase.bubble() && e.button == MouseButton::Left && hit.is_hovered(window) {
+                                m.update(cx, |d, cx| {
+                                    d.collected.retain(|&c| c != id);
+                                    cx.notify();
+                                });
+                            }
+                        });
+                    }
+                }
+            },
+        )
+        .flex_1()
+        .h_full();
+        let busy = self.busy.is_some();
+        let any = !self.collected.is_empty();
+        let bw = 112.0;
+        let mut buttons = div().w(px(bw)).flex().flex_col().gap(px(6.0)).pt(px(2.0));
+        if busy {
+            let stop = me.clone();
+            buttons = buttons.child(Button::new("Stop").min_width(bw).on_click(move |window, cx| stop.update(cx, |d, cx| d.command("stop-removing", window, cx))));
+        } else {
+            let (t, d) = (me.clone(), me.clone());
+            buttons = buttons
+                .child(Button::new("Move to Trash").min_width(bw).enabled(any).on_click(move |window, cx| t.update(cx, |du, cx| du.command("collector-trash", window, cx))))
+                .child(Button::new("Delete…").min_width(bw).enabled(any).on_click(move |window, cx| d.update(cx, |du, cx| du.command("collector-delete", window, cx))));
+        }
+        div().flex().gap(px(m::SPACING)).h(px(COLLECTOR_HEIGHT)).flex_shrink_0().child(well).child(buttons)
+    }
+}
+
+thread_local! {
+    /// The chart's place, last laid out.
+    static CHART: std::cell::Cell<Option<chart::Geometry>> = const { std::cell::Cell::new(None) };
+}
+
+/// A file's icon by its kind, as Tracker shows it.
+fn icon_for(name: &str, dir: bool) -> &'static str {
+    if dir { "folder" } else { kind_for(Path::new(name), false, 0).icon() }
+}
+
+fn size_of(w: f32, h: f32) -> gpui::Size<Pixels> {
+    size(px(w), px(h))
+}
+
+impl Render for DiskUsage {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let me = cx.entity();
+        let bar_me = me.clone();
+        let bar = MenuBar::new(self.menus(), move |cmd, window, cx| bar_me.update(cx, |d, cx| d.command(cmd, window, cx)));
+        let content = if self.scan.is_some() { self.scan_view(window, cx) } else { self.volumes_view(cx) };
+        // While something is dragged: its name follows the pointer, and
+        // letting go over the Collector collects it.
+        let mut root = div().size_full().flex().flex_col().child(bar).child(div().flex_1().min_h_0().p(px(m::WINDOW_INSET)).child(content));
+        if let Some(id) = self.drag
+            && let Some((_, dir, name, size)) = self.item(id)
+        {
+            let m = me.clone();
+            let chip = canvas(
+                |_, _, _| {},
+                move |_, _, window, cx| {
+                    let p = theme::palette(cx);
+                    let pos = window.mouse_position();
+                    let text = format!("{name}  {}", format_size(size));
+                    let font = style::ui_font(FontWeight::NORMAL);
+                    let w = f32::from(style::text_width(window, text.clone(), style::PLAIN_SIZE, font.clone())) + 30.0;
+                    let r = style::snap(window, Bounds { origin: point(pos.x + px(12.0), pos.y + px(6.0)), size: size_of(w, CHIP_HEIGHT + 2.0) });
+                    window.paint_quad(gpui::fill(r, style::c(p.list_selected_background).opacity(0.92)).corner_radii(px(3.0)));
+                    icons::paint(window, style::snap(window, Bounds { origin: point(r.left() + px(4.0), r.center().y - px(8.0)), size: size_of(16.0, 16.0) }), icon_for(&name, dir));
+                    style::label(window, cx, r.left() + px(24.0), r.center().y, style::Align::Left, text, style::PLAIN_SIZE, font, style::c(p.list_selected_item_text));
+                    let m2 = m.clone();
+                    window.on_mouse_event(move |_: &MouseMoveEvent, phase, _, cx| {
+                        if phase.capture() {
+                            m2.update(cx, |_, cx| cx.notify());
+                        }
+                    });
+                    let m3 = m.clone();
+                    window.on_mouse_event(move |e: &MouseUpEvent, phase, _, cx| {
+                        if !phase.capture() {
+                            return;
+                        }
+                        m3.update(cx, |d, cx| {
+                            if let Some(id) = d.drag.take()
+                                && d.collector.contains(&e.position)
+                            {
+                                d.collect(id);
+                            }
+                            cx.notify();
+                        });
+                    });
+                },
+            )
+            .absolute()
+            .inset_0();
+            root = root.relative().child(chip);
+        }
+        // Keys the list doesn't take: up a folder, collect.
+        root.on_key_down(move |e: &KeyDownEvent, window, cx| {
+            let k = &e.keystroke;
+            let up = k.key == "backspace" && k.modifiers.number_of_modifiers() == 0 || olo_kit_base::keys::shortcut("up").is_some_and(|s| olo_ui::keys::pressed(&s, k));
+            if up {
+                me.update(cx, |d, cx| d.command("up", window, cx));
+                cx.stop_propagation();
+            }
+        })
+    }
 }
 
 fn main() {
@@ -987,34 +1107,44 @@ fn main() {
     if instance::forward(APP_ID, &args) {
         return;
     }
-    olo_kit::run(APP_ID, |cx| {
-        instance::listen(APP_ID, cx.proxy());
-        let mut app = DiskUsage {
-            windows: HashMap::new(),
-            main: None,
+    olo_ui::run(APP_ID, move |cx| {
+        instance::listen(APP_ID, olo_ui::proxy(cx));
+        let list = ListModel::new(cx, false);
+        let saved: Option<Saved> = olo_ui::restored_state().and_then(|s| serde_json::from_str(&s).ok());
+        let app = cx.new(|_| DiskUsage {
+            window: None,
             volumes: None,
             scan: None,
             folder: ROOT,
             selected: None,
-            list: ListState::default(),
+            list,
             rows: (ROOT, u64::MAX, None, Vec::new()),
             collected: Vec::new(),
             drag: None,
+            collector: Bounds::default(),
+            pointer: Pointer::default(),
             context: None,
             busy: None,
             restore: None,
-        };
-        app.open(cx);
-        let saved: Option<Saved> = cx.restored_state().and_then(|s| serde_json::from_str(&s).ok());
-        if let Some(saved) = saved
-            && let Some(root) = saved.root.clone()
-        {
-            app.start_scan(cx, root);
-            app.restore = Some(saved);
-        } else if let Some(path) = args.iter().find(|a| !a.starts_with('-')) {
-            app.start_scan(cx, std::path::absolute(path).unwrap_or_else(|_| PathBuf::from(path)));
-        }
-        app
+        });
+        let view = app.clone();
+        let window = olo_ui::open_window(cx, WindowOptions::new("DiskUsage", 780.0, 560.0).min_size(600.0, 440.0), move |_, _| view);
+        app.update(cx, |d, cx| {
+            d.window = window;
+            d.read_volumes(cx);
+            if let Some(saved) = saved
+                && let Some(root) = saved.root.clone()
+            {
+                d.start_scan(root, cx);
+                d.restore = Some(saved);
+            } else if let Some(path) = args.iter().find(|a| !a.starts_with('-')) {
+                d.start_scan(std::path::absolute(path).unwrap_or_else(|_| PathBuf::from(path)), cx);
+            }
+        });
+        let messages = app.clone();
+        olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |d, cx| d.message(message, cx)));
+        let saving = app.clone();
+        olo_ui::on_upgrade(cx, move |cx| saving.read(cx).save_state());
     });
 }
 
