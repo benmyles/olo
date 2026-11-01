@@ -271,7 +271,7 @@ impl WindowOptions {
 }
 
 /// Clipboard contents: (MIME type, bytes), in order of preference.
-pub type Clip = Vec<(String, std::sync::Arc<[u8]>)>;
+pub type Clip = olo_kit_base::clipboard::Clip;
 
 pub(crate) enum Request {
     Open(WindowId, WindowOptions),

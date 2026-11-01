@@ -27,6 +27,6 @@ pub use lock::{lock_session, unlock_session};
 pub use menu::{Menu, MenuBar, MenuItem};
 pub use upgrade::{on_upgrade, on_upgrade_due, restored_state, upgrade_waits_while};
 pub use gpui;
-pub use olo_kit_base::{Proxy, commands, files, instance, metrics, notify, places, settings, tracker, watch};
+pub use olo_kit_base::{Proxy, clipboard, commands, files, instance, metrics, notify, places, settings, tracker, watch};
 pub use olo_theme as palette;
 pub use olo_xdg::{config_dir, state_dir};

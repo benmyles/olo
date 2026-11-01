@@ -963,11 +963,14 @@ impl LinuxClient for WaylandClient {
             return;
         };
         if state.mouse_focused_window.is_some() || state.keyboard_focused_window.is_some() {
+            // Olo: each form under its own types (text, an image's
+            // format, data's MIME type).
+            let types = item.mime_types(&TEXT_MIME_TYPES);
             state.clipboard.set(item);
             let serial = state.serial_tracker.get(SerialKind::KeyPress);
             let data_source = data_device_manager.create_data_source(&state.globals.qh, ());
-            for mime_type in TEXT_MIME_TYPES {
-                data_source.offer(mime_type.to_string());
+            for mime_type in types {
+                data_source.offer(mime_type);
             }
             data_source.offer(state.clipboard.self_mime());
             data_device.set_selection(Some(&data_source), serial);

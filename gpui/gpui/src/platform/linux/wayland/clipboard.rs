@@ -179,9 +179,10 @@ impl Clipboard {
         self.self_mime.clone()
     }
 
-    pub fn send(&self, _mime_type: String, fd: OwnedFd) {
-        if let Some(text) = self.contents.as_ref().and_then(|contents| contents.text()) {
-            self.send_internal(fd, text.as_bytes().to_owned());
+    pub fn send(&self, mime_type: String, fd: OwnedFd) {
+        // Olo: the form asked for (an image, files), else the text.
+        if let Some(bytes) = self.contents.as_ref().and_then(|contents| contents.bytes_for(&mime_type)) {
+            self.send_internal(fd, bytes);
         }
     }
 

@@ -9,7 +9,8 @@ name = "olo-screenshot"
 path = "src/main.rs"
 
 [dependencies]
-olo-kit.workspace = true
+olo-ui.workspace = true
+olo-xdg.workspace = true
 olo-protocol.workspace = true
 serde.workspace = true
 serde_json.workspace = true

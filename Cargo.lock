@@ -5954,6 +5954,8 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+ "wayland-client",
+ "wayland-protocols 0.32.13",
  "zbus",
 ]
 
@@ -6241,8 +6243,9 @@ name = "olo-screenshot"
 version = "0.1.0"
 dependencies = [
  "image",
- "olo-kit",
  "olo-protocol",
+ "olo-ui",
+ "olo-xdg",
  "serde",
  "serde_json",
  "tracing",

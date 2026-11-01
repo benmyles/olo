@@ -383,8 +383,10 @@ fn main() {
   Its windows are gone then: a later launch (forwarded to it) must open
   a new one, so check `cx.is_open(id)` before activating a window you
   kept.
-* **`olo_kit::clipboard`**: the clipboard for a program with no window
-  and no kit loop (a shortcut's screenshot). `hold(clip)` puts it on the
+* **`olo_kit::clipboard`** (`hold` and `text` from
+  `olo_kit_base::clipboard`, for both kits): the clipboard for a program
+  with no window and no kit loop (a shortcut's screenshot, a GPUI app
+  that has closed its window). `hold(clip)` puts it on the
   clipboard and serves it until something else is copied, then returns
   (so the program stays running until then); `text(s)` is a `Clip` in the
   forms text pastes as (what `Cx::copy` offers). It goes through
@@ -3907,14 +3909,27 @@ JPEG, BMP, TIFF, WebP) / Save in (Home, Desktop, Pictures, Choose
 folder…). New screenshot minimizes its own window first (so it isn't in
 the picture and the active window is the one behind it) and brings it
 back; Save writes `screenshotN` and quits, with the file's path on the
-clipboard; Copy to clipboard offers `image/png`. Settings are in `screenshot.json`. `--silent [--window [ID]]`
+clipboard; Copy to clipboard offers `image/png`. Settings are in `screenshot.json`.
+On the GPUI kit (olo-ui): the preview is made on a worker at exactly
+the frame's size in device pixels for the window's scale (again when
+the scale changes) and drawn one pixel to a pixel; the form sits at
+fixed rows so the caption under the picture can line up with one. After
+Save the window closes and the app holds the path on the clipboard
+(`olo_kit_base::clipboard::hold`) until something else is copied, then
+ends; GPUI's clipboard now offers images and data in their own MIME
+types (`ClipboardItem::from_entries`, `new_data`). The picture
+app_server writes for it (`olo-screenshot-PID.png` in the runtime
+directory, memory) goes when it quits, and one left by a Screenshot
+that was killed is swept at the next start. `--silent [--window [ID]]`
 saves straight into the folder with no window: app_server runs it for ⌘⇧3
 and Print Screen (the screen) and Alt+Print Screen (the shortcut's target
 window by id: the active one, or the one the palette was opened over,
 since the palette is active by the time it runs).
 `--region` (⌘⇧4, region.rs) captures every output, covers each with an
-exclusive overlay showing its picture dimmed, and saves the rectangle you
-drag (its size in pixels follows the corner); Escape or a click cancels.
+exclusive overlay (a GPUI layer surface) showing its picture dimmed, one
+pixel to a device pixel, and saves the rectangle you drag (its size in
+pixels follows the corner); Escape or a click cancels. `--pick-color`
+does the same undimmed, with a loupe by the pointer.
 Saved with no window (`--silent`, `--region`), it prints the file's path
 and puts it on the clipboard (`olo_kit::clipboard::hold`), staying until
 something else is copied. ⌘⇧5 opens the app.

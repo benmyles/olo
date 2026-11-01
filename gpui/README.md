@@ -53,6 +53,11 @@ What Olo changed, so far:
   distance to the line, one instance a segment (a graph's hundred
   points: one draw call), where a path would be tessellated each frame.
   A translucent polyline darkens a little where its segments meet.
+- The clipboard offers each form of what is copied under its own MIME
+  types: text under the text ones, an image under its format's, and
+  `ClipboardEntry::Data` (`ClipboardItem::new_data`, `from_entries`)
+  under its own (files as `text/uri-list`), where upstream offered text
+  only.
 - Ring slices drawn on the GPU (`Window::paint_sector`): between two
   radii and two angles (clockwise from 12 o'clock), each pixel's
   coverage from its distance to the edges, parallel edges box-filtered

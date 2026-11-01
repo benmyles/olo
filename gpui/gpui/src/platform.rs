@@ -1649,6 +1649,18 @@ pub enum ClipboardEntry {
     String(ClipboardString),
     /// An image entry
     Image(Image),
+    /// Olo: data in a form of its own (files as `text/uri-list`, a
+    /// format other programs know by its MIME type).
+    Data(ClipboardData),
+}
+
+/// Olo: clipboard data of any MIME type.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClipboardData {
+    /// What it is (`text/uri-list`, `x-special/gnome-copied-files`).
+    pub mime: String,
+    /// The data, as pasted.
+    pub bytes: std::sync::Arc<[u8]>,
 }
 
 impl ClipboardItem {
@@ -1683,6 +1695,52 @@ impl ClipboardItem {
         Self {
             entries: vec![ClipboardEntry::Image(image.clone())],
         }
+    }
+
+    /// Olo: the same thing in several forms, each offered under its MIME
+    /// types (text under the text ones, an image under its format's,
+    /// data under its own); whoever pastes takes the one it wants.
+    pub fn from_entries(entries: Vec<ClipboardEntry>) -> Self {
+        Self { entries }
+    }
+
+    /// Olo: `bytes` offered as `mime` (one form; see [`Self::from_entries`]).
+    pub fn new_data(mime: impl Into<String>, bytes: impl Into<std::sync::Arc<[u8]>>) -> Self {
+        Self { entries: vec![ClipboardEntry::Data(ClipboardData { mime: mime.into(), bytes: bytes.into() })] }
+    }
+
+    /// Olo: the MIME types the item is offered as, each once, `text`
+    /// standing for the platform's text types.
+    #[allow(dead_code)]
+    pub(crate) fn mime_types(&self, text: &[&str]) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut add = |m: &str| {
+            if !out.iter().any(|t| t == m) {
+                out.push(m.to_owned());
+            }
+        };
+        for entry in &self.entries {
+            match entry {
+                ClipboardEntry::String(_) => text.iter().for_each(|t| add(t)),
+                ClipboardEntry::Image(image) => add(image.format.mime_type()),
+                ClipboardEntry::Data(data) => add(&data.mime),
+            }
+        }
+        out
+    }
+
+    /// Olo: what is pasted as `mime`: data or an image offered as it,
+    /// else the text.
+    #[allow(dead_code)]
+    pub(crate) fn bytes_for(&self, mime: &str) -> Option<Vec<u8>> {
+        for entry in &self.entries {
+            match entry {
+                ClipboardEntry::Data(data) if data.mime == mime => return Some(data.bytes.to_vec()),
+                ClipboardEntry::Image(image) if image.format.mime_type() == mime => return Some(image.bytes.clone()),
+                _ => {}
+            }
+        }
+        self.text().map(String::into_bytes)
     }
 
     /// Concatenates together all the ClipboardString entries in the item.

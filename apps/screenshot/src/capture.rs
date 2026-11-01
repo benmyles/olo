@@ -33,7 +33,7 @@ impl Default for Settings {
 }
 
 fn settings_path() -> PathBuf {
-    olo_kit::config_dir().join("screenshot.json")
+    olo_xdg::config_dir().join("screenshot.json")
 }
 
 impl Settings {
@@ -64,7 +64,7 @@ pub fn home() -> PathBuf {
 }
 
 pub fn default_folder() -> PathBuf {
-    olo_kit::user_dir("PICTURES").unwrap_or_else(home)
+    olo_xdg::user_dir("PICTURES").unwrap_or_else(home)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -122,6 +122,26 @@ pub struct Shot {
 pub fn scratch_path() -> PathBuf {
     let dir = std::env::var_os("XDG_RUNTIME_DIR").map_or_else(std::env::temp_dir, PathBuf::from);
     dir.join(format!("olo-screenshot-{}.png", std::process::id()))
+}
+
+/// Removes pictures left by Screenshots that ended without tidying up
+/// (killed): the runtime directory is memory. One whose process is still
+/// running (another Screenshot's) stays; a reload keeps its pid, and its
+/// own.
+pub fn sweep() {
+    sweep_in(&std::env::var_os("XDG_RUNTIME_DIR").map_or_else(std::env::temp_dir, PathBuf::from));
+}
+
+fn sweep_in(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for e in entries.flatten() {
+        let name = e.file_name();
+        let Some(pid) = name.to_str().and_then(|n| n.strip_prefix("olo-screenshot-")).and_then(|n| n.split('.').next()).and_then(|p| p.parse::<u32>().ok()) else { continue };
+        let ours = std::fs::read_link(format!("/proc/{pid}/exe")).is_ok_and(|exe| exe.file_name().is_some_and(|n| n.to_string_lossy().starts_with("olo-screenshot")));
+        if !ours {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
 }
 
 fn request(client: &mut Client, req: &Request) -> Result<Reply, String> {
@@ -250,6 +270,23 @@ pub fn save(shot: &Shot, path: &Path, format: Format) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sweeping_takes_only_dead_screenshots_pictures() {
+        let dir = std::env::temp_dir().join(format!("olo-sweep-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // No process has a pid this high.
+        let dead = dir.join("olo-screenshot-4000000000.png");
+        let dead_region = dir.join("olo-screenshot-4000000000.HEADLESS-1.png");
+        let other = dir.join("olo-restore-1.json");
+        for f in [&dead, &dead_region, &other] {
+            std::fs::write(f, b"x").unwrap();
+        }
+        sweep_in(&dir);
+        assert!(!dead.exists() && !dead_region.exists());
+        assert!(other.exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn names() {

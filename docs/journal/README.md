@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-31
 
+### Screenshot on GPUI
+
+*21:17* — Screenshot moves to the GPUI kit: the same form and buttons, the preview made at exactly its frame's size in device pixels (remade when the scale changes) and drawn one pixel to a pixel, Copy to clipboard as image/png through GPUI's clipboard (which now offers images and data, not only text), Save closing the window and holding the path on the clipboard until something else is copied. The ⌘⇧4 region picker and the colour picker are GPUI layer overlays showing each output's frozen picture 1:1.
+
+![Screenshot on GPUI](2026-10-31/211747-screenshot-on-gpui.png)
+
 ### DiskUsage on GPUI
 
 *20:57* — DiskUsage moves to the GPUI kit (olo-ui): the ring chart's slices are GPU sectors (paint_sector) with hairlines over them, the list beside it a ColumnListView whose rows drag into the Collector, Volumes, menus with the keyboard profile's keys, alerts and the folder panel all as before. The chart redraws only when the slice under the pointer changes, in about a millisecond; the list's name column now fits inside its scroll bar (egui's cut Files off), and the Collector's chips show each file's kind.

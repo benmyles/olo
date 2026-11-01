@@ -5,6 +5,7 @@
 //! (`commands`), with what the layout review finds (`review`), a list's
 //! selection (`list`) and the keyboard profile's keys (`keys`).
 
+pub mod clipboard;
 pub mod commands;
 pub mod files;
 pub mod instance;
