@@ -283,10 +283,10 @@ as they land (with the commit), add new ones as they come up.
      messages against 157). Next: Viewer, Notifications, the portal,
      Agent Screens, StyledEdit, Activity Monitor, Tracker, Passwords,
      Preferences (with the screen saver and its modules) and Terminal.
-     (`olo-preview` still builds on the egui kit for its viewers:
-     Telegram uses only its audio player, which needs none of it, yet
-     links the egui kit through it until the viewers move with the
-     Viewer.)
+     (`olo-preview`'s decoding no longer needs a toolkit: pictures are
+     its own `Bitmap`s, and its egui views are behind its `egui`
+     feature, for Tracker and the Viewer until they move; Telegram no
+     longer links egui.)
    - **Glyphs drawn in a frame are slow the first time** (found
      measuring Telegram, 2026-11-01): a chat opened with 230 glyphs new
      to the process spent 6–9 ms of its frame (release) on first-time

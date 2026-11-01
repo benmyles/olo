@@ -494,7 +494,7 @@ fn picture(ui: &Ui, textures: &mut HashMap<(usize, usize), TextureHandle>, (i, i
     let img = if level == 0 { image } else { &smaller[level - 1] };
     let tex = textures
         .entry((i, level))
-        .or_insert_with(|| ui.ctx().load_texture(format!("ql-picture-{i}-{level}"), (**img).clone(), TextureOptions::LINEAR));
+        .or_insert_with(|| ui.ctx().load_texture(format!("ql-picture-{i}-{level}"), crate::view::color_image(img), TextureOptions::LINEAR));
     ui.painter().image(tex.id(), r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
 }
 

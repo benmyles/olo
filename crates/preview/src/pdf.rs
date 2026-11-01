@@ -16,7 +16,7 @@ use hayro::{
     PixmapSettings, RenderCache, RenderSettings, hayro_interpret::InterpreterSettings, hayro_syntax::Pdf,
     vello_cpu::color::palette::css::WHITE,
 };
-use olo_kit::egui::ColorImage;
+use crate::Bitmap;
 
 use super::load::{Body, Send, Update};
 
@@ -58,7 +58,7 @@ pub fn load(path: &Path, cancel: &Arc<AtomicBool>, send: Send) {
             bg_color: WHITE,
         });
         let size = [pix.width() as usize, pix.height() as usize];
-        Arc::new(ColorImage::from_rgba_premultiplied(size, pix.data_as_u8_slice()))
+        Arc::new(Bitmap::from_rgba_premultiplied(size, pix.data_as_u8_slice().to_vec()))
     };
     // The first page right away; then whatever the preview asks for.
     send(Update::Page(0, render(0)));

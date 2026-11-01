@@ -5,8 +5,15 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+# The egui kit's views (Tracker's Quick Look until it moves to Olo's GPUI).
+egui = ["dep:olo-kit"]
+
 [dependencies]
-olo-kit.workspace = true
+olo-kit = { workspace = true, optional = true }
+olo-kit-base.workspace = true
+olo-images.workspace = true
+olo-theme.workspace = true
 olo-richtext.workspace = true
 tracing.workspace = true
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "tiff", "ico", "tga", "qoi", "hdr", "exr", "pnm", "dds", "ff", "rayon"] }

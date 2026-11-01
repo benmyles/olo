@@ -491,6 +491,23 @@ impl Palette {
         readable(self.hue(hue), self.document_background, 4.5)
     }
 
+    /// The colour of a token class on document backgrounds: the look's
+    /// hues (each clears 4.5:1 against `document_background`), comments a
+    /// step toward the background.
+    pub fn syntax(&self, s: Syntax) -> Rgba {
+        let hue = match s {
+            Syntax::Plain => return self.document_text,
+            Syntax::Comment => return readable(mix(self.document_text, self.document_background, 0.45), self.document_background, 4.5),
+            Syntax::String => Hue::Green,
+            Syntax::Keyword => Hue::Purple,
+            Syntax::Number | Syntax::Attribute => Hue::Orange,
+            Syntax::Type => Hue::Teal,
+            Syntax::Function | Syntax::Tag | Syntax::Link | Syntax::Heading => Hue::Blue,
+            Syntax::Constant => Hue::Red,
+        };
+        self.hue_text(hue)
+    }
+
     /// Text set on `fill` (a hue, a chip): the look's dark ink or a
     /// white, whichever reads better.
     pub fn ink_on(&self, fill: Rgba) -> Rgba {
@@ -574,6 +591,24 @@ pub fn readable(fg: Rgba, bg: Rgba, ratio: f32) -> Rgba {
     }
     let toward = if luminance(bg) > 0.18 { BLACK } else { WHITE };
     (1..=20).map(|i| mix(fg, toward, i as f32 / 20.0)).find(|c| contrast(*c, bg) >= ratio).unwrap_or(toward)
+}
+
+/// Token classes for syntax colouring (Quick Look, the Viewer,
+/// StyledEdit): [`Palette::syntax`] colours them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Syntax {
+    Plain,
+    Comment,
+    String,
+    Keyword,
+    Number,
+    Type,
+    Function,
+    Constant,
+    Tag,
+    Attribute,
+    Heading,
+    Link,
 }
 
 /// Linear blend, BeOS `tint_color`-style helpers.

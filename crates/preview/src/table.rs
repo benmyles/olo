@@ -11,10 +11,13 @@ use std::{
     sync::{
         Arc,
         atomic::{self, AtomicBool},
-        mpsc,
     },
 };
 
+#[cfg(feature = "egui")]
+use std::sync::mpsc;
+
+#[cfg(feature = "egui")]
 use olo_kit::{
     egui::{self, Align, Rect, Ui, pos2, vec2},
     metrics as m,
@@ -26,12 +29,14 @@ use olo_kit::{
 pub type Rows = Arc<Vec<Vec<String>>>;
 
 /// Sheets this big (cells) are filtered and sorted on a worker.
-const ON_A_WORKER: usize = 40_000;
+pub const ON_A_WORKER: usize = 40_000;
 
 /// The bar over the table: search, where, and how many rows show (its
 /// rule inside it; on the 2-point grid).
+#[cfg(feature = "egui")]
 const BAR: f32 = m::CONTROL_HEIGHT + 2.0 * m::TIGHT + 2.0;
 
+#[cfg(feature = "egui")]
 #[derive(Default)]
 pub struct TableView {
     search: String,
@@ -43,16 +48,19 @@ pub struct TableView {
     making: Option<(Key, mpsc::Receiver<Vec<usize>>, Arc<AtomicBool>)>,
 }
 
-/// What the rows shown depend on.
-#[derive(Clone, PartialEq)]
-struct Key {
-    sheet: (u64, usize),
-    rows: usize,
-    search: String,
-    scope: usize,
-    sort: Option<(usize, bool)>,
+/// What the rows shown depend on: the sheet (a document's, and which),
+/// how many rows it has, the search, where it looks (0: every column;
+/// else the column before it) and the sort (a column, ascending).
+#[derive(Clone, PartialEq, Debug, Default)]
+pub struct Key {
+    pub sheet: (u64, usize),
+    pub rows: usize,
+    pub search: String,
+    pub scope: usize,
+    pub sort: Option<(usize, bool)>,
 }
 
+#[cfg(feature = "egui")]
 impl TableView {
     /// Start again (another file, or another sheet of it).
     pub fn reset(&mut self) {
@@ -186,7 +194,7 @@ impl TableView {
 
 /// The rows (indices) with `key.search` in them, in `key.sort`'s order;
 /// what there is so far when `stop` is set.
-fn arrange(rows: &[Vec<String>], first: usize, key: &Key, stop: &AtomicBool) -> Vec<usize> {
+pub fn arrange(rows: &[Vec<String>], first: usize, key: &Key, stop: &AtomicBool) -> Vec<usize> {
     let words: Vec<&str> = key.search.split_whitespace().collect();
     let has = |cell: &str, w: &str| cell.to_lowercase().contains(w);
     let mut order: Vec<usize> = (first..rows.len())
@@ -224,7 +232,7 @@ fn compare(a: &str, b: &str) -> Ordering {
         (Some(x), Some(y)) => x.partial_cmp(&y).unwrap_or(Ordering::Equal),
         (Some(_), None) => Ordering::Less,
         (None, Some(_)) => Ordering::Greater,
-        (None, None) => olo_kit::files::natural_cmp(a, b),
+        (None, None) => olo_kit_base::files::natural_cmp(a, b),
     }
 }
 
@@ -239,7 +247,7 @@ fn number(s: &str) -> Option<f64> {
 /// The first row names the columns: every cell of it has text, none is
 /// a number, and some column below it has a number or the row is unlike
 /// the rows below in being all text.
-pub(crate) fn looks_like_header(rows: &[Vec<String>]) -> bool {
+pub fn looks_like_header(rows: &[Vec<String>]) -> bool {
     let Some(top) = rows.first() else { return false };
     if rows.len() < 2 || top.iter().any(|c| c.trim().is_empty() || number(c).is_some()) {
         return false;

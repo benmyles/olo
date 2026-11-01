@@ -11,7 +11,7 @@ use std::{
 };
 
 use super::load::{Body, Update};
-use olo_kit::files as fs;
+use olo_kit_base::files as fs;
 
 /// List at most this many items (the count still covers everything).
 const MAX_ITEMS: usize = 5000;

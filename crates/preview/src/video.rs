@@ -15,10 +15,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use olo_kit::{egui::Color32, images::av1};
+use olo_images::av1;
 
 use crate::{
-    audio,
+    Bitmap, audio,
     input::{Input, ReadSeek},
     load::Image,
     media,
@@ -51,10 +51,7 @@ impl Picture {
     pub fn into_image(self) -> Image {
         match self {
             Picture::Rgba(i) => i,
-            Picture::Bgra { size, data } => {
-                let px = data.as_chunks::<4>().0.iter().map(|p| Color32::from_rgba_unmultiplied(p[2], p[1], p[0], p[3])).collect();
-                Arc::new(olo_kit::egui::ColorImage::new(size, px))
-            }
+            Picture::Bgra { size, data } => Arc::new(Bitmap::from_bgra_unmultiplied(size, &data)),
         }
     }
 }
@@ -80,7 +77,7 @@ impl Pic {
             Pic::H264(p) => p.y.len() + p.u.len() + p.v.len(),
             // 16-bit samples, chroma subsampled (at most).
             Pic::Av1(f) => f.width as usize * f.height as usize * 6,
-            Pic::Ready(Picture::Rgba(i)) => i.pixels.len() * 4,
+            Pic::Ready(Picture::Rgba(i)) => i.rgba.len(),
             Pic::Ready(Picture::Bgra { data, .. }) => data.len(),
         }
     }
@@ -145,9 +142,14 @@ impl Planar {
     }
 
     fn image(&self) -> Image {
-        let mut px = vec![Color32::BLACK; self.width * self.height];
-        self.convert(|i, [r, g, b]| px[i] = Color32::from_rgb(r, g, b));
-        Arc::new(olo_kit::egui::ColorImage::new([self.width, self.height], px))
+        let mut out = vec![255u8; self.width * self.height * 4];
+        let px = out.as_chunks_mut::<4>().0;
+        self.convert(|i, [r, g, b]| {
+            px[i][0] = r;
+            px[i][1] = g;
+            px[i][2] = b;
+        });
+        Arc::new(Bitmap::from_rgba_premultiplied([self.width, self.height], out))
     }
 
     fn bgra(&self) -> Vec<u8> {
@@ -431,7 +433,7 @@ fn ripen(m: &Mutex<Shared>) {
 }
 
 fn av1_image(f: &av1::Frame) -> Image {
-    Arc::new(olo_kit::egui::ColorImage::from_rgba_unmultiplied([f.width as usize, f.height as usize], &f.to_rgba()))
+    Arc::new(Bitmap::from_rgba_unmultiplied([f.width as usize, f.height as usize], &f.to_rgba()))
 }
 
 /// One coded picture (H.264 in start-code form, AV1 as stored), with
@@ -976,8 +978,8 @@ mod tests {
         assert_eq!(Pic::H264(Arc::new(Planar::from(&yuv))).bytes(), w * h * 3 / 2);
         let ours = planar.image();
         assert_eq!(ours.size, [w, h]);
-        let worst = ours.pixels.iter().zip(theirs.as_chunks::<4>().0.iter()).map(|(a, b)| {
-            (0..3).map(|i| (a.to_array()[i] as i32 - b[i] as i32).abs()).max().unwrap()
+        let worst = ours.rgba.as_chunks::<4>().0.iter().zip(theirs.as_chunks::<4>().0.iter()).map(|(a, b)| {
+            (0..3).map(|i| (a[i] as i32 - b[i] as i32).abs()).max().unwrap()
         }).max().unwrap();
         assert!(worst <= 2, "differs from OpenH264's conversion by {worst}");
         // Big pictures get fewer frames ahead, never under two.

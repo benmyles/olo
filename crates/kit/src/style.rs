@@ -1385,38 +1385,12 @@ pub fn text_highlight(galley: &egui::Galley, origin: Pos2, font_size: f32, pad: 
 }
 
 /// Token classes for syntax colouring (Quick Look, StyledEdit).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Syntax {
-    Plain,
-    Comment,
-    String,
-    Keyword,
-    Number,
-    Type,
-    Function,
-    Constant,
-    Tag,
-    Attribute,
-    Heading,
-    Link,
-}
+pub use olo_theme::Syntax;
 
-/// The colour of a token class on document backgrounds: the look's hues
-/// (`Palette::hue_text`, so each clears 4.5:1 against
-/// `document_background`), comments a step toward the background.
+/// The colour of a token class on document backgrounds
+/// ([`Palette::syntax`]).
 pub fn syntax_color(p: &Palette, s: Syntax) -> Color32 {
-    use olo_theme::Hue;
-    let hue = match s {
-        Syntax::Plain => return c(p.document_text),
-        Syntax::Comment => return c(olo_theme::readable(mix(p.document_text, p.document_background, 0.45), p.document_background, 4.5)),
-        Syntax::String => Hue::Green,
-        Syntax::Keyword => Hue::Purple,
-        Syntax::Number | Syntax::Attribute => Hue::Orange,
-        Syntax::Type => Hue::Teal,
-        Syntax::Function | Syntax::Tag | Syntax::Link | Syntax::Heading => Hue::Blue,
-        Syntax::Constant => Hue::Red,
-    };
-    c(p.hue_text(hue))
+    c(p.syntax(s))
 }
 
 /// The width of `text` set in `font` (for sizing buttons and tabs).

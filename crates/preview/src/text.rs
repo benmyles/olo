@@ -12,7 +12,7 @@ use std::{
 };
 
 use syntect::parsing::{ParseState, Scope, ScopeStack, SyntaxReference, SyntaxSet};
-pub use olo_kit::style::Syntax as Tok;
+pub use olo_theme::Syntax as Tok;
 
 use super::load::{Body, Send, Update};
 

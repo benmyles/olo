@@ -10,12 +10,10 @@ use std::{
     },
 };
 
-use olo_kit::egui::{self, ColorImage};
-
 use super::{archive, doc, media, pdf, text};
-use olo_kit::files::{self as fs, Kind};
+use olo_kit_base::files::{self as fs, Kind};
 
-use crate::Item;
+use crate::{Bitmap, Item};
 
 /// Largest image side kept for display, in pixels. Bigger images are
 /// scaled down as they are decoded (a 48-megapixel photo would otherwise
@@ -25,7 +23,7 @@ pub const MAX_IMAGE: u32 = 3200;
 /// most photos are shown pixel for pixel at 100%.
 pub const MAX_ZOOMABLE: u32 = 8192;
 
-pub type Image = Arc<ColorImage>;
+pub type Image = Arc<Bitmap>;
 
 /// What a preview shows.
 pub enum Body {
@@ -110,21 +108,23 @@ fn looks_like_text(path: &Path) -> bool {
 /// `img` at half size, quarter size, … down to a few hundred pixels: each
 /// pixel the average of four (the colours are premultiplied, so that is
 /// right for transparency too).
-pub fn halvings(img: &ColorImage) -> Vec<Image> {
+pub fn halvings(img: &Bitmap) -> Vec<Image> {
     let mut out: Vec<Image> = Vec::new();
     let mut cur = img;
     while cur.size[0].max(cur.size[1]) > 512 && cur.size[0] >= 2 && cur.size[1] >= 2 {
         let (w, h) = (cur.size[0] / 2, cur.size[1] / 2);
-        let mut px = Vec::with_capacity(w * h);
+        let stride = cur.size[0] * 4;
+        let mut px = Vec::with_capacity(w * h * 4);
         for y in 0..h {
-            let (a, b) = (&cur.pixels[2 * y * cur.size[0]..], &cur.pixels[(2 * y + 1) * cur.size[0]..]);
+            let (a, b) = (&cur.rgba[2 * y * stride..], &cur.rgba[(2 * y + 1) * stride..]);
             for x in 0..w {
-                let q = [a[2 * x], a[2 * x + 1], b[2 * x], b[2 * x + 1]];
-                let avg = |i: usize| ((q.iter().map(|c| c.to_array()[i] as u32).sum::<u32>() + 2) / 4) as u8;
-                px.push(egui::Color32::from_rgba_premultiplied(avg(0), avg(1), avg(2), avg(3)));
+                for i in 0..4 {
+                    let q = u32::from(a[8 * x + i]) + u32::from(a[8 * x + 4 + i]) + u32::from(b[8 * x + i]) + u32::from(b[8 * x + 4 + i]);
+                    px.push(((q + 2) / 4) as u8);
+                }
             }
         }
-        out.push(Arc::new(ColorImage { size: [w, h], source_size: egui::vec2(w as f32, h as f32), pixels: px }));
+        out.push(Arc::new(Bitmap::from_rgba_premultiplied([w, h], px)));
         cur = out.last().expect("pushed");
     }
     out
@@ -132,11 +132,11 @@ pub fn halvings(img: &ColorImage) -> Vec<Image> {
 
 pub fn color_image(rgba: image::RgbaImage) -> Image {
     let size = [rgba.width() as usize, rgba.height() as usize];
-    Arc::new(ColorImage::from_rgba_unmultiplied(size, rgba.as_raw()))
+    Arc::new(Bitmap::from_rgba_unmultiplied(size, rgba.as_raw()))
 }
 
 fn image(path: &Path, max: u32) -> Result<Update, String> {
-    let (img, kind) = olo_kit::images::open(path).map_err(|e| format!("This image can't be read ({e})."))?;
+    let (img, kind) = olo_images::open(path).map_err(|e| format!("This image can't be read ({e})."))?;
     let (w, h) = (img.width(), img.height());
     let img = if w.max(h) > max { img.resize(max, max, image::imageops::FilterType::Triangle) } else { img };
     let image = color_image(img.to_rgba8());
@@ -162,8 +162,7 @@ fn svg(path: &Path, max: u32) -> Result<Update, String> {
     let (w, h) = ((size.width() * k).ceil() as u32, (size.height() * k).ceil() as u32);
     let mut pixmap = resvg::tiny_skia::Pixmap::new(w.max(1), h.max(1)).ok_or("This drawing is empty.")?;
     resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(k, k), &mut pixmap.as_mut());
-    let image = ColorImage::from_rgba_premultiplied([pixmap.width() as usize, pixmap.height() as usize], pixmap.data());
-    let image = Arc::new(image);
+    let image = Arc::new(Bitmap::from_rgba_premultiplied([pixmap.width() as usize, pixmap.height() as usize], pixmap.take()));
     Ok(Update::Body(Body::Image {
         smaller: halvings(&image),
         image,
@@ -198,12 +197,12 @@ mod tests {
     fn halvings_average_down_to_a_few_hundred() {
         // A 1-pixel checkerboard of black and white averages to grey.
         let (w, h) = (2048, 1100);
-        let pixels = (0..w * h).map(|i| if (i % w + i / w) % 2 == 0 { egui::Color32::WHITE } else { egui::Color32::BLACK }).collect();
-        let img = ColorImage { size: [w, h], source_size: egui::vec2(w as f32, h as f32), pixels };
+        let pixels = (0..w * h).flat_map(|i| if (i % w + i / w) % 2 == 0 { [255; 4] } else { [0, 0, 0, 255] }).collect();
+        let img = Bitmap::from_rgba_premultiplied([w, h], pixels);
         let levels = halvings(&img);
         let sizes: Vec<[usize; 2]> = levels.iter().map(|l| l.size).collect();
         assert_eq!(sizes, [[1024, 550], [512, 275]]);
-        let c = levels[0].pixels[0].to_array();
+        let c = &levels[0].rgba[..4];
         assert!((126..=129).contains(&c[0]) && c[3] == 255, "{c:?}");
     }
 }

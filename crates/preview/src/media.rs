@@ -14,7 +14,7 @@ use std::{
 
 use lofty::prelude::*;
 use openh264::formats::YUVSource;
-use olo_kit::egui::ColorImage;
+use crate::Bitmap;
 
 use super::load::{Body, Image, Update, color_image};
 
@@ -170,7 +170,7 @@ fn mp4(path: &Path, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), Strin
     if let Some(a) = av1 {
         m.playable = true;
         // The first picture that decodes, a tenth of the way in.
-        let mut dec = olo_kit::images::av1::Decoder::new(1, 1)?;
+        let mut dec = olo_images::av1::Decoder::new(1, 1)?;
         let count = t.sample_count();
         let syncs = t.trak.mdia.minf.stbl.stss.as_ref().map(|s| s.entries.clone()).unwrap_or_else(|| vec![1]);
         let start = syncs.iter().copied().filter(|&s| s <= (count / 10).max(1)).max().unwrap_or(1);
@@ -184,7 +184,7 @@ fn mp4(path: &Path, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), Strin
             dec.decode(&data, &mut out)?;
         }
         if let Some(f) = out.first() {
-            m.picture = Some(Arc::new(ColorImage::from_rgba_unmultiplied([f.width as usize, f.height as usize], &f.to_rgba())));
+            m.picture = Some(Arc::new(Bitmap::from_rgba_unmultiplied([f.width as usize, f.height as usize], &f.to_rgba())));
         }
         return Ok(());
     }
@@ -293,7 +293,7 @@ fn mkv(path: &Path, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), Strin
 
 /// The first AV1 picture.
 fn av1_poster<R: std::io::Read + std::io::Seek>(mk: &mut matroska_demuxer::MatroskaFile<R>, track: u64, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), String> {
-    let mut dec = olo_kit::images::av1::Decoder::new(1, 1)?;
+    let mut dec = olo_images::av1::Decoder::new(1, 1)?;
     let mut frame = matroska_demuxer::Frame::default();
     let mut out = Vec::new();
     let mut tries = 0;
@@ -307,7 +307,7 @@ fn av1_poster<R: std::io::Read + std::io::Seek>(mk: &mut matroska_demuxer::Matro
         }
     }
     if let Some(f) = out.first() {
-        m.picture = Some(Arc::new(ColorImage::from_rgba_unmultiplied([f.width as usize, f.height as usize], &f.to_rgba())));
+        m.picture = Some(Arc::new(Bitmap::from_rgba_unmultiplied([f.width as usize, f.height as usize], &f.to_rgba())));
     }
     Ok(())
 }
@@ -467,7 +467,7 @@ pub(crate) fn yuv_image(yuv: &openh264::decoder::DecodedYUV<'_>) -> Image {
     let (w, h) = yuv.dimensions();
     let mut rgba = vec![0u8; w * h * 4];
     yuv.write_rgba8(&mut rgba);
-    Arc::new(ColorImage::from_rgba_unmultiplied([w, h], &rgba))
+    Arc::new(Bitmap::from_rgba_unmultiplied([w, h], &rgba))
 }
 
 #[cfg(test)]

@@ -6,7 +6,7 @@
 
 use std::{io::Read, path::Path};
 
-use olo_kit::style::Syntax;
+use olo_theme::Syntax;
 
 use super::load::{Body, Image, Update};
 
@@ -255,7 +255,7 @@ fn local(dir: &Path, url: &str) -> Option<std::path::PathBuf> {
 
 /// A picture from `path`, at most `MAX_PICTURE` wide, and its halvings.
 fn picture(path: &Path) -> Option<(Image, Vec<Image>)> {
-    let (img, _) = olo_kit::images::open(path).ok()?;
+    let (img, _) = olo_images::open(path).ok()?;
     let img = if img.width() > MAX_PICTURE {
         let h = (img.height() as u64 * MAX_PICTURE as u64 / img.width() as u64).max(1) as u32;
         img.resize_exact(MAX_PICTURE, h, image::imageops::FilterType::Lanczos3)
