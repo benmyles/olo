@@ -237,6 +237,20 @@ impl Cell<'_> {
         cell_text(window, cx, self.bounds, self.align, text.clone(), font, color);
         self.texts.push(text);
     }
+
+    /// A 16-point icon at its left (`icon`, else `fallback`), then its
+    /// text: an app's or a file's name.
+    pub fn icon_text(&mut self, window: &mut Window, cx: &mut App, icon: &str, fallback: &str, text: impl Into<SharedString>) {
+        let text = text.into();
+        let at = Bounds::centered_at(point(self.bounds.left() + px(m::CELL_INSET + 8.0), self.bounds.center().y), size(px(16.0), px(16.0)));
+        if !crate::icons::paint(window, at, icon) {
+            crate::icons::paint(window, at, fallback);
+        }
+        let rest = Bounds::from_corners(point(at.right() + px(2.0), self.bounds.top()), self.bounds.bottom_right());
+        let color = self.text_color;
+        cell_text(window, cx, rest, style::Align::Left, text.clone(), style::ui_font(FontWeight::NORMAL), color);
+        self.texts.push(text);
+    }
 }
 
 /// Text in a cell `b`: inset, kept to `align`'s side, cut short to fit.

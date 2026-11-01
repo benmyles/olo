@@ -20,7 +20,7 @@ pub struct Screenshot;
 
 /// Take one with Olo's Screenshot app; where it went (None: cancelled).
 fn take(interactive: bool) -> Result<Option<String>, String> {
-    let program = olo_kit::find_program("olo-screenshot").ok_or("Screenshot isn't installed")?;
+    let program = olo_xdg::find_program("olo-screenshot").ok_or("Screenshot isn't installed")?;
     let mode = if interactive { "--region" } else { "--silent" };
     let out = std::process::Command::new(program).args([mode, "--for-app"]).stdin(std::process::Stdio::null()).output().map_err(|e| e.to_string())?;
     let path = String::from_utf8_lossy(&out.stdout).lines().next().unwrap_or_default().trim().to_owned();
@@ -33,7 +33,7 @@ fn take(interactive: bool) -> Result<Option<String>, String> {
 /// Pick a colour with Olo's Screenshot app: (r, g, b) from 0 to 1, None
 /// if cancelled.
 fn pick() -> Result<Option<(f64, f64, f64)>, String> {
-    let program = olo_kit::find_program("olo-screenshot").ok_or("Screenshot isn't installed")?;
+    let program = olo_xdg::find_program("olo-screenshot").ok_or("Screenshot isn't installed")?;
     let out = std::process::Command::new(program).arg("--pick-color").stdin(std::process::Stdio::null()).output().map_err(|e| e.to_string())?;
     if !out.status.success() {
         return Err(String::from_utf8_lossy(&out.stderr).trim().to_owned());
@@ -56,7 +56,7 @@ impl Screenshot {
         let interactive = options.get("interactive").and_then(|v| bool::try_from(v).ok()).unwrap_or(false);
         match blocking::unblock(move || take(interactive)).await {
             Ok(Some(path)) => {
-                let uri = olo_kit::dnd::file_uri(std::path::Path::new(&path));
+                let uri = olo_ui::files::file_uri(std::path::Path::new(&path));
                 (OK, HashMap::from([("uri".to_owned(), OwnedValue::try_from(Value::from(uri)).expect("a string"))]))
             }
             Ok(None) => (CANCELLED, HashMap::new()),

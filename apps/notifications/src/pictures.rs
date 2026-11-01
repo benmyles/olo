@@ -133,8 +133,13 @@ pub fn get(cx: &mut App, source: &Source, place: (u32, u32), shape: Shape) -> Op
         None => {}
     }
     if pictures.made.len() >= KEEP {
-        pictures.made.clear();
+        // (Each leaves the GPU's atlas too, or they'd stay there.)
+        let gone: Vec<Arc<RenderImage>> = pictures.made.drain().filter_map(|(_, slot)| if let Slot::Made(img) = slot { Some(img) } else { None }).collect();
+        for img in gone {
+            cx.drop_image(img, None);
+        }
     }
+    let pictures = cx.default_global::<Pictures>();
     pictures.made.insert(key.clone(), Slot::Making);
     let source = source.clone();
     let made = cx.background_spawn(async move {

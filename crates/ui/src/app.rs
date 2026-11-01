@@ -33,11 +33,14 @@ pub struct WindowOptions {
     /// Belongs to the app's window that has the keyboard (a chat's Info
     /// over its chat): opens over it, never a tab beside it.
     pub child: bool,
+    /// Belongs to another program's window, by the handle it exported
+    /// (xdg-foreign): a portal's dialog over the app that asked.
+    pub foreign_parent: Option<String>,
 }
 
 impl WindowOptions {
     pub fn new(title: impl Into<SharedString>, width: f32, height: f32) -> Self {
-        WindowOptions { title: title.into(), size: (width, height), min_size: None, panel: true, floating: false, layer: None, dialog: None, fixed: false, lock_output: None, child: false }
+        WindowOptions { title: title.into(), size: (width, height), min_size: None, panel: true, floating: false, layer: None, dialog: None, fixed: false, lock_output: None, child: false, foreign_parent: None }
     }
 
     /// A BAlert window `width` × `height`: fixed, modal over the app's
@@ -99,6 +102,15 @@ impl WindowOptions {
 
     pub fn min_size(mut self, width: f32, height: f32) -> Self {
         self.min_size = Some((width, height));
+        self
+    }
+
+    /// Opens over another program's window (see [`Self::foreign_parent`]),
+    /// given as a portal gives it (`wayland:HANDLE`, or the handle
+    /// alone); nothing if empty.
+    pub fn foreign_parent(mut self, handle: impl Into<String>) -> Self {
+        let handle = handle.into();
+        self.foreign_parent = Some(handle.strip_prefix("wayland:").map(str::to_owned).unwrap_or(handle)).filter(|h| !h.is_empty());
         self
     }
 }
@@ -227,6 +239,7 @@ pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, bu
             window_background: if options.layer.is_some() && !options.panel { gpui::WindowBackgroundAppearance::Transparent } else { gpui::WindowBackgroundAppearance::Opaque },
             layer_shell: options.layer.clone(),
             dialog: options.dialog,
+            foreign_parent: options.foreign_parent.clone(),
             is_resizable: !options.fixed,
             focus: options.layer.as_ref().is_none_or(|l| l.keyboard != gpui::LayerKeyboard::None),
             ..Default::default()

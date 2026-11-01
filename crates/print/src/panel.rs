@@ -3,15 +3,23 @@
 //! copies, which pages, on what paper. The printers are asked for on a
 //! worker; until they come the choice is a PDF.
 
+#[cfg(feature = "egui")]
 use std::sync::{Arc, Mutex};
 
+#[cfg(feature = "egui")]
 use olo_kit::{
     egui::{self, Key, Rect, Ui, pos2, vec2},
     metrics as m, style,
     widgets::{Button, MenuField, TextControl},
 };
 
-use crate::{PAPERS, Paper, ipp::Printer, local_paper};
+#[cfg(feature = "egui")]
+use crate::{PAPERS, ipp::Printer, local_paper};
+use crate::Paper;
+
+/// The panel on Olo's GPUI (the `gpui` feature).
+#[cfg(feature = "gpui")]
+pub mod view;
 
 /// The panel's size (points), for its window.
 pub const SIZE: (u32, u32) = (380, 196);
@@ -29,8 +37,10 @@ pub struct Choice {
 
 /// The printers and the default one, once the worker has them (or why
 /// not).
+#[cfg(feature = "egui")]
 type Found = Option<Result<(Vec<Printer>, Option<String>), String>>;
 
+#[cfg(feature = "egui")]
 pub struct PrintPanel {
     found: Arc<Mutex<Found>>,
     /// The printers have been asked for (on the first frame).
@@ -48,12 +58,14 @@ pub struct PrintPanel {
     pub page_count: Option<u32>,
 }
 
+#[cfg(feature = "egui")]
 impl Default for PrintPanel {
     fn default() -> Self {
         PrintPanel::new()
     }
 }
 
+#[cfg(feature = "egui")]
 impl PrintPanel {
     /// A panel; it asks CUPS for the printers when it first shows.
     pub fn new() -> PrintPanel {

@@ -2614,5 +2614,11 @@
   "title": "Notifications on GPUI",
   "caption": "Notifications, banners and History, now on Olo's GPUI: the same cards, groups, stop signs, balloons and reply fields, with words kept on a row when they fit (spaces hang past the edge, as egui and typesetters wrap), the generic application icon for apps without one in banners and History alike, and an exact gap after an error's stop sign. 61 MB against egui's 153 with four banners; History scrolls 200 notes at 1.3\u20131.8 ms a frame.",
   "image": "2026-11-01/052233-notifications-on-gpui.png"
+ },
+ {
+  "time": "2026-11-01T06:15:27",
+  "title": "The share picker on GPUI",
+  "caption": "olo-portal's dialogs move to the GPUI kit: the share picker (live thumbnails in the kit's new ThumbnailPicker), permission, wallpaper, shortcuts and Open With questions, and the file and Print panels, each over the asking app's window by xdg-foreign. Its thumbnails no longer pile up in the GPU's atlas; a permission dialog opens in ~8 ms.",
+  "image": "2026-11-01/061527-the-share-picker-on-gpui.png"
  }
 ]

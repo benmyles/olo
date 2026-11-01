@@ -113,6 +113,9 @@ pub struct WaylandWindowState {
     /// after an app_server restart would name that).
     fractional_scale: Option<wp_fractional_scale_v1::WpFractionalScaleV1>,
     dialog: Option<wayland_protocols::xdg::dialog::v1::client::xdg_dialog_v1::XdgDialogV1>,
+    /// Olo: the other program's window it's over (xdg-foreign), let go
+    /// with it.
+    imported: Option<wayland_protocols::xdg::foreign::zv2::client::zxdg_imported_v2::ZxdgImportedV2>,
     /// A window's role (None for a popup, which has `popup`).
     toplevel: Option<xdg_toplevel::XdgToplevel>,
     popup: Option<xdg_popup::XdgPopup>,
@@ -266,6 +269,7 @@ impl WaylandWindowState {
             inhibitor: None,
             fractional_scale: None,
             dialog: None,
+            imported: None,
             toplevel,
             popup,
             viewport,
@@ -372,6 +376,15 @@ pub enum ImeInput {
 impl Drop for WaylandWindow {
     fn drop(&mut self) {
         self.0.frames.closed.set(true);
+        // Olo: what the window's callbacks hold (its views, through
+        // GPUI's handlers and an app's close-from-its-tab) goes with it,
+        // not once the task below runs: nothing may come after that to
+        // release them (a dialog's view, answering no as it goes, didn't
+        // until the next event). The close callback that task runs stays.
+        if let Ok(mut callbacks) = self.0.callbacks.try_borrow_mut() {
+            let close = callbacks.close.take();
+            *callbacks = Callbacks { close, ..Callbacks::default() };
+        }
         let mut state = self.0.state.borrow_mut();
         let surface_id = state.surface.id();
         let client = state.client.clone();
@@ -382,6 +395,9 @@ impl Drop for WaylandWindow {
         }
         if let Some(dialog) = state.dialog.take() {
             dialog.destroy();
+        }
+        if let Some(imported) = state.imported.take() {
+            imported.destroy();
         }
         if let Some(scale) = state.fractional_scale.take() {
             scale.destroy();
@@ -484,6 +500,7 @@ impl WaylandWindow {
             .wm_base
             .get_xdg_surface(&surface, &globals.qh, surface.id());
         let mut dialog_object = None;
+        let mut imported = None;
         let (toplevel, popup) = match (params.kind, popup_parent) {
             (kind @ (WindowKind::Popup { .. } | WindowKind::Tip { .. }), Some((parent_surface, serial))) => {
                 // Olo: a tip, below what it tells about (a gap away), or
@@ -554,7 +571,14 @@ impl WaylandWindow {
             }
             _ => {
                 let toplevel = xdg_surface.get_toplevel(&globals.qh, surface.id());
-                if params.kind == WindowKind::Floating || params.dialog.is_some() {
+                // Olo: over another program's window (by the handle it
+                // exported: a portal's dialog over the app asking), or
+                // over ours.
+                if let (Some(handle), Some(importer)) = (params.foreign_parent.as_deref().filter(|h| !h.is_empty()), &globals.xdg_importer) {
+                    let i = importer.import_toplevel(handle.to_owned(), &globals.qh, ());
+                    i.set_parent_of(&surface);
+                    imported = Some(i);
+                } else if params.kind == WindowKind::Floating || params.dialog.is_some() {
                     toplevel.set_parent(parent.as_ref());
                 }
                 if let Some(size) = params.window_min_size {
@@ -582,7 +606,10 @@ impl WaylandWindow {
         };
 
         let made = Self::finish(handle, globals, gpu_context, client, params, appearance, loop_handle, signal, surface, Some(xdg_surface), None, toplevel, popup, (scale, displays))?;
-        made.0.0.state.borrow_mut().dialog = dialog_object;
+        let mut state = made.0.0.state.borrow_mut();
+        state.dialog = dialog_object;
+        state.imported = imported;
+        drop(state);
         Ok(made)
     }
 

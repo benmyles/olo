@@ -297,7 +297,13 @@ as they land (with the commit), add new ones as they come up.
      History open, a banner in ~9 ms against 14–30 (the first, with the
      GPU device, 46 against 30), the History in 16 ms against 30,
      scrolling 200 notes 1.3–1.8 ms a frame against 3–5, nothing idle).
-     Next: the portal,
+     The portal (its picker, permission, wallpaper, shortcuts and Open
+     With dialogs, file and Print panels; with xdg-foreign parents, the
+     GPUI kit's `ThumbnailPicker` and olo-print's GPUI panel; on release
+     at 2×: a permission dialog in 7–13 ms against 17–34, 61 MB after ten
+     of them against 91 and growing, 191 MB with the picker open against
+     210 and 97–120 after against 172; the picker's thumbnails no longer
+     fill the GPU's atlas). Next:
      Agent Screens, StyledEdit, Activity Monitor, Tracker, Passwords,
      Preferences (with the screen saver and its modules) and Terminal.
      (`olo-preview`'s decoding no longer needs a toolkit: pictures are
@@ -338,6 +344,11 @@ as they land (with the commit), add new ones as they come up.
      tile (two locked maps) every frame; a shaped line could keep them,
      for its origin's subpixel phase, scale and rendering (the atlas's
      generation checked), and paint as a copy.
+- **A window on another workspace has a blank thumbnail in the share
+  picker** (found porting the portal, 2026-11-01; egui's the same): its
+  capture never answers while it isn't shown. app_server could draw it
+  from its last buffer (as a minimized window's Exposé picture), so it
+  can be chosen by what it looks like.
 - **Text and everything drawn, better than Apple's** (Ben, 2026-10-31):
   "make sure our text system is SOTA -- rivalling apple's or anything
   else out there. perfect looking, adorably beautiful text is essential";

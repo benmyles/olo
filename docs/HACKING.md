@@ -1900,6 +1900,30 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   than pushing that word down a row, as typesetters, CSS and egui wrap
   ("…with Ann at" fits when "at" does); leading spaces still count. The
   multi-line field keeps its caret at the edge among hanging spaces.
+- `WindowOptions::foreign_parent(handle)` (xdg-foreign): a window over
+  another program's (a portal's dialog over the app asking; `wayland:`
+  stripped, nothing if empty). `file_panel::window_options(title)` and
+  `show_in(cx, options, panel, on_done)` open a file panel so;
+  olo-print's `panel::view::show(cx, options, pages, on_done)` the Print
+  panel.
+- `widgets::ThumbnailPicker::new(id, thumbnails, selected)` (pictures
+  to pick one from, wrapping in `width`, labelled under each, the chosen
+  one on a `style::selection_plate`; a click chooses, a double click
+  opens, the arrows move it; `RadioButton`s to agents; `height_for`
+  sizes it) with `Thumbnail { picture, color, label }` (a picture made at
+  the well's device size). `Cell::icon_text(window, cx, icon, fallback,
+  text)`: a list cell's 16-point icon and name, which names its row.
+  `image_view::from_bgra` makes a picture of pixels in GPUI's own order
+  (a captured frame). A `TextControl` whose field is disabled
+  (`TextField::set_enabled(false)`) is drawn faded, label and well, and
+  takes no click. `paragraph` says its text to agents.
+- Pictures (`RenderImage`s) stay in the GPU's atlas until dropped
+  (`cx.drop_image(image, None)`): drop one replaced (a thumbnail that
+  refreshes) and those a view keeps when it goes (`cx.on_release`).
+- A closed window lets go of its callbacks (and the views they hold) as
+  it drops, not once the platform's tidying task runs: a view that
+  answers something as it's released (a portal dialog cancelled) does
+  so at once.
 - What agents read of a window that isn't showing (on another
   workspace, minimized, covered) is as it is now, not as last drawn: it
   draws only when it shows, so the agent socket has each window draw
@@ -4162,8 +4186,16 @@ olo.portal`) and routes ScreenCast (and the others below) to it in `olo-portals.
 runs out of app_server on purpose: a share outlives an app_server reload
 (the stream's capture reconnects, `stream::reconnect`; the app sees a
 pause of a fraction of a second), libpipewire stays out of the
-compositor, and the kit holds off re-executing it after an upgrade while
-it shares (`App::busy`).
+compositor, and an upgrade waits while it shares or asks
+(`olo_ui::upgrade_waits_while`).
+
+Its dialogs are on the GPUI kit, each over the window of the app that
+asked (`WindowOptions::foreign_parent`, xdg-foreign: the handle the app
+exported), each its own view answering its request once (`ui::Answer`):
+a dialog that goes without an answer (closed from its tab, cancelled by
+the app through its `Request`, which closes the window) answers no as
+its view is released. The `Portal` entity keeps each dialog's window by
+its request, for the app's Cancel and for holding an upgrade off.
 
 - **D-Bus** (`portal.rs`): CreateSession serves an
   `impl.portal.Session` at the handle the portal chose (Close drops its
@@ -4178,8 +4210,8 @@ it shares (`App::busy`).
   PipeWire node, size, connector or `window:ID` (`id`) and, for a
   screen, its position. Screens and windows (`AvailableSourceTypes` 3);
   the picker offers what the app asked for (`types`).
-- **The picker** (`picker.rs`): a fixed kit dialog over the asking
-  window (`foreign_parent`): who asks (from the app id; "An app" when the
+- **The picker** (`picker.rs`): a fixed dialog over the asking
+  window: who asks (from the app id; "An app" when the
   portal can't tell, as for unsandboxed apps), the screens and the
   windows (not minimized; under Screens and Windows headings when both
   are offered, the windows scrolling past two rows) as `ThumbnailPicker`s
@@ -4191,7 +4223,12 @@ it shares (`App::busy`).
   two; app_server answers when it changed), and shrinks it to the well's
   size in device pixels for the scale it is drawn at, only ever from a
   whole frame (`Capture::frame_size`: not a buffer allocated for a new
-  size that waits for its first, which is uninitialised memory).
+  size that waits for its first, which is uninitialised memory), read
+  into one buffer reused for every frame (the worker's heap is given
+  back as it ends, `malloc_trim`: a screen's frame is 16 MB). Each
+  thumbnail replaced leaves the GPU's atlas (`cx.drop_image`), and the
+  last ones as the picker goes: two a second otherwise filled it, 325 MB
+  after ten seconds.
 - **The stream** (`stream.rs`): one thread per share runs PipeWire's
   loop with app_server's connection as one of its sources. The node is
   its own driver offering BGRx at the screen's size, up to 60 frames a
@@ -4263,8 +4300,9 @@ it shares (`App::busy`).
   body, its choices (a checkbox for a yes/no, a pop-up menu for several)
   and its deny and grant buttons (Escape denies).
 - **Open and Save** (`files.rs`): the FileChooser portal's OpenFile,
-  SaveFile and SaveFiles as the kit's file panel (`file_panel`) in a
-  window over the asking one, titled as the app asks, starting in its
+  SaveFile and SaveFiles as the GPUI kit's file panel
+  (`file_panel::show_in`, in `file_panel::window_options` over the
+  asking window), titled as the app asks, starting in its
   `current_folder` (a save's `current_file`'s), proposing its
   `current_name`. The app's filters (globs and MIME types; `current_filter`
   shown first, or added) are the panel's Show pop-up, `multiple` lets it
@@ -4325,7 +4363,8 @@ it shares (`App::busy`).
   `olo_xdg::open`; a link can't carry files, so attachments are shown in
   Tracker, to drag in.
 - **Print** (`print.rs`): PreparePrint shows Olo's Print panel
-  (`olo_print::panel`, over the asking window) and answers with GTK's
+  (`olo_print::panel::view`, the `gpui` feature's, over the asking
+  window; StyledEdit, still on egui, takes the `egui` feature's) and answers with GTK's
   print settings (printer, `n-copies`, `page-ranges` counted from 0, or
   `output-file-format` pdf) and page setup (the paper in millimetres,
   its PWG name) and a token; Print takes the program's document from

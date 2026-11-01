@@ -1,8 +1,9 @@
 //! olo-portal: Olo's xdg-desktop-portal backend (screen sharing first).
 //! It serves `org.freedesktop.impl.portal.desktop.olo` on the session bus
-//! (`portal.rs`), asks the person what to share in a kit dialog
-//! (`picker.rs`), and shares screens as PipeWire streams (`stream.rs`)
-//! of frames app_server draws into its buffers (`capture.rs`).
+//! (`portal.rs`), asks the person what to share in a dialog of the GPUI
+//! kit (`picker.rs`), and shares screens as PipeWire streams
+//! (`stream.rs`) of frames app_server draws into its buffers
+//! (`capture.rs`).
 //!
 //! ```text
 //! olo-portal --service            the session's backend (started by olo-session)
@@ -21,11 +22,10 @@
 //! olo-portal --stop SESSION       end a share (Deskbar's Stop Sharing)
 //! ```
 
-use std::collections::HashMap;
-
-use olo_kit::{
-    App, Cx, WindowId, WindowOptions, egui,
-    file_panel::{FilePanel, PANEL_SIZE, PanelResult},
+use olo_ui::{
+    Frame,
+    file_panel::{self, FilePanel, PanelResult},
+    gpui::{AnyWindowHandle, App, AppContext as _, Context, Entity, WeakEntity, WindowHandle},
     instance,
 };
 
@@ -43,7 +43,9 @@ mod portal;
 mod print;
 mod shortcuts;
 mod shot;
+mod pictures;
 mod stream;
+mod ui;
 mod wallpaper;
 
 const APP_ID: &str = "olo.portal";
@@ -126,21 +128,12 @@ pub fn app_name(app_id: &str) -> String {
 }
 
 struct Portal {
-    pickers: HashMap<WindowId, picker::Picker>,
-    /// Permission dialogs (the Access portal).
-    dialogs: HashMap<WindowId, access::Dialog>,
-    /// Open and Save panels (the FileChooser portal), and who to answer.
-    panels: HashMap<WindowId, (FilePanel, files::Ask)>,
-    /// Open With choosers (the AppChooser portal).
-    choosers: HashMap<WindowId, chooser::Dialog>,
-    /// "Set as Desktop Background?" (the Wallpaper portal).
-    wallpapers: HashMap<WindowId, wallpaper::Dialog>,
-    /// "Allow Keyboard Shortcuts?" (the GlobalShortcuts portal).
-    keys: HashMap<WindowId, shortcuts::Dialog>,
-    /// Print panels (the Print portal), and who to answer.
-    prints: HashMap<WindowId, (olo_print::panel::PrintPanel, print::Ask)>,
-    /// Thumbnails come before their window has drawn: kept until it does.
-    thumbs: Vec<picker::Thumb>,
+    /// The dialogs open, by the request each answers (so the app can
+    /// cancel it): pickers, permission questions, file and print panels,
+    /// choosers.
+    open: Vec<(String, AnyWindowHandle)>,
+    /// Open With choosers, to give the apps offered as they change.
+    choosers: Vec<WeakEntity<chooser::Dialog>>,
     /// The bus, once served (to end sessions from here).
     bus: std::sync::Arc<std::sync::Mutex<Option<zbus::blocking::Connection>>>,
 }
@@ -151,40 +144,20 @@ impl Portal {
         let Some(conn) = self.bus.lock().unwrap().clone() else { return };
         let _ = std::thread::Builder::new().name("portal-end".into()).spawn(move || portal::end(&conn, &session));
     }
-}
 
-impl Portal {
-    fn close(&mut self, cx: &mut Cx, win: WindowId, answer: Option<Vec<String>>) {
-        if let Some(p) = self.pickers.remove(&win) {
-            p.answer(answer);
+    fn opened(&mut self, request: &str, win: Option<WindowHandle<Frame>>) {
+        if let Some(w) = win {
+            self.open.push((request.to_owned(), w.into()));
         }
-        cx.close_window(win);
     }
 
-    /// Answer a file panel's app with `paths` (none: cancelled), the
-    /// filter shown and the choices made.
-    fn close_panel(&mut self, cx: &mut Cx, win: WindowId, paths: Option<Vec<std::path::PathBuf>>) {
-        if let Some((panel, ask)) = self.panels.remove(&win) {
-            let chosen = paths.map(|paths| files::Chosen {
-                paths,
-                filter: panel.filter(),
-                choices: panel.choices_made().iter().map(|ch| (ch.id.clone(), ch.value.clone())).collect(),
-            });
-            let _ = ask.reply.try_send(chosen);
-        }
-        cx.close_window(win);
-    }
-
-    /// Answer a Print panel's app with the choice (None: cancelled).
-    fn close_print(&mut self, cx: &mut Cx, win: WindowId, choice: Option<olo_print::panel::Choice>) {
-        if let Some((_, ask)) = self.prints.remove(&win) {
-            let _ = ask.reply.try_send(choice);
-        }
-        cx.close_window(win);
+    /// Sharing (or asking to): an upgrade would cut it off, so it waits.
+    fn busy(&self, cx: &App) -> bool {
+        stream::live() > 0 || self.open.iter().any(|(_, w)| cx.windows().contains(w))
     }
 
     /// Open a file panel for another program (the FileChooser portal).
-    fn open_panel(&mut self, cx: &mut Cx, ask: files::Ask) {
+    fn open_panel(&mut self, cx: &mut Context<Self>, ask: files::Ask) {
         let dir = ask.folder.clone().filter(|d| d.is_dir()).unwrap_or_else(|| std::env::var_os("HOME").map_or_else(|| "/".into(), Into::into));
         let (default, mut panel) = match ask.purpose {
             files::Purpose::Open if ask.multiple => ("Open", FilePanel::open(dir).multiple()),
@@ -195,123 +168,22 @@ impl Portal {
         };
         panel = panel.filters(ask.filters.clone(), ask.current).choices(ask.choices.clone());
         let title = if ask.title.is_empty() { default.to_owned() } else { ask.title.clone() };
-        let mut options = WindowOptions { dialog: true, ..WindowOptions::new(title, PANEL_SIZE.0, PANEL_SIZE.1).min_size(420, 300) };
-        if !ask.parent.is_empty() {
-            options = options.foreign_parent(ask.parent.clone());
-        }
-        let win = cx.open_window(options);
-        cx.activate(win);
-        self.panels.insert(win, (panel, ask));
+        let options = ui::over(file_panel::window_options(title), &ask.parent);
+        let request = ask.request.clone();
+        // (Answered once; closed from its tab, it says Cancelled.)
+        let mut answer = ui::Answer::new(ask.reply, None);
+        let win = file_panel::show_in(cx, options, panel, move |a, _| {
+            let paths = match a.result {
+                PanelResult::Chosen(p) => Some(vec![p]),
+                PanelResult::Several(ps) => Some(ps),
+                PanelResult::Cancelled => None,
+            };
+            answer.give(paths.map(|paths| files::Chosen { paths, filter: a.filter, choices: a.choices.iter().map(|ch| (ch.id.clone(), ch.value.clone())).collect() }));
+        });
+        self.opened(&request, win);
     }
 
-    fn close_keys(&mut self, cx: &mut Cx, win: WindowId, yes: bool) {
-        if let Some(d) = self.keys.remove(&win) {
-            d.answer(yes);
-        }
-        cx.close_window(win);
-    }
-
-    fn close_wallpaper(&mut self, cx: &mut Cx, win: WindowId, yes: bool) {
-        if let Some(d) = self.wallpapers.remove(&win) {
-            d.answer(yes);
-        }
-        cx.close_window(win);
-    }
-
-    fn close_chooser(&mut self, cx: &mut Cx, win: WindowId, chosen: Option<String>) {
-        if let Some(d) = self.choosers.remove(&win) {
-            d.answer(chosen);
-        }
-        cx.close_window(win);
-    }
-
-    fn close_dialog(&mut self, cx: &mut Cx, win: WindowId, granted: bool) {
-        if let Some(d) = self.dialogs.remove(&win) {
-            d.answer(granted);
-        }
-        cx.close_window(win);
-    }
-}
-
-impl App for Portal {
-    fn ui(&mut self, cx: &mut Cx, win: WindowId, ui: &mut egui::Ui) {
-        if let Some((panel, _)) = self.prints.get_mut(&win) {
-            if let Some(choice) = panel.ui(ui) {
-                self.close_print(cx, win, choice);
-            }
-            return;
-        }
-        if let Some((panel, _)) = self.panels.get_mut(&win) {
-            if let Some(r) = panel.ui(ui) {
-                self.close_panel(cx, win, match r {
-                    PanelResult::Chosen(p) => Some(vec![p]),
-                    PanelResult::Several(ps) => Some(ps),
-                    PanelResult::Cancelled => None,
-                });
-            }
-            return;
-        }
-        if let Some(d) = self.wallpapers.get_mut(&win) {
-            if let Some(yes) = d.ui(ui) {
-                self.close_wallpaper(cx, win, yes);
-            }
-            return;
-        }
-        if let Some(d) = self.keys.get_mut(&win) {
-            if let Some(yes) = d.ui(ui) {
-                self.close_keys(cx, win, yes);
-            }
-            return;
-        }
-        if let Some(d) = self.choosers.get_mut(&win) {
-            if let Some(chosen) = d.ui(ui, win) {
-                self.close_chooser(cx, win, chosen);
-            }
-            return;
-        }
-        if let Some(d) = self.dialogs.get_mut(&win) {
-            if let Some(granted) = d.ui(ui, win) {
-                self.close_dialog(cx, win, granted);
-            }
-            return;
-        }
-        let Some(p) = self.pickers.get_mut(&win) else { return };
-        for t in std::mem::take(&mut self.thumbs) {
-            if t.window == win {
-                p.thumb(ui.ctx(), t);
-            } else {
-                self.thumbs.push(t);
-            }
-        }
-        if let Some(answer) = p.ui(ui) {
-            self.close(cx, win, answer);
-        }
-    }
-
-    fn close_requested(&mut self, cx: &mut Cx, win: WindowId) {
-        if self.prints.contains_key(&win) {
-            self.close_print(cx, win, None);
-        } else if self.panels.contains_key(&win) {
-            self.close_panel(cx, win, None);
-        } else if self.dialogs.contains_key(&win) {
-            self.close_dialog(cx, win, false);
-        } else if self.choosers.contains_key(&win) {
-            self.close_chooser(cx, win, None);
-        } else if self.wallpapers.contains_key(&win) {
-            self.close_wallpaper(cx, win, false);
-        } else if self.keys.contains_key(&win) {
-            self.close_keys(cx, win, false);
-        } else {
-            self.close(cx, win, None);
-        }
-    }
-
-    /// Sharing (or asking to): an upgrade would cut it off, so it waits.
-    fn busy(&self) -> bool {
-        stream::live() > 0 || !self.pickers.is_empty() || !self.dialogs.is_empty() || !self.panels.is_empty() || !self.choosers.is_empty() || !self.wallpapers.is_empty() || !self.keys.is_empty() || !self.prints.is_empty()
-    }
-
-    fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
+    fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
         let message = match message.downcast::<instance::Launch>() {
             // `olo-portal --stop SESSION` (Deskbar's Stop Sharing); any
             // other second start: we are already serving the session.
@@ -325,16 +197,11 @@ impl App for Portal {
             }
             Err(other) => other,
         };
-        let message = match message.downcast::<picker::Thumb>() {
-            Ok(t) => {
-                let win = t.window;
-                self.thumbs.push(*t);
-                cx.redraw(win);
-                return;
-            }
-            Err(other) => other,
-        };
         let Ok(m) = message.downcast::<portal::ToUi>() else { return };
+        // (Those closed since go from the list.)
+        let live = cx.windows();
+        self.open.retain(|(_, w)| live.contains(w));
+        self.choosers.retain(|c| c.upgrade().is_some());
         match *m {
             portal::ToUi::Pick(ask) => {
                 let (mut screens, mut windows) = (Vec::new(), Vec::new());
@@ -342,71 +209,55 @@ impl App for Portal {
                     let item = picker::Item { key: s.key, label: s.label, size: s.size, source: s.source };
                     if s.window { windows.push(item) } else { screens.push(item) }
                 }
-                let (win, p) = picker::Picker::open(cx, ask, screens, windows);
-                self.pickers.insert(win, p);
+                let request = ask.request.clone();
+                let win = picker::open(cx, ask, screens, windows);
+                self.opened(&request, win);
             }
             portal::ToUi::Ended => {}
             portal::ToUi::Lost(session) => self.end(session),
             portal::ToUi::Files(ask) => self.open_panel(cx, ask),
             portal::ToUi::Shortcuts(ask) => {
-                let (win, d) = shortcuts::Dialog::open(cx, ask);
-                self.keys.insert(win, d);
+                let request = ask.request.clone();
+                let win = shortcuts::open(cx, ask);
+                self.opened(&request, win);
             }
             portal::ToUi::Wallpaper(ask) => {
-                let (win, d) = wallpaper::Dialog::open(cx, ask);
-                self.wallpapers.insert(win, d);
+                let request = ask.request.clone();
+                let win = wallpaper::open(cx, ask);
+                self.opened(&request, win);
             }
             portal::ToUi::Choose(ask) => {
-                let (win, d) = chooser::Dialog::open(cx, ask);
-                self.choosers.insert(win, d);
+                let request = ask.request.clone();
+                if let Some((win, view)) = chooser::open(cx, ask) {
+                    self.opened(&request, Some(win));
+                    self.choosers.push(view);
+                }
             }
             portal::ToUi::Offers(request, offers) => {
-                if let Some((win, d)) = self.choosers.iter_mut().find(|(_, d)| d.request() == request) {
-                    d.offer(offers);
-                    cx.redraw(*win);
+                let found: Option<Entity<chooser::Dialog>> = self.choosers.iter().filter_map(|c| c.upgrade()).find(|c| c.read(cx).request() == request);
+                if let Some(c) = found {
+                    c.update(cx, |d, cx| d.offer(offers, cx));
                 }
             }
             portal::ToUi::Access(ask) => {
-                let (win, d) = access::Dialog::open(cx, ask);
-                self.dialogs.insert(win, d);
+                let request = ask.request.clone();
+                let win = access::open(cx, ask);
+                self.opened(&request, win);
             }
             portal::ToUi::Print(ask) => {
-                let mut options = WindowOptions { dialog: true, ..WindowOptions::new(if ask.title.is_empty() { "Print".to_owned() } else { format!("Print “{}”", ask.title) }, olo_print::panel::SIZE.0, olo_print::panel::SIZE.1) };
-                if !ask.parent.is_empty() {
-                    options = options.foreign_parent(ask.parent.clone());
-                }
-                let win = cx.open_window(options);
-                cx.activate(win);
-                self.prints.insert(win, (olo_print::panel::PrintPanel::new(), ask));
+                let title = if ask.title.is_empty() { "Print".to_owned() } else { format!("Print “{}”", ask.title) };
+                let options = ui::over(olo_print::panel::view::window_options(title), &ask.parent);
+                let request = ask.request.clone();
+                let mut answer = ui::Answer::new(ask.reply, None);
+                let win = olo_print::panel::view::show(cx, options, None, move |choice, _| answer.give(choice));
+                self.opened(&request, win);
             }
             portal::ToUi::Cancel(request) => {
-                let wins: Vec<WindowId> = self.prints.iter().filter(|(_, (_, a))| a.request == request).map(|(w, _)| *w).collect();
-                for win in wins {
-                    self.close_print(cx, win, None);
-                }
-                let wins: Vec<WindowId> = self.pickers.iter().filter(|(_, p)| p.request() == request).map(|(w, _)| *w).collect();
-                for win in wins {
-                    self.close(cx, win, None);
-                }
-                let wins: Vec<WindowId> = self.dialogs.iter().filter(|(_, d)| d.request() == request).map(|(w, _)| *w).collect();
-                for win in wins {
-                    self.close_dialog(cx, win, false);
-                }
-                let wins: Vec<WindowId> = self.panels.iter().filter(|(_, (_, a))| a.request == request).map(|(w, _)| *w).collect();
-                for win in wins {
-                    self.close_panel(cx, win, None);
-                }
-                let wins: Vec<WindowId> = self.choosers.iter().filter(|(_, d)| d.request() == request).map(|(w, _)| *w).collect();
-                for win in wins {
-                    self.close_chooser(cx, win, None);
-                }
-                let wins: Vec<WindowId> = self.wallpapers.iter().filter(|(_, d)| d.request() == request).map(|(w, _)| *w).collect();
-                for win in wins {
-                    self.close_wallpaper(cx, win, false);
-                }
-                let wins: Vec<WindowId> = self.keys.iter().filter(|(_, d)| d.request() == request).map(|(w, _)| *w).collect();
-                for win in wins {
-                    self.close_keys(cx, win, false);
+                // Closed, each answers no as it goes.
+                let wins: Vec<AnyWindowHandle> = self.open.iter().filter(|(r, _)| *r == request).map(|(_, w)| *w).collect();
+                self.open.retain(|(r, _)| *r != request);
+                for w in wins {
+                    cx.defer(move |cx| cx.close_window(w));
                 }
             }
         }
@@ -498,11 +349,11 @@ fn main() -> std::process::ExitCode {
     if address.is_none() && instance::forward(APP_ID, &args) {
         return std::process::ExitCode::SUCCESS;
     }
-    olo_kit::run(APP_ID, move |cx| {
-        cx.stay_resident();
+    olo_ui::run(APP_ID, move |cx| {
+        olo_ui::stay_resident(cx);
         // (`--stop` comes this way, in a test's session too.)
-        instance::listen(APP_ID, cx.proxy());
-        let proxy = cx.proxy();
+        instance::listen(APP_ID, olo_ui::proxy(cx));
+        let proxy = olo_ui::proxy(cx);
         let bus = std::sync::Arc::new(std::sync::Mutex::new(None));
         let slot = bus.clone();
         std::thread::Builder::new()
@@ -524,7 +375,11 @@ fn main() -> std::process::ExitCode {
                 }
             })
             .expect("thread");
-        Portal { pickers: HashMap::new(), dialogs: HashMap::new(), panels: HashMap::new(), choosers: HashMap::new(), wallpapers: HashMap::new(), keys: HashMap::new(), prints: HashMap::new(), thumbs: Vec::new(), bus }
+        let portal = cx.new(|_| Portal { open: Vec::new(), choosers: Vec::new(), bus });
+        let messages = portal.clone();
+        olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |p, cx| p.message(message, cx)));
+        let busy = portal.clone();
+        olo_ui::upgrade_waits_while(cx, move |cx| busy.read(cx).busy(cx));
     });
     std::process::ExitCode::SUCCESS
 }

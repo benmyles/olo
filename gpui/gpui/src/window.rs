@@ -1037,6 +1037,7 @@ impl Window {
             toplevel_tag,
             layer_shell,
             dialog,
+            foreign_parent,
             session_lock_output,
         } = options;
 
@@ -1061,6 +1062,7 @@ impl Window {
                 toplevel_tag,
                 layer_shell,
                 dialog,
+                foreign_parent,
                 session_lock_output,
                 background: window_background,
                 decorations: window_decorations.unwrap_or(WindowDecorations::Server),

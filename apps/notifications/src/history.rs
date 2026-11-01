@@ -392,6 +392,9 @@ struct LaidKey {
     palette: std::sync::Arc<olo_theme::Palette>,
 }
 
+/// What takes a click where, as last drawn (later ones on top).
+type Hits = Rc<RefCell<Vec<(Bounds<Pixels>, Hit)>>>;
+
 pub struct HistoryWindow {
     app: Entity<Notifications>,
     search: Entity<TextField>,
@@ -401,7 +404,7 @@ pub struct HistoryWindow {
     cards: HashMap<u32, (CardKey, CardLaid)>,
     /// Where things were drawn in the last frame, in the list's own
     /// coordinates; later ones on top.
-    hits: Rc<RefCell<Vec<(Bounds<Pixels>, Hit)>>>,
+    hits: Hits,
     /// What the pointer is over.
     hover: Option<Hit>,
     /// Where each card was placed (the arrow keys go by it), by entry.

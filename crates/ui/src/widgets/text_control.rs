@@ -44,7 +44,9 @@ impl RenderOnce for TextControl {
         let font = style::ui_font(FontWeight::NORMAL);
         let divider = self.label.as_ref().map(|l| self.divider.unwrap_or_else(|| f32::from(style::text_width(window, l.clone(), style::PLAIN_SIZE, font.clone())).ceil() + m::LABEL_GAP));
         let focused = self.field.read(cx).is_focused(window);
-        let enabled = true;
+        // A field that can't be used (`TextField::set_enabled(false)`):
+        // its label and well faded, as the egui kit's.
+        let enabled = self.field.read(cx).enabled();
         let label = self.label.clone();
         let mut row = div().relative().h(px(m::CONTROL_HEIGHT)).flex_shrink_0();
         row = match self.width {
@@ -58,7 +60,7 @@ impl RenderOnce for TextControl {
                 let p = theme::palette(cx);
                 let fill = if enabled { style::c(p.document_background) } else { style::c(p.panel_background) };
                 style::fill_rect(window, style::inset(window, b, 2.0), fill);
-                style::sunken(window, b, &p, focused);
+                window.with_element_opacity((!enabled).then_some(super::control::DISABLED_OPACITY), |window| style::sunken(window, b, &p, focused));
             },
         )
         .absolute()
@@ -68,7 +70,8 @@ impl RenderOnce for TextControl {
             move |b, _, window, cx| {
                 if let Some(l) = &label {
                     let p = theme::palette(cx);
-                    style::label(window, cx, b.left(), b.center().y, style::Align::Left, l.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::c(p.panel_text));
+                    let ink = if enabled { style::c(p.panel_text) } else { style::disabled_text(&p) };
+                    style::label(window, cx, b.left(), b.center().y, style::Align::Left, l.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), ink);
                 }
             },
         )
@@ -83,8 +86,10 @@ impl RenderOnce for TextControl {
                 .top(px(0.0))
                 .bottom(px(0.0))
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                    let handle = gpui::Focusable::focus_handle(&field, cx);
-                    window.focus(&handle);
+                    if field.read(cx).enabled() {
+                        let handle = gpui::Focusable::focus_handle(&field, cx);
+                        window.focus(&handle);
+                    }
                 })
                 .child(well)
                 .child(div().absolute().left(px(m::TEXT_INSET)).right(px(m::TEXT_INSET)).top(px(0.0)).bottom(px(0.0)).child(self.field)),

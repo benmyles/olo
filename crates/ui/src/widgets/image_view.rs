@@ -517,6 +517,12 @@ pub fn resampled(src: &dyn Rgba, (w, h): (u32, u32)) -> Option<Arc<RenderImage>>
     Some(Arc::new(RenderImage::new([image::Frame::new(image::RgbaImage::from_raw(w, h, out)?)])))
 }
 
+/// A picture from pixels already in GPUI's order, premultiplied BGRA
+/// (`w` × `h`: a captured screen's frame, opaque), to draw as it is.
+pub fn from_bgra(w: u32, h: u32, bgra: Vec<u8>) -> Option<Arc<RenderImage>> {
+    Some(Arc::new(RenderImage::new([image::Frame::new(image::RgbaImage::from_raw(w, h, bgra)?)])))
+}
+
 /// The tile at `(tx, ty)` (of [`TILE`] source pixels a side) as it is.
 fn tile(src: &dyn Rgba, (tx, ty): (usize, usize)) -> Option<Arc<RenderImage>> {
     let [sw, sh] = src.size();

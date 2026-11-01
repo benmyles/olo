@@ -11,23 +11,28 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use olo_kit::{
-    Cx, WindowId, WindowOptions,
-    egui::{self, Rect, pos2, vec2},
-    icons, metrics as m,
-    style::{self, c},
-    widgets,
+use olo_ui::{
+    Frame, WindowOptions,
+    gpui::{App, Bounds, Context, FocusHandle, InteractiveElement as _, IntoElement, ParentElement as _, Render, Styled as _, Window, WindowHandle, canvas, div, px},
+    metrics as m, style, theme,
+    widgets::{
+        AlertFrame, Button, alert,
+        alert::{ALERT_TEXT_X, alert_title, button_row, paragraph, paragraph_height},
+    },
 };
 use zbus::zvariant::{OwnedObjectPath, OwnedValue};
 
-use crate::portal::ToUi;
+use crate::{
+    portal::ToUi,
+    ui::{self, Answer},
+};
 
-const WIDTH: u32 = 400;
+const WIDTH: f32 = 400.0;
 const ICON: &str = "backgrounds";
 const TITLE: &str = "Set as Desktop Background?";
 /// The picture's box, under the question.
 const PICTURE_H: f32 = 150.0;
-const COLUMN: f32 = WIDTH as f32 - widgets::ALERT_TEXT_X - m::WINDOW_INSET;
+const COLUMN: f32 = WIDTH - ALERT_TEXT_X - m::WINDOW_INSET;
 
 /// What the dialog was asked.
 pub struct Ask {
@@ -111,61 +116,82 @@ impl Wallpaper {
 
 /// The question on screen.
 pub struct Dialog {
-    ask: Ask,
+    answer: Answer<bool>,
+    app: String,
+    picture: PathBuf,
+    focus: FocusHandle,
 }
 
-fn body(ask: &Ask) -> String {
-    let who = if ask.app.is_empty() { "An app".to_owned() } else { format!("“{}”", ask.app) };
+fn body(app: &str) -> String {
+    let who = if app.is_empty() { "An app".to_owned() } else { format!("“{app}”") };
     format!("{who} would like to make this picture your desktop background.")
 }
 
-fn height(ask: &Ask) -> u32 {
-    let text = m::LABEL_ROW + m::TIGHT + style::plain_text_height(&body(ask), COLUMN) + m::SPACING;
-    (2.0 * m::WINDOW_INSET + text + PICTURE_H + m::SPACING + m::CONTROL_HEIGHT + m::WINDOW_INSET).ceil() as u32
+fn height(cx: &App, ask: &Ask) -> f32 {
+    let text = m::LABEL_ROW + m::TIGHT + paragraph_height(cx, &body(&ask.app), COLUMN) + m::SPACING;
+    (2.0 * m::WINDOW_INSET + text + PICTURE_H + m::SPACING + m::CONTROL_HEIGHT + m::WINDOW_INSET).ceil()
+}
+
+pub fn open(cx: &mut App, ask: Ask) -> Option<WindowHandle<Frame>> {
+    let options = ui::over(WindowOptions::alert("Desktop Background", WIDTH, height(cx, &ask)), &ask.parent);
+    ui::open(cx, options, move |window, cx| {
+        let focus = cx.focus_handle();
+        window.focus(&focus);
+        Dialog { answer: Answer::new(ask.reply, false), app: ask.app, picture: ask.picture, focus }
+    })
 }
 
 impl Dialog {
-    pub fn open(cx: &mut Cx, ask: Ask) -> (WindowId, Dialog) {
-        let size = (WIDTH, height(&ask));
-        let mut options = WindowOptions { size, min_size: Some(size), max_size: Some(size), ..WindowOptions::alert("Desktop Background", "") };
-        if !ask.parent.is_empty() {
-            options = options.foreign_parent(ask.parent.clone());
-        }
-        let id = cx.open_window(options);
-        cx.activate(id);
-        (id, Dialog { ask })
+    fn finish(&mut self, yes: bool, window: &mut Window) {
+        self.answer.give(yes);
+        window.remove_window();
     }
+}
 
-    pub fn request(&self) -> &str {
-        &self.ask.request
-    }
-
-    pub fn answer(&self, yes: bool) {
-        let _ = self.ask.reply.try_send(yes);
-    }
-
-    /// Draw it; Some(yes) once answered.
-    pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<bool> {
-        let p = style::palette(ui.ctx());
-        let col = widgets::alert_frame(ui, ICON);
-        let mut y = col.top();
-        style::label(ui.painter(), col.left(), y + style::PLAIN_SIZE / 2.0 + 2.0, egui::Align::Min, TITLE, style::bold_font(), c(p.panel_text));
-        y += m::LABEL_ROW + m::TIGHT;
-        y = widgets::alert_text(ui, col, y, &body(&self.ask)) + m::SPACING;
+impl Render for Dialog {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let me = cx.entity();
         // The picture, fitted (never past a texel to a device pixel), with
         // a hairline around it.
-        let bounds = Rect::from_min_size(pos2(col.left(), y), vec2(col.width(), PICTURE_H));
-        match icons::thumbnail(ui.ctx(), &self.ask.picture, PICTURE_H.max(col.width())) {
-            Some(tex) => {
-                let at = icons::fit(ui.ctx(), &tex, bounds);
-                ui.painter().image(tex.id(), at, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), egui::Color32::WHITE);
-                ui.painter().rect_stroke(at, 0.0, egui::Stroke::new(1.0 / ui.ctx().pixels_per_point(), c(p.control_border)), egui::StrokeKind::Outside);
-                style::describe_text(ui.ctx(), egui::accesskit::Role::Image, &self.ask.picture.display().to_string(), at, None);
-            }
-            None => {
-                style::label(ui.painter(), bounds.center().x, bounds.center().y, egui::Align::Center, "", style::plain_font(), style::disabled_text(&p));
-            }
-        }
-        widgets::alert_buttons(ui, col, &["Cancel", "Set Background"], true).map(|i| i == 1)
+        let path = self.picture.clone();
+        let picture = canvas(
+            |_, _, _| {},
+            move |b, _, window, cx| {
+                let s = window.scale_factor();
+                let place = ((f32::from(b.size.width) * s).round() as u32, (PICTURE_H * s).round() as u32);
+                let Some(img) = crate::pictures::get(cx, &path, place) else { return };
+                let isz = img.size(0);
+                let at = style::snap_centred(window, b.center(), isz.width.0 as f32 / s, isz.height.0 as f32 / s);
+                let _ = window.paint_image(at, Default::default(), img, 0, false);
+                let p = theme::palette(cx);
+                let line = style::hairline(window);
+                style::frame_rect(window, Bounds::from_corners(at.origin - olo_ui::gpui::point(line, line), at.bottom_right() + olo_ui::gpui::point(line, line)), style::c(p.control_border));
+                olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Image", name: Some(path.display().to_string().into()), bounds: at, enabled: true, ..Default::default() });
+            },
+        )
+        .w_full()
+        .h(px(PICTURE_H));
+        let no = Button::new("Cancel").on_click({
+            let me = me.clone();
+            move |window, cx| me.update(cx, |d, _| d.finish(false, window))
+        });
+        let yes = Button::new("Set Background").default(true).on_click({
+            let me = me.clone();
+            move |window, cx| me.update(cx, |d, _| d.finish(true, window))
+        });
+        div()
+            .size_full()
+            .key_context(alert::CONTEXT)
+            .track_focus(&self.focus)
+            .on_action(cx.listener(|d, _: &alert::Default, window, _| d.finish(true, window)))
+            .on_action(cx.listener(|d, _: &alert::Cancel, window, _| d.finish(false, window)))
+            .child(
+                AlertFrame::new(ICON)
+                    .child(alert_title(TITLE))
+                    .child(div().mt(px(m::TIGHT)).child(paragraph(body(&self.app))))
+                    .child(div().mt(px(m::SPACING)).child(picture))
+                    .child(div().flex_1())
+                    .child(button_row().child(no).child(yes)),
+            )
     }
 }

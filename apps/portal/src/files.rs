@@ -1,6 +1,6 @@
 //! The FileChooser portal (`org.freedesktop.impl.portal.FileChooser`):
 //! other programs' Open and Save dialogs (Chrome's, Electron's, GTK 4's,
-//! Qt's through the portal) as Olo's own file panel (`olo_kit::
+//! Qt's through the portal) as Olo's own file panel (`olo_ui::
 //! file_panel`), in a window over the asking one. OpenFile opens a file
 //! (or chooses a folder, with `directory`), SaveFile saves one under the
 //! name proposed (asking before replacing), SaveFiles chooses the folder
@@ -12,7 +12,7 @@
 
 use std::{collections::HashMap, path::PathBuf};
 
-use olo_kit::file_panel::{Choice, Filter};
+use olo_ui::file_panel::{Choice, Filter};
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 
 use crate::portal::ToUi;
@@ -126,7 +126,7 @@ impl FileChooser {
 }
 
 fn answer(uris: Vec<PathBuf>, chosen: &Chosen, filters: &[PortalFilter]) -> (u32, HashMap<String, OwnedValue>) {
-    let uris: Vec<String> = uris.iter().map(|p| olo_kit::dnd::file_uri(p)).collect();
+    let uris: Vec<String> = uris.iter().map(|p| olo_ui::files::file_uri(p)).collect();
     let mut results = HashMap::from([("uris".to_owned(), OwnedValue::try_from(Value::from(uris)).expect("strings"))]);
     if !chosen.choices.is_empty() {
         results.insert("choices".into(), OwnedValue::try_from(Value::from(chosen.choices.clone())).expect("strings"));
@@ -202,6 +202,13 @@ impl FileChooser {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn paths_come_as_bytes() {
+        let options = HashMap::from([("current_folder".to_owned(), OwnedValue::try_from(Value::from(b"/home/a/Documents\0".to_vec())).unwrap())]);
+        assert_eq!(path(&options, "current_folder"), Some(PathBuf::from("/home/a/Documents")));
+        assert_eq!(path(&options, "current_file"), None);
+    }
 
     fn pf(name: &str, patterns: &[(u32, &str)]) -> PortalFilter {
         (name.into(), patterns.iter().map(|(k, p)| (*k, (*p).to_owned())).collect())

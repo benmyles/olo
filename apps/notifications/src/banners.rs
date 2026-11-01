@@ -94,6 +94,13 @@ enum Did {
     Link(String),
 }
 
+/// Where each card's body was drawn, by note (for its links).
+type Bodies = Rc<RefCell<HashMap<u32, (Point<Pixels>, look::Text)>>>;
+
+/// Whose a card is, for its group: app name, desktop entry, icon, accent,
+/// whether a website's, and where in the app it came from.
+type Whose = (String, Option<String>, Option<String>, Option<[u8; 3]>, bool, Option<String>);
+
 pub struct Banners {
     app: Entity<Notifications>,
     /// Faces measured, by card.
@@ -102,7 +109,7 @@ pub struct Banners {
     height: f32,
     keyboard: bool,
     /// Where each card's body went in the last frame (links).
-    bodies: Rc<RefCell<HashMap<u32, (Point<Pixels>, look::Text)>>>,
+    bodies: Bodies,
     /// The close box under the pointer: a card's, or (None) a group's
     /// (by its first card).
     close_hover: Option<(u32, bool)>,
@@ -191,7 +198,7 @@ impl Banners {
             });
         }
         self.faces.retain(|id, _| seen.contains(id));
-        let notes: Vec<(String, Option<String>, Option<String>, Option<[u8; 3]>, bool, Option<String>)> =
+        let notes: Vec<Whose> =
             cards.iter().map(|c| (c.note.app_name.clone(), c.note.desktop_entry.clone(), c.note.icon.clone(), c.note.look.accent, c.note.via.is_some(), c.note.look.source.clone())).collect();
         let mut n = placed.len();
         loop {

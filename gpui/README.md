@@ -225,3 +225,9 @@ What Olo changed, so far:
 - `Window::draw_if_dirty`: draws what changed without showing it (the
   next frame does). A window that isn't showing draws nothing until it
   shows, so what agents read of it would be as last drawn.
+- `WindowOptions::foreign_parent`: a toplevel over another program's
+  window, by the handle it exported (xdg-foreign v2: a portal's dialogs
+  over the app asking), the imported object let go with the window.
+- A closed Wayland window lets go of its callbacks as it drops (keeping
+  only the close callback the tidying task runs), so the views they hold
+  are released in the same frame, not after the next event.

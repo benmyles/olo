@@ -16,7 +16,7 @@ serde_json.workspace = true
 fontdb = "0.23"
 pulldown-cmark = { version = "0.13", default-features = false }
 olo-richtext.workspace = true
-olo-print.workspace = true
+olo-print = { workspace = true, features = ["egui"] }
 olo-images.workspace = true
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 libc = "0.2"

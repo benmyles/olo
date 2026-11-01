@@ -280,6 +280,7 @@ impl Text {
 }
 
 /// A title in `font`, a stop sign's room before it if `failed`.
+#[allow(clippy::too_many_arguments)]
 pub fn title(window: &mut Window, s: &str, failed: bool, size: f32, font: Font, color: Hsla, width: f32, rows: usize) -> Text {
     let runs = vec![run(s.len(), font, color)];
     if failed { lay_led(window, s.to_owned(), runs, size, width, rows, MARK_ROOM) } else { lay_runs(window, s.to_owned(), runs, size, width, rows) }

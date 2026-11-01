@@ -16,26 +16,33 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use olo_kit::{
-    Cx, WindowId, WindowOptions,
-    egui::{self, pos2},
-    metrics as m,
-    style::{self, c},
-    widgets,
-};
 use olo_protocol::shortcuts::Chord;
+use olo_ui::{
+    Frame, WindowOptions,
+    gpui::{App, Bounds, Context, FocusHandle, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Render, Styled as _, Window, WindowHandle, canvas, div, point, px, size},
+    metrics as m,
+    style::{self, Align},
+    theme,
+    widgets::{
+        AlertFrame, Button, alert,
+        alert::{ALERT_TEXT_X, alert_title, button_row, paragraph, paragraph_height},
+    },
+};
 use serde::{Deserialize, Serialize};
 use zbus::{
     object_server::SignalEmitter,
     zvariant::{OwnedObjectPath, OwnedValue, Value},
 };
 
-use crate::portal::ToUi;
+use crate::{
+    portal::ToUi,
+    ui::{self, Answer},
+};
 
 const PATH: &str = "/org/freedesktop/portal/desktop";
-const WIDTH: u32 = 440;
+const WIDTH: f32 = 440.0;
 const ICON: &str = "keyboard";
-const COLUMN: f32 = WIDTH as f32 - widgets::ALERT_TEXT_X - m::WINDOW_INSET;
+const COLUMN: f32 = WIDTH - ALERT_TEXT_X - m::WINDOW_INSET;
 
 /// One of an app's shortcuts: its id, what it does, the keys it wants
 /// (as a [`Chord`] is written; None: none suggested or not readable).
@@ -375,66 +382,103 @@ impl SessionObject {
 
 /// The question on screen.
 pub struct Dialog {
-    ask: Ask,
+    answer: Answer<bool>,
+    app: String,
+    rows: Vec<(Wanted, bool)>,
+    focus: FocusHandle,
 }
 
-fn body(ask: &Ask) -> String {
-    let who = if ask.app.is_empty() { "An app".to_owned() } else { format!("“{}”", ask.app) };
+fn body(app: &str) -> String {
+    let who = if app.is_empty() { "An app".to_owned() } else { format!("“{app}”") };
     format!("{who} would like these keys to work whatever you're using:")
 }
 
-fn height(ask: &Ask) -> u32 {
-    let text = m::LABEL_ROW + m::TIGHT + style::plain_text_height(&body(ask), COLUMN) + m::SPACING;
+fn height(cx: &App, ask: &Ask) -> f32 {
+    let text = m::LABEL_ROW + m::TIGHT + paragraph_height(cx, &body(&ask.app), COLUMN) + m::SPACING;
     let rows = ask.rows.len() as f32 * m::LABEL_ROW;
-    (2.0 * m::WINDOW_INSET + text + rows + m::SPACING + m::CONTROL_HEIGHT + m::WINDOW_INSET).ceil() as u32
+    (2.0 * m::WINDOW_INSET + text + rows + m::SPACING + m::CONTROL_HEIGHT + m::WINDOW_INSET).ceil()
+}
+
+pub fn open(cx: &mut App, ask: Ask) -> Option<WindowHandle<Frame>> {
+    let options = ui::over(WindowOptions::alert("Keyboard Shortcuts", WIDTH, height(cx, &ask)), &ask.parent);
+    ui::open(cx, options, move |window, cx| {
+        let focus = cx.focus_handle();
+        window.focus(&focus);
+        Dialog { answer: Answer::new(ask.reply, false), app: ask.app, rows: ask.rows, focus }
+    })
 }
 
 impl Dialog {
-    pub fn open(cx: &mut Cx, ask: Ask) -> (WindowId, Dialog) {
-        let size = (WIDTH, height(&ask));
-        let mut options = WindowOptions { size, min_size: Some(size), max_size: Some(size), ..WindowOptions::alert("Keyboard Shortcuts", "") };
-        if !ask.parent.is_empty() {
-            options = options.foreign_parent(ask.parent.clone());
-        }
-        let id = cx.open_window(options);
-        cx.activate(id);
-        (id, Dialog { ask })
+    fn finish(&mut self, yes: bool, window: &mut Window) {
+        self.answer.give(yes);
+        window.remove_window();
     }
+}
 
-    pub fn request(&self) -> &str {
-        &self.ask.request
-    }
-
-    pub fn answer(&self, yes: bool) {
-        let _ = self.ask.reply.try_send(yes);
-    }
-
-    /// Draw it; Some(allowed) once answered.
-    pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<bool> {
-        let p = style::palette(ui.ctx());
-        let col = widgets::alert_frame(ui, ICON);
-        let mut y = col.top();
-        style::label(ui.painter(), col.left(), y + style::PLAIN_SIZE / 2.0 + 2.0, egui::Align::Min, "Allow Keyboard Shortcuts?", style::bold_font(), c(p.panel_text));
-        y += m::LABEL_ROW + m::TIGHT;
-        y = widgets::alert_text(ui, col, y, &body(&self.ask)) + m::SPACING;
+impl Render for Dialog {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let me = cx.entity();
         // Each shortcut: what it does, and its keys at the right (or why
         // it has none).
-        for (w, free) in &self.ask.rows {
-            let mid = y + m::LABEL_ROW / 2.0;
-            let keys = match (&w.keys, free) {
-                (Some(k), true) => k.parse::<Chord>().map(|c| c.symbols()).unwrap_or_default(),
-                (Some(_), false) => "Keys in use".to_owned(),
-                (None, _) => "No keys".to_owned(),
-            };
-            let keys_color = if w.keys.is_some() && *free { c(p.panel_text) } else { style::disabled_text(&p) };
-            let keys_w = ui.painter().layout_no_wrap(keys.clone(), style::plain_font(), keys_color).size().x;
-            let what = if w.description.is_empty() { w.id.as_str() } else { w.description.as_str() };
-            style::label_fit(ui.painter(), col.left(), mid, egui::Align::Min, what, style::plain_font(), c(p.panel_text), (col.width() - keys_w - m::SPACING).max(0.0));
-            style::label(ui.painter(), col.right(), mid, egui::Align::Max, &keys, style::plain_font(), keys_color);
-            style::describe_text(ui.ctx(), egui::accesskit::Role::Label, &format!("{what}: {keys}"), egui::Rect::from_min_max(pos2(col.left(), y), pos2(col.right(), y + m::LABEL_ROW)), None);
-            y += m::LABEL_ROW;
-        }
-        widgets::alert_buttons(ui, col, &["Don't Allow", "Allow"], true).map(|i| i == 1)
+        // (Keys it may have, as menus show them; else why it has none.)
+        let rows: Vec<(String, String, bool)> = self
+            .rows
+            .iter()
+            .map(|(w, free)| {
+                let keys = match (&w.keys, free) {
+                    (Some(k), true) => k.parse::<Chord>().map(|c| c.symbols()).unwrap_or_default(),
+                    (Some(_), false) => "Keys in use".to_owned(),
+                    (None, _) => "No keys".to_owned(),
+                };
+                let what = if w.description.is_empty() { w.id.clone() } else { w.description.clone() };
+                (what, keys, w.keys.is_some() && *free)
+            })
+            .collect();
+        let n = rows.len();
+        let list = canvas(
+            |_, _, _| {},
+            move |b, _, window, cx| {
+                let p = theme::palette(cx);
+                let font = style::ui_font(FontWeight::NORMAL);
+                for (i, (what, keys, usable)) in rows.iter().enumerate() {
+                    let top = b.top() + px(i as f32 * m::LABEL_ROW);
+                    let mid = top + px(m::LABEL_ROW / 2.0);
+                    let keys_w = if *usable { px(style::key_combo_width(window, keys)) } else { style::text_width(window, keys.clone(), style::PLAIN_SIZE, font.clone()) };
+                    style::label_fit(window, cx, b.left(), mid, Align::Left, what.clone(), style::PLAIN_SIZE, font.clone(), style::c(p.panel_text), (b.size.width - keys_w - px(m::SPACING)).max(px(0.0)));
+                    if *usable {
+                        style::key_combo(window, cx, point(b.right(), mid), keys, style::c(p.panel_text));
+                    } else {
+                        style::label(window, cx, b.right(), mid, Align::Right, keys.clone(), style::PLAIN_SIZE, font.clone(), style::disabled_text(&p));
+                    }
+                    let row = Bounds { origin: point(b.left(), top), size: size(b.size.width, px(m::LABEL_ROW)) };
+                    olo_ui::agent::record(window, cx, olo_ui::agent::Node::label(format!("{what}: {keys}"), row));
+                }
+            },
+        )
+        .w_full()
+        .h(px(n as f32 * m::LABEL_ROW));
+        let no = Button::new("Don't Allow").on_click({
+            let me = me.clone();
+            move |window, cx| me.update(cx, |d, _| d.finish(false, window))
+        });
+        let yes = Button::new("Allow").default(true).on_click({
+            let me = me.clone();
+            move |window, cx| me.update(cx, |d, _| d.finish(true, window))
+        });
+        div()
+            .size_full()
+            .key_context(alert::CONTEXT)
+            .track_focus(&self.focus)
+            .on_action(cx.listener(|d, _: &alert::Default, window, _| d.finish(true, window)))
+            .on_action(cx.listener(|d, _: &alert::Cancel, window, _| d.finish(false, window)))
+            .child(
+                AlertFrame::new(ICON)
+                    .child(alert_title("Allow Keyboard Shortcuts?"))
+                    .child(div().mt(px(m::TIGHT)).child(paragraph(body(&self.app))))
+                    .child(div().mt(px(m::SPACING)).child(list))
+                    .child(div().flex_1())
+                    .child(button_row().child(no).child(yes)),
+            )
     }
 }
 

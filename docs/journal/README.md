@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-01
 
+### The share picker on GPUI
+
+*06:15* — olo-portal's dialogs move to the GPUI kit: the share picker (live thumbnails in the kit's new ThumbnailPicker), permission, wallpaper, shortcuts and Open With questions, and the file and Print panels, each over the asking app's window by xdg-foreign. Its thumbnails no longer pile up in the GPU's atlas; a permission dialog opens in ~8 ms.
+
+![The share picker on GPUI](2026-11-01/061527-the-share-picker-on-gpui.png)
+
 ### Notifications on GPUI
 
 *05:22* — Notifications, banners and History, now on Olo's GPUI: the same cards, groups, stop signs, balloons and reply fields, with words kept on a row when they fit (spaces hang past the edge, as egui and typesetters wrap), the generic application icon for apps without one in banners and History alike, and an exact gap after an error's stop sign. 61 MB against egui's 153 with four banners; History scrolls 200 notes at 1.3–1.8 ms a frame.

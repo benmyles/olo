@@ -465,6 +465,20 @@ pub fn selection_wash(window: &mut Window, r: Bounds<Pixels>, palette: &Palette)
     frame_rect(window, r, c(palette.selection_edge()));
 }
 
+/// The plate a selected picture, swatch or preview sits on: a rounded
+/// ground in the selection's colours, `metrics::SELECTION_PAD` beyond `r`
+/// all round, as the egui kit's. Paint it before the thing, as Tracker
+/// sets a selected icon on its highlight.
+pub fn selection_plate(window: &mut Window, r: Bounds<Pixels>, palette: &Palette) {
+    let r = snap(window, r.dilate(px(olo_kit_base::metrics::SELECTION_PAD)));
+    window.paint_quad(
+        gpui::fill(r, c(palette.list_selected_background))
+            .corner_radii(px(olo_kit_base::metrics::CARD_RADIUS))
+            .border_widths(hairline(window))
+            .border_color(c(palette.selection_edge())),
+    );
+}
+
 /// The ground of a group that is current as a whole (Deskbar's workspace
 /// showing): a BListView selection as big as the group, its heading and
 /// rows together. It is `under`, the ground it sits on, taken most of the

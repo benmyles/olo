@@ -179,8 +179,21 @@ type OnDone = Box<dyn FnOnce(Answer, &mut App)>;
 /// Opens `panel` in a window titled `title`; `on_done` gets the answer
 /// once (Cancelled if the window is closed), then the window closes.
 pub fn show(cx: &mut App, title: impl Into<SharedString>, panel: FilePanel, on_done: impl FnOnce(Answer, &mut App) + 'static) -> Option<WindowHandle<Frame>> {
-    let options = WindowOptions::new(title, PANEL_SIZE.0, PANEL_SIZE.1).min_size(440.0, 300.0).dialog();
-    crate::open_window(cx, options, move |window, cx| cx.new(|cx| PanelView::new(panel, Box::new(on_done), window, cx)))
+    show_in(cx, window_options(title), panel, on_done)
+}
+
+/// A panel's window, titled `title`, for [`show_in`] (to open it over
+/// another program's window: `.foreign_parent(handle)`).
+pub fn window_options(title: impl Into<SharedString>) -> WindowOptions {
+    WindowOptions::new(title, PANEL_SIZE.0, PANEL_SIZE.1).min_size(440.0, 300.0).dialog()
+}
+
+/// [`show`] in a window opened with `options`; it takes the keyboard.
+pub fn show_in(cx: &mut App, options: WindowOptions, panel: FilePanel, on_done: impl FnOnce(Answer, &mut App) + 'static) -> Option<WindowHandle<Frame>> {
+    crate::open_window(cx, options, move |window, cx| {
+        window.activate_window();
+        cx.new(|cx| PanelView::new(panel, Box::new(on_done), window, cx))
+    })
 }
 
 #[derive(Debug, Clone)]

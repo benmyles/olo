@@ -195,7 +195,11 @@ impl RenderOnce for ConversationField {
 /// A paragraph wrapped to the width it's given, in the plain font (an
 /// alert's message, a description).
 pub fn paragraph(text: impl Into<SharedString>) -> gpui::Div {
-    div().w_full().line_height(gpui::relative(style::LINE_HEIGHT)).child(text.into())
+    let text = text.into();
+    // Agents read it as a label (GPUI's text says nothing of itself).
+    let said = text.clone();
+    let say = canvas(|_, _, _| {}, move |b, _, window, cx| crate::agent::record(window, cx, crate::agent::Node::label(said.clone(), b))).absolute().inset_0();
+    div().relative().w_full().line_height(gpui::relative(style::LINE_HEIGHT)).child(text).child(say)
 }
 
 /// The height of `text` wrapped to `width` in the plain font, for sizing

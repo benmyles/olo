@@ -1233,6 +1233,10 @@ pub struct WindowOptions {
     /// windows by app_server), modal to the window it's over or not.
     pub dialog: Option<Dialog>,
 
+    /// Olo: another program's window this one belongs to, by the handle
+    /// it exported (xdg-foreign: a portal's dialog over the app asking).
+    pub foreign_parent: Option<String>,
+
     /// Olo: the output a [`WindowKind::SessionLock`] window covers, by
     /// name (None: the first).
     pub session_lock_output: Option<String>,
@@ -1300,6 +1304,9 @@ pub(crate) struct WindowParams {
 
     /// Olo: a dialog (`WindowOptions::dialog`).
     pub dialog: Option<Dialog>,
+
+    /// Olo: another program's window it belongs to (`WindowOptions::foreign_parent`).
+    pub foreign_parent: Option<String>,
 
     /// Olo: the output a lock surface covers (`WindowOptions::session_lock_output`).
     pub session_lock_output: Option<String>,
@@ -1370,6 +1377,7 @@ impl Default for WindowOptions {
             toplevel_tag: None,
             layer_shell: None,
             dialog: None,
+            foreign_parent: None,
             session_lock_output: None,
             window_min_size: None,
             window_decorations: None,

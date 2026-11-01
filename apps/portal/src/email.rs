@@ -73,7 +73,7 @@ impl Email {
             if r.is_ok()
                 && let Some(first) = attachments.first()
             {
-                let _ = olo_kit::tracker::open(std::path::Path::new(first.trim_start_matches("file://")));
+                let _ = olo_ui::tracker::open(std::path::Path::new(first.trim_start_matches("file://")));
             }
             r
         })

@@ -9,23 +9,26 @@
 
 use std::collections::HashMap;
 
-use olo_kit::{
-    Cx, WindowId, WindowOptions,
-    egui::{self, pos2},
+use olo_ui::{
+    Frame, WindowOptions,
+    gpui::{App, Bounds, Context, FocusHandle, InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled as _, Window, WindowHandle, canvas, div, point, px, size},
     metrics as m,
-    style::{self, c},
-    widgets::{self, CheckBox, MenuField},
+    widgets::{
+        AlertFrame, Button, CheckBox, MenuField, alert,
+        alert::{ALERT_ICON, ALERT_TEXT_X, alert_title, button_row, paragraph, paragraph_height},
+    },
 };
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 
-use crate::portal::ToUi;
+use crate::{
+    portal::ToUi,
+    ui::{self, Answer},
+};
 
-const WIDTH: u32 = 420;
+const WIDTH: f32 = 420.0;
 const ICON: &str = "security";
-/// The alert's icon, which the text stands beside at least as tall.
-const ICON_SIZE: f32 = 32.0;
 /// The text column: the alert's width less its stripe, icon and margins.
-const COLUMN: f32 = WIDTH as f32 - widgets::ALERT_TEXT_X - m::WINDOW_INSET;
+const COLUMN: f32 = WIDTH - ALERT_TEXT_X - m::WINDOW_INSET;
 
 /// A choice the dialog offers: with no options, yes or no.
 #[derive(Debug, Clone)]
@@ -107,48 +110,70 @@ impl Access {
 
 /// The dialog on screen.
 pub struct Dialog {
-    ask: Ask,
+    answer: Answer<Option<Vec<(String, String)>>>,
+    title: String,
+    subtitle: String,
+    body: String,
+    deny: String,
+    grant: String,
+    icon: String,
+    /// The icon shown, when there's no picture.
+    named: &'static str,
+    choices: Vec<Choice>,
     /// Each choice's state: yes/no, or which option.
     on: Vec<bool>,
     picked: Vec<usize>,
+    focus: FocusHandle,
 }
 
 /// Its height for `ask`: the question, what it means, the choices, the
 /// buttons.
-fn height(ask: &Ask) -> u32 {
+fn height(cx: &App, ask: &Ask) -> f32 {
     let mut text = m::LABEL_ROW + m::TIGHT;
     for t in [&ask.subtitle, &ask.body] {
         if !t.is_empty() {
-            text += style::plain_text_height(t, COLUMN) + m::TIGHT;
+            text += paragraph_height(cx, t, COLUMN) + m::TIGHT;
         }
     }
     let choices = ask.choices.iter().map(|ch| if ch.options.is_empty() { m::MARK_ROW } else { m::CONTROL_HEIGHT }).sum::<f32>() + ask.choices.len() as f32 * m::SPACING;
-    (2.0 * m::WINDOW_INSET + text.max(ICON_SIZE) + choices + m::SPACING + m::CONTROL_HEIGHT + m::WINDOW_INSET).ceil() as u32
+    (2.0 * m::WINDOW_INSET + text.max(ALERT_ICON) + choices + m::SPACING + m::CONTROL_HEIGHT + m::WINDOW_INSET).ceil()
+}
+
+/// The icon the portal names, as Olo's theme has it (else a shield).
+/// (It looks in the icon theme: once, as the dialog opens.)
+fn icon(named: &str) -> &'static str {
+    ["camera", "microphone", "screenshot", "display", "people"].into_iter().find(|n| named.contains(n)).filter(|n| olo_xdg::find_icon(n, 32).is_some()).unwrap_or(ICON)
+}
+
+pub fn open(cx: &mut App, ask: Ask) -> Option<WindowHandle<Frame>> {
+    let options = ui::over(WindowOptions::alert("Permission", WIDTH, height(cx, &ask)), &ask.parent);
+    ui::open(cx, options, move |window, cx| {
+        let on = ask.choices.iter().map(|ch| ch.initial == "true").collect();
+        let picked = ask.choices.iter().map(|ch| ch.options.iter().position(|(o, _)| *o == ch.initial).unwrap_or(0)).collect();
+        let focus = cx.focus_handle();
+        window.focus(&focus);
+        Dialog {
+            answer: Answer::new(ask.reply, None),
+            title: ask.title,
+            subtitle: ask.subtitle,
+            body: ask.body,
+            deny: ask.deny,
+            grant: ask.grant,
+            named: icon(&ask.icon),
+            icon: ask.icon,
+            choices: ask.choices,
+            on,
+            picked,
+            focus,
+        }
+    })
 }
 
 impl Dialog {
-    pub fn open(cx: &mut Cx, ask: Ask) -> (WindowId, Dialog) {
-        let size = (WIDTH, height(&ask));
-        let mut options = WindowOptions { size, min_size: Some(size), max_size: Some(size), ..WindowOptions::alert("Permission", "") };
-        if !ask.parent.is_empty() {
-            options = options.foreign_parent(ask.parent.clone());
-        }
-        let id = cx.open_window(options);
-        cx.activate(id);
-        let on = ask.choices.iter().map(|ch| ch.initial == "true").collect();
-        let picked = ask.choices.iter().map(|ch| ch.options.iter().position(|(o, _)| *o == ch.initial).unwrap_or(0)).collect();
-        (id, Dialog { ask, on, picked })
-    }
-
-    pub fn request(&self) -> &str {
-        &self.ask.request
-    }
-
-    /// Answer (None: denied); the caller closes the window.
-    pub fn answer(&self, granted: bool) {
+    /// Answered: granted with the choices made, or denied; the window goes.
+    fn finish(&mut self, granted: bool, window: &mut Window) {
         let made = granted.then(|| {
-            self.ask
-                .choices
+            self.choices
                 .iter()
                 .enumerate()
                 .map(|(i, ch)| {
@@ -157,48 +182,83 @@ impl Dialog {
                 })
                 .collect()
         });
-        let _ = self.ask.reply.try_send(made);
+        self.answer.give(made);
+        window.remove_window();
     }
+}
 
-    /// Draw it; Some(granted) once answered.
-    pub fn ui(&mut self, ui: &mut egui::Ui, win: WindowId) -> Option<bool> {
-        let p = style::palette(ui.ctx());
-        // A picture (the Account portal's: the person's), else the
-        // portal's icon by its freedesktop name, as Olo's theme has it.
-        let full = ui.available_rect_before_wrap();
-        let picture = self.ask.icon.starts_with('/').then(|| olo_kit::icons::thumbnail(ui.ctx(), std::path::Path::new(&self.ask.icon), widgets::ALERT_ICON)).flatten();
-        let named = ["camera", "microphone", "screenshot", "display", "people"].into_iter().find(|n| self.ask.icon.contains(n));
-        let icon = named.filter(|n| olo_kit::icons::texture(ui.ctx(), n, ICON_SIZE).is_some()).unwrap_or(ICON);
-        let col = widgets::alert_frame(ui, if picture.is_some() { "" } else { icon });
-        if let Some(tex) = &picture {
-            let shown = olo_kit::icons::fit(ui.ctx(), tex, widgets::alert_icon_rect(full));
-            // (As it is: pictures of people are often round, with clear
-            // corners.)
-            ui.painter().image(tex.id(), shown, egui::Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), egui::Color32::WHITE);
+impl Render for Dialog {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let me = cx.entity();
+        // A picture (the Account portal's: the person's) where the icon
+        // goes, as it is (pictures of people are often round, with clear
+        // corners); else the portal's icon by its freedesktop name.
+        let picture = self.icon.starts_with('/').then(|| std::path::PathBuf::from(&self.icon));
+        let mut frame = AlertFrame::new(if picture.is_some() { "" } else { self.named });
+        if let Some(path) = picture {
+            frame = frame.child(
+                canvas(
+                    |_, _, _| {},
+                    move |b, _, window, cx| {
+                        let s = window.scale_factor();
+                        let side = (ALERT_ICON * s).round() as u32;
+                        // Where the alert's icon goes: straddling its stripe.
+                        let place = Bounds { origin: point(b.left() - px(ALERT_TEXT_X - m::WINDOW_INSET + ALERT_ICON / 2.0), b.top()), size: size(px(ALERT_ICON), px(ALERT_ICON)) };
+                        if let Some(img) = crate::pictures::get(cx, &path, (side, side)) {
+                            let isz = img.size(0);
+                            let at = olo_ui::style::snap_centred(window, place.center(), isz.width.0 as f32 / s, isz.height.0 as f32 / s);
+                            let _ = window.paint_image(at, Default::default(), img, 0, false);
+                        }
+                    },
+                )
+                .absolute()
+                .inset_0(),
+            );
         }
-        let mut y = col.top();
-        style::label(ui.painter(), col.left(), y + style::PLAIN_SIZE / 2.0 + 2.0, egui::Align::Min, self.ask.title.clone(), style::bold_font(), c(p.panel_text));
-        y += m::LABEL_ROW + m::TIGHT;
-        for t in [self.ask.subtitle.clone(), self.ask.body.clone()] {
+        frame = frame.child(alert_title(SharedString::from(self.title.clone())));
+        for t in [&self.subtitle, &self.body] {
             if !t.is_empty() {
-                y = widgets::alert_text(ui, col, y, &t) + m::TIGHT;
+                frame = frame.child(div().mt(px(m::TIGHT)).child(paragraph(t.clone())));
             }
         }
-        y = y.max(col.top() + ICON_SIZE) + m::SPACING;
-        let area = egui::Rect::from_min_max(pos2(col.left(), y), pos2(col.right(), col.bottom() - m::CONTROL_HEIGHT - m::SPACING));
-        ui.scope_builder(egui::UiBuilder::new().max_rect(area).layout(egui::Layout::top_down(egui::Align::Min)), |ui| {
-            ui.spacing_mut().item_spacing.y = m::SPACING;
-            for (i, ch) in self.ask.choices.iter().enumerate() {
-                if ch.options.is_empty() {
-                    ui.add(CheckBox::new(&mut self.on[i], &ch.label));
-                } else {
-                    let labels: Vec<&str> = ch.options.iter().map(|(_, l)| l.as_str()).collect();
-                    ui.add(MenuField::new(("choice", win, i), &mut self.picked[i], &labels).label(&ch.label).width(col.width()));
-                }
+        // (A paragraph's own space after it, then the gap: as tall as
+        // `height` reckons.)
+        let mut choices = div().flex().flex_col().gap(px(m::SPACING)).mt(px(m::TIGHT + m::SPACING));
+        for (i, ch) in self.choices.iter().enumerate() {
+            let me = me.clone();
+            if ch.options.is_empty() {
+                choices = choices.child(CheckBox::new(SharedString::from(ch.label.clone()), self.on[i]).on_toggle(move |on, _, cx| {
+                    me.update(cx, |d, cx| {
+                        d.on[i] = on;
+                        cx.notify();
+                    })
+                }));
+            } else {
+                let labels: Vec<SharedString> = ch.options.iter().map(|(_, l)| SharedString::from(l.clone())).collect();
+                choices = choices.child(MenuField::new(SharedString::from(format!("choice-{i}")), labels, self.picked[i]).label(SharedString::from(ch.label.clone())).width(COLUMN).on_change(move |k, _, cx| {
+                    me.update(cx, |d, cx| {
+                        d.picked[i] = k;
+                        cx.notify();
+                    })
+                }));
             }
+        }
+        let deny = if self.deny.is_empty() { "Deny".to_owned() } else { self.deny.clone() };
+        let grant = if self.grant.is_empty() { "Allow".to_owned() } else { self.grant.clone() };
+        let no = Button::new(deny).on_click({
+            let me = me.clone();
+            move |window, cx| me.update(cx, |d, _| d.finish(false, window))
         });
-        let deny = if self.ask.deny.is_empty() { "Deny" } else { self.ask.deny.as_str() };
-        let grant = if self.ask.grant.is_empty() { "Allow" } else { self.ask.grant.as_str() };
-        widgets::alert_buttons(ui, col, &[deny, grant], true).map(|i| i == 1)
+        let yes = Button::new(grant).default(true).on_click({
+            let me = me.clone();
+            move |window, cx| me.update(cx, |d, _| d.finish(true, window))
+        });
+        div()
+            .size_full()
+            .key_context(alert::CONTEXT)
+            .track_focus(&self.focus)
+            .on_action(cx.listener(|d, _: &alert::Default, window, _| d.finish(true, window)))
+            .on_action(cx.listener(|d, _: &alert::Cancel, window, _| d.finish(false, window)))
+            .child(frame.child(div().min_h(px(0.0)).child(choices)).child(div().flex_1()).child(button_row().child(no).child(yes)))
     }
 }

@@ -10,18 +10,21 @@
 
 use std::collections::HashMap;
 
-use olo_kit::{
-    Cx, WindowId, WindowOptions,
-    egui::{self, Align, Rect, pos2, vec2},
-    icons,
+use olo_ui::{
+    Frame, WindowOptions,
+    gpui::{App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled as _, WeakEntity, Window, WindowHandle, canvas, div, px},
     metrics as m,
-    style::{self, c},
-    widgets::{self, Column, ColumnListView, ListState},
+    style::{self, Align},
+    theme,
+    widgets::{Button, Column, ColumnListView, ListModel, button_row},
 };
 use olo_xdg::desktop_entry;
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 
-use crate::portal::ToUi;
+use crate::{
+    portal::ToUi,
+    ui::{self, Answer},
+};
 
 /// An app offered, as Olo shows it.
 #[derive(Debug, Clone, PartialEq)]
@@ -127,11 +130,15 @@ impl AppChooser {
 
 /// The chooser on screen.
 pub struct Dialog {
-    ask: Ask,
-    list: ListState,
+    answer: Answer<Option<String>>,
+    request: String,
+    what: String,
+    offers: Vec<Offer>,
+    last: String,
+    list: Entity<ListModel>,
 }
 
-const SIZE: (u32, u32) = (440, 340);
+const SIZE: (f32, f32) = (440.0, 340.0);
 
 /// The app chosen last (the default) at the top, as BeOS's Open With put
 /// the preferred app first.
@@ -141,86 +148,123 @@ fn first(offers: &mut [Offer], last: &str) {
     }
 }
 
-impl Dialog {
-    pub fn open(cx: &mut Cx, mut ask: Ask) -> (WindowId, Dialog) {
-        let mut options = WindowOptions { dialog: true, ..WindowOptions::new("Open With", SIZE.0, SIZE.1).min_size(340, 240) };
-        if !ask.parent.is_empty() {
-            options = options.foreign_parent(ask.parent.clone());
-        }
-        let id = cx.open_window(options);
-        cx.activate(id);
-        let mut list = ListState::default();
+/// Opens the chooser; its view too, for the apps offered as they change.
+pub fn open(cx: &mut App, mut ask: Ask) -> Option<(WindowHandle<Frame>, WeakEntity<Dialog>)> {
+    let options = ui::over(WindowOptions::new("Open With", SIZE.0, SIZE.1).min_size(340.0, 240.0).dialog(), &ask.parent);
+    let mut made = None;
+    let win = olo_ui::open_window(cx, options, |window, cx| {
+        window.activate_window();
         first(&mut ask.offers, &ask.last);
-        list.select(0);
-        (id, Dialog { ask, list })
-    }
+        let list = ListModel::new(cx, false);
+        list.update(cx, |l, _| l.state.select(0));
+        list.read(cx).focus(window);
+        let view = cx.new(|_| Dialog { answer: Answer::new(ask.reply, None), request: ask.request, what: ask.what, offers: ask.offers, last: ask.last, list });
+        made = Some(view.downgrade());
+        view
+    })?;
+    Some((win, made?))
+}
 
+impl Dialog {
     pub fn request(&self) -> &str {
-        &self.ask.request
+        &self.request
     }
 
     /// The apps offered changed: shown, the selection kept.
-    pub fn offer(&mut self, offers: Vec<Offer>) {
-        let chosen = self.list.single().and_then(|i| self.ask.offers.get(i)).map(|o| o.id.clone());
-        self.ask.offers = offers;
-        first(&mut self.ask.offers, &self.ask.last);
-        self.list.select(chosen.and_then(|id| self.ask.offers.iter().position(|o| o.id == id)).unwrap_or(0));
+    pub fn offer(&mut self, offers: Vec<Offer>, cx: &mut Context<Self>) {
+        let chosen = self.list.read(cx).state.single().and_then(|i| self.offers.get(i)).map(|o| o.id.clone());
+        self.offers = offers;
+        first(&mut self.offers, &self.last);
+        let at = chosen.and_then(|id| self.offers.iter().position(|o| o.id == id)).unwrap_or(0);
+        self.list.update(cx, |l, _| l.state.select(at));
+        cx.notify();
     }
 
-    /// Answer (None: cancelled); the caller closes the window.
-    pub fn answer(&self, chosen: Option<String>) {
-        let _ = self.ask.reply.try_send(chosen);
+    fn chosen(&self, cx: &App) -> Option<String> {
+        self.list.read(cx).state.single().and_then(|i| self.offers.get(i)).map(|o| o.id.clone())
     }
 
-    /// Draw it; Some(the app, or None if cancelled) once answered.
-    pub fn ui(&mut self, ui: &mut egui::Ui, win: WindowId) -> Option<Option<String>> {
-        let p = style::palette(ui.ctx());
-        let full = ui.max_rect().shrink(m::WINDOW_INSET);
+    /// Answered (None: cancelled); the window goes.
+    fn finish(&mut self, chosen: Option<String>, window: &mut Window) {
+        self.answer.give(chosen);
+        window.remove_window();
+    }
+}
+
+impl Render for Dialog {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let me = cx.entity();
         // What is opened, on one line (cut short if it must be).
-        let head = Rect::from_min_size(full.min, vec2(full.width(), m::LABEL_ROW));
-        let mut job = egui::text::LayoutJob::simple_singleline(format!("Open “{}” with:", self.ask.what), style::bold_font(), c(p.panel_text));
-        job.wrap = egui::text::TextWrapping::truncate_at_width(head.width());
-        let g = ui.painter().layout_job(job);
-        let pos = style::text_origin(ui.ctx(), &g, head.left(), head.center().y, style::PLAIN_SIZE);
-        style::describe_text(ui.ctx(), egui::accesskit::Role::Label, &format!("Open “{}” with:", self.ask.what), head, None);
-        ui.painter().galley(pos, g, c(p.panel_text));
-
-        let list_r = Rect::from_min_max(pos2(full.left(), head.bottom() + m::TIGHT), pos2(full.right(), full.bottom() - m::CONTROL_HEIGHT - m::SPACING));
+        let head = format!("Open “{}” with:", self.what);
+        let heading = canvas(
+            |_, _, _| {},
+            move |b, _, window, cx| {
+                let p = theme::palette(cx);
+                let r = style::label_fit(window, cx, b.left(), b.center().y, Align::Left, head.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), style::c(p.panel_text), b.size.width);
+                olo_ui::agent::record(window, cx, olo_ui::agent::Node::label(head.clone(), r));
+            },
+        )
+        .w_full()
+        .h(px(m::LABEL_ROW));
         // (The last column fills what the first leaves.)
-        let columns = [Column::new("Name", (list_r.width() * 0.5).round()), Column::new("Kind", 100.0)];
-        let offers = &self.ask.offers;
-        let name = |i: usize| offers[i].name.as_str();
-        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(list_r));
-        let resp = ColumnListView::new(("chooser", win), &columns, offers.len(), &mut self.list)
-            .empty_text("No apps open this.")
-            .type_select(&name)
-            .autofocus(true)
-            .show(&mut child, |cell| {
-                let Some(o) = offers.get(cell.row) else { return };
-                match cell.column {
-                    0 => {
-                        let ir = Rect::from_center_size(pos2(cell.rect.left() + m::CELL_INSET + 8.0, cell.rect.center().y), vec2(16.0, 16.0));
-                        if !icons::paint(cell.painter, ir, &o.icon) {
-                            icons::paint(cell.painter, ir, "application");
-                        }
-                        let r = Rect::from_min_max(pos2(ir.right() + 2.0, cell.rect.top()), cell.rect.max);
-                        let width = (r.width() - m::CELL_INSET).max(0.0);
-                        style::label_fit(cell.painter, r.left() + m::TIGHT, r.center().y, Align::Min, &o.name, style::plain_font(), cell.text_color, width);
+        let width = SIZE.0 - 2.0 * m::WINDOW_INSET;
+        let columns = [Column::new("Name", (width * 0.5).round()), Column::new("Kind", 100.0)];
+        let offers: std::rc::Rc<Vec<Offer>> = std::rc::Rc::new(self.offers.clone());
+        let (names, cells) = (offers.clone(), offers.clone());
+        let list = ColumnListView::new("chooser", &self.list, columns, offers.len(), move |cell, window, cx| {
+            let Some(o) = cells.get(cell.row) else { return };
+            match cell.column {
+                0 => cell.icon_text(window, cx, &o.icon, "application", o.name.clone()),
+                _ => cell.text(window, cx, o.kind.clone()),
+            }
+        })
+        .empty_text("No apps open this.")
+        .type_select(move |i| SharedString::from(names.get(i).map(|o| o.name.clone()).unwrap_or_default()))
+        .on_open({
+            let me = me.clone();
+            move |i, window, cx| {
+                me.update(cx, |d, _| {
+                    let id = d.offers.get(i).map(|o| o.id.clone());
+                    if id.is_some() {
+                        d.finish(id, window);
                     }
-                    _ => cell.text(&o.kind),
+                })
+            }
+        })
+        .on_select({
+            let me = me.clone();
+            move |_, cx| me.update(cx, |_, cx| cx.notify())
+        });
+        let chosen = self.chosen(cx);
+        let cancel = Button::new("Cancel").on_click({
+            let me = me.clone();
+            move |window, cx| me.update(cx, |d, _| d.finish(None, window))
+        });
+        let open = Button::new("Open").default(true).enabled(chosen.is_some()).on_click({
+            let me = me.clone();
+            move |window, cx| {
+                me.update(cx, |d, cx| {
+                    let chosen = d.chosen(cx);
+                    if chosen.is_some() {
+                        d.finish(chosen, window);
+                    }
+                })
+            }
+        });
+        div()
+            .size_full()
+            .p(px(m::WINDOW_INSET))
+            .flex()
+            .flex_col()
+            .on_key_down(cx.listener(|d, e: &olo_ui::gpui::KeyDownEvent, window, cx| {
+                if e.keystroke.key == "escape" {
+                    d.finish(None, window);
+                    cx.stop_propagation();
                 }
-            });
-        if let Some(i) = resp.activated
-            && let Some(o) = self.ask.offers.get(i)
-        {
-            return Some(Some(o.id.clone()));
-        }
-        let chosen = self.list.single().and_then(|i| self.ask.offers.get(i)).map(|o| o.id.clone());
-        match widgets::alert_buttons(ui, full, &["Cancel", "Open"], chosen.is_some()) {
-            Some(1) => Some(chosen),
-            Some(_) => Some(None),
-            None => None,
-        }
+            }))
+            .child(heading)
+            .child(div().mt(px(m::TIGHT)).flex_1().min_h_0().child(list))
+            .child(div().mt(px(m::SPACING)).child(button_row().child(cancel).child(open)))
     }
 }
 

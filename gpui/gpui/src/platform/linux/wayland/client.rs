@@ -64,6 +64,7 @@ use wayland_protocols::xdg::decoration::zv1::client::{
 use wayland_protocols::xdg::shell::client::{xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base};
 use wayland_protocols::xdg::toplevel_tag::v1::client::xdg_toplevel_tag_manager_v1;
 use wayland_protocols::xdg::dialog::v1::client::{xdg_dialog_v1, xdg_wm_dialog_v1};
+use wayland_protocols::xdg::foreign::zv2::client::{zxdg_imported_v2, zxdg_importer_v2};
 use wayland_protocols::ext::session_lock::v1::client::{ext_session_lock_manager_v1, ext_session_lock_surface_v1, ext_session_lock_v1};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 use wayland_protocols_plasma::blur::client::{org_kde_kwin_blur, org_kde_kwin_blur_manager};
@@ -131,6 +132,9 @@ pub struct Globals {
     pub session_lock_manager: Option<ext_session_lock_manager_v1::ExtSessionLockManagerV1>,
     /// Olo: dialogs (alerts, panels): never tabs, modal or not.
     pub wm_dialog: Option<xdg_wm_dialog_v1::XdgWmDialogV1>,
+    /// Olo: other programs' windows, to open ours over (a portal's
+    /// dialogs).
+    pub xdg_importer: Option<zxdg_importer_v2::ZxdgImporterV2>,
     /// Olo: surfaces of the desktop's own (Deskbar, notifications).
     pub layer_shell: Option<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
     pub blur_manager: Option<org_kde_kwin_blur_manager::OrgKdeKwinBlurManager>,
@@ -177,6 +181,7 @@ impl Globals {
             toplevel_tags: globals.bind(&qh, 1..=1, ()).ok(),
             layer_shell: globals.bind(&qh, 1..=4, ()).ok(),
             wm_dialog: globals.bind(&qh, 1..=1, ()).ok(),
+            xdg_importer: globals.bind(&qh, 1..=1, ()).ok(),
             session_lock_manager: globals.bind(&qh, 1..=1, ()).ok(),
             blur_manager: globals.bind(&qh, 1..=1, ()).ok(),
             text_input_manager: globals.bind(&qh, 1..=1, ()).ok(),
@@ -1529,6 +1534,8 @@ pub fn unlock_session() {
     }
 }
 delegate_noop!(WaylandClientStatePtr: ignore xdg_dialog_v1::XdgDialogV1);
+delegate_noop!(WaylandClientStatePtr: ignore zxdg_importer_v2::ZxdgImporterV2);
+delegate_noop!(WaylandClientStatePtr: ignore zxdg_imported_v2::ZxdgImportedV2);
 
 impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ObjectId> for WaylandClientStatePtr {
     fn event(

@@ -1,14 +1,14 @@
 //! The picker: what an app may share, asked of the person when it starts
-//! a screen share (the portal's Start). A kit dialog over the app's window
-//! (its exported handle, `WindowOptions::foreign_parent`): who is asking,
-//! the screens and the windows it may have (as the app asked: either or
-//! both) as live thumbnails to choose from (`ThumbnailPicker`s, so agents
-//! read and choose them as radio buttons), and Cancel / Share. The
-//! thumbnails come from a worker with a capture of each: it asks for a
-//! frame now and then (a screen twice a second, a window every two),
-//! app_server answers once it has changed, and the frame is shrunk to the
-//! picture's size in device pixels (letterboxed, drawn one texture pixel
-//! to a device pixel) before it reaches the UI.
+//! a screen share (the portal's Start). A dialog over the app's window
+//! (its exported handle, xdg-foreign): who is asking, the screens and the
+//! windows it may have (as the app asked: either or both) as live
+//! thumbnails to choose from (`ThumbnailPicker`s, so agents read and
+//! choose them as radio buttons), and Cancel / Share. The thumbnails come
+//! from a worker with a capture of each: it asks for a frame now and then
+//! (a screen twice a second, a window every two), app_server answers once
+//! it has changed, and the frame is shrunk to the picture's size in device
+//! pixels (drawn one texture pixel to a device pixel) before it reaches
+//! the UI.
 
 use std::{
     collections::HashMap,
@@ -19,15 +19,20 @@ use std::{
     time::{Duration, Instant},
 };
 
-use olo_kit::{
-    Cx, Proxy, WindowId, WindowOptions,
-    egui::{self, vec2},
+use olo_ui::{
+    Frame, WindowOptions,
+    gpui::{App, Context, FocusHandle, InteractiveElement as _, IntoElement, ParentElement as _, Render, RenderImage, ScrollHandle, SharedString, Styled as _, Window, WindowHandle, div, px},
     metrics as m,
-    style::{self, c},
-    widgets::{self, ScrollView, Thumbnail, ThumbnailPicker},
+    widgets::{
+        AlertFrame, Button, SCROLL_BAR, ScrollView, StringView, Thumbnail, ThumbnailPicker, alert,
+        alert::{ALERT_TEXT_X, alert_title, button_row, paragraph, paragraph_height},
+    },
 };
 
-use crate::capture::{Capture, Source};
+use crate::{
+    capture::{Capture, Source},
+    ui::{self, Answer},
+};
 
 /// Source types (bits), as the portal says them.
 pub const SCREENS: u32 = 1;
@@ -59,10 +64,9 @@ pub struct Item {
 }
 
 /// A picture of an item, shrunk for its thumbnail.
-pub struct Thumb {
-    pub window: WindowId,
-    pub key: String,
-    pub image: egui::ColorImage,
+struct Thumb {
+    key: String,
+    image: Arc<RenderImage>,
 }
 
 /// The pictures' height, logical; a screen's width follows the first
@@ -70,7 +74,7 @@ pub struct Thumb {
 /// multiples of 4, so they are whole device pixels at every scale from 1×
 /// to 2× in quarters.
 const PICTURE_HEIGHT: f32 = 108.0;
-const WINDOW_PICTURE: egui::Vec2 = vec2(160.0, 100.0);
+const WINDOW_PICTURE: (f32, f32) = (160.0, 100.0);
 /// At most this many to a row, and rows of windows shown before they
 /// scroll.
 const COLUMNS: usize = 3;
@@ -78,41 +82,21 @@ const WINDOW_ROWS: usize = 2;
 const ICON: &str = "display";
 
 /// The pictures' size for `screens`: the first's shape, 192×108 for 16:9.
-fn picture(screens: &[Item]) -> egui::Vec2 {
+fn picture(screens: &[Item]) -> (f32, f32) {
     let aspect = screens.first().filter(|s| s.size.1 > 0).map_or(16.0 / 9.0, |s| s.size.0 as f32 / s.size.1 as f32);
     let width = ((PICTURE_HEIGHT * aspect / 4.0).round() * 4.0).clamp(144.0, 224.0);
-    vec2(width, PICTURE_HEIGHT)
+    (width, PICTURE_HEIGHT)
 }
 
 /// A row of thumbnails' height, for pictures `picture` high.
-fn row(picture: egui::Vec2) -> f32 {
-    picture.y + 4.0 + m::TIGHT + m::LABEL_ROW
+fn row(picture: (f32, f32)) -> f32 {
+    picture.1 + 4.0 + m::TIGHT + m::LABEL_ROW
 }
 
 /// The width `n` of these take side by side (at least two, at most three).
-fn columns(n: usize, picture: egui::Vec2) -> f32 {
+fn columns(n: usize, picture: (f32, f32)) -> f32 {
     let k = n.clamp(2, COLUMNS) as f32;
-    k * (picture.x + 4.0) + (k - 1.0) * m::SPACING
-}
-
-/// One picker on screen.
-pub struct Picker {
-    ask: Ask,
-    screens: Vec<Item>,
-    windows: Vec<Item>,
-    textures: HashMap<String, egui::TextureHandle>,
-    /// The key of what is chosen.
-    selected: Option<String>,
-    /// The thumbnails' sizes in device pixels (screens', windows'), which
-    /// the worker shrinks to.
-    pixels: Arc<Mutex<((u32, u32), (u32, u32))>>,
-    stop: Arc<AtomicBool>,
-}
-
-impl Drop for Picker {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
-    }
+    k * (picture.0 + 4.0) + (k - 1.0) * m::SPACING
 }
 
 fn message(app: &str, types: u32) -> String {
@@ -130,8 +114,15 @@ fn both(screens: &[Item], windows: &[Item]) -> bool {
     !screens.is_empty() && !windows.is_empty()
 }
 
-/// The column the text and thumbnails share, and the window's size.
-fn layout(screens: &[Item], windows: &[Item], app: &str, types: u32) -> (f32, (u32, u32)) {
+/// The windows' area: at most two rows (more scroll).
+fn windows_height(n: usize) -> f32 {
+    let rows = n.div_ceil(COLUMNS).min(WINDOW_ROWS) as f32;
+    rows * row(WINDOW_PICTURE) + (rows - 1.0) * m::SPACING
+}
+
+/// The column the text and thumbnails share, and the window's size
+/// (`text_height` measures the message wrapped to a width).
+fn layout(screens: &[Item], windows: &[Item], app: &str, types: u32, text_height: impl Fn(&str, f32) -> f32) -> (f32, (f32, f32)) {
     let pic = picture(screens);
     let mut column: f32 = 0.0;
     let mut thumbs = 0.0;
@@ -142,73 +133,114 @@ fn layout(screens: &[Item], windows: &[Item], app: &str, types: u32) -> (f32, (u
         thumbs += heading + rows * row(pic) + (rows - 1.0) * m::SPACING;
     }
     if !windows.is_empty() {
-        column = column.max(columns(windows.len(), WINDOW_PICTURE) + widgets::SCROLL_BAR);
-        let rows = windows.len().div_ceil(COLUMNS).min(WINDOW_ROWS) as f32;
+        column = column.max(columns(windows.len(), WINDOW_PICTURE) + SCROLL_BAR);
         if !screens.is_empty() {
             thumbs += m::SPACING * 2.0;
         }
-        thumbs += heading + rows * row(WINDOW_PICTURE) + (rows - 1.0) * m::SPACING;
+        thumbs += heading + windows_height(windows.len());
     }
     if screens.is_empty() && windows.is_empty() {
         column = columns(2, pic);
         thumbs = m::LABEL_ROW;
     }
-    let text = style::plain_text_height(&message(app, types), column);
+    let text = text_height(&message(app, types), column);
     let height = 2.0 * m::WINDOW_INSET + m::LABEL_ROW + m::TIGHT + text + m::SPACING * 2.0 + thumbs + m::SPACING * 2.0 + m::CONTROL_HEIGHT;
-    let width = widgets::ALERT_TEXT_X + column + m::WINDOW_INSET;
-    (column, (width.ceil() as u32, height.ceil() as u32))
+    let width = ALERT_TEXT_X + column + m::WINDOW_INSET;
+    (column, (width.ceil(), height.ceil()))
+}
+
+/// One picker on screen.
+pub struct Picker {
+    answer: Answer<Option<Vec<String>>>,
+    app: String,
+    types: u32,
+    screens: Vec<Item>,
+    windows: Vec<Item>,
+    pictures: HashMap<String, Arc<RenderImage>>,
+    /// The key of what is chosen.
+    selected: Option<String>,
+    column: f32,
+    /// The thumbnails' sizes in device pixels (screens', windows'), which
+    /// the worker shrinks to.
+    pixels: Arc<Mutex<((u32, u32), (u32, u32))>>,
+    stop: Arc<AtomicBool>,
+    scroll: ScrollHandle,
+    focus: FocusHandle,
+}
+
+impl Drop for Picker {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+}
+
+/// Opens the picker for `ask`, choosing among `screens` and `windows`
+/// (those the app may have).
+pub fn open(cx: &mut App, ask: Ask, mut screens: Vec<Item>, mut windows: Vec<Item>) -> Option<WindowHandle<Frame>> {
+    if ask.types & SCREENS == 0 {
+        screens.clear();
+    }
+    if ask.types & WINDOWS == 0 {
+        windows.clear();
+    }
+    let (column, (w, h)) = layout(&screens, &windows, &ask.app, ask.types, |t, width| paragraph_height(cx, t, width));
+    let options = ui::over(WindowOptions::alert("Share Screen", w, h), &ask.parent);
+    ui::open(cx, options, move |window, cx| {
+        let (tx, rx) = async_channel::unbounded::<Thumb>();
+        let pic = picture(&screens);
+        let s = window.scale_factor();
+        let dev = |(w, h): (f32, f32)| ((w * s).round() as u32, (h * s).round() as u32);
+        let picker = Picker {
+            answer: Answer::new(ask.reply, None),
+            app: ask.app,
+            types: ask.types,
+            selected: screens.first().or(windows.first()).map(|i| i.key.clone()),
+            pixels: Arc::new(Mutex::new((dev(pic), dev(WINDOW_PICTURE)))),
+            screens,
+            windows,
+            pictures: HashMap::new(),
+            column,
+            stop: Arc::new(AtomicBool::new(false)),
+            scroll: ScrollHandle::new(),
+            focus: cx.focus_handle(),
+        };
+        window.focus(&picker.focus);
+        picker.watch(tx);
+        // Its pictures leave the GPU's atlas with it.
+        cx.on_release(|p: &mut Picker, cx| {
+            for (_, img) in p.pictures.drain() {
+                cx.drop_image(img, None);
+            }
+        })
+        .detach();
+        // Each picture as it comes.
+        cx.spawn(async move |me: olo_ui::gpui::WeakEntity<Picker>, cx| {
+            while let Ok(t) = rx.recv().await {
+                if me
+                    .update(cx, |p, cx| {
+                        // (The one it replaces leaves the GPU's atlas: a
+                        // screen's comes twice a second.)
+                        if let Some(old) = p.pictures.insert(t.key, t.image) {
+                            cx.drop_image(old, None);
+                        }
+                        cx.notify();
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
+        picker
+    })
 }
 
 impl Picker {
-    /// Open the picker for `ask`, choosing among `screens` and `windows`
-    /// (those the app may have).
-    pub fn open(cx: &mut Cx, ask: Ask, mut screens: Vec<Item>, mut windows: Vec<Item>) -> (WindowId, Picker) {
-        if ask.types & SCREENS == 0 {
-            screens.clear();
-        }
-        if ask.types & WINDOWS == 0 {
-            windows.clear();
-        }
-        let (_, (w, h)) = layout(&screens, &windows, &ask.app, ask.types);
-        let mut options = WindowOptions { dialog: true, ..WindowOptions::new("Share Screen", w, h).min_size(w, h).max_size(w, h) };
-        if !ask.parent.is_empty() {
-            options = options.foreign_parent(ask.parent.clone());
-        }
-        let id = cx.open_window(options);
-        cx.activate(id);
-        let pic = picture(&screens);
-        let px = |v: egui::Vec2| (v.x as u32, v.y as u32);
-        let picker = Picker {
-            ask,
-            selected: screens.first().or(windows.first()).map(|i| i.key.clone()),
-            pixels: Arc::new(Mutex::new((px(pic), px(WINDOW_PICTURE)))),
-            screens,
-            windows,
-            textures: HashMap::new(),
-            stop: Arc::new(AtomicBool::new(false)),
-        };
-        picker.watch(id, cx.proxy());
-        (id, picker)
-    }
-
-    pub fn request(&self) -> &str {
-        &self.ask.request
-    }
-
-    /// Answer the request (None: cancelled); the caller closes the window.
-    pub fn answer(&self, chosen: Option<Vec<String>>) {
-        let _ = self.ask.reply.try_send(chosen);
-    }
-
-    pub fn thumb(&mut self, ctx: &egui::Context, t: Thumb) {
-        let texture = ctx.load_texture(format!("share-{}", t.key), t.image, egui::TextureOptions::NEAREST);
-        self.textures.insert(t.key, texture);
-    }
-
     /// The worker: a capture of each item, shrunk for its thumbnail as
     /// often as it changes (a screen at most twice a second, a window
     /// every two seconds).
-    fn watch(&self, window: WindowId, proxy: Proxy) {
+    fn watch(&self, to_ui: async_channel::Sender<Thumb>) {
         let items: Vec<(String, Source, bool)> = self.screens.iter().map(|s| (s.key.clone(), s.source.clone(), true)).chain(self.windows.iter().map(|w| (w.key.clone(), w.source.clone(), false))).collect();
         let (pixels, stop) = (self.pixels.clone(), self.stop.clone());
         let _ = std::thread::Builder::new().name("picker-thumbnails".into()).spawn(move || {
@@ -225,6 +257,8 @@ impl Picker {
                 })
                 .collect();
             let mut shown: HashMap<String, (u32, u32)> = HashMap::new();
+            // A frame's pixels, read into the same buffer each time.
+            let mut frame = Vec::new();
             while !stop.load(Ordering::Relaxed) {
                 let (screens, windows) = *pixels.lock().unwrap();
                 for (key, screen, capture, next) in captures.iter_mut() {
@@ -237,9 +271,9 @@ impl Picker {
                     }
                     match cap.poll() {
                         Ok(Some(Ok(()))) => {
-                            if let Some(image) = shrink(cap, want) {
+                            if let Some(image) = shrink(cap, want, &mut frame) {
                                 shown.insert(key.clone(), want);
-                                proxy.send(Thumb { window, key: key.clone(), image });
+                                let _ = to_ui.send_blocking(Thumb { key: key.clone(), image });
                             }
                             *next = Instant::now() + every;
                         }
@@ -250,10 +284,10 @@ impl Picker {
                     // The scale changed: this size again, from the last frame.
                     if shown.get(key).is_some_and(|s| *s != want)
                         && let Some(cap) = capture.as_ref()
-                        && let Some(image) = shrink(cap, want)
+                        && let Some(image) = shrink(cap, want, &mut frame)
                     {
                         shown.insert(key.clone(), want);
-                        proxy.send(Thumb { window, key: key.clone(), image });
+                        let _ = to_ui.send_blocking(Thumb { key: key.clone(), image });
                     }
                     if let Some(cap) = capture.as_mut()
                         && !cap.waiting()
@@ -264,110 +298,162 @@ impl Picker {
                 }
                 std::thread::sleep(Duration::from_millis(40));
             }
+            // A screen's frames (16 MB each at 2560×1600) were this
+            // thread's: its heap goes back, not kept by the allocator
+            // for a thread that's ending.
+            drop((captures, frame));
+            // SAFETY: glibc's malloc_trim takes no pointers.
+            unsafe { libc::malloc_trim(0) };
         });
-    }
-
-    pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<Option<Vec<String>>> {
-        let ppp = ui.ctx().pixels_per_point();
-        let pic = picture(&self.screens);
-        let dev = |v: egui::Vec2| ((v.x * ppp).round() as u32, (v.y * ppp).round() as u32);
-        *self.pixels.lock().unwrap() = (dev(pic), dev(WINDOW_PICTURE));
-        let p = style::palette(ui.ctx());
-        let col = widgets::alert_frame(ui, ICON);
-        let mut y = col.top();
-        style::label(ui.painter(), col.left(), y + style::PLAIN_SIZE / 2.0 + 2.0, egui::Align::Min, "Share Your Screen", style::bold_font(), c(p.panel_text));
-        y += m::LABEL_ROW + m::TIGHT;
-        y = widgets::alert_text(ui, col, y, &message(&self.ask.app, self.ask.types)) + m::SPACING * 2.0;
-        let headed = both(&self.screens, &self.windows);
-        let heading = |ui: &egui::Ui, y: f32, text: &str| {
-            style::label(ui.painter(), col.left(), y + m::LABEL_ROW / 2.0, egui::Align::Min, text, style::bold_font(), c(p.panel_text));
-        };
-        let mut double_area = egui::Rect::NOTHING;
-        if self.screens.is_empty() && self.windows.is_empty() {
-            heading(ui, y, "There is nothing to share.");
-        }
-        if !self.screens.is_empty() {
-            if headed {
-                heading(ui, y, "Screens");
-                y += m::LABEL_ROW + m::TIGHT;
-            }
-            let rows = self.screens.len().div_ceil(COLUMNS) as f32;
-            let area = egui::Rect::from_min_size(egui::pos2(col.left(), y), vec2(col.width(), rows * row(pic) + (rows - 1.0) * m::SPACING));
-            let items: Vec<Thumbnail> = self.screens.iter().map(|s| Thumbnail { texture: self.textures.get(&s.key).cloned(), color: None, label: s.label.clone() }).collect();
-            let on = self.selected.as_ref().and_then(|k| self.screens.iter().position(|s| &s.key == k));
-            ui.scope_builder(egui::UiBuilder::new().max_rect(area), |ui| {
-                if let Some(i) = ThumbnailPicker::new("screens", &items, on).picture_size(pic).show(ui) {
-                    self.selected = Some(self.screens[i].key.clone());
-                }
-            });
-            double_area = double_area.union(area);
-            y = area.bottom() + m::SPACING * 2.0;
-        }
-        if !self.windows.is_empty() {
-            if headed {
-                heading(ui, y, "Windows");
-                y += m::LABEL_ROW + m::TIGHT;
-            }
-            let rows = self.windows.len().div_ceil(COLUMNS).min(WINDOW_ROWS) as f32;
-            let area = egui::Rect::from_min_size(egui::pos2(col.left(), y), vec2(col.width(), rows * row(WINDOW_PICTURE) + (rows - 1.0) * m::SPACING));
-            let items: Vec<Thumbnail> = self.windows.iter().map(|w| Thumbnail { texture: self.textures.get(&w.key).cloned(), color: None, label: w.label.clone() }).collect();
-            let on = self.selected.as_ref().and_then(|k| self.windows.iter().position(|w| &w.key == k));
-            let mut chose = None;
-            let picker = ThumbnailPicker::new("windows", &items, on).picture_size(WINDOW_PICTURE);
-            if self.windows.len() <= COLUMNS * WINDOW_ROWS {
-                ui.scope_builder(egui::UiBuilder::new().max_rect(area), |ui| chose = picker.show(ui));
-            } else {
-                // More than fit: they scroll, set in from the edges the
-                // view clips at, so the chosen one's plate shows whole.
-                ScrollView::new("windows").border(false).auto_hide(true).show_in(ui, area.expand2(vec2(0.0, 2.0)), |ui, _| {
-                    ui.add_space(2.0);
-                    let inner = egui::Rect::from_min_size(ui.cursor().min + vec2(2.0, 0.0), vec2(ui.available_width() - 4.0, 0.0));
-                    ui.scope_builder(egui::UiBuilder::new().max_rect(inner.with_max_y(f32::INFINITY)), |ui| chose = picker.show(ui));
-                    ui.add_space(2.0);
-                });
-            }
-            if let Some(i) = chose {
-                self.selected = Some(self.windows[i].key.clone());
-            }
-            double_area = double_area.union(area);
-        }
-        // Double-clicking one shares it at once, as a file dialog opens.
-        let double = ui.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary)) && ui.input(|i| i.pointer.interact_pos()).is_some_and(|at| double_area.contains(at));
-        match widgets::alert_buttons(ui, col, &["Cancel", "Share"], self.selected.is_some()) {
-            Some(0) => Some(None),
-            Some(_) => self.chosen().map(Some),
-            None if double => self.chosen().map(Some),
-            None => None,
-        }
     }
 
     fn chosen(&self) -> Option<Vec<String>> {
         self.selected.clone().map(|k| vec![k])
     }
+
+    /// Answered: shared (the choice) or cancelled; the window goes.
+    fn finish(&mut self, share: bool, window: &mut Window) {
+        let answer = if share { self.chosen() } else { None };
+        if share && answer.is_none() {
+            return;
+        }
+        self.answer.give(answer);
+        window.remove_window();
+    }
+
+    fn thumbnails(&self, items: &[Item]) -> Vec<Thumbnail> {
+        items.iter().map(|i| Thumbnail { picture: self.pictures.get(&i.key).cloned(), color: None, label: SharedString::from(i.label.clone()) }).collect()
+    }
 }
 
-/// The last frame of `cap`, shrunk to fit `(w, h)` device pixels and
-/// centred on transparency, as straight RGBA.
-fn shrink(cap: &Capture, (w, h): (u32, u32)) -> Option<egui::ColorImage> {
-    use fast_image_resize::{PixelType, ResizeAlg, ResizeOptions, Resizer, images::Image};
+impl Render for Picker {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // The pictures' device sizes, for the worker (the scale may change).
+        let s = window.scale_factor();
+        let dev = |(w, h): (f32, f32)| ((w * s).round() as u32, (h * s).round() as u32);
+        let pic = picture(&self.screens);
+        *self.pixels.lock().unwrap() = (dev(pic), dev(WINDOW_PICTURE));
+        let me = cx.entity();
+        let headed = both(&self.screens, &self.windows);
+        let column = self.column;
+        let heading = |text: &'static str| div().mb(px(m::TIGHT)).child(StringView::new(text).bold(true).height(m::LABEL_ROW));
+        let mut body = div().flex().flex_col().w(px(column));
+        if self.screens.is_empty() && self.windows.is_empty() {
+            body = body.child(StringView::new("There is nothing to share.").bold(true));
+        }
+        let pick = |items: &[Item], key: &Option<String>| key.as_ref().and_then(|k| items.iter().position(|i| &i.key == k));
+        if !self.screens.is_empty() {
+            if headed {
+                body = body.child(heading("Screens"));
+            }
+            let keys: Vec<String> = self.screens.iter().map(|i| i.key.clone()).collect();
+            let (k1, k2) = (keys.clone(), keys);
+            let (m1, m2) = (me.clone(), me.clone());
+            body = body.child(
+                ThumbnailPicker::new("screens", self.thumbnails(&self.screens), pick(&self.screens, &self.selected))
+                    .picture_size(pic.0, pic.1)
+                    .width(column)
+                    .on_select(move |i, _, cx| {
+                        let k = k1[i].clone();
+                        m1.update(cx, |p, cx| {
+                            p.selected = Some(k);
+                            cx.notify();
+                        })
+                    })
+                    .on_open(move |i, window, cx| {
+                        let k = k2[i].clone();
+                        m2.update(cx, |p, _| {
+                            p.selected = Some(k);
+                            p.finish(true, window);
+                        })
+                    }),
+            );
+        }
+        if !self.windows.is_empty() {
+            if !self.screens.is_empty() {
+                body = body.child(div().h(px(m::SPACING * 2.0)));
+            }
+            if headed {
+                body = body.child(heading("Windows"));
+            }
+            let keys: Vec<String> = self.windows.iter().map(|i| i.key.clone()).collect();
+            let (k1, k2) = (keys.clone(), keys);
+            let (m1, m2) = (me.clone(), me.clone());
+            let fits = self.windows.len() <= COLUMNS * WINDOW_ROWS;
+            // More than fit: they scroll, set in from the edges the view
+            // clips at, so the chosen one's plate shows whole.
+            let width = if fits { column } else { column - SCROLL_BAR - 4.0 };
+            let grid = ThumbnailPicker::new("windows", self.thumbnails(&self.windows), pick(&self.windows, &self.selected))
+                .picture_size(WINDOW_PICTURE.0, WINDOW_PICTURE.1)
+                .width(width)
+                .on_select(move |i, _, cx| {
+                    let k = k1[i].clone();
+                    m1.update(cx, |p, cx| {
+                        p.selected = Some(k);
+                        cx.notify();
+                    })
+                })
+                .on_open(move |i, window, cx| {
+                    let k = k2[i].clone();
+                    m2.update(cx, |p, _| {
+                        p.selected = Some(k);
+                        p.finish(true, window);
+                    })
+                });
+            body = if fits {
+                body.child(grid)
+            } else {
+                body.child(
+                    div().h(px(windows_height(self.windows.len()) + 4.0)).child(
+                        ScrollView::new("windows", &self.scroll).border(false).auto_hide(true).child(div().p(px(2.0)).child(grid)),
+                    ),
+                )
+            };
+        }
+        let cancel = Button::new("Cancel").on_click({
+            let me = me.clone();
+            move |window, cx| me.update(cx, |p, _| p.finish(false, window))
+        });
+        let share = Button::new("Share").default(true).enabled(self.selected.is_some()).on_click({
+            let me = me.clone();
+            move |window, cx| me.update(cx, |p, _| p.finish(true, window))
+        });
+        div()
+            .size_full()
+            .key_context(alert::CONTEXT)
+            .track_focus(&self.focus)
+            .on_action(cx.listener(|p, _: &alert::Default, window, _| p.finish(true, window)))
+            .on_action(cx.listener(|p, _: &alert::Cancel, window, _| p.finish(false, window)))
+            .child(
+                AlertFrame::new(ICON)
+                    .child(alert_title("Share Your Screen"))
+                    .child(div().mt(px(m::TIGHT)).child(paragraph(message(&self.app, self.types))))
+                    .child(div().h(px(m::SPACING * 2.0)))
+                    .child(body)
+                    .child(div().flex_1())
+                    .child(button_row().child(cancel).child(share)),
+            )
+    }
+}
+
+/// The last frame of `cap`, shrunk to fit `(w, h)` device pixels, in
+/// its own proportions, as GPUI draws it (BGRA: the frame's own order).
+fn shrink(cap: &Capture, (w, h): (u32, u32), frame: &mut Vec<u8>) -> Option<Arc<RenderImage>> {
+    use fast_image_resize::{PixelType, ResizeAlg, ResizeOptions, Resizer, images::{Image, ImageRef}};
     let (sw, sh) = cap.frame_size()?;
-    let mut frame = vec![0u8; (sw * sh * 4) as usize];
-    cap.copy_into(&mut frame, sw as usize * 4).ok()?;
+    frame.resize((sw * sh * 4) as usize, 0);
+    cap.copy_into(frame, sw as usize * 4).ok()?;
     let fit = (w as f64 / sw as f64).min(h as f64 / sh as f64);
     let (tw, th) = (((sw as f64 * fit).round() as u32).clamp(1, w), ((sh as f64 * fit).round() as u32).clamp(1, h));
-    let src = Image::from_vec_u8(sw, sh, frame, PixelType::U8x4).ok()?;
+    let src = ImageRef::new(sw, sh, frame, PixelType::U8x4).ok()?;
     let mut small = Image::new(tw, th, PixelType::U8x4);
     Resizer::new().resize(&src, &mut small, &ResizeOptions::new().resize_alg(ResizeAlg::SuperSampling(fast_image_resize::FilterType::Bilinear, 2))).ok()?;
-    let (ox, oy) = ((w - tw) / 2, (h - th) / 2);
-    let mut out = vec![0u8; (w * h * 4) as usize];
-    for (y, row) in small.buffer().chunks_exact(tw as usize * 4).enumerate() {
-        let at = (((oy + y as u32) * w + ox) * 4) as usize;
-        // BGRx to RGBA.
-        for (o, px) in out[at..at + tw as usize * 4].chunks_exact_mut(4).zip(row.chunks_exact(4)) {
-            o.copy_from_slice(&[px[2], px[1], px[0], 255]);
-        }
+    // BGRx: opaque.
+    let mut out = small.into_vec();
+    for px in out.chunks_exact_mut(4) {
+        px[3] = 255;
     }
-    Some(egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &out))
+    olo_ui::widgets::image_view::from_bgra(tw, th, out)
 }
 
 #[cfg(test)]
@@ -382,32 +468,37 @@ mod tests {
         Item { key: format!("window:{id}"), label: "Terminal".into(), size: (800, 500), source: Source::Window { id, app_id: "olo.terminal".into(), title: "Terminal".into() } }
     }
 
+    /// Two lines of text, whatever the width (enough to lay it out by).
+    fn text(_: &str, _: f32) -> f32 {
+        34.0
+    }
+
     #[test]
     fn pictures_take_the_screens_shape() {
-        assert_eq!(picture(&[screen(5120, 2880)]), vec2(192.0, 108.0));
-        assert_eq!(picture(&[screen(2560, 1600)]), vec2(172.0, 108.0));
+        assert_eq!(picture(&[screen(5120, 2880)]), (192.0, 108.0));
+        assert_eq!(picture(&[screen(2560, 1600)]), (172.0, 108.0));
         // Whole device pixels at every quarter scale.
         for s in [screen(3456, 2234), screen(1920, 1200), screen(1080, 1920)] {
             let p = picture(&[s]);
-            assert_eq!(p.x % 4.0, 0.0);
+            assert_eq!(p.0 % 4.0, 0.0);
         }
-        assert_eq!(picture(&[]), vec2(192.0, 108.0));
+        assert_eq!(picture(&[]), (192.0, 108.0));
     }
 
     #[test]
     fn the_window_fits_what_it_offers() {
-        let pic = vec2(192.0, 108.0);
-        let (column, (w, h)) = layout(&[screen(5120, 2880)], &[], "", SCREENS);
-        let (column3, (w3, _)) = layout(&[screen(5120, 2880), screen(5120, 2880), screen(5120, 2880)], &[], "Google Chrome", SCREENS);
+        let pic = (192.0, 108.0);
+        let (column, (w, h)) = layout(&[screen(5120, 2880)], &[], "", SCREENS, text);
+        let (column3, (w3, _)) = layout(&[screen(5120, 2880), screen(5120, 2880), screen(5120, 2880)], &[], "Google Chrome", SCREENS, text);
         // Room for two side by side even with one, three at most.
-        assert!(column >= 2.0 * pic.x);
-        assert!(column3 >= 3.0 * pic.x && column3 < 4.0 * pic.x);
-        assert!(w3 > w && h > 0);
+        assert!(column >= 2.0 * pic.0);
+        assert!(column3 >= 3.0 * pic.0 && column3 < 4.0 * pic.0);
+        assert!(w3 > w && h > 0.0);
         // Windows add their section, two rows of them at most (they scroll).
         let windows: Vec<Item> = (0..12).map(window).collect();
-        let (_, (_, with)) = layout(&[screen(5120, 2880)], &windows[..2], "", SCREENS | WINDOWS);
-        let (_, (_, many)) = layout(&[screen(5120, 2880)], &windows, "", SCREENS | WINDOWS);
-        let (_, (_, six)) = layout(&[screen(5120, 2880)], &windows[..6], "", SCREENS | WINDOWS);
+        let (_, (_, with)) = layout(&[screen(5120, 2880)], &windows[..2], "", SCREENS | WINDOWS, text);
+        let (_, (_, many)) = layout(&[screen(5120, 2880)], &windows, "", SCREENS | WINDOWS, text);
+        let (_, (_, six)) = layout(&[screen(5120, 2880)], &windows[..6], "", SCREENS | WINDOWS, text);
         assert!(with > h && many > with && many == six);
     }
 }
