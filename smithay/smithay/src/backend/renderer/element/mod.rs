@@ -277,6 +277,10 @@ pub enum RenderingReason {
     /// (Olo) Its buffer can't be scanned out at all: not a dmabuf (shm,
     /// or wl_drm's), or one no framebuffer can be made from.
     NoScanoutBuffer,
+    /// (Olo) Not a candidate (`Kind::ScanoutCandidate`) or cursor.
+    NotCandidate,
+    /// (Olo) Every overlay plane already had an element.
+    NoFreePlane,
 }
 
 /// Defines the presentation state of an element after rendering

@@ -3787,7 +3787,7 @@ where
                 "skipping element {:?} on overlay plane(s), element kind not scanout-candidate/cursor",
                 element.id(),
             );
-            return Err(None);
+            return Err(Some(RenderingReason::NotCandidate));
         }
 
         let element_id = element.id();
@@ -3803,7 +3803,7 @@ where
                 "skipping overlay planes for element {:?}, no free planes",
                 element_id
             );
-            return Err(None);
+            return Err(Some(RenderingReason::NoFreePlane));
         }
 
         let element_config = self.element_config(

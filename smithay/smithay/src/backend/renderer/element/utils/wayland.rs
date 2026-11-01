@@ -30,7 +30,9 @@ pub fn select_dmabuf_feedback<'a>(
             | Some(RenderingReason::Overlaps)
             | Some(RenderingReason::Underlay)
             | Some(RenderingReason::PlaneTaken)
-            | Some(RenderingReason::NoScanoutBuffer) => default_feedback,
+            | Some(RenderingReason::NoScanoutBuffer)
+            | Some(RenderingReason::NotCandidate)
+            | Some(RenderingReason::NoFreePlane) => default_feedback,
         },
         RenderElementPresentationState::ZeroCopy => scanout_feedback,
         RenderElementPresentationState::Skipped => default_feedback,

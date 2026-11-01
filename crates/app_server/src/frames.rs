@@ -102,6 +102,8 @@ pub fn scanout_summary(states: &smithay::backend::renderer::element::RenderEleme
                     Some(R::Underlay) => "underlay",
                     Some(R::PlaneTaken) => "planes taken",
                     Some(R::NoScanoutBuffer) => "no dmabuf",
+                    Some(R::NotCandidate) => "not a candidate",
+                    Some(R::NoFreePlane) => "no free plane",
                 };
                 *why.entry(r).or_default() += 1;
             }
