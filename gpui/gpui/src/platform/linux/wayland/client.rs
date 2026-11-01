@@ -476,6 +476,19 @@ pub(crate) enum PendingActivation {
 pub struct WaylandClientStatePtr(Weak<RefCell<WaylandClientState>>);
 
 impl WaylandClientStatePtr {
+    /// Olo: the popups open over `parent` (a menu's submenus) taken down
+    /// first, before it is: only the topmost popup may be destroyed.
+    pub fn withdraw_popups_over(&self, parent: &xdg_surface::XdgSurface) {
+        let Some(client) = self.0.upgrade() else { return };
+        let over: Vec<WaylandWindowStatePtr> = match client.try_borrow() {
+            Ok(state) => state.windows.values().filter(|w| w.is_popup_over(parent)).cloned().collect(),
+            Err(_) => return,
+        };
+        for w in over {
+            w.withdraw_popup(self);
+        }
+    }
+
     pub fn get_client(&self) -> Rc<RefCell<WaylandClientState>> {
         self.0
             .upgrade()
@@ -1090,6 +1103,11 @@ impl LinuxClient for WaylandClient {
                 |_| {},
             )
             .log_err();
+        // Olo: what the last turn asked (the windows quitting destroyed)
+        // reaches the compositor now: a program that carries on after its
+        // loop (Screenshot holding the clipboard) leaves nothing behind
+        // on the screens.
+        let _ = self.0.borrow().connection.flush();
     }
 
     fn write_to_primary(&self, item: crate::ClipboardItem) {

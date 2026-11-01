@@ -188,6 +188,9 @@ struct Deskbar {
     proxy: olo_ui::Proxy,
     /// One on each display.
     bars: Vec<Bar>,
+    /// The display of the bar being drawn (`draw_bar`): only its
+    /// workspace showing is lit.
+    drawing_for: Option<String>,
     outputs: Vec<OutputInfo>,
     windows: Vec<WindowInfo>,
     /// Team keys in order of first appearance. One whose windows have
@@ -1045,9 +1048,11 @@ impl Deskbar {
     }
 
     /// Whether the applications under `display`'s workspace `ws`'s
-    /// heading are the workspace showing's, which is lit.
+    /// heading are the workspace showing on the display of the bar being
+    /// drawn, which is lit (another display's, listed after its own, is
+    /// not: one place lit, where you are).
     fn lit(&self, display: Option<&str>, ws: Option<u32>) -> bool {
-        ws == Some(self.showing(display))
+        display == self.drawing_for.as_deref() && ws == Some(self.showing(display))
     }
 
     /// The ground of the rows under workspace `ws`'s heading: the panel,
@@ -1577,6 +1582,7 @@ impl Deskbar {
         let model = cx.entity();
         let p = theme::palette(cx);
         let display = self.shown_on(output);
+        self.drawing_for = display.clone();
         let mut d = Drawing { paint: Vec::new(), hits: Vec::new(), animating: false, fading: false };
 
         // ---- the Olo tile
@@ -2077,7 +2083,7 @@ impl Deskbar {
     #[allow(clippy::too_many_arguments)]
     fn workspace_heading(&self, d: &mut Drawing, p: &Palette, r: Bounds<Pixels>, display: Option<&str>, ws: u32, pointer: &Pointer, view: &Entity<BarView>, model: &Entity<Deskbar>) {
         let name = self.workspace_name(display, ws);
-        let here = ws == self.showing(display);
+        let here = self.lit(display, Some(ws));
         let mode = self.mode(display, ws);
         // The windowing mode, square at the right end, as far in as the
         // caption is from the left.
@@ -2454,6 +2460,7 @@ fn main() {
             let mut d = Deskbar {
                 proxy,
                 bars: Vec::new(),
+                drawing_for: None,
                 outputs: Vec::new(),
                 windows: Vec::new(),
                 order,

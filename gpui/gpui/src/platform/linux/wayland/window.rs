@@ -119,6 +119,8 @@ pub struct WaylandWindowState {
     /// A window's role (None for a popup, which has `popup`).
     toplevel: Option<xdg_toplevel::XdgToplevel>,
     popup: Option<xdg_popup::XdgPopup>,
+    /// Olo: the popup this one opened over (a submenu's menu), if any.
+    popup_of: Option<xdg_surface::XdgSurface>,
     viewport: Option<wp_viewport::WpViewport>,
     outputs: HashMap<ObjectId, Output>,
     display: Option<(ObjectId, Output)>,
@@ -272,6 +274,7 @@ impl WaylandWindowState {
             imported: None,
             toplevel,
             popup,
+            popup_of: None,
             viewport,
             globals,
             outputs: HashMap::default(),
@@ -412,6 +415,13 @@ impl Drop for WaylandWindow {
             toplevel.destroy();
         }
         if let Some(popup) = &state.popup {
+            // Olo: a submenu still open over it goes first: destroying a
+            // popup that isn't the topmost one is a protocol error, which
+            // ends the program's connection (Deskbar, deaf to clicks after
+            // closing a menu whose submenu was open, 2026-11-01).
+            if let Some(xdg_surface) = &state.xdg_surface {
+                client.withdraw_popups_over(xdg_surface);
+            }
             popup.destroy();
         }
         if let Some(viewport) = &state.viewport {
@@ -501,6 +511,10 @@ impl WaylandWindow {
             .get_xdg_surface(&surface, &globals.qh, surface.id());
         let mut dialog_object = None;
         let mut imported = None;
+        let popup_of = match &popup_parent {
+            Some((PopupParent::Xdg(parent), _)) => Some(parent.clone()),
+            _ => None,
+        };
         let (toplevel, popup) = match (params.kind, popup_parent) {
             (kind @ (WindowKind::Popup { .. } | WindowKind::Tip { .. }), Some((parent_surface, serial))) => {
                 // Olo: a tip, below what it tells about (a gap away), or
@@ -609,6 +623,7 @@ impl WaylandWindow {
         let mut state = made.0.0.state.borrow_mut();
         state.dialog = dialog_object;
         state.imported = imported;
+        state.popup_of = popup_of;
         drop(state);
         Ok(made)
     }
@@ -737,6 +752,28 @@ impl WaylandWindowStatePtr {
     pub fn scale_and_display(&self) -> (f32, Option<(ObjectId, Output)>) {
         let state = self.state.borrow();
         (state.scale, state.display.clone())
+    }
+
+    /// Olo: whether this is a popup open over `parent`'s surface.
+    pub fn is_popup_over(&self, parent: &xdg_surface::XdgSurface) -> bool {
+        // (The window going holds its own state: not over itself.)
+        let Ok(state) = self.state.try_borrow() else { return false };
+        state.popup.is_some() && state.popup_of.as_ref() == Some(parent)
+    }
+
+    /// Olo: its popup role taken down now (and those over it first), its
+    /// window going later: a popup it opened over is going.
+    pub fn withdraw_popup(&self, client: &WaylandClientStatePtr) {
+        let Ok(state) = self.state.try_borrow() else { return };
+        let (xdg, popup) = (state.xdg_surface.clone(), state.popup.clone());
+        drop(state);
+        if let Some(xdg) = &xdg {
+            client.withdraw_popups_over(xdg);
+        }
+        if let Some(popup) = popup {
+            // (Destroyed again with its window: nothing, once dead.)
+            popup.destroy();
+        }
     }
 
     /// What a popup opens over, on this window.

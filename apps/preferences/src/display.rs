@@ -113,7 +113,26 @@ fn display_name(o: &OutputInfo) -> String {
     o.display_name()
 }
 
+/// The panel, scrolling when a display's rows (its brightness, its
+/// panel's notes) don't all fit.
 pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&PowerStatus>, server: &Server, st: &mut State) {
+    let rect = ui.available_rect_before_wrap();
+    // Room for the bar only while it shows (as tall as last drawn).
+    let tall = olo_kit::egui::Id::new("display-panel-height");
+    let over = ui.ctx().data(|d| d.get_temp::<f32>(tall)).is_some_and(|h| h > rect.height());
+    olo_kit::widgets::ScrollView::new("display-panel").border(false).auto_hide(true).show_in(ui, rect, |ui, _| {
+        ui.set_width(rect.width() - if over { olo_kit::widgets::SCROLL_BAR + m::TIGHT } else { 0.0 });
+        let top = ui.min_rect().top();
+        panel(ui, s, outputs, power, server, st);
+        let h = ui.min_rect().bottom() - top;
+        ui.ctx().data_mut(|d| d.insert_temp(tall, h));
+        if (h > rect.height()) != over {
+            ui.ctx().request_repaint();
+        }
+    });
+}
+
+fn panel(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&PowerStatus>, server: &Server, st: &mut State) {
     let p = style::palette(ui.ctx());
     if outputs.is_empty() {
         ui.add(EmptyState::new("No displays reported by app_server.").icon("display"));

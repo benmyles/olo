@@ -732,16 +732,17 @@ impl App {
 
     /// Gracefully quit the application via the platform's standard routine.
     pub fn quit(&mut self) {
-        // Olo: an app holding the clipboard runs on with its windows gone
-        // until something else is copied (or it takes its own off), so
-        // what it copied can still be pasted, as the egui kit's apps did.
-        if self.platform.holds_clipboard() {
-            self.defer(|cx| {
-                for w in cx.windows() {
-                    let _ = w.update(cx, |_, window, _| window.remove_window());
-                }
-            });
-        }
+        // Olo: its windows go at once (once this update is over), not with
+        // the process: an app holding the clipboard runs on with them
+        // gone until something else is copied (or it takes its own off),
+        // so what it copied can still be pasted, as the egui kit's apps
+        // did; and one that carries on after its loop (Screenshot's region
+        // picker, holding the file's path) leaves no window behind.
+        self.defer(|cx| {
+            for w in cx.windows() {
+                let _ = w.update(cx, |_, window, _| window.remove_window());
+            }
+        });
         self.platform.quit();
     }
 
