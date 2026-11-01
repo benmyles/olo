@@ -247,10 +247,23 @@ as they land (with the commit), add new ones as they come up.
      timings, the layout review), the style (palette, metrics, fonts,
      pixel snapping at every scale), then the widgets, documented in
      HACKING.
+     *Begun* (olo-ui, HACKING "The GPUI kit"): run, windows, the theme,
+     style primitives on device pixels, the agent tree and socket,
+     frame stats, TextField, menus as popups, floating, upgrades. Next:
+     the layout review for GPUI frames (`{"review":true}`), icons (the
+     pre-scaled set, a texture pixel to a device pixel), the widgets
+     (buttons, check boxes, radios, menu fields, sliders, BBox, string
+     views, lists and tables, scroll views with the egui kit's eased
+     wheel, tabs), the menu bar, keys from the keyboard profile, layer
+     shell (Deskbar, the desktop, notifications, Screenshot's overlay),
+     session lock, xdg-dialog alerts, xdg-foreign parents, idle
+     inhibition, the hints protocol (surface ids), menus' icons and
+     scrolling and press-drag-release.
   4. The apps one by one, small first (DeskCalc, Screenshot, the lock
      screen, Preferences' panels) to the largest (Terminal, StyledEdit,
      Tracker), each checked at every scale and theme and benchmarked;
-     egui leaves the workspace with the last.
+     egui leaves the workspace with the last. *DeskCalc done* (57 MB
+     against 83 MB; 42 frames for 20 clicks against 210).
 - **Text and everything drawn, better than Apple's** (Ben, 2026-10-31):
   "make sure our text system is SOTA -- rivalling apple's or anything
   else out there. perfect looking, adorably beautiful text is essential";
