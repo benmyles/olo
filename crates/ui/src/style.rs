@@ -596,3 +596,85 @@ pub fn spinner(window: &mut Window, center: Point<Pixels>, radius: f32, color: H
     }
     window.paint_sector(center, px(r - 1.5), px(r + 1.5), start, sweep.max(0.05), color);
 }
+
+/// Black or white, whichever reads on `fill` (the egui kit's `ink_on`).
+pub fn ink_on(fill: Rgba) -> Hsla {
+    let l = 0.2126 * fill[0] as f32 + 0.7152 * fill[1] as f32 + 0.0722 * fill[2] as f32;
+    if l > 150.0 { c([20, 20, 20, 255]) } else { c([255, 255, 255, 255]) }
+}
+
+/// A rounded tile in `fill` with `letter` on it, filling `r`: the icon
+/// of something that has a colour but no icon of its own (a website, a
+/// contact), as the egui kit's `monogram`. Lit along its top, edged a
+/// shade darker.
+pub fn monogram(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, letter: &str, fill: Rgba) {
+    // The letter centred where `r` is (as a label beside it is), not on
+    // the tile snapped to the grid, half a pixel away; it's the tile's,
+    // as an icon's picture is (not set on the baseline of text beside it,
+    // in another size).
+    let middle = r.center();
+    let r = snap(window, r);
+    crate::review::own_grid(window, r);
+    let radius = (f32::from(r.size.height) * 0.22).round();
+    window.paint_quad(gpui::fill(r, c(fill)).corner_radii(px(radius)).border_widths(hairline(window)).border_color(tint(fill, 1.25)));
+    hline(window, r.left() + px(radius), r.right() - px(radius), r.top() + px(1.0), tint(fill, 0.7));
+    let size = (f32::from(r.size.height) * 0.62).round();
+    label(window, cx, middle.x, middle.y, Align::Center, letter.to_owned(), size, ui_font(FontWeight::BOLD), ink_on(fill));
+}
+
+/// A stop sign filling `r` (square, on the device grid): what failed,
+/// as a BAlert's stop icon, small (a notification's title, a row).
+pub fn stop_mark(window: &mut Window, r: Bounds<Pixels>, palette: &Palette) {
+    let side = f32::from(r.size.width.min(r.size.height));
+    let r = snap_centred(window, r.center(), side, side);
+    let (m, h) = (r.center(), side / 2.0 - 0.5);
+    let corner = h / (std::f32::consts::PI / 8.0).cos();
+    let corners: Vec<Point<Pixels>> = (0..8)
+        .map(|k| {
+            let a = std::f32::consts::PI / 8.0 + k as f32 * std::f32::consts::PI / 4.0;
+            point(m.x + px(corner * a.cos()), m.y + px(corner * a.sin()))
+        })
+        .collect();
+    let outline = |mut path: gpui::PathBuilder| {
+        path.move_to(corners[0]);
+        for p in &corners[1..] {
+            path.line_to(*p);
+        }
+        path.close();
+        path.build().ok()
+    };
+    if let Some(path) = outline(gpui::PathBuilder::fill()) {
+        window.paint_path(path, c(palette.failure));
+    }
+    if let Some(path) = outline(gpui::PathBuilder::stroke(px(1.0))) {
+        window.paint_path(path, tint(palette.failure, 1.3));
+    }
+    let ink = ink_on(palette.failure);
+    let w = (side * 0.15).max(1.5);
+    let bar = Bounds::from_corners(point(m.x - px(w / 2.0), m.y - px(h * 0.6)), point(m.x + px(w / 2.0), m.y + px(h * 0.12)));
+    window.paint_quad(gpui::fill(bar, ink).corner_radii(px(w / 2.0)));
+    window.paint_sector(point(m.x, m.y + px(h * 0.45)), px(0.0), px(w * 0.6), 0.0, std::f32::consts::TAU, ink);
+}
+
+/// BOutlineListView's latch: a small solid triangle centred in `r`,
+/// pointing right while its group is folded and down while open.
+pub fn latch(window: &mut Window, r: Bounds<Pixels>, open: bool, color: Hsla) {
+    let m = snap_centred(window, r.center(), 8.0, 8.0).center();
+    let at = |x: f32, y: f32| point(m.x + px(x), m.y + px(y));
+    let pts = if open { [at(-4.0, -2.0), at(4.0, -2.0), at(0.0, 2.5)] } else { [at(-2.0, -4.0), at(2.5, 0.0), at(-2.0, 4.0)] };
+    let mut path = gpui::PathBuilder::fill();
+    path.move_to(pts[0]);
+    path.line_to(pts[1]);
+    path.line_to(pts[2]);
+    path.close();
+    if let Ok(path) = path.build() {
+        window.paint_path(path, color);
+    }
+}
+
+/// A small × filling `r` (a close box on a card or a row).
+pub fn close_box(window: &mut Window, r: Bounds<Pixels>, color: Hsla) {
+    let k = Bounds::from_corners(r.origin + point(px(3.0), px(3.0)), r.bottom_right() - point(px(3.0), px(3.0)));
+    window.paint_segment(k.origin, k.bottom_right(), px(1.2), true, color);
+    window.paint_segment(point(k.right(), k.top()), point(k.left(), k.bottom()), px(1.2), true, color);
+}

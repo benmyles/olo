@@ -165,7 +165,7 @@ pub struct History {
 
 impl History {
     pub fn path() -> PathBuf {
-        olo_kit::state_dir().join("notifications").join("history.json")
+        olo_xdg::state_dir().join("notifications").join("history.json")
     }
 
     /// The history from `path` (None: in memory only, for tests). After a

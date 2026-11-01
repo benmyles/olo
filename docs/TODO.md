@@ -287,7 +287,17 @@ as they land (with the commit), add new ones as they come up.
      2×: 115 MB against 155 for a photo, 61 against 77 for Markdown, 64
      against 56 for a PDF; 1–3 frames for 30 pointer moves against
      ~156; scrolling's slowest frame 2.6–3.8 ms against 1.3–1.9, within
-     a 120 Hz frame). Next: Notifications, the portal,
+     a 120 Hz frame), Notifications (banners on a layer surface and the
+     History window; with activation tokens from a click, a layer's
+     keyboard changed as it shows, words that fit kept on their row
+     (spaces hang past the edge), objects made for a window destroyed
+     with it (a closed banner's fractional scale ended the app on a
+     reload) and agents reading hidden windows as they are; on release
+     at 2×: 61 MB against 153 with four banners, 71 against 108 with the
+     History open, a banner in ~9 ms against 14–30 (the first, with the
+     GPU device, 46 against 30), the History in 16 ms against 30,
+     scrolling 200 notes 1.3–1.8 ms a frame against 3–5, nothing idle).
+     Next: the portal,
      Agent Screens, StyledEdit, Activity Monitor, Tracker, Passwords,
      Preferences (with the screen saver and its modules) and Terminal.
      (`olo-preview`'s decoding no longer needs a toolkit: pictures are

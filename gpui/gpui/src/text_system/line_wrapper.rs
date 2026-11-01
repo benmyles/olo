@@ -51,6 +51,11 @@ impl LineWrapper {
             for candidate in candidates.by_ref() {
                 let ix = index;
                 index += candidate.len_utf8();
+                // Olo: a space after a word hangs past the edge rather
+                // than pushing the word before it down a row ("…with Ann
+                // at" fits when "at" does), as typesetters, CSS and egui
+                // wrap. Leading spaces (an indent) still count.
+                let hangs = matches!(candidate, WrapBoundaryCandidate::Char { character: ' ' }) && first_non_whitespace_ix.is_some();
                 let mut new_prev_c = prev_c;
                 let item_width = match candidate {
                     WrapBoundaryCandidate::Char { character: c } => {
@@ -97,7 +102,7 @@ impl LineWrapper {
                 };
 
                 width += item_width;
-                if width > wrap_width && ix > last_wrap_ix {
+                if width > wrap_width && ix > last_wrap_ix && !hangs {
                     if let (None, Some(first_non_whitespace_ix)) = (indent, first_non_whitespace_ix)
                     {
                         indent = Some(
@@ -400,6 +405,15 @@ mod tests {
             ]
         );
 
+        // Olo: a space after a word hangs past the edge; the word after
+        // it begins the next row (not the space).
+        assert_eq!(
+            wrapper
+                .wrap_line(&[LineFragment::text("aaaaaaa bb")], px(72.))
+                .collect::<Vec<_>>(),
+            &[Boundary::new(8, 0)],
+        );
+
         // Test wrapping multiple text fragments
         assert_eq!(
             wrapper
@@ -418,7 +432,9 @@ mod tests {
             ],
         );
 
-        // Test wrapping with a mix of text and element fragments
+        // Test wrapping with a mix of text and element fragments (Olo:
+        // "bbb" and the second element fit on a row, the space after
+        // them hanging)
         assert_eq!(
             wrapper
                 .wrap_line(
@@ -432,11 +448,7 @@ mod tests {
                     px(72.)
                 )
                 .collect::<Vec<_>>(),
-            &[
-                Boundary::new(5, 0),
-                Boundary::new(9, 0),
-                Boundary::new(11, 0)
-            ],
+            &[Boundary::new(5, 0), Boundary::new(11, 0)],
         );
 
         // Test with element at the beginning and text afterward
@@ -458,7 +470,8 @@ mod tests {
             ],
         );
 
-        // Test with a large element that forces wrapping by itself
+        // Test with a large element that forces wrapping by itself (Olo:
+        // the row after it begins at "more", the space before it hanging)
         assert_eq!(
             wrapper
                 .wrap_line(
@@ -473,7 +486,7 @@ mod tests {
             &[
                 Boundary::new(6, 0),
                 Boundary::new(11, 0),
-                Boundary::new(12, 0),
+                Boundary::new(13, 0),
                 Boundary::new(18, 0)
             ],
         );

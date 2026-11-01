@@ -374,6 +374,9 @@ pub(crate) struct WaylandClientState {
     primary_data_offer: Option<DataOffer<ZwpPrimarySelectionOfferV1>>,
     cursor: Cursor,
     pending_activation: Option<PendingActivation>,
+    /// Olo: tokens asked for with `Window::activation_token`, by request.
+    token_requests: HashMap<u64, Box<dyn FnOnce(Option<String>)>>,
+    next_token_request: u64,
     event_loop: Option<EventLoop<'static, WaylandClientStatePtr>>,
     common: LinuxCommon,
 }
@@ -822,6 +825,8 @@ impl WaylandClient {
             primary_data_offer: None,
             cursor,
             pending_activation: None,
+            token_requests: HashMap::default(),
+            next_token_request: 0,
             event_loop: Some(event_loop),
         }));
 
@@ -2683,5 +2688,44 @@ impl Dispatch<zwp_primary_selection_source_v1::ZwpPrimarySelectionSourceV1, ()>
             }
             _ => {}
         }
+    }
+}
+
+impl WaylandClientStatePtr {
+    /// Olo: asks for an activation token for `surface` with the last
+    /// press's serial; `done` gets it (on the main thread, later).
+    pub fn request_activation_token(&self, surface: &wl_surface::WlSurface, app_id: Option<String>, done: Box<dyn FnOnce(Option<String>)>) {
+        let client = self.get_client();
+        let mut state = client.borrow_mut();
+        let Some(activation) = state.globals.activation.clone() else {
+            drop(state);
+            return done(None);
+        };
+        let id = state.next_token_request;
+        state.next_token_request += 1;
+        state.token_requests.insert(id, done);
+        let token = activation.get_activation_token(&state.globals.qh, id);
+        let serial = state.serial_tracker.get(SerialKind::MousePress);
+        token.set_serial(serial, &state.wl_seat);
+        token.set_surface(surface);
+        if let Some(app_id) = app_id {
+            token.set_app_id(app_id);
+        }
+        token.commit();
+    }
+}
+
+/// Olo: a token asked for with `request_activation_token`.
+impl Dispatch<xdg_activation_token_v1::XdgActivationTokenV1, u64> for WaylandClientStatePtr {
+    fn event(this: &mut Self, token: &xdg_activation_token_v1::XdgActivationTokenV1, event: xdg_activation_token_v1::Event, id: &u64, _: &Connection, _: &QueueHandle<Self>) {
+        if let xdg_activation_token_v1::Event::Done { token: made } = event {
+            let client = this.get_client();
+            let mut state = client.borrow_mut();
+            if let Some(done) = state.token_requests.remove(id) {
+                // (Called once the state is free: it may open windows.)
+                state.common.foreground_executor.spawn(async move { done(Some(made)) }).detach();
+            }
+        }
+        token.destroy();
     }
 }

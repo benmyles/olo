@@ -208,3 +208,20 @@ What Olo changed, so far:
   and transparent, then again opaque (another set of pipelines for the
   other alpha) and again at its size: 15–18 ms of each window's opening.
   The pipelines are made side by side, on scoped threads (10.4 → 4.5 ms).
+- `Window::activation_token(done)`: an xdg-activation token from the
+  window's last click, for another program to raise its window with (a
+  notification's app). `Window::set_layer_keyboard` changes a layer
+  surface's keyboard as it shows.
+- Wrapping lets a space after a word hang past the edge (as typesetters,
+  CSS and egui), rather than pushing the word before it down a row: a
+  row's last word fits when the word does, and the next row begins with
+  a word, not the space. Leading spaces (an indent) still count.
+- A window destroys the objects made for it with it (its fractional
+  scale, its xdg-dialog, its idle inhibitor; upstream left the first two
+  alive, naming a surface or toplevel that was gone and whose id went to
+  something else), and its frame loop stops when it closes (upstream
+  drew once more for a window already gone, and asked its destroyed
+  surface for a frame).
+- `Window::draw_if_dirty`: draws what changed without showing it (the
+  next frame does). A window that isn't showing draws nothing until it
+  shows, so what agents read of it would be as last drawn.

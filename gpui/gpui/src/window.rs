@@ -2055,6 +2055,17 @@ impl Window {
         self.platform_window.completed_frame();
     }
 
+    /// Olo: draws what changed since the last frame, without showing it
+    /// (the next frame does). A window that isn't showing (on another
+    /// workspace, minimized, covered) draws nothing until it shows, so
+    /// what an agent reads of it (its tree, its menus) would be as it was
+    /// last drawn, not as it is.
+    pub fn draw_if_dirty(&mut self, cx: &mut App) {
+        if self.invalidator.is_dirty() {
+            self.draw(cx).clear();
+        }
+    }
+
     /// Produces a new frame and assigns it to `rendered_frame`. To actually show
     /// the contents of the new [`Scene`], use [`Self::present`].
     #[profiling::function]
@@ -4434,6 +4445,20 @@ impl Window {
     /// window closes.
     pub fn set_keep_awake(&self, on: bool) {
         self.platform_window.set_keep_awake(on);
+    }
+
+    /// Olo: an activation token made with this window and the last press
+    /// in it, for another program to take the focus with (a
+    /// notification's app, as its action is invoked); `done` gets None
+    /// if the compositor has no activation protocol.
+    pub fn activation_token(&self, done: impl FnOnce(Option<String>) + 'static) {
+        self.platform_window.activation_token(Box::new(done));
+    }
+
+    /// Olo: whether this layer surface takes the keyboard, changed after
+    /// it opened (notifications take it while a reply field shows).
+    pub fn set_layer_keyboard(&self, keyboard: crate::LayerKeyboard) {
+        self.platform_window.set_layer_keyboard(keyboard);
     }
 
     /// Olo: draws `font`'s printable characters at `font_size` for this

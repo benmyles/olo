@@ -482,6 +482,16 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// Olo: keeps the screen from dimming, locking or sleeping while the
     /// window shows (a playing video), until called with `false`.
     fn set_keep_awake(&self, _on: bool) {}
+    /// Olo: an activation token made with this window (and the last
+    /// press in it), for another program to take the focus with (a
+    /// notification's app, as its action is invoked); None if there is
+    /// no activation protocol.
+    fn activation_token(&self, done: Box<dyn FnOnce(Option<String>)>) {
+        done(None)
+    }
+    /// Olo: whether a layer surface takes the keyboard (as its
+    /// `LayerShellOptions::keyboard`), changed after it opened.
+    fn set_layer_keyboard(&self, _keyboard: LayerKeyboard) {}
     fn minimize(&self);
     fn zoom(&self);
     fn toggle_fullscreen(&self);

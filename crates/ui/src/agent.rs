@@ -162,6 +162,7 @@ fn frames(handle: AnyWindowHandle, cx: &mut App) -> Option<FrameTimes> {
 fn answer(query: Query, cx: &mut App) {
     match query {
         Query::Menus(reply) => {
+            catch_up(cx);
             let menus = match cx.try_global::<Agents>() {
                 Some(a) if a.menus.is_some() => {
                     // (Taken out while it runs: it may use the app.)
@@ -182,6 +183,8 @@ fn answer(query: Query, cx: &mut App) {
             let _ = reply.send(menus.unwrap_or_default());
         }
         Query::Invoke(command, reply) => {
+            // (The menus as they are now: what's enabled.)
+            catch_up(cx);
             let invoke = cx.default_global::<Agents>().invoke.take();
             let ok = match &invoke {
                 Some(f) => f(&command, cx),
@@ -195,6 +198,7 @@ fn answer(query: Query, cx: &mut App) {
             let _ = reply.send(ok);
         }
         Query::Tree(reply) => {
+            catch_up(cx);
             let trees = cx.windows().into_iter().filter_map(|w| tree(w, cx)).collect();
             let _ = reply.send(trees);
         }
@@ -217,7 +221,10 @@ fn answer(query: Query, cx: &mut App) {
             let times = cx.windows().into_iter().filter_map(|w| frames(w, cx)).collect();
             let _ = reply.send(times);
         }
-        Query::Review(reply) => crate::review::start(cx, reply),
+        Query::Review(reply) => {
+            catch_up(cx);
+            crate::review::start(cx, reply)
+        }
         Query::Path(surface, reply) => {
             // The window with that surface, if it said what it shows.
             let window = cx.windows().into_iter().find(|w| w.update(cx, |_, window, _| window.surface_id() == Some(surface)).unwrap_or(false));
@@ -231,6 +238,14 @@ fn answer(query: Query, cx: &mut App) {
 }
 
 /// The window in front: the active one, else the first.
+/// Every window drawn as it is now, though not yet shown: one that isn't
+/// showing draws only when it does, and an agent reads what it says now.
+fn catch_up(cx: &mut App) {
+    for w in cx.windows() {
+        let _ = w.update(cx, |_, window, cx| window.draw_if_dirty(cx));
+    }
+}
+
 fn front(cx: &App) -> Option<AnyWindowHandle> {
     cx.active_window().or_else(|| cx.windows().first().copied())
 }

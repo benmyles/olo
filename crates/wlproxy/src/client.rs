@@ -1197,9 +1197,10 @@ impl Client {
             self.temps.insert(t, (iface, Temp::Other));
         }
         // Check every step before sending any.
+        let made = self.objs[&id].seq;
         let mut out = Vec::new();
         for m in before.into_iter().chain(recipe).chain(after) {
-            match self.prepare(m, &temps) {
+            match self.prepare(m, &temps, Some(made)) {
                 Some(m) => out.push(m),
                 None => {
                     for t in &temps {
@@ -1216,9 +1217,14 @@ impl Client {
     }
 
     /// A recorded request made fit for the new app_server: globals renamed,
-    /// gone objects left out (`None` if it can't be sent).
-    fn prepare(&self, mut m: Msg, temps: &[u32]) -> Option<Msg> {
+    /// gone objects left out (`None` if it can't be sent). `made`: when
+    /// the object it makes was made; an object it names that was made
+    /// after that has the id of one that's gone (a fractional scale or
+    /// viewport the program never destroyed names its destroyed surface,
+    /// whose id went to something else).
+    fn prepare(&self, mut m: Msg, temps: &[u32], made: Option<u64>) -> Option<Msg> {
         let ours = |id: u32| temps.contains(&id);
+        let gone = |id: u32| self.is_zombie(id) || made.is_some_and(|made| self.objs.get(&id).is_some_and(|o| o.seq > made));
         if !ours(m.id) && self.is_zombie(m.id) {
             return None;
         }
@@ -1235,7 +1241,7 @@ impl Client {
             for (i, t) in desc.signature.iter().enumerate() {
                 if let ArgumentType::Object(null) = t {
                     let o = m.uint(i);
-                    if o != 0 && !ours(o) && self.is_zombie(o) {
+                    if o != 0 && !ours(o) && gone(o) {
                         if *null == AllowNull::Yes {
                             m.args[i] = Arg::Object(0);
                         } else {
@@ -1249,7 +1255,7 @@ impl Client {
     }
 
     fn replay_msg(&mut self, m: Msg) {
-        if let Some(m) = self.prepare(m, &[]) {
+        if let Some(m) = self.prepare(m, &[], None) {
             self.send_up(m);
         }
     }

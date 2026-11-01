@@ -179,13 +179,23 @@ pub struct CheckBox {
     checked: bool,
     mixed: bool,
     enabled: bool,
+    height: f32,
     on_toggle: Option<Rc<dyn Fn(bool, &mut Window, &mut App)>>,
 }
 
 impl CheckBox {
     pub fn new(label: impl Into<SharedString>, checked: bool) -> CheckBox {
         let label = label.into();
-        CheckBox { id: label.clone(), label, checked, mixed: false, enabled: true, on_toggle: None }
+        CheckBox { id: label.clone(), label, checked, mixed: false, enabled: true, height: m::MARK_ROW, on_toggle: None }
+    }
+
+    /// As tall as the controls beside it (`metrics::CONTROL_HEIGHT` beside
+    /// a text field or button): placed alike, its label and theirs land
+    /// on the same device pixels at every scale (a shorter box centred
+    /// beside them rounds onto another at 1.25×).
+    pub fn height(mut self, h: f32) -> Self {
+        self.height = h;
+        self
     }
 
     pub fn id(mut self, id: impl Into<SharedString>) -> Self {
@@ -217,7 +227,7 @@ impl RenderOnce for CheckBox {
         let tw = f32::from(style::text_width(window, self.label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))).ceil();
         let w = m::MARK_SIZE + m::MARK_GAP + tw;
         let (label, checked, mixed) = (self.label.clone(), self.checked, self.mixed);
-        let mut c = control(self.id.clone(), w, m::MARK_ROW, move |r, s, window, cx| {
+        let mut c = control(self.id.clone(), w, self.height, move |r, s, window, cx| {
             let p = theme::palette(cx);
             // Centred on the label's x-height, on the device grid.
             let top = style::snap_coord(window, px((f32::from(r.center().y) - 6.5).round()));

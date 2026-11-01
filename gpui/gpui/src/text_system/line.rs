@@ -70,6 +70,7 @@ impl ShapedLine {
         paint_line(
             origin,
             &self.layout,
+            "",
             line_height,
             TextAlign::default(),
             None,
@@ -93,6 +94,7 @@ impl ShapedLine {
         paint_line_background(
             origin,
             &self.layout,
+            "",
             line_height,
             TextAlign::default(),
             None,
@@ -142,6 +144,7 @@ impl WrappedLine {
         paint_line(
             origin,
             &self.layout.unwrapped_layout,
+            &self.text,
             line_height,
             align,
             align_width,
@@ -172,6 +175,7 @@ impl WrappedLine {
         paint_line_background(
             origin,
             &self.layout.unwrapped_layout,
+            &self.text,
             line_height,
             align,
             align_width,
@@ -188,6 +192,7 @@ impl WrappedLine {
 fn paint_line(
     origin: Point<Pixels>,
     layout: &LineLayout,
+    text: &str,
     line_height: Pixels,
     align: TextAlign,
     align_width: Option<Pixels>,
@@ -221,6 +226,7 @@ fn paint_line(
                 &align,
                 layout,
                 wraps.peek(),
+                text,
             ),
             origin.y,
         );
@@ -272,6 +278,7 @@ fn paint_line(
                         &align,
                         layout,
                         wraps.peek(),
+                        text,
                     );
                     glyph_origin.y += line_height;
                 }
@@ -425,6 +432,7 @@ fn paint_line(
 fn paint_line_background(
     origin: Point<Pixels>,
     layout: &LineLayout,
+    text: &str,
     line_height: Pixels,
     align: TextAlign,
     align_width: Option<Pixels>,
@@ -454,6 +462,7 @@ fn paint_line_background(
                 &align,
                 layout,
                 wraps.peek(),
+                text,
             ),
             origin.y,
         );
@@ -490,6 +499,7 @@ fn paint_line_background(
                         &align,
                         layout,
                         wraps.peek(),
+                        text,
                     );
                     glyph_origin.y += line_height;
                 }
@@ -574,11 +584,14 @@ fn aligned_origin_x(
     align: &TextAlign,
     layout: &LineLayout,
     wrap_boundary: Option<&&WrapBoundary>,
+    text: &str,
 ) -> Pixels {
-    let end_of_line = if let Some(WrapBoundary { run_ix, glyph_ix }) = wrap_boundary {
-        layout.runs[*run_ix].glyphs[*glyph_ix].position.x
-    } else {
-        layout.width
+    if *align == TextAlign::Left {
+        return origin.x;
+    }
+    let end_of_line = match wrap_boundary {
+        Some(boundary) => row_end(layout, text, boundary),
+        None => layout.width,
     };
 
     let line_width = end_of_line - last_glyph_x;
@@ -588,4 +601,29 @@ fn aligned_origin_x(
         TextAlign::Center => (origin.x * 2.0 + align_width - line_width) / 2.0,
         TextAlign::Right => origin.x + align_width - line_width,
     }
+}
+
+/// Olo: where a wrapped row's text ends: the next row's start, less the
+/// spaces before it, which hang past the edge (a centred or right-aligned
+/// row is placed by its words, not its spaces; upstream counted them).
+fn row_end(layout: &LineLayout, text: &str, boundary: &WrapBoundary) -> Pixels {
+    let mut end = layout.runs[boundary.run_ix].glyphs[boundary.glyph_ix].position.x;
+    let (mut run, mut glyph) = (boundary.run_ix, boundary.glyph_ix);
+    loop {
+        if glyph == 0 {
+            if run == 0 {
+                break;
+            }
+            run -= 1;
+            glyph = layout.runs[run].glyphs.len();
+            continue;
+        }
+        glyph -= 1;
+        let g = &layout.runs[run].glyphs[glyph];
+        if !text.get(g.index..).and_then(|t| t.chars().next()).is_some_and(char::is_whitespace) {
+            break;
+        }
+        end = g.position.x;
+    }
+    end
 }

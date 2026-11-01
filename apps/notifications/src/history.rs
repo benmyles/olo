@@ -7,24 +7,34 @@
 //! window is open keeps its place until it closes. With fading on, each
 //! fades as it ages, the newest strongest, back to full while selected
 //! or under the pointer. The Cards view packs cards of different sizes
-//! (`masonry`), each a `style::card` headed by its app and time, the dot
-//! by the time while unread. A search field filters, and the keyboard
-//! works the list (arrows, Return to open, Delete to forget, Escape).
+//! (`masonry`), each a card headed by its app and time, the dot by the
+//! time while unread. A search field filters, and the keyboard works the
+//! list (arrows, Return to open, Delete to forget, Escape).
+//!
+//! Each row's and card's text is laid out once for what it shows (its
+//! note, the width, the scale and the look) and kept; a frame draws only
+//! what is in view. Clicks are found by where things were drawn.
 
-use std::collections::{BTreeSet, HashMap, HashSet};
-
-use olo_kit::{
-    Cx, WindowId,
-    egui::{self, Align, Color32, Key, Rect, Sense, WidgetInfo, pos2, vec2},
-    icons, masonry, metrics as m,
-    recorded::Recorded,
-    style::{self, c},
-    theme::mix,
-    widgets::{Button, CheckBox, ScrollView, TextControl},
+use std::{
+    cell::RefCell,
+    collections::{BTreeSet, HashMap, HashSet},
+    rc::Rc,
 };
-use olo_protocol::{CardSize, HistoryView, NoteStyle};
 
-use crate::{Notifications, close_box, galley, look, named_icons, now_secs, paint_mark, raise_app, server::Reason, store, web};
+use olo_kit_base::{masonry, metrics as m};
+use olo_protocol::{CardSize, HistoryView, NoteStyle};
+use olo_ui::{
+    Menu, MenuBar, agent,
+    gpui::{
+        self, App, Bounds, BoxShadow, Context, Corners, Entity, FocusHandle, Focusable as _, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Point, Render,
+        ScrollHandle, StatefulInteractiveElement as _, Styled as _, Subscription, Window, canvas, div, point, px, size,
+    },
+    style::{self, Align},
+    theme,
+    widgets::{Button, CheckBox, ScrollView, TextControl, TextField, TextFieldEvent, scroll::SCROLL_BAR, text_field},
+};
+
+use crate::{Notifications, look, markup::Span, named_icons, now_secs, paint_mark, pictures, raise_app, server::Reason, store, web};
 
 /// Above and below a row's text.
 const ROW_PAD: f32 = 5.0;
@@ -52,7 +62,6 @@ const CARD_HEAD_GAP: f32 = 7.0;
 const CARD_BUTTON: f32 = 20.0;
 /// Room for the × at a row's right end.
 const CLOSE_W: f32 = 18.0;
-const SCROLL_ID: &str = "history";
 /// The faintest a notification draws, at the very end of its fade: still
 /// legible while it is there to read and click, then gone.
 const FAINTEST: f32 = 0.3;
@@ -63,9 +72,10 @@ fn fade_opacity(strength: f32) -> f32 {
 }
 
 /// What the History window remembers while it is open (and across a
-/// reload, see `save_state`).
+/// reload, see `on_upgrade`).
 #[derive(Default)]
 pub struct HistoryState {
+    /// The search, as typed.
     pub search: String,
     /// The selected note's id.
     pub selected: Option<u32>,
@@ -74,170 +84,8 @@ pub struct HistoryState {
     /// Read while the window is open: they keep their places among the
     /// unread until it closes, so nothing moves from under the pointer.
     pub held: HashSet<u32>,
-    /// Where each card was last drawn (Cards), for the arrow keys.
-    cards: Vec<(u32, Rect)>,
-    /// The search field's id (for ⌘F) and whether to focus it.
-    search_id: Option<egui::Id>,
-    pub focus_search: bool,
-    /// Bring the selection into view, for this many frames (a new view
-    /// takes two: the first is clamped to the old view's height).
-    reveal: u8,
-    laid: LaidCards,
-}
-
-/// Cards measured in earlier frames, by note and columns spanned, with
-/// the note as it was then (a note that changed is measured again):
-/// measuring every card again each frame took 5 ms of a scroll's frame.
-/// Kept a while unseen, so a search cleared shows them all again at once.
-/// At a new width (a live resize) each frame measures what it has time
-/// for, `RELAY`; the rest show as they were a frame or two ago (all 200
-/// took 4 ms a frame). And each card's look as last painted, shown
-/// again while it stays the same (`olo_kit::recorded`): painting 200
-/// again took 1.6 ms of each frame of a scroll.
-#[derive(Default)]
-struct LaidCards {
-    /// The look, scale and galley generation they were measured in.
-    look: Option<(olo_kit::theme::Palette, f32, u64)>,
-    cards: HashMap<(u32, usize), LaidCard>,
-    /// Each card's look as last painted: recorded once it has looked
-    /// the same two frames running (a card resized live changes every
-    /// frame, and recording costs more than painting).
-    looks: HashMap<u32, (store::Entry, CardLook, Option<Recorded>, u64)>,
-    /// Frames drawn, and when this one's measuring at a new width stops.
-    frame: u64,
-    until: Option<std::time::Instant>,
-    /// A card shown at a width it wasn't measured at this frame.
-    behind: bool,
-    /// When each note came, as its card says it (`crate::when`), this
-    /// minute.
-    whens: HashMap<u64, String>,
-    minute: u64,
-    /// Cards placed in columns (`masonry::arrange`): by columns, their
-    /// width and the cards' spans and heights.
-    arranged: Vec<Arranged>,
-}
-
-struct LaidCard {
-    entry: store::Entry,
-    laid: CardLaid,
-    /// The last frame it showed in.
-    used: u64,
-}
-
-/// How long a frame spends measuring cards again at a new width.
-const RELAY: std::time::Duration = std::time::Duration::from_millis(1);
-/// How many frames a card no longer shown is kept (5 s at 120 Hz).
-const KEEP_LAID: u64 = 600;
-
-struct Arranged {
-    cols: usize,
-    width: f32,
-    sizes: Vec<(usize, f32)>,
-    rects: Vec<Rect>,
-    height: f32,
-    used: bool,
-}
-
-/// What a card's look depends on beyond its note.
-#[derive(Clone, Copy, PartialEq)]
-struct CardLook {
-    hovered: bool,
-    selected: bool,
-    /// Its fade, in 1024ths.
-    opacity: u16,
-    size: (u32, u32),
-    /// Icons loaded by then (`icons::loaded`): one still loading shows
-    /// once it has.
-    icons: u64,
-    /// The width its text was measured at.
-    laid: u32,
-}
-
-impl LaidCards {
-    /// From this frame on, in `palette` at `ppp`, with text laid out
-    /// in `generation` (`Fonts::galley_generation`: galleys from before
-    /// it paint the wrong glyphs).
-    fn begin(&mut self, palette: &olo_kit::theme::Palette, ppp: f32, generation: u64) {
-        if self.look.as_ref().is_none_or(|(p, s, g)| p != palette || *s != ppp || *g != generation) {
-            self.cards.clear();
-            self.looks.clear();
-            self.look = Some((palette.clone(), ppp, generation));
-        }
-        self.frame += 1;
-        let frame = self.frame;
-        self.until = Some(std::time::Instant::now() + RELAY);
-        self.behind = false;
-        self.cards.retain(|_, c| c.used + KEEP_LAID > frame);
-        self.looks.retain(|_, (.., used)| *used + KEEP_LAID > frame);
-        // Arrangements not used in a frame go.
-        self.arranged.retain_mut(|a| std::mem::take(&mut a.used));
-        let minute = now_secs() / 60;
-        if minute != self.minute {
-            self.whens.clear();
-            self.minute = minute;
-        }
-    }
-
-    /// Cards of `sizes` placed in `cols` columns `width` wide, and how
-    /// tall they are together; as they were last frame, if they were.
-    fn arrange(&mut self, cols: usize, width: f32, sizes: Vec<(usize, f32)>) -> (Vec<Rect>, f32) {
-        if let Some(a) = self.arranged.iter_mut().find(|a| a.cols == cols && a.width == width && a.sizes == sizes) {
-            a.used = true;
-            return (a.rects.clone(), a.height);
-        }
-        let (rects, height) = masonry::arrange(cols, width, m::SPACING, &sizes);
-        self.arranged.push(Arranged { cols, width, sizes, rects: rects.clone(), height, used: true });
-        (rects, height)
-    }
-
-    fn when(&mut self, secs: u64) -> String {
-        self.whens.entry(secs).or_insert_with(|| crate::when(secs)).clone()
-    }
-
-    /// `e`'s card looking as `look` says, painted by `paint` from `at`
-    /// on `painter`, or as it was when it last looked so.
-    fn paint(&mut self, e: &store::Entry, look: CardLook, painter: &egui::Painter, at: egui::Pos2, paint: impl FnOnce(&egui::Painter)) {
-        let frame = self.frame;
-        match self.looks.get_mut(&e.id) {
-            Some((was, had, recorded, used)) if was == e && *had == look => {
-                *used = frame;
-                match recorded {
-                    Some(r) => r.replay(painter, at),
-                    None => *recorded = Some(Recorded::record(painter, at, paint)),
-                }
-            }
-            // Changing: painted, and recorded if it stays so.
-            Some((was, had, recorded, used)) if was == e && had.size != look.size => {
-                (*had, *recorded, *used) = (look, None, frame);
-                paint(painter);
-            }
-            _ => {
-                let recorded = Recorded::record(painter, at, paint);
-                self.looks.insert(e.id, (e.clone(), look, Some(recorded), frame));
-            }
-        }
-    }
-
-    /// `e`'s card spanning `span` columns `width` wide; measured at
-    /// another width if this frame has no time left to measure it again.
-    fn get(&mut self, ui: &egui::Ui, p: &olo_kit::theme::Palette, e: &store::Entry, span: usize, width: f32) -> CardLaid {
-        let frame = self.frame;
-        if let Some(c) = self.cards.get_mut(&(e.id, span))
-            && c.entry == *e
-        {
-            c.used = frame;
-            if c.laid.width == width {
-                return c.laid.clone();
-            }
-            if self.until.is_some_and(|t| std::time::Instant::now() > t) {
-                self.behind = true;
-                return c.laid.clone();
-            }
-        }
-        let laid = card_lay(ui, p, e, span, width);
-        self.cards.insert((e.id, span), LaidCard { entry: e.clone(), laid: laid.clone(), used: frame });
-        laid
-    }
+    /// Bring the selection into view at the next frame.
+    reveal: bool,
 }
 
 /// One line of the list.
@@ -250,28 +98,10 @@ enum Item {
     Note { i: usize, older: Vec<usize>, grouped: bool },
 }
 
-/// What a click or key did, done after drawing.
-enum Did {
-    Select(u32),
-    Open(usize),
-    Action(usize, String),
-    Forget(Vec<usize>),
-    Fold(String),
-    Clear,
-    Quiet(bool),
-    MarkAllRead,
-    /// The command chosen from the menu of the entry at the index.
-    Menu(usize, String),
-}
-
 /// An entry's menu (a right click on it).
-fn entry_menu(e: &store::Entry) -> olo_kit::Menu {
-    let menu = olo_kit::Menu::new("Notification")
-        .item("Open", "open", None)
-        .separator()
-        .item(if e.unread { "Mark as Read" } else { "Mark as Unread" }, "toggle-read", None)
-        .separator();
-    crate::note_menu(menu, Some(e.pinned)).separator().item("Forget", "forget", None)
+fn entry_menu(e: &store::Entry) -> Menu {
+    let menu = Menu::new("Notification").item("Open", "open").separator().item(if e.unread { "Mark as Read" } else { "Mark as Unread" }, "toggle-read").separator();
+    crate::note_menu(menu, Some(e.pinned)).separator().item("Forget", "forget")
 }
 
 /// The local date of `secs`: (a key that differs from day to day, its
@@ -288,8 +118,7 @@ fn day(secs: u64) -> (i64, String) {
     let (tm, now) = (local(secs), local(now_secs()));
     let key = |t: &libc::tm| t.tm_year as i64 * 400 + t.tm_yday as i64;
     const DAYS: [&str; 7] = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    const MONTHS: [&str; 12] =
-        ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const MONTHS: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     let label = match key(&now) - key(&tm) {
         0 => "Today".to_owned(),
         1 => "Yesterday".to_owned(),
@@ -378,652 +207,9 @@ fn app_name(e: &store::Entry) -> &str {
     if e.app.is_empty() { "Notification" } else { &e.app }
 }
 
-impl Notifications {
-    /// The History window: Do Not Disturb, search and Clear All above, the
-    /// notes in the chosen view, a count below.
-    pub fn history_ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
-        let p = style::palette(ui.ctx());
-        let full = ui.max_rect();
-        let mut did = None;
-        let view = self.settings.view;
-
-        // The bar.
-        let bar_h = m::CONTROL_HEIGHT + 2.0 * m::SPACING;
-        let mut quiet = self.settings.dnd;
-        let check = Rect::from_min_size(full.min + vec2(m::SPACING, m::SPACING), vec2(130.0, m::CONTROL_HEIGHT));
-        let mut bar = ui.new_child(egui::UiBuilder::new().max_rect(check).layout(egui::Layout::left_to_right(Align::Center)));
-        let check_resp = bar.add(CheckBox::new(&mut quiet, "Do Not Disturb"));
-        if check_resp.changed() {
-            did = Some(Did::Quiet(quiet));
-        }
-        let clear_w = m::BUTTON_MIN_WIDTH;
-        let clear = Rect::from_min_size(pos2(full.right() - m::SPACING - clear_w, full.top() + m::SPACING), vec2(clear_w, m::CONTROL_HEIGHT));
-        let can_clear = self.history.entries.iter().any(|e| !e.shown && !e.pinned && !e.snoozed());
-        if ui.add_enabled_ui(can_clear, |ui| ui.put(clear, Button::new("Clear All")).clicked()).inner {
-            did = Some(Did::Clear);
-        }
-        let search_r = Rect::from_min_max(pos2(check_resp.rect.right() + m::SPACING, clear.top()), pos2(clear.left() - m::SPACING, clear.bottom()));
-        let search = ui.put(search_r, TextControl::new(&mut self.view.search).hint("Search"));
-        self.view.search_id = Some(search.id);
-        ui.ctx().accesskit_node_builder(search.id, |n| n.set_label("Search"));
-        if std::mem::take(&mut self.view.focus_search) {
-            search.request_focus();
-        }
-        let typing = search.has_focus();
-
-        // What shows (not what is snoozed): unread (and what was read
-        // while the window is open) first, newest first in each.
-        let entries = &self.history.entries;
-        let searching = !self.view.search.trim().is_empty();
-        let held = &self.view.held;
-        let first = |e: &store::Entry| e.unread || held.contains(&e.id);
-        let mut shown: Vec<usize> = (0..entries.len()).rev().filter(|&i| !entries[i].snoozed() && (!searching || found(&entries[i], &self.view.search))).collect();
-        shown.sort_by_key(|&i| !first(&entries[i]));
-        let unread = shown.iter().take_while(|&&i| first(&entries[i])).count();
-        let lines = items(entries, &shown, unread, view, &self.view.folded, searching);
-        let now = now_secs();
-        let settings = &self.settings;
-        // (Pinned, it doesn't fade.)
-        let strength = |e: &store::Entry| if e.pinned { 1.0 } else { settings.strength(now.saturating_sub(e.time)) };
-        let order: Vec<usize> = lines.iter().filter_map(|l| if let Item::Note { i, .. } = l { Some(*i) } else { None }).collect();
-        // (A selection stacked under a conversation's newest is that.)
-        let in_thread = |id: u32| {
-            lines.iter().find_map(|l| match l {
-                Item::Note { i, older, .. } if older.iter().any(|&o| entries[o].id == id) => order.iter().position(|o| o == i),
-                _ => None,
-            })
-        };
-        let selected = self.view.selected.and_then(|id| order.iter().position(|&i| entries[i].id == id).or_else(|| in_thread(id)));
-        if let Some(s) = selected {
-            self.view.selected = Some(entries[order[s]].id);
-        }
-
-        // The keyboard.
-        let list = Rect::from_min_max(pos2(full.left(), full.top() + bar_h), pos2(full.right(), full.bottom() - FOOTER));
-        let cards = view == HistoryView::Cards;
-        let (arrow, home) = ui.input_mut(|i| {
-            let mut arrow = None;
-            for (key, step) in [(Key::ArrowDown, masonry::Step::Down), (Key::ArrowUp, masonry::Step::Up), (Key::ArrowRight, masonry::Step::Right), (Key::ArrowLeft, masonry::Step::Left)] {
-                let sideways = matches!(step, masonry::Step::Left | masonry::Step::Right);
-                if (!sideways || (cards && !typing)) && i.consume_key(egui::Modifiers::NONE, key) {
-                    arrow = Some(step);
-                }
-            }
-            let home = if typing { None } else if i.consume_key(egui::Modifiers::NONE, Key::Home) { Some(false) } else if i.consume_key(egui::Modifiers::NONE, Key::End) { Some(true) } else { None };
-            (arrow, home)
-        });
-        // Cards go by where they are (last drawn); the rest by order.
-        let by_place = |s: usize, step: masonry::Step| -> Option<usize> {
-            let rects: Vec<Rect> = order.iter().map(|&i| self.view.cards.iter().find(|(id, _)| *id == entries[i].id).map_or(Rect::NOTHING, |(_, r)| *r)).collect();
-            masonry::neighbour(&rects, s, step).or(match step {
-                masonry::Step::Right => (s + 1 < order.len()).then_some(s + 1),
-                masonry::Step::Left => s.checked_sub(1),
-                _ => None,
-            })
-        };
-        if !order.is_empty() {
-            let forward = matches!(arrow, Some(masonry::Step::Down | masonry::Step::Right));
-            let to = match (home, arrow, selected) {
-                (Some(end), ..) => Some(if end { order.len() - 1 } else { 0 }),
-                (None, None, _) => None,
-                (None, Some(_), None) => Some(if forward { 0 } else { order.len() - 1 }),
-                (None, Some(step), Some(s)) if cards => by_place(s, step).or(Some(s)),
-                (None, Some(_), Some(s)) => Some(if forward { (s + 1).min(order.len() - 1) } else { s.saturating_sub(1) }),
-            };
-            if let Some(to) = to {
-                did = Some(Did::Select(entries[order[to]].id));
-                self.view.reveal = 1;
-            }
-        }
-        if let Some(s) = selected {
-            let (enter, delete) = ui.input_mut(|i| {
-                (i.consume_key(egui::Modifiers::NONE, Key::Enter), !typing && (i.consume_key(egui::Modifiers::NONE, Key::Delete) || i.consume_key(egui::Modifiers::NONE, Key::Backspace)))
-            });
-            if enter {
-                did = Some(Did::Open(order[s]));
-            } else if delete {
-                did = Some(Did::Forget(vec![order[s]]));
-            }
-            if view == HistoryView::Apps && !typing {
-                let app = &entries[order[s]].app;
-                let (left, right) = ui.input_mut(|i| (i.consume_key(egui::Modifiers::NONE, Key::ArrowLeft), i.consume_key(egui::Modifiers::NONE, Key::ArrowRight)));
-                if (left && !self.view.folded.contains(app)) || (right && self.view.folded.contains(app)) {
-                    did = Some(Did::Fold(app.clone()));
-                }
-            }
-        }
-        if ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape)) {
-            if searching {
-                self.view.search.clear();
-            } else {
-                self.view.selected = None;
-            }
-        }
-
-        // The list.
-        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(list));
-        if shown.is_empty() {
-            child.painter().rect_filled(list, 0.0, c(p.document_background));
-            style::sunken(child.painter(), list, &p, false);
-            let empty = if searching { "Nothing matches" } else { "No notifications" };
-            style::label(child.painter(), list.center().x, list.center().y, Align::Center, empty, style::plain_font(), style::disabled_text(&p));
-        } else {
-            let reveal = self.view.reveal > 0;
-            if reveal {
-                self.view.reveal -= 1;
-                ui.ctx().request_repaint();
-            }
-            let sel_id = self.view.selected;
-            self.view.laid.begin(&p, ui.ctx().pixels_per_point(), ui.ctx().fonts(|f| f.galley_generation()));
-            let mut drawn = Vec::new();
-            let background = if cards { style::card_paper(&p).0 } else { p.document_background };
-            ScrollView::new(SCROLL_ID).background(background).show(&mut child, |ui| {
-                ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
-                let top = ui.cursor().top();
-                let w = ui.available_width();
-                let mut row = 0;
-                if cards {
-                    // Each card as big as what it holds (or its app asks),
-                    // the newest unread one featured, packed in columns.
-                    // Laying a card out at a new width is laying out its
-                    // text (all 200 took 27 ms a frame of a resize): only
-                    // those down to a screen below what shows are, and to
-                    // the selection when it is to be shown; the height of
-                    // the rest is reckoned from theirs.
-                    let (cols, col_w) = masonry::columns(w, CARD_W, m::SPACING);
-                    let clip = ui.clip_rect();
-                    let want = clip.bottom() - top + clip.height();
-                    let must = if reveal { sel_id.and_then(|id| order.iter().position(|&i| entries[i].id == id)).map_or(0, |s| s + 1) } else { 0 };
-                    let mut laid: Vec<CardLaid> = Vec::new();
-                    let (mut rects, mut height);
-                    loop {
-                        // A few more at a time (twice as many at once laid
-                        // out 60 cards in a frame of a scroll); each step's
-                        // arrangement is kept (`LaidCards::arrange`).
-                        let upto = (laid.len() + 12).max(must + masonry::AHEAD).min(order.len());
-                        for (k, &i) in order.iter().enumerate().take(upto).skip(laid.len()) {
-                            let e = &entries[i];
-                            let span = card_span(e, cols, k == 0 && e.unread);
-                            laid.push(self.view.laid.get(ui, &p, e, span, masonry::span_width(span, col_w, m::SPACING)));
-                        }
-                        let sizes: Vec<(usize, f32)> = laid.iter().map(|l| (l.span, l.height)).collect();
-                        (rects, height) = self.view.laid.arrange(cols, col_w, sizes);
-                        let shown = laid.len().saturating_sub(masonry::AHEAD);
-                        if laid.len() == order.len() || (laid.len() >= must + masonry::AHEAD && masonry::lowest(cols, col_w, m::SPACING, &rects[..shown]) > want) {
-                            break;
-                        }
-                    }
-                    // The cards laid out only to place the others right
-                    // wait for a later frame.
-                    if laid.len() < order.len() {
-                        let keep = laid.len() - masonry::AHEAD;
-                        let each = laid.iter().map(|l| l.height + m::SPACING).sum::<f32>() / laid.len() as f32;
-                        height = masonry::lowest(cols, col_w, m::SPACING, &rects[..keep]).max(height) + (order.len() - keep) as f32 * each / cols as f32;
-                        laid.truncate(keep);
-                        rects.truncate(keep);
-                    }
-                    let (area, _) = ui.allocate_exact_size(vec2(w, height), Sense::hover());
-                    for (k, (&i, (laid, r))) in order.iter().zip(laid.into_iter().zip(rects)).enumerate() {
-                        let e = &entries[i];
-                        // On the device grid: a whole point is half a
-                        // pixel at 1.5×.
-                        let cr = style::snap(ui.ctx(), r.translate(area.min.to_vec2()));
-                        drawn.push((e.id, r));
-                        let is_sel = sel_id == Some(e.id);
-                        if is_sel && reveal {
-                            ScrollView::reveal(ui.ctx(), SCROLL_ID, cr.top() - top - m::SPACING, cr.bottom() - top + m::SPACING);
-                        }
-                        if !cr.intersects(ui.clip_rect()) {
-                            continue;
-                        }
-                        if let Some(d) = card(ui, &p, cr, laid, i, e, is_sel, strength(e), k, order.len(), &mut self.view.laid) {
-                            did = Some(d);
-                        }
-                    }
-                    // Cards shown as they were at another width are
-                    // measured again next frame.
-                    if self.view.laid.behind {
-                        ui.ctx().request_repaint();
-                    }
-                    return;
-                }
-                for line in &lines {
-                    match line {
-                        Item::Unread(n) => {
-                            let (r, _) = ui.allocate_exact_size(vec2(w, HEADING), Sense::hover());
-                            heading_fill(ui, &p, r);
-                            let font = egui::FontId::new(style::SMALL_SIZE, style::bold());
-                            let (t, baseline) = style::label_with_baseline(ui.painter(), r.left() + ICON_X, r.center().y, Align::Min, "Unread", font, style::disabled_text(&p));
-                            if *n == 0 {
-                                continue;
-                            }
-                            style::label_on_baseline(ui.painter(), t.right() + 5.0, baseline, Align::Min, n.to_string(), style::small_font(), style::disabled_text(&p));
-                            // Read them all, here where they are.
-                            let all = "Mark All Read";
-                            let tw = style::label_width(ui.ctx(), all, style::small_font());
-                            let br = Rect::from_min_max(pos2(r.right() - 8.0 - tw - 8.0, r.top() + 2.0), pos2(r.right() - 4.0, r.bottom() - 3.0));
-                            let b = ui.interact(br, ui.make_persistent_id("mark-all-read"), Sense::click());
-                            b.widget_info(|| WidgetInfo::labeled(egui::Role::Button, true, all));
-                            let ink = if b.hovered() { c(p.document_text) } else { style::disabled_text(&p) };
-                            style::label(ui.painter(), br.right() - 4.0, r.center().y, Align::Max, all, style::small_font(), ink);
-                            if b.clicked() {
-                                did = Some(Did::MarkAllRead);
-                            }
-                        }
-                        Item::Day(label) => {
-                            let (r, _) = ui.allocate_exact_size(vec2(w, HEADING), Sense::hover());
-                            heading_fill(ui, &p, r);
-                            let font = egui::FontId::new(style::SMALL_SIZE, style::bold());
-                            style::label(ui.painter(), r.left() + ICON_X, r.center().y, Align::Min, label, font, style::disabled_text(&p));
-                        }
-                        Item::Group { app, count, members, open } => {
-                            if let Some(d) = group(ui, &p, w, app, *count, members, *open, entries) {
-                                did = Some(d);
-                            }
-                        }
-                        Item::Note { i, older, grouped } => {
-                            let e = &entries[*i];
-                            let is_sel = sel_id == Some(e.id);
-                            let meta = match view {
-                                HistoryView::List => format!("{} · {}", app_name(e), clock(e.time)),
-                                HistoryView::Apps => crate::when(e.time),
-                                _ => format!("{} · {}", app_name(e), crate::when(e.time)),
-                            };
-                            let meta = if e.pinned { format!("{meta} · Pinned") } else { meta };
-                            let r = note_row(ui, &p, w, &RowArgs { i: *i, e, older, entries, meta, selected: is_sel, unread: e.unread, strength: strength(e), indent: *grouped, row, rows: order.len() }, &mut did);
-                            if is_sel && reveal {
-                                ScrollView::reveal(ui.ctx(), SCROLL_ID, r.top() - top, r.bottom() - top);
-                            }
-                            row += 1;
-                        }
-                    }
-                }
-            });
-            self.view.cards = drawn;
-        }
-
-        // The status line.
-        let foot = Rect::from_min_max(pos2(full.left(), full.bottom() - FOOTER), full.max);
-        let snoozed = self.history.entries.iter().filter(|e| e.snoozed()).count();
-        let total = self.history.entries.len() - snoozed;
-        let mut status = if searching { format!("{} of {total}", shown.len()) } else if total == 1 { "1 notification".into() } else { format!("{total} notifications") };
-        let unread_now = self.history.unread();
-        if unread_now > 0 && !searching {
-            status += &format!(", {unread_now} unread");
-        }
-        if snoozed > 0 && !searching {
-            status += &format!(", {snoozed} snoozed");
-        }
-        if self.quiet() {
-            status += if self.settings.dnd { " · Do Not Disturb" } else { " · Quiet by schedule" };
-        }
-        style::label(ui.painter(), foot.left() + m::SPACING, foot.center().y, Align::Min, status, style::small_font(), style::disabled_text(&p));
-
-        match did {
-            Some(Did::Quiet(on)) => self.set_quiet(on, 0),
-            Some(Did::Clear) => self.clear_history(cx),
-            Some(Did::Select(id)) => {
-                // A click reads it (it keeps its place while the window is
-                // open).
-                self.view.selected = Some(id);
-                if self.history.entries.iter().any(|e| e.id == id && e.unread) {
-                    self.view.held.insert(id);
-                    self.set_read(cx, id, true);
-                }
-            }
-            Some(Did::MarkAllRead) => {
-                self.view.held.extend(self.history.entries.iter().filter(|e| e.unread).map(|e| e.id));
-                self.mark_all_read(cx);
-            }
-            Some(Did::Fold(app)) => {
-                if !self.view.folded.remove(&app) {
-                    self.view.folded.insert(app);
-                }
-            }
-            Some(Did::Forget(at)) => self.forget(cx, at, &order),
-            Some(Did::Menu(i, command)) => {
-                let e = &self.history.entries[i];
-                let (id, unread) = (e.id, e.unread);
-                match command.as_str() {
-                    "open" => {
-                        self.view.selected = Some(id);
-                        self.open_entry(cx, window, i, None);
-                    }
-                    "toggle-read" => {
-                        self.view.held.insert(id);
-                        self.set_read(cx, id, unread);
-                    }
-                    "forget" => self.forget(cx, vec![i], &order),
-                    c => self.note_command(cx, id, c),
-                }
-            }
-            Some(Did::Open(i)) => {
-                self.view.selected = Some(self.history.entries[i].id);
-                self.open_entry(cx, window, i, None);
-            }
-            Some(Did::Action(i, key)) => self.open_entry(cx, window, i, Some(key)),
-            None => {}
-        }
-    }
-
-    /// Forget the entries at `at` (`order`: the list as shown, for what
-    /// is selected next); what is still open at its app closes.
-    fn forget(&mut self, cx: &mut Cx, mut at: Vec<usize>, order: &[usize]) {
-        // From the end, so the indices stay good.
-        at.sort_unstable();
-        let next = (at.len() == 1).then(|| order.iter().position(|&i| i == at[0])).flatten().and_then(|s| order.get(s + 1).or(s.checked_sub(1).and_then(|s| order.get(s)))).map(|&i| self.history.entries[i].id);
-        for &i in at.iter().rev() {
-            let e = self.history.entries[i].clone();
-            self.history.remove(i);
-            if e.live {
-                self.take(cx, e.id);
-                self.bus(|b| b.closed(e.id, Reason::Dismissed));
-            }
-        }
-        if self.view.selected.is_some() {
-            self.view.selected = next;
-        }
-        self.publish(true);
-    }
-
-    /// Run a history entry's action (`None`: its default). Still open at
-    /// the app, that is what a click on it does there; otherwise the app
-    /// comes forward.
-    fn open_entry(&mut self, cx: &mut Cx, window: WindowId, i: usize, key: Option<String>) {
-        let e = self.history.entries[i].clone();
-        let key = key.unwrap_or_else(|| "default".into());
-        if e.unread {
-            self.view.held.insert(e.id);
-        }
-        if e.live && e.actions.iter().any(|(k, _)| *k == key) {
-            self.invoke(cx, Some(window), e.id, key);
-        } else {
-            self.set_read(cx, e.id, true);
-            raise_app(e.desktop_entry.as_deref(), &e.app);
-        }
-    }
-
-    /// The selected note read or unread (Edit menu); whether there is one.
-    pub fn toggle_read(&mut self, cx: &mut Cx) -> bool {
-        let Some(id) = self.view.selected else { return false };
-        let Some(unread) = self.history.entries.iter().rev().find(|e| e.id == id).map(|e| e.unread) else { return false };
-        self.view.held.insert(id);
-        self.set_read(cx, id, unread);
-        true
-    }
-
-    /// Whether the selected note is unread (None: nothing selected).
-    pub fn selected_unread(&self) -> Option<bool> {
-        let id = self.view.selected?;
-        self.history.entries.iter().rev().find(|e| e.id == id).map(|e| e.unread)
-    }
-
-    /// Show the history this way from now on.
-    pub fn set_view(&mut self, view: HistoryView) {
-        self.refresh_settings();
-        self.settings.view = view;
-        self.save_settings();
-        self.view.reveal = 2;
-    }
-}
-
-/// A heading's band: a shade darker than the list.
-fn heading_fill(ui: &egui::Ui, p: &olo_kit::theme::Palette, r: Rect) {
-    ui.painter().rect_filled(r, 0.0, style::darken(p.document_background, 1.04));
-    style::hline_above(ui.painter(), r.left(), r.right(), r.bottom(), style::darken(p.document_background, 1.1));
-}
-
-/// The icon a note shows, in `r`: its sender's picture, round, for a
-/// message; else its app's (or the one it names).
-fn paint_icon(painter: &egui::Painter, r: Rect, e: &store::Entry, person: bool) {
-    if person
-        && e.look.style == NoteStyle::Message
-        && let Some(tex) = e.picture.as_deref().and_then(|path| icons::thumbnail(painter.ctx(), std::path::Path::new(path), r.width() * 2.0))
-    {
-        icons::paint_round(painter, r, &tex, Color32::TRANSPARENT);
-        return;
-    }
-    let names = named_icons(painter.ctx(), e.icon.as_deref(), e.desktop_entry.as_deref(), &e.app);
-    let generic = if e.kind == store::KindName::Error { "warning" } else { "info" };
-    paint_mark(painter, r, &e.app, e.look.accent, e.via.is_some(), &names, generic);
-}
-
-/// The mark of what is unread: a dot in the colour of what the keyboard
-/// is on (not the tab's yellow, which would repeat the window's own on
-/// every note).
-fn unread_dot(painter: &egui::Painter, center: egui::Pos2, p: &olo_kit::theme::Palette) {
-    painter.circle_filled(center, 3.5, c(p.keyboard_navigation));
-}
-
 /// Whether a note reports a failure (its title starts with a stop sign).
 fn failed(e: &store::Entry) -> bool {
     e.kind == store::KindName::Error
-}
-
-/// An app's heading in By App: its latch, icon, name and count; a click
-/// folds it; Clear forgets the app's notes.
-#[allow(clippy::too_many_arguments)]
-fn group(ui: &mut egui::Ui, p: &olo_kit::theme::Palette, w: f32, app: &str, count: usize, members: &[usize], open: bool, entries: &[store::Entry]) -> Option<Did> {
-    let (r, resp) = ui.allocate_exact_size(vec2(w, HEADING + 2.0), Sense::click());
-    let name = if app.is_empty() { "Notification" } else { app };
-    resp.widget_info(|| WidgetInfo { selected: Some(open), ..WidgetInfo::labeled(egui::Role::Button, true, format!("{name} ({count})")) });
-    heading_fill(ui, p, r);
-    let text = c(p.document_text);
-    let dim = style::disabled_text(p);
-    style::latch(ui.painter(), Rect::from_center_size(pos2(r.left() + 7.0, r.center().y), vec2(10.0, 10.0)), open, if resp.hovered() { text } else { dim });
-    paint_icon(ui.painter(), Rect::from_center_size(pos2(r.left() + ICON_X + SMALL_ICON / 2.0, r.center().y), vec2(SMALL_ICON, SMALL_ICON)), &entries[members[0]], false);
-    let (n, baseline) = style::label_with_baseline(ui.painter(), r.left() + TEXT_X, r.center().y, Align::Min, name, style::bold_font(), text);
-    style::label_on_baseline(ui.painter(), n.right() + 6.0, baseline, Align::Min, count.to_string(), style::small_font(), dim);
-    let mut did = None;
-    if resp.hovered() || ui.rect_contains_pointer(r) {
-        let font = style::small_font();
-        let g = ui.painter().layout_no_wrap("Dismiss".into(), font.clone(), dim);
-        let cr = Rect::from_min_max(pos2(r.right() - 8.0 - g.size().x - 6.0, r.top() + 3.0), pos2(r.right() - 4.0, r.bottom() - 4.0));
-        let clear = ui.interact(cr, ui.make_persistent_id(("clear-group", app)), Sense::click());
-        clear.widget_info(|| WidgetInfo::labeled(egui::Role::Button, true, format!("Dismiss {name}")));
-        style::label(ui.painter(), cr.right() - 4.0, r.center().y, Align::Max, "Dismiss", font, if clear.hovered() { text } else { dim });
-        if clear.clicked() {
-            // (Not those pinned: they stay put.)
-            did = Some(Did::Forget(members.iter().copied().filter(|&i| !entries[i].shown && !entries[i].pinned).collect()));
-        }
-    }
-    if did.is_none() && resp.clicked() {
-        did = Some(Did::Fold(app.to_owned()));
-    }
-    did
-}
-
-struct RowArgs<'a> {
-    i: usize,
-    e: &'a store::Entry,
-    older: &'a [usize],
-    entries: &'a [store::Entry],
-    meta: String,
-    selected: bool,
-    unread: bool,
-    /// How strongly it shows (it fades as it ages).
-    strength: f32,
-    /// Under its app's heading.
-    indent: bool,
-    row: usize,
-    rows: usize,
-}
-
-/// One note as a row; its rect.
-fn note_row(ui: &mut egui::Ui, p: &olo_kit::theme::Palette, w: f32, a: &RowArgs, did: &mut Option<Did>) -> Rect {
-    let e = a.e;
-    let (fg, bg) = if a.selected { (p.list_selected_item_text, p.list_selected_background) } else { (p.document_text, p.document_background) };
-    let dim = c(mix(fg, bg, 0.45));
-    let soft = c(mix(fg, bg, 0.2));
-    let x0 = if a.indent { 8.0 } else { 0.0 };
-    let text_x = x0 + TEXT_X;
-    let meta_font = style::small_font();
-    let meta_g = ui.painter().layout_no_wrap(a.meta.clone(), meta_font.clone(), dim);
-    let title_w = (w - text_x - CLOSE_W - meta_g.size().x - 8.0).max(40.0);
-    let body_w = w - text_x - CLOSE_W;
-    let title_text = if e.summary.is_empty() { app_name(e) } else { &e.summary };
-    // Unread: bold, as in a mailbox.
-    let title_font = if a.unread || a.selected { style::bold_font() } else { style::plain_font() };
-    let lead = if failed(e) { look::MARK_ROOM } else { 0.0 };
-    let title = look::led(ui, title_text, lead, title_font, c(fg), title_w, if a.selected { 3 } else { 1 });
-    let body = (!e.text.is_empty()).then(|| {
-        let mut job = egui::text::LayoutJob::default();
-        for s in &e.body {
-            let font = if s.bold { style::bold_font() } else if s.italic { style::italic_font() } else { style::plain_font() };
-            // Unselected, the body is one line: its breaks as spaces.
-            let t = if a.selected { s.text.clone() } else { s.text.replace('\n', " ") };
-            job.append(&t, 0.0, egui::TextFormat::simple(font, soft));
-        }
-        job.wrap = egui::text::TextWrapping { max_width: body_w, max_rows: if a.selected { 12 } else { 1 }, break_anywhere: false, overflow_character: Some('…') };
-        ui.fonts_mut(|f| f.layout_job(job))
-    });
-    // The rest of a conversation, under the newest, when selected.
-    let older: Vec<(String, std::sync::Arc<egui::Galley>)> = if a.selected {
-        a.older.iter().map(|&o| (crate::when(a.entries[o].time), galley(ui, &a.entries[o].text.replace('\n', " "), soft, body_w - 44.0, 1, style::small_font()))).collect()
-    } else {
-        Vec::new()
-    };
-    let actions: Vec<(String, String)> = if !a.selected {
-        Vec::new()
-    } else if e.live {
-        // The default action is Open, whatever the app called it ("Activate").
-        e.actions.iter().filter(|(k, l)| k == "default" || !l.is_empty()).map(|(k, l)| (k.clone(), if k == "default" { "Open".to_owned() } else { l.clone() })).collect()
-    } else {
-        vec![("default".into(), format!("Show {}", app_name(e)))]
-    };
-    let mut h = ROW_PAD + title.size().y + body.as_ref().map_or(0.0, |b| 1.0 + b.size().y);
-    let older_h = style::SMALL_SIZE + 5.0;
-    if !older.is_empty() {
-        h += m::TIGHT + older.len() as f32 * older_h;
-    }
-    if a.selected {
-        h += m::TIGHT + m::CONTROL_HEIGHT + 2.0;
-    }
-    // On the 2-point grid (whole device pixels at 1.5×), so the rows under
-    // it start on one too.
-    let h = ((h + ROW_PAD).max(ROW_PAD * 2.0 + SMALL_ICON + 4.0) / 2.0).ceil() * 2.0;
-    let (r, resp) = ui.allocate_exact_size(vec2(w, h), Sense::click());
-    // For agents: a list item named by its title, which of how many.
-    resp.widget_info(|| WidgetInfo { selected: Some(a.selected), ..WidgetInfo::labeled(egui::Role::ListItem, true, title_text) });
-    let shown = r.intersect(ui.clip_rect());
-    ui.ctx().accesskit_node_builder(resp.id, |n| {
-        if shown.is_positive() {
-            n.set_bounds(egui::accesskit::Rect { x0: shown.min.x as f64, y0: shown.min.y as f64, x1: shown.max.x as f64, y1: shown.max.y as f64 });
-        }
-        n.set_row_index(a.row);
-        n.set_row_count(a.rows);
-    });
-    let mut painter = ui.painter().clone();
-    if a.selected {
-        painter.rect_filled(r, 0.0, c(bg));
-    } else if resp.hovered() {
-        painter.rect_filled(r, 0.0, style::darken(p.document_background, 1.04));
-    }
-    // Older, fainter; full again while selected or under the pointer.
-    if !a.selected && !resp.hovered() {
-        painter.multiply_opacity(fade_opacity(a.strength));
-    }
-    // The title's first line, the app and time, the dot and the icon all
-    // centre on one line: where the title came out on device pixels (the
-    // app and time, smaller, on its baseline).
-    let first_h = title.rows.first().map_or(title.size().y, |row| row.rect().height());
-    let x = r.left() + text_x;
-    let title_r = Rect::from_min_size(style::text_origin(ui.ctx(), &title, x, r.top() + ROW_PAD + first_h / 2.0, style::PLAIN_SIZE), title.size());
-    let baseline = title_r.top() + style::baseline_offset(&title);
-    let line1 = title_r.top() + style::cap_middle(&title, style::PLAIN_SIZE);
-    if a.unread {
-        unread_dot(&painter, pos2(r.left() + x0 + 9.0, line1), p);
-    }
-    paint_icon(&painter, Rect::from_center_size(pos2(r.left() + x0 + ICON_X + SMALL_ICON / 2.0, line1), vec2(SMALL_ICON, SMALL_ICON)), e, true);
-    let mut y = title_r.top();
-    style::describe_text(ui.ctx(), egui::accesskit::Role::Label, title_text, title_r, None);
-    painter.galley(title_r.min, title.clone(), c(fg));
-    if failed(e) {
-        look::paint_stop(&painter, &title, title_r.min);
-    }
-    style::label_on_baseline(&painter, r.right() - CLOSE_W, baseline, Align::Max, a.meta.clone(), meta_font, dim);
-    if !a.older.is_empty() && !a.selected {
-        // How many in the conversation.
-        let n = (a.older.len() + 1).to_string();
-        let g = painter.layout_no_wrap(n.clone(), style::small_font(), c(p.document_background));
-        let tx = title_r.min.x + title.rows.first().map_or(0.0, |row| row.rect().width()) + 6.0;
-        let pill = Rect::from_min_size(pos2(tx, line1 - 7.0), vec2((g.size().x + 8.0).max(14.0), 14.0));
-        painter.rect_filled(pill, 7.0, dim);
-        style::label(&painter, pill.center().x, pill.center().y, Align::Center, n, style::small_font(), c(p.document_background));
-    }
-    y += title.size().y;
-    if let Some(body) = &body {
-        y += 1.0;
-        let br = Rect::from_min_size(pos2(x, y), body.size());
-        style::describe_text(ui.ctx(), egui::accesskit::Role::Label, &e.text, br, None);
-        painter.galley(br.min, body.clone(), soft);
-        y += body.size().y;
-    }
-    if !older.is_empty() {
-        y += m::TIGHT;
-        for (t, g) in &older {
-            let cy = y + older_h / 2.0;
-            style::label(&painter, x, cy, Align::Min, t.clone(), style::small_font(), dim);
-            let gr = Rect::from_min_size(pos2(x + 44.0, cy - g.size().y / 2.0), g.size());
-            style::describe_text(ui.ctx(), egui::accesskit::Role::Label, g.text(), gr, None);
-            painter.galley(gr.min, g.clone(), soft);
-            y += older_h;
-        }
-    }
-    if a.selected {
-        y += m::TIGHT;
-        let mut bx = x;
-        // Dismiss last: the notification, or the whole conversation it
-        // gathers.
-        let dismiss = (String::new(), "Dismiss".to_owned());
-        for (key, label) in actions.iter().chain([&dismiss]) {
-            let bw = (painter.layout_no_wrap(label.clone(), style::plain_font(), dim).size().x + 2.0 * m::CONTROL_PAD).max(m::BUTTON_MIN_WIDTH * 0.75).ceil();
-            if bx + bw > r.right() - 4.0 && bx > x {
-                break;
-            }
-            let br = Rect::from_min_size(pos2(bx, y), vec2(bw, m::CONTROL_HEIGHT));
-            if ui.put(br, Button::new(label).min_width(bw)).clicked() {
-                *did = Some(if key.is_empty() { Did::Forget(std::iter::once(a.i).chain(a.older.iter().copied()).collect()) } else { Did::Action(a.i, key.clone()) });
-            }
-            bx += bw + m::TIGHT;
-        }
-    }
-    // Forget it: a × while the pointer is over it.
-    let close = Rect::from_center_size(pos2(r.right() - CLOSE_W / 2.0, line1), vec2(12.0, 12.0));
-    let mut forget = false;
-    if !e.shown && (resp.hovered() || ui.rect_contains_pointer(close.expand(3.0))) {
-        let cr = ui.interact(close.expand(3.0), ui.make_persistent_id(("forget", a.i, e.id)), Sense::click());
-        cr.widget_info(|| WidgetInfo::labeled(egui::Role::Button, true, "Forget"));
-        close_box(&painter, close, if cr.hovered() { c(fg) } else { dim });
-        forget = cr.clicked();
-    }
-    if !a.selected {
-        style::hline_above(ui.painter(), r.left() + text_x, r.right(), r.bottom(), style::darken(p.document_background, 1.07));
-    }
-    let menu = olo_kit::widgets::context_menu(&resp, || entry_menu(e));
-    if forget {
-        *did = Some(Did::Forget(vec![a.i]));
-    } else if let Some(command) = menu {
-        *did = Some(Did::Menu(a.i, command));
-    } else if resp.double_clicked() {
-        *did = Some(Did::Open(a.i));
-    } else if resp.clicked() && did.is_none() {
-        *did = Some(Did::Select(e.id));
-    }
-    r
-}
-
-/// A card measured: how many columns it spans, how tall it is, its face.
-#[derive(Clone)]
-struct CardLaid {
-    span: usize,
-    /// The width it was measured at.
-    width: f32,
-    height: f32,
-    face: look::Laid,
-    ink: look::Ink,
-    /// Its app's actions, while it's open there.
-    buttons: Vec<(String, String)>,
 }
 
 /// How many columns a card takes: as many as its app asks; else two for a
@@ -1042,161 +228,1218 @@ fn card_span(e: &store::Entry, cols: usize, newest_unread: bool) -> usize {
     }
 }
 
-/// A card's face's colours (`style::card_ink`).
-fn card_ink(p: &olo_kit::theme::Palette, e: &store::Entry) -> look::Ink {
+/// A card face's colours (`style::card_ink`).
+fn card_ink(p: &olo_theme::Palette, e: &store::Entry) -> look::Ink {
     let card = style::card_ink(p);
     look::Ink {
         text: card.text,
-        soft: c(mix(p.document_text, p.document_background, 0.15)),
+        soft: style::c(olo_theme::mix(p.document_text, p.document_background, 0.15)),
         dim: card.dim,
-        link: c(p.keyboard_navigation),
+        link: style::c(p.keyboard_navigation),
         balloon: card.well,
         balloon_edge: card.edge,
-        accent: e.look.accent.map(|[r, g, b]| Color32::from_rgb(r, g, b)),
+        accent: e.look.accent.map(|[r, g, b]| [r, g, b, 255]),
     }
+}
+
+/// An entry's picture, from its file.
+fn picture(e: &store::Entry) -> Option<pictures::Source> {
+    e.picture.as_deref().map(|p| pictures::Source::File(p.into()))
 }
 
 /// What a note in the history shows.
 fn entry_face(e: &store::Entry) -> look::Face<'_> {
-    look::Face {
-        title: if e.summary.is_empty() { app_name(e) } else { &e.summary },
-        body: &e.body,
-        look: &e.look,
-        progress: e.progress.filter(|_| e.live),
-        picture: e.picture.as_deref().map_or(look::Picture::None, look::Picture::File),
-        failed: failed(e),
-    }
+    look::Face { title: if e.summary.is_empty() { app_name(e) } else { &e.summary }, body: &e.body, look: &e.look, progress: e.progress.filter(|_| e.live), picture: picture(e), failed: failed(e) }
 }
 
-/// Measure a card `width` wide.
-fn card_lay(ui: &egui::Ui, p: &olo_kit::theme::Palette, e: &store::Entry, span: usize, width: f32) -> CardLaid {
-    let ink = card_ink(p, e);
-    let small = e.look.size == CardSize::Small;
-    let room = look::Room {
-        width: width - 2.0 * m::CARD_INSET,
-        title_rows: if span > 1 { 2 } else { 3 },
-        body_rows: if small { 1 } else if span > 1 { WIDE_ROWS } else { CARD_ROWS },
-        title_reserve: 0.0,
-        picture: 28.0,
-        image_max: if span > 1 { 180.0 } else { 120.0 },
-        fields_max: if span > 1 { 8 } else { 4 },
-    };
-    let face = look::lay(ui, &entry_face(e), &ink, &room);
-    let buttons: Vec<(String, String)> = if e.live {
-        e.actions.iter().filter(|(k, l)| k != "default" && !l.is_empty() && !web::browser_action(e.via.as_deref(), k)).cloned().collect()
-    } else {
-        Vec::new()
-    };
-    let mut height = m::CARD_INSET + CARD_HEAD + CARD_HEAD_GAP + face.height + m::CARD_INSET;
-    if !buttons.is_empty() {
-        height += m::SPACING + CARD_BUTTON;
-    }
-    CardLaid { span, width, height: height.ceil(), face, ink, buttons }
+/// A heading's band: a shade darker than the list.
+fn heading_fill(window: &mut Window, p: &olo_theme::Palette, r: Bounds<Pixels>) {
+    window.paint_quad(gpui::fill(r, style::tint(p.document_background, 1.04)));
+    style::hline_above(window, r.left(), r.right(), r.bottom(), style::tint(p.document_background, 1.1));
 }
 
-/// What of a card doesn't answer the pointer (`card`): its paper, whose
-/// it is and when, and its face.
-#[allow(clippy::too_many_arguments)]
-fn card_look(ui: &egui::Ui, p: &olo_kit::theme::Palette, painter: &egui::Painter, r: Rect, laid: &CardLaid, e: &store::Entry, hovered: bool, selected: bool, forgettable: bool, time: &str) {
+/// The icon a note shows, in `r`: its sender's picture, round, for a
+/// message; else its app's (or the one it names), or the generic app's,
+/// as its banner's header shows it (not a warning or an info mark: the
+/// title of a failure already starts with its stop sign).
+fn paint_icon(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, e: &store::Entry, person: bool) {
+    if person
+        && e.look.style == NoteStyle::Message
+        && let Some(src) = picture(e)
+        && let Some(img) = pictures::get(cx, &src, look::device(window, r), pictures::Shape::Cover)
+    {
+        let _ = window.paint_image(r, Corners::all(r.size.width / 2.0), img, 0, false);
+        return;
+    }
+    let names = named_icons(e.icon.as_deref(), e.desktop_entry.as_deref(), &e.app);
+    paint_mark(window, cx, r, &e.app, e.look.accent, e.via.is_some(), &names);
+}
+
+/// The mark of what is unread: a dot in the colour of what the keyboard
+/// is on (not the tab's yellow, which would repeat the window's own on
+/// every note).
+fn unread_dot(window: &mut Window, center: Point<Pixels>, p: &olo_theme::Palette) {
+    window.paint_sector(center, px(0.0), px(3.5), 0.0, std::f32::consts::TAU, style::c(p.keyboard_navigation));
+}
+
+/// A card's paper, its shadow under it, as the egui kit's `style::card`.
+fn paint_card(window: &mut Window, r: Bounds<Pixels>, p: &olo_theme::Palette, hover: bool, selected: bool) {
     let ink = style::card_ink(p);
-    style::card(painter, r, p, hovered, selected);
-    let inner = r.shrink(m::CARD_INSET);
-    // Whose and when: the app's mark and name, the time at the right.
-    let head = Rect::from_min_size(inner.min, vec2(inner.width(), CARD_HEAD));
-    let icon = Rect::from_min_size(pos2(head.left(), head.center().y - CARD_MARK / 2.0), vec2(CARD_MARK, CARD_MARK));
-    paint_icon(painter, icon, e, false);
-    let time_w = style::label_width(ui.ctx(), time, style::small_font());
-    let name_x = icon.right() + 5.0;
-    let name_room = head.right() - time_w - CARD_DOT - 8.0 - name_x;
-    let (_, baseline) = style::label_fit_with_baseline(painter, name_x, head.center().y, Align::Min, app_name(e), egui::FontId::new(style::SMALL_SIZE, style::bold()), ink.dim, name_room);
-    if !forgettable {
-        style::label_on_baseline(painter, head.right(), baseline, Align::Max, time, style::small_font(), ink.dim);
-        if e.unread {
-            unread_dot(painter, pos2(head.right() - time_w - CARD_DOT / 2.0 - 1.0, head.center().y), p);
-        }
-    }
-    look::paint(ui, painter, &entry_face(e), &laid.face, &laid.ink, pos2(inner.left(), head.bottom() + CARD_HEAD_GAP), inner.width());
+    let r = style::snap(window, r);
+    let radius = px(m::CARD_RADIUS);
+    let dark = p.mode == olo_theme::ThemeMode::Dark;
+    let (y, blur, a) = if selected { (2.0, 10.0, if dark { 110 } else { 40 }) } else { (1.0, 4.0, if dark { 70 } else { 22 }) };
+    let shadow = BoxShadow { color: style::c([0, 0, 0, a]), offset: point(px(0.0), px(y)), blur_radius: px(blur / 2.0), spread_radius: px(0.0) };
+    window.paint_shadows(r, Corners::all(radius), &[shadow]);
+    let (fill, edge) = if selected { (style::c(p.list_selected_background), style::c(p.selection_edge())) } else { (if hover { ink.hover } else { ink.card }, ink.edge) };
+    window.paint_quad(gpui::fill(r, fill).corner_radii(radius).border_widths(style::hairline(window)).border_color(edge));
 }
 
-/// One note as a card in `r` (`style::card`): a quiet line of whose it
-/// is and when (a lit dot while unread; a close box in their place under
-/// the pointer), then its face; fading as it ages.
-#[allow(clippy::too_many_arguments)]
-fn card(ui: &mut egui::Ui, p: &olo_kit::theme::Palette, r: Rect, laid: CardLaid, i: usize, e: &store::Entry, selected: bool, strength: f32, row: usize, rows: usize, looks: &mut LaidCards) -> Option<Did> {
-    let resp = ui.interact(r, ui.make_persistent_id(("card", i, e.id)), Sense::click());
-    let title_text = if e.summary.is_empty() { app_name(e) } else { &e.summary };
-    resp.widget_info(|| WidgetInfo { selected: Some(selected), ..WidgetInfo::labeled(egui::Role::ListItem, true, title_text) });
-    // With AccessKit on, painting describes the text it paints.
-    let tree = ui
-        .ctx()
-        .accesskit_node_builder(resp.id, |n| {
-            n.set_row_index(row);
-            n.set_row_count(rows);
-        })
-        .is_some();
-    // Staggered in its column: level with a card beside it only by
-    // chance.
-    olo_kit::layout_review::own_grid(ui, r);
-    let hovered = resp.hovered() || ui.rect_contains_pointer(r);
-    let opacity = if !selected && !hovered { (fade_opacity(strength) * 1024.0).round() / 1024.0 } else { 1.0 };
-    let mut painter = ui.painter().clone();
-    painter.multiply_opacity(opacity);
-    if laid.width != r.width() {
-        // Measured at another width (`LaidCards::get`): kept within it.
-        painter.set_clip_rect(painter.clip_rect().intersect(r));
-    }
-    let inner = r.shrink(m::CARD_INSET);
-    let head = Rect::from_min_size(inner.min, vec2(inner.width(), CARD_HEAD));
-    let forgettable = !e.shown && hovered;
-    let time = if e.pinned { format!("Pinned · {}", looks.when(e.time)) } else { looks.when(e.time) };
-    let paint = |painter: &egui::Painter| card_look(ui, p, painter, r, &laid, e, hovered, selected, forgettable, &time);
-    if tree {
-        paint(&painter);
-    } else {
-        let look = CardLook { hovered, selected, opacity: (opacity * 1024.0) as u16, size: (r.width().to_bits(), r.height().to_bits()), icons: icons::loaded(), laid: laid.width.to_bits() };
-        looks.paint(e, look, &painter, r.min, paint);
-    }
-    let mut did = None;
-    // Its app's actions, small, at the bottom right as in an alert.
-    if !laid.buttons.is_empty() {
-        let mut bx = inner.right();
-        let by = inner.bottom() - CARD_BUTTON;
-        for (key, label) in laid.buttons.iter().rev() {
-            let bw = (style::label_width(ui.ctx(), label, style::small_font()) + 16.0).max(56.0).min(inner.width()).ceil();
-            if bx - bw < inner.left() && bx < inner.right() {
-                break;
+/// A row laid out.
+#[derive(Clone)]
+struct RowLaid {
+    title: look::Text,
+    body: Option<look::Text>,
+    /// The rest of a conversation: when, and a line of each.
+    older: Vec<(String, look::Text)>,
+    /// Its buttons, when selected: (key, label, width); an empty key
+    /// dismisses it.
+    buttons: Vec<(String, String, f32)>,
+    height: f32,
+}
+
+/// What a row's layout depends on.
+#[derive(Clone, PartialEq)]
+struct RowKey {
+    entry: store::Entry,
+    older: Vec<u32>,
+    meta: String,
+    selected: bool,
+    indent: bool,
+    width: u32,
+    scale: u32,
+    dark: bool,
+}
+
+/// A card measured: how many columns it spans, how tall it is, its face.
+#[derive(Clone)]
+struct CardLaid {
+    height: f32,
+    face: look::Laid,
+    ink: look::Ink,
+    /// Its app's actions, while it's open there: (key, label, width).
+    buttons: Vec<(String, String, f32)>,
+}
+
+#[derive(Clone, PartialEq)]
+struct CardKey {
+    entry: store::Entry,
+    span: usize,
+    width: u32,
+    scale: u32,
+    dark: bool,
+}
+
+/// Something that takes a click, where it was drawn.
+#[derive(Clone, PartialEq)]
+enum Hit {
+    Row(usize),
+    Forget(usize),
+    Fold(String),
+    /// A group's Dismiss: those of its notes that may go.
+    Dismiss(String, Vec<usize>),
+    MarkAllRead,
+    Card(usize),
+}
+
+/// What a line of the list is, placed.
+struct Line {
+    item: Item,
+    y: f32,
+    h: f32,
+}
+
+/// The list laid out, kept from frame to frame (while it scrolls, as the
+/// pointer moves over it) until what it shows changes: two hundred notes
+/// laid out again for every frame of a scroll took 1–3 ms of each.
+struct ListLaid {
+    entries: Rc<Vec<store::Entry>>,
+    view: HistoryView,
+    cards_view: bool,
+    searching: bool,
+    /// The notes in the order they're listed (as `entries` indices).
+    order: Rc<Vec<usize>>,
+    lines: Rc<Vec<(Item, f32, f32)>>,
+    rows: Rc<HashMap<usize, RowLaid>>,
+    cards: Rc<Vec<(usize, CardLaid, masonry::Place)>>,
+    total: f32,
+    sel_id: Option<u32>,
+    /// The selected row's index, top and the rest of its conversation.
+    sel_row: Option<(usize, f32, Vec<usize>)>,
+    /// How many show, of how many; unread; snoozed.
+    shown: usize,
+    all: usize,
+    unread: u32,
+    snoozed: usize,
+    can_clear: bool,
+}
+
+/// What the list was laid out for, besides the notes.
+#[derive(PartialEq)]
+struct LaidKey {
+    width: u32,
+    scale: u32,
+    palette: std::sync::Arc<olo_theme::Palette>,
+}
+
+pub struct HistoryWindow {
+    app: Entity<Notifications>,
+    search: Entity<TextField>,
+    scroll: ScrollHandle,
+    focus: FocusHandle,
+    rows: HashMap<u32, (RowKey, RowLaid)>,
+    cards: HashMap<u32, (CardKey, CardLaid)>,
+    /// Where things were drawn in the last frame, in the list's own
+    /// coordinates; later ones on top.
+    hits: Rc<RefCell<Vec<(Bounds<Pixels>, Hit)>>>,
+    /// What the pointer is over.
+    hover: Option<Hit>,
+    /// Where each card was placed (the arrow keys go by it), by entry.
+    places: Vec<(u32, masonry::Place)>,
+    laid: Option<(LaidKey, Rc<ListLaid>)>,
+    /// The notes, the view or the selection changed since: lay it out
+    /// again.
+    stale: bool,
+    _subs: Vec<Subscription>,
+}
+
+impl HistoryWindow {
+    pub fn new(app: Entity<Notifications>, window: &mut Window, cx: &mut Context<Self>) -> HistoryWindow {
+        let typed = app.read(cx).view.search.clone();
+        let search = text_field(cx, |f| f.name("Search").hint("Search"));
+        search.update(cx, |f, cx| f.set_text(typed, cx));
+        let focus = cx.focus_handle();
+        window.focus(&focus);
+        let observe = cx.observe(&app, |me: &mut HistoryWindow, _, cx| {
+            me.stale = true;
+            cx.notify();
+        });
+        let typing = cx.subscribe(&search, |me: &mut HistoryWindow, field, e: &TextFieldEvent, cx| {
+            if matches!(e, TextFieldEvent::Changed) {
+                let text = field.read(cx).text().to_owned();
+                me.app.update(cx, |n, cx| {
+                    n.view.search = text;
+                    cx.notify();
+                });
             }
-            let br = Rect::from_min_size(pos2(bx - bw, by), vec2(bw, CARD_BUTTON));
-            if ui.put(br, Button::new(label).small().min_width(bw)).clicked() {
-                did = Some(Did::Action(i, key.clone()));
+        });
+        HistoryWindow { app, search, scroll: ScrollHandle::new(), focus, rows: HashMap::new(), cards: HashMap::new(), hits: Rc::default(), hover: None, places: Vec::new(), laid: None, stale: true, _subs: vec![observe, typing] }
+    }
+
+    fn menus(&self, cx: &App) -> Vec<Menu> {
+        let n = self.app.read(cx);
+        let view = n.settings.view;
+        let mut views = Menu::new("View");
+        for (v, label, command, key) in VIEWS {
+            views = views.item(label, command).key(key).checked(view == v);
+        }
+        let selected = n.selected_unread();
+        let pinned = n.view.selected.and_then(|id| n.history.newest(id)).map(|e| e.pinned);
+        let edit = Menu::new("Edit")
+            .item("Find", "find")
+            .key("f")
+            .separator()
+            .item(if selected == Some(false) { "Mark as Unread" } else { "Mark as Read" }, "toggle-read")
+            .key("u")
+            .enabled(selected.is_some())
+            .item("Mark All as Read", "read-all")
+            .enabled(n.history.unread() > 0)
+            .separator();
+        let edit = crate::note_menu(edit, pinned).separator().item("Clear All", "clear").enabled(n.history.entries.iter().any(|e| !e.shown && !e.pinned && !e.snoozed()));
+        vec![Menu::new("File").item("Close", "close").key("w"), edit, views]
+    }
+
+    fn command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.stale = true;
+        let app = self.app.clone();
+        match command {
+            "close" => app.update(cx, |n, cx| n.close_history(cx)),
+            "clear" => app.update(cx, |n, cx| n.clear_history(cx)),
+            "find" => {
+                let f = self.search.read(cx).focus_handle(cx);
+                window.focus(&f);
             }
-            bx -= bw + m::TIGHT;
+            "toggle-read" => {
+                app.update(cx, |n, cx| n.toggle_read(cx));
+            }
+            "read-all" => app.update(cx, |n, cx| {
+                let unread: Vec<u32> = n.history.entries.iter().filter(|e| e.unread).map(|e| e.id).collect();
+                n.view.held.extend(unread);
+                n.mark_all_read(cx);
+            }),
+            // The selected note's.
+            c if c == "pin" || c.starts_with("snooze:") => app.update(cx, |n, cx| {
+                if let Some(id) = n.view.selected {
+                    n.note_command(cx, id, c);
+                }
+            }),
+            _ => {
+                if let Some((v, ..)) = VIEWS.iter().find(|(_, _, c, _)| *c == command) {
+                    let v = *v;
+                    app.update(cx, |n, cx| {
+                        n.set_view(v);
+                        cx.notify();
+                    });
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    /// A row laid out for `width` (kept while what it shows is the same).
+    #[allow(clippy::too_many_arguments)]
+    fn row(&mut self, window: &mut Window, p: &olo_theme::Palette, entries: &[store::Entry], i: usize, older: &[usize], meta: String, selected: bool, indent: bool, width: f32) -> RowLaid {
+        let e = &entries[i];
+        let key = RowKey {
+            entry: e.clone(),
+            older: older.iter().map(|&o| entries[o].id).collect(),
+            meta: meta.clone(),
+            selected,
+            indent,
+            width: width as u32,
+            scale: (window.scale_factor() * 1000.0) as u32,
+            dark: p.mode == olo_theme::ThemeMode::Dark,
+        };
+        if let Some((k, laid)) = self.rows.get(&e.id)
+            && *k == key
+        {
+            return laid.clone();
+        }
+        let (fg, bg) = if selected { (p.list_selected_item_text, p.list_selected_background) } else { (p.document_text, p.document_background) };
+        let soft = style::c(olo_theme::mix(fg, bg, 0.2));
+        let x0 = if indent { 8.0 } else { 0.0 };
+        let text_x = x0 + TEXT_X;
+        let meta_w = f32::from(style::text_width(window, meta, style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL))).ceil();
+        let title_w = (width - text_x - CLOSE_W - meta_w - 8.0).max(40.0);
+        let body_w = width - text_x - CLOSE_W;
+        let title_text = if e.summary.is_empty() { app_name(e) } else { &e.summary };
+        // Unread: bold, as in a mailbox.
+        let weight = if e.unread || selected { FontWeight::BOLD } else { FontWeight::NORMAL };
+        let title = look::title(window, title_text, failed(e), style::PLAIN_SIZE, style::ui_font(weight), style::c(fg), title_w, if selected { 3 } else { 1 });
+        let body = (!e.text.is_empty()).then(|| {
+            // Unselected, the body is one line: its breaks as spaces.
+            let spans: Vec<Span> = e.body.iter().map(|s| Span { text: if selected { s.text.clone() } else { s.text.replace('\n', " ") }, bold: s.bold, italic: s.italic, underline: false, link: None }).collect();
+            let ink = look::Ink { text: style::c(fg), soft, dim: soft, link: soft, balloon: soft, balloon_edge: soft, accent: None };
+            look::body(window, &spans, &ink, body_w, if selected { 12 } else { 1 })
+        });
+        // The rest of a conversation, under the newest, when selected.
+        let older: Vec<(String, look::Text)> = if selected {
+            older.iter().map(|&o| (crate::when(entries[o].time), look::text(window, &entries[o].text.replace('\n', " "), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), soft, body_w - 44.0, 1))).collect()
+        } else {
+            Vec::new()
+        };
+        let buttons: Vec<(String, String, f32)> = if !selected {
+            Vec::new()
+        } else {
+            let mut actions: Vec<(String, String)> = if e.live {
+                // The default action is Open, whatever the app called it ("Activate").
+                e.actions.iter().filter(|(k, l)| k == "default" || !l.is_empty()).map(|(k, l)| (k.clone(), if k == "default" { "Open".to_owned() } else { l.clone() })).collect()
+            } else {
+                vec![("default".into(), format!("Show {}", app_name(e)))]
+            };
+            // Dismiss last: the notification, or the whole conversation.
+            actions.push((String::new(), "Dismiss".to_owned()));
+            actions.into_iter().map(|(k, l)| (k, l.clone(), (f32::from(style::text_width(window, l, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))) + 2.0 * m::CONTROL_PAD).max(m::BUTTON_MIN_WIDTH * 0.75).ceil())).collect()
+        };
+        let mut h = ROW_PAD + title.height + body.as_ref().map_or(0.0, |b| 1.0 + b.height);
+        let older_h = style::SMALL_SIZE + 5.0;
+        if !older.is_empty() {
+            h += m::TIGHT + older.len() as f32 * older_h;
+        }
+        if selected {
+            h += m::TIGHT + m::CONTROL_HEIGHT + 2.0;
+        }
+        // On the 2-point grid (whole device pixels at 1.5×), so the rows
+        // under it start on one too.
+        let height = ((h + ROW_PAD).max(ROW_PAD * 2.0 + SMALL_ICON + 4.0) / 2.0).ceil() * 2.0;
+        let laid = RowLaid { title, body, older, buttons, height };
+        self.rows.insert(e.id, (key, laid.clone()));
+        laid
+    }
+
+    /// A card measured `width` wide.
+    fn card(&mut self, window: &mut Window, p: &olo_theme::Palette, e: &store::Entry, span: usize, width: f32) -> CardLaid {
+        let key = CardKey { entry: e.clone(), span, width: width as u32, scale: (window.scale_factor() * 1000.0) as u32, dark: p.mode == olo_theme::ThemeMode::Dark };
+        if let Some((k, laid)) = self.cards.get(&e.id)
+            && *k == key
+        {
+            return laid.clone();
+        }
+        let ink = card_ink(p, e);
+        let small = e.look.size == CardSize::Small;
+        let room = look::Room {
+            width: width - 2.0 * m::CARD_INSET,
+            title_rows: if span > 1 { 2 } else { 3 },
+            body_rows: if small { 1 } else if span > 1 { WIDE_ROWS } else { CARD_ROWS },
+            title_reserve: 0.0,
+            picture: 28.0,
+            image_max: if span > 1 { 180.0 } else { 120.0 },
+            fields_max: if span > 1 { 8 } else { 4 },
+        };
+        let face = look::lay(window, &entry_face(e), &ink, &room);
+        let buttons: Vec<(String, String, f32)> = if e.live {
+            e.actions
+                .iter()
+                .filter(|(k, l)| k != "default" && !l.is_empty() && !web::browser_action(e.via.as_deref(), k))
+                .map(|(k, l)| (k.clone(), l.clone(), (f32::from(style::text_width(window, l.clone(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL))) + 16.0).max(56.0).min(room.width).ceil()))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let mut height = m::CARD_INSET + CARD_HEAD + CARD_HEAD_GAP + face.height + m::CARD_INSET;
+        if !buttons.is_empty() {
+            height += m::SPACING + CARD_BUTTON;
+        }
+        let laid = CardLaid { height: height.ceil(), face, ink, buttons };
+        self.cards.insert(e.id, (key, laid.clone()));
+        laid
+    }
+
+    fn key(&mut self, e: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>, order: &[usize], cards: bool) {
+        self.stale = true;
+        let key = e.keystroke.key.as_str();
+        if e.keystroke.modifiers.modified() {
+            return;
+        }
+        let typing = self.search.read(cx).focus_handle(cx).is_focused(window);
+        let app = self.app.clone();
+        let (selected, entries_ids): (Option<usize>, Vec<u32>) = {
+            let n = app.read(cx);
+            let ids: Vec<u32> = order.iter().map(|&i| n.history.entries[i].id).collect();
+            (n.view.selected.and_then(|id| ids.iter().position(|&x| x == id)), ids)
+        };
+        let step = match key {
+            "down" => Some(masonry::Step::Down),
+            "up" => Some(masonry::Step::Up),
+            "right" if cards && !typing => Some(masonry::Step::Right),
+            "left" if cards && !typing => Some(masonry::Step::Left),
+            _ => None,
+        };
+        let to = if let Some(step) = step {
+            if order.is_empty() {
+                None
+            } else {
+                let forward = matches!(step, masonry::Step::Down | masonry::Step::Right);
+                Some(match selected {
+                    None => {
+                        if forward {
+                            0
+                        } else {
+                            order.len() - 1
+                        }
+                    }
+                    Some(s) if cards => {
+                        let places: Vec<masonry::Place> = entries_ids.iter().map(|id| self.places.iter().find(|(p, _)| p == id).map_or_else(masonry::Place::default, |(_, r)| *r)).collect();
+                        masonry::neighbour(&places, s, step)
+                            .or(match step {
+                                masonry::Step::Right => (s + 1 < order.len()).then_some(s + 1),
+                                masonry::Step::Left => s.checked_sub(1),
+                                _ => None,
+                            })
+                            .unwrap_or(s)
+                    }
+                    Some(s) => {
+                        if forward {
+                            (s + 1).min(order.len() - 1)
+                        } else {
+                            s.saturating_sub(1)
+                        }
+                    }
+                })
+            }
+        } else if !typing && (key == "home" || key == "end") && !order.is_empty() {
+            Some(if key == "end" { order.len() - 1 } else { 0 })
+        } else {
+            None
+        };
+        if let Some(to) = to {
+            let id = entries_ids[to];
+            app.update(cx, |n, cx| {
+                n.select(id, cx);
+                n.view.reveal = true;
+            });
+            cx.stop_propagation();
+            return;
+        }
+        let Some(s) = selected else {
+            if key == "escape" {
+                self.escape(window, cx);
+                cx.stop_propagation();
+            }
+            return;
+        };
+        match key {
+            "enter" => app.update(cx, |n, cx| n.open_entry(cx, Some(window), order[s], None)),
+            "delete" | "backspace" if !typing => app.update(cx, |n, cx| n.forget(cx, vec![order[s]], order)),
+            "left" | "right" if !typing && app.read(cx).settings.view == HistoryView::Apps => app.update(cx, |n, cx| {
+                let a = n.history.entries[order[s]].app.clone();
+                let folded = n.view.folded.contains(&a);
+                if (key == "left") != folded {
+                    n.fold(a, cx);
+                }
+            }),
+            "escape" => self.escape(window, cx),
+            _ => return,
+        }
+        cx.stop_propagation();
+    }
+
+    /// Escape: the search clears, else the selection goes.
+    fn escape(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        self.stale = true;
+        if !self.search.read(cx).text().trim().is_empty() {
+            self.search.update(cx, |f, cx| f.set_text("", cx));
+        } else {
+            self.app.update(cx, |n, cx| {
+                n.view.selected = None;
+                cx.notify();
+            });
         }
     }
-    // Forget it: a × where the time was, while the pointer is over it.
-    if forgettable {
-        let ink = style::card_ink(p);
-        let close = Rect::from_center_size(pos2(head.right() - 6.0, head.center().y), vec2(12.0, 12.0));
-        let cr = ui.interact(close.expand(3.0), ui.make_persistent_id(("forget", i, e.id)), Sense::click());
-        cr.widget_info(|| WidgetInfo::labeled(egui::Role::Button, true, "Forget"));
-        close_box(ui.painter(), close, if cr.hovered() { ink.text } else { ink.dim });
-        if cr.clicked() {
-            did = Some(Did::Forget(vec![i]));
+
+    /// What the pointer is on at `pos` (the list's own coordinates).
+    fn hit_at(&self, pos: Point<Pixels>) -> Option<Hit> {
+        self.hits.borrow().iter().rev().find(|(r, _)| r.contains(&pos)).map(|(_, h)| h.clone())
+    }
+
+    fn press(&mut self, e: &MouseDownEvent, origin: Point<Pixels>, order: Rc<Vec<usize>>, window: &mut Window, cx: &mut Context<Self>) {
+        self.stale = true;
+        let Some(hit) = self.hit_at(e.position - origin) else { return };
+        let app = self.app.clone();
+        let select = e.modifiers.platform || e.modifiers.control || e.modifiers.shift;
+        app.update(cx, |n, cx| match hit {
+            Hit::Row(i) => {
+                let id = n.history.entries[i].id;
+                n.select(id, cx);
+                if e.click_count >= 2 {
+                    n.open_entry(cx, Some(window), i, None);
+                }
+            }
+            Hit::Card(i) => {
+                // One click acts, as on a banner; ⌘ or Shift only selects it.
+                let id = n.history.entries[i].id;
+                if select || e.click_count >= 2 {
+                    n.select(id, cx);
+                } else {
+                    n.view.selected = Some(id);
+                    n.open_entry(cx, Some(window), i, None);
+                }
+            }
+            Hit::Forget(i) => n.forget(cx, vec![i], &order),
+            Hit::Fold(a) => n.fold(a, cx),
+            Hit::Dismiss(_, members) => n.forget(cx, members, &order),
+            Hit::MarkAllRead => {
+                let unread: Vec<u32> = n.history.entries.iter().filter(|e| e.unread).map(|e| e.id).collect();
+                n.view.held.extend(unread);
+                n.mark_all_read(cx);
+            }
+        });
+        window.focus(&self.focus);
+        cx.stop_propagation();
+    }
+
+    fn menu(&mut self, e: &MouseDownEvent, origin: Point<Pixels>, order: Rc<Vec<usize>>, window: &mut Window, cx: &mut Context<Self>) {
+        self.stale = true;
+        let i = match self.hit_at(e.position - origin) {
+            Some(Hit::Row(i) | Hit::Card(i) | Hit::Forget(i)) => i,
+            _ => return,
+        };
+        let Some(entry) = self.app.read(cx).history.entries.get(i).cloned() else { return };
+        let me = cx.entity();
+        olo_ui::menu::context_menu(window, cx, entry_menu(&entry), e.position, move |command, window, cx| {
+            let (command, order) = (command.to_owned(), order.clone());
+            me.update(cx, |h, cx| {
+                h.app.update(cx, |n, cx| {
+                    let Some(i) = n.history.entries.iter().position(|x| x.id == entry.id) else { return };
+                    match command.as_str() {
+                        "open" => {
+                            n.view.selected = Some(entry.id);
+                            n.open_entry(cx, Some(window), i, None);
+                        }
+                        "toggle-read" => {
+                            n.view.held.insert(entry.id);
+                            let unread = n.history.entries[i].unread;
+                            n.set_read(cx, entry.id, unread);
+                        }
+                        "forget" => n.forget(cx, vec![i], &order),
+                        c => n.note_command(cx, entry.id, c),
+                    }
+                })
+            });
+        });
+        cx.stop_propagation();
+    }
+}
+
+/// The History window's views: View menu label, command and key.
+const VIEWS: [(HistoryView, &str, &str, &str); 4] = [
+    (HistoryView::List, "List", "view-list", "1"),
+    (HistoryView::Apps, "By App", "view-apps", "2"),
+    (HistoryView::Cards, "Cards", "view-cards", "3"),
+    (HistoryView::Conversations, "Conversations", "view-conversations", "4"),
+];
+
+impl Render for HistoryWindow {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = theme::palette(cx);
+        let me = cx.entity();
+        let bar = MenuBar::new(self.menus(cx), {
+            let me = me.clone();
+            move |cmd, window, cx| me.update(cx, |h, cx| h.command(cmd, window, cx))
+        });
+        let (dnd, quiet, schedule_quiet, settings) = {
+            let n = self.app.read(cx);
+            (n.settings.dnd, n.quiet(), !n.settings.dnd, n.settings.clone())
+        };
+        let now = now_secs();
+        let strength = move |e: &store::Entry| if e.pinned { 1.0 } else { settings.strength(now.saturating_sub(e.time)) };
+
+        // The list, laid out for its width (or as it was).
+        let w = (f32::from(window.viewport_size().width) - SCROLL_BAR - 2.0).max(100.0);
+        let key = LaidKey { width: w.to_bits(), scale: window.scale_factor().to_bits(), palette: p.clone() };
+        let list = match &self.laid {
+            Some((k, l)) if !self.stale && *k == key => l.clone(),
+            _ => {
+                let l = Rc::new(self.lay_out(window, cx, &p, w));
+                self.laid = Some((key, l.clone()));
+                self.stale = false;
+                l
+            }
+        };
+        let (view, cards_view, sel_id, total, searching) = (list.view, list.cards_view, list.sel_id, list.total, list.searching);
+        let order = list.order.clone();
+
+        // The keyboard.
+        let keys_order = order.clone();
+        let content_focus = self.focus.clone();
+
+        // What's drawn, in the list's coordinates.
+        let hits = self.hits.clone();
+        let hover = self.hover.clone();
+        let p2 = p.clone();
+        let (entries2, rows2, cards2, lines2) = (list.entries.clone(), list.rows.clone(), list.cards.clone(), list.lines.clone());
+        let order2 = order.clone();
+        let paint = canvas(
+            |_, _, _| {},
+            move |b, _, window, cx| {
+                let p = p2.clone();
+                let mut hits = hits.borrow_mut();
+                hits.clear();
+                let view_box = window.content_mask().bounds;
+                let at = |r: Bounds<Pixels>| r + b.origin;
+                let local = |r: Bounds<Pixels>| r;
+                let rows_total = order2.len();
+                if cards_view {
+                    for (k, (i, laid, pl)) in cards2.iter().enumerate() {
+                        let e = &entries2[*i];
+                        let r = style::snap(window, at(Bounds::new(point(px(pl.x), px(pl.y + m::SPACING)), size(px(pl.w), px(pl.h)))));
+                        let lr = Bounds::new(point(px(pl.x), px(pl.y + m::SPACING)), size(px(pl.w), px(pl.h)));
+                        hits.push((local(lr), Hit::Card(*i)));
+                        if !r.intersects(&view_box) {
+                            continue;
+                        }
+                        // Staggered in its column: level with a card beside
+                        // it only by chance.
+                        olo_ui::review::own_grid(window, r);
+                        let hovered = hover.as_ref().is_some_and(|h| matches!(h, Hit::Card(x) | Hit::Forget(x) if x == i));
+                        let is_sel = sel_id == Some(e.id);
+                        let opacity = if !is_sel && !hovered { fade_opacity(strength(e)) } else { 1.0 };
+                        window.with_element_opacity(Some(opacity), |window| {
+                            paint_card(window, r, &p, hovered, is_sel);
+                            let ink = style::card_ink(&p);
+                            let inner = Bounds::from_corners(r.origin + point(px(m::CARD_INSET), px(m::CARD_INSET)), r.bottom_right() - point(px(m::CARD_INSET), px(m::CARD_INSET)));
+                            // Whose and when: the app's mark and name, the time at the right.
+                            let head = Bounds::new(inner.origin, size(inner.size.width, px(CARD_HEAD)));
+                            let icon = Bounds::new(point(head.left(), head.center().y - px(CARD_MARK / 2.0)), size(px(CARD_MARK), px(CARD_MARK)));
+                            paint_icon(window, cx, icon, e, false);
+                            let time = if e.pinned { format!("Pinned · {}", crate::when(e.time)) } else { crate::when(e.time) };
+                            let small = style::ui_font(FontWeight::NORMAL);
+                            let time_w = f32::from(style::text_width(window, time.clone(), style::DETAIL_SIZE, small.clone()));
+                            let name_x = icon.right() + px(5.0);
+                            let name_room = head.right() - px(time_w + CARD_DOT + 8.0) - name_x;
+                            let n = style::label_fit(window, cx, name_x, head.center().y, Align::Left, app_name(e).to_owned(), style::DETAIL_SIZE, style::ui_font(FontWeight::BOLD), ink.dim, name_room);
+                            let baseline = style::baseline_at(window, head.center().y, style::DETAIL_SIZE);
+                            let _ = n;
+                            let forgettable = !e.shown && hovered;
+                            if !forgettable {
+                                style::label_on_baseline(window, cx, head.right(), baseline, Align::Right, time.clone(), style::DETAIL_SIZE, small.clone(), ink.dim);
+                                if e.unread {
+                                    unread_dot(window, point(head.right() - px(time_w + CARD_DOT / 2.0 + 1.0), head.center().y), &p);
+                                }
+                            } else {
+                                // Forget it: a × where the time was.
+                                let close = Bounds::centered_at(point(head.right() - px(6.0), head.center().y), size(px(12.0), px(12.0)));
+                                let lit = hover == Some(Hit::Forget(*i));
+                                style::close_box(window, close, if lit { ink.text } else { ink.dim });
+                                hits.push((local(close.dilate(px(3.0)) - b.origin), Hit::Forget(*i)));
+                                agent::record(window, cx, agent::Node::button("Forget", close));
+                            }
+                            look::paint(window, cx, &entry_face(e), &laid.face, &laid.ink, point(inner.left(), head.bottom() + px(CARD_HEAD_GAP)), f32::from(inner.size.width));
+                        });
+                        let title = if e.summary.is_empty() { app_name(e) } else { &e.summary };
+                        agent::record(window, cx, agent::Node { role: "ListItem", name: Some(title.to_owned().into()), bounds: r, enabled: true, clickable: true, selected: Some(is_sel), ..Default::default() });
+                        let _ = (k, rows_total);
+                    }
+                    return;
+                }
+                let mut row = 0;
+                for (item, y, h) in lines2.iter() {
+                    let lr = Bounds::new(point(px(0.0), px(*y)), size(b.size.width, px(*h)));
+                    let r = at(lr);
+                    let shown = r.intersects(&view_box);
+                    match item {
+                        Item::Unread(count) => {
+                            if !shown {
+                                continue;
+                            }
+                            heading_fill(window, &p, r);
+                            let font = style::ui_font(FontWeight::BOLD);
+                            let t = style::label(window, cx, r.left() + px(ICON_X), r.center().y, Align::Left, "Unread", style::SMALL_SIZE, font, style::disabled_text(&p));
+                            agent::record(window, cx, agent::Node::label("Unread", t));
+                            if *count == 0 {
+                                continue;
+                            }
+                            let baseline = style::baseline_at(window, r.center().y, style::SMALL_SIZE);
+                            style::label_on_baseline(window, cx, t.right() + px(5.0), baseline, Align::Left, count.to_string(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
+                            // Read them all, here where they are.
+                            let all = "Mark All Read";
+                            let tw = f32::from(style::text_width(window, all.to_owned(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL)));
+                            // (Its right edge on the times' column under it.)
+                            let br = Bounds::from_corners(point(r.right() - px(CLOSE_W + tw + 4.0), r.top() + px(2.0)), point(r.right() - px(CLOSE_W - 4.0), r.bottom() - px(3.0)));
+                            let lit = hover == Some(Hit::MarkAllRead);
+                            let ink = if lit { style::c(p.document_text) } else { style::disabled_text(&p) };
+                            style::label(window, cx, r.right() - px(CLOSE_W), r.center().y, Align::Right, all, style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), ink);
+                            hits.push((br - b.origin, Hit::MarkAllRead));
+                            agent::record(window, cx, agent::Node::button(all, br));
+                        }
+                        Item::Day(label) => {
+                            if !shown {
+                                continue;
+                            }
+                            heading_fill(window, &p, r);
+                            let t = style::label(window, cx, r.left() + px(ICON_X), r.center().y, Align::Left, label.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::BOLD), style::disabled_text(&p));
+                            agent::record(window, cx, agent::Node::label(label.clone(), t));
+                        }
+                        Item::Group { app, count, members, open } => {
+                            hits.push((lr, Hit::Fold(app.clone())));
+                            if !shown {
+                                continue;
+                            }
+                            heading_fill(window, &p, r);
+                            let name = if app.is_empty() { "Notification" } else { app.as_str() };
+                            let text = style::c(p.document_text);
+                            let dim = style::disabled_text(&p);
+                            let lit = hover.as_ref().is_some_and(|h| matches!(h, Hit::Fold(a) | Hit::Dismiss(a, _) if a == app));
+                            style::latch(window, Bounds::centered_at(point(r.left() + px(7.0), r.center().y), size(px(10.0), px(10.0))), *open, if lit { text } else { dim });
+                            paint_icon(window, cx, Bounds::centered_at(point(r.left() + px(ICON_X + SMALL_ICON / 2.0), r.center().y), size(px(SMALL_ICON), px(SMALL_ICON))), &entries2[members[0]], false);
+                            let n = style::label(window, cx, r.left() + px(TEXT_X), r.center().y, Align::Left, name.to_owned(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), text);
+                            let baseline = style::baseline_at(window, r.center().y, style::PLAIN_SIZE);
+                            style::label_on_baseline(window, cx, n.right() + px(6.0), baseline, Align::Left, count.to_string(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), dim);
+                            agent::record(window, cx, agent::Node { role: "Button", name: Some(format!("{name} ({count})").into()), bounds: r, enabled: true, clickable: true, selected: Some(*open), ..Default::default() });
+                            if lit {
+                                let small = style::ui_font(FontWeight::NORMAL);
+                                let tw = f32::from(style::text_width(window, "Dismiss".to_owned(), style::DETAIL_SIZE, small.clone()));
+                                let cr = Bounds::from_corners(point(r.right() - px(8.0 + tw + 6.0), r.top() + px(3.0)), point(r.right() - px(4.0), r.bottom() - px(4.0)));
+                                let on = matches!(&hover, Some(Hit::Dismiss(a, _)) if a == app);
+                                style::label(window, cx, cr.right() - px(4.0), r.center().y, Align::Right, "Dismiss", style::DETAIL_SIZE, small, if on { text } else { dim });
+                                // (Not those pinned, or on screen: they stay put.)
+                                let gone: Vec<usize> = members.iter().copied().filter(|&i| !entries2[i].shown && !entries2[i].pinned).collect();
+                                hits.push((cr - b.origin, Hit::Dismiss(app.clone(), gone)));
+                                agent::record(window, cx, agent::Node::button(format!("Dismiss {name}"), cr));
+                            }
+                        }
+                        Item::Note { i, older, grouped } => {
+                            row += 1;
+                            hits.push((lr, Hit::Row(*i)));
+                            if !shown {
+                                continue;
+                            }
+                            let e = &entries2[*i];
+                            let Some(laid) = rows2.get(i) else { continue };
+                            let is_sel = sel_id == Some(e.id);
+                            let hovered = hover.as_ref().is_some_and(|h| matches!(h, Hit::Row(x) | Hit::Forget(x) if x == i));
+                            let (fg, bg) = if is_sel { (p.list_selected_item_text, p.list_selected_background) } else { (p.document_text, p.document_background) };
+                            let dim = style::c(olo_theme::mix(fg, bg, 0.45));
+                            if is_sel {
+                                window.paint_quad(gpui::fill(r, style::c(bg)));
+                            } else if hovered {
+                                window.paint_quad(gpui::fill(r, style::tint(p.document_background, 1.04)));
+                            }
+                            let x0 = if *grouped { 8.0 } else { 0.0 };
+                            let x = r.left() + px(x0 + TEXT_X);
+                            // Older, fainter; full again while selected or under the pointer.
+                            let opacity = if !is_sel && !hovered { fade_opacity(strength(e)) } else { 1.0 };
+                            let title_text = if e.summary.is_empty() { app_name(e) } else { &e.summary };
+                            window.with_element_opacity(Some(opacity), |window| {
+                                // The title's first line, the app and time, the dot and the
+                                // icon all centre on one line.
+                                let title_top = style::snap_coord(window, r.top() + px(ROW_PAD));
+                                let baseline = laid.title.baseline(title_top);
+                                let line1 = baseline - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
+                                if e.unread {
+                                    unread_dot(window, point(r.left() + px(x0 + 9.0), line1), &p);
+                                }
+                                paint_icon(window, cx, Bounds::centered_at(point(r.left() + px(x0 + ICON_X + SMALL_ICON / 2.0), line1), size(px(SMALL_ICON), px(SMALL_ICON))), e, true);
+                                laid.title.paint(window, cx, point(x, title_top));
+                                agent::record(window, cx, agent::Node::label(title_text.to_owned(), Bounds::new(point(x, title_top), size(px(laid.title.width), px(laid.title.height)))));
+                                if failed(e) {
+                                    look::paint_stop(window, cx, &laid.title, point(x, title_top), style::PLAIN_SIZE);
+                                }
+                                let meta = match view {
+                                    HistoryView::List => format!("{} · {}", app_name(e), clock(e.time)),
+                                    HistoryView::Apps => crate::when(e.time),
+                                    _ => format!("{} · {}", app_name(e), crate::when(e.time)),
+                                };
+                                let meta = if e.pinned { format!("{meta} · Pinned") } else { meta };
+                                style::label_on_baseline(window, cx, r.right() - px(CLOSE_W), baseline, Align::Right, meta, style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), dim);
+                                if !older.is_empty() && !is_sel {
+                                    // How many in the conversation.
+                                    let n = (older.len() + 1).to_string();
+                                    let tx = x + px(laid.title.first_row_width() + 6.0);
+                                    style::pill(window, cx, tx, line1, &n, style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), dim, style::c(p.document_background));
+                                }
+                                let mut y = title_top + px(laid.title.height);
+                                if let Some(body) = &laid.body {
+                                    y += px(1.0);
+                                    body.paint(window, cx, point(x, y));
+                                    agent::record(window, cx, agent::Node::label(e.text.clone(), Bounds::new(point(x, y), size(px(body.width), px(body.height)))));
+                                    y += px(body.height);
+                                }
+                                if !laid.older.is_empty() {
+                                    y += px(m::TIGHT);
+                                    let older_h = style::SMALL_SIZE + 5.0;
+                                    for (t, g) in &laid.older {
+                                        let cy = y + px(older_h / 2.0);
+                                        style::label(window, cx, x, cy, Align::Left, t.clone(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), dim);
+                                        let top = style::snap_coord(window, cy - px(g.height / 2.0));
+                                        g.paint(window, cx, point(x + px(44.0), top));
+                                        agent::record(window, cx, agent::Node::label(g.text.clone(), Bounds::new(point(x + px(44.0), top), size(px(g.width), px(g.height)))));
+                                        y += px(older_h);
+                                    }
+                                }
+                                // Forget it: a × while the pointer is over it.
+                                if !e.shown && hovered {
+                                    let close = Bounds::centered_at(point(r.right() - px(CLOSE_W / 2.0), line1), size(px(12.0), px(12.0)));
+                                    let lit = hover == Some(Hit::Forget(*i));
+                                    style::close_box(window, close, if lit { style::c(fg) } else { dim });
+                                    hits.push((close.dilate(px(3.0)) - b.origin, Hit::Forget(*i)));
+                                    agent::record(window, cx, agent::Node::button("Forget", close));
+                                }
+                            });
+                            if !is_sel {
+                                style::hline_above(window, r.left() + px(x0 + TEXT_X), r.right(), r.bottom(), style::tint(p.document_background, 1.07));
+                            }
+                            agent::record(window, cx, agent::Node { role: "ListItem", name: Some(title_text.to_owned().into()), bounds: r, enabled: true, clickable: true, selected: Some(is_sel), ..Default::default() });
+                            let _ = (row, rows_total);
+                        }
+                    }
+                }
+            },
+        )
+        .absolute()
+        .inset_0();
+
+        // The list's own buttons: the selected row's, and live cards'.
+        let mut content = div().id("history-list").relative().w(px(w)).h(px(total.max(1.0))).child(paint);
+        if cards_view {
+            for (i, laid, pl) in list.cards.iter() {
+                if laid.buttons.is_empty() {
+                    continue;
+                }
+                let inner_right = pl.x + pl.w - m::CARD_INSET;
+                let by = pl.y + m::SPACING + pl.h - m::CARD_INSET - CARD_BUTTON;
+                let mut bx = inner_right;
+                for (key, label, bw) in laid.buttons.iter().rev() {
+                    if bx - bw < pl.x + m::CARD_INSET && bx < inner_right {
+                        break;
+                    }
+                    let (me, key, i) = (me.clone(), key.clone(), *i);
+                    let b = Button::new(label.clone()).small().min_width(*bw).on_click(move |window, cx| me.update(cx, |h, cx| h.app.update(cx, |n, cx| n.open_entry(cx, Some(window), i, Some(key.clone())))));
+                    content = content.child(div().absolute().left(px(bx - bw)).top(px(by)).occlude().child(b));
+                    bx -= bw + m::TIGHT;
+                }
+            }
+        } else if let Some((i, top, older)) = list.sel_row.clone()
+            && let Some(laid) = list.rows.get(&i)
+        {
+            // The selected row's buttons: its app's actions, then Dismiss.
+            let x = if view == HistoryView::Apps { 8.0 } else { 0.0 } + TEXT_X;
+            let mut by = top + ROW_PAD + laid.title.height + laid.body.as_ref().map_or(0.0, |b| 1.0 + b.height);
+            if !laid.older.is_empty() {
+                by += m::TIGHT + laid.older.len() as f32 * (style::SMALL_SIZE + 5.0);
+            }
+            by += m::TIGHT;
+            let mut bx = x;
+            for (key, label, bw) in &laid.buttons {
+                if bx + bw > w - 4.0 && bx > x {
+                    break;
+                }
+                let (me, key, older, order) = (me.clone(), key.clone(), older.clone(), order.clone());
+                let b = Button::new(label.clone()).min_width(*bw).on_click(move |window, cx| {
+                    let (key, older, order) = (key.clone(), older.clone(), order.clone());
+                    me.update(cx, |h, cx| {
+                        h.app.update(cx, |n, cx| {
+                            if key.is_empty() {
+                                // The notification, or the whole conversation it gathers.
+                                n.forget(cx, std::iter::once(i).chain(older.iter().copied()).collect(), &order);
+                            } else {
+                                n.open_entry(cx, Some(window), i, Some(key));
+                            }
+                        })
+                    })
+                });
+                content = content.child(div().absolute().left(px(bx)).top(px(by)).occlude().child(b));
+                bx += bw + m::TIGHT;
+            }
+        }
+        let (press_order, menu_order) = (order.clone(), order.clone());
+        let content = content
+            .on_mouse_down(MouseButton::Left, {
+                let me = me.clone();
+                move |e: &MouseDownEvent, window, cx| {
+                    let origin = me.read(cx).list_origin(window);
+                    let order = press_order.clone();
+                    me.update(cx, |h, cx| h.press(e, origin, order, window, cx))
+                }
+            })
+            .on_mouse_down(MouseButton::Right, {
+                let me = me.clone();
+                move |e: &MouseDownEvent, window, cx| {
+                    let origin = me.read(cx).list_origin(window);
+                    let order = menu_order.clone();
+                    me.update(cx, |h, cx| h.menu(e, origin, order, window, cx))
+                }
+            })
+            .on_mouse_move({
+                let me = me.clone();
+                move |e: &MouseMoveEvent, window, cx| {
+                    me.update(cx, |h, cx| {
+                        let origin = h.list_origin(window);
+                        let now = h.hit_at(e.position - origin);
+                        if now != h.hover {
+                            h.hover = now;
+                            cx.notify();
+                        }
+                    })
+                }
+            })
+            .on_hover({
+                let me = me.clone();
+                move |inside, _, cx| {
+                    if !*inside {
+                        me.update(cx, |h, cx| {
+                            if h.hover.take().is_some() {
+                                cx.notify();
+                            }
+                        });
+                    }
+                }
+            });
+        let shown_list: gpui::AnyElement = if list.shown == 0 {
+            let empty = if searching { "Nothing matches" } else { "No notifications" };
+            canvas(
+                |_, _, _| {},
+                move |b, _, window, cx| {
+                    let p = theme::palette(cx);
+                    window.paint_quad(gpui::fill(b, style::c(p.document_background)));
+                    style::sunken(window, b, &p, false);
+                    let at = style::label(window, cx, b.center().x, b.center().y, Align::Center, empty, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
+                    agent::record(window, cx, agent::Node::label(empty, at));
+                },
+            )
+            .size_full()
+            .into_any_element()
+        } else {
+            let background = if cards_view { style::card_paper(&p).0 } else { p.document_background };
+            ScrollView::new("history", &self.scroll).background(background).child(content).into_any_element()
+        };
+
+        // The bar: Do Not Disturb, the search, Clear All.
+        let can_clear = list.can_clear;
+        let dnd_box = CheckBox::new("Do Not Disturb", dnd).height(m::CONTROL_HEIGHT).on_toggle({
+            let me = me.clone();
+            move |on, _, cx| me.update(cx, |h, cx| h.app.update(cx, |n, cx| n.set_quiet(on, 0, cx)))
+        });
+        let clear = Button::new("Clear All").min_width(m::BUTTON_MIN_WIDTH).enabled(can_clear).on_click({
+            let me = me.clone();
+            move |_, cx| me.update(cx, |h, cx| h.app.update(cx, |n, cx| n.clear_history(cx)))
+        });
+        let bar_row = div()
+            .flex()
+            .items_center()
+            .gap(px(m::SPACING))
+            .h(px(m::CONTROL_HEIGHT + 2.0 * m::SPACING))
+            .px(px(m::SPACING))
+            .child(div().flex_shrink_0().child(dnd_box))
+            // The search takes what the rest leave.
+            .child(div().flex_1().min_w_0().child(TextControl::new(self.search.clone())))
+            .child(clear);
+
+        // The status line.
+        let (snoozed, all, unread_now) = (list.snoozed, list.all, list.unread);
+        let mut status = if searching { format!("{} of {all}", list.shown) } else if all == 1 { "1 notification".into() } else { format!("{all} notifications") };
+        if unread_now > 0 && !searching {
+            status += &format!(", {unread_now} unread");
+        }
+        if snoozed > 0 && !searching {
+            status += &format!(", {snoozed} snoozed");
+        }
+        if quiet {
+            status += if !schedule_quiet { " · Do Not Disturb" } else { " · Quiet by schedule" };
+        }
+        let foot = canvas(
+            |_, _, _| {},
+            move |b, _, window, cx| {
+                let p = theme::palette(cx);
+                let at = style::label(window, cx, b.left() + px(m::SPACING), b.center().y, Align::Left, status.clone(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
+                agent::record(window, cx, agent::Node::label(status.clone(), at));
+            },
+        )
+        .w_full()
+        .h(px(FOOTER));
+
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .track_focus(&content_focus)
+            .on_key_down(cx.listener(move |h, e: &KeyDownEvent, window, cx| h.key(e, window, cx, &keys_order, cards_view)))
+            .child(bar)
+            .child(bar_row)
+            .child(div().flex_1().min_h_0().child(shown_list))
+            .child(foot)
+    }
+}
+
+impl HistoryWindow {
+    /// Where the list's content starts in the window (it scrolls).
+    /// The list laid out `w` wide: the notes that show (unread first),
+    /// in the view's lines, each row or card laid out.
+    fn lay_out(&mut self, window: &mut Window, cx: &mut Context<Self>, p: &olo_theme::Palette, w: f32) -> ListLaid {
+        let p = p.clone();
+        let (view, entries, unread_now, selected_id, folded, held, reveal) = {
+            let n = self.app.read(cx);
+            (n.settings.view, n.history.entries.clone(), n.history.unread(), n.view.selected, n.view.folded.clone(), n.view.held.clone(), n.view.reveal)
+        };
+        let search_text = self.search.read(cx).text().to_owned();
+        let searching = !search_text.trim().is_empty();
+
+        // What shows (not what is snoozed): unread (and what was read
+        // while the window is open) first, newest first in each.
+        let first = |e: &store::Entry| e.unread || held.contains(&e.id);
+        let mut shown: Vec<usize> = (0..entries.len()).rev().filter(|&i| !entries[i].snoozed() && (!searching || found(&entries[i], &search_text))).collect();
+        shown.sort_by_key(|&i| !first(&entries[i]));
+        let unread = shown.iter().take_while(|&&i| first(&entries[i])).count();
+        let lines = items(&entries, &shown, unread, view, &folded, searching);
+        let order: Rc<Vec<usize>> = Rc::new(lines.iter().filter_map(|l| if let Item::Note { i, .. } = l { Some(*i) } else { None }).collect());
+        // (A selection stacked under a conversation's newest is that.)
+        let selected = selected_id.and_then(|id| {
+            order.iter().position(|&i| entries[i].id == id).or_else(|| {
+                lines.iter().find_map(|l| match l {
+                    Item::Note { i, older, .. } if older.iter().any(|&o| entries[o].id == id) => order.iter().position(|o| o == i),
+                    _ => None,
+                })
+            })
+        });
+        let sel_id = selected.map(|s| entries[order[s]].id);
+        if sel_id != selected_id && sel_id.is_some() {
+            let app = self.app.clone();
+            window.defer(cx, move |_, cx| app.update(cx, |n, _| n.view.selected = sel_id));
+        }
+
+        // The list, laid out for its width.
+        let cards_view = view == HistoryView::Cards;
+        let mut placed: Vec<Line> = Vec::new();
+        let mut row_laid: HashMap<usize, RowLaid> = HashMap::new();
+        // The selected row's top, and the rest of its conversation.
+        let mut sel_row: Option<(usize, f32, Vec<usize>)> = None;
+        let mut card_laid: Vec<(usize, CardLaid, masonry::Place)> = Vec::new();
+        let total;
+        if cards_view {
+            let (cols, col_w) = masonry::columns(w, CARD_W, m::SPACING);
+            let mut sizes = Vec::new();
+            let mut laid = Vec::new();
+            for (k, &i) in order.iter().enumerate() {
+                let e = &entries[i];
+                let span = card_span(e, cols, k == 0 && e.unread);
+                let l = self.card(window, &p, e, span, masonry::span_width(span, col_w, m::SPACING));
+                sizes.push((span, l.height));
+                laid.push((i, l));
+            }
+            let (places, height) = masonry::arrange(cols, col_w, m::SPACING, &sizes);
+            self.places = laid.iter().zip(&places).map(|((i, _), pl)| (entries[*i].id, *pl)).collect();
+            card_laid = laid.into_iter().zip(places).map(|((i, l), pl)| (i, l, pl)).collect();
+            total = height + m::SPACING;
+        } else {
+            let mut y = 0.0;
+            for item in lines {
+                let h = match &item {
+                    Item::Unread(_) | Item::Day(_) => HEADING,
+                    Item::Group { .. } => HEADING + 2.0,
+                    Item::Note { i, older, grouped } => {
+                        let e = &entries[*i];
+                        let meta = match view {
+                            HistoryView::List => format!("{} · {}", app_name(e), clock(e.time)),
+                            HistoryView::Apps => crate::when(e.time),
+                            _ => format!("{} · {}", app_name(e), crate::when(e.time)),
+                        };
+                        let meta = if e.pinned { format!("{meta} · Pinned") } else { meta };
+                        let is_sel = sel_id == Some(e.id);
+                        let l = self.row(window, &p, &entries, *i, older, meta, is_sel, *grouped, w);
+                        let h = l.height;
+                        if is_sel {
+                            sel_row = Some((*i, y, older.clone()));
+                        }
+                        row_laid.insert(*i, l);
+                        h
+                    }
+                };
+                placed.push(Line { item, y, h });
+                y += h;
+            }
+            total = y;
+        }
+        // Rows and cards no longer shown are let go.
+        let ids: HashSet<u32> = entries.iter().map(|e| e.id).collect();
+        self.rows.retain(|id, _| ids.contains(id));
+        self.cards.retain(|id, _| ids.contains(id));
+        // The selection brought into view.
+        if reveal && let Some(id) = sel_id {
+            let span = if cards_view {
+                card_laid.iter().find(|(i, ..)| entries[*i].id == id).map(|(_, _, pl)| (pl.y, pl.y + pl.h + m::SPACING))
+            } else {
+                placed.iter().find(|l| matches!(l.item, Item::Note { i, .. } if entries[i].id == id)).map(|l| (l.y, l.y + l.h))
+            };
+            if let Some((top, bottom)) = span {
+                let view_h = f32::from(self.scroll.bounds().size.height);
+                let at = -f32::from(self.scroll.offset().y);
+                let to = if top < at { top } else if bottom > at + view_h { bottom - view_h } else { at };
+                if to != at {
+                    self.scroll.set_offset(point(px(0.0), px(-to.max(0.0))));
+                }
+            }
+            let app = self.app.clone();
+            window.defer(cx, move |_, cx| app.update(cx, |n, _| n.view.reveal = false));
+        }
+
+        let snoozed = entries.iter().filter(|e| e.snoozed()).count();
+        ListLaid {
+            can_clear: entries.iter().any(|e| !e.shown && !e.pinned && !e.snoozed()),
+            all: entries.len() - snoozed,
+            snoozed,
+            shown: shown.len(),
+            unread: unread_now,
+            entries: Rc::new(entries),
+            view,
+            cards_view,
+            searching,
+            order,
+            lines: Rc::new(placed.into_iter().map(|l| (l.item, l.y, l.h)).collect()),
+            rows: Rc::new(row_laid),
+            cards: Rc::new(card_laid),
+            total,
+            sel_id,
+            sel_row,
         }
     }
-    if let Some(command) = olo_kit::widgets::context_menu(&resp, || entry_menu(e)) {
-        did = Some(Did::Menu(i, command));
+
+    fn list_origin(&self, _window: &Window) -> Point<Pixels> {
+        let b = self.scroll.bounds();
+        b.origin + self.scroll.offset()
     }
-    if did.is_none() {
-        if resp.double_clicked() {
-            // (Its first click did it.)
-        } else if resp.clicked() {
-            // One click acts, as on a banner; ⌘ or Shift only selects it.
-            let select = ui.input(|i| i.modifiers.command || i.modifiers.shift);
-            did = Some(if select { Did::Select(e.id) } else { Did::Open(i) });
+}
+
+impl Notifications {
+    /// Select the note `id`: a click reads it (it keeps its place while
+    /// the window is open).
+    pub fn select(&mut self, id: u32, cx: &mut Context<Self>) {
+        self.view.selected = Some(id);
+        if self.history.entries.iter().any(|e| e.id == id && e.unread) {
+            self.view.held.insert(id);
+            self.set_read(cx, id, true);
+        }
+        cx.notify();
+    }
+
+    /// Fold an app's group in By App, or unfold it.
+    pub fn fold(&mut self, app: String, cx: &mut Context<Self>) {
+        if !self.view.folded.remove(&app) {
+            self.view.folded.insert(app);
+        }
+        cx.notify();
+    }
+
+    /// Forget the entries at `at` (`order`: the list as shown, for what
+    /// is selected next); what is still open at its app closes.
+    pub fn forget(&mut self, cx: &mut Context<Self>, mut at: Vec<usize>, order: &[usize]) {
+        // From the end, so the indices stay good.
+        at.sort_unstable();
+        at.dedup();
+        let next = (at.len() == 1).then(|| order.iter().position(|&i| i == at[0])).flatten().and_then(|s| order.get(s + 1).or(s.checked_sub(1).and_then(|s| order.get(s)))).map(|&i| self.history.entries[i].id);
+        for &i in at.iter().rev() {
+            let Some(e) = self.history.entries.get(i).cloned() else { continue };
+            self.history.remove(i);
+            if e.live {
+                self.take(cx, e.id);
+                self.bus(|b| b.closed(e.id, Reason::Dismissed));
+            }
+        }
+        if self.view.selected.is_some() {
+            self.view.selected = next;
+        }
+        self.publish(true);
+        cx.notify();
+    }
+
+    /// Run a history entry's action (`None`: its default). Still open at
+    /// the app, that is what a click on it does there; otherwise the app
+    /// comes forward.
+    pub fn open_entry(&mut self, cx: &mut Context<Self>, window: Option<&Window>, i: usize, key: Option<String>) {
+        let Some(e) = self.history.entries.get(i).cloned() else { return };
+        let key = key.unwrap_or_else(|| "default".into());
+        if e.unread {
+            self.view.held.insert(e.id);
+        }
+        if e.live && e.actions.iter().any(|(k, _)| *k == key) {
+            self.invoke(cx, window, e.id, key);
+        } else {
+            self.set_read(cx, e.id, true);
+            raise_app(e.desktop_entry.as_deref(), &e.app);
         }
     }
-    did
+
+    /// The selected note read or unread (Edit menu); whether there is one.
+    pub fn toggle_read(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(id) = self.view.selected else { return false };
+        let Some(unread) = self.history.entries.iter().rev().find(|e| e.id == id).map(|e| e.unread) else { return false };
+        self.view.held.insert(id);
+        self.set_read(cx, id, unread);
+        true
+    }
+
+    /// Whether the selected note is unread (None: nothing selected).
+    pub fn selected_unread(&self) -> Option<bool> {
+        let id = self.view.selected?;
+        self.history.entries.iter().rev().find(|e| e.id == id).map(|e| e.unread)
+    }
+
+    /// Show the history this way from now on.
+    pub fn set_view(&mut self, view: HistoryView) {
+        self.refresh_settings();
+        self.settings.view = view;
+        self.save_settings();
+        self.view.reveal = true;
+    }
 }
 
 #[cfg(test)]

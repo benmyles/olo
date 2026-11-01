@@ -107,6 +107,12 @@ pub struct WaylandWindowState {
     blur: Option<org_kde_kwin_blur::OrgKdeKwinBlur>,
     /// Olo: the screen kept awake while it shows.
     inhibitor: Option<wayland_protocols::wp::idle_inhibit::zv1::client::zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1>,
+    /// Olo: its scale's object and, for a dialog, the dialog's, destroyed
+    /// with it (left alive, they name a surface or toplevel that's gone,
+    /// whose id goes to something else: olo-wlproxy making them again
+    /// after an app_server restart would name that).
+    fractional_scale: Option<wp_fractional_scale_v1::WpFractionalScaleV1>,
+    dialog: Option<wayland_protocols::xdg::dialog::v1::client::xdg_dialog_v1::XdgDialogV1>,
     /// A window's role (None for a popup, which has `popup`).
     toplevel: Option<xdg_toplevel::XdgToplevel>,
     popup: Option<xdg_popup::XdgPopup>,
@@ -175,6 +181,9 @@ struct FrameLoop {
     signal: calloop::LoopSignal,
     /// A wheel's notches being eased in.
     wheel: RefCell<Option<WheelEase>>,
+    /// Olo: the window is gone (its surface destroyed): a frame queued
+    /// before draws nothing.
+    closed: Cell<bool>,
 }
 
 /// What is left to scroll of a wheel's notches, and where.
@@ -255,6 +264,8 @@ impl WaylandWindowState {
             app_id: None,
             blur: None,
             inhibitor: None,
+            fractional_scale: None,
+            dialog: None,
             toplevel,
             popup,
             viewport,
@@ -360,6 +371,7 @@ pub enum ImeInput {
 
 impl Drop for WaylandWindow {
     fn drop(&mut self) {
+        self.0.frames.closed.set(true);
         let mut state = self.0.state.borrow_mut();
         let surface_id = state.surface.id();
         let client = state.client.clone();
@@ -367,6 +379,15 @@ impl Drop for WaylandWindow {
         state.renderer.destroy();
         if let Some(decoration) = &state.decoration {
             decoration.destroy();
+        }
+        if let Some(dialog) = state.dialog.take() {
+            dialog.destroy();
+        }
+        if let Some(scale) = state.fractional_scale.take() {
+            scale.destroy();
+        }
+        if let Some(inhibitor) = state.inhibitor.take() {
+            inhibitor.destroy();
         }
         if let Some(blur) = &state.blur {
             blur.release();
@@ -456,19 +477,13 @@ impl WaylandWindow {
                 surface.id(),
             );
             place_layer(&layer, &options, params.bounds.size);
-            let keyboard = match options.keyboard {
-                crate::LayerKeyboard::None => zwlr_layer_surface_v1::KeyboardInteractivity::None,
-                crate::LayerKeyboard::Exclusive => zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive,
-                // (Version 4 on; before, a click gives it nothing.)
-                crate::LayerKeyboard::OnDemand if layer.version() >= 4 => zwlr_layer_surface_v1::KeyboardInteractivity::OnDemand,
-                crate::LayerKeyboard::OnDemand => zwlr_layer_surface_v1::KeyboardInteractivity::None,
-            };
-            layer.set_keyboard_interactivity(keyboard);
+            layer.set_keyboard_interactivity(layer_keyboard(&layer, options.keyboard));
             return Self::finish(handle, globals, gpu_context, client, params, appearance, loop_handle, signal, surface, None, Some(layer), None, None, (scale, displays));
         }
         let xdg_surface = globals
             .wm_base
             .get_xdg_surface(&surface, &globals.qh, surface.id());
+        let mut dialog_object = None;
         let (toplevel, popup) = match (params.kind, popup_parent) {
             (kind @ (WindowKind::Popup { .. } | WindowKind::Tip { .. }), Some((parent_surface, serial))) => {
                 // Olo: a tip, below what it tells about (a gap away), or
@@ -557,6 +572,7 @@ impl WaylandWindow {
                     if dialog == crate::Dialog::Modal {
                         d.set_modal();
                     }
+                    dialog_object = Some(d);
                 }
                 if let (Some(tags), Some(tag)) = (&globals.toplevel_tags, &params.toplevel_tag) {
                     tags.set_toplevel_tag(&toplevel, tag.clone());
@@ -565,7 +581,9 @@ impl WaylandWindow {
             }
         };
 
-        Self::finish(handle, globals, gpu_context, client, params, appearance, loop_handle, signal, surface, Some(xdg_surface), None, toplevel, popup, (scale, displays))
+        let made = Self::finish(handle, globals, gpu_context, client, params, appearance, loop_handle, signal, surface, Some(xdg_surface), None, toplevel, popup, (scale, displays))?;
+        made.0.0.state.borrow_mut().dialog = dialog_object;
+        Ok(made)
     }
 
     /// The rest of making a window, whatever its role.
@@ -646,7 +664,7 @@ impl WaylandWindow {
         state.may_open_on = if displays.iter().any(at_scale) { displays.into_iter().filter(at_scale).collect() } else { displays };
         let text_rendering = state.text_rendering();
         if let Some(fractional_scale_manager) = state.globals.fractional_scale_manager.as_ref() {
-            fractional_scale_manager.get_fractional_scale(&surface, &state.globals.qh, surface.id());
+            state.fractional_scale = Some(fractional_scale_manager.get_fractional_scale(&surface, &state.globals.qh, surface.id()));
         }
         let this = Self(WaylandWindowStatePtr {
             state: Rc::new(RefCell::new(state)),
@@ -662,6 +680,7 @@ impl WaylandWindow {
                 handle: loop_handle,
                 signal,
                 wheel: RefCell::new(None),
+                closed: Cell::new(false),
             }),
         });
 
@@ -799,7 +818,7 @@ impl WaylandWindowStatePtr {
         // acknowledged (a protocol error that ends the program): a scale
         // the compositor sends a new surface first asks for a frame too
         // early. That configure draws it.
-        if !self.state.borrow().acknowledged_first_configure {
+        if frames.closed.get() || !self.state.borrow().acknowledged_first_configure {
             frames.queued.set(false);
             return;
         }
@@ -903,7 +922,7 @@ impl WaylandWindowStatePtr {
     pub fn schedule_frame(&self) {
         let frames = &self.frames;
         log::trace!(target: "olo_frames", "schedule: queued {}, callback {:?}", frames.queued.get(), frames.callback.get());
-        if frames.queued.get() {
+        if frames.queued.get() || frames.closed.get() {
             return;
         }
         if frames.callback.get() == FrameCallback::Committed {
@@ -1590,6 +1609,21 @@ impl PlatformWindow for WaylandWindow {
         state.app_id = Some(app_id.to_owned());
     }
 
+    fn activation_token(&self, done: Box<dyn FnOnce(Option<String>)>) {
+        let state = self.borrow();
+        let (client, surface, app_id) = (state.client.clone(), state.surface.clone(), state.app_id.clone());
+        drop(state);
+        client.request_activation_token(&surface, app_id, done);
+    }
+
+    fn set_layer_keyboard(&self, keyboard: crate::LayerKeyboard) {
+        let state = self.borrow();
+        if let Some(layer) = &state.layer_surface {
+            layer.set_keyboard_interactivity(layer_keyboard(layer, keyboard));
+            state.surface.commit();
+        }
+    }
+
     fn set_keep_awake(&self, on: bool) {
         let mut state = self.borrow_mut();
         match (on, state.inhibitor.take()) {
@@ -2003,5 +2037,16 @@ impl wayland_client::Dispatch<wp_fractional_scale_v1::WpFractionalScaleV1, ()> f
         if let wp_fractional_scale_v1::Event::PreferredScale { scale } = event {
             state.0 = Some(scale);
         }
+    }
+}
+
+/// Olo: a layer surface's keyboard as the protocol has it.
+fn layer_keyboard(layer: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, keyboard: crate::LayerKeyboard) -> zwlr_layer_surface_v1::KeyboardInteractivity {
+    match keyboard {
+        crate::LayerKeyboard::None => zwlr_layer_surface_v1::KeyboardInteractivity::None,
+        crate::LayerKeyboard::Exclusive => zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive,
+        // (Version 4 on; before, a click gives it nothing.)
+        crate::LayerKeyboard::OnDemand if layer.version() >= 4 => zwlr_layer_surface_v1::KeyboardInteractivity::OnDemand,
+        crate::LayerKeyboard::OnDemand => zwlr_layer_surface_v1::KeyboardInteractivity::None,
     }
 }

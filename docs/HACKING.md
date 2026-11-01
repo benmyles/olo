@@ -1870,7 +1870,41 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   keeps their windows when app_server restarts in place; when
   olo-session signals an upgrade (SIGURG) and the app's binary was
   replaced, `on_upgrade`'s state is saved and the app re-executes as
-  the new version, finding it in `restored_state()`.
+  the new version, finding it in `restored_state()`. Olo's GPUI destroys
+  every object it makes for a window with it (its fractional scale, its
+  xdg-dialog, its idle inhibitor): one left alive names a surface that's
+  gone, whose id goes to something else, and olo-wlproxy making it again
+  on the new app_server named that (a protocol error that ended
+  Notifications on a reload). The proxy now treats an object named in a
+  recipe but made after it as gone, for programs that leak them.
+- `Window::activation_token(done)` (Olo's GPUI): an xdg-activation token
+  from the last click in the window, for another program to raise its
+  window with (Notifications hands it to the app whose card was
+  clicked); `done(None)` when the compositor has none to give.
+  `Window::set_layer_keyboard(LayerKeyboard)` changes a layer surface's
+  keyboard as it shows (`OnDemand` while a banner has a reply field,
+  `None` otherwise).
+- Ordinary hitboxes don't block what is under them: a `Button` or
+  `TextControl` placed over something clickable (a card) needs
+  `.occlude()` on its wrapper, or the click reaches both.
+- `style::monogram(window, cx, r, letter, fill)` (an app without an
+  icon: its initial on its colour, `ink_on(fill)` black or white by
+  contrast; a grid of its own for the review), `style::stop_mark`
+  (BAlert's stop sign, small: an error's title), `style::latch` (a
+  folding group's triangle), `style::close_box` (a ×, crisp at any
+  scale). `CheckBox::height(h)` gives a check box a row's height, so it
+  centres on the same device pixel as a field beside it at fractional
+  scales (elements of different heights centred in one row round their
+  tops apart).
+- Wrapping (Olo's GPUI): a space after a word hangs past the edge rather
+  than pushing that word down a row, as typesetters, CSS and egui wrap
+  ("…with Ann at" fits when "at" does); leading spaces still count. The
+  multi-line field keeps its caret at the edge among hanging spaces.
+- What agents read of a window that isn't showing (on another
+  workspace, minimized, covered) is as it is now, not as last drawn: it
+  draws only when it shows, so the agent socket has each window draw
+  what changed (`Window::draw_if_dirty`, which doesn't show it; the next
+  frame does) before it answers `tree`, `menus`, `invoke` or `review`.
 
 ## The session and in-place reload
 
@@ -5329,6 +5363,17 @@ anything else using libnotify reach the user. The real session starts it
 too); a nested or headless one never does, since it would take the user's
 notifications.
 
+It is a GPUI program (`olo-ui`): `Notifications`, an entity, keeps the
+service's state (the cards on screen, the history, the settings) and
+the views draw from it: banners.rs the layer surface's, history.rs the
+History window's. Nothing polls: a card's expiry is one timer for the
+next to go, the clock's minute a timer to the next minute (fading, Do
+Not Disturb's schedule, snoozes due during a suspend), and the settings
+and the screen-sharing state files are watched (`olo_kit_base::watch`).
+Pictures (pictures.rs) are made for the place they're drawn, at its
+device size, on a worker (`pictures::get`: a cover cut from the middle
+or fitted whole), kept, and the windows drawn again as each comes.
+
 - server.rs: the zbus interface on its own thread. `Notify` becomes a
   `Note`: the body's markup kept as spans (markup.rs: `<b>`, `<i>`, `<u>`,
   `<a href>`, `<img alt>`, `<br>`, entities; unknown tags shown as text),
@@ -5383,21 +5428,25 @@ notifications.
   (and a close box for all of a group's), oldest first; the rest wait.
   No bands, edges or rules: an app's accent shows only in its badge,
   monogram and progress bar, and an error's title leads with a small
-  stop sign (`look::paint_stop`: `style::stop_mark` set level with the
-  capitals by `style::cap_middle`), as do its rows in the history; progress
-  shows a `StatusBar`; links in the body open with `open::open`. A card
+  stop sign (`look::paint_stop`: `style::stop_mark` level with the
+  capitals, the title laid out with exactly the sign's room before its
+  first row and the whole width under it, `look::lay_led`), as do its rows
+  in the history; progress shows a `widgets::level_bar`; links in the
+  body open with `open::open`. A card
   is laid out by look.rs; without a picture the text takes the width,
   the group's title row already showing whose it is: `paint_mark` draws
   the named icon (ours for common theme names, `named_icons`), the app's
   desktop-entry icon, else a monogram for a site or an app with an accent,
-  else a generic one. Finding an app's desktop entry can read every one
+  else the generic application icon (the History's rows the same: the
+  app's mark, never a warning or info sign beside a title that already
+  has its stop sign). Finding an app's desktop entry can read every one
   on the system (milliseconds each time; it held the History's Cards to
   30 fps), so `app_icons` looks each app up once, on a worker
   (`warm_app_icons`: the history's apps at start, a note's as it comes),
   and keeps the answer. Action buttons share the width when they must.
   Banner `seconds` 0 ("Never" in Preferences) shows only errors.
-  A click on a card runs its `default` action: the card asks the kit
-  for an activation token from that click (`Cx::activation_token`) and
+  A click on a card runs its `default` action: the card asks GPUI
+  for an activation token from that click (`Window::activation_token`) and
   sends `ActivationToken`, `ActionInvoked`, then `NotificationClosed`, so
   the app may bring its window forward (app_server lets a token one of
   our programs asked for, with an input serial, raise another app's
@@ -5405,7 +5454,9 @@ notifications.
   forward itself, over IPC, by desktop entry or name. Action buttons
   along the bottom; a reply field and Send when it can be answered (the
   layer takes the keyboard on demand only while one shows,
-  `Cx::set_keyboard`); the close box dismisses. While the pointer is over
+  `Window::set_layer_keyboard`); the close box dismisses. Buttons and the
+  reply field sit over the card's own click area `.occlude()`d, so a
+  click on them isn't the card's too. While the pointer is over
   a card it does not expire. Sounds (sound.rs): the note's `sound-file`
   or `sound-name` (looked up in the freedesktop sound theme), else
   `message-new-instant` for important notes and `dialog-warning` for
@@ -5445,9 +5496,9 @@ notifications.
   on screen, pinned or snoozed. A right click on a row or card opens its
   menu (`entry_menu`): Open, Mark as Read/Unread, Pin, Snooze ▸, Forget.
   With fading on, each row and card is painted at its
-  `strength` (`multiply_opacity`), the newest strongest, back to full
+  `strength` (`with_element_opacity`), the newest strongest, back to full
   while selected or under the pointer. *Cards* packs cards of different
-  sizes with `olo_kit::masonry`: columns of at least 176 px; a card
+  sizes with `olo_kit_base::masonry`: columns of at least 176 px; a card
   spans two when its app asks (`CardSize::Large`) or, left to choose,
   for a large picture, three fields or more, or a long body, and so does
   the newest unread one when there are three columns or more; `Small`
@@ -5463,7 +5514,13 @@ notifications.
   word against app, title and body; Escape clears it. For agents each
   note is a `ListItem` named by its title (with `row`/`rows`), its text
   as labels. The window, search and folds come back after an upgrade
-  (`save_state`).
+  (`on_upgrade`). The list is laid out once for what it shows
+  (`ListLaid`: the notes in their lines, each row's or card's text laid
+  out, kept by entry) and kept while it scrolls or the pointer moves
+  over it; a change to the notes, the view, the selection or the search
+  (the app entity notifying), a command, a key or a click, another width,
+  scale or palette lays it out again. Laid out every frame, 200 notes
+  cost a scroll frame 2–4 ms; kept, 1.3–1.8.
 - Pin and Snooze (`note_menu`: Edit ▸ Pin/Unpin and Snooze ▸ for the
   selected note, and the menu of a right click on a banner, row or
   card). A pinned note (`Entry::pinned`) stays put: it never fades
@@ -5494,8 +5551,8 @@ notifications.
   the list setting a column for every app at once (checked when every
   app's is, mixed while they differ: `CheckBox::mixed`). Preferences'
   History box shows the fade as a strip from
-  Now to gone. The service re-reads the
-  file within a second of a change (Preferences ▸ Notifications and
+  Now to gone. The service watches the
+  file and reads it again as it changes (Preferences ▸ Notifications and
   Deskbar write it). While quiet nothing pops up or sounds but errors.
   It is quiet too while the screen is shared (`while_sharing`, on unless
   turned off: "While sharing the screen" in Preferences' Do Not Disturb

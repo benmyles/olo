@@ -9,7 +9,6 @@
 //! line); a chat site's note shows its sender's picture round; and
 //! "stay until dismissed" is just that, not an error.
 
-use olo_kit::egui;
 use olo_protocol::NoteStyle;
 
 use crate::server::{Kind, Note};
@@ -134,11 +133,11 @@ pub fn adopt(note: &mut Note) {
 /// A site's icon, as it has none here: the first letter of the last word
 /// of its name ("Google Calendar": C) on its colour, or on one its name
 /// picks.
-pub fn tile(name: &str, accent: Option<[u8; 3]>) -> (String, egui::Color32) {
+pub fn tile(name: &str, accent: Option<[u8; 3]>) -> (String, [u8; 4]) {
     const HUES: [[u8; 3]; 6] = [[0x3b, 0x7d, 0xd8], [0x2e, 0x9e, 0x6a], [0xd9, 0x6b, 0x2b], [0x8e, 0x5b, 0xc9], [0xc9, 0x4a, 0x6a], [0x4a, 0x8f, 0x9e]];
     let letter = name.split_whitespace().last().and_then(|w| w.chars().find(|c| c.is_alphanumeric())).map(|c| c.to_uppercase().collect()).unwrap_or_else(|| "?".into());
     let [r, g, b] = accent.unwrap_or_else(|| HUES[name.bytes().fold(0usize, |h, b| h.wrapping_mul(31).wrapping_add(b as usize)) % HUES.len()]);
-    (letter, egui::Color32::from_rgb(r, g, b))
+    (letter, [r, g, b, 255])
 }
 
 /// Whether an action is the browser's own (left off a banner's buttons).
@@ -194,7 +193,7 @@ mod tests {
 
     #[test]
     fn tiles() {
-        assert_eq!(tile("Google Calendar", Some([1, 2, 3])), ("C".into(), egui::Color32::from_rgb(1, 2, 3)));
+        assert_eq!(tile("Google Calendar", Some([1, 2, 3])), ("C".into(), [1, 2, 3, 255]));
         assert_eq!(tile("example.org", None).0, "E");
         assert_eq!(tile("example.org", None), tile("example.org", None), "always the same colour");
     }

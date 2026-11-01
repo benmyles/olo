@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-01
 
+### Notifications on GPUI
+
+*05:22* — Notifications, banners and History, now on Olo's GPUI: the same cards, groups, stop signs, balloons and reply fields, with words kept on a row when they fit (spaces hang past the edge, as egui and typesetters wrap), the generic application icon for apps without one in banners and History alike, and an exact gap after an error's stop sign. 61 MB against egui's 153 with four banners; History scrolls 200 notes at 1.3–1.8 ms a frame.
+
+![Notifications on GPUI](2026-11-01/052233-notifications-on-gpui.png)
+
 ### Viewer on GPUI
 
 *03:57* — The Viewer moved to the GPUI kit: pictures fitted and resampled exactly to the device size on a worker, zoomed in tiles; the crop frame drawn over the picture, its thirds while it moves and its size under it; PDF forms, text boxes, ink and signatures; formatted documents, sheets, code, archives, fonts, sound and video from olo-preview's GPUI views. Windows open sized for the display they open on.

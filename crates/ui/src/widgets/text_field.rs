@@ -1231,7 +1231,9 @@ fn paint_multiline(entity: &Entity<TextField>, bounds: Bounds<Pixels>, window: &
         if focused && selected.is_empty() && caret_on {
             let line = window.text_system().shape_line(SharedString::from(" "), px(size_px), &[TextRun { len: 1, font: font.clone(), color, background_color: None, underline: None, strikethrough: None, size: None }], None);
             let h = line.ascent + line.descent;
-            let x = style::snap_coord(window, origin.x + caret_at.x);
+            // (Spaces after a row's last word hang past its edge; the
+            // caret among them stays at the edge.)
+            let x = style::snap_coord(window, (origin.x + caret_at.x).min(bounds.right() - style::hairline(window)));
             let y = style::snap_coord(window, origin.y + caret_at.y + (lh - h) / 2.0);
             style::fill_rect(window, Bounds { origin: point(x, y), size: size(style::hairline(window), h) }, style::c(palette.navigation_base));
         }
