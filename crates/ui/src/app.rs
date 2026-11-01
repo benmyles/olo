@@ -223,6 +223,9 @@ pub fn stay_resident(cx: &mut App) {
 /// Runs the app: its theme, its socket for agents, and `build`, which
 /// opens its windows. It ends when its last window closes.
 pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
+    // The state an upgrade handed over, its file gone whether or not the
+    // app asks for it.
+    olo_kit_base::restore::claim();
     let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn"));
     let _ = tracing_subscriber::fmt().with_env_filter(filter).with_writer(std::io::stderr).try_init();
     let app_id = app_id.to_owned();

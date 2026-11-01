@@ -27,10 +27,6 @@ extern "C" fn on_signal(_: libc::c_int) {
     }
 }
 
-/// The environment variable naming the file the old version left its
-/// state in.
-const RESTORE_ENV: &str = "OLO_RESTORE";
-
 type SaveState = Box<dyn Fn(&mut App) -> Option<String>>;
 
 struct Saving(Option<SaveState>);
@@ -72,13 +68,7 @@ pub fn upgrade_waits_while(cx: &mut App, busy: impl Fn(&App) -> bool + 'static) 
 
 /// The state the previous version left (once; None if it left none).
 pub fn restored_state() -> Option<String> {
-    let path = std::env::var_os(RESTORE_ENV)?;
-    // SAFETY: called at start-up, on the UI thread, before the app
-    // starts threads that read the environment.
-    unsafe { std::env::remove_var(RESTORE_ENV) };
-    let text = std::fs::read_to_string(&path).ok();
-    let _ = std::fs::remove_file(&path);
-    text
+    olo_kit_base::restore::take()
 }
 
 /// Our own executable, to notice an upgrade replacing it.
@@ -110,13 +100,7 @@ impl Binary {
         let mut cmd = std::process::Command::new(&self.path);
         cmd.args(std::env::args_os().skip(1));
         olo_xdg::upgrade_env(&mut cmd);
-        if let Some(state) = state {
-            let dir = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
-            let file = dir.join(format!("olo-restore-{}.json", std::process::id()));
-            if std::fs::write(&file, state).is_ok() {
-                cmd.env(RESTORE_ENV, &file);
-            }
-        }
+        olo_kit_base::restore::hand_over(&mut cmd, state.as_deref());
         tracing::info!(path = %self.path.display(), "re-executing");
         let e = cmd.exec();
         tracing::warn!(?e, "could not start the upgraded binary; carrying on");

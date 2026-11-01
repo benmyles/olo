@@ -1093,6 +1093,9 @@ fn is_function_key(key: egui::Key) -> bool {
 }
 
 pub fn run<A: App>(app_id: &str, build: impl FnOnce(&mut Cx) -> A) {
+    // The state an upgrade handed over, its file gone whether or not the
+    // app asks for it.
+    olo_kit_base::restore::claim();
     crate::keyboard::set_app_id(app_id);
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
@@ -1485,13 +1488,7 @@ impl Binary {
         cmd.args(std::env::args_os().skip(1));
         cmd.envs(env.iter().map(|(k, v)| (k, v)));
         olo_xdg::upgrade_env(&mut cmd);
-        if let Some(state) = state {
-            let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
-            let file = dir.join(format!("olo-restore-{}.json", std::process::id()));
-            if std::fs::write(&file, state).is_ok() {
-                cmd.env(crate::app::RESTORE_ENV, &file);
-            }
-        }
+        olo_kit_base::restore::hand_over(&mut cmd, state);
         info!(path = %self.path.display(), "re-executing");
         let e = cmd.exec();
         warn!(?e, "exec failed");

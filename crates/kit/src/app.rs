@@ -346,20 +346,12 @@ pub struct Cx {
     pub(crate) resident: bool,
 }
 
-/// Where an upgrading app leaves its saved state for its new self.
-pub(crate) const RESTORE_ENV: &str = "OLO_RESTORE";
-
 impl Cx {
     /// What the previous version of this app saved with
     /// [`App::save_state`] before an in-place upgrade (once; `None` on a
     /// normal start).
     pub fn restored_state(&mut self) -> Option<String> {
-        let path = std::env::var_os(RESTORE_ENV)?;
-        // SAFETY: start-up, before the app starts threads of its own.
-        unsafe { std::env::remove_var(RESTORE_ENV) };
-        let text = std::fs::read_to_string(&path).ok();
-        let _ = std::fs::remove_file(&path);
-        text
+        olo_kit_base::restore::take()
     }
 
     /// Whether one of the app's toplevel windows is still open. After
