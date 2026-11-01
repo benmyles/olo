@@ -122,6 +122,14 @@ struct Saved {
     source: Source,
     selected: Option<String>,
     search: String,
+    /// Unlocked when the old version handed over, and how long since it
+    /// was last used: the new version starts unlocked too, unless the
+    /// lock-after time has passed meanwhile (Ben, 2026-11-01: an upgrade
+    /// shouldn't lock the keychain).
+    #[serde(default)]
+    unlocked: bool,
+    #[serde(default)]
+    idle_secs: u64,
 }
 
 /// The accounts in the 1Password app, for the setup panel.
@@ -2405,13 +2413,24 @@ fn main() {
                 proxy: proxy.clone(),
                 _subs: subs,
             };
+            let mut unlocked_before = false;
             if let Some(saved) = saved {
                 app.source = saved.source;
                 app.selected = saved.selected;
                 app.search = saved.search.clone();
                 search.update(cx, |f, cx| f.set_text(saved.search, cx));
+                // Still within its lock-after time: as unlocked as it was.
+                let within = app.security.lock_minutes == 0 || saved.idle_secs < app.security.lock_minutes as u64 * 60;
+                if saved.unlocked && within && app.lock.approved() {
+                    app.last_use = Instant::now() - Duration::from_secs(saved.idle_secs);
+                    unlocked_before = true;
+                    tracing::info!("unlocked as before the upgrade");
+                }
             }
             app.open_main(cx);
+            if unlocked_before {
+                app.now_unlocked(cx);
+            }
             // Locked, the store opens at the unlock.
             if !locked {
                 app.connect(cx);
@@ -2424,7 +2443,14 @@ fn main() {
         olo_ui::on_upgrade(cx, move |cx| {
             let a = saving.read(cx);
             a.save_settings();
-            serde_json::to_string(&Saved { source: a.source.clone(), selected: a.selected.clone(), search: a.search.clone() }).ok()
+            serde_json::to_string(&Saved {
+                source: a.source.clone(),
+                selected: a.selected.clone(),
+                search: a.search.clone(),
+                unlocked: !a.lock.locked,
+                idle_secs: a.last_use.elapsed().as_secs(),
+            })
+            .ok()
         });
     });
 }

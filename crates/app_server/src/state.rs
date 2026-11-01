@@ -1329,6 +1329,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             state.watch_login();
         }
         crate::text::warm_up();
+        state.restore_handover();
         state
     }
 

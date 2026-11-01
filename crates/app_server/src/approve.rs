@@ -99,6 +99,23 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     /// It ends (`why`, for the log); the password is wiped.
+    /// As the app_server before left it (`handover`): approving without
+    /// asking until `until`, with the password it had checked.
+    pub fn restore_auto_approve(&mut self, until: SystemTime, secret: String) {
+        if SystemTime::now() >= until || self.lock.locked() {
+            return;
+        }
+        info!("approving without asking, as before the restart");
+        self.auto_approve = Some(AutoApprove { until, secret: Zeroizing::new(secret) });
+        self.power_changed();
+    }
+
+    /// The password it approves with, for the app_server after this one
+    /// (`handover`); None when not approving.
+    pub fn auto_approve_handover(&self) -> Option<(SystemTime, String)> {
+        self.auto_approve.as_ref().map(|a| (a.until, a.secret.to_string()))
+    }
+
     pub fn end_auto_approve(&mut self, why: &str) {
         if self.auto_approve.take().is_some() {
             info!(why, "approving without asking: ended");

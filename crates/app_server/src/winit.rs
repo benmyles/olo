@@ -500,4 +500,5 @@ pub fn run_winit() {
         state.backend_data.fps.tick();
     }
     state.save_layout();
+    state.save_handover();
 }

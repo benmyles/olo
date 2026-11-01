@@ -445,6 +445,7 @@ pub fn run_headless(size_arg: Option<&str>) {
         state.timings.handled(|| "flushing to clients".into(), start);
     }
     state.save_layout();
+    state.save_handover();
 }
 
 /// Keyboard hints and Twitcher, if they are up, as elements for `output`

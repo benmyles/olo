@@ -1052,6 +1052,7 @@ pub fn run_udev() {
         }
     }
     state.save_layout();
+    state.save_handover();
     // A colour matrix outlives us: leave the screens as they were.
     for backend in state.backend_data.backends.values() {
         let crtcs: Vec<crtc::Handle> = backend.ctm.borrow().keys().copied().collect();

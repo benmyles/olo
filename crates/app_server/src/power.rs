@@ -186,6 +186,12 @@ impl Power {
         }
     }
 
+    /// For the app_server after this one (`handover`): caffeinated, until
+    /// when (seconds since the epoch), and with the lid closed too.
+    pub fn caffeine_handover(&self) -> (bool, Option<u64>, bool) {
+        (self.caffeinated, self.caffeinated_until.and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs()), self.caffeinated_lid)
+    }
+
     pub fn caffeinated(&self) -> bool {
         self.caffeinated
     }
