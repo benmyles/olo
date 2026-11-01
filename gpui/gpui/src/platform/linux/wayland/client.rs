@@ -792,10 +792,15 @@ impl WaylandClient {
             event_loop: Some(event_loop),
         }));
 
+        CLIENT.with(|c| *c.borrow_mut() = Rc::downgrade(&state));
+        // Olo: the displays read now (and the seat), before the first
+        // window opens: it draws its first frame for the one it opens on.
+        if let Err(e) = event_queue.roundtrip(&mut WaylandClientStatePtr(Rc::downgrade(&state))) {
+            log::warn!("reading the displays: {e}");
+        }
         WaylandSource::new(conn, event_queue)
             .insert(handle)
             .unwrap();
-        CLIENT.with(|c| *c.borrow_mut() = Rc::downgrade(&state));
 
         Self(state)
     }
@@ -908,6 +913,21 @@ impl LinuxClient for WaylandClient {
             .and_then(|name| state.outputs.iter().find(|(_, o)| o.name.as_ref() == Some(name)))
             .and_then(|(id, _)| state.wl_outputs.get(id).cloned());
 
+        // Olo: the displays it may open on (a layer's or a lock surface's
+        // own, a popup's window's, with its scale): it draws its first
+        // frame for them.
+        let over = match params.kind {
+            crate::WindowKind::Popup { parent, .. } | crate::WindowKind::Tip { parent, .. } => {
+                state.windows.values().find(|w| w.handle() == parent).map(|w| w.scale_and_display())
+            }
+            _ => None,
+        };
+        let opens_on = match (over, layer_output.as_ref().or(session_lock.as_ref().map(|(_, o)| o))) {
+            (Some((scale, Some(display))), _) => (Some(scale), vec![display]),
+            (Some((scale, None)), _) => (Some(scale), state.outputs.values().cloned().collect()),
+            (None, Some(output)) => (None, state.outputs.get(&output.id()).cloned().into_iter().collect()),
+            (None, None) => (None, state.outputs.values().cloned().collect()),
+        };
         if state.gpu_context.is_none() {
             state.gpu_context = Some(BladeContext::new()?);
         }
@@ -925,6 +945,7 @@ impl LinuxClient for WaylandClient {
             popup_parent,
             layer_output,
             session_lock,
+            opens_on,
         )?;
         state.windows.insert(surface_id, window.0.clone());
 

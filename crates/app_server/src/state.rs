@@ -813,23 +813,42 @@ impl<BackendData: Backend> FractionalScaleHandler for AnvilState<BackendData> {
         while let Some(parent) = get_parent(&root) {
             root = parent;
         }
+        // (Olo: a popup (a menu) is drawn for its window's output.)
+        if let Some(window) = self.popups.find_popup(&root).and_then(|p| smithay::desktop::find_popup_root_surface(&p).ok()) {
+            root = window;
+        }
 
+        // (Olo: a window just placed has nothing on screen yet, so no
+        // output of its own: it's the one it was placed on, the scale it
+        // draws its first frame at; a layer surface's is its own. Found
+        // before the surface's state is locked: looking a layer up locks
+        // it too.)
+        let placed = self.window_for_surface(&root).and_then(|window| {
+            self.space.outputs_for_element(&window).first().cloned().or_else(|| {
+                let at = self.space.element_location(&window)?;
+                self.space.output_under(at.to_f64()).next().cloned()
+            })
+        });
+        let layer = self
+            .space
+            .outputs()
+            .find(|o| {
+                smithay::desktop::layer_map_for_output(o)
+                    .layer_for_surface(&root, smithay::desktop::WindowSurfaceType::TOPLEVEL)
+                    .is_some()
+            })
+            .cloned();
         with_states(&surface, |states| {
             let primary_scanout_output = surface_primary_scanout_output(&surface, states)
                 .or_else(|| {
                     if root != surface {
-                        with_states(&root, |states| {
-                            surface_primary_scanout_output(&root, states).or_else(|| {
-                                self.window_for_surface(&root).and_then(|window| {
-                                    self.space.outputs_for_element(&window).first().cloned()
-                                })
-                            })
-                        })
+                        with_states(&root, |states| surface_primary_scanout_output(&root, states))
                     } else {
-                        self.window_for_surface(&root)
-                            .and_then(|window| self.space.outputs_for_element(&window).first().cloned())
+                        None
                     }
                 })
+                .or(placed)
+                .or(layer)
                 .or_else(|| self.space.outputs().next().cloned());
             if let Some(output) = primary_scanout_output {
                 with_fractional_scale(states, |fractional_scale| {

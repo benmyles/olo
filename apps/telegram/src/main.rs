@@ -1604,6 +1604,16 @@ fn main() {
             view
         });
         tg.update(cx, |t, _| t.win = win);
+        // The conversation's text, drawn ahead (off the UI thread) so the
+        // first chat opened shows it without drawing every glyph new.
+        if let Some(w) = win {
+            let _ = w.update(cx, |_, window, _| {
+                let (normal, bold, mono) = (bubble::font(FontWeight::NORMAL), bubble::font(FontWeight::BOLD), style::mono_font(FontWeight::NORMAL));
+                for (font, size) in [(&normal, bubble::TEXT), (&bold, bubble::TEXT), (&bubble::italic(), bubble::TEXT), (&mono, bubble::TEXT), (&bold, bubble::TEXT - 0.5), (&normal, bubble::META), (&normal, bubble::META + 0.5), (&bold, style::SMALL_SIZE)] {
+                    window.warm_glyphs(font, px(size));
+                }
+            });
+        }
         let messages = tg.clone();
         olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |t, cx| t.message(message, cx)));
         let saving = tg.clone();

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-01
 
+### Menus without stray separators
+
+*01:41* — A menu built with items it shows only sometimes (Telegram's Chat menu with no chat open) ended in a separator with nothing under it; the GPUI kit now leaves out separators at either end of a menu and two together.
+
+![Menus without stray separators](2026-11-01/014121-menus-without-stray-separators.png)
+
 ### Telegram on GPUI
 
 *01:29* — Telegram moves to the GPUI kit: the same list, conversation and composer (a multi-line field: Return sends, Shift-Return a new line), its panes cached views of their own so a hover, a scroll or the caret redraws only its pane. Shown: the demo account's forum with topics, a reply, code and a photo, at 2x.

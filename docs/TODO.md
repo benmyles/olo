@@ -295,10 +295,14 @@ as they land (with the commit), add new ones as they come up.
      far*: glyphs are filled to their exact coverage by an area
      rasterizer kept between glyphs (5.9 µs a glyph against vello_cpu's
      7.6–9.7, and true to the outline: vello's was up to 57 levels of
-     grey off on curves). Next: draw the glyphs a window will need
-     before it needs them (the UI font's printable ASCII at the sizes
-     in use, in the background, into the text system's drawn glyphs),
-     so a frame only copies them.
+     grey off on curves). *Done*: glyphs drawn ahead, off the UI
+     thread, for faces drawn as running text and those an app asks for
+     (`Window::warm_glyphs`), so a frame only copies them; and a
+     window's first frame drawn once, at its display's scale and text
+     rendering (it was drawn at 1, then again: 6–8 ms, and its glyphs
+     for nothing). Telegram's chat switches: slowest frame 9.6–10.2 ms
+     → 6.6–7.6 ms, 0.7 MB more memory. Left: colour emoji are drawn
+     the first time at 0.06–0.4 ms each.
      Deskbar's battery and Wi-Fi now follow UPower's and
      NetworkManager's signals (idle: 0 wakeups a second, from 7–9).
 - **Text and everything drawn, better than Apple's** (Ben, 2026-10-31):

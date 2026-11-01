@@ -111,6 +111,9 @@ pub struct WaylandWindowState {
     viewport: Option<wp_viewport::WpViewport>,
     outputs: HashMap<ObjectId, Output>,
     display: Option<(ObjectId, Output)>,
+    /// Olo: the displays it may open on (those at the scale the
+    /// compositor gave it), its text drawn for until it's on one.
+    may_open_on: Vec<Output>,
     globals: Globals,
     renderer: BladeRenderer,
     bounds: Bounds<Pixels>,
@@ -247,6 +250,7 @@ impl WaylandWindowState {
             globals,
             outputs: HashMap::default(),
             display: None,
+            may_open_on: Vec::new(),
             renderer,
             bounds: options.bounds,
             scale: 1.0,
@@ -273,6 +277,25 @@ impl WaylandWindowState {
     pub fn is_transparent(&self) -> bool {
         self.decorations == WindowDecorations::Client
             || self.background_appearance != WindowBackgroundAppearance::Opaque
+    }
+
+    /// How its text is drawn: for the display it's on, or before it's on
+    /// one (its first frame), as all those it may open on would (else as
+    /// by default).
+    fn text_rendering(&self) -> crate::TextRendering {
+        // LCD coverage needs what's under the text to be what shows (a
+        // window's frame is app_server's, once it has said so).
+        let opaque = self.background_appearance == WindowBackgroundAppearance::Opaque
+            && (self.decorations == WindowDecorations::Server || (self.display.is_none() && self.decoration.is_some()));
+        let lcd_possible = opaque && self.renderer.supports_subpixel_text();
+        if let Some((_, output)) = self.display.as_ref() {
+            return output.text_rendering(lcd_possible);
+        }
+        let mut each = self.may_open_on.iter().map(|output| output.text_rendering(lcd_possible));
+        match each.next() {
+            Some(first) if each.all(|r| r == first) => first,
+            _ => crate::TextRendering::default(),
+        }
     }
 
     pub fn primary_output_scale(&mut self) -> i32 {
@@ -392,13 +415,14 @@ impl WaylandWindow {
         popup_parent: Option<(PopupParent, u32)>,
         layer_output: Option<wl_output::WlOutput>,
         session_lock: Option<(ext_session_lock_v1::ExtSessionLockV1, wl_output::WlOutput)>,
+        (scale, displays): (Option<f32>, Vec<Output>),
     ) -> anyhow::Result<(Self, ObjectId)> {
         let surface = globals.compositor.create_surface(&globals.qh, ());
         // Olo: a lock surface covers its output while the session is
         // locked; the compositor sizes it.
         if let Some((lock, output)) = session_lock {
             let lock_surface = lock.get_lock_surface(&surface, &output, &globals.qh, surface.id());
-            let made = Self::finish(handle, globals, gpu_context, client, params, appearance, loop_handle, signal, surface, None, None, None, None)?;
+            let made = Self::finish(handle, globals, gpu_context, client, params, appearance, loop_handle, signal, surface, None, None, None, None, (scale, displays))?;
             made.0.0.state.borrow_mut().lock_surface = Some(lock_surface);
             return Ok(made);
         }
@@ -429,7 +453,7 @@ impl WaylandWindow {
                 crate::LayerKeyboard::OnDemand => zwlr_layer_surface_v1::KeyboardInteractivity::None,
             };
             layer.set_keyboard_interactivity(keyboard);
-            return Self::finish(handle, globals, gpu_context, client, params, appearance, loop_handle, signal, surface, None, Some(layer), None, None);
+            return Self::finish(handle, globals, gpu_context, client, params, appearance, loop_handle, signal, surface, None, Some(layer), None, None, (scale, displays));
         }
         let xdg_surface = globals
             .wm_base
@@ -530,7 +554,7 @@ impl WaylandWindow {
             }
         };
 
-        Self::finish(handle, globals, gpu_context, client, params, appearance, loop_handle, signal, surface, Some(xdg_surface), None, toplevel, popup)
+        Self::finish(handle, globals, gpu_context, client, params, appearance, loop_handle, signal, surface, Some(xdg_surface), None, toplevel, popup, (scale, displays))
     }
 
     /// The rest of making a window, whatever its role.
@@ -549,11 +573,20 @@ impl WaylandWindow {
         layer_surface: Option<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
         toplevel: Option<xdg_toplevel::XdgToplevel>,
         popup: Option<xdg_popup::XdgPopup>,
+        (scale, displays): (Option<f32>, Vec<Output>),
     ) -> anyhow::Result<(Self, ObjectId)> {
         let lock_surface = params.kind == WindowKind::SessionLock;
-        if let Some(fractional_scale_manager) = globals.fractional_scale_manager.as_ref() {
-            fractional_scale_manager.get_fractional_scale(&surface, &globals.qh, surface.id());
-        }
+        // Olo: the scale it's drawn at (a popup's, its window's), asked
+        // before its first frame (else drawn at 1 first and again when the
+        // scale came: 6–8 ms wasted opening a window, glyphs drawn for no
+        // scale it's on); answered while the renderer is made.
+        let probe = match scale {
+            Some(_) => None,
+            None => globals
+                .fractional_scale_manager
+                .as_ref()
+                .and_then(|manager| ScaleProbe::ask(manager, &surface)),
+        };
 
         // Attempt to set up window decorations based on the requested configuration
         let decoration = toplevel.as_ref().and_then(|toplevel| {
@@ -578,22 +611,31 @@ impl WaylandWindow {
             }
         }
 
+        let mut state = WaylandWindowState::new(
+            handle,
+            surface.clone(),
+            xdg_surface,
+            layer_surface,
+            toplevel,
+            popup,
+            decoration,
+            appearance,
+            viewport,
+            client,
+            globals,
+            gpu_context,
+            params,
+        )?;
+        let scale = scale.or_else(|| probe.and_then(ScaleProbe::answer));
+        // (wl_output's scales are whole: a 1.5× display's is 2.)
+        let at_scale = |output: &Output| scale.is_none_or(|scale| output.scale == scale.ceil() as i32);
+        state.may_open_on = if displays.iter().any(at_scale) { displays.into_iter().filter(at_scale).collect() } else { displays };
+        let text_rendering = state.text_rendering();
+        if let Some(fractional_scale_manager) = state.globals.fractional_scale_manager.as_ref() {
+            fractional_scale_manager.get_fractional_scale(&surface, &state.globals.qh, surface.id());
+        }
         let this = Self(WaylandWindowStatePtr {
-            state: Rc::new(RefCell::new(WaylandWindowState::new(
-                handle,
-                surface.clone(),
-                xdg_surface,
-                layer_surface,
-                toplevel,
-                popup,
-                decoration,
-                appearance,
-                viewport,
-                client,
-                globals,
-                gpu_context,
-                params,
-            )?)),
+            state: Rc::new(RefCell::new(state)),
             callbacks: Rc::new(RefCell::new(Callbacks::default())),
             frames: Rc::new(FrameLoop {
                 callback: Cell::new(FrameCallback::None),
@@ -601,7 +643,7 @@ impl WaylandWindow {
                 needs_commit: Cell::new(false),
                 committed_at: Cell::new(std::time::Instant::now()),
                 force: Cell::new(false),
-                text_rendering: Cell::new(crate::TextRendering::default()),
+                text_rendering: Cell::new(text_rendering),
                 text_generation: Cell::new(0),
                 handle: loop_handle,
                 signal,
@@ -609,6 +651,10 @@ impl WaylandWindow {
             }),
         });
 
+        // (As any change of scale: its buffers and viewport for it.)
+        if let Some(scale) = scale {
+            this.0.rescale(scale);
+        }
         Ok((this, surface.id()))
     }
 }
@@ -624,6 +670,13 @@ impl WaylandWindowStatePtr {
 
     pub fn toplevel(&self) -> Option<xdg_toplevel::XdgToplevel> {
         self.state.borrow().toplevel.clone()
+    }
+
+    /// Olo: the scale it's drawn at and the display it's on (if it's on
+    /// one yet): a popup's over it.
+    pub fn scale_and_display(&self) -> (f32, Option<Output>) {
+        let state = self.state.borrow();
+        (state.scale, state.display.as_ref().map(|(_, output)| output.clone()))
     }
 
     /// What a popup opens over, on this window.
@@ -965,15 +1018,7 @@ impl WaylandWindowStatePtr {
     /// (the one with the highest scale, which its buffers are for), and
     /// draws it again if that changed.
     pub fn update_text_rendering(&self) {
-        let state = self.state.borrow();
-        // LCD coverage needs what's under the text to be what shows.
-        let lcd_possible = !state.is_transparent() && state.renderer.supports_subpixel_text();
-        let rendering = state
-            .display
-            .as_ref()
-            .map(|(_, output)| output.text_rendering(lcd_possible))
-            .unwrap_or_default();
-        drop(state);
+        let rendering = self.state.borrow().text_rendering();
         if rendering != self.frames.text_rendering.replace(rendering) {
             self.frames.force.set(true);
             self.schedule_frame();
@@ -985,6 +1030,7 @@ impl WaylandWindowStatePtr {
             match mode {
                 WEnum::Value(zxdg_toplevel_decoration_v1::Mode::ServerSide) => {
                     self.state.borrow_mut().decorations = WindowDecorations::Server;
+                    self.update_text_rendering();
                     if let Some(mut appearance_changed) =
                         self.callbacks.borrow_mut().appearance_changed.as_mut()
                     {
@@ -993,6 +1039,7 @@ impl WaylandWindowStatePtr {
                 }
                 WEnum::Value(zxdg_toplevel_decoration_v1::Mode::ClientSide) => {
                     self.state.borrow_mut().decorations = WindowDecorations::Client;
+                    self.update_text_rendering();
                     // Update background to be transparent
                     if let Some(mut appearance_changed) =
                         self.callbacks.borrow_mut().appearance_changed.as_mut()
@@ -1876,4 +1923,52 @@ fn place_layer(layer: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, options: &crat
     layer.set_exclusive_zone(options.exclusive_zone);
     let (mt, mr, mb, ml) = options.margin;
     layer.set_margin(mt, mr, mb, ml);
+}
+
+/// Olo: a new surface's scale, asked of the compositor on a queue of its
+/// own (so nothing else is dispatched meanwhile) before it's drawn. The
+/// window's own fractional scale object follows it (a surface may have
+/// one at a time), which the compositor tells the same scale.
+struct ScaleProbe {
+    queue: wayland_client::EventQueue<ProbedScale>,
+    object: wp_fractional_scale_v1::WpFractionalScaleV1,
+}
+
+#[derive(Default)]
+struct ProbedScale(Option<u32>);
+
+impl ScaleProbe {
+    fn ask(
+        manager: &wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1,
+        surface: &wl_surface::WlSurface,
+    ) -> Option<Self> {
+        let connection = wayland_client::Connection::from_backend(surface.backend().upgrade()?);
+        let queue = connection.new_event_queue();
+        let object = manager.get_fractional_scale(surface, &queue.handle(), ());
+        Some(Self { queue, object })
+    }
+
+    /// The scale, once the compositor has answered (most likely already).
+    fn answer(mut self) -> Option<f32> {
+        let mut scale = ProbedScale::default();
+        let answered = self.queue.roundtrip(&mut scale);
+        self.object.destroy();
+        answered.ok()?;
+        scale.0.map(|scale| scale as f32 / 120.0)
+    }
+}
+
+impl wayland_client::Dispatch<wp_fractional_scale_v1::WpFractionalScaleV1, ()> for ProbedScale {
+    fn event(
+        state: &mut Self,
+        _: &wp_fractional_scale_v1::WpFractionalScaleV1,
+        event: wp_fractional_scale_v1::Event,
+        _: &(),
+        _: &wayland_client::Connection,
+        _: &wayland_client::QueueHandle<Self>,
+    ) {
+        if let wp_fractional_scale_v1::Event::PreferredScale { scale } = event {
+            state.0 = Some(scale);
+        }
+    }
 }

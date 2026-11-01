@@ -1737,7 +1737,9 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   and ⇧ tightened and lifted onto the capitals' line). `.minimized(on)`
   marks an item a minimized window (a hollow diamond where the check
   goes, a lighter label, `minimized` to agents), as a Mac's Window menu
-  does. A press anywhere in the window a menu opened over puts it away
+  does. A menu shows no separator at either end or two together, so one
+  built with items it has only sometimes needs no care with them (a
+  menu field's, whose items are counted, is left as it is). A press anywhere in the window a menu opened over puts it away
   (the `Frame` sees it first: app_server's popup grab hands an app's
   own window the presses outside its menu), and that press doesn't
   open it again on what opened it, so a second click on a button
@@ -1770,6 +1772,14 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   (`Window::push_paint_record`), so a replayed view still says what it
   shows. A cached view's root is laid out as a root (its offsets
   ignored): put what places its content inside it (Telegram's panes).
+- `Window::warm_glyphs(font, size)` (Olo's GPUI) has a face and size's
+  printable characters drawn ahead, off the UI thread, so the frame that
+  first shows them only copies them (a glyph drawn the first time costs
+  a frame ~12 µs; a chat of new text, 3 ms). GPUI does it itself for
+  running text once it has drawn a few dozen of a face's glyphs; ask
+  for what a window will show soon that it hasn't yet (Telegram: the
+  conversation's faces, at start). It follows the window to another
+  scale or text rendering.
 - `Window::activate_window_with_token(token)` (Olo's GPUI) raises a
   window with an activation token another program gave (a notification
   clicked: `NoteEvent::Action`'s), which lets it take the focus.

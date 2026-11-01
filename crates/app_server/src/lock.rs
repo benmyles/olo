@@ -371,6 +371,9 @@ impl<B: Backend + 'static> SessionLockHandler for AnvilState<B> {
         info!("unlocked");
         self.lock.locked = false;
         self.lock.surfaces.clear();
+        // (Its lock screen leaves now: the next lock starts another,
+        // without taking this one's leaving for a crash.)
+        self.lock.locker = None;
         let focus = self.lock.focus_before.take().filter(smithay::utils::IsAlive::alive);
         let keyboard = self.seat.get_keyboard().unwrap();
         keyboard.set_focus(self, focus, SERIAL_COUNTER.next_serial());

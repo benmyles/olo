@@ -647,6 +647,19 @@ pub(crate) trait PlatformTextSystem: Send + Sync {
     fn typographic_bounds(&self, font_id: FontId, glyph_id: GlyphId) -> Result<Bounds<f32>>;
     fn advance(&self, font_id: FontId, glyph_id: GlyphId) -> Result<Size<f32>>;
     fn glyph_for_char(&self, font_id: FontId, ch: char) -> Option<GlyphId>;
+    /// Olo: draws `chars` of `font_id` at `font_size` (at every subpixel
+    /// offset) ahead of need, without holding up a frame: their bounds,
+    /// the pixels kept for the frame that draws them.
+    fn draw_ahead(
+        &self,
+        _font_id: FontId,
+        _font_size: Pixels,
+        _scale_factor: f32,
+        _rendering: crate::TextRendering,
+        _chars: &[char],
+    ) -> Vec<(RenderGlyphParams, Bounds<DevicePixels>)> {
+        Vec::new()
+    }
     fn glyph_raster_bounds(&self, params: &RenderGlyphParams) -> Result<Bounds<DevicePixels>>;
     fn rasterize_glyph(
         &self,

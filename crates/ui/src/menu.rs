@@ -131,6 +131,23 @@ impl Menu {
         self
     }
 
+    /// As it's shown: no separator at either end or two together (as left
+    /// where items a menu has only sometimes aren't there).
+    fn tidied(mut self) -> Menu {
+        let mut items = Vec::with_capacity(self.items.len());
+        for item in self.items {
+            if matches!(item, MenuItem::Separator) && matches!(items.last(), None | Some(MenuItem::Separator)) {
+                continue;
+            }
+            items.push(item);
+        }
+        if matches!(items.last(), Some(MenuItem::Separator)) {
+            items.pop();
+        }
+        self.items = items;
+        self
+    }
+
     pub fn submenu(mut self, menu: Menu) -> Menu {
         self.items.push(MenuItem::Submenu(menu));
         self
@@ -433,6 +450,8 @@ pub fn context_menu_then(window: &mut Window, cx: &mut App, menu: Menu, position
 }
 
 fn open(window: &mut Window, cx: &mut App, menu: Menu, place: Place, on_choose: OnChoose, parent_menu: Option<WindowHandle<MenuPopup>>, on_close: Option<Rc<dyn Fn(&mut App)>>) -> Option<WindowHandle<MenuPopup>> {
+    // (A menu field's items stay as counted: one of them lies over it.)
+    let menu = if place.selected.is_none() { menu.tidied() } else { menu };
     let (w, h) = popup_size(window, &menu);
     let w = w.max(place.min_width);
     let Place { anchor, corner, offset, selected, .. } = place;
@@ -935,5 +954,17 @@ impl RenderOnce for MenuBar {
         .w_full()
         .h(px(BAR_HEIGHT))
         .flex_shrink_0()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn separators_tidied() {
+        let menu = Menu::new("M").separator().item("A", "a").separator().separator().item("B", "b").separator().tidied();
+        let separators: Vec<bool> = menu.items.iter().map(|item| matches!(item, MenuItem::Separator)).collect();
+        assert_eq!(separators, [false, true, false]);
     }
 }

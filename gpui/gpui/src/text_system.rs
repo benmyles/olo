@@ -17,7 +17,7 @@ use crate::{
     StrikethroughStyle, UnderlineStyle, px,
 };
 use anyhow::{Context as _, anyhow};
-use collections::FxHashMap;
+use collections::{FxHashMap, FxHashSet};
 use core::fmt;
 use derive_more::{Add, Deref, FromStr, Sub};
 use itertools::Itertools;
@@ -56,6 +56,13 @@ pub struct TextSystem {
     font_ids_by_font: RwLock<FxHashMap<Font, Result<FontId>>>,
     font_metrics: RwLock<FxHashMap<FontId, FontMetrics>>,
     raster_bounds: RwLock<FxHashMap<RenderGlyphParams, Bounds<DevicePixels>>>,
+    /// Olo: the faces, sizes, scales and renderings whose glyphs are
+    /// drawn ahead of need ([`TextSystem::warm`]).
+    warmed: Mutex<FxHashSet<(FontId, u32, u32, TextRendering)>>,
+    /// Olo: how many glyphs of each face, size, scale and rendering frames
+    /// have drawn the first time ([`TextSystem::drawn_first`]).
+    first_drawn: Mutex<FxHashMap<(FontId, u32, u32, TextRendering), u32>>,
+    warmer: Mutex<Option<std::sync::mpsc::Sender<(FontId, u32, u32, TextRendering)>>>,
     wrapper_pool: Mutex<FxHashMap<FontIdWithSize, Vec<LineWrapper>>>,
     font_runs_pool: Mutex<Vec<Vec<FontRun>>>,
     fallback_font_stack: SmallVec<[Font; 2]>,
@@ -67,6 +74,9 @@ impl TextSystem {
             platform_text_system,
             font_metrics: RwLock::default(),
             raster_bounds: RwLock::default(),
+            warmed: Mutex::default(),
+            first_drawn: Mutex::default(),
+            warmer: Mutex::default(),
             font_ids_by_font: RwLock::default(),
             wrapper_pool: Mutex::default(),
             font_runs_pool: Mutex::default(),
@@ -307,15 +317,14 @@ impl TextSystem {
 
     /// Get the rasterized size and location of a specific, rendered glyph.
     pub(crate) fn raster_bounds(&self, params: &RenderGlyphParams) -> Result<Bounds<DevicePixels>> {
-        let raster_bounds = self.raster_bounds.upgradable_read();
-        if let Some(bounds) = raster_bounds.get(params) {
-            Ok(*bounds)
-        } else {
-            let mut raster_bounds = RwLockUpgradableReadGuard::upgrade(raster_bounds);
-            let bounds = self.platform_text_system.glyph_raster_bounds(params)?;
-            raster_bounds.insert(params.clone(), bounds);
-            Ok(bounds)
+        if let Some(bounds) = self.raster_bounds.read().get(params) {
+            return Ok(*bounds);
         }
+        // (Drawn without holding the map: glyphs drawn ahead on another
+        // thread go in as this thread looks others up.)
+        let bounds = self.platform_text_system.glyph_raster_bounds(params)?;
+        self.raster_bounds.write().insert(params.clone(), bounds);
+        Ok(bounds)
     }
 
     pub(crate) fn rasterize_glyph(
@@ -325,6 +334,91 @@ impl TextSystem {
         let raster_bounds = self.raster_bounds(params)?;
         self.platform_text_system
             .rasterize_glyph(params, raster_bounds)
+    }
+
+    /// Olo: a frame drew a glyph of `font_id` at `font_size` the first
+    /// time. Once it has drawn a few dozen, the face is running text (a
+    /// list's, a message's, a field's), whose other glyphs are drawn ahead
+    /// ([`TextSystem::warm`]); a face that only ever shows a few (a
+    /// heading, initials, digits) isn't.
+    pub(crate) fn drawn_first(
+        self: &Arc<Self>,
+        font_id: FontId,
+        font_size: Pixels,
+        scale_factor: f32,
+        rendering: TextRendering,
+    ) {
+        // (Glyphs at each subpixel offset counted apart.)
+        const RUNNING_TEXT: u32 = 32;
+        let key = (font_id, font_size.0.to_bits(), scale_factor.to_bits(), rendering);
+        let mut first_drawn = self.first_drawn.lock();
+        let drawn = first_drawn.entry(key).or_default();
+        *drawn += 1;
+        if *drawn == RUNNING_TEXT {
+            drop(first_drawn);
+            self.warm(font_id, font_size, scale_factor, rendering);
+        }
+    }
+
+    /// Olo: draws `font_id`'s printable characters (Latin text and its
+    /// punctuation) at `font_size`, for `scale_factor` and `rendering`, at
+    /// every subpixel offset, off the UI thread, once: a frame that shows
+    /// them then only copies them into its atlas, where drawing a glyph
+    /// the first time costs it ~12 µs. (Their pixels wait in the platform
+    /// text system until a frame takes them.) One thread takes the faces
+    /// in turn, so a frame shaping text waits at most a glyph for the
+    /// text system; it leaves after 10 s with nothing to do.
+    pub(crate) fn warm(
+        self: &Arc<Self>,
+        font_id: FontId,
+        font_size: Pixels,
+        scale_factor: f32,
+        rendering: TextRendering,
+    ) {
+        let key = (font_id, font_size.0.to_bits(), scale_factor.to_bits(), rendering);
+        if !self.warmed.lock().insert(key) {
+            return;
+        }
+        let mut worker = self.warmer.lock();
+        if let Some(tx) = worker.as_ref()
+            && tx.send(key).is_ok()
+        {
+            return;
+        }
+        let (tx, rx) = std::sync::mpsc::channel::<(FontId, u32, u32, TextRendering)>();
+        let _ = tx.send(key);
+        *worker = Some(tx);
+        drop(worker);
+        let this = Arc::downgrade(self);
+        let _ = std::thread::Builder::new().name("glyph-warm".into()).spawn(move || {
+            loop {
+                let job = match rx.recv_timeout(std::time::Duration::from_secs(10)) {
+                    Ok(job) => job,
+                    Err(_) => {
+                        // Idle: gone (started again for the next face),
+                        // unless one came as it gave up waiting (sent
+                        // with the lock held).
+                        let Some(this) = this.upgrade() else { return };
+                        let mut worker = this.warmer.lock();
+                        match rx.try_recv() {
+                            Ok(job) => job,
+                            Err(_) => {
+                                worker.take();
+                                return;
+                            }
+                        }
+                    }
+                };
+                let Some(this) = this.upgrade() else { return };
+                let (font_id, size, scale, rendering) = job;
+                let chars: Vec<char> = (' '..='~').chain("…–—‘’“”•·°".chars()).collect();
+                let drawn = this.platform_text_system.draw_ahead(font_id, Pixels(f32::from_bits(size)), f32::from_bits(scale), rendering, &chars);
+                let mut bounds = this.raster_bounds.write();
+                for (params, b) in drawn {
+                    bounds.entry(params).or_insert(b);
+                }
+            }
+        });
     }
 }
 
@@ -392,6 +486,16 @@ pub struct WindowTextSystem {
 }
 
 impl WindowTextSystem {
+    /// Olo: [`TextSystem::drawn_first`].
+    pub(crate) fn drawn_first(&self, font_id: FontId, font_size: Pixels, scale_factor: f32, rendering: TextRendering) {
+        self.text_system.drawn_first(font_id, font_size, scale_factor, rendering);
+    }
+
+    /// Olo: [`TextSystem::warm`].
+    pub(crate) fn warm(&self, font_id: FontId, font_size: Pixels, scale_factor: f32, rendering: TextRendering) {
+        self.text_system.warm(font_id, font_size, scale_factor, rendering);
+    }
+
     pub(crate) fn new(text_system: Arc<TextSystem>) -> Self {
         Self {
             line_layout_cache: LineLayoutCache::new(text_system.platform_text_system.clone()),

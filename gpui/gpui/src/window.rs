@@ -904,6 +904,11 @@ pub struct Window {
     /// Olo: the path masks drawn recently (`crate::outline`).
     outlines: crate::outline::Outlines,
     text_system: Arc<WindowTextSystem>,
+    /// Olo: the faces and sizes an app asked to have drawn ahead
+    /// ([`Window::warm_glyphs`]), and the scale and text rendering they
+    /// were last drawn for (drawn again for another).
+    warm: Vec<(FontId, Pixels)>,
+    warmed_for: Option<(f32, crate::TextRendering)>,
     rem_size: Pixels,
     /// The stack of override values for the window's rem size.
     ///
@@ -1318,6 +1323,8 @@ impl Window {
             sprite_atlas,
             outlines: Default::default(),
             text_system,
+            warm: Vec::new(),
+            warmed_for: None,
             rem_size: px(16.),
             rem_size_override_stack: SmallVec::new(),
             viewport_size: content_size,
@@ -2050,6 +2057,9 @@ impl Window {
     /// the contents of the new [`Scene`], use [`Self::present`].
     #[profiling::function]
     pub fn draw(&mut self, cx: &mut App) -> ArenaClearNeeded {
+        if !self.warm.is_empty() {
+            self.warm_for_display();
+        }
         self.invalidate_entities();
         cx.entities.clear_accessed();
         debug_assert!(self.rendered_entity_stack.is_empty());
@@ -3248,6 +3258,9 @@ impl Window {
             let tile = self
                 .sprite_atlas
                 .get_or_insert_with(&params.clone().into(), &mut || {
+                    // Olo: counted, so a face drawn as running text has
+                    // the rest of its glyphs drawn ahead, off this thread.
+                    self.text_system().drawn_first(params.font_id, params.font_size, params.scale_factor, params.rendering);
                     let (size, bytes) = self.text_system().rasterize_glyph(&params)?;
                     Ok(Some((size, Cow::Owned(bytes))))
                 })?
@@ -4393,6 +4406,33 @@ impl Window {
     /// Focus the current window and bring it to the foreground at the platform level.
     pub fn activate_window(&self) {
         self.platform_window.activate();
+    }
+
+    /// Olo: draws `font`'s printable characters at `font_size` for this
+    /// window ahead of need, off its thread, so the frame that shows
+    /// them only copies them (drawing a glyph the first time costs a
+    /// frame ~12 µs). GPUI does it itself for a face and size once a few
+    /// dozen of its glyphs have been drawn (running text); an app asks for
+    /// those it will draw soon (a conversation's text, before a chat is
+    /// opened).
+    /// The window's next frame, and each after it moves to a display
+    /// with another scale or text rendering, has them drawn for that.
+    pub fn warm_glyphs(&mut self, font: &crate::Font, font_size: Pixels) {
+        let font_id = self.text_system().resolve_font(font);
+        self.warm.push((font_id, font_size));
+        self.warmed_for = None;
+        self.warm_for_display();
+    }
+
+    fn warm_for_display(&mut self) {
+        let now = (self.scale_factor(), self.platform_window.text_rendering());
+        if self.warmed_for == Some(now) {
+            return;
+        }
+        self.warmed_for = Some(now);
+        for &(font_id, font_size) in &self.warm {
+            self.text_system.warm(font_id, font_size, now.0, now.1);
+        }
     }
 
     /// Bring the window forward with an activation token from another

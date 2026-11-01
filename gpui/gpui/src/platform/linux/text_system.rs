@@ -255,6 +255,54 @@ impl PlatformTextSystem for OloTextSystem {
     fn layout_line(&self, text: &str, font_size: Pixels, runs: &[FontRun]) -> LineLayout {
         self.0.write().layout_line(text, font_size, runs)
     }
+
+    /// Olo: draws `chars` of `font_id` at every subpixel offset without
+    /// holding the text system while it draws (a frame shaping text or
+    /// drawing a glyph waits for nothing): what it needs taken under a
+    /// moment's read, drawn on a rasterizer of its own, the pixels kept
+    /// for frames to take in a moment's write.
+    fn draw_ahead(&self, font_id: FontId, font_size: Pixels, scale_factor: f32, rendering: TextRendering, chars: &[char]) -> Vec<(RenderGlyphParams, Bounds<DevicePixels>)> {
+        let (data, index, location) = {
+            let state = self.0.read();
+            let Some(instance) = state.instances.get(font_id.0) else { return Vec::new() };
+            let source = &state.sources[instance.source];
+            if source.color {
+                return Vec::new();
+            }
+            (source.data.clone(), source.index, instance.location.clone())
+        };
+        let Ok(font) = FontRef::from_index((*data).as_ref(), index) else { return Vec::new() };
+        let ppem = font_size.0 * scale_factor;
+        let outlines = font.outline_glyphs();
+        let hinting = if matches!(rendering, TextRendering::Unhinted) { None } else { hinting_at(&outlines, ppem, &location) };
+        let charmap = font.charmap();
+        let mut raster = ab_glyph_rasterizer::Rasterizer::new(0, 0);
+        let mut drawn = Vec::new();
+        for &ch in chars {
+            let Some(gid) = charmap.map(ch) else { continue };
+            for x in 0..SUBPIXEL_VARIANTS_X {
+                let params = RenderGlyphParams {
+                    font_id,
+                    glyph_id: GlyphId(gid.to_u32()),
+                    font_size,
+                    // (Vertically, glyphs keep to whole pixels here.)
+                    subpixel_variant: point(x, 0),
+                    scale_factor,
+                    is_emoji: false,
+                    rendering,
+                };
+                if let Some(glyph) = draw_outline(&outlines, &location, hinting.as_ref(), &mut raster, &params, ppem) {
+                    drawn.push((params, glyph));
+                }
+            }
+        }
+        let bounds = drawn.iter().map(|(p, g)| (p.clone(), g.0)).collect();
+        let mut state = self.0.write();
+        for (params, glyph) in drawn {
+            state.drawn.entry(params).or_insert(glyph);
+        }
+        bounds
+    }
 }
 
 impl State {
@@ -649,78 +697,86 @@ impl State {
         }
         let font = source.font()?;
         let outlines = font.outline_glyphs();
-        let glyph = outlines.get(skrifa::GlyphId::new(params.glyph_id.0))?;
-        // LCD subpixel glyphs are drawn three times as wide, a sample per
-        // colour stripe.
-        let (lcd, unhinted) = match params.rendering {
-            TextRendering::Subpixel(layout) => (Some(layout), false),
-            TextRendering::Unhinted => (None, true),
-            TextRendering::Hinted => (None, false),
-        };
-        let across = if lcd.is_some() { 3.0 } else { 1.0 };
-        let mut path = kurbo::BezPath::new();
-        let mut pen = Pen {
-            path: &mut path,
-            x: f64::from(params.subpixel_variant.x) / f64::from(SUBPIXEL_VARIANTS_X) * across,
-            across,
-        };
-        if unhinted {
-            glyph
-                .draw(
-                    DrawSettings::unhinted(Ppem::new(ppem), &instance.location),
-                    &mut pen,
-                )
-                .ok()?;
-        } else {
-            let key = (params.font_id.0, ppem.to_bits());
-            if !self.hinting.contains_key(&key) {
-                let hinting = HintingInstance::new(
-                    &outlines,
-                    Ppem::new(ppem),
-                    &instance.location,
-                    Target::Smooth {
-                        mode: SmoothMode::Light,
-                        symmetric_rendering: true,
-                        preserve_linear_metrics: true,
-                    },
-                )
-                .ok()?;
-                self.hinting.insert(key, hinting);
-            }
-            glyph
-                .draw(DrawSettings::hinted(&self.hinting[&key], false), &mut pen)
-                .ok()?;
+        let hinted = !matches!(params.rendering, TextRendering::Unhinted);
+        let key = (params.font_id.0, ppem.to_bits());
+        if hinted && !self.hinting.contains_key(&key) {
+            self.hinting.insert(key, hinting_at(&outlines, ppem, &instance.location)?);
         }
-        let darken = darkening(params.font_size.0) * params.scale_factor;
-        let reach = f64::from(darken / 2.0);
-        let b = path.control_box().inflate(reach * across, reach);
-        // Whole pixels, and for LCD glyphs one more each side, where the
-        // filter spreads them.
-        let spread = if lcd.is_some() { 1.0 } else { 0.0 };
-        let (x0, x1) = (
-            (b.x0 / across).floor() - spread,
-            (b.x1 / across).ceil() + spread,
-        );
-        let (y0, y1) = (b.y0.floor(), b.y1.ceil());
-        let (width, height) = ((x1 - x0) as u16, (y1 - y0) as u16);
-        if width == 0 || height == 0 {
-            return None;
-        }
-        let samples = (f64::from(width) * across) as u16;
-        let path = if darken > 0.0 { embolden(&path, reach) } else { path };
-        let coverage = fill(&mut self.raster, &path, (-x0 * across, -y0), samples.into(), height.into());
-        let pixels = match lcd {
-            Some(layout) => lcd_filter(&coverage, width.into(), height.into(), layout),
-            None => coverage,
-        };
-        Some((
-            Bounds {
-                origin: point(DevicePixels(x0 as i32), DevicePixels(y0 as i32)),
-                size: size(DevicePixels(width.into()), DevicePixels(height.into())),
-            },
-            pixels,
-        ))
+        let hinting = if hinted { self.hinting.get(&key) } else { None };
+        draw_outline(&outlines, &instance.location, hinting, &mut self.raster, params, ppem)
     }
+}
+
+/// The light autohinting (vertical only) for a face at `ppem`.
+fn hinting_at(outlines: &skrifa::outline::OutlineGlyphCollection, ppem: f32, location: &Location) -> Option<HintingInstance> {
+    HintingInstance::new(
+        outlines,
+        Ppem::new(ppem),
+        location,
+        Target::Smooth {
+            mode: SmoothMode::Light,
+            symmetric_rendering: true,
+            preserve_linear_metrics: true,
+        },
+    )
+    .ok()
+}
+
+/// Draws an outline glyph (not a colour one) as `params` say, hinted by
+/// `hinting` unless it is to be drawn unhinted: its bounds and coverage.
+fn draw_outline(
+    outlines: &skrifa::outline::OutlineGlyphCollection,
+    location: &Location,
+    hinting: Option<&HintingInstance>,
+    raster: &mut ab_glyph_rasterizer::Rasterizer,
+    params: &RenderGlyphParams,
+    ppem: f32,
+) -> Option<(Bounds<DevicePixels>, Vec<u8>)> {
+    let glyph = outlines.get(skrifa::GlyphId::new(params.glyph_id.0))?;
+    // LCD subpixel glyphs are drawn three times as wide, a sample per
+    // colour stripe.
+    let (lcd, unhinted) = match params.rendering {
+        TextRendering::Subpixel(layout) => (Some(layout), false),
+        TextRendering::Unhinted => (None, true),
+        TextRendering::Hinted => (None, false),
+    };
+    let across = if lcd.is_some() { 3.0 } else { 1.0 };
+    let mut path = kurbo::BezPath::new();
+    let mut pen = Pen {
+        path: &mut path,
+        x: f64::from(params.subpixel_variant.x) / f64::from(SUBPIXEL_VARIANTS_X) * across,
+        across,
+    };
+    match hinting {
+        Some(hinting) if !unhinted => glyph.draw(DrawSettings::hinted(hinting, false), &mut pen).ok()?,
+        _ => glyph.draw(DrawSettings::unhinted(Ppem::new(ppem), location), &mut pen).ok()?,
+    };
+    let darken = darkening(params.font_size.0) * params.scale_factor;
+    let reach = f64::from(darken / 2.0);
+    let b = path.control_box().inflate(reach * across, reach);
+    // Whole pixels, and for LCD glyphs one more each side, where the
+    // filter spreads them.
+    let spread = if lcd.is_some() { 1.0 } else { 0.0 };
+    let (x0, x1) = ((b.x0 / across).floor() - spread, (b.x1 / across).ceil() + spread);
+    let (y0, y1) = (b.y0.floor(), b.y1.ceil());
+    let (width, height) = ((x1 - x0) as u16, (y1 - y0) as u16);
+    if width == 0 || height == 0 {
+        return None;
+    }
+    let samples = (f64::from(width) * across) as u16;
+    let path = if darken > 0.0 { embolden(&path, reach) } else { path };
+    let coverage = fill(raster, &path, (-x0 * across, -y0), samples.into(), height.into());
+    let pixels = match lcd {
+        Some(layout) => lcd_filter(&coverage, width.into(), height.into(), layout),
+        None => coverage,
+    };
+    Some((
+        Bounds {
+            origin: point(DevicePixels(x0 as i32), DevicePixels(y0 as i32)),
+            size: size(DevicePixels(width.into()), DevicePixels(height.into())),
+        },
+        pixels,
+    ))
 }
 
 /// Three samples a pixel across, one per colour stripe, into a pixel's

@@ -134,6 +134,30 @@ What Olo changed, so far:
   palette opens in 28 ms (egui's: 47).
 - Background threads start when there's work and none is free, and
   leave after 10 s without any (upstream kept one per core).
+- A window's first frame is drawn once, for the display it opens on.
+  Upstream drew it at scale 1 and with the default text rendering
+  (before the compositor said otherwise), then again: 6–8 ms more to
+  open a window, glyphs drawn for a scale it's not at. The client reads
+  the displays when it connects (one roundtrip); a new surface asks its
+  scale on an event queue of its own while its renderer is made
+  (`ScaleProbe`, 60–180 µs, a fractional-scale object it then drops for
+  the window's own) and draws its text as the displays at that scale
+  would (`may_open_on`, until it's on one); a popup takes its window's
+  scale and display. app_server answers for the output a new window
+  was placed on, a popup's window's or a layer's (not the first
+  output).
+- Glyphs drawn ahead (`TextSystem::warm`, `PlatformTextSystem::
+  draw_ahead`): a face and size whose glyphs are running text (32 drawn
+  the first time) has the rest of its printable ASCII and common
+  punctuation drawn, at each subpixel offset, by one background thread
+  that leaves after 10 s idle, on a rasterizer and hinting of its own
+  (the text system isn't held while it draws; their pixels go in in one
+  write), so a frame that shows them only copies them into its atlas
+  (drawing one the first time costs a frame ~12 µs). An app asks for
+  those it will soon need (`Window::warm_glyphs`: Telegram's
+  conversation text at start), drawn again for each scale and text
+  rendering the window moves to. Telegram's chat switches: slowest
+  frame 9.6–10.2 ms before, 6.6–7.6 ms; 0.7 MB more memory.
 - Olo's text (`gpui/src/platform/linux/text_system.rs`), the same as
   the egui kit's: Olo's own faces (data/fonts) before the system's,
   shaped by harfrust, outlines hinted by skrifa's autohinter (vertical

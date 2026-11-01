@@ -210,7 +210,7 @@ pub fn font(weight: FontWeight) -> Font {
     style::ui_font(weight)
 }
 
-fn italic() -> Font {
+pub fn italic() -> Font {
     Font { style: FontStyle::Italic, ..style::ui_font(FontWeight::NORMAL) }
 }
 
