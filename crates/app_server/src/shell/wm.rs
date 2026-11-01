@@ -235,6 +235,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     pub fn focus_window(&mut self, window: &WindowElement) {
+        // A window of a client going away takes nothing (`live`).
+        if !live(window) {
+            return;
+        }
         self.space.raise_element(window, true);
         self.keep_children_above();
         let serial = smithay::utils::SERIAL_COUNTER.next_serial();
@@ -591,4 +595,16 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for TabSlideGrab
     }
 
     fn unset(&mut self, _data: &mut AnvilState<BackendData>) {}
+}
+
+/// Whether `window`'s client is still there. A client that disconnects
+/// has its windows destroyed one by one; while that goes on its other
+/// windows are still in the space, and an event naming one (the keyboard
+/// entering it, as the next window down takes focus) names an object of
+/// a client that's gone, which wayland-backend aborts the process for
+/// (it happens in a destructor, which can't unwind): killing an app with
+/// two windows took app_server down.
+pub fn live(window: &WindowElement) -> bool {
+    use smithay::reexports::wayland_server::Resource;
+    window.wl_surface().is_some_and(|s| s.is_alive() && s.client().is_some())
 }

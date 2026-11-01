@@ -726,7 +726,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     pub fn focus_topmost(&mut self) {
-        let front = self.space.elements().next_back().cloned();
+        let front = self.space.elements().rev().find(|w| crate::shell::live(w)).cloned();
         match front {
             Some(front) => self.focus_window(&front),
             None => {
@@ -1204,7 +1204,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     fn focus_topmost_on(&mut self, output: &Output) {
-        let front = self.space.elements().rev().find(|w| self.window_output(w).as_ref() == Some(output)).cloned();
+        let front = self.space.elements().rev().find(|w| crate::shell::live(w) && self.window_output(w).as_ref() == Some(output)).cloned();
         match front {
             Some(front) => self.focus_window(&front),
             None => {

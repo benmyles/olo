@@ -90,10 +90,11 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
         // A clipboard tool's window, done: the keyboard back where it was.
         if let Some(i) = self.clipboard_helpers.iter().position(|(w, _)| w.0.toplevel().is_some_and(|t| t == &surface)) {
             let (_, before) = self.clipboard_helpers.remove(i);
-            match before.filter(|w| self.space.element_location(w).is_some()) {
-                Some(w) => self.focus_window(&w),
-                None => self.focus_topmost(),
-            }
+            // (Once the helper's client is gone, if it's going: see below.)
+            self.handle.insert_idle(move |state| match before.filter(|w| state.space.element_location(w).is_some()) {
+                Some(w) => state.focus_window(&w),
+                None => state.focus_topmost(),
+            });
             return;
         }
         // When the focused window goes, the next one down takes focus (an
@@ -113,7 +114,15 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
         };
         self.space.unmap_elem(&window);
         if had_focus {
-            self.focus_topmost();
+            if surface.wl_surface().client().is_some() {
+                self.focus_topmost();
+            } else {
+                // Its client disconnected, its windows being destroyed one
+                // by one: moving the focus now would send the keyboard's
+                // leave to the client going away (wayland-backend aborts
+                // for that, in a destructor). Once it's gone.
+                self.handle.insert_idle(|state| state.focus_topmost());
+            }
         }
     }
 

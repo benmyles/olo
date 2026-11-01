@@ -55,6 +55,7 @@ pub mod modes;
 pub mod tabdrag;
 pub mod tiling;
 mod wm;
+pub use wm::live;
 mod xdg;
 
 pub(crate) use self::deco::fill;
