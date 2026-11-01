@@ -334,25 +334,30 @@ as they land (with the commit), add new ones as they come up.
    - **Every frame on time, every display** (Ben, 2026-11-01: "dropping
      frames is never acceptable: olo must be buttery smooth on all
      displays all the time"; the pointer "definitely way slow/stuttery",
-     worst on the Studio Display). Found: app_server drew every frame
-     60% into the frame whatever it cost, and a 5K frame with video
-     costs 5–9 ms of CPU (p95 7.4 ms against a 6.7 ms budget), so a
-     third of DP-1's vblanks were missed; apple-drm has no cursor plane,
-     so every pointer move was a frame of the whole screen. Done
-     (2026-11-01, frames.rs; HACKING "Every frame on time"): per-display
-     pacing from measured cost and observed drops; the pointer on an
-     overlay plane as the cursor plane; `{"type":"frames"}`,
-     `capture_drops`; Activity Monitor ▸ Displays. **To verify on the
-     hardware** (needs the session upgraded): the log's "an overlay
-     plane holds the pointer" and "the pointer is on a plane of the
-     display's own" lines, Displays showing 0 dropped a minute on DP-1
-     and eDP-1 with video playing, and the pointer smooth. Then: why
-     `drm render_frame` costs 5 ms of CPU at 5K (Smithay's per-element
-     plane tests? dmabuf imports? damage over many elements), measured
-     with capture on; the GPU's share of the frame (unmeasured: a
-     fence's completion time would say); `split-debuginfo = "unpacked"`
-     for release builds halves binaries (219→120 MB) but measured no
-     faster (132 s packed, 151 s unpacked for a GPUI edit; both noisy).
+     worst on the Studio Display; app_server at 20% of a core). Done
+     2026-11-01 (HACKING "Every frame on time"): per-display pacing from
+     measured cost and observed drops; `{"type":"frames"}`,
+     `capture_drops`, Activity Monitor ▸ Displays; the pointer on an
+     overlay plane as cursor plane, clipped at the display's edge in
+     Olo's Smithay (the first try, unclipped, had apple-drm refuse the
+     flip and app_server restart eight times; a refused flip no longer
+     kills it); windows as scan-out candidates; Smithay vendored with
+     phase timings and scan-out reasons. Found: a 5K frame's 5 ms is
+     all `render_output`, and in it the GPU submit (asahi's
+     agx_flush_batch from the fence) and syncobj waits, ~3 ms a frame
+     in the kernel; plane assignment and atomic tests cost 0.0 ms.
+     **Next**: read the scan-out record with the video call on (does
+     Chrome's window reach an overlay plane now; if "overlaps", what
+     overlaps it: decorations? if "format", its modifier); the "draws"
+     vs "finish" split; if finish is the cost, fewer flushes (one fence
+     a frame is already one; look at asahi's batch limit and whether
+     `drmSyncobjWait` in agx_cleanup_batches is the GPU's time for the
+     previous frame); the GPU time of a 5K composite itself (38
+     elements drawn each frame: check the damage is the video's rect,
+     not the output); eDP-1 at 120 Hz dropping ~1 in 240 at 4.8 ms
+     draws. Verify on the hardware after each upgrade: Displays showing
+     0 dropped a minute on DP-1 and eDP-1 with video playing, the
+     pointer smooth at any speed, app_server near 0% with the call on.
    - **Supervisor priority tiers** (Ben, 2026-11-01: "it should always
      give the highest priority to the core olo processes and any
      system+input processes important for responsiveness/smoothness,

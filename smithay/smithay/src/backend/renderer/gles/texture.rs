@@ -62,10 +62,51 @@ impl GlesTexture {
     }
 }
 
+/// (Olo) A GL fence every texture a frame drew shares, made once when
+/// the frame finishes. Upstream made one fence per texture drawn
+/// (`glFenceSync` after each draw), and on Mesa's asahi a fence flushes
+/// the GPU's batch: a GPU submit an element, 71 of them a frame on a 5K
+/// display with a video call, 3–8 ms of a frame's time (2026-11-01).
+/// Deleted on the renderer's thread through its cleanup channel, as
+/// textures are, since the last texture holding it may go elsewhere.
+#[derive(Debug)]
+pub(super) struct SharedFence {
+    pub(super) sync: ffi::types::GLsync,
+    cleanup: Sender<CleanupResource>,
+}
+
+impl SharedFence {
+    /// A fence on everything issued so far.
+    pub(super) unsafe fn new(gl: &Gles2, cleanup: Sender<CleanupResource>) -> Self {
+        SharedFence { sync: unsafe { gl.FenceSync(ffi::SYNC_GPU_COMMANDS_COMPLETE, 0) }, cleanup }
+    }
+}
+
+impl Drop for SharedFence {
+    fn drop(&mut self) {
+        let _ = self.cleanup.send(CleanupResource::Sync(self.sync));
+    }
+}
+unsafe impl Send for SharedFence {}
+unsafe impl Sync for SharedFence {}
+
 #[derive(Debug, Default)]
 pub(super) struct TextureSync {
-    read_sync: Mutex<Option<ffi::types::GLsync>>,
+    read_sync: Mutex<Option<Arc<SharedFence>>>,
     write_sync: Mutex<Option<ffi::types::GLsync>>,
+}
+
+/// Waits (on the GPU) for the frame that last read the texture, if it
+/// hasn't finished; one that has is forgotten.
+unsafe fn wait_for_read(sync: &mut Option<Arc<SharedFence>>, gl: &Gles2) {
+    if let Some(fence) = sync.as_ref() {
+        match unsafe { gl.ClientWaitSync(fence.sync, 0, 0) } {
+            ffi::ALREADY_SIGNALED | ffi::CONDITION_SATISFIED => {
+                let _ = sync.take();
+            }
+            _ => unsafe { gl.WaitSync(fence.sync, 0, ffi::TIMEOUT_IGNORED) },
+        };
+    }
 }
 
 unsafe fn wait_for_syncpoint(sync: &mut Option<ffi::types::GLsync>, gl: &Gles2) {
@@ -89,20 +130,15 @@ impl TextureSync {
         }
     }
 
-    pub(super) fn update_read(&self, gl: &Gles2) {
-        let mut read_sync = self.read_sync.lock().unwrap();
-        if let Some(old) = read_sync.take() {
-            unsafe {
-                gl.WaitSync(old, 0, ffi::TIMEOUT_IGNORED);
-                gl.DeleteSync(old);
-            };
-        }
-        *read_sync = Some(unsafe { gl.FenceSync(ffi::SYNC_GPU_COMMANDS_COMPLETE, 0) });
+    /// The frame that read the texture is done issuing: its fence is the
+    /// texture's read fence (reads don't wait on reads).
+    pub(super) fn set_read(&self, fence: Arc<SharedFence>) {
+        *self.read_sync.lock().unwrap() = Some(fence);
     }
 
     pub(super) fn wait_for_all(&mut self, gl: &Gles2) {
         unsafe {
-            wait_for_syncpoint(self.read_sync.get_mut().unwrap(), gl);
+            wait_for_read(self.read_sync.get_mut().unwrap(), gl);
             wait_for_syncpoint(self.write_sync.get_mut().unwrap(), gl);
         }
     }
@@ -141,11 +177,8 @@ impl Drop for GlesTextureInternal {
             .destruction_callback_sender
             .send(CleanupResource::Texture(self.texture));
         let mut sync = self.sync.write().unwrap();
-        if let Some(sync) = sync.read_sync.get_mut().unwrap().take() {
-            let _ = self
-                .destruction_callback_sender
-                .send(CleanupResource::Sync(sync as *const _));
-        }
+        // (The shared read fence cleans itself up with its last holder.)
+        let _ = sync.read_sync.get_mut().unwrap().take();
         if let Some(sync) = sync.write_sync.get_mut().unwrap().take() {
             let _ = self
                 .destruction_callback_sender

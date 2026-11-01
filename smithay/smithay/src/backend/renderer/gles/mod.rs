@@ -438,6 +438,9 @@ pub struct GlesFrame<'frame, 'buffer> {
     size: Size<i32, Physical>,
     tex_program_override: Option<(GlesTexProgram, Vec<Uniform<'static>>)>,
     finished: AtomicBool,
+    /// (Olo) The textures drawn this frame: they share one read fence,
+    /// made as the frame finishes (`SharedFence`).
+    drawn: Vec<GlesTexture>,
 
     span: EnteredSpan,
 
@@ -2322,6 +2325,7 @@ impl Renderer for GlesRenderer {
             size: output_size,
             tex_program_override: None,
             finished: AtomicBool::new(false),
+            drawn: Vec::new(),
 
             span,
 
@@ -2582,6 +2586,14 @@ impl GlesFrame<'_, '_> {
         self.renderer.profiler.exit(&self.renderer.gl, finish_gpu_span);
         if let Some(span) = self.gpu_span.take() {
             self.renderer.profiler.exit(&self.renderer.gl, span);
+        }
+
+        // (Olo) One read fence for everything drawn this frame.
+        if !self.drawn.is_empty() {
+            let fence = Arc::new(unsafe { SharedFence::new(&self.renderer.gl, self.renderer.gles_cleanup().sender.clone()) });
+            for tex in self.drawn.drain(..) {
+                tex.0.sync.read().unwrap().set_read(fence.clone());
+            }
         }
 
         // if we support egl fences we should use it
@@ -3095,7 +3107,8 @@ impl GlesFrame<'_, '_> {
             drop(scope);
 
             if self.renderer.capabilities.contains(&Capability::Fencing) {
-                sync_lock.update_read(gl);
+                // (Olo) Its read fence comes with the frame's, at finish.
+                self.drawn.push(tex.clone());
             } else if self.renderer.egl.is_shared() {
                 gl.Finish();
             };

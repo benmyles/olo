@@ -69,6 +69,12 @@ pub struct Pacing {
     queued: Option<(Option<Time<Monotonic>>, Duration)>,
     /// The parts of the frame on its way, while capturing.
     parts: Vec<(&'static str, Duration)>,
+    /// The last vblank's time, and how long before it the one before
+    /// came: a panel idling (the MacBook's ProMotion drops to 80 or
+    /// 60 Hz with nothing new) has long intervals, and a frame after one
+    /// isn't late, the vblank is.
+    last_vblank: Option<Time<Monotonic>>,
+    interval: Option<Duration>,
     /// The pointer went on the display's cursor plane in the last frame.
     pub cursor_plane: bool,
     /// What the last frame scanned out and drew (`scanout_summary`).
@@ -139,6 +145,8 @@ impl Default for Pacing {
             expected: None,
             queued: None,
             parts: Vec::new(),
+            last_vblank: None,
+            interval: None,
             cursor_plane: false,
             scanout: String::new(),
         }
@@ -199,9 +207,20 @@ impl Pacing {
         self.frames += 1;
         self.presented.push_back(now);
         self.tidy(now);
+        // The display's cadence before this vblank: at its rate, or idling.
+        let before = self.interval;
+        self.interval = self.last_vblank.replace(at).map(|last| Duration::from(at).saturating_sub(Duration::from(last)));
         let (target, took) = self.queued.take()?;
         let target = target?;
         let late = Duration::from(at).saturating_sub(Duration::from(target));
+        // A panel that was idling (its last interval well over a frame)
+        // presents the frame at its next vblank, whenever its cadence
+        // brings one: not a drop, however late against a full-rate frame.
+        let idling = before.is_some_and(|i| i > frame + frame / 4);
+        if idling {
+            self.parts.clear();
+            return None;
+        }
         // Three quarters of a frame: a frame that made the next vblank is a
         // whole frame late, and a panel with a rate of its own (the
         // MacBook's ProMotion at 120 Hz) stamps a vblank up to half a
