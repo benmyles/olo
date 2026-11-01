@@ -279,9 +279,8 @@ as they land (with the commit), add new ones as they come up.
      Telegram, Viewer, Notifications, the portal, Agent
      Screens, StyledEdit, Activity Monitor, Tracker, Passwords,
      Preferences (with the screen saver and its modules) and Terminal.
-     Deskbar's battery and Wi-Fi are still read every 4 s (5 wakeups a
-     second idle, as egui's did): to follow UPower's and
-     NetworkManager's signals instead.
+     Deskbar's battery and Wi-Fi now follow UPower's and
+     NetworkManager's signals (idle: 0 wakeups a second, from 7–9).
 - **Text and everything drawn, better than Apple's** (Ben, 2026-10-31):
   "make sure our text system is SOTA -- rivalling apple's or anything
   else out there. perfect looking, adorably beautiful text is essential";

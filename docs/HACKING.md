@@ -6107,7 +6107,14 @@ going are closed, so the app always has one. Approve Without Asking's
 window (approve.rs) is the kit's alert frame with a `MenuField` and a
 `ConversationField`. Release build, against the egui one: first frame
 58–73 ms (egui 69–87), 57 MB resident (141), 30 pointer moves across it
-32 frames, 0.8 ms each (egui drew 150).
+32 frames, 0.8 ms each (egui drew 150). The tray's battery and Wi-Fi
+follow UPower's display device and NetworkManager's signals
+(`olo_system::battery::watch`, `network::watch_wifi`, each on a thread
+that sleeps until one comes; Wi-Fi on a bus connection of its own that
+the bus sends only device state changes, NetworkManager's own, and while
+connected the adapter's and its access point's properties: a scanning
+adapter's access points come and go several times a second here), so
+idle it wakes 0 times a second (it was 7–9, polling every 4 s).
 
 ## The lock screen (crates/app_server/src/lock.rs, apps/lock)
 

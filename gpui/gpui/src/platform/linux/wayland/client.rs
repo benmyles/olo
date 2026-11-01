@@ -388,7 +388,7 @@ fn drag_icon(globals: &Globals, image: &crate::DragImage) -> Option<(wl_surface:
         OwnedFd::from_raw_fd(fd)
     };
     // Premultiplied BGRA in memory, as ARGB8888 is.
-    let bgra: Vec<u8> = image.rgba[..w * h * 4].chunks_exact(4).flat_map(|p| [p[2], p[1], p[0], p[3]]).collect();
+    let bgra: Vec<u8> = image.rgba[..w * h * 4].as_chunks::<4>().0.iter().flat_map(|p| [p[2], p[1], p[0], p[3]]).collect();
     let mut file = std::fs::File::from(fd);
     file.write_all(&bgra).ok()?;
     let size = (w * h * 4) as i32;

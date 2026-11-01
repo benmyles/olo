@@ -51,6 +51,97 @@ pub fn wifi() -> Result<Option<Wifi>> {
     Ok(None)
 }
 
+/// [`wifi`], and the objects whose changes change it: NetworkManager,
+/// the adapter, its access point.
+fn wifi_and_paths() -> Result<(Option<Wifi>, Vec<String>)> {
+    let conn = bus::system()?;
+    let mut paths = vec![NM_PATH.to_owned()];
+    for dev in devices_paths()? {
+        let kind: u32 = bus::property(conn, DEST, dev.as_str(), DEVICE, "DeviceType")?;
+        if kind != TYPE_WIFI {
+            continue;
+        }
+        paths.push(dev.as_str().to_owned());
+        let ap: OwnedObjectPath = bus::property(conn, DEST, dev.as_str(), WIRELESS, "ActiveAccessPoint")?;
+        if ap.as_str() == "/" {
+            return Ok((Some(Wifi { ssid: None, strength: 0 }), paths));
+        }
+        paths.push(ap.as_str().to_owned());
+        let ssid: Vec<u8> = bus::property(conn, DEST, ap.as_str(), AP, "Ssid")?;
+        let strength: u8 = bus::property(conn, DEST, ap.as_str(), AP, "Strength")?;
+        return Ok((Some(Wifi { ssid: Some(String::from_utf8_lossy(&ssid).into_owned()), strength: strength.min(100) as u32 }), paths));
+    }
+    Ok((None, paths))
+}
+
+/// Calls `changed` with the first Wi-Fi adapter's state ([`wifi`]) now
+/// and whenever it changes, on threads of its own, following
+/// NetworkManager's signals (nothing polled), on a bus connection of its
+/// own that the bus sends only these: any device's state changing,
+/// NetworkManager's own (devices coming and going), and while connected,
+/// the adapter's properties (moving to another access point) and its
+/// access point's (the strength). An adapter that isn't connected scans
+/// often, its list of access points changing several times a second:
+/// those aren't asked for. Quick runs of changes come together. Err if
+/// NetworkManager can't be reached.
+pub fn watch_wifi(changed: impl Fn(Option<Wifi>) + Send + 'static) -> Result<()> {
+    use zbus::{MatchRule, message::Type};
+    let conn = zbus::blocking::Connection::system()?;
+    let dbus = zbus::blocking::fdo::DBusProxy::new(&conn)?;
+    let props = |path: &str| -> Result<MatchRule<'static>> {
+        Ok(MatchRule::builder().msg_type(Type::Signal).sender(DEST)?.path(path.to_owned())?.interface("org.freedesktop.DBus.Properties")?.member("PropertiesChanged")?.build())
+    };
+    let states = MatchRule::builder().msg_type(Type::Signal).sender(DEST)?.interface(DEVICE)?.member("StateChanged")?.build();
+    let own = MatchRule::builder().msg_type(Type::Signal).sender(DEST)?.path(NM_PATH)?.build();
+    // (Before reading, so a change between is heard.)
+    let messages = zbus::blocking::MessageIterator::from(&conn);
+    dbus.add_match_rule(states)?;
+    dbus.add_match_rule(own)?;
+    let (first, paths) = wifi_and_paths()?;
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    std::thread::Builder::new().name("wifi-signals".into()).spawn(move || {
+        for m in messages.flatten() {
+            if m.message_type() == Type::Signal && m.header().sender().is_some_and(|s| s.as_str() != "org.freedesktop.DBus") && tx.send(()).is_err() {
+                return;
+            }
+        }
+    })?;
+    std::thread::Builder::new().name("wifi".into()).spawn(move || {
+        // What's asked for while connected: the adapter and its access
+        // point's properties.
+        let mut asked: Vec<MatchRule<'static>> = Vec::new();
+        let mut follow = |now: &Option<Wifi>, paths: &[String]| {
+            for rule in asked.drain(..) {
+                let _ = dbus.remove_match_rule(rule);
+            }
+            if now.as_ref().is_some_and(|w| w.ssid.is_some()) {
+                for path in paths.iter().skip(1) {
+                    if let Ok(rule) = props(path)
+                        && dbus.add_match_rule(rule.clone()).is_ok()
+                    {
+                        asked.push(rule);
+                    }
+                }
+            }
+        };
+        follow(&first, &paths);
+        let mut last = first;
+        changed(last.clone());
+        while rx.recv().is_ok() {
+            // Let a burst finish (joining changes a dozen properties).
+            std::thread::sleep(std::time::Duration::from_millis(80));
+            while rx.try_recv().is_ok() {}
+            let Ok((now, paths)) = wifi_and_paths() else { continue };
+            follow(&now, &paths);
+            if now != last {
+                changed(now.clone());
+                last = now;
+            }
+        }
+    })?;
+    Ok(())
+}
+
 fn devices_paths() -> Result<Vec<OwnedObjectPath>> {
     bus::property(bus::system()?, DEST, NM_PATH, NM, "Devices")
 }

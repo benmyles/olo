@@ -1,5 +1,6 @@
 //! The battery and mains power, from sysfs (`/sys/class/power_supply`).
 //! Cheap reads, but still file system work: call off the UI thread.
+//! [`watch`] reads it again only when UPower says it changed.
 
 use std::{
     path::{Path, PathBuf},
@@ -89,6 +90,69 @@ fn from_dir(dir: &Path) -> Option<Battery> {
         charge_limit: num(dir, "charge_control_end_threshold").map(|n| n as u32),
         power_watts: num(dir, "power_now").filter(|&p| p > 0).map(|p| p as f32 / 1e6),
     })
+}
+
+const UPOWER: &str = "org.freedesktop.UPower";
+/// UPower's battery as a whole (what a desktop shows).
+const DISPLAY_DEVICE: &str = "/org/freedesktop/UPower/devices/DisplayDevice";
+
+/// Calls `changed` with the battery ([`battery`]) now and whenever it
+/// changes, on threads of its own: read again when UPower's display
+/// device says something changed (UPower follows the kernel's events
+/// and polls what doesn't send them, so nothing here wakes in between).
+/// With no UPower, once a minute. Quick runs of changes come together.
+pub fn watch(changed: impl Fn(Option<Battery>) + Send + 'static) {
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    let signals = crate::bus::system().ok().and_then(|c| {
+        let rule = zbus::MatchRule::builder()
+            .msg_type(zbus::message::Type::Signal)
+            .sender(UPOWER)
+            .ok()?
+            .path(DISPLAY_DEVICE)
+            .ok()?
+            .interface("org.freedesktop.DBus.Properties")
+            .ok()?
+            .member("PropertiesChanged")
+            .ok()?
+            .build();
+        zbus::blocking::MessageIterator::for_match_rule(rule, c, Some(64)).ok()
+    });
+    // Is UPower there to say?
+    let upower = crate::bus::system().is_ok_and(|c| {
+        crate::bus::call::<_, bool>(c, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameHasOwner", &(UPOWER,)).unwrap_or(false)
+    });
+    match signals {
+        Some(signals) if upower => {
+            let _ = std::thread::Builder::new().name("battery-signals".into()).spawn(move || {
+                for _ in signals.flatten() {
+                    if tx.send(()).is_err() {
+                        return;
+                    }
+                }
+            });
+        }
+        _ => {
+            let _ = std::thread::Builder::new().name("battery-poll".into()).spawn(move || {
+                while tx.send(()).is_ok() {
+                    std::thread::sleep(Duration::from_secs(60));
+                }
+            });
+        }
+    }
+    let _ = std::thread::Builder::new().name("battery".into()).spawn(move || {
+        let mut last = battery();
+        changed(last.clone());
+        while rx.recv().is_ok() {
+            // (UPower sends a few properties apart.)
+            std::thread::sleep(Duration::from_millis(50));
+            while rx.try_recv().is_ok() {}
+            let now = battery();
+            if now != last {
+                changed(now.clone());
+                last = now;
+            }
+        }
+    });
 }
 
 /// Plugged into mains power (true on machines without a battery).

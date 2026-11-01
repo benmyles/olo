@@ -1,6 +1,7 @@
 //! The tray's view of the machine: clock, battery, Wi-Fi, volume and
-//! agent screens, polled on background threads, and the small vector
-//! glyphs that show them.
+//! agent screens, followed on background threads (as the services say
+//! they change: nothing polled while nothing changes), and the small
+//! vector glyphs that show them.
 
 use std::{
     path::PathBuf,
@@ -111,20 +112,6 @@ fn agent_screens() -> usize {
         .count()
 }
 
-fn battery() -> Option<Battery> {
-    olo_system::battery::battery().map(|b| Battery { percent: b.percent, charging: b.charging() })
-}
-
-fn wifi() -> Option<Wifi> {
-    match olo_system::network::wifi() {
-        Ok(w) => w.map(|w| Wifi { ssid: w.ssid, signal: w.strength }),
-        Err(e) => {
-            tracing::debug!("NetworkManager: {e}");
-            None
-        }
-    }
-}
-
 enum AudioRequest {
     ToggleMute,
     Set(f32),
@@ -191,24 +178,25 @@ fn publish<F: Fn(Status)>(shared: &Shared<F>, update: impl FnOnce(&mut Status)) 
 /// Watch the machine; `send` is called whenever something changed.
 /// What other programs write to files (the bell's count, the agent
 /// screens, a new build to upgrade to) follows those files as they change
-/// (`olo_kit::watch`); battery and Wi-Fi are read every few seconds;
+/// (`olo_ui::watch`); battery and Wi-Fi as UPower and NetworkManager
+/// say they change;
 /// volume changes arrive as events from the sound server.
 pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     let shared = Arc::new(Mutex::new((Status::default(), None::<Status>, send)));
-    let polled = shared.clone();
-    std::thread::Builder::new()
-        .name("deskbar-status".into())
-        .spawn(move || {
-            loop {
-                let (battery, wifi) = (battery(), wifi());
-                publish(&polled, |s| {
-                    s.battery = battery;
-                    s.wifi = wifi.clone();
-                });
-                std::thread::sleep(Duration::from_secs(4));
-            }
-        })
-        .expect("thread");
+    // The battery and Wi-Fi as UPower and NetworkManager say they
+    // change (nothing polled).
+    let on_battery = shared.clone();
+    olo_system::battery::watch(move |b| {
+        let battery = b.map(|b| Battery { percent: b.percent, charging: b.charging() });
+        publish(&on_battery, |s| s.battery = battery);
+    });
+    let on_wifi = shared.clone();
+    if let Err(e) = olo_system::network::watch_wifi(move |w| {
+        let wifi = w.map(|w| Wifi { ssid: w.ssid, signal: w.strength });
+        publish(&on_wifi, |s| s.wifi = wifi);
+    }) {
+        tracing::debug!("NetworkManager: {e}");
+    }
     let (notes, screens, upgrades, sharing) = (NotificationState::path(), screens_dir(), upgrade_path(), olo_protocol::SharingState::path());
     use olo_protocol::performance::{PerformanceSettings, SupervisorState};
     let (perf, supervising) = (PerformanceSettings::path(), SupervisorState::path());
