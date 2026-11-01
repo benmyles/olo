@@ -248,10 +248,53 @@ impl PathBuilder {
             self.raw.build()
         };
 
+        // Olo: each keeps its outline, for drawing with exact coverage
+        // (`crate::outline`).
         match self.style {
-            PathStyle::Stroke(options) => Self::tessellate_stroke(self.dash_array, &path, &options),
-            PathStyle::Fill(options) => Self::tessellate_fill(&path, &options),
+            PathStyle::Stroke(options) => {
+                let path = match &self.dash_array {
+                    Some(dashes) => Self::dash(dashes, &path),
+                    None => path,
+                };
+                let mut built = Self::tessellate_stroke(None, &path, &options)?;
+                built.outline = Some(std::sync::Arc::new(crate::outline::PathOutline {
+                    path,
+                    stroke: Some(options),
+                    fill_rule: lyon::tessellation::FillRule::NonZero,
+                }));
+                Ok(built)
+            }
+            PathStyle::Fill(options) => {
+                let mut built = Self::tessellate_fill(&path, &options)?;
+                built.outline = Some(std::sync::Arc::new(crate::outline::PathOutline {
+                    path,
+                    stroke: None,
+                    fill_rule: options.fill_rule,
+                }));
+                Ok(built)
+            }
         }
+    }
+
+    /// `path` cut into dashes and gaps, `dash_array` long by turns.
+    fn dash(dash_array: &[Pixels], path: &lyon::path::Path) -> lyon::path::Path {
+        let measurements = lyon::algorithms::measure::PathMeasurements::from_path(path, 0.01);
+        let mut sampler =
+            measurements.create_sampler(path, lyon::algorithms::measure::SampleType::Normalized);
+        let mut builder = lyon::path::Path::builder();
+        let total_length = sampler.length();
+        let mut pos = 0.;
+        let mut dash_index = 0;
+        while pos < total_length {
+            let dash_length = dash_array[dash_index % dash_array.len()].0;
+            let next_pos = (pos + dash_length).min(total_length);
+            if dash_index % 2 == 0 {
+                sampler.split_range(pos / total_length..next_pos / total_length, &mut builder);
+            }
+            pos = next_pos;
+            dash_index += 1;
+        }
+        builder.build()
     }
 
     fn tessellate_fill(

@@ -390,7 +390,7 @@ impl Render for DeskCalc {
             },
         )
         .absolute()
-        .size_full();
+        .inset_0();
         let display = div()
             .absolute()
             .left(px(INSET))

@@ -158,7 +158,37 @@ fn popup_size(window: &mut Window, menu: &Menu) -> (f32, f32) {
 /// the window's content). `on_choose` gets the command chosen, in
 /// `window`.
 pub fn popup(window: &mut Window, cx: &mut App, menu: Menu, anchor: Bounds<Pixels>, corner: Corner, on_choose: impl Fn(&str, &mut Window, &mut App) + 'static) -> Option<WindowHandle<MenuPopup>> {
-    open(window, cx, menu, anchor, corner, Rc::new(on_choose), None)
+    open(window, cx, menu, Place { anchor, corner, ..Place::default() }, Rc::new(on_choose), None)
+}
+
+/// Opens `menu` over `field` (in the window's content) with item
+/// `current` lying over it, chosen, as a menu field's on BeOS, and at
+/// least as wide as the field.
+pub fn popup_over(window: &mut Window, cx: &mut App, menu: Menu, field: Bounds<Pixels>, current: usize, on_choose: impl Fn(&str, &mut Window, &mut App) + 'static) -> Option<WindowHandle<MenuPopup>> {
+    let dy = POPUP_PAD + item_offset(&menu, current) - (f32::from(field.size.height) - ITEM_HEIGHT) / 2.0;
+    let place = Place { anchor: field, corner: Corner::TopLeft, offset: point(px(0.0), px(-dy.round())), min_width: f32::from(field.size.width).round(), selected: Some(current) };
+    open(window, cx, menu, place, Rc::new(on_choose), None)
+}
+
+/// Where item `i` begins below the menu's first.
+fn item_offset(menu: &Menu, i: usize) -> f32 {
+    menu.items.iter().take(i).map(|it| if matches!(it, MenuItem::Separator) { SEPARATOR_HEIGHT } else { ITEM_HEIGHT }).sum()
+}
+
+/// Where a popup opens and how it starts.
+#[derive(Clone, Copy)]
+struct Place {
+    anchor: Bounds<Pixels>,
+    corner: Corner,
+    offset: gpui::Point<Pixels>,
+    min_width: f32,
+    selected: Option<usize>,
+}
+
+impl Default for Place {
+    fn default() -> Place {
+        Place { anchor: Bounds::default(), corner: Corner::TopLeft, offset: gpui::Point::default(), min_width: 0.0, selected: None }
+    }
 }
 
 /// A context menu at `position` (the pointer, in the window's content).
@@ -167,21 +197,23 @@ pub fn context_menu(window: &mut Window, cx: &mut App, menu: Menu, position: gpu
     popup(window, cx, menu, anchor, Corner::TopLeft, on_choose)
 }
 
-fn open(window: &mut Window, cx: &mut App, menu: Menu, anchor: Bounds<Pixels>, corner: Corner, on_choose: OnChoose, parent_menu: Option<WindowHandle<MenuPopup>>) -> Option<WindowHandle<MenuPopup>> {
+fn open(window: &mut Window, cx: &mut App, menu: Menu, place: Place, on_choose: OnChoose, parent_menu: Option<WindowHandle<MenuPopup>>) -> Option<WindowHandle<MenuPopup>> {
     let (w, h) = popup_size(window, &menu);
+    let w = w.max(place.min_width);
+    let Place { anchor, corner, offset, selected, .. } = place;
     let owner = parent_menu.as_ref().map_or_else(|| window.window_handle(), |_| window.window_handle());
     let origin = parent_menu.and_then(|p| p.update(cx, |m, _, _| m.origin).ok()).unwrap_or(owner);
     let app_id = crate::app::app_id(cx);
     cx.open_window(
         gpui::WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds { origin: point(px(0.0), px(0.0)), size: size(px(w), px(h)) })),
-            kind: WindowKind::Popup { parent: owner, anchor, corner },
+            kind: WindowKind::Popup { parent: owner, anchor, corner, offset },
             app_id: Some(app_id),
             focus: true,
             ..Default::default()
         },
         move |window, cx| {
-            let view = cx.new(|cx| MenuPopup { menu, selected: None, focus: cx.focus_handle(), on_choose, origin, owner, sub: None, rows: Rc::default(), pressed_inside: false });
+            let view = cx.new(|cx| MenuPopup { menu, selected, focus: cx.focus_handle(), on_choose, origin, owner, sub: None, rows: Rc::default(), pressed_inside: false });
             window.focus(&view.focus_handle(cx));
             view
         },
@@ -260,7 +292,11 @@ impl MenuPopup {
         let MenuItem::Submenu(menu) = self.menu.items[i].clone() else { return };
         let Some(row) = self.rows.borrow().get(i).copied() else { return };
         let me = window.window_handle().downcast::<MenuPopup>();
-        if let Some(handle) = open(window, cx, menu, row, Corner::TopRight, self.on_choose.clone(), me) {
+        // Beside the item, its first item level with it, overlapping
+        // this menu's edge.
+        let anchor = Bounds { origin: point(row.left(), row.top() - px(POPUP_PAD - 1.0)), size: size(row.size.width - px(2.0), row.size.height) };
+        let place = Place { anchor, corner: Corner::TopRight, ..Place::default() };
+        if let Some(handle) = open(window, cx, menu, place, self.on_choose.clone(), me) {
             self.sub = Some((i, handle));
         }
         cx.notify();

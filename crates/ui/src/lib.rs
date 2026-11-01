@@ -11,6 +11,7 @@
 
 pub mod agent;
 mod app;
+pub mod icons;
 pub mod menu;
 pub mod style;
 pub mod theme;

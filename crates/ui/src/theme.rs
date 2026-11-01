@@ -110,6 +110,7 @@ pub(crate) fn init(cx: &mut App) {
             let _ = cx.update(|cx| {
                 match change {
                     Change::Look(a) => {
+                        tracing::debug!("look: {:?}", a.effective_theme);
                         let palette = Arc::new(a.palette());
                         if *palette == *cx.global::<Theme>().palette {
                             return;

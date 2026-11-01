@@ -895,6 +895,8 @@ pub struct Window {
     pub(crate) platform_window: Box<dyn PlatformWindow>,
     display_id: Option<DisplayId>,
     sprite_atlas: Arc<dyn PlatformAtlas>,
+    /// Olo: the path masks drawn recently (`crate::outline`).
+    outlines: crate::outline::Outlines,
     text_system: Arc<WindowTextSystem>,
     rem_size: Pixels,
     /// The stack of override values for the window's rem size.
@@ -1302,6 +1304,7 @@ impl Window {
             platform_window,
             display_id,
             sprite_atlas,
+            outlines: Default::default(),
             text_system,
             rem_size: px(16.),
             rem_size_override_stack: SmallVec::new(),
@@ -2022,6 +2025,7 @@ impl Window {
             self.rendered_frame.input_handlers.push(Some(input_handler));
         }
         self.draw_roots(cx);
+        self.outlines.end_frame(self.sprite_atlas.as_ref());
         self.dirty_views.clear();
         self.next_frame.window_active = self.active.get();
 
@@ -2529,7 +2533,9 @@ impl Window {
         result
     }
 
-    pub(crate) fn with_element_opacity<R>(
+    /// Olo: paints what `f` paints at `opacity` (multiplied into any
+    /// opacity already applied): a disabled control, faded.
+    pub fn with_element_opacity<R>(
         &mut self,
         opacity: Option<f32>,
         f: impl FnOnce(&mut Self) -> R,
@@ -2962,8 +2968,27 @@ impl Window {
         let scale_factor = self.scale_factor();
         let content_mask = self.content_mask();
         let opacity = self.element_opacity();
-        path.content_mask = content_mask;
         let color: Background = color.into();
+        // Olo: a small one in a plain colour, with exact coverage.
+        if let Some(outline) = path.outline.take()
+            && color.tag == crate::BackgroundTag::Solid
+            && let Some(placed) = crate::outline::place(&outline, path.bounds, scale_factor)
+            && let Ok(tile) = self.outlines.tile(self.sprite_atlas.as_ref(), &placed.key)
+        {
+            if let Some(tile) = tile {
+                self.next_frame.scene.insert_primitive(MonochromeSprite {
+                    order: 0,
+                    coverage: 1,
+                    bounds: placed.bounds,
+                    content_mask: content_mask.scale(scale_factor),
+                    color: color.solid.opacity(opacity),
+                    tile,
+                    transformation: TransformationMatrix::unit(),
+                });
+            }
+            return;
+        }
+        path.content_mask = content_mask;
         path.color = color.opacity(opacity);
         self.next_frame
             .scene
@@ -3088,7 +3113,7 @@ impl Window {
             let content_mask = self.content_mask().scale(scale_factor);
             self.next_frame.scene.insert_primitive(MonochromeSprite {
                 order: 0,
-                pad: 0,
+                coverage: 0,
                 bounds,
                 content_mask,
                 color: color.opacity(element_opacity),
@@ -3210,7 +3235,7 @@ impl Window {
 
         self.next_frame.scene.insert_primitive(MonochromeSprite {
             order: 0,
-            pad: 0,
+            coverage: 0,
             bounds: svg_bounds
                 .map_origin(|origin| origin.round())
                 .map_size(|size| size.ceil()),

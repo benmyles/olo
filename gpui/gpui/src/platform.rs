@@ -707,6 +707,8 @@ pub(crate) enum AtlasKey {
     Glyph(RenderGlyphParams),
     Svg(RenderSvgParams),
     Image(RenderImageParams),
+    /// Olo: a path's coverage (`crate::outline`).
+    Outline(crate::outline::OutlineKey),
 }
 
 impl AtlasKey {
@@ -728,7 +730,7 @@ impl AtlasKey {
                     AtlasTextureKind::Monochrome
                 }
             }
-            AtlasKey::Svg(_) => AtlasTextureKind::Monochrome,
+            AtlasKey::Svg(_) | AtlasKey::Outline(_) => AtlasTextureKind::Monochrome,
             AtlasKey::Image(_) => AtlasTextureKind::Polychrome,
         }
     }
@@ -1286,6 +1288,10 @@ pub enum WindowKind {
         anchor: Bounds<Pixels>,
         /// Which corner of `anchor` it opens at.
         corner: crate::Corner,
+        /// Moved by this from there (a menu field's menu, its current
+        /// item over the field). With an offset, it's slid to stay on
+        /// screen rather than flipped, since it belongs where it is.
+        offset: Point<Pixels>,
     },
 }
 

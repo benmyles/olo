@@ -27,7 +27,23 @@ What Olo changed, so far:
   presented the same scene again for a second after input); Olo's asks
   for a frame callback only while it animates, so an idle window costs
   nothing and lets app_server rest. See `FrameLoop` in
-  `gpui/src/platform/linux/wayland/window.rs`.
+  `gpui/src/platform/linux/wayland/window.rs`. (GPUI runs the main
+  thread's tasks in calloop idle callbacks, and calloop doesn't wake
+  for an idle queued from one, so queuing a frame wakes the loop: else
+  a task's `refresh` waited for the next input.)
+- Paths drawn with exact coverage (`gpui/src/outline.rs`): a path built
+  with `PathBuilder` keeps its outline, and a small one in a plain
+  colour (a check mark, a menu's triangle) is filled or stroked by
+  vello_cpu into a coverage mask, cached in the atlas by its outline on
+  the device grid and drawn as a sprite; larger ones are filled on the
+  GPU as before. Upstream's 4× multisampling gave an edge pixel one of
+  five shades; this gives it its true coverage, as egui and Skia do,
+  and drawing the gallery's controls costs a third less (683 µs a frame
+  against 1076 at 2×) in 20 MB less memory. `OLO_EXACT_PATHS=0` turns
+  it off to compare.
+- `Window::with_element_opacity` is public (a disabled control,
+  faded), and popups (`WindowKind::Popup`) take an `offset` from their
+  anchor (a menu field's menu, its current item over the field).
 - GPU memory sized for many small windows on unified memory: the
   allocator's chunks start at 256 KB and stop at 2 MB, anything of 2 MB
   or more is its own allocation (blade's prototyping defaults grew

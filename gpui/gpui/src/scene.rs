@@ -620,7 +620,10 @@ impl Default for TransformationMatrix {
 #[repr(C)]
 pub(crate) struct MonochromeSprite {
     pub order: DrawOrder,
-    pub pad: u32, // align to 8 bytes
+    /// Olo: 1 when the tile is a shape's exact coverage, used as it is
+    /// (`crate::outline`); 0 for a glyph's, gamma-corrected as text.
+    /// (It also keeps the fields after it 8-byte aligned.)
+    pub coverage: u32,
     pub bounds: Bounds<ScaledPixels>,
     pub content_mask: ContentMask<ScaledPixels>,
     pub color: Hsla,
@@ -683,6 +686,9 @@ pub struct Path<P: Clone + Debug + Default + PartialEq> {
     start: Point<P>,
     current: Point<P>,
     contour_count: usize,
+    /// Olo: what it was built from (`PathBuilder`), for drawing it with
+    /// exact coverage (`crate::outline`).
+    pub(crate) outline: Option<std::sync::Arc<crate::outline::PathOutline>>,
 }
 
 impl Path<Pixels> {
@@ -701,6 +707,7 @@ impl Path<Pixels> {
             content_mask: Default::default(),
             color: Default::default(),
             contour_count: 0,
+            outline: None,
         }
     }
 
@@ -720,6 +727,7 @@ impl Path<Pixels> {
             current: self.current.scale(factor),
             contour_count: self.contour_count,
             color: self.color,
+            outline: None,
         }
     }
 

@@ -132,6 +132,7 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
         agent::init(cx, &app_id);
         crate::widgets::bind_keys(cx);
         crate::upgrade::init(cx);
+        crate::icons::init(cx);
         let (tx, mut rx) = mpsc::unbounded::<Box<dyn Any + Send>>();
         let proxy = Proxy::new(move |m| {
             let _ = tx.unbounded_send(m);
@@ -150,6 +151,7 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
         })
         .detach();
         cx.on_window_closed(|cx| {
+            agent::forget_closed(cx);
             if cx.windows().is_empty() {
                 cx.quit();
             }

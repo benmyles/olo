@@ -73,9 +73,10 @@ pub(crate) fn begin_frame(window: &Window, cx: &mut App, title: &str) {
     }
 }
 
-/// A window closed.
-pub(crate) fn forget(window: WindowId, cx: &mut App) {
-    cx.default_global::<Agents>().windows.remove(&window);
+/// A window closed: what it showed goes.
+pub(crate) fn forget_closed(cx: &mut App) {
+    let open: std::collections::HashSet<WindowId> = cx.windows().iter().map(|w| w.window_id()).collect();
+    cx.default_global::<Agents>().windows.retain(|id, _| open.contains(id));
 }
 
 /// The app's menu bar for the command palette, and how to choose from

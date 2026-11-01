@@ -1526,7 +1526,26 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   and pointer, words, clipboard, undo; the caret a line wide on device
   pixels, blinking only while it has the keyboard in an active window;
   `TextFieldEvent::Changed` and `Typed`. No frame: callers draw the
-  well.
+  well (`TextControl` does).
+- The BeOS controls, drawn as the egui kit's (compare them in
+  `cargo run -p olo-ui --example gallery` beside `-p olo-kit --example
+  demo`): `Button` (`default`, `pushed`, `small`, `on_click`),
+  `CheckBox` (`mixed`, `on_toggle`), `RadioButton` (`on_select`),
+  `MenuField` (label, divider; its menu opens with the current choice
+  over the field: `menu::popup_over`), `TextControl` (label, divider,
+  the sunken well around a `TextField`), `StringView` (`dim`, `bold`),
+  `BBox` (etched frame, bold label in its top line, `content_width`).
+  Each is a `widgets::Control` underneath: an element that keeps
+  whether the pointer is over it or holding it down, draws itself from
+  that through a closure, takes a click (press and release both on
+  it), says what it is to agents, and is drawn faded (half opacity, as
+  egui fades a disabled widget) when it can't be used. A canvas
+  absolutely placed in a padded element needs `.inset_0()`, not
+  `.size_full()`: without insets it starts after the padding.
+- `icons::paint(window, bounds, name)`: Olo's icon set (or a theme's,
+  or a file's), from the bitmap made for the device size it's shown at,
+  a texture pixel to a device pixel; decoded once, on a worker, the
+  windows drawn again as each arrives.
 - `menu`: BeOS menus (`Menu::new(title).item(label, command).checked(
   on).separator().submenu(m)`), shown as Wayland popups (GPUI's
   `WindowKind::Popup`, an xdg_popup over the window at a corner of an

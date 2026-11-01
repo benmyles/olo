@@ -150,9 +150,14 @@ struct FrameLoop {
     text_rendering: Cell<crate::TextRendering>,
     text_generation: Cell<u64>,
     handle: LoopHandle<'static, WaylandClientStatePtr>,
+    /// Wakes the loop for the frame queued: GPUI runs the main thread's
+    /// tasks in idle callbacks, and calloop doesn't wake for an idle
+    /// queued from one (a task's `refresh`), so without it the frame
+    /// would wait for the next input.
+    signal: calloop::LoopSignal,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FrameCallback {
     None,
     /// Asked for, but not committed yet: comes after the next commit.
@@ -343,6 +348,7 @@ impl WaylandWindow {
         appearance: WindowAppearance,
         parent: Option<XdgToplevel>,
         loop_handle: LoopHandle<'static, WaylandClientStatePtr>,
+        signal: calloop::LoopSignal,
         popup_parent: Option<(xdg_surface::XdgSurface, u32)>,
     ) -> anyhow::Result<(Self, ObjectId)> {
         let surface = globals.compositor.create_surface(&globals.qh, ());
@@ -350,7 +356,7 @@ impl WaylandWindow {
             .wm_base
             .get_xdg_surface(&surface, &globals.qh, surface.id());
         let (toplevel, popup) = match (params.kind, popup_parent) {
-            (WindowKind::Popup { anchor, corner, .. }, Some((parent_surface, serial))) => {
+            (WindowKind::Popup { anchor, corner, offset, .. }, Some((parent_surface, serial))) => {
                 // Olo: where it opens, and how the compositor may move it
                 // to keep it on screen.
                 let positioner = globals.wm_base.create_positioner(&globals.qh, ());
@@ -365,21 +371,25 @@ impl WaylandWindow {
                     (anchor.size.width.0 as i32).max(1),
                     (anchor.size.height.0 as i32).max(1),
                 );
-                let (edge, flip) = match corner {
-                    crate::Corner::TopLeft => (xdg_positioner::Anchor::TopLeft, false),
-                    crate::Corner::TopRight => (xdg_positioner::Anchor::TopRight, true),
-                    crate::Corner::BottomLeft => (xdg_positioner::Anchor::BottomLeft, false),
-                    crate::Corner::BottomRight => (xdg_positioner::Anchor::BottomRight, true),
-                };
-                positioner.set_anchor(edge);
+                positioner.set_anchor(match corner {
+                    crate::Corner::TopLeft => xdg_positioner::Anchor::TopLeft,
+                    crate::Corner::TopRight => xdg_positioner::Anchor::TopRight,
+                    crate::Corner::BottomLeft => xdg_positioner::Anchor::BottomLeft,
+                    crate::Corner::BottomRight => xdg_positioner::Anchor::BottomRight,
+                });
                 positioner.set_gravity(xdg_positioner::Gravity::BottomRight);
-                let _ = flip;
-                positioner.set_constraint_adjustment(
-                    (xdg_positioner::ConstraintAdjustment::FlipX
-                        | xdg_positioner::ConstraintAdjustment::FlipY
-                        | xdg_positioner::ConstraintAdjustment::SlideX
-                        | xdg_positioner::ConstraintAdjustment::SlideY),
-                );
+                let slide = xdg_positioner::ConstraintAdjustment::SlideX
+                    | xdg_positioner::ConstraintAdjustment::SlideY;
+                if offset == Point::default() {
+                    positioner.set_constraint_adjustment(
+                        slide
+                            | xdg_positioner::ConstraintAdjustment::FlipX
+                            | xdg_positioner::ConstraintAdjustment::FlipY,
+                    );
+                } else {
+                    positioner.set_offset(offset.x.0.round() as i32, offset.y.0.round() as i32);
+                    positioner.set_constraint_adjustment(slide);
+                }
                 let popup =
                     xdg_surface.get_popup(Some(&parent_surface), &positioner, &globals.qh, surface.id());
                 positioner.destroy();
@@ -442,6 +452,7 @@ impl WaylandWindow {
                 text_rendering: Cell::new(crate::TextRendering::default()),
                 text_generation: Cell::new(0),
                 handle: loop_handle,
+                signal,
             }),
         });
 
@@ -523,6 +534,7 @@ impl WaylandWindowStatePtr {
             None => false,
         };
         drop(cb);
+        log::trace!(target: "olo_frames", "frame: drew {drew}, callback {:?}", frames.callback.get());
         if !drew && frames.needs_commit.get() {
             self.state.borrow().surface.commit();
         }
@@ -536,6 +548,7 @@ impl WaylandWindowStatePtr {
     /// Something changed: draw it now if idle, else with the next frame.
     pub fn schedule_frame(&self) {
         let frames = &self.frames;
+        log::trace!(target: "olo_frames", "schedule: queued {}, callback {:?}", frames.queued.get(), frames.callback.get());
         if frames.queued.get() {
             return;
         }
@@ -554,6 +567,7 @@ impl WaylandWindowStatePtr {
                 }
             }
         });
+        frames.signal.wakeup();
     }
 
     fn downgrade(&self) -> WeakWindowPtr {

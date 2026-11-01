@@ -796,6 +796,7 @@ impl LinuxClient for WaylandClient {
             state.common.appearance,
             parent,
             state.loop_handle.clone(),
+            state.common.signal.clone(),
             popup_parent,
         )?;
         state.windows.insert(surface_id, window.0.clone());
