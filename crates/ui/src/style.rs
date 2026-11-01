@@ -73,6 +73,16 @@ pub fn snap(window: &Window, b: Bounds<Pixels>) -> Bounds<Pixels> {
     Bounds::from_corners(min, max)
 }
 
+/// A `w` × `h` box centred on `center`, its size and edges on whole
+/// device pixels (a swatch, a mark: sharp, and as near the middle as the
+/// pixels allow).
+pub fn snap_centred(window: &Window, center: Point<Pixels>, w: f32, h: f32) -> Bounds<Pixels> {
+    let s = window.scale_factor();
+    let (dw, dh) = ((w * s).round(), (h * s).round());
+    let min = point(px(((f32::from(center.x) * s - dw / 2.0).round()) / s), px(((f32::from(center.y) * s - dh / 2.0).round()) / s));
+    Bounds { origin: min, size: size(px(dw / s), px(dh / s)) }
+}
+
 /// `b` on device pixels, `lines` lines in from each side: where to fill
 /// inside a frame or bevel of that many lines, flush against them.
 pub fn inset(window: &Window, b: Bounds<Pixels>, lines: f32) -> Bounds<Pixels> {

@@ -2542,5 +2542,11 @@
   "title": "GPUI kit: the column list view",
   "caption": "olo-ui gains BColumnListView (right), as the egui kit draws it (left, the demo's Lists tab): header sorting and dividers, the file-manager selection (shared now as olo_kit_base::list), bands, type-select, BeOS scroll bars; at 1.5x, where GPUI windows had been drawn at 2x and shrunk (fixed here).",
   "image": "2026-10-31/193916-gpui-kit-the-column-list-view.png"
+ },
+ {
+  "time": "2026-10-31T20:16:36",
+  "title": "Token Pool on GPUI",
+  "caption": "Token Pool moves to olo-ui: the same window (gateway, now-grid, client switches, account cards with quota bars and request strips, Account menu, rename), drawn by GPUI. A test account in a fixture home; 73.6 MB against egui's 91.9 MB, idle with no wakeups.",
+  "image": "2026-10-31/201636-token-pool-on-gpui.png"
  }
 ]

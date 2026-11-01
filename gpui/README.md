@@ -60,6 +60,12 @@ What Olo changed, so far:
   (Deskbar's menus).
 - `Window::draw_now` draws a window even out of sight (for a layout
   review).
+- No desktop portal watched (the colour scheme, the cursor's theme and
+  size): olo-ui follows app_server, which draws the pointer, and the
+  portal's settings over D-Bus kept a `blocking` pool thread waking in
+  every app. Lines wrap only at white space (and between Chinese and
+  Japanese characters): a curly apostrophe, quotes, brackets and a
+  path's slashes stay with their word, as egui wraps.
 - The fractional scale is the window's scale: on a wl_compositor
   before version 6 (app_server's), entering a display set its integer
   scale over the fractional one (2 over 1.5), and the compositor shrank

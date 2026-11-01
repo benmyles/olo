@@ -2,6 +2,7 @@
 
 pub mod alert;
 pub mod buttons;
+pub mod charts;
 pub mod control;
 pub mod list;
 pub mod menu_field;
@@ -22,7 +23,8 @@ pub use menu_field::MenuField;
 pub use text_control::TextControl;
 pub use text_field::{TextField, TextFieldEvent, text_field};
 pub use tooltip::tooltip;
-pub use views::{BBox, StringView};
+pub use charts::{CellGrid, Graph, GridCell, LegendItem, Series, legend, legend_height, nice_ceiling};
+pub use views::{BBox, Separator, StringView, heading, separator};
 
 /// The widgets' keys.
 pub(crate) fn bind_keys(cx: &mut gpui::App) {

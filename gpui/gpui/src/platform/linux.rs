@@ -7,9 +7,6 @@ mod text_system;
 #[cfg(feature = "wayland")]
 mod wayland;
 
-#[cfg(feature = "wayland")]
-mod xdg_desktop_portal;
-
 pub(crate) use dispatcher::*;
 pub(crate) use headless::*;
 pub(crate) use keyboard::*;

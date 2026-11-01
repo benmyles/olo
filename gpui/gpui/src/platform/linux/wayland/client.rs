@@ -95,7 +95,6 @@ use crate::{
             serial::{SerialKind, SerialTracker},
             window::WaylandWindow,
         },
-        xdg_desktop_portal::{Event as XDPEvent, XDPEventSource},
     },
 };
 
@@ -631,35 +630,10 @@ impl WaylandClient {
 
         let mut cursor = Cursor::new(&conn, &globals, 24);
 
-        handle
-            .insert_source(XDPEventSource::new(&common.background_executor), {
-                move |event, _, client| match event {
-                    XDPEvent::WindowAppearance(appearance) => {
-                        if let Some(client) = client.0.upgrade() {
-                            let mut client = client.borrow_mut();
-
-                            client.common.appearance = appearance;
-
-                            for window in client.windows.values_mut() {
-                                window.set_appearance(appearance);
-                            }
-                        }
-                    }
-                    XDPEvent::CursorTheme(theme) => {
-                        if let Some(client) = client.0.upgrade() {
-                            let mut client = client.borrow_mut();
-                            client.cursor.set_theme(theme);
-                        }
-                    }
-                    XDPEvent::CursorSize(size) => {
-                        if let Some(client) = client.0.upgrade() {
-                            let mut client = client.borrow_mut();
-                            client.cursor.set_size(size);
-                        }
-                    }
-                }
-            })
-            .unwrap();
+        // (Olo: no desktop portal watched for the colour scheme and the
+        // cursor's theme and size. olo-ui takes the look from app_server,
+        // which draws the pointer; the portal's settings over D-Bus kept a
+        // thread of the `blocking` pool waking in every app.)
 
         let mut state = Rc::new(RefCell::new(WaylandClientState {
             serial_tracker: SerialTracker::new(),

@@ -14,6 +14,7 @@ use crate::{style, theme};
 pub const SMALL_BUTTON_HEIGHT: f32 = 20.0;
 
 type Handler = Rc<dyn Fn(&mut Window, &mut App)>;
+type AtHandler = Rc<dyn Fn(Bounds<Pixels>, &mut Window, &mut App)>;
 
 /// BButton: a bevelled push button. The default one sits in a recessed
 /// ring (drawn outside its bounds, so a row of buttons stays aligned).
@@ -26,7 +27,7 @@ pub struct Button {
     small: bool,
     enabled: bool,
     min_width: f32,
-    on_click: Option<Handler>,
+    on_click: Option<AtHandler>,
 }
 
 impl Button {
@@ -70,6 +71,12 @@ impl Button {
     }
 
     pub fn on_click(mut self, f: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.on_click = Some(Rc::new(move |_, window, cx| f(window, cx)));
+        self
+    }
+
+    /// Takes a click, told where the button is (a menu to open under it).
+    pub fn on_click_at(mut self, f: impl Fn(Bounds<Pixels>, &mut Window, &mut App) + 'static) -> Self {
         self.on_click = Some(Rc::new(f));
         self
     }
@@ -94,7 +101,7 @@ impl RenderOnce for Button {
         let (label, default, pushed) = (self.label.clone(), self.default, self.pushed);
         let mut c = control(self.id.clone(), w, h, move |r, s, window, cx| paint_button(r, s, &label, default, pushed, font_size, window, cx)).enabled(self.enabled).agent("Button", self.label.clone(), None);
         if let Some(f) = self.on_click {
-            c = c.on_click(move |_, window, cx| f(window, cx));
+            c = c.on_click(move |b, window, cx| f(b, window, cx));
         }
         c
     }

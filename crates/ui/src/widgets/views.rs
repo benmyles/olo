@@ -17,11 +17,18 @@ pub struct StringView {
     bold: bool,
     color: Option<Hsla>,
     height: f32,
+    wrap: bool,
 }
 
 impl StringView {
     pub fn new(text: impl Into<SharedString>) -> StringView {
-        StringView { text: text.into(), dim: false, bold: false, color: None, height: m::CONTROL_HEIGHT }
+        StringView { text: text.into(), dim: false, bold: false, color: None, height: m::CONTROL_HEIGHT, wrap: false }
+    }
+
+    /// A paragraph: wrapped to the width it's given, as tall as it takes.
+    pub fn wrap(mut self, on: bool) -> Self {
+        self.wrap = on;
+        self
     }
 
     /// The row it's centred in (a control's height unless said: a
@@ -50,8 +57,15 @@ impl StringView {
 }
 
 impl RenderOnce for StringView {
-    fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let weight = if self.bold { FontWeight::BOLD } else { FontWeight::NORMAL };
+        if self.wrap {
+            let p = theme::palette(cx);
+            let ink = self.color.unwrap_or_else(|| if self.dim { style::disabled_text(&p) } else { style::c(p.panel_text) });
+            let text = self.text.clone();
+            let said = canvas(|_, _, _| {}, move |b, _, window, cx| agent::record(window, cx, agent::Node::label(text.clone(), b))).absolute().inset_0();
+            return div().relative().w_full().line_height(gpui::relative(style::LINE_HEIGHT)).font_weight(weight).text_color(ink).child(self.text).child(said).into_any_element();
+        }
         let w = f32::from(style::text_width(window, self.text.clone(), style::PLAIN_SIZE, style::ui_font(weight))).ceil();
         let (text, dim, color, height) = (self.text, self.dim, self.color, self.height);
         canvas(
@@ -65,6 +79,39 @@ impl RenderOnce for StringView {
         )
         .w(px(w))
         .h(px(height))
+        .flex_shrink_0()
+        .into_any_element()
+    }
+}
+
+/// A bold section heading, as in preference panels.
+pub fn heading(text: impl Into<SharedString>) -> StringView {
+    StringView::new(text).bold(true).height(m::LABEL_ROW)
+}
+
+/// A groove across the width it's given: a dark line over a light one,
+/// in a row six points tall.
+#[derive(IntoElement)]
+pub struct Separator;
+
+/// A [`Separator`].
+pub fn separator() -> Separator {
+    Separator
+}
+
+impl RenderOnce for Separator {
+    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+        canvas(
+            |_, _, _| {},
+            |b, _, window, cx| {
+                let p = theme::palette(cx);
+                let y = style::snap_coord(window, b.center().y);
+                style::hline_above(window, b.left(), b.right(), y, style::shade(&p, p.panel_background, 1.2));
+                style::hline(window, b.left(), b.right(), y, style::c(p.shine));
+            },
+        )
+        .w_full()
+        .h(px(6.0))
         .flex_shrink_0()
     }
 }

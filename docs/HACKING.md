@@ -1595,7 +1595,26 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   not) and `ColumnHeader`s. `examples/list.rs` is the egui demo's
   Lists tab, for comparing.
 - `style::label_fit` (a label cut short with "…" to a width, measured
-  as shaped) and `style::selection_band`.
+  as shaped), `style::selection_band` and `style::snap_centred`.
+- `widgets::Graph::new(id, series, now)` (live series of timed samples,
+  as the egui kit's `graph`: lines drawn as GPU segments over faint
+  fills, a grid in quarters and time lines that move with the samples,
+  a hover readout, `on_click`/`on_hover` with the time, the next frame
+  when the samples have moved a device pixel when `smooth`; agents read
+  each series' latest value), `widgets::CellGrid` (Pulse's LED wells,
+  `GridCell`s lit in colours, `on_click` with the cell), and
+  `widgets::legend`/`legend_height` (swatches, names and values in
+  wrapping rows).
+- `StringView::wrap(true)` (a paragraph, as tall as it wraps to),
+  `widgets::heading(text)` (bold, a label row tall) and
+  `widgets::separator()` (a groove across).
+- `Button::on_click_at(|bounds, window, cx| ..)`: told where the button
+  is, to open a menu under it (`menu::popup(.., bounds,
+  Corner::BottomLeft, ..)`).
+- `olo_ui::on_upgrade_due(cx, f)` and `olo_ui::upgrade_waits_while(cx,
+  busy)`: a server finishes what is under way before it becomes its new
+  version (Token Pool's drain); `busy` is asked four times a second
+  while an upgrade is due.
 - `widgets::tooltip(text)` for an element's `.tooltip(..)` (the
   palette's tooltip colours, BeOS's pale yellow in light mode).
 - `olo_ui::stay_resident(cx)`: the app keeps running with no windows
@@ -6155,6 +6174,10 @@ then by title; an item that can't be read is logged, not hidden silently.
 
 ## Token Pool (apps/pool, crates/pool)
 
+(Its windows are on the GPUI kit, olo-ui: `ui.rs` holds the app's state,
+a `PoolApp` entity that lives while the gateway does, and its window;
+`clients_window.rs` the Clients window. Both carry the app's menu bar.)
+
 Several Claude and ChatGPT subscriptions shared by Claude Code and Codex
 on this computer, the way Token Pooler's Local mode does it on macOS
 (written fresh; no team or cloud gateway). The session's real shell
@@ -6286,9 +6309,9 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   `initialize`, `thread/loaded/list`, `thread/read`: `threads()`).
   Since unchecking only pauses, a restart is needed only when `.env`
   first points Codex at the proxy (or `--put-back` takes it off).
-- **Upgrades of the pool itself** (`drain.rs`): the kit tells the app a
-  new olo-pool is installed (`App::upgrade_due`) and becomes it once
-  `App::busy` is false. Meanwhile the pool takes no new connections
+- **Upgrades of the pool itself** (`drain.rs`): olo-ui tells the app a
+  new olo-pool is installed (`olo_ui::on_upgrade_due`) and becomes it
+  once it isn't busy (`olo_ui::upgrade_waits_while`). Meanwhile the pool takes no new connections
   (the proxy's accept loop and the gateway's axum server stop, the
   sockets left listening, so a new connection waits in the kernel's
   queue as if the pool were only slow), each request under way runs to

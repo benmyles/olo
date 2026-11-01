@@ -6081,8 +6081,9 @@ name = "olo-pool"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "olo-kit",
  "olo-token-pool",
+ "olo-ui",
+ "olo-xdg",
  "serde_json",
 ]
 

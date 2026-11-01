@@ -43,6 +43,33 @@ pub fn on_upgrade(cx: &mut App, save: impl Fn(&mut App) -> Option<String> + 'sta
     cx.set_global(Saving(Some(Box::new(save))));
 }
 
+type Due = Box<dyn Fn(&mut App)>;
+type Busy = Box<dyn Fn(&App) -> bool>;
+
+/// What the app does when its new version is installed, and what makes
+/// becoming it wait.
+#[derive(Default)]
+struct Waiting {
+    due: Option<Due>,
+    busy: Option<Busy>,
+}
+
+impl Global for Waiting {}
+
+/// A new version of the app's binary is installed and the app will
+/// become it once it isn't busy ([`upgrade_waits_while`]): finish what is
+/// under way and take on nothing new (a server stops accepting).
+pub fn on_upgrade_due(cx: &mut App, f: impl Fn(&mut App) + 'static) {
+    cx.default_global::<Waiting>().due = Some(Box::new(f));
+}
+
+/// While `busy` says so (sharing a screen, requests under way) an upgrade
+/// of the app's binary waits; the app becomes the new version once it
+/// says no (asked four times a second while one is due).
+pub fn upgrade_waits_while(cx: &mut App, busy: impl Fn(&App) -> bool + 'static) {
+    cx.default_global::<Waiting>().busy = Some(Box::new(busy));
+}
+
 /// The state the previous version left (once; None if it left none).
 pub fn restored_state() -> Option<String> {
     let path = std::env::var_os(RESTORE_ENV)?;
@@ -135,6 +162,21 @@ pub(crate) fn init(cx: &mut App) {
         while rx.next().await.is_some() {
             if !binary.changed() {
                 continue;
+            }
+            // Told, then waited for while busy.
+            let _ = cx.update(|cx| {
+                let due = cx.try_global::<Waiting>().is_some().then(|| cx.global_mut::<Waiting>().due.take()).flatten();
+                if let Some(due) = due {
+                    due(cx);
+                    cx.global_mut::<Waiting>().due = Some(due);
+                }
+            });
+            loop {
+                let busy = cx.update(|cx| cx.try_global::<Waiting>().and_then(|w| w.busy.as_ref()).is_some_and(|busy| busy(cx))).unwrap_or(false);
+                if !busy {
+                    break;
+                }
+                cx.background_executor().timer(std::time::Duration::from_millis(250)).await;
             }
             let state = cx
                 .update(|cx| {

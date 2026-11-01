@@ -163,30 +163,21 @@ impl LineWrapper {
         line
     }
 
-    /// Any character in this list should be treated as a word character,
-    /// meaning it can be part of a word that should not be wrapped.
+    /// Whether `c` is part of a word, which a line doesn't break inside
+    /// (unless the word is wider than the line). Olo: everything but
+    /// white space, as egui wraps and as typesetters do: a curly
+    /// apostrophe (computer’s), quotes, brackets, a path's slashes and an
+    /// emoji stay with what they're beside. Chinese and Japanese, written
+    /// without spaces, break between any two of their characters.
     pub(crate) fn is_word_char(c: char) -> bool {
-        // ASCII alphanumeric characters, for English, numbers: `Hello123`, etc.
-        c.is_ascii_alphanumeric() ||
-        // Latin script in Unicode for French, German, Spanish, etc.
-        // Latin-1 Supplement
-        // https://en.wikipedia.org/wiki/Latin-1_Supplement
-        matches!(c, '\u{00C0}'..='\u{00FF}') ||
-        // Latin Extended-A
-        // https://en.wikipedia.org/wiki/Latin_Extended-A
-        matches!(c, '\u{0100}'..='\u{017F}') ||
-        // Latin Extended-B
-        // https://en.wikipedia.org/wiki/Latin_Extended-B
-        matches!(c, '\u{0180}'..='\u{024F}') ||
-        // Cyrillic for Russian, Ukrainian, etc.
-        // https://en.wikipedia.org/wiki/Cyrillic_script_in_Unicode
-        matches!(c, '\u{0400}'..='\u{04FF}') ||
-        // Some other known special characters that should be treated as word characters,
-        // e.g. `a-b`, `var_name`, `I'm`, '@mention`, `#hashtag`, `100%`, `3.1415`,
-        // `2^3`, `a~b`, `a=1`, `Self::new`, etc.
-        matches!(c, '-' | '_' | '.' | '\'' | '$' | '%' | '@' | '#' | '^' | '~' | ',' | '=' | ':') ||
-        // `⋯` character is special used in Zed, to keep this at the end of the line.
-        matches!(c, '⋯')
+        !c.is_whitespace()
+            && !matches!(c,
+                // CJK radicals, punctuation, kana, Bopomofo, ideographs
+                '\u{2E80}'..='\u{9FFF}'
+                // Compatibility ideographs, halfwidth and fullwidth forms
+                | '\u{F900}'..='\u{FAFF}' | '\u{FF00}'..='\u{FFEF}'
+                // Ideographs beyond the basic plane
+                | '\u{20000}'..='\u{3FFFF}')
     }
 
     #[inline(always)]
@@ -652,12 +643,16 @@ mod tests {
         // Space
         assert_not_word("foo bar");
 
-        // URL case
+        // Paths and addresses stay whole; spaces break.
         assert_word("github.com");
-        assert_not_word("zed-industries/zed");
-        assert_not_word("zed-industries\\zed");
-        assert_not_word("a=1&b=2");
-        assert_not_word("foo?b=2");
+        assert_word("zed-industries/zed");
+        assert_word("a=1&b=2");
+        assert_word("foo?b=2");
+        // Quotes, apostrophes and brackets stay with their word.
+        assert_word("computer’s");
+        assert_word("“quoted”");
+        assert_word("(aside)");
+        assert_not_word("two words");
 
         // Latin-1 Supplement
         assert_word("ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏ");
@@ -667,13 +662,12 @@ mod tests {
         assert_word("ƀƁƂƃƄƅƆƇƈƉƊƋƌƍƎƏ");
         // Cyrillic
         assert_word("АБВГДЕЖЗИЙКЛМНОП");
+        // Korean is written with spaces between its words.
+        assert_word("안녕하세요");
 
-        // non-word characters
+        // Chinese and Japanese break between characters.
         assert_not_word("你好");
-        assert_not_word("안녕하세요");
         assert_not_word("こんにちは");
-        assert_not_word("😀😁😂");
-        assert_not_word("()[]{}<>");
     }
 
     // For compatibility with the test macro

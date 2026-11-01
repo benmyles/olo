@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-31
 
+### Token Pool on GPUI
+
+*20:16* — Token Pool moves to olo-ui: the same window (gateway, now-grid, client switches, account cards with quota bars and request strips, Account menu, rename), drawn by GPUI. A test account in a fixture home; 73.6 MB against egui's 91.9 MB, idle with no wakeups.
+
+![Token Pool on GPUI](2026-10-31/201636-token-pool-on-gpui.png)
+
 ### GPUI kit: the column list view
 
 *19:39* — olo-ui gains BColumnListView (right), as the egui kit draws it (left, the demo's Lists tab): header sorting and dividers, the file-manager selection (shared now as olo_kit_base::list), bands, type-select, BeOS scroll bars; at 1.5x, where GPUI windows had been drawn at 2x and shrunk (fixed here).
