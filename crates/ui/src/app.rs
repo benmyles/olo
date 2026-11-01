@@ -385,5 +385,14 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
 /// is told of some other way (app_server's `OutputsChanged`) may be
 /// asked for before that, and refused: ask again from here.
 pub fn on_displays_changed(cx: &mut App, f: impl FnMut(&mut App) + 'static) {
-    cx.on_displays_changed(f).detach();
+    // Deferred: the platform tells of a display inside a Wayland roundtrip,
+    // which a window being opened makes, so this may come while the app's
+    // entity is being updated (Deskbar: "cannot update while it is already
+    // being updated", 2026-11-01). After that update, then.
+    let f = std::rc::Rc::new(std::cell::RefCell::new(f));
+    cx.on_displays_changed(move |cx| {
+        let f = f.clone();
+        cx.defer(move |cx| (f.borrow_mut())(cx));
+    })
+    .detach();
 }

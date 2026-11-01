@@ -42,8 +42,10 @@ pub fn set_capture(on: bool) {
 
 /// How many of the last frames' costs are kept (the percentiles' window).
 const KEPT: usize = 120;
-/// Frames on time in a row before the budget narrows a step.
-const SETTLE: u32 = 600;
+/// Frames on time in a row before the budget narrows a step (an eighth
+/// of a frame): from a whole frame down to the floor in ten seconds at
+/// 60 Hz, since the budget is the pointer's latency.
+const SETTLE: u32 = 120;
 /// Past what the last frames cost, for the GPU's share and a bad one.
 const HEADROOM: Duration = Duration::from_micros(500);
 
@@ -233,7 +235,7 @@ impl Pacing {
             self.clean += 1;
             if self.clean >= SETTLE {
                 self.clean = 0;
-                self.budget = self.budget.saturating_sub(frame / 16).max(Self::least(frame));
+                self.budget = self.budget.saturating_sub(frame / 8).max(Self::least(frame));
             }
             self.parts.clear();
             return None;
