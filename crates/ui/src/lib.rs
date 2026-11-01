@@ -28,7 +28,7 @@ pub mod tip;
 mod upgrade;
 pub mod widgets;
 
-pub use app::{FocusNext, FocusPrev, Frame, WindowOptions, app_id, message_handler, open_window, proxy, run, stay_resident};
+pub use app::{on_displays_changed, FocusNext, FocusPrev, Frame, WindowOptions, app_id, message_handler, open_window, proxy, run, stay_resident};
 pub use lock::{lock_session, unlock_session};
 pub use menu::{Menu, MenuBar, MenuItem};
 pub use upgrade::{on_upgrade, on_upgrade_due, restored_state, upgrade_waits_while};

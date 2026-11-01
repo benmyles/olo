@@ -16,11 +16,10 @@ use std::{
 use futures::{StreamExt, channel::mpsc};
 use gpui::{App, Global};
 
-/// Where SIGURG lands (and the compositor's loss, `lost_compositor`).
+/// Where SIGURG lands.
 static PIPE: AtomicI32 = AtomicI32::new(-1);
 /// What came down the pipe.
 const UPGRADE: u8 = 1;
-const LOST: u8 = 2;
 
 extern "C" fn on_signal(_: libc::c_int) {
     let fd = PIPE.load(Ordering::Relaxed);
@@ -34,13 +33,16 @@ extern "C" fn on_signal(_: libc::c_int) {
 /// or a protocol error): the app re-executes as it does for an upgrade,
 /// with its state saved, and reconnects to the app_server now there;
 /// at once, whatever it was busy with (no compositor, nothing to show
-/// it on).
-fn lost_compositor() {
-    let fd = PIPE.load(Ordering::Relaxed);
-    if fd >= 0 {
-        // SAFETY: write(2) to our own pipe.
-        unsafe { libc::write(fd, [LOST].as_ptr().cast(), 1) };
+/// it on). Here, synchronously: GPUI calls this with nothing borrowed,
+/// and its loop may be over.
+fn lost_compositor(cx: &mut App, binary: &Binary) {
+    tracing::warn!("the compositor is gone: re-executing to reconnect, with the state saved");
+    let save = cx.try_global::<Saving>().is_some().then(|| cx.global_mut::<Saving>().0.take()).flatten();
+    let state = save.as_ref().and_then(|save| save(cx));
+    if let Some(save) = save {
+        cx.global_mut::<Saving>().0 = Some(save);
     }
+    binary.exec(state);
 }
 
 type SaveState = Box<dyn Fn(&mut App) -> Option<String>>;
@@ -142,7 +144,11 @@ pub(crate) fn init(cx: &mut App) {
         libc::sigaction(libc::SIGURG, &action, std::ptr::null_mut());
         std::fs::File::from_raw_fd(fds[0])
     };
-    let _ = gpui::ON_COMPOSITOR_LOST.set(lost_compositor);
+    cx.on_compositor_lost({
+        let binary = Binary::current();
+        move |cx| lost_compositor(cx, &binary)
+    })
+    .detach();
     let (tx, mut rx) = mpsc::unbounded::<u8>();
     // (A thread that sleeps in read(2) until a signal comes.)
     std::thread::Builder::new()
@@ -167,13 +173,10 @@ pub(crate) fn init(cx: &mut App) {
     let binary = Binary::current();
     cx.spawn(async move |cx| {
         while let Some(what) = rx.next().await {
-            let lost = what == LOST;
-            if !lost && !binary.changed() {
+            if what != UPGRADE || !binary.changed() {
                 continue;
             }
-            if lost {
-                tracing::warn!("the compositor is gone: re-executing to reconnect, with the state saved");
-            } else {
+            {
                 // Told, then waited for while busy.
                 let _ = cx.update(|cx| {
                     let due = cx.try_global::<Waiting>().is_some().then(|| cx.global_mut::<Waiting>().due.take()).flatten();

@@ -2512,16 +2512,23 @@ fn main() {
             d
         });
         // One on each display, by name (mirrors are known later, and put
-        // away then); with none known yet, one app_server puts on the main
-        // display, until they are.
+        // away then). With none known yet (reconnecting to an app_server
+        // still finding its displays), none: they come as app_server
+        // lists them and this connection learns them (`sync_bars`).
         let outputs: Vec<Option<String>> = cx.displays().iter().filter_map(|d| d.name()).map(Some).collect();
-        let outputs = if outputs.is_empty() { vec![None] } else { outputs };
         let bars: Vec<Bar> = outputs.into_iter().filter_map(|o| open_bar(cx, model.clone(), o)).collect();
         model.update(cx, |d, _| d.bars = bars);
         // A bar closed under it (the compositor took its display's
         // surface) is replaced as soon as its display is listed again.
         let reopen = model.clone();
         cx.on_window_closed(move |cx| reopen.update(cx, |d, cx| d.sync_bars(cx))).detach();
+        // A display app_server listed before this app's connection knew it
+        // (after a restart they come one by one, the external ones last):
+        // its bar is opened once it is known here, not on the main display
+        // in its stead (the Dell's bar hid under the Studio Display's,
+        // 2026-11-01).
+        let known = model.clone();
+        olo_ui::on_displays_changed(cx, move |cx| known.update(cx, |d, cx| d.sync_bars(cx)));
         let messages = model.clone();
         olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |d, cx| d.message(message, cx)));
         // Its applications' order, for the Deskbar it re-executes as (an

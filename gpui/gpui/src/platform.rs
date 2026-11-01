@@ -266,6 +266,13 @@ pub(crate) trait Platform: 'static {
     fn keyboard_layout(&self) -> Box<dyn PlatformKeyboardLayout>;
     fn keyboard_mapper(&self) -> Rc<dyn PlatformKeyboardMapper>;
     fn on_keyboard_layout_change(&self, callback: Box<dyn FnMut()>);
+    /// Olo: a display came or went, as the platform learned of it (a
+    /// Wayland output done or removed).
+    fn on_displays_changed(&self, _callback: Box<dyn FnMut()>) {}
+    /// Olo: the compositor's connection is gone (restarted in place, or in
+    /// protocol error); called once, on the main thread, with no borrow
+    /// held: the app may save its state and re-execute itself there.
+    fn on_compositor_lost(&self, _callback: Box<dyn FnMut()>) {}
 }
 
 /// A handle to a platform's display, e.g. a monitor or laptop screen.

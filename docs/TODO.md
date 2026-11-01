@@ -358,6 +358,25 @@ as they land (with the commit), add new ones as they come up.
      draws. Verify on the hardware after each upgrade: Displays showing
      0 dropped a minute on DP-1 and eDP-1 with video playing, the
      pointer smooth at any speed, app_server near 0% with the call on.
+   - **An outside program's `zwp_primary_selection_offer_v1` request
+     refused** (seen 2026-11-01 through olo-wlproxy for pid 21201:
+     "app_server's error on wl_display@1: invalid method 2, object
+     zwp_primary_selection_offer_v1"; the interface has receive and
+     destroy only). Find which program sends opcode 2 (a newer
+     interface version it was told it has?) and whether app_server
+     advertises a version it doesn't serve.
+   - **"gpui: window not found" from the palette and Deskbar** after a
+     window closed under them: GPUI handles kept to windows the
+     compositor closed. Deskbar's bars are pruned now; the palette's
+     and any other app's handles want the same at the kit level.
+   - **Olo's own login and boot** (Ben, 2026-11-01, for after the frame
+     and reliability work): replace GDM with an Olo-native display
+     manager, and have Olo take over the boot visuals as early as it can
+     (Plymouth's place): an "Olo starting up" screen that is an homage
+     to BeOS's boot screen, drawn with sunburst-made graphics
+     (docs/ICONS.md), with a really nice startup sound. Related: an
+     "Upgrading Olo" veil on every display while app_server restarts
+     and the displays settle, in the same style.
    - **Supervisor priority tiers** (Ben, 2026-11-01: "it should always
      give the highest priority to the core olo processes and any
      system+input processes important for responsiveness/smoothness,

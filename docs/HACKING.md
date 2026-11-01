@@ -2068,9 +2068,23 @@ and the connection whether it holds a protocol error, since calloop
 drops a failing source and the loop would sleep on with its windows
 gone, as Deskbar did, or spin on a stored protocol error, as
 Notifications did, 2026-11-01); GPUI's connect waits up to 15 s for
-the compositor to be back. Test it: `tsession start NAME --session
---shell`, start apps in it, `tsession reload NAME`, and they are all
-there after.
+the compositor to be back. And it connects to app_server's direct
+socket (`olo-<display>-direct`), as the egui kit does, not to
+`WAYLAND_DISPLAY`, which in a session is olo-wlproxy's: the proxy keeps
+outside programs' windows across a restart by replaying their objects
+on the new app_server, and a GPUI app replayed that way kept its old
+configures, outputs and frame state and was left with dead windows.
+Test it as the real thing happens, displays coming up late and
+nameless after the restart:
+`OLO_HEADLESS_LATE_MS=2500 OLO_HEADLESS_ANONYMOUS_MS=2500 tsession start
+NAME 2560x1600,1920x1080 --session --shell`, start apps in it,
+`tsession reload NAME` (twice), and every app is there after, each
+display with its own Deskbar (`tsession shot NAME out.png --output
+HEADLESS-2` for the second), no "exited" or protocol error in
+`/tmp/olo-dev/NAME/app_server.log`. A bar for a display this app's
+connection doesn't know yet is refused by GPUI (not stood in for by the
+compositor's choice, which put the Dell's bar on the Studio Display)
+and asked for again from `olo_ui::on_displays_changed`.
 
 Login items (`session/src/autostart.rs`, the freedesktop Autostart
 spec): once a real session's graphical side is up (the environment

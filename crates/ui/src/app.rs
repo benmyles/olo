@@ -379,3 +379,11 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
         build(cx);
     });
 }
+
+/// Called when a display came or went, as the compositor told this app
+/// (its `cx.displays()` lists it then). A window for a display the app
+/// is told of some other way (app_server's `OutputsChanged`) may be
+/// asked for before that, and refused: ask again from here.
+pub fn on_displays_changed(cx: &mut App, f: impl FnMut(&mut App) + 'static) {
+    cx.on_displays_changed(f).detach();
+}

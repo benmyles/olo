@@ -556,6 +556,10 @@ pub struct App {
     pub(crate) keystroke_observers: SubscriberSet<(), KeystrokeObserver>,
     pub(crate) keystroke_interceptors: SubscriberSet<(), KeystrokeObserver>,
     pub(crate) keyboard_layout_observers: SubscriberSet<(), Handler>,
+    /// Olo: told when a display came or went (`on_displays_changed`).
+    pub(crate) displays_observers: SubscriberSet<(), Handler>,
+    /// Olo: told once when the compositor is gone (`on_compositor_lost`).
+    pub(crate) compositor_lost_observers: SubscriberSet<(), Handler>,
     pub(crate) release_listeners: SubscriberSet<EntityId, ReleaseListener>,
     pub(crate) global_observers: SubscriberSet<TypeId, Handler>,
     pub(crate) quit_observers: SubscriberSet<(), QuitHandler>,
@@ -632,6 +636,8 @@ impl App {
                 keystroke_observers: SubscriberSet::new(),
                 keystroke_interceptors: SubscriberSet::new(),
                 keyboard_layout_observers: SubscriberSet::new(),
+                displays_observers: SubscriberSet::new(),
+                compositor_lost_observers: SubscriberSet::new(),
                 global_observers: SubscriberSet::new(),
                 quit_observers: SubscriberSet::new(),
                 restart_observers: SubscriberSet::new(),
@@ -653,6 +659,29 @@ impl App {
 
         init_app_menus(platform.as_ref(), &app.borrow());
         SystemWindowTabController::init(&mut app.borrow_mut());
+
+        // Olo: the compositor gone reaches whoever asked (olo-ui, which
+        // re-executes the program with its state saved).
+        platform.on_compositor_lost(Box::new({
+            let app = Rc::downgrade(&app);
+            move || {
+                if let Some(app) = app.upgrade() {
+                    let cx = &mut app.borrow_mut();
+                    cx.compositor_lost_observers.clone().retain(&(), move |callback| (callback)(cx));
+                }
+            }
+        }));
+
+        // Olo: displays coming and going reach whoever asked.
+        platform.on_displays_changed(Box::new({
+            let app = Rc::downgrade(&app);
+            move || {
+                if let Some(app) = app.upgrade() {
+                    let cx = &mut app.borrow_mut();
+                    cx.displays_observers.clone().retain(&(), move |callback| (callback)(cx));
+                }
+            }
+        }));
 
         platform.on_keyboard_layout_change(Box::new({
             let app = Rc::downgrade(&app);
@@ -712,6 +741,41 @@ impl App {
     /// Get the current keyboard mapper.
     pub fn keyboard_mapper(&self) -> &Rc<dyn PlatformKeyboardMapper> {
         &self.keyboard_mapper
+    }
+
+    /// Olo: called once when the compositor's connection is gone
+    /// (app_server restarted in place, or a protocol error), on the main
+    /// thread with nothing borrowed: save state and re-execute here.
+    pub fn on_compositor_lost<F>(&self, mut callback: F) -> Subscription
+    where
+        F: 'static + FnMut(&mut App),
+    {
+        let (subscription, activate) = self.compositor_lost_observers.insert(
+            (),
+            Box::new(move |cx| {
+                callback(cx);
+                true
+            }),
+        );
+        activate();
+        subscription
+    }
+
+    /// Olo: called when a display came or went, once the platform knows
+    /// it (a window may then be opened on it: `cx.displays()` lists it).
+    pub fn on_displays_changed<F>(&self, mut callback: F) -> Subscription
+    where
+        F: 'static + FnMut(&mut App),
+    {
+        let (subscription, activate) = self.displays_observers.insert(
+            (),
+            Box::new(move |cx| {
+                callback(cx);
+                true
+            }),
+        );
+        activate();
+        subscription
     }
 
     /// Invokes a handler when the current keyboard layout changes

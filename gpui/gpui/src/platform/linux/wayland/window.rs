@@ -1817,6 +1817,16 @@ impl PlatformWindow for WaylandWindow {
     }
 
     fn draw(&self, scene: &Scene) {
+        // Olo: nothing may be attached before the surface's first configure
+        // is acknowledged, whatever asked for the frame (the first draw at
+        // a window's opening comes before the configure of a layer
+        // surface on a compositor still finding its displays, as
+        // Deskbar's did reconnecting after an upgrade: a protocol error
+        // that ended it, 2026-11-01). The configure draws it.
+        if self.0.frames.closed.get() || !self.0.state.borrow().acknowledged_first_configure {
+            log::debug!("a frame before the first configure: not drawn");
+            return;
+        }
         let mut state = self.borrow_mut();
         state.renderer.draw(scene);
     }

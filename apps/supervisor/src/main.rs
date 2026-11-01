@@ -233,23 +233,34 @@ impl Supervisor {
 
         // Olo's own tiers first (olo_protocol::performance::tier): each
         // asks for itself as it starts, so one found above its tier is
-        // one rtkit refused then, or a thread made since; raised here.
+        // one rtkit refused then; raised here, its main thread (the one
+        // that matters: every input event and frame; and rtkit allows a
+        // handful of actions a burst, which raising every thread of
+        // every program blew through, "Device or resource busy"). Only
+        // this session's programs: a headless test session's are the
+        // person's too, and not for this supervisor (2026-11-01).
         self.raised.retain(|pid, _| alive.contains(pid));
         for p in &procs {
             let Some(nice) = olo_protocol::performance::tier(&p.name) else { continue };
             if p.state == 'Z' || self.raised.contains_key(&p.pid) || olo_system::priority::nice_of(p.pid as u32).is_none_or(|n| n <= nice) {
                 continue;
             }
+            if !same_session(p.pid) {
+                // (Noted once, so it isn't looked at every two seconds.)
+                self.raised.insert(p.pid, Raised { pid: p.pid, name: p.name.clone(), nice_before: 0, nice: 0 });
+                continue;
+            }
             let before = olo_system::priority::nice_of(p.pid as u32).unwrap_or(0);
-            let (count, error) = olo_system::priority::raise_process(p.pid as u32, nice);
-            if count > 0 {
-                let now = olo_system::priority::nice_of(p.pid as u32).unwrap_or(nice);
-                self.raised.insert(p.pid, Raised { pid: p.pid, name: p.name.clone(), nice_before: before, nice: now });
-                self.note(format!("Raised {} ({}) to nice {now}: Olo's own, above everything else", p.name, p.pid));
-            } else if let Some(e) = error {
-                // (Once a process: not worth asking every two seconds.)
-                self.raised.insert(p.pid, Raised { pid: p.pid, name: p.name.clone(), nice_before: before, nice: before });
-                self.note(format!("Couldn't raise {} ({}): {e}", p.name, p.pid));
+            match olo_system::priority::raise_thread(p.pid as u32, p.pid as u32, nice) {
+                Ok(now) => {
+                    self.raised.insert(p.pid, Raised { pid: p.pid, name: p.name.clone(), nice_before: before, nice: now });
+                    self.note(format!("Raised {} ({}) to nice {now}: Olo's own, above everything else", p.name, p.pid));
+                }
+                Err(e) => {
+                    // (Once a process: not worth asking every two seconds.)
+                    self.raised.insert(p.pid, Raised { pid: p.pid, name: p.name.clone(), nice_before: before, nice: before });
+                    self.note(format!("Couldn't raise {} ({}): {e}", p.name, p.pid));
+                }
             }
         }
 
@@ -645,4 +656,14 @@ fn main() -> std::process::ExitCode {
         });
     });
     std::process::ExitCode::SUCCESS
+}
+
+/// Whether `pid` runs in this supervisor's session (its WAYLAND_DISPLAY),
+/// as read from its environment; a process whose environment can't be
+/// read (gone, or not ours) isn't.
+fn same_session(pid: i32) -> bool {
+    let Some(mine) = std::env::var_os("WAYLAND_DISPLAY") else { return true };
+    let Ok(env) = std::fs::read(format!("/proc/{pid}/environ")) else { return false };
+    let key = b"WAYLAND_DISPLAY=";
+    env.split(|&b| b == 0).any(|e| e.strip_prefix(key).is_some_and(|v| v == mine.as_encoded_bytes()))
 }

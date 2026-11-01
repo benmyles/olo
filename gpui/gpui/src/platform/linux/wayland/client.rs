@@ -700,7 +700,7 @@ impl WaylandClient {
         let conn = {
             let mut tries = 0;
             loop {
-                match Connection::connect_to_env() {
+                match connect() {
                     Ok(c) => break c,
                     Err(e) if tries < 150 => {
                         if tries == 0 {
@@ -998,6 +998,17 @@ impl LinuxClient for WaylandClient {
             .and_then(|l| l.output.as_ref())
             .and_then(|name| state.outputs.iter().find(|(_, o)| o.name.as_ref() == Some(name)))
             .and_then(|(id, _)| state.wl_outputs.get(id).cloned());
+        // Olo: a display asked for by name that this connection doesn't
+        // know yet (after app_server's restart they come one by one) is
+        // refused, not stood in for by the compositor's choice: the bar
+        // for the Dell went on the Studio Display under its own
+        // (2026-11-01). The app hears of it (`on_displays_changed`) and
+        // asks again.
+        if let Some(name) = params.layer_shell.as_ref().and_then(|l| l.output.as_ref())
+            && layer_output.is_none()
+        {
+            anyhow::bail!("display {name} isn't known to this connection yet");
+        }
 
         // Olo: the displays it may open on (a layer's or a lock surface's
         // own, a popup's window's, with its scale): it draws its first
@@ -1132,21 +1143,12 @@ impl LinuxClient for WaylandClient {
                     // (olo-ui: re-execute with the state saved, and
                     // reconnect), or stops its loop.
                     let Some(state) = ptr.0.upgrade() else { return };
-                    let dead = {
-                        let st = state.borrow();
-                        !st.lost && (st.connection.protocol_error().is_some() || hung_up(&st.connection))
-                    };
-                    if dead {
-                        state.borrow_mut().lost = true;
-                        log::error!("the compositor's connection is gone");
-                        match crate::ON_COMPOSITOR_LOST.get() {
-                            Some(f) => f(),
-                            None => state.borrow().common.signal.stop(),
-                        }
-                    }
+                    compositor_lost_check(&state);
                 },
             )
             .log_err();
+        // (The loop may end on the error itself, before a turn's check.)
+        compositor_lost_check(&self.0);
         // Olo: what the last turn asked (the windows quitting destroyed)
         // reaches the compositor now: a program that carries on after its
         // loop (Screenshot holding the clipboard) leaves nothing behind
@@ -1467,6 +1469,12 @@ impl Dispatch<wl_output::WlOutput, ()> for WaylandClientStatePtr {
                     drop(state);
                     for window in windows {
                         window.output_changed(output.id(), &complete);
+                    }
+                    // Olo: whoever waits for a display (a bar for it).
+                    let displays_changed = client.borrow_mut().common.callbacks.displays_changed.take();
+                    if let Some(mut f) = displays_changed {
+                        f();
+                        client.borrow_mut().common.callbacks.displays_changed = Some(f);
                     }
                 }
             }
@@ -2851,4 +2859,49 @@ fn hung_up(connection: &Connection) -> bool {
     let mut fd = libc::pollfd { fd: connection.as_fd().as_raw_fd(), events: 0, revents: 0 };
     // SAFETY: one pollfd, no wait.
     unsafe { libc::poll(&mut fd, 1, 0) == 1 && fd.revents & (libc::POLLHUP | libc::POLLERR | libc::POLLNVAL) != 0 }
+}
+
+/// (Olo) The compositor's connection. In an Olo session `WAYLAND_DISPLAY`
+/// is olo-wlproxy's socket, which keeps outside programs' connections
+/// alive across app_server restarts by replaying their objects; Olo's
+/// own programs connect to app_server's direct socket beside it,
+/// `olo-<display>-direct`, as the egui kit does, and come back by
+/// themselves (`ON_COMPOSITOR_LOST`: re-executed with their state). Through
+/// the proxy a GPUI app kept its old configures, outputs and frame state
+/// over a replay and was left with dead windows (2026-11-01).
+fn connect() -> Result<Connection, wayland_client::ConnectError> {
+    if std::env::var_os("OLO_SESSION").is_some()
+        && let (Some(dir), Ok(display)) = (std::env::var_os("XDG_RUNTIME_DIR"), std::env::var("WAYLAND_DISPLAY"))
+        && !display.starts_with('/')
+    {
+        let direct = std::path::Path::new(&dir).join(format!("olo-{display}-direct"));
+        if let Ok(stream) = std::os::unix::net::UnixStream::connect(&direct) {
+            return Connection::from_socket(stream);
+        }
+    }
+    Connection::connect_to_env()
+}
+
+/// (Olo) The compositor's connection gone (hung up, or in protocol
+/// error): told once to whoever asked (`Platform::on_compositor_lost`:
+/// olo-ui re-executes the program with its state saved), with no borrow
+/// held; without anyone, the loop stops.
+fn compositor_lost_check(state: &Rc<RefCell<WaylandClientState>>) {
+    let dead = {
+        let st = state.borrow();
+        !st.lost && (st.connection.protocol_error().is_some() || hung_up(&st.connection))
+    };
+    if !dead {
+        return;
+    }
+    state.borrow_mut().lost = true;
+    log::error!("the compositor's connection is gone");
+    let callback = state.borrow_mut().common.callbacks.compositor_lost.take();
+    match callback {
+        Some(mut f) => {
+            f();
+            state.borrow_mut().common.callbacks.compositor_lost = Some(f);
+        }
+        None => state.borrow().common.signal.stop(),
+    }
 }
