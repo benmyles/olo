@@ -3126,6 +3126,7 @@ dependencies = [
  "wayland-cursor",
  "wayland-protocols 0.32.13",
  "wayland-protocols-plasma 0.2.0",
+ "wayland-protocols-wlr",
  "xkbcommon 0.8.0",
 ]
 

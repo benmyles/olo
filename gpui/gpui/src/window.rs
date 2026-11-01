@@ -1024,6 +1024,7 @@ impl Window {
             #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
             tabbing_identifier,
             toplevel_tag,
+            layer_shell,
         } = options;
 
         let bounds = window_bounds
@@ -1045,6 +1046,7 @@ impl Window {
                 display_id,
                 window_min_size,
                 toplevel_tag,
+                layer_shell,
                 #[cfg(target_os = "macos")]
                 tabbing_identifier,
             },

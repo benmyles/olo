@@ -1129,6 +1129,9 @@ pub struct WindowOptions {
     /// `under-pointer`), space-separated.
     pub toplevel_tag: Option<String>,
 
+    /// Olo: where a [`WindowKind::LayerShell`] surface sits.
+    pub layer_shell: Option<LayerShellOptions>,
+
     /// Window minimum size
     pub window_min_size: Option<Size<Pixels>>,
 
@@ -1186,6 +1189,9 @@ pub(crate) struct WindowParams {
 
     /// Olo: the window's tags (`WindowOptions::toplevel_tag`).
     pub toplevel_tag: Option<String>,
+
+    /// Olo: where a layer surface sits (`WindowOptions::layer_shell`).
+    pub layer_shell: Option<LayerShellOptions>,
 
     pub window_min_size: Option<Size<Pixels>>,
     #[cfg(target_os = "macos")]
@@ -1246,6 +1252,7 @@ impl Default for WindowOptions {
             window_background: WindowBackgroundAppearance::default(),
             app_id: None,
             toplevel_tag: None,
+            layer_shell: None,
             window_min_size: None,
             window_decorations: None,
             tabbing_identifier: None,
@@ -1267,6 +1274,51 @@ pub struct TitlebarOptions {
     pub traffic_light_position: Option<Point<Pixels>>,
 }
 
+/// Olo: where a layer surface (`WindowKind::LayerShell`) sits.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LayerShellOptions {
+    /// Which of the compositor's layers it's in.
+    pub layer: LayerShellLayer,
+    /// The edges it's anchored to: top, bottom, left, right.
+    pub anchor: (bool, bool, bool, bool),
+    /// How much of the output's edge it keeps others from (Deskbar's
+    /// width), or -1 to cover what others keep.
+    pub exclusive_zone: i32,
+    /// From the anchored edges: top, right, bottom, left.
+    pub margin: (i32, i32, i32, i32),
+    /// Whether it takes the keyboard.
+    pub keyboard: LayerKeyboard,
+    /// What it is ("deskbar", "notifications"), for the compositor.
+    pub namespace: String,
+    /// The output to sit on, by name; None lets the compositor choose.
+    pub output: Option<String>,
+}
+
+/// Which of the compositor's layers a layer surface is in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayerShellLayer {
+    /// Under everything (the desktop's picture).
+    Background,
+    /// Under windows (the desktop's icons).
+    Bottom,
+    /// Over windows (Deskbar, notifications).
+    Top,
+    /// Over everything, full-screen windows too (a screensaver, a
+    /// screenshot's selection).
+    Overlay,
+}
+
+/// Whether a layer surface takes the keyboard.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayerKeyboard {
+    /// Never.
+    None,
+    /// When clicked, like a window (the desktop).
+    OnDemand,
+    /// All keys while it is up (a picker, a modal overlay).
+    Exclusive,
+}
+
 /// The kind of window to create
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum WindowKind {
@@ -1279,6 +1331,12 @@ pub enum WindowKind {
 
     /// A floating window that appears on top of its parent window
     Floating,
+
+    /// Olo: a surface of the desktop's own (wlr-layer-shell): a panel, a
+    /// desktop, notifications, an overlay, placed as
+    /// `WindowOptions::layer_shell` says; its size is the window's, or
+    /// the output's along an axis anchored at both ends.
+    LayerShell,
 
     /// Olo: a popup (a menu, a tip) over `parent`, its top left at
     /// `corner` of `anchor` (a rectangle in the parent's content, as a

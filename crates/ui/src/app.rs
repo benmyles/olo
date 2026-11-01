@@ -21,11 +21,45 @@ pub struct WindowOptions {
     /// auto-tiled windows rather than taking a tile (the xdg-toplevel-tag
     /// `floating`).
     pub floating: bool,
+    /// A surface of the desktop's own (Deskbar, notifications, an
+    /// overlay) rather than a window: where it sits.
+    pub layer: Option<gpui::LayerShellOptions>,
 }
 
 impl WindowOptions {
     pub fn new(title: impl Into<SharedString>, width: f32, height: f32) -> Self {
-        WindowOptions { title: title.into(), size: (width, height), min_size: None, panel: true, floating: false }
+        WindowOptions { title: title.into(), size: (width, height), min_size: None, panel: true, floating: false, layer: None }
+    }
+
+    /// A layer surface (see [`Self::layer`]), `namespace` saying what it
+    /// is to the compositor, anchored to the edges given (top, bottom,
+    /// left, right), on `layer`; refine it with [`Self::layer_options`].
+    pub fn layer(mut self, namespace: &str, layer: gpui::LayerShellLayer, anchor: (bool, bool, bool, bool)) -> Self {
+        self.layer = Some(gpui::LayerShellOptions {
+            layer,
+            anchor,
+            exclusive_zone: 0,
+            margin: (0, 0, 0, 0),
+            keyboard: gpui::LayerKeyboard::None,
+            namespace: namespace.to_owned(),
+            output: None,
+        });
+        self
+    }
+
+    /// Changes the layer surface's options (exclusive zone, margins,
+    /// keyboard, output).
+    pub fn layer_options(mut self, f: impl FnOnce(&mut gpui::LayerShellOptions)) -> Self {
+        if let Some(l) = self.layer.as_mut() {
+            f(l);
+        }
+        self
+    }
+
+    /// Without the panel colour behind it (an overlay draws all of it).
+    pub fn no_panel(mut self) -> Self {
+        self.panel = false;
+        self
     }
 
     /// Floats over auto-tiled windows (see [`Self::floating`]).
@@ -93,6 +127,9 @@ pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, bu
             app_id: Some(app_id(cx)),
             window_min_size: options.min_size.map(|(w, h)| size(px(w), px(h))),
             toplevel_tag: options.floating.then(|| "floating".to_string()),
+            kind: if options.layer.is_some() { gpui::WindowKind::LayerShell } else { gpui::WindowKind::Normal },
+            layer_shell: options.layer.clone(),
+            focus: options.layer.as_ref().is_none_or(|l| l.keyboard != gpui::LayerKeyboard::None),
             ..Default::default()
         },
         move |window, cx| {

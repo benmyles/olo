@@ -48,6 +48,11 @@ What Olo changed, so far:
   once; fingers on a touchpad scroll their own distance (upstream:
   three times it), from a first move (`TouchPhase::Started`) to the
   stop (`Ended`), and app_server's glide after them the same way.
+- Layer surfaces (wlr-layer-shell): `WindowKind::LayerShell` with
+  `WindowOptions::layer_shell` (layer, anchored edges, exclusive zone,
+  margins, keyboard, namespace, output by name), for Deskbar, the
+  desktop, notifications and overlays; popups open over them too
+  (Deskbar's menus).
 - `Window::draw_now` draws a window even out of sight (for a layout
   review).
 - `Window::with_element_opacity` is public (a disabled control,

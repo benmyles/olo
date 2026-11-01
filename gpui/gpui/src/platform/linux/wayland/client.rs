@@ -62,6 +62,7 @@ use wayland_protocols::xdg::decoration::zv1::client::{
 };
 use wayland_protocols::xdg::shell::client::{xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base};
 use wayland_protocols::xdg::toplevel_tag::v1::client::xdg_toplevel_tag_manager_v1;
+use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 use wayland_protocols_plasma::blur::client::{org_kde_kwin_blur, org_kde_kwin_blur_manager};
 use xkbcommon::xkb::ffi::XKB_KEYMAP_FORMAT_TEXT_V1;
 use xkbcommon::xkb::{self, KEYMAP_COMPILE_NO_FLAGS, Keycode};
@@ -122,6 +123,8 @@ pub struct Globals {
     /// Olo: tags for windows (`floating`, `under-pointer`), which
     /// app_server places and tiles by.
     pub toplevel_tags: Option<xdg_toplevel_tag_manager_v1::XdgToplevelTagManagerV1>,
+    /// Olo: surfaces of the desktop's own (Deskbar, notifications).
+    pub layer_shell: Option<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
     pub blur_manager: Option<org_kde_kwin_blur_manager::OrgKdeKwinBlurManager>,
     pub text_input_manager: Option<zwp_text_input_manager_v3::ZwpTextInputManagerV3>,
     pub executor: ForegroundExecutor,
@@ -160,6 +163,7 @@ impl Globals {
             fractional_scale_manager: globals.bind(&qh, 1..=1, ()).ok(),
             decoration_manager: globals.bind(&qh, 1..=1, ()).ok(),
             toplevel_tags: globals.bind(&qh, 1..=1, ()).ok(),
+            layer_shell: globals.bind(&qh, 1..=4, ()).ok(),
             blur_manager: globals.bind(&qh, 1..=1, ()).ok(),
             text_input_manager: globals.bind(&qh, 1..=1, ()).ok(),
             executor,
@@ -293,6 +297,8 @@ pub(crate) struct WaylandClientState {
     windows: HashMap<ObjectId, WaylandWindowStatePtr>,
     // Output to scale mapping
     outputs: HashMap<ObjectId, Output>,
+    /// Olo: the outputs themselves, for a layer surface to sit on one.
+    wl_outputs: HashMap<ObjectId, wl_output::WlOutput>,
     in_progress_outputs: HashMap<ObjectId, InProgressOutput>,
     keyboard_layout: LinuxKeyboardLayout,
     keymap_state: Option<xkb::State>,
@@ -656,6 +662,7 @@ impl WaylandClient {
             ime_pre_edit: None,
             composing: false,
             outputs: HashMap::default(),
+            wl_outputs: HashMap::default(),
             in_progress_outputs,
             windows: HashMap::default(),
             common,
@@ -799,9 +806,17 @@ impl LinuxClient for WaylandClient {
                 .windows
                 .values()
                 .find(|w| w.handle() == parent)
-                .map(|w| (w.xdg_surface(), state.serial_tracker.get(SerialKind::MousePress))),
+                .and_then(|w| w.popup_parent())
+                .map(|p| (p, state.serial_tracker.get(SerialKind::MousePress))),
             _ => None,
         };
+        // Olo: the output a layer surface asked for, by name.
+        let layer_output = params
+            .layer_shell
+            .as_ref()
+            .and_then(|l| l.output.as_ref())
+            .and_then(|name| state.outputs.iter().find(|(_, o)| o.name.as_ref() == Some(name)))
+            .and_then(|(id, _)| state.wl_outputs.get(id).cloned());
 
         let (window, surface_id) = WaylandWindow::new(
             handle,
@@ -814,6 +829,7 @@ impl LinuxClient for WaylandClient {
             state.loop_handle.clone(),
             state.common.signal.clone(),
             popup_parent,
+            layer_output,
         )?;
         state.windows.insert(surface_id, window.0.clone());
 
@@ -1157,6 +1173,7 @@ impl Dispatch<wl_output::WlOutput, ()> for WaylandClientStatePtr {
             wl_output::Event::Done => {
                 if let Some(complete) = in_progress_output.complete() {
                     state.outputs.insert(output.id(), complete.clone());
+                    state.wl_outputs.insert(output.id(), output.clone());
                     let windows: Vec<_> = state.windows.values().cloned().collect();
                     drop(state);
                     for window in windows {
@@ -1236,6 +1253,28 @@ impl Dispatch<xdg_popup::XdgPopup, ObjectId> for WaylandClientStatePtr {
 
 delegate_noop!(WaylandClientStatePtr: ignore xdg_positioner::XdgPositioner);
 delegate_noop!(WaylandClientStatePtr: ignore xdg_toplevel_tag_manager_v1::XdgToplevelTagManagerV1);
+delegate_noop!(WaylandClientStatePtr: ignore zwlr_layer_shell_v1::ZwlrLayerShellV1);
+
+impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ObjectId> for WaylandClientStatePtr {
+    fn event(
+        this: &mut Self,
+        _: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
+        event: zwlr_layer_surface_v1::Event,
+        surface_id: &ObjectId,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        let client = this.get_client();
+        let mut state = client.borrow_mut();
+        let Some(window) = get_window(&mut state, surface_id) else {
+            return;
+        };
+        drop(state);
+        if window.handle_layer_surface_event(event) {
+            window.close();
+        }
+    }
+}
 
 impl Dispatch<xdg_wm_base::XdgWmBase, ()> for WaylandClientStatePtr {
     fn event(

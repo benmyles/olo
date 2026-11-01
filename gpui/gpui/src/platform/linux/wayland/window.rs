@@ -14,7 +14,11 @@ use futures::channel::oneshot::Receiver;
 use raw_window_handle as rwh;
 use wayland_backend::client::ObjectId;
 use wayland_client::WEnum;
-use wayland_client::{Proxy, protocol::wl_surface};
+use anyhow::Context as _;
+use wayland_client::{
+    Proxy,
+    protocol::{wl_output, wl_surface},
+};
 use wayland_protocols::wp::viewporter::client::wp_viewport;
 use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1;
 use wayland_protocols::xdg::shell::client::xdg_surface;
@@ -25,6 +29,7 @@ use wayland_protocols::{
     xdg::shell::client::xdg_toplevel::XdgToplevel,
 };
 use wayland_protocols_plasma::blur::client::org_kde_kwin_blur;
+use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 use crate::{
     AnyWindowHandle, Bounds, Decorations, Globals, GpuSpecs, Modifiers, Output, Pixels,
@@ -85,7 +90,12 @@ struct InProgressConfigure {
 }
 
 pub struct WaylandWindowState {
-    xdg_surface: xdg_surface::XdgSurface,
+    /// A window's or popup's (None for a layer surface).
+    xdg_surface: Option<xdg_surface::XdgSurface>,
+    /// Olo: a layer surface's (`WindowKind::LayerShell`), and where it
+    /// sits.
+    layer_surface: Option<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
+    layer_shell: Option<crate::LayerShellOptions>,
     acknowledged_first_configure: bool,
     pub surface: wl_surface::WlSurface,
     decoration: Option<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1>,
@@ -185,7 +195,8 @@ impl WaylandWindowState {
     pub(crate) fn new(
         handle: AnyWindowHandle,
         surface: wl_surface::WlSurface,
-        xdg_surface: xdg_surface::XdgSurface,
+        xdg_surface: Option<xdg_surface::XdgSurface>,
+        layer_surface: Option<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
         toplevel: Option<xdg_toplevel::XdgToplevel>,
         popup: Option<xdg_popup::XdgPopup>,
         decoration: Option<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1>,
@@ -219,6 +230,8 @@ impl WaylandWindowState {
 
         Ok(Self {
             xdg_surface,
+            layer_surface,
+            layer_shell: options.layer_shell.clone(),
             acknowledged_first_configure: false,
             surface,
             decoration,
@@ -329,7 +342,12 @@ impl Drop for WaylandWindow {
         if let Some(viewport) = &state.viewport {
             viewport.destroy();
         }
-        state.xdg_surface.destroy();
+        if let Some(xdg_surface) = &state.xdg_surface {
+            xdg_surface.destroy();
+        }
+        if let Some(layer_surface) = &state.layer_surface {
+            layer_surface.destroy();
+        }
         state.surface.destroy();
 
         let state_ptr = self.0.clone();
@@ -364,9 +382,39 @@ impl WaylandWindow {
         parent: Option<XdgToplevel>,
         loop_handle: LoopHandle<'static, WaylandClientStatePtr>,
         signal: calloop::LoopSignal,
-        popup_parent: Option<(xdg_surface::XdgSurface, u32)>,
+        popup_parent: Option<(PopupParent, u32)>,
+        layer_output: Option<wl_output::WlOutput>,
     ) -> anyhow::Result<(Self, ObjectId)> {
         let surface = globals.compositor.create_surface(&globals.qh, ());
+        // Olo: a layer surface (Deskbar, the desktop, notifications, an
+        // overlay) has no xdg surface.
+        if params.kind == WindowKind::LayerShell {
+            let options = params.layer_shell.clone().context("a layer surface without its options")?;
+            let shell = globals.layer_shell.as_ref().context("the compositor has no layer shell")?;
+            let layer = shell.get_layer_surface(
+                &surface,
+                layer_output.as_ref(),
+                match options.layer {
+                    crate::LayerShellLayer::Background => zwlr_layer_shell_v1::Layer::Background,
+                    crate::LayerShellLayer::Bottom => zwlr_layer_shell_v1::Layer::Bottom,
+                    crate::LayerShellLayer::Top => zwlr_layer_shell_v1::Layer::Top,
+                    crate::LayerShellLayer::Overlay => zwlr_layer_shell_v1::Layer::Overlay,
+                },
+                options.namespace.clone(),
+                &globals.qh,
+                surface.id(),
+            );
+            place_layer(&layer, &options, params.bounds.size);
+            let keyboard = match options.keyboard {
+                crate::LayerKeyboard::None => zwlr_layer_surface_v1::KeyboardInteractivity::None,
+                crate::LayerKeyboard::Exclusive => zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive,
+                // (Version 4 on; before, a click gives it nothing.)
+                crate::LayerKeyboard::OnDemand if layer.version() >= 4 => zwlr_layer_surface_v1::KeyboardInteractivity::OnDemand,
+                crate::LayerKeyboard::OnDemand => zwlr_layer_surface_v1::KeyboardInteractivity::None,
+            };
+            layer.set_keyboard_interactivity(keyboard);
+            return Self::finish(handle, globals, gpu_context, client, params, appearance, loop_handle, signal, surface, None, Some(layer), None, None);
+        }
         let xdg_surface = globals
             .wm_base
             .get_xdg_surface(&surface, &globals.qh, surface.id());
@@ -405,8 +453,18 @@ impl WaylandWindow {
                     positioner.set_offset(offset.x.0.round() as i32, offset.y.0.round() as i32);
                     positioner.set_constraint_adjustment(slide);
                 }
-                let popup =
-                    xdg_surface.get_popup(Some(&parent_surface), &positioner, &globals.qh, surface.id());
+                let popup = match &parent_surface {
+                    PopupParent::Xdg(parent) => {
+                        xdg_surface.get_popup(Some(parent), &positioner, &globals.qh, surface.id())
+                    }
+                    // Over a layer surface (Deskbar's menus): made
+                    // without a parent, then given to it.
+                    PopupParent::Layer(parent) => {
+                        let popup = xdg_surface.get_popup(None, &positioner, &globals.qh, surface.id());
+                        parent.get_popup(&popup);
+                        popup
+                    }
+                };
                 positioner.destroy();
                 popup.grab(&globals.seat, serial);
                 (None, Some(popup))
@@ -426,6 +484,26 @@ impl WaylandWindow {
             }
         };
 
+        Self::finish(handle, globals, gpu_context, client, params, appearance, loop_handle, signal, surface, Some(xdg_surface), None, toplevel, popup)
+    }
+
+    /// The rest of making a window, whatever its role.
+    #[allow(clippy::too_many_arguments)]
+    fn finish(
+        handle: AnyWindowHandle,
+        globals: Globals,
+        gpu_context: &BladeContext,
+        client: WaylandClientStatePtr,
+        params: WindowParams,
+        appearance: WindowAppearance,
+        loop_handle: LoopHandle<'static, WaylandClientStatePtr>,
+        signal: calloop::LoopSignal,
+        surface: wl_surface::WlSurface,
+        xdg_surface: Option<xdg_surface::XdgSurface>,
+        layer_surface: Option<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
+        toplevel: Option<xdg_toplevel::XdgToplevel>,
+        popup: Option<xdg_popup::XdgPopup>,
+    ) -> anyhow::Result<(Self, ObjectId)> {
         if let Some(fractional_scale_manager) = globals.fractional_scale_manager.as_ref() {
             fractional_scale_manager.get_fractional_scale(&surface, &globals.qh, surface.id());
         }
@@ -447,6 +525,7 @@ impl WaylandWindow {
                 handle,
                 surface.clone(),
                 xdg_surface,
+                layer_surface,
                 toplevel,
                 popup,
                 decoration,
@@ -492,8 +571,48 @@ impl WaylandWindowStatePtr {
         self.state.borrow().toplevel.clone()
     }
 
-    pub fn xdg_surface(&self) -> xdg_surface::XdgSurface {
-        self.state.borrow().xdg_surface.clone()
+    /// What a popup opens over, on this window.
+    pub fn popup_parent(&self) -> Option<PopupParent> {
+        let state = self.state.borrow();
+        match (&state.xdg_surface, &state.layer_surface) {
+            (Some(x), _) => Some(PopupParent::Xdg(x.clone())),
+            (None, Some(l)) => Some(PopupParent::Layer(l.clone())),
+            _ => None,
+        }
+    }
+
+    /// Olo: a layer surface's events: its size (0 along an axis it
+    /// stretches across: the output's, ours to keep otherwise), or that
+    /// it was closed (its output went): it closes.
+    pub fn handle_layer_surface_event(&self, event: zwlr_layer_surface_v1::Event) -> bool {
+        match event {
+            zwlr_layer_surface_v1::Event::Configure { serial, width, height } => {
+                let now = self.state.borrow().bounds.size;
+                let to = size(
+                    if width > 0 { px(width as f32) } else { now.width },
+                    if height > 0 { px(height as f32) } else { now.height },
+                );
+                if to != now || !self.state.borrow().acknowledged_first_configure {
+                    self.resize(to);
+                }
+                let mut state = self.state.borrow_mut();
+                if let Some(layer) = &state.layer_surface {
+                    layer.ack_configure(serial);
+                }
+                let first = !state.acknowledged_first_configure;
+                state.acknowledged_first_configure = true;
+                drop(state);
+                self.frames.needs_commit.set(true);
+                if first {
+                    self.frame();
+                } else {
+                    self.schedule_frame();
+                }
+                false
+            }
+            zwlr_layer_surface_v1::Event::Closed => true,
+            _ => false,
+        }
     }
 
     /// Olo: a popup's events: where the compositor put it, or that it was
@@ -708,7 +827,8 @@ impl WaylandWindowStatePtr {
                 }
             }
             let mut state = self.state.borrow_mut();
-            state.xdg_surface.ack_configure(serial);
+            let Some(xdg_surface) = state.xdg_surface.clone() else { return };
+            xdg_surface.ack_configure(serial);
 
             let window_geometry = inset_by_tiling(
                 state.bounds.map_origin(|_| px(0.0)),
@@ -718,7 +838,7 @@ impl WaylandWindowStatePtr {
             .map(|v| v.0 as i32)
             .map_size(|v| if v <= 0 { 1 } else { v });
 
-            state.xdg_surface.set_window_geometry(
+            xdg_surface.set_window_geometry(
                 window_geometry.origin.x,
                 window_geometry.origin.y,
                 window_geometry.size.width,
@@ -1184,12 +1304,19 @@ impl PlatformWindow for WaylandWindow {
         let state_ptr = self.0.clone();
         let dp_size = size.to_device_pixels(self.scale_factor());
 
-        state.xdg_surface.set_window_geometry(
-            state.bounds.origin.x.0 as i32,
-            state.bounds.origin.y.0 as i32,
-            dp_size.width.0,
-            dp_size.height.0,
-        );
+        if let Some(xdg_surface) = &state.xdg_surface {
+            xdg_surface.set_window_geometry(
+                state.bounds.origin.x.0 as i32,
+                state.bounds.origin.y.0 as i32,
+                dp_size.width.0,
+                dp_size.height.0,
+            );
+        }
+        // Olo: a layer surface asks for its new size.
+        if let (Some(layer), Some(options)) = (&state.layer_surface, &state.layer_shell) {
+            place_layer(layer, options, size);
+            state.surface.commit();
+        }
 
         state
             .globals
@@ -1603,4 +1730,33 @@ fn inset_by_tiling(mut bounds: Bounds<Pixels>, inset: Pixels, tiling: Tiling) ->
     }
 
     bounds
+}
+
+/// Olo: what a popup opens over: a window's or popup's xdg surface, or a
+/// layer surface (Deskbar).
+#[derive(Clone)]
+pub enum PopupParent {
+    Xdg(xdg_surface::XdgSurface),
+    Layer(zwlr_layer_surface_v1::ZwlrLayerSurfaceV1),
+}
+
+/// Asks for a layer surface's place: its anchors, exclusive zone,
+/// margins, and its size (`size`, but none along an axis anchored at both
+/// ends: the output's).
+fn place_layer(layer: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, options: &crate::LayerShellOptions, size: Size<Pixels>) {
+    use zwlr_layer_surface_v1::Anchor;
+    let (top, bottom, left, right) = options.anchor;
+    let mut anchor = Anchor::empty();
+    for (on, edge) in [(top, Anchor::Top), (bottom, Anchor::Bottom), (left, Anchor::Left), (right, Anchor::Right)] {
+        if on {
+            anchor |= edge;
+        }
+    }
+    layer.set_anchor(anchor);
+    let w = if left && right { 0 } else { size.width.0.round() as u32 };
+    let h = if top && bottom { 0 } else { size.height.0.round() as u32 };
+    layer.set_size(w, h);
+    layer.set_exclusive_zone(options.exclusive_zone);
+    let (mt, mr, mb, ml) = options.margin;
+    layer.set_margin(mt, mr, mb, ml);
 }

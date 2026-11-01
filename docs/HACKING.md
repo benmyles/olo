@@ -1560,6 +1560,12 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   opened it.)
 - `WindowOptions::floating()`: the xdg-toplevel-tag `floating`, so
   app_server floats it over auto-tiled windows.
+- `WindowOptions::layer(namespace, layer, (top, bottom, left, right))`
+  makes a layer surface (Deskbar, notifications, an overlay) instead of
+  a window; `layer_options(|l| ...)` sets its exclusive zone, margins,
+  keyboard (`LayerKeyboard::OnDemand` for the desktop, `Exclusive` for a
+  modal overlay) and output; `no_panel()` leaves its background to it.
+  Menus open over it as over a window (`examples/layer.rs`).
 - Upgrades: GPUI kit apps reach app_server through olo-wlproxy, which
   keeps their windows when app_server restarts in place; when
   olo-session signals an upgrade (SIGURG) and the app's binary was
