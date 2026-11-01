@@ -15,12 +15,24 @@ use hayro::{
     vello_cpu::color::palette::css::WHITE,
 };
 use lopdf::Document;
-use olo_kit::egui::ColorImage;
+use olo_ui::gpui::RenderImage;
 
 use crate::pdfdoc::{self, Model, PageGeom};
 
 /// The largest page image we render, in pixels on its longer side.
 pub const MAX_PX: f32 = 6000.0;
+/// A rendered page comes in tiles this many pixels a side: those in view
+/// go to the GPU as they show, a few a frame, never a whole page at once.
+pub const TILE: u32 = 1024;
+
+/// A piece of a rendered page: where it is in the page's pixels.
+pub struct Tile {
+    pub x: u32,
+    pub y: u32,
+    pub w: u32,
+    pub h: u32,
+    pub image: Arc<RenderImage>,
+}
 
 pub enum Request {
     /// Render page `page` at `scale` pixels per point.
@@ -33,7 +45,9 @@ pub enum Request {
 
 pub enum Event {
     Opened { geoms: Vec<PageGeom>, model: Model, editable: bool },
-    Page { page: usize, scale: f32, image: Arc<ColorImage> },
+    /// Page `page` rendered at `scale` pixels a point: `size` pixels, in
+    /// tiles.
+    Page { page: usize, scale: f32, size: (u32, u32), tiles: Vec<Tile> },
     Saved { to: PathBuf, adopted: Option<Model> },
     SaveFailed(String),
     Failed(String),
@@ -144,9 +158,9 @@ pub fn start(path: PathBuf, send: impl Fn(Event) + Send + 'static) -> mpsc::Send
                             y_scale: k,
                             bg_color: WHITE,
                         });
-                        let size = [pix.width() as usize, pix.height() as usize];
-                        let image = Arc::new(ColorImage::from_rgba_premultiplied(size, pix.data_as_u8_slice()));
-                        send(Event::Page { page, scale, image });
+                        let (pw, ph) = (pix.width() as u32, pix.height() as u32);
+                        let tiles = tiles(pix.data_as_u8_slice(), pw, ph);
+                        send(Event::Page { page, scale, size: (pw, ph), tiles });
                     }
                     Request::Save { model, to, flatten, adopt } => {
                         let Some(doc) = &d.doc else {
@@ -191,4 +205,26 @@ pub fn start(path: PathBuf, send: impl Fn(Event) + Send + 'static) -> mpsc::Send
         })
         .expect("spawn PDF worker");
     tx
+}
+
+/// A page's pixels (premultiplied RGBA on white: opaque) as tiles of
+/// BGRA, which GPUI's images take.
+fn tiles(rgba: &[u8], w: u32, h: u32) -> Vec<Tile> {
+    let mut out = Vec::new();
+    for y in (0..h).step_by(TILE as usize) {
+        for x in (0..w).step_by(TILE as usize) {
+            let (tw, th) = ((w - x).min(TILE), (h - y).min(TILE));
+            let mut bgra = Vec::with_capacity((tw * th * 4) as usize);
+            for row in y..y + th {
+                let at = ((row * w + x) * 4) as usize;
+                for p in rgba[at..at + (tw * 4) as usize].as_chunks::<4>().0 {
+                    bgra.extend_from_slice(&[p[2], p[1], p[0], 255]);
+                }
+            }
+            if let Some(img) = image::RgbaImage::from_raw(tw, th, bgra) {
+                out.push(Tile { x, y, w: tw, h: th, image: Arc::new(RenderImage::new([image::Frame::new(img)])) });
+            }
+        }
+    }
+    out
 }

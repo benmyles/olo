@@ -590,8 +590,9 @@ impl State {
         for run in font_runs {
             let end = (start + run.len).min(text.len());
             let primary = run.font_id;
+            let size = run.size.unwrap_or(font_size);
             let m = &self.instances[primary.0].metrics;
-            let scale = font_size.0 / m.units_per_em as f32;
+            let scale = size.0 / m.units_per_em as f32;
             ascent = ascent.max(m.ascent * scale);
             descent = descent.max(m.descent * scale);
             // Split by the face each character comes from; marks,
@@ -614,7 +615,7 @@ impl State {
                 }
             }
             for (from, to, face) in pieces {
-                x = self.shape(text, from, to, face, font_size, x, &mut runs);
+                x = self.shape(text, from, to, face, size, x, &mut runs);
             }
             start = end;
         }
@@ -674,9 +675,10 @@ impl State {
         }
         self.buffer = Some(glyphs.clear());
         match runs.last_mut() {
-            Some(last) if last.font_id == face => last.glyphs.extend(shaped),
+            Some(last) if last.font_id == face && last.font_size == font_size => last.glyphs.extend(shaped),
             _ => runs.push(ShapedRun {
                 font_id: face,
+                font_size,
                 glyphs: shaped,
             }),
         }

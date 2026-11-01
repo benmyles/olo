@@ -4,6 +4,7 @@ pub mod alert;
 pub mod buttons;
 pub mod charts;
 pub mod control;
+pub mod image_view;
 pub mod list;
 pub mod menu_field;
 pub mod scroll;
@@ -19,8 +20,9 @@ pub use alert::{ALERT_ICON, ALERT_TEXT_X, ALERT_WIDTH, AlertFrame, Conversation,
 pub use scroll::{SCROLL_BAR, ScrollBar, ScrollView};
 pub use slider::Slider;
 pub use status::{StatusBar, level_bar};
-pub use buttons::{Button, CheckBox, RadioButton, button_width};
+pub use buttons::{Button, CheckBox, RadioButton, button_width, check_box_look};
 pub use control::{Control, ControlState, control};
+pub use image_view::{ImageView, image_view};
 pub use list::{Cell, Column, ColumnListView, HEADER_HEIGHT, ListModel};
 pub use menu_field::MenuField;
 pub use text_control::TextControl;

@@ -430,7 +430,7 @@ impl TextSystem {
     /// baseline from the top. Colour glyphs (emoji) are left out.
     pub fn line_mask(&self, text: &str, font: &Font, font_size: Pixels, scale: f32) -> Option<(Size<DevicePixels>, Vec<u8>, i32)> {
         let font_id = self.resolve_font(font);
-        let layout = self.platform_text_system.layout_line(text, font_size, &[FontRun { len: text.len(), font_id }]);
+        let layout = self.platform_text_system.layout_line(text, font_size, &[FontRun { len: text.len(), font_id, size: None }]);
         let rendering = if scale < 2.0 { TextRendering::Hinted } else { TextRendering::Unhinted };
         let ascent = (f32::from(layout.ascent) * scale).ceil() as i32;
         let height = ascent + (f32::from(layout.descent) * scale).ceil() as i32;
@@ -616,6 +616,7 @@ impl WindowTextSystem {
                 let font_id = self.resolve_font(&run.font);
                 if let Some(font_run) = font_runs.last_mut()
                     && font_id == font_run.font_id
+                    && font_run.size == run.size
                     && !decoration_changed
                 {
                     font_run.len += run_len_within_line;
@@ -623,6 +624,7 @@ impl WindowTextSystem {
                     font_runs.push(FontRun {
                         len: run_len_within_line,
                         font_id,
+                        size: run.size,
                     });
                 }
 
@@ -719,6 +721,7 @@ impl WindowTextSystem {
 
             if let Some(font_run) = font_runs.last_mut()
                 && Some(font_run.font_id) == last_font
+                && font_run.size == run.size
                 && !decoration_changed
             {
                 font_run.len += run.len;
@@ -728,6 +731,7 @@ impl WindowTextSystem {
                 font_runs.push(FontRun {
                     len: run.len,
                     font_id,
+                    size: run.size,
                 });
             }
         }
@@ -902,6 +906,9 @@ pub struct TextRun {
     pub underline: Option<UnderlineStyle>,
     /// The strikethrough style (if any)
     pub strikethrough: Option<StrikethroughStyle>,
+    /// Olo: this run's own size, where it isn't the text's (a code span
+    /// a point smaller in a paragraph; a styled document's runs).
+    pub size: Option<Pixels>,
 }
 
 #[cfg(all(target_os = "macos", test))]

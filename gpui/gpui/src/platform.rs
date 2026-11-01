@@ -479,6 +479,9 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn is_hovered(&self) -> bool;
     fn set_title(&mut self, title: &str);
     fn set_background_appearance(&self, background_appearance: WindowBackgroundAppearance);
+    /// Olo: keeps the screen from dimming, locking or sleeping while the
+    /// window shows (a playing video), until called with `false`.
+    fn set_keep_awake(&self, _on: bool) {}
     fn minimize(&self);
     fn zoom(&self);
     fn toggle_fullscreen(&self);
@@ -772,6 +775,7 @@ impl PlatformTextSystem for NoopTextSystem {
         if !glyphs.is_empty() {
             runs.push(ShapedRun {
                 font_id: FontId(0),
+                font_size,
                 glyphs,
             });
         } else {
@@ -1289,6 +1293,11 @@ pub(crate) struct WindowParams {
 
     /// Olo: the output a lock surface covers (`WindowOptions::session_lock_output`).
     pub session_lock_output: Option<String>,
+
+    /// Olo: its background and the decorations it will ask for, so its
+    /// renderer is made for them (not made transparent, then again).
+    pub background: WindowBackgroundAppearance,
+    pub decorations: WindowDecorations,
 
     pub window_min_size: Option<Size<Pixels>>,
     #[cfg(target_os = "macos")]

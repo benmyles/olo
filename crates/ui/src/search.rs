@@ -50,11 +50,11 @@ pub fn runs(text: &str, font: &Font, color: Hsla, spans: &[(Range<usize>, Hsla)]
         let behind = marks.iter().any(|r| r.start <= a && a < r.end).then_some(mark);
         match out.last_mut() {
             Some(last) if last.color == ink && last.background_color == behind => last.len += b - a,
-            _ => out.push(TextRun { len: b - a, font: font.clone(), color: ink, background_color: behind, underline: None, strikethrough: None }),
+            _ => out.push(TextRun { len: b - a, font: font.clone(), color: ink, background_color: behind, underline: None, strikethrough: None, size: None }),
         }
     }
     if out.is_empty() {
-        out.push(TextRun { len: 0, font: font.clone(), color, background_color: None, underline: None, strikethrough: None });
+        out.push(TextRun { len: 0, font: font.clone(), color, background_color: None, underline: None, strikethrough: None, size: None });
     }
     out
 }

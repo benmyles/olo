@@ -249,6 +249,16 @@ impl RenderOnce for CheckBox {
     }
 }
 
+/// A check box's look alone, in `well` (`MARK_SIZE` square), checked or
+/// not: what isn't a control but shows one (a document's task list).
+pub fn check_box_look(window: &mut Window, well: Bounds<Pixels>, p: &olo_theme::Palette, checked: bool) {
+    mark_well(window, well, p, false, true);
+    if checked {
+        let mark = Bounds::from_corners(point(well.left() + px(3.0), well.top() + px(3.5)), point(well.right() - px(2.5), well.bottom() - px(3.5)));
+        crate::menu::check_mark(window, mark, style::c(p.control_mark));
+    }
+}
+
 /// BRadioButton: chosen by a click; the caller keeps which of its group
 /// is chosen.
 #[derive(IntoElement)]

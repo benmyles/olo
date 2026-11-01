@@ -186,3 +186,25 @@ What Olo changed, so far:
   again when it moves to a display that wants another.
   `set_display_text_rendering` takes the person's choice from
   Preferences ▸ Display; `OLO_TEXT_RENDERING` forces one for tests.
+- A display's size and place are xdg-output's, in points (upstream
+  divided wl_output's mode by its whole-number scale: a 1.5× display was
+  1280 points wide, not 1707), and its mode is the one wl_output marks
+  current (upstream took the last it listed, so a display offering
+  smaller modes was taken for one, and its refresh rate for theirs).
+  `Window::display` answers before the window is on a display when only
+  one is possible (the only display; a popup's window's): what a window
+  opening sized to its content needs.
+- A run of text at a size of its own (`TextRun::size`, shaped and
+  painted at it within the line: code in a paragraph).
+- Pictures drawn with nearest sampling (`Window::paint_image_nearest`,
+  `PolychromeSprite::nearest`): a magnified small picture keeps its
+  pixels.
+- `Window::set_keep_awake`: the idle-inhibit protocol, the screen kept
+  awake while the window shows (a playing video).
+- A window's renderer is made once: at the device size its scale gives
+  (the scale probe is answered first, a roundtrip of 0.1–0.2 ms) and
+  with the transparency it keeps (opaque unless it asks for client-side
+  decorations or a see-through background). Upstream made it at scale 1
+  and transparent, then again opaque (another set of pipelines for the
+  other alpha) and again at its size: 15–18 ms of each window's opening.
+  The pipelines are made side by side, on scoped threads (10.4 → 4.5 ms).

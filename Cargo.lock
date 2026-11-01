@@ -6152,6 +6152,7 @@ dependencies = [
  "calamine",
  "csv",
  "flate2",
+ "futures",
  "hayro",
  "image",
  "liblzma",
@@ -6163,6 +6164,8 @@ dependencies = [
  "olo-kit-base",
  "olo-richtext",
  "olo-theme",
+ "olo-ui",
+ "olo-xdg",
  "openh264",
  "opus-decoder",
  "pulldown-cmark",
@@ -6170,6 +6173,7 @@ dependencies = [
  "quick-xml 0.42.0",
  "resvg",
  "sevenz-rust2",
+ "smallvec",
  "symphonia",
  "syntect",
  "tar",
@@ -6459,6 +6463,7 @@ dependencies = [
 name = "olo-ui"
 version = "0.1.0"
 dependencies = [
+ "fast_image_resize",
  "futures",
  "gpui",
  "image",
@@ -6482,8 +6487,9 @@ dependencies = [
  "hayro",
  "image",
  "lopdf",
- "olo-kit",
  "olo-preview",
+ "olo-ui",
+ "olo-xdg",
  "serde",
  "serde_json",
  "tracing",

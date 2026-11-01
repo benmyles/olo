@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-01
 
+### Viewer on GPUI
+
+*03:57* — The Viewer moved to the GPUI kit: pictures fitted and resampled exactly to the device size on a worker, zoomed in tiles; the crop frame drawn over the picture, its thirds while it moves and its size under it; PDF forms, text boxes, ink and signatures; formatted documents, sheets, code, archives, fonts, sound and video from olo-preview's GPUI views. Windows open sized for the display they open on.
+
+![Viewer on GPUI](2026-11-01/035745-viewer-on-gpui.png)
+
 ### Menus without stray separators
 
 *01:41* — A menu built with items it shows only sometimes (Telegram's Chat menu with no chat open) ended in a separator with nothing under it; the GPUI kit now leaves out separators at either end of a menu and two together.

@@ -123,7 +123,7 @@ impl Preview {
         let (item, cancel, generation, max) = (self.item.clone(), self.cancel.clone(), self.generation, self.max_image);
         std::thread::Builder::new()
             .name("quicklook".into())
-            .spawn(move || load::load(&item, max, &cancel, &mut |u| send(generation, u)))
+            .spawn(move || load::load(&item, load::Want { max_image: max, halvings: true }, &cancel, &mut |u| send(generation, u)))
             .ok();
     }
 

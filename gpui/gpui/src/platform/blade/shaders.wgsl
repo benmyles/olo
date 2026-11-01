@@ -1342,7 +1342,7 @@ fn fs_mono_sprite(input: MonoSpriteVarying) -> @location(0) vec4<f32> {
 
 struct PolychromeSprite {
     order: u32,
-    pad: u32,
+    nearest: u32,
     grayscale: u32,
     opacity: f32,
     bounds: Bounds,
@@ -1384,6 +1384,11 @@ fn fs_poly_sprite(input: PolySpriteVarying) -> @location(0) vec4<f32> {
     let distance = quad_sdf(input.position.xy, sprite.bounds, sprite.corner_radii);
 
     var color = sample;
+    // Olo: a texel as it is, not blended with its neighbours.
+    if (sprite.nearest != 0u) {
+        let dims = vec2<f32>(textureDimensions(t_sprite, 0));
+        color = textureLoad(t_sprite, vec2<i32>(floor(input.tile_position * dims)), 0);
+    }
     if ((sprite.grayscale & 0xFFu) != 0u) {
         let grayscale = dot(color.rgb, GRAYSCALE_FACTORS);
         color = vec4<f32>(vec3<f32>(grayscale), sample.a);

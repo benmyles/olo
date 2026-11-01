@@ -18,6 +18,7 @@ use crate::Bitmap;
 
 use super::load::{Body, Image, Update, color_image};
 
+#[derive(Clone)]
 pub struct Media {
     /// Cover art or the video's poster frame.
     pub picture: Option<Image>,

@@ -86,6 +86,27 @@ pub(crate) fn set_layer(window: &Window, cx: &mut App, namespace: &str) {
 pub(crate) fn forget_closed(cx: &mut App) {
     let open: std::collections::HashSet<WindowId> = cx.windows().iter().map(|w| w.window_id()).collect();
     cx.default_global::<Agents>().windows.retain(|id, _| open.contains(id));
+    if let Some(paths) = cx.try_global::<Paths>().is_some().then(|| cx.global_mut::<Paths>()) {
+        paths.0.retain(|id, _| open.contains(id));
+    }
+}
+
+/// The file or folder each window shows (`set_path`).
+#[derive(Default)]
+struct Paths(HashMap<WindowId, std::path::PathBuf>);
+
+impl Global for Paths {}
+
+/// Say which file or folder `window` shows now: a document once saved
+/// or opened, None when it has none. app_server asks (`{"path":ID}`) for
+/// its tab's menu (Open in Tracker), as the egui kit's `Cx::set_path`.
+pub fn set_path(window: &Window, cx: &mut App, path: Option<std::path::PathBuf>) {
+    let id = window.window_handle().window_id();
+    let paths = &mut cx.default_global::<Paths>().0;
+    match path {
+        Some(path) => paths.insert(id, path),
+        None => paths.remove(&id),
+    };
 }
 
 /// The app's menu bar for the command palette, and how to choose from
@@ -197,8 +218,10 @@ fn answer(query: Query, cx: &mut App) {
             let _ = reply.send(times);
         }
         Query::Review(reply) => crate::review::start(cx, reply),
-        Query::Path(_, reply) => {
-            let _ = reply.send(None);
+        Query::Path(surface, reply) => {
+            // The window with that surface, if it said what it shows.
+            let window = cx.windows().into_iter().find(|w| w.update(cx, |_, window, _| window.surface_id() == Some(surface)).unwrap_or(false));
+            let _ = reply.send(window.and_then(|w| cx.try_global::<Paths>()?.0.get(&w.window_id()).cloned()));
         }
         Query::LoseGpu(reply) => {
             let _ = reply.send(false);

@@ -62,20 +62,30 @@ pub type Send<'a> = &'a mut dyn FnMut(Update);
 
 /// Load `entry`, posting what is found to `send` (several times for
 /// documents that stream in). Stops early once `cancel` is set.
-pub fn load(entry: &Item, max_image: u32, cancel: &Arc<AtomicBool>, send: Send) {
+/// What a view wants of pictures: their longest side at most, and
+/// whether halved copies are made (the egui views', which have no
+/// mipmaps; the GPUI ones resample exactly instead).
+#[derive(Clone, Copy, Debug)]
+pub struct Want {
+    pub max_image: u32,
+    pub halvings: bool,
+}
+
+pub fn load(entry: &Item, want: Want, cancel: &Arc<AtomicBool>, send: Send) {
+    let Want { max_image, halvings: halve } = want;
     let ext = entry.path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     let name = entry.name.to_lowercase();
     let result = if entry.is_dir {
         archive::folder(&entry.path, cancel).map(Update::Body)
     } else {
         match (entry.kind, ext.as_str()) {
-            (_, "svg" | "svgz") => svg(&entry.path, max_image / 2),
+            (_, "svg" | "svgz") => svg(&entry.path, max_image / 2, halve),
             (_, "pdf") => return pdf::load(&entry.path, cancel, send),
             (_, "md" | "markdown" | "mdown") => doc::markdown(&entry.path),
             (_, "docx" | "odt" | "rtf" | "pptx" | "odp") => doc::office(&entry.path, &ext),
             (_, "xlsx" | "xlsm" | "xlsb" | "xls" | "ods" | "csv" | "tsv") => doc::table(&entry.path, &ext),
             (_, "ttf" | "otf" | "ttc" | "otc") => font(&entry.path),
-            (Kind::Image, _) => image(&entry.path, max_image),
+            (Kind::Image, _) => image(&entry.path, max_image, halve),
             (Kind::Audio, _) | (_, "opus" | "aiff" | "aif" | "caf" | "alac" | "wma" | "mka") => media::audio(&entry.path),
             (Kind::Video, _) => media::video(&entry.path, cancel),
             (Kind::Archive, _) | (_, "jar" | "apk" | "epub" | "whl" | "crate") => archive::archive(&entry.path, &name, cancel),
@@ -135,16 +145,16 @@ pub fn color_image(rgba: image::RgbaImage) -> Image {
     Arc::new(Bitmap::from_rgba_unmultiplied(size, rgba.as_raw()))
 }
 
-fn image(path: &Path, max: u32) -> Result<Update, String> {
+fn image(path: &Path, max: u32, halve: bool) -> Result<Update, String> {
     let (img, kind) = olo_images::open(path).map_err(|e| format!("This image can't be read ({e})."))?;
     let (w, h) = (img.width(), img.height());
     let img = if w.max(h) > max { img.resize(max, max, image::imageops::FilterType::Triangle) } else { img };
     let image = color_image(img.to_rgba8());
-    let smaller = halvings(&image);
+    let smaller = if halve { halvings(&image) } else { Vec::new() };
     Ok(Update::Body(Body::Image { image, smaller, full: [w as f32, h as f32], note: format!("{kind} image, {w} × {h}") }))
 }
 
-fn svg(path: &Path, max: u32) -> Result<Update, String> {
+fn svg(path: &Path, max: u32, halve: bool) -> Result<Update, String> {
     let data = std::fs::read(path).map_err(|e| e.to_string())?;
     let data = if data.starts_with(&[0x1f, 0x8b]) {
         let mut out = Vec::new();
@@ -164,7 +174,7 @@ fn svg(path: &Path, max: u32) -> Result<Update, String> {
     resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(k, k), &mut pixmap.as_mut());
     let image = Arc::new(Bitmap::from_rgba_premultiplied([pixmap.width() as usize, pixmap.height() as usize], pixmap.take()));
     Ok(Update::Body(Body::Image {
-        smaller: halvings(&image),
+        smaller: if halve { halvings(&image) } else { Vec::new() },
         image,
         full: [size.width(), size.height()],
         note: format!("SVG drawing, {} × {}", size.width().round(), size.height().round()),

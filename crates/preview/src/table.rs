@@ -236,6 +236,11 @@ fn compare(a: &str, b: &str) -> Ordering {
     }
 }
 
+/// Whether a cell holds a number (as sorting takes them).
+pub fn is_number(s: &str) -> bool {
+    number(s).is_some()
+}
+
 fn number(s: &str) -> Option<f64> {
     let t: String = s.trim().trim_start_matches(['$', '€', '£', '¥']).trim_end_matches('%').chars().filter(|&ch| ch != ',').collect();
     if t.is_empty() {

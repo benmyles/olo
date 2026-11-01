@@ -110,7 +110,7 @@ impl TextView {
     /// Its runs, the selection behind (see-through, as a field's).
     fn shown_runs(&self, window: &Window, cx: &App) -> Vec<TextRun> {
         let p = theme::palette(cx);
-        let mut runs = self.runs.clone().unwrap_or_else(|| vec![TextRun { len: self.text.len(), font: self.font(), color: style::c(p.document_text), background_color: None, underline: None, strikethrough: None }]);
+        let mut runs = self.runs.clone().unwrap_or_else(|| vec![TextRun { len: self.text.len(), font: self.font(), color: style::c(p.document_text), background_color: None, underline: None, strikethrough: None, size: None }]);
         if self.selected.is_empty() {
             return runs;
         }

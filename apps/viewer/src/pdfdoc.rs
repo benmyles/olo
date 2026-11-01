@@ -1663,3 +1663,15 @@ mod tests {
         assert!(pdf_date().starts_with("D:20"));
     }
 }
+
+#[cfg(test)]
+mod sample {
+    /// Writes the sample form to `$OLO_SAMPLE_PDF`, to try the Viewer on:
+    /// `OLO_SAMPLE_PDF=/var/tmp/form.pdf cargo test -p olo-viewer sample_pdf -- --ignored`.
+    #[test]
+    #[ignore]
+    fn sample_pdf() {
+        let to = std::env::var("OLO_SAMPLE_PDF").expect("OLO_SAMPLE_PDF");
+        std::fs::write(to, super::tests::sample_form()).expect("written");
+    }
+}

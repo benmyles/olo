@@ -20,6 +20,8 @@ pub mod pdf;
 pub mod rich;
 pub mod table;
 pub mod text;
+#[cfg(feature = "gpui")]
+pub mod ui;
 pub mod video;
 #[cfg(feature = "egui")]
 mod view;

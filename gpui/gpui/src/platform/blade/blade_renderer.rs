@@ -182,8 +182,12 @@ impl BladePipelines {
             write_mask: gpu::ColorWrites::default(),
         }];
 
-        Self {
-            quads: gpu.create_render_pipeline(gpu::RenderPipelineDesc {
+        // Olo: made side by side (the driver compiles each on the thread
+        // that asks; one after another they held a window's opening up
+        // ~10 ms).
+        let shader = &shader;
+        std::thread::scope(|s| {
+            let quads = s.spawn(move || gpu.create_render_pipeline(gpu::RenderPipelineDesc {
                 name: "quads",
                 data_layouts: &[&ShaderQuadsData::layout()],
                 vertex: shader.at("vs_quad"),
@@ -196,8 +200,8 @@ impl BladePipelines {
                 fragment: Some(shader.at("fs_quad")),
                 color_targets,
                 multisample_state: gpu::MultisampleState::default(),
-            }),
-            shadows: gpu.create_render_pipeline(gpu::RenderPipelineDesc {
+            }));
+            let shadows = s.spawn(move || gpu.create_render_pipeline(gpu::RenderPipelineDesc {
                 name: "shadows",
                 data_layouts: &[&ShaderShadowsData::layout()],
                 vertex: shader.at("vs_shadow"),
@@ -210,8 +214,8 @@ impl BladePipelines {
                 fragment: Some(shader.at("fs_shadow")),
                 color_targets,
                 multisample_state: gpu::MultisampleState::default(),
-            }),
-            path_rasterization: gpu.create_render_pipeline(gpu::RenderPipelineDesc {
+            }));
+            let path_rasterization = s.spawn(move || gpu.create_render_pipeline(gpu::RenderPipelineDesc {
                 name: "path_rasterization",
                 data_layouts: &[&ShaderPathRasterizationData::layout()],
                 vertex: shader.at("vs_path_rasterization"),
@@ -238,8 +242,8 @@ impl BladePipelines {
                     sample_count: path_sample_count,
                     ..Default::default()
                 },
-            }),
-            paths: gpu.create_render_pipeline(gpu::RenderPipelineDesc {
+            }));
+            let paths = s.spawn(move || gpu.create_render_pipeline(gpu::RenderPipelineDesc {
                 name: "paths",
                 data_layouts: &[&ShaderPathsData::layout()],
                 vertex: shader.at("vs_path"),
@@ -259,8 +263,8 @@ impl BladePipelines {
                     write_mask: gpu::ColorWrites::default(),
                 }],
                 multisample_state: gpu::MultisampleState::default(),
-            }),
-            underlines: gpu.create_render_pipeline(gpu::RenderPipelineDesc {
+            }));
+            let underlines = s.spawn(move || gpu.create_render_pipeline(gpu::RenderPipelineDesc {
                 name: "underlines",
                 data_layouts: &[&ShaderUnderlinesData::layout()],
                 vertex: shader.at("vs_underline"),
@@ -273,8 +277,8 @@ impl BladePipelines {
                 fragment: Some(shader.at("fs_underline")),
                 color_targets,
                 multisample_state: gpu::MultisampleState::default(),
-            }),
-            segments: gpu.create_render_pipeline(gpu::RenderPipelineDesc {
+            }));
+            let segments = s.spawn(move || gpu.create_render_pipeline(gpu::RenderPipelineDesc {
                 name: "segments",
                 data_layouts: &[&ShaderSegmentsData::layout()],
                 vertex: shader.at("vs_segment"),
@@ -287,8 +291,8 @@ impl BladePipelines {
                 fragment: Some(shader.at("fs_segment")),
                 color_targets,
                 multisample_state: gpu::MultisampleState::default(),
-            }),
-            sectors: gpu.create_render_pipeline(gpu::RenderPipelineDesc {
+            }));
+            let sectors = s.spawn(move || gpu.create_render_pipeline(gpu::RenderPipelineDesc {
                 name: "sectors",
                 data_layouts: &[&ShaderSectorsData::layout()],
                 vertex: shader.at("vs_sector"),
@@ -301,8 +305,8 @@ impl BladePipelines {
                 fragment: Some(shader.at("fs_sector")),
                 color_targets,
                 multisample_state: gpu::MultisampleState::default(),
-            }),
-            mono_sprites: gpu.create_render_pipeline(gpu::RenderPipelineDesc {
+            }));
+            let mono_sprites = s.spawn(move || gpu.create_render_pipeline(gpu::RenderPipelineDesc {
                 name: "mono-sprites",
                 data_layouts: &[&ShaderMonoSpritesData::layout()],
                 vertex: shader.at("vs_mono_sprite"),
@@ -315,8 +319,8 @@ impl BladePipelines {
                 fragment: Some(shader.at("fs_mono_sprite")),
                 color_targets,
                 multisample_state: gpu::MultisampleState::default(),
-            }),
-            poly_sprites: gpu.create_render_pipeline(gpu::RenderPipelineDesc {
+            }));
+            let poly_sprites = s.spawn(move || gpu.create_render_pipeline(gpu::RenderPipelineDesc {
                 name: "poly-sprites",
                 data_layouts: &[&ShaderPolySpritesData::layout()],
                 vertex: shader.at("vs_poly_sprite"),
@@ -329,8 +333,8 @@ impl BladePipelines {
                 fragment: Some(shader.at("fs_poly_sprite")),
                 color_targets,
                 multisample_state: gpu::MultisampleState::default(),
-            }),
-            surfaces: gpu.create_render_pipeline(gpu::RenderPipelineDesc {
+            }));
+            let surfaces = s.spawn(move || gpu.create_render_pipeline(gpu::RenderPipelineDesc {
                 name: "surfaces",
                 data_layouts: &[&ShaderSurfacesData::layout()],
                 vertex: shader.at("vs_surface"),
@@ -343,8 +347,21 @@ impl BladePipelines {
                 fragment: Some(shader.at("fs_surface")),
                 color_targets,
                 multisample_state: gpu::MultisampleState::default(),
-            }),
-        }
+            }));
+            let made = |p: std::thread::ScopedJoinHandle<gpu::RenderPipeline>| p.join().expect("a pipeline made");
+            Self {
+                quads: made(quads),
+                shadows: made(shadows),
+                path_rasterization: made(path_rasterization),
+                paths: made(paths),
+                underlines: made(underlines),
+                segments: made(segments),
+                sectors: made(sectors),
+                mono_sprites: made(mono_sprites),
+                poly_sprites: made(poly_sprites),
+                surfaces: made(surfaces),
+            }
+        })
     }
 
 }

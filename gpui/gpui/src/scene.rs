@@ -765,7 +765,9 @@ impl From<MonochromeSprite> for Primitive {
 #[repr(C)]
 pub(crate) struct PolychromeSprite {
     pub order: DrawOrder,
-    pub pad: u32, // align to 8 bytes
+    /// Olo: 1 to sample its texels as they are (nearest), else
+    /// filtered: a small picture magnified keeps its pixels.
+    pub nearest: u32,
     pub grayscale: bool,
     pub opacity: f32,
     pub bounds: Bounds<ScaledPixels>,

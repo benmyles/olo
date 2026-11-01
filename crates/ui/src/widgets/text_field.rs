@@ -139,6 +139,10 @@ pub struct TextField {
     /// What an input method is composing.
     marked: Option<Range<usize>>,
     font_size: f32,
+    /// Its face, if not the UI's (a PDF form's text).
+    font: Option<gpui::Font>,
+    /// The most characters it takes (a PDF field's limit).
+    max_len: Option<usize>,
     color: Option<Hsla>,
     align: Align,
     name: SharedString,
@@ -195,6 +199,8 @@ impl TextField {
             reversed: false,
             marked: None,
             font_size: style::PLAIN_SIZE,
+            font: None,
+            max_len: None,
             color: None,
             align: Align::Left,
             name: SharedString::default(),
@@ -239,7 +245,7 @@ impl TextField {
         if self.text.is_empty() {
             return 1;
         }
-        let run = TextRun { len: self.text.len(), font: style::ui_font(gpui::FontWeight::NORMAL), color: Hsla::default(), background_color: None, underline: None, strikethrough: None };
+        let run = TextRun { len: self.text.len(), font: self.face(), color: Hsla::default(), background_color: None, underline: None, strikethrough: None, size: None };
         window
             .text_system()
             .shape_text(SharedString::from(self.text.clone()), px(self.font_size), &[run], Some(width), None)
@@ -323,6 +329,22 @@ impl TextField {
     pub fn font_size(mut self, size: f32) -> Self {
         self.font_size = size;
         self
+    }
+
+    /// Its text in `font` (else the UI's face).
+    pub fn font(mut self, font: gpui::Font) -> Self {
+        self.font = Some(font);
+        self
+    }
+
+    /// Takes at most `n` characters.
+    pub fn max_len(mut self, n: usize) -> Self {
+        self.max_len = Some(n);
+        self
+    }
+
+    fn face(&self) -> gpui::Font {
+        self.font.clone().unwrap_or_else(|| style::ui_font(gpui::FontWeight::NORMAL))
     }
 
     pub fn color(mut self, color: Hsla) -> Self {
@@ -444,6 +466,17 @@ impl TextField {
         if !self.enabled {
             return;
         }
+        // Past its limit, what's typed is cut short.
+        let new = match self.max_len {
+            Some(n) => {
+                let room = n.saturating_sub(self.text.chars().count() - self.text[range.clone()].chars().count());
+                match new.char_indices().nth(room) {
+                    Some((cut, _)) => &new[..cut],
+                    None => new,
+                }
+            }
+            None => new,
+        };
         // (A password keeps no copies to undo to.)
         if !self.password {
             self.undo.push((self.text.clone(), self.selected.clone()));
@@ -1013,7 +1046,7 @@ impl Element for FieldElement {
         let field = self.field.read(cx);
         let color = if field.enabled { field.color.unwrap_or(style::c(palette.document_text)) } else { style::disabled_text(&palette) };
         let text: SharedString = field.shown().into();
-        let run = TextRun { len: text.len(), font: style::ui_font(gpui::FontWeight::NORMAL), color, background_color: None, underline: None, strikethrough: None };
+        let run = TextRun { len: text.len(), font: field.face(), color, background_color: None, underline: None, strikethrough: None, size: None };
         // Coloured parts (not while composing, or a password's).
         let spans = match (&field.colors, field.marked.is_none() && !field.password && field.enabled) {
             (Some(f), true) => f(&text, &palette),
@@ -1115,8 +1148,8 @@ fn paint_multiline(entity: &Entity<TextField>, bounds: Bounds<Pixels>, window: &
     let field = entity.read(cx);
     let color = if field.enabled { field.color.unwrap_or(style::c(palette.document_text)) } else { style::disabled_text(&palette) };
     let text: SharedString = field.shown().into();
-    let font = style::ui_font(gpui::FontWeight::NORMAL);
-    let run = TextRun { len: text.len(), font: font.clone(), color, background_color: None, underline: None, strikethrough: None };
+    let font = field.face();
+    let run = TextRun { len: text.len(), font: font.clone(), color, background_color: None, underline: None, strikethrough: None, size: None };
     let runs = match field.marked.clone().filter(|_| !field.password) {
         Some(m) => [
             TextRun { len: m.start, ..run.clone() },
@@ -1196,7 +1229,7 @@ fn paint_multiline(entity: &Entity<TextField>, bounds: Bounds<Pixels>, window: &
             style::label(window, cx, origin.x, origin.y + lh / 2.0, style::Align::Left, hint.clone(), size_px, font.clone(), ink);
         }
         if focused && selected.is_empty() && caret_on {
-            let line = window.text_system().shape_line(SharedString::from(" "), px(size_px), &[TextRun { len: 1, font: font.clone(), color, background_color: None, underline: None, strikethrough: None }], None);
+            let line = window.text_system().shape_line(SharedString::from(" "), px(size_px), &[TextRun { len: 1, font: font.clone(), color, background_color: None, underline: None, strikethrough: None, size: None }], None);
             let h = line.ascent + line.descent;
             let x = style::snap_coord(window, origin.x + caret_at.x);
             let y = style::snap_coord(window, origin.y + caret_at.y + (lh - h) / 2.0);

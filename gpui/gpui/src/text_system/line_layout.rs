@@ -33,6 +33,8 @@ pub struct LineLayout {
 pub struct ShapedRun {
     /// The font id for this run
     pub font_id: FontId,
+    /// Olo: its size (the line's, unless the run had its own).
+    pub font_size: Pixels,
     /// The glyphs that make up this run
     pub glyphs: Vec<ShapedGlyph>,
 }
@@ -597,6 +599,8 @@ impl LineLayoutCache {
 pub struct FontRun {
     pub(crate) len: usize,
     pub(crate) font_id: FontId,
+    /// Olo: its own size, else the line's.
+    pub(crate) size: Option<Pixels>,
 }
 
 trait AsCacheKeyRef {

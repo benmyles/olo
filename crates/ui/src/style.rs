@@ -249,7 +249,7 @@ pub fn mono_font(weight: FontWeight) -> Font {
 /// The width of `text` in `font` at `size` points.
 pub fn text_width(window: &mut Window, text: impl Into<SharedString>, size: f32, font: Font) -> Pixels {
     let text = text.into();
-    let run = TextRun { len: text.len(), font, color: Hsla::default(), background_color: None, underline: None, strikethrough: None };
+    let run = TextRun { len: text.len(), font, color: Hsla::default(), background_color: None, underline: None, strikethrough: None, size: None };
     window.text_system().shape_line(text, px(size), &[run], None).width
 }
 
@@ -259,7 +259,7 @@ pub fn text_width(window: &mut Window, text: impl Into<SharedString>, size: f32,
 #[allow(clippy::too_many_arguments)]
 pub fn label(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pixels, align: Align, text: impl Into<SharedString>, font_size: f32, font: Font, color: Hsla) -> Bounds<Pixels> {
     let text = text.into();
-    let run = TextRun { len: text.len(), font, color, background_color: None, underline: None, strikethrough: None };
+    let run = TextRun { len: text.len(), font, color, background_color: None, underline: None, strikethrough: None, size: None };
     let line = window.text_system().shape_line(text.clone(), px(font_size), &[run], None);
     let left = match align {
         Align::Left => x,
@@ -280,7 +280,7 @@ pub fn label(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pixels, ali
 /// fits), measured as it's shaped, kerning and all.
 pub fn fit(window: &mut Window, text: SharedString, font_size: f32, font: &Font, max_width: Pixels) -> SharedString {
     let shape = |window: &mut Window, t: SharedString| {
-        let run = TextRun { len: t.len(), font: font.clone(), color: Hsla::default(), background_color: None, underline: None, strikethrough: None };
+        let run = TextRun { len: t.len(), font: font.clone(), color: Hsla::default(), background_color: None, underline: None, strikethrough: None, size: None };
         window.text_system().shape_line(t, px(font_size), &[run], None)
     };
     let line = shape(window, text.clone());
@@ -350,7 +350,7 @@ fn symbol_lift(window: &Window, part: &str, font: &Font) -> f32 {
     }
     let ts = window.text_system().clone();
     let size = px(PLAIN_SIZE);
-    let run = TextRun { len: part.len(), font: font.clone(), color: Hsla::default(), background_color: None, underline: None, strikethrough: None };
+    let run = TextRun { len: part.len(), font: font.clone(), color: Hsla::default(), background_color: None, underline: None, strikethrough: None, size: None };
     // The face it comes from (a fallback, often).
     let line = ts.shape_line(SharedString::from(part.to_owned()), size, &[run], None);
     let lift = match (line.runs.first().map(|r| ts.typographic_bounds(r.font_id, size, ch)), ts.typographic_bounds(ts.resolve_font(font), size, 'H')) {
@@ -580,4 +580,19 @@ pub fn selection_band(window: &mut Window, r: Bounds<Pixels>, palette: &Palette)
     let [red, green, blue, _] = palette.keyboard_navigation;
     fill_rect(window, r, c([red, green, blue, 40]));
     frame_rect(window, r, c(palette.keyboard_navigation));
+}
+
+/// A busy spinner (egui's, as the egui kit shows one) round `center`,
+/// `radius` points: an arc three points wide that turns and breathes.
+/// It moves: the caller asks for the next frame while it shows.
+pub fn spinner(window: &mut Window, center: Point<Pixels>, radius: f32, color: Hsla) {
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    let t = START.get_or_init(std::time::Instant::now).elapsed().as_secs_f32();
+    let r = radius - 2.0;
+    let (mut start, mut sweep) = (t * std::f32::consts::TAU, 240f32.to_radians() * t.sin());
+    if sweep < 0.0 {
+        start += sweep;
+        sweep = -sweep;
+    }
+    window.paint_sector(center, px(r - 1.5), px(r + 1.5), start, sweep.max(0.05), color);
 }

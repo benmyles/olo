@@ -1062,6 +1062,8 @@ impl Window {
                 layer_shell,
                 dialog,
                 session_lock_output,
+                background: window_background,
+                decorations: window_decorations.unwrap_or(WindowDecorations::Server),
                 #[cfg(target_os = "macos")]
                 tabbing_identifier,
             },
@@ -3332,7 +3334,7 @@ impl Window {
 
             self.next_frame.scene.insert_primitive(PolychromeSprite {
                 order: 0,
-                pad: 0,
+                nearest: 0,
                 grayscale: false,
                 bounds,
                 corner_radii: Default::default(),
@@ -3419,6 +3421,25 @@ impl Window {
         frame_index: usize,
         grayscale: bool,
     ) -> Result<()> {
+        self.paint_image_sampled(bounds, corner_radii, data, frame_index, grayscale, false)
+    }
+
+    /// Olo: [`Window::paint_image`], its texels shown as they are when
+    /// magnified (nearest), not blended with their neighbours: a small
+    /// picture (an icon) looked at closely keeps its pixels.
+    pub fn paint_image_nearest(&mut self, bounds: Bounds<Pixels>, data: Arc<RenderImage>) -> Result<()> {
+        self.paint_image_sampled(bounds, Corners::default(), data, 0, false, true)
+    }
+
+    fn paint_image_sampled(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        corner_radii: Corners<Pixels>,
+        data: Arc<RenderImage>,
+        frame_index: usize,
+        grayscale: bool,
+        nearest: bool,
+    ) -> Result<()> {
         self.invalidator.debug_assert_paint();
 
         let scale_factor = self.scale_factor();
@@ -3446,7 +3467,7 @@ impl Window {
 
         self.next_frame.scene.insert_primitive(PolychromeSprite {
             order: 0,
-            pad: 0,
+            nearest: u32::from(nearest),
             grayscale,
             bounds: bounds
                 .map_origin(|origin| origin.floor())
@@ -4406,6 +4427,13 @@ impl Window {
     /// Focus the current window and bring it to the foreground at the platform level.
     pub fn activate_window(&self) {
         self.platform_window.activate();
+    }
+
+    /// Olo: keeps the screen from dimming, locking or sleeping while the
+    /// window shows (a playing video), until called with `false` or the
+    /// window closes.
+    pub fn set_keep_awake(&self, on: bool) {
+        self.platform_window.set_keep_awake(on);
     }
 
     /// Olo: draws `font`'s printable characters at `font_size` for this

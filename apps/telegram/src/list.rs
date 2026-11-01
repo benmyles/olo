@@ -651,7 +651,7 @@ fn chat_row(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, ch: &Chat, img
     let mut runs: Vec<TextRun> = Vec::new();
     let mut push = |s: &str, color: Hsla| {
         text.push_str(s);
-        runs.push(TextRun { len: s.len(), font: normal.clone(), color, background_color: None, underline: None, strikethrough: None });
+        runs.push(TextRun { len: s.len(), font: normal.clone(), color, background_color: None, underline: None, strikethrough: None, size: None });
     };
     if let Some(t) = &typing {
         push(t, if selected { ink } else { accent });

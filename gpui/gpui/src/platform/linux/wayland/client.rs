@@ -67,6 +67,8 @@ use wayland_protocols::xdg::dialog::v1::client::{xdg_dialog_v1, xdg_wm_dialog_v1
 use wayland_protocols::ext::session_lock::v1::client::{ext_session_lock_manager_v1, ext_session_lock_surface_v1, ext_session_lock_v1};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 use wayland_protocols_plasma::blur::client::{org_kde_kwin_blur, org_kde_kwin_blur_manager};
+use wayland_protocols::wp::idle_inhibit::zv1::client::{zwp_idle_inhibit_manager_v1, zwp_idle_inhibitor_v1};
+use wayland_protocols::xdg::xdg_output::zv1::client::{zxdg_output_manager_v1, zxdg_output_v1};
 use xkbcommon::xkb::ffi::XKB_KEYMAP_FORMAT_TEXT_V1;
 use xkbcommon::xkb::{self, KEYMAP_COMPILE_NO_FLAGS, Keycode};
 
@@ -133,6 +135,10 @@ pub struct Globals {
     pub layer_shell: Option<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
     pub blur_manager: Option<org_kde_kwin_blur_manager::OrgKdeKwinBlurManager>,
     pub text_input_manager: Option<zwp_text_input_manager_v3::ZwpTextInputManagerV3>,
+    /// Olo: keeping the screen awake while a window shows (a video).
+    pub idle_inhibit_manager: Option<zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1>,
+    /// Olo: each display's size in points (a fractional scale's too).
+    pub xdg_output_manager: Option<zxdg_output_manager_v1::ZxdgOutputManagerV1>,
     pub executor: ForegroundExecutor,
 }
 
@@ -174,6 +180,8 @@ impl Globals {
             session_lock_manager: globals.bind(&qh, 1..=1, ()).ok(),
             blur_manager: globals.bind(&qh, 1..=1, ()).ok(),
             text_input_manager: globals.bind(&qh, 1..=1, ()).ok(),
+            idle_inhibit_manager: globals.bind(&qh, 1..=1, ()).ok(),
+            xdg_output_manager: globals.bind(&qh, 3..=3, ()).ok(),
             executor,
             qh,
         }
@@ -190,6 +198,8 @@ pub struct InProgressOutput {
     subpixel: Option<wl_output::Subpixel>,
     transform: Option<wl_output::Transform>,
     refresh_mhz: i32,
+    logical_position: Option<(i32, i32)>,
+    logical_size: Option<(i32, i32)>,
 }
 
 impl InProgressOutput {
@@ -204,6 +214,7 @@ impl InProgressOutput {
                 subpixel: self.subpixel,
                 transform: self.transform,
                 refresh_mhz: self.refresh_mhz,
+                logical: self.logical_position.zip(self.logical_size).map(|((x, y), (w, h))| [x, y, w, h]),
             })
         } else {
             None
@@ -225,6 +236,20 @@ pub struct Output {
     /// Olo: its refresh rate in millihertz (0 if unknown): how long a
     /// frame shows, for easing a wheel's notches in.
     pub refresh_mhz: i32,
+    /// Olo: where it is and how big, in points (x, y, width, height),
+    /// as xdg-output says: at a fractional scale, not its mode over the
+    /// whole number wl_output gives.
+    pub logical: Option<[i32; 4]>,
+}
+
+impl Output {
+    /// Where it is and how big, in points.
+    pub fn bounds_in_points(&self) -> Bounds<Pixels> {
+        match self.logical {
+            Some([x, y, w, h]) => Bounds::new(point(px(x as f32), px(y as f32)), size(px(w as f32), px(h as f32))),
+            None => self.bounds.to_pixels(self.scale as f32),
+        }
+    }
 }
 
 impl Output {
@@ -650,6 +675,7 @@ impl WaylandClient {
         let mut seat: Option<wl_seat::WlSeat> = None;
         #[allow(clippy::mutable_key_type)]
         let mut in_progress_outputs = HashMap::default();
+        let mut wl_outputs = Vec::new();
         globals.contents().with_list(|list| {
             for global in list {
                 match &global.interface[..] {
@@ -669,6 +695,7 @@ impl WaylandClient {
                             (),
                         );
                         in_progress_outputs.insert(output.id(), InProgressOutput::default());
+                        wl_outputs.push(output);
                     }
                     _ => {}
                 }
@@ -701,6 +728,12 @@ impl WaylandClient {
             qh.clone(),
             seat.clone(),
         );
+        // Olo: each display's size in points, read with the rest below.
+        if let Some(manager) = &globals.xdg_output_manager {
+            for output in &wl_outputs {
+                manager.get_xdg_output(output, &qh, output.id());
+            }
+        }
 
         let data_device = globals
             .data_device_manager
@@ -820,7 +853,7 @@ impl LinuxClient for WaylandClient {
                 Rc::new(WaylandDisplay {
                     id: id.clone(),
                     name: output.name.clone(),
-                    bounds: output.bounds.to_pixels(output.scale as f32),
+                    bounds: output.bounds_in_points(),
                 }) as Rc<dyn PlatformDisplay>
             })
             .collect()
@@ -836,7 +869,7 @@ impl LinuxClient for WaylandClient {
                     Rc::new(WaylandDisplay {
                         id: object_id.clone(),
                         name: output.name.clone(),
-                        bounds: output.bounds.to_pixels(output.scale as f32),
+                        bounds: output.bounds_in_points(),
                     }) as Rc<dyn PlatformDisplay>
                 })
             })
@@ -924,9 +957,9 @@ impl LinuxClient for WaylandClient {
         };
         let opens_on = match (over, layer_output.as_ref().or(session_lock.as_ref().map(|(_, o)| o))) {
             (Some((scale, Some(display))), _) => (Some(scale), vec![display]),
-            (Some((scale, None)), _) => (Some(scale), state.outputs.values().cloned().collect()),
-            (None, Some(output)) => (None, state.outputs.get(&output.id()).cloned().into_iter().collect()),
-            (None, None) => (None, state.outputs.values().cloned().collect()),
+            (Some((scale, None)), _) => (Some(scale), state.outputs.iter().map(|(id, o)| (id.clone(), o.clone())).collect()),
+            (None, Some(output)) => (None, state.outputs.get(&output.id()).map(|o| (output.id(), o.clone())).into_iter().collect()),
+            (None, None) => (None, state.outputs.iter().map(|(id, o)| (id.clone(), o.clone())).collect()),
         };
         if state.gpu_context.is_none() {
             state.gpu_context = Some(BladeContext::new()?);
@@ -1166,6 +1199,9 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for WaylandClientStat
                     state
                         .in_progress_outputs
                         .insert(output.id(), InProgressOutput::default());
+                    if let Some(manager) = &state.globals.xdg_output_manager {
+                        manager.get_xdg_output(&output, qh, output.id());
+                    }
                 }
                 _ => {}
             },
@@ -1189,8 +1225,26 @@ delegate_noop!(WaylandClientStatePtr: ignore wl_buffer::WlBuffer);
 delegate_noop!(WaylandClientStatePtr: ignore wl_region::WlRegion);
 delegate_noop!(WaylandClientStatePtr: ignore wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1);
 delegate_noop!(WaylandClientStatePtr: ignore zxdg_decoration_manager_v1::ZxdgDecorationManagerV1);
+delegate_noop!(WaylandClientStatePtr: ignore zxdg_output_manager_v1::ZxdgOutputManagerV1);
+
+/// Olo: a display's place and size in points (applied at its
+/// wl_output's `done`).
+impl Dispatch<zxdg_output_v1::ZxdgOutputV1, ObjectId> for WaylandClientStatePtr {
+    fn event(this: &mut Self, _: &zxdg_output_v1::ZxdgOutputV1, event: zxdg_output_v1::Event, output: &ObjectId, _: &Connection, _: &QueueHandle<Self>) {
+        let client = this.get_client();
+        let mut state = client.borrow_mut();
+        let Some(in_progress) = state.in_progress_outputs.get_mut(output) else { return };
+        match event {
+            zxdg_output_v1::Event::LogicalPosition { x, y } => in_progress.logical_position = Some((x, y)),
+            zxdg_output_v1::Event::LogicalSize { width, height } => in_progress.logical_size = Some((width, height)),
+            _ => {}
+        }
+    }
+}
 delegate_noop!(WaylandClientStatePtr: ignore org_kde_kwin_blur_manager::OrgKdeKwinBlurManager);
 delegate_noop!(WaylandClientStatePtr: ignore zwp_text_input_manager_v3::ZwpTextInputManagerV3);
+delegate_noop!(WaylandClientStatePtr: ignore zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1);
+delegate_noop!(WaylandClientStatePtr: ignore zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1);
 delegate_noop!(WaylandClientStatePtr: ignore org_kde_kwin_blur::OrgKdeKwinBlur);
 delegate_noop!(WaylandClientStatePtr: ignore wp_viewporter::WpViewporter);
 delegate_noop!(WaylandClientStatePtr: ignore wp_viewport::WpViewport);
@@ -1284,9 +1338,12 @@ impl Dispatch<wl_output::WlOutput, ()> for WaylandClientStatePtr {
                 in_progress_output.subpixel = subpixel.into_result().ok();
                 in_progress_output.transform = transform.into_result().ok();
             }
-            wl_output::Event::Mode { width, height, refresh, .. } => {
-                in_progress_output.size = Some(size(DevicePixels(width), DevicePixels(height)));
-                in_progress_output.refresh_mhz = refresh;
+            // Olo: every mode it offers comes; the one it's in is marked.
+            wl_output::Event::Mode { flags, width, height, refresh } => {
+                if flags.into_result().is_ok_and(|f| f.contains(wl_output::Mode::Current)) {
+                    in_progress_output.size = Some(size(DevicePixels(width), DevicePixels(height)));
+                    in_progress_output.refresh_mhz = refresh;
+                }
             }
             // (Olo: kept, so later changes are followed too.)
             wl_output::Event::Done => {

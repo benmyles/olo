@@ -105,6 +105,8 @@ pub struct WaylandWindowState {
     app_id: Option<String>,
     appearance: WindowAppearance,
     blur: Option<org_kde_kwin_blur::OrgKdeKwinBlur>,
+    /// Olo: the screen kept awake while it shows.
+    inhibitor: Option<wayland_protocols::wp::idle_inhibit::zv1::client::zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1>,
     /// A window's role (None for a popup, which has `popup`).
     toplevel: Option<xdg_toplevel::XdgToplevel>,
     popup: Option<xdg_popup::XdgPopup>,
@@ -113,7 +115,7 @@ pub struct WaylandWindowState {
     display: Option<(ObjectId, Output)>,
     /// Olo: the displays it may open on (those at the scale the
     /// compositor gave it), its text drawn for until it's on one.
-    may_open_on: Vec<Output>,
+    may_open_on: Vec<(ObjectId, Output)>,
     globals: Globals,
     renderer: BladeRenderer,
     bounds: Bounds<Pixels>,
@@ -212,6 +214,7 @@ impl WaylandWindowState {
         globals: Globals,
         gpu_context: &BladeContext,
         options: WindowParams,
+        scale: Option<f32>,
     ) -> anyhow::Result<Self> {
         let renderer = {
             let raw_window = RawWindow {
@@ -223,13 +226,20 @@ impl WaylandWindowState {
                     .display_ptr()
                     .cast::<c_void>(),
             };
+            // Olo: made at the size and transparency it will be drawn at
+            // (its device size, once the scale is known; opaque as
+            // `update_window` will have it, menus too): a swapchain made
+            // again costs ~3 ms, and with another alpha its pipelines too,
+            // ~10 ms more, each window opened.
+            let device = options.bounds.size.to_device_pixels(scale.unwrap_or(1.0));
+            let opaque = options.decorations == WindowDecorations::Server && options.background == WindowBackgroundAppearance::Opaque;
             let config = BladeSurfaceConfig {
                 size: gpu::Extent {
-                    width: options.bounds.size.width.0 as u32,
-                    height: options.bounds.size.height.0 as u32,
+                    width: device.width.0 as u32,
+                    height: device.height.0 as u32,
                     depth: 1,
                 },
-                transparent: true,
+                transparent: !opaque,
             };
             BladeRenderer::new(gpu_context, &raw_window, config)?
         };
@@ -244,6 +254,7 @@ impl WaylandWindowState {
             decoration,
             app_id: None,
             blur: None,
+            inhibitor: None,
             toplevel,
             popup,
             viewport,
@@ -291,7 +302,7 @@ impl WaylandWindowState {
         if let Some((_, output)) = self.display.as_ref() {
             return output.text_rendering(lcd_possible);
         }
-        let mut each = self.may_open_on.iter().map(|output| output.text_rendering(lcd_possible));
+        let mut each = self.may_open_on.iter().map(|(_, output)| output.text_rendering(lcd_possible));
         match each.next() {
             Some(first) if each.all(|r| r == first) => first,
             _ => crate::TextRendering::default(),
@@ -415,7 +426,7 @@ impl WaylandWindow {
         popup_parent: Option<(PopupParent, u32)>,
         layer_output: Option<wl_output::WlOutput>,
         session_lock: Option<(ext_session_lock_v1::ExtSessionLockV1, wl_output::WlOutput)>,
-        (scale, displays): (Option<f32>, Vec<Output>),
+        (scale, displays): (Option<f32>, Vec<(ObjectId, Output)>),
     ) -> anyhow::Result<(Self, ObjectId)> {
         let surface = globals.compositor.create_surface(&globals.qh, ());
         // Olo: a lock surface covers its output while the session is
@@ -573,13 +584,13 @@ impl WaylandWindow {
         layer_surface: Option<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
         toplevel: Option<xdg_toplevel::XdgToplevel>,
         popup: Option<xdg_popup::XdgPopup>,
-        (scale, displays): (Option<f32>, Vec<Output>),
+        (scale, displays): (Option<f32>, Vec<(ObjectId, Output)>),
     ) -> anyhow::Result<(Self, ObjectId)> {
         let lock_surface = params.kind == WindowKind::SessionLock;
         // Olo: the scale it's drawn at (a popup's, its window's), asked
         // before its first frame (else drawn at 1 first and again when the
         // scale came: 6–8 ms wasted opening a window, glyphs drawn for no
-        // scale it's on); answered while the renderer is made.
+        // scale it's on), and its renderer made at it.
         let probe = match scale {
             Some(_) => None,
             None => globals
@@ -611,6 +622,9 @@ impl WaylandWindow {
             }
         }
 
+        // (The probe's answer is a roundtrip, 0.1–0.2 ms: had first, the
+        // renderer is made at the scale.)
+        let scale = scale.or_else(|| probe.and_then(ScaleProbe::answer));
         let mut state = WaylandWindowState::new(
             handle,
             surface.clone(),
@@ -625,10 +639,10 @@ impl WaylandWindow {
             globals,
             gpu_context,
             params,
+            scale,
         )?;
-        let scale = scale.or_else(|| probe.and_then(ScaleProbe::answer));
         // (wl_output's scales are whole: a 1.5× display's is 2.)
-        let at_scale = |output: &Output| scale.is_none_or(|scale| output.scale == scale.ceil() as i32);
+        let at_scale = |(_, output): &(ObjectId, Output)| scale.is_none_or(|scale| output.scale == scale.ceil() as i32);
         state.may_open_on = if displays.iter().any(at_scale) { displays.into_iter().filter(at_scale).collect() } else { displays };
         let text_rendering = state.text_rendering();
         if let Some(fractional_scale_manager) = state.globals.fractional_scale_manager.as_ref() {
@@ -674,9 +688,9 @@ impl WaylandWindowStatePtr {
 
     /// Olo: the scale it's drawn at and the display it's on (if it's on
     /// one yet): a popup's over it.
-    pub fn scale_and_display(&self) -> (f32, Option<Output>) {
+    pub fn scale_and_display(&self) -> (f32, Option<(ObjectId, Output)>) {
         let state = self.state.borrow();
-        (state.scale, state.display.as_ref().map(|(_, output)| output.clone()))
+        (state.scale, state.display.clone())
     }
 
     /// What a popup opens over, on this window.
@@ -1476,11 +1490,17 @@ impl PlatformWindow for WaylandWindow {
 
     fn display(&self) -> Option<Rc<dyn PlatformDisplay>> {
         let state = self.borrow();
-        state.display.as_ref().map(|(id, display)| {
+        // Olo: before it's on one, the one it will open on, if that's
+        // known (the only display; a popup's window's).
+        let only = || match state.may_open_on.as_slice() {
+            [one] => Some(one),
+            _ => None,
+        };
+        state.display.as_ref().or_else(only).map(|(id, display)| {
             Rc::new(WaylandDisplay {
                 id: id.clone(),
                 name: display.name.clone(),
-                bounds: display.bounds.to_pixels(state.scale),
+                bounds: if display.logical.is_some() { display.bounds_in_points() } else { display.bounds.to_pixels(state.scale) },
             }) as Rc<dyn PlatformDisplay>
         })
     }
@@ -1568,6 +1588,19 @@ impl PlatformWindow for WaylandWindow {
             toplevel.set_app_id(app_id.to_owned());
         }
         state.app_id = Some(app_id.to_owned());
+    }
+
+    fn set_keep_awake(&self, on: bool) {
+        let mut state = self.borrow_mut();
+        match (on, state.inhibitor.take()) {
+            (true, Some(i)) => state.inhibitor = Some(i),
+            (true, None) => {
+                let made = state.globals.idle_inhibit_manager.as_ref().map(|m| m.create_inhibitor(&state.surface, &state.globals.qh, ()));
+                state.inhibitor = made;
+            }
+            (false, Some(i)) => i.destroy(),
+            (false, None) => {}
+        }
     }
 
     fn set_background_appearance(&self, background_appearance: WindowBackgroundAppearance) {

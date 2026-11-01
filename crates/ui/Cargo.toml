@@ -15,6 +15,7 @@ serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
+fast_image_resize = "5"
 futures = "0.3"
 image = { version = "0.25", default-features = false }
 libc = "0.2"

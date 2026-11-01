@@ -259,7 +259,7 @@ as they land (with the commit), add new ones as they come up.
      session lock, xdg-dialog alerts, xdg-foreign parents, idle
      inhibition, menus' scrolling and press-drag-release. (Done since:
      layer shell, the hints protocol by surface, menus' icons and key
-     combos, drags out.)
+     combos, drags out, idle inhibition.)
   4. The apps one by one, small first (DeskCalc, Screenshot, the lock
      screen, Preferences' panels) to the largest (Terminal, StyledEdit,
      Tracker), each checked at every scale and theme and benchmarked;
@@ -280,7 +280,14 @@ as they land (with the commit), add new ones as they come up.
      states, pills on baselines, child windows, activation tokens and
      agent nodes kept with cached views; its panes cached views of
      their own: 96 MB against 133, 8 frames for 30 pointer moves over
-     messages against 157). Next: Viewer, Notifications, the portal,
+     messages against 157), the Viewer (with the GPUI kit's
+     `ImageView`, olo-preview's GPUI views (`ui::PreviewView`,
+     `RichView`, `TableView`), runs at sizes of their own, nearest
+     sampling and keeping the screen awake; against egui on release at
+     2×: 115 MB against 155 for a photo, 61 against 77 for Markdown, 64
+     against 56 for a PDF; 1–3 frames for 30 pointer moves against
+     ~156; scrolling's slowest frame 2.6–3.8 ms against 1.3–1.9, within
+     a 120 Hz frame). Next: Notifications, the portal,
      Agent Screens, StyledEdit, Activity Monitor, Tracker, Passwords,
      Preferences (with the screen saver and its modules) and Terminal.
      (`olo-preview`'s decoding no longer needs a toolkit: pictures are
@@ -305,6 +312,22 @@ as they land (with the commit), add new ones as they come up.
      the first time at 0.06–0.4 ms each.
      Deskbar's battery and Wi-Fi now follow UPower's and
      NetworkManager's signals (idle: 0 wakeups a second, from 7–9).
+   - **A window opens 15–18 ms sooner** (found porting the Viewer,
+     2026-11-01: its first frame came 23 ms after egui's). *Done*: its
+     renderer is made once, at its device size and the transparency it
+     keeps (it was made transparent at scale 1, then made again
+     opaque, a second set of pipelines with it, then again at its
+     size), and the pipelines are made side by side (10.4 → 4.5 ms).
+     The Viewer's first frame presented 25–31 ms after exec, from 43;
+     DeskCalc pixel for pixel the same. Left: egui's first frame is
+     still ~5 ms sooner (its device and one pipeline).
+   - **Painting a glyph costs ~0.45 µs** (measured scrolling the
+     Viewer's code view, 2026-11-01: 1,500 glyphs, 0.68 ms of a 2 ms
+     frame; egui's frames scrolling the same were 1.2 ms on average,
+     GPUI's 2.3). Each glyph looks up its raster bounds and its atlas
+     tile (two locked maps) every frame; a shaped line could keep them,
+     for its origin's subpixel phase, scale and rendering (the atlas's
+     generation checked), and paint as a copy.
 - **Text and everything drawn, better than Apple's** (Ben, 2026-10-31):
   "make sure our text system is SOTA -- rivalling apple's or anything
   else out there. perfect looking, adorably beautiful text is essential";

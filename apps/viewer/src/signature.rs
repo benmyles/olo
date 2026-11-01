@@ -4,13 +4,15 @@
 
 use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
-use olo_kit::{
-    egui::{self, Align, Color32, Pos2, Rect, Sense, Stroke, Ui, pos2, vec2},
+use olo_ui::{
+    agent,
+    gpui::{self, Context, CursorStyle, FocusHandle, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Point, Render, Styled as _, Window, canvas, div, point, px, rgb},
     metrics as m,
-    style::{self, c},
+    style::{self, Align},
+    theme,
     widgets::Button,
 };
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Signature {
@@ -23,7 +25,7 @@ pub struct Signature {
 }
 
 fn store_path() -> PathBuf {
-    olo_kit::config_dir().join("signatures.json")
+    olo_ui::config_dir().join("signatures.json")
 }
 
 pub fn load() -> Vec<Signature> {
@@ -48,18 +50,18 @@ pub fn store(all: &[Signature]) {
 /// A name for the menu: "Signature from 25 Oct 2026, 14:03".
 pub fn label(s: &Signature, n: usize) -> String {
     let t = std::time::UNIX_EPOCH + std::time::Duration::from_secs(s.created);
-    format!("Signature {} — {}", n + 1, olo_kit::files::format_time(Some(t)))
+    format!("Signature {} — {}", n + 1, olo_ui::files::format_time(Some(t)))
 }
 
-/// Normalise pad strokes (screen points, y down) into a signature.
-pub fn from_strokes(strokes: &[Vec<Pos2>]) -> Option<Signature> {
+/// Normalise pad strokes (points, y down) into a signature.
+pub fn from_strokes(strokes: &[Vec<[f32; 2]>]) -> Option<Signature> {
     let pts = strokes.iter().flatten();
     let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
     for p in pts {
-        x0 = x0.min(p.x);
-        y0 = y0.min(p.y);
-        x1 = x1.max(p.x);
-        y1 = y1.max(p.y);
+        x0 = x0.min(p[0]);
+        y0 = y0.min(p[1]);
+        x1 = x1.max(p[0]);
+        y1 = y1.max(p[1]);
     }
     if x0 > x1 {
         return None;
@@ -71,102 +73,152 @@ pub fn from_strokes(strokes: &[Vec<Pos2>]) -> Option<Signature> {
     let strokes = strokes
         .iter()
         .filter(|s| !s.is_empty())
-        .map(|s| s.iter().map(|p| [(p.x - x0) / w, 1.0 - (p.y - y0) / h]).collect())
+        .map(|s| s.iter().map(|p| [(p[0] - x0) / w, 1.0 - (p[1] - y0) / h]).collect())
         .collect();
     let created = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
     Some(Signature { strokes, aspect: w / h, created })
 }
 
-pub enum PadResult {
-    Done(Signature),
-    Cancel,
-}
-
-/// The New Signature window: sign on the line, then Done.
-#[derive(Default)]
+/// The New Signature window: sign on the line, then Done (`done` gets
+/// the signature, or None for Cancel).
 pub struct Pad {
-    strokes: Vec<Vec<Pos2>>,
+    strokes: Vec<Vec<[f32; 2]>>,
     drawing: bool,
+    /// Where the pad was drawn (window points).
+    area: gpui::Bounds<gpui::Pixels>,
+    focus: FocusHandle,
+    done: Option<Box<dyn FnOnce(Option<Signature>, &mut Window, &mut gpui::App)>>,
 }
 
-pub const PAD_SIZE: (u32, u32) = (480, 250);
+pub const PAD_SIZE: (f32, f32) = (480.0, 250.0);
+/// The ink on the pad: always dark on white, whatever the look, since it
+/// stands for the page.
+const PAD_INK: u32 = 0x0a143c;
 
 impl Pad {
-    pub fn ui(&mut self, ui: &mut Ui) -> Option<PadResult> {
-        let p = style::palette(ui.ctx());
-        let full = ui.max_rect().shrink(m::WINDOW_INSET);
-        let buttons_top = full.bottom() - m::CONTROL_HEIGHT;
-        let pad = Rect::from_min_max(full.min, pos2(full.right(), buttons_top - m::WINDOW_INSET));
-        let painter = ui.painter().clone();
-        // Paper: always white with dark ink, whatever the theme, since it
-        // stands for the page.
-        painter.rect_filled(pad, 0.0, Color32::WHITE);
-        style::sunken(&painter, pad.expand(2.0), &p, false);
-        let base_y = pad.bottom() - pad.height() * 0.28;
-        let line_l = pad.left() + 28.0;
-        style::hline(&painter, line_l, pad.right() - 20.0, base_y, Color32::from_gray(170));
-        style::label(&painter, pad.left() + 12.0, base_y - 8.0, Align::Min, "×", style::plain_font(), Color32::from_gray(150));
-        if self.strokes.is_empty() {
-            style::label(
-                &painter,
-                pad.center().x,
-                pad.bottom() - pad.height() * 0.14,
-                Align::Center,
-                "Sign on the line with the trackpad or mouse",
-                style::plain_font(),
-                Color32::from_gray(140),
-            );
+    pub fn new(cx: &mut Context<Self>, done: impl FnOnce(Option<Signature>, &mut Window, &mut gpui::App) + 'static) -> Pad {
+        Pad { strokes: Vec::new(), drawing: false, area: Default::default(), focus: cx.focus_handle(), done: Some(Box::new(done)) }
+    }
+
+    fn finish(&mut self, sig: Option<Signature>, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(done) = self.done.take() {
+            done(sig, window, cx);
         }
-        let resp = ui.interact(pad, ui.make_persistent_id("pad"), Sense::drag()).on_hover_cursor(egui::CursorIcon::Crosshair);
-        if resp.drag_started() {
-            self.strokes.push(Vec::new());
-            self.drawing = true;
-        }
-        if self.drawing
-            && let Some(pos) = ui.input(|i| i.pointer.latest_pos())
-            && let Some(s) = self.strokes.last_mut()
+    }
+
+    fn add(&mut self, at: Point<gpui::Pixels>) {
+        let a = self.area;
+        let x = f32::from(at.x.clamp(a.left(), a.right()) - a.left());
+        let y = f32::from(at.y.clamp(a.top(), a.bottom()) - a.top());
+        if let Some(s) = self.strokes.last_mut()
+            && s.last().is_none_or(|l| (l[0] - x).hypot(l[1] - y) > 0.8)
         {
-            let pos = pos.clamp(pad.min, pad.max);
-            if s.last().is_none_or(|l| l.distance(pos) > 0.8) {
-                s.push(pos);
-            }
+            s.push([x, y]);
         }
-        if resp.drag_stopped() {
-            self.drawing = false;
+    }
+}
+
+impl Render for Pad {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if !self.focus.is_focused(window) && self.done.is_some() {
+            window.focus(&self.focus);
         }
-        let ink = Color32::from_rgb(10, 20, 60);
-        let clipped = painter.with_clip_rect(pad);
-        for s in &self.strokes {
-            match s.len() {
-                0 => {}
-                1 => {
-                    clipped.circle_filled(s[0], 1.2, ink);
+        let me = cx.entity();
+        let strokes = self.strokes.clone();
+        let paper = canvas(
+            |_, _, _| {},
+            move |b, _, window, cx| {
+                let p = theme::palette(cx);
+                me.update(cx, |pad, _| pad.area = b);
+                window.paint_quad(gpui::fill(b, gpui::white()));
+                let well = gpui::Bounds::from_corners(b.origin - point(px(2.0), px(2.0)), b.bottom_right() + point(px(2.0), px(2.0)));
+                style::sunken(window, well, &p, false);
+                let base_y = b.bottom() - b.size.height * 0.28;
+                style::hline(window, b.left() + px(28.0), b.right() - px(20.0), base_y, rgb(0xaaaaaa).into());
+                style::label(window, cx, b.left() + px(12.0), base_y - px(8.0), Align::Left, "×", style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), rgb(0x969696).into());
+                if strokes.is_empty() {
+                    let hint = "Sign on the line with the trackpad or mouse";
+                    let at = style::label(window, cx, b.center().x, b.bottom() - b.size.height * 0.14, Align::Center, hint, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), rgb(0x8c8c8c).into());
+                    agent::record(window, cx, agent::Node::label(hint, at));
                 }
-                _ => {
-                    clipped.add(egui::Shape::line(s.clone(), Stroke::new(2.4, ink)));
+                let ink: gpui::Hsla = rgb(PAD_INK).into();
+                window.with_content_mask(Some(gpui::ContentMask { bounds: b }), |window| {
+                    for s in &strokes {
+                        let at = |p: &[f32; 2]| point(b.left() + px(p[0]), b.top() + px(p[1]));
+                        match s.len() {
+                            0 => {}
+                            1 => window.paint_sector(at(&s[0]), px(0.0), px(1.2), 0.0, std::f32::consts::TAU, ink),
+                            _ => {
+                                for w in s.windows(2) {
+                                    window.paint_segment(at(&w[0]), at(&w[1]), px(2.4), true, ink);
+                                }
+                            }
+                        }
+                    }
+                });
+                agent::record(window, cx, agent::Node { role: "Canvas", name: Some("Signature".into()), bounds: b, enabled: true, clickable: true, ..Default::default() });
+            },
+        )
+        .size_full();
+        let pad_area = div()
+            .id("pad")
+            .flex_1()
+            .min_h_0()
+            .cursor(CursorStyle::Crosshair)
+            .child(paper)
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|pad, e: &MouseDownEvent, _, cx| {
+                    pad.strokes.push(Vec::new());
+                    pad.drawing = true;
+                    pad.add(e.position);
+                    cx.notify();
+                }),
+            )
+            .on_mouse_move(cx.listener(|pad, e: &MouseMoveEvent, _, cx| {
+                if pad.drawing && e.pressed_button == Some(MouseButton::Left) {
+                    pad.add(e.position);
+                    cx.notify();
                 }
-            }
-        }
-        // Clear on the left; Cancel and Done on the right.
-        let mut result = None;
-        let bw = m::BUTTON_MIN_WIDTH;
-        let row = |x: f32| Rect::from_min_size(pos2(x, buttons_top), vec2(bw, m::CONTROL_HEIGHT));
-        if ui.put(row(full.left()), Button::new("Clear")).clicked() {
-            self.strokes.clear();
-        }
-        if ui.put(row(full.right() - 2.0 * bw - m::SPACING), Button::new("Cancel")).clicked()
-            || ui.input(|i| i.key_pressed(egui::Key::Escape))
-        {
-            result = Some(PadResult::Cancel);
-        }
-        let done = ui.add_enabled_ui(!self.strokes.is_empty(), |ui| ui.put(row(full.right() - bw), Button::new("Done").default(true)));
-        if done.inner.clicked()
-            && let Some(sig) = from_strokes(&self.strokes)
-        {
-            result = Some(PadResult::Done(sig));
-        }
-        let _ = c;
-        result
+            }))
+            .on_mouse_up(MouseButton::Left, cx.listener(|pad, _: &MouseUpEvent, _, _| pad.drawing = false));
+        let (clear, cancel, done) = (cx.entity(), cx.entity(), cx.entity());
+        let signed = !self.strokes.is_empty();
+        let buttons = div()
+            .flex()
+            .items_center()
+            .h(px(m::CONTROL_HEIGHT))
+            .child(Button::new("Clear").on_click(move |_, cx| {
+                clear.update(cx, |pad, cx| {
+                    pad.strokes.clear();
+                    cx.notify();
+                })
+            }))
+            .child(div().flex_1())
+            .child(Button::new("Cancel").on_click(move |window, cx| cancel.update(cx, |pad, cx| pad.finish(None, window, cx))))
+            .child(div().w(px(m::SPACING)))
+            .child(Button::new("Done").default(true).enabled(signed).on_click(move |window, cx| {
+                done.update(cx, |pad, cx| {
+                    if let Some(sig) = from_strokes(&pad.strokes) {
+                        pad.finish(Some(sig), window, cx);
+                    }
+                })
+            }));
+        div()
+            .size_full()
+            .track_focus(&self.focus)
+            .p(px(m::WINDOW_INSET))
+            .flex()
+            .flex_col()
+            .gap(px(m::WINDOW_INSET))
+            .on_key_down(cx.listener(|pad, e: &KeyDownEvent, window, cx| {
+                if e.keystroke.key == "escape" {
+                    pad.finish(None, window, cx);
+                    cx.stop_propagation();
+                }
+            }))
+            .child(pad_area)
+            .child(buttons)
     }
 }
 
@@ -176,7 +228,7 @@ mod tests {
 
     #[test]
     fn normalises() {
-        let s = from_strokes(&[vec![pos2(10.0, 50.0), pos2(110.0, 10.0)]]).unwrap();
+        let s = from_strokes(&[vec![[10.0, 50.0], [110.0, 10.0]]]).unwrap();
         assert!((s.aspect - 104.0 / 44.0).abs() < 1e-3);
         let [a, b] = [s.strokes[0][0], s.strokes[0][1]];
         assert!(a[0] < 0.05 && a[1] < 0.1, "{a:?}");

@@ -221,7 +221,7 @@ pub fn line(window: &mut Window, text: &str, size: f32, font: Font, color: Hsla,
         Some(w) => style::fit(window, text, size, &font, px(w.max(10.0))),
         None => text,
     };
-    let run = TextRun { len: text.len(), font, color, background_color: None, underline: None, strikethrough: None };
+    let run = TextRun { len: text.len(), font, color, background_color: None, underline: None, strikethrough: None, size: None };
     let shaped = window.text_system().shape_line(text, px(size), &[run], None);
     Line { w: f32::from(shaped.width), h: line_height(size), shaped }
 }
@@ -265,7 +265,7 @@ impl Para {
 
     /// One run of `color` over all of `text`.
     pub fn plain(window: &mut Window, text: &str, size: f32, font: Font, color: Hsla, width: f32, lines_at_most: Option<usize>) -> Para {
-        let run = TextRun { len: text.len(), font, color, background_color: None, underline: None, strikethrough: None };
+        let run = TextRun { len: text.len(), font, color, background_color: None, underline: None, strikethrough: None, size: None };
         Para::new(window, text, size, &[run], width, lines_at_most)
     }
 
@@ -383,7 +383,7 @@ pub fn text_runs(m: &Message, look: &Look, revealed: bool) -> Vec<TextRun> {
         if a >= b || !text.is_char_boundary(a) || !text.is_char_boundary(b) {
             continue;
         }
-        let mut run = TextRun { len: b - a, font: font(FontWeight::NORMAL), color: look.text, background_color: None, underline: None, strikethrough: None };
+        let mut run = TextRun { len: b - a, font: font(FontWeight::NORMAL), color: look.text, background_color: None, underline: None, strikethrough: None, size: None };
         let mut bold = false;
         for e in m.entities.iter().filter(|e| e.start <= a && e.end >= b) {
             match &e.kind {
@@ -413,7 +413,7 @@ pub fn text_runs(m: &Message, look: &Look, revealed: bool) -> Vec<TextRun> {
     // (Runs cover every byte, joined where nothing changes.)
     let covered: usize = runs.iter().map(|r| r.len).sum();
     if covered < text.len() {
-        runs.push(TextRun { len: text.len() - covered, font: font(FontWeight::NORMAL), color: look.text, background_color: None, underline: None, strikethrough: None });
+        runs.push(TextRun { len: text.len() - covered, font: font(FontWeight::NORMAL), color: look.text, background_color: None, underline: None, strikethrough: None, size: None });
     }
     runs
 }
