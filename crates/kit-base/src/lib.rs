@@ -18,6 +18,7 @@ pub mod notify;
 pub mod places;
 pub mod restore;
 pub mod review;
+pub mod search;
 pub mod settings;
 pub mod tracker;
 pub mod watch;

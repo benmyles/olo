@@ -42,6 +42,10 @@ pub struct Control {
     paint: Option<Paint>,
     on_click: Option<OnClick>,
     node: Option<(&'static str, SharedString, Option<bool>)>,
+    /// What agents read as its value (a menu's choice).
+    value: Option<SharedString>,
+    /// The pointing hand over it (a link), not the arrow.
+    pointing: bool,
     focusable: bool,
     /// Return clicks it, from anywhere in the window (a default button).
     default: bool,
@@ -49,7 +53,7 @@ pub struct Control {
 
 /// A control `width` by `height`, drawn by `paint`.
 pub fn control(id: impl Into<ElementId>, width: f32, height: f32, paint: impl FnOnce(Bounds<Pixels>, ControlState, &mut Window, &mut App) + 'static) -> Control {
-    Control { id: id.into(), width: px(width), height: px(height), enabled: true, paint: Some(Box::new(paint)), on_click: None, node: None, focusable: false, default: false }
+    Control { id: id.into(), width: px(width), height: px(height), enabled: true, paint: Some(Box::new(paint)), on_click: None, node: None, value: None, pointing: false, focusable: false, default: false }
 }
 
 impl Control {
@@ -83,6 +87,19 @@ impl Control {
     /// it's checked (check boxes, radio buttons).
     pub fn agent(mut self, role: &'static str, name: impl Into<SharedString>, checked: Option<bool>) -> Self {
         self.node = Some((role, name.into(), checked));
+        self
+    }
+
+    /// [`Control::agent`] with a value (a filter menu: "Program", "Any").
+    pub fn agent_value(mut self, role: &'static str, name: impl Into<SharedString>, value: impl Into<SharedString>) -> Self {
+        self.node = Some((role, name.into(), None));
+        self.value = Some(value.into());
+        self
+    }
+
+    /// The pointing hand over it (a link), not the arrow.
+    pub fn pointing(mut self) -> Self {
+        self.pointing = true;
         self
     }
 }
@@ -152,7 +169,7 @@ impl Element for Control {
         let down = held.0.get();
         let state = ControlState { hovered: hovered && enabled, pressed: down && hovered && enabled, enabled, focused };
         if enabled {
-            window.set_cursor_style(CursorStyle::Arrow, hitbox);
+            window.set_cursor_style(if self.pointing { CursorStyle::PointingHand } else { CursorStyle::Arrow }, hitbox);
         }
         if let Some(paint) = self.paint.take() {
             // A control that can't be used now is faded, as egui fades a
@@ -160,7 +177,7 @@ impl Element for Control {
             window.with_element_opacity((!enabled).then_some(DISABLED_OPACITY), |window| paint(bounds, state, window, cx));
         }
         if let Some((role, name, checked)) = self.node.clone() {
-            agent::record(window, cx, agent::Node { role, name: Some(name), bounds, enabled, clickable: enabled, checked, focused, ..Default::default() });
+            agent::record(window, cx, agent::Node { role, name: Some(name), value: self.value.clone(), bounds, enabled, clickable: enabled, checked, focused, ..Default::default() });
         }
         if !enabled {
             return;

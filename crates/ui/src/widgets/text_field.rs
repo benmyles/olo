@@ -132,7 +132,13 @@ pub struct TextField {
     hint: SharedString,
     /// Can't be typed in now (a password while PAM checks the last).
     enabled: bool,
+    /// Its text's colours, from its text (a search's filters).
+    colors: Option<Colors>,
 }
+
+/// Colours for parts of a field's text (byte ranges, in order), in the
+/// palette given; the rest in its colour.
+pub type Colors = std::rc::Rc<dyn Fn(&str, &olo_theme::Palette) -> Vec<(Range<usize>, Hsla)>>;
 
 /// What a password field shows for each character.
 const BULLET: char = '•';
@@ -167,6 +173,7 @@ impl TextField {
             password: false,
             enabled: true,
             hint: SharedString::default(),
+            colors: None,
         }
     }
 
@@ -279,6 +286,36 @@ impl TextField {
 
     pub fn is_focused(&self, window: &Window) -> bool {
         self.focus.is_focused(window)
+    }
+
+    /// Gives it the keyboard.
+    pub fn focus(&self, window: &mut Window) {
+        window.focus(&self.focus);
+    }
+
+    /// The selection (bytes; empty: the caret).
+    pub fn selection(&self) -> Range<usize> {
+        self.selected.clone()
+    }
+
+    /// Selects `range` (bytes, on characters' boundaries).
+    pub fn set_selection(&mut self, range: Range<usize>, cx: &mut Context<Self>) {
+        let len = self.text.len();
+        self.selected = range.start.min(len)..range.end.min(len);
+        self.reversed = false;
+        self.show_caret(cx);
+        cx.notify();
+    }
+
+    /// Selects all its text (Find: what was looked for, to type over).
+    pub fn select_all_text(&mut self, cx: &mut Context<Self>) {
+        self.set_selection(0..self.text.len(), cx);
+    }
+
+    /// Colours parts of its text ([`Colors`]; None: all in its colour).
+    pub fn set_colors(&mut self, colors: Option<Colors>, cx: &mut Context<Self>) {
+        self.colors = colors;
+        cx.notify();
     }
 
     fn caret(&self) -> usize {
@@ -712,7 +749,30 @@ impl Element for FieldElement {
         let color = if field.enabled { field.color.unwrap_or(style::c(palette.document_text)) } else { style::disabled_text(&palette) };
         let text: SharedString = field.shown().into();
         let run = TextRun { len: text.len(), font: style::ui_font(gpui::FontWeight::NORMAL), color, background_color: None, underline: None, strikethrough: None };
+        // Coloured parts (not while composing, or a password's).
+        let spans = match (&field.colors, field.marked.is_none() && !field.password && field.enabled) {
+            (Some(f), true) => f(&text, &palette),
+            _ => Vec::new(),
+        };
         let runs = match field.marked.clone().filter(|_| !field.password) {
+            None if !spans.is_empty() => {
+                let mut out = Vec::new();
+                let mut at = 0;
+                for (r, ink) in spans {
+                    if r.start < at || r.end > text.len() || r.start >= r.end {
+                        continue;
+                    }
+                    if r.start > at {
+                        out.push(TextRun { len: r.start - at, ..run.clone() });
+                    }
+                    out.push(TextRun { len: r.end - r.start, color: ink, ..run.clone() });
+                    at = r.end;
+                }
+                if at < text.len() {
+                    out.push(TextRun { len: text.len() - at, ..run.clone() });
+                }
+                out
+            }
             Some(m) => [
                 TextRun { len: m.start, ..run.clone() },
                 TextRun { len: m.end - m.start, underline: Some(UnderlineStyle { color: Some(color), thickness: style::hairline(window), wavy: false }), ..run.clone() },

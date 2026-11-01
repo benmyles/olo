@@ -6,7 +6,7 @@
 
 use std::{path::Path, sync::Arc};
 
-use olo_kit::search::{self, Needle};
+use olo_kit_base::search::{self, Needle};
 use serde::{Deserialize, Serialize};
 
 use crate::journal::{Entry, Field};

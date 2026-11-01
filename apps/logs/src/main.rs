@@ -4,7 +4,7 @@
 //! "phrases", -words, and `program:` several or `all`, `-program:`,
 //! `level:`, `since:`, `pid:`) with the filters as menus beside it; a
 //! line's full text below the list, and Show in Context for the lines
-//! around one.
+//! around one. On the GPUI kit (olo-ui).
 //!
 //! For agents the same query prints from the command line:
 //! `olo-logs --print [--query TEXT] [--since 10m|2h|today|boot|all]
@@ -17,29 +17,33 @@ mod model;
 mod reader;
 
 use std::{
-    cell::RefCell,
     collections::BTreeMap,
+    ops::Range,
     path::PathBuf,
+    rc::Rc,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use model::{Level, Line, Now, Query, Since};
+use olo_kit_base::list::ListState;
+use olo_ui::{
+    Frame, Menu, MenuBar, WindowOptions, agent,
+    file_panel::{self, FilePanel, PanelResult},
+    gpui::{App, AppContext as _, ClipboardItem, Context, Entity, Font, FontWeight, Hsla, IntoElement, ParentElement as _, Render, Styled as _, Task, TextRun, Window, WindowHandle, canvas, div, px},
+    instance::{self, Launch},
+    menu, metrics as m,
+    search::{self, Facet, FilterBar, SearchEvent, SearchField, search_field},
+    style::{self, c},
+    theme,
+    widgets::{Button, CheckBox, Column, ColumnListView, ListModel, SCROLL_BAR, TextView, text_view},
+};
+use olo_theme::Palette;
 use reader::Update;
 use serde::{Deserialize, Serialize};
-use olo_kit::{
-    App, Cx, Menu, WindowId, WindowOptions,
-    egui::{self, Align, Id, Key, Rect, Ui, pos2, vec2},
-    file_panel::{self, FilePanel, PanelResult},
-    instance::{self, Launch},
-    metrics as m,
-    style::{self, c},
-    search::{self, Facet, FilterBar, SearchField},
-    widgets::{self, Button, Cell, CheckBox, Column, ColumnListView, ListState, TextView},
-};
 
 const APP_ID: &str = "olo.logs";
 const TITLE: &str = "Log Viewer";
@@ -105,11 +109,11 @@ impl OldQuery {
 }
 
 fn settings_path() -> std::path::PathBuf {
-    olo_kit::config_dir().join("logs.json")
+    olo_xdg::config_dir().join("logs.json")
 }
 
 struct Logs {
-    main: Option<WindowId>,
+    win: Option<WindowHandle<Frame>>,
     settings: Settings,
     lines: Vec<Line>,
     /// The lines shown (indices into `lines`).
@@ -125,32 +129,33 @@ struct Logs {
     programs_since: Option<Since>,
     /// The search's filters (their values and counts), made again when
     /// the programs change.
-    facets: RefCell<Option<Vec<Facet>>>,
-    /// Lines being chosen again, a slice a frame (`refilter`).
+    facets: Option<Rc<Vec<Facet>>>,
+    /// Lines being chosen again, a slice at a time (`refilter`), and the
+    /// task going through them.
     filter: Option<Filter>,
+    filtering: Option<Task<()>>,
+    /// A sliding window of time ("Last 10 Minutes") moving on.
+    ticking: Option<Task<()>>,
     now: Now,
-    filtered_at: Instant,
     /// The search from before Show in Context, to go back to.
     before_context: Option<String>,
-    list: ListState,
+    list: Entity<ListModel>,
+    search: Entity<SearchField>,
+    detail: Entity<TextView>,
     /// The selected line (an index into `lines`).
     selected: Option<usize>,
-    reveal: Option<usize>,
     /// Whether the list showed its last row (live lines keep it there).
     at_end: bool,
-    /// The first row the list showed, and how many.
-    shown: Option<(usize, usize)>,
     loaded: bool,
     failed: Option<String>,
-    detail: String,
     /// What the lines are of: the journal, or a log file an app writes
     /// beside it (an Agent Screen's).
     source: Option<PathBuf>,
     /// Bumped when the source changes: the reader of the one before stops,
     /// and what it sent is dropped.
     generation: Arc<AtomicU64>,
-    /// File ▸ Open Log File's panel.
-    panel: Option<(WindowId, FilePanel)>,
+    /// File ▸ Open Log File's panel, while it's open.
+    panel: Option<WindowHandle<Frame>>,
     /// The Agent Screens' logs, as last looked for (File ▸ Agent Screen
     /// Logs), and when.
     screen_logs: (Option<Instant>, Vec<(String, PathBuf)>),
@@ -180,8 +185,8 @@ fn screen_logs() -> Vec<(String, PathBuf)> {
 
 /// The lines being chosen again for a new query (`Logs::refilter`), a
 /// slice of them at a time: a day's journal is hundreds of thousands of
-/// lines, and a keystroke in Find must not hold a frame up. The lines
-/// shown change once it has been through them all.
+/// lines, and a keystroke in the search must not hold a frame up. The
+/// lines shown change once it has been through them all.
 struct Filter {
     query: Query,
     now: Now,
@@ -195,24 +200,25 @@ struct Filter {
     /// The line to select and show when done (Show in Context), else
     /// the selected one stays selected if it's still there.
     select: Option<usize>,
-    /// Once through them all: the rows (of `view`) that will show, and
-    /// the next of them to shape. Shaping a screen of new lines took 10
-    /// ms of the frame that showed them; shaped here, a slice at a time,
-    /// that frame only breaks them into rows (epaint keeps shaped text a
-    /// while, by its words and fonts).
-    warm: Option<(std::ops::Range<usize>, usize)>,
 }
 
-/// How long a frame goes through lines for (`Filter`).
-const FILTER_SLICE: std::time::Duration = std::time::Duration::from_millis(2);
+/// How long a slice of filtering goes on for before frames get their
+/// turn (`Filter`).
+const FILTER_SLICE: Duration = Duration::from_millis(2);
+
+/// `[u8; 4]` of a colour, for mixing.
+fn rgba(h: Hsla) -> [u8; 4] {
+    let r = olo_ui::gpui::Rgba::from(h);
+    [(r.r * 255.0).round() as u8, (r.g * 255.0).round() as u8, (r.b * 255.0).round() as u8, (r.a * 255.0).round() as u8]
+}
 
 /// `text` highlighted in the palette's colours (highlight.rs), on `base`,
 /// what `query`'s words find marked.
-fn highlighted(text: &str, font: egui::FontId, base: egui::Color32, p: &olo_theme::Palette, query: &search::Query) -> egui::text::LayoutJob {
+fn highlighted(text: &str, font: &Font, base: Hsla, p: &Palette, query: &search::Query) -> Vec<TextRun> {
     use highlight::Kind;
     use olo_theme::mix;
     let bg = p.document_background;
-    let text_rgba = [base.r(), base.g(), base.b(), 255];
+    let text_rgba = rgba(base);
     let color = |k: Kind| match k {
         Kind::Plain => base,
         Kind::Target => c(mix(text_rgba, bg, 0.45)),
@@ -224,14 +230,9 @@ fn highlighted(text: &str, font: egui::FontId, base: egui::Color32, p: &olo_them
         Kind::Type => c(mix(p.failure, p.tab_focused, 0.5)),
         Kind::Bad => c(p.failure),
     };
-    let mut job = egui::text::LayoutJob::default();
-    for (r, k) in highlight::spans(text) {
-        job.append(&text[r], 0.0, egui::TextFormat { font_id: font.clone(), color: color(k), ..Default::default() });
-    }
-    search::mark(&mut job, &search::found(text, query), search::mark_color(p));
-    job
+    let spans: Vec<(Range<usize>, Hsla)> = highlight::spans(text).into_iter().map(|(r, k)| (r, color(k))).collect();
+    search::runs(text, font, base, &spans, &search::found(text, query), search::mark_color(p))
 }
-
 
 /// A line's message as its row shows it: its first line, and an
 /// ellipsis if there is more.
@@ -257,13 +258,6 @@ impl Logs {
         });
     }
 
-    fn open(&mut self, cx: &mut Cx) {
-        if let Some(id) = self.main {
-            return cx.activate(id);
-        }
-        self.main = Some(cx.open_window(WindowOptions::new(self.title(), 820, 520).min_size(560, 340)));
-    }
-
     fn title(&self) -> String {
         match &self.source {
             Some(path) => format!("{} — {TITLE}", path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()),
@@ -273,23 +267,24 @@ impl Logs {
 
     /// Read the source from the start, on a worker (the one before's
     /// reader stopping).
-    fn start(&mut self, cx: &mut Cx) {
+    fn start(&mut self, cx: &mut Context<Self>) {
         let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
         self.lines.clear();
         self.view.clear();
         (self.warnings, self.errors) = (0, 0);
         self.programs.clear();
         self.programs_since = None;
-        *self.facets.borrow_mut() = None;
+        self.facets = None;
         self.filter = None;
+        self.filtering = None;
         self.before_context = None;
-        self.list = ListState { multiple: true, ..ListState::default() };
-        (self.selected, self.reveal, self.shown) = (None, None, None);
+        self.list.update(cx, |l, _| l.state = ListState { multiple: true, ..ListState::default() });
+        self.selected = None;
         self.at_end = true;
         self.loaded = false;
         self.failed = None;
-        self.detail.clear();
-        let (proxy, current, source) = (cx.proxy(), self.generation.clone(), self.source.clone());
+        self.show_detail(cx);
+        let (proxy, current, source) = (olo_ui::proxy(cx), self.generation.clone(), self.source.clone());
         std::thread::Builder::new()
             .name("journal".into())
             .spawn(move || {
@@ -309,14 +304,17 @@ impl Logs {
                 }
             })
             .expect("thread");
-        if let Some(id) = self.main {
-            cx.set_title(id, self.title());
-            cx.redraw(id);
+        if let Some(w) = self.win {
+            let title = self.title();
+            cx.defer(move |cx| {
+                let _ = w.update(cx, |_, window, _| window.set_window_title(&title));
+            });
         }
+        cx.notify();
     }
 
     /// Read `source` (None: the journal) instead.
-    fn read(&mut self, cx: &mut Cx, source: Option<PathBuf>) {
+    fn read(&mut self, source: Option<PathBuf>, cx: &mut Context<Self>) {
         if source != self.source {
             self.source = source;
             self.start(cx);
@@ -332,29 +330,50 @@ impl Logs {
     }
 
     /// Choose the lines shown again (the query changed, or time moved
-    /// on), from this frame on (`Filter`); then select line `select`.
-    fn refilter(&mut self, select: Option<usize>) {
+    /// on), a slice at a time from now (`Filter`); then select line
+    /// `select`.
+    fn refilter(&mut self, select: Option<usize>, cx: &mut Context<Self>) {
         self.now = Now::get();
-        self.filtered_at = Instant::now();
         let since = self.query.since;
         let programs = (self.programs_since != Some(since) || matches!(since, Since::Minutes(_))).then(BTreeMap::new);
         self.programs_since = Some(since);
-        self.filter = Some(Filter {
-            query: self.query.clone(),
-            now: self.now,
-            next: 0,
-            view: Vec::new(),
-            warnings: 0,
-            errors: 0,
-            programs,
-            select,
-            warm: None,
-        });
+        self.filter = Some(Filter { query: self.query.clone(), now: self.now, next: 0, view: Vec::new(), warnings: 0, errors: 0, programs, select });
+        // A slice, then frames' turn, until done.
+        self.filtering = Some(cx.spawn(async move |this, cx| {
+            loop {
+                let done = this.update(cx, |l, cx| l.filter_on(cx)).unwrap_or(true);
+                if done {
+                    break;
+                }
+                cx.background_executor().timer(Duration::ZERO).await;
+            }
+        }));
+        self.tick(cx);
+        cx.notify();
     }
 
-    /// Go through lines for the filter under way, for a slice of a frame;
-    /// whether it's done.
-    fn filter_on(&mut self, ctx: &egui::Context) -> bool {
+    /// A sliding window of time ("Last 10 Minutes") is chosen again every
+    /// five seconds while it's asked for (nothing ticks otherwise).
+    fn tick(&mut self, cx: &mut Context<Self>) {
+        if !matches!(self.query.since, Since::Minutes(_)) {
+            self.ticking = None;
+            return;
+        }
+        self.ticking = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(Duration::from_secs(5)).await;
+            let _ = this.update(cx, |l, cx| {
+                if l.filter.is_none() {
+                    l.refilter(None, cx);
+                } else {
+                    l.tick(cx);
+                }
+            });
+        }));
+    }
+
+    /// Go through lines for the filter under way, for a slice; whether
+    /// it's done.
+    fn filter_on(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(f) = self.filter.as_mut() else { return true };
         let start = Instant::now();
         while f.next < self.lines.len() {
@@ -384,79 +403,65 @@ impl Logs {
                 return false;
             }
         }
-        // The rows that will show: where the list is, at its end if it
-        // was there, or around the line to be shown.
-        let (rows, (first, shown)) = (f.view.len(), self.shown.unwrap_or((0, 60)));
-        let (range, next) = f.warm.get_or_insert_with(|| {
-            let n = shown + 2;
-            let at = f.select.and_then(|line| f.view.binary_search(&line).ok()).map(|row| row.saturating_sub(n / 2));
-            let from = at.unwrap_or(if self.at_end { rows.saturating_sub(n) } else { first.min(rows.saturating_sub(n)) });
-            let range = from..(from + n).min(rows);
-            (range.clone(), range.start)
-        });
-        let (p, font) = (style::palette(ctx), style::plain_font());
-        while *next < range.end {
-            let l = &self.lines[f.view[*next]];
-            *next += 1;
-            // As the cells lay them out (`Cell::text_job`), but for the
-            // width they're cut to and the colours, which shaping doesn't
-            // depend on.
-            let mut message = highlighted(&message_text(l), font.clone(), egui::Color32::WHITE, &p, &f.query.words);
-            let mut time = egui::text::LayoutJob::simple_singleline(model::format_time(l.time, f.now.midnight), font.clone(), egui::Color32::WHITE);
-            message.break_on_newline = false;
-            time.break_on_newline = false;
-            ctx.fonts_mut(|fonts| {
-                fonts.layout_job(message);
-                fonts.layout_job(time);
-            });
-            if start.elapsed() > FILTER_SLICE {
-                return false;
-            }
-        }
         let f = self.filter.take().expect("a filter");
+        self.filtering = None;
         (self.view, self.warnings, self.errors) = (f.view, f.warnings, f.errors);
         if let Some(programs) = f.programs {
             self.programs = programs;
-            *self.facets.borrow_mut() = None;
+            self.facets = None;
         }
         if let Some(line) = f.select {
-            self.select(Some(line));
+            self.selected = Some(line);
         }
         if let Some(sel) = self.selected
             && self.view.binary_search(&sel).is_err()
         {
             self.selected = None;
-            self.detail.clear();
         }
         // The rows were of the lines shown before.
         let row = self.selected.and_then(|s| self.view.binary_search(&s).ok());
-        self.list.selected = row.into_iter().collect();
-        self.list.anchor = row;
-        self.reveal = row.or(if self.at_end { self.view.len().checked_sub(1) } else { None });
+        let reveal = row.or(if self.at_end { self.view.len().checked_sub(1) } else { None });
+        self.list.update(cx, |l, _| {
+            l.state.selected = row.into_iter().collect();
+            l.state.anchor = row;
+            l.state.cursor = row;
+            if let Some(r) = reveal {
+                l.reveal(r);
+            }
+        });
+        self.show_detail(cx);
+        cx.notify();
         true
     }
 
-    fn query_changed(&mut self) {
+    fn query_changed(&mut self, cx: &mut Context<Self>) {
         self.before_context = None;
         self.query = Query::from_text(&self.settings.search);
-        self.refilter(None);
+        self.refilter(None, cx);
         self.store();
     }
 
-    fn take(&mut self, new: Vec<Line>, more: Vec<(usize, String)>) {
+    /// The search's text set from elsewhere (a filter's menu, Show in
+    /// Context, Back): the field shows it.
+    fn set_search(&mut self, text: String, cx: &mut Context<Self>) {
+        self.settings.search = text.clone();
+        self.search.update(cx, |s, cx| s.set_text(text, cx));
+    }
+
+    fn take(&mut self, new: Vec<Line>, more: Vec<(usize, String)>, cx: &mut Context<Self>) {
+        let following = self.list.read(cx).at_end();
+        let mut detail = false;
         for (index, text) in more {
             if let Some(l) = self.lines.get_mut(index) {
                 l.message.push('\n');
                 l.message.push_str(&text);
-                if self.selected == Some(index) {
-                    self.select(Some(index));
-                }
+                detail |= self.selected == Some(index);
             }
         }
         for l in new {
             if self.query.in_time(&l, &self.now) {
                 if !self.programs.contains_key(&l.program) {
-                    *self.facets.borrow_mut() = None;
+                    self.facets = None;
                 }
                 *self.programs.entry(l.program.clone()).or_default() += 1;
             }
@@ -467,92 +472,139 @@ impl Logs {
                 self.count(i);
             }
         }
-        if self.at_end && self.settings.live {
-            self.reveal = self.view.len().checked_sub(1);
+        if detail {
+            self.show_detail(cx);
         }
+        self.at_end = following;
+        if following && self.settings.live && let Some(last) = self.view.len().checked_sub(1) {
+            self.list.update(cx, |l, _| l.reveal(last));
+        }
+        cx.notify();
     }
 
-    fn select(&mut self, line: Option<usize>) {
-        self.selected = line;
-        self.detail = line
-            .map(|i| {
-                let l = &self.lines[i];
+    /// The selected line, whole, in the pane under the list.
+    fn show_detail(&mut self, cx: &mut Context<Self>) {
+        let text = self
+            .selected
+            .and_then(|i| self.lines.get(i))
+            .map(|l| {
                 let pid = if l.pid != 0 { format!(" (process {})", l.pid) } else { String::new() };
                 let when = model::format_time(l.time, 0);
                 format!("{when} · {}{pid} · {}\n\n{}", l.program, l.level.name(), l.message)
             })
             .unwrap_or_default();
+        let p = theme::palette(cx);
+        let words = self.query.words.clone();
+        self.detail.update(cx, |d, cx| {
+            let runs = (!text.is_empty()).then(|| highlighted(&text, &d.font(), c(p.document_text), &p, &words));
+            d.set_text(text, runs, cx);
+        });
+    }
+
+    /// The list's selection changed.
+    fn selection_changed(&mut self, cx: &mut Context<Self>) {
+        let line = self.list.read(cx).state.single().and_then(|r| self.view.get(r).copied());
+        self.selected = line;
+        self.show_detail(cx);
+        cx.notify();
     }
 
     /// The selected lines, as text.
-    fn selected_text(&self) -> String {
-        self.list.selected.iter().filter_map(|&r| self.view.get(r)).map(|&i| line_text(&self.lines[i], self.now.midnight)).collect::<Vec<_>>().join("\n")
+    fn selected_text(&self, cx: &App) -> String {
+        self.list.read(cx).state.selected.iter().filter_map(|&r| self.view.get(r)).map(|&i| line_text(&self.lines[i], self.now.midnight)).collect::<Vec<_>>().join("\n")
     }
 
     /// Show every line from the selected one's time range, all programs
     /// and levels, around it.
-    fn show_in_context(&mut self) {
+    fn show_in_context(&mut self, cx: &mut Context<Self>) {
         let Some(sel) = self.selected else { return };
-        let saved = std::mem::replace(&mut self.settings.search, "program:all level:debug since:all".into());
+        let saved = std::mem::take(&mut self.settings.search);
+        self.set_search("program:all level:debug since:all".into(), cx);
         self.query = Query::from_text(&self.settings.search);
         self.before_context = Some(saved);
-        self.refilter(Some(sel));
+        self.refilter(Some(sel), cx);
     }
 
-    fn back_from_context(&mut self) {
+    fn back_from_context(&mut self, cx: &mut Context<Self>) {
         if let Some(q) = self.before_context.take() {
-            self.settings.search = q;
+            self.set_search(q, cx);
             self.query = Query::from_text(&self.settings.search);
-            self.refilter(None);
+            self.refilter(None, cx);
         }
     }
 
-    fn command(&mut self, cx: &mut Cx, command: &str) {
+    fn command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) {
         match command {
             "copy" => {
-                let text = self.selected_text();
+                let text = self.selected_text(cx);
                 if !text.is_empty() {
-                    cx.copy(text);
+                    cx.write_to_clipboard(ClipboardItem::new_string(text));
                 }
             }
             "select-all" => {
-                self.list.selected = (0..self.view.len()).collect();
+                let n = self.view.len();
+                self.list.update(cx, |l, _| l.state.select_all(n));
+                cx.notify();
             }
+            "find" => self.search.update(cx, |s, cx| s.focus(window, cx)),
             "live" => {
                 self.settings.live = !self.settings.live;
                 if self.settings.live {
                     self.at_end = true;
-                    self.reveal = self.view.len().checked_sub(1);
+                    if let Some(last) = self.view.len().checked_sub(1) {
+                        self.list.update(cx, |l, _| l.reveal(last));
+                    }
                 }
                 self.store();
+                cx.notify();
             }
-            "context" => self.show_in_context(),
-            "back" => self.back_from_context(),
+            "context" => self.show_in_context(cx),
+            "back" => self.back_from_context(cx),
             "only-program" => {
                 if let Some(sel) = self.selected {
                     let program = self.lines[sel].program.to_string();
-                    search::set_filter(&mut self.settings.search, model::KEYS, "program", &[&program]);
-                    self.query_changed();
+                    let mut text = self.settings.search.clone();
+                    search::set_filter(&mut text, model::KEYS, "program", &[&program]);
+                    self.set_search(text, cx);
+                    self.query_changed(cx);
                 }
             }
             "end" => {
                 self.at_end = true;
-                self.reveal = self.view.len().checked_sub(1);
+                if let Some(last) = self.view.len().checked_sub(1) {
+                    self.list.update(cx, |l, _| l.reveal(last));
+                }
+                cx.notify();
             }
-            "journal" => self.read(cx, None),
+            "journal" => self.read(None, cx),
             "open-file" => {
-                if let Some((id, _)) = &self.panel {
-                    return cx.activate(*id);
+                if let Some(w) = self.panel {
+                    let _ = w.update(cx, |_, window, _| window.activate_window());
+                    return;
                 }
                 let dir = self.source.as_ref().and_then(|p| p.parent()).map_or_else(|| std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from), PathBuf::from);
                 let panel = FilePanel::open(dir).filters(vec![file_panel::Filter::new("Log Files").glob("*.log").glob("*.txt").glob("*.out"), file_panel::Filter::new("All Files").glob("*")], 0);
-                let id = cx.open_window(WindowOptions::new("Open Log File", file_panel::PANEL_SIZE.0, file_panel::PANEL_SIZE.1).min_size(420, 300));
-                self.panel = Some((id, panel));
+                let me = cx.entity();
+                cx.defer(move |cx| {
+                    let to = me.clone();
+                    let w = file_panel::show(cx, "Open Log File", panel, move |a, cx| {
+                        to.update(cx, |l, cx| {
+                            l.panel = None;
+                            if let PanelResult::Chosen(path) = a.result {
+                                l.read(Some(path), cx);
+                            }
+                        });
+                    });
+                    me.update(cx, |l, _| l.panel = w);
+                });
             }
-            "quit" => cx.quit(),
+            "quit" => {
+                self.store();
+                cx.quit();
+            }
             c => {
                 if let Some(path) = c.strip_prefix("file:") {
-                    self.read(cx, Some(PathBuf::from(path)));
+                    self.read(Some(PathBuf::from(path)), cx);
                 }
             }
         }
@@ -560,154 +612,102 @@ impl Logs {
 
     /// The search's filters: Program (Olo's first, each with its lines in
     /// the query's time), Level and Time in the bar; `pid:` typed.
-    fn facets(&self) -> std::cell::Ref<'_, Vec<Facet>> {
-        if self.facets.borrow().is_none() {
-            let mut program = Facet::new("program", "Program").any("Olo Programs").multiple().value("all", "All Programs", None);
-            let mut names: Vec<(&Arc<str>, &usize)> = self.programs.iter().collect();
-            names.sort_by_key(|(n, _)| (!model::is_olo(n), n.to_lowercase()));
-            for (name, n) in names {
-                program = program.value(name.to_string(), name.to_string(), Some(*n));
-            }
-            let mut level = Facet::new("level", "Level").any(LEVELS[1].1);
-            for ((_, label), code) in LEVELS.iter().zip(LEVEL_CODES) {
-                level = level.value(code, *label, None);
-            }
-            let mut time = Facet::new("since", "Time").any("Since Startup");
-            for (since, label) in TIMES {
-                time = time.value(since.code(), label, None);
-            }
-            *self.facets.borrow_mut() = Some(vec![program, level, time, Facet::new("pid", "Process").typed_only()]);
+    fn facets(&mut self, cx: &mut Context<Self>) -> Rc<Vec<Facet>> {
+        if let Some(f) = &self.facets {
+            return f.clone();
         }
-        std::cell::Ref::map(self.facets.borrow(), |f| f.as_ref().expect("made above"))
+        let mut program = Facet::new("program", "Program").any("Olo Programs").multiple().value("all", "All Programs", None);
+        let mut names: Vec<(&Arc<str>, &usize)> = self.programs.iter().collect();
+        names.sort_by_key(|(n, _)| (!model::is_olo(n), n.to_lowercase()));
+        for (name, n) in names {
+            program = program.value(name.to_string(), name.to_string(), Some(*n));
+        }
+        let mut level = Facet::new("level", "Level").any(LEVELS[1].1);
+        for ((_, label), code) in LEVELS.iter().zip(LEVEL_CODES) {
+            level = level.value(code, *label, None);
+        }
+        let mut time = Facet::new("since", "Time").any("Since Startup");
+        for (since, label) in TIMES {
+            time = time.value(since.code(), label, None);
+        }
+        let facets = Rc::new(vec![program, level, time, Facet::new("pid", "Process").typed_only()]);
+        self.facets = Some(facets.clone());
+        self.search.update(cx, |s, cx| s.set_facets(facets.clone(), cx));
+        facets
     }
 
-    /// The search and the filters' menus: in one row when there's room,
-    /// else the menus under the search. How tall that is.
-    fn controls(&mut self, ui: &mut Ui, top: Rect) -> f32 {
-        let facets = self.facets().clone();
-        let bar_w = FilterBar::width(ui, &self.settings.search, &facets) + m::SPACING + 40.0;
-        let one_row = top.width() - bar_w - m::SPACING >= 260.0;
-        let field = if one_row { Rect::from_min_size(top.min, vec2(top.width() - bar_w - m::SPACING, m::CONTROL_HEIGHT)) } else { Rect::from_min_size(top.min, vec2(top.width(), m::CONTROL_HEIGHT)) };
-        let bar = if one_row {
-            Rect::from_min_max(pos2(field.right() + m::SPACING, top.top()), pos2(top.right(), top.top() + m::CONTROL_HEIGHT))
-        } else {
-            // Under the search, its first menu's text over the list's
-            // first column's (inside the list's two lines of frame).
-            let frame = style::inset(ui.ctx(), top, 2.0).left() - top.left();
-            let indent = frame + m::CELL_INSET - m::TEXT_INSET;
-            Rect::from_min_size(pos2(top.left() + indent, field.bottom() + m::SPACING), vec2(top.width() - indent, m::CONTROL_HEIGHT))
-        };
-        let hint = "Search: words, program:, level:, since:";
-        let mut changed = ui.put(field, SearchField::new("logs", &mut self.settings.search).hint(hint).facets(&facets)).changed();
-        changed |= ui.put(bar, FilterBar::new("logs", &mut self.settings.search, &facets)).changed();
-        if changed {
-            self.query_changed();
+    fn menus(&mut self) -> Vec<Menu> {
+        // (Looked for again at most every two seconds.)
+        if self.screen_logs.0.is_none_or(|t| t.elapsed().as_secs() >= 2) {
+            self.screen_logs = (Some(Instant::now()), screen_logs());
         }
-        bar.bottom() - top.top()
+        let mut screens = Menu::new("Agent Screen Logs");
+        for (name, path) in &self.screen_logs.1 {
+            screens = screens.item(name.as_str(), format!("file:{}", path.display())).checked(self.source.as_ref() == Some(path));
+        }
+        if self.screen_logs.1.is_empty() {
+            screens = screens.item("No Agent Screens", "").enabled(false);
+        }
+        vec![
+            Menu::new("File").item("Journal", "journal").checked(self.source.is_none()).item("Open Log File…", "open-file").key("o").submenu(screens).separator().item("Quit", "quit").key("q"),
+            Menu::new("Edit").item("Copy", "copy").key("c").enabled(self.selected.is_some()).item("Select All", "select-all").key("a").separator().item("Find", "find").key("f"),
+            Menu::new("View")
+                .item("Live", "live")
+                .key("l")
+                .checked(self.settings.live)
+                .item("Go to End", "end")
+                .key("e")
+                .separator()
+                .item("Show in Context", "context")
+                .key("k")
+                .enabled(self.selected.is_some())
+                .item("Back", "back")
+                .key("[")
+                .enabled(self.before_context.is_some()),
+        ]
     }
 
-    fn list_ui(&mut self, cx: &mut Cx, ui: &mut Ui, area: Rect) {
-        let p = style::palette(ui.ctx());
-        let columns = [
-            Column::new("Time", 150.0),
-            Column::new("Program", 132.0),
-            Column::new("Level", 70.0),
-            Column::new("Message", (area.width() - 368.0).max(200.0)),
-        ];
-        let (warn, err) = (
-            c(p.warning),
-            c(p.failure),
-        );
-        let reveal = self.reveal.take();
-        let empty = match (self.loaded, &self.source) {
-            (true, _) => "No lines match.",
-            (false, None) => "Reading the journal…",
-            (false, Some(_)) => "Reading…",
-        };
-        let (lines, view, midnight, query) = (&self.lines, &self.view, self.now.midnight, &self.query);
-        // (A line's cells are kept by its index, which starts again with
-        // another source.)
-        let source = self.generation.load(Ordering::SeqCst).rotate_left(48);
-        // (Rows' messages kept by the words they mark, too.)
-        let marks = {
-            use std::hash::{Hash, Hasher};
-            let mut h = std::collections::hash_map::DefaultHasher::new();
-            query.words.terms.iter().flat_map(|t| &t.any).for_each(|n| n.as_str().hash(&mut h));
-            h.finish()
-        };
-        let out = ui
-            .scope_builder(egui::UiBuilder::new().max_rect(area), |ui| {
-                ColumnListView::new("logs-lines", &columns, view.len(), &mut self.list).reveal(reveal).empty_text(empty).show(ui, |cell: &Cell| {
-                    let l = &lines[view[cell.row]];
-                    let color = match l.level {
-                        _ if cell.selected => cell.text_color,
-                        Level::Error => err,
-                        Level::Warning => warn,
-                        _ => cell.text_color,
-                    };
-                    let font = style::plain_font();
-                    let plain = |text: String, color| egui::text::LayoutJob::simple_singleline(text, font.clone(), color);
-                    // Each cell kept while its line is the same (a line
-                    // grows when more of its message comes).
-                    let line = view[cell.row] as u64 ^ source;
-                    match cell.column {
-                        0 => cell.text_cached(line ^ midnight.rotate_left(32), || plain(model::format_time(l.time, midnight), cell.text_color)),
-                        1 => cell.text_cached(line, || plain(l.program.to_string(), cell.text_color)),
-                        2 => cell.text_cached(line, || plain(l.level.name().to_owned(), color)),
-                        _ => cell.text_cached(line ^ (l.message.len() as u64).rotate_left(40) ^ marks, || {
-                            let text = message_text(l);
-                            if cell.selected { plain(text, cell.text_color) } else { highlighted(&text, font.clone(), cell.text_color, &p, &query.words) }
-                        }),
-                    }
-                })
-            })
-            .inner;
-        self.at_end = self.view.is_empty() || out.visible.iter().any(|(row, _)| *row + 1 == self.view.len());
-        self.shown = out.visible.first().map(|(row, _)| (*row, out.visible.len()));
-        if out.selection_changed || out.context.is_some() {
-            let line = self.list.single().and_then(|r| self.view.get(r).copied());
-            self.select(line);
-        }
-        if let Some((row, pos)) = out.context {
-            if !self.list.selected.contains(&row) {
-                self.list.select(row);
+    fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
+        let message = match message.downcast::<Launch>() {
+            Ok(launch) => {
+                // A log file to read (from Tracker, or `olo-logs FILE`).
+                if let Some(a) = launch.args.iter().find(|a| !a.starts_with('-')) {
+                    let path = launch.cwd.as_ref().map_or_else(|| PathBuf::from(a), |c| c.join(a));
+                    self.read(Some(path), cx);
+                }
+                if let Some(w) = self.win {
+                    cx.defer(move |cx| {
+                        let _ = w.update(cx, |_, window, _| window.activate_window());
+                    });
+                }
+                return;
             }
-            self.select(self.view.get(row).copied());
-            let menu = Menu::new("")
-                .item("Copy", "copy", None)
-                .item("Show in Context", "context", None)
-                .item(format!("Show Only {}", self.lines[self.view[row]].program), "only-program", None);
-            widgets::popup_menu_at(ui.ctx(), Id::unique("logs-row-menu"), pos, menu);
+            Err(m) => m,
+        };
+        let Ok(tagged) = message.downcast::<Tagged>() else { return };
+        let Tagged(generation, update) = *tagged;
+        if generation != self.generation.load(Ordering::SeqCst) {
+            return;
         }
-        if let Some(cmd) = widgets::popup_result(ui.ctx(), Id::unique("logs-row-menu")) {
-            self.command(cx, &cmd);
+        match update {
+            Update::Lines { new, more } => self.take(new, more, cx),
+            Update::Loaded => {
+                self.loaded = true;
+                self.at_end = true;
+                if let Some(last) = self.view.len().checked_sub(1) {
+                    self.list.update(cx, |l, _| l.reveal(last));
+                }
+                cx.notify();
+            }
+            Update::Failed(why) => {
+                self.failed = Some(why);
+                cx.notify();
+            }
         }
     }
 
-    fn main_ui(&mut self, cx: &mut Cx, ui: &mut Ui) {
-        // A sliding window of time moves on by itself.
-        if matches!(self.query.since, Since::Minutes(_)) && self.filtered_at.elapsed().as_secs() >= 5 && self.filter.is_none() {
-            self.refilter(None);
-        }
-        let area = ui.max_rect().shrink(m::WINDOW_INSET);
-        let height = self.controls(ui, Rect::from_min_size(area.min, vec2(area.width(), m::CONTROL_HEIGHT)));
-        let top = Rect::from_min_size(area.min, vec2(area.width(), height));
-        let bottom = Rect::from_min_max(pos2(area.left(), area.bottom() - m::CONTROL_HEIGHT), area.max);
-        let detail_r = Rect::from_min_max(pos2(area.left(), bottom.top() - m::SPACING - DETAIL), pos2(area.right(), bottom.top() - m::SPACING));
-        let list_r = Rect::from_min_max(pos2(area.left(), top.bottom() + m::SPACING), pos2(area.right(), detail_r.top() - m::SPACING));
-        let p = style::palette(ui.ctx());
-        if let Some(why) = &self.failed {
-            style::label(ui.painter(), list_r.center().x, list_r.center().y, Align::Center, why, style::plain_font(), c(p.panel_text));
-        } else {
-            self.list_ui(cx, ui, list_r);
-        }
-        let words = self.query.words.clone();
-        let highlight = |text: &str, font: egui::FontId, base: egui::Color32| highlighted(text, font, base, &p, &words);
-        ui.scope_builder(egui::UiBuilder::new().max_rect(detail_r), |ui| {
-            TextView::new("logs-detail", &mut self.detail).mono(true).editable(false).empty_text("Select a line to read it whole.").highlight(&highlight).show(ui);
-        });
-
-        // The counts, and Live; Back after Show in Context.
+    /// What the bar under the list says: the counts, and how it's going.
+    fn status(&self) -> String {
         let n = self.view.len();
         let mut status = format!("{n} {}", if n == 1 { "line" } else { "lines" });
         if self.warnings > 0 {
@@ -721,129 +721,180 @@ impl Logs {
         } else if self.filter.is_some() {
             status += " (finding…)";
         }
-        let mut x = bottom.left();
         if self.before_context.is_some() {
-            let r = Rect::from_min_size(bottom.min, vec2(80.0, m::CONTROL_HEIGHT));
-            if ui.put(r, Button::new("Back")).clicked() {
-                self.back_from_context();
-            }
-            x = r.right() + m::SPACING;
             status = format!("All lines around the selected one. {status}");
         }
-        style::label(ui.painter(), x, bottom.center().y, Align::Min, status, style::plain_font(), c(p.panel_text));
-        let live_r = Rect::from_min_size(pos2(bottom.right() - 64.0, bottom.top()), vec2(64.0, m::CONTROL_HEIGHT));
-        let mut live = self.settings.live;
-        if ui.put(live_r, CheckBox::new(&mut live, "Live")).changed() {
-            self.command(cx, "live");
-        }
-        // Lines chosen again for a changed query, a slice of the frame
-        // (last, so a keystroke's starts in its own frame); shown the
-        // next.
-        if self.filter.is_some() {
-            self.filter_on(ui.ctx());
-            ui.ctx().request_repaint();
-        }
+        status
+    }
+
+    fn list_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let me = cx.entity();
+        // The message as wide as the rest of the list allows (inside its
+        // frame and beside its scroll bar), so it never scrolls sideways
+        // unless the window is too narrow.
+        let width = f32::from(window.viewport_size().width) - 2.0 * m::WINDOW_INSET;
+        let frame = f32::from(style::hairline(window)) * 4.0;
+        let columns = vec![Column::new("Time", 150.0), Column::new("Program", 132.0), Column::new("Level", 70.0), Column::new("Message", (width - frame - SCROLL_BAR - 352.0).floor().max(200.0))];
+        let empty = match (self.loaded, &self.source) {
+            (true, _) => "No lines match.",
+            (false, None) => "Reading the journal…",
+            (false, Some(_)) => "Reading…",
+        };
+        let cells = me.clone();
+        let (sel, ctx) = (me.clone(), me.clone());
+        ColumnListView::new("logs-lines", &self.list, columns, self.view.len(), move |cell, window, cx| {
+            // What the cell shows, read first (the drawing needs the app).
+            let (text, level, midnight, words) = {
+                let logs = cells.read(cx);
+                let Some(l) = logs.view.get(cell.row).and_then(|&i| logs.lines.get(i)) else { return };
+                let midnight = logs.now.midnight;
+                let text = match cell.column {
+                    0 => model::format_time(l.time, midnight),
+                    1 => l.program.to_string(),
+                    2 => l.level.name().to_owned(),
+                    _ => message_text(l),
+                };
+                (text, l.level, midnight, logs.query.words.clone())
+            };
+            let _ = midnight;
+            let p = theme::palette(cx);
+            match cell.column {
+                2 => {
+                    let color = match level {
+                        _ if cell.selected => cell.text_color,
+                        Level::Error => c(p.failure),
+                        Level::Warning => c(p.warning),
+                        _ => cell.text_color,
+                    };
+                    cell.text_with(window, cx, text, style::ui_font(FontWeight::NORMAL), color);
+                }
+                3 if !cell.selected => {
+                    let runs = highlighted(&text, &style::ui_font(FontWeight::NORMAL), cell.text_color, &p, &words);
+                    cell.text_runs(window, cx, text, &runs);
+                }
+                _ => cell.text(window, cx, text),
+            }
+        })
+        .empty_text(empty)
+        .on_select(move |_, cx| sel.update(cx, |l, cx| l.selection_changed(cx)))
+        .on_context(move |row, at, window, cx| {
+            let menu = ctx.update(cx, |l, cx| {
+                l.list.update(cx, |list, _| {
+                    if !list.state.selected.contains(&row) {
+                        list.state.select(row);
+                    }
+                });
+                l.selection_changed(cx);
+                let program = l.view.get(row).map(|&i| l.lines[i].program.to_string()).unwrap_or_default();
+                Menu::new("").item("Copy", "copy").item("Show in Context", "context").item(format!("Show Only {program}"), "only-program")
+            });
+            let to = ctx.clone();
+            menu::context_menu(window, cx, menu, at, move |cmd, window, cx| to.update(cx, |l, cx| l.command(cmd, window, cx)));
+        })
     }
 }
 
-impl App for Logs {
-    fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut Ui) {
-        if Some(window) == self.main {
-            self.main_ui(cx, ui);
-        } else if let Some((id, panel)) = &mut self.panel
-            && *id == window
-            && let Some(result) = panel.ui(ui)
-        {
-            self.panel = None;
-            cx.close_window(window);
-            if let PanelResult::Chosen(path) = result {
-                self.read(cx, Some(path));
+impl Render for Logs {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let me = cx.entity();
+        let bar_me = me.clone();
+        let bar = MenuBar::new(self.menus(), move |cmd, window, cx| bar_me.update(cx, |l, cx| l.command(cmd, window, cx)));
+
+        // The search and the filters' menus: in one row when there's
+        // room, else the menus under the search.
+        let facets = self.facets(cx);
+        let width = f32::from(window.viewport_size().width) - 2.0 * m::WINDOW_INSET;
+        let bar_w = FilterBar::width(cx, &self.settings.search, &facets) + m::SPACING + 40.0;
+        let one_row = width - bar_w - m::SPACING >= 260.0;
+        let filters_me = me.clone();
+        let filters = FilterBar::new("logs", self.settings.search.clone(), facets).on_change(move |text, _, cx| {
+            filters_me.update(cx, |l, cx| {
+                l.set_search(text, cx);
+                l.query_changed(cx);
+            })
+        });
+        let controls = if one_row {
+            div()
+                .flex()
+                .flex_row()
+                .gap(px(m::SPACING))
+                .child(div().w(px(width - bar_w - m::SPACING)).child(self.search.clone()))
+                .child(filters.max_width(bar_w))
+        } else {
+            // Under the search, its first menu's text over the list's
+            // first column's (inside the list's two lines of frame).
+            let frame = f32::from(style::inset(window, olo_ui::gpui::Bounds::default(), 2.0).left());
+            let indent = frame + m::CELL_INSET - m::TEXT_INSET;
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(m::SPACING))
+                .child(self.search.clone())
+                .child(div().pl(px(indent)).child(filters.max_width(width - indent)))
+        };
+
+        let list = match &self.failed {
+            Some(why) => {
+                let why = why.clone();
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .child(
+                        canvas(
+                            |_, _, _| {},
+                            move |b, _, window, cx| {
+                                let p = theme::palette(cx);
+                                style::label_fit(window, cx, b.center().x, b.center().y, style::Align::Center, why.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), c(p.panel_text), b.size.width);
+                                agent::record(window, cx, agent::Node::label(why.clone(), b));
+                            },
+                        )
+                        .size_full(),
+                    )
+                    .into_any_element()
             }
-        }
-    }
+            None => div().flex_1().min_h_0().child(self.list_view(window, cx)).into_any_element(),
+        };
 
-    fn menu_bar(&mut self, window: WindowId) -> Option<Vec<Menu>> {
-        if self.panel.as_ref().is_some_and(|(id, _)| *id == window) {
-            return None;
+        // The counts, and Live; Back after Show in Context.
+        let status = self.status();
+        let mut foot = div().flex().flex_row().items_center().gap(px(m::SPACING)).h(px(m::CONTROL_HEIGHT));
+        if self.before_context.is_some() {
+            let back = me.clone();
+            foot = foot.child(div().w(px(80.0)).child(Button::new("Back").on_click(move |_, cx| back.update(cx, |l, cx| l.back_from_context(cx)))));
         }
-        let any = !self.list.selected.is_empty();
-        // (Looked for again at most every two seconds: the bar is built
-        // every frame.)
-        if self.screen_logs.0.is_none_or(|t| t.elapsed().as_secs() >= 2) {
-            self.screen_logs = (Some(Instant::now()), screen_logs());
-        }
-        let mut screens = Menu::new("Agent Screen Logs");
-        for (name, path) in &self.screen_logs.1 {
-            screens = screens.item(name.as_str(), format!("file:{}", path.display()), None).checked(self.source.as_ref() == Some(path));
-        }
-        if self.screen_logs.1.is_empty() {
-            screens = screens.item("No Agent Screens", "", None).enabled(false);
-        }
-        Some(vec![
-            Menu::new("File")
-                .item("Journal", "journal", None)
-                .checked(self.source.is_none())
-                .item("Open Log File…", "open-file", Some(Key::O))
-                .submenu(screens)
-                .separator()
-                .item("Quit", "quit", Some(Key::Q)),
-            Menu::new("Edit").item("Copy", "copy", Some(Key::C)).enabled(any).item("Select All", "select-all", Some(Key::A)),
-            Menu::new("View")
-                .item("Live", "live", Some(Key::L))
-                .checked(self.settings.live)
-                .item("Go to End", "end", Some(Key::E))
-                .separator()
-                .item("Show in Context", "context", Some(Key::K))
-                .enabled(self.selected.is_some())
-                .item("Back", "back", Some(Key::OpenBracket))
-                .enabled(self.before_context.is_some()),
-        ])
-    }
+        foot = foot.child(
+            canvas(
+                |_, _, _| {},
+                move |b, _, window, cx| {
+                    let p = theme::palette(cx);
+                    style::label_fit(window, cx, b.left(), b.center().y, style::Align::Left, status.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), c(p.panel_text), b.size.width);
+                    agent::record(window, cx, agent::Node::label(status.clone(), b));
+                },
+            )
+            .flex_1()
+            .h_full(),
+        );
+        let live = me.clone();
+        foot = foot.child(div().w(px(64.0)).flex().justify_center().child(CheckBox::new("Live", self.settings.live).on_toggle(move |_, window, cx| live.update(cx, |l, cx| l.command("live", window, cx)))));
 
-    fn command(&mut self, cx: &mut Cx, _window: WindowId, command: &str) {
-        Logs::command(self, cx, command);
-    }
-
-    fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
-        if self.panel.as_ref().is_some_and(|(id, _)| *id == window) {
-            self.panel = None;
-            return cx.close_window(window);
-        }
-        self.store();
-        cx.quit();
-    }
-
-    fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
-        if let Some(launch) = message.downcast_ref::<Launch>() {
-            // A log file to read (from Tracker, or `olo-logs FILE`).
-            if let Some(a) = launch.args.iter().find(|a| !a.starts_with('-')) {
-                let path = launch.cwd.as_ref().map_or_else(|| PathBuf::from(a), |c| c.join(a));
-                self.read(cx, Some(path));
-            }
-            return self.open(cx);
-        }
-        let Ok(tagged) = message.downcast::<Tagged>() else { return };
-        let Tagged(generation, update) = *tagged;
-        if generation != self.generation.load(Ordering::SeqCst) {
-            return;
-        }
-        match update {
-            Update::Lines { new, more } => self.take(new, more),
-            Update::Loaded => {
-                self.loaded = true;
-                self.at_end = true;
-                self.reveal = self.view.len().checked_sub(1);
-            }
-            Update::Failed(why) => self.failed = Some(why),
-        }
-        if let Some(id) = self.main {
-            cx.redraw(id);
-        }
-    }
-
-    fn save_state(&mut self, _cx: &Cx) -> Option<String> {
-        self.store();
-        Some(String::new())
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .child(bar)
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .p(px(m::WINDOW_INSET))
+                    .flex()
+                    .flex_col()
+                    .gap(px(m::SPACING))
+                    .child(controls)
+                    .child(list)
+                    .child(div().h(px(DETAIL)).child(self.detail.clone()))
+                    .child(foot),
+            )
     }
 }
 
@@ -976,7 +1027,7 @@ fn iso_time(micros: u64) -> String {
 
 fn main() {
     // A session or install from before the rename (Tabula) carries on.
-    olo_kit::legacy::adopt();
+    olo_xdg::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().is_some_and(|a| a == "--print") {
         std::process::exit(print(&args));
@@ -984,8 +1035,8 @@ fn main() {
     if instance::forward(APP_ID, &args) {
         return;
     }
-    olo_kit::run(APP_ID, |cx| {
-        instance::listen(APP_ID, cx.proxy());
+    olo_ui::run(APP_ID, move |cx| {
+        instance::listen(APP_ID, olo_ui::proxy(cx));
         let mut settings: Settings = std::fs::read_to_string(settings_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
         // From before the search was one text.
         if let Some(old) = settings.query.take() {
@@ -994,38 +1045,70 @@ fn main() {
         // A search's words are for now; its filters stay.
         settings.search = search::filters_only(&settings.search, model::KEYS);
         let query = Query::from_text(&settings.search);
-        let mut app = Logs {
-            main: None,
-            settings,
-            lines: Vec::new(),
-            view: Vec::new(),
-            warnings: 0,
-            errors: 0,
-            query,
-            programs: BTreeMap::new(),
-            programs_since: None,
-            facets: RefCell::new(None),
-            filter: None,
-            now: Now::get(),
-            filtered_at: Instant::now(),
-            before_context: None,
-            list: ListState { multiple: true, ..ListState::default() },
-            selected: None,
-            reveal: None,
-            at_end: true,
-            shown: None,
-            loaded: false,
-            failed: None,
-            detail: String::new(),
-            // A log file named on the command line, else the journal.
-            source: args.iter().find(|a| !a.starts_with('-')).map(PathBuf::from).map(|p| std::fs::canonicalize(&p).unwrap_or(p)),
-            generation: Arc::new(AtomicU64::new(0)),
-            panel: None,
-            screen_logs: (None, Vec::new()),
-        };
-        app.start(cx);
-        app.open(cx);
-        app
+        let list = ListModel::new(cx, true);
+        let search = search_field(cx, "Search: words, program:, level:, since:");
+        let text = settings.search.clone();
+        search.update(cx, |s, cx| s.set_text(text, cx));
+        let detail = text_view(cx, "logs-detail", |v| v.mono(true).empty_text("Select a line to read it whole."));
+        let app = cx.new(|cx| {
+            cx.subscribe(&search, |l: &mut Logs, s, e: &SearchEvent, cx| {
+                if let SearchEvent::Changed = e {
+                    l.settings.search = s.read(cx).text(cx).to_owned();
+                    l.query_changed(cx);
+                }
+            })
+            .detach();
+            Logs {
+                win: None,
+                settings,
+                lines: Vec::new(),
+                view: Vec::new(),
+                warnings: 0,
+                errors: 0,
+                query,
+                programs: BTreeMap::new(),
+                programs_since: None,
+                facets: None,
+                filter: None,
+                filtering: None,
+                ticking: None,
+                now: Now::get(),
+                before_context: None,
+                list,
+                search,
+                detail,
+                selected: None,
+                at_end: true,
+                loaded: false,
+                failed: None,
+                // A log file named on the command line, else the journal.
+                source: args.iter().find(|a| !a.starts_with('-')).map(PathBuf::from).map(|p| std::fs::canonicalize(&p).unwrap_or(p)),
+                generation: Arc::new(AtomicU64::new(0)),
+                panel: None,
+                screen_logs: (None, Vec::new()),
+            }
+        });
+        let (view, title) = (app.clone(), app.read(cx).title());
+        let window = olo_ui::open_window(cx, WindowOptions::new(title, 820.0, 520.0).min_size(560.0, 340.0), move |_, _| view);
+        app.update(cx, |l, cx| {
+            l.win = window;
+            l.start(cx);
+            l.tick(cx);
+        });
+        let messages = app.clone();
+        olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |l, cx| l.message(message, cx)));
+        // Its settings kept as it ends, by hand or for an upgrade.
+        let saving = app.clone();
+        olo_ui::on_upgrade(cx, move |cx| {
+            saving.read(cx).store();
+            Some(String::new())
+        });
+        let quitting = app.clone();
+        cx.on_app_quit(move |cx| {
+            quitting.read(cx).store();
+            async {}
+        })
+        .detach();
     });
 }
 

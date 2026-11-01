@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-10-31
 
+### Log Viewer on GPUI
+
+*23:12* — Log Viewer moves to the GPUI kit, with the kit's new search field (filters coloured, suggested as they're typed), filter bar and text view; the Message column now fits beside the scroll bar (no sideways scrolling). Loading 160,000 lines its slowest frame is 3 ms (egui's 34). A made-up log file, not a real journal.
+
+![Log Viewer on GPUI](2026-10-31/231216-log-viewer-on-gpui.png)
+
 ### The command palette on GPUI
 
 *22:46* — The command palette, its window menu and the shortcuts sheet move to the GPUI kit. Same look; key symbols (⇧ ⌘ ↵) set on the capitals' line by their outlines, the subtitle and kind on the title's baseline, the query lined up with the titles. It opens in 28 ms (egui: 47) and holds 40 MB less; small text's darkening is now an emboldened outline rather than a stroke (the same look, a third of the time).

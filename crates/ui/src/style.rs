@@ -241,6 +241,11 @@ pub fn ui_font(weight: FontWeight) -> Font {
     Font { family: UI_FONT.into(), weight, ..gpui::font(UI_FONT) }
 }
 
+/// A font of Olo's monospaced face.
+pub fn mono_font(weight: FontWeight) -> Font {
+    Font { family: MONO_FONT.into(), weight, ..gpui::font(MONO_FONT) }
+}
+
 /// The width of `text` in `font` at `size` points.
 pub fn text_width(window: &mut Window, text: impl Into<SharedString>, size: f32, font: Font) -> Pixels {
     let text = text.into();
@@ -395,6 +400,60 @@ pub fn soft_shadow(window: &mut Window, r: Bounds<Pixels>, palette: &Palette) {
 pub fn label_fit(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pixels, align: Align, text: impl Into<SharedString>, font_size: f32, font: Font, color: Hsla, max_width: Pixels) -> Bounds<Pixels> {
     let text = fit(window, text.into(), font_size, &font, max_width.max(px(0.0)));
     label(window, cx, x, center_y, align, text, font_size, font, color)
+}
+
+/// [`label`] in runs (colours, what a search found marked behind): one
+/// line, the capitals centred on `center_y`, the baseline on a pixel.
+pub fn label_runs(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pixels, align: Align, text: SharedString, font_size: f32, runs: &[TextRun]) -> Bounds<Pixels> {
+    let line = window.text_system().shape_line(text.clone(), px(font_size), runs, None);
+    let left = snap_coord(window, match align {
+        Align::Left => x,
+        Align::Center => x - line.width / 2.0,
+        Align::Right => x - line.width,
+    });
+    let baseline = snap_coord(window, center_y + px(font_size * CAP_HEIGHT / 2.0));
+    let top = baseline - line.ascent;
+    let height = line.ascent + line.descent;
+    let _ = line.paint_background(point(left, top), height, window, cx);
+    let _ = line.paint(point(left, top), height, window, cx);
+    let at = Bounds { origin: point(left, top), size: size(line.width, height) };
+    crate::review::text(window, at, baseline, &text, font_size);
+    at
+}
+
+/// [`label_runs`] cut short with "…" (in the last run's look) to fit
+/// `max_width`.
+pub fn label_runs_fit(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pixels, align: Align, text: SharedString, font_size: f32, runs: &[TextRun], max_width: Pixels) -> Bounds<Pixels> {
+    let max_width = max_width.max(px(0.0));
+    let line = window.text_system().shape_line(text.clone(), px(font_size), runs, None);
+    if line.width <= max_width || runs.is_empty() {
+        return label_runs(window, cx, x, center_y, align, text, font_size, runs);
+    }
+    let ellipsis_run = |r: &TextRun| TextRun { len: "…".len(), background_color: None, ..r.clone() };
+    let ellipsis = window.text_system().shape_line("…".into(), px(font_size), &[ellipsis_run(&runs[0])], None).width;
+    let mut end = line.index_for_x(max_width - ellipsis).unwrap_or(text.len());
+    loop {
+        let cut = text[..end].trim_end();
+        // The runs as far as the cut, then the ellipsis.
+        let mut cut_runs: Vec<TextRun> = Vec::new();
+        let mut at = 0;
+        for r in runs {
+            if at >= cut.len() {
+                break;
+            }
+            let len = r.len.min(cut.len() - at);
+            cut_runs.push(TextRun { len, ..r.clone() });
+            at += r.len;
+        }
+        let last = cut_runs.last().cloned().unwrap_or_else(|| runs[0].clone());
+        cut_runs.push(ellipsis_run(&last));
+        let shown: SharedString = format!("{cut}…").into();
+        let width = window.text_system().shape_line(shown.clone(), px(font_size), &cut_runs, None).width;
+        if end == 0 || width <= max_width {
+            return label_runs(window, cx, x, center_y, align, shown, font_size, &cut_runs);
+        }
+        end = text[..end].char_indices().next_back().map_or(0, |(i, _)| i);
+    }
 }
 
 /// Selection over `r`, for a thing selected in place with nothing round

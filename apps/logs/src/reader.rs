@@ -1,6 +1,6 @@
 //! Reading this user's journal on a worker thread: every file, oldest
 //! first, sent on in batches as lines, then the file being written,
-//! followed as it grows (woken by its changes, `olo_kit::watch`: journald
+//! followed as it grows (woken by its changes, `olo_kit_base::watch`: journald
 //! touches the file for readers after each write) and across journald
 //! rotating it. Or a log file an app writes beside the journal, the
 //! same way (`run_file`).
@@ -70,7 +70,7 @@ pub fn run(follow: bool, on: &mut dyn FnMut(Update) -> bool) {
     }
     let Some(mut j) = active else { return };
     let (tx, woken) = std::sync::mpsc::channel();
-    let watch = olo_kit::watch::watch([j.path.clone()], move |_| {
+    let watch = olo_kit_base::watch::watch([j.path.clone()], move |_| {
         let _ = tx.send(());
     });
     let wait = if watch.is_some() { LOOK } else { POLL };
@@ -196,7 +196,7 @@ pub fn run_file(path: &std::path::Path, follow: bool, on: &mut dyn FnMut(Update)
         return;
     }
     let (tx, woken) = std::sync::mpsc::channel();
-    let watch = olo_kit::watch::watch([path.to_path_buf()], move |_| {
+    let watch = olo_kit_base::watch::watch([path.to_path_buf()], move |_| {
         let _ = tx.send(());
     });
     let wait = if watch.is_some() { LOOK } else { POLL };

@@ -17,12 +17,13 @@ pub mod icons;
 pub mod keys;
 pub mod menu;
 pub mod review;
+pub mod search;
 pub mod style;
 pub mod theme;
 mod upgrade;
 pub mod widgets;
 
-pub use app::{Frame, WindowOptions, app_id, message_handler, open_window, proxy, run, stay_resident};
+pub use app::{FocusNext, FocusPrev, Frame, WindowOptions, app_id, message_handler, open_window, proxy, run, stay_resident};
 pub use lock::{lock_session, unlock_session};
 pub use menu::{Menu, MenuBar, MenuItem};
 pub use upgrade::{on_upgrade, on_upgrade_due, restored_state, upgrade_waits_while};

@@ -123,6 +123,14 @@ impl ListModel {
         self.scroll.scroll_to_item(row, ScrollStrategy::Center);
     }
 
+    /// Whether its last row shows (scrolled to the end, or all fit): a
+    /// list that follows what's added (Log Viewer's live lines) keeps
+    /// following only then.
+    pub fn at_end(&self) -> bool {
+        let h = self.scroll.0.borrow().base_handle.clone();
+        f32::from(h.offset().y) <= -f32::from(h.max_offset().height) + 1.0
+    }
+
     /// Gives the list the keyboard.
     pub fn focus(&self, window: &mut Window) {
         window.focus(&self.focus);
@@ -207,6 +215,20 @@ impl Cell<'_> {
     pub fn text(&mut self, window: &mut Window, cx: &mut App, text: impl Into<SharedString>) {
         let color = self.text_color;
         self.text_with(window, cx, text, style::ui_font(FontWeight::NORMAL), color);
+    }
+
+    /// Its text in runs (a log line's colours, what a search found marked
+    /// behind), cut short with "…" when it doesn't fit.
+    pub fn text_runs(&mut self, window: &mut Window, cx: &mut App, text: impl Into<SharedString>, runs: &[gpui::TextRun]) {
+        let text = text.into();
+        let inset = px(m::CELL_INSET);
+        let x = match self.align {
+            style::Align::Left => self.bounds.left() + inset,
+            style::Align::Center => self.bounds.center().x,
+            style::Align::Right => self.bounds.right() - inset,
+        };
+        style::label_runs_fit(window, cx, x, self.bounds.center().y, self.align, text.clone(), style::PLAIN_SIZE, runs, self.bounds.size.width - inset * 2.0);
+        self.texts.push(text);
     }
 
     /// Its text in `font` and `color`.

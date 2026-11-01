@@ -9,7 +9,9 @@ name = "olo-logs"
 path = "src/main.rs"
 
 [dependencies]
-olo-kit.workspace = true
+olo-ui.workspace = true
+olo-kit-base.workspace = true
+olo-xdg.workspace = true
 olo-theme.workspace = true
 serde.workspace = true
 serde_json.workspace = true

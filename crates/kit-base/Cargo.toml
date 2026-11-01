@@ -13,5 +13,6 @@ serde_json.workspace = true
 tracing.workspace = true
 zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }
 libc = "0.2"
+memchr = "2"
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }

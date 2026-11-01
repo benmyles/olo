@@ -274,7 +274,7 @@ How Olo keeps it (do the same):
 | `crates/protocol` | JSON-lines IPC between app_server and our apps (`Client`, `Request`, `Reply`, `Event`, `Settings`). |
 | `crates/theme` | `Palette` (light/dark), BeOS tint helpers, decorator metrics, font lists. |
 | `crates/kit` | The Interface Kit: Wayland client platform, GPU rendering (egui on wgpu/Vulkan), menus, BeOS widgets, icons, `.desktop` entries. **All apps are built on it** (until they move to Olo's GPUI: see "The kit" in TODO.md). |
-| `crates/kit-base` | `olo-kit-base`: what the kits share that doesn't draw, re-exported by the kit under the same names: `instance` (one process per app), `settings`, `notify`, `files`, `places`, `watch`, `tracker`, `metrics` (the spacing system), `Proxy`, and `commands`, the socket agents and the command palette read apps through (its protocol, server and client; reading egui's AccessKit trees and flattening menus stay in the kit's `commands`), with `review`'s findings. No egui, no GPUI. |
+| `crates/kit-base` | `olo-kit-base`: what the kits share that doesn't draw, re-exported by the kit under the same names: `instance` (one process per app), `settings`, `notify`, `files`, `places`, `watch`, `tracker`, `metrics` (the spacing system), `Proxy`, `search` (the query language, facets and suggestions), `masonry` (cards in columns), and `commands`, the socket agents and the command palette read apps through (its protocol, server and client; reading egui's AccessKit trees and flattening menus stay in the kit's `commands`), with `review`'s findings. No egui, no GPUI. |
 | `gpui/` | Olo's GPUI, which the kit is moving to: GPUI 0.2.2 and blade-graphics 0.7.1, Olo's own from now on (Wayland only, idle windows draw nothing); `gpui/README.md` says what changed. |
 | `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit (re-exported there): data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`, in the current theme: `themes`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; Olo's apps first, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`; and the same for other programs: `open::for_others` gives the hidden `olo.viewer`, `olo.styled-edit` and `olo.tracker` desktop entries, each listing every type shared-mime-info knows that Olo opens with it, and an `olo-mimeapps.list` making them the defaults, which GIO, `gio open`/xdg-open and xdg-desktop-portal's OpenURI read before `mimeapps.list` while `XDG_CURRENT_DESKTOP` names Olo; olo-session writes them into `~/.local/share/applications` at start, makes that folder's `mimeinfo.cache` again when they change (`open::mime_cache`, as update-desktop-database would: GIO only finds an app for a type through it) and removes ones it wrote that are no longer wanted, `X-Olo-Written=true`; and, once Olo's Chrome is installed, `open::offer_browser` writes `~/.local/share/applications/olo-mimeapps.list` naming it for web pages and links, read after every `mimeapps.list` in the config directories so a browser the person chose wins, but ahead of the system's lists), `find_program`, `spawn_detached` (`spawn_detached_app` and `open::spawn_app` for a desktop entry's program, in a scope of its own: `scope`). No egui. |
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
@@ -1175,7 +1175,9 @@ says the time hovered or clicked (to look back: Activity Monitor's "At
 
 ### Searching and filtering (`olo_kit::search`)
 
-Every app's search is the same language, field and filter bar. The
+Every app's search is the same language, field and filter bar. (The
+language, `Facet`s and `suggest` are `olo_kit_base::search`, shared by
+both kits; the GPUI kit's field and bar are `olo_ui::search`, below.) The
 language: words (each must match, any order, ignoring case),
 `"phrases"`, `-word` to leave out, and the app's filters (`Facet`s) as
 `key:value`, `key:a,b` for either, `-key:value`, `key:"two words"`; a
@@ -1207,6 +1209,20 @@ the query's text (`search::set_filter`), so the field, the bar and
 agents typing a query always agree. `.no_clear()` drops the bar's Clear.
 Facets are built from the data (values and counts) and kept until it
 changes, not made every frame.
+
+In the GPUI kit (`olo_ui::search`): `search_field(cx, hint)` makes an
+`Entity<SearchField>` (the same field: magnifier, coloured filters through
+`TextField::set_colors`, clear button, suggestions drawn over what's
+below with `deferred`); it says `SearchEvent::Changed` and `Entered`;
+`set_facets(Rc<Vec<Facet>>)`, `set_text` (no event: a bar's choice),
+`focus` (⌘F, its text selected). Tab and Return take suggestions by
+capturing the field's own actions (`FocusNext`, the field's `Enter`):
+bindings run before key listeners. `FilterBar::new(id, text,
+facets).max_width(w).on_change(|text, window, cx| …)` is the bar as an
+element (`FilterBar::width(cx, text, facets)`); its menus are kit popups.
+`search::runs(text, font, color, spans, marks, mark)` makes text runs
+from colour spans and marks (marks are runs' backgrounds),
+`search::highlight` the marks alone.
 
 ### The text editor (`olo_kit::editor`)
 
@@ -1529,7 +1545,23 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   and pointer, words, clipboard, undo; the caret a line wide on device
   pixels, blinking only while it has the keyboard in an active window;
   `TextFieldEvent::Changed` and `Typed`. No frame: callers draw the
-  well (`TextControl` does).
+  well (`TextControl` does). `set_colors` colours parts of its text from
+  the text (a search's filters), `selection`/`set_selection`,
+  `select_all_text` and `focus` for its owner.
+- `widgets::TextView` (`text_view(cx, id, |v| v.mono(true).empty_text(…))`):
+  a text to read, the egui kit's `TextView` not editable: wrapped to its
+  scroll view, plain or monospaced (`style::mono_font`), coloured by runs
+  its owner gives with the text (`set_text(text, Some(runs))`, made for
+  `font()`), the note in the middle while empty; selected with the
+  pointer (double click a word, triple all), ⌘A, ⌘C and a context menu
+  copy. Agents read it as a `Document` with its text. Built on GPUI's
+  `StyledText` (wrapping, measuring, run backgrounds); the selection is a
+  run background too, as the marks are.
+- `style::label_runs`/`label_runs_fit` (one line in runs, cut short to
+  fit), `Cell::text_runs` (a list cell's), `ListModel::at_end` (its last
+  row shows: a list following what's added keeps following only then),
+  `Control::agent_value` (a role, name and value: a filter's menu) and
+  `Control::pointing` (the pointing hand: a link).
 - The BeOS controls, drawn as the egui kit's (compare them in
   `cargo run -p olo-ui --example gallery` beside `-p olo-kit --example
   demo`): `Button` (`default`, `pushed`, `small`, `on_click`),
@@ -5970,14 +6002,21 @@ the list's kept cells (keyed by line) are keyed by the generation too.
   first, `key=value` keys, strings, numbers, paths and URLs, type names,
   trouble words; the list and the detail pane colour them from the
   palette.
-- main.rs: the kit's `SearchField` and a `FilterBar` (Program, with
+- main.rs, on the GPUI kit (olo-ui): the kit's `SearchField` and a `FilterBar` (Program, with
   each program's lines in the query's time and Olo's first; Level; Time)
   above a `ColumnListView`, in one row when the window has room for the
   field, else the menus under it (their text over the list's first
-  column); what the words find is marked in the messages
-  (`search::mark` over the syntax colours; rows' galleys kept by the
-  words too). The selected line in full (highlighted, selectable)
-  below; Live keeps the list at its end as lines arrive; Show in Context
+  column; the Message column as wide as the list allows, beside its
+  scroll bar); what the words find is marked in the messages
+  (`search::runs`: the syntax colours, the marks behind; `Cell::text_runs`).
+  The selected line in full (highlighted, selectable, a `TextView`)
+  below; Live keeps the list at its end as lines arrive while it is
+  there (`ListModel::at_end`); a new query is gone through 2 ms at a
+  time between frames (a task yielding to them), and a sliding time
+  ("Last 10 Minutes") is chosen again every five seconds only while
+  it's asked for. Loading 160,000 lines its worst frame is 3 ms
+  (egui's 34), a live line one frame of under 1 ms to 3 (egui drew
+  three a line), and it holds 17 MB less. Show in Context
   (⌘K, or a line's context menu) shows every line around one
   (`program:all level:debug since:all`), and Back returns to the search
   before. Show Only (a line's menu) sets `program:` to its program. The

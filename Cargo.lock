@@ -5917,7 +5917,6 @@ dependencies = [
  "fontdb",
  "image",
  "libc",
- "memchr",
  "memmap2",
  "olo-emoji",
  "olo-images",
@@ -5948,6 +5947,7 @@ name = "olo-kit-base"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "memchr",
  "olo-protocol",
  "olo-xdg",
  "serde",
@@ -5977,8 +5977,10 @@ dependencies = [
  "liblzma",
  "lz4_flex",
  "memchr",
- "olo-kit",
+ "olo-kit-base",
  "olo-theme",
+ "olo-ui",
+ "olo-xdg",
  "serde",
  "serde_json",
  "zstd",
