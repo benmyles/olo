@@ -134,6 +134,11 @@ mod tests {
 
     impl Pad {
         fn new(t: &TouchpadSettings) -> Pad {
+            Pad::with(&render(t).unwrap())
+        }
+
+        /// The plugin as `source` (rendered) has it.
+        fn with(source: &str) -> Pad {
             let lua = mlua::Lua::new();
             lua.load(format!(
                 "evdev = {{ ABS_MT_SLOT = {SLOT}, ABS_MT_TOUCH_MAJOR = {MAJOR}, ABS_MT_TOUCH_MINOR = {MINOR}, \
@@ -150,14 +155,22 @@ mod tests {
             ))
             .exec()
             .unwrap();
-            lua.load(render(t).unwrap()).exec().unwrap();
+            lua.load(source).exec().unwrap();
             lua.load("hooks.new(pad)").exec().unwrap();
             Pad { lua, time: 0 }
         }
 
-        /// One frame, `ms` after the last; what libinput is given.
+        /// One frame, `ms` after the last; what libinput is given (never
+        /// more than came: libinput would keep the frame as it came).
         fn frame(&mut self, ms: i64, events: &[(u32, i32)]) -> Vec<(u32, i32)> {
-            self.time += ms * 1000;
+            let out = self.raw_frame(ms * 1000, events);
+            assert!(out.len() <= events.len(), "a frame grew: {events:?} became {out:?}");
+            out
+        }
+
+        /// One frame `us` after the last, as the plugin answers it.
+        fn raw_frame(&mut self, us: i64, events: &[(u32, i32)]) -> Vec<(u32, i32)> {
+            self.time += us;
             let frame = self.lua.create_table().unwrap();
             for &(usage, value) in events {
                 let e = self.lua.create_table().unwrap();
@@ -185,10 +198,10 @@ mod tests {
         // A finger hovering (no pressure) is reported with no size.
         let out = pad.frame(8, &[(SLOT, 0), (ID, 1), (PRESSURE, 0), (MAJOR, 300), (MINOR, 500)]);
         assert_eq!(sizes(&out), [(MAJOR, 0), (MINOR, 0)]);
-        // Pressing, it gets its size, major first.
-        let out = pad.frame(8, &[(PRESSURE, 30)]);
-        assert_eq!(sizes(&out), [(MAJOR, 500), (MINOR, 300)]);
-        assert_eq!(out.last(), Some(&(SLOT, 0)));
+        // Pressing, it gets its size, major first (in place of the size
+        // the pad sent, and in the room its pressure leaves).
+        let out = pad.frame(8, &[(PRESSURE, 30), (MAJOR, 510)]);
+        assert_eq!(sizes(&out), [(MAJOR, 510), (MINOR, 500)]);
         // A palm lands in slot 1 and the driver clicks from the sum.
         let out = pad.frame(8, &[(SLOT, 1), (ID, 2), (PRESSURE, 400), (MAJOR, 3000), (MINOR, 3200), (BTN_LEFT, 1)]);
         assert!(!out.contains(&(BTN_LEFT, 1)), "{out:?}");
@@ -196,7 +209,7 @@ mod tests {
         // It stays a palm when it shrinks; the finger pressing hard enough
         // on its own makes the driver's click count.
         let out = pad.frame(8, &[(MAJOR, 600), (MINOR, 600), (SLOT, 0), (PRESSURE, 130)]);
-        assert_eq!(sizes(&out), []);
+        assert_eq!(sizes(&out), [(MAJOR, 0), (MINOR, 0)]);
         assert!(out.contains(&(BTN_LEFT, 1)), "{out:?}");
         // It lets go when the finger does, though the palm keeps the
         // driver's click down.
@@ -243,9 +256,11 @@ mod tests {
         assert_eq!(sizes(&pad.frame(8, &[(PRESSURE, 0)])), []);
         assert_eq!(sizes(&pad.frame(40, &[(PRESSURE, 0)])), []);
         assert_eq!(sizes(&pad.frame(8, &[(PRESSURE, 2)])), []);
-        // ...staying off the glass for lift_ms ends it.
+        // ...staying off the glass for lift_ms ends it (no major is no
+        // touch; the minor follows when there's room).
         pad.frame(8, &[(PRESSURE, 0)]);
-        assert_eq!(sizes(&pad.frame(70, &[(PRESSURE, 0)])), [(MAJOR, 0), (MINOR, 0)]);
+        assert_eq!(sizes(&pad.frame(70, &[(PRESSURE, 0)])), [(MAJOR, 0)]);
+        assert_eq!(sizes(&pad.frame(8, &[(PRESSURE, 0)])), [(MINOR, 0)]);
         // A new contact in the slot starts afresh.
         let out = pad.frame(8, &[(ID, -1)]);
         assert_eq!(sizes(&out), []);
@@ -260,10 +275,130 @@ mod tests {
         let mut pad = Pad::new(&TouchpadSettings::default());
         let out = pad.frame(8, &[(SLOT, 0), (ID, 1), (PRESSURE, 0), (MAJOR, 300), (MINOR, 794)]);
         assert_eq!(sizes(&out), [(MAJOR, 0), (MINOR, 0)], "not yet on the glass");
-        let out = pad.frame(8, &[(PRESSURE, 3)]);
-        assert_eq!(sizes(&out), [(MAJOR, 794), (MINOR, 300)]);
+        let out = pad.frame(8, &[(PRESSURE, 3), (MINOR, 790)]);
+        assert_eq!(sizes(&out), [(MINOR, 300), (MAJOR, 790)]);
         for p in [5, 4, 2, 1] {
             assert_eq!(sizes(&pad.frame(8, &[(PRESSURE, p)])), []);
+        }
+    }
+
+    /// libinput's view of the pad after a frame: each slot's tracking id
+    /// and size, and which contacts it takes for touches (the touch-size
+    /// range, 450:150 here: a touch starts above 450 and ends below 150).
+    #[derive(Default)]
+    struct Seen {
+        slot: i32,
+        slots: std::collections::HashMap<i32, (i32, i32, i32)>,
+        touching: std::collections::BTreeSet<i32>,
+    }
+
+    impl Seen {
+        fn apply(&mut self, frame: &[(u32, i32)]) {
+            for &(u, v) in frame {
+                let s = self.slots.entry(self.slot).or_insert((-1, 0, 0));
+                match u {
+                    SLOT => self.slot = v,
+                    ID => *s = (v, s.1, s.2),
+                    MAJOR => s.1 = v,
+                    MINOR => s.2 = v,
+                    _ => {}
+                }
+            }
+            for (&n, &(id, major, minor)) in &self.slots {
+                if id < 0 || major < 150 || minor < 1 {
+                    self.touching.remove(&n);
+                } else if major > 450 {
+                    self.touching.insert(n);
+                }
+            }
+        }
+    }
+
+    /// Five contacts, three pressing at once in a frame of their pressures
+    /// alone: nothing grows, and libinput's view catches up as they move.
+    #[test]
+    fn frames_never_grow() {
+        let mut pad = Pad::new(&TouchpadSettings::default());
+        let mut seen = Seen::default();
+        let mut frame = vec![];
+        for n in 0..5 {
+            frame.extend([(SLOT, n), (ID, 10 + n), (PRESSURE, 0), (MAJOR, 600), (MINOR, 500)]);
+        }
+        seen.apply(&pad.frame(8, &frame));
+        assert!(seen.touching.is_empty(), "hovering");
+        // Three press at once; the pad sends only their pressure.
+        let out = pad.frame(8, &[(SLOT, 0), (PRESSURE, 20), (SLOT, 1), (PRESSURE, 20), (SLOT, 2), (PRESSURE, 20)]);
+        seen.apply(&out);
+        // As they move, each reports where it is (and its pressure).
+        for k in 0..3 {
+            let mut f = vec![];
+            for n in 0..3 {
+                f.extend([(SLOT, n), (0x3_0035, 100 + k), (PRESSURE, 21 + k)]);
+            }
+            seen.apply(&pad.frame(8, &f));
+        }
+        assert_eq!(seen.touching, [0, 1, 2].into());
+    }
+
+    /// Replays a capture of the pad (raw `input_event`s, as
+    /// `OLO_TOUCH_CAPTURE` names; `OLO_TOUCH_OLD` an older plugin to
+    /// compare) and says how often a frame would have grown, and how
+    /// long libinput's touches differed from what the filter meant.
+    #[test]
+    #[ignore]
+    fn replay_capture() {
+        let Ok(path) = std::env::var("OLO_TOUCH_CAPTURE") else { return };
+        let data = std::fs::read(path).unwrap();
+        let mut frames: Vec<(i64, Vec<(u32, i32)>)> = vec![];
+        let mut cur = vec![];
+        for e in data.chunks_exact(24) {
+            let sec = i64::from_ne_bytes(e[0..8].try_into().unwrap());
+            let usec = i64::from_ne_bytes(e[8..16].try_into().unwrap());
+            let (typ, code) = (u16::from_ne_bytes([e[16], e[17]]) as u32, u16::from_ne_bytes([e[18], e[19]]) as u32);
+            let value = i32::from_ne_bytes(e[20..24].try_into().unwrap());
+            if typ == 0 && code == 0 {
+                frames.push((sec * 1_000_000 + usec, std::mem::take(&mut cur)));
+            } else if typ != 0 {
+                cur.push((typ << 16 | code, value));
+            }
+        }
+        let t = TouchpadSettings::default();
+        let new = render(&t).unwrap();
+        let old = std::env::var("OLO_TOUCH_OLD").ok().map(|p| std::fs::read_to_string(p).unwrap().replacen("local CONFIG = {} -- @CONFIG@ (replaced by app_server)", new.lines().find(|l| l.starts_with("local CONFIG")).unwrap(), 1));
+        // libinput's limit: what it was given (a frame it held back), or
+        // 63 (one it hadn't).
+        let run = |source: &str, limit: Option<usize>| {
+            let mut pad = Pad::with(source);
+            let (mut seen, mut ideal) = (Seen::default(), Seen::default());
+            let (mut grown, mut differ, mut longest, mut run_us, mut last) = (0, 0, 0i64, 0i64, frames.first().map_or(0, |f| f.0));
+            for (time, events) in &frames {
+                let out = pad.raw_frame(time - last, events);
+                ideal.apply(&out);
+                if out.len() > limit.unwrap_or(events.len()) {
+                    grown += 1;
+                    // libinput keeps the frame as the pad sent it.
+                    seen.apply(events);
+                } else {
+                    seen.apply(&out);
+                }
+                if seen.touching != ideal.touching {
+                    differ += 1;
+                    run_us += time - last;
+                    longest = longest.max(run_us);
+                } else {
+                    run_us = 0;
+                }
+                last = *time;
+            }
+            println!("{} frames: {grown} too big, {differ} with libinput's touches not the filter's (longest {} ms)", frames.len(), longest / 1000);
+        };
+        for limit in [None, Some(63)] {
+            if let Some(old) = &old {
+                print!("before, limit {limit:?}: ");
+                run(old, limit);
+            }
+            print!("now, limit {limit:?}: ");
+            run(&new, limit);
         }
     }
 }

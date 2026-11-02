@@ -258,6 +258,16 @@ pub(crate) trait Platform: 'static {
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     fn read_from_primary(&self) -> Option<ClipboardItem>;
     fn read_from_clipboard(&self) -> Option<ClipboardItem>;
+    /// Olo: the MIME types what's on the clipboard is offered as.
+    fn clipboard_types(&self) -> Vec<String> {
+        Vec::new()
+    }
+    /// Olo: asks for what's on the clipboard as `mime`: ours at once, or
+    /// a read of what the other program writes (blocking: run it off the
+    /// UI thread).
+    fn receive_clipboard(&self, _mime: &str) -> Option<ClipboardReceipt> {
+        None
+    }
 
     fn write_credentials(&self, url: &str, username: &str, password: &[u8]) -> Task<Result<()>>;
     fn read_credentials(&self, url: &str) -> Task<Result<Option<(String, Vec<u8>)>>>;
@@ -266,6 +276,9 @@ pub(crate) trait Platform: 'static {
     fn keyboard_layout(&self) -> Box<dyn PlatformKeyboardLayout>;
     fn keyboard_mapper(&self) -> Rc<dyn PlatformKeyboardMapper>;
     fn on_keyboard_layout_change(&self, callback: Box<dyn FnMut()>);
+    /// Olo: what's on the clipboard changed (another program copied, or
+    /// this one).
+    fn on_clipboard_changed(&self, _callback: Box<dyn FnMut()>) {}
     /// Olo: a display came or went, as the platform learned of it (a
     /// Wayland output done or removed).
     fn on_displays_changed(&self, _callback: Box<dyn FnMut()>) {}
@@ -1886,6 +1899,16 @@ pub enum ClipboardEntry {
     /// Olo: data in a form of its own (files as `text/uri-list`, a
     /// format other programs know by its MIME type).
     Data(ClipboardData),
+}
+
+/// Olo: what's on the clipboard, asked for as a type
+/// ([`crate::App::paste_as`]).
+pub enum ClipboardReceipt {
+    /// Ours: here already.
+    Ready(Vec<u8>),
+    /// Another program's: read it (it blocks until that program has
+    /// written it all, or gives up after a few seconds).
+    Read(Box<dyn FnOnce() -> Option<Vec<u8>> + Send>),
 }
 
 /// Olo: clipboard data of any MIME type.

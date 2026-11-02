@@ -3,20 +3,25 @@
 //! preview of a selected file at the end. Browsing happens in place; the
 //! keyboard moves through the hierarchy (←/→ between columns).
 
-use std::path::PathBuf;
+use std::{cell::RefCell, collections::HashMap, path::PathBuf, rc::Rc};
 
-use olo_kit::{
-    egui::{self, Align, Color32, FontId, Key, Pos2, Rect, Sense, Ui, pos2, vec2},
+use olo_kit_base::list::{ListState, SelectionBand};
+use olo_ui::{
+    gpui::{
+        self, Bounds, Context, Entity, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Point, ScrollHandle,
+        StatefulInteractiveElement as _, Styled as _, Window, canvas, div, point, px, size,
+    },
     icons, metrics as m,
-    style::{self, c},
-    theme::{Palette, mix},
-    widgets::{self, ScrollView},
+    palette::mix,
+    style::{self, Align},
+    theme,
+    widgets::{SCROLL_BAR, ScrollBar, ScrollView},
 };
 
 use crate::{
-    FolderWin,
+    folder::{Action, FolderWin, mods, plain_extra},
     fs::{self, Entry, Kind},
-    view::{self, Action, ItemLayout},
+    items,
 };
 
 /// Width of each column, and of the preview after the last one.
@@ -25,462 +30,162 @@ const PREVIEW_WIDTH: f32 = 260.0;
 /// The preview's image (or icon) box.
 const PREVIEW_IMAGE: f32 = 200.0;
 const PREVIEW_ICON: f32 = 96.0;
-/// The ▸ marking folders: its size, and the gap left for it at the right.
-const DISCLOSURE: egui::Vec2 = egui::vec2(4.0, 8.0);
+/// The ▸ marking folders: its size, and the room left for it at the right.
+const DISCLOSURE: (f32, f32) = (4.0, 8.0);
 const DISCLOSURE_ROOM: f32 = m::CELL_INSET + 4.0 + m::MARK_GAP;
+const DRAG_SLOP: f32 = 3.0;
 
-/// What happened in a column this frame (applied once drawing is done).
-enum Event {
-    /// With ⌘ or ⇧ held (`mods`), adding to the selection
-    /// (`ListState::click`).
-    Click { col: usize, row: Option<usize>, mods: egui::Modifiers },
-    Double { col: usize, row: usize },
-    Context { col: usize, row: Option<usize>, pos: Pos2 },
-    /// A drag started on a row; where on its icon the pointer is.
-    Drag { col: usize, row: usize, hotspot: egui::Vec2, ask: bool },
-    /// A selection band (drawn from below a column's items) now selects
-    /// these; the rows it started and is at.
-    Band { col: usize, selected: std::collections::BTreeSet<usize>, ends: Option<(usize, usize)> },
+/// The column view's own state: its scrolls, where each column was
+/// drawn, and what the pointer is doing.
+#[derive(Default)]
+pub struct Cols {
+    /// Across the columns.
+    scroll: ScrollHandle,
+    /// Down each column, by its folder.
+    lists: HashMap<PathBuf, ScrollHandle>,
+    geo: Rc<RefCell<Vec<ColGeo>>>,
+    press: Option<ColPress>,
+    band: Option<(usize, Pixels, SelectionBand)>,
+    /// How wide the columns' view was last drawn.
+    width: Rc<RefCell<Pixels>>,
 }
 
-fn column(f: &FolderWin, k: usize) -> (&std::path::Path, &[Entry], &widgets::ListState) {
-    if k == 0 { (&f.path, &f.entries, &f.list) } else { let p = &f.panes[k - 1]; (&p.path, &p.entries, &p.list) }
+/// A column as last drawn: where its rows start (in the window) and where
+/// it shows.
+#[derive(Clone, Copy, Default)]
+struct ColGeo {
+    /// The content's top left (it scrolls).
+    origin: Point<Pixels>,
+    top: Pixels,
+    view: Bounds<Pixels>,
+    rows: usize,
 }
 
-fn column_mut(f: &mut FolderWin, k: usize) -> (&mut Vec<Entry>, &mut widgets::ListState) {
-    if k == 0 { (&mut f.entries, &mut f.list) } else { let p = &mut f.panes[k - 1]; (&mut p.entries, &mut p.list) }
-}
-
-/// Select `row` in column `k` and show what it holds in the next column.
-pub(crate) fn choose(f: &mut FolderWin, k: usize, row: usize) {
-    let hidden = f.hidden;
-    let (entries, list) = column_mut(f, k);
-    let Some(e) = entries.get(row).cloned() else { return };
-    list.select(row);
-    f.active = k;
-    if e.is_dir {
-        if f.panes.get(k).is_none_or(|p| p.path != e.path) {
-            f.open_column(k, e.path, hidden);
-        }
-    } else {
-        f.panes.truncate(k);
+impl ColGeo {
+    fn row_at(&self, p: Point<Pixels>) -> Option<usize> {
+        let r = (f32::from(p.y - self.top) / m::LIST_ROW).floor();
+        (r >= 0.0 && (r as usize) < self.rows && self.view.contains(&p)).then_some(r as usize)
     }
 }
 
-/// The file whose preview follows the last column, if one is selected.
-fn previewed(f: &FolderWin) -> Option<Entry> {
-    let (_, entries, list) = column(f, f.panes.len());
-    if list.selected.len() != 1 {
-        return None;
-    }
-    let i = *list.selected.iter().next()?;
-    entries.get(i).filter(|e| !e.is_dir).cloned()
+struct ColPress {
+    col: usize,
+    row: Option<usize>,
+    at: Point<Pixels>,
+    button: MouseButton,
+    mods: Modifiers,
+    dragging: bool,
 }
 
-pub fn columns_view(ui: &mut Ui, id: egui::Id, f: &mut FolderWin, actions: &mut Vec<Action>) {
-    let p = style::palette(ui.ctx());
-    let whole = ui.available_rect_before_wrap();
-    // A scroll bar along the bottom for columns wider than the window.
-    let body = Rect::from_min_max(whole.min, pos2(whole.right(), whole.bottom() - widgets::SCROLL_BAR));
-    let bar = Rect::from_min_max(pos2(whole.left(), body.bottom()), whole.max);
-    ui.painter().rect_filled(body, 0.0, c(p.document_background));
-    let n = 1 + f.panes.len();
-    f.active = f.active.min(n - 1);
-
-    keyboard(ui, f, actions);
-    // (After the keys: a column they opened counts in scrolling to it.)
-    let n = 1 + f.panes.len();
-    let preview = previewed(f);
-    let total = n as f32 * COLUMN_WIDTH + preview.as_ref().map_or(0.0, |_| PREVIEW_WIDTH);
-    // Selections made in code (Show in Tracker, a new item, columns put
-    // back after a reload): into view, with some of what's around them.
-    let around = ((body.height() / m::LIST_ROW / 2.0).floor() - 1.0).max(0.0);
-    for (k, row) in std::mem::take(&mut f.show) {
-        if k < n {
-            reveal(ui, f, k, row, around);
+impl FolderWin {
+    /// Column `k`'s folder, items and selection (0: the root).
+    fn column(&self, k: usize) -> (&std::path::Path, &[Entry], &ListState) {
+        if k == 0 {
+            (&self.path, &self.entries, &self.list)
+        } else {
+            let p = &self.panes[k - 1];
+            (&p.path, &p.entries, &p.list)
         }
     }
 
-    // Horizontal scrolling: the touchpad, Shift+wheel and the bar scroll
-    // sideways. When the active column or what it opened changes, it is
-    // brought into view; otherwise the scroll stays where it was put.
-    let max_off = (total - body.width()).max(0.0);
-    if ui.rect_contains_pointer(whole) {
-        let d = ui.input(|i| i.smooth_scroll_delta);
-        if d.x != 0.0 {
-            f.col_scroll -= d.x;
-        }
-    }
-    let focus = (f.active, n, preview.is_some());
-    if f.col_focus != Some(focus) {
-        f.col_focus = Some(focus);
-        let focus_right = ((f.active + 2).min(n) as f32 * COLUMN_WIDTH).max(if f.active + 1 >= n { total } else { 0.0 });
-        let focus_left = f.active as f32 * COLUMN_WIDTH;
-        if focus_right - f.col_scroll > body.width() {
-            f.col_scroll = focus_right - body.width();
-        }
-        if focus_left < f.col_scroll {
-            f.col_scroll = focus_left;
-        }
-    }
-    widgets::ScrollBar::horizontal(id.with("columns")).show(ui, bar, &mut f.col_scroll, total, body.width());
-    f.col_scroll = f.col_scroll.clamp(0.0, max_off).round();
-
-    let mut events = Vec::new();
-    let mut edit_row: Option<(Rect, usize)> = None;
-    let clip = body.intersect(ui.clip_rect());
-    for k in 0..n {
-        let x = body.left() + k as f32 * COLUMN_WIDTH - f.col_scroll;
-        let rect = Rect::from_min_max(pos2(x, body.top()), pos2(x + COLUMN_WIDTH, body.bottom()));
-        if !rect.intersects(clip) {
-            continue;
-        }
-        let mut col_ui = ui.new_child(egui::UiBuilder::new().max_rect(rect));
-        col_ui.set_clip_rect(rect.intersect(clip));
-        draw_column(&mut col_ui, f, k, rect, &p, &mut events, &mut edit_row);
-    }
-    // Past the last column (the preview, or nothing): into its folder.
-    let end = body.left() + n as f32 * COLUMN_WIDTH - f.col_scroll;
-    if let Some(h) = view_hover(ui, clip).filter(|h| h.pos.x >= end) {
-        let last = column(f, n - 1).0.to_owned();
-        if view::item_drop(ui.ctx(), &h, None, Some(&last)).0 {
-            olo_kit::dnd::outline(ui, Rect::from_min_max(pos2(end.max(clip.left()), clip.top()), clip.max));
-        }
-    }
-    if let Some(e) = &preview {
-        let x = body.left() + n as f32 * COLUMN_WIDTH - f.col_scroll;
-        let rect = Rect::from_min_max(pos2(x, body.top()), pos2(x + PREVIEW_WIDTH, body.bottom()));
-        let mut pv = ui.new_child(egui::UiBuilder::new().max_rect(rect));
-        pv.set_clip_rect(rect.intersect(clip));
-        if draw_preview(&mut pv, e, rect, &p) {
-            actions.push(Action::Open(e.clone()));
+    fn column_mut(&mut self, k: usize) -> (&mut Vec<Entry>, &mut ListState) {
+        if k == 0 {
+            (&mut self.entries, &mut self.list)
+        } else {
+            let p = &mut self.panes[k - 1];
+            (&mut p.entries, &mut p.list)
         }
     }
 
-    // Editing a name in place, over its row in the active column.
-    if let Some((row_rect, row)) = edit_row {
-        let (_, entries, _) = column(f, f.active);
-        let e = entries[row].clone();
-        let font = if e.is_link { style::italic_font() } else { style::plain_font() };
-        let g = ui.painter().layout_no_wrap(e.name.clone(), font, Color32::BLACK);
-        let x = row_rect.left() + m::CELL_INSET + view::MINI + m::MARK_GAP;
-        let origin = style::text_origin(ui.ctx(), &g, x, row_rect.center().y, style::PLAIN_SIZE);
-        let l = ItemLayout::text_only(origin, g);
-        if let Some(a) = view::edit_label(ui, &l, &mut f.editing, e.is_link) {
-            actions.push(a);
-        }
-    } else if f.editing.as_ref().is_some_and(|(p, _)| !column(f, f.active).1.iter().any(|e| &e.path == p)) {
-        f.editing = None;
-    }
-
-    for ev in events {
-        match ev {
-            Event::Click { col, row: Some(row), mods } if mods.ctrl || mods.shift => {
-                column_mut(f, col).1.click(row, widgets::mods(mods));
-                f.active = col;
-                f.panes.truncate(col);
+    /// Select `row` in column `k` and show what it holds in the next
+    /// column.
+    pub fn choose(&mut self, k: usize, row: usize) {
+        let hidden = self.hidden;
+        let (entries, list) = self.column_mut(k);
+        let Some(e) = entries.get(row).cloned() else { return };
+        list.select(row);
+        self.active = k;
+        if e.is_dir {
+            if self.panes.get(k).is_none_or(|p| p.path != e.path) {
+                self.open_column(k, e.path, hidden);
             }
-            Event::Click { col, row: Some(row), .. } => choose(f, col, row),
-            Event::Click { col, row: None, .. } => {
-                column_mut(f, col).1.selected.clear();
-                f.panes.truncate(col);
-                f.active = col;
-            }
-            Event::Double { col, row } => {
-                if let Some(e) = column(f, col).1.get(row).filter(|e| !e.is_dir) {
-                    actions.push(Action::Open(e.clone()));
-                }
-            }
-            Event::Drag { col, row, hotspot, ask } => {
-                if !column(f, col).2.selected.contains(&row) {
-                    choose(f, col, row);
-                }
-                f.active = col;
-                let (_, entries, list) = column(f, col);
-                let paths = list.selected.iter().filter_map(|&i| entries.get(i)).map(|e| e.path.clone()).collect();
-                if let Some(e) = entries.get(row) {
-                    actions.push(Action::Drag(view::Drag { paths, icon: view::icon_of(e), size: view::MINI, hotspot, ask, name: e.name.clone(), below: false }));
-                }
-            }
-            Event::Band { col, selected, ends } => {
-                let (_, list) = column_mut(f, col);
-                if list.selected != selected {
-                    if let Some((a, b)) = ends {
-                        list.anchor = Some(a);
-                        list.cursor = Some(b);
-                    }
-                    list.selected = selected;
-                    f.panes.truncate(col);
-                }
-                f.active = col;
-            }
-            Event::Context { col, row, pos } => {
-                match row {
-                    Some(row) if !column(f, col).2.selected.contains(&row) => choose(f, col, row),
-                    Some(_) => f.active = col,
-                    None => {
-                        column_mut(f, col).1.selected.clear();
-                        f.panes.truncate(col);
-                        f.active = col;
-                    }
-                }
-                let menu = if row.is_some() { view::item_menu(f) } else { view::background_menu(f, true) };
-                widgets::popup_menu_at(ui.ctx(), id, pos, menu);
-            }
+        } else {
+            self.panes.truncate(k);
         }
     }
-}
 
-fn draw_column(
-    ui: &mut Ui,
-    f: &FolderWin,
-    k: usize,
-    rect: Rect,
-    p: &Palette,
-    events: &mut Vec<Event>,
-    edit_row: &mut Option<(Rect, usize)>,
-) {
-    let (path, entries, list) = column(f, k);
-    // Etched separator on the right edge.
-    let sep = rect.right() - 2.0;
-    style::vline(ui.painter(), sep, rect.top(), rect.bottom(), style::shade(p, p.document_background, 1.15));
-    style::vline(ui.painter(), sep + 1.0, rect.top(), rect.bottom(), c(p.shine));
-    let inner = Rect::from_min_max(rect.min, pos2(sep, rect.max.y));
-    let active = k == f.active;
-    let editing = f.editing.as_ref().and_then(|(p, _)| entries.iter().position(|e| &e.path == p)).filter(|_| active);
-    let rows = entries.len();
-    ScrollView::new(("col", path)).border(false).auto_hide(true).show_in(ui, inner, |ui, _vp| {
-        let top = ui.min_rect().top() + m::TIGHT;
-        let content = Rect::from_min_size(
-            pos2(ui.min_rect().left(), ui.min_rect().top()),
-            vec2(ui.available_width(), (rows as f32 * m::LIST_ROW + 2.0 * m::TIGHT).max(ui.available_height())),
-        );
-        let resp = ui.allocate_rect(content, Sense::click_and_drag());
-        let clip = ui.clip_rect();
-        let row_at = |pos: Pos2| {
-            let r = ((pos.y - top) / m::LIST_ROW).floor();
-            (r >= 0.0 && (r as usize) < rows).then_some(r as usize)
+    /// The file whose preview follows the last column, if one is selected.
+    fn previewed(&self) -> Option<Entry> {
+        let (_, entries, list) = self.column(self.panes.len());
+        if list.selected.len() != 1 {
+            return None;
+        }
+        let i = *list.selected.iter().next()?;
+        entries.get(i).filter(|e| !e.is_dir).cloned()
+    }
+
+    /// Column `k`'s scroll.
+    fn col_scroll(&mut self, k: usize) -> ScrollHandle {
+        let path = self.column(k).0.to_owned();
+        self.cols.lists.entry(path).or_default().clone()
+    }
+
+    /// Scrolls column `k` to `row`, with `around` rows above and below it.
+    fn reveal_row(&mut self, k: usize, row: usize, around: f32) {
+        let h = self.col_scroll(k);
+        let view = self.cols.geo.borrow().get(k).map_or(px(300.0), |g| g.view.size.height);
+        let top = m::TIGHT + row as f32 * m::LIST_ROW;
+        let (lo, hi) = (top - m::TIGHT - around * m::LIST_ROW, top + m::LIST_ROW + m::TIGHT + around * m::LIST_ROW);
+        let now = -f32::from(h.offset().y);
+        let to = if lo < now {
+            lo.max(0.0)
+        } else if hi > now + f32::from(view) {
+            hi - f32::from(view)
+        } else {
+            return;
         };
-        let first = (((clip.top() - top) / m::LIST_ROW).floor().max(0.0)) as usize;
-        let last = ((((clip.bottom() - top) / m::LIST_ROW).ceil().max(0.0)) as usize).min(rows);
-        let painter = ui.painter();
-        // Selection: solid in the active column, a quieter tint along the
-        // path in the others (as in Finder).
-        let sel_bg = if active { c(p.list_selected_background) } else { c(mix(p.list_background, p.list_selected_background, 0.5)) };
-        // Something dragged over this column: onto a folder in it, or into it.
-        let (took, drop_on) = match view_hover(ui, clip) {
-            Some(h) => {
-                let over = row_at(h.pos).map(|i| (i, &entries[i], list.selected.contains(&i)));
-                view::item_drop(ui.ctx(), &h, over, Some(path))
-            }
-            None => (false, None),
-        };
-        for (i, e) in entries.iter().enumerate().take(last).skip(first) {
-            let r = Rect::from_min_size(pos2(content.left(), top + i as f32 * m::LIST_ROW), vec2(content.width(), m::LIST_ROW));
-            let selected = list.selected.contains(&i);
-            let text_color = if selected { c(p.list_selected_item_text) } else { c(p.list_item_text) };
-            if selected {
-                painter.rect_filled(r, 0.0, sel_bg);
-            }
-            style::describe_item(ui.ctx(), &e.name, r.intersect(painter.clip_rect()), selected);
-            let icon = Rect::from_min_size(pos2(r.left() + m::CELL_INSET, r.center().y - view::MINI / 2.0), vec2(view::MINI, view::MINI));
-            icons::paint(painter, icon, view::icon_of(e));
-            let x = icon.right() + m::MARK_GAP;
-            let right = r.right() - if e.is_dir { DISCLOSURE_ROOM } else { m::CELL_INSET };
-            if editing == Some(i) {
-                *edit_row = Some((r, i));
-            } else {
-                let font = if e.is_link { style::italic_font() } else { style::plain_font() };
-                let mut job = egui::text::LayoutJob::simple_singleline(e.label().to_owned(), font, text_color);
-                job.wrap = egui::text::TextWrapping::truncate_at_width((right - x).max(0.0));
-                let g = painter.layout_job(job);
-                let pos = style::text_origin(ui.ctx(), &g, x, r.center().y, style::PLAIN_SIZE);
-                painter.galley(pos, g, text_color);
-            }
-            if took && drop_on == Some(i) {
-                painter.rect_stroke(r.shrink(0.5), 0.0, egui::Stroke::new(1.0, c(p.keyboard_navigation)), egui::StrokeKind::Inside);
-            }
-            if e.is_dir {
-                let tip = pos2(r.right() - m::CELL_INSET, r.center().y);
-                let tri = vec![
-                    pos2(tip.x - DISCLOSURE.x, tip.y - DISCLOSURE.y / 2.0),
-                    pos2(tip.x, tip.y),
-                    pos2(tip.x - DISCLOSURE.x, tip.y + DISCLOSURE.y / 2.0),
-                ];
-                let color = if selected { text_color } else { style::disabled_text(p) };
-                painter.add(egui::Shape::convex_polygon(tri, color, egui::Stroke::NONE));
-            }
-        }
-        if took && drop_on.is_none() {
-            olo_kit::dnd::outline(ui, clip);
-        }
-        let mods = ui.input(|i| i.modifiers);
-        // A selection band, from below the items (where it started, in
-        // content coordinates, and what it adds to: ⇧ adds, ⌘ flips).
-        let band_id = egui::Id::unique(("col-band", path));
-        let origin = ui.min_rect().top();
-        if resp.drag_started() && resp.dragged_by(egui::PointerButton::Primary)
-            && let Some(at) = ui.input(|i| i.pointer.press_origin()).filter(|&at| row_at(at).is_none())
-        {
-            ui.ctx().data_mut(|d| d.insert_temp(band_id, (pos2(at.x, at.y - origin), list.band(widgets::mods(mods)))));
-        }
-        let band = ui.ctx().data(|d| d.get_temp::<(Pos2, widgets::SelectionBand)>(band_id));
-        match (band, resp.dragged(), ui.input(|i| i.pointer.latest_pos())) {
-            (Some((from, base)), true, Some(now)) => {
-                let (y0, y1) = (from.y.min(now.y - origin) + origin - top, from.y.max(now.y - origin) + origin - top);
-                let first = (y0 / m::LIST_ROW).floor().max(0.0) as usize;
-                let end = ((y1 / m::LIST_ROW).ceil().max(0.0) as usize).min(rows);
-                let selected = base.over(first..end.max(first));
-                let ends = (first < end).then(|| if now.y - origin >= from.y { (first, end - 1) } else { (end - 1, first) });
-                events.push(Event::Band { col: k, selected, ends });
-                let r = Rect::from_two_pos(pos2(from.x, from.y + origin), now);
-                style::selection_band(&ui.painter().with_clip_rect(clip), r.intersect(clip), p);
-                // Near or past the column's top or bottom: scroll on.
-                let edge = m::LIST_ROW / 2.0;
-                let step = if now.y > clip.bottom() - edge {
-                    ((now.y - clip.bottom() + edge) / 2.0).clamp(2.0, 2.0 * m::LIST_ROW)
-                } else if now.y < clip.top() + edge {
-                    -((clip.top() + edge - now.y) / 2.0).clamp(2.0, 2.0 * m::LIST_ROW)
-                } else {
-                    0.0
-                };
-                if step != 0.0 {
-                    let y = if step > 0.0 { clip.bottom() - origin + step } else { clip.top() - origin + step };
-                    ScrollView::reveal(ui.ctx(), ("col", path), (y - 1.0).max(0.0), (y + 1.0).min(content.height()));
-                }
-            }
-            (Some(_), _, _) => ui.ctx().data_mut(|d| d.remove::<(Pos2, widgets::SelectionBand)>(band_id)),
-            _ => {}
-        }
-        if let Some(pos) = resp.interact_pointer_pos() {
-            if resp.drag_started() {
-                // Where the button went down, not where the drag got to.
-                let pos = ui.input(|i| i.pointer.press_origin()).unwrap_or(pos);
-                if let Some(row) = row_at(pos) {
-                    let icon = pos2(content.left() + m::CELL_INSET, top + row as f32 * m::LIST_ROW + (m::LIST_ROW - view::MINI) / 2.0);
-                    let hotspot = (pos - icon).clamp(egui::Vec2::ZERO, vec2(view::MINI, view::MINI));
-                    events.push(Event::Drag { col: k, row, hotspot, ask: resp.dragged_by(egui::PointerButton::Secondary) });
-                }
-            } else if resp.double_clicked() {
-                if let Some(row) = row_at(pos) {
-                    events.push(Event::Double { col: k, row });
-                }
-            } else if resp.clicked() {
-                events.push(Event::Click { col: k, row: row_at(pos), mods });
-            } else if resp.secondary_clicked() {
-                events.push(Event::Context { col: k, row: row_at(pos), pos });
-            }
-        }
-    });
-}
-
-/// What is dragged over `clip`, if anything.
-fn view_hover(ui: &Ui, clip: Rect) -> Option<olo_kit::dnd::Hover> {
-    olo_kit::dnd::hover(ui.ctx()).filter(|h| clip.contains(h.pos))
-}
-
-/// The preview after the last column: the image itself or a large icon,
-/// the name and kind, and a few facts. True if double-clicked (open).
-fn draw_preview(ui: &mut Ui, e: &Entry, rect: Rect, p: &Palette) -> bool {
-    let area = rect.shrink2(vec2(m::WINDOW_INSET, m::WINDOW_INSET));
-    let image_box = Rect::from_min_size(pos2(area.center().x - PREVIEW_IMAGE / 2.0, area.top()), vec2(PREVIEW_IMAGE, PREVIEW_IMAGE * 0.75));
-    let painter = ui.painter();
-    let mut shown = image_box;
-    let thumb = (e.kind == Kind::Image).then(|| icons::thumbnail(ui.ctx(), &e.path, PREVIEW_IMAGE)).flatten();
-    match thumb {
-        Some(tex) => {
-            shown = icons::fit(ui.ctx(), &tex, image_box);
-            painter.image(tex.id(), shown, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
-            style::frame_rect(painter, shown.expand(1.0), style::shade(p, p.document_background, 1.15));
-        }
-        None => {
-            let icon = Rect::from_center_size(image_box.center(), vec2(PREVIEW_ICON, PREVIEW_ICON));
-            icons::paint(painter, icon, view::icon_of(e));
-            if let Some(done) = e.progress() {
-                view::paint_progress(ui, icon, done);
-            }
-        }
+        h.set_offset(point(px(0.0), px(-to)));
     }
-    let response = ui.interact(shown, egui::Id::unique(("preview", &e.path)), Sense::click());
 
-    // Name (bold, up to three lines), kind, then facts in two columns
-    // meeting at the centre, keys right-aligned.
-    let mut y = image_box.bottom() + m::SPACING;
-    let mut job = egui::text::LayoutJob::single_section(e.label().to_owned(), egui::TextFormat::simple(style::bold_font(), c(p.document_text)));
-    job.wrap = egui::text::TextWrapping { max_width: area.width(), max_rows: 3, break_anywhere: true, overflow_character: Some('…') };
-    job.halign = Align::Center;
-    let g = painter.layout_job(job);
-    let h = g.size().y;
-    painter.galley(pos2(area.center().x, y), g, c(p.document_text));
-    y += h;
-    style::label(painter, area.center().x, y + m::LABEL_ROW / 2.0, Align::Center, e.kind_text(), style::plain_font(), style::disabled_text(p));
-    y += m::LABEL_ROW + m::SPACING;
-    let created = std::fs::metadata(&e.path).ok().and_then(|md| md.created().ok());
-    let small = FontId::proportional(style::SMALL_SIZE);
-    for (k, v) in [
-        ("Size", e.size_text()),
-        ("Created", fs::format_time(created)),
-        ("Modified", fs::format_time(e.modified)),
-    ] {
-        let cy = y + m::LABEL_ROW / 2.0;
-        style::label(painter, area.center().x - m::TIGHT, cy, Align::Max, k, small.clone(), style::disabled_text(p));
-        style::label(painter, area.center().x + m::TIGHT, cy, Align::Min, &v, small.clone(), c(p.document_text));
-        y += m::LABEL_ROW;
-    }
-    response.double_clicked()
-}
-
-/// ↑/↓ move within the active column, → enters the selected folder, ←
-/// goes back to its parent's column, Enter / ⌘↓ opens, typing selects.
-fn keyboard(ui: &Ui, f: &mut FolderWin, actions: &mut Vec<Action>) {
-    if ui.ctx().egui_wants_keyboard_input() || f.editing.is_some() {
-        return;
-    }
-    let keys: Vec<(Key, bool, bool)> = ui.input(|i| {
-        i.events
-            .iter()
-            .filter_map(|e| match e {
-                // Alt's are the menus' (Windows' Alt+↑, Alt+Enter).
-                egui::Event::Key { key, pressed: true, modifiers, .. } if !modifiers.alt => Some((*key, modifiers.ctrl, modifiers.shift)),
-                _ => None,
-            })
-            .collect()
-    });
-    for (key, cmd, shift) in keys {
-        let k = f.active;
-        let (_, entries, list) = column(f, k);
+    /// ↑/↓ move within the active column, → enters the selected folder, ←
+    /// goes back to its parent's column, Return opens, typing selects.
+    pub fn column_key(&mut self, e: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let key = e.keystroke.key.as_str();
+        let shift = e.keystroke.modifiers.shift;
+        let k = self.active.min(self.panes.len());
+        let (_, entries, list) = self.column(k);
         let n = entries.len();
         let cur = list.cursor().filter(|c| list.selected.contains(c)).or_else(|| list.selected.iter().next().copied());
         let to = match key {
-            Key::ArrowDown => list.step(1, n),
-            Key::ArrowUp => list.step(-1, n),
-            Key::Home => (n > 0).then_some(0),
-            Key::End => n.checked_sub(1),
+            "down" => list.step(1, n),
+            "up" => list.step(-1, n),
+            "home" => (n > 0).then_some(0),
+            "end" => n.checked_sub(1),
             _ => None,
         };
-        match (key, cmd) {
+        match key {
             // ⇧ grows or shrinks the selection from the anchor (no column
             // follows a selection of several).
-            (Key::ArrowDown | Key::ArrowUp | Key::Home | Key::End, false) if shift => {
+            "down" | "up" | "home" | "end" if shift => {
                 if let Some(next) = to {
-                    column_mut(f, k).1.move_to(next, true);
-                    f.panes.truncate(k);
-                    reveal(ui, f, k, next, 0.0);
+                    self.column_mut(k).1.move_to(next, true);
+                    self.panes.truncate(k);
+                    self.reveal_row(k, next, 0.0);
                 }
             }
-            (Key::ArrowDown | Key::ArrowUp | Key::Home | Key::End, false) => {
+            "down" | "up" | "home" | "end" => {
                 if let Some(next) = to {
-                    choose(f, k, next);
-                    reveal(ui, f, k, next, 0.0);
+                    self.choose(k, next);
+                    self.reveal_row(k, next, 0.0);
                 }
             }
-            (Key::ArrowRight, false) => {
-                if cur.is_some_and(|c| entries[c].is_dir) && f.panes.len() > k {
-                    f.active = k + 1;
-                    let p = &mut f.panes[k];
+            "right" => {
+                if cur.is_some_and(|c| entries[c].is_dir) && self.panes.len() > k {
+                    self.active = k + 1;
+                    let p = &mut self.panes[k];
                     if p.list.selected.is_empty() {
                         if !p.entries.is_empty() {
-                            choose(f, k + 1, 0);
+                            self.choose(k + 1, 0);
                         } else if p.loading {
                             // Not listed yet: its first item once it is.
                             p.first = true;
@@ -488,31 +193,481 @@ fn keyboard(ui: &Ui, f: &mut FolderWin, actions: &mut Vec<Action>) {
                     }
                 }
             }
-            (Key::ArrowLeft, false) if k > 0 => {
-                f.panes[k - 1].list.selected.clear();
-                f.panes.truncate(k);
-                f.active = k - 1;
+            "left" if k > 0 => {
+                self.panes[k - 1].list.selected.clear();
+                self.panes.truncate(k);
+                self.active = k - 1;
             }
-            (Key::Enter, false) | (Key::ArrowDown, true) => actions.push(Action::Command("open".into())),
-            (Key::Delete, false) if crate::view::plain_extra("trash", Key::Delete) => actions.push(Action::Command("trash".into())),
-            (Key::F2, false) if crate::view::plain_extra("rename", Key::F2) => actions.push(Action::Command("rename".into())),
+            "enter" => self.command("open", cx),
+            _ => {
+                // Typing selects within the active column.
+                let Some(typed) = e.keystroke.key_char.clone().filter(|c| !c.chars().any(char::is_control)) else { return false };
+                let (_, entries, list) = self.column(k);
+                let from = list.cursor();
+                let names: Vec<String> = entries.iter().map(|e| e.name.clone()).collect();
+                if let Some(row) = self.typing.typed(&typed, names.len(), from, |i| names[i].as_str()) {
+                    self.choose(k, row);
+                    self.reveal_row(k, row, 0.0);
+                }
+            }
+        }
+        let _ = plain_extra;
+        cx.notify();
+        true
+    }
+
+    // ---- the pointer -------------------------------------------------------
+
+    fn column_press(&mut self, k: usize, e: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if self.editing.is_some() {
+            self.end_rename(true, cx);
+        }
+        window.focus(&self.focus);
+        let Some(g) = self.cols.geo.borrow().get(k).copied() else { return };
+        let row = g.row_at(e.position);
+        if e.button == MouseButton::Left && e.click_count >= 2 {
+            if let Some(entry) = row.and_then(|r| self.column(k).1.get(r)).filter(|e| !e.is_dir).cloned() {
+                self.act(Action::Open(entry), cx);
+            }
+            self.cols.press = None;
+            return;
+        }
+        if e.button == MouseButton::Left && row.is_none() {
+            // A selection band, from below the items: ⇧ adds, ⌘ flips.
+            let base = self.column(k).2.band(mods(&e.modifiers));
+            self.cols.band = Some((k, e.position.y - g.top, base));
+        }
+        self.cols.press = Some(ColPress { col: k, row, at: e.position, button: e.button, mods: e.modifiers, dragging: false });
+        cx.notify();
+    }
+
+    fn column_move(&mut self, e: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(press) = &mut self.cols.press else { return };
+        if e.pressed_button.is_none() {
+            return;
+        }
+        let (k, at) = (press.col, press.at);
+        let moved = (e.position - at).magnitude() >= DRAG_SLOP as f64;
+        match press.row {
+            Some(row) if moved && !press.dragging => {
+                press.dragging = true;
+                let ask = press.button == MouseButton::Right;
+                if !self.column(k).2.selected.contains(&row) {
+                    self.choose(k, row);
+                }
+                self.active = k;
+                let (_, entries, list) = self.column(k);
+                let paths = list.selected.iter().filter_map(|&i| entries.get(i)).map(|e| e.path.clone()).collect();
+                let Some(entry) = entries.get(row) else { return };
+                let top = self.cols.geo.borrow().get(k).map_or(at.y, |g| g.top);
+                let icon_top = top + px(row as f32 * m::LIST_ROW + (m::LIST_ROW - items::MINI) / 2.0);
+                let left = self.cols.geo.borrow().get(k).map_or(at.x, |g| g.view.left()) + px(m::CELL_INSET);
+                let d = items::Drag {
+                    paths,
+                    icon: items::icon_of(entry),
+                    size: items::MINI,
+                    hotspot: point((at.x - left).clamp(px(0.0), px(items::MINI)), (at.y - icon_top).clamp(px(0.0), px(items::MINI))),
+                    ask,
+                    name: entry.name.clone(),
+                };
+                items::start(window, cx, self.key(), d);
+                cx.notify();
+            }
+            None if press.button == MouseButton::Left => {
+                self.column_band(e.position, window);
+                cx.notify();
+            }
             _ => {}
         }
     }
-    // Typing selects within the active column.
-    let k = f.active;
-    let (path, entries, list) = column(f, k);
-    let id = egui::Id::unique(("col", path));
-    if let Some(row) = widgets::type_select(ui, id, entries.len(), list.cursor(), |i| entries[i].name.as_str()) {
-        choose(f, k, row);
-        reveal(ui, f, k, row, 0.0);
+
+    /// The band in column `k` reaches `now`: the rows it covers selected,
+    /// and near the column's top or bottom it scrolls on.
+    fn column_band(&mut self, now: Point<Pixels>, window: &mut Window) {
+        let Some((k, from, base)) = self.cols.band.clone() else { return };
+        let Some(g) = self.cols.geo.borrow().get(k).copied() else { return };
+        let here = now.y - g.top;
+        let (y0, y1) = (f32::from(from.min(here)), f32::from(from.max(here)));
+        let rows = self.column(k).1.len();
+        let first = (y0 / m::LIST_ROW).floor().max(0.0) as usize;
+        let end = ((y1 / m::LIST_ROW).ceil().max(0.0) as usize).min(rows);
+        let selected = base.over(first..end.max(first));
+        let ends = (first < end).then(|| if here >= from { (first, end - 1) } else { (end - 1, first) });
+        let changed = self.column(k).2.selected != selected;
+        let (_, list) = self.column_mut(k);
+        if changed {
+            if let Some((a, b)) = ends {
+                list.anchor = Some(a);
+                list.cursor = Some(b);
+            }
+            list.selected = selected;
+            self.panes.truncate(k);
+        }
+        self.active = k;
+        // Near or past the column's top or bottom: scroll on.
+        let edge = px(m::LIST_ROW / 2.0);
+        let step = if now.y > g.view.bottom() - edge {
+            f32::from((now.y - g.view.bottom() + edge) / 2.0).clamp(2.0, 2.0 * m::LIST_ROW)
+        } else if now.y < g.view.top() + edge {
+            -f32::from((g.view.top() + edge - now.y) / 2.0).clamp(2.0, 2.0 * m::LIST_ROW)
+        } else {
+            0.0
+        };
+        if step != 0.0 {
+            let h = self.col_scroll(k);
+            let (o, max) = (h.offset(), f32::from(h.max_offset().height));
+            h.set_offset(point(o.x, px((f32::from(o.y) - step).clamp(-max, 0.0))));
+            window.request_animation_frame();
+        }
+    }
+
+    fn column_release(&mut self, e: &MouseUpEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(press) = self.cols.press.take() else { return };
+        self.cols.band = None;
+        if press.dragging {
+            cx.notify();
+            return;
+        }
+        let (col, moved) = (press.col, (e.position - press.at).magnitude() >= DRAG_SLOP as f64);
+        match (press.button, press.row) {
+            (MouseButton::Left, _) if moved => {}
+            (MouseButton::Left, Some(row)) if press.mods.control || press.mods.platform || press.mods.shift => {
+                self.column_mut(col).1.click(row, mods(&press.mods));
+                self.active = col;
+                self.panes.truncate(col);
+            }
+            (MouseButton::Left, Some(row)) => self.choose(col, row),
+            (MouseButton::Left, None) => {
+                self.column_mut(col).1.selected.clear();
+                self.panes.truncate(col);
+                self.active = col;
+            }
+            (MouseButton::Right, row) => {
+                match row {
+                    Some(row) if !self.column(col).2.selected.contains(&row) => self.choose(col, row),
+                    Some(_) => self.active = col,
+                    None => {
+                        self.column_mut(col).1.selected.clear();
+                        self.panes.truncate(col);
+                        self.active = col;
+                    }
+                }
+                self.context_menu(row.is_some(), e.position, window, cx);
+            }
+            _ => {}
+        }
+        cx.notify();
+    }
+
+    // ---- drawing -----------------------------------------------------------
+
+    pub fn columns_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let n = 1 + self.panes.len();
+        self.active = self.active.min(n - 1);
+        let preview = self.previewed();
+        let total = n as f32 * COLUMN_WIDTH + preview.as_ref().map_or(0.0, |_| PREVIEW_WIDTH);
+        let width = f32::from(*self.cols.width.borrow());
+        // Selections made in code (Show in Tracker, a new item, columns
+        // put back after a reload): into view, with some of what's
+        // around them.
+        for (k, row) in std::mem::take(&mut self.show) {
+            if k < n {
+                let around = self.cols.geo.borrow().get(k).map_or(4.0, |g| ((f32::from(g.view.size.height) / m::LIST_ROW / 2.0).floor() - 1.0).max(0.0));
+                self.reveal_row(k, row, around);
+            }
+        }
+        // When the active column or what it opened changes, it is brought
+        // into view; otherwise the scroll stays where it was put.
+        let focus = (self.active, n, preview.is_some());
+        if self.col_focus != Some(focus) && width > 0.0 {
+            self.col_focus = Some(focus);
+            let mut x = -f32::from(self.cols.scroll.offset().x);
+            let right = ((self.active + 2).min(n) as f32 * COLUMN_WIDTH).max(if self.active + 1 >= n { total } else { 0.0 });
+            let left = self.active as f32 * COLUMN_WIDTH;
+            if right - x > width {
+                x = right - width;
+            }
+            if left < x {
+                x = left;
+            }
+            let x = x.clamp(0.0, (total - width).max(0.0)).round();
+            self.cols.scroll.set_offset(point(px(-x), px(0.0)));
+        }
+        let me = cx.entity();
+        let p = theme::palette(cx);
+        let mut row = div().flex().flex_row().h_full().w(px(total));
+        for k in 0..n {
+            row = row.child(self.column_element(k, &me, window, cx));
+        }
+        // Past the last column (the preview, or nothing): into its folder.
+        let last = self.column(n - 1).0.to_owned();
+        let past = {
+            let (key, spring) = (self.key(), self.spring.clone());
+            let past_me = me.clone();
+            canvas(
+                |_, _, _| {},
+                move |b, _, window, cx| {
+                    let p = theme::palette(cx);
+                    let clip = window.content_mask().bounds.intersect(&b);
+                    if let Some(o) = window.drop_offer().cloned()
+                        && clip.contains(&window.mouse_position())
+                        && items::item_drop(window, cx, key, &o, None, Some(&last)).0
+                    {
+                        items::outline(window, clip, &p);
+                    }
+                    let _ = (&spring, &past_me);
+                },
+            )
+            .absolute()
+            .inset_0()
+        };
+        let preview_el = preview.map(|e| {
+            let open_me = me.clone();
+            let entry = e.clone();
+            div()
+                .id("preview")
+                .w(px(PREVIEW_WIDTH))
+                .h_full()
+                .relative()
+                .on_mouse_down(MouseButton::Left, move |ev, _, cx| {
+                    if ev.click_count >= 2 {
+                        let e = entry.clone();
+                        open_me.update(cx, |f, cx| f.act(Action::Open(e), cx));
+                    }
+                })
+                .child(canvas(|_, _, _| {}, move |b, _, window, cx| draw_preview(window, cx, &e, b)).size_full())
+        });
+        let rest = div().flex_1().h_full().relative().children(preview_el).child(past);
+        let width_cell = self.cols.width.clone();
+        let measure = canvas(
+            move |b, _, _| {
+                *width_cell.borrow_mut() = b.size.width;
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .inset_0();
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .child(
+                div()
+                    .id("columns")
+                    .flex_1()
+                    .min_h_0()
+                    .relative()
+                    .bg(style::c(p.document_background))
+                    .overflow_x_scroll()
+                    .track_scroll(&self.cols.scroll)
+                    .child(measure)
+                    .child(row.child(rest)),
+            )
+            .child(div().w_full().h(px(SCROLL_BAR)).relative().child(ScrollBar::horizontal("columns-bar", self.cols.scroll.clone())))
+    }
+
+    fn column_element(&mut self, k: usize, me: &Entity<FolderWin>, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let (path, entries, _) = self.column(k);
+        let rows = entries.len();
+        let path = path.to_owned();
+        let handle = self.col_scroll(k);
+        let height = rows as f32 * m::LIST_ROW + 2.0 * m::TIGHT;
+        let paint_me = me.clone();
+        let geo = self.cols.geo.clone();
+        let spring = self.spring.clone();
+        let editing_here = self.editing.as_ref().filter(|_| k == self.active).and_then(|r| self.column(k).1.iter().position(|e| e.path == r.path));
+        // Editing a name, over its row in the active column.
+        let origin = geo.borrow().get(k).map(|g| g.origin);
+        let field_el = match (editing_here, origin, &self.editing) {
+            (Some(row), Some(origin), Some(r)) => {
+                let e = self.column(k).1[row].clone();
+                let cell = Bounds { origin: point(origin.x + px(m::CELL_INSET - m::TIGHT), origin.y + px(m::TIGHT + row as f32 * m::LIST_ROW)), size: size(px(COLUMN_WIDTH - 2.0 - m::CELL_INSET), px(m::LIST_ROW)) };
+                let l = items::layout_item(window, cell, e.label(), items::Look::Mini, true, e.is_link);
+                Some(r.element(window, cx, &l, origin))
+            }
+            _ => None,
+        };
+        let content = canvas(
+            |_, _, _| {},
+            move |b, _, window, cx| {
+                let p = theme::palette(cx);
+                let clip = window.content_mask().bounds.intersect(&b);
+                let top = b.top() + px(m::TIGHT);
+                let first = (f32::from(clip.top() - top) / m::LIST_ROW).floor().max(0.0) as usize;
+                let last = ((f32::from(clip.bottom() - top) / m::LIST_ROW).ceil().max(0.0) as usize).min(rows);
+                let (shown, active, key, here) = {
+                    let f = paint_me.read(cx);
+                    let (dir, entries, list) = f.column(k);
+                    let shown: Vec<(usize, Entry, bool)> = (first..last.max(first)).filter_map(|i| Some((i, entries.get(i)?.clone(), list.selected.contains(&i)))).collect();
+                    (shown, f.active == k, f.key(), dir.to_owned())
+                };
+                {
+                    let mut g = geo.borrow_mut();
+                    if g.len() <= k {
+                        g.resize(k + 1, ColGeo::default());
+                    }
+                    g[k] = ColGeo { origin: b.origin, top, view: clip, rows };
+                }
+                // Selection: solid in the active column, a quieter tint
+                // along the path in the others (as in Finder).
+                let sel_bg = if active { style::c(p.list_selected_background) } else { style::c(mix(p.list_background, p.list_selected_background, 0.5)) };
+                // Something dragged over this column: onto a folder in it,
+                // or into it.
+                let (mut took, mut drop_on, mut spring_to) = (false, None, None);
+                if let Some(o) = window.drop_offer().cloned() {
+                    let at = window.mouse_position();
+                    if clip.contains(&at) {
+                        let r = (f32::from(at.y - top) / m::LIST_ROW).floor();
+                        let over = (r >= 0.0).then_some(r as usize).and_then(|r| shown.iter().find(|s| s.0 == r)).map(|s| (s.0, &s.1, s.2));
+                        (took, drop_on) = items::item_drop(window, cx, key, &o, over, Some(&here));
+                        spring_to = drop_on.filter(|_| took).and_then(|i| shown.iter().find(|s| s.0 == i)).map(|s| s.1.path.clone());
+                    }
+                }
+                let editing = editing_here;
+                window.with_content_mask(Some(gpui::ContentMask { bounds: clip }), |window| {
+                    for (i, e, selected) in &shown {
+                        let r = Bounds { origin: point(b.left(), top + px(*i as f32 * m::LIST_ROW)), size: size(b.size.width, px(m::LIST_ROW)) };
+                        let text_color = if *selected { style::c(p.list_selected_item_text) } else { style::c(p.list_item_text) };
+                        if *selected {
+                            style::fill_rect(window, r, sel_bg);
+                        }
+                        olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "ListItem", name: Some(e.name.clone().into()), bounds: r.intersect(&clip), enabled: true, clickable: true, selected: Some(*selected), ..Default::default() });
+                        let icon = Bounds { origin: point(r.left() + px(m::CELL_INSET), r.center().y - px(items::MINI / 2.0)), size: size(px(items::MINI), px(items::MINI)) };
+                        icons::paint(window, icon, items::icon_of(e));
+                        let x = icon.right() + px(m::MARK_GAP);
+                        let right = r.right() - px(if e.is_dir { DISCLOSURE_ROOM } else { m::CELL_INSET });
+                        if editing != Some(*i) {
+                            style::label_fit(window, cx, x, r.center().y, Align::Left, e.label().to_owned(), style::PLAIN_SIZE, items::name_font(e.is_link), text_color, (right - x).max(px(0.0)));
+                        }
+                        if took && drop_on == Some(*i) {
+                            style::frame_rect(window, r, style::c(p.keyboard_navigation));
+                        }
+                        if e.is_dir {
+                            let tip = point(r.right() - px(m::CELL_INSET), r.center().y);
+                            let color = if *selected { text_color } else { style::disabled_text(&p) };
+                            let mut path = PathBuilder::fill();
+                            path.move_to(point(tip.x - px(DISCLOSURE.0), tip.y - px(DISCLOSURE.1 / 2.0)));
+                            path.line_to(tip);
+                            path.line_to(point(tip.x - px(DISCLOSURE.0), tip.y + px(DISCLOSURE.1 / 2.0)));
+                            path.close();
+                            if let Ok(path) = path.build() {
+                                window.paint_path(path, color);
+                            }
+                        }
+                    }
+                    if took && drop_on.is_none() {
+                        items::outline(window, clip, &p);
+                    }
+                    // A band, drawn from below the items.
+                    let band = paint_me.read(cx).cols.band.as_ref().filter(|(c, ..)| *c == k).map(|(_, from, _)| *from);
+                    if let Some(from) = band {
+                        let now = window.mouse_position();
+                        let s = point(paint_me.read(cx).cols.press.as_ref().map_or(now.x, |p| p.at.x), from + top);
+                        let r = Bounds::from_corners(point(s.x.min(now.x), s.y.min(now.y)), point(s.x.max(now.x), s.y.max(now.y)));
+                        style::selection_band(window, r.intersect(&clip), &p);
+                    }
+                });
+                let open = spring.borrow_mut().rest(spring_to.as_deref(), window, cx);
+                if let Some(dir) = open {
+                    paint_me.update(cx, |f, cx| f.act(Action::Spring(dir), cx));
+                }
+                if k == 0 {
+                    let (mv, up) = (paint_me.clone(), paint_me.clone());
+                    window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, cx| {
+                        if phase == gpui::DispatchPhase::Bubble {
+                            mv.update(cx, |f, cx| f.column_move(e, window, cx));
+                        }
+                    });
+                    window.on_mouse_event(move |e: &MouseUpEvent, phase, window, cx| {
+                        if phase == gpui::DispatchPhase::Bubble {
+                            up.update(cx, |f, cx| f.column_release(e, window, cx));
+                        }
+                    });
+                }
+            },
+        )
+        .size_full();
+        let (down, right) = (me.clone(), me.clone());
+        let sep = canvas(
+            |_, _, _| {},
+            |b, _, window, cx| {
+                let p = theme::palette(cx);
+                // Etched on the right edge.
+                let x = b.right() - px(2.0);
+                style::vline(window, x, b.top(), b.bottom(), style::shade(&p, p.document_background, 1.15));
+                style::vline(window, x + px(1.0), b.top(), b.bottom(), style::c(p.shine));
+            },
+        )
+        .absolute()
+        .inset_0();
+        div()
+            .w(px(COLUMN_WIDTH))
+            .h_full()
+            .relative()
+            .child(sep)
+            .child(
+                div().absolute().top_0().bottom_0().left_0().w(px(COLUMN_WIDTH - 2.0)).child(
+                    ScrollView::new(olo_ui::gpui::SharedString::from(format!("col:{}", path.display())), &handle).border(false).auto_hide(true).child(
+                        div()
+                            .id(("col-content", k))
+                            .relative()
+                            .w_full()
+                            .h(px(height))
+                            .min_h_full()
+                            .on_mouse_down(MouseButton::Left, move |e, window, cx| down.update(cx, |f, cx| f.column_press(k, e, window, cx)))
+                            .on_mouse_down(MouseButton::Right, move |e, window, cx| right.update(cx, |f, cx| f.column_press(k, e, window, cx)))
+                            .child(content)
+                            .children(field_el),
+                    ),
+                ),
+            )
     }
 }
 
-/// Scroll column `k` to `row`, with `around` rows above and below it.
-fn reveal(ui: &Ui, f: &FolderWin, k: usize, row: usize, around: f32) {
-    let path: PathBuf = column(f, k).0.to_owned();
-    let top = m::TIGHT + row as f32 * m::LIST_ROW;
-    let around = around * m::LIST_ROW;
-    ScrollView::reveal(ui.ctx(), ("col", &path), (top - m::TIGHT - around).max(0.0), top + m::LIST_ROW + m::TIGHT + around);
+/// The preview after the last column: the picture itself or a large
+/// icon, the name and kind, and a few facts.
+fn draw_preview(window: &mut Window, cx: &mut olo_ui::gpui::App, e: &Entry, rect: Bounds<Pixels>) {
+    let p = theme::palette(cx);
+    let area = Bounds::from_corners(point(rect.left() + px(m::WINDOW_INSET), rect.top() + px(m::WINDOW_INSET)), point(rect.right() - px(m::WINDOW_INSET), rect.bottom() - px(m::WINDOW_INSET)));
+    let image_box = Bounds { origin: point(area.center().x - px(PREVIEW_IMAGE / 2.0), area.top()), size: size(px(PREVIEW_IMAGE), px(PREVIEW_IMAGE * 0.75)) };
+    let scale = window.scale_factor();
+    let thumb = (e.kind == Kind::Image).then(|| crate::thumbs::get(&e.path, (PREVIEW_IMAGE * scale).round() as u32)).flatten();
+    match thumb {
+        Some(img) => {
+            let s = img.size(0);
+            let (w, h) = (s.width.0 as f32 / scale, s.height.0 as f32 / scale);
+            let k = (PREVIEW_IMAGE / w).min(PREVIEW_IMAGE * 0.75 / h).min(1.0);
+            let shown = style::snap_centred(window, image_box.center(), w * k, h * k);
+            let _ = window.paint_image(shown, Default::default(), img, 0, false);
+            let edge = Bounds::from_corners(point(shown.left() - px(1.0), shown.top() - px(1.0)), point(shown.right() + px(1.0), shown.bottom() + px(1.0)));
+            style::frame_rect(window, edge, style::shade(&p, p.document_background, 1.15));
+        }
+        None => {
+            let icon = Bounds { origin: point(image_box.center().x - px(PREVIEW_ICON / 2.0), image_box.center().y - px(PREVIEW_ICON / 2.0)), size: size(px(PREVIEW_ICON), px(PREVIEW_ICON)) };
+            icons::paint(window, icon, items::icon_of(e));
+            if let Some(done) = e.progress() {
+                items::paint_progress(window, icon, done, &p);
+            }
+        }
+    }
+    // Name (bold, up to three lines), kind, then facts in two columns
+    // meeting at the centre, keys right-aligned.
+    let mut y = image_box.bottom() + px(m::SPACING);
+    let bold = style::ui_font(FontWeight::BOLD);
+    for line in items::wrap_lines(window, e.label(), &bold, area.size.width, 3) {
+        let at = style::label(window, cx, area.center().x, y + px(m::LABEL_ROW / 2.0), Align::Center, line.clone(), style::PLAIN_SIZE, bold.clone(), style::c(p.document_text));
+        olo_ui::agent::record(window, cx, olo_ui::agent::Node::label(line, at));
+        y += px(style::PLAIN_SIZE * style::LINE_HEIGHT);
+    }
+    let plain = style::ui_font(FontWeight::NORMAL);
+    style::label(window, cx, area.center().x, y + px(m::LABEL_ROW / 2.0), Align::Center, e.kind_text(), style::PLAIN_SIZE, plain.clone(), style::disabled_text(&p));
+    y += px(m::LABEL_ROW + m::SPACING);
+    let created = std::fs::metadata(&e.path).ok().and_then(|md| md.created().ok());
+    for (k, v) in [("Size", e.size_text()), ("Created", fs::format_time(created)), ("Modified", fs::format_time(e.modified))] {
+        let cy = y + px(m::LABEL_ROW / 2.0);
+        style::label(window, cx, area.center().x - px(m::TIGHT), cy, Align::Right, k, style::SMALL_SIZE, plain.clone(), style::disabled_text(&p));
+        let at = style::label(window, cx, area.center().x + px(m::TIGHT), cy, Align::Left, v.clone(), style::SMALL_SIZE, plain.clone(), style::c(p.document_text));
+        olo_ui::agent::record(window, cx, olo_ui::agent::Node::label(v, at));
+        y += px(m::LABEL_ROW);
+    }
 }

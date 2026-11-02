@@ -3,8 +3,8 @@
 //! syntax), Markdown and office documents, spreadsheets and CSV, archives
 //! and folders, audio (with playback) and video posters, fonts; anything
 //! else gets a card. Tracker's Quick Look and the Viewer app are built on
-//! them: the decoding here is the toolkits', the egui kit's `Preview`
-//! (feature `egui`, Tracker's until it moves) draws it.
+//! them: the decoding here; `ui` (feature `gpui`) draws it with Olo's
+//! GPUI.
 
 pub mod archive;
 pub mod audio;
@@ -16,15 +16,11 @@ pub mod load;
 pub mod media;
 pub mod opus;
 pub mod pdf;
-#[cfg(feature = "egui")]
-pub mod rich;
 pub mod table;
 pub mod text;
 #[cfg(feature = "gpui")]
 pub mod ui;
 pub mod video;
-#[cfg(feature = "egui")]
-mod view;
 
 use std::{
     path::{Path, PathBuf},
@@ -34,8 +30,6 @@ use std::{
 pub use bitmap::Bitmap;
 pub use load::{Body, Update};
 use olo_kit_base::files::{self, Kind};
-#[cfg(feature = "egui")]
-pub use view::{MAX_ZOOM, MIN_ZOOM, Preview};
 
 /// Show "loading" only if loading takes longer than this.
 pub const SLOW: Duration = Duration::from_millis(120);

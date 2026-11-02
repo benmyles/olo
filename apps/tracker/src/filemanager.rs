@@ -17,7 +17,7 @@ struct FileManager {
 
 /// The local paths among `uris` (`file://` URIs; others are left out).
 pub fn paths(uris: &[String]) -> Vec<PathBuf> {
-    uris.iter().flat_map(|u| olo_kit::dnd::uri_list_paths(u)).collect()
+    uris.iter().flat_map(|u| olo_kit_base::files::uri_list_paths(u)).collect()
 }
 
 #[zbus::interface(name = "org.freedesktop.FileManager1")]

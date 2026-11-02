@@ -2126,6 +2126,24 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   an `Elastic` too (`scroll` from its wheel handler with the event's
   `kind` and `touch_phase`, `offset` where it draws, a frame asked for
   while it springs back), as the editor does.
+- `workspaces::follow(cx)` (an app that keeps a window per thing on
+  each workspace, as Tracker's folder windows): a thread follows where
+  the app's windows are (app_server's events for its own windows and
+  the workspaces, nothing polled); `workspaces::here(window)` or
+  `here_surface(id)` (a window's surface as its view last saw it, from
+  outside its update) says whether it's on the workspace the active
+  display shows, as the egui kit's `Cx::on_this_workspace`.
+- `icons::paint_tinted(window, b, name, tint)`: an icon with its
+  colours multiplied (a selected one darkened, as Tracker's), still a
+  texture pixel to a device pixel (two of GPUI's image triangles).
+- A window is never opened smaller than 1×1: a layer anchored to every
+  edge (the desktop) is given 1×1 and app_server sizes it; asked for
+  0×0, GPUI made a buffer of nothing, and app_server ended the
+  connection.
+- `olo_kit_base::clipboard::files`/`copied_files`/`FILES` (files as file
+  managers copy and paste them) and `olo_kit_base::files::named_file`/
+  `moz_url` (a picture dragged out of a web page, a browser's link)
+  are kit-base's, for both kits.
 - A single-line `TextField`'s Return is the window's default button's,
   as BeOS's (the field doesn't see it); `keeps_enter()` keeps it for a
   field whose Return means something else (a first password field going
@@ -6344,6 +6362,42 @@ Client (a GTK headerbar, so every libadwaita app) keeps its own,
 coloured by the theme. Test with a throwaway GTK script in a headless
 session (`tsession run NAME GDK_BACKEND=wayland python3 test.py`, the
 private bus as DBUS_SESSION_BUS_ADDRESS).
+
+## Tracker (apps/tracker)
+
+On Olo's GPUI. The `Tracker` entity (main.rs) keeps the windows (each
+known by its view's entity id) and does what opens windows or touches
+files: opening folders (a folder's window on this workspace is brought
+forward, else one opens here: `olo_ui::workspaces`), Get Info, Find,
+the file operations (ops.rs, on workers; Tracker Status after 400 ms),
+drops, pastes, Quick Look, the watcher's changes and an upgrade's saved
+state (the egui Tracker's, unchanged). Each window's view does the
+rest itself and hands the Tracker what it can't (`folder::Action`,
+deferred so the Tracker can update the window back):
+
+- `FolderWin` (folder.rs, model.rs, columns.rs): the folder's items
+  listed on a worker and kept by the watcher, the selection kept by
+  item; icon and mini-icon views drawn in a canvas from what shows
+  only (items.rs: labels wrapped to two lines, four when selected; the
+  selected icon tinted and its label inverted), the band, the keys and
+  typing to select; the list view the kit's `ColumnListView` (its
+  `ListModel` follows the window's selection); the column view's
+  columns side by side, scrolled across, with a preview of a selected
+  file (thumbs.rs: pictures made small on a thread of their own).
+  Editing a name is a `TextField` over the label (items.rs `Rename`);
+  Return or a click elsewhere renames, Escape doesn't.
+- `Desktop` (desktop.rs): a background layer anchored to every edge;
+  icons placed by hand kept in `desktop.json`, the rest on the grid.
+- Drops come through GPUI's drop API: each view takes what's dragged
+  over it as it paints (`items::take_drop`, BeOS's rules: move within a
+  file system, copy across, ⌥ copies, the secondary button asks;
+  `items::Spring` opens a folder a drag rests on), and the window's
+  drop handler gives the Tracker the drop. Drags out carry Olo's own
+  types (the folder and file system they're from, whether to ask).
+- Paste reads the clipboard off the UI thread (`App::paste_as`).
+- `quicklook.rs`: olo-preview's `PreviewView` with the footer and keys;
+  its window opens when the preview comes (or after 120 ms with a
+  spinner) and has the keyboard.
 
 ## Agent Screens (apps/screen)
 

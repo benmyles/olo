@@ -214,6 +214,14 @@ as they land (with the commit), add new ones as they come up.
 
 ## The kit
 
+- **Tracker's scroll: a glide frame off, a flick's frames skipped**
+  (bench 2026-11-01, Tracker on GPUI, Big's 3,050 items at
+  3456×2234): at 1× a flick skipped 2 frames (one frame's UI took
+  5.5 ms) and one glide frame was 42% off its neighbours; at 2× one
+  62% off; at 1.5× even 0.97–1.01, glide within 1%. Measure with
+  `scroll-check --trace` on its column and icon views; the views lay
+  out only what shows, but each visible item is wrapped and measured
+  every frame (keep the layouts by name, width and scale).
 - **GPUI text a glyph at a time is slow at full screen** (found
   2026-11-01 by the benchmark, as it was before that day's changes): a
   window full of GPUI kit text (`StyledText`, `TextView`,
@@ -352,8 +360,13 @@ as they land (with the commit), add new ones as they come up.
      (egui's 0.90–1.04 and 1%), the slowest frame 6.3 ms against egui's
      7.3 (its launch's 18–21 against 6–8), a live resize's 6.1 against
      5.0; and 3 frames for the pointer swept over it against 182, 18
-     for its menus against 300, 59 typing against 218). Next: Tracker,
-     Preferences (the screen saver's preview with it) and Terminal.
+     for its menus against 300, 59 typing against 218), Tracker (with the
+     GPUI kit's workspaces (a folder's window on each workspace),
+     tinted icons, GPUI's paste as a type and clipboard signal; the
+     folder views, desktop, Get Info, Find, Tracker Status and Quick
+     Look on olo-preview's GPUI views; drops taken by GPUI's own drop
+     API). Next: Preferences (the screen saver's preview with it) and
+     Terminal.
      (`olo-preview`'s decoding no longer needs a toolkit: pictures are
      its own `Bitmap`s, and its egui views are behind its `egui`
      feature, for Tracker and the Viewer until they move; Telegram no

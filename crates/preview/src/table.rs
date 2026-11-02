@@ -14,39 +14,11 @@ use std::{
     },
 };
 
-#[cfg(feature = "egui")]
-use std::sync::mpsc;
-
-#[cfg(feature = "egui")]
-use olo_kit::{
-    egui::{self, Align, Rect, Ui, pos2, vec2},
-    metrics as m,
-    style::{self, c},
-    widgets::{Column, ColumnListView, ListState, MenuField, TextControl},
-};
-
 /// A sheet's rows, shared with the worker that filters and sorts them.
 pub type Rows = Arc<Vec<Vec<String>>>;
 
 /// Sheets this big (cells) are filtered and sorted on a worker.
 pub const ON_A_WORKER: usize = 40_000;
-
-/// The bar over the table: search, where, and how many rows show (its
-/// rule inside it; on the 2-point grid).
-#[cfg(feature = "egui")]
-const BAR: f32 = m::CONTROL_HEIGHT + 2.0 * m::TIGHT + 2.0;
-
-#[cfg(feature = "egui")]
-#[derive(Default)]
-pub struct TableView {
-    search: String,
-    /// 0: every column; else the column before it.
-    scope: usize,
-    /// The rows shown (indices into the sheet), in order, and what for.
-    shown: Option<(Key, Vec<usize>)>,
-    /// A worker making them, for that.
-    making: Option<(Key, mpsc::Receiver<Vec<usize>>, Arc<AtomicBool>)>,
-}
 
 /// What the rows shown depend on: the sheet (a document's, and which),
 /// how many rows it has, the search, where it looks (0: every column;
@@ -58,138 +30,6 @@ pub struct Key {
     pub search: String,
     pub scope: usize,
     pub sort: Option<(usize, bool)>,
-}
-
-#[cfg(feature = "egui")]
-impl TableView {
-    /// Start again (another file, or another sheet of it).
-    pub fn reset(&mut self) {
-        if let Some((_, _, cancel)) = self.making.take() {
-            cancel.store(true, atomic::Ordering::Relaxed);
-        }
-        *self = TableView::default();
-    }
-
-    /// The sheet `rows` (`id`: the document and sheet) in `r`.
-    pub fn show(&mut self, ui: &mut Ui, r: Rect, rows: &Rows, list: &mut ListState, id: (u64, usize)) {
-        let p = style::palette(ui.ctx());
-        let ncols = rows.iter().map(Vec::len).max().unwrap_or(0).clamp(1, 200);
-        let header = looks_like_header(rows);
-        let first = usize::from(header);
-        let titles: Vec<String> = (0..ncols)
-            .map(|k| match rows.first().and_then(|row| row.get(k)).filter(|_| header).map(|t| t.trim()) {
-                Some(t) if !t.is_empty() => t.to_owned(),
-                _ => column_name(k),
-            })
-            .collect();
-        if self.scope > ncols {
-            self.scope = 0;
-        }
-
-        // The bar: search, in which column, and how many rows show.
-        let bar = Rect::from_min_max(r.min, pos2(r.right(), r.top() + BAR));
-        ui.painter().rect_filled(bar, 0.0, c(p.panel_background));
-        style::hline_above(ui.painter(), bar.left(), bar.right(), bar.bottom(), style::shade(&p, p.panel_background, 1.2));
-        let row_r = Rect::from_min_max(pos2(bar.left() + m::SPACING, bar.top() + m::TIGHT), pos2(bar.right() - m::SPACING, bar.bottom() - m::TIGHT - 2.0));
-        let total = rows.len().saturating_sub(first);
-        let count = match &self.shown {
-            Some((_, order)) if order.len() != total => format!("{} of {total} rows", order.len()),
-            _ if total == 1 => "1 row".to_owned(),
-            _ => format!("{total} rows"),
-        };
-        let count_w = style::label_width(ui.ctx(), &count, style::small_font()).ceil();
-        let mut options: Vec<&str> = vec!["All Columns"];
-        options.extend(titles.iter().map(String::as_str));
-        let scope_w = 150.0f32.min((row_r.width() - count_w - 3.0 * m::SPACING) / 2.0).max(90.0);
-        let search_w = (row_r.width() - scope_w - count_w - 3.0 * m::SPACING).clamp(80.0, 280.0);
-        let search_r = Rect::from_min_size(row_r.min, vec2(search_w, m::CONTROL_HEIGHT));
-        let search = ui.put(search_r, TextControl::new(&mut self.search).hint("Search"));
-        ui.ctx().accesskit_node_builder(search.id, |n| n.set_label("Search"));
-        if search.has_focus() && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
-            if self.search.is_empty() {
-                search.surrender_focus();
-            }
-            self.search.clear();
-        }
-        if ncols > 1 {
-            let scope_r = Rect::from_min_size(pos2(search_r.right() + m::SPACING, row_r.top()), vec2(scope_w, m::CONTROL_HEIGHT));
-            ui.put(scope_r, MenuField::new(("ql-table-scope", id), &mut self.scope, &options).width(scope_w));
-        }
-        let searching = self.making.is_some();
-        let label = if searching { "Searching…".to_owned() } else { count };
-        style::label(ui.painter(), row_r.right(), row_r.center().y, Align::Max, label, style::small_font(), style::disabled_text(&p));
-
-        // The rows shown: as they were asked for, here or (a big sheet)
-        // from a worker, the last ones showing meanwhile.
-        let key = Key { sheet: id, rows: rows.len(), search: self.search.trim().to_lowercase(), scope: self.scope, sort: list.sort };
-        if self.making.as_ref().is_some_and(|(k, ..)| *k != key) {
-            let (_, _, cancel) = self.making.take().unwrap();
-            cancel.store(true, atomic::Ordering::Relaxed);
-        }
-        if let Some((k, rx, _)) = &self.making
-            && let Ok(order) = rx.try_recv()
-        {
-            self.shown = Some((k.clone(), order));
-            self.making = None;
-            list.selected.clear();
-        }
-        let stale = self.shown.as_ref().is_none_or(|(k, _)| *k != key);
-        if stale && self.making.is_none() {
-            if rows.len() * ncols <= ON_A_WORKER {
-                self.shown = Some((key.clone(), arrange(rows, first, &key, &AtomicBool::new(false))));
-                list.selected.clear();
-            } else {
-                let (tx, rx) = mpsc::channel();
-                let cancel = Arc::new(AtomicBool::new(false));
-                let (rows, k, stop, ctx) = (rows.clone(), key.clone(), cancel.clone(), ui.ctx().clone());
-                std::thread::Builder::new()
-                    .name("ql-table".into())
-                    .spawn(move || {
-                        let order = arrange(&rows, first, &k, &stop);
-                        if !stop.load(atomic::Ordering::Relaxed) {
-                            let _ = tx.send(order);
-                            ctx.request_repaint();
-                        }
-                    })
-                    .expect("thread");
-                self.making = Some((key, rx, cancel));
-            }
-        }
-        if self.making.is_some() {
-            ui.ctx().request_repaint_after(std::time::Duration::from_millis(50));
-        }
-        let all: Vec<usize>;
-        let order: &[usize] = match &self.shown {
-            Some((_, o)) => o,
-            None => {
-                all = (first..rows.len()).collect();
-                &all
-            }
-        };
-
-        // Each column as wide as what it holds, within reason; one of
-        // numbers lined up on the right.
-        let cols: Vec<Column> = (0..ncols)
-            .map(|k| {
-                let sample = || rows.iter().skip(first).take(200).filter_map(|r| r.get(k)).filter(|s| !s.trim().is_empty());
-                let longest = sample().map(|s| s.chars().count()).chain([titles[k].chars().count() + 2]).max().unwrap_or(4);
-                let col = Column::new(&titles[k], (longest as f32 * 7.0 + 14.0).clamp(48.0, 320.0));
-                let (cells, numbers) = sample().fold((0, 0), |(n, k), s| (n + 1, k + usize::from(number(s).is_some())));
-                if cells > 0 && numbers * 10 >= cells * 9 { col.right() } else { col }
-            })
-            .collect();
-        let area = Rect::from_min_max(pos2(r.left(), bar.bottom()), r.max);
-        // The cells line up with each other, not with the bar's search
-        // (a column of numbers on the right meets it only by chance).
-        olo_kit::layout_review::own_grid(ui, area);
-        let mut ui = ui.new_child(egui::UiBuilder::new().max_rect(area));
-        let empty = if self.search.trim().is_empty() { "No rows." } else { "No rows match." };
-        ColumnListView::new(("ql-table", id), &cols, order.len(), list).empty_text(empty).show(&mut ui, |cell| {
-            if let Some(s) = order.get(cell.row).and_then(|&i| rows.get(i)).and_then(|r| r.get(cell.column)) {
-                cell.text(s);
-            }
-        });
-    }
 }
 
 /// The rows (indices) with `key.search` in them, in `key.sort`'s order;

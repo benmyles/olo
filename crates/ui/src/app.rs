@@ -256,7 +256,9 @@ pub fn app_id(cx: &App) -> String {
 
 /// Opens a window showing the view `build` makes.
 pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, build: impl FnOnce(&mut Window, &mut App) -> Entity<V>) -> Option<WindowHandle<Frame>> {
-    let (w, h) = options.size;
+    // (A surface no bigger than nothing has no buffer to show: app_server
+    // ends the connection of a program that offers one.)
+    let (w, h) = (options.size.0.max(1.0), options.size.1.max(1.0));
     let bounds = Bounds::centered(None, size(px(w), px(h)), cx);
     let title = options.title.clone();
     let panel = options.panel;

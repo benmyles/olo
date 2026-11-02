@@ -218,6 +218,36 @@ impl Clipboard {
         }
     }
 
+    /// Olo: the types what's on the clipboard is offered as (ours: what
+    /// we put on it).
+    pub fn types(&self) -> Vec<String> {
+        let Some(offer) = self.current_offer.as_ref() else { return Vec::new() };
+        if offer.has_mime_type(&self.self_mime) {
+            return self.contents.as_ref().map(|c| c.mime_types(&TEXT_MIME_TYPES)).unwrap_or_default();
+        }
+        offer.mime_types().iter().filter(|t| !t.starts_with("pid/")).cloned().collect()
+    }
+
+    /// Olo: asks for the clipboard as `mime`: ours at once, else a read
+    /// of the pipe the other program writes it to, for a worker (a
+    /// program that never finishes writing is given up on after a few
+    /// seconds, not waited for on the UI thread).
+    pub fn receive(&self, mime: &str) -> Option<crate::ClipboardReceipt> {
+        let offer = self.current_offer.as_ref()?;
+        if offer.has_mime_type(&self.self_mime) {
+            return self.contents.as_ref().and_then(|c| c.bytes_for(mime)).map(crate::ClipboardReceipt::Ready);
+        }
+        if !offer.has_mime_type(mime) {
+            return None;
+        }
+        let pipe = Pipe::new().ok()?;
+        offer.inner.receive_data(mime.to_string(), unsafe { BorrowedFd::borrow_raw(pipe.write.as_raw_fd()) });
+        drop(pipe.write);
+        self.connection.flush().ok()?;
+        let read = pipe.read;
+        Some(crate::ClipboardReceipt::Read(Box::new(move || read_within(read, std::time::Duration::from_secs(5)))))
+    }
+
     pub fn read(&mut self) -> Option<ClipboardItem> {
         let offer = self.current_offer.as_ref()?;
         if let Some(cached) = self.cached_read.clone() {
@@ -286,5 +316,27 @@ impl Clipboard {
                 },
             )
             .unwrap();
+    }
+}
+
+/// Olo: all of what's written to `fd` until it's closed, unless that takes
+/// longer than `limit`.
+fn read_within(mut fd: filedescriptor::FileDescriptor, limit: std::time::Duration) -> Option<Vec<u8>> {
+    use std::io::Read as _;
+    let deadline = std::time::Instant::now() + limit;
+    let mut out = Vec::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let left = deadline.checked_duration_since(std::time::Instant::now())?;
+        let mut poll = [filedescriptor::pollfd { fd: fd.as_raw_fd(), events: filedescriptor::POLLIN, revents: 0 }];
+        if filedescriptor::poll(&mut poll, Some(left)).ok()? == 0 {
+            return None;
+        }
+        match fd.read(&mut buf) {
+            Ok(0) => return Some(out),
+            Ok(n) => out.extend_from_slice(&buf[..n]),
+            Err(e) if e.kind() == ErrorKind::Interrupted || e.kind() == ErrorKind::WouldBlock => {}
+            Err(_) => return None,
+        }
     }
 }

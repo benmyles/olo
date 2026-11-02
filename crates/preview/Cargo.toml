@@ -6,13 +6,10 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-# The egui kit's views (Tracker's Quick Look until it moves to Olo's GPUI).
-egui = ["dep:olo-kit"]
-# The views drawn with Olo's GPUI (the Viewer's).
+# The views drawn with Olo's GPUI (the Viewer's and Quick Look's).
 gpui = ["dep:olo-ui", "dep:futures", "dep:smallvec", "dep:olo-xdg"]
 
 [dependencies]
-olo-kit = { workspace = true, optional = true }
 olo-ui = { workspace = true, optional = true }
 futures = { version = "0.3", optional = true }
 smallvec = { version = "1.6", optional = true }

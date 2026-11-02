@@ -185,6 +185,16 @@ pub fn paint_faded(window: &mut Window, b: Bounds<Pixels>, name: &str, opacity: 
 }
 
 pub fn paint(window: &mut Window, b: Bounds<Pixels>, name: &str) -> bool {
+    paint_with(window, b, name, None)
+}
+
+/// [`paint`], its colours multiplied by `tint` (a selected icon darkened,
+/// as BeOS's Tracker shows one), still a texture pixel to a device pixel.
+pub fn paint_tinted(window: &mut Window, b: Bounds<Pixels>, name: &str, tint: gpui::Hsla) -> bool {
+    paint_with(window, b, name, Some(tint))
+}
+
+fn paint_with(window: &mut Window, b: Bounds<Pixels>, name: &str, tint: Option<gpui::Hsla>) -> bool {
     let scale = window.scale_factor();
     let logical = f32::from(b.size.width.max(b.size.height));
     let px_size = (logical * scale).round().max(1.0) as u32;
@@ -199,7 +209,19 @@ pub fn paint(window: &mut Window, b: Bounds<Pixels>, name: &str) -> bool {
     let x = px(((f32::from(c.x) - w / 2.0) * scale).round() / scale);
     let y = px(((f32::from(c.y) - h / 2.0) * scale).round() / scale);
     let at = Bounds { origin: point(x, y), size: size(px(w), px(h)) };
-    let _ = window.paint_image(at, Corners::default(), img, 0, false);
+    match tint {
+        None => {
+            let _ = window.paint_image(at, Corners::default(), img, 0, false);
+        }
+        // Two triangles over the same pixels, each texel sampled at its
+        // middle, so nothing is blended with its neighbours.
+        Some(tint) => {
+            let (tl, tr, bl, br) = (at.origin, at.top_right(), at.bottom_left(), at.bottom_right());
+            let (u0, u1) = (point(0.0, 0.0), point(1.0, 1.0));
+            let tris = [[(tl, u0), (tr, point(1.0, 0.0)), (br, u1)], [(tl, u0), (br, u1), (bl, point(0.0, 1.0))]];
+            let _ = window.paint_image_triangles(img, &tris, tint);
+        }
+    }
     crate::review::icon(window, at, [s.width.0 as usize, s.height.0 as usize]);
     true
 }

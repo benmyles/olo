@@ -1,22 +1,31 @@
-//! The desktop: a transparent background layer showing volumes, Home,
-//! the contents of ~/Desktop and the Trash, laid out as on BeOS (volumes
-//! down the right-hand side next to the Deskbar, Trash in the bottom-right
+//! The desktop: a clear background layer showing volumes, Home, the
+//! contents of ~/Desktop and the Trash, laid out as on BeOS (volumes down
+//! the right-hand side next to the Deskbar, Trash in the bottom-right
 //! corner).
 
 use std::{
+    cell::RefCell,
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
+    rc::Rc,
 };
 
-use olo_kit::{
-    Layer, LayerOptions, Menu, WindowKind, WindowOptions,
-    egui::{self, Key, Pos2, Rect, Sense, Ui, pos2},
-    dnd, metrics as m, style, widgets,
+use olo_kit_base::list::SelectionBand;
+use olo_ui::{
+    Menu, WindowOptions,
+    gpui::{
+        self, Bounds, Context, DragAction, FocusHandle, InteractiveElement as _, IntoElement, KeyDownEvent, Keystroke, LayerKeyboard, LayerShellLayer, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels,
+        Point, Render, Styled as _, WeakEntity, Window, canvas, div, point, px, size,
+    },
+    menu, metrics as m,
+    style, theme,
 };
 
 use crate::{
+    Tracker,
+    folder::{Action, mods},
     fs::{self, Entry},
-    view::{self, Action, ICON_CELL, Look},
+    items::{self, DropTarget, ICON_CELL, ItemLayout, Look, Rename, Spring},
     watch,
 };
 
@@ -24,6 +33,10 @@ use crate::{
 const DESKBAR_WIDTH: f32 = 172.0;
 /// From the screen edge to the first column of icons.
 const EDGE: f32 = m::SPACING;
+const DRAG_SLOP: f32 = 3.0;
+
+/// Icons being moved, by [`place_key`], and where each cell was.
+type Placed = Vec<(String, Point<Pixels>)>;
 
 struct Item {
     entry: Entry,
@@ -36,23 +49,40 @@ pub struct Desktop {
     /// The Trash, pinned to the bottom-right corner.
     trash: Item,
     selected: BTreeSet<usize>,
-    band: Option<(Pos2, widgets::SelectionBand)>,
+    band: Option<(Point<Pixels>, SelectionBand)>,
     /// A ~/Desktop item whose name is being edited in place.
-    editing: Option<(PathBuf, String)>,
+    editing: Option<Rename>,
+    focus_after_edit: bool,
     /// Where icons were put by hand (the rest fill the grid around them).
     places: Places,
     /// The screen, as last laid out.
-    screen: Rect,
+    screen: Bounds<Pixels>,
     /// A drag of icons started here: where the button went down, and
     /// where they were then (to put them where they are dropped).
-    dragging: Option<(Pos2, Vec<(String, Pos2)>)>,
+    dragging: Option<(Point<Pixels>, Placed)>,
+    press: Option<Press>,
+    /// The items as last drawn.
+    layouts: Rc<RefCell<Vec<ItemLayout>>>,
+    spring: Rc<RefCell<Spring>>,
+    pub app: WeakEntity<Tracker>,
+    focus: FocusHandle,
+}
+
+struct Press {
+    at: Point<Pixels>,
+    button: MouseButton,
+    item: Option<usize>,
+    was_selected: bool,
+    ctrl: bool,
+    shift: bool,
+    dragging: bool,
 }
 
 /// Icons placed by hand, by [`place_key`], as the top-left of each one's
 /// cell from the screen's top-right corner (where the grid starts, so
 /// they keep their place beside the Deskbar when the screen size
-/// changes). Kept in `~/.config/olo/desktop.json`, which agents can
-/// read too.
+/// changes). Kept in `~/.config/olo/desktop.json`, which agents can read
+/// too.
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 struct Places {
     #[serde(default)]
@@ -60,7 +90,7 @@ struct Places {
 }
 
 fn places_path() -> PathBuf {
-    olo_kit::config_dir().join("desktop.json")
+    olo_ui::config_dir().join("desktop.json")
 }
 
 impl Places {
@@ -68,14 +98,16 @@ impl Places {
         std::fs::read(places_path()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
     }
 
+    /// Written on a worker (nothing waits for the disk).
     fn save(&self) {
-        let _ = std::fs::create_dir_all(olo_kit::config_dir());
-        if let Ok(json) = serde_json::to_vec_pretty(self) {
+        let Ok(json) = serde_json::to_vec_pretty(self) else { return };
+        std::thread::spawn(move || {
+            let _ = std::fs::create_dir_all(olo_ui::config_dir());
             let tmp = places_path().with_extension("json.tmp");
             if std::fs::write(&tmp, json).is_ok() {
                 let _ = std::fs::rename(tmp, places_path());
             }
-        }
+        });
     }
 }
 
@@ -91,22 +123,16 @@ fn place_key(path: &Path) -> String {
     }
 }
 
+/// The desktop's surface: a layer behind every window, over the whole
+/// screen, taking the keyboard when clicked.
 pub fn options() -> WindowOptions {
-    WindowOptions {
-        title: "Desktop".into(),
-        size: (0, 0),
-        kind: WindowKind::Layer(LayerOptions {
-            layer: Layer::Background,
-            anchor: (true, true, true, true),
-            exclusive_zone: -1,
-            margin: (0, 0, 0, 0),
-            keyboard: olo_kit::Keyboard::OnDemand,
-            namespace: "desktop".into(),
-            output: None,
-        }),
-        panel: false,
-        ..Default::default()
-    }
+    WindowOptions::new("Desktop", 1.0, 1.0)
+        .layer("desktop", LayerShellLayer::Background, (true, true, true, true))
+        .layer_options(|l| {
+            l.exclusive_zone = -1;
+            l.keyboard = LayerKeyboard::OnDemand;
+        })
+        .no_panel()
 }
 
 /// The folders the desktop shows: ~/Desktop, and the Trash (for its icon).
@@ -118,8 +144,12 @@ fn desktop_dir() -> PathBuf {
     fs::home().join("Desktop")
 }
 
+fn pressed(k: &Keystroke, command: &str) -> bool {
+    olo_kit_base::keys::shortcut(command).is_some_and(|s| olo_ui::keys::pressed(&s, k))
+}
+
 impl Desktop {
-    pub fn new() -> Self {
+    pub fn new(app: WeakEntity<Tracker>, cx: &mut Context<Self>) -> Self {
         // Made up front so it can be watched from the start.
         let _ = std::fs::create_dir_all(desktop_dir());
         let mut d = Desktop {
@@ -128,16 +158,22 @@ impl Desktop {
             selected: BTreeSet::new(),
             band: None,
             editing: None,
+            focus_after_edit: false,
             places: Places::load(),
-            screen: Rect::NOTHING,
+            screen: Bounds::default(),
             dragging: None,
+            press: None,
+            layouts: Rc::default(),
+            spring: Rc::default(),
+            app,
+            focus: cx.focus_handle(),
         };
         d.reload();
         d
     }
 
     pub fn reload(&mut self) {
-        let selected: Vec<PathBuf> = self.selected.iter().filter_map(|&i| self.item(i)).map(|it| it.entry.path.clone()).collect();
+        let selected = self.selected_paths();
         let mut items = Vec::new();
         for (label, path, icon) in fs::volumes() {
             if let Some(entry) = fs::entry(&path) {
@@ -149,15 +185,13 @@ impl Desktop {
         }
         if let Ok(list) = fs::list(&desktop_dir(), false) {
             for entry in list {
-                let icon = view::icon_of(&entry);
+                let icon = items::icon_of(&entry);
                 items.push(Item { label: entry.name.clone(), entry, icon });
             }
         }
         self.items = items;
         self.trash = trash_item();
-        self.selected = (0..=self.items.len())
-            .filter(|&i| self.item(i).is_some_and(|it| selected.contains(&it.entry.path)))
-            .collect();
+        self.select_paths(&selected);
     }
 
     /// Splice in changes seen on disk: ~/Desktop items that came or went,
@@ -188,11 +222,11 @@ impl Desktop {
                     let at = self.items.iter().position(|it| it.entry.path == *path);
                     match (at, entry) {
                         (Some(i), Some(e)) => {
-                            self.items[i].icon = view::icon_of(e);
+                            self.items[i].icon = items::icon_of(e);
                             self.items[i].entry = e.clone();
                         }
                         (None, Some(e)) if !e.name.starts_with('.') => {
-                            let icon = view::icon_of(e);
+                            let icon = items::icon_of(e);
                             self.items.push(Item { label: e.name.clone(), entry: e.clone(), icon });
                         }
                         (Some(i), None) => {
@@ -221,29 +255,25 @@ impl Desktop {
     }
 
     /// Select `p` and start editing its name in place.
-    pub fn edit_name(&mut self, p: &std::path::Path) {
+    pub fn edit_name(&mut self, p: &Path, cx: &mut Context<Self>) {
         if let Some(i) = self.items.iter().position(|it| it.entry.path == p) {
             self.selected = BTreeSet::from([i]);
-            let name = p.file_name().unwrap_or_default().to_string_lossy().into_owned();
-            self.editing = Some((p.to_owned(), name));
+            self.editing = Some(Rename::new(p.to_owned(), self.items[i].entry.is_link, cx));
+            cx.notify();
         }
-    }
-
-    pub fn is_editing(&self) -> bool {
-        self.editing.is_some()
     }
 
     pub fn selected_paths(&self) -> Vec<PathBuf> {
         self.selected_entries().into_iter().map(|e| e.path).collect()
     }
 
-    /// Selected items that are files or folders on the Desktop (not
-    /// volumes, Home or the Trash, which can't be moved to the Trash).
     pub fn selected_entries(&self) -> Vec<Entry> {
         self.selected.iter().filter_map(|&i| self.item(i)).map(|it| it.entry.clone()).collect()
     }
 
-    fn movable(&self) -> Vec<PathBuf> {
+    /// Selected items that are files or folders on the Desktop (not
+    /// volumes, Home or the Trash, which can't be moved to the Trash).
+    pub fn movable(&self) -> Vec<PathBuf> {
         let dir = desktop_dir();
         self.selected_paths().into_iter().filter(|p| p.parent() == Some(dir.as_path())).collect()
     }
@@ -253,26 +283,27 @@ impl Desktop {
     /// grid around them as on BeOS: columns downward from the top right,
     /// beside the Deskbar, wrapping leftward, with the Trash in the
     /// bottom-right corner unless it was moved.
-    fn cells(&self, screen: Rect) -> Vec<Rect> {
+    fn cells(&self, screen: Bounds<Pixels>) -> Vec<Bounds<Pixels>> {
         let n = self.items.len() + 1;
+        let cell = size(px(ICON_CELL.0), px(ICON_CELL.1));
         let placed = |i: usize| {
             let p = self.places.icons.get(&place_key(&self.item(i)?.entry.path))?;
-            let min = pos2(screen.right() - p[0], screen.top() + p[1]);
-            let max = (screen.max - ICON_CELL).max(screen.min);
-            Some(Rect::from_min_size(min.clamp(screen.min, max), ICON_CELL))
+            let x = (screen.right() - px(p[0])).clamp(screen.left(), (screen.right() - cell.width).max(screen.left()));
+            let y = (screen.top() + px(p[1])).clamp(screen.top(), (screen.bottom() - cell.height).max(screen.top()));
+            Some(Bounds { origin: point(x, y), size: cell })
         };
-        let mut cells: Vec<Option<Rect>> = (0..n).map(placed).collect();
+        let mut cells: Vec<Option<Bounds<Pixels>>> = (0..n).map(placed).collect();
         if cells[n - 1].is_none() {
-            let min = pos2(screen.right() - EDGE - ICON_CELL.x, screen.bottom() - EDGE - ICON_CELL.y);
-            cells[n - 1] = Some(Rect::from_min_size(min, ICON_CELL));
+            cells[n - 1] = Some(Bounds { origin: point(screen.right() - px(EDGE) - cell.width, screen.bottom() - px(EDGE) - cell.height), size: cell });
         }
-        let usable = screen.height() - 2.0 * EDGE - ICON_CELL.y; // keep the Trash's row free
-        let per_col = ((usable / ICON_CELL.y).floor() as usize).max(1);
+        let usable = f32::from(screen.size.height) - 2.0 * EDGE - ICON_CELL.1; // keep the Trash's row free
+        let per_col = ((usable / ICON_CELL.1).floor() as usize).max(1);
         let slot = |k: usize| {
             let (col, row) = (k / per_col, k % per_col);
-            let right = screen.right() - DESKBAR_WIDTH - EDGE - col as f32 * ICON_CELL.x;
-            Rect::from_min_size(pos2(right - ICON_CELL.x, screen.top() + EDGE + row as f32 * ICON_CELL.y), ICON_CELL)
+            let right = screen.right() - px(DESKBAR_WIDTH + EDGE + col as f32 * ICON_CELL.0);
+            Bounds { origin: point(right - cell.width, screen.top() + px(EDGE + row as f32 * ICON_CELL.1)), size: cell }
         };
+        let shrink = |b: Bounds<Pixels>| Bounds { origin: point(b.left() + px(4.0), b.top() + px(4.0)), size: size(b.size.width - px(8.0), b.size.height - px(8.0)) };
         let mut k = 0;
         for i in 0..n - 1 {
             if cells[i].is_some() {
@@ -280,34 +311,34 @@ impl Desktop {
             }
             // The next grid slot no placed icon covers (a few thousand
             // slots at most: past the left edge it gives up and overlaps).
-            while k < 4096 && cells.iter().flatten().any(|c| c.shrink(4.0).intersects(slot(k))) {
+            while k < 4096 && cells.iter().flatten().any(|c| shrink(*c).intersects(&slot(k))) {
                 k += 1;
             }
             cells[i] = Some(slot(k));
             k += 1;
         }
-        cells.into_iter().map(|c| c.unwrap_or(Rect::NOTHING)).collect()
+        cells.into_iter().map(|c| c.unwrap_or_default()).collect()
     }
 
     /// Put the icons that were dragged from here where they were dropped
     /// (`at`, the pointer).
-    pub fn place_dragged(&mut self, at: Pos2) {
+    pub fn place_dragged(&mut self, at: Point<Pixels>) {
         let Some((from, icons)) = self.dragging.take() else { return };
         let screen = self.screen;
         for (key, was) in icons {
-            let to = was + (at - from);
-            self.places.icons.insert(key, [screen.right() - to.x, to.y - screen.top()]);
+            let to = point(was.x + (at.x - from.x), was.y + (at.y - from.y));
+            self.places.icons.insert(key, [f32::from(screen.right() - to.x), f32::from(to.y - screen.top())]);
         }
         self.places.save();
     }
 
     /// Put the things just dropped here from elsewhere (now in ~/Desktop,
     /// as `names`) where they were dropped, side by side.
-    pub fn place_new(&mut self, names: &[String], at: Pos2) {
+    pub fn place_new(&mut self, names: &[String], at: Point<Pixels>) {
         let screen = self.screen;
         for (k, name) in names.iter().enumerate() {
-            let min = at - ICON_CELL / 2.0 + egui::vec2(k as f32 * ICON_CELL.x, 0.0);
-            self.places.icons.insert(name.clone(), [screen.right() - min.x, min.y - screen.top()]);
+            let min = point(at.x - px(ICON_CELL.0 / 2.0) + px(k as f32 * ICON_CELL.0), at.y - px(ICON_CELL.1 / 2.0));
+            self.places.icons.insert(name.clone(), [f32::from(screen.right() - min.x), f32::from(min.y - screen.top())]);
         }
         self.places.save();
     }
@@ -326,226 +357,339 @@ impl Desktop {
         self.places.save();
     }
 
-    pub fn ui(&mut self, ui: &mut Ui) -> Vec<Action> {
-        let mut actions = Vec::new();
-        let p = style::palette(ui.ctx());
+    fn act(&self, a: Action, cx: &mut Context<Self>) {
+        let app = self.app.clone();
+        cx.defer(move |cx| {
+            if let Some(app) = app.upgrade() {
+                app.update(cx, |t, cx| t.desktop_action(a, cx));
+            }
+        });
+    }
 
-        let screen = ui.max_rect();
+    fn end_rename(&mut self, commit: bool, cx: &mut Context<Self>) {
+        let Some(r) = self.editing.take() else { return };
+        if commit {
+            let name = r.text(cx);
+            self.act(Action::Rename(r.path, name), cx);
+        }
+        self.focus_after_edit = true;
+        cx.notify();
+    }
+
+    /// The desktop's own commands (its menus' and its keys').
+    pub fn command(&mut self, cmd: &str, cx: &mut Context<Self>) {
+        match cmd {
+            "clean-up" => {
+                self.clean_up();
+                cx.notify();
+            }
+            "open" => {
+                for e in self.selected_entries() {
+                    self.act(Action::Open(e), cx);
+                }
+            }
+            "new-window" => {
+                if let Some(app) = self.selected_entries().first().and_then(fs::running_app) {
+                    fs::new_window(app);
+                }
+            }
+            "group-windows" => fs::toggle_grouping(self.selected_entries().first()),
+            "trash" => {
+                // Only items that live in ~/Desktop can go to the Trash.
+                let dir = desktop_dir();
+                self.selected.retain(|&i| self.items.get(i).is_some_and(|it| it.entry.path.parent() == Some(dir.as_path())));
+                self.act(Action::Command(cmd.into()), cx);
+            }
+            "rename" => {
+                if let [p] = self.movable().as_slice() {
+                    let p = p.clone();
+                    self.edit_name(&p, cx);
+                }
+            }
+            _ => self.act(Action::Command(cmd.into()), cx),
+        }
+    }
+
+    fn menu(&self, hit: Option<usize>) -> Menu {
+        match hit {
+            Some(i) if i == self.items.len() => Menu::new("").item("Open", "open").key("o").item("Empty Trash", "empty-trash").enabled(!fs::trash_is_empty()),
+            Some(i) => {
+                let mut m = Menu::new("").item("Open", "open").key("o");
+                // A running app of ours can open another window.
+                if self.selected.len() <= 1 && self.item(i).and_then(|it| fs::running_app(&it.entry)).is_some() {
+                    m = m.item("New Window", "new-window");
+                }
+                if self.selected.len() <= 1 {
+                    m = fs::grouping_item(m, self.item(i).map(|it| &it.entry));
+                }
+                m.item("Get Info", "info").key("i").separator().item("Move to Trash", "trash").key("t").enabled(!self.movable().is_empty())
+            }
+            None => Menu::new("")
+                .item("New Folder", "new-folder")
+                .item("Open in Terminal", "terminal")
+                .separator()
+                .item("Clean Up", "clean-up")
+                .enabled(!self.places.icons.is_empty())
+                .separator()
+                .item("Change Background…", "backgrounds"),
+        }
+    }
+
+    // ---- input -------------------------------------------------------------
+
+    fn hit(&self, p: Point<Pixels>) -> Option<usize> {
+        self.layouts.borrow().iter().position(|l| l.hit().contains(&p))
+    }
+
+    fn press(&mut self, e: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if self.editing.is_some() {
+            self.end_rename(true, cx);
+        }
+        window.focus(&self.focus);
+        let pos = e.position;
+        let hit = self.hit(pos);
+        let (ctrl, shift) = (e.modifiers.control || e.modifiers.platform, e.modifiers.shift);
+        if e.button == MouseButton::Left && e.click_count >= 2 {
+            if let Some(entry) = hit.and_then(|i| self.item(i)).map(|it| it.entry.clone()) {
+                self.act(Action::Open(entry), cx);
+            }
+            self.press = None;
+            return;
+        }
+        let was_selected = hit.is_some_and(|i| self.selected.contains(&i));
+        match hit {
+            // Kept for the menu, or a drag, if it's one of them; ⌘ or ⇧
+            // adds it (icons placed anywhere have no order for a range).
+            Some(i) if !was_selected => {
+                if !(ctrl || shift) {
+                    self.selected.clear();
+                }
+                self.selected.insert(i);
+            }
+            Some(_) => {}
+            None => {
+                // A band: with ⇧ adding to what's selected, with ⌘ flipping
+                // what it covers.
+                if e.button == MouseButton::Left {
+                    let base = if ctrl || shift { self.selected.clone() } else { BTreeSet::new() };
+                    self.band = Some((pos, SelectionBand { base, flip: ctrl }));
+                }
+                if !(ctrl || shift) {
+                    self.selected.clear();
+                }
+            }
+        }
+        if let Some(it) = hit.and_then(|i| self.item(i)) {
+            let _ = olo_ui::icons::bitmap(it.icon, 0);
+        }
+        let _ = mods;
+        self.press = Some(Press { at: pos, button: e.button, item: hit, was_selected, ctrl, shift, dragging: false });
+        cx.notify();
+    }
+
+    fn moved(&mut self, e: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(press) = &mut self.press else { return };
+        if e.pressed_button.is_none() {
+            return;
+        }
+        let moved = (e.position - press.at).magnitude() >= DRAG_SLOP as f64;
+        match press.item {
+            Some(i) if moved && !press.dragging => {
+                press.dragging = true;
+                let (at, ask) = (press.at, press.button == MouseButton::Right);
+                // Every icon can be moved about the desktop.
+                let layouts = self.layouts.borrow();
+                let icons = self.selected.iter().filter_map(|&j| Some((place_key(&self.item(j)?.entry.path), layouts.get(j)?.icon.origin - point(px((ICON_CELL.0 - items::ICON) / 2.0), px(m::TIGHT))))).collect();
+                let icon = layouts.get(i).map(|l| l.icon).unwrap_or_default();
+                drop(layouts);
+                self.dragging = Some((at, icons));
+                // Everything but the Trash can go elsewhere.
+                let paths: Vec<PathBuf> = self.selected.iter().filter(|&&j| j < self.items.len()).map(|&j| self.items[j].entry.path.clone()).collect();
+                let Some(it) = self.item(i) else { return };
+                let d = items::Drag {
+                    paths,
+                    icon: it.icon,
+                    size: f32::from(icon.size.width),
+                    hotspot: point((at.x - icon.left()).clamp(px(0.0), icon.size.width), (at.y - icon.top()).clamp(px(0.0), icon.size.height)),
+                    ask,
+                    name: it.label.clone(),
+                };
+                let id = cx.entity_id();
+                items::start(window, cx, id, d);
+                cx.notify();
+            }
+            None if press.button == MouseButton::Left => {
+                if let Some((start, base)) = &self.band {
+                    let r = Bounds::from_corners(point(start.x.min(e.position.x), start.y.min(e.position.y)), point(start.x.max(e.position.x), start.y.max(e.position.y)));
+                    let covered: Vec<usize> = self.layouts.borrow().iter().enumerate().filter(|(_, l)| l.hit().intersects(&r)).map(|(i, _)| i).collect();
+                    self.selected = base.over(covered);
+                }
+                cx.notify();
+            }
+            _ => {}
+        }
+    }
+
+    fn released(&mut self, e: &MouseUpEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(press) = self.press.take() else { return };
+        self.band = None;
+        if press.dragging {
+            cx.notify();
+            return;
+        }
+        match (press.button, press.item) {
+            (MouseButton::Left, Some(i)) if press.was_selected => {
+                if !(press.ctrl || press.shift) {
+                    self.selected = BTreeSet::from([i]);
+                } else {
+                    self.selected.remove(&i);
+                }
+            }
+            (MouseButton::Right, hit) => {
+                let me = cx.entity();
+                menu::context_menu(window, cx, self.menu(hit), e.position, move |cmd, _, cx| me.update(cx, |d, cx| d.command(cmd, cx)));
+            }
+            _ => {}
+        }
+        cx.notify();
+    }
+
+    /// Keys, when the desktop has the keyboard and no name is being
+    /// edited: the menus' keys in the keyboard profile (⌘O opens, ⌘⌫
+    /// trashes, ⌘I gets info, ⌘E edits a name, on a Mac), and Return, ⌘↓,
+    /// Delete and F2 as well.
+    fn key_down(&mut self, e: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
+        let k = &e.keystroke;
+        if self.editing.is_some() {
+            if k.key == "escape" {
+                self.end_rename(false, cx);
+                cx.stop_propagation();
+            }
+            return;
+        }
+        let ctrl = k.modifiers.control;
+        let plain = !ctrl && !k.modifiers.alt && !k.modifiers.shift;
+        let cmd = if pressed(k, "open") || (plain && k.key == "enter") || (ctrl && k.key == "down") {
+            "open"
+        } else if pressed(k, "trash") || (plain && k.key == "delete") {
+            "trash"
+        } else if pressed(k, "info") {
+            "info"
+        } else if pressed(k, "rename") || (plain && k.key == "f2") {
+            "rename"
+        } else {
+            return;
+        };
+        if cmd == "trash" && self.movable().is_empty() {
+            return;
+        }
+        cx.stop_propagation();
+        self.command(cmd, cx);
+    }
+}
+
+impl Render for Desktop {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(r) = &mut self.editing {
+            if !r.focused {
+                r.focused = true;
+                let field = r.field.clone();
+                field.read(cx).focus(window);
+                cx.subscribe_in(&field, window, |d, _, e: &olo_ui::widgets::TextFieldEvent, _, cx| {
+                    if matches!(e, olo_ui::widgets::TextFieldEvent::Entered) {
+                        d.end_rename(true, cx);
+                    } else {
+                        cx.notify();
+                    }
+                })
+                .detach();
+                let handle = olo_ui::gpui::Focusable::focus_handle(field.read(cx), cx);
+                cx.on_focus_out(&handle, window, |d, _, _, cx| d.end_rename(true, cx)).detach();
+            }
+        } else if self.focus_after_edit {
+            self.focus_after_edit = false;
+            window.focus(&self.focus);
+        }
+        let screen = Bounds { origin: point(px(0.0), px(0.0)), size: window.viewport_size() };
         self.screen = screen;
-        let response = ui.allocate_rect(screen, Sense::click_and_drag());
-        let n = self.items.len() + 1;
         let cells = self.cells(screen);
-        let layouts: Vec<view::ItemLayout> = (0..n)
+        let n = self.items.len() + 1;
+        let layouts: Vec<ItemLayout> = (0..n)
             .map(|i| {
-                let it = self.item(i).unwrap();
-                view::layout_item(ui, cells[i], &it.label, Look::Icons, self.selected.contains(&i), it.entry.is_link)
+                let it = self.item(i).expect("an item");
+                items::layout_item(window, cells[i], &it.label, Look::Icons, self.selected.contains(&i), it.entry.is_link)
             })
             .collect();
-        let hit = |pos: Pos2| layouts.iter().position(|l| l.hit().contains(pos));
-        let mods = ui.input(|i| i.modifiers);
-        let id = response.id;
-
-        if response.drag_started() || response.clicked() || response.secondary_clicked() {
-            // A drag: where the button went down, not where it got to.
-            let pos = if response.drag_started() { ui.input(|i| i.pointer.press_origin()) } else { None };
-            let pos = pos.or(response.interact_pointer_pos()).unwrap_or_default();
-            match hit(pos) {
-                // Kept for the menu, if it's one of them.
-                Some(i) if response.secondary_clicked() => {
-                    if !self.selected.contains(&i) {
-                        self.selected = BTreeSet::from([i]);
-                    }
-                }
-                // ⌘ or ⇧ adds it or takes it away (icons placed anywhere
-                // have no order for a range); else it alone.
-                Some(i) if response.clicked() => {
-                    if !(mods.ctrl || mods.shift) {
-                        self.selected = BTreeSet::from([i]);
-                    } else if !self.selected.remove(&i) {
-                        self.selected.insert(i);
-                    }
-                }
-                // A drag takes what's selected, it too (with ⌘ or ⇧, added
-                // to them).
-                Some(i) => {
-                    if !self.selected.contains(&i) {
-                        if !(mods.ctrl || mods.shift) {
-                            self.selected.clear();
-                        }
-                        self.selected.insert(i);
-                    }
-                    if response.drag_started() {
-                        // Every icon can be moved about the desktop.
-                        let icons = self.selected.iter().filter_map(|&j| Some((place_key(&self.item(j)?.entry.path), cells[j].min))).collect();
-                        self.dragging = Some((pos, icons));
-                    }
-                    // Everything but the Trash can go elsewhere.
-                    let paths: Vec<PathBuf> = self.selected.iter().filter(|&&j| j < self.items.len()).map(|&j| self.items[j].entry.path.clone()).collect();
-                    if response.drag_started() && (i < self.items.len() && !paths.is_empty() || i == self.items.len()) {
-                        let l = &layouts[i];
-                        actions.push(Action::Drag(view::Drag {
-                            paths,
-                            icon: self.item(i).map_or("trash-empty", |it| it.icon),
-                            size: l.icon.width(),
-                            hotspot: (pos - l.icon.min).clamp(egui::Vec2::ZERO, l.icon.size()),
-                            ask: response.dragged_by(egui::PointerButton::Secondary),
-                            name: self.item(i).map(|it| it.label.clone()).unwrap_or_default(),
-                            below: true,
-                        }));
-                    }
-                }
-                None => {
-                    // A band: with ⇧ adding to what's selected, with ⌘
-                    // flipping what it covers.
-                    if response.drag_started() {
-                        let keep = mods.ctrl || mods.shift;
-                        let base = if keep { self.selected.clone() } else { BTreeSet::new() };
-                        self.band = Some((pos, widgets::SelectionBand { base, flip: mods.ctrl }));
-                    }
-                    if !(mods.ctrl || mods.shift) {
-                        self.selected.clear();
-                    }
-                }
-            }
+        *self.layouts.borrow_mut() = layouts.clone();
+        let editing = self.editing.as_ref().and_then(|r| self.items.iter().position(|it| it.entry.path == r.path));
+        if self.editing.is_some() && editing.is_none() {
+            self.editing = None;
         }
-        if response.double_clicked()
-            && let Some(i) = response.interact_pointer_pos().and_then(hit)
-        {
-            actions.push(Action::Open(self.item(i).unwrap().entry.clone()));
-        }
-        if response.secondary_clicked()
-            && let Some(pos) = response.interact_pointer_pos()
-        {
-            let menu = match hit(pos) {
-                Some(i) if i == self.items.len() => Menu::new("")
-                    .item("Open", "open", Some(Key::O))
-                    .item("Empty Trash", "empty-trash", None)
-                    .enabled(!fs::trash_is_empty()),
-                Some(i) => {
-                    let mut m = Menu::new("").item("Open", "open", Some(Key::O));
-                    // A running app of ours can open another window.
-                    if self.selected.len() <= 1 && self.item(i).and_then(|it| fs::running_app(&it.entry)).is_some() {
-                        m = m.item("New Window", "new-window", None);
+        let field = editing.and_then(|i| Some(self.editing.as_ref()?.element(window, cx, &layouts[i], point(px(0.0), px(0.0)))));
+        let drawn: Vec<(Entry, &'static str, bool)> = (0..n).map(|i| self.item(i).map(|it| (it.entry.clone(), it.icon, self.selected.contains(&i))).expect("an item")).collect();
+        let band = self.band.as_ref().filter(|_| self.press.as_ref().is_some_and(|p| p.item.is_none())).map(|(s, _)| *s);
+        let dragging_here = self.dragging.is_some();
+        let me = cx.entity();
+        let (paint_me, spring) = (me.clone(), self.spring.clone());
+        let key = cx.entity_id();
+        let desk = desktop_dir();
+        let content = canvas(
+            |_, _, _| {},
+            move |b, _, window, cx| {
+                let p = theme::palette(cx);
+                // Something dragged over it: onto a folder or the Trash, or
+                // onto the desktop (into ~/Desktop).
+                let mut drop_on = None;
+                let mut spring_to = None;
+                if let Some(o) = window.drop_offer().cloned() {
+                    let at = window.mouse_position();
+                    let over = layouts.iter().position(|l| l.hit().contains(&at)).map(|i| (i, &drawn[i].0, drawn[i].2));
+                    let (took, on) = items::item_drop(window, cx, key, &o, over, Some(&desk));
+                    // Icons dragged from here and let go anywhere but on a
+                    // folder or the Trash: put them there.
+                    if !took && items::from_view(cx, key) && dragging_here && o.move_ && o.has("text/uri-list") {
+                        window.accept_drop(DropTarget::Place.name(), "text/uri-list", DragAction::Move);
                     }
-                    if self.selected.len() <= 1 {
-                        m = fs::grouping_item(m, self.item(i).map(|it| &it.entry));
+                    drop_on = on.filter(|_| took);
+                    spring_to = drop_on.filter(|&i| drawn[i].0.is_dir).map(|i| drawn[i].0.path.clone());
+                }
+                for (i, l) in layouts.iter().enumerate() {
+                    let (_, icon, sel) = &drawn[i];
+                    items::paint_item(window, cx, l, icon, *sel || drop_on == Some(i), true, editing != Some(i), &p);
+                }
+                if let Some(start) = band {
+                    let now = window.mouse_position();
+                    let r = Bounds::from_corners(point(start.x.min(now.x), start.y.min(now.y)), point(start.x.max(now.x), start.y.max(now.y)));
+                    style::selection_band(window, r.intersect(&b), &p);
+                }
+                let open = spring.borrow_mut().rest(spring_to.as_deref(), window, cx);
+                if let Some(dir) = open {
+                    paint_me.update(cx, |d, cx| d.act(Action::Spring(dir), cx));
+                }
+                let (mv, up) = (paint_me.clone(), paint_me.clone());
+                window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, cx| {
+                    if phase == gpui::DispatchPhase::Bubble {
+                        mv.update(cx, |d, cx| d.moved(e, window, cx));
                     }
-                    m.item("Get Info", "info", Some(Key::I))
-                    .separator()
-                    .item("Move to Trash", "trash", Some(Key::T))
-                    .enabled(!self.movable().is_empty())
-                }
-                None => Menu::new("")
-                    .item("New Folder", "new-folder", None)
-                    .item("Open in Terminal", "terminal", None)
-                    .separator()
-                    .item("Clean Up", "clean-up", None)
-                    .enabled(!self.places.icons.is_empty())
-                    .separator()
-                    .item("Change Background…", "backgrounds", None),
-            };
-            widgets::popup_menu_at(ui.ctx(), id, pos, menu);
-        }
-        if let Some(cmd) = widgets::popup_result(ui.ctx(), id) {
-            match cmd.as_str() {
-                "clean-up" => self.clean_up(),
-                "open" => actions.extend(self.selected_entries().into_iter().map(Action::Open)),
-                "new-window" => {
-                    if let Some(app) = self.selected_entries().first().and_then(fs::running_app) {
-                        fs::new_window(app);
+                });
+                window.on_mouse_event(move |e: &MouseUpEvent, phase, window, cx| {
+                    if phase == gpui::DispatchPhase::Bubble {
+                        up.update(cx, |d, cx| d.released(e, window, cx));
                     }
-                }
-                "group-windows" => fs::toggle_grouping(self.selected_entries().first()),
-                "trash" => {
-                    // Only items that live in ~/Desktop can go to the Trash.
-                    let keep: BTreeSet<usize> = self
-                        .selected
-                        .iter()
-                        .copied()
-                        .filter(|&i| self.item(i).is_some_and(|it| it.entry.path.parent() == Some(desktop_dir().as_path())))
-                        .collect();
-                    self.selected = keep;
-                    actions.push(Action::Command(cmd));
-                }
-                _ => actions.push(Action::Command(cmd)),
-            }
-        }
-
-        // Keyboard (when the desktop has focus and no name is being
-        // edited): the menus' keys in the keyboard profile (⌘O opens, ⌘⌫
-        // trashes, ⌘I gets info, ⌘E edits a name, on a Mac), and Enter,
-        // ⌘↓, Delete and F2 as well.
-        let typing = self.editing.is_some() || ui.ctx().egui_wants_keyboard_input();
-        let mut edit = false;
-        ui.input(|i| {
-            if typing {
-                return;
-            }
-            let key = |k: Key, ctrl: bool| i.events.iter().any(|e| matches!(e, egui::Event::Key { key, pressed: true, modifiers, .. } if *key == k && modifiers.ctrl == ctrl));
-            let profile = olo_kit::keyboard::pressed;
-            if profile(i, "open") || key(Key::Enter, false) || key(Key::ArrowDown, true) {
-                actions.extend(self.selected_entries().into_iter().map(Action::Open))
-            }
-            if (profile(i, "trash") || key(Key::Delete, false)) && !self.movable().is_empty() {
-                actions.push(Action::Command("trash".into()))
-            }
-            if profile(i, "info") {
-                actions.push(Action::Command("info".into()));
-            }
-            if profile(i, "rename") || key(Key::F2, false) {
-                edit = true;
-            }
-        });
-
-        if edit && let [p] = self.movable().as_slice() {
-            let p = p.clone();
-            self.edit_name(&p);
-        }
-
-        let band = match (self.band.clone(), response.dragged(), response.interact_pointer_pos()) {
-            (Some((start, base)), true, Some(now)) => {
-                let r = Rect::from_two_pos(start, now);
-                self.selected = base.over(layouts.iter().enumerate().filter(|(_, l)| l.hit().intersects(r)).map(|(i, _)| i));
-                Some(r)
-            }
-            _ => {
-                self.band = None;
-                None
-            }
-        };
-
-        // Something dragged over it: onto a folder or the Trash, or onto
-        // the desktop (into ~/Desktop).
-        let drop_on = dnd::hover(ui.ctx()).and_then(|h| {
-            let over = hit(h.pos).map(|i| (i, &self.item(i).unwrap().entry, self.selected.contains(&i)));
-            let here = desktop_dir();
-            let (took, on) = view::item_drop(ui.ctx(), &h, over, Some(&here));
-            // Icons dragged from here and let go anywhere but on a folder
-            // or the Trash: put them there.
-            if !took && h.from_here && self.dragging.is_some() && h.actions.move_ && h.has_files() {
-                dnd::accept(ui.ctx(), view::DropTarget::Place.name(), "text/uri-list", dnd::Action::Move);
-            }
-            on.filter(|_| took)
-        });
-
-        let editing = self.editing.as_ref().and_then(|(p, _)| self.items.iter().position(|it| &it.entry.path == p));
-        for (i, l) in layouts.iter().enumerate() {
-            let it = self.item(i).unwrap();
-            view::paint_item(ui, l, it.icon, self.selected.contains(&i) || drop_on == Some(i), true, editing != Some(i), &p);
-        }
-        match editing {
-            Some(i) => {
-                let link = self.items[i].entry.is_link;
-                if let Some(a) = view::edit_label(ui, &layouts[i], &mut self.editing, link) {
-                    actions.push(a);
-                }
-            }
-            None => self.editing = None,
-        }
-        if let Some(r) = band {
-            style::selection_band(ui.painter(), r, &p);
-        }
-        actions
+                });
+            },
+        )
+        .size_full();
+        let (down, right) = (me.clone(), me.clone());
+        div()
+            .size_full()
+            .relative()
+            .track_focus(&self.focus)
+            .on_key_down(cx.listener(Self::key_down))
+            .on_mouse_down(MouseButton::Left, move |e, window, cx| down.update(cx, |d, cx| d.press(e, window, cx)))
+            .on_mouse_down(MouseButton::Right, move |e, window, cx| right.update(cx, |d, cx| d.press(e, window, cx)))
+            .child(content)
+            .children(field)
     }
 }
 

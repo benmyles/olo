@@ -29,6 +29,7 @@ pub mod theme;
 pub mod tip;
 mod upgrade;
 pub mod widgets;
+pub mod workspaces;
 
 pub use app::{on_displays_changed, FocusNext, FocusPrev, Frame, WindowOptions, app_id, message_handler, open_window, proxy, run, stay_resident};
 pub use lock::{lock_session, unlock_session};

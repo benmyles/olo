@@ -68,7 +68,14 @@ What Olo changed, so far:
   types: text under the text ones, an image under its format's, and
   `ClipboardEntry::Data` (`ClipboardItem::new_data`, `from_entries`)
   under its own (files as `text/uri-list`), where upstream offered text
-  only.
+  only. `App::clipboard_types` says what's there to paste (to enable
+  Paste); `App::paste_as(wanted)` reads it as the first of the types
+  wanted it's offered as (`image/` standing for any picture), on a
+  worker, giving up on a program that takes over five seconds to write
+  it (upstream read the clipboard on the UI thread until the other
+  program finished). When the clipboard changes (another program
+  copied, or this one), the app's windows are drawn again, so their
+  menus' Paste follows it (`Platform::on_clipboard_changed`).
 - Ring slices drawn on the GPU (`Window::paint_sector`): between two
   radii and two angles (clockwise from 12 o'clock), each pixel's
   coverage from its distance to the edges, parallel edges box-filtered

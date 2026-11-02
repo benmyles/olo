@@ -82,6 +82,14 @@ pub trait LinuxClient {
     }
     fn read_from_primary(&self) -> Option<ClipboardItem>;
     fn read_from_clipboard(&self) -> Option<ClipboardItem>;
+    /// Olo: the types on the clipboard now.
+    fn clipboard_types(&self) -> Vec<String> {
+        Vec::new()
+    }
+    /// Olo: asks for the clipboard as `mime`.
+    fn receive_clipboard(&self, _mime: &str) -> Option<crate::ClipboardReceipt> {
+        None
+    }
     fn active_window(&self) -> Option<AnyWindowHandle>;
     fn window_stack(&self) -> Option<Vec<AnyWindowHandle>>;
     fn run(&self);
@@ -107,6 +115,8 @@ pub(crate) struct PlatformHandlers {
     pub(crate) displays_changed: Option<Box<dyn FnMut()>>,
     /// Olo: the compositor's connection is gone (`App::on_compositor_lost`).
     pub(crate) compositor_lost: Option<Box<dyn FnMut()>>,
+    /// Olo: what's on the clipboard changed.
+    pub(crate) clipboard_changed: Option<Box<dyn FnMut()>>,
 }
 
 pub(crate) struct LinuxCommon {
@@ -181,6 +191,10 @@ impl<P: LinuxClient + 'static> Platform for P {
 
     fn on_keyboard_layout_change(&self, callback: Box<dyn FnMut()>) {
         self.with_common(|common| common.callbacks.keyboard_layout_change = Some(callback));
+    }
+
+    fn on_clipboard_changed(&self, callback: Box<dyn FnMut()>) {
+        self.with_common(|common| common.callbacks.clipboard_changed = Some(callback));
     }
 
     fn run(&self, on_finish_launching: Box<dyn FnOnce()>) {
@@ -622,6 +636,14 @@ impl<P: LinuxClient + 'static> Platform for P {
 
     fn read_from_clipboard(&self) -> Option<ClipboardItem> {
         self.read_from_clipboard()
+    }
+
+    fn clipboard_types(&self) -> Vec<String> {
+        LinuxClient::clipboard_types(self)
+    }
+
+    fn receive_clipboard(&self, mime: &str) -> Option<crate::ClipboardReceipt> {
+        LinuxClient::receive_clipboard(self, mime)
     }
 
     fn add_recent_document(&self, _path: &Path) {}

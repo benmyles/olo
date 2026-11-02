@@ -8,7 +8,7 @@ use std::{
     time::SystemTime,
 };
 
-use olo_kit::{mime, open as opener};
+use olo_xdg::{mime, open as opener};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Entry {
@@ -25,7 +25,7 @@ pub struct Entry {
     pub app_icon: Option<&'static str>,
     /// A download being written (Chrome's `NAME.crdownload`): shown as
     /// `NAME`, with how far along it is when it says how big it will be
-    /// (`Some`, `olo_kit::files::EXPECTED_SIZE`).
+    /// (`Some`, `olo_kit_base::files::EXPECTED_SIZE`).
     pub downloading: Option<Option<u64>>,
 }
 
@@ -33,7 +33,7 @@ impl Entry {
     /// The name shown: a download's as it will be once done.
     pub fn label(&self) -> &str {
         match self.downloading {
-            Some(_) => self.name.strip_suffix(olo_kit::files::DOWNLOADING).filter(|n| !n.is_empty()).unwrap_or(&self.name),
+            Some(_) => self.name.strip_suffix(olo_kit_base::files::DOWNLOADING).filter(|n| !n.is_empty()).unwrap_or(&self.name),
             None => &self.name,
         }
     }
@@ -48,7 +48,7 @@ impl Entry {
     pub fn size_text(&self) -> String {
         match (self.is_dir, self.downloading.flatten()) {
             (true, _) => "—".into(),
-            (false, Some(total)) => olo_kit::files::format_progress(self.size, total),
+            (false, Some(total)) => olo_kit_base::files::format_progress(self.size, total),
             (false, None) => format_size(self.size),
         }
     }
@@ -63,7 +63,7 @@ impl Entry {
     }
 }
 
-pub use olo_kit::files::{Kind, format_size, format_time, kind_for};
+pub use olo_kit_base::files::{Kind, format_size, format_time, kind_for};
 
 pub fn entry(path: &Path) -> Option<Entry> {
     let lmeta = fs::symlink_metadata(path).ok()?;
@@ -74,9 +74,9 @@ pub fn entry(path: &Path) -> Option<Entry> {
     // A download being written: where it goes once done, and how big it
     // will be if it says.
     let downloading = (!is_dir)
-        .then(|| path.to_str()?.strip_suffix(olo_kit::files::DOWNLOADING).filter(|p| !p.ends_with('/')).map(PathBuf::from))
+        .then(|| path.to_str()?.strip_suffix(olo_kit_base::files::DOWNLOADING).filter(|p| !p.ends_with('/')).map(PathBuf::from))
         .flatten()
-        .map(|done| (done, olo_kit::files::expected_size(path)));
+        .map(|done| (done, olo_kit_base::files::expected_size(path)));
     Some(Entry {
         name: path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "/".into()),
         path: path.to_owned(),
@@ -96,7 +96,7 @@ pub fn entry(path: &Path) -> Option<Entry> {
 fn app_icon(path: &Path, is_link: bool) -> Option<&'static str> {
     let target = if is_link { fs::read_link(path).ok()? } else { path.to_owned() };
     let name = target.file_name()?.to_str()?;
-    olo_kit::apps::OUR_APPS.iter().find(|(bin, _, _)| *bin == name).map(|(_, _, icon)| *icon)
+    olo_xdg::apps::OUR_APPS.iter().find(|(bin, _, _)| *bin == name).map(|(_, _, icon)| *icon)
 }
 
 /// The app id of the running application program `e` is (or links to),
@@ -105,11 +105,11 @@ pub fn running_app(e: &Entry) -> Option<String> {
     e.app_icon?;
     let target = if e.is_link { fs::read_link(&e.path).ok()? } else { e.path.clone() };
     let bin = target.file_name()?.to_str()?;
-    if !olo_kit::apps::NEW_WINDOW.contains(&bin) {
+    if !olo_xdg::apps::NEW_WINDOW.contains(&bin) {
         return None;
     }
-    let id = olo_kit::apps::app_id_of(bin)?;
-    olo_kit::instance::running(&id).then_some(id)
+    let id = olo_xdg::apps::app_id_of(bin)?;
+    olo_kit_base::instance::running(&id).then_some(id)
 }
 
 /// Apps whose windows aren't grouped, as app_server's settings last said
@@ -124,30 +124,30 @@ pub fn app_id(e: &Entry) -> Option<String> {
     }
     if e.app_icon.is_some() {
         let target = if e.is_link { fs::read_link(&e.path).ok()? } else { e.path.clone() };
-        return olo_kit::apps::app_id_of(target.file_name()?.to_str()?);
+        return olo_xdg::apps::app_id_of(target.file_name()?.to_str()?);
     }
     e.name.strip_suffix(".desktop").filter(|s| !s.is_empty()).map(str::to_owned)
 }
 
 /// Group Windows for `e`'s app: shown when it is an application, checked
 /// while its windows are grouped.
-pub fn grouping_item(menu: olo_kit::Menu, e: Option<&Entry>) -> olo_kit::Menu {
+pub fn grouping_item(menu: olo_ui::Menu, e: Option<&Entry>) -> olo_ui::Menu {
     let Some(app) = e.and_then(app_id) else { return menu };
     let grouped = !UNGROUPED.lock().is_ok_and(|u| u.contains(&app));
-    menu.item("Group Windows", "group-windows", None).checked(grouped)
+    menu.item("Group Windows", "group-windows").checked(grouped)
 }
 
 /// Group or ungroup `e`'s app's windows (saved in app_server's settings).
 pub fn toggle_grouping(e: Option<&Entry>) {
     if let Some(app) = e.and_then(app_id) {
         let grouped = !UNGROUPED.lock().is_ok_and(|u| u.contains(&app));
-        olo_kit::settings::set_groups_windows(&app, !grouped);
+        olo_kit_base::settings::set_groups_windows(&app, !grouped);
     }
 }
 
 /// Ask the running app `app_id` for another window, off the UI thread.
 pub fn new_window(app_id: String) {
-    std::thread::spawn(move || olo_kit::instance::forward(&app_id, &["--new-window".to_owned()]));
+    std::thread::spawn(move || olo_kit_base::instance::forward(&app_id, &["--new-window".to_owned()]));
 }
 
 pub fn list(dir: &Path, hidden: bool) -> std::io::Result<Vec<Entry>> {
@@ -208,7 +208,7 @@ pub fn volume_label() -> String {
 
 // ---- operations ---------------------------------------------------------
 
-pub use olo_kit::trash::{trash_dir, trash_files, trash_is_empty, trash_origin, trash_slot, unique};
+pub use olo_xdg::trash::{trash_dir, trash_files, trash_is_empty, trash_origin, trash_slot, unique};
 
 /// Where a copy of `from` dropped into `dir` goes: its own name, or
 /// "name copy" when copying into the folder it is already in.
@@ -272,7 +272,7 @@ pub fn link_into(path: &Path, dir: &Path) -> std::io::Result<PathBuf> {
 /// it is one of ours ("Terminal", not "olo-terminal").
 pub fn app_link_into(path: &Path, dir: &Path) -> std::io::Result<PathBuf> {
     let file = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
-    let name = olo_kit::apps::OUR_APPS.iter().find(|(bin, _, _)| *bin == file).map_or(file.as_str(), |(_, name, _)| *name);
+    let name = olo_xdg::apps::OUR_APPS.iter().find(|(bin, _, _)| *bin == file).map_or(file.as_str(), |(_, name, _)| *name);
     let to = unique(dir, name);
     std::os::unix::fs::symlink(path, &to)?;
     Ok(to)
@@ -343,14 +343,14 @@ pub fn opener_name(entry: &Entry) -> Option<String> {
 /// A new Terminal tab in `dir` (in the Terminal window last in front;
 /// a window if there is none).
 pub fn open_in_terminal(dir: &Path) {
-    let terminal = olo_kit::find_program("olo-terminal").map_or_else(|| "olo-terminal".into(), PathBuf::into_os_string);
+    let terminal = olo_xdg::find_program("olo-terminal").map_or_else(|| "olo-terminal".into(), PathBuf::into_os_string);
     if let Err(e) = opener::spawn(&[terminal, "--tab".into(), "-w".into(), dir.as_os_str().to_owned()]) {
         tracing::warn!("terminal in {}: {e}", dir.display());
     }
 }
 
 pub fn open_in_viewer(path: &Path) {
-    let viewer = olo_kit::find_program("olo-viewer").map_or_else(|| "olo-viewer".into(), PathBuf::into_os_string);
+    let viewer = olo_xdg::find_program("olo-viewer").map_or_else(|| "olo-viewer".into(), PathBuf::into_os_string);
     if let Err(e) = opener::spawn(&[viewer, path.as_os_str().to_owned()]) {
         tracing::warn!("viewer {}: {e}", path.display());
     }
@@ -452,7 +452,7 @@ mod tests {
         let e = entry(&p).unwrap();
         assert_eq!((e.label(), e.kind, e.downloading), ("Report.pdf", Kind::Pdf, Some(None)));
         assert_eq!(e.kind_text(), "Downloading");
-        if olo_kit::files::set_expected_size(&p, 10 * 1024 * 1024) {
+        if olo_kit_base::files::set_expected_size(&p, 10 * 1024 * 1024) {
             let e = entry(&p).unwrap();
             assert_eq!(e.kind_text(), "Downloading, 30%");
             assert_eq!(e.size_text(), "3.1 of 10 MB");

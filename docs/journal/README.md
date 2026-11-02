@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-01
 
+### Tracker on GPUI
+
+*21:29* — Tracker moved from the egui kit to Olo's GPUI: folder windows (icons, mini icons, list, columns), the desktop, Get Info, Find, Tracker Status and Quick Look, with BeOS's drag rules through GPUI's own drops and Paste read off the UI thread.
+
+![Tracker on GPUI](2026-11-01/212921-tracker-on-gpui.png)
+
 ### StyledEdit on GPUI
 
 *20:14* — StyledEdit moves to the GPUI kit: its editor, ruler and spelling are olo-ui's now. Page View with a header, a table and a picture at 2x. Scrolls, types and resizes within a 120 Hz frame at every scale on a full 16-inch screen, as evenly as egui did; ends stretch and spring back.

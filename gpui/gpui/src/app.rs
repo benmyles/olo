@@ -683,6 +683,17 @@ impl App {
             }
         }));
 
+        // Olo: the clipboard changed: windows are drawn again, so their
+        // menus' Paste follows what's there to paste.
+        platform.on_clipboard_changed(Box::new({
+            let app = Rc::downgrade(&app);
+            move || {
+                if let Some(app) = app.upgrade() {
+                    app.borrow_mut().refresh_windows();
+                }
+            }
+        }));
+
         platform.on_keyboard_layout_change(Box::new({
             let app = Rc::downgrade(&app);
             move || {
@@ -1100,6 +1111,27 @@ impl App {
     /// Writes data to the platform clipboard.
     pub fn write_to_clipboard(&self, item: ClipboardItem) {
         self.platform.write_to_clipboard(item)
+    }
+
+    /// Olo: the MIME types what's on the clipboard is offered as (to
+    /// enable a Paste of files, a picture or text).
+    pub fn clipboard_types(&self) -> Vec<String> {
+        self.platform.clipboard_types()
+    }
+
+    /// Olo: what's on the clipboard as the first of `wanted` it's offered
+    /// as (one ending in `/`, as `image/`, stands for any of that kind):
+    /// its type and data, read off the UI thread (a program slow to give
+    /// it never holds the UI up). None if it has none of them.
+    pub fn paste_as(&self, wanted: &[&str]) -> Task<Option<(String, Vec<u8>)>> {
+        let types = self.platform.clipboard_types();
+        let found = wanted.iter().find_map(|w| types.iter().find(|t| if w.ends_with('/') { t.starts_with(w) } else { t == w }));
+        let Some(mime) = found.cloned() else { return Task::ready(None) };
+        match self.platform.receive_clipboard(&mime) {
+            None => Task::ready(None),
+            Some(crate::ClipboardReceipt::Ready(bytes)) => Task::ready(Some((mime, bytes))),
+            Some(crate::ClipboardReceipt::Read(read)) => self.background_executor().spawn(async move { read().map(|bytes| (mime, bytes)) }),
+        }
     }
 
     /// Olo: takes `item` off the clipboard if it's still there and ours

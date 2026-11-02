@@ -150,6 +150,35 @@ didn't, hence the click rule above. Ben's session has had the filter on
 since 27 October 2026, 21:55, with `touch_on` 1 and the driver's own
 click (`palm_proof_click` off) until a build with that rule is in.
 
+### Frames never grow (Ben, 2026-11-01: on his lap, pointing and
+scrolling "keeps stopping")
+
+libinput takes a plugin's frame back only if it has room: the frame it
+handed the plugin had 64 slots, and a frame it had held back (a plugin
+before ours queued it) is a copy with none to spare. Given more, it logs
+"plugin bug: too many events in frame" and keeps the frame as the pad
+sent it. The filter used to add each changed contact's size after the
+frame (a slot event, major, minor, and the slot put back), so with
+several contacts on the pad a frame grew past 63; Ben's session logged
+it 6 times in an evening. Each time, libinput took the pad's own sizes
+for that frame, a light stray contact's (a sleeve, a blanket, a
+resting knuckle: in a 90 s capture on his lap, small, still and light
+contacts lasting 0.3–8 s) among them, while the filter believed it had
+hidden them and never sent their size again: libinput saw a finger
+that wasn't there until the stray left, so pointing became two-finger
+scrolling and scrolls ended.
+
+The filter now returns no more events than it was given: sizes the
+frame carries are written in place, pressure (which libinput doesn't
+use here) and the driver's click make room, a size the frame doesn't
+carry goes in its slot's part of the frame or after it only if there's
+room (major first: without one there's no touch), and what libinput
+was last given for each slot is kept, so anything left over goes with
+a later frame. Replaying the capture (`touch_filter`'s `replay_capture`,
+`OLO_TOUCH_CAPTURE`): the old filter returned a bigger frame than it
+was given in 6151 of 7325 frames, the new one in none, and libinput's
+touches match what the filter meant in every frame.
+
 ## Preferences ▸ Touchpad & Mouse
 
 - **Touchpad:** the pad app_server found (`Request::InputDevices`:

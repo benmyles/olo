@@ -10,8 +10,12 @@ name = "olo-tracker"
 path = "src/main.rs"
 
 [dependencies]
-olo-kit.workspace = true
+olo-ui.workspace = true
+olo-kit-base.workspace = true
+olo-xdg.workspace = true
+olo-images.workspace = true
 olo-protocol.workspace = true
+image = { version = "0.25", default-features = false }
 tracing.workspace = true
 zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }
 serde.workspace = true
@@ -22,4 +26,4 @@ ignore = "0.4"
 grep-searcher = "0.1"
 grep-regex = "0.1"
 grep-matcher = "0.1"
-olo-preview = { workspace = true, features = ["egui"] }
+olo-preview = { workspace = true, features = ["gpui"] }

@@ -1325,6 +1325,14 @@ impl LinuxClient for WaylandClient {
         self.0.borrow_mut().clipboard.read()
     }
 
+    fn clipboard_types(&self) -> Vec<String> {
+        self.0.borrow().clipboard.types()
+    }
+
+    fn receive_clipboard(&self, mime: &str) -> Option<crate::ClipboardReceipt> {
+        self.0.borrow().clipboard.receive(mime)
+    }
+
     fn active_window(&self) -> Option<AnyWindowHandle> {
         self.0
             .borrow_mut()
@@ -2585,6 +2593,12 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for WaylandClientStatePtr {
                     state.clipboard.set_offer(offer);
                 } else {
                     state.clipboard.set_offer(None);
+                }
+                // Olo: what Paste would take changed (menus enable it).
+                if let Some(mut callback) = state.common.callbacks.clipboard_changed.take() {
+                    drop(state);
+                    callback();
+                    client.borrow_mut().common.callbacks.clipboard_changed = Some(callback);
                 }
             }
 
