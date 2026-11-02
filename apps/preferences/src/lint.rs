@@ -48,6 +48,8 @@ fn prefs() -> Prefs {
         power: Some(PowerStatus { brightness: Some(0.62), keyboard_backlight: Some(0.4), ..Default::default() }),
         server: Server::detached(),
         windows: Vec::new(),
+        outputs_known: true,
+        waiting: Vec::new(),
     }
 }
 
@@ -55,7 +57,8 @@ fn prefs() -> Prefs {
 fn ui_lint_every_panel() {
     let mut lint = Lint::new();
     let mut found = Vec::new();
-    for &panel in Panel::ALL {
+    // (AirPods isn't in the launcher's grid, but is a panel all the same.)
+    for &panel in Panel::ALL.iter().chain(&[Panel::AirPods]) {
         let (w, h) = panel.size();
         let options = WindowOptions::new(panel.title(), w as f32, h as f32);
         for f in lint.window(&options, move |window, cx| {

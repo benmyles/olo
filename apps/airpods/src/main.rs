@@ -3,7 +3,16 @@
 //! alike, on its socket.
 
 mod keys;
+mod mic;
 mod service;
+
+/// A line on standard output; a reader gone (`| head`) isn't an error.
+macro_rules! out {
+    ($($t:tt)*) => {{
+        use std::io::Write as _;
+        let _ = writeln!(std::io::stdout(), $($t)*);
+    }};
+}
 
 use std::{process::ExitCode, time::Duration};
 
@@ -24,6 +33,7 @@ const USAGE: &str = "usage: olo-airpods [--address AA:BB:CC:DD:EE:FF] [COMMAND]
   --connect, --disconnect
   --quality music|calls       music quality, or the headset profile
                               (call quality, with their microphone)
+  --microphone on|off         their own wideband microphone stream
   --service                   run the service (the session starts it)";
 
 fn main() -> ExitCode {
@@ -58,6 +68,11 @@ fn main() -> ExitCode {
         "--rename" if !arg(1).is_empty() => Request::Set { address, change: Change::Name(args[1..].join(" ")) },
         "--connect" => Request::Connect { address },
         "--disconnect" => Request::Disconnect { address },
+        "--microphone" => match arg(1).as_str() {
+            "on" => Request::Microphone { address, on: true },
+            "off" => Request::Microphone { address, on: false },
+            _ => return usage(),
+        },
         "--quality" => match arg(1).as_str() {
             "music" => Request::Quality { address, high: true },
             "calls" => Request::Quality { address, high: false },
@@ -121,11 +136,11 @@ fn status(json: bool) -> ExitCode {
         Err(_) => AirPodsState::load(),
     };
     if json {
-        println!("{}", serde_json::to_string_pretty(&state).unwrap_or_default());
+        out!("{}", serde_json::to_string_pretty(&state).unwrap_or_default());
         return ExitCode::SUCCESS;
     }
     if state.devices.is_empty() {
-        println!("No AirPods are paired with this computer.");
+        out!("No AirPods are paired with this computer.");
     }
     for d in &state.devices {
         let conn = match (d.connected, d.linked) {
@@ -133,24 +148,24 @@ fn status(json: bool) -> ExitCode {
             (true, false) => "connected (not talking yet)",
             _ => "not connected",
         };
-        println!("{} ({}, {}): {conn}", d.name, d.model, d.address);
+        out!("{} ({}, {}): {conn}", d.name, d.model, d.address);
         if !d.firmware.is_empty() {
             // (The model number is the primary bud's; the firmware Apple's
             // build, not the version an iPhone shows.)
-            println!("  bud {}, build {}, serial {}", d.model_number, d.firmware, d.serial);
+            out!("  bud {}, build {}, serial {}", d.model_number, d.firmware, d.serial);
         }
         if d.connected {
             let levels = d.levels();
             if !levels.is_empty() {
-                println!("  {levels}");
+                out!("  {levels}");
             }
             if d.abilities.buds {
-                println!("  in ears: {}, in case: {}{}", d.in_ear, d.in_case, if d.speaking { ", speaking" } else { "" });
+                out!("  in ears: {}, in case: {}{}", d.in_ear, d.in_case, if d.speaking { ", speaking" } else { "" });
             }
             let s = &d.settings;
             if let Some(m) = s.listening_mode {
                 let hold: Vec<&str> = s.press_and_hold_modes.iter().map(|m| m.label()).collect();
-                println!("  listening mode: {} (press and hold: {})", m.label(), hold.join(", "));
+                out!("  listening mode: {} (press and hold: {})", m.label(), hold.join(", "));
             }
             let flag = |name: &str, v: Option<bool>| v.map(|v| format!("{name} {}", if v { "on" } else { "off" }));
             let flags: Vec<String> = [
@@ -165,11 +180,11 @@ fn status(json: bool) -> ExitCode {
             .flatten()
             .collect();
             if !flags.is_empty() {
-                println!("  {}", flags.join(", "));
+                out!("  {}", flags.join(", "));
             }
             if !d.sound.output.is_empty() || !d.sound.input.is_empty() {
                 let q = if d.sound.high_quality { "music quality" } else { "call quality" };
-                println!("  sound: {} ({q})", d.sound.codec.to_uppercase());
+                out!("  sound: {} ({q})", d.sound.codec.to_uppercase());
             }
         }
     }

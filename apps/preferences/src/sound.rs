@@ -37,11 +37,18 @@ struct Link {
 
 /// Test data: speakers, a headset and a microphone named as they come.
 fn test_devices() -> Devices {
-    let device = |name: &str, description: &str, level, is_default| audio::Device { name: name.into(), description: description.into(), volume: audio::Volume { level, muted: false }, channels: 2, is_default };
+    let device = |name: &str, description: &str, level, is_default| audio::Device { name: name.into(), description: description.into(), volume: audio::Volume { level, muted: false }, channels: 2, is_default, bluetooth: None };
     Devices {
         outputs: vec![
-            device("speakers", "MacBook Pro Speakers (Built-in Audio Analog Stereo)", 0.55, true),
+            device("speakers", "MacBook Pro Speakers (Built-in Audio Analog Stereo)", 0.55, false),
             device("headset", "Jabra Evolve2 85 Wireless Headset (USB Audio, Digital Stereo IEC958)", 0.7, false),
+            // As the AirPods panel's test pair: their output, default here
+            // so their part of the panel is laid out too.
+            audio::Device {
+                is_default: true,
+                bluetooth: Some(audio::Bluetooth { address: "02:00:00:00:A1:01".into(), codec: "msbc".into(), profile: "headset-head-unit".into() }),
+                ..device("airpods", "Travel AirPods Pro (2nd generation) for the Office", 0.4, false)
+            },
         ],
         inputs: vec![device("mic", "MacBook Pro Microphone Array (Built-in Audio Analog Stereo)", 0.8, true)],
     }

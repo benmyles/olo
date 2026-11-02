@@ -329,7 +329,7 @@ fn command(id: u32, c: &mut Client, seq: u32, cmd: Command, next_channel: &Mutex
 fn airpods() -> Option<(String, String, String)> {
     let addr = std::env::var("FAKESOUND_AIRPODS").ok().filter(|a| !a.is_empty())?;
     let name = format!("bluez_output.{}.1", addr.replace(':', "_"));
-    Some((addr, name, "Travel AirPods Pro".to_owned()))
+    Some((addr, name, "AirPods Pro".to_owned()))
 }
 
 /// Consume a tick's worth of each playing stream, ask for more, report.

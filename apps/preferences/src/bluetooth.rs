@@ -61,6 +61,7 @@ fn test_status() -> Status {
         trusted: paired,
         rssi: Some(-61),
         battery,
+        modalias: None,
     };
     Status {
         adapter: Some(bt::Adapter { path: "/org/bluez/hci0".into(), name: "studio-laptop".into(), address: "02:00:00:00:A1:03".into(), powered: true, discoverable: false, discovering: true }),
@@ -68,6 +69,8 @@ fn test_status() -> Status {
             device("Sony WH-1000XM5 Wireless Noise Canceling Headphones", "audio-headset", true, true, Some(80)),
             device("Logitech MX Master 3S for Mac", "input-mouse", true, false, Some(45)),
             device("Keychron Q1 Pro QMK/VIA Wireless Custom Mechanical Keyboard", "input-keyboard", false, false, None),
+            // The AirPods panel's test pair (their model and levels).
+            bt::Device { address: "02:00:00:00:A1:01".into(), modalias: Some("bluetooth:v004Cp2024d215C".into()), ..device("Travel AirPods Pro (2nd generation) for the Office", "audio-headphones", true, true, None) },
         ],
     }
 }

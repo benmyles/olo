@@ -377,6 +377,7 @@ fn heard(addr: &str, msg: Message) {
             tracing::info!("airpods {addr}: {} {} firmware {}", d.info.model, d.info.model_number, d.info.firmware);
         }
         Message::Keys(keys) => crate::keys::remember(addr, &keys),
+        Message::Audio(frames) => crate::mic::frames(addr, frames),
         Message::StemPress { press, left } => tracing::debug!("airpods {addr}: stem press {press:?} (left: {left})"),
         Message::Other { opcode, data } => tracing::debug!("airpods {addr}: opcode {opcode:#06x}: {}", hex(&data)),
     }
@@ -684,6 +685,17 @@ fn answer(request: Request) -> Reply {
             drop(inner);
             bt::disconnect(&path).map(|_| ok(None)).unwrap_or_else(|e| fail(e.to_string()))
         }
+        Request::Microphone { address, on } => {
+            let addr = match pick(&inner, &address) {
+                Ok(a) => a,
+                Err(e) => return fail(e),
+            };
+            let Some(link) = inner.devices.get(&addr).and_then(|d| d.link.clone()) else { return fail("They aren't connected.".into()) };
+            drop(inner);
+            crate::mic::switched(&addr, on);
+            let m = if on { proto::start_microphone() } else { proto::stop_microphone() };
+            link.send(&m).map(|_| ok(None)).unwrap_or_else(|e| fail(e.to_string()))
+        }
         Request::Quality { address, high } => {
             let addr = match pick(&inner, &address) {
                 Ok(a) => a,
@@ -750,7 +762,7 @@ fn fake_pair() {
     d.info = AirPods {
         address: "AA:BB:CC:DD:EE:FF".into(),
         path: "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF".into(),
-        name: "Travel AirPods Pro".into(),
+        name: "AirPods Pro".into(),
         model: model.name.into(),
         product: model.product,
         model_number: "A3048".into(),

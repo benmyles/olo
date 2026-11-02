@@ -132,7 +132,7 @@ pub struct AirPods {
     pub address: String,
     /// BlueZ's object.
     pub path: String,
-    /// Their name ("Travel AirPods Pro").
+    /// Their name, as BlueZ has it ("AirPods Pro", or what they were renamed).
     pub name: String,
     /// The model, said ("AirPods Pro (2nd generation, USB-C)").
     pub model: String,
@@ -313,6 +313,9 @@ pub enum Request {
     /// Music quality, or the headset profile (call quality, with the
     /// microphone).
     Quality { address: Option<String>, high: bool },
+    /// Start or stop their own microphone stream (wideband, the sound
+    /// staying at music quality).
+    Microphone { address: Option<String>, on: bool },
 }
 
 /// The service's answer.

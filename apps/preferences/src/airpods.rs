@@ -50,6 +50,14 @@ fn link(proxy: olo_ui::Proxy) -> &'static Link {
     static LINK: OnceLock<Link> = OnceLock::new();
     LINK.get_or_init(|| {
         let shared: Arc<Mutex<Shared>> = Default::default();
+        // Tests (the layout lint): a pair named as long as real ones get,
+        // every setting known, and no service.
+        if cfg!(test) {
+            let mut s = shared.lock().unwrap();
+            (s.state, s.known) = (test_state(), true);
+            drop(s);
+            return Link { shared, tx: channel().0 };
+        }
         let read = {
             let (shared, proxy) = (shared.clone(), proxy.clone());
             move |_: &[std::path::PathBuf]| {
@@ -95,6 +103,46 @@ fn link(proxy: olo_ui::Proxy) -> &'static Link {
             .expect("thread");
         Link { shared, tx }
     })
+}
+
+/// Test data: AirPods Pro with a long name, connected, the case charging,
+/// as the Sound and Bluetooth panels' test devices name them.
+pub fn test_state() -> AirPodsState {
+    use olo_protocol::airpods::{Abilities, BudSettings, Sound};
+    let c = |percent, charging| Some(Charge { percent, charging });
+    AirPodsState {
+        pid: 0,
+        devices: vec![AirPods {
+            address: "02:00:00:00:A1:01".into(),
+            path: "/org/bluez/hci0/dev_02_00_00_00_A1_01".into(),
+            name: "Travel AirPods Pro (2nd generation) for the Office".into(),
+            model: "AirPods Pro (2nd generation, USB-C)".into(),
+            product: 0x2024,
+            abilities: Abilities { noise_control: true, adaptive: true, buds: true },
+            connected: true,
+            linked: true,
+            left: c(100, false),
+            right: c(9, false),
+            case: c(100, true),
+            in_ear: 2,
+            settings: BudSettings {
+                listening_mode: Some(ListeningMode::NoiseCancellation),
+                press_and_hold_modes: vec![ListeningMode::Transparency, ListeningMode::Adaptive, ListeningMode::NoiseCancellation],
+                conversation_awareness: Some(true),
+                personalized_volume: Some(true),
+                adaptive_strength: Some(50),
+                ear_detection: Some(true),
+                one_bud_noise_cancellation: Some(false),
+                volume_swipe: Some(true),
+                case_sounds: Some(true),
+                microphone: Some(BudMicrophone::Automatic),
+                press_speed: Some(2),
+                hold_duration: Some(2),
+            },
+            sound: Sound { output: "airpods".into(), input: String::new(), codec: "aac".into(), high_quality: true, card: "bluez_card.02_00_00_00_A1_01".into() },
+            ..Default::default()
+        }],
+    }
 }
 
 pub struct State {
