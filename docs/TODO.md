@@ -501,11 +501,10 @@ as they land (with the commit), add new ones as they come up.
      interface version it was told it has?) and whether app_server
      advertises a version it doesn't serve. (Not seen since 2026-11-01
      13:19.)
-   - **"gpui: window not found" from the palette and Deskbar** after a
-     window closed under them: GPUI handles kept to windows the
-     compositor closed. Deskbar's bars are pruned now; the palette's
-     and any other app's handles want the same at the kit level. (Still
-     logged 2026-11-02 by Terminal and Deskbar.)
+   - ~~**"gpui: window not found" from the palette and Deskbar**~~
+     (29ce0b15: the platform window's callbacks finding the window gone
+     say nothing): none logged since the 09:58 upgrade on 2026-11-02,
+     where the palette, Deskbar and Terminal had logged 11 that morning.
    - **Olo's own login and boot** (Ben, 2026-11-01, for after the GPUI
      refactor is complete): replace GDM with an Olo-native display
      manager, and have Olo take over the boot visuals as early as it can
@@ -524,6 +523,19 @@ as they land (with the commit), add new ones as they come up.
      Olo's Smithay changes that. Until then upgrades of app_server are
      batched, not one a change. (Still: the kernel logged
      `set_digital_out_mode` 856 times in the day to 2026-11-02.)
+     **Found** 2026-11-02: app_server opens each GPU with
+     `DrmDevice::new(fd, true)` (udev.rs `device_added`), and Smithay's
+     `disable_connectors` runs `reset_state`, switching every connector
+     off: each display is modeset from dark at every start. The fix:
+     open with `false`, and in Olo's Smithay let a surface take over a
+     CRTC already showing its mode (`State`'s mode compared by timings,
+     not the mode's type bits and name, which differ between a CRTC's
+     mode and a connector's list), so the first frame is a page flip;
+     switch off the planes the last app_server left on (a cursor or
+     overlay plane still showing its buffer) in that first commit, no
+     modeset needed; and if the driver refuses it, `reset_state` and
+     modeset as now. It needs trying on the real displays (an upgrade
+     the person agrees to try), so it isn't shipped blind.
    - **app_server's critical path on threads of its own** (Ben,
      2026-11-01: "why run the risk of a blocking call? threads would
      make sure we don't accidentally block"): input → pointer plane
