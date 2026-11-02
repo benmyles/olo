@@ -138,12 +138,13 @@ impl WindowElement {
         self.decorated() && self.decoration().rolled
     }
 
-    /// Only its tab shows: rolled up, behind others in its group, or
-    /// being put in a group by hand.
+    /// Only its tab shows: rolled up, behind others in its group, being
+    /// put in a group by hand, or come to the front of it with something
+    /// new to draw first (`Decoration::fronting`).
     pub(crate) fn tab_only(&self) -> bool {
         self.decorated() && {
             let d = self.decoration();
-            d.rolled || d.behind || d.docked
+            d.rolled || d.behind || d.docked || d.fronting.is_some()
         }
     }
 
@@ -571,6 +572,61 @@ impl<R: Renderer> std::fmt::Debug for WindowRenderElement<R> {
     }
 }
 
+impl WindowElement {
+    /// Its client's surfaces at `location`, with their menus or without.
+    fn client_elements<R>(&self, renderer: &mut R, location: Point<i32, Physical>, scale: Scale<f64>, alpha: f32, menus: bool) -> Vec<WindowRenderElement<R>>
+    where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        if menus {
+            return AsRenderElements::render_elements(&self.0, renderer, location, scale, alpha);
+        }
+        let Some(surface) = self.0.wl_surface() else { return Vec::new() };
+        // (As Smithay's `Window` draws its own surfaces.)
+        smithay::backend::renderer::element::surface::render_elements_from_surface_tree(renderer, &surface, location, scale, alpha, smithay::backend::renderer::element::Kind::ScanoutCandidate)
+            .into_iter()
+            .map(WindowRenderElement::Window)
+            .collect()
+    }
+
+    /// Its menus (its popups: a context menu, a menu bar's, a menu
+    /// field's list) for the window drawn at `location`, to go over
+    /// everything but the overlays (lock, screenshot): drawn with it,
+    /// they went under Deskbar when opened near it.
+    pub fn menu_elements<R>(&self, renderer: &mut R, location: Point<i32, Physical>, scale: Scale<f64>, alpha: f32) -> Vec<WindowRenderElement<R>>
+    where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+    {
+        if self.meta().covered.get() || self.tab_only() {
+            return Vec::new();
+        }
+        let Some(surface) = self.0.wl_surface() else { return Vec::new() };
+        let alpha = if self.meta().ghost.get() { alpha * 0.45 } else { alpha };
+        let location = location + self.client_render_offset().to_physical_precise_round(scale);
+        let geo = SpaceElement::geometry(&self.0);
+        smithay::desktop::PopupManager::popups_for_surface(&surface)
+            .flat_map(|(popup, offset)| {
+                let at = location + (geo.loc + offset - popup.geometry().loc).to_physical_precise_round(scale);
+                smithay::backend::renderer::element::surface::render_elements_from_surface_tree(renderer, popup.wl_surface(), at, scale, alpha, smithay::backend::renderer::element::Kind::Unspecified)
+            })
+            .map(WindowRenderElement::Window)
+            .collect()
+    }
+
+    /// Which of its menus' surfaces is at `location` (from where it is
+    /// drawn, as `surface_under`), over Deskbar as they are drawn.
+    pub fn menu_under(&self, location: Point<f64, Logical>) -> Option<(PointerFocusTarget, Point<i32, Logical>)> {
+        if self.meta().covered.get() || self.tab_only() {
+            return None;
+        }
+        let offset = self.client_render_offset();
+        let (surface, loc) = self.0.surface_under(location - offset.to_f64(), WindowSurfaceType::POPUP)?;
+        Some((PointerFocusTarget::WlSurface(surface), loc + offset))
+    }
+}
+
 impl<R> AsRenderElements<R> for WindowElement
 where
     R: Renderer + ImportAll + ImportMem,
@@ -585,6 +641,20 @@ where
         scale: Scale<f64>,
         alpha: f32,
     ) -> Vec<C> {
+        self.render_parts(renderer, location, scale, alpha, true)
+    }
+}
+
+impl WindowElement {
+    /// What it draws (`render_elements`), with its menus (its popups) or
+    /// without: the screen draws them on their own, over Deskbar
+    /// (`menu_elements`).
+    pub fn render_parts<R, C>(&self, renderer: &mut R, location: Point<i32, Physical>, scale: Scale<f64>, alpha: f32, menus: bool) -> Vec<C>
+    where
+        R: Renderer + ImportAll + ImportMem,
+        R::TextureId: Clone + Texture + Send + 'static,
+        C: From<WindowRenderElement<R>>,
+    {
         // Being moved over another of its app's windows: see-through.
         let alpha = if self.meta().ghost.get() { alpha * 0.45 } else { alpha };
         let window_bbox = SpaceElement::bbox(&self.0);
@@ -603,8 +673,7 @@ where
             }
             let decorated = start.elapsed();
             let client_location = location + self.client_render_offset().to_physical_precise_round(scale);
-            let window_elements: Vec<WindowRenderElement<R>> =
-                AsRenderElements::render_elements(&self.0, renderer, client_location, scale, alpha);
+            let window_elements = self.client_elements(renderer, client_location, scale, alpha, menus);
             let client = start.elapsed() - decorated;
             let halo = if glow > 0.0 {
                 let (outline, tab) = self.decoration().outline(&title, content, location, scale);
@@ -632,10 +701,7 @@ where
                 .map(C::from)
                 .collect()
         } else {
-            let mut elements: Vec<C> = AsRenderElements::render_elements(&self.0, renderer, location, scale, alpha)
-                .into_iter()
-                .map(C::from)
-                .collect();
+            let mut elements: Vec<C> = self.client_elements(renderer, location, scale, alpha, menus).into_iter().map(C::from).collect();
             if glow > 0.0 {
                 // Round what it draws as its window (its own frame, if any).
                 let g = self.0.geometry();

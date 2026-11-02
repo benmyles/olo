@@ -511,6 +511,9 @@ def run_app(b, app, scale):
     tsession("run", NAME, *app.env, *EXTRA_ENV, *app.cmd)
     if app.key == "notifications":
         time.sleep(1.0)
+        # (Its launch is History's, from its own start: not the second
+        # the daemon is given first.)
+        t0 = time.monotonic()
         tsession("run", NAME, *app.env, *EXTRA_ENV, *app.cmd, "--history")
     win = None
     while time.monotonic() - t0 < 10:

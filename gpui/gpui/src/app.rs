@@ -848,6 +848,15 @@ impl App {
         self.pending_effects.push_back(Effect::RefreshWindows);
     }
 
+    /// Olo: draws every window again, each view too, but replays what
+    /// paint memos kept ([`Window::paint_memo`]): for something come in
+    /// that was painted as not yet there ([`Window::paint_unfinished`]),
+    /// an icon loaded. (`refresh_windows` paints everything afresh: an
+    /// icon coming in drew Activity's 1,400 cells again.)
+    pub fn redraw_windows(&mut self) {
+        self.pending_effects.push_back(Effect::RedrawWindows);
+    }
+
     pub(crate) fn update<R>(&mut self, update: impl FnOnce(&mut Self) -> R) -> R {
         self.start_update();
         let result = update(self);
@@ -1330,6 +1339,13 @@ impl App {
 
                     Effect::RefreshWindows => {
                         self.apply_refresh_effect();
+                    }
+
+                    Effect::RedrawWindows => {
+                        for window in self.windows.values_mut().flatten() {
+                            window.refreshing = true;
+                            window.invalidator.set_dirty(true);
+                        }
                     }
 
                     Effect::NotifyGlobalObservers { global_type } => {
@@ -2363,6 +2379,7 @@ pub(crate) enum Effect {
         event: Box<dyn Any>,
     },
     RefreshWindows,
+    RedrawWindows,
     NotifyGlobalObservers {
         global_type: TypeId,
     },
@@ -2382,6 +2399,7 @@ impl std::fmt::Debug for Effect {
             Effect::Notify { emitter } => write!(f, "Notify({})", emitter),
             Effect::Emit { emitter, .. } => write!(f, "Emit({:?})", emitter),
             Effect::RefreshWindows => write!(f, "RefreshWindows"),
+            Effect::RedrawWindows => write!(f, "RedrawWindows"),
             Effect::NotifyGlobalObservers { global_type } => {
                 write!(f, "NotifyGlobalObservers({:?})", global_type)
             }

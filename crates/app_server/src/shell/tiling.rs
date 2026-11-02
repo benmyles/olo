@@ -399,7 +399,7 @@ fn limit(links: &[Link], (mut dw, mut dh): (i32, i32)) -> (i32, i32) {
 pub(super) const CASCADE: i32 = 24;
 
 /// `area` less `margin` all round.
-fn inset(area: Rectangle<i32, Logical>, margin: i32) -> Rectangle<i32, Logical> {
+pub(super) fn inset(area: Rectangle<i32, Logical>, margin: i32) -> Rectangle<i32, Logical> {
     let m = margin.min(area.size.w / 4).min(area.size.h / 4).max(0);
     Rectangle::new(area.loc + Point::from((m, m)), area.size - Size::from((2 * m, 2 * m)))
 }

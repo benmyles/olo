@@ -125,7 +125,11 @@ pub(crate) fn init(cx: &mut App) {
                         olo_xdg::themes::set(&a.icon_theme);
                         cx.set_global(Theme { palette });
                     }
-                    Change::Outputs(o) => apply_outputs(&o),
+                    // (Displays come, go and move often: drawn again,
+                    // everything afresh, only when text is to be drawn
+                    // otherwise.)
+                    Change::Outputs(o) if !apply_outputs(&o) => return,
+                    Change::Outputs(_) => {}
                 }
                 cx.refresh_windows();
             });
@@ -135,9 +139,10 @@ pub(crate) fn init(cx: &mut App) {
 }
 
 /// The person's choices of how text is drawn on each display, for
-/// GPUI's windows on them.
-fn apply_outputs(outputs: &[OutputInfo]) {
+/// GPUI's windows on them: whether any changed.
+fn apply_outputs(outputs: &[OutputInfo]) -> bool {
     use olo_protocol::panels::{Source, Subpixel, TextMode};
+    let mut changed = false;
     for o in outputs {
         let chosen = o.panel.as_ref().filter(|p| p.text_from == Source::Setting).and_then(|p| p.text);
         let rendering = chosen.map(|t| match t {
@@ -146,6 +151,7 @@ fn apply_outputs(outputs: &[OutputInfo]) {
             TextMode::Subpixel(_) => gpui::TextRendering::Subpixel(gpui::SubpixelLayout::Rgb),
             TextMode::Hinted | TextMode::Auto => gpui::TextRendering::Hinted,
         });
-        gpui::set_display_text_rendering(&o.name, rendering);
+        changed |= gpui::set_display_text_rendering(&o.name, rendering);
     }
+    changed
 }

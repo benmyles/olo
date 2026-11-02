@@ -364,7 +364,9 @@ impl Render for Banners {
                         let rect = c.rect + origin;
                         if k > 0 {
                             style::hline(window, rect.left() + px(PAD), rect.right() - px(PAD), rect.top(), style::tint(p.panel_background, 1.18));
-                            style::hline(window, rect.left() + px(PAD), rect.right() - px(PAD), rect.top() + px(1.0), style::c(p.shine));
+                            // (Right under it: a point lower left a device
+                            // pixel between them at 1.5×.)
+                            style::hline(window, rect.left() + px(PAD), rect.right() - px(PAD), style::snap_coord(window, rect.top()) + style::hairline(window), style::c(p.shine));
                         }
                         // One of several has its own close box too, while
                         // the pointer is over it.

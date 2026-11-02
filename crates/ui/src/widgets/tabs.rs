@@ -94,6 +94,7 @@ impl RenderOnce for TabView {
                 // (The tabs go where their names' lengths put them: lined
                 // up with what's under them only by chance.)
                 crate::review::own_grid(window, Bounds::from_corners(outer.origin, point(outer.right(), outer.top() + px(TAB_HEIGHT))));
+                let rects: Vec<Bounds<Pixels>> = tabs_at.iter().map(|(r, _)| *r).collect();
                 let draw = |window: &mut Window, cx: &mut App, i: usize, r: Bounds<Pixels>| {
                     let on = i == selected;
                     let top = if on { r.top() } else { style::snap_coord(window, r.top() + px(2.0)) };
@@ -125,7 +126,19 @@ impl RenderOnce for TabView {
                     let cy = (r.top() + px(2.0) + r.bottom() - px(1.0)) / 2.0;
                     let font = if on { bold.clone() } else { plain.clone() };
                     style::label(window, cx, r.center().x, cy, style::Align::Center, painted_label(&tabs, i), style::PLAIN_SIZE, font, style::c(p.panel_text));
-                    agent::record(window, cx, agent::Node { role: "Tab", name: Some(painted_label(&tabs, i)), bounds: r, enabled: true, clickable: true, selected: Some(on), ..Default::default() });
+                    // Agents get where a click picks it: the chosen tab
+                    // over its neighbours, of two others the left one
+                    // (the press below), so no two overlap.
+                    let mut take = r;
+                    if !on && i > 0 {
+                        let left = rects[i - 1].right().min(r.right());
+                        take = Bounds::from_corners(point(left.max(r.left()), r.top()), r.bottom_right());
+                    }
+                    if !on && i + 1 == selected {
+                        let right = rects[selected].left().max(take.left());
+                        take = Bounds::from_corners(take.origin, point(right.min(take.right()), r.bottom()));
+                    }
+                    agent::record(window, cx, agent::Node { role: "Tab", name: Some(painted_label(&tabs, i)), bounds: take, enabled: true, clickable: true, selected: Some(on), ..Default::default() });
                 };
                 // The others first, right to left so left ones overlap;
                 // the chosen one over them.

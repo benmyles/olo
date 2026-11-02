@@ -28,3 +28,6 @@ zstd = "0.14"
 olo-tg.workspace = true
 # Integrations ▸ Telegram: signing in with a QR code.
 qrcode = { version = "0.14", default-features = false }
+
+[dev-dependencies]
+olo-ui = { workspace = true, features = ["lint"] }

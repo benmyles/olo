@@ -143,6 +143,9 @@ pub struct WindowMeta {
     /// agent): when it goes, it is gone, not kept for its app starting
     /// again (`remember_placement`).
     pub closed_by_hand: Cell<bool>,
+    /// Picture in picture (`shell::pip`): over every window, in no group,
+    /// tile or remembered place. Decided on its first commit.
+    pub pip: Cell<bool>,
 }
 
 impl WindowMeta {
@@ -194,6 +197,7 @@ impl WindowElement {
             glow_pieces: Default::default(),
             moved_on_purpose: Cell::new(false),
             closed_by_hand: Cell::new(false),
+            pip: Cell::new(false),
         });
         self.user_data().get::<WindowMeta>().unwrap()
     }
@@ -741,7 +745,9 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     pub fn focus_topmost(&mut self) {
-        let front = self.space.elements().rev().find(|w| crate::shell::live(w)).cloned();
+        // (Not picture in picture, over everything but never handed the
+        // keyboard.)
+        let front = self.space.elements().rev().find(|w| crate::shell::live(w) && !w.meta().pip.get()).cloned();
         match front {
             Some(front) => self.focus_window(&front),
             None => {
@@ -1169,8 +1175,9 @@ impl<B: Backend + 'static> AnvilState<B> {
             return;
         }
         self.overview_interrupted();
-        // Park everything on it, bottom-most first to keep stacking order.
-        let leaving: Vec<WindowElement> = self.space.elements().filter(|w| self.window_output(w).as_ref() == Some(output)).cloned().collect();
+        // Park everything on it, bottom-most first to keep stacking order
+        // (not picture in picture: it is on each workspace).
+        let leaving: Vec<WindowElement> = self.space.elements().filter(|w| self.window_output(w).as_ref() == Some(output) && !w.meta().pip.get()).cloned().collect();
         let had_focus = self.focused_window().is_none_or(|f| leaving.contains(&f));
         for w in &leaving {
             self.park(w);
@@ -1219,7 +1226,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     fn focus_topmost_on(&mut self, output: &Output) {
-        let front = self.space.elements().rev().find(|w| crate::shell::live(w) && self.window_output(w).as_ref() == Some(output)).cloned();
+        let front = self.space.elements().rev().find(|w| crate::shell::live(w) && !w.meta().pip.get() && self.window_output(w).as_ref() == Some(output)).cloned();
         match front {
             Some(front) => self.focus_window(&front),
             None => {

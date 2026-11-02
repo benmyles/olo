@@ -341,6 +341,10 @@ pub struct Activity {
     pub selected: Option<i32>,
     pub collapsed: HashSet<i32>,
     pub rows_cache: Option<(u64, processes::RowsKey, std::rc::Rc<processes::Rows>)>,
+    /// Where each tree row's triangle was drawn, for a press on it (kept
+    /// from frame to frame: a row drawn as it was, replayed, isn't drawn
+    /// again to say).
+    pub triangles: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<usize, olo_ui::gpui::Bounds<olo_ui::gpui::Pixels>>>>,
     /// The process list's filters, for the processes of a generation.
     pub facets: Option<(u64, std::rc::Rc<Vec<olo_ui::search::Facet>>)>,
     pub reveal_selected: bool,
@@ -1290,6 +1294,7 @@ fn main() {
                 selected: None,
                 collapsed: HashSet::new(),
                 rows_cache: None,
+                triangles: Default::default(),
                 facets: None,
                 reveal_selected: false,
                 search,

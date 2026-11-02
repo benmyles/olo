@@ -35,12 +35,30 @@ struct Link {
     tx: Sender<Change>,
 }
 
+/// Test data: speakers, a headset and a microphone named as they come.
+fn test_devices() -> Devices {
+    let device = |name: &str, description: &str, level, is_default| audio::Device { name: name.into(), description: description.into(), volume: audio::Volume { level, muted: false }, channels: 2, is_default };
+    Devices {
+        outputs: vec![
+            device("speakers", "MacBook Pro Speakers (Built-in Audio Analog Stereo)", 0.55, true),
+            device("headset", "Jabra Evolve2 85 Wireless Headset (USB Audio, Digital Stereo IEC958)", 0.7, false),
+        ],
+        inputs: vec![device("mic", "MacBook Pro Microphone Array (Built-in Audio Analog Stereo)", 0.8, true)],
+    }
+}
+
 /// The sound server's watcher and the worker that changes it (one for
 /// the app), telling the windows through `proxy` when anything changes.
 fn link(proxy: olo_ui::Proxy) -> &'static Link {
     static LINK: OnceLock<Link> = OnceLock::new();
     LINK.get_or_init(|| {
         let devices: Shared = Default::default();
+        // Tests (the layout lint): devices as long-named as real ones,
+        // and no sound server.
+        if cfg!(test) {
+            *devices.lock().unwrap() = Some(Some(test_devices()));
+            return Link { devices, tx: channel().0 };
+        }
         let shared = devices.clone();
         std::thread::Builder::new()
             .name("sound-watch".into())

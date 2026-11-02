@@ -997,7 +997,7 @@ static DISPLAY_TEXT_RENDERING: std::sync::LazyLock<
 /// Olo: the person's choice of how text is drawn on the display named
 /// `name` (its connector, "DP-2"), from Preferences ▸ Display (`None`:
 /// Olo's own). Windows on it draw again the next time they draw.
-pub fn set_display_text_rendering(name: &str, rendering: Option<TextRendering>) {
+pub fn set_display_text_rendering(name: &str, rendering: Option<TextRendering>) -> bool {
     let mut chosen = DISPLAY_TEXT_RENDERING.write();
     let changed = match rendering {
         Some(r) => chosen.insert(name.to_owned(), r) != Some(r),
@@ -1006,6 +1006,7 @@ pub fn set_display_text_rendering(name: &str, rendering: Option<TextRendering>) 
     if changed {
         DISPLAY_TEXT_RENDERING_GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
+    changed
 }
 
 /// Bumped when the person's choices change: windows choose again.

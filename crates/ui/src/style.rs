@@ -260,6 +260,12 @@ pub fn label(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pixels, ali
     let text = text.into();
     let run = TextRun { len: text.len(), font, color, background_color: None, underline: None, strikethrough: None, size: None };
     let line = window.text_system().shape_line(text.clone(), px(font_size), &[run], None);
+    paint_label(window, cx, x, center_y, align, &text, font_size, line)
+}
+
+/// A line shaped for [`label`], painted.
+#[allow(clippy::too_many_arguments)]
+fn paint_label(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pixels, align: Align, text: &str, font_size: f32, line: gpui::ShapedLine) -> Bounds<Pixels> {
     let left = match align {
         Align::Left => x,
         Align::Center => x - line.width / 2.0,
@@ -271,7 +277,7 @@ pub fn label(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pixels, ali
     let height = line.ascent + line.descent;
     let _ = line.paint(point(left, top), height, window, cx);
     let at = Bounds { origin: point(left, top), size: size(line.width, height) };
-    crate::review::text(window, at, baseline, &text, font_size);
+    crate::review::text(window, at, baseline, text, font_size);
     at
 }
 
@@ -397,7 +403,15 @@ pub fn soft_shadow(window: &mut Window, r: Bounds<Pixels>, palette: &Palette) {
 /// [`label`] cut short with "…" to fit `max_width` ([`fit`]).
 #[allow(clippy::too_many_arguments)]
 pub fn label_fit(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pixels, align: Align, text: impl Into<SharedString>, font_size: f32, font: Font, color: Hsla, max_width: Pixels) -> Bounds<Pixels> {
-    let text = fit(window, text.into(), font_size, &font, max_width.max(px(0.0)));
+    let text = text.into();
+    // (Shaped once when it fits, as nearly everything does: a table's
+    // screen of cells is 1,500 of them.)
+    let run = TextRun { len: text.len(), font: font.clone(), color, background_color: None, underline: None, strikethrough: None, size: None };
+    let line = window.text_system().shape_line(text.clone(), px(font_size), &[run], None);
+    if line.width <= max_width.max(px(0.0)) {
+        return paint_label(window, cx, x, center_y, align, &text, font_size, line);
+    }
+    let text = fit(window, text, font_size, &font, max_width.max(px(0.0)));
     label(window, cx, x, center_y, align, text, font_size, font, color)
 }
 

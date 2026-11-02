@@ -86,7 +86,12 @@ impl State {
         let code = field(cx, "12345", false);
         let password = field(cx, "", true);
         let mut st = State { known: Arc::default(), api_id, api_hash, editing_api: false, signin: None, step: Arc::default(), phone, code, password, problem: None, proxy: olo_ui::proxy(cx), ticking: false };
-        st.check();
+        // (Tests, the layout lint, never read the keyring.)
+        if cfg!(test) {
+            *st.known.lock().unwrap() = Known::NoApi;
+        } else {
+            st.check();
+        }
         st
     }
 }

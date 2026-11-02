@@ -416,7 +416,7 @@ impl FolderWin {
         } else {
             favorites.item(format!("Add “{name}” to Favorites"), "favorite-on")
         };
-        let mut go = Menu::new("Go");
+        let mut go = Menu::new("Go").item("Go to File or Folder…", "go-to").shift_key("g").separator();
         for (label, dir) in olo_kit_base::places::standard() {
             let cmd = if dir == fs::home() { "go-home".to_owned() } else { format!("go-place:{}", dir.display()) };
             go = go.item(label, cmd);

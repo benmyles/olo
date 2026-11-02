@@ -92,6 +92,12 @@ pub(crate) struct TestPrompts {
 
 impl TestPlatform {
     pub fn new(executor: BackgroundExecutor, foreground_executor: ForegroundExecutor) -> Rc<Self> {
+        Self::with_text_system(executor, foreground_executor, Arc::new(NoopTextSystem))
+    }
+
+    /// Olo: a test platform laying text out with `text_system` (Olo's,
+    /// for a view's layout checked as it will be drawn).
+    pub(crate) fn with_text_system(executor: BackgroundExecutor, foreground_executor: ForegroundExecutor, text_system: Arc<dyn PlatformTextSystem>) -> Rc<Self> {
         #[cfg(target_os = "windows")]
         let bitmap_factory = unsafe {
             windows::Win32::System::Ole::OleInitialize(None)
@@ -101,8 +107,6 @@ impl TestPlatform {
                     .expect("Error creating bitmap factory."),
             )
         };
-
-        let text_system = Arc::new(NoopTextSystem);
 
         Rc::new_cyclic(|weak| TestPlatform {
             background_executor: executor,

@@ -29,6 +29,8 @@ pub(crate) struct TestWindowState {
     moved_callback: Option<Box<dyn FnMut()>>,
     input_handler: Option<PlatformInputHandler>,
     is_fullscreen: bool,
+    /// Olo: its scale factor (2 unless set: `TestWindow::set_scale`).
+    scale: f32,
 }
 
 #[derive(Clone)]
@@ -74,7 +76,25 @@ impl TestWindow {
             moved_callback: None,
             input_handler: None,
             is_fullscreen: false,
+            scale: 2.0,
         })))
+    }
+
+    /// Olo: the window at scale `scale`, as a display's change tells a
+    /// real one (its size kept).
+    pub fn set_scale(&mut self, scale: f32) {
+        let size = {
+            let mut lock = self.0.lock();
+            lock.scale = scale;
+            lock.bounds.size
+        };
+        let mut lock = self.0.lock();
+        let Some(mut callback) = lock.resize_callback.take() else {
+            return;
+        };
+        drop(lock);
+        callback(size, scale);
+        self.0.lock().resize_callback = Some(callback);
     }
 
     pub fn simulate_resize(&mut self, size: Size<Pixels>) {
@@ -134,7 +154,7 @@ impl PlatformWindow for TestWindow {
     }
 
     fn scale_factor(&self) -> f32 {
-        2.0
+        self.0.lock().scale
     }
 
     fn appearance(&self) -> WindowAppearance {

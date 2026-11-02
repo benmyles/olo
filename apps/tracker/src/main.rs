@@ -9,6 +9,7 @@ mod filemanager;
 mod find;
 mod folder;
 mod fs;
+mod goto;
 mod items;
 mod model;
 mod ops;
@@ -152,6 +153,8 @@ enum Win {
     Desktop(Entity<Desktop>),
     Info(Entity<InfoWin>),
     Find(Entity<FindWin>),
+    /// Go to File or Folder (`goto`).
+    GoTo,
     /// "Tracker Status": progress of running file operations (its view
     /// reads the jobs from here).
     Status,
@@ -366,6 +369,43 @@ impl Tracker {
         })
         .detach();
         self.register(find.entity_id(), handle.into(), Win::Find(find), cx);
+    }
+
+    /// Go to File or Folder, from the window whose folder is `base` (a
+    /// relative path is from there): the one open brought forward, else
+    /// a new one.
+    fn open_go_to(&mut self, base: PathBuf, cx: &mut Context<Self>) {
+        if let Some(key) = self.windows.iter().find(|s| matches!(s.win, Win::GoTo)).map(|s| s.key) {
+            return self.activate(key, cx);
+        }
+        let app = cx.weak_entity();
+        let made: std::rc::Rc<std::cell::RefCell<Option<Entity<goto::GoToWin>>>> = Default::default();
+        let keep = made.clone();
+        // (A dialog: over the folder's window, never a tab in its group.)
+        let options = WindowOptions::new("Go to File or Folder", goto::WIDTH, goto::HEIGHT).min_size(360.0, 200.0).dialog().child();
+        let Some(handle) = olo_ui::open_window(cx, options, move |window, cx| {
+            let v = cx.new(|cx| goto::GoToWin::new(app, base, window, cx));
+            *keep.borrow_mut() = Some(v.clone());
+            v
+        }) else {
+            return;
+        };
+        let Some(go) = made.borrow_mut().take() else { return };
+        let key = go.entity_id();
+        let any: AnyWindowHandle = handle.into();
+        cx.subscribe(&go, move |t, _, _: &goto::GoToEvent, cx| {
+            if t.close_requested(key, cx) {
+                cx.close_window(any);
+            }
+        })
+        .detach();
+        self.register(key, any, Win::GoTo, cx);
+    }
+
+    /// Show `path`: a folder opens; anything else is selected in its
+    /// folder's window (Go to File or Folder, `go-to:`).
+    pub fn go_to(&mut self, path: &Path, cx: &mut Context<Self>) {
+        self.reveal(path, cx);
     }
 
     fn error(&mut self, message: String, cx: &mut Context<Self>) {
@@ -673,6 +713,13 @@ impl Tracker {
                 std::thread::spawn(move || places::set_favorite(&dir, on));
                 if cx.has_global::<PlacesCache>() {
                     cx.global_mut::<PlacesCache>().read = None;
+                }
+            }
+            "go-to" => self.open_go_to(dir.clone(), cx),
+            // (Agents': straight there.)
+            c if c.starts_with("go-to:") => {
+                if let Some(p) = goto::parse(&c["go-to:".len()..], &dir) {
+                    self.go_to(&p, cx);
                 }
             }
             c if c.starts_with("go-place:") => {

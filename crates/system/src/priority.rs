@@ -60,6 +60,38 @@ pub fn raise_thread(pid: u32, tid: u32, nice: i32) -> std::result::Result<i32, S
     Ok(nice_of(tid).unwrap_or(nice))
 }
 
+/// The calling thread taken by the scheduler as at least `min` busy (of
+/// 1024) while it runs, its uclamp.min (no privilege needed): it runs on
+/// a fast core, at a high clock, not where a mostly idle thread is put
+/// (`olo_protocol::performance::CORE_UTIL_MIN`). The threads it starts
+/// afterwards inherit it, as they do its nice.
+pub fn util_min_self(min: u32) -> std::io::Result<()> {
+    #[repr(C)]
+    #[derive(Default)]
+    struct SchedAttr {
+        size: u32,
+        policy: u32,
+        flags: u64,
+        nice: i32,
+        priority: u32,
+        runtime: u64,
+        deadline: u64,
+        period: u64,
+        util_min: u32,
+        util_max: u32,
+    }
+    const KEEP_POLICY: u64 = 0x08;
+    const KEEP_PARAMS: u64 = 0x10;
+    const UTIL_CLAMP_MIN: u64 = 0x20;
+    let attr = SchedAttr { size: size_of::<SchedAttr>() as u32, flags: KEEP_POLICY | KEEP_PARAMS | UTIL_CLAMP_MIN, util_min: min.min(1024), ..Default::default() };
+    // SAFETY: sched_setattr reads `attr`, of the size it's told, for this
+    // thread (0).
+    if unsafe { libc::syscall(libc::SYS_sched_setattr, 0, &attr as *const SchedAttr, 0) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
 /// Every thread of `pid` to `nice`, those above it; how many were raised,
 /// and the first error.
 pub fn raise_process(pid: u32, nice: i32) -> (usize, Option<String>) {

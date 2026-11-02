@@ -11,6 +11,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ![Deskbar: the speaker's menu](2026-11-02/120605-deskbar-the-speaker-s-menu.png)
 
+### Tracker: Go to File or Folder
+
+*12:02* — Go ▸ Go to File or Folder… (⇧⌘G): a path copied is in the field already, selected, so Return goes; the names in its folder that what's typed could be are listed as it's typed, Tab completes, ↑↓ choose. A folder opens; a file shows selected in its folder's window.
+
+![Tracker: Go to File or Folder](2026-11-02/120214-tracker-go-to-file-or-folder.png)
+
 ### Preferences on a short screen
 
 *11:33* — A panel taller than the screen (AirPods, 752 points, on a 700-point display) opens as tall as fits, laid out at its own size and scrolled, with a scroll bar the window is widened for. Panels that fit are unchanged.
@@ -46,6 +52,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 *11:27* — Preferences ▸ AirPods: levels with a picture of each bud and the case, noise control with Adaptive's strength, press and hold, listening features, the microphone, and what this computer does with them. Shown with a pretend pair (OLO_FAKE_AIRPODS).
 
 ![AirPods panel](2026-11-02/112750-airpods-panel.png)
+
+### A video's picture in picture, Standard mode
+
+*10:29* — Chrome's video picture in picture (no app id, titled "Picture in picture") in the corner, 16 px in, over the call page's window.
+
+![A video's picture in picture, Standard mode](2026-11-02/102940-a-video-s-picture-in-picture-standard-mode.png)
+
+### Picture in picture stays in its corner
+
+*10:29* — A call popped out of Chrome (documentPictureInPicture, as Meet does) opens in the bottom right corner at its own size, over every window and on each workspace, out of Chrome's group, Focus's zoom and the window memory; the keyboard stays where it was. A link opened from another app (Terminal's Open Pull Request) now shows in Chrome, in front, with the call over it: before, the call joined Chrome's group and zoomed over the tab the link had opened in.
+
+![Picture in picture stays in its corner](2026-11-02/102939-picture-in-picture-stays-in-its-corner.png)
 
 ### Terminal's Tile All Tabs heads
 

@@ -260,6 +260,11 @@ pub fn mark_covered(space: &Space<WindowElement>) {
     // done before its own alerts, which go with it.
     let others: Vec<&WindowElement> = space.elements().filter(|w| w.meta().focus_on.get().is_none()).collect();
     for w in &others {
+        // (Picture in picture is over whatever Focus shows.)
+        if w.meta().pip.get() {
+            w.meta().covered.set(false);
+            continue;
+        }
         let covered = match w.0.toplevel().and_then(|t| t.parent()) {
             Some(parent) => space.elements().any(|p| p.meta().covered.get() && p.wl_surface().as_deref() == Some(&parent)),
             // An app's own panel (StyledEdit's Find), as BeOS's floating

@@ -329,6 +329,9 @@ where
     for (menu, at) in crate::shell::lower_layer_menus(output) {
         tree(renderer, &mut out, &menu, at);
     }
+    // The windows' menus go here, over Deskbar (gathered with them).
+    let menus_at = out.len();
+    let mut menus = Vec::new();
     whole(renderer, &mut out, Layer::Top);
     part("gather: upper layers", t);
     let t = std::time::Instant::now();
@@ -353,7 +356,8 @@ where
             }
             let location = (at - SpaceElement::geometry(w).loc - region.loc).to_physical_precise_round(scale);
             let start = std::time::Instant::now();
-            let elements: Vec<WindowRenderElement<R>> = w.render_elements(renderer, location, scale.into(), 1.0);
+            let elements: Vec<WindowRenderElement<R>> = w.render_parts(renderer, location, scale.into(), 1.0, false);
+            menus.extend(w.menu_elements(renderer, location, scale.into(), 1.0).into_iter().map(window));
             slow_elements(start, || format!("window {} {:?}", w.id(), SpaceElement::geometry(w).size));
             out.extend(elements.into_iter().map(window));
         }
@@ -361,6 +365,7 @@ where
             out.push(window(WindowRenderElement::Decoration(d)));
         }
     }
+    out.splice(menus_at..menus_at, menus);
     part("gather: windows", t);
     // The lower layers themselves, without their menus.
     let t = std::time::Instant::now();
@@ -415,7 +420,8 @@ where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: Clone + Send + 'static,
 {
-    let warm = keep_warm(output).map(|e| OutputRenderElements::Custom(CustomRenderElements::Warm(e)));
+    let fullscreen = output.user_data().get::<FullscreenSurface>().is_some_and(|f| f.get().is_some());
+    let warm = keep_warm(output, fullscreen).map(|e| OutputRenderElements::Custom(CustomRenderElements::Warm(e)));
     if warm_uploads() {
         crate::shell::deco::warm_tab_upload(renderer);
     }
@@ -461,16 +467,20 @@ thread_local! {
     });
 }
 
-/// A pixel of nothing in the screen's top left corner, there for a frame
-/// or two every second while the desktop is in use, so a frame is drawn
-/// (and one more as it goes; only then, so a full-screen window still
-/// goes straight to the display between): the GPU
+/// A pixel of nothing in the screen's top left corner, changed every
+/// second while the desktop is in use, so a frame is drawn: the GPU
 /// driver keeps memory for a frame's commands only while frames use it,
 /// and getting more maps it into the GPU's address space, which can hold
 /// the CPU for tens of milliseconds while the GPU is busy (Apple's: the
 /// first frames after a pause took 10–30 ms). Drawing a pixel costs
-/// nothing to see.
-fn keep_warm(output: &Output) -> Option<smithay::backend::renderer::element::solid::SolidColorRenderElement> {
+/// nothing to see. It stays, on top, its place in the stack kept: smithay
+/// counts an element's place from the top, so a pixel coming and going
+/// there moved every other element's and damaged the whole display, two
+/// full redraws a second; kept, only its commit changes, and only its
+/// pixel is drawn. Over a full-screen window it's there only for a frame
+/// or two each second (and one more as it goes), so the window still
+/// goes straight to the display between.
+fn keep_warm(output: &Output, fullscreen: bool) -> Option<smithay::backend::renderer::element::solid::SolidColorRenderElement> {
     WARM.with(|w| {
         let mut w = w.borrow_mut();
         let now = std::time::Instant::now();
@@ -478,8 +488,9 @@ fn keep_warm(output: &Output) -> Option<smithay::backend::renderer::element::sol
             w.commit.increment();
             w.bumped = now;
         }
-        // (Every screen's next frame, whatever its rate.)
-        let showing = (now - w.bumped <= std::time::Duration::from_millis(30)).then_some(w.commit);
+        // (Over a full-screen window, every screen's next frame, whatever
+        // its rate.)
+        let showing = (!fullscreen || now - w.bumped <= std::time::Duration::from_millis(30)).then_some(w.commit);
         let name = output.name();
         let changed = w.shown.insert(name.clone(), showing) != Some(showing);
         w.changed = changed.then(|| name.clone());
@@ -736,9 +747,7 @@ pub fn watch_content(on: bool) {
 }
 
 /// Whether the frame just drawn showed anything new, `keep_warm`'s
-/// pixel aside (it damages as much as the whole display: smithay counts
-/// an element's place in the stack from the top, so one coming and
-/// going there moves all the others'). True when not watched.
+/// pixel aside. True when not watched.
 pub fn content_changed() -> bool {
     CHANGED.with(|c| c.get())
 }

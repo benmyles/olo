@@ -4,7 +4,7 @@
 //! change its priority. Rows are sorted only when the list or the query
 //! changes, not each frame, and only the rows on screen are drawn.
 
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::rc::Rc;
 
 use olo_ui::{
     Menu,
@@ -364,9 +364,9 @@ pub fn list(app: &mut Activity, _: &mut Window, cx: &mut Context<Activity>) -> A
         Column::new("CPU Time", 76.0).right(),
         Column::new("Started", 120.0),
     ];
-    // Where each tree row's triangle was drawn, for a press on it.
-    let triangles: Rc<RefCell<HashMap<usize, Bounds<Pixels>>>> = Rc::default();
+    let triangles = app.triangles.clone();
     let (cell_me, cell_rows, cell_triangles) = (me.clone(), rows.clone(), triangles.clone());
+    let (key_me, key_rows, columns_n) = (me.clone(), rows.clone(), columns.len());
     let names = rows.clone();
     let (press_me, press_rows) = (me.clone(), rows.clone());
     let (select_me, select_rows) = (me.clone(), rows.clone());
@@ -391,6 +391,19 @@ pub fn list(app: &mut Activity, _: &mut Window, cx: &mut Context<Activity>) -> A
         cell.text(window, cx, text);
     })
     .empty_text("No processes match.")
+    // A row is drawn again only when what it says does (most of a second's
+    // samples change a few rows' figures).
+    .row_key(move |row, cx| {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        if let Some(&r) = key_rows.refs.get(row) {
+            let app = key_me.read(cx);
+            for column in 0..columns_n {
+                cell_text(app, r, column).hash(&mut h);
+            }
+        }
+        h.finish()
+    })
     .type_select(move |i| names.names.get(i).cloned().unwrap_or_default())
     .on_sort(move |_, cx| {
         sort_me.update(cx, |a, cx| {

@@ -302,8 +302,8 @@ pub(crate) struct TermWin {
     preedit: Option<String>,
     /// A redraw is coming for an agent's spinner.
     spinning: bool,
-    /// Tile All Tabs' divider being dragged (`ui::RowDrag`).
-    dragging_row: Option<ui::RowDrag>,
+    /// Tile All Tabs' divider being dragged (`ui::DividerDrag`).
+    dragging: Option<ui::DividerDrag>,
     /// Size to snap the window to once real font metrics are known.
     snap_to: Option<(usize, usize)>,
     shown_title: String,
@@ -320,13 +320,16 @@ pub(crate) struct TermWin {
     /// Each row's share of the height in Tile All Tabs, as the person
     /// dragged it, by its group's name ("" for tabs in none); 1 if not.
     tile_heights: std::collections::BTreeMap<String, f32>,
+    /// Each row's panes' shares of its width, as dragged, by the row's
+    /// key; even if not (or if the row has a pane more or fewer since).
+    tile_widths: std::collections::BTreeMap<String, Vec<f32>>,
 }
 
 impl TermWin {
     /// A window of `tabs` (each saying its group in `groups`).
     fn new(tabs: Vec<Tab>, active: usize, snap_to: Option<(usize, usize)>, groups: Vec<Group>) -> TermWin {
         let active = active.min(tabs.len().saturating_sub(1));
-        let mut t = TermWin { active, tabs, preedit: None, spinning: false, dragging_row: None, snap_to, shown_title: String::new(), focused: true, groups, tiled: false, tile_groups: Vec::new(), tile_heights: Default::default() };
+        let mut t = TermWin { active, tabs, preedit: None, spinning: false, dragging: None, snap_to, shown_title: String::new(), focused: true, groups, tiled: false, tile_groups: Vec::new(), tile_heights: Default::default(), tile_widths: Default::default() };
         t.tidy();
         t
     }
@@ -398,9 +401,10 @@ impl TermWin {
         row.first().and_then(|&i| self.tabs.get(i)).and_then(|t| t.group).and_then(|g| self.groups.get(g)).map(|g| g.name.clone()).unwrap_or_default()
     }
 
-    /// Whether the rows' heights were dragged from even.
-    fn heights_changed(&self) -> bool {
-        self.tile_heights.values().any(|w| (w - 1.0).abs() > 0.01)
+    /// Whether the rows' heights or the panes' widths were dragged from
+    /// even.
+    fn sizes_changed(&self) -> bool {
+        self.tile_heights.values().any(|w| (w - 1.0).abs() > 0.01) || self.tile_widths.values().flatten().any(|w| (w - 1.0).abs() > 0.01)
     }
 
     /// Choose group `g` in Tile All Tabs, or not; all chosen is none.
@@ -643,6 +647,9 @@ struct SavedWindow {
     /// Its rows' shares of the height (`TermWin::tile_heights`).
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     tile_heights: std::collections::BTreeMap<String, f32>,
+    /// Its rows' panes' shares of the width (`TermWin::tile_widths`).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    tile_widths: std::collections::BTreeMap<String, Vec<f32>>,
     /// Each tab's folder, for a shell in its place if it has gone.
     #[serde(default)]
     cwds: Vec<Option<PathBuf>>,
@@ -921,6 +928,7 @@ impl Terminal {
                 t.tiled = w.tiled;
                 t.tile_groups = w.tile_groups.clone();
                 t.tile_heights = w.tile_heights.clone();
+                t.tile_widths = w.tile_widths.clone();
                 // Agents' titles, back with their shells (each let go if
                 // its agent isn't seen there soon: `expire_agent_titles`).
                 for tab in t.tabs.iter_mut() {
@@ -1933,6 +1941,7 @@ impl Terminal {
             "tile-reset-heights" => {
                 if let Some(Win::Term(t)) = self.windows.get_mut(&window) {
                     t.tile_heights.clear();
+                    t.tile_widths.clear();
                     cx.redraw(window);
                 }
             }
@@ -2208,6 +2217,7 @@ impl Terminal {
                         tiled: t.tiled,
                         tile_groups: t.tile_groups.clone(),
                         tile_heights: t.tile_heights.clone(),
+                        tile_widths: t.tile_widths.clone(),
                         cwds: live.iter().map(|x| x.session.cwd()).collect(),
                         own_grouping: false,
                         groups: t.groups.clone(),

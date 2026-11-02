@@ -50,7 +50,7 @@ use std::{
     time::{Duration, Instant},
 };
 use util::post_inc;
-use util::{ResultExt, measure};
+use util::measure;
 use uuid::Uuid;
 
 mod prompts;
@@ -760,8 +760,12 @@ pub(crate) struct Frame {
     /// replayed with a cached view's paint; each with how far it has been
     /// moved since (`Window::paint_memo`).
     pub(crate) paint_records: Vec<(Rc<dyn Any>, Point<Pixels>)>,
-    /// Olo: what was painted under a key (`Window::paint_memo`).
-    pub(crate) memos: FxHashMap<u64, PaintMemo>,
+    /// Olo: what was painted under a key (`Window::paint_memo`), in the
+    /// order painted (a cached view's paint replayed brings the memos
+    /// painted in it along: `PaintIndex::memos_index`), and where each
+    /// key's is.
+    pub(crate) memos: Vec<(u64, PaintMemo)>,
+    pub(crate) memo_index: FxHashMap<u64, usize>,
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) debug_bounds: FxHashMap<String, Bounds<Pixels>>,
     #[cfg(any(feature = "inspector", debug_assertions))]
@@ -791,9 +795,39 @@ pub(crate) struct PaintIndex {
     tab_handle_index: usize,
     line_layout_index: LineLayoutIndex,
     paint_records_index: usize,
+    memos_index: usize,
+}
+
+impl PaintIndex {
+    /// Olo: where this index of what was painted from `from` is, painted
+    /// again from `to` (replayed in place: one for one).
+    fn shifted(&self, from: &PaintIndex, to: &PaintIndex) -> PaintIndex {
+        let at = |v: usize, f: usize, t: usize| v - f + t;
+        PaintIndex {
+            scene_index: at(self.scene_index, from.scene_index, to.scene_index),
+            mouse_listeners_index: at(self.mouse_listeners_index, from.mouse_listeners_index, to.mouse_listeners_index),
+            input_handlers_index: at(self.input_handlers_index, from.input_handlers_index, to.input_handlers_index),
+            cursor_styles_index: at(self.cursor_styles_index, from.cursor_styles_index, to.cursor_styles_index),
+            accessed_element_states_index: at(self.accessed_element_states_index, from.accessed_element_states_index, to.accessed_element_states_index),
+            tab_handle_index: at(self.tab_handle_index, from.tab_handle_index, to.tab_handle_index),
+            line_layout_index: self.line_layout_index.shifted(&from.line_layout_index, &to.line_layout_index),
+            paint_records_index: at(self.paint_records_index, from.paint_records_index, to.paint_records_index),
+            memos_index: at(self.memos_index, from.memos_index, to.memos_index),
+        }
+    }
 }
 
 impl Frame {
+    /// Olo: notes `memo` as painted under `key`.
+    fn keep_memo(&mut self, key: u64, memo: PaintMemo) {
+        self.memo_index.insert(key, self.memos.len());
+        self.memos.push((key, memo));
+    }
+
+    fn memo(&self, key: u64) -> Option<&PaintMemo> {
+        self.memo_index.get(&key).map(|&i| &self.memos[i].1)
+    }
+
     pub(crate) fn new(dispatch_tree: DispatchTree) -> Self {
         Frame {
             focus: None,
@@ -810,7 +844,8 @@ impl Frame {
             tooltip_requests: Vec::new(),
             cursor_styles: Vec::new(),
             paint_records: Vec::new(),
-            memos: FxHashMap::default(),
+            memos: Vec::new(),
+            memo_index: FxHashMap::default(),
 
             #[cfg(any(test, feature = "test-support"))]
             debug_bounds: FxHashMap::default(),
@@ -835,6 +870,7 @@ impl Frame {
         self.cursor_styles.clear();
         self.paint_records.clear();
         self.memos.clear();
+        self.memo_index.clear();
         self.hitboxes.clear();
         self.window_control_hitboxes.clear();
         self.deferred_draws.clear();
@@ -989,6 +1025,11 @@ pub struct Window {
     /// something every window shows changed). A window's own `refresh`
     /// leaves them: their keys say all they depend on.
     pub(crate) memos_reset: bool,
+    /// Olo: the last draw gave the platform the frame's last input
+    /// handler (taken off the frame's list, put back as the next draw
+    /// starts): its place is kept there whether or not the platform still
+    /// has it.
+    gave_input_handler: bool,
     pub(crate) refreshing: bool,
     pub(crate) activation_observers: SubscriberSet<(), AnyObserver>,
     pub(crate) focus: Option<FocusId>,
@@ -1158,6 +1199,10 @@ impl Window {
                 });
             }
         }));
+        // (Olo: the platform window's callbacks find the window gone
+        // when the compositor's last events for it come after it closed:
+        // nothing to do then, and nothing to say: `ok()`, not `log_err()`,
+        // which logged "window not found" in pairs after windows closed.)
         platform_window.on_request_frame(Box::new({
             let mut cx = cx.to_async();
             let invalidator = invalidator.clone();
@@ -1172,7 +1217,7 @@ impl Window {
                                 callback(window, cx);
                             }
                         })
-                        .log_err();
+                        .ok();
                 }
 
                 // (Olo: no presenting the same scene again to keep a
@@ -1194,9 +1239,10 @@ impl Window {
                                 window.frame_stats.record(started, drawn, started.elapsed(), scrolls);
                                 if frame_phases() {
                                     let [layout, paint, finish] = window.phase_marks.map(|d| d.as_secs_f64() * 1000.0);
+                                    let work = FRAME_WORK.take();
                                     let scene = &window.rendered_frame.scene;
                                     eprintln!(
-                                        "frame {:.2} ms{}: layout {layout:.2}, paint {:.2}, finish {:.2}, present {:.2}; {} sprites, {} quads, {} operations",
+                                        "frame {:.2} ms{}: layout {layout:.2}, paint {:.2}, finish {:.2}, present {:.2}; {} sprites, {} quads, {} operations; shaped {} lines in {:.2} ms, drew {} glyphs in {:.2} ms, found {} lines' glyphs in {:.2} ms",
                                         started.elapsed().as_secs_f64() * 1000.0,
                                         if window.last_draw_refreshed { " (refreshed)" } else { "" },
                                         paint - layout,
@@ -1205,16 +1251,22 @@ impl Window {
                                         scene.monochrome_sprites.len() + scene.polychrome_sprites.len(),
                                         scene.quads.len(),
                                         scene.paint_operations.len(),
+                                        work[0].0,
+                                        work[0].1,
+                                        work[1].0,
+                                        work[1].1,
+                                        work[2].0,
+                                        work[2].1,
                                     );
                                 }
                             })
-                            .log_err();
+                            .ok();
                     });
                     true
                 } else if needs_present {
                     handle
                         .update(&mut cx, |_, window, _| window.present())
-                        .log_err();
+                        .ok();
                     true
                 } else {
                     false
@@ -1225,7 +1277,7 @@ impl Window {
                         .update(&mut cx, |_, window, _| {
                             window.complete_frame();
                         })
-                        .log_err();
+                        .ok();
                 }
                 // Callbacks for the next frame keep the frames coming.
                 if !next_frame_callbacks.borrow().is_empty() {
@@ -1239,7 +1291,7 @@ impl Window {
             move |_, _| {
                 handle
                     .update(&mut cx, |_, window, cx| window.bounds_changed(cx))
-                    .log_err();
+                    .ok();
             }
         }));
         platform_window.on_moved(Box::new({
@@ -1247,7 +1299,7 @@ impl Window {
             move || {
                 handle
                     .update(&mut cx, |_, window, cx| window.bounds_changed(cx))
-                    .log_err();
+                    .ok();
             }
         }));
         platform_window.on_appearance_changed(Box::new({
@@ -1255,7 +1307,7 @@ impl Window {
             move || {
                 handle
                     .update(&mut cx, |_, window, cx| window.appearance_changed(cx))
-                    .log_err();
+                    .ok();
             }
         }));
         platform_window.on_active_status_change(Box::new({
@@ -1276,7 +1328,7 @@ impl Window {
 
                         SystemWindowTabController::update_last_active(cx, window.handle.id);
                     })
-                    .log_err();
+                    .ok();
             }
         }));
         platform_window.on_hover_status_change(Box::new({
@@ -1287,7 +1339,7 @@ impl Window {
                         window.hovered.set(active);
                         window.refresh();
                     })
-                    .log_err();
+                    .ok();
             }
         }));
         platform_window.on_input({
@@ -1295,7 +1347,7 @@ impl Window {
             Box::new(move |event| {
                 handle
                     .update(&mut cx, |_, window, cx| window.dispatch_event(event, cx))
-                    .log_err()
+                    .ok()
                     .unwrap_or(DispatchEventResult::default())
             })
         });
@@ -1311,7 +1363,7 @@ impl Window {
                         }
                         None
                     })
-                    .log_err()
+                    .ok()
                     .unwrap_or(None)
             })
         });
@@ -1322,7 +1374,7 @@ impl Window {
                     .update(&mut cx, |_, _window, cx| {
                         SystemWindowTabController::move_tab_to_new_window(cx, handle.window_id());
                     })
-                    .log_err();
+                    .ok();
             })
         });
         platform_window.on_merge_all_windows({
@@ -1332,7 +1384,7 @@ impl Window {
                     .update(&mut cx, |_, _window, cx| {
                         SystemWindowTabController::merge_all_windows(cx, handle.window_id());
                     })
-                    .log_err();
+                    .ok();
             })
         });
         platform_window.on_select_next_tab({
@@ -1342,7 +1394,7 @@ impl Window {
                     .update(&mut cx, |_, _window, cx| {
                         SystemWindowTabController::select_next_tab(cx, handle.window_id());
                     })
-                    .log_err();
+                    .ok();
             })
         });
         platform_window.on_select_previous_tab({
@@ -1352,7 +1404,7 @@ impl Window {
                     .update(&mut cx, |_, _window, cx| {
                         SystemWindowTabController::select_previous_tab(cx, handle.window_id())
                     })
-                    .log_err();
+                    .ok();
             })
         });
         platform_window.on_toggle_tab_bar({
@@ -1363,7 +1415,7 @@ impl Window {
                         let tab_bar_visible = window.platform_window.tab_bar_visible();
                         SystemWindowTabController::set_visible(cx, tab_bar_visible);
                     })
-                    .log_err();
+                    .ok();
             })
         });
 
@@ -1433,6 +1485,7 @@ impl Window {
             refreshing: false,
             last_draw_refreshed: false,
             memos_reset: false,
+            gave_input_handler: false,
             activation_observers: SubscriberSet::new(),
             focus: None,
             focus_enabled: true,
@@ -1693,7 +1746,7 @@ impl Window {
                     let node_id = window.focus_node_id_in_rendered_frame(focus_id);
                     window.dispatch_action_on_node(node_id, action.as_ref(), cx);
                 })
-                .log_err();
+                .ok();
         })
     }
 
@@ -2162,9 +2215,15 @@ impl Window {
         self.invalidator.set_dirty(false);
         self.requested_autoscroll = None;
 
-        // Restore the previously-used input handler.
-        if let Some(input_handler) = self.platform_window.take_input_handler() {
-            self.rendered_frame.input_handlers.push(Some(input_handler));
+        // Restore the previously-used input handler. (Olo: or keep its
+        // place, if the platform hasn't it now: a draw while an event has
+        // it out (`dispatch_input`). The frame's paint indices count it,
+        // and replaying a memo painted after it sliced past the list's
+        // end: Notifications' History panicked as it opened.)
+        match self.platform_window.take_input_handler() {
+            Some(input_handler) => self.rendered_frame.input_handlers.push(Some(input_handler)),
+            None if self.gave_input_handler => self.rendered_frame.input_handlers.push(None),
+            None => {}
         }
         let started = Instant::now();
         self.draw_roots(cx, started);
@@ -2181,9 +2240,13 @@ impl Window {
         self.next_frame.window_active = self.active.get();
 
         // Register requested input handler with the platform window.
+        // (Olo: one replayed from a place kept empty has none to give.)
+        self.gave_input_handler = false;
         if let Some(input_handler) = self.next_frame.input_handlers.pop() {
-            self.platform_window
-                .set_input_handler(input_handler.unwrap());
+            self.gave_input_handler = true;
+            if let Some(input_handler) = input_handler {
+                self.platform_window.set_input_handler(input_handler);
+            }
         }
 
         self.layout_engine.as_mut().unwrap().clear();
@@ -2545,6 +2608,7 @@ impl Window {
             tab_handle_index: self.next_frame.tab_stops.paint_index(),
             line_layout_index: self.text_system.layout_index(),
             paint_records_index: self.next_frame.paint_records.len(),
+            memos_index: self.next_frame.memos.len(),
         }
     }
 
@@ -2583,7 +2647,7 @@ impl Window {
         let scale = self.scale_factor();
         if !self.memos_reset
             && paint_memos()
-            && let Some(memo) = self.rendered_frame.memos.get(&key)
+            && let Some(memo) = self.rendered_frame.memo(key)
             && memo.mask == mask
             && memo.opacity == opacity
             && memo.scale == scale
@@ -2608,7 +2672,7 @@ impl Window {
                     movable = Some(crate::scene::Movable { x: false, y: false });
                 }
                 let end = self.paint_index();
-                self.next_frame.memos.insert(key, PaintMemo { bounds, mask, opacity, scale, range: start..end, movable });
+                self.next_frame.keep_memo(key, PaintMemo { bounds, mask, opacity, scale, range: start..end, movable });
                 return;
             }
         }
@@ -2632,7 +2696,7 @@ impl Window {
             && start.cursor_styles_index == end.cursor_styles_index
             && start.tab_handle_index == end.tab_handle_index)
             .then(|| self.next_frame.scene.movable(start.scene_index..end.scene_index, &mask.scale(self.scale_factor())));
-        self.next_frame.memos.insert(key, PaintMemo { bounds, mask, opacity, scale, range: start..end, movable });
+        self.next_frame.keep_memo(key, PaintMemo { bounds, mask, opacity, scale, range: start..end, movable });
     }
 
     /// Olo: something wasn't painted, clipped away whole (`Scene::culled`).
@@ -2667,6 +2731,14 @@ impl Window {
     }
 
     pub(crate) fn reuse_paint(&mut self, range: Range<PaintIndex>) {
+        // (The memos painted in it come along, where they now are: a
+        // cached view replayed whole keeps its list's rows for the next
+        // time it's drawn.)
+        let to = self.paint_index();
+        for (key, memo) in &self.rendered_frame.memos[range.start.memos_index..range.end.memos_index] {
+            let memo = PaintMemo { range: memo.range.start.shifted(&range.start, &to)..memo.range.end.shifted(&range.start, &to), ..memo.clone() };
+            self.next_frame.keep_memo(*key, memo);
+        }
         self.next_frame.paint_records.extend(
             self.rendered_frame.paint_records[range.start.paint_records_index..range.end.paint_records_index]
                 .iter()
@@ -3638,6 +3710,7 @@ impl Window {
         }
         let key = GlyphRunKey { scale: scale_factor.to_bits(), rendering: self.platform_window.text_rendering(), stamp, phase };
         if run.key != Some(key) {
+            let cold = frame_phases().then(std::time::Instant::now);
             run.key = Some(key);
             run.sprites.clear();
             let mut found = Vec::new();
@@ -3647,6 +3720,9 @@ impl Window {
                     let rel = Bounds { origin: Point { x: ScaledPixels(bounds.origin.x.0 - base.x), y: ScaledPixels(bounds.origin.y.0 - base.y) }, size: bounds.size };
                     run.sprites.push((rel, tile, color));
                 }
+            }
+            if let Some(t) = cold {
+                FRAME_WORK.note(&FRAME_WORK.runs, t);
             }
         }
         let element_opacity = self.element_opacity();
@@ -3682,7 +3758,11 @@ impl Window {
                         .sprite_atlas
                         .get_or_insert_with(&params.clone().into(), &mut || {
                             self.text_system().drawn_first(params.font_id, params.font_size, params.scale_factor, params.rendering);
+                            let t = frame_phases().then(std::time::Instant::now);
                             let (size, bytes) = self.text_system().rasterize_glyph(&params)?;
+                            if let Some(t) = t {
+                                FRAME_WORK.note(&FRAME_WORK.rasterized, t);
+                            }
                             Ok(Some((size, Cow::Owned(bytes))))
                         })
                         .ok()
@@ -4621,7 +4701,7 @@ impl Window {
                     window.pending_input_changed(cx);
                     window.replay_pending_input(to_replay, cx)
                 })
-                .log_err();
+                .ok();
             }));
             self.pending_input = Some(currently_pending);
             self.pending_input_changed(cx);
@@ -5958,6 +6038,7 @@ pub fn outline(
 
 /// Olo: what was painted under a key ([`Window::paint_memo`]), and what
 /// it was painted at.
+#[derive(Clone)]
 pub(crate) struct PaintMemo {
     bounds: Bounds<Pixels>,
     mask: ContentMask<Pixels>,
@@ -5976,9 +6057,39 @@ fn paint_memos() -> bool {
     *ON.get_or_init(|| std::env::var("OLO_PAINT_MEMO").map_or(true, |v| v != "0"))
 }
 
+/// Olo: what a frame did that a frame's phases don't name (`OLO_FRAME_PHASES`):
+/// lines shaped and glyphs drawn into the atlas, how many and how long.
+pub(crate) struct FrameWork {
+    pub shaped: [std::sync::atomic::AtomicU64; 2],
+    pub rasterized: [std::sync::atomic::AtomicU64; 2],
+    /// Lines' sprites found afresh (`paint_glyph_run`).
+    pub runs: [std::sync::atomic::AtomicU64; 2],
+}
+
+pub(crate) static FRAME_WORK: FrameWork = FrameWork {
+    shaped: [std::sync::atomic::AtomicU64::new(0), std::sync::atomic::AtomicU64::new(0)],
+    rasterized: [std::sync::atomic::AtomicU64::new(0), std::sync::atomic::AtomicU64::new(0)],
+    runs: [std::sync::atomic::AtomicU64::new(0), std::sync::atomic::AtomicU64::new(0)],
+};
+
+impl FrameWork {
+    pub(crate) fn note(&self, what: &[std::sync::atomic::AtomicU64; 2], since: std::time::Instant) {
+        use std::sync::atomic::Ordering::Relaxed;
+        what[0].fetch_add(1, Relaxed);
+        what[1].fetch_add(since.elapsed().as_nanos() as u64, Relaxed);
+    }
+
+    /// (how many, ms) of each, since last taken.
+    fn take(&self) -> [(u64, f64); 3] {
+        use std::sync::atomic::Ordering::Relaxed;
+        let t = |w: &[std::sync::atomic::AtomicU64; 2]| (w[0].swap(0, Relaxed), w[1].swap(0, Relaxed) as f64 / 1e6);
+        [t(&self.shaped), t(&self.rasterized), t(&self.runs)]
+    }
+}
+
 /// Olo: each frame's time in its phases and what its scene holds, on
 /// stderr (`OLO_FRAME_PHASES=1`).
-fn frame_phases() -> bool {
+pub(crate) fn frame_phases() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ON.get_or_init(|| std::env::var_os("OLO_FRAME_PHASES").is_some())
 }
@@ -5999,4 +6110,77 @@ struct GlyphRunKey {
     rendering: TextRendering,
     stamp: u64,
     phase: (i32, i32),
+}
+
+#[cfg(test)]
+mod memo_tests {
+    use crate::{
+        AnyView, AppContext as _, Bounds, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _, StyleRefinement, TestAppContext, Window, canvas, div, fill, point, px, rgb, size,
+    };
+    use std::{cell::Cell, rc::Rc};
+
+    /// Three rows, each through a paint memo; how many times one was
+    /// painted.
+    struct Rows {
+        painted: Rc<Cell<usize>>,
+    }
+
+    impl Render for Rows {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let painted = self.painted.clone();
+            canvas(
+                |_, _, _| {},
+                move |b, _, window, cx| {
+                    for i in 0..3u64 {
+                        let row = Bounds { origin: point(b.left(), b.top() + px(10.0 * i as f32)), size: size(px(50.0), px(10.0)) };
+                        let painted = painted.clone();
+                        window.paint_memo(i, row, cx, |window, _| {
+                            painted.set(painted.get() + 1);
+                            window.paint_quad(fill(row, rgb(0x336699)));
+                        });
+                    }
+                },
+            )
+            .size_full()
+        }
+    }
+
+    /// Something that changes, over the rows in a cached view.
+    struct Outer {
+        rows: Entity<Rows>,
+        width: f32,
+    }
+
+    impl Render for Outer {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .size_full()
+                .child(div().w(px(self.width)).h(px(5.0)).bg(rgb(0x993333)))
+                .child(div().size_full().child(AnyView::from(self.rows.clone()).cached(StyleRefinement::default().size_full())))
+        }
+    }
+
+    /// A cached view replayed whole keeps the memos painted in it: drawn
+    /// again later, its rows are replayed, not painted again (they were,
+    /// every row, the frame after a frame that replayed the view).
+    #[crate::test]
+    fn memos_survive_a_cached_view_replayed(cx: &mut TestAppContext) {
+        let painted = Rc::new(Cell::new(0));
+        let rows = cx.new(|_| Rows { painted: painted.clone() });
+        let (outer, cx) = cx.add_window_view(|_, _| Outer { rows: rows.clone(), width: 10.0 });
+        assert_eq!(painted.get(), 3);
+        // Only what's around it drawn again: the view replayed whole.
+        outer.update(cx, |o, cx| {
+            o.width = 20.0;
+            cx.notify();
+        });
+        cx.run_until_parked();
+        assert_eq!(painted.get(), 3);
+        // The view drawn again: its rows replayed from the memos it kept.
+        rows.update(cx, |_, cx| cx.notify());
+        cx.run_until_parked();
+        assert_eq!(painted.get(), 3);
+        let quads = cx.update(|window, _| window.rendered_frame.scene.quads.len());
+        assert_eq!(quads, 4, "the three rows and the bar over them");
+    }
 }

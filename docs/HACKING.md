@@ -129,7 +129,17 @@ like pixel alignment is.
    press and shows only its part (`wp_viewport`), made to fit 1.5 s
    after it ends; windows and menus share the device's pipelines and
    glyph atlas, so one opens without building them; glyphs a window will
-   show are drawn ahead on a thread (gpui/README.md). Pictures are
+   show are drawn ahead on a thread (gpui/README.md). A frame runs on a
+   fast core at a high clock: GPUI's main thread asks the scheduler for
+   it as it starts (its `uclamp.min`, `olo_protocol::performance::
+   UI_UTIL_MIN`, 768 of 1024; threads it starts afterwards don't
+   inherit it), app_server's main thread too (`CORE_UTIL_MIN`, 1024).
+   Otherwise a thread that's mostly idle is put on a slow core at a low
+   clock, and the frame after a pause, the one that matters, took three
+   or four times as long there (Activity's first frame of its
+   processes: 13–17 ms, 3.7–4.6 with it; text shaped 6× faster). It
+   costs nothing while the thread sleeps. `OLO_UTIL_MIN=N` (0 for none)
+   to compare. Pictures are
    decoded and resampled on workers (`ImageView`, `pictures::thumbnail`,
    `icons`), the frame only drawing them. `tools/dev/bench` checks every
    app (see Testing).
@@ -227,8 +237,10 @@ message):
   answers, growth).
 * Where a GPUI app's frame goes: `OLO_FRAME_PHASES=1` prints each
   frame's layout, paint, scene finish and present (which waits for the
-  previous frame's GPU work) and how many sprites, quads and paint
-  operations it has. Where its time goes inside: sample its UI thread
+  previous frame's GPU work), how many sprites, quads and paint
+  operations it has, and the lines it shaped and glyphs it drew afresh.
+  A frame much slower than the same work warm may have run on a slow
+  core (rule 9: compare `OLO_UTIL_MIN=0`). Where its time goes inside: sample its UI thread
   with `eu-stack -1 -i -p PID` a few hundred times while the bench's
   pointer sweeps it and count the functions on the stacks (perf isn't
   installed).
@@ -2454,12 +2466,36 @@ strip's), so centring is measured against it. Call either as it paints.
 
 Run it:
 
-- on a running app (there is no headless test of it on GPUI yet:
-  TODO.md, "The layout lint on GPUI"): every app answers `{"review":true}` on its
+- on a running app: every app answers `{"review":true}` on its
   socket with a `commands::WindowReview` per window (`commands::review(
   pid)`): `$T review NAME [--all]` on a headless session, `olo-screen
   review NAME [--window ID] [--json]` on an agent screen. Switch the
   scale (`$T scale NAME 1`, `1.5`, `2`) and theme and review each.
+- headlessly, as a test: the layout lint (below).
+
+### The layout lint (`olo_ui::lint`, `cargo ui-lint`)
+
+A window's view drawn as it will be shown, without a session: GPUI's
+test platform with Olo's text system and fonts
+(`TestAppContext::with_olo_text`), the window opened as an app opens it
+(`open_window`, the kit's `Frame` around the view), at its size, in
+light and dark, at 1×, 1.5× and 2× (`VisualTestContext::set_scale_factor`,
+the scale changed on the open window, as a display's change does). Each
+time it is reviewed (the errors above) and the lint's own checks run:
+`outside` (a control, anything agents can click, past the window's
+edge), `overlap` (two controls over each other, neither inside the
+other: a control in a row, a cell in a list, isn't over it),
+`text-outside` and `text-over-text` (lines' ink over each other; their
+boxes may touch by their leading). `Lint::window(options, build)`
+returns what it found; `assert_clean` fails a test with it, a line each.
+
+`cargo ui-lint` runs every `ui_lint` test: the kit's own (a form of its
+widgets is clean; controls put over each other are found) and every
+Preferences panel at its size with made-up long display names and the
+panels' test data (no app_server, no devices: their links answer with
+it under `cfg(test)`). `tools/install-session.sh` runs it and stops if
+it fails. A window of a fixed size or a dialog gets a `ui_lint` test
+beside it: build its view with the longest things it can show.
 
 Go through each finding: fix it in the kit or the view, or, when it is
 meant, tell the review why (`own_grid`, `band`) so the next run is
@@ -2740,10 +2776,13 @@ opened, its own `panel::State` and text fields).
   spell it, with a minus sign.
   render.rs draws the layers itself, front to back: Overlay, the menus
   of the Background and Bottom layers (the desktop's right-click menu,
-  `shell::lower_layer_menus`), Top (Deskbar), the windows, then the
-  Background and Bottom surfaces; `surface_under` and keyboard focus
-  find them in the same order, so a desktop menu opened over a window
-  is in front of it and takes its clicks.
+  `shell::lower_layer_menus`), the windows' menus (their popups,
+  `WindowElement::menu_elements`, gathered with the windows and drawn
+  apart from them: `render_parts` without), Top (Deskbar), the windows,
+  then the Background and Bottom surfaces; `surface_under` and keyboard
+  focus find them in the same order (`window_menu_under`), so a desktop
+  menu opened over a window is in front of it and takes its clicks, and
+  a window's menu opened by Deskbar is over Deskbar (it went under).
   Identify (`IdentifyOutputs`) shows each display's name for 4 s
   (app_server `identify.rs`). Settings are kept per monitor under
   `olo_protocol::display_key` ("make model serial" from the EDID,
@@ -3372,7 +3411,7 @@ others' 0, is no largest size: it tiles), one tagged `floating`
 (xdg-toplevel-tag; the kit's `WindowOptions::floating()`, which
 DeskCalc, Preferences, Tracker's Info and status windows and the like
 set, and its `dialog()` and alerts, which it tags so too), and for other
-programs portal dialogs and picture-in-picture (`floating_kind`). An
+programs portal dialogs (`floating_kind`) and picture in picture. An
 xdg-dialog alone doesn't make a window float (nor keep it out of its
 app's tab group, `groups::is_dialog`): GTK 4 gives every toplevel one,
 its main windows too, which then floated over the tiles and never
@@ -3403,6 +3442,24 @@ saved parts (`auto_adopt`, `WindowMeta::restored_part`). An edge drag's
 splits are set where the windows' least sizes let them be
 (`auto_drag_ended`). A hand's choice to float or tile a window
 (`Placement::floating`) comes back too.
+
+Picture in picture (`shell::pip`) is a video, or a page, popped out of
+a browser's tab: Chrome's video is titled "Picture in picture" (with
+no app id), a page (documentPictureInPicture, Meet's call as its tab is
+left) has its opener's title and, unlike Chrome's other windows, a
+largest size, so `is_pip` knows it by that, decided once at its first
+commit. As on macOS it opens in the bottom right corner of its display
+at the size it asks for, stays over every other window
+(`keep_pips_above`, from `keep_children_above`) and on each workspace
+of its display, and is never in a group, a tile, Focus's zoom or
+cover, or a remembered place (its title would put another window
+there). Opening one, or its activation, leaves the keyboard where it
+was, and a front window that goes hands it on past one. Meet's call
+used to join Chrome's group in Focus and zoom over the tab a link had
+just opened in. A launch's activation token (`ActivationToken`, which
+olo-chrome hands Chrome with a link) covers its client's requests for
+`LAUNCH_GRANT` (2 s): Chrome spends the one it was given on whichever
+window it brings forward first and asks again for the next.
 
 Roll Up (`toggle_rolled`, ⌃⌘M, the tab's menu, the palette, or a
 double-click on the tab, which used to hide the window) leaves just the
@@ -3499,7 +3556,14 @@ workspace and back comes back as it was. Only the
 front window is drawn whole and takes input over its frame: the ones
 behind it show just their tabs (`mark_behind`, before every frame,
 `Decoration::behind`), so they never show around it while it is sized
-smaller; a capture for an agent draws a window whole. Moving, resizing,
+smaller; a capture for an agent draws a window whole. Being behind, a
+window gets frame callbacks once a second (Smithay throttles a surface
+on no output), so its last buffer may be that old: one brought to the
+front while its client waits to draw (`waiting_to_draw`) is told to
+draw at once and shows only its tab, the old front still drawn, until
+it commits or `FRONTING` (100 ms) passes (`Decoration::fronting`): a
+Terminal tab clicked showed what it had printed a second before, then
+jumped to now. Moving, resizing,
 rolling up and tiling (one cell per group) act on the whole group; an
 arranging command on a window behind brings it to the front first
 (`front_of_group`). A
@@ -4816,6 +4880,10 @@ signal a process), all done in process. What it looks for:
   70-olo-displays; the Doctor carries them with `include_str!`) missing or
   out of date: installed and applied to what is plugged in now.
 - **rtkit** not running (the supervisor's priority tiers need it).
+- **Frames kept off the fast cores**: `kernel.sched_util_clamp_min`
+  below 1024 caps the `uclamp.min` app_server's and the windows' threads
+  ask for (rule 9): set to 1024, now and at boot (/etc/sysctl.d/
+  80-olo-uclamp.conf); a kernel without `CONFIG_UCLAMP_TASK` is advice.
 - **Olo programs on an old version** (their `exe` is a replaced file in
   ~/.local/bin; never the session, app_server or the proxies): quit.
 - **The login screen's entry** (/usr/local/share/wayland-sessions)
@@ -4981,7 +5049,9 @@ it looks at the person's own processes in /proc (`sample.rs`) and:
   asking rtkit for itself as it starts (`olo_system::priority::raise_self`:
   `org.freedesktop.RealtimeKit1`'s `MakeThreadHighPriorityWithPID`, the
   one way an unprivileged process gets a negative nice, down to its
-  `MinNiceLevel`, −15 here). The supervisor re-asserts a tier for a
+  `MinNiceLevel`, −15 here), and each frame's thread on a fast core
+  (its `uclamp.min`, rule 9; no privilege needed). The supervisor
+  re-asserts a tier for a
   program found above it (rtkit refused at its start, or a thread made
   since; `priority::raise_process`, every thread), publishes what it
   raised (`SupervisorState::raised`; Activity Monitor's "Olo's own" row)
@@ -6142,6 +6212,19 @@ deferred so the Tracker can update the window back):
 - `quicklook.rs`: olo-preview's `PreviewView` with the footer and keys;
   its window opens when the preview comes (or after 120 ms with a
   spinner) and has the keyboard.
+- `goto.rs`: Go ▸ Go to File or Folder… (⇧⌘G, Finder's Go to Folder),
+  a dialog over the folder's window: the field holds a path copied
+  (absolute, `~/…` as written, a `file://` URI's; `goto::parse` takes
+  quotes and a trailing newline too), selected, so Return goes; the
+  names its folder has that what's typed could be listed under it,
+  each folder read once on a worker; Tab completes (the chosen name, or
+  as far as they agree, case aside) where there's one to complete to,
+  else moves on as Tab does (`capture_action` of `FocusNext`); ↑↓
+  choose, and Return then puts the name in. Go reveals (`Tracker::
+  go_to`: a folder opens, a file is selected in its folder's window); a
+  relative path is from the folder it was asked in; nothing there, it
+  says so and stays. Agents and the palette: `go-to` opens it,
+  `go-to:<path>` goes straight there.
 
 ## Agent Screens (apps/screen)
 

@@ -76,6 +76,8 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
                 return;
             }
             // (Where it goes once it has content: `place_on_content`.)
+            // Picture in picture is placed by itself.
+            state.pip_claim(surface);
             // A window coming back asks for its old size in its first
             // configure (sent just below).
             state.claim_placement(surface);
@@ -937,7 +939,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// cascade slot first: Quick Look's flash) or, placed by a size not
     /// known yet, in the wrong place.
     pub(crate) fn place_on_content(&mut self, surface: &WlSurface) {
-        if surface_initial_mapped(surface) && self.restore_placement(surface) {
+        if surface_initial_mapped(surface) && !self.place_pip(surface) && self.restore_placement(surface) {
             self.place_over_parent(surface);
             self.place_alert(surface);
             self.place_under_pointer(surface);

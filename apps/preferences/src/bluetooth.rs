@@ -48,12 +48,42 @@ struct Link {
     proxy: olo_ui::Proxy,
 }
 
+/// Test data: this computer's adapter, two paired devices and one nearby.
+fn test_status() -> Status {
+    let device = |name: &str, icon: &str, paired, connected, battery| bt::Device {
+        path: format!("/org/bluez/hci0/{name}"),
+        name: name.into(),
+        address: "02:00:00:00:A1:02".into(),
+        icon: icon.into(),
+        named: true,
+        paired,
+        connected,
+        trusted: paired,
+        rssi: Some(-61),
+        battery,
+    };
+    Status {
+        adapter: Some(bt::Adapter { path: "/org/bluez/hci0".into(), name: "studio-laptop".into(), address: "02:00:00:00:A1:03".into(), powered: true, discoverable: false, discovering: true }),
+        devices: vec![
+            device("Sony WH-1000XM5 Wireless Noise Canceling Headphones", "audio-headset", true, true, Some(80)),
+            device("Logitech MX Master 3S for Mac", "input-mouse", true, false, Some(45)),
+            device("Keychron Q1 Pro QMK/VIA Wireless Custom Mechanical Keyboard", "input-keyboard", false, false, None),
+        ],
+    }
+}
+
 /// BlueZ's watcher and pairing agent (one for the app), telling the
 /// windows through `proxy` when anything changes.
 fn link(proxy: olo_ui::Proxy) -> &'static Link {
     static LINK: OnceLock<Link> = OnceLock::new();
     LINK.get_or_init(|| {
         let shared: Arc<Mutex<Shared>> = Default::default();
+        // Tests (the layout lint): an adapter and devices named as long
+        // as real ones, and never the real adapter (a search on it).
+        if cfg!(test) {
+            shared.lock().unwrap().status = Some(Ok(test_status()));
+            return Link { shared, tx: channel().0, proxy };
+        }
         let (tx, rx) = channel::<Request>();
         let (sh, out) = (shared.clone(), proxy.clone());
         std::thread::Builder::new()

@@ -592,10 +592,12 @@ impl FolderWin {
             |_, _, _| {},
             |b, _, window, cx| {
                 let p = theme::palette(cx);
-                // Etched on the right edge.
+                // Etched on the right edge: the light line right against
+                // the dark one (a point over left a device pixel between
+                // them at 1.5×, where a line is two thirds of a point).
                 let x = b.right() - px(2.0);
                 style::vline(window, x, b.top(), b.bottom(), style::shade(&p, p.document_background, 1.15));
-                style::vline(window, x + px(1.0), b.top(), b.bottom(), style::c(p.shine));
+                style::vline(window, style::snap_coord(window, x) + style::hairline(window), b.top(), b.bottom(), style::c(p.shine));
             },
         )
         .absolute()

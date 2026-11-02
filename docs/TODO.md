@@ -250,6 +250,18 @@ as they land (with the commit), add new ones as they come up.
   plans kept, and ASCII shaped by words (gpui/README.md): History's
   live resize, slowest frame 60 → 17 ms (p50 11.8); Log Viewer's rows
   arriving with a search, 31.6 → 10.8 ms.
+  *Then* (2026-11-02) frames on the fast cores: the scheduler put a
+  mostly idle UI thread on a slow core at a low clock, and the frame
+  after a pause ran three or four times as long; GPUI's main thread and
+  app_server's ask for a fast core while they run (`uclamp.min`,
+  HACKING rule 9). Paint memos are kept through a cached view replayed
+  whole, an icon coming in and a display event (Activity's 1,400 cells
+  were painted afresh the frame after each). Activity's first frame of
+  its processes 13–17 → 3.7–4.6 ms. The full bench: 21 failed of 382 →
+  2 of 396, every app's slowest frame at most 4.0 ms (from 14.9),
+  app_server's frames all within budget. *Left*: Notifications'
+  first scroll skips a frame at 1× and 1.5× (its frames 1.5–3.3 ms: the
+  pacing, not the cost).
 - **app_server: its frames wait on the GPU behind clients' work**
   (found 2026-11-02, the full bench: 33 of 376 steps failed, most of
   them app_server frames of 9–51 ms as a menu opened or a window
@@ -277,7 +289,12 @@ as they land (with the commit), add new ones as they come up.
   (wp_viewporter's source) while a resize lasts.
 - ~~app_server: Viewer's first menu costs a 14–28 ms frame~~ (the
   dmabuf check worker's lock, above; 2026-11-02).
-- **The layout lint on GPUI** (left when egui went, 2026-11-02): the
+- ~~**The layout lint on GPUI**~~ (done 2026-11-02: `olo_ui::lint`,
+  `cargo ui-lint`, run by install-session.sh; HACKING, "The layout
+  lint": the kit's form and every Preferences panel and tab, light and
+  dark at 1×, 1.5× and 2×, with long device names; it found Sound's and
+  Display's menu fields running out of their windows and tabs' click
+  areas overlapping, both fixed in the kit) (left when egui went, 2026-11-02): the
   egui kit ran a window's view headlessly at its size, light and dark at
   1×, 1.5× and 2×, and failed a test (and `install-session.sh`) on
   anything that ran past its area, controls over each other, labels
@@ -476,6 +493,62 @@ as they land (with the commit), add new ones as they come up.
      0.2 ms and "finish" 0.2 ms are what's left of a frame; app_server
      at ~11% with a call on is the tick (now once per 8 ms) and looks;
      per-display render threads (its own TODO).
+   - **An outside program's `zwp_primary_selection_offer_v1` request
+     refused** (seen 2026-11-01 through olo-wlproxy for pid 21201:
+     "app_server's error on wl_display@1: invalid method 2, object
+     zwp_primary_selection_offer_v1"; the interface has receive and
+     destroy only). Find which program sends opcode 2 (a newer
+     interface version it was told it has?) and whether app_server
+     advertises a version it doesn't serve. (Not seen since 2026-11-01
+     13:19.)
+   - ~~**"gpui: window not found" from the palette and Deskbar**~~
+     (29ce0b15: the platform window's callbacks finding the window gone
+     say nothing): none logged since the 09:58 upgrade on 2026-11-02,
+     where the palette, Deskbar and Terminal had logged 11 that morning.
+   - **Olo's own login and boot** (Ben, 2026-11-01, for after the GPUI
+     refactor is complete): replace GDM with an Olo-native display
+     manager, and have Olo take over the boot visuals as early as it can
+     (Plymouth's place): an "Olo starting up" screen that is an homage
+     to BeOS's boot screen, drawn with sunburst-made graphics
+     (docs/ICONS.md), with a really nice startup sound. Related: an
+     "Upgrading Olo" veil on every display while app_server restarts
+     and the displays settle, in the same style.
+   - **An app_server restart modesets every display** (seen 2026-11-01
+     in the kernel log at each upgrade: apple-dcp `set_digital_out_mode`
+     for each of the three displays, "Already set to timingID" yet done
+     again: the screens freeze for a second or two per restart). The
+     new app_server could keep a CRTC's mode when it is the one already
+     set (the same mode blob, no ALLOW_MODESET commit) and go straight
+     to page flips; where Smithay's surface init insists on a modeset,
+     Olo's Smithay changes that. Until then upgrades of app_server are
+     batched, not one a change. (Still: the kernel logged
+     `set_digital_out_mode` 856 times in the day to 2026-11-02.)
+     **Found** 2026-11-02: app_server opens each GPU with
+     `DrmDevice::new(fd, true)` (udev.rs `device_added`), and Smithay's
+     `disable_connectors` runs `reset_state`, switching every connector
+     off: each display is modeset from dark at every start. The fix:
+     open with `false`, and in Olo's Smithay let a surface take over a
+     CRTC already showing its mode (`State`'s mode compared by timings,
+     not the mode's type bits and name, which differ between a CRTC's
+     mode and a connector's list), so the first frame is a page flip;
+     switch off the planes the last app_server left on (a cursor or
+     overlay plane still showing its buffer) in that first commit, no
+     modeset needed; and if the driver refuses it, `reset_state` and
+     modeset as now. It needs trying on the real displays (an upgrade
+     the person agrees to try), so it isn't shipped blind.
+   - **app_server's critical path on threads of its own** (Ben,
+     2026-11-01: "why run the risk of a blocking call? threads would
+     make sure we don't accidentally block"): input → pointer plane
+     update → commit never shares a thread with anything that can
+     block. Design: an input-and-cursor thread owning libinput and the
+     cursor planes (a pointer move is a plane property commit, no frame);
+     a render-and-commit thread per display owning its GL context, DRM
+     surface and pacing (a slow 5K frame can't delay the built-in
+     display's); the Wayland clients and IPC on the main loop, handing
+     each display's thread a snapshot of what to draw. Our own
+     synchronous work (importing a client's buffer, a fence, a DCP test
+     or commit) is what blocks today, and the heartbeat (`timings`)
+     finds it. After the reliability work.
    - **Supervisor priority tiers** (Ben, 2026-11-01: "it should always
      give the highest priority to the core olo processes and any
      system+input processes important for responsiveness/smoothness,
@@ -525,7 +598,10 @@ as they land (with the commit), add new ones as they come up.
      The Viewer's first frame presented 25–31 ms after exec, from 43;
      DeskCalc pixel for pixel the same. Left: egui's first frame is
      still ~5 ms sooner (its device and one pipeline).
-   - **Painting a glyph costs ~0.45 µs** (measured scrolling the
+   - ~~**Painting a glyph costs ~0.45 µs**~~ (done 2026-11-02, 7ccac1fb:
+     a line keeps its glyphs' sprites as last painted, for its phase,
+     scale and rendering, and paints them as a copy; gpui/README.md)
+     (measured scrolling the
      Viewer's code view, 2026-11-01: 1,500 glyphs, 0.68 ms of a 2 ms
      frame; egui's frames scrolling the same were 1.2 ms on average,
      GPUI's 2.3). Each glyph looks up its raster bounds and its atlas
@@ -585,6 +661,20 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- ~~**Tracker: Go to File or Folder**~~ (done: `goto.rs`, Go ▸ Go to File or Folder…, ⇧⌘G; the clipboard's path, completion, `go-to:<path>` for agents; the palette lists it with Tracker's menus. Left: the palette offering "Go to <path>" itself when the clipboard holds one) (Ben, 2026-11-02): "add a go to
+  file/folder option in tracker with a keyboard shortcut (and it should
+  also show up in command pallette) -- it's useful when i want to jump
+  to a path i have in the clipboard". So: Go ▸ Go to File or Folder…
+  (⇧⌘G, as Finder's Go to Folder), a small sheet with one path field,
+  filled from the clipboard when it holds a path (absolute, `~/…`,
+  `file://…`, quoted or with a trailing newline) and selected, so Return
+  goes there at once; it completes as it's typed (Tab, the matches
+  listed under it, kept as the work-follows-change rule says: read once
+  per folder typed into), opens a folder in its window or the folder
+  holding a file with the file selected, and says plainly when nothing
+  is there. In the command palette as a Tracker command, and with a path
+  in the clipboard the palette offers "Go to <path>" itself. Agents get
+  it as a Tracker command (`go-to:<path>`) too.
 - **Command palette finds settings** (Ben, 2026-11-01): "in the
   super+space command palette thing also match on the actual settings
   etc. that are available in each preferences app to make them easy to
@@ -646,7 +736,10 @@ as they land (with the commit), add new ones as they come up.
   smart tiling does, the model chosen in Preferences ▸ AI) for five
   suggestions from a description, shown as a row to pick from or search
   again; keyboard first, agent-readable.
-- **The keep-warm pixel redraws whole displays** (found porting Agent
+- ~~**The keep-warm pixel redraws whole displays**~~ (done 2026-11-02:
+  it stays in its place on a display without a full-screen window, only
+  its commit changing: one frame a second damaging 1 pixel, from two
+  full redraws of 7.7 Mpx at 2× on a 3456×2234 screen) (found porting Agent
   Screens, 2026-11-01): `render::keep_warm` puts a transparent pixel at
   the top of each display's elements for a frame every second (while
   the desktop was used in the last two minutes), and removes it again
@@ -2640,6 +2733,39 @@ as they land (with the commit), add new ones as they come up.
 
 ## app_server
 
+- **A tab clicked in a group flashes** (Ben, 2026-11-02): "sometimes
+  when i'm in an app, e.g. terminal, and it has multiple grouped
+  windows, if i click on the tab of another window in the group i get
+  like a flash or something before seeing the other tab/window that is
+  really jarring. i am in focus mode when i saw it but it might (idk)
+  happen in other modes too." ~~Fixed~~: a window behind others in its
+  group got frame callbacks once a second, so its tab clicked showed
+  what it drew up to a second before; now it's told to draw at once and
+  the group's old front stays until it has (`Decoration::fronting`).
+- **Chrome scrolls slower than Olo's apps** (Ben, 2026-11-02): "in
+  chrome scrolling does not seem to be the same speed as olo native
+  apps (it's slower) and it's most noticeable on the studio display at
+  2x where each scrollwheel push doesn't go very far at all". So: a
+  wheel notch (and a touchpad's travel) moves Chrome's page as far as
+  it moves a kit app's view at every scale. Found so far (2026-11-02,
+  headless, Chrome 156): a synthetic notch (axis 15, value120 120, as
+  libinput reports a plain wheel) moves Chrome 48 CSS px at 1× and at
+  2× (devicePixelRatio 2), and StyledEdit 48 px at both (3 lines,
+  `SCROLL_LINES`); Chrome takes value120 over the axis value
+  (wayland_event_source.cc) and olo-wlproxy passes both through. So the
+  difference is in what Ben's mouse (a Razer Viper V2 Pro) sends, or in
+  his Chrome (page zoom, a flag): next, log what app_server gets from
+  libinput for one of its notches (`amount`, `amount_v120`) and sends
+  on, with him turning it once in each app; then make Chrome's step and
+  the kit's one (Preferences ▸ Touchpad & Mouse's scrolling speed for
+  both).
+- **Menus over Deskbar** (Ben, 2026-11-02): "if i am in an app and
+  right click close to the deskbar and a menu opens it is under the
+  deskbar -- it should always be on top". ~~Fixed~~: a window's menus
+  (its popups) are drawn over the Top layer, Deskbar included, and take
+  the pointer there (`menu_elements`, `window_menu_under`). Left: where
+  one would run off the usable area it may open over Deskbar rather
+  than be pushed away from the pointer (`unconstrain_popup`).
 - **Displays: kept where they are, numbered for good** (Ben, 2026-10-31):
   "we absolutely must get these upgrades (and connecting/disconnecting
   monitors) keeping things where they already were on the right

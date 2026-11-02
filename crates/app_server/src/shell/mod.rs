@@ -52,6 +52,7 @@ pub mod deco;
 pub mod glow;
 pub mod groups;
 pub mod modes;
+pub mod pip;
 pub mod tabdrag;
 pub mod tiling;
 mod wm;
@@ -202,6 +203,11 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                 window.0.on_commit();
 
                 if &root == surface {
+                    // Drawn since it came to the front of its group: it
+                    // shows (`Decoration::fronting`).
+                    if window.decorated() && window.decoration().fronting.take().is_some() {
+                        self.backend_data.wake(None);
+                    }
                     self.place_on_content(surface);
                     let buffer_offset = with_states(surface, |states| {
                         states

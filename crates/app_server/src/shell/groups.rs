@@ -237,21 +237,56 @@ pub fn tab_place(wanted: &[i32], width: i32, frame_w: i32, middle: f64, current:
 /// stacking order then, so a tab clicked forward is drawn whole at once.
 /// A window being put in a group by hand (`Decoration::docked`) shows
 /// only its tab, and isn't its group's front until it has drawn at the
-/// group's size.
-pub fn mark_behind(space: &Space<WindowElement>) {
+/// group's size; nor is one come to the front with something new to draw
+/// (`Decoration::fronting`) until it has. The windows that came to the
+/// front so: they are to be told to draw now (`sync_groups`).
+pub fn mark_behind(space: &Space<WindowElement>) -> Vec<WindowElement> {
     let mut fronts: Vec<u64> = Vec::new();
+    let mut fronting = Vec::new();
     for w in space.elements().rev().filter(|w| w.decorated()) {
         let mut d = w.decoration();
         let behind = match d.group {
             _ if d.docked => false,
-            Some(g) => fronts.contains(&g) || {
-                fronts.push(g);
+            Some(g) if fronts.contains(&g) => {
+                d.fronting = None;
+                true
+            }
+            Some(g) => {
+                // (Only with another of its group to show meanwhile: the
+                // one in front closed, it shows at once.)
+                let others = || space.elements().any(|o| o != w && o.decorated() && o.decoration().group == Some(g));
+                if d.behind && d.fronting.is_none() && waiting_to_draw(w) && others() {
+                    d.fronting = Some(Instant::now());
+                    fronting.push(w.clone());
+                }
+                if d.fronting.is_some_and(|t| t.elapsed() >= FRONTING) {
+                    d.fronting = None;
+                }
+                // (Its group's front is the one under it meanwhile.)
+                if d.fronting.is_none() {
+                    fronts.push(g);
+                }
                 false
-            },
-            None => false,
+            }
+            None => {
+                d.fronting = None;
+                false
+            }
         };
         d.behind = behind;
     }
+    fronting
+}
+
+/// How long a window come to the front of its group waits to have drawn
+/// before it shows anyway (`Decoration::fronting`).
+pub const FRONTING: Duration = Duration::from_millis(100);
+
+/// Its client asked for a frame callback and hasn't had it: it has
+/// something new to draw.
+fn waiting_to_draw(w: &WindowElement) -> bool {
+    use smithay::wayland::compositor::{SurfaceAttributes, with_states};
+    w.wl_surface().is_some_and(|s| with_states(&s, |st| !st.cached_state.get::<SurfaceAttributes>().current().frame_callbacks.is_empty()))
 }
 
 /// A dialog or panel, not a document window: it names a parent, is a
@@ -356,7 +391,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// there yet, and would lead its group off to that place).
     pub fn groupable(&self, w: &WindowElement) -> bool {
         let WindowSurface::Wayland(t) = w.0.underlying_surface();
-        w.meta().placed.get() && w.decorated() && !is_dialog(t) && resizable(w)
+        w.meta().placed.get() && w.decorated() && !w.meta().pip.get() && !is_dialog(t) && resizable(w)
     }
 
     /// `w`'s group as it is about to be: its mates on screen
@@ -649,7 +684,22 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let joining = before.joining.into_iter().filter(|w| w.alive() && !list.iter().any(|(_, g)| g.contains(w))).collect();
         let seen_on = seen.iter().map(|w| (w.clone(), self.group_display(w))).collect();
         self.groups = Groups { seen, seen_on, list, away, known: all, numbers, joining, settling };
-        mark_behind(&self.space);
+        // One come to the front with something new to draw is told to
+        // draw it now, not when its frame callback is next due (a
+        // second), and the screen looks again once it may show anyway.
+        let fronting = mark_behind(&self.space);
+        if !fronting.is_empty() {
+            let time: Duration = self.clock.now().into();
+            for w in &fronting {
+                if let Some(output) = self.window_output(w) {
+                    w.send_frame(&output, time, None, |_, _| Some(output.clone()));
+                }
+            }
+            let _ = self.handle.insert_source(smithay::reexports::calloop::timer::Timer::from_duration(FRONTING), |_, _, state| {
+                state.backend_data.wake(None);
+                smithay::reexports::calloop::timer::TimeoutAction::Drop
+            });
+        }
     }
 
     /// A tiled window its group made bigger than its tile (a group is no

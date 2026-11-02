@@ -292,8 +292,14 @@ What Olo changed, so far:
   painted afresh. A part painted before an icon or picture came isn't
   kept (`Window::paint_unfinished`). A window's `refresh` replays
   memos (their keys say all they depend on; olo-ui's widgets refresh
-  for a hover); `App::refresh_windows` (the theme, fonts, a picture
-  come) and a review's `draw_now` paint everything (`memos_reset`).
+  for a hover), and so does `App::redraw_windows` (an icon come in:
+  what painted it loading wasn't kept); `App::refresh_windows` (the
+  theme, the text's rendering, a picture come) and a review's
+  `draw_now` paint everything (`memos_reset`). A cached view replayed
+  whole brings the memos painted in it along (`PaintIndex::memos_index`,
+  shifted to where they now are), so it drawn again later replays its
+  rows: Activity's 1,400 cells were painted afresh the frame after one
+  that replayed its list.
   `OLO_PAINT_MEMO=0` turns replays off, to compare; `OLO_FRAME_PHASES`
   marks a refreshed frame. Notifications' history paints each card so:
   a hover redrew a screen of cards, 36,000 glyphs (paint 5.3 ms → 3.2
@@ -334,7 +340,11 @@ What Olo changed, so far:
 - `OLO_FRAME_PHASES=1`: each frame's time in layout and prepaint,
   paint, finishing the scene and presenting (which waits for the
   previous frame's GPU work), and its sprites, quads and paint
-  operations, printed to stderr.
+  operations, printed to stderr; whether it was refreshed; and the work
+  it did afresh: lines shaped, glyphs drawn into the atlas, lines'
+  glyphs found (`FRAME_WORK`), how many and how long. `cargo test
+  --release -p gpui shaping_cost -- --ignored --nocapture` times a new
+  line's shaping alone (1.9 µs on a fast core).
 - A GPU device lost (a driver reset, `VK_ERROR_DEVICE_LOST`) is said,
   not a panic: blade marks it (`blade_graphics::device_lost`) where a
   submit, present, wait or acquire finds it (waiting, it answered "not

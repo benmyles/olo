@@ -1,0 +1,5 @@
+[alias]
+# The layout lint (docs/HACKING.md, "The layout lint"): the kit's widgets
+# and every Preferences panel drawn headlessly at their sizes, light and
+# dark, at 1×, 1.5× and 2×, and checked. tools/install-session.sh runs it.
+ui-lint = "test --release -p olo-ui -p olo-preferences --features olo-ui/lint ui_lint"

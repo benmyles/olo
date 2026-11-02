@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 
 use futures::{StreamExt, channel::mpsc};
-use gpui::{AnyWindowHandle, App, Bounds, Global, Pixels, SharedString, Window, WindowId};
+use gpui::{AnyWindowHandle, App, Bounds, Global, Pixels, SharedString, Window, WindowId, px};
 use olo_kit_base::commands::{self, FrameMark, FrameTimes, Menus, Query, UiNode, WindowTree};
 
 /// One widget, as agents read it.
@@ -28,6 +28,9 @@ pub struct Node {
     pub selected: Option<bool>,
     /// A menu item standing for a minimized window.
     pub minimized: bool,
+    /// What it was painted in (`Window::content_mask`, set by [`record`]):
+    /// what shows of it.
+    pub clip: Option<Bounds<Pixels>>,
 }
 
 impl Node {
@@ -63,7 +66,8 @@ impl Global for Agents {}
 
 /// Says what a widget is, as it paints. (Kept with the frame: a cached
 /// view drawn from its last paint says it again.)
-pub fn record(window: &mut Window, _cx: &mut App, node: Node) {
+pub fn record(window: &mut Window, _cx: &mut App, mut node: Node) {
+    node.clip.get_or_insert(window.content_mask().bounds);
     window.push_paint_record(std::rc::Rc::new(node));
 }
 
@@ -116,7 +120,7 @@ pub fn set_menus(cx: &mut App, menus: impl Fn(&mut App) -> Menus + 'static, invo
     agents.invoke = Some(Box::new(invoke));
 }
 
-fn tree(handle: AnyWindowHandle, cx: &mut App) -> Option<WindowTree> {
+pub(crate) fn tree(handle: AnyWindowHandle, cx: &mut App) -> Option<WindowTree> {
     let (size, active, records) = handle.update(cx, |_, window, _| (window.viewport_size(), window.is_window_active(), window.paint_records().to_vec())).ok()?;
     let agents = cx.try_global::<Agents>()?;
     let painted = agents.windows.get(&handle.window_id())?;
@@ -124,16 +128,24 @@ fn tree(handle: AnyWindowHandle, cx: &mut App) -> Option<WindowTree> {
     let mut nodes = vec![UiNode { id: 1, role: "Window".into(), name: Some(painted.title.clone()), width: w, height: h, enabled: true, ..Default::default() }];
     for (i, (n, moved)) in records.iter().filter_map(|(r, moved)| Some((r.downcast_ref::<Node>()?, *moved))).enumerate() {
         let text = |s: &Option<SharedString>| s.as_ref().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+        // What shows of it: its bounds (moved, a row replayed where it's
+        // scrolled to) in what it was painted in (a scroll view's, which
+        // stays).
+        let at = Bounds { origin: n.bounds.origin + moved, size: n.bounds.size };
+        let shown = n.clip.map_or(at, |c| at.intersect(&c));
+        let offscreen = n.bounds.size.width > px(0.0) && n.bounds.size.height > px(0.0) && (shown.size.width <= px(0.0) || shown.size.height <= px(0.0));
+        let b = if offscreen { at } else { shown };
         nodes.push(UiNode {
             id: i as u64 + 2,
             parent: Some(1),
             role: n.role.into(),
             name: text(&n.name),
             value: text(&n.value),
-            x: f32::from(n.bounds.origin.x + moved.x),
-            y: f32::from(n.bounds.origin.y + moved.y),
-            width: f32::from(n.bounds.size.width),
-            height: f32::from(n.bounds.size.height),
+            x: f32::from(b.origin.x),
+            y: f32::from(b.origin.y),
+            width: f32::from(b.size.width),
+            height: f32::from(b.size.height),
+            offscreen,
             enabled: n.enabled,
             clickable: n.clickable,
             focused: n.focused,

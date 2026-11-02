@@ -122,10 +122,28 @@ impl AppContext for TestAppContext {
 impl TestAppContext {
     /// Creates a new `TestAppContext`. Usually you can rely on `#[gpui::test]` to do this for you.
     pub fn build(dispatcher: TestDispatcher, fn_name: Option<&'static str>) -> Self {
+        Self::build_with(dispatcher, fn_name, None)
+    }
+
+    /// Olo: a test app whose text is laid out and drawn by Olo's text
+    /// system, the fonts it ships and the system's, as a running app's
+    /// is: for a view's layout checked at its size and scale (olo-ui's
+    /// `lint`). Its windows' scale is set with
+    /// [`VisualTestContext::set_scale_factor`].
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    pub fn with_olo_text() -> Self {
+        let dispatcher = TestDispatcher::new(StdRng::seed_from_u64(0));
+        Self::build_with(dispatcher, None, Some(Arc::new(crate::OloTextSystem::new())))
+    }
+
+    fn build_with(dispatcher: TestDispatcher, fn_name: Option<&'static str>, text: Option<Arc<dyn crate::PlatformTextSystem>>) -> Self {
         let arc_dispatcher = Arc::new(dispatcher.clone());
         let background_executor = BackgroundExecutor::new(arc_dispatcher.clone());
         let foreground_executor = ForegroundExecutor::new(arc_dispatcher);
-        let platform = TestPlatform::new(background_executor.clone(), foreground_executor.clone());
+        let platform = match text {
+            Some(text) => TestPlatform::with_text_system(background_executor.clone(), foreground_executor.clone(), text),
+            None => TestPlatform::new(background_executor.clone(), foreground_executor.clone()),
+        };
         let asset_source = Arc::new(());
         let text_system = Arc::new(TextSystem::new(platform.text_system()));
 
@@ -802,6 +820,12 @@ impl VisualTestContext {
     /// Simulates the user resizing the window to the new size.
     pub fn simulate_resize(&self, size: Size<Pixels>) {
         self.simulate_window_resize(self.window, size)
+    }
+
+    /// Olo: the window at scale `scale` (2 until set), drawn again.
+    pub fn set_scale_factor(&mut self, scale: f32) {
+        self.test_window(self.window).set_scale(scale);
+        self.run_until_parked();
     }
 
     /// debug_bounds returns the bounds of the element with the given selector.
