@@ -225,6 +225,15 @@ What it means in numbers, on release builds:
 How to measure (before and after, the same case, numbers in the commit
 message):
 
+* `tools/dev/pw-sandbox DIR start|env|stop`: a sound server of its
+  own (PipeWire, its PulseAudio server, WirePlumber) in DIR under
+  /var/tmp, with no hardware, nothing from the network, no D-Bus and its
+  own state: made-up speakers ("speakers") and microphone ("mic", which
+  hears what's played into "talk"). `eval "$(tools/dev/pw-sandbox DIR
+  env)"` and run anything that plays, records or changes the defaults
+  there, never in the person's (the voice service makes itself the
+  default input). A tsession app reaches it with
+  `PULSE_SERVER=unix:DIR/run/pulse/native`.
 * `tools/dev/cost PID [SECONDS]`: a running process's CPU per thread
   (user and kernel), wakeups and preemptions a second, and for a kit
   app each window's frames and their cost by phase (ui, tessellating,
@@ -302,6 +311,7 @@ How Olo keeps it (do the same):
 | `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit: data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`, in the current theme: `themes`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; the person's own choice first (`open::set_default`, kept in `~/.config/olo/default-apps.list` in mimeapps.list's form and copied into `olo-mimeapps.list` for other programs; `handler_cached` notices it changed, in any process), then Olo's apps, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`; Open With's few apps for a kind, `open::handlers_for`: as the person set them (`set_offered`), else the one it opens in, Olo's own for it, then those whose entries claim it or a broader kind, by name, eight at most; worked out off the UI thread by `open::warm` (a folder's kinds, as Tracker lists it) and read by menus from `offer_cached`; `open::kind_of` names a kind by the file's name alone; desktop entries are kept until an applications folder changes, `desktop_entry::all_cached`; and the same for other programs: `open::for_others` gives the hidden `olo.viewer`, `olo.styled-edit` and `olo.tracker` desktop entries, each listing every type shared-mime-info knows that Olo opens with it, and an `olo-mimeapps.list` making them the defaults, which GIO, `gio open`/xdg-open and xdg-desktop-portal's OpenURI read before `mimeapps.list` while `XDG_CURRENT_DESKTOP` names Olo; olo-session writes them into `~/.local/share/applications` at start, makes that folder's `mimeinfo.cache` again when they change (`open::mime_cache`, as update-desktop-database would: GIO only finds an app for a type through it) and removes ones it wrote that are no longer wanted, `X-Olo-Written=true`; and, once Olo's Chrome is installed, `open::offer_browser` writes `~/.local/share/applications/olo-mimeapps.list` naming it for web pages and links, read after every `mimeapps.list` in the config directories so a browser the person chose wins, but ahead of the system's lists), `find_program`, `spawn_detached` (`spawn_detached_app` and `open::spawn_app` for a desktop entry's program, in a scope of its own: `scope`). |
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
 | `apps/airpods` | `olo-airpods`: AirPods, natively (see "AirPods"): the session's service and its command line. |
+| `apps/voice` | `olo-voice`: the voice service (see "The voice service"): every microphone through voice processing, and its command line. |
 | `crates/eld` | `olo-eld`: an AAC-ELD decoder in Rust (AirPods' microphone stream: mono, 480 samples a frame, no SBR). Huffman tables vendored from Symphonia (MPL-2.0), the standard's band, TNS and window tables transcribed (`tables.rs`); checked against libfdk-aac's decode of a libfdk-made stream (`tests/fdk.rs`: 85 dB) and, with `--ignored`, of a real capture. |
 | `crates/voice` | `olo-voice`: what Olo does to every microphone, 10 ms at a time: echo cancellation (its own fullband Kalman filter), noise suppression (DeepFilterNet3, vendored in `vendor/deep_filter`), level normalization (WebRTC's AGC2, vendored in `vendor/sonora`). See "Voice processing". |
 | `crates/pool` | `olo-token-pool`: token pooling for Claude Code and Codex (see "Token Pool"): the accounts, their sealed store, the drain order, the loopback gateway and the clients' proxy (its own certificate authority, and which program is connecting, from /proc). |
@@ -4966,6 +4976,11 @@ signal a process), all done in process. What it looks for:
   70-olo-displays; the Doctor carries them with `include_str!`) missing or
   out of date: installed and applied to what is plugged in now.
 - **rtkit** not running (the supervisor's priority tiers need it).
+- **Voice processing's sound not realtime**: a voice service's PipeWire
+  thread that rtkit refused (its processes-per-user limit reached).
+  Fixed by an rtkit drop-in (`/etc/systemd/system/rtkit-daemon.service.d/olo.conf`:
+  64 processes, 256 threads a user), systemd reloaded, rtkit restarted;
+  the supervisor asks again within a minute.
 - **Frames kept off the fast cores**: `kernel.sched_util_clamp_min`
   below 1024 caps the `uclamp.min` app_server's and the windows' threads
   ask for (rule 9): set to 1024, now and at boot (/etc/sysctl.d/
@@ -5081,6 +5096,57 @@ doesn't count as damage), delays as stated, and the time a frame takes.
 Don't judge a speech model with tones: DeepFilterNet takes a synthetic
 buzz for noise.
 
+## The voice service (apps/voice, `olo-voice --service`)
+
+Every microphone through voice processing (`crates/voice`, above). The
+service puts a source of its own, "Microphone (Voice Processing)"
+(`olo_protocol::voice::NODE`, `olo_voice`), in front of the microphone
+the person chose and makes it the default input, so anything that
+records gets the processed voice:
+
+- **Which microphone**: whatever becomes the default input that isn't
+  its own (Preferences, Deskbar, AirPods' choice, any program) is the
+  one it listens to, and it is the default again. Device lists
+  (`olo_system::audio::devices`, `watch_devices`) leave its source out
+  and show that microphone as the default; `devices_raw` has both.
+  Turned off, stopped or quitting, the microphone is the default itself
+  again; if it crashes, WirePlumber falls back to the microphone.
+- **What's behind the source** (`engine.rs`, PipeWire's thread): the
+  microphone's capture and, for echo cancellation, the default output's
+  monitor, only for an output the microphone can hear (not
+  `Device::private`: Bluetooth, a headphones or headset port or form
+  factor). Made inactive, switched on only while something records from
+  the source: idle, nothing runs and the microphone isn't open. A new
+  microphone or new settings rebuild only the captures, so a call keeps
+  its device. Calls ask the graph for a 10 ms quantum and keep a frame
+  ahead; recordings 2048 samples and four frames.
+- **Settings** `voice.json` in the config folder
+  (`olo_protocol::voice::Settings`: enabled, mode, echo cancellation,
+  noise, normalize), followed by inotify. **State** `olo-voice.json` in
+  the runtime folder: the microphone, recording or idle, echo cancelling
+  now, the delay it adds, a frame's processing time, dropouts.
+- **Command line**: `olo-voice --status [--json]`, `olo-voice --set
+  KEY=VALUE…` (`enabled`, `echo`, `normalize`: on/off; `mode`:
+  calls/recording; `noise`: off/moderate/strong/full). Deskbar's menu
+  uses it too.
+- **UI**: Preferences ▸ Sound's Voice Processing box (and what it's
+  doing in a line); Deskbar's speaker menu: "Clean Up Microphone Sound"
+  and a Voice Processing submenu.
+- **Running it**: olo-session starts it in a real session (`REAL_SHELL`)
+  and restarts it if it exits; an upgrade installs the new `olo-voice`
+  and sends SIGURG, on which it starts again as the new version (the
+  source comes back, the default stays); SIGTERM gives the microphone
+  back. The supervisor never lowers it and keeps it in the audio tier
+  (above). Olo Doctor checks its sound is realtime.
+- **Testing**: in `tools/dev/pw-sandbox`, never the person's sound
+  server: `OLO_VOICE_DIR=DIR` keeps its settings and state apart, and
+  `pw-cat --playback --target talk speech.wav` talks into the made-up
+  microphone while `pw-cat --record` records the default input. Measured
+  there: the voice comes through with no dropouts; another voice on the
+  speakers with its echo in the microphone goes from −24…−63 dBFS
+  (processing off) to −89…−99 dBFS; idle 0% and 0 wakeups, recording
+  5.8% of a core (388 µs a frame).
+
 ## AirPods (apps/airpods, olo_system::airpods, Preferences ▸ AirPods)
 
 Olo talks to AirPods itself, in Rust, as Apple's devices do. Their
@@ -5149,7 +5215,9 @@ timestamps, 180 a frame) are decoded empty, so the sound dies away
 through the filter bank rather than stopping. `resample.rs` takes them
 to 48 kHz (windowed sinc, Kaiser, 32 taps, 512 interpolated phases),
 its ratio steered within ±0.5% to keep 60 ms waiting (the AirPods'
-messages come every 31 ms on median and up to 53 ms apart, measured):
+messages come every 31 ms on median and up to 53 ms apart, measured;
+150 ms when voice processing is tuned for recordings, read as the source
+starts streaming):
 the two clocks' difference is followed, never by dropping or repeating
 samples, and a source run dry fades out over 5 ms and back in. Each
 cycle is given exactly what it asks for (`Buffer::requested`). Checked
@@ -5174,9 +5242,10 @@ record from while they're connected); Deskbar's tray while they're
 connected (`status::draw_airpods`, amber at 20%, red at 10%; its menu
 has their levels, noise control, Conversation Awareness, Disconnect and
 both panels), and the speaker's right-click menu (`sound_menu`, for any
-device: every output and input, mute, and while AirPods play, their
-levels, noise control, Conversation Awareness, Personalized Volume and
-music or call quality). Deskbar follows the sound server's whole device
+device: every output and input, mute, voice processing (on or off, and
+its settings in a submenu), and while AirPods play, their levels, noise
+control, Conversation Awareness, Personalized Volume and music or call
+quality). Deskbar follows the sound server's whole device
 list (`audio::watch_devices`), the volume being the default output's. Their icons are `airpods`, `airpods-case`, `airpod-left`
 and `airpod-right`, in every theme.
 
@@ -5215,6 +5284,15 @@ it looks at the person's own processes in /proc (`sample.rs`) and:
   raised (`SupervisorState::raised`; Activity Monitor's "Olo's own" row)
   and notes once a program it couldn't. Only then the focused app over
   background work, which is the lowering below.
+- **The voice services** (olo-voice, olo-airpods: the audio tier,
+  `AUDIO_NICE`, −10 as app_server's): raised as they start, their
+  processing thread on a fast core (`AUDIO_UTIL_MIN`). PipeWire's thread
+  for their sound (`data-loop`, `AUDIO_THREAD`) should be realtime:
+  libpipewire asks rtkit as a stream starts. The supervisor looks: one
+  that isn't is asked for again (`olo_system::priority::realtime`: a
+  200 ms RLIMIT_RTTIME set first, which rtkit wants), and a minute after
+  each refusal. rtkit gives realtime to 15 processes a user by default;
+  a desktop's programs use that up, and Olo Doctor offers more.
 - **Priorities** (`priority.rs`): background work, known by name (the
   settings' list: compilers, linkers, build tools, indexers) or a
   terminal's job busy for a minute and more, has every thread lowered:

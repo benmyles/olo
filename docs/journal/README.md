@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Deskbar: voice processing in the speaker's menu
+
+*15:31* — Right-click the speaker: Clean Up Microphone Sound, and in a submenu what it's tuned for, how much background noise to take out, echo and level (through olo-voice --set, as an agent would).
+
+![Deskbar: voice processing in the speaker's menu](2026-11-02/153140-deskbar-voice-processing-in-the-speaker-s-menu.png)
+
+### Sound: Voice Processing
+
+*15:31* — Every microphone through Olo's voice processing (echo cancellation, DeepFilterNet noise suppression, level), and what it is doing now, in a line. Here against a sandboxed sound server's made-up devices.
+
+![Sound: Voice Processing](2026-11-02/153111-sound-voice-processing.png)
+
 ### Preferences: Default Apps
 
 *14:06* — A new panel: each kind of file and link with the app it opens in, changeable from the apps that suit it; a choice is the kind's for Olo and for other programs (Tracker's Always Open With chooses too). Its icon, a document with Olo's application cube, from the reference set.
