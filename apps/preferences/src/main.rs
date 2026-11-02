@@ -16,6 +16,7 @@ mod appearance;
 mod backup;
 mod bluetooth;
 mod datetime;
+mod default_apps;
 mod display;
 mod form;
 mod integrations;

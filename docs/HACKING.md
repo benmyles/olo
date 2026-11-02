@@ -2609,6 +2609,16 @@ opened, its own `panel::State` and text fields).
   enabled only when it would change something: implement `Panel::reset`.
 * New panel: add it to `Panel` (arg, title, icon, size, reset), write the
   module, add it to `PREFERENCE_PANELS`, journal it light and dark.
+* **Default Apps** (`default_apps.rs`): each kind of file and link
+  (`KINDS`: Text, PDF, Word documents, … Pictures, Movies, Music, …
+  Folders, Web pages and links, Email links; each a few MIME types) with
+  the app it opens in, a pop-up of the apps Open With offers for it
+  (`olo_xdg::open::handlers_for`, of its first type), all one width; a
+  choice is made for every type of the kind (`open::set_default`: for
+  Olo and, in `olo-mimeapps.list`, for other programs). Worked out and
+  written on a worker; "Looking for apps…" until then. Under `cfg(test)`
+  made-up apps, so the lint and the settings index don't depend on the
+  computer.
 * **Every setting, findable** (`olo_xdg::settings::PREFERENCE_SETTINGS`):
   each control in every panel (check box, radio button, slider, pop-up
   menu, text field, colour well, button) with its panel, tab and box,

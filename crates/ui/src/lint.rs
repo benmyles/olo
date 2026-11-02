@@ -60,7 +60,7 @@ impl Default for Lint {
 
 impl Lint {
     pub fn new() -> Self {
-        let mut cx = TestAppContext::with_olo_text();
+        let cx = TestAppContext::with_olo_text();
         cx.update(|cx| {
             cx.set_global(Theme { palette: looks()[0].1.clone() });
             crate::app::init_for_lint(cx);

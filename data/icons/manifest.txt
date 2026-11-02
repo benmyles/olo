@@ -103,3 +103,4 @@ sensors|a thermometer standing upright on a small round base, with a silver scal
 performance|a chunky silver speedometer gauge dial standing on the desk, its needle pointing high into a green zone, with a small red warning arc at the end
 telegram|a chunky round sky-blue badge, seen in three-quarter view like a thick coin standing on the desk, with a white paper plane embossed on its face and a thin silver rim
 doctor|a doctor's medical bag: a chunky dark red leather physician's bag with brass clasps and a white cross on its side, a silver stethoscope draped over its handle
+default-apps|a white paper document with a folded corner and grey text lines, with a small Be-blue application cube standing in front of it at the lower right

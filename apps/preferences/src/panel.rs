@@ -8,7 +8,7 @@ use olo_ui::{
     widgets::{Button, StringView},
 };
 
-use crate::{PanelView, about, ai, appearance, backup, bluetooth, datetime, display, form::Ui, integrations, keyboard, network, notifications, performance, power, screensaver, security, sound, terminal, themes, touchid, touchpad, tracker, windows, workspaces};
+use crate::{PanelView, about, ai, appearance, backup, bluetooth, datetime, default_apps, display, form::Ui, integrations, keyboard, network, notifications, performance, power, screensaver, security, sound, terminal, themes, touchid, touchpad, tracker, windows, workspaces};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
@@ -18,6 +18,7 @@ pub enum Panel {
     Backup,
     Bluetooth,
     DateTime,
+    DefaultApps,
     Display,
     Integrations,
     Keyboard,
@@ -46,6 +47,7 @@ impl Panel {
         Panel::Backup,
         Panel::Bluetooth,
         Panel::DateTime,
+        Panel::DefaultApps,
         Panel::Display,
         Panel::Integrations,
         Panel::Keyboard,
@@ -79,6 +81,7 @@ impl Panel {
             "notification" | "dnd" | "do-not-disturb" => Some(Panel::Notifications),
             "supervisor" | "responsiveness" | "watchdog" => Some(Panel::Performance),
             "time" | "date" | "clock" | "date-time" => Some(Panel::DateTime),
+            "open-with" | "file-types" | "filetypes" | "default-applications" => Some(Panel::DefaultApps),
             "passwords" | "privacy" => Some(Panel::Security),
             "smart-tiling" | "models" => Some(Panel::Ai),
             "github" | "telegram" | "accounts" | "services" | "integration" => Some(Panel::Integrations),
@@ -96,6 +99,7 @@ impl Panel {
             Panel::Backup => "backup",
             Panel::Bluetooth => "bluetooth",
             Panel::DateTime => "datetime",
+            Panel::DefaultApps => "default-apps",
             Panel::Display => "display",
             Panel::Integrations => "integrations",
             Panel::Keyboard => "keyboard",
@@ -125,6 +129,7 @@ impl Panel {
             Panel::Backup => "Backup",
             Panel::Bluetooth => "Bluetooth",
             Panel::DateTime => "Date & Time",
+            Panel::DefaultApps => "Default Apps",
             Panel::Display => "Display",
             Panel::Integrations => "Integrations",
             Panel::Keyboard => "Keyboard",
@@ -154,6 +159,7 @@ impl Panel {
             Panel::Backup => "backup",
             Panel::Bluetooth => "bluetooth",
             Panel::DateTime => "datetime",
+            Panel::DefaultApps => "default-apps",
             Panel::Display => "display",
             Panel::Integrations => "integrations",
             Panel::Keyboard => "keyboard",
@@ -185,6 +191,7 @@ impl Panel {
             Panel::Backup => (420, 400),
             Panel::Bluetooth => (440, 340),
             Panel::DateTime => (460, 370),
+            Panel::DefaultApps => (480, 494),
             // With its panel: what it is, how Olo draws for it and why.
             Panel::Display => (500, 658),
             Panel::Integrations => (460, 600),
@@ -210,12 +217,12 @@ impl Panel {
     }
 
     pub fn needs_server(self) -> bool {
-        !matches!(self, Panel::About | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications | Panel::Performance | Panel::Backup | Panel::Integrations)
+        !matches!(self, Panel::About | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications | Panel::Performance | Panel::Backup | Panel::Integrations | Panel::DefaultApps)
     }
 
     /// Whether the panel has Defaults / Revert.
     fn resettable(self) -> bool {
-        !matches!(self, Panel::About | Panel::Display | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications | Panel::Performance | Panel::Backup | Panel::Integrations)
+        !matches!(self, Panel::About | Panel::Display | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications | Panel::Performance | Panel::Backup | Panel::Integrations | Panel::DefaultApps)
     }
 
     /// Put this panel's part of `settings` back to `from`.
@@ -262,7 +269,7 @@ impl Panel {
                 settings.appearance.colors = from.appearance.colors.clone();
                 settings.wallpaper = from.wallpaper.clone();
             }
-            Panel::Display | Panel::Backup | Panel::About | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications | Panel::Performance | Panel::Integrations => {}
+            Panel::Display | Panel::Backup | Panel::About | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications | Panel::Performance | Panel::Integrations | Panel::DefaultApps => {}
         }
     }
 }
@@ -275,6 +282,7 @@ pub enum State {
     Display(display::State),
     Sound(sound::State),
     DateTime(Box<datetime::State>),
+    DefaultApps(Box<default_apps::State>),
     Network(Box<network::State>),
     Notifications(Box<notifications::State>),
     Performance(Box<performance::State>),
@@ -296,6 +304,7 @@ impl State {
             Panel::Display => State::Display(Default::default()),
             Panel::Sound => State::Sound(sound::State::new(cx)),
             Panel::DateTime => State::DateTime(Box::new(datetime::State::new(cx))),
+            Panel::DefaultApps => State::DefaultApps(Box::new(default_apps::State::new(cx))),
             Panel::Network => State::Network(Box::new(network::State::new(cx))),
             Panel::Notifications => State::Notifications(Box::new(notifications::State::new(cx))),
             Panel::Performance => State::Performance(Box::new(performance::State::new(cx))),
@@ -343,6 +352,7 @@ pub fn render(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView
         (Panel::Ai, _) => ai::ui(&mut ui),
         (Panel::Themes, _) => themes::ui(&mut ui),
         (Panel::DateTime, State::DateTime(st)) => datetime::ui(&mut ui, st),
+        (Panel::DefaultApps, State::DefaultApps(st)) => default_apps::ui(&mut ui, st),
         (Panel::Network, State::Network(st)) => network::ui(&mut ui, st),
         (Panel::Notifications, State::Notifications(st)) => notifications::ui(&mut ui, st),
         (Panel::Performance, State::Performance(st)) => performance::ui(&mut ui, st),

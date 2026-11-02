@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Preferences: Default Apps
+
+*14:06* — A new panel: each kind of file and link with the app it opens in, changeable from the apps that suit it; a choice is the kind's for Olo and for other programs (Tracker's Always Open With chooses too). Its icon, a document with Olo's application cube, from the reference set.
+
+![Preferences: Default Apps](2026-11-02/140643-preferences-default-apps.png)
+
 ### Tracker: Open With and Always Open With
 
 *13:51* — A file's menu offers a few apps that suit its kind (its default marked, Olo's own, then those that say they open it), and Always Open With makes one the kind's default for Olo and for other programs.
