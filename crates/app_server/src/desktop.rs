@@ -1696,7 +1696,11 @@ impl<B: Backend + 'static> AnvilState<B> {
         let main_changed = settings.display.main != self.settings.display.main;
         let space_changed = (settings.tiling.gap, settings.tiling.margin) != (self.settings.tiling.gap, self.settings.tiling.margin);
         // A keymap takes milliseconds to build: only when they changed.
-        let input_changed = settings.keyboard != self.settings.keyboard || settings.touchpad != self.settings.touchpad;
+        let keyboard_changed = settings.keyboard != self.settings.keyboard;
+        // The mice's speed and acceleration too: left out, the mouse speed
+        // slider was saved and did nothing until app_server's next start
+        // (Ben, 2026-11-01).
+        let pointer_changed = settings.touchpad != self.settings.touchpad || settings.mouse_speed != self.settings.mouse_speed || settings.mice != self.settings.mice;
         if settings.security.passwords.op_cli != self.settings.security.passwords.op_cli {
             olo_xdg::link_op_here(settings.security.passwords.op_cli);
         }
@@ -1753,8 +1757,10 @@ impl<B: Backend + 'static> AnvilState<B> {
         if space_changed {
             self.tiling_space_changed();
         }
-        if input_changed {
+        if keyboard_changed {
             self.apply_input_settings();
+        } else if pointer_changed {
+            self.apply_pointer_settings();
         }
         self.update_appearance(true);
         save_settings(&self.settings);
@@ -1831,6 +1837,11 @@ impl<B: Backend + 'static> AnvilState<B> {
             keyboard.advertise_modifier_state(self);
             self.backend_data.update_led_state(keyboard.led_state());
         }
+        self.apply_pointer_settings();
+    }
+
+    /// Push the touchpad's and mice's settings into libinput.
+    pub fn apply_pointer_settings(&mut self) {
         let t = &self.settings.touchpad;
         self.pacer.momentum.length = if t.momentum { t.glide.clamp(0.25, 3.0) } else { 0.0 };
         self.backend_data.apply_input_settings(&self.settings);

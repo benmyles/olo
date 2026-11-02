@@ -27,6 +27,16 @@ pub const DISPLAY_RULE: &str = include_str!("../../../data/udev/70-olo-displays.
 /// The login screen's entry (its Exec made absolute on install).
 const SESSION_ENTRY: &str = include_str!("../../../data/session/olo.desktop");
 
+/// Olo's Wi-Fi healer (apps/wifi-heal): its unit, and NetworkManager's
+/// setting for the chips it heals.
+pub const HEAL_UNIT: &str = include_str!("../../../data/systemd/olo-wifi-heal.service");
+pub const BRCMFMAC_CONF: &str = include_str!("../../../data/NetworkManager/80-olo-brcmfmac.conf");
+const HEAL_BIN_PATH: &str = "usr/local/libexec/olo-wifi-heal";
+const HEAL_UNIT_PATH: &str = "etc/systemd/system/olo-wifi-heal.service";
+const BRCMFMAC_CONF_PATH: &str = "etc/NetworkManager/conf.d/80-olo-brcmfmac.conf";
+/// Wi-Fi drivers whose firmware the healer resets.
+const HEALED_DRIVERS: &[&str] = &["brcmfmac"];
+
 const INPUT_RULE_PATH: &str = "etc/udev/rules.d/71-olo-input.rules";
 const DISPLAY_RULE_PATH: &str = "etc/udev/rules.d/70-olo-displays.rules";
 const SESSION_ENTRY_PATH: &str = "usr/local/share/wayland-sessions/olo.desktop";
@@ -326,6 +336,7 @@ pub fn scan(roots: &Roots) -> Report {
     let rule_current = input_rule(roots, &mut r);
     autosuspend(roots, rule_current, &mut r);
     display_rule(roots, &mut r);
+    wifi(roots, &mut r);
     rtkit(roots, &mut r);
     stale(roots, &procs, &mut r);
     login_entry(roots, &mut r);
@@ -501,6 +512,73 @@ fn display_rule(roots: &Roots, r: &mut Report) {
     });
 }
 
+/// The Wi-Fi interfaces, and their drivers.
+fn wifi_chips(fs: &Path) -> Vec<(String, String)> {
+    let mut v = Vec::new();
+    for e in std::fs::read_dir(fs.join("sys/class/net")).into_iter().flatten().flatten() {
+        let dir = e.path();
+        if !dir.join("phy80211").exists() && !dir.join("wireless").exists() {
+            continue;
+        }
+        let driver = std::fs::read_link(dir.join("device/driver")).ok().and_then(|p| p.file_name().map(|f| f.to_string_lossy().into_owned())).unwrap_or_default();
+        v.push((e.file_name().to_string_lossy().into_owned(), driver));
+    }
+    v.sort();
+    v
+}
+
+/// Two files hold the same bytes.
+fn same_contents(a: &Path, b: &Path) -> bool {
+    let (Ok(ma), Ok(mb)) = (std::fs::metadata(a), std::fs::metadata(b)) else { return false };
+    ma.len() == mb.len() && std::fs::read(a).ok() == std::fs::read(b).ok()
+}
+
+/// Olo's Wi-Fi healer, on a chip whose firmware can stop joining.
+fn wifi(roots: &Roots, r: &mut Report) {
+    let Some((iface, driver)) = wifi_chips(&roots.fs).into_iter().find(|(_, d)| HEALED_DRIVERS.contains(&d.as_str())) else { return };
+    let source = roots.bin.join("olo-wifi-heal");
+    if !source.exists() {
+        // Not installed (a build tree): nothing to install it from.
+        return;
+    }
+    let state = (roots.units)("olo-wifi-heal.service").unwrap_or_default();
+    let installed = roots.fs.join(HEAL_BIN_PATH);
+    let current = same_contents(&source, &installed)
+        && read(&roots.fs.join(HEAL_UNIT_PATH)).as_deref() == Some(HEAL_UNIT.trim())
+        && read(&roots.fs.join(BRCMFMAC_CONF_PATH)).as_deref() == Some(BRCMFMAC_CONF.trim());
+    if current && state.active && state.enabled {
+        r.fine.push(Fine { title: format!("Olo's Wi-Fi healer watches {iface}"), detail: "If the chip's firmware stops joining, it is started again and the network joined again.".into() });
+        return;
+    }
+    let (title, label) = if !installed.exists() {
+        ("Olo's Wi-Fi healer isn't installed", "Install the Healer")
+    } else if !current {
+        ("Olo's Wi-Fi healer is out of date", "Update the Healer")
+    } else {
+        ("Olo's Wi-Fi healer isn't running", "Start the Healer")
+    };
+    let unit = "olo-wifi-heal.service".to_owned();
+    let steps = vec![
+        Step::CopyFile { from: source, to: PathBuf::from("/").join(HEAL_BIN_PATH), mode: 0o755 },
+        Step::WriteFile { path: PathBuf::from("/").join(HEAL_UNIT_PATH), content: HEAL_UNIT.into(), mode: 0o644 },
+        Step::WriteFile { path: PathBuf::from("/").join(BRCMFMAC_CONF_PATH), content: BRCMFMAC_CONF.into(), mode: 0o644 },
+        Step::Unit { name: unit.clone(), action: UnitAction::Reload },
+        Step::Unit { name: unit.clone(), action: UnitAction::Enable },
+        Step::Unit { name: unit, action: UnitAction::Restart },
+        Step::NetworkManagerReload,
+    ];
+    r.findings.push(Finding {
+        id: "wifi-heal".into(),
+        severity: Severity::Problem,
+        title: title.into(),
+        detail: format!(
+            "This Mac's Wi-Fi chip ({driver}, {iface}) can get stuck in its firmware after failed joins: every join then fails, as if the password were wrong, until the chip is started again. Olo's healer, a small system service, notices, starts the chip again, joins the network again and tells you. The fix installs it as a program only the administrator can change ({}), and has NetworkManager keep the chip's own address while it scans.",
+            Path::new("/").join(HEAL_BIN_PATH).display()
+        ),
+        fix: Some(Fix { label: label.into(), root: true, steps }),
+    });
+}
+
 fn rtkit(roots: &Roots, r: &mut Report) {
     let unit = "rtkit-daemon.service";
     match (roots.units)(unit) {
@@ -615,9 +693,16 @@ mod tests {
         w("sys/bus/usb/devices/3-1.4/power/control", "auto\n");
         w("sys/bus/usb/devices/3-1.4:1.5/bInterfaceClass", "03\n");
         w("usr/local/share/wayland-sessions/olo.desktop", "[Desktop Entry]\nExec=/nowhere/olo-session\n");
+        // A Broadcom Wi-Fi chip, and the healer's program installed for
+        // the person.
+        w("sys/class/net/wld0/phy80211/name", "phy0\n");
+        w("sys/bus/pci/drivers/brcmfmac/bind", "");
+        std::fs::create_dir_all(fs.join("sys/class/net/wld0/device")).unwrap();
+        std::os::unix::fs::symlink(fs.join("sys/bus/pci/drivers/brcmfmac"), fs.join("sys/class/net/wld0/device/driver")).unwrap();
         let bin = fs.join("home/me/.local/bin");
         std::fs::create_dir_all(&bin).unwrap();
         std::fs::write(bin.join("olo-session"), "").unwrap();
+        std::fs::write(bin.join("olo-wifi-heal"), "the healer").unwrap();
         // The stale Deskbar: its exe link says deleted.
         std::os::unix::fs::symlink(format!("{}/olo-deskbar (deleted)", bin.display()), fs.join("proc/900/exe")).unwrap();
         std::os::unix::fs::symlink(bin.join("olo-doctor"), fs.join("proc/901/exe")).unwrap();
@@ -640,7 +725,13 @@ mod tests {
         let r = scan(&roots);
         let ids: Vec<&str> = r.findings.iter().map(|f| f.id.as_str()).collect();
         assert_eq!(r.find("foreign").unwrap().title, "A program of another desktop runs in this session");
-        assert_eq!(ids, ["remapper:keyd", "foreign", "rule:input", "autosuspend:3-1.3", "rule:displays", "rtkit", "stale", "login"], "{r:#?}");
+        assert_eq!(ids, ["remapper:keyd", "foreign", "rule:input", "autosuspend:3-1.3", "rule:displays", "wifi-heal", "rtkit", "stale", "login"], "{r:#?}");
+        let heal = r.find("wifi-heal").unwrap();
+        assert_eq!(heal.title, "Olo's Wi-Fi healer isn't installed");
+        assert!(heal.detail.contains("brcmfmac, wld0"));
+        let steps = &heal.fix.as_ref().unwrap().steps;
+        assert_eq!(steps[0], Step::CopyFile { from: roots.bin.join("olo-wifi-heal"), to: "/usr/local/libexec/olo-wifi-heal".into(), mode: 0o755 });
+        assert!(matches!(steps.last(), Some(Step::NetworkManagerReload)));
         let keyd = r.find("remapper:keyd").unwrap();
         assert_eq!(keyd.title, "keyd is running and starts at boot");
         assert!(keyd.detail.contains("keyd virtual keyboard, keyd virtual pointer"));
@@ -696,7 +787,10 @@ mod tests {
         w(INPUT_RULE_PATH, INPUT_RULE);
         w(DISPLAY_RULE_PATH, DISPLAY_RULE);
         w(SESSION_ENTRY_PATH, &format!("[Desktop Entry]\nExec={}/olo-session\n", roots.bin.display()));
-        roots.units = Box::new(|name: &str| Ok(if name == "rtkit-daemon.service" { UnitState { loaded: true, active: true, enabled: true, path: None } } else { UnitState::default() }));
+        w(HEAL_BIN_PATH, "the healer");
+        w(HEAL_UNIT_PATH, HEAL_UNIT);
+        w(BRCMFMAC_CONF_PATH, BRCMFMAC_CONF);
+        roots.units = Box::new(|name: &str| Ok(if matches!(name, "rtkit-daemon.service" | "olo-wifi-heal.service") { UnitState { loaded: true, active: true, enabled: true, path: None } } else { UnitState::default() }));
         let r = scan(&roots);
         assert!(r.findings.is_empty(), "{:#?}", r.findings);
         let titles: Vec<&str> = r.fine.iter().map(|f| f.title.as_str()).collect();
@@ -708,6 +802,7 @@ mod tests {
                 "Olo's input rule is installed",
                 "1 USB input device stays awake",
                 "Olo's display rule is installed",
+                "Olo's Wi-Fi healer watches wld0",
                 "rtkit is running",
                 "Every Olo program runs the installed version",
                 "Olo is on the login screen",

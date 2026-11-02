@@ -59,8 +59,9 @@ const SHELL: &[&[&str]] = &[&["olo-deskbar"], &["olo-tracker", "--desktop"]];
 /// portal backend (screen sharing) serve the session bus, which a nested
 /// or headless one must never take over; Token Pool's gateway listens on
 /// the computer's one loopback port; the supervisor (Preferences ▸
-/// Performance) looks after the person's own processes.
-const REAL_SHELL: &[&[&str]] = &[&["olo-polkit-agent"], &["olo-notifications"], &["olo-portal", "--service"], &["olo-pool", "--service"], &["olo-supervisor"]];
+/// Performance) looks after the person's own processes; Olo Doctor tells
+/// of problems at login and of the Wi-Fi healer's resets.
+const REAL_SHELL: &[&[&str]] = &[&["olo-polkit-agent"], &["olo-notifications"], &["olo-portal", "--service"], &["olo-pool", "--service"], &["olo-supervisor"], &["olo-doctor", "--watch"]];
 /// Give up restarting something that crashes this often.
 const CRASH_LIMIT: usize = 5;
 const CRASH_WINDOW: Duration = Duration::from_secs(60);
@@ -1066,11 +1067,6 @@ fn export_environment() {
         // items now (once: a session resumed after an upgrade doesn't
         // come this way).
         autostart::start();
-        // Olo Doctor looks the computer over once the session settles,
-        // and says so if something gets in Olo's way.
-        if let Err(e) = olo_xdg::open::spawn_app(&["olo-doctor".into(), "--notify".into()], "olo.doctor") {
-            log(format!("could not start olo-doctor: {e}"));
-        }
     });
 }
 

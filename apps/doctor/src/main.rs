@@ -6,8 +6,8 @@
 //! done by the program run again as root (helper.rs), asked for once.
 //!
 //! `olo-doctor --report` prints the report as JSON and opens nothing
-//! (for agents and scripts); `--notify` is the session's look at login
-//! (notify.rs).
+//! (for agents and scripts); `--watch` is the session's: the look at
+//! login and the Wi-Fi healer's news (notify.rs).
 
 mod checks;
 mod fix;
@@ -382,6 +382,7 @@ fn main() {
     match args.first().map(String::as_str) {
         Some("--helper") => helper::serve(),
         Some("--notify") => return notify::run(),
+        Some("--watch") => notify::watch(),
         Some("--report") => {
             println!("{}", serde_json::to_string_pretty(&checks::scan(&Roots::real())).unwrap_or_default());
             return;

@@ -134,7 +134,7 @@ fn fake_networks() -> bool {
 }
 
 fn fake_status() -> Status {
-    let net = |ssid: &str, strength, secure, enterprise| Network { ssid: ssid.into(), strength, secure, enterprise, ap: format!("/ap/{ssid}"), active: false, known: false };
+    let net = |ssid: &str, strength, secure, enterprise| Network { ssid: ssid.into(), strength, secure, enterprise, key_mgmt: "wpa-psk", ap: format!("/ap/{ssid}"), active: false, known: false };
     Status {
         wireless_enabled: true,
         wireless_hardware: true,

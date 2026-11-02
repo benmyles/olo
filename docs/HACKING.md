@@ -5127,6 +5127,9 @@ signal a process), all done in process. What it looks for:
   ~/.local/bin; never the session, app_server or the proxies): quit.
 - **The login screen's entry** (/usr/local/share/wayland-sessions)
   missing or pointing at nothing.
+- **Olo's Wi-Fi healer** (below) missing, out of date or stopped, on a
+  machine whose Wi-Fi chip needs it (brcmfmac): installed as a root-owned
+  copy, with its unit and NetworkManager's setting for the chip.
 
 Root is reached as Activity Monitor's is: the program run again through
 pkexec (`olo-doctor --helper`, JSON lines of `ToHelper::Run { id, steps }`
@@ -5137,12 +5140,53 @@ Scans run on a thread; nothing is polled: Check Again (⌘R), a fix, or
 the app opened again looks again.
 
 `olo-doctor --report` prints the report as JSON (agents, scripts).
-`olo-doctor --notify` is what the session runs once at login: after 20 s
-it looks, and a problem not told of before (remembered in
-`~/.local/state/olo/doctor.json`; one fixed and back is told again) is
-told in a notification whose click opens Olo Doctor. Tests build a
+`olo-doctor --watch` is one of the real session's services
+(`REAL_SHELL`): after 20 s it looks, and a problem not told of before
+(remembered in `~/.local/state/olo/doctor.json`; one fixed and back is
+told again) is told in a notification whose click opens Olo Doctor;
+then it follows the Wi-Fi healer's report by inotify and tells of each
+reset and what came of it (`--notify` is the look alone). Tests build a
 machine in a folder (`Roots { fs, bin, uid, scope, units }`) and check
 the findings and their steps exactly.
+
+## The Wi-Fi healer (apps/wifi-heal)
+
+The Broadcom chips in Apple machines (brcmfmac; BCM4388 here) can get
+stuck in their firmware: every join fails without associating
+(wpa_supplicant's `ASSOC-REJECT status_code=16`, which brcmfmac reports
+for any failed join), address changes are refused (`-52`, NetworkManager's
+"failed to set MAC address"), and scans stick ("Reject scan trigger since
+one is already pending"); NetworkManager then asks for the password again
+and says it was wrong. It lasted 38 hours on 2026-10-31. Resetting the
+device (the driver unbound and bound again, which reloads the firmware)
+joins at once, measured; a run of failed joins can bring it on (it did,
+in testing, after two resets and four refused joins). Joining early
+after the firmware starts, and a regulatory change, were measured not to.
+
+`olo-wifi-heal` is a root service (a root-owned copy in
+/usr/local/libexec, never the person's own file, which anything running
+as them could replace) that follows NetworkManager's device states and
+wpa_supplicant's interface states as D-Bus signals, nothing polled.
+When a join fails after two or more tries to associate with none getting
+further, or a scan runs two minutes, it resets the chip and joins the
+same network again. On this chip a wrong password fails the same way
+(the firmware does the handshake), so the reset is the test: if the
+join after it fails alike, the chip wasn't at fault, which is recorded
+("its password is most likely wrong"), and that network isn't reset for
+again until it has joined. One reset in three minutes, four an hour,
+only for drivers known to recover so (`DRIVERS`). Each goes in the
+journal and `/run/olo/wifi-heal.json` (`olo-wifi-heal --status`), which
+`olo-doctor --watch` tells the person of. `OLO_WIFI_HEAL_DEBUG=1` logs
+every event. Test it as root with a copy in /var/tmp and a profile with
+a wrong password (the chip may stick after; the healer frees it).
+
+`data/NetworkManager/80-olo-brcmfmac.conf` (installed with it) keeps the
+chip's own address while scanning, so NetworkManager doesn't change it
+every few minutes while idle; each network still gets its own address.
+Olo's join (`olo_system::network::join`) asks for the security the access
+point offers (`key_mgmt`): WPA3 alone is "sae" (asking for WPA2 was
+refused before it began: "Access point does not support PSK"), Enhanced
+Open "owe".
 
 ## The supervisor (apps/supervisor, Preferences ▸ Performance)
 

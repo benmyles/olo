@@ -215,6 +215,9 @@ pub struct Network {
     pub secure: bool,
     /// Enterprise (802.1X): needs more than a password.
     pub enterprise: bool,
+    /// How a password joins it (`key_mgmt`): WPA3 alone ("sae"), WPA2
+    /// or both ("wpa-psk"), Enhanced Open ("owe", no password).
+    pub key_mgmt: &'static str,
     /// The access point to join (the strongest).
     pub ap: String,
     pub active: bool,
@@ -322,7 +325,8 @@ pub fn status() -> Result<Status> {
             // NM_802_11_AP_SEC_KEY_MGMT_802_1X.
             let enterprise = (wpa | rsn) & 0x200 != 0;
             let is_active = active.as_str() == p;
-            let n = Network { known: known.contains(&ssid), ssid, strength, secure: flags & 1 != 0 || wpa != 0 || rsn != 0, enterprise, ap: p.to_owned(), active: is_active };
+            let key_mgmt = key_mgmt(wpa, rsn);
+            let n = Network { known: known.contains(&ssid), ssid, strength, secure: (flags & 1 != 0 || wpa != 0 || rsn != 0) && key_mgmt != "owe", enterprise, key_mgmt, ap: p.to_owned(), active: is_active };
             match networks.iter_mut().find(|x| x.ssid == n.ssid) {
                 Some(x) => {
                     if n.active || (!x.active && n.strength > x.strength) {
@@ -337,6 +341,12 @@ pub fn status() -> Result<Status> {
     Ok(Status { wireless_enabled, wireless_hardware, devices, networks })
 }
 
+/// Have NetworkManager read its configuration files again (after one
+/// is written; as root, or whoever polkit lets).
+pub fn reload() -> Result<()> {
+    bus::call::<_, ()>(bus::system()?, DEST, NM_PATH, NM, "Reload", &(0u32,))
+}
+
 pub fn set_wireless_enabled(on: bool) -> Result<()> {
     bus::set_property(bus::system()?, DEST, NM_PATH, NM, "WirelessEnabled", on)
 }
@@ -345,6 +355,25 @@ pub fn set_wireless_enabled(on: bool) -> Result<()> {
 pub fn scan(device: &str) -> Result<()> {
     let opts: HashMap<&str, Value> = HashMap::new();
     bus::call::<_, ()>(bus::system()?, DEST, device, WIRELESS, "RequestScan", &(opts,))
+}
+
+/// How a password joins an access point with these WPA and RSN flags
+/// (NM_802_11_AP_SEC_*): "sae" for WPA3 alone, "owe" for Enhanced Open,
+/// else "wpa-psk" (WPA2, and WPA2/WPA3 networks, which take either).
+/// Asking WPA3-only "Home-WPA3" for WPA2 was refused before it began
+/// ("Access point does not support PSK", 2026-10-31).
+pub fn key_mgmt(wpa: u32, rsn: u32) -> &'static str {
+    const PSK: u32 = 0x100;
+    const SAE: u32 = 0x400;
+    const OWE: u32 = 0x800 | 0x1000;
+    let flags = wpa | rsn;
+    if flags & SAE != 0 && flags & PSK == 0 {
+        "sae"
+    } else if flags & OWE != 0 && flags & PSK == 0 {
+        "owe"
+    } else {
+        "wpa-psk"
+    }
 }
 
 /// Join `network` on `device`: its saved connection if there is one,
@@ -360,10 +389,12 @@ pub fn join(device: &str, network: &Network, password: Option<&str>) -> Result<(
         return Ok(());
     }
     let mut settings: HashMap<&str, HashMap<&str, Value>> = HashMap::new();
-    if network.secure {
+    if network.key_mgmt == "owe" {
+        settings.insert("802-11-wireless-security", HashMap::from([("key-mgmt", Value::from("owe"))]));
+    } else if network.secure {
         settings.insert(
             "802-11-wireless-security",
-            HashMap::from([("key-mgmt", Value::from("wpa-psk")), ("psk", Value::from(password.unwrap_or_default()))]),
+            HashMap::from([("key-mgmt", Value::from(network.key_mgmt)), ("psk", Value::from(password.unwrap_or_default()))]),
         );
     }
     let _: (OwnedObjectPath, OwnedObjectPath) = bus::call(c, DEST, NM_PATH, NM, "AddAndActivateConnection", &(settings, dev, ap))?;
@@ -526,6 +557,16 @@ mod enterprise_tests {
 
     fn get<'a>(s: &'a HashMap<&str, HashMap<&str, Value<'static>>>, k: &str) -> Option<&'a Value<'static>> {
         s.get("802-1x").and_then(|x| x.get(k))
+    }
+
+    #[test]
+    fn security_follows_the_access_point() {
+        // Home-WPA3: RSN pair_ccmp group_ccmp sae.
+        assert_eq!(key_mgmt(0, 0x400 | 0x8 | 0x80), "sae");
+        // Home: psk and sae.
+        assert_eq!(key_mgmt(0, 0x100 | 0x400 | 0x8 | 0x80), "wpa-psk");
+        assert_eq!(key_mgmt(0, 0x100 | 0x8 | 0x80), "wpa-psk");
+        assert_eq!(key_mgmt(0, 0x800), "owe");
     }
 
     #[test]

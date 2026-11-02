@@ -2747,7 +2747,12 @@ as they land (with the commit), add new ones as they come up.
 
 ## Networking
 
-- **Wi-Fi that joins reliably, supervised and healed** (Ben, 2026-10-31;
+- ~~**Wi-Fi that joins reliably, supervised and healed**~~ (done
+  2026-11-01: WPA3-only networks joined with SAE; the brcmfmac firmware's
+  stuck state found and healed by `olo-wifi-heal`, installed by Olo
+  Doctor; see HACKING "The Wi-Fi healer". Still open: what exactly puts
+  the firmware in that state; the healer's reports carry the times to
+  match against the journal.) (Ben, 2026-10-31;
   after the move to GPUI is done): "something is wrong with the wifi- if
   i try to connect to the normal Home-WPA3 it just says network cannot
   be joined and if i try to connect to another like Home it says it

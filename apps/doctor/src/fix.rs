@@ -15,12 +15,18 @@ pub enum UnitAction {
     Disable,
     /// Have systemd re-read its unit files (after one is removed).
     Reload,
+    /// Start it, or start it again (an updated program).
+    Restart,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Step {
     /// Write a whole file (through a sibling, then renamed into place).
     WriteFile { path: PathBuf, content: String, mode: u32 },
+    /// Copy a file (a program) whole, owned by whoever runs the step.
+    CopyFile { from: PathBuf, to: PathBuf, mode: u32 },
+    /// Have NetworkManager read its configuration again.
+    NetworkManagerReload,
     /// Write a value to a sysfs attribute.
     WriteSysfs { path: PathBuf, value: String },
     /// Remove a file (already gone is fine).
@@ -35,6 +41,8 @@ impl Step {
     pub fn describe(&self) -> String {
         match self {
             Step::WriteFile { path, .. } => format!("Writing {}", path.display()),
+            Step::CopyFile { to, .. } => format!("Installing {}", to.display()),
+            Step::NetworkManagerReload => "Reloading NetworkManager's settings".into(),
             Step::WriteSysfs { path, value } => format!("Setting {} to {value}", path.display()),
             Step::RemoveFile { path } => format!("Removing {}", path.display()),
             Step::Unit { name, action } => {
@@ -44,6 +52,7 @@ impl Step {
                     UnitAction::Enable => "Enabling",
                     UnitAction::Disable => "Disabling",
                     UnitAction::Reload => "Reloading systemd for",
+                    UnitAction::Restart => "Restarting",
                 };
                 format!("{verb} {name}")
             }
@@ -56,6 +65,8 @@ impl Step {
         let failed = |e: std::io::Error| format!("{}: {e}", self.describe());
         match self {
             Step::WriteFile { path, content, mode } => write_file(path, content, *mode).map_err(failed),
+            Step::CopyFile { from, to, mode } => std::fs::read(from).and_then(|bytes| write_bytes(to, &bytes, *mode)).map_err(failed),
+            Step::NetworkManagerReload => olo_system::network::reload().map_err(|e| format!("{}: {e}", self.describe())),
             Step::WriteSysfs { path, value } => std::fs::write(path, value).map_err(failed),
             Step::RemoveFile { path } => match std::fs::remove_file(path) {
                 Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(failed(e)),
@@ -75,6 +86,10 @@ impl Step {
 }
 
 fn write_file(path: &Path, content: &str, mode: u32) -> std::io::Result<()> {
+    write_bytes(path, content.as_bytes(), mode)
+}
+
+fn write_bytes(path: &Path, content: &[u8], mode: u32) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt as _;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
@@ -101,6 +116,7 @@ fn unit(name: &str, action: &UnitAction) -> Result<(), String> {
         UnitAction::Enable => systemd::enable(name, true),
         UnitAction::Disable => systemd::enable(name, false),
         UnitAction::Reload => systemd::reload(),
+        UnitAction::Restart => systemd::restart(name),
     }
     .map_err(|e| e.to_string())
 }

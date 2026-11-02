@@ -58,6 +58,20 @@ pub fn start_stop(name: &str, start: bool) -> Result<()> {
     Ok(())
 }
 
+/// Restart a unit (start it if it isn't running), and wait (up to five
+/// seconds) for it to be running.
+pub fn restart(name: &str) -> Result<()> {
+    bus::call::<_, zvariant::OwnedObjectPath>(bus::system()?, SYSTEMD, MANAGER, MANAGER_IFACE, "RestartUnit", &(name, "replace"))?;
+    let until = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < until {
+        if unit_state(name).is_ok_and(|s| s.active) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    Ok(())
+}
+
 /// Have a unit start at boot (`enable` true), or not.
 pub fn enable(name: &str, enable: bool) -> Result<()> {
     let conn = bus::system()?;

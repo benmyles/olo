@@ -6754,6 +6754,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-wifi-heal"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "zbus",
+ "zvariant",
+]
+
+[[package]]
 name = "olo-wlproxy"
 version = "0.1.0"
 dependencies = [
