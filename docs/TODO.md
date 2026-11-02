@@ -608,9 +608,11 @@ as they land (with the commit), add new ones as they come up.
      tile (two locked maps) every frame; a shaped line could keep them,
      for its origin's subpixel phase, scale and rendering (the atlas's
      generation checked), and paint as a copy.
-- **A window on another workspace has a blank thumbnail in the share
-  picker** (found porting the portal, 2026-11-01; egui's the same): its
-  capture never answers while it isn't shown. app_server could draw it
+- ~~**A window on another workspace has a blank thumbnail in the share
+  picker**~~ (done 2026-11-02: drawn from what it last showed, with its
+  display's frame; a share of it starts too, where app_server used to
+  stop it, its size unknown) (found porting the portal, 2026-11-01;
+  egui's the same): its capture never answers while it isn't shown. app_server could draw it
   from its last buffer (as a minimized window's Exposé picture), so it
   can be chosen by what it looks like.
 - **Text and everything drawn, better than Apple's** (Ben, 2026-10-31):
@@ -661,7 +663,7 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
-- ~~**Tracker: Go to File or Folder**~~ (done: `goto.rs`, Go ▸ Go to File or Folder…, ⇧⌘G; the clipboard's path, completion, `go-to:<path>` for agents; the palette lists it with Tracker's menus. Left: the palette offering "Go to <path>" itself when the clipboard holds one) (Ben, 2026-11-02): "add a go to
+- ~~**Tracker: Go to File or Folder**~~ (done: `goto.rs`, Go ▸ Go to File or Folder…, ⇧⌘G; the clipboard's path, completion, `go-to:<path>` for agents; the palette lists it with Tracker's menus, and offers "Go to <path>" itself for a path copied or typed) (Ben, 2026-11-02): "add a go to
   file/folder option in tracker with a keyboard shortcut (and it should
   also show up in command pallette) -- it's useful when i want to jump
   to a path i have in the clipboard". So: Go ▸ Go to File or Folder…
@@ -675,7 +677,7 @@ as they land (with the commit), add new ones as they come up.
   is there. In the command palette as a Tracker command, and with a path
   in the clipboard the palette offers "Go to <path>" itself. Agents get
   it as a Tracker command (`go-to:<path>`) too.
-- **Command palette finds settings** (Ben, 2026-11-01): "in the
+- ~~**Command palette finds settings**~~ (done: HACKING, Preferences' "Every setting, findable" and the palette's Sources; `olo_ui::spotlight` lights it) (Ben, 2026-11-01): "in the
   super+space command palette thing also match on the actual settings
   etc. that are available in each preferences app to make them easy to
   find in there". So: every setting in every Preferences panel (its
@@ -688,7 +690,11 @@ as they land (with the commit), add new ones as they come up.
   so a new setting is found without listing it again; a test checks
   every panel's controls are in it), shipped with Preferences like
   `PREFERENCE_PANELS`, and agents can ask for the same.
-- **Default apps and Open With** (Ben, 2026-11-01): "ability to choose
+- **Default apps and Open With** (*part done* 2026-11-02: the person's
+  defaults and curated lists in `olo_xdg::open`, and Tracker's Open With
+  ▸ and Always Open With ▸; Preferences ▸ Default Apps; *left*: editing
+  the apps Open With offers (`set_offered` is there, the panel's part
+  isn't), Other…, Open With on the desktop, file panels and Quick Look) (Ben, 2026-11-01): "ability to choose
   the default app to open different file types with, both through a
   right click context menu and through a centralized default apps
   preference app. also, add an open with menu item when right clicking
@@ -843,7 +849,11 @@ as they land (with the commit), add new ones as they come up.
   MB at 2×, on the press). Time app_server's passes on the GPU around
   it and keep the client's allocation from stalling the compositor.
 
-- **Terminal: light mode hard to read** (Ben, 2026-10-31): "in light
+- **Terminal: light mode hard to read** (*better* 2026-11-02: text kept
+  at 4.5:1 from its cell, `colors::legible`, so a dark terminal's pale
+  colours and the default text on bands programs draw read in light
+  mode; *left*: the run through Codex, Claude Code and the TUIs below in
+  every look, and the looks' palettes tuned) (Ben, 2026-10-31): "in light
   mode my terminal is really hard to read i'm not sure why or what's
   conflicting but can you figure out a way so that the terminal gets
   properly themed with colors that look beautiful and have high
@@ -886,7 +896,14 @@ as they land (with the commit), add new ones as they come up.
   without the screen), draw a spinner no faster than it turns, and make
   a hidden window's once-a-second frame cheap or skip it.
 
-- **Tooltips for text that doesn't show in full** (Ben, 2026-10-31):
+- **Tooltips for text that doesn't show in full** (*done in the kit*
+  2026-11-02, HACKING "Text cut short": every label the kit cuts with
+  "…" or that runs past its clip, Tracker's icon names, Telegram's chat
+  list, Passwords' titles; ⌘ shows it at once; and app_server's window
+  tabs, `tabtip`. *Left*: app_server's other text (Twitcher, the
+  overview's labels), text fields scrolled sideways, Telegram's
+  attachment chips and bubbles, text in GPUI's own text elements, and
+  agents reading a cut text's whole as its name) (Ben, 2026-10-31):
   "when hovering over anything in olo or any olo app where the text has
   been truncated or occluded or otherwise is not being displayed in full
   then there should be a tooltip that appears showing the full text".
@@ -2763,9 +2780,11 @@ as they land (with the commit), add new ones as they come up.
   right click close to the deskbar and a menu opens it is under the
   deskbar -- it should always be on top". ~~Fixed~~: a window's menus
   (its popups) are drawn over the Top layer, Deskbar included, and take
-  the pointer there (`menu_elements`, `window_menu_under`). Left: where
-  one would run off the usable area it may open over Deskbar rather
-  than be pushed away from the pointer (`unconstrain_popup`).
+  the pointer there (`menu_elements`, `window_menu_under`). And none is
+  pushed away from the pointer by Deskbar: `unconstrain_popup` keeps
+  menus on the display, not out of Deskbar's corner (checked
+  2026-11-02: the desktop's menu, opened beside Deskbar, opens at the
+  pointer over it).
 - **Displays: kept where they are, numbered for good** (Ben, 2026-10-31):
   "we absolutely must get these upgrades (and connecting/disconnecting
   monitors) keeping things where they already were on the right

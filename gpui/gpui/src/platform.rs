@@ -276,6 +276,11 @@ pub(crate) trait Platform: 'static {
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     fn read_from_primary(&self) -> Option<ClipboardItem>;
     fn read_from_clipboard(&self) -> Option<ClipboardItem>;
+    /// Olo: what's on the clipboard if this app put it there (whole, as
+    /// copied), read in memory; None if another program has it.
+    fn own_clipboard(&self) -> Option<ClipboardItem> {
+        None
+    }
     /// Olo: the MIME types what's on the clipboard is offered as.
     fn clipboard_types(&self) -> Vec<String> {
         Vec::new()

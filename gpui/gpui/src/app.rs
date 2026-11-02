@@ -581,6 +581,9 @@ pub struct App {
     quitting: bool,
 }
 
+/// Olo: the types text is copied as that Paste reads, best first.
+const TEXT_TYPES: [&str; 2] = ["text/plain;charset=utf-8", "UTF8_STRING"];
+
 impl App {
     /// [`AppContext::update_entity`] for an update begun at `at`, for
     /// callers that reach it through a closure (Olo: debug builds name it
@@ -1166,6 +1169,45 @@ impl App {
             None => Task::ready(None),
             Some(crate::ClipboardReceipt::Ready(bytes)) => Task::ready(Some((mime, bytes))),
             Some(crate::ClipboardReceipt::Read(read)) => self.background_executor().spawn(async move { read().map(|bytes| (mime, bytes)) }),
+        }
+    }
+
+    /// Olo: what's on the clipboard as [`Self::read_from_clipboard`] gives
+    /// it (its text, else a picture; this app's own copy whole, as it was
+    /// copied), read off the UI thread when another program has it: one
+    /// slow to give it, or that never does, never holds the UI up. What
+    /// Paste uses.
+    pub fn paste_item(&self) -> Task<Option<ClipboardItem>> {
+        if let Some(own) = self.platform.own_clipboard() {
+            return Task::ready(Some(own));
+        }
+        let types = self.platform.clipboard_types();
+        let offered = |mime: &str| types.iter().any(|t| t == mime);
+        let (mime, image) = if let Some(text) = TEXT_TYPES.into_iter().find(|t| offered(t)) {
+            (text.to_owned(), None)
+        } else if let Some(format) = <crate::ImageFormat as strum::IntoEnumIterator>::iter().find(|f| offered(f.mime_type())) {
+            (format.mime_type().to_owned(), Some(format))
+        } else {
+            return Task::ready(None);
+        };
+        let make = move |bytes: Vec<u8>| match image {
+            // (As `read_from_clipboard`: Windows' line ends made Unix's.)
+            None => String::from_utf8(bytes).ok().map(|t| ClipboardItem::new_string(t.replace("\r\n", "\n"))),
+            Some(format) => Some(ClipboardItem::new_image(&crate::Image::from_bytes(format, bytes))),
+        };
+        match self.platform.receive_clipboard(&mime) {
+            None => Task::ready(None),
+            Some(crate::ClipboardReceipt::Ready(bytes)) => Task::ready(make(bytes)),
+            Some(crate::ClipboardReceipt::Read(read)) => self.background_executor().spawn(async move { read().and_then(make) }),
+        }
+    }
+
+    /// Olo: whether Paste would find text, known without reading it (to
+    /// enable a Paste item).
+    pub fn clipboard_has_text(&self) -> bool {
+        match self.platform.own_clipboard() {
+            Some(own) => own.text().is_some(),
+            None => self.platform.clipboard_types().iter().any(|t| TEXT_TYPES.contains(&t.as_str())),
         }
     }
 

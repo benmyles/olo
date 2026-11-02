@@ -107,3 +107,4 @@ airpods|a pair of glossy white wireless earbuds with short straight stems and da
 airpods-case|a closed glossy white rounded charging case for wireless earbuds, a softly rounded rectangle with a thin seam under its lid and a small green status light on its front
 airpod-left|a single glossy white wireless earbud with a short straight stem pointing down and a soft grey silicone tip facing left, seen in three-quarter view standing on the desk
 airpod-right|a single glossy white wireless earbud with a short straight stem pointing down and a soft grey silicone tip facing right, seen in three-quarter view standing on the desk
+default-apps|a white paper document with a folded corner and grey text lines, with a small Be-blue application cube standing in front of it at the lower right

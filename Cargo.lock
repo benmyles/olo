@@ -6802,8 +6802,8 @@ version = "0.1.0"
 dependencies = [
  "deep_filter",
  "ndarray",
+ "olo-protocol",
  "realfft",
- "serde",
  "sonora",
 ]
 

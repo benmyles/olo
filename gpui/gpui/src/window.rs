@@ -1508,9 +1508,13 @@ impl Window {
     }
 }
 
+/// What dispatching an event came to (`Window::dispatch_event`). (Olo:
+/// public, as the dispatch is: the kit clicks a tab for `spotlight`.)
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct DispatchEventResult {
+pub struct DispatchEventResult {
+    /// Nothing stopped it.
     pub propagate: bool,
+    /// Something said its default isn't to happen.
     pub default_prevented: bool,
 }
 

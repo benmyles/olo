@@ -454,6 +454,8 @@ struct Shown {
 pub struct Editor {
     focus: FocusHandle,
     scroll: ScrollHandle,
+    /// What the clipboard held, read for a Paste (`run`), to put in.
+    pasted: Option<ClipboardItem>,
     paras: Vec<Para>,
     /// Where each paragraph starts down the text (and the total, last).
     tops: Vec<f32>,
@@ -594,6 +596,7 @@ impl Editor {
         let mut e = Editor {
             focus: cx.focus_handle().tab_stop(true),
             scroll: ScrollHandle::new(),
+            pasted: None,
             paras: Vec::new(),
             tops: Vec::new(),
             tops_dirty: true,
@@ -1532,7 +1535,7 @@ impl Editor {
                 return false;
             }
             Cmd::Paste if o.editable => {
-                let Some(item) = cx.read_from_clipboard() else { return false };
+                let Some(item) = self.pasted.take() else { return false };
                 return match doc.paste(&item, sel.clone()) {
                     Some(t) if !t.is_empty() => {
                         self.edit(doc, sel, &t.replace("\r\n", "\n").replace('\r', "\n"));
@@ -1965,8 +1968,30 @@ pub fn edit<V: EditorHost>(host: &Entity<V>, key: usize, edit: Edit, window: &mu
     run(host, key, k, window, cx);
 }
 
-/// Runs command `k` on editor `key` of `host`.
+/// Runs command `k` on editor `key` of `host`. A Paste once what the
+/// clipboard holds is read, off the UI thread (`paste_item`: a program
+/// slow to give what it copied never holds the editor up), where the
+/// selection is then.
 fn run<V: EditorHost>(host: &Entity<V>, key: usize, k: Cmd, window: &mut Window, cx: &mut App) {
+    if k == Cmd::Paste {
+        let read = cx.paste_item();
+        let (host, win) = (host.downgrade(), window.window_handle());
+        cx.spawn(async move |cx| {
+            let Some(item) = read.await else { return };
+            let _ = win.update(cx, |_, window, cx| {
+                let Some(host) = host.upgrade() else { return };
+                let mut item = Some(item);
+                host.update(cx, |v, cx| v.editor(key, cx, &mut |ed, _, _| ed.pasted = item.take()));
+                run_now(&host, key, Cmd::Paste, window, cx);
+            });
+        })
+        .detach();
+        return;
+    }
+    run_now(host, key, k, window, cx);
+}
+
+fn run_now<V: EditorHost>(host: &Entity<V>, key: usize, k: Cmd, window: &mut Window, cx: &mut App) {
     let sh = window.text_system().clone();
     host.update(cx, |v, cx| {
         let mut changed = false;

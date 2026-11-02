@@ -309,6 +309,31 @@ pub fn uri_list_paths(list: &str) -> Vec<std::path::PathBuf> {
         .collect()
 }
 
+/// The path `text` names written whole, as it's copied or typed:
+/// absolute, from home (`~`, `~/…`) or a `file://` URI; quoted, or with
+/// a trailing newline, as copied. With how it's to be shown: as written
+/// (`~/…` kept), a URI's as its path. None for anything else (a word that
+/// could be a name anywhere, more than a line).
+pub fn written_path(text: &str) -> Option<(String, std::path::PathBuf)> {
+    let t = text.trim();
+    if t.is_empty() || t.contains('\n') {
+        return None;
+    }
+    let t = ['"', '\''].iter().find_map(|q| t.strip_prefix(*q).and_then(|t| t.strip_suffix(*q))).unwrap_or(t);
+    let home = || std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_else(|| "/".into());
+    if t.starts_with("file://") {
+        let p = uri_list_paths(t).into_iter().next()?;
+        return Some((p.to_string_lossy().into_owned(), p));
+    }
+    if t.starts_with('/') {
+        Some((t.to_owned(), t.into()))
+    } else if t == "~" {
+        Some((t.to_owned(), home()))
+    } else {
+        t.strip_prefix("~/").map(|rest| (t.to_owned(), home().join(rest)))
+    }
+}
+
 /// The file name in a dragged file's type (`application/octet-stream;
 /// name="sun.png"`, what Chrome and Electron drag a picture out of a
 /// page as), made safe to save under (no folders, not hidden).

@@ -82,6 +82,10 @@ pub trait LinuxClient {
     }
     fn read_from_primary(&self) -> Option<ClipboardItem>;
     fn read_from_clipboard(&self) -> Option<ClipboardItem>;
+    /// Olo: what's on the clipboard if it's ours.
+    fn own_clipboard(&self) -> Option<ClipboardItem> {
+        None
+    }
     /// Olo: the types on the clipboard now.
     fn clipboard_types(&self) -> Vec<String> {
         Vec::new()
@@ -639,6 +643,10 @@ impl<P: LinuxClient + 'static> Platform for P {
 
     fn read_from_clipboard(&self) -> Option<ClipboardItem> {
         self.read_from_clipboard()
+    }
+
+    fn own_clipboard(&self) -> Option<ClipboardItem> {
+        LinuxClient::own_clipboard(self)
     }
 
     fn clipboard_types(&self) -> Vec<String> {

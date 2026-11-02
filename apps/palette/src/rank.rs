@@ -11,22 +11,28 @@ pub fn words(query: &str) -> Vec<String> {
 /// A score for `title` (with `keywords`, lowercased, space separated)
 /// against `words`, higher is better; None if a word isn't there.
 pub fn score(words: &[String], title: &str, keywords: &str) -> Option<i32> {
+    score_in(words, title, &[keywords])
+}
+
+/// [`score`] with the keywords in parts (an item's own, its subtitle), so
+/// nothing is joined for each item at each key typed.
+pub fn score_in(words: &[String], title: &str, keywords: &[&str]) -> Option<i32> {
     if words.is_empty() {
         return None;
     }
     let title = title.to_lowercase();
     let mut total = 0;
     for w in words {
-        let at_word = title.split(|c: char| !c.is_alphanumeric()).any(|t| t.starts_with(w.as_str()));
-        total += if title.starts_with(w.as_str()) {
+        let w = w.as_str();
+        total += if title.starts_with(w) {
             100
-        } else if at_word {
+        } else if title.split(|c: char| !c.is_alphanumeric()).any(|t| t.starts_with(w)) {
             70
-        } else if title.contains(w.as_str()) {
+        } else if title.contains(w) {
             40
-        } else if keywords.split(' ').any(|k| k.starts_with(w.as_str())) {
+        } else if keywords.iter().any(|k| k.split(' ').any(|k| k.starts_with(w))) {
             45
-        } else if keywords.contains(w.as_str()) {
+        } else if keywords.iter().any(|k| k.contains(w)) {
             20
         } else if in_order(w, &title) {
             10

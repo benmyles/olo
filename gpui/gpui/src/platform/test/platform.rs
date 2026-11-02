@@ -416,6 +416,11 @@ impl Platform for TestPlatform {
         self.current_clipboard_item.lock().clone()
     }
 
+    // (All in memory: as if every app's copy were this one's.)
+    fn own_clipboard(&self) -> Option<ClipboardItem> {
+        self.current_clipboard_item.lock().clone()
+    }
+
     fn write_credentials(&self, _url: &str, _username: &str, _password: &[u8]) -> Task<Result<()>> {
         Task::ready(Ok(()))
     }

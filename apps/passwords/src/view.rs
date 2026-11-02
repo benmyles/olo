@@ -787,9 +787,8 @@ fn header(title: &str, category: ItemCategory, vault: &str, edit: Option<Button>
                 // The title's capitals centred on TITLE_MIDDLE.
                 let room = (b.right() - b.left() - px(x + inset)).max(px(0.0));
                 let font = style::ui_font(FontWeight::BOLD);
-                let shown = style::fit(window, face_title.clone(), TITLE_SIZE, &font, room);
                 let baseline = style::baseline_at(window, b.top() + px(inset + TITLE_MIDDLE), TITLE_SIZE);
-                let t = style::label_on_baseline(window, cx, b.left() + px(x), baseline, style::Align::Left, shown, TITLE_SIZE, font, c(p.document_text));
+                let t = style::label_on_baseline_fit(window, cx, b.left() + px(x), baseline, style::Align::Left, face_title.clone(), TITLE_SIZE, font, c(p.document_text), room);
                 agent::record(window, cx, agent::Node { role: "Heading", name: Some(face_title.clone()), bounds: t, enabled: true, ..Default::default() });
             }
             let s = style::label(window, cx, b.left() + px(x), b.top() + px(inset + 38.0), style::Align::Left, face_sub.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), dim(&p));
@@ -811,9 +810,8 @@ fn header(title: &str, category: ItemCategory, vault: &str, edit: Option<Button>
             move |b, _, window, cx| {
                 let p = theme::palette(cx);
                 let font = style::ui_font(FontWeight::BOLD);
-                let shown = style::fit(window, title.clone(), TITLE_SIZE, &font, (b.size.width - px(m::SPACING)).max(px(0.0)));
                 let baseline = style::baseline_at(window, b.center().y, style::PLAIN_SIZE);
-                let t = style::label_on_baseline(window, cx, b.left(), baseline, style::Align::Left, shown, TITLE_SIZE, font, c(p.document_text));
+                let t = style::label_on_baseline_fit(window, cx, b.left(), baseline, style::Align::Left, title.clone(), TITLE_SIZE, font, c(p.document_text), (b.size.width - px(m::SPACING)).max(px(0.0)));
                 agent::record(window, cx, agent::Node { role: "Heading", name: Some(title.clone()), bounds: t, enabled: true, ..Default::default() });
             },
         )

@@ -38,32 +38,21 @@ pub const HEIGHT: f32 = 300.0;
 /// `~/…`), a `file://` URI, or relative to `base`; quoted or with a
 /// trailing newline as copied. None for nothing or more than a line.
 pub fn parse(text: &str, base: &Path) -> Option<PathBuf> {
+    if let Some((_, path)) = olo_kit_base::files::written_path(text) {
+        return Some(path);
+    }
     let t = text.trim();
     if t.is_empty() || t.contains('\n') {
         return None;
     }
-    let t = ['"', '\''].iter().find_map(|q| t.strip_prefix(*q).and_then(|t| t.strip_suffix(*q))).unwrap_or(t);
-    if t.starts_with("file://") {
-        return olo_kit_base::files::uri_list_paths(t).into_iter().next();
-    }
-    Some(if t == "~" {
-        fs::home()
-    } else if let Some(rest) = t.strip_prefix("~/") {
-        fs::home().join(rest)
-    } else {
-        base.join(t)
-    })
+    Some(base.join(['"', '\''].iter().find_map(|q| t.strip_prefix(*q).and_then(|t| t.strip_suffix(*q))).unwrap_or(t)))
 }
 
 /// A path in the clipboard's text, as it's to be shown in the field:
-/// only an absolute one (or from home, as written, or a `file://` URI's),
-/// not any word that could be a name here.
+/// only one written whole (absolute, from home as written, a `file://`
+/// URI's), not any word that could be a name here.
 fn clipboard_path(text: &str) -> Option<String> {
-    let t = text.trim().trim_matches(['"', '\'']);
-    if t.starts_with('/') || t.starts_with("~/") || t == "~" {
-        return parse(text, Path::new("/")).map(|_| t.to_owned());
-    }
-    t.starts_with("file://").then(|| parse(t, Path::new("/")).map(|p| p.to_string_lossy().into_owned())).flatten()
+    olo_kit_base::files::written_path(text).map(|(shown, _)| shown)
 }
 
 /// The folder `text`'s last name is looked for in, and that name so far
@@ -123,13 +112,22 @@ pub struct GoToWin {
 impl GoToWin {
     pub fn new(app: WeakEntity<Tracker>, base: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> GoToWin {
         let field = text_field(cx, |f| f.hint("A path: /…, ~/… or a name here").name("Go to"));
-        // A path copied, ready to go to.
-        if let Some(p) = cx.read_from_clipboard().and_then(|c| c.text()).as_deref().and_then(clipboard_path) {
-            field.update(cx, |f, cx| {
-                f.set_text(p, cx);
-                f.select_all_text(cx);
+        // A path copied, ready to go to (read off the UI thread:
+        // `paste_item`; put in unless something's been typed by then).
+        let read = cx.paste_item();
+        cx.spawn(async move |this, cx| {
+            let Some(p) = read.await.and_then(|c| c.text()).as_deref().and_then(clipboard_path) else { return };
+            let _ = this.update(cx, |g, cx| {
+                if g.text(cx).is_empty() {
+                    g.field.update(cx, |f, cx| {
+                        f.set_text(p, cx);
+                        f.select_all_text(cx);
+                    });
+                    g.update_matches(cx);
+                }
             });
-        }
+        })
+        .detach();
         field.read(cx).focus(window);
         let list = ListModel::new(cx, false);
         let subs = vec![

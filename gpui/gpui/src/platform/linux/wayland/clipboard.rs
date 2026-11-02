@@ -10,10 +10,7 @@ use strum::IntoEnumIterator;
 use wayland_client::{Connection, protocol::wl_data_offer::WlDataOffer};
 use wayland_protocols::wp::primary_selection::zv1::client::zwp_primary_selection_offer_v1::ZwpPrimarySelectionOfferV1;
 
-use crate::{
-    ClipboardEntry, ClipboardItem, Image, ImageFormat, WaylandClientStatePtr, hash,
-    platform::linux::platform::read_fd,
-};
+use crate::{ClipboardEntry, ClipboardItem, Image, ImageFormat, WaylandClientStatePtr, hash};
 
 /// Text mime types that we'll offer to other programs.
 pub(crate) const TEXT_MIME_TYPES: [&str; 3] =
@@ -93,13 +90,13 @@ impl<T: ReceiveData> DataOffer<T> {
 
         connection.flush().unwrap();
 
-        match unsafe { read_fd(fd) } {
-            Ok(bytes) => Some(bytes),
-            Err(err) => {
-                log::error!("error reading clipboard pipe: {err:?}");
-                None
-            }
+        // Olo: on the UI thread, so not waited for for ever (a program
+        // that never writes it); Paste reads off it (`App::paste_item`).
+        let bytes = read_within(fd, std::time::Duration::from_secs(1));
+        if bytes.is_none() {
+            log::error!("the clipboard's {mime_type} didn't come within a second");
         }
+        bytes
     }
 
     fn read_text(&self, connection: &Connection) -> Option<ClipboardItem> {
@@ -182,6 +179,11 @@ impl Clipboard {
 
     pub fn self_mime(&self) -> String {
         self.self_mime.clone()
+    }
+
+    /// Olo: what's on the clipboard if it's ours (as `read` gives it then).
+    pub fn own(&self) -> Option<ClipboardItem> {
+        self.current_offer.as_ref().filter(|o| o.has_mime_type(&self.self_mime)).and(self.contents.clone())
     }
 
     /// Olo: whether the clipboard is still ours, holding `item`.

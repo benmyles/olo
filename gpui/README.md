@@ -74,7 +74,13 @@ What Olo changed, so far:
   wanted it's offered as (`image/` standing for any picture), on a
   worker, giving up on a program that takes over five seconds to write
   it (upstream read the clipboard on the UI thread until the other
-  program finished). When the clipboard changes (another program
+  program finished). `App::paste_item()` is Paste's: what
+  `read_from_clipboard` gives (its text, else a picture; this app's own
+  copy whole, metadata and all, from memory: `Platform::own_clipboard`)
+  as a task, the other program's read on a worker; and
+  `App::clipboard_has_text()` says whether there's text to paste without
+  reading it. `read_from_clipboard` itself, still on the UI thread, gives
+  up after a second rather than waiting for ever. When the clipboard changes (another program
   copied, or this one), the app's windows are drawn again, so their
   menus' Paste follows it (`Platform::on_clipboard_changed`).
 - Ring slices drawn on the GPU (`Window::paint_sector`): between two

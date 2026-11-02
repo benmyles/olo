@@ -606,6 +606,8 @@ where
     let screen = space.output_geometry(output).map(|g| g.size).unwrap_or_default();
     let indicator = crate::osd::element(renderer, output, screen)
         .map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e)));
+    // A tab's cut title, whole (`tabtip`), as high.
+    let tab_tip = crate::tabtip::element(renderer, output).map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e)));
     // Locked: nothing but what the caller passed (the pointer and the lock
     // screen) over an opaque background.
     if locked {
@@ -646,6 +648,7 @@ where
                 .map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))),
         );
         add_indicator(&mut output_render_elements, indicator);
+        add_indicator(&mut output_render_elements, tab_tip);
 
         crate::shell::groups::mark_behind(space);
         crate::shell::modes::mark_covered(space);
@@ -869,20 +872,23 @@ where
 /// A picture of window `id` alone, for a screen share of it: only what
 /// its client draws (no tab or border), whole even when it is behind
 /// another of its group's tabs, at the scale of the screen it is mostly
-/// on; the elements, and its size in pixels and that scale.
-pub fn window_picture<R>(renderer: &mut R, space: &Space<WindowElement>, id: u64) -> Option<(Vec<FrameElements<R, WindowRenderElement<R>>>, Size<i32, Physical>, f64)>
+/// on; the elements, and its size in pixels and that scale. One `parked`
+/// (on another workspace, hidden) is drawn from what it showed last, at
+/// `output`'s scale (the display it's parked on, whose frame this is).
+pub fn window_picture<R>(renderer: &mut R, space: &Space<WindowElement>, parked: &[WindowElement], output: &Output, id: u64) -> Option<(Vec<FrameElements<R, WindowRenderElement<R>>>, Size<i32, Physical>, f64)>
 where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: smithay::backend::renderer::Texture + Clone + Send + 'static,
 {
-    let window = space.elements().find(|w| w.id() == id)?;
-    let at = space.element_location(window)?;
-    let scale = space.outputs_for_element(window).first().map_or(1.0, |o| o.current_scale().fractional_scale());
-    let geo = SpaceElement::geometry(window);
-    // Where the element draws from, as Space does it.
-    let origin = at - geo.loc;
-    let rect = Rectangle::new(origin + window.content_offset(), window.content_size());
-    let location = (origin - rect.loc).to_f64().to_physical(scale).to_i32_round();
+    let (window, scale) = match space.elements().find(|w| w.id() == id) {
+        Some(w) => (w, space.outputs_for_element(w).first().map_or(1.0, |o| o.current_scale().fractional_scale())),
+        None => (parked.iter().find(|w| w.id() == id)?, output.current_scale().fractional_scale()),
+    };
+    // Drawn from the client's corner: where the window is doesn't
+    // matter (as Space draws it, `at - geometry` less the content's
+    // place in that, `at` cancelling out).
+    let location = (Point::<i32, Logical>::default() - window.content_offset()).to_f64().to_physical(scale).to_i32_round();
+    let rect = Rectangle::new(Point::<i32, Logical>::default(), window.content_size());
     // Whole, though it is behind others in its group (marked so again
     // before the next frame).
     window.decoration().behind = false;

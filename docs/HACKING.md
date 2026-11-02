@@ -25,7 +25,12 @@ like pixel alignment is.
    device), runs on a worker thread and reports back through a `Proxy`
    (`olo_ui::proxy(cx)`, taken in `message_handler`) or a channel a GPUI
    task waits on. No `std::fs` on folders of unknown size, no blocking IPC
-   round-trips and no `wait()` on the UI thread.
+   round-trips and no `wait()` on the UI thread. Nor the clipboard: the
+   program that copied writes it when it gets round to it (or never, if
+   it's stuck), so Paste reads it with `cx.paste_item()` (or
+   `paste_as(types)` for one form) and puts it in when it comes, and a
+   Paste item is enabled by `cx.clipboard_has_text()`, not a read; never
+   `read_from_clipboard`.
 2. **Show progress and keep it live.** Long work shows what it is doing:
    counts, the current item, a `StatusBar` for work with a known size, and
    a "Searching…"/"Copying…" state otherwise. Results stream in as they
@@ -294,7 +299,7 @@ How Olo keeps it (do the same):
 | `crates/ui` | `olo-ui`, the Interface Kit on Olo's GPUI: windows, layer surfaces and popups, menus and the menu bar, BeOS widgets, icons, the agent tree and socket, upgrades. **All apps are built on it** ("The GPUI kit" below). |
 | `crates/kit-base` | `olo-kit-base`: what the kit has that doesn't draw, re-exported by olo-ui under the same names: `instance` (one process per app), `settings`, `notify`, `files`, `places`, `watch`, `tracker`, `metrics` (the spacing system), `Proxy`, `search` (the query language, facets and suggestions), `masonry` (cards in columns), and `commands`, the socket agents and the command palette read apps through (its protocol, server and client), with `review`'s findings and `layout_review`'s checks, `list` (a list's selection and type-select), `spell` and `keys` (the keyboard profile's keys). No GPUI. |
 | `gpui/` | Olo's GPUI, which the kit is built on: GPUI 0.2.2 and blade-graphics 0.7.1, Olo's own from now on (Wayland only, idle windows draw nothing); `gpui/README.md` says what changed. |
-| `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit: data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`, in the current theme: `themes`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; Olo's apps first, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`; and the same for other programs: `open::for_others` gives the hidden `olo.viewer`, `olo.styled-edit` and `olo.tracker` desktop entries, each listing every type shared-mime-info knows that Olo opens with it, and an `olo-mimeapps.list` making them the defaults, which GIO, `gio open`/xdg-open and xdg-desktop-portal's OpenURI read before `mimeapps.list` while `XDG_CURRENT_DESKTOP` names Olo; olo-session writes them into `~/.local/share/applications` at start, makes that folder's `mimeinfo.cache` again when they change (`open::mime_cache`, as update-desktop-database would: GIO only finds an app for a type through it) and removes ones it wrote that are no longer wanted, `X-Olo-Written=true`; and, once Olo's Chrome is installed, `open::offer_browser` writes `~/.local/share/applications/olo-mimeapps.list` naming it for web pages and links, read after every `mimeapps.list` in the config directories so a browser the person chose wins, but ahead of the system's lists), `find_program`, `spawn_detached` (`spawn_detached_app` and `open::spawn_app` for a desktop entry's program, in a scope of its own: `scope`). |
+| `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit: data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`, in the current theme: `themes`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; the person's own choice first (`open::set_default`, kept in `~/.config/olo/default-apps.list` in mimeapps.list's form and copied into `olo-mimeapps.list` for other programs; `handler_cached` notices it changed, in any process), then Olo's apps, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`; Open With's few apps for a kind, `open::handlers_for`: as the person set them (`set_offered`), else the one it opens in, Olo's own for it, then those whose entries claim it or a broader kind, by name, eight at most; worked out off the UI thread by `open::warm` (a folder's kinds, as Tracker lists it) and read by menus from `offer_cached`; `open::kind_of` names a kind by the file's name alone; desktop entries are kept until an applications folder changes, `desktop_entry::all_cached`; and the same for other programs: `open::for_others` gives the hidden `olo.viewer`, `olo.styled-edit` and `olo.tracker` desktop entries, each listing every type shared-mime-info knows that Olo opens with it, and an `olo-mimeapps.list` making them the defaults, which GIO, `gio open`/xdg-open and xdg-desktop-portal's OpenURI read before `mimeapps.list` while `XDG_CURRENT_DESKTOP` names Olo; olo-session writes them into `~/.local/share/applications` at start, makes that folder's `mimeinfo.cache` again when they change (`open::mime_cache`, as update-desktop-database would: GIO only finds an app for a type through it) and removes ones it wrote that are no longer wanted, `X-Olo-Written=true`; and, once Olo's Chrome is installed, `open::offer_browser` writes `~/.local/share/applications/olo-mimeapps.list` naming it for web pages and links, read after every `mimeapps.list` in the config directories so a browser the person chose wins, but ahead of the system's lists), `find_program`, `spawn_detached` (`spawn_detached_app` and `open::spawn_app` for a desktop entry's program, in a scope of its own: `scope`). |
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
 | `apps/airpods` | `olo-airpods`: AirPods, natively (see "AirPods"): the session's service and its command line. |
 | `crates/eld` | `olo-eld`: an AAC-ELD decoder in Rust (AirPods' microphone stream: mono, 480 samples a frame, no SBR). Huffman tables vendored from Symphonia (MPL-2.0), the standard's band, TNS and window tables transcribed (`tables.rs`); checked against libfdk-aac's decode of a libfdk-made stream (`tests/fdk.rs`: 85 dB) and, with `--ignored`, of a real capture. |
@@ -574,7 +579,9 @@ fn main() {
   exclusive zone, margins). One naming an output not known yet waits for
   it. `keyboard` is `None`, `OnDemand` (focus on click: the desktop) or
   `Exclusive` (every key while it is up: pickers such as Screenshot's
-  region overlay). A click on a top or overlay layer that is `None`
+  region overlay; app_server gives it the keyboard on the commit it
+  first shows with, and the clipboard's offer with it, so it can paste
+  or read the clipboard at once). A click on a top or overlay layer that is `None`
   (Deskbar) leaves the keyboard where it was, never going through to
   what is under it; a menu of its closing hands the keyboard back to
   what had it as the menu opened.
@@ -754,6 +761,41 @@ a rest, at once if another showed a moment ago, and not after a click
 (`tip::pressed`). Use it where the tip can be wider or taller than the
 window: Deskbar's tray, Terminal's sudo window's command. Elsewhere
 `widgets::tooltip` is fine.
+
+### Text cut short (`olo_ui::cut`)
+
+Text that doesn't show in full shows whole in the kit's tip (`tip`)
+when the pointer rests on it, at once while ⌘ (Super) is held (⌘ as
+apps get it: the right Ctrl with a profile that has a command key,
+`cut::command_held`, as Terminal tells it). Every kit window does it:
+its `Frame` follows the pointer, a press puts the tip away until the
+pointer leaves the text. What the kit cuts is noted as it's painted:
+`style::label_fit`, `label_runs_fit` and `label_on_baseline_fit` (list
+cells, tab and strip titles, pop-up menu fields, sidebars, dashboards,
+thumbnails), and a label running past the side of what it's painted in
+(`label`, `label_runs`; a row half scrolled out of view, top or bottom,
+isn't). An app that cuts text itself says so with `cut::note(window,
+full, bounds)` (Tracker's icon names). The notes are paint records, so
+a cached view's replay keeps them; the pointer's moves look through
+them once after each frame drawn, then through the few rectangles cut
+(0.3–1.9 µs a move in Tracker and Activity Monitor).
+
+### Showing a control (`olo_ui::spotlight`)
+
+`spotlight::show(handle, tab, group, name, cx)` says "here" about one
+control, as macOS's System Settings lights what its search found: the
+tab called `tab` is clicked if it isn't the one showing, then the
+control called `name` (a label's colon aside) is found in the window's
+agent tree, in the innermost `Group` called `group` if there is one
+(else any so named: a box's name can be the device's), and lit with a
+ring in the keyboard-navigation colour, two lines wide on device
+pixels, over a faint wash. It comes in 150 ms, holds and goes over the
+last 450 of `spotlight::LIT` (1.6 s); the window's `Frame` draws it
+over everything else. Frames are asked for only while it comes and
+goes: held, one timer wakes the window for its going, and once gone
+nothing runs. False if there's no such control. Preferences uses it
+for `--show` (the command palette's settings); an agent can use it to
+show the person what it's talking about.
 
 ### What every app does the same way
 
@@ -1201,7 +1243,8 @@ event reaches it.
   with the current choice over the field: `menu::popup_over`),
   `TextControl` (label, divider,
   the sunken well around a `TextField`), `StringView` (`dim`, `bold`),
-  `BBox` (etched frame, bold label in its top line, `content_width`),
+  `BBox` (etched frame, bold label in its top line, `content_width`;
+  agents read it as a `Group` named by its label, round what's in it),
   `EmptyState` (an icon, a line, a detail and an action button,
   centred in what it's given: a list or pane with nothing in it).
   Each is a `widgets::Control` underneath: an element that keeps
@@ -2490,6 +2533,10 @@ other: a control in a row, a cell in a list, isn't over it),
 `text-outside` and `text-over-text` (lines' ink over each other; their
 boxes may touch by their leading). `Lint::window(options, build)`
 returns what it found; `assert_clean` fails a test with it, a line each.
+`Lint::trees(options, build)` gives what agents read of the window
+instead (`agent::tree`, 1× light), as it opens and with each of its
+tabs clicked: for indexes made from what windows show (Preferences'
+settings).
 
 `cargo ui-lint` runs every `ui_lint` test: the kit's own (a form of its
 widgets is clean; controls put over each other are found) and every
@@ -2571,6 +2618,29 @@ opened, its own `panel::State` and text fields).
   always was.
 * New panel: add it to `Panel` (arg, title, icon, size, reset), write the
   module, add it to `PREFERENCE_PANELS`, journal it light and dark.
+* **Default Apps** (`default_apps.rs`): each kind of file and link
+  (`KINDS`: Text, PDF, Word documents, … Pictures, Movies, Music, …
+  Folders, Web pages and links, Email links; each a few MIME types) with
+  the app it opens in, a pop-up of the apps Open With offers for it
+  (`olo_xdg::open::handlers_for`, of its first type), all one width; a
+  choice is made for every type of the kind (`open::set_default`: for
+  Olo and, in `olo-mimeapps.list`, for other programs). Worked out and
+  written on a worker; "Looking for apps…" until then. Under `cfg(test)`
+  made-up apps, so the lint and the settings index don't depend on the
+  computer.
+* **Every setting, findable** (`olo_xdg::settings::PREFERENCE_SETTINGS`):
+  each control in every panel (check box, radio button, slider, pop-up
+  menu, text field, colour well, button) with its panel, tab and box,
+  made from the panels as they're drawn (`Lint::trees`) by the
+  `ui_lint_settings_index` test, which fails when a panel's controls
+  change and the index wasn't remade: `OLO_WRITE_SETTINGS=1 cargo
+  ui-lint` writes `crates/xdg/src/settings.rs`. Left out: a list's rows,
+  scroll arrows, Defaults and Revert, a state shown as a button, a
+  problem's fix, the made-up displays and devices (by their names;
+  `generic_group` names their boxes as on any computer). The command
+  palette lists them; `olo-preferences PANEL --tab TAB --group BOX
+  --show NAME` opens the panel (or brings it forward) with the control
+  lit (`olo_ui::spotlight`), once the window has drawn.
 * **Integrations** (`integrations.rs`) is where every service Olo works
   with is connected, and only there: one box per service with its own
   icon (the service's mark made an Olo object, drawn for every theme as
@@ -2831,7 +2901,16 @@ opened, its own `panel::State` and text fields).
 Appearance ▸ Longest window title is `Settings::tab_title_chars` (100):
 app_server's decorations cut a title to it with an ellipsis
 (`deco::cut`, set by `deco::set_title_chars` on load and on every
-settings change) before measuring and drawing the tab.
+settings change) before measuring and drawing the tab. A title a tab
+cuts short (by that, or by its room) shows whole on a tooltip's plate
+under the tab once the pointer rests on it (500 ms, as the kit's
+tips), at once while ⌘ is held, as the kit shows the text it cuts
+(`tabtip`: `Decoration::cut_title` says where a cut title is, the
+pointer's motion over the tab arms one timer, the plate is drawn with
+the display's frame over all but the pointer, slid to stay on the
+display; a press puts it away until the pointer leaves). The motion
+comes inside smithay's pointer handle, which holds its lock: nothing
+there asks the pointer (where the tip goes is worked out as it shows).
 
 Appearance ▸ Show icons in the Deskbar menu is
 `Appearance::menu_icons` (on): Deskbar builds its Olo menu with an
@@ -4348,7 +4427,12 @@ its request, for the app's Cancel and for holding an upgrade off.
   only what its client draws (no tab or border, `render::window_picture`),
   whole even behind another tab of its group, at that screen's scale;
   its size is the client's, and the stream is offered again when it
-  resizes. Closing it stops its sessions, and the share ends two
+  resizes. One on another workspace, or hidden, is drawn with the frame
+  of the display it's parked on, from what it showed last (it draws
+  nothing new while unseen), so the share picker's thumbnail shows it
+  and a share of it starts (`capture_windows_on`, `capture_window`).
+  Nothing about shares is looked at in a frame unless one waits for a
+  frame (`Captures::pending`). Closing it stops its sessions, and the share ends two
   seconds later (`Capture::stopped`): app_server stops every session as
   it goes too (a reload, an upgrade), so a stop is only an end if the
   connection outlives it; else the share waits for app_server and
@@ -5708,6 +5792,19 @@ A Catppuccin scheme draws as its own ports do (`Scheme::catppuccin`:
 Text on Base, Rosewater cursor, its 16 ANSI colours); the choices are
 `Settings::light_colors` / `dark_colors`.
 
+Text is kept legible whatever background a program had in mind
+(`colors::legible`, as iTerm's minimum contrast): a cell's text is at
+least WCAG's 4.5:1 from its background (`MIN_CONTRAST`), moved toward
+black or white just as far as it takes, its hue kept, so a dark
+terminal's pale greys and blues, its bright white, or the default text
+on a band a program drew (a diff's dark green, a composer's grey) read
+in light mode, and faint text (SGR 2, mixed two thirds toward the
+background) stays faint. Not moved: text the colour of its cell (hidden
+on purpose) and characters that are pictures (box drawing, blocks,
+Powerline's, `colors::graphic`). Per cell after faint and inverse;
+14 ns a cell legible already, 56 ns moved, and the last pair is kept
+(colours come in runs), on rows rebuilt only.
+
 **sudo in a window** (`src/sudo.rs`, `src/olo_sudo.rs`, `src/sudo_wire.rs`).
 A coding agent's commands have no terminal to type a password into
 (Claude Code runs each in a session of its own, reading /dev/null), so
@@ -6128,7 +6225,20 @@ put it away.
   keyboard (app_server's focus is then the overlay). Shortcuts are done
   to that window through `Request::RunShortcut { id, window }`.
 * **Sources** (`sources.rs`): applications (ours, then desktop entries),
-  preference panels, light/dark appearance, app_server's shortcuts with
+  "Go to ~/src/olo" for a path copied (offered first, before anything
+  is typed) or typed whole (`sources::go_to`: absolute, `~/…`, a
+  `file://` URI's, offered when there's something there; Tracker shows
+  it, `Action::Reveal`: a folder in its window, a file selected in its
+  folder's; the clipboard is read with `paste_as` once the overlay has
+  the keyboard, as its offer comes with that, and the path looked for
+  on a worker, as a typed one is, so a program slow to give what it
+  copied or a slow disk never holds the palette up), preference panels
+  and every setting in them (`PREFERENCE_SETTINGS`: "Pinch to zoom —
+  Preferences ▸ Touchpad & Mouse ▸ Gestures ▸ Scrolling"; a choice or a
+  short name is titled with its box, "Theme: Dark"; found too by what
+  it's called elsewhere, `KNOWN_AS`: "night shift", "palm rejection", a
+  test keeping each naming a setting that's there; chosen, Preferences
+  opens on it, lit), light/dark appearance, app_server's shortcuts with
   their current keys (`keys_for`, shown as on a Mac, so "tile" lists every
   tiling shortcut and its keys), open windows, the front app's menu
   commands with their keys (`olo_ui::commands`, asked of the process
@@ -6286,10 +6396,18 @@ deferred so the Tracker can update the window back):
 - `quicklook.rs`: olo-preview's `PreviewView` with the footer and keys;
   its window opens when the preview comes (or after 120 ms with a
   spinner) and has the keyboard.
+- **Open With ▸** on a file's or folder's menu, its kind's apps
+  (`folder::open_with_menu`, from `olo_xdg::open::offer_cached`, warmed
+  as the folder is listed; the one it opens in marked "(default)"), and
+  **Always Open With ▸** the same apps (the kind's checked) making one
+  the kind's default for Olo and other programs (`open::set_default`,
+  on a thread) as it opens the selection with it. Shown when what's
+  selected is all one kind.
 - `goto.rs`: Go ▸ Go to File or Folder… (⇧⌘G, Finder's Go to Folder),
   a dialog over the folder's window: the field holds a path copied
-  (absolute, `~/…` as written, a `file://` URI's; `goto::parse` takes
-  quotes and a trailing newline too), selected, so Return goes; the
+  (absolute, `~/…` as written, a `file://` URI's:
+  `olo_kit_base::files::written_path`, which takes quotes and a
+  trailing newline too, as the palette's Go to does), selected, so Return goes; the
   names its folder has that what's typed could be listed under it,
   each folder read once on a worker; Tab completes (the chosen name, or
   as far as they agree, case aside) where there's one to complete to,

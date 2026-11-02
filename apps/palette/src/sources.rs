@@ -75,6 +75,8 @@ pub enum Action {
     /// A command from the menus of the app with this process id.
     Menu { pid: u32, command: String },
     Open(PathBuf),
+    /// A folder, or a file in its folder, shown in Tracker.
+    Reveal(PathBuf),
     Password { vault: String, id: String },
     Copy(String),
     /// The desktop's light or dark appearance.
@@ -94,7 +96,9 @@ impl Action {
             Action::Password { vault, id } => format!("password:{vault}/{id}"),
             Action::Theme(dark) => format!("theme:{dark}"),
             // Windows and menus come and go; sums and searches are one-offs.
-            Action::Activate(_) | Action::Menu { .. } | Action::Copy(_) | Action::Search(_) => return None,
+            // Windows and menus come and go; sums, searches and paths gone
+            // to are one-offs.
+            Action::Activate(_) | Action::Menu { .. } | Action::Copy(_) | Action::Search(_) | Action::Reveal(_) => return None,
         })
     }
 }
@@ -145,8 +149,71 @@ pub enum Found {
     Passwords(u64, Vec<Item>),
 }
 
+/// The MIME types text is copied as (what's on the clipboard read as
+/// text, for a path in it).
+pub const TEXT: [&str; 3] = ["text/plain;charset=utf-8", "UTF8_STRING", "text/plain"];
+
+/// "Go to" the path written whole in `text` (`files::written_path`: one
+/// copied, or typed), if there's something there: shown in Tracker, a
+/// folder in its window, a file selected in its folder's. Reads the
+/// disk: off the UI thread.
+pub fn go_to(text: &str, copied: bool) -> Option<Item> {
+    let (shown, path) = olo_kit_base::files::written_path(text)?;
+    let dir = std::fs::metadata(&path).ok()?.is_dir();
+    let what = if copied { "The path in the clipboard, in Tracker" } else { "In Tracker" };
+    Some(Item::new(Kind::Command, format!("Go to {shown}"), Action::Reveal(path)).subtitle(what).icon(if dir { "folder" } else { "document" }).keywords("go to folder file path clipboard tracker reveal"))
+}
+
+/// What settings are also called, in other systems and in everyday
+/// words, for those who search by them: (panel, the setting's name or its
+/// box's, words). A test keeps each naming one that's there.
+const KNOWN_AS: &[(&str, &str, &str)] = &[
+    ("appearance", "Theme", "dark mode light mode appearance"),
+    ("appearance", "Night Mode", "night shift night light blue light warm colour temperature"),
+    ("appearance", "Glow new windows for", "highlight new window"),
+    ("backgrounds", "Wallpaper", "desktop background picture image"),
+    ("datetime", "24-hour clock", "military time 24h"),
+    ("default-apps", "Documents", "default app open with file types associations"),
+    ("default-apps", "Pictures, Movies and Music", "default app open with file types associations"),
+    ("default-apps", "Everything Else", "default app open with file types associations"),
+    ("default-apps", "Web pages and links", "default browser"),
+    ("default-apps", "Email links", "default mail email client"),
+    ("datetime", "Set date and time automatically", "ntp network time sync clock"),
+    ("datetime", "Set Time Zone", "timezone"),
+    ("display", "Scale", "zoom size hidpi retina resolution bigger smaller"),
+    ("display", "Refresh rate", "hz 120hz 60hz frequency"),
+    ("display", "Brightness", "dim screen"),
+    ("display", "Use as", "main primary mirror extend arrangement"),
+    ("keyboard", "Key Repeat", "key repeat typematic"),
+    ("keyboard", "Layout", "keymap language input source qwerty dvorak"),
+    ("keyboard", "Caps Lock is another Control key", "remap caps ctrl"),
+    ("keyboard", "Press Control twice for keyboard hints", "ctrl ctrl hints"),
+    ("keyboard", "Profile", "mac windows beos shortcuts keys"),
+    ("network", "Wi-Fi", "wifi wireless wlan internet"),
+    ("notifications", "Do Not Disturb", "dnd focus quiet silence mute notifications"),
+    ("power", "Turn the display off after", "screen sleep blank monitor off"),
+    ("power", "Put the computer to sleep after", "suspend standby"),
+    ("power", "Caffeinated", "caffeine amphetamine keep awake no sleep"),
+    ("screensaver", "Enable Screen Saver", "screensaver"),
+    ("screensaver", "Password lock", "lock screen"),
+    ("sound", "Volume", "loudness speaker output level"),
+    ("sound", "Input level", "microphone mic gain"),
+    ("touchpad", "Tracking speed", "pointer cursor speed sensitivity"),
+    ("touchpad", "Mouse speed", "pointer cursor speed sensitivity dpi"),
+    ("touchpad", "Tap to click", "tapping"),
+    ("touchpad", "Natural scrolling (content follows your fingers)", "reverse invert scroll direction"),
+    ("touchpad", "Click with two fingers for a secondary click", "right click"),
+    ("touchpad", "Left-handed (swap the buttons)", "swap mouse buttons"),
+    ("touchpad", "Focus follows the pointer", "focus follows mouse sloppy focus"),
+    ("touchpad", "Keep scrolling after a flick", "momentum inertia kinetic scrolling"),
+    ("touchpad", "Pinch to zoom", "pinch zoom gesture"),
+    ("touchpad", "Palms and Hovering Fingers", "palm rejection"),
+    ("touchpad", "Ignore the touchpad while typing", "palm rejection disable while typing dwt"),
+    ("windows", "Default mode", "tiling floating stacking"),
+];
+
 /// Installed applications, our own first, the preference panels and the
-/// desktop's appearance.
+/// settings in them, and the desktop's appearance.
 pub fn fixed() -> Vec<Item> {
     let mut items = Vec::new();
     let mut ours = Vec::new();
@@ -175,6 +242,25 @@ pub fn fixed() -> Vec<Item> {
                 .icon(*icon)
                 .subtitle("Preferences")
                 .keywords(format!("settings preferences {arg}")),
+        );
+    }
+    // Every setting in the panels (`olo_xdg::settings`, made from them as
+    // they're drawn), named with its panel: Preferences opens on it, lit.
+    for s in olo_xdg::settings::PREFERENCE_SETTINGS {
+        let Some((_, panel, icon)) = PREFERENCE_PANELS.iter().find(|(arg, _, _)| *arg == s.panel) else { continue };
+        // (A choice, or a short name, says what it's of: "Theme: Dark",
+        // "Night Mode: Warmth"; by its box's own part, "Syncing with
+        // 1Password: Automatically" of "Passwords: Syncing with 1Password".)
+        let of = s.group.rsplit(": ").next().unwrap_or(s.group);
+        let title = if !of.is_empty() && (s.role == "RadioButton" || s.name.chars().count() < 12) { format!("{of}: {}", s.name) } else { s.name.to_owned() };
+        let place = [*panel, s.tab, s.group].iter().filter(|p| !p.is_empty()).copied().collect::<Vec<_>>().join(" ▸ ");
+        let args = vec!["olo-preferences".into(), s.panel.into(), "--tab".into(), s.tab.into(), "--group".into(), s.group.into(), "--show".into(), s.name.into()];
+        let known_as = KNOWN_AS.iter().filter(|(p, n, _)| *p == s.panel && (*n == s.name || *n == s.group)).map(|k| k.2).collect::<Vec<_>>().join(" ");
+        items.push(
+            Item::new(Kind::Preference, title, Action::Spawn(args))
+                .icon(*icon)
+                .subtitle(format!("Preferences ▸ {place}"))
+                .keywords(format!("settings preferences {} {} {} {} {known_as}", s.panel, panel, s.tab, s.group)),
         );
     }
     items.push(Item::new(Kind::Setting, "Dark appearance", Action::Theme(true)).icon("appearance").keywords("dark mode theme night"));
@@ -414,20 +500,21 @@ pub fn find_passwords(query: &str) -> Vec<Item> {
 /// how well each matches, what kind it is, how lately it was chosen
 /// (`boost` of its recents key) and whether it can be done now.
 pub fn ranked<'a>(words: &[String], items: impl Iterator<Item = &'a Item>, boost: impl Fn(&str) -> i32) -> Vec<(i32, Item)> {
-    let mut scored: Vec<(i32, Item)> = Vec::new();
+    // (Items are cloned only once they're among those shown.)
+    let mut scored: Vec<(i32, &Item)> = Vec::new();
     for item in items {
-        let haystack = format!("{} {}", item.keywords, item.subtitle.to_lowercase());
-        let own = crate::rank::score(words, &item.title, &haystack);
+        let subtitle = if item.subtitle.chars().any(char::is_uppercase) { item.subtitle.to_lowercase().into() } else { std::borrow::Cow::Borrowed(item.subtitle.as_str()) };
+        let own = crate::rank::score_in(words, &item.title, &[&item.keywords, &subtitle]);
         // A window is also found by its app's name, as the app is.
         let own = if item.kind == Kind::Window { own.max(crate::rank::score(words, &item.subtitle, "")) } else { own };
         let Some(s) = own else { continue };
         let boost = item.action.key().map_or(0, |k| boost(&k));
         let disabled = if item.enabled { 0 } else { -20 };
-        scored.push((s + item.kind.weight() + boost + disabled, item.clone()));
+        scored.push((s + item.kind.weight() + boost + disabled, item));
     }
     // An app's open windows come just before the app: switching to one
     // is likelier wanted than another window.
-    let apps: Vec<(String, i32)> = scored.iter().filter(|(_, i)| i.kind == Kind::Application).map(|(s, i)| (i.title.clone(), *s)).collect();
+    let apps: Vec<(&str, i32)> = scored.iter().filter(|(_, i)| i.kind == Kind::Application).map(|(s, i)| (i.title.as_str(), *s)).collect();
     for (s, item) in scored.iter_mut().filter(|(_, i)| i.kind == Kind::Window) {
         if let Some((_, a)) = apps.iter().find(|(t, _)| *t == item.subtitle) {
             *s = (*s).max(a + 1);
@@ -435,9 +522,9 @@ pub fn ranked<'a>(words: &[String], items: impl Iterator<Item = &'a Item>, boost
     }
     // Windows that tie keep their order (the one in front last).
     let both_windows = |a: &Item, b: &Item| a.kind == Kind::Window && b.kind == Kind::Window;
-    scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| if both_windows(&a.1, &b.1) { std::cmp::Ordering::Equal } else { a.1.title.cmp(&b.1.title) }));
+    scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| if both_windows(a.1, b.1) { std::cmp::Ordering::Equal } else { a.1.title.cmp(&b.1.title) }));
     scored.truncate(60);
-    scored
+    scored.into_iter().map(|(s, i)| (s, i.clone())).collect()
 }
 
 /// Do `action` (on a worker thread: it may wait on other processes).
@@ -474,6 +561,7 @@ pub fn perform(action: Action, front: Option<u64>) {
                 if commands::invoke(pid, &command) { Ok(()) } else { Err(format!("the app didn’t do “{command}”")) }
             }
             Action::Open(path) => olo_xdg::open::open(&olo_xdg::open::Target::Path(path)).map_err(|e| e.to_string()),
+            Action::Reveal(path) => olo_ui::tracker::open(&path).map_err(|e| e.to_string()),
             Action::Password { vault, id } => {
                 // Passwords may be quit: start it, then ask.
                 if olo_keychain::call(&olo_keychain::Request::Show { vault: vault.clone(), id: id.clone() }).is_err()
@@ -682,6 +770,31 @@ mod tests {
         assert_eq!(titles[..3], ["zeta.txt", "alpha.txt", "StyledEdit"]);
         let titles: Vec<String> = ranked(&crate::rank::words("StyledEdit"), items.iter(), |_| 0).into_iter().map(|(_, i)| i.title).collect();
         assert_eq!(titles[..3], ["zeta.txt", "alpha.txt", "StyledEdit"]);
+    }
+
+    #[test]
+    fn settings_by_their_names_and_other_names() {
+        for (panel, name, _) in KNOWN_AS {
+            assert!(olo_xdg::settings::PREFERENCE_SETTINGS.iter().any(|s| s.panel == *panel && (s.name == *name || s.group == *name)), "no setting or box called {name:?} in {panel}");
+        }
+        let items: Vec<Item> = fixed().into_iter().filter(|i| i.kind == Kind::Preference).collect();
+        let first = |q: &str| ranked(&crate::rank::words(q), items.iter(), |_| 0).first().map(|(_, i)| (i.title.clone(), i.subtitle.clone()));
+        assert_eq!(first("pinch"), Some(("Pinch to zoom".into(), "Preferences ▸ Touchpad & Mouse ▸ Gestures ▸ Scrolling".into())));
+        assert_eq!(first("night shift").map(|t| t.1), Some("Preferences ▸ Appearance ▸ Night Mode".into()));
+        assert_eq!(first("palm rejection").map(|t| t.1.starts_with("Preferences ▸ Touchpad & Mouse ▸ Touch")), Some(true));
+        assert!(items.iter().any(|i| i.title == "Syncing with 1Password: Automatically"));
+    }
+
+    #[test]
+    fn go_to_a_path_written_whole_that_is_there() {
+        let tmp = std::env::temp_dir();
+        let shown = tmp.to_string_lossy().into_owned();
+        let item = go_to(&format!("'{shown}'\n"), true).expect("a folder that's there");
+        assert_eq!((item.title.as_str(), item.icon.as_deref(), &item.action), (format!("Go to {shown}").as_str(), Some("folder"), &Action::Reveal(tmp.clone())));
+        assert_eq!(go_to(&format!("file://{shown}"), false).map(|i| i.action), Some(Action::Reveal(tmp.clone())));
+        assert!(go_to("/no/such/place/here", true).is_none());
+        assert!(go_to("hello", true).is_none() && go_to("/etc\n/usr", true).is_none());
+        assert_eq!(Action::Reveal(tmp).key(), None);
     }
 
     #[test]

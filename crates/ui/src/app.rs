@@ -214,8 +214,15 @@ impl Render for Frame {
         let mut root = div()
             .size_full()
             .track_focus(&self.focus)
-            // A press anywhere in the window puts away a menu open over it.
-            .capture_any_mouse_down(|e, window, cx| crate::menu::press_in(e.position, window, cx))
+            // A press anywhere in the window puts away a menu open over it
+            // (and a cut text's tip).
+            .capture_any_mouse_down(|e, window, cx| {
+                crate::cut::left(window, cx, true);
+                crate::menu::press_in(e.position, window, cx)
+            })
+            // Text cut short: its whole in a tip (`cut`), at once with ⌘.
+            .on_mouse_move(|e: &gpui::MouseMoveEvent, window, cx| crate::cut::moved(window, cx, e.position, crate::cut::command_held(&e.modifiers)))
+            .on_modifiers_changed(|e: &gpui::ModifiersChangedEvent, window, cx| crate::cut::modifiers(window, cx, window.mouse_position(), crate::cut::command_held(&e.modifiers)))
             .on_action(|_: &FocusNext, window, _| window.focus_next())
             .on_action(|_: &FocusPrev, window, _| window.focus_prev())
             // The menu bar's keys, when nothing in the window took them
@@ -252,9 +259,19 @@ impl Render for Frame {
             root = root.bg(style::c(p.panel_background));
         }
         let title = self.title.clone();
+        // Over all of it: a control lit to say "here" (`spotlight`).
+        let lit = canvas(
+            |_, _, _| {},
+            |_, _, window, cx| {
+                crate::spotlight::paint(window, cx);
+                crate::cut::painted(window, cx);
+            },
+        )
+        .absolute()
+        .size_full();
         // Last: the frame is drawn (for a review asked for).
         let done = canvas(|_, _, _| {}, move |_, _, window, _| crate::review::finish(window, &title)).absolute().size_0();
-        root.child(self.content.clone()).child(done)
+        root.child(self.content.clone()).child(lit).child(done)
     }
 }
 
@@ -429,6 +446,7 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
         .detach();
         cx.on_window_closed(|cx| {
             agent::forget_closed(cx);
+            crate::cut::forget_closed(cx);
             let open: std::collections::HashSet<gpui::WindowId> = cx.windows().iter().map(|w| w.window_id()).collect();
             cx.default_global::<DefaultButtons>().0.retain(|id, _| open.contains(id));
             cx.default_global::<TabKeys>().0.retain(|id, _| open.contains(id));

@@ -221,6 +221,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub suppressed_keys: Vec<Keysym>,
     /// ⌘ and friends (see `keymap`).
     pub keymap: crate::keymap::Keymap,
+    /// A tab's cut title, whole, under the pointer (`tabtip`).
+    pub tab_tip: crate::tabtip::TabTip,
     /// Idle, caffeinated mode, brightness (see `power`).
     pub power: crate::power::Power,
     pub saver: crate::saver::Saver,
@@ -438,6 +440,8 @@ impl<BackendData: Backend> SeatHandler for AnvilState<BackendData> {
     }
 
     fn focus_changed(&mut self, seat: &Seat<Self>, target: Option<&KeyboardFocusTarget>) {
+        // A tab's tip goes when something else comes forward (`tabtip`).
+        self.tab_tip_hide();
         let dh = &self.display_handle;
 
         let wl_surface = target.and_then(WaylandFocus::wl_surface);
@@ -994,8 +998,8 @@ impl<BackendData: Backend> ImageCopyCaptureHandler for AnvilState<BackendData> {
 
     fn capture_constraints(&mut self, source: &ImageCaptureSource) -> Option<BufferConstraints> {
         if let Some(crate::capture::WindowSource(id)) = source.user_data().get::<crate::capture::WindowSource>() {
-            let window = self.space.elements().find(|w| w.id() == *id)?;
-            let scale = self.space.outputs_for_element(window).first().map_or(1.0, |o| o.current_scale().fractional_scale());
+            // (On another workspace too: shown as it was last.)
+            let (window, scale) = self.capture_window(*id)?;
             let size = window.content_size().to_f64().to_physical(scale).to_i32_round();
             return Some(crate::capture::constraints_of(size, self.captures.dma.clone()));
         }
@@ -1244,6 +1248,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             dnd_icon: None,
             suppressed_keys: Vec::new(),
             keymap: Default::default(),
+            tab_tip: Default::default(),
             power: crate::power::Power::new(BackendData::IS_SESSION),
             saver: Default::default(),
             lock,

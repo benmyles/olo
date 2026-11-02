@@ -62,6 +62,7 @@ pub fn picture<'a, R>(
     renderer: &mut R,
     output: &Output,
     space: &smithay::desktop::Space<crate::shell::WindowElement>,
+    parked: &[crate::shell::WindowElement],
     what: Target,
     locked: bool,
     screen: impl FnOnce() -> (
@@ -82,7 +83,7 @@ where
             Some(Picture { elements, clear, size: size(output)?, scale: output.current_scale().fractional_scale() })
         }
         Target::Window(id) => {
-            let (elements, size, scale) = crate::render::window_picture(renderer, space, id)?;
+            let (elements, size, scale) = crate::render::window_picture(renderer, space, parked, output, id)?;
             Some(Picture { elements, clear: Color32F::TRANSPARENT, size, scale })
         }
     }
@@ -190,6 +191,12 @@ impl Captures {
     /// stop it).
     pub fn add(&mut self, session: Session) {
         self.casts.push(Cast { session, damage: None, shown: false, target: None, drawn_into: None });
+    }
+
+    /// Whether any session waits for a frame (else there's nothing to
+    /// look at each frame).
+    pub fn pending(&self) -> bool {
+        !self.pending.is_empty()
     }
 
     pub fn remove(&mut self, session: &SessionRef) {

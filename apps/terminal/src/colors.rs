@@ -86,6 +86,61 @@ impl Scheme {
     }
 }
 
+/// The least contrast text keeps against its cell (WCAG's ratio, 1 to
+/// 21: 4.5 is what body text needs, AA; a terminal's default text is
+/// 17 or so, so dim text stays dim).
+pub const MIN_CONTRAST: f32 = 4.5;
+
+/// `fg` as text on `bg`, at least `min` apart: a colour a program chose
+/// for another background (a dark terminal's pale greys on a light one,
+/// a dark band under the default text) moved toward black or white, its
+/// hue kept, just as far as it takes, as iTerm's minimum contrast does.
+/// Text the colour of its cell is left hidden (a program hides it so).
+pub fn legible(fg: Rgb, bg: Rgb, min: f32) -> Rgb {
+    if fg == bg {
+        return fg;
+    }
+    let lb = luminance(bg);
+    if ratio(luminance(fg), lb) >= min {
+        return fg;
+    }
+    // Toward the end with more room from the cell.
+    let to = if ratio(0.0, lb) >= ratio(1.0, lb) { Rgb { r: 0, g: 0, b: 0 } } else { Rgb { r: 255, g: 255, b: 255 } };
+    let (mut lo, mut hi) = (0.0f32, 1.0f32);
+    for _ in 0..10 {
+        let mid = (lo + hi) / 2.0;
+        if ratio(luminance(mix(to, fg, mid)), lb) >= min {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    mix(to, fg, hi)
+}
+
+/// WCAG's contrast between two relative luminances.
+fn ratio(a: f32, b: f32) -> f32 {
+    (a.max(b) + 0.05) / (a.min(b) + 0.05)
+}
+
+/// WCAG's relative luminance (sRGB made linear by a table).
+fn luminance(c: Rgb) -> f32 {
+    static LINEAR: std::sync::LazyLock<[f32; 256]> = std::sync::LazyLock::new(|| {
+        std::array::from_fn(|i| {
+            let v = i as f32 / 255.0;
+            if v <= 0.04045 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+        })
+    });
+    let l = &*LINEAR;
+    0.2126 * l[c.r as usize] + 0.7152 * l[c.g as usize] + 0.0722 * l[c.b as usize]
+}
+
+/// A character that's a picture, not text (box drawing, blocks and
+/// shades, Powerline's arrows): its colours are kept as they are.
+pub fn graphic(c: char) -> bool {
+    matches!(c as u32, 0x2500..=0x259F | 0xE0A0..=0xE0D4 | 0x1FB00..=0x1FBFF)
+}
+
 /// `a` weighted `t` against `b`.
 pub fn mix(a: Rgb, b: Rgb, t: f32) -> Rgb {
     let m = |x: u8, y: u8| (x as f32 * t + y as f32 * (1.0 - t)).round() as u8;
@@ -102,6 +157,26 @@ mod tests {
         let s = Scheme::from(&t);
         assert_eq!((s.name.as_str(), s.background, s.ansi[1]), ("Catppuccin Mocha", Rgb { r: 0x1e, g: 0x1e, b: 0x2e }, Rgb { r: 0xf3, g: 0x8b, b: 0xa8 }));
         assert_eq!(Scheme::light().background, Rgb { r: 0xfb, g: 0xfa, b: 0xf6 });
+    }
+
+    #[test]
+    fn text_kept_legible() {
+        let white = Rgb { r: 0xfb, g: 0xfa, b: 0xf6 };
+        let black = Rgb { r: 0x1e, g: 0x1e, b: 0x2e };
+        // A dark terminal's pale grey on a light cell: darkened to 3:1.
+        let pale = Rgb { r: 0xc0, g: 0xc0, b: 0xc8 };
+        let fixed = legible(pale, white, MIN_CONTRAST);
+        assert!(ratio(luminance(fixed), luminance(white)) >= MIN_CONTRAST && fixed.r < pale.r, "{fixed:?}");
+        // Its hue kept (bluish still), and no darker than it takes.
+        assert!(fixed.b > fixed.r && ratio(luminance(fixed), luminance(white)) < MIN_CONTRAST + 0.2, "{fixed:?}");
+        // Default text on a near-black band a program chose: lightened.
+        let band = Rgb { r: 0x10, g: 0x24, b: 0x18 };
+        let text = legible(black, band, MIN_CONTRAST);
+        assert!(ratio(luminance(text), luminance(band)) >= MIN_CONTRAST && text.g > black.g, "{text:?}");
+        // Legible already, or hidden on purpose: as it was.
+        assert_eq!(legible(black, white, MIN_CONTRAST), black);
+        assert_eq!(legible(white, white, MIN_CONTRAST), white);
+        assert!(graphic('█') && graphic('─') && graphic('\u{e0b0}') && !graphic('a'));
     }
 
     #[test]

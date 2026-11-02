@@ -431,17 +431,18 @@ pub fn run_headless(size_arg: Option<&str>) {
             }
             // Frames programs asked for (screen sharing).
             state.captures.finish();
-            let here = crate::capture::windows_on(&state.space, output, state.lock.locked());
+            let here = if state.captures.pending() { state.capture_windows_on(output, state.lock.locked()) } else { Vec::new() };
             let on_output = |id| here.contains(&id);
-            if state.captures.wanted(output, &on_output) {
+            if state.captures.pending() && state.captures.wanted(output, &on_output) {
                 let color = state.desktop_color(output);
                 let mut overlays = [Some(twitcher_overlay(&mut state, output)), Some(twitcher_overlay(&mut state, output))];
                 let locked = state.lock.locked();
                 let pointer = (state.pointer.current_location(), crate::saver::shown_cursor(&state.saver, &state.cursor_status));
                 let now = state.clock.now().into();
                 let (space, overview) = (&state.space, state.overview.as_ref());
+                let parked = state.parked.0.borrow();
                 state.captures.take(&mut state.backend_data.renderer, output, now, on_output, |renderer, what, cursor| {
-                    crate::capture::picture(renderer, output, space, what, locked, || {
+                    crate::capture::picture(renderer, output, space, &parked, what, locked, || {
                         let overlays = overlays[cursor as usize].take().unwrap_or_default();
                         (overlays, overview, color, cursor.then_some((pointer.0, &pointer.1)))
                     })

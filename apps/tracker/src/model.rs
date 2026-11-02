@@ -118,7 +118,11 @@ impl FolderWin {
                 std::io::ErrorKind::PermissionDenied => "You don't have permission to see inside this folder.".to_owned(),
                 _ => e.to_string(),
             });
+            // What Open With offers for the kinds here, worked out now
+            // (after the listing's gone), so a menu finds it at once.
+            let kinds: std::collections::BTreeSet<String> = result.as_ref().map(|v| v.iter().map(|e| olo_xdg::open::kind_of(&e.name, e.is_dir)).collect()).unwrap_or_default();
             proxy.send(Msg::Listed { win, path, generation, result });
+            olo_xdg::open::warm(kinds);
         });
     }
 

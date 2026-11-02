@@ -5,6 +5,54 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Preferences: Default Apps
+
+*14:06* — A new panel: each kind of file and link with the app it opens in, changeable from the apps that suit it; a choice is the kind's for Olo and for other programs (Tracker's Always Open With chooses too). Its icon, a document with Olo's application cube, from the reference set.
+
+![Preferences: Default Apps](2026-11-02/140643-preferences-default-apps.png)
+
+### Tracker: Open With and Always Open With
+
+*13:51* — A file's menu offers a few apps that suit its kind (its default marked, Olo's own, then those that say they open it), and Always Open With makes one the kind's default for Olo and for other programs.
+
+![Tracker: Open With and Always Open With](2026-11-02/135142-tracker-open-with-and-always-open-with.png)
+
+### Terminal: text kept legible on any background
+
+*13:42* — Before (top) and after: colours a program picked for a dark terminal (pale greys and blues, bright white) or bands it drew (diff lines, a composer's grey) left text nearly invisible in light mode. Now text keeps WCAG's 4.5:1 against its cell, moved toward black or white just as far as it takes, its hue kept; box drawing and blocks as drawn; faint text still faint.
+
+![Terminal: text kept legible on any background](2026-11-02/134227-terminal-text-kept-legible-on-any-background.png)
+
+### A window tab's cut title shows whole
+
+*13:33* — app_server shows the whole title of a window whose tab cuts it short on a tooltip's plate under the tab, once the pointer rests on the title (at once with ⌘), as Olo's apps do for their cut text.
+
+![A window tab's cut title shows whole](2026-11-02/133301-a-window-tab-s-cut-title-shows-whole.png)
+
+### Text cut short shows whole in a tip
+
+*13:23* — Resting the pointer on text the kit cut with … (here a name in Tracker's column) shows all of it in the kit's tip; with ⌘ held, at once. Every kit window does it for every label it cuts or that runs past its clip.
+
+![Text cut short shows whole in a tip](2026-11-02/132341-text-cut-short-shows-whole-in-a-tip.png)
+
+### Command palette: Go to the path in the clipboard
+
+*12:45* — With a path copied (absolute, ~/…, a file:// URI), the palette offers to go there before anything is typed, and a path typed whole is offered too: Tracker shows it, a folder in its window, a file selected in its folder's. Read off the UI thread once the palette has the keyboard, which app_server now gives an exclusive layer as it shows.
+
+![Command palette: Go to the path in the clipboard](2026-11-02/124554-command-palette-go-to-the-path-in-the-clipboard.png)
+
+### A setting found is shown, lit
+
+*12:24* — Chosen in the palette, Preferences opens the setting's panel (on its tab, clicked if need be) with the control ringed in the keyboard-navigation colour for a moment: olo_ui::spotlight, which any app or agent can use to say 'here'. Two lines wide on device pixels; frames only while it comes and goes.
+
+![A setting found is shown, lit](2026-11-02/122420-a-setting-found-is-shown-lit.png)
+
+### Command palette: every setting in Preferences
+
+*12:24* — Each control in every Preferences panel is a palette result, named with its panel, tab and box, and found by the words people use for it elsewhere ('night shift' finds Night Mode). The index is made from the panels as they're drawn, so a new setting is found without listing it.
+
+![Command palette: every setting in Preferences](2026-11-02/122407-command-palette-every-setting-in-preferences.png)
+
 ### Deskbar: the speaker's menu
 
 *12:06* — Right-click the speaker: every output and input, mute, and while AirPods play, their levels, noise control, Conversation Awareness, Personalized Volume, music or call quality, and both settings panels.

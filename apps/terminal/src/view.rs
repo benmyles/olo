@@ -426,7 +426,9 @@ pub fn paint(window: &mut Window, cx: &mut App, rect: Bounds<Pixels>, p: Paint, 
     let first = -offset - extra as i32;
     let drawn = rows + extra;
     let at = |line: i32, col: usize| (origin.0 + col as f32 * cw, origin.1 + (line - first) as f32 * ch);
-    // A cell's text and background colours (before any selection).
+    // A cell's text and background colours (before any selection). (The
+    // last pair made legible kept: colours come in runs along a row.)
+    let legible_last = std::cell::Cell::new(None::<(Rgb, Rgb, Rgb)>);
     let cell_colors = |c: &Cell| {
         let mut fg = scheme.resolve(c.fg, colors);
         let mut bg = scheme.resolve(c.bg, colors);
@@ -435,6 +437,18 @@ pub fn paint(window: &mut Window, cx: &mut App, rect: Bounds<Pixels>, p: Paint, 
         }
         if c.flags.contains(Flags::INVERSE) {
             std::mem::swap(&mut fg, &mut bg);
+        }
+        // Readable whatever background the program had in mind
+        // (`colors::legible`); pictures drawn in characters as they are.
+        if !crate::colors::graphic(c.c) {
+            fg = match legible_last.get() {
+                Some((f, b, made)) if f == fg && b == bg => made,
+                _ => {
+                    let made = crate::colors::legible(fg, bg, crate::colors::MIN_CONTRAST);
+                    legible_last.set(Some((fg, bg, made)));
+                    made
+                }
+            };
         }
         (fg, bg)
     };

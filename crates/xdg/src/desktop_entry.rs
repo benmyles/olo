@@ -96,6 +96,23 @@ pub(crate) fn parse(path: &Path) -> Option<DesktopEntry> {
 
 /// Every installed application, first definition of each id winning
 /// (user entries override system ones).
+/// [`all`], kept: read again only when an applications folder changed
+/// (one installed or removed); a look costs a few `stat`s.
+pub fn all_cached() -> std::sync::Arc<Vec<DesktopEntry>> {
+    type Kept = olo_sync::Mutex<Option<(Vec<Option<std::time::SystemTime>>, std::sync::Arc<Vec<DesktopEntry>>)>>;
+    static KEPT: std::sync::OnceLock<Kept> = std::sync::OnceLock::new();
+    let stamps: Vec<Option<std::time::SystemTime>> = app_dirs().iter().map(|d| std::fs::metadata(d).and_then(|m| m.modified()).ok()).collect();
+    let kept = KEPT.get_or_init(Default::default);
+    if let Some((s, all)) = kept.lock().unwrap().as_ref()
+        && *s == stamps
+    {
+        return all.clone();
+    }
+    let fresh = std::sync::Arc::new(all());
+    *kept.lock().unwrap() = Some((stamps, fresh.clone()));
+    fresh
+}
+
 pub fn all() -> Vec<DesktopEntry> {
     let mut seen: HashMap<String, DesktopEntry> = HashMap::new();
     for dir in app_dirs() {
