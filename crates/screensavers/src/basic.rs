@@ -1,12 +1,6 @@
 //! Blackness, BuyNow, Icons and Spots.
 
-use olo_kit::{
-    big_text,
-    egui::{Align2, Color32, FontId, Rect, pos2, vec2},
-    icons, style,
-};
-
-use crate::{Clock, Frame, Info, Module, Opt, Rng, STEP, get_bool, get_f32, hsv};
+use crate::{Anchor, Clock, Color32, Frame, Info, Module, Opt, Rect, Rng, STEP, get_bool, get_f32, hsv, pos2, vec2};
 
 // ---- Blackness ------------------------------------------------------------
 
@@ -17,7 +11,7 @@ struct Blackness;
 
 impl Module for Blackness {
     fn draw(&mut self, f: &Frame) {
-        f.painter.rect_filled(f.rect, 0.0, Color32::BLACK);
+        f.canvas.rect_filled(f.rect, 0.0, Color32::BLACK);
     }
 }
 
@@ -42,20 +36,16 @@ pub const BUY_NOW_BLUE: Color32 = Color32::from_rgb(0, 0, 100);
 impl Module for BuyNow {
     fn draw(&mut self, f: &Frame) {
         self.t += f.dt;
-        f.painter.rect_filled(f.rect, 0.0, BUY_NOW_BLUE);
+        f.canvas.rect_filled(f.rect, 0.0, BUY_NOW_BLUE);
         if self.flash && self.t % 1.2 > 0.8 {
             return;
         }
-        // Whole points; hundreds of pixels high, so made on a worker
-        // (`big_text`) and shown once they are.
+        // Whole points; hundreds of pixels high.
         let size = (f.rect.height() * 0.27).round().max(4.0);
-        let font = FontId::new(size, style::bold());
         let c = f.rect.center();
         let gap = size * 0.55;
         for (word, y) in [("BUY", c.y - gap), ("NOW", c.y + gap)] {
-            if let Some(text) = big_text::get(f.painter.ctx(), word, &font) {
-                text.paint(f.painter, Align2::CENTER_CENTER.anchor_size(pos2(c.x, y), text.size()).min, Color32::WHITE);
-            }
+            f.canvas.big_text(word, size, pos2(c.x, y), Anchor::Center, Color32::WHITE);
         }
     }
 }
@@ -126,7 +116,7 @@ const ICON_FADE: f32 = 0.6;
 
 impl Module for Icons {
     fn draw(&mut self, f: &Frame) {
-        f.painter.rect_filled(f.rect, 0.0, Color32::BLACK);
+        f.canvas.rect_filled(f.rect, 0.0, Color32::BLACK);
         self.next -= f.dt;
         for s in &mut self.shown {
             s.age += f.dt;
@@ -149,7 +139,7 @@ impl Module for Icons {
             let size = s.size * k;
             let free = f.rect.size() - vec2(size, size);
             let r = Rect::from_min_size(f.rect.min + vec2(free.x * s.at.0, free.y * s.at.1), vec2(size, size));
-            icons::paint_tinted(f.painter, r, s.name, Color32::from_white_alpha((alpha * 255.0) as u8));
+            f.canvas.icon(r, s.name, alpha);
         }
     }
 }
@@ -213,12 +203,12 @@ impl Module for Spots {
                 self.fading = Some(0.0);
             }
         }
-        f.painter.rect_filled(f.rect, 0.0, Color32::BLACK);
+        f.canvas.rect_filled(f.rect, 0.0, Color32::BLACK);
         let fade = self.fading.map_or(1.0, |t| (1.0 - t / 1.5).max(0.0));
         let k = f.k();
         for s in &self.spots {
             let c = pos2(f.rect.left() + s.at.0 * f.rect.width(), f.rect.top() + s.at.1 * f.rect.height());
-            f.painter.circle_filled(c, s.radius * k, s.color.gamma_multiply(fade));
+            f.canvas.circle_filled(c, s.radius * k, s.color.gamma_multiply(fade));
         }
     }
 }

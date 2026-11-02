@@ -2656,5 +2656,11 @@
   "title": "Mice by make and model",
   "caption": "Preferences \u25b8 Touchpad & Mouse \u25b8 Mouse names each mouse by maker and model (sensor, resolution, how it's connected), offers the profile recommended for it or settings of its own, says what is known about it, and points at Olo Doctor for what gets in its way (a key remapper grabbing it, a receiver allowed to sleep). The device list now comes by event, not every 3 s.",
   "image": "2026-11-01/153934-mice-by-make-and-model.png"
+ },
+ {
+  "time": "2026-11-01T17:14:59",
+  "title": "Screen saver on GPUI",
+  "caption": "olo-screensaver draws on Olo's GPUI: Message, Icons, Lissart, Lens and Spots (rows) at 1, 1.25, 1.5, 1.75 and 2\u00d7 (columns), over a test desktop. Lens magnifies the desktop through textured triangles, Lissart's hundreds of lines are painted a layer at a time.",
+  "image": "2026-11-01/171459-screen-saver-on-gpui.png"
  }
 ]

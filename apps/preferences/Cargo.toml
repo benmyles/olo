@@ -11,7 +11,7 @@ path = "src/main.rs"
 [dependencies]
 olo-kit.workspace = true
 olo-protocol.workspace = true
-olo-screensavers.workspace = true
+olo-screensavers = { workspace = true, features = ["egui"] }
 olo-system.workspace = true
 serde.workspace = true
 serde_json.workspace = true

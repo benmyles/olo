@@ -33,6 +33,7 @@ pub(crate) struct Scene {
     pub(crate) sectors: Vec<Sector>,
     pub(crate) monochrome_sprites: Vec<MonochromeSprite>,
     pub(crate) polychrome_sprites: Vec<PolychromeSprite>,
+    pub(crate) image_triangles: Vec<ImageTriangle>,
     pub(crate) surfaces: Vec<PaintSurface>,
 }
 
@@ -49,6 +50,7 @@ impl Scene {
         self.sectors.clear();
         self.monochrome_sprites.clear();
         self.polychrome_sprites.clear();
+        self.image_triangles.clear();
         self.surfaces.clear();
     }
 
@@ -117,6 +119,10 @@ impl Scene {
                 sprite.order = order;
                 self.polychrome_sprites.push(sprite.clone());
             }
+            Primitive::ImageTriangle(triangle) => {
+                triangle.order = order;
+                self.image_triangles.push(triangle.clone());
+            }
             Primitive::Surface(surface) => {
                 surface.order = order;
                 self.surfaces.push(surface.clone());
@@ -126,10 +132,30 @@ impl Scene {
             .push(PaintOperation::Primitive(primitive));
     }
 
+    /// Olo: many segments at once (`Window::paint_segments`): one paint
+    /// operation for them all, not an enum and two copies each.
+    pub fn insert_segments(&mut self, mut segments: Vec<Segment>) {
+        let layer = self.layer_stack.last().copied();
+        segments.retain_mut(|segment| {
+            let clipped = segment.bounds.intersect(&segment.content_mask.bounds);
+            if clipped.is_empty() {
+                return false;
+            }
+            segment.order = layer.unwrap_or_else(|| self.primitive_bounds.insert(clipped));
+            true
+        });
+        if segments.is_empty() {
+            return;
+        }
+        self.segments.extend_from_slice(&segments);
+        self.paint_operations.push(PaintOperation::Segments(segments));
+    }
+
     pub fn replay(&mut self, range: Range<usize>, prev_scene: &Scene) {
         for operation in &prev_scene.paint_operations[range] {
             match operation {
                 PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
+                PaintOperation::Segments(segments) => self.insert_segments(segments.clone()),
                 PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
                 PaintOperation::EndLayer => self.pop_layer(),
             }
@@ -147,6 +173,7 @@ impl Scene {
             .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
         self.polychrome_sprites
             .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
+        self.image_triangles.sort_by_key(|triangle| triangle.order);
         self.surfaces.sort_by_key(|surface| surface.order);
     }
 
@@ -183,6 +210,9 @@ impl Scene {
             polychrome_sprites: &self.polychrome_sprites,
             polychrome_sprites_start: 0,
             polychrome_sprites_iter: self.polychrome_sprites.iter().peekable(),
+            image_triangles: &self.image_triangles,
+            image_triangles_start: 0,
+            image_triangles_iter: self.image_triangles.iter().peekable(),
             surfaces: &self.surfaces,
             surfaces_start: 0,
             surfaces_iter: self.surfaces.iter().peekable(),
@@ -208,11 +238,14 @@ pub(crate) enum PrimitiveKind {
     Segment,
     MonochromeSprite,
     PolychromeSprite,
+    ImageTriangle,
     Surface,
 }
 
 pub(crate) enum PaintOperation {
     Primitive(Primitive),
+    /// Olo: a polyline's pieces (`Scene::insert_segments`).
+    Segments(Vec<Segment>),
     StartLayer(Bounds<ScaledPixels>),
     EndLayer,
 }
@@ -227,6 +260,7 @@ pub(crate) enum Primitive {
     Sector(Sector),
     MonochromeSprite(MonochromeSprite),
     PolychromeSprite(PolychromeSprite),
+    ImageTriangle(ImageTriangle),
     Surface(PaintSurface),
 }
 
@@ -241,6 +275,7 @@ impl Primitive {
             Primitive::Sector(sector) => &sector.bounds,
             Primitive::MonochromeSprite(sprite) => &sprite.bounds,
             Primitive::PolychromeSprite(sprite) => &sprite.bounds,
+            Primitive::ImageTriangle(triangle) => &triangle.bounds,
             Primitive::Surface(surface) => &surface.bounds,
         }
     }
@@ -255,6 +290,7 @@ impl Primitive {
             Primitive::Sector(sector) => &sector.content_mask,
             Primitive::MonochromeSprite(sprite) => &sprite.content_mask,
             Primitive::PolychromeSprite(sprite) => &sprite.content_mask,
+            Primitive::ImageTriangle(triangle) => &triangle.content_mask,
             Primitive::Surface(surface) => &surface.content_mask,
         }
     }
@@ -292,6 +328,9 @@ struct BatchIterator<'a> {
     polychrome_sprites: &'a [PolychromeSprite],
     polychrome_sprites_start: usize,
     polychrome_sprites_iter: Peekable<slice::Iter<'a, PolychromeSprite>>,
+    image_triangles: &'a [ImageTriangle],
+    image_triangles_start: usize,
+    image_triangles_iter: Peekable<slice::Iter<'a, ImageTriangle>>,
     surfaces: &'a [PaintSurface],
     surfaces_start: usize,
     surfaces_iter: Peekable<slice::Iter<'a, PaintSurface>>,
@@ -327,6 +366,10 @@ impl<'a> Iterator for BatchIterator<'a> {
             (
                 self.polychrome_sprites_iter.peek().map(|s| s.order),
                 PrimitiveKind::PolychromeSprite,
+            ),
+            (
+                self.image_triangles_iter.peek().map(|t| t.order),
+                PrimitiveKind::ImageTriangle,
             ),
             (
                 self.surfaces_iter.peek().map(|s| s.order),
@@ -474,6 +517,27 @@ impl<'a> Iterator for BatchIterator<'a> {
                     sprites: &self.polychrome_sprites[sprites_start..sprites_end],
                 })
             }
+            PrimitiveKind::ImageTriangle => {
+                let texture_id = self.image_triangles_iter.peek().unwrap().tile.texture_id;
+                let start = self.image_triangles_start;
+                let mut end = start + 1;
+                self.image_triangles_iter.next();
+                while self
+                    .image_triangles_iter
+                    .next_if(|triangle| {
+                        (triangle.order, batch_kind) < max_order_and_kind
+                            && triangle.tile.texture_id == texture_id
+                    })
+                    .is_some()
+                {
+                    end += 1;
+                }
+                self.image_triangles_start = end;
+                Some(PrimitiveBatch::ImageTriangles {
+                    texture_id,
+                    triangles: &self.image_triangles[start..end],
+                })
+            }
             PrimitiveKind::Surface => {
                 let surfaces_start = self.surfaces_start;
                 let mut surfaces_end = surfaces_start + 1;
@@ -516,6 +580,10 @@ pub(crate) enum PrimitiveBatch<'a> {
     PolychromeSprites {
         texture_id: AtlasTextureId,
         sprites: &'a [PolychromeSprite],
+    },
+    ImageTriangles {
+        texture_id: AtlasTextureId,
+        triangles: &'a [ImageTriangle],
     },
     Surfaces(&'a [PaintSurface]),
 }
@@ -781,6 +849,29 @@ pub(crate) struct PolychromeSprite {
 impl From<PolychromeSprite> for Primitive {
     fn from(sprite: PolychromeSprite) -> Self {
         Primitive::PolychromeSprite(sprite)
+    }
+}
+
+/// Olo: a triangle of an image (`Window::paint_image_triangles`): each
+/// corner a point in the window and where in the image (0–1) it shows,
+/// the image tinted. A picture bent in perspective, a lens's disc.
+#[derive(Debug, Clone)]
+#[repr(C)]
+pub(crate) struct ImageTriangle {
+    pub order: DrawOrder,
+    pub opacity: f32,
+    /// What it covers (for ordering and clipping).
+    pub bounds: Bounds<ScaledPixels>,
+    pub content_mask: ContentMask<ScaledPixels>,
+    pub tile: AtlasTile,
+    pub corners: [Point<ScaledPixels>; 3],
+    pub uvs: [Point<f32>; 3],
+    pub tint: Hsla,
+}
+
+impl From<ImageTriangle> for Primitive {
+    fn from(triangle: ImageTriangle) -> Self {
+        Primitive::ImageTriangle(triangle)
     }
 }
 

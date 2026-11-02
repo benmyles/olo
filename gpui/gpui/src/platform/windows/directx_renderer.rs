@@ -298,6 +298,8 @@ impl DirectXRenderer {
                     texture_id,
                     sprites,
                 } => self.draw_monochrome_sprites(texture_id, sprites),
+                // Olo: not drawn here (Wayland is the platform that draws them).
+                PrimitiveBatch::ImageTriangles { .. } => Ok(()),
                 PrimitiveBatch::PolychromeSprites {
                     texture_id,
                     sprites,

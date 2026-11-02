@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-01
 
+### Screen saver on GPUI
+
+*17:14* — olo-screensaver draws on Olo's GPUI: Message, Icons, Lissart, Lens and Spots (rows) at 1, 1.25, 1.5, 1.75 and 2× (columns), over a test desktop. Lens magnifies the desktop through textured triangles, Lissart's hundreds of lines are painted a layer at a time.
+
+![Screen saver on GPUI](2026-11-01/171459-screen-saver-on-gpui.png)
+
 ### Mice by make and model
 
 *15:39* — Preferences ▸ Touchpad & Mouse ▸ Mouse names each mouse by maker and model (sensor, resolution, how it's connected), offers the profile recommended for it or settings of its own, says what is known about it, and points at Olo Doctor for what gets in its way (a key remapper grabbing it, a receiver allowed to sleep). The device list now comes by event, not every 3 s.

@@ -2,28 +2,10 @@
 //! started. Without a picture of it (the Preferences preview before one is
 //! taken) they use the plain desktop colour.
 
-use olo_kit::egui::{Color32, Mesh, Pos2, Rect, Shape, Stroke, TextureId, Vec2, epaint::Vertex, pos2, vec2};
+use crate::{Clock, Color32, Frame, Info, Module, Opt, Pos2, Rng, STEP, Vec2, get_f32, pos2, vec2};
 
-use crate::{Clock, Frame, Info, Module, Opt, Rng, STEP, get_f32};
-
+/// The plain desktop colour, without a picture of it.
 const DESKTOP: Color32 = Color32::from_rgb(51, 102, 152);
-
-/// The texture and the uv to use: the desktop picture, or the font
-/// atlas's white pixel tinted the desktop colour.
-fn source(f: &Frame) -> (TextureId, bool) {
-    match f.desktop {
-        Some((id, _)) => (id, true),
-        None => (TextureId::default(), false),
-    }
-}
-
-fn vertex(pos: Pos2, uv: Pos2, textured: bool, tint: Color32) -> Vertex {
-    if textured {
-        Vertex { pos, uv, color: tint }
-    } else {
-        Vertex { pos, uv: olo_kit::egui::epaint::WHITE_UV, color: DESKTOP.gamma_multiply(tint.r() as f32 / 255.0) }
-    }
-}
 
 // ---- Flip -----------------------------------------------------------------
 
@@ -75,8 +57,7 @@ impl Module for Flip {
                 self.vertical = self.rng.f32() < 0.5;
             }
         }
-        f.painter.rect_filled(f.rect, 0.0, Color32::BLACK);
-        let (tex, textured) = source(f);
+        f.canvas.rect_filled(f.rect, 0.0, Color32::BLACK);
         let (w, h) = (f.rect.width(), f.rect.height());
         let c = f.rect.center();
         // Camera distance: a gentle perspective.
@@ -84,7 +65,6 @@ impl Module for Flip {
         let (cos, sin) = (self.angle.cos(), self.angle.sin());
         // Shade the card as it turns away from the light.
         let light = 0.35 + 0.65 * cos.abs();
-        let tint = Color32::from_gray((light * 255.0) as u8);
         let project = |u: f32, v: f32| -> Pos2 {
             // u, v in -0.5..0.5 across the card.
             let (x, y, z) = if self.vertical {
@@ -95,21 +75,26 @@ impl Module for Flip {
             let p = d / (d + z);
             c + vec2(x * p, y * p)
         };
-        let mut mesh = Mesh::with_texture(tex);
+        let mut triangles = Vec::with_capacity(STRIPS * 2);
         for i in 0..STRIPS {
             let (a, b) = (i as f32 / STRIPS as f32, (i + 1) as f32 / STRIPS as f32);
-            let base = mesh.vertices.len() as u32;
             let quad = if self.vertical {
                 [(a, 0.0), (b, 0.0), (b, 1.0), (a, 1.0)]
             } else {
                 [(0.0, a), (1.0, a), (1.0, b), (0.0, b)]
             };
-            for (u, v) in quad {
-                mesh.vertices.push(vertex(project(u - 0.5, v - 0.5), pos2(u, v), textured, tint));
-            }
-            mesh.indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+            let corner = |(u, v): (f32, f32)| (project(u - 0.5, v - 0.5), pos2(u, v));
+            let [p0, p1, p2, p3] = quad.map(corner);
+            triangles.push([p0, p1, p2]);
+            triangles.push([p0, p2, p3]);
         }
-        f.painter.add(Shape::mesh(mesh));
+        if f.canvas.has_desktop() {
+            f.canvas.desktop_triangles(&triangles, light);
+        } else {
+            let flat: Vec<[Pos2; 3]> = triangles.iter().map(|t| t.map(|(p, _)| p)).collect();
+            let shade = |c: u8| (c as f32 * light).round() as u8;
+            f.canvas.triangles(&flat, Color32::from_rgb(shade(DESKTOP.r()), shade(DESKTOP.g()), shade(DESKTOP.b())));
+        }
     }
 }
 
@@ -148,7 +133,6 @@ struct Lens {
 
 impl Module for Lens {
     fn draw(&mut self, f: &Frame) {
-        let (tex, textured) = source(f);
         let r = self.size * f.rect.height();
         let (rw, rh) = (r / f.rect.width(), r / f.rect.height());
         for _ in 0..self.clock.steps(f.dt) {
@@ -163,34 +147,34 @@ impl Module for Lens {
                 self.at.1 = self.at.1.clamp(rh, 1.0 - rh);
             }
         }
+        let textured = f.canvas.has_desktop();
         // The desktop itself.
-        let full = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
         if textured {
-            f.painter.image(tex, f.rect, full, Color32::WHITE);
+            f.canvas.desktop(f.rect);
         } else {
-            f.painter.rect_filled(f.rect, 0.0, DESKTOP);
+            f.canvas.rect_filled(f.rect, 0.0, DESKTOP);
         }
         // The glass: a disc showing the desktop around its centre, enlarged.
         let centre = pos2(f.rect.left() + self.at.0 * f.rect.width(), f.rect.top() + self.at.1 * f.rect.height());
-        let uv_c = pos2(self.at.0, self.at.1);
-        let uv_r = Vec2::new(rw, rh) / self.power;
-        let mut mesh = Mesh::with_texture(tex);
-        mesh.vertices.push(vertex(centre, uv_c, textured, Color32::WHITE));
-        const SEGMENTS: usize = 96;
-        for i in 0..=SEGMENTS {
-            let a = i as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
-            let (s, c) = a.sin_cos();
-            mesh.vertices.push(vertex(centre + vec2(c, s) * r, uv_c + vec2(c * uv_r.x, s * uv_r.y), textured, Color32::WHITE));
-            if i > 0 {
-                mesh.indices.extend_from_slice(&[0, i as u32, i as u32 + 1]);
-            }
+        if textured {
+            let uv_c = pos2(self.at.0, self.at.1);
+            let uv_r = Vec2::new(rw, rh) / self.power;
+            const SEGMENTS: usize = 96;
+            let rim = |i: usize| {
+                let a = i as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
+                let (s, c) = a.sin_cos();
+                (centre + vec2(c, s) * r, uv_c + vec2(c * uv_r.x, s * uv_r.y))
+            };
+            let fan: Vec<[(Pos2, Pos2); 3]> = (0..SEGMENTS).map(|i| [(centre, uv_c), rim(i), rim(i + 1)]).collect();
+            f.canvas.desktop_triangles(&fan, 1.0);
+        } else {
+            f.canvas.circle_filled(centre, r, DESKTOP);
         }
-        f.painter.add(Shape::mesh(mesh));
         // Rim, a glint and a soft shadow line.
         let k = f.k();
-        f.painter.circle_stroke(centre, r, Stroke::new(4.0 * k, Color32::from_gray(40)));
-        f.painter.circle_stroke(centre, r - 3.0 * k, Stroke::new(1.5 * k, Color32::from_white_alpha(90)));
+        f.canvas.circle_stroke(centre, r, 4.0 * k, Color32::from_gray(40));
+        f.canvas.circle_stroke(centre, r - 3.0 * k, 1.5 * k, Color32::from_white_alpha(90));
         let glint = centre + vec2(-0.45, -0.5) * r;
-        f.painter.circle_filled(glint, 0.12 * r, Color32::from_white_alpha(40));
+        f.canvas.circle_filled(glint, 0.12 * r, Color32::from_white_alpha(40));
     }
 }

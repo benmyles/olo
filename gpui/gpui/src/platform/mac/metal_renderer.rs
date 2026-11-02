@@ -504,6 +504,8 @@ impl MetalRenderer {
                     viewport_size,
                     command_encoder,
                 ),
+                // Olo: not drawn here (Wayland is the platform that draws them).
+                PrimitiveBatch::ImageTriangles { .. } => true,
                 PrimitiveBatch::PolychromeSprites {
                     texture_id,
                     sprites,

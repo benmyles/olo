@@ -2,9 +2,7 @@
 
 use std::collections::VecDeque;
 
-use olo_kit::egui::{Color32, Pos2, Stroke, pos2, vec2};
-
-use crate::{Clock, Frame, Info, Module, Opt, Rng, STEP, get_bool, get_f32, hsv};
+use crate::{Clock, Color32, Frame, Info, Module, Opt, Pos2, Rect, Rng, STEP, get_bool, get_f32, hsv, pos2, vec2};
 
 /// A point as a fraction of the rect (0–1 both ways).
 type Unit = (f32, f32);
@@ -86,7 +84,7 @@ impl Figure {
     fn draw(&self, f: &Frame, t: f32, lines: usize, saturation: f32, alpha: f32) {
         // Square, centred: the figure keeps its shape on wide screens.
         let side = f.rect.width().min(f.rect.height());
-        let sq = olo_kit::egui::Rect::from_center_size(f.rect.center(), vec2(side * 1.2, side));
+        let sq = Rect::from_center_size(f.rect.center(), vec2(side * 1.2, side));
         let at = |p: Unit| pos2(sq.left() + p.0 * sq.width(), sq.top() + p.1 * sq.height());
         let width = f.pixel().max(0.6 * f.k().min(1.0));
         for n in 0..lines {
@@ -96,7 +94,7 @@ impl Figure {
             // A slow shimmer along the figure.
             let v = 0.45 + 0.35 * (0.5 + 0.5 * (s * 3.0 + t * 0.7).sin());
             let color = hsv(self.hue, saturation, v).gamma_multiply(alpha);
-            f.painter.line_segment([a, b], Stroke::new(width, color));
+            f.canvas.line_segment(a, b, width, color);
         }
     }
 }
@@ -123,7 +121,7 @@ impl Module for Lissart {
             self.old = Some((std::mem::replace(&mut self.figure, Figure::random(&mut self.rng)), 0.0));
             self.age = 0.0;
         }
-        f.painter.rect_filled(f.rect, 0.0, Color32::BLACK);
+        f.canvas.rect_filled(f.rect, 0.0, Color32::BLACK);
         // Fewer lines on a small screen (the preview), or it fills in solid.
         let lines = ((self.lines as f32 * f.k().min(1.0)) as usize).max(90);
         if let Some((old, fade)) = &mut self.old {
@@ -188,7 +186,7 @@ struct Spiral {
 impl Module for Spiral {
     fn draw(&mut self, f: &Frame) {
         use std::f32::consts::TAU;
-        f.painter.rect_filled(f.rect, 0.0, Color32::BLACK);
+        f.canvas.rect_filled(f.rect, 0.0, Color32::BLACK);
         let s = &self.shape;
         let reach = f.rect.size().length() / 2.0;
         let max_angle = TAU / s.pitch * 1.05;
@@ -225,7 +223,7 @@ impl Module for Spiral {
                 let p = c + vec2(angle.cos(), angle.sin()) * r;
                 if let Some(q) = prev {
                     let color = hsv(s.hue + a / TAU * 0.08 + arm as f32 * 0.5 / self.arms as f32, 0.85, 1.0);
-                    f.painter.line_segment([q, p], Stroke::new(width, color.gamma_multiply(alpha)));
+                    f.canvas.line_segment(q, p, width, color.gamma_multiply(alpha));
                 }
                 prev = Some(p);
             }
@@ -288,12 +286,12 @@ impl Module for SuperString {
                 self.lines.pop_front();
             }
         }
-        f.painter.rect_filled(f.rect, 0.0, Color32::BLACK);
+        f.canvas.rect_filled(f.rect, 0.0, Color32::BLACK);
         let n = self.lines.len().max(1) as f32;
         let width = f.pixel().max(0.5 * f.k().min(1.0));
         for (i, (a, b, color)) in self.lines.iter().enumerate() {
             let color = if self.fade { color.gamma_multiply((i as f32 + 1.0) / n) } else { *color };
-            f.painter.line_segment([place(f, *a), place(f, *b)], Stroke::new(width, color));
+            f.canvas.line_segment(place(f, *a), place(f, *b), width, color);
         }
     }
 }
@@ -380,14 +378,14 @@ impl Module for StringTheme {
                 }
             }
         }
-        f.painter.rect_filled(f.rect, 0.0, Color32::BLACK);
+        f.canvas.rect_filled(f.rect, 0.0, Color32::BLACK);
         let width = (1.2 * f.k()).max(f.pixel());
         for s in &self.strings {
             let n = s.trail.len().max(1) as f32;
             for (i, shape) in s.trail.iter().enumerate() {
                 let pts: Vec<Pos2> = shape.iter().map(|p| place(f, *p)).collect();
                 let color = hsv(s.hue, 0.8, 1.0).gamma_multiply((i as f32 + 1.0) / n);
-                f.painter.add(olo_kit::egui::Shape::line(closed_curve(&pts, 24), Stroke::new(width, color)));
+                f.canvas.polyline(&closed_curve(&pts, 24), width, color);
             }
         }
     }

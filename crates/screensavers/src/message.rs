@@ -2,13 +2,7 @@
 //! colour, and the whole text in a box at the bottom. (R5's took fortune's
 //! output; ours carries its own sayings, or your text.)
 
-use olo_kit::{
-    big_text,
-    egui::{Align2, Color32, FontId, Rect, pos2, vec2},
-    style,
-};
-
-use crate::{Frame, Info, Module, Opt, Rng, get_text, hsv};
+use crate::{Anchor, Color32, Frame, Info, Module, Opt, Rect, Rng, get_text, hsv, pos2, vec2};
 
 pub const MESSAGE: Info = Info {
     name: "Message",
@@ -116,29 +110,26 @@ impl Module for Message {
             self.page.words.push((word, at, size, value));
         }
         let hue = self.page.hue;
-        f.painter.rect_filled(f.rect, 0.0, hsv(hue, 1.0, 0.44));
+        f.canvas.rect_filled(f.rect, 0.0, hsv(hue, 1.0, 0.44));
         let k = f.k();
-        // The words, hundreds of pixels high: each shows once a worker
-        // has made it (`big_text`).
-        let painter = f.painter.with_clip_rect(f.rect);
+        // The words, hundreds of pixels high.
         for (word, at, size, value) in &self.page.words {
             let size = (size * k).round().max(2.0);
             let pos = pos2(f.rect.left() + at.0 * f.rect.width(), f.rect.top() + at.1 * f.rect.height());
             let color = hsv(hue, 1.0, *value).gamma_multiply(0.45);
-            if let Some(text) = big_text::get(f.painter.ctx(), word, &FontId::new(size, style::bold())) {
-                text.paint(&painter, Align2::LEFT_CENTER.anchor_size(pos, text.size()).min, color);
-            }
+            f.canvas.big_text(word, size, pos, Anchor::LeftCenter, color);
         }
         // The message itself, in a dark box near the bottom.
-        let font = style::mono_font((24.0 * k).round().max(2.0));
-        let galley = f.painter.layout(self.page.text.clone(), font, hsv(hue, 0.55, 1.0), f.rect.width() * 0.7);
+        let font = (24.0 * k).round().max(2.0);
+        let wrap = f.rect.width() * 0.7;
+        let text = f.canvas.measure(&self.page.text, font, wrap);
         let pad = vec2(14.0, 8.0) * k;
-        let size = galley.size() + pad * 2.0;
+        let size = text + pad * 2.0;
         let r = Rect::from_min_size(
             pos2(f.rect.center().x - size.x / 2.0, f.rect.bottom() - size.y - 0.08 * f.rect.height()),
             size,
         );
-        f.painter.rect_filled(r, 6.0 * k, Color32::from_black_alpha(90));
-        f.painter.galley(r.min + pad, galley, Color32::WHITE);
+        f.canvas.rect_filled(r, 6.0 * k, Color32::from_black_alpha(90));
+        f.canvas.text(r.min + pad, &self.page.text, font, wrap, hsv(hue, 0.55, 1.0));
     }
 }

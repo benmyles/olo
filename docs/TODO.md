@@ -325,8 +325,14 @@ as they land (with the commit), add new ones as they come up.
      its pane alone, once a second; no tick: one timer for the next
      thing due; a secret copied stays pasteable after Quit until it's
      cleared, the GPUI kit's clipboard linger, as the egui kit's apps;
-     on release with debug assertions (so a test session can unlock it) at 2×: 0 at rest either way; a one-time code showing, 1 frame a second against 2; arrowing through the list 0.8% of a core against 1.5, typing a search 0.6 against 1.6, moving over fields 1.2 against 3.0, as it draws once for a change where egui drew four or five times; its frames 1.7–2.5 ms against 1.2–1.7; 90 MB against 124). Next: StyledEdit, Tracker, Preferences (with the
-     screen saver and its modules) and Terminal.
+     on release with debug assertions (so a test session can unlock it) at 2×: 0 at rest either way; a one-time code showing, 1 frame a second against 2; arrowing through the list 0.8% of a core against 1.5, typing a search 0.6 against 1.6, moving over fields 1.2 against 3.0, as it draws once for a change where egui drew four or five times; its frames 1.7–2.5 ms against 1.2–1.7; 90 MB against 124). The screen saver (every module on a `Canvas` of
+     their own, olo-screensaver on GPUI; per 8 s at 1440×900 2×, CPU
+     equal or less in all eleven, Lissart 3.2% of a core against 4.0,
+     Spiral 9.8 against 12.6, StringTheme 3.8 against 4.0, Lens and
+     Message within noise; 56–75 MB against 91–122; the benchmark's
+     slowest frame 6.0 ms at 3456×2234 at every scale). Next:
+     StyledEdit, Tracker, Preferences (the screen saver's preview with
+     it) and Terminal.
      (`olo-preview`'s decoding no longer needs a toolkit: pictures are
      its own `Bitmap`s, and its egui views are behind its `egui`
      feature, for Tracker and the Viewer until they move; Telegram no

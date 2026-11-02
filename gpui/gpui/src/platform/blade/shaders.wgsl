@@ -1420,6 +1420,62 @@ fn fs_poly_sprite(input: PolySpriteVarying) -> @location(0) vec4<f32> {
     return blend_color(color, sprite.opacity * saturate(0.5 - distance));
 }
 
+// --- image triangles (Olo) --- //
+
+struct ImageTriangle {
+    order: u32,
+    opacity: f32,
+    bounds: Bounds,
+    content_mask: Bounds,
+    tile: AtlasTile,
+    corner_a: vec2<f32>,
+    corner_b: vec2<f32>,
+    corner_c: vec2<f32>,
+    uv_a: vec2<f32>,
+    uv_b: vec2<f32>,
+    uv_c: vec2<f32>,
+    tint: Hsla,
+}
+var<storage, read> b_image_triangles: array<ImageTriangle>;
+
+struct ImageTriangleVarying {
+    @builtin(position) position: vec4<f32>,
+    @location(0) tile_position: vec2<f32>,
+    @location(1) @interpolate(flat) tint: vec4<f32>,
+    @location(2) clip_distances: vec4<f32>,
+}
+
+@vertex
+fn vs_image_triangle(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) instance_id: u32) -> ImageTriangleVarying {
+    let t = b_image_triangles[instance_id];
+    var corner = t.corner_a;
+    var uv = t.uv_a;
+    if (vertex_id == 1u) {
+        corner = t.corner_b;
+        uv = t.uv_b;
+    } else if (vertex_id == 2u) {
+        corner = t.corner_c;
+        uv = t.uv_c;
+    }
+    var out = ImageTriangleVarying();
+    out.position = to_device_position_impl(corner);
+    out.tile_position = to_tile_position(uv, t.tile);
+    let tint = hsla_to_rgba(t.tint);
+    out.tint = vec4<f32>(tint.rgb, tint.a * t.opacity);
+    out.clip_distances = distance_from_clip_rect_impl(corner, t.content_mask);
+    return out;
+}
+
+@fragment
+fn fs_image_triangle(input: ImageTriangleVarying) -> @location(0) vec4<f32> {
+    let sample = textureSample(t_sprite, s_sprite, input.tile_position);
+    // Alpha clip after using the derivatives.
+    if (any(input.clip_distances < vec4<f32>(0.0))) {
+        return vec4<f32>(0.0);
+    }
+    return blend_color(vec4<f32>(sample.rgb * input.tint.rgb, sample.a), input.tint.a);
+}
+
 // --- surfaces --- //
 
 struct SurfaceParams {

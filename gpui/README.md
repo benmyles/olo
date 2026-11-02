@@ -13,6 +13,10 @@ needs, never synced with upstream.
   blade-graphics 0.7.1 by Dzmitry Malyshau and the Blade contributors,
   under the MIT licence (https://github.com/kvark/blade). It replaces
   the crates.io release for the whole workspace (`[patch.crates-io]`).
+- `blade-util`: its buffer belt (per-frame GPU buffers), from blade-util
+  0.3.0, same authors and licence: chunks are made a power of two in
+  size, so a frame that grows reuses them rather than making a new one
+  every frame (none is ever freed).
 
 What Olo changed, so far:
 
@@ -53,6 +57,13 @@ What Olo changed, so far:
   distance to the line, one instance a segment (a graph's hundred
   points: one draw call), where a path would be tessellated each frame.
   A translucent polyline darkens a little where its segments meet.
+  `Window::paint_segments` paints many of one colour in one operation
+  (a polyline's pieces): StringTheme's thousands at 4.5% of a core,
+  against 6.0 with a call each.
+- Pictures drawn as textured triangles (`Window::paint_image_triangles`,
+  the `ImageTriangle` primitive): each corner a point on screen and one
+  in the picture, sampled from the sprite atlas and tinted, for a
+  picture bent or magnified (the screen saver's Flip and Lens).
 - The clipboard offers each form of what is copied under its own MIME
   types: text under the text ones, an image under its format's, and
   `ClipboardEntry::Data` (`ClipboardItem::new_data`, `from_entries`)

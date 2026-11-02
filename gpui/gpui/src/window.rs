@@ -3105,6 +3105,37 @@ impl Window {
         });
     }
 
+    /// Olo: paints straight lines, each piece `width` wide, their ends
+    /// square (`round`: rounded, so the pieces of a polyline join), in
+    /// one colour: [`Window::paint_segment`] for many, the clip, opacity
+    /// and scale looked up once (a curve of a thousand pieces).
+    pub fn paint_segments(&mut self, pieces: &[(Point<Pixels>, Point<Pixels>)], width: Pixels, round: bool, color: Hsla) {
+        self.invalidator.debug_assert_paint();
+        let scale = self.scale_factor();
+        let half = width.scale(scale) / 2.0;
+        let reach = half + ScaledPixels(1.0) + if round { half } else { ScaledPixels(0.0) };
+        let color = color.opacity(self.element_opacity());
+        let content_mask = self.content_mask().scale(scale);
+        let segments = pieces
+            .iter()
+            .map(|(from, to)| {
+                let (a, b) = (from.scale(scale), to.scale(scale));
+                Segment {
+                    order: 0,
+                    round: round as u32,
+                    bounds: Bounds::from_corners(point(a.x.min(b.x) - reach, a.y.min(b.y) - reach), point(a.x.max(b.x) + reach, a.y.max(b.y) + reach)),
+                    content_mask: content_mask.clone(),
+                    color,
+                    from: a,
+                    to: b,
+                    half_width: half,
+                    bottom: ScaledPixels(0.0),
+                }
+            })
+            .collect();
+        self.next_frame.scene.insert_segments(segments);
+    }
+
     /// Olo: paints what's under the line from `from` to `to` (left to
     /// right), down to `bottom`: a graph's fill, a column of it a
     /// segment. Drawn on the GPU in one instance, its slanted top
@@ -3473,6 +3504,41 @@ impl Window {
     /// picture (an icon) looked at closely keeps its pixels.
     pub fn paint_image_nearest(&mut self, bounds: Bounds<Pixels>, data: Arc<RenderImage>) -> Result<()> {
         self.paint_image_sampled(bounds, Corners::default(), data, 0, false, true)
+    }
+
+    /// Olo: paints triangles of an image, each corner a point in the
+    /// window and where in the image (0–1 across it) it shows, the image
+    /// tinted (white leaves it as it is): a picture bent in perspective
+    /// (the Flip screen saver), a lens's magnified disc. On the GPU, one
+    /// instance a triangle, sampled from the image's atlas tile.
+    pub fn paint_image_triangles(&mut self, data: Arc<RenderImage>, triangles: &[[(Point<Pixels>, Point<f32>); 3]], tint: Hsla) -> Result<()> {
+        self.invalidator.debug_assert_paint();
+        let scale_factor = self.scale_factor();
+        let params = RenderImageParams { image_id: data.id, frame_index: 0 };
+        let tile = self
+            .sprite_atlas
+            .get_or_insert_with(&params.into(), &mut || {
+                Ok(Some((data.size(0), Cow::Borrowed(data.as_bytes(0).expect("an image has a first frame")))))
+            })?
+            .expect("Callback above only returns Some");
+        let content_mask = self.content_mask().scale(scale_factor);
+        let opacity = self.element_opacity();
+        for t in triangles {
+            let corners = [t[0].0.scale(scale_factor), t[1].0.scale(scale_factor), t[2].0.scale(scale_factor)];
+            let min = point(corners[0].x.min(corners[1].x).min(corners[2].x), corners[0].y.min(corners[1].y).min(corners[2].y));
+            let max = point(corners[0].x.max(corners[1].x).max(corners[2].x), corners[0].y.max(corners[1].y).max(corners[2].y));
+            self.next_frame.scene.insert_primitive(crate::ImageTriangle {
+                order: 0,
+                opacity,
+                bounds: Bounds::from_corners(min, max),
+                content_mask: content_mask.clone(),
+                tile: tile.clone(),
+                corners,
+                uvs: [t[0].1, t[1].1, t[2].1],
+                tint,
+            });
+        }
+        Ok(())
     }
 
     fn paint_image_sampled(

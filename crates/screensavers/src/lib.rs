@@ -2,30 +2,75 @@
 //! BuyNow, Flip, Icons, Lens, Lissart, Message, Spiral, Spots, StringTheme
 //! and SuperString (the list in R5's ScreenSaver preferences).
 //!
-//! A module draws a whole frame into a rect with an egui painter, so the
+//! A module draws a whole frame into a rect through a [`Canvas`], so the
 //! same code runs full screen in `olo-screensaver` and in the little
-//! monitor of Preferences ▸ Screen Saver. Sizes scale with the rect
-//! ([`Frame::k`]); motion is simulated in fixed steps, so it looks the same
-//! at any frame rate.
+//! monitor of Preferences ▸ Screen Saver, on whichever toolkit draws it
+//! (`gpui_canvas`, and `egui_canvas` while Preferences is on the egui
+//! kit). Sizes scale with the rect ([`Frame::k`]); motion is simulated in
+//! fixed steps, so it looks the same at any frame rate.
 
 use std::collections::BTreeMap;
 
-use olo_kit::egui::{Color32, Painter, Rect, TextureId, Vec2, ecolor::HsvaGamma};
-
 mod basic;
 mod desktop;
+#[cfg(feature = "egui")]
+pub mod egui_canvas;
+pub mod geom;
+#[cfg(feature = "gpui")]
+pub mod gpui_canvas;
 mod lines;
 mod message;
 
+pub use geom::{Color32, Pos2, Rect, Vec2, hsv, pos2, vec2};
+
+/// Where a piece of text goes, from the point it's placed at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Anchor {
+    /// Its middle.
+    Center,
+    /// Its left end, halfway up.
+    LeftCenter,
+}
+
+/// What a module draws with: a toolkit's painter, clipped to the frame.
+/// Methods take `&self` (an implementation keeps what it paints with in
+/// a cell) so a module's frame can be shared while it draws.
+pub trait Canvas {
+    fn rect_filled(&self, r: Rect, radius: f32, color: Color32);
+    fn line_segment(&self, a: Pos2, b: Pos2, width: f32, color: Color32);
+    /// Joined lines through `points`.
+    fn polyline(&self, points: &[Pos2], width: f32, color: Color32);
+    fn circle_filled(&self, center: Pos2, radius: f32, color: Color32);
+    fn circle_stroke(&self, center: Pos2, radius: f32, width: f32, color: Color32);
+    /// Flat triangles.
+    fn triangles(&self, triangles: &[[Pos2; 3]], color: Color32);
+    /// A word in bold, `size` points high (hundreds of pixels: a toolkit
+    /// may show it once it's made), placed by `anchor` at `at`.
+    fn big_text(&self, word: &str, size: f32, at: Pos2, anchor: Anchor, color: Color32);
+    /// The size `text` takes in the mono font at `size`, wrapped to `width`.
+    fn measure(&self, text: &str, size: f32, width: f32) -> Vec2;
+    /// `text` in the mono font, wrapped to `width`, its top left at `at`.
+    fn text(&self, at: Pos2, text: &str, size: f32, width: f32, color: Color32);
+    /// An icon of the system's, faded to `alpha`.
+    fn icon(&self, r: Rect, name: &str, alpha: f32);
+    /// There's a picture of the desktop (Flip, Lens).
+    fn has_desktop(&self) -> bool;
+    /// The desktop picture, filling `r`.
+    fn desktop(&self, r: Rect);
+    /// Triangles of the desktop picture, each corner where it goes and
+    /// where in the picture (0–1 across) it shows, darkened to `light`
+    /// (1 as it is).
+    fn desktop_triangles(&self, triangles: &[[(Pos2, Pos2); 3]], light: f32);
+    /// One device pixel, in points (hairlines).
+    fn pixel(&self) -> f32;
+}
+
 /// One frame to draw.
 pub struct Frame<'a> {
-    pub painter: &'a Painter,
+    pub canvas: &'a dyn Canvas,
     pub rect: Rect,
     /// Seconds since the last frame.
     pub dt: f32,
-    /// The desktop as it was when the saver started, with its size in
-    /// pixels (Lens and Flip work on it).
-    pub desktop: Option<(TextureId, Vec2)>,
 }
 
 impl Frame<'_> {
@@ -36,7 +81,7 @@ impl Frame<'_> {
 
     /// One device pixel, in points (hairlines).
     pub fn pixel(&self) -> f32 {
-        1.0 / self.painter.ctx().pixels_per_point()
+        self.canvas.pixel()
     }
 }
 
@@ -144,11 +189,6 @@ impl Rng {
     }
 }
 
-/// A colour from hue, saturation and value as people see them (sRGB).
-pub fn hsv(h: f32, s: f32, v: f32) -> Color32 {
-    HsvaGamma { h: h.rem_euclid(1.0), s, v, a: 1.0 }.into()
-}
-
 /// Runs `step` at a fixed 60 Hz for the time that has passed.
 pub(crate) struct Clock {
     left: f32,
@@ -222,25 +262,62 @@ mod tests {
         assert!((14..=15).contains(&c.steps(10.0)));
     }
 
-    /// Every module draws frames headless (painting into a context with no
-    /// renderer) without panicking.
+    /// Records what a module draws (and nothing else).
+    #[derive(Default)]
+    struct Count(std::cell::Cell<usize>);
+
+    impl Canvas for Count {
+        fn rect_filled(&self, _: Rect, _: f32, _: Color32) {
+            self.0.set(self.0.get() + 1);
+        }
+        fn line_segment(&self, _: Pos2, _: Pos2, _: f32, _: Color32) {
+            self.0.set(self.0.get() + 1);
+        }
+        fn polyline(&self, _: &[Pos2], _: f32, _: Color32) {
+            self.0.set(self.0.get() + 1);
+        }
+        fn circle_filled(&self, _: Pos2, _: f32, _: Color32) {
+            self.0.set(self.0.get() + 1);
+        }
+        fn circle_stroke(&self, _: Pos2, _: f32, _: f32, _: Color32) {
+            self.0.set(self.0.get() + 1);
+        }
+        fn triangles(&self, _: &[[Pos2; 3]], _: Color32) {
+            self.0.set(self.0.get() + 1);
+        }
+        fn big_text(&self, _: &str, _: f32, _: Pos2, _: Anchor, _: Color32) {
+            self.0.set(self.0.get() + 1);
+        }
+        fn measure(&self, text: &str, size: f32, _: f32) -> Vec2 {
+            vec2(text.len() as f32 * size * 0.6, size)
+        }
+        fn text(&self, _: Pos2, _: &str, _: f32, _: f32, _: Color32) {
+            self.0.set(self.0.get() + 1);
+        }
+        fn icon(&self, _: Rect, _: &str, _: f32) {
+            self.0.set(self.0.get() + 1);
+        }
+        fn has_desktop(&self) -> bool {
+            false
+        }
+        fn desktop(&self, _: Rect) {}
+        fn desktop_triangles(&self, _: &[[(Pos2, Pos2); 3]], _: f32) {}
+        fn pixel(&self) -> f32 {
+            0.5
+        }
+    }
+
+    /// Every module draws frames (into a canvas that counts) without
+    /// panicking, and draws something.
     #[test]
     fn all_draw() {
-        let ctx = olo_kit::egui::Context::default();
         for m in MODULES {
             let mut module = m.make(&Options::new(), 7);
+            let canvas = Count::default();
             for _ in 0..3 {
-                let mut out = ctx.run_ui(Default::default(), |ui| {
-                    let f = Frame {
-                        painter: ui.painter(),
-                        rect: Rect::from_min_size(Default::default(), olo_kit::egui::vec2(640.0, 400.0)),
-                        dt: 0.5,
-                        desktop: None,
-                    };
-                    module.draw(&f);
-                });
-                out.textures_delta.clear();
+                module.draw(&Frame { canvas: &canvas, rect: Rect::from_min_size(Pos2::default(), vec2(640.0, 400.0)), dt: 0.5 });
             }
+            assert!(canvas.0.get() > 0, "{} drew nothing", m.name);
         }
     }
 }

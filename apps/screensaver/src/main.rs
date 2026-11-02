@@ -1,48 +1,54 @@
 //! olo-screensaver: app_server starts it after idleness (see
 //! app_server's saver.rs) on a connection of its own and ends it at the
 //! first input. It covers every output with an overlay and runs the chosen
-//! module from olo-screensavers on each, with the pointer hidden.
+//! module from olo-screensavers on each, with the pointer hidden, drawn on
+//! Olo's GPUI (`olo_screensavers::gpui_canvas`), a frame each time the
+//! display can show one.
 //!
 //! `--module NAME --options JSON [--desktop PNG]`: the desktop picture,
 //! for Lens and Flip, is written by app_server as the saver starts; it is
 //! read on a thread and the module waits for it (black meanwhile).
 
 use std::{
-    collections::HashMap,
+    cell::{Cell, RefCell},
     path::PathBuf,
+    rc::Rc,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
-use olo_kit::{
-    App, Cx, Layer, LayerOptions, WindowId, WindowKind, WindowOptions,
-    egui::{self, Color32, ColorImage, TextureHandle, TextureOptions},
+use olo_screensavers::{Frame, Info, Module, Options, gpui_canvas::GpuiCanvas, pos2};
+use olo_ui::{
+    WindowOptions,
+    gpui::{self, AppContext as _, Context, CursorStyle, Entity, HitboxBehavior, IntoElement, LayerKeyboard, LayerShellLayer, Render, RenderImage, Styled as _, Window, canvas},
 };
-use olo_screensavers::{Frame, Info, Module, Options};
 
 const APP_ID: &str = "olo.screensaver";
+
+/// How long to wait for app_server's picture of the desktop.
+const DESKTOP_WAIT: Duration = Duration::from_secs(2);
+/// The largest side the picture is kept at (larger is halved): the
+/// modules show it whole on one screen.
+const MAX_SIDE: u32 = 4096;
 
 /// The desktop picture, once read (None: there is none to wait for).
 enum Desktop {
     Waiting(Instant),
-    Ready(ColorImage),
-    Loaded(TextureHandle),
+    Ready(Arc<RenderImage>),
     None,
 }
 
-struct Screen {
-    module: Box<dyn Module>,
-    last: Option<Instant>,
-}
-
+/// What every screen shares.
 struct Saver {
-    info: &'static Info,
-    options: Options,
-    screens: HashMap<WindowId, Screen>,
     desktop: Desktop,
 }
 
-/// How long to wait for app_server's picture of the desktop.
-const DESKTOP_WAIT: Duration = Duration::from_secs(2);
+/// A screen's show.
+struct Screen {
+    saver: Entity<Saver>,
+    module: Rc<RefCell<Box<dyn Module>>>,
+    last: Rc<Cell<Option<Instant>>>,
+}
 
 fn args() -> (String, Options, Option<PathBuf>) {
     let mut module = "Blackness".to_owned();
@@ -60,28 +66,23 @@ fn args() -> (String, Options, Option<PathBuf>) {
     (module, options, desktop)
 }
 
-/// The largest texture side egui takes (the GPU's limit can be lower than
-/// a HiDPI screen).
-const MAX_TEXTURE: usize = 2048;
-
-/// Half the size, averaging 2×2 blocks.
-fn halve(img: &ColorImage) -> ColorImage {
-    let [w, h] = img.size;
+/// Half the size, averaging 2×2 blocks of straight RGBA.
+fn halve(rgba: &[u8], w: u32, h: u32) -> (Vec<u8>, u32, u32) {
     let (nw, nh) = (w / 2, h / 2);
-    let px = (0..nh)
-        .flat_map(|y| (0..nw).map(move |x| (x, y)))
-        .map(|(x, y)| {
-            let at = |dx: usize, dy: usize| img.pixels[(2 * y + dy) * w + 2 * x + dx].to_array();
-            let q = [at(0, 0), at(1, 0), at(0, 1), at(1, 1)];
-            let avg = |i: usize| ((q[0][i] as u32 + q[1][i] as u32 + q[2][i] as u32 + q[3][i] as u32) / 4) as u8;
-            Color32::from_rgba_premultiplied(avg(0), avg(1), avg(2), avg(3))
-        })
-        .collect();
-    ColorImage::new([nw, nh], px)
+    let mut out = Vec::with_capacity((nw * nh * 4) as usize);
+    for y in 0..nh {
+        for x in 0..nw {
+            let at = |dx: u32, dy: u32, i: usize| rgba[(((2 * y + dy) * w + 2 * x + dx) * 4) as usize + i] as u32;
+            for i in 0..4 {
+                out.push(((at(0, 0, i) + at(1, 0, i) + at(0, 1, i) + at(1, 1, i)) / 4) as u8);
+            }
+        }
+    }
+    (out, nw, nh)
 }
 
 /// Read the picture once app_server has written all of it.
-fn read_desktop(path: PathBuf, proxy: olo_kit::Proxy) {
+fn read_desktop(path: PathBuf, proxy: olo_ui::Proxy) {
     std::thread::Builder::new()
         .name("desktop".into())
         .spawn(move || {
@@ -89,101 +90,113 @@ fn read_desktop(path: PathBuf, proxy: olo_kit::Proxy) {
             while start.elapsed() < DESKTOP_WAIT {
                 if let Some(img) = olo_xdg::decode_png(&path) {
                     let _ = std::fs::remove_file(&path);
-                    let px = img.rgba.as_chunks::<4>().0.iter().map(|p| Color32::from_rgba_unmultiplied(p[0], p[1], p[2], p[3]));
-                    let mut image = ColorImage::new([img.width as usize, img.height as usize], px.collect());
-                    while image.size[0].max(image.size[1]) > MAX_TEXTURE {
-                        image = halve(&image);
+                    let (mut rgba, mut w, mut h) = (img.rgba, img.width, img.height);
+                    while w.max(h) > MAX_SIDE {
+                        (rgba, w, h) = halve(&rgba, w, h);
                     }
-                    proxy.send(Some(image));
+                    proxy.send(olo_screensavers::gpui_canvas::desktop_image(rgba, w, h));
                     return;
                 }
                 std::thread::sleep(Duration::from_millis(40));
             }
-            proxy.send(None::<ColorImage>);
+            proxy.send(None::<Arc<RenderImage>>);
         })
         .expect("thread");
 }
 
-impl App for Saver {
-    fn ui(&mut self, _cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
-        let ctx = ui.ctx().clone();
-        ctx.set_cursor_icon(egui::CursorIcon::None);
-        ctx.request_repaint();
-        let rect = ui.max_rect();
-        if let Desktop::Ready(_) = self.desktop {
-            let Desktop::Ready(image) = std::mem::replace(&mut self.desktop, Desktop::None) else { unreachable!() };
-            self.desktop = Desktop::Loaded(ctx.load_texture("desktop", image, TextureOptions::LINEAR));
-        }
-        let desktop = match &self.desktop {
-            Desktop::Waiting(since) if since.elapsed() < DESKTOP_WAIT => {
-                ui.painter().rect_filled(rect, 0.0, Color32::BLACK);
-                return;
-            }
-            Desktop::Loaded(t) => Some((t.id(), t.size_vec2())),
-            _ => None,
-        };
-        let (info, options) = (self.info, &self.options);
-        let screen = self.screens.entry(window).or_insert_with(|| Screen {
-            module: info.make(options, olo_screensavers::seed() ^ window_seed(window)),
-            last: None,
-        });
-        let now = Instant::now();
-        let dt = screen.last.map_or(0.0, |t| (now - t).as_secs_f32());
-        screen.last = Some(now);
-        screen.module.draw(&Frame { painter: ui.painter(), rect, dt, desktop });
-    }
-
-    fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
-        if let Ok(image) = message.downcast::<Option<ColorImage>>() {
-            self.desktop = match *image {
-                Some(image) => Desktop::Ready(image),
-                None => Desktop::None,
-            };
-            cx.redraw_all();
-        }
+impl Render for Screen {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let (saver, module, last) = (self.saver.clone(), self.module.clone(), self.last.clone());
+        canvas(
+            move |b, window, _| window.insert_hitbox(b, HitboxBehavior::Normal),
+            move |b, hitbox, window, cx| {
+                window.set_cursor_style(CursorStyle::None, &hitbox);
+                // A frame each time the display can show one, for as long
+                // as the saver runs.
+                window.request_animation_frame();
+                let rect = olo_screensavers::Rect::from_min_max(pos2(f32::from(b.left()), f32::from(b.top())), pos2(f32::from(b.right()), f32::from(b.bottom())));
+                let desktop = match &saver.read(cx).desktop {
+                    Desktop::Waiting(since) if since.elapsed() < DESKTOP_WAIT => {
+                        window.paint_quad(gpui::fill(b, gpui::black()));
+                        return;
+                    }
+                    Desktop::Ready(image) => Some(image.clone()),
+                    _ => None,
+                };
+                let now = Instant::now();
+                let dt = last.get().map_or(0.0, |t| (now - t).as_secs_f32());
+                last.set(Some(now));
+                let canvas = GpuiCanvas::new(window, cx, rect, desktop);
+                module.borrow_mut().draw(&Frame { canvas: &canvas, rect, dt });
+                canvas.finish();
+            },
+        )
+        .size_full()
     }
 }
 
 /// Different screens, different shows.
-fn window_seed(w: WindowId) -> u64 {
-    format!("{w:?}").bytes().fold(0u64, |h, b| h.wrapping_mul(31).wrapping_add(b as u64))
+fn screen_seed(output: &Option<String>, index: usize) -> u64 {
+    output.as_deref().unwrap_or("").bytes().fold(index as u64 + 1, |h, b| h.wrapping_mul(31).wrapping_add(b as u64))
 }
 
 fn main() {
     // A session or install from before the rename (Tabula) carries on.
-    olo_kit::legacy::adopt();
+    olo_xdg::legacy::adopt();
     let (module, options, desktop) = args();
-    let info = olo_screensavers::find(&module).unwrap_or(&olo_screensavers::MODULES[0]);
-    olo_kit::run(APP_ID, |cx| {
-        let mut outputs: Vec<Option<String>> = cx.outputs().iter().cloned().map(Some).collect();
-        if outputs.is_empty() {
-            outputs.push(None);
-        }
-        for output in outputs {
-            cx.open_window(WindowOptions {
-                title: "Screen Saver".into(),
-                size: (1, 1),
-                kind: WindowKind::Layer(LayerOptions {
-                    layer: Layer::Overlay,
-                    anchor: (true, true, true, true),
-                    // Over the Deskbar too.
-                    exclusive_zone: -1,
-                    margin: (0, 0, 0, 0),
-                    keyboard: olo_kit::Keyboard::OnDemand,
-                    namespace: "screensaver".into(),
-                    output,
-                }),
-                panel: false,
-                ..Default::default()
-            });
-        }
+    let info: &'static Info = olo_screensavers::find(&module).unwrap_or(&olo_screensavers::MODULES[0]);
+    olo_ui::run(APP_ID, move |cx| {
         let desktop = match desktop {
             Some(path) if info.uses_desktop => {
-                read_desktop(path, cx.proxy());
+                read_desktop(path, olo_ui::proxy(cx));
                 Desktop::Waiting(Instant::now())
             }
             _ => Desktop::None,
         };
-        Saver { info, options, screens: HashMap::new(), desktop }
+        let saver = cx.new(|_| Saver { desktop });
+        let messages = saver.clone();
+        olo_ui::message_handler(cx, move |m, cx| {
+            if let Ok(image) = m.downcast::<Option<Arc<RenderImage>>>() {
+                messages.update(cx, |s, cx| {
+                    s.desktop = match *image {
+                        Some(image) => Desktop::Ready(image),
+                        None => Desktop::None,
+                    };
+                    cx.notify();
+                });
+            }
+        });
+        let mut outputs: Vec<Option<String>> = cx.displays().iter().filter_map(|d| d.name()).map(Some).collect();
+        if outputs.is_empty() {
+            outputs.push(None);
+        }
+        for (index, output) in outputs.into_iter().enumerate() {
+            let seed = olo_screensavers::seed() ^ screen_seed(&output, index);
+            let options_for = options.clone();
+            let saver = saver.clone();
+            let window = WindowOptions::new("Screen Saver", 1.0, 1.0).layer("screensaver", LayerShellLayer::Overlay, (true, true, true, true)).no_panel().layer_options(|l| {
+                // Over the Deskbar too.
+                l.exclusive_zone = -1;
+                l.keyboard = LayerKeyboard::OnDemand;
+                l.output = output;
+            });
+            olo_ui::open_window(cx, window, move |_, cx| {
+                cx.new(|cx| {
+                    cx.observe(&saver, |_, _, cx| cx.notify()).detach();
+                    Screen { saver, module: Rc::new(RefCell::new(info.make(&options_for, seed))), last: Rc::default() }
+                })
+            });
+        }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn halving_averages() {
+        let rgba = [0, 0, 0, 255, 100, 100, 100, 255, 200, 200, 200, 255, 100, 100, 100, 255];
+        let (out, w, h) = super::halve(&rgba, 2, 2);
+        assert_eq!((w, h), (1, 1));
+        assert_eq!(out, vec![100, 100, 100, 255]);
+    }
 }

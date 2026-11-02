@@ -1030,8 +1030,6 @@ dependencies = [
 [[package]]
 name = "blade-util"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a6be3a82c001ba7a17b6f8e413ede5d1004e6047213f8efaf0ffc15b5c4904c"
 dependencies = [
  "blade-graphics",
  "bytemuck",
@@ -6495,8 +6493,8 @@ dependencies = [
 name = "olo-screensaver"
 version = "0.1.0"
 dependencies = [
- "olo-kit",
  "olo-screensavers",
+ "olo-ui",
  "olo-xdg",
  "serde_json",
  "tracing",
@@ -6506,7 +6504,9 @@ dependencies = [
 name = "olo-screensavers"
 version = "0.1.0"
 dependencies = [
+ "image",
  "olo-kit",
+ "olo-ui",
 ]
 
 [[package]]

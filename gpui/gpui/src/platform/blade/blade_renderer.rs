@@ -3,7 +3,7 @@
 
 use super::{BladeAtlas, BladeContext, blade_context::PipelineCache};
 use crate::{
-    Background, Bounds, DevicePixels, GpuSpecs, MonochromeSprite, Path, Point, PolychromeSprite,
+    Background, Bounds, DevicePixels, GpuSpecs, ImageTriangle, MonochromeSprite, Path, Point, PolychromeSprite,
     PrimitiveBatch, Quad, ScaledPixels, Scene, Sector, Segment, Shadow, Size, Underline,
 };
 use blade_graphics as gpu;
@@ -111,6 +111,14 @@ struct ShaderPolySpritesData {
 }
 
 #[derive(blade_macros::ShaderData)]
+struct ShaderImageTrianglesData {
+    globals: GlobalParams,
+    t_sprite: gpu::TextureView,
+    s_sprite: gpu::Sampler,
+    b_image_triangles: gpu::BufferPiece,
+}
+
+#[derive(blade_macros::ShaderData)]
 struct ShaderSurfacesData {
     globals: GlobalParams,
     surface_locals: SurfaceParams,
@@ -144,6 +152,7 @@ pub(super) struct BladePipelines {
     sectors: gpu::RenderPipeline,
     mono_sprites: gpu::RenderPipeline,
     poly_sprites: gpu::RenderPipeline,
+    image_triangles: gpu::RenderPipeline,
     surfaces: gpu::RenderPipeline,
 }
 
@@ -169,6 +178,7 @@ impl BladePipelines {
         shader.check_struct_size::<Sector>();
         shader.check_struct_size::<MonochromeSprite>();
         shader.check_struct_size::<PolychromeSprite>();
+        shader.check_struct_size::<ImageTriangle>();
 
         // See https://apoorvaj.io/alpha-compositing-opengl-blending-and-premultiplied-alpha/
         let blend_mode = match surface_info.alpha {
@@ -334,6 +344,20 @@ impl BladePipelines {
                 color_targets,
                 multisample_state: gpu::MultisampleState::default(),
             }));
+            let image_triangles = s.spawn(move || gpu.create_render_pipeline(gpu::RenderPipelineDesc {
+                name: "image-triangles",
+                data_layouts: &[&ShaderImageTrianglesData::layout()],
+                vertex: shader.at("vs_image_triangle"),
+                vertex_fetches: &[],
+                primitive: gpu::PrimitiveState {
+                    topology: gpu::PrimitiveTopology::TriangleList,
+                    ..Default::default()
+                },
+                depth_stencil: None,
+                fragment: Some(shader.at("fs_image_triangle")),
+                color_targets,
+                multisample_state: gpu::MultisampleState::default(),
+            }));
             let surfaces = s.spawn(move || gpu.create_render_pipeline(gpu::RenderPipelineDesc {
                 name: "surfaces",
                 data_layouts: &[&ShaderSurfacesData::layout()],
@@ -359,6 +383,7 @@ impl BladePipelines {
                 sectors: made(sectors),
                 mono_sprites: made(mono_sprites),
                 poly_sprites: made(poly_sprites),
+                image_triangles: made(image_triangles),
                 surfaces: made(surfaces),
             }
         })
@@ -953,6 +978,25 @@ impl BladeRenderer {
                         },
                     );
                     encoder.draw(0, 4, 0, sprites.len() as u32);
+                }
+                PrimitiveBatch::ImageTriangles {
+                    texture_id,
+                    triangles,
+                } => {
+                    let tex_info = self.atlas.get_texture_info(texture_id);
+                    let instance_buf =
+                        unsafe { self.instance_belt.alloc_typed(triangles, &self.gpu) };
+                    let mut encoder = pass.with(&self.pipelines.image_triangles);
+                    encoder.bind(
+                        0,
+                        &ShaderImageTrianglesData {
+                            globals,
+                            t_sprite: tex_info.raw_view,
+                            s_sprite: self.atlas_sampler,
+                            b_image_triangles: instance_buf,
+                        },
+                    );
+                    encoder.draw(0, 3, 0, triangles.len() as u32);
                 }
                 PrimitiveBatch::Surfaces(surfaces) => {
                     let mut _encoder = pass.with(&self.pipelines.surfaces);

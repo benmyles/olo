@@ -1645,7 +1645,9 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   `style::label` (text), `icons::paint`, `PathBuilder` (filled or stroked
   shapes, small ones with exact coverage), `window.paint_segment`
   (lines of any angle on the GPU, for graphs and strokes:
-  `examples/lines.rs`), `window.paint_area(from, to, bottom, color)`
+  `examples/lines.rs`; `window.paint_segments(pieces, width, round,
+  color)` for many of one colour at once, a polyline's pieces: one
+  operation for the lot), `window.paint_area(from, to, bottom, color)`
   (what's under a segment down to `bottom`, on the GPU in one instance:
   its slanted top antialiased by distance, its sides taking the pixels
   whose middles they hold, so a run of them side by side fills under a
@@ -1653,7 +1655,11 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   each frame and filled multisampled through textures as big as the
   window, 45 MB of them for Activity Monitor's) and `window.paint_sector` (a ring's slice, a
   pie's, a disc or a circle's outline on the GPU, analytically
-  antialiased: charts, dials, round marks). Many lines or slices go in
+  antialiased: charts, dials, round marks). A picture bent, folded or
+  magnified is `window.paint_image_triangles(image, triangles, tint)`:
+  triangles of the picture, each corner with where it is on screen and
+  where it is in the picture (0–1), on the GPU from the sprite atlas
+  (the screen saver's Flip and Lens). Many lines or slices go in
   a `window.paint_layer(bounds, ..)`: one place in the scene's order for
   them all rather than a bounds-tree insert each (a layer draws its
   kinds in a fixed order, fills before lines before sprites, so a mask
@@ -4032,9 +4038,18 @@ USB brightness control on every display (all starting full) and only log
 The modules are R5's own list, in its order (Blackness, BuyNow, Flip,
 Icons, Lens, Lissart, Message, Spiral, Spots, StringTheme, SuperString;
 from period screenshots of R5's ScreenSaver preferences). Each is a
-`olo_screensavers::Module` that draws a whole frame into a rect with an
-egui painter, so the same code runs full screen and in the preview monitor
-of Preferences ▸ Screen Saver. Size things with `Frame::k()`, step motion
+`olo_screensavers::Module` that draws a whole frame into a rect on a
+`Canvas` (rectangles, lines, polylines, discs, rings, triangles, text,
+icons and the desktop picture, whole or as textured triangles; points
+and colours are the crate's own `geom` types), so the same code runs
+full screen and in the preview monitor of Preferences ▸ Screen Saver.
+olo-screensaver is on GPUI (`gpui_canvas::GpuiCanvas`, feature `gpui`):
+it keeps what a module draws and paints it at the end of the frame, a
+run of the same kind of thing to a `paint_layer`, since hundreds of
+crossing lines each inserted in the scene's bounds tree made Lissart
+and SuperString two to three times egui's CPU. Preferences' preview is
+on the egui kit until Preferences moves (`egui_canvas::EguiCanvas`,
+feature `egui`). Size things with `Frame::k()`, step motion
 with the fixed 60 Hz `Clock`, and add settings as `Opt`s (stored as strings
 in `settings.screen_saver.options[module]`; Preferences builds their
 controls). Modules with `uses_desktop` (Flip, Lens) get a picture of the

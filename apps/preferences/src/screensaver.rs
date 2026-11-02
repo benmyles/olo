@@ -209,8 +209,9 @@ fn modules(ui: &mut Ui, s: &mut Settings, server: &Server, st: &mut State) {
         let now = Instant::now();
         let dt = (now - *last).as_secs_f32();
         *last = now;
-        let clipped = ui.painter().with_clip_rect(screen);
-        module.draw(&Frame { painter: &clipped, rect: screen, dt, desktop: None });
+        let rect = olo_screensavers::Rect::from_min_max(olo_screensavers::pos2(screen.left(), screen.top()), olo_screensavers::pos2(screen.right(), screen.bottom()));
+        let canvas = olo_screensavers::egui_canvas::EguiCanvas::new(ui.painter(), rect, None);
+        module.draw(&Frame { canvas: &canvas, rect, dt });
         ui.ctx().request_repaint();
     }
 
