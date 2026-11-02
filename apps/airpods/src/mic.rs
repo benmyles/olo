@@ -37,6 +37,18 @@ const OUT_RATE: u32 = 48_000;
 /// sound server's cycle (21 ms here) to spare. The resampler steers to
 /// keep it there (resample.rs).
 const TARGET: usize = 8 * olo_eld::FRAME;
+/// For recordings (voice processing tuned for them), where delay doesn't
+/// matter and an unbroken take does: 150 ms, room for a Bluetooth
+/// hiccup three times the longest gap measured.
+const TARGET_RECORDING: usize = 20 * olo_eld::FRAME;
+
+/// What to keep waiting, for what the microphone is for now.
+fn target() -> usize {
+    match olo_protocol::voice::Settings::load().mode {
+        olo_protocol::voice::Mode::Calls => TARGET,
+        olo_protocol::voice::Mode::Recording => TARGET_RECORDING,
+    }
+}
 /// A timestamp's step a frame (24 kHz ticks, 7.5 ms).
 const TICKS: u32 = 180;
 /// How long recording must have stopped before the AirPods' stream is.
@@ -164,7 +176,7 @@ pub fn frames(addr: &str, frames: Vec<(u32, Vec<u8>)>) {
         // Nobody taking them (recording stalled): keep a second at most.
         let most = RATE as usize;
         if ring.samples.len() > most {
-            let extra = ring.samples.len() - TARGET;
+            let extra = ring.samples.len() - TARGET_RECORDING;
             ring.samples.drain(..extra);
         }
     }
@@ -213,6 +225,7 @@ fn source(addr: &str, label: &str, ring: Arc<Mutex<Ring>>, node: Arc<Mutex<Optio
                 match &new {
                     pw::stream::StreamState::Streaming => {
                         resampler.reset();
+                        resampler.set_target(target());
                         ring.lock().unwrap().samples.clear();
                         crate::service::microphone_wanted(&a, true);
                     }

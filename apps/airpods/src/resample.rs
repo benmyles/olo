@@ -93,6 +93,11 @@ impl Resampler {
         self.input.extend(samples);
     }
 
+    /// Keep `target` input samples waiting from now on.
+    pub fn set_target(&mut self, target: usize) {
+        self.target = target.max(1);
+    }
+
     /// Forget everything (a new stream).
     pub fn reset(&mut self) {
         self.input.clear();

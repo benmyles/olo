@@ -344,6 +344,7 @@ pub fn scan(roots: &Roots) -> Report {
     display_rule(roots, &mut r);
     wifi(roots, &mut r);
     rtkit(roots, &mut r);
+    voice_realtime(roots, &procs, &mut r);
     util_clamp(roots, &mut r);
     stale(roots, &procs, &mut r);
     login_entry(roots, &mut r);
@@ -637,6 +638,69 @@ fn rtkit(roots: &Roots, r: &mut Report) {
     }
 }
 
+/// The voice services' sound (olo-voice, olo-airpods): PipeWire's thread
+/// for it ("data-loop") is made realtime through rtkit, which gives that
+/// to so many processes a user (15 by default) and threads (25), and a
+/// desktop's programs use them up: then a frame of someone's voice can
+/// wait behind other work, a click in their call. The fix lets rtkit give
+/// more, and restarts it (the supervisor asks again).
+fn voice_realtime(roots: &Roots, procs: &[Proc], r: &mut Report) {
+    let audio = |name: &str| olo_protocol::performance::tier(name) == Some(olo_protocol::performance::AUDIO_NICE);
+    let mut found = false;
+    let mut not = Vec::new();
+    for p in procs.iter().filter(|p| p.uid == roots.uid && audio(&p.name)) {
+        let tasks = roots.fs.join(format!("proc/{}/task", p.pid));
+        for t in std::fs::read_dir(&tasks).into_iter().flatten().flatten() {
+            let comm = read(&t.path().join("comm")).unwrap_or_default();
+            if !comm.trim().starts_with(olo_protocol::performance::AUDIO_THREAD) {
+                continue;
+            }
+            found = true;
+            // The scheduling policy: field 41 of stat (0 normal, 1 FIFO, 2 RR).
+            let stat = read(&t.path().join("stat")).unwrap_or_default();
+            let policy = stat.rfind(')').and_then(|i| stat[i + 1..].split_whitespace().nth(38)).and_then(|f| f.parse::<u32>().ok());
+            if !matches!(policy, Some(1 | 2)) && !not.contains(&p.name) {
+                not.push(p.name.clone());
+            }
+        }
+    }
+    if !found {
+        return;
+    }
+    if not.is_empty() {
+        r.fine.push(Fine { title: "Voice processing's sound is realtime".into(), detail: "rtkit made the voice services' sound threads realtime.".into() });
+        return;
+    }
+    let daemon = ["usr/libexec/rtkit-daemon", "usr/lib/rtkit/rtkit-daemon"].into_iter().find(|p| roots.fs.join(p).exists());
+    let fix = daemon.map(|d| Fix {
+        label: "Let rtkit Give More".into(),
+        root: true,
+        steps: vec![
+            Step::WriteFile {
+                path: "/etc/systemd/system/rtkit-daemon.service.d/olo.conf".into(),
+                content: format!("# Olo: room for the voice services' sound to be realtime (Olo Doctor).
+[Service]
+ExecStart=
+ExecStart=/{d} --processes-per-user-max=64 --threads-per-user-max=256
+"),
+                mode: 0o644,
+            },
+            Step::Unit { name: "rtkit-daemon.service".into(), action: UnitAction::Reload },
+            Step::Unit { name: "rtkit-daemon.service".into(), action: UnitAction::Restart },
+        ],
+    });
+    r.findings.push(Finding {
+        id: "voice-realtime".into(),
+        severity: Severity::Advice,
+        title: "Voice processing's sound isn't realtime".into(),
+        detail: format!(
+            "{} asked rtkit for realtime and didn't get it: rtkit gives it to only so many processes a user (15 by default), and this desktop's programs have used them up. Under load, a frame of a voice can then wait behind other work, a click in a call. The fix lets rtkit give it to 64 processes and 256 threads, and restarts it.",
+            not.join(" and ")
+        ),
+        fix,
+    });
+}
+
 /// app_server's and every window's thread ask to be taken as busy while
 /// they run, for a fast core at a high clock (`CORE_UTIL_MIN`,
 /// `UI_UTIL_MIN`); the kernel caps what anyone may ask at
@@ -740,6 +804,12 @@ mod tests {
         w("proc/901/cmdline", "gsd-power\0");
         w("proc/901/cgroup", "0::/user.slice/user-1000.slice/session-2.scope\n");
         w("proc/bus/input/devices", "N: Name=\"keyd virtual keyboard\"\nN: Name=\"keyd virtual pointer\"\nN: Name=\"Logitech G309\"\n");
+        // The voice service, its sound thread not realtime (rtkit full).
+        w("proc/902/cmdline", "olo-voice\0--service\0");
+        w("proc/902/cgroup", "0::/user.slice/user-1000.slice/session-2.scope\n");
+        w("proc/902/task/905/comm", "data-loop.0\n");
+        w("proc/902/task/905/stat", &format!("905 (data-loop.0) S{}\n", " 0".repeat(40)));
+        w("usr/libexec/rtkit-daemon", "");
         w("usr/local/bin/keyd", "");
         w("usr/local/lib/systemd/system/keyd.service", "[Unit]\n");
         // The receiver: device 3-1.3 with an input interface.
@@ -793,7 +863,10 @@ mod tests {
         let r = scan(&roots);
         let ids: Vec<&str> = r.findings.iter().map(|f| f.id.as_str()).collect();
         assert_eq!(r.find("foreign").unwrap().title, "A program of another desktop runs in this session");
-        assert_eq!(ids, ["remapper:keyd", "foreign", "rule:input", "autosuspend:3-1.3", "rule:displays", "wifi-heal", "rtkit", "uclamp", "stale", "login"], "{r:#?}");
+        assert_eq!(ids, ["remapper:keyd", "foreign", "rule:input", "autosuspend:3-1.3", "rule:displays", "wifi-heal", "rtkit", "voice-realtime", "uclamp", "stale", "login"], "{r:#?}");
+        let voice = r.find("voice-realtime").unwrap();
+        assert!(voice.detail.starts_with("olo-voice asked rtkit"), "{}", voice.detail);
+        assert!(matches!(&voice.fix.as_ref().unwrap().steps[0], Step::WriteFile { content, .. } if content.contains("ExecStart=/usr/libexec/rtkit-daemon --processes-per-user-max=64")));
         let uclamp = r.find("uclamp").unwrap();
         assert!(uclamp.detail.starts_with("kernel.sched_util_clamp_min is 512"));
         assert_eq!(uclamp.fix.as_ref().unwrap().steps[1], Step::WriteSysfs { path: "/proc/sys/kernel/sched_util_clamp_min".into(), value: "1024".into() });
@@ -855,6 +928,8 @@ mod tests {
         std::fs::remove_dir_all(fs.join("proc/900")).unwrap();
         std::fs::remove_dir_all(fs.join("proc/901")).unwrap();
         w("sys/bus/usb/devices/3-1.3/power/control", "on\n");
+        // The voice service's sound thread realtime (SCHED_RR, field 41).
+        w("proc/902/task/905/stat", &format!("905 (data-loop.0) S{} 2\n", " 0".repeat(37)));
         w(INPUT_RULE_PATH, INPUT_RULE);
         w(DISPLAY_RULE_PATH, DISPLAY_RULE);
         w(SESSION_ENTRY_PATH, &format!("[Desktop Entry]\nExec={}/olo-session\n", roots.bin.display()));
@@ -876,6 +951,7 @@ mod tests {
                 "Olo's display rule is installed",
                 "Olo's Wi-Fi healer watches wld0",
                 "rtkit is running",
+                "Voice processing's sound is realtime",
                 "Frames run on the fast cores",
                 "Every Olo program runs the installed version",
                 "Olo is on the login screen",

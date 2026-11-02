@@ -3,7 +3,8 @@
 #
 # A private sound server for tests, apart from the person's: PipeWire,
 # its PulseAudio server and WirePlumber, in DIR (under /var/tmp), with no
-# hardware (ALSA, Bluetooth, cameras off), no D-Bus, its own state, and two
+# hardware (ALSA, Bluetooth, cameras off), nothing from the network, no
+# D-Bus, its own state, and two
 # made-up devices: "speakers" (a sink; its monitor is what they play) and
 # "mic" (a source: what's played into the sink "talk" is what it hears).
 #
@@ -31,6 +32,8 @@ start)
     mkdir -p "$dir"/{run,config/pipewire/pipewire.conf.d,config/wireplumber/wireplumber.conf.d,state,data,home}
     chmod 700 "$dir/run"
     cat > "$dir/config/pipewire/pipewire.conf.d/devices.conf" <<'EOF'
+# Nothing from the network (AirPlay speakers found over mDNS).
+context.properties = { module.raop = false }
 context.objects = [
     { factory = adapter
       args = { factory.name = support.null-audio-sink node.name = "speakers" node.description = "Test Speakers"
