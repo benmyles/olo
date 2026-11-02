@@ -630,10 +630,16 @@ impl TextField {
         self.paste_text(cx);
     }
 
+    /// The clipboard's text put in, once it's read (off the UI thread:
+    /// `paste_item`).
     fn paste_text(&mut self, cx: &mut Context<Self>) {
-        if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
-            self.insert(&text, cx);
-        }
+        let read = cx.paste_item();
+        cx.spawn(async move |this, cx| {
+            if let Some(text) = read.await.and_then(|item| item.text()) {
+                let _ = this.update(cx, |f, cx| f.insert(&text, cx));
+            }
+        })
+        .detach();
     }
 
     /// Pastes `text` as if from the clipboard (the app's Paste command):
@@ -775,7 +781,7 @@ impl TextField {
             .enabled(copyable)
             .keys("⌘C")
             .item("Paste", "paste")
-            .enabled(self.enabled && cx.read_from_clipboard().is_some_and(|i| i.text().is_some()))
+            .enabled(self.enabled && cx.clipboard_has_text())
             .keys("⌘V")
             .separator()
             .item("Select All", "select-all")

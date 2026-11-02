@@ -25,7 +25,12 @@ like pixel alignment is.
    device), runs on a worker thread and reports back through a `Proxy`
    (`olo_ui::proxy(cx)`, taken in `message_handler`) or a channel a GPUI
    task waits on. No `std::fs` on folders of unknown size, no blocking IPC
-   round-trips and no `wait()` on the UI thread.
+   round-trips and no `wait()` on the UI thread. Nor the clipboard: the
+   program that copied writes it when it gets round to it (or never, if
+   it's stuck), so Paste reads it with `cx.paste_item()` (or
+   `paste_as(types)` for one form) and puts it in when it comes, and a
+   Paste item is enabled by `cx.clipboard_has_text()`, not a read; never
+   `read_from_clipboard`.
 2. **Show progress and keep it live.** Long work shows what it is doing:
    counts, the current item, a `StatusBar` for work with a known size, and
    a "Searching…"/"Copying…" state otherwise. Results stream in as they

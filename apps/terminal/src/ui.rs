@@ -1180,13 +1180,20 @@ impl Terminal {
         });
     }
 
-    /// The clipboard's text into the shell showing in window `id`.
+    /// The clipboard's text into the shell showing in window `id`, once
+    /// it's read (off the UI thread: `paste_item`).
     pub(crate) fn paste(&mut self, cx: &mut Cx, id: WindowId) {
-        let Some(text) = cx.read_from_clipboard().and_then(|c| c.text()) else { return };
-        if let Some(Win::Term(t)) = self.windows.get(&id) {
-            view::paste(&t.tab().session, &text);
-            cx.redraw(id);
-        }
+        let read = cx.paste_item();
+        cx.spawn(async move |this, cx| {
+            let Some(text) = read.await.and_then(|c| c.text()) else { return };
+            let _ = this.update(cx, |me, cx| {
+                if let Some(Win::Term(t)) = me.windows.get(&id) {
+                    view::paste(&t.tab().session, &text);
+                    cx.redraw(id);
+                }
+            });
+        })
+        .detach();
     }
 
     /// A divider in Tile All Tabs pressed: dragged, the rows (or the

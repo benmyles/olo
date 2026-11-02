@@ -112,13 +112,22 @@ pub struct GoToWin {
 impl GoToWin {
     pub fn new(app: WeakEntity<Tracker>, base: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> GoToWin {
         let field = text_field(cx, |f| f.hint("A path: /…, ~/… or a name here").name("Go to"));
-        // A path copied, ready to go to.
-        if let Some(p) = cx.read_from_clipboard().and_then(|c| c.text()).as_deref().and_then(clipboard_path) {
-            field.update(cx, |f, cx| {
-                f.set_text(p, cx);
-                f.select_all_text(cx);
+        // A path copied, ready to go to (read off the UI thread:
+        // `paste_item`; put in unless something's been typed by then).
+        let read = cx.paste_item();
+        cx.spawn(async move |this, cx| {
+            let Some(p) = read.await.and_then(|c| c.text()).as_deref().and_then(clipboard_path) else { return };
+            let _ = this.update(cx, |g, cx| {
+                if g.text(cx).is_empty() {
+                    g.field.update(cx, |f, cx| {
+                        f.set_text(p, cx);
+                        f.select_all_text(cx);
+                    });
+                    g.update_matches(cx);
+                }
             });
-        }
+        })
+        .detach();
         field.read(cx).focus(window);
         let list = ListModel::new(cx, false);
         let subs = vec![

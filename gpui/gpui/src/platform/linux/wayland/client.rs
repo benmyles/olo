@@ -1325,6 +1325,10 @@ impl LinuxClient for WaylandClient {
         self.0.borrow_mut().clipboard.read()
     }
 
+    fn own_clipboard(&self) -> Option<crate::ClipboardItem> {
+        self.0.borrow().clipboard.own()
+    }
+
     fn clipboard_types(&self) -> Vec<String> {
         self.0.borrow().clipboard.types()
     }

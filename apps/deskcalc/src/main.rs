@@ -307,9 +307,14 @@ impl DeskCalc {
                 return true;
             }
             "paste" => {
-                if let Some(text) = cx.read_from_clipboard().and_then(|i| i.text()) {
-                    self.field.update(cx, |f, cx| f.insert(&text, cx));
-                }
+                // (Read off the UI thread: `paste_item`.)
+                let (read, field) = (cx.paste_item(), self.field.clone());
+                cx.spawn(async move |_, cx| {
+                    if let Some(text) = read.await.and_then(|i| i.text()) {
+                        let _ = field.update(cx, |f, cx| f.insert(&text, cx));
+                    }
+                })
+                .detach();
                 return true;
             }
             "keypad-basic" => Keypad::Basic,
