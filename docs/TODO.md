@@ -2763,9 +2763,11 @@ as they land (with the commit), add new ones as they come up.
   right click close to the deskbar and a menu opens it is under the
   deskbar -- it should always be on top". ~~Fixed~~: a window's menus
   (its popups) are drawn over the Top layer, Deskbar included, and take
-  the pointer there (`menu_elements`, `window_menu_under`). Left: where
-  one would run off the usable area it may open over Deskbar rather
-  than be pushed away from the pointer (`unconstrain_popup`).
+  the pointer there (`menu_elements`, `window_menu_under`). And none is
+  pushed away from the pointer by Deskbar: `unconstrain_popup` keeps
+  menus on the display, not out of Deskbar's corner (checked
+  2026-11-02: the desktop's menu, opened beside Deskbar, opens at the
+  pointer over it).
 - **Displays: kept where they are, numbered for good** (Ben, 2026-10-31):
   "we absolutely must get these upgrades (and connecting/disconnecting
   monitors) keeping things where they already were on the right
