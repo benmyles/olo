@@ -449,6 +449,30 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.space.output_under(middle).next().cloned().or_else(|| self.main_output())
     }
 
+    /// The windows whose shares are drawn with `output`'s frames: those
+    /// mostly on it, and those parked on it (on another of its
+    /// workspaces, or hidden), drawn from what they showed last. None
+    /// while the screen is locked.
+    pub(crate) fn capture_windows_on(&self, output: &Output, locked: bool) -> Vec<u64> {
+        let mut ids = crate::capture::windows_on(&self.space, output, locked);
+        if !locked {
+            ids.extend(self.parked.0.borrow().iter().filter(|w| self.display_of(w).as_ref() == Some(output)).map(|w| w.id()));
+        }
+        ids
+    }
+
+    /// Window `id` for a share of it, shown or parked, and the scale of
+    /// the display it's on (or was on, parked: where it's drawn).
+    pub(crate) fn capture_window(&self, id: u64) -> Option<(WindowElement, f64)> {
+        let scale_of = |o: Option<Output>| o.map_or(1.0, |o| o.current_scale().fractional_scale());
+        if let Some(w) = self.space.elements().find(|w| w.id() == id) {
+            return Some((w.clone(), scale_of(self.space.outputs_for_element(w).first().cloned())));
+        }
+        let w = self.parked.0.borrow().iter().find(|w| w.id() == id).cloned()?;
+        let scale = scale_of(self.display_of(&w));
+        Some((w, scale))
+    }
+
     pub fn window_by_id(&self, id: u64) -> Option<WindowElement> {
         self.all_windows().into_iter().find(|w| w.id() == id)
     }

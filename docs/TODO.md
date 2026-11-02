@@ -608,9 +608,11 @@ as they land (with the commit), add new ones as they come up.
      tile (two locked maps) every frame; a shaped line could keep them,
      for its origin's subpixel phase, scale and rendering (the atlas's
      generation checked), and paint as a copy.
-- **A window on another workspace has a blank thumbnail in the share
-  picker** (found porting the portal, 2026-11-01; egui's the same): its
-  capture never answers while it isn't shown. app_server could draw it
+- ~~**A window on another workspace has a blank thumbnail in the share
+  picker**~~ (done 2026-11-02: drawn from what it last showed, with its
+  display's frame; a share of it starts too, where app_server used to
+  stop it, its size unknown) (found porting the portal, 2026-11-01;
+  egui's the same): its capture never answers while it isn't shown. app_server could draw it
   from its last buffer (as a minimized window's Exposé picture), so it
   can be chosen by what it looks like.
 - **Text and everything drawn, better than Apple's** (Ben, 2026-10-31):

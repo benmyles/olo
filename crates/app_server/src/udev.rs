@@ -2316,6 +2316,8 @@ impl AnvilState<UdevData> {
         let twitcher = self.twitcher_entries();
         let output_geo = self.space.output_geometry(&output).unwrap_or_default();
         let output_size = output_geo.size;
+        // The windows whose shares this frame draws (only while one waits).
+        let here = if self.captures.pending() { self.capture_windows_on(&output, self.lock.locked()) } else { Vec::new() };
 
         let device = if let Some(device) = self.backend_data.backends.get_mut(&node) {
             device
@@ -2369,15 +2371,15 @@ impl AnvilState<UdevData> {
         }
         // Frames programs asked for (screen sharing).
         self.captures.finish();
-        let here = crate::capture::windows_on(&self.space, &output, locked);
         let on_output = |id| here.contains(&id);
-        if self.captures.wanted(&output, &on_output) {
+        if self.captures.pending() && self.captures.wanted(&output, &on_output) {
             let pointer = (self.pointer.current_location(), crate::saver::shown_cursor(&self.saver, &self.cursor_status));
             let now = self.clock.now().into();
             let (space, overview, lock) = (&self.space, self.overview.as_ref(), &self.lock);
+            let parked = self.parked.0.borrow();
             self.captures.take(&mut renderer, &output, now, on_output, |renderer, what, cursor| {
                 let overlays = if locked && what == crate::capture::Target::Output { crate::lock::elements(lock, renderer, &output) } else { Vec::new() };
-                crate::capture::picture(renderer, &output, space, what, locked, || (overlays, overview, desktop_color, cursor.then_some((pointer.0, &pointer.1))))
+                crate::capture::picture(renderer, &output, space, &parked, what, locked, || (overlays, overview, desktop_color, cursor.then_some((pointer.0, &pointer.1))))
             });
         }
         let overlays: Vec<CustomRenderElements<_>> = if locked {

@@ -994,8 +994,8 @@ impl<BackendData: Backend> ImageCopyCaptureHandler for AnvilState<BackendData> {
 
     fn capture_constraints(&mut self, source: &ImageCaptureSource) -> Option<BufferConstraints> {
         if let Some(crate::capture::WindowSource(id)) = source.user_data().get::<crate::capture::WindowSource>() {
-            let window = self.space.elements().find(|w| w.id() == *id)?;
-            let scale = self.space.outputs_for_element(window).first().map_or(1.0, |o| o.current_scale().fractional_scale());
+            // (On another workspace too: shown as it was last.)
+            let (window, scale) = self.capture_window(*id)?;
             let size = window.content_size().to_f64().to_physical(scale).to_i32_round();
             return Some(crate::capture::constraints_of(size, self.captures.dma.clone()));
         }

@@ -4381,7 +4381,12 @@ its request, for the app's Cancel and for holding an upgrade off.
   only what its client draws (no tab or border, `render::window_picture`),
   whole even behind another tab of its group, at that screen's scale;
   its size is the client's, and the stream is offered again when it
-  resizes. Closing it stops its sessions, and the share ends two
+  resizes. One on another workspace, or hidden, is drawn with the frame
+  of the display it's parked on, from what it showed last (it draws
+  nothing new while unseen), so the share picker's thumbnail shows it
+  and a share of it starts (`capture_windows_on`, `capture_window`).
+  Nothing about shares is looked at in a frame unless one waits for a
+  frame (`Captures::pending`). Closing it stops its sessions, and the share ends two
   seconds later (`Capture::stopped`): app_server stops every session as
   it goes too (a reload, an upgrade), so a stop is only an end if the
   connection outlives it; else the share waits for app_server and
