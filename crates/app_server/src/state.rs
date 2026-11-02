@@ -624,6 +624,12 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 /// ([`Request::ActivationToken`](olo_protocol::Request::ActivationToken)).
 struct IssuedToken;
 
+/// Marks a token one of Olo's programs asked for with its user's input
+/// (a notification's banner clicked), noted as it's made: the banner is
+/// gone by the time the app it hands the token to uses it, and a gone
+/// surface has no client to tell whose it was.
+struct HandedOn;
+
 /// How long a launch's token covers its client's other requests.
 const LAUNCH_GRANT: Duration = Duration::from_secs(2);
 
@@ -646,9 +652,13 @@ impl<BackendData: Backend> XdgActivationHandler for AnvilState<BackendData> {
         &mut self.xdg_activation_state
     }
 
-    fn token_created(&mut self, _token: XdgActivationToken, _data: XdgActivationTokenData) -> bool {
+    fn token_created(&mut self, _token: XdgActivationToken, data: XdgActivationTokenData) -> bool {
         // Whether a token may bring a window forward is decided when it's
-        // used (request_activation), where we know who asks.
+        // used (request_activation), where we know who asks; who made it
+        // is noted now, while its surface is there to say.
+        if data.serial.is_some() && data.surface.as_ref().is_some_and(|s| self.is_our_program(s)) {
+            data.user_data.insert_if_missing(|| HandedOn);
+        }
         true
     }
 
@@ -675,7 +685,7 @@ impl<BackendData: Backend> XdgActivationHandler for AnvilState<BackendData> {
         // (a notification clicked brings the app that sent it forward), or
         // a token we handed out for a launch (olo-chrome opening a link).
         let issued = token_data.user_data.get::<IssuedToken>().is_some();
-        let handed = token_data.serial.is_some() && token_data.surface.as_ref().is_some_and(|s| self.is_our_program(s)) || issued;
+        let handed = token_data.user_data.get::<HandedOn>().is_some() || issued;
         // A launch's token covers its client a moment: Chrome spends the
         // one it was handed on the first window it brings forward, which
         // may be a call it pops out as the link's tab opens (picture in
