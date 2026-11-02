@@ -104,6 +104,37 @@ of Finished; a new one goes where its priority puts it.
   every shell and Terminal, and agents use them as people do; no
   wl-clipboard, nothing wrapped.
 
+- **AirPods and voice processing, tried on the real things** (Ben,
+  2026-11-02; what's left of "AirPods, natively" and "Voice processing
+  for every microphone", below): built and measured headless and in
+  `tools/dev/pw-sandbox`; these need the hardware and Ben:
+  - After upgrading, `sudo ~/.local/bin/olo-doctor --fix all` (Ben's to
+    run): Bluetooth started with its advertisement monitor
+    (`--experimental`), and rtkit given room (its 15 processes a user
+    were used up, so the voice services' sound isn't realtime and their
+    nice −10 was refused too).
+  - Connect and switch automatically with AirPods Pro 2 and an iPhone:
+    does the phone take them back by itself when it plays, or is Apple's
+    smart routing needed for a handoff as seamless as between Apple
+    devices (AACP 0x10 "hijack" messages, BlueZ's `DeviceID` as Apple's
+    in /etc/bluetooth/main.conf; ask before touching it)? The 60 s
+    no-tug-of-war rule seen working both ways.
+  - Echo cancellation through the MacBook's and the ThinkPad's own
+    speakers: the residual leak (−30 dB, fixed) tuned on real
+    loudspeaker distortion, double talk, the delay found with real
+    PipeWire buffers, and speakers and microphone on different clocks
+    (render and capture frames matched one for one now).
+  - The ThinkPad P1 Gen 9: the voice chain on x86_64 (AVX: tract, rustfft,
+    the canceller's loops), its dual microphones, AirPods over the Intel
+    BE211.
+  - Calls ask the graph for a 10 ms quantum while recording: everyone's
+    wakeups rise then; measure, and keep it only if it buys latency.
+  - A low-latency noise model (10 ms) if a better one than
+    DeepFilterNet3-LL appears (that one turns a voice down 5 dB when
+    another was heard first).
+  - Deskbar: the AirPods' levels from their broadcast while they're not
+    connected (the service has them now).
+
 - **Chrome scrolls slower than Olo's apps** (Ben, 2026-11-02): "in
   chrome scrolling does not seem to be the same speed as olo native
   apps (it's slower) and it's most noticeable on the studio display at
@@ -891,6 +922,33 @@ of Finished; a new one goes where its priority puts it.
 
 ## Finished (most recently finished first)
 
+- ~~**Voice processing for every microphone**~~ (done 2026-11-02:
+  a88b0abb, 9aae5937, cdd46746, 9368dfef, 1aaa7314, 8ba9f10b) (Ben,
+  2026-11-02): "research what the SOTA approach to background noise
+  filtering / echo cancellation etc. are for linux and support them too
+  (for all mic sources)", vendored and owned, SIMD, real time, volume
+  normalization on by default, a Calls and a Recording mode. `crates/voice`:
+  echo cancellation of Olo's own (a fullband frequency-domain Kalman
+  filter, delay found, two-path, residual suppression in the noise model's
+  STFT; WebRTC's AEC3 measured and not used), DeepFilterNet3 (vendored,
+  tract 0.23, fixed: silence skip, thresholds), WebRTC's AGC2 (vendored
+  Sonora, turning loud talkers down too). `olo-voice --service`: a
+  processed source in front of the chosen microphone, captured only while
+  recorded from; Preferences ▸ Sound and the speaker's menu; supervised,
+  upgraded in place, in the audio tier; Olo Doctor's realtime check and
+  `--fix`; `tools/dev/pw-sandbox` to test sound apart from the person's.
+- ~~**AirPods, natively**~~ (done 2026-11-02: a98ac95d, 858dd256,
+  10e1070e, 6184b742, f0d67027, d9c70db6, ea5c0221) (Ben, 2026-11-01):
+  "comprehensive with all features at the highest quality", Olo's own
+  implementation (no LibrePods), on the MacBook and the ThinkPad.
+  `apps/airpods` and `olo_system::airpods`: Apple's accessory protocol
+  (levels, ear detection, noise control and Adaptive, Conversation
+  Awareness, press-and-hold, renaming, every setting), their broadcast
+  (levels and where they are, connect and switch automatically, never a
+  tug of war); their own microphone as a wideband source (`olo-eld`, an
+  AAC-ELD decoder in Rust) while music stays at AAC quality; Preferences
+  ▸ AirPods, Bluetooth and Sound, Deskbar's tray and speaker menu, icons
+  in every theme; panels taller than the screen scroll.
 - ~~**Default apps and Open With**~~ (done 2026-11-02: the person's
   defaults and curated lists in `olo_xdg::open`; Open With ▸, Always
   Open With ▸ and Other… in the kit, `olo_ui::open_with`, on Tracker's
