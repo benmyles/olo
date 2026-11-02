@@ -24,7 +24,7 @@ use std::{
 use olo_ui::{
     Frame,
     gpui::{
-        self, AnyElement, App, AppContext as _, Bounds, Context, CursorStyle, DispatchPhase, ElementInputHandler, Entity, EntityId, EntityInputHandler, FocusHandle, Focusable, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyBinding, KeyDownEvent, KeyUpEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, NoAction, ParentElement as _, Pixels, Render, ScrollDelta, ScrollWheelEvent, SharedString, Styled as _, UTF16Selection, WeakEntity, Window, WindowHandle, canvas, div, point, px, size,
+        self, AnyElement, App, AppContext as _, Bounds, Context, CursorStyle, DispatchPhase, ElementInputHandler, Entity, EntityId, EntityInputHandler, FocusHandle, Focusable, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyBinding, KeyDownEvent, KeyUpEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, NoAction, ParentElement as _, Pixels, Render, ScrollWheelEvent, SharedString, Styled as _, UTF16Selection, WeakEntity, Window, WindowHandle, canvas, div, point, px, size,
     },
     icons,
     menu::{self, Menu, MenuBar},
@@ -1010,10 +1010,14 @@ impl Terminal {
             }
         };
         let mut redraw = false;
+        // Where the pointer is over the rows as drawn (scrolled by the
+        // point, or stretched: below their places).
+        let shift = px(tab.pane.shift.get());
+        let on_rows = |p: gpui::Point<Pixels>| point(p.x, p.y - shift);
         match e {
             PaneEvent::Down(e) => {
-                tab.mouse.hover_at(&tab.session, &m, rect, Some(e.position), mods.command, &cwd);
-                tab.mouse.down(&tab.session, &m, rect, e.position, e.button, e.click_count, mods, &mut out);
+                tab.mouse.hover_at(&tab.session, &m, rect, Some(on_rows(e.position)), mods.command, &cwd);
+                tab.mouse.down(&tab.session, &m, rect, on_rows(e.position), e.button, e.click_count, mods, &mut out);
                 redraw = true;
                 // A press on a pane not typed into picks it.
                 if several && i != t.active {
@@ -1024,19 +1028,16 @@ impl Terminal {
                 if !rect.contains(&e.position) && e.pressed_button.is_none() && tab.mouse.hover.is_none() {
                     return;
                 }
-                redraw |= tab.mouse.hover_at(&tab.session, &m, rect, Some(e.position), mods.command, &cwd);
-                redraw |= tab.mouse.moved(&tab.session, &m, rect, e.position, e.pressed_button == Some(MouseButton::Left), mods);
+                redraw |= tab.mouse.hover_at(&tab.session, &m, rect, Some(on_rows(e.position)), mods.command, &cwd);
+                redraw |= tab.mouse.moved(&tab.session, &m, rect, on_rows(e.position), e.pressed_button == Some(MouseButton::Left), mods);
             }
             PaneEvent::Up(e) => {
-                tab.mouse.up(&tab.session, &m, rect, e.position, e.button, mods);
+                tab.mouse.up(&tab.session, &m, rect, on_rows(e.position), e.button, mods);
                 redraw = true;
             }
             PaneEvent::Wheel(e) => {
-                let lines = match e.delta {
-                    ScrollDelta::Lines(l) => f32::from(l.y),
-                    ScrollDelta::Pixels(p) => f32::from(p.y) / m.cell.1,
-                };
-                tab.mouse.wheel(&tab.session, &m, rect, e.position, lines, mods);
+                let dy = f32::from(e.delta.pixel_delta(px(m.cell.1)).y);
+                tab.mouse.wheel(&tab.session, &tab.pane, &m, rect, on_rows(e.position), dy, (e.kind, e.touch_phase), mods);
                 redraw = true;
             }
         }

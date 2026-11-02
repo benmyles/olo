@@ -143,6 +143,43 @@ pub struct Pane {
     pub bounds: StdCell<Bounds<Pixels>>,
     /// The frame drawn while the screen is being reflowed (`Session::resize`).
     last: RefCell<Option<Frame>>,
+    /// The scrollback scrolled by the point, and stretched past its ends.
+    smooth: RefCell<Smooth>,
+    /// How far the rows were drawn below their places (part of the row
+    /// above showing, or stretched past an end), for the mouse's cells.
+    pub shift: StdCell<f32>,
+}
+
+/// The normal screen's scrollback scrolled by the point, as everything
+/// else that scrolls: fingers, their glide and a wheel's eased notches
+/// move it as far as they go (not a line at a time), past its ends against
+/// GPUI's rubber band (`Elastic`), springing back. alacritty's display
+/// offset is its whole rows; the rest shifts the rows drawn.
+#[derive(Default)]
+struct Smooth {
+    elastic: gpui::Elastic,
+    /// How far up the scrollback, in points (0: at its end, the live
+    /// screen).
+    pos: f32,
+    /// The display offset `pos` last set: if the terminal's is another
+    /// (output came, typing scrolled it down) that's where it is.
+    rows: usize,
+}
+
+impl Smooth {
+    /// In step with the terminal's display offset (`display`), its ends
+    /// for `history` rows above a view `view` tall, rows `ch` tall: where
+    /// it's scrolled to as GPUI has it (from minus its end to zero).
+    fn sync(&mut self, display: usize, history: usize, view: f32, ch: f32) -> (gpui::Point<Pixels>, f32) {
+        if display != self.rows {
+            self.pos = display as f32 * ch;
+            self.rows = display;
+        }
+        let max = history as f32 * ch;
+        self.pos = self.pos.clamp(0.0, max);
+        self.elastic.set_extent(size(px(0.0), px(max)), size(px(1.0), px(view)));
+        (point(px(0.0), px(self.pos - max)), max)
+    }
 }
 
 /// The screen's rows as last laid out, each with the cells (and
@@ -352,7 +389,8 @@ pub fn paint(window: &mut Window, cx: &mut App, rect: Bounds<Pixels>, p: Paint, 
         }
     };
     term.reset_damage();
-    let origin = (f32::from(rect.left()) + PAD.0, f32::from(rect.top()) + PAD.1);
+    let mut origin = (f32::from(rect.left()) + PAD.0, f32::from(rect.top()) + PAD.1);
+    let history = term.grid().history_size();
     let content = term.renderable_content();
     let colors = content.colors;
     let bg_default = scheme.resolve(Color::Named(NamedColor::Background), colors);
@@ -366,7 +404,28 @@ pub fn paint(window: &mut Window, cx: &mut App, rect: Bounds<Pixels>, p: Paint, 
     let cols = term.columns();
     let rows = term.screen_lines();
     let (cw, ch) = m.cell;
-    let at = |line: i32, col: usize| (origin.0 + col as f32 * cw, origin.1 + (line + offset) as f32 * ch);
+    // The scrollback scrolled by the point: the rows drawn as far below
+    // their places as it's scrolled past a whole row, or as it's stretched
+    // past an end (on device pixels); the row above them too when part of
+    // it shows. Still springing back: another frame.
+    let (slide, max, seen, moving) = {
+        let mut sm = pane.smooth.borrow_mut();
+        let (at, max) = sm.sync(offset as usize, history, rows as f32 * ch, ch);
+        let (shown, moving) = sm.elastic.offset(at);
+        let slide = sm.pos - offset as f32 * ch + f32::from(shown.y - at.y);
+        ((slide * m.scale).round() / m.scale, max, -f32::from(shown.y), moving)
+    };
+    window.note_scroll([0.0, seen, 0.0, max]);
+    if moving {
+        window.request_animation_frame();
+    }
+    pane.shift.set(slide);
+    let extra = usize::from(slide > 0.0 && (offset as usize) < history);
+    origin.1 += slide - extra as f32 * ch;
+    // The lines drawn: from `first`, `drawn` of them.
+    let first = -offset - extra as i32;
+    let drawn = rows + extra;
+    let at = |line: i32, col: usize| (origin.0 + col as f32 * cw, origin.1 + (line - first) as f32 * ch);
     // A cell's text and background colours (before any selection).
     let cell_colors = |c: &Cell| {
         let mut fg = scheme.resolve(c.fg, colors);
@@ -393,29 +452,30 @@ pub fn paint(window: &mut Window, cx: &mut App, rect: Bounds<Pixels>, p: Paint, 
     // as far as the screen scrolled (new row r was old row r + shift),
     // else as the row before was, else (twice a frame at most, when output
     // scrolls a full scrollback, which doesn't move `top`) looked for.
-    let top = grid.history_size() as i64 - i64::from(offset);
+    let top = grid.history_size() as i64 + i64::from(first);
     let mut shift = top - std::mem::replace(&mut cache.top, top);
     let mut old = std::mem::take(&mut cache.rows);
-    old.resize_with(rows, || None);
-    cache.rows.resize_with(rows, || None);
+    old.resize_with(drawn, || None);
+    cache.rows.resize_with(drawn, || None);
     let mut searches = 0;
     let line_px = 1.0 / m.scale;
-    for r in 0..rows {
-        let line = r as i32 - offset;
+    for r in 0..drawn {
+        let line = first + r as i32;
         let row = &grid[Line(line)];
         let cells = &row[..Column(cols.min(row.len()))];
         let selected = selection.and_then(|s| selected_in(&s, line));
         // Not damaged, where it was, the selection as it was: as drawn.
-        if shift == 0 && damaged.as_ref().is_some_and(|d| d.get(r) == Some(&false)) && old[r].as_ref().is_some_and(|c| c.selected == selected) {
+        // (The row above the screen isn't in the damage: compared.)
+        if shift == 0 && r >= extra && damaged.as_ref().is_some_and(|d| d.get(r - extra) == Some(&false)) && old[r].as_ref().is_some_and(|c| c.selected == selected) {
             cache.rows[r] = old[r].take();
             continue;
         }
         let same = |c: &Option<CachedRow>| c.as_ref().is_some_and(|c| c.selected == selected && same_cells(&c.cells, cells));
-        let at = |j: i64| usize::try_from(j).ok().filter(|&j| j < rows);
+        let at = |j: i64| usize::try_from(j).ok().filter(|&j| j < drawn);
         let mut was = [r as i64 + shift, r as i64].into_iter().filter_map(at).find(|&j| same(&old[j]));
         if was.is_none() && searches < 2 {
             searches += 1;
-            was = (0..rows).find(|&j| same(&old[j]));
+            was = (0..drawn).find(|&j| same(&old[j]));
             if let Some(j) = was {
                 shift = j as i64 - r as i64;
             }
@@ -607,7 +667,7 @@ pub fn paint(window: &mut Window, cx: &mut App, rect: Bounds<Pixels>, p: Paint, 
         .rows
         .iter()
         .enumerate()
-        .filter_map(|(r, d)| Some((r as i32 - offset, d.as_ref()?)))
+        .filter_map(|(r, d)| Some((first + r as i32, d.as_ref()?)))
         .flat_map(|(line, d)| d.images.iter().map(move |&(col, uid, row)| (line, col, uid, row)))
         .collect();
     drop(cache);
@@ -1386,13 +1446,32 @@ impl Mouse {
         self.hover.as_ref().map(|h| h.cells.clone()) != before
     }
 
-    /// The wheel turned (in lines, up positive) over the screen.
-    pub fn wheel(&mut self, s: &Session, m: &Metrics, rect: Bounds<Pixels>, pos: gpui::Point<Pixels>, lines: f32, mods: Mods) {
+    /// A scroll over the screen (`dy` points, up positive; from `kind`,
+    /// in `phase`): the scrollback moved by as much (a program that takes
+    /// the mouse, or on the alternate screen, gets it a line at a time).
+    #[allow(clippy::too_many_arguments)]
+    pub fn wheel(&mut self, s: &Session, pane: &Pane, m: &Metrics, rect: Bounds<Pixels>, pos: gpui::Point<Pixels>, dy: f32, (kind, phase): (gpui::ScrollKind, gpui::TouchPhase), mods: Mods) {
         let (mode, offset) = {
             let t = s.term.lock();
             (*t.mode(), t.grid().display_offset())
         };
         let reporting = mode.intersects(TermMode::MOUSE_MODE) && !mods.shift;
+        if !reporting && !mode.contains(TermMode::ALT_SCREEN) {
+            let mut t = s.term.lock();
+            let history = t.grid().history_size();
+            let ch = m.cell.1;
+            let mut sm = pane.smooth.borrow_mut();
+            let (mut at, max) = sm.sync(offset, history, t.screen_lines() as f32 * ch, ch);
+            sm.elastic.scroll(&mut at, point(px(0.0), px(dy)), kind, phase);
+            sm.pos = (f32::from(at.y) + max).clamp(0.0, max);
+            let rows = ((sm.pos / ch).floor() as usize).min(history);
+            if rows != offset {
+                t.scroll_display(Scroll::Delta(rows as i32 - offset as i32));
+            }
+            sm.rows = rows;
+            return;
+        }
+        let lines = dy / m.cell.1;
         self.scroll += lines;
         let n = self.scroll.trunc() as i32;
         self.scroll -= n as f32;
@@ -1404,12 +1483,10 @@ impl Mouse {
             for _ in 0..n.unsigned_abs() {
                 report(s, if n > 0 { 64 } else { 65 }, pt, offset, true, mods);
             }
-        } else if mode.contains(TermMode::ALT_SCREEN) && mode.contains(TermMode::ALTERNATE_SCROLL) {
+        } else if mode.contains(TermMode::ALTERNATE_SCROLL) {
             let key = if n > 0 { "A" } else { "B" };
             let seq = if mode.contains(TermMode::APP_CURSOR) { format!("\x1bO{key}") } else { format!("\x1b[{key}") };
             s.write(seq.repeat(n.unsigned_abs() as usize).into_bytes());
-        } else {
-            s.term.lock().scroll_display(Scroll::Delta(n * 3));
         }
     }
 

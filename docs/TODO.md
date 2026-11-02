@@ -690,13 +690,6 @@ as they land (with the commit), add new ones as they come up.
   MB at 2×, on the press). Time app_server's passes on the GPU around
   it and keep the client's allocation from stalling the compositor.
 
-- **Terminal: scrollback scrolls by whole lines, without elastic ends**
-  (Ben: the bounce "should be universal for everything"): scroll by the
-  pixel (a fraction of a row's offset kept, a row more drawn), spring
-  past the ends as GPUI's `Elastic` does, and say where it is
-  (`Window::note_scroll`) so the bench's scroll step measures it (egui's
-  Terminal never said either; both "didn't scroll").
-
 - **Terminal: light mode hard to read** (Ben, 2026-10-31): "in light
   mode my terminal is really hard to read i'm not sure why or what's
   conflicting but can you figure out a way so that the terminal gets

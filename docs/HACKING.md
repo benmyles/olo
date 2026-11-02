@@ -5647,7 +5647,21 @@ straight from the font (`TextSystem::glyph_for_char`, kept per style)
 at its cell, which is what shaping a monospaced font's own characters
 gives; the rest (other scripts, emoji, what the font lacks) is shaped
 with fallback. A frame of typing at 1× on a 3456×2234 screen: 0.2 ms
-of painting; a whole screen laid out afresh, 1.2 ms (6.2 shaped). The
+of painting; a whole screen laid out afresh, 1.2 ms (6.2 shaped).
+
+**Scrolling.** The normal screen's scrollback scrolls by the point, as
+everything else that scrolls: fingers, their glide and a wheel's eased
+notches move it as far as they go (`view::Smooth`, on the tab's `Pane`),
+past its ends against GPUI's rubber band (`gpui::Elastic`), springing
+back. alacritty's display offset is its whole rows; the rest, and the
+stretch, slide the rows drawn down or up (on device pixels), the row
+above drawn too when part of it shows (`Pane::shift`, which the mouse's
+cells allow for). Output arriving, or typing (which scrolls to the end),
+moves the display offset itself: the position follows it. It says where
+it is each frame (`Window::note_scroll`), so the bench measures it
+(scroll-check: steps as far as the fingers, an even glide). A program
+that takes the mouse gets it as wheel reports, and one on the alternate
+screen (that asks) as arrow keys, a line at a time. The
 shell's output asks for a frame (`Wakeup`), as do typing, the mouse
 and the bell; nothing is drawn on a timer except an agent's spinner
 while one spins. Keys come raw: ⌘ is Ctrl with the right Ctrl held in
