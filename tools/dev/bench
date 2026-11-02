@@ -5,7 +5,10 @@ checked against the budget: a frame within 8.3 ms, so nothing ever runs
 below 120 frames a second.
 
   bench [--apps a,b,...] [--scales 1,1.5,2] [--hz 120] [--budget MS]
-        [--size WxH] [--json FILE] [--keep] [--list]
+        [--size WxH] [--json FILE] [--keep] [--list] [--env K=V ...]
+
+`--env K=V` (again for more) is given to every app: an A/B of a switch
+without a rebuild (`--env OLO_PAINT_MEMO=0`).
 
 Build first: `cargo build --release --workspace --bins --examples` (the
 apps and the kit's gallery; `--examples` alone leaves the apps as they
@@ -108,6 +111,10 @@ APPS = [
     App("telegram", ["olo-telegram"], env=["OLO_TELEGRAM_DEMO=3000", f"OLO_TELEGRAM_CACHE={SCRATCH}/telegram-cache", f"OLO_TELEGRAM_SECRETS={SCRATCH}/telegram-secrets"], settle=3.0),
 ]
 SAVERS = ["BuyNow", "Icons", "Lissart", "Message", "Spiral", "Spots", "StringTheme", "SuperString"]
+
+
+# What --env gives every app.
+EXTRA_ENV = []
 
 
 def now_us():
@@ -501,10 +508,10 @@ def run_app(b, app, scale):
     s = b.s
     before = {w["id"] for w in s.windows()}
     t0 = time.monotonic()
-    tsession("run", NAME, *app.env, *app.cmd)
+    tsession("run", NAME, *app.env, *EXTRA_ENV, *app.cmd)
     if app.key == "notifications":
         time.sleep(1.0)
-        tsession("run", NAME, *app.cmd, "--history")
+        tsession("run", NAME, *app.env, *EXTRA_ENV, *app.cmd, "--history")
     win = None
     while time.monotonic() - t0 < 10:
         new = [w for w in s.windows() if w["id"] not in before and w.get("pid") and not w["minimized"]]
@@ -776,6 +783,7 @@ def main():
     if "-h" in a or "--help" in a:
         print(__doc__)
         return
+    EXTRA_ENV.extend(a[i + 1] for i, x in enumerate(a) if x == "--env" and i + 1 < len(a))
     hz = float(opt("--hz", 120))
     budget = float(opt("--budget", 1000 / hz))
     scales = [float(x) for x in opt("--scales", "1,1.5,2").split(",")]

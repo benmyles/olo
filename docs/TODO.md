@@ -233,9 +233,15 @@ as they land (with the commit), add new ones as they come up.
   5.3 ms, its GPU 2.4–3.8 ms); its live resize (35–47 ms: every card
   measured and laid out again) and theme switch; Log Viewer's frames as
   a new line or a search arrives (23–26 ms: rows shaped on the UI
-  thread); an Activity Monitor panel's first frame (18 ms). Next: draw
-  what didn't change from what was drawn (cached views for History's
-  cards, or a retained layer), shape new rows ahead or off the frame.
+  thread); an Activity Monitor panel's first frame (18 ms). *Then*
+  History's cards each paint through a paint memo (`Window::paint_memo`:
+  a card unchanged is replayed, moved when scrolled): at 1×, its paint
+  for a hover 5.3 → 3.2 ms; at 2×, frames skipped while scrolling 60 →
+  10. *Left*: at 1× History scrolls at 60 frames a second (its frame
+  ~6 ms and its GPU's ~3 ms together pass the frame: fewer glyphs and
+  less overdraw, 2.84 screens of quads); frames skipped scrolling at
+  2× with frames of 1.4 ms (the scroll events' pacing against the
+  frames, not their cost); Log Viewer shaping new rows on the frame.
 - **The layout lint on GPUI** (left when egui went, 2026-11-02): the
   egui kit ran a window's view headlessly at its size, light and dark at
   1×, 1.5× and 2×, and failed a test (and `install-session.sh`) on

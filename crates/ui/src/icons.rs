@@ -216,7 +216,12 @@ fn paint_themed(window: &mut Window, b: Bounds<Pixels>, theme: &'static str, nam
     let px_size = (logical * scale).round().max(1.0) as u32;
     let Some(img) = image_in(theme, name, px_size) else {
         let c = cache().lock().unwrap();
-        return !matches!(c.map.get(&(theme, name.to_owned(), px_size)), Some(Slot::Missing));
+        let loading = !matches!(c.map.get(&(theme, name.to_owned(), px_size)), Some(Slot::Missing));
+        if loading {
+            // (What's painted now isn't what will show: not kept.)
+            window.paint_unfinished();
+        }
+        return loading;
     };
     let s = img.size(0);
     let (w, h) = (s.width.0 as f32 / scale, s.height.0 as f32 / scale);

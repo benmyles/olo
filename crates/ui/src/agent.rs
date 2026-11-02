@@ -122,7 +122,7 @@ fn tree(handle: AnyWindowHandle, cx: &mut App) -> Option<WindowTree> {
     let painted = agents.windows.get(&handle.window_id())?;
     let (w, h) = (f32::from(size.width), f32::from(size.height));
     let mut nodes = vec![UiNode { id: 1, role: "Window".into(), name: Some(painted.title.clone()), width: w, height: h, enabled: true, ..Default::default() }];
-    for (i, n) in records.iter().filter_map(|r| r.downcast_ref::<Node>()).enumerate() {
+    for (i, (n, moved)) in records.iter().filter_map(|(r, moved)| Some((r.downcast_ref::<Node>()?, *moved))).enumerate() {
         let text = |s: &Option<SharedString>| s.as_ref().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
         nodes.push(UiNode {
             id: i as u64 + 2,
@@ -130,8 +130,8 @@ fn tree(handle: AnyWindowHandle, cx: &mut App) -> Option<WindowTree> {
             role: n.role.into(),
             name: text(&n.name),
             value: text(&n.value),
-            x: f32::from(n.bounds.origin.x),
-            y: f32::from(n.bounds.origin.y),
+            x: f32::from(n.bounds.origin.x + moved.x),
+            y: f32::from(n.bounds.origin.y + moved.y),
             width: f32::from(n.bounds.size.width),
             height: f32::from(n.bounds.size.height),
             enabled: n.enabled,

@@ -311,6 +311,8 @@ struct RowKey {
 /// A card measured: how many columns it spans, how tall it is, its face.
 #[derive(Clone)]
 struct CardLaid {
+    /// Made anew when what it shows changes (`paint_memo`'s key).
+    generation: u64,
     height: f32,
     face: look::Laid,
     ink: look::Ink,
@@ -389,6 +391,9 @@ pub struct HistoryWindow {
     focus: FocusHandle,
     rows: HashMap<u32, (RowKey, RowLaid)>,
     cards: HashMap<u32, (CardKey, CardLaid)>,
+    /// The palette painted with, and a number that changes with it (the
+    /// cards' paint memos' keys).
+    palette: Option<(std::sync::Arc<olo_theme::Palette>, u64)>,
     /// Where things were drawn in the last frame, in the list's own
     /// coordinates; later ones on top.
     hits: Hits,
@@ -423,7 +428,7 @@ impl HistoryWindow {
                 });
             }
         });
-        HistoryWindow { app, search, scroll: ScrollHandle::new(), focus, rows: HashMap::new(), cards: HashMap::new(), hits: Rc::default(), hover: None, places: Vec::new(), laid: None, stale: true, _subs: vec![observe, typing] }
+        HistoryWindow { app, search, scroll: ScrollHandle::new(), focus, rows: HashMap::new(), cards: HashMap::new(), palette: None, hits: Rc::default(), hover: None, places: Vec::new(), laid: None, stale: true, _subs: vec![observe, typing] }
     }
 
     fn menus(&self, cx: &App) -> Vec<Menu> {
@@ -590,7 +595,9 @@ impl HistoryWindow {
         if !buttons.is_empty() {
             height += m::SPACING + CARD_BUTTON;
         }
-        let laid = CardLaid { height: height.ceil(), face, ink, buttons };
+        static MADE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let generation = MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let laid = CardLaid { generation, height: height.ceil(), face, ink, buttons };
         self.cards.insert(e.id, (key, laid.clone()));
         laid
     }
@@ -817,6 +824,14 @@ impl Render for HistoryWindow {
         let hits = self.hits.clone();
         let hover = self.hover.clone();
         let p2 = p.clone();
+        let palette_gen = match &self.palette {
+            Some((was, n)) if **was == *p => *n,
+            was => {
+                let n = was.as_ref().map_or(0, |(_, n)| n + 1);
+                self.palette = Some((p.clone(), n));
+                n
+            }
+        };
         let (entries2, rows2, cards2, lines2) = (list.entries.clone(), list.rows.clone(), list.cards.clone(), list.lines.clone());
         let order2 = order.clone();
         let paint = canvas(
@@ -844,15 +859,32 @@ impl Render for HistoryWindow {
                         let hovered = hover.as_ref().is_some_and(|h| matches!(h, Hit::Card(x) | Hit::Forget(x) if x == i));
                         let is_sel = sel_id == Some(e.id);
                         let opacity = if !is_sel && !hovered { fade_opacity(strength(e)) } else { 1.0 };
+                        let inner = Bounds::from_corners(r.origin + point(px(m::CARD_INSET), px(m::CARD_INSET)), r.bottom_right() - point(px(m::CARD_INSET), px(m::CARD_INSET)));
+                        // Whose and when: the app's mark and name, the time at the right.
+                        let head = Bounds::new(inner.origin, size(inner.size.width, px(CARD_HEAD)));
+                        let time = if e.pinned { format!("Pinned · {}", crate::when(e.time)) } else { crate::when(e.time) };
+                        let forgettable = !e.shown && hovered;
+                        let lit = hover == Some(Hit::Forget(*i));
+                        // Forget it: a × where the time was, taking clicks
+                        // however the card is painted.
+                        let close = Bounds::centered_at(point(head.right() - px(6.0), head.center().y), size(px(12.0), px(12.0)));
+                        if forgettable {
+                            hits.push((local(close.dilate(px(3.0)) - b.origin), Hit::Forget(*i)));
+                        }
+                        // Painted again only when what it shows changes; a
+                        // screen of cards is tens of thousands of glyphs.
+                        let memo = {
+                            use std::hash::{Hash, Hasher};
+                            let mut h = std::collections::hash_map::DefaultHasher::new();
+                            (e.id, laid.generation, palette_gen, hovered, lit, is_sel, opacity.to_bits(), &time).hash(&mut h);
+                            h.finish()
+                        };
+                        window.paint_memo(memo, r, cx, |window, cx| {
                         window.with_element_opacity(Some(opacity), |window| {
                             style::card(window, r, &p, hovered, is_sel);
                             let ink = style::card_ink(&p);
-                            let inner = Bounds::from_corners(r.origin + point(px(m::CARD_INSET), px(m::CARD_INSET)), r.bottom_right() - point(px(m::CARD_INSET), px(m::CARD_INSET)));
-                            // Whose and when: the app's mark and name, the time at the right.
-                            let head = Bounds::new(inner.origin, size(inner.size.width, px(CARD_HEAD)));
                             let icon = Bounds::new(point(head.left(), head.center().y - px(CARD_MARK / 2.0)), size(px(CARD_MARK), px(CARD_MARK)));
                             paint_icon(window, cx, icon, e, false);
-                            let time = if e.pinned { format!("Pinned · {}", crate::when(e.time)) } else { crate::when(e.time) };
                             let small = style::ui_font(FontWeight::NORMAL);
                             let time_w = f32::from(style::text_width(window, time.clone(), style::DETAIL_SIZE, small.clone()));
                             let name_x = icon.right() + px(5.0);
@@ -860,24 +892,20 @@ impl Render for HistoryWindow {
                             let n = style::label_fit(window, cx, name_x, head.center().y, Align::Left, app_name(e).to_owned(), style::DETAIL_SIZE, style::ui_font(FontWeight::BOLD), ink.dim, name_room);
                             let baseline = style::baseline_at(window, head.center().y, style::DETAIL_SIZE);
                             let _ = n;
-                            let forgettable = !e.shown && hovered;
                             if !forgettable {
                                 style::label_on_baseline(window, cx, head.right(), baseline, Align::Right, time.clone(), style::DETAIL_SIZE, small.clone(), ink.dim);
                                 if e.unread {
                                     unread_dot(window, point(head.right() - px(time_w + CARD_DOT / 2.0 + 1.0), head.center().y), &p);
                                 }
                             } else {
-                                // Forget it: a × where the time was.
-                                let close = Bounds::centered_at(point(head.right() - px(6.0), head.center().y), size(px(12.0), px(12.0)));
-                                let lit = hover == Some(Hit::Forget(*i));
                                 style::close_box(window, close, if lit { ink.text } else { ink.dim });
-                                hits.push((local(close.dilate(px(3.0)) - b.origin), Hit::Forget(*i)));
                                 agent::record(window, cx, agent::Node::button("Forget", close));
                             }
                             look::paint(window, cx, &entry_face(e), &laid.face, &laid.ink, point(inner.left(), head.bottom() + px(CARD_HEAD_GAP)), f32::from(inner.size.width));
                         });
                         let title = if e.summary.is_empty() { app_name(e) } else { &e.summary };
                         agent::record(window, cx, agent::Node { role: "ListItem", name: Some(title.to_owned().into()), bounds: r, enabled: true, clickable: true, selected: Some(is_sel), ..Default::default() });
+                        });
                         let _ = (k, rows_total);
                     }
                     return;

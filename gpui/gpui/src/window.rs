@@ -757,8 +757,11 @@ pub(crate) struct Frame {
     pub(crate) tooltip_requests: Vec<Option<TooltipRequest>>,
     pub(crate) cursor_styles: Vec<CursorStyleRequest>,
     /// Olo: what the app noted as it painted (`Window::push_paint_record`),
-    /// replayed with a cached view's paint.
-    pub(crate) paint_records: Vec<Rc<dyn Any>>,
+    /// replayed with a cached view's paint; each with how far it has been
+    /// moved since (`Window::paint_memo`).
+    pub(crate) paint_records: Vec<(Rc<dyn Any>, Point<Pixels>)>,
+    /// Olo: what was painted under a key (`Window::paint_memo`).
+    pub(crate) memos: FxHashMap<u64, PaintMemo>,
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) debug_bounds: FxHashMap<String, Bounds<Pixels>>,
     #[cfg(any(feature = "inspector", debug_assertions))]
@@ -807,6 +810,7 @@ impl Frame {
             tooltip_requests: Vec::new(),
             cursor_styles: Vec::new(),
             paint_records: Vec::new(),
+            memos: FxHashMap::default(),
 
             #[cfg(any(test, feature = "test-support"))]
             debug_bounds: FxHashMap::default(),
@@ -830,6 +834,7 @@ impl Frame {
         self.tooltip_requests.clear();
         self.cursor_styles.clear();
         self.paint_records.clear();
+        self.memos.clear();
         self.hitboxes.clear();
         self.window_control_hitboxes.clear();
         self.deferred_draws.clear();
@@ -955,6 +960,9 @@ pub struct Window {
     pub(crate) needs_present: Rc<Cell<bool>>,
     pub(crate) last_input_timestamp: Rc<Cell<Instant>>,
     pub(crate) frame_stats: FrameStats,
+    /// Olo: something painted since the last paint memo began wasn't
+    /// finished (`paint_unfinished`).
+    paint_unfinished: bool,
     /// Olo: where the last draw's time went (`OLO_FRAME_PHASES`): its
     /// layout and prepaint, paint, and finishing the scene, each from
     /// the draw's start.
@@ -1407,6 +1415,7 @@ impl Window {
             needs_present,
             last_input_timestamp,
             frame_stats: FrameStats::default(),
+            paint_unfinished: false,
             phase_marks: Default::default(),
             frame_scrolls: Vec::new(),
             glyph_memo: FxHashMap::default(),
@@ -2531,13 +2540,96 @@ impl Window {
     /// view's paint as its scene is. Read the last frame's with
     /// [`Window::paint_records`].
     pub fn push_paint_record(&mut self, record: Rc<dyn Any>) {
-        self.next_frame.paint_records.push(record);
+        self.next_frame.paint_records.push((record, Point::default()));
     }
 
     /// Olo: what was noted as the last frame painted
-    /// ([`Window::push_paint_record`]), in painting order.
-    pub fn paint_records(&self) -> &[Rc<dyn Any>] {
+    /// ([`Window::push_paint_record`]), in painting order, each with how
+    /// far it was moved since it was noted (add it to where it says it
+    /// is: [`Window::paint_memo`] replays moved).
+    pub fn paint_records(&self) -> &[(Rc<dyn Any>, Point<Pixels>)] {
         &self.rendered_frame.paint_records
+    }
+
+    /// Olo: paints what `paint` paints in `bounds`, or what it painted
+    /// under `key` last frame, if nothing it depends on changed: `key`
+    /// says all that (what it shows and how: hovered, selected, the
+    /// time it says), and the clip, opacity and size it was painted at
+    /// must be the same. In the same place it is replayed as a cached
+    /// view is; moved by whole device pixels (scrolled), moved, if all it
+    /// painted can be (`Scene::movable`: no paths, nothing clipped inside
+    /// it, no listeners). A canvas of many parts (Notifications' cards)
+    /// draws again only the parts that changed: a hover redrew a whole
+    /// screen of cards, 36,000 glyphs.
+    pub fn paint_memo(&mut self, key: u64, bounds: Bounds<Pixels>, cx: &mut App, paint: impl FnOnce(&mut Window, &mut App)) {
+        self.invalidator.debug_assert_paint();
+        let mask = self.content_mask();
+        let opacity = self.element_opacity;
+        if !self.refreshing
+            && paint_memos()
+            && let Some(memo) = self.rendered_frame.memos.get(&key)
+            && memo.mask == mask
+            && memo.opacity == opacity
+            && memo.bounds.size == bounds.size
+        {
+            let scale = self.scale_factor();
+            let by = (bounds.origin - memo.bounds.origin).scale(scale);
+            let whole = Point { x: ScaledPixels(by.x.0.round()), y: ScaledPixels(by.y.0.round()) };
+            let on_grid = (by.x.0 - whole.x.0).abs() < 0.01 && (by.y.0 - whole.y.0).abs() < 0.01;
+            let (range, movable) = (memo.range.clone(), memo.movable);
+            if whole == Point::default() || (movable && on_grid) {
+                let start = self.paint_index();
+                if whole == Point::default() {
+                    self.reuse_paint(range);
+                } else {
+                    self.reuse_paint_moved(range, whole, bounds.origin - memo.bounds.origin);
+                }
+                let end = self.paint_index();
+                self.next_frame.memos.insert(key, PaintMemo { bounds, mask, opacity, range: start..end, movable });
+                return;
+            }
+        }
+        let start = self.paint_index();
+        let outer = std::mem::take(&mut self.paint_unfinished);
+        paint(self, cx);
+        let end = self.paint_index();
+        // (An unfinished part leaves what it's part of unfinished too.)
+        let unfinished = self.paint_unfinished;
+        self.paint_unfinished = outer || unfinished;
+        if unfinished {
+            return;
+        }
+        let movable = start.mouse_listeners_index == end.mouse_listeners_index
+            && start.input_handlers_index == end.input_handlers_index
+            && start.cursor_styles_index == end.cursor_styles_index
+            && start.tab_handle_index == end.tab_handle_index
+            && self.next_frame.scene.movable(start.scene_index..end.scene_index, &mask.scale(self.scale_factor()));
+        self.next_frame.memos.insert(key, PaintMemo { bounds, mask, opacity, range: start..end, movable });
+    }
+
+    /// Olo: what's being painted isn't what will show (an icon or picture
+    /// still loading, drawn when it comes): a [`Window::paint_memo`]
+    /// painting it doesn't keep it.
+    pub fn paint_unfinished(&mut self) {
+        self.paint_unfinished = true;
+    }
+
+    /// [`Window::reuse_paint`] of a [`Scene::movable`] range, moved by
+    /// `by` (`points` in logical pixels): its scene, what it noted for
+    /// agents, and its lines kept.
+    fn reuse_paint_moved(&mut self, range: Range<PaintIndex>, by: Point<ScaledPixels>, points: Point<Pixels>) {
+        self.next_frame.paint_records.extend(
+            self.rendered_frame.paint_records[range.start.paint_records_index..range.end.paint_records_index]
+                .iter()
+                .map(|(record, moved)| (record.clone(), *moved + points)),
+        );
+        self.next_frame.accessed_element_states.extend(
+            self.rendered_frame.accessed_element_states[range.start.accessed_element_states_index..range.end.accessed_element_states_index]
+                .iter()
+                .map(|(id, type_id)| (GlobalElementId(id.0.clone()), *type_id)),
+        );
+        self.text_system.reuse_layouts(range.start.line_layout_index..range.end.line_layout_index);
+        self.next_frame.scene.replay_moved(range.start.scene_index..range.end.scene_index, &self.rendered_frame.scene, by);
     }
 
     pub(crate) fn reuse_paint(&mut self, range: Range<PaintIndex>) {
@@ -5828,6 +5920,23 @@ pub fn outline(
         border_color: border_color.into(),
         border_style,
     }
+}
+
+/// Olo: what was painted under a key ([`Window::paint_memo`]), and what
+/// it was painted at.
+pub(crate) struct PaintMemo {
+    bounds: Bounds<Pixels>,
+    mask: ContentMask<Pixels>,
+    opacity: f32,
+    range: Range<PaintIndex>,
+    movable: bool,
+}
+
+/// Olo: paint memos replay (`OLO_PAINT_MEMO=0` paints everything every
+/// frame, to compare).
+fn paint_memos() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("OLO_PAINT_MEMO").map_or(true, |v| v != "0"))
 }
 
 /// Olo: each frame's time in its phases and what its scene holds, on

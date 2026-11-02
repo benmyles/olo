@@ -224,6 +224,75 @@ impl Scene {
         }
     }
 
+    /// Olo: whether what `range` of the paint operations painted can be
+    /// replayed moved (`replay_moved`): only things whose place is their
+    /// bounds (no paths, image triangles or surfaces), each clipped by
+    /// `mask` alone (nothing inside clipped it further), so moving it
+    /// changes nothing but where it is.
+    pub(crate) fn movable(&self, range: Range<usize>, mask: &ContentMask<ScaledPixels>) -> bool {
+        self.paint_operations[range].iter().all(|op| match op {
+            PaintOperation::Primitive(p) => match p {
+                Primitive::Shadow(x) => x.content_mask == *mask,
+                Primitive::Quad(x) => x.content_mask == *mask,
+                Primitive::Underline(x) => x.content_mask == *mask,
+                Primitive::Segment(x) => x.content_mask == *mask,
+                Primitive::Sector(x) => x.content_mask == *mask,
+                Primitive::MonochromeSprite(x) => x.content_mask == *mask,
+                Primitive::PolychromeSprite(x) => x.content_mask == *mask,
+                Primitive::Path(_) | Primitive::ImageTriangle(_) | Primitive::Surface(_) => false,
+            },
+            PaintOperation::Segments(segments) => segments.iter().all(|x| x.content_mask == *mask),
+            PaintOperation::Sprites(sprites) => self.mono_staging[sprites.clone()].iter().all(|x| x.content_mask == *mask),
+            PaintOperation::StartLayer(_) | PaintOperation::EndLayer => true,
+        })
+    }
+
+    /// Olo: [`Scene::replay`], everything moved by `by` (whole device
+    /// pixels: glyphs and snapped edges stay on the grid), what `range`
+    /// painted being [`Scene::movable`].
+    pub(crate) fn replay_moved(&mut self, range: Range<usize>, prev_scene: &Scene, by: Point<ScaledPixels>) {
+        let mv = |b: Bounds<ScaledPixels>| Bounds { origin: b.origin + by, size: b.size };
+        for operation in &prev_scene.paint_operations[range] {
+            match operation {
+                PaintOperation::Primitive(primitive) => {
+                    let mut p = primitive.clone();
+                    match &mut p {
+                        Primitive::Shadow(x) => x.bounds = mv(x.bounds),
+                        Primitive::Quad(x) => x.bounds = mv(x.bounds),
+                        Primitive::Underline(x) => x.bounds = mv(x.bounds),
+                        Primitive::Segment(x) => {
+                            x.bounds = mv(x.bounds);
+                            (x.from, x.to, x.bottom) = (x.from + by, x.to + by, x.bottom + by.y);
+                        }
+                        Primitive::Sector(x) => (x.bounds, x.center) = (mv(x.bounds), x.center + by),
+                        Primitive::MonochromeSprite(x) => x.bounds = mv(x.bounds),
+                        Primitive::PolychromeSprite(x) => x.bounds = mv(x.bounds),
+                        Primitive::Path(_) | Primitive::ImageTriangle(_) | Primitive::Surface(_) => {}
+                    }
+                    self.insert_primitive(p);
+                }
+                PaintOperation::Segments(segments) => self.insert_segments(
+                    segments
+                        .iter()
+                        .map(|x| {
+                            let mut x = x.clone();
+                            x.bounds = mv(x.bounds);
+                            (x.from, x.to, x.bottom) = (x.from + by, x.to + by, x.bottom + by.y);
+                            x
+                        })
+                        .collect(),
+                ),
+                PaintOperation::Sprites(sprites) => self.insert_sprites(prev_scene.mono_staging[sprites.clone()].iter().map(|x| {
+                    let mut x = x.clone();
+                    x.bounds = mv(x.bounds);
+                    x
+                })),
+                PaintOperation::StartLayer(bounds) => self.push_layer(mv(*bounds)),
+                PaintOperation::EndLayer => self.pop_layer(),
+            }
+        }
+    }
+
     pub fn finish(&mut self) {
         self.shadows.sort_by_key(|shadow| shadow.order);
         self.quads.sort_by_key(|quad| quad.order);

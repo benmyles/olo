@@ -277,6 +277,18 @@ What Olo changed, so far:
   where upstream's bounding volume tree, never rebalanced, grew towards
   a chain as a frame's things came in reading order (a frame of cards:
   1.27 ms, now 0.19; the same orders).
+- `Window::paint_memo(key, bounds, cx, paint)`: a canvas of many parts
+  paints again only those that changed. What a part painted is kept
+  under its key (what it shows and how) and replayed while the key, its
+  size, clip and opacity are the same; moved by whole device pixels
+  (scrolled), moved, if all it painted can be (things placed by their
+  bounds, clipped only by the canvas, no listeners: `Scene::movable`),
+  what it noted for agents moved with it (`paint_records` carry an
+  offset). A part painted before an icon or picture came isn't kept
+  (`Window::paint_unfinished`); a refreshed window (a review) paints
+  everything. `OLO_PAINT_MEMO=0` turns replays off, to compare.
+  Notifications' history paints each card so: a hover redrew a screen
+  of cards, 36,000 glyphs (paint 5.3 ms → 3.2 at 1×).
 - `OLO_FRAME_PHASES=1`: each frame's time in layout and prepaint,
   paint, finishing the scene and presenting (which waits for the
   previous frame's GPU work), and its sprites, quads and paint
