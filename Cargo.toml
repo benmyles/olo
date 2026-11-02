@@ -29,6 +29,7 @@ olo-emoji = { path = "crates/emoji" }
 olo-images = { path = "crates/images" }
 olo-token-pool = { path = "crates/pool" }
 olo-ai = { path = "crates/ai" }
+olo-eld = { path = "crates/eld" }
 olo-tg = { path = "crates/telegram" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
