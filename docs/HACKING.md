@@ -571,7 +571,9 @@ fn main() {
   exclusive zone, margins). One naming an output not known yet waits for
   it. `keyboard` is `None`, `OnDemand` (focus on click: the desktop) or
   `Exclusive` (every key while it is up: pickers such as Screenshot's
-  region overlay). A click on a top or overlay layer that is `None`
+  region overlay; app_server gives it the keyboard on the commit it
+  first shows with, and the clipboard's offer with it, so it can paste
+  or read the clipboard at once). A click on a top or overlay layer that is `None`
   (Deskbar) leaves the keyboard where it was, never going through to
   what is under it; a menu of its closing hands the keyboard back to
   what had it as the menu opened.
@@ -6000,12 +6002,20 @@ put it away.
   keyboard (app_server's focus is then the overlay). Shortcuts are done
   to that window through `Request::RunShortcut { id, window }`.
 * **Sources** (`sources.rs`): applications (ours, then desktop entries),
-  preference panels and every setting in them (`PREFERENCE_SETTINGS`:
-  "Pinch to zoom — Preferences ▸ Touchpad & Mouse ▸ Gestures ▸
-  Scrolling"; a choice or a short name is titled with its box, "Theme:
-  Dark"; found too by what it's called elsewhere, `KNOWN_AS`: "night
-  shift", "palm rejection", a test keeping each naming a setting that's
-  there; chosen, Preferences opens on it, lit), light/dark appearance, app_server's shortcuts with
+  "Go to ~/src/olo" for a path copied (offered first, before anything
+  is typed) or typed whole (`sources::go_to`: absolute, `~/…`, a
+  `file://` URI's, offered when there's something there; Tracker shows
+  it, `Action::Reveal`: a folder in its window, a file selected in its
+  folder's; the clipboard is read with `paste_as` once the overlay has
+  the keyboard, as its offer comes with that, and the path looked for
+  on a worker, as a typed one is, so a program slow to give what it
+  copied or a slow disk never holds the palette up), preference panels
+  and every setting in them (`PREFERENCE_SETTINGS`: "Pinch to zoom —
+  Preferences ▸ Touchpad & Mouse ▸ Gestures ▸ Scrolling"; a choice or a
+  short name is titled with its box, "Theme: Dark"; found too by what
+  it's called elsewhere, `KNOWN_AS`: "night shift", "palm rejection", a
+  test keeping each naming a setting that's there; chosen, Preferences
+  opens on it, lit), light/dark appearance, app_server's shortcuts with
   their current keys (`keys_for`, shown as on a Mac, so "tile" lists every
   tiling shortcut and its keys), open windows, the front app's menu
   commands with their keys (`olo_ui::commands`, asked of the process
@@ -6165,8 +6175,9 @@ deferred so the Tracker can update the window back):
   spinner) and has the keyboard.
 - `goto.rs`: Go ▸ Go to File or Folder… (⇧⌘G, Finder's Go to Folder),
   a dialog over the folder's window: the field holds a path copied
-  (absolute, `~/…` as written, a `file://` URI's; `goto::parse` takes
-  quotes and a trailing newline too), selected, so Return goes; the
+  (absolute, `~/…` as written, a `file://` URI's:
+  `olo_kit_base::files::written_path`, which takes quotes and a
+  trailing newline too, as the palette's Go to does), selected, so Return goes; the
   names its folder has that what's typed could be listed under it,
   each folder read once on a worker; Tab completes (the chosen name, or
   as far as they agree, case aside) where there's one to complete to,

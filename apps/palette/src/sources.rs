@@ -75,6 +75,8 @@ pub enum Action {
     /// A command from the menus of the app with this process id.
     Menu { pid: u32, command: String },
     Open(PathBuf),
+    /// A folder, or a file in its folder, shown in Tracker.
+    Reveal(PathBuf),
     Password { vault: String, id: String },
     Copy(String),
     /// The desktop's light or dark appearance.
@@ -94,7 +96,9 @@ impl Action {
             Action::Password { vault, id } => format!("password:{vault}/{id}"),
             Action::Theme(dark) => format!("theme:{dark}"),
             // Windows and menus come and go; sums and searches are one-offs.
-            Action::Activate(_) | Action::Menu { .. } | Action::Copy(_) | Action::Search(_) => return None,
+            // Windows and menus come and go; sums, searches and paths gone
+            // to are one-offs.
+            Action::Activate(_) | Action::Menu { .. } | Action::Copy(_) | Action::Search(_) | Action::Reveal(_) => return None,
         })
     }
 }
@@ -143,6 +147,21 @@ pub enum Found {
     Files(u64, Vec<Item>),
     /// Passwords for query number `.0`.
     Passwords(u64, Vec<Item>),
+}
+
+/// The MIME types text is copied as (what's on the clipboard read as
+/// text, for a path in it).
+pub const TEXT: [&str; 3] = ["text/plain;charset=utf-8", "UTF8_STRING", "text/plain"];
+
+/// "Go to" the path written whole in `text` (`files::written_path`: one
+/// copied, or typed), if there's something there: shown in Tracker, a
+/// folder in its window, a file selected in its folder's. Reads the
+/// disk: off the UI thread.
+pub fn go_to(text: &str, copied: bool) -> Option<Item> {
+    let (shown, path) = olo_kit_base::files::written_path(text)?;
+    let dir = std::fs::metadata(&path).ok()?.is_dir();
+    let what = if copied { "The path in the clipboard, in Tracker" } else { "In Tracker" };
+    Some(Item::new(Kind::Command, format!("Go to {shown}"), Action::Reveal(path)).subtitle(what).icon(if dir { "folder" } else { "document" }).keywords("go to folder file path clipboard tracker reveal"))
 }
 
 /// What settings are also called, in other systems and in everyday
@@ -537,6 +556,7 @@ pub fn perform(action: Action, front: Option<u64>) {
                 if commands::invoke(pid, &command) { Ok(()) } else { Err(format!("the app didn’t do “{command}”")) }
             }
             Action::Open(path) => olo_xdg::open::open(&olo_xdg::open::Target::Path(path)).map_err(|e| e.to_string()),
+            Action::Reveal(path) => olo_ui::tracker::open(&path).map_err(|e| e.to_string()),
             Action::Password { vault, id } => {
                 // Passwords may be quit: start it, then ask.
                 if olo_keychain::call(&olo_keychain::Request::Show { vault: vault.clone(), id: id.clone() }).is_err()
@@ -758,6 +778,18 @@ mod tests {
         assert_eq!(first("night shift").map(|t| t.1), Some("Preferences ▸ Appearance ▸ Night Mode".into()));
         assert_eq!(first("palm rejection").map(|t| t.1.starts_with("Preferences ▸ Touchpad & Mouse ▸ Touch")), Some(true));
         assert!(items.iter().any(|i| i.title == "Syncing with 1Password: Automatically"));
+    }
+
+    #[test]
+    fn go_to_a_path_written_whole_that_is_there() {
+        let tmp = std::env::temp_dir();
+        let shown = tmp.to_string_lossy().into_owned();
+        let item = go_to(&format!("'{shown}'\n"), true).expect("a folder that's there");
+        assert_eq!((item.title.as_str(), item.icon.as_deref(), &item.action), (format!("Go to {shown}").as_str(), Some("folder"), &Action::Reveal(tmp.clone())));
+        assert_eq!(go_to(&format!("file://{shown}"), false).map(|i| i.action), Some(Action::Reveal(tmp.clone())));
+        assert!(go_to("/no/such/place/here", true).is_none());
+        assert!(go_to("hello", true).is_none() && go_to("/etc\n/usr", true).is_none());
+        assert_eq!(Action::Reveal(tmp).key(), None);
     }
 
     #[test]

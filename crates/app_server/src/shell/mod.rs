@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use smithay::wayland::drm_syncobj::DrmSyncobjCachedState;
 
 use smithay::{
-    backend::renderer::utils::on_commit_buffer_handler,
+    backend::renderer::utils::{RendererSurfaceStateUserData, on_commit_buffer_handler},
     desktop::{
         LayerSurface, PopupKind, PopupManager, Space, WindowSurfaceType, layer_map_for_output,
         space::SpaceElement,
@@ -31,8 +31,8 @@ use smithay::{
         dmabuf::get_dmabuf,
         shell::{
             wlr_layer::{
-                Layer, LayerSurface as WlrLayerSurface, LayerSurfaceData, WlrLayerShellHandler,
-                WlrLayerShellState,
+                KeyboardInteractivity, LAYER_SURFACE_ROLE, Layer, LayerSurface as WlrLayerSurface, LayerSurfaceCachedState,
+                LayerSurfaceData, WlrLayerShellHandler, WlrLayerShellState,
             },
             xdg::{SurfaceCachedState, XdgToplevelSurfaceData},
         },
@@ -268,7 +268,31 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             });
         }
 
-        ensure_initial_configure(surface, &self.space, &mut self.popups)
+        ensure_initial_configure(surface, &self.space, &mut self.popups);
+        self.focus_shown_layer(surface);
+    }
+
+    /// An exclusive layer (the palette, Quick Look's overlay, a window's
+    /// menu) has the keyboard from when it shows, as layer-shell says, not
+    /// from the next key pressed: and with the keyboard, the clipboard's
+    /// offer, which the palette reads as it opens.
+    fn focus_shown_layer(&mut self, surface: &WlSurface) {
+        if smithay::wayland::compositor::get_role(surface) != Some(LAYER_SURFACE_ROLE) || self.lock.locked() {
+            return;
+        }
+        let shows = with_states(surface, |states| {
+            let shown = states.data_map.get::<RendererSurfaceStateUserData>().is_some_and(|d| d.lock().unwrap().buffer().is_some());
+            let was = states.data_map.get_or_insert(|| LayerShown(std::cell::Cell::new(false))).0.replace(shown);
+            let mut cached = states.cached_state.get::<LayerSurfaceCachedState>();
+            let c = cached.current();
+            shown && !was && c.keyboard_interactivity == KeyboardInteractivity::Exclusive && matches!(c.layer, Layer::Top | Layer::Overlay)
+        });
+        if !shows {
+            return;
+        }
+        let Some(layer) = self.space.outputs().find_map(|o| layer_map_for_output(o).layer_for_surface(surface, WindowSurfaceType::TOPLEVEL).cloned()) else { return };
+        let keyboard = self.seat.get_keyboard().unwrap();
+        keyboard.set_focus(self, Some(layer.into()), smithay::utils::SERIAL_COUNTER.next_serial());
     }
 }
 
@@ -482,6 +506,10 @@ fn keep_on_screen(space: &mut Space<WindowElement>, surface: &WlSurface, window:
         space.relocate_element(window, loc + Point::from((x - geo.loc.x, y - geo.loc.y)));
     }
 }
+
+/// Whether a layer surface had a buffer at its last commit
+/// (`focus_shown_layer`).
+struct LayerShown(std::cell::Cell<bool>);
 
 fn ensure_initial_configure(surface: &WlSurface, space: &Space<WindowElement>, popups: &mut PopupManager) {
     with_surface_tree_upward(

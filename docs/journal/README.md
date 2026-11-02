@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Command palette: Go to the path in the clipboard
+
+*12:45* — With a path copied (absolute, ~/…, a file:// URI), the palette offers to go there before anything is typed, and a path typed whole is offered too: Tracker shows it, a folder in its window, a file selected in its folder's. Read off the UI thread once the palette has the keyboard, which app_server now gives an exclusive layer as it shows.
+
+![Command palette: Go to the path in the clipboard](2026-11-02/124554-command-palette-go-to-the-path-in-the-clipboard.png)
+
 ### A setting found is shown, lit
 
 *12:24* — Chosen in the palette, Preferences opens the setting's panel (on its tab, clicked if need be) with the control ringed in the keyboard-navigation colour for a moment: olo_ui::spotlight, which any app or agent can use to say 'here'. Two lines wide on device pixels; frames only while it comes and goes.

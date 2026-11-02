@@ -24,7 +24,7 @@ use olo_protocol::WindowInfo;
 use olo_ui::{
     Frame, WindowOptions,
     gpui::{
-        App, AppContext as _, Bounds, ClipboardItem, Context, Entity, Focusable as _, FontWeight, HitboxBehavior, InteractiveElement as _, IntoElement, KeyDownEvent, LayerKeyboard, LayerShellLayer, ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Render, ScrollWheelEvent, Styled as _, Window, WindowHandle, canvas, div, point, px, size,
+        App, AppContext as _, Bounds, ClipboardItem, Context, Entity, Focusable as _, FontWeight, HitboxBehavior, InteractiveElement as _, IntoElement, KeyDownEvent, LayerKeyboard, LayerShellLayer, ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Render, ScrollWheelEvent, Styled as _, Subscription, Window, WindowHandle, canvas, div, point, px, size,
     },
     icons,
     instance::{self, Launch},
@@ -121,6 +121,13 @@ struct Palette {
     menus: Vec<Item>,
     files: Vec<Item>,
     passwords: Vec<Item>,
+    /// Go to the path in the clipboard, if it holds one that's there.
+    copied: Option<Item>,
+    /// Go to the path typed, for the query numbered so.
+    typed: Option<(u64, Item)>,
+    /// Following the window's activation: the clipboard is read once it
+    /// has the keyboard.
+    activation: Option<Subscription>,
     results: Vec<Item>,
     front: Option<WindowInfo>,
     recents: Recents,
@@ -179,6 +186,8 @@ impl Palette {
         self.asked += 1;
         self.files.clear();
         self.passwords.clear();
+        self.copied = None;
+        self.typed = None;
         self.selected = 0;
         self.top = 0;
         self.command = false;
@@ -189,10 +198,40 @@ impl Palette {
             let view = me.clone();
             let w = olo_ui::open_window(cx, overlay("Command Palette", "palette", None), move |window, cx| {
                 window.focus(&query.focus_handle(cx));
+                // (The clipboard's offer comes to the client with the
+                // keyboard, so it's read once the window has that.)
+                view.update(cx, |p, cx| {
+                    p.activation = Some(cx.observe_window_activation(window, |p, window, cx| {
+                        if window.is_window_active() && p.copied.is_none() {
+                            p.read_copied(cx);
+                        }
+                    }));
+                });
                 view
             });
             me.update(cx, |p, _| p.win = w);
         });
+    }
+
+    /// Offer to go to the path in the clipboard, if it holds one that's
+    /// there: read and looked for off the UI thread (a program slow to
+    /// give what it copied, a slow disk, never hold the palette up).
+    fn read_copied(&mut self, cx: &mut Context<Self>) {
+        // (A turn of the event loop first: the keyboard's arrival and the
+        // clipboard's offer come together, the offer after.)
+        cx.spawn(async move |this, cx| {
+            let Ok(read) = this.update(cx, |_, cx| cx.paste_as(&sources::TEXT)) else { return };
+            let Some((_, bytes)) = read.await else { return };
+            let found = cx.background_spawn(async move { sources::go_to(std::str::from_utf8(&bytes).ok()?, true) }).await;
+            let _ = this.update(cx, |p, cx| {
+                if found.is_some() && p.win.is_some() {
+                    p.copied = found;
+                    p.refresh();
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
     }
 
     fn hide(&mut self, cx: &mut Context<Self>) {
@@ -214,7 +253,8 @@ impl Palette {
             let all = self.fixed.iter().chain(&self.context);
             let mut recent: Vec<(i32, Item)> = all.filter_map(|i| i.action.key().map(|k| (self.recents.boost(&k), i.clone()))).filter(|(b, _)| *b > 0).collect();
             recent.sort_by_key(|r| std::cmp::Reverse(r.0));
-            scored = recent.into_iter().take(ROWS).collect();
+            // The path in the clipboard first: likeliest wanted.
+            scored = self.copied.iter().map(|i| (0, i.clone())).chain(recent).take(ROWS).collect();
         } else {
             if let Some(v) = calc::eval(&query) {
                 let shown = calc::show(v);
@@ -222,7 +262,13 @@ impl Palette {
                 item.keywords = String::new();
                 scored.push((i32::MAX / 2, item));
             }
-            let all = self.fixed.iter().chain(&self.context).chain(&self.menus).chain(&self.passwords).chain(&self.files);
+            // A path typed: go there, first.
+            if let Some((n, item)) = &self.typed
+                && *n == self.asked
+            {
+                scored.push((i32::MAX / 2 - 1, item.clone()));
+            }
+            let all = self.fixed.iter().chain(&self.context).chain(&self.menus).chain(&self.passwords).chain(&self.files).chain(&self.copied);
             scored.extend(sources::ranked(&words, all, |k| self.recents.boost(k)));
             let q = query.trim().to_owned();
             scored.push((i32::MIN, Item::new(Kind::Web, format!("Search the web for “{q}”"), Action::Search(q)).icon("browser").subtitle("Web browser")));
@@ -246,6 +292,22 @@ impl Palette {
         let words = rank::words(&self.query_text);
         let _ = self.workers.files.send((self.asked, words));
         let _ = self.workers.passwords.send((self.asked, self.query_text.clone()));
+        // A path written whole: looked for off the UI thread, offered if
+        // it's there.
+        if olo_ui::files::written_path(&self.query_text).is_some() {
+            let (text, asked) = (self.query_text.clone(), self.asked);
+            cx.spawn(async move |this, cx| {
+                let Some(item) = cx.background_spawn(async move { sources::go_to(&text, false) }).await else { return };
+                let _ = this.update(cx, |p, cx| {
+                    if p.asked == asked {
+                        p.typed = Some((asked, item));
+                        p.refresh();
+                        cx.notify();
+                    }
+                });
+            })
+            .detach();
+        }
         self.refresh();
         cx.notify();
     }
@@ -652,6 +714,9 @@ fn main() {
                 menus: Vec::new(),
                 files: Vec::new(),
                 passwords: Vec::new(),
+                copied: None,
+                typed: None,
+                activation: None,
                 results: Vec::new(),
                 front: None,
                 recents: Recents::load(),
