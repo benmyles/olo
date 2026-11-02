@@ -1,24 +1,125 @@
-//! Open With ▸ Other…: every app that can open files (`olo_xdg::open::
-//! every_app`, Olo's own first), found by typing part of its name, and
-//! "Always open files like this one with it" to make the choice the
-//! kind's (`open::set_default`). The apps are read off the UI thread;
-//! the list shows them as they come. A dialog over the window it was
-//! asked in, as Go to File or Folder is.
+//! Open With, the same wherever a file is: Tracker's windows, the
+//! desktop, Quick Look and the file panels. [`menu`] is the submenu for
+//! files of one kind (the apps worked out for it, `olo_xdg::open::
+//! offer_cached`, the one it opens in marked; Other…; Always Open With ▸
+//! to make another the kind's), its commands are [`is_command`]'s, and
+//! [`run`] does what one asks. Other… is [`OpenWithWin`]: every app that
+//! can open files (`olo_xdg::open::every_app`, Olo's own first), found by
+//! typing part of its name, and "Always open files like this one with
+//! it". BeOS: Tracker's Open With ▸ and its Open With window.
+//!
+//! The menu is built on the UI thread from what was worked out before
+//! (`olo_xdg::open::warm`, run where the files were listed: off it);
+//! finding an app, opening with it and writing a choice read and write
+//! files, so they run on a thread.
 
 use std::path::PathBuf;
 
+use gpui::{App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render, SharedString, Styled as _, Subscription, Window, div, px};
 use olo_kit_base::metrics as m;
-use olo_ui::{
-    gpui::{
-        Context, Entity, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render, SharedString, Styled as _, Subscription, Window, div, px,
-    },
+use olo_xdg::open::{self, Handler};
+
+use crate::{
+    WindowOptions,
+    menu::Menu,
     widgets::{
         Button, CheckBox, StringView, TextControl, TextField, TextFieldEvent,
         list::{Column, ColumnListView, ListModel},
         text_field,
     },
 };
-use olo_xdg::open::{self, Handler};
+
+/// Open With ▸ Other…: the window to choose any app.
+pub const OTHER: &str = "open-with-other";
+
+/// The kind files named so (`(name, is_dir)`) all are, for Open With
+/// (None: none, or mixed).
+pub fn kind_of<'a>(items: impl IntoIterator<Item = (&'a str, bool)>) -> Option<String> {
+    let mut kinds = items.into_iter().map(|(name, is_dir)| open::kind_of(name, is_dir));
+    let first = kinds.next()?;
+    kinds.all(|k| k == first).then_some(first)
+}
+
+/// Open With ▸ for files of `kind`: the apps worked out for it (not
+/// worked out yet, no submenu), the one it opens in marked, Other…, and
+/// Always Open With ▸ to make another the kind's. No app knows the kind:
+/// Other… alone.
+pub fn menu(kind: &str) -> Option<Menu> {
+    let offer = open::offer_cached(kind)?;
+    let ids: Vec<(String, String)> = offer.handlers.iter().filter_map(|h| Some((open::handler_id(h)?, h.name()))).collect();
+    if ids.is_empty() {
+        return Some(Menu::new("Open With").item("Other…", OTHER));
+    }
+    let mut menu = Menu::new("Open With");
+    for (id, name) in &ids {
+        let label = if offer.default.as_ref() == Some(id) { format!("{name} (default)") } else { name.clone() };
+        menu = menu.item(label, format!("open-with:{id}"));
+    }
+    let mut always = Menu::new("Always Open With");
+    for (id, name) in &ids {
+        always = always.item(name.clone(), format!("always-open-with:{id}")).checked(offer.default.as_ref() == Some(id));
+    }
+    Some(menu.separator().item("Other…", OTHER).submenu(always))
+}
+
+/// Whether `cmd` is one of Open With's.
+pub fn is_command(cmd: &str) -> bool {
+    cmd == OTHER || cmd.starts_with("open-with:") || cmd.starts_with("always-open-with:")
+}
+
+/// Open With's `cmd` for `paths` (of `kind`): opened with the app it
+/// names (and, Always, the kind's from now on), or Other…'s window
+/// opened, over the window in front.
+pub fn run(cmd: &str, kind: String, paths: Vec<PathBuf>, cx: &mut App) {
+    if cmd == OTHER {
+        other(kind, paths, cx);
+        return;
+    }
+    let always = cmd.starts_with("always-");
+    let id = cmd.split_once(':').map(|(_, id)| id.to_owned()).unwrap_or_default();
+    open_with(id, kind, paths, always);
+}
+
+/// Open `paths` with the app `id` names (`always`: and make it `kind`'s
+/// from now on). On a thread: finding the app and writing the choice
+/// read and write files.
+pub fn open_with(id: String, kind: String, paths: Vec<PathBuf>, always: bool) {
+    std::thread::spawn(move || {
+        let Some(h) = open::handler_of_id(&id) else { return };
+        if always {
+            if let Err(e) = open::set_default(&kind, Some(&h)) {
+                tracing::warn!("couldn't make {id} the app for {kind}: {e}");
+            }
+            open::warm([kind]);
+        }
+        if let Err(e) = open::open_with(&h, &paths) {
+            tracing::warn!("open with {id}: {e}");
+        }
+    });
+}
+
+/// Other…'s window: a dialog over the window it was asked in, never a
+/// tab.
+pub fn window_options() -> WindowOptions {
+    WindowOptions::new("Open With", WIDTH, HEIGHT).min_size(320.0, 260.0).dialog().child()
+}
+
+/// Other…'s window, opened and closed by itself (an app that keeps its
+/// windows' list opens [`OpenWithWin`] in [`window_options`] itself).
+pub fn other(kind: String, paths: Vec<PathBuf>, cx: &mut App) {
+    let made: std::rc::Rc<std::cell::RefCell<Option<Entity<OpenWithWin>>>> = Default::default();
+    let keep = made.clone();
+    let Some(handle) = crate::open_window(cx, window_options(), move |window, cx| {
+        let v = cx.new(|cx| OpenWithWin::new(kind, paths, window, cx));
+        *keep.borrow_mut() = Some(v.clone());
+        v
+    }) else {
+        return;
+    };
+    let Some(win) = made.borrow_mut().take() else { return };
+    let any: gpui::AnyWindowHandle = handle.into();
+    cx.subscribe(&win, move |_, _: &OpenWithEvent, cx| cx.close_window(any)).detach();
+}
 
 /// The window's size: the field, a screen of apps, the buttons.
 pub const WIDTH: f32 = 420.0;
@@ -26,19 +127,15 @@ pub const HEIGHT: f32 = 420.0;
 
 /// An app as the list shows it: its id, name and icon.
 #[derive(Clone)]
-struct App {
+struct AppRow {
     id: String,
     name: String,
     icon: String,
 }
 
-impl App {
-    fn of(h: &Handler) -> Option<App> {
-        let icon = match h {
-            Handler::Ours(bin) => olo_xdg::apps::app_id_of(bin).and_then(|id| olo_xdg::apps::our_app(&id)).map_or("application", |(_, i)| i).to_owned(),
-            Handler::Entry(e) => e.icon.clone().unwrap_or_else(|| "application".into()),
-        };
-        Some(App { id: open::handler_id(h)?, name: h.name(), icon })
+impl AppRow {
+    fn of(h: &Handler) -> Option<AppRow> {
+        Some(AppRow { id: open::handler_id(h)?, name: h.name(), icon: h.icon() })
     }
 }
 
@@ -49,7 +146,7 @@ pub struct OpenWithWin {
     field: Entity<TextField>,
     list: Entity<ListModel>,
     /// Every app (None: still reading them), and those the typing finds.
-    apps: Option<Vec<App>>,
+    apps: Option<Vec<AppRow>>,
     shown: Vec<usize>,
     always: bool,
     _subs: Vec<Subscription>,
@@ -61,7 +158,7 @@ pub enum OpenWithEvent {
     Cancelled,
 }
 
-impl olo_ui::gpui::EventEmitter<OpenWithEvent> for OpenWithWin {}
+impl gpui::EventEmitter<OpenWithEvent> for OpenWithWin {}
 
 impl OpenWithWin {
     pub fn new(kind: String, paths: Vec<PathBuf>, window: &mut Window, cx: &mut Context<Self>) -> OpenWithWin {
@@ -78,7 +175,7 @@ impl OpenWithWin {
         ];
         // (Every desktop entry is read: on a worker.)
         cx.spawn(async move |me, cx| {
-            let apps = cx.background_executor().spawn(async { open::every_app().iter().filter_map(App::of).collect::<Vec<_>>() }).await;
+            let apps = cx.background_executor().spawn(async { open::every_app().iter().filter_map(AppRow::of).collect::<Vec<_>>() }).await;
             let _ = me.update(cx, |w, cx| {
                 w.apps = Some(apps);
                 w.filter(cx);
@@ -104,7 +201,7 @@ impl OpenWithWin {
         cx.notify();
     }
 
-    fn chosen(&self, cx: &Context<Self>) -> Option<App> {
+    fn chosen(&self, cx: &Context<Self>) -> Option<AppRow> {
         let i = self.list.read(cx).state.single()?;
         self.apps.as_ref()?.get(*self.shown.get(i)?).cloned()
     }
@@ -126,7 +223,7 @@ impl OpenWithWin {
     /// Open with the app chosen (and, Always, make it the kind's).
     fn open(&mut self, cx: &mut Context<Self>) {
         let Some(app) = self.chosen(cx) else { return };
-        crate::open_with_app(app.id, self.kind.clone(), self.paths.clone(), self.always);
+        open_with(app.id, self.kind.clone(), self.paths.clone(), self.always);
         cx.emit(OpenWithEvent::Done);
     }
 }

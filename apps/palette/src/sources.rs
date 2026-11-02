@@ -178,6 +178,8 @@ const KNOWN_AS: &[(&str, &str, &str)] = &[
     ("default-apps", "Everything Else", "default app open with file types associations"),
     ("default-apps", "Web pages and links", "default browser"),
     ("default-apps", "Email links", "default mail email client"),
+    ("default-apps", "Add a Kind", "custom file type extension own kind associate"),
+    ("default-apps", "Open With Offers", "open with menu apps offered order"),
     ("datetime", "Set date and time automatically", "ntp network time sync clock"),
     ("datetime", "Set Time Zone", "timezone"),
     ("display", "Scale", "zoom size hidpi retina resolution bigger smaller"),

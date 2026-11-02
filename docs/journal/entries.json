@@ -2776,5 +2776,23 @@
   "title": "Tracker: Open With \u25b8 Other\u2026",
   "caption": "Any app can open a file: Other\u2026 lists every app that opens files, found by typing part of its name, with 'Always open files like \u2026 with it'.",
   "image": "2026-11-02/144805-tracker-open-with-other.png"
+ },
+ {
+  "time": "2026-11-02T15:29:02",
+  "title": "Default Apps: your own kinds",
+  "caption": "Preferences \u25b8 Default Apps \u25b8 Your Own Kinds: a kind named by its extensions (Game saves: .sav .sv2) opens in the app chosen; Olo knows files by it everywhere (olo_xdg::mime::own_kinds).",
+  "image": "2026-11-02/152902-default-apps-your-own-kinds.png"
+ },
+ {
+  "time": "2026-11-02T15:29:03",
+  "title": "Default Apps: what Open With offers",
+  "caption": "The Open With tab: a kind's apps in Open With \u25b8, in order, moved, removed and added; Olo's Choice lets Olo choose again.",
+  "image": "2026-11-02/152903-default-apps-what-open-with-offers.png"
+ },
+ {
+  "time": "2026-11-02T15:29:03",
+  "title": "File panels: Open With",
+  "caption": "An item's menu in the Open and Save panels: Quick Look, Open With \u25b8 (the kit's olo_ui::open_with, as Tracker's) and Show in Tracker.",
+  "image": "2026-11-02/152903-file-panels-open-with.png"
  }
 ]

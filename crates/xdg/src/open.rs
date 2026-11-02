@@ -76,6 +76,14 @@ impl Handler {
             Handler::Entry(e) => e.name.clone(),
         }
     }
+
+    /// Its icon's name (or path, as a desktop entry may give one).
+    pub fn icon(&self) -> String {
+        match self {
+            Handler::Ours(bin) => crate::apps::our_app(bin.trim_start_matches("olo-")).map_or("application", |(_, i)| i).to_owned(),
+            Handler::Entry(e) => e.icon.clone().unwrap_or_else(|| "application".into()),
+        }
+    }
 }
 
 /// Olo's own app for a type, if it is installed.
@@ -572,11 +580,12 @@ pub struct Offer {
 
 /// Every app that can open files, for Open With ▸ Other…: Olo's that
 /// open others' files, then every installed app's desktop entry (shown in
-/// menus, with a command line), by name. Reads files: off the UI thread.
+/// menus, whose command takes files), by name. Reads files: off the UI
+/// thread.
 pub fn every_app() -> Vec<Handler> {
     let mut out: Vec<Handler> = OPENERS.iter().map(|(bin, _)| *bin).filter(|b| find_program(b).is_some()).map(Handler::Ours).collect();
     let all = desktop_entry::all_cached();
-    let mut entries: Vec<&DesktopEntry> = all.iter().filter(|e| !e.no_display && e.exec.is_some() && !e.id.starts_with("olo.")).collect();
+    let mut entries: Vec<&DesktopEntry> = all.iter().filter(|e| !e.no_display && e.takes_files() && !e.id.starts_with("olo.")).collect();
     entries.sort_by_key(|e| e.name.to_lowercase());
     out.extend(entries.into_iter().map(|e| Handler::Entry(Box::new(e.clone()))));
     out

@@ -7,38 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Default apps and Open With** (*part done* 2026-11-02: the person's
-  defaults and curated lists in `olo_xdg::open`, and Tracker's Open With
-  ▸ and Always Open With ▸, Other…, on the desktop and Quick Look too;
-  Preferences ▸ Default Apps; *left*: editing the apps Open With offers
-  (`set_offered` is there, the panel's part isn't), and the file
-  panels' item menus) (Ben, 2026-11-01): "ability to choose
-  the default app to open different file types with, both through a
-  right click context menu and through a centralized default apps
-  preference app. also, add an open with menu item when right clicking
-  a file/folder that shows a curated set of apps appropriate for that
-  file/folder and allow it to be customized in the preference app too".
-  So: (1) a Preferences ▸ Default Apps panel listing kinds of file
-  (grouped: documents, pictures, movies, music, archives, code, folders,
-  links' schemes) with the app each opens in, changeable there; (2) an
-  **Open With ▸** submenu on any file's or folder's context menu
-  (Tracker, file panels, the desktop, Quick Look) offering a curated
-  few apps that suit that kind (Olo's own first, then those whose
-  desktop entries claim the MIME type, never a long raw list), with
-  "Other…" (Olo's Open With window) and "Always Open With" making the
-  choice the kind's default; (3) the curated list per kind editable in
-  the same panel (add, remove, order). All in `olo_xdg::open` (the
-  defaults already live in `olo-mimeapps.list`, so GIO, xdg-open and
-  OpenURI follow), the submenu a kit menu every app shares, agent-
-  readable like any menu. BeOS: FileTypes and Tracker's Open With.
-  Then (Ben, 2026-11-02): "in the default apps prefs we should be able
-  to set and manage custom extensions/types and their apps too". So:
-  Default Apps lists the person's own kinds too (a name, the
-  extensions it covers, the app it opens in), added, changed and
-  removed there; an extension no MIME database knows becomes a type
-  of Olo's own (`olo_xdg::mime` reads them, so Tracker, Open With and
-  the opener know them), and a known type can be given another app.
-
 - **x86 machines, starting with Ben's ThinkPad P1 Gen 9** (Ben; it
   arrives within days; **next once the GPUI migration is done**, before
   the rest of this list: "after all the gpui work is done, prioritize
@@ -70,6 +38,71 @@ of Finished; a new one goes where its priority puts it.
   (`*kbd_backlight`) and laptop panel brightness are already generic.
   Waiting on the machine: NVIDIA for apps and external displays, HDR and
   wide colour, VRR, the haptic touchpad, IR face sign-in.
+
+- **Dialogs float on top, never tucked into another window's group**
+  (Ben, 2026-11-02): "in focus mode (and maybe other modes too) when i
+  am in chrome and a passkey dialog appears instead of appearing over
+  chrome it appears over the passwords app and i don't even know it's
+  there i have to go to passwords to even see it. dialogs like this
+  should always open floating at the top layer". Why: the passkey
+  prompt is a Passwords window (`olo.passwords`), and in Focus mode
+  `shell::groups::group_key` groups every window of an app, so it
+  becomes a tab of Passwords' group, behind wherever Passwords is. So:
+  a dialog (a toplevel with a parent, a modal, an approval or request
+  window an app shows for another, as Passwords' passkey and password
+  prompts, polkit's, the portal's, Chrome's own) never groups or
+  tiles, in any mode; it opens floating, in front of everything on the
+  display the person is working on (centred over the window that
+  asked, Chrome here, not over its own app's), gets the keyboard, and
+  stays in front until answered. Apps say a window is a dialog through
+  the kit (a window kind agents can read too), and app_server knows
+  the rest by xdg's parent and fixed size. Check every mode (Focus,
+  tiling, free), with the asking app on another display or workspace.
+
+- **The file panel after Quick Look: tiled, and Open does nothing**
+  (Ben, 2026-11-02): "when i'm in slack and attach a file i correctly
+  get the olo tracker as the file picker. however, when i hit space for
+  quick look then the preview gets tiled (i think quick look should
+  also be floating). and worse, then i hit the open button in the
+  tracker picker but nothing goes into slack. if i attach without
+  previewing first then it does add correctly." The picker is the
+  kit's file panel (`olo_ui::file_panel`, through `olo-portal`'s
+  FileChooser); Space spawns `olo-viewer --look`. So: (1) the look is
+  a floating window over the panel (a dialog, never a tile or a tab,
+  as the item above), put away by Space or Escape; (2) find why Open
+  after a look answers nothing (the look's window taking the
+  keyboard, the panel's selection, its `on_done` or the portal's
+  reply) and fix it; test both through the portal, as Slack asks.
+
+- **The file picker opens where it was last, for each app** (Ben,
+  2026-11-02): "olo tracker when launched as a file picker from another
+  app should remember and reopen in the last location it was in for
+  that app specifically (if any)". So: the file panel `olo-portal`
+  shows for an app (FileChooser, by the asking app's id) opens in the
+  folder it was last in for that app, Open and Save each, kept in
+  Olo's config (`places`, beside the recent folders) and kept across
+  restarts; a folder the app asks for itself (`current_folder`) still
+  wins, and a remembered folder that's gone falls back to the usual
+  one. Olo's own apps' panels the same, by app.
+
+- **Menus taller than the screen scroll** (found 2026-11-02 in
+  Preferences ▸ Default Apps, whose app pop-up listed every app): a
+  kit menu longer than the display runs off its edge, and what's past
+  it can't be reached. As BeOS's did: a menu is kept to the display
+  (the compositor's constraints), and one that doesn't fit scrolls,
+  with arrows at its ends that scroll while the pointer rests on them,
+  the wheel, and the keyboard's ↑↓ bringing the item into view; agents
+  read every item, shown or not.
+
+- **`pbcopy` and `pbpaste` from the command line** (Ben, 2026-11-02):
+  "have olo install a pbcopy shim that copies to the clipboard from the
+  cli". Native, as macOS's: `pbcopy` holds what it reads from stdin on
+  the clipboard (as text, the data-control protocol app_server speaks,
+  `olo_kit_base::clipboard`), so Paste in any app gets it, and stays
+  until something else is copied; `pbpaste` prints the clipboard's text.
+  The session puts them on PATH (`~/.local/bin`, as `olo-logs` is), in
+  every shell and Terminal, and agents use them as people do; no
+  wl-clipboard, nothing wrapped.
 
 - **Chrome scrolls slower than Olo's apps** (Ben, 2026-11-02): "in
   chrome scrolling does not seem to be the same speed as olo native
@@ -857,6 +890,38 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**Default apps and Open With**~~ (done 2026-11-02: the person's
+  defaults and curated lists in `olo_xdg::open`; Open With ▸, Always
+  Open With ▸ and Other… in the kit, `olo_ui::open_with`, on Tracker's
+  items, the desktop's, Quick Look's and the file panels'; Preferences ▸
+  Default Apps with its three tabs: defaults, the person's own kinds
+  (`olo_xdg::mime::own_kinds`), and what Open With offers, in order) (Ben, 2026-11-01): "ability to choose
+  the default app to open different file types with, both through a
+  right click context menu and through a centralized default apps
+  preference app. also, add an open with menu item when right clicking
+  a file/folder that shows a curated set of apps appropriate for that
+  file/folder and allow it to be customized in the preference app too".
+  So: (1) a Preferences ▸ Default Apps panel listing kinds of file
+  (grouped: documents, pictures, movies, music, archives, code, folders,
+  links' schemes) with the app each opens in, changeable there; (2) an
+  **Open With ▸** submenu on any file's or folder's context menu
+  (Tracker, file panels, the desktop, Quick Look) offering a curated
+  few apps that suit that kind (Olo's own first, then those whose
+  desktop entries claim the MIME type, never a long raw list), with
+  "Other…" (Olo's Open With window) and "Always Open With" making the
+  choice the kind's default; (3) the curated list per kind editable in
+  the same panel (add, remove, order). All in `olo_xdg::open` (the
+  defaults already live in `olo-mimeapps.list`, so GIO, xdg-open and
+  OpenURI follow), the submenu a kit menu every app shares, agent-
+  readable like any menu. BeOS: FileTypes and Tracker's Open With.
+  Then (Ben, 2026-11-02): "in the default apps prefs we should be able
+  to set and manage custom extensions/types and their apps too". So:
+  Default Apps lists the person's own kinds too (a name, the
+  extensions it covers, the app it opens in), added, changed and
+  removed there; an extension no MIME database knows becomes a type
+  of Olo's own (`olo_xdg::mime` reads them, so Tracker, Open With and
+  the opener know them), and a known type can be given another app.
 
 - ~~**A window on another workspace has a blank thumbnail in the share
   picker**~~ (done 2026-11-02: drawn from what it last showed, with its

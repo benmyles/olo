@@ -128,6 +128,11 @@ fn ui_lint_settings_index() {
                 // The innermost box round it, by a name that is the same
                 // on every computer (not the made-up device's or the user's).
                 let group = nodes.iter().filter(|o| o.role == "Group" && inside(n, o)).min_by(|a, b| (a.width * a.height).total_cmp(&(b.width * b.height))).and_then(|o| o.name.clone()).unwrap_or_default();
+                // (Default Apps' own kinds are the person's, as a list's
+                // rows are: a made-up one's.)
+                if group == "Your Kinds" {
+                    continue;
+                }
                 let group = generic_group(&group);
                 let row = (panel.arg().to_owned(), tab.clone().unwrap_or_default(), group, name, n.role.clone());
                 if !rows.contains(&row) {

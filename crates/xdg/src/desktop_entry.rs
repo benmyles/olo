@@ -171,6 +171,12 @@ fn find_by_class<'a>(entries: &'a [DesktopEntry], app_id: &str) -> Option<&'a De
 }
 
 impl DesktopEntry {
+    /// Its command line takes files or links (`%f`, `%F`, `%u`, `%U`): it
+    /// can open one.
+    pub fn takes_files(&self) -> bool {
+        self.exec.as_deref().is_some_and(|e| e.split_whitespace().any(|p| matches!(p.trim_matches(['"', '\'']), "%f" | "%F" | "%u" | "%U")))
+    }
+
     /// The command line with field codes removed.
     pub fn command(&self) -> Option<String> {
         let exec = self.exec.as_ref()?;
@@ -214,5 +220,13 @@ mod tests {
         std::fs::write(&q, "[Desktop Entry]\nType=Application\nName=Some App\nIcon=someapp\n").unwrap();
         assert_eq!(parse(&q).unwrap().icon.as_deref(), Some("someapp"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Only a command that takes files can open one.
+    #[test]
+    fn takes_files() {
+        let entry = |exec: &str| DesktopEntry { exec: Some(exec.into()), ..Default::default() };
+        assert!(entry("firefox %u").takes_files() && entry("sh -c 'x \"%F\"'").takes_files() && entry("eog \"%U\"").takes_files());
+        assert!(!entry("btop").takes_files() && !entry("app --icon %i").takes_files() && !DesktopEntry::default().takes_files());
     }
 }

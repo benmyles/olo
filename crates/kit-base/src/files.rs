@@ -198,6 +198,9 @@ pub fn format_progress(done: u64, total: u64) -> String {
 
 pub fn format_size(n: u64) -> String {
     const UNITS: [&str; 5] = ["bytes", "KB", "MB", "GB", "TB"];
+    if n == 1 {
+        return "1 byte".into();
+    }
     if n < 1024 {
         return format!("{n} bytes");
     }

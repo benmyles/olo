@@ -12,7 +12,6 @@ mod fs;
 mod goto;
 mod items;
 mod model;
-mod openwith;
 mod ops;
 mod panels;
 mod quicklook;
@@ -341,12 +340,10 @@ impl Tracker {
     fn open_with(&mut self, cmd: &str, entries: Vec<Entry>, cx: &mut Context<Self>) {
         let Some(kind) = folder::open_with_kind(&entries) else { return };
         let paths: Vec<PathBuf> = entries.iter().map(|e| e.path.clone()).collect();
-        if cmd == folder::OPEN_WITH_OTHER {
+        if cmd == olo_ui::open_with::OTHER {
             return self.open_with_other(kind, paths, cx);
         }
-        let always = cmd.starts_with("always-");
-        let id = cmd.split_once(':').map(|(_, id)| id.to_owned()).unwrap_or_default();
-        open_with_app(id, kind, paths, always);
+        olo_ui::open_with::run(cmd, kind, paths, cx);
     }
 
     fn open_info(&mut self, e: Entry, cx: &mut Context<Self>) {
@@ -425,12 +422,10 @@ impl Tracker {
         if let Some(key) = self.windows.iter().find(|s| matches!(s.win, Win::OpenWith)).map(|s| s.key) {
             return self.activate(key, cx);
         }
-        let made: std::rc::Rc<std::cell::RefCell<Option<Entity<openwith::OpenWithWin>>>> = Default::default();
+        let made: std::rc::Rc<std::cell::RefCell<Option<Entity<olo_ui::open_with::OpenWithWin>>>> = Default::default();
         let keep = made.clone();
-        // (A dialog: over the window it was asked in, never a tab.)
-        let options = WindowOptions::new("Open With", openwith::WIDTH, openwith::HEIGHT).min_size(320.0, 260.0).dialog().child();
-        let Some(handle) = olo_ui::open_window(cx, options, move |window, cx| {
-            let v = cx.new(|cx| openwith::OpenWithWin::new(kind, paths, window, cx));
+        let Some(handle) = olo_ui::open_window(cx, olo_ui::open_with::window_options(), move |window, cx| {
+            let v = cx.new(|cx| olo_ui::open_with::OpenWithWin::new(kind, paths, window, cx));
             *keep.borrow_mut() = Some(v.clone());
             v
         }) else {
@@ -439,7 +434,7 @@ impl Tracker {
         let Some(win) = made.borrow_mut().take() else { return };
         let key = win.entity_id();
         let any: AnyWindowHandle = handle.into();
-        cx.subscribe(&win, move |t, _, _: &openwith::OpenWithEvent, cx| {
+        cx.subscribe(&win, move |t, _, _: &olo_ui::open_with::OpenWithEvent, cx| {
             if t.close_requested(key, cx) {
                 cx.close_window(any);
             }
@@ -584,7 +579,7 @@ impl Tracker {
                 self.open_folder(&dir, cx);
             }
             Action::Command(c) => match c.as_str() {
-                c if folder::is_open_with(c) => {
+                c if olo_ui::open_with::is_command(c) => {
                     let entries = d.read(cx).selected_entries();
                     self.open_with(c, entries, cx);
                 }
@@ -773,7 +768,7 @@ impl Tracker {
                 }
             }
             // Open With ▸ an app (Always: and make it the kind's).
-            c if folder::is_open_with(c) => self.open_with(c, entries, cx),
+            c if olo_ui::open_with::is_command(c) => self.open_with(c, entries, cx),
             c if c.starts_with("go-place:") => {
                 let dir = PathBuf::from(&c["go-place:".len()..]);
                 if dir.is_dir() {
@@ -1498,23 +1493,5 @@ fn main() {
             Some(saved) => t.restore(saved, cx),
             None => t.handle_args(&args, cx),
         });
-    });
-}
-
-/// Open `paths` with the app `id` names (`always`: and make it `kind`'s
-/// from now on). Finding the app and writing the choice read and write
-/// files: on a thread.
-fn open_with_app(id: String, kind: String, paths: Vec<PathBuf>, always: bool) {
-    std::thread::spawn(move || {
-        let Some(h) = olo_xdg::open::handler_of_id(&id) else { return };
-        if always {
-            if let Err(e) = olo_xdg::open::set_default(&kind, Some(&h)) {
-                tracing::warn!("couldn't make {id} the app for {kind}: {e}");
-            }
-            olo_xdg::open::warm([kind]);
-        }
-        if let Err(e) = olo_xdg::open::open_with(&h, &paths) {
-            tracing::warn!("open with {id}: {e}");
-        }
     });
 }

@@ -5,6 +5,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### File panels: Open With
+
+*15:29* — An item's menu in the Open and Save panels: Quick Look, Open With ▸ (the kit's olo_ui::open_with, as Tracker's) and Show in Tracker.
+
+![File panels: Open With](2026-11-02/152903-file-panels-open-with.png)
+
+### Default Apps: what Open With offers
+
+*15:29* — The Open With tab: a kind's apps in Open With ▸, in order, moved, removed and added; Olo's Choice lets Olo choose again.
+
+![Default Apps: what Open With offers](2026-11-02/152903-default-apps-what-open-with-offers.png)
+
+### Default Apps: your own kinds
+
+*15:29* — Preferences ▸ Default Apps ▸ Your Own Kinds: a kind named by its extensions (Game saves: .sav .sv2) opens in the app chosen; Olo knows files by it everywhere (olo_xdg::mime::own_kinds).
+
+![Default Apps: your own kinds](2026-11-02/152902-default-apps-your-own-kinds.png)
+
 ### Tracker: Open With ▸ Other…
 
 *14:48* — Any app can open a file: Other… lists every app that opens files, found by typing part of its name, with 'Always open files like … with it'.
