@@ -365,7 +365,9 @@ impl Scene {
     fn cull_hidden_quads(&mut self) {
         // (Small quads aren't worth it: what one costs is its pixels.)
         const BIG: f32 = 256.0 * 256.0;
-        const MOST_PIECES: usize = 8;
+        // (Notifications' History leaves its paper in 214 at 1×: a piece
+        // each is a few bytes and four vertices.)
+        const MOST_PIECES: usize = 512;
         let area = |b: &Bounds<ScaledPixels>| b.size.width.0.max(0.0) * b.size.height.0.max(0.0);
         let shown = |q: &Quad| q.bounds.intersect(&q.content_mask.bounds);
         // Drawn over all that's under it, edge to edge: one colour, no
@@ -375,7 +377,35 @@ impl Scene {
                 && q.corner_radii == Corners::default()
                 && q.border_widths == Edges::default()
         };
-        let covers = |q: &Quad| plain(q) && q.background.solid.a >= 1.0;
+        // What an opaque quad hides of what's under it: a plain one all of
+        // it (to a hair in from its edges: what's cut stays drawn up to
+        // them, never a gap); a rounded or bordered one (cards) the band
+        // between its corners, a pixel in from its sides, whose edges are
+        // anti-aliased (a border opaque and solid). Notifications'
+        // History drew its card paper whole under its cards: 6.8 Mpx a
+        // frame at 1×, as much as the cards themselves.
+        let cover = |q: &Quad| -> Option<Bounds<ScaledPixels>> {
+            if q.background.tag != crate::BackgroundTag::Solid || q.background.solid.a < 1.0 {
+                return None;
+            }
+            let c = shown(q);
+            if plain(q) {
+                return Some(Bounds { origin: point(ScaledPixels(c.origin.x.0 + 0.01), ScaledPixels(c.origin.y.0 + 0.01)), size: size(ScaledPixels(c.size.width.0 - 0.02), ScaledPixels(c.size.height.0 - 0.02)) });
+            }
+            let bordered = q.border_widths != Edges::default();
+            if bordered && (q.border_color.a < 1.0 || q.border_style != BorderStyle::Solid) {
+                return None;
+            }
+            let r = q.corner_radii;
+            let dy = r.top_left.0.max(r.top_right.0).max(r.bottom_left.0).max(r.bottom_right.0) + 1.0;
+            let b = q.bounds;
+            let band = Bounds { origin: point(ScaledPixels(b.origin.x.0 + 1.0), ScaledPixels(b.origin.y.0 + dy)), size: size(ScaledPixels(b.size.width.0 - 2.0), ScaledPixels(b.size.height.0 - 2.0 * dy)) };
+            Some(band.intersect(&q.content_mask.bounds))
+        };
+        // Each quad's, found once. (The pieces a quad is cut into below
+        // cover nothing: what's under them is done.)
+        let mut covers: Vec<Option<Bounds<ScaledPixels>>> = self.quads.iter().map(|q| cover(q).filter(|c| c.size.width.0 > 0.0 && c.size.height.0 > 0.0)).collect();
+        let mut over = Vec::new();
         let mut i = 0;
         while i < self.quads.len() {
             let a = shown(&self.quads[i]);
@@ -383,50 +413,44 @@ impl Scene {
                 i += 1;
                 continue;
             }
-            // What covers it, the biggest first: a window's ground is
-            // mostly under one view's (Notifications' card paper), and cut
-            // first by a menu bar's and toolbar's little quads it came
-            // apart into more pieces than are worth drawing before the
-            // paper's turn, and was drawn whole: a screen of overdraw.
-            let mut over: Vec<Bounds<ScaledPixels>> = self.quads[i + 1..]
-                .iter()
-                .filter(|b| covers(b))
-                // (A hair in from its edges: what's cut stays drawn up to
-                // them, never a gap.)
-                .map(|b| {
-                    let c = shown(b);
-                    Bounds { origin: point(ScaledPixels(c.origin.x.0 + 0.01), ScaledPixels(c.origin.y.0 + 0.01)), size: size(ScaledPixels(c.size.width.0 - 0.02), ScaledPixels(c.size.height.0 - 0.02)) }
-                })
-                .filter(|c| area(c) > 0.0 && c.intersects(&a))
-                .collect();
-            over.sort_by(|x, y| area(y).total_cmp(&area(x)));
-            let mut left = vec![a];
-            for c in over {
-                if !left.iter().any(|r| r.intersects(&c)) {
-                    continue;
-                }
-                // (Less the slivers that hair leaves where its edge is one
-                // of the quad's: it draws those pixels itself.)
-                let cut: Vec<_> = left.iter().flat_map(|r| subtract(*r, c)).filter(|r| r.size.width.0 >= 0.05 && r.size.height.0 >= 0.05).collect();
-                if cut.len() > MOST_PIECES {
-                    // (What's cut so far stands: the rest is little.)
-                    break;
-                }
-                left = cut;
-                if left.is_empty() {
-                    break;
+            // What covers it, all at once (`uncovered`): a window's ground
+            // is mostly under one view's (Notifications' card paper) and
+            // cut by a menu bar's and toolbar's little quads, and a paper
+            // by its grid of cards. (Cut one cover at a time, a ground came
+            // apart into more pieces than were worth drawing before the
+            // paper's turn, and was drawn whole: a screen of overdraw.)
+            over.clear();
+            let mut most = 0.0;
+            for c in covers[i + 1..].iter().flatten() {
+                let o = c.intersect(&a);
+                if o.size.width.0 > 0.0 && o.size.height.0 > 0.0 {
+                    most += area(&o);
+                    over.push(o);
                 }
             }
+            // (Not looked into when the covers couldn't hide what's worth
+            // it, overlaps and all: all of one that isn't plain, which
+            // can't be cut (a card under its own buttons), or a quarter.)
+            let flat = plain(&self.quads[i]);
+            if most < if flat { 0.25 } else { 0.99 } * area(&a) {
+                i += 1;
+                continue;
+            }
+            // (Less the slivers the hair leaves where a cover's edge is one
+            // of the quad's: it draws those pixels itself.)
+            let left: Vec<_> = uncovered(a, &over).into_iter().filter(|r| r.size.width.0 >= 0.05 && r.size.height.0 >= 0.05).collect();
             if left.is_empty() {
                 self.quads.remove(i);
+                covers.remove(i);
                 continue;
             }
             let kept: f32 = left.iter().map(area).sum();
-            if plain(&self.quads[i]) && kept < 0.75 * area(&a) {
+            if flat && kept < 0.75 * area(&a) && left.len() <= MOST_PIECES {
                 let q = self.quads[i].clone();
                 let pieces: Vec<Quad> = left.into_iter().filter(|r| area(r) > 0.0).map(|r| Quad { bounds: r, ..q.clone() }).collect();
                 let n = pieces.len();
                 self.quads.splice(i..i + 1, pieces);
+                covers.splice(i..i + 1, std::iter::repeat_n(None, n));
                 i += n;
                 continue;
             }
@@ -1339,27 +1363,98 @@ impl PathVertex<Pixels> {
     }
 }
 
-/// Olo: `r` less `c`: what of it is outside `c`, in up to four rectangles.
-fn subtract(r: Bounds<ScaledPixels>, c: Bounds<ScaledPixels>) -> Vec<Bounds<ScaledPixels>> {
+/// Olo: what of `r` none of `covers` is over, in rectangles: `r` cut
+/// into bands across at the covers' tops and bottoms, each band's
+/// stretches between them, a stretch the bands below have too going on
+/// down (a grid of cards on a paper leaves its gutters, a few pieces a
+/// row).
+fn uncovered(r: Bounds<ScaledPixels>, covers: &[Bounds<ScaledPixels>]) -> Vec<Bounds<ScaledPixels>> {
     let (rl, rt, rr, rb) = (r.origin.x.0, r.origin.y.0, r.origin.x.0 + r.size.width.0, r.origin.y.0 + r.size.height.0);
-    let (cl, ct, cr, cb) = (c.origin.x.0.max(rl), c.origin.y.0.max(rt), (c.origin.x.0 + c.size.width.0).min(rr), (c.origin.y.0 + c.size.height.0).min(rb));
-    if cl >= cr || ct >= cb {
-        return vec![r];
+    // Each cover as it is over `r`: left, top, right, bottom. (Not one
+    // too small to be worth its bands: a toolbar's button.)
+    let least = (rr - rl) * (rb - rt) / 1000.0;
+    let area = |c: &[f32; 4]| (c[2] - c[0]) * (c[3] - c[1]);
+    let mut cs: Vec<[f32; 4]> = covers
+        .iter()
+        .map(|c| [c.origin.x.0.max(rl), c.origin.y.0.max(rt), (c.origin.x.0 + c.size.width.0).min(rr), (c.origin.y.0 + c.size.height.0).min(rb)])
+        .filter(|c| c[0] < c[2] && c[1] < c[3] && area(c) >= least)
+        .collect();
+    // Less those inside a bigger one (the cards on a window's paper),
+    // each a band or two more for nothing.
+    cs.sort_by(|a, b| area(b).total_cmp(&area(a)));
+    let mut kept = 0;
+    for k in 0..cs.len() {
+        let c = cs[k];
+        if !cs[..kept].iter().any(|o| o[0] <= c[0] && o[1] <= c[1] && c[2] <= o[2] && c[3] <= o[3]) {
+            cs[kept] = c;
+            kept += 1;
+        }
     }
+    cs.truncate(kept);
+    cs.sort_by(|a, b| a[1].total_cmp(&b[1]));
+    let mut ys: Vec<f32> = cs.iter().flat_map(|c| [c[1], c[3]]).chain([rt, rb]).collect();
+    ys.sort_by(f32::total_cmp);
+    ys.dedup();
     let rect = |l: f32, t: f32, r: f32, b: f32| Bounds { origin: point(ScaledPixels(l), ScaledPixels(t)), size: size(ScaledPixels(r - l), ScaledPixels(b - t)) };
-    let mut out = Vec::with_capacity(4);
-    if ct > rt {
-        out.push(rect(rl, rt, rr, ct));
+    let mut out = Vec::new();
+    // The stretches open in the bands so far, left to right: left,
+    // right, since where.
+    let (mut open, mut going): (Vec<(f32, f32, f32)>, Vec<(f32, f32, f32)>) = (Vec::new(), Vec::new());
+    let (mut next, mut active, mut spans, mut free): (usize, Vec<[f32; 4]>, Vec<(f32, f32)>, Vec<(f32, f32)>) = (0, Vec::new(), Vec::new(), Vec::new());
+    for band in ys.windows(2) {
+        let (y0, y1) = (band[0], band[1]);
+        active.retain(|c| c[3] > y0);
+        while next < cs.len() && cs[next][1] <= y0 {
+            if cs[next][3] > y0 {
+                active.push(cs[next]);
+            }
+            next += 1;
+        }
+        // The band's open stretches, left to right: `r`'s width less its
+        // covers'.
+        spans.clear();
+        spans.extend(active.iter().filter(|c| c[3] >= y1).map(|c| (c[0], c[2])));
+        spans.sort_by(|a, b| a.0.total_cmp(&b.0));
+        free.clear();
+        let mut x = rl;
+        for &(l, r) in &spans {
+            if l > x {
+                free.push((x, l));
+            }
+            x = x.max(r);
+        }
+        if x < rr {
+            free.push((x, rr));
+        }
+        // A stretch open above goes on down while this band has room for
+        // it (a gutter between columns of cards, past the gaps beside
+        // it); one that hasn't is done. What's left of the band's open
+        // stretches starts new ones.
+        going.clear();
+        let mut k = 0;
+        for &(fl, fr) in &free {
+            let mut x = fl;
+            while k < open.len() && open[k].0 < fr {
+                let o = open[k];
+                if fl <= o.0 && o.1 <= fr {
+                    if o.0 > x {
+                        going.push((x, o.0, y0));
+                    }
+                    going.push(o);
+                    x = o.1;
+                } else {
+                    out.push(rect(o.0, o.2, o.1, y0));
+                }
+                k += 1;
+            }
+            if x < fr {
+                going.push((x, fr, y0));
+            }
+        }
+        out.extend(open[k..].iter().map(|o| rect(o.0, o.2, o.1, y0)));
+        std::mem::swap(&mut open, &mut going);
     }
-    if cb < rb {
-        out.push(rect(rl, cb, rr, rb));
-    }
-    if cl > rl {
-        out.push(rect(rl, ct, cl, cb));
-    }
-    if cr < rr {
-        out.push(rect(cr, ct, rr, cb));
-    }
+    out.extend(open.into_iter().map(|(l, r, top)| rect(l, top, r, rb)));
     out
 }
 
@@ -1426,18 +1521,68 @@ mod cull_tests {
         s.quads = quads;
         s.cull_hidden_quads();
         let screen = 3153.0 * 2163.0;
-        let ground: f32 = s.quads.iter().filter(|q| q.order == 1).map(|q| q.bounds.size.width.0 * q.bounds.size.height.0).sum();
-        assert!(ground < screen * 0.1, "the ground left: {:.2} screens", ground / screen);
+        let left = |order: u32| -> f32 { s.quads.iter().filter(|q| q.order == order).map(|q| q.bounds.size.width.0 * q.bounds.size.height.0).sum() };
+        assert!(left(1) < screen * 0.1, "the ground left: {:.2} screens", left(1) / screen);
+        // The paper only between the cards and by their corners (the
+        // bands between their corners are 0.75 of it), in a few pieces a
+        // row of cards.
+        let paper = 3128.0 * 2033.0;
+        let bars = 12.0 * 150.0 * 32.0 + 3153.0 * 39.0;
+        let pieces = s.quads.iter().filter(|q| q.order == 2).count() - 13;
+        assert!(((left(2) - bars) / paper - 0.25).abs() < 0.01, "the paper left: {:.3} of it", (left(2) - bars) / paper);
+        assert!(pieces <= 8 * 8 + 2, "{pieces} pieces");
+    }
+
+    /// What's left and what covers it make the whole, without overlap,
+    /// for rectangles anywhere (a grid of points checked).
+    #[test]
+    fn uncovered_is_the_rest_exactly() {
+        let mut seed = 12345u64;
+        let mut rand = |n: f32| {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (seed >> 33) as f32 / (1u64 << 31) as f32 * n
+        };
+        for _ in 0..200 {
+            let r = rect(rand(50.0).floor(), rand(50.0).floor(), 200.0 + rand(400.0).floor(), 200.0 + rand(400.0).floor());
+            let covers: Vec<_> = (0..(rand(30.0) as usize)).map(|_| rect(rand(700.0).floor(), rand(700.0).floor(), 20.0 + rand(250.0).floor(), 20.0 + rand(250.0).floor())).collect();
+            let least = r.size.width.0 * r.size.height.0 / 1000.0;
+            let left = uncovered(r, &covers);
+            for gx in 0..60 {
+                for gy in 0..60 {
+                    let p = point(ScaledPixels(r.origin.x.0 + (gx as f32 + 0.37) * r.size.width.0 / 60.0), ScaledPixels(r.origin.y.0 + (gy as f32 + 0.41) * r.size.height.0 / 60.0));
+                    // (A cover too small to count may leave what's under it.)
+                    let under = covers.iter().filter(|c| c.intersect(&r).size.width.0 * c.intersect(&r).size.height.0 >= least).any(|c| c.contains(&p));
+                    let pieces = left.iter().filter(|b| b.contains(&p)).count();
+                    assert_eq!(pieces, if under { 0 } else { 1 }, "{p:?} in {r:?} under {covers:?}: {left:?}");
+                }
+            }
+        }
     }
 
     #[test]
-    fn a_rounded_cover_hides_nothing() {
+    fn a_rounded_cover_hides_its_middle() {
         let mut s = Scene::default();
         let mut over = quad(1, rect(0.0, 0.0, 600.0, 600.0), 1.0);
         over.corner_radii = Corners::all(ScaledPixels(4.0));
         s.quads = vec![quad(0, rect(0.0, 0.0, 500.0, 500.0), 1.0), over];
         s.cull_hidden_quads();
-        assert_eq!(s.quads.len(), 2);
+        // Left: above its corners' band, and a pixel at its side.
+        let under: Vec<_> = s.quads.iter().filter(|q| q.order == 0).map(|q| q.bounds).collect();
+        let area: f32 = under.iter().map(|b| b.size.width.0 * b.size.height.0).sum();
+        assert!((area - (500.0 * 5.0 + 1.0 * 495.0)).abs() < 1.0, "{under:?}");
+        // A see-through border, or a dashed one, hides nothing.
+        for (alpha, style) in [(0.5, BorderStyle::Solid), (1.0, BorderStyle::Dashed)] {
+            let mut s = Scene::default();
+            let mut over = quad(1, rect(0.0, 0.0, 600.0, 600.0), 1.0);
+            over.corner_radii = Corners::all(ScaledPixels(4.0));
+            over.border_widths = Edges::all(ScaledPixels(1.0));
+            over.border_color = hsla(0.0, 0.0, 0.0, alpha);
+            over.border_style = style;
+            s.quads = vec![quad(0, rect(0.0, 0.0, 500.0, 500.0), 1.0), over];
+            s.cull_hidden_quads();
+            assert_eq!(s.quads.len(), 2);
+            assert_eq!(s.quads[0].bounds, rect(0.0, 0.0, 500.0, 500.0));
+        }
     }
 }
 

@@ -2721,6 +2721,21 @@ as they land (with the commit), add new ones as they come up.
 
 ## app_server
 
+- **A tab clicked in a group flashes** (Ben, 2026-11-02): "sometimes
+  when i'm in an app, e.g. terminal, and it has multiple grouped
+  windows, if i click on the tab of another window in the group i get
+  like a flash or something before seeing the other tab/window that is
+  really jarring. i am in focus mode when i saw it but it might (idk)
+  happen in other modes too." Being fixed now: the window coming to
+  the front of its group must show its own frame, already the group's
+  size, on the very frame its tab is lit, in every mode.
+- **Menus over Deskbar** (Ben, 2026-11-02): "if i am in an app and
+  right click close to the deskbar and a menu opens it is under the
+  deskbar -- it should always be on top". An app's menus (popups:
+  context menus, menu bar menus, a menu field's list) are drawn over
+  every layer surface, Deskbar included, as BeOS's menus were over the
+  Deskbar; and where one would run off the usable area it may open
+  over Deskbar rather than be pushed away from the pointer.
 - **Displays: kept where they are, numbered for good** (Ben, 2026-10-31):
   "we absolutely must get these upgrades (and connecting/disconnecting
   monitors) keeping things where they already were on the right
