@@ -85,6 +85,14 @@ pub struct Decoration {
     /// it has drawn at the group's size (since then, if let go).
     pub docked: bool,
     pub docked_since: Option<Instant>,
+    /// Come to the front of its group with something new to draw (its
+    /// client waiting for a frame callback, which a window showing only
+    /// its tab gets once a second): only its tab shows, and the window
+    /// that was in front stays drawn, until it commits or `FRONTING`
+    /// passes (`groups::mark_behind`). Its last buffer was up to a second
+    /// old: a Terminal tab clicked showed what it had printed then, and
+    /// jumped to now a frame or two later, a flash.
+    pub fronting: Option<Instant>,
     /// Its group is where the tab being dragged would go: lit up.
     pub target: bool,
     title_width: Option<(String, i32)>,
@@ -309,6 +317,7 @@ impl Default for Decoration {
             group: None,
             docked: false,
             docked_since: None,
+            fronting: None,
             target: false,
             title_width: None,
             tabs: Vec::new(),

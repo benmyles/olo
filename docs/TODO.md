@@ -2726,9 +2726,10 @@ as they land (with the commit), add new ones as they come up.
   windows, if i click on the tab of another window in the group i get
   like a flash or something before seeing the other tab/window that is
   really jarring. i am in focus mode when i saw it but it might (idk)
-  happen in other modes too." Being fixed now: the window coming to
-  the front of its group must show its own frame, already the group's
-  size, on the very frame its tab is lit, in every mode.
+  happen in other modes too." ~~Fixed~~: a window behind others in its
+  group got frame callbacks once a second, so its tab clicked showed
+  what it drew up to a second before; now it's told to draw at once and
+  the group's old front stays until it has (`Decoration::fronting`).
 - **Menus over Deskbar** (Ben, 2026-11-02): "if i am in an app and
   right click close to the deskbar and a menu opens it is under the
   deskbar -- it should always be on top". An app's menus (popups:

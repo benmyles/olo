@@ -1447,7 +1447,13 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         let throttle = Some(Duration::from_secs(1));
         self.space.elements().for_each(|window| {
             if self.space.outputs_for_element(window).contains(output) {
-                window.send_frame(output, time, throttle, surface_primary_scanout_output);
+                // (One come to the front of its group, shown once it has
+                // drawn: as if it were already.)
+                if window.decorated() && window.decoration().fronting.is_some() {
+                    window.send_frame(output, time, None, |_, _| Some(output.clone()));
+                } else {
+                    window.send_frame(output, time, throttle, surface_primary_scanout_output);
+                }
             }
         });
         let map = smithay::desktop::layer_map_for_output(output);

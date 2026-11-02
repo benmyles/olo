@@ -3546,7 +3546,14 @@ workspace and back comes back as it was. Only the
 front window is drawn whole and takes input over its frame: the ones
 behind it show just their tabs (`mark_behind`, before every frame,
 `Decoration::behind`), so they never show around it while it is sized
-smaller; a capture for an agent draws a window whole. Moving, resizing,
+smaller; a capture for an agent draws a window whole. Being behind, a
+window gets frame callbacks once a second (Smithay throttles a surface
+on no output), so its last buffer may be that old: one brought to the
+front while its client waits to draw (`waiting_to_draw`) is told to
+draw at once and shows only its tab, the old front still drawn, until
+it commits or `FRONTING` (100 ms) passes (`Decoration::fronting`): a
+Terminal tab clicked showed what it had printed a second before, then
+jumped to now. Moving, resizing,
 rolling up and tiling (one cell per group) act on the whole group; an
 arranging command on a window behind brings it to the front first
 (`front_of_group`). A

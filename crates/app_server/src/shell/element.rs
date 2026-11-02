@@ -138,12 +138,13 @@ impl WindowElement {
         self.decorated() && self.decoration().rolled
     }
 
-    /// Only its tab shows: rolled up, behind others in its group, or
-    /// being put in a group by hand.
+    /// Only its tab shows: rolled up, behind others in its group, being
+    /// put in a group by hand, or come to the front of it with something
+    /// new to draw first (`Decoration::fronting`).
     pub(crate) fn tab_only(&self) -> bool {
         self.decorated() && {
             let d = self.decoration();
-            d.rolled || d.behind || d.docked
+            d.rolled || d.behind || d.docked || d.fronting.is_some()
         }
     }
 
