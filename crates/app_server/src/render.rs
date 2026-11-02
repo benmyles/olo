@@ -329,6 +329,9 @@ where
     for (menu, at) in crate::shell::lower_layer_menus(output) {
         tree(renderer, &mut out, &menu, at);
     }
+    // The windows' menus go here, over Deskbar (gathered with them).
+    let menus_at = out.len();
+    let mut menus = Vec::new();
     whole(renderer, &mut out, Layer::Top);
     part("gather: upper layers", t);
     let t = std::time::Instant::now();
@@ -353,7 +356,8 @@ where
             }
             let location = (at - SpaceElement::geometry(w).loc - region.loc).to_physical_precise_round(scale);
             let start = std::time::Instant::now();
-            let elements: Vec<WindowRenderElement<R>> = w.render_elements(renderer, location, scale.into(), 1.0);
+            let elements: Vec<WindowRenderElement<R>> = w.render_parts(renderer, location, scale.into(), 1.0, false);
+            menus.extend(w.menu_elements(renderer, location, scale.into(), 1.0).into_iter().map(window));
             slow_elements(start, || format!("window {} {:?}", w.id(), SpaceElement::geometry(w).size));
             out.extend(elements.into_iter().map(window));
         }
@@ -361,6 +365,7 @@ where
             out.push(window(WindowRenderElement::Decoration(d)));
         }
     }
+    out.splice(menus_at..menus_at, menus);
     part("gather: windows", t);
     // The lower layers themselves, without their menus.
     let t = std::time::Instant::now();

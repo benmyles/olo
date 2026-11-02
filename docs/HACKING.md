@@ -2769,10 +2769,13 @@ opened, its own `panel::State` and text fields).
   spell it, with a minus sign.
   render.rs draws the layers itself, front to back: Overlay, the menus
   of the Background and Bottom layers (the desktop's right-click menu,
-  `shell::lower_layer_menus`), Top (Deskbar), the windows, then the
-  Background and Bottom surfaces; `surface_under` and keyboard focus
-  find them in the same order, so a desktop menu opened over a window
-  is in front of it and takes its clicks.
+  `shell::lower_layer_menus`), the windows' menus (their popups,
+  `WindowElement::menu_elements`, gathered with the windows and drawn
+  apart from them: `render_parts` without), Top (Deskbar), the windows,
+  then the Background and Bottom surfaces; `surface_under` and keyboard
+  focus find them in the same order (`window_menu_under`), so a desktop
+  menu opened over a window is in front of it and takes its clicks, and
+  a window's menu opened by Deskbar is over Deskbar (it went under).
   Identify (`IdentifyOutputs`) shows each display's name for 4 s
   (app_server `identify.rs`). Settings are kept per monitor under
   `olo_protocol::display_key` ("make model serial" from the EDID,

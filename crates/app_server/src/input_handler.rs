@@ -814,6 +814,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             under = Some((surface, loc + output_geo.loc));
         } else if let Some(focus) = layer_under(WlrLayer::Overlay)
             .or_else(|| menu.map(|(surface, loc)| (PointerFocusTarget::from(surface), loc)))
+            // A window's menus, drawn over Deskbar (`menu_elements`).
+            .or_else(|| self.window_menu_under(pos))
             .or_else(|| layer_under(WlrLayer::Top))
         {
             under = Some(focus)
@@ -827,6 +829,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             under = Some(focus)
         };
         under.map(|(s, l)| (s, l.to_f64()))
+    }
+
+    /// A window's menu at `pos` (global): its surface there and where it
+    /// is, the front window's first.
+    fn window_menu_under(&self, pos: Point<f64, Logical>) -> Option<(PointerFocusTarget, Point<i32, Logical>)> {
+        self.space.elements().rev().find_map(|w| {
+            let at = self.space.element_location(w)? - smithay::desktop::space::SpaceElement::geometry(w).loc;
+            w.menu_under(pos - at.to_f64()).map(|(s, loc)| (s, loc + at))
+        })
     }
 
     /// The surface of a desktop menu at `pos` (global), and where it is
