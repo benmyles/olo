@@ -4957,7 +4957,11 @@ button: each finding's own, or Fix All (one password for everything that
 needs root). `checks.rs` finds; each `Finding` carries its `Fix` as
 `Step`s (`fix.rs`: write a file, set a sysfs knob, remove a file, start,
 stop, enable or disable a system unit through `olo_system::systemd`,
-signal a process), all done in process. What it looks for:
+signal a process), all done in process. From a terminal or an agent:
+`olo-doctor --report` (the findings as JSON), `olo-doctor --fix` (those
+with a fix, by id), `olo-doctor --fix all|ID…` (what the buttons do: root
+steps through the helper and pkexec, or, under sudo, run there with the
+scan made for the sudo user). What it looks for:
 
 - **Input remappers** (keyd, xremap, Input Remapper, evremap, kmonad,
   Interception Tools): they grab the keyboards, and any mouse whose motion

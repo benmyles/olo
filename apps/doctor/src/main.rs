@@ -387,6 +387,7 @@ fn main() {
             println!("{}", serde_json::to_string_pretty(&checks::scan(&Roots::real())).unwrap_or_default());
             return;
         }
+        Some("--fix") => std::process::exit(fix_from_the_command_line(&args[1..])),
         _ => {}
     }
     if instance::forward(APP_ID, &args) {
@@ -422,4 +423,81 @@ fn main() {
         let saving = app.clone();
         olo_ui::on_upgrade(cx, move |cx| saving.read(cx).save_state());
     });
+}
+
+/// `olo-doctor --fix [all | ID…]`: what the window's Fix buttons do, from
+/// a terminal or an agent. No IDs: the findings that have a fix, listed.
+/// Steps that need root go through the helper and pkexec as the window's
+/// do (polkit asks for the password); under sudo, everything runs here,
+/// the scan being the sudo user's. Exit status 0 when everything asked
+/// for was fixed.
+fn fix_from_the_command_line(ids: &[String]) -> i32 {
+    let report = checks::scan(&Roots::real());
+    let fixable: Vec<&checks::Finding> = report.findings.iter().filter(|f| f.fix.is_some()).collect();
+    if ids.is_empty() {
+        if fixable.is_empty() {
+            println!("Nothing to fix.");
+        }
+        for f in &fixable {
+            let fix = f.fix.as_ref().unwrap();
+            println!("{}  {} ({}{})", f.id, f.title, fix.label, if fix.root { ", as root" } else { "" });
+        }
+        return 0;
+    }
+    let all = ids.iter().any(|i| i == "all");
+    let chosen: Vec<&checks::Finding> = fixable.iter().copied().filter(|f| all || ids.contains(&f.id)).collect();
+    for id in ids.iter().filter(|i| *i != "all") {
+        if !chosen.iter().any(|f| &f.id == id) {
+            eprintln!("olo-doctor: {id}: no such finding with a fix now");
+        }
+    }
+    // SAFETY: geteuid has no preconditions.
+    let root = unsafe { libc::geteuid() } == 0;
+    let mut helper: Option<(Helper, std::sync::mpsc::Receiver<Option<FromHelper>>)> = None;
+    let mut failed = chosen.len() < ids.iter().filter(|i| *i != "all").count();
+    for (n, f) in chosen.iter().enumerate() {
+        let fix = f.fix.as_ref().unwrap();
+        println!("{}: {}", f.title, fix.label);
+        let results = if !fix.root || root {
+            helper::run_steps(&fix.steps)
+        } else {
+            if helper.is_none() {
+                let way = if std::env::var_os("OLO_DOCTOR_HELPER").is_some() { helper::way() } else { helper::Way::Pkexec };
+                let (tx, rx) = std::sync::mpsc::channel();
+                match Helper::start(way, move |m| _ = tx.send(m)) {
+                    Ok(h) => {
+                        // Ready once the password is given.
+                        if !matches!(rx.recv(), Ok(Some(FromHelper::Ready))) {
+                            eprintln!("olo-doctor: root wasn't given");
+                            return 1;
+                        }
+                        helper = Some((h, rx));
+                    }
+                    Err(e) => {
+                        eprintln!("olo-doctor: can't run as root: {e}");
+                        return 1;
+                    }
+                }
+            }
+            let (h, rx) = helper.as_ref().unwrap();
+            h.send(&ToHelper::Run { id: n as u64, steps: fix.steps.clone() });
+            loop {
+                match rx.recv() {
+                    Ok(Some(FromHelper::Done { id, results })) if id == n as u64 => break results,
+                    Ok(Some(_)) => continue,
+                    _ => break vec![Err("the root helper stopped".into())],
+                }
+            }
+        };
+        for (step, r) in fix.steps.iter().zip(&results) {
+            match r {
+                Ok(()) => println!("  {}: done", step.describe()),
+                Err(e) => {
+                    println!("  {}: {e}", step.describe());
+                    failed = true;
+                }
+            }
+        }
+    }
+    i32::from(failed)
 }

@@ -159,12 +159,25 @@ pub struct Roots {
 
 impl Roots {
     pub fn real() -> Roots {
+        // Under sudo, the person who ran it (their programs, their
+        // session's files), not root.
+        let sudo_uid = std::env::var("SUDO_UID").ok().and_then(|u| u.parse::<u32>().ok()).filter(|_| unsafe { libc::geteuid() } == 0);
+        if let Some(u) = sudo_uid {
+            // SAFETY: setting our own environment before any thread reads it.
+            unsafe { std::env::set_var("XDG_RUNTIME_DIR", format!("/run/user/{u}")) };
+            if let Some(home) = std::env::var_os("SUDO_HOME").or_else(|| home_of(u)) {
+                unsafe { std::env::set_var("HOME", home) };
+            }
+        }
         // Where tools/install-session.sh puts them (and the upgrade).
         let bin = PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/bin");
         // SAFETY: getuid has no preconditions.
-        let uid = unsafe { libc::getuid() };
+        let uid = sudo_uid.unwrap_or_else(|| unsafe { libc::getuid() });
         let scope = scope_of(&std::fs::read_to_string("/proc/self/cgroup").unwrap_or_default());
-        let airpods = !olo_protocol::airpods::AirPodsState::load().devices.is_empty();
+        // AirPods paired, as BlueZ says (the service needn't be running).
+        let airpods = olo_system::bluetooth::status()
+            .map(|s| s.devices.iter().any(|d| d.paired && d.modalias.as_deref().is_some_and(olo_system::airpods::is_airpods)))
+            .unwrap_or(false);
         Roots { fs: PathBuf::from("/"), bin, uid, scope, units: Box::new(crate::fix::unit_state), airpods }
     }
 }
@@ -182,6 +195,15 @@ struct Proc {
     /// The login session it belongs to ("session-2.scope"); None for
     /// the user's services, which every session shares.
     scope: Option<String>,
+}
+
+/// A user's home, from /etc/passwd.
+fn home_of(uid: u32) -> Option<std::ffi::OsString> {
+    let passwd = std::fs::read_to_string("/etc/passwd").ok()?;
+    passwd.lines().find_map(|l| {
+        let f: Vec<&str> = l.split(':').collect();
+        (f.len() > 5 && f[2] == uid.to_string()).then(|| f[5].into())
+    })
 }
 
 /// A process's login session, from its cgroup.
@@ -658,7 +680,9 @@ fn airpods_listening(roots: &Roots, procs: &[Proc], r: &mut Report) {
         r.fine.push(Fine { title: "Bluetooth listens for the AirPods".into(), detail: "BlueZ's advertisement monitor is on: they can connect and switch by themselves.".into() });
         return;
     }
-    let program = bluez.exe.clone().map(|e| e.trim_end_matches(" (deleted)").to_owned()).filter(|e| e.starts_with('/'));
+    // Its program: the exe link is root's to read; the command line's
+    // first word is anyone's.
+    let program = bluez.exe.clone().map(|e| e.trim_end_matches(" (deleted)").to_owned()).or_else(|| args.first().cloned()).filter(|e| e.starts_with('/'));
     let fix = program.map(|program| Fix {
         label: "Let Bluetooth Listen".into(),
         root: true,
