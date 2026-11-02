@@ -9,9 +9,10 @@ name = "olo-preferences"
 path = "src/main.rs"
 
 [dependencies]
-olo-kit.workspace = true
+olo-ui.workspace = true
+olo-xdg.workspace = true
 olo-protocol.workspace = true
-olo-screensavers = { workspace = true, features = ["egui"] }
+olo-screensavers = { workspace = true, features = ["gpui"] }
 olo-system.workspace = true
 olo-sync.workspace = true
 serde.workspace = true

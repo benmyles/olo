@@ -2039,6 +2039,18 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
   `show_in(cx, options, panel, on_done)` open a file panel so;
   olo-print's `panel::view::show(cx, options, pages, on_done)` the Print
   panel.
+- `widgets::ColorControl::new(id, rgb)` (BColorControl: grey, red, green
+  and blue ramps with markers to click or drag, the lane pressed in
+  keeping the drag, and Red/Green/Blue fields following the colour unless
+  typed in; `on_change` gets each new colour) and `ColorWell::new(color,
+  size)`, its sample; `color_control_height()` sizes a well beside it.
+  `pictures::thumbnail(cx, path, px)`: a picture file no bigger than `px`
+  device pixels, decoded on a thread of its own and kept by path, mtime
+  and size; None until it's ready, then every window is drawn again (so
+  a view just asks again). `icons::paint_in(window, b, theme, name)` and
+  `brand::wordmark_centred_in(window, b, dark, theme)` draw in a theme
+  other than the current one (Preferences ▸ Themes). `StringView::small`
+  sets it in the small size.
 - `widgets::ThumbnailPicker::new(id, thumbnails, selected)` (pictures
   to pick one from, wrapping in `width`, labelled under each, the chosen
   one on a `style::selection_plate`; a click chooses, a double click
@@ -2951,14 +2963,28 @@ launcher lists them. The panel list Deskbar shows is
 `olo_xdg::apps::PREFERENCE_PANELS`; a unit test keeps it in step with
 `panel::Panel`.
 
+On Olo's GPUI. The `Prefs` entity (main.rs) keeps the settings,
+app_server's displays and power state, and the windows; each panel's
+window is a `PanelView` (its panel, the settings as they were when it
+opened, its own `panel::State` and text fields).
+
 * Settings that live in app_server come over IPC (`server.rs`): a watcher
   thread follows `SettingsChanged` / `OutputsChanged`, a writer thread sends
-  `SetSettings` (collapsed to the newest) and `ConfigureOutput`. The UI edits
-  a local copy and diffs it each frame; nothing blocks.
-* Each panel module has `ui(ui, &mut Settings, ..)`; per-window state goes
-  in `panel::State`. Panels that change settings get Defaults and Revert
-  (to the values when the window opened) along the bottom, each enabled
-  only when it would change something: implement `Panel::reset`.
+  `SetSettings` (collapsed to the newest) and `ConfigureOutput`. A control's
+  change goes to `Prefs::edit`, which sends the settings and draws every
+  panel again; nothing blocks.
+* Each panel module has `ui(ui: &mut form::Ui, ..)`: `form.rs` collects the
+  panel's controls top to bottom, each bound to its part of the settings
+  (`ui.check(label, value, |s, v| s.x = v)`, `slider`, `menu`, `choose`,
+  `radio`, `text` with a text field kept by id, `bbox`, `row`,
+  `enabled_if`, `note`), as the egui kit's `Ui` did; what a panel keeps of
+  its own goes in `panel::State` and is changed through `ui.on_view`.
+  Workers (Bluetooth, the clock, sound, the battery) keep what they read
+  behind a lock and send `Msg::Redraw`. Windows open after the update
+  that asks for them (`cx.defer`): a new window draws as it opens, and its
+  panel reads the settings. Panels that change settings get Defaults and
+  Revert (to the values when the window opened) along the bottom, each
+  enabled only when it would change something: implement `Panel::reset`.
 * New panel: add it to `Panel` (arg, title, icon, size, reset), write the
   module, add it to `PREFERENCE_PANELS`, journal it light and dark.
 * **Integrations** (`integrations.rs`) is where every service Olo works

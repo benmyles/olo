@@ -1,48 +1,43 @@
 //! Security: how Passwords keeps its secrets (syncing with 1Password,
 //! locking, `op` on the command line, the clipboard). Passwords follows these live.
 
-use olo_kit::{
-    egui::Ui,
-    widgets::{BBox, CheckBox, MenuField, RadioButton, divider_for},
+use olo_ui::gpui::SharedString;
+
+use crate::{
+    form::{Ui, divider_for},
+    power::minutes_menu,
 };
-use olo_protocol::Settings;
 
-use crate::power::minutes_menu;
-
-pub fn ui(ui: &mut Ui, s: &mut Settings) {
-    let p = &mut s.security.passwords;
-    BBox::new("Passwords: Syncing with 1Password").show(ui, |ui| {
-        if ui.add(RadioButton::new(p.auto_sync, "Automatically")).clicked() {
-            p.auto_sync = true;
-        }
-        if ui.add(RadioButton::new(!p.auto_sync, "Only when I choose Sync Now")).clicked() {
-            p.auto_sync = false;
-        }
+pub fn ui(ui: &mut Ui) {
+    let p = ui.s.security.passwords.clone();
+    ui.bbox("Passwords: Syncing with 1Password", |ui| {
+        ui.radio("Automatically", p.auto_sync, |s| s.security.passwords.auto_sync = true);
+        ui.radio("Only when I choose Sync Now", !p.auto_sync, |s| s.security.passwords.auto_sync = false);
     });
-    BBox::new("Passwords: Locking").show(ui, |ui| {
+    ui.bbox("Passwords: Locking", |ui| {
         let label = "Lock after idle for:";
-        minutes_menu(ui, "pw-lock", label, divider_for(ui, &[label]), &[1, 5, 10, 30, 60, 0], &mut p.lock_minutes);
-        ui.add(CheckBox::new(&mut p.lock_with_screen, "Lock when the screen locks"));
+        let divider = divider_for(ui.window, &[label]);
+        minutes_menu(ui, "pw-lock", label, divider, &[1, 5, 10, 30, 60, 0], p.lock_minutes, |s, m| s.security.passwords.lock_minutes = m);
+        ui.check("Lock when the screen locks", p.lock_with_screen, |s, v| s.security.passwords.lock_with_screen = v);
     });
-    BBox::new("Passwords: Command line").show(ui, |ui| {
-        ui.add(CheckBox::new(&mut p.op_cli, "Answer 1Password’s op command"));
+    ui.bbox("Passwords: Command line", |ui| {
+        ui.check("Answer 1Password’s op command", p.op_cli, |s, v| s.security.passwords.op_cli = v);
     });
-    BBox::new("Passwords: Clipboard").show(ui, |ui| {
-        let choices = [30, 60, 90, 180, 300];
-        let names: Vec<String> = choices.iter().map(|&s| seconds_text(s)).collect();
-        let mut names: Vec<&str> = names.iter().map(String::as_str).collect();
-        let custom = seconds_text(p.clear_seconds);
-        let mut i = match choices.iter().position(|&c| c == p.clear_seconds) {
+    ui.bbox("Passwords: Clipboard", |ui| {
+        const CHOICES: [u32; 5] = [30, 60, 90, 180, 300];
+        let mut names: Vec<SharedString> = CHOICES.iter().map(|&s| seconds_text(s).into()).collect();
+        let i = match CHOICES.iter().position(|&c| c == p.clear_seconds) {
             Some(i) => i,
             None => {
-                names.push(&custom);
+                names.push(seconds_text(p.clear_seconds).into());
                 names.len() - 1
             }
         };
-        ui.add(MenuField::new("pw-clear", &mut i, &names).label("Clear copied secrets after:").divider(170.0));
-        if let Some(&c) = choices.get(i) {
-            p.clear_seconds = c;
-        }
+        ui.menu("pw-clear", names, i, |f| f.label("Clear copied secrets after:").divider(170.0), |s, i| {
+            if let Some(&c) = CHOICES.get(i) {
+                s.security.passwords.clear_seconds = c;
+            }
+        });
     });
 }
 

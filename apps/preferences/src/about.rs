@@ -3,15 +3,19 @@
 //! /sys on a thread; uptime then ticks on locally.
 
 use std::{
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
-use olo_kit::{
-    egui::{Sense, Ui, vec2},
-    icons, metrics as m, style,
-    widgets::{BBox, Button, StringView, form_label, heading},
+use olo_sync::Mutex;
+use olo_ui::{
+    brand,
+    gpui::{Bounds, Context, IntoElement as _, ParentElement as _, Styled as _, canvas, div, point, px, size},
+    icons, metrics as m, theme,
+    widgets::{BBox, Button, StringView, heading},
 };
+
+use crate::{Msg, PanelView, form::Ui, panel};
 
 #[derive(Default, Clone)]
 struct Facts {
@@ -28,28 +32,26 @@ pub struct State {
     /// When Restart Olo was last clicked, or why it failed.
     restarted: Option<Instant>,
     error: Option<String>,
+    /// A frame is due at the next second (uptime counts them).
+    ticking: bool,
 }
 
 impl State {
-    pub fn new() -> State {
+    pub fn new(cx: &mut Context<PanelView>) -> State {
         let facts = Arc::new(Mutex::new(None));
-        let out = facts.clone();
-        std::thread::spawn(move || *out.lock().unwrap() = Some(gather()));
-        State { facts, restarted: None, error: None }
+        let (out, proxy) = (facts.clone(), olo_ui::proxy(cx));
+        std::thread::spawn(move || {
+            *out.lock().unwrap() = Some(gather());
+            proxy.send(Msg::Redraw);
+        });
+        State { facts, restarted: None, error: None, ticking: false }
     }
+}
 
-    /// Long facts as real machines give them, already read (for the
-    /// layout lint).
-    #[cfg(test)]
-    pub fn sample() -> State {
-        let facts = Facts {
-            machine: "Apple MacBook Pro (16-inch, M2 Max, 2023)".into(),
-            processor: "AMD Ryzen 9 7945HX with Radeon Graphics, 32 cores".into(),
-            memory: "128 GB".into(),
-            kernel: "Linux 7.3.0-2.fc44.aurora.aarch64+16k".into(),
-            uptime: Some((Duration::from_secs(400 * 86_400 + 23 * 3600 + 59 * 60), Instant::now())),
-        };
-        State { facts: Arc::new(Mutex::new(Some(facts))), restarted: None, error: None }
+fn state_of(v: &mut PanelView) -> Option<&mut State> {
+    match &mut v.state {
+        panel::State::About(st) => Some(st),
+        _ => None,
     }
 }
 
@@ -159,62 +161,93 @@ pub fn uptime_text(d: Duration) -> String {
 }
 
 pub fn ui(ui: &mut Ui, st: &mut State) {
-    ui.horizontal(|ui| {
-        let (rect, _) = ui.allocate_exact_size(vec2(64.0, 64.0), Sense::hover());
-        icons::paint(ui.painter(), rect, "olo");
-        ui.add_space(m::SPACING);
-        ui.vertical(|ui| {
-            ui.add_space(6.0);
-            let dark = style::palette(ui.ctx()).mode == olo_kit::theme::ThemeMode::Dark;
-            let (word, _) = ui.allocate_exact_size(vec2(olo_kit::brand::wordmark_width(30.0, dark), 30.0), Sense::hover());
-            if olo_kit::brand::wordmark(ui.painter(), word, dark).is_none() {
-                heading(ui, "Olo Desktop");
-            }
-            ui.add(StringView::new(&format!("Olo Desktop, version {}", env!("CARGO_PKG_VERSION"))).dim(true));
-        });
-    });
+    let dark = theme::palette(ui.cx).mode == olo_ui::palette::ThemeMode::Dark;
+    let word_w = brand::wordmark_width(30.0, dark);
+    let icon = canvas(|_, _, _| {}, |b, _, window, _| {
+        icons::paint(window, b, "olo");
+    })
+    .w(px(64.0))
+    .h(px(64.0))
+    .flex_shrink_0();
+    let title = match word_w {
+        Some(w) => canvas(|_, _, _| {}, move |b, _, window, _| {
+            let at = Bounds { origin: point(b.left(), b.top()), size: size(px(w), px(30.0)) };
+            brand::wordmark_centred(window, at, dark);
+        })
+        .w(px(w))
+        .h(px(30.0))
+        .into_any_element(),
+        None => heading("Olo Desktop").into_any_element(),
+    };
+    ui.add(
+        div()
+            .flex()
+            .flex_row()
+            .gap(px(m::SPACING))
+            .child(icon)
+            .child(div().flex().flex_col().pt(px(6.0)).child(title).child(StringView::new(format!("Olo Desktop, version {}", env!("CARGO_PKG_VERSION"))).dim(true))),
+    );
     let facts = st.facts.lock().unwrap().clone();
-    BBox::plain().show(ui, |ui| {
+    let rows = ui.collect(|ui| {
         let Some(f) = facts else {
-            ui.add(StringView::new("Looking…").dim(true));
+            ui.note("Looking…");
             return;
         };
         let uptime = f.uptime.map(|(d, at)| uptime_text(d + at.elapsed())).unwrap_or_default();
-        for (label, value) in [
-            ("Machine:", &f.machine),
-            ("Processor:", &f.processor),
-            ("Memory:", &f.memory),
-            ("Kernel:", &f.kernel),
-            ("Uptime:", &uptime),
-        ] {
-            ui.horizontal(|ui| {
-                form_label(ui, label, 90.0);
-                ui.add(StringView::new(value));
-            });
+        for (label, value) in [("Machine:", &f.machine), ("Processor:", &f.processor), ("Memory:", &f.memory), ("Kernel:", &f.kernel), ("Uptime:", &uptime)] {
+            // The label right-aligned in its column, as BeOS's.
+            ui.add(
+                div()
+                    .flex()
+                    .flex_row()
+                    .child(div().w(px(90.0)).flex_shrink_0().flex().justify_end().pr(px(m::LABEL_GAP)).child(StringView::new(label)))
+                    .child(StringView::new(value.clone())),
+            );
         }
-        // Uptime counts seconds.
-        ui.ctx().request_repaint_after(Duration::from_secs(1));
     });
-    ui.add_space(m::SPACING);
-    ui.horizontal(|ui| {
-        let pid = session_pid();
-        // A restart takes a moment; don't let clicks pile up meanwhile.
-        let settling = st.restarted.is_some_and(|t| t.elapsed() < Duration::from_secs(5));
-        let note = match (&st.error, pid, settling) {
-            (Some(e), _, _) => format!("Couldn't restart: {e}"),
-            (None, None, _) => "Not running under olo-session.".to_owned(),
-            (None, Some(_), true) => "Restarting…".to_owned(),
-            (None, Some(_), false) => String::new(),
-        };
-        ui.with_layout(olo_kit::egui::Layout::right_to_left(olo_kit::egui::Align::Center), |ui| {
-            let button = ui.add_enabled_ui(pid.is_some() && !settling, |ui| ui.add(Button::new("Restart Olo")));
-            if let (true, Some(pid)) = (button.inner.clicked(), pid) {
-                st.error = restart(pid).err();
-                st.restarted = Some(Instant::now());
-            }
-            ui.add(StringView::new(&note).dim(true));
-        });
+    ui.add(BBox::plain().children(rows));
+    // Uptime counts seconds.
+    if !st.ticking {
+        st.ticking = true;
+        ui.cx
+            .spawn(async move |view, cx| {
+                cx.background_executor().timer(Duration::from_secs(1)).await;
+                let _ = view.update(cx, |v, cx| {
+                    if let Some(st) = state_of(v) {
+                        st.ticking = false;
+                    }
+                    cx.notify();
+                });
+            })
+            .detach();
+    }
+    ui.space(m::SPACING);
+    let pid = session_pid();
+    // A restart takes a moment; don't let clicks pile up meanwhile.
+    let settling = st.restarted.is_some_and(|t| t.elapsed() < Duration::from_secs(5));
+    let note = match (&st.error, pid, settling) {
+        (Some(e), _, _) => format!("Couldn't restart: {e}"),
+        (None, None, _) => "Not running under olo-session.".to_owned(),
+        (None, Some(_), true) => "Restarting…".to_owned(),
+        (None, Some(_), false) => String::new(),
+    };
+    let restart_now = ui.on_click_view(move |v, _, cx| {
+        if let (Some(st), Some(pid)) = (state_of(v), pid) {
+            st.error = restart(pid).err();
+            st.restarted = Some(Instant::now());
+        }
+        cx.notify();
     });
+    ui.add(
+        div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .justify_end()
+            .gap(px(m::SPACING))
+            .child(StringView::new(note).dim(true))
+            .child(Button::new("Restart Olo").enabled(pid.is_some() && !settling).on_click(restart_now)),
+    );
 }
 
 #[cfg(test)]

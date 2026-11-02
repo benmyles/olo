@@ -7,12 +7,14 @@
 use olo_sync::Mutex;
 use std::sync::Arc;
 
-use olo_kit::{
-    egui::{Context, Sense, Ui, vec2},
-    icons, metrics as m,
-    widgets::{BBox, Button, StringView, TextControl},
-};
 use olo_system::github::{self, Source};
+use olo_ui::{
+    gpui::{AnyElement, Context, Entity, IntoElement, ParentElement as _, Styled as _, canvas, div, px},
+    icons, metrics as m,
+    widgets::{BBox, Button, StringView, TextControl, TextField, TextFieldEvent},
+};
+
+use crate::{Msg, PanelView, form::Ui, panel};
 
 /// How big each service's icon is, beside its section.
 const INTEGRATION_ICON: f32 = 48.0;
@@ -31,25 +33,56 @@ enum GitHub {
     Failed { source: Option<Source>, why: String },
 }
 
-#[derive(Default)]
 pub struct State {
     github: Arc<Mutex<GitHub>>,
-    started: bool,
     /// A token being typed, to connect with.
-    token: String,
+    token: Entity<TextField>,
     adding: bool,
-    telegram: crate::telegram::State,
+    proxy: olo_ui::Proxy,
+    pub telegram: crate::telegram::State,
 }
 
-/// A row of buttons, right to left, as tall as a button (the kit's
-/// `button_row` centres itself in all the height left, and this panel
-/// has more boxes under each row).
-pub fn buttons<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
-    ui.allocate_ui_with_layout(vec2(ui.available_width(), m::CONTROL_HEIGHT), olo_kit::egui::Layout::right_to_left(olo_kit::egui::Align::Center), |ui| {
-        ui.spacing_mut().item_spacing.x = m::SPACING + 2.0;
-        add(ui)
+impl State {
+    pub fn new(cx: &mut Context<PanelView>) -> State {
+        let token = olo_ui::widgets::text_field(cx, |f| f.password(true).hint("ghp_… or github_pat_…"));
+        cx.subscribe(&token, |v, _, e: &TextFieldEvent, cx| {
+            if matches!(e, TextFieldEvent::Entered)
+                && let Some(st) = state_of(v)
+            {
+                st.connect(cx);
+                cx.notify();
+            }
+        })
+        .detach();
+        let mut st = State { github: Arc::default(), token, adding: false, proxy: olo_ui::proxy(cx), telegram: crate::telegram::State::new(cx) };
+        st.check();
+        st
+    }
+}
+
+pub fn state_of(v: &mut PanelView) -> Option<&mut State> {
+    match &mut v.state {
+        panel::State::Integrations(st) => Some(st),
+        _ => None,
+    }
+}
+
+/// A row of buttons at the right, the first given rightmost (as the egui
+/// kit's right-to-left rows), a little below what's above it (room for a
+/// default button's ring).
+pub fn buttons(items: Vec<AnyElement>) -> impl IntoElement {
+    div().flex().flex_row().justify_end().gap(px(m::SPACING + 2.0)).pt(px(m::TIGHT)).children(items.into_iter().rev())
+}
+
+/// A service's icon beside what it does and how it is connected.
+pub fn service(icon: &'static str, about: &str, status: String) -> impl IntoElement {
+    let art = canvas(|_, _, _| {}, move |b, _, window, _| {
+        icons::paint(window, b, icon);
     })
-    .inner
+    .w(px(INTEGRATION_ICON))
+    .h(px(INTEGRATION_ICON))
+    .flex_shrink_0();
+    div().flex().flex_row().gap(px(m::SPACING)).child(art).child(div().flex_1().min_w_0().flex().flex_col().child(StringView::new(about.to_owned()).dim(true).wrap(true)).child(StringView::new(status).wrap(true)))
 }
 
 /// Who `token` signs in as, by asking GitHub.
@@ -93,22 +126,25 @@ fn status() -> GitHub {
 
 impl State {
     /// Find the token and ask GitHub who it is, on a worker.
-    fn check(&mut self, ctx: &Context) {
-        self.started = true;
+    fn check(&mut self) {
         *self.github.lock().unwrap() = GitHub::Checking;
-        let (out, ctx) = (self.github.clone(), ctx.clone());
+        let (out, proxy) = (self.github.clone(), self.proxy.clone());
         std::thread::spawn(move || {
             *out.lock().unwrap() = status();
-            ctx.request_repaint();
+            proxy.send(Msg::Redraw);
         });
     }
 
-    /// Try `token`, and keep it if GitHub takes it.
-    fn connect(&mut self, ctx: &Context) {
-        let token = std::mem::take(&mut self.token);
+    /// Try the token typed, and keep it if GitHub takes it.
+    fn connect(&mut self, cx: &mut Context<PanelView>) {
+        let token = self.token.read(cx).text().to_owned();
+        if token.trim().is_empty() {
+            return;
+        }
+        self.token.update(cx, |f, cx| f.clear_secret(cx));
         self.adding = false;
         *self.github.lock().unwrap() = GitHub::Checking;
-        let (out, ctx) = (self.github.clone(), ctx.clone());
+        let (out, proxy) = (self.github.clone(), self.proxy.clone());
         std::thread::spawn(move || {
             let now = match login_of(&token) {
                 Ok(login) => match github::save(&token) {
@@ -118,84 +154,88 @@ impl State {
                 Err(why) => GitHub::Failed { source: None, why },
             };
             *out.lock().unwrap() = now;
-            ctx.request_repaint();
+            proxy.send(Msg::Redraw);
         });
     }
 
     /// Forget Olo's token; then whatever else gives one.
-    fn disconnect(&mut self, ctx: &Context) {
-        let (out, ctx) = (self.github.clone(), ctx.clone());
+    fn disconnect(&mut self) {
+        let (out, proxy) = (self.github.clone(), self.proxy.clone());
         *out.lock().unwrap() = GitHub::Checking;
         std::thread::spawn(move || {
             *out.lock().unwrap() = match github::forget() {
                 Ok(()) => status(),
                 Err(e) => GitHub::Failed { source: Some(Source::Olo), why: format!("The token couldn’t be taken out of the keyring ({e}).") },
             };
-            ctx.request_repaint();
+            proxy.send(Msg::Redraw);
         });
     }
 }
 
-pub fn ui(ui: &mut Ui, st: &mut State) {
-    let ctx = ui.ctx().clone();
-    if !st.started {
-        st.check(&ctx);
-    }
-    let now = st.github.lock().unwrap().clone();
-    BBox::new("GitHub").show(ui, |ui| {
-        let status = match &now {
-            GitHub::Checking => "Checking…".to_owned(),
-            GitHub::None => "Not connected: only public repositories’ pull requests show.".to_owned(),
-            GitHub::Connected { login, source } => format!("Connected as {login}, through {}.", source.describe()),
-            GitHub::Failed { source: Some(s), why } => format!("{why} (From {}.)", s.describe()),
-            GitHub::Failed { source: None, why } => why.clone(),
-        };
-        // Its icon beside what it does and how it is connected.
-        ui.horizontal_top(|ui| {
-            ui.spacing_mut().item_spacing.x = m::SPACING;
-            let (r, _) = ui.allocate_exact_size(vec2(INTEGRATION_ICON, INTEGRATION_ICON), Sense::hover());
-            icons::paint(ui.painter(), r, "github");
-            ui.vertical(|ui| {
-                ui.add(StringView::new("Terminal shows each tab’s pull request on GitHub and whether its checks pass.").dim(true).wrap(true));
-                ui.add(StringView::new(&status).wrap(true));
-            });
-        });
-        if st.adding {
-            ui.add(TextControl::new(&mut st.token).label("Token:").password(true).hint("ghp_… or github_pat_…").autofocus(true));
-            ui.add(StringView::new("A classic token with the repo scope, or a fine-grained one that can read pull requests and checks. Olo keeps it in your login keyring.").dim(true).wrap(true));
+/// Something done to the panel's state from a button.
+fn act(ui: &Ui, f: impl Fn(&mut State, &mut Context<PanelView>) + 'static) -> impl Fn(&mut olo_ui::gpui::Window, &mut olo_ui::gpui::App) + 'static {
+    ui.on_click_view(move |v, _, cx| {
+        if let Some(st) = state_of(v) {
+            f(st, cx);
         }
-        ui.add_space(m::TIGHT);
-        buttons(ui, |ui| {
-            if st.adding {
-                let enter = ui.input(|i| i.key_pressed(olo_kit::egui::Key::Enter));
-                let ok = ui.add_enabled(!st.token.trim().is_empty(), Button::new("Connect").default(true)).clicked();
-                if ok || enter && !st.token.trim().is_empty() {
-                    st.connect(&ctx);
-                }
-                if ui.add(Button::new("Cancel")).clicked() {
+        cx.notify();
+    })
+}
+
+pub fn ui(ui: &mut Ui, st: &mut State) {
+    let now = st.github.lock().unwrap().clone();
+    let status = match &now {
+        GitHub::Checking => "Checking…".to_owned(),
+        GitHub::None => "Not connected: only public repositories’ pull requests show.".to_owned(),
+        GitHub::Connected { login, source } => format!("Connected as {login}, through {}.", source.describe()),
+        GitHub::Failed { source: Some(s), why } => format!("{why} (From {}.)", s.describe()),
+        GitHub::Failed { source: None, why } => why.clone(),
+    };
+    let mut items: Vec<AnyElement> = vec![service("github", "Terminal shows each tab’s pull request on GitHub and whether its checks pass.", status).into_any_element()];
+    if st.adding {
+        items.push(TextControl::new(st.token.clone()).label("Token:").into_any_element());
+        items.push(StringView::new("A classic token with the repo scope, or a fine-grained one that can read pull requests and checks. Olo keeps it in your login keyring.").dim(true).wrap(true).into_any_element());
+    }
+    let row: Vec<AnyElement> = if st.adding {
+        let ready = !st.token.read(ui.cx).text().trim().is_empty();
+        vec![
+            Button::new("Connect").default(true).enabled(ready).on_click(act(ui, |st, cx| st.connect(cx))).into_any_element(),
+            Button::new("Cancel")
+                .on_click(act(ui, |st, cx| {
                     st.adding = false;
-                    st.token.clear();
-                }
-                if ui.add(Button::new("Make a Token…")).clicked() {
-                    let _ = olo_kit::open::open(&olo_kit::open::Target::Url(NEW_TOKEN.into()));
-                }
-            } else {
-                let checking = now == GitHub::Checking;
-                if ui.add_enabled(!checking, Button::new("Check Again")).clicked() {
-                    st.check(&ctx);
-                }
-                if matches!(now, GitHub::Connected { source: Source::Olo, .. } | GitHub::Failed { source: Some(Source::Olo), .. })
-                    && ui.add(Button::new("Disconnect")).clicked()
-                {
-                    st.disconnect(&ctx);
-                }
-                let label = if matches!(now, GitHub::Connected { .. }) { "Use Another Token…" } else { "Connect with a Token…" };
-                if ui.add_enabled(!checking, Button::new(label)).clicked() {
-                    st.adding = true;
-                }
-            }
-        });
-    });
-    ui.add_space(m::SPACING);
+                    st.token.update(cx, |f, cx| f.clear_secret(cx));
+                }))
+                .into_any_element(),
+            Button::new("Make a Token…")
+                .on_click(|_, _| {
+                    let _ = olo_xdg::open::open(&olo_xdg::open::Target::Url(NEW_TOKEN.into()));
+                })
+                .into_any_element(),
+        ]
+    } else {
+        let checking = now == GitHub::Checking;
+        let mut row = vec![Button::new("Check Again").enabled(!checking).on_click(act(ui, |st, _| st.check())).into_any_element()];
+        if matches!(now, GitHub::Connected { source: Source::Olo, .. } | GitHub::Failed { source: Some(Source::Olo), .. }) {
+            row.push(Button::new("Disconnect").on_click(act(ui, |st, _| st.disconnect())).into_any_element());
+        }
+        let label = if matches!(now, GitHub::Connected { .. }) { "Use Another Token…" } else { "Connect with a Token…" };
+        let token = st.token.clone();
+        row.push(
+            Button::new(label)
+                .enabled(!checking)
+                .on_click(ui.on_click_view(move |v, window, cx| {
+                    if let Some(st) = state_of(v) {
+                        st.adding = true;
+                    }
+                    token.update(cx, |f, _| f.focus(window));
+                    cx.notify();
+                }))
+                .into_any_element(),
+        );
+        row
+    };
+    items.push(buttons(row).into_any_element());
+    ui.add(BBox::new("GitHub").children(items));
+    ui.space(m::SPACING);
     crate::telegram::ui(ui, &mut st.telegram);
 }

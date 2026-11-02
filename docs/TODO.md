@@ -347,7 +347,12 @@ as they land (with the commit), add new ones as they come up.
      equal or less in all eleven, Lissart 3.2% of a core against 4.0,
      Spiral 9.8 against 12.6, StringTheme 3.8 against 4.0, Lens and
      Message within noise; 56–75 MB against 91–122; the benchmark's
-     slowest frame 6.0 ms at 3456×2234 at every scale). StyledEdit
+     slowest frame 6.0 ms at 3456×2234 at every scale). Preferences
+     (2026-11-02: every panel on `form.rs`, controls bound to their part
+     of the settings; the kit's `ColorControl` and `pictures`; at 1× on
+     a 3456×2234 screen: launch 42 ms against 81, idle 0 frames against
+     2, the pointer swept over it 3 frames against 183, its slowest frame
+     1.15 ms against 6.7, 0 failed). StyledEdit
      (with the GPUI kit's `editor`, `Ruler` and spelling; Page View,
      headers and footers, tables, pictures, Find, printing; and for it
      GPUI's kept glyph runs, hidden quads culled, a resize's swapchain

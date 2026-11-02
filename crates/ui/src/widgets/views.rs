@@ -18,11 +18,18 @@ pub struct StringView {
     color: Option<Hsla>,
     height: f32,
     wrap: bool,
+    size: f32,
 }
 
 impl StringView {
     pub fn new(text: impl Into<SharedString>) -> StringView {
-        StringView { text: text.into(), dim: false, bold: false, color: None, height: m::CONTROL_HEIGHT, wrap: false }
+        StringView { text: text.into(), dim: false, bold: false, color: None, height: m::CONTROL_HEIGHT, wrap: false, size: style::PLAIN_SIZE }
+    }
+
+    /// In the small size (a table's column names, a scale's ends).
+    pub fn small(mut self, on: bool) -> Self {
+        self.size = if on { style::SMALL_SIZE } else { style::PLAIN_SIZE };
+        self
     }
 
     /// A paragraph: wrapped to the width it's given, as tall as it takes.
@@ -64,16 +71,22 @@ impl RenderOnce for StringView {
             let ink = self.color.unwrap_or_else(|| if self.dim { style::disabled_text(&p) } else { style::c(p.panel_text) });
             let text = self.text.clone();
             let said = canvas(|_, _, _| {}, move |b, _, window, cx| agent::record(window, cx, agent::Node::label(text.clone(), b))).absolute().inset_0();
-            return div().relative().w_full().line_height(gpui::relative(style::LINE_HEIGHT)).font_weight(weight).text_color(ink).child(self.text).child(said).into_any_element();
+            let mut d = div().relative().w_full().line_height(gpui::relative(style::LINE_HEIGHT)).font_weight(weight).text_color(ink);
+            // (The window's own size unless small: nothing else changes.)
+            if self.size != style::PLAIN_SIZE {
+                d = d.text_size(px(self.size));
+            }
+            return d.child(self.text).child(said).into_any_element();
         }
-        let w = f32::from(style::text_width(window, self.text.clone(), style::PLAIN_SIZE, style::ui_font(weight))).ceil();
+        let size = self.size;
+        let w = f32::from(style::text_width(window, self.text.clone(), size, style::ui_font(weight))).ceil();
         let (text, dim, color, height) = (self.text, self.dim, self.color, self.height);
         canvas(
             |_, _, _| {},
             move |b, _, window, cx| {
                 let p = theme::palette(cx);
                 let ink = color.unwrap_or_else(|| if dim { style::disabled_text(&p) } else { style::c(p.panel_text) });
-                let r = style::label(window, cx, b.left(), b.center().y, style::Align::Left, text.clone(), style::PLAIN_SIZE, style::ui_font(weight), ink);
+                let r = style::label(window, cx, b.left(), b.center().y, style::Align::Left, text.clone(), size, style::ui_font(weight), ink);
                 agent::record(window, cx, agent::Node::label(text.clone(), r));
             },
         )

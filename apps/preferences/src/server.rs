@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-use olo_kit::Proxy;
+use olo_ui::Proxy;
 use olo_protocol::{Client, Event, EventKind, OutputConfig, Reply, Request, Settings};
 
 use crate::Msg;
@@ -24,6 +24,8 @@ enum Out {
     RecordShortcut(bool),
 }
 
+/// (A clone sends through the same writer.)
+#[derive(Clone)]
 pub struct Server {
     tx: Sender<Out>,
     /// The keys app_server recorded for a shortcut (see `record_shortcut`).

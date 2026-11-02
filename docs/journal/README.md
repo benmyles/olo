@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-01
 
+### Preferences on GPUI
+
+*23:21* — Every panel of Preferences moved from egui to Olo's GPUI, drawn as before; Themes shows each theme's wordmark and icons, and its colour sets now share their row evenly.
+
+![Preferences on GPUI](2026-11-01/232156-preferences-on-gpui.png)
+
 ### Pinch to zoom, off by default
 
 *22:30* — Preferences ▸ Touchpad & Mouse ▸ Gestures: a pinch reaches the window under the pointer only when this is on. Off, two fingers drifting together while scrolling no longer zoom Chrome's pages.

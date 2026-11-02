@@ -15,42 +15,41 @@ mod backup;
 mod bluetooth;
 mod datetime;
 mod display;
+mod form;
 mod integrations;
 mod keyboard;
 mod network;
 mod notifications;
-mod performance;
 mod panel;
+mod performance;
 mod power;
 mod screensaver;
 mod security;
 mod server;
 mod shortcuts;
 mod sound;
+mod telegram;
+mod terminal;
 mod themes;
 mod touchid;
 mod touchpad;
-mod terminal;
-mod telegram;
 mod tracker;
-#[cfg(test)]
-mod ui_lint;
 mod windows;
 mod workspaces;
 
-use std::collections::BTreeMap;
-
-use olo_kit::{
-    App, Cx, Menu, WindowId, WindowOptions,
-    egui::{self, Rect, Sense, pos2, vec2},
-    file_panel::{FilePanel, PANEL_SIZE, PanelResult},
+use olo_protocol::{OutputInfo, PowerStatus, Settings};
+use olo_ui::{
+    WindowOptions,
+    gpui::{
+        AnyWindowHandle, AppContext as _, Bounds, Context, Entity, FontWeight, Hsla, InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Pixels, Render, SharedString, Styled as _,
+        Window, canvas, div, point, px, size,
+    },
     icons,
     instance::{self, Launch},
-    metrics as m,
-    style::{self, c},
+    metrics as m, style, theme,
 };
-use olo_protocol::{OutputInfo, PowerStatus, Settings};
 
+use form::Fields;
 use panel::Panel;
 
 const APP_ID: &str = "olo.preferences";
@@ -63,170 +62,232 @@ pub enum Msg {
     Redraw,
 }
 
-/// What a panel works with: the live settings and a way to change them.
-pub struct Ctx<'a> {
-    pub settings: &'a mut Settings,
-    pub outputs: &'a [OutputInfo],
+/// The settings, app_server's displays and power state, and the windows.
+pub struct Prefs {
+    pub settings: Option<Settings>,
+    pub outputs: Vec<OutputInfo>,
     /// app_server's power state (caffeinated, brightness), once known.
-    pub power: Option<&'a PowerStatus>,
-    /// The settings when the window opened, for Revert.
-    pub opened: &'a Settings,
-    pub server: &'a server::Server,
+    pub power: Option<PowerStatus>,
+    pub server: server::Server,
+    windows: Vec<Shown>,
 }
 
-enum Win {
-    Launcher,
-    Panel { panel: Panel, opened: Box<Settings>, state: panel::State },
-    /// Backgrounds' Choose… panel, for `owner`.
-    Wallpaper { owner: WindowId, panel: Box<FilePanel> },
-    /// Network's sheet for joining an enterprise network, over `owner`.
-    Enterprise { owner: WindowId, form: Box<network::EnterpriseForm> },
-    /// The sheet's file panel for a certificate or key.
-    Cert { owner: WindowId, slot: network::CertSlot, panel: Box<FilePanel> },
-    /// Backup's file panel, to export to or import from.
-    Backup { owner: WindowId, ask: backup::Ask, panel: Box<FilePanel> },
-}
-
-struct Prefs {
-    windows: BTreeMap<WindowId, Win>,
-    settings: Option<Settings>,
-    outputs: Vec<OutputInfo>,
-    power: Option<PowerStatus>,
-    server: server::Server,
+/// A window open: a panel's (and its view), or the launcher.
+struct Shown {
+    panel: Option<Panel>,
+    handle: AnyWindowHandle,
+    view: Option<Entity<PanelView>>,
 }
 
 impl Prefs {
-    fn open(&mut self, cx: &mut Cx, name: &str) {
+    /// Changes the settings: app_server is sent them, and every window
+    /// showing them is drawn again. (Not connected yet: nothing to change.)
+    pub fn edit(&mut self, cx: &mut Context<Self>, f: impl FnOnce(&mut Settings)) {
+        let Some(s) = self.settings.as_mut() else { return };
+        let before = s.clone();
+        f(s);
+        if *s != before {
+            self.server.set_settings(s.clone());
+            cx.notify();
+        }
+    }
+
+    fn open(&mut self, name: &str, cx: &mut Context<Self>) {
         let Some(panel) = Panel::from_arg(name) else {
             tracing::warn!("no preference panel called {name}");
             return;
         };
         // One window per panel: bring an open one forward.
-        if let Some((&id, _)) =
-            self.windows.iter().find(|(_, w)| matches!(w, Win::Panel { panel: p, .. } if *p == panel))
-        {
-            cx.activate(id);
+        if let Some(w) = self.windows.iter().find(|w| w.panel == Some(panel)) {
+            let _ = w.handle.update(cx, |_, window, _| window.activate_window());
             return;
         }
         let (w, h) = panel.size();
-        let id = cx.open_window(WindowOptions::new(panel.title(), w, h).min_size(w, h).max_size(w, h));
-        let opened = Box::new(self.settings.clone().unwrap_or_default());
-        self.windows.insert(id, Win::Panel { panel, opened, state: panel::State::new(panel) });
+        let (w, h) = (w as f32, h as f32);
+        let prefs = cx.entity();
+        let opened = self.settings.clone().unwrap_or_default();
+        let options = WindowOptions { fixed: true, ..WindowOptions::new(panel.title(), w, h).min_size(w, h) };
+        // (Once this update is over: the window draws as it opens, and its
+        // panel reads the settings.)
+        cx.defer(move |cx| {
+            let made = std::rc::Rc::new(std::cell::RefCell::new(None));
+            let out = made.clone();
+            let p = prefs.clone();
+            let Some(handle) = olo_ui::open_window(cx, options, move |window, cx| {
+                let view = cx.new(|cx| PanelView::new(p, panel, opened, window, cx));
+                *out.borrow_mut() = Some(view.clone());
+                view
+            }) else {
+                return;
+            };
+            let view = made.borrow_mut().take();
+            prefs.update(cx, |p, cx| p.register(Some(panel), handle.into(), view, cx));
+        });
     }
 
-    fn open_launcher(&mut self, cx: &mut Cx) {
-        if let Some((&id, _)) = self.windows.iter().find(|(_, w)| matches!(w, Win::Launcher)) {
-            cx.activate(id);
+    fn open_launcher(&mut self, cx: &mut Context<Self>) {
+        if let Some(w) = self.windows.iter().find(|w| w.panel.is_none()) {
+            let _ = w.handle.update(cx, |_, window, _| window.activate_window());
             return;
         }
         let rows = Panel::ALL.len().div_ceil(LAUNCHER_COLUMNS) as f32;
-        let w = 2.0 * m::WINDOW_INSET + LAUNCHER_COLUMNS as f32 * LAUNCHER_CELL.x;
-        let h = 2.0 * m::WINDOW_INSET + rows * LAUNCHER_CELL.y;
-        let id = cx.open_window(WindowOptions::new("Preferences", w as u32, h as u32).min_size(w as u32, h as u32).floating());
-        self.windows.insert(id, Win::Launcher);
+        let w = 2.0 * m::WINDOW_INSET + LAUNCHER_COLUMNS as f32 * LAUNCHER_CELL.0;
+        let h = 2.0 * m::WINDOW_INSET + rows * LAUNCHER_CELL.1;
+        let prefs = cx.entity();
+        let options = WindowOptions { fixed: true, ..WindowOptions::new("Preferences", w, h).min_size(w, h).floating() };
+        cx.defer(move |cx| {
+            let p = prefs.clone();
+            let Some(handle) = olo_ui::open_window(cx, options, move |_, cx| cx.new(|_| Launcher { prefs: p })) else { return };
+            prefs.update(cx, |p, cx| p.register(None, handle.into(), None, cx));
+        });
     }
 
-    /// Open (or bring forward) the wallpaper file panel, starting where the
-    /// current picture is, else in the Pictures folder.
-    fn choose_wallpaper(&mut self, cx: &mut Cx, owner: WindowId) {
-        if let Some((&id, _)) = self.windows.iter().find(|(_, w)| matches!(w, Win::Wallpaper { .. })) {
-            cx.activate(id);
-            return;
-        }
-        let dir = self
-            .settings
-            .as_ref()
-            .and_then(|s| s.wallpaper.as_deref())
-            .and_then(|p| std::path::Path::new(p).parent().map(|d| d.to_owned()))
-            .filter(|d| d.is_dir())
-            .or_else(|| olo_kit::user_dir("PICTURES"))
-            .unwrap_or_else(|| std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()));
-        let (w, h) = PANEL_SIZE;
-        let id = cx.open_window(WindowOptions::new("Choose a Wallpaper", w, h).min_size(400, 300).parent(owner));
-        let panel = Box::new(FilePanel::open(dir).types(workspaces::WALLPAPER_TYPES));
-        self.windows.insert(id, Win::Wallpaper { owner, panel });
+    /// Follows the window: when it closes it leaves the list, and the
+    /// app ends with the last.
+    fn register(&mut self, panel: Option<Panel>, handle: AnyWindowHandle, view: Option<Entity<PanelView>>, cx: &mut Context<Self>) {
+        let me = cx.weak_entity();
+        let _ = handle.update(cx, |_, window, cx| {
+            window.on_window_should_close(cx, move |_, cx| {
+                if let Some(p) = me.upgrade() {
+                    p.update(cx, |p, cx| {
+                        p.windows.retain(|w| w.handle != handle);
+                        if p.windows.is_empty() {
+                            cx.quit();
+                        }
+                    });
+                }
+                true
+            })
+        });
+        self.windows.push(Shown { panel, handle, view });
     }
 
-    /// The sheet for joining an enterprise network (one per network).
-    fn join_enterprise(&mut self, cx: &mut Cx, owner: WindowId, device: String, net: olo_system::network::Network) {
-        if let Some((&id, _)) = self.windows.iter().find(|(_, w)| matches!(w, Win::Enterprise { form, .. } if form.ssid() == net.ssid)) {
-            cx.activate(id);
-            return;
-        }
-        let form = Box::new(network::EnterpriseForm::new(device, net));
-        let (w, h) = (network::SHEET_WIDTH, form.height());
-        let id = cx.open_window(WindowOptions::new(format!("Join “{}”", form.ssid()), w, h).min_size(w, 200).parent(owner));
-        self.windows.insert(id, Win::Enterprise { owner, form });
-    }
-
-    /// Backup's file panel: where to export to, or what to import.
-    fn backup_panel(&mut self, cx: &mut Cx, owner: WindowId, ask: backup::Ask) {
-        if let Some((&id, _)) = self.windows.iter().find(|(_, w)| matches!(w, Win::Backup { .. })) {
-            cx.activate(id);
-            return;
-        }
-        let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
-        let (title, panel) = match ask {
-            backup::Ask::Export => ("Export Settings", FilePanel::save(home, backup::suggested_name()).types(&[backup::EXTENSION])),
-            backup::Ask::Import => ("Import Settings", FilePanel::open(home).types(&[backup::EXTENSION, backup::OLD_EXTENSION])),
-        };
-        let (w, h) = PANEL_SIZE;
-        let id = cx.open_window(WindowOptions::new(title, w, h).min_size(400, 300).parent(owner));
-        self.windows.insert(id, Win::Backup { owner, ask, panel: Box::new(panel) });
-    }
-
-    fn handle_args(&mut self, cx: &mut Cx, args: &[String]) {
+    fn handle_args(&mut self, args: &[String], cx: &mut Context<Self>) {
         let (files, panels): (Vec<&String>, Vec<&String>) =
             args.iter().filter(|a| !a.starts_with('-')).partition(|a| [backup::EXTENSION, backup::OLD_EXTENSION].iter().any(|x| a.ends_with(&format!(".{x}"))));
         if panels.is_empty() && files.is_empty() {
             self.open_launcher(cx);
         }
         for p in panels {
-            self.open(cx, p);
+            self.open(p, cx);
         }
-        // A backup opened from Tracker: what it holds, ready to import.
+        // A backup opened from Tracker: what it holds, ready to import
+        // (once the panel's window, opened after this update, is there).
         if let Some(file) = files.last() {
-            self.open(cx, "backup");
-            if let Some(Win::Panel { state: panel::State::Backup(b), .. }) =
-                self.windows.values_mut().find(|w| matches!(w, Win::Panel { panel: Panel::Backup, .. }))
-            {
-                b.inspect(std::path::PathBuf::from(file.as_str()));
-            }
+            self.open("backup", cx);
+            let path = std::path::PathBuf::from(file.as_str());
+            let me = cx.entity();
+            cx.defer(move |cx| {
+                let view = me.read(cx).windows.iter().find(|w| w.panel == Some(Panel::Backup)).and_then(|w| w.view.clone());
+                if let Some(view) = view {
+                    view.update(cx, |v, cx| {
+                        if let panel::State::Backup(b) = &mut v.state {
+                            b.inspect(path);
+                        }
+                        cx.notify();
+                    });
+                }
+            });
         }
     }
 
-    fn launcher_ui(&mut self, cx: &mut Cx, ui: &mut egui::Ui) {
-        let p = style::palette(ui.ctx());
-        let origin = ui.max_rect().min + vec2(m::WINDOW_INSET, m::WINDOW_INSET);
-        let mut chosen = None;
-        for (i, panel) in Panel::ALL.iter().enumerate() {
+    fn message(&mut self, msg: Msg, cx: &mut Context<Self>) {
+        match msg {
+            Msg::Settings(s) => {
+                // The first copy is also what Revert goes back to.
+                if self.settings.is_none() {
+                    for w in &self.windows {
+                        if let Some(view) = &w.view {
+                            view.update(cx, |v, _| v.opened = (*s).clone());
+                        }
+                    }
+                }
+                self.settings = Some(*s);
+            }
+            Msg::Outputs(o) => self.outputs = o,
+            Msg::Power(p) => self.power = Some(p),
+            Msg::Redraw => {}
+        }
+        cx.notify();
+    }
+
+    fn save_state(&self) -> Option<String> {
+        let open: Vec<&str> = self.windows.iter().map(|w| w.panel.map_or("", Panel::arg)).collect();
+        serde_json::to_string(&open).ok()
+    }
+}
+
+/// A panel's window: the panel, the settings as they were when it opened
+/// (for Revert), and what it keeps of its own.
+pub struct PanelView {
+    pub prefs: Entity<Prefs>,
+    pub panel: Panel,
+    pub opened: Settings,
+    pub state: panel::State,
+    pub fields: Fields,
+}
+
+impl PanelView {
+    fn new(prefs: Entity<Prefs>, panel: Panel, opened: Settings, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        cx.observe(&prefs, |_, _, cx| cx.notify()).detach();
+        let state = panel::State::new(panel, window, cx);
+        PanelView { prefs, panel, opened, state, fields: Fields::default() }
+    }
+}
+
+impl Render for PanelView {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        panel::render(self, window, cx)
+    }
+}
+
+const LAUNCHER_COLUMNS: usize = 5;
+const LAUNCHER_CELL: (f32, f32) = (104.0, 64.0);
+
+/// The launcher: every panel's icon and name; a click opens it.
+struct Launcher {
+    prefs: Entity<Prefs>,
+}
+
+impl Render for Launcher {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let mut grid = div().relative().size_full();
+        for (i, panel) in Panel::ALL.iter().copied().enumerate() {
             let (col, row) = (i % LAUNCHER_COLUMNS, i / LAUNCHER_COLUMNS);
-            let cell = Rect::from_min_size(
-                origin + vec2(col as f32 * LAUNCHER_CELL.x, row as f32 * LAUNCHER_CELL.y),
-                LAUNCHER_CELL,
-            );
-            let resp = ui.interact(cell, ui.make_persistent_id(("panel", i)), Sense::click());
-            let icon = Rect::from_center_size(pos2(cell.center().x, cell.top() + 4.0 + 16.0), vec2(32.0, 32.0));
-            if resp.hovered() {
-                ui.painter().rect_filled(cell.shrink(2.0), 3.0, style::shade(&p, p.panel_background, 1.08));
-            }
-            icons::paint(ui.painter(), icon, panel.icon());
-            style::label(
-                ui.painter(),
-                cell.center().x,
-                icon.bottom() + 12.0,
-                egui::Align::Center,
-                panel.title(),
-                style::plain_font(),
-                c(p.panel_text),
-            );
-            if resp.clicked() {
-                chosen = Some(*panel);
-            }
+            let (x, y) = (m::WINDOW_INSET + col as f32 * LAUNCHER_CELL.0, m::WINDOW_INSET + row as f32 * LAUNCHER_CELL.1);
+            let prefs = self.prefs.clone();
+            let cell = div()
+                .id(SharedString::from(panel.arg()))
+                .absolute()
+                .left(px(x))
+                .top(px(y))
+                .w(px(LAUNCHER_CELL.0))
+                .h(px(LAUNCHER_CELL.1))
+                .child(
+                    canvas(
+                        |_, _, _| {},
+                        move |b: Bounds<Pixels>, _, window, cx| {
+                            let p = theme::palette(cx);
+                            let hovered = b.contains(&window.mouse_position());
+                            if hovered {
+                                let shade: Hsla = style::shade(&p, p.panel_background, 1.08);
+                                window.paint_quad(olo_ui::gpui::fill(style::inset(window, b, 2.0), shade).corner_radii(px(3.0)));
+                            }
+                            let icon = Bounds { origin: point(b.center().x - px(16.0), b.top() + px(4.0)), size: size(px(32.0), px(32.0)) };
+                            icons::paint(window, icon, panel.icon());
+                            style::label(window, cx, b.center().x, icon.bottom() + px(12.0), style::Align::Center, panel.title(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::c(p.panel_text));
+                            olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Button", name: Some(panel.title().into()), bounds: b, enabled: true, clickable: true, ..Default::default() });
+                        },
+                    )
+                    .size_full(),
+                )
+                .on_mouse_move(|_, window, _| window.refresh())
+                .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                    prefs.update(cx, |p, cx| p.open(panel.arg(), cx));
+                });
+            grid = grid.child(cell);
         }
-        if let Some(panel) = chosen {
-            self.open(cx, panel.arg());
-        }
+        grid
     }
 }
 
@@ -268,193 +329,7 @@ fn backup_cli(flag: &str, file: &std::path::Path) -> Option<i32> {
     })
 }
 
-const LAUNCHER_COLUMNS: usize = 5;
-const LAUNCHER_CELL: egui::Vec2 = egui::Vec2::new(104.0, 64.0);
-
-impl App for Prefs {
-    fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
-        if matches!(self.windows.get(&window), Some(Win::Launcher)) {
-            self.launcher_ui(cx, ui);
-            return;
-        }
-        if let Some(Win::Enterprise { form, .. }) = self.windows.get_mut(&window) {
-            let before = form.height();
-            let result = form.ui(ui);
-            if form.height() != before {
-                cx.resize(window, (network::SHEET_WIDTH, form.height()));
-            }
-            match result {
-                Some(network::SheetResult::Close) => self.close_requested(cx, window),
-                Some(network::SheetResult::Choose(slot)) => {
-                    let (w, h) = PANEL_SIZE;
-                    let id = cx.open_window(WindowOptions::new(slot.title(), w, h).min_size(400, 300).parent(window));
-                    let dir = std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
-                    self.windows.insert(id, Win::Cert { owner: window, slot, panel: Box::new(FilePanel::open(dir).types(network::CERT_TYPES)) });
-                }
-                None => {}
-            }
-            return;
-        }
-        if let Some(Win::Cert { owner, slot, panel }) = self.windows.get_mut(&window) {
-            let (owner, slot) = (*owner, *slot);
-            if let Some(result) = panel.ui(ui) {
-                if let (PanelResult::Chosen(path), Some(Win::Enterprise { form, .. })) = (result, self.windows.get_mut(&owner)) {
-                    form.chosen(slot, path);
-                }
-                self.windows.remove(&window);
-                cx.close_window(window);
-                cx.redraw(owner);
-            }
-            return;
-        }
-        if let Some(Win::Backup { owner, ask, panel }) = self.windows.get_mut(&window) {
-            let (owner, ask) = (*owner, *ask);
-            if let Some(result) = panel.ui(ui) {
-                if let (PanelResult::Chosen(path), Some(Win::Panel { state: panel::State::Backup(b), .. })) = (result, self.windows.get_mut(&owner)) {
-                    match ask {
-                        backup::Ask::Export => b.export_to(path),
-                        backup::Ask::Import => b.inspect(path),
-                    }
-                }
-                self.windows.remove(&window);
-                cx.close_window(window);
-                cx.activate(owner);
-                cx.redraw(owner);
-            }
-            return;
-        }
-        if let Some(Win::Wallpaper { owner, panel }) = self.windows.get_mut(&window) {
-            let owner = *owner;
-            if let Some(result) = panel.ui(ui) {
-                if let (PanelResult::Chosen(path), Some(s)) = (result, self.settings.as_mut()) {
-                    s.wallpaper = Some(path.to_string_lossy().into_owned());
-                    self.server.set_settings(s.clone());
-                }
-                self.windows.remove(&window);
-                cx.close_window(window);
-                cx.redraw(owner);
-            }
-            return;
-        }
-        let Some(Win::Panel { panel, opened, state }) = self.windows.get_mut(&window) else {
-            return;
-        };
-        let Some(settings) = self.settings.as_mut() else {
-            // Not connected (yet): panels that need app_server wait.
-            if panel.needs_server() {
-                let p = style::palette(ui.ctx());
-                style::label(
-                    ui.painter(),
-                    ui.max_rect().center().x,
-                    ui.max_rect().center().y,
-                    egui::Align::Center,
-                    "Waiting for app_server…",
-                    style::plain_font(),
-                    style::disabled_text(&p),
-                );
-                return;
-            }
-            let mut scratch = Settings::default();
-            let ctx = Ctx { settings: &mut scratch, outputs: &self.outputs, power: self.power.as_ref(), opened, server: &self.server };
-            panel::ui(*panel, state, ui, ctx);
-            return;
-        };
-        let before = settings.clone();
-        let ctx = Ctx { settings, outputs: &self.outputs, power: self.power.as_ref(), opened, server: &self.server };
-        panel::ui(*panel, state, ui, ctx);
-        if *settings != before {
-            self.server.set_settings(settings.clone());
-        }
-        let enterprise = match state {
-            panel::State::Network(n) => n.enterprise.take(),
-            _ => None,
-        };
-        let ask = match state {
-            panel::State::Backup(b) => b.ask.take(),
-            _ => None,
-        };
-        if let panel::State::Backgrounds(b) = state
-            && std::mem::take(&mut b.choose)
-        {
-            self.choose_wallpaper(cx, window);
-        }
-        if let Some((device, net)) = enterprise {
-            self.join_enterprise(cx, window, device, net);
-        }
-        if let Some(ask) = ask {
-            self.backup_panel(cx, window, ask);
-        }
-    }
-
-    fn menu_bar(&mut self, _window: WindowId) -> Option<Vec<Menu>> {
-        None
-    }
-
-    fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
-        self.windows.remove(&window);
-        cx.close_window(window);
-        // A file panel goes with the window it was choosing for.
-        let orphans: Vec<WindowId> = self
-            .windows
-            .iter()
-            .filter(|(_, w)| matches!(w, Win::Wallpaper { owner, .. } | Win::Enterprise { owner, .. } | Win::Cert { owner, .. } | Win::Backup { owner, .. } if *owner == window))
-            .map(|(&id, _)| id)
-            .collect();
-        for id in orphans {
-            // Their own sheets and panels go too.
-            self.close_requested(cx, id);
-        }
-        if self.windows.is_empty() {
-            cx.quit();
-        }
-    }
-
-    fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
-        let message = match message.downcast::<Launch>() {
-            Ok(launch) => return self.handle_args(cx, &launch.args),
-            Err(m) => m,
-        };
-        let Ok(msg) = message.downcast::<Msg>() else {
-            return;
-        };
-        match *msg {
-            Msg::Settings(s) => {
-                // The first copy is also what Revert goes back to.
-                if self.settings.is_none() {
-                    for w in self.windows.values_mut() {
-                        if let Win::Panel { opened, .. } = w {
-                            *opened = s.clone();
-                        }
-                    }
-                }
-                self.settings = Some(*s);
-            }
-            Msg::Outputs(o) => self.outputs = o,
-            Msg::Power(p) => self.power = Some(p),
-            Msg::Redraw => {}
-        }
-        for &id in self.windows.keys() {
-            cx.redraw(id);
-        }
-    }
-
-    fn save_state(&mut self, _cx: &Cx) -> Option<String> {
-        let open: Vec<&str> = self
-            .windows
-            .values()
-            .filter_map(|w| match w {
-                Win::Launcher => Some(""),
-                Win::Panel { panel, .. } => Some(panel.arg()),
-                Win::Wallpaper { .. } | Win::Enterprise { .. } | Win::Cert { .. } | Win::Backup { .. } => None,
-            })
-            .collect();
-        serde_json::to_string(&open).ok()
-    }
-}
-
 fn main() {
-    // A session or install from before the rename (Tabula) carries on.
-    olo_kit::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if let [flag, file] = &args[..]
         && let Some(code) = backup_cli(flag, std::path::Path::new(file))
@@ -464,22 +339,34 @@ fn main() {
     if instance::forward(APP_ID, &args) {
         return;
     }
-    olo_kit::run(APP_ID, |cx| {
-        instance::listen(APP_ID, cx.proxy());
-        let server = server::Server::start(cx.proxy());
-        let mut prefs = Prefs { windows: BTreeMap::new(), settings: None, outputs: Vec::new(), power: None, server };
-        match cx.restored_state().and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok()) {
-            Some(open) if !open.is_empty() => {
+    olo_ui::run(APP_ID, move |cx| {
+        instance::listen(APP_ID, olo_ui::proxy(cx));
+        let server = server::Server::start(olo_ui::proxy(cx));
+        let prefs = cx.new(|_| Prefs { settings: None, outputs: Vec::new(), power: None, server, windows: Vec::new() });
+        let restored = olo_ui::restored_state().and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok()).filter(|o| !o.is_empty());
+        prefs.update(cx, |p, cx| match restored {
+            Some(open) => {
                 for name in open {
                     if name.is_empty() {
-                        prefs.open_launcher(cx);
+                        p.open_launcher(cx);
                     } else {
-                        prefs.open(cx, &name);
+                        p.open(&name, cx);
                     }
                 }
             }
-            _ => prefs.handle_args(cx, &args),
-        }
-        prefs
+            None => p.handle_args(&args, cx),
+        });
+        let messages = prefs.clone();
+        olo_ui::message_handler(cx, move |message, cx| {
+            let message = match message.downcast::<Launch>() {
+                Ok(launch) => return messages.update(cx, |p, cx| p.handle_args(&launch.args, cx)),
+                Err(m) => m,
+            };
+            if let Ok(msg) = message.downcast::<Msg>() {
+                messages.update(cx, |p, cx| p.message(*msg, cx));
+            }
+        });
+        let saving = prefs.clone();
+        olo_ui::on_upgrade(cx, move |cx| saving.read(cx).save_state());
     });
 }

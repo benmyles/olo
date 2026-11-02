@@ -151,12 +151,18 @@ pub(crate) fn init(cx: &mut App) {
 /// Icon `name` (ours, a theme icon's name, or a file's path) for drawing
 /// at `px` device pixels (None while it loads, or if there's none).
 fn image(name: &str, px: u32) -> Option<Arc<RenderImage>> {
-    let theme = olo_xdg::themes::current().id;
+    image_in(olo_xdg::themes::current().id, name, px)
+}
+
+/// [`image`] in theme `theme` (another theme's, for Preferences ▸ Themes:
+/// kept until the current theme changes).
+fn image_in(theme: &'static str, name: &str, px: u32) -> Option<Arc<RenderImage>> {
     let key: Key = (theme, name.to_owned(), px);
     let mut c = cache().lock().unwrap();
-    if c.theme != theme {
-        c.theme = theme;
-        c.map.retain(|k, _| k.0 == theme);
+    let current = olo_xdg::themes::current().id;
+    if c.theme != current {
+        c.theme = current;
+        c.map.retain(|k, _| k.0 == current);
     }
     match c.map.get(&key) {
         Some(Slot::Ready(img)) => return Some(img.clone()),
@@ -189,6 +195,11 @@ pub fn paint(window: &mut Window, b: Bounds<Pixels>, name: &str) -> bool {
     paint_with(window, b, name, None)
 }
 
+/// [`paint`] in theme `theme` (its id), whatever the current one is.
+pub fn paint_in(window: &mut Window, b: Bounds<Pixels>, theme: &str, name: &str) -> bool {
+    paint_themed(window, b, olo_xdg::themes::resolve(theme).id, name, None)
+}
+
 /// [`paint`], its colours multiplied by `tint` (a selected icon darkened,
 /// as BeOS's Tracker shows one), still a texture pixel to a device pixel.
 pub fn paint_tinted(window: &mut Window, b: Bounds<Pixels>, name: &str, tint: gpui::Hsla) -> bool {
@@ -196,12 +207,16 @@ pub fn paint_tinted(window: &mut Window, b: Bounds<Pixels>, name: &str, tint: gp
 }
 
 fn paint_with(window: &mut Window, b: Bounds<Pixels>, name: &str, tint: Option<gpui::Hsla>) -> bool {
+    paint_themed(window, b, olo_xdg::themes::current().id, name, tint)
+}
+
+fn paint_themed(window: &mut Window, b: Bounds<Pixels>, theme: &'static str, name: &str, tint: Option<gpui::Hsla>) -> bool {
     let scale = window.scale_factor();
     let logical = f32::from(b.size.width.max(b.size.height));
     let px_size = (logical * scale).round().max(1.0) as u32;
-    let Some(img) = image(name, px_size) else {
+    let Some(img) = image_in(theme, name, px_size) else {
         let c = cache().lock().unwrap();
-        return !matches!(c.map.get(&(olo_xdg::themes::current().id, name.to_owned(), px_size)), Some(Slot::Missing));
+        return !matches!(c.map.get(&(theme, name.to_owned(), px_size)), Some(Slot::Missing));
     };
     let s = img.size(0);
     let (w, h) = (s.width.0 as f32 / scale, s.height.0 as f32 / scale);

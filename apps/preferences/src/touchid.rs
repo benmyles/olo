@@ -12,12 +12,14 @@ use std::{
     time::Duration,
 };
 
-use olo_kit::{
-    egui::{Context, Rect, Ui, UiBuilder, vec2},
-    metrics as m,
-    widgets::{BBox, Button, Column, ColumnListView, EmptyState, ListState, MenuField, StatusBar, StringView},
-};
 use olo_system::fingerprint::{self as fp, EnrollEvent, FINGERS, Stop};
+use olo_ui::{
+    gpui::{Context, Entity, ParentElement as _, SharedString, Styled as _, div, px},
+    metrics as m,
+    widgets::{BBox, Button, Column, ColumnListView, EmptyState, ListModel, MenuField, StatusBar},
+};
+
+use crate::{Msg, PanelView, form::Ui, panel};
 
 enum Request {
     Enroll(String),
@@ -45,34 +47,29 @@ struct Shared {
 struct Link {
     shared: Arc<Mutex<Shared>>,
     tx: Sender<Request>,
-    contexts: Arc<Mutex<Vec<Context>>>,
-}
-
-fn wake(contexts: &Mutex<Vec<Context>>) {
-    contexts.lock().unwrap().iter().for_each(|c| c.request_repaint());
 }
 
 fn user() -> String {
     olo_system::auth::current_user().unwrap_or_default()
 }
 
-fn link() -> &'static Link {
+/// fprintd's worker (one for the app), telling the windows through
+/// `proxy` when anything changes.
+fn link(proxy: olo_ui::Proxy) -> &'static Link {
     static LINK: OnceLock<Link> = OnceLock::new();
     LINK.get_or_init(|| {
         let shared: Arc<Mutex<Shared>> = Default::default();
         if let Some(fake) = fake_fingers() {
-            // From the first frame (the one the layout lint checks).
             shared.lock().unwrap().fingers = Some(Ok(fake));
         }
-        let contexts: Arc<Mutex<Vec<Context>>> = Default::default();
         let (tx, rx) = channel::<Request>();
-        let (sh, ctxs) = (shared.clone(), contexts.clone());
+        let sh = shared.clone();
         std::thread::Builder::new()
             .name("touchid".into())
             .spawn(move || {
                 let me = user();
                 if let Some(fake) = fake_fingers() {
-                    return fake_worker(&sh, &ctxs, &rx, fake);
+                    return fake_worker(&sh, &proxy, &rx, fake);
                 }
                 loop {
                     let fingers = Some(if fp::available() {
@@ -92,7 +89,7 @@ fn link() -> &'static Link {
                         std::mem::replace(&mut s.fingers, fingers.clone()) != fingers
                     };
                     if changed {
-                        wake(&ctxs);
+                        proxy.send(Msg::Redraw);
                     }
                     let req = match rx.recv_timeout(Duration::from_secs(3)) {
                         Ok(r) => r,
@@ -100,10 +97,10 @@ fn link() -> &'static Link {
                         Err(RecvTimeoutError::Disconnected) => break,
                     };
                     match req {
-                        Request::Enroll(finger) => enroll(&sh, &ctxs, &me, finger),
+                        Request::Enroll(finger) => enroll(&sh, &proxy, &me, finger),
                         Request::Delete(finger) => {
                             sh.lock().unwrap().busy = true;
-                            wake(&ctxs);
+                            proxy.send(Msg::Redraw);
                             let r = fp::delete(&me, &finger);
                             let mut s = sh.lock().unwrap();
                             s.busy = false;
@@ -114,16 +111,16 @@ fn link() -> &'static Link {
                             s.note = s.error.is_none().then(|| format!("{} was removed.", fp::finger_name(&finger)));
                         }
                     }
-                    wake(&ctxs);
+                    proxy.send(Msg::Redraw);
                 }
             })
             .expect("thread");
-        Link { shared, tx, contexts }
+        Link { shared, tx }
     })
 }
 
 /// Enrol on this (the worker) thread; the window watches `enrolling`.
-fn enroll(sh: &Arc<Mutex<Shared>>, ctxs: &Arc<Mutex<Vec<Context>>>, me: &str, finger: String) {
+fn enroll(sh: &Arc<Mutex<Shared>>, proxy: &olo_ui::Proxy, me: &str, finger: String) {
     let stop = Stop::default();
     {
         let mut s = sh.lock().unwrap();
@@ -131,7 +128,7 @@ fn enroll(sh: &Arc<Mutex<Shared>>, ctxs: &Arc<Mutex<Vec<Context>>>, me: &str, fi
         s.note = None;
         s.enrolling = Some(Enrolling { finger: finger.clone(), stages: 0, passed: 0, message: "Getting the sensor ready…".into(), stop: stop.clone() });
     }
-    wake(ctxs);
+    proxy.send(Msg::Redraw);
     let r = fp::enroll(me, &finger, &stop, |e| {
         let mut s = sh.lock().unwrap();
         if let Some(en) = s.enrolling.as_mut() {
@@ -150,7 +147,7 @@ fn enroll(sh: &Arc<Mutex<Shared>>, ctxs: &Arc<Mutex<Vec<Context>>>, me: &str, fi
             }
         }
         drop(s);
-        wake(ctxs);
+        proxy.send(Msg::Redraw);
     });
     let mut s = sh.lock().unwrap();
     let cancelled = s.enrolling.take().is_some_and(|e| e.stop.is_stopped());
@@ -182,10 +179,10 @@ fn fake_fingers() -> Option<Vec<String>> {
     Some(v.split(',').filter(|f| !f.is_empty()).map(str::to_owned).collect())
 }
 
-fn fake_worker(sh: &Arc<Mutex<Shared>>, ctxs: &Arc<Mutex<Vec<Context>>>, rx: &std::sync::mpsc::Receiver<Request>, mut fingers: Vec<String>) {
+fn fake_worker(sh: &Arc<Mutex<Shared>>, proxy: &olo_ui::Proxy, rx: &std::sync::mpsc::Receiver<Request>, mut fingers: Vec<String>) {
     loop {
         sh.lock().unwrap().fingers = Some(Ok(fingers.clone()));
-        wake(ctxs);
+        proxy.send(Msg::Redraw);
         let Ok(req) = rx.recv() else { return };
         match req {
             Request::Delete(f) => {
@@ -197,7 +194,7 @@ fn fake_worker(sh: &Arc<Mutex<Shared>>, ctxs: &Arc<Mutex<Vec<Context>>>, rx: &st
                 sh.lock().unwrap().enrolling =
                     Some(Enrolling { finger: f.clone(), stages: 5, passed: 0, message: "Touch the sensor, lift, and touch again.".into(), stop: stop.clone() });
                 for _ in 0..5 {
-                    wake(ctxs);
+                    proxy.send(Msg::Redraw);
                     std::thread::sleep(Duration::from_millis(1500));
                     if stop.is_stopped() {
                         break;
@@ -218,30 +215,40 @@ fn fake_worker(sh: &Arc<Mutex<Shared>>, ctxs: &Arc<Mutex<Vec<Context>>>, rx: &st
     }
 }
 
-#[derive(Default)]
 pub struct State {
-    list: ListState,
+    list: Entity<ListModel>,
     /// The finger to add.
     add: Option<String>,
     /// Asking before removing this finger.
     confirm: Option<String>,
+    link: &'static Link,
+}
+
+impl State {
+    pub fn new(cx: &mut Context<PanelView>) -> State {
+        State { list: ListModel::new(cx, false), add: None, confirm: None, link: link(olo_ui::proxy(cx)) }
+    }
+}
+
+fn state_of(v: &mut PanelView) -> Option<&mut State> {
+    match &mut v.state {
+        panel::State::TouchId(st) => Some(st),
+        _ => None,
+    }
 }
 
 pub fn ui(ui: &mut Ui, st: &mut State) {
-    let link = link();
-    {
-        let mut ctxs = link.contexts.lock().unwrap();
-        if !ctxs.iter().any(|c| c == ui.ctx()) {
-            ctxs.push(ui.ctx().clone());
-        }
-    }
+    let link = st.link;
     let sh = link.shared.lock().unwrap();
     let fingers = match &sh.fingers {
         None => {
+            drop(sh);
             ui.add(EmptyState::new("Looking for the fingerprint sensor…").icon("fingerprint"));
             return;
         }
         Some(Err(why)) => {
+            let why = why.clone();
+            drop(sh);
             ui.add(EmptyState::new(why).icon("fingerprint"));
             return;
         }
@@ -251,75 +258,89 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let enrolling = sh.enrolling.as_ref().map(|e| (e.finger.clone(), e.stages, e.passed, e.message.clone(), e.stop.clone()));
     drop(sh);
 
-    ui.add(StringView::new("Touch ID unlocks the screen and approves administrator requests."));
-    BBox::new(&format!("Fingerprints for {}", user())).show(ui, |ui| {
-        let columns = [Column::new("Finger", 300.0)];
-        let list = Rect::from_min_size(ui.cursor().min, vec2(ui.available_width(), 104.0));
-        ui.scope_builder(UiBuilder::new().max_rect(list), |ui| {
-            ColumnListView::new("fingers", &columns, fingers.len(), &mut st.list).show(ui, |cell| cell.text(&fp::finger_name(&fingers[cell.row])));
-        });
-        ui.advance_cursor_after_rect(list);
-        let selected = st.list.single().and_then(|i| fingers.get(i)).cloned();
-        let free: Vec<&str> = FINGERS.iter().copied().filter(|f| !fingers.iter().any(|e| e == f)).collect();
-        let names: Vec<String> = free.iter().map(|f| fp::finger_name(f)).collect();
-        let names: Vec<&str> = names.iter().map(String::as_str).collect();
-        // The usual choices first.
-        const LIKELY: [&str; 4] = ["right-index-finger", "left-index-finger", "right-middle-finger", "right-thumb"];
-        if st.add.as_ref().is_none_or(|a| !free.contains(&a.as_str())) {
-            st.add = LIKELY.iter().find(|f| free.contains(f)).or(free.first()).map(|f| (*f).to_owned());
+    ui.label("Touch ID unlocks the screen and approves administrator requests.");
+    let selected = st.list.read(ui.cx).state.single().and_then(|i| fingers.get(i)).cloned();
+    let free: Vec<&'static str> = FINGERS.iter().copied().filter(|f| !fingers.iter().any(|e| e == f)).collect();
+    // The usual choices first.
+    const LIKELY: [&str; 4] = ["right-index-finger", "left-index-finger", "right-middle-finger", "right-thumb"];
+    if st.add.as_ref().is_none_or(|a| !free.contains(&a.as_str())) {
+        st.add = LIKELY.iter().find(|f| free.contains(f)).or(free.first()).map(|f| (*f).to_owned());
+    }
+    let add = st.add.as_ref().and_then(|a| free.iter().position(|f| f == a)).unwrap_or(0);
+    let idle = enrolling.is_none() && !busy;
+    let names: Vec<SharedString> = free.iter().map(|f| fp::finger_name(f).into()).collect();
+    let (pick_free, add_free) = (free.clone(), free.clone());
+    let pick = ui.on_view(move |v, i: usize, _, cx| {
+        if let Some(st) = state_of(v) {
+            st.add = pick_free.get(i).map(|f| (*f).to_owned());
         }
-        let mut add = st.add.as_ref().and_then(|a| free.iter().position(|f| f == a)).unwrap_or(0);
-        let idle = enrolling.is_none() && !busy;
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = m::SPACING;
-            ui.add_enabled_ui(idle && !free.is_empty(), |ui| {
-                ui.add(MenuField::new("add-finger", &mut add, &names).width(150.0));
-                st.add = free.get(add).map(|f| (*f).to_owned());
-                if ui.add(Button::new("Add Fingerprint")).clicked()
-                    && let Some(f) = free.get(add)
-                {
-                    let _ = link.tx.send(Request::Enroll((*f).to_owned()));
-                }
-            });
-            ui.add_enabled_ui(idle && selected.is_some(), |ui| {
-                if ui.add(Button::new("Remove")).clicked() {
-                    st.confirm = selected.clone();
-                }
-            });
-        });
+        cx.notify();
     });
+    let remove = {
+        let selected = selected.clone();
+        ui.on_click_view(move |v, _, cx| {
+            if let Some(st) = state_of(v) {
+                st.confirm = selected.clone();
+            }
+            cx.notify();
+        })
+    };
+    let rows = fingers.clone();
+    let list = ColumnListView::new("fingers", &st.list, vec![Column::new("Finger", 300.0)], fingers.len(), move |cell, window, cx| cell.text(window, cx, fp::finger_name(&rows[cell.row])))
+        .on_select(|_, cx| cx.refresh_windows());
+    ui.add(
+        BBox::new(format!("Fingerprints for {}", user()))
+            .child(div().h(px(104.0)).child(list))
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .gap(px(m::SPACING))
+                    .child(MenuField::new("add-finger", names, add).width(150.0).enabled(idle && !free.is_empty()).on_change(pick))
+                    .child(Button::new("Add Fingerprint").enabled(idle && !free.is_empty()).on_click(move |_, _| {
+                        if let Some(f) = add_free.get(add) {
+                            let _ = link.tx.send(Request::Enroll((*f).to_owned()));
+                        }
+                    }))
+                    .child(Button::new("Remove").enabled(idle && selected.is_some()).on_click(remove)),
+            ),
+    );
 
     if let Some((finger, stages, passed, message, stop)) = enrolling {
         let fraction = if stages == 0 { 0.0 } else { passed as f32 / stages as f32 };
-        ui.add(StatusBar::new(fraction).label(&format!("Enrolling your {}", fp::finger_name(&finger).to_lowercase())).trailing(&format!("{passed} of {stages}")));
-        ui.horizontal(|ui| {
-            ui.add(StringView::new(&message));
-        });
-        if ui.add(Button::new("Cancel")).clicked() {
+        ui.add(StatusBar::new(fraction).label(format!("Enrolling your {}", fp::finger_name(&finger).to_lowercase())).trailing(format!("{passed} of {stages}")));
+        ui.label(message);
+        ui.button("Cancel", move |_, _| {
+            let stop = stop.clone();
             if fake_fingers().is_some() {
                 stop.stop_flag();
             } else {
                 std::thread::spawn(move || fp::stop_enroll(&stop));
             }
-        }
-    } else if let Some(finger) = st.confirm.clone() {
-        ui.add(StringView::new(&format!("Remove the {}? It will no longer unlock anything.", fp::finger_name(&finger).to_lowercase())));
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = m::SPACING;
-            if ui.add(Button::new("Cancel")).clicked() {
-                st.confirm = None;
-            }
-            if ui.add(Button::new("Remove").default(true)).clicked() {
-                let _ = link.tx.send(Request::Delete(finger));
-                st.confirm = None;
-                st.list.selected.clear();
-            }
         });
+    } else if let Some(finger) = st.confirm.clone() {
+        ui.label(format!("Remove the {}? It will no longer unlock anything.", fp::finger_name(&finger).to_lowercase()));
+        let cancel = ui.on_click_view(|v, _, cx| {
+            if let Some(st) = state_of(v) {
+                st.confirm = None;
+            }
+            cx.notify();
+        });
+        let list = st.list.clone();
+        let confirm = ui.on_click_view(move |v, _, cx| {
+            let _ = link.tx.send(Request::Delete(finger.clone()));
+            if let Some(st) = state_of(v) {
+                st.confirm = None;
+            }
+            list.update(cx, |l, _| l.state.selected.clear());
+            cx.notify();
+        });
+        ui.add(div().flex().flex_row().gap(px(m::SPACING)).child(Button::new("Cancel").on_click(cancel)).child(Button::new("Remove").default(true).on_click(confirm)));
     } else if busy {
-        ui.add(StringView::new("Working…").dim(true));
+        ui.note("Working…");
     } else if let Some(e) = error {
-        ui.add(StringView::new(&e));
+        ui.label(e);
     } else if let Some(n) = note {
-        ui.add(StringView::new(&n).dim(true));
+        ui.note(n);
     }
 }

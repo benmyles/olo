@@ -22,14 +22,18 @@ use std::{
     time::Duration,
 };
 
-use serde::{Deserialize, Serialize};
-use olo_kit::{
-    egui::{self, Ui, vec2},
-    metrics as m, style,
-    style::c,
-    widgets::{BBox, Button, ScrollView, StatusBar, StringView},
-};
 use olo_protocol::Settings;
+use olo_ui::{
+    file_panel::{self, FilePanel, PanelResult},
+    gpui::{Context, FontWeight, ParentElement as _, ScrollHandle, Styled as _, canvas, div, px},
+    metrics as m,
+    style::{self, c},
+    theme,
+    widgets::{Button, ScrollView, StatusBar, StringView},
+};
+use serde::{Deserialize, Serialize};
+
+use crate::{Msg, PanelView, form::Ui, panel};
 
 pub const EXTENSION: &str = "olo-backup";
 /// Backups made before the rename (Tabula), which still import.
@@ -98,7 +102,7 @@ fn app_of(path: &str) -> String {
             "palette" => return "Palette".into(),
             _ => {}
         }
-        if let Some((name, _)) = olo_kit::apps::our_app(stem) {
+        if let Some((name, _)) = olo_xdg::apps::our_app(stem) {
             return name.into();
         }
         let mut name = stem.replace(['-', '_'], " ");
@@ -112,7 +116,7 @@ fn app_of(path: &str) -> String {
 
 /// The directories a backup holds, by their name in it.
 pub fn roots() -> Vec<(&'static str, PathBuf)> {
-    vec![("config", olo_kit::config_dir()), ("state", olo_kit::state_dir())]
+    vec![("config", olo_ui::config_dir()), ("state", olo_ui::state_dir())]
 }
 
 /// Where automatic backups go (left out of backups themselves).
@@ -358,13 +362,6 @@ enum Report {
     Imported(Result<Box<Imported>, String>),
 }
 
-/// The file panel the panel wants open (main.rs opens it).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Ask {
-    Export,
-    Import,
-}
-
 enum Phase {
     Idle,
     Working { what: &'static str, done: u64, total: u64, cancel: Arc<AtomicBool>, cancellable: bool },
@@ -379,25 +376,32 @@ pub struct State {
     message: Option<(bool, String)>,
     /// The settings as they were before the last import.
     before: Option<PathBuf>,
-    pub ask: Option<Ask>,
-}
-
-impl Default for State {
-    fn default() -> Self {
-        State { phase: Phase::Idle, rx: None, message: None, before: None, ask: None }
-    }
+    proxy: olo_ui::Proxy,
+    scroll: ScrollHandle,
 }
 
 impl State {
+    pub fn new(cx: &mut Context<PanelView>) -> State {
+        State { phase: Phase::Idle, rx: None, message: None, before: None, proxy: olo_ui::proxy(cx), scroll: ScrollHandle::new() }
+    }
+
     fn work(&mut self, what: &'static str, cancellable: bool, job: impl FnOnce(&dyn Fn(Report), &AtomicBool) + Send + 'static) {
         let (tx, rx) = channel();
         let cancel = Arc::new(AtomicBool::new(false));
         let flag = cancel.clone();
+        let proxy = self.proxy.clone();
         std::thread::Builder::new()
             .name("backup".into())
             .spawn(move || {
-                let send = move |r| {
+                // Progress drawn at most twenty times a second.
+                let last = std::cell::Cell::new(None::<std::time::Instant>);
+                let send = move |r: Report| {
+                    let progress = matches!(r, Report::Progress(..));
                     let _ = tx.send(r);
+                    if !progress || last.get().is_none_or(|t| t.elapsed() > Duration::from_millis(50)) {
+                        last.set(Some(std::time::Instant::now()));
+                        proxy.send(Msg::Redraw);
+                    }
                 };
                 job(&send, &flag);
             })
@@ -480,6 +484,13 @@ impl State {
     }
 }
 
+fn state_of(v: &mut PanelView) -> Option<&mut State> {
+    match &mut v.state {
+        panel::State::Backup(st) => Some(st),
+        _ => None,
+    }
+}
+
 fn name_of(p: &Path) -> String {
     p.file_name().map_or_else(|| p.display().to_string(), |n| n.to_string_lossy().into_owned())
 }
@@ -489,86 +500,117 @@ pub fn suggested_name() -> String {
     format!("Olo Settings {}.{EXTENSION}", jiff::Zoned::now().strftime("%Y-%m-%d"))
 }
 
-pub fn ui(ui: &mut Ui, settings: &mut Settings, st: &mut State) {
+/// A file panel for the backup (to export to, or to import), its answer
+/// to this panel's window.
+fn ask(ui: &Ui, export: bool) -> impl Fn(&mut olo_ui::gpui::Window, &mut olo_ui::gpui::App) + 'static {
+    let view = ui.cx.entity().downgrade();
+    move |_, cx| {
+        let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+        let (title, panel) = if export {
+            ("Export Settings", FilePanel::save(home, suggested_name()).types(&[EXTENSION]))
+        } else {
+            ("Import Settings", FilePanel::open(home).types(&[EXTENSION, OLD_EXTENSION]))
+        };
+        let view = view.clone();
+        file_panel::show(cx, title, panel, move |a, cx| {
+            let PanelResult::Chosen(path) = a.result else { return };
+            let _ = view.update(cx, |v, cx| {
+                if let Some(st) = state_of(v) {
+                    if export {
+                        st.export_to(path);
+                    } else {
+                        st.inspect(path);
+                    }
+                }
+                cx.notify();
+            });
+        });
+    }
+}
+
+pub fn ui(ui: &mut Ui, st: &mut State) {
     if let Some(s) = st.poll() {
-        *settings = s;
+        // app_server keeps its own copy: hand it the backup's.
+        let prefs = ui.prefs();
+        ui.cx.defer(move |cx| {
+            let _ = prefs.update(cx, |p, cx| p.edit(cx, |now| *now = s));
+        });
     }
-    let p = style::palette(ui.ctx());
-    if st.rx.is_some() && !matches!(st.phase, Phase::Idle | Phase::Confirm(..)) {
-        ui.ctx().request_repaint_after(Duration::from_millis(100));
-    }
+    let p = theme::palette(ui.cx);
     let idle = matches!(st.phase, Phase::Idle);
-    BBox::new("Export").show(ui, |ui| {
-        ui.add(StringView::new("Saves every Olo setting and what apps keep between runs (windows, histories, Passwords' encrypted vault…) in one file.").wrap(true).dim(true));
-        if ui.add_enabled(idle, Button::new("Export…")).clicked() {
-            st.ask = Some(Ask::Export);
-        }
+    let (export_it, import_it) = (ask(ui, true), ask(ui, false));
+    ui.bbox("Export", |ui| {
+        ui.note("Saves every Olo setting and what apps keep between runs (windows, histories, Passwords' encrypted vault…) in one file.");
+        ui.enabled_if(idle, |ui| ui.button("Export…", export_it));
     });
-    BBox::new("Import").show(ui, |ui| {
-        ui.add(StringView::new("Puts the settings from a backup in place of these. What you have now is saved first.").wrap(true).dim(true));
-        if ui.add_enabled(idle, Button::new("Import…")).clicked() {
-            st.ask = Some(Ask::Import);
-        }
+    ui.bbox("Import", |ui| {
+        ui.note("Puts the settings from a backup in place of these. What you have now is saved first.");
+        ui.enabled_if(idle, |ui| ui.button("Import…", import_it));
     });
-    let mut next = None;
-    match &mut st.phase {
+    match &st.phase {
         Phase::Idle => {
             if let Some((ok, text)) = &st.message {
                 let color = if *ok { c(p.panel_text) } else { c(p.failure) };
-                ui.add(StringView::new(text).wrap(true).color(color));
-                if *ok
-                    && let Some(before) = &st.before
-                    && ui.add(Button::new(olo_kit::tracker::LABEL)).clicked()
-                    && let Err(e) = olo_kit::tracker::open(before)
-                {
-                    tracing::warn!("couldn't open Tracker: {e}");
+                ui.add(StringView::new(text.clone()).wrap(true).color(color));
+                if *ok && let Some(before) = st.before.clone() {
+                    ui.button(olo_ui::tracker::LABEL, move |_, _| {
+                        if let Err(e) = olo_ui::tracker::open(&before) {
+                            tracing::warn!("couldn't open Tracker: {e}");
+                        }
+                    });
                 }
             }
         }
         Phase::Working { what, done, total, cancel, cancellable } => {
-            ui.add(StringView::new(what));
-            ui.horizontal(|ui| {
-                let fraction = if *total > 0 { *done as f32 / *total as f32 } else { 0.0 };
-                let w = ui.available_width() - if *cancellable { m::BUTTON_MIN_WIDTH + m::SPACING } else { 0.0 };
-                ui.add_sized(vec2(w, m::CONTROL_HEIGHT), StatusBar::new(fraction));
-                if *cancellable && ui.add_enabled(!cancel.load(Ordering::Relaxed), Button::new("Cancel")).clicked() {
-                    cancel.store(true, Ordering::Relaxed);
-                }
-            });
+            ui.label(*what);
+            let fraction = if *total > 0 { *done as f32 / *total as f32 } else { 0.0 };
+            let mut row = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().child(StatusBar::new(fraction)));
+            if *cancellable {
+                let cancel = cancel.clone();
+                let stopping = cancel.load(Ordering::Relaxed);
+                row = row.child(Button::new("Cancel").enabled(!stopping).on_click(move |_, _| cancel.store(true, Ordering::Relaxed)));
+            }
+            ui.add(row);
         }
         Phase::Confirm(src, manifest) => {
-            ui.add(StringView::new(&format!("“{}”, made {}, holds:", name_of(src), manifest.created_text())).wrap(true));
+            ui.add(StringView::new(format!("“{}”, made {}, holds:", name_of(src), manifest.created_text())).wrap(true));
             let groups = manifest.groups();
-            let rows = groups.len().min(5) as f32;
-            let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), rows.max(1.0) * m::LIST_ROW + 4.0), egui::Sense::hover());
-            ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
-                ui.spacing_mut().item_spacing.y = 0.0;
-                ScrollView::new("backup-groups").background(p.document_background).auto_hide(true).show_rows(ui, m::LIST_ROW, groups.len(), |ui, range| {
-                    for (app, files, bytes) in &groups[range] {
-                        let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), m::LIST_ROW), egui::Sense::hover());
-                        style::label(ui.painter(), r.left() + 6.0, r.center().y, egui::Align::Min, app, style::plain_font(), c(p.document_text));
-                        let what = format!("{} {}, {}", files, if *files == 1 { "file" } else { "files" }, size_text(*bytes));
-                        style::label(ui.painter(), r.right() - 6.0, r.center().y, egui::Align::Max, &what, style::small_font(), style::disabled_text(&p));
-                    }
-                });
+            let rows = groups.len().min(5).max(1) as f32;
+            let list = groups.into_iter().map(|(app, files, bytes)| {
+                let what = format!("{} {}, {}", files, if files == 1 { "file" } else { "files" }, size_text(bytes));
+                canvas(|_, _, _| {}, move |r, _, window, cx| {
+                    let p = theme::palette(cx);
+                    style::label(window, cx, r.left() + px(6.0), r.center().y, style::Align::Left, app.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), c(p.document_text));
+                    style::label(window, cx, r.right() - px(6.0), r.center().y, style::Align::Right, what.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
+                })
+                .w_full()
+                .h(px(m::LIST_ROW))
             });
-            ui.horizontal(|ui| {
-                ui.add(StringView::new("Replace your settings with these?"));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add(Button::new("Import").default(true)).clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        next = Some(Some(src.clone()));
-                    }
-                    if ui.add(Button::new("Cancel")).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                        next = Some(None);
-                    }
-                });
+            ui.add(div().h(px(rows * m::LIST_ROW + 4.0)).child(ScrollView::new("backup-groups", &st.scroll).background(p.document_background).auto_hide(true).child(div().flex().flex_col().children(list.collect::<Vec<_>>()))));
+            let src = src.clone();
+            let go = ui.on_click_view(move |v, _, cx| {
+                if let Some(st) = state_of(v) {
+                    st.import(src.clone());
+                }
+                cx.notify();
             });
+            let back = ui.on_click_view(|v, _, cx| {
+                if let Some(st) = state_of(v) {
+                    st.phase = Phase::Idle;
+                }
+                cx.notify();
+            });
+            ui.add(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(m::SPACING))
+                    .child(div().flex_1().child(StringView::new("Replace your settings with these?")))
+                    .child(Button::new("Cancel").on_click(back))
+                    .child(Button::new("Import").default(true).on_click(go)),
+            );
         }
-    }
-    match next {
-        Some(Some(src)) => st.import(src),
-        Some(None) => st.phase = Phase::Idle,
-        None => {}
     }
 }
 

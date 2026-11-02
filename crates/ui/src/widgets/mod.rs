@@ -3,6 +3,7 @@
 pub mod alert;
 pub mod buttons;
 pub mod charts;
+pub mod color;
 pub mod control;
 pub mod dashboard;
 pub mod image_view;
@@ -26,6 +27,7 @@ pub use scroll::{SCROLL_BAR, ScrollBar, ScrollView};
 pub use slider::Slider;
 pub use status::{StatusBar, level_bar};
 pub use buttons::{Button, CheckBox, RadioButton, button_width, check_box_look};
+pub use color::{ColorControl, ColorWell, color_control_height};
 pub use control::{Control, ControlState, control};
 pub use image_view::{ImageView, image_view};
 pub use list::{Cell, Column, ColumnListView, HEADER_HEIGHT, ListModel};

@@ -2,41 +2,35 @@
 //! sleeps, and caffeinated mode (stay awake until turned off; also the cup
 //! in the Deskbar). The battery is read on a thread every few seconds.
 
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
-use olo_kit::{
-    egui::Ui,
-    widgets::{BBox, CheckBox, MenuField, StringView, divider_for},
-};
 use olo_protocol::{PowerStatus, Settings};
+use olo_sync::Mutex;
 use olo_system::battery::{self, Battery, State as Charge};
+use olo_ui::{
+    gpui::{Context, SharedString},
+    widgets::CheckBox,
+};
 
-use crate::server::Server;
+use crate::{Msg, PanelView, form::{Ui, divider_for}, server::Server};
 
 /// What the poller last read: None until it has; Some(None) for no battery.
 type Shared = Arc<Mutex<Option<Option<Battery>>>>;
 
-/// The battery poller starts with the panel's first frame (it needs the
-/// context to wake the window) and stops when the panel closes.
-#[derive(Default)]
+/// The battery, read on a thread of its own while the panel is open.
 pub struct State {
-    battery: Option<Shared>,
+    battery: Shared,
 }
 
-#[cfg(test)]
 impl State {
-    /// With `battery` already read (for the layout lint).
-    pub fn showing(battery: Option<Battery>) -> State {
-        State { battery: Some(Arc::new(Mutex::new(Some(battery)))) }
+    pub fn new(cx: &mut Context<PanelView>) -> State {
+        State { battery: poll(olo_ui::proxy(cx)) }
     }
 }
 
-fn poll(ctx: &olo_kit::egui::Context) -> Shared {
+fn poll(proxy: olo_ui::Proxy) -> Shared {
     let battery: Shared = Default::default();
-    let (out, ctx) = (Arc::downgrade(&battery), ctx.clone());
+    let out = Arc::downgrade(&battery);
     std::thread::Builder::new()
         .name("battery".into())
         .spawn(move || {
@@ -47,7 +41,7 @@ fn poll(ctx: &olo_kit::egui::Context) -> Shared {
                     let mut slot = shared.lock().unwrap();
                     if slot.as_ref() != Some(&b) {
                         *slot = Some(b);
-                        ctx.request_repaint();
+                        proxy.send(Msg::Redraw);
                     }
                 }
                 drop(shared);
@@ -101,34 +95,31 @@ pub fn summary(b: &Battery) -> String {
     if detail.is_empty() { format!("{}%", b.percent) } else { format!("{}% — {detail}", b.percent) }
 }
 
-pub fn minutes_menu(ui: &mut Ui, id: &str, label: &str, divider: f32, choices: &[u32], value: &mut u32) {
-    let names: Vec<String> = choices.iter().map(|&m| minutes_text(m)).collect();
-    let mut names: Vec<&str> = names.iter().map(String::as_str).collect();
-    let custom = minutes_text(*value);
-    let mut i = match choices.iter().position(|m| m == value) {
+/// A pop-up menu of `choices` (minutes; 0 is never) setting `value`.
+pub fn minutes_menu(ui: &mut Ui, id: &str, label: &str, divider: f32, choices: &'static [u32], value: u32, set: impl Fn(&mut Settings, u32) + 'static) {
+    let mut names: Vec<SharedString> = choices.iter().map(|&m| minutes_text(m).into()).collect();
+    let i = match choices.iter().position(|&m| m == value) {
         Some(i) => i,
         None => {
-            names.push(&custom);
+            names.push(minutes_text(value).into());
             names.len() - 1
         }
     };
-    ui.add(MenuField::new(id, &mut i, &names).label(label).divider(divider));
-    if let Some(&m) = choices.get(i) {
-        *value = m;
-    }
+    let label = SharedString::from(label.to_owned());
+    ui.menu(id, names, i, |f| f.label(label).divider(divider), move |s, i| {
+        if let Some(&m) = choices.get(i) {
+            set(s, m);
+        }
+    });
 }
 
-pub fn ui(ui: &mut Ui, s: &mut Settings, power: Option<&PowerStatus>, server: &Server, st: &mut State) {
-    let battery = st.battery.get_or_insert_with(|| poll(ui.ctx())).lock().unwrap().clone();
-    BBox::new("Battery").show(ui, |ui| match battery {
-        None => {
-            ui.add(StringView::new("Reading…").dim(true));
-        }
-        Some(None) => {
-            ui.add(StringView::new("This computer has no battery.").dim(true));
-        }
+pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut State) {
+    let battery = st.battery.lock().unwrap().clone();
+    ui.bbox("Battery", |ui| match battery {
+        None => ui.note("Reading…"),
+        Some(None) => ui.note("This computer has no battery."),
         Some(Some(b)) => {
-            ui.add(StringView::new(&summary(&b)));
+            ui.label(summary(&b));
             let mut facts = Vec::new();
             if let Some(h) = b.health {
                 facts.push(format!("Health: {h}% of original capacity"));
@@ -137,41 +128,37 @@ pub fn ui(ui: &mut Ui, s: &mut Settings, power: Option<&PowerStatus>, server: &S
                 facts.push(format!("{c} cycles"));
             }
             if !facts.is_empty() {
-                ui.add(StringView::new(&facts.join(" · ")).dim(true));
+                ui.note(facts.join(" · "));
             }
         }
     });
 
-    let p = &mut s.power;
-    BBox::new("When Idle").show(ui, |ui| {
+    let p = ui.s.power.clone();
+    ui.bbox("When Idle", |ui| {
         const OFF: &str = "Turn the display off after:";
         const SLEEP_AFTER: &str = "Put the computer to sleep after:";
-        let divider = divider_for(ui, &[OFF, SLEEP_AFTER]);
-        minutes_menu(ui, "display-off", OFF, divider, DISPLAY_OFF, &mut p.display_off_minutes);
-        minutes_menu(ui, "sleep", SLEEP_AFTER, divider, SLEEP, &mut p.sleep_minutes);
-        ui.add_enabled(p.sleep_minutes > 0, CheckBox::new(&mut p.sleep_on_battery_only, "Only on battery power"));
-        ui.add_enabled(
-            p.display_off_minutes > 0,
-            CheckBox::new(&mut p.lock_on_display_off, "Lock the screen when the display turns off"),
-        );
+        let divider = divider_for(ui.window, &[OFF, SLEEP_AFTER]);
+        minutes_menu(ui, "display-off", OFF, divider, DISPLAY_OFF, p.display_off_minutes, |s, m| s.power.display_off_minutes = m);
+        minutes_menu(ui, "sleep", SLEEP_AFTER, divider, SLEEP, p.sleep_minutes, |s, m| s.power.sleep_minutes = m);
+        ui.enabled_if(p.sleep_minutes > 0, |ui| ui.check("Only on battery power", p.sleep_on_battery_only, |s, v| s.power.sleep_on_battery_only = v));
+        ui.enabled_if(p.display_off_minutes > 0, |ui| {
+            ui.check("Lock the screen when the display turns off", p.lock_on_display_off, |s, v| s.power.lock_on_display_off = v)
+        });
     });
 
-    BBox::new("Caffeinated").show(ui, |ui| {
+    ui.bbox("Caffeinated", |ui| {
         let Some(status) = power else {
-            ui.add(StringView::new("Waiting for app_server…").dim(true));
+            ui.note("Waiting for app_server…");
             return;
         };
-        let mut on = status.caffeinated;
-        ui.add(CheckBox::new(&mut on, "Stay awake: no display sleep, sleep, screen saver or lock"));
-        if on != status.caffeinated {
-            server.set_caffeinated(on);
-        }
+        let server = server.clone();
+        ui.add(CheckBox::new("Stay awake: no display sleep, sleep, screen saver or lock", status.caffeinated).on_toggle(move |on, _, _| server.set_caffeinated(on)));
         let note = match status.app_inhibitors {
             0 => "Also from the Deskbar: click the cup.".to_owned(),
             1 => "An application is keeping the display awake.".to_owned(),
             n => format!("{n} applications are keeping the display awake."),
         };
-        ui.add(StringView::new(&note).dim(true));
+        ui.note(note);
     });
 }
 

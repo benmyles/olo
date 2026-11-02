@@ -3,4 +3,4 @@
 # a lint test, run headlessly at its window's size, light and dark, at
 # 1× and 2×. `tools/install-session.sh` runs it before building; a crate
 # that adds `ui_lint` tests goes on this list.
-ui-lint = "test -p olo-kit -p olo-preferences ui_lint"
+ui-lint = "test -p olo-kit ui_lint"

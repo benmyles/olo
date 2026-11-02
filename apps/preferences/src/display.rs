@@ -6,27 +6,41 @@
 
 use std::time::{Duration, Instant};
 
-use olo_kit::{
-    egui::{Align2, Color32, Rect, Sense, Ui, Vec2, vec2},
+use olo_protocol::{Mode, OutputConfig, OutputInfo, PowerStatus};
+use olo_ui::{
+    gpui::{
+        Bounds, DispatchPhase, FontWeight, IntoElement as _, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, ScrollHandle, SharedString, Styled as _, canvas, div,
+        point, px, rgb, size,
+    },
     metrics as m,
     style::{self, c},
-    widgets::{BBox, Button, CheckBox, EmptyState, MenuField, Slider, StringView},
+    theme,
+    widgets::{Button, CheckBox, EmptyState, MenuField, ScrollView, Slider, StringView},
 };
-use olo_protocol::{Mode, OutputConfig, OutputInfo, PowerStatus, Settings};
 
-use crate::server::Server;
+use crate::{PanelView, form::Ui, panel, server::Server};
 
 #[derive(Default)]
 pub struct State {
     selected: Option<String>,
     /// The screen whose brightness is being dragged, and the level
     /// (app_server's echo lags a little).
-    brightness: Option<(String, f32, std::time::Instant)>,
-    /// The screen being dragged in the map, and how far (points).
-    drag: Option<(String, Vec2)>,
+    brightness: Option<(String, f32, Instant)>,
+    /// The screen being dragged in the map: where the press was and
+    /// where the pointer is.
+    drag: Option<(String, Point<Pixels>, Point<Pixels>)>,
     /// A resolution change waiting to be kept: the screen, its previous
     /// mode, and when it changed.
     confirm: Option<(String, Mode, Instant)>,
+    scroll: ScrollHandle,
+}
+
+/// The panel's state in its view.
+fn state_of(v: &mut PanelView) -> Option<&mut State> {
+    match &mut v.state {
+        panel::State::Display(st) => Some(st),
+        _ => None,
+    }
 }
 
 /// How long a new resolution has to be kept before it reverts.
@@ -115,25 +129,20 @@ fn display_name(o: &OutputInfo) -> String {
 
 /// The panel, scrolling when a display's rows (its brightness, its
 /// panel's notes) don't all fit.
-pub fn ui(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&PowerStatus>, server: &Server, st: &mut State) {
-    let rect = ui.available_rect_before_wrap();
-    // Room for the bar only while it shows (as tall as last drawn).
-    let tall = olo_kit::egui::Id::new("display-panel-height");
-    let over = ui.ctx().data(|d| d.get_temp::<f32>(tall)).is_some_and(|h| h > rect.height());
-    olo_kit::widgets::ScrollView::new("display-panel").border(false).auto_hide(true).show_in(ui, rect, |ui, _| {
-        ui.set_width(rect.width() - if over { olo_kit::widgets::SCROLL_BAR + m::TIGHT } else { 0.0 });
-        let top = ui.min_rect().top();
-        panel(ui, s, outputs, power, server, st);
-        let h = ui.min_rect().bottom() - top;
-        ui.ctx().data_mut(|d| d.insert_temp(tall, h));
-        if (h > rect.height()) != over {
-            ui.ctx().request_repaint();
-        }
-    });
+pub fn ui(ui: &mut Ui, outputs: &[OutputInfo], power: Option<&PowerStatus>, server: &Server, st: &mut State) {
+    let items = ui.collect(|ui| panel(ui, outputs, power, server, st));
+    let content = div().flex().flex_col().gap(px(m::SPACING)).children(items);
+    ui.add(div().flex_1().min_h_0().child(ScrollView::new("display-panel", &st.scroll).border(false).auto_hide(true).child(content)));
 }
 
-fn panel(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&PowerStatus>, server: &Server, st: &mut State) {
-    let p = style::palette(ui.ctx());
+/// A pop-up menu that does something other than change the settings.
+fn menu(ui: &mut Ui, id: String, names: Vec<String>, selected: usize, label: &str, divider: f32, on: impl Fn(usize) + 'static) {
+    let names = names.into_iter().map(SharedString::from).collect();
+    let f = MenuField::new(id, names, selected).label(SharedString::from(label.to_owned())).divider(divider).enabled(ui.enabled()).on_change(move |i, _, _| on(i));
+    ui.add(f);
+}
+
+fn panel(ui: &mut Ui, outputs: &[OutputInfo], power: Option<&PowerStatus>, server: &Server, st: &mut State) {
     if outputs.is_empty() {
         ui.add(EmptyState::new("No displays reported by app_server.").icon("display"));
         return;
@@ -141,260 +150,312 @@ fn panel(ui: &mut Ui, s: &mut Settings, outputs: &[OutputInfo], power: Option<&P
     if st.selected.as_ref().is_none_or(|n| !outputs.iter().any(|o| &o.name == n)) {
         st.selected = Some(outputs[0].name.clone());
     }
-
     let all = outputs;
-    // Mirrors show another screen's picture: they aren't in the arrangement.
-    let placed: Vec<OutputInfo> = outputs.iter().filter(|o| o.mirror_of.is_none()).cloned().collect();
-    let outputs = &placed[..];
-
-    // Arrangement: every output to scale, in its logical position.
-    let map_h = 150.0;
-    let (map, _) = ui.allocate_exact_size(vec2(ui.available_width(), map_h), Sense::hover());
-    ui.painter().rect_filled(map, 0.0, c(p.document_background));
-    style::sunken(ui.painter(), map, &p, false);
-    let (mut x0, mut y0, mut x1, mut y1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
-    for o in outputs {
-        let (w, h) = logical(o);
-        x0 = x0.min(o.position.0 as f64);
-        y0 = y0.min(o.position.1 as f64);
-        x1 = x1.max(o.position.0 as f64 + w);
-        y1 = y1.max(o.position.1 as f64 + h);
-    }
-    let inner = map.shrink(16.0);
-    let k = (inner.width() as f64 / (x1 - x0)).min(inner.height() as f64 / (y1 - y0)) as f32;
-    let off = inner.center() - vec2((x1 - x0) as f32 * k, (y1 - y0) as f32 * k) / 2.0;
-    let rect_of = |o: &OutputInfo| {
-        let (w, h) = logical(o);
-        Rect::from_min_size(
-            off + vec2((o.position.0 as f64 - x0) as f32 * k, (o.position.1 as f64 - y0) as f32 * k),
-            vec2(w as f32 * k, h as f32 * k),
-        )
-        .shrink(1.0)
-    };
-    let mut dropped = None;
-    // The dragged screen is drawn last, over the others.
-    let mut order: Vec<&OutputInfo> = outputs.iter().collect();
-    order.sort_by_key(|o| st.drag.as_ref().is_some_and(|(n, _)| *n == o.name));
-    for o in order {
-        // To scale, then on device pixels.
-        let mut r = style::snap(ui.ctx(), rect_of(o));
-        let chosen = st.selected.as_deref() == Some(&o.name);
-        let sense = if outputs.len() > 1 { Sense::click_and_drag() } else { Sense::click() };
-        let resp = ui.interact(r, ui.make_persistent_id(("display", &o.name)), sense);
-        if resp.clicked() || resp.drag_started() {
-            st.selected = Some(o.name.clone());
-        }
-        if resp.dragged() {
-            let d = st.drag.get_or_insert_with(|| (o.name.clone(), Vec2::ZERO));
-            d.1 += resp.drag_delta();
-        }
-        if let Some((n, d)) = &st.drag
-            && *n == o.name
-        {
-            r = style::snap(ui.ctx(), r.translate(*d).intersect(map.shrink(2.0)));
-            if resp.drag_stopped() {
-                dropped = Some((o.name.clone(), *d));
+    map(ui, all, server, st);
+    for mirror in all.iter().filter(|o| o.mirror_of.is_some()) {
+        let source = all.iter().find(|x| Some(&x.name) == mirror.mirror_of.as_ref()).map(|x| shown_name(x, all)).unwrap_or_default();
+        let shown = st.selected.as_deref() == Some(&mirror.name);
+        let name = mirror.name.clone();
+        let pick = ui.on_click_view(move |v, _, cx| {
+            if let Some(st) = state_of(v) {
+                st.selected = Some(name.clone());
+                cx.notify();
             }
-        }
-        let [rr, gg, bb] = s.workspace_color(0);
-        ui.painter().rect_filled(r, 0.0, Color32::from_rgb(rr, gg, bb));
-        let border = if chosen { c(p.keyboard_navigation) } else { c(p.frame_focused[0]) };
-        let stroke_w = style::hairline(ui.ctx()) * if chosen { 2.0 } else { 1.0 };
-        ui.painter().rect_stroke(r, 0.0, (stroke_w, border), olo_kit::egui::StrokeKind::Inside);
-        // A strip along the top for Deskbar: every display has its own.
-        {
-            let bar = Rect::from_min_size(r.min + vec2(stroke_w, stroke_w), vec2(r.width() - 2.0 * stroke_w, 4.0));
-            ui.painter().rect_filled(bar, 0.0, c(p.panel_background));
-        }
-        ui.painter().text(r.center(), Align2::CENTER_CENTER, shown_name(o, all), style::plain_font(), c(p.desktop_text));
-    }
-    if let Some((name, d)) = dropped {
-        st.drag = None;
-        rearrange(outputs, &name, d, k, server);
-    }
-    for m in all.iter().filter(|o| o.mirror_of.is_some()) {
-        let source = all.iter().find(|x| Some(&x.name) == m.mirror_of.as_ref()).map(|x| shown_name(x, all)).unwrap_or_default();
-        ui.horizontal(|ui| {
-            ui.add(StringView::new(&format!("{} mirrors {source}.", shown_name(m, all))).dim(true));
-            if st.selected.as_deref() != Some(&m.name) && ui.add(Button::new("Settings")).clicked() {
-                st.selected = Some(m.name.clone());
+        });
+        ui.row(|ui| {
+            ui.note(format!("{} mirrors {source}.", shown_name(mirror, all)));
+            if !shown {
+                ui.button("Settings", pick);
             }
         });
     }
 
-    let outputs = all;
-    let Some(o) = outputs.iter().find(|o| st.selected.as_deref() == Some(&o.name)) else {
+    let Some(o) = outputs.iter().find(|o| st.selected.as_deref() == Some(&o.name)).cloned() else {
         return;
     };
     let label_w = 90.0;
-    BBox::new(&shown_name(o, outputs)).show(ui, |ui| {
-        // Resolutions, largest first; the refresh rate is a separate choice.
-        let mut sizes: Vec<(i32, i32)> = o.modes.iter().map(|m| (m.width, m.height)).collect();
-        sizes.sort_by(|a, b| (b.0 * b.1).cmp(&(a.0 * a.1)).then(b.0.cmp(&a.0)));
-        sizes.dedup();
-        let current = o.current_mode.clone().or_else(|| o.modes.first().cloned());
-        let Some(current) = current else {
-            ui.add(StringView::new("This display reports no modes.").dim(true));
-            return;
+    let title = shown_name(&o, outputs);
+    ui.bbox(&title, |ui| display_box(ui, &o, outputs, power, server, st, label_w));
+    panel_box(ui, &o, label_w, server);
+    keep_band(ui, outputs, server, st);
+}
+
+/// Arrangement: every output to scale, in its logical position; a click
+/// picks one, a drag moves it (snapped against the others when let go).
+fn map(ui: &mut Ui, all: &[OutputInfo], server: &Server, st: &State) {
+    // Mirrors show another screen's picture: they aren't in the arrangement.
+    let placed: Vec<OutputInfo> = all.iter().filter(|o| o.mirror_of.is_none()).cloned().collect();
+    let names: Vec<String> = placed.iter().map(|o| shown_name(o, all)).collect();
+    let selected = st.selected.clone();
+    let drag = st.drag.clone();
+    let colour = ui.s.workspace_color(0);
+    let view = ui.cx.entity().downgrade();
+    let server = server.clone();
+    let paint = move |map: Bounds<Pixels>, window: &mut olo_ui::gpui::Window, cx: &mut olo_ui::gpui::App| {
+        let p = theme::palette(cx);
+        style::fill_rect(window, map, c(p.document_background));
+        style::sunken(window, map, &p, false);
+        let (mut x0, mut y0, mut x1, mut y1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+        for o in &placed {
+            let (w, h) = logical(o);
+            x0 = x0.min(o.position.0 as f64);
+            y0 = y0.min(o.position.1 as f64);
+            x1 = x1.max(o.position.0 as f64 + w);
+            y1 = y1.max(o.position.1 as f64 + h);
+        }
+        let inner = map.dilate(px(-16.0));
+        let k = (f32::from(inner.size.width) as f64 / (x1 - x0)).min(f32::from(inner.size.height) as f64 / (y1 - y0)) as f32;
+        let (cw, ch) = ((x1 - x0) as f32 * k, (y1 - y0) as f32 * k);
+        let off = point(inner.center().x - px(cw / 2.0), inner.center().y - px(ch / 2.0));
+        let rect_of = |o: &OutputInfo| {
+            let (w, h) = logical(o);
+            let b = Bounds { origin: point(off.x + px((o.position.0 as f64 - x0) as f32 * k), off.y + px((o.position.1 as f64 - y0) as f32 * k)), size: size(px(w as f32 * k), px(h as f32 * k)) };
+            b.dilate(px(-1.0))
         };
-        let names: Vec<String> =
-            sizes.iter().map(|&(w, h)| mode_text(&Mode { width: w, height: h, refresh: 0 })).collect();
-        let names: Vec<&str> = names.iter().map(String::as_str).collect();
-        let mut i = sizes.iter().position(|&(w, h)| (w, h) == (current.width, current.height)).unwrap_or(0);
-        let before = i;
-        ui.add(MenuField::new(("res", &o.name), &mut i, &names).label("Resolution:").divider(label_w));
-        let mut chosen = current.clone();
-        if i != before {
+        // The dragged screen is drawn last, over the others.
+        let mut order: Vec<usize> = (0..placed.len()).collect();
+        order.sort_by_key(|&i| drag.as_ref().is_some_and(|(n, ..)| *n == placed[i].name));
+        let mut hits = Vec::new();
+        for i in order {
+            let o = &placed[i];
+            let mut r = style::snap(window, rect_of(o));
+            hits.push((o.name.clone(), r));
+            if let Some((n, from, to)) = &drag
+                && *n == o.name
+            {
+                let moved = Bounds { origin: point(r.origin.x + (to.x - from.x), r.origin.y + (to.y - from.y)), size: r.size };
+                r = style::snap(window, moved.intersect(&map.dilate(px(-2.0))));
+            }
+            let chosen = selected.as_deref() == Some(&o.name);
+            let [rr, gg, bb] = colour;
+            style::fill_rect(window, r, rgb((u32::from(rr) << 16) | (u32::from(gg) << 8) | u32::from(bb)).into());
+            let border = if chosen { c(p.keyboard_navigation) } else { c(p.frame_focused[0]) };
+            style::frame_rect(window, r, border);
+            if chosen {
+                style::frame_rect(window, style::inset(window, r, 1.0), border);
+            }
+            // A strip along the top for Deskbar: every display has its own.
+            let line = style::hairline(window) * if chosen { 2.0 } else { 1.0 };
+            let bar = Bounds { origin: point(r.left() + line, r.top() + line), size: size(r.size.width - line * 2.0, px(4.0)) };
+            style::fill_rect(window, bar, c(p.panel_background));
+            style::label(window, cx, r.center().x, r.center().y, style::Align::Center, names[i].clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), c(p.desktop_text));
+            olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Button", name: Some(names[i].clone().into()), bounds: r, enabled: true, clickable: true, selected: Some(chosen), ..Default::default() });
+        }
+        let draggable = placed.len() > 1;
+        let (down, moved, up) = (view.clone(), view.clone(), view.clone());
+        window.on_mouse_event(move |e: &MouseDownEvent, phase, _, cx| {
+            if phase != DispatchPhase::Bubble || e.button != MouseButton::Left || !map.contains(&e.position) {
+                return;
+            }
+            let Some((name, _)) = hits.iter().rev().find(|(_, r)| r.contains(&e.position)).cloned() else { return };
+            let _ = down.update(cx, |v, cx| {
+                if let Some(st) = state_of(v) {
+                    st.selected = Some(name.clone());
+                    if draggable {
+                        st.drag = Some((name, e.position, e.position));
+                    }
+                    cx.notify();
+                }
+            });
+        });
+        window.on_mouse_event(move |e: &MouseMoveEvent, phase, _, cx| {
+            if phase != DispatchPhase::Bubble {
+                return;
+            }
+            let _ = moved.update(cx, |v, cx| {
+                if let Some(st) = state_of(v)
+                    && let Some(d) = st.drag.as_mut()
+                {
+                    d.2 = e.position;
+                    cx.notify();
+                }
+            });
+        });
+        let placed = placed.clone();
+        let server = server.clone();
+        window.on_mouse_event(move |e: &MouseUpEvent, phase, _, cx| {
+            if phase != DispatchPhase::Bubble || e.button != MouseButton::Left {
+                return;
+            }
+            let _ = up.update(cx, |v, cx| {
+                if let Some(st) = state_of(v)
+                    && let Some((name, from, to)) = st.drag.take()
+                {
+                    let d = (f32::from(to.x - from.x), f32::from(to.y - from.y));
+                    if d != (0.0, 0.0) {
+                        rearrange(&placed, &name, d, k, &server);
+                    }
+                    cx.notify();
+                }
+            });
+        });
+    };
+    ui.add(canvas(|_, _, _| {}, move |b, _, window, cx| paint(b, window, cx)).w_full().h(px(150.0)).flex_shrink_0());
+}
+
+/// The chosen display's resolution, refresh rate, scale, rotation, use,
+/// main display and brightness.
+fn display_box(ui: &mut Ui, o: &OutputInfo, outputs: &[OutputInfo], power: Option<&PowerStatus>, server: &Server, st: &mut State, label_w: f32) {
+    // Resolutions, largest first; the refresh rate is a separate choice.
+    let mut sizes: Vec<(i32, i32)> = o.modes.iter().map(|m| (m.width, m.height)).collect();
+    sizes.sort_by(|a, b| (b.0 * b.1).cmp(&(a.0 * a.1)).then(b.0.cmp(&a.0)));
+    sizes.dedup();
+    let Some(current) = o.current_mode.clone().or_else(|| o.modes.first().cloned()) else {
+        ui.note("This display reports no modes.");
+        return;
+    };
+    let names: Vec<String> = sizes.iter().map(|&(w, h)| mode_text(&Mode { width: w, height: h, refresh: 0 })).collect();
+    let i = sizes.iter().position(|&(w, h)| (w, h) == (current.width, current.height)).unwrap_or(0);
+    // A new mode, to be kept or reverted (to what worked before, even
+    // after several changes).
+    let change = {
+        let (name, current, server) = (o.name.clone(), current.clone(), server.clone());
+        move |v: &mut PanelView, chosen: Mode| {
+            if chosen == current {
+                return;
+            }
+            if let Some(st) = state_of(v) {
+                if st.confirm.as_ref().is_none_or(|(n, _, _)| *n != name) {
+                    st.confirm = Some((name.clone(), current.clone(), Instant::now()));
+                } else if let Some(c) = st.confirm.as_mut() {
+                    c.2 = Instant::now();
+                }
+            }
+            server.configure_output(&name, OutputConfig { mode: Some(chosen), ..Default::default() });
+        }
+    };
+    let change = std::rc::Rc::new(change);
+    {
+        let (modes, sizes, current, change) = (o.modes.clone(), sizes.clone(), current.clone(), change.clone());
+        let on = ui.on_view(move |v, i: usize, _, cx| {
             let (w, h) = sizes[i];
             // Keep the refresh rate if the new size offers it, else the fastest.
-            chosen = o
-                .modes
-                .iter()
-                .filter(|m| (m.width, m.height) == (w, h))
-                .min_by_key(|m| ((m.refresh - current.refresh).abs(), -m.refresh))
-                .cloned()
-                .unwrap_or(chosen);
-        }
-        let mut rates: Vec<i32> = o
-            .modes
-            .iter()
-            .filter(|m| (m.width, m.height) == (chosen.width, chosen.height))
-            .map(|m| m.refresh)
-            .collect();
-        rates.sort_by(|a, b| b.cmp(a));
-        rates.dedup();
-        let rate_names: Vec<String> = rates.iter().map(|&r| hz_text(r)).collect();
-        let rate_names: Vec<&str> = rate_names.iter().map(String::as_str).collect();
-        let mut ri = rates.iter().position(|&r| r == chosen.refresh).unwrap_or(0);
-        ui.add_enabled_ui(rates.len() > 1, |ui| {
-            ui.add(MenuField::new(("hz", &o.name), &mut ri, &rate_names).label("Refresh rate:").divider(label_w));
+            let chosen = modes.iter().filter(|m| (m.width, m.height) == (w, h)).min_by_key(|m| ((m.refresh - current.refresh).abs(), -m.refresh)).cloned().unwrap_or(current.clone());
+            change(v, chosen);
+            cx.notify();
         });
-        if let Some(&r) = rates.get(ri) {
-            chosen.refresh = r;
-        }
-        if chosen != current {
-            // Revert to what worked before, even after several changes.
-            if st.confirm.as_ref().is_none_or(|(n, _, _)| *n != o.name) {
-                st.confirm = Some((o.name.clone(), current.clone(), Instant::now()));
-            } else if let Some(c) = st.confirm.as_mut() {
-                c.2 = Instant::now();
-            }
-            server.configure_output(&o.name, OutputConfig { mode: Some(chosen.clone()), ..Default::default() });
-        }
+        let names = names.into_iter().map(SharedString::from).collect();
+        ui.add(MenuField::new(format!("res-{}", o.name), names, i).label("Resolution:").divider(label_w).on_change(on));
+    }
+    let mut rates: Vec<i32> = o.modes.iter().filter(|m| (m.width, m.height) == (current.width, current.height)).map(|m| m.refresh).collect();
+    rates.sort_by(|a, b| b.cmp(a));
+    rates.dedup();
+    let rate_names: Vec<SharedString> = rates.iter().map(|&r| hz_text(r).into()).collect();
+    let ri = rates.iter().position(|&r| r == current.refresh).unwrap_or(0);
+    let several = rates.len() > 1;
+    {
+        let (rates, current, change) = (rates.clone(), current.clone(), change.clone());
+        let on = ui.on_view(move |v, i: usize, _, cx| {
+            change(v, Mode { refresh: rates[i], ..current.clone() });
+            cx.notify();
+        });
+        ui.add(MenuField::new(format!("hz-{}", o.name), rate_names, ri).label("Refresh rate:").divider(label_w).enabled(several).on_change(on));
+    }
 
-        // A mirror shows its source as it is: no scale or rotation of its own.
-        let mut si = SCALES.iter().position(|&s| (s - o.scale).abs() < 0.01).unwrap_or(4);
-        if o.mirror_of.is_none() {
-            let scale_names: Vec<String> = SCALES.iter().map(|&s| scale_text(s)).collect();
-            let scale_names: Vec<&str> = scale_names.iter().map(String::as_str).collect();
-            let before = si;
-            ui.add(MenuField::new(("scale", &o.name), &mut si, &scale_names).label("Scale:").divider(label_w));
-            if si != before {
-                server.configure_output(&o.name, OutputConfig { scale: Some(SCALES[si]), ..Default::default() });
-            }
-            let mut ri = olo_protocol::ROTATIONS.iter().position(|&r| r == o.rotation).unwrap_or(0);
-            let before = ri;
-            ui.add(MenuField::new(("rotation", &o.name), &mut ri, &ROTATION_NAMES).label("Rotation:").divider(label_w));
-            if ri != before {
-                let rotation = Some(olo_protocol::ROTATIONS[ri]);
-                server.configure_output(&o.name, OutputConfig { rotation, ..Default::default() });
-            }
-        }
-        // Extend the desktop, or show another display's picture.
-        if outputs.len() > 1 {
-            let sources: Vec<&OutputInfo> = outputs.iter().filter(|x| x.name != o.name && x.mirror_of.is_none()).collect();
-            let mut uses: Vec<String> = vec!["Extended desktop".into()];
-            uses.extend(sources.iter().map(|x| format!("Mirror of {}", shown_name(x, outputs))));
-            let uses: Vec<&str> = uses.iter().map(String::as_str).collect();
-            let mut ui_i = o.mirror_of.as_ref().and_then(|m| sources.iter().position(|x| &x.name == m)).map_or(0, |i| i + 1);
-            let before = ui_i;
-            // A display others mirror can't mirror in turn.
-            let mirrored = outputs.iter().any(|x| x.mirror_of.as_ref() == Some(&o.name));
-            ui.add_enabled_ui(!mirrored, |ui| {
-                ui.add(MenuField::new(("use", &o.name), &mut ui_i, &uses).label("Use as:").divider(label_w));
-            });
-            if ui_i != before {
-                let mirror = if ui_i == 0 {
-                    String::new()
-                } else {
-                    let x = sources[ui_i - 1];
-                    if x.key.is_empty() { x.name.clone() } else { x.key.clone() }
+    // A mirror shows its source as it is: no scale or rotation of its own.
+    let si = SCALES.iter().position(|&s| (s - o.scale).abs() < 0.01).unwrap_or(4);
+    if o.mirror_of.is_none() {
+        let (name, to) = (o.name.clone(), server.clone());
+        menu(ui, format!("scale-{}", o.name), SCALES.iter().map(|&s| scale_text(s)).collect(), si, "Scale:", label_w, move |i| {
+            to.configure_output(&name, OutputConfig { scale: Some(SCALES[i]), ..Default::default() });
+        });
+        let ri = olo_protocol::ROTATIONS.iter().position(|&r| r == o.rotation).unwrap_or(0);
+        let (name, to) = (o.name.clone(), server.clone());
+        menu(ui, format!("rotation-{}", o.name), ROTATION_NAMES.iter().map(|s| s.to_string()).collect(), ri, "Rotation:", label_w, move |i| {
+            to.configure_output(&name, OutputConfig { rotation: Some(olo_protocol::ROTATIONS[i]), ..Default::default() });
+        });
+    }
+    // Extend the desktop, or show another display's picture.
+    if outputs.len() > 1 {
+        let sources: Vec<OutputInfo> = outputs.iter().filter(|x| x.name != o.name && x.mirror_of.is_none()).cloned().collect();
+        let mut uses: Vec<String> = vec!["Extended desktop".into()];
+        uses.extend(sources.iter().map(|x| format!("Mirror of {}", shown_name(x, outputs))));
+        let now = o.mirror_of.as_ref().and_then(|m| sources.iter().position(|x| &x.name == m)).map_or(0, |i| i + 1);
+        // A display others mirror can't mirror in turn.
+        let mirrored = outputs.iter().any(|x| x.mirror_of.as_ref() == Some(&o.name));
+        let (name, server) = (o.name.clone(), server.clone());
+        ui.enabled_if(!mirrored, |ui| {
+            menu(ui, format!("use-{}", o.name), uses, now, "Use as:", label_w, move |i| {
+                let mirror = match i.checked_sub(1).and_then(|i| sources.get(i)) {
+                    None => String::new(),
+                    Some(x) if x.key.is_empty() => x.name.clone(),
+                    Some(x) => x.key.clone(),
                 };
-                server.configure_output(&o.name, OutputConfig { mirror: Some(mirror), ..Default::default() });
+                server.configure_output(&name, OutputConfig { mirror: Some(mirror), ..Default::default() });
+            });
+        });
+    }
+    if o.mirror_of.is_none() {
+        let (cw, ch) = if o.rotation % 180 == 90 { (current.height, current.width) } else { (current.width, current.height) };
+        let (lw, lh) = (cw as f64 / SCALES[si], ch as f64 / SCALES[si]);
+        // Under the fields' text.
+        ui.add(div().pl(px(label_w + m::TEXT_INSET)).child(StringView::new(format!("Looks like {lw:.0} × {lh:.0}")).dim(true)));
+    }
+    if outputs.len() > 1 && o.mirror_of.is_none() {
+        let key = if o.key.is_empty() { o.name.clone() } else { o.key.clone() };
+        let make_main = ui.edit(move |s, on: bool| {
+            if on {
+                s.display.main = Some(key.clone());
             }
-        }
-        if o.mirror_of.is_none() {
-            let (cw, ch) = if o.rotation % 180 == 90 { (chosen.height, chosen.width) } else { (chosen.width, chosen.height) };
-            let (lw, lh) = (cw as f64 / SCALES[si], ch as f64 / SCALES[si]);
-            // Under the fields' text.
-            ui.horizontal(|ui| {
-                ui.add_space(label_w + m::TEXT_INSET);
-                ui.add(StringView::new(&format!("Looks like {lw:.0} × {lh:.0}")).dim(true));
-            });
-        }
-        if outputs.len() > 1 && o.mirror_of.is_none() {
-            ui.horizontal(|ui| {
-                // The note under the fields' text, the check box under
-                // the fields.
-                ui.add_space(label_w);
-                if o.main {
-                    ui.add_space(m::TEXT_INSET);
-                    ui.add(StringView::new("Main display: the desktop is here.").dim(true));
-                } else {
-                    let mut main = false;
-                    ui.add(CheckBox::new(&mut main, "Make this the main display"));
-                    if main {
-                        s.display.main = Some(if o.key.is_empty() { o.name.clone() } else { o.key.clone() });
-                    }
-                }
-                ui.with_layout(olo_kit::egui::Layout::right_to_left(olo_kit::egui::Align::Center), |ui| {
-                    if ui.add(Button::new("Identify")).clicked() {
-                        server.identify_outputs();
-                    }
-                });
-            });
-        }
+        });
+        let server = server.clone();
+        // The note under the fields' text, the check box under the fields.
+        let left = if o.main {
+            div().pl(px(m::TEXT_INSET)).child(StringView::new("Main display: the desktop is here.").dim(true)).into_any_element()
+        } else {
+            CheckBox::new("Make this the main display", false).on_toggle(make_main).into_any_element()
+        };
+        ui.add(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .pl(px(label_w))
+                .child(div().flex_1().child(left))
+                .child(Button::new("Identify").on_click(move |_, _| server.identify_outputs())),
+        );
+    }
 
-        // Each display whose brightness app_server can set (the built-in
-        // one's backlight, monitors controlled over USB).
-        let builtin = || power.and_then(|p| p.brightness).filter(|_| display_name(o) == "Built-in Display" || outputs.len() == 1);
-        if let Some(level) = o.brightness.or_else(builtin) {
-            if st.brightness.as_ref().is_some_and(|(_, _, at)| at.elapsed() > std::time::Duration::from_millis(600)) {
-                st.brightness = None;
-            }
-            let mut v = st.brightness.as_ref().filter(|(n, ..)| *n == o.name).map_or(level, |(_, l, _)| *l);
-            let before = v;
-            let text = format!("{:.0}%", v * 100.0);
-            ui.add(Slider::new(&mut v, 0.0..=1.0).step(1.0 / 64.0).label("Brightness").value_text(text));
-            if v != before {
-                st.brightness = Some((o.name.clone(), v, std::time::Instant::now()));
-                server.set_output_brightness(&o.name, v);
-            }
+    // Each display whose brightness app_server can set (the built-in
+    // one's backlight, monitors controlled over USB).
+    let builtin = power.and_then(|p| p.brightness).filter(|_| display_name(o) == "Built-in Display" || outputs.len() == 1);
+    if let Some(level) = o.brightness.or(builtin) {
+        if st.brightness.as_ref().is_some_and(|(_, _, at)| at.elapsed() > Duration::from_millis(600)) {
+            st.brightness = None;
         }
-    });
-    panel_box(ui, o, label_w, server);
-    keep_band(ui, outputs, server, st);
+        let v = st.brightness.as_ref().filter(|(n, ..)| *n == o.name).map_or(level, |(_, l, _)| *l);
+        let (name, server) = (o.name.clone(), server.clone());
+        let on = ui.on_view(move |view, v: f32, _, cx| {
+            if let Some(st) = state_of(view) {
+                st.brightness = Some((name.clone(), v, Instant::now()));
+            }
+            server.set_output_brightness(&name, v);
+            cx.notify();
+        });
+        ui.add(Slider::new(format!("brightness-{}", o.name), v, 0.0..=1.0).step(1.0 / 64.0).label("Brightness").value_text(format!("{:.0}%", v * 100.0)).on_change(on));
+    }
 }
 
 /// The display's panel: what it is, how Olo draws for it and why, and
 /// the person's corrections (`olo_protocol::panels`).
 fn panel_box(ui: &mut Ui, o: &OutputInfo, label_w: f32, server: &Server) {
     use olo_protocol::panels::{Source, Subpixel, Technology, TextMode};
-    let Some(panel) = &o.panel else { return };
+    let Some(panel) = o.panel.clone() else { return };
     let from = |source: Source| match source {
         Source::Display => "the display says",
         Source::Guess => "Olo's guess",
         Source::Setting => "your choice",
     };
-    BBox::new("Panel").show(ui, |ui| {
+    ui.bbox("Panel", |ui| {
         // A label in the fields' label column, its value under their text.
         let row = |ui: &mut Ui, label: &str, value: &str| {
-            ui.horizontal(|ui| {
-                let gap = ui.spacing().item_spacing.x;
-                let at = ui.add(StringView::new(label)).rect.width();
-                ui.add_space((label_w + m::TEXT_INSET - at - 2.0 * gap).max(0.0));
-                ui.add(StringView::new(value));
-            });
+            ui.add(
+                div()
+                    .flex()
+                    .flex_row()
+                    .child(div().w(px(label_w + m::TEXT_INSET)).flex_shrink_0().child(StringView::new(label.to_owned())))
+                    .child(StringView::new(value.to_owned())),
+            );
         };
         let maker = [o.make.as_str(), o.model.as_str()].iter().filter(|s| !s.is_empty() && **s != "Unknown").copied().collect::<Vec<_>>().join(" ");
         row(ui, "Make:", if maker.is_empty() { "Not told" } else { &maker });
@@ -414,38 +475,26 @@ fn panel_box(ui: &mut Ui, o: &OutputInfo, label_w: f32, server: &Server) {
         // Each correction: Automatic (Olo's, with what it is) or a choice.
         const TECHS: [Technology; 3] = [Technology::Lcd, Technology::MiniLed, Technology::Oled];
         let auto = |what: &str, why: &str| format!("Automatic: {what} ({why})");
-        let mut names = vec![if panel.technology_from == Source::Setting {
-            "Automatic".to_string()
-        } else {
-            auto(panel.technology.label(), from(panel.technology_from))
-        }];
+        let mut names = vec![if panel.technology_from == Source::Setting { "Automatic".to_string() } else { auto(panel.technology.label(), from(panel.technology_from)) }];
         names.extend(TECHS.iter().map(|t| t.label().to_string()));
-        let names: Vec<&str> = names.iter().map(String::as_str).collect();
-        let mut i = if panel.technology_from == Source::Setting { TECHS.iter().position(|t| *t == panel.technology).map_or(0, |i| i + 1) } else { 0 };
-        let before = i;
-        ui.add(MenuField::new(("technology", &o.name), &mut i, &names).label("Technology:").divider(label_w));
-        if i != before {
+        let i = if panel.technology_from == Source::Setting { TECHS.iter().position(|t| *t == panel.technology).map_or(0, |i| i + 1) } else { 0 };
+        let (name, server2) = (o.name.clone(), server.clone());
+        menu(ui, format!("technology-{}", o.name), names, i, "Technology:", label_w, move |i| {
             let technology = Some(if i == 0 { Technology::Unknown } else { TECHS[i - 1] });
-            server.configure_output(&o.name, OutputConfig { technology, ..Default::default() });
-        }
+            server2.configure_output(&name, OutputConfig { technology, ..Default::default() });
+        });
 
         const STRIPES: [Subpixel; 5] = [Subpixel::Rgb, Subpixel::Bgr, Subpixel::VerticalRgb, Subpixel::VerticalBgr, Subpixel::None];
-        let mut names = vec![if panel.subpixel_from == Source::Setting {
-            "Automatic".to_string()
-        } else {
-            auto(panel.subpixel.label(), from(panel.subpixel_from))
-        }];
+        let mut names = vec![if panel.subpixel_from == Source::Setting { "Automatic".to_string() } else { auto(panel.subpixel.label(), from(panel.subpixel_from)) }];
         names.extend(STRIPES.iter().map(|s| s.label().to_string()));
-        let names: Vec<&str> = names.iter().map(String::as_str).collect();
-        let mut i = if panel.subpixel_from == Source::Setting { STRIPES.iter().position(|s| *s == panel.subpixel).map_or(0, |i| i + 1) } else { 0 };
-        let before = i;
-        ui.add(MenuField::new(("stripes", &o.name), &mut i, &names).label("Stripes:").divider(label_w));
-        if i != before {
+        let i = if panel.subpixel_from == Source::Setting { STRIPES.iter().position(|s| *s == panel.subpixel).map_or(0, |i| i + 1) } else { 0 };
+        let (name, server2) = (o.name.clone(), server.clone());
+        menu(ui, format!("stripes-{}", o.name), names, i, "Stripes:", label_w, move |i| {
             let subpixel = Some(if i == 0 { Subpixel::Unknown } else { STRIPES[i - 1] });
-            server.configure_output(&o.name, OutputConfig { subpixel, ..Default::default() });
-        }
+            server2.configure_output(&name, OutputConfig { subpixel, ..Default::default() });
+        });
 
-        let modes = [TextMode::Hinted, TextMode::Unhinted, TextMode::Subpixel(Subpixel::Rgb), TextMode::Subpixel(Subpixel::Bgr)];
+        const MODES: [TextMode; 4] = [TextMode::Hinted, TextMode::Unhinted, TextMode::Subpixel(Subpixel::Rgb), TextMode::Subpixel(Subpixel::Bgr)];
         let label = |t: TextMode| match t {
             TextMode::Subpixel(Subpixel::Bgr) => "Subpixel, BGR order".to_string(),
             TextMode::Subpixel(_) => "Subpixel, RGB order".to_string(),
@@ -453,31 +502,26 @@ fn panel_box(ui: &mut Ui, o: &OutputInfo, label_w: f32, server: &Server) {
         };
         let current = panel.text.unwrap_or(TextMode::Hinted);
         let mut names = vec![if panel.text_from == Source::Setting { "Automatic".to_string() } else { format!("Automatic: {}", label(current)) }];
-        names.extend(modes.iter().map(|t| label(*t)));
-        let names: Vec<&str> = names.iter().map(String::as_str).collect();
-        let mut i = if panel.text_from == Source::Setting { modes.iter().position(|t| *t == current).map_or(0, |i| i + 1) } else { 0 };
-        let before = i;
-        ui.add(MenuField::new(("text", &o.name), &mut i, &names).label("Text:").divider(label_w));
-        if i != before {
-            let text = Some(if i == 0 { TextMode::Auto } else { modes[i - 1] });
-            server.configure_output(&o.name, OutputConfig { text, ..Default::default() });
-        }
-        // Why, under the fields' text.
-        ui.horizontal(|ui| {
-            ui.add_space(label_w + m::TEXT_INSET);
-            ui.add(StringView::new(&panel.text_why).dim(true).wrap(true));
+        names.extend(MODES.iter().map(|t| label(*t)));
+        let i = if panel.text_from == Source::Setting { MODES.iter().position(|t| *t == current).map_or(0, |i| i + 1) } else { 0 };
+        let (name, server2) = (o.name.clone(), server.clone());
+        menu(ui, format!("text-{}", o.name), names, i, "Text:", label_w, move |i| {
+            let text = Some(if i == 0 { TextMode::Auto } else { MODES[i - 1] });
+            server2.configure_output(&name, OutputConfig { text, ..Default::default() });
         });
+        // Why, under the fields' text.
+        ui.add(div().pl(px(label_w + m::TEXT_INSET)).child(StringView::new(panel.text_why.clone()).dim(true).wrap(true)));
     });
 }
 
 /// Move `name` by `delta` points in the map (`k` points per logical
 /// pixel), snapped against the others. Every screen's position is sent so
 /// the arrangement doesn't depend on which ones had been placed before.
-fn rearrange(outputs: &[OutputInfo], name: &str, delta: Vec2, k: f32, server: &Server) {
+fn rearrange(outputs: &[OutputInfo], name: &str, delta: (f32, f32), k: f32, server: &Server) {
     let Some(o) = outputs.iter().find(|o| o.name == name) else { return };
     let (w, h) = logical(o);
-    let x = o.position.0 as f64 + (delta.x / k) as f64;
-    let y = o.position.1 as f64 + (delta.y / k) as f64;
+    let x = o.position.0 as f64 + (delta.0 / k) as f64;
+    let y = o.position.1 as f64 + (delta.1 / k) as f64;
     let others: Vec<LRect> = outputs
         .iter()
         .filter(|x| x.name != name)
@@ -499,33 +543,51 @@ fn rearrange(outputs: &[OutputInfo], name: &str, delta: Vec2, k: f32, server: &S
 /// "Keep this resolution?" with a countdown; reverts by itself.
 fn keep_band(ui: &mut Ui, outputs: &[OutputInfo], server: &Server, st: &mut State) {
     let Some((name, previous, at)) = st.confirm.clone() else { return };
-    let Some(o) = outputs.iter().find(|o| o.name == name) else {
+    if !outputs.iter().any(|o| o.name == name) {
         st.confirm = None;
-        return;
-    };
-    let left = KEEP_SECS.saturating_sub(at.elapsed().as_secs());
-    let revert = |st: &mut State| {
-        server.configure_output(&name, OutputConfig { mode: Some(previous.clone()), ..Default::default() });
-        st.confirm = None;
-    };
-    if left == 0 {
-        revert(st);
         return;
     }
-    ui.add_space(m::SPACING);
-    ui.horizontal(|ui| {
-        let _ = o;
-        ui.add(StringView::new(&format!("Keep this resolution? Reverting in {left} s.")));
-        ui.with_layout(olo_kit::egui::Layout::right_to_left(olo_kit::egui::Align::Center), |ui| {
-            if ui.add(Button::new("Keep").default(true)).clicked() {
-                st.confirm = None;
-            }
-            if ui.add(Button::new("Revert")).clicked() {
-                revert(st);
-            }
-        });
+    let revert = {
+        let (name, previous, server) = (name.clone(), previous.clone(), server.clone());
+        move || server.configure_output(&name, OutputConfig { mode: Some(previous.clone()), ..Default::default() })
+    };
+    let left = KEEP_SECS.saturating_sub(at.elapsed().as_secs());
+    if left == 0 {
+        revert();
+        st.confirm = None;
+        return;
+    }
+    // Drawn again as the seconds go.
+    ui.cx
+        .spawn(async move |view, cx| {
+            cx.background_executor().timer(Duration::from_millis(250)).await;
+            let _ = view.update(cx, |_, cx| cx.notify());
+        })
+        .detach();
+    let keep = ui.on_click_view(|v, _, cx| {
+        if let Some(st) = state_of(v) {
+            st.confirm = None;
+        }
+        cx.notify();
     });
-    ui.ctx().request_repaint_after(Duration::from_millis(250));
+    let back = ui.on_click_view(move |v, _, cx| {
+        revert();
+        if let Some(st) = state_of(v) {
+            st.confirm = None;
+        }
+        cx.notify();
+    });
+    ui.add(
+        div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(m::SPACING))
+            .pt(px(m::SPACING))
+            .child(div().flex_1().child(StringView::new(format!("Keep this resolution? Reverting in {left} s."))))
+            .child(Button::new("Revert").on_click(back))
+            .child(Button::new("Keep").default(true).on_click(keep)),
+    );
 }
 
 #[cfg(test)]

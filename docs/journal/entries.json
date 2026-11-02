@@ -2680,5 +2680,11 @@
   "title": "Pinch to zoom, off by default",
   "caption": "Preferences \u25b8 Touchpad & Mouse \u25b8 Gestures: a pinch reaches the window under the pointer only when this is on. Off, two fingers drifting together while scrolling no longer zoom Chrome's pages.",
   "image": "2026-11-01/223036-pinch-to-zoom-off-by-default.png"
+ },
+ {
+  "time": "2026-11-01T23:21:56",
+  "title": "Preferences on GPUI",
+  "caption": "Every panel of Preferences moved from egui to Olo's GPUI, drawn as before; Themes shows each theme's wordmark and icons, and its colour sets now share their row evenly.",
+  "image": "2026-11-01/232156-preferences-on-gpui.png"
  }
 ]

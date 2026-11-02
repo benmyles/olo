@@ -1,14 +1,14 @@
 //! The panels: names, icons, sizes, and the frame they share (content above,
 //! Defaults and Revert along the bottom, as on BeOS).
 
-use olo_kit::{
-    egui::{self, Rect, pos2, vec2},
-    metrics as m,
-    widgets::Button,
-};
 use olo_protocol::Settings;
+use olo_ui::{
+    gpui::{Context, IntoElement, ParentElement as _, Styled as _, Window, div, px},
+    metrics as m, style, theme,
+    widgets::{Button, StringView},
+};
 
-use crate::{Ctx, about, ai, appearance, backup, bluetooth, datetime, display, integrations, keyboard, network, notifications, performance, power, screensaver, security, sound, terminal, themes, touchid, touchpad, tracker, windows, workspaces};
+use crate::{PanelView, about, ai, appearance, backup, bluetooth, datetime, display, form::Ui, integrations, keyboard, network, notifications, performance, power, screensaver, security, sound, terminal, themes, touchid, touchpad, tracker, windows, workspaces};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
@@ -197,7 +197,7 @@ impl Panel {
             Panel::Security => (420, 340),
             Panel::Sound => (440, 276),
             Panel::Terminal => (420, 390),
-            Panel::Themes => (560, 634),
+            Panel::Themes => (560, 672),
             Panel::TouchId => (420, 330),
             // Tall enough for Touch with both of its notes (a pad with no
             // pressure and the Apple driver's click thresholds).
@@ -219,7 +219,7 @@ impl Panel {
     }
 
     /// Put this panel's part of `settings` back to `from`.
-    fn reset(self, settings: &mut Settings, from: &Settings) {
+    pub fn reset(self, settings: &mut Settings, from: &Settings) {
         match self {
             Panel::Appearance => {
                 settings.appearance.theme = from.appearance.theme;
@@ -289,95 +289,103 @@ pub enum State {
 }
 
 impl State {
-    pub fn new(panel: Panel) -> State {
+    pub fn new(panel: Panel, window: &mut Window, cx: &mut Context<PanelView>) -> State {
         match panel {
-            Panel::Keyboard => State::Keyboard(Default::default()),
+            Panel::Keyboard => State::Keyboard(keyboard::State::new(cx)),
             Panel::Backgrounds => State::Backgrounds(Default::default()),
             Panel::Display => State::Display(Default::default()),
-            Panel::Sound => State::Sound(Default::default()),
-            Panel::DateTime => State::DateTime(Box::default()),
-            Panel::Network => State::Network(Box::default()),
-            Panel::Notifications => State::Notifications(Box::default()),
-            Panel::Performance => State::Performance(Box::default()),
-            Panel::Backup => State::Backup(Box::default()),
-            Panel::Bluetooth => State::Bluetooth(Box::default()),
-            Panel::TouchId => State::TouchId(Box::default()),
-            Panel::Touchpad => State::Touchpad(Default::default()),
-            Panel::Power => State::Power(Default::default()),
-            Panel::ScreenSaver => State::ScreenSaver(Default::default()),
-            Panel::About => State::About(about::State::new()),
-            Panel::Integrations => State::Integrations(Box::default()),
+            Panel::Sound => State::Sound(sound::State::new(cx)),
+            Panel::DateTime => State::DateTime(Box::new(datetime::State::new(cx))),
+            Panel::Network => State::Network(Box::new(network::State::new(cx))),
+            Panel::Notifications => State::Notifications(Box::new(notifications::State::new(cx))),
+            Panel::Performance => State::Performance(Box::new(performance::State::new(cx))),
+            Panel::Backup => State::Backup(Box::new(backup::State::new(cx))),
+            Panel::Bluetooth => State::Bluetooth(Box::new(bluetooth::State::new(cx))),
+            Panel::TouchId => State::TouchId(Box::new(touchid::State::new(cx))),
+            Panel::Touchpad => State::Touchpad(touchpad::State::new(cx)),
+            Panel::Power => State::Power(power::State::new(cx)),
+            Panel::ScreenSaver => State::ScreenSaver(screensaver::State::new(window, cx)),
+            Panel::About => State::About(about::State::new(cx)),
+            Panel::Integrations => State::Integrations(Box::new(integrations::State::new(cx))),
             _ => State::None,
         }
     }
 }
 
-pub fn ui(panel: Panel, state: &mut State, ui: &mut egui::Ui, ctx: Ctx<'_>) {
-    let full = ui.max_rect();
-    let footer = if panel.resettable() { m::CONTROL_HEIGHT + m::WINDOW_INSET } else { 0.0 };
-    let body = Rect::from_min_max(
-        full.min + vec2(m::WINDOW_INSET, m::WINDOW_INSET),
-        pos2(full.right() - m::WINDOW_INSET, full.bottom() - m::WINDOW_INSET - footer),
-    );
-    let Ctx { settings, outputs, power, opened, server } = ctx;
-    ui.scope_builder(egui::UiBuilder::new().max_rect(body).layout(egui::Layout::top_down(egui::Align::Min)), |ui| {
-        ui.spacing_mut().item_spacing.y = m::SPACING;
-        match (panel, state) {
-            (Panel::Appearance, _) => appearance::ui(ui, settings),
-            (Panel::Backgrounds, State::Backgrounds(s)) => workspaces::backgrounds_ui(ui, settings, s),
-            (Panel::Display, State::Display(s)) => display::ui(ui, settings, outputs, power, server, s),
-            (Panel::Keyboard, State::Keyboard(s)) => keyboard::ui(ui, settings, power, server, s),
-            (Panel::Power, State::Power(s)) => power::ui(ui, settings, power, server, s),
-            (Panel::ScreenSaver, State::ScreenSaver(s)) => screensaver::ui(ui, settings, server, s),
-            (Panel::Sound, State::Sound(s)) => sound::ui(ui, s),
-            (Panel::Security, _) => security::ui(ui, settings),
-            (Panel::Ai, _) => ai::ui(ui, settings),
-            (Panel::Themes, _) => themes::ui(ui, settings),
-            (Panel::DateTime, State::DateTime(s)) => datetime::ui(ui, settings, s),
-            (Panel::Network, State::Network(s)) => network::ui(ui, s),
-            (Panel::Notifications, State::Notifications(s)) => notifications::ui(ui, &settings.clock, s),
-            (Panel::Performance, State::Performance(s)) => performance::ui(ui, s),
-            (Panel::Backup, State::Backup(s)) => backup::ui(ui, settings, s),
-            (Panel::Bluetooth, State::Bluetooth(s)) => bluetooth::ui(ui, s),
-            (Panel::TouchId, State::TouchId(s)) => touchid::ui(ui, s),
-            (Panel::Touchpad, State::Touchpad(s)) => touchpad::ui(ui, settings, s),
-            (Panel::Tracker, _) => tracker::ui(ui, settings),
-            (Panel::Terminal, _) => terminal::ui(ui, settings),
-            (Panel::Windows, _) => windows::ui(ui, settings, outputs),
-            (Panel::Workspaces, _) => workspaces::ui(ui, settings),
-            (Panel::About, State::About(s)) => about::ui(ui, s),
-            (Panel::Integrations, State::Integrations(s)) => integrations::ui(ui, s),
-            _ => {}
-        }
-    });
-    if panel.resettable() {
-        let y = full.bottom() - m::WINDOW_INSET - m::CONTROL_HEIGHT;
-        let bw = m::BUTTON_MIN_WIDTH;
-        let at = |x: f32| Rect::from_min_size(pos2(x, y), vec2(bw, m::CONTROL_HEIGHT));
-        let defaults = Settings::default();
-        let mut probe = settings.clone();
-        panel.reset(&mut probe, &defaults);
-        let is_default = probe == *settings;
-        let mut probe = settings.clone();
-        panel.reset(&mut probe, opened);
-        let is_opened = probe == *settings;
-        if ui
-            .add_enabled_ui(!is_default, |ui| ui.put(at(full.left() + m::WINDOW_INSET), Button::new("Defaults")))
-            .inner
-            .clicked()
-        {
-            panel.reset(settings, &defaults);
-        }
-        if ui
-            .add_enabled_ui(!is_opened, |ui| {
-                ui.put(at(full.left() + m::WINDOW_INSET + bw + m::SPACING), Button::new("Revert"))
-            })
-            .inner
-            .clicked()
-        {
-            panel.reset(settings, opened);
-        }
+/// A panel's window: the panel's controls, and Defaults and Revert along
+/// the bottom for those that change settings (each enabled only when it
+/// would change something).
+pub fn render(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView>) -> impl IntoElement {
+    let panel = v.panel;
+    let (settings, outputs, power, server) = {
+        let p = v.prefs.read(cx);
+        (p.settings.clone(), p.outputs.clone(), p.power.clone(), p.server.clone())
+    };
+    let root = div().size_full().flex().flex_col();
+    // Not connected (yet): panels that need app_server wait.
+    if settings.is_none() && panel.needs_server() {
+        let p = theme::palette(cx);
+        return root.items_center().justify_center().child(StringView::new("Waiting for app_server…").color(style::disabled_text(&p)));
     }
+    let s = settings.unwrap_or_default();
+    let prefs = v.prefs.downgrade();
+    let mut ui = Ui::new(window, cx, &s, prefs, &mut v.fields);
+    let power = power.as_ref();
+    match (panel, &mut v.state) {
+        (Panel::Appearance, _) => appearance::ui(&mut ui),
+        (Panel::Backgrounds, State::Backgrounds(st)) => workspaces::backgrounds_ui(&mut ui, st),
+        (Panel::Display, State::Display(st)) => display::ui(&mut ui, &outputs, power, &server, st),
+        (Panel::Keyboard, State::Keyboard(st)) => keyboard::ui(&mut ui, power, &server, st),
+        (Panel::Power, State::Power(st)) => power::ui(&mut ui, power, &server, st),
+        (Panel::ScreenSaver, State::ScreenSaver(st)) => screensaver::ui(&mut ui, &server, st),
+        (Panel::Sound, State::Sound(st)) => sound::ui(&mut ui, st),
+        (Panel::Security, _) => security::ui(&mut ui),
+        (Panel::Ai, _) => ai::ui(&mut ui),
+        (Panel::Themes, _) => themes::ui(&mut ui),
+        (Panel::DateTime, State::DateTime(st)) => datetime::ui(&mut ui, st),
+        (Panel::Network, State::Network(st)) => network::ui(&mut ui, st),
+        (Panel::Notifications, State::Notifications(st)) => notifications::ui(&mut ui, st),
+        (Panel::Performance, State::Performance(st)) => performance::ui(&mut ui, st),
+        (Panel::Backup, State::Backup(st)) => backup::ui(&mut ui, st),
+        (Panel::Bluetooth, State::Bluetooth(st)) => bluetooth::ui(&mut ui, st),
+        (Panel::TouchId, State::TouchId(st)) => touchid::ui(&mut ui, st),
+        (Panel::Touchpad, State::Touchpad(st)) => touchpad::ui(&mut ui, st),
+        (Panel::Tracker, _) => tracker::ui(&mut ui),
+        (Panel::Terminal, _) => terminal::ui(&mut ui),
+        (Panel::Windows, _) => windows::ui(&mut ui, &outputs),
+        (Panel::Workspaces, _) => workspaces::ui(&mut ui),
+        (Panel::About, State::About(st)) => about::ui(&mut ui, st),
+        (Panel::Integrations, State::Integrations(st)) => integrations::ui(&mut ui, st),
+        _ => {}
+    }
+    let items = ui.take();
+    let body = div().flex_1().min_h_0().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).children(items);
+    let root = root.child(body);
+    if !panel.resettable() {
+        return root;
+    }
+    let defaults = Settings::default();
+    let differs = |from: &Settings| {
+        let mut probe = s.clone();
+        panel.reset(&mut probe, from);
+        probe != s
+    };
+    let (to_defaults, to_opened) = (differs(&defaults), differs(&v.opened));
+    let (d, r) = (v.prefs.downgrade(), v.prefs.downgrade());
+    let opened = v.opened.clone();
+    let footer = div()
+        .flex()
+        .flex_row()
+        .gap(px(m::SPACING))
+        .px(px(m::WINDOW_INSET))
+        .pb(px(m::WINDOW_INSET))
+        .child(Button::new("Defaults").min_width(m::BUTTON_MIN_WIDTH).enabled(to_defaults).on_click(move |_, cx| {
+            let _ = d.update(cx, |p, cx| p.edit(cx, |s| panel.reset(s, &Settings::default())));
+        }))
+        .child(Button::new("Revert").min_width(m::BUTTON_MIN_WIDTH).enabled(to_opened).on_click(move |_, cx| {
+            let _ = r.update(cx, |p, cx| p.edit(cx, |s| panel.reset(s, &opened)));
+        }));
+    root.child(footer)
 }
 
 #[cfg(test)]
@@ -389,8 +397,8 @@ mod tests {
     fn deskbar_lists_every_panel() {
         let ours: Vec<(&str, &str, &str)> =
             Panel::ALL.iter().filter(|p| **p != Panel::About).map(|p| (p.arg(), p.title(), p.icon())).collect();
-        assert_eq!(ours, olo_kit::apps::PREFERENCE_PANELS);
-        for (arg, _, _) in olo_kit::apps::PREFERENCE_PANELS {
+        assert_eq!(ours, olo_xdg::apps::PREFERENCE_PANELS);
+        for (arg, _, _) in olo_xdg::apps::PREFERENCE_PANELS {
             assert!(Panel::from_arg(arg).is_some());
         }
     }

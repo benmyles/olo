@@ -22,7 +22,9 @@ in both orders on any two paths (conflicting order), across functions
 and crates; std's, parking_lot's and spin's Mutex and RwLock. It needs
 the exact nightly it was built for (NIGHTLY below); --install puts that
 toolchain and lockbud in place (a clone under /var/tmp/olo-lockbud).
-olo_sync's locks are std's under it (`--cfg olo_lockbud`). It builds in
+olo_sync's locks are std's under it (`--cfg olo_lockbud`), and build
+scripts are shown a stable compiler (some turn on nightly-only code
+newer than lockbud's nightly when they see one). It builds in
 a target directory of its own under /var/tmp/olo-lockbud (its
 crates are cleaned first: lockbud only sees what it compiles), and
 writes its report to /var/tmp/olo-lockbud/report-<time>.txt as well
@@ -73,30 +75,33 @@ def install():
 
 # The compiler as build scripts see it: stable. Some turn nightly-only
 # code on when they see a nightly (pathfinder_simd, under GPUI), written
-# for a newer nightly than lockbud's; cargo itself sees it as it is.
+# for a newer nightly than lockbud's. They ask through RUSTC_WRAPPER,
+# which cargo-lockbud sets to `lockbud` (found on PATH): this stands in
+# front of it, answering a build script's `-vV` and passing the rest.
 FACE = """#!/bin/sh
-if [ -n "$CARGO_PKG_NAME" ] && [ "$1" = "-vV" ]; then
-    "{real}" -vV | sed 's/-nightly//g'
+if [ -n "$CARGO_PKG_NAME" ] && [ "$2" = "-vV" ]; then
+    "{rustc}" -vV | sed 's/-nightly//g'
     exit
 fi
-exec "{real}" "$@"
+exec "{lockbud}" "$@"
 """
 
 
-def rustc_face():
-    real = subprocess.run(["rustup", "which", "rustc", "--toolchain", NIGHTLY], check=True,
-                          capture_output=True, text=True).stdout.strip()
-    # (Named rustc: lockbud takes the first argument it is given as the
-    # compiler only if it is.)
-    path = os.path.join(SCRATCH, "face", "rustc")
+def lockbud_face():
+    """A directory with the stand-in `lockbud`, for the front of PATH."""
+    rustc = subprocess.run(["rustup", "which", "rustc", "--toolchain", NIGHTLY], check=True,
+                           capture_output=True, text=True).stdout.strip()
+    real = shutil.which("lockbud") or os.path.expanduser("~/.cargo/bin/lockbud")
+    face = os.path.join(SCRATCH, "face")
+    path = os.path.join(face, "lockbud")
     if not os.path.exists(path):
         # (Build scripts already run saw the compiler as it is.)
         shutil.rmtree(os.path.join(SCRATCH, "target"), ignore_errors=True)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    os.makedirs(face, exist_ok=True)
     with open(path, "w") as f:
-        f.write(FACE.format(real=real))
+        f.write(FACE.format(rustc=rustc, lockbud=real))
     os.chmod(path, 0o755)
-    return path
+    return face
 
 
 def lockbud(crates):
@@ -104,10 +109,12 @@ def lockbud(crates):
                       capture_output=True).returncode != 0:
         sys.exit(f"lockbud isn't installed for {NIGHTLY}: tools/dev/lockcheck lockbud --install")
     target = os.path.join(SCRATCH, "target")
+    # (cfg_select!, which the vendored epaint uses, is stable after
+    # lockbud's nightly: allowed in every crate there.)
     env = dict(os.environ, CARGO_TARGET_DIR=target,
-               RUSTFLAGS=(os.environ.get("RUSTFLAGS", "") + " --cfg olo_lockbud").strip())
+               RUSTFLAGS=(os.environ.get("RUSTFLAGS", "") + " --cfg olo_lockbud -Zcrate-attr=feature(cfg_select)").strip())
     names = crates or members()
-    face = rustc_face()
+    env["PATH"] = lockbud_face() + os.pathsep + env.get("PATH", "")
     # (Only what it compiles is analysed: Olo's crates are built again,
     # what they depend on is kept.)
     if os.path.isdir(target):
@@ -115,14 +122,15 @@ def lockbud(crates):
             subprocess.run(["cargo", f"+{NIGHTLY}", "clean", "-p", n], cwd=ROOT, env=env, capture_output=True)
     report = os.path.join(SCRATCH, time.strftime("report-%Y%m%d-%H%M%S.txt"))
     os.makedirs(SCRATCH, exist_ok=True)
-    cmd = ["cargo", f"+{NIGHTLY}", "lockbud", "-k", "deadlock", "-l", ",".join(n.replace("-", "_") for n in names),
-           "--", "--config", f'build.rustc="{face}"']
+    cmd = ["cargo", f"+{NIGHTLY}", "lockbud", "-k", "deadlock", "-l", ",".join(n.replace("-", "_") for n in names)]
     print("+", " ".join(cmd), flush=True)
     with open(report, "w") as out:
         p = subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         for line in p.stdout:
             sys.stdout.write(line)
+            sys.stdout.flush()
             out.write(line)
+            out.flush()
         code = p.wait()
     print(f"report: {report}")
     return code

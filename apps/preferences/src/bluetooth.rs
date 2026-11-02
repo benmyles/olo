@@ -8,18 +8,21 @@
 use std::{
     collections::HashMap,
     sync::{
-        Arc, Mutex, OnceLock,
+        Arc, OnceLock,
         mpsc::{RecvTimeoutError, Sender, channel},
     },
     time::{Duration, Instant},
 };
 
-use olo_kit::{
-    egui::{Context, Key, Rect, Ui, UiBuilder, vec2},
-    metrics as m,
-    widgets::{BBox, Button, CheckBox, Column, ColumnListView, EmptyState, ListState, StringView, TextControl},
-};
+use olo_sync::Mutex;
 use olo_system::bluetooth::{self as bt, Agent, AgentEvent, Ask, Question, Status};
+use olo_ui::{
+    gpui::{AppContext as _, Context, Entity, ParentElement as _, Styled as _, div, px},
+    metrics as m,
+    widgets::{Button, CheckBox, Column, ColumnListView, EmptyState, ListModel, StringView, TextControl, TextField, TextFieldEvent},
+};
+
+use crate::{Msg, PanelView, form::Ui, panel};
 
 /// How long a search for devices runs.
 const SEARCH: Duration = Duration::from_secs(30);
@@ -42,62 +45,29 @@ struct Shared {
 struct Link {
     shared: Arc<Mutex<Shared>>,
     tx: Sender<Request>,
-    contexts: Arc<Mutex<Vec<Context>>>,
+    proxy: olo_ui::Proxy,
 }
 
-fn wake(contexts: &Mutex<Vec<Context>>) {
-    contexts.lock().unwrap().iter().for_each(|c| c.request_repaint());
-}
-
-/// What tests show instead of BlueZ's (for the layout lint): an adapter
-/// searching, and devices with long names.
-#[cfg(test)]
-fn sample(sh: &mut Shared) {
-    let device = |name: &str, icon: &str, paired, connected, battery| bt::Device {
-        path: format!("/org/bluez/hci0/{name}"),
-        name: name.into(),
-        address: "AC:DE:48:00:11:22".into(),
-        icon: icon.into(),
-        named: true,
-        paired,
-        connected,
-        trusted: paired,
-        rssi: Some(-60),
-        battery,
-    };
-    sh.status = Some(Ok(Status {
-        adapter: Some(bt::Adapter { path: "/org/bluez/hci0".into(), name: "aurora".into(), address: "AC:DE:48:00:00:01".into(), powered: true, discoverable: false, discovering: true }),
-        devices: vec![
-            device("Someone's AirPods Pro (2nd generation)", "audio-headphones", true, true, Some(80)),
-            device("Magic Keyboard with Touch ID and Numeric Keypad", "input-keyboard", true, false, Some(55)),
-            device("Living Room Television", "video-display", false, false, None),
-        ],
-    }));
-}
-
-fn link() -> &'static Link {
+/// BlueZ's watcher and pairing agent (one for the app), telling the
+/// windows through `proxy` when anything changes.
+fn link(proxy: olo_ui::Proxy) -> &'static Link {
     static LINK: OnceLock<Link> = OnceLock::new();
     LINK.get_or_init(|| {
         let shared: Arc<Mutex<Shared>> = Default::default();
-        #[cfg(test)]
-        sample(&mut shared.lock().unwrap());
-        let contexts: Arc<Mutex<Vec<Context>>> = Default::default();
         let (tx, rx) = channel::<Request>();
-        let (sh, ctxs) = (shared.clone(), contexts.clone());
+        let (sh, out) = (shared.clone(), proxy.clone());
         std::thread::Builder::new()
             .name("bluetooth".into())
             .spawn(move || {
-                if cfg!(test) {
-                    return;
-                }
+                let proxy = out;
                 let agent = {
-                    let (sh, ctxs) = (sh.clone(), ctxs.clone());
+                    let (sh, proxy) = (sh.clone(), proxy.clone());
                     Agent::register(move |e| {
                         sh.lock().unwrap().question = match e {
                             AgentEvent::Ask(q) => Some(q),
                             AgentEvent::Cancel => None,
                         };
-                        wake(&ctxs);
+                        proxy.send(Msg::Redraw);
                     })
                 };
                 if let Err(e) = &agent {
@@ -117,7 +87,7 @@ fn link() -> &'static Link {
                         std::mem::replace(&mut s.status, status.clone()) != status
                     };
                     if changed {
-                        wake(&ctxs);
+                        proxy.send(Msg::Redraw);
                     }
                     let req = match rx.recv_timeout(Duration::from_secs(1)) {
                         Ok(r) => r,
@@ -138,23 +108,22 @@ fn link() -> &'static Link {
                         tracing::warn!("bluez: {e}");
                         what.to_owned()
                     });
-                    wake(&ctxs);
+                    proxy.send(Msg::Redraw);
                 }
                 drop(agent);
             })
             .expect("thread");
-        Link { shared, tx, contexts }
+        Link { shared, tx, proxy }
     })
 }
 
 /// Do something slow to a device on its own thread.
-fn act(device: String, doing: &'static str, failed: &'static str, f: impl FnOnce(&str) -> olo_system::Result<()> + Send + 'static) {
-    let link = link();
+fn act(link: &'static Link, device: String, doing: &'static str, failed: &'static str, f: impl FnOnce(&str) -> olo_system::Result<()> + Send + 'static) {
     link.shared.lock().unwrap().doing.insert(device.clone(), doing);
-    let (sh, ctxs) = (link.shared.clone(), link.contexts.clone());
+    link.proxy.send(Msg::Redraw);
     std::thread::spawn(move || {
         let r = f(&device);
-        let mut s = sh.lock().unwrap();
+        let mut s = link.shared.lock().unwrap();
         s.doing.remove(&device);
         if s.question.as_ref().is_some_and(|q| q.path == device) {
             s.question = None;
@@ -164,7 +133,7 @@ fn act(device: String, doing: &'static str, failed: &'static str, f: impl FnOnce
             failed.to_owned()
         });
         drop(s);
-        wake(&ctxs);
+        link.proxy.send(Msg::Redraw);
     });
 }
 
@@ -174,41 +143,62 @@ fn cancel_pairing(device: String) {
     });
 }
 
-#[derive(Default)]
+/// Answers BlueZ's question (None: no), and clears the code typed.
+fn answer(link: &'static Link, typed: &Entity<TextField>, a: Option<String>, cx: &mut olo_ui::gpui::App) {
+    if let Some(q) = link.shared.lock().unwrap().question.take() {
+        q.answer(a);
+    }
+    typed.update(cx, |f, cx| f.set_text("", cx));
+}
+
 pub struct State {
-    list: ListState,
+    list: Entity<ListModel>,
     /// The selected device's path (the list reorders).
     selected: Option<String>,
     /// A search was started when the panel first showed.
     searched: bool,
     /// What's typed for a PIN or passkey.
-    typed: String,
+    typed: Entity<TextField>,
+    link: &'static Link,
+}
+
+impl State {
+    pub fn new(cx: &mut Context<PanelView>) -> State {
+        let link = link(olo_ui::proxy(cx));
+        let typed = cx.new(TextField::new);
+        // Return answers with the code.
+        cx.subscribe(&typed, move |_, field, e: &TextFieldEvent, cx| {
+            if matches!(e, TextFieldEvent::Entered) {
+                let code = field.read(cx).text().to_owned();
+                if !code.is_empty() {
+                    answer(link, &field, Some(code), cx);
+                }
+            }
+        })
+        .detach();
+        State { list: ListModel::new(cx, false), selected: None, searched: false, typed, link }
+    }
+}
+
+fn state_of(v: &mut PanelView) -> Option<&mut State> {
+    match &mut v.state {
+        panel::State::Bluetooth(st) => Some(st),
+        _ => None,
+    }
 }
 
 pub fn ui(ui: &mut Ui, st: &mut State) {
-    let link = link();
-    {
-        let mut ctxs = link.contexts.lock().unwrap();
-        if !ctxs.iter().any(|c| c == ui.ctx()) {
-            ctxs.push(ui.ctx().clone());
-        }
-    }
+    let link = st.link;
     let (status, doing, error) = {
         let sh = link.shared.lock().unwrap();
         (sh.status.clone(), sh.doing.clone(), sh.error.clone())
     };
     let status = match status {
-        None => {
-            ui.add(EmptyState::new("Looking for Bluetooth…").icon("bluetooth"));
-            return;
-        }
-        Some(Err(_)) => {
-            ui.add(EmptyState::new("The Bluetooth service (bluetoothd) isn't running.").icon("bluetooth"));
-            return;
-        }
+        None => return ui.add(EmptyState::new("Looking for Bluetooth…").icon("bluetooth")),
+        Some(Err(_)) => return ui.add(EmptyState::new("The Bluetooth service (bluetoothd) isn't running.").icon("bluetooth")),
         Some(Ok(s)) => s,
     };
-    let Some(adapter) = &status.adapter else {
+    let Some(adapter) = status.adapter.clone() else {
         ui.add(EmptyState::new("There's no Bluetooth adapter.").icon("bluetooth"));
         return;
     };
@@ -217,139 +207,161 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         let _ = link.tx.send(Request::Search(adapter.path.clone()));
     }
 
-    let mut on = adapter.powered;
-    ui.horizontal(|ui| {
-        ui.add(CheckBox::new(&mut on, "Bluetooth"));
-        ui.add_space(m::SPACING * 2.0);
-        let text = if adapter.powered { format!("This computer is “{}”.", adapter.name) } else { "Off".to_owned() };
-        ui.add(StringView::new(&text).dim(true));
-    });
-    if on != adapter.powered {
-        let _ = link.tx.send(Request::Power(adapter.path.clone(), on));
-    }
+    let text = if adapter.powered { format!("This computer is “{}”.", adapter.name) } else { "Off".to_owned() };
+    let path = adapter.path.clone();
+    ui.add(
+        div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(m::SPACING * 3.0))
+            .child(CheckBox::new("Bluetooth", adapter.powered).on_toggle(move |on, _, _| {
+                let _ = link.tx.send(Request::Power(path.clone(), on));
+            }))
+            .child(StringView::new(text).dim(true)),
+    );
     if !adapter.powered {
         return;
     }
 
     question(ui, st);
 
-    let devs: Vec<_> = status.devices.iter().filter(|d| d.named || d.paired).collect();
-    let devs = &devs;
-    st.list.selected.clear();
-    if let Some(i) = st.selected.as_ref().and_then(|s| devs.iter().position(|d| d.path == *s)) {
-        st.list.select(i);
-    }
-    let columns = [Column::new("Device", 200.0), Column::new("Type", 110.0), Column::new("Status", 90.0)];
-    let list = Rect::from_min_size(ui.cursor().min, vec2(ui.available_width(), (ui.available_height() - 2.0 * (m::CONTROL_HEIGHT + m::SPACING)).max(90.0)));
-    let resp = ui
-        .scope_builder(UiBuilder::new().max_rect(list), |ui| {
-            ColumnListView::new("bt-devices", &columns, devs.len(), &mut st.list).show(ui, |cell| {
-                let d = &devs[cell.row];
-                match cell.column {
-                    0 => cell.text(&d.name),
-                    1 => cell.text(d.kind()),
-                    _ => {
-                        let text = match (doing.get(&d.path), d.connected, d.paired) {
-                            (Some(doing), ..) => (*doing).to_owned(),
-                            (None, true, _) => d.battery.map_or("Connected".to_owned(), |b| format!("Connected, {b}%")),
-                            (None, false, true) => "Paired".to_owned(),
-                            _ => String::new(),
-                        };
-                        cell.text(&text);
-                    }
-                }
-            })
-        })
-        .inner;
-    ui.advance_cursor_after_rect(list);
-    let picked = st.list.single().and_then(|i| devs.get(i)).map(|d| (*d).clone());
-    if resp.selection_changed {
-        st.selected = picked.as_ref().map(|d| d.path.clone());
-    }
-
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = m::SPACING;
-        let label = if adapter.discovering { "Searching…" } else { "Search" };
-        if ui.add_enabled_ui(!adapter.discovering, |ui| ui.add(Button::new(label))).inner.clicked() {
-            let _ = link.tx.send(Request::Search(adapter.path.clone()));
-        }
-        let Some(d) = picked else {
-            if devs.is_empty() {
-                ui.add(StringView::new("Put a device in pairing mode to see it here.").dim(true));
-            }
-            return;
-        };
-        let busy = doing.contains_key(&d.path);
-        ui.add_enabled_ui(!busy, |ui| {
-            if !d.paired {
-                if ui.add(Button::new("Pair").default(true)).clicked() || resp.activated.is_some() {
-                    act(d.path.clone(), "Pairing…", "Pairing didn't work.", bt::pair);
-                }
-            } else if d.connected {
-                if ui.add(Button::new("Disconnect")).clicked() {
-                    act(d.path.clone(), "Disconnecting…", "The device couldn't be disconnected.", bt::disconnect);
-                }
-            } else if ui.add(Button::new("Connect").default(true)).clicked() || resp.activated.is_some() {
-                act(d.path.clone(), "Connecting…", "The device didn't connect.", bt::connect);
-            }
-            if d.paired && ui.add(Button::new("Remove")).clicked() {
-                let adapter = adapter.path.clone();
-                act(d.path.clone(), "Removing…", "The device couldn't be removed.", move |dev| bt::remove(&adapter, dev));
-            }
-        });
-        if busy && doing.get(&d.path) == Some(&"Pairing…") && ui.add(Button::new("Cancel")).clicked() {
-            cancel_pairing(d.path.clone());
+    let devs: Vec<bt::Device> = status.devices.iter().filter(|d| d.named || d.paired).cloned().collect();
+    let at = st.selected.as_ref().and_then(|s| devs.iter().position(|d| d.path == *s));
+    st.list.update(ui.cx, |l, _| {
+        l.state.selected.clear();
+        if let Some(i) = at {
+            l.state.select(i);
         }
     });
-    if let Some(e) = &error {
-        ui.add(StringView::new(e));
+    let columns = vec![Column::new("Device", 200.0), Column::new("Type", 110.0), Column::new("Status", 90.0)];
+    let (cells, doing2) = (devs.clone(), doing.clone());
+    let paths: Vec<String> = devs.iter().map(|d| d.path.clone()).collect();
+    let model = st.list.clone();
+    let pick = ui.on_view(move |v, _: (), _, cx| {
+        let row = model.read(cx).state.single();
+        if let Some(st) = state_of(v) {
+            st.selected = row.and_then(|i| paths.get(i).cloned());
+        }
+        cx.notify();
+    });
+    let picked = at.and_then(|i| devs.get(i)).cloned();
+    // A double click (or Return) pairs or connects, as the button would.
+    let open = {
+        let picked = picked.clone();
+        move |_: usize, _: &mut olo_ui::gpui::Window, _: &mut olo_ui::gpui::App| {
+            if let Some(d) = &picked
+                && !doing2.contains_key(&d.path)
+                && !d.connected
+            {
+                if d.paired {
+                    act(link, d.path.clone(), "Connecting…", "The device didn't connect.", bt::connect);
+                } else {
+                    act(link, d.path.clone(), "Pairing…", "Pairing didn't work.", bt::pair);
+                }
+            }
+        }
+    };
+    let doing3 = doing.clone();
+    let list = ColumnListView::new("bt-devices", &st.list, columns, devs.len(), move |cell, window, cx| {
+        let d = &cells[cell.row];
+        match cell.column {
+            0 => cell.text(window, cx, d.name.clone()),
+            1 => cell.text(window, cx, d.kind()),
+            _ => {
+                let text = match (doing3.get(&d.path), d.connected, d.paired) {
+                    (Some(doing), ..) => (*doing).to_owned(),
+                    (None, true, _) => d.battery.map_or("Connected".to_owned(), |b| format!("Connected, {b}%")),
+                    (None, false, true) => "Paired".to_owned(),
+                    _ => String::new(),
+                };
+                cell.text(window, cx, text);
+            }
+        }
+    })
+    .on_select(move |window, cx| pick((), window, cx))
+    .on_open(open);
+    ui.add(div().flex_1().min_h(px(90.0)).child(list));
+
+    let label = if adapter.discovering { "Searching…" } else { "Search" };
+    let path = adapter.path.clone();
+    let mut row = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(Button::new(label).enabled(!adapter.discovering).on_click(move |_, _| {
+        let _ = link.tx.send(Request::Search(path.clone()));
+    }));
+    match picked {
+        None => {
+            if devs.is_empty() {
+                row = row.child(StringView::new("Put a device in pairing mode to see it here.").dim(true));
+            }
+        }
+        Some(d) => {
+            let busy = doing.contains_key(&d.path);
+            let p = d.path.clone();
+            row = if !d.paired {
+                row.child(Button::new("Pair").default(true).enabled(!busy).on_click(move |_, _| act(link, p.clone(), "Pairing…", "Pairing didn't work.", bt::pair)))
+            } else if d.connected {
+                row.child(Button::new("Disconnect").enabled(!busy).on_click(move |_, _| act(link, p.clone(), "Disconnecting…", "The device couldn't be disconnected.", bt::disconnect)))
+            } else {
+                row.child(Button::new("Connect").default(true).enabled(!busy).on_click(move |_, _| act(link, p.clone(), "Connecting…", "The device didn't connect.", bt::connect)))
+            };
+            if d.paired {
+                let (adapter, p) = (adapter.path.clone(), d.path.clone());
+                row = row.child(Button::new("Remove").enabled(!busy).on_click(move |_, _| {
+                    let adapter = adapter.clone();
+                    act(link, p.clone(), "Removing…", "The device couldn't be removed.", move |dev| bt::remove(&adapter, dev));
+                }));
+            }
+            if busy && doing.get(&d.path) == Some(&"Pairing…") {
+                let p = d.path.clone();
+                row = row.child(Button::new("Cancel").on_click(move |_, _| cancel_pairing(p.clone())));
+            }
+        }
+    }
+    ui.add(row);
+    if let Some(e) = error {
+        ui.label(e);
     }
 }
 
 /// BlueZ's question for a pairing in progress, with its answers.
 fn question(ui: &mut Ui, st: &mut State) {
-    let mut sh = link().shared.lock().unwrap();
-    let Some(q) = &sh.question else { return };
-    let (text, typed) = match &q.ask {
-        Ask::Confirm(n) => (format!("Does “{}” show {n:06}?", q.device), false),
-        Ask::ShowPasskey(n) => (format!("Type {n:06} on “{}”, then press Return.", q.device), false),
-        Ask::ShowPin(p) => (format!("Type {p} on “{}”, then press Return.", q.device), false),
-        Ask::EnterPin => (format!("Type the PIN for “{}” (often 0000).", q.device), true),
-        Ask::EnterPasskey => (format!("Type the passkey shown by “{}”.", q.device), true),
-        Ask::Authorize => (format!("“{}” wants to pair with this computer.", q.device), false),
+    let link = st.link;
+    let (q_text, typed, only_ok, path) = {
+        let sh = link.shared.lock().unwrap();
+        let Some(q) = &sh.question else { return };
+        let (text, typed) = match &q.ask {
+            Ask::Confirm(n) => (format!("Does “{}” show {n:06}?", q.device), false),
+            Ask::ShowPasskey(n) => (format!("Type {n:06} on “{}”, then press Return.", q.device), false),
+            Ask::ShowPin(p) => (format!("Type {p} on “{}”, then press Return.", q.device), false),
+            Ask::EnterPin => (format!("Type the PIN for “{}” (often 0000).", q.device), true),
+            Ask::EnterPasskey => (format!("Type the passkey shown by “{}”.", q.device), true),
+            Ask::Authorize => (format!("“{}” wants to pair with this computer.", q.device), false),
+        };
+        (text, typed, matches!(q.ask, Ask::ShowPasskey(_) | Ask::ShowPin(_)), q.path.clone())
     };
-    let only_ok = matches!(q.ask, Ask::ShowPasskey(_) | Ask::ShowPin(_));
-    let mut answer: Option<Option<String>> = None;
-    BBox::new("Pairing").show(ui, |ui| {
-        ui.add(StringView::new(&text));
+    let field = st.typed.clone();
+    let code = field.read(ui.cx).text().to_owned();
+    ui.bbox("Pairing", |ui| {
+        ui.label(q_text);
         if typed {
-            let r = ui.add(TextControl::new(&mut st.typed).label("Code:").divider(72.0).autofocus(true));
-            if r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) && !st.typed.is_empty() {
-                answer = Some(Some(std::mem::take(&mut st.typed)));
-            }
+            ui.add(TextControl::new(field.clone()).label("Code:").divider(72.0));
         }
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = m::SPACING;
-            if only_ok {
-                if ui.add(Button::new("Cancel")).clicked() {
-                    cancel_pairing(q.path.clone());
-                    answer = Some(None);
-                }
-                return;
-            }
-            if ui.add(Button::new(if typed { "Cancel" } else { "Reject" })).clicked() {
-                answer = Some(None);
-            }
-            let label = if typed { "Pair" } else { "Accept" };
-            if ui.add_enabled_ui(!typed || !st.typed.is_empty(), |ui| ui.add(Button::new(label).default(true))).inner.clicked() {
-                answer = Some(Some(std::mem::take(&mut st.typed)));
-            }
-        });
+        let mut row = div().flex().flex_row().gap(px(m::SPACING));
+        if only_ok {
+            let f = field.clone();
+            row = row.child(Button::new("Cancel").on_click(move |_, cx| {
+                cancel_pairing(path.clone());
+                answer(link, &f, None, cx);
+            }));
+        } else {
+            let (no, yes) = (field.clone(), field.clone());
+            row = row
+                .child(Button::new(if typed { "Cancel" } else { "Reject" }).on_click(move |_, cx| answer(link, &no, None, cx)))
+                .child(Button::new(if typed { "Pair" } else { "Accept" }).default(true).enabled(!typed || !code.is_empty()).on_click(move |_, cx| {
+                    let code = yes.read(cx).text().to_owned();
+                    answer(link, &yes, Some(code), cx);
+                }));
+        }
+        ui.add(row);
     });
-    if let Some(a) = answer
-        && let Some(q) = sh.question.take()
-    {
-        q.answer(a);
-        st.typed.clear();
-    }
 }

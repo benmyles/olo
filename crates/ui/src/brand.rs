@@ -72,7 +72,12 @@ fn load(theme: &'static str, dark: bool) -> Option<(Vec<u8>, usize, usize)> {
 /// version (they needn't be one shape); None while it loads or if there
 /// is none.
 pub fn wordmark_width(height: f32, dark: bool) -> Option<f32> {
-    let theme = olo_xdg::themes::current().id;
+    wordmark_width_in(olo_xdg::themes::current().id, height, dark)
+}
+
+/// [`wordmark_width`] for theme `theme` (its id).
+pub fn wordmark_width_in(theme: &str, height: f32, dark: bool) -> Option<f32> {
+    let theme = olo_xdg::themes::resolve(theme).id;
     source(theme, dark)?.ok().map(|s| height * s.1 as f32 / s.2 as f32)
 }
 
@@ -89,7 +94,13 @@ pub enum Drawn {
 /// Draws the wordmark `b.size.height` tall, centred in `b` once its
 /// width is whole device pixels, its top on a device pixel.
 pub fn wordmark_centred(window: &mut Window, b: Bounds<Pixels>, dark: bool) -> Drawn {
-    let theme = olo_xdg::themes::current().id;
+    wordmark_centred_in(window, b, dark, olo_xdg::themes::current().id)
+}
+
+/// [`wordmark_centred`] in theme `theme` (its id): Preferences ▸ Themes
+/// shows each theme's.
+pub fn wordmark_centred_in(window: &mut Window, b: Bounds<Pixels>, dark: bool, theme: &str) -> Drawn {
+    let theme = olo_xdg::themes::resolve(theme).id;
     let src = match source(theme, dark) {
         None => return Drawn::Loading,
         Some(Err(())) => return Drawn::Missing,
@@ -100,9 +111,10 @@ pub fn wordmark_centred(window: &mut Window, b: Bounds<Pixels>, dark: bool) -> D
     let tw = ((th as f32) * src.1 as f32 / src.2 as f32).round().max(1.0) as u32;
     let image = {
         let mut c = cache().lock().unwrap();
-        if c.current != theme {
-            c.current = theme;
-            c.images.retain(|k, _| k.0 == theme);
+        let current = olo_xdg::themes::current().id;
+        if c.current != current {
+            c.current = current;
+            c.images.retain(|k, _| k.0 == current);
         }
         c.images.entry((theme, dark, th)).or_insert_with(|| picture(&src, tw, th)).clone()
     };

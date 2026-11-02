@@ -21,6 +21,7 @@ pub mod icons;
 pub mod keys;
 pub mod menu;
 pub mod part;
+pub mod pictures;
 pub mod review;
 pub mod search;
 pub mod spell;
