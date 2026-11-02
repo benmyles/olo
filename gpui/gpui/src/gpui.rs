@@ -145,6 +145,7 @@ pub trait AppContext {
     ) -> Self::Result<Entity<T>>;
 
     /// Update a entity in the app context.
+    #[track_caller]
     fn update_entity<T, R>(
         &mut self,
         handle: &Entity<T>,
@@ -159,6 +160,7 @@ pub trait AppContext {
         T: 'static;
 
     /// Read a entity from the app context.
+    #[track_caller]
     fn read_entity<T, R>(
         &self,
         handle: &Entity<T>,
@@ -210,6 +212,7 @@ pub trait VisualContext: AppContext {
     fn window_handle(&self) -> AnyWindowHandle;
 
     /// Update a view with the given callback
+    #[track_caller]
     fn update_window_entity<T: 'static, R>(
         &mut self,
         entity: &Entity<T>,

@@ -106,15 +106,27 @@ impl EntityMap {
     /// Move an entity to the stack.
     #[track_caller]
     pub fn lease<T>(&mut self, pointer: &Entity<T>) -> Lease<T> {
+        self.lease_at(pointer, std::panic::Location::caller())
+    }
+
+    /// [`Self::lease`] for an update begun at `at` (Olo: debug builds
+    /// keep it, so a read or update of the entity meanwhile names both
+    /// sides).
+    #[track_caller]
+    pub fn lease_at<T>(&mut self, pointer: &Entity<T>, at: &'static std::panic::Location<'static>) -> Lease<T> {
         self.assert_valid_context(pointer);
         let mut accessed_entities = self.accessed_entities.borrow_mut();
         accessed_entities.insert(pointer.entity_id);
 
-        let entity = Some(
-            self.entities
-                .remove(pointer.entity_id)
-                .unwrap_or_else(|| double_lease_panic::<T>("update")),
-        );
+        // Olo: a match, not a closure, so the panic names the caller.
+        let entity = match self.entities.remove(pointer.entity_id) {
+            Some(entity) => Some(entity),
+            None => double_lease_panic::<T>("update", pointer.entity_id),
+        };
+        #[cfg(debug_assertions)]
+        LEASED_AT.with_borrow_mut(|l| l.insert(pointer.entity_id, at));
+        #[cfg(not(debug_assertions))]
+        let _ = at;
         Lease {
             entity,
             id: pointer.entity_id,
@@ -124,18 +136,21 @@ impl EntityMap {
 
     /// Returns an entity after moving it to the stack.
     pub fn end_lease<T>(&mut self, mut lease: Lease<T>) {
+        #[cfg(debug_assertions)]
+        LEASED_AT.with_borrow_mut(|l| l.remove(&lease.id));
         self.entities.insert(lease.id, lease.entity.take().unwrap());
     }
 
+    #[track_caller]
     pub fn read<T: 'static>(&self, entity: &Entity<T>) -> &T {
         self.assert_valid_context(entity);
         let mut accessed_entities = self.accessed_entities.borrow_mut();
         accessed_entities.insert(entity.entity_id);
 
-        self.entities
-            .get(entity.entity_id)
-            .and_then(|entity| entity.downcast_ref())
-            .unwrap_or_else(|| double_lease_panic::<T>("read"))
+        match self.entities.get(entity.entity_id).and_then(|entity| entity.downcast_ref()) {
+            Some(entity) => entity,
+            None => double_lease_panic::<T>("read", entity.entity_id),
+        }
     }
 
     fn assert_valid_context(&self, entity: &AnyEntity) {
@@ -178,10 +193,23 @@ impl EntityMap {
     }
 }
 
+#[cfg(debug_assertions)]
+thread_local! {
+    /// Olo: where each entity being updated was taken out (debug builds).
+    static LEASED_AT: std::cell::RefCell<collections::FxHashMap<EntityId, &'static std::panic::Location<'static>>> = Default::default();
+}
+
 #[track_caller]
-fn double_lease_panic<T>(operation: &str) -> ! {
+fn double_lease_panic<T>(operation: &str, id: EntityId) -> ! {
+    #[cfg(debug_assertions)]
+    let since = LEASED_AT.with_borrow(|l| l.get(&id).map(|at| format!(" (its update began at {at})"))).unwrap_or_default();
+    #[cfg(not(debug_assertions))]
+    let since = {
+        let _ = id;
+        String::new()
+    };
     panic!(
-        "cannot {operation} {} while it is already being updated",
+        "cannot {operation} {} while it is already being updated{since}",
         std::any::type_name::<T>()
     )
 }
@@ -413,6 +441,7 @@ impl<T: 'static> Entity<T> {
     }
 
     /// Grab a reference to this entity from the context.
+    #[track_caller]
     pub fn read<'a>(&self, cx: &'a App) -> &'a T {
         cx.entities.read(self)
     }
@@ -427,6 +456,7 @@ impl<T: 'static> Entity<T> {
     }
 
     /// Updates the entity referenced by this handle with the given function.
+    #[track_caller]
     pub fn update<R, C: AppContext>(
         &self,
         cx: &mut C,
@@ -451,6 +481,7 @@ impl<T: 'static> Entity<T> {
     /// Updates the entity referenced by this handle with the given function if
     /// the referenced entity still exists, within a visual context that has a window.
     /// Returns an error if the entity has been released.
+    #[track_caller]
     pub fn update_in<R, C: VisualContext>(
         &self,
         cx: &mut C,
@@ -688,6 +719,7 @@ impl<T: 'static> WeakEntity<T> {
     /// Updates the entity referenced by this handle with the given function if
     /// the referenced entity still exists. Returns an error if the entity has
     /// been released.
+    #[track_caller]
     pub fn update<C, R>(
         &self,
         cx: &mut C,
@@ -697,16 +729,19 @@ impl<T: 'static> WeakEntity<T> {
         C: AppContext,
         Result<C::Result<R>>: crate::Flatten<R>,
     {
-        crate::Flatten::flatten(
-            self.upgrade()
-                .context("entity released")
-                .map(|this| cx.update_entity(&this, update)),
-        )
+        // Olo: called here, not in a closure, so a debug build's panic
+        // names the caller.
+        let this = self.upgrade().context("entity released");
+        crate::Flatten::flatten(match this {
+            Ok(this) => Ok(cx.update_entity(&this, update)),
+            Err(e) => Err(e),
+        })
     }
 
     /// Updates the entity referenced by this handle with the given function if
     /// the referenced entity still exists, within a visual context that has a window.
     /// Returns an error if the entity has been released.
+    #[track_caller]
     pub fn update_in<C, R>(
         &self,
         cx: &mut C,
@@ -718,9 +753,10 @@ impl<T: 'static> WeakEntity<T> {
     {
         let window = cx.window_handle();
         let this = self.upgrade().context("entity released")?;
+        let at = std::panic::Location::caller();
 
         crate::Flatten::flatten(window.update(cx, |_, window, cx| {
-            this.update(cx, |entity, cx| update(entity, window, cx))
+            cx.update_entity_at(&this, at, |entity, cx| update(entity, window, cx))
         }))
     }
 
@@ -860,6 +896,38 @@ mod test {
                 .collect::<Vec<i32>>(),
             vec![1, 2],
         );
+    }
+
+    /// Olo: reading an entity during its update names where it began.
+    #[test]
+    #[cfg(debug_assertions)]
+    fn test_double_lease_names_the_update() {
+        let mut entity_map = EntityMap::new();
+        let slot = entity_map.reserve::<TestEntity>();
+        let handle = entity_map.insert(slot, TestEntity { i: 1 });
+        let lease = entity_map.lease(&handle);
+        let line = line!() - 1;
+        let read = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| entity_map.read(&handle).i));
+        let message = read.unwrap_err().downcast::<String>().unwrap();
+        assert!(message.contains(&format!("its update began at {}:{line}:", file!())), "{message}");
+        entity_map.end_lease(lease);
+        assert_eq!(entity_map.read(&handle).i, 1);
+    }
+
+    /// Olo: the same through the app, from a weak handle's update.
+    #[test]
+    #[cfg(debug_assertions)]
+    fn test_reentrant_update_names_both_sides() {
+        use crate::AppContext as _;
+        let mut cx = crate::TestAppContext::single();
+        let entity = cx.new(|_| TestEntity { i: 1 });
+        let weak = entity.downgrade();
+        let line = line!() + 2;
+        let read = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = weak.update(&mut cx, |_, cx| cx.entity().read(cx).i);
+        }));
+        let message = read.unwrap_err().downcast::<String>().unwrap();
+        assert!(message.contains("cannot read") && message.contains(&format!("its update began at {}:{line}:", file!())), "{message}");
     }
 
     #[test]

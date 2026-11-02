@@ -224,7 +224,10 @@ impl LegacyDrmSurface {
     }
 
     pub fn commit_pending(&self) -> bool {
-        *self.pending.read().unwrap() != *self.state.read().unwrap()
+        // Olo: `state` before `pending`, the order everything else takes
+        // them in (lockbud).
+        let current = self.state.read().unwrap();
+        *self.pending.read().unwrap() != *current
     }
 
     #[instrument(level = "trace", parent = &self.span, skip(self))]

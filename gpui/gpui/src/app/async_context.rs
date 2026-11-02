@@ -386,8 +386,9 @@ impl AppContext for AsyncWindowContext {
         handle: &Entity<T>,
         update: impl FnOnce(&mut T, &mut Context<T>) -> R,
     ) -> Result<R> {
+        let at = std::panic::Location::caller();
         self.window
-            .update(self, |_, _, cx| cx.update_entity(handle, update))
+            .update(self, |_, _, cx| cx.update_entity_at(handle, at, update))
     }
 
     fn as_mut<'a, T>(&'a mut self, _: &Entity<T>) -> Self::Result<super::GpuiBorrow<'a, T>>
@@ -461,8 +462,9 @@ impl VisualContext for AsyncWindowContext {
         view: &Entity<T>,
         update: impl FnOnce(&mut T, &mut Window, &mut Context<T>) -> R,
     ) -> Self::Result<R> {
+        let at = std::panic::Location::caller();
         self.window.update(self, |_, window, cx| {
-            view.update(cx, |entity, cx| update(entity, window, cx))
+            cx.update_entity_at(view, at, |entity, cx| update(entity, window, cx))
         })
     }
 

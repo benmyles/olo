@@ -582,6 +582,26 @@ pub struct App {
 }
 
 impl App {
+    /// [`AppContext::update_entity`] for an update begun at `at`, for
+    /// callers that reach it through a closure (Olo: debug builds name it
+    /// if the entity is read or updated meanwhile).
+    pub(crate) fn update_entity_at<T: 'static, R>(
+        &mut self,
+        handle: &Entity<T>,
+        at: &'static std::panic::Location<'static>,
+        update: impl FnOnce(&mut T, &mut Context<T>) -> R,
+    ) -> R {
+        self.update(|cx| {
+            let mut entity = cx.entities.lease_at(handle, at);
+            let result = update(
+                &mut entity,
+                &mut Context::new_context(cx, handle.downgrade()),
+            );
+            cx.entities.end_lease(entity);
+            result
+        })
+    }
+
     #[allow(clippy::new_ret_no_self)]
     pub(crate) fn new_app(
         platform: Rc<dyn Platform>,
@@ -1027,15 +1047,20 @@ impl App {
                     window.root.replace(root_view.into());
                     window.defer(cx, |window: &mut Window, cx| window.appearance_changed(cx));
 
-                    // allow a window to draw at least once before returning
-                    // this didn't cause any issues on non windows platforms as it seems we always won the race to on_request_frame
-                    // on windows we quite frequently lose the race and return a window that has never rendered, which leads to a crash
-                    // where DispatchTree::root_node_id asserts on empty nodes
-                    let clear = window.draw(cx);
-                    clear.clear();
-
                     cx.window_handles.insert(id, window.handle);
                     cx.windows.get_mut(id).unwrap().replace(Box::new(window));
+
+                    // Olo: the window draws once before any event reaches
+                    // it, as upstream drew it here, but once the update
+                    // that opened it is over (its effects run then): an
+                    // entity being updated, the one whose update opened
+                    // the window, can't be read by the window's views
+                    // while it is. Opened outside any update, that is
+                    // still before this returns.
+                    let any = AnyWindowHandle::from(handle);
+                    cx.defer(move |cx| {
+                        let _ = cx.update_window(any, |_, window, cx| window.draw(cx).clear());
+                    });
                     Ok(handle)
                 }
                 Err(e) => {
@@ -2248,20 +2273,13 @@ impl AppContext for App {
 
     /// Updates the entity referenced by the given handle. The function is passed a mutable reference to the
     /// entity along with a `Context` for the entity.
+    #[track_caller]
     fn update_entity<T: 'static, R>(
         &mut self,
         handle: &Entity<T>,
         update: impl FnOnce(&mut T, &mut Context<T>) -> R,
     ) -> R {
-        self.update(|cx| {
-            let mut entity = cx.entities.lease(handle);
-            let result = update(
-                &mut entity,
-                &mut Context::new_context(cx, handle.downgrade()),
-            );
-            cx.entities.end_lease(entity);
-            result
-        })
+        self.update_entity_at(handle, std::panic::Location::caller(), update)
     }
 
     fn as_mut<'a, T>(&'a mut self, handle: &Entity<T>) -> GpuiBorrow<'a, T>
@@ -2271,6 +2289,7 @@ impl AppContext for App {
         GpuiBorrow::new(handle.clone(), self)
     }
 
+    #[track_caller]
     fn read_entity<T, R>(
         &self,
         handle: &Entity<T>,

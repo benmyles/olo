@@ -516,6 +516,38 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Command palette finds settings** (Ben, 2026-11-01): "in the
+  super+space command palette thing also match on the actual settings
+  etc. that are available in each preferences app to make them easy to
+  find in there". So: every setting in every Preferences panel (its
+  label, its box's title, words it's known by: "natural scrolling",
+  "dark mode", "key repeat", "night shift") is a palette result, named
+  with its panel ("Touchpad ▸ Pinch to zoom"), that opens the panel
+  with the control shown and lit for a moment, as macOS's System
+  Settings search does. The index is made from the panels themselves
+  (form.rs records each control's label and box as it lays them out,
+  so a new setting is found without listing it again; a test checks
+  every panel's controls are in it), shipped with Preferences like
+  `PREFERENCE_PANELS`, and agents can ask for the same.
+- **Default apps and Open With** (Ben, 2026-11-01): "ability to choose
+  the default app to open different file types with, both through a
+  right click context menu and through a centralized default apps
+  preference app. also, add an open with menu item when right clicking
+  a file/folder that shows a curated set of apps appropriate for that
+  file/folder and allow it to be customized in the preference app too".
+  So: (1) a Preferences ▸ Default Apps panel listing kinds of file
+  (grouped: documents, pictures, movies, music, archives, code, folders,
+  links' schemes) with the app each opens in, changeable there; (2) an
+  **Open With ▸** submenu on any file's or folder's context menu
+  (Tracker, file panels, the desktop, Quick Look) offering a curated
+  few apps that suit that kind (Olo's own first, then those whose
+  desktop entries claim the MIME type, never a long raw list), with
+  "Other…" (Olo's Open With window) and "Always Open With" making the
+  choice the kind's default; (3) the curated list per kind editable in
+  the same panel (add, remove, order). All in `olo_xdg::open` (the
+  defaults already live in `olo-mimeapps.list`, so GIO, xdg-open and
+  OpenURI follow), the submenu a kit menu every app shares, agent-
+  readable like any menu. BeOS: FileTypes and Tracker's Open With.
 - **StyledEdit: icon toolbars, as Gobe Productive's** (Ben, 2026-10-31,
   for later): "stylededit should have icon toolbars (side and top)
   reminiscent of gobe productive from beos. build out the kit to support
@@ -2307,7 +2339,9 @@ as they land (with the commit), add new ones as they come up.
   settings. The store and sync (`vault.rs`, `sync.rs`) key remote state
   by account as well as vault.
 - **x86 machines, starting with Ben's ThinkPad P1 Gen 9** (Ben; it
-  arrives within days): stock Fedora, `git clone` the repo, run a setup
+  arrives within days; **next once the GPUI migration is done**, before
+  the rest of this list: "after all the gpui work is done, prioritize
+  the thinkpad p1 gen9 special support next", 2026-11-01): stock Fedora, `git clone` the repo, run a setup
   app, and everything works and is supported in Olo, not just on
   the arm64 M2 MacBook Pro (Aurora). The setup app checks and installs
   what is needed (packages, Rust toolchain, the session entry, PAM,

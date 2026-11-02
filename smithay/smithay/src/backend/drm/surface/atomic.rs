@@ -561,14 +561,10 @@ impl AtomicDrmSurface {
             return Err(Error::DeviceInactive);
         }
 
+        // Olo: one read lock, not a second while holding the first: a
+        // writer waiting between them would wait on us forever (lockbud).
         let props = self.prop_mapping.read().unwrap();
-        if self
-            .prop_mapping
-            .read()
-            .unwrap()
-            .crtc_prop_handle(self.crtc, "VRR_ENABLED")
-            .is_err()
-        {
+        if props.crtc_prop_handle(self.crtc, "VRR_ENABLED").is_err() {
             return Ok(VrrSupport::NotSupported);
         }
 
@@ -687,7 +683,10 @@ impl AtomicDrmSurface {
     }
 
     pub fn commit_pending(&self) -> bool {
-        *self.pending.read().unwrap() != *self.state.read().unwrap()
+        // Olo: `state` before `pending`, the order everything else takes
+        // them in (lockbud).
+        let current = self.state.read().unwrap();
+        *self.pending.read().unwrap() != *current
     }
 
     #[instrument(level = "trace", parent = &self.span, skip(self, planes))]

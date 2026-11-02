@@ -577,6 +577,7 @@ impl MenuPopup {
 
     fn close_sub(&mut self, cx: &mut Context<Self>) {
         if let Some((_, handle)) = self.sub.take() {
+            // reentry: ok (the submenu: another popup)
             let _ = handle.update(cx, |m, window, cx| m.close(window, cx));
         }
     }
@@ -593,6 +594,7 @@ impl MenuPopup {
         let owner = self.owner;
         self.close(window, cx);
         if let Some(parent) = owner.downcast::<MenuPopup>() {
+            // reentry: ok (the menu this one is a submenu of)
             let _ = parent.update(cx, |m, window, cx| m.close_all(window, cx));
         }
     }

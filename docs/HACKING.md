@@ -97,8 +97,10 @@ like pixel alignment is.
    locks as they are. (It found Smithay's keyboard taking its keymap's
    lock and its state's in both orders.) `tools/dev/lockcheck` looks
    without running: clippy's lints for guards held through a `match`
-   or past their last use, and `lockcheck lockbud`, a static analysis
-   of double locks and conflicting orders across functions and crates.
+   or past their last use, `lockcheck lockbud`, a static analysis
+   of double locks and conflicting orders across functions and crates,
+   and `lockcheck reentry`, GPUI's double lock: an entity read or
+   updated while it's being updated ("The GPUI kit").
    Hold a lock for as little as you can: take what you need, let go,
    then call out; never hold one across a call back into app_server or
    anything that might take another lock.
@@ -1581,6 +1583,24 @@ text colour, and starts each frame for agents. It ends when its last
 window closes. `proxy(cx)` gives any thread a `Proxy` to send messages
 the app takes in `message_handler` (a forwarded `instance::Launch`).
 
+**An entity isn't read while it's updated.** `Entity<T>::update` takes T
+out of the app while its closure runs, so reading or updating that
+entity again from inside, however many calls deep (a helper that reads
+the settings, a view built for a new window), panics: "cannot read T
+while it is already being updated". The compiler can't see it (entities
+are shared handles, like `Rc<RefCell<T>>`), so: read what you need
+before the update, or `cx.defer` what must read it after. Debug builds
+name where the conflicting update began ("its update began at
+apps/x/src/main.rs:88:9"), and `tools/dev/lockcheck reentry` finds it
+without running anything: a rustc driver (tools/reentry) that follows
+every update's closure through what it calls and lists each read or
+update of an entity of the same type (`// reentry: ok` on the line when
+it's another entity of that type). Run it after changing how entities
+are used. A window opened inside an update draws its first frame once
+the update is over (GPUI defers it; before, it drew there and then and
+its views' renders read what was being updated), still before any
+event reaches it.
+
 - `theme`: the palette as a GPUI global (`theme::palette(cx)`),
   following app_server's settings from a thread that sleeps until an
   event comes; also the person's choice of how text is drawn on each
@@ -2981,8 +3001,8 @@ opened, its own `panel::State` and text fields).
   its own goes in `panel::State` and is changed through `ui.on_view`.
   Workers (Bluetooth, the clock, sound, the battery) keep what they read
   behind a lock and send `Msg::Redraw`. Windows open after the update
-  that asks for them (`cx.defer`): a new window draws as it opens, and its
-  panel reads the settings. Panels that change settings get Defaults and
+  that asks for them (`cx.defer`), as their panels read the settings
+  while they're built. Panels that change settings get Defaults and
   Revert (to the values when the window opened) along the bottom, each
   enabled only when it would change something: implement `Panel::reset`.
 * New panel: add it to `Panel` (arg, title, icon, size, reset), write the

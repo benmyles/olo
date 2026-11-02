@@ -1,0 +1,17 @@
+[package]
+name = "olo-reentry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Finds GPUI entities read or updated while they are being updated (a rustc driver; tools/dev/lockcheck reentry runs it)"
+
+# Its own workspace: it builds with the nightly in rust-toolchain.toml, not
+# with Olo's.
+[workspace]
+
+[[bin]]
+name = "olo-reentry"
+path = "src/main.rs"
+
+[package.metadata.rust-analyzer]
+rustc_private = true

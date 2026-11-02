@@ -5,6 +5,7 @@ see crates/sync, `olo_sync`.)
 
   tools/dev/lockcheck [lints] [-p CRATE ...]
   tools/dev/lockcheck lockbud [-p CRATE ...] [--install]
+  tools/dev/lockcheck reentry [-p CRATE ...]
 
 lints (the default): clippy with only the lints about locks held too
 long, over the workspace's own crates (or -p's):
@@ -30,6 +31,17 @@ crates are cleaned first: lockbud only sees what it compiles), and
 writes its report to /var/tmp/olo-lockbud/report-<time>.txt as well
 as the screen. Slow (a whole debug build) and noisy: read each finding
 against the code.
+
+reentry: GPUI's version of a double lock. `Entity<T>::update` takes the
+entity out of the app while its closure runs, so reading or updating
+it again from inside, however many calls deep, panics ("cannot read T
+while it is already being updated"). tools/reentry is a rustc driver
+that walks the MIR from every update through what it calls, and lists
+each read or update of an entity of the same type, with the path to it
+(`// reentry: ok` on a line says one is meant: another entity of the
+type). A `cargo check` with the lockbud nightly, in a target directory
+of its own under /var/tmp/olo-lockbud; Olo's crates are checked again
+each time. Exits 1 when it finds any.
 """
 import json, os, shutil, subprocess, sys, time
 
@@ -109,10 +121,10 @@ def lockbud(crates):
                       capture_output=True).returncode != 0:
         sys.exit(f"lockbud isn't installed for {NIGHTLY}: tools/dev/lockcheck lockbud --install")
     target = os.path.join(SCRATCH, "target")
-    # (cfg_select!, which the vendored epaint uses, is stable after
-    # lockbud's nightly: allowed in every crate there.)
+    # (cfg_select!, which the vendored epaint uses, and `if let` guards
+    # are stable after lockbud's nightly: allowed in every crate there.)
     env = dict(os.environ, CARGO_TARGET_DIR=target,
-               RUSTFLAGS=(os.environ.get("RUSTFLAGS", "") + " --cfg olo_lockbud -Zcrate-attr=feature(cfg_select)").strip())
+               RUSTFLAGS=(os.environ.get("RUSTFLAGS", "") + " --cfg olo_lockbud -Zcrate-attr=feature(cfg_select) -Zcrate-attr=feature(if_let_guard)").strip())
     names = crates or members()
     env["PATH"] = lockbud_face() + os.pathsep + env.get("PATH", "")
     # (Only what it compiles is analysed: Olo's crates are built again,
@@ -136,6 +148,42 @@ def lockbud(crates):
     return code
 
 
+def reentry(crates):
+    rustc = subprocess.run(["rustup", "which", "rustc", "--toolchain", NIGHTLY], check=True,
+                           capture_output=True, text=True).stdout.strip()
+    sysroot = os.path.dirname(os.path.dirname(rustc))
+    tool = os.path.join(SCRATCH, "reentry-tool")
+    built = subprocess.run(["cargo", f"+{NIGHTLY}", "build", "--release", "--quiet"],
+                           cwd=os.path.join(ROOT, "tools", "reentry"),
+                           env=dict(os.environ, CARGO_TARGET_DIR=tool))
+    if built.returncode:
+        return built.returncode
+    found = os.path.join(SCRATCH, "reentry")
+    shutil.rmtree(found, ignore_errors=True)
+    target = os.path.join(SCRATCH, "reentry-target")
+    env = dict(os.environ, CARGO_TARGET_DIR=target,
+               RUSTC_WRAPPER=os.path.join(tool, "release", "olo-reentry"),
+               OLO_REENTRY_OUT=found, OLO_REENTRY_SYSROOT=sysroot,
+               LD_LIBRARY_PATH=os.path.join(sysroot, "lib"),
+               RUSTFLAGS=(os.environ.get("RUSTFLAGS", "") + " -Zcrate-attr=feature(cfg_select) -Zcrate-attr=feature(if_let_guard)").strip())
+    names = crates or [n for n in members() if n.startswith("olo")]
+    pick = [a for n in names for a in ("-p", n)]
+    if os.path.isdir(target):
+        subprocess.run(["cargo", f"+{NIGHTLY}", "clean", *pick], cwd=ROOT, env=env, capture_output=True)
+    cmd = ["cargo", f"+{NIGHTLY}", "check", *pick]
+    print("+", " ".join(cmd), flush=True)
+    code = subprocess.run(cmd, cwd=ROOT, env=env).returncode
+    found_any = False
+    for f in sorted(os.listdir(found)) if os.path.isdir(found) else []:
+        text = open(os.path.join(found, f)).read()
+        if text:
+            found_any = True
+            print(f"\n{f[:-4]}:\n{text}", end="")
+    if not found_any and code == 0:
+        print("\nNo entity is read or updated while it is being updated.", flush=True)
+    return code or (1 if found_any else 0)
+
+
 def main():
     args = sys.argv[1:]
     mode = args.pop(0) if args and not args[0].startswith("-") else "lints"
@@ -147,6 +195,8 @@ def main():
             install()
             return
         sys.exit(lockbud(crates))
+    if mode == "reentry":
+        sys.exit(reentry(crates))
     sys.exit(__doc__)
 
 
