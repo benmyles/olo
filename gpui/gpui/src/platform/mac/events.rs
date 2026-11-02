@@ -241,6 +241,7 @@ impl PlatformInput {
                         delta,
                         touch_phase: phase,
                         modifiers: read_modifiers(native_event),
+                        kind: Default::default(),
                     })
                 }),
                 NSEventType::NSLeftMouseDragged

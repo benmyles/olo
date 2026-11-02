@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-01
 
+### StyledEdit on GPUI
+
+*20:14* — StyledEdit moves to the GPUI kit: its editor, ruler and spelling are olo-ui's now. Page View with a header, a table and a picture at 2x. Scrolls, types and resizes within a 120 Hz frame at every scale on a full 16-inch screen, as evenly as egui did; ends stretch and spring back.
+
+![StyledEdit on GPUI](2026-11-01/201404-stylededit-on-gpui.png)
+
 ### Screen saver on GPUI
 
 *17:14* — olo-screensaver draws on Olo's GPUI: Message, Icons, Lissart, Lens and Spots (rows) at 1, 1.25, 1.5, 1.75 and 2× (columns), over a test desktop. Lens magnifies the desktop through textured triangles, Lissart's hundreds of lines are painted a layer at a time.

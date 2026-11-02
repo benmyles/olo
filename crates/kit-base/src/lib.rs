@@ -20,6 +20,7 @@ pub mod restore;
 pub mod review;
 pub mod search;
 pub mod settings;
+pub mod spell;
 pub mod tracker;
 pub mod watch;
 

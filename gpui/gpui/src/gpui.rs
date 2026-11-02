@@ -17,6 +17,7 @@ mod bounds_tree;
 mod color;
 /// The default colors used by GPUI.
 pub mod colors;
+mod elastic;
 mod element;
 mod elements;
 mod executor;
@@ -74,6 +75,7 @@ pub use asset_cache::*;
 pub use assets::*;
 pub use color::*;
 pub use ctor::ctor;
+pub use elastic::*;
 pub use element::*;
 pub use elements::*;
 pub use executor::*;

@@ -170,6 +170,7 @@ pub struct TextField {
     /// when `enter_sends`, ⇧Return makes a new line.
     multiline: bool,
     enter_sends: bool,
+    keeps_enter: bool,
     /// A multi-line field's paragraphs as drawn, the line height, and how
     /// far its text is scrolled up (it keeps the caret in view).
     paragraphs: Vec<gpui::WrappedLine>,
@@ -221,6 +222,7 @@ impl TextField {
             colors: None,
             multiline: false,
             enter_sends: false,
+            keeps_enter: false,
             paragraphs: Vec::new(),
             line_height: px(style::PLAIN_SIZE * style::LINE_HEIGHT),
             scroll: px(0.0),
@@ -233,6 +235,14 @@ impl TextField {
     pub fn multiline(mut self, enter_sends: bool) -> Self {
         self.multiline = true;
         self.enter_sends = enter_sends;
+        self
+    }
+
+    /// Return is its own (`Entered`), even in a window with a default
+    /// button, which otherwise takes it (a first password field whose
+    /// Return goes on to the second).
+    pub fn keeps_enter(mut self) -> Self {
+        self.keeps_enter = true;
         self
     }
 
@@ -633,12 +643,20 @@ impl TextField {
         self.replace(self.selected.clone(), &text, cx);
     }
 
-    fn enter(&mut self, _: &Enter, _: &mut Window, cx: &mut Context<Self>) {
+    fn enter(&mut self, _: &Enter, window: &mut Window, cx: &mut Context<Self>) {
         if !self.enabled {
             return;
         }
         if self.multiline && !self.enter_sends {
             self.replace(self.selected.clone(), "\n", cx);
+        } else if !self.multiline
+            && !self.keeps_enter
+            && let Some(click) = crate::app::default_button(window, cx)
+        {
+            // As BeOS's: Return is the window's default button's, even
+            // with a field to type in (which doesn't see it). (Once this
+            // field is done with, as the click may read it.)
+            window.defer(cx, move |window, cx| click(window, cx));
         } else {
             cx.emit(TextFieldEvent::Entered);
         }

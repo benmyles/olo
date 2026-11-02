@@ -74,6 +74,11 @@ impl<T: ReceiveData> DataOffer<T> {
         self.mime_types.push(mime_type)
     }
 
+    /// Olo: the types it's offered as.
+    pub fn mime_types(&self) -> &[String] {
+        &self.mime_types
+    }
+
     fn has_mime_type(&self, mime_type: &str) -> bool {
         self.mime_types.iter().any(|t| t == mime_type)
     }

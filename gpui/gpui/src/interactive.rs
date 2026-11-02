@@ -372,6 +372,23 @@ pub struct ScrollWheelEvent {
 
     /// The phase of the touch event.
     pub touch_phase: TouchPhase,
+
+    /// Olo: what's scrolling: a wheel (the default), fingers on a
+    /// touchpad, or the glide after them. Fingers and a glide stretch
+    /// past an edge and spring back ([`crate::Elastic`]).
+    pub kind: ScrollKind,
+}
+
+/// Olo: what a scroll comes from ([`ScrollWheelEvent::kind`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ScrollKind {
+    /// A wheel's notches (eased), or anything else: stops at the ends.
+    #[default]
+    Wheel,
+    /// Fingers on a touchpad: pulls past an end, against a spring.
+    Fingers,
+    /// The glide after the fingers lift: bounces off an end.
+    Glide,
 }
 
 impl Sealed for ScrollWheelEvent {}
@@ -532,6 +549,12 @@ pub enum FileDropEvent {
     },
     /// The user has stopped dragging the files over the window.
     Exited,
+    /// Olo: something is dragged over the window (files or anything
+    /// else; [`crate::Window::drop_offer`]), or what's dragged changed.
+    Offered(crate::DropOffer),
+    /// Olo: dropped where the window took it ([`crate::Window::accept_drop`]),
+    /// its data read.
+    Dropped(crate::Dropped),
 }
 
 impl Sealed for FileDropEvent {}

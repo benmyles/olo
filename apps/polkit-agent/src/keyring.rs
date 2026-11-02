@@ -79,7 +79,8 @@ pub fn event(cx: &mut App, e: Event) {
 /// Opens a window for a new prompt.
 fn open(cx: &mut App, id: u64, kind: Kind, props: Props) {
     let h = height(cx, kind, &props);
-    let password = text_field(cx, |f| f.name("Password").password(true));
+    // (Its Return its own: on to the second when there are two.)
+    let password = text_field(cx, |f| f.name("Password").password(true).keeps_enter());
     let confirm = text_field(cx, |f| f.name("Confirm").password(true));
     let choice = props.choice_chosen;
     let window_title = title(&props);

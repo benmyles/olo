@@ -406,6 +406,9 @@ pub struct BladeRenderer {
     surface_config: gpu::SurfaceConfig,
     command_encoder: gpu::CommandEncoder,
     last_sync_point: Option<gpu::SyncPoint>,
+    /// Olo: the part of the swapchain drawn in: all of it, or less while
+    /// it has room to grow (`update_drawable_size_within`).
+    drawn: gpu::Extent,
     pipelines: Arc<BladePipelines>,
     pipeline_cache: Arc<Mutex<PipelineCache>>,
     instance_belt: BufferBelt,
@@ -487,6 +490,7 @@ impl BladeRenderer {
             surface_config,
             command_encoder,
             last_sync_point: None,
+            drawn: surface_config.size,
             pipelines,
             pipeline_cache: context.pipelines.clone(),
             instance_belt,
@@ -526,6 +530,33 @@ impl BladeRenderer {
         self.update_drawable_size_impl(size, false);
     }
 
+    /// Olo: drawn at `size` in a swapchain of at least `room` (each
+    /// bigger): a window being resized gets room to grow, so the sizes it
+    /// goes through cost nothing (a swapchain made is new GPU memory,
+    /// 10 ms and more for a big one on Apple's GPU, every frame of a
+    /// resize). It shows only its part (`drawn`, the viewport's source).
+    pub fn update_drawable_size_within(&mut self, size: Size<DevicePixels>, room: Size<DevicePixels>) {
+        let (w, h) = (size.width.0.max(1) as u32, size.height.0.max(1) as u32);
+        let fits = self.surface_config.size.width >= w && self.surface_config.size.height >= h;
+        let roomy = self.surface_config.size.width >= room.width.0 as u32 && self.surface_config.size.height >= room.height.0 as u32;
+        if !(fits && roomy) {
+            let room = Size { width: DevicePixels(room.width.0.max(size.width.0)), height: DevicePixels(room.height.0.max(size.height.0)) };
+            self.update_drawable_size_impl(room, false);
+        }
+        self.drawn = gpu::Extent { width: w, height: h, depth: 1 };
+    }
+
+    /// Olo: the part of the swapchain drawn in (the window's size).
+    pub fn drawn_size(&self) -> Size<DevicePixels> {
+        Size { width: DevicePixels(self.drawn.width as i32), height: DevicePixels(self.drawn.height as i32) }
+    }
+
+    /// Olo: whether the swapchain is bigger than what's drawn (room left
+    /// from a resize).
+    pub fn has_room(&self) -> bool {
+        self.surface_config.size.width > self.drawn.width || self.surface_config.size.height > self.drawn.height
+    }
+
     /// Like `update_drawable_size` but skips the check that the size has changed. This is useful in
     /// cases like restoring a window from minimization where the size is the same but the
     /// renderer's swap chain needs to be recreated.
@@ -551,6 +582,7 @@ impl BladeRenderer {
                 .reconfigure_surface(&mut self.surface, self.surface_config);
             self.destroy_path_targets();
         }
+        self.drawn = gpu_size;
     }
 
     pub fn update_transparency(&mut self, transparent: bool) {
@@ -775,6 +807,32 @@ impl BladeRenderer {
     pub fn draw(&mut self, scene: &Scene) {
         self.prepare_subpixel_sprites(scene);
         self.command_encoder.start();
+        if super::gpu_timings() {
+            // (The passes of the frame this command buffer last drew.)
+            let t = self.command_encoder.timings();
+            if !t.is_empty() {
+                let total: std::time::Duration = t.iter().map(|(_, d)| *d).sum();
+                let passes: Vec<String> = t.iter().map(|(n, d)| format!("{n} {:.3}", d.as_secs_f64() * 1e3)).collect();
+                // What this frame fills: its quads' area, in screens.
+                let screen = (self.surface_config.size.width * self.surface_config.size.height).max(1) as f64;
+                let area = |b: &Bounds<ScaledPixels>| (b.size.width.0 * b.size.height.0).max(0.0) as f64;
+                let quads: f64 = scene.quads.iter().map(|q| area(&q.bounds.intersect(&q.content_mask.bounds))).sum::<f64>() / screen;
+                let big: Vec<String> = scene
+                    .quads
+                    .iter()
+                    .filter(|q| area(&q.bounds.intersect(&q.content_mask.bounds)) > screen * 0.05)
+                    .map(|q| format!("{:?}{}", q.bounds.intersect(&q.content_mask.bounds), if q.corner_radii.top_left.0 > 0.0 || q.border_widths.top.0 > 0.0 { " rounded/bordered" } else { "" }))
+                    .collect();
+                eprintln!(
+                    "olo gpu frame {:.3} ms: {} | quads {} ({quads:.2} screens) sprites {} {}",
+                    total.as_secs_f64() * 1e3,
+                    passes.join(", "),
+                    scene.quads.len(),
+                    scene.monochrome_sprites.len() + scene.polychrome_sprites.len(),
+                    big.join(" ")
+                );
+            }
+        }
         self.atlas.before_frame(&mut self.command_encoder);
 
         let frame = {

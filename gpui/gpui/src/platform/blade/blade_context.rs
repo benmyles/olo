@@ -46,6 +46,9 @@ impl BladeContext {
                 gpu::Context::init(gpu::ContextDesc {
                     presentation: true,
                     validation: false,
+                    // Olo: each pass timed on the GPU, printed a frame at
+                    // a time by the renderer (for measuring).
+                    timing: super::gpu_timings(),
                     device_id: device_id_forced.unwrap_or(0),
                     ..Default::default()
                 })

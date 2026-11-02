@@ -33,7 +33,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_l
 use wayland_protocols::ext::session_lock::v1::client::{ext_session_lock_surface_v1, ext_session_lock_v1};
 
 use crate::{
-    AnyWindowHandle, Bounds, Decorations, Globals, GpuSpecs, Modifiers, Output, Pixels,
+    AnyWindowHandle, Bounds, Decorations, DevicePixels, Globals, GpuSpecs, Modifiers, Output, Pixels,
     PlatformDisplay, PlatformInput, Point, PromptButton, PromptLevel, RequestFrameOptions,
     ResizeEdge, Size, Tiling, WaylandClientStatePtr, WindowAppearance, WindowBackgroundAppearance,
     WindowBounds, WindowControlArea, WindowControls, WindowDecorations, WindowParams, px, size,
@@ -147,6 +147,12 @@ pub struct WaylandWindowState {
     hovered: bool,
     in_progress_configure: Option<InProgressConfigure>,
     resize_throttle: bool,
+    /// Olo: being resized by hand (xdg's `resizing`): its swapchain has
+    /// room to grow, and is made to fit once the size rests.
+    resizing: bool,
+    /// Olo: the part of its buffer the viewport shows (device pixels), as
+    /// last set.
+    viewport_source: Option<Size<DevicePixels>>,
     in_progress_window_controls: Option<WindowControls>,
     window_controls: WindowControls,
     client_inset: Option<Pixels>,
@@ -296,6 +302,8 @@ impl WaylandWindowState {
             window_bounds: options.bounds,
             in_progress_configure: None,
             resize_throttle: false,
+            resizing: false,
+            viewport_source: None,
             client,
             appearance,
             handle,
@@ -989,6 +997,7 @@ impl WaylandWindowStatePtr {
             delta: crate::ScrollDelta::Pixels(Point { x: px(step.x), y: px(step.y) }),
             modifiers: w.modifiers,
             touch_phase: crate::TouchPhase::Moved,
+            kind: crate::ScrollKind::Wheel,
         };
         if w.left.x == 0.0 && w.left.y == 0.0 {
             *slot = None;
@@ -1058,6 +1067,24 @@ impl WaylandWindowStatePtr {
                     state.fullscreen = configure.fullscreen;
                     state.maximized = configure.maximized;
                     state.tiling = configure.tiling;
+                    // Olo: a resize by hand starts (the press, before
+                    // anything moves): room to grow made now, so the
+                    // sizes it goes through cost nothing; it ends: made
+                    // to fit once the size has rested.
+                    if configure.resizing != state.resizing {
+                        state.resizing = configure.resizing;
+                        if configure.resizing {
+                            if state.viewport.is_some() {
+                                let size = state.bounds.to_device_pixels(state.scale).size;
+                                let room = resize_room(&state, size);
+                                state.renderer.update_drawable_size_within(size, room);
+                            }
+                        } else {
+                            drop(state);
+                            self.snug_later();
+                            state = self.state.borrow_mut();
+                        }
+                    }
                     // Limit interactive resizes to once per vblank
                     if configure.resizing && state.resize_throttle {
                         return;
@@ -1412,7 +1439,13 @@ impl WaylandWindowStatePtr {
                 state.scale = scale;
             }
             let device_bounds = state.bounds.to_device_pixels(state.scale);
-            state.renderer.update_drawable_size(device_bounds.size);
+            // (Resized by hand, within its room; else just as big.)
+            if state.resizing && state.viewport.is_some() && scale.is_none() {
+                let room = resize_room(&state, device_bounds.size);
+                state.renderer.update_drawable_size_within(device_bounds.size, room);
+            } else {
+                state.renderer.update_drawable_size(device_bounds.size);
+            }
             (state.bounds.size, state.scale)
         };
 
@@ -1430,6 +1463,36 @@ impl WaylandWindowStatePtr {
 
     pub fn resize(&self, size: Size<Pixels>) {
         self.set_size_and_scale(Some(size), None);
+    }
+
+    /// Olo: a resize by hand ended: once the size has rested, the
+    /// swapchain is made to fit (its room is GPU memory: three screens'
+    /// worth for a window grown to its screen's size and back).
+    fn snug_later(&self) {
+        let this = self.downgrade();
+        let _ = self.frames.handle.insert_source(calloop::timer::Timer::from_duration(SNUG_AFTER), move |_, _, _| {
+            if let Some(this) = this.upgrade() {
+                this.snug();
+            }
+            calloop::timer::TimeoutAction::Drop
+        });
+    }
+
+    fn snug(&self) {
+        if self.frames.closed.get() {
+            return;
+        }
+        {
+            let mut state = self.state.borrow_mut();
+            if state.resizing || !state.renderer.has_room() {
+                return;
+            }
+            let size = state.renderer.drawn_size();
+            state.renderer.update_drawable_size(size);
+        }
+        // (Its next frame goes in the new one.)
+        self.frames.force.set(true);
+        self.schedule_frame();
     }
 
     pub fn rescale(&self, scale: f32) {
@@ -1716,6 +1779,14 @@ impl PlatformWindow for WaylandWindow {
         }
     }
 
+    fn set_drop_accept(&self, accept: Option<crate::DropAccept>) {
+        let (client, surface) = {
+            let state = self.borrow();
+            (state.client.clone(), state.surface.id())
+        };
+        client.set_drop_accept(&surface, accept);
+    }
+
     fn set_keep_awake(&self, on: bool) {
         let mut state = self.borrow_mut();
         match (on, state.inhibitor.take()) {
@@ -1849,6 +1920,16 @@ impl PlatformWindow for WaylandWindow {
             return;
         }
         let mut state = self.borrow_mut();
+        // Olo: the part of the buffer drawn in (all of it, or less while
+        // it has room from a resize), shown one buffer pixel to a device
+        // pixel; set as the frame goes (the present commits it).
+        let drawn = state.renderer.drawn_size();
+        if state.viewport_source != Some(drawn)
+            && let Some(viewport) = &state.viewport
+        {
+            viewport.set_source(0.0, 0.0, drawn.width.0 as f64, drawn.height.0 as f64);
+            state.viewport_source = Some(drawn);
+        }
         state.renderer.draw(scene);
     }
 
@@ -2150,5 +2231,21 @@ fn layer_keyboard(layer: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, keyboard: c
         // (Version 4 on; before, a click gives it nothing.)
         crate::LayerKeyboard::OnDemand if layer.version() >= 4 => zwlr_layer_surface_v1::KeyboardInteractivity::OnDemand,
         crate::LayerKeyboard::OnDemand => zwlr_layer_surface_v1::KeyboardInteractivity::None,
+    }
+}
+
+/// Olo: how long a window's size rests after a resize by hand before its
+/// swapchain is made to fit.
+const SNUG_AFTER: std::time::Duration = std::time::Duration::from_millis(1500);
+
+/// Olo: room for a window of `size` resized by hand: as big as its screen
+/// (or a quarter more than now), so the rest of the resize costs nothing.
+fn resize_room(state: &WaylandWindowState, size: Size<DevicePixels>) -> Size<DevicePixels> {
+    match state.display.as_ref().map(|(_, o)| o.bounds.size) {
+        Some(screen) if screen.width.0 > 0 && screen.height.0 > 0 => Size { width: DevicePixels(screen.width.0.max(size.width.0)), height: DevicePixels(screen.height.0.max(size.height.0)) },
+        _ => {
+            let up = |n: i32| ((n as f64 * 1.25 / 64.0).ceil() as i32 * 64).max(n);
+            Size { width: DevicePixels(up(size.width.0)), height: DevicePixels(up(size.height.0)) }
+        }
     }
 }

@@ -902,6 +902,9 @@ fn close_bar_menu(window: &mut Window, cx: &mut App) {
 
 impl RenderOnce for MenuBar {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        // Whole device pixels high, so a bar under it (a ruler, a tool
+        // bar as high) is as high on screen at every scale.
+        let height = style::snap_coord(window, px(BAR_HEIGHT));
         let mut menus = self.menus;
         resolve(&mut menus, false);
         let id = window.window_handle().window_id();
@@ -993,7 +996,7 @@ impl RenderOnce for MenuBar {
             },
         )
         .w_full()
-        .h(px(BAR_HEIGHT))
+        .h(height)
         .flex_shrink_0()
     }
 }

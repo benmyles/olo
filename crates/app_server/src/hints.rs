@@ -609,12 +609,19 @@ impl<B: Backend + 'static> AnvilState<B> {
     pub fn hints_key(&mut self, key: u32, pressed: bool) -> bool {
         const ESC: u32 = 1;
         const BACKSPACE: u32 = 14;
-        // Ctrl, Shift, Alt, Super and Caps Lock pass (⌃⌃ again hides them).
+        // Ctrl, Shift, Alt, Super and Caps Lock pass.
         const MODIFIERS: [u32; 9] = [29, 97, 42, 54, 56, 100, 125, 126, 58];
         if !pressed {
             let Some(i) = self.hints.swallowed.iter().position(|k| *k == key) else { return false };
             self.hints.swallowed.swap_remove(i);
             return true;
+        }
+        // Control again (as Esc does) puts them away, and still goes on
+        // to be Control (held for a shortcut, or the first of the next
+        // two presses).
+        if self.hints.active() && crate::keymap::ctrl_key(key, crate::keymap::Options::from(&self.settings.keyboard)) {
+            self.hints.close();
+            return false;
         }
         if !self.hints.active() || MODIFIERS.contains(&key) {
             return false;

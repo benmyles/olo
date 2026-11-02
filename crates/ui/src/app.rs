@@ -149,6 +149,11 @@ pub(crate) fn set_default_button(window: &Window, cx: &mut App, click: DefaultCl
     cx.default_global::<DefaultButtons>().0.insert(window.window_handle().window_id(), click);
 }
 
+/// The window's default button, if one is drawn (and can be clicked).
+pub(crate) fn default_button(window: &Window, cx: &App) -> Option<DefaultClick> {
+    cx.try_global::<DefaultButtons>().and_then(|d| d.0.get(&window.window_handle().window_id())).cloned()
+}
+
 type TabStep = std::rc::Rc<dyn Fn(i32, &mut Window, &mut App)>;
 
 /// Each window's tab keys' taker (its first tab view), as last drawn.
@@ -344,8 +349,11 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
         olo_kit_base::keys::set_app_id(&app_id);
         theme::init(cx);
         agent::init(cx, &app_id);
-        crate::widgets::bind_keys(cx);
+        // The window's own keys first: a binding in a view's key context
+        // as deep as a window-wide one wins only when it was bound later.
         bind_keys(cx);
+        crate::widgets::bind_keys(cx);
+        crate::editor::bind_keys(cx);
         crate::upgrade::init(cx);
         crate::icons::init(cx);
         let (tx, mut rx) = mpsc::unbounded::<Box<dyn Any + Send>>();

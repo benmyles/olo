@@ -198,8 +198,10 @@ impl Element for Control {
                 window.refresh();
             }
         });
-        // The window's Return, as its default button.
+        // The window's Return, as its default button (while it can be
+        // clicked).
         if self.default
+            && self.enabled
             && let Some(f) = self.on_click.clone()
         {
             let b = hitbox.bounds;

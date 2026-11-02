@@ -8,6 +8,7 @@ pub mod dashboard;
 pub mod image_view;
 pub mod list;
 pub mod menu_field;
+pub mod ruler;
 pub mod scroll;
 pub mod sidebar;
 pub mod slider;

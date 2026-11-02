@@ -274,7 +274,7 @@ struct CtrlPresses {
 }
 
 /// Physical Control (or Caps Lock as one), for the hints' double press.
-fn ctrl_key(key: u32, opts: Options) -> bool {
+pub(crate) fn ctrl_key(key: u32, opts: Options) -> bool {
     matches!(key, LEFTCTRL | RIGHTCTRL) || (opts.caps_lock_control && key == CAPSLOCK)
 }
 

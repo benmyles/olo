@@ -530,8 +530,17 @@ def run_app(b, app, scale):
         time.sleep(app.settle)
 
     b.measure(tag, "launch and load", [pid], settle, transition=True)
-    w = next((x for x in s.windows() if x["id"] == wid), win)
-    c = w.get("content") or w["frame"]
+    # (A window just zoomed may be listed before its new frame is.)
+    c = None
+    for _ in range(20):
+        w = next((x for x in s.windows() if x["id"] == wid), win)
+        c = w.get("content") or w.get("frame")
+        if c:
+            break
+        time.sleep(0.1)
+    if not c:
+        print(f"     {tag}: its window has no frame")
+        return
     content = (c["x"], c["y"], c["width"], c["height"])
     s.move(content[0] + content[2] - 3, content[1] + content[3] - 3)
 

@@ -405,12 +405,17 @@ pub struct ScrollView {
     border: bool,
     focused: bool,
     background: Option<olo_theme::Rgba>,
+    /// The desk sheets of paper lie on (a document's Page View).
+    desk: bool,
+    /// The content scrolls itself (the editor, laying out what shows) and
+    /// tells the handle how far it goes (`ScrollHandle::set_extent`).
+    own: bool,
     children: SmallVec<[AnyElement; 4]>,
 }
 
 impl ScrollView {
     pub fn new(id: impl Into<ElementId>, handle: &ScrollHandle) -> ScrollView {
-        ScrollView { id: id.into(), handle: handle.clone(), vertical: true, horizontal: false, auto_hide: false, border: true, focused: false, background: None, children: SmallVec::new() }
+        ScrollView { id: id.into(), handle: handle.clone(), vertical: true, horizontal: false, auto_hide: false, border: true, focused: false, background: None, desk: false, own: false, children: SmallVec::new() }
     }
 
     /// Shows the vertical bar only while the content overflows (as the
@@ -446,6 +451,21 @@ impl ScrollView {
         self.background = Some(rgba);
         self
     }
+
+    /// The desk under a document's sheets of paper
+    /// ([`crate::editor::desk`]), in the theme's colours.
+    pub fn desk(mut self) -> Self {
+        self.desk = true;
+        self
+    }
+
+    /// Its content scrolls itself, laying out only what shows, and tells
+    /// the handle where it is and how far it goes
+    /// (`ScrollHandle::set_extent`); the bars drive the handle as ever.
+    pub fn scrolls_itself(mut self, on: bool) -> Self {
+        self.own = on;
+        self
+    }
 }
 
 impl ParentElement for ScrollView {
@@ -463,20 +483,29 @@ impl RenderOnce for ScrollView {
         let (vbar, hbar) = (self.vertical && (!self.auto_hide || self.handle.max_offset().height > px(0.5)), self.horizontal);
         let right = inset + if vbar { SCROLL_BAR } else { 0.0 };
         let bottom = inset + if hbar { SCROLL_BAR } else { 0.0 };
-        let (border, focused, background) = (self.border, self.focused, self.background);
-        let mut content = div().id(self.id.clone()).absolute().left(px(inset)).top(px(inset)).right(px(right)).bottom(px(bottom)).track_scroll(&self.handle);
-        content = match (vbar, hbar) {
-            (true, true) => content.overflow_scroll(),
-            (true, false) => content.overflow_y_scroll(),
-            (false, true) => content.overflow_x_scroll(),
-            (false, false) => content,
-        };
+        let (border, focused, background, desk) = (self.border, self.focused, self.background, self.desk);
+        let mut content = div().id(self.id.clone()).absolute().left(px(inset)).top(px(inset)).right(px(right)).bottom(px(bottom));
+        if !self.own {
+            content = content.track_scroll(&self.handle);
+            content = match (vbar, hbar) {
+                (true, true) => content.overflow_scroll(),
+                (true, false) => content.overflow_y_scroll(),
+                (false, true) => content.overflow_x_scroll(),
+                (false, false) => content,
+            };
+        }
+        let noted = self.handle.clone();
         let backdrop = canvas(
             |_, _, _| {},
             move |b, _, window, cx| {
+                // Where it shows its content from, for the frame's mark
+                // (measuring how evenly it scrolls).
+                let (o, m) = (noted.offset(), noted.max_offset());
+                window.note_scroll([-f32::from(o.x), -f32::from(o.y), f32::from(m.width), f32::from(m.height)]);
                 let p = theme::palette(cx);
                 let inner = style::inset(window, b, if border { 2.0 } else { 0.0 });
                 let (r, bt) = (if vbar { px(SCROLL_BAR) } else { px(0.0) }, if hbar { px(SCROLL_BAR) } else { px(0.0) });
+                let background = if desk { Some(crate::editor::desk(&p)) } else { background };
                 if let Some(bg) = background {
                     style::fill_rect(window, Bounds::from_corners(inner.origin, point(inner.right() - r, inner.bottom() - bt)), style::c(bg));
                 }

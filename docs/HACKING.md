@@ -233,8 +233,15 @@ message):
   4 ms heartbeat for a minute, so measure its CPU before asking or a
   minute after.
 * `tools/dev/bench` (every app's frames against the budget),
-  `tools/dev/scroll-check` (smoothness and the first frame's latency),
-  `tools/dev/perf-fuzz` (stalls, slow answers, growth).
+  `tools/dev/scroll-check` (smoothness and the first frame's latency;
+  `--trace` for each frame), `tools/dev/perf-fuzz` (stalls, slow
+  answers, growth).
+* GPU time: a GPUI app run with `OLO_GPU_TIMINGS=1` prints each frame's
+  passes as the GPU timed them, its quads (in screens filled: more than
+  one is overdraw) and its sprites. A frame shows on time only if its
+  CPU *and* GPU work are done before app_server draws the screen, which
+  shares the GPU: headless app_server logs `frame skipped: the GPU is
+  still drawing the last one` when it couldn't.
 * Measure the case the change is for (idle; a spinner; scrolling a big
   folder; a window full screen on a 16" MacBook Pro's 3456×2234 at 2×)
   on release builds, compare with the build before, and check the
@@ -2067,6 +2074,63 @@ the app takes in `message_handler` (a forwarded `instance::Launch`).
 - `menu::shortcut_command(window, cx, keystroke)`: the menu bar command
   a keystroke chooses, for a view that takes the keys itself and lets
   one through (Agent Screens' ⌘K while controlling).
+- `editor` (the egui kit's editor on GPUI; StyledEdit's text): styled
+  text in paragraphs, laid out by `editor::layout` (shaped once by
+  GPUI's text system, placed in rows: wrapping at spaces and hyphens,
+  tab stops left, centre, right and decimal, alignment and
+  justification, pictures as characters, emoji). The app keeps an
+  `Editor` and its text behind the `Document` trait (`text`, `spans`
+  each paragraph's styles, `paragraph` its format: indents, spacing,
+  alignment, a list's marker, a table's row, pictures; `replace`,
+  `copied`/`paste` for styles on the clipboard, `key` for Return, Tab
+  and Backspace it has its own meaning for, as a list's or a table's)
+  and is its `EditorHost` (`editor(key, cx, f)` hands both over;
+  `edited`, `context_menu`, `text_moved`). `editor::view(host, key,
+  &editor, options, window)` is the element: a `ScrollView` that
+  scrolls itself, the caret, selection, input methods, the pointer
+  (words and paragraphs on double and triple clicks, a selection
+  dragged to move it or out to another app, a table's column rule
+  dragged), keys (`bind_keys`, in its key context `OloEditor`, bound
+  after the window's own so its Tab is its own) and `edit(host, key,
+  Edit, ..)` for the Edit menu. `Options`: editable, wrap, alignment,
+  justification, margins, background, `spelling` (misspelled words
+  underlined, checked on a worker paragraph by paragraph, once until
+  they change; `respell` after a word is learnt) and `pages` (set on
+  sheets of paper down a desk as they print, rows that don't fit
+  moved to the next page; `sheets()` for the app's header and
+  footer). Only what shows is laid out, measured ahead a millisecond
+  a frame; laid-out paragraphs are kept by their text, styles and
+  width, and shaped ones by their text and styles alone, so a new
+  width (a window being resized) places them again without shaping;
+  each row's glyphs are painted from a `GlyphRun` (gpui/README.md). The
+  view is kept on the paragraph at its top through edits above it and
+  relayouts; at the very top it stays there (on pages, the first
+  sheet's top). On a dark document the text's own colours are made
+  lighter until they read (4.5:1, as `olo_theme::readable`; printed and
+  saved as they are).
+- `widgets::Ruler` (StyledEdit's, as the egui kit's): a paragraph's
+  indents (first line, left, right) and tab stops in inches or
+  centimetres, dragged (`RulerEvent::Changed`), a stop added with a
+  click and taken off by dragging it away, a right press for a stop's
+  kind, a line down the text where the marker held goes (`guide()`).
+  `set(setting, origin, width)` from the text's place across the
+  window, and `follow(origin, width)` from `EditorHost::text_moved` as a
+  frame is laid out (scrolled sideways on pages), so it moves with the
+  text in the same frame.
+- `spell::checker(cx)`: kit-base's checker (`olo_kit_base::spell`, the
+  dictionary of the person's language and the words they taught it),
+  read on a worker the first time one is wanted; `loaded(cx)` once in.
+- Every scroll view's ends are elastic, as on a Mac (GPUI's `Elastic`,
+  gpui/README.md): fingers pull past an end and it springs back, a glide
+  bounces off it, a wheel stops there. A view that scrolls itself keeps
+  an `Elastic` too (`scroll` from its wheel handler with the event's
+  `kind` and `touch_phase`, `offset` where it draws, a frame asked for
+  while it springs back), as the editor does.
+- A single-line `TextField`'s Return is the window's default button's,
+  as BeOS's (the field doesn't see it); `keeps_enter()` keeps it for a
+  field whose Return means something else (a first password field going
+  on to the second). A default button that can't be clicked takes no
+  Return.
 
 ## The session and in-place reload
 
@@ -3901,8 +3965,8 @@ come within `KeyboardSettings::double_press_ms` of the first (Preferences
 ▸ Keyboard ▸ Double-press speed, 400 ms by default) and each press be
 shorter than that. A yellow key cap with a letter goes on everything
 that can be picked, as Vim's EasyMotion does. Typing a letter picks it; Backspace goes back a level;
-Esc, a click or any other key (which then does what it does) puts them
-away; pressing Control twice again does too. Letters are by key position, as on a
+Esc, Control (pressed once: it still goes on to be Control), a click or
+any other key (which then does what it does) puts them away. Letters are by key position, as on a
 US keyboard, home row first (`LETTERS`).
 
 They must show at once, however busy the screen. What can be picked
@@ -4835,10 +4899,11 @@ so); unwritable files are read-only (selectable, not editable). Saving
 writes `.NAME.saving` beside the file, copies its permissions and renames
 it over the original, on a thread.
 
-`doc.rs` is the model and is unit-tested. The window is the kit's
+`doc.rs` is the model and is unit-tested. The app is on GPUI (the
+GPUI kit, `olo-ui`): each window's `DocView` keeps the GPUI kit's
 `editor::Editor` (so a document of any length scrolls and types at full
-speed), and the `Doc` is its `Document` (`Styled` in main.rs, which also
-names each style's font): every edit is `Doc::edit`, which moves the
+speed) and is its `EditorHost`, and the `Doc` is its `Document` (`Styled`
+in main.rs, which also names each style's font, `fonts::font`): every edit is `Doc::edit`, which moves the
 runs: inserted text takes the pending typing style, the style of what it
 replaced, or the style before it, and pasting what was copied here
 brings its styles back. Undo is our own (snapshots, typing and deleting
@@ -4860,8 +4925,8 @@ paragraphs leaves the first's setting; each newline put in starts a
 paragraph set like the one it split, and Return at a heading's end
 starts body text. In a list, Return in an empty item steps out a level
 (ending the list at the outermost), Tab and ⇧Tab indent it more or less,
-Backspace at its start takes its marker away (`DocWin::list_keys`, before
-the editor sees the keys). `Doc::format` turns a paragraph into the
+Backspace at its start takes its marker away (`Document::key`, which
+the editor asks before it acts on those keys). `Doc::format` turns a paragraph into the
 editor's `Paragraph` (24 points an indent level, and for a list's
 marker, so list text lines up with a quotation's). They are saved in
 `user.olo.paragraphs` (JSON, dropped if the count no longer fits the
@@ -4888,8 +4953,9 @@ in the editor) keep their widths in StyledEdit's own files and in Word,
 OpenDocument, RTF and HTML (`<colgroup>`); Markdown has no widths.
 
 The ruler (Document ▸ Show Ruler, while lines wrap; each window keeps
-its own through a reload, new ones take the last choice) is the kit's,
-over the text (`Editor::text_span` places it): it shows the caret's
+its own through a reload, new ones take the last choice) is the GPUI
+kit's `widgets::Ruler`, over the text (`Editor::text_span` places it,
+and `EditorHost::text_moved` moves it with the text in the same frame): it shows the caret's
 paragraph's indents and tab stops, and what is changed on it goes to
 every selected paragraph (not a table's rows) as one step to undo, with
 a line down the text while a marker is held. `Para::left`, `first` and
@@ -4905,9 +4971,9 @@ indent as LibreOffice has them; `\li`, `\fi`, `\ri`, `\tx` with
 
 File ▸ Print… (⌘P) shows `olo_print`'s Print panel; Export ▸ PDF… and
 the panel's PDF File ask where, then write a PDF. `pages.rs` sets the
-document on pages on a worker (fonts of its own from
-`style::all_font_definitions`, the document's faces included, so lines
-break as in the editor): each paragraph as `Doc::format` sets it, at the
+document on pages on a worker (with GPUI's text system made for it,
+`TextSystem::standalone`, and the editor's own layout, so lines break
+as in the editor): each paragraph as `Doc::format` sets it, at the
 page's text width (an inch's margins), its rows down the pages (a row
 that doesn't fit starts the next page; space above isn't kept at a
 page's top), each word placed where the layout put it in its own font,

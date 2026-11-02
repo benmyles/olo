@@ -507,6 +507,9 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// Olo: whether a layer surface takes the keyboard (as its
     /// `LayerShellOptions::keyboard`), changed after it opened.
     fn set_layer_keyboard(&self, _keyboard: LayerKeyboard) {}
+    /// Olo: where the window takes what's dragged over it now (None:
+    /// nowhere), as its last frame found.
+    fn set_drop_accept(&self, _accept: Option<DropAccept>) {}
     fn minimize(&self);
     fn zoom(&self);
     fn toggle_fullscreen(&self);
@@ -649,6 +652,106 @@ pub enum DragAction {
     Ask,
 }
 
+/// Olo: what is being dragged over a window ([`crate::Window::drop_offer`]),
+/// from another program or one of this one's windows.
+#[derive(Clone, Debug, Default)]
+pub struct DropOffer {
+    /// What it can be had as (MIME types).
+    pub types: Vec<String>,
+    /// What its source lets it be: copied, moved, asked about.
+    pub copy: bool,
+    /// Moved.
+    pub move_: bool,
+    /// Asked about (a menu of Move, Copy or Link).
+    pub ask: bool,
+    /// Started by this program (one of its windows dragged it out).
+    pub from_us: bool,
+    /// The files it carries (none if it carries none, or until they are
+    /// read).
+    pub paths: Vec<std::path::PathBuf>,
+}
+
+impl DropOffer {
+    /// Whether it can be had as `mime`.
+    pub fn has(&self, mime: &str) -> bool {
+        self.types.iter().any(|t| t == mime)
+    }
+
+    /// Whether its source lets it be dropped as `action`.
+    pub fn allows(&self, action: DragAction) -> bool {
+        match action {
+            DragAction::Copy => self.copy,
+            DragAction::Move => self.move_,
+            DragAction::Ask => self.ask,
+        }
+    }
+}
+
+/// Olo: where a window takes what is dragged over it, as a frame found
+/// ([`crate::Window::accept_drop`]): the part's name, the type, how.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DropAccept {
+    /// The part's name.
+    pub target: String,
+    /// The type it's taken as.
+    pub mime: String,
+    /// How.
+    pub action: DragAction,
+}
+
+/// Olo: what was dropped on a window: the part that took it (its name),
+/// the type it came as and its data, how, and where.
+#[derive(Clone, Debug)]
+pub struct Dropped {
+    /// The part that took it.
+    pub target: String,
+    /// The type it came as.
+    pub mime: String,
+    /// Its data, as that type.
+    pub data: Vec<u8>,
+    /// How it was dropped.
+    pub action: DragAction,
+    /// Where in the window.
+    pub position: Point<Pixels>,
+    /// All the types it came as (an app's own type saying how it was
+    /// dragged).
+    pub types: Vec<String>,
+    /// Dragged out of one of this program's windows.
+    pub from_us: bool,
+}
+
+impl Dropped {
+    /// The files it carries (`text/uri-list`).
+    pub fn paths(&self) -> Vec<std::path::PathBuf> {
+        if self.mime != "text/uri-list" {
+            return Vec::new();
+        }
+        String::from_utf8_lossy(&self.data).lines().filter(|l| !l.starts_with('#')).filter_map(|l| file_uri_path(l.trim())).collect()
+    }
+}
+
+/// Olo: the path a `file://` URI names (its host, if any, left out; its
+/// %-escapes undone).
+pub fn file_uri_path(uri: &str) -> Option<std::path::PathBuf> {
+    use std::os::unix::ffi::OsStringExt as _;
+    let rest = uri.strip_prefix("file://")?;
+    let path = &rest[rest.find('/')?..];
+    let (b, mut out, mut i) = (path.as_bytes(), Vec::with_capacity(path.len()), 0);
+    while i < b.len() {
+        let hex = |c: u8| (c as char).to_digit(16);
+        if b[i] == b'%'
+            && let (Some(h), Some(l)) = (b.get(i + 1).and_then(|&c| hex(c)), b.get(i + 2).and_then(|&c| hex(c)))
+        {
+            out.push((h * 16 + l) as u8);
+            i += 3;
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    Some(std::path::PathBuf::from(std::ffi::OsString::from_vec(out)))
+}
+
 /// This type is public so that our test macro can generate and use it, but it should not
 /// be considered part of our public API.
 #[doc(hidden)]
@@ -669,6 +772,10 @@ pub trait PlatformDispatcher: Send + Sync {
 
 pub(crate) trait PlatformTextSystem: Send + Sync {
     fn add_fonts(&self, fonts: Vec<Cow<'static, [u8]>>) -> Result<()>;
+    /// Olo: reads the system's fonts now (on the calling thread, not
+    /// holding the text system while it reads), so the first text in a
+    /// face only the system has doesn't wait for it.
+    fn preload_system_fonts(&self) {}
     fn all_font_names(&self) -> Vec<String>;
     fn font_id(&self, descriptor: &Font) -> Result<FontId>;
     fn font_metrics(&self, font_id: FontId) -> FontMetrics;

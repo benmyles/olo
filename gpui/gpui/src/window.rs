@@ -1,7 +1,7 @@
 #[cfg(any(feature = "inspector", debug_assertions))]
 use crate::Inspector;
 use crate::{
-    Action, AnyDrag, AnyElement, AnyImageCache, AnyTooltip, AnyView, App, AppContext, Arena, Asset,
+    Action, AnyDrag, AnyElement, AnyImageCache, AnyTooltip, AnyView, App, AppContext, Arena, Asset, AtlasTile,
     AsyncWindowContext, AvailableSpace, Background, BorderStyle, Bounds, BoxShadow, Capslock,
     Context, Corners, CursorStyle, Decorations, DevicePixels, DispatchActionListener,
     DispatchNodeId, DispatchTree, DisplayId, Edges, Effect, Entity, EntityId, EventEmitter,
@@ -75,22 +75,28 @@ pub struct FrameStats {
     /// Each frame: when it started (CLOCK_MONOTONIC microseconds), how
     /// long laying out and painting took, and the whole frame.
     pub marks: Vec<(u64, u32, u32)>,
+    /// Olo: each mark's scroll views, as they were drawn in it (where
+    /// each showed its content from, x and y, and the furthest it goes):
+    /// [`Window::note_scroll`].
+    pub scrolls: Vec<Vec<[f32; 4]>>,
 }
 
 impl FrameStats {
     /// How many frames' marks are kept between takes.
     pub const MARKS: usize = 1200;
 
-    fn record(&mut self, started: Instant, drawn: Duration, whole: Duration) {
+    fn record(&mut self, started: Instant, drawn: Duration, whole: Duration, scrolls: Vec<[f32; 4]>) {
         let us = whole.as_micros() as u64;
         self.frames += 1;
         self.total_us += us;
         self.slowest_us = self.slowest_us.max(us);
         if self.marks.len() == Self::MARKS {
             self.marks.remove(0);
+            self.scrolls.remove(0);
         }
         let at = monotonic_us().saturating_sub(started.elapsed().as_micros() as u64);
         self.marks.push((at, drawn.as_micros() as u32, us as u32));
+        self.scrolls.push(scrolls);
     }
 }
 
@@ -949,6 +955,22 @@ pub struct Window {
     pub(crate) needs_present: Rc<Cell<bool>>,
     pub(crate) last_input_timestamp: Rc<Cell<Instant>>,
     pub(crate) frame_stats: FrameStats,
+    /// Olo: the scroll views this frame drew ([`Window::note_scroll`]).
+    frame_scrolls: Vec<[f32; 4]>,
+    /// Olo: each glyph this frame painted, its raster bounds and atlas
+    /// tile (None: nothing to draw), by face, glyph, size and subpixel
+    /// place: a page of text is a few hundred glyphs again and again, and
+    /// each looked up in the text system's and the atlas's maps (under
+    /// their locks) cost more than the rest of painting it. Cleared each
+    /// frame, so the atlas changing between frames can't leave a tile
+    /// that's gone.
+    glyph_memo: FxHashMap<(u32, u32, u32, u8, u8), Option<(Bounds<DevicePixels>, crate::AtlasTile)>>,
+    /// Olo: what's dragged over the window now, where this frame's parts
+    /// take it, where the platform was last told, and who takes drops.
+    drop_offer: Option<crate::DropOffer>,
+    drop_accept: Option<crate::DropAccept>,
+    drop_accept_sent: Option<Option<crate::DropAccept>>,
+    drop_handler: Option<Rc<RefCell<dyn FnMut(crate::Dropped, &mut Window, &mut App)>>>,
     pub(crate) refreshing: bool,
     pub(crate) activation_observers: SubscriberSet<(), AnyObserver>,
     pub(crate) focus: Option<FocusId>,
@@ -1148,7 +1170,8 @@ impl Window {
                                 window.present();
                                 // drop the arena elements after present to reduce latency
                                 arena_clear_needed.clear();
-                                window.frame_stats.record(started, drawn, started.elapsed());
+                                let scrolls = std::mem::take(&mut window.frame_scrolls);
+                                window.frame_stats.record(started, drawn, started.elapsed(), scrolls);
                             })
                             .log_err();
                     });
@@ -1364,6 +1387,12 @@ impl Window {
             needs_present,
             last_input_timestamp,
             frame_stats: FrameStats::default(),
+            frame_scrolls: Vec::new(),
+            glyph_memo: FxHashMap::default(),
+            drop_offer: None,
+            drop_accept: None,
+            drop_accept_sent: None,
+            drop_handler: None,
             refreshing: false,
             activation_observers: SubscriberSet::new(),
             focus: None,
@@ -1474,6 +1503,13 @@ impl Window {
         self.root
             .as_ref()
             .map(|view| view.clone().downcast::<E>().ok())
+    }
+
+    /// Olo: a scroll view drawn this frame shows its content from (`x`,
+    /// `y`) and goes as far as (`max_x`, `max_y`), for the frame's mark
+    /// (how evenly it scrolls, measured: tools/dev/scroll-check).
+    pub fn note_scroll(&mut self, at: [f32; 4]) {
+        self.frame_scrolls.push(at);
     }
 
     /// Olo: how the window kept up since this was last called (and
@@ -2072,6 +2108,9 @@ impl Window {
     /// the contents of the new [`Scene`], use [`Self::present`].
     #[profiling::function]
     pub fn draw(&mut self, cx: &mut App) -> ArenaClearNeeded {
+        self.frame_scrolls.clear();
+        self.glyph_memo.clear();
+        self.drop_accept = None;
         if !self.warm.is_empty() {
             self.warm_for_display();
         }
@@ -2087,6 +2126,13 @@ impl Window {
         }
         self.draw_roots(cx);
         self.outlines.end_frame(self.sprite_atlas.as_ref());
+        // Olo: where a window that takes drops took what's dragged over
+        // it, told the platform as it changes (one that doesn't, keeps
+        // the platform's own: files, copied).
+        if self.drop_handler.is_some() && self.drop_offer.is_some() && self.drop_accept_sent.as_ref() != Some(&self.drop_accept) {
+            self.platform_window.set_drop_accept(self.drop_accept.clone());
+            self.drop_accept_sent = Some(self.drop_accept.clone());
+        }
         self.dirty_views.clear();
         self.next_frame.window_active = self.active.get();
 
@@ -3320,28 +3366,40 @@ impl Window {
             x: (glyph_origin.x.0.fract() * SUBPIXEL_VARIANTS_X as f32).floor() as u8,
             y: (glyph_origin.y.0.fract() * SUBPIXEL_VARIANTS_Y as f32).floor() as u8,
         };
-        let params = RenderGlyphParams {
-            font_id,
-            glyph_id,
-            font_size,
-            subpixel_variant,
-            scale_factor,
-            is_emoji: false,
-            rendering: self.platform_window.text_rendering(),
+        let key = (font_id.0 as u32, glyph_id.0, font_size.0.to_bits(), subpixel_variant.x, subpixel_variant.y);
+        let found = match self.glyph_memo.get(&key) {
+            Some(found) => found.clone(),
+            None => {
+                let params = RenderGlyphParams {
+                    font_id,
+                    glyph_id,
+                    font_size,
+                    subpixel_variant,
+                    scale_factor,
+                    is_emoji: false,
+                    rendering: self.platform_window.text_rendering(),
+                };
+                let raster_bounds = self.text_system().raster_bounds(&params)?;
+                let found = if raster_bounds.is_zero() {
+                    None
+                } else {
+                    let tile = self
+                        .sprite_atlas
+                        .get_or_insert_with(&params.clone().into(), &mut || {
+                            // Olo: counted, so a face drawn as running text has
+                            // the rest of its glyphs drawn ahead, off this thread.
+                            self.text_system().drawn_first(params.font_id, params.font_size, params.scale_factor, params.rendering);
+                            let (size, bytes) = self.text_system().rasterize_glyph(&params)?;
+                            Ok(Some((size, Cow::Owned(bytes))))
+                        })?
+                        .expect("Callback above only errors or returns Some");
+                    Some((raster_bounds, tile))
+                };
+                self.glyph_memo.insert(key, found.clone());
+                found
+            }
         };
-
-        let raster_bounds = self.text_system().raster_bounds(&params)?;
-        if !raster_bounds.is_zero() {
-            let tile = self
-                .sprite_atlas
-                .get_or_insert_with(&params.clone().into(), &mut || {
-                    // Olo: counted, so a face drawn as running text has
-                    // the rest of its glyphs drawn ahead, off this thread.
-                    self.text_system().drawn_first(params.font_id, params.font_size, params.scale_factor, params.rendering);
-                    let (size, bytes) = self.text_system().rasterize_glyph(&params)?;
-                    Ok(Some((size, Cow::Owned(bytes))))
-                })?
-                .expect("Callback above only errors or returns Some");
+        if let Some((raster_bounds, tile)) = found {
             let bounds = Bounds {
                 origin: glyph_origin.map(|px| px.floor()) + raster_bounds.origin.map(Into::into),
                 size: tile.bounds.size.map(Into::into),
@@ -3358,6 +3416,139 @@ impl Window {
             });
         }
         Ok(())
+    }
+
+    /// Olo: paints many glyphs at once, each at its baseline origin in
+    /// its face, size and colour: as [`Window::paint_glyph`] each, but
+    /// one paint operation for them all (a page of text).
+    pub fn paint_glyphs(&mut self, glyphs: impl IntoIterator<Item = (Point<Pixels>, FontId, GlyphId, Pixels, Hsla)>) {
+        self.invalidator.debug_assert_paint();
+        let element_opacity = self.element_opacity();
+        let content_mask = self.content_mask().scale(self.scale_factor());
+        let mut sprites = Vec::new();
+        for (origin, font_id, glyph_id, font_size, color) in glyphs {
+            if let Some((bounds, tile)) = self.glyph_sprite(origin, font_id, glyph_id, font_size) {
+                sprites.push(MonochromeSprite { order: 0, coverage: 0, bounds, content_mask: content_mask.clone(), color: color.opacity(element_opacity), tile, transformation: TransformationMatrix::unit() });
+            }
+        }
+        self.next_frame.scene.insert_sprites(sprites);
+    }
+
+    /// Olo: what's being dragged over the window, if anything (from
+    /// another program or one of this one's windows).
+    pub fn drop_offer(&self) -> Option<&crate::DropOffer> {
+        self.drop_offer.as_ref()
+    }
+
+    /// Olo: take what's dragged over the window here: `target` names the
+    /// part (it comes back in [`crate::Dropped::target`]), `mime` is one
+    /// of the offer's types, `action` one its source allows. Called
+    /// each frame the drag is over the part (from its paint); a frame
+    /// without it refuses the drag. The last call wins. Only a window
+    /// with a drop handler ([`Window::on_dropped`]) takes drops this way.
+    pub fn accept_drop(&mut self, target: impl Into<String>, mime: impl Into<String>, action: crate::DragAction) {
+        self.drop_accept = Some(crate::DropAccept { target: target.into(), mime: mime.into(), action });
+    }
+
+    /// Olo: what's dropped where the window took it comes to `handler`,
+    /// its data read.
+    pub fn on_dropped(&mut self, handler: impl FnMut(crate::Dropped, &mut Window, &mut App) + 'static) {
+        self.drop_handler = Some(Rc::new(RefCell::new(handler)));
+    }
+
+    /// Olo: paints `run`'s glyphs (as [`Window::paint_glyphs`]), each at
+    /// its offset from `origin`. The first time (and when the window's
+    /// scale or text rendering, the caller's `stamp` for what `glyphs`
+    /// gives, or where `origin` falls within a device pixel changes) they
+    /// are looked up in the atlas; after that the run is painted from
+    /// what was found, moved, without a lookup a glyph: a page of text
+    /// scrolled by whole pixels is tens of thousands of lookups a frame
+    /// otherwise.
+    pub fn paint_glyph_run(
+        &mut self,
+        run: &mut GlyphRun,
+        origin: Point<Pixels>,
+        stamp: u64,
+        glyphs: impl FnOnce(&mut dyn FnMut(Point<Pixels>, FontId, GlyphId, Pixels, Hsla)),
+    ) {
+        self.invalidator.debug_assert_paint();
+        let scale_factor = self.scale_factor();
+        let device = origin.scale(scale_factor);
+        // Its whole device pixel and where within it (in 64ths).
+        let mut base = Point { x: device.x.0.floor(), y: device.y.0.floor() };
+        let mut phase = (((device.x.0 - base.x) * 64.0).round() as i32, ((device.y.0 - base.y) * 64.0).round() as i32);
+        if phase.0 == 64 {
+            base.x += 1.0;
+            phase.0 = 0;
+        }
+        if phase.1 == 64 {
+            base.y += 1.0;
+            phase.1 = 0;
+        }
+        let key = GlyphRunKey { scale: scale_factor.to_bits(), rendering: self.platform_window.text_rendering(), stamp, phase };
+        if run.key != Some(key) {
+            run.key = Some(key);
+            run.sprites.clear();
+            let mut found = Vec::new();
+            glyphs(&mut |at, font_id, glyph_id, font_size, color| found.push((origin + at, font_id, glyph_id, font_size, color)));
+            for (at, font_id, glyph_id, font_size, color) in found {
+                if let Some((bounds, tile)) = self.glyph_sprite(at, font_id, glyph_id, font_size) {
+                    let rel = Bounds { origin: Point { x: ScaledPixels(bounds.origin.x.0 - base.x), y: ScaledPixels(bounds.origin.y.0 - base.y) }, size: bounds.size };
+                    run.sprites.push((rel, tile, color));
+                }
+            }
+        }
+        let element_opacity = self.element_opacity();
+        let content_mask = self.content_mask().scale(scale_factor);
+        let sprites: Vec<MonochromeSprite> = run
+            .sprites
+            .iter()
+            .map(|(rel, tile, color)| MonochromeSprite {
+                order: 0,
+                coverage: 0,
+                bounds: Bounds { origin: Point { x: ScaledPixels(rel.origin.x.0 + base.x), y: ScaledPixels(rel.origin.y.0 + base.y) }, size: rel.size },
+                content_mask: content_mask.clone(),
+                color: color.opacity(element_opacity),
+                tile: tile.clone(),
+                transformation: TransformationMatrix::unit(),
+            })
+            .collect();
+        self.next_frame.scene.insert_sprites(sprites);
+    }
+
+    /// A glyph at `origin` (its baseline): where its sprite goes, in
+    /// device pixels, and its tile (looked up once a frame a glyph).
+    fn glyph_sprite(&mut self, origin: Point<Pixels>, font_id: FontId, glyph_id: GlyphId, font_size: Pixels) -> Option<(Bounds<ScaledPixels>, AtlasTile)> {
+        let scale_factor = self.scale_factor();
+        let glyph_origin = origin.scale(scale_factor);
+        let subpixel_variant = Point {
+            x: (glyph_origin.x.0.fract() * SUBPIXEL_VARIANTS_X as f32).floor() as u8,
+            y: (glyph_origin.y.0.fract() * SUBPIXEL_VARIANTS_Y as f32).floor() as u8,
+        };
+        let key = (font_id.0 as u32, glyph_id.0, font_size.0.to_bits(), subpixel_variant.x, subpixel_variant.y);
+        let found = match self.glyph_memo.get(&key) {
+            Some(found) => found.clone(),
+            None => {
+                let params = RenderGlyphParams { font_id, glyph_id, font_size, subpixel_variant, scale_factor, is_emoji: false, rendering: self.platform_window.text_rendering() };
+                let found = match self.text_system().raster_bounds(&params) {
+                    Ok(b) if !b.is_zero() => self
+                        .sprite_atlas
+                        .get_or_insert_with(&params.clone().into(), &mut || {
+                            self.text_system().drawn_first(params.font_id, params.font_size, params.scale_factor, params.rendering);
+                            let (size, bytes) = self.text_system().rasterize_glyph(&params)?;
+                            Ok(Some((size, Cow::Owned(bytes))))
+                        })
+                        .ok()
+                        .flatten()
+                        .map(|tile| (b, tile)),
+                    _ => None,
+                };
+                self.glyph_memo.insert(key, found.clone());
+                found
+            }
+        };
+        let (raster_bounds, tile) = found?;
+        Some((Bounds { origin: glyph_origin.map(|px| px.floor()) + raster_bounds.origin.map(Into::into), size: tile.bounds.size.map(Into::into) }, tile))
     }
 
     /// Paints an emoji glyph into the scene for the next frame at the current z-index.
@@ -4064,6 +4255,10 @@ impl Window {
                 }
                 FileDropEvent::Pending { position } => {
                     self.mouse_position = position;
+                    // (Its parts take it again where it is now.)
+                    if self.drop_offer.is_some() {
+                        self.refresh();
+                    }
                     PlatformInput::MouseMove(MouseMoveEvent {
                         position,
                         pressed_button: Some(MouseButton::Left),
@@ -4073,6 +4268,8 @@ impl Window {
                 FileDropEvent::Submit { position } => {
                     cx.activate(true);
                     self.mouse_position = position;
+                    self.drop_offer = None;
+                    self.drop_accept_sent = None;
                     PlatformInput::MouseUp(MouseUpEvent {
                         button: MouseButton::Left,
                         position,
@@ -4082,7 +4279,27 @@ impl Window {
                 }
                 FileDropEvent::Exited => {
                     cx.active_drag.take();
+                    self.drop_offer = None;
+                    self.drop_accept_sent = None;
+                    self.refresh();
                     PlatformInput::FileDrop(FileDropEvent::Exited)
+                }
+                // Olo: what's dragged over it, for its parts to take.
+                FileDropEvent::Offered(offer) => {
+                    self.drop_offer = Some(offer);
+                    self.drop_accept_sent = None;
+                    self.refresh();
+                    return DispatchEventResult::default();
+                }
+                FileDropEvent::Dropped(dropped) => {
+                    self.drop_offer = None;
+                    self.drop_accept_sent = None;
+                    self.refresh();
+                    if let Some(handler) = self.drop_handler.clone() {
+                        cx.activate(true);
+                        (handler.borrow_mut())(dropped, self, cx);
+                    }
+                    return DispatchEventResult::default();
                 }
             },
             PlatformInput::KeyDown(_) | PlatformInput::KeyUp(_) => event,
@@ -5582,4 +5799,22 @@ pub fn outline(
         border_color: border_color.into(),
         border_style,
     }
+}
+
+/// Olo: a run of glyphs as [`Window::paint_glyph_run`] last found them in
+/// the atlas (keep one per run, from frame to frame).
+#[derive(Clone, Default)]
+pub struct GlyphRun {
+    key: Option<GlyphRunKey>,
+    /// Each glyph's sprite, from the run's whole device pixel, its tile
+    /// and colour.
+    sprites: Vec<(Bounds<ScaledPixels>, AtlasTile, Hsla)>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct GlyphRunKey {
+    scale: u32,
+    rendering: TextRendering,
+    stamp: u64,
+    phase: (i32, i32),
 }

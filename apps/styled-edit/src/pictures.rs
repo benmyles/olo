@@ -1,7 +1,7 @@
 //! Pictures in documents (`doc::Picture`, a style of their character):
 //! each file decoded on a worker (`olo_images`: what the image crate
 //! reads, and JPEG XL, AVIF and HEIC), made no bigger than 2048 pixels a
-//! side and kept as a texture; one still loading shows as a frame. The
+//! side and kept as a GPUI image; one still loading shows as a frame. The
 //! bytes a picture goes into other formats as (its file's own when PNG or
 //! JPEG, else made a PNG); its natural size; and where pictures with no
 //! file of their own (pasted, or from an imported document) are kept
@@ -10,20 +10,21 @@
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
-use olo_kit::{Proxy, egui};
+use olo_ui::{Proxy, gpui::RenderImage};
 
 /// A picture decoded on a worker (sent to the app).
-pub struct Loaded(pub PathBuf, pub Result<egui::ColorImage, String>);
+pub struct Loaded(pub PathBuf, pub Result<Arc<RenderImage>, String>);
 
 enum Slot {
     Loading,
-    Ready(egui::TextureHandle),
+    Ready(Arc<RenderImage>),
     Failed,
 }
 
-/// The pictures' textures, by file.
+/// The pictures, by file.
 #[derive(Default)]
 pub struct Pictures {
     slots: HashMap<PathBuf, Slot>,
@@ -39,11 +40,11 @@ impl Pictures {
         self.proxy = Some(proxy);
     }
 
-    /// `path`'s texture once it's loaded (its loading started the first
+    /// `path`'s picture once it's loaded (its loading started the first
     /// time it's asked for).
-    pub fn texture(&mut self, path: &Path) -> Option<egui::TextureId> {
+    pub fn image(&mut self, path: &Path) -> Option<Arc<RenderImage>> {
         match self.slots.get(path) {
-            Some(Slot::Ready(t)) => Some(t.id()),
+            Some(Slot::Ready(t)) => Some(t.clone()),
             Some(_) => None,
             None => {
                 self.slots.insert(path.to_owned(), Slot::Loading);
@@ -59,21 +60,25 @@ impl Pictures {
         }
     }
 
-    /// A worker's picture, as a texture.
-    pub fn loaded(&mut self, ctx: &egui::Context, l: Loaded) {
+    /// A worker's picture, kept.
+    pub fn loaded(&mut self, l: Loaded) {
         let slot = match l.1 {
-            Ok(image) => Slot::Ready(ctx.load_texture(l.0.to_string_lossy(), image, egui::TextureOptions::LINEAR)),
+            Ok(image) => Slot::Ready(image),
             Err(_) => Slot::Failed,
         };
         self.slots.insert(l.0, slot);
     }
 }
 
-fn decode(path: &Path) -> Result<egui::ColorImage, String> {
+fn decode(path: &Path) -> Result<Arc<RenderImage>, String> {
     let (img, _) = olo_images::open(path)?;
     let img = if img.width().max(img.height()) > MOST { img.thumbnail(MOST, MOST) } else { img };
-    let rgba = img.to_rgba8();
-    Ok(egui::ColorImage::from_rgba_unmultiplied([rgba.width() as usize, rgba.height() as usize], rgba.as_raw()))
+    // (GPUI's images are BGRA, alpha straight.)
+    let mut bgra = img.to_rgba8();
+    for p in bgra.pixels_mut() {
+        p.0.swap(0, 2);
+    }
+    Ok(Arc::new(RenderImage::new([image::Frame::new(bgra)])))
 }
 
 /// The points a picture `px` pixels big takes: its pixels at 96 to the

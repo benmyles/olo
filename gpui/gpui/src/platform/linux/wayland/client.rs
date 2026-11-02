@@ -378,6 +378,8 @@ pub(crate) struct WaylandClientState {
     cursor_style: Option<CursorStyle>,
     clipboard: Clipboard,
     data_offers: Vec<DataOffer<WlDataOffer>>,
+    /// Olo: what each drag's source allows (its offer's source_actions).
+    offer_actions: HashMap<ObjectId, DndAction>,
     primary_data_offer: Option<DataOffer<ZwpPrimarySelectionOfferV1>>,
     cursor: Cursor,
     pending_activation: Option<PendingActivation>,
@@ -400,6 +402,8 @@ pub(crate) struct WaylandClientState {
 struct DragOut {
     source: wl_data_source::WlDataSource,
     types: Vec<(String, std::sync::Arc<[u8]>)>,
+    /// What it lets a drop do.
+    allowed: DndAction,
     action: Option<crate::DragAction>,
     icon: Option<(wl_surface::WlSurface, wl_buffer::WlBuffer, wl_shm_pool::WlShmPool)>,
     done: Option<futures::channel::oneshot::Sender<Option<crate::DragAction>>>,
@@ -409,6 +413,15 @@ pub struct DragState {
     data_offer: Option<wl_data_offer::WlDataOffer>,
     window: Option<WaylandWindowStatePtr>,
     position: Point<Pixels>,
+    /// Olo: what's offered (its types and what its source allows), the
+    /// enter's serial, whether it's our own drag out, and where the
+    /// window takes it (None: the platform's own way, files copied;
+    /// Some(None): nowhere).
+    types: Vec<String>,
+    source_actions: DndAction,
+    serial: u32,
+    from_us: bool,
+    accept: Option<Option<crate::DropAccept>>,
 }
 
 /// Olo: a surface showing a drag's picture, from shared memory: the
@@ -557,7 +570,37 @@ impl WaylandClientStatePtr {
         let icon = drag.icon.as_ref().and_then(|image| drag_icon(&state.globals, image));
         let serial = state.serial_tracker.get(SerialKind::MousePress);
         device.start_drag(Some(&source), origin, icon.as_ref().map(|(surface, ..)| surface), serial);
-        state.drag_out = Some(DragOut { source, types: drag.types, action: None, icon, done: Some(done) });
+        state.drag_out = Some(DragOut { source, types: drag.types, allowed: actions, action: None, icon, done: Some(done) });
+    }
+
+    /// Olo: where window `surface` takes what's dragged over it (None:
+    /// nowhere), told to the compositor (the drop's type and action).
+    pub fn set_drop_accept(&self, surface: &ObjectId, accept: Option<crate::DropAccept>) {
+        let client = self.get_client();
+        let mut state = client.borrow_mut();
+        let ours = state.drag.window.as_ref().is_some_and(|w| w.surface().id() == *surface);
+        let Some(offer) = state.drag.data_offer.clone().filter(|_| ours) else { return };
+        let serial = state.drag.serial;
+        match &accept {
+            Some(a) => {
+                offer.accept(serial, Some(a.mime.clone()));
+                if offer.version() >= 3 {
+                    let action = match a.action {
+                        crate::DragAction::Copy => DndAction::Copy,
+                        crate::DragAction::Move => DndAction::Move,
+                        crate::DragAction::Ask => DndAction::Ask,
+                    };
+                    offer.set_actions(action, action);
+                }
+            }
+            None => {
+                offer.accept(serial, None);
+                if offer.version() >= 3 {
+                    offer.set_actions(DndAction::empty(), DndAction::empty());
+                }
+            }
+        }
+        state.drag.accept = Some(accept);
     }
 
     pub fn get_serial(&self, kind: SerialKind) -> u32 {
@@ -857,6 +900,11 @@ impl WaylandClient {
                 data_offer: None,
                 window: None,
                 position: Point::default(),
+                types: Vec::new(),
+                source_actions: DndAction::empty(),
+                serial: 0,
+                from_us: false,
+                accept: None,
             },
             drag_out: None,
             click: ClickState {
@@ -896,6 +944,7 @@ impl WaylandClient {
             cursor_style: None,
             clipboard: Clipboard::new(conn.clone(), handle.clone()),
             data_offers: Vec::new(),
+            offer_actions: HashMap::default(),
             primary_data_offer: None,
             cursor,
             pending_activation: None,
@@ -2424,16 +2473,21 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientStatePtr {
                     // as `Continuous`) the glide after them: each from its
                     // first move to its stop.
                     let mut out = Vec::new();
+                    let kind = match state.axis_source {
+                        AxisSource::Finger => crate::ScrollKind::Fingers,
+                        AxisSource::Continuous => crate::ScrollKind::Glide,
+                        _ => crate::ScrollKind::Wheel,
+                    };
                     if let Some(continuous) = continuous.filter(|d| d.x != px(0.0) || d.y != px(0.0)) {
                         let phase = if state.scrolling { TouchPhase::Moved } else { TouchPhase::Started };
                         state.scrolling = true;
-                        out.push(ScrollWheelEvent { position, delta: ScrollDelta::Pixels(continuous), modifiers, touch_phase: phase });
+                        out.push(ScrollWheelEvent { position, delta: ScrollDelta::Pixels(continuous), modifiers, touch_phase: phase, kind });
                     } else if let Some(discrete) = discrete {
                         let lines = point(discrete.x * SCROLL_LINES, discrete.y * SCROLL_LINES);
-                        out.push(ScrollWheelEvent { position, delta: ScrollDelta::Lines(lines), modifiers, touch_phase: TouchPhase::Moved });
+                        out.push(ScrollWheelEvent { position, delta: ScrollDelta::Lines(lines), modifiers, touch_phase: TouchPhase::Moved, kind: crate::ScrollKind::Wheel });
                     }
                     if stopped && std::mem::take(&mut state.scrolling) {
-                        out.push(ScrollWheelEvent { position, delta: ScrollDelta::Pixels(point(px(0.0), px(0.0))), modifiers, touch_phase: TouchPhase::Ended });
+                        out.push(ScrollWheelEvent { position, delta: ScrollDelta::Pixels(point(px(0.0), px(0.0))), modifiers, touch_phase: TouchPhase::Ended, kind });
                     }
                     drop(state);
                     for e in out {
@@ -2532,80 +2586,117 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for WaylandClientStatePtr {
                 id: data_offer,
             } => {
                 state.serial_tracker.update(SerialKind::DataDevice, serial);
-                // Olo: our own drag out isn't dropped back on us (an app
-                // dragged out of Deskbar onto its own row).
-                if state.drag_out.is_some() {
-                    if let Some(offer) = data_offer {
-                        offer.accept(serial, None);
-                        if offer.version() >= 3 {
-                            offer.set_actions(DndAction::empty(), DndAction::empty());
-                        }
+                let Some(data_offer) = data_offer else { return };
+                let Some(drag_window) = get_window(&mut state, &surface.id()) else {
+                    return;
+                };
+                let position = Point::new(x.into(), y.into());
+                // Olo: what it is, for a window that takes drops itself
+                // (`Window::accept_drop`): its types and what its source
+                // allows; our own drag out's straight from what we gave.
+                let from_us = state.drag_out.is_some();
+                let types: Vec<String> = match &state.drag_out {
+                    Some(out) => out.types.iter().map(|(t, _)| t.clone()).collect(),
+                    None => state.data_offers.iter().find(|o| o.inner.id() == data_offer.id()).map(|o| o.mime_types().to_vec()).unwrap_or_default(),
+                };
+                let source_actions = match &state.drag_out {
+                    Some(out) => out.allowed,
+                    None => state.offer_actions.get(&data_offer.id()).copied().unwrap_or(DndAction::Copy),
+                };
+                state.drag.data_offer = Some(data_offer.clone());
+                state.drag.window = Some(drag_window.clone());
+                state.drag.position = position;
+                state.drag.types = types.clone();
+                state.drag.source_actions = source_actions;
+                state.drag.serial = serial;
+                state.drag.from_us = from_us;
+                state.drag.accept = None;
+                let mut offer = crate::DropOffer {
+                    types: types.clone(),
+                    copy: source_actions.contains(DndAction::Copy),
+                    move_: source_actions.contains(DndAction::Move),
+                    ask: source_actions.contains(DndAction::Ask),
+                    from_us,
+                    paths: Vec::new(),
+                };
+                // Our own drag out isn't taken back the platform's way
+                // (an app dragged out of Deskbar onto its own row); a
+                // window that takes drops itself decides.
+                if from_us {
+                    data_offer.accept(serial, None);
+                    if data_offer.version() >= 3 {
+                        data_offer.set_actions(DndAction::empty(), DndAction::empty());
                     }
+                    if let Some(out) = &state.drag_out {
+                        offer.paths = out.types.iter().find(|(t, _)| t == FILE_LIST_MIME_TYPE).map(|(_, d)| uri_paths(d)).unwrap_or_default();
+                    }
+                    drop(state);
+                    drag_window.handle_input(PlatformInput::FileDrop(FileDropEvent::Offered(offer)));
                     return;
                 }
-                if let Some(data_offer) = data_offer {
-                    let Some(drag_window) = get_window(&mut state, &surface.id()) else {
-                        return;
-                    };
+                if !types.iter().any(|t| t == FILE_LIST_MIME_TYPE) {
+                    // Not files: refused the platform's way (text from
+                    // other programs), offered to a window that decides.
+                    data_offer.accept(serial, None);
+                    drop(state);
+                    drag_window.handle_input(PlatformInput::FileDrop(FileDropEvent::Offered(offer)));
+                    return;
+                }
 
-                    const ACTIONS: DndAction = DndAction::Copy;
-                    data_offer.set_actions(ACTIONS, ACTIONS);
+                const ACTIONS: DndAction = DndAction::Copy;
+                data_offer.set_actions(ACTIONS, ACTIONS);
 
-                    let pipe = Pipe::new().unwrap();
-                    data_offer.receive(FILE_LIST_MIME_TYPE.to_string(), unsafe {
-                        BorrowedFd::borrow_raw(pipe.write.as_raw_fd())
-                    });
-                    let fd = pipe.read;
-                    drop(pipe.write);
+                let pipe = Pipe::new().unwrap();
+                data_offer.receive(FILE_LIST_MIME_TYPE.to_string(), unsafe {
+                    BorrowedFd::borrow_raw(pipe.write.as_raw_fd())
+                });
+                let fd = pipe.read;
+                drop(pipe.write);
 
-                    let read_task = state.common.background_executor.spawn(async {
-                        let buffer = unsafe { read_fd(fd)? };
-                        let text = String::from_utf8(buffer)?;
-                        anyhow::Ok(text)
-                    });
+                let read_task = state.common.background_executor.spawn(async {
+                    let buffer = unsafe { read_fd(fd)? };
+                    let text = String::from_utf8(buffer)?;
+                    anyhow::Ok(text)
+                });
 
-                    let this = this.clone();
-                    state
-                        .common
-                        .foreground_executor
-                        .spawn(async move {
-                            let file_list = match read_task.await {
-                                Ok(list) => list,
-                                Err(err) => {
-                                    log::error!("error reading drag and drop pipe: {err:?}");
-                                    return;
-                                }
-                            };
-
-                            let paths: SmallVec<[_; 2]> = file_list
-                                .lines()
-                                .filter_map(|path| Url::parse(path).log_err())
-                                .filter_map(|url| url.to_file_path().log_err())
-                                .collect();
-                            let position = Point::new(x.into(), y.into());
-
-                            // Prevent dropping text from other programs.
-                            if paths.is_empty() {
-                                data_offer.destroy();
+                let this = this.clone();
+                state
+                    .common
+                    .foreground_executor
+                    .spawn(async move {
+                        let file_list = match read_task.await {
+                            Ok(list) => list,
+                            Err(err) => {
+                                log::error!("error reading drag and drop pipe: {err:?}");
                                 return;
                             }
+                        };
 
-                            let input = PlatformInput::FileDrop(FileDropEvent::Entered {
-                                position,
-                                paths: crate::ExternalPaths(paths),
-                            });
+                        let paths: SmallVec<[_; 2]> = file_list
+                            .lines()
+                            .filter_map(|path| Url::parse(path).log_err())
+                            .filter_map(|url| url.to_file_path().log_err())
+                            .collect();
 
+                        // (Gone meanwhile, or another drag now.)
+                        {
                             let client = this.get_client();
-                            let mut state = client.borrow_mut();
-                            state.drag.data_offer = Some(data_offer);
-                            state.drag.window = Some(drag_window.clone());
-                            state.drag.position = position;
-
-                            drop(state);
-                            drag_window.handle_input(input);
-                        })
-                        .detach();
-                }
+                            let state = client.borrow();
+                            if state.drag.data_offer.as_ref().map(|o| o.id()) != Some(data_offer.id()) {
+                                return;
+                            }
+                        }
+                        offer.paths = paths.iter().cloned().collect();
+                        drag_window.handle_input(PlatformInput::FileDrop(FileDropEvent::Offered(offer)));
+                        if paths.is_empty() {
+                            return;
+                        }
+                        drag_window.handle_input(PlatformInput::FileDrop(FileDropEvent::Entered {
+                            position,
+                            paths: crate::ExternalPaths(paths),
+                        }));
+                    })
+                    .detach();
             }
             wl_data_device::Event::Motion { x, y, .. } => {
                 let Some(drag_window) = state.drag.window.clone() else {
@@ -2622,11 +2713,12 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for WaylandClientStatePtr {
                 let Some(drag_window) = state.drag.window.clone() else {
                     return;
                 };
-                let data_offer = state.drag.data_offer.clone().unwrap();
-                data_offer.destroy();
-
-                state.drag.data_offer = None;
+                if let Some(data_offer) = state.drag.data_offer.take() {
+                    state.offer_actions.remove(&data_offer.id());
+                    data_offer.destroy();
+                }
                 state.drag.window = None;
+                state.drag.accept = None;
 
                 let input = PlatformInput::FileDrop(FileDropEvent::Exited {});
                 drop(state);
@@ -2636,12 +2728,58 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for WaylandClientStatePtr {
                 let Some(drag_window) = state.drag.window.clone() else {
                     return;
                 };
-                let data_offer = state.drag.data_offer.clone().unwrap();
+                let Some(data_offer) = state.drag.data_offer.take() else { return };
+                state.offer_actions.remove(&data_offer.id());
+                state.drag.window = None;
+                // Olo: a window that takes drops itself: what it took,
+                // read (our own drag's from what we gave), then handed it.
+                match state.drag.accept.take() {
+                    Some(Some(accept)) => {
+                        let (types, from_us, position) = (std::mem::take(&mut state.drag.types), state.drag.from_us, state.drag.position);
+                        let mime = accept.mime.clone();
+                        let dropped = move |data: Vec<u8>| crate::Dropped { target: accept.target.clone(), mime: accept.mime.clone(), data, action: accept.action, position, types: types.clone(), from_us };
+                        if from_us {
+                            let data = state.drag_out.as_ref().and_then(|out| out.types.iter().find(|(t, _)| *t == mime)).map(|(_, d)| d.to_vec()).unwrap_or_default();
+                            data_offer.destroy();
+                            drop(state);
+                            drag_window.handle_input(PlatformInput::FileDrop(FileDropEvent::Dropped(dropped(data))));
+                            return;
+                        }
+                        let pipe = Pipe::new().unwrap();
+                        data_offer.receive(mime, unsafe { BorrowedFd::borrow_raw(pipe.write.as_raw_fd()) });
+                        let fd = pipe.read;
+                        drop(pipe.write);
+                        let read = state.common.background_executor.spawn(async move { unsafe { read_fd(fd) } });
+                        state
+                            .common
+                            .foreground_executor
+                            .spawn(async move {
+                                let data = read.await.unwrap_or_default();
+                                if data_offer.version() >= 3 {
+                                    data_offer.finish();
+                                }
+                                data_offer.destroy();
+                                drag_window.handle_input(PlatformInput::FileDrop(FileDropEvent::Dropped(dropped(data))));
+                            })
+                            .detach();
+                        return;
+                    }
+                    Some(None) => {
+                        data_offer.destroy();
+                        drop(state);
+                        drag_window.handle_input(PlatformInput::FileDrop(FileDropEvent::Exited));
+                        return;
+                    }
+                    None => {}
+                }
+                if state.drag.from_us {
+                    data_offer.destroy();
+                    drop(state);
+                    drag_window.handle_input(PlatformInput::FileDrop(FileDropEvent::Exited));
+                    return;
+                }
                 data_offer.finish();
                 data_offer.destroy();
-
-                state.drag.data_offer = None;
-                state.drag.window = None;
 
                 let input = PlatformInput::FileDrop(FileDropEvent::Submit {
                     position: state.drag.position,
@@ -2670,6 +2808,13 @@ impl Dispatch<wl_data_offer::WlDataOffer, ()> for WaylandClientStatePtr {
         let client = this.get_client();
         let mut state = client.borrow_mut();
 
+        // Olo: what a drag's source allows, for a window that takes it.
+        if let wl_data_offer::Event::SourceActions { source_actions } = event {
+            if let wayland_client::WEnum::Value(actions) = source_actions {
+                state.offer_actions.insert(data_offer.id(), actions);
+            }
+            return;
+        }
         if let wl_data_offer::Event::Offer { mime_type } = event {
             // Drag and drop
             if mime_type == FILE_LIST_MIME_TYPE {
@@ -2943,4 +3088,9 @@ fn compositor_lost_check(state: &Rc<RefCell<WaylandClientState>>) {
         state.borrow_mut().common.callbacks.compositor_lost = Some(f);
     }
     state.borrow().common.signal.stop();
+}
+
+/// Olo: the paths in a `text/uri-list`.
+fn uri_paths(data: &[u8]) -> Vec<std::path::PathBuf> {
+    String::from_utf8_lossy(data).lines().filter(|l| !l.starts_with('#')).filter_map(|l| crate::file_uri_path(l.trim())).collect()
 }

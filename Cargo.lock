@@ -6204,6 +6204,7 @@ dependencies = [
  "olo-xdg",
  "serde",
  "serde_json",
+ "spellbook",
  "tracing",
  "wayland-client",
  "wayland-protocols 0.32.13",
@@ -6549,14 +6550,13 @@ dependencies = [
 name = "olo-styled-edit"
 version = "0.1.0"
 dependencies = [
- "fontdb",
  "image",
  "libc",
  "olo-images",
- "olo-kit",
  "olo-print",
  "olo-richtext",
- "olo-theme",
+ "olo-ui",
+ "olo-xdg",
  "pulldown-cmark",
  "serde",
  "serde_json",

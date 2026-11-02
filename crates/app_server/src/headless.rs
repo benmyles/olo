@@ -538,6 +538,7 @@ fn frames_due(state: &mut AnvilState<HeadlessData>) -> std::time::Instant {
         // The GPU still on the last: this one waits for the next
         // tick (its damage kept, its clients' frames not yet done).
         if screen.drawn.as_ref().is_some_and(|s| !s.is_reached()) {
+            tracing::info!(output = screen.output.name(), "frame skipped: the GPU is still drawing the last one");
             continue;
         }
         let was_asleep = std::mem::replace(&mut screen.asleep, false);

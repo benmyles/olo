@@ -154,7 +154,8 @@ fn frames(handle: AnyWindowHandle, cx: &mut App) -> Option<FrameTimes> {
     let marks = stats
         .marks
         .iter()
-        .map(|&(at_us, ui_us, us)| FrameMark { at_us, us, ui_us, submit_us: us.saturating_sub(ui_us), ..Default::default() })
+        .zip(stats.scrolls.iter().map(Some).chain(std::iter::repeat(None)))
+        .map(|(&(at_us, ui_us, us), scrolls)| FrameMark { at_us, us, ui_us, submit_us: us.saturating_sub(ui_us), scrolls: scrolls.cloned().unwrap_or_default(), ..Default::default() })
         .collect();
     Some(FrameTimes { title, frames: stats.frames, slowest_us: stats.slowest_us, total_us: stats.total_us, adapter, marks })
 }

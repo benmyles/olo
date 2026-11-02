@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     AtlasTextureId, AtlasTile, Background, Bounds, ContentMask, Corners, Edges, Hsla, Pixels,
-    Point, Radians, ScaledPixels, Size, bounds_tree::BoundsTree, point,
+    Point, Radians, ScaledPixels, Size, bounds_tree::BoundsTree, point, size,
 };
 use std::{
     fmt::Debug,
@@ -151,11 +151,31 @@ impl Scene {
         self.paint_operations.push(PaintOperation::Segments(segments));
     }
 
+    /// Olo: many glyphs' sprites at once (`Window::paint_glyphs`), as
+    /// [`Scene::insert_segments`]: a page of text is tens of thousands.
+    pub fn insert_sprites(&mut self, mut sprites: Vec<MonochromeSprite>) {
+        let layer = self.layer_stack.last().copied();
+        sprites.retain_mut(|sprite| {
+            let clipped = sprite.bounds.intersect(&sprite.content_mask.bounds);
+            if clipped.is_empty() {
+                return false;
+            }
+            sprite.order = layer.unwrap_or_else(|| self.primitive_bounds.insert(clipped));
+            true
+        });
+        if sprites.is_empty() {
+            return;
+        }
+        self.monochrome_sprites.extend_from_slice(&sprites);
+        self.paint_operations.push(PaintOperation::Sprites(sprites));
+    }
+
     pub fn replay(&mut self, range: Range<usize>, prev_scene: &Scene) {
         for operation in &prev_scene.paint_operations[range] {
             match operation {
                 PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
                 PaintOperation::Segments(segments) => self.insert_segments(segments.clone()),
+                PaintOperation::Sprites(sprites) => self.insert_sprites(sprites.clone()),
                 PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
                 PaintOperation::EndLayer => self.pop_layer(),
             }
@@ -165,16 +185,83 @@ impl Scene {
     pub fn finish(&mut self) {
         self.shadows.sort_by_key(|shadow| shadow.order);
         self.quads.sort_by_key(|quad| quad.order);
+        self.cull_hidden_quads();
         self.paths.sort_by_key(|path| path.order);
         self.underlines.sort_by_key(|underline| underline.order);
         self.segments.sort_by_key(|segment| segment.order);
         self.sectors.sort_by_key(|sector| sector.order);
+        // Olo: by the atlas texture in each place in the order (what a
+        // batch is), not each tile's own id: a page of glyphs is mostly
+        // one texture and in order already, which the sort finds in a
+        // pass, where sorting by tile shuffled them all every frame.
+        let texture = |t: &crate::AtlasTile| (t.texture_id.kind as u8, t.texture_id.index);
         self.monochrome_sprites
-            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
+            .sort_by_key(|sprite| (sprite.order, texture(&sprite.tile)));
         self.polychrome_sprites
-            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
+            .sort_by_key(|sprite| (sprite.order, texture(&sprite.tile)));
         self.image_triangles.sort_by_key(|triangle| triangle.order);
         self.surfaces.sort_by_key(|surface| surface.order);
+    }
+
+    /// Olo: a big quad wholly under opaque quads drawn after it isn't
+    /// drawn, and a plain one mostly under them only where it shows (a
+    /// window's ground under its views' own grounds filled the window
+    /// two or three times over a frame, the GPU's biggest cost).
+    fn cull_hidden_quads(&mut self) {
+        // (Small quads aren't worth it: what one costs is its pixels.)
+        const BIG: f32 = 256.0 * 256.0;
+        const MOST_PIECES: usize = 8;
+        let area = |b: &Bounds<ScaledPixels>| b.size.width.0.max(0.0) * b.size.height.0.max(0.0);
+        let shown = |q: &Quad| q.bounds.intersect(&q.content_mask.bounds);
+        // Drawn over all that's under it, edge to edge: one colour, no
+        // round corners or border (whose edges are anti-aliased).
+        let plain = |q: &Quad| {
+            q.background.tag == crate::BackgroundTag::Solid
+                && q.corner_radii == Corners::default()
+                && q.border_widths == Edges::default()
+        };
+        let covers = |q: &Quad| plain(q) && q.background.solid.a >= 1.0;
+        let mut i = 0;
+        while i < self.quads.len() {
+            let a = shown(&self.quads[i]);
+            if area(&a) < BIG {
+                i += 1;
+                continue;
+            }
+            let mut left = vec![a];
+            for b in &self.quads[i + 1..] {
+                if !covers(b) {
+                    continue;
+                }
+                // (A hair in from its edges: what's cut stays drawn up to
+                // them, never a gap.)
+                let c = shown(b);
+                let c = Bounds { origin: point(ScaledPixels(c.origin.x.0 + 0.01), ScaledPixels(c.origin.y.0 + 0.01)), size: size(ScaledPixels(c.size.width.0 - 0.02), ScaledPixels(c.size.height.0 - 0.02)) };
+                if area(&c) <= 0.0 || !left.iter().any(|r| r.intersects(&c)) {
+                    continue;
+                }
+                // (Less the slivers that hair leaves where its edge is one
+                // of the quad's: it draws those pixels itself.)
+                left = left.into_iter().flat_map(|r| subtract(r, c)).filter(|r| r.size.width.0 >= 0.05 && r.size.height.0 >= 0.05).collect();
+                if left.is_empty() || left.len() > MOST_PIECES {
+                    break;
+                }
+            }
+            if left.is_empty() {
+                self.quads.remove(i);
+                continue;
+            }
+            let kept: f32 = left.iter().map(area).sum();
+            if left.len() <= MOST_PIECES && plain(&self.quads[i]) && kept < 0.75 * area(&a) {
+                let q = self.quads[i].clone();
+                let pieces: Vec<Quad> = left.into_iter().filter(|r| area(r) > 0.0).map(|r| Quad { bounds: r, ..q.clone() }).collect();
+                let n = pieces.len();
+                self.quads.splice(i..i + 1, pieces);
+                i += n;
+                continue;
+            }
+            i += 1;
+        }
     }
 
     #[cfg_attr(
@@ -246,6 +333,8 @@ pub(crate) enum PaintOperation {
     Primitive(Primitive),
     /// Olo: a polyline's pieces (`Scene::insert_segments`).
     Segments(Vec<Segment>),
+    /// Olo: a run of glyphs (`Scene::insert_sprites`).
+    Sprites(Vec<MonochromeSprite>),
     StartLayer(Bounds<ScaledPixels>),
     EndLayer,
 }
@@ -1056,5 +1145,82 @@ impl PathVertex<Pixels> {
             st_position: self.st_position,
             content_mask: self.content_mask.scale(factor),
         }
+    }
+}
+
+/// Olo: `r` less `c`: what of it is outside `c`, in up to four rectangles.
+fn subtract(r: Bounds<ScaledPixels>, c: Bounds<ScaledPixels>) -> Vec<Bounds<ScaledPixels>> {
+    let (rl, rt, rr, rb) = (r.origin.x.0, r.origin.y.0, r.origin.x.0 + r.size.width.0, r.origin.y.0 + r.size.height.0);
+    let (cl, ct, cr, cb) = (c.origin.x.0.max(rl), c.origin.y.0.max(rt), (c.origin.x.0 + c.size.width.0).min(rr), (c.origin.y.0 + c.size.height.0).min(rb));
+    if cl >= cr || ct >= cb {
+        return vec![r];
+    }
+    let rect = |l: f32, t: f32, r: f32, b: f32| Bounds { origin: point(ScaledPixels(l), ScaledPixels(t)), size: size(ScaledPixels(r - l), ScaledPixels(b - t)) };
+    let mut out = Vec::with_capacity(4);
+    if ct > rt {
+        out.push(rect(rl, rt, rr, ct));
+    }
+    if cb < rb {
+        out.push(rect(rl, cb, rr, rb));
+    }
+    if cl > rl {
+        out.push(rect(rl, ct, cl, cb));
+    }
+    if cr < rr {
+        out.push(rect(cr, ct, rr, cb));
+    }
+    out
+}
+
+#[cfg(test)]
+mod cull_tests {
+    use super::*;
+    use crate::{hsla, solid_background};
+
+    fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<ScaledPixels> {
+        Bounds { origin: point(ScaledPixels(x), ScaledPixels(y)), size: size(ScaledPixels(w), ScaledPixels(h)) }
+    }
+
+    fn quad(order: u32, b: Bounds<ScaledPixels>, alpha: f32) -> Quad {
+        Quad { order, bounds: b, content_mask: ContentMask { bounds: rect(0.0, 0.0, 4000.0, 4000.0) }, background: solid_background(hsla(0.5, 0.5, 0.5, alpha)), ..Default::default() }
+    }
+
+    #[test]
+    fn a_ground_under_others_is_cut_to_what_shows() {
+        let mut s = Scene::default();
+        // The window's ground, a bar across its top, a view's ground under.
+        s.quads = vec![quad(0, rect(0.0, 0.0, 1000.0, 800.0), 1.0), quad(1, rect(0.0, 0.0, 1000.0, 50.0), 1.0), quad(2, rect(0.0, 50.0, 1000.0, 700.0), 1.0)];
+        s.cull_hidden_quads();
+        // The ground is left only below the view (50 + 700 to 800).
+        let grounds: Vec<_> = s.quads.iter().filter(|q| q.order == 0).collect();
+        assert_eq!(grounds.len(), 1);
+        let b = grounds[0].bounds;
+        assert!((b.origin.y.0 - 750.0).abs() < 0.02 && (b.origin.y.0 + b.size.height.0 - 800.0).abs() < 0.02, "{b:?}");
+        assert_eq!(s.quads.len(), 3);
+    }
+
+    #[test]
+    fn hidden_wholly_goes_and_see_through_covers_nothing() {
+        let mut s = Scene::default();
+        s.quads = vec![quad(0, rect(0.0, 0.0, 500.0, 500.0), 1.0), quad(1, rect(0.0, 0.0, 600.0, 600.0), 1.0)];
+        s.cull_hidden_quads();
+        assert_eq!(s.quads.len(), 1);
+        assert_eq!(s.quads[0].order, 1);
+        // Over it half see-through: it stays whole.
+        let mut s = Scene::default();
+        s.quads = vec![quad(0, rect(0.0, 0.0, 500.0, 500.0), 1.0), quad(1, rect(0.0, 0.0, 600.0, 600.0), 0.5)];
+        s.cull_hidden_quads();
+        assert_eq!(s.quads.len(), 2);
+        assert_eq!(s.quads[0].bounds, rect(0.0, 0.0, 500.0, 500.0));
+    }
+
+    #[test]
+    fn a_rounded_cover_hides_nothing() {
+        let mut s = Scene::default();
+        let mut over = quad(1, rect(0.0, 0.0, 600.0, 600.0), 1.0);
+        over.corner_radii = Corners::all(ScaledPixels(4.0));
+        s.quads = vec![quad(0, rect(0.0, 0.0, 500.0, 500.0), 1.0), over];
+        s.cull_hidden_quads();
+        assert_eq!(s.quads.len(), 2);
     }
 }

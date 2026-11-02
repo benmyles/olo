@@ -1491,6 +1491,8 @@ pub struct Interactivity {
     pub(crate) tracked_scroll_handle: Option<ScrollHandle>,
     pub(crate) scroll_anchor: Option<ScrollAnchor>,
     pub(crate) scroll_offset: Option<Rc<RefCell<Point<Pixels>>>>,
+    /// Olo: its ends' stretch ([`crate::Elastic`]).
+    pub(crate) elastic: Option<Rc<RefCell<crate::Elastic>>>,
     pub(crate) group: Option<SharedString>,
     /// The base style of the element, before any modifications are applied
     /// by focus, active, etc.
@@ -1600,6 +1602,7 @@ impl Interactivity {
 
                 if let Some(scroll_handle) = self.tracked_scroll_handle.as_ref() {
                     self.scroll_offset = Some(scroll_handle.0.borrow().offset.clone());
+                    self.elastic = Some(scroll_handle.0.borrow().elastic.clone());
                 } else if (self.base_style.overflow.x == Some(Overflow::Scroll)
                     || self.base_style.overflow.y == Some(Overflow::Scroll))
                     && let Some(element_state) = element_state.as_mut()
@@ -1610,6 +1613,7 @@ impl Interactivity {
                             .get_or_insert_with(Rc::default)
                             .clone(),
                     );
+                    self.elastic = Some(element_state.elastic.get_or_insert_with(Rc::default).clone());
                 }
 
                 let style = self.compute_style_internal(None, element_state.as_mut(), window, cx);
@@ -1763,7 +1767,20 @@ impl Interactivity {
                 scroll_handle_state.bounds = bounds;
             }
 
-            *scroll_offset
+            // Olo: past an end as far as it's stretched (springing back:
+            // again next frame).
+            match &self.elastic {
+                Some(elastic) => {
+                    let mut elastic = elastic.borrow_mut();
+                    elastic.set_extent(scroll_max, bounds.size);
+                    let (shown, moving) = elastic.offset(*scroll_offset);
+                    if moving {
+                        window.request_animation_frame();
+                    }
+                    shown
+                }
+                None => *scroll_offset,
+            }
         } else {
             Point::default()
         }
@@ -2408,6 +2425,7 @@ impl Interactivity {
         _cx: &mut App,
     ) {
         if let Some(scroll_offset) = self.scroll_offset.clone() {
+            let elastic = self.elastic.clone();
             let overflow = style.overflow;
             let allow_concurrent_scroll = style.allow_concurrent_scroll;
             let restrict_scroll_to_axis = style.restrict_scroll_to_axis;
@@ -2443,9 +2461,17 @@ impl Interactivity {
                             delta_x = Pixels::ZERO;
                         }
                     }
-                    scroll_offset.y += delta_y;
-                    scroll_offset.x += delta_x;
-                    if *scroll_offset != old_scroll_offset {
+                    // Olo: fingers and a glide stretch past an end and
+                    // spring back; a wheel stops at it.
+                    let stretched = match &elastic {
+                        Some(elastic) => elastic.borrow_mut().scroll(&mut *scroll_offset, point(delta_x, delta_y), event.kind, event.touch_phase),
+                        None => {
+                            scroll_offset.y += delta_y;
+                            scroll_offset.x += delta_x;
+                            false
+                        }
+                    };
+                    if *scroll_offset != old_scroll_offset || stretched {
                         cx.notify(current_view);
                     }
                 }
@@ -2571,6 +2597,7 @@ pub struct InteractiveElementState {
     pub(crate) hover_state: Option<Rc<RefCell<bool>>>,
     pub(crate) pending_mouse_down: Option<Rc<RefCell<Option<MouseDownEvent>>>>,
     pub(crate) scroll_offset: Option<Rc<RefCell<Point<Pixels>>>>,
+    pub(crate) elastic: Option<Rc<RefCell<crate::Elastic>>>,
     pub(crate) active_tooltip: Option<Rc<RefCell<Option<ActiveTooltip>>>>,
 }
 
@@ -3040,6 +3067,8 @@ impl ScrollAnchor {
 #[derive(Default, Debug)]
 struct ScrollHandleState {
     offset: Rc<RefCell<Point<Pixels>>>,
+    /// Olo: its ends' stretch.
+    elastic: Rc<RefCell<crate::Elastic>>,
     bounds: Bounds<Pixels>,
     max_offset: Size<Pixels>,
     child_bounds: Vec<Bounds<Pixels>>,
@@ -3203,6 +3232,15 @@ impl ScrollHandle {
     pub fn scroll_to_bottom(&self) {
         let mut state = self.0.borrow_mut();
         state.scroll_to_bottom = true;
+    }
+
+    /// Olo: for content that scrolls itself, laying out only what shows
+    /// (a document editor): where it shows and how far it scrolls, for
+    /// scroll bars on this handle, in place of a div's children's.
+    pub fn set_extent(&self, bounds: Bounds<Pixels>, max_offset: Size<Pixels>) {
+        let mut state = self.0.borrow_mut();
+        state.bounds = bounds;
+        state.max_offset = max_offset;
     }
 
     /// Set the offset explicitly. The offset is the distance from the top left of the

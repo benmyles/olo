@@ -377,9 +377,12 @@ impl Element for UniformList {
                         item_height * self.item_count + padding.top + padding.bottom;
                     let is_scrolled_vertically = !scroll_offset.y.is_zero();
                     let min_vertical_scroll_offset = padded_bounds.size.height - content_height;
-                    if is_scrolled_vertically && scroll_offset.y < min_vertical_scroll_offset {
+                    // (Olo: past the end by the stretch is the stretch,
+                    // not a scroll too far: only where it's scrolled to.)
+                    let scrolled_to = shared_scroll_offset.borrow().y;
+                    if is_scrolled_vertically && scrolled_to < min_vertical_scroll_offset {
                         shared_scroll_offset.borrow_mut().y = min_vertical_scroll_offset;
-                        scroll_offset.y = min_vertical_scroll_offset;
+                        scroll_offset.y += min_vertical_scroll_offset - scrolled_to;
                     }
 
                     let content_width = content_size.width + padding.left + padding.right;

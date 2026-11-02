@@ -214,6 +214,17 @@ as they land (with the commit), add new ones as they come up.
 
 ## The kit
 
+- **GPUI text a glyph at a time is slow at full screen** (found
+  2026-11-01 by the benchmark, as it was before that day's changes): a
+  window full of GPUI kit text (`StyledText`, `TextView`,
+  `ColumnListView` cells, `style::label`) paints each glyph on its own
+  (`Window::paint_glyph`: a lookup and a place in the bounds tree each),
+  so the Notifications History at 1× on a 3456×2234 screen takes 12–25
+  ms a frame (pointer over it, scrolling, menus) and Log Viewer 9–22 ms.
+  Paint lines as StyledEdit's editor does (`Window::paint_glyph_run`,
+  a `GlyphRun` kept with each laid-out line, in a layer), and the whole
+  benchmark at every scale under 8.3 ms.
+
 - **From egui to Olo's own GPUI** (Ben, 2026-10-31): "i think we need to
   rethink the decision to use egui -- it is not performant enough. …
   shift gears to do a full refactor to rip out egui and replace with
@@ -330,9 +341,19 @@ as they land (with the commit), add new ones as they come up.
      equal or less in all eleven, Lissart 3.2% of a core against 4.0,
      Spiral 9.8 against 12.6, StringTheme 3.8 against 4.0, Lens and
      Message within noise; 56–75 MB against 91–122; the benchmark's
-     slowest frame 6.0 ms at 3456×2234 at every scale). Next:
-     StyledEdit, Tracker, Preferences (the screen saver's preview with
-     it) and Terminal.
+     slowest frame 6.0 ms at 3456×2234 at every scale). StyledEdit
+     (with the GPUI kit's `editor`, `Ruler` and spelling; Page View,
+     headers and footers, tables, pictures, Find, printing; and for it
+     GPUI's kept glyph runs, hidden quads culled, a resize's swapchain
+     with room to grow, spelling checked on a worker, paragraphs shaped
+     once whatever their width; every step of the benchmark within a
+     120 Hz frame at 1×, 1.5× and 2× on a 3456×2234 screen, 0 failed:
+     scrolling's drag 0.93–1.05× the fingers and its glide within 1%
+     (egui's 0.90–1.04 and 1%), the slowest frame 6.3 ms against egui's
+     7.3 (its launch's 18–21 against 6–8), a live resize's 6.1 against
+     5.0; and 3 frames for the pointer swept over it against 182, 18
+     for its menus against 300, 59 typing against 218). Next: Tracker,
+     Preferences (the screen saver's preview with it) and Terminal.
      (`olo-preview`'s decoding no longer needs a toolkit: pictures are
      its own `Bitmap`s, and its egui views are behind its `egui`
      feature, for Tracker and the Viewer until they move; Telegram no

@@ -13,7 +13,11 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use olo_kit::egui::{self, Color32, FontFamily, FontId, Stroke, text::LayoutJob};
+use olo_ui::{
+    editor::{self, PICTURE, Span},
+    gpui::{Font, Hsla, Rgba},
+    widgets::ruler,
+};
 
 /// The sizes the Font menu offers (any size can be stored).
 pub const SIZES: [f32; 10] = [9.0, 10.0, 11.0, 12.0, 14.0, 18.0, 24.0, 36.0, 48.0, 72.0];
@@ -94,6 +98,17 @@ pub enum Align {
     Center,
     Right,
     Justify,
+}
+
+impl Align {
+    /// How the editor lines rows up (justified rows from the left).
+    pub fn to_kit(self) -> editor::Align {
+        match self {
+            Align::Left | Align::Justify => editor::Align::Left,
+            Align::Center => editor::Align::Center,
+            Align::Right => editor::Align::Right,
+        }
+    }
 }
 
 /// What a paragraph is: body text, a title or heading, a quotation or
@@ -210,8 +225,8 @@ pub enum TabAlign {
 }
 
 impl TabAlign {
-    pub fn to_kit(self) -> egui::epaint::text::TabAlign {
-        use egui::epaint::text::TabAlign as A;
+    pub fn to_kit(self) -> editor::TabAlign {
+        use editor::TabAlign as A;
         match self {
             TabAlign::Left => A::Left,
             TabAlign::Center => A::Center,
@@ -220,8 +235,8 @@ impl TabAlign {
         }
     }
 
-    pub fn from_kit(a: egui::epaint::text::TabAlign) -> TabAlign {
-        use egui::epaint::text::TabAlign as A;
+    pub fn from_kit(a: editor::TabAlign) -> TabAlign {
+        use editor::TabAlign as A;
         match a {
             A::Left => TabAlign::Left,
             A::Center => TabAlign::Center,
@@ -259,27 +274,27 @@ impl Para {
 
     /// Where its tabs go: its own stops, then one every half inch; code
     /// as code editors have it (every four spaces).
-    pub fn tab_stops(&self) -> Option<egui::epaint::text::TabStops> {
+    pub fn tab_stops(&self) -> Option<editor::TabStops> {
         if self.kind == Kind::Code && self.tabs.is_empty() {
             return None;
         }
-        let stops = self.tabs.iter().map(|t| egui::epaint::text::TabStop { x: t.x, align: t.align.to_kit() }).collect();
-        Some(egui::epaint::text::TabStops { stops, every: TAB_EVERY })
+        let stops = self.tabs.iter().map(|t| editor::TabStop { x: t.x, align: t.align.to_kit() }).collect();
+        Some(editor::TabStops { stops, every: TAB_EVERY })
     }
 
     /// What the ruler shows of it: its indents in all (from the text's
     /// edges) and its tabs.
-    pub fn ruler(&self) -> olo_kit::ruler::Setting {
+    pub fn ruler(&self) -> ruler::Setting {
         let (l, r) = self.base_indents();
-        olo_kit::ruler::Setting {
-            indents: olo_kit::ruler::Indents { left: l + self.left, first: self.first, right: r + self.right },
-            tabs: self.tabs.iter().map(|t| egui::epaint::text::TabStop { x: t.x, align: t.align.to_kit() }).collect(),
+        ruler::Setting {
+            indents: ruler::Indents { left: l + self.left, first: self.first, right: r + self.right },
+            tabs: self.tabs.iter().map(|t| editor::TabStop { x: t.x, align: t.align.to_kit() }).collect(),
         }
     }
 
     /// The ruler's setting made its own: indents beyond its kind's and
     /// level's (none below them), and tabs.
-    pub fn set_ruler(&mut self, s: &olo_kit::ruler::Setting) {
+    pub fn set_ruler(&mut self, s: &ruler::Setting) {
         let (l, r) = self.base_indents();
         self.left = (s.indents.left - l).max(0.0);
         self.first = s.indents.first.max(0.0);
@@ -498,7 +513,7 @@ impl Doc {
     }
 
     /// How paragraph `i` is drawn: indents, spacing, alignment, marker.
-    pub fn format(&self, i: usize, align: Align) -> olo_kit::editor::Paragraph {
+    pub fn format(&self, i: usize, align: Align) -> editor::Paragraph {
         let p = &self.paras[i];
         let (above, below) = p.kind.spacing();
         let (base_left, base_right) = p.base_indents();
@@ -509,21 +524,17 @@ impl Doc {
             List::Number => Some(format!("{}.", self.number(i))),
         };
         let a = p.align.unwrap_or(align);
-        let halign = Some(match a {
-            Align::Left | Align::Justify => egui::Align::Min,
-            Align::Center => egui::Align::Center,
-            Align::Right => egui::Align::Max,
-        });
+        let halign = Some(a.to_kit());
         if let Some(r) = &p.row {
-            return olo_kit::editor::Paragraph {
+            return editor::Paragraph {
                 left: p.level as f32 * INDENT,
                 align: halign,
                 justify: Some(a == Align::Justify),
-                row: Some(olo_kit::editor::Row { columns: r.columns.clone(), header: r.header }),
+                row: Some(editor::Row { columns: r.columns.clone(), header: r.header }),
                 ..Default::default()
             };
         }
-        olo_kit::editor::Paragraph {
+        editor::Paragraph {
             left,
             first: p.first.max(0.0),
             right: base_right + p.right.max(0.0),
@@ -534,7 +545,7 @@ impl Doc {
             marker,
             row: None,
             tabs: p.tab_stops(),
-            // (Its pictures' textures are the window's: `Styled::paragraph`.)
+            // (Its pictures' images are the window's: `Styled::paragraph`.)
             pictures: Vec::new(),
         }
     }
@@ -624,7 +635,7 @@ impl Doc {
     /// goes through [`edit`](Self::edit).
     #[cfg(test)]
     pub fn sync(&mut self, new: &str, selection: Range<usize>) {
-        let (removed, inserted) = olo_kit::editor::difference(&self.text, new);
+        let (removed, inserted) = editor::difference(&self.text, new);
         let inserted = new[removed.start..removed.start + inserted].to_owned();
         self.edit(removed, &inserted, selection);
     }
@@ -861,7 +872,7 @@ impl Doc {
         let mut style = self.style_at(range.start);
         style.picture = Some(pic);
         style.link = None;
-        let ch = olo_kit::editor::PICTURE.to_string();
+        let ch = PICTURE.to_string();
         self.push_undo(range.clone(), ch.len(), selection);
         self.last_edit = None;
         let clip = self.clip.take();
@@ -883,7 +894,7 @@ impl Doc {
             if let Some(pic) = &self.runs[i].style.picture {
                 let (a, b) = (self.starts[i].max(range.start), (self.starts[i] + self.runs[i].len).min(range.end));
                 for (k, c) in self.text[a..b].char_indices() {
-                    if c == olo_kit::editor::PICTURE {
+                    if c == PICTURE {
                         out.push((a + k - range.start, pic));
                     }
                 }
@@ -920,13 +931,13 @@ impl Doc {
         Some(change)
     }
 
-    /// The styles of bytes `range` (one paragraph) as sections of `job`,
-    /// whose text is that paragraph. `family` maps a style to the egui
-    /// family to draw it with (fonts load lazily).
-    pub fn sections(&self, range: Range<usize>, base: Color32, family: &mut dyn FnMut(&Style) -> FontFamily, job: &mut LayoutJob) {
+    /// The styles of bytes `range` (one paragraph) as the editor's spans,
+    /// in `out`. `font` gives the face a style is drawn in; a span with no
+    /// colour of its own is in the text's.
+    pub fn spans(&self, range: Range<usize>, font: &mut dyn FnMut(&Style) -> Font, out: &mut Vec<Span>) {
         if range.is_empty() {
             // An empty line still needs a height (for the caret).
-            job.sections.push(section(0..0, &self.style_at(range.start), base, family));
+            out.push(span(0, &self.style_at(range.start), font));
             return;
         }
         let mut i = self.starts.partition_point(|&s| s <= range.start).saturating_sub(1);
@@ -939,17 +950,15 @@ impl Doc {
                     // other character in its run as text).
                     Some(pic) => {
                         let text = Style { picture: None, ..style.clone() };
-                        for (k, c) in self.text[a..b].char_indices() {
-                            let r = a + k - range.start..a + k + c.len_utf8() - range.start;
-                            if c == olo_kit::editor::PICTURE {
-                                let sec = section(r.clone(), style, base, family);
-                                olo_kit::editor::push_picture(job, r, sec.format, egui::vec2(pic.width, pic.height));
+                        for (_, c) in self.text[a..b].char_indices() {
+                            if c == PICTURE {
+                                out.push(Span { picture: Some((pic.width, pic.height)), ..span(c.len_utf8(), style, font) });
                             } else {
-                                job.sections.push(section(r, &text, base, family));
+                                out.push(span(c.len_utf8(), &text, font));
                             }
                         }
                     }
-                    None => job.sections.push(section(a - range.start..b - range.start, style, base, family)),
+                    None => out.push(span(b - a, style, font)),
                 }
             }
             i += 1;
@@ -957,18 +966,16 @@ impl Doc {
     }
 }
 
-fn section(range: Range<usize>, s: &Style, base: Color32, family: &mut dyn FnMut(&Style) -> FontFamily) -> egui::text::LayoutSection {
-    let color = s.color.map_or(base, |[r, g, b]| Color32::from_rgb(r, g, b));
-    egui::text::LayoutSection {
-        leading_space: 0.0,
-        byte_range: egui::text::ByteIndex(range.start)..egui::text::ByteIndex(range.end),
-        format: egui::TextFormat {
-            font_id: FontId::new(s.size, family(s)),
-            color,
-            underline: if s.underline { Stroke::new((s.size / 14.0).max(1.0), color) } else { Stroke::NONE },
-            strikethrough: if s.strikeout { Stroke::new((s.size / 14.0).max(1.0), color) } else { Stroke::NONE },
-            ..Default::default()
-        },
+/// A run's span (`len` bytes) as the editor draws it.
+fn span(len: usize, s: &Style, font: &mut dyn FnMut(&Style) -> Font) -> Span {
+    Span {
+        len,
+        font: font(s),
+        size: s.size,
+        color: s.color.map(|[r, g, b]| Hsla::from(Rgba { r: r as f32 / 255.0, g: g as f32 / 255.0, b: b as f32 / 255.0, a: 1.0 })),
+        underline: s.underline,
+        strike: s.strikeout,
+        picture: None,
     }
 }
 

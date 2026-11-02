@@ -145,7 +145,22 @@ impl PlatformTextSystem for OloTextSystem {
         Ok(())
     }
 
+    fn preload_system_fonts(&self) {
+        if self.0.read().system.is_some() {
+            return;
+        }
+        // Read without the lock held: text goes on being laid out (in the
+        // faces Olo ships) meanwhile.
+        let mut db = fontdb::Database::new();
+        db.load_system_fonts();
+        let mut state = self.0.write();
+        if state.system.is_none() {
+            state.system = Some(db);
+        }
+    }
+
     fn all_font_names(&self) -> Vec<String> {
+        self.preload_system_fonts();
         let mut state = self.0.write();
         state.system();
         let mut names: Vec<String> = state

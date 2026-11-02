@@ -96,6 +96,34 @@ impl TextSystem {
         }
     }
 
+    /// Olo: a text system of its own, outside any app (a document set on
+    /// pages in a test; a tool), with Olo's faces and the system's.
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    pub fn standalone() -> Arc<TextSystem> {
+        Arc::new(TextSystem::new(Arc::new(crate::OloTextSystem::new())))
+    }
+
+    /// Olo: lays out a line as [`WindowTextSystem::layout_line`] does,
+    /// but on any thread and kept nowhere (a document set on pages for
+    /// printing, on a worker).
+    pub fn layout_line_now(&self, text: &str, font_size: Pixels, runs: &[TextRun]) -> LineLayout {
+        let mut font_runs: Vec<FontRun> = Vec::with_capacity(runs.len());
+        for run in runs {
+            let font_id = self.resolve_font(&run.font);
+            match font_runs.last_mut() {
+                Some(last) if last.font_id == font_id && last.size == run.size => last.len += run.len,
+                _ => font_runs.push(FontRun { len: run.len, font_id, size: run.size }),
+            }
+        }
+        self.platform_text_system.layout_line(text, font_size, &font_runs)
+    }
+
+    /// Olo: reads the system's fonts on this thread (a worker), so that
+    /// a face only the system has is there when text first asks for it.
+    pub fn preload_system_fonts(&self) {
+        self.platform_text_system.preload_system_fonts();
+    }
+
     /// Get a list of all available font names from the operating system.
     pub fn all_font_names(&self) -> Vec<String> {
         let mut names = self.platform_text_system.all_font_names();
@@ -701,7 +729,6 @@ impl WindowTextSystem {
         force_width: Option<Pixels>,
     ) -> Arc<LineLayout> {
         let mut last_run = None::<&TextRun>;
-        let mut last_font: Option<FontId> = None;
         let mut font_runs = self.font_runs_pool.lock().pop().unwrap_or_default();
         font_runs.clear();
 
@@ -719,15 +746,17 @@ impl WindowTextSystem {
                 true
             };
 
+            // Olo: a run joins the last only in the same face (upstream
+            // compared the last face with itself, so a bold word the
+            // same colour as its neighbours was laid out regular).
+            let font_id = self.resolve_font(&run.font);
             if let Some(font_run) = font_runs.last_mut()
-                && Some(font_run.font_id) == last_font
+                && font_run.font_id == font_id
                 && font_run.size == run.size
                 && !decoration_changed
             {
                 font_run.len += run.len;
             } else {
-                let font_id = self.resolve_font(&run.font);
-                last_font = Some(font_id);
                 font_runs.push(FontRun {
                     len: run.len,
                     font_id,

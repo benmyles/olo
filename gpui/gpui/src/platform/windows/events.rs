@@ -566,6 +566,7 @@ impl WindowsWindowInner {
             }),
             modifiers,
             touch_phase: TouchPhase::Moved,
+            kind: Default::default(),
         });
         let handled = !func(input).propagate;
         self.state.borrow_mut().callbacks.input = Some(func);
@@ -606,6 +607,7 @@ impl WindowsWindowInner {
             }),
             modifiers: current_modifiers(),
             touch_phase: TouchPhase::Moved,
+            kind: Default::default(),
         });
         let handled = !func(event).propagate;
         self.state.borrow_mut().callbacks.input = Some(func);

@@ -242,3 +242,62 @@ What Olo changed, so far:
 - A closed Wayland window lets go of its callbacks as it drops (keeping
   only the close callback the tidying task runs), so the views they hold
   are released in the same frame, not after the next event.
+- Text in runs keeps each run's face: `WindowTextSystem::layout_line`
+  merged runs of one colour and size whatever their font (it compared
+  the last run's font with itself), so bold and italic in a line of one
+  colour came out in the first run's face. `TextSystem::standalone()`
+  and `layout_line_now` shape without a window (laying a document out
+  for print on a worker); `preload_system_fonts` reads the system's
+  fonts ahead, off the frame.
+- `Window::paint_glyphs`: a run's glyphs in one go, as sprites batched
+  into the scene at once, each glyph's atlas tile looked up once a
+  frame (`glyph_memo`). `Window::paint_glyph_run(run, origin, stamp,
+  glyphs)` keeps what it found in a `GlyphRun` (one a row of text): the
+  same run painted again a whole number of device pixels away (scrolled)
+  is its sprites moved, not tens of thousands of lookups a frame. Kept
+  while the scale, the text rendering, the caller's stamp (its colours)
+  and where the origin falls within a device pixel stay the same.
+  Sprites sort by texture, not tile: a page of glyphs, in order already,
+  sorts in a pass.
+- `Window::note_scroll` (a view's offset, for `{"frames":true}`'s marks,
+  so tools/dev/scroll-check and the bench see GPUI's scrolling) and
+  `ScrollHandle::set_extent` (a view that scrolls itself tells its
+  scroll bars how far it goes).
+- The scene drops a big quad wholly under opaque quads drawn after it,
+  and cuts a plain one mostly under them to what shows
+  (`Scene::cull_hidden_quads`): a window's ground under its views' own
+  filled the window two or three times a frame, the GPU's biggest cost
+  (a full-screen StyledEdit at 1×: 2.3 → 1.3 ms of GPU a frame, the
+  quads 2.01 → 1.01 screens).
+- A window resized by hand (xdg's `resizing`) gets a swapchain as big
+  as its screen on the press, before anything moves, and shows only its
+  part of it (`wp_viewport`'s source, one buffer pixel to a device
+  pixel); 1.5 s after the resize ends it is made to fit
+  (`BladeRenderer::update_drawable_size_within`). A swapchain made is
+  new GPU memory, 10 ms and more for a big one on Apple's GPU, and
+  upstream made one for every size the window went through.
+- `OLO_GPU_TIMINGS=1`: every pass timed on the GPU, and each frame's
+  times, its quads (in screens filled) and sprites printed to stderr.
+- Drops a window takes itself: what's dragged over a window
+  (`Window::drop_offer`: its types, what its source allows, whether one
+  of this program's windows dragged it out, its files) is offered to
+  its parts as they paint; one that would take it says so each frame
+  (`Window::accept_drop(target, mime, action)`: the compositor shows
+  the drop's action from that), and what's dropped comes to the
+  window's `on_dropped` handler, its data read for the type taken
+  (`Dropped::paths` for files). A window with no handler keeps
+  upstream's way (files, copied, through `on_drop::<ExternalPaths>`),
+  and refuses this program's own drags (an app dragged out of Deskbar
+  onto its own row); one with a handler takes them as it likes (files
+  dragged from one of Tracker's windows to another).
+- Elastic ends (`Elastic`), as on a Mac, for everything that scrolls
+  (`div`'s `overflow_scroll` and `uniform_list` keep one per scroller;
+  a view that scrolls itself keeps its own, as the GPUI kit's editor):
+  fingers on a touchpad pull the content past an end against Apple's
+  rubber band (a third of the view at most) and it springs back when
+  they lift (a critically damped spring, at rest in about a third of a
+  second); the glide after them bounces off an end as fast as it came
+  (a quarter of the view deep at most), the rest of it spent. A wheel
+  stops at the ends, and an axis with nothing to scroll doesn't
+  stretch. `ScrollWheelEvent::kind` says which (`ScrollKind`: from the
+  axis source, app_server sending its glide as `Continuous`).
