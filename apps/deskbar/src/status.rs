@@ -63,6 +63,8 @@ pub struct Status {
     pub supervisor: Option<Supervisor>,
     /// AirPods connected (olo-airpods' state).
     pub airpods: Option<olo_protocol::airpods::AirPods>,
+    /// Voice processing's settings (olo-voice's), for the speaker's menu.
+    pub voice: olo_protocol::voice::Settings,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -221,10 +223,11 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     use olo_protocol::performance::{PerformanceSettings, SupervisorState};
     let (perf, supervising) = (PerformanceSettings::path(), SupervisorState::path());
     let pods = olo_protocol::airpods::AirPodsState::path();
+    let voice = olo_protocol::voice::Settings::path();
     let installed = olo_xdg::find_program("olo-supervisor").is_some();
     let read = {
         let (notes, screens, upgrades, sharing, shared) = (notes.clone(), screens.clone(), upgrades.clone(), sharing.clone(), shared.clone());
-        let (perf, supervising, pods) = (perf.clone(), supervising.clone(), pods.clone());
+        let (perf, supervising, pods, voice) = (perf.clone(), supervising.clone(), pods.clone(), voice.clone());
         move |changed: &[PathBuf]| {
             let all = changed.is_empty();
             // The screens' folder also has viewers' frames going through
@@ -238,11 +241,15 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
             );
             let shares = (all || changed.contains(&sharing)).then(|| olo_protocol::SharingState::load().shares);
             let airpods = (all || changed.contains(&pods)).then(|| olo_protocol::airpods::AirPodsState::load().connected().cloned());
+            let voice_settings = (all || changed.contains(&voice)).then(olo_protocol::voice::Settings::load);
             let supervisor = (installed && (all || changed.contains(&perf) || changed.contains(&supervising)))
                 .then(|| Supervisor { on: PerformanceSettings::load().enabled, state: SupervisorState::load() });
             publish(&shared, |s| {
                 if let Some(a) = airpods {
                     s.airpods = a;
+                }
+                if let Some(v) = voice_settings {
+                    s.voice = v;
                 }
                 if supervisor.is_some() {
                     s.supervisor = supervisor;
@@ -266,7 +273,7 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     read(&[]);
     let read = Arc::new(read);
     let on_change = read.clone();
-    if let Some(w) = olo_ui::watch::watch([notes, screens, upgrades, sharing, perf, supervising, pods], move |changed| on_change(changed)) {
+    if let Some(w) = olo_ui::watch::watch([notes, screens, upgrades, sharing, perf, supervising, pods, voice], move |changed| on_change(changed)) {
         // Deskbar's for as long as it runs.
         std::mem::forget(w);
     }

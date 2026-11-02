@@ -901,6 +901,9 @@ impl Deskbar {
                 }
             }
             // AirPods: the service does it (`olo-airpods --mode anc`, …).
+            // Voice processing: the service's own command line, as for an
+            // agent (`olo-voice --set noise=strong`).
+            Some(("voice", what)) => spawn(&format!("olo-voice --set {what}")),
             Some(("airpods", what)) => {
                 let address = self.status.airpods.as_ref().map(|a| a.address.clone()).unwrap_or_default();
                 spawn(&format!("olo-airpods --address {address} --{what}"));
@@ -1312,7 +1315,7 @@ fn sharing_menu(shares: &[olo_protocol::sharing::Share]) -> Menu {
 /// The speaker's menu (right click): where sound goes and comes from,
 /// mute, and while AirPods play, their levels, noise control, listening
 /// features and quality, and the way to the settings.
-fn sound_menu(devices: Option<&olo_system::audio::Devices>, pods: Option<&olo_protocol::airpods::AirPods>, muted: bool) -> Menu {
+fn sound_menu(devices: Option<&olo_system::audio::Devices>, pods: Option<&olo_protocol::airpods::AirPods>, muted: bool, voice: &olo_protocol::voice::Settings) -> Menu {
     let mut m = Menu::new("Sound");
     if let Some(d) = devices {
         m = m.item("Output", "").enabled(false);
@@ -1326,13 +1329,15 @@ fn sound_menu(devices: Option<&olo_system::audio::Devices>, pods: Option<&olo_pr
         m = m.separator();
     }
     m = m.item("Mute", "sound:mute").checked(muted);
+    m = voice_items(m.separator(), voice);
     let playing = |p: &&olo_protocol::airpods::AirPods| devices.and_then(|d| d.default_device(olo_system::audio::Kind::Output)).is_some_and(|o| o.name == p.sound.output);
     if let Some(p) = pods.filter(playing) {
         m = airpods_items(m.separator(), p);
-        if p.abilities.adaptive && p.linked {
-            if let Some(on) = p.settings.personalized_volume {
-                m = m.item("Personalized Volume", format!("airpods:set personalized-volume {}", if on { "off" } else { "on" })).checked(on);
-            }
+        if p.abilities.adaptive
+            && p.linked
+            && let Some(on) = p.settings.personalized_volume
+        {
+            m = m.item("Personalized Volume", format!("airpods:set personalized-volume {}", if on { "off" } else { "on" })).checked(on);
         }
         if !p.sound.card.is_empty() {
             m = m
@@ -1346,6 +1351,36 @@ fn sound_menu(devices: Option<&olo_system::audio::Devices>, pods: Option<&olo_pr
         m = m.separator();
     }
     m.item("Sound Settings…", "pref:sound")
+}
+
+/// Voice processing (olo-voice): on or off, and in a submenu what for,
+/// how much noise, echo and level.
+fn voice_items(m: Menu, v: &olo_protocol::voice::Settings) -> Menu {
+    use olo_protocol::voice::{Mode, Noise};
+    let flip = |key: &str, on: bool| format!("voice:{key}={}", if on { "off" } else { "on" });
+    let m = m.item("Clean Up Microphone Sound", flip("enabled", v.enabled)).checked(v.enabled);
+    if !v.enabled {
+        return m;
+    }
+    let mut sub = Menu::new("Voice Processing");
+    for mode in Mode::ALL {
+        sub = sub.item(format!("For {}", mode.label()), format!("voice:mode={}", mode.label().to_lowercase())).checked(v.mode == mode);
+    }
+    sub = sub.separator().item("Background Noise", "").enabled(false);
+    for n in Noise::ALL {
+        let word = match n {
+            Noise::Full => "full".to_owned(),
+            _ => n.label().to_lowercase(),
+        };
+        sub = sub.item(n.label(), format!("voice:noise={word}")).checked(v.noise == n);
+    }
+    sub = sub
+        .separator()
+        .item("Cancel Echo from the Speakers", flip("echo", v.echo_cancellation))
+        .checked(v.echo_cancellation)
+        .item("Even Out the Voice's Level", flip("normalize", v.normalize))
+        .checked(v.normalize);
+    m.submenu(sub)
 }
 
 /// AirPods' tray menu: their levels, noise control, Conversation
@@ -2023,13 +2058,13 @@ impl Deskbar {
             let tip_text = if vol.muted { "Muted. Click to unmute; right-click for sound devices.".into() } else { format!("Volume {}%. Click to mute; right-click for sound devices.", (vol.level * 100.0).round()) };
             let (r, h) = tray_item(&mut d, "volume", tip_text, Box::new(move |window, cx, r| status::draw_volume(window, r, &theme::palette(cx), vol.level, vol.muted)));
             let (m, m2, v) = (model.clone(), model.clone(), view.clone());
-            let (m3, v3, menu_of) = (model.clone(), view.clone(), (st.sound.clone(), st.airpods.clone(), vol.muted));
+            let (m3, v3, menu_of) = (model.clone(), view.clone(), (st.sound.clone(), st.airpods.clone(), vol.muted, st.voice));
             d.hits.push(
                 h.on_any_button(move |e, window, cx| {
                     // Right: every output and input, and AirPods' controls.
                     if button(e) == MouseButton::Right {
                         let mm = m3.clone();
-                        let menu = sound_menu(menu_of.0.as_ref(), menu_of.1.as_ref(), menu_of.2);
+                        let menu = sound_menu(menu_of.0.as_ref(), menu_of.1.as_ref(), menu_of.2, &menu_of.3);
                         open_menu(window, cx, &v3, "tray:volume", r, menu, move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
                         return;
                     }

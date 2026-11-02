@@ -46,6 +46,11 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     if args.first().is_some_and(|a| a == "--service") {
+        // Olo's audio tier (its microphone source), before any thread
+        // starts: they inherit it.
+        if let Err(e) = olo_system::priority::raise_self(olo_protocol::performance::AUDIO_NICE) {
+            tracing::info!("airpods: can't raise its priority: {e}");
+        }
         upgrade_on_signal();
         service::run();
     }

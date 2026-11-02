@@ -103,6 +103,11 @@ enum Event {
 }
 
 fn service() -> ExitCode {
+    // Olo's audio tier, before any thread starts (they inherit it,
+    // PipeWire's too; its own are made realtime besides).
+    if let Err(e) = olo_system::priority::raise_self(olo_protocol::performance::AUDIO_NICE) {
+        tracing::info!("voice: can't raise its priority: {e}");
+    }
     let (tx, rx) = mpsc::channel();
     on_signals(tx.clone());
     std::thread::Builder::new()

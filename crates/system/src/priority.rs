@@ -23,6 +23,37 @@ pub fn high_priority(pid: u32, tid: u32, nice: i32) -> Result<()> {
     Ok(())
 }
 
+/// Thread `tid` of `pid` made realtime (SCHED_RR at `priority`, at most
+/// rtkit's `MaxRealtimePriority`), through rtkit. rtkit asks that the
+/// process has a limit on realtime CPU time (RLIMIT_RTTIME), so that a
+/// realtime thread that spins can't take the computer: set here first,
+/// 200 ms, as PipeWire's own module does. The process must be the
+/// caller's user's.
+pub fn realtime(pid: u32, tid: u32, priority: u32) -> Result<()> {
+    let conn = crate::bus::system()?;
+    let most = conn
+        .call_method(Some(RTKIT), PATH, Some("org.freedesktop.DBus.Properties"), "Get", &(RTKIT, "MaxRealtimePriority"))
+        .ok()
+        .and_then(|r| r.body().deserialize::<zvariant::OwnedValue>().ok())
+        .and_then(|v| i32::try_from(v).ok())
+        .unwrap_or(20)
+        .max(1) as u32;
+    let limit = libc::rlimit { rlim_cur: 200_000, rlim_max: 200_000 };
+    // SAFETY: prlimit sets, and doesn't read back (null), a resource limit
+    // of a process of our own user: lowering a limit needs no privilege.
+    if unsafe { libc::prlimit(pid as libc::pid_t, libc::RLIMIT_RTTIME, &limit, std::ptr::null_mut()) } != 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    conn.call_method(Some(RTKIT), PATH, Some(RTKIT), "MakeThreadRealtimeWithPID", &(pid as u64, tid as u64, priority.min(most)))?;
+    Ok(())
+}
+
+/// Whether thread `tid` runs realtime (SCHED_FIFO or SCHED_RR).
+pub fn is_realtime(tid: u32) -> bool {
+    // SAFETY: sched_getscheduler only reads.
+    matches!(unsafe { libc::sched_getscheduler(tid as libc::pid_t) }, libc::SCHED_FIFO | libc::SCHED_RR)
+}
+
 /// The lowest nice rtkit gives (−15 by default), or None without it.
 pub fn min_nice() -> Option<i32> {
     let conn = crate::bus::system().ok()?;
@@ -124,6 +155,29 @@ mod tests {
         assert!((-20..=19).contains(&n));
         // Already there (or below): nothing asked of rtkit.
         assert_eq!(raise_thread(me, me, n), Ok(n));
+    }
+
+    /// Through the system's rtkit, on a thread of this test's own.
+    #[test]
+    #[ignore = "asks the system's rtkit"]
+    fn makes_a_thread_realtime() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let t = std::thread::spawn(move || {
+            // SAFETY: gettid has no preconditions.
+            let tid = unsafe { libc::gettid() } as u32;
+            tx.send(tid).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        });
+        let tid = rx.recv().unwrap();
+        assert!(!is_realtime(tid));
+        match realtime(std::process::id(), tid, 5) {
+            Ok(()) => assert!(is_realtime(tid)),
+            // rtkit gives realtime to so many processes of a user (15 by
+            // default), and a desktop's use them up.
+            Err(e) if e.to_string().contains("busy") => eprintln!("rtkit has no room for another process now: {e}"),
+            Err(e) => panic!("rtkit: {e}"),
+        }
+        t.join().unwrap();
     }
 
     #[test]

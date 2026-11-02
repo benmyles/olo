@@ -201,6 +201,12 @@ fn capture(core: &pw::core::CoreRc, target: &str, monitor: bool, latency: &str, 
                 }
                 p.far.drain(..whole);
             } else {
+                // The processing's thread on a fast core while it works
+                // (once: it is PipeWire's realtime thread, for good).
+                thread_local!(static FAST: std::cell::Cell<bool> = const { std::cell::Cell::new(false) });
+                if !FAST.replace(true) {
+                    let _ = olo_system::priority::util_min_self(olo_protocol::performance::AUDIO_UTIL_MIN);
+                }
                 p.mic.extend_from_slice(input);
                 let whole = p.mic.len() / FRAME * FRAME;
                 let mut out = [0f32; FRAME];

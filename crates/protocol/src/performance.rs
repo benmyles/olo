@@ -194,6 +194,7 @@ pub struct Finding {
 pub fn tier(name: &str) -> Option<i32> {
     match name {
         "olo-app-server" => Some(CORE_NICE),
+        "olo-voice" | "olo-airpods" => Some(AUDIO_NICE),
         "olo-session" | "olo-deskbar" | "olo-wlproxy" => Some(SHELL_NICE),
         _ => None,
     }
@@ -201,6 +202,17 @@ pub fn tier(name: &str) -> Option<i32> {
 
 /// The compositor's nice.
 pub const CORE_NICE: i32 = -10;
+/// The voice services' (olo-voice, olo-airpods): a microphone's sound
+/// every 10 ms, where a late frame is a click in someone's call. Their
+/// PipeWire threads are realtime besides (rtkit, by libpipewire; the
+/// supervisor sees that they are: [`AUDIO_THREAD`]).
+pub const AUDIO_NICE: i32 = -10;
+/// The name PipeWire gives the thread a stream's sound runs on, in a
+/// program of the audio tier: realtime.
+pub const AUDIO_THREAD: &str = "data-loop";
+/// Its realtime priority, at most (rtkit gives up to its
+/// `MaxRealtimePriority`, 20 by default; PipeWire's clients ask 83).
+pub const AUDIO_RT_PRIORITY: u32 = 20;
 /// The session's, Deskbar's and the proxy's.
 pub const SHELL_NICE: i32 = -5;
 
@@ -218,6 +230,10 @@ pub const CORE_UTIL_MIN: u32 = 1024;
 /// 1024 there (a fast core near its top clock), 512 no faster than a
 /// slow core's top.
 pub const UI_UTIL_MIN: u32 = 768;
+/// The voice service's processing thread's: a 10 ms frame's work on a
+/// fast core (0.57 ms) rather than a slow one at a low clock (1.1 ms,
+/// measured in pw-sandbox, where nothing is realtime).
+pub const AUDIO_UTIL_MIN: u32 = 1024;
 
 /// A program of Olo's own the supervisor found running above its tier
 /// and raised ([`SupervisorState::raised`]).

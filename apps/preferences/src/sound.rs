@@ -19,6 +19,7 @@ use olo_ui::{
 };
 
 use crate::{Msg, PanelView, form::Ui, panel};
+use olo_protocol::voice;
 
 /// What the watcher last saw: None until it has spoken; Some(None) while
 /// there is no sound server.
@@ -28,11 +29,29 @@ enum Change {
     Default(Kind, String),
     Volume(Kind, String, f32, usize),
     Mute(Kind, String, bool),
+    Voice(voice::Settings),
 }
 
 struct Link {
     devices: Shared,
+    /// The voice service's state and settings, followed.
+    voice: Arc<Mutex<(voice::State, voice::Settings)>>,
     tx: Sender<Change>,
+}
+
+/// Test data for the voice processing box: listening to a microphone
+/// named as long as they come, cancelling echo.
+fn test_voice() -> (voice::State, voice::Settings) {
+    let state = voice::State {
+        pid: 1,
+        running: true,
+        microphone: Some("mic".into()),
+        microphone_label: Some("MacBook Pro Microphone (Built-in Audio Analog Stereo)".into()),
+        echo_cancelling: true,
+        latency_ms: 40,
+        ..voice::State::default()
+    };
+    (state, voice::Settings::default())
 }
 
 /// Test data: speakers, a headset and a microphone named as they come.
@@ -64,7 +83,24 @@ fn link(proxy: olo_ui::Proxy) -> &'static Link {
         // and no sound server.
         if cfg!(test) {
             *devices.lock().unwrap() = Some(Some(test_devices()));
-            return Link { devices, tx: channel().0 };
+            return Link { devices, voice: Arc::new(Mutex::new(test_voice())), tx: channel().0 };
+        }
+        let voice = Arc::new(Mutex::new((voice::State::load(), voice::Settings::load())));
+        let read = {
+            let (voice, proxy) = (voice.clone(), proxy.clone());
+            move |_: &[std::path::PathBuf]| {
+                let now = (voice::State::load(), voice::Settings::load());
+                let mut v = voice.lock().unwrap();
+                if *v != now {
+                    *v = now;
+                    drop(v);
+                    proxy.send(Msg::Redraw);
+                }
+            }
+        };
+        if let Some(w) = olo_ui::watch::watch([voice::State::path(), voice::Settings::path()], read) {
+            // The app's, for as long as it runs.
+            std::mem::forget(w);
         }
         let shared = devices.clone();
         std::thread::Builder::new()
@@ -94,7 +130,7 @@ fn link(proxy: olo_ui::Proxy) -> &'static Link {
                 }
             })
             .expect("thread");
-        Link { devices, tx }
+        Link { devices, voice, tx }
     })
 }
 
@@ -103,6 +139,12 @@ fn apply(change: Change) {
         Change::Default(kind, name) => audio::set_default(*kind, name),
         Change::Volume(kind, name, level, channels) => audio::set_device_volume(*kind, name, *level, *channels),
         Change::Mute(kind, name, mute) => audio::set_device_muted(*kind, name, *mute),
+        Change::Voice(settings) => {
+            if let Err(e) = settings.save() {
+                tracing::warn!("sound: voice settings: {e}");
+            }
+            Ok(())
+        }
     };
     if let Err(e) = r {
         tracing::warn!("sound: {e}");
@@ -141,6 +183,76 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     }
     section(ui, st, &devices, Kind::Output);
     section(ui, st, &devices, Kind::Input);
+    voice_section(ui, st, &devices);
+}
+
+/// Voice processing (the voice service): on or off, what for, how much
+/// noise to take out, echo and level; and what it's doing now.
+fn voice_section(ui: &mut Ui, st: &mut State, devices: &Devices) {
+    let (state, settings) = st.link.voice.lock().unwrap().clone();
+    let tx = st.link.tx.clone();
+    let save = move |s: voice::Settings| _ = tx.send(Change::Voice(s));
+    ui.bbox("Voice Processing", |ui| {
+        let s2 = save.clone();
+        ui.add(CheckBox::new("Clean up the microphone's sound", settings.enabled).on_toggle(move |on, _, _| s2(voice::Settings { enabled: on, ..settings })));
+        let modes: Vec<SharedString> = voice::Mode::ALL.iter().map(|m| SharedString::from(m.label())).collect();
+        let at = voice::Mode::ALL.iter().position(|m| *m == settings.mode).unwrap_or(0);
+        let s2 = save.clone();
+        ui.add(
+            MenuField::new("voice-mode", modes, at)
+                .label("Tuned for:")
+                .divider(130.0)
+                .enabled(settings.enabled)
+                .on_change(move |i, _, _| s2(voice::Settings { mode: voice::Mode::ALL[i], ..settings })),
+        );
+        let levels: Vec<SharedString> = voice::Noise::ALL.iter().map(|n| SharedString::from(n.label())).collect();
+        let at = voice::Noise::ALL.iter().position(|n| *n == settings.noise).unwrap_or(0);
+        let s2 = save.clone();
+        ui.add(
+            MenuField::new("voice-noise", levels, at)
+                .label("Background noise:")
+                .divider(130.0)
+                .enabled(settings.enabled)
+                .on_change(move |i, _, _| s2(voice::Settings { noise: voice::Noise::ALL[i], ..settings })),
+        );
+        let s2 = save.clone();
+        ui.add(
+            CheckBox::new("Cancel echo from the speakers", settings.echo_cancellation)
+                .enabled(settings.enabled)
+                .on_toggle(move |on, _, _| s2(voice::Settings { echo_cancellation: on, ..settings })),
+        );
+        let s2 = save.clone();
+        ui.add(
+            CheckBox::new("Even out the voice's level", settings.normalize)
+                .enabled(settings.enabled)
+                .on_toggle(move |on, _, _| s2(voice::Settings { normalize: on, ..settings })),
+        );
+        ui.note(voice_note(&state, &settings, devices));
+    });
+}
+
+/// What the voice service is doing, in a line.
+fn voice_note(state: &voice::State, settings: &voice::Settings, devices: &Devices) -> String {
+    if !settings.enabled {
+        return "Apps get the microphone's sound as it is.".into();
+    }
+    if state.pid == 0 {
+        return "The voice service isn't running.".into();
+    }
+    if let Some(e) = &state.error {
+        return format!("Not working: {e}.");
+    }
+    // (Which microphone, the Input box above says.)
+    let echo = if !settings.echo_cancellation {
+        ""
+    } else if state.echo_cancelling {
+        ", echo cancelled"
+    } else if devices.default_device(Kind::Output).is_some_and(|o| o.private) {
+        ", no echo with headphones"
+    } else {
+        ""
+    };
+    format!("Cleaning up the microphone's sound: {} ms behind{echo}.", state.latency_ms)
 }
 
 /// The AirPods behind a sound device, if it is theirs.

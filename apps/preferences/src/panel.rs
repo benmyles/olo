@@ -210,7 +210,7 @@ impl Panel {
             Panel::Power => (460, 366),
             Panel::ScreenSaver => (500, 400),
             Panel::Security => (420, 340),
-            Panel::Sound => (460, 440),
+            Panel::Sound => (460, 464),
             Panel::Terminal => (420, 390),
             Panel::Themes => (560, 672),
             Panel::TouchId => (420, 330),

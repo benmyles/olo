@@ -87,6 +87,9 @@ struct Supervisor {
     /// Olo's own programs found above their tier and raised (or that
     /// couldn't be, noted once).
     raised: HashMap<i32, Raised>,
+    /// The voice services' sound threads looked at (made realtime, or that
+    /// couldn't be, noted once): (pid, tid).
+    realtime: HashSet<(i32, u32)>,
     /// When each zombie was first seen.
     zombies: HashMap<i32, f64>,
     /// Findings by process and kind, and those already asked about.
@@ -261,6 +264,36 @@ impl Supervisor {
                     // (Once a process: not worth asking every two seconds.)
                     self.raised.insert(p.pid, Raised { pid: p.pid, name: p.name.clone(), nice_before: before, nice: before });
                     self.note(format!("Couldn't raise {} ({}): {e}", p.name, p.pid));
+                }
+            }
+        }
+
+        // The voice services' sound (olo-voice, olo-airpods): PipeWire's
+        // thread for it should be realtime (libpipewire asks rtkit as the
+        // stream starts); one that isn't (rtkit said no then, or no
+        // limit on realtime time was set), asked for again, once.
+        self.realtime.retain(|(pid, _)| alive.contains(pid));
+        for p in &procs {
+            if olo_protocol::performance::tier(&p.name) != Some(olo_protocol::performance::AUDIO_NICE) || p.state == 'Z' || !same_session(p.pid) {
+                continue;
+            }
+            let Ok(tasks) = std::fs::read_dir(format!("/proc/{}/task", p.pid)) else { continue };
+            for t in tasks.flatten() {
+                let Ok(tid) = t.file_name().to_string_lossy().parse::<u32>() else { continue };
+                if self.realtime.contains(&(p.pid, tid)) {
+                    continue;
+                }
+                let comm = std::fs::read_to_string(t.path().join("comm")).unwrap_or_default();
+                if !comm.starts_with(olo_protocol::performance::AUDIO_THREAD) {
+                    continue;
+                }
+                self.realtime.insert((p.pid, tid));
+                if olo_system::priority::is_realtime(tid) {
+                    continue;
+                }
+                match olo_system::priority::realtime(p.pid as u32, tid, olo_protocol::performance::AUDIO_RT_PRIORITY) {
+                    Ok(()) => self.note(format!("Made {}'s sound ({}, thread {tid}) realtime: Olo's voice, above everything", p.name, p.pid)),
+                    Err(e) => self.note(format!("Couldn't make {}'s sound ({}, thread {tid}) realtime: {e}", p.name, p.pid)),
                 }
             }
         }
@@ -622,6 +655,7 @@ fn main() -> std::process::ExitCode {
             followed: HashMap::new(),
             lowered: HashMap::new(),
             raised: HashMap::new(),
+            realtime: HashSet::new(),
             zombies: HashMap::new(),
             findings: HashMap::new(),
             asked: HashSet::new(),
