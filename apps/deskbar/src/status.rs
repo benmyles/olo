@@ -45,6 +45,8 @@ pub struct Status {
     pub battery: Option<Battery>,
     pub wifi: Option<Wifi>,
     pub volume: Option<Volume>,
+    /// Every output and input, for the speaker's menu.
+    pub sound: Option<audio::Devices>,
     /// Programs a newer build would replace (olo-session's offer).
     pub upgrade: Vec<String>,
     /// Upgrading was asked for while a build was running: olo-session
@@ -161,6 +163,15 @@ fn run_audio(req: AudioRequest) {
     if let Err(e) = r {
         tracing::warn!("sound server: {e}");
     }
+}
+
+/// Make `name` where sound goes or comes from (off the UI thread).
+pub fn set_default_device(kind: audio::Kind, name: String) {
+    std::thread::spawn(move || {
+        if let Err(e) = audio::set_default(kind, &name) {
+            tracing::warn!("sound server: {e}");
+        }
+    });
 }
 
 pub fn toggle_mute() {
@@ -282,9 +293,14 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     std::thread::Builder::new()
         .name("deskbar-volume".into())
         .spawn(move || {
-            audio::watch(|v| {
-                let volume = v.map(|v| Volume { level: v.level, muted: v.muted });
-                publish(&shared, |s| s.volume = volume);
+            // The devices (the speaker's menu) and the default output's
+            // volume, from one change feed.
+            audio::watch_devices(|d| {
+                let volume = d.as_ref().and_then(|d| d.default_device(audio::Kind::Output)).map(|o| Volume { level: o.volume.level, muted: o.volume.muted });
+                publish(&shared, |s| {
+                    s.volume = volume;
+                    s.sound = d;
+                });
             })
         })
         .expect("thread");

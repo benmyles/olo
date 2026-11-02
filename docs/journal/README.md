@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Deskbar: the speaker's menu
+
+*12:06* — Right-click the speaker: every output and input, mute, and while AirPods play, their levels, noise control, Conversation Awareness, Personalized Volume, music or call quality, and both settings panels.
+
+![Deskbar: the speaker's menu](2026-11-02/120605-deskbar-the-speaker-s-menu.png)
+
 ### Preferences on a short screen
 
 *11:33* — A panel taller than the screen (AirPods, 752 points, on a 700-point display) opens as tall as fits, laid out at its own size and scrolled, with a scroll bar the window is widened for. Panels that fit are unchanged.

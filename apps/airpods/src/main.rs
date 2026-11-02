@@ -65,7 +65,8 @@ fn main() -> ExitCode {
         },
         _ => return usage(),
     };
-    match ap::ask(&request, Duration::from_secs(20)) {
+    // Connecting waits on BlueZ (and the AirPods), up to half a minute.
+    match ap::ask(&request, Duration::from_secs(45)) {
         Ok(r) if r.ok => ExitCode::SUCCESS,
         Ok(r) => {
             eprintln!("olo-airpods: {}", r.error.unwrap_or_default());
@@ -134,7 +135,9 @@ fn status(json: bool) -> ExitCode {
         };
         println!("{} ({}, {}): {conn}", d.name, d.model, d.address);
         if !d.firmware.is_empty() {
-            println!("  model {}, firmware {}, serial {}", d.model_number, d.firmware, d.serial);
+            // (The model number is the primary bud's; the firmware Apple's
+            // build, not the version an iPhone shows.)
+            println!("  bud {}, build {}, serial {}", d.model_number, d.firmware, d.serial);
         }
         if d.connected {
             let levels = d.levels();

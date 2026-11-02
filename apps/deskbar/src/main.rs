@@ -886,6 +886,20 @@ impl Deskbar {
                 }
             }
             Some(("share", session)) => spawn(&format!("olo-portal --stop {session}")),
+            Some(("sound", "mute")) => {
+                status::toggle_mute();
+                if let Some(v) = &mut self.status.volume {
+                    v.muted = !v.muted;
+                }
+            }
+            Some(("sound", what)) => {
+                use olo_system::audio::Kind;
+                match what.split_once(':') {
+                    Some(("out", name)) => status::set_default_device(Kind::Output, name.to_owned()),
+                    Some(("in", name)) => status::set_default_device(Kind::Input, name.to_owned()),
+                    _ => {}
+                }
+            }
             // AirPods: the service does it (`olo-airpods --mode anc`, …).
             Some(("airpods", what)) => {
                 let address = self.status.airpods.as_ref().map(|a| a.address.clone()).unwrap_or_default();
@@ -1295,11 +1309,56 @@ fn sharing_menu(shares: &[olo_protocol::sharing::Share]) -> Menu {
     m
 }
 
+/// The speaker's menu (right click): where sound goes and comes from,
+/// mute, and while AirPods play, their levels, noise control, listening
+/// features and quality, and the way to the settings.
+fn sound_menu(devices: Option<&olo_system::audio::Devices>, pods: Option<&olo_protocol::airpods::AirPods>, muted: bool) -> Menu {
+    let mut m = Menu::new("Sound");
+    if let Some(d) = devices {
+        m = m.item("Output", "").enabled(false);
+        for o in &d.outputs {
+            m = m.item(o.description.clone(), format!("sound:out:{}", o.name)).checked(o.is_default);
+        }
+        m = m.separator().item("Input", "").enabled(false);
+        for i in &d.inputs {
+            m = m.item(i.description.clone(), format!("sound:in:{}", i.name)).checked(i.is_default);
+        }
+        m = m.separator();
+    }
+    m = m.item("Mute", "sound:mute").checked(muted);
+    let playing = |p: &&olo_protocol::airpods::AirPods| devices.and_then(|d| d.default_device(olo_system::audio::Kind::Output)).is_some_and(|o| o.name == p.sound.output);
+    if let Some(p) = pods.filter(playing) {
+        m = airpods_items(m.separator(), p);
+        if p.abilities.adaptive && p.linked {
+            if let Some(on) = p.settings.personalized_volume {
+                m = m.item("Personalized Volume", format!("airpods:set personalized-volume {}", if on { "off" } else { "on" })).checked(on);
+            }
+        }
+        if !p.sound.card.is_empty() {
+            m = m
+                .item("Music Quality (AAC)", "airpods:quality music")
+                .checked(p.sound.high_quality)
+                .item("Call Quality, with Microphone", "airpods:quality calls")
+                .checked(!p.sound.high_quality);
+        }
+        m = m.separator().item("AirPods Settings…", "pref:airpods");
+    } else {
+        m = m.separator();
+    }
+    m.item("Sound Settings…", "pref:sound")
+}
+
 /// AirPods' tray menu: their levels, noise control, Conversation
 /// Awareness, and the way to their settings and the sound's.
 fn airpods_menu(pods: &olo_protocol::airpods::AirPods) -> Menu {
+    airpods_items(Menu::new("AirPods"), pods).separator().item("Disconnect", "airpods:disconnect").item("AirPods Settings…", "pref:airpods").item("Sound Settings…", "pref:sound")
+}
+
+/// AirPods' name and levels, noise control and Conversation Awareness,
+/// added to `m` (their own menu, and the speaker's).
+fn airpods_items(mut m: Menu, pods: &olo_protocol::airpods::AirPods) -> Menu {
     use olo_protocol::airpods::ListeningMode;
-    let mut m = Menu::new("AirPods").item(pods.name.clone(), "").enabled(false);
+    m = m.item(pods.name.clone(), "").enabled(false);
     let levels = pods.levels();
     if !levels.is_empty() {
         m = m.item(levels, "").enabled(false);
@@ -1313,7 +1372,7 @@ fn airpods_menu(pods: &olo_protocol::airpods::AirPods) -> Menu {
     if let Some(on) = pods.settings.conversation_awareness.filter(|_| pods.linked) {
         m = m.separator().item("Conversation Awareness", format!("airpods:set conversation-awareness {}", if on { "off" } else { "on" })).checked(on);
     }
-    m.separator().item("Disconnect", "airpods:disconnect").item("AirPods Settings…", "pref:airpods").item("Sound Settings…", "pref:sound")
+    m
 }
 
 /// The supervisor's tray menu: on or off, what it found (each to its
@@ -1961,11 +2020,19 @@ impl Deskbar {
             );
         }
         if let Some(vol) = st.volume {
-            let tip_text = if vol.muted { "Muted".into() } else { format!("Volume {}%", (vol.level * 100.0).round()) };
-            let (_, h) = tray_item(&mut d, "volume", tip_text, Box::new(move |window, cx, r| status::draw_volume(window, r, &theme::palette(cx), vol.level, vol.muted)));
+            let tip_text = if vol.muted { "Muted. Click to unmute; right-click for sound devices.".into() } else { format!("Volume {}%. Click to mute; right-click for sound devices.", (vol.level * 100.0).round()) };
+            let (r, h) = tray_item(&mut d, "volume", tip_text, Box::new(move |window, cx, r| status::draw_volume(window, r, &theme::palette(cx), vol.level, vol.muted)));
             let (m, m2, v) = (model.clone(), model.clone(), view.clone());
+            let (m3, v3, menu_of) = (model.clone(), view.clone(), (st.sound.clone(), st.airpods.clone(), vol.muted));
             d.hits.push(
-                h.on_any_button(move |e, _, cx| {
+                h.on_any_button(move |e, window, cx| {
+                    // Right: every output and input, and AirPods' controls.
+                    if button(e) == MouseButton::Right {
+                        let mm = m3.clone();
+                        let menu = sound_menu(menu_of.0.as_ref(), menu_of.1.as_ref(), menu_of.2);
+                        open_menu(window, cx, &v3, "tray:volume", r, menu, move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
+                        return;
+                    }
                     if button(e) == MouseButton::Left {
                         status::toggle_mute();
                         m.update(cx, |d, cx| {

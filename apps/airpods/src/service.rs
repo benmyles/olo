@@ -57,6 +57,9 @@ struct Inner {
     /// wasn't AirPods' (to go back to).
     inputs: Vec<String>,
     computer_input: Option<String>,
+    /// The sound server's devices have been seen once: what comes after
+    /// is new (an output there at the service's start was already there).
+    sound_seen: bool,
     fake: bool,
 }
 
@@ -74,6 +77,7 @@ fn service() -> &'static Service {
                 published: None,
                 inputs: Vec::new(),
                 computer_input: None,
+                sound_seen: false,
                 fake: std::env::var_os("OLO_FAKE_AIRPODS").is_some(),
             }),
         }
@@ -208,7 +212,18 @@ fn talk(addr: String) {
             break;
         };
         let opened = Instant::now();
-        let hello = [proto::hello(), proto::host_features(), proto::ask_notifications(), proto::ask_keys()];
+        // The hello first, and the rest only once they've answered it:
+        // asked for notifications before then, they never send their
+        // levels or where the buds are (seen on a reconnection).
+        let mut rest = vec![proto::host_features(), proto::ask_notifications(), proto::ask_keys()];
+        // What they don't say unasked and forget for other hosts: the
+        // modes press and hold goes through, as last chosen here.
+        if let Some(modes) = crate::keys::press_and_hold(&addr)
+            && let Ok(m) = messages(&Change::PressAndHoldModes(modes))
+        {
+            rest.extend(m);
+        }
+        let hello = [proto::hello()];
         if let Err(e) = hello.iter().try_for_each(|m| link.send(m)) {
             tracing::warn!("airpods {addr}: {e}");
         } else {
@@ -217,6 +232,8 @@ fn talk(addr: String) {
                 if let Some(d) = inner.devices.get_mut(&addr) {
                     d.link = Some(link.clone());
                     d.info.linked = true;
+                    // Apple's own until they say otherwise (or Olo sent its).
+                    d.info.settings.press_and_hold_modes = crate::keys::press_and_hold(&addr).unwrap_or(vec![ListeningMode::Transparency, ListeningMode::NoiseCancellation]);
                 }
                 publish(&mut inner);
             }
@@ -225,6 +242,14 @@ fn talk(addr: String) {
                 match link.recv() {
                     Ok(m) if m.is_empty() => break,
                     Ok(m) => {
+                        tracing::trace!("airpods {addr}: heard {}", hex(&m));
+                        if proto::is_hello_answer(&m) && !rest.is_empty() {
+                            if let Err(e) = rest.drain(..).try_for_each(|r| link.send(&r)) {
+                                tracing::warn!("airpods {addr}: {e}");
+                                break;
+                            }
+                            continue;
+                        }
                         if let Some(msg) = proto::parse(&m) {
                             heard(&addr, msg);
                         } else {
@@ -445,9 +470,10 @@ fn speaking_changed(d: &mut Dev, level: u8) -> Option<Box<dyn FnOnce() + Send>> 
 fn sound_changed(devices: Option<audio::Devices>) {
     let Some(devices) = devices else { return };
     let cards = if devices.outputs.iter().chain(&devices.inputs).any(|d| d.bluetooth.is_some()) { audio::cards().unwrap_or_default() } else { Vec::new() };
-    let mut fix_input = None;
+    let (mut fix_input, mut make_default) = (None, None);
     {
         let mut inner = service().inner.lock().unwrap();
+        let seen = std::mem::replace(&mut inner.sound_seen, true);
         let addrs: Vec<String> = inner.devices.keys().cloned().collect();
         for addr in &addrs {
             let ours = |d: &&audio::Device| d.bluetooth.as_ref().is_some_and(|b| b.address.eq_ignore_ascii_case(addr));
@@ -462,6 +488,12 @@ fn sound_changed(devices: Option<audio::Devices>) {
                 card: cards.iter().find(|c| c.address.as_deref().is_some_and(|a| a.eq_ignore_ascii_case(addr))).map(|c| c.name.clone()).unwrap_or_default(),
             };
             if let Some(d) = inner.devices.get_mut(addr) {
+                // Their output has just come: sound goes to them, as when
+                // headphones are put on (once; the person may choose
+                // otherwise after).
+                if seen && !sound.output.is_empty() && d.info.sound.output != sound.output && !out.is_some_and(|o| o.is_default) {
+                    make_default = Some(sound.output.clone());
+                }
                 d.info.sound = sound;
             }
         }
@@ -480,6 +512,12 @@ fn sound_changed(devices: Option<audio::Devices>) {
         }
         inner.inputs = devices.inputs.iter().map(|d| d.name.clone()).collect();
         publish(&mut inner);
+    }
+    if let Some(name) = make_default {
+        tracing::info!("airpods: playing through them ({name})");
+        if let Err(e) = audio::set_default(audio::Kind::Output, &name) {
+            tracing::warn!("airpods: {e}");
+        }
     }
     if let Some(name) = fix_input {
         tracing::info!("airpods: keeping the computer's microphone ({name}) as the input");
@@ -609,6 +647,9 @@ fn answer(request: Request) -> Reply {
                 }
             }
             apply_locally(d, &change);
+            if let Change::PressAndHoldModes(modes) = &change {
+                crate::keys::remember_press_and_hold(&addr, modes);
+            }
             let path = d.info.path.clone();
             publish(&mut inner);
             drop(inner);
@@ -627,6 +668,7 @@ fn answer(request: Request) -> Reply {
         }
         Request::Connect { address } => {
             let path = match pick(&inner, &address) {
+                Ok(a) if inner.devices[&a].info.connected => return ok(None),
                 Ok(a) => inner.devices[&a].info.path.clone(),
                 Err(e) => return fail(e),
             };
@@ -635,6 +677,7 @@ fn answer(request: Request) -> Reply {
         }
         Request::Disconnect { address } => {
             let path = match pick(&inner, &address) {
+                Ok(a) if !inner.devices[&a].info.connected => return ok(None),
                 Ok(a) => inner.devices[&a].info.path.clone(),
                 Err(e) => return fail(e),
             };
@@ -679,6 +722,7 @@ fn serve() -> ! {
     for stream in listener.incoming().flatten() {
         std::thread::spawn(move || {
             let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+            let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
             let mut line = String::new();
             if BufReader::new(&stream).read_line(&mut line).is_err() {
                 return;

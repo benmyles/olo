@@ -4947,7 +4947,11 @@ codec, music or call quality, noise control; in the input: where to
 record from while they're connected); Deskbar's tray while they're
 connected (`status::draw_airpods`, amber at 20%, red at 10%; its menu
 has their levels, noise control, Conversation Awareness, Disconnect and
-both panels). Their icons are `airpods`, `airpods-case`, `airpod-left`
+both panels), and the speaker's right-click menu (`sound_menu`, for any
+device: every output and input, mute, and while AirPods play, their
+levels, noise control, Conversation Awareness, Personalized Volume and
+music or call quality). Deskbar follows the sound server's whole device
+list (`audio::watch_devices`), the volume being the default output's. Their icons are `airpods`, `airpods-case`, `airpod-left`
 and `airpod-right`, in every theme.
 
 **Tests only look: never pair, connect or disconnect real AirPods.**

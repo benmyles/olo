@@ -354,11 +354,7 @@ fn header(ui: &mut Ui, st: &mut State, state: &AirPodsState, a: &AirPods) {
         })
     };
     ui.add(div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().child(TextControl::new(field).label("Name:"))).child(button));
-    let mut about = vec![a.model.clone(), status];
-    if !a.firmware.is_empty() {
-        about.push(format!("model {}, firmware {}", a.model_number, a.firmware));
-    }
-    ui.add(StringView::new(about.join(" · ")).dim(true));
+    ui.add(StringView::new(format!("{} · {status}", a.model)).dim(true));
 }
 
 /// What this computer does with them: Olo's settings.

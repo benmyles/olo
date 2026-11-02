@@ -236,6 +236,12 @@ pub fn hello() -> Vec<u8> {
     vec![0x00, 0x00, 0x04, 0x00, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
 }
 
+/// Whether `packet` is their answer to [`hello`] (`01 00 04 00 …`):
+/// only after it may anything else be asked.
+pub fn is_hello_answer(packet: &[u8]) -> bool {
+    packet.starts_with(&[0x01, 0x00, 0x04, 0x00])
+}
+
 /// What this host can do: all of it, which turns on Conversation
 /// Awareness while sound plays and Adaptive.
 pub fn host_features() -> Vec<u8> {
@@ -421,6 +427,8 @@ mod tests {
         assert_eq!(parse(&hex("04 00 04 00 19 00 06 01")), Some(Message::StemPress { press: Press::Double, left: true }));
         assert_eq!(parse(&hex("04 00 04 00 77 00 01 02")), Some(Message::Other { opcode: 0x77, data: vec![1, 2] }));
         assert_eq!(parse(&hex("00 00 04 00")), None);
+        // As AirPods Pro 2 (firmware 9A348) answer the hello.
+        assert!(is_hello_answer(&hex("01 00 04 00 00 00 01 00 03 00 00 00 00 00 00 00 00 00")));
     }
 
     #[test]

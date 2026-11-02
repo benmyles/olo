@@ -71,3 +71,32 @@ mod tests {
         assert_eq!(super::unhex("zz"), None);
     }
 }
+
+/// What Olo keeps of each pair besides its keys: the modes press and hold
+/// goes through (the AirPods don't say it unasked, and are told it again
+/// at each connection, as other hosts may have changed it).
+fn kept_path() -> PathBuf {
+    olo_xdg::state_dir().join("airpods.json")
+}
+
+type Kept = BTreeMap<String, Vec<olo_protocol::airpods::ListeningMode>>;
+
+pub fn press_and_hold(addr: &str) -> Option<Vec<olo_protocol::airpods::ListeningMode>> {
+    let kept: Kept = std::fs::read_to_string(kept_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    kept.get(addr).cloned()
+}
+
+pub fn remember_press_and_hold(addr: &str, modes: &[olo_protocol::airpods::ListeningMode]) {
+    let path = kept_path();
+    let mut kept: Kept = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    kept.insert(addr.to_owned(), modes.to_vec());
+    let write = || -> std::io::Result<()> {
+        std::fs::create_dir_all(path.parent().expect("a folder"))?;
+        let tmp = path.with_extension("json.new");
+        std::fs::write(&tmp, serde_json::to_string_pretty(&kept).unwrap_or_default())?;
+        std::fs::rename(tmp, &path)
+    };
+    if let Err(e) = write() {
+        tracing::warn!("airpods: keeping press and hold: {e}");
+    }
+}
