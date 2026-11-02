@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 pub mod airpods;
+pub mod voice;
 pub mod notifications;
 pub mod panels;
 pub mod mice;

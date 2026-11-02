@@ -27,70 +27,12 @@ use std::time::Duration;
 pub mod echo;
 
 use ndarray::{ArrayView2, ArrayViewMut2};
-use serde::{Deserialize, Serialize};
 
 /// Samples a frame (10 ms at 48 kHz).
 pub const FRAME: usize = 480;
 pub const RATE: u32 = 48_000;
 
-/// What the microphone is for. The processing is the same; what differs
-/// is the buffering around it (the voice service's, the AirPods'
-/// microphone's): calls keep it to the least that never runs dry,
-/// recordings take plenty, since only an unbroken take matters.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum Mode {
-    /// Talking with people: the least delay that still sounds clean.
-    #[default]
-    Calls,
-    /// Recording: the cleanest, unbroken sound, whatever the delay.
-    Recording,
-}
-
-/// How hard noise is taken out.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum Noise {
-    Off,
-    /// Noise turned down by up to 18 dB (natural; a room still sounds a
-    /// room).
-    Moderate,
-    /// Up to 30 dB.
-    #[default]
-    Strong,
-    /// As far as it goes: only the voice.
-    Full,
-}
-
-impl Noise {
-    /// DeepFilterNet's attenuation limit.
-    fn limit_db(self) -> f32 {
-        match self {
-            Noise::Off => 0.0,
-            Noise::Moderate => 18.0,
-            Noise::Strong => 30.0,
-            Noise::Full => 100.0,
-        }
-    }
-}
-
-/// What the chain does (Preferences ▸ Sound).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Settings {
-    /// Process at all.
-    pub enabled: bool,
-    pub mode: Mode,
-    pub echo_cancellation: bool,
-    pub noise: Noise,
-    pub normalize: bool,
-}
-
-impl Default for Settings {
-    fn default() -> Settings {
-        Settings { enabled: true, mode: Mode::Calls, echo_cancellation: true, noise: Noise::Strong, normalize: true }
-    }
-}
+pub use olo_protocol::voice::{Mode, Noise, Settings};
 
 static MODEL: &[u8] = include_bytes!("../../../vendor/deep_filter/models/DeepFilterNet3_onnx.tar.gz");
 
