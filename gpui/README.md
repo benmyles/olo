@@ -282,13 +282,28 @@ What Olo changed, so far:
   under its key (what it shows and how) and replayed while the key, its
   size, clip and opacity are the same; moved by whole device pixels
   (scrolled), moved, if all it painted can be (things placed by their
-  bounds, clipped only by the canvas, no listeners: `Scene::movable`),
-  what it noted for agents moved with it (`paint_records` carry an
-  offset). A part painted before an icon or picture came isn't kept
-  (`Window::paint_unfinished`); a refreshed window (a review) paints
-  everything. `OLO_PAINT_MEMO=0` turns replays off, to compare.
-  Notifications' history paints each card so: a hover redrew a screen
-  of cards, 36,000 glyphs (paint 5.3 ms → 3.2 at 1×).
+  bounds, no listeners, nothing clipped away whole, each clipped by the
+  canvas or by a clip of its own the canvas didn't cut the way it
+  moves, which moves with it: a list row's cells; `Scene::movable`,
+  per axis), what it noted for agents moved with it (`paint_records`
+  carry an offset). A part the canvas cut where it was moved to is
+  replayed there but not moved again till painted afresh (what was cut
+  is gone from it); one off the device-pixel grid by any fraction is
+  painted afresh. A part painted before an icon or picture came isn't
+  kept (`Window::paint_unfinished`). A window's `refresh` replays
+  memos (their keys say all they depend on; olo-ui's widgets refresh
+  for a hover); `App::refresh_windows` (the theme, fonts, a picture
+  come) and a review's `draw_now` paint everything (`memos_reset`).
+  `OLO_PAINT_MEMO=0` turns replays off, to compare; `OLO_FRAME_PHASES`
+  marks a refreshed frame. Notifications' history paints each card so:
+  a hover redrew a screen of cards, 36,000 glyphs (paint 5.3 ms → 3.2
+  at 1×); olo-ui's list each row with a `row_key` (Log Viewer's 22,000
+  glyphs a screen at 1×: scrolling's frames over 6 ms 332 → 35 of
+  1,300, its menus 9.3 → 3.7 ms).
+- `uniform_list` places its rows on whole device pixels however far
+  they're scrolled (the offset kept exact): their text stays on the
+  pixel grid, and a row drawn last frame is moved rather than drawn
+  again.
 - Shaped lines a frame no longer uses aren't dropped but aged: kept
   up to 150,000 glyphs, the least lately used going first, their
   painted sprites let go (`LineLayoutCache::aged`). Upstream kept only

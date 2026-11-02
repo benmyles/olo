@@ -983,6 +983,12 @@ pub struct Window {
     drop_accept: Option<crate::DropAccept>,
     drop_accept_sent: Option<Option<crate::DropAccept>>,
     drop_handler: Option<Rc<RefCell<dyn FnMut(crate::Dropped, &mut Window, &mut App)>>>,
+    /// Olo: the last draw was a refresh (`OLO_FRAME_PHASES`).
+    last_draw_refreshed: bool,
+    /// Olo: paint memos aren't to be replayed this draw (`App::refresh_windows`:
+    /// something every window shows changed). A window's own `refresh`
+    /// leaves them: their keys say all they depend on.
+    pub(crate) memos_reset: bool,
     pub(crate) refreshing: bool,
     pub(crate) activation_observers: SubscriberSet<(), AnyObserver>,
     pub(crate) focus: Option<FocusId>,
@@ -1190,8 +1196,9 @@ impl Window {
                                     let [layout, paint, finish] = window.phase_marks.map(|d| d.as_secs_f64() * 1000.0);
                                     let scene = &window.rendered_frame.scene;
                                     eprintln!(
-                                        "frame {:.2} ms: layout {layout:.2}, paint {:.2}, finish {:.2}, present {:.2}; {} sprites, {} quads, {} operations",
+                                        "frame {:.2} ms{}: layout {layout:.2}, paint {:.2}, finish {:.2}, present {:.2}; {} sprites, {} quads, {} operations",
                                         started.elapsed().as_secs_f64() * 1000.0,
+                                        if window.last_draw_refreshed { " (refreshed)" } else { "" },
                                         paint - layout,
                                         finish - paint,
                                         (started.elapsed() - drawn).as_secs_f64() * 1000.0,
@@ -1424,6 +1431,8 @@ impl Window {
             drop_accept_sent: None,
             drop_handler: None,
             refreshing: false,
+            last_draw_refreshed: false,
+            memos_reset: false,
             activation_observers: SubscriberSet::new(),
             focus: None,
             focus_enabled: true,
@@ -1566,6 +1575,9 @@ impl Window {
     /// for itself, a layout review's.
     pub fn draw_now(&mut self) {
         self.refresh();
+        // (All of it painted again, nothing replayed: what's painted is
+        // what's being looked at.)
+        self.memos_reset = true;
         self.platform_window.draw_now();
     }
 
@@ -2216,7 +2228,8 @@ impl Window {
         debug_assert!(self.rendered_entity_stack.is_empty());
         self.record_entities_accessed(cx);
         self.reset_cursor_style(cx);
-        self.refreshing = false;
+        self.last_draw_refreshed = std::mem::replace(&mut self.refreshing, false);
+        self.memos_reset = false;
         self.invalidator.set_phase(DrawPhase::None);
         self.needs_present.set(true);
 
@@ -2554,22 +2567,26 @@ impl Window {
     /// Olo: paints what `paint` paints in `bounds`, or what it painted
     /// under `key` last frame, if nothing it depends on changed: `key`
     /// says all that (what it shows and how: hovered, selected, the
-    /// time it says), and the clip, opacity and size it was painted at
-    /// must be the same. In the same place it is replayed as a cached
+    /// time it says), and the clip, opacity, scale and size it was
+    /// painted at must be the same. A window's `refresh` replays it all
+    /// the same; `App::refresh_windows` (the theme, fonts) doesn't. In the same place it is replayed as a cached
     /// view is; moved by whole device pixels (scrolled), moved, if all it
-    /// painted can be (`Scene::movable`: no paths, nothing clipped inside
-    /// it, no listeners). A canvas of many parts (Notifications' cards)
+    /// painted can be (`Scene::movable`: no paths, no listeners, nothing
+    /// clipped inside it but by a clip of its own the outer one didn't cut
+    /// the way it moved: a list row's cells). A canvas of many parts (Notifications' cards)
     /// draws again only the parts that changed: a hover redrew a whole
     /// screen of cards, 36,000 glyphs.
     pub fn paint_memo(&mut self, key: u64, bounds: Bounds<Pixels>, cx: &mut App, paint: impl FnOnce(&mut Window, &mut App)) {
         self.invalidator.debug_assert_paint();
         let mask = self.content_mask();
         let opacity = self.element_opacity;
-        if !self.refreshing
+        let scale = self.scale_factor();
+        if !self.memos_reset
             && paint_memos()
             && let Some(memo) = self.rendered_frame.memos.get(&key)
             && memo.mask == mask
             && memo.opacity == opacity
+            && memo.scale == scale
             && memo.bounds.size == bounds.size
         {
             let scale = self.scale_factor();
@@ -2577,34 +2594,50 @@ impl Window {
             let whole = Point { x: ScaledPixels(by.x.0.round()), y: ScaledPixels(by.y.0.round()) };
             let on_grid = (by.x.0 - whole.x.0).abs() < 0.01 && (by.y.0 - whole.y.0).abs() < 0.01;
             let (range, movable) = (memo.range.clone(), memo.movable);
-            if whole == Point::default() || (movable && on_grid) {
+            let can = movable.is_some_and(|m| (whole.x.0 == 0.0 || m.x) && (whole.y.0 == 0.0 || m.y));
+            // (Off the grid, by however little, it's painted afresh: a
+            // fraction of a pixel left out of a move grows frame by frame.)
+            if on_grid && (whole == Point::default() || can) {
                 let start = self.paint_index();
+                let mut movable = movable;
                 if whole == Point::default() {
                     self.reuse_paint(range);
-                } else {
-                    self.reuse_paint_moved(range, whole, bounds.origin - memo.bounds.origin);
+                } else if self.reuse_paint_moved(range, whole, bounds.origin - memo.bounds.origin) {
+                    // (Cut where it landed: still to be replayed where it
+                    // is, not moved again.)
+                    movable = Some(crate::scene::Movable { x: false, y: false });
                 }
                 let end = self.paint_index();
-                self.next_frame.memos.insert(key, PaintMemo { bounds, mask, opacity, range: start..end, movable });
+                self.next_frame.memos.insert(key, PaintMemo { bounds, mask, opacity, scale, range: start..end, movable });
                 return;
             }
         }
         let start = self.paint_index();
+        let culled = self.next_frame.scene.culled;
         let outer = std::mem::take(&mut self.paint_unfinished);
         paint(self, cx);
         let end = self.paint_index();
+        // (Something clipped away whole isn't in what's kept: moved into
+        // sight, it would be missing.)
+        let whole = self.next_frame.scene.culled == culled;
         // (An unfinished part leaves what it's part of unfinished too.)
         let unfinished = self.paint_unfinished;
         self.paint_unfinished = outer || unfinished;
         if unfinished {
             return;
         }
-        let movable = start.mouse_listeners_index == end.mouse_listeners_index
+        let movable = (whole
+            && start.mouse_listeners_index == end.mouse_listeners_index
             && start.input_handlers_index == end.input_handlers_index
             && start.cursor_styles_index == end.cursor_styles_index
-            && start.tab_handle_index == end.tab_handle_index
-            && self.next_frame.scene.movable(start.scene_index..end.scene_index, &mask.scale(self.scale_factor()));
-        self.next_frame.memos.insert(key, PaintMemo { bounds, mask, opacity, range: start..end, movable });
+            && start.tab_handle_index == end.tab_handle_index)
+            .then(|| self.next_frame.scene.movable(start.scene_index..end.scene_index, &mask.scale(self.scale_factor())));
+        self.next_frame.memos.insert(key, PaintMemo { bounds, mask, opacity, scale, range: start..end, movable });
+    }
+
+    /// Olo: something wasn't painted, clipped away whole (`Scene::culled`).
+    pub(crate) fn note_culled(&mut self) {
+        self.next_frame.scene.culled += 1;
     }
 
     /// Olo: what's being painted isn't what will show (an icon or picture
@@ -2617,7 +2650,7 @@ impl Window {
     /// [`Window::reuse_paint`] of a [`Scene::movable`] range, moved by
     /// `by` (`points` in logical pixels): its scene, what it noted for
     /// agents, and its lines kept.
-    fn reuse_paint_moved(&mut self, range: Range<PaintIndex>, by: Point<ScaledPixels>, points: Point<Pixels>) {
+    fn reuse_paint_moved(&mut self, range: Range<PaintIndex>, by: Point<ScaledPixels>, points: Point<Pixels>) -> bool {
         self.next_frame.paint_records.extend(
             self.rendered_frame.paint_records[range.start.paint_records_index..range.end.paint_records_index]
                 .iter()
@@ -2629,7 +2662,8 @@ impl Window {
                 .map(|(id, type_id)| (GlobalElementId(id.0.clone()), *type_id)),
         );
         self.text_system.reuse_layouts(range.start.line_layout_index..range.end.line_layout_index);
-        self.next_frame.scene.replay_moved(range.start.scene_index..range.end.scene_index, &self.rendered_frame.scene, by);
+        let mask = self.content_mask().scale(self.scale_factor());
+        self.next_frame.scene.replay_moved(range.start.scene_index..range.end.scene_index, &self.rendered_frame.scene, by, &mask)
     }
 
     pub(crate) fn reuse_paint(&mut self, range: Range<PaintIndex>) {
@@ -5928,8 +5962,11 @@ pub(crate) struct PaintMemo {
     bounds: Bounds<Pixels>,
     mask: ContentMask<Pixels>,
     opacity: f32,
+    /// The scale it was painted at.
+    scale: f32,
     range: Range<PaintIndex>,
-    movable: bool,
+    /// Which ways it can be moved (none with listeners).
+    movable: Option<crate::scene::Movable>,
 }
 
 /// Olo: paint memos replay (`OLO_PAINT_MEMO=0` paints everything every

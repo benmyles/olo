@@ -410,6 +410,8 @@ fn paint_line(
                             color,
                         )?;
                     }
+                } else {
+                    window.note_culled();
                 }
             }
         }

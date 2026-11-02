@@ -1436,6 +1436,9 @@ impl App {
         for window in self.windows.values_mut() {
             if let Some(window) = window.as_deref_mut() {
                 window.refreshing = true;
+                // Olo: something every window shows changed (the theme,
+                // fonts, a picture come in): paint memos too.
+                window.memos_reset = true;
                 window.invalidator.set_dirty(true);
             }
         }

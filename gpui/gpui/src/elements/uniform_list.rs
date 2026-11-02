@@ -469,6 +469,15 @@ impl Element for UniformList {
                         (self.render_items)(visible_range.clone(), window, cx)
                     };
 
+                    // Olo: the rows placed on whole device pixels however far
+                    // they're scrolled (the offset kept exact): their text
+                    // stays on the pixel grid, and a row drawn last frame
+                    // is moved rather than drawn again (`paint_memo`).
+                    let scroll_offset = {
+                        let s = window.scale_factor();
+                        let snap = |v: Pixels| Pixels((f32::from(v) * s).round() / s);
+                        point(snap(scroll_offset.x), snap(scroll_offset.y))
+                    };
                     let content_mask = ContentMask { bounds };
                     window.with_content_mask(Some(content_mask), |window| {
                         for (mut item, ix) in items.into_iter().zip(visible_range.clone()) {

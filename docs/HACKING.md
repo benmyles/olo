@@ -1297,7 +1297,12 @@ event reaches it.
   middle; `typing()` says a name is being typed (a space is part of
   it). Agents read `Row`s (named by their cells' text, selected or
   not) and `ColumnHeader`s (one scrolled out of view sideways is none
-  wide at the view's edge, not clickable). `no_header()` shows the rows
+  wide at the view's edge, not clickable). `row_key(|row, cx| u64)`:
+  a number that changes when what a row shows does (its line's id and
+  what a search marks in it): such a row whose key and look are as last
+  frame's is replayed, moved if scrolled, rather than painted again
+  (`Window::paint_memo`; Log Viewer's screen of 22,000 glyphs). Give it
+  for any list of many rows. `no_header()` shows the rows
   alone (a list of things, not of columns: Passwords' items), its
   frame's line along their top; a cell drawn by hand (an icon and two
   lines) says its text to agents with `cell.say(text)`.

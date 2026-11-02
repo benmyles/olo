@@ -25,6 +25,19 @@ const BATCH: usize = 4000;
 /// slipped by.
 const POLL: Duration = Duration::from_millis(500);
 const LOOK: Duration = Duration::from_secs(30);
+/// At most one read of what's being written this often: a busy journal
+/// is written to many times a second, each a frame of the window (90 a
+/// second, a full screen of lines at 1× on a big display: 5 ms each),
+/// where people read a line a tenth of a second late as well.
+const PACE: Duration = Duration::from_millis(100);
+
+/// Waits till `PACE` has gone by since `last` read (writes come in bursts:
+/// read together).
+fn pace(last: Option<std::time::Instant>) {
+    if let Some(t) = last {
+        std::thread::sleep(PACE.saturating_sub(t.elapsed()));
+    }
+}
 
 /// Read the journal, giving `on` each update; with `follow`, keep going
 /// as it is written. Stops when `on` returns false.
@@ -76,11 +89,14 @@ pub fn run(follow: bool, on: &mut dyn FnMut(Update) -> bool) {
     let wait = if watch.is_some() { LOOK } else { POLL };
     // (What was written before the watch began is read at once.)
     let mut first = true;
+    let mut last_read: Option<std::time::Instant> = None;
     loop {
         if !std::mem::take(&mut first) {
             let _ = woken.recv_timeout(wait);
+            pace(last_read);
         }
         while woken.try_recv().is_ok() {}
+        last_read = Some(std::time::Instant::now());
         loop {
             entries.clear();
             if j.read_new(BATCH, &mut entries).is_err() || entries.is_empty() {
@@ -202,11 +218,14 @@ pub fn run_file(path: &std::path::Path, follow: bool, on: &mut dyn FnMut(Update)
     let wait = if watch.is_some() { LOOK } else { POLL };
     // (What was written before the watch began is read at once.)
     let mut first = true;
+    let mut last_read: Option<std::time::Instant> = None;
     loop {
         if !std::mem::take(&mut first) {
             let _ = woken.recv_timeout(wait);
+            pace(last_read);
         }
         while woken.try_recv().is_ok() {}
+        last_read = Some(std::time::Instant::now());
         if !read(&mut f, &mut at, &mut count, &mut partial, now(), on) {
             return;
         }

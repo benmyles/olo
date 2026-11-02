@@ -38,6 +38,10 @@ pub(crate) struct Scene {
     /// `finish` sorts a frame's lines, not each of its tens of thousands
     /// of glyphs, and a replayed view copies its ranges from here.
     mono_staging: Vec<MonochromeSprite>,
+    /// Olo: how many primitives were left out, clipped away whole (a
+    /// paint memo of a row painted out of sight holds none of its text:
+    /// it can't be moved into sight, `Window::paint_memo`).
+    pub(crate) culled: usize,
     mono_runs: Vec<SpriteRun>,
     pub(crate) polychrome_sprites: Vec<PolychromeSprite>,
     pub(crate) image_triangles: Vec<ImageTriangle>,
@@ -86,6 +90,7 @@ impl Scene {
             .intersect(&primitive.content_mask().bounds);
 
         if clipped_bounds.is_empty() {
+            self.culled += 1;
             return;
         }
 
@@ -171,6 +176,7 @@ impl Scene {
         for mut sprite in sprites {
             let clipped = sprite.bounds.intersect(&sprite.content_mask.bounds);
             if clipped.is_empty() {
+                self.culled += 1;
                 continue;
             }
             sprite.order = layer.unwrap_or_else(|| self.primitive_bounds.insert(clipped));
@@ -224,49 +230,79 @@ impl Scene {
         }
     }
 
-    /// Olo: whether what `range` of the paint operations painted can be
-    /// replayed moved (`replay_moved`): only things whose place is their
-    /// bounds (no paths, image triangles or surfaces), each clipped by
-    /// `mask` alone (nothing inside clipped it further), so moving it
-    /// changes nothing but where it is.
-    pub(crate) fn movable(&self, range: Range<usize>, mask: &ContentMask<ScaledPixels>) -> bool {
-        self.paint_operations[range].iter().all(|op| match op {
-            PaintOperation::Primitive(p) => match p {
-                Primitive::Shadow(x) => x.content_mask == *mask,
-                Primitive::Quad(x) => x.content_mask == *mask,
-                Primitive::Underline(x) => x.content_mask == *mask,
-                Primitive::Segment(x) => x.content_mask == *mask,
-                Primitive::Sector(x) => x.content_mask == *mask,
-                Primitive::MonochromeSprite(x) => x.content_mask == *mask,
-                Primitive::PolychromeSprite(x) => x.content_mask == *mask,
-                Primitive::Path(_) | Primitive::ImageTriangle(_) | Primitive::Surface(_) => false,
-            },
-            PaintOperation::Segments(segments) => segments.iter().all(|x| x.content_mask == *mask),
-            PaintOperation::Sprites(sprites) => self.mono_staging[sprites.clone()].iter().all(|x| x.content_mask == *mask),
-            PaintOperation::StartLayer(_) | PaintOperation::EndLayer => true,
-        })
+    /// Olo: whether what `range` painted can be moved ([`Scene::replay_moved`]),
+    /// sideways and up or down: nothing but quads, sprites and the like
+    /// (no paths), each clipped by `mask` (what it's painted in) or by a
+    /// clip of its own inside it (a list's cell) that `mask` didn't cut
+    /// that way: such a clip moves with what it clips, then cut by `mask`
+    /// again.
+    pub(crate) fn movable(&self, range: Range<usize>, mask: &ContentMask<ScaledPixels>) -> Movable {
+        let mut can = Movable { x: true, y: true };
+        let mut by_mask = |m: &ContentMask<ScaledPixels>| {
+            if m != mask {
+                let (b, o) = (&m.bounds, &mask.bounds);
+                can.x &= b.left() > o.left() && b.right() < o.right();
+                can.y &= b.top() > o.top() && b.bottom() < o.bottom();
+            }
+        };
+        for op in &self.paint_operations[range] {
+            match op {
+                PaintOperation::Primitive(p) => match p {
+                    Primitive::Shadow(x) => by_mask(&x.content_mask),
+                    Primitive::Quad(x) => by_mask(&x.content_mask),
+                    Primitive::Underline(x) => by_mask(&x.content_mask),
+                    Primitive::Segment(x) => by_mask(&x.content_mask),
+                    Primitive::Sector(x) => by_mask(&x.content_mask),
+                    Primitive::MonochromeSprite(x) => by_mask(&x.content_mask),
+                    Primitive::PolychromeSprite(x) => by_mask(&x.content_mask),
+                    Primitive::Path(_) | Primitive::ImageTriangle(_) | Primitive::Surface(_) => return Movable { x: false, y: false },
+                },
+                PaintOperation::Segments(segments) => segments.iter().for_each(|x| by_mask(&x.content_mask)),
+                PaintOperation::Sprites(sprites) => self.mono_staging[sprites.clone()].iter().for_each(|x| by_mask(&x.content_mask)),
+                PaintOperation::StartLayer(_) | PaintOperation::EndLayer => {}
+            }
+        }
+        can
     }
 
     /// Olo: [`Scene::replay`], everything moved by `by` (whole device
     /// pixels: glyphs and snapped edges stay on the grid), what `range`
     /// painted being [`Scene::movable`].
-    pub(crate) fn replay_moved(&mut self, range: Range<usize>, prev_scene: &Scene, by: Point<ScaledPixels>) {
+    /// Whether `mask` cut anything moved (then, it isn't to be moved
+    /// again before it's painted afresh: what was cut is gone from it).
+    pub(crate) fn replay_moved(&mut self, range: Range<usize>, prev_scene: &Scene, by: Point<ScaledPixels>, mask: &ContentMask<ScaledPixels>) -> bool {
         let mv = |b: Bounds<ScaledPixels>| Bounds { origin: b.origin + by, size: b.size };
+        let culled = self.culled;
+        let cut = std::cell::Cell::new(false);
+        // (A clip of its own moves with it, cut by what it's painted in.)
+        let clip = |m: &mut ContentMask<ScaledPixels>| {
+            if m != mask {
+                let moved = mv(m.bounds);
+                m.bounds = moved.intersect(&mask.bounds);
+                if m.bounds != moved {
+                    cut.set(true);
+                }
+            }
+        };
         for operation in &prev_scene.paint_operations[range] {
             match operation {
                 PaintOperation::Primitive(primitive) => {
                     let mut p = primitive.clone();
                     match &mut p {
-                        Primitive::Shadow(x) => x.bounds = mv(x.bounds),
-                        Primitive::Quad(x) => x.bounds = mv(x.bounds),
-                        Primitive::Underline(x) => x.bounds = mv(x.bounds),
+                        Primitive::Shadow(x) => (x.bounds, _) = (mv(x.bounds), clip(&mut x.content_mask)),
+                        Primitive::Quad(x) => (x.bounds, _) = (mv(x.bounds), clip(&mut x.content_mask)),
+                        Primitive::Underline(x) => (x.bounds, _) = (mv(x.bounds), clip(&mut x.content_mask)),
                         Primitive::Segment(x) => {
                             x.bounds = mv(x.bounds);
                             (x.from, x.to, x.bottom) = (x.from + by, x.to + by, x.bottom + by.y);
+                            clip(&mut x.content_mask);
                         }
-                        Primitive::Sector(x) => (x.bounds, x.center) = (mv(x.bounds), x.center + by),
-                        Primitive::MonochromeSprite(x) => x.bounds = mv(x.bounds),
-                        Primitive::PolychromeSprite(x) => x.bounds = mv(x.bounds),
+                        Primitive::Sector(x) => {
+                            (x.bounds, x.center) = (mv(x.bounds), x.center + by);
+                            clip(&mut x.content_mask);
+                        }
+                        Primitive::MonochromeSprite(x) => (x.bounds, _) = (mv(x.bounds), clip(&mut x.content_mask)),
+                        Primitive::PolychromeSprite(x) => (x.bounds, _) = (mv(x.bounds), clip(&mut x.content_mask)),
                         Primitive::Path(_) | Primitive::ImageTriangle(_) | Primitive::Surface(_) => {}
                     }
                     self.insert_primitive(p);
@@ -278,6 +314,7 @@ impl Scene {
                             let mut x = x.clone();
                             x.bounds = mv(x.bounds);
                             (x.from, x.to, x.bottom) = (x.from + by, x.to + by, x.bottom + by.y);
+                            clip(&mut x.content_mask);
                             x
                         })
                         .collect(),
@@ -285,12 +322,14 @@ impl Scene {
                 PaintOperation::Sprites(sprites) => self.insert_sprites(prev_scene.mono_staging[sprites.clone()].iter().map(|x| {
                     let mut x = x.clone();
                     x.bounds = mv(x.bounds);
+                    clip(&mut x.content_mask);
                     x
                 })),
                 PaintOperation::StartLayer(bounds) => self.push_layer(mv(*bounds)),
                 PaintOperation::EndLayer => self.pop_layer(),
             }
         }
+        cut.get() || self.culled != culled
     }
 
     pub fn finish(&mut self) {
@@ -458,6 +497,13 @@ pub(crate) enum PrimitiveKind {
     PolychromeSprite,
     ImageTriangle,
     Surface,
+}
+
+/// Olo: which ways what a range painted can be moved ([`Scene::movable`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Movable {
+    pub x: bool,
+    pub y: bool,
 }
 
 /// Olo: glyph sprites of one order and texture, together in a scene's
@@ -1450,5 +1496,45 @@ mod tests {
         expected.sort_by_key(|(order, texture, _)| (*order, *texture));
         let got: Vec<_> = scene.monochrome_sprites.iter().map(|s| (s.order, texture_key(&s.tile), s.tile.tile_id)).collect();
         assert_eq!(got, expected);
+    }
+
+    fn mask(x: f32, y: f32, w: f32, h: f32) -> ContentMask<ScaledPixels> {
+        ContentMask { bounds: Bounds { origin: point(ScaledPixels(x), ScaledPixels(y)), size: size(ScaledPixels(w), ScaledPixels(h)) } }
+    }
+
+    /// Olo: a list's row, its cells clipped each to its own, moves with
+    /// its clips (scrolled up or down) unless the list's clip cut a cell
+    /// that way, and is cut by the list's clip again where it lands.
+    #[test]
+    fn a_row_moves_with_its_cells_clips() {
+        let list = mask(0.0, 0.0, 400.0, 300.0);
+        let mut scene = Scene::default();
+        // A row inside the list: two cells, the first at its left edge.
+        for (x, w) in [(0.0, 100.0), (100.0, 300.0)] {
+            let mut glyph = sprite(x + 4.0, 0, 1);
+            glyph.bounds.origin.y = ScaledPixels(102.0);
+            glyph.content_mask = mask(x, 100.0, w, 20.0);
+            scene.insert_sprites([glyph]);
+        }
+        let n = scene.paint_operations.len();
+        assert_eq!(scene.movable(0..n, &list), Movable { x: false, y: true });
+        // Moved up 95 pixels: still inside, nothing cut.
+        let mut next = Scene::default();
+        assert!(!next.replay_moved(0..n, &scene, point(ScaledPixels(0.0), ScaledPixels(-95.0)), &list));
+        let moved: Vec<_> = next.mono_staging.iter().map(|g| (g.bounds.origin.y.0, g.content_mask.clone())).collect();
+        assert_eq!(moved, vec![(7.0, mask(0.0, 5.0, 100.0, 20.0)), (7.0, mask(100.0, 5.0, 300.0, 20.0))]);
+        // Moved up 105: its top 5 cut by the list's clip (and so not to be
+        // moved again till it's painted afresh).
+        let mut next = Scene::default();
+        assert!(next.replay_moved(0..n, &scene, point(ScaledPixels(0.0), ScaledPixels(-105.0)), &list), "cut where it landed");
+        let moved: Vec<_> = next.mono_staging.iter().map(|g| (g.bounds.origin.y.0, g.content_mask.clone())).collect();
+        assert_eq!(moved, vec![(-3.0, mask(0.0, 0.0, 100.0, 15.0)), (-3.0, mask(100.0, 0.0, 300.0, 15.0))]);
+        // A row the list's clip cut (at its top) is drawn again instead.
+        let mut cut = Scene::default();
+        let mut glyph = sprite(4.0, 0, 1);
+        glyph.content_mask = mask(0.0, 0.0, 100.0, 12.0);
+        cut.insert_sprites([glyph]);
+        let n = cut.paint_operations.len();
+        assert_eq!(cut.movable(0..n, &list), Movable { x: false, y: false });
     }
 }

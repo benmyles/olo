@@ -741,7 +741,7 @@ impl Logs {
             (false, Some(_)) => "Reading…",
         };
         let cells = me.clone();
-        let (sel, ctx) = (me.clone(), me.clone());
+        let (sel, ctx, keys) = (me.clone(), me.clone(), me.clone());
         ColumnListView::new("logs-lines", &self.list, columns, self.view.len(), move |cell, window, cx| {
             // What the cell shows, read first (the drawing needs the app).
             let (text, level, midnight, words) = {
@@ -776,6 +776,21 @@ impl Logs {
             }
         })
         .empty_text(empty)
+        // A line is as it was read: drawn again only when what the search
+        // marks in it, or the day it's counted from, changes (typing in
+        // the search redraws only the lines it marks).
+        .row_key(move |row, cx| {
+            use std::hash::{Hash, Hasher};
+            let logs = keys.read(cx);
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            if let Some(&i) = logs.view.get(row)
+                && let Some(l) = logs.lines.get(i)
+            {
+                let marked = search::found(l.first_line(), &logs.query.words);
+                (i, l.time, l.pid, l.message.as_ptr() as usize, l.message.len(), logs.now.midnight, marked).hash(&mut h);
+            }
+            h.finish()
+        })
         .on_select(move |_, cx| sel.update(cx, |l, cx| l.selection_changed(cx)))
         .on_context(move |row, at, window, cx| {
             let menu = ctx.update(cx, |l, cx| {

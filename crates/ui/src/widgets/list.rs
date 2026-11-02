@@ -11,6 +11,7 @@
 //! ([`Cell`]). Agents read each row (`Row`, named by its cells' text,
 //! selected or not) and each column (`ColumnHeader`, sorted or not).
 
+use std::sync::Arc;
 use std::rc::Rc;
 
 use gpui::{
@@ -311,12 +312,26 @@ pub struct ColumnListView {
     empty: Option<SharedString>,
     header: bool,
     handlers: Handlers,
+    row_key: Option<KeyFn>,
 }
+
+type KeyFn = Rc<dyn Fn(usize, &App) -> u64>;
 
 impl ColumnListView {
     /// `rows` rows of `columns`, each cell drawn by `cell`.
     pub fn new(id: impl Into<SharedString>, model: &Entity<ListModel>, columns: impl Into<Rc<[Column]>>, rows: usize, cell: impl Fn(&mut Cell, &mut Window, &mut App) + 'static) -> ColumnListView {
-        ColumnListView { id: id.into(), model: model.clone(), columns: columns.into(), rows, row_height: m::LIST_ROW, cell: Rc::new(cell), names: None, empty: None, header: true, handlers: Handlers::default() }
+        ColumnListView { id: id.into(), model: model.clone(), columns: columns.into(), rows, row_height: m::LIST_ROW, cell: Rc::new(cell), names: None, empty: None, header: true, handlers: Handlers::default(), row_key: None }
+    }
+
+    /// What row `row` shows, as a number that changes when it does (its
+    /// line's id and what a search marks in it, say): a row whose key, and
+    /// whose look (selected, the columns' widths), are as last frame's is
+    /// drawn as it was ([`Window::paint_memo`]), moved if it scrolled, not
+    /// laid out and painted again: a screen of Log Viewer's lines is
+    /// 22,000 glyphs. Without it every row in view is drawn every frame.
+    pub fn row_key(mut self, key: impl Fn(usize, &App) -> u64 + 'static) -> Self {
+        self.row_key = Some(Rc::new(key));
+        self
     }
 
     pub fn row_height(mut self, h: f32) -> Self {
@@ -457,7 +472,13 @@ impl RenderOnce for ColumnListView {
         let hbar = if sideways { bar } else { edge };
 
         // The rows in view, each a canvas drawing its cells.
-        let (list_model, list_columns, cell) = (model.clone(), columns.clone(), self.cell.clone());
+        let (list_model, list_columns, cell, row_key) = (model.clone(), columns.clone(), self.cell.clone(), self.row_key.clone());
+        let list_id = {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            self.id.hash(&mut h);
+            h.finish()
+        };
         let list = uniform_list(SharedString::from(format!("{}-rows", self.id)), rows, move |range, window, cx| {
             let state = list_model.read(cx);
             let widths = widths(state, &list_columns);
@@ -467,25 +488,41 @@ impl RenderOnce for ColumnListView {
             range
                 .zip(selected)
                 .map(|(row, selected)| {
-                    let (cell, columns, widths) = (cell.clone(), list_columns.clone(), widths.clone());
+                    let (cell, columns, widths, row_key) = (cell.clone(), list_columns.clone(), widths.clone(), row_key.clone());
                     let row_el = canvas(
                         |_, _, _| {},
                         move |r, _, window, cx| {
                             let p = theme::palette(cx);
-                            if selected {
-                                let sel = if focused { p.list_selected_background } else { olo_theme::mix(p.list_selected_background, p.list_background, 0.35) };
-                                style::fill_rect(window, r, style::c(sel));
+                            let paint = |window: &mut Window, cx: &mut App| {
+                                if selected {
+                                    let sel = if focused { p.list_selected_background } else { olo_theme::mix(p.list_selected_background, p.list_background, 0.35) };
+                                    style::fill_rect(window, r, style::c(sel));
+                                }
+                                let text_color = style::c(if selected { p.list_selected_item_text } else { p.list_item_text });
+                                let mut texts = Vec::new();
+                                for (i, (x0, x1)) in spans(&widths, r.left(), r.right(), sideways).into_iter().enumerate() {
+                                    let b = Bounds::from_corners(point(x0, r.top()), point(x1, r.bottom()));
+                                    window.with_content_mask(Some(ContentMask { bounds: b }), |window| {
+                                        cell(&mut Cell { bounds: b, row, column: i, selected, text_color, align: columns[i].align, texts: &mut texts }, window, cx);
+                                    });
+                                }
+                                let name = texts.iter().map(|t| t.as_ref()).collect::<Vec<_>>().join("  ");
+                                agent::record(window, cx, agent::Node { role: "Row", name: Some(name.into()), bounds: r, enabled: true, clickable: true, selected: Some(selected), ..Default::default() });
+                            };
+                            match &row_key {
+                                Some(key) => {
+                                    let key = {
+                                        use std::hash::{Hash, Hasher};
+                                        let mut h = std::collections::hash_map::DefaultHasher::new();
+                                        let widths: Vec<u32> = widths.iter().map(|w| w.to_bits()).collect();
+                                        // (Focus shows only in a selected row.)
+                                        (list_id, key(row, cx), selected, selected && focused, sideways, widths, Arc::as_ptr(&p) as usize, window.scale_factor().to_bits()).hash(&mut h);
+                                        h.finish()
+                                    };
+                                    window.paint_memo(key, r, cx, paint);
+                                }
+                                None => paint(window, cx),
                             }
-                            let text_color = style::c(if selected { p.list_selected_item_text } else { p.list_item_text });
-                            let mut texts = Vec::new();
-                            for (i, (x0, x1)) in spans(&widths, r.left(), r.right(), sideways).into_iter().enumerate() {
-                                let b = Bounds::from_corners(point(x0, r.top()), point(x1, r.bottom()));
-                                window.with_content_mask(Some(ContentMask { bounds: b }), |window| {
-                                    cell(&mut Cell { bounds: b, row, column: i, selected, text_color, align: columns[i].align, texts: &mut texts }, window, cx);
-                                });
-                            }
-                            let name = texts.iter().map(|t| t.as_ref()).collect::<Vec<_>>().join("  ");
-                            agent::record(window, cx, agent::Node { role: "Row", name: Some(name.into()), bounds: r, enabled: true, clickable: true, selected: Some(selected), ..Default::default() });
                         },
                     )
                     .h(px(row_h));
