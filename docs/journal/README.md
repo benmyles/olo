@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Tracker: Open With ▸ Other…
+
+*14:48* — Any app can open a file: Other… lists every app that opens files, found by typing part of its name, with 'Always open files like … with it'.
+
+![Tracker: Open With ▸ Other…](2026-11-02/144805-tracker-open-with-other.png)
+
 ### Preferences: Default Apps
 
 *14:06* — A new panel: each kind of file and link with the app it opens in, changeable from the apps that suit it; a choice is the kind's for Olo and for other programs (Tracker's Always Open With chooses too). Its icon, a document with Olo's application cube, from the reference set.

@@ -570,6 +570,18 @@ pub struct Offer {
     pub handlers: Vec<Handler>,
 }
 
+/// Every app that can open files, for Open With ▸ Other…: Olo's that
+/// open others' files, then every installed app's desktop entry (shown in
+/// menus, with a command line), by name. Reads files: off the UI thread.
+pub fn every_app() -> Vec<Handler> {
+    let mut out: Vec<Handler> = OPENERS.iter().map(|(bin, _)| *bin).filter(|b| find_program(b).is_some()).map(Handler::Ours).collect();
+    let all = desktop_entry::all_cached();
+    let mut entries: Vec<&DesktopEntry> = all.iter().filter(|e| !e.no_display && e.exec.is_some() && !e.id.starts_with("olo.")).collect();
+    entries.sort_by_key(|e| e.name.to_lowercase());
+    out.extend(entries.into_iter().map(|e| Handler::Entry(Box::new(e.clone()))));
+    out
+}
+
 type Offers = Mutex<std::collections::HashMap<String, Offer>>;
 static OFFERS: std::sync::OnceLock<Offers> = std::sync::OnceLock::new();
 

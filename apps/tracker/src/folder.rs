@@ -1183,7 +1183,15 @@ pub fn open_with_menu(entries: &[Entry]) -> Option<Menu> {
     for (id, name) in &ids {
         always = always.item(name.clone(), format!("always-open-with:{id}")).checked(offer.default.as_ref() == Some(id));
     }
-    Some(menu.separator().submenu(always))
+    Some(menu.separator().item("Other…", OPEN_WITH_OTHER).submenu(always))
+}
+
+/// Open With ▸ Other…: a window to choose any app.
+pub const OPEN_WITH_OTHER: &str = "open-with-other";
+
+/// Whether `cmd` is one of Open With's.
+pub fn is_open_with(cmd: &str) -> bool {
+    cmd == OPEN_WITH_OTHER || cmd.starts_with("open-with:") || cmd.starts_with("always-open-with:")
 }
 
 /// The kind `entries` all are, for Open With (None: none, or mixed).

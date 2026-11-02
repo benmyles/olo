@@ -189,6 +189,10 @@ impl Desktop {
                 items.push(Item { label: entry.name.clone(), entry, icon });
             }
         }
+        // What Open With offers for the kinds here, worked out off the
+        // UI thread so a menu finds it at once.
+        let kinds: std::collections::BTreeSet<String> = items.iter().map(|it| olo_xdg::open::kind_of(&it.entry.name, it.entry.is_dir)).collect();
+        std::thread::spawn(move || olo_xdg::open::warm(kinds));
         self.items = items;
         self.trash = trash_item();
         self.select_paths(&selected);
@@ -421,6 +425,9 @@ impl Desktop {
                 }
                 if self.selected.len() <= 1 {
                     m = fs::grouping_item(m, self.item(i).map(|it| &it.entry));
+                }
+                if let Some(open_with) = crate::folder::open_with_menu(&self.selected_entries()) {
+                    m = m.submenu(open_with);
                 }
                 m.item("Get Info", "info").key("i").separator().item("Move to Trash", "trash").key("t").enabled(!self.movable().is_empty())
             }

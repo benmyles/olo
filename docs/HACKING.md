@@ -6238,8 +6238,13 @@ deferred so the Tracker can update the window back):
   as the folder is listed; the one it opens in marked "(default)"), and
   **Always Open With ▸** the same apps (the kind's checked) making one
   the kind's default for Olo and other programs (`open::set_default`,
-  on a thread) as it opens the selection with it. Shown when what's
-  selected is all one kind.
+  on a thread) as it opens the selection with it, and **Other…**
+  (`openwith.rs`: every app that opens files, `open::every_app`, read
+  on a worker, found by typing part of its name; ↑↓ and Return; "Always
+  open files like … with it"). Shown when what's selected is all one
+  kind; on the desktop's items too, and on Quick Look's Open button
+  (its secondary click). The command is one for all of them
+  (`folder::is_open_with`, `Tracker::open_with`).
 - `goto.rs`: Go ▸ Go to File or Folder… (⇧⌘G, Finder's Go to Folder),
   a dialog over the folder's window: the field holds a path copied
   (absolute, `~/…` as written, a `file://` URI's:

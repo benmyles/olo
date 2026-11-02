@@ -12,6 +12,7 @@ mod fs;
 mod goto;
 mod items;
 mod model;
+mod openwith;
 mod ops;
 mod panels;
 mod quicklook;
@@ -155,6 +156,8 @@ enum Win {
     Find(Entity<FindWin>),
     /// Go to File or Folder (`goto`).
     GoTo,
+    /// Open With ▸ Other….
+    OpenWith,
     /// "Tracker Status": progress of running file operations (its view
     /// reads the jobs from here).
     Status,
@@ -332,6 +335,20 @@ impl Tracker {
         }
     }
 
+    /// Open With ▸ an app (`open-with:ID`; Always: and make it the kind's,
+    /// `always-open-with:ID`), or Other… (`open-with-other`: a window to
+    /// choose any app).
+    fn open_with(&mut self, cmd: &str, entries: Vec<Entry>, cx: &mut Context<Self>) {
+        let Some(kind) = folder::open_with_kind(&entries) else { return };
+        let paths: Vec<PathBuf> = entries.iter().map(|e| e.path.clone()).collect();
+        if cmd == folder::OPEN_WITH_OTHER {
+            return self.open_with_other(kind, paths, cx);
+        }
+        let always = cmd.starts_with("always-");
+        let id = cmd.split_once(':').map(|(_, id)| id.to_owned()).unwrap_or_default();
+        open_with_app(id, kind, paths, always);
+    }
+
     fn open_info(&mut self, e: Entry, cx: &mut Context<Self>) {
         let h = panels::info_height(panels::info_rows(&e)).ceil();
         let title = format!("{} info", e.name);
@@ -400,6 +417,35 @@ impl Tracker {
         })
         .detach();
         self.register(key, any, Win::GoTo, cx);
+    }
+
+    /// Open With ▸ Other…: a window to choose any app to open `paths`
+    /// (of `kind`) with.
+    fn open_with_other(&mut self, kind: String, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
+        if let Some(key) = self.windows.iter().find(|s| matches!(s.win, Win::OpenWith)).map(|s| s.key) {
+            return self.activate(key, cx);
+        }
+        let made: std::rc::Rc<std::cell::RefCell<Option<Entity<openwith::OpenWithWin>>>> = Default::default();
+        let keep = made.clone();
+        // (A dialog: over the window it was asked in, never a tab.)
+        let options = WindowOptions::new("Open With", openwith::WIDTH, openwith::HEIGHT).min_size(320.0, 260.0).dialog().child();
+        let Some(handle) = olo_ui::open_window(cx, options, move |window, cx| {
+            let v = cx.new(|cx| openwith::OpenWithWin::new(kind, paths, window, cx));
+            *keep.borrow_mut() = Some(v.clone());
+            v
+        }) else {
+            return;
+        };
+        let Some(win) = made.borrow_mut().take() else { return };
+        let key = win.entity_id();
+        let any: AnyWindowHandle = handle.into();
+        cx.subscribe(&win, move |t, _, _: &openwith::OpenWithEvent, cx| {
+            if t.close_requested(key, cx) {
+                cx.close_window(any);
+            }
+        })
+        .detach();
+        self.register(key, any, Win::OpenWith, cx);
     }
 
     /// Show `path`: a folder opens; anything else is selected in its
@@ -538,6 +584,10 @@ impl Tracker {
                 self.open_folder(&dir, cx);
             }
             Action::Command(c) => match c.as_str() {
+                c if folder::is_open_with(c) => {
+                    let entries = d.read(cx).selected_entries();
+                    self.open_with(c, entries, cx);
+                }
                 "new-folder" => {
                     let dir = fs::home().join("Desktop");
                     let _ = std::fs::create_dir_all(&dir);
@@ -723,26 +773,7 @@ impl Tracker {
                 }
             }
             // Open With ▸ an app (Always: and make it the kind's).
-            c if c.starts_with("open-with:") || c.starts_with("always-open-with:") => {
-                let always = c.starts_with("always-");
-                let id = c.split_once(':').map(|(_, id)| id.to_owned()).unwrap_or_default();
-                let Some(kind) = folder::open_with_kind(&entries) else { return };
-                let paths: Vec<PathBuf> = entries.iter().map(|e| e.path.clone()).collect();
-                // (Finding the app and writing the choice read and write
-                // files: not on the UI thread.)
-                std::thread::spawn(move || {
-                    let Some(h) = olo_xdg::open::handler_of_id(&id) else { return };
-                    if always {
-                        if let Err(e) = olo_xdg::open::set_default(&kind, Some(&h)) {
-                            tracing::warn!("couldn't make {id} the app for {kind}: {e}");
-                        }
-                        olo_xdg::open::warm([kind]);
-                    }
-                    if let Err(e) = olo_xdg::open::open_with(&h, &paths) {
-                        tracing::warn!("open with {id}: {e}");
-                    }
-                });
-            }
+            c if folder::is_open_with(c) => self.open_with(c, entries, cx),
             c if c.starts_with("go-place:") => {
                 let dir = PathBuf::from(&c["go-place:".len()..]);
                 if dir.is_dir() {
@@ -964,6 +995,11 @@ impl Tracker {
                 let e = q.read(cx).entry.clone();
                 self.close_quick_look(cx);
                 fs::open_in_viewer(&e.path);
+            }
+            quicklook::Action::OpenWith(cmd) => {
+                let e = q.read(cx).entry.clone();
+                self.close_quick_look(cx);
+                self.open_with(&cmd, vec![e], cx);
             }
             quicklook::Action::Step(d) => {
                 let source = q.read(cx).source;
@@ -1462,5 +1498,23 @@ fn main() {
             Some(saved) => t.restore(saved, cx),
             None => t.handle_args(&args, cx),
         });
+    });
+}
+
+/// Open `paths` with the app `id` names (`always`: and make it `kind`'s
+/// from now on). Finding the app and writing the choice read and write
+/// files: on a thread.
+fn open_with_app(id: String, kind: String, paths: Vec<PathBuf>, always: bool) {
+    std::thread::spawn(move || {
+        let Some(h) = olo_xdg::open::handler_of_id(&id) else { return };
+        if always {
+            if let Err(e) = olo_xdg::open::set_default(&kind, Some(&h)) {
+                tracing::warn!("couldn't make {id} the app for {kind}: {e}");
+            }
+            olo_xdg::open::warm([kind]);
+        }
+        if let Err(e) = olo_xdg::open::open_with(&h, &paths) {
+            tracing::warn!("open with {id}: {e}");
+        }
     });
 }
