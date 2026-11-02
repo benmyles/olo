@@ -29,7 +29,8 @@
 //! `olo-wifi-heal.service`) by Olo Doctor, never run from the person's
 //! home: a program they can write to must not run as root.
 //! `olo-wifi-heal --status` prints the report; `OLO_WIFI_HEAL_DEBUG=1`
-//! logs every event it hears.
+//! logs every event it hears. Its source's fingerprint is in the file
+//! (`SOURCE`), for Olo Doctor.
 
 use std::{
     collections::HashMap,
@@ -398,6 +399,12 @@ fn listen(conn: &Connection, tx: mpsc::Sender<Ev>) -> zbus::Result<()> {
     }
     Ok(())
 }
+
+/// Its source's fingerprint (build.rs), where Olo Doctor finds it in the
+/// file without running it: the installed copy is out of date when its
+/// differs from the new build's, not whenever their bytes do.
+#[used]
+pub static SOURCE: &str = concat!("olo-wifi-heal source ", env!("OLO_HEAL_SOURCE"), ";");
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();

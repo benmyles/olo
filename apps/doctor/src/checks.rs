@@ -527,6 +527,29 @@ fn wifi_chips(fs: &Path) -> Vec<(String, String)> {
     v
 }
 
+/// What the healer built into itself to say which source it is
+/// (apps/wifi-heal/build.rs): a fingerprint, 16 hex digits, after this.
+const HEAL_SOURCE_MARK: &[u8] = b"olo-wifi-heal source ";
+
+/// The healer at `path`'s source fingerprint, if it says.
+fn heal_source(path: &Path) -> Option<String> {
+    let bytes = std::fs::read(path).ok()?;
+    let at = memchr::memmem::find(&bytes, HEAL_SOURCE_MARK)? + HEAL_SOURCE_MARK.len();
+    let digits = bytes.get(at..at + 16)?;
+    (digits.iter().all(u8::is_ascii_hexdigit) && bytes.get(at + 16) == Some(&b';')).then(|| String::from_utf8_lossy(digits).into_owned())
+}
+
+/// The healer installed is the one built: the same source (its bytes
+/// differ with what was built beside it, the healer the same), or, for
+/// a build from before it said, the same bytes.
+fn same_healer(built: &Path, installed: &Path) -> bool {
+    match (heal_source(built), heal_source(installed)) {
+        (Some(a), Some(b)) => a == b,
+        (Some(_), None) => false,
+        (None, _) => same_contents(built, installed),
+    }
+}
+
 /// Two files hold the same bytes.
 fn same_contents(a: &Path, b: &Path) -> bool {
     let (Ok(ma), Ok(mb)) = (std::fs::metadata(a), std::fs::metadata(b)) else { return false };
@@ -543,7 +566,7 @@ fn wifi(roots: &Roots, r: &mut Report) {
     }
     let state = (roots.units)("olo-wifi-heal.service").unwrap_or_default();
     let installed = roots.fs.join(HEAL_BIN_PATH);
-    let current = same_contents(&source, &installed)
+    let current = same_healer(&source, &installed)
         && read(&roots.fs.join(HEAL_UNIT_PATH)).as_deref() == Some(HEAL_UNIT.trim())
         && read(&roots.fs.join(BRCMFMAC_CONF_PATH)).as_deref() == Some(BRCMFMAC_CONF.trim());
     if current && state.active && state.enabled {
@@ -819,6 +842,30 @@ mod tests {
         std::fs::write(fs.join("proc/950/cgroup"), "0::/user.slice/user-1000.slice/session-5.scope\n").unwrap();
         assert!(scan(&roots).find("foreign").is_none());
         let _ = std::fs::remove_dir_all(&fs);
+    }
+
+    /// Two builds of the same healer, their bytes different (what was
+    /// built beside them): the installed one is current. Another source,
+    /// or one installed from before builds said: out of date.
+    #[test]
+    fn the_healer_is_current_by_its_source() {
+        let dir = PathBuf::from(format!("/var/tmp/olo-doctor-test-{}-heal", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = |name: &str, bytes: &[u8]| {
+            let p = dir.join(name);
+            std::fs::write(&p, bytes).unwrap();
+            p
+        };
+        let built = file("built", b"\x7fELF one build olo-wifi-heal source 0123456789abcdef; more");
+        let same = file("same", b"\x7fELF another build, longer olo-wifi-heal source 0123456789abcdef; and more");
+        let other = file("other", b"\x7fELF olo-wifi-heal source fedcba9876543210;");
+        let before = file("before", b"\x7fELF from before");
+        assert_eq!(heal_source(&built).as_deref(), Some("0123456789abcdef"));
+        assert!(same_healer(&built, &same));
+        assert!(!same_healer(&built, &other));
+        assert!(!same_healer(&built, &before));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

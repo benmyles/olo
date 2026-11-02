@@ -5881,6 +5881,7 @@ name = "olo-doctor"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "memchr",
  "olo-kit-base",
  "olo-sync",
  "olo-system",
