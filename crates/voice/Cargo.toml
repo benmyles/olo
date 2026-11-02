@@ -1,0 +1,13 @@
+[package]
+name = "olo-voice"
+description = "Voice processing for every microphone: echo cancellation, noise suppression and level normalization, real time"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+sonora = { path = "../../vendor/sonora/crates/sonora" }
+deep_filter = { path = "../../vendor/deep_filter", default-features = false, features = ["tract"] }
+ndarray = "0.17"
+realfft = "3"
+serde.workspace = true

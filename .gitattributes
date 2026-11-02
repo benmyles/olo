@@ -2,3 +2,4 @@ docs/journal/**/*.png filter=lfs diff=lfs merge=lfs -text
 docs/journal/journal.html filter=lfs diff=lfs merge=lfs -text
 data/wallpapers/**/*.png filter=lfs diff=lfs merge=lfs -text
 data/themes/**/*.png filter=lfs diff=lfs merge=lfs -text
+vendor/deep_filter/models/*.tar.gz filter=lfs diff=lfs merge=lfs -text

@@ -1,0 +1,64 @@
+# DeepFilterNet's libDF (https://github.com/Rikorose/DeepFilterNet at
+# d375b2d, 2024-10-17), trimmed to real-time inference: the spectral
+# transforms, the tract runtime and the DeepFilterNet3 model (two frames of
+# look-ahead; the low-latency one was measured and left out, see
+# crates/voice). Changes are Olo's, listed in vendor/README.md.
+[package]
+name = "deep_filter"
+version = "0.5.7-pre"
+authors = ["Hendrik Schröter"]
+edition = "2021"
+description = "Noise supression using deep filtering"
+license = "MIT OR Apache-2.0"
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+
+[lib]
+name = "df"
+path = "src/lib.rs"
+
+[features]
+default = ["tract", "default-model"]
+transforms = ["dep:thiserror", "dep:ndarray", "dep:rubato"]
+logging = ["dep:log", "dep:crossbeam-channel"]
+tract = [
+  "transforms",
+  "logging",
+  "dep:tract-core",
+  "dep:tract-onnx",
+  "dep:tract-pulse",
+  "dep:tract-hir",
+  "dep:rust-ini",
+  "dep:ndarray",
+  "dep:anyhow",
+  "dep:flate2",
+  "dep:tar",
+]
+timings = []
+default-model = []
+# (Left in the source, not built here.)
+dataset = []
+capi = []
+wasm = []
+wav-utils = []
+
+[dependencies]
+rustfft = "^6.1.0"
+realfft = "^3.1.0"
+itertools = "0.12"
+num-complex = { version = "^0.4" }
+log = { version = "0.4", features = ["std"], optional = true }
+rubato = { version = "0.14", optional = true }
+thiserror = { version = "1.0", optional = true }
+anyhow = { version = "1.0", optional = true }
+ndarray = { version = "0.17", optional = true }
+crossbeam-channel = { version = "^0.5", optional = true }
+rust-ini = { version = "^0.21", optional = true }
+tract-core = { version = "=0.23.9", optional = true }
+tract-onnx = { version = "=0.23.9", optional = true }
+tract-pulse = { version = "=0.23.9", optional = true }
+tract-hir = { version = "=0.23.9", optional = true }
+flate2 = { version = "1.0.24", optional = true }
+tar = { version = "0.4.38", optional = true }

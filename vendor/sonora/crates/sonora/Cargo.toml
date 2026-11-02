@@ -1,0 +1,25 @@
+[package]
+name = "sonora"
+version = "0.2.0"
+description = "WebRTC Audio Processing — pure Rust port with echo cancellation, noise suppression, and AGC"
+keywords = ["audio", "webrtc", "echo-cancellation", "noise-suppression", "agc"]
+categories = ["multimedia::audio"]
+readme = "README.md"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+autoexamples = false
+autobenches = false
+autotests = false
+
+[dependencies]
+sonora-common-audio = { workspace = true }
+sonora-aec3 = { workspace = true }
+sonora-agc2 = { workspace = true }
+sonora-ns = { workspace = true }
+sonora-simd = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

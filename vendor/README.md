@@ -20,3 +20,38 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
   uses the cue's cluster. Its tests (and their 1 MB of sample files) are
   left out.
 - **bebook/**: the Be Book as Markdown, for reference (see its README).
+
+# Vendored libraries
+
+Owned here outright (path dependencies), not tracking a release.
+
+- **deep_filter/** (MIT OR Apache-2.0): DeepFilterNet's libDF
+  (github.com/Rikorose/DeepFilterNet at d375b2d), the noise suppression in
+  `crates/voice`: spectral transforms, the tract runtime, and the
+  DeepFilterNet3 model (`models/`, 8 MB, in LFS). Olo's changes:
+  - tract 0.23.9, pinned exactly (`=`): 0.21.10 to 0.21.19 build and run
+    but the model's output is wrong (noise passes, or speech is muted); 0.22
+    and 0.23 are right and faster. The 0.23 port: `TypedSimpleState`,
+    `to_plain_array_view*`, `try_as_plain_ram`, `with_outputs_by_name`;
+    ndarray 0.17 to match.
+  - The encoder's input buffers are owned tensors (copied into a `TValue`
+    each frame), not written through a shared `Arc` behind tract's back.
+  - `process_with_gains`: per-frequency gains on the input spectrum right
+    after analysis (residual echo suppression; see `crates/voice`).
+  - No silence skip: upstream output zeros after five frames under -70
+    dBFS without feeding the STFT or the look-ahead, so the frames after
+    each pause came out of stale buffers, cutting word onsets.
+  - The low-latency model is left out (measured: when another voice was
+    heard first, even 40 dB quieter, it turns the next one down 5 dB).
+  - Trimmed to inference: no dataset, capi, wasm, binaries.
+- **sonora/** (BSD-3-Clause): a pure-Rust port of WebRTC's audio
+  processing (github.com/dignifiedquire/sonora at 373f1d7), for AGC2's
+  level normalization in `crates/voice` (its AEC3 was measured and not
+  used: linear below 8 kHz only, ~10 s to converge on speech, 9 ms of
+  delay, and its suppressor chops the near voice in double talk). Olo's
+  changes:
+  - AGC2's adaptive digital gain may go below 0 dB
+    (`AdaptiveDigital::max_attenuation_db`, default 0 as WebRTC): WebRTC
+    only ever raises the level, leaving loud talkers to the analog input
+    volume, which Olo doesn't touch.
+  - Manifests trimmed (no examples, benches, dev-dependencies).
