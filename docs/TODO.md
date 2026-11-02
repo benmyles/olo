@@ -250,6 +250,18 @@ as they land (with the commit), add new ones as they come up.
   plans kept, and ASCII shaped by words (gpui/README.md): History's
   live resize, slowest frame 60 → 17 ms (p50 11.8); Log Viewer's rows
   arriving with a search, 31.6 → 10.8 ms.
+  *Then* (2026-11-02) frames on the fast cores: the scheduler put a
+  mostly idle UI thread on a slow core at a low clock, and the frame
+  after a pause ran three or four times as long; GPUI's main thread and
+  app_server's ask for a fast core while they run (`uclamp.min`,
+  HACKING rule 9). Paint memos are kept through a cached view replayed
+  whole, an icon coming in and a display event (Activity's 1,400 cells
+  were painted afresh the frame after each). Activity's first frame of
+  its processes 13–17 → 3.7–4.6 ms. The full bench: 21 failed of 382 →
+  2 of 396, every app's slowest frame at most 4.0 ms (from 14.9),
+  app_server's frames all within budget. *Left*: Notifications'
+  first scroll skips a frame at 1× and 1.5× (its frames 1.5–3.3 ms: the
+  pacing, not the cost).
 - **app_server: its frames wait on the GPU behind clients' work**
   (found 2026-11-02, the full bench: 33 of 376 steps failed, most of
   them app_server frames of 9–51 ms as a menu opened or a window
@@ -476,6 +488,50 @@ as they land (with the commit), add new ones as they come up.
      0.2 ms and "finish" 0.2 ms are what's left of a frame; app_server
      at ~11% with a call on is the tick (now once per 8 ms) and looks;
      per-display render threads (its own TODO).
+   - **An outside program's `zwp_primary_selection_offer_v1` request
+     refused** (seen 2026-11-01 through olo-wlproxy for pid 21201:
+     "app_server's error on wl_display@1: invalid method 2, object
+     zwp_primary_selection_offer_v1"; the interface has receive and
+     destroy only). Find which program sends opcode 2 (a newer
+     interface version it was told it has?) and whether app_server
+     advertises a version it doesn't serve. (Not seen since 2026-11-01
+     13:19.)
+   - **"gpui: window not found" from the palette and Deskbar** after a
+     window closed under them: GPUI handles kept to windows the
+     compositor closed. Deskbar's bars are pruned now; the palette's
+     and any other app's handles want the same at the kit level. (Still
+     logged 2026-11-02 by Terminal and Deskbar.)
+   - **Olo's own login and boot** (Ben, 2026-11-01, for after the GPUI
+     refactor is complete): replace GDM with an Olo-native display
+     manager, and have Olo take over the boot visuals as early as it can
+     (Plymouth's place): an "Olo starting up" screen that is an homage
+     to BeOS's boot screen, drawn with sunburst-made graphics
+     (docs/ICONS.md), with a really nice startup sound. Related: an
+     "Upgrading Olo" veil on every display while app_server restarts
+     and the displays settle, in the same style.
+   - **An app_server restart modesets every display** (seen 2026-11-01
+     in the kernel log at each upgrade: apple-dcp `set_digital_out_mode`
+     for each of the three displays, "Already set to timingID" yet done
+     again: the screens freeze for a second or two per restart). The
+     new app_server could keep a CRTC's mode when it is the one already
+     set (the same mode blob, no ALLOW_MODESET commit) and go straight
+     to page flips; where Smithay's surface init insists on a modeset,
+     Olo's Smithay changes that. Until then upgrades of app_server are
+     batched, not one a change. (Still: the kernel logged
+     `set_digital_out_mode` 856 times in the day to 2026-11-02.)
+   - **app_server's critical path on threads of its own** (Ben,
+     2026-11-01: "why run the risk of a blocking call? threads would
+     make sure we don't accidentally block"): input → pointer plane
+     update → commit never shares a thread with anything that can
+     block. Design: an input-and-cursor thread owning libinput and the
+     cursor planes (a pointer move is a plane property commit, no frame);
+     a render-and-commit thread per display owning its GL context, DRM
+     surface and pacing (a slow 5K frame can't delay the built-in
+     display's); the Wayland clients and IPC on the main loop, handing
+     each display's thread a snapshot of what to draw. Our own
+     synchronous work (importing a client's buffer, a fence, a DCP test
+     or commit) is what blocks today, and the heartbeat (`timings`)
+     finds it. After the reliability work.
    - **Supervisor priority tiers** (Ben, 2026-11-01: "it should always
      give the highest priority to the core olo processes and any
      system+input processes important for responsiveness/smoothness,
@@ -525,7 +581,10 @@ as they land (with the commit), add new ones as they come up.
      The Viewer's first frame presented 25–31 ms after exec, from 43;
      DeskCalc pixel for pixel the same. Left: egui's first frame is
      still ~5 ms sooner (its device and one pipeline).
-   - **Painting a glyph costs ~0.45 µs** (measured scrolling the
+   - ~~**Painting a glyph costs ~0.45 µs**~~ (done 2026-11-02, 7ccac1fb:
+     a line keeps its glyphs' sprites as last painted, for its phase,
+     scale and rendering, and paints them as a copy; gpui/README.md)
+     (measured scrolling the
      Viewer's code view, 2026-11-01: 1,500 glyphs, 0.68 ms of a 2 ms
      frame; egui's frames scrolling the same were 1.2 ms on average,
      GPUI's 2.3). Each glyph looks up its raster bounds and its atlas

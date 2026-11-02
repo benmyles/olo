@@ -102,7 +102,11 @@ pub fn wordmark_centred(window: &mut Window, b: Bounds<Pixels>, dark: bool) -> D
 pub fn wordmark_centred_in(window: &mut Window, b: Bounds<Pixels>, dark: bool, theme: &str) -> Drawn {
     let theme = olo_xdg::themes::resolve(theme).id;
     let src = match source(theme, dark) {
-        None => return Drawn::Loading,
+        None => {
+            // (What's painted now isn't what will show: not kept.)
+            window.paint_unfinished();
+            return Drawn::Loading;
+        }
         Some(Err(())) => return Drawn::Missing,
         Some(Ok(s)) => s,
     };

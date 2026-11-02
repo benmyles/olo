@@ -1185,6 +1185,43 @@ impl OutlinePen for Pen<'_> {
 mod tests {
     use super::*;
 
+    /// How long a line never laid out before takes, as a table's cells
+    /// are (`cargo test --release -p gpui shaping_cost -- --ignored --nocapture`).
+    #[test]
+    #[ignore]
+    fn shaping_cost() {
+        let system = OloTextSystem::new();
+        let data = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/fonts/NotoSans[wght].ttf")).expect("Olo's Noto Sans");
+        system.add_fonts(vec![Cow::Owned(data)]).unwrap();
+        let id = system.font_id(&crate::font("Noto Sans")).unwrap();
+        let cells = |n: usize, round: usize| -> Vec<String> {
+            (0..n)
+                .map(|i| match i % 6 {
+                    0 => format!("{}", 100_000 + i * 7 + round * 1_000_000),
+                    1 => format!("{}.{} MB", i % 997, round),
+                    2 => format!("kworker/u{}:{}-events_unbound{round}", i % 64, i % 9),
+                    3 => format!("{}:{:02}.{:02}", i % 60, i % 59, round % 100),
+                    4 => format!("{}.{} KB/s", i % 512, round),
+                    _ => format!("Nov {} {:02}:{:02}", 1 + i % 30, i % 24, round % 60),
+                })
+                .collect()
+        };
+        // (Warm: the faces' tables, plans.)
+        for line in cells(500, 0) {
+            system.layout_line(&line, px(13.0), &[FontRun { len: line.len(), font_id: id, size: None }]);
+        }
+        let mut best = f64::MAX;
+        for round in 1..8 {
+            let lines = cells(1000, round);
+            let t = std::time::Instant::now();
+            for line in &lines {
+                system.layout_line(line, px(13.0), &[FontRun { len: line.len(), font_id: id, size: None }]);
+            }
+            best = best.min(t.elapsed().as_secs_f64() * 1e6 / lines.len() as f64);
+        }
+        eprintln!("a new line laid out in {best:.2} µs");
+    }
+
     /// Glyphs are filled to their true coverage: each pixel of Noto
     /// Sans's letters, emboldened as small text is, at the sizes text
     /// takes at every scale and a subpixel offset, within a few levels of

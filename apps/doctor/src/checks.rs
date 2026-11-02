@@ -2,7 +2,8 @@
 //! Olo (input remappers that grab the mice and keyboards, another
 //! desktop's daemons and portals), settings that aren't what Olo wants
 //! (USB input devices allowed to fall asleep, Olo's udev rules not
-//! installed, rtkit not running for the Performance supervisor), and
+//! installed, rtkit not running for the Performance supervisor, frames'
+//! threads kept off the fast cores), and
 //! Olo programs still running an older version. Each finding carries
 //! its fix as steps (fix.rs), run as this user or as root through the
 //! helper (helper.rs).
@@ -40,6 +41,11 @@ const HEALED_DRIVERS: &[&str] = &["brcmfmac"];
 const INPUT_RULE_PATH: &str = "etc/udev/rules.d/71-olo-input.rules";
 const DISPLAY_RULE_PATH: &str = "etc/udev/rules.d/70-olo-displays.rules";
 const SESSION_ENTRY_PATH: &str = "usr/local/share/wayland-sessions/olo.desktop";
+/// The most any thread may ask the scheduler to take it as busy
+/// (uclamp.min, of 1024), and Olo's setting of it kept at boot.
+const UTIL_CLAMP_PATH: &str = "proc/sys/kernel/sched_util_clamp_min";
+const UTIL_CLAMP_CONF_PATH: &str = "etc/sysctl.d/80-olo-uclamp.conf";
+const UTIL_CLAMP_CONF: &str = "# Olo: frames' threads may ask for a fast core (olo_protocol::performance::CORE_UTIL_MIN).\nkernel.sched_util_clamp_min = 1024\n";
 
 /// Input remappers: they grab the real keyboards (and any mouse whose
 /// motion node has keys) and type through a virtual one, so Olo's own
@@ -338,6 +344,7 @@ pub fn scan(roots: &Roots) -> Report {
     display_rule(roots, &mut r);
     wifi(roots, &mut r);
     rtkit(roots, &mut r);
+    util_clamp(roots, &mut r);
     stale(roots, &procs, &mut r);
     login_entry(roots, &mut r);
     r
@@ -630,6 +637,42 @@ fn rtkit(roots: &Roots, r: &mut Report) {
     }
 }
 
+/// app_server's and every window's thread ask to be taken as busy while
+/// they run, for a fast core at a high clock (`CORE_UTIL_MIN`,
+/// `UI_UTIL_MIN`); the kernel caps what anyone may ask at
+/// `sched_util_clamp_min`.
+fn util_clamp(roots: &Roots, r: &mut Report) {
+    let Some(cap) = read(&roots.fs.join(UTIL_CLAMP_PATH)) else {
+        r.findings.push(Finding {
+            id: "uclamp".into(),
+            severity: Severity::Advice,
+            title: "This kernel can't keep frames on the fast cores".into(),
+            detail: "It's built without utilization clamping (CONFIG_UCLAMP_TASK): on a computer of fast and slow cores, a frame after a pause may run on a slow core at a low clock, three or four times as long.".into(),
+            fix: None,
+        });
+        return;
+    };
+    match cap.trim().parse::<u32>() {
+        Ok(cap) if cap < 1024 => r.findings.push(Finding {
+            id: "uclamp".into(),
+            severity: Severity::Problem,
+            title: "Frames' threads can't ask for the fast cores".into(),
+            detail: format!(
+                "kernel.sched_util_clamp_min is {cap} (of 1024): app_server and every window ask the scheduler for a fast core at a high clock while they draw, and get no more than that, so a frame after a pause can run on a slow core at a low clock, three or four times as long. The fix sets it to 1024, now and at every boot."
+            ),
+            fix: Some(Fix {
+                label: "Allow Fast Cores".into(),
+                root: true,
+                steps: vec![
+                    Step::WriteFile { path: PathBuf::from("/").join(UTIL_CLAMP_CONF_PATH), content: UTIL_CLAMP_CONF.into(), mode: 0o644 },
+                    Step::WriteSysfs { path: PathBuf::from("/").join(UTIL_CLAMP_PATH), value: "1024".into() },
+                ],
+            }),
+        }),
+        _ => r.fine.push(Fine { title: "Frames run on the fast cores".into(), detail: "app_server and every window can ask the scheduler for a fast core at a high clock while they draw.".into() }),
+    }
+}
+
 fn stale(roots: &Roots, procs: &[Proc], r: &mut Report) {
     let me = std::process::id() as i32;
     let bin = roots.bin.to_string_lossy();
@@ -716,6 +759,8 @@ mod tests {
         w("sys/bus/usb/devices/3-1.4/power/control", "auto\n");
         w("sys/bus/usb/devices/3-1.4:1.5/bInterfaceClass", "03\n");
         w("usr/local/share/wayland-sessions/olo.desktop", "[Desktop Entry]\nExec=/nowhere/olo-session\n");
+        // A tuning profile's cap on what a thread may ask the scheduler.
+        w("proc/sys/kernel/sched_util_clamp_min", "512\n");
         // A Broadcom Wi-Fi chip, and the healer's program installed for
         // the person.
         w("sys/class/net/wld0/phy80211/name", "phy0\n");
@@ -748,7 +793,10 @@ mod tests {
         let r = scan(&roots);
         let ids: Vec<&str> = r.findings.iter().map(|f| f.id.as_str()).collect();
         assert_eq!(r.find("foreign").unwrap().title, "A program of another desktop runs in this session");
-        assert_eq!(ids, ["remapper:keyd", "foreign", "rule:input", "autosuspend:3-1.3", "rule:displays", "wifi-heal", "rtkit", "stale", "login"], "{r:#?}");
+        assert_eq!(ids, ["remapper:keyd", "foreign", "rule:input", "autosuspend:3-1.3", "rule:displays", "wifi-heal", "rtkit", "uclamp", "stale", "login"], "{r:#?}");
+        let uclamp = r.find("uclamp").unwrap();
+        assert!(uclamp.detail.starts_with("kernel.sched_util_clamp_min is 512"));
+        assert_eq!(uclamp.fix.as_ref().unwrap().steps[1], Step::WriteSysfs { path: "/proc/sys/kernel/sched_util_clamp_min".into(), value: "1024".into() });
         let heal = r.find("wifi-heal").unwrap();
         assert_eq!(heal.title, "Olo's Wi-Fi healer isn't installed");
         assert!(heal.detail.contains("brcmfmac, wld0"));
@@ -813,6 +861,7 @@ mod tests {
         w(HEAL_BIN_PATH, "the healer");
         w(HEAL_UNIT_PATH, HEAL_UNIT);
         w(BRCMFMAC_CONF_PATH, BRCMFMAC_CONF);
+        w(UTIL_CLAMP_PATH, "1024\n");
         roots.units = Box::new(|name: &str| Ok(if matches!(name, "rtkit-daemon.service" | "olo-wifi-heal.service") { UnitState { loaded: true, active: true, enabled: true, path: None } } else { UnitState::default() }));
         let r = scan(&roots);
         assert!(r.findings.is_empty(), "{:#?}", r.findings);
@@ -827,6 +876,7 @@ mod tests {
                 "Olo's display rule is installed",
                 "Olo's Wi-Fi healer watches wld0",
                 "rtkit is running",
+                "Frames run on the fast cores",
                 "Every Olo program runs the installed version",
                 "Olo is on the login screen",
             ]

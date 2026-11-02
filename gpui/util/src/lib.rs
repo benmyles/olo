@@ -127,7 +127,9 @@ fn log_error_with_caller<E: std::fmt::Debug>(caller: Location<'_>, error: E, lev
     log::logger().log(
         &log::Record::builder()
             .target("gpui")
-            .args(format_args!("{:?}", error))
+            // (Olo: where, in the message: Olo's log keeps only the
+            // message, and "window not found" alone said nothing of who.)
+            .args(format_args!("{:?} ({}:{})", error, caller.file(), caller.line()))
             .file(Some(caller.file()))
             .line(Some(caller.line()))
             .level(level)

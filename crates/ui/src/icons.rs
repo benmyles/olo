@@ -125,7 +125,8 @@ fn worker() -> &'static Mutex<mpsc::Sender<Key>> {
 static WAKE: OnceLock<Box<dyn Fn() + Send + Sync>> = OnceLock::new();
 
 /// Draws the windows again: a picture loaded off the UI thread (an
-/// icon, the wordmark) is ready.
+/// icon, the wordmark) is ready. (What's kept of what was drawn is
+/// replayed: what drew it still loading wasn't kept.)
 pub(crate) fn wake() {
     if let Some(wake) = WAKE.get() {
         wake();
@@ -142,7 +143,7 @@ pub(crate) fn init(cx: &mut App) {
         while rx.next().await.is_some() {
             // (Several at once: drawn again once.)
             while rx.try_recv().is_ok() {}
-            let _ = cx.update(|cx| cx.refresh_windows());
+            let _ = cx.update(|cx| cx.redraw_windows());
         }
     })
     .detach();

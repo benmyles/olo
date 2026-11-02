@@ -129,7 +129,17 @@ like pixel alignment is.
    press and shows only its part (`wp_viewport`), made to fit 1.5 s
    after it ends; windows and menus share the device's pipelines and
    glyph atlas, so one opens without building them; glyphs a window will
-   show are drawn ahead on a thread (gpui/README.md). Pictures are
+   show are drawn ahead on a thread (gpui/README.md). A frame runs on a
+   fast core at a high clock: GPUI's main thread asks the scheduler for
+   it as it starts (its `uclamp.min`, `olo_protocol::performance::
+   UI_UTIL_MIN`, 768 of 1024; threads it starts afterwards don't
+   inherit it), app_server's main thread too (`CORE_UTIL_MIN`, 1024).
+   Otherwise a thread that's mostly idle is put on a slow core at a low
+   clock, and the frame after a pause, the one that matters, took three
+   or four times as long there (Activity's first frame of its
+   processes: 13–17 ms, 3.7–4.6 with it; text shaped 6× faster). It
+   costs nothing while the thread sleeps. `OLO_UTIL_MIN=N` (0 for none)
+   to compare. Pictures are
    decoded and resampled on workers (`ImageView`, `pictures::thumbnail`,
    `icons`), the frame only drawing them. `tools/dev/bench` checks every
    app (see Testing).
@@ -227,8 +237,10 @@ message):
   answers, growth).
 * Where a GPUI app's frame goes: `OLO_FRAME_PHASES=1` prints each
   frame's layout, paint, scene finish and present (which waits for the
-  previous frame's GPU work) and how many sprites, quads and paint
-  operations it has. Where its time goes inside: sample its UI thread
+  previous frame's GPU work), how many sprites, quads and paint
+  operations it has, and the lines it shaped and glyphs it drew afresh.
+  A frame much slower than the same work warm may have run on a slow
+  core (rule 9: compare `OLO_UTIL_MIN=0`). Where its time goes inside: sample its UI thread
   with `eu-stack -1 -i -p PID` a few hundred times while the bench's
   pointer sweeps it and count the functions on the stacks (perf isn't
   installed).
@@ -4809,6 +4821,10 @@ signal a process), all done in process. What it looks for:
   70-olo-displays; the Doctor carries them with `include_str!`) missing or
   out of date: installed and applied to what is plugged in now.
 - **rtkit** not running (the supervisor's priority tiers need it).
+- **Frames kept off the fast cores**: `kernel.sched_util_clamp_min`
+  below 1024 caps the `uclamp.min` app_server's and the windows' threads
+  ask for (rule 9): set to 1024, now and at boot (/etc/sysctl.d/
+  80-olo-uclamp.conf); a kernel without `CONFIG_UCLAMP_TASK` is advice.
 - **Olo programs on an old version** (their `exe` is a replaced file in
   ~/.local/bin; never the session, app_server or the proxies): quit.
 - **The login screen's entry** (/usr/local/share/wayland-sessions)
@@ -4892,7 +4908,9 @@ it looks at the person's own processes in /proc (`sample.rs`) and:
   asking rtkit for itself as it starts (`olo_system::priority::raise_self`:
   `org.freedesktop.RealtimeKit1`'s `MakeThreadHighPriorityWithPID`, the
   one way an unprivileged process gets a negative nice, down to its
-  `MinNiceLevel`, −15 here). The supervisor re-asserts a tier for a
+  `MinNiceLevel`, −15 here), and each frame's thread on a fast core
+  (its `uclamp.min`, rule 9; no privilege needed). The supervisor
+  re-asserts a tier for a
   program found above it (rtkit refused at its start, or a thread made
   since; `priority::raise_process`, every thread), publishes what it
   raised (`SupervisorState::raised`; Activity Monitor's "Olo's own" row)

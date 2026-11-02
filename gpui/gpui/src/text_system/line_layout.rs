@@ -490,6 +490,17 @@ pub(crate) struct LineLayoutIndex {
     wrapped_lines_index: usize,
 }
 
+impl LineLayoutIndex {
+    /// Olo: where this index of lines laid out from `from` is, reused from
+    /// `to` (`LineLayoutCache::reuse_layouts`: one for one).
+    pub(crate) fn shifted(&self, from: &LineLayoutIndex, to: &LineLayoutIndex) -> LineLayoutIndex {
+        LineLayoutIndex {
+            lines_index: self.lines_index - from.lines_index + to.lines_index,
+            wrapped_lines_index: self.wrapped_lines_index - from.wrapped_lines_index + to.wrapped_lines_index,
+        }
+    }
+}
+
 impl LineLayoutCache {
     pub fn new(platform_text_system: Arc<dyn PlatformTextSystem>) -> Self {
         Self {
@@ -651,9 +662,13 @@ impl LineLayoutCache {
             layout
         } else {
             let text = SharedString::from(text);
+            let shaping = crate::window::frame_phases().then(std::time::Instant::now);
             let mut layout = self
                 .platform_text_system
                 .layout_line(&text, font_size, runs);
+            if let Some(t) = shaping {
+                crate::window::FRAME_WORK.note(&crate::window::FRAME_WORK.shaped, t);
+            }
 
             if let Some(force_width) = force_width {
                 let mut glyph_pos = 0;
