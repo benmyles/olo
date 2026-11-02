@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Text cut short shows whole in a tip
+
+*13:23* — Resting the pointer on text the kit cut with … (here a name in Tracker's column) shows all of it in the kit's tip; with ⌘ held, at once. Every kit window does it for every label it cuts or that runs past its clip.
+
+![Text cut short shows whole in a tip](2026-11-02/132341-text-cut-short-shows-whole-in-a-tip.png)
+
 ### Command palette: Go to the path in the clipboard
 
 *12:45* — With a path copied (absolute, ~/…, a file:// URI), the palette offers to go there before anything is typed, and a path typed whole is offered too: Tracker shows it, a folder in its window, a file selected in its folder's. Read off the UI thread once the palette has the keyboard, which app_server now gives an exclusive layer as it shows.

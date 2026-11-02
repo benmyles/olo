@@ -101,6 +101,20 @@ pub fn hover(window: &Window, cx: &mut App, key: impl Into<SharedString>, text: 
     cx.default_global::<Tips>().waiting = Some((parent, key, task));
 }
 
+/// The tip of widget `key` of `window` now, without the pause (⌘ held
+/// over cut text, `cut`).
+pub fn show_now(window: &Window, cx: &mut App, key: impl Into<SharedString>, text: impl Into<SharedString>, anchor: Bounds<Pixels>) {
+    let (key, text, parent) = (key.into(), text.into(), window.window_handle());
+    let tips = cx.default_global::<Tips>();
+    tips.waiting = None;
+    tips.pressed = None;
+    if tips.shown.as_ref().is_some_and(|(w, k, _)| *w == parent && *k == key) || text.is_empty() {
+        return;
+    }
+    hide(cx);
+    show(cx, parent, key, text, anchor);
+}
+
 /// The widget `key` of `window` was pressed: its tip goes, and doesn't
 /// come back until the pointer leaves it.
 pub fn pressed(window: &Window, cx: &mut App, key: impl Into<SharedString>) {

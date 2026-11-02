@@ -759,6 +759,24 @@ a rest, at once if another showed a moment ago, and not after a click
 window: Deskbar's tray, Terminal's sudo window's command. Elsewhere
 `widgets::tooltip` is fine.
 
+### Text cut short (`olo_ui::cut`)
+
+Text that doesn't show in full shows whole in the kit's tip (`tip`)
+when the pointer rests on it, at once while ⌘ (Super) is held (⌘ as
+apps get it: the right Ctrl with a profile that has a command key,
+`cut::command_held`, as Terminal tells it). Every kit window does it:
+its `Frame` follows the pointer, a press puts the tip away until the
+pointer leaves the text. What the kit cuts is noted as it's painted:
+`style::label_fit`, `label_runs_fit` and `label_on_baseline_fit` (list
+cells, tab and strip titles, pop-up menu fields, sidebars, dashboards,
+thumbnails), and a label running past the side of what it's painted in
+(`label`, `label_runs`; a row half scrolled out of view, top or bottom,
+isn't). An app that cuts text itself says so with `cut::note(window,
+full, bounds)` (Tracker's icon names). The notes are paint records, so
+a cached view's replay keeps them; the pointer's moves look through
+them once after each frame drawn, then through the few rectangles cut
+(0.3–1.9 µs a move in Tracker and Activity Monitor).
+
 ### Showing a control (`olo_ui::spotlight`)
 
 `spotlight::show(handle, tab, group, name, cx)` says "here" about one

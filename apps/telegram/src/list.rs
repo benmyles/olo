@@ -544,8 +544,7 @@ fn paint_row(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, d: Draw, p: &
 /// One line of text on `baseline`, cut short with "…" to `max_width`.
 #[allow(clippy::too_many_arguments)]
 fn label_fit_on(window: &mut Window, cx: &mut App, x: Pixels, baseline: Pixels, text: impl Into<SharedString>, size_: f32, font: olo_ui::gpui::Font, color: Hsla, max_width: Pixels) -> Bounds<Pixels> {
-    let text = style::fit(window, text.into(), size_, &font, max_width.max(px(0.0)));
-    style::label_on_baseline(window, cx, x, baseline, Align::Left, text, size_, font, color)
+    style::label_on_baseline_fit(window, cx, x, baseline, Align::Left, text, size_, font, color, max_width)
 }
 
 #[allow(clippy::too_many_arguments)]

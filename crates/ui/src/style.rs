@@ -278,6 +278,7 @@ fn paint_label(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pixels, a
     let _ = line.paint(point(left, top), height, window, cx);
     let at = Bounds { origin: point(left, top), size: size(line.width, height) };
     crate::review::text(window, at, baseline, text, font_size);
+    crate::cut::note_if_clipped(window, text, at);
     at
 }
 
@@ -411,8 +412,11 @@ pub fn label_fit(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pixels,
     if line.width <= max_width.max(px(0.0)) {
         return paint_label(window, cx, x, center_y, align, &text, font_size, line);
     }
-    let text = fit(window, text, font_size, &font, max_width.max(px(0.0)));
-    label(window, cx, x, center_y, align, text, font_size, font, color)
+    let shown = fit(window, text.clone(), font_size, &font, max_width.max(px(0.0)));
+    let at = label(window, cx, x, center_y, align, shown, font_size, font, color);
+    // Its whole, in a tip for the pointer resting on it.
+    crate::cut::note(window, text, at);
+    at
 }
 
 /// [`label`] in runs (colours, what a search found marked behind): one
@@ -431,6 +435,7 @@ pub fn label_runs(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pixels
     let _ = line.paint(point(left, top), height, window, cx);
     let at = Bounds { origin: point(left, top), size: size(line.width, height) };
     crate::review::text(window, at, baseline, &text, font_size);
+    crate::cut::note_if_clipped(window, &text, at);
     at
 }
 
@@ -463,7 +468,9 @@ pub fn label_runs_fit(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pi
         let shown: SharedString = format!("{cut}…").into();
         let width = window.text_system().shape_line(shown.clone(), px(font_size), &cut_runs, None).width;
         if end == 0 || width <= max_width {
-            return label_runs(window, cx, x, center_y, align, shown, font_size, &cut_runs);
+            let at = label_runs(window, cx, x, center_y, align, shown, font_size, &cut_runs);
+            crate::cut::note(window, text, at);
+            return at;
         }
         end = text[..end].char_indices().next_back().map_or(0, |(i, _)| i);
     }
@@ -525,6 +532,13 @@ pub fn baseline_at(window: &Window, center_y: Pixels, font_size: f32) -> Pixels 
 #[allow(clippy::too_many_arguments)]
 pub fn label_on_baseline(window: &mut Window, cx: &mut App, x: Pixels, baseline: Pixels, align: Align, text: impl Into<SharedString>, font_size: f32, font: Font, color: Hsla) -> Bounds<Pixels> {
     label(window, cx, x, baseline - px(font_size * CAP_HEIGHT / 2.0), align, text, font_size, font, color)
+}
+
+/// [`label_on_baseline`] cut short with "…" to fit `max_width` ([`label_fit`]:
+/// its whole in a tip for the pointer resting on it).
+#[allow(clippy::too_many_arguments)]
+pub fn label_on_baseline_fit(window: &mut Window, cx: &mut App, x: Pixels, baseline: Pixels, align: Align, text: impl Into<SharedString>, font_size: f32, font: Font, color: Hsla, max_width: Pixels) -> Bounds<Pixels> {
+    label_fit(window, cx, x, baseline - px(font_size * CAP_HEIGHT / 2.0), align, text, font_size, font, color, max_width)
 }
 
 /// How tall a [`pill`] of `font_size` text is.

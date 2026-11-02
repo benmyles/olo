@@ -13,6 +13,7 @@ pub mod agent;
 mod app;
 pub mod brand;
 pub mod copy;
+pub mod cut;
 pub mod dnd;
 pub mod editor;
 pub mod file_panel;

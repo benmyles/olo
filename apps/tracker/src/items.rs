@@ -252,6 +252,10 @@ pub fn paint_item(window: &mut Window, cx: &mut App, l: &ItemLayout, icon: &str,
             line(window, cx, k, text, px(0.0), style::c(p.document_text));
         }
     }
+    // Cut short: the whole name in a tip for the pointer resting on it.
+    if l.lines.last().is_some_and(|(t, _)| t.ends_with('…')) && !l.name.ends_with('…') {
+        olo_ui::cut::note(window, l.name.clone(), l.highlight());
+    }
 }
 
 /// How far along a download is, as a bar across the foot of its icon

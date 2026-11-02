@@ -888,7 +888,13 @@ as they land (with the commit), add new ones as they come up.
   without the screen), draw a spinner no faster than it turns, and make
   a hidden window's once-a-second frame cheap or skip it.
 
-- **Tooltips for text that doesn't show in full** (Ben, 2026-10-31):
+- **Tooltips for text that doesn't show in full** (*done in the kit*
+  2026-11-02, HACKING "Text cut short": every label the kit cuts with
+  "…" or that runs past its clip, Tracker's icon names, Telegram's chat
+  list, Passwords' titles; ⌘ shows it at once. *Left*: app_server's own
+  text (window tabs), text fields scrolled sideways, Telegram's
+  attachment chips and bubbles, text in GPUI's own text elements, and
+  agents reading a cut text's whole as its name) (Ben, 2026-10-31):
   "when hovering over anything in olo or any olo app where the text has
   been truncated or occluded or otherwise is not being displayed in full
   then there should be a tooltip that appears showing the full text".
