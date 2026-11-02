@@ -338,6 +338,9 @@ pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, bu
 struct Messages {
     handler: Option<Box<dyn FnMut(Box<dyn Any + Send>, &mut App)>>,
     proxy: Proxy,
+    /// Its last window closed and it is ending: a launch forwarded now is
+    /// refused (the launching process starts a copy of its own).
+    quitting: bool,
 }
 
 impl Global for Messages {}
@@ -390,12 +393,21 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
         let proxy = Proxy::new(move |m| {
             let _ = tx.unbounded_send(m);
         });
-        cx.set_global(Messages { handler: None, proxy });
+        cx.set_global(Messages { handler: None, proxy, quitting: false });
         cx.spawn(async move |cx| {
             while let Some(message) = rx.next().await {
                 let _ = cx.update(|cx| {
-                    let handler = cx.global_mut::<Messages>().handler.take();
-                    if let Some(mut handler) = handler {
+                    let messages = cx.global_mut::<Messages>();
+                    // A launch forwarded from another process is told the
+                    // app took it, or dropped unanswered (so that process
+                    // opens a copy of its own) if the app is ending or has
+                    // nothing to take it with, or the process gave up.
+                    if let Some(launch) = message.downcast_ref::<olo_kit_base::instance::Launch>()
+                        && (messages.quitting || messages.handler.is_none() || !launch.take())
+                    {
+                        return;
+                    }
+                    if let Some(mut handler) = messages.handler.take() {
                         handler(message, cx);
                         cx.global_mut::<Messages>().handler = Some(handler);
                     }
@@ -410,6 +422,7 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
             cx.default_global::<TabKeys>().0.retain(|id, _| open.contains(id));
             crate::menu::forget_closed(cx);
             if cx.windows().is_empty() && !cx.has_global::<Resident>() {
+                cx.global_mut::<Messages>().quitting = true;
                 cx.quit();
             }
         })

@@ -1379,7 +1379,7 @@ fn main() {
             let _ = std::thread::Builder::new().name("tracker-filemanager".into()).spawn(move || {
                 let reveal = move |paths: Vec<PathBuf>| {
                     let args = paths.into_iter().flat_map(|p| ["--reveal".to_owned(), p.display().to_string()]).collect();
-                    proxy.send(Launch { args, cwd: None });
+                    proxy.send(Launch { args, cwd: None, taken: None });
                 };
                 match filemanager::serve(reveal) {
                     Ok(_conn) => loop {

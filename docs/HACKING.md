@@ -403,10 +403,14 @@ fn main() {
   &args)` first in `main` (returns true if a running copy took the
   arguments; exit then), and `instance::listen(app_id, olo_ui::proxy(cx))`
   in `run`'s closure; forwarded launches arrive in `message_handler` as an
-  `instance::Launch { args, cwd }`. The socket is named for the display
-  (`olo_xdg::display_name()`: `wayland-1` also when `WAYLAND_DISPLAY`
-  names the socket by its full path; use it for any file kept per
-  display).
+  `instance::Launch { args, cwd, .. }`. A launch is answered once the
+  running copy's UI thread takes it (olo-ui does that as it hands it to
+  the handler; 0.2 ms); a copy ending (its last window closed), or one
+  with no handler, drops it unanswered and `forward` returns false, so
+  the new process opens it itself rather than it being lost. The
+  socket is named for the display (`olo_xdg::display_name()`:
+  `wayland-1` also when `WAYLAND_DISPLAY` names the socket by its full
+  path; use it for any file kept per display).
   `instance::running(app_id)` says whether a copy is listening. An app
   with several windows should open a new one for `--new-window` (always,
   rather than bringing one forward) and be listed in

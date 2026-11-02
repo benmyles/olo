@@ -2483,7 +2483,7 @@ fn main() {
             .detach();
             // Asked for a new window (or there's nothing to show): open one.
             if !reattached || (state.is_none() && !args.is_empty()) {
-                t.handle_launch(cx, Launch { args, cwd: std::env::current_dir().ok() });
+                t.handle_launch(cx, Launch { args, cwd: std::env::current_dir().ok(), taken: None });
             }
             t
         });
