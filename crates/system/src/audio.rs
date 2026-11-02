@@ -51,7 +51,10 @@ impl Conn {
         let stream = UnixStream::connect(path)?;
         stream.set_read_timeout(Some(Duration::from_secs(5)))?;
         let mut c = Conn { sock: BufReader::new(stream), version: protocol::MAX_VERSION, seq: 0 };
-        let cookie = pulseaudio::cookie_path_from_env().and_then(|p| std::fs::read(p).ok()).unwrap_or_default();
+        // No cookie file (a new account, a sandbox): a cookie of zeros, the
+        // length the protocol wants. PipeWire doesn't check what's in it, but
+        // turns away an empty one, and with it every sound control.
+        let cookie = pulseaudio::cookie_path_from_env().and_then(|p| std::fs::read(p).ok()).filter(|c| c.len() == 256).unwrap_or_else(|| vec![0; 256]);
         let auth = protocol::AuthParams { version: protocol::MAX_VERSION, supports_shm: false, supports_memfd: false, cookie };
         let reply: protocol::AuthReply = c.request(&Command::Auth(auth))?;
         c.version = protocol::MAX_VERSION.min(reply.version);
@@ -95,6 +98,8 @@ impl Conn {
         let device = |name: &CString, description: &Option<CString>, cvolume: &ChannelVolume, muted: bool, default: &str, props: &protocol::Props| {
             let name = name.to_string_lossy().into_owned();
             Device {
+                private: bluetooth(props).is_some()
+                    || prop(props, "device.form_factor").is_some_and(|f| matches!(f.as_str(), "headphone" | "headset" | "handset" | "hands-free" | "earpiece")),
                 bluetooth: bluetooth(props),
                 description: description
                     .as_ref()
@@ -107,7 +112,19 @@ impl Conn {
                 name,
             }
         };
-        let outputs = sinks.iter().map(|s| device(&s.name, &s.description, &s.cvolume, s.muted, &default_out, &s.props)).collect();
+        let outputs = sinks
+            .iter()
+            .map(|s| {
+                let mut d = device(&s.name, &s.description, &s.cvolume, s.muted, &default_out, &s.props);
+                // What the active port is: headphones in the jack are
+                // private however the card is described.
+                use protocol::port_info::PortType;
+                if let Some(port) = s.ports.get(s.active_port) {
+                    d.private |= matches!(port.port_type, PortType::Headphones | PortType::Headset | PortType::Handset | PortType::Earpiece | PortType::Handsfree);
+                }
+                d
+            })
+            .collect();
         // A sink's monitor isn't a microphone.
         let inputs = sources
             .iter()
@@ -185,6 +202,10 @@ pub struct Device {
     pub is_default: bool,
     /// A Bluetooth device's address and how its sound is carried.
     pub bluetooth: Option<Bluetooth>,
+    /// Heard (or hearing) only by the person: headphones, a headset, an
+    /// earpiece, anything Bluetooth. An output that isn't is heard by the
+    /// microphone too (echo cancellation's business).
+    pub private: bool,
 }
 
 /// How a Bluetooth device's sound is carried.
@@ -264,6 +285,21 @@ pub struct Devices {
 }
 
 impl Devices {
+    /// See [`devices`].
+    pub fn presented(mut self) -> Devices {
+        use olo_protocol::voice;
+        if let Some(i) = self.inputs.iter().position(|d| d.name == voice::NODE) {
+            let processed = self.inputs.remove(i);
+            if processed.is_default {
+                let listening = voice::State::load().microphone;
+                for d in &mut self.inputs {
+                    d.is_default = listening.as_deref() == Some(d.name.as_str());
+                }
+            }
+        }
+        self
+    }
+
     pub fn default_device(&self, kind: Kind) -> Option<&Device> {
         match kind {
             Kind::Output => &self.outputs,
@@ -274,7 +310,16 @@ impl Devices {
     }
 }
 
+/// The device lists as people see them: the voice service's processed
+/// source ([`olo_protocol::voice::NODE`]) isn't one of them; the microphone
+/// it listens to stands in its place (and is the default when it is).
 pub fn devices() -> Result<Devices> {
+    Conn::connect()?.devices().map(Devices::presented)
+}
+
+/// The device lists as the sound server has them (the voice service's own
+/// source included).
+pub fn devices_raw() -> Result<Devices> {
     Conn::connect()?.devices()
 }
 
@@ -313,8 +358,14 @@ pub fn set_device_muted(kind: Kind, name: &str, mute: bool) -> Result<()> {
     })
 }
 
-/// Like [`watch`], for the whole device list (Preferences ▸ Sound).
+/// Like [`watch`], for the whole device list as people see it
+/// ([`devices`]; Preferences ▸ Sound, the Deskbar).
 pub fn watch_devices(mut changed: impl FnMut(Option<Devices>)) -> ! {
+    watch_devices_raw(move |d| changed(d.map(Devices::presented)))
+}
+
+/// [`watch_devices`], as the sound server has them ([`devices_raw`]).
+pub fn watch_devices_raw(mut changed: impl FnMut(Option<Devices>)) -> ! {
     let mut last: Option<Option<Devices>> = None;
     let mut report = |d: Option<Devices>| {
         if last.as_ref() != Some(&d) {

@@ -62,7 +62,7 @@ const SHELL: &[&[&str]] = &[&["olo-deskbar"], &["olo-tracker", "--desktop"]];
 /// Performance) looks after the person's own processes; Olo Doctor tells
 /// of problems at login and of the Wi-Fi healer's resets; the AirPods
 /// service talks to the computer's own Bluetooth.
-const REAL_SHELL: &[&[&str]] = &[&["olo-polkit-agent"], &["olo-notifications"], &["olo-portal", "--service"], &["olo-pool", "--service"], &["olo-supervisor"], &["olo-doctor", "--watch"], &["olo-airpods", "--service"]];
+const REAL_SHELL: &[&[&str]] = &[&["olo-polkit-agent"], &["olo-notifications"], &["olo-portal", "--service"], &["olo-pool", "--service"], &["olo-supervisor"], &["olo-doctor", "--watch"], &["olo-airpods", "--service"], &["olo-voice", "--service"]];
 /// Give up restarting something that crashes this often.
 const CRASH_LIMIT: usize = 5;
 const CRASH_WINDOW: Duration = Duration::from_secs(60);

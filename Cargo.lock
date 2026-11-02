@@ -6617,6 +6617,7 @@ dependencies = [
  "libc",
  "libloading",
  "num-bigint 0.4.8",
+ "olo-protocol",
  "olo-sync",
  "pulseaudio",
  "serde",
@@ -6805,6 +6806,22 @@ dependencies = [
  "olo-protocol",
  "realfft",
  "sonora",
+]
+
+[[package]]
+name = "olo-voice-service"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "olo-kit-base",
+ "olo-protocol",
+ "olo-sync",
+ "olo-system",
+ "olo-voice",
+ "pipewire",
+ "serde_json",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

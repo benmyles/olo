@@ -37,7 +37,7 @@ struct Link {
 
 /// Test data: speakers, a headset and a microphone named as they come.
 fn test_devices() -> Devices {
-    let device = |name: &str, description: &str, level, is_default| audio::Device { name: name.into(), description: description.into(), volume: audio::Volume { level, muted: false }, channels: 2, is_default, bluetooth: None };
+    let device = |name: &str, description: &str, level, is_default| audio::Device { name: name.into(), description: description.into(), volume: audio::Volume { level, muted: false }, channels: 2, is_default, bluetooth: None, private: false };
     Devices {
         outputs: vec![
             device("speakers", "MacBook Pro Speakers (Built-in Audio Analog Stereo)", 0.55, false),

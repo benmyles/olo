@@ -1,0 +1,83 @@
+#!/bin/bash
+# pw-sandbox DIR start|stop|env
+#
+# A private sound server for tests, apart from the person's: PipeWire,
+# its PulseAudio server and WirePlumber, in DIR (under /var/tmp), with no
+# hardware (ALSA, Bluetooth, cameras off), no D-Bus, its own state, and two
+# made-up devices: "speakers" (a sink; its monitor is what they play) and
+# "mic" (a source: what's played into the sink "talk" is what it hears).
+#
+#   tools/dev/pw-sandbox /var/tmp/me/pw start
+#   eval "$(tools/dev/pw-sandbox /var/tmp/me/pw env)"   # then run things in it
+#   pw-cat --playback --target talk speech.wav           # someone talks
+#   tools/dev/pw-sandbox /var/tmp/me/pw stop
+set -euo pipefail
+dir=${1:?DIR}
+cmd=${2:?start, stop or env}
+case "$dir" in /tmp/*) echo "pw-sandbox: not /tmp (it's RAM): use /var/tmp" >&2; exit 2;; esac
+
+envs() {
+    cat <<EOF
+export XDG_RUNTIME_DIR="$dir/run" PIPEWIRE_RUNTIME_DIR="$dir/run" PULSE_RUNTIME_PATH="$dir/run/pulse"
+export XDG_CONFIG_HOME="$dir/config" XDG_STATE_HOME="$dir/state" XDG_DATA_HOME="$dir/data" HOME="$dir/home"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$dir/run/no-bus" DISPLAY= WAYLAND_DISPLAY=
+unset PULSE_SERVER PIPEWIRE_REMOTE
+EOF
+}
+
+case "$cmd" in
+env) envs ;;
+start)
+    mkdir -p "$dir"/{run,config/pipewire/pipewire.conf.d,config/wireplumber/wireplumber.conf.d,state,data,home}
+    chmod 700 "$dir/run"
+    cat > "$dir/config/pipewire/pipewire.conf.d/devices.conf" <<'EOF'
+context.objects = [
+    { factory = adapter
+      args = { factory.name = support.null-audio-sink node.name = "speakers" node.description = "Test Speakers"
+               media.class = "Audio/Sink" audio.position = [ FL FR ] audio.rate = 48000 } }
+]
+context.modules = [
+    { name = libpipewire-module-loopback
+      args = { node.description = "Test Microphone"
+               capture.props = { node.name = "talk" node.description = "Test Microphone's Air" media.class = "Audio/Sink" audio.position = [ MONO ] }
+               playback.props = { node.name = "mic" node.description = "Test Microphone" media.class = "Audio/Source" audio.position = [ MONO ] } } }
+]
+EOF
+    cat > "$dir/config/wireplumber/wireplumber.conf.d/sandbox.conf" <<'EOF'
+wireplumber.profiles = {
+  main = {
+    monitor.alsa = disabled
+    monitor.alsa-midi = disabled
+    monitor.bluez = disabled
+    monitor.bluez-midi = disabled
+    monitor.v4l2 = disabled
+    monitor.libcamera = disabled
+    support.reserve-device = disabled
+    monitor.alsa.reserve-device = disabled
+    support.logind = disabled
+    monitor.bluez.seat-monitoring = disabled
+    support.mpris = disabled
+    hooks.linking.pause-playback = disabled
+    support.portal-permissionstore = disabled
+    script.client.access-portal = disabled
+    custom.access-muvm = disabled
+  }
+}
+EOF
+    eval "$(envs)"
+    (pipewire >"$dir/pipewire.log" 2>&1 & echo $! >"$dir/pipewire.pid")
+    for _ in $(seq 50); do [ -S "$dir/run/pipewire-0" ] && break; sleep 0.1; done
+    (wireplumber >"$dir/wireplumber.log" 2>&1 & echo $! >"$dir/wireplumber.pid")
+    (pipewire-pulse >"$dir/pulse.log" 2>&1 & echo $! >"$dir/pulse.pid")
+    for _ in $(seq 50); do [ -S "$dir/run/pulse/native" ] && break; sleep 0.1; done
+    [ -S "$dir/run/pulse/native" ] || { echo "pw-sandbox: the PulseAudio server didn't start (see $dir/*.log)" >&2; exit 1; }
+    echo "pw-sandbox: running in $dir"
+    ;;
+stop)
+    for p in pulse wireplumber pipewire; do
+        [ -f "$dir/$p.pid" ] && kill "$(cat "$dir/$p.pid")" 2>/dev/null || true
+        rm -f "$dir/$p.pid"
+    done
+    ;;
+*) echo "pw-sandbox: start, stop or env" >&2; exit 2 ;;
+esac

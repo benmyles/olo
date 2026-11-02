@@ -89,7 +89,14 @@ impl Voice {
             let config = sonora::Config {
                 gain_controller2: Some(sonora::config::GainController2 {
                     // Loud talkers brought down as well as quiet ones up.
-                    adaptive_digital: Some(sonora::config::AdaptiveDigital { max_attenuation_db: 20.0, ..Default::default() }),
+                    adaptive_digital: Some(sonora::config::AdaptiveDigital {
+                        max_attenuation_db: 20.0,
+                        // From where it is, not 15 dB up (WebRTC's, for quiet
+                        // laptop microphones): the first words of a loud one
+                        // came out at -3 dBFS.
+                        initial_gain_db: 0.0,
+                        ..Default::default()
+                    }),
                     ..Default::default()
                 }),
                 ..Default::default()
