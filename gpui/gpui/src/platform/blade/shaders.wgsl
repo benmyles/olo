@@ -958,6 +958,15 @@ fn fs_shadow(input: ShadowVarying) -> @location(0) vec4<f32> {
 
     let corner_radius = pick_corner_radius(center_to_point, shadow.corner_radii);
 
+    // Olo: well inside its rounded rect (three blur radii in from its
+    // edges and corners) a shadow is at its full strength: no samples (a
+    // card's shadow is mostly that, under the card; a screen of cards'
+    // shadows was a third of Notifications' history's GPU time).
+    let inner = half_size - vec2<f32>(3.0 * shadow.blur_radius + corner_radius);
+    if (all(abs(center_to_point) < inner)) {
+        return blend_color(input.color, 1.0);
+    }
+
     // The signal is only non-zero in a limited range, so don't waste samples
     let low = center_to_point.y - half_size.y;
     let high = center_to_point.y + half_size.y;

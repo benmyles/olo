@@ -826,7 +826,20 @@ impl BladeRenderer {
                     .quads
                     .iter()
                     .filter(|q| area(&q.bounds.intersect(&q.content_mask.bounds)) > screen * 0.05)
-                    .map(|q| format!("{:?}{}", q.bounds.intersect(&q.content_mask.bounds), if q.corner_radii.top_left.0 > 0.0 || q.border_widths.top.0 > 0.0 { " rounded/bordered" } else { "" }))
+                    .map(|q| {
+                        let b = q.bounds.intersect(&q.content_mask.bounds);
+                        format!(
+                            "[{:.0}×{:.0} at {:.0},{:.0} order {} {:?} alpha {:.7}{}]",
+                            b.size.width.0,
+                            b.size.height.0,
+                            b.origin.x.0,
+                            b.origin.y.0,
+                            q.order,
+                            q.background.tag,
+                            q.background.solid.a,
+                            if q.corner_radii != crate::Corners::default() || q.border_widths != crate::Edges::default() { format!(" radii {:?} borders {:?}", q.corner_radii, q.border_widths) } else { String::new() }
+                        )
+                    })
                     .collect();
                 eprintln!(
                     "olo gpu frame {:.3} ms: {} | quads {} ({quads:.2} screens) sprites {} {}",

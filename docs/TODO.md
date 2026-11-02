@@ -242,6 +242,10 @@ as they land (with the commit), add new ones as they come up.
   less overdraw, 2.84 screens of quads); frames skipped scrolling at
   2× with frames of 1.4 ms (the scroll events' pacing against the
   frames, not their cost); Log Viewer shaping new rows on the frame.
+  *Then* the cull cuts grounds by their biggest covers first and
+  shadows skip their blur inside: History's GPU at 1.5× 4.8 → 3.3 ms a
+  frame, its drag's hitches 9 → 3 (its glide still misses a frame now
+  and then).
   *Then* (same day) shaped lines are aged rather than dropped, shape
   plans kept, and ASCII shaped by words (gpui/README.md): History's
   live resize, slowest frame 60 → 17 ms (p50 11.8); Log Viewer's rows

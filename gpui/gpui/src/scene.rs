@@ -344,22 +344,37 @@ impl Scene {
                 i += 1;
                 continue;
             }
-            let mut left = vec![a];
-            for b in &self.quads[i + 1..] {
-                if !covers(b) {
-                    continue;
-                }
+            // What covers it, the biggest first: a window's ground is
+            // mostly under one view's (Notifications' card paper), and cut
+            // first by a menu bar's and toolbar's little quads it came
+            // apart into more pieces than are worth drawing before the
+            // paper's turn, and was drawn whole: a screen of overdraw.
+            let mut over: Vec<Bounds<ScaledPixels>> = self.quads[i + 1..]
+                .iter()
+                .filter(|b| covers(b))
                 // (A hair in from its edges: what's cut stays drawn up to
                 // them, never a gap.)
-                let c = shown(b);
-                let c = Bounds { origin: point(ScaledPixels(c.origin.x.0 + 0.01), ScaledPixels(c.origin.y.0 + 0.01)), size: size(ScaledPixels(c.size.width.0 - 0.02), ScaledPixels(c.size.height.0 - 0.02)) };
-                if area(&c) <= 0.0 || !left.iter().any(|r| r.intersects(&c)) {
+                .map(|b| {
+                    let c = shown(b);
+                    Bounds { origin: point(ScaledPixels(c.origin.x.0 + 0.01), ScaledPixels(c.origin.y.0 + 0.01)), size: size(ScaledPixels(c.size.width.0 - 0.02), ScaledPixels(c.size.height.0 - 0.02)) }
+                })
+                .filter(|c| area(c) > 0.0 && c.intersects(&a))
+                .collect();
+            over.sort_by(|x, y| area(y).total_cmp(&area(x)));
+            let mut left = vec![a];
+            for c in over {
+                if !left.iter().any(|r| r.intersects(&c)) {
                     continue;
                 }
                 // (Less the slivers that hair leaves where its edge is one
                 // of the quad's: it draws those pixels itself.)
-                left = left.into_iter().flat_map(|r| subtract(r, c)).filter(|r| r.size.width.0 >= 0.05 && r.size.height.0 >= 0.05).collect();
-                if left.is_empty() || left.len() > MOST_PIECES {
+                let cut: Vec<_> = left.iter().flat_map(|r| subtract(*r, c)).filter(|r| r.size.width.0 >= 0.05 && r.size.height.0 >= 0.05).collect();
+                if cut.len() > MOST_PIECES {
+                    // (What's cut so far stands: the rest is little.)
+                    break;
+                }
+                left = cut;
+                if left.is_empty() {
                     break;
                 }
             }
@@ -368,7 +383,7 @@ impl Scene {
                 continue;
             }
             let kept: f32 = left.iter().map(area).sum();
-            if left.len() <= MOST_PIECES && plain(&self.quads[i]) && kept < 0.75 * area(&a) {
+            if plain(&self.quads[i]) && kept < 0.75 * area(&a) {
                 let q = self.quads[i].clone();
                 let pieces: Vec<Quad> = left.into_iter().filter(|r| area(r) > 0.0).map(|r| Quad { bounds: r, ..q.clone() }).collect();
                 let n = pieces.len();
@@ -1342,6 +1357,31 @@ mod cull_tests {
         s.cull_hidden_quads();
         assert_eq!(s.quads.len(), 2);
         assert_eq!(s.quads[0].bounds, rect(0.0, 0.0, 500.0, 500.0));
+    }
+
+    /// Notifications' history at 1.5×: the window's ground, the card
+    /// paper over most of it, rounded cards on the paper.
+    #[test]
+    fn a_window_ground_under_a_scroll_views_paper() {
+        let mut s = Scene::default();
+        let mut quads = vec![quad(1, rect(0.0, 0.0, 3153.0, 2163.0), 1.0)];
+        // (A menu bar and a toolbar's controls first, as painted: each
+        // cuts the ground, before the paper's turn.)
+        quads.push(quad(2, rect(0.0, 0.0, 3153.0, 39.0), 1.0));
+        for k in 0..12 {
+            quads.push(quad(2, rect(10.0 + k as f32 * 200.0, 50.0, 150.0, 32.0), 1.0));
+        }
+        quads.push(quad(2, rect(2.0, 101.0, 3128.0, 2033.0), 1.0));
+        for i in 0..40 {
+            let mut card = quad(3, rect(20.0 + (i % 5) as f32 * 600.0, 120.0 + (i / 5) as f32 * 250.0, 560.0, 230.0), 1.0);
+            card.corner_radii = Corners::all(ScaledPixels(7.5));
+            quads.push(card);
+        }
+        s.quads = quads;
+        s.cull_hidden_quads();
+        let screen = 3153.0 * 2163.0;
+        let ground: f32 = s.quads.iter().filter(|q| q.order == 1).map(|q| q.bounds.size.width.0 * q.bounds.size.height.0).sum();
+        assert!(ground < screen * 0.1, "the ground left: {:.2} screens", ground / screen);
     }
 
     #[test]

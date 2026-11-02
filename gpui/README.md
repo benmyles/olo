@@ -305,6 +305,17 @@ What Olo changed, so far:
   screen of log rows, 20,850 characters, 6.9–11.9 ms → 2.6
   (`shaping_speed`); Log Viewer's slowest frame as a search's rows
   came, 31.6 → 10.8 ms.
+- Culling a ground under what covers it takes the biggest covers first:
+  a window's ground was cut first by its menu bar's and toolbar's
+  little quads, came apart into more pieces than are worth drawing
+  before the view's paper below had its turn, and was drawn whole (a
+  screen of overdraw: Notifications' history 2.80 screens of quads →
+  1.83, its GPU 4.8 → 3.7 ms a frame at 1.5×). A cut that would make
+  too many pieces stops there, keeping what's cut.
+- A shadow well inside its rounded rect (three blur radii in) is at
+  full strength without sampling its blur (`fs_shadow`): a card's
+  shadow is mostly that, under the card (History's GPU 3.7 → 3.3 ms;
+  its shadows the same to the pixel).
 - `OLO_FRAME_PHASES=1`: each frame's time in layout and prepaint,
   paint, finishing the scene and presenting (which waits for the
   previous frame's GPU work), and its sprites, quads and paint
