@@ -845,7 +845,11 @@ as they land (with the commit), add new ones as they come up.
   MB at 2×, on the press). Time app_server's passes on the GPU around
   it and keep the client's allocation from stalling the compositor.
 
-- **Terminal: light mode hard to read** (Ben, 2026-10-31): "in light
+- **Terminal: light mode hard to read** (*better* 2026-11-02: text kept
+  at 4.5:1 from its cell, `colors::legible`, so a dark terminal's pale
+  colours and the default text on bands programs draw read in light
+  mode; *left*: the run through Codex, Claude Code and the TUIs below in
+  every look, and the looks' palettes tuned) (Ben, 2026-10-31): "in light
   mode my terminal is really hard to read i'm not sure why or what's
   conflicting but can you figure out a way so that the terminal gets
   properly themed with colors that look beautiful and have high

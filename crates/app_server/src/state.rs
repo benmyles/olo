@@ -440,6 +440,8 @@ impl<BackendData: Backend> SeatHandler for AnvilState<BackendData> {
     }
 
     fn focus_changed(&mut self, seat: &Seat<Self>, target: Option<&KeyboardFocusTarget>) {
+        // A tab's tip goes when something else comes forward (`tabtip`).
+        self.tab_tip_hide();
         let dh = &self.display_handle;
 
         let wl_surface = target.and_then(WaylandFocus::wl_surface);

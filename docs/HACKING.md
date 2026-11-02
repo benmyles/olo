@@ -5619,6 +5619,19 @@ A Catppuccin scheme draws as its own ports do (`Scheme::catppuccin`:
 Text on Base, Rosewater cursor, its 16 ANSI colours); the choices are
 `Settings::light_colors` / `dark_colors`.
 
+Text is kept legible whatever background a program had in mind
+(`colors::legible`, as iTerm's minimum contrast): a cell's text is at
+least WCAG's 4.5:1 from its background (`MIN_CONTRAST`), moved toward
+black or white just as far as it takes, its hue kept, so a dark
+terminal's pale greys and blues, its bright white, or the default text
+on a band a program drew (a diff's dark green, a composer's grey) read
+in light mode, and faint text (SGR 2, mixed two thirds toward the
+background) stays faint. Not moved: text the colour of its cell (hidden
+on purpose) and characters that are pictures (box drawing, blocks,
+Powerline's, `colors::graphic`). Per cell after faint and inverse;
+14 ns a cell legible already, 56 ns moved, and the last pair is kept
+(colours come in runs), on rows rebuilt only.
+
 **sudo in a window** (`src/sudo.rs`, `src/olo_sudo.rs`, `src/sudo_wire.rs`).
 A coding agent's commands have no terminal to type a password into
 (Claude Code runs each in a session of its own, reading /dev/null), so

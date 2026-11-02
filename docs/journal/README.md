@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Terminal: text kept legible on any background
+
+*13:42* — Before (top) and after: colours a program picked for a dark terminal (pale greys and blues, bright white) or bands it drew (diff lines, a composer's grey) left text nearly invisible in light mode. Now text keeps WCAG's 4.5:1 against its cell, moved toward black or white just as far as it takes, its hue kept; box drawing and blocks as drawn; faint text still faint.
+
+![Terminal: text kept legible on any background](2026-11-02/134227-terminal-text-kept-legible-on-any-background.png)
+
 ### A window tab's cut title shows whole
 
 *13:33* — app_server shows the whole title of a window whose tab cuts it short on a tooltip's plate under the tab, once the pointer rests on the title (at once with ⌘), as Olo's apps do for their cut text.

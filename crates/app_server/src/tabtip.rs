@@ -148,6 +148,14 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
     }
 
+    /// Something else came forward (the keyboard went elsewhere: a window
+    /// opened, one chosen): the tip goes.
+    pub(crate) fn tab_tip_hide(&mut self) {
+        if self.tab_tip.over.is_some() {
+            self.tab_tip_off(true);
+        }
+    }
+
     /// The tip goes (`leaving`: and the title the pointer was on).
     fn tab_tip_off(&mut self, leaving: bool) {
         if let Some(t) = self.tab_tip.timer.take() {
