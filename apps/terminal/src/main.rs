@@ -302,9 +302,8 @@ pub(crate) struct TermWin {
     preedit: Option<String>,
     /// A redraw is coming for an agent's spinner.
     spinning: bool,
-    /// Tile All Tabs' divider over row `.0` being dragged, from `.1`
-    /// (the pointer's y), the rows as they were then.
-    dragging_row: Option<(usize, f32, Vec<(f32, f32)>)>,
+    /// Tile All Tabs' divider being dragged (`ui::RowDrag`).
+    dragging_row: Option<ui::RowDrag>,
     /// Size to snap the window to once real font metrics are known.
     snap_to: Option<(usize, usize)>,
     shown_title: String,

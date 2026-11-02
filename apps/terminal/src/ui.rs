@@ -427,6 +427,20 @@ pub fn tile_in_rows(area: Bounds<Pixels>, counts: &[usize], weights: &[f32], lea
     out
 }
 
+/// Tile All Tabs' divider over a row being dragged: the rows as they
+/// were when it was pressed, and where.
+pub(crate) struct RowDrag {
+    row: usize,
+    /// The pointer's y at the press.
+    from: f32,
+    spans: Vec<(f32, f32)>,
+    /// The rows' keys (`TermWin::row_key`) and weights then.
+    keys: Vec<String>,
+    weights: Vec<f32>,
+    /// The least a row may be (its head and two lines).
+    least: f32,
+}
+
 /// The rows' weights after the divider over row `r` moved `dy` (logical
 /// pixels): rows `r - 1` and `r` grow and shrink, each keeping `least`,
 /// the others as they were. `spans` are the rows as shown.
@@ -880,6 +894,34 @@ impl Terminal {
             .inset_0();
             root = root.child(el);
         }
+        // A divider being dragged: the rows follow the pointer till the
+        // button goes up, listened for in each frame while it lasts (a
+        // frame's listeners are that frame's: one taken at the press
+        // followed the first move only).
+        if matches!(self.windows.get(&id), Some(Win::Term(t)) if t.dragging_row.is_some()) {
+            let me = me.clone();
+            let el = canvas(
+                |_, _, _| {},
+                move |_, _, window, _| {
+                    window.set_window_cursor_style(CursorStyle::ResizeUpDown);
+                    let m1 = me.clone();
+                    window.on_mouse_event(move |e: &MouseMoveEvent, phase, _, cx| {
+                        if phase == DispatchPhase::Capture {
+                            let _ = m1.update(cx, |t, cx| t.divider_drag(id, e.dragging().then_some(e.position.y), cx));
+                        }
+                    });
+                    let m2 = me.clone();
+                    window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
+                        if phase == DispatchPhase::Capture {
+                            let _ = m2.update(cx, |t, cx| t.divider_drag(id, None, cx));
+                        }
+                    });
+                },
+            )
+            .absolute()
+            .inset_0();
+            root = root.child(el);
+        }
         // Visual bell: a brief flash.
         if let Some(age) = bell {
             let a = (1.0 - age / 0.15) * 60.0 / 255.0 / 2.0;
@@ -1117,28 +1159,35 @@ impl Terminal {
             t.select(i);
             cx.redraw(id);
         }
-        t.dragging_row = Some((r, f32::from(at.y), layout.spans.clone()));
         let keys: Vec<String> = rows.iter().map(|row| t.row_key(row)).collect();
         let weights: Vec<f32> = keys.iter().map(|k| t.tile_heights.get(k).copied().unwrap_or(1.0)).collect();
-        let side = self.settings.side_tabs;
-        let least = pane_head_height(side) + m.content_size(1, 2).1;
-        // Follows the pointer till the button goes up.
-        let me = cx.weak_entity();
-        window.on_mouse_event(move |e: &MouseMoveEvent, phase, _, cx| {
-            if phase != DispatchPhase::Capture || !e.dragging() {
-                return;
-            }
-            let (keys, weights) = (keys.clone(), weights.clone());
-            let _ = me.update(cx, |t, cx| {
-                let Some(Win::Term(w)) = t.windows.get_mut(&id) else { return };
-                let Some((r, from, spans)) = w.dragging_row.clone() else { return };
-                let new = drag_rows(&weights, &spans, r, f32::from(e.position.y) - from, least);
-                for (key, w2) in keys.iter().zip(new) {
-                    w.tile_heights.insert(key.clone(), w2);
+        let least = pane_head_height(self.settings.side_tabs) + m.content_size(1, 2).1;
+        // Followed till the button goes up (`divider_drag`, from the
+        // frames drawn meanwhile).
+        t.dragging_row = Some(RowDrag { row: r, from: f32::from(at.y), spans: layout.spans.clone(), keys, weights, least });
+        cx.redraw(id);
+    }
+
+    /// The divider being dragged in window `id` with the pointer at `y`;
+    /// None: let go.
+    fn divider_drag(&mut self, id: WindowId, y: Option<Pixels>, cx: &mut Cx) {
+        let Some(Win::Term(w)) = self.windows.get_mut(&id) else { return };
+        let Some(d) = &w.dragging_row else { return };
+        match y {
+            Some(y) => {
+                let new = drag_rows(&d.weights, &d.spans, d.row, f32::from(y) - d.from, d.least);
+                if d.keys.iter().zip(&new).any(|(k, v)| w.tile_heights.get(k) != Some(v)) {
+                    for (key, v) in d.keys.clone().into_iter().zip(new) {
+                        w.tile_heights.insert(key, v);
+                    }
+                    cx.redraw(id);
                 }
+            }
+            None => {
+                w.dragging_row = None;
                 cx.redraw(id);
-            });
-        });
+            }
+        }
     }
 
     /// What was done to window `id`'s tab strip.
