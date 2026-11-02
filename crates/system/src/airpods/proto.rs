@@ -46,6 +46,9 @@ pub mod opcode {
     pub const CONVERSATION: u16 = 0x4B;
     /// What this host can do (us to them).
     pub const HOST_FEATURES: u16 = 0x4D;
+    /// Their own microphone stream: started and stopped (us to them), and
+    /// its frames (them to us).
+    pub const AUDIO: u16 = 0x58;
 }
 
 /// Settings, sent and told under [`opcode::CONTROL`]: an identifier
@@ -218,6 +221,8 @@ pub enum Message {
     Info(Info),
     Keys(Keys),
     StemPress { press: Press, left: bool },
+    /// Frames of their microphone stream: (timestamp, AAC-ELD frame).
+    Audio(Vec<(u32, Vec<u8>)>),
     /// Anything else, kept whole for whoever wants it.
     Other { opcode: u16, data: Vec<u8> },
 }
@@ -251,6 +256,36 @@ pub fn host_features() -> Vec<u8> {
 /// Ask to be told of every change.
 pub fn ask_notifications() -> Vec<u8> {
     message(opcode::NOTIFY, &[0xFF, 0xFF, 0xFF, 0xFF])
+}
+
+/// Start their own microphone stream (wideband AAC-ELD, 480 samples a
+/// frame), which leaves their sound at music quality as Apple's devices
+/// use it.
+pub fn start_microphone() -> Vec<u8> {
+    message(opcode::AUDIO, &[0x00, 0x00, 0x09, 0x00, 0x00, 0x01, 0x82, 0x00, 0x00, 0x00, 0x04, 0x96, 0x00])
+}
+
+pub fn stop_microphone() -> Vec<u8> {
+    message(opcode::AUDIO, &[0x00, 0x00, 0x02, 0x00, 0x03, 0x01])
+}
+
+/// The frames in one microphone message: a subtype (1: audio), 16 bytes
+/// we don't need, then frames of a timestamp (u32), a length and the
+/// AAC-ELD access unit.
+fn parse_audio(data: &[u8]) -> Option<Vec<(u32, Vec<u8>)>> {
+    if data.len() < 2 || u16::from_le_bytes([data[0], data[1]]) != 1 {
+        return None;
+    }
+    let mut frames = Vec::new();
+    let mut at = 16;
+    while at + 5 <= data.len() {
+        let ts = u32::from_le_bytes(data[at..at + 4].try_into().ok()?);
+        let len = data[at + 4] as usize;
+        let Some(au) = data.get(at + 5..at + 5 + len) else { break };
+        frames.push((ts, au.to_vec()));
+        at += 5 + len;
+    }
+    Some(frames)
 }
 
 /// Ask for the broadcast keys (the identity key and the encryption key).
@@ -332,6 +367,7 @@ pub fn parse(packet: &[u8]) -> Option<Message> {
         // 02 00 01 LEVEL
         opcode::CONVERSATION if data.len() >= 4 => Some(Message::Conversation { level: data[3] }),
         opcode::INFO => parse_info(data).map(Message::Info).or_else(other),
+        opcode::AUDIO => parse_audio(data).map(Message::Audio).or_else(other),
         opcode::KEYS_REPLY => parse_keys(data).map(Message::Keys).or_else(other),
         opcode::STEM_PRESS if data.len() >= 2 => {
             let press = match data[0] {
@@ -441,6 +477,17 @@ mod tests {
         }
         let Some(Message::Info(info)) = parse(&p) else { panic!() };
         assert_eq!((info.name.as_str(), info.model.as_str(), info.serial.as_str()), ("AirPods Pro", "A3048", "QXNRHHYXP6"));
+    }
+
+    #[test]
+    fn reads_microphone_frames() {
+        // 22 bytes of header (6 of message, 16 of the stream's), then two
+        // frames.
+        let mut p = hex("04 00 04 00 58 00 01 00");
+        p.extend([0u8; 14]);
+        p.extend(hex("B4 00 00 00 03 AA BB CC 68 01 00 00 02 DD EE"));
+        assert_eq!(parse(&p), Some(Message::Audio(vec![(0xB4, vec![0xAA, 0xBB, 0xCC]), (0x168, vec![0xDD, 0xEE])])));
+        assert_eq!(start_microphone().len(), 19);
     }
 
     #[test]
