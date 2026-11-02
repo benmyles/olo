@@ -877,7 +877,7 @@ fn bounded(max: i32) -> bool {
 fn floating_kind(app_id: &str, title: &str) -> bool {
     app_id.starts_with("xdg-desktop-portal")
         || app_id.ends_with(".portal")
-        || matches!(title, "Picture in picture" | "Picture-in-Picture" | "Picture-in-picture")
+        || super::pip::pip_title(title)
 }
 
 /// `r` grown to `min`, and moved only as far as it must to be in `area`.
@@ -914,6 +914,9 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// one tagged `floating`, or a kind that floats (`floating_kind`).
     /// Tiled by hand, it doesn't.
     pub fn floats(&self, w: &WindowElement) -> bool {
+        if w.meta().pip.get() {
+            return true;
+        }
         if let Some(f) = Self::float_override(w) {
             return f;
         }

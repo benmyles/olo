@@ -52,6 +52,7 @@ pub mod deco;
 pub mod glow;
 pub mod groups;
 pub mod modes;
+pub mod pip;
 pub mod tabdrag;
 pub mod tiling;
 mod wm;

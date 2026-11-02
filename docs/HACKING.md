@@ -3401,7 +3401,7 @@ others' 0, is no largest size: it tiles), one tagged `floating`
 (xdg-toplevel-tag; the kit's `WindowOptions::floating()`, which
 DeskCalc, Preferences, Tracker's Info and status windows and the like
 set, and its `dialog()` and alerts, which it tags so too), and for other
-programs portal dialogs and picture-in-picture (`floating_kind`). An
+programs portal dialogs (`floating_kind`) and picture in picture. An
 xdg-dialog alone doesn't make a window float (nor keep it out of its
 app's tab group, `groups::is_dialog`): GTK 4 gives every toplevel one,
 its main windows too, which then floated over the tiles and never
@@ -3432,6 +3432,24 @@ saved parts (`auto_adopt`, `WindowMeta::restored_part`). An edge drag's
 splits are set where the windows' least sizes let them be
 (`auto_drag_ended`). A hand's choice to float or tile a window
 (`Placement::floating`) comes back too.
+
+Picture in picture (`shell::pip`) is a video, or a page, popped out of
+a browser's tab: Chrome's video is titled "Picture in picture" (with
+no app id), a page (documentPictureInPicture, Meet's call as its tab is
+left) has its opener's title and, unlike Chrome's other windows, a
+largest size, so `is_pip` knows it by that, decided once at its first
+commit. As on macOS it opens in the bottom right corner of its display
+at the size it asks for, stays over every other window
+(`keep_pips_above`, from `keep_children_above`) and on each workspace
+of its display, and is never in a group, a tile, Focus's zoom or
+cover, or a remembered place (its title would put another window
+there). Opening one, or its activation, leaves the keyboard where it
+was, and a front window that goes hands it on past one. Meet's call
+used to join Chrome's group in Focus and zoom over the tab a link had
+just opened in. A launch's activation token (`ActivationToken`, which
+olo-chrome hands Chrome with a link) covers its client's requests for
+`LAUNCH_GRANT` (2 s): Chrome spends the one it was given on whichever
+window it brings forward first and asks again for the next.
 
 Roll Up (`toggle_rolled`, ⌃⌘M, the tab's menu, the palette, or a
 double-click on the tab, which used to hide the window) leaves just the

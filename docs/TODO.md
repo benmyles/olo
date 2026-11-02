@@ -649,6 +649,20 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
+- **Tracker: Go to File or Folder** (Ben, 2026-11-02): "add a go to
+  file/folder option in tracker with a keyboard shortcut (and it should
+  also show up in command pallette) -- it's useful when i want to jump
+  to a path i have in the clipboard". So: Go ▸ Go to File or Folder…
+  (⇧⌘G, as Finder's Go to Folder), a small sheet with one path field,
+  filled from the clipboard when it holds a path (absolute, `~/…`,
+  `file://…`, quoted or with a trailing newline) and selected, so Return
+  goes there at once; it completes as it's typed (Tab, the matches
+  listed under it, kept as the work-follows-change rule says: read once
+  per folder typed into), opens a folder in its window or the folder
+  holding a file with the file selected, and says plainly when nothing
+  is there. In the command palette as a Tracker command, and with a path
+  in the clipboard the palette offers "Go to <path>" itself. Agents get
+  it as a Tracker command (`go-to:<path>`) too.
 - **Command palette finds settings** (Ben, 2026-11-01): "in the
   super+space command palette thing also match on the actual settings
   etc. that are available in each preferences app to make them easy to

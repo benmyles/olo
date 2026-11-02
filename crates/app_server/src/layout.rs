@@ -194,7 +194,9 @@ impl<B: Backend + 'static> AnvilState<B> {
     fn placement_of(&self, w: &WindowElement, focused: Option<&WlSurface>) -> Option<Placement> {
         let meta = w.meta();
         let app_id = w.app_id();
-        if app_id.is_empty() {
+        // (Picture in picture opens in its corner, and its title, its
+        // opener's, would put another window there.)
+        if app_id.is_empty() || meta.pip.get() {
             return None;
         }
         // Not shown yet, it is only waiting in a cascade slot: if it is
@@ -451,7 +453,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// coming back, claim its place and ask for its old size.
     pub fn claim_placement(&mut self, surface: &WlSurface) {
         let Some(window) = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(surface)).cloned() else { return };
-        if window.meta().placed.get() || window.meta().returning.borrow().is_some() {
+        if window.meta().placed.get() || window.meta().returning.borrow().is_some() || window.meta().pip.get() {
             return;
         }
         let Some(p) = self.take_placement(&window) else { return };

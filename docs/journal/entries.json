@@ -2704,5 +2704,17 @@
   "title": "Terminal's Tile All Tabs heads",
   "caption": "In Tile All Tabs each pane's head is on the strip's quiet band, with its group's chip at the right instead of a tint and a coloured line. The pane you type in has its title in full ink and medium weight, like the strip's selected tab. Icon, title and chip are centred on the band to the device pixel at every scale.",
   "image": "2026-11-02/010722-terminal-s-tile-all-tabs-heads.png"
+ },
+ {
+  "time": "2026-11-02T10:29:39",
+  "title": "Picture in picture stays in its corner",
+  "caption": "A call popped out of Chrome (documentPictureInPicture, as Meet does) opens in the bottom right corner at its own size, over every window and on each workspace, out of Chrome's group, Focus's zoom and the window memory; the keyboard stays where it was. A link opened from another app (Terminal's Open Pull Request) now shows in Chrome, in front, with the call over it: before, the call joined Chrome's group and zoomed over the tab the link had opened in.",
+  "image": "2026-11-02/102939-picture-in-picture-stays-in-its-corner.png"
+ },
+ {
+  "time": "2026-11-02T10:29:40",
+  "title": "A video's picture in picture, Standard mode",
+  "caption": "Chrome's video picture in picture (no app id, titled \"Picture in picture\") in the corner, 16 px in, over the call page's window.",
+  "image": "2026-11-02/102940-a-video-s-picture-in-picture-standard-mode.png"
  }
 ]

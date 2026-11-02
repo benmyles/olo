@@ -273,9 +273,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 };
                 order[i + 1..].iter().any(|p| p.wl_surface().as_deref() == Some(&parent))
             });
-            let Some((_, child)) = under else { return };
+            let Some((_, child)) = under else { break };
             self.space.raise_element(&child.clone(), false);
         }
+        self.keep_pips_above();
     }
 
     /// Roll a window up to just its tab, or back down.

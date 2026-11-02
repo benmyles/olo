@@ -356,7 +356,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// there yet, and would lead its group off to that place).
     pub fn groupable(&self, w: &WindowElement) -> bool {
         let WindowSurface::Wayland(t) = w.0.underlying_surface();
-        w.meta().placed.get() && w.decorated() && !is_dialog(t) && resizable(w)
+        w.meta().placed.get() && w.decorated() && !w.meta().pip.get() && !is_dialog(t) && resizable(w)
     }
 
     /// `w`'s group as it is about to be: its mates on screen

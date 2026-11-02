@@ -291,6 +291,10 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// The stacking (window ids, bottom first) as a client's windows began
     /// to go, its id and when (`layout::remember_placement`).
     pub closing_stack: Option<(Vec<u64>, smithay::reexports::wayland_server::backend::ClientId, std::time::Instant)>,
+    /// The client that last used a token handed out for a launch, and
+    /// when: its next requests a moment on are granted too
+    /// (`request_activation`).
+    pub launch_grant: Option<(smithay::reexports::wayland_server::backend::ClientId, std::time::Instant)>,
     /// Windows back after a restart before the display they were on was
     /// found (DRM finds displays a second or so after the clients
     /// reconnect): out of sight, their places kept, until it is or the
@@ -620,6 +624,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 /// ([`Request::ActivationToken`](olo_protocol::Request::ActivationToken)).
 struct IssuedToken;
 
+/// How long a launch's token covers its client's other requests.
+const LAUNCH_GRANT: Duration = Duration::from_secs(2);
+
 impl<BackendData: Backend> AnvilState<BackendData> {
     /// A token that brings forward whatever window uses it, for a program
     /// about to be started. Anyone who can reach the IPC socket can raise
@@ -667,9 +674,20 @@ impl<BackendData: Backend> XdgActivationHandler for AnvilState<BackendData> {
         // One of our programs handing its user's click on to another app
         // (a notification clicked brings the app that sent it forward), or
         // a token we handed out for a launch (olo-chrome opening a link).
-        let handed = token_data.serial.is_some() && token_data.surface.as_ref().is_some_and(|s| self.is_our_program(s))
-            || token_data.user_data.get::<IssuedToken>().is_some();
-        if !fresh && !handed && !self.is_our_program(&surface) {
+        let issued = token_data.user_data.get::<IssuedToken>().is_some();
+        let handed = token_data.serial.is_some() && token_data.surface.as_ref().is_some_and(|s| self.is_our_program(s)) || issued;
+        // A launch's token covers its client a moment: Chrome spends the
+        // one it was handed on the first window it brings forward, which
+        // may be a call it pops out as the link's tab opens (picture in
+        // picture, which doesn't come forward), and asks anew, with no
+        // input of its own, for the window with the tab.
+        use smithay::reexports::wayland_server::Resource;
+        let client = surface.client().map(|c| c.id());
+        let launched = client.is_some() && self.launch_grant.as_ref().is_some_and(|(c, at)| Some(c) == client.as_ref() && at.elapsed() < LAUNCH_GRANT);
+        if issued && let Some(c) = &client {
+            self.launch_grant = Some((c.clone(), std::time::Instant::now()));
+        }
+        if !fresh && !handed && !launched && !self.is_our_program(&surface) {
             let app = smithay::wayland::compositor::with_states(&surface, |s| {
                 s.data_map.get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>().and_then(|d| d.lock().ok()?.app_id.clone())
             });
@@ -692,7 +710,9 @@ impl<BackendData: Backend> XdgActivationHandler for AnvilState<BackendData> {
                     .find(|window| window.wl_surface().is_some_and(|s| *s == surface))
                     .cloned()
             });
-            if let Some(window) = w {
+            // (Picture in picture is over everything already, and the
+            // keyboard stays where it is.)
+            if let Some(window) = w.filter(|w| !w.meta().pip.get()) {
                 self.restore(&window);
             }
         }
@@ -1258,6 +1278,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             last_window_infos: Vec::new(),
             layout: crate::layout::load(),
             closing_stack: None,
+            launch_grant: None,
             waiting_for_display: Vec::new(),
             display_wait_until: None,
             restored: Vec::new(),

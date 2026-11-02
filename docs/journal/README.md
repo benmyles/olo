@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### A video's picture in picture, Standard mode
+
+*10:29* — Chrome's video picture in picture (no app id, titled "Picture in picture") in the corner, 16 px in, over the call page's window.
+
+![A video's picture in picture, Standard mode](2026-11-02/102940-a-video-s-picture-in-picture-standard-mode.png)
+
+### Picture in picture stays in its corner
+
+*10:29* — A call popped out of Chrome (documentPictureInPicture, as Meet does) opens in the bottom right corner at its own size, over every window and on each workspace, out of Chrome's group, Focus's zoom and the window memory; the keyboard stays where it was. A link opened from another app (Terminal's Open Pull Request) now shows in Chrome, in front, with the call over it: before, the call joined Chrome's group and zoomed over the tab the link had opened in.
+
+![Picture in picture stays in its corner](2026-11-02/102939-picture-in-picture-stays-in-its-corner.png)
+
 ### Terminal's Tile All Tabs heads
 
 *01:07* — In Tile All Tabs each pane's head is on the strip's quiet band, with its group's chip at the right instead of a tint and a coloured line. The pane you type in has its title in full ink and medium weight, like the strip's selected tab. Icon, title and chip are centred on the band to the device pixel at every scale.
