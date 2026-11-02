@@ -19,7 +19,10 @@ name = "olo-sudo"
 path = "src/olo_sudo.rs"
 
 [dependencies]
-olo-kit.workspace = true
+olo-ui.workspace = true
+olo-kit-base.workspace = true
+olo-theme.workspace = true
+olo-xdg.workspace = true
 olo-protocol.workspace = true
 olo-system.workspace = true
 olo-sync.workspace = true
@@ -32,6 +35,7 @@ libc = "0.2"
 base64 = "0.22"
 flate2 = "1"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
+smallvec = "1.6"
 regex = "1"
 zeroize = "1"
 # Repositories and their worktrees, in process (no network: no https or ssh).

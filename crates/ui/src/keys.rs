@@ -32,6 +32,51 @@ pub fn pressed(s: &Shortcut, k: &Keystroke) -> bool {
     let Some(name) = gpui_key(s.key) else { return false };
     let key = k.key.to_ascii_lowercase();
     let plus = name == "=" && key == "+";
+    // (GPUI names a shifted symbol as itself, without Shift: ⇧- is "_".)
+    let (key, shifted) = unshifted(&key);
     let m = &k.modifiers;
-    (key == name || plus) && (s.shift == m.shift || plus) && s.command == m.control && s.alt == m.alt && !m.platform
+    (key == name || plus) && (s.shift == (m.shift || shifted) || plus) && s.command == m.control && s.alt == m.alt && !m.platform
+}
+
+/// US keys' shifted symbols and the keys they're on.
+const SHIFTED: &[(char, char)] = &[
+    ('!', '1'), ('@', '2'), ('#', '3'), ('$', '4'), ('%', '5'), ('^', '6'), ('&', '7'), ('*', '8'), ('(', '9'), (')', '0'),
+    ('_', '-'), ('+', '='), ('{', '['), ('}', ']'), ('|', '\\'), (':', ';'), ('"', '\''), ('<', ','), ('>', '.'), ('?', '/'), ('~', '`'),
+];
+
+/// The key GPUI's name `key` is on, and whether it took Shift: GPUI names
+/// a shifted symbol as itself and drops Shift from it ("_" for ⇧-), so
+/// ("-", true); anything else as it is, (key, false).
+pub fn unshifted(key: &str) -> (&str, bool) {
+    const BASE: [&str; 21] = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "=", "[", "]", "\\", ";", "'", ",", ".", "/", "`"];
+    let mut chars = key.chars();
+    match (chars.next(), chars.next()) {
+        (Some(c), None) => match SHIFTED.iter().position(|(s, _)| *s == c) {
+            Some(i) => (BASE[i], true),
+            None => (key, false),
+        },
+        _ => (key, false),
+    }
+}
+
+/// The symbol Shift types on US key `c` ('-' → '_'), if it has one.
+pub fn shifted(c: char) -> Option<char> {
+    SHIFTED.iter().find(|(_, base)| *base == c).map(|(s, _)| *s)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shifted_symbols_are_their_keys_with_shift() {
+        assert_eq!(unshifted("_"), ("-", true));
+        assert_eq!(unshifted("|"), ("\\", true));
+        assert_eq!(unshifted("a"), ("a", false));
+        assert_eq!(unshifted("pageup"), ("pageup", false));
+        assert_eq!(shifted('2'), Some('@'));
+        for (s, base) in SHIFTED {
+            assert_eq!(unshifted(&s.to_string()).0, base.to_string());
+        }
+    }
 }

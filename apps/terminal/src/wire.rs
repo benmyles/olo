@@ -67,7 +67,7 @@ pub const ENDING: u8 = 70;
 /// Where olo-termd keeps shells between sessions (only for us:
 /// scrollback can hold anything).
 pub fn kept_dir() -> PathBuf {
-    olo_kit::state_dir().join("terminal")
+    olo_xdg::state_dir().join("terminal")
 }
 
 /// Shell `id`'s lines, kept (zlib).
@@ -170,17 +170,17 @@ pub fn display() -> String {
 
 /// Where olo-termd listens (one per display).
 pub fn socket_path() -> PathBuf {
-    olo_kit::legacy::runtime_file(&runtime_dir(), &format!("olo-termd-{}.sock", display()))
+    olo_xdg::legacy::runtime_file(&runtime_dir(), &format!("olo-termd-{}.sock", display()))
 }
 
 /// Held by the running olo-termd.
 pub fn lock_path() -> PathBuf {
-    olo_kit::legacy::runtime_file(&runtime_dir(), &format!("olo-termd-{}.lock", display()))
+    olo_xdg::legacy::runtime_file(&runtime_dir(), &format!("olo-termd-{}.lock", display()))
 }
 
 /// The desktop session's pid file, if this display has one.
 pub fn session_pid_path() -> PathBuf {
-    olo_kit::legacy::runtime_file(&runtime_dir(), &format!("olo-session-{}.pid", display()))
+    olo_xdg::legacy::runtime_file(&runtime_dir(), &format!("olo-session-{}.pid", display()))
 }
 
 pub fn wayland_socket() -> PathBuf {

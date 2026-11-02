@@ -231,6 +231,12 @@ impl TextSystem {
         }))
     }
 
+    /// Olo: the font's own glyph for `ch`, if it has one (no shaping, no
+    /// fallback: a terminal placing each character in its own cell).
+    pub fn glyph_for_char(&self, font_id: FontId, ch: char) -> Option<GlyphId> {
+        self.platform_text_system.glyph_for_char(font_id, ch)
+    }
+
     /// Get the advance width for the given character, in the given font and size.
     pub fn advance(&self, font_id: FontId, font_size: Pixels, ch: char) -> Result<Size<Pixels>> {
         let glyph_id = self

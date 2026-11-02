@@ -7,15 +7,22 @@
 
 use std::{collections::HashMap, path::PathBuf, sync::Arc, sync::atomic::Ordering};
 
-use olo_kit::{
-    Cx, Menu, WindowId, WindowOptions,
-    egui::{self, Key},
-    metrics as m, style,
-    theme::Hue,
-    widgets::{self, Button, StatusBar, StringView, TextControl},
+use olo_theme::Hue;
+use olo_ui::{
+    Menu,
+    gpui::{AnyElement, App, Bounds, Entity, FocusHandle, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Styled as _, Window, div, px},
+    metrics as m,
+    style::{self, PullRequestShape},
+    widgets::{self, Button, StatusBar, StringView, TextControl, TextField},
 };
 
-use crate::{Tab, Terminal, Win, git, groups::Group, links, session::Start};
+use crate::{
+    Tab, Terminal, Win, git,
+    groups::Group,
+    links,
+    session::Start,
+    ui::{Cx, WinOps as _, WindowId, WindowOptions},
+};
 
 /// New Worktree… or Rename Worktree…, for a window of the repository.
 pub struct Dialog {
@@ -26,7 +33,7 @@ pub struct Dialog {
     rename: Option<PathBuf>,
     /// The branch a new one starts from (the main worktree's).
     from: Option<String>,
-    name: String,
+    name: Entity<TextField>,
     error: Option<String>,
     job: Option<Arc<git::Progress>>,
 }
@@ -74,25 +81,24 @@ pub fn pr_of<'a>(prs: &'a HashMap<git::PrKey, git::Pr>, tab: &Tab) -> Option<&'a
 /// A pull request's mark for its tab: GitHub's, in its state's colour,
 /// its commit filled with its checks' (green passing, red failing, orange
 /// running).
-pub fn pr_badge(pr: &git::Pr) -> impl Fn(&egui::Painter, egui::Rect) + use<> {
+pub fn pr_badge(pr: &git::Pr) -> olo_ui::widgets::strip::PaintFn {
     let (state, checks) = (pr.state, pr.checks);
-    move |painter, r| {
+    std::rc::Rc::new(move |window: &mut Window, cx: &mut App, r: Bounds<Pixels>| {
         use git::{Checks, PrState};
-        use style::PullRequestShape as S;
-        let p = style::palette(painter.ctx());
+        let p = olo_ui::theme::palette(cx);
         let (shape, color) = match state {
-            PrState::Open => (S::Open, style::c(p.success)),
-            PrState::Draft => (S::Draft, style::disabled_text(&p)),
-            PrState::Merged => (S::Merged, style::c(p.hue(Hue::Purple))),
-            PrState::Closed => (S::Closed, style::c(p.failure)),
+            PrState::Open => (PullRequestShape::Open, style::c(p.success)),
+            PrState::Draft => (PullRequestShape::Draft, style::disabled_text(&p)),
+            PrState::Merged => (PullRequestShape::Merged, style::c(p.hue(Hue::Purple))),
+            PrState::Closed => (PullRequestShape::Closed, style::c(p.failure)),
         };
         let node = checks.map(|c| match c {
             Checks::Passing => style::c(p.success),
             Checks::Failing => style::c(p.failure),
             Checks::Pending => style::c(p.hue(Hue::Orange)),
         });
-        style::pull_request_mark(painter, r, shape, color, node);
-    }
+        style::pull_request_mark(window, r, shape, color, node);
+    })
 }
 
 impl Terminal {
@@ -198,9 +204,9 @@ impl Terminal {
                 Some(b) if *b != w.name => format!("{} — {b}", w.name),
                 _ => w.name.clone(),
             };
-            menu = menu.item(label, format!("worktree-open:{}", w.path.display()), None).checked(here.as_ref() == Some(&w.path));
+            menu = menu.item(label, format!("worktree-open:{}", w.path.display())).checked(here.as_ref() == Some(&w.path));
         }
-        menu.item("New Worktree…", "worktree-new", None)
+        menu.item("New Worktree…", "worktree-new")
     }
 
     /// The tab menu's part for the tab running `shell`: its pull request,
@@ -213,12 +219,12 @@ impl Terminal {
             menu = menu.separator();
         }
         if let Some(pr) = pr {
-            menu = menu.item(format!("Open Pull Request #{}", pr.number), format!("pr-open:{shell}"), None);
+            menu = menu.item(format!("Open Pull Request #{}", pr.number), format!("pr-open:{shell}"));
         } else if needs_github(tab) {
-            menu = menu.separator().item("Connect GitHub for Pull Requests…", "github-connect", None);
+            menu = menu.separator().item("Connect GitHub for Pull Requests…", "github-connect");
         }
         if linked {
-            menu = menu.item("Rename Worktree…", format!("worktree-rename:{shell}"), None).item("Remove Worktree…", format!("worktree-remove:{shell}"), None);
+            menu = menu.item("Rename Worktree…", format!("worktree-rename:{shell}")).item("Remove Worktree…", format!("worktree-remove:{shell}"));
         }
         menu
     }
@@ -228,7 +234,7 @@ impl Terminal {
     pub(crate) fn repository_menu(&self, win: WindowId) -> Menu {
         let title = "Repository";
         let (Some(t), Some(_)) = (self.term(win), self.repo_of(win)) else {
-            return Menu::new(title).item("Not in a Repository", "none", None).enabled(false);
+            return Menu::new(title).item("Not in a Repository", "none").enabled(false);
         };
         let tab = t.tab();
         let shell = tab.session.id;
@@ -241,15 +247,15 @@ impl Terminal {
         let linked = tab.repo.as_ref().is_some_and(|r| r.linked);
         menu = menu
             .separator()
-            .item("Rename Worktree…", format!("worktree-rename:{shell}"), None)
+            .item("Rename Worktree…", format!("worktree-rename:{shell}"))
             .enabled(linked)
-            .item("Remove Worktree…", format!("worktree-remove:{shell}"), None)
+            .item("Remove Worktree…", format!("worktree-remove:{shell}"))
             .enabled(linked)
             .separator();
         match pr {
-            Some(pr) => menu.item(format!("Open Pull Request #{}", pr.number), format!("pr-open:{shell}"), None),
-            None if needs_github(tab) => menu.item("Connect GitHub for Pull Requests…", "github-connect", None),
-            None => menu.item("No Pull Request", "none", None).enabled(false),
+            Some(pr) => menu.item(format!("Open Pull Request #{}", pr.number), format!("pr-open:{shell}")),
+            None if needs_github(tab) => menu.item("Connect GitHub for Pull Requests…", "github-connect"),
+            None => menu.item("No Pull Request", "none").enabled(false),
         }
     }
 
@@ -276,7 +282,7 @@ impl Terminal {
             });
         } else if command == "github-connect" {
             // Where every service is connected.
-            if let Err(e) = olo_kit::spawn_detached("olo-preferences integrations") {
+            if let Err(e) = olo_xdg::spawn_detached("olo-preferences integrations") {
                 tracing::warn!("couldn't open Preferences: {e}");
             }
         } else if let Some((win, i)) = command.strip_prefix("pr-open:").and_then(|n| tab_of(self, n)) {
@@ -305,40 +311,48 @@ impl Terminal {
             return cx.activate(id);
         }
         let name = rename.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let name = Terminal::field(cx, &name, |f| f.hint("fix-tabs").font(style::mono_font(FontWeight::NORMAL)));
         let from = self.worktrees.get(&main).and_then(|l| l.iter().find(|w| w.main)).and_then(|w| w.branch.clone());
         let title = if rename.is_some() { "Rename Worktree" } else { "New Worktree" };
         let (w, h) = (DIALOG_W as u32, DIALOG_H as u32);
         let id = cx.open_window(WindowOptions::new(title, w, h).min_size(w, h).max_size(w, h));
+        cx.subscribe(&name, move |t: &mut Terminal, _, e: &widgets::TextFieldEvent, cx| match e {
+            widgets::TextFieldEvent::Entered => t.worktree_submit(cx, id),
+            widgets::TextFieldEvent::Changed => {
+                if let Some(Win::Worktree(d)) = t.windows.get_mut(&id) {
+                    d.error = None;
+                }
+                cx.redraw(id);
+            }
+            widgets::TextFieldEvent::Typed(_) => {}
+        })
+        .detach();
+        let f = name.clone();
+        cx.with_window(id, move |_, window, cx| f.read(cx).focus(window));
         self.windows.insert(id, Win::Worktree(Box::new(Dialog { target: win, main, repo, rename, from, name, error: None, job: None })));
     }
 
-    pub(crate) fn worktree_ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
-        let at = self.worktrees_at.clone();
-        let Some(Win::Worktree(d)) = self.windows.get_mut(&window) else { return };
-        let full = ui.max_rect().shrink(m::WINDOW_INSET);
-        let busy = d.job.is_some();
-        let name = d.name.trim().to_owned();
-        let place = match &d.rename {
-            Some(p) => p.with_file_name(if name.is_empty() { "…" } else { &name }),
-            None => git::place(&at, &d.repo, if name.is_empty() { "…" } else { &name }),
-        };
+    /// What the worktree dialog says of the name typed: where it goes,
+    /// and why it can't be, if it can't.
+    fn worktree_note(&self, d: &Dialog, name: &str) -> (String, Option<String>) {
+        let place = self.worktree_place(d, name);
         let shown = tilde(&place);
         let branches = self.branches.get(&d.main).map(Vec::as_slice).unwrap_or_default();
         let trees = self.worktrees.get(&d.main).map(Vec::as_slice).unwrap_or_default();
         let from = d.from.as_deref().map(|f| format!(" from {f}")).unwrap_or_default();
-        let mut invalid = (!name.is_empty()).then(|| git::valid_name(&name).err()).flatten();
+        let mut invalid = (!name.is_empty()).then(|| git::valid_name(name).err()).flatten();
         let note = match &d.rename {
             Some(p) => {
                 let old = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                 let branch = trees.iter().find(|w| w.path == *p).and_then(|w| w.branch.clone());
                 match branch {
-                    Some(b) if b == old && !branches.contains(&name) => format!("Its folder becomes {shown}, and its branch, {old}, takes the new name too."),
+                    Some(b) if b == old && !branches.iter().any(|b| b == name) => format!("Its folder becomes {shown}, and its branch, {old}, takes the new name too."),
                     _ => format!("Its folder becomes {shown}; its branch stays as it is."),
                 }
             }
             None if name.is_empty() => format!("In {shown}, on a new branch of its name{from}."),
-            None if branches.contains(&name) => {
-                if let Some(w) = trees.iter().find(|w| w.branch.as_deref() == Some(name.as_str())) {
+            None if branches.iter().any(|b| b == name) => {
+                if let Some(w) = trees.iter().find(|w| w.branch.as_deref() == Some(name)) {
                     invalid = invalid.or_else(|| Some(format!("Branch {name} is checked out in {} already.", tilde(&w.path))));
                 }
                 format!("In {shown}, on its branch, {name}.")
@@ -348,49 +362,87 @@ impl Terminal {
                 None => format!("In {shown}, on a new branch, {name}."),
             },
         };
-        let mut submit = false;
-        ui.scope_builder(egui::UiBuilder::new().max_rect(full).layout(egui::Layout::top_down(egui::Align::Min)), |ui| {
-            ui.spacing_mut().item_spacing.y = 0.0;
-            let r = ui.add_enabled(!busy, TextControl::new(&mut d.name).label("Name:").divider(50.0).hint("fix-tabs").mono(true).autofocus(true));
-            if r.changed() {
-                d.error = None;
-            }
-            ui.add_space(m::SPACING);
-            ui.allocate_ui(egui::vec2(full.width(), NOTE_H), |ui| {
-                ui.add(StringView::new(&note).dim(true).wrap(true));
-            });
-            ui.add_space(m::SPACING);
-            ui.allocate_ui(egui::vec2(full.width(), STATUS_H), |ui| {
-                let p = style::palette(ui.ctx());
-                if let Some(job) = &d.job {
-                    let (done, total) = (job.done.load(Ordering::Relaxed), job.total.load(Ordering::Relaxed));
-                    let text = if total == 0 { "Making it…".to_owned() } else { format!("Checking out {done} of {total} files") };
-                    let f = if total == 0 { 0.0 } else { done as f32 / total as f32 };
-                    ui.add(StatusBar::new(f).label(&text));
-                    ui.ctx().request_repaint_after(std::time::Duration::from_millis(50));
-                } else if let Some(e) = d.error.as_deref().or(invalid.as_deref()) {
-                    ui.add(StringView::new(e).color(style::c(p.failure)).wrap(true));
-                }
-            });
-        });
-        let bw = m::BUTTON_MIN_WIDTH;
-        let y = full.bottom() - m::CONTROL_HEIGHT;
-        let ok_r = egui::Rect::from_min_size(egui::pos2(full.right() - bw, y), egui::vec2(bw, m::CONTROL_HEIGHT));
-        let cancel_r = ok_r.translate(egui::vec2(-(bw + m::SPACING + 2.0), 0.0));
-        let cancel = ui.put(cancel_r, Button::new(if busy { "Stop" } else { "Cancel" })).clicked() || ui.input(|i| i.key_pressed(Key::Escape));
+        (note, invalid)
+    }
+
+    fn worktree_place(&self, d: &Dialog, name: &str) -> PathBuf {
+        let shown = if name.is_empty() { "…" } else { name };
+        match &d.rename {
+            Some(p) => p.with_file_name(shown),
+            None => git::place(&self.worktrees_at, &d.repo, shown),
+        }
+    }
+
+    /// New Worktree… or Rename Worktree…: the name, where it goes, how
+    /// it's going.
+    pub(crate) fn render_worktree(&mut self, id: WindowId, focus: FocusHandle, _: &mut Window, cx: &mut Cx) -> AnyElement {
+        let Some(Win::Worktree(d)) = self.windows.get(&id) else { return div().into_any_element() };
+        let busy = d.job.is_some();
+        let name = d.name.read(cx).text().trim().to_owned();
+        let (note, invalid) = self.worktree_note(d, &name);
         let ready = !busy && !name.is_empty() && invalid.is_none() && d.rename.as_ref().is_none_or(|p| p.file_name().is_none_or(|n| n.to_string_lossy() != name));
+        d.name.update(cx, |f, cx| f.set_enabled(!busy, cx));
+        let p = olo_ui::theme::palette(cx);
+        let status = if let Some(job) = &d.job {
+            let (done, total) = (job.done.load(Ordering::Relaxed), job.total.load(Ordering::Relaxed));
+            let text = if total == 0 { "Making it…".to_owned() } else { format!("Checking out {done} of {total} files") };
+            let f = if total == 0 { 0.0 } else { done as f32 / total as f32 };
+            // (Its progress, drawn again while it goes.)
+            cx.spawn(async move |me, cx| {
+                cx.background_executor().timer(std::time::Duration::from_millis(50)).await;
+                let _ = me.update(cx, |_, cx| cx.redraw(id));
+            })
+            .detach();
+            StatusBar::new(f).label(text).into_any_element()
+        } else if let Some(e) = d.error.clone().or(invalid) {
+            StringView::new(e).color(style::c(p.failure)).wrap(true).into_any_element()
+        } else {
+            div().into_any_element()
+        };
         let label = if d.rename.is_some() { "Rename" } else { "Create" };
-        submit |= ui.add_enabled_ui(ready, |ui| ui.put(ok_r, Button::new(label).default(true))).inner.clicked() || ready && ui.input(|i| i.key_pressed(Key::Enter));
-        if cancel {
+        let field = d.name.clone();
+        let cancel = cx.listener(move |t, _: &(), _, cx| t.worktree_cancel(cx, id));
+        let ok = cx.listener(move |t, _: &(), _, cx| t.worktree_submit(cx, id));
+        let row = widgets::button_row()
+            .child(Button::new(if busy { "Stop" } else { "Cancel" }).on_click(move |window, cx| cancel(&(), window, cx)))
+            .child(Button::new(label).default(true).enabled(ready).on_click(move |window, cx| ok(&(), window, cx)));
+        div()
+            .size_full()
+            .key_context(widgets::alert::CONTEXT)
+            .track_focus(&focus)
+            .on_action(cx.listener(move |t, _: &widgets::alert::Cancel, _, cx| t.worktree_cancel(cx, id)))
+            .p(px(m::WINDOW_INSET))
+            .flex()
+            .flex_col()
+            .child(TextControl::new(field).label("Name:").divider(50.0))
+            .child(div().h(px(m::SPACING)))
+            .child(div().h(px(NOTE_H)).child(StringView::new(note).dim(true).wrap(true)))
+            .child(div().h(px(m::SPACING)))
+            .child(div().h(px(STATUS_H)).child(status))
+            .child(div().flex_1())
+            .child(row)
+            .into_any_element()
+    }
+
+    fn worktree_cancel(&mut self, cx: &mut Cx, window: WindowId) {
+        if let Some(Win::Worktree(d)) = self.windows.get(&window) {
             d.stop();
-            self.windows.remove(&window);
-            cx.close_window(window);
+        }
+        self.windows.remove(&window);
+        cx.close_window(window);
+    }
+
+    /// Create (or Rename): on a thread.
+    fn worktree_submit(&mut self, cx: &mut Cx, window: WindowId) {
+        let Some(Win::Worktree(d)) = self.windows.get(&window) else { return };
+        let name = d.name.read(cx).text().trim().to_owned();
+        let (_, invalid) = self.worktree_note(d, &name);
+        if d.job.is_some() || name.is_empty() || invalid.is_some() {
             return;
         }
-        if !submit {
-            return;
-        }
+        let place = self.worktree_place(d, &name);
         let proxy = cx.proxy();
+        let Some(Win::Worktree(d)) = self.windows.get_mut(&window) else { return };
         let main = d.main.clone();
         match d.rename.clone() {
             Some(path) => {
@@ -403,6 +455,7 @@ impl Terminal {
                 std::thread::spawn(move || proxy.send(Done(window, git::add(&main, &name, &place, &job))));
             }
         }
+        cx.redraw(window);
     }
 
     /// A worktree made (open it in a tab of the window it was asked from)
@@ -544,9 +597,4 @@ fn tilde(p: &std::path::Path) -> String {
         Some(rest) => format!("~/{}", rest.display()),
         None => p.display().to_string(),
     }
-}
-
-/// An alert with OK, for what went wrong.
-pub fn failed_ui(ui: &mut egui::Ui, message: &str) -> bool {
-    widgets::alert(ui, "warning", message, &["OK"]).is_some()
 }

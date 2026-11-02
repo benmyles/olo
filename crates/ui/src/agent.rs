@@ -234,8 +234,27 @@ fn answer(query: Query, cx: &mut App) {
         Query::LoseGpu(reply) => {
             let _ = reply.send(false);
         }
-        Query::Focus(_) | Query::WindowOver(_) | Query::WindowDropped(_) => {}
+        // One of the app's windows being moved (a tab torn off) is over
+        // another of its windows, or was let go there: the strip there
+        // marks the place, or takes its tabs.
+        Query::WindowOver(at) => {
+            let onto = at.onto.and_then(|o| by_surface(cx, o));
+            crate::widgets::strip::window_over(cx, onto, gpui::point(gpui::px(at.x as f32), gpui::px(at.y as f32)));
+        }
+        Query::WindowDropped(at) => {
+            let point = gpui::point(gpui::px(at.x as f32), gpui::px(at.y as f32));
+            match (by_surface(cx, at.window), at.onto.and_then(|o| by_surface(cx, o))) {
+                (Some(window), Some(onto)) => crate::widgets::strip::window_dropped(cx, window, onto, point),
+                _ => crate::widgets::strip::window_over(cx, None, point),
+            }
+        }
+        Query::Focus(_) => {}
     }
+}
+
+/// The app's window with Wayland surface `id`.
+fn by_surface(cx: &mut App, id: u32) -> Option<AnyWindowHandle> {
+    cx.windows().into_iter().find(|w| w.update(cx, |_, window, _| window.surface_id() == Some(id)).unwrap_or(false))
 }
 
 /// The window in front: the active one, else the first.

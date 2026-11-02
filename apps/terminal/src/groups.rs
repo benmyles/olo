@@ -4,18 +4,15 @@
 
 use std::path::PathBuf;
 
-use olo_kit::{
-    egui::Color32,
-    style,
-    theme::{Hue, Palette},
-};
+use olo_theme::{Hue, Palette};
+use olo_ui::gpui::Hsla;
 
 /// The colours a group can have: the look's hues (the saved index into
 /// this stays the same colour from look to look).
 pub const COLORS: [Hue; 8] = [Hue::Red, Hue::Orange, Hue::Yellow, Hue::Green, Hue::Teal, Hue::Blue, Hue::Purple, Hue::Gray];
 
-pub fn color(i: usize, p: &Palette) -> Color32 {
-    style::c(p.hue(COLORS[i % COLORS.len()]))
+pub fn color(i: usize, p: &Palette) -> Hsla {
+    olo_ui::style::c(p.hue(COLORS[i % COLORS.len()]))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -49,7 +46,7 @@ pub struct SavedTab {
 }
 
 fn path() -> PathBuf {
-    olo_kit::config_dir().join("terminal-groups.json")
+    olo_xdg::config_dir().join("terminal-groups.json")
 }
 
 pub fn load() -> Vec<Saved> {

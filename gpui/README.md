@@ -316,3 +316,15 @@ What Olo changed, so far:
   display's next frame callback if this one commits, not at once: every
   animation drew twice a display frame (16.6 ms and 1 ms apart at 60
   Hz), and a live resize two frames a configure.
+- The pointer leaving a window (`MouseExited`) leaves it over nothing
+  of the window: nothing reads as hovered afterwards (a tab or a
+  button lit under it stayed lit, the pointer last seen there), and the
+  window draws once if anything was under it.
+- `WindowOptions::window_max_size` (xdg `set_max_size`): a window no
+  larger along a side than its smallest is fixed along it, and
+  app_server neither tiles nor groups it.
+- `right_control_held()`: whether the right Ctrl is down (the Mac
+  profile's ⌘, for a window that takes keys raw, as Terminal's).
+- `TextSystem::glyph_for_char`: a font's own glyph for a character,
+  without shaping or fallback (Terminal places each character in its
+  own cell).

@@ -1,5 +1,5 @@
 //! Terminal: a shell in a window, BeOS style (one process, any number of
-//! windows), on alacritty's terminal emulator. GPU-drawn through the kit,
+//! windows), on alacritty's terminal emulator. Drawn by GPUI (ui.rs, view.rs),
 //! with Olo's own light and dark colour schemes and Catppuccin's
 //! (colors.rs), one for each appearance. A window can hold
 //! several shells as tabs, and be a named, coloured group of them that
@@ -26,30 +26,33 @@ mod repos;
 mod session;
 mod sudo;
 mod sudo_wire;
+mod ui;
 mod view;
 #[allow(dead_code)]
 mod wire;
 
-use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Instant};
+use std::{collections::HashMap, path::PathBuf, rc::Rc, sync::Arc, time::Instant};
 
 use alacritty_terminal::grid::Dimensions;
-use olo_kit::{
-    App, Cx, Menu, WindowId, WindowOptions,
-    egui::{self, Key},
-    icons,
+use olo_kit_base::{
     instance::{self, Launch},
-    menu::{self, MenuAnchor, MenuRequest},
-    metrics as m, style,
-    widgets::{self, Button, CheckBox, StripAction, StripGroup, StripTab, TabStrip, TextControl},
+    metrics as m,
+    notify::{Note, NoteEvent, NoteId, NoteKind, Notifier},
+};
+use olo_theme::{Palette, ThemeMode, looks};
+use olo_ui::{
+    Menu,
+    gpui::{App, AppContext as _, Entity},
+    menu,
+    widgets::{self, TextField},
 };
 
 use agent::{Agent, State};
 use colors::Scheme;
-use olo_kit::theme::{Palette, ThemeMode, looks};
 use groups::Group;
-use olo_kit::notify::{Note, NoteEvent, NoteId, NoteKind, Notifier};
 use session::{Message, Session, Size, Start, TermEvent};
-use view::{GlyphCache, Metrics, Mouse};
+use ui::{Cx, WinOps as _, WindowId, WindowOptions};
+use view::{Metrics, Mouse};
 
 pub(crate) const APP_ID: &str = "olo.terminal";
 /// BeOS Terminal opened at 80×25; wider is more useful on today's screens.
@@ -58,28 +61,21 @@ pub const TEXT_SIZES: [f32; 9] = [9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 16.0, 18.0,
 const DEFAULT_TEXT_SIZE: f32 = 12.0;
 /// The tab strip, shown once a window has more than one tab.
 const STRIP: f32 = widgets::STRIP_HEIGHT;
-/// How tall the title bar over each pane in Tile All Tabs is: as the
-/// tabs over it, or beside a side strip as tall as its first tab with
-/// the room round it, so the tab is level with the heads.
-fn pane_head_height(side: bool) -> f32 {
-    if side { widgets::STRIP_SIDE_HEAD } else { widgets::STRIP_ROW }
-}
-
 /// A group's menu (its chip's, in the strip, and its row's divider in
 /// Tile All Tabs).
-fn group_menu(g: usize, t: &TermWin) -> Menu {
+pub(crate) fn group_menu(g: usize, t: &TermWin) -> Menu {
     Menu::new("")
-        .item("Rename Group…", format!("group-rename:{g}"), None)
-        .item("New Tab in Group", format!("group-new-tab:{g}"), None)
+        .item("Rename Group…", format!("group-rename:{g}"))
+        .item("New Tab in Group", format!("group-new-tab:{g}"))
         .separator()
-        .item("Save Group", format!("group-save:{g}"), None)
-        .item("Move Group to New Window", format!("group-window:{g}"), None)
+        .item("Save Group", format!("group-save:{g}"))
+        .item("Move Group to New Window", format!("group-window:{g}"))
         .enabled(t.tabs.iter().any(|x| x.group != Some(g)))
         .separator()
-        .item("Ungroup", format!("group-ungroup:{g}"), None)
-        .item("Close Group", format!("group-close:{g}"), None)
+        .item("Ungroup", format!("group-ungroup:{g}"))
+        .item("Close Group", format!("group-close:{g}"))
         .separator()
-        .item("Tile All Tabs", "tile-tabs", None)
+        .item("Tile All Tabs", "tile-tabs")
         .checked(t.tiled)
 }
 
@@ -102,148 +98,10 @@ fn tab_folder(tab: &Tab) -> Option<PathBuf> {
 /// title shows) in Tracker.
 fn open_in_tracker(tab: &Tab) {
     if let Some(folder) = tab_folder(tab)
-        && let Err(e) = olo_kit::tracker::open(&folder)
+        && let Err(e) = olo_kit_base::tracker::open(&folder)
     {
         tracing::warn!("couldn't open {} in Tracker: {e}", folder.display());
     }
-}
-
-/// Tile All Tabs' panes for `n` tabs in `area`: as many columns as keep
-/// each pane nearest a terminal's usual shape, the last row's spread
-/// across the width; a line apart. Their edges are on device pixels at
-/// `ppp`, a line's width (`style::line_pixels`) apart, so the line
-/// between two panes meets both.
-fn tile(area: egui::Rect, n: usize, ppp: f32) -> Vec<egui::Rect> {
-    let shape = |cols: usize| {
-        let rows = n.div_ceil(cols);
-        let aspect = (area.width() / cols as f32) / (area.height() / rows as f32);
-        (aspect / 1.8).ln().abs()
-    };
-    let cols = (1..=n).min_by(|&a, &b| shape(a).total_cmp(&shape(b))).unwrap_or(1);
-    let rows = n.div_ceil(cols);
-    // In device pixels.
-    let line = style::line_pixels(ppp);
-    let d = |v: f32| (v * ppp).round();
-    let (left, top, right, bottom) = (d(area.left()), d(area.top()), d(area.right()), d(area.bottom()));
-    let h = ((bottom - top + line) / rows as f32).floor();
-    let mut out = Vec::with_capacity(n);
-    for r in 0..rows {
-        let in_row = if r + 1 == rows { n - cols * (rows - 1) } else { cols };
-        let w = ((right - left + line) / in_row as f32).floor();
-        for c in 0..in_row {
-            let x0 = left + c as f32 * w;
-            let y0 = top + r as f32 * h;
-            let x1 = if c + 1 == in_row { right } else { x0 + w - line };
-            let y1 = if r + 1 == rows { bottom } else { y0 + h - line };
-            out.push(egui::Rect::from_min_max(egui::pos2(x0 / ppp, y0 / ppp), egui::pos2(x1 / ppp, y1 / ppp)));
-        }
-    }
-    out
-}
-
-/// Tile All Tabs' rows in `area`: each row's top and bottom, a line
-/// apart, on device pixels at `ppp`. Each row has `least` (when they all
-/// fit), and what is left is shared by `weights` (as the person dragged
-/// them: 1 each at first).
-fn row_spans(area: egui::Rect, weights: &[f32], least: f32, ppp: f32) -> Vec<(f32, f32)> {
-    let line = style::line_pixels(ppp);
-    let d = |v: f32| (v * ppp).round();
-    let (top, bottom) = (d(area.top()), d(area.bottom()));
-    let rows = weights.len().max(1);
-    let all = bottom - top + line;
-    let least = if d(least) * rows as f32 <= all { d(least) } else { 0.0 };
-    let spare = all - least * rows as f32;
-    let total: f32 = weights.iter().map(|w| w.max(0.01)).sum::<f32>().max(0.01);
-    let mut out = Vec::with_capacity(rows);
-    let mut y = top;
-    for (r, w) in weights.iter().enumerate() {
-        let h = if r + 1 == rows { top + all - y } else { least + (spare * w.max(0.01) / total).floor() };
-        let y1 = if r + 1 == rows { bottom } else { y + h - line };
-        out.push((y / ppp, y1 / ppp));
-        y += h;
-    }
-    out
-}
-
-/// Tile All Tabs' panes in rows, `counts[r]` side by side in row `r`,
-/// the rows as `row_spans` lays them out (row by row, left to right); as
-/// `tile`, a line apart, their edges on device pixels at `ppp`.
-fn tile_in_rows(area: egui::Rect, counts: &[usize], weights: &[f32], least: f32, ppp: f32) -> Vec<egui::Rect> {
-    let line = style::line_pixels(ppp);
-    let d = |v: f32| (v * ppp).round();
-    let (left, right) = (d(area.left()), d(area.right()));
-    let mut out = Vec::with_capacity(counts.iter().sum());
-    for (&n, (y0, y1)) in counts.iter().zip(row_spans(area, weights, least, ppp)) {
-        let n = n.max(1);
-        let w = ((right - left + line) / n as f32).floor();
-        for c in 0..n {
-            let x0 = left + c as f32 * w;
-            let x1 = if c + 1 == n { right } else { x0 + w - line };
-            out.push(egui::Rect::from_min_max(egui::pos2(x0 / ppp, y0), egui::pos2(x1 / ppp, y1)));
-        }
-    }
-    out
-}
-
-/// The rows' weights after the divider over row `r` moved `dy` (logical
-/// pixels): rows `r - 1` and `r` grow and shrink, each keeping `least`,
-/// the others as they were. `spans` are the rows as shown.
-fn drag_rows(weights: &[f32], spans: &[(f32, f32)], r: usize, dy: f32, least: f32) -> Vec<f32> {
-    let mut out = weights.to_vec();
-    if r == 0 || r >= weights.len() || spans.len() != weights.len() {
-        return out;
-    }
-    let h = |i: usize| spans[i].1 - spans[i].0;
-    let (a, b) = (h(r - 1) - least, h(r) - least);
-    if a + b <= 0.0 {
-        return out;
-    }
-    let a2 = (a + dy).clamp(0.0, a + b);
-    let pair = weights[r - 1] + weights[r];
-    out[r - 1] = pair * a2 / (a + b);
-    out[r] = pair - out[r - 1];
-    out
-}
-
-/// A pane's title bar in Tile All Tabs: its tab's icon and title (cut
-/// short with "…"), the one typed into lit as the strip's selected tab
-/// is, the others recessed; a line around each pane keeps them apart.
-/// A pane's head in Tile All Tabs: its tab's icon and title; in its
-/// group's colour, if it's in one (`group`), so a group's panes show
-/// together.
-fn pane_head(ui: &egui::Ui, pane: egui::Rect, height: f32, title: &str, icon: &dyn Fn(&egui::Painter, egui::Rect), active: bool, group: Option<egui::Color32>) {
-    let p = style::palette(ui.ctx());
-    let painter = ui.painter();
-    let bg = p.panel_background;
-    let well = style::shade(&p, bg, 1.07);
-    let edge = style::shade(&p, bg, 1.3);
-    let head = egui::Rect::from_min_size(pane.min, egui::vec2(pane.width(), height));
-    let ground = if active { style::c(bg) } else { well };
-    // Tinted with its group's colour, a line of it across the top.
-    let ground = group.map_or(ground, |g| ground.lerp_to_gamma(g, if active { 0.26 } else { 0.18 }));
-    painter.rect_filled(head, 0.0, ground);
-    if let Some(g) = group {
-        painter.rect_filled(style::snap(ui.ctx(), egui::Rect::from_min_size(head.min, egui::vec2(head.width(), 2.0))), 0.0, g);
-    } else if active {
-        // Lit from the top left, as BeOS's controls are.
-        style::hline(painter, head.left(), head.right(), head.top(), style::c(p.shine));
-    }
-    style::hline_above(painter, head.left(), head.right(), head.bottom(), edge);
-    // Lines between panes (the window's frame does the outer edges).
-    let line = style::hairline(ui.ctx());
-    style::vline(painter, pane.right(), pane.top(), pane.bottom() + line, edge);
-    style::hline(painter, pane.left(), pane.right() + line, pane.bottom(), edge);
-    // (On the device grid, as a side strip's first row beside it.)
-    let cy = style::snap_coord(ui.ctx(), head.center().y);
-    // The icon over the pane's text, as a tab's is over the menu bar's
-    // first title.
-    let at = style::snap(ui.ctx(), egui::Rect::from_min_size(egui::pos2(head.left() + view::PAD.x, cy - 8.0), egui::vec2(16.0, 16.0)));
-    icon(painter, at);
-    let x = at.right() + m::MARK_GAP;
-    let font = if active { style::bold_font() } else { style::plain_font() };
-    let text = style::c(p.panel_text);
-    let color = if active { text } else { text.lerp_to_gamma(ground, 0.3) };
-    style::label_fit(painter, x, cy, egui::Align::Min, title, font, color, head.right() - m::SPACING - x);
 }
 
 /// Which of the two schemes (`Settings::light_colors`, `dark_colors`)
@@ -313,7 +171,7 @@ impl Default for Settings {
 }
 
 fn settings_path() -> PathBuf {
-    olo_kit::config_dir().join("terminal.json")
+    olo_xdg::config_dir().join("terminal.json")
 }
 
 impl Settings {
@@ -361,9 +219,11 @@ impl Settings {
 }
 
 /// One shell, in a tab of a window.
-struct Tab {
+pub(crate) struct Tab {
     session: Session,
     mouse: Mouse,
+    /// What drawing its screen keeps between frames.
+    pane: Rc<view::Pane>,
     /// What its tab says: the program's own title, else what's running.
     title: String,
     /// A visual bell: when it rang.
@@ -394,6 +254,7 @@ impl Tab {
         Tab {
             session,
             mouse: Mouse::default(),
+            pane: Rc::default(),
             title: "Terminal".into(),
             bell: None,
             rang: false,
@@ -434,10 +295,16 @@ impl Tab {
     }
 }
 
-struct TermWin {
+pub(crate) struct TermWin {
     tabs: Vec<Tab>,
     active: usize,
-    glyphs: GlyphCache,
+    /// Text an input method is composing, at the cursor.
+    preedit: Option<String>,
+    /// A redraw is coming for an agent's spinner.
+    spinning: bool,
+    /// Tile All Tabs' divider over row `.0` being dragged, from `.1`
+    /// (the pointer's y), the rows as they were then.
+    dragging_row: Option<(usize, f32, Vec<(f32, f32)>)>,
     /// Size to snap the window to once real font metrics are known.
     snap_to: Option<(usize, usize)>,
     shown_title: String,
@@ -460,7 +327,7 @@ impl TermWin {
     /// A window of `tabs` (each saying its group in `groups`).
     fn new(tabs: Vec<Tab>, active: usize, snap_to: Option<(usize, usize)>, groups: Vec<Group>) -> TermWin {
         let active = active.min(tabs.len().saturating_sub(1));
-        let mut t = TermWin { active, tabs, glyphs: GlyphCache::default(), snap_to, shown_title: String::new(), focused: true, groups, tiled: false, tile_groups: Vec::new(), tile_heights: Default::default() };
+        let mut t = TermWin { active, tabs, preedit: None, spinning: false, dragging_row: None, snap_to, shown_title: String::new(), focused: true, groups, tiled: false, tile_groups: Vec::new(), tile_heights: Default::default() };
         t.tidy();
         t
     }
@@ -625,19 +492,19 @@ impl TermWin {
     }
 }
 
-enum Win {
+pub(crate) enum Win {
     Term(Box<TermWin>),
     /// "Close this tab (or window)?" for one still running something.
     ConfirmClose { target: WindowId, shell: Option<u64>, message: String },
     /// The Find window for a terminal window.
-    Find { target: WindowId },
+    Find { target: WindowId, field: Entity<TextField> },
     /// Terminal ▸ Terminal Daemon…
     Daemon(Box<daemon::DaemonWin>),
     /// "Start olo-termd over?" for the Terminal Daemon window.
     ConfirmStartOver { target: WindowId },
     /// Name (or rename) a group of a window's (`group`), or make one of
     /// its tab `tab`, and choose its colour.
-    NameGroup { target: WindowId, group: Option<usize>, tab: u64, name: String, color: usize },
+    NameGroup { target: WindowId, group: Option<usize>, tab: u64, name: Entity<TextField>, color: usize },
     /// sudo asks for its password (sudo.rs).
     Sudo(Box<sudo::Request>),
     /// New Worktree… or Rename Worktree… (repos.rs).
@@ -648,7 +515,7 @@ enum Win {
     Failed { message: String },
 }
 
-struct Terminal {
+pub(crate) struct Terminal {
     link: client::Link,
     windows: HashMap<WindowId, Win>,
     settings: Settings,
@@ -676,6 +543,11 @@ struct Terminal {
     notes: HashMap<u64, NoteId>,
     /// The windows as last kept on disk (`remember`).
     remembered: Option<String>,
+    /// A `remember` is due soon (changes come in bursts).
+    remembering: bool,
+    /// The titles are to be looked at again soon (after typing: a program
+    /// may have started without writing anything).
+    retitling: bool,
     /// Preferences ▸ Terminal: coding agents told about their tab's group
     /// (agent_context.rs) and keeping its title (agent_title.rs; None:
     /// not heard yet), and what was last kept for their hook and tool.
@@ -686,8 +558,6 @@ struct Terminal {
     sudo_approved: HashMap<u64, (Box<sudo::Request>, Option<WindowId>)>,
 }
 
-/// Now and then, keep the windows as they are (`Terminal::remember`).
-struct Remember;
 
 /// Preferences ▸ Terminal's coding agent settings, as they change: told
 /// about their tab's group (agent_context.rs), and keeping their tab's
@@ -701,13 +571,18 @@ struct AgentContext {
 /// its title.
 const AGENT_SEEN_WITHIN: std::time::Duration = std::time::Duration::from_secs(5);
 
-/// How often the windows are kept, besides when Terminal quits.
-const REMEMBER_EVERY: std::time::Duration = std::time::Duration::from_secs(2);
+/// How soon after a change the windows are kept (changes come in
+/// bursts), besides when Terminal quits.
+const REMEMBER_AFTER: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// How soon after typing the tabs' titles are looked at again: a program
+/// started may write nothing (its name is the title).
+const RETITLE_AFTER: std::time::Duration = std::time::Duration::from_millis(400);
 
 /// Where Terminal keeps its windows for the next time it starts, beside
 /// the shells olo-termd keeps (only for us: folders say what you work on).
 fn layout_path() -> PathBuf {
-    olo_kit::state_dir().join("terminal").join("windows.json")
+    olo_xdg::state_dir().join("terminal").join("windows.json")
 }
 
 /// The windows as Terminal last kept them.
@@ -717,7 +592,7 @@ fn remembered() -> Option<Saved> {
 
 /// Room beside and above the grid: the menu bar, and the tab strip (down
 /// the side or along the top), which shows with one tab too.
-fn chrome(settings: &Settings) -> (u32, u32) {
+pub(crate) fn chrome(settings: &Settings) -> (u32, u32) {
     if settings.side_tabs {
         (settings.side_width as u32, menu::BAR_HEIGHT as u32)
     } else {
@@ -733,8 +608,8 @@ fn estimate(settings: &Settings, cols: usize, rows: usize) -> (u32, u32) {
     let cell_h = (s * 1.32 * 2.0).ceil() / 2.0;
     let (w, h) = chrome(settings);
     (
-        (cols as f32 * cell_w + 2.0 * view::PAD.x).ceil() as u32 + w,
-        (rows as f32 * cell_h + 2.0 * view::PAD.y).ceil() as u32 + h,
+        (cols as f32 * cell_w + 2.0 * view::PAD.0).ceil() as u32 + w,
+        (rows as f32 * cell_h + 2.0 * view::PAD.1).ceil() as u32 + h,
     )
 }
 
@@ -834,7 +709,7 @@ impl Terminal {
     }
 
     /// The colours for `mode`: the ones chosen, else the look's own.
-    fn colors_for(&self, mode: ThemeMode) -> olo_kit::theme::Terminal {
+    fn colors_for(&self, mode: ThemeMode) -> olo_theme::Terminal {
         let chosen = match mode {
             ThemeMode::Light => &self.settings.light_colors,
             ThemeMode::Dark => &self.settings.dark_colors,
@@ -943,13 +818,11 @@ impl Terminal {
             Some(m) => {
                 let (w, h) = m.content_size(cols, rows);
                 let (cw, ch) = chrome(&self.settings);
-                (w + cw, h + ch)
+                (w as u32 + cw, h as u32 + ch)
             }
             None => estimate(&self.settings, cols, rows),
         };
-        let mut o = WindowOptions::new("Terminal", w, h).min_size(200, 120).raw_keys();
-        o.panel = false;
-        o
+        WindowOptions::new("Terminal", w, h).min_size(200, 120)
     }
 
     fn handle_launch(&mut self, cx: &mut Cx, launch: Launch) {
@@ -1120,411 +993,6 @@ impl Terminal {
         })
     }
 
-    fn term_ui(&mut self, cx: &mut Cx, win: WindowId, ui: &mut egui::Ui) {
-        let ppp = ui.ctx().pixels_per_point();
-        let size = self.settings.text_size;
-        let metrics = match self.metrics {
-            // Made at this scale: cells snapped to another scale's pixels
-            // can still be whole ones here (8 points at 1× and 1.25×) and
-            // put the rows between pixels.
-            Some(m) if m.size == size && m.ppp == ppp => m,
-            _ => {
-                let m = Metrics::new(ui.ctx(), size);
-                self.metrics = Some(m);
-                m
-            }
-        };
-        let scheme = self.scheme();
-        // Files dropped on it are typed as their paths (quoted for the
-        // shell, as macOS's Terminal does), text as if pasted.
-        if let Some(h) = olo_kit::dnd::hover(ui.ctx()) {
-            let mime = if h.has_files() { Some("text/uri-list") } else { h.text_type() };
-            if let Some(mime) = mime.filter(|_| h.actions.copy) {
-                olo_kit::dnd::accept(ui.ctx(), "term", mime, olo_kit::dnd::Action::Copy);
-                olo_kit::dnd::outline(ui, ui.max_rect());
-            }
-        }
-        let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
-        let focused = ui.input(|i| i.focused);
-        if focused {
-            self.front = Some(win);
-        }
-        if focused != t.focused {
-            t.focused = focused;
-            t.tab().report_focus(focused);
-        }
-        if focused {
-            t.tab_mut().attention = false;
-        }
-        // Ctrl+Tab and Ctrl+Page Up/Down (and so Next Tab) go through the
-        // tabs, as in other terminals; the shell never sees them (nor
-        // their releases).
-        let step = olo_kit::widgets::tab_keys(ui.ctx());
-        if step != 0 && t.tabs.len() > 1 {
-            let n = t.tabs.len() as i32;
-            t.select((t.active as i32 + step).rem_euclid(n) as usize);
-        }
-        let full = ui.max_rect();
-        let mut area = full;
-        let side = self.settings.side_tabs;
-        let strip = if side {
-            // As wide as chosen, leaving the screen some room.
-            let width = self.settings.side_width.min((full.width() / 2.0).floor());
-            let strip = egui::Rect::from_min_size(full.min, egui::vec2(width, full.height()));
-            area.min.x = strip.max.x;
-            strip
-        } else {
-            let strip = egui::Rect::from_min_size(full.min, egui::vec2(full.width(), STRIP));
-            area.min.y = strip.max.y;
-            strip
-        };
-        let icons: Vec<_> = t.tabs.iter().map(|tab| tab_icon(tab.rang, tab.agent, tab.attention)).collect();
-        let prs: Vec<Option<&git::Pr>> = t.tabs.iter().map(|tab| repos::pr_of(&self.prs, tab)).collect();
-        let badges: Vec<Option<_>> = prs.iter().map(|pr| pr.map(repos::pr_badge)).collect();
-        let statuses: Vec<Option<String>> = t
-            .tabs
-            .iter()
-            .zip(&prs)
-            .map(|(tab, pr)| match (tab.status(), pr.map(|p| p.describe())) {
-                (Some(a), Some(b)) => Some(format!("{a}; {b}")),
-                (a, b) => a.or(b),
-            })
-            .collect();
-        if t.tabs.iter().any(|x| matches!(x.agent, Some((_, State::Working)))) {
-            // The spinner turns.
-            ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
-        }
-        let strip_groups: Vec<StripGroup> = t.groups.iter().map(|g| StripGroup { name: &g.name, color: groups::color(g.color, &self.look) }).collect();
-        let items: Vec<StripTab> = t
-            .tabs
-            .iter()
-            .zip(&icons)
-            .zip(&statuses)
-            .zip(&badges)
-            .map(|(((tab, icon), status), badge)| StripTab {
-                label: &tab.title,
-                icon: Some(icon),
-                status: status.as_deref(),
-                badge: badge.as_ref().map(|b| b as &dyn Fn(&egui::Painter, egui::Rect)),
-                group: tab.group,
-            })
-            .collect();
-        let chosen: Vec<bool> = t.groups.iter().map(|g| t.tile_groups.contains(&g.name)).collect();
-        let mut bar = TabStrip::new(("terminal-tabs", win), &items, t.active).groups(&strip_groups);
-        if t.tiled && t.tabs.len() > 1 {
-            // Tile All Tabs: a group's chip chooses which are tiled.
-            bar = bar.group_selection(&chosen);
-        }
-        if side {
-            bar = bar.side();
-        }
-        if t.tiled && t.tabs.len() > 1 {
-            // Each pane has its own head.
-            bar = bar.closed();
-        } else {
-            // The selected tab opens into its screen.
-            let (back, fore) = view::screen_colors(&t.tab().session, &scheme);
-            bar = bar.opens_into(back, fore);
-        }
-        let action = bar.show(ui, strip);
-        t.tab().session.woke();
-        {
-            let mut current = t.tab().session.shared.scheme.lock().unwrap();
-            if *current != scheme {
-                *current = scheme.clone();
-            }
-        }
-        if let Some((cols, rows)) = t.snap_to.take().filter(|_| !(t.tiled && t.tabs.len() > 1)) {
-            let (w, h) = metrics.content_size(cols, rows);
-            let (cw, ch) = chrome(&self.settings);
-            let want = (w + cw, h + ch);
-            if cx.window_size(win) != Some(want) {
-                cx.resize(win, want);
-            }
-        }
-        let group_colors: Vec<egui::Color32> = t.groups.iter().map(|g| groups::color(g.color, &self.look)).collect();
-        let rows = t.tile_rows();
-        let ppp = ui.ctx().pixels_per_point();
-        // The rows' shares of the height, and the least each keeps (its
-        // panes' heads and two lines).
-        let row_keys: Vec<String> = rows.iter().map(|r| t.row_key(r)).collect();
-        let weights: Vec<f32> = row_keys.iter().map(|k| t.tile_heights.get(k).copied().unwrap_or(1.0)).collect();
-        let least = pane_head_height(side) + metrics.content_size(1, 2).1 as f32;
-        let tiling_rows = t.tiled && t.tabs.len() > 1 && rows.len() > 1;
-        let spans = if tiling_rows { row_spans(area, &weights, least, ppp) } else { Vec::new() };
-        // Between rows, the divider and the head of the row under it drag
-        // the rows' heights.
-        let dividers: Vec<egui::Rect> = spans.iter().skip(1).map(|&(top, _)| egui::Rect::from_min_max(egui::pos2(area.left(), top - 4.0), egui::pos2(area.right(), top + pane_head_height(side)))).collect();
-        let changed_heights = t.heights_changed();
-        let TermWin { tabs, active, glyphs, tiled, .. } = &mut **t;
-        let session_cwd = |tab: &Tab| {
-            let shared = tab.session.shared.clone();
-            move || {
-                let pid = shared.foreground().or(shared.shell())?;
-                std::fs::read_link(format!("/proc/{pid}/cwd")).ok()
-            }
-        };
-        // Tile All Tabs: every tab (of the chosen groups) in a pane of
-        // its own, a row for each group, a group alone in a grid; the one
-        // typed into marked. Else only the one showing.
-        let panes: Vec<(usize, egui::Rect)> = if *tiled && tabs.len() > 1 {
-            match rows.as_slice() {
-                [one] => one.iter().copied().zip(tile(area, one.len(), ppp)).collect(),
-                rows => rows.concat().into_iter().zip(tile_in_rows(area, &rows.iter().map(Vec::len).collect::<Vec<_>>(), &weights, least, ppp)).collect(),
-            }
-        } else {
-            vec![(*active, area)]
-        };
-        let several = panes.len() > 1;
-        let mut out: Option<view::Output> = None;
-        let mut picked = None;
-        for &(i, rect) in &panes {
-            let tab = &mut tabs[i];
-            let mut screen = rect;
-            if several {
-                screen.min.y += pane_head_height(side);
-                let icon = tab_icon(tab.rang, tab.agent, tab.attention);
-                let group = tab.group.and_then(|g| group_colors.get(g).copied());
-                pane_head(ui, rect, pane_head_height(side), &tab.title, &icon, i == *active, group);
-                // Panes after the first are where dividing the window
-                // puts them: level with the strip's tabs only by chance.
-                if rect.min != area.min {
-                    olo_kit::layout_review::own_grid(ui, rect);
-                }
-                // (A divider's press is its own: a click there picks.)
-                let pressed = ui.input(|inp| inp.pointer.any_pressed() && inp.pointer.interact_pos().is_some_and(|p| rect.contains(p) && !dividers.iter().any(|d| d.contains(p))));
-                if pressed && i != *active {
-                    picked = Some(i);
-                }
-            }
-            let cwd = session_cwd(tab);
-            let o = ui
-                .scope_builder(egui::UiBuilder::new().max_rect(screen).id_salt(("pane", tab.session.id)), |ui| {
-                    view::show(ui, &mut tab.session, &scheme, &metrics, glyphs, &mut tab.mouse, focused && i == *active, &cwd)
-                })
-                .inner;
-            if several {
-                tab.session.resize(o.size, metrics.device_cell());
-                if i != *active {
-                    // The panes not typed into, dimmed a little.
-                    let (back, _) = view::screen_colors(&tab.session, &scheme);
-                    ui.painter().rect_filled(screen, 0.0, back.gamma_multiply(0.3));
-                }
-            }
-            match &mut out {
-                Some(first) => first.merge(o),
-                None => out = Some(o),
-            }
-        }
-        let out = out.expect("a pane");
-        // The dividers, over the panes: dragged, the rows either side
-        // grow and shrink; clicked, the pane there is picked; the right
-        // button, the row's menu.
-        let mut dragged_rows = None;
-        let mut divider_menu = None;
-        let mut divider_popup = None;
-        for (k, d) in dividers.iter().enumerate() {
-            let r = k + 1;
-            let resp = ui.interact(*d, ui.make_persistent_id(("tile-divider", r)), egui::Sense::click_and_drag());
-            let share = (spans[r].1 - spans[r].0) / area.height().max(1.0);
-            let name = if row_keys[r].is_empty() { "Tabs in No Group".to_owned() } else { row_keys[r].clone() };
-            resp.widget_info(|| egui::WidgetInfo { current_text_value: Some(format!("{:.0}%", share * 100.0)), ..egui::WidgetInfo::labeled(egui::Role::Splitter, true, format!("Row Height: {name}")) });
-            let near = resp.hover_pos().is_some_and(|p| (p.y - spans[r].0).abs() <= 4.0);
-            if near || resp.dragged() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeRow);
-            }
-            if resp.dragged() && resp.drag_delta().y != 0.0 {
-                dragged_rows = Some((r, resp.drag_delta().y));
-            }
-            if resp.clicked()
-                && let Some(pos) = resp.interact_pointer_pos()
-                && let Some(&(i, _)) = panes.iter().find(|(_, p)| p.contains(pos))
-                && i != *active
-            {
-                picked = Some(i);
-            }
-            if resp.secondary_clicked() {
-                let group = rows[r].first().and_then(|&i| tabs[i].group);
-                divider_menu = resp.interact_pointer_pos().map(|pos| (group, pos));
-            }
-        }
-        if !several {
-            // Every tab has the window's grid, so a program in one that
-            // isn't showing still lays itself out right.
-            for tab in tabs.iter_mut() {
-                tab.session.resize(out.size, metrics.device_cell());
-            }
-        }
-        if let Some(i) = picked {
-            t.select(i);
-            cx.redraw(win);
-        }
-        if let Some((r, dy)) = dragged_rows {
-            let w = drag_rows(&weights, &spans, r, dy, least);
-            for (key, w) in row_keys.iter().zip(w) {
-                t.tile_heights.insert(key.clone(), w);
-            }
-            cx.redraw(win);
-        }
-        if let Some((group, pos)) = divider_menu {
-            // The row's group's menu, as its chip has it, and Reset Row
-            // Heights.
-            let menu = match group {
-                Some(g) => group_menu(g, t),
-                None => Menu::new("").item("Tile All Tabs", "tile-tabs", None).checked(t.tiled),
-            };
-            let menu = menu.item("Reset Row Heights", "tile-reset-heights", None).enabled(changed_heights);
-            // (With the group's worktrees once the window is let go.)
-            divider_popup = Some((menu, group.is_some(), pos));
-        }
-        let TermWin { tabs, active, .. } = &mut **t;
-        if let Some(target) = &out.open {
-            links::open(target);
-        }
-        let tab = &mut tabs[*active];
-        if let Some(text) = out.copy {
-            cx.copy(text);
-        }
-        if out.paste {
-            cx.paste(win);
-        }
-        // Visual bell: a brief flash of the frame.
-        if let Some(at) = tab.bell {
-            let age = at.elapsed().as_secs_f32();
-            if age < 0.15 {
-                let a = ((1.0 - age / 0.15) * 60.0) as u8;
-                let [r, g, b, _] = self.look.panel_text;
-                ui.painter().rect_filled(area, 0.0, egui::Color32::from_rgba_unmultiplied(r, g, b, a / 2));
-                ui.ctx().request_repaint();
-            } else {
-                tab.bell = None;
-            }
-        }
-        retitle(cx, win, t);
-        if let Some(pos) = out.context_menu {
-            let has_selection = t.tab().session.has_selection();
-            let menu = Menu::new("")
-                .item("Copy", "copy", None)
-                .enabled(has_selection)
-                .item("Paste", "paste", None)
-                .separator()
-                .item("Select All", "select-all", None)
-                .item("Clear Scrollback", "clear", None)
-                .separator()
-                .item(olo_kit::tracker::LABEL, olo_kit::tracker::COMMAND, None);
-            menu::request_popup(
-                ui.ctx(),
-                MenuRequest { menu, source: ui.make_persistent_id("context"), anchor: MenuAnchor::At(pos), selected: None },
-            );
-        }
-        match action {
-            Some(StripAction::Select(i)) => {
-                t.select(i);
-                cx.redraw(win);
-            }
-            Some(StripAction::Close(i)) => {
-                let shell = t.tabs[i].session.id;
-                self.close_tab_requested(cx, win, shell, "the tab's close box or a middle-click");
-            }
-            Some(StripAction::New) => self.command(cx, win, "new-tab"),
-            Some(StripAction::Move { from, to, group }) => {
-                let shown = t.tab().session.id;
-                let mut tab = t.tabs.remove(from);
-                if tab.group.is_some() && group.is_none() {
-                    // Dragged out of its group by the person.
-                    tab.own_grouping = true;
-                }
-                tab.group = group;
-                t.tabs.insert(to.min(t.tabs.len()), tab);
-                t.active = t.position(shown).unwrap_or(0);
-                t.tidy();
-                cx.redraw(win);
-            }
-            Some(StripAction::MoveGroup { group, to }) => {
-                let shown = t.tab().session.id;
-                let (moving, mut rest): (Vec<Tab>, Vec<Tab>) = std::mem::take(&mut t.tabs).into_iter().partition(|x| x.group == Some(group));
-                let at = to.min(rest.len());
-                rest.splice(at..at, moving);
-                t.tabs = rest;
-                t.active = t.position(shown).unwrap_or(0);
-                t.tidy();
-                cx.redraw(win);
-            }
-            Some(StripAction::ToggleGroup(g)) => {
-                t.toggle_tile_group(g);
-                cx.redraw(win);
-            }
-            Some(StripAction::Group(g, pos)) => {
-                let mut menu = group_menu(g, t);
-                if tiling_rows {
-                    menu = menu.item("Reset Row Heights", "tile-reset-heights", None).enabled(changed_heights);
-                }
-                let menu = self.worktrees_menu(win, menu);
-                menu::request_popup(
-                    ui.ctx(),
-                    MenuRequest { menu, source: ui.make_persistent_id("group-menu"), anchor: MenuAnchor::At(pos), selected: None },
-                );
-            }
-            // Pulled out of the strip: a window under the pointer, moving
-            // with it till let go (onto another window's strip: in there).
-            Some(StripAction::TearOff { tab, .. }) => {
-                let shell = t.tabs[tab].session.id;
-                if let Some(id) = self.detach(cx, win, shell, true) {
-                    cx.begin_move(id);
-                }
-            }
-            Some(StripAction::TearOffGroup { group, .. }) => {
-                if let Some(id) = self.group_to_window(cx, win, group, true) {
-                    cx.begin_move(id);
-                }
-            }
-            Some(StripAction::Resize { width, done }) => {
-                // Every window's: it's a setting.
-                self.settings.side_width = width;
-                if done {
-                    self.settings.save();
-                }
-                cx.redraw_all();
-            }
-            Some(StripAction::Menu(i, pos)) => {
-                let shell = t.tabs[i].session.id;
-                let (place, label) = if side { ("tabs-top", "Tabs Along the Top") } else { ("tabs-side", "Tabs Down the Side") };
-                let menu = Menu::new("").item("New Tab", "new-tab", None).separator().item(
-                    olo_kit::tracker::LABEL,
-                    format!("{}:{shell}", olo_kit::tracker::COMMAND),
-                    None,
-                );
-                let Some(Win::Term(t)) = self.windows.get(&win) else { return };
-                let menu = self
-                    .tab_repo_menu(&t.tabs[i], menu)
-                    .separator()
-                    .submenu(self.add_to_group_menu(win, shell, true))
-                    .item("Remove from Group", format!("tab-ungroup:{shell}"), None)
-                    .enabled(t.tabs[i].group.is_some())
-                    .item("Move to New Window", format!("tab-detach:{shell}"), None)
-                    .enabled(t.tabs.len() > 1)
-                    .submenu(self.move_to_window_menu(win, shell, true))
-                    .separator()
-                    .item("Close Other Tabs", format!("tab-close-others:{shell}"), None)
-                    .item_shift("Close Tab", format!("tab-close:{shell}"), Key::W)
-                    .separator()
-                    .item(label, place, None);
-                menu::request_popup(
-                    ui.ctx(),
-                    MenuRequest { menu, source: ui.make_persistent_id("tab-menu"), anchor: MenuAnchor::At(pos), selected: None },
-                );
-            }
-            None => {}
-        }
-        if let Some((menu, grouped, pos)) = divider_popup {
-            let menu = if grouped { self.worktrees_menu(win, menu) } else { menu };
-            menu::request_popup(ui.ctx(), MenuRequest { menu, source: ui.make_persistent_id("tile-divider-menu"), anchor: MenuAnchor::At(pos), selected: None });
-        }
-        // Foreground program changes don't produce output: look again now
-        // and then for the title.
-        ui.ctx().request_repaint_after(std::time::Duration::from_millis(500));
-    }
-
     fn close(&mut self, cx: &mut Cx, win: WindowId) {
         if let Some(Win::Term(t)) = self.windows.remove(&win) {
             for tab in &t.tabs {
@@ -1533,7 +1001,7 @@ impl Terminal {
         }
         cx.close_window(win);
         let finds: Vec<WindowId> =
-            self.windows.iter().filter(|(_, w)| matches!(w, Win::Find { target } if *target == win)).map(|(&id, _)| id).collect();
+            self.windows.iter().filter(|(_, w)| matches!(w, Win::Find { target, .. } if *target == win)).map(|(&id, _)| id).collect();
         for id in finds {
             self.windows.remove(&id);
             cx.close_window(id);
@@ -1641,18 +1109,18 @@ impl Terminal {
     fn add_to_group_menu(&self, win: WindowId, shell: u64, own: bool) -> Menu {
         let mut menu = Menu::new(if own { "Add to Group" } else { "Add Tab to Group" });
         if own {
-            menu = menu.item("New Group…", format!("tab-new-group:{shell}"), None);
+            menu = menu.item("New Group…", format!("tab-new-group:{shell}"));
         }
         let Some(Win::Term(t)) = self.windows.get(&win) else { return menu };
         if t.groups.is_empty() {
-            return if own { menu } else { menu.item("No Groups", "none", None).enabled(false) };
+            return if own { menu } else { menu.item("No Groups", "none").enabled(false) };
         }
         let current = t.position(shell).and_then(|i| t.tabs[i].group);
         if own {
             menu = menu.separator();
         }
         for (g, group) in t.groups.iter().enumerate() {
-            menu = menu.item(&group.name, format!("tab-group:{shell}:{g}"), None).checked(current == Some(g));
+            menu = menu.item(&group.name, format!("tab-group:{shell}:{g}")).checked(current == Some(g));
         }
         menu
     }
@@ -1671,10 +1139,10 @@ impl Terminal {
             .collect();
         others.sort();
         for (title, target) in &others {
-            menu = menu.item(title.as_str(), format!("tab-to:{shell}:{target}"), None);
+            menu = menu.item(title.as_str(), format!("tab-to:{shell}:{target}"));
         }
         if others.is_empty() {
-            menu = menu.item("No Other Windows", "none", None).enabled(false);
+            menu = menu.item("No Other Windows", "none").enabled(false);
         }
         menu
     }
@@ -1886,62 +1354,24 @@ impl Terminal {
     }
 }
 
-/// A tab's icon: Terminal's, with a badge at its corner: a turning arc
-/// while an agent works, an orange "!" when it needs an answer, a green
-/// dot when it's done and no one has looked, a blue dot for an unseen bell.
-fn tab_icon(rang: bool, agent: Option<(Agent, State)>, attention: bool) -> impl Fn(&egui::Painter, egui::Rect) {
-    move |painter, r| {
-        icons::paint(painter, r, "terminal");
-        let p = style::palette(painter.ctx());
-        let at = egui::pos2(r.right() - 1.5, r.top() + 3.5);
-        let back = style::c(p.panel_background);
-        match agent {
-            Some((_, State::Working)) => {
-                painter.circle_filled(at, 5.0, back);
-                let turn = painter.ctx().input(|i| i.time) as f32 * 5.0;
-                let arc: Vec<egui::Pos2> = (0..=16)
-                    .map(|k| {
-                        let a = turn + k as f32 * (1.5 * std::f32::consts::PI / 16.0);
-                        at + egui::vec2(a.cos(), a.sin()) * 3.0
-                    })
-                    .collect();
-                painter.add(egui::Shape::line(arc, egui::Stroke::new(1.5, style::c(p.keyboard_navigation))));
-            }
-            Some((_, State::Blocked)) => {
-                painter.circle_filled(at, 5.5, back);
-                let orange = p.hue(olo_kit::theme::Hue::Orange);
-                painter.circle_filled(at, 4.5, style::c(orange));
-                let white = style::c(p.ink_on(orange));
-                painter.rect_filled(egui::Rect::from_center_size(at - egui::vec2(0.0, 1.0), egui::vec2(1.5, 4.0)), 0.0, white);
-                painter.rect_filled(egui::Rect::from_center_size(at + egui::vec2(0.0, 2.25), egui::vec2(1.5, 1.5)), 0.0, white);
-            }
-            Some((_, State::Idle)) if attention => {
-                painter.circle_filled(at, 4.0, back);
-                painter.circle_filled(at, 3.0, style::c(p.success));
-            }
-            _ if rang => {
-                painter.circle_filled(at, 3.5, back);
-                painter.circle_filled(at, 2.5, style::c(p.keyboard_navigation));
-            }
-            _ => {}
-        }
-    }
-}
-
-const START_OVER: &str = "Starting olo-termd over ends every shell in it, and whatever is running in them. Start over?";
+pub(crate) const START_OVER: &str = "Starting olo-termd over ends every shell in it, and whatever is running in them. Start over?";
 
 const FIND_W: f32 = 340.0;
 const FIND_H: f32 = 2.0 * m::WINDOW_INSET + m::CONTROL_HEIGHT + m::SPACING + 4.0 * m::MARK_ROW + 3.0 * m::TIGHT + m::SPACING + m::CONTROL_HEIGHT;
 
 impl Terminal {
     fn open_find(&mut self, cx: &mut Cx, target: WindowId) {
-        if let Some((&id, _)) = self.windows.iter().find(|(_, w)| matches!(w, Win::Find { target: t } if *t == target)) {
+        if let Some((&id, _)) = self.windows.iter().find(|(_, w)| matches!(w, Win::Find { target: t, .. } if *t == target)) {
             cx.activate(id);
             return;
         }
         let (w, h) = (FIND_W as u32, FIND_H as u32);
+        let field = Terminal::field(cx, &self.search.text, |f| f);
         let id = cx.open_window(WindowOptions::new("Find", w, h).min_size(w, h).max_size(900, h));
-        self.windows.insert(id, Win::Find { target });
+        ui::submit_on_enter(cx, &field, id, |t, cx, id| t.find_done(cx, id, true));
+        let f = field.clone();
+        cx.with_window(id, move |_, window, cx| f.read(cx).focus(window));
+        self.windows.insert(id, Win::Find { target, field });
     }
 
     /// Search `win`'s scrollback (its tab showing); the visual bell says
@@ -1953,38 +1383,6 @@ impl Terminal {
             t.tab_mut().bell = Some(Instant::now());
         }
         cx.redraw(win);
-    }
-
-    fn find_ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui, target: WindowId) {
-        let full = ui.max_rect().shrink(m::WINDOW_INSET);
-        let s = &mut self.search;
-        ui.scope_builder(egui::UiBuilder::new().max_rect(full).layout(egui::Layout::top_down(egui::Align::Min)), |ui| {
-            ui.spacing_mut().item_spacing.y = m::TIGHT;
-            ui.add(TextControl::new(&mut s.text).label("Find:").divider(40.0).autofocus(true));
-            ui.add_space(m::SPACING - m::TIGHT);
-            ui.add(CheckBox::new(&mut s.case, "Case-sensitive"));
-            ui.add(CheckBox::new(&mut s.words, "Whole words only"));
-            ui.add(CheckBox::new(&mut s.wrap, "Wrap-around search"));
-            ui.add(CheckBox::new(&mut s.backwards, "Search backwards"));
-        });
-        let bw = m::BUTTON_MIN_WIDTH;
-        let y = full.bottom() - m::CONTROL_HEIGHT;
-        let go_r = egui::Rect::from_min_size(egui::pos2(full.right() - bw, y), egui::vec2(bw, m::CONTROL_HEIGHT));
-        let cancel_r = go_r.translate(egui::vec2(-(bw + m::SPACING + 2.0), 0.0));
-        let cancel = ui.put(cancel_r, Button::new("Cancel")).clicked() || ui.input(|i| i.key_pressed(Key::Escape));
-        let ready = !s.text.is_empty();
-        let go = ui.add_enabled_ui(ready, |ui| ui.put(go_r, Button::new("Find").default(true))).inner.clicked()
-            || ready && ui.input(|i| i.key_pressed(Key::Enter));
-        if go {
-            self.find_in(cx, target);
-        }
-        if go || cancel {
-            self.windows.remove(&window);
-            cx.close_window(window);
-            if go {
-                cx.activate(target);
-            }
-        }
     }
 }
 
@@ -2038,8 +1436,7 @@ impl Terminal {
 }
 
 const NAME_W: f32 = 340.0;
-const NAME_H: f32 = 2.0 * m::WINDOW_INSET + m::CONTROL_HEIGHT + 2.0 * m::SPACING + SWATCH + m::SPACING + m::CONTROL_HEIGHT;
-const SWATCH: f32 = 22.0;
+const NAME_H: f32 = 2.0 * m::WINDOW_INSET + m::CONTROL_HEIGHT + 2.0 * m::SPACING + ui::SWATCH + m::SPACING + m::CONTROL_HEIGHT;
 
 impl Terminal {
     /// Saved group `i`: where it is open, its first tab; else at the end
@@ -2108,48 +1505,21 @@ impl Terminal {
             self.windows.remove(&id);
             cx.close_window(id);
         }
+        let name = Terminal::field(cx, &name, |f| f);
         let id = cx.open_window(WindowOptions::new("Group", NAME_W as u32, NAME_H as u32).min_size(NAME_W as u32, NAME_H as u32).max_size(NAME_W as u32, NAME_H as u32));
+        ui::submit_on_enter(cx, &name, id, |t, cx, id| t.name_group_done(cx, id, true));
+        let f = name.clone();
+        cx.with_window(id, move |_, window, cx| f.read(cx).focus(window));
         self.windows.insert(id, Win::NameGroup { target, group, tab, name, color });
     }
 
-    /// The Group window: a name and a colour for `target`'s group.
-    fn name_group_ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
-        let Some(Win::NameGroup { target, name, color, .. }) = self.windows.get_mut(&window) else { return };
-        let target = *target;
-        let full = ui.max_rect().shrink(m::WINDOW_INSET);
-        ui.scope_builder(egui::UiBuilder::new().max_rect(full).layout(egui::Layout::top_down(egui::Align::Min)), |ui| {
-            ui.add(TextControl::new(name).label("Name:").divider(50.0).autofocus(true));
-        });
-        // The colours, as swatches; the chosen one on the selection.
-        let p = style::palette(ui.ctx());
-        let top = full.top() + m::CONTROL_HEIGHT + 2.0 * m::SPACING;
-        style::label(ui.painter(), full.left(), top + SWATCH / 2.0, egui::Align::Min, "Color:", style::plain_font(), style::c(p.panel_text));
-        for i in 0..groups::COLORS.len() {
-            let r = egui::Rect::from_min_size(egui::pos2(full.left() + 50.0 + i as f32 * (SWATCH + m::SPACING), top), egui::vec2(SWATCH, SWATCH));
-            let resp = ui.interact(r, ui.make_persistent_id(("swatch", i)), egui::Sense::click());
-            resp.widget_info(|| egui::WidgetInfo { selected: Some(*color == i), ..egui::WidgetInfo::labeled(egui::Role::RadioButton, true, groups::COLORS[i].name()) });
-            if resp.clicked() {
-                *color = i;
-            }
-            if *color == i {
-                let sel = style::selection_ink(&p);
-                ui.painter().circle(r.center(), SWATCH / 2.0 + 1.0, sel.fill, egui::Stroke::new(1.0, sel.edge));
-            }
-            ui.painter().circle_filled(r.center(), SWATCH / 2.0 - 3.0, groups::color(i, &self.look));
-        }
-        let bw = m::BUTTON_MIN_WIDTH;
-        let y = full.bottom() - m::CONTROL_HEIGHT;
-        let ok_r = egui::Rect::from_min_size(egui::pos2(full.right() - bw, y), egui::vec2(bw, m::CONTROL_HEIGHT));
-        let cancel_r = ok_r.translate(egui::vec2(-(bw + m::SPACING + 2.0), 0.0));
-        let cancel = ui.put(cancel_r, Button::new("Cancel")).clicked() || ui.input(|i| i.key_pressed(Key::Escape));
-        let ready = !name.trim().is_empty();
-        let ok = ui.add_enabled_ui(ready, |ui| ui.put(ok_r, Button::new("OK").default(true))).inner.clicked()
-            || ready && ui.input(|i| i.key_pressed(Key::Enter));
-        if !(ok || cancel) {
+    /// The Group window answered: name (or make) the group, or not.
+    pub(crate) fn name_group_done(&mut self, cx: &mut Cx, window: WindowId, ok: bool) {
+        let Some(Win::NameGroup { name, color, group, tab, target }) = self.windows.get(&window) else { return };
+        let (name, color, group, tab, target) = (name.read(cx).text().trim().to_owned(), *color, *group, *tab, *target);
+        if ok && name.is_empty() {
             return;
         }
-        let Some(Win::NameGroup { name, color, group, tab, .. }) = self.windows.get(&window) else { return };
-        let (name, color, group, tab) = (name.trim().to_owned(), *color, *group, *tab);
         self.windows.remove(&window);
         cx.close_window(window);
         if !ok {
@@ -2279,10 +1649,11 @@ impl Terminal {
 
     /// Ask the person for sudo's password, in an alert over `over` (else
     /// the front window).
-    fn sudo_ask(&mut self, cx: &mut Cx, r: sudo::Request, over: Option<WindowId>) {
-        let size = (sudo::WIDTH, r.height());
-        let options = WindowOptions { size, min_size: Some(size), max_size: Some(size), ..WindowOptions::alert("sudo", "") };
-        let id = cx.open_window(options.parent_opt(over.or(self.front)));
+    fn sudo_ask(&mut self, cx: &mut Cx, mut r: sudo::Request, over: Option<WindowId>) {
+        let size = (sudo::WIDTH, r.height(cx));
+        let _ = over;
+        let id = cx.open_window(WindowOptions::new("sudo", size.0, size.1).min_size(size.0, size.1).max_size(size.0, size.1));
+        r.focus_field(cx, id);
         self.windows.insert(id, Win::Sudo(Box::new(r)));
         cx.activate(id);
     }
@@ -2293,21 +1664,17 @@ impl Terminal {
             if let Some(reply) = reply {
                 r.reply(&reply);
             }
-            r.conv.clear_answer();
+            r.clear(cx);
         }
         cx.close_window(window);
     }
 }
 
-impl App for Terminal {
-    fn ui(&mut self, cx: &mut Cx, window: WindowId, ui: &mut egui::Ui) {
+impl Terminal {
+    /// Button `choice` of alert window `window` (Return, Escape, a click).
+    pub(crate) fn alert_chosen(&mut self, cx: &mut Cx, window: WindowId, choice: usize) {
         match self.windows.get(&window) {
-            Some(Win::Term(_)) => self.term_ui(cx, window, ui),
-            Some(Win::ConfirmClose { target, shell, message }) => {
-                let (target, shell) = (*target, *shell);
-                let Some(choice) = widgets::alert(ui, "terminal", &message.clone(), &["Cancel", "Close"]) else {
-                    return;
-                };
+            Some(&Win::ConfirmClose { target, shell, .. }) => {
                 self.windows.remove(&window);
                 cx.close_window(window);
                 if choice == 1 {
@@ -2317,57 +1684,18 @@ impl App for Terminal {
                     }
                 }
             }
-            Some(&Win::Find { target }) => self.find_ui(cx, window, ui, target),
-            Some(Win::NameGroup { .. }) => self.name_group_ui(cx, window, ui),
-            Some(Win::Worktree(_)) => self.worktree_ui(cx, window, ui),
-            Some(Win::ConfirmRemove { message, .. }) => {
-                let Some(choice) = widgets::alert(ui, "warning", &message.clone(), &["Cancel", "Remove"]) else { return };
+            Some(Win::ConfirmRemove { .. }) => {
                 let Some(Win::ConfirmRemove { main, path, .. }) = self.windows.remove(&window) else { return };
                 cx.close_window(window);
                 if choice == 1 {
                     self.remove_worktree(cx, main, path);
                 }
             }
-            Some(Win::Failed { message }) => {
-                if repos::failed_ui(ui, &message.clone()) {
-                    self.windows.remove(&window);
-                    cx.close_window(window);
-                }
-            }
-            Some(Win::Daemon(_)) => {
-                let Some(Win::Daemon(d)) = self.windows.get_mut(&window) else { return };
-                match d.ui(cx, ui) {
-                    Some(daemon::Action::ConfirmStartOver) => {
-                        let id = cx.open_window(WindowOptions::alert("Terminal", START_OVER));
-                        self.windows.insert(id, Win::ConfirmStartOver { target: window });
-                    }
-                    Some(daemon::Action::Show(shell)) => match self.find_shell(shell.id) {
-                        Some((id, i)) => {
-                            if let Some(Win::Term(t)) = self.windows.get_mut(&id) {
-                                t.select(i);
-                            }
-                            cx.activate(id);
-                            cx.redraw(id);
-                        }
-                        None => {
-                            self.reopen(cx, vec![Start::Attach(shell.id)], Some(&shell), None, 0, Default::default());
-                        }
-                    },
-                    None => {}
-                }
-            }
-            Some(Win::Sudo(_)) => {
-                let Some(Win::Sudo(r)) = self.windows.get_mut(&window) else { return };
-                match r.ui(ui) {
-                    Some(sudo::Choice::Authenticate) => r.answer(),
-                    Some(sudo::Choice::Cancel) => self.sudo_done(cx, window, Some(sudo_wire::Reply::Cancel)),
-                    None => {}
-                }
+            Some(Win::Failed { .. }) => {
+                self.windows.remove(&window);
+                cx.close_window(window);
             }
             Some(&Win::ConfirmStartOver { target }) => {
-                let Some(choice) = widgets::alert(ui, "terminal", START_OVER, &["Cancel", "Start Over"]) else {
-                    return;
-                };
                 self.windows.remove(&window);
                 cx.close_window(window);
                 if choice == 1
@@ -2379,40 +1707,70 @@ impl App for Terminal {
                     d.start_over(cx.proxy());
                 }
             }
-            None => {}
+            _ => {}
         }
     }
 
-    fn dropped(&mut self, cx: &mut Cx, window: WindowId, drop: olo_kit::dnd::Drop) {
+    /// What was done in the Terminal Daemon window.
+    pub(crate) fn daemon_action(&mut self, cx: &mut Cx, window: WindowId, action: daemon::Action) {
+        match action {
+            daemon::Action::ConfirmStartOver => {
+                let id = cx.open_window(WindowOptions::alert("Terminal", START_OVER));
+                self.windows.insert(id, Win::ConfirmStartOver { target: window });
+            }
+            daemon::Action::Show(shell) => match self.find_shell(shell.id) {
+                Some((id, i)) => {
+                    if let Some(Win::Term(t)) = self.windows.get_mut(&id) {
+                        t.select(i);
+                    }
+                    cx.activate(id);
+                    cx.redraw(id);
+                }
+                None => {
+                    self.reopen(cx, vec![Start::Attach(shell.id)], Some(&shell), None, 0, Default::default());
+                }
+            },
+        }
+    }
+
+    /// The sudo window's answer: its password, or no.
+    pub(crate) fn sudo_choice(&mut self, cx: &mut Cx, window: WindowId, choice: sudo::Choice) {
+        match choice {
+            sudo::Choice::Authenticate => {
+                if let Some(Win::Sudo(r)) = self.windows.get_mut(&window) {
+                    r.answer(cx);
+                    cx.redraw(window);
+                }
+            }
+            sudo::Choice::Cancel => self.sudo_done(cx, window, Some(sudo_wire::Reply::Cancel)),
+        }
+    }
+
+    /// Files dropped on a terminal are typed as their paths (quoted for
+    /// the shell, as macOS's Terminal does), text as if pasted.
+    pub(crate) fn dropped(&mut self, cx: &mut Cx, window: WindowId, paths: &[PathBuf], text: Option<&str>) {
         let Some(Win::Term(t)) = self.windows.get(&window) else { return };
-        let paths = drop.paths();
-        let text = if drop.mime == "text/uri-list" && !paths.is_empty() {
-            paths.iter().map(|p| shell_quote(&p.to_string_lossy())).collect::<Vec<_>>().join(" ") + " "
-        } else {
-            drop.text()
-        };
-        let session = &t.tab().session;
-        let mode = *session.term.lock().mode();
-        view::paste(session, &text, mode);
+        let text = if paths.is_empty() { text.unwrap_or_default().to_owned() } else { paths.iter().map(|p| shell_quote(&p.to_string_lossy())).collect::<Vec<_>>().join(" ") + " " };
+        view::paste(&t.tab().session, &text);
         cx.activate(window);
     }
 
-    fn menu_bar(&mut self, window: WindowId) -> Option<Vec<Menu>> {
+    pub(crate) fn menus(&self, window: WindowId) -> Option<Vec<Menu>> {
         let Some(Win::Term(t)) = self.windows.get(&window) else { return None };
         let has_selection = t.tab().session.has_selection();
         let size = t.grid();
         let several = t.tabs.len() > 1;
         let mut window_size = Menu::new("Window Size");
         for (c, r) in [(80, 24), (80, 25), (80, 40), (120, 25), (120, 40), (132, 25), (132, 50)] {
-            window_size = window_size.item(format!("{c} × {r}"), format!("grid-{c}x{r}"), None).checked(size == (c, r));
+            window_size = window_size.item(format!("{c} × {r}"), format!("grid-{c}x{r}")).checked(size == (c, r));
         }
         let mut text = Menu::new("Text Size")
-            .item_shift("Bigger", "bigger", Key::Equals)
-            .item_shift("Smaller", "smaller", Key::Minus)
-            .item_shift("Default", "default-size", Key::Num0)
+            .item("Bigger", "bigger").shift_key("=")
+            .item("Smaller", "smaller").shift_key("-")
+            .item("Default", "default-size").shift_key("0")
             .separator();
         for s in TEXT_SIZES {
-            text = text.item(format!("{s}"), format!("size-{s}"), None).checked(self.settings.text_size == s);
+            text = text.item(format!("{s}"), format!("size-{s}")).checked(self.settings.text_size == s);
         }
         // The look's own colours, BeOS's and Catppuccin's for each mode
         // (and the one chosen, if it is none of those).
@@ -2423,69 +1781,69 @@ impl App for Terminal {
                 offered.push(chosen.clone());
             }
             let slot = if mode == ThemeMode::Dark { "dark" } else { "light" };
-            offered.iter().fold(Menu::new(title), |m, t| m.item(&t.name, format!("colors-{slot}:{}", t.id), None).checked(t.id == chosen.id))
+            offered.iter().fold(Menu::new(title), |m, t| m.item(&t.name, format!("colors-{slot}:{}", t.id)).checked(t.id == chosen.id))
         };
         let scheme = Menu::new("Colors")
-            .item("Match Appearance", "scheme-auto", None)
+            .item("Match Appearance", "scheme-auto")
             .checked(self.settings.scheme == SchemeChoice::Auto)
-            .item("Always Light", "scheme-light", None)
+            .item("Always Light", "scheme-light")
             .checked(self.settings.scheme == SchemeChoice::Light)
-            .item("Always Dark", "scheme-dark", None)
+            .item("Always Dark", "scheme-dark")
             .checked(self.settings.scheme == SchemeChoice::Dark)
             .separator()
             .submenu(pick("Light Colors", ThemeMode::Light))
             .submenu(pick("Dark Colors", ThemeMode::Dark));
-        const NUMBERS: [Key; 9] = [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7, Key::Num8, Key::Num9];
+        const NUMBERS: [&str; 9] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
         let shell = t.tab().session.id;
         let in_group = t.tab().group;
         let mut open_group = Menu::new("Open Saved Group");
         let mut forget_group = Menu::new("Forget Saved Group");
         for (i, g) in self.saved_groups.iter().enumerate() {
             let open = self.windows.values().any(|w| matches!(w, Win::Term(x) if x.groups.iter().any(|x| x.name == g.group.name)));
-            open_group = open_group.item(&g.group.name, format!("open-group:{i}"), None).checked(open);
-            forget_group = forget_group.item(&g.group.name, format!("forget-group:{i}"), None);
+            open_group = open_group.item(&g.group.name, format!("open-group:{i}")).checked(open);
+            forget_group = forget_group.item(&g.group.name, format!("forget-group:{i}"));
         }
         if self.saved_groups.is_empty() {
-            open_group = open_group.item("No Saved Groups", "none", None).enabled(false);
-            forget_group = forget_group.item("No Saved Groups", "none", None).enabled(false);
+            open_group = open_group.item("No Saved Groups", "none").enabled(false);
+            forget_group = forget_group.item("No Saved Groups", "none").enabled(false);
         }
         // The group of the tab showing.
         let of = |command: &str| in_group.map_or_else(|| "none".to_owned(), |g| format!("{command}:{g}"));
         let alone = in_group.is_some_and(|g| t.tabs.iter().all(|x| x.group == Some(g)));
         let group = Menu::new("Group")
-            .item("New Group…", format!("tab-new-group:{shell}"), None)
+            .item("New Group…", format!("tab-new-group:{shell}"))
             .submenu(self.add_to_group_menu(window, shell, false))
-            .item("Remove Tab from Group", format!("tab-ungroup:{shell}"), None)
+            .item("Remove Tab from Group", format!("tab-ungroup:{shell}"))
             .enabled(in_group.is_some())
             .separator()
-            .item("Rename Group…", of("group-rename"), None)
+            .item("Rename Group…", of("group-rename"))
             .enabled(in_group.is_some())
-            .item("New Tab in Group", of("group-new-tab"), None)
+            .item("New Tab in Group", of("group-new-tab"))
             .enabled(in_group.is_some())
-            .item("Save Group", of("group-save"), None)
+            .item("Save Group", of("group-save"))
             .enabled(in_group.is_some())
-            .item("Move Group to New Window", of("group-window"), None)
+            .item("Move Group to New Window", of("group-window"))
             .enabled(in_group.is_some() && !alone)
-            .item("Ungroup", of("group-ungroup"), None)
+            .item("Ungroup", of("group-ungroup"))
             .enabled(in_group.is_some())
-            .item("Close Group", of("group-close"), None)
+            .item("Close Group", of("group-close"))
             .enabled(in_group.is_some())
             .separator()
             .submenu(open_group)
             .submenu(forget_group);
         let mut tabs = Menu::new("Tabs")
-            .item_shift("Previous Tab", "prev-tab", Key::OpenBracket)
+            .item("Previous Tab", "prev-tab").shift_key("[")
             .enabled(several)
-            .item_shift("Next Tab", "next-tab", Key::CloseBracket)
+            .item("Next Tab", "next-tab").shift_key("]")
             .enabled(several)
             .separator()
-            .item("Move Tab to New Window", "detach", None)
+            .item("Move Tab to New Window", "detach")
             .enabled(several)
             .submenu(self.move_to_window_menu(window, shell, false))
             .separator()
             .submenu(group)
             .submenu(self.repository_menu(window))
-            .item_shift("Tile All Tabs", "tile-tabs", Key::D)
+            .item("Tile All Tabs", "tile-tabs").shift_key("d")
             .enabled(several)
             .checked(t.tiled && several)
             .separator();
@@ -2496,8 +1854,8 @@ impl App for Terminal {
                 (None, false) => tab.title.clone(),
             };
             tabs = match NUMBERS.get(i) {
-                Some(&key) => tabs.item_shift(label, format!("tab:{i}"), key),
-                None => tabs.item(label, format!("tab:{i}"), None),
+                Some(&key) => tabs.item(label, format!("tab:{i}")).shift_key(key),
+                None => tabs.item(label, format!("tab:{i}")),
             }
             .checked(i == t.active);
         }
@@ -2505,46 +1863,46 @@ impl App for Terminal {
         // app_keys: Ctrl+Shift with any other key goes to the shell.)
         Some(vec![
             Menu::new("Terminal")
-                .item_shift("New Terminal", "new", Key::N)
-                .item_shift("New Tab", "new-tab", Key::T)
+                .item("New Terminal", "new").shift_key("n")
+                .item("New Tab", "new-tab").shift_key("t")
                 .separator()
-                .item(olo_kit::tracker::LABEL, olo_kit::tracker::COMMAND, None)
+                .item(olo_kit_base::tracker::LABEL, olo_kit_base::tracker::COMMAND)
                 .separator()
-                .item("Terminal Daemon…", "daemon", None)
+                .item("Terminal Daemon…", "daemon")
                 .separator()
-                .item_shift(if several { "Close Tab" } else { "Close" }, "close", Key::W)
-                .item("Close Window", "close-window", None)
+                .item(if several { "Close Tab" } else { "Close" }, "close").shift_key("w")
+                .item("Close Window", "close-window")
                 .enabled(several)
-                .item_shift("Quit", "quit", Key::Q),
+                .item("Quit", "quit").shift_key("q"),
             Menu::new("Edit")
-                .item_shift("Copy", "copy", Key::C)
+                .item("Copy", "copy").shift_key("c")
                 .enabled(has_selection)
-                .item_shift("Paste", "paste", Key::V)
+                .item("Paste", "paste").shift_key("v")
                 .separator()
-                .item_shift("Select All", "select-all", Key::A)
+                .item("Select All", "select-all").shift_key("a")
                 .separator()
-                .item_shift("Find…", "find", Key::F)
-                .item_shift("Find Again", "find-again", Key::G)
+                .item("Find…", "find").shift_key("f")
+                .item("Find Again", "find-again").shift_key("g")
                 .enabled(!self.search.text.is_empty())
-                .item_shift("Find Selection", "find-selection", Key::E)
+                .item("Find Selection", "find-selection").shift_key("e")
                 .enabled(has_selection)
                 .separator()
-                .item_shift("Clear Scrollback", "clear", Key::K),
+                .item("Clear Scrollback", "clear").shift_key("k"),
             tabs,
             Menu::new("Settings").submenu(window_size).submenu(text).submenu(scheme).submenu(
                 Menu::new("Tabs")
-                    .item("Along the Top", "tabs-top", None)
+                    .item("Along the Top", "tabs-top")
                     .checked(!self.settings.side_tabs)
-                    .item("Down the Side", "tabs-side", None)
+                    .item("Down the Side", "tabs-side")
                     .checked(self.settings.side_tabs),
             )
             .separator()
-            .item("Ask for sudo Passwords in a Window", "sudo-window", None)
+            .item("Ask for sudo Passwords in a Window", "sudo-window")
             .checked(self.settings.sudo_window),
         ])
     }
 
-    fn command(&mut self, cx: &mut Cx, window: WindowId, command: &str) {
+    pub(crate) fn command(&mut self, cx: &mut Cx, window: WindowId, command: &str) {
         if !matches!(self.windows.get(&window), Some(Win::Term(_))) || self.repo_command(cx, window, command) || self.group_command(cx, window, command) {
             return;
         }
@@ -2606,7 +1964,7 @@ impl App for Terminal {
                     cx.copy(text);
                 }
             }
-            "paste" => cx.paste(window),
+            "paste" => self.paste(cx, window),
             "select-all" => {
                 use alacritty_terminal::{
                     index::{Column, Line, Point, Side},
@@ -2643,7 +2001,7 @@ impl App for Terminal {
                 t.tab().session.clear_history();
                 cx.redraw(window);
             }
-            olo_kit::tracker::COMMAND => open_in_tracker(t.tab()),
+            olo_kit_base::tracker::COMMAND => open_in_tracker(t.tab()),
             "bigger" | "smaller" | "default-size" => {
                 let cur = self.settings.text_size;
                 let next = match command {
@@ -2705,7 +2063,7 @@ impl App for Terminal {
                     self.close_tab_requested(cx, window, shell, "the tab's menu ▸ Close Tab");
                 } else if let Some(shell) = c.strip_prefix("tab-detach:").and_then(|n| n.parse().ok()) {
                     self.detach(cx, window, shell, false);
-                } else if let Some(shell) = c.strip_prefix(olo_kit::tracker::COMMAND).and_then(|n| n.strip_prefix(':')?.parse::<u64>().ok()) {
+                } else if let Some(shell) = c.strip_prefix(olo_kit_base::tracker::COMMAND).and_then(|n| n.strip_prefix(':')?.parse::<u64>().ok()) {
                     if let Some(tab) = t.position(shell).map(|i| &t.tabs[i]) {
                         open_in_tracker(tab);
                     }
@@ -2726,22 +2084,14 @@ impl App for Terminal {
         }
     }
 
-    fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
+    pub(crate) fn close_requested(&mut self, cx: &mut Cx, window: WindowId) {
         // The window's close box, or another program (app_server logs which).
         self.close_window_requested(cx, window, "app_server");
     }
 
-    fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
+    pub(crate) fn message(&mut self, cx: &mut Cx, message: Box<dyn std::any::Any + Send>) {
         let message = match message.downcast::<Launch>() {
             Ok(launch) => return self.handle_launch(cx, *launch),
-            Err(m) => m,
-        };
-        let message = match message.downcast::<Remember>() {
-            Ok(_) => {
-                self.expire_agent_titles(cx);
-                self.keep_agent_snapshot();
-                return self.remember(cx, false);
-            }
             Err(m) => m,
         };
         let message = match message.downcast::<AgentContext>() {
@@ -2798,6 +2148,7 @@ impl App for Terminal {
                 if showing {
                     cx.redraw(win);
                 }
+                self.retitle_soon(cx);
             }
             TermEvent::Title(title) => {
                 tab.session.title = title;
@@ -2825,16 +2176,11 @@ impl App for Terminal {
         }
     }
 
-    fn theme_changed(&mut self, cx: &mut Cx, palette: &Palette) {
-        self.follow(&Arc::new(palette.clone()));
-        cx.redraw_all();
-    }
-
-    fn save_state(&mut self, cx: &Cx) -> Option<String> {
+    pub(crate) fn save_state(&self, cx: &App) -> Option<String> {
         serde_json::to_string(&self.layout(cx)).ok()
     }
 
-    fn window_dropped(&mut self, cx: &mut Cx, window: WindowId, onto: WindowId, place: Option<usize>) {
+    pub(crate) fn window_dropped(&mut self, cx: &mut Cx, window: WindowId, onto: WindowId, place: Option<usize>) {
         if let Some(place) = place {
             self.merge(cx, window, onto, place);
         }
@@ -2843,7 +2189,7 @@ impl App for Terminal {
 
 impl Terminal {
     /// Each window's shells, in order, and where they are.
-    fn layout(&self, cx: &Cx) -> Saved {
+    fn layout(&self, cx: &App) -> Saved {
         let mut ids: Vec<WindowId> = self.windows.keys().copied().collect();
         ids.sort();
         let windows = ids
@@ -2858,7 +2204,7 @@ impl Terminal {
                         shell: tabs[active],
                         tabs,
                         active,
-                        size: cx.window_size(id).unwrap_or((640, 400)),
+                        size: ui::window_size(cx, id).unwrap_or((640, 400)),
                         group: None,
                         tiled: t.tiled,
                         tile_groups: t.tile_groups.clone(),
@@ -2950,7 +2296,7 @@ impl Terminal {
     /// group, folder and agent, kept for the hook when they change.
     fn keep_agent_snapshot(&mut self) {
         let Some((groups, titles)) = self.agent_context.filter(|(g, t)| *g || *t) else { return };
-        let display = olo_kit::display_name();
+        let display = olo_xdg::display_name();
         let tabs = self
             .windows
             .values()
@@ -2980,7 +2326,52 @@ impl Terminal {
         });
     }
 
-    fn remember(&mut self, cx: &Cx, now: bool) {
+    /// Something was typed: the titles are looked at again soon (and
+    /// the windows kept).
+    pub(crate) fn typed(&mut self, cx: &mut Cx) {
+        self.retitle_soon(cx);
+    }
+
+    /// The tabs' titles looked at again soon: once for a burst of output
+    /// or typing (a program started may write nothing; its name is the
+    /// title), not on a timer.
+    pub(crate) fn retitle_soon(&mut self, cx: &mut Cx) {
+        if std::mem::replace(&mut self.retitling, true) {
+            return;
+        }
+        cx.spawn(async move |me, cx| {
+            cx.background_executor().timer(RETITLE_AFTER).await;
+            let _ = me.update(cx, |t, cx| {
+                t.retitling = false;
+                let ids: Vec<WindowId> = t.windows.keys().copied().collect();
+                for id in ids {
+                    if let Some(Win::Term(w)) = t.windows.get_mut(&id) {
+                        retitle(cx, id, w);
+                    }
+                }
+                t.remember_soon(cx);
+            });
+        })
+        .detach();
+    }
+
+    /// The windows kept on disk soon: once for a burst of changes.
+    pub(crate) fn remember_soon(&mut self, cx: &mut Cx) {
+        if std::mem::replace(&mut self.remembering, true) {
+            return;
+        }
+        cx.spawn(async move |me, cx| {
+            cx.background_executor().timer(REMEMBER_AFTER).await;
+            let _ = me.update(cx, |t, cx| {
+                t.remembering = false;
+                t.keep_agent_snapshot();
+                t.remember(cx, false);
+            });
+        })
+        .detach();
+    }
+
+    fn remember(&mut self, cx: &App, now: bool) {
         if self.link.ended() {
             return;
         }
@@ -3011,7 +2402,7 @@ impl Terminal {
 
 fn main() {
     // A session or install from before the rename (Tabula) carries on.
-    olo_kit::legacy::adopt();
+    olo_xdg::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
     // A coding agent's hook (Preferences ▸ Terminal): what it's told.
     if args.first().map(String::as_str) == Some(agent_context::FLAG) {
@@ -3041,63 +2432,74 @@ fn main() {
             std::process::exit(1);
         }
     };
-    olo_kit::run(APP_ID, move |cx| {
-        instance::listen(APP_ID, cx.proxy());
-        sudo::listen(cx.proxy());
-        let mut t = Terminal {
-            link,
-            windows: HashMap::new(),
-            settings: Settings::load(),
-            metrics: None,
-            look: cx.palette().clone(),
-            search: find::Search::default(),
-            respawn: false,
-            front: None,
-            saved_groups: groups::load(),
-            agents: agent::Watcher::start(cx.proxy()),
-            git: git::Watcher::start(cx.proxy()),
-            worktrees: HashMap::new(),
-            branches: HashMap::new(),
-            prs: HashMap::new(),
-            worktrees_at: olo_protocol::TerminalSettings::default().worktrees,
-            notifier: Notifier::new(cx.proxy(), "Terminal", "olo-terminal"),
-            notes: HashMap::new(),
-            remembered: None,
-            agent_context: None,
-            agent_snapshot: None,
-            sudo_approved: HashMap::new(),
-        };
-        t.follow(&cx.palette().clone());
-        sudo::WINDOW_FOR_TYPED.store(t.settings.sudo_window, std::sync::atomic::Ordering::Relaxed);
-        let state = cx.restored_state();
-        let saved = state.as_deref().and_then(|s| serde_json::from_str::<Saved>(s).ok());
-        let legacy = state.as_deref().filter(|_| saved.is_none()).and_then(|s| serde_json::from_str::<Legacy>(s).ok());
-        let adopted = legacy.is_some_and(|l| t.adopt(cx, l));
-        // Not an upgrade: the windows as they were when Terminal last
-        // quit (or the session ended), shells that have gone restored.
-        let fresh = state.is_none();
-        let saved = saved.or_else(|| fresh.then(remembered).flatten());
-        let reattached = t.reattach(cx, shells, saved.as_ref(), fresh) || adopted;
-        let proxy = cx.proxy();
-        olo_kit::settings::watch(move |s| {
+    olo_ui::run(APP_ID, move |cx| {
+        ui::bind_keys(cx);
+        sudo::listen(olo_ui::proxy(cx));
+        let proxy = olo_ui::proxy(cx);
+        let look = olo_ui::theme::palette(cx);
+        let state = olo_ui::restored_state();
+        let term = cx.new(|cx: &mut Cx| {
+            let mut t = Terminal {
+                link,
+                windows: HashMap::new(),
+                settings: Settings::load(),
+                metrics: None,
+                look: look.clone(),
+                search: find::Search::default(),
+                respawn: false,
+                front: None,
+                saved_groups: groups::load(),
+                agents: agent::Watcher::start(proxy.clone()),
+                git: git::Watcher::start(proxy.clone()),
+                worktrees: HashMap::new(),
+                branches: HashMap::new(),
+                prs: HashMap::new(),
+                worktrees_at: olo_protocol::TerminalSettings::default().worktrees,
+                notifier: Notifier::new(proxy.clone(), "Terminal", "olo-terminal"),
+                notes: HashMap::new(),
+                remembered: None,
+                remembering: false,
+                retitling: false,
+                agent_context: None,
+                agent_snapshot: None,
+                sudo_approved: HashMap::new(),
+            };
+            t.follow(&look);
+            sudo::WINDOW_FOR_TYPED.store(t.settings.sudo_window, std::sync::atomic::Ordering::Relaxed);
+            let saved = state.as_deref().and_then(|s| serde_json::from_str::<Saved>(s).ok());
+            let legacy = state.as_deref().filter(|_| saved.is_none()).and_then(|s| serde_json::from_str::<Legacy>(s).ok());
+            let adopted = legacy.is_some_and(|l| t.adopt(cx, l));
+            // Not an upgrade: the windows as they were when Terminal last
+            // quit (or the session ended), shells that have gone restored.
+            let fresh = state.is_none();
+            let saved = saved.or_else(|| fresh.then(remembered).flatten());
+            let reattached = t.reattach(cx, shells, saved.as_ref(), fresh) || adopted;
+            // Agents' titles back from before: let go if their agents
+            // aren't seen again soon.
+            cx.spawn(async move |me, cx| {
+                cx.background_executor().timer(AGENT_SEEN_WITHIN).await;
+                let _ = me.update(cx, |t, cx| t.expire_agent_titles(cx));
+            })
+            .detach();
+            // Asked for a new window (or there's nothing to show): open one.
+            if !reattached || (state.is_none() && !args.is_empty()) {
+                t.handle_launch(cx, Launch { args, cwd: std::env::current_dir().ok() });
+            }
+            t
+        });
+        let t = term.clone();
+        olo_ui::message_handler(cx, move |message, cx| t.update(cx, |t, cx| t.message(cx, message)));
+        let t = term.clone();
+        olo_ui::on_upgrade(cx, move |cx| t.read(cx).save_state(cx));
+        let t = term.downgrade();
+        widgets::strip::on_window_dropped(cx, move |window, onto, place, cx| {
+            let (Some(window), Some(onto)) = (ui::window_of(cx, window), ui::window_of(cx, onto)) else { return };
+            let _ = t.update(cx, |t, cx| t.window_dropped(cx, window, onto, Some(place)));
+        });
+        olo_kit_base::settings::watch(move |s| {
             proxy.send(AgentContext { groups: s.terminal.agent_context, titles: s.terminal.agent_titles });
             proxy.send(repos::WorktreesAt(s.terminal.worktrees));
         });
-        let proxy = cx.proxy();
-        std::thread::Builder::new()
-            .name("remember".into())
-            .spawn(move || {
-                loop {
-                    std::thread::sleep(REMEMBER_EVERY);
-                    proxy.send(Remember);
-                }
-            })
-            .expect("remember thread");
-        // Asked for a new window (or there's nothing to show): open one.
-        if !reattached || (state.is_none() && !args.is_empty()) {
-            t.handle_launch(cx, Launch { args, cwd: std::env::current_dir().ok() });
-        }
-        t
     });
 }
 
@@ -3148,57 +2550,5 @@ mod settings_tests {
         assert_eq!(colors(&s), (Some("frappe"), Some("beos-dark")));
         let round = Settings::parse(&serde_json::to_string(&s).unwrap());
         assert_eq!((round.scheme, colors(&round)), (s.scheme, colors(&s)));
-    }
-}
-
-#[cfg(test)]
-mod tile_tests {
-    use olo_kit::egui::{Rect, pos2};
-
-    #[test]
-    fn a_row_for_each_group() {
-        // Two rows (three tabs, then two) in 300 × 201 at 1×: rows a line
-        // apart sharing the height, each row's panes its width.
-        let area = Rect::from_min_max(pos2(0.0, 0.0), pos2(300.0, 201.0));
-        let panes = super::tile_in_rows(area, &[3, 2], &[1.0, 1.0], 0.0, 1.0);
-        assert_eq!(panes.len(), 5);
-        assert!(panes[..3].iter().all(|p| p.top() == 0.0 && p.bottom() == panes[0].bottom()));
-        assert!(panes[3..].iter().all(|p| p.bottom() == 201.0 && p.top() > panes[0].bottom()));
-        assert_eq!((panes[0].left(), panes[2].right(), panes[3].left(), panes[4].right()), (0.0, 300.0, 0.0, 300.0));
-        // Panes side by side don't overlap, a line between them.
-        assert!(panes[0].right() < panes[1].left() && panes[3].right() < panes[4].left());
-        // Every edge on a device pixel at 1.5×.
-        for p in super::tile_in_rows(area, &[3, 2, 1], &[1.0, 2.5, 0.7], 30.0, 1.5) {
-            for v in [p.left(), p.top(), p.right(), p.bottom()] {
-                assert!((v * 1.5 - (v * 1.5).round()).abs() < 1e-3, "{v}");
-            }
-        }
-    }
-
-    #[test]
-    fn rows_dragged() {
-        let area = Rect::from_min_max(pos2(0.0, 0.0), pos2(300.0, 401.0));
-        let h = |s: &[(f32, f32)], i: usize| s[i].1 - s[i].0;
-        // Even at first: a line between rows.
-        let even = super::row_spans(area, &[1.0, 1.0], 40.0, 1.0);
-        assert_eq!(even, vec![(0.0, 200.0), (201.0, 401.0)]);
-        // The divider dragged down 50: the first row 50 taller.
-        let w = super::drag_rows(&[1.0, 1.0], &even, 1, 50.0, 40.0);
-        let spans = super::row_spans(area, &w, 40.0, 1.0);
-        assert!((h(&spans, 0) - 250.0).abs() <= 1.0, "{spans:?}");
-        assert_eq!(spans[1].1, 401.0);
-        // Dragged right down: the second keeps its least.
-        let w = super::drag_rows(&w, &spans, 1, 1000.0, 40.0);
-        let spans = super::row_spans(area, &w, 40.0, 1.0);
-        assert!((h(&spans, 1) - 40.0).abs() <= 1.0, "{spans:?}");
-        // Three rows: dragging between the last two leaves the first.
-        let three = super::row_spans(area, &[1.0, 1.0, 1.0], 40.0, 1.0);
-        let w = super::drag_rows(&[1.0, 1.0, 1.0], &three, 2, -30.0, 40.0);
-        let after = super::row_spans(area, &w, 40.0, 1.0);
-        assert_eq!(after[0], three[0]);
-        assert!(h(&after, 1) < h(&three, 1) && h(&after, 2) > h(&three, 2));
-        // Too small for every row's least: shared by weight alone.
-        let tiny = super::row_spans(Rect::from_min_max(pos2(0.0, 0.0), pos2(300.0, 60.0)), &[1.0, 1.0], 40.0, 1.0);
-        assert_eq!(tiny.len(), 2);
     }
 }

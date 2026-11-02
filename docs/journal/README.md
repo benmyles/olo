@@ -3,6 +3,26 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-02
+
+### Terminal's Tile All Tabs heads
+
+*01:07* — In Tile All Tabs each pane's head is on the strip's quiet band, with its group's chip at the right instead of a tint and a coloured line. The pane you type in has its title in full ink and medium weight, like the strip's selected tab. Icon, title and chip are centred on the band to the device pixel at every scale.
+
+![Terminal's Tile All Tabs heads](2026-11-02/010722-terminal-s-tile-all-tabs-heads.png)
+
+### Terminal's tabs in light mode
+
+*01:07* — The same strip in light mode: a white plate on the quiet band, each group's capsule at 16% of its colour (22% in the dark).
+
+![Terminal's tabs in light mode](2026-11-02/010720-terminal-s-tabs-in-light-mode.png)
+
+### Terminal's tabs, redesigned
+
+*01:07* — Terminal on GPUI with a new tab strip (olo-ui's TabStrip): everything sits inside the band. Tabs are their titles; the selected one is on a raised plate lit from above (a touch lighter at the top, its rim's top edge lit and tapering into the corners, a soft shadow), as BeOS lit its controls. A group is a capsule of its colour around its chip and tabs, with corners concentric with the plates inside. No lines, and nothing rises above the strip. Each tab is as wide as its title needs.
+
+![Terminal's tabs, redesigned](2026-11-02/010713-terminal-s-tabs-redesigned.png)
+
 ## 2026-11-01
 
 ### Preferences on GPUI

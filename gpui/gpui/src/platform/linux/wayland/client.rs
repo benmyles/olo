@@ -1918,6 +1918,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandClientStatePtr {
                 let keyboard_focused_window = get_window(&mut state, &surface.id());
                 state.keyboard_focused_window = None;
                 state.enter_token.take();
+                crate::platform::RIGHT_CONTROL.store(false, std::sync::atomic::Ordering::Relaxed);
                 // Prevent keyboard events from repeating after opening e.g. a file chooser and closing it quickly
                 state.repeat.current_id += 1;
 
@@ -1978,6 +1979,10 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandClientStatePtr {
                 let keymap_state = state.keymap_state.as_ref().unwrap();
                 let keycode = Keycode::from(key + MIN_KEYCODE);
                 let keysym = keymap_state.key_get_one_sym(keycode);
+                // (KEY_RIGHTCTRL: app_server's ⌘.)
+                if key == 97 {
+                    crate::platform::RIGHT_CONTROL.store(key_state == wl_keyboard::KeyState::Pressed, std::sync::atomic::Ordering::Relaxed);
+                }
 
                 match key_state {
                     wl_keyboard::KeyState::Pressed if !keysym.is_modifier_key() => {

@@ -7,7 +7,6 @@ use alacritty_terminal::{
     term::color::Colors,
     vte::ansi::{Color, NamedColor, Rgb},
 };
-use olo_kit::egui::Color32;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scheme {
@@ -20,12 +19,12 @@ pub struct Scheme {
     pub ansi: [Rgb; 16],
 }
 
-fn rgb([r, g, b, _]: olo_kit::theme::Rgba) -> Rgb {
+fn rgb([r, g, b, _]: olo_theme::Rgba) -> Rgb {
     Rgb { r, g, b }
 }
 
-impl From<&olo_kit::theme::Terminal> for Scheme {
-    fn from(t: &olo_kit::theme::Terminal) -> Scheme {
+impl From<&olo_theme::Terminal> for Scheme {
+    fn from(t: &olo_theme::Terminal) -> Scheme {
         Scheme {
             name: t.name.clone(),
             foreground: rgb(t.foreground),
@@ -42,7 +41,7 @@ impl Scheme {
     /// has said otherwise.
     #[allow(dead_code, reason = "olo-termd's (olo-terminal starts from the look)")]
     pub fn light() -> Scheme {
-        Scheme::from(&olo_kit::theme::Palette::light().terminal)
+        Scheme::from(&olo_theme::Palette::light().terminal)
     }
 
     /// The colour `index` of the 256-colour palette.
@@ -93,17 +92,13 @@ pub fn mix(a: Rgb, b: Rgb, t: f32) -> Rgb {
     Rgb { r: m(a.r, b.r), g: m(a.g, b.g), b: m(a.b, b.b) }
 }
 
-pub fn c32(c: Rgb) -> Color32 {
-    Color32::from_rgb(c.r, c.g, c.b)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn from_the_look() {
-        let t = olo_kit::theme::looks::terminal("mocha").unwrap();
+        let t = olo_theme::looks::terminal("mocha").unwrap();
         let s = Scheme::from(&t);
         assert_eq!((s.name.as_str(), s.background, s.ansi[1]), ("Catppuccin Mocha", Rgb { r: 0x1e, g: 0x1e, b: 0x2e }, Rgb { r: 0xf3, g: 0x8b, b: 0xa8 }));
         assert_eq!(Scheme::light().background, Rgb { r: 0xfb, g: 0xfa, b: 0xf6 });

@@ -743,6 +743,15 @@ impl Dropped {
     }
 }
 
+/// Olo: whether the right Ctrl is held: app_server's command key (⌘),
+/// which it sends as the right one (either Ctrl and Caps Lock are the
+/// left), so a terminal can tell ⌘ from the program's Ctrl.
+pub fn right_control_held() -> bool {
+    RIGHT_CONTROL.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+pub(crate) static RIGHT_CONTROL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// Olo: the path a `file://` URI names (its host, if any, left out; its
 /// %-escapes undone).
 pub fn file_uri_path(uri: &str) -> Option<std::path::PathBuf> {
@@ -1379,6 +1388,10 @@ pub struct WindowOptions {
     /// Window minimum size
     pub window_min_size: Option<Size<Pixels>>,
 
+    /// Olo: its largest size (0 for a side it may grow along freely);
+    /// one no larger than its smallest along a side is fixed along it.
+    pub window_max_size: Option<Size<Pixels>>,
+
     /// Whether to use client or server side decorations. Wayland only
     /// Note that this may be ignored.
     pub window_decorations: Option<WindowDecorations>,
@@ -1452,6 +1465,7 @@ pub(crate) struct WindowParams {
     pub decorations: WindowDecorations,
 
     pub window_min_size: Option<Size<Pixels>>,
+    pub window_max_size: Option<Size<Pixels>>,
     #[cfg(target_os = "macos")]
     pub tabbing_identifier: Option<String>,
 }
@@ -1515,6 +1529,7 @@ impl Default for WindowOptions {
             foreign_parent: None,
             session_lock_output: None,
             window_min_size: None,
+            window_max_size: None,
             window_decorations: None,
             tabbing_identifier: None,
         }

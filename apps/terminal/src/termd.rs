@@ -73,6 +73,10 @@ const KEEP_EVERY: Duration = Duration::from_secs(60);
 /// Kept shells no Terminal took back are forgotten after this.
 const KEPT_FOR: Duration = Duration::from_secs(30 * 24 * 3600);
 
+/// A shell has printed since shells were last kept: only then is there a
+/// keep to wake for (idle, olo-termd sleeps until something happens).
+static PRINTED: AtomicBool = AtomicBool::new(false);
+
 fn log(message: impl std::fmt::Display) {
     eprintln!("olo-termd: {message}");
 }
@@ -221,6 +225,11 @@ enum Ev {
     Restart,
     /// The session ended, or we were told to stop.
     End,
+    /// A shell printed, the first since shells were last kept.
+    Printed,
+    /// Our socket's folder changed (the socket deleted or replaced, the
+    /// folder gone).
+    Socket,
 }
 
 struct State {
@@ -345,6 +354,9 @@ fn spawn_reader(
                     }
                 };
                 output.fetch_add(1, Ordering::Relaxed);
+                if !PRINTED.swap(true, Ordering::AcqRel) {
+                    let _ = events.send(Ev::Printed);
+                }
                 // Images are kept only to send on, so compressed (not
                 // holding the screen up meanwhile).
                 shared.images.lock().unwrap().pack();
@@ -493,7 +505,7 @@ fn handle(st: &St, conn: u64, f: Frame) {
             let cwd = spawn.cwd.filter(|d| d.is_dir()).or(home);
             // The shell it stands in for: its lines, then when they're from.
             let before = spawn.restore.and_then(take_kept).map(|(mut lines, when)| {
-                let when = olo_kit::files::format_time(Some(when));
+                let when = olo_kit_base::files::format_time(Some(when));
                 lines.extend_from_slice(format!("\x1b[2mRestored from {when}\x1b[0m\r\n").as_bytes());
                 lines
             });
@@ -643,21 +655,30 @@ fn watch(events: mpsc::Sender<Ev>) {
             })
     };
     let mut session = find_session();
+    // Not there yet (or no session, under a test's app_server): the pid
+    // file coming wakes us through the pipe (a 0, no signal's number), to
+    // look again.
+    let pid_file = (session.is_none()).then(|| {
+        olo_kit_base::watch::watch([wire::session_pid_path()], |_| {
+            let fd = SIGNALS.load(Ordering::Relaxed);
+            if fd >= 0 {
+                // SAFETY: writing a byte to our own pipe.
+                unsafe { libc::write(fd, [0u8].as_ptr().cast(), 1) };
+            }
+        })
+    });
     std::thread::Builder::new()
         .name("signals".into())
         .spawn(move || {
+            let mut pid_file = pid_file.flatten();
             loop {
                 let mut pfds = vec![libc::pollfd { fd: signals.as_raw_fd(), events: libc::POLLIN, revents: 0 }];
                 if let Some(s) = &session {
                     pfds.push(libc::pollfd { fd: s.as_raw_fd(), events: libc::POLLIN, revents: 0 });
                 }
-                let timeout = if session.is_some() { -1 } else { 2000 };
                 // SAFETY: polling our own descriptors.
-                let n = unsafe { libc::poll(pfds.as_mut_ptr(), pfds.len() as _, timeout) };
+                let n = unsafe { libc::poll(pfds.as_mut_ptr(), pfds.len() as _, -1) };
                 if n <= 0 {
-                    if session.is_none() {
-                        session = find_session();
-                    }
                     continue;
                 }
                 if pfds.get(1).is_some_and(|p| p.revents != 0) {
@@ -668,6 +689,16 @@ fn watch(events: mpsc::Sender<Ev>) {
                 let mut sig = [0u8; 1];
                 // SAFETY: reading the pipe we made.
                 if unsafe { libc::read(signals.as_raw_fd(), sig.as_mut_ptr().cast(), 1) } == 1 {
+                    if sig[0] == 0 {
+                        if session.is_none() {
+                            session = find_session();
+                        }
+                        if session.is_some() {
+                            // (Found: no more to watch for.)
+                            drop(pid_file.take());
+                        }
+                        continue;
+                    }
                     let _ = events.send(if sig[0] as i32 == libc::SIGURG { Ev::Upgrade } else { Ev::End });
                 }
             }
@@ -726,7 +757,7 @@ fn upgrade(st: &St, binary: &Binary, listener: &UnixListener, lock: &File) {
     }
     log(format!("upgraded: re-executing with {} shells", carried.shells.len()));
     let mut cmd = std::process::Command::new(&binary.path);
-    olo_kit::upgrade_env(&mut cmd);
+    olo_xdg::upgrade_env(&mut cmd);
     let e = cmd.env(RESTORE_ENV, &file).exec();
     log(format!("could not re-execute: {e}"));
     for &fd in &fds {
@@ -763,6 +794,8 @@ fn session_alive() -> bool {
 /// of its own (`busy` while it does).
 fn keep_changed(st: &St, busy: &Arc<AtomicBool>) {
     let mut s = st.lock().unwrap();
+    // (Before looking: what prints from now on is for the next keep.)
+    PRINTED.store(false, Ordering::Release);
     let changed: Vec<_> = s
         .shells
         .iter_mut()
@@ -821,12 +854,29 @@ fn run(st: St, events: mpsc::Receiver<Ev>, mut listener: UnixListener, lock: Fil
     let mut kept_at = Instant::now();
     let keeping = Arc::new(AtomicBool::new(false));
     forget_old_kept();
+    // The socket deleted or replaced, or its folder gone: from the
+    // kernel, not by looking on a timer.
+    let socket_events = st.lock().unwrap().events.clone();
+    let _watch = olo_kit_base::watch::watch([path.clone()], move |_| {
+        let _ = socket_events.send(Ev::Socket);
+    });
     loop {
-        if kept_at.elapsed() >= KEEP_EVERY && !keeping.load(Ordering::Acquire) {
+        let printed = PRINTED.load(Ordering::Acquire);
+        if printed && kept_at.elapsed() >= KEEP_EVERY {
+            // (Still keeping the last time: next time round.)
             kept_at = Instant::now();
-            keep_changed(&st, &keeping);
+            if !keeping.load(Ordering::Acquire) {
+                keep_changed(&st, &keeping);
+            }
         }
-        match events.recv_timeout(Duration::from_millis(500)) {
+        // Asleep until something happens or is due: a keep (once a shell
+        // has printed), a Terminal to start again, the linger's end.
+        let due = [PRINTED.load(Ordering::Acquire).then(|| kept_at + KEEP_EVERY), relaunch_at, idle_since.map(|t| t + LINGER)].into_iter().flatten().min();
+        let event = match due {
+            Some(t) => events.recv_timeout(t.saturating_duration_since(Instant::now())),
+            None => events.recv().map_err(|_| mpsc::RecvTimeoutError::Disconnected),
+        };
+        match event {
             Ok(Ev::Exited(id)) => {
                 st.lock().unwrap().shells.remove(&id);
                 // It ended on its own: nothing to bring back.
@@ -873,7 +923,7 @@ fn run(st: St, events: mpsc::Receiver<Ev>, mut listener: UnixListener, lock: Fil
                 }
                 std::process::exit(0);
             }
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Ok(Ev::Printed | Ev::Socket) | Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => unreachable!("we hold a sender"),
         }
         if ours.is_none() || ino(&path) != ours {
@@ -977,7 +1027,7 @@ fn daemonize() -> OwnedFd {
 
 fn main() {
     // A session or install from before the rename (Tabula) carries on.
-    olo_kit::legacy::adopt();
+    olo_xdg::legacy::adopt();
     let carried: Option<Carried> = std::env::var_os(RESTORE_ENV).and_then(|path| {
         let text = std::fs::read(&path).ok();
         let _ = std::fs::remove_file(&path);

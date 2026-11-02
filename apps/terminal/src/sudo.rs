@@ -15,20 +15,21 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use olo_kit::{
-    Proxy,
-    egui::{self, Align, Rect, pos2, vec2},
+use olo_kit_base::Proxy;
+use olo_ui::{
+    gpui::{AnyElement, App, Entity, FocusHandle, InteractiveElement as _, IntoElement, ParentElement as _, Styled as _, Window, div, px},
     metrics as m,
-    style::{self, c},
-    tip::Tip,
-    widgets::{self, Conversation},
+    style,
+    widgets::{self, Button, Conversation, ConversationField, TextField, TextFieldEvent},
 };
 
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::{
+    Terminal, Win,
     agent::Agent,
     sudo_wire::{self, Ask, Reply},
+    ui::{Cx, WinOps as _, WindowId},
     wire,
 };
 
@@ -42,7 +43,7 @@ const COMMAND_ROWS: usize = 3;
 const PAD: f32 = 4.0;
 /// Text column: the alert's width less its stripe, icon and margins.
 const COLUMN: f32 = WIDTH as f32 - widgets::ALERT_TEXT_X - m::WINDOW_INSET;
-const LINE: f32 = style::PLAIN_SIZE + 4.0;
+const LINE: f32 = style::PLAIN_SIZE * style::LINE_HEIGHT;
 
 /// Where olo-sudo finds us (one per display).
 pub fn socket_path() -> PathBuf {
@@ -224,6 +225,8 @@ pub struct Request {
     /// As typed: `sudo …`.
     command: String,
     pub conv: Conversation,
+    /// Where the person types the answer (once its window is open).
+    field: Option<Entity<TextField>>,
     /// Approved without asking: the password is given at sudo's prompt
     /// (once: should it be asked again, a window asks the person).
     pub approval: Option<Approval>,
@@ -247,7 +250,7 @@ pub enum Choice {
 impl Request {
     pub fn new(conn: u64, stream: UnixStream, args: &[String], who: Option<Agent>, tab: Option<String>) -> Request {
         let command = std::iter::once("sudo".to_owned()).chain(args.iter().map(|a| crate::shell_quote(a))).collect::<Vec<_>>().join(" ");
-        Request { conn, stream, who, tab, command, conv: Conversation::default(), approval: None, answered: false }
+        Request { conn, stream, who, tab, command, conv: Conversation::default(), field: None, approval: None, answered: false }
     }
 
     /// Who asked for what, for the log and the notification.
@@ -291,12 +294,34 @@ impl Request {
     }
 
     /// The window's height for its message and command.
-    pub fn height(&self) -> u32 {
-        let message = style::plain_text_height(&self.message(), COLUMN);
+    pub fn height(&self, cx: &App) -> u32 {
+        let message = widgets::paragraph_height(cx, &self.message(), COLUMN);
         // Monospaced, so its rows go by the count of characters.
         let command = (self.command.chars().count() as f32 * 7.3 / (COLUMN - 2.0 * PAD)).ceil().clamp(1.0, COMMAND_ROWS as f32);
         let fixed = 2.0 * m::WINDOW_INSET + m::LABEL_ROW + 2.0 * m::TIGHT + 2.0 * PAD + 3.0 * m::SPACING + 2.0 * m::CONTROL_HEIGHT + m::LABEL_ROW;
         (fixed + message + command * LINE).ceil() as u32
+    }
+
+    /// Its answer field, for window `id` (Return in it answers), with the
+    /// keyboard.
+    pub fn focus_field(&mut self, cx: &mut Cx, id: WindowId) {
+        let field = widgets::text_field(cx, |f| f.password(true));
+        cx.subscribe(&field, move |t: &mut Terminal, _, e: &TextFieldEvent, cx| match e {
+            TextFieldEvent::Entered => t.sudo_choice(cx, id, Choice::Authenticate),
+            TextFieldEvent::Changed => cx.redraw(id),
+            TextFieldEvent::Typed(_) => {}
+        })
+        .detach();
+        let f = field.clone();
+        cx.with_window(id, move |_, window, cx| f.read(cx).focus(window));
+        self.field = Some(field);
+    }
+
+    /// Forgets what was typed.
+    pub fn clear(&mut self, cx: &mut App) {
+        if let Some(f) = &self.field {
+            f.update(cx, |f, cx| f.clear_secret(cx));
+        }
     }
 
     pub fn reply(&mut self, r: &Reply) {
@@ -306,8 +331,13 @@ impl Request {
     }
 
     /// Send the answer typed.
-    pub fn answer(&mut self) {
-        let mut r = Reply::Answer(std::mem::take(&mut self.conv.answer));
+    pub fn answer(&mut self, cx: &mut App) {
+        if !self.conv.ready() {
+            return;
+        }
+        let typed = self.field.as_ref().map(|f| f.read(cx).text().to_owned()).unwrap_or_default();
+        self.clear(cx);
+        let mut r = Reply::Answer(typed);
         self.reply(&r);
         if let Reply::Answer(a) = &mut r {
             // SAFETY: zero bytes keep the string valid UTF-8.
@@ -345,53 +375,49 @@ impl Request {
         }
     }
 
-    pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<Choice> {
-        let p = style::palette(ui.ctx());
-        let col = widgets::alert_frame(ui, ICON);
-        let painter = ui.painter().clone();
-        let mut y = col.top();
-        style::label(&painter, col.left(), y + style::PLAIN_SIZE / 2.0 + 2.0, Align::Min, "Authentication Required", style::bold_font(), c(p.panel_text));
-        y += m::LABEL_ROW + m::TIGHT;
+}
 
-        let message = self.message();
-        let mut job = egui::text::LayoutJob::single_section(message.clone(), egui::TextFormat::simple(style::plain_font(), c(p.panel_text)));
-        job.wrap.max_width = col.width();
-        let g = painter.layout_job(job);
-        let pos = style::text_origin(ui.ctx(), &g, col.left(), y + style::PLAIN_SIZE / 2.0 + 2.0, style::PLAIN_SIZE);
-        let r = Rect::from_min_size(pos, g.size());
-        painter.galley(pos, g, c(p.panel_text));
-        style::describe_text(ui.ctx(), egui::accesskit::Role::Label, &message, r, None);
-        y = r.bottom() + m::TIGHT;
-
-        // The command, as typed, in a box of its own.
-        let mut job = egui::text::LayoutJob::single_section(self.command.clone(), egui::TextFormat::simple(style::mono_font(style::PLAIN_SIZE), c(p.document_text)));
-        job.wrap = egui::text::TextWrapping { max_width: col.width() - 2.0 * PAD, max_rows: COMMAND_ROWS, break_anywhere: true, overflow_character: Some('…') };
-        let g = painter.layout_job(job);
-        let cut = g.elided;
-        let field = Rect::from_min_size(pos2(col.left(), y), vec2(col.width(), g.size().y + 2.0 * PAD));
-        painter.rect_filled(field.shrink(1.0), 0.0, c(p.document_background));
-        style::sunken(&painter, field, &p, false);
-        painter.galley(field.min + vec2(PAD, PAD), g, c(p.document_text));
-        style::describe_text(ui.ctx(), egui::accesskit::Role::Label, &self.command, field, None);
-        if cut {
-            // In a popup of its own: the whole command is wider than the
-            // window, and egui's tip would be cut at its edge.
-            ui.interact(field, ui.scope_id().with("command"), egui::Sense::hover()).tip(&self.command);
-        }
-        y = field.bottom() + m::SPACING;
-
-        let form = Rect::from_min_max(pos2(col.left(), y), pos2(col.right(), col.bottom() - m::CONTROL_HEIGHT - m::SPACING));
-        let mut submit = false;
-        ui.scope_builder(egui::UiBuilder::new().max_rect(form).layout(egui::Layout::top_down(Align::Min)), |ui| {
-            ui.spacing_mut().item_spacing.y = m::SPACING;
-            submit = widgets::conversation(ui, &mut self.conv, DIVIDER, form.width());
-        });
-        match widgets::alert_buttons(ui, col, &["Cancel", "Authenticate"], self.conv.can_submit()) {
-            Some(0) => return Some(Choice::Cancel),
-            Some(_) => submit = true,
-            None => {}
-        }
-        (submit && self.conv.can_submit()).then_some(Choice::Authenticate)
+impl Terminal {
+    /// sudo's password window: who asks, the command, sudo's conversation.
+    pub(crate) fn render_sudo(&mut self, id: WindowId, focus: FocusHandle, _: &mut Window, cx: &mut Cx) -> AnyElement {
+        let Some(Win::Sudo(r)) = self.windows.get(&id) else { return div().into_any_element() };
+        let Some(field) = r.field.clone() else { return div().into_any_element() };
+        let ready = r.conv.ready();
+        field.update(cx, |f, cx| f.set_enabled(ready, cx));
+        let p = olo_ui::theme::palette(cx);
+        let command = div()
+            .w_full()
+            .p(px(PAD))
+            .bg(style::c(p.document_background))
+            .border_1()
+            .border_color(style::shade(&p, p.panel_background, 1.3))
+            .font(style::mono_font(olo_ui::gpui::FontWeight::NORMAL))
+            .text_color(style::c(p.document_text))
+            .line_clamp(COMMAND_ROWS)
+            .child(r.command.clone());
+        let cancel = cx.listener(move |t, _: &(), _, cx| t.sudo_choice(cx, id, Choice::Cancel));
+        let go = cx.listener(move |t, _: &(), _, cx| t.sudo_choice(cx, id, Choice::Authenticate));
+        let row = widgets::button_row()
+            .child(Button::new("Cancel").on_click(move |window, cx| cancel(&(), window, cx)))
+            .child(Button::new("Authenticate").default(true).enabled(ready).on_click(move |window, cx| go(&(), window, cx)));
+        div()
+            .size_full()
+            .key_context(widgets::alert::CONTEXT)
+            .track_focus(&focus)
+            .on_action(cx.listener(move |t, _: &widgets::alert::Cancel, _, cx| t.sudo_choice(cx, id, Choice::Cancel)))
+            .child(
+                widgets::AlertFrame::new(ICON)
+                    .child(widgets::alert_title("Authentication Required"))
+                    .child(div().h(px(m::TIGHT)))
+                    .child(widgets::paragraph(r.message()))
+                    .child(div().h(px(m::TIGHT)))
+                    .child(command)
+                    .child(div().h(px(m::SPACING)))
+                    .child(ConversationField::new(&r.conv, field, DIVIDER))
+                    .child(div().flex_1())
+                    .child(row),
+            )
+            .into_any_element()
     }
 }
 

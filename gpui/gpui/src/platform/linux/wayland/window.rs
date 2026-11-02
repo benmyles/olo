@@ -615,6 +615,9 @@ impl WaylandWindow {
                 if let Some(size) = params.window_min_size {
                     toplevel.set_min_size(size.width.0 as i32, size.height.0 as i32);
                 }
+                if let Some(size) = params.window_max_size {
+                    toplevel.set_max_size(size.width.0 as i32, size.height.0 as i32);
+                }
                 // Olo: a window of fixed size (an alert) is never resized.
                 if !params.is_resizable {
                     let (w, h) = (params.bounds.size.width.0 as i32, params.bounds.size.height.0 as i32);

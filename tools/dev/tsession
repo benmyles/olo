@@ -165,6 +165,9 @@ def start(name, args):
     json.dump(cfg, open(os.path.join(d, "config", "olo", "app_server.json"), "w"))
     subprocess.run(["chown", "-R", f"{OWNER.pw_uid}:{OWNER.pw_gid}", d]) if os.getuid() == 0 else None
     env = dict(os.environ, XDG_RUNTIME_DIR=RUNTIME, XDG_CONFIG_HOME=os.path.join(d, "config"), RUST_LOG=os.environ.get("RUST_LOG", "info"))
+    # A lock-order cycle (olo-sync, debug builds) is reported with the
+    # stacks of both orders only when backtraces are captured.
+    env.setdefault("RUST_LIB_BACKTRACE", "1")
     open(os.path.join(d, "no-sound"), "a").close()
     env["PULSE_SERVER"] = "unix:" + os.path.join(d, "no-sound")
     # Passwords keeps its vault key in the session, never in the real
@@ -236,6 +239,20 @@ def display_pids(display, exe=None):
             pids.append(int(os.path.basename(proc)))
     return pids
 
+def session_pids(e):
+    """Whatever still runs in session `e`, by its own config dir (each
+    test session's is its own, so the person's session never matches):
+    a client started and forgotten, or one that left its group."""
+    pids = []
+    for proc in glob.glob("/proc/[0-9]*"):
+        try:
+            env = dict(v.split("=", 1) for v in open(os.path.join(proc, "environ")).read().split("\0") if "=" in v)
+        except OSError:
+            continue
+        if env.get("WAYLAND_DISPLAY") == e["WAYLAND_DISPLAY"] and env.get("XDG_CONFIG_HOME") == e.get("XDG_CONFIG_HOME", "-"):
+            pids.append(int(os.path.basename(proc)))
+    return [p for p in pids if p not in (os.getpid(), os.getppid())]
+
 def termd_pids(display):
     """olo-termd for `display` (one per display, started by Terminal in a
     session of its own, so killing the session's group misses it)."""
@@ -253,6 +270,13 @@ def stop(name):
             for pid in termd_pids(e["WAYLAND_DISPLAY"]):
                 os.kill(pid, signal.SIGTERM)
         os.killpg(e["pid"], signal.SIGTERM)
+        # And whatever of it is left (a Terminal started and forgotten
+        # would start its olo-termd again, with the shells it kept).
+        for pid in session_pids(e):
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
     except (FileNotFoundError, ProcessLookupError, PermissionError, KeyError):
         pass
     for f in glob.glob(os.path.join(d, "*.pid")):
@@ -280,6 +304,7 @@ def run(name, cmd):
     if not any(a.startswith("HISTFILE=") for a in assigns):
         assigns.append(f"HISTFILE={os.path.join(sdir(name), 'bash_history')}")
     env = dict(os.environ, **{k: v for k, v in e.items() if k not in ("pid", "sockets")}, RUST_LOG=os.environ.get("RUST_LOG", "warn"))
+    env.setdefault("RUST_LIB_BACKTRACE", "1")
     # Headless sessions are silent: point the sound server at a plain file
     # (connecting fails) rather than the user's real speakers.
     mute = os.path.join(sdir(name), "no-sound")

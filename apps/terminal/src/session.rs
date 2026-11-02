@@ -17,7 +17,7 @@ use alacritty_terminal::{
     sync::FairMutex,
     term::{Config, Term},
 };
-use olo_kit::Proxy;
+use olo_kit_base::Proxy;
 
 use crate::{
     client::{Chunk, Link, Writer},
@@ -114,9 +114,6 @@ pub struct Session {
     pending: Arc<AtomicBool>,
     proxy: Proxy,
     reflow: Arc<Reflow>,
-    /// The last frame drawn (view.rs), for the frames while the screen
-    /// is being reflowed.
-    pub last_frame: Option<crate::view::Frame>,
     pub shared: Arc<io::Shared>,
     pub size: Size,
     cell: (u16, u16),
@@ -183,7 +180,12 @@ impl Session {
                 });
             }
         }
-        Session { id, term, link: link.clone(), pending, proxy, reflow: Arc::default(), last_frame: None, shared, size, cell, title: None, exited: None }
+        Session { id, term, link: link.clone(), pending, proxy, reflow: Arc::default(), shared, size, cell, title: None, exited: None }
+    }
+
+    /// What drawing the screen takes, to keep in a frame's paint.
+    pub fn source(&self) -> Source {
+        Source { term: self.term.clone(), shared: self.shared.clone(), reflow: self.reflow.clone() }
     }
 
     /// Call when handling a Wakeup, before drawing.
@@ -296,6 +298,22 @@ impl Session {
     /// Whether closing the window would kill something the user is running.
     pub fn busy(&self) -> bool {
         self.exited.is_none() && self.foreground().is_some()
+    }
+}
+
+/// A screen to draw: the emulator and what goes with it (a frame's paint
+/// has it, not the session).
+#[derive(Clone)]
+pub struct Source {
+    pub term: Arc<FairMutex<Term<Listener>>>,
+    pub shared: Arc<io::Shared>,
+    reflow: Arc<Reflow>,
+}
+
+impl Source {
+    /// See [`Session::reflowing`].
+    pub fn reflowing(&self) -> bool {
+        self.reflow.busy.load(Ordering::Acquire)
     }
 }
 

@@ -1,107 +1,122 @@
 //! Drawing the terminal grid and turning keys and the mouse into bytes for
 //! the program inside.
 //!
-//! Every cell sits on a grid snapped to device pixels: runs of ordinary
-//! characters are laid out as one galley with letter spacing padding each
-//! glyph to the cell width; wide characters and glyphs from fallback fonts
-//! are placed cell by cell; box-drawing and block characters are drawn as
-//! shapes so lines join seamlessly.
+//! Every cell sits on a grid snapped to device pixels: each character's
+//! glyph is placed at its own cell (wide characters centred in their two),
+//! from whichever font has it; box-drawing and block characters are drawn
+//! as shapes so lines join seamlessly.
 //!
-//! Each row is laid out and tessellated once (`RowCache`): a frame
-//! compares each row's cells with those it was drawn from and rebuilds
-//! only rows that changed (an agent's spinner, a line typed), handing egui
-//! the rest's meshes as they were, so a frame neither resolves colours,
-//! lays out nor tessellates the screen again. The cursor, the hovered
-//! link, colour emoji and pictures are drawn live over them.
+//! Each row is worked out once (`RowCache`): a frame compares each row's
+//! cells with those it was drawn from and lays out again only rows that
+//! changed (an agent's spinner, a line typed); the rest are painted as
+//! they were, their glyphs straight from where the atlas had them
+//! (`Window::paint_glyph_run`), so a frame neither resolves colours, lays
+//! out nor looks up glyphs for the screen again. A row laid out is the
+//! same wherever it is, so when the screen scrolls (output, the
+//! scrollback) each row is found where it was: only the rows new to the
+//! screen are laid out. The cursor, the hovered link and pictures are
+//! drawn live over them.
 
-use std::{cell::RefCell, collections::HashMap, sync::Arc};
+use std::{
+    cell::{Cell as StdCell, RefCell},
+    collections::HashMap,
+    sync::Arc,
+};
 
 use alacritty_terminal::{
     grid::{Dimensions, Scroll},
     index::{Column, Line, Point, Side},
     selection::{Selection, SelectionRange, SelectionType},
     term::{
-        TermMode,
+        TermDamage, TermMode,
         cell::{Cell, Flags},
         color::COUNT,
     },
     vte::ansi::{Color, CursorShape, NamedColor, Rgb},
 };
-use olo_kit::egui::{
-    self, Color32, FontFamily, FontId, Key, Pos2, Rect, Sense, Stroke, Ui, pos2, text::LayoutJob, vec2,
+use olo_ui::{
+    gpui::{
+        self, App, Bounds, ContentMask, FontId, FontWeight, GlyphId, GlyphRun, Hsla, Keystroke, Modifiers, PathBuilder, Pixels, RenderImage, TextRun, Window, point, px, size,
+    },
+    style,
 };
-use olo_kit::{emoji, style};
 
 use crate::{
-    colors::{Scheme, c32, mix},
+    colors::{Scheme, mix},
     graphics, links,
-    session::{Session, Size},
+    session::{Session, Size, Source},
 };
+
+/// An emulator colour as GPUI's.
+pub fn hsla(c: Rgb) -> Hsla {
+    style::c([c.r, c.g, c.b, 255])
+}
 
 /// Space between the window edge and the text, in logical pixels: across,
 /// a window's inset, so the text is under the menu bar's first title and
 /// the tabs' icons; less down, as a cell's line box already has some.
-pub const PAD: egui::Vec2 = egui::vec2(olo_kit::metrics::WINDOW_INSET, 6.0);
+pub const PAD: (f32, f32) = (olo_kit_base::metrics::WINDOW_INSET, 6.0);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Metrics {
     pub size: f32,
     /// Cell size, a whole number of device pixels.
-    pub cell: egui::Vec2,
-    /// The font's own advance (the galley's glyph spacing).
+    pub cell: (f32, f32),
+    /// The font's own advance.
     advance: f32,
-    /// Galley top to baseline within a cell.
-    ascent: f32,
+    /// A cell's top to its baseline, on a device pixel.
+    baseline: f32,
+    /// The font's line box (ascent and descent).
     row: f32,
-    pub ppp: f32,
+    pub scale: f32,
 }
 
 impl Metrics {
-    pub fn new(ctx: &egui::Context, size: f32) -> Metrics {
-        let ppp = ctx.pixels_per_point();
-        let font = FontId::monospace(size);
-        let (advance, row) = ctx.fonts_mut(|f| (f.glyph_width(&font, 'M'), f.row_height(&font)));
-        let snap = |v: f32| (v * ppp).ceil() / ppp;
-        let cell = vec2(snap(advance), snap(row));
-        // Centre the font's line box in the (slightly taller) cell.
-        let ascent = ((cell.y - row) / 2.0 * ppp).round() / ppp;
-        Metrics { size, cell, advance, ascent, row, ppp }
+    pub fn new(window: &Window, size: f32) -> Metrics {
+        let scale = window.scale_factor();
+        let ts = window.text_system();
+        let id = ts.resolve_font(&style::mono_font(FontWeight::NORMAL));
+        let fs = px(size);
+        let advance = ts.advance(id, fs, 'M').map_or(size * 0.6, |a| f32::from(a.width));
+        let ascent = f32::from(ts.ascent(id, fs));
+        let descent = f32::from(ts.descent(id, fs)).abs();
+        let row = ascent + descent;
+        let snap = |v: f32| (v * scale).ceil() / scale;
+        let cell = (snap(advance), snap(row));
+        // The font's line box centred in the (slightly taller) cell, its
+        // baseline on a device pixel.
+        let baseline = (((cell.1 - row) / 2.0 + ascent) * scale).round() / scale;
+        Metrics { size, cell, advance, baseline, row, scale }
     }
 
     /// Cell size in device pixels, for the PTY's pixel-size report.
     pub fn device_cell(&self) -> (u16, u16) {
-        ((self.cell.x * self.ppp).round() as u16, (self.cell.y * self.ppp).round() as u16)
+        ((self.cell.0 * self.scale).round() as u16, (self.cell.1 * self.scale).round() as u16)
     }
 
-    /// How many cells fit in `area`.
-    pub fn grid_size(&self, area: egui::Vec2) -> Size {
-        Size {
-            cols: (((area.x - 2.0 * PAD.x) / self.cell.x).floor() as usize).max(2),
-            rows: (((area.y - 2.0 * PAD.y) / self.cell.y).floor() as usize).max(1),
-        }
+    /// How many cells fit in `w`×`h`.
+    pub fn grid_size(&self, w: f32, h: f32) -> Size {
+        Size { cols: (((w - 2.0 * PAD.0) / self.cell.0).floor() as usize).max(2), rows: (((h - 2.0 * PAD.1) / self.cell.1).floor() as usize).max(1) }
     }
 
     /// Content size for a `cols`×`rows` window.
-    pub fn content_size(&self, cols: usize, rows: usize) -> (u32, u32) {
-        (
-            (cols as f32 * self.cell.x + 2.0 * PAD.x).ceil() as u32,
-            (rows as f32 * self.cell.y + 2.0 * PAD.y).ceil() as u32,
-        )
+    pub fn content_size(&self, cols: usize, rows: usize) -> (f32, f32) {
+        ((cols as f32 * self.cell.0 + 2.0 * PAD.0).ceil(), (rows as f32 * self.cell.1 + 2.0 * PAD.1).ceil())
     }
 }
 
 /// A screen's background and text colours as it draws them (a program
 /// may have changed them).
-pub fn screen_colors(s: &Session, scheme: &Scheme) -> (Color32, Color32) {
+pub fn screen_colors(s: &Session, scheme: &Scheme) -> (Hsla, Hsla) {
     // (Its own while being reflowed, the scheme's.)
     let term = if s.reflowing() { s.term.try_lock_unfair() } else { Some(s.term.lock()) };
     let scheme_only = alacritty_terminal::term::color::Colors::default();
     let colors = term.as_ref().map_or(&scheme_only, |t| t.colors());
-    let named = |n| c32(scheme.resolve(Color::Named(n), colors));
+    let named = |n| hsla(scheme.resolve(Color::Named(n), colors));
     (named(NamedColor::Background), named(NamedColor::Foreground))
 }
 
-/// Mouse state between frames.
+/// Mouse state between events.
 #[derive(Default)]
 pub struct Mouse {
     /// When, where and how many times the button last went down.
@@ -112,76 +127,90 @@ pub struct Mouse {
     last_cell: Option<Point>,
     /// Scroll that hasn't added up to a whole line yet.
     scroll: f32,
-    /// The same for a selection dragged past the top or bottom.
-    edge: f32,
     /// The link under the pointer while ⌘ is held: its cells and target.
-    hover: Option<Hover>,
-    /// Image textures by image id, with the generation they were made from.
-    textures: HashMap<u32, (u64, egui::TextureHandle)>,
-    /// The screen's rows as last tessellated.
-    rows: RowCache,
+    pub hover: Option<Hover>,
 }
 
-/// The screen's rows as last drawn, each with the cells (and selection)
-/// it was drawn from. Dropped whole when anything they were drawn for
-/// changes (`RowKey`).
+/// What a screen keeps between frames for drawing: its rows as last laid
+/// out, its pictures, where it is.
+#[derive(Default)]
+pub struct Pane {
+    rows: RefCell<RowCache>,
+    /// Pictures by placement, with the image generation and source they
+    /// were made from.
+    images: RefCell<HashMap<u32, (u64, [u32; 4], Arc<RenderImage>)>>,
+    /// Where the screen was last drawn, in the window.
+    pub bounds: StdCell<Bounds<Pixels>>,
+    /// The frame drawn while the screen is being reflowed (`Session::resize`).
+    last: RefCell<Option<Frame>>,
+}
+
+/// The screen's rows as last laid out, each with the cells (and
+/// selection) it was laid out from. Dropped whole when anything they were
+/// laid out for changes (`RowKey`).
 #[derive(Default)]
 struct RowCache {
     key: Option<RowKey>,
     rows: Vec<Option<CachedRow>>,
-    /// When every row was last drawn afresh (`REFRESH`).
-    fresh: Option<std::time::Instant>,
+    /// Each style's font and its glyphs for printable ASCII, as found
+    /// (None: not looked for yet; Some(None): the font hasn't it).
+    ascii: Vec<(Style, FontId, Box<[Option<Option<GlyphId>>; 95]>)>,
+    /// Where the screen's first row was in the scrollback (its history's
+    /// length less the view's offset up it): how far it has scrolled.
+    top: i64,
 }
 
-/// How often a showing screen is drawn whole again from its cells,
-/// whatever changed: nothing on it is ever out of date for longer, should
-/// a change ever not ask for a frame.
-const REFRESH: std::time::Duration = std::time::Duration::from_secs(1);
-
-/// What every row is drawn for: the cell metrics and scale, where the
-/// screen is, its size, the colours, the font atlas.
+/// What every row is laid out for: the cell metrics and scale, the
+/// colours. (Not the grid's size: a row the same but for blanks at its end
+/// is laid out the same, so a resize lays out only what it changes.)
 #[derive(PartialEq)]
 struct RowKey {
     metrics: Metrics,
-    origin: Pos2,
-    cols: usize,
-    rows: usize,
     scheme: Scheme,
     /// The program's own colours (OSC 4, 10, 11, …).
     colors: Vec<Option<Rgb>>,
-    generation: u64,
-    atlas: [usize; 2],
 }
 
-/// A row as drawn: its tessellated backgrounds and foreground (text,
-/// boxes, lines), and what's drawn live over them.
+/// A row as laid out, relative to its top left: backgrounds, glyphs,
+/// shapes (boxes, lines), and pictures' cells.
 struct CachedRow {
     cells: Vec<Cell>,
     /// The columns selected in it, first and last.
     selected: Option<(usize, usize)>,
-    back: Arc<egui::Mesh>,
-    front: Arc<egui::Mesh>,
-    /// Colour emoji: column, cluster, style, cells, cells drawn across.
-    emoji: Vec<(usize, String, Style, usize, usize)>,
+    bgs: Vec<(f32, f32, Hsla)>,
+    glyphs: Vec<Glyph>,
+    /// Its glyphs as last painted (where the atlas has them).
+    run: RefCell<GlyphRun>,
+    shapes: Vec<Shape>,
     /// Pictures' cells: column, placement, row of the picture.
     images: Vec<(usize, u32, usize)>,
 }
 
-/// A row's cells, gathered before they're drawn (only rows that changed are).
-#[derive(Default)]
-struct RowBuf {
-    /// Backgrounds: column, width in cells, colour.
-    bgs: Vec<(usize, f32, Color32)>,
-    /// Runs: first column, text, style, last column, and whether it's a
-    /// cluster with combining marks (nothing joins it).
-    runs: Vec<(usize, String, Style, usize, bool)>,
-    singles: Vec<(usize, char, Style, bool)>,
-    boxes: Vec<(usize, char, Color32)>,
-    lines: Vec<(Rect, Color32)>,
+#[derive(Clone, Copy)]
+struct Glyph {
+    x: f32,
+    font: FontId,
+    id: GlyphId,
+    size: f32,
+    color: Hsla,
+    emoji: bool,
 }
 
-/// The columns of `line` in a selection, first and last (as
-/// `SelectionRange::contains` has them).
+/// What box drawing draws: rectangles (with an opacity), lines through
+/// points, filled polygons; relative to the row's top left.
+#[derive(Clone)]
+enum Shape {
+    Rect(f32, f32, f32, f32, Hsla),
+    Line(Vec<(f32, f32)>, f32, Hsla),
+    Poly(Vec<(f32, f32)>, Hsla),
+}
+
+/// The screen as last drawn whole, for the frames while it's reflowed.
+struct Frame {
+    background: Hsla,
+}
+
+/// The columns of `line` in a selection, first and last.
 fn selected_in(s: &SelectionRange, line: i32) -> Option<(usize, usize)> {
     if line < s.start.line.0 || line > s.end.line.0 {
         return None;
@@ -191,101 +220,19 @@ fn selected_in(s: &SelectionRange, line: i32) -> Option<(usize, usize)> {
     (first <= last).then_some((first, last))
 }
 
-/// Where shapes go to be tessellated once rather than painted: the calls
-/// `draw_box` makes on a painter.
-struct Shapes<'a> {
-    ctx: &'a egui::Context,
-    list: RefCell<Vec<egui::Shape>>,
-}
-
-impl<'a> Shapes<'a> {
-    fn new(ctx: &'a egui::Context) -> Self {
-        Shapes { ctx, list: RefCell::new(Vec::new()) }
-    }
-    fn rect_filled(&self, r: Rect, _radius: f32, color: Color32) {
-        self.list.borrow_mut().push(egui::Shape::rect_filled(r, 0.0, color));
-    }
-    fn add(&self, shape: egui::Shape) {
-        self.list.borrow_mut().push(shape);
-    }
-    fn layout_no_wrap(&self, text: String, font: FontId, color: Color32) -> Arc<egui::Galley> {
-        self.ctx.fonts_mut(|f| f.layout_no_wrap(text, font, color))
-    }
-    fn galley(&self, pos: Pos2, galley: Arc<egui::Galley>, color: Color32) {
-        self.list.borrow_mut().push(egui::Shape::galley(pos, galley, color));
-    }
-    /// The shapes as one mesh (they all draw from the font texture).
-    fn tessellate(self) -> Arc<egui::Mesh> {
-        let ctx = self.ctx;
-        let font_size = ctx.fonts(|f| f.font_image_size());
-        let options = ctx.tessellation_options(|o| *o);
-        let mut t = egui::epaint::Tessellator::new(ctx.pixels_per_point(), options, font_size, Vec::new());
-        let mut mesh = egui::Mesh::default();
-        for shape in self.list.into_inner() {
-            t.tessellate_shape(shape, &mut mesh);
-        }
-        Arc::new(mesh)
-    }
-}
-
 #[derive(Clone)]
-struct Hover {
-    /// Grid point the pointer was over when this was computed.
-    at: Point,
+pub struct Hover {
+    /// Grid point the pointer was over when this was found.
+    pub at: Point,
     cells: Vec<Point>,
-    target: Option<links::Target>,
-}
-
-/// Which chars are drawn from the primary monospace face at its normal
-/// advance (cached: asking egui for each cell every frame is wasteful).
-#[derive(Default)]
-pub struct GlyphCache {
-    simple: HashMap<char, bool>,
-    for_size: f32,
-}
-
-impl GlyphCache {
-    fn simple(&mut self, ui: &Ui, m: &Metrics, c: char) -> bool {
-        if self.for_size != m.size {
-            self.simple.clear();
-            self.for_size = m.size;
-        }
-        if c.is_ascii() {
-            return true;
-        }
-        *self.simple.entry(c).or_insert_with(|| {
-            let font = FontId::monospace(m.size);
-            ui.fonts_mut(|f| (f.glyph_width(&font, c) - m.advance).abs() < 0.01)
-        })
-    }
-}
-
-/// A frame of the screen as drawn: its background and shapes, for the
-/// frames while the screen is reflowed to a new width on a worker
-/// (`Session::resize`).
-pub struct Frame {
-    background: Color32,
-    shapes: Vec<egui::Shape>,
+    pub target: Option<links::Target>,
 }
 
 pub struct Output {
-    /// The grid size the window now has room for.
-    pub size: Size,
-    pub copy: Option<String>,
     pub paste: bool,
-    pub context_menu: Option<Pos2>,
+    pub context_menu: Option<gpui::Point<Pixels>>,
     /// A link ⌘-clicked.
     pub open: Option<links::Target>,
-}
-
-impl Output {
-    /// Take in another pane's: what it asked for, if this one didn't.
-    pub fn merge(&mut self, o: Output) {
-        self.copy = self.copy.take().or(o.copy);
-        self.paste |= o.paste;
-        self.context_menu = self.context_menu.or(o.context_menu);
-        self.open = self.open.take().or(o.open);
-    }
 }
 
 fn is_box(c: char) -> bool {
@@ -294,85 +241,132 @@ fn is_box(c: char) -> bool {
 
 #[derive(Clone, Copy, PartialEq)]
 struct Style {
-    fg: Color32,
+    fg: Hsla,
     bold: bool,
     italic: bool,
 }
 
-/// Draw the session into `ui` and handle input. `focused` is whether the
-/// window has the keyboard.
-#[allow(clippy::too_many_arguments)]
-pub fn show(
-    ui: &mut Ui,
-    s: &mut Session,
-    scheme: &Scheme,
-    m: &Metrics,
-    glyphs: &mut GlyphCache,
-    mouse: &mut Mouse,
-    focused: bool,
-    cwd: &dyn Fn() -> Option<std::path::PathBuf>,
-) -> Output {
-    let rect = ui.max_rect();
-    let resp = ui.interact(rect, ui.make_persistent_id("terminal"), Sense::click_and_drag());
-    let size = m.grid_size(rect.size());
-    let mut out = Output { size, copy: None, paste: false, context_menu: None, open: None };
-    if focused && s.exited.is_none() {
-        keyboard(ui, s, &mut out);
+fn font_for(st: Style) -> gpui::Font {
+    let mut f = style::mono_font(if st.bold { FontWeight::BOLD } else { FontWeight::NORMAL });
+    if st.italic {
+        f.style = gpui::FontStyle::Italic;
     }
-    // ⌘ held over a link (the command key: Ctrl with the Windows keys):
-    // find it, once per cell the pointer is on. Before the pointer's
-    // handling, so a click acts on the link under it now: a ⌘-click that
-    // focuses the window is the first frame it knows ⌘ is held.
-    let link_mode = ui.input(|i| i.modifiers.command) && resp.hovered() && !mouse.selecting;
-    if link_mode {
-        if let Some(pos) = resp.hover_pos() {
-            let offset = s.term.lock().grid().display_offset();
-            let (pt, _) = cell_at(pos, rect, m, s.size, offset);
-            if mouse.hover.as_ref().is_none_or(|h| h.at != pt) {
-                mouse.hover = Some(find_link(s, pt, cwd));
-            }
-        }
-    } else {
-        mouse.hover = None;
-    }
-    pointer(ui, s, m, &resp, rect, mouse, &mut out);
-    let painter = ui.painter_at(rect);
-    let origin = rect.min + PAD;
-    // Its lines are a cell apart, not on the window's grid.
-    olo_kit::layout_review::own_grid(ui, rect);
-    if mouse.hover.as_ref().is_some_and(|h| h.target.is_some()) {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-    } else if resp.hovered() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
-    }
+    f
+}
 
-    // Being reflowed to a new width: the last frame again, while that
-    // takes (the new width shows the next frame).
-    let term = if s.reflowing() { s.term.try_lock_unfair() } else { Some(s.term.lock()) };
-    let Some(term) = term else {
-        if let Some(f) = &s.last_frame {
-            painter.rect_filled(rect, 0.0, f.background);
-            painter.extend(f.shapes.iter().cloned());
+/// Whether a colour cluster (an emoji) wants its colour glyph: a wide one
+/// that isn't ASCII, one with the emoji presentation selector, a flag.
+fn wants_color(cluster: &str, wide: bool) -> bool {
+    let mut chars = cluster.chars();
+    let Some(first) = chars.next() else { return false };
+    (wide && !first.is_ascii()) || cluster.contains('\u{FE0F}') || is_regional(first)
+}
+
+fn is_regional(c: char) -> bool {
+    ('\u{1F1E6}'..='\u{1F1FF}').contains(&c)
+}
+
+/// Whether `next` (a cell's text) goes on with the sequence in `prev`:
+/// after a zero-width joiner, a skin tone, or a flag's second letter.
+fn continues(prev: &str, next: &str) -> bool {
+    let Some(first) = next.chars().next() else { return false };
+    let skin = ('\u{1F3FB}'..='\u{1F3FF}').contains(&first);
+    let flag = is_regional(first) && prev.chars().count() == 1 && prev.chars().all(is_regional);
+    prev.ends_with('\u{200D}') || skin || flag
+}
+
+/// What [`paint`] draws a screen with.
+pub struct Paint<'a> {
+    pub source: &'a Source,
+    pub scheme: &'a Scheme,
+    pub metrics: Metrics,
+    pub focused: bool,
+    /// The link under the pointer, underlined.
+    pub hover: Option<&'a Hover>,
+    /// Text being composed with an input method, at the cursor.
+    pub preedit: Option<&'a str>,
+}
+
+/// `text`'s glyphs (printable ASCII) in `st`'s font, from what's been
+/// found already: None if the font lacks one (it's shaped, with fallback).
+fn ascii_glyphs(window: &Window, found: &mut Vec<(Style, FontId, Box<[Option<Option<GlyphId>>; 95]>)>, st: Style, text: &str) -> Option<(FontId, Vec<GlyphId>)> {
+    let ts = window.text_system();
+    let k = match found.iter().position(|(s, _, _)| s.bold == st.bold && s.italic == st.italic) {
+        Some(k) => k,
+        None => {
+            found.push((st, ts.resolve_font(&font_for(st)), Box::new([None; 95])));
+            found.len() - 1
         }
-        return out;
     };
-    // A frame drawn as the window changes size is kept for that.
-    let keep = size != s.size || s.reflowing();
-    let layer = painter.layer_id();
-    let first = if keep { ui.ctx().graphics(|g| g.get(layer).map_or(0, |l| l.all_entries().len())) } else { 0 };
+    let (_, font, table) = &mut found[k];
+    let mut ids = Vec::with_capacity(text.len());
+    for b in text.bytes() {
+        let slot = &mut table[usize::from(b - 0x20)];
+        let id = *slot.get_or_insert_with(|| ts.glyph_for_char(*font, char::from(b)));
+        ids.push(id?);
+    }
+    Some((*font, ids))
+}
+
+/// Whether a row laid out from `a` is laid out the same from `b`: the
+/// same cells, or (the grid resized) the same but for blanks at the end
+/// of the longer, the shorter's last cell blank too (a narrow emoji at
+/// the edge borrows the cell beside it only where there is one).
+fn same_cells(a: &[Cell], b: &[Cell]) -> bool {
+    if a.len() == b.len() {
+        return a == b;
+    }
+    let (short, long) = if a.len() < b.len() { (a, b) } else { (b, a) };
+    let blank = Cell::default();
+    long[..short.len()] == *short && short.last().is_none_or(|c| *c == blank) && long[short.len()..].iter().all(|c| *c == blank)
+}
+
+/// Draw the screen into `rect`.
+pub fn paint(window: &mut Window, cx: &mut App, rect: Bounds<Pixels>, p: Paint, pane: &Pane) {
+    let Paint { source: s, scheme, metrics: m, focused, hover, preedit } = p;
+    pane.bounds.set(rect);
+    // Being reflowed to a new width: its background, while that takes (the
+    // new width shows the next frame).
+    let term = if s.reflowing() { s.term.try_lock_unfair() } else { Some(s.term.lock()) };
+    let Some(mut term) = term else {
+        if let Some(f) = &*pane.last.borrow() {
+            window.paint_quad(gpui::fill(rect, f.background));
+        }
+        return;
+    };
+    // The lines changed since the screen was last drawn (alacritty's
+    // damage, taken here, its only reader): the others needn't be looked
+    // at. Scrolling (output, the view), a resize, a colour or a cleared
+    // screen damage it all (None).
+    let lines = term.screen_lines();
+    let damaged: Option<Vec<bool>> = match term.damage() {
+        TermDamage::Full => None,
+        TermDamage::Partial(changed) => {
+            let mut d = vec![false; lines];
+            for l in changed {
+                if let Some(x) = d.get_mut(l.line) {
+                    *x = true;
+                }
+            }
+            Some(d)
+        }
+    };
+    term.reset_damage();
+    let origin = (f32::from(rect.left()) + PAD.0, f32::from(rect.top()) + PAD.1);
     let content = term.renderable_content();
     let colors = content.colors;
     let bg_default = scheme.resolve(Color::Named(NamedColor::Background), colors);
-    painter.rect_filled(rect, 0.0, c32(bg_default));
+    let background = hsla(bg_default);
+    window.paint_quad(gpui::fill(rect, background));
+    *pane.last.borrow_mut() = Some(Frame { background });
     let offset = content.display_offset as i32;
     let selection = content.selection;
     let show_cursor = content.mode.contains(TermMode::SHOW_CURSOR) && content.cursor.shape != CursorShape::Hidden;
     let cursor = content.cursor;
-
     let cols = term.columns();
     let rows = term.screen_lines();
-    let cell = m.cell;
-    let at = |line: i32, col: usize| pos2(origin.x + col as f32 * cell.x, origin.y + (line + offset) as f32 * cell.y);
+    let (cw, ch) = m.cell;
+    let at = |line: i32, col: usize| (origin.0 + col as f32 * cw, origin.1 + (line + offset) as f32 * ch);
     // A cell's text and background colours (before any selection).
     let cell_colors = |c: &Cell| {
         let mut fg = scheme.resolve(c.fg, colors);
@@ -385,390 +379,443 @@ pub fn show(
         }
         (fg, bg)
     };
-    let style_of = |c: &Cell, fg| Style { fg: c32(fg), bold: c.flags.contains(Flags::BOLD), italic: c.flags.contains(Flags::ITALIC) };
+    let style_of = |c: &Cell, fg| Style { fg: hsla(fg), bold: c.flags.contains(Flags::BOLD), italic: c.flags.contains(Flags::ITALIC) };
     let spacer = |c: &Cell| c.flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER);
 
-    let font_for = |st: Style| {
-        let family = if st.bold {
-            style::mono_bold()
-        } else if st.italic {
-            style::mono_italic()
-        } else {
-            FontFamily::Monospace
-        };
-        FontId::new(m.size, family)
-    };
-    let spacing = cell.x - m.advance;
-    let run_galley = |text: &str, st: Style| {
-        let mut job = LayoutJob::default();
-        job.append(text, 0.0, egui::TextFormat { font_id: font_for(st), color: st.fg, extra_letter_spacing: spacing, ..Default::default() });
-        ui.fonts_mut(|f| f.layout_job(job))
-    };
-
-    // The rows: as they were where their cells (and the selection in them)
-    // are the same, else drawn and tessellated again. Every row's
-    // backgrounds go under every row's text, so a glyph reaching into the
-    // next row isn't covered.
-    let ctx = ui.ctx().clone();
-    let key = RowKey {
-        metrics: *m,
-        origin,
-        cols,
-        rows,
-        scheme: scheme.clone(),
-        colors: (0..COUNT).map(|i| colors[i]).collect(),
-        generation: ctx.fonts(|f| f.galley_generation()),
-        atlas: ctx.fonts(|f| f.font_image_size()),
-    };
-    let cache = &mut mouse.rows;
-    if cache.key.as_ref() != Some(&key) || cache.fresh.is_none_or(|t| t.elapsed() >= REFRESH) {
+    let key = RowKey { metrics: m, scheme: scheme.clone(), colors: (0..COUNT).map(|i| colors[i]).collect() };
+    let mut cache = pane.rows.borrow_mut();
+    if cache.key.as_ref() != Some(&key) {
         cache.key = Some(key);
         cache.rows.clear();
-        cache.fresh = Some(std::time::Instant::now());
     }
-    ctx.request_repaint_after(REFRESH);
-    cache.rows.resize_with(rows, || None);
     let grid = term.grid();
-    let mut fronts = Vec::with_capacity(rows);
+    // The rows as last drawn, each to be found where it is now: moved by
+    // as far as the screen scrolled (new row r was old row r + shift),
+    // else as the row before was, else (twice a frame at most, when output
+    // scrolls a full scrollback, which doesn't move `top`) looked for.
+    let top = grid.history_size() as i64 - i64::from(offset);
+    let mut shift = top - std::mem::replace(&mut cache.top, top);
+    let mut old = std::mem::take(&mut cache.rows);
+    old.resize_with(rows, || None);
+    cache.rows.resize_with(rows, || None);
+    let mut searches = 0;
+    let line_px = 1.0 / m.scale;
     for r in 0..rows {
         let line = r as i32 - offset;
         let row = &grid[Line(line)];
         let cells = &row[..Column(cols.min(row.len()))];
         let selected = selection.and_then(|s| selected_in(&s, line));
-        if !cache.rows[r].as_ref().is_some_and(|c| c.selected == selected && c.cells[..] == *cells) {
-            let mut b = RowBuf::default();
-            // Colour emoji: column, cluster, style, cells.
-            let mut emoji: Vec<(usize, String, Style, usize)> = Vec::new();
-            let mut images = Vec::new();
-            // Cells with something in them, so a narrow emoji can use a free one.
-            let mut used = vec![false; cols + 1];
-            for (col, cell_) in cells.iter().enumerate() {
-                let flags = cell_.flags;
-                if spacer(cell_) {
-                    continue;
-                }
-                if let Some(h) = cell_.hyperlink()
-                    && let Some((uid, row)) = graphics::parse_uri(h.uri())
-                {
-                    images.push((col, uid, row));
-                }
-                let (fg, mut bg) = cell_colors(cell_);
-                if selected.is_some_and(|(a, z)| a <= col && col <= z) {
-                    bg = scheme.selection;
-                }
-                let wide = flags.contains(Flags::WIDE_CHAR);
-                let width = if wide { 2.0 } else { 1.0 };
-                if bg != bg_default {
-                    b.bgs.push((col, width, c32(bg)));
-                }
-                if flags.contains(Flags::HIDDEN) {
-                    continue;
-                }
-                let style = style_of(cell_, fg);
-                // Underline and strike-through.
-                let p = at(line, col);
-                let w = cell.x * width;
-                let px = 1.0 / m.ppp;
-                if flags.intersects(Flags::ALL_UNDERLINES) {
-                    let uc = cell_.underline_color().map(|c| c32(scheme.resolve(c, colors))).unwrap_or(style.fg);
-                    let y = p.y + m.ascent + m.row * 0.86;
-                    let t = (m.size / 12.0).round().max(1.0) * px.max(0.5);
-                    b.lines.push((Rect::from_min_size(pos2(p.x, y), vec2(w, t)), uc));
-                    if flags.contains(Flags::DOUBLE_UNDERLINE) {
-                        b.lines.push((Rect::from_min_size(pos2(p.x, y + 2.0 * t), vec2(w, t)), uc));
-                    }
-                }
-                if flags.contains(Flags::STRIKEOUT) {
-                    let y = p.y + m.ascent + m.row * 0.52;
-                    b.lines.push((Rect::from_min_size(pos2(p.x, y), vec2(w, px.max(0.5))), style.fg));
-                }
-                let c = cell_.c;
-                if c == ' ' || c == '\0' {
-                    continue;
-                }
-                used[col] = true;
-                if is_box(c) {
-                    b.boxes.push((col, c, style.fg));
-                } else if wide || !glyphs.simple(ui, m, c) || cell_.zerowidth().is_some() {
-                    let mut cluster = String::from(c);
-                    cluster.extend(cell_.zerowidth().into_iter().flatten());
-                    let n = if wide { 2 } else { 1 };
-                    // alacritty gives each part of a sequence its own cell:
-                    // join skin tones, ZWJ sequences and flags back up.
-                    if let Some(prev) = emoji.last_mut()
-                        && prev.0 + prev.3 == col
-                        && emoji::continues(&prev.1, &cluster)
-                    {
-                        prev.1.push_str(&cluster);
-                        prev.3 += n;
-                        continue;
-                    }
-                    if emoji::wants_color(&cluster, wide) {
-                        emoji.push((col, cluster, style, n));
-                        continue;
-                    }
-                    if let Some(z) = cell_.zerowidth() {
-                        // Combining marks: lay the cluster out together.
-                        let mut t = String::from(c);
-                        t.extend(z);
-                        b.runs.push((col, t, style, col, true));
-                    } else {
-                        b.singles.push((col, c, style, wide));
-                    }
-                } else if let Some(last) = b.runs.last_mut()
-                    && last.2 == style
-                    && last.3 + 1 == col
-                    && !last.4
-                {
-                    // Every char in a run was checked as it went in.
-                    last.1.push(c);
-                    last.3 = col;
-                } else {
-                    b.runs.push((col, c.to_string(), style, col, false));
-                }
-            }
-
-            let back_shapes = Shapes::new(&ctx);
-            for (col, width, color) in &b.bgs {
-                back_shapes.rect_filled(Rect::from_min_size(at(line, *col), vec2(cell.x * width, cell.y)), 0.0, *color);
-            }
-            let front_shapes = Shapes::new(&ctx);
-            for (col, text, st, _, _) in &b.runs {
-                let p = at(line, *col);
-                front_shapes.galley(pos2(p.x, p.y + m.ascent), run_galley(text, *st), st.fg);
-            }
-            for (col, c, st, wide) in &b.singles {
-                let galley = ctx.fonts_mut(|f| f.layout_no_wrap(c.to_string(), font_for(*st), st.fg));
-                let p = at(line, *col);
-                let w = if *wide { cell.x * 2.0 } else { cell.x };
-                // Centre glyphs that aren't cell-sized in their cell(s).
-                let x = p.x + ((w - galley.size().x) / 2.0 * m.ppp).round() / m.ppp;
-                front_shapes.galley(pos2(x, p.y + m.ascent), galley, st.fg);
-            }
-            for (col, c, color) in &b.boxes {
-                draw_box(&front_shapes, Rect::from_min_size(at(line, *col), cell), *c, *color, m.ppp);
-            }
-            for (rr, c) in &b.lines {
-                front_shapes.rect_filled(*rr, 0.0, *c);
-            }
-            // Two cells wide, as an emoji should be: a narrow one borrows
-            // a free cell beside it.
-            let emoji = emoji
-                .into_iter()
-                .map(|(col, cluster, st, n)| {
-                    let span = if n == 1 && col + 1 < cols && !used[col + 1] { 2 } else { n };
-                    (col, cluster, st, n, span)
-                })
-                .collect();
-            cache.rows[r] = Some(CachedRow {
-                cells: cells.to_vec(),
-                selected,
-                back: back_shapes.tessellate(),
-                front: front_shapes.tessellate(),
-                emoji,
-                images,
-            });
-        }
-        let Some(drawn) = &cache.rows[r] else { continue };
-        if !drawn.back.is_empty() {
-            painter.add(egui::Shape::Mesh(drawn.back.clone()));
-        }
-        fronts.push(drawn.front.clone());
-    }
-    for front in fronts {
-        if !front.is_empty() {
-            painter.add(egui::Shape::Mesh(front));
-        }
-    }
-
-    let rows_drawn = || cache.rows.iter().enumerate().filter_map(|(r, d)| Some((r as i32 - offset, d.as_ref()?)));
-    let image_cells: Vec<(i32, usize, u32, usize)> = rows_drawn().flat_map(|(line, d)| d.images.iter().map(move |&(col, uid, row)| (line, col, uid, row))).collect();
-    draw_images(ui, &painter, s, &image_cells, &mut mouse.textures, at, cell);
-
-    // Colour emoji, else (no colour glyph) the cluster as text. A
-    // sequence alacritty spread wider is centred over its cells.
-    let mut runs: Vec<(i32, usize, String, Style)> = Vec::new();
-    let mut singles: Vec<(i32, usize, char, Style, bool)> = Vec::new();
-    for (line, d) in rows_drawn() {
-        for (col, cluster, st, n, span) in &d.emoji {
-            let full = Rect::from_min_size(at(line, *col), vec2(cell.x * *span as f32, cell.y));
-            let r = Rect::from_center_size(full.center(), vec2(cell.x * (*span).min(2) as f32, cell.y));
-            if !emoji::paint(&painter, r, cluster) {
-                let mut chars = cluster.chars();
-                match (chars.next(), chars.next()) {
-                    (Some(c), None) => singles.push((line, *col, c, *st, *n >= 2)),
-                    _ => runs.push((line, *col, cluster.clone(), *st)),
-                }
-            }
-        }
-    }
-    for (line, col, text, st) in runs {
-        let p = at(line, col);
-        painter.galley(pos2(p.x, p.y + m.ascent), run_galley(&text, st), st.fg);
-    }
-    for (line, col, c, st, wide) in singles {
-        if c == '\u{0}' {
+        // Not damaged, where it was, the selection as it was: as drawn.
+        if shift == 0 && damaged.as_ref().is_some_and(|d| d.get(r) == Some(&false)) && old[r].as_ref().is_some_and(|c| c.selected == selected) {
+            cache.rows[r] = old[r].take();
             continue;
         }
-        let galley = ui.fonts_mut(|f| f.layout_no_wrap(c.to_string(), font_for(st), st.fg));
-        let p = at(line, col);
-        let w = if wide { cell.x * 2.0 } else { cell.x };
-        // Centre glyphs that aren't cell-sized in their cell(s).
-        let x = p.x + ((w - galley.size().x) / 2.0 * m.ppp).round() / m.ppp;
-        painter.galley(pos2(x, p.y + m.ascent), galley, st.fg);
+        let same = |c: &Option<CachedRow>| c.as_ref().is_some_and(|c| c.selected == selected && same_cells(&c.cells, cells));
+        let at = |j: i64| usize::try_from(j).ok().filter(|&j| j < rows);
+        let mut was = [r as i64 + shift, r as i64].into_iter().filter_map(at).find(|&j| same(&old[j]));
+        if was.is_none() && searches < 2 {
+            searches += 1;
+            was = (0..rows).find(|&j| same(&old[j]));
+            if let Some(j) = was {
+                shift = j as i64 - r as i64;
+            }
+        }
+        if let Some(j) = was {
+            cache.rows[r] = old[j].take();
+            continue;
+        }
+        let mut bgs: Vec<(f32, f32, Hsla)> = Vec::new();
+        // Runs of text in one style, each character at its cell.
+        let mut runs: Vec<Run> = Vec::new();
+        let mut shapes = Vec::new();
+        let mut images = Vec::new();
+        let mut last_bg: Option<(usize, Rgb)> = None;
+        // Emoji clusters: column, text, style, cells.
+        let mut emoji: Vec<(usize, String, Style, usize)> = Vec::new();
+        let mut used = vec![false; cols + 1];
+        // Blank cells draw nothing: up to the last that isn't.
+        let blank = Cell::default();
+        let end = cells.iter().rposition(|c| *c != blank).map_or(0, |i| i + 1);
+        for (col, cell) in cells[..end].iter().enumerate() {
+            let flags = cell.flags;
+            if spacer(cell) {
+                continue;
+            }
+            if let Some(h) = cell.hyperlink()
+                && let Some((uid, row)) = graphics::parse_uri(h.uri())
+            {
+                images.push((col, uid, row));
+            }
+            let (fg, mut bg) = cell_colors(cell);
+            if selected.is_some_and(|(a, z)| a <= col && col <= z) {
+                bg = scheme.selection;
+            }
+            let wide = flags.contains(Flags::WIDE_CHAR);
+            let width = if wide { 2 } else { 1 };
+            if bg != bg_default {
+                // One rectangle for a stretch of one colour.
+                match (bgs.last_mut(), last_bg) {
+                    (Some(b), Some((end, c))) if end == col && c == bg => {
+                        b.1 += width as f32 * cw;
+                    }
+                    _ => bgs.push((col as f32 * cw, width as f32 * cw, hsla(bg))),
+                }
+                last_bg = Some((col + width, bg));
+            }
+            if flags.contains(Flags::HIDDEN) {
+                continue;
+            }
+            let style = style_of(cell, fg);
+            let x = col as f32 * cw;
+            let w = cw * width as f32;
+            if flags.intersects(Flags::ALL_UNDERLINES) {
+                let uc = cell.underline_color().map(|c| hsla(scheme.resolve(c, colors))).unwrap_or(style.fg);
+                let y = m.baseline + (m.row * 0.12).max(1.0);
+                let t = (m.size / 12.0).round().max(1.0) * line_px.max(0.5);
+                shapes.push(Shape::Rect(x, y, w, t, uc));
+                if flags.contains(Flags::DOUBLE_UNDERLINE) {
+                    shapes.push(Shape::Rect(x, y + 2.0 * t, w, t, uc));
+                }
+            }
+            if flags.contains(Flags::STRIKEOUT) {
+                let y = m.baseline - m.row * 0.22;
+                shapes.push(Shape::Rect(x, y, w, line_px.max(0.5), style.fg));
+            }
+            let c = cell.c;
+            if c == ' ' || c == '\0' {
+                continue;
+            }
+            used[col] = true;
+            if is_box(c) {
+                draw_box(&mut shapes, (x, 0.0, cw, ch), c, style.fg, m.scale);
+                continue;
+            }
+            let mut cluster = String::from(c);
+            cluster.extend(cell.zerowidth().into_iter().flatten());
+            // alacritty gives each part of a sequence its own cell: join
+            // skin tones, ZWJ sequences and flags back up.
+            if let Some(prev) = emoji.last_mut()
+                && prev.0 + prev.3 == col
+                && continues(&prev.1, &cluster)
+            {
+                prev.1.push_str(&cluster);
+                prev.3 += width;
+                continue;
+            }
+            if wants_color(&cluster, wide) {
+                emoji.push((col, cluster, style, width));
+                continue;
+            }
+            match runs.last_mut() {
+                Some(r) if r.style == style && r.next == col => {
+                    r.starts.push((r.text.len(), col));
+                    r.text.push_str(&cluster);
+                    r.next = col + width;
+                }
+                _ => runs.push(Run { text: cluster, style, starts: vec![(0, col)], next: col + width }),
+            }
+        }
+        // Lay out each run, every glyph at its character's cell.
+        let mut glyphs = Vec::new();
+        for Run { text, style: st, starts, .. } in &runs {
+            // Printable ASCII the style's font has: each glyph straight
+            // from the font at its cell, not shaped (19 µs a run, a full
+            // screen of short lines 2 ms at 1×); the same as shaping gives
+            // a monospaced font's own characters.
+            if text.bytes().all(|b| (0x21..0x7f).contains(&b))
+                && let Some(ids) = ascii_glyphs(window, &mut cache.ascii, *st, text)
+            {
+                let (font, ids) = ids;
+                for (&(_, col), id) in starts.iter().zip(ids) {
+                    glyphs.push(Glyph { x: col as f32 * cw, font, id, size: m.size, color: st.fg, emoji: false });
+                }
+                continue;
+            }
+            let font = font_for(*st);
+            let run = TextRun { len: text.len(), font, color: st.fg, background_color: None, underline: None, strikethrough: None, size: None };
+            let layout = window.text_system().layout_line_now(text, px(m.size), &[run]);
+            for shaped in &layout.runs {
+                // A cluster's glyphs after its first keep their place from it.
+                let mut cluster: Option<(usize, f32)> = None;
+                for g in &shaped.glyphs {
+                    let k = starts.partition_point(|&(byte, _)| byte <= g.index).saturating_sub(1);
+                    let (byte, col) = starts[k];
+                    let gx = f32::from(g.position.x);
+                    let base = match cluster {
+                        Some((b, x0)) if b == byte => x0,
+                        _ => {
+                            cluster = Some((byte, gx));
+                            gx
+                        }
+                    };
+                    // Wider than its cell (a fallback font's): centred in it.
+                    let adv = if cells.get(col).is_some_and(|c| c.flags.contains(Flags::WIDE_CHAR)) { 2.0 * cw } else { cw };
+                    let glyph_w = next_x(&shaped.glyphs, g.index, layout.width).map_or(m.advance, |nx| f32::from(nx) - gx).max(0.0);
+                    let centre = if (glyph_w - m.advance).abs() > 0.5 { ((adv - glyph_w) / 2.0 * m.scale).round() / m.scale } else { 0.0 };
+                    let x = col as f32 * cw + (gx - base) + centre;
+                    glyphs.push(Glyph { x, font: shaped.font_id, id: g.id, size: f32::from(shaped.font_size), color: st.fg, emoji: g.is_emoji });
+                }
+            }
+        }
+        // Colour emoji, two cells wide as an emoji should be: a narrow one
+        // borrows a free cell beside it.
+        for (col, text, st, n) in emoji {
+            let span = if n == 1 && col + 1 < cols && !used[col + 1] { 2 } else { n };
+            let run = TextRun { len: text.len(), font: font_for(st), color: st.fg, background_color: None, underline: None, strikethrough: None, size: None };
+            let layout = window.text_system().layout_line_now(&text, px(m.size), &[run]);
+            let w = f32::from(layout.width);
+            let x0 = col as f32 * cw + ((span.min(2) as f32 * cw - w) / 2.0 * m.scale).round() / m.scale + (span.saturating_sub(2)) as f32 * cw / 2.0;
+            for shaped in &layout.runs {
+                for g in &shaped.glyphs {
+                    glyphs.push(Glyph { x: x0 + f32::from(g.position.x), font: shaped.font_id, id: g.id, size: f32::from(shaped.font_size), color: st.fg, emoji: g.is_emoji });
+                }
+            }
+        }
+        cache.rows[r] = Some(CachedRow { cells: cells.to_vec(), selected, bgs, glyphs, run: RefCell::default(), shapes, images });
     }
-    // The cell under the cursor, if it's on the screen.
-    let cursor_cell = (show_cursor && (0..rows as i32).contains(&(cursor.point.line.0 + offset)))
-        .then(|| &grid[cursor.point])
-        .filter(|c| !spacer(c))
-        .map(|c| (c.c, style_of(c, cell_colors(c).0), c.flags.contains(Flags::WIDE_CHAR)));
+    // The rows in one layer: one place in the scene's order for all of
+    // them, not each glyph's own, worked out against everything drawn so
+    // far (2 µs a glyph: 1.4 ms a frame for a screen of short lines at 1×
+    // on a big display). In it every row's backgrounds are under every
+    // row's text, so a glyph reaching into the next row isn't covered;
+    // lines and shapes over the backgrounds. The cursor, links and
+    // pictures come after, over it.
+    window.paint_layer(rect, |window| {
+        for (r, row) in cache.rows.iter().enumerate() {
+            let Some(row) = row else { continue };
+            let y = origin.1 + r as f32 * ch;
+            for &(x, w, color) in &row.bgs {
+                window.paint_quad(gpui::fill(Bounds { origin: point(px(origin.0 + x), px(y)), size: size(px(w), px(ch)) }, color));
+            }
+        }
+        for (r, row) in cache.rows.iter().enumerate() {
+            let Some(row) = row else { continue };
+            let y = origin.1 + r as f32 * ch;
+            paint_shapes(window, &row.shapes, (origin.0, y));
+            let base = point(px(origin.0), px(y + m.baseline));
+            window.paint_glyph_run(&mut row.run.borrow_mut(), base, 0, |glyph| {
+                for g in row.glyphs.iter().filter(|g| !g.emoji) {
+                    glyph(point(px(g.x), px(0.0)), g.font, g.id, px(g.size), g.color);
+                }
+            });
+            for g in row.glyphs.iter().filter(|g| g.emoji) {
+                let _ = window.paint_emoji(point(base.x + px(g.x), base.y), g.font, g.id, px(g.size));
+            }
+        }
+    });
+    let image_cells: Vec<(i32, usize, u32, usize)> = cache
+        .rows
+        .iter()
+        .enumerate()
+        .filter_map(|(r, d)| Some((r as i32 - offset, d.as_ref()?)))
+        .flat_map(|(line, d)| d.images.iter().map(move |&(col, uid, row)| (line, col, uid, row)))
+        .collect();
+    drop(cache);
+    draw_images(window, s, &image_cells, pane, &at, m.cell);
+
     // The hovered link, underlined.
-    if let Some(h) = &mouse.hover
-        && h.target.is_some()
-    {
-        let lc = c32(scheme.cursor);
-        let t = (1.0 / m.ppp).max(0.5) * 2.0;
+    let cursor_color = hsla(scheme.resolve(Color::Named(NamedColor::Cursor), colors));
+    if let Some(h) = hover.filter(|h| h.target.is_some()) {
+        let t = line_px.max(0.5) * 2.0;
         for p in &h.cells {
-            let tl = at(p.line.0, p.column.0);
-            painter.rect_filled(Rect::from_min_size(pos2(tl.x, tl.y + m.ascent + m.row * 0.86), vec2(cell.x, t)), 0.0, lc);
+            let (x, y) = at(p.line.0, p.column.0);
+            window.paint_quad(gpui::fill(Bounds { origin: point(px(x), px(y + m.baseline + (m.row * 0.12).max(1.0))), size: size(px(cw), px(t)) }, cursor_color));
         }
     }
-
+    // Text being composed: at the cursor, underlined, over what's there.
+    let mut cursor_x = 0.0;
+    if let Some(text) = preedit.filter(|t| !t.is_empty()) {
+        let (x, y) = at(cursor.point.line.0, cursor.point.column.0);
+        let fg = hsla(scheme.resolve(Color::Named(NamedColor::Foreground), colors));
+        let run = TextRun { len: text.len(), font: style::mono_font(FontWeight::NORMAL), color: fg, background_color: None, underline: None, strikethrough: None, size: None };
+        let line = window.text_system().shape_line(text.to_owned().into(), px(m.size), &[run], Some(px(cw)));
+        let w = f32::from(line.width).max(cw);
+        window.paint_quad(gpui::fill(Bounds { origin: point(px(x), px(y)), size: size(px(w), px(ch)) }, background));
+        paint_at_baseline(window, cx, &line, x, y + m.baseline);
+        window.paint_quad(gpui::fill(Bounds { origin: point(px(x), px(y + ch - 2.0 * line_px)), size: size(px(w), px((2.0 * line_px).max(1.0))) }, fg));
+        cursor_x = w;
+    }
     // The cursor: a solid block when focused (with its character in the
     // background colour), an outline when not.
-    if let Some((c, st, wide)) = cursor_cell.or(show_cursor.then_some((' ', Style { fg: Color32::BLACK, bold: false, italic: false }, false))) {
-        let p = at(cursor.point.line.0, cursor.point.column.0);
-        let w = if wide { cell.x * 2.0 } else { cell.x };
-        let cc = c32(scheme.resolve(Color::Named(NamedColor::Cursor), colors));
-        let r = Rect::from_min_size(p, vec2(w, cell.y));
-        let px = 1.0 / m.ppp;
+    let cursor_on_screen = show_cursor && (0..rows as i32).contains(&(cursor.point.line.0 + offset));
+    if cursor_on_screen {
+        let cell = &grid[cursor.point];
+        let wide = !spacer(cell) && cell.flags.contains(Flags::WIDE_CHAR);
+        let (x, y) = at(cursor.point.line.0, cursor.point.column.0);
+        let x = x + cursor_x;
+        let w = if wide { cw * 2.0 } else { cw };
+        let r = Bounds { origin: point(px(x), px(y)), size: size(px(w), px(ch)) };
         match (focused, cursor.shape) {
-            (true, CursorShape::Beam) => {
-                painter.rect_filled(Rect::from_min_size(p, vec2((2.0 * px).max(1.0), cell.y)), 0.0, cc);
-            }
+            (true, CursorShape::Beam) => window.paint_quad(gpui::fill(Bounds { origin: r.origin, size: size(px((2.0 * line_px).max(1.0)), px(ch)) }, cursor_color)),
             (true, CursorShape::Underline) => {
-                painter.rect_filled(Rect::from_min_max(pos2(r.min.x, r.max.y - 2.0 * px.max(0.5) * 2.0), r.max), 0.0, cc);
+                let t = 2.0 * line_px.max(0.5) * 2.0;
+                window.paint_quad(gpui::fill(Bounds { origin: point(px(x), px(y + ch - t)), size: size(px(w), px(t)) }, cursor_color));
             }
             (true, _) => {
-                painter.rect_filled(r, 0.0, cc);
-                if c != ' ' && c != '\0' && !is_box(c) {
-                    let galley = ui.fonts_mut(|f| f.layout_no_wrap(c.to_string(), font_for(st), c32(bg_default)));
-                    let x = p.x + ((w - galley.size().x) / 2.0 * m.ppp).round() / m.ppp;
-                    painter.galley(pos2(x, p.y + m.ascent), galley, c32(bg_default));
+                window.paint_quad(gpui::fill(r, cursor_color));
+                let c = cell.c;
+                if !spacer(cell) && c != ' ' && c != '\0' && !is_box(c) && preedit.is_none_or(str::is_empty) {
+                    let st = style_of(cell, bg_default);
+                    let text: String = std::iter::once(c).chain(cell.zerowidth().into_iter().flatten().copied()).collect();
+                    let run = TextRun { len: text.len(), font: font_for(st), color: background, background_color: None, underline: None, strikethrough: None, size: None };
+                    let line = window.text_system().shape_line(text.into(), px(m.size), &[run], None);
+                    let lx = x + ((w - f32::from(line.width)) / 2.0 * m.scale).round() / m.scale;
+                    paint_at_baseline(window, cx, &line, lx, y + m.baseline);
                 }
             }
             (false, _) => {
-                let inset = px.max(0.5);
-                painter.rect_stroke(r.shrink(inset / 2.0), 0.0, Stroke::new(inset * 2.0, cc), egui::StrokeKind::Inside);
+                let t = line_px.max(0.5);
+                window.paint_quad(gpui::outline(Bounds { origin: point(px(x + t / 2.0), px(y + t / 2.0)), size: size(px(w - t), px(ch - t)) }, cursor_color, gpui::BorderStyle::Solid).border_widths(px(2.0 * t)));
             }
         }
     }
-
     // Scrollback position, shown only while scrolled back.
     if offset > 0 {
         let history = term.history_size().max(1) as f32;
-        let track = rect.shrink2(vec2(2.0, PAD.y));
+        let (top, height) = (f32::from(rect.top()) + PAD.1, f32::from(rect.size.height) - 2.0 * PAD.1);
         let visible = rows as f32 / (history + rows as f32);
-        let h = (track.height() * visible).max(16.0);
+        let h = (height * visible).max(16.0);
         let t = 1.0 - offset as f32 / history;
-        let y = track.min.y + (track.height() - h) * t;
-        let thumb = Rect::from_min_size(pos2(track.max.x - 4.0, y), vec2(4.0, h));
+        let y = top + (height - h) * t;
         let fg = scheme.resolve(Color::Named(NamedColor::Foreground), colors);
-        painter.rect_filled(thumb, 2.0, c32(mix(fg, bg_default, 0.35)));
+        let thumb = Bounds { origin: point(rect.right() - px(6.0), px(y)), size: size(px(4.0), px(h)) };
+        window.paint_quad(gpui::fill(thumb, hsla(mix(fg, bg_default, 0.35))).corner_radii(px(2.0)));
     }
-    drop(term);
-    s.last_frame = keep.then(|| Frame {
-        background: c32(bg_default),
-        shapes: ui.ctx().graphics(|g| g.get(layer).map(|l| l.all_entries().skip(first).map(|c| c.shape.clone()).collect()).unwrap_or_default()),
-    });
-    out
+}
+
+/// Characters in one style on adjacent cells, laid out together.
+struct Run {
+    text: String,
+    style: Style,
+    /// Each character's byte in `text` and its column.
+    starts: Vec<(usize, usize)>,
+    /// The column the run goes on at.
+    next: usize,
+}
+
+/// Paints `line` with its baseline at `baseline`.
+fn paint_at_baseline(window: &mut Window, cx: &mut App, line: &gpui::ShapedLine, x: f32, baseline: f32) {
+    let h = line.ascent + line.descent;
+    let _ = line.paint(point(px(x), px(baseline) - line.ascent), h, window, cx);
+}
+
+/// Where the glyph after the ones for text byte `index` starts: the next
+/// cluster's first glyph, else the line's end.
+fn next_x(glyphs: &[gpui::ShapedGlyph], index: usize, end: Pixels) -> Option<Pixels> {
+    Some(glyphs.iter().find(|g| g.index > index).map_or(end, |g| g.position.x))
+}
+
+fn paint_shapes(window: &mut Window, shapes: &[Shape], (ox, oy): (f32, f32)) {
+    for s in shapes {
+        match s {
+            Shape::Rect(x, y, w, h, c) => window.paint_quad(gpui::fill(Bounds { origin: point(px(ox + x), px(oy + y)), size: size(px(*w), px(*h)) }, *c)),
+            Shape::Line(pts, width, c) => {
+                let mut b = PathBuilder::stroke(px(*width));
+                for (k, &(x, y)) in pts.iter().enumerate() {
+                    let p = point(px(ox + x), px(oy + y));
+                    if k == 0 { b.move_to(p) } else { b.line_to(p) }
+                }
+                if let Ok(path) = b.build() {
+                    window.paint_path(path, *c);
+                }
+            }
+            Shape::Poly(pts, c) => {
+                let mut b = PathBuilder::fill();
+                for (k, &(x, y)) in pts.iter().enumerate() {
+                    let p = point(px(ox + x), px(oy + y));
+                    if k == 0 { b.move_to(p) } else { b.line_to(p) }
+                }
+                b.close();
+                if let Ok(path) = b.build() {
+                    window.paint_path(path, *c);
+                }
+            }
+        }
+    }
 }
 
 /// Box-drawing (U+2500–257F), blocks (U+2580–259F) and the Powerline
-/// arrows, drawn to the cell so adjacent cells connect exactly.
-fn draw_box(p: &Shapes, r: Rect, c: char, color: Color32, ppp: f32) {
-    let px = 1.0 / ppp;
-    let snap = |v: f32| (v * ppp).round() / ppp;
-    let light = (r.width() / 8.0 * ppp).round().max(1.0) / ppp;
+/// arrows, drawn to the cell (`x, y, w, h`) so adjacent cells connect
+/// exactly.
+fn draw_box(out: &mut Vec<Shape>, (rx, ry, rw, rh): (f32, f32, f32, f32), c: char, color: Hsla, scale: f32) {
+    let one = 1.0 / scale;
+    let snap = |v: f32| (v * scale).round() / scale;
+    let light = (rw / 8.0 * scale).round().max(1.0) / scale;
     let heavy = light * 2.0;
-    let cx = snap(r.center().x - light / 2.0);
-    let cy = snap(r.center().y - light / 2.0);
-    let fill = |rr: Rect| {
-        p.rect_filled(rr, 0.0, color);
-    };
+    let (cx, cy) = (rx + rw / 2.0, ry + rh / 2.0);
+    let (x1, y1) = (rx + rw, ry + rh);
+    let mut fill = |x0: f32, y0: f32, x1: f32, y1: f32| out.push(Shape::Rect(x0, y0, x1 - x0, y1 - y0, color));
     let code = c as u32;
     // Lines: which of left/right/up/down are drawn, and how thick.
-    let seg = |l: f32, rgt: f32, u: f32, d: f32| {
-        let hx = |t: f32| snap(r.center().y - t / 2.0);
-        let vx = |t: f32| snap(r.center().x - t / 2.0);
+    let seg = |fill: &mut dyn FnMut(f32, f32, f32, f32), l: f32, rgt: f32, u: f32, d: f32| {
+        let hy = |t: f32| snap(cy - t / 2.0);
+        let vx = |t: f32| snap(cx - t / 2.0);
         if l > 0.0 {
-            fill(Rect::from_min_max(pos2(r.min.x, hx(l)), pos2(vx(u.max(d).max(l)) + u.max(d).max(l), hx(l) + l)));
+            let t = u.max(d).max(l);
+            fill(rx, hy(l), vx(t) + t, hy(l) + l);
         }
         if rgt > 0.0 {
-            fill(Rect::from_min_max(pos2(vx(u.max(d).max(rgt)), hx(rgt)), pos2(r.max.x, hx(rgt) + rgt)));
+            fill(vx(u.max(d).max(rgt)), hy(rgt), x1, hy(rgt) + rgt);
         }
         if u > 0.0 {
-            fill(Rect::from_min_max(pos2(vx(u), r.min.y), pos2(vx(u) + u, hx(l.max(rgt).max(u)) + l.max(rgt).max(u))));
+            let t = l.max(rgt).max(u);
+            fill(vx(u), ry, vx(u) + u, hy(t) + t);
         }
         if d > 0.0 {
-            fill(Rect::from_min_max(pos2(vx(d), hx(l.max(rgt).max(d))), pos2(vx(d) + d, r.max.y)));
+            fill(vx(d), hy(l.max(rgt).max(d)), vx(d) + d, y1);
         }
     };
     let (n, h) = (light, heavy);
     match code {
-        0x2500 => seg(n, n, 0.0, 0.0),
-        0x2501 => seg(h, h, 0.0, 0.0),
-        0x2502 => seg(0.0, 0.0, n, n),
-        0x2503 => seg(0.0, 0.0, h, h),
-        0x250c => seg(0.0, n, 0.0, n),
-        0x250f => seg(0.0, h, 0.0, h),
-        0x2510 => seg(n, 0.0, 0.0, n),
-        0x2513 => seg(h, 0.0, 0.0, h),
-        0x2514 => seg(0.0, n, n, 0.0),
-        0x2517 => seg(0.0, h, h, 0.0),
-        0x2518 => seg(n, 0.0, n, 0.0),
-        0x251b => seg(h, 0.0, h, 0.0),
-        0x251c => seg(0.0, n, n, n),
-        0x2523 => seg(0.0, h, h, h),
-        0x2524 => seg(n, 0.0, n, n),
-        0x252b => seg(h, 0.0, h, h),
-        0x252c => seg(n, n, 0.0, n),
-        0x2533 => seg(h, h, 0.0, h),
-        0x2534 => seg(n, n, n, 0.0),
-        0x253b => seg(h, h, h, 0.0),
-        0x253c => seg(n, n, n, n),
-        0x254b => seg(h, h, h, h),
-        0x2574 => seg(n, 0.0, 0.0, 0.0),
-        0x2575 => seg(0.0, 0.0, n, 0.0),
-        0x2576 => seg(0.0, n, 0.0, 0.0),
-        0x2577 => seg(0.0, 0.0, 0.0, n),
+        0x2500 => seg(&mut fill, n, n, 0.0, 0.0),
+        0x2501 => seg(&mut fill, h, h, 0.0, 0.0),
+        0x2502 => seg(&mut fill, 0.0, 0.0, n, n),
+        0x2503 => seg(&mut fill, 0.0, 0.0, h, h),
+        0x250c => seg(&mut fill, 0.0, n, 0.0, n),
+        0x250f => seg(&mut fill, 0.0, h, 0.0, h),
+        0x2510 => seg(&mut fill, n, 0.0, 0.0, n),
+        0x2513 => seg(&mut fill, h, 0.0, 0.0, h),
+        0x2514 => seg(&mut fill, 0.0, n, n, 0.0),
+        0x2517 => seg(&mut fill, 0.0, h, h, 0.0),
+        0x2518 => seg(&mut fill, n, 0.0, n, 0.0),
+        0x251b => seg(&mut fill, h, 0.0, h, 0.0),
+        0x251c => seg(&mut fill, 0.0, n, n, n),
+        0x2523 => seg(&mut fill, 0.0, h, h, h),
+        0x2524 => seg(&mut fill, n, 0.0, n, n),
+        0x252b => seg(&mut fill, h, 0.0, h, h),
+        0x252c => seg(&mut fill, n, n, 0.0, n),
+        0x2533 => seg(&mut fill, h, h, 0.0, h),
+        0x2534 => seg(&mut fill, n, n, n, 0.0),
+        0x253b => seg(&mut fill, h, h, h, 0.0),
+        0x253c => seg(&mut fill, n, n, n, n),
+        0x254b => seg(&mut fill, h, h, h, h),
+        0x2574 => seg(&mut fill, n, 0.0, 0.0, 0.0),
+        0x2575 => seg(&mut fill, 0.0, 0.0, n, 0.0),
+        0x2576 => seg(&mut fill, 0.0, n, 0.0, 0.0),
+        0x2577 => seg(&mut fill, 0.0, 0.0, 0.0, n),
         // Rounded corners: straight arms meeting a quarter circle.
         0x256d..=0x2570 => {
-            // Which way the horizontal and vertical arms go.
             let (hx, vy) = match code {
                 0x256d => (1.0, 1.0),
                 0x256e => (-1.0, 1.0),
                 0x256f => (-1.0, -1.0),
                 _ => (1.0, -1.0),
             };
-            let c = pos2(snap(r.center().x - n / 2.0) + n / 2.0, snap(r.center().y - n / 2.0) + n / 2.0);
-            let radius = (r.width() / 2.0).min(r.height() / 2.0);
-            let arc_center = pos2(c.x + hx * radius, c.y + vy * radius);
-            let mut pts = Vec::new();
-            // Vertical arm from the cell edge to the arc.
-            pts.push(pos2(c.x, if vy > 0.0 { r.max.y } else { r.min.y }));
+            let c = (snap(cx - n / 2.0) + n / 2.0, snap(cy - n / 2.0) + n / 2.0);
+            let radius = (rw / 2.0).min(rh / 2.0);
+            let arc = (c.0 + hx * radius, c.1 + vy * radius);
+            let mut pts = vec![(c.0, if vy > 0.0 { y1 } else { ry })];
             for k in 0..=12 {
                 let t = k as f32 / 12.0 * std::f32::consts::FRAC_PI_2;
-                pts.push(pos2(arc_center.x - hx * radius * t.cos(), arc_center.y - vy * radius * t.sin()));
+                pts.push((arc.0 - hx * radius * t.cos(), arc.1 - vy * radius * t.sin()));
             }
-            pts.push(pos2(if hx > 0.0 { r.max.x } else { r.min.x }, c.y));
-            p.add(egui::Shape::line(pts, Stroke::new(n, color)));
+            pts.push((if hx > 0.0 { x1 } else { rx }, c.1));
+            out.push(Shape::Line(pts, n, color));
         }
         // Double lines. Each arm is two lines; where arms meet, a line
         // stops short (inner) or runs on to the corner (outer) depending on
         // whether another arm is on its side.
         0x2550 | 0x2551 | 0x2554 | 0x2557 | 0x255a | 0x255d | 0x2560 | 0x2563 | 0x2566 | 0x2569 | 0x256c => {
-            // left, right, up, down
             let (al, ar, au, ad) = match code {
                 0x2550 => (true, true, false, false),
                 0x2551 => (false, false, true, true),
@@ -783,106 +830,74 @@ fn draw_box(p: &Shapes, r: Rect, c: char, color: Color32, ppp: f32) {
                 _ => (true, true, true, true),
             };
             let g = snap(light * 1.5).max(light * 1.5);
-            let c = pos2(snap(r.center().x - n / 2.0), snap(r.center().y - n / 2.0));
+            let c = (snap(cx - n / 2.0), snap(cy - n / 2.0));
             for side in [-1.0f32, 1.0] {
-                // Horizontal lines at c.y ± g.
-                let y = c.y + side * g;
-                let blocked = if side < 0.0 { au } else { ad };
-                let inner = if blocked { g } else { -g };
+                let y = c.1 + side * g;
+                let inner = if if side < 0.0 { au } else { ad } { g } else { -g };
                 if ar {
-                    fill(Rect::from_min_max(pos2(c.x + inner, y), pos2(r.max.x, y + n)));
+                    fill(c.0 + inner, y, x1, y + n);
                 }
                 if al {
-                    fill(Rect::from_min_max(pos2(r.min.x, y), pos2(c.x - inner + n, y + n)));
+                    fill(rx, y, c.0 - inner + n, y + n);
                 }
-                // Vertical lines at c.x ± g.
-                let x = c.x + side * g;
-                let blocked = if side < 0.0 { al } else { ar };
-                let inner = if blocked { g } else { -g };
+                let x = c.0 + side * g;
+                let inner = if if side < 0.0 { al } else { ar } { g } else { -g };
                 if ad {
-                    fill(Rect::from_min_max(pos2(x, c.y + inner), pos2(x + n, r.max.y)));
+                    fill(x, c.1 + inner, x + n, y1);
                 }
                 if au {
-                    fill(Rect::from_min_max(pos2(x, r.min.y), pos2(x + n, c.y - inner + n)));
+                    fill(x, ry, x + n, c.1 - inner + n);
                 }
             }
         }
         // Blocks.
-        0x2580 => fill(Rect::from_min_max(r.min, pos2(r.max.x, snap(r.center().y)))),
+        0x2580 => fill(rx, ry, x1, snap(cy)),
         0x2581..=0x2588 => {
             let eighths = (code - 0x2580) as f32;
-            fill(Rect::from_min_max(pos2(r.min.x, snap(r.max.y - r.height() * eighths / 8.0)), r.max));
+            fill(rx, snap(y1 - rh * eighths / 8.0), x1, y1);
         }
         0x2589..=0x258f => {
             let eighths = (0x2590 - code) as f32;
-            fill(Rect::from_min_max(r.min, pos2(snap(r.min.x + r.width() * eighths / 8.0), r.max.y)));
+            fill(rx, ry, snap(rx + rw * eighths / 8.0), y1);
         }
-        0x2590 => fill(Rect::from_min_max(pos2(snap(r.center().x), r.min.y), r.max)),
+        0x2590 => fill(snap(cx), ry, x1, y1),
         0x2591..=0x2593 => {
-            let a = [64, 128, 192][(code - 0x2591) as usize];
-            fill_alpha(p, r, color, a);
+            let a = [0.25, 0.5, 0.75][(code - 0x2591) as usize];
+            out.push(Shape::Rect(rx, ry, rw, rh, color.opacity(a)));
         }
-        0x2594 => fill(Rect::from_min_max(r.min, pos2(r.max.x, snap(r.min.y + r.height() / 8.0)))),
-        0x2595 => fill(Rect::from_min_max(pos2(snap(r.max.x - r.width() / 8.0), r.min.y), r.max)),
+        0x2594 => fill(rx, ry, x1, snap(ry + rh / 8.0)),
+        0x2595 => fill(snap(x1 - rw / 8.0), ry, x1, y1),
         0x2596..=0x259f => {
             // Quadrants: bit order upper-left, upper-right, lower-left, lower-right.
             let q = [0b0010, 0b0001, 0b1000, 0b1011, 0b1001, 0b1110, 0b1101, 0b0100, 0b0110, 0b0111][(code - 0x2596) as usize];
-            let (mx, my) = (snap(r.center().x), snap(r.center().y));
-            let quads = [
-                Rect::from_min_max(r.min, pos2(mx, my)),
-                Rect::from_min_max(pos2(mx, r.min.y), pos2(r.max.x, my)),
-                Rect::from_min_max(pos2(r.min.x, my), pos2(mx, r.max.y)),
-                Rect::from_min_max(pos2(mx, my), r.max),
-            ];
-            for (i, quad) in quads.iter().enumerate() {
+            let (mx, my) = (snap(cx), snap(cy));
+            let quads = [(rx, ry, mx, my), (mx, ry, x1, my), (rx, my, mx, y1), (mx, my, x1, y1)];
+            for (i, (a, b, c2, d)) in quads.into_iter().enumerate() {
                 if q & (0b1000 >> i) != 0 {
-                    fill(*quad);
+                    fill(a, b, c2, d);
                 }
             }
         }
         // Powerline separators.
-        0xe0b0 | 0xe0b2 => {
-            let pts = if code == 0xe0b0 {
-                vec![r.left_top(), pos2(r.max.x, r.center().y), r.left_bottom()]
-            } else {
-                vec![r.right_top(), r.right_bottom(), pos2(r.min.x, r.center().y)]
-            };
-            p.add(egui::Shape::convex_polygon(pts, color, Stroke::NONE));
-        }
-        0xe0b1 | 0xe0b3 => {
-            let pts = if code == 0xe0b1 {
-                [r.left_top(), pos2(r.max.x - px, r.center().y), r.left_bottom()]
-            } else {
-                [r.right_top(), pos2(r.min.x + px, r.center().y), r.right_bottom()]
-            };
-            p.add(egui::Shape::line(pts.to_vec(), Stroke::new(light, color)));
-        }
-        _ => {
-            // Anything else in the range: the font's glyph, centred.
-            let galley = p.layout_no_wrap(c.to_string(), FontId::monospace(r.height() / 1.12 * 0.9), color);
-            p.galley(pos2(r.min.x, r.min.y), galley, color);
-        }
+        0xe0b0 => out.push(Shape::Poly(vec![(rx, ry), (x1, cy), (rx, y1)], color)),
+        0xe0b2 => out.push(Shape::Poly(vec![(x1, ry), (x1, y1), (rx, cy)], color)),
+        0xe0b1 => out.push(Shape::Line(vec![(rx, ry), (x1 - one, cy), (rx, y1)], light, color)),
+        0xe0b3 => out.push(Shape::Line(vec![(x1, ry), (rx + one, cy), (x1, y1)], light, color)),
+        // Anything else in the range: a light box, as nothing better is known.
+        _ => seg(&mut fill, n, n, n, n),
     }
-    let _ = (cx, cy);
-}
-
-fn fill_alpha(p: &Shapes, r: Rect, color: Color32, a: u8) {
-    p.rect_filled(r, 0.0, Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), a));
 }
 
 // ---- images and links -------------------------------------------------------
 
-/// Paint the image slices for tagged cells, one quad per run of cells.
-fn draw_images(
-    ui: &Ui,
-    painter: &egui::Painter,
-    s: &Session,
-    cells: &[(i32, usize, u32, usize)],
-    textures: &mut HashMap<u32, (u64, egui::TextureHandle)>,
-    at: impl Fn(i32, usize) -> Pos2,
-    cell: egui::Vec2,
-) {
+/// Paint the pictures in tagged cells: each placement whole, cut to the
+/// runs of its cells on the screen.
+fn draw_images(window: &mut Window, s: &Source, cells: &[(i32, usize, u32, usize)], pane: &Pane, at: &dyn Fn(i32, usize) -> (f32, f32), (cw, ch): (f32, f32)) {
+    let mut made = pane.images.borrow_mut();
     if cells.is_empty() {
+        for (_, (_, _, img)) in made.drain() {
+            let _ = window.drop_image(img);
+        }
         return;
     }
     let store = s.shared.images.lock().unwrap();
@@ -897,29 +912,47 @@ fn draw_images(
         i = j;
         let Some(p) = store.placements.get(&uid) else { continue };
         let Some(img) = store.images.get(&p.image) else { continue };
-        let fresh = textures.get(&p.image).is_some_and(|(g, _)| *g == img.generation);
+        let fresh = made.get(&uid).is_some_and(|(g, src, _)| *g == img.generation && *src == p.src);
         if !fresh {
-            let color = egui::ColorImage::from_rgba_unmultiplied([img.width as usize, img.height as usize], &img.rgba);
-            let tex = ui.ctx().load_texture(format!("term-img-{}", p.image), color, egui::TextureOptions::LINEAR);
-            textures.insert(p.image, (img.generation, tex));
+            let Some(picture) = crop(&img.rgba, img.width, img.height, p.src) else { continue };
+            if let Some((_, _, old)) = made.insert(uid, (img.generation, p.src, picture)) {
+                let _ = window.drop_image(old);
+            }
         }
-        let Some((_, tex)) = textures.get(&p.image) else { continue };
-        let (w, h) = (img.width as f32, img.height as f32);
-        let [sx, sy, sw, sh] = p.src.map(|v| v as f32);
-        let c0 = col.saturating_sub(p.start_col) as f32;
-        let c1 = (last_col + 1).saturating_sub(p.start_col) as f32;
-        let u0 = (sx + sw * c0 / p.cols as f32) / w;
-        let u1 = (sx + sw * (c1 / p.cols as f32).min(1.0)) / w;
-        let v0 = (sy + sh * row as f32 / p.rows as f32) / h;
-        let v1 = (sy + sh * (row + 1) as f32 / p.rows as f32) / h;
-        // Keep the aspect ratio: the image is scaled to fit its cell box
-        // (cells are rarely an exact multiple of its pixel size).
-        let tl = at(line, col);
-        let rect = Rect::from_min_size(tl, vec2(cell.x * (c1 - c0), cell.y));
-        painter.image(tex.id(), rect, Rect::from_min_max(pos2(u0, v0), pos2(u1, v1)), Color32::WHITE);
+        let Some((_, _, picture)) = made.get(&uid) else { continue };
+        // The placement's whole box, cut to these cells.
+        let (x0, y0) = at(line - row as i32, p.start_col);
+        let whole = Bounds { origin: point(px(x0), px(y0)), size: size(px(cw * p.cols as f32), px(ch * p.rows as f32)) };
+        let (sx, sy) = at(line, col);
+        let shown = Bounds { origin: point(px(sx), px(sy)), size: size(px(cw * (last_col + 1 - col) as f32), px(ch)) };
+        let picture = picture.clone();
+        window.with_content_mask(Some(ContentMask { bounds: shown }), |window| {
+            let _ = window.paint_image(whole, gpui::Corners::default(), picture, 0, false);
+        });
     }
-    // Forget textures of images that are gone.
-    textures.retain(|id, _| store.images.contains_key(id));
+    // Forget pictures that are gone.
+    let gone: Vec<u32> = made.keys().copied().filter(|uid| !store.placements.contains_key(uid)).collect();
+    for uid in gone {
+        if let Some((_, _, img)) = made.remove(&uid) {
+            let _ = window.drop_image(img);
+        }
+    }
+}
+
+/// The part `[x, y, w, h]` of an RGBA image, as GPUI draws pictures (BGRA).
+fn crop(rgba: &[u8], width: u32, height: u32, [x, y, w, h]: [u32; 4]) -> Option<Arc<RenderImage>> {
+    let (x, y) = (x.min(width), y.min(height));
+    let (w, h) = (w.min(width - x).max(1), h.min(height - y).max(1));
+    let mut out = Vec::with_capacity((w * h * 4) as usize);
+    for row in y..y + h {
+        let start = ((row * width + x) * 4) as usize;
+        let line = rgba.get(start..start + (w * 4) as usize)?;
+        for p in line.chunks_exact(4) {
+            out.extend_from_slice(&[p[2], p[1], p[0], p[3]]);
+        }
+    }
+    let buffer = image::RgbaImage::from_raw(w, h, out)?;
+    Some(Arc::new(RenderImage::new(smallvec::smallvec![image::Frame::new(buffer)])))
 }
 
 /// The logical line (following wraps) through `pt`, as text with the grid
@@ -963,10 +996,7 @@ fn find_link(s: &Session, at: Point, cwd: &dyn Fn() -> Option<std::path::PathBuf
     {
         let (_, points) = logical_line(&term, at);
         let id = h.id().to_owned();
-        let cells: Vec<Point> = points
-            .into_iter()
-            .filter(|p| term.grid()[p.line][p.column].hyperlink().is_some_and(|o| o.id() == id))
-            .collect();
+        let cells: Vec<Point> = points.into_iter().filter(|p| term.grid()[p.line][p.column].hyperlink().is_some_and(|o| o.id() == id)).collect();
         let uri = h.uri().to_owned();
         let target = match uri.strip_prefix("file://") {
             Some(rest) => {
@@ -1002,14 +1032,32 @@ fn find_link(s: &Session, at: Point, cwd: &dyn Fn() -> Option<std::path::PathBuf
 
 // ---- keyboard ---------------------------------------------------------------
 
-/// xterm's modifier parameter: 1 + shift + 2·alt + 4·ctrl.
-fn modifier_param(m: egui::Modifiers) -> u8 {
-    1 + m.shift as u8 + 2 * m.alt as u8 + 4 * m.ctrl as u8
+/// A key as the terminal encodes it: GPUI's name for it, unshifted (it
+/// names shifted symbols as themselves: "_" for ⇧-), and its modifiers,
+/// Shift with them again.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Key<'a> {
+    pub name: &'a str,
+    pub shift: bool,
+    pub ctrl: bool,
+    pub alt: bool,
 }
 
-/// The bytes for a key, or None when it's left to the text event.
-pub fn key_bytes(key: Key, m: egui::Modifiers, mode: TermMode) -> Option<Vec<u8>> {
-    let mp = modifier_param(m);
+impl<'a> Key<'a> {
+    pub fn of(k: &'a Keystroke) -> Key<'a> {
+        let (name, shifted) = olo_ui::keys::unshifted(&k.key);
+        Key { name, shift: k.modifiers.shift || shifted, ctrl: k.modifiers.control, alt: k.modifiers.alt }
+    }
+}
+
+/// xterm's modifier parameter: 1 + shift + 2·alt + 4·ctrl.
+fn modifier_param(k: Key) -> u8 {
+    1 + k.shift as u8 + 2 * k.alt as u8 + 4 * k.ctrl as u8
+}
+
+/// The bytes for a key, or None when it's left to the text it types.
+pub fn key_bytes(k: Key, mode: TermMode) -> Option<Vec<u8>> {
+    let mp = modifier_param(k);
     let kitty = mode.intersects(TermMode::KITTY_KEYBOARD_PROTOCOL);
     let csi = |letter: char| -> Vec<u8> {
         if mp > 1 {
@@ -1020,113 +1068,119 @@ pub fn key_bytes(key: Key, m: egui::Modifiers, mode: TermMode) -> Option<Vec<u8>
             format!("\x1b[{letter}").into_bytes()
         }
     };
-    let tilde = |n: u8| -> Vec<u8> {
-        if mp > 1 { format!("\x1b[{n};{mp}~").into_bytes() } else { format!("\x1b[{n}~").into_bytes() }
-    };
-    let ss3 = |letter: char| -> Vec<u8> {
-        if mp > 1 { format!("\x1b[1;{mp}{letter}").into_bytes() } else { format!("\x1bO{letter}").into_bytes() }
-    };
+    let tilde = |n: u8| -> Vec<u8> { if mp > 1 { format!("\x1b[{n};{mp}~").into_bytes() } else { format!("\x1b[{n}~").into_bytes() } };
+    let ss3 = |letter: char| -> Vec<u8> { if mp > 1 { format!("\x1b[1;{mp}{letter}").into_bytes() } else { format!("\x1bO{letter}").into_bytes() } };
     let esc = |mut b: Vec<u8>| {
-        if m.alt {
+        if k.alt {
             b.insert(0, 0x1b);
         }
         b
     };
-    Some(match key {
-        Key::ArrowUp => csi('A'),
-        Key::ArrowDown => csi('B'),
+    let word = k.alt && !k.ctrl && !k.shift && !kitty;
+    Some(match k.name {
+        "up" => csi('A'),
+        "down" => csi('B'),
         // Option+←/→ alone: a word back or forward, as macOS Terminal
         // sends it (readline, zsh and fish all know ESC b / ESC f; bash
         // leaves xterm's CSI 1;3 D unbound). A program that asked for the
         // kitty keyboard protocol (Claude Code, …) gets the protocol's
         // CSI 1;3 D and reads it as Alt+← itself.
-        Key::ArrowRight if m.alt && !m.ctrl && !m.shift && !kitty => b"\x1bf".to_vec(),
-        Key::ArrowLeft if m.alt && !m.ctrl && !m.shift && !kitty => b"\x1bb".to_vec(),
-        Key::ArrowRight => csi('C'),
-        Key::ArrowLeft => csi('D'),
-        Key::Home => csi('H'),
-        Key::End => csi('F'),
-        Key::PageUp => tilde(5),
-        Key::PageDown => tilde(6),
-        Key::Insert => tilde(2),
-        Key::Delete => tilde(3),
-        Key::F1 => ss3('P'),
-        Key::F2 => ss3('Q'),
-        Key::F3 => ss3('R'),
-        Key::F4 => ss3('S'),
-        Key::F5 => tilde(15),
-        Key::F6 => tilde(17),
-        Key::F7 => tilde(18),
-        Key::F8 => tilde(19),
-        Key::F9 => tilde(20),
-        Key::F10 => tilde(21),
-        Key::F11 => tilde(23),
-        Key::F12 => tilde(24),
-        Key::Enter => esc(vec![b'\r']),
-        Key::Tab if m.shift => b"\x1b[Z".to_vec(),
-        Key::Tab => esc(vec![b'\t']),
-        Key::Backspace if m.ctrl => esc(vec![0x08]),
-        Key::Backspace => esc(vec![0x7f]),
-        Key::Escape => esc(vec![0x1b]),
-        _ if m.ctrl => esc(vec![ctrl_byte(key)?]),
+        "right" if word => b"\x1bf".to_vec(),
+        "left" if word => b"\x1bb".to_vec(),
+        "right" => csi('C'),
+        "left" => csi('D'),
+        "home" => csi('H'),
+        "end" => csi('F'),
+        "pageup" => tilde(5),
+        "pagedown" => tilde(6),
+        "insert" => tilde(2),
+        "delete" => tilde(3),
+        "f1" => ss3('P'),
+        "f2" => ss3('Q'),
+        "f3" => ss3('R'),
+        "f4" => ss3('S'),
+        "f5" => tilde(15),
+        "f6" => tilde(17),
+        "f7" => tilde(18),
+        "f8" => tilde(19),
+        "f9" => tilde(20),
+        "f10" => tilde(21),
+        "f11" => tilde(23),
+        "f12" => tilde(24),
+        "enter" => esc(vec![b'\r']),
+        "tab" if k.shift => b"\x1b[Z".to_vec(),
+        "tab" => esc(vec![b'\t']),
+        "backspace" if k.ctrl => esc(vec![0x08]),
+        "backspace" => esc(vec![0x7f]),
+        "escape" => esc(vec![0x1b]),
+        _ if k.ctrl => esc(vec![ctrl_byte(k)?]),
+        // Alt with a character: ESC and the character (the text event's
+        // job without Alt).
+        name if k.alt => {
+            let c = if name == "space" { ' ' } else { single(name)? };
+            let c = if k.shift { c.to_ascii_uppercase() } else { c };
+            esc(c.to_string().into_bytes())
+        }
         _ => return None,
     })
 }
 
-/// Ctrl+key as a C0 control character.
-fn ctrl_byte(key: Key) -> Option<u8> {
-    let name = key.name();
-    if name.len() == 1 {
-        let c = name.as_bytes()[0];
-        if c.is_ascii_alphabetic() {
-            return Some(c.to_ascii_lowercase() & 0x1f);
-        }
+/// A one-character key's character.
+fn single(name: &str) -> Option<char> {
+    let mut chars = name.chars();
+    let c = chars.next()?;
+    chars.next().is_none().then_some(c)
+}
+
+/// Ctrl+key as a C0 control character (as xterm's: Ctrl+2 and Ctrl+@ are
+/// NUL, Ctrl+3–7 the ESC…US block, Ctrl+8 and Ctrl+? DEL).
+fn ctrl_byte(k: Key) -> Option<u8> {
+    if k.name == "space" {
+        return Some(0);
     }
-    Some(match key {
-        Key::Space | Key::Num2 => 0,
-        Key::OpenBracket | Key::Num3 => 0x1b,
-        Key::Backslash | Key::Num4 => 0x1c,
-        Key::CloseBracket | Key::Num5 => 0x1d,
-        Key::Num6 => 0x1e,
-        Key::Minus | Key::Num7 => 0x1f,
-        Key::Slash => 0x1f,
-        Key::Num8 | Key::Questionmark => 0x7f,
+    let c = single(k.name)?;
+    if c.is_ascii_alphabetic() {
+        return Some(c.to_ascii_lowercase() as u8 & 0x1f);
+    }
+    // With Shift: the shifted symbol's (Ctrl+_, Ctrl+^, Ctrl+@, Ctrl+?).
+    let c = if k.shift { olo_ui::keys::shifted(c).unwrap_or(c) } else { c };
+    Some(match c {
+        '2' | '@' => 0,
+        '3' | '[' | '{' => 0x1b,
+        '4' | '\\' | '|' => 0x1c,
+        '5' | ']' | '}' => 0x1d,
+        '6' | '^' | '~' => 0x1e,
+        '7' | '-' | '_' | '/' => 0x1f,
+        '8' | '?' => 0x7f,
         _ => return None,
     })
 }
 
 /// The kitty keyboard protocol's code for a key: its Unicode codepoint
-/// (unshifted) or a functional-key number. None for the arrows (egui's
-/// symbols for them, ⏴ and friends, aren't what they type), which keep
-/// their legacy `CSI 1;mods D` form under the protocol too.
-fn kitty_code(key: Key) -> Option<u32> {
-    Some(match key {
-        Key::Escape => 27,
-        Key::Enter => 13,
-        Key::Tab => 9,
-        Key::Backspace => 127,
-        Key::Space => 32,
-        Key::Insert => 2,
-        Key::Delete => 3,
+/// (unshifted) or a functional-key number. None for the arrows and other
+/// keys that keep their legacy `CSI 1;mods X` form under the protocol.
+fn kitty_code(name: &str) -> Option<u32> {
+    Some(match name {
+        "escape" => 27,
+        "enter" => 13,
+        "tab" => 9,
+        "backspace" => 127,
+        "space" => 32,
+        "insert" => 2,
+        "delete" => 3,
         _ => {
-            let sym = key.symbol_or_name();
-            let mut chars = sym.chars();
-            let c = chars.next()?;
-            if chars.next().is_some() {
+            let c = single(name)?;
+            if !c.is_ascii() {
                 return None;
             }
-            match c {
-                '−' => '-' as u32,
-                c if c.is_ascii() => c.to_ascii_lowercase() as u32,
-                _ => return None,
-            }
+            c.to_ascii_lowercase() as u32
         }
     })
 }
 
 /// `CSI code ; mods [: event] u`, the kitty protocol's key report.
-fn csi_u(code: u32, m: egui::Modifiers, event: u8) -> Vec<u8> {
-    let mp = modifier_param(m);
+fn csi_u(code: u32, k: Key, event: u8) -> Vec<u8> {
+    let mp = modifier_param(k);
     match (mp, event) {
         (1, 1) => format!("\x1b[{code}u"),
         (_, 1) => format!("\x1b[{code};{mp}u"),
@@ -1135,160 +1189,130 @@ fn csi_u(code: u32, m: egui::Modifiers, event: u8) -> Vec<u8> {
     .into_bytes()
 }
 
+fn csi_tilde(n: u8, k: Key, event: u8) -> Vec<u8> {
+    let mp = modifier_param(k);
+    if mp == 1 && event == 1 { format!("\x1b[{n}~") } else { format!("\x1b[{n};{mp}:{event}~") }.into_bytes()
+}
+
+fn legacy_with_event(k: Key, event: u8) -> Option<Vec<u8>> {
+    let mp = modifier_param(k);
+    let letter = |l: char| Some(format!("\x1b[1;{mp}:{event}{l}").into_bytes());
+    match k.name {
+        "up" => letter('A'),
+        "down" => letter('B'),
+        "right" => letter('C'),
+        "left" => letter('D'),
+        "home" => letter('H'),
+        "end" => letter('F'),
+        "pageup" => Some(csi_tilde(5, k, event)),
+        "pagedown" => Some(csi_tilde(6, k, event)),
+        _ => None,
+    }
+}
+
 /// Encode a key under the kitty keyboard protocol, or None for the
 /// legacy encoding. `event` is 1 press, 2 repeat, 3 release.
-fn kitty_key(key: Key, m: egui::Modifiers, mode: TermMode, event: u8) -> Option<Vec<u8>> {
+pub fn kitty_key(k: Key, mode: TermMode, event: u8) -> Option<Vec<u8>> {
     let all = mode.contains(TermMode::REPORT_ALL_KEYS_AS_ESC);
     let events = mode.contains(TermMode::REPORT_EVENT_TYPES);
     if event == 3 && !events {
         return None;
     }
     let event = if events { event } else { 1 };
-    let code = kitty_code(key);
-    let functional = matches!(key, Key::Escape | Key::Enter | Key::Tab | Key::Backspace);
-    let text_key = code.is_some() && !functional && !matches!(key, Key::Insert | Key::Delete);
+    let code = kitty_code(k.name);
+    let functional = matches!(k.name, "escape" | "enter" | "tab" | "backspace");
+    let insert_delete = matches!(k.name, "insert" | "delete");
+    let text_key = code.is_some() && !functional && !insert_delete;
     if let Some(code) = code {
         if all {
-            return Some(if matches!(key, Key::Insert | Key::Delete) { csi_tilde(code as u8, m, event) } else { csi_u(code, m, event) });
+            return Some(if insert_delete { csi_tilde(code as u8, k, event) } else { csi_u(code, k, event) });
         }
         if functional {
             // Esc is always disambiguated; Enter, Tab and Backspace only
             // with modifiers (plain ones keep their legacy bytes).
-            let plain = !m.ctrl && !m.alt && !m.shift;
-            return (key == Key::Escape || !plain || event != 1).then(|| csi_u(code, m, event));
+            let plain = !k.ctrl && !k.alt && !k.shift;
+            return (k.name == "escape" || !plain || event != 1).then(|| csi_u(code, k, event));
         }
-        if text_key && (m.ctrl || m.alt) {
-            return Some(csi_u(code, m, event));
+        if text_key && (k.ctrl || k.alt) {
+            return Some(csi_u(code, k, event));
         }
         if text_key {
             // Plain typing stays text (releases are reported when asked).
-            return (event == 3).then(|| csi_u(code, m, event));
+            return (event == 3).then(|| csi_u(code, k, event));
         }
     }
     // Arrows, F-keys and friends keep their legacy form (with the event
     // type when reporting them).
     if event != 1 {
-        return legacy_with_event(key, m, event);
+        return legacy_with_event(k, event);
     }
     None
 }
 
-fn csi_tilde(n: u8, m: egui::Modifiers, event: u8) -> Vec<u8> {
-    let mp = modifier_param(m);
-    if mp == 1 && event == 1 { format!("\x1b[{n}~") } else { format!("\x1b[{n};{mp}:{event}~") }.into_bytes()
-}
-
-fn legacy_with_event(key: Key, m: egui::Modifiers, event: u8) -> Option<Vec<u8>> {
-    let mp = modifier_param(m);
-    let letter = |l: char| Some(format!("\x1b[1;{mp}:{event}{l}").into_bytes());
-    match key {
-        Key::ArrowUp => letter('A'),
-        Key::ArrowDown => letter('B'),
-        Key::ArrowRight => letter('C'),
-        Key::ArrowLeft => letter('D'),
-        Key::Home => letter('H'),
-        Key::End => letter('F'),
-        Key::PageUp => Some(csi_tilde(5, m, event)),
-        Key::PageDown => Some(csi_tilde(6, m, event)),
-        _ => None,
-    }
-}
-
-/// A menu shortcut's chord, the app's rather than the shell's: one of
-/// Terminal's in the keyboard profile (⌘key, which arrives as
-/// Ctrl+Shift+key, whether or not the item is enabled just now; ⇧= arrives
-/// as Plus).
-fn is_shortcut(key: Key, m: egui::Modifiers) -> bool {
-    m.command && olo_kit::keyboard::is_own_shortcut(crate::APP_ID, key, m, true)
-}
-
-fn keyboard(ui: &Ui, s: &Session, out: &mut Output) {
-    let events = ui.input(|i| i.events.clone());
-    if events.is_empty() {
-        return;
+/// What a key pressed (or let go) does to the screen: bytes for the
+/// program, the history scrolled; false if it's left to the text it types.
+/// `pressed`, `repeat`: the event; Ctrl here is the shell's (the command
+/// key, ⌘, was taken out by the caller: it's Terminal's or goes on as
+/// Ctrl+key).
+pub fn key(s: &Session, k: Key, pressed: bool, repeat: bool) -> bool {
+    if s.exited.is_some() {
+        return false;
     }
     let mode = *s.term.lock().mode();
-    let kitty = mode.intersects(TermMode::KITTY_KEYBOARD_PROTOCOL);
-    let mut wrote = false;
-    // A key we already reported as an escape sequence also produces a
-    // text event; skip that.
-    let mut skip_text = false;
-    for e in events {
-        match e {
-            egui::Event::Key { key, pressed, repeat, modifiers, .. } => {
-                // ⌘ with a menu shortcut's key is the app's (⌘C arrives
-                // as Ctrl+Shift+C); any other goes to the shell as
-                // Ctrl+key, so ⌘R searches history like Ctrl+R. Physical
-                // Ctrl isn't `command` (the kit's `key_modifiers`), so
-                // Ctrl+Shift+- is the shell's Ctrl+_ (undo), not Smaller.
-                if is_shortcut(key, modifiers) && pressed {
-                    continue;
-                }
-                if pressed && modifiers.shift && !mode.contains(TermMode::ALT_SCREEN) {
-                    // Shift+PageUp/Down scroll the history, as everywhere.
-                    let page = s.size.rows as i32 - 1;
-                    let scroll = match key {
-                        Key::PageUp => Some(Scroll::Delta(page)),
-                        Key::PageDown => Some(Scroll::Delta(-page)),
-                        Key::Home => Some(Scroll::Top),
-                        Key::End => Some(Scroll::Bottom),
-                        _ => None,
-                    };
-                    if let Some(sc) = scroll {
-                        s.term.lock().scroll_display(sc);
-                        continue;
-                    }
-                }
-                if kitty {
-                    let event = if !pressed { 3 } else if repeat { 2 } else { 1 };
-                    if let Some(bytes) = kitty_key(key, modifiers, mode, event) {
-                        s.write(bytes);
-                        wrote |= pressed;
-                        skip_text = pressed;
-                        continue;
-                    }
-                }
-                if !pressed {
-                    continue;
-                }
-                skip_text = false;
-                if let Some(bytes) = key_bytes(key, modifiers, mode) {
-                    s.write(bytes);
-                    wrote = true;
-                }
-            }
-            egui::Event::Text(text) => {
-                if std::mem::take(&mut skip_text) {
-                    continue;
-                }
-                let alt = ui.input(|i| i.modifiers.alt);
-                let mut b = Vec::new();
-                if alt {
-                    b.push(0x1b);
-                }
-                b.extend_from_slice(text.as_bytes());
-                s.write(b);
-                wrote = true;
-            }
-            egui::Event::Copy => out.copy = s.term.lock().selection_to_string(),
-            egui::Event::Paste(text) => {
-                paste(s, &text, mode);
-                wrote = true;
-            }
-            _ => {}
+    if pressed && k.shift && !mode.contains(TermMode::ALT_SCREEN) {
+        // Shift+Page Up/Down scroll the history, as everywhere.
+        let page = s.size.rows as i32 - 1;
+        let scroll = match k.name {
+            "pageup" => Some(Scroll::Delta(page)),
+            "pagedown" => Some(Scroll::Delta(-page)),
+            "home" => Some(Scroll::Top),
+            "end" => Some(Scroll::Bottom),
+            _ => None,
+        };
+        if let Some(sc) = scroll {
+            s.term.lock().scroll_display(sc);
+            return true;
         }
     }
-    if wrote {
-        s.typed();
+    if mode.intersects(TermMode::KITTY_KEYBOARD_PROTOCOL) {
+        let event = if !pressed { 3 } else if repeat { 2 } else { 1 };
+        if let Some(bytes) = kitty_key(k, mode, event) {
+            s.write(bytes);
+            if pressed {
+                s.typed();
+            }
+            return true;
+        }
     }
+    if !pressed {
+        return false;
+    }
+    match key_bytes(k, mode) {
+        Some(bytes) => {
+            s.write(bytes);
+            s.typed();
+            true
+        }
+        None => false,
+    }
+}
+
+/// Text typed (or an input method's): to the program.
+pub fn text(s: &Session, text: &str) {
+    if s.exited.is_some() || text.is_empty() {
+        return;
+    }
+    s.write(text.as_bytes().to_vec());
+    s.typed();
 }
 
 /// Send pasted text, bracketed when the program asked for that (so a
 /// pasted command doesn't run until the user presses Return).
-pub fn paste(s: &Session, text: &str, mode: TermMode) {
+pub fn paste(s: &Session, text: &str) {
     if text.is_empty() {
         return;
     }
+    let mode = *s.term.lock().mode();
     if mode.contains(TermMode::BRACKETED_PASTE) {
         // A paste can't end the bracket early.
         let clean = text.replace("\x1b[201~", "");
@@ -1296,21 +1320,39 @@ pub fn paste(s: &Session, text: &str, mode: TermMode) {
     } else {
         s.write(text.replace("\r\n", "\r").replace('\n', "\r").into_bytes());
     }
+    s.typed();
 }
 
 // ---- mouse ------------------------------------------------------------------
 
-fn cell_at(pos: Pos2, rect: Rect, m: &Metrics, size: Size, offset: usize) -> (Point, Side) {
-    let x = (pos.x - rect.min.x - PAD.x).max(0.0);
-    let y = (pos.y - rect.min.y - PAD.y).max(0.0);
-    let col = ((x / m.cell.x) as usize).min(size.cols - 1);
-    let row = ((y / m.cell.y) as usize).min(size.rows - 1);
-    let side = if x - col as f32 * m.cell.x > m.cell.x / 2.0 { Side::Right } else { Side::Left };
+/// The cell at `pos` (window coordinates) on the screen drawn in `rect`.
+fn cell_at(pos: gpui::Point<Pixels>, rect: Bounds<Pixels>, m: &Metrics, size: Size, offset: usize) -> (Point, Side) {
+    let x = (f32::from(pos.x - rect.left()) - PAD.0).max(0.0);
+    let y = (f32::from(pos.y - rect.top()) - PAD.1).max(0.0);
+    let col = ((x / m.cell.0) as usize).min(size.cols - 1);
+    let row = ((y / m.cell.1) as usize).min(size.rows - 1);
+    let side = if x - col as f32 * m.cell.0 > m.cell.0 / 2.0 { Side::Right } else { Side::Left };
     (Point::new(Line(row as i32 - offset as i32), Column(col)), side)
 }
 
+/// The modifiers as the program is told them.
+#[derive(Clone, Copy, Default)]
+pub struct Mods {
+    pub shift: bool,
+    pub alt: bool,
+    pub ctrl: bool,
+    /// The command key (⌘): links, not the program's.
+    pub command: bool,
+}
+
+impl Mods {
+    pub fn of(m: &Modifiers, command: bool) -> Mods {
+        Mods { shift: m.shift, alt: m.alt, ctrl: m.control && !command, command }
+    }
+}
+
 /// SGR mouse report (1006).
-fn report(s: &Session, button: u8, point: Point, offset: usize, pressed: bool, m: egui::Modifiers) {
+fn report(s: &Session, button: u8, point: Point, offset: usize, pressed: bool, m: Mods) {
     let mods = 4 * m.shift as u8 + 8 * m.alt as u8 + 16 * m.ctrl as u8;
     let line = point.line.0 + offset as i32 + 1;
     let col = point.column.0 + 1;
@@ -1318,164 +1360,173 @@ fn report(s: &Session, button: u8, point: Point, offset: usize, pressed: bool, m
     s.write(format!("\x1b[<{};{col};{line}{fin}", button + mods).into_bytes());
 }
 
-fn pointer(ui: &Ui, s: &mut Session, m: &Metrics, resp: &egui::Response, rect: Rect, mouse: &mut Mouse, out: &mut Output) {
-    let (mode, offset) = {
-        let t = s.term.lock();
-        (*t.mode(), t.grid().display_offset())
-    };
-    let mods = ui.input(|i| i.modifiers);
-    let reporting = mode.intersects(TermMode::MOUSE_MODE) && !mods.shift;
-    let size = s.size;
+fn button_code(b: gpui::MouseButton) -> Option<u8> {
+    match b {
+        gpui::MouseButton::Left => Some(0),
+        gpui::MouseButton::Middle => Some(1),
+        gpui::MouseButton::Right => Some(2),
+        _ => None,
+    }
+}
 
-    // Wheel: history, or the program's own scrolling.
-    let wheel = ui.input(|i| {
-        i.events
-            .iter()
-            .filter_map(|e| match e {
-                egui::Event::MouseWheel { unit, delta, .. } if resp.hovered() || resp.contains_pointer() => Some(match unit {
-                    egui::MouseWheelUnit::Line => delta.y,
-                    egui::MouseWheelUnit::Page => delta.y * size.rows as f32,
-                    egui::MouseWheelUnit::Point => delta.y / m.cell.y,
-                }),
-                _ => None,
-            })
-            .sum::<f32>()
-    });
-    if wheel != 0.0 {
-        mouse.scroll += wheel;
-        let lines = mouse.scroll.trunc() as i32;
-        mouse.scroll -= lines as f32;
-        if lines != 0 {
-            if reporting {
-                if let Some(pos) = resp.hover_pos() {
-                    let (pt, _) = cell_at(pos, rect, m, size, offset);
-                    for _ in 0..lines.unsigned_abs() {
-                        report(s, if lines > 0 { 64 } else { 65 }, pt, offset, true, mods);
-                    }
+impl Mouse {
+    /// The link under the pointer, while ⌘ is held: found once a cell.
+    pub fn hover_at(&mut self, s: &Session, m: &Metrics, rect: Bounds<Pixels>, pos: Option<gpui::Point<Pixels>>, command: bool, cwd: &dyn Fn() -> Option<std::path::PathBuf>) -> bool {
+        let before = self.hover.as_ref().map(|h| h.cells.clone());
+        match pos.filter(|p| command && !self.selecting && rect.contains(p)) {
+            Some(pos) => {
+                let offset = s.term.lock().grid().display_offset();
+                let (pt, _) = cell_at(pos, rect, m, s.size, offset);
+                if self.hover.as_ref().is_none_or(|h| h.at != pt) {
+                    self.hover = Some(find_link(s, pt, cwd));
                 }
-            } else if mode.contains(TermMode::ALT_SCREEN) && mode.contains(TermMode::ALTERNATE_SCROLL) {
-                let key = if lines > 0 { "A" } else { "B" };
-                let seq = if mode.contains(TermMode::APP_CURSOR) { format!("\x1bO{key}") } else { format!("\x1b[{key}") };
-                s.write(seq.repeat(lines.unsigned_abs() as usize).into_bytes());
-            } else {
-                s.term.lock().scroll_display(Scroll::Delta(lines * 3));
             }
+            None => self.hover = None,
         }
+        self.hover.as_ref().map(|h| h.cells.clone()) != before
     }
 
-    let Some(pos) = resp.interact_pointer_pos().or(resp.hover_pos()) else { return };
-    let (point, side) = cell_at(pos, rect, m, size, offset);
-
-    // ⌘-click on a link opens it, even in a program that takes the mouse.
-    let pressed = ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary)) && resp.contains_pointer();
-    if pressed
-        && mods.command
-        && let Some(target) = mouse.hover.as_ref().and_then(|h| h.target.clone())
-    {
-        out.open = Some(target);
-        mouse.last_cell = Some(point);
-        return;
-    }
-
-    if reporting {
-        let pressed = ui.input(|i| {
-            [(egui::PointerButton::Primary, 0u8), (egui::PointerButton::Middle, 1), (egui::PointerButton::Secondary, 2)]
-                .into_iter()
-                .find(|(b, _)| i.pointer.button_pressed(*b))
-                .map(|(_, n)| n)
-        });
-        let released = ui.input(|i| {
-            [(egui::PointerButton::Primary, 0u8), (egui::PointerButton::Middle, 1), (egui::PointerButton::Secondary, 2)]
-                .into_iter()
-                .find(|(b, _)| i.pointer.button_released(*b))
-                .map(|(_, n)| n)
-        });
-        if let Some(b) = pressed
-            && resp.contains_pointer()
-        {
-            mouse.reporting = Some(b);
-            report(s, b, point, offset, true, mods);
-        }
-        if mouse.last_cell != Some(point) {
-            if let Some(b) = mouse.reporting
-                && mode.intersects(TermMode::MOUSE_DRAG | TermMode::MOUSE_MOTION)
-            {
-                report(s, 32 + b, point, offset, true, mods);
-            } else if mouse.reporting.is_none() && mode.contains(TermMode::MOUSE_MOTION) && resp.contains_pointer() {
-                report(s, 35, point, offset, true, mods);
-            }
-        }
-        if let Some(b) = released
-            && mouse.reporting.is_some()
-        {
-            mouse.reporting = None;
-            report(s, b, point, offset, false, mods);
-        }
-        mouse.last_cell = Some(point);
-        return;
-    }
-    mouse.last_cell = Some(point);
-
-    // Selection: drag for characters, double-click words, triple-click
-    // lines; Shift extends.
-    if pressed {
-        let now = std::time::Instant::now();
-        let count = match mouse.last_click {
-            Some((t, p, n)) if now.duration_since(t).as_millis() < 400 && p == point => n % 3 + 1,
-            _ => 1,
+    /// The wheel turned (in lines, up positive) over the screen.
+    pub fn wheel(&mut self, s: &Session, m: &Metrics, rect: Bounds<Pixels>, pos: gpui::Point<Pixels>, lines: f32, mods: Mods) {
+        let (mode, offset) = {
+            let t = s.term.lock();
+            (*t.mode(), t.grid().display_offset())
         };
-        mouse.last_click = Some((now, point, count));
-        let mut t = s.term.lock();
-        if mods.shift && t.selection.is_some() {
-            if let Some(sel) = t.selection.as_mut() {
-                sel.update(point, side);
+        let reporting = mode.intersects(TermMode::MOUSE_MODE) && !mods.shift;
+        self.scroll += lines;
+        let n = self.scroll.trunc() as i32;
+        self.scroll -= n as f32;
+        if n == 0 {
+            return;
+        }
+        if reporting {
+            let (pt, _) = cell_at(pos, rect, m, s.size, offset);
+            for _ in 0..n.unsigned_abs() {
+                report(s, if n > 0 { 64 } else { 65 }, pt, offset, true, mods);
             }
+        } else if mode.contains(TermMode::ALT_SCREEN) && mode.contains(TermMode::ALTERNATE_SCROLL) {
+            let key = if n > 0 { "A" } else { "B" };
+            let seq = if mode.contains(TermMode::APP_CURSOR) { format!("\x1bO{key}") } else { format!("\x1b[{key}") };
+            s.write(seq.repeat(n.unsigned_abs() as usize).into_bytes());
         } else {
-            let ty = match count {
-                2 => SelectionType::Semantic,
-                3 => SelectionType::Lines,
-                _ => SelectionType::Simple,
-            };
-            t.selection = Some(Selection::new(ty, point, side));
-            if count > 1 {
-                // Words and lines select on the click itself.
-                if let Some(sel) = t.selection.as_mut() {
-                    sel.update(point, side);
+            s.term.lock().scroll_display(Scroll::Delta(n * 3));
+        }
+    }
+
+    /// A button went down on the screen.
+    pub fn down(&mut self, s: &Session, m: &Metrics, rect: Bounds<Pixels>, pos: gpui::Point<Pixels>, button: gpui::MouseButton, count: usize, mods: Mods, out: &mut Output) {
+        let (mode, offset) = {
+            let t = s.term.lock();
+            (*t.mode(), t.grid().display_offset())
+        };
+        let (point, side) = cell_at(pos, rect, m, s.size, offset);
+        // ⌘-click on a link opens it, even in a program that takes the mouse.
+        if button == gpui::MouseButton::Left
+            && mods.command
+            && let Some(target) = self.hover.as_ref().and_then(|h| h.target.clone())
+        {
+            out.open = Some(target);
+            self.last_cell = Some(point);
+            return;
+        }
+        if mode.intersects(TermMode::MOUSE_MODE) && !mods.shift {
+            if let Some(b) = button_code(button) {
+                self.reporting = Some(b);
+                report(s, b, point, offset, true, mods);
+            }
+            self.last_cell = Some(point);
+            return;
+        }
+        self.last_cell = Some(point);
+        match button {
+            gpui::MouseButton::Middle => out.paste = true,
+            gpui::MouseButton::Right => out.context_menu = Some(pos),
+            gpui::MouseButton::Left => {
+                // Selection: drag for characters, double-click words,
+                // triple-click lines; Shift extends.
+                let now = std::time::Instant::now();
+                let count = match self.last_click {
+                    Some((t, p, n)) if now.duration_since(t).as_millis() < 400 && p == point => n % 3 + 1,
+                    _ => count.clamp(1, 3) as u8,
+                };
+                self.last_click = Some((now, point, count));
+                let mut t = s.term.lock();
+                if mods.shift && t.selection.is_some() {
+                    if let Some(sel) = t.selection.as_mut() {
+                        sel.update(point, side);
+                    }
+                } else {
+                    let ty = match count {
+                        2 => SelectionType::Semantic,
+                        3 => SelectionType::Lines,
+                        _ => SelectionType::Simple,
+                    };
+                    let mut sel = Selection::new(ty, point, side);
+                    if count > 1 {
+                        // Words and lines select on the click itself.
+                        sel.update(point, side);
+                    }
+                    t.selection = Some(sel);
+                }
+                self.selecting = true;
+            }
+            _ => {}
+        }
+    }
+
+    /// The pointer moved (a button held or not): drags select or report.
+    /// Returns the lines to scroll while a selection is dragged past an
+    /// edge (the caller keeps scrolling while it's held there).
+    pub fn moved(&mut self, s: &Session, m: &Metrics, rect: Bounds<Pixels>, pos: gpui::Point<Pixels>, held: bool, mods: Mods) -> bool {
+        let (mode, offset) = {
+            let t = s.term.lock();
+            (*t.mode(), t.grid().display_offset())
+        };
+        let (point, side) = cell_at(pos, rect, m, s.size, offset);
+        if mode.intersects(TermMode::MOUSE_MODE) && !mods.shift {
+            if self.last_cell != Some(point) {
+                if let Some(b) = self.reporting.filter(|_| mode.intersects(TermMode::MOUSE_DRAG | TermMode::MOUSE_MOTION)) {
+                    report(s, 32 + b, point, offset, true, mods);
+                } else if self.reporting.is_none() && mode.contains(TermMode::MOUSE_MOTION) && rect.contains(&pos) {
+                    report(s, 35, point, offset, true, mods);
                 }
             }
+            self.last_cell = Some(point);
+            return false;
         }
-        mouse.selecting = true;
-    }
-    if mouse.selecting && ui.input(|i| i.pointer.primary_down()) {
+        self.last_cell = Some(point);
+        if !(self.selecting && held) {
+            return false;
+        }
         let mut t = s.term.lock();
         if let Some(sel) = t.selection.as_mut() {
             sel.update(point, side);
         }
-        // Drag past the edge to scroll, faster the further out.
-        let past = if pos.y < rect.min.y { pos.y - rect.min.y } else { (pos.y - rect.max.y).max(0.0) };
-        if past == 0.0 {
-            mouse.edge = 0.0;
+        // Past the top or bottom: a line scrolled.
+        let past = if pos.y < rect.top() { 1 } else if pos.y > rect.bottom() { -1 } else { 0 };
+        if past != 0 {
+            t.scroll_display(Scroll::Delta(past));
         }
-        mouse.edge += olo_kit::widgets::ScrollView::edge_scroll(ui.ctx(), egui::vec2(0.0, past)).y / m.cell.y;
-        let lines = mouse.edge.trunc() as i32;
-        mouse.edge -= lines as f32;
-        if lines != 0 {
-            t.scroll_display(Scroll::Delta(-lines));
+        true
+    }
+
+    /// A button went up.
+    pub fn up(&mut self, s: &Session, m: &Metrics, rect: Bounds<Pixels>, pos: gpui::Point<Pixels>, button: gpui::MouseButton, mods: Mods) {
+        let offset = s.term.lock().grid().display_offset();
+        let (point, _) = cell_at(pos, rect, m, s.size, offset);
+        if let Some(b) = self.reporting.filter(|&b| Some(b) == button_code(button)) {
+            self.reporting = None;
+            report(s, b, point, offset, false, mods);
+            return;
         }
-    }
-    if mouse.selecting && ui.input(|i| i.pointer.primary_released()) {
-        mouse.selecting = false;
-        let mut t = s.term.lock();
-        // A plain click (no drag) clears the selection.
-        if t.selection.as_ref().is_some_and(|sel| sel.is_empty()) {
-            t.selection = None;
+        if button == gpui::MouseButton::Left && self.selecting {
+            self.selecting = false;
+            let mut t = s.term.lock();
+            // A plain click (no drag) clears the selection.
+            if t.selection.as_ref().is_some_and(|sel| sel.is_empty()) {
+                t.selection = None;
+            }
         }
-    }
-    if resp.clicked_by(egui::PointerButton::Middle) {
-        out.paste = true;
-    }
-    if resp.secondary_clicked() {
-        out.context_menu = Some(pos);
     }
 }
 
@@ -1483,44 +1534,30 @@ fn pointer(ui: &Ui, s: &mut Session, m: &Metrics, resp: &egui::Response, rect: R
 mod tests {
     use super::*;
 
-    #[test]
-    fn option_arrows_move_by_word() {
-        let alt = egui::Modifiers { alt: true, ..Default::default() };
-        assert_eq!(key_bytes(Key::ArrowLeft, alt, TermMode::empty()).unwrap(), b"\x1bb");
-        assert_eq!(key_bytes(Key::ArrowRight, alt, TermMode::empty()).unwrap(), b"\x1bf");
-        // With others held, xterm's modified arrows.
-        let both = egui::Modifiers { alt: true, shift: true, ..Default::default() };
-        assert_eq!(key_bytes(Key::ArrowLeft, both, TermMode::empty()).unwrap(), b"\x1b[1;4D");
-        assert_eq!(key_bytes(Key::ArrowLeft, egui::Modifiers::NONE, TermMode::empty()).unwrap(), b"\x1b[D");
-        // Under the kitty keyboard protocol (Claude Code turns it on), the
-        // protocol's own form, which it reads as Meta+← (a word back), as
-        // the keyboard sends it: the protocol's encoding first.
-        let sent = |key, m, mode| kitty_key(key, m, mode, 1).or_else(|| key_bytes(key, m, mode)).unwrap();
-        for kitty in [TermMode::DISAMBIGUATE_ESC_CODES, TermMode::DISAMBIGUATE_ESC_CODES | TermMode::REPORT_ALL_KEYS_AS_ESC] {
-            assert_eq!(sent(Key::ArrowLeft, alt, kitty), b"\x1b[1;3D");
-            assert_eq!(sent(Key::ArrowRight, alt, kitty), b"\x1b[1;3C");
-            let ctrl = egui::Modifiers { ctrl: true, ..Default::default() };
-            assert_eq!(sent(Key::ArrowLeft, ctrl, kitty), b"\x1b[1;5D");
-            // Text keys are still the protocol's CSI u.
-            assert_eq!(sent(Key::B, alt, kitty), b"\x1b[98;3u");
-            assert_eq!(sent(Key::Minus, ctrl, kitty), b"\x1b[45;5u");
-        }
-        assert_eq!(sent(Key::ArrowLeft, egui::Modifiers::NONE, TermMode::REPORT_ALL_KEYS_AS_ESC), b"\x1b[D");
+    fn k(name: &str, shift: bool, ctrl: bool, alt: bool) -> Key<'_> {
+        Key { name, shift, ctrl, alt }
     }
 
     #[test]
-    fn ctrl_underscore_is_the_shells_and_command_minus_is_smaller() {
-        // ⌘- arrives as Ctrl+Shift+- with `command`; a physical
-        // Ctrl+Shift+- (Ctrl+_, readline's undo) without it.
-        let cmd = egui::Modifiers { ctrl: true, shift: true, command: true, ..Default::default() };
-        let ctrl = egui::Modifiers { ctrl: true, shift: true, ..Default::default() };
-        assert!(is_shortcut(Key::Minus, cmd));
-        assert!(!is_shortcut(Key::Minus, ctrl));
-        assert_eq!(key_bytes(Key::Minus, ctrl, TermMode::empty()).unwrap(), [0x1f]);
-        // Ctrl+^ and Ctrl+@ too (Ctrl+Shift+6, Ctrl+Shift+2).
-        assert_eq!(key_bytes(Key::Num6, ctrl, TermMode::empty()).unwrap(), [0x1e]);
-        assert_eq!(key_bytes(Key::Num2, ctrl, TermMode::empty()).unwrap(), [0]);
-        // ⌘R isn't a menu's: the shell's Ctrl+R.
-        assert!(!is_shortcut(Key::R, cmd));
+    fn option_arrows_move_by_word() {
+        assert_eq!(key_bytes(k("left", false, false, true), TermMode::empty()).unwrap(), b"\x1bb");
+        assert_eq!(key_bytes(k("right", false, false, true), TermMode::empty()).unwrap(), b"\x1bf");
+        // Under the kitty protocol, the protocol's.
+        assert_eq!(key_bytes(k("left", false, false, true), TermMode::KITTY_KEYBOARD_PROTOCOL).unwrap(), b"\x1b[1;3D");
+    }
+
+    #[test]
+    fn ctrl_underscore_is_the_shells() {
+        // Ctrl+Shift+- (GPUI names it "_") is Ctrl+_, readline's undo.
+        assert_eq!(key_bytes(k("-", true, true, false), TermMode::empty()).unwrap(), vec![0x1f]);
+        assert_eq!(key_bytes(k("2", true, true, false), TermMode::empty()).unwrap(), vec![0]);
+        assert_eq!(key_bytes(k("c", false, true, false), TermMode::empty()).unwrap(), vec![3]);
+    }
+
+    #[test]
+    fn alt_letters_are_escaped() {
+        assert_eq!(key_bytes(k("b", false, false, true), TermMode::empty()).unwrap(), b"\x1bb");
+        assert_eq!(key_bytes(k("b", true, false, true), TermMode::empty()).unwrap(), b"\x1bB");
+        assert_eq!(key_bytes(k("b", false, false, false), TermMode::empty()), None);
     }
 }

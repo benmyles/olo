@@ -2686,5 +2686,23 @@
   "title": "Preferences on GPUI",
   "caption": "Every panel of Preferences moved from egui to Olo's GPUI, drawn as before; Themes shows each theme's wordmark and icons, and its colour sets now share their row evenly.",
   "image": "2026-11-01/232156-preferences-on-gpui.png"
+ },
+ {
+  "time": "2026-11-02T01:07:13",
+  "title": "Terminal's tabs, redesigned",
+  "caption": "Terminal on GPUI with a new tab strip (olo-ui's TabStrip): everything sits inside the band. Tabs are their titles; the selected one is on a raised plate lit from above (a touch lighter at the top, its rim's top edge lit and tapering into the corners, a soft shadow), as BeOS lit its controls. A group is a capsule of its colour around its chip and tabs, with corners concentric with the plates inside. No lines, and nothing rises above the strip. Each tab is as wide as its title needs.",
+  "image": "2026-11-02/010713-terminal-s-tabs-redesigned.png"
+ },
+ {
+  "time": "2026-11-02T01:07:20",
+  "title": "Terminal's tabs in light mode",
+  "caption": "The same strip in light mode: a white plate on the quiet band, each group's capsule at 16% of its colour (22% in the dark).",
+  "image": "2026-11-02/010720-terminal-s-tabs-in-light-mode.png"
+ },
+ {
+  "time": "2026-11-02T01:07:22",
+  "title": "Terminal's Tile All Tabs heads",
+  "caption": "In Tile All Tabs each pane's head is on the strip's quiet band, with its group's chip at the right instead of a tint and a coloured line. The pane you type in has its title in full ink and medium weight, like the strip's selected tab. Icon, title and chip are centred on the band to the device pixel at every scale.",
+  "image": "2026-11-02/010722-terminal-s-tile-all-tabs-heads.png"
  }
 ]

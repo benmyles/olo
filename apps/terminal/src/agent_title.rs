@@ -73,7 +73,7 @@ fn hand_over(tab: &TabInfo, title: &str) -> Result<(), String> {
     let shell = tab.shell.ok_or("the tab has no shell")?;
     let display = tab.display.as_deref().unwrap_or_default();
     let args = [SET_FLAG.to_owned(), shell.to_string(), title.to_owned()];
-    if olo_kit::instance::forward_on(crate::APP_ID, display, &args) { Ok(()) } else { Err("Terminal isn't answering".into()) }
+    if olo_kit_base::instance::forward_on(crate::APP_ID, display, &args) { Ok(()) } else { Err("Terminal isn't answering".into()) }
 }
 
 /// A title as shown: one line, trimmed, at most `MOST` characters.

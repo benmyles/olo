@@ -6,7 +6,7 @@
 //! across two pixels at 1.5×. Painting functions take the window and are
 //! called from an element's paint (`canvas`, a custom `Element`).
 
-use gpui::{App, Bounds, Font, FontWeight, Hsla, Pixels, Point, SharedString, TextRun, Window, fill, linear_color_stop, linear_gradient, point, px, size};
+use gpui::{App, Bounds, Font, FontWeight, Hsla, PathBuilder, Pixels, Point, SharedString, TextRun, Window, fill, linear_color_stop, linear_gradient, point, px, size};
 use olo_theme::{Palette, Rgba};
 
 /// Olo's text sizes, in points: plain (labels, controls), small, and the
@@ -720,4 +720,127 @@ pub fn close_box(window: &mut Window, r: Bounds<Pixels>, color: Hsla) {
     let k = Bounds::from_corners(r.origin + point(px(3.0), px(3.0)), r.bottom_right() - point(px(3.0), px(3.0)));
     window.paint_segment(k.origin, k.bottom_right(), px(1.2), true, color);
     window.paint_segment(point(k.right(), k.top()), point(k.left(), k.bottom()), px(1.2), true, color);
+}
+
+/// What [`pull_request_mark`] shows: GitHub's four marks for a pull
+/// request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PullRequestShape {
+    /// A branch coming back into another, an arrow at its head.
+    Open,
+    /// The same, the coming branch dotted.
+    Draft,
+    /// Joined: the branch curving into the other.
+    Merged,
+    /// The coming branch ends in a cross.
+    Closed,
+}
+
+/// GitHub's pull request mark, as big as `r` is high (drawn on a grid of
+/// 16), its lines in `color` and whole device pixels at every scale: the
+/// commits rings, the head one filled with `node` if given (its checks'
+/// colour), as the egui kit's.
+pub fn pull_request_mark(window: &mut Window, r: Bounds<Pixels>, shape: PullRequestShape, color: Hsla, node: Option<Hsla>) {
+    let s = window.scale_factor();
+    let side = f32::from(r.size.height.min(r.size.width));
+    let size_of = |w: f32, h: f32| size(px(w), px(h));
+    let k = side / 16.0;
+    let dev = (1.5 * k * s).round().max(1.0);
+    let w = dev / s;
+    // A line's middle where its edges fall on device pixels.
+    let at = |v: f32| ((v * s - dev / 2.0).round() + dev / 2.0) / s;
+    let o = snap(window, Bounds { origin: r.origin, size: size_of(side, side) }).origin;
+    let (ox, oy) = (f32::from(o.x), f32::from(o.y));
+    let x = |v: f32| at(ox + v * k);
+    let y = |v: f32| at(oy + v * k);
+    let p = |x: f32, y: f32| point(px(x), px(y));
+    // A commit: a ring this wide (to its line's middle), a hole of a
+    // pixel at least; at 1× a whole pixel's, so the one-pixel ring is on
+    // pixels.
+    let cr = if s < 1.25 { (4.0 * k).round().max(2.0) / 2.0 } else { (1.75 * k).max(w / 2.0 + 1.0 / s) };
+    let ring = |window: &mut Window, cx: f32, cy: f32| {
+        let b = Bounds { origin: p(cx - cr - w / 2.0, cy - cr - w / 2.0), size: size_of(2.0 * cr + w, 2.0 * cr + w) };
+        window.paint_quad(gpui::quad(b, px(cr + w / 2.0), gpui::transparent_black(), px(w), color, gpui::BorderStyle::Solid));
+    };
+    let disc = |window: &mut Window, cx: f32, cy: f32, radius: f32, fill: Hsla| {
+        let b = Bounds { origin: p(cx - radius, cy - radius), size: size_of(2.0 * radius, 2.0 * radius) };
+        window.paint_quad(gpui::fill(b, fill).corner_radii(px(radius)));
+    };
+    let commit = |window: &mut Window, cx: f32, cy: f32| match node {
+        Some(fill) => disc(window, cx, cy, cr + w / 2.0, fill),
+        None => ring(window, cx, cy),
+    };
+    let line = |window: &mut Window, pts: &[(f32, f32)]| {
+        let mut b = PathBuilder::stroke(px(w));
+        for (i, &(x, y)) in pts.iter().enumerate() {
+            if i == 0 {
+                b.move_to(p(x, y));
+            } else {
+                b.line_to(p(x, y));
+            }
+        }
+        if let Ok(path) = b.build() {
+            window.paint_path(path, color);
+        }
+    };
+    let (lx, rx) = (x(3.5), x(12.5));
+    let (top, bottom) = (y(3.5), y(12.5));
+    ring(window, lx, top);
+    ring(window, lx, bottom);
+    window.paint_segment(p(lx, top + cr), p(lx, bottom - cr), px(w), false, color);
+    match shape {
+        PullRequestShape::Merged => {
+            // From under the top commit, round into the one on the right.
+            let mid = y(8.5);
+            let curve: Vec<(f32, f32)> = (0..=10)
+                .map(|i| {
+                    let t = i as f32 / 10.0;
+                    let (a, c, b) = ((lx, top + cr), (lx, mid), (rx - cr, mid));
+                    let u = 1.0 - t;
+                    (u * u * a.0 + 2.0 * u * t * c.0 + t * t * b.0, u * u * a.1 + 2.0 * u * t * c.1 + t * t * b.1)
+                })
+                .collect();
+            line(window, &curve);
+            commit(window, rx, mid);
+        }
+        _ => {
+            match shape {
+                PullRequestShape::Open => {
+                    // Up from its commit, round to the left, to an arrow
+                    // pointing at the base branch.
+                    let (bend, turn) = (2.5 * k, top + 2.5 * k);
+                    let mut pts = vec![(rx, bottom - cr), (rx, turn)];
+                    pts.extend((1..=6).map(|i| {
+                        let a = i as f32 / 6.0 * std::f32::consts::FRAC_PI_2;
+                        (rx - bend + bend * a.cos(), turn - bend * a.sin())
+                    }));
+                    let base = ox + 10.0 * k;
+                    pts.push((base, top));
+                    line(window, &pts);
+                    let (tip, half) = (ox + 7.75 * k, 2.0 * k);
+                    let mut b = PathBuilder::fill();
+                    b.move_to(p(tip, top));
+                    b.line_to(p(base, top - half));
+                    b.line_to(p(base, top + half));
+                    b.close();
+                    if let Ok(path) = b.build() {
+                        window.paint_path(path, color);
+                    }
+                }
+                PullRequestShape::Draft => {
+                    for v in [8.0, 4.5] {
+                        disc(window, rx, y(v), w * 0.75 + 0.25 * k, color);
+                    }
+                }
+                _ => {
+                    window.paint_segment(p(rx, bottom - cr), p(rx, y(7.5)), px(w), false, color);
+                    let d = 1.75 * k;
+                    window.paint_segment(p(rx - d, top - d), p(rx + d, top + d), px(w), false, color);
+                    window.paint_segment(p(rx - d, top + d), p(rx + d, top - d), px(w), false, color);
+                }
+            }
+            // Over the line coming out of it.
+            commit(window, rx, bottom);
+        }
+    }
 }

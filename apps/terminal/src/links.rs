@@ -211,13 +211,13 @@ pub fn broken(rows: &[Vec<char>], row: usize, col: usize, cols: usize) -> Option
 /// Open a link: web addresses in the browser; files and folders in
 /// Tracker (a file selected in its folder's window).
 pub fn open(target: &Target) {
-    use olo_kit::open as opener;
+    use olo_xdg::open as opener;
     let target = target.clone();
     // Finding the handler reads files: not on the UI thread.
     std::thread::spawn(move || {
         let done = match &target {
             Target::Url(u) => opener::open(&opener::Target::parse(u)).map_err(|e| e.to_string()),
-            Target::Path(p, _) => olo_kit::tracker::open(p).map_err(|e| e.to_string()),
+            Target::Path(p, _) => olo_kit_base::tracker::open(p).map_err(|e| e.to_string()),
         };
         if let Err(e) = done {
             tracing::warn!("open link: {e}");

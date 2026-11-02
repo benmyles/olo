@@ -1815,6 +1815,54 @@ event reaches it.
 - `StringView::wrap(true)` (a paragraph, as tall as it wraps to),
   `widgets::heading(text)` (bold, a label row tall) and
   `widgets::separator()` (a groove across).
+- `widgets::TabStrip::new(id, tabs, active)`: a row of document tabs
+  under a menu bar (Terminal's shells), `STRIP_HEIGHT` (32) tall, each
+  a `StripTab { label, icon, status, badge, group }`. Everything sits
+  inside the band, a line under it: the tabs are their icons and titles
+  on the band, the selected one on a raised plate (`PLATE`, 24, rounded
+  7, centred) lit from above as BeOS's controls are (a touch lighter at
+  its top, its rim's top edge lit and tapering into the corners, a soft
+  shadow under it); one under the pointer on a faint plate, its title
+  in full ink, its close box shown; a faint line between the others.
+  Each tab is as wide as its title needs (between `TAB_MIN` 140 and
+  `TAB_MAX` 320, or `max_tab_width`), the widest cut back alike when
+  they don't all fit (`fit_widths`, on the 2-point grid, up where they
+  fit so no title loses a fraction of a point), titles cut short with
+  "…". `.groups(vec![StripGroup { name, color }])` and each tab's
+  `group`: a group is a capsule of its colour (22% in the dark, 16% in
+  the light) round its chip (its name, bold, on a pill of the colour,
+  `chip`/`chip_width`/`CHIP_HEIGHT`, which Terminal's pane heads use
+  too) and its tabs, rounded `TAB_RADIUS + HALO` so its corners are
+  concentric with the plates 2 points inside it; no lines. With
+  `.group_selection(chosen)` a chip outlined is a group not chosen; a
+  click gives `ToggleGroup(g)`, the right button `Group(g, pos)`.
+  `.side()` puts it down the content's left: rows, the selected one
+  raised the same way, a group's chip heading its rows in a capsule,
+  New Tab a row after the last, the right edge dragged to resize
+  (`Resize`). A tab dragged rides on a raised plate under the pointer,
+  its slot left empty, a mark where it would land; out of the strip
+  (`TEAR`) it's torn off (`TearOff`, `TearOffGroup` for a chip). A
+  window of the app moved over the strip marks where its tabs would go
+  (`strip::window_over`, from app_server's `WindowOver`), and let go
+  there `strip::on_window_dropped(cx, handler)` gets the place
+  (`strip_place`). The pointer coming to a tab or leaving it redraws
+  (a move listener comparing what's under it with what was painted).
+  What the person did comes to `.on_action(|StripAction, window, cx|)`.
+  Agents read each tab as a `Tab` (its title, status and group in its
+  name, `selected`), its close box, the chips and New Tab as buttons.
+- `WindowOptions::max_size(w, h)` (GPUI's `window_max_size`, xdg
+  `set_max_size`): a window no larger along a side than its smallest is
+  fixed along it, and app_server neither tiles nor groups it (Terminal's
+  Find panel, fixed in height). `WindowOptions::under_pointer` and
+  `olo_ui::begin_move(window)`: a window torn off a strip opens with its
+  tab under the pointer and moves with it.
+- `MenuBar::new(..).raw()`: the bar's shortcuts as the app presses them
+  (a terminal's ⌘ keys), not the profile's; `menu::resolve(&mut menus,
+  raw)` gives a context menu the same keys (`Menu::keys_from(&bar)`
+  after resolving the bar). `keys::unshifted(key)` maps the symbol GPUI
+  names for a shifted key ("_") to the key and Shift ("-", true);
+  `gpui::right_control_held()` says whether the right Ctrl (the Mac
+  profile's ⌘) is down, for a raw-keys window telling ⌘ from Ctrl.
 - `widgets::Slider::new(id, value, range)`: BSlider (label and value
   above, the bar filled to a raised thumb, `limits` under the ends;
   `step`, `fill`, `width`); a press or a drag sets it, the arrows, Home
@@ -5565,12 +5613,54 @@ SIGTERM, olo-termd hangs up every shell and exits; it also exits when
 it has no shells and no Terminal for 3 s, or when its runtime directory
 has gone. If its socket is deleted from under it, it listens again (so a
 Terminal can always find its shells); it only removes the socket while
-the file there is still its own. Each screen is kept twice (in
+the file there is still its own. Idle, it sleeps: the socket and its
+folder are followed with inotify (`olo_kit_base::watch`), the session's
+pid file too until it's there, a shell's first output since shells
+were last kept arms the keep (`PRINTED`, `Ev::Printed`), and the loop
+waits for the next event or the next thing due (a keep, a Terminal to
+start again, the linger's end), never on a timer (it woke 3.5 times a
+second; now not at all). Each screen is kept twice (in
 olo-termd and in Terminal), so a full scrollback costs about twice
 what it used to.
 
+**On GPUI.** One `Entity<Terminal>` holds every window by Terminal's
+own `ui::WindowId`; each window's view (`ui::Shell`) renders through it
+(`Terminal::render`), and window work asked for inside an update (open,
+close, activate, resize) is deferred through `ui::WinOps`. A screen is
+a canvas painted from its session's emulator (`view::paint`): each row
+kept as it was last drawn (`view::RowCache`: its cells, backgrounds,
+glyphs and box-drawing shapes, and its glyphs' `GlyphRun` where the
+atlas has them), laid out again only when its cells, selection or the
+look (`RowKey`: metrics, grid, scheme, the program's colours) change.
+Only the lines alacritty says changed are looked at (`Term::damage`,
+taken by the paint); when the screen scrolls (output, the scrollback)
+each row is found where it went, by its cells, so only the rows new to
+the screen are laid out. The rows are painted in one layer
+(`Window::paint_layer`): one place in the scene's order for them all,
+not each glyph's own (2 µs a glyph, 1.4 ms a frame on a big screen at
+1×); the cursor, links, colour emoji and images (cropped, under a
+content mask) over them. A row is laid out only up to its last cell
+that isn't blank, and is the same row at another width but for blanks
+at its end (`same_cells`), so a resize lays out only what it changes.
+Printable ASCII in a style's own font isn't shaped: each glyph comes
+straight from the font (`TextSystem::glyph_for_char`, kept per style)
+at its cell, which is what shaping a monospaced font's own characters
+gives; the rest (other scripts, emoji, what the font lacks) is shaped
+with fallback. A frame of typing at 1× on a 3456×2234 screen: 0.2 ms
+of painting; a whole screen laid out afresh, 1.2 ms (6.2 shaped). The
+shell's output asks for a frame (`Wakeup`), as do typing, the mouse
+and the bell; nothing is drawn on a timer except an agent's spinner
+while one spins. Keys come raw: ⌘ is Ctrl with the right Ctrl held in
+the Mac profile (`gpui::right_control_held`), menu shortcuts go to the
+menus first (`menu::shortcut_command`), typed text and input methods
+through the view's `EntityInputHandler`. The window's titles are
+retitled 400 ms after typing or output settles (`retitle_soon`), and
+the windows remembered 2 s after a change (`remember_soon`), not by
+polling.
+
 **Restoring.** Terminal keeps its windows on disk as they change
-(`remember`: every 2 s if anything differs, and before it quits), in
+(`remember_soon`: 2 s after a change drawn, if anything differs, and
+before it quits), in
 `$XDG_STATE_HOME/olo/terminal/windows.json`: each window's tabs in
 order, which one shows, its size, group, Tile All Tabs (and its chosen groups), and each tab's
 folder. A Terminal that starts afresh (not an upgrade, which has
@@ -5614,9 +5704,9 @@ column's width (drag its edge) as `side_width`; switching keeps every
 window its size and gives the grid the difference.
 
 **Links** (`src/links.rs`). ⌘ held over a URL or a file's path
-underlines it and ⌘-click opens it (the profile's command key: Ctrl with
-the Windows keys, `egui::Modifiers::command`, which the kit sets for a
-raw-keys window's clicks and frames as for its keys): a URL in the
+underlines it and ⌘-click opens it (the profile's command key: the
+right Ctrl with the Mac's keys, `gpui::right_control_held()`, else
+Ctrl): a URL in the
 default browser, a file or folder in Tracker (`olo_kit::tracker::open`, a
 file selected in its folder's window). Links are an OSC 8 hyperlink the
 program wrote, else found in the text: URLs by pattern, paths (also
@@ -5691,17 +5781,17 @@ All Tabs; agents find each divider as a `Splitter` named "Row Height:
 GROUP" with its share as its value, and drag it;
 each pane has a head (`pane_head_height`: a `STRIP_ROW` tall under a
 strip along the top; beside a side strip `STRIP_SIDE_HEAD`, the same,
-the strip's first row centred on it) with its icon and title, in its
-group's colour as the strip shows it (its ground tinted with it and a
-2-point line of it across the top) so it's plain which pane is in which
-group; panes after the first mark themselves `layout_review::own_grid`,
-since dividing the window puts them level with the strip only by
-chance; and the
-panes not typed into are dimmed so the one that is stands out, its head
-lit like a window's tab in front; the strip
-is `.closed()` then, since no single tab owns the content.
-Clicking a pane makes it the one typed into, its head marked with the group's
-colour (or the focus blue) as the strip marks it, and the strip follows.
+the strip's first row centred on it) with its icon and title on the
+strip's quiet band, and at its right its group's chip as the strip
+draws it (`strip::chip`), so it's plain which pane is in which group
+without a line or a tint; its icon, title and chip are centred on the
+band above the line under it (`snap_centred`, as near as the device
+pixels allow); panes after the first mark themselves
+`layout_review::own_grid`, since dividing the window puts them level
+with the strip only by chance; and the panes not typed into are dimmed
+so the one that is stands out, its head on the panel's ground with its
+title in full ink and medium weight, as the strip's selected tab.
+Clicking a pane makes it the one typed into, and the strip follows.
 The screen keeps `view::PAD` (`WINDOW_INSET` × 6) between the text and
 the window's edges, in the screen's own background
 (`view::screen_colors`), so text never touches the frame or the strip.
@@ -5881,8 +5971,8 @@ then. The menus read ⌘N, ⌘T, ⌘+, as pressed. ⌥←/⌥→ send ESC b / ES
 (a word back/forward in readline, zsh and fish), except to a program
 using the kitty keyboard protocol (Claude Code), which gets the
 protocol's `CSI 1;3 D` / `C` and reads ESC b as Escape then b. (The
-arrows must stay legacy `CSI 1;mod X` keys there: egui names them
-⏴⏵⏶⏷, so `view::kitty_code` takes only ASCII names as codepoints.)
+arrows must stay legacy `CSI 1;mod X` keys there, so `view::kitty_code`
+has no code for them.)
 
 **Colours** (`src/colors.rs`, Settings ▸ Colors). Match Appearance,
 Always Light or Always Dark picks which of two schemes shows; Light

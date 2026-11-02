@@ -126,27 +126,17 @@ impl PopupManager {
     fn add_popup(&mut self, popup: PopupKind) -> Result<(), DeadResource> {
         let root = find_popup_root_surface(&popup)?;
 
-        with_states(&root, |states| {
-            let tree = PopupTree::default();
-            if states.data_map.insert_if_missing_threadsafe(|| tree.clone()) {
-                trace!("Adding popup {:?} to new PopupTree on root {:?}", popup, root);
-                tree.insert(popup);
-
-                tree.set_registered(true);
-                self.popup_trees.push(tree);
-            } else {
-                let tree = states.data_map.get::<PopupTree>().unwrap();
-                trace!(
-                    "Adding popup {:?} to existing PopupTree on root {:?}",
-                    popup, root
-                );
-                tree.insert(popup);
-
-                if tree.set_registered(true) {
-                    self.popup_trees.push(tree.clone());
-                }
-            }
+        // (The tree is changed after the root's surface lock is let go:
+        // its own lock is taken under no other, nor any under it.)
+        let tree = with_states(&root, |states| {
+            states.data_map.insert_if_missing_threadsafe(PopupTree::default);
+            states.data_map.get::<PopupTree>().unwrap().clone()
         });
+        trace!("Adding popup {:?} to the PopupTree on root {:?}", popup, root);
+        tree.insert(popup);
+        if tree.set_registered(true) {
+            self.popup_trees.push(tree);
+        }
 
         Ok(())
     }
@@ -170,14 +160,10 @@ impl PopupManager {
     pub fn popups_for_surface(
         surface: &WlSurface,
     ) -> impl Iterator<Item = (PopupKind, Point<i32, Logical>)> + use<> {
-        with_states(surface, |states| {
-            states
-                .data_map
-                .get::<PopupTree>()
-                .map(|x| x.iter_popups())
-                .into_iter()
-                .flatten()
-        })
+        with_states(surface, |states| states.data_map.get::<PopupTree>().cloned())
+            .map(|x| x.iter_popups())
+            .into_iter()
+            .flatten()
     }
 
     /// Dismiss the `popup` associated with the `surface.
@@ -185,13 +171,9 @@ impl PopupManager {
         if !surface.alive() {
             return Err(DeadResource);
         }
-        with_states(surface, |states| {
-            let tree = states.data_map.get::<PopupTree>();
-
-            if let Some(tree) = tree {
-                tree.dismiss_popup(popup);
-            }
-        });
+        if let Some(tree) = with_states(surface, |states| states.data_map.get::<PopupTree>().cloned()) {
+            tree.dismiss_popup(popup);
+        }
         Ok(())
     }
 
@@ -291,10 +273,9 @@ struct PopupNode {
 
 impl PopupTree {
     fn iter_popups(&self) -> impl Iterator<Item = (PopupKind, Point<i32, Logical>)> + use<> {
-        self.0
-            .lock()
-            .unwrap()
-            .children
+        // (Where each is takes its surface's lock: not under the tree's.)
+        let children = self.0.lock().unwrap().children.clone();
+        children
             .iter()
             // A newly created xdg_popup is stacked on top of all previously created xdg_popups. We
             // push new ones to the end of the vector, so we should iterate in reverse, from newest
@@ -307,9 +288,11 @@ impl PopupTree {
     }
 
     fn insert(&self, popup: PopupKind) {
+        // (Its parent is found under its surface's lock: not the tree's.)
+        let Some(parent) = popup.parent() else { return };
         let tree = &mut *self.0.lock().unwrap();
         for child in tree.children.iter_mut() {
-            if child.try_insert(&popup) {
+            if child.try_insert(&popup, &parent) {
                 return;
             }
         }
@@ -377,14 +360,13 @@ impl PopupNode {
             .chain(std::iter::once((&self.surface, relative_to)))
     }
 
-    fn try_insert(&mut self, popup: &PopupKind) -> bool {
-        let parent = popup.parent().unwrap();
-        if self.surface.wl_surface() == &parent {
+    fn try_insert(&mut self, popup: &PopupKind, parent: &WlSurface) -> bool {
+        if self.surface.wl_surface() == parent {
             self.children.push(PopupNode::new(popup.clone()));
             true
         } else {
             for child in &mut self.children {
-                if child.try_insert(popup) {
+                if child.try_insert(popup, parent) {
                     return true;
                 }
             }

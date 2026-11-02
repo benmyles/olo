@@ -38,3 +38,11 @@ What Olo changed, so far (see "Every frame on time" in
   all when the pointer is wholly off the display. apple-drm's overlay
   plane standing in for a cursor plane refused one hanging off the
   display with EINVAL.
+- Locks in one order (found by lockbud and olo-sync's tracing-mutex in
+  debug builds): the popup manager's tree lock is a leaf, nothing else
+  locked under it and it never under a surface's (`PopupManager`
+  locked a toplevel's surface then the tree to add a popup, and the
+  tree then each popup's surface to find one: a submenu closed the
+  cycle, and a test session's app_server stopped there); the DRM
+  surfaces' `commit_pending` takes the state then the pending lock, as
+  everything else does, and `vrr_supported` reads its lock once.

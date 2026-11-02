@@ -368,8 +368,17 @@ as they land (with the commit), add new ones as they come up.
      tinted icons, GPUI's paste as a type and clipboard signal; the
      folder views, desktop, Get Info, Find, Tracker Status and Quick
      Look on olo-preview's GPUI views; drops taken by GPUI's own drop
-     API). Next: Preferences (the screen saver's preview with it) and
-     Terminal.
+     API), Preferences (the screen saver's preview with it), Terminal
+     (with the GPUI kit's TabStrip, redesigned: a raised plate for the
+     selected tab and a capsule of its colour round each group, nothing
+     above the strip, tabs as wide as their titles need; its screens
+     painted from cached rows of glyphs; olo-termd asleep when idle,
+     its socket and the session's pid file followed with inotify;
+     every frame within 2.7 ms at 1, 1.5 and 2× against egui's 6.5,
+     0 frames idle and for the pointer swept over it against 4 and 182,
+     85 for its menus against 303). Next: egui leaves the workspace: olo-print's and
+     olo-screensavers' `egui` features, the olo-kit crate, and the
+     vendored epaint, egui-wgpu and wgpu-hal patches.
      (`olo-preview`'s decoding no longer needs a toolkit: pictures are
      its own `Bitmap`s, and its egui views are behind its `egui`
      feature, for Tracker and the Viewer until they move; Telegram no
@@ -669,6 +678,30 @@ as they land (with the commit), add new ones as they come up.
   screen onto one of the person's display-workspaces. The program keeps
   running as it moves (its connection handed between the two
   app_servers, or the app reopened there with its saved state).
+
+- **app_server: a 16 ms frame during Terminal's live resize at 2×**
+  (the bench, 2 runs in 5: "16.2 ms drawing 7.7 Mpx; 1.0 ms on a CPU,
+  3 waits"): app_server waits, not computes. Not seen resizing
+  StyledEdit or Tracker, nor the egui Terminal. Find what it waits for
+  (a big buffer's first import? Terminal's surface not opaque, so the
+  wallpaper drawn under it?) and keep it off the frame.
+
+- **Terminal: awake when idle**: its agents thread reads every tab's
+  screen every 600 ms, its git thread every tab's folder and repository
+  every second, its GitHub thread wakes every 10 s with nothing due (43
+  wakeups in 15 s with nothing happening). What they look for changes
+  when a shell prints or a repository's files change: look on output
+  (at most every 600 ms, and while a reading settles), follow the
+  repositories' HEAD, refs and worktrees with inotify, and wake GitHub's
+  thread when its next ask is due. (olo-termd sleeps since the GPUI
+  move.)
+
+- **Terminal: scrollback scrolls by whole lines, without elastic ends**
+  (Ben: the bounce "should be universal for everything"): scroll by the
+  pixel (a fraction of a row's offset kept, a row more drawn), spring
+  past the ends as GPUI's `Elastic` does, and say where it is
+  (`Window::note_scroll`) so the bench's scroll step measures it (egui's
+  Terminal never said either; both "didn't scroll").
 
 - **Terminal: light mode hard to read** (Ben, 2026-10-31): "in light
   mode my terminal is really hard to read i'm not sure why or what's

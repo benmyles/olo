@@ -823,13 +823,22 @@ impl gpui::Global for Bars {}
 pub struct MenuBar {
     menus: Vec<Menu>,
     on_command: OnChoose,
+    raw: bool,
 }
 
 impl MenuBar {
     /// `menus` across the top; `on_command` gets the command chosen or
     /// pressed, in the window.
     pub fn new(menus: Vec<Menu>, on_command: impl Fn(&str, &mut Window, &mut App) + 'static) -> MenuBar {
-        MenuBar { menus, on_command: Rc::new(on_command) }
+        MenuBar { menus, on_command: Rc::new(on_command), raw: false }
+    }
+
+    /// For a terminal-style window (one of app_server's `terminal_apps`,
+    /// whose command key arrives with Shift: ⌘C as Ctrl+Shift+C): its keys
+    /// as they're pressed there ([`resolve`]).
+    pub fn raw(mut self) -> MenuBar {
+        self.raw = true;
+        self
     }
 }
 
@@ -908,7 +917,7 @@ impl RenderOnce for MenuBar {
         // bar as high) is as high on screen at every scale.
         let height = style::snap_coord(window, px(BAR_HEIGHT));
         let mut menus = self.menus;
-        resolve(&mut menus, false);
+        resolve(&mut menus, self.raw);
         let id = window.window_handle().window_id();
         let bars = cx.default_global::<Bars>();
         match bars.0.get_mut(&id) {

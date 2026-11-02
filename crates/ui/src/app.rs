@@ -15,6 +15,10 @@ pub struct WindowOptions {
     /// The content's logical size (decorations are app_server's).
     pub size: (f32, f32),
     pub min_size: Option<(f32, f32)>,
+    /// Its largest (0: free along that side); no larger than its smallest
+    /// along a side, it's fixed along it, and app_server neither tiles
+    /// nor groups it (a Find panel's height).
+    pub max_size: Option<(f32, f32)>,
     /// Paint the panel colour behind the content (most windows want it).
     pub panel: bool,
     /// A utility window (a small tool such as DeskCalc) that floats over
@@ -36,11 +40,15 @@ pub struct WindowOptions {
     /// Belongs to another program's window, by the handle it exported
     /// (xdg-foreign): a portal's dialog over the app that asked.
     pub foreign_parent: Option<String>,
+    /// Opens with its tab under the pointer (the xdg-toplevel-tag
+    /// `under-pointer`): a tab torn off a strip, to move with it
+    /// ([`begin_move`]).
+    pub under_pointer: bool,
 }
 
 impl WindowOptions {
     pub fn new(title: impl Into<SharedString>, width: f32, height: f32) -> Self {
-        WindowOptions { title: title.into(), size: (width, height), min_size: None, panel: true, floating: false, layer: None, dialog: None, fixed: false, lock_output: None, child: false, foreign_parent: None }
+        WindowOptions { title: title.into(), size: (width, height), min_size: None, max_size: None, panel: true, floating: false, layer: None, dialog: None, fixed: false, lock_output: None, child: false, foreign_parent: None, under_pointer: false }
     }
 
     /// A BAlert window `width` × `height`: fixed, modal over the app's
@@ -102,6 +110,11 @@ impl WindowOptions {
 
     pub fn min_size(mut self, width: f32, height: f32) -> Self {
         self.min_size = Some((width, height));
+        self
+    }
+
+    pub fn max_size(mut self, width: f32, height: f32) -> Self {
+        self.max_size = Some((width, height));
         self
     }
 
@@ -249,6 +262,16 @@ struct AppId(String);
 
 impl Global for AppId {}
 
+/// Moves `window` with the pointer, as if dragged by its tab, while the
+/// button pressed in another of the app's windows is still held: a tab
+/// torn off a strip, now a window (opened [`WindowOptions::under_pointer`]),
+/// follows the pointer, and let go over another window's strip goes in
+/// there (`widgets::strip::on_window_dropped`). Once it has drawn (a
+/// window that isn't on screen yet can't be moved).
+pub fn begin_move(window: &mut Window) {
+    window.on_next_frame(|window, _| window.on_next_frame(|window, _| window.start_window_move()));
+}
+
 /// The app's id ("olo.deskcalc"), as [`run`] was given it.
 pub fn app_id(cx: &App) -> String {
     cx.try_global::<AppId>().map(|a| a.0.clone()).unwrap_or_default()
@@ -269,7 +292,11 @@ pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, bu
             titlebar: Some(TitlebarOptions { title: Some(title.clone()), ..Default::default() }),
             app_id: Some(app_id(cx)),
             window_min_size: options.min_size.map(|(w, h)| size(px(w), px(h))),
-            toplevel_tag: options.floating.then(|| "floating".to_string()),
+            window_max_size: options.max_size.map(|(w, h)| size(px(w), px(h))),
+            toplevel_tag: {
+                let tags: Vec<&str> = [(options.floating, "floating"), (options.under_pointer, "under-pointer")].into_iter().filter_map(|(on, tag)| on.then_some(tag)).collect();
+                (!tags.is_empty()).then(|| tags.join(" "))
+            },
             kind: if options.lock_output.is_some() {
                 gpui::WindowKind::SessionLock
             } else if options.layer.is_some() {

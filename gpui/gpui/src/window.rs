@@ -1053,6 +1053,7 @@ impl Window {
             window_background,
             app_id,
             window_min_size,
+            window_max_size,
             window_decorations,
             #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
             tabbing_identifier,
@@ -1081,6 +1082,7 @@ impl Window {
                 show,
                 display_id,
                 window_min_size,
+                window_max_size,
                 toplevel_tag,
                 layer_shell,
                 dialog,
@@ -4222,6 +4224,14 @@ impl Window {
             }
             PlatformInput::MouseExited(mouse_exited) => {
                 self.modifiers = mouse_exited.modifiers;
+                // Olo: gone, the pointer is over nothing of the window, so
+                // nothing reads as hovered (a tab or button lit under it
+                // stayed lit, the pointer last seen there), and what was
+                // is drawn again.
+                self.mouse_position = point(px(-1.0e6), px(-1.0e6));
+                if !self.mouse_hit_test.ids.is_empty() {
+                    self.refresh();
+                }
                 PlatformInput::MouseExited(mouse_exited)
             }
             PlatformInput::ModifiersChanged(modifiers_changed) => {

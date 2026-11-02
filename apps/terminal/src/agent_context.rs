@@ -76,7 +76,7 @@ fn runtime_dir() -> PathBuf {
 /// This Terminal's (one for each Olo session, by its display: Agent
 /// Screens run Terminals of their own).
 fn snapshot_path() -> PathBuf {
-    let display: String = olo_kit::display_name().chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
+    let display: String = olo_xdg::display_name().chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
     runtime_dir().join(format!("{SNAPSHOT}-{display}.json"))
 }
 

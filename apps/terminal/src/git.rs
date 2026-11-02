@@ -20,7 +20,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use olo_kit::Proxy;
+use olo_kit_base::Proxy;
 
 use crate::io;
 
