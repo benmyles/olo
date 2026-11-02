@@ -71,6 +71,10 @@ pub struct Prefs {
     pub power: Option<PowerStatus>,
     pub server: server::Server,
     windows: Vec<Shown>,
+    /// The displays have been heard of (a panel's window is sized to fit
+    /// them: `fits`); panels asked for before then wait in `waiting`.
+    outputs_known: bool,
+    waiting: Vec<String>,
 }
 
 /// A window open: a panel's (and its view), or the launcher.
@@ -93,7 +97,28 @@ impl Prefs {
         }
     }
 
+    /// The displays are known (or won't be): open the panels waiting.
+    fn displays_known(&mut self, cx: &mut Context<Self>) {
+        self.outputs_known = true;
+        for name in std::mem::take(&mut self.waiting) {
+            self.open(&name, cx);
+        }
+    }
+
     fn open(&mut self, name: &str, cx: &mut Context<Self>) {
+        // Sized to the displays, so wait for app_server to say what they
+        // are (milliseconds), or a moment at most (it isn't running).
+        if !self.outputs_known {
+            if self.waiting.is_empty() {
+                cx.spawn(async |me, cx| {
+                    cx.background_executor().timer(std::time::Duration::from_millis(400)).await;
+                    let _ = me.update(cx, |p, cx| p.displays_known(cx));
+                })
+                .detach();
+            }
+            self.waiting.push(name.to_owned());
+            return;
+        }
         let Some(panel) = Panel::from_arg(name) else {
             tracing::warn!("no preference panel called {name}");
             return;
@@ -104,7 +129,10 @@ impl Prefs {
             return;
         }
         let (w, h) = panel.size();
-        let (w, h) = (w as f32, h as f32);
+        let fit = fits(&self.outputs);
+        // Too tall for the screen: as tall as fits, and wider by a scroll
+        // bar, which it then has (panel::render).
+        let (w, h) = if (h as f32) > fit { (w as f32 + olo_ui::widgets::SCROLL_BAR, fit) } else { (w as f32, h as f32) };
         let prefs = cx.entity();
         let opened = self.settings.clone().unwrap_or_default();
         let options = WindowOptions { fixed: true, ..WindowOptions::new(panel.title(), w, h).min_size(w, h) };
@@ -205,7 +233,10 @@ impl Prefs {
                 }
                 self.settings = Some(*s);
             }
-            Msg::Outputs(o) => self.outputs = o,
+            Msg::Outputs(o) => {
+                self.outputs = o;
+                self.displays_known(cx);
+            }
             Msg::Power(p) => self.power = Some(p),
             Msg::Redraw => {}
         }
@@ -226,19 +257,51 @@ pub struct PanelView {
     pub opened: Settings,
     pub state: panel::State,
     pub fields: Fields,
+    /// Where the panel is scrolled to, when its window is shorter than it
+    /// (a small screen).
+    pub scroll: olo_ui::gpui::ScrollHandle,
 }
 
 impl PanelView {
     fn new(prefs: Entity<Prefs>, panel: Panel, opened: Settings, window: &mut Window, cx: &mut Context<Self>) -> Self {
         cx.observe(&prefs, |_, _, cx| cx.notify()).detach();
         let state = panel::State::new(panel, window, cx);
-        PanelView { prefs, panel, opened, state, fields: Fields::default() }
+        PanelView { prefs, panel, opened, state, fields: Fields::default(), scroll: olo_ui::gpui::ScrollHandle::new() }
     }
 }
 
 impl Render for PanelView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         panel::render(self, window, cx)
+    }
+}
+
+/// The tallest a panel's window may be: the shortest display's height
+/// (in points, as it is turned) less room for the window's tab and the
+/// edges, on the 2-point grid. A panel taller than that scrolls.
+fn fits(outputs: &[olo_protocol::OutputInfo]) -> f32 {
+    const ROOM: f32 = 64.0;
+    outputs
+        .iter()
+        .filter(|o| o.mirror_of.is_none())
+        .filter_map(|o| {
+            let m = o.current_mode.as_ref()?;
+            let tall = if o.rotation % 180 == 90 { m.width } else { m.height };
+            Some(tall as f32 / o.scale.max(0.5) as f32)
+        })
+        .fold(f32::INFINITY, f32::min)
+        .max(240.0)
+        .sub_room(ROOM)
+}
+
+trait SubRoom {
+    fn sub_room(self, room: f32) -> f32;
+}
+
+impl SubRoom for f32 {
+    /// Less `room`, down to the 2-point grid (unbounded stays so).
+    fn sub_room(self, room: f32) -> f32 {
+        if self.is_finite() { ((self - room) / 2.0).floor() * 2.0 } else { self }
     }
 }
 
@@ -343,7 +406,7 @@ fn main() {
     olo_ui::run(APP_ID, move |cx| {
         instance::listen(APP_ID, olo_ui::proxy(cx));
         let server = server::Server::start(olo_ui::proxy(cx));
-        let prefs = cx.new(|_| Prefs { settings: None, outputs: Vec::new(), power: None, server, windows: Vec::new() });
+        let prefs = cx.new(|_| Prefs { settings: None, outputs: Vec::new(), power: None, server, windows: Vec::new(), outputs_known: false, waiting: Vec::new() });
         let restored = olo_ui::restored_state().and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok()).filter(|o| !o.is_empty());
         prefs.update(cx, |p, cx| match restored {
             Some(open) => {

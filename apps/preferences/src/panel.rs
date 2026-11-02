@@ -3,9 +3,9 @@
 
 use olo_protocol::Settings;
 use olo_ui::{
-    gpui::{Context, IntoElement, ParentElement as _, Styled as _, Window, div, px},
+    gpui::{AnyElement, Context, IntoElement, ParentElement as _, Styled as _, Window, div, px},
     metrics as m, style, theme,
-    widgets::{Button, StringView},
+    widgets::{Button, ScrollView, StringView},
 };
 
 use crate::{PanelView, about, ai, airpods, appearance, backup, bluetooth, datetime, display, form::Ui, integrations, keyboard, network, notifications, performance, power, screensaver, security, sound, terminal, themes, touchid, touchpad, tracker, windows, workspaces};
@@ -325,7 +325,20 @@ impl State {
 /// A panel's window: the panel's controls, and Defaults and Revert along
 /// the bottom for those that change settings (each enabled only when it
 /// would change something).
-pub fn render(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView>) -> impl IntoElement {
+pub fn render(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView>) -> AnyElement {
+    let root = layout(v, window, cx);
+    // On a screen shorter than the panel its window is too (see `fits`):
+    // the panel is laid out at its own size all the same and scrolls,
+    // the bar beside it.
+    let (w, h) = v.panel.size();
+    if f32::from(window.viewport_size().height) + 0.5 >= h as f32 {
+        return root.into_any_element();
+    }
+    let sized = div().w(px(w as f32)).h(px(h as f32)).flex().flex_col().child(root);
+    ScrollView::new("panel-scroll", &v.scroll).border(false).child(sized).into_any_element()
+}
+
+fn layout(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView>) -> olo_ui::gpui::Div {
     let panel = v.panel;
     let (settings, outputs, power, server) = {
         let p = v.prefs.read(cx);

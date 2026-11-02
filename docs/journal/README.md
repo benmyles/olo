@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Preferences on a short screen
+
+*11:33* — A panel taller than the screen (AirPods, 752 points, on a 700-point display) opens as tall as fits, laid out at its own size and scrolled, with a scroll bar the window is widened for. Panels that fit are unchanged.
+
+![Preferences on a short screen](2026-11-02/113343-preferences-on-a-short-screen.png)
+
 ### AirPods icons in every theme
 
 *11:28* — airpods, airpods-case, airpod-left and airpod-right, generated against each theme's references (Classic, BeBox, Soft Be, Toybox, Papercraft, Enamel, Halftone), beside bluetooth and sound.

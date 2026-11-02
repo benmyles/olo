@@ -2734,5 +2734,11 @@
   "title": "AirPods icons in every theme",
   "caption": "airpods, airpods-case, airpod-left and airpod-right, generated against each theme's references (Classic, BeBox, Soft Be, Toybox, Papercraft, Enamel, Halftone), beside bluetooth and sound.",
   "image": "2026-11-02/112845-airpods-icons-in-every-theme.png"
+ },
+ {
+  "time": "2026-11-02T11:33:43",
+  "title": "Preferences on a short screen",
+  "caption": "A panel taller than the screen (AirPods, 752 points, on a 700-point display) opens as tall as fits, laid out at its own size and scrolled, with a scroll bar the window is widened for. Panels that fit are unchanged.",
+  "image": "2026-11-02/113343-preferences-on-a-short-screen.png"
  }
 ]

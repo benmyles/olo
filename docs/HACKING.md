@@ -2525,6 +2525,12 @@ opened, its own `panel::State` and text fields).
   while they're built. Panels that change settings get Defaults and
   Revert (to the values when the window opened) along the bottom, each
   enabled only when it would change something: implement `Panel::reset`.
+* Small screens: a panel's window is never taller than the shortest
+  display less 64 points (`fits`; Preferences waits for app_server's
+  displays, 400 ms at most, before opening one). A panel taller than
+  that is laid out at its own size all the same, in a scroll view the
+  window is widened for (`panel::render`); one that fits is drawn as it
+  always was.
 * New panel: add it to `Panel` (arg, title, icon, size, reset), write the
   module, add it to `PREFERENCE_PANELS`, journal it light and dark.
 * **Integrations** (`integrations.rs`) is where every service Olo works
