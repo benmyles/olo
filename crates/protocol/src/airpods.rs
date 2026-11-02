@@ -160,6 +160,12 @@ pub struct AirPods {
     pub in_ear: u8,
     /// Buds in their case.
     pub in_case: u8,
+    /// Out of their case (or its lid open) near this computer: heard in
+    /// their broadcast lately. The levels above come from it while they
+    /// aren't connected here.
+    pub nearby: bool,
+    /// Connected to another device (a phone), as their broadcast says.
+    pub elsewhere: bool,
     /// The wearer is speaking (Conversation Awareness has turned the
     /// sound down).
     pub speaking: bool,
@@ -188,6 +194,10 @@ pub struct AirPodsState {
     /// The service's process: a file it left behind when it died is no one's.
     pub pid: u32,
     pub devices: Vec<AirPods>,
+    /// Their broadcasts are heard (for connecting and switching
+    /// automatically, and their levels while not connected); if not, why.
+    pub listening: bool,
+    pub not_listening: Option<String>,
 }
 
 impl AirPodsState {

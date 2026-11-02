@@ -52,6 +52,16 @@ struct Dev {
     /// in a call on an iPhone: speaking would duck the sound).
     mic_on: bool,
     awareness_after: Option<bool>,
+    /// Their broadcast: last heard; since when it has said they're
+    /// connected to nothing.
+    heard_at: Option<Instant>,
+    free_since: Option<Instant>,
+    /// When they last stopped being connected here (another device took
+    /// them, or the person disconnected them): nothing is taken back
+    /// automatically until they've been free a minute (`may_take`).
+    lost_at: Option<Instant>,
+    /// When Olo last asked to connect them by itself.
+    tried_at: Option<Instant>,
 }
 
 struct Inner {
@@ -66,6 +76,16 @@ struct Inner {
     /// is new (an output there at the service's start was already there).
     sound_seen: bool,
     fake: bool,
+    /// The broadcasts are heard; if not, why.
+    listening: bool,
+    not_listening: Option<String>,
+    /// Their broadcast keys, by address (keys.rs), and when last read.
+    keys: BTreeMap<String, sys::proto::Keys>,
+    keys_read: Option<Instant>,
+    /// Something is playing on this computer.
+    playing: bool,
+    /// A thread is waiting to forget pairs not heard from in a while.
+    expiring: bool,
 }
 
 struct Service {
@@ -84,6 +104,12 @@ fn service() -> &'static Service {
                 computer_input: None,
                 sound_seen: false,
                 fake: std::env::var_os("OLO_FAKE_AIRPODS").is_some(),
+                listening: false,
+                not_listening: None,
+                keys: BTreeMap::new(),
+                keys_read: None,
+                playing: false,
+                expiring: false,
             }),
         }
     })
@@ -91,7 +117,12 @@ fn service() -> &'static Service {
 
 /// Publish the state if it changed (the lock held by the caller).
 fn publish(inner: &mut Inner) {
-    let state = AirPodsState { pid: std::process::id(), devices: inner.devices.values().map(|d| d.info.clone()).collect() };
+    let state = AirPodsState {
+        pid: std::process::id(),
+        devices: inner.devices.values().map(|d| d.info.clone()).collect(),
+        listening: inner.listening,
+        not_listening: inner.not_listening.clone(),
+    };
     if inner.published.as_ref() == Some(&state) {
         return;
     }
@@ -113,9 +144,159 @@ pub fn run() -> ! {
             tracing::warn!("airpods: can't follow BlueZ: {e}");
         }
         std::thread::Builder::new().name("airpods-sound".into()).spawn(|| audio::watch_devices(sound_changed)).expect("thread");
+        listen();
+        std::thread::Builder::new().name("airpods-playing".into()).spawn(|| audio::watch_playing(playing_changed)).expect("thread");
     }
     follow_settings();
     serve()
+}
+
+// ---- Their broadcast: connecting and switching by themselves -----------------
+
+/// How long they must have been free (connected to nothing, by their
+/// broadcast) after another device took them, before Olo takes them by
+/// itself again: never a tug of war with a phone.
+const FREE_FOR: Duration = Duration::from_secs(60);
+/// At most one try to connect by itself this often.
+const TRY_EVERY: Duration = Duration::from_secs(15);
+/// Not heard for this long: not nearby any more.
+const NEARBY_FOR: Duration = Duration::from_secs(60);
+
+/// Whether Olo may take them by itself now (see `lost_at`).
+fn may_take(d: &mut Dev) -> bool {
+    let free = d.free_since.is_some_and(|t| t.elapsed() >= FREE_FOR);
+    if d.lost_at.is_some() && free {
+        d.lost_at = None;
+    }
+    d.lost_at.is_none() && d.tried_at.is_none_or(|t| t.elapsed() >= TRY_EVERY)
+}
+
+/// Ask BlueZ to connect them, by itself (on a thread: it can take seconds).
+fn take(d: &mut Dev, why: &str) {
+    d.tried_at = Some(Instant::now());
+    let (path, name) = (d.info.path.clone(), d.info.name.clone());
+    tracing::info!("airpods: connecting {name}: {why}");
+    std::thread::spawn(move || {
+        if let Err(e) = bt::connect(&path) {
+            tracing::info!("airpods: couldn't connect {name}: {e}");
+        }
+    });
+}
+
+/// Listen for their broadcasts (BlueZ's advertisement monitor).
+fn listen() {
+    match bt::watch_apple(sys::adv::PROXIMITY, heard_broadcast) {
+        Ok(conn) => {
+            // For as long as the service runs.
+            std::mem::forget(conn);
+            let mut inner = service().inner.lock().unwrap();
+            (inner.listening, inner.not_listening) = (true, None);
+            publish(&mut inner);
+        }
+        Err(e) => {
+            tracing::info!("airpods: not listening for their broadcasts: {e}");
+            let mut inner = service().inner.lock().unwrap();
+            (inner.listening, inner.not_listening) = (false, Some(e.to_string()));
+            publish(&mut inner);
+        }
+    }
+}
+
+/// A proximity broadcast: whose (their private address, resolved with
+/// each pair's key), where they are and their levels; then connect or
+/// switch by themselves, as the settings say.
+fn heard_broadcast(advert: bt::Advert) {
+    let Some(p) = sys::adv::parse(&advert.data) else { return };
+    let mut inner = service().inner.lock().unwrap();
+    let resolve = |keys: &BTreeMap<String, sys::proto::Keys>| keys.iter().find(|(_, k)| k.irk.is_some_and(|irk| sys::adv::resolves(&advert.address, &irk))).map(|(a, k)| (a.clone(), k.clone()));
+    let mut found = resolve(&inner.keys);
+    if found.is_none() && inner.keys_read.is_none_or(|t| t.elapsed() > Duration::from_secs(10)) {
+        // Keys learnt since (they come over the channel once connected).
+        inner.keys = crate::keys::all();
+        inner.keys_read = Some(Instant::now());
+        found = resolve(&inner.keys);
+    }
+    let Some((addr, keys)) = found else { return };
+    let settings = inner.settings.clone();
+    let playing = inner.playing;
+    let Some(d) = inner.devices.get_mut(&addr) else { return };
+    let now = Instant::now();
+    d.heard_at = Some(now);
+    if p.connected {
+        d.free_since = None;
+    } else {
+        d.free_since.get_or_insert(now);
+    }
+    let i = &mut d.info;
+    i.nearby = true;
+    i.elsewhere = p.connected && !i.connected;
+    if !i.connected {
+        let [left, right, case] = match keys.encryption {
+            Some(k) => sys::adv::decrypt(&p, &k),
+            None => [p.left, p.right, p.case],
+        };
+        let level = |c: sys::adv::Charge| c.percent.map(|percent| Charge { percent, charging: c.charging });
+        (i.left, i.right, i.case) = (level(left), level(right), level(case));
+        i.in_ear = p.left_in_ear as u8 + p.right_in_ear as u8;
+    }
+    let in_ear = p.left_in_ear || p.right_in_ear;
+    if !d.info.connected && in_ear && may_take(d) {
+        if settings.connect_automatically && !p.connected {
+            take(d, "put in an ear near this computer, connected to nothing");
+        } else if settings.switch_automatically && p.connected && playing {
+            take(d, "something plays here while they're in an ear");
+        }
+    }
+    publish(&mut inner);
+    expire_later(&mut inner);
+}
+
+/// Something started or stopped playing on this computer: in ears and on
+/// another device, they're taken (switch automatically).
+fn playing_changed(playing: Option<bool>) {
+    let mut inner = service().inner.lock().unwrap();
+    let started = playing == Some(true) && !inner.playing;
+    inner.playing = playing == Some(true);
+    if !started || !inner.settings.switch_automatically {
+        return;
+    }
+    for d in inner.devices.values_mut() {
+        let fresh = d.heard_at.is_some_and(|t| t.elapsed() < Duration::from_secs(10));
+        if fresh && !d.info.connected && d.info.elsewhere && d.info.in_ear > 0 && may_take(d) {
+            take(d, "something plays here while they're in an ear");
+        }
+    }
+}
+
+/// While any pair is nearby, a thread waits to mark them gone once their
+/// broadcast stops (the case closed, carried away): asleep otherwise.
+fn expire_later(inner: &mut Inner) {
+    if inner.expiring {
+        return;
+    }
+    inner.expiring = true;
+    std::thread::spawn(|| {
+        loop {
+            std::thread::sleep(NEARBY_FOR / 2);
+            let mut inner = service().inner.lock().unwrap();
+            let mut any = false;
+            for d in inner.devices.values_mut() {
+                if d.info.nearby && d.heard_at.is_none_or(|t| t.elapsed() >= NEARBY_FOR) {
+                    d.info.nearby = false;
+                    d.info.elsewhere = false;
+                    if !d.info.connected {
+                        (d.info.left, d.info.right, d.info.case, d.info.in_ear) = (None, None, None, 0);
+                    }
+                }
+                any |= d.info.nearby;
+            }
+            publish(&mut inner);
+            if !any {
+                inner.expiring = false;
+                return;
+            }
+        }
+    });
 }
 
 // ---- BlueZ --------------------------------------------------------------------
@@ -152,7 +333,13 @@ fn refresh() {
             i.product = product;
             i.model = model.name.to_owned();
             i.abilities = ap::Abilities { noise_control: model.noise_control, adaptive: model.adaptive, buds: model.buds };
+            if i.connected && !o.connected {
+                d.lost_at = Some(Instant::now());
+            }
             i.connected = o.connected;
+            if o.connected {
+                i.elsewhere = false;
+            }
             if o.connected && !d.linking {
                 d.linking = true;
                 start.push(o.address.clone());
@@ -830,6 +1017,8 @@ fn fake_pair() {
         whole: None,
         in_ear: 2,
         in_case: 0,
+        nearby: true,
+        elsewhere: false,
         speaking: false,
         settings: ap::BudSettings {
             listening_mode: Some(ListeningMode::NoiseCancellation),
@@ -848,4 +1037,39 @@ fn fake_pair() {
         sound: ap::Sound { output: "bluez_output.AA_BB_CC_DD_EE_FF.1".into(), input: String::new(), microphone: String::new(), codec: "aac".into(), high_quality: true, card: "bluez_card.AA_BB_CC_DD_EE_FF".into() },
     };
     publish(&mut inner);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ago(s: u64) -> Option<Instant> {
+        Instant::now().checked_sub(Duration::from_secs(s))
+    }
+
+    #[test]
+    fn taken_by_another_device_they_are_left_alone_until_free_a_minute() {
+        let mut d = Dev::default();
+        // Never lost: Olo may.
+        assert!(may_take(&mut d));
+        // Taken by the phone (lost here), still connected there: not again.
+        d.lost_at = ago(5);
+        d.free_since = None;
+        assert!(!may_take(&mut d));
+        // Free (connected to nothing) for 30 s: still not.
+        d.free_since = ago(30);
+        assert!(!may_take(&mut d));
+        // Free for a minute: yes, and the loss is forgotten.
+        d.free_since = ago(61);
+        assert!(may_take(&mut d));
+        assert!(d.lost_at.is_none());
+    }
+
+    #[test]
+    fn one_try_at_a_time() {
+        let mut d = Dev { tried_at: ago(3), ..Dev::default() };
+        assert!(!may_take(&mut d));
+        d.tried_at = ago(16);
+        assert!(may_take(&mut d));
+    }
 }

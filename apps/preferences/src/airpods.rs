@@ -112,6 +112,8 @@ pub fn test_state() -> AirPodsState {
     let c = |percent, charging| Some(Charge { percent, charging });
     AirPodsState {
         pid: 0,
+        listening: true,
+        not_listening: None,
         devices: vec![AirPods {
             address: "02:00:00:00:A1:01".into(),
             path: "/org/bluez/hci0/dev_02_00_00_00_A1_01".into(),
@@ -426,8 +428,12 @@ fn this_computer(ui: &mut Ui, link: &'static Link, a: &AirPods, settings: &AirPo
         if a.abilities.adaptive {
             ui.add(CheckBox::new("Lower this computer's sound while you speak", settings.lower_when_speaking).enabled(a.settings.conversation_awareness != Some(false)).on_toggle(save(|s, on| s.lower_when_speaking = on)));
         }
-        ui.add(CheckBox::new("Connect automatically when you take them out near this computer", settings.connect_automatically).on_toggle(save(|s, on| s.connect_automatically = on)));
-        ui.add(CheckBox::new("Switch automatically between this computer and your iPhone", settings.switch_automatically).on_toggle(save(|s, on| s.switch_automatically = on)));
+        let listening = link.shared.lock().unwrap().state.listening;
+        ui.add(CheckBox::new("Connect automatically when you put them in near this computer", settings.connect_automatically).enabled(listening).on_toggle(save(|s, on| s.connect_automatically = on)));
+        ui.add(CheckBox::new("Switch automatically between this computer and your iPhone", settings.switch_automatically).enabled(listening).on_toggle(save(|s, on| s.switch_automatically = on)));
+        if !listening {
+            ui.note("These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.");
+        }
         let choices = [
             (MicrophoneChoice::Computer, "This Computer's Microphones"),
             (MicrophoneChoice::AirPods, "AirPods (High Quality)"),

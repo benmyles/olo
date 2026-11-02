@@ -508,3 +508,40 @@ mod live_write {
         assert!((again.volume.level - mic.volume.level).abs() < 0.001);
     }
 }
+
+/// Whether anything is playing (a playback stream that isn't paused),
+/// told `changed` when that changes; None while there is no sound server.
+/// For "switch automatically": the moment something starts to play.
+pub fn watch_playing(mut changed: impl FnMut(Option<bool>)) -> ! {
+    let mut last: Option<Option<bool>> = None;
+    let mut report = |p: Option<bool>| {
+        if last != Some(p) {
+            last = Some(p);
+            changed(p);
+        }
+    };
+    loop {
+        let r: Result<()> = (|| {
+            let mut query = Conn::connect()?;
+            let mut events = Conn::connect()?;
+            events.sock.get_ref().set_read_timeout(None)?;
+            events.ack(&Command::Subscribe(SubscriptionMask::SINK_INPUT))?;
+            let playing = |q: &mut Conn| -> Result<bool> {
+                let list: protocol::SinkInputInfoList = q.request(&Command::GetSinkInputInfoList)?;
+                Ok(list.iter().any(|s| !s.corked))
+            };
+            report(Some(playing(&mut query)?));
+            loop {
+                let (_, cmd) = protocol::read_command_message(&mut events.sock, events.version)?;
+                if let Command::SubscribeEvent(_) = cmd {
+                    report(Some(playing(&mut query)?));
+                }
+            }
+        })();
+        if let Err(e) = r {
+            tracing::debug!("sound server: {e}");
+        }
+        report(None);
+        std::thread::sleep(Duration::from_secs(3));
+    }
+}

@@ -153,6 +153,8 @@ pub struct Roots {
     pub scope: Option<String>,
     /// What systemd says about a system unit.
     pub units: Box<dyn Fn(&str) -> Result<UnitState, String> + Send + Sync>,
+    /// AirPods are paired here (the AirPods service's state).
+    pub airpods: bool,
 }
 
 impl Roots {
@@ -162,7 +164,8 @@ impl Roots {
         // SAFETY: getuid has no preconditions.
         let uid = unsafe { libc::getuid() };
         let scope = scope_of(&std::fs::read_to_string("/proc/self/cgroup").unwrap_or_default());
-        Roots { fs: PathBuf::from("/"), bin, uid, scope, units: Box::new(crate::fix::unit_state) }
+        let airpods = !olo_protocol::airpods::AirPodsState::load().devices.is_empty();
+        Roots { fs: PathBuf::from("/"), bin, uid, scope, units: Box::new(crate::fix::unit_state), airpods }
     }
 }
 
@@ -345,6 +348,7 @@ pub fn scan(roots: &Roots) -> Report {
     wifi(roots, &mut r);
     rtkit(roots, &mut r);
     voice_realtime(roots, &procs, &mut r);
+    airpods_listening(roots, &procs, &mut r);
     util_clamp(roots, &mut r);
     stale(roots, &procs, &mut r);
     login_entry(roots, &mut r);
@@ -638,6 +642,45 @@ fn rtkit(roots: &Roots, r: &mut Report) {
     }
 }
 
+/// AirPods paired: connecting and switching by themselves needs their
+/// broadcasts heard, through BlueZ's advertisement monitor, which BlueZ
+/// (5.87) keeps among its experimental interfaces (`bluetoothd
+/// --experimental`). The fix: a drop-in that starts it so, and Bluetooth
+/// restarted.
+fn airpods_listening(roots: &Roots, procs: &[Proc], r: &mut Report) {
+    if !roots.airpods {
+        return;
+    }
+    let Some(bluez) = procs.iter().find(|p| p.name == "bluetoothd") else { return };
+    let cmdline = std::fs::read(roots.fs.join(format!("proc/{}/cmdline", bluez.pid))).unwrap_or_default();
+    let args: Vec<String> = cmdline.split(|b| *b == 0).map(|a| String::from_utf8_lossy(a).into_owned()).collect();
+    if args.iter().any(|a| a == "-E" || a == "--experimental") {
+        r.fine.push(Fine { title: "Bluetooth listens for the AirPods".into(), detail: "BlueZ's advertisement monitor is on: they can connect and switch by themselves.".into() });
+        return;
+    }
+    let program = bluez.exe.clone().map(|e| e.trim_end_matches(" (deleted)").to_owned()).filter(|e| e.starts_with('/'));
+    let fix = program.map(|program| Fix {
+        label: "Let Bluetooth Listen".into(),
+        root: true,
+        steps: vec![
+            Step::WriteFile {
+                path: "/etc/systemd/system/bluetooth.service.d/olo.conf".into(),
+                content: format!("# Olo: BlueZ's advertisement monitor, for AirPods (Olo Doctor).\n[Service]\nExecStart=\nExecStart={program} --experimental\n"),
+                mode: 0o644,
+            },
+            Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Reload },
+            Step::Unit { name: "bluetooth.service".into(), action: UnitAction::Restart },
+        ],
+    });
+    r.findings.push(Finding {
+        id: "airpods-listening".into(),
+        severity: Severity::Advice,
+        title: "Bluetooth doesn't listen for the AirPods".into(),
+        detail: "Connecting automatically when you put them in, and switching between this computer and a phone, need their broadcasts heard: BlueZ's advertisement monitor, among its experimental interfaces. The fix starts Bluetooth with them; restarting it disconnects Bluetooth devices for a moment.".into(),
+        fix,
+    });
+}
+
 /// The voice services' sound (olo-voice, olo-airpods): PipeWire's thread
 /// for it ("data-loop") is made realtime through rtkit, which gives that
 /// to so many processes a user (15 by default) and threads (25), and a
@@ -804,6 +847,8 @@ mod tests {
         w("proc/901/cmdline", "gsd-power\0");
         w("proc/901/cgroup", "0::/user.slice/user-1000.slice/session-2.scope\n");
         w("proc/bus/input/devices", "N: Name=\"keyd virtual keyboard\"\nN: Name=\"keyd virtual pointer\"\nN: Name=\"Logitech G309\"\n");
+        // BlueZ, started without its experimental interfaces.
+        w("proc/903/cmdline", "/usr/libexec/bluetooth/bluetoothd\0");
         // The voice service, its sound thread not realtime (rtkit full).
         w("proc/902/cmdline", "olo-voice\0--service\0");
         w("proc/902/cgroup", "0::/user.slice/user-1000.slice/session-2.scope\n");
@@ -853,7 +898,7 @@ mod tests {
         });
         // SAFETY: getuid has no preconditions.
         let uid = unsafe { libc::getuid() };
-        let roots = Roots { fs: fs.clone(), bin, uid, scope: Some("session-2.scope".into()), units };
+        let roots = Roots { fs: fs.clone(), bin, uid, scope: Some("session-2.scope".into()), units, airpods: true };
         (fs, roots)
     }
 
@@ -863,7 +908,7 @@ mod tests {
         let r = scan(&roots);
         let ids: Vec<&str> = r.findings.iter().map(|f| f.id.as_str()).collect();
         assert_eq!(r.find("foreign").unwrap().title, "A program of another desktop runs in this session");
-        assert_eq!(ids, ["remapper:keyd", "foreign", "rule:input", "autosuspend:3-1.3", "rule:displays", "wifi-heal", "rtkit", "voice-realtime", "uclamp", "stale", "login"], "{r:#?}");
+        assert_eq!(ids, ["remapper:keyd", "foreign", "rule:input", "autosuspend:3-1.3", "rule:displays", "wifi-heal", "rtkit", "voice-realtime", "airpods-listening", "uclamp", "stale", "login"], "{r:#?}");
         let voice = r.find("voice-realtime").unwrap();
         assert!(voice.detail.starts_with("olo-voice asked rtkit"), "{}", voice.detail);
         assert!(matches!(&voice.fix.as_ref().unwrap().steps[0], Step::WriteFile { content, .. } if content.contains("ExecStart=/usr/libexec/rtkit-daemon --processes-per-user-max=64")));
@@ -928,6 +973,7 @@ mod tests {
         std::fs::remove_dir_all(fs.join("proc/900")).unwrap();
         std::fs::remove_dir_all(fs.join("proc/901")).unwrap();
         w("sys/bus/usb/devices/3-1.3/power/control", "on\n");
+        w("proc/903/cmdline", "/usr/libexec/bluetooth/bluetoothd\0--experimental\0");
         // The voice service's sound thread realtime (SCHED_RR, field 41).
         w("proc/902/task/905/stat", &format!("905 (data-loop.0) S{} 2\n", " 0".repeat(37)));
         w(INPUT_RULE_PATH, INPUT_RULE);
@@ -952,6 +998,7 @@ mod tests {
                 "Olo's Wi-Fi healer watches wld0",
                 "rtkit is running",
                 "Voice processing's sound is realtime",
+                "Bluetooth listens for the AirPods",
                 "Frames run on the fast cores",
                 "Every Olo program runs the installed version",
                 "Olo is on the login screen",

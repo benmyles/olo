@@ -379,3 +379,117 @@ pub fn watch(changed: impl Fn() + Send + 'static) -> Result<()> {
     })?;
     Ok(())
 }
+
+// ---- Apple's broadcasts --------------------------------------------------------
+
+/// One of Apple's broadcasts heard: the address it came from (a private
+/// one that changes, for AirPods), Apple's manufacturer data after the
+/// company id, and how strong.
+#[derive(Debug, Clone)]
+pub struct Advert {
+    pub address: String,
+    pub data: Vec<u8>,
+    pub rssi: Option<i16>,
+}
+
+/// What asks BlueZ to listen for one kind of Apple broadcast: its
+/// AdvertisementMonitor1 (served at /org/olo/monitor/apple).
+struct AppleMonitor {
+    kind: u8,
+}
+
+#[zbus::interface(name = "org.bluez.AdvertisementMonitor1")]
+impl AppleMonitor {
+    fn release(&self) {}
+    fn activate(&self) {}
+    fn device_found(&self, _device: zvariant::ObjectPath<'_>) {}
+    fn device_lost(&self, _device: zvariant::ObjectPath<'_>) {}
+    #[zbus(property, name = "Type")]
+    fn kind(&self) -> String {
+        "or_patterns".into()
+    }
+    /// Manufacturer data (0xff) starting, at 0, with Apple's company id
+    /// (0x004C, little-endian) and the message's kind.
+    #[zbus(property)]
+    fn patterns(&self) -> Vec<(u8, u8, Vec<u8>)> {
+        vec![(0, 0xff, vec![0x4c, 0x00, self.kind])]
+    }
+}
+
+/// Listen, passively, for Apple's broadcasts of `kind` (0x07: AirPods'
+/// proximity message) and tell `heard` each one, from BlueZ's thread, for
+/// as long as the returned connection is kept. The radio scans as BlueZ
+/// does for any monitor: passively, with the controller filtering where it
+/// can. Needs BlueZ's advertisement monitor (`bluetoothd --experimental`
+/// on BlueZ 5.87): without it, an error that says so.
+pub fn watch_apple(kind: u8, heard: impl Fn(Advert) + Send + 'static) -> Result<Connection> {
+    use zbus::{MatchRule, message::Type};
+    let adapter = status()?.adapter.ok_or_else(|| zbus::Error::Failure("no Bluetooth adapter".into()))?.path;
+    let root = "/org/olo/monitor";
+    let conn = zbus::blocking::connection::Builder::system()?
+        .serve_at(root, zbus::fdo::ObjectManager)?
+        .serve_at(format!("{root}/apple"), AppleMonitor { kind })?
+        .build()?;
+    let manager = conn.call_method(Some(DEST), adapter.as_str(), Some("org.bluez.AdvertisementMonitorManager1"), "RegisterMonitor", &(zvariant::ObjectPath::try_from(root)?,));
+    if let Err(e) = manager {
+        let unknown = matches!(&e, zbus::Error::MethodError(name, ..) if name.as_str().ends_with("UnknownMethod") || name.as_str().ends_with("UnknownInterface"));
+        return Err(if unknown { zbus::Error::Failure("BlueZ's advertisement monitor is off (bluetoothd --experimental)".into()) } else { e });
+    }
+    // BlueZ makes and updates a device for each broadcast that matches:
+    // follow its ManufacturerData.
+    let listen = Connection::system()?;
+    let dbus = zbus::blocking::fdo::DBusProxy::new(&listen)?;
+    let messages = zbus::blocking::MessageIterator::from(&listen);
+    dbus.add_match_rule(MatchRule::builder().msg_type(Type::Signal).sender(DEST)?.interface("org.freedesktop.DBus.ObjectManager")?.member("InterfacesAdded")?.build())?;
+    dbus.add_match_rule(MatchRule::builder().msg_type(Type::Signal).sender(DEST)?.interface("org.freedesktop.DBus.Properties")?.member("PropertiesChanged")?.build())?;
+    // Where each device object came from (its Address), looked up once.
+    let mut addresses: HashMap<String, String> = HashMap::new();
+    let apple = move |props: &HashMap<String, OwnedValue>| -> Option<Vec<u8>> {
+        let m = props.get("ManufacturerData")?;
+        let map = HashMap::<u16, OwnedValue>::try_from(m.try_clone().ok()?).ok()?;
+        let data = Vec::<u8>::try_from(map.get(&0x004c)?.try_clone().ok()?).ok()?;
+        (data.first() == Some(&kind)).then_some(data)
+    };
+    std::thread::Builder::new().name("bluez-adverts".into()).spawn(move || {
+        let _keep = &dbus;
+        for m in messages.flatten() {
+            let h = m.header();
+            let (path, props) = match h.member().map(|m| m.as_str()) {
+                Some("InterfacesAdded") => {
+                    let Ok((path, mut ifaces)) = m.body().deserialize::<(OwnedObjectPath, HashMap<String, HashMap<String, OwnedValue>>)>() else { continue };
+                    let Some(props) = ifaces.remove(DEVICE) else { continue };
+                    if let Some(a) = props.get("Address").and_then(|v| String::try_from(v.try_clone().ok()?).ok()) {
+                        addresses.insert(path.to_string(), a);
+                    }
+                    (path.to_string(), props)
+                }
+                Some("PropertiesChanged") => {
+                    let Some(path) = h.path().map(|p| p.to_string()) else { continue };
+                    let Ok((iface, props, _)) = m.body().deserialize::<(String, HashMap<String, OwnedValue>, Vec<String>)>() else { continue };
+                    if iface != DEVICE {
+                        continue;
+                    }
+                    (path, props)
+                }
+                _ => continue,
+            };
+            let Some(data) = apple(&props) else { continue };
+            let address = match addresses.get(&path) {
+                Some(a) => a.clone(),
+                None => {
+                    let got = listen
+                        .call_method(Some(DEST), path.as_str(), Some("org.freedesktop.DBus.Properties"), "Get", &(DEVICE, "Address"))
+                        .ok()
+                        .and_then(|r| r.body().deserialize::<OwnedValue>().ok())
+                        .and_then(|v| String::try_from(v).ok());
+                    let Some(a) = got else { continue };
+                    addresses.insert(path.clone(), a.clone());
+                    a
+                }
+            };
+            let rssi = props.get("RSSI").and_then(|v| i16::try_from(v).ok());
+            heard(Advert { address, data, rssi });
+        }
+    })?;
+    Ok(conn)
+}
