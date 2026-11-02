@@ -252,9 +252,11 @@ impl Render for Frame {
             root = root.bg(style::c(p.panel_background));
         }
         let title = self.title.clone();
+        // Over all of it: a control lit to say "here" (`spotlight`).
+        let lit = canvas(|_, _, _| {}, |_, _, window, cx| crate::spotlight::paint(window, cx)).absolute().size_full();
         // Last: the frame is drawn (for a review asked for).
         let done = canvas(|_, _, _| {}, move |_, _, window, _| crate::review::finish(window, &title)).absolute().size_0();
-        root.child(self.content.clone()).child(done)
+        root.child(self.content.clone()).child(lit).child(done)
     }
 }
 

@@ -178,6 +178,9 @@ impl RenderOnce for BBox {
                 etched(window, frame, &p, label_w.map(|w| (frame.left() + px(pad - 4.0), frame.left() + px(pad + w + 4.0))));
                 if let Some(l) = &label {
                     style::label(window, cx, b.left() + px(pad), b.top() + px(label_h / 2.0), style::Align::Left, l.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), style::c(p.panel_text));
+                    // What the controls in it are about, for agents (and
+                    // the settings the palette finds: Preferences' index).
+                    crate::agent::record(window, cx, crate::agent::Node { role: "Group", name: Some(l.clone()), bounds: b, enabled: true, ..Default::default() });
                 }
             },
         )

@@ -2722,5 +2722,17 @@
   "title": "Tracker: Go to File or Folder",
   "caption": "Go \u25b8 Go to File or Folder\u2026 (\u21e7\u2318G): a path copied is in the field already, selected, so Return goes; the names in its folder that what's typed could be are listed as it's typed, Tab completes, \u2191\u2193 choose. A folder opens; a file shows selected in its folder's window.",
   "image": "2026-11-02/120214-tracker-go-to-file-or-folder.png"
+ },
+ {
+  "time": "2026-11-02T12:24:07",
+  "title": "Command palette: every setting in Preferences",
+  "caption": "Each control in every Preferences panel is a palette result, named with its panel, tab and box, and found by the words people use for it elsewhere ('night shift' finds Night Mode). The index is made from the panels as they're drawn, so a new setting is found without listing it.",
+  "image": "2026-11-02/122407-command-palette-every-setting-in-preferences.png"
+ },
+ {
+  "time": "2026-11-02T12:24:20",
+  "title": "A setting found is shown, lit",
+  "caption": "Chosen in the palette, Preferences opens the setting's panel (on its tab, clicked if need be) with the control ringed in the keyboard-navigation colour for a moment: olo_ui::spotlight, which any app or agent can use to say 'here'. Two lines wide on device pixels; frames only while it comes and goes.",
+  "image": "2026-11-02/122420-a-setting-found-is-shown-lit.png"
  }
 ]

@@ -14,6 +14,7 @@ pub mod desktop_entry;
 pub mod mime;
 pub mod open;
 pub mod scope;
+pub mod settings;
 pub mod themes;
 pub mod trash;
 pub mod wallpapers;

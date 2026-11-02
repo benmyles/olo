@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### A setting found is shown, lit
+
+*12:24* — Chosen in the palette, Preferences opens the setting's panel (on its tab, clicked if need be) with the control ringed in the keyboard-navigation colour for a moment: olo_ui::spotlight, which any app or agent can use to say 'here'. Two lines wide on device pixels; frames only while it comes and goes.
+
+![A setting found is shown, lit](2026-11-02/122420-a-setting-found-is-shown-lit.png)
+
+### Command palette: every setting in Preferences
+
+*12:24* — Each control in every Preferences panel is a palette result, named with its panel, tab and box, and found by the words people use for it elsewhere ('night shift' finds Night Mode). The index is made from the panels as they're drawn, so a new setting is found without listing it.
+
+![Command palette: every setting in Preferences](2026-11-02/122407-command-palette-every-setting-in-preferences.png)
+
 ### Tracker: Go to File or Folder
 
 *12:02* — Go ▸ Go to File or Folder… (⇧⌘G): a path copied is in the field already, selected, so Return goes; the names in its folder that what's typed could be are listed as it's typed, Tab completes, ↑↓ choose. A folder opens; a file shows selected in its folder's window.

@@ -165,13 +165,43 @@ impl Prefs {
     }
 
     fn handle_args(&mut self, args: &[String], cx: &mut Context<Self>) {
+        // A setting to show (the command palette's, `olo_xdg::settings`):
+        // its panel opens with it lit, on its tab, in its box.
+        let (mut show, mut tab, mut group, mut rest) = (None, None, None, Vec::new());
+        let mut it = args.iter();
+        while let Some(a) = it.next() {
+            match a.as_str() {
+                "--show" => show = it.next().cloned(),
+                "--tab" => tab = it.next().cloned(),
+                "--group" => group = it.next().cloned(),
+                _ => rest.push(a.clone()),
+            }
+        }
         let (files, panels): (Vec<&String>, Vec<&String>) =
-            args.iter().filter(|a| !a.starts_with('-')).partition(|a| [backup::EXTENSION, backup::OLD_EXTENSION].iter().any(|x| a.ends_with(&format!(".{x}"))));
+            rest.iter().filter(|a| !a.starts_with('-')).partition(|a| [backup::EXTENSION, backup::OLD_EXTENSION].iter().any(|x| a.ends_with(&format!(".{x}"))));
         if panels.is_empty() && files.is_empty() {
             self.open_launcher(cx);
         }
-        for p in panels {
+        for p in &panels {
             self.open(p, cx);
+        }
+        if let (Some(name), Some(panel)) = (show, panels.last().and_then(|p| Panel::from_arg(p))) {
+            // (Once the panel's window, opened after this update, has
+            // drawn: what's lit is found in what it drew.)
+            let me = cx.entity();
+            cx.defer(move |cx| {
+                let Some(handle) = me.read(cx).windows.iter().find(|w| w.panel == Some(panel)).map(|w| w.handle) else { return };
+                let _ = handle.update(cx, |_, window, _| {
+                    window.on_next_frame(move |window, cx| {
+                        let handle = window.window_handle();
+                        cx.defer(move |cx| {
+                            olo_ui::spotlight::show(handle, tab.as_deref(), group.as_deref(), &name, cx);
+                        });
+                    });
+                    // (A frame for it now: the window may have drawn already.)
+                    window.refresh();
+                });
+            });
         }
         // A backup opened from Tracker: what it holds, ready to import
         // (once the panel's window, opened after this update, is there).

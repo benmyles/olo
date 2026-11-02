@@ -27,6 +27,7 @@ pub mod pictures;
 pub mod review;
 pub mod search;
 pub mod spell;
+pub mod spotlight;
 pub mod style;
 pub mod theme;
 pub mod tip;

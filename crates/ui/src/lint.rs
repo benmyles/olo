@@ -12,7 +12,7 @@
 
 use std::{sync::Arc, sync::mpsc};
 
-use gpui::{App, AppContext as _, Entity, Render, TestAppContext, VisualTestContext, Window};
+use gpui::{App, Entity, Render, TestAppContext, VisualTestContext, Window};
 use olo_kit_base::layout_review::{self as checks, Parts};
 use olo_theme::Palette;
 
@@ -109,6 +109,37 @@ impl Lint {
             vcx.run_until_parked();
         }
         found
+    }
+}
+
+impl Lint {
+    /// Window `options` showing the view `build` makes, drawn once at 1×
+    /// in the default look: what agents read of it (`agent::tree`), and
+    /// of each of its tabs, clicked, by the tab's name (None: as it
+    /// opens). For indexes made from what windows show (Preferences'
+    /// settings, for the palette).
+    pub fn trees<V: Render + 'static>(&mut self, options: &WindowOptions, build: impl Fn(&mut Window, &mut App) -> Entity<V> + 'static) -> Vec<(Option<String>, Vec<olo_kit_base::commands::UiNode>)> {
+        self.cx.update(|cx| cx.set_global(Theme { palette: looks()[0].1.clone() }));
+        let options = options.clone();
+        let handle = self.cx.update(move |cx| crate::open_window(cx, options, build)).expect("the window opens");
+        let mut vcx = VisualTestContext::from_window(handle.into(), &self.cx);
+        vcx.set_scale_factor(1.0);
+        vcx.run_until_parked();
+        let tree = |vcx: &mut VisualTestContext| vcx.cx.update(|cx| crate::agent::tree(handle.into(), cx)).map(|t| t.nodes).unwrap_or_default();
+        let first = tree(&mut vcx);
+        let tabs: Vec<(String, gpui::Point<gpui::Pixels>, bool)> = first.iter().filter(|n| n.role == "Tab").map(|n| (n.name.clone().unwrap_or_default(), gpui::point(gpui::px(n.x + n.width / 2.0), gpui::px(n.y + n.height / 2.0)), n.selected == Some(true))).collect();
+        let mut out = vec![(tabs.iter().find(|t| t.2).map(|t| t.0.clone()), first)];
+        for (name, at, selected) in &tabs {
+            if *selected {
+                continue;
+            }
+            vcx.simulate_click(*at, gpui::Modifiers::default());
+            vcx.run_until_parked();
+            out.push((Some(name.clone()), tree(&mut vcx)));
+        }
+        vcx.update(|window, _| window.remove_window());
+        vcx.run_until_parked();
+        out
     }
 }
 

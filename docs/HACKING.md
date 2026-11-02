@@ -752,6 +752,23 @@ a rest, at once if another showed a moment ago, and not after a click
 window: Deskbar's tray, Terminal's sudo window's command. Elsewhere
 `widgets::tooltip` is fine.
 
+### Showing a control (`olo_ui::spotlight`)
+
+`spotlight::show(handle, tab, group, name, cx)` says "here" about one
+control, as macOS's System Settings lights what its search found: the
+tab called `tab` is clicked if it isn't the one showing, then the
+control called `name` (a label's colon aside) is found in the window's
+agent tree, in the innermost `Group` called `group` if there is one
+(else any so named: a box's name can be the device's), and lit with a
+ring in the keyboard-navigation colour, two lines wide on device
+pixels, over a faint wash. It comes in 150 ms, holds and goes over the
+last 450 of `spotlight::LIT` (1.6 s); the window's `Frame` draws it
+over everything else. Frames are asked for only while it comes and
+goes: held, one timer wakes the window for its going, and once gone
+nothing runs. False if there's no such control. Preferences uses it
+for `--show` (the command palette's settings); an agent can use it to
+show the person what it's talking about.
+
 ### What every app does the same way
 
 The widgets are listed under "The GPUI kit" below; this is how they
@@ -1198,7 +1215,8 @@ event reaches it.
   with the current choice over the field: `menu::popup_over`),
   `TextControl` (label, divider,
   the sunken well around a `TextField`), `StringView` (`dim`, `bold`),
-  `BBox` (etched frame, bold label in its top line, `content_width`),
+  `BBox` (etched frame, bold label in its top line, `content_width`;
+  agents read it as a `Group` named by its label, round what's in it),
   `EmptyState` (an icon, a line, a detail and an action button,
   centred in what it's given: a list or pane with nothing in it).
   Each is a `widgets::Control` underneath: an element that keeps
@@ -2487,6 +2505,10 @@ other: a control in a row, a cell in a list, isn't over it),
 `text-outside` and `text-over-text` (lines' ink over each other; their
 boxes may touch by their leading). `Lint::window(options, build)`
 returns what it found; `assert_clean` fails a test with it, a line each.
+`Lint::trees(options, build)` gives what agents read of the window
+instead (`agent::tree`, 1× light), as it opens and with each of its
+tabs clicked: for indexes made from what windows show (Preferences'
+settings).
 
 `cargo ui-lint` runs every `ui_lint` test: the kit's own (a form of its
 widgets is clean; controls put over each other are found) and every
@@ -2562,6 +2584,19 @@ opened, its own `panel::State` and text fields).
   enabled only when it would change something: implement `Panel::reset`.
 * New panel: add it to `Panel` (arg, title, icon, size, reset), write the
   module, add it to `PREFERENCE_PANELS`, journal it light and dark.
+* **Every setting, findable** (`olo_xdg::settings::PREFERENCE_SETTINGS`):
+  each control in every panel (check box, radio button, slider, pop-up
+  menu, text field, colour well, button) with its panel, tab and box,
+  made from the panels as they're drawn (`Lint::trees`) by the
+  `ui_lint_settings_index` test, which fails when a panel's controls
+  change and the index wasn't remade: `OLO_WRITE_SETTINGS=1 cargo
+  ui-lint` writes `crates/xdg/src/settings.rs`. Left out: a list's rows,
+  scroll arrows, Defaults and Revert, a state shown as a button, a
+  problem's fix, the made-up displays and devices (by their names;
+  `generic_group` names their boxes as on any computer). The command
+  palette lists them; `olo-preferences PANEL --tab TAB --group BOX
+  --show NAME` opens the panel (or brings it forward) with the control
+  lit (`olo_ui::spotlight`), once the window has drawn.
 * **Integrations** (`integrations.rs`) is where every service Olo works
   with is connected, and only there: one box per service with its own
   icon (the service's mark made an Olo object, drawn for every theme as
@@ -5965,7 +6000,12 @@ put it away.
   keyboard (app_server's focus is then the overlay). Shortcuts are done
   to that window through `Request::RunShortcut { id, window }`.
 * **Sources** (`sources.rs`): applications (ours, then desktop entries),
-  preference panels, light/dark appearance, app_server's shortcuts with
+  preference panels and every setting in them (`PREFERENCE_SETTINGS`:
+  "Pinch to zoom — Preferences ▸ Touchpad & Mouse ▸ Gestures ▸
+  Scrolling"; a choice or a short name is titled with its box, "Theme:
+  Dark"; found too by what it's called elsewhere, `KNOWN_AS`: "night
+  shift", "palm rejection", a test keeping each naming a setting that's
+  there; chosen, Preferences opens on it, lit), light/dark appearance, app_server's shortcuts with
   their current keys (`keys_for`, shown as on a Mac, so "tile" lists every
   tiling shortcut and its keys), open windows, the front app's menu
   commands with their keys (`olo_ui::commands`, asked of the process

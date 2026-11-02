@@ -675,7 +675,7 @@ as they land (with the commit), add new ones as they come up.
   is there. In the command palette as a Tracker command, and with a path
   in the clipboard the palette offers "Go to <path>" itself. Agents get
   it as a Tracker command (`go-to:<path>`) too.
-- **Command palette finds settings** (Ben, 2026-11-01): "in the
+- ~~**Command palette finds settings**~~ (done: HACKING, Preferences' "Every setting, findable" and the palette's Sources; `olo_ui::spotlight` lights it) (Ben, 2026-11-01): "in the
   super+space command palette thing also match on the actual settings
   etc. that are available in each preferences app to make them easy to
   find in there". So: every setting in every Preferences panel (its
