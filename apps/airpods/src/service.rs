@@ -47,6 +47,11 @@ struct Dev {
     paused_at: Option<(Instant, u8)>,
     /// The output's level before Conversation Awareness turned it down.
     before_speaking: Option<(String, f32, usize)>,
+    /// Their microphone stream is running, and Conversation Awareness's
+    /// setting to put back when it stops (it's off while recording, as
+    /// in a call on an iPhone: speaking would duck the sound).
+    mic_on: bool,
+    awareness_after: Option<bool>,
 }
 
 struct Inner {
@@ -238,6 +243,8 @@ fn talk(addr: String) {
                 publish(&mut inner);
             }
             tracing::info!("airpods {addr}: talking");
+            let name = service().inner.lock().unwrap().devices.get(&addr).map(|d| d.info.name.clone()).unwrap_or_default();
+            crate::mic::linked(&addr, &name);
             loop {
                 match link.recv() {
                     Ok(m) if m.is_empty() => break,
@@ -263,10 +270,13 @@ fn talk(addr: String) {
                 }
             }
         }
+        crate::mic::unlinked(&addr);
         {
             let mut inner = service().inner.lock().unwrap();
             if let Some(d) = inner.devices.get_mut(&addr) {
                 d.link = None;
+                d.mic_on = false;
+                d.awareness_after = None;
                 forget_live(d);
             }
             publish(&mut inner);
@@ -366,7 +376,7 @@ fn heard(addr: &str, msg: Message) {
         Message::Conversation { level } => {
             let speaking = level < 8;
             d.info.speaking = speaking;
-            if settings.lower_when_speaking {
+            if settings.lower_when_speaking && !d.mic_on {
                 act = speaking_changed(d, level);
             }
         }
@@ -471,7 +481,7 @@ fn speaking_changed(d: &mut Dev, level: u8) -> Option<Box<dyn FnOnce() + Send>> 
 fn sound_changed(devices: Option<audio::Devices>) {
     let Some(devices) = devices else { return };
     let cards = if devices.outputs.iter().chain(&devices.inputs).any(|d| d.bluetooth.is_some()) { audio::cards().unwrap_or_default() } else { Vec::new() };
-    let (mut fix_input, mut make_default) = (None, None);
+    let (mut fix_input, mut make_default, mut use_input) = (None, None, None);
     {
         let mut inner = service().inner.lock().unwrap();
         let seen = std::mem::replace(&mut inner.sound_seen, true);
@@ -479,11 +489,23 @@ fn sound_changed(devices: Option<audio::Devices>) {
         for addr in &addrs {
             let ours = |d: &&audio::Device| d.bluetooth.as_ref().is_some_and(|b| b.address.eq_ignore_ascii_case(addr));
             let out = devices.outputs.iter().find(ours);
-            let input = devices.inputs.iter().find(ours);
+            // Their headset input (BlueZ's), and their own microphone's
+            // source (ours).
+            let mic_node = crate::mic::node(addr);
+            let input = devices.inputs.iter().filter(ours).find(|d| Some(&d.name) != mic_node.as_ref());
+            let microphone = devices.inputs.iter().find(|d| Some(&d.name) == mic_node.as_ref());
             let bt = out.or(input).and_then(|d| d.bluetooth.clone()).unwrap_or_default();
+            if inner.settings.microphone == MicrophoneChoice::AirPods
+                && let Some(m) = microphone
+                && !m.is_default
+                && inner.devices.get(addr).is_some_and(|d| d.info.sound.microphone != m.name)
+            {
+                use_input = Some(m.name.clone());
+            }
             let sound = ap::Sound {
                 output: out.map(|d| d.name.clone()).unwrap_or_default(),
                 input: input.map(|d| d.name.clone()).unwrap_or_default(),
+                microphone: microphone.map(|d| d.name.clone()).unwrap_or_default(),
                 codec: bt.codec.clone(),
                 high_quality: bt.high_quality(),
                 card: cards.iter().find(|c| c.address.as_deref().is_some_and(|a| a.eq_ignore_ascii_case(addr))).map(|c| c.name.clone()).unwrap_or_default(),
@@ -501,7 +523,7 @@ fn sound_changed(devices: Option<audio::Devices>) {
         // The computer's microphones stay the input while AirPods are
         // connected, unless the person chose theirs: an input of theirs
         // that has just come and been made the default is undone.
-        let is_airpods_input = |name: &str| inner.devices.values().any(|d| d.info.sound.input == name);
+        let is_airpods_input = |name: &str| inner.devices.values().any(|d| d.info.sound.input == name || d.info.sound.microphone == name);
         let default_in = devices.default_device(audio::Kind::Input).map(|d| d.name.clone());
         if let Some(name) = &default_in {
             let new = !inner.inputs.contains(name);
@@ -513,6 +535,12 @@ fn sound_changed(devices: Option<audio::Devices>) {
         }
         inner.inputs = devices.inputs.iter().map(|d| d.name.clone()).collect();
         publish(&mut inner);
+    }
+    if let Some(name) = use_input {
+        tracing::info!("airpods: recording from their own microphone ({name})");
+        if let Err(e) = audio::set_default(audio::Kind::Input, &name) {
+            tracing::warn!("airpods: {e}");
+        }
     }
     if let Some(name) = make_default {
         tracing::info!("airpods: playing through them ({name})");
@@ -526,6 +554,34 @@ fn sound_changed(devices: Option<audio::Devices>) {
             tracing::warn!("airpods: {e}");
         }
     }
+}
+
+/// Start or stop a pair's own microphone stream (the microphone's source
+/// streaming or not, or asked on the command line). Conversation
+/// Awareness is off while it runs. False if they aren't talking to us.
+pub fn microphone_wanted(addr: &str, on: bool) -> bool {
+    let mut inner = service().inner.lock().unwrap();
+    let Some(d) = inner.devices.get_mut(addr) else { return false };
+    let Some(link) = d.link.clone() else { return false };
+    if d.mic_on == on {
+        return true;
+    }
+    d.mic_on = on;
+    let mut msgs = vec![if on { proto::start_microphone() } else { proto::stop_microphone() }];
+    if on {
+        if d.info.settings.conversation_awareness == Some(true) {
+            d.awareness_after = Some(true);
+            msgs.push(proto::set_on(Setting::Conversation, false));
+        }
+    } else if let Some(back) = d.awareness_after.take() {
+        msgs.push(proto::set_on(Setting::Conversation, back));
+    }
+    drop(inner);
+    crate::mic::switched(addr, on);
+    if let Err(e) = msgs.iter().try_for_each(|m| link.send(m)) {
+        tracing::warn!("airpods {addr}: {e}");
+    }
+    true
 }
 
 /// Switch a pair between music quality and the headset profile.
@@ -690,11 +746,8 @@ fn answer(request: Request) -> Reply {
                 Ok(a) => a,
                 Err(e) => return fail(e),
             };
-            let Some(link) = inner.devices.get(&addr).and_then(|d| d.link.clone()) else { return fail("They aren't connected.".into()) };
             drop(inner);
-            crate::mic::switched(&addr, on);
-            let m = if on { proto::start_microphone() } else { proto::stop_microphone() };
-            link.send(&m).map(|_| ok(None)).unwrap_or_else(|e| fail(e.to_string()))
+            if microphone_wanted(&addr, on) { ok(None) } else { fail("They aren't connected.".into()) }
         }
         Request::Quality { address, high } => {
             let addr = match pick(&inner, &address) {
@@ -792,7 +845,7 @@ fn fake_pair() {
             press_speed: Some(0),
             hold_duration: Some(0),
         },
-        sound: ap::Sound { output: "bluez_output.AA_BB_CC_DD_EE_FF.1".into(), input: String::new(), codec: "aac".into(), high_quality: true, card: "bluez_card.AA_BB_CC_DD_EE_FF".into() },
+        sound: ap::Sound { output: "bluez_output.AA_BB_CC_DD_EE_FF.1".into(), input: String::new(), microphone: String::new(), codec: "aac".into(), high_quality: true, card: "bluez_card.AA_BB_CC_DD_EE_FF".into() },
     };
     publish(&mut inner);
 }

@@ -4,6 +4,7 @@
 
 mod keys;
 mod mic;
+mod resample;
 mod service;
 
 /// A line on standard output; a reader gone (`| head`) isn't an error.

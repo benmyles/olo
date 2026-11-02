@@ -190,13 +190,14 @@ fn airpods_input(ui: &mut Ui) {
     }
     let choices = [
         (MicrophoneChoice::Computer, "This Computer's Microphones"),
+        (MicrophoneChoice::AirPods, "AirPods (High Quality)"),
         (MicrophoneChoice::AirPodsHeadset, "AirPods (Call Quality)"),
     ];
     let at = choices.iter().position(|(c, _)| *c == settings.microphone).unwrap_or(0);
     let names: Vec<SharedString> = choices.iter().map(|(_, n)| SharedString::from(*n)).collect();
     let note = match settings.microphone {
-        MicrophoneChoice::Computer => "AirPods keep playing at music quality while you record.",
-        _ => "AirPods play at call quality while their microphone is used.",
+        MicrophoneChoice::Computer | MicrophoneChoice::AirPods => "AirPods keep playing at music quality while you record.",
+        MicrophoneChoice::AirPodsHeadset => "AirPods play at call quality while their microphone is used.",
     };
     ui.add(MenuField::new("sound-airpods-mic", names, at).label("With AirPods:").divider(130.0).on_change(move |i, _, cx| {
         let mut s = settings.clone();

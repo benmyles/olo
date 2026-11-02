@@ -5002,6 +5002,32 @@ every change, and answers `Request`s (JSON lines) on
 starts again as the new binary. Idle it is asleep on BlueZ's signals,
 the sound server's events and the channels: nothing is polled.
 
+**Their own microphone** (`mic.rs`): while a pair's channel is open,
+the service has a PipeWire source for it ("… Microphone",
+`airpods_mic.ADDRESS`, made in process with pipewire-rs on a thread of
+its own, `priority.session` 100 so it is never the input by itself). It
+starts the AirPods' wideband stream (`proto::start_microphone`) only
+while something records from it (the stream streaming) and stops it
+1.5 s after recording stops, so idle it costs nothing, nor their
+battery; Conversation Awareness is off meanwhile (speaking would duck
+the sound), and their sound stays at music quality (A2DP AAC; checked
+by ear on a lossless stereo track). Their frames (AAC-ELD, four of 480
+samples a message at 64 kHz, though the config says 48) are decoded by
+`olo-eld`; frames lost on the air (a gap in the frames' 24 kHz
+timestamps, 180 a frame) are decoded empty, so the sound dies away
+through the filter bank rather than stopping. `resample.rs` takes them
+to 48 kHz (windowed sinc, Kaiser, 32 taps, 512 interpolated phases),
+its ratio steered within ±0.5% to keep 60 ms waiting (the AirPods'
+messages come every 31 ms on median and up to 53 ms apart, measured):
+the two clocks' difference is followed, never by dropping or repeating
+samples, and a source run dry fades out over 5 ms and back in. Each
+cycle is given exactly what it asks for (`Buffer::requested`). Checked
+on AirPods Pro 2: 12 s recorded, no gap, never dry, none lost, the
+largest step between samples −50 dBFS (room noise); sound begins
+320 ms after recording does (the AirPods' start, then the 60 ms).
+`OLO_AIRPODS_CAPTURE=FILE` keeps the raw frames (to test `olo-eld`
+against). `--microphone on|off` drives it by hand.
+
 The command line asks it, for people and agents: `olo-airpods`
 (`--status [--json]`), `--mode off|transparency|adaptive|anc`, `--set
 SETTING VALUE`, `--rename NAME`, `--connect`, `--disconnect`,

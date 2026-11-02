@@ -113,8 +113,12 @@ pub struct BudSettings {
 pub struct Sound {
     /// The sound server's output for them ("" while there's none).
     pub output: String,
-    /// Its microphone, when it has one.
+    /// Its headset microphone (BlueZ's: call quality while used), when
+    /// it has one.
     pub input: String,
+    /// Their own microphone's source (Olo's: wideband, the sound staying
+    /// at music quality), while their channel is open.
+    pub microphone: String,
     /// "aac", "sbc", "msbc", "cvsd" …
     pub codec: String,
     /// Music quality (A2DP) rather than call quality (the headset

@@ -139,7 +139,7 @@ pub fn test_state() -> AirPodsState {
                 press_speed: Some(2),
                 hold_duration: Some(2),
             },
-            sound: Sound { output: "airpods".into(), input: String::new(), codec: "aac".into(), high_quality: true, card: "bluez_card.02_00_00_00_A1_01".into() },
+            sound: Sound { output: "airpods".into(), input: String::new(), microphone: String::new(), codec: "aac".into(), high_quality: true, card: "bluez_card.02_00_00_00_A1_01".into() },
             ..Default::default()
         }],
     }
@@ -430,6 +430,7 @@ fn this_computer(ui: &mut Ui, link: &'static Link, a: &AirPods, settings: &AirPo
         ui.add(CheckBox::new("Switch automatically between this computer and your iPhone", settings.switch_automatically).on_toggle(save(|s, on| s.switch_automatically = on)));
         let choices = [
             (MicrophoneChoice::Computer, "This Computer's Microphones"),
+            (MicrophoneChoice::AirPods, "AirPods (High Quality)"),
             (MicrophoneChoice::AirPodsHeadset, "AirPods (Call Quality)"),
         ];
         let at = choices.iter().position(|(c, _)| *c == settings.microphone).unwrap_or(0);
