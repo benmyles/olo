@@ -661,7 +661,7 @@ as they land (with the commit), add new ones as they come up.
 
 ## Apps
 
-- **Tracker: Go to File or Folder** (Ben, 2026-11-02): "add a go to
+- ~~**Tracker: Go to File or Folder**~~ (done: `goto.rs`, Go ▸ Go to File or Folder…, ⇧⌘G; the clipboard's path, completion, `go-to:<path>` for agents; the palette lists it with Tracker's menus. Left: the palette offering "Go to <path>" itself when the clipboard holds one) (Ben, 2026-11-02): "add a go to
   file/folder option in tracker with a keyboard shortcut (and it should
   also show up in command pallette) -- it's useful when i want to jump
   to a path i have in the clipboard". So: Go ▸ Go to File or Folder…

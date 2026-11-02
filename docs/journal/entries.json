@@ -2716,5 +2716,11 @@
   "title": "A video's picture in picture, Standard mode",
   "caption": "Chrome's video picture in picture (no app id, titled \"Picture in picture\") in the corner, 16 px in, over the call page's window.",
   "image": "2026-11-02/102940-a-video-s-picture-in-picture-standard-mode.png"
+ },
+ {
+  "time": "2026-11-02T12:02:14",
+  "title": "Tracker: Go to File or Folder",
+  "caption": "Go \u25b8 Go to File or Folder\u2026 (\u21e7\u2318G): a path copied is in the field already, selected, so Return goes; the names in its folder that what's typed could be are listed as it's typed, Tab completes, \u2191\u2193 choose. A folder opens; a file shows selected in its folder's window.",
+  "image": "2026-11-02/120214-tracker-go-to-file-or-folder.png"
  }
 ]

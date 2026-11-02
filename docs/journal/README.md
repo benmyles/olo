@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Tracker: Go to File or Folder
+
+*12:02* — Go ▸ Go to File or Folder… (⇧⌘G): a path copied is in the field already, selected, so Return goes; the names in its folder that what's typed could be are listed as it's typed, Tab completes, ↑↓ choose. A folder opens; a file shows selected in its folder's window.
+
+![Tracker: Go to File or Folder](2026-11-02/120214-tracker-go-to-file-or-folder.png)
+
 ### A video's picture in picture, Standard mode
 
 *10:29* — Chrome's video picture in picture (no app id, titled "Picture in picture") in the corner, 16 px in, over the call page's window.

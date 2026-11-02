@@ -6123,6 +6123,19 @@ deferred so the Tracker can update the window back):
 - `quicklook.rs`: olo-preview's `PreviewView` with the footer and keys;
   its window opens when the preview comes (or after 120 ms with a
   spinner) and has the keyboard.
+- `goto.rs`: Go ▸ Go to File or Folder… (⇧⌘G, Finder's Go to Folder),
+  a dialog over the folder's window: the field holds a path copied
+  (absolute, `~/…` as written, a `file://` URI's; `goto::parse` takes
+  quotes and a trailing newline too), selected, so Return goes; the
+  names its folder has that what's typed could be listed under it,
+  each folder read once on a worker; Tab completes (the chosen name, or
+  as far as they agree, case aside) where there's one to complete to,
+  else moves on as Tab does (`capture_action` of `FocusNext`); ↑↓
+  choose, and Return then puts the name in. Go reveals (`Tracker::
+  go_to`: a folder opens, a file is selected in its folder's window); a
+  relative path is from the folder it was asked in; nothing there, it
+  says so and stays. Agents and the palette: `go-to` opens it,
+  `go-to:<path>` goes straight there.
 
 ## Agent Screens (apps/screen)
 
