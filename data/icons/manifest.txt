@@ -103,3 +103,7 @@ sensors|a thermometer standing upright on a small round base, with a silver scal
 performance|a chunky silver speedometer gauge dial standing on the desk, its needle pointing high into a green zone, with a small red warning arc at the end
 telegram|a chunky round sky-blue badge, seen in three-quarter view like a thick coin standing on the desk, with a white paper plane embossed on its face and a thin silver rim
 doctor|a doctor's medical bag: a chunky dark red leather physician's bag with brass clasps and a white cross on its side, a silver stethoscope draped over its handle
+airpods|a pair of glossy white wireless earbuds with short straight stems and dark grey speaker mesh tips, standing in front of their open glossy white rounded charging case, its lid tilted back
+airpods-case|a closed glossy white rounded charging case for wireless earbuds, a softly rounded rectangle with a thin seam under its lid and a small green status light on its front
+airpod-left|a single glossy white wireless earbud with a short straight stem pointing down and a soft grey silicone tip facing left, seen in three-quarter view standing on the desk
+airpod-right|a single glossy white wireless earbud with a short straight stem pointing down and a soft grey silicone tip facing right, seen in three-quarter view standing on the desk

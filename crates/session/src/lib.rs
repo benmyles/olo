@@ -60,8 +60,9 @@ const SHELL: &[&[&str]] = &[&["olo-deskbar"], &["olo-tracker", "--desktop"]];
 /// or headless one must never take over; Token Pool's gateway listens on
 /// the computer's one loopback port; the supervisor (Preferences ▸
 /// Performance) looks after the person's own processes; Olo Doctor tells
-/// of problems at login and of the Wi-Fi healer's resets.
-const REAL_SHELL: &[&[&str]] = &[&["olo-polkit-agent"], &["olo-notifications"], &["olo-portal", "--service"], &["olo-pool", "--service"], &["olo-supervisor"], &["olo-doctor", "--watch"]];
+/// of problems at login and of the Wi-Fi healer's resets; the AirPods
+/// service talks to the computer's own Bluetooth.
+const REAL_SHELL: &[&[&str]] = &[&["olo-polkit-agent"], &["olo-notifications"], &["olo-portal", "--service"], &["olo-pool", "--service"], &["olo-supervisor"], &["olo-doctor", "--watch"], &["olo-airpods", "--service"]];
 /// Give up restarting something that crashes this often.
 const CRASH_LIMIT: usize = 5;
 const CRASH_WINDOW: Duration = Duration::from_secs(60);

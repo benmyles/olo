@@ -14,8 +14,8 @@ use std::{
 use olo_sync::Mutex;
 use olo_system::audio::{self, Devices, Kind};
 use olo_ui::{
-    gpui::{Context, SharedString},
-    widgets::{CheckBox, EmptyState, MenuField, Slider},
+    gpui::{Context, ParentElement as _, SharedString, Styled as _, div, px},
+    widgets::{Button, CheckBox, EmptyState, MenuField, Slider},
 };
 
 use crate::{Msg, PanelView, form::Ui, panel};
@@ -118,6 +118,69 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     section(ui, st, &devices, Kind::Input);
 }
 
+/// The AirPods behind a sound device, if it is theirs.
+fn airpods_of(ui: &mut Ui, dev: &audio::Device) -> Option<olo_protocol::airpods::AirPods> {
+    let bt = dev.bluetooth.as_ref()?;
+    let (state, _) = crate::airpods::current(ui.cx);
+    state.by_address(&bt.address).cloned()
+}
+
+/// Under the output menu, for AirPods: how their sound is carried (music
+/// quality, or call quality while their microphone is used), their noise
+/// control, and the way to all their settings.
+fn airpods_output(ui: &mut Ui, dev: &audio::Device) {
+    use olo_protocol::airpods::{Change, ListeningMode, Request};
+    let Some(a) = airpods_of(ui, dev) else { return };
+    let bt = dev.bluetooth.clone().unwrap_or_default();
+    let quality = if bt.high_quality() { format!("{} · {} · music quality", a.model, bt.codec_name()) } else { format!("{} · {} · call quality while the microphone is used", a.model, bt.codec_name()) };
+    ui.note(quality);
+    let address = Some(a.address.clone());
+    let mut row = div().flex().flex_row().items_center().gap(px(olo_ui::metrics::SPACING));
+    if a.abilities.noise_control && a.linked {
+        let modes: Vec<ListeningMode> = ListeningMode::ALL.into_iter().filter(|m| *m != ListeningMode::Adaptive || a.abilities.adaptive).collect();
+        let names: Vec<SharedString> = modes.iter().map(|m| SharedString::from(m.label())).collect();
+        let at = a.settings.listening_mode.and_then(|m| modes.iter().position(|x| *x == m)).unwrap_or(0);
+        let address = address.clone();
+        row = row.child(MenuField::new("sound-noise-control", names, at).label("Noise control:").on_change(move |i, _, cx| {
+            crate::airpods::ask(cx, Request::Set { address: address.clone(), change: Change::ListeningMode(modes[i]) });
+        }));
+    }
+    if !bt.high_quality() {
+        let address = address.clone();
+        row = row.child(Button::new("Use Music Quality").on_click(move |_, cx| crate::airpods::ask(cx, Request::Quality { address: address.clone(), high: true })));
+    }
+    let prefs = ui.prefs();
+    row = row.child(div().flex_1()).child(Button::new("AirPods Settings…").on_click(move |_, cx| {
+        let _ = prefs.update(cx, |p, cx| p.open("airpods", cx));
+    }));
+    ui.add(row);
+}
+
+/// In the input section while AirPods are connected: where to record from.
+fn airpods_input(ui: &mut Ui) {
+    use olo_protocol::airpods::MicrophoneChoice;
+    let (state, settings) = crate::airpods::current(ui.cx);
+    if state.connected().is_none() {
+        return;
+    }
+    let choices = [
+        (MicrophoneChoice::Computer, "This Computer's Microphones"),
+        (MicrophoneChoice::AirPodsHeadset, "AirPods (Call Quality)"),
+    ];
+    let at = choices.iter().position(|(c, _)| *c == settings.microphone).unwrap_or(0);
+    let names: Vec<SharedString> = choices.iter().map(|(_, n)| SharedString::from(*n)).collect();
+    let note = match settings.microphone {
+        MicrophoneChoice::Computer => "AirPods keep playing at music quality while you record.",
+        _ => "AirPods play at call quality while their microphone is used.",
+    };
+    ui.add(MenuField::new("sound-airpods-mic", names, at).label("With AirPods:").divider(130.0).on_change(move |i, _, cx| {
+        let mut s = settings.clone();
+        s.microphone = choices[i].0;
+        crate::airpods::save_settings(cx, s);
+    }));
+    ui.note(note);
+}
+
 fn section(ui: &mut Ui, st: &mut State, devices: &Devices, kind: Kind) {
     let (title, list, none, menu_label) = match kind {
         Kind::Output => ("Output", &devices.outputs, "No output devices.", "Play sound through:"),
@@ -131,6 +194,9 @@ fn section(ui: &mut Ui, st: &mut State, devices: &Devices, kind: Kind) {
             return;
         }
         let names: Vec<SharedString> = list.iter().map(|d| SharedString::from(d.description.clone())).collect();
+        if kind == Kind::Input {
+            airpods_input(ui);
+        }
         let current = list.iter().position(|d| d.is_default).unwrap_or(0);
         let (names_of, tx2) = (list.iter().map(|d| d.name.clone()).collect::<Vec<_>>(), tx.clone());
         ui.add(MenuField::new(format!("sound-device-{title}"), names, current).label(menu_label).divider(130.0).on_change(move |i, _, _| {
@@ -157,5 +223,8 @@ fn section(ui: &mut Ui, st: &mut State, devices: &Devices, kind: Kind) {
         ui.add(CheckBox::new("Mute", dev.volume.muted).on_toggle(move |muted, _, _| {
             let _ = tx.send(Change::Mute(kind, name.clone(), muted));
         }));
+        if kind == Kind::Output {
+            airpods_output(ui, &dev);
+        }
     });
 }

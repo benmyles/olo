@@ -8,11 +8,14 @@ use olo_ui::{
     widgets::{Button, StringView},
 };
 
-use crate::{PanelView, about, ai, appearance, backup, bluetooth, datetime, display, form::Ui, integrations, keyboard, network, notifications, performance, power, screensaver, security, sound, terminal, themes, touchid, touchpad, tracker, windows, workspaces};
+use crate::{PanelView, about, ai, airpods, appearance, backup, bluetooth, datetime, display, form::Ui, integrations, keyboard, network, notifications, performance, power, screensaver, security, sound, terminal, themes, touchid, touchpad, tracker, windows, workspaces};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
     Ai,
+    /// Opened from Bluetooth, Sound and Deskbar (not in the launcher's
+    /// grid: it's about one device).
+    AirPods,
     Appearance,
     Backgrounds,
     Backup,
@@ -75,6 +78,7 @@ impl Panel {
             "export" | "import" | "backups" => Some(Panel::Backup),
             "fingerprint" | "touch-id" | "fingerprints" => Some(Panel::TouchId),
             "bt" => Some(Panel::Bluetooth),
+            "airpods" | "airpod" | "headphones" => Some(Panel::AirPods),
             "wifi" | "wi-fi" | "networks" => Some(Panel::Network),
             "notification" | "dnd" | "do-not-disturb" => Some(Panel::Notifications),
             "supervisor" | "responsiveness" | "watchdog" => Some(Panel::Performance),
@@ -91,6 +95,7 @@ impl Panel {
     pub fn arg(self) -> &'static str {
         match self {
             Panel::Ai => "ai",
+            Panel::AirPods => "airpods",
             Panel::Appearance => "appearance",
             Panel::Backgrounds => "backgrounds",
             Panel::Backup => "backup",
@@ -120,6 +125,7 @@ impl Panel {
     pub fn title(self) -> &'static str {
         match self {
             Panel::Ai => "AI",
+            Panel::AirPods => "AirPods",
             Panel::Appearance => "Appearance",
             Panel::Backgrounds => "Backgrounds",
             Panel::Backup => "Backup",
@@ -149,6 +155,7 @@ impl Panel {
     pub fn icon(self) -> &'static str {
         match self {
             Panel::Ai => "ai",
+            Panel::AirPods => "airpods",
             Panel::Appearance => "appearance",
             Panel::Backgrounds => "backgrounds",
             Panel::Backup => "backup",
@@ -180,6 +187,7 @@ impl Panel {
     pub fn size(self) -> (u32, u32) {
         match self {
             Panel::Ai => (440, 430),
+            Panel::AirPods => (520, 752),
             Panel::Appearance => (420, 418),
             Panel::Backgrounds => (640, 530),
             Panel::Backup => (420, 400),
@@ -195,7 +203,7 @@ impl Panel {
             Panel::Power => (460, 366),
             Panel::ScreenSaver => (500, 400),
             Panel::Security => (420, 340),
-            Panel::Sound => (440, 276),
+            Panel::Sound => (460, 440),
             Panel::Terminal => (420, 390),
             Panel::Themes => (560, 672),
             Panel::TouchId => (420, 330),
@@ -210,12 +218,12 @@ impl Panel {
     }
 
     pub fn needs_server(self) -> bool {
-        !matches!(self, Panel::About | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications | Panel::Performance | Panel::Backup | Panel::Integrations)
+        !matches!(self, Panel::About | Panel::AirPods | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications | Panel::Performance | Panel::Backup | Panel::Integrations)
     }
 
     /// Whether the panel has Defaults / Revert.
     fn resettable(self) -> bool {
-        !matches!(self, Panel::About | Panel::Display | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications | Panel::Performance | Panel::Backup | Panel::Integrations)
+        !matches!(self, Panel::About | Panel::AirPods | Panel::Display | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications | Panel::Performance | Panel::Backup | Panel::Integrations)
     }
 
     /// Put this panel's part of `settings` back to `from`.
@@ -262,7 +270,7 @@ impl Panel {
                 settings.appearance.colors = from.appearance.colors.clone();
                 settings.wallpaper = from.wallpaper.clone();
             }
-            Panel::Display | Panel::Backup | Panel::About | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications | Panel::Performance | Panel::Integrations => {}
+            Panel::Display | Panel::Backup | Panel::About | Panel::AirPods | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications | Panel::Performance | Panel::Integrations => {}
         }
     }
 }
@@ -280,6 +288,7 @@ pub enum State {
     Performance(Box<performance::State>),
     Backup(Box<backup::State>),
     Bluetooth(Box<bluetooth::State>),
+    AirPods(Box<airpods::State>),
     TouchId(Box<touchid::State>),
     Touchpad(touchpad::State),
     Power(power::State),
@@ -301,6 +310,7 @@ impl State {
             Panel::Performance => State::Performance(Box::new(performance::State::new(cx))),
             Panel::Backup => State::Backup(Box::new(backup::State::new(cx))),
             Panel::Bluetooth => State::Bluetooth(Box::new(bluetooth::State::new(cx))),
+            Panel::AirPods => State::AirPods(Box::new(airpods::State::new(cx))),
             Panel::TouchId => State::TouchId(Box::new(touchid::State::new(cx))),
             Panel::Touchpad => State::Touchpad(touchpad::State::new(cx)),
             Panel::Power => State::Power(power::State::new(cx)),
@@ -348,6 +358,7 @@ pub fn render(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView
         (Panel::Performance, State::Performance(st)) => performance::ui(&mut ui, st),
         (Panel::Backup, State::Backup(st)) => backup::ui(&mut ui, st),
         (Panel::Bluetooth, State::Bluetooth(st)) => bluetooth::ui(&mut ui, st),
+        (Panel::AirPods, State::AirPods(st)) => airpods::ui(&mut ui, st),
         (Panel::TouchId, State::TouchId(st)) => touchid::ui(&mut ui, st),
         (Panel::Touchpad, State::Touchpad(st)) => touchpad::ui(&mut ui, st),
         (Panel::Tracker, _) => tracker::ui(&mut ui),

@@ -10,6 +10,7 @@
 
 mod about;
 mod ai;
+mod airpods;
 mod appearance;
 mod backup;
 mod bluetooth;

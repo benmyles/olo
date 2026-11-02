@@ -227,6 +227,10 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     question(ui, st);
 
     let devs: Vec<bt::Device> = status.devices.iter().filter(|d| d.named || d.paired).cloned().collect();
+    // AirPods: their model as the kind, and each bud's level.
+    let (pods, _) = crate::airpods::current(ui.cx);
+    let pods_of = |d: &bt::Device| d.modalias.as_deref().is_some_and(olo_system::airpods::is_airpods).then(|| pods.by_address(&d.address).cloned()).flatten();
+    let pods_rows: Vec<Option<olo_protocol::airpods::AirPods>> = devs.iter().map(pods_of).collect();
     let at = st.selected.as_ref().and_then(|s| devs.iter().position(|d| d.path == *s));
     st.list.update(ui.cx, |l, _| {
         l.state.selected.clear();
@@ -263,14 +267,17 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         }
     };
     let doing3 = doing.clone();
+    let rows = pods_rows.clone();
     let list = ColumnListView::new("bt-devices", &st.list, columns, devs.len(), move |cell, window, cx| {
         let d = &cells[cell.row];
+        let pod = rows[cell.row].as_ref();
         match cell.column {
             0 => cell.text(window, cx, d.name.clone()),
-            1 => cell.text(window, cx, d.kind()),
+            1 => cell.text(window, cx, pod.map_or(d.kind().to_owned(), |p| p.model.split(" (").next().unwrap_or("AirPods").to_owned())),
             _ => {
                 let text = match (doing3.get(&d.path), d.connected, d.paired) {
                     (Some(doing), ..) => (*doing).to_owned(),
+                    (None, true, _) if pod.and_then(|p| p.lowest()).is_some() => format!("Connected, {}%", pod.and_then(|p| p.lowest()).unwrap_or(0)),
                     (None, true, _) => d.battery.map_or("Connected".to_owned(), |b| format!("Connected, {b}%")),
                     (None, false, true) => "Paired".to_owned(),
                     _ => String::new(),
@@ -309,6 +316,12 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 row = row.child(Button::new("Remove").enabled(!busy).on_click(move |_, _| {
                     let adapter = adapter.clone();
                     act(link, p.clone(), "Removing…", "The device couldn't be removed.", move |dev| bt::remove(&adapter, dev));
+                }));
+            }
+            if d.paired && d.modalias.as_deref().is_some_and(olo_system::airpods::is_airpods) {
+                let prefs = ui.prefs();
+                row = row.child(Button::new("AirPods Settings…").on_click(move |_, cx| {
+                    let _ = prefs.update(cx, |p, cx| p.open("airpods", cx));
                 }));
             }
             if busy && doing.get(&d.path) == Some(&"Pairing…") {

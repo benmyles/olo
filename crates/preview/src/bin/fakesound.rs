@@ -7,6 +7,11 @@
 //!
 //! Record streams hear a steady 440 Hz tone (RMS about 5700), and the
 //! server has one speaker and one microphone, both called "Fake".
+//! `FAKESOUND_AIRPODS=AA:BB:CC:DD:EE:FF` adds a pair of AirPods as
+//! PipeWire shows them (a Bluetooth output playing AAC at music quality,
+//! the default, and their card with its profiles), for Preferences ▸
+//! Sound and the AirPods service. Subscriptions are taken (no events
+//! come: nothing changes).
 //!
 //! ```text
 //! olo-fakesound /tmp/fake.sock &
@@ -235,10 +240,40 @@ fn command(id: u32, c: &mut Client, seq: u32, cmd: Command, next_channel: &Mutex
             }
             protocol::write_ack_message(&mut c.writer, seq)
         }
+        Command::Subscribe(_) => protocol::write_ack_message(&mut c.writer, seq),
+        Command::GetCardInfoList => {
+            let cards: Vec<protocol::CardInfo> = airpods()
+                .map(|(addr, name, _)| {
+                    let mut props = protocol::Props::new();
+                    props.set_bytes(c"api.bluez5.address", format!("{addr}\0"));
+                    let profile = |n: &str, d: &str| protocol::CardProfileInfo {
+                        name: std::ffi::CString::new(n).unwrap(),
+                        description: Some(std::ffi::CString::new(d).unwrap()),
+                        priority: 0,
+                        available: 1,
+                        num_sinks: 1,
+                        num_sources: u32::from(n.starts_with("headset")),
+                    };
+                    protocol::CardInfo {
+                        index: 1,
+                        name: std::ffi::CString::new(name.replace("output", "card").trim_end_matches(".1")).unwrap(),
+                        props,
+                        profiles: vec![profile("a2dp-sink", "High Fidelity Playback (A2DP Sink, codec AAC)"), profile("headset-head-unit", "Headset Head Unit (HSP/HFP, codec mSBC)")],
+                        active_profile: Some(c"a2dp-sink".into()),
+                        owner_module_index: None,
+                        driver: None,
+                        ports: Vec::new(),
+                    }
+                })
+                .into_iter()
+                .collect();
+            protocol::write_reply_message(&mut c.writer, seq, &cards, v)
+        }
         Command::GetServerInfo => {
+            let default = airpods().map(|(_, n, _)| std::ffi::CString::new(n).unwrap()).unwrap_or(c"fake".into());
             let reply = protocol::ServerInfo {
                 server_name: Some(c"fakesound".into()),
-                default_sink_name: Some(c"fake".into()),
+                default_sink_name: Some(default),
                 default_source_name: Some(c"fake-mic".into()),
                 ..Default::default()
             };
@@ -252,7 +287,22 @@ fn command(id: u32, c: &mut Client, seq: u32, cmd: Command, next_channel: &Mutex
                 cvolume: protocol::ChannelVolume::norm(2),
                 ..Default::default()
             };
-            protocol::write_reply_message(&mut c.writer, seq, &vec![sink], v)
+            let mut sinks = vec![sink];
+            if let Some((addr, name, desc)) = airpods() {
+                let mut props = protocol::Props::new();
+                props.set_bytes(c"api.bluez5.address", format!("{addr}\0"));
+                props.set_bytes(c"api.bluez5.codec", "aac\0");
+                props.set_bytes(c"api.bluez5.profile", "a2dp-sink\0");
+                sinks.push(protocol::SinkInfo {
+                    index: 1,
+                    name: std::ffi::CString::new(name).unwrap(),
+                    description: Some(std::ffi::CString::new(desc).unwrap()),
+                    props,
+                    cvolume: protocol::ChannelVolume::norm(2),
+                    ..Default::default()
+                });
+            }
+            protocol::write_reply_message(&mut c.writer, seq, &sinks, v)
         }
         Command::GetSourceInfoList => {
             let mic = protocol::SourceInfo {
@@ -273,6 +323,13 @@ fn command(id: u32, c: &mut Client, seq: u32, cmd: Command, next_channel: &Mutex
             protocol::write_error(&mut c.writer, seq, &protocol::PulseError::NotImplemented)
         }
     }
+}
+
+/// `FAKESOUND_AIRPODS`'s pair: address, the output's name and description.
+fn airpods() -> Option<(String, String, String)> {
+    let addr = std::env::var("FAKESOUND_AIRPODS").ok().filter(|a| !a.is_empty())?;
+    let name = format!("bluez_output.{}.1", addr.replace(':', "_"));
+    Some((addr, name, "Travel AirPods Pro".to_owned()))
 }
 
 /// Consume a tick's worth of each playing stream, ask for more, report.

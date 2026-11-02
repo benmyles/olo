@@ -59,6 +59,8 @@ pub struct Status {
     pub sharing: Vec<olo_protocol::sharing::Share>,
     /// The supervisor (Preferences ▸ Performance), if it is installed.
     pub supervisor: Option<Supervisor>,
+    /// AirPods connected (olo-airpods' state).
+    pub airpods: Option<olo_protocol::airpods::AirPods>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -207,10 +209,11 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     let (notes, screens, upgrades, sharing) = (NotificationState::path(), screens_dir(), upgrade_path(), olo_protocol::SharingState::path());
     use olo_protocol::performance::{PerformanceSettings, SupervisorState};
     let (perf, supervising) = (PerformanceSettings::path(), SupervisorState::path());
+    let pods = olo_protocol::airpods::AirPodsState::path();
     let installed = olo_xdg::find_program("olo-supervisor").is_some();
     let read = {
         let (notes, screens, upgrades, sharing, shared) = (notes.clone(), screens.clone(), upgrades.clone(), sharing.clone(), shared.clone());
-        let (perf, supervising) = (perf.clone(), supervising.clone());
+        let (perf, supervising, pods) = (perf.clone(), supervising.clone(), pods.clone());
         move |changed: &[PathBuf]| {
             let all = changed.is_empty();
             // The screens' folder also has viewers' frames going through
@@ -223,9 +226,13 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
                 (all || changed.contains(&upgrades)).then(upgrade),
             );
             let shares = (all || changed.contains(&sharing)).then(|| olo_protocol::SharingState::load().shares);
+            let airpods = (all || changed.contains(&pods)).then(|| olo_protocol::airpods::AirPodsState::load().connected().cloned());
             let supervisor = (installed && (all || changed.contains(&perf) || changed.contains(&supervising)))
                 .then(|| Supervisor { on: PerformanceSettings::load().enabled, state: SupervisorState::load() });
             publish(&shared, |s| {
+                if let Some(a) = airpods {
+                    s.airpods = a;
+                }
                 if supervisor.is_some() {
                     s.supervisor = supervisor;
                 }
@@ -248,7 +255,7 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     read(&[]);
     let read = Arc::new(read);
     let on_change = read.clone();
-    if let Some(w) = olo_ui::watch::watch([notes, screens, upgrades, sharing, perf, supervising], move |changed| on_change(changed)) {
+    if let Some(w) = olo_ui::watch::watch([notes, screens, upgrades, sharing, perf, supervising, pods], move |changed| on_change(changed)) {
         // Deskbar's for as long as it runs.
         std::mem::forget(w);
     }
@@ -748,6 +755,25 @@ pub fn draw_key(window: &mut Window, r: Bounds<Pixels>, p: &Palette, on: bool) {
     style::hline(window, px(whole(window, bow.0 + 3.8)), px(end), px(y), color);
     style::vline(window, px(end - hair), px(y), px(y + whole(window, 4.0)), color);
     style::vline(window, px(end - whole(window, 3.0)), px(y), px(y + whole(window, 3.0)), color);
+}
+
+/// A pair of AirPods: two buds, their heads round and their stems down
+/// and in, amber when one is low and red when it's nearly empty.
+pub fn draw_airpods(window: &mut Window, r: Bounds<Pixels>, p: &Palette, lowest: Option<u8>) {
+    let color = match lowest {
+        Some(l) if l <= 10 => c(p.failure),
+        Some(l) if l <= 20 => c(p.warning),
+        _ => ink(p),
+    };
+    let (l, t) = left_top(r);
+    let stem = 2.0;
+    // Heads 6 points across, 2 apart, on whole points (crisp at 1×); the
+    // stems flush with their inner sides.
+    for (head_x, stem_x) in [(l + 4.0, l + 5.0), (l + 12.0, l + 9.0)] {
+        let s = style::snap(window, rect(stem_x, t + 4.0, stem, 11.0));
+        round_rect(window, s, stem / 2.0, color);
+        disc(window, (head_x, t + 4.0), 3.0, color);
+    }
 }
 
 /// Whether the palette is dark (the wordmark's version).

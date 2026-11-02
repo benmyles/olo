@@ -5,6 +5,36 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### AirPods icons in every theme
+
+*11:28* — airpods, airpods-case, airpod-left and airpod-right, generated against each theme's references (Classic, BeBox, Soft Be, Toybox, Papercraft, Enamel, Halftone), beside bluetooth and sound.
+
+![AirPods icons in every theme](2026-11-02/112845-airpods-icons-in-every-theme.png)
+
+### Deskbar: AirPods
+
+*11:28* — Deskbar's tray shows AirPods while they're connected (amber or red when a bud runs low); its menu has their levels, noise control, Conversation Awareness and their settings.
+
+![Deskbar: AirPods](2026-11-02/112844-deskbar-airpods.png)
+
+### Sound: AirPods
+
+*11:28* — Preferences ▸ Sound with AirPods as the output: their model, codec and whether they play at music or call quality, noise control, and where to record from while they're connected.
+
+![Sound: AirPods](2026-11-02/112844-sound-airpods.png)
+
+### AirPods panel, dark, 1×
+
+*11:28* — The same at 1× in dark mode.
+
+![AirPods panel, dark, 1×](2026-11-02/112843-airpods-panel-dark-1.png)
+
+### AirPods panel
+
+*11:27* — Preferences ▸ AirPods: levels with a picture of each bud and the case, noise control with Adaptive's strength, press and hold, listening features, the microphone, and what this computer does with them. Shown with a pretend pair (OLO_FAKE_AIRPODS).
+
+![AirPods panel](2026-11-02/112750-airpods-panel.png)
+
 ### Terminal's Tile All Tabs heads
 
 *01:07* — In Tile All Tabs each pane's head is on the strip's quiet band, with its group's chip at the right instead of a tint and a coloured line. The pane you type in has its title in full ink and medium weight, like the strip's selected tab. Icon, title and chip are centred on the band to the device pixel at every scale.

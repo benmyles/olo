@@ -886,6 +886,11 @@ impl Deskbar {
                 }
             }
             Some(("share", session)) => spawn(&format!("olo-portal --stop {session}")),
+            // AirPods: the service does it (`olo-airpods --mode anc`, …).
+            Some(("airpods", what)) => {
+                let address = self.status.airpods.as_ref().map(|a| a.address.clone()).unwrap_or_default();
+                spawn(&format!("olo-airpods --address {address} --{what}"));
+            }
             // The supervisor on or off: its settings, which it follows
             // (shown at once; written off the UI thread).
             Some(("perf", "toggle")) => {
@@ -1290,6 +1295,27 @@ fn sharing_menu(shares: &[olo_protocol::sharing::Share]) -> Menu {
     m
 }
 
+/// AirPods' tray menu: their levels, noise control, Conversation
+/// Awareness, and the way to their settings and the sound's.
+fn airpods_menu(pods: &olo_protocol::airpods::AirPods) -> Menu {
+    use olo_protocol::airpods::ListeningMode;
+    let mut m = Menu::new("AirPods").item(pods.name.clone(), "").enabled(false);
+    let levels = pods.levels();
+    if !levels.is_empty() {
+        m = m.item(levels, "").enabled(false);
+    }
+    if pods.abilities.noise_control && pods.linked {
+        m = m.separator();
+        for mode in ListeningMode::ALL.into_iter().filter(|x| *x != ListeningMode::Adaptive || pods.abilities.adaptive) {
+            m = m.item(mode.label(), format!("airpods:mode {}", mode.word())).checked(pods.settings.listening_mode == Some(mode));
+        }
+    }
+    if let Some(on) = pods.settings.conversation_awareness.filter(|_| pods.linked) {
+        m = m.separator().item("Conversation Awareness", format!("airpods:set conversation-awareness {}", if on { "off" } else { "on" })).checked(on);
+    }
+    m.separator().item("Disconnect", "airpods:disconnect").item("AirPods Settings…", "pref:airpods").item("Sound Settings…", "pref:sound")
+}
+
 /// The supervisor's tray menu: on or off, what it found (each to its
 /// process in Activity Monitor), and the way to all of it.
 fn supervisor_menu(sup: &status::Supervisor) -> Menu {
@@ -1646,6 +1672,7 @@ impl Deskbar {
                 display_number.is_some(),
                 !st.upgrade.is_empty() || st.upgrade_waiting,
                 !st.sharing.is_empty(),
+                st.airpods.is_some(),
                 st.agent_screens > 0,
                 st.supervisor.is_some(),
                 st.battery.is_some(),
@@ -1839,6 +1866,26 @@ impl Deskbar {
                     if matches!(button(e), MouseButton::Left | MouseButton::Right) {
                         let mm = m.clone();
                         open_menu(window, cx, &v, "tray:sharing", r, sharing_menu(&shares), move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
+                    }
+                })
+                .into_any_element(),
+            );
+        }
+        // AirPods connected: their levels, noise control and settings.
+        if let Some(pods) = st.airpods.clone() {
+            let levels = pods.levels();
+            let mut tip_text = if levels.is_empty() { pods.name.clone() } else { format!("{}: {levels}", pods.name) };
+            if let Some(m) = pods.settings.listening_mode {
+                tip_text.push_str(&format!(". {}", m.label()));
+            }
+            let lowest = pods.lowest();
+            let (r, h) = tray_item(&mut d, "airpods", tip_text, Box::new(move |window, cx, r| status::draw_airpods(window, r, &theme::palette(cx), lowest)));
+            let (m, v) = (model.clone(), view.clone());
+            d.hits.push(
+                h.on_any_button(move |e, window, cx| {
+                    if matches!(button(e), MouseButton::Left | MouseButton::Right) {
+                        let mm = m.clone();
+                        open_menu(window, cx, &v, "tray:airpods", r, airpods_menu(&pods), move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
                     }
                 })
                 .into_any_element(),

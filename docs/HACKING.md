@@ -284,6 +284,7 @@ How Olo keeps it (do the same):
 | `gpui/` | Olo's GPUI, which the kit is built on: GPUI 0.2.2 and blade-graphics 0.7.1, Olo's own from now on (Wayland only, idle windows draw nothing); `gpui/README.md` says what changed. |
 | `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit: data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`, in the current theme: `themes`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; Olo's apps first, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`; and the same for other programs: `open::for_others` gives the hidden `olo.viewer`, `olo.styled-edit` and `olo.tracker` desktop entries, each listing every type shared-mime-info knows that Olo opens with it, and an `olo-mimeapps.list` making them the defaults, which GIO, `gio open`/xdg-open and xdg-desktop-portal's OpenURI read before `mimeapps.list` while `XDG_CURRENT_DESKTOP` names Olo; olo-session writes them into `~/.local/share/applications` at start, makes that folder's `mimeinfo.cache` again when they change (`open::mime_cache`, as update-desktop-database would: GIO only finds an app for a type through it) and removes ones it wrote that are no longer wanted, `X-Olo-Written=true`; and, once Olo's Chrome is installed, `open::offer_browser` writes `~/.local/share/applications/olo-mimeapps.list` naming it for web pages and links, read after every `mimeapps.list` in the config directories so a browser the person chose wins, but ahead of the system's lists), `find_program`, `spawn_detached` (`spawn_detached_app` and `open::spawn_app` for a desktop entry's program, in a scope of its own: `scope`). |
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
+| `apps/airpods` | `olo-airpods`: AirPods, natively (see "AirPods"): the session's service and its command line. |
 | `crates/pool` | `olo-token-pool`: token pooling for Claude Code and Codex (see "Token Pool"): the accounts, their sealed store, the drain order, the loopback gateway and the clients' proxy (its own certificate authority, and which program is connecting, from /proc). |
 | `crates/ai` | `olo-ai`: how AI features reach their models (see "AI features"): `ask(&settings.ai, &feature, &Ask)` → the answer's JSON. Blocking; call off the UI thread. |
 | `crates/preview` | `olo-preview`: native previews of every file kind (text, images, PDF, audio, video, archives, office documents, fonts). Its decoding needs no toolkit (pictures are `Bitmap`s, premultiplied RGBA; token classes are `olo_theme::Syntax`, coloured by `Palette::syntax`)); its views (`ui::PreviewView`, `ui::rich::RichView`, `ui::table::TableView`) are behind its `gpui` feature (the Viewer's and Quick Look's). Source code is coloured by syntect's bundled Sublime grammars plus Olo's own in `src/syntaxes` (TOML, with Cargo.lock and other lock files; INI, with systemd units, .desktop entries and git and editor configs), its scopes mapped onto the theme's token classes (`text::classify`). Spreadsheets and CSV (`table.rs`, sheets shared as `Arc`s): every column, scrolled sideways; the first row as the columns' names when it looks like a header (all text, with numbers or blanks below); number columns lined up on the right; a bar with Search (every word, in all columns or the one chosen beside it; Escape clears, then lets go) and how many rows show ("14 of 120 rows"); a header click sorts (again to reverse): numbers as numbers (a thousands comma, a currency sign or a percent allowed) before text, text naturally and without case ("file2" before "file10"), empty cells last, ties in the file's order. A sheet of more than 40,000 cells is searched and sorted on a worker (cancelled when asked again), the rows shown until then staying put and the bar saying "Searching…". Quick Look's own keys (Space, the arrows, F) stand aside while a field has the keyboard. Formatted documents (Markdown, and Word, OpenDocument, RTF and PowerPoint text) are blocks (`doc::Block`) set as a page by `rich.rs`: Word, OpenDocument text and RTF are read by `olo-richtext` (`doc::rich`: headings, lists numbered as they count, quotations, neighbouring code lines as one block, tables as tables; empty paragraphs are spacing, left out), slides by `doc.rs`'s own zip and XML; Markdown is CommonMark with GitHub's tables (their alignment, and styled cells), task lists, strikethrough and alerts (`> [!NOTE]` and the rest, a bar and title in the alert's hue), typographer's quotes and dashes; raw HTML keeps its text (`<br>` breaks, `<img>` is an image, comments go); code blocks are coloured by their fence's language (`text::highlight`, the text preview's grammars); pictures beside the document are shown (local files only, never fetched; a remote one's alt text shows instead), resampled exactly to their device size. The page is at most 680 points wide, centred, body text 13 points on a 20-point line, headings 26 to 13 points with room above them (rules under the first two), lists with hanging indents (bullets drawn, numbers lined up on the right, tasks as `check_box_look`s), inline code on a tint with a small no-break space either side (a line doesn't break between "(" and code), and links in the link hue, underlined under the pointer; they open with `olo_xdg::open` (a relative one beside the document) and a `#heading` scrolls to it (GitHub's anchors). Blocks are laid out once for a width, scale, look and font generation: those in view first (at most 5 ms), the rest 3 ms a frame after, and a spinner shows over a part not laid out yet; only blocks in view are drawn. Agents read each block (`Heading`, `Paragraph`, `ListItem`, `Code`, `Table`, `Image`) and click its links (`Link`). Used by Tracker's Quick Look (`PreviewView::new(item, generation, false, cx)`, images capped at 3200 px) and the Viewer (zoomable: full resolution up to the GPU texture limit, zoom and pan through its `ImageView`). Video (`video.rs`, H.264 in mp4 or Matroska and AV1 in Matroska/WebM or mp4, with `media.playable` set; the mp4 crate doesn't know AV1's `av01` sample entry, so `media::mp4_av1` walks the boxes to it for the track and its `av1C` sequence header, sent before each key frame): a worker demuxes and decodes (OpenH264, or rav1d through `olo_images::av1::Decoder`) up to six frames ahead, giving each picture the earliest outstanding presentation time (OpenH264 returns display order; it must be made with `Flush::NoFlush`, as the crate's default flush after every packet breaks B-frame reordering and every B-frame then fails), mp4 times shifted by the track's edit list; `Video::tick` shows frames against a clock that follows the sound's reported position when an `audio::Player` is playing it and runs alone otherwise (no sound server in tests, silent files). Seeks go to the key frame before the target (Matroska: scans back for one, further each time) and drop pictures before it; a paused seek still shows its frame. `OLO_SAMPLES=dir cargo test --release -p olo-preview video -- --ignored` checks seeking on test.mp4/mkv (one key frame) and gop.mp4/mkv (one a second), made with ffmpeg's testsrc2, plus av1.webm (svt-av1, Opus sound), av1.mp4 (`av1_in_mp4`: 4 s of testsrc2 through libsvtav1, a key frame a second) and bframes.mp4 (any x264-made H.264 High clip with B-frames; `b_frames` checks every picture comes out, in order); `keeps_up` needs av1-1080.mkv (1080p AV1), gop.mp4 and av1.mp4 to decode at well over 30 frames a second (72 on the M2 Max, 195 now; av1.mp4 600; the YUV to RGB fast path is fixed-point with tables, checked against the float path by `yuv_fast_path`). Audio decodes with symphonia plus `opus.rs` (opus-decoder, OpusHead parsing and pre-skip trim) for Ogg Opus. Picture editing (`edit.rs`): an `Editor` keeps a list of `Op`s (rotate, flip, crop, resize) with undo/redo and a saved mark, and a worker that loads the full picture once, applies new steps to its last result, sends `EditEvent::Shown` (downscaled for the screen) for `PreviewView::show_edited`, and writes PNG, JPEG (quality 92), WebP, BMP, TIFF or GIF atomically (`write`, through a hidden `.name.saving` file); `edit::editable` says which files it can write back. The Viewer's crop overlay (`crop.rs`: drag a frame, move it or its edges) sits where `ImageView::picture_bounds` says the picture is, `set_still` stopping pan and zoom while it is up. The Viewer's Image menu and File ▸ Save / Save As / Revert use it; Quick Look's footer has Rotate Left / Right (⌘L / ⌘R), which save at once. |
@@ -4873,6 +4874,84 @@ Olo's join (`olo_system::network::join`) asks for the security the access
 point offers (`key_mgmt`): WPA3 alone is "sae" (asking for WPA2 was
 refused before it began: "Access point does not support PSK"), Enhanced
 Open "owe".
+
+## AirPods (apps/airpods, olo_system::airpods, Preferences ▸ AirPods)
+
+Olo talks to AirPods itself, in Rust, as Apple's devices do. Their
+sound is BlueZ's and PipeWire's like any headphones' (AAC at music
+quality; the headset profile for calls); everything else is Apple's
+accessory protocol (AACP), written from the protocol's public notes
+(LibrePods' docs, the apple-wireshark dissector), not from anyone's code:
+
+- `olo_system::airpods::proto`: the messages, both ways. `04 00 04 00`, a
+  16-bit opcode, its bytes: the hello (nothing is answered before it),
+  host features (Conversation Awareness while sound plays, Adaptive),
+  notifications, the broadcast keys; levels (left, right, case, or
+  over-ear headphones' one), where each bud is, every setting (opcode 9:
+  listening mode, the modes press and hold cycles through, Conversation
+  Awareness, Personalized Volume, Adaptive's strength, ear detection,
+  one-bud Noise Cancellation, volume swipe, case sounds, which bud's
+  microphone, press speed and hold duration), Conversation Awareness's
+  levels, who they are (model number, serial, firmware), renaming.
+  Unit-tested against documented captures.
+- `link`: the L2CAP channel (PSM 0x1001, a SEQPACKET socket through
+  libc), opened once BlueZ has connected them.
+- `adv`: their LE proximity broadcast (Apple's manufacturer data, kind
+  7): model, levels, ears, connected or not, and the block sealed with
+  their encryption key (levels to the percent); `resolves` checks their
+  rotating private address against their identity key (tested on the
+  Core Specification's sample).
+- AirPods are known by BlueZ's Modalias (`bluetooth:v004Cp2024…`:
+  Apple, product 0x2024, AirPods Pro 2 USB-C); `Model::of` says what
+  each can do.
+
+`olo-airpods --service` is a real session's service (`REAL_SHELL`). It
+follows BlueZ by its signals (`bluetooth::watch`: connections, pairing,
+names; a search's signal strengths ignored), opens the channel to each
+pair connected (a thread each, asleep on it; tried again for a few
+seconds while their profiles come up), and follows the sound server
+(`audio::watch_devices`; a Bluetooth device's address, codec and
+profile come with it, `audio::Bluetooth`, and cards and their profiles,
+`audio::cards`). What it does, by Olo's settings (`airpods.json`,
+`AirPodsSettings`, followed by inotify): pauses what plays (MPRIS,
+`olo_system::media`) when a bud comes out, if the sound is going to
+them, and plays it again when it's back (within ten minutes); turns
+their output down while Conversation Awareness says the wearer speaks,
+and back after; keeps the computer's microphones as the input (an input
+of theirs that has just come and been made the default is undone), so
+they stay at music quality, unless the person chose theirs. It keeps
+their broadcast keys in `~/.local/state/olo/airpods-keys.json` (0600).
+It publishes `$XDG_RUNTIME_DIR/olo-airpods.json` (`AirPodsState`) on
+every change, and answers `Request`s (JSON lines) on
+`olo-airpods.sock`; after an upgrade (SIGURG from olo-session) it
+starts again as the new binary. Idle it is asleep on BlueZ's signals,
+the sound server's events and the channels: nothing is polled.
+
+The command line asks it, for people and agents: `olo-airpods`
+(`--status [--json]`), `--mode off|transparency|adaptive|anc`, `--set
+SETTING VALUE`, `--rename NAME`, `--connect`, `--disconnect`,
+`--quality music|calls`, each with `--address` for one pair of several.
+
+Where they show: Preferences ▸ AirPods (`airpods.rs`, opened from
+Bluetooth's "AirPods Settings…", Sound's and Deskbar's: name, levels
+with a picture of each bud and the case, noise control, press and hold,
+listening features, the microphone, and On This Computer); Bluetooth's
+list (their model, their lowest level); Sound (under the output: model,
+codec, music or call quality, noise control; in the input: where to
+record from while they're connected); Deskbar's tray while they're
+connected (`status::draw_airpods`, amber at 20%, red at 10%; its menu
+has their levels, noise control, Conversation Awareness, Disconnect and
+both panels). Their icons are `airpods`, `airpods-case`, `airpod-left`
+and `airpod-right`, in every theme.
+
+**Tests only look: never pair, connect or disconnect real AirPods.**
+`OLO_FAKE_AIRPODS=1 olo-airpods --service` pretends a pair (AirPods Pro
+2 USB-C, connected, taking every change); `OLO_AIRPODS_DIR=DIR` keeps
+its state and socket in DIR rather than the runtime directory, so give
+it to the service and to what reads it (Preferences, Deskbar: start the
+session with it in the environment). `olo-fakesound` with
+`FAKESOUND_AIRPODS=AA:BB:CC:DD:EE:FF` adds their output (AAC, music
+quality, the default) and card, for Sound.
 
 ## The supervisor (apps/supervisor, Preferences ▸ Performance)
 

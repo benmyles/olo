@@ -2704,5 +2704,35 @@
   "title": "Terminal's Tile All Tabs heads",
   "caption": "In Tile All Tabs each pane's head is on the strip's quiet band, with its group's chip at the right instead of a tint and a coloured line. The pane you type in has its title in full ink and medium weight, like the strip's selected tab. Icon, title and chip are centred on the band to the device pixel at every scale.",
   "image": "2026-11-02/010722-terminal-s-tile-all-tabs-heads.png"
+ },
+ {
+  "time": "2026-11-02T11:27:50",
+  "title": "AirPods panel",
+  "caption": "Preferences \u25b8 AirPods: levels with a picture of each bud and the case, noise control with Adaptive's strength, press and hold, listening features, the microphone, and what this computer does with them. Shown with a pretend pair (OLO_FAKE_AIRPODS).",
+  "image": "2026-11-02/112750-airpods-panel.png"
+ },
+ {
+  "time": "2026-11-02T11:28:43",
+  "title": "AirPods panel, dark, 1\u00d7",
+  "caption": "The same at 1\u00d7 in dark mode.",
+  "image": "2026-11-02/112843-airpods-panel-dark-1.png"
+ },
+ {
+  "time": "2026-11-02T11:28:44",
+  "title": "Sound: AirPods",
+  "caption": "Preferences \u25b8 Sound with AirPods as the output: their model, codec and whether they play at music or call quality, noise control, and where to record from while they're connected.",
+  "image": "2026-11-02/112844-sound-airpods.png"
+ },
+ {
+  "time": "2026-11-02T11:28:44",
+  "title": "Deskbar: AirPods",
+  "caption": "Deskbar's tray shows AirPods while they're connected (amber or red when a bud runs low); its menu has their levels, noise control, Conversation Awareness and their settings.",
+  "image": "2026-11-02/112844-deskbar-airpods.png"
+ },
+ {
+  "time": "2026-11-02T11:28:45",
+  "title": "AirPods icons in every theme",
+  "caption": "airpods, airpods-case, airpod-left and airpod-right, generated against each theme's references (Classic, BeBox, Soft Be, Toybox, Papercraft, Enamel, Halftone), beside bluetooth and sound.",
+  "image": "2026-11-02/112845-airpods-icons-in-every-theme.png"
  }
 ]
