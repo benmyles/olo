@@ -4976,6 +4976,11 @@ signal a process), all done in process. What it looks for:
   70-olo-displays; the Doctor carries them with `include_str!`) missing or
   out of date: installed and applied to what is plugged in now.
 - **rtkit** not running (the supervisor's priority tiers need it).
+- **Bluetooth not listening for the AirPods** (only with AirPods
+  paired): BlueZ started without its experimental interfaces, where its
+  advertisement monitor is. Fixed by a drop-in
+  (`/etc/systemd/system/bluetooth.service.d/olo.conf`, `--experimental`)
+  and Bluetooth restarted.
 - **Voice processing's sound not realtime**: a voice service's PipeWire
   thread that rtkit refused (its processes-per-user limit reached).
   Fixed by an rtkit drop-in (`/etc/systemd/system/rtkit-daemon.service.d/olo.conf`:
@@ -5193,6 +5198,23 @@ and back after; keeps the computer's microphones as the input (an input
 of theirs that has just come and been made the default is undone), so
 they stay at music quality, unless the person chose theirs. It keeps
 their broadcast keys in `~/.local/state/olo/airpods-keys.json` (0600).
+
+Their broadcast (`olo_system::bluetooth::watch_apple`: BlueZ's
+advertisement monitor, passive, its devices' ManufacturerData followed
+by signals) is resolved to a pair by its key, gives their levels while
+they aren't connected here, and says whether they're nearby and
+connected elsewhere (`AirPods::nearby`, `elsewhere`). With it: **connect
+automatically** when a bud is put in an ear and they're connected to
+nothing; **switch automatically** when something starts playing here
+(`audio::watch_playing`) while they're in an ear on another device (the
+phone takes them back itself when it plays). **Never a tug of war**:
+once they stop being connected here (a phone took them, or the person
+disconnected them), nothing is taken by itself until their broadcast has
+said "connected to nothing" for 60 s (`may_take`, tested), and one try
+every 15 s at most. BlueZ 5.87 has the monitor among its experimental
+interfaces: without `bluetoothd --experimental` the state says so
+(`AirPodsState::not_listening`), Preferences greys the two settings, and
+Olo Doctor offers to turn it on.
 It publishes `$XDG_RUNTIME_DIR/olo-airpods.json` (`AirPodsState`) on
 every change, and answers `Request`s (JSON lines) on
 `olo-airpods.sock`; after an upgrade (SIGURG from olo-session) it
