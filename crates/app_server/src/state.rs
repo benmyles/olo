@@ -221,6 +221,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub suppressed_keys: Vec<Keysym>,
     /// ⌘ and friends (see `keymap`).
     pub keymap: crate::keymap::Keymap,
+    /// A tab's cut title, whole, under the pointer (`tabtip`).
+    pub tab_tip: crate::tabtip::TabTip,
     /// Idle, caffeinated mode, brightness (see `power`).
     pub power: crate::power::Power,
     pub saver: crate::saver::Saver,
@@ -1244,6 +1246,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             dnd_icon: None,
             suppressed_keys: Vec::new(),
             keymap: Default::default(),
+            tab_tip: Default::default(),
             power: crate::power::Power::new(BackendData::IS_SESSION),
             saver: Default::default(),
             lock,

@@ -606,6 +606,8 @@ where
     let screen = space.output_geometry(output).map(|g| g.size).unwrap_or_default();
     let indicator = crate::osd::element(renderer, output, screen)
         .map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e)));
+    // A tab's cut title, whole (`tabtip`), as high.
+    let tab_tip = crate::tabtip::element(renderer, output).map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e)));
     // Locked: nothing but what the caller passed (the pointer and the lock
     // screen) over an opaque background.
     if locked {
@@ -646,6 +648,7 @@ where
                 .map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))),
         );
         add_indicator(&mut output_render_elements, indicator);
+        add_indicator(&mut output_render_elements, tab_tip);
 
         crate::shell::groups::mark_behind(space);
         crate::shell::modes::mark_covered(space);

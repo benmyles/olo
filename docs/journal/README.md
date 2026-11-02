@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### A window tab's cut title shows whole
+
+*13:33* — app_server shows the whole title of a window whose tab cuts it short on a tooltip's plate under the tab, once the pointer rests on the title (at once with ⌘), as Olo's apps do for their cut text.
+
+![A window tab's cut title shows whole](2026-11-02/133301-a-window-tab-s-cut-title-shows-whole.png)
+
 ### Text cut short shows whole in a tip
 
 *13:23* — Resting the pointer on text the kit cut with … (here a name in Tracker's column) shows all of it in the kit's tip; with ⌘ held, at once. Every kit window does it for every label it cuts or that runs past its clip.

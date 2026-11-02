@@ -2746,5 +2746,11 @@
   "title": "Text cut short shows whole in a tip",
   "caption": "Resting the pointer on text the kit cut with \u2026 (here a name in Tracker's column) shows all of it in the kit's tip; with \u2318 held, at once. Every kit window does it for every label it cuts or that runs past its clip.",
   "image": "2026-11-02/132341-text-cut-short-shows-whole-in-a-tip.png"
+ },
+ {
+  "time": "2026-11-02T13:33:01",
+  "title": "A window tab's cut title shows whole",
+  "caption": "app_server shows the whole title of a window whose tab cuts it short on a tooltip's plate under the tab, once the pointer rests on the title (at once with \u2318), as Olo's apps do for their cut text.",
+  "image": "2026-11-02/133301-a-window-tab-s-cut-title-shows-whole.png"
  }
 ]

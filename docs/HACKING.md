@@ -2882,7 +2882,16 @@ opened, its own `panel::State` and text fields).
 Appearance ▸ Longest window title is `Settings::tab_title_chars` (100):
 app_server's decorations cut a title to it with an ellipsis
 (`deco::cut`, set by `deco::set_title_chars` on load and on every
-settings change) before measuring and drawing the tab.
+settings change) before measuring and drawing the tab. A title a tab
+cuts short (by that, or by its room) shows whole on a tooltip's plate
+under the tab once the pointer rests on it (500 ms, as the kit's
+tips), at once while ⌘ is held, as the kit shows the text it cuts
+(`tabtip`: `Decoration::cut_title` says where a cut title is, the
+pointer's motion over the tab arms one timer, the plate is drawn with
+the display's frame over all but the pointer, slid to stay on the
+display; a press puts it away until the pointer leaves). The motion
+comes inside smithay's pointer handle, which holds its lock: nothing
+there asks the pointer (where the tip goes is worked out as it shows).
 
 Appearance ▸ Show icons in the Deskbar menu is
 `Appearance::menu_icons` (on): Deskbar builds its Olo menu with an

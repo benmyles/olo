@@ -411,6 +411,16 @@ impl Decoration {
         TabLayout { x, width }
     }
 
+    /// Where the tab's title is (element-local), if the tab cuts it short
+    /// (more than a tab shows, or wider than its room): for its tip
+    /// (`tabtip`).
+    pub fn cut_title(&mut self, title: &str, content: Size<i32, Logical>) -> Option<Rectangle<i32, Logical>> {
+        let tab = self.tab_layout(title, content);
+        let space = tab.title_space();
+        let cut_short = cut(title).len() != title.len() || self.title_width(title) > space;
+        (cut_short && space > 4).then(|| Rectangle::new((tab.x + BOX_INSET + BOX_SIZE + TITLE_GAP, 0).into(), (space, TAB_HEIGHT).into()))
+    }
+
     /// Classify an element-local point.
     pub fn hit(&mut self, title: &str, content: Size<i32, Logical>, p: Point<f64, Logical>) -> Part {
         let tab = self.tab_layout(title, content);

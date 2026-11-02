@@ -148,6 +148,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             }
         });
         let outs = self.keymap.feed(key, pressed, std::time::Instant::now(), opts, focus);
+        // ⌘ on a tab's cut title: its tip at once (`tabtip`).
+        if pressed && self.keymap.command_held() {
+            self.tab_tip_now();
+        }
         let mut action = KeyAction::None;
         for out in outs {
             match out {

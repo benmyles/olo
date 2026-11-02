@@ -76,22 +76,23 @@ fn cursor_for(part: Part) -> CursorIcon {
 }
 
 impl<BackendData: Backend> AnvilState<BackendData> {
-    fn deco_part(&self, window: &WindowElement, location: Point<f64, Logical>) -> Part {
-        let title = window.title();
-        let content = window.content_size();
-        window.decoration().hit(&title, content, location)
-    }
-
     pub fn deco_motion(&mut self, window: &WindowElement, location: Point<f64, Logical>) {
-        let part = self.deco_part(window, location);
+        let (title, content) = (window.title(), window.content_size());
         let mut deco = window.decoration();
+        let part = deco.hit(&title, content, location);
         deco.hover = part;
         deco.pointer = location;
+        let cut = if part == Part::Tab { deco.cut_title(&title, content) } else { None };
         drop(deco);
         self.cursor_status = CursorImageStatus::Named(cursor_for(part));
+        // On a title the tab cuts short: its tip. (Where it is on screen
+        // is worked out when it shows: this is inside the pointer's
+        // motion, which holds its lock.)
+        self.tab_tip_hover(window, title, cut.filter(|r| r.to_f64().contains(location)));
     }
 
     pub fn deco_leave(&mut self, window: &WindowElement) {
+        self.tab_tip_hover(window, String::new(), None);
         let mut deco = window.decoration();
         deco.hover = Part::None;
         deco.pressed = Part::None;
@@ -108,6 +109,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         serial: Serial,
     ) {
         let hover = window.decoration().hover;
+        if pressed {
+            self.tab_tip_pressed();
+        }
         if !pressed {
             let was = std::mem::take(&mut window.decoration().pressed);
             if was == hover {

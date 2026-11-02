@@ -46,6 +46,7 @@ pub mod saver;
 pub mod scroll;
 pub mod screenshot;
 pub mod spotlight;
+pub mod tabtip;
 pub mod sockfile;
 pub mod text;
 pub mod theme;
