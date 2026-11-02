@@ -47,6 +47,8 @@ pub enum Action {
     PopOut,
     /// Preview the previous (-1) or next (+1) item in the folder.
     Step(isize),
+    /// Open With ▸ (its command: an app, Always, Other…).
+    OpenWith(String),
 }
 
 fn item(e: &Entry) -> Item {
@@ -314,7 +316,16 @@ impl Render for QuickLook {
         }
         let open_me = me.clone();
         let label_w = style::text_width(window, label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL));
-        buttons = buttons.child(div().w(px(m::SPACING - m::TIGHT))).child(Button::new(label).min_width((f32::from(label_w) + 28.0).max(80.0)).on_click(move |_, cx| open_me.update(cx, |q, cx| q.act(Action::Open, cx))));
+        // Its secondary button: Open With ▸ the kind's apps.
+        let with_me = me.clone();
+        let open_with = crate::folder::open_with_menu(std::slice::from_ref(&self.entry));
+        let open_button = div().on_mouse_down(MouseButton::Right, move |ev, window, cx| {
+            let Some(menu) = open_with.clone() else { return };
+            let me = with_me.clone();
+            olo_ui::menu::context_menu(window, cx, olo_ui::Menu::new("").submenu(menu), ev.position, move |cmd, _, cx| me.update(cx, |q, cx| q.act(Action::OpenWith(cmd.to_owned()), cx)));
+        });
+        let open_button = open_button.child(Button::new(label).min_width((f32::from(label_w) + 28.0).max(80.0)).on_click(move |_, cx| open_me.update(cx, |q, cx| q.act(Action::Open, cx))));
+        buttons = buttons.child(div().w(px(m::SPACING - m::TIGHT))).child(open_button);
         let edge = canvas(
             |_, _, _| {},
             move |b, _, window, _| {

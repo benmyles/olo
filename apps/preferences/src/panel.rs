@@ -199,7 +199,7 @@ impl Panel {
             Panel::Backup => (420, 400),
             Panel::Bluetooth => (440, 340),
             Panel::DateTime => (460, 370),
-            Panel::DefaultApps => (480, 494),
+            Panel::DefaultApps => (520, 560),
             // With its panel: what it is, how Olo draws for it and why.
             Panel::Display => (500, 658),
             Panel::Integrations => (460, 600),

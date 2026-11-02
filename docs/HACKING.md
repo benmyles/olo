@@ -308,7 +308,7 @@ How Olo keeps it (do the same):
 | `crates/ui` | `olo-ui`, the Interface Kit on Olo's GPUI: windows, layer surfaces and popups, menus and the menu bar, BeOS widgets, icons, the agent tree and socket, upgrades. **All apps are built on it** ("The GPUI kit" below). |
 | `crates/kit-base` | `olo-kit-base`: what the kit has that doesn't draw, re-exported by olo-ui under the same names: `instance` (one process per app), `settings`, `notify`, `files`, `places`, `watch`, `tracker`, `metrics` (the spacing system), `Proxy`, `search` (the query language, facets and suggestions), `masonry` (cards in columns), and `commands`, the socket agents and the command palette read apps through (its protocol, server and client), with `review`'s findings and `layout_review`'s checks, `list` (a list's selection and type-select), `spell` and `keys` (the keyboard profile's keys). No GPUI. |
 | `gpui/` | Olo's GPUI, which the kit is built on: GPUI 0.2.2 and blade-graphics 0.7.1, Olo's own from now on (Wayland only, idle windows draw nothing); `gpui/README.md` says what changed. |
-| `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit: data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`, in the current theme: `themes`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; the person's own choice first (`open::set_default`, kept in `~/.config/olo/default-apps.list` in mimeapps.list's form and copied into `olo-mimeapps.list` for other programs; `handler_cached` notices it changed, in any process), then Olo's apps, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`; Open With's few apps for a kind, `open::handlers_for`: as the person set them (`set_offered`), else the one it opens in, Olo's own for it, then those whose entries claim it or a broader kind, by name, eight at most; worked out off the UI thread by `open::warm` (a folder's kinds, as Tracker lists it) and read by menus from `offer_cached`; `open::kind_of` names a kind by the file's name alone; desktop entries are kept until an applications folder changes, `desktop_entry::all_cached`; and the same for other programs: `open::for_others` gives the hidden `olo.viewer`, `olo.styled-edit` and `olo.tracker` desktop entries, each listing every type shared-mime-info knows that Olo opens with it, and an `olo-mimeapps.list` making them the defaults, which GIO, `gio open`/xdg-open and xdg-desktop-portal's OpenURI read before `mimeapps.list` while `XDG_CURRENT_DESKTOP` names Olo; olo-session writes them into `~/.local/share/applications` at start, makes that folder's `mimeinfo.cache` again when they change (`open::mime_cache`, as update-desktop-database would: GIO only finds an app for a type through it) and removes ones it wrote that are no longer wanted, `X-Olo-Written=true`; and, once Olo's Chrome is installed, `open::offer_browser` writes `~/.local/share/applications/olo-mimeapps.list` naming it for web pages and links, read after every `mimeapps.list` in the config directories so a browser the person chose wins, but ahead of the system's lists), `find_program`, `spawn_detached` (`spawn_detached_app` and `open::spawn_app` for a desktop entry's program, in a scope of its own: `scope`). |
+| `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit: data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`, in the current theme: `themes`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; the person's own choice first (`open::set_default`, kept in `~/.config/olo/default-apps.list` in mimeapps.list's form and copied into `olo-mimeapps.list` for other programs; `handler_cached` notices it changed, in any process), then Olo's apps, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`; Open With's few apps for a kind, `open::handlers_for`: as the person set them (`set_offered`, Preferences ▸ Default Apps ▸ Open With), else the one it opens in, Olo's own for it, then those whose entries claim it or a broader kind, by name, eight at most; worked out off the UI thread by `open::warm` (a folder's kinds, as Tracker lists it) and read by menus from `offer_cached`; `open::kind_of` names a kind by the file's name alone; `open::every_app` is every app whose command takes files (`DesktopEntry::takes_files`), Olo's first, and `Handler::icon` its icon; the person's own kinds of file are `mime::own_kinds` (`set_own_kinds`; `mime::type_for_extensions` keeps the type its extensions all share, else makes one of Olo's own, `application/x-olo-kind-EXT`, which `mime::from_name` gives first); desktop entries are kept until an applications folder changes, `desktop_entry::all_cached`; and the same for other programs: `open::for_others` gives the hidden `olo.viewer`, `olo.styled-edit` and `olo.tracker` desktop entries, each listing every type shared-mime-info knows that Olo opens with it, and an `olo-mimeapps.list` making them the defaults, which GIO, `gio open`/xdg-open and xdg-desktop-portal's OpenURI read before `mimeapps.list` while `XDG_CURRENT_DESKTOP` names Olo; olo-session writes them into `~/.local/share/applications` at start, makes that folder's `mimeinfo.cache` again when they change (`open::mime_cache`, as update-desktop-database would: GIO only finds an app for a type through it) and removes ones it wrote that are no longer wanted, `X-Olo-Written=true`; and, once Olo's Chrome is installed, `open::offer_browser` writes `~/.local/share/applications/olo-mimeapps.list` naming it for web pages and links, read after every `mimeapps.list` in the config directories so a browser the person chose wins, but ahead of the system's lists), `find_program`, `spawn_detached` (`spawn_detached_app` and `open::spawn_app` for a desktop entry's program, in a scope of its own: `scope`). |
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
 | `apps/airpods` | `olo-airpods`: AirPods, natively (see "AirPods"): the session's service and its command line. |
 | `apps/voice` | `olo-voice`: the voice service (see "The voice service"): every microphone through voice processing, and its command line. |
@@ -867,13 +867,20 @@ Tracker's, folders first and names in reading order, following the
 folder as it changes; a "Save as:" field, and a question before
 replacing. Space takes a look at the selected file in the Viewer
 (`olo-viewer --look FILE`: a process of its own, put away by Space or
-Escape there, by Space again in the panel, and with the panel). A
+Escape there, by Space again in the panel, and with the panel). An
+item's menu (a secondary click) has Quick Look, Open With ▸
+(`olo_ui::open_with`, the folder's kinds warmed as it's listed) and
+Show in Tracker (`olo_kit_base::tracker::open`). A
 filter is a glob, ignoring case, or a MIME type, a kind of one counting
 (`olo_xdg::mime::is_a`); which filters each file fits is worked out
 with the listing, off the UI thread, so switching is instant.
 `olo_xdg::mime::from_name` finds a name's type from shared-mime-info's
-globs, indexed by suffix (most are `*.ext`), so a big folder is a few
-lookups a file. Open and folder panels give the list the keyboard.
+globs, indexed by suffix (most are `*.ext`), the few other patterns
+made into characters once, so a big folder is a few lookups a file
+(`/usr/bin`, 2,652 names: 1.5 ms); the person's own kinds
+(`mime::own_kinds`, `~/.config/olo/kinds.list`, `name|ext;ext|type`,
+looked at at most once a second) come first. Open and folder panels
+give the list the keyboard.
 
 Pictures are read by `olo_images::open(path)` (`crates/images`, which
 app_server uses too): everything the `image` crate reads plus JPEG XL
@@ -1472,7 +1479,24 @@ event reaches it.
   pop-up), `multiple`, and the app's `choices` (check boxes or
   pop-ups). Listing on a worker, following the folder as it changes;
   the folder pop-up goes up, to the standard folders, favourites and
-  recent ones; Save asks before replacing; Space looks in the Viewer.
+  recent ones; Save asks before replacing; Space looks in the Viewer;
+  an item's menu has Quick Look, Open With ▸ and Show in Tracker.
+- `open_with`: Open With, the same in every app that shows files
+  (Tracker's windows and desktop, Quick Look, the file panels).
+  `open_with::kind_of(names)` is the kind a selection all is (None:
+  mixed); `open_with::menu(kind)` the submenu: the apps worked out for
+  it (`olo_xdg::open::offer_cached`, so warm the kinds where the files
+  are listed, off the UI thread: `olo_xdg::open::warm`), the one it
+  opens in marked "(default)", Other…, and Always Open With ▸ (the
+  kind's checked) to make another its default; a kind no app knows gets
+  Other… alone. `open_with::is_command(cmd)` tells its commands, and
+  `open_with::run(cmd, kind, paths, cx)` does one: opens with the app
+  (Always: and makes it the kind's, `open::set_default`), on a thread,
+  or opens Other…, `OpenWithWin` (every app that opens files,
+  `open::every_app`, read on a worker, found by typing part of its
+  name; ↑↓ and Return; "Always open files like … with it"), a dialog
+  over the window in front that closes itself
+  (`open_with::window_options()` to open it yourself).
   `examples/panel.rs` opens each.
 - Menu items take icons (`Menu::icon(name)`, an item's or a submenu's):
   a column of them between the check marks and the labels, faded when
@@ -2628,16 +2652,27 @@ opened, its own `panel::State` and text fields).
   always was.
 * New panel: add it to `Panel` (arg, title, icon, size, reset), write the
   module, add it to `PREFERENCE_PANELS`, journal it light and dark.
-* **Default Apps** (`default_apps.rs`): each kind of file and link
-  (`KINDS`: Text, PDF, Word documents, … Pictures, Movies, Music, …
-  Folders, Web pages and links, Email links; each a few MIME types) with
-  the app it opens in, a pop-up of the apps Open With offers for it
+* **Default Apps** (`default_apps.rs`, BeOS's FileTypes), three tabs.
+  *Default Apps*: each kind of file and link (`KINDS`: Text, PDF, Word
+  documents, … Pictures, Movies, Music, … Folders, Web pages and links,
+  Email links; each a few MIME types) with the app it opens in, a
+  pop-up of the apps Open With offers for it
   (`olo_xdg::open::handlers_for`, of its first type), all one width; a
   choice is made for every type of the kind (`open::set_default`: for
-  Olo and, in `olo-mimeapps.list`, for other programs). Worked out and
-  written on a worker; "Looking for apps…" until then. Under `cfg(test)`
-  made-up apps, so the lint and the settings index don't depend on the
-  computer.
+  Olo and, in `olo-mimeapps.list`, for other programs). *Your Own
+  Kinds*: the person's kinds (`olo_xdg::mime::own_kinds`: a name and
+  its extensions), each with its app (any of `open::every_app`) and
+  Remove; Add a Kind takes a name, extensions ("sav, sv2", dots and
+  case don't matter) and an app; an extension another kind had is the
+  new one's. *Open With*: for a kind (the built-in ones and the
+  person's), the apps Open With ▸ offers, in order, a list with Move Up,
+  Move Down and Remove (never the last), Add an App…, and Olo's Choice
+  to let Olo choose again (`open::set_offered`, empty). Everything is
+  worked out and written on a worker, which works it all out again
+  after each change; "Looking for apps…" until then. Under `cfg(test)`
+  made-up apps and one made-up kind, so the lint and the settings index
+  don't depend on the computer (the person's kinds' rows aren't
+  settings: the index leaves out what's in "Your Kinds").
 * **Every setting, findable** (`olo_xdg::settings::PREFERENCE_SETTINGS`):
   each control in every panel (check box, radio button, slider, pop-up
   menu, text field, colour well, button) with its panel, tab and box,
@@ -6500,13 +6535,13 @@ deferred so the Tracker can update the window back):
 - `quicklook.rs`: olo-preview's `PreviewView` with the footer and keys;
   its window opens when the preview comes (or after 120 ms with a
   spinner) and has the keyboard.
-- **Open With ▸** on a file's or folder's menu, its kind's apps
-  (`folder::open_with_menu`, from `olo_xdg::open::offer_cached`, warmed
-  as the folder is listed; the one it opens in marked "(default)"), and
-  **Always Open With ▸** the same apps (the kind's checked) making one
-  the kind's default for Olo and other programs (`open::set_default`,
-  on a thread) as it opens the selection with it. Shown when what's
-  selected is all one kind.
+- **Open With ▸** on a file's or folder's menu: the kit's
+  (`olo_ui::open_with`, see "The GPUI kit"), for what's selected when it's
+  all one kind (`folder::open_with_menu`, the kinds warmed as the
+  folder is listed); on the desktop's items too, and on Quick Look's
+  Open button (its secondary click). Its commands go through
+  `Tracker::open_with`, which opens Other…'s window itself (to keep it
+  in its windows' list) and hands the rest to `open_with::run`.
 - `goto.rs`: Go ▸ Go to File or Folder… (⇧⌘G, Finder's Go to Folder),
   a dialog over the folder's window: the field holds a path copied
   (absolute, `~/…` as written, a `file://` URI's:

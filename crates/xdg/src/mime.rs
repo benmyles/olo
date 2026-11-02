@@ -34,7 +34,9 @@ struct Globs {
     /// pattern is case-sensitive, then in `exact`).
     folded: HashMap<String, Vec<usize>>,
     exact: HashMap<String, Vec<usize>>,
-    others: Vec<usize>,
+    /// The rest, matched one by one: each with its pattern as characters
+    /// (lowercased unless case-sensitive), made once.
+    others: Vec<(usize, Vec<char>)>,
 }
 
 fn globs() -> &'static Globs {
@@ -61,7 +63,7 @@ fn globs() -> &'static Globs {
             match g.pattern.strip_prefix('*').filter(|rest| rest.starts_with('.') && !rest.contains(['*', '?', '['])) {
                 Some(rest) if g.case_sensitive => exact.entry(rest.to_owned()).or_default().push(i),
                 Some(rest) => folded.entry(rest.to_lowercase()).or_default().push(i),
-                None => others.push(i),
+                None => others.push((i, if g.case_sensitive { g.pattern.chars().collect() } else { g.pattern.to_lowercase().chars().collect() })),
             }
         }
         Globs { all, folded, exact, others }
@@ -172,6 +174,15 @@ pub fn from_name(name: &str) -> Option<String> {
     if name.to_lowercase().ends_with(".olo-backup") || name.to_lowercase().ends_with(".tabula-backup") {
         return Some(SETTINGS_BACKUP.into());
     }
+    // The person's own kinds first (Preferences ▸ Default Apps).
+    if let Some(m) = own_kind_of(name) {
+        return Some(m);
+    }
+    from_name_globs(name)
+}
+
+/// [`from_name`] by shared-mime-info's globs alone.
+fn from_name_globs(name: &str) -> Option<String> {
     let db = globs();
     let lower = name.to_lowercase();
     // Each suffix from a dot (`.tar.gz`, `.gz`), looked up; then the rest.
@@ -179,11 +190,7 @@ pub fn from_name(name: &str) -> Option<String> {
     let mut hits: Vec<usize> = suffixes(&lower).iter().filter_map(|k| db.folded.get(k)).flatten().copied().collect();
     hits.extend(suffixes(name).iter().filter_map(|k| db.exact.get(k)).flatten().copied());
     let (lower_chars, exact_chars): (Vec<char>, Vec<char>) = (lower.chars().collect(), name.chars().collect());
-    hits.extend(db.others.iter().copied().filter(|&i| {
-        let g = &db.all[i];
-        let p: Vec<char> = if g.case_sensitive { g.pattern.chars().collect() } else { g.pattern.to_lowercase().chars().collect() };
-        glob_match(&p, if g.case_sensitive { &exact_chars } else { &lower_chars })
-    }));
+    hits.extend(db.others.iter().filter(|(i, p)| glob_match(p, if db.all[*i].case_sensitive { &exact_chars } else { &lower_chars })).map(|(i, _)| *i));
     hits.into_iter()
         .map(|i| &db.all[i])
         .max_by_key(|g| (g.weight, g.pattern.len()))
@@ -293,5 +300,138 @@ mod tests {
         assert!(is_a("image/png", "application/octet-stream"));
         // A Markdown file is text (a subclass of text/plain).
         assert!(is_a(&from_name("a.md").unwrap(), "text/plain"));
+    }
+}
+
+// ---- the person's own kinds -------------------------------------------
+
+/// A kind of file the person named themselves (Preferences ▸ Default Apps
+/// ▸ Your Own Kinds): its name, the extensions it covers (without the
+/// dot, lower case), and its type: the one its extensions already had,
+/// else one of Olo's own (`application/x-olo-kind-EXT`), which Olo knows
+/// by it ([`from_name`] reads these first) and opens with the app the
+/// person chose for it (`open::set_default`).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct OwnKind {
+    pub name: String,
+    pub extensions: Vec<String>,
+    pub mime: String,
+}
+
+/// Where they're kept: a line each, `name|ext;ext|type`.
+pub fn own_kinds_file() -> PathBuf {
+    crate::config_dir().join("kinds.list")
+}
+
+fn parse_kinds(text: &str) -> Vec<OwnKind> {
+    text.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .filter_map(|l| {
+            let mut parts = l.splitn(3, '|');
+            let (name, exts, mime) = (parts.next()?.trim(), parts.next()?, parts.next()?.trim());
+            let extensions: Vec<String> = exts.split(';').map(|e| e.trim().trim_start_matches('.').to_lowercase()).filter(|e| !e.is_empty()).collect();
+            (!name.is_empty() && !extensions.is_empty() && mime.contains('/')).then(|| OwnKind { name: name.to_owned(), extensions, mime: mime.to_owned() })
+        })
+        .collect()
+}
+
+fn write_kinds(kinds: &[OwnKind]) -> String {
+    let mut text = String::from("# Your own kinds of file (Preferences ▸ Default Apps): name|extensions|type\n");
+    for k in kinds {
+        text.push_str(&format!("{}|{}|{}\n", k.name.replace(['|', '\n'], " "), k.extensions.join(";"), k.mime));
+    }
+    text
+}
+
+type KeptKinds = olo_sync::Mutex<Option<(std::time::Instant, Option<std::time::SystemTime>, std::sync::Arc<Vec<OwnKind>>)>>;
+static KEPT_KINDS: OnceLock<KeptKinds> = OnceLock::new();
+
+/// The person's own kinds, as last read (the file is looked at at most
+/// once a second: every file listed asks).
+pub fn own_kinds() -> std::sync::Arc<Vec<OwnKind>> {
+    let kept = KEPT_KINDS.get_or_init(Default::default);
+    let mut k = kept.lock().unwrap();
+    if let Some((looked, _, kinds)) = k.as_ref()
+        && looked.elapsed() < std::time::Duration::from_secs(1)
+    {
+        return kinds.clone();
+    }
+    let path = own_kinds_file();
+    let stamp = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+    if let Some((_, s, kinds)) = k.as_ref()
+        && *s == stamp
+    {
+        let kinds = kinds.clone();
+        *k = Some((std::time::Instant::now(), stamp, kinds.clone()));
+        return kinds;
+    }
+    let kinds = std::sync::Arc::new(std::fs::read_to_string(&path).map(|t| parse_kinds(&t)).unwrap_or_default());
+    *k = Some((std::time::Instant::now(), stamp, kinds.clone()));
+    kinds
+}
+
+/// Keep `kinds` as the person's own.
+pub fn set_own_kinds(kinds: &[OwnKind]) -> std::io::Result<()> {
+    let path = own_kinds_file();
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let tmp = path.with_extension("new");
+    std::fs::write(&tmp, write_kinds(kinds))?;
+    std::fs::rename(&tmp, &path)?;
+    // (Read again at once in this process.)
+    if let Some(k) = KEPT_KINDS.get() {
+        *k.lock().unwrap() = None;
+    }
+    Ok(())
+}
+
+/// The type a new kind covering `extensions` goes by: the one they all
+/// already have (a known type given a name and another app), else Olo's
+/// own, after the first (a known one mixed with others would take the
+/// others' files with it: `.sav` is SPSS's too).
+pub fn type_for_extensions(extensions: &[String]) -> String {
+    let exts: Vec<String> = extensions.iter().map(|e| e.trim_start_matches('.').to_lowercase()).collect();
+    let mut known = exts.iter().map(|e| from_name_globs(&format!("x.{e}")));
+    let first = known.next().flatten();
+    if let Some(t) = first.as_ref()
+        && known.all(|k| k.as_ref() == Some(t))
+    {
+        return t.clone();
+    }
+    let ext = exts.first().map(String::as_str).unwrap_or_default();
+    format!("application/x-olo-kind-{}", ext.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>())
+}
+
+/// The person's kind a file named `name` is, if it's one.
+fn own_kind_of(name: &str) -> Option<String> {
+    let lower = name.to_lowercase();
+    let (_, ext) = lower.rsplit_once('.')?;
+    own_kinds().iter().find(|k| k.extensions.iter().any(|e| e == ext)).map(|k| k.mime.clone())
+}
+
+#[cfg(test)]
+mod own_kinds_tests {
+    use super::*;
+
+    #[test]
+    fn own_kinds_read_and_written() {
+        let kinds = vec![
+            OwnKind { name: "Game saves".into(), extensions: vec!["sav".into(), "sv2".into()], mime: "application/x-olo-kind-sav".into() },
+            OwnKind { name: "Logs | old".into(), extensions: vec!["log".into()], mime: "text/x-log".into() },
+        ];
+        let text = write_kinds(&kinds);
+        let back = parse_kinds(&text);
+        assert_eq!(back[0], kinds[0]);
+        assert_eq!(back[1].name, "Logs   old");
+        // Extensions as typed: dots, case and blanks don't matter.
+        assert_eq!(parse_kinds("Mine| .FOO ; bar;|application/x-olo-kind-foo")[0].extensions, ["foo", "bar"]);
+        assert!(parse_kinds("no type|x|").is_empty() && parse_kinds("|x|a/b").is_empty());
+        // A kind of extensions nothing knows is Olo's own type.
+        assert_eq!(type_for_extensions(&["zzqx9".into()]), "application/x-olo-kind-zzqx9");
+        // Known extensions of one type keep it; mixed with others, Olo's own.
+        assert_eq!(type_for_extensions(&["jpg".into(), "JPEG".into()]), "image/jpeg");
+        assert_eq!(type_for_extensions(&["jpg".into(), "zzqx9".into()]), "application/x-olo-kind-jpg");
     }
 }

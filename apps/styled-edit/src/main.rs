@@ -396,6 +396,8 @@ impl DocView {
     /// A new document (loaded, restored), selecting `select`.
     fn reset(&mut self, doc: Doc, select: Range<usize>) {
         self.doc = doc;
+        // (Its generations start again: the count kept was the old one's.)
+        self.words = None;
         self.editor.reset(self.doc.text());
         self.editor.select(self.doc.text(), select);
     }

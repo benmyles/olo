@@ -23,6 +23,7 @@ pub mod keys;
 #[cfg(feature = "lint")]
 pub mod lint;
 pub mod menu;
+pub mod open_with;
 pub mod part;
 pub mod pictures;
 pub mod review;

@@ -34,6 +34,7 @@ use olo_kit_base::{
 use crate::{
     Frame, WindowOptions, icons,
     menu::{self, Menu},
+    open_with,
     style, theme,
     widgets::{Button, CheckBox, Column, ColumnListView, ListModel, MenuField, SCROLL_BAR, TextControl, TextField, TextFieldEvent, text_field},
 };
@@ -463,6 +464,42 @@ impl PanelView {
         up
     }
 
+    /// An item's menu (the selection's, the item right-clicked in it):
+    /// Quick Look, Open With ▸ (`open_with`), Show in Tracker.
+    fn context_menu(&mut self, at: gpui::Point<gpui::Pixels>, window: &mut Window, cx: &mut Context<Self>) {
+        let chosen: Vec<Item> = self.list.read(cx).state.selected.iter().filter_map(|&i| self.items.get(i)).cloned().collect();
+        let Some(first) = chosen.first() else { return };
+        let mut m = Menu::new("");
+        if chosen.len() == 1 && !first.is_dir {
+            m = m.item("Quick Look", "quick-look");
+        }
+        let kind = open_with::kind_of(chosen.iter().map(|it| (it.name.as_str(), it.is_dir)));
+        if let Some(sub) = kind.as_deref().and_then(open_with::menu) {
+            m = m.submenu(sub);
+        }
+        if chosen.len() == 1 {
+            m = m.separator().item("Show in Tracker", olo_kit_base::tracker::COMMAND);
+        }
+        let paths: Vec<PathBuf> = chosen.iter().map(|it| self.panel.dir.join(&it.name)).collect();
+        let me = cx.entity();
+        menu::context_menu(window, cx, m, at, move |cmd, _, cx| match cmd {
+            "quick-look" => me.update(cx, |v, cx| v.toggle_look(cx)),
+            olo_kit_base::tracker::COMMAND => {
+                if let Some(p) = paths.first()
+                    && let Err(e) = olo_kit_base::tracker::open(p)
+                {
+                    tracing::warn!("file panel: show in Tracker: {e}");
+                }
+            }
+            c if open_with::is_command(c) => {
+                if let Some(kind) = kind.clone() {
+                    open_with::run(c, kind, paths.clone(), cx);
+                }
+            }
+            _ => {}
+        });
+    }
+
     /// The files selected, as paths (folders left out).
     fn selected_files(&self, cx: &App) -> Vec<PathBuf> {
         self.list.read(cx).state.selected.iter().filter_map(|&i| self.items.get(i)).filter(|it| !it.is_dir).map(|it| self.panel.dir.join(&it.name)).collect()
@@ -668,7 +705,7 @@ impl Render for PanelView {
             (None, true) => String::new(),
             (None, false) => "No items".into(),
         };
-        let (opener, chooser) = (me.clone(), me.clone());
+        let (opener, chooser, context) = (me.clone(), me.clone(), me.clone());
         let list = ColumnListView::new("file-panel", &self.list, columns, items.len(), move |cell, window, cx| {
             let Some(it) = items.get(cell.row) else { return };
             match cell.column {
@@ -688,6 +725,7 @@ impl Render for PanelView {
         .type_select(move |r| names.get(r).map(|it| SharedString::from(it.name.clone())).unwrap_or_default())
         .empty_text(message)
         .on_open(move |row, _, cx| opener.update(cx, |v, cx| v.open_row(row, cx)))
+        .on_context(move |_, at, window, cx| context.update(cx, |v, cx| v.context_menu(at, window, cx)))
         .on_select(move |_, cx| {
             chooser.update(cx, |v, cx| {
                 // Save: a file chosen gives its name.
@@ -855,6 +893,11 @@ fn read(dir: &Path, filters: &[Filter]) -> Result<Vec<Item>, String> {
         })
         .collect();
     items.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+    // What Open With ▸ offers for each kind here, ready for an item's menu.
+    let mut kinds: Vec<String> = items.iter().map(|it| olo_xdg::open::kind_of(&it.name, it.is_dir)).collect();
+    kinds.sort_unstable();
+    kinds.dedup();
+    olo_xdg::open::warm(kinds);
     Ok(items)
 }
 

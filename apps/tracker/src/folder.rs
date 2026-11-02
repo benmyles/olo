@@ -1166,29 +1166,13 @@ impl Render for FolderWin {
     }
 }
 
-/// Open With ▸ for `entries` of one kind: the apps worked out for it
-/// (`olo_xdg::open::offer_cached`, warmed as the folder was listed; none
-/// yet, no submenu), the one it opens in marked, and Always Open With ▸
-/// to make another the kind's.
+/// Open With ▸ for `entries` of one kind (`olo_ui::open_with`: the
+/// apps worked out as the folder was listed; none yet, no submenu).
 pub fn open_with_menu(entries: &[Entry]) -> Option<Menu> {
-    let kind = open_with_kind(entries)?;
-    let offer = olo_xdg::open::offer_cached(&kind).filter(|o| !o.handlers.is_empty())?;
-    let ids: Vec<(String, String)> = offer.handlers.iter().filter_map(|h| Some((olo_xdg::open::handler_id(h)?, h.name()))).collect();
-    let mut menu = Menu::new("Open With");
-    for (id, name) in &ids {
-        let label = if offer.default.as_ref() == Some(id) { format!("{name} (default)") } else { name.clone() };
-        menu = menu.item(label, format!("open-with:{id}"));
-    }
-    let mut always = Menu::new("Always Open With");
-    for (id, name) in &ids {
-        always = always.item(name.clone(), format!("always-open-with:{id}")).checked(offer.default.as_ref() == Some(id));
-    }
-    Some(menu.separator().submenu(always))
+    olo_ui::open_with::menu(&open_with_kind(entries)?)
 }
 
 /// The kind `entries` all are, for Open With (None: none, or mixed).
 pub fn open_with_kind(entries: &[Entry]) -> Option<String> {
-    let mut kinds = entries.iter().map(|e| olo_xdg::open::kind_of(&e.name, e.is_dir));
-    let first = kinds.next()?;
-    kinds.all(|k| k == first).then_some(first)
+    olo_ui::open_with::kind_of(entries.iter().map(|e| (e.name.as_str(), e.is_dir)))
 }
