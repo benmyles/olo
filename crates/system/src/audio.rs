@@ -92,9 +92,10 @@ impl Conn {
         let default_in = server.default_source_name.map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         let sinks: protocol::SinkInfoList = self.request(&Command::GetSinkInfoList)?;
         let sources: protocol::SourceInfoList = self.request(&Command::GetSourceInfoList)?;
-        let device = |name: &CString, description: &Option<CString>, cvolume: &ChannelVolume, muted: bool, default: &str| {
+        let device = |name: &CString, description: &Option<CString>, cvolume: &ChannelVolume, muted: bool, default: &str, props: &protocol::Props| {
             let name = name.to_string_lossy().into_owned();
             Device {
+                bluetooth: bluetooth(props),
                 description: description
                     .as_ref()
                     .map(|d| tidy_description(&d.to_string_lossy()))
@@ -106,15 +107,31 @@ impl Conn {
                 name,
             }
         };
-        let outputs = sinks.iter().map(|s| device(&s.name, &s.description, &s.cvolume, s.muted, &default_out)).collect();
+        let outputs = sinks.iter().map(|s| device(&s.name, &s.description, &s.cvolume, s.muted, &default_out, &s.props)).collect();
         // A sink's monitor isn't a microphone.
         let inputs = sources
             .iter()
             .filter(|s| s.monitor_of_sink_index.is_none())
-            .map(|s| device(&s.name, &s.description, &s.cvolume, s.muted, &default_in))
+            .map(|s| device(&s.name, &s.description, &s.cvolume, s.muted, &default_in, &s.props))
             .collect();
         Ok(Devices { outputs, inputs })
     }
+}
+
+/// A property's text.
+fn prop(props: &protocol::Props, key: &str) -> Option<String> {
+    let key = CString::new(key).ok()?;
+    let v = props.get_bytes(&key)?;
+    Some(String::from_utf8_lossy(v.strip_suffix(&[0]).unwrap_or(v)).into_owned())
+}
+
+/// How a Bluetooth device's sound is carried (PipeWire's properties).
+fn bluetooth(props: &protocol::Props) -> Option<Bluetooth> {
+    Some(Bluetooth {
+        address: prop(props, "api.bluez5.address")?,
+        codec: prop(props, "api.bluez5.codec").unwrap_or_default(),
+        profile: prop(props, "api.bluez5.profile").unwrap_or_default(),
+    })
 }
 
 /// Drop Apple board codes ("MacBook Pro J416 Speakers" → "MacBook Pro
@@ -166,6 +183,78 @@ pub struct Device {
     pub volume: Volume,
     pub channels: usize,
     pub is_default: bool,
+    /// A Bluetooth device's address and how its sound is carried.
+    pub bluetooth: Option<Bluetooth>,
+}
+
+/// How a Bluetooth device's sound is carried.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Bluetooth {
+    /// "AA:BB:CC:DD:EE:FF".
+    pub address: String,
+    /// "aac", "sbc", "msbc", "cvsd", "lc3" …
+    pub codec: String,
+    /// "a2dp-sink" (music), "headset-head-unit" (calls) …
+    pub profile: String,
+}
+
+impl Bluetooth {
+    /// Music quality (A2DP), not a headset's call quality.
+    pub fn high_quality(&self) -> bool {
+        self.profile.starts_with("a2dp")
+    }
+
+    /// The codec as people know it ("AAC").
+    pub fn codec_name(&self) -> String {
+        match self.codec.as_str() {
+            "sbc_xq" => "SBC XQ".to_owned(),
+            "msbc" => "mSBC".to_owned(),
+            "aptx_hd" => "aptX HD".to_owned(),
+            "aptx" => "aptX".to_owned(),
+            "lc3_swb" => "LC3-SWB".to_owned(),
+            c => c.to_uppercase(),
+        }
+    }
+}
+
+/// A sound card (a Bluetooth device's, here) and the ways it can work.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Card {
+    pub name: String,
+    /// The Bluetooth address, for a Bluetooth device's.
+    pub address: Option<String>,
+    pub profile: String,
+    /// Name, description, available.
+    pub profiles: Vec<(String, String, bool)>,
+}
+
+/// The sound server's cards.
+pub fn cards() -> Result<Vec<Card>> {
+    let mut c = Conn::connect()?;
+    let list: protocol::CardInfoList = c.request(&Command::GetCardInfoList)?;
+    Ok(list
+        .iter()
+        .map(|k| Card {
+            name: k.name.to_string_lossy().into_owned(),
+            address: prop(&k.props, "api.bluez5.address"),
+            profile: k.active_profile.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default(),
+            profiles: k
+                .profiles
+                .iter()
+                .map(|p| (p.name.to_string_lossy().into_owned(), p.description.as_ref().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default(), p.available != 0))
+                .collect(),
+        })
+        .collect())
+}
+
+/// Switch card `card` to `profile` ("a2dp-sink", "headset-head-unit").
+pub fn set_card_profile(card: &str, profile: &str) -> Result<()> {
+    let bad = |e: std::ffi::NulError| ProtocolError::Invalid(e.to_string());
+    Conn::connect()?.ack(&Command::SetCardProfile(protocol::SetCardProfileParams {
+        card_index: None,
+        card_name: Some(CString::new(card).map_err(bad)?),
+        profile_name: CString::new(profile).map_err(bad)?,
+    }))
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]

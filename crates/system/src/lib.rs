@@ -5,6 +5,7 @@
 //! PipeWire speaks too). Everything here blocks, so call it from a worker
 //! thread, never the UI thread.
 
+pub mod airpods;
 pub mod audio;
 pub mod auth;
 pub mod backlight;
@@ -18,6 +19,7 @@ pub mod github;
 pub mod edid;
 pub mod hid_monitor;
 pub mod keyring_prompt;
+pub mod media;
 pub mod network;
 pub mod polkit;
 pub mod power;
@@ -44,6 +46,7 @@ mod live {
         let me = std::env::var("FPRINT_USER").unwrap_or_else(|_| crate::auth::current_user().unwrap_or_default());
         println!("fingers of {me}: {:?}", crate::fingerprint::fingers(&me));
         println!("volume: {:?}", crate::audio::volume());
+        println!("cards: {:?}", crate::audio::cards().map(|c| c.into_iter().map(|c| (c.name, c.profile, c.profiles.len())).collect::<Vec<_>>()));
         println!("time: {:?}", crate::time::status());
         println!("zones: {:?}", crate::time::timezones().map(|z| z.len()));
         if let Ok(s) = crate::disks::status() {

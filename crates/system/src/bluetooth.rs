@@ -46,6 +46,9 @@ pub struct Device {
     pub rssi: Option<i16>,
     /// Battery level, for devices that report it.
     pub battery: Option<u8>,
+    /// Its vendor and product, as BlueZ has them
+    /// ("bluetooth:v004Cp2024d1D0A": Apple's AirPods Pro).
+    pub modalias: Option<String>,
 }
 
 impl Device {
@@ -116,6 +119,7 @@ pub fn status() -> Result<Status> {
                 trusted: get(d, "Trusted").unwrap_or(false),
                 rssi: get(d, "RSSI"),
                 battery: ifaces.get(BATTERY).and_then(|b| get(b, "Percentage")),
+                modalias: get(d, "Modalias"),
             })
         })
         .collect();
@@ -322,4 +326,56 @@ impl Drop for Agent {
         }
         let _ = self.conn.object_server().remove::<AgentObject, _>(AGENT_PATH);
     }
+}
+
+/// Rename a device as this computer knows it (BlueZ's alias).
+pub fn set_alias(device: &str, name: &str) -> Result<()> {
+    bus::set_property(bus::system()?, DEST, device, DEVICE, "Alias", name)
+}
+
+/// Call `changed` (on a thread of its own) whenever BlueZ's devices or
+/// adapters come, go, connect, disconnect, pair or are renamed; a burst
+/// is told once. Signal strengths and other chatter while searching
+/// aren't told. Nothing is polled: the thread sleeps until BlueZ says
+/// something.
+pub fn watch(changed: impl Fn() + Send + 'static) -> Result<()> {
+    use zbus::{MatchRule, message::Type};
+    const TOLD: &[&str] = &["Connected", "Paired", "Alias", "Name", "Modalias", "Trusted", "Powered", "ServicesResolved"];
+    let conn = Connection::system()?;
+    let dbus = zbus::blocking::fdo::DBusProxy::new(&conn)?;
+    let messages = zbus::blocking::MessageIterator::from(&conn);
+    let objects = MatchRule::builder().msg_type(Type::Signal).sender(DEST)?.interface("org.freedesktop.DBus.ObjectManager")?.build();
+    let props = MatchRule::builder().msg_type(Type::Signal).sender(DEST)?.interface("org.freedesktop.DBus.Properties")?.member("PropertiesChanged")?.build();
+    dbus.add_match_rule(objects)?;
+    dbus.add_match_rule(props)?;
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    std::thread::Builder::new().name("bluez-signals".into()).spawn(move || {
+        let _keep = (conn, dbus);
+        for m in messages.flatten() {
+            if m.message_type() != Type::Signal {
+                continue;
+            }
+            let h = m.header();
+            let tell = match h.member().map(|m| m.as_str()) {
+                Some("InterfacesAdded" | "InterfacesRemoved") => true,
+                Some("PropertiesChanged") => m
+                    .body()
+                    .deserialize::<(String, HashMap<String, OwnedValue>, Vec<String>)>()
+                    .is_ok_and(|(iface, props, gone)| (iface == DEVICE || iface == ADAPTER || iface == BATTERY) && props.keys().chain(gone.iter()).any(|k| TOLD.contains(&k.as_str()) || iface == BATTERY)),
+                _ => false,
+            };
+            if tell && tx.send(()).is_err() {
+                return;
+            }
+        }
+    })?;
+    std::thread::Builder::new().name("bluez".into()).spawn(move || {
+        while rx.recv().is_ok() {
+            // Let a burst finish (a connection changes several properties).
+            std::thread::sleep(std::time::Duration::from_millis(60));
+            while rx.try_recv().is_ok() {}
+            changed();
+        }
+    })?;
+    Ok(())
 }
