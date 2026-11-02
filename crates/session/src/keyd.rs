@@ -62,6 +62,12 @@ pub fn present() -> bool {
     socket().exists()
 }
 
+/// keyd isn't running: its socket is gone, or left behind by a keyd
+/// that was stopped (or uninstalled, as Olo Doctor offers) and refuses.
+fn gone(e: &std::io::Error) -> bool {
+    matches!(e.kind(), std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::NotFound)
+}
+
 /// Have keyd pass app_server's keys through unchanged. (Repeated now and
 /// then, since a `keyd reload` forgets binds.)
 pub fn pass_through() {
@@ -72,6 +78,7 @@ pub fn pass_through() {
         match bind(&format!("{key} = {key}")) {
             Ok(true) => {}
             Ok(false) => crate::log(format!("keyd would not pass {key} through")),
+            Err(e) if gone(&e) => return,
             Err(e) => {
                 // Once is enough (this repeats every minute).
                 static SAID: std::sync::Once = std::sync::Once::new();
@@ -86,6 +93,7 @@ pub fn pass_through() {
 pub fn restore() {
     if present()
         && let Err(e) = bind("reset")
+        && !gone(&e)
     {
         crate::log(format!("keyd: {e}"));
     }

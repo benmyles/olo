@@ -25,7 +25,7 @@ use std::{
     io::{Read, Write},
     sync::{
         Arc,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
         mpsc,
     },
     time::{Duration, Instant},
@@ -49,7 +49,24 @@ type Waiting = Arc<Mutex<HashMap<u64, mpsc::Sender<Vec<WindowTree>>>>>;
 /// connections, to end on `{cancel}`.
 static ASKING: Mutex<Option<HashMap<u64, std::os::unix::net::UnixStream>>> = Mutex::new(None);
 
+/// Requests being answered, and whether an upgrade is waiting for them:
+/// the old version goes once none is (the extension connects again,
+/// starting the new one), so a Fill waiting for an unlock isn't cut off.
+static ANSWERING: AtomicUsize = AtomicUsize::new(0);
+static UPGRADED: AtomicBool = AtomicBool::new(false);
+
+/// Gone for the new version, if upgraded and nothing is being answered.
+fn make_way() {
+    if UPGRADED.load(Ordering::SeqCst) && ANSWERING.load(Ordering::SeqCst) == 0 {
+        std::process::exit(0);
+    }
+}
+
 pub fn run() {
+    olo_kit_base::restore::on_upgrade(|| {
+        UPGRADED.store(true, Ordering::SeqCst);
+        make_way();
+    });
     let out = Arc::new(Mutex::new(std::io::stdout()));
     let trees: Waiting = Arc::default();
     serve_trees(out.clone(), trees.clone());
@@ -106,12 +123,15 @@ pub fn run() {
             continue;
         }
         let out = out.clone();
+        ANSWERING.fetch_add(1, Ordering::SeqCst);
         std::thread::spawn(move || {
             let reply = match message {
                 Ok(m) => answer(&m),
                 Err(e) => json!({ "id": null, "error": format!("not JSON: {e}") }),
             };
             send(&out, &reply);
+            ANSWERING.fetch_sub(1, Ordering::SeqCst);
+            make_way();
         });
     }
 }

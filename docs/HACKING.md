@@ -2449,7 +2449,13 @@ sends SIGURG to each of the user's processes whose program file in the
 install directory was just replaced (`/proc/PID/exe` ends in
 " (deleted)"). The kit catches it (a self-pipe in `platform.rs`), saves
 state and re-executes, as after a reload, and app_server puts its windows
-back where they were. A new olo-session re-executes itself without a
+back where they were. A program with no kit loop takes it with
+`olo_kit_base::restore::on_upgrade` (a self-pipe and a thread):
+`exec_on_upgrade` re-executes with the same arguments (`olo-doctor
+--watch`, whose state is on disk), and the Chrome extension's host
+(`olo-chrome chrome-extension://…`) exits once no request is being
+answered, for the extension to start the new one. Whatever is still
+old 90 s after is stopped (`check_stale`). A new olo-session re-executes itself without a
 reload. When app_server is new too, the nudge comes just before the
 reload, so apps re-execute while app_server restarts: that race is why
 a window not shown yet keeps the place it claimed, and why the kit

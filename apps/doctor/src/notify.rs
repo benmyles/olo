@@ -109,6 +109,8 @@ fn tell_heals(notes: &Notifier) {
 /// The session's: the look, then the Wi-Fi healer's news, for as long as
 /// the session runs.
 pub fn watch() -> ! {
+    // (What it has told is on disk: the new version tells nothing again.)
+    olo_kit_base::restore::exec_on_upgrade();
     let (tx, rx) = mpsc::channel();
     let notes = Notifier::with_events("Olo Doctor", "olo-doctor", move |e| {
         let _ = tx.send(e);
