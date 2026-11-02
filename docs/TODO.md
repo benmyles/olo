@@ -254,27 +254,29 @@ as they land (with the commit), add new ones as they come up.
   (found 2026-11-02, the full bench: 33 of 376 steps failed, most of
   them app_server frames of 9–51 ms as a menu opened or a window
   resized). Smithay's damage tracker now names a slow step: every one
-  is `frame.finish()`, waiting (0.4 ms of CPU) on the GPU. The headless
-  backend made its GL context at normal priority, the DRM backend at
-  high: made high too (the bench's worst, Passwords' menus, 51 → under
-  8.3; Viewer's 21 → 15.7), so the bench is as a real display. *Left*:
-  frames of 9–17 ms as menus open (Viewer, Activity Monitor, Tracker,
-  DiskUsage, Telegram's tabs, Log Viewer's live resize): a client's
-  GPU work the firmware doesn't preempt for ours. Find what it is
-  (`OLO_GPU_TIMINGS` in the client, the DRM backend's syncobj waits),
-  and keep clients' long GPU work short (a new window's first frame,
-  swapchains made).
-- **app_server: Viewer's first menu costs a 14–28 ms frame** (found
-  2026-11-02 by the bench, "app_server's loop stalled"; every run, the
-  first menu only, Viewer only; Tracker's and DeskCalc's first menus
-  1–2 ms). It's the frame's "damage and draw", not the requests. Likely
-  the first use of a buffer of Viewer's that app_server hasn't drawn
-  yet (the menu opening redraws Viewer's window into a swapchain image
-  it barely cycled after its zoom): the check worker makes the buffer's
-  EGL image off the loop, but the first draw sampling it still pays.
-  Try: give the check worker a GL context and sample each new buffer
-  once there (a 1×1 draw), so the BO is mapped before a frame needs it;
-  confirm by timing the first draw of each buffer.
+  is `frame.finish()`. The headless backend made its GL context at
+  normal priority, the DRM backend at high: made high too (the bench's
+  worst, Passwords' menus, 51 → under 8.3; Viewer's 21 → 15.7).
+  *Found* (same day, the kernel's syscall trace and kprobes): not the
+  GPU. `finish()` sat in `glFenceSync`, waiting (`futex`) on Mesa's
+  lock of its device's buffers, held by the dmabuf check worker through
+  `DRM_IOCTL_ASAHI_VM_BIND`, which spent 7–35 ms in
+  `drm_gpuvm_bo_deferred_cleanup` freeing the window buffers let go of
+  since the last bind (1–4 ms each: pages and IOMMU mappings). *Done*:
+  the worker checks on a device of its own and holds each buffer till
+  the renderer has let it go, freeing it there as no check waits
+  (`dmabuf_check`). Viewer's first menu 33–37 → 0.7–1.0 ms; the full
+  bench 31 → 21 failed of 382, app_server's failures ~18 → 4.
+  *Left*: app_server's own big buffers (a screenshot's 31 MB texture
+  and read-back) are kept by Mesa ~3 s for reuse and then freed in the
+  renderer's next bind (Screenshot's live resize, 18–21 ms; its scroll
+  at 1×): keep them (a few, long-lived) rather than make one per shot.
+  And clients make a new swapchain (four window-sized buffers) for
+  every size of a live resize, each made, checked, bound and freed:
+  GPUI should keep a bigger swapchain and draw a part of it
+  (wp_viewporter's source) while a resize lasts.
+- ~~app_server: Viewer's first menu costs a 14–28 ms frame~~ (the
+  dmabuf check worker's lock, above; 2026-11-02).
 - **The layout lint on GPUI** (left when egui went, 2026-11-02): the
   egui kit ran a window's view headlessly at its size, light and dark at
   1×, 1.5× and 2×, and failed a test (and `install-session.sh`) on

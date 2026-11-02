@@ -1,30 +1,47 @@
-//! Clients' new buffers (dmabufs), checked off the event loop. The first
-//! import of a buffer, when the driver takes in its memory, can take
-//! milliseconds (3–8 ms for a window-sized buffer on Apple's GPUs), and a
-//! window being resized has new buffers every frame: checked on the loop,
-//! a resize held up everything else for tens of milliseconds at a time
-//! (tools/dev/perf-fuzz). So a worker thread makes an EGL image of each
-//! new buffer, the slow part; while that image lives, the renderer's own
-//! import back on the loop finds the memory already taken in and takes
-//! microseconds. Then the client is told the buffer is good (or not), and
-//! the worker's image goes. Clients may draw into a buffer and show it
-//! before it is checked (Mesa's Vulkan does); such a commit waits for the
-//! check (`Gate`), the window showing its last frame meanwhile, rather
-//! than the renderer importing the buffer the slow way.
+//! Clients' new buffers (dmabufs), checked off the event loop, on a GPU
+//! device of the worker's own, which holds each buffer till the renderer
+//! has let it go, so its memory is freed there too.
+//!
+//! The kernel takes a buffer into a GPU address space as it's bound there
+//! (Mesa binds as it imports), and frees what that space let go of in its
+//! next bind (`drm_gpuvm_bo_deferred_cleanup`): a window-sized buffer's
+//! pages and IOMMU mappings, 1–4 ms each on Apple's GPUs. Mesa holds the
+//! lock of its device's buffers through a bind, and finishing a frame
+//! takes that lock (it gives back the frame's own buffers). So a check on
+//! the renderer's device, which was this worker's way of taking the slow
+//! import off the loop, held the renderer for as long as the kernel freed
+//! the buffers let go of since the last bind: a menu's first opening held
+//! app_server's frame 12–37 ms, an app's launch or resize 15–20 (found
+//! 2026-11-02 with the kernel's syscall trace and kprobes: `futex` on the
+//! loop while the check sat in `DRM_IOCTL_ASAHI_VM_BIND`, 25 ms of it
+//! freeing twelve old buffers).
+//!
+//! Now the worker checks on a device of its own (the render node opened
+//! again: Mesa makes a device, with its own locks, for each file), and
+//! keeps what it checked till the renderer has let it go: the renderer's
+//! bind then lets go of a buffer something else still holds, which is
+//! nothing, and the worker frees it on its own device as no check waits.
+//! The renderer imports each checked buffer itself, on the loop; with the
+//! worker holding the buffer, that's a bind and nothing else. Clients may
+//! draw into a buffer and show it before it is checked (Mesa's Vulkan
+//! does); such a commit waits for the check (`Gate`), the window showing
+//! its last frame meanwhile.
 
 use olo_sync::Mutex;
 use std::{
     collections::HashMap,
+    path::PathBuf,
     sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc,
     },
+    time::{Duration, Instant},
 };
 
 use smithay::{
     backend::{
-        allocator::dmabuf::Dmabuf,
+        allocator::dmabuf::{Dmabuf, WeakDmabuf},
         egl::{EGLDisplay, ffi::egl::types::EGLImage},
     },
     reexports::{calloop::channel, wayland_server::Client},
@@ -33,6 +50,58 @@ use smithay::{
         dmabuf::ImportNotifier,
     },
 };
+
+/// Longer than this, a check is logged.
+const SLOW: Duration = Duration::from_millis(4);
+/// How long after a buffer goes the renderer has let it go (its texture
+/// dropped as a frame finished, the frames that drew it done on the GPU,
+/// the kernel's unmapping of it waiting for the next bind).
+const GRACE: Duration = Duration::from_millis(100);
+/// And how many frames the renderer has finished since.
+const GRACE_FRAMES: u64 = 3;
+/// More than this many let go of, they're freed even while checks wait
+/// (a window resized live).
+const MOST_HELD: usize = 8;
+/// Buffers waiting for a bind in the renderer this long (nothing new
+/// coming in), the loop is asked for one ([`Answer::Bind`]).
+const BIND_WITHIN: Duration = Duration::from_millis(500);
+/// After a client let go of a buffer ([`Checks::gone`]), how long and how
+/// often the worker looks whether the buffer went (the surface showing it
+/// may hold it a while).
+const LOOK_FOR: Duration = Duration::from_secs(1);
+const LOOK_EVERY: Duration = Duration::from_millis(100);
+
+/// A display for the checks alone, on `node` opened again, and a spare:
+/// a small buffer made there and let go of at once (only its exported
+/// file keeps it), which a device can take in whenever a bind is wanted
+/// (the worker's, to free what it let go of; the renderer's, asked).
+fn own_display(node: &std::path::Path) -> Option<(EGLDisplay, Option<Dmabuf>)> {
+    use smithay::backend::allocator::{
+        Fourcc,
+        dmabuf::AsDmabuf as _,
+        gbm::{GbmBuffer, GbmBufferFlags, GbmDevice},
+    };
+    let file = std::fs::OpenOptions::new().read(true).write(true).open(node).ok()?;
+    let gbm = GbmDevice::new(file).ok()?;
+    let spare = gbm
+        .create_buffer_object::<()>(64, 64, Fourcc::Argb8888, GbmBufferFlags::RENDERING)
+        .ok()
+        .and_then(|bo| GbmBuffer::from_bo(bo, true).export().ok());
+    // SAFETY: the gbm device outlives the display (moved into it).
+    match unsafe { EGLDisplay::new(gbm) } {
+        Ok(display) => Some((display, spare)),
+        Err(e) => {
+            tracing::warn!(?node, "buffer checks on the renderer's display: {e}");
+            None
+        }
+    }
+}
+
+/// A bind of `spare` into `display`'s GPU address space, and its image
+/// let go of: the kernel frees what that space let go of before.
+fn bind(display: &EGLDisplay, spare: &Dmabuf) {
+    drop(display.create_image_from_dmabuf(spare).ok().map(|image| Image { display: display.clone(), image }));
+}
 
 /// Holds back commits of a buffer until its check is done: a blocker
 /// (`compositor::add_blocker`) for each, and the clients to tell
@@ -59,9 +128,9 @@ impl Gate {
     }
 }
 
-/// The worker's EGL image of a buffer, destroyed when dropped (on the loop,
-/// after the renderer's own import).
-pub struct Image {
+/// An EGL image of a buffer: while it lives, its device holds the
+/// buffer's memory.
+struct Image {
     display: EGLDisplay,
     image: EGLImage,
 }
@@ -77,34 +146,216 @@ impl Drop for Image {
     }
 }
 
-/// The worker's answer for buffer `id`: its image, if the driver took the
-/// buffer at all.
-pub struct Prepared {
-    id: u64,
-    pub image: Option<Image>,
+/// What the worker tells the loop.
+pub enum Answer {
+    /// Buffer `id` was checked: whether the driver took it.
+    Checked { id: u64, ok: bool },
+    /// Buffers wait to be freed, the renderer having let them go, but no
+    /// buffer came in since: a bind in the renderer is wanted
+    /// ([`Checks::bind_renderer`]).
+    Bind,
+}
+
+/// What the worker is asked.
+enum Job {
+    /// Check a new buffer.
+    Check(u64, Dmabuf),
+    /// The renderer bound a buffer (it took one in): it has freed what it
+    /// let go of before; and, asked ([`Checks::bind_renderer`]), since
+    /// when it has let go of every buffer gone then.
+    Bound(Option<Instant>),
+    /// A client let go of a buffer.
+    Gone,
+}
+
+/// A buffer the worker holds.
+struct Kept {
+    buffer: WeakDmabuf,
+    _image: Image,
+    /// When it went, and how many frames the renderer had finished then.
+    gone: Option<(Instant, u64)>,
+    /// The renderer has let it go: a bind there came after it was long
+    /// enough gone and frames had finished since.
+    released: bool,
+}
+
+/// The worker: its device, its spare, and the buffers it holds.
+struct Worker {
+    display: EGLDisplay,
+    spare: Option<Dmabuf>,
+    kept: Vec<Kept>,
+    /// Since when buffers have waited for a bind in the renderer, and
+    /// whether the loop has been asked for one.
+    waiting: Option<(Instant, bool)>,
+    /// Till when to look whether buffers went ([`LOOK_FOR`]).
+    look_until: Option<Instant>,
+}
+
+impl Worker {
+    fn check(&mut self, dmabuf: &Dmabuf) -> bool {
+        let t = Instant::now();
+        let image = self.display.create_image_from_dmabuf(dmabuf).ok().map(|image| Image { display: self.display.clone(), image });
+        if t.elapsed() > SLOW {
+            use smithay::backend::allocator::Buffer as _;
+            tracing::info!(w = dmabuf.size().w, h = dmabuf.size().h, took_ms = t.elapsed().as_secs_f64() * 1000.0, "slow to check a buffer");
+        }
+        let ok = image.is_some();
+        if let Some(image) = image {
+            self.kept.push(Kept { buffer: dmabuf.weak(), _image: image, gone: None, released: false });
+        }
+        ok
+    }
+
+    /// Notes which buffers went and, after a bind in the renderer, which
+    /// it has let go of: those gone long enough with frames finished since,
+    /// or, the renderer settled first, gone before then.
+    fn note(&mut self, frames: u64, bound: Option<Option<Instant>>) {
+        let now = Instant::now();
+        let mut waiting = false;
+        for k in &mut self.kept {
+            let was = k.gone;
+            if k.gone.is_none() && k.buffer.upgrade().is_none() {
+                k.gone = Some((now, frames));
+            }
+            if let Some((at, then)) = k.gone
+                && !k.released
+            {
+                let settled = matches!((bound, was), (Some(Some(s)), Some((w, _))) if w < s);
+                let let_go = settled || (now - at >= GRACE && frames >= then + GRACE_FRAMES);
+                k.released = bound.is_some() && let_go;
+                waiting |= !k.released;
+            }
+        }
+        // (A bind in the renderer starts the wait for the next afresh.)
+        self.waiting = match (waiting, self.waiting) {
+            (false, _) => None,
+            (true, Some(w)) if bound.is_none() => Some(w),
+            (true, _) => Some((now, false)),
+        };
+    }
+
+    fn released(&self) -> usize {
+        self.kept.iter().filter(|k| k.released).count()
+    }
+
+    /// Frees what the renderer has let go of: the images let go of, then a
+    /// bind of the spare, so the kernel frees them now rather than in the
+    /// next check.
+    fn free(&mut self) {
+        let t = Instant::now();
+        let before = self.kept.len();
+        self.kept.retain(|k| !k.released);
+        if self.kept.len() == before {
+            return;
+        }
+        if let Some(spare) = &self.spare {
+            bind(&self.display, spare);
+        }
+        if t.elapsed() > SLOW {
+            tracing::debug!(freed = before - self.kept.len(), took_ms = t.elapsed().as_secs_f64() * 1000.0, "buffers freed");
+        }
+    }
+
+    /// How long to wait for the next job: till it's time to look again
+    /// whether buffers went, or for buffers waiting for a bind in the
+    /// renderer to ask for one; else for ever.
+    fn wait(&mut self) -> Option<Duration> {
+        let now = Instant::now();
+        if self.look_until.is_some_and(|t| now >= t) {
+            self.look_until = None;
+        }
+        let look = self.look_until.map(|_| LOOK_EVERY);
+        let ask = match self.waiting {
+            Some((since, false)) => Some(BIND_WITHIN.saturating_sub(since.elapsed())),
+            _ => None,
+        };
+        look.into_iter().chain(ask).min()
+    }
+
+    /// Time to ask the loop for a bind in the renderer.
+    fn ask(&mut self) -> bool {
+        match &mut self.waiting {
+            Some((since, asked @ false)) if since.elapsed() >= BIND_WITHIN => {
+                *asked = true;
+                true
+            }
+            _ => false,
+        }
+    }
 }
 
 /// Buffers being checked, and the worker checking them.
 pub struct Checks {
-    tx: mpsc::Sender<(u64, Dmabuf)>,
+    tx: mpsc::Sender<Job>,
     pending: HashMap<u64, (Dmabuf, ImportNotifier, Gate)>,
     next: u64,
+    /// Frames the renderer has finished ([`Checks::frame_done`]).
+    frames: Arc<AtomicU64>,
+    /// The renderer's display, and the worker's spare ([`Checks::bind_renderer`]).
+    renderer: EGLDisplay,
+    spare: Arc<Mutex<Option<Dmabuf>>>,
 }
 
 impl Checks {
-    /// A worker for `display`, answering through `done` (a channel in the
-    /// event loop, which hands each answer to [`Checks::finish`]).
-    pub fn new(display: EGLDisplay, done: channel::Sender<Prepared>) -> Checks {
-        let (tx, rx) = mpsc::channel::<(u64, Dmabuf)>();
+    /// A worker answering through `done` (a channel in the event loop,
+    /// which hands each answer to [`Checks::finish`]), on `node` opened
+    /// again ([`own_display`]), or, if that can't be, on the renderer's
+    /// `display` (as it was: holding its buffers then frees nothing
+    /// elsewhere).
+    pub fn new(display: EGLDisplay, node: Option<PathBuf>, done: channel::Sender<Answer>) -> Checks {
+        let (tx, rx) = mpsc::channel::<Job>();
+        let frames = Arc::new(AtomicU64::new(0));
+        let spare = Arc::new(Mutex::new(None));
+        let (seen, shared, renderer) = (frames.clone(), spare.clone(), display.clone());
         let _ = std::thread::Builder::new().name("dmabuf check".into()).spawn(move || {
-            for (id, dmabuf) in rx {
-                let image = display.create_image_from_dmabuf(&dmabuf).ok().map(|image| Image { display: display.clone(), image });
-                if done.send(Prepared { id, image }).is_err() {
-                    break;
+            let (display, spare) = node.as_deref().and_then(own_display).unwrap_or((display, None));
+            *shared.lock().unwrap() = spare.clone();
+            let mut worker = Worker { display, spare, kept: Vec::new(), waiting: None, look_until: None };
+            loop {
+                let job = match worker.wait() {
+                    None => rx.recv().map_err(|_| mpsc::RecvTimeoutError::Disconnected),
+                    Some(d) => rx.recv_timeout(d),
+                };
+                let mut job = match job {
+                    Ok(job) => Some(job),
+                    Err(mpsc::RecvTimeoutError::Timeout) => None,
+                    Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                };
+                if job.is_none() {
+                    // (Nothing came in: buffers that went noted, and, if
+                    // they've waited long enough, the loop asked for a bind.)
+                    worker.note(seen.load(Ordering::Relaxed), None);
+                    if worker.ask() && worker.spare.is_some() && done.send(Answer::Bind).is_err() {
+                        return;
+                    }
+                    continue;
                 }
+                while let Some(j) = job.take() {
+                    match j {
+                        Job::Check(id, dmabuf) => {
+                            let ok = worker.check(&dmabuf);
+                            if done.send(Answer::Checked { id, ok }).is_err() {
+                                return;
+                            }
+                            worker.note(seen.load(Ordering::Relaxed), None);
+                        }
+                        Job::Bound(settled) => worker.note(seen.load(Ordering::Relaxed), Some(settled)),
+                        Job::Gone => {
+                            worker.look_until = Some(Instant::now() + LOOK_FOR);
+                            worker.note(seen.load(Ordering::Relaxed), None);
+                        }
+                    }
+                    // Checks first; the freeing once none waits (or too
+                    // much waits to be freed).
+                    job = rx.try_recv().ok();
+                    if job.is_some() && worker.released() > MOST_HELD {
+                        worker.free();
+                    }
+                }
+                worker.free();
             }
         });
-        Checks { tx, pending: HashMap::new(), next: 0 }
+        Checks { tx, pending: HashMap::new(), next: 0, frames, renderer, spare }
     }
 
     /// Check `dmabuf` on the worker, telling `notifier` later; or, if the
@@ -112,11 +363,38 @@ impl Checks {
     pub fn start(&mut self, dmabuf: Dmabuf, notifier: ImportNotifier) -> Option<(Dmabuf, ImportNotifier)> {
         let id = self.next;
         self.next += 1;
-        if self.tx.send((id, dmabuf.clone())).is_err() {
+        if self.tx.send(Job::Check(id, dmabuf.clone())).is_err() {
             return Some((dmabuf, notifier));
         }
         self.pending.insert(id, (dmabuf, notifier, Gate::default()));
         None
+    }
+
+    /// The renderer imported a buffer (a bind in its GPU address space).
+    pub fn bound(&self) {
+        let _ = self.tx.send(Job::Bound(None));
+    }
+
+    /// A client let go of a buffer (it may go once its surface does).
+    pub fn gone(&self) {
+        let _ = self.tx.send(Job::Gone);
+    }
+
+    /// A bind in the renderer, asked for ([`Answer::Bind`]), after
+    /// `settle` (the renderer's textures of buffers gone dropped, and the
+    /// GPU waited for, so the driver lets go of them): cheap, what it lets
+    /// go of held by the worker.
+    pub fn bind_renderer(&self, settle: impl FnOnce()) {
+        let Some(spare) = self.spare.lock().unwrap().clone() else { return };
+        let at = Instant::now();
+        settle();
+        bind(&self.renderer, &spare);
+        let _ = self.tx.send(Job::Bound(Some(at)));
+    }
+
+    /// The renderer finished a frame (for when it has let a buffer go).
+    pub fn frame_done(&self) {
+        self.frames.fetch_add(1, Ordering::Relaxed);
     }
 
     /// What a commit of `dmabuf` must wait for, while it is being checked.
@@ -124,9 +402,9 @@ impl Checks {
         self.pending.values().find(|(d, _, _)| d == dmabuf).map(|(_, _, g)| g.clone())
     }
 
-    /// The buffer `p` answers for, who to tell, and the gate to open once
+    /// The buffer checked `id` is, who to tell, and the gate to open once
     /// the renderer has it.
-    pub fn finish(&mut self, p: &Prepared) -> Option<(Dmabuf, ImportNotifier, Gate)> {
-        self.pending.remove(&p.id)
+    pub fn finish(&mut self, id: u64) -> Option<(Dmabuf, ImportNotifier, Gate)> {
+        self.pending.remove(&id)
     }
 }

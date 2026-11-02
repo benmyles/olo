@@ -43,7 +43,14 @@ like pixel alignment is.
    the desktop. Nor on the GPU driver: a client's new buffer is checked
    (its first import, milliseconds on some GPUs, every frame of a resize)
    on a worker (`dmabuf_check`), and a commit showing it waits for that
-   rather than importing it on the loop. Measure with
+   rather than importing it on the loop. The worker checks on a GPU device
+   of its own (Mesa locks per device, and finishing a frame takes the
+   renderer's) and holds each buffer till the renderer has let it go, so
+   the kernel's freeing of old buffers (1–4 ms a window-sized one, done in
+   the next bind into a GPU address space) happens on the worker, never in
+   the renderer's bind under its lock. A bind of the renderer's own big
+   buffers' leftovers (a screenshot's) still lands in its next import:
+   keep app_server's own big GPU buffers few and long-lived. Measure with
    `tools/dev/perf-fuzz` (`{"type":"timings"}` names what held the loop;
    a dispatch of clients' requests names the request in it that took
    most of it: a commit by its role, a new popup, a popup's grab, as

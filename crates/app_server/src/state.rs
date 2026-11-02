@@ -1709,6 +1709,8 @@ pub trait Backend {
     fn dmabuf_gate(&self, _dmabuf: &smithay::backend::allocator::dmabuf::Dmabuf) -> Option<crate::dmabuf_check::Gate> {
         None
     }
+    /// A client let go of a buffer (`dmabuf_check`: what it holds).
+    fn buffer_gone(&self) {}
     const HAS_RELATIVE_MOTION: bool = false;
     const HAS_GESTURES: bool = false;
     /// Running as the real desktop session (not nested for development).

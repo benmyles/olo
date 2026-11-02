@@ -546,7 +546,12 @@ def run_app(b, app, scale):
             break
         time.sleep(0.1)
     if not c:
-        print(f"     {tag}: its window has no frame")
+        print(f"     {tag}: its window has no frame: {w}")
+        # Ended all the same, or the next scale's launch is handed to it.
+        s.req({"type": "close", "id": wid})
+        time.sleep(0.5)
+        if s.ours(pid):
+            os.kill(pid, 15)
         return
     content = (c["x"], c["y"], c["width"], c["height"])
     s.move(content[0] + content[2] - 3, content[1] + content[3] - 3)
@@ -749,6 +754,13 @@ def run_overview(b):
     st = b.measure("overview", "open, walk, leave", [], out_and_back)
     if (s.req({"type": "overview"}) or {}).get("overview", {}).get("shown") is not False:
         st.failures.append("still out after Esc")
+    # Closed as a person closes them: an app ended with its windows open
+    # gets them back where they were when it starts again (DeskCalc's on
+    # the other workspace, out of sight of the next scale's launch).
+    for w in s.windows():
+        if w["id"] not in before:
+            s.req({"type": "close", "id": w["id"]})
+    time.sleep(0.5)
     for p in pids:
         if s.ours(p):
             os.kill(p, 15)

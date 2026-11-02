@@ -106,7 +106,9 @@ impl AnvilState<HeadlessData> {
     /// Import a checked buffer, tell the client whether it is good, and let
     /// its commits waiting for that through.
     fn dmabuf_checked(&mut self, dmabuf: Dmabuf, notifier: ImportNotifier, ok: bool, gate: Option<crate::dmabuf_check::Gate>) {
-        if ok && self.backend_data.renderer.import_dmabuf(&dmabuf, None).is_ok() {
+        let imported = ok && self.backend_data.renderer.import_dmabuf(&dmabuf, None).is_ok();
+        self.backend_data.dmabuf_checks.bound();
+        if imported {
             let _ = notifier.successful::<AnvilState<HeadlessData>>();
         } else {
             notifier.failed();
@@ -121,6 +123,9 @@ impl AnvilState<HeadlessData> {
 impl Backend for HeadlessData {
     fn dmabuf_gate(&self, dmabuf: &Dmabuf) -> Option<crate::dmabuf_check::Gate> {
         self.dmabuf_checks.gate(dmabuf)
+    }
+    fn buffer_gone(&self) {
+        self.dmabuf_checks.gone();
     }
     fn seat_name(&self) -> String {
         "headless".into()
@@ -313,13 +318,25 @@ pub fn run_headless(size_arg: Option<&str>) {
     };
 
     let (checked, answers) = smithay::reexports::calloop::channel::channel();
-    let dmabuf_checks = crate::dmabuf_check::Checks::new(renderer.egl_context().display().clone(), checked);
+    let dmabuf_checks = crate::dmabuf_check::Checks::new(renderer.egl_context().display().clone(), Some(node.clone()), checked);
     event_loop
         .handle()
         .insert_source(answers, |event, _, state: &mut AnvilState<HeadlessData>| {
-            let smithay::reexports::calloop::channel::Event::Msg(p) = event else { return };
-            if let Some((dmabuf, notifier, gate)) = state.backend_data.dmabuf_checks.finish(&p) {
-                state.dmabuf_checked(dmabuf, notifier, p.image.is_some(), Some(gate));
+            use crate::dmabuf_check::Answer;
+            match event {
+                smithay::reexports::calloop::channel::Event::Msg(Answer::Checked { id, ok }) => {
+                    if let Some((dmabuf, notifier, gate)) = state.backend_data.dmabuf_checks.finish(id) {
+                        state.dmabuf_checked(dmabuf, notifier, ok, Some(gate));
+                    }
+                }
+                smithay::reexports::calloop::channel::Event::Msg(Answer::Bind) => {
+                    let data = &mut state.backend_data;
+                    data.dmabuf_checks.bind_renderer(|| {
+                        let _ = smithay::backend::renderer::Renderer::cleanup_texture_cache(&mut data.renderer);
+                        let _ = data.renderer.with_context(|gl| unsafe { gl.Finish() });
+                    });
+                }
+                smithay::reexports::calloop::channel::Event::Closed => {}
             }
         })
         .expect("dmabuf checks");
@@ -608,6 +625,7 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) -> bool {
         if bind.elapsed() > std::time::Duration::from_millis(4) {
             tracing::info!("slow frame on {name}: {:.1} ms binding the target", bind.elapsed().as_secs_f64() * 1e3);
         }
+        data.dmabuf_checks.frame_done();
         render_output(
             output,
             &state.space,

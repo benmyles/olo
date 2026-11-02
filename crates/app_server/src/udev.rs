@@ -200,14 +200,17 @@ impl AnvilState<UdevData> {
     /// Import a checked buffer, tell the client whether it is good, and let
     /// its commits waiting for that through.
     fn dmabuf_checked(&mut self, dmabuf: Dmabuf, notifier: ImportNotifier, ok: bool, gate: Option<crate::dmabuf_check::Gate>) {
-        if ok
+        let imported = ok
             && self
                 .backend_data
                 .gpus
                 .single_renderer(&self.backend_data.primary_gpu)
                 .and_then(|mut renderer| renderer.import_dmabuf(&dmabuf, None))
-                .is_ok()
-        {
+                .is_ok();
+        if let Some(checks) = &self.backend_data.dmabuf_checks {
+            checks.bound();
+        }
+        if imported {
             if dmabuf.node().is_none() {
                 dmabuf.set_node(self.backend_data.primary_gpu);
             }
@@ -359,6 +362,11 @@ fn abs_capable(sysname: &str, code: u32) -> bool {
 impl Backend for UdevData {
     fn dmabuf_gate(&self, dmabuf: &Dmabuf) -> Option<crate::dmabuf_check::Gate> {
         self.dmabuf_checks.as_ref()?.gate(dmabuf)
+    }
+    fn buffer_gone(&self) {
+        if let Some(checks) = &self.dmabuf_checks {
+            checks.gone();
+        }
     }
     const HAS_RELATIVE_MOTION: bool = true;
     const HAS_GESTURES: bool = true;
@@ -1006,11 +1014,29 @@ pub fn run_udev() {
     state.backend_data.dmabuf_state = Some((dmabuf_state, global));
     let egl_display = AsRef::<GlesRenderer>::as_ref(&renderer).egl_context().display().clone();
     let (checked, answers) = smithay::reexports::calloop::channel::channel();
-    state.backend_data.dmabuf_checks = Some(crate::dmabuf_check::Checks::new(egl_display, checked));
+    let node = primary_gpu.dev_path_with_type(smithay::backend::drm::NodeType::Render).or_else(|| primary_gpu.dev_path());
+    state.backend_data.dmabuf_checks = Some(crate::dmabuf_check::Checks::new(egl_display, node, checked));
     let _ = state.handle.insert_source(answers, |event, _, state: &mut AnvilState<UdevData>| {
-        let smithay::reexports::calloop::channel::Event::Msg(p) = event else { return };
-        if let Some((dmabuf, notifier, gate)) = state.backend_data.dmabuf_checks.as_mut().and_then(|c| c.finish(&p)) {
-            state.dmabuf_checked(dmabuf, notifier, p.image.is_some(), Some(gate));
+        use crate::dmabuf_check::Answer;
+        match event {
+            smithay::reexports::calloop::channel::Event::Msg(Answer::Checked { id, ok }) => {
+                if let Some((dmabuf, notifier, gate)) = state.backend_data.dmabuf_checks.as_mut().and_then(|c| c.finish(id)) {
+                    state.dmabuf_checked(dmabuf, notifier, ok, Some(gate));
+                }
+            }
+            smithay::reexports::calloop::channel::Event::Msg(Answer::Bind) => {
+                let data = &mut state.backend_data;
+                if let Some(checks) = &data.dmabuf_checks {
+                    let (gpus, primary) = (&mut data.gpus, data.primary_gpu);
+                    checks.bind_renderer(|| {
+                        if let Ok(mut renderer) = gpus.single_renderer(&primary) {
+                            let _ = smithay::backend::renderer::Renderer::cleanup_texture_cache(&mut renderer);
+                            let _ = AsMut::<GlesRenderer>::as_mut(&mut renderer).with_context(|gl| unsafe { gl.Finish() });
+                        }
+                    });
+                }
+            }
+            smithay::reexports::calloop::channel::Event::Closed => {}
         }
     });
 
@@ -2413,6 +2439,9 @@ impl AnvilState<UdevData> {
         );
         let took = start.elapsed();
         self.timings.frame(&output.name(), took);
+        if let Some(checks) = &self.backend_data.dmabuf_checks {
+            checks.frame_done();
+        }
         let parts = crate::render::take_parts();
         for (name, d) in &parts {
             self.timings.add(name, *d);

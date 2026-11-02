@@ -102,7 +102,9 @@ impl FullscreenSurface {
 }
 
 impl<BackendData: Backend> BufferHandler for AnvilState<BackendData> {
-    fn buffer_destroyed(&mut self, _buffer: &WlBuffer) {}
+    fn buffer_destroyed(&mut self, _buffer: &WlBuffer) {
+        self.backend_data.buffer_gone();
+    }
 }
 
 impl<BackendData: Backend> CompositorHandler for AnvilState<BackendData> {
