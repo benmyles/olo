@@ -119,6 +119,9 @@ pub struct WindowMeta {
     /// It would be a tile on a display in Focus mode (`shell::modes`):
     /// that display's number this turn.
     pub focus_on: Cell<Option<u32>>,
+    /// The display in Focus mode it's on this turn, tile or not (a panel
+    /// goes with its app's tiles there, and only there).
+    pub focus_display: Cell<Option<u32>>,
     /// Behind the window Focus shows: not drawn, not under the pointer.
     pub covered: Cell<bool>,
     /// Filling a display (`FullscreenSurface`): drawn by that display
@@ -183,6 +186,7 @@ impl WindowElement {
             put_with: Cell::new(None),
             tab_order: Cell::new(crate::shell::groups::next_tab_order()),
             focus_on: Cell::new(None),
+            focus_display: Cell::new(None),
             covered: Cell::new(false),
             fullscreen: Cell::new(false),
             focus_zoomed: Cell::new(false),
@@ -666,6 +670,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         window.set_activate(false);
         // Back, it is whatever Focus makes it then.
         window.meta().focus_on.set(None);
+        window.meta().focus_display.set(None);
         window.meta().covered.set(false);
         *window.meta().left_among.borrow_mut() = self.display_frames();
         self.space.unmap_elem(window);

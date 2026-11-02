@@ -117,6 +117,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         for w in windows {
             let m = w.meta();
             m.focus_on.set(None);
+            m.focus_display.set(None);
             m.covered.set(false);
             if !m.focus_zoomed.replace(false) || !self.window_output(&w).is_some_and(|o| outputs.contains(&o)) || !self.is_zoomed(&w) {
                 continue;
@@ -139,7 +140,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         } else {
             Vec::new()
         };
-        if focus.is_empty() && !self.space.elements().any(|w| w.meta().focus_on.get().is_some() || w.meta().focus_zoomed.get()) {
+        if focus.is_empty() && !self.space.elements().any(|w| w.meta().focus_on.get().is_some() || w.meta().focus_display.get().is_some() || w.meta().focus_zoomed.get()) {
             return;
         }
         // Not while a window is held: it zooms where it is let go.
@@ -149,13 +150,11 @@ impl<B: Backend + 'static> AnvilState<B> {
             || self.tile_drag.is_some();
         let windows: Vec<WindowElement> = self.space.elements().cloned().collect();
         for w in &windows {
-            let unit = if focus.is_empty() || !w.meta().placed.get() || w.rolled() || self.floats(w) {
-                None
-            } else {
-                self.window_output(w).and_then(|o| focus.iter().position(|f| *f == o))
-            };
+            let display = if focus.is_empty() { None } else { self.window_output(w).and_then(|o| focus.iter().position(|f| *f == o)) };
+            let unit = display.filter(|_| w.meta().placed.get() && !w.rolled() && !self.floats(w));
             let m = w.meta();
             m.focus_on.set(unit.map(|i| i as u32));
+            m.focus_display.set(display.map(|i| i as u32));
             if held {
                 continue;
             }
@@ -264,13 +263,20 @@ pub fn mark_covered(space: &Space<WindowElement>) {
         let covered = match w.0.toplevel().and_then(|t| t.parent()) {
             Some(parent) => space.elements().any(|p| p.meta().covered.get() && p.wl_surface().as_deref() == Some(&parent)),
             // An app's own panel (StyledEdit's Find), as BeOS's floating
-            // app feel: shown while one of its app's windows is, covered
-            // when they all are. An app of only panels (DeskCalc) shows.
-            None => {
-                let app = w.app_id();
-                let mut units = space.elements().filter(|u| u.meta().focus_on.get().is_some() && u.app_id() == app).peekable();
-                units.peek().is_some() && units.all(|u| u.meta().covered.get())
-            }
+            // app feel: shown while one of its app's windows on its
+            // display is, covered when they all are. An app of only
+            // panels (DeskCalc) shows, and so does every window on a
+            // display not in Focus: the app's windows elsewhere are
+            // theirs to show (Chrome on another display went when
+            // Terminal was chosen over Chrome on this one).
+            None => match w.meta().focus_display.get() {
+                Some(d) => {
+                    let app = w.app_id();
+                    let mut units = space.elements().filter(|u| u.meta().focus_on.get() == Some(d) && u.app_id() == app).peekable();
+                    units.peek().is_some() && units.all(|u| u.meta().covered.get())
+                }
+                None => false,
+            },
         };
         w.meta().covered.set(covered);
     }

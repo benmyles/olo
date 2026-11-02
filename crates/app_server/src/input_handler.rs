@@ -249,8 +249,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 }
             }
             S::HideApp => {
-                let Some(app) = focused.as_ref().map(|w| w.app_id()) else { return };
-                let windows: Vec<_> = self.all_windows().into_iter().filter(|w| w.app_id() == app && self.shows(w)).collect();
+                // Its windows on this display: those on another are
+                // theirs to hide.
+                let Some(focused) = focused else { return };
+                let (app, here) = (focused.app_id(), self.window_output(&focused));
+                let windows: Vec<_> = self.all_windows().into_iter().filter(|w| w.app_id() == app && self.shows(w) && self.window_output(w) == here).collect();
                 for w in &windows {
                     self.minimize_window(w);
                 }
