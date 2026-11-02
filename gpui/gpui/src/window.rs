@@ -1025,6 +1025,11 @@ pub struct Window {
     /// something every window shows changed). A window's own `refresh`
     /// leaves them: their keys say all they depend on.
     pub(crate) memos_reset: bool,
+    /// Olo: the last draw gave the platform the frame's last input
+    /// handler (taken off the frame's list, put back as the next draw
+    /// starts): its place is kept there whether or not the platform still
+    /// has it.
+    gave_input_handler: bool,
     pub(crate) refreshing: bool,
     pub(crate) activation_observers: SubscriberSet<(), AnyObserver>,
     pub(crate) focus: Option<FocusId>,
@@ -1480,6 +1485,7 @@ impl Window {
             refreshing: false,
             last_draw_refreshed: false,
             memos_reset: false,
+            gave_input_handler: false,
             activation_observers: SubscriberSet::new(),
             focus: None,
             focus_enabled: true,
@@ -2209,9 +2215,15 @@ impl Window {
         self.invalidator.set_dirty(false);
         self.requested_autoscroll = None;
 
-        // Restore the previously-used input handler.
-        if let Some(input_handler) = self.platform_window.take_input_handler() {
-            self.rendered_frame.input_handlers.push(Some(input_handler));
+        // Restore the previously-used input handler. (Olo: or keep its
+        // place, if the platform hasn't it now: a draw while an event has
+        // it out (`dispatch_input`). The frame's paint indices count it,
+        // and replaying a memo painted after it sliced past the list's
+        // end: Notifications' History panicked as it opened.)
+        match self.platform_window.take_input_handler() {
+            Some(input_handler) => self.rendered_frame.input_handlers.push(Some(input_handler)),
+            None if self.gave_input_handler => self.rendered_frame.input_handlers.push(None),
+            None => {}
         }
         let started = Instant::now();
         self.draw_roots(cx, started);
@@ -2228,9 +2240,13 @@ impl Window {
         self.next_frame.window_active = self.active.get();
 
         // Register requested input handler with the platform window.
+        // (Olo: one replayed from a place kept empty has none to give.)
+        self.gave_input_handler = false;
         if let Some(input_handler) = self.next_frame.input_handlers.pop() {
-            self.platform_window
-                .set_input_handler(input_handler.unwrap());
+            self.gave_input_handler = true;
+            if let Some(input_handler) = input_handler {
+                self.platform_window.set_input_handler(input_handler);
+            }
         }
 
         self.layout_engine.as_mut().unwrap().clear();
