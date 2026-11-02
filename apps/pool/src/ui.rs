@@ -639,7 +639,7 @@ fn header(a: &PoolApp, pool: &Pool, p: &olo_ui::palette::Palette, app: &Entity<P
         0 => "No requests now · click a cell for its details".into(),
         _ => "Click a cell for its details".into(),
     });
-    // (A row a control tall, as the egui kit's rows are at least.)
+    // (A row a control tall.)
     let mut checks = div().flex().items_center().h(px(m::CONTROL_HEIGHT)).gap(px(m::SPACING * 2.0));
     for prov in PROVIDERS {
         let on = a.clients.is_some_and(|c| c[client_index(prov)]);

@@ -1,5 +1,4 @@
-//! Live graphs, LED cell grids and legends, as the egui kit draws them
-//! (its `graph`, `CellGrid` and `dashboard::legend`).
+//! Live graphs, LED cell grids and legends.
 //!
 //! A [`Graph`] (Haiku's ActivityMonitor, a Mac's Activity Monitor) draws
 //! series of timed samples as lines (GPU segments), each over a faint

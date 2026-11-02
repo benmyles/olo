@@ -1,6 +1,6 @@
-//! Points, sizes, rects and colours, as the modules use them: the names
-//! of the egui kit they were first written for, so the modules read the
-//! same, but no toolkit's. Points are logical (a screen's points).
+//! Points, sizes, rects and colours, as the modules use them (named as
+//! egui named them, which the modules were first written for), in no
+//! toolkit's types. Points are logical (a screen's points).
 
 use std::ops::{Add, AddAssign, Div, Mul, Sub};
 

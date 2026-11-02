@@ -5,9 +5,9 @@
 //! [`COMMAND`]), which calls [`open`].
 //!
 //! ```ignore
-//! menu.item(olo_kit::tracker::LABEL, olo_kit::tracker::COMMAND, None)
+//! menu.item(olo_ui::tracker::LABEL, olo_ui::tracker::COMMAND, None)
 //! // and for the command:
-//! olo_kit::tracker::open(&cwd)
+//! olo_ui::tracker::open(&cwd)
 //! ```
 
 use std::{io, path::Path};

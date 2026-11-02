@@ -695,7 +695,7 @@ impl Doc {
         let Content::Other(prev) = &self.content else { return };
         let Some(Body::Image { full, .. }) = prev.read(cx).body() else { return };
         let (proxy, id) = (olo_ui::proxy(cx), self.me(cx));
-        let editor = Editor::new_with(self.path.clone(), (full[0] as u32, full[1] as u32), false, move |ev| proxy.send(Msg::Edit(id, ev)));
+        let editor = Editor::new(self.path.clone(), (full[0] as u32, full[1] as u32), move |ev| proxy.send(Msg::Edit(id, ev)));
         self.edit = Some(ImageEdit { editor, crop: None });
     }
 

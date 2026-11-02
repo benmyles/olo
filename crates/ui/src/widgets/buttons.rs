@@ -1,6 +1,6 @@
-//! BeOS's push button, check box and radio button, drawn as the egui
-//! kit draws them (`olo_kit::widgets`): bevels and gradients on device
-//! pixels, the label's capitals centred, pushed in by a line while held.
+//! BeOS's push button, check box and radio button: bevels and gradients
+//! on device pixels, the label's capitals centred, pushed in by a line
+//! while held.
 
 use std::rc::Rc;
 
@@ -326,7 +326,7 @@ impl RenderOnce for RadioButton {
             } else {
                 style::c(bg)
             };
-            // The ring a point wide outside the face (as egui strokes it).
+            // The ring a point wide outside the face.
             circle(window, cx0, cy0, 6.5, style::shade(&p, bg, 1.55));
             circle(window, cx0, cy0, 5.5, face);
             if selected {

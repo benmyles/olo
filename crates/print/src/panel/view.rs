@@ -1,4 +1,4 @@
-//! The Print panel on Olo's GPUI, as the egui one draws it: where to (a
+//! The Print panel on Olo's GPUI: where to (a
 //! printer CUPS has, or a PDF), on what paper, how many copies, which
 //! pages; Cancel, and Print (Save… for a PDF). The printers are asked
 //! for on a worker; until they come the choice is a PDF, then the
@@ -189,7 +189,7 @@ impl Render for PrintView {
         dests.extend(self.printers().iter().map(|p| SharedString::from(if p.stopped() { format!("{} (stopped)", p.info) } else { p.info.clone() })));
         let papers: Vec<SharedString> = PAPERS.iter().map(|p| SharedString::from(p.label)).collect();
         let to_pdf = self.dest == 0;
-        // (The pop-ups across the panel, as the egui one's.)
+        // (The pop-ups across the panel.)
         let full = SIZE.0 as f32 - 2.0 * m::WINDOW_INSET;
         let dest = MenuField::new("print-dest", dests, self.dest).label("Printer:").divider(divider).width(full).on_change({
             let me = me.clone();

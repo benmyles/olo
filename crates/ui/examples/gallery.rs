@@ -1,6 +1,6 @@
-//! The GPUI kit's widgets in one window, laid out as the egui kit's demo
-//! (crates/kit/examples/demo.rs, its Controls tab), for comparing the
-//! two closely (`tsession` at every scale and theme).
+//! The GPUI kit's widgets in one window, for looking at them closely
+//! (`tsession` at every scale and theme), and the speed benchmark's
+//! kit app (`tools/dev/bench`).
 
 use olo_ui::{
     WindowOptions,

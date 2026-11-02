@@ -1,5 +1,5 @@
-//! The file panels (Open, Save, a folder), as the egui kit's demo opens
-//! them, for comparing: each answer is said under the buttons.
+//! The file panels (Open, Save, a folder), each a button away: each
+//! answer is said under the buttons.
 
 use olo_ui::{
     WindowOptions,

@@ -10,9 +10,9 @@
 //! The session owns the Wayland and IPC listening sockets and hands them to
 //! app_server, so they outlive it. `reload` stops app_server (it saves the
 //! window layout), starts the new binary on the same sockets, and every
-//! client reconnects by itself and recreates its windows — or, if its own
-//! binary was upgraded, re-executes the new version with its saved state
-//! (see `olo_kit::run`). Nobody has to log out. If olo-session itself
+//! client keeps its windows through olo-wlproxy — or, if its own binary
+//! was upgraded, re-executes the new version with its saved state (see
+//! `olo_ui::on_upgrade`). Nobody has to log out. If olo-session itself
 //! was upgraded it re-executes first, keeping its children and sockets.
 //!
 //! An installed session also watches the tree it was built in and offers

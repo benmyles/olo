@@ -1,4 +1,4 @@
-//! Formatted documents set as a page, as the egui view sets them: a
+//! Formatted documents set as a page: a
 //! measure of at most `MEASURE`, centred; body text on a 20-point line;
 //! headings with room above them (a rule under the first two levels);
 //! lists with hanging indents, their numbers lined up on the right and

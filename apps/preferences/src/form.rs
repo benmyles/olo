@@ -1,6 +1,6 @@
 //! A panel's controls, top to bottom, each bound to its part of the
-//! settings: `Ui` collects them as a panel's `ui` function adds them (as
-//! the egui kit's `Ui` did), and a change made with one goes to
+//! settings: `Ui` collects them as a panel's `ui` function adds them,
+//! and a change made with one goes to
 //! [`Prefs::edit`] (app_server's copy, and every window showing it). A
 //! panel's own state (what it is busy with, what is selected) is changed
 //! through [`Ui::on_view`], on its window's view.
@@ -230,7 +230,7 @@ impl<'a, 'b> Ui<'a, 'b> {
 }
 
 /// The widest of `labels`, and the gap after it: where controls in a
-/// column of labelled ones begin (the egui kit's `divider_for`).
+/// column of labelled ones begin.
 pub fn divider_for(window: &mut Window, labels: &[&str]) -> f32 {
     labels
         .iter()

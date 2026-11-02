@@ -1,5 +1,5 @@
-//! Searching in the GPUI kit, as in the egui one: the query language,
-//! filters and suggestions (`olo_kit_base::search`, shared by both kits),
+//! Searching, the same in every app: the query language, filters and
+//! suggestions (`olo_kit_base::search`),
 //! a search field that colours the filters typed and suggests them as
 //! they are ([`SearchField`]), and a bar of filter menus ([`FilterBar`])
 //! editing the same text, so what is typed and what is chosen always

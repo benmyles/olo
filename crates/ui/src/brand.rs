@@ -1,6 +1,6 @@
 //! Olo's brand: the wordmark (`data/brand`, or the current theme's
 //! `data/themes/<id>/brand`), drawn crisp at the size asked for, in its
-//! light or dark version by the palette, as the egui kit's `brand`: the
+//! light or dark version by the palette: the
 //! source decoded once, off the UI thread, and trimmed to what it draws;
 //! each size averaged down from it once, a texel to a device pixel.
 

@@ -1,4 +1,4 @@
-//! BAlert, as the egui kit draws it: a darker stripe down the left with
+//! BAlert: a darker stripe down the left with
 //! the icon straddling it, the content in a column beside it, and the
 //! buttons along the bottom right (the last the default). For alerts
 //! with fields (a password), [`Conversation`] keeps PAM's side of it and

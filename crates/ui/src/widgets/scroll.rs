@@ -1,5 +1,5 @@
-//! BeOS scroll bars and the scroll view that wears them, drawn as the
-//! egui kit draws them: a recessed track, arrow buttons at both ends
+//! BeOS scroll bars and the scroll view that wears them: a recessed
+//! track, arrow buttons at both ends
 //! (held, they scroll on), a bevelled knob with three grip lines, sized
 //! by how much of the content shows; a click in the track pages towards
 //! it. A [`ScrollBar`] drives any GPUI `ScrollHandle` (a `div` that
@@ -211,7 +211,7 @@ impl Element for ScrollBar {
         });
         let g = self.geometry(bar, window);
         let enabled = g.max > 0.5;
-        // An arrow held: on it scrolls, after a moment, at the egui kit's
+        // An arrow held: on it scrolls, after a moment, at a steady
         // pace.
         let held = state.borrow().held;
         if let Some(h) = held

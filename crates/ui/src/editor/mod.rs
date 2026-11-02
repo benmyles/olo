@@ -1,6 +1,5 @@
 //! A text editor for documents of any length, on Olo's GPUI: BeOS's
-//! BTextView, as StyledEdit's window has it (the egui kit's `editor`,
-//! moved). Each paragraph is laid out on its own ([`layout`]) and only
+//! BTextView, as StyledEdit's window has it. Each paragraph is laid out on its own ([`layout`]) and only
 //! while it shows; a layout is kept while its paragraph, styles and width
 //! stay the same. Paragraphs out of sight keep an estimated height; those
 //! within a screen of the view are measured before they come into it (a

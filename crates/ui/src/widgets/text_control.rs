@@ -45,7 +45,7 @@ impl RenderOnce for TextControl {
         let divider = self.label.as_ref().map(|l| self.divider.unwrap_or_else(|| f32::from(style::text_width(window, l.clone(), style::PLAIN_SIZE, font.clone())).ceil() + m::LABEL_GAP));
         let focused = self.field.read(cx).is_focused(window);
         // A field that can't be used (`TextField::set_enabled(false)`):
-        // its label and well faded, as the egui kit's.
+        // its label and well faded.
         let enabled = self.field.read(cx).enabled();
         let label = self.label.clone();
         let mut row = div().relative().h(px(m::CONTROL_HEIGHT)).flex_shrink_0();

@@ -1,8 +1,8 @@
 //! BeOS menus: a [`Menu`] of items (commands, separators, submenus),
 //! shown as a popup over a window ([`popup`], [`context_menu`]): a
 //! Wayland popup, so it can reach past the window's edge, which the
-//! compositor keeps on screen (flipped or slid). Drawn as the egui kit
-//! draws them: the menu colour in a dark outline with a light inner edge
+//! compositor keeps on screen (flipped or slid). Drawn as BeOS drew
+//! them: the menu colour in a dark outline with a light inner edge
 //! on top and left, the item under the pointer or chosen from the
 //! keyboard in the selection colours, check marks, separators as a
 //! groove, a triangle for a submenu, which opens beside its item. ↑ ↓
@@ -810,8 +810,7 @@ struct Bars(std::collections::HashMap<gpui::WindowId, Bar>);
 
 impl gpui::Global for Bars {}
 
-/// BMenuBar: the window's menus across its top, as the egui kit draws
-/// them (the menu colour, a light top and left edge, a dark line under
+/// BMenuBar: the window's menus across its top (the menu colour, a light top and left edge, a dark line under
 /// it; the open menu's title in the selection colours). A press on a
 /// title opens its menu as a popup under it; with one open, the pointer
 /// sliding across the bar opens the others; a press on the open title

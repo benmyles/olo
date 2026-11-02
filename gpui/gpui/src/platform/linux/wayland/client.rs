@@ -3078,8 +3078,7 @@ fn hung_up(connection: &Connection) -> bool {
 /// is olo-wlproxy's socket, which keeps outside programs' connections
 /// alive across app_server restarts by replaying their objects; Olo's
 /// own programs connect to app_server's direct socket beside it,
-/// `olo-<display>-direct`, as the egui kit does, and come back by
-/// themselves (`ON_COMPOSITOR_LOST`: re-executed with their state). Through
+/// `olo-<display>-direct`, and come back by themselves (`ON_COMPOSITOR_LOST`: re-executed with their state). Through
 /// the proxy a GPUI app kept its old configures, outputs and frame state
 /// over a replay and was left with dead windows (2026-11-01).
 fn connect() -> Result<Connection, wayland_client::ConnectError> {

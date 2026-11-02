@@ -1,4 +1,4 @@
-//! BColorControl, as the egui kit draws it: grey, red, green and blue
+//! BColorControl: grey, red, green and blue
 //! ramps from black, each with a marker you click or drag (grey sets all
 //! three; the lane pressed in keeps the drag, wherever it wanders), and
 //! Red/Green/Blue number fields beside them, their text following the

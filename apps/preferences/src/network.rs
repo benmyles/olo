@@ -720,7 +720,7 @@ fn details(ui: &mut Ui, st: &mut State, status: &Status) {
         ("Speed:", d.speed.map_or(none.clone(), |s| if s >= 1000 && s % 1000 == 0 { format!("{} Gb/s", s / 1000) } else { format!("{s} Mb/s") })),
     ];
     let lines = rows.into_iter().map(|(label, value)| {
-        // The label right-aligned in its column, as the egui kit's form rows.
+        // The label right-aligned in its column, as form rows have it.
         div().flex().flex_row().child(div().w(px(DIVIDER)).flex_shrink_0().flex().justify_end().pr(px(m::LABEL_GAP)).child(StringView::new(label))).child(StringView::new(value))
     });
     ui.add(div().flex().flex_col().children(lines.collect::<Vec<_>>()));

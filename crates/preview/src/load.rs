@@ -29,9 +29,7 @@ pub type Image = Arc<Bitmap>;
 pub enum Body {
     /// `full` is the picture's own size in pixels (the image may have
     /// been scaled down to fit a texture).
-    /// `smaller` holds the image halved, again and again (GPU mipmaps
-    /// aren't available), so a big picture shrinks without shimmer.
-    Image { image: Image, smaller: Vec<Image>, full: [f32; 2], note: String },
+    Image { image: Image, full: [f32; 2], note: String },
     /// A PDF: pages arrive one by one (`Update::Page`).
     /// `want` asks the worker to render a page (it answers with
     /// `Update::Page`).
@@ -62,30 +60,28 @@ pub type Send<'a> = &'a mut dyn FnMut(Update);
 
 /// Load `entry`, posting what is found to `send` (several times for
 /// documents that stream in). Stops early once `cancel` is set.
-/// What a view wants of pictures: their longest side at most, and
-/// whether halved copies are made (the egui views', which have no
-/// mipmaps; the GPUI ones resample exactly instead).
+/// What a view wants of pictures: their longest side at most (the
+/// views resample them exactly to the size they're shown at).
 #[derive(Clone, Copy, Debug)]
 pub struct Want {
     pub max_image: u32,
-    pub halvings: bool,
 }
 
 pub fn load(entry: &Item, want: Want, cancel: &Arc<AtomicBool>, send: Send) {
-    let Want { max_image, halvings: halve } = want;
+    let Want { max_image } = want;
     let ext = entry.path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     let name = entry.name.to_lowercase();
     let result = if entry.is_dir {
         archive::folder(&entry.path, cancel).map(Update::Body)
     } else {
         match (entry.kind, ext.as_str()) {
-            (_, "svg" | "svgz") => svg(&entry.path, max_image / 2, halve),
+            (_, "svg" | "svgz") => svg(&entry.path, max_image / 2),
             (_, "pdf") => return pdf::load(&entry.path, cancel, send),
             (_, "md" | "markdown" | "mdown") => doc::markdown(&entry.path),
             (_, "docx" | "odt" | "rtf" | "pptx" | "odp") => doc::office(&entry.path, &ext),
             (_, "xlsx" | "xlsm" | "xlsb" | "xls" | "ods" | "csv" | "tsv") => doc::table(&entry.path, &ext),
             (_, "ttf" | "otf" | "ttc" | "otc") => font(&entry.path),
-            (Kind::Image, _) => image(&entry.path, max_image, halve),
+            (Kind::Image, _) => image(&entry.path, max_image),
             (Kind::Audio, _) | (_, "opus" | "aiff" | "aif" | "caf" | "alac" | "wma" | "mka") => media::audio(&entry.path),
             (Kind::Video, _) => media::video(&entry.path, cancel),
             (Kind::Archive, _) | (_, "jar" | "apk" | "epub" | "whl" | "crate") => archive::archive(&entry.path, &name, cancel),
@@ -115,46 +111,20 @@ fn looks_like_text(path: &Path) -> bool {
     }
 }
 
-/// `img` at half size, quarter size, … down to a few hundred pixels: each
-/// pixel the average of four (the colours are premultiplied, so that is
-/// right for transparency too).
-pub fn halvings(img: &Bitmap) -> Vec<Image> {
-    let mut out: Vec<Image> = Vec::new();
-    let mut cur = img;
-    while cur.size[0].max(cur.size[1]) > 512 && cur.size[0] >= 2 && cur.size[1] >= 2 {
-        let (w, h) = (cur.size[0] / 2, cur.size[1] / 2);
-        let stride = cur.size[0] * 4;
-        let mut px = Vec::with_capacity(w * h * 4);
-        for y in 0..h {
-            let (a, b) = (&cur.rgba[2 * y * stride..], &cur.rgba[(2 * y + 1) * stride..]);
-            for x in 0..w {
-                for i in 0..4 {
-                    let q = u32::from(a[8 * x + i]) + u32::from(a[8 * x + 4 + i]) + u32::from(b[8 * x + i]) + u32::from(b[8 * x + 4 + i]);
-                    px.push(((q + 2) / 4) as u8);
-                }
-            }
-        }
-        out.push(Arc::new(Bitmap::from_rgba_premultiplied([w, h], px)));
-        cur = out.last().expect("pushed");
-    }
-    out
-}
-
 pub fn color_image(rgba: image::RgbaImage) -> Image {
     let size = [rgba.width() as usize, rgba.height() as usize];
     Arc::new(Bitmap::from_rgba_unmultiplied(size, rgba.as_raw()))
 }
 
-fn image(path: &Path, max: u32, halve: bool) -> Result<Update, String> {
+fn image(path: &Path, max: u32) -> Result<Update, String> {
     let (img, kind) = olo_images::open(path).map_err(|e| format!("This image can't be read ({e})."))?;
     let (w, h) = (img.width(), img.height());
     let img = if w.max(h) > max { img.resize(max, max, image::imageops::FilterType::Triangle) } else { img };
     let image = color_image(img.to_rgba8());
-    let smaller = if halve { halvings(&image) } else { Vec::new() };
-    Ok(Update::Body(Body::Image { image, smaller, full: [w as f32, h as f32], note: format!("{kind} image, {w} × {h}") }))
+    Ok(Update::Body(Body::Image { image, full: [w as f32, h as f32], note: format!("{kind} image, {w} × {h}") }))
 }
 
-fn svg(path: &Path, max: u32, halve: bool) -> Result<Update, String> {
+fn svg(path: &Path, max: u32) -> Result<Update, String> {
     let data = std::fs::read(path).map_err(|e| e.to_string())?;
     let data = if data.starts_with(&[0x1f, 0x8b]) {
         let mut out = Vec::new();
@@ -174,7 +144,6 @@ fn svg(path: &Path, max: u32, halve: bool) -> Result<Update, String> {
     resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(k, k), &mut pixmap.as_mut());
     let image = Arc::new(Bitmap::from_rgba_premultiplied([pixmap.width() as usize, pixmap.height() as usize], pixmap.take()));
     Ok(Update::Body(Body::Image {
-        smaller: if halve { halvings(&image) } else { Vec::new() },
         image,
         full: [size.width(), size.height()],
         note: format!("SVG drawing, {} × {}", size.width().round(), size.height().round()),
@@ -197,22 +166,4 @@ fn font(path: &Path) -> Result<Update, String> {
 /// Facts about an item for its footer when nothing else says more.
 pub fn summary(e: &Item) -> String {
     if e.is_dir { e.kind.name().into() } else { format!("{}, {}", e.kind.name(), fs::format_size(e.size)) }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn halvings_average_down_to_a_few_hundred() {
-        // A 1-pixel checkerboard of black and white averages to grey.
-        let (w, h) = (2048, 1100);
-        let pixels = (0..w * h).flat_map(|i| if (i % w + i / w) % 2 == 0 { [255; 4] } else { [0, 0, 0, 255] }).collect();
-        let img = Bitmap::from_rgba_premultiplied([w, h], pixels);
-        let levels = halvings(&img);
-        let sizes: Vec<[usize; 2]> = levels.iter().map(|l| l.size).collect();
-        assert_eq!(sizes, [[1024, 550], [512, 275]]);
-        let c = &levels[0].rgba[..4];
-        assert!((126..=129).contains(&c[0]) && c[3] == 255, "{c:?}");
-    }
 }

@@ -1,6 +1,5 @@
-//! Dragging out of a window to another app or a folder, as the egui
-//! kit's `dnd` does (Wayland's data device, through GPUI's
-//! `Window::start_drag`): the same data in several types, most faithful
+//! Dragging out of a window to another app or a folder (Wayland's data
+//! device, through GPUI's `Window::start_drag`): the same data in several types, most faithful
 //! first (files as `text/uri-list` and their paths as text), the actions
 //! the place it's dropped on may take, and a picture under the pointer:
 //! the thing's icon, its name below in the selection's colours. Start one

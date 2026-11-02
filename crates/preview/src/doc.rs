@@ -70,8 +70,8 @@ pub enum Block {
     /// Rows of cells, the first the header; each column's alignment.
     Table { align: Vec<Align>, rows: Vec<Row> },
     /// A picture on its own (Markdown's, from beside the document), at
-    /// most `MAX_PICTURE` wide, and halved again and again.
-    Picture { image: Image, smaller: Vec<Image>, alt: String },
+    /// most `MAX_PICTURE` wide.
+    Picture { image: Image, alt: String },
     Rule,
 }
 
@@ -175,11 +175,11 @@ impl Md<'_> {
         if let Some(path) = self.dir.and_then(|d| local(d, url))
             && self.pictures < MAX_PICTURES
             && self.table.is_none()
-            && let Some((image, smaller)) = picture(&path)
+            && let Some(image) = picture(&path)
         {
             self.pictures += 1;
             self.flush();
-            self.blocks.push(Block::Picture { image, smaller, alt });
+            self.blocks.push(Block::Picture { image, alt });
             return;
         }
         if !alt.trim().is_empty() {
@@ -253,8 +253,8 @@ fn local(dir: &Path, url: &str) -> Option<std::path::PathBuf> {
     path.is_file().then_some(path)
 }
 
-/// A picture from `path`, at most `MAX_PICTURE` wide, and its halvings.
-fn picture(path: &Path) -> Option<(Image, Vec<Image>)> {
+/// A picture from `path`, at most `MAX_PICTURE` wide.
+fn picture(path: &Path) -> Option<Image> {
     let (img, _) = olo_images::open(path).ok()?;
     let img = if img.width() > MAX_PICTURE {
         let h = (img.height() as u64 * MAX_PICTURE as u64 / img.width() as u64).max(1) as u32;
@@ -262,9 +262,7 @@ fn picture(path: &Path) -> Option<(Image, Vec<Image>)> {
     } else {
         img
     };
-    let image = super::load::color_image(img.to_rgba8());
-    let smaller = super::load::halvings(&image);
-    Some((image, smaller))
+    Some(super::load::color_image(img.to_rgba8()))
 }
 
 /// An HTML tag's attribute (quoted either way, or bare).

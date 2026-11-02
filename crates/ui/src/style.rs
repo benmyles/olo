@@ -1,6 +1,6 @@
 //! Olo's look in GPUI: colours from the palette, and the BeOS drawing
 //! primitives (lines, frames, bevels, wells, gradients, labels), each on
-//! whole device pixels at any scale, as the egui kit's `style`: a line
+//! whole device pixels at any scale: a line
 //! is one device pixel at 1× and 1.5× and two at 2× (`line_pixels`), and
 //! every edge is rounded onto the device grid, so nothing is smeared
 //! across two pixels at 1.5×. Painting functions take the window and are
@@ -14,7 +14,7 @@ use olo_theme::{Palette, Rgba};
 pub const PLAIN_SIZE: f32 = 12.0;
 pub const SMALL_SIZE: f32 = 10.5;
 /// Secondary text a point under the plain size: a row's subtitle and
-/// kind, a chip, a caption (the egui kit's `small_font`).
+/// kind, a chip, a caption.
 pub const DETAIL_SIZE: f32 = PLAIN_SIZE - 1.0;
 pub const MONO_SIZE: f32 = 12.0;
 
@@ -23,8 +23,7 @@ pub const UI_FONT: &str = "Noto Sans";
 pub const MONO_FONT: &str = "Noto Sans Mono";
 
 /// The line height of wrapped text, as a fraction of the font size
-/// (Noto Sans's ascent and descent: 1362 of its 1000 units, as egui
-/// spaces it).
+/// (Noto Sans's ascent and descent: 1362 of its 1000 units).
 pub const LINE_HEIGHT: f32 = 1.362;
 
 /// Cap height as a fraction of the font size (Noto Sans's: 714 of its
@@ -467,7 +466,7 @@ pub fn selection_wash(window: &mut Window, r: Bounds<Pixels>, palette: &Palette)
 
 /// The plate a selected picture, swatch or preview sits on: a rounded
 /// ground in the selection's colours, `metrics::SELECTION_PAD` beyond `r`
-/// all round, as the egui kit's. Paint it before the thing, as Tracker
+/// all round. Paint it before the thing, as Tracker
 /// sets a selected icon on its highlight.
 pub fn selection_plate(window: &mut Window, r: Bounds<Pixels>, palette: &Palette) {
     let r = snap(window, r.dilate(px(olo_kit_base::metrics::SELECTION_PAD)));
@@ -549,7 +548,7 @@ pub fn pill_on_baseline(window: &mut Window, cx: &mut App, x: Pixels, baseline: 
     r
 }
 
-/// A card's colours, as the egui kit's `card_ink`: the gutter it sits
+/// A card's colours: the gutter it sits
 /// in, the card, its edge, a well in it, the card under the pointer, and
 /// text on it (the document's, and quieter).
 #[derive(Clone, Copy, Debug)]
@@ -588,7 +587,7 @@ pub fn card_ink(palette: &Palette) -> CardInk {
 }
 
 /// A card's paper over its shadow (a dashboard's card, a note in
-/// Notifications' history), as the egui kit's `style::card`: lifted a
+/// Notifications' history): lifted a
 /// little more under the pointer (`hover`), in the selection's colours
 /// and lifted more when `selected`.
 pub fn card(window: &mut Window, r: Bounds<Pixels>, palette: &Palette, hover: bool, selected: bool) {
@@ -625,7 +624,7 @@ pub fn selection_band(window: &mut Window, r: Bounds<Pixels>, palette: &Palette)
     frame_rect(window, r, c(palette.keyboard_navigation));
 }
 
-/// A busy spinner (egui's, as the egui kit shows one) round `center`,
+/// A busy spinner round `center`,
 /// `radius` points: an arc three points wide that turns and breathes.
 /// It moves: the caller asks for the next frame while it shows.
 pub fn spinner(window: &mut Window, center: Point<Pixels>, radius: f32, color: Hsla) {
@@ -640,7 +639,7 @@ pub fn spinner(window: &mut Window, center: Point<Pixels>, radius: f32, color: H
     window.paint_sector(center, px(r - 1.5), px(r + 1.5), start, sweep.max(0.05), color);
 }
 
-/// Black or white, whichever reads on `fill` (the egui kit's `ink_on`).
+/// Black or white, whichever reads on `fill`.
 pub fn ink_on(fill: Rgba) -> Hsla {
     let l = 0.2126 * fill[0] as f32 + 0.7152 * fill[1] as f32 + 0.0722 * fill[2] as f32;
     if l > 150.0 { c([20, 20, 20, 255]) } else { c([255, 255, 255, 255]) }
@@ -648,7 +647,7 @@ pub fn ink_on(fill: Rgba) -> Hsla {
 
 /// A rounded tile in `fill` with `letter` on it, filling `r`: the icon
 /// of something that has a colour but no icon of its own (a website, a
-/// contact), as the egui kit's `monogram`. Lit along its top, edged a
+/// contact). Lit along its top, edged a
 /// shade darker.
 pub fn monogram(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, letter: &str, fill: Rgba) {
     // The letter centred where `r` is (as a label beside it is), not on
@@ -739,7 +738,7 @@ pub enum PullRequestShape {
 /// GitHub's pull request mark, as big as `r` is high (drawn on a grid of
 /// 16), its lines in `color` and whole device pixels at every scale: the
 /// commits rings, the head one filled with `node` if given (its checks'
-/// colour), as the egui kit's.
+/// colour).
 pub fn pull_request_mark(window: &mut Window, r: Bounds<Pixels>, shape: PullRequestShape, color: Hsla, node: Option<Hsla>) {
     let s = window.scale_factor();
     let side = f32::from(r.size.height.min(r.size.width));

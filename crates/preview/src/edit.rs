@@ -78,7 +78,7 @@ pub fn editable(path: &Path) -> bool {
 #[derive(Debug)]
 pub enum EditEvent {
     /// The picture after the steps so far, ready to show.
-    Shown { image: Image, smaller: Vec<Image>, full: [f32; 2], note: String, steps: usize },
+    Shown { image: Image, full: [f32; 2], note: String, steps: usize },
     Saved(PathBuf),
     Failed(String),
 }
@@ -107,15 +107,9 @@ impl Editor {
     /// Edit the picture at `path` (`size` as shown); `send` gets the
     /// worker's events on its thread.
     pub fn new(path: PathBuf, size: (u32, u32), send: impl Fn(EditEvent) + Send + 'static) -> Editor {
-        Editor::new_with(path, size, true, send)
-    }
-
-    /// [`Editor::new`], with halved copies of what it shows or not (the
-    /// egui views want them, having no mipmaps; the GPUI ones resample).
-    pub fn new_with(path: PathBuf, size: (u32, u32), halvings: bool, send: impl Fn(EditEvent) + Send + 'static) -> Editor {
         let (to, from) = mpsc::channel();
         let p = path.clone();
-        std::thread::Builder::new().name("image-edit".into()).spawn(move || work(p, from, halvings, send)).ok();
+        std::thread::Builder::new().name("image-edit".into()).spawn(move || work(p, from, send)).ok();
         Editor { path, ops: Vec::new(), undone: Vec::new(), saved: Vec::new(), original: size, to, busy: false, saving: false }
     }
 
@@ -206,7 +200,7 @@ impl Editor {
     }
 }
 
-fn work(path: PathBuf, from: mpsc::Receiver<Job>, halve: bool, send: impl Fn(EditEvent)) {
+fn work(path: PathBuf, from: mpsc::Receiver<Job>, send: impl Fn(EditEvent)) {
     let mut source: Option<DynamicImage> = None;
     // The last result and the steps that made it.
     let mut last: Option<(Vec<Op>, DynamicImage)> = None;
@@ -249,8 +243,7 @@ fn work(path: PathBuf, from: mpsc::Receiver<Job>, halve: bool, send: impl Fn(Edi
                 let max = load::MAX_ZOOMABLE;
                 let shown = if w.max(h) > max { img.resize(max, max, FilterType::Triangle) } else { img };
                 let image = load::color_image(shown.to_rgba8());
-                let smaller = if halve { load::halvings(&image) } else { Vec::new() };
-                send(EditEvent::Shown { image, smaller, full: [w as f32, h as f32], note: format!("Edited image, {w} × {h}"), steps: ops.len() });
+                send(EditEvent::Shown { image, full: [w as f32, h as f32], note: format!("Edited image, {w} × {h}"), steps: ops.len() });
             }
             Job::Save(_, to) => match write(&img, &to) {
                 Ok(()) => send(EditEvent::Saved(to)),

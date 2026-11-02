@@ -1,4 +1,4 @@
-//! A sheet as the egui view shows it: every column (scrolled sideways
+//! A sheet: every column (scrolled sideways
 //! when they don't all fit), the first row as the columns' names when it
 //! looks like one; a bar with a search, in every column or one, and how
 //! many rows show; sorting by a column's header. A big sheet is searched

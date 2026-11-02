@@ -1,4 +1,4 @@
-//! BColumnListView, as the egui kit draws and drives it: a sunken list
+//! BColumnListView: a sunken list
 //! with a header of columns (a click sorts, again reverses; the dividers
 //! drag to resize), only the rows in view built (`uniform_list`), the
 //! selection every file manager has ([`ListState`]: a click, ⇧ for a

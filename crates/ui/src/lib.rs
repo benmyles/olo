@@ -1,13 +1,13 @@
-//! Olo's Interface Kit on Olo's GPUI (gpui/): the kit apps move to from
-//! the egui one (`olo-kit`), app by app (TODO, "The kit").
+//! Olo's Interface Kit on Olo's GPUI (gpui/): what every Olo app is
+//! built on.
 //!
 //! An app calls [`run`] with its id and builds its windows with
 //! [`open_window`]: each is the app's GPUI view inside a [`Frame`], which
 //! paints the panel behind it, sets Olo's font and follows the desktop's
 //! look ([`theme`]). Widgets draw in Olo's style ([`style`], on device
 //! pixels at every scale) and say what they are to agents ([`agent`]),
-//! who read them, and each window's frame times, through the same socket
-//! as the egui kit's apps (`olo_kit_base::commands`).
+//! who read them, and each window's frame times, through the socket
+//! every app answers on (`olo_kit_base::commands`).
 
 pub mod agent;
 mod app;

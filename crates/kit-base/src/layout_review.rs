@@ -1,9 +1,7 @@
-//! The layout review's checks, shared by both kits: what a frame looks
-//! like it got wrong, from what it painted, which each kit collects into
-//! [`Parts`] (the egui kit from egui's shapes, `olo_kit::layout_review`;
-//! the GPUI kit from what its style drew, `olo_ui::review`) at the scale
-//! it was drawn at. See `olo_kit::layout_review` for what each check
-//! finds and why, and "Layout review" in docs/HACKING.md.
+//! The layout review's checks: what a frame looks like it got wrong,
+//! from what it painted, which the kit collects into [`Parts`] from what
+//! its style drew (`olo_ui::review`) at the scale it was drawn at. See
+//! "Layout review" in docs/HACKING.md for what each check finds and why.
 
 pub use crate::review::{Finding, Level};
 
@@ -77,8 +75,7 @@ impl From<std::ops::RangeInclusive<f32>> for Rangef {
     }
 }
 
-/// A rectangle, `min` its top left and `max` its bottom right (as
-/// egui's, whose meaning the checks were written to).
+/// A rectangle, `min` its top left and `max` its bottom right.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {
     pub min: Pos2,
@@ -298,8 +295,8 @@ fn blurry_icons(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
     }
 }
 
-/// The device pixels egui fills for `a..b` (it rounds each edge to the
-/// nearest).
+/// The device pixels a fill of `a..b` covers, each edge rounded to the
+/// nearest.
 fn device_span(a: f32, b: f32, ppp: f32) -> i32 {
     ((b * ppp).round() - (a * ppp).round()) as i32
 }
@@ -338,9 +335,9 @@ fn blurry_outlines(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
     }
 }
 
-/// Fills laid out between device pixels. egui rounds each edge to the
-/// nearest, so one comes out a pixel taller, shorter or further over
-/// than laid out: rows of one height end up of two, a bar a pixel off
+/// Fills laid out between device pixels: snapped (`style::snap`), one
+/// comes out a pixel taller, shorter or further over than laid out, and
+/// not snapped its edges blur: rows of one height end up of two, a bar a pixel off
 /// the band beside it, and the text centred in it a pixel off its middle
 /// (`style::text_origin` rounds on its own). Sizes on the 2-point grid
 /// (`metrics`) are whole device pixels at 1×, 1.5× and 2×; what is

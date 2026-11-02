@@ -178,14 +178,16 @@ pub struct FrameMark {
     pub at_us: u64,
     /// How long it took to draw, to handing it to the GPU.
     pub us: u32,
-    /// Of that, egui and the app's own code.
+    /// Of that, the toolkit's and the app's own code (laying out and
+    /// painting).
     #[serde(default)]
     pub ui_us: u32,
     /// Setting the GPU surface up (made, or its swapchain configured
     /// for a new size).
     #[serde(default)]
     pub setup_us: u32,
-    /// Turning egui's shapes into triangles.
+    /// Turning shapes into triangles (none on GPUI, which draws its
+    /// primitives as they are).
     #[serde(default)]
     pub tessellate_us: u32,
     /// Waiting for a buffer to draw in (the compositor still showing

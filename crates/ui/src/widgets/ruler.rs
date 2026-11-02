@@ -1,5 +1,5 @@
 //! A word processor's ruler, after Gobe Productive's and ClarisWorks'
-//! (the egui kit's `ruler`, moved): a scale across the text in inches or
+//! (StyledEdit's): a scale across the text in inches or
 //! centimetres (as the locale measures, [`metric`]), a paragraph's
 //! indents as markers to drag (the first line's hanging from the top; the
 //! left and right ones standing on the bottom, with a box under the left

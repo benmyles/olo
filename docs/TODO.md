@@ -230,6 +230,25 @@ as they land (with the commit), add new ones as they come up.
   Paint lines as StyledEdit's editor does (`Window::paint_glyph_run`,
   a `GlyphRun` kept with each laid-out line, in a layer), and the whole
   benchmark at every scale under 8.3 ms.
+- **The layout lint on GPUI** (left when egui went, 2026-11-02): the
+  egui kit ran a window's view headlessly at its size, light and dark at
+  1×, 1.5× and 2×, and failed a test (and `install-session.sh`) on
+  anything that ran past its area, controls over each other, labels
+  cut short, and the layout review's errors (`ui_lint_*`, every
+  Preferences panel with made-up long device names). On GPUI the review
+  runs only on a live app (`tsession review`). Bring it back: a view
+  drawn in GPUI's test platform with Olo's text system at a size and
+  scale, the review's `Parts` and the kit's areas and controls checked,
+  `cargo ui-lint` for every fixed-size window and dialog, the kit's own
+  widgets clean and its sizes on the 2-point grid.
+- **GPU device loss on GPUI** (left when egui went, 2026-11-02): a
+  driver reset (`VK_ERROR_DEVICE_LOST`, as Asahi's Mesa gives at a
+  failed syncobj transfer) took the egui kit's apps through a fresh
+  start, their state saved, as an upgrade (lost again within 10 s, it
+  ended rather than loop); blade panics instead. Notice it in blade's
+  submit, acquire and wait, re-execute as `upgrade::lost_compositor`
+  does, and a debug-only `{"lose_gpu":true}` on the app's socket to
+  test it.
 
 - **From egui to Olo's own GPUI** (Ben, 2026-10-31): "i think we need to
   rethink the decision to use egui -- it is not performant enough. …
@@ -376,13 +395,13 @@ as they land (with the commit), add new ones as they come up.
      its socket and the session's pid file followed with inotify;
      every frame within 2.7 ms at 1, 1.5 and 2× against egui's 6.5,
      0 frames idle and for the pointer swept over it against 4 and 182,
-     85 for its menus against 303). Next: egui leaves the workspace: olo-print's and
-     olo-screensavers' `egui` features, the olo-kit crate, and the
-     vendored epaint, egui-wgpu and wgpu-hal patches.
-     (`olo-preview`'s decoding no longer needs a toolkit: pictures are
-     its own `Bitmap`s, and its egui views are behind its `egui`
-     feature, for Tracker and the Viewer until they move; Telegram no
-     longer links egui.)
+     85 for its menus against 303). *Done* 2026-11-02: egui left the
+     workspace: the olo-kit crate, olo-print's and olo-screensavers'
+     `egui` features, olo-preview's halved copies (made for egui's lack
+     of mipmaps; Quick Look's edits and document pictures still made
+     them), the vendored epaint, egui-wgpu and wgpu-hal patches, and 535
+     lines of Cargo.lock; HACKING's "Writing an app" in olo-ui's terms.
+     Left from it: the layout lint and GPU device loss (below).
    - **Every frame on time, every display** (Ben, 2026-11-01: "dropping
      frames is never acceptable: olo must be buttery smooth on all
      displays all the time"; the pointer "definitely way slow/stuttery",

@@ -67,8 +67,8 @@ pub fn state_of(v: &mut PanelView) -> Option<&mut State> {
     }
 }
 
-/// A row of buttons at the right, the first given rightmost (as the egui
-/// kit's right-to-left rows), a little below what's above it (room for a
+/// A row of buttons at the right, the first given rightmost (laid out
+/// right to left), a little below what's above it (room for a
 /// default button's ring).
 pub fn buttons(items: Vec<AnyElement>) -> impl IntoElement {
     div().flex().flex_row().justify_end().gap(px(m::SPACING + 2.0)).pt(px(m::TIGHT)).children(items.into_iter().rev())

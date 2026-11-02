@@ -1,6 +1,5 @@
 //! A wrapping grid of pictures to pick one from, labelled underneath (a
-//! screen to share, a wallpaper), as the egui kit's `ThumbnailPicker`:
-//! each in a sunken frame, the chosen one and its name on a selection
+//! screen to share, a wallpaper): each in a sunken frame, the chosen one and its name on a selection
 //! plate. A click chooses, a double click opens (shares at once); with
 //! the keyboard (a click gives it, or Tab) the arrows move the choice.
 //! Agents read each as a `RadioButton`, selected or not.

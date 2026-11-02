@@ -225,12 +225,12 @@ thumbnail. `cargo test -p olo-xdg` checks every theme has all six
 
 ## Using icons in code
 
-`olo_kit::icons::paint(painter, rect, "name")`. Names come from the
+`olo_ui::icons::paint(window, bounds, "name")`. Names come from the
 manifest; freedesktop icon names and absolute paths also work. The kit
 picks the smallest pre-scaled size that covers the rect in device pixels,
 in the current theme (`olo_xdg::themes::current()`); to show another
-theme, as Preferences does, use `icons::paint_in(painter, rect, theme,
-name)` and `brand::wordmark_in`. Use these sizes: 16 for lists, menus and
+theme, as Preferences does, use `icons::paint_in(window, bounds, theme,
+name)` and `brand::wordmark_centred_in`. Use these sizes: 16 for lists, menus and
 the Deskbar; 32 for Tracker mini icons and dialogs; 48 to 64 for the
 Tracker icon view and desktop; 128 for About boxes. Don't tint, recolour
 or scale icons up beyond 256 px.

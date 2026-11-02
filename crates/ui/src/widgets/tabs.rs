@@ -1,4 +1,4 @@
-//! BTabView, as the egui kit draws it: BeOS folder tabs, slanted at
+//! BTabView: BeOS folder tabs, slanted at
 //! their sides, over a raised panel holding what the chosen tab shows;
 //! the chosen tab is in front, open into the panel, its name in bold. A
 //! click on a tab chooses it, and so do Next and Previous Tab (⌃Tab and

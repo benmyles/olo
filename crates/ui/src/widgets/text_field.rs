@@ -100,8 +100,8 @@ pub(crate) fn bind_keys(cx: &mut App) {
         KeyBinding::new("shift-down", SelectDown, a),
         KeyBinding::new("shift-enter", Newline, a),
         KeyBinding::new("alt-enter", Newline, a),
-        // (⌘↑ and ⌘↓ are left to the window's menu, as the egui kit
-        // left them: a chat's composer has Previous and Next Chat there.)
+        // (⌘↑ and ⌘↓ are left to the window's menu: a chat's composer
+        // has Previous and Next Chat there.)
         KeyBinding::new("ctrl-home", DocStart, a),
         KeyBinding::new("ctrl-end", DocEnd, a),
     ]);

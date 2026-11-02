@@ -1,7 +1,5 @@
-//! The column list view, as the egui kit's demo shows one (its Lists
-//! tab: the same processes and columns), for comparing the two closely,
-//! under the demo's menu bar, with a context menu and a note of what was
-//! opened or chosen.
+//! The column list view: processes in columns, under a menu bar, with
+//! a context menu and a note of what was opened or chosen.
 
 use std::rc::Rc;
 

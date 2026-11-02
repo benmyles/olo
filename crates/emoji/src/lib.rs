@@ -1,10 +1,10 @@
 //! Colour emoji. Fedora's Noto Color Emoji is a COLRv1 font: layers of
 //! outlines filled with solid colours and linear, radial and sweep
-//! gradients, composited in groups. egui only draws monochrome glyphs, so
-//! this crate shapes a cluster with harfrust (ZWJ sequences, skin tones,
-//! keycaps and flags are ligatures in the font), walks the glyph's paint
-//! graph with skrifa and paints it with tiny-skia into an RGBA image the
-//! caller uploads as a texture. COLRv0 fonts take the same path.
+//! gradients, composited in groups. This crate shapes a cluster with
+//! harfrust (ZWJ sequences, skin tones, keycaps and flags are ligatures
+//! in the font), walks the glyph's paint graph with skrifa and paints it
+//! with tiny-skia into an RGBA image the caller uploads as a texture.
+//! COLRv0 fonts take the same path.
 
 use skrifa::{
     FontRef, GlyphId, MetadataProvider,

@@ -1,6 +1,6 @@
 //! The layout review for GPUI windows (`{"review":true}` on the app's
-//! socket: `tsession review`, `olo-screen review`), with the egui kit's
-//! checks (`olo_kit_base::layout_review`). Asked for, each window is
+//! socket: `tsession review`, `olo-screen review`), with the checks of
+//! `olo_kit_base::layout_review`. Asked for, each window is
 //! drawn once more while the kit's drawing ([`crate::style`], labels,
 //! text fields, icons) says what it drew; the frame's last element
 //! ([`crate::Frame`]) hands that to the checks and the answer goes back.
@@ -8,7 +8,7 @@
 //! this window is being reviewed.
 //!
 //! What is in an area on a grid of its own ([`own_grid`]) or centred in
-//! a band nothing fills ([`band`]) is marked as in the egui kit.
+//! a band nothing fills ([`band`]) is marked so.
 
 use std::{
     cell::RefCell,

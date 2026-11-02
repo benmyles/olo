@@ -1,6 +1,5 @@
 //! A sidebar of sections (a Mac's source list; Haiku's preference apps
-//! list theirs the same way, in a BListView down the left), as the egui
-//! kit's: rows of an icon, a name and, at the right, a quiet value
+//! list theirs the same way, in a BListView down the left): rows of an icon, a name and, at the right, a quiet value
 //! ("12%"), under optional headings, the chosen one in the list's
 //! selection. Click a row, or use ↑ and ↓ while it has the keyboard (a
 //! click gives it, or Tab); rows past its height scroll. Agents find each

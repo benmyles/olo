@@ -2,9 +2,9 @@
 //! Olo program whose file it replaced (SIGURG, ignored by default); a
 //! GPUI kit app whose binary changed asks the app for its state
 //! ([`on_upgrade`]) and re-executes as the new binary, which finds it in
-//! [`restored_state`]. (app_server restarting in place costs nothing:
-//! GPUI apps talk to it through olo-wlproxy, which keeps their windows,
-//! as other programs'.)
+//! [`restored_state`]. app_server restarting in place is the same to
+//! it ([`lost_compositor`]): it re-executes with its state saved and
+//! connects to the app_server now there.
 
 use std::{
     os::{fd::FromRawFd, unix::process::CommandExt as _},

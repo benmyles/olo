@@ -1,7 +1,6 @@
 //! Which of the app's windows are on this workspace (the one the active
 //! display shows), as app_server says, for an app that keeps a window per
-//! thing on each workspace (Tracker's folder windows, as the egui kit's
-//! `Cx::on_this_workspace`). Followed on a thread of its own once an app
+//! thing on each workspace (Tracker's folder windows). Followed on a thread of its own once an app
 //! asks ([`follow`]): app_server sends it our windows (by their
 //! surfaces' object ids) only when where they are changes, and each
 //! display's workspace as it changes. Every display has its own

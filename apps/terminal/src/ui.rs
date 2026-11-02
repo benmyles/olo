@@ -43,7 +43,7 @@ use crate::{
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
 pub struct WindowId(u64);
 
-/// What a window was opened with (the egui kit's options, in points).
+/// What a window was opened with (in points).
 #[derive(Clone)]
 pub struct WindowOptions {
     pub title: String,
@@ -98,7 +98,7 @@ struct Wins {
 
 impl gpui::Global for Wins {}
 
-/// Terminal's context, as the egui kit's `Cx` was to it.
+/// Terminal's context: its entity's.
 pub type Cx<'a> = Context<'a, Terminal>;
 
 /// Window operations, done once the update asking for them is over (a

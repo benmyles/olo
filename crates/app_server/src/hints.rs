@@ -155,7 +155,7 @@ impl Node {
     }
 }
 
-/// The parts of the kit's tree (`olo_kit::commands`) hints need.
+/// The parts of the kit's tree (`olo_ui::commands`) hints need.
 #[derive(Debug, Clone, Deserialize)]
 pub struct UiNode {
     pub id: u64,

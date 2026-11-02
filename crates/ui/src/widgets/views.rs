@@ -1,6 +1,5 @@
 //! Text and grouping: BStringView (a line of text, or a paragraph) and
-//! BBox (an etched frame with its label set into the top edge), drawn as
-//! the egui kit draws them.
+//! BBox (an etched frame with its label set into the top edge).
 
 use gpui::{AnyElement, App, Bounds, FontWeight, Hsla, IntoElement, ParentElement, Pixels, RenderOnce, SharedString, Styled as _, Window, canvas, div, point, px};
 use olo_kit_base::metrics as m;
@@ -225,7 +224,7 @@ fn etched(window: &mut Window, frame: Bounds<Pixels>, p: &olo_theme::Palette, ga
 /// What a view shows while it has nothing to show (no chat chosen, an
 /// integration not set up): an icon (32 points) over a line in the
 /// disabled text's colour, a smaller detail under it, and a button,
-/// centred in what it's given, as the egui kit's `EmptyState`.
+/// centred in what it's given.
 #[derive(gpui::IntoElement)]
 pub struct EmptyState {
     text: SharedString,

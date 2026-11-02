@@ -3,7 +3,7 @@
 //! platform a keyboard profile follows, as [`crate::shortcuts::SHORTCUTS`]
 //! has app_server's. Changes are kept in the profile's `shortcuts` beside
 //! app_server's, by id. The kit gives a menu item the keys its command has
-//! here (`olo_kit::keyboard`), so an app's menus, Preferences, the
+//! here (`olo_ui::menu::resolve`), so an app's menus, Preferences, the
 //! shortcuts sheet and agents all agree.
 //!
 //! Keys are written as app_server's are, physically: on a Mac "Cmd+C" (⌘,

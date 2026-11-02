@@ -62,10 +62,10 @@ rules are universal and non-negotiable:
   Rust/cargo crate is fine), so the whole desktop is one cohesive,
   consistent experience.
 - **Build on the shared kit.** If an app needs a widget or behaviour another
-  app could use, add it to `crates/kit` and document it in HACKING.md.
+  app could use, add it to `crates/ui` and document it in HACKING.md.
 - **Survive in-place reload.** Apps reconnect when app_server restarts and
-  re-exec after an upgrade; implement `App::save_state` /
-  `cx.restored_state()` so windows come back as they were. Test with
+  re-exec after an upgrade; implement `olo_ui::on_upgrade` /
+  `olo_ui::restored_state()` so windows come back as they were. Test with
   `tsession start NAME --session` + rebuild + `tsession reload NAME`.
 - **Icons** follow [docs/ICONS.md](docs/ICONS.md) (sunburst at max quality,
   against the reference set).

@@ -1258,7 +1258,7 @@ impl Picker {
         Some(win)
     }
 
-    /// A row's height: a row and the space egui's list kept after it.
+    /// A row's height: a row and the space after it.
     fn row_h(&self) -> f32 {
         if matches!(self.pick, Pick::Forward { .. }) { 40.0 + m::SPACING } else { 46.0 + m::SPACING }
     }

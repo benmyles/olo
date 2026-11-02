@@ -1,7 +1,8 @@
 # Olo's GPUI
 
-The UI framework Olo's kit is moving to (from egui; see "The kit" in
-[docs/TODO.md](../docs/TODO.md)). It began as GPUI 0.2.2 from crates.io,
+The UI framework Olo's kit (`crates/ui`, olo-ui) is built on; it
+replaced egui (see "The kit" in [docs/TODO.md](../docs/TODO.md)). It
+began as GPUI 0.2.2 from crates.io,
 Zed Industries' framework, under the Apache License 2.0
 ([LICENSE-APACHE](LICENSE-APACHE)), and is Olo's own now: changed as Olo
 needs, never synced with upstream.
@@ -45,7 +46,7 @@ What Olo changed, so far:
   and drawing the gallery's controls costs a third less (683 µs a frame
   against 1076 at 2×) in 20 MB less memory. `OLO_EXACT_PATHS=0` turns
   it off to compare.
-- Scrolling as the egui kit's: a wheel's notch scrolls 48 points, eased
+- Scrolling: a wheel's notch scrolls 48 points, eased
   in over the frames to come (90% in a tenth of a second, a step per
   frame at the display's rate, ending once less than half a device
   pixel is left, or at an edge), where upstream jumped three lines at
@@ -176,8 +177,7 @@ What Olo changed, so far:
   conversation text at start), drawn again for each scale and text
   rendering the window moves to. Telegram's chat switches: slowest
   frame 9.6–10.2 ms before, 6.6–7.6 ms; 0.7 MB more memory.
-- Olo's text (`gpui/src/platform/linux/text_system.rs`), the same as
-  the egui kit's: Olo's own faces (data/fonts) before the system's,
+- Olo's text (`gpui/src/platform/linux/text_system.rs`): Olo's own faces (data/fonts) before the system's,
   shaped by harfrust, outlines hinted by skrifa's autohinter (vertical
   only, "light") and filled to each pixel's exact coverage by an area
   rasterizer kept between glyphs (`fill`: 5.9 µs a glyph against

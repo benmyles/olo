@@ -172,8 +172,7 @@ impl Element for Control {
             window.set_cursor_style(if self.pointing { CursorStyle::PointingHand } else { CursorStyle::Arrow }, hitbox);
         }
         if let Some(paint) = self.paint.take() {
-            // A control that can't be used now is faded, as egui fades a
-            // disabled one (its `disabled_alpha`).
+            // A control that can't be used now is faded.
             window.with_element_opacity((!enabled).then_some(DISABLED_OPACITY), |window| paint(bounds, state, window, cx));
         }
         if let Some((role, name, checked)) = self.node.clone() {

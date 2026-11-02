@@ -67,7 +67,7 @@ def stale_builds():
     """The release binaries older than a source they are built from (from
     cargo's dep-info, `target/release/EXE.d`): what is measured would not
     be what is in the tree."""
-    exes = {"olo-app-server", "olo-session", "olo-deskbar", "olo-palette", os.path.join("examples", "demo")}
+    exes = {"olo-app-server", "olo-session", "olo-deskbar", "olo-palette", os.path.join("examples", "gallery")}
     exes.update(a.cmd[0] for a in APPS if not os.path.isabs(a.cmd[0]))
     stale = []
     for exe in sorted(exes):
@@ -90,7 +90,7 @@ class App:
 
 
 APPS = [
-    App("demo", [os.path.join(RELEASE, "examples", "demo")]),
+    App("gallery", [os.path.join(RELEASE, "examples", "gallery")]),
     App("tracker", ["olo-tracker", os.path.join(HOME, "Big")], settle=3.0),
     App("tracker-pictures", ["olo-tracker", os.path.join(HOME, "Pictures")], settle=4.0),
     App("styled-edit", ["olo-styled-edit", os.path.join(HOME, "Documents", "long.txt")]),
@@ -719,7 +719,7 @@ def run_overview(b):
     s = b.s
     before = {w["id"] for w in s.windows()}
     pids = []
-    for i, cmd in enumerate([[os.path.join(RELEASE, "examples", "demo")], ["olo-activity"], ["olo-deskcalc"], ["olo-logs"]]):
+    for i, cmd in enumerate([[os.path.join(RELEASE, "examples", "gallery")], ["olo-activity"], ["olo-deskcalc"], ["olo-logs"]]):
         if i == 2:
             s.req({"type": "switch_workspace", "index": 1})
         out = tsession("run", NAME, *cmd)
@@ -781,7 +781,7 @@ def main():
     scales = [float(x) for x in opt("--scales", "1,1.5,2").split(",")]
     only = opt("--apps")
     only = set(only.split(",")) if only else None
-    for exe in ("olo-app-server", "olo-session", "olo-deskbar", os.path.join("examples", "demo")):
+    for exe in ("olo-app-server", "olo-session", "olo-deskbar", os.path.join("examples", "gallery")):
         if not os.path.exists(os.path.join(RELEASE, exe)):
             sys.exit(f"no target/release/{exe}: cargo build --release --workspace --bins --examples")
     stale = stale_builds()

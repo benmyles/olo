@@ -2,9 +2,9 @@
 //! (`/usr/share/hunspell`, or `~/.local/share/hunspell`) read by
 //! spellbook, in the person's language (`LANG`, else American English);
 //! words learnt (Learn Spelling) are kept in `~/.config/olo/words`, one a
-//! line, for every app. Each kit loads the dictionary on a worker the
+//! line, for every app. The kit loads the dictionary on a worker the
 //! first time it's wanted ([`load`]) and draws again when it's ready
-//! (`olo_kit::spell::checker`, `olo_ui::spell::checker`).
+//! (`olo_ui::spell::checker`).
 
 use olo_sync::RwLock;
 use std::{collections::HashSet, ops::Range, path::PathBuf};

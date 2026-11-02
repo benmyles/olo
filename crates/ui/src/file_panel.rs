@@ -1,5 +1,5 @@
-//! BFilePanel: the Open, Save and folder panels every app shares, as the
-//! egui kit's. [`show`] opens one in a window of its own and calls back
+//! BFilePanel: the Open, Save and folder panels every app shares.
+//! [`show`] opens one in a window of its own and calls back
 //! once with the answer, then closes it. Folders are listed on a worker
 //! thread, so a slow disk never stalls the window, and listed again the
 //! moment they change on disk (`watch`), the selection kept. A panel can

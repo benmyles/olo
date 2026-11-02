@@ -3,7 +3,7 @@
 //! placed here, since GPUI's own wrapping knows none of what documents
 //! need: rows broken at spaces (a word longer than a row, anywhere),
 //! tabs to their stops (left, centred, right or on the decimal point,
-//! from each row's start, as the egui kit's patched epaint does), a
+//! from each row's start), a
 //! picture's character as big as the picture, the first row indented,
 //! rows aligned or justified. Rows are as high as what is on them (a
 //! larger size, a picture), each glyph on its row's baseline.

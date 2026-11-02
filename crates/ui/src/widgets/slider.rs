@@ -1,4 +1,4 @@
-//! BSlider, as the egui kit draws it: a label and the value above a
+//! BSlider: a label and the value above a
 //! sunken bar filled to the thumb, a raised block thumb with a grip line
 //! and a soft shadow, the limits under the ends. A press or a drag sets
 //! the value; with the keyboard (a click gives it), the arrows step it

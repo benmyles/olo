@@ -1,5 +1,5 @@
-//! Dashboards (Activity Monitor's sections; any app's overview), as the
-//! egui kit's: cards on the card gutter, each with a title, a figure at
+//! Dashboards (Activity Monitor's sections; any app's overview): cards
+//! on the card gutter, each with a title, a figure at
 //! its right ("12.3%") and a quiet caption under the title, then what it
 //! shows: a [`Graph`](super::Graph) (`.plain()`, without its well),
 //! [`Facts`] (label: value rows), a [`legend`](super::legend), a

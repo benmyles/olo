@@ -1,8 +1,7 @@
 //! Tips that may reach past their window's edges, each in a popup of its
 //! own (`WindowKind::Tip`: an xdg_popup that takes no input and grabs
 //! nothing), for windows too small to hold them: Deskbar's tray, whose
-//! window is narrower than what its icons say. As the egui kit's `tip`:
-//! one shows once the pointer has rested on its widget a moment, at once
+//! window is narrower than what its icons say. One shows once the pointer has rested on its widget a moment, at once
 //! if another was showing a moment ago, not after a press; below the
 //! widget, else above, slid to stay on screen; in the tooltip colours.
 //! (`widgets::tooltip` is GPUI's own, inside its window, for the rest.)
@@ -19,7 +18,7 @@ use olo_kit_base::metrics as m;
 
 use crate::{style, theme};
 
-/// How long the pointer rests before a tip shows (egui's tooltip delay).
+/// How long the pointer rests before a tip shows.
 const DELAY: Duration = Duration::from_millis(500);
 /// A tip hidden this recently: the next shows at once.
 const AGAIN: Duration = Duration::from_millis(500);

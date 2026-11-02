@@ -1,8 +1,7 @@
 //! Copying a secret (a password, a one-time code): marked for clipboard
 //! managers to leave alone (`x-kde-passwordManagerHint: secret`, which
 //! KDE's and others honour), and taken off the clipboard again after a
-//! while unless something else was copied since, as the egui kit's
-//! `Cx::copy_secret`.
+//! while unless something else was copied since.
 
 use std::time::Duration;
 

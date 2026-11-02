@@ -1,6 +1,5 @@
-//! The previews drawn with Olo's GPUI (the Viewer's; Quick Look's once
-//! Tracker moves): what [`load`](crate::load) decodes, on its worker,
-//! shown as the egui views show it. Pictures are drawn exactly
+//! The previews drawn with Olo's GPUI (the Viewer's and Quick Look's):
+//! what [`load`](crate::load) decodes, on its worker. Pictures are drawn exactly
 //! (`olo_ui`'s `ImageView`: resampled to their device size, a texel a
 //! device pixel); text and code by the rows in view; documents as a page
 //! ([`rich`]); sheets with their search and sorting ([`table`]); sound
@@ -120,7 +119,7 @@ impl PreviewView {
             failed: None,
             cancel: Arc::new(AtomicBool::new(false)),
             started: Instant::now(),
-            want: load::Want { max_image: if zoomable { load::MAX_ZOOMABLE } else { load::MAX_IMAGE }, halvings: false },
+            want: load::Want { max_image: if zoomable { load::MAX_ZOOMABLE } else { load::MAX_IMAGE }, },
             image,
             player: None,
             video: None,
@@ -302,7 +301,7 @@ impl PreviewView {
     pub fn show_edited(&mut self, image: load::Image, full: [f32; 2], note: String, cx: &mut Context<Self>) {
         let picture = image.clone();
         self.image.update(cx, |v, cx| v.set_picture(picture, full, cx));
-        self.body = Some(Body::Image { image, smaller: Vec::new(), full, note });
+        self.body = Some(Body::Image { image, full, note });
         self.failed = None;
         cx.notify();
     }

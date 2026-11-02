@@ -1,5 +1,5 @@
 //! Decoded pictures as the previews keep them, in no toolkit's type: the
-//! egui views and the GPUI ones each make their textures from them.
+//! views make their textures from them.
 
 /// A picture `size` pixels across and down, RGBA with the colours
 /// premultiplied by alpha, row by row.
@@ -9,8 +9,7 @@ pub struct Bitmap {
     pub rgba: Vec<u8>,
 }
 
-/// `v × a / 255`, rounded (as egui premultiplies, so its views look as
-/// they did).
+/// `v × a / 255`, rounded.
 fn times(v: u8, a: u8) -> u8 {
     let p = u16::from(v) * u16::from(a) + 128;
     ((p + (p >> 8)) >> 8) as u8
@@ -85,8 +84,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn premultiplies_as_egui_did() {
-        // egui's `mul_frac_round` is the same rounding of v·a/255.
+    fn premultiplies_rounding() {
+        // v·a/255, rounded to the nearest.
         for v in 0..=255u8 {
             for a in 1..=254u8 {
                 let want = (f32::from(v) * f32::from(a) / 255.0).round() as u8;

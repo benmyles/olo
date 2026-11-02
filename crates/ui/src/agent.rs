@@ -3,8 +3,7 @@
 //! the frame (a cached view's replayed with its paint), so each frame
 //! leaves a tree of the window, which the socket agents and the
 //! command palette read apps through (`olo_kit_base::commands`) answers
-//! from at once (as egui's AccessKit tree did, without a frame drawn for
-//! it). Its frame times too, and the menu commands the app takes.
+//! from at once (without a frame drawn for it). Its frame times too, and the menu commands the app takes.
 
 use std::collections::HashMap;
 
@@ -99,7 +98,7 @@ impl Global for Paths {}
 
 /// Say which file or folder `window` shows now: a document once saved
 /// or opened, None when it has none. app_server asks (`{"path":ID}`) for
-/// its tab's menu (Open in Tracker), as the egui kit's `Cx::set_path`.
+/// its tab's menu (Open in Tracker).
 pub fn set_path(window: &Window, cx: &mut App, path: Option<std::path::PathBuf>) {
     let id = window.window_handle().window_id();
     let paths = &mut cx.default_global::<Paths>().0;

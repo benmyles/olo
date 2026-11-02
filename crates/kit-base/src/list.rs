@@ -1,5 +1,5 @@
-//! A list's selection and sort, shared by both kits' list views (the
-//! egui kit's `ColumnListView`, olo-ui's): the selection every file
+//! A list's selection and sort, for the kit's list views (olo-ui's
+//! `ColumnListView`, Tracker's icon view): the selection every file
 //! manager has ([`ListState::click`], [`ListState::move_to`] for the
 //! keyboard, [`ListState::band`] for a selection band, select all,
 //! invert), and type to select ([`TypeSelect`]).

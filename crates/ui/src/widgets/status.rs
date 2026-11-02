@@ -1,5 +1,5 @@
 //! BStatusBar: a label and a trailing note over a sunken bar filled to a
-//! fraction, as the egui kit draws it; [`level_bar`] is the bar alone (a
+//! fraction; [`level_bar`] is the bar alone (a
 //! list cell's).
 
 use gpui::{App, Bounds, FontWeight, Hsla, IntoElement, Pixels, RenderOnce, SharedString, Styled as _, Window, canvas, point, px};
@@ -82,8 +82,7 @@ pub fn level_bar(window: &mut Window, bar: Bounds<Pixels>, fraction: f32, fill: 
     let right = style::snap_coord(window, inner.left() + inner.size.width * f);
     let done = Bounds::from_corners(inner.origin, point(right, inner.bottom()));
     if done.size.width > px(0.0) {
-        // Darker towards the bottom: its sRGB values times 0.8, as the
-        // egui kit's `gamma_multiply(0.8)`.
+        // Darker towards the bottom: its sRGB values times 0.8.
         let rgb = gpui::Rgba::from(fill);
         let lower: Hsla = gpui::Rgba { r: rgb.r * 0.8, g: rgb.g * 0.8, b: rgb.b * 0.8, a: 1.0 }.into();
         style::vgradient(window, done, fill, lower);

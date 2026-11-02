@@ -181,8 +181,8 @@ pub(crate) fn set_tab_keys(window: &Window, cx: &mut App, step: TabStep) {
     cx.default_global::<TabKeys>().0.entry(window.window_handle().window_id()).or_insert(step);
 }
 
-/// Next Tab (+1: ⌃Tab, ⌃Page Down) or Previous Tab (−1: ⌃⇧Tab, ⌃Page Up),
-/// as the egui kit's `tab_keys` reads them; 0 for any other key.
+/// Next Tab (+1: ⌃Tab, ⌃Page Down) or Previous Tab (−1: ⌃⇧Tab, ⌃Page Up);
+/// 0 for any other key.
 pub fn tab_step(k: &gpui::Keystroke) -> i32 {
     let m = &k.modifiers;
     if !m.control || m.alt || m.platform {

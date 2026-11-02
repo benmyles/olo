@@ -1,5 +1,4 @@
-//! A text to read in a scroll view, as the egui kit's `TextView` not
-//! editable: wrapped to the view, in the plain or the monospaced face,
+//! A text to read in a scroll view, not editable: wrapped to the view, in the plain or the monospaced face,
 //! coloured as its owner says (runs: a log line's highlighting, what a
 //! search found marked behind), with a note in the middle while it's
 //! empty ("Select a line to read it whole."). Selected with the pointer
@@ -15,7 +14,7 @@ use olo_kit_base::metrics as m;
 
 use crate::{Menu, agent, menu, style, theme, widgets::ScrollView};
 
-/// The text's margin inside the view, as the egui kit's.
+/// The text's margin inside the view.
 const MARGIN_X: f32 = 6.0;
 const MARGIN_Y: f32 = 4.0;
 
