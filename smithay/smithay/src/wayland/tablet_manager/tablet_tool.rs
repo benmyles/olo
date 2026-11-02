@@ -1,4 +1,5 @@
-use std::sync::{Arc, Mutex, atomic::Ordering};
+use olo_sync::Mutex;
+use std::sync::{Arc, atomic::Ordering};
 
 use portable_atomic::AtomicF64;
 use wayland_protocols::wp::tablet::zv2::server::{

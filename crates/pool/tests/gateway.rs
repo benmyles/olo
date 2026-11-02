@@ -1,9 +1,7 @@
 //! The gateway against a fake provider: never a real account or service.
 
-use std::{
-    net::SocketAddr,
-    sync::{Arc, Mutex},
-};
+use olo_sync::Mutex;
+use std::{net::SocketAddr, sync::Arc};
 
 use axum::{
     Router,

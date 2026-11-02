@@ -1,7 +1,8 @@
 //! Text for app_server's own drawing (window tab titles), via cosmic-text
 //! onto tiny-skia pixmaps.
 
-use std::sync::{Mutex, OnceLock};
+use olo_sync::Mutex;
+use std::sync::OnceLock;
 
 use cosmic_text::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, SwashCache, Weight};
 use tiny_skia::Pixmap;

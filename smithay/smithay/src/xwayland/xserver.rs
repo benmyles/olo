@@ -1,3 +1,4 @@
+use olo_sync::Mutex;
 use std::{
     env,
     ffi::OsStr,
@@ -8,7 +9,7 @@ use std::{
         process::CommandExt,
     },
     process::{Child, Command},
-    sync::{Arc, Mutex},
+    sync::Arc,
     thread,
 };
 

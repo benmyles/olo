@@ -9,9 +9,10 @@
 //! the pack (`olo_xdg::wallpapers`) comes in the version for each
 //! screen's shape and the current mode.
 
+use olo_sync::Mutex;
 use std::{
     path::{Path, PathBuf},
-    sync::{Mutex, mpsc},
+    sync::mpsc,
 };
 
 use fast_image_resize::{

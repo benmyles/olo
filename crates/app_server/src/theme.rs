@@ -2,8 +2,9 @@
 //! settings, `Appearance::palette`). Changing it bumps a generation
 //! counter so cached decorations know to redraw.
 
+use olo_sync::RwLock;
 use std::sync::{
-    Arc, RwLock,
+    Arc,
     atomic::{AtomicU64, Ordering},
 };
 

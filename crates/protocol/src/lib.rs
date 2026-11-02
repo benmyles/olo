@@ -1495,6 +1495,10 @@ pub struct TouchpadSettings {
     pub drag_lock: String,
     /// Three-finger drag: 0 off, 3 or 4 fingers.
     pub three_finger_drag: u8,
+    /// Two fingers pinching reach the window under them (zooming in a
+    /// browser, a picture). Off by default: a pinch made by accident
+    /// while scrolling zoomed Chrome's pages.
+    pub pinch_zoom: bool,
     /// Tapping (and clicking with) two fingers: "lrm" (two right-click,
     /// three middle-click) or "lmr".
     pub tap_button_map: String,
@@ -1658,6 +1662,7 @@ impl Default for TouchpadSettings {
             glide: 1.0,
             drag_lock: "off".into(),
             three_finger_drag: 0,
+            pinch_zoom: false,
             tap_button_map: "lrm".into(),
             clickfinger_button_map: "lrm".into(),
             middle_emulation: false,

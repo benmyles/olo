@@ -3,12 +3,13 @@
 //! so sparse files count what they use), hard links count once, and the
 //! scan stays on one file system (`volumes::Mounts`).
 
+use olo_sync::{Mutex, RwLock};
 use std::{
     collections::HashSet,
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     sync::{
-        Arc, Mutex, RwLock,
+        Arc,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::{Duration, Instant},

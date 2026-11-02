@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+olo-sync.workspace = true
 gpui.workspace = true
 olo-kit-base.workspace = true
 olo-protocol.workspace = true

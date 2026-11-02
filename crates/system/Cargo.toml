@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+olo-sync.workspace = true
 zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }
 zvariant = { version = "5", features = ["gvariant"] }
 pulseaudio = "0.3.2"

@@ -4,7 +4,9 @@
 //! worker; until they come the choice is a PDF.
 
 #[cfg(feature = "egui")]
-use std::sync::{Arc, Mutex};
+use olo_sync::Mutex;
+#[cfg(feature = "egui")]
+use std::sync::Arc;
 
 #[cfg(feature = "egui")]
 use olo_kit::{

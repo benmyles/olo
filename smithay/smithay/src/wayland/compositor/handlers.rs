@@ -1,7 +1,5 @@
-use std::sync::{
-    Mutex,
-    atomic::{AtomicBool, Ordering},
-};
+use olo_sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use wayland_server::{
     DataInit, Dispatch, DisplayHandle, New, Resource, WEnum,

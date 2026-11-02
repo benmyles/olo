@@ -1,5 +1,6 @@
+use olo_sync::Mutex;
 use reis::{eis::device::DeviceType, enumflags2::BitFlags, request::DeviceCapability};
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Weak};
 use xkbcommon::xkb;
 
 use crate::{

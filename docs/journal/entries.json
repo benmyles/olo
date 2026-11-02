@@ -2674,5 +2674,11 @@
   "title": "Tracker on GPUI",
   "caption": "Tracker moved from the egui kit to Olo's GPUI: folder windows (icons, mini icons, list, columns), the desktop, Get Info, Find, Tracker Status and Quick Look, with BeOS's drag rules through GPUI's own drops and Paste read off the UI thread.",
   "image": "2026-11-01/212921-tracker-on-gpui.png"
+ },
+ {
+  "time": "2026-11-01T22:30:36",
+  "title": "Pinch to zoom, off by default",
+  "caption": "Preferences \u25b8 Touchpad & Mouse \u25b8 Gestures: a pinch reaches the window under the pointer only when this is on. Off, two fingers drifting together while scrolling no longer zoom Chrome's pages.",
+  "image": "2026-11-01/223036-pinch-to-zoom-off-by-default.png"
  }
 ]

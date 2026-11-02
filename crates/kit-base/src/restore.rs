@@ -5,11 +5,8 @@
 //! so a version that doesn't ask, or asks only on some paths, leaves
 //! nothing behind in the runtime directory (memory, on tmpfs).
 
-use std::{
-    path::PathBuf,
-    process::Command,
-    sync::{Mutex, OnceLock},
-};
+use olo_sync::Mutex;
+use std::{path::PathBuf, process::Command, sync::OnceLock};
 
 /// The variable naming the file.
 pub const ENV: &str = "OLO_RESTORE";

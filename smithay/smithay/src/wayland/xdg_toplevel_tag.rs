@@ -30,7 +30,8 @@
 //! smithay::delegate_dispatch2!(State);
 //! ```
 
-use std::sync::{Arc, Mutex};
+use olo_sync::Mutex;
+use std::sync::Arc;
 
 use wayland_protocols::xdg::{
     shell::server::xdg_toplevel::XdgToplevel,

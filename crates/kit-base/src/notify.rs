@@ -19,10 +19,11 @@
 //! `.badge()`, `.field(label, value)`, `.image(path)` (a picture shown
 //! large), `.style(NoteStyle::Message)` and `.size(CardSize::Large)`.
 
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicU64, Ordering},
         mpsc,
     },

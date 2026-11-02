@@ -194,7 +194,8 @@
 //! }
 //! ```
 
-use std::sync::{Arc, Mutex};
+use olo_sync::Mutex;
+use std::sync::Arc;
 
 use tracing::{instrument, warn};
 

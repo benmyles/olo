@@ -194,7 +194,7 @@ where
 /// What a mirrored screen shows (kept in its user data). A mirror is not
 /// in the Space: it draws its source's frame, scaled to fit and centred.
 #[derive(Default)]
-struct MirrorOf(std::sync::Mutex<Option<Output>>);
+struct MirrorOf(olo_sync::Mutex<Option<Output>>);
 
 pub fn mirror_source(output: &Output) -> Option<Output> {
     output.user_data().get::<MirrorOf>()?.0.lock().unwrap().clone()

@@ -96,7 +96,8 @@
 //! smithay::delegate_dispatch2!(State);
 //! ```
 
-use std::sync::{Arc, Mutex, Weak, atomic::Ordering};
+use olo_sync::Mutex;
+use std::sync::{Arc, Weak, atomic::Ordering};
 
 use portable_atomic::AtomicF64;
 use wayland_protocols::wp::pointer_gestures::zv1::server::{

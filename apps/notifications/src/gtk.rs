@@ -5,10 +5,11 @@
 //! `org.freedesktop.Application` on the app itself (which D-Bus starts if
 //! it isn't running) rather than by a signal.
 
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicU32, Ordering},
     },
     time::SystemTime,

@@ -60,8 +60,10 @@ where
         trace!("Sending keymap to client");
 
         // prepare a tempfile with the keymap, to send it to the client
-        let keymap_file = self.arc.keymap.lock().unwrap();
-        let ret = keymap_file.send(&kbd);
+        // (The keymap's lock is let go before the keyboard's state is
+        // taken: everywhere else takes the state first, and the two
+        // orders together can deadlock. Olo's lock checker found it.)
+        let ret = self.arc.keymap.lock().unwrap().send(&kbd);
 
         if let Err(e) = ret {
             warn!(

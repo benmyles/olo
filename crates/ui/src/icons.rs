@@ -7,9 +7,10 @@
 //! up. Decoded once per process, off the UI thread (a worker), the
 //! windows drawn again as each arrives; until then its place is kept.
 
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, OnceLock, mpsc},
+    sync::{Arc, OnceLock, mpsc},
 };
 
 use gpui::{App, Bounds, Corners, Pixels, RenderImage, Window, point, px, size};

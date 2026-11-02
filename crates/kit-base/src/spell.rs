@@ -6,12 +6,8 @@
 //! first time it's wanted ([`load`]) and draws again when it's ready
 //! (`olo_kit::spell::checker`, `olo_ui::spell::checker`).
 
-use std::{
-    collections::HashSet,
-    ops::Range,
-    path::PathBuf,
-    sync::RwLock,
-};
+use olo_sync::RwLock;
+use std::{collections::HashSet, ops::Range, path::PathBuf};
 
 pub struct Checker {
     dict: spellbook::Dictionary,

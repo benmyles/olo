@@ -26,14 +26,9 @@
 //!
 //! Other implementations can be provided out-of-tree.
 
+use olo_sync::Mutex;
 use rustix::fs::OFlags;
-use std::{
-    cell::RefCell,
-    os::unix::io::OwnedFd,
-    path::Path,
-    rc::Rc,
-    sync::{Arc, Mutex},
-};
+use std::{cell::RefCell, os::unix::io::OwnedFd, path::Path, rc::Rc, sync::Arc};
 
 /// General session interface.
 ///

@@ -37,16 +37,14 @@
 
 // TODO: Add helper for receiver contexts
 
+use olo_sync::Mutex;
 use calloop::{EventSource, PostAction, Readiness, Token, TokenFactory};
 use reis::{
     calloop::EisRequestSourceEvent,
     eis,
     request::{DeviceCapability, EisRequest},
 };
-use std::{
-    io,
-    sync::{Arc, Mutex},
-};
+use std::{io, sync::Arc};
 
 use crate::backend::input::{InputEvent, KeyState};
 

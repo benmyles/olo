@@ -8,13 +8,14 @@
 //! between chunks. Moves on one file system are renames; across file
 //! systems they copy and then remove the source.
 
+use olo_sync::Mutex;
 use std::{
     fs::{self as sfs, File},
     io::{self, Read, Write},
     os::fd::AsRawFd,
     path::{Path, PathBuf},
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::Instant,

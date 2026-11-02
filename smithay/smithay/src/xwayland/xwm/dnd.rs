@@ -1,3 +1,4 @@
+use olo_sync::Mutex;
 use std::{
     any::Any,
     cmp,
@@ -5,7 +6,7 @@ use std::{
     fmt,
     os::fd::OwnedFd,
     sync::{
-        Arc, Mutex, Weak,
+        Arc, Weak,
         atomic::{AtomicBool, Ordering},
     },
 };

@@ -3,7 +3,8 @@ use crate::{
     utils::{Logical, Point},
 };
 
-use std::{collections::HashMap, sync::Mutex};
+use olo_sync::Mutex;
+use std::collections::HashMap;
 
 type OutputUserdata = Mutex<HashMap<usize, Point<i32, Logical>>>;
 

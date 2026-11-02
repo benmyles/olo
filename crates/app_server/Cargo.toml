@@ -12,6 +12,7 @@ name = "olo-app-server"
 path = "src/main.rs"
 
 [dependencies]
+olo-sync.workspace = true
 olo-system.workspace = true
 zeroize = "1"
 olo-hvif.workspace = true

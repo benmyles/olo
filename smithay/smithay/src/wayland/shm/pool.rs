@@ -1,3 +1,4 @@
+use olo_sync::RwLock;
 use std::{
     cell::Cell,
     mem,
@@ -5,7 +6,7 @@ use std::{
     os::unix::io::{AsFd, BorrowedFd, OwnedFd},
     ptr,
     sync::{
-        LazyLock, OnceLock, RwLock,
+        LazyLock, OnceLock,
         mpsc::{Sender, channel},
     },
     thread,

@@ -7,9 +7,9 @@
 //! flips between two apps without it) and out as the choice is made;
 //! Esc, putting everything back, takes it away at once.
 
+use olo_sync::Mutex;
 use std::{
     collections::{HashMap, HashSet},
-    sync::Mutex,
     time::{Duration, Instant},
 };
 

@@ -185,12 +185,13 @@
 
 mod dispatch;
 
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
     ops::{RangeInclusive, Sub},
     os::unix::io::AsFd,
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicBool, Ordering},
     },
 };

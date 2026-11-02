@@ -1,0 +1,115 @@
+#!/usr/bin/python3
+"""Lockcheck: look for deadlocks before they happen, without running
+anything. (At run time, debug builds already check every lock's order:
+see crates/sync, `olo_sync`.)
+
+  tools/dev/lockcheck [lints] [-p CRATE ...]
+  tools/dev/lockcheck lockbud [-p CRATE ...] [--install]
+
+lints (the default): clippy with only the lints about locks held too
+long, over the workspace's own crates (or -p's):
+  significant_drop_in_scrutinee  a guard taken in a `match`'s or an
+                                 `if let`'s scrutinee lives to the end
+                                 of it, so the arms run holding it;
+  significant_drop_tightening    a guard kept after its last use;
+  await_holding_lock / _refcell_ref, let_underscore_lock.
+Fast (a `cargo check`'s time); what it lists is worth a look, not
+always a bug.
+
+lockbud: BurtonQin/lockbud's static analysis of the compiled MIR: a lock
+taken again on a path that holds it (double lock), and two locks taken
+in both orders on any two paths (conflicting order), across functions
+and crates; std's, parking_lot's and spin's Mutex and RwLock. It needs
+the exact nightly it was built for (NIGHTLY below); --install puts that
+toolchain and lockbud in place (a clone under /var/tmp/olo-lockbud).
+olo_sync's locks are std's under it (`--cfg olo_lockbud`). It builds in
+a target directory of its own under /var/tmp/olo-lockbud (its
+crates are cleaned first: lockbud only sees what it compiles), and
+writes its report to /var/tmp/olo-lockbud/report-<time>.txt as well
+as the screen. Slow (a whole debug build) and noisy: read each finding
+against the code.
+"""
+import json, os, shutil, subprocess, sys, time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+NIGHTLY = "nightly-2026-02-07"
+SCRATCH = "/var/tmp/olo-lockbud"
+LINTS = [
+    "clippy::significant_drop_in_scrutinee",
+    "clippy::significant_drop_tightening",
+    "clippy::await_holding_lock",
+    "clippy::await_holding_refcell_ref",
+    "clippy::let_underscore_lock",
+]
+
+
+def members():
+    """The workspace's own crates (Olo's, and the vendored GPUI and
+    Smithay), by package name."""
+    meta = json.loads(subprocess.run(
+        ["cargo", "metadata", "--no-deps", "--format-version", "1"],
+        cwd=ROOT, check=True, capture_output=True, text=True).stdout)
+    return [p["name"] for p in meta["packages"]]
+
+
+def lints(crates):
+    pick = [a for c in crates for a in ("-p", c)]
+    cmd = ["cargo", "clippy", *(pick or ["--workspace"]), "--all-targets", "--no-deps", "--",
+           "-A", "clippy::all", *[a for l in LINTS for a in ("-W", l)]]
+    print("+", " ".join(cmd), flush=True)
+    return subprocess.run(cmd, cwd=ROOT).returncode
+
+
+def install():
+    rustup = shutil.which("rustup") or os.path.expanduser("~/.cargo/bin/rustup")
+    subprocess.run([rustup, "toolchain", "install", NIGHTLY, "--profile", "minimal",
+                    "--component", "rust-src,rustc-dev,llvm-tools-preview"], check=True)
+    src = os.path.join(SCRATCH, "lockbud")
+    if not os.path.isdir(src):
+        os.makedirs(SCRATCH, exist_ok=True)
+        subprocess.run(["git", "clone", "--depth", "1", "https://github.com/BurtonQin/lockbud.git", src], check=True)
+    subprocess.run(["cargo", f"+{NIGHTLY}", "install", "--locked", "--path", src], check=True)
+
+
+def lockbud(crates):
+    if subprocess.run(["cargo", f"+{NIGHTLY}", "lockbud", "--help"], cwd=ROOT,
+                      capture_output=True).returncode != 0:
+        sys.exit(f"lockbud isn't installed for {NIGHTLY}: tools/dev/lockcheck lockbud --install")
+    target = os.path.join(SCRATCH, "target")
+    env = dict(os.environ, CARGO_TARGET_DIR=target,
+               RUSTFLAGS=(os.environ.get("RUSTFLAGS", "") + " --cfg olo_lockbud").strip())
+    names = crates or members()
+    # (Only what it compiles is analysed: Olo's crates are built again,
+    # what they depend on is kept.)
+    if os.path.isdir(target):
+        for n in names:
+            subprocess.run(["cargo", f"+{NIGHTLY}", "clean", "-p", n], cwd=ROOT, env=env, capture_output=True)
+    report = os.path.join(SCRATCH, time.strftime("report-%Y%m%d-%H%M%S.txt"))
+    os.makedirs(SCRATCH, exist_ok=True)
+    cmd = ["cargo", f"+{NIGHTLY}", "lockbud", "-k", "deadlock", "-l", ",".join(n.replace("-", "_") for n in names)]
+    print("+", " ".join(cmd), flush=True)
+    with open(report, "w") as out:
+        p = subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        for line in p.stdout:
+            sys.stdout.write(line)
+            out.write(line)
+        code = p.wait()
+    print(f"report: {report}")
+    return code
+
+
+def main():
+    args = sys.argv[1:]
+    mode = args.pop(0) if args and not args[0].startswith("-") else "lints"
+    crates = [args[i + 1] for i, a in enumerate(args) if a == "-p" and i + 1 < len(args)]
+    if mode == "lints":
+        sys.exit(lints(crates))
+    if mode == "lockbud":
+        if "--install" in args:
+            install()
+            return
+        sys.exit(lockbud(crates))
+    sys.exit(__doc__)
+
+
+main()

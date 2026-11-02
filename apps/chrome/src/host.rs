@@ -19,11 +19,12 @@
 //! `tree` socket, for Chrome's process): `{tree: n}` goes to the
 //! extension, which answers `{tree: n, windows}` (background.js, tree.js).
 
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
     io::{Read, Write},
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicU64, Ordering},
         mpsc,
     },

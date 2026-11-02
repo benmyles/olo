@@ -6,7 +6,8 @@
 //! (`olo-telegram`), if it's running, is told to use it at once. All of
 //! it talks to the keyring and Telegram on workers.
 
-use std::sync::{Arc, Mutex};
+use olo_sync::Mutex;
+use std::sync::Arc;
 
 use olo_kit::{
     egui::{Color32, Context, Key, Rect, Sense, Ui, pos2, vec2},

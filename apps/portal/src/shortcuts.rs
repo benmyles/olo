@@ -10,11 +10,8 @@
 //! to the app as Activated and Deactivated; closing the session lets them
 //! go.
 
-use std::{
-    collections::HashMap,
-    os::unix::net::UnixStream,
-    sync::{Arc, Mutex},
-};
+use olo_sync::Mutex;
+use std::{collections::HashMap, os::unix::net::UnixStream, sync::Arc};
 
 use olo_protocol::shortcuts::Chord;
 use olo_ui::{

@@ -1,8 +1,8 @@
+use olo_sync::Mutex;
 use std::{
     any::Any,
     cell::RefCell,
     os::fd::{AsFd, OwnedFd},
-    sync::Mutex,
 };
 use tracing::{debug, error};
 

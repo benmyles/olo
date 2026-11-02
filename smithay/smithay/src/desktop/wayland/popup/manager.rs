@@ -7,7 +7,8 @@ use crate::{
         shell::xdg::{PopupCachedState, XDG_POPUP_ROLE, XdgPopupSurfaceData, XdgPopupSurfaceRoleAttributes},
     },
 };
-use std::sync::{Arc, Mutex};
+use olo_sync::Mutex;
+use std::sync::Arc;
 use tracing::trace;
 use wayland_protocols::xdg::shell::server::xdg_wm_base;
 use wayland_server::{Resource, protocol::wl_surface::WlSurface};

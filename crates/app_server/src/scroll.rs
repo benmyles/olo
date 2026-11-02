@@ -9,7 +9,8 @@
 //! as the window's. Their scrolls are scaled here so they match (measured
 //! with a ruler page and numbered lines; see HACKING.md, "Scrolling").
 
-use std::{collections::HashMap, path::Path, sync::Mutex, time::Duration};
+use olo_sync::Mutex;
+use std::{collections::HashMap, path::Path, time::Duration};
 
 use smithay::{backend::input::AxisSource, input::pointer::AxisFrame};
 

@@ -8,10 +8,8 @@
 //! screens from dimming, sleeping or locking until it closes; app_server
 //! counts them with the app inhibitors (Deskbar's cup shows them).
 
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use olo_sync::Mutex;
+use std::{collections::HashMap, sync::Arc};
 
 use zbus::{
     message::Header,

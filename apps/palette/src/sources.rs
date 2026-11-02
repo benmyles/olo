@@ -530,7 +530,7 @@ pub struct Workers {
 pub fn workers(proxy: Proxy) -> Workers {
     let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| "/".into());
     let (files, file_rx) = mpsc::channel::<(u64, Vec<String>)>();
-    let index = Arc::new(std::sync::RwLock::new(Index::default()));
+    let index = Arc::new(olo_sync::RwLock::new(Index::default()));
     // What wakes the search: a query, or the index changed under the last.
     enum Wake {
         Query(u64, Vec<String>),

@@ -33,11 +33,12 @@ use crate::{
 
 use encoding_rs::WINDOWS_1252;
 use portable_atomic::AtomicF64;
+use olo_sync::{Mutex, MutexGuard};
 use std::{
     borrow::Cow,
     collections::HashSet,
     sync::{
-        Arc, Mutex, MutexGuard, Weak,
+        Arc, Weak,
         atomic::{AtomicBool, Ordering},
     },
     time::Duration,

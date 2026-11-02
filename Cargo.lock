@@ -286,6 +286,7 @@ dependencies = [
  "olo-hvif",
  "olo-images",
  "olo-protocol",
+ "olo-sync",
  "olo-system",
  "olo-theme",
  "olo-xdg",
@@ -3311,6 +3312,7 @@ dependencies = [
 name = "gpui-macros"
 version = "0.2.2"
 dependencies = [
+ "gpui",
  "heck",
  "proc-macro2",
  "quote",
@@ -3354,7 +3356,6 @@ name = "gpui_sum_tree"
 version = "0.2.2"
 dependencies = [
  "arrayvec",
- "ctor",
  "log",
  "rand 0.9.5",
  "rayon",
@@ -6002,6 +6003,7 @@ dependencies = [
  "libc",
  "olo-kit-base",
  "olo-protocol",
+ "olo-sync",
  "olo-theme",
  "olo-ui",
  "olo-xdg",
@@ -6032,6 +6034,7 @@ dependencies = [
  "olo-keychain",
  "olo-kit-base",
  "olo-protocol",
+ "olo-sync",
  "olo-theme",
  "olo-ui",
  "olo-xdg",
@@ -6056,6 +6059,7 @@ dependencies = [
  "image",
  "libc",
  "olo-protocol",
+ "olo-sync",
  "olo-system",
  "olo-ui",
  "olo-xdg",
@@ -6082,6 +6086,7 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "olo-kit-base",
+ "olo-sync",
  "olo-theme",
  "olo-ui",
  "olo-xdg",
@@ -6096,6 +6101,7 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "olo-kit-base",
+ "olo-sync",
  "olo-system",
  "olo-theme",
  "olo-ui",
@@ -6201,6 +6207,7 @@ dependencies = [
  "libc",
  "memchr",
  "olo-protocol",
+ "olo-sync",
  "olo-xdg",
  "serde",
  "serde_json",
@@ -6249,6 +6256,7 @@ dependencies = [
  "olo-kit-base",
  "olo-preview",
  "olo-protocol",
+ "olo-sync",
  "olo-theme",
  "olo-ui",
  "olo-xdg",
@@ -6267,6 +6275,7 @@ dependencies = [
  "data-encoding",
  "getrandom 0.3.4",
  "hmac 0.13.0",
+ "olo-sync",
  "rusqlite",
  "serde",
  "serde_json",
@@ -6297,6 +6306,7 @@ dependencies = [
  "olo-keychain",
  "olo-kit-base",
  "olo-protocol",
+ "olo-sync",
  "olo-ui",
  "olo-xdg",
  "serde",
@@ -6363,6 +6373,7 @@ dependencies = [
  "olo-images",
  "olo-print",
  "olo-protocol",
+ "olo-sync",
  "olo-ui",
  "olo-xdg",
  "pipewire",
@@ -6385,6 +6396,7 @@ dependencies = [
  "olo-kit",
  "olo-protocol",
  "olo-screensavers",
+ "olo-sync",
  "olo-system",
  "olo-tg",
  "qrcode",
@@ -6415,6 +6427,7 @@ dependencies = [
  "olo-images",
  "olo-kit-base",
  "olo-richtext",
+ "olo-sync",
  "olo-theme",
  "olo-ui",
  "olo-xdg",
@@ -6443,6 +6456,7 @@ dependencies = [
  "krilla",
  "olo-kit",
  "olo-kit-base",
+ "olo-sync",
  "olo-theme",
  "olo-ui",
  "tracing",
@@ -6477,6 +6491,7 @@ dependencies = [
  "fontdb",
  "libc",
  "olo-protocol",
+ "olo-sync",
  "olo-theme",
  "olo-ui",
  "olo-xdg",
@@ -6515,6 +6530,7 @@ version = "0.1.0"
 dependencies = [
  "image",
  "olo-protocol",
+ "olo-sync",
  "olo-ui",
  "olo-xdg",
  "serde",
@@ -6541,6 +6557,7 @@ dependencies = [
  "olo-ai",
  "olo-kit-base",
  "olo-protocol",
+ "olo-sync",
  "olo-xdg",
  "serde_json",
 ]
@@ -6567,11 +6584,19 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "olo-protocol",
+ "olo-sync",
  "olo-system",
  "olo-ui",
  "olo-xdg",
  "serde_json",
  "tracing",
+]
+
+[[package]]
+name = "olo-sync"
+version = "0.1.0"
+dependencies = [
+ "tracing-mutex",
 ]
 
 [[package]]
@@ -6589,6 +6614,7 @@ dependencies = [
  "libc",
  "libloading",
  "num-bigint 0.4.8",
+ "olo-sync",
  "pulseaudio",
  "serde",
  "sha2 0.11.1",
@@ -6607,6 +6633,7 @@ dependencies = [
  "olo-images",
  "olo-preview",
  "olo-protocol",
+ "olo-sync",
  "olo-tg",
  "olo-ui",
  "olo-xdg",
@@ -6627,6 +6654,7 @@ dependencies = [
  "libc",
  "olo-kit",
  "olo-protocol",
+ "olo-sync",
  "olo-system",
  "regex",
  "rustls",
@@ -6647,6 +6675,7 @@ dependencies = [
  "grammers-mtsender",
  "grammers-session",
  "grammers-tl-types",
+ "olo-sync",
  "olo-system",
  "olo-xdg",
  "png 0.18.1",
@@ -6681,6 +6710,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "libc",
+ "olo-sync",
  "olo-system",
  "olo-xdg",
  "rcgen",
@@ -6712,6 +6742,7 @@ dependencies = [
  "olo-kit-base",
  "olo-preview",
  "olo-protocol",
+ "olo-sync",
  "olo-ui",
  "olo-xdg",
  "serde",
@@ -6731,6 +6762,7 @@ dependencies = [
  "libc",
  "olo-kit-base",
  "olo-protocol",
+ "olo-sync",
  "olo-theme",
  "olo-xdg",
  "serde",
@@ -6785,6 +6817,7 @@ name = "olo-xdg"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "olo-sync",
  "olo-theme",
  "png 0.18.1",
  "resvg",
@@ -8961,6 +8994,7 @@ dependencies = [
  "libc",
  "libloading",
  "libseat",
+ "olo-sync",
  "pixman",
  "pkg-config",
  "portable-atomic",
@@ -10083,6 +10117,15 @@ dependencies = [
  "log",
  "once_cell",
  "tracing-core",
+]
+
+[[package]]
+name = "tracing-mutex"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64aed473bc9271d160dce1fda5daebec76bb740f9db452bf6c9682344a5e44c0"
+dependencies = [
+ "autocfg",
 ]
 
 [[package]]

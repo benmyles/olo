@@ -1,5 +1,6 @@
+use olo_sync::Mutex;
 use std::mem;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use tracing::debug;
 use wayland_protocols::wp::text_input::zv3::server::zwp_text_input_v3::{

@@ -810,7 +810,7 @@ impl DiskUsage {
         CHART.with(|c| c.get())
     }
 
-    fn chart(&self, slices: Arc<Vec<chart::Slice>>, tree: Arc<std::sync::RwLock<scan::Tree>>, folder: NodeId, selected: Option<NodeId>, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn chart(&self, slices: Arc<Vec<chart::Slice>>, tree: Arc<olo_sync::RwLock<scan::Tree>>, folder: NodeId, selected: Option<NodeId>, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let me = cx.entity();
         let pointer = self.pointer;
         canvas(

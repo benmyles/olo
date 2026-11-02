@@ -31,10 +31,8 @@ pub mod reference;
 pub mod totp;
 pub mod types;
 
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use olo_sync::Mutex;
+use std::{collections::HashMap, sync::Arc};
 
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};

@@ -49,8 +49,9 @@
 //! [`on_commit_buffer_handler`](crate::backend::renderer::utils::on_commit_buffer_handler)
 //! the implementation will already call [`ensure_viewport_valid`] for you.
 
-use std::sync::Mutex;
 
+
+use olo_sync::Mutex;
 use tracing::trace;
 use wayland_protocols::wp::viewporter::server::{wp_viewport, wp_viewporter};
 use wayland_server::{

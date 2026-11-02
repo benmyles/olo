@@ -78,7 +78,8 @@
 //!         .and_then(|state| state.borrow_mut().timestamp.take())
 //! });
 //! ```
-use std::{cell::RefCell, collections::BinaryHeap, sync::Mutex};
+use olo_sync::Mutex;
+use std::{cell::RefCell, collections::BinaryHeap};
 
 use rustix::fs::Timespec;
 use wayland_protocols::wp::commit_timing::v1::server::{

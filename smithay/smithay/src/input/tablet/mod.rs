@@ -141,12 +141,13 @@
 //! around in your event-handling code to forward inputs to your clients.
 //!
 
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
     fmt,
     hash::Hash,
     path::PathBuf,
-    sync::{Arc, Mutex, Weak},
+    sync::{Arc, Weak},
 };
 
 use crate::{

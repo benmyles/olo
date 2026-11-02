@@ -47,10 +47,8 @@
 //! };
 //! ```
 
-use std::sync::{
-    Mutex,
-    atomic::{self, AtomicBool},
-};
+use olo_sync::Mutex;
+use std::sync::atomic::{self, AtomicBool};
 
 use wayland_protocols::wp::content_type::v1::server::{
     wp_content_type_manager_v1::WpContentTypeManagerV1, wp_content_type_v1,

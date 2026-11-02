@@ -1,5 +1,6 @@
 //! Type safe native types for safe egl initialisation
 
+use olo_sync::Mutex;
 use std::{
     collections::HashSet,
     ffi::{CStr, c_int},
@@ -7,7 +8,7 @@ use std::{
     mem::MaybeUninit,
     ops::Deref,
     os::unix::io::{AsRawFd, FromRawFd, OwnedFd},
-    sync::{Arc, LazyLock, Mutex, Weak},
+    sync::{Arc, LazyLock, Weak},
 };
 
 use indexmap::IndexSet;

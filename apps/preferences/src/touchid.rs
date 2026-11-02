@@ -3,9 +3,10 @@
 //! worker threads (`olo_system::fingerprint`); enrolling blocks on the
 //! sensor, so it has its own thread and can be cancelled.
 
+use olo_sync::Mutex;
 use std::{
     sync::{
-        Arc, Mutex, OnceLock,
+        Arc, OnceLock,
         mpsc::{RecvTimeoutError, Sender, channel},
     },
     time::Duration,

@@ -4,7 +4,8 @@
 //! in the login keyring, else `GH_TOKEN`, else the GitHub CLI's. Checking
 //! and connecting talk to GitHub on a worker.
 
-use std::sync::{Arc, Mutex};
+use olo_sync::Mutex;
+use std::sync::Arc;
 
 use olo_kit::{
     egui::{Context, Sense, Ui, vec2},

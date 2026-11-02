@@ -73,6 +73,7 @@
 //! // Rest of the compositor goes here
 //! ```
 
+use olo_sync::Mutex;
 use std::{
     collections::{HashMap, HashSet},
     fmt, io,
@@ -80,7 +81,7 @@ use std::{
     os::unix::{io::OwnedFd, prelude::AsFd},
     path::{Path, PathBuf},
     sync::{
-        Arc, Mutex, Weak,
+        Arc, Weak,
         atomic::{AtomicBool, Ordering},
     },
 };

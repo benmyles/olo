@@ -224,6 +224,7 @@ fn gestures(ui: &mut Ui, t: &mut TouchpadSettings) {
         let mut method = t.scroll_method.clone();
         menu(ui, "scroll-method", "Scroll with:", &[("two-finger".into(), "Two fingers"), ("edge".into(), "The right edge")], &mut method, true);
         t.scroll_method = method;
+        ui.add(CheckBox::new(&mut t.pinch_zoom, "Pinch to zoom"));
     });
     BBox::new("Clicking and Dragging").show(ui, |ui| {
         let mut map = t.tap_button_map.clone();

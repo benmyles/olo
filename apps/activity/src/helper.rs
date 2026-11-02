@@ -17,10 +17,11 @@
 //! `OLO_ACTIVITY_HELPER=direct` runs the helper without pkexec, as this
 //! user (tests: the whole protocol, nothing elevated); `=off` never asks.
 
+use olo_sync::Mutex;
 use std::{
     io::{BufRead, BufReader, Write},
     process::{Child, ChildStdin, Command, Stdio},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use serde::{Deserialize, Serialize};

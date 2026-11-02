@@ -47,12 +47,10 @@
 //! // state.idle_notifier.notify_activity(&seat);
 //! ```
 
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
-    sync::{
-        Mutex,
-        atomic::{self, AtomicBool},
-    },
+    sync::atomic::{self, AtomicBool},
     time::Duration,
 };
 

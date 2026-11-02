@@ -75,11 +75,12 @@
 //! // You're now ready to go!
 //! ```
 
+use olo_sync::Mutex;
 use std::{
     cell::{Ref, RefCell},
     collections::HashMap,
     os::unix::io::OwnedFd,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use smallvec::SmallVec;

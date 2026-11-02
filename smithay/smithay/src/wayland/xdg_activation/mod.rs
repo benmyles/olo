@@ -43,10 +43,11 @@
 //! // Rest of the compositor goes here...
 //! ```
 
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
     ops,
-    sync::{Arc, Mutex, atomic::AtomicBool},
+    sync::{Arc, atomic::AtomicBool},
     time::Instant,
 };
 

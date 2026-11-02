@@ -10,9 +10,10 @@
 //! screen chosen (`stream.rs`) and hands back their PipeWire nodes. The
 //! portal itself gives the app a PipeWire connection that sees only those.
 
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::{Duration, Instant},
 };
 

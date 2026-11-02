@@ -1,7 +1,5 @@
-use std::sync::{
-    Mutex,
-    atomic::{AtomicBool, Ordering},
-};
+use olo_sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use wayland_protocols::xdg::activation::v1::server::{xdg_activation_token_v1, xdg_activation_v1};
 use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, New, Resource};

@@ -1,7 +1,5 @@
-use std::{
-    fmt,
-    sync::{Arc, Mutex},
-};
+use olo_sync::Mutex;
+use std::{fmt, sync::Arc};
 
 use wayland_server::{Resource, protocol::wl_surface::WlSurface};
 

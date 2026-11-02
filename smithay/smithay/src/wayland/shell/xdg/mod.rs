@@ -133,8 +133,9 @@ use crate::wayland::GlobalData;
 use crate::wayland::compositor::Cacheable;
 use crate::wayland::compositor::{self, BufferAssignment, SurfaceAttributes};
 use crate::wayland::shell::xdg::dialog::ToplevelDialogHint;
+use olo_sync::Mutex;
 use std::cmp::min;
-use std::{collections::HashSet, fmt::Debug, sync::Mutex};
+use std::{collections::HashSet, fmt::Debug};
 
 use tracing::{error, trace, trace_span};
 use wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1;

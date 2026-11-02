@@ -6,11 +6,11 @@
 //! trust the pool's certificate) goes straight through, as without the
 //! pool.
 
+use olo_sync::Mutex;
 use std::{
     net::{SocketAddr, SocketAddrV4},
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
-    sync::Mutex,
 };
 
 use crate::model::Provider;

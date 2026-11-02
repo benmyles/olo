@@ -36,7 +36,8 @@
 //! VirtualPointerManagerState::new::<State, _>(&display_handle, |_client| true);
 //! ```
 
-use std::sync::{Arc, Mutex};
+use olo_sync::Mutex;
+use std::sync::Arc;
 
 use tracing::debug;
 use wayland_protocols_wlr::virtual_pointer::v1::server::{

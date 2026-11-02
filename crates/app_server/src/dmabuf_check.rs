@@ -12,10 +12,11 @@
 //! check (`Gate`), the window showing its last frame meanwhile, rather
 //! than the renderer importing the buffer the slow way.
 
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicBool, Ordering},
         mpsc,
     },

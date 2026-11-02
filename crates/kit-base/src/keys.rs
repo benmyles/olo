@@ -8,10 +8,11 @@
 //!
 //! Outside Olo the profile is a Mac's.
 
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
     sync::{
-        Mutex, OnceLock,
+        OnceLock,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
 };

@@ -3,6 +3,7 @@
 // GL calls are all unsafe, so not very helpful in this module.
 #![allow(unsafe_op_in_unsafe_fn)]
 
+use olo_sync::{Mutex, RwLock, RwLockWriteGuard};
 use core::slice;
 use glam::{Affine2, Mat3, Vec2};
 use std::{
@@ -15,7 +16,7 @@ use std::{
     ptr,
     rc::Rc,
     sync::{
-        Arc, Mutex, RwLock, RwLockWriteGuard, TryLockError,
+        Arc, TryLockError,
         atomic::{AtomicBool, AtomicPtr, Ordering},
         mpsc::{self, Sender},
     },
@@ -309,7 +310,8 @@ pub enum Capability {
 /// destroying one renderer will not leak resources, but allow another renderer
 /// with a shared context to clean them up.
 struct GlesCleanup {
-    receiver: Mutex<mpsc::Receiver<CleanupResource>>,
+    // (std's: its poison is cleared, which tracing-mutex can't do.)
+    receiver: std::sync::Mutex<mpsc::Receiver<CleanupResource>>,
     sender: mpsc::Sender<CleanupResource>,
 }
 
@@ -317,7 +319,7 @@ impl Default for GlesCleanup {
     fn default() -> Self {
         let (sender, receiver) = mpsc::channel();
         Self {
-            receiver: Mutex::new(receiver),
+            receiver: std::sync::Mutex::new(receiver),
             sender,
         }
     }

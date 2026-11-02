@@ -11,10 +11,8 @@
 //! around it magnified, the one under it outlined, its colour as a
 //! swatch and in hex. A click picks it; Escape cancels.
 
-use std::{
-    path::PathBuf,
-    sync::{Arc, Mutex},
-};
+use olo_sync::Mutex;
+use std::{path::PathBuf, sync::Arc};
 
 use olo_ui::{
     WindowOptions,

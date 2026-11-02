@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+olo-sync.workspace = true
 olo-system.workspace = true
 olo-xdg.workspace = true
 serde.workspace = true

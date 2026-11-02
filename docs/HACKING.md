@@ -85,9 +85,23 @@ like pixel alignment is.
    `title`/`app_id`/`geometry`, sending a configure, mapping the element).
    Work such values out before the call. `tests/surface_locks.rs` checks
    the source for this; `tools/dev/wm-sweep` exercises every window
-   operation on several screens and fails on the first hang. Use
-   `std::sync::Mutex` only with nothing else locked and never across a
-   call back into app_server.
+   operation on several screens and fails on the first hang. Nor does
+   anything else in Olo: every lock is `olo_sync`'s (crates/sync:
+   `Mutex`, `RwLock`, `Condvar`, never `std::sync`'s, Smithay's own
+   included), which in debug builds checks the order locks are taken
+   in: a lock taken again by the thread holding it, or two taken in
+   both orders anywhere (the deadlock waiting to happen, though this run
+   never interleaved them), panics at once with both stacks (run with
+   `RUST_LIB_BACKTRACE=1`), so tests, test sessions, `wm-fuzz` and
+   `wm-sweep` find it before anyone hangs; release builds get std's
+   locks as they are. (It found Smithay's keyboard taking its keymap's
+   lock and its state's in both orders.) `tools/dev/lockcheck` looks
+   without running: clippy's lints for guards held through a `match`
+   or past their last use, and `lockcheck lockbud`, a static analysis
+   of double locks and conflicting orders across functions and crates.
+   Hold a lock for as little as you can: take what you need, let go,
+   then call out; never hold one across a call back into app_server or
+   anything that might take another lock.
 9. **Every frame within 8.3 ms: 120 frames a second, always.** Olo's
    displays run at 120 Hz, and a frame that takes longer than one
    skips. That covers a whole frame (egui, the app's code, tessellating
@@ -4455,7 +4469,12 @@ while moving faster than 0.3 px/ms over the last 80 ms, the scroll glides
 on, slowing by 0.997 a millisecond (`glide` stretches that: 2.0 glides
 twice as far; `scroll_speed` scales finger scrolls before momentum
 samples them); fingers resting again (a hold gesture), pointer motion, a
-click, a swipe or pinch, or a wheel stop it.
+click, a swipe or pinch, or a wheel stop it. A pinch reaches the window
+under the pointer only with Gestures' "Pinch to zoom" on
+(`TouchpadSettings::pinch_zoom`, off by default: two fingers drifting
+together while scrolling zoomed Chrome's pages); off, app_server keeps
+the whole gesture to itself (`AnvilState::pinching`, decided as it
+begins).
 
 **A window shown gets its frames, idle or not.** Smithay sends a
 surface its frame callbacks every frame only on its *primary scanout
@@ -6378,8 +6397,10 @@ deferred so the Tracker can update the window back):
 - `FolderWin` (folder.rs, model.rs, columns.rs): the folder's items
   listed on a worker and kept by the watcher, the selection kept by
   item; icon and mini-icon views drawn in a canvas from what shows
-  only (items.rs: labels wrapped to two lines, four when selected; the
-  selected icon tinted and its label inverted), the band, the keys and
+  only (items.rs: labels wrapped to two lines, four when selected,
+  kept by text, font, width and scale so a scroll or a band shapes no
+  name it has shaped before; the selected icon tinted and its label
+  inverted), the band, the keys and
   typing to select; the list view the kit's `ColumnListView` (its
   `ListModel` follows the window's selection); the column view's
   columns side by side, scrolled across, with a preview of a selected

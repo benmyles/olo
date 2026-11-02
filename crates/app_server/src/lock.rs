@@ -10,10 +10,11 @@
 //! * Only that client unlocking ends the lock. If it dies, the screen stays
 //!   locked and it is started again.
 
+use olo_sync::Mutex;
 use std::{
     os::{fd::AsRawFd, unix::process::CommandExt},
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},

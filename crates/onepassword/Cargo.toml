@@ -9,6 +9,7 @@ license.workspace = true
 name = "onepassword"
 
 [dependencies]
+olo-sync.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

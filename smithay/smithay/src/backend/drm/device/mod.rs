@@ -1,8 +1,9 @@
+use olo_sync::Mutex;
 use std::collections::HashMap;
 use std::io;
 use std::os::unix::io::{AsFd, BorrowedFd};
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex, Weak, atomic::AtomicBool};
+use std::sync::{Arc, Weak, atomic::AtomicBool};
 use std::time::{Duration, SystemTime};
 
 use calloop::{EventSource, Interest, Poll, PostAction, Readiness, Token, TokenFactory};

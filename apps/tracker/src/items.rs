@@ -4,7 +4,11 @@
 //! editing a name in place.
 
 use std::{
+    cell::RefCell,
+    collections::HashMap,
+    hash::{DefaultHasher, Hash, Hasher},
     path::{Path, PathBuf},
+    rc::Rc,
     time::{Duration, Instant},
 };
 
@@ -61,7 +65,7 @@ fn row_height() -> f32 {
 pub struct ItemLayout {
     pub icon: Bounds<Pixels>,
     /// The label's lines and their widths.
-    lines: Vec<(SharedString, Pixels)>,
+    lines: Rc<[(SharedString, Pixels)]>,
     /// The lines' centre (icons) or left (mini icons).
     x: Pixels,
     centred: bool,
@@ -98,6 +102,58 @@ impl ItemLayout {
         let bottom = self.baseline + px(LABEL_PAD.1);
         Bounds::from_corners(point(left - px(LABEL_PAD.0), top), point(left + width + px(LABEL_PAD.0 + 2.0), bottom))
     }
+}
+
+/// A label as laid out: its lines (with their widths) and its whole
+/// name.
+type Label = (Rc<[(SharedString, Pixels)]>, SharedString);
+
+/// What decides how a label is laid out besides its text and font.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct LabelShape {
+    width: u32,
+    /// Lines at most; 0 for one line cut short, as the mini-icon view's.
+    rows: u8,
+    scale: u32,
+}
+
+thread_local! {
+    /// Labels laid out, by their text and font (hashed) and shape:
+    /// scrolling and band-selecting lay the same items out every frame,
+    /// and wrapping a name shapes it again.
+    static LABELS: RefCell<HashMap<(u64, LabelShape), (SharedString, Font, Label)>> = RefCell::default();
+}
+
+/// `text` in `font`, at most `rows` lines `width` wide (0: one line cut
+/// short), from the cache if laid out so before.
+fn label(window: &mut Window, text: &str, font: &Font, width: Pixels, rows: usize) -> Label {
+    let shape = LabelShape { width: f32::from(width).to_bits(), rows: rows as u8, scale: window.scale_factor().to_bits() };
+    let mut h = DefaultHasher::new();
+    text.hash(&mut h);
+    font.hash(&mut h);
+    let key = (h.finish(), shape);
+    let known = LABELS.with_borrow(|c| c.get(&key).filter(|(t, f, _)| t.as_ref() == text && f == font).map(|(_, _, l)| l.clone()));
+    if let Some(l) = known {
+        return l;
+    }
+    let lines: Rc<[(SharedString, Pixels)]> = if rows == 0 {
+        let fitted = style::fit(window, text.to_owned().into(), style::PLAIN_SIZE, font, width);
+        let w = style::text_width(window, fitted.clone(), style::PLAIN_SIZE, font.clone());
+        Rc::from([(fitted, w)])
+    } else {
+        wrap(window, text, font, width, rows).into()
+    };
+    let name = SharedString::from(text.to_owned());
+    let l = (lines, name.clone());
+    LABELS.with_borrow_mut(|c| {
+        // (A few folders' worth; a folder of thousands scrolled through
+        // starts it again.)
+        if c.len() >= 16_384 {
+            c.clear();
+        }
+        c.insert(key, (name, font.clone(), l.clone()));
+    });
+    l
 }
 
 /// `text` broken into at most `rows` lines `width` wide, the last cut
@@ -142,20 +198,19 @@ pub fn layout_item(window: &mut Window, cell: Bounds<Pixels>, label: &str, look:
         Look::Icons => {
             let icon = Bounds { origin: point(cell.center().x - px(ICON / 2.0), cell.top() + px(m::TIGHT)), size: size(px(ICON), px(ICON)) };
             let width = cell.size.width - px(2.0 * m::TIGHT);
-            let lines = wrap(window, label, &font, width, if selected { 4 } else { 2 });
+            let (lines, name) = self::label(window, label, &font, width, if selected { 4 } else { 2 });
             let top = icon.bottom() + px(m::TIGHT);
             let baseline = style::baseline_at(window, top + px(row_height() / 2.0), style::PLAIN_SIZE);
             let step = style::snap_coord(window, px(row_height()));
-            ItemLayout { icon, lines, x: style::snap_coord(window, cell.center().x), centred: true, baseline, step, font, name: label.to_owned().into() }
+            ItemLayout { icon, lines, x: style::snap_coord(window, cell.center().x), centred: true, baseline, step, font, name }
         }
         Look::Mini => {
             let icon = Bounds { origin: point(cell.left() + px(m::TIGHT), cell.center().y - px(MINI / 2.0)), size: size(px(MINI), px(MINI)) };
             let x = icon.right() + px(m::MARK_GAP);
             let width = (cell.right() - x - px(m::TIGHT)).max(px(0.0));
-            let text = style::fit(window, label.to_owned().into(), style::PLAIN_SIZE, &font, width);
-            let w = style::text_width(window, text.clone(), style::PLAIN_SIZE, font.clone());
+            let (lines, name) = self::label(window, label, &font, width, 0);
             let baseline = style::baseline_at(window, cell.center().y, style::PLAIN_SIZE);
-            ItemLayout { icon, lines: vec![(text, w)], x, centred: false, baseline, step: px(row_height()), font, name: label.to_owned().into() }
+            ItemLayout { icon, lines, x, centred: false, baseline, step: px(row_height()), font, name }
         }
     }
 }

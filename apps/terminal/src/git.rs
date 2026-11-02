@@ -8,11 +8,12 @@
 //! when its repository or branch changes; another asks GitHub about the
 //! branches the tabs are on, every minute (every five without a token).
 
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     sync::{
-        Arc, Mutex, Weak,
+        Arc, Weak,
         atomic::{AtomicBool, AtomicUsize, Ordering},
         mpsc,
     },

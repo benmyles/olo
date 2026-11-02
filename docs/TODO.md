@@ -214,14 +214,12 @@ as they land (with the commit), add new ones as they come up.
 
 ## The kit
 
-- **Tracker's scroll: a glide frame off, a flick's frames skipped**
-  (bench 2026-11-01, Tracker on GPUI, Big's 3,050 items at
-  3456×2234): at 1× a flick skipped 2 frames (one frame's UI took
-  5.5 ms) and one glide frame was 42% off its neighbours; at 2× one
-  62% off; at 1.5× even 0.97–1.01, glide within 1%. Measure with
-  `scroll-check --trace` on its column and icon views; the views lay
-  out only what shows, but each visible item is wrapped and measured
-  every frame (keep the layouts by name, width and scale).
+- ~~Tracker's scroll: a glide frame off, a flick's frames skipped~~
+  (bench 2026-11-01): passes at every scale (2026-11-02: scroll p50
+  2.12 / 1.99 / 1.20 ms at 1× / 1.5× / 2×, slowest 4.07 ms, glide
+  within 1%); labels are kept by text, font, width and scale and what
+  shows is laid out without copying entries. What's left of its frame
+  is mostly painting text a glyph at a time (below).
 - **GPUI text a glyph at a time is slow at full screen** (found
   2026-11-01 by the benchmark, as it was before that day's changes): a
   window full of GPUI kit text (`StyledText`, `TextView`,

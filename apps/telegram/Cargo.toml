@@ -9,6 +9,7 @@ name = "olo-telegram"
 path = "src/main.rs"
 
 [dependencies]
+olo-sync.workspace = true
 olo-ui.workspace = true
 olo-xdg.workspace = true
 olo-tg.workspace = true

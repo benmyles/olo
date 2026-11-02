@@ -8,11 +8,8 @@
 //!   cargo test -p olo-token-pool --test clients -- --ignored --nocapture
 //! ```
 
-use std::{
-    net::SocketAddr,
-    path::Path,
-    sync::{Arc, Mutex},
-};
+use olo_sync::Mutex;
+use std::{net::SocketAddr, path::Path, sync::Arc};
 
 use axum::{Router, body::Body, http::HeaderMap, response::Response, routing::post};
 use serde_json::json;

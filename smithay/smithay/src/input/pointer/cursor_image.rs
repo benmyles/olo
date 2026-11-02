@@ -1,10 +1,11 @@
 #[cfg(feature = "wayland_frontend")]
+use olo_sync::Mutex;
 use wayland_server::protocol::wl_surface::WlSurface;
 
 pub use cursor_icon::CursorIcon;
 
 use crate::utils::{Logical, Point};
-use std::sync::Mutex;
+
 
 /// The role representing a surface set as the pointer cursor
 #[derive(Debug, Default, Copy, Clone)]

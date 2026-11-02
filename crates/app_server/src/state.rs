@@ -158,6 +158,9 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// Touchpad scrolls gliding on after the fingers lift.
     /// Finger scrolls and glides, sent on the frame clock (`pace.rs`).
     pub pacer: crate::pace::Pacer,
+    /// The pinch going on reaches the window under the pointer (as
+    /// Preferences ▸ Touchpad said when it began).
+    pub pinching: bool,
     /// Which way the fingers' scroll goes (natural or not), for clients.
     pub scroll_direction: (smithay::backend::input::AxisRelativeDirection, smithay::backend::input::AxisRelativeDirection),
     /// A finger scroll's stop held back from a Chromium window, and when
@@ -1174,6 +1177,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             popups: PopupManager::default(),
             keyboard_before_popup: None,
             pacer: Default::default(),
+            pinching: false,
             scroll_direction: (smithay::backend::input::AxisRelativeDirection::Identical, smithay::backend::input::AxisRelativeDirection::Identical),
             held_stop: None,
             last_paced_move: None,

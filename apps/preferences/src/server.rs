@@ -30,7 +30,7 @@ pub struct Server {
     recorded: Recorded,
 }
 
-type Recorded = std::sync::Arc<std::sync::Mutex<Option<Option<String>>>>;
+type Recorded = std::sync::Arc<olo_sync::Mutex<Option<Option<String>>>>;
 
 impl Server {
     pub fn start(proxy: Proxy) -> Server {

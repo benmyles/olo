@@ -8,7 +8,7 @@
 //! ## Example usage
 //!
 //! ```rust,no_run
-//! # use std::{sync::{Arc, Mutex}, error::Error};
+//! # use std::{sync::{Arc}, error::Error};
 //! # use smithay::backend::x11::{X11Backend, X11Surface, WindowBuilder};
 //! use smithay::backend::allocator::dmabuf::DmabufAllocator;
 //! use smithay::backend::allocator::gbm::{GbmAllocator, GbmDevice, GbmBufferFlags};
@@ -96,12 +96,13 @@ use nix::{
 };
 */
 use rustix::fs::{Mode, OFlags};
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
     io,
     os::unix::io::OwnedFd,
     sync::{
-        Arc, Mutex, Weak,
+        Arc, Weak,
         atomic::{AtomicU32, Ordering},
         mpsc,
     },

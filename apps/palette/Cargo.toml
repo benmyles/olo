@@ -9,6 +9,7 @@ name = "olo-palette"
 path = "src/main.rs"
 
 [dependencies]
+olo-sync.workspace = true
 olo-ui.workspace = true
 olo-kit-base.workspace = true
 olo-xdg.workspace = true

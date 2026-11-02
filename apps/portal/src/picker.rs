@@ -10,10 +10,11 @@
 //! pixels (drawn one texture pixel to a device pixel) before it reaches
 //! the UI.
 
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},

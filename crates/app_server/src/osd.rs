@@ -3,10 +3,8 @@
 //! mode is switched from the keyboard. One at a time; each change
 //! replaces it and restarts its timer.
 
-use std::{
-    sync::Mutex,
-    time::{Duration, Instant},
-};
+use olo_sync::Mutex;
+use std::time::{Duration, Instant};
 
 use crate::render::Exact;
 use smithay::{

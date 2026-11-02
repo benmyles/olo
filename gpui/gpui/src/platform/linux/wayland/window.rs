@@ -840,7 +840,7 @@ impl WaylandWindowStatePtr {
             if first {
                 self.frame();
             } else {
-                self.schedule_frame();
+                self.draw_soon();
             }
         }
     }
@@ -870,7 +870,7 @@ impl WaylandWindowStatePtr {
                 if first {
                     self.frame();
                 } else {
-                    self.schedule_frame();
+                    self.draw_soon();
                 }
                 false
             }
@@ -1055,6 +1055,19 @@ impl WaylandWindowStatePtr {
         frames.signal.wakeup();
     }
 
+    /// Draw as soon as the loop is free, not waiting for the last
+    /// frame's callback: what the compositor asked for (a size) is drawn
+    /// and committed at once, as it waits for it, and a window that is
+    /// hidden (a tab behind another) never gets that callback. (The one
+    /// outstanding still comes, when it does, and asks for the next.)
+    fn draw_soon(&self) {
+        let frames = &self.frames;
+        if frames.callback.get() == FrameCallback::Committed {
+            frames.callback.set(FrameCallback::Asked);
+        }
+        self.schedule_frame();
+    }
+
     fn downgrade(&self) -> WeakWindowPtr {
         WeakWindowPtr {
             state: Rc::downgrade(&self.state),
@@ -1110,10 +1123,13 @@ impl WaylandWindowStatePtr {
                         state.resize_throttle = true;
                     }
                     if !configure.fullscreen && !configure.maximized {
-                        configure.size = if got_unmaximized {
-                            Some(state.window_bounds.size)
-                        } else {
-                            compute_outer_size(state.inset(), configure.size, state.tiling)
+                        // (Olo: the size it was before being maximized
+                        // only if the compositor leaves it to the window:
+                        // app_server sends the one it is to have, a tab's
+                        // group's or its tile's.)
+                        configure.size = match compute_outer_size(state.inset(), configure.size, state.tiling) {
+                            None if got_unmaximized => Some(state.window_bounds.size),
+                            size => size,
                         };
                         if let Some(size) = configure.size {
                             state.window_bounds = Bounds {
@@ -1149,13 +1165,17 @@ impl WaylandWindowStatePtr {
 
             let request_frame_callback = !state.acknowledged_first_configure;
             state.acknowledged_first_configure = true;
+            let resizing = state.resizing;
             drop(state);
-            // (What was acknowledged applies with the next commit.)
+            // (What was acknowledged applies with the next commit: at
+            // once, but a resize by hand's sizes paced by the display.)
             self.frames.needs_commit.set(true);
             if request_frame_callback {
                 self.frame();
-            } else {
+            } else if resizing {
                 self.schedule_frame();
+            } else {
+                self.draw_soon();
             }
         }
     }
@@ -1874,12 +1894,8 @@ impl PlatformWindow for WaylandWindow {
     }
 
     fn draw_now(&self) {
-        let frames = &self.0.frames;
-        if frames.callback.get() == FrameCallback::Committed {
-            frames.callback.set(FrameCallback::Asked);
-        }
-        frames.queued.set(false);
-        self.0.schedule_frame();
+        self.0.frames.queued.set(false);
+        self.0.draw_soon();
     }
 
     fn frame_waker(&self) -> Option<Rc<dyn Fn()>> {

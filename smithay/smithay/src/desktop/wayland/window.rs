@@ -13,11 +13,12 @@ use crate::{
         shell::xdg::{SurfaceCachedState, ToplevelSurface},
     },
 };
+use olo_sync::Mutex;
 use std::{
     borrow::Cow,
     hash::{Hash, Hasher},
     sync::{
-        Arc, Mutex, Weak,
+        Arc, Weak,
         atomic::{AtomicU8, Ordering},
     },
     time::Duration,

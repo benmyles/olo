@@ -136,7 +136,7 @@ struct Service {
     next: std::sync::Arc<AtomicU32>,
     /// Ids by (app, tag) for the hints that say "replace the last one with
     /// this tag" (volume and brightness pop-ups, a download's progress).
-    tags: std::sync::Mutex<HashMap<(String, String), u32>>,
+    tags: olo_sync::Mutex<HashMap<(String, String), u32>>,
     to_ui: Box<dyn Fn(In) + Send + Sync>,
 }
 
@@ -207,7 +207,7 @@ impl Service {
 /// acting on it.
 struct Controls {
     /// `List`'s answer, kept current by the UI.
-    snapshot: std::sync::Arc<std::sync::Mutex<String>>,
+    snapshot: std::sync::Arc<olo_sync::Mutex<String>>,
     to_ui: std::sync::Arc<dyn Fn(In) + Send + Sync>,
 }
 
@@ -450,7 +450,7 @@ impl Bus {
     pub fn serve(
         address: Option<&str>,
         first: u32,
-        snapshot: std::sync::Arc<std::sync::Mutex<String>>,
+        snapshot: std::sync::Arc<olo_sync::Mutex<String>>,
         to_ui: impl Fn(In) + Send + Sync + 'static,
     ) -> zbus::Result<Bus> {
         let builder = match address {

@@ -6,9 +6,10 @@
 //! document (a PDF, or PostScript), which goes to the printer through CUPS
 //! (`olo_print::ipp`), or, for "PDF File", where the person says.
 
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, atomic::AtomicU32},
+    sync::{Arc, atomic::AtomicU32},
 };
 
 use olo_print::panel::Choice;

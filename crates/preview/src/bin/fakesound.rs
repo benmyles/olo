@@ -13,11 +13,12 @@
 //! PULSE_SERVER=unix:/tmp/fake.sock olo-viewer song.mp3
 //! ```
 
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
     io::{Cursor, Read},
     os::unix::net::{UnixListener, UnixStream},
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::{Duration, Instant, SystemTime},
 };
 

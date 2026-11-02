@@ -1,7 +1,5 @@
-use std::{
-    sync::{Mutex, atomic::Ordering},
-    time::Duration,
-};
+use olo_sync::Mutex;
+use std::{sync::atomic::Ordering, time::Duration};
 
 #[cfg(feature = "egl")]
 use smithay::backend::renderer::ImportEgl;

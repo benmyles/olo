@@ -9,11 +9,12 @@
 //! disk, so the app shows them at once next time while Telegram is
 //! asked again.
 
+use olo_sync::Mutex;
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicI64, Ordering},
     },
     time::Duration,

@@ -50,9 +50,10 @@
 //! output.add_mode(Mode { size: (1024, 768).into(), refresh: 60000 });
 //! ```
 
+use olo_sync::Mutex;
 use std::{
     hash::{Hash, Hasher},
-    sync::{Arc, Mutex, Weak},
+    sync::{Arc, Weak},
 };
 
 use tracing::{info, instrument};

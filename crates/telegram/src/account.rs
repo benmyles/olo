@@ -11,11 +11,12 @@
 //! All of it blocks (the keyring is a D-Bus call): call it off the UI
 //! thread.
 
+use olo_sync::{Mutex, MutexGuard};
 use std::{
     collections::HashMap,
     path::PathBuf,
     sync::{
-        Arc, Mutex, MutexGuard,
+        Arc,
         atomic::{AtomicBool, Ordering},
     },
 };

@@ -1,4 +1,5 @@
-use std::{cell::RefCell, sync::Mutex};
+use olo_sync::Mutex;
+use std::cell::RefCell;
 
 use wayland_protocols::wp::primary_selection::zv1::server::zwp_primary_selection_source_v1::{
     self as primary_source, ZwpPrimarySelectionSourceV1 as PrimarySource,

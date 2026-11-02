@@ -12,10 +12,11 @@ use super::{
     handlers::{SurfaceUserData, is_effectively_sync},
     transaction::{Blocker, PendingTransaction, TransactionQueue},
 };
+use olo_sync::{Mutex, MutexGuard};
 use std::{
     any::Any,
     fmt,
-    sync::{Arc, Mutex, MutexGuard, atomic::Ordering},
+    sync::{Arc, atomic::Ordering},
 };
 use wayland_server::{
     DisplayHandle, Resource,

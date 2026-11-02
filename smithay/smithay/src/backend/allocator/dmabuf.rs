@@ -10,6 +10,7 @@
 //! This can be especially useful in resources where other parts of the stack should decide upon
 //! the lifetime of the buffer. E.g. when you are only caching associated resources for a dmabuf.
 
+use olo_sync::Mutex;
 use calloop::generic::Generic;
 use calloop::{EventSource, Interest, Mode, PostAction};
 use rustix::ioctl::Setter;
@@ -23,7 +24,7 @@ use crate::wayland::compositor::{Blocker, BlockerState};
 use std::hash::{Hash, Hasher};
 use std::os::unix::io::{AsFd, BorrowedFd, OwnedFd};
 #[cfg(feature = "backend_drm")]
-use std::sync::Mutex;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
 use std::{error, fmt};

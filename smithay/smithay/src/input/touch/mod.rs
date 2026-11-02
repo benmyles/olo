@@ -1,8 +1,9 @@
 //! Touch-related types for smithay's input abstraction
 
+use olo_sync::Mutex;
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use tracing::{info_span, instrument};
 #[cfg(feature = "wayland_frontend")]

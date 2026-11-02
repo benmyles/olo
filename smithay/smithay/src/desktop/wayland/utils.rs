@@ -16,7 +16,8 @@ use crate::{
         presentation::{PresentationFeedbackCachedState, PresentationFeedbackCallback, Refresh},
     },
 };
-use std::{cell::RefCell, sync::Mutex, time::Duration};
+use olo_sync::Mutex;
+use std::{cell::RefCell, time::Duration};
 use wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
 use wayland_server::protocol::wl_surface;
 

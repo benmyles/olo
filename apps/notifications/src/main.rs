@@ -34,9 +34,10 @@ mod sound;
 mod store;
 mod web;
 
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 

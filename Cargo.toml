@@ -13,6 +13,7 @@ repository = "https://example.invalid/olo"
 olo-protocol = { path = "crates/protocol" }
 olo-kit = { path = "crates/kit" }
 olo-kit-base = { path = "crates/kit-base" }
+olo-sync = { path = "crates/sync" }
 olo-ui = { path = "crates/ui" }
 gpui = { path = "gpui/gpui" }
 olo-theme = { path = "crates/theme" }

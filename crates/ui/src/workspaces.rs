@@ -7,7 +7,8 @@
 //! display's workspace as it changes. Every display has its own
 //! workspaces.
 
-use std::{collections::HashMap, sync::Mutex, time::Duration};
+use olo_sync::Mutex;
+use std::{collections::HashMap, time::Duration};
 
 use gpui::{App, Global, Window};
 use olo_protocol::{Client, DisplayWorkspace, Event, EventKind, Reply, Request, WindowInfo};

@@ -1,4 +1,5 @@
-use std::sync::{Arc, Mutex, atomic::AtomicBool};
+use olo_sync::Mutex;
+use std::sync::{Arc, atomic::AtomicBool};
 
 use indexmap::IndexSet;
 

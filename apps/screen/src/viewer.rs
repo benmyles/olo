@@ -14,12 +14,13 @@
 //! connection) and the history is followed by a third, so the window
 //! never waits on a screen or a disk.
 
+use olo_sync::{Condvar, Mutex};
 use std::{
     collections::HashSet,
     os::unix::net::UnixStream,
     path::PathBuf,
     sync::{
-        Arc, Condvar, Mutex,
+        Arc,
         atomic::{AtomicBool, Ordering},
         mpsc::{Receiver, Sender, channel},
     },

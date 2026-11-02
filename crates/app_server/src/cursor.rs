@@ -2,9 +2,10 @@
 //! output's scale and kept once drawn. Named cursors, from our own
 //! decorations or from clients over cursor-shape-v1, map onto them.
 
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, OnceLock},
 };
 
 use smithay::{
@@ -71,7 +72,7 @@ pub fn pictured(status: &CursorImageStatus) -> Option<Shape> {
 pub fn hotspot(status: &CursorImageStatus) -> Point<i32, Logical> {
     match status {
         CursorImageStatus::Surface(surface) => compositor::with_states(surface, |states| {
-            states.data_map.get::<std::sync::Mutex<CursorImageAttributes>>().map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).hotspot).unwrap_or_default()
+            states.data_map.get::<olo_sync::Mutex<CursorImageAttributes>>().map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).hotspot).unwrap_or_default()
         }),
         CursorImageStatus::Named(icon) => {
             let (x, y) = shape_for(*icon).hotspot();

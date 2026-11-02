@@ -3,11 +3,11 @@ macro_rules! id_gen {
         mod $mod_name {
             use std::{
                 collections::HashSet,
-                sync::{LazyLock, Mutex},
+                sync::LazyLock,
             };
 
-            static ID_DATA: LazyLock<Mutex<(HashSet<usize>, usize)>> =
-                LazyLock::new(|| Mutex::new((HashSet::new(), 0)));
+            static ID_DATA: LazyLock<olo_sync::Mutex<(HashSet<usize>, usize)>> =
+                LazyLock::new(|| olo_sync::Mutex::new((HashSet::new(), 0)));
 
             pub(crate) fn next() -> usize {
                 let (id_set, counter) = &mut *ID_DATA.lock().unwrap();

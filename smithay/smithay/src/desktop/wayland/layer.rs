@@ -18,11 +18,12 @@ use tracing::{debug_span, trace};
 use wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
 use wayland_server::protocol::wl_surface::{self, WlSurface};
 
+use olo_sync::{Mutex, MutexGuard};
 use std::{
     borrow::Cow,
     hash::{Hash, Hasher},
     num::Saturating,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::Arc,
     time::Duration,
 };
 

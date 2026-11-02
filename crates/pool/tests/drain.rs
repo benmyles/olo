@@ -4,10 +4,8 @@
 //! its next request passed through, with nothing restarted. Never a real
 //! account or service.
 
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use olo_sync::Mutex;
+use std::{sync::Arc, time::Duration};
 
 use axum::{Router, body::Body, http::HeaderMap, response::Response, routing::post};
 use olo_token_pool::{

@@ -1,8 +1,9 @@
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
     fmt,
     os::fd::{BorrowedFd, OwnedFd},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use calloop::{LoopHandle, RegistrationToken};

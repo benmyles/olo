@@ -26,11 +26,8 @@ pub mod udmabuf;
 pub mod vulkan;
 
 mod swapchain;
-use std::{
-    cell::RefCell,
-    rc::Rc,
-    sync::{Arc, Mutex},
-};
+use olo_sync::Mutex;
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use crate::utils::{Buffer as BufferCoords, Size};
 pub use swapchain::{Slot, Swapchain};

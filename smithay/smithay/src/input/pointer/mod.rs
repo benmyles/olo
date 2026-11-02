@@ -1,9 +1,7 @@
 //! Pointer-related types for smithay's input abstraction
 
-use std::{
-    fmt,
-    sync::{Arc, Mutex},
-};
+use olo_sync::Mutex;
+use std::{fmt, sync::Arc};
 
 use crate::{
     backend::input::{Axis, AxisRelativeDirection, AxisSource, ButtonState, InputTime},

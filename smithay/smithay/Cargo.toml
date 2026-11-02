@@ -16,6 +16,7 @@ features = ["test_all_features", "libseat/docs_rs"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
+olo-sync = { path = "../../crates/sync" }
 appendlist = "1.4"
 ash = { version = "0.38.0", optional = true }
 bitflags = "2.2.1"

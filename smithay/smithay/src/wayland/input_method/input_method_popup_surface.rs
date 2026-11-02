@@ -1,4 +1,5 @@
-use std::sync::{Arc, Mutex};
+use olo_sync::Mutex;
+use std::sync::Arc;
 
 use wayland_protocols_misc::zwp_input_method_v2::server::zwp_input_popup_surface_v2::{
     self, ZwpInputPopupSurfaceV2,

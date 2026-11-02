@@ -1,7 +1,5 @@
-use std::{
-    fmt,
-    sync::{Arc, Mutex},
-};
+use olo_sync::Mutex;
+use std::{fmt, sync::Arc};
 
 use tracing::warn;
 use wayland_protocols_misc::zwp_input_method_v2::server::zwp_input_method_keyboard_grab_v2::{

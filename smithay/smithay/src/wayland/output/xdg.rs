@@ -3,7 +3,8 @@
 //! This protocol is meant for describing outputs in a way
 //! which is more in line with the concept of an output on desktop oriented systems.
 
-use std::sync::{Arc, Mutex, atomic::Ordering};
+use olo_sync::Mutex;
+use std::sync::{Arc, atomic::Ordering};
 
 use tracing::trace;
 use wayland_protocols::xdg::xdg_output::zv1::server::zxdg_output_v1::ZxdgOutputV1;

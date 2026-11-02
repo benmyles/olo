@@ -3,10 +3,11 @@
 //! they change: nothing polled while nothing changes), and the small
 //! vector glyphs that show them.
 
+use olo_sync::Mutex;
 use std::{
     path::PathBuf,
     sync::{
-        Arc, Mutex, OnceLock,
+        Arc, OnceLock,
         mpsc::{Sender, channel},
     },
     time::Duration,

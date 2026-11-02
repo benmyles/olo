@@ -1,4 +1,5 @@
-use std::sync::{Arc, Mutex};
+use olo_sync::Mutex;
+use std::sync::Arc;
 
 use wayland_protocols::wp::tablet::zv2::server::{
     zwp_tablet_seat_v2::ZwpTabletSeatV2, zwp_tablet_v2::ZwpTabletV2,

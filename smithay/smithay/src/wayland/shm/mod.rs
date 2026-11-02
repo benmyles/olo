@@ -95,11 +95,8 @@
 //!
 //! If you are already using an handler for this signal, you probably don't want to use this handler.
 
-use std::{
-    any::Any,
-    collections::HashSet,
-    sync::{Arc, Mutex},
-};
+use olo_sync::Mutex;
+use std::{any::Any, collections::HashSet, sync::Arc};
 
 use wayland_server::{
     Dispatch, DisplayHandle, GlobalDispatch, Resource, WEnum,

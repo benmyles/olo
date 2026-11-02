@@ -1,4 +1,5 @@
-use std::sync::{Arc, Mutex, atomic::AtomicBool};
+use olo_sync::Mutex;
+use std::sync::{Arc, atomic::AtomicBool};
 
 use libc::dev_t;
 use wayland_protocols::wp::linux_dmabuf::zv1::server::{

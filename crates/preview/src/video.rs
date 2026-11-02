@@ -7,11 +7,12 @@
 //! own and follows the sound (played by [`audio::Player`]) when there is
 //! any, so a file without sound, or no sound server, still plays.
 
+use olo_sync::{Condvar, Mutex};
 use std::{
     cmp::Reverse,
     collections::{BinaryHeap, VecDeque},
     io::BufReader,
-    sync::{Arc, Condvar, Mutex, atomic::Ordering},
+    sync::{Arc, atomic::Ordering},
     time::{Duration, Instant},
 };
 

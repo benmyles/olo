@@ -3,6 +3,7 @@
 //! be exercised without a real account. It answers the calls apps make
 //! (vaults, items, files, secrets); others fail with a clear error.
 
+use olo_sync::Mutex;
 use std::{
     collections::BTreeMap,
     os::{
@@ -11,7 +12,7 @@ use std::{
     },
     path::PathBuf,
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
     thread,

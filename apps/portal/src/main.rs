@@ -135,7 +135,7 @@ struct Portal {
     /// Open With choosers, to give the apps offered as they change.
     choosers: Vec<WeakEntity<chooser::Dialog>>,
     /// The bus, once served (to end sessions from here).
-    bus: std::sync::Arc<std::sync::Mutex<Option<zbus::blocking::Connection>>>,
+    bus: std::sync::Arc<olo_sync::Mutex<Option<zbus::blocking::Connection>>>,
 }
 
 impl Portal {
@@ -354,7 +354,7 @@ fn main() -> std::process::ExitCode {
         // (`--stop` comes this way, in a test's session too.)
         instance::listen(APP_ID, olo_ui::proxy(cx));
         let proxy = olo_ui::proxy(cx);
-        let bus = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let bus = std::sync::Arc::new(olo_sync::Mutex::new(None));
         let slot = bus.clone();
         std::thread::Builder::new()
             .name("portal-bus".into())

@@ -1,0 +1,12 @@
+[package]
+name = "olo-sync"
+description = "Olo's locks: std's, checked for lock-order cycles in debug builds"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tracing-mutex = "0.3"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(olo_lockbud)"] }

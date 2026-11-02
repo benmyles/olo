@@ -26,9 +26,10 @@
 //! smithay::delegate_dispatch2!(State);
 //! ```
 
+use olo_sync::Mutex;
 use std::{
     collections::HashSet,
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, OnceLock},
 };
 
 use wayland_protocols::xdg::{

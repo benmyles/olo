@@ -48,8 +48,9 @@
 //! // You're now ready to go!
 //! ```
 
+use olo_sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use _session_lock::ext_session_lock_manager_v1::{ExtSessionLockManagerV1, Request};
 use _session_lock::ext_session_lock_v1::ExtSessionLockV1;

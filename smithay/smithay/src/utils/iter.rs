@@ -1,7 +1,8 @@
 /// Common iterator types
+use olo_sync::MutexGuard;
 use wayland_server::{Resource, Weak, backend::ClientId};
 
-use std::{fmt, sync::MutexGuard};
+use std::fmt;
 
 /// Iterator helper over a mutex of client objects
 pub struct LockedClientObjsIter<'a, T: 'static, G, F> {

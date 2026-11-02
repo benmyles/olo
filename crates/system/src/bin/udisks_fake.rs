@@ -9,11 +9,12 @@
 //! benchmark file descriptors (onto sparse files in its directory). Point
 //! apps at it with `OLO_UDISKS_BUS=ADDRESS`.
 
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
     path::PathBuf,
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicBool, Ordering},
     },
     time::Duration,

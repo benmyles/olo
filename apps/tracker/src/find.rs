@@ -4,11 +4,11 @@
 //! follows ripgrep's defaults: a literal string, smart case (case-blind
 //! unless the query has a capital letter).
 
+use olo_sync::Mutex;
 use std::{
     path::{Path, PathBuf},
     sync::{
         Arc,
-        Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc,
     },

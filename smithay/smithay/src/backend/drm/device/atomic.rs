@@ -1,6 +1,7 @@
+use olo_sync::RwLock;
 use std::collections::HashMap;
 use std::sync::{
-    Arc, RwLock,
+    Arc,
     atomic::{AtomicBool, Ordering},
 };
 

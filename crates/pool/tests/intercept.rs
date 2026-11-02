@@ -3,10 +3,8 @@
 //! reaches "api.anthropic.com" and "chatgpt.com" through it, as Claude
 //! Code and Codex do.
 
-use std::{
-    net::SocketAddr,
-    sync::{Arc, Mutex},
-};
+use olo_sync::Mutex;
+use std::{net::SocketAddr, sync::Arc};
 
 use axum::{
     Router,

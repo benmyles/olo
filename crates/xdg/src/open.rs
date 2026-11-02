@@ -3,6 +3,7 @@
 //! installed for the type, else the user's default from mimeapps.list,
 //! else any installed app that lists the type.
 
+use olo_sync::Mutex;
 use std::{
     ffi::OsString,
     io,
@@ -353,7 +354,7 @@ pub fn handler(mime: &str) -> Option<Handler> {
 
 /// [`handler`], remembered per type for a while (it reads many files).
 pub fn handler_cached(mime: &str) -> Option<Handler> {
-    use std::{collections::HashMap, sync::{Mutex, OnceLock}, time::{Duration, Instant}};
+    use std::{collections::HashMap, sync::{OnceLock}, time::{Duration, Instant}};
     type Cache = Mutex<HashMap<String, (Instant, Option<Handler>)>>;
     static CACHE: OnceLock<Cache> = OnceLock::new();
     const FRESH: Duration = Duration::from_secs(30);

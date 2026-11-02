@@ -29,10 +29,8 @@
 //! smithay::delegate_dispatch2!(State);
 //! ```
 
-use std::sync::{
-    Mutex,
-    atomic::{AtomicBool, Ordering},
-};
+use olo_sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::wayland::{
     GlobalData,

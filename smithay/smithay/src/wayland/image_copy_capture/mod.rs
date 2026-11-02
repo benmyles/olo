@@ -84,11 +84,8 @@
 // and Ian Douglas Scott (@ids1024) at System76.
 // Original source: https://github.com/pop-os/cosmic-comp/blob/master/src/wayland/protocols/screencopy.rs
 
-use std::{
-    ops,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use olo_sync::Mutex;
+use std::{ops, sync::Arc, time::Duration};
 
 use wayland_protocols::ext::image_copy_capture::v1::server::{
     ext_image_copy_capture_cursor_session_v1::{self, ExtImageCopyCaptureCursorSessionV1},

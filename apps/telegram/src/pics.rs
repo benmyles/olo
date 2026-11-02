@@ -4,10 +4,11 @@
 //! straight alpha). Files fetched whole (to open or play) are remembered
 //! by path.
 
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, mpsc},
+    sync::{Arc, mpsc},
 };
 
 use olo_tg::{Backend, Cmd, Pic};

@@ -125,8 +125,9 @@
 //! }
 //! ```
 
+use olo_sync::Mutex;
 use std::sync::{
-    Arc, Mutex,
+    Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 

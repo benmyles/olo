@@ -22,9 +22,10 @@
 //! 4. `StopPrompting(callback)` ends it: we close the window and call
 //!    `PromptDone()`. If the daemon goes away the window closes too.
 
+use olo_sync::Mutex;
 use std::{
     collections::{HashMap, VecDeque},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use num_bigint::BigUint;

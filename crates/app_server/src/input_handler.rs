@@ -589,8 +589,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         );
     }
 
+    /// A pinch reaches the window under the pointer only with
+    /// Preferences ▸ Touchpad's "Pinch to zoom" on: off, two fingers
+    /// that come together a little while scrolling don't zoom a page.
     fn on_gesture_pinch_begin<B: InputBackend>(&mut self, evt: B::GesturePinchBeginEvent) {
         self.stop_glide();
+        self.pinching = self.settings.touchpad.pinch_zoom;
+        if !self.pinching {
+            return;
+        }
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
         pointer.gesture_pinch_begin(
@@ -604,6 +611,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     fn on_gesture_pinch_update<B: InputBackend>(&mut self, evt: B::GesturePinchUpdateEvent) {
+        if !self.pinching {
+            return;
+        }
         let pointer = self.pointer.clone();
         pointer.gesture_pinch_update(
             self,
@@ -617,6 +627,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     fn on_gesture_pinch_end<B: InputBackend>(&mut self, evt: B::GesturePinchEndEvent) {
+        if !std::mem::take(&mut self.pinching) {
+            return;
+        }
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
         pointer.gesture_pinch_end(

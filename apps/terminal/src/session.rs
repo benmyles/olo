@@ -131,7 +131,7 @@ pub struct Session {
 #[derive(Default)]
 struct Reflow {
     /// The size to make next, and its grid for olo-termd.
-    want: std::sync::Mutex<Option<(Size, wire::Grid)>>,
+    want: olo_sync::Mutex<Option<(Size, wire::Grid)>>,
     busy: AtomicBool,
 }
 

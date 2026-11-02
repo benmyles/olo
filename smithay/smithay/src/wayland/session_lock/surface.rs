@@ -1,7 +1,8 @@
 //! ext-session-lock surface.
 
+use olo_sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::backend::renderer::buffer_dimensions;
 use crate::utils::{IsAlive, Logical, SERIAL_COUNTER, Serial, Size};

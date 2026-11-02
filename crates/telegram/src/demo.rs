@@ -7,12 +7,8 @@
 //! with a number adds that many more chats (thousands, for the bench),
 //! and `OLO_TELEGRAM_DEMO_EVERY=S` has a message arrive every S seconds.
 
-use std::{
-    collections::HashMap,
-    path::PathBuf,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use olo_sync::Mutex;
+use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 
 use tokio::sync::mpsc::UnboundedReceiver;
 

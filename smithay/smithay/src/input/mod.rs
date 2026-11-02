@@ -119,10 +119,11 @@
 //! in your event-handling code to forward inputs to your clients.
 //!
 
+use olo_sync::Mutex;
 use std::{
     fmt,
     hash::Hash,
-    sync::{Arc, Mutex, Weak},
+    sync::{Arc, Weak},
 };
 
 use tracing::{info_span, instrument};

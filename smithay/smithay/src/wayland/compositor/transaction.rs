@@ -38,10 +38,11 @@
 // A significant part of the logic of this module is not yet used,
 // but will be once proper transaction & blockers support is
 // added to smithay
+use olo_sync::Mutex;
 use std::{
     collections::HashSet,
     fmt,
-    sync::{Arc, Mutex, atomic::AtomicBool},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 use wayland_server::{DisplayHandle, Resource, Weak, protocol::wl_surface::WlSurface};

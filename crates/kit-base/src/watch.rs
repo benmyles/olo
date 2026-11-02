@@ -14,6 +14,7 @@
 //! it. Tracker keeps its own watcher (`apps/tracker/src/watch.rs`), which
 //! also reads what changed for its windows.
 
+use olo_sync::Mutex;
 use std::{
     collections::{HashMap, HashSet},
     ffi::{CString, OsStr},
@@ -22,7 +23,7 @@ use std::{
         unix::ffi::OsStrExt,
     },
     path::PathBuf,
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, OnceLock},
     time::{Duration, Instant},
 };
 

@@ -1,9 +1,7 @@
 //! Utilities for handling the security context protocol
 
-use std::{
-    os::unix::{io::OwnedFd, net::UnixListener},
-    sync::Mutex,
-};
+use olo_sync::Mutex;
+use std::os::unix::{io::OwnedFd, net::UnixListener};
 use tracing::error;
 use wayland_protocols::wp::security_context::v1::server::{
     wp_security_context_manager_v1::{self, WpSecurityContextManagerV1},

@@ -1,11 +1,12 @@
 //! Device-wide synchronization helpers
 
+use olo_sync::{Mutex, RwLock, RwLockWriteGuard};
 use std::{
     collections::HashMap,
     fmt,
     marker::PhantomData,
     os::fd::AsFd,
-    sync::{Arc, Mutex, RwLock, RwLockWriteGuard, TryLockError},
+    sync::{Arc, TryLockError},
 };
 
 use drm::control::{self, Mode, connector, crtc};

@@ -2130,7 +2130,7 @@ where
                 // log tells why a window stays drawn: the whole frame's
                 // test failed with this element on this plane.
                 if let Some(c) = state.config.as_ref() {
-                    static SAID: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+                    static SAID: std::sync::OnceLock<olo_sync::Mutex<std::collections::HashSet<String>>> =
                         std::sync::OnceLock::new();
                     let key = format!("{:?} {:?}/{:?} {}x{}", plane, c.properties.format.code, c.properties.format.modifier, c.properties.dst.size.w, c.properties.dst.size.h);
                     if SAID.get_or_init(Default::default).lock().unwrap().insert(key) {
@@ -4099,7 +4099,7 @@ where
                 Err(err) => {
                     // (Olo) Said once a plane, format and size, so the
                     // session's log tells why a window stays drawn.
-                    static SAID: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+                    static SAID: std::sync::OnceLock<olo_sync::Mutex<std::collections::HashSet<String>>> =
                         std::sync::OnceLock::new();
                     let key = format!(
                         "{:?} {:?}/{:?} {}x{}",

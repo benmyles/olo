@@ -10,10 +10,11 @@
 //! `OLO_DOCTOR_HELPER=direct` runs it as this user without pkexec
 //! (tests: the protocol, nothing elevated); `=off` never.
 
+use olo_sync::Mutex;
 use std::{
     io::{BufRead, BufReader, Write},
     process::{Child, ChildStdin, Command, Stdio},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use serde::{Deserialize, Serialize};

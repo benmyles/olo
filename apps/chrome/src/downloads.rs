@@ -35,7 +35,7 @@ pub struct Download {
 pub struct Downloads {
     notes: Notifier,
     /// What each notification is about, for its actions.
-    shown: std::sync::Arc<std::sync::Mutex<HashMap<NoteId, PathBuf>>>,
+    shown: std::sync::Arc<olo_sync::Mutex<HashMap<NoteId, PathBuf>>>,
     bus: Option<zbus::blocking::Connection>,
     /// Marked with `EXPECTED` already (by id).
     marked: Vec<u64>,
@@ -46,7 +46,7 @@ pub struct Downloads {
 
 impl Downloads {
     pub fn new() -> Downloads {
-        let shown: std::sync::Arc<std::sync::Mutex<HashMap<NoteId, PathBuf>>> = Default::default();
+        let shown: std::sync::Arc<olo_sync::Mutex<HashMap<NoteId, PathBuf>>> = Default::default();
         let about = shown.clone();
         let notes = Notifier::with_events("Google Chrome", "google-chrome", move |e| {
             let NoteEvent::Action { id, key, .. } = e else { return };

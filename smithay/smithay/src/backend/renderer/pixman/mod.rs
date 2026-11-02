@@ -1,7 +1,8 @@
 //! Implementation of the rendering traits using pixman
 
+use olo_sync::Mutex;
 use std::sync::{
-    Arc, LazyLock, Mutex,
+    Arc, LazyLock,
     atomic::{AtomicBool, Ordering},
 };
 

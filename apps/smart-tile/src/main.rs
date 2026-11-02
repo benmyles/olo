@@ -6,9 +6,10 @@
 //! Window Arrangement). A notification shows how it is going and can
 //! cancel it.
 
+use olo_sync::Mutex;
 use std::{
     process::ExitCode,
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::{Duration, Instant},
 };
 

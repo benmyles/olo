@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+olo-sync.workspace = true
 olo-theme.workspace = true
 png = "0.18"
 resvg = { version = "0.45", default-features = false }

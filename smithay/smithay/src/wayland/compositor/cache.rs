@@ -23,10 +23,8 @@
 // The logic for generating these commit ids and deciding when to apply them is implemented
 // and described in `transaction.rs`.
 
-use std::{
-    collections::VecDeque,
-    sync::{Mutex, MutexGuard},
-};
+use olo_sync::{Mutex, MutexGuard};
+use std::collections::VecDeque;
 
 use downcast_rs::{Downcast, impl_downcast};
 use wayland_server::DisplayHandle;

@@ -103,10 +103,11 @@
 //! }
 //! ```
 
+use olo_sync::{Mutex, MutexGuard};
 use std::{
     any::Any,
     collections::{HashMap, hash_map::Entry},
-    sync::{Arc, Mutex, MutexGuard},
+    sync::Arc,
 };
 
 use tracing::{instrument, trace, warn};

@@ -114,7 +114,7 @@ pub fn running_app(e: &Entry) -> Option<String> {
 
 /// Apps whose windows aren't grouped, as app_server's settings last said
 /// (kept by the settings watch, so menus never wait for app_server).
-pub static UNGROUPED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+pub static UNGROUPED: olo_sync::Mutex<Vec<String>> = olo_sync::Mutex::new(Vec::new());
 
 /// The app id of the application `e` is: one of our programs (or a link
 /// to one), or a `.desktop` entry (its id, which Wayland apps use).

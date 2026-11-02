@@ -3,10 +3,11 @@
 //! kept by the file (its path and when it last changed) and size; the
 //! windows are drawn again as each comes.
 
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, OnceLock, mpsc},
+    sync::{Arc, OnceLock, mpsc},
     time::SystemTime,
 };
 

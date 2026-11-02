@@ -2,11 +2,12 @@
 //!
 //! This provides a way for the client to request that the pointer is confined to a region or
 //! locked in place.
+use olo_sync::Mutex;
 use std::{
     collections::{HashMap, hash_map},
     ops,
     sync::{
-        Mutex, Weak,
+        Weak,
         atomic::{AtomicBool, Ordering},
     },
 };

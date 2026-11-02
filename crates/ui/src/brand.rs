@@ -4,9 +4,10 @@
 //! source decoded once, off the UI thread, and trimmed to what it draws;
 //! each size averaged down from it once, a texel to a device pixel.
 
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, OnceLock},
 };
 
 use gpui::{Bounds, Corners, Pixels, RenderImage, Window, point, px, size};

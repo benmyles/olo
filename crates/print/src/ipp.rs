@@ -363,7 +363,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("cups.sock");
         let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
-        let printed = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+        let printed = std::sync::Arc::new(olo_sync::Mutex::new(Vec::<u8>::new()));
         let seen = printed.clone();
         std::thread::spawn(move || {
             for conn in listener.incoming().flatten() {

@@ -3,10 +3,8 @@
 //! drawn once when asked for and kept on the output; `render` shows it
 //! until it expires.
 
-use std::{
-    sync::Mutex,
-    time::{Duration, Instant},
-};
+use olo_sync::Mutex;
+use std::time::{Duration, Instant};
 
 use crate::render::Exact;
 use smithay::{

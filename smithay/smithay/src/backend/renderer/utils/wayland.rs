@@ -16,10 +16,11 @@ use crate::{
     },
 };
 
+use olo_sync::Mutex;
 use std::{
     any::Any,
     collections::{HashMap, hash_map::Entry},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use super::{CommitCounter, DamageBag, DamageSet, DamageSnapshot, SurfaceView};

@@ -1,3 +1,4 @@
+use olo_sync::{Mutex, RwLock};
 use drm::control::Device as ControlDevice;
 use drm::control::atomic::AtomicModeReq;
 use drm::control::connector::Interface;
@@ -13,7 +14,7 @@ use std::collections::HashSet;
 use std::fmt;
 use std::os::unix::io::AsRawFd;
 use std::sync::{
-    Arc, Mutex, RwLock,
+    Arc,
     atomic::{AtomicBool, Ordering},
 };
 

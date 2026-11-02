@@ -49,10 +49,8 @@
 //! };
 //! ```
 
-use std::sync::{
-    Mutex,
-    atomic::{self, AtomicBool},
-};
+use olo_sync::Mutex;
+use std::sync::atomic::{self, AtomicBool};
 
 use wayland_protocols::wp::alpha_modifier::v1::server::{
     wp_alpha_modifier_surface_v1::WpAlphaModifierSurfaceV1, wp_alpha_modifier_v1::WpAlphaModifierV1,

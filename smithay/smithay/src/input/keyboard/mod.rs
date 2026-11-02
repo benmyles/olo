@@ -3,14 +3,11 @@
 use crate::backend::input::{InputTime, KeyState};
 use crate::utils::{IsAlive, SERIAL_COUNTER, Serial};
 use downcast_rs::{Downcast, impl_downcast};
+use olo_sync::{Mutex, RwLock};
 use std::collections::{HashMap, HashSet};
 #[cfg(feature = "wayland_frontend")]
-use std::sync::RwLock;
-use std::{
-    default::Default,
-    fmt, io,
-    sync::{Arc, Mutex},
-};
+
+use std::{default::Default, fmt, io, sync::Arc};
 use thiserror::Error;
 use tracing::{debug, info, info_span, instrument, trace};
 

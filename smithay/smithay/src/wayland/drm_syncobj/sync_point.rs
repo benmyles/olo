@@ -1,7 +1,8 @@
+use olo_sync::Mutex;
 use calloop::generic::Generic;
 use calloop::{EventSource, Interest, Mode, Poll, PostAction, Readiness, Token, TokenFactory};
 use drm::control::Device;
-use std::sync::{Mutex, Weak};
+use std::sync::Weak;
 use std::{
     io,
     os::unix::io::{AsFd, BorrowedFd, OwnedFd},

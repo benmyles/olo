@@ -25,6 +25,7 @@ mod replay;
 #[allow(dead_code)]
 mod wire;
 
+use olo_sync::Mutex;
 use std::{
     collections::{HashMap, VecDeque},
     fs::File,
@@ -38,7 +39,7 @@ use std::{
     },
     path::PathBuf,
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
         mpsc,
     },

@@ -24,9 +24,10 @@ mod detect;
 mod priority;
 mod sample;
 
+use olo_sync::Mutex;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -467,7 +468,7 @@ fn follow_focus(focus: Arc<Mutex<Option<(i32, String)>>>) {
 }
 
 /// Follow `performance.json` as Preferences and Deskbar change it.
-fn follow_settings(settings: Arc<Mutex<PerformanceSettings>>, wake: Arc<(Mutex<bool>, std::sync::Condvar)>) {
+fn follow_settings(settings: Arc<Mutex<PerformanceSettings>>, wake: Arc<(Mutex<bool>, olo_sync::Condvar)>) {
     let path = PerformanceSettings::path();
     let watch = olo_ui::watch::watch([path], move |_| {
         *settings.lock().unwrap() = PerformanceSettings::load();
@@ -608,7 +609,7 @@ fn main() -> std::process::ExitCode {
         instance::listen(APP_ID, olo_ui::proxy(cx));
         let settings = Arc::new(Mutex::new(PerformanceSettings::load()));
         let focus = Arc::new(Mutex::new(None));
-        let wake = Arc::new((Mutex::new(false), std::sync::Condvar::new()));
+        let wake = Arc::new((Mutex::new(false), olo_sync::Condvar::new()));
         follow_focus(focus.clone());
         follow_settings(settings.clone(), wake.clone());
         let mut sup = Supervisor {

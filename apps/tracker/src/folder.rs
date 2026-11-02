@@ -143,6 +143,16 @@ impl IconGeo {
     }
 }
 
+/// An item that shows in the icon view this frame, laid out.
+struct Shown {
+    i: usize,
+    layout: ItemLayout,
+    icon: &'static str,
+    selected: bool,
+    /// How far along a download being written is.
+    progress: Option<f32>,
+}
+
 /// A press in the icon view: where (in the window and the content), with
 /// what, on which item, and what it has become.
 struct Press {
@@ -790,35 +800,41 @@ impl FolderWin {
                 // state so it can be drawn.
                 let first = ((f32::from(clip.top() - b.top()) - inset) / cell.1).floor().max(0.0) as usize * cols;
                 let last = (((f32::from(clip.bottom() - b.top()) - inset) / cell.1).ceil().max(0.0) as usize + 1) * cols;
-                let (shown, editing, band, key, here) = {
+                let cell_at = |i: usize| Bounds { origin: point(b.left() + px(inset + (i % cols) as f32 * cell.0), b.top() + px(inset + (i / cols) as f32 * cell.1)), size: size(px(cell.0), px(cell.1)) };
+                // (Laid out from the window's entries where they are: no
+                // copies of what shows, a frame's worth of allocations.)
+                let (layouts, editing, band, took, drop_on, spring_to) = {
                     let f = paint_me.read(cx);
                     let range = first.min(f.entries.len())..last.min(f.entries.len());
-                    let shown: Vec<(usize, Entry, bool)> = range.map(|i| (i, f.entries[i].clone(), f.list.selected.contains(&i))).collect();
-                    let editing = f.editing.as_ref().and_then(|r| f.entries.iter().position(|e| e.path == r.path));
+                    let layouts: Vec<Shown> = range
+                        .map(|i| {
+                            let e = &f.entries[i];
+                            let selected = f.list.selected.contains(&i);
+                            Shown { i, layout: items::layout_item(window, cell_at(i), e.label(), look, selected, e.is_link), icon: items::icon_of(e), selected, progress: e.progress() }
+                        })
+                        .collect();
+                    let editing = f.editing.as_ref().and_then(|r| layouts.iter().find(|s| f.entries[s.i].path == r.path)).map(|s| s.i);
                     let band = f.band.clone().zip(f.press.as_ref().filter(|p| p.item.is_none() && p.button == MouseButton::Left)).map(|((start, _), _)| start);
-                    (shown, editing, band, f.key(), f.current_dir())
-                };
-                let cell_at = |i: usize| Bounds { origin: point(b.left() + px(inset + (i % cols) as f32 * cell.0), b.top() + px(inset + (i / cols) as f32 * cell.1)), size: size(px(cell.0), px(cell.1)) };
-                let layouts: Vec<(usize, ItemLayout, &'static str)> = shown.iter().map(|(i, e, sel)| (*i, items::layout_item(window, cell_at(*i), e.label(), look, *sel, e.is_link), items::icon_of(e))).collect();
-                // Something dragged over it: onto a folder in it, or into it.
-                let (mut took, mut drop_on, mut spring_to) = (false, None, None);
-                if let Some(o) = window.drop_offer().cloned() {
-                    let at = window.mouse_position();
-                    if clip.contains(&at) {
-                        let over = layouts.iter().position(|(_, l, _)| l.hit().contains(&at)).map(|k| (shown[k].0, &shown[k].1, shown[k].2));
-                        (took, drop_on) = items::item_drop(window, cx, key, &o, over, Some(&here));
-                        spring_to = drop_on.filter(|_| took).and_then(|i| shown.iter().find(|s| s.0 == i)).map(|s| s.1.path.clone());
+                    // Something dragged over it: onto a folder in it, or into it.
+                    let (mut took, mut drop_on, mut spring_to) = (false, None, None);
+                    if let Some(o) = window.drop_offer().cloned() {
+                        let at = window.mouse_position();
+                        if clip.contains(&at) {
+                            let over = layouts.iter().find(|s| s.layout.hit().contains(&at)).map(|s| (s.i, &f.entries[s.i], s.selected));
+                            (took, drop_on) = items::item_drop(window, cx, f.key(), &o, over, Some(&f.current_dir()));
+                            spring_to = drop_on.filter(|_| took).map(|i| f.entries[i].path.clone());
+                        }
                     }
-                }
-                let editing_shown = editing.filter(|i| layouts.iter().any(|(j, ..)| j == i));
+                    (layouts, editing, band, took, drop_on, spring_to)
+                };
                 let mut drawn = Vec::with_capacity(layouts.len());
                 window.with_content_mask(Some(gpui::ContentMask { bounds: clip }), |window| {
-                    for ((i, l, icon), (_, e, sel)) in layouts.into_iter().zip(&shown) {
-                        items::paint_item(window, cx, &l, icon, *sel || drop_on == Some(i), false, editing_shown != Some(i), &p);
-                        if let Some(done) = e.progress() {
-                            items::paint_progress(window, l.icon, done, &p);
+                    for s in layouts {
+                        items::paint_item(window, cx, &s.layout, s.icon, s.selected || drop_on == Some(s.i), false, editing != Some(s.i), &p);
+                        if let Some(done) = s.progress {
+                            items::paint_progress(window, s.layout.icon, done, &p);
                         }
-                        drawn.push((i, l));
+                        drawn.push((s.i, s.layout));
                     }
                     if took && drop_on.is_none() {
                         items::outline(window, clip, &p);

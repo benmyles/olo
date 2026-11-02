@@ -4,9 +4,10 @@
 //! two seconds, scans now and then, and makes the changes, so the window
 //! never waits on it.
 
+use olo_sync::Mutex;
 use std::{
     sync::{
-        Arc, Mutex, OnceLock,
+        Arc, OnceLock,
         mpsc::{RecvTimeoutError, Sender, channel},
     },
     time::{Duration, Instant},

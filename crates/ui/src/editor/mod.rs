@@ -499,7 +499,7 @@ pub struct Editor {
     /// Paragraphs being checked on a worker (by their text's hash), and
     /// what it found, to take in (checked as of `spell_gen`).
     spell_pending: std::collections::HashSet<u64>,
-    spell_done: Arc<std::sync::Mutex<Vec<(u64, u64, Arc<Vec<Range<usize>>>)>>>,
+    spell_done: Arc<olo_sync::Mutex<Vec<(u64, u64, Arc<Vec<Range<usize>>>)>>>,
     /// Bumped when the words known change: what was checked before is
     /// stale.
     spell_gen: u64,

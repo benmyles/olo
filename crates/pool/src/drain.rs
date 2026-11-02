@@ -10,10 +10,11 @@
 //! under way while bytes cross it. Waiting has a limit
 //! (`MAX_DRAIN`), after which it goes ahead as before.
 
+use olo_sync::Mutex;
 use std::{
     os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd, RawFd},
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},

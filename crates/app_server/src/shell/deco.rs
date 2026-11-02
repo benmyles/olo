@@ -8,10 +8,11 @@
 //! same on every side ([`lines`]), and the tab is a picture drawn pixel for
 //! pixel (`render::exact`).
 
+use olo_sync::Mutex;
 use std::{
     cell::{RefCell, RefMut},
     sync::{
-        Arc, Mutex, OnceLock,
+        Arc, OnceLock,
         atomic::{AtomicU64, Ordering},
         mpsc,
     },

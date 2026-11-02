@@ -2,13 +2,13 @@
 //! sound server over the PulseAudio native protocol (spoken by PipeWire
 //! too), implemented in Rust, so nothing outside the process is involved.
 
+use olo_sync::Mutex;
 use std::{
     ffi::CString,
     io::BufReader,
     os::unix::net::UnixStream,
     sync::{
-        Arc, Mutex,
-        OnceLock,
+        Arc, OnceLock,
         atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
         mpsc,
     },

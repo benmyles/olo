@@ -152,7 +152,7 @@ impl Host {
 /// `org.kde.StatusNotifierWatcher`: where items register.
 struct Watcher {
     tx: mpsc::Sender<Event>,
-    items: Arc<std::sync::Mutex<Vec<String>>>,
+    items: Arc<olo_sync::Mutex<Vec<String>>>,
 }
 
 #[zbus::interface(name = "org.kde.StatusNotifierWatcher")]
@@ -215,7 +215,7 @@ pub fn start(address: Option<String>, changed: impl Fn(Tray) + Send + 'static) -
     let (tx, rx) = mpsc::channel();
     let host = Host { tx: tx.clone() };
     let _ = std::thread::Builder::new().name("tray-host".into()).spawn(move || {
-        let items = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let items = Arc::new(olo_sync::Mutex::new(Vec::new()));
         let builder = match &address {
             Some(a) => zbus::blocking::connection::Builder::address(a.as_str()),
             None => zbus::blocking::connection::Builder::session(),
@@ -330,7 +330,7 @@ struct Known {
     menu_path: Option<String>,
 }
 
-fn run(conn: Connection, rx: mpsc::Receiver<Event>, tx: mpsc::Sender<Event>, registered: Arc<std::sync::Mutex<Vec<String>>>, changed: impl Fn(Tray)) {
+fn run(conn: Connection, rx: mpsc::Receiver<Event>, tx: mpsc::Sender<Event>, registered: Arc<olo_sync::Mutex<Vec<String>>>, changed: impl Fn(Tray)) {
     let mut known: Vec<Known> = Vec::new();
     let mut badges: Vec<Badge> = Vec::new();
     let mut serial = 0u64;

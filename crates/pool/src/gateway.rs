@@ -11,10 +11,11 @@
 //! Answers stream through; only their usage counts are kept, never what
 //! was asked or answered.
 
+use olo_sync::Mutex;
 use std::{
     collections::{HashMap, VecDeque},
     net::SocketAddr,
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::Duration,
 };
 

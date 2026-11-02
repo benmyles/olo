@@ -16,9 +16,10 @@
 //! list changes) and drawn from the cache. Until an app is resolved it
 //! shows under its app id with a generic icon.
 
+use olo_sync::Mutex;
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, OnceLock},
 };
 
 use crate::render::Exact;

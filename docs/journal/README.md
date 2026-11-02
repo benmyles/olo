@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-01
 
+### Pinch to zoom, off by default
+
+*22:30* — Preferences ▸ Touchpad & Mouse ▸ Gestures: a pinch reaches the window under the pointer only when this is on. Off, two fingers drifting together while scrolling no longer zoom Chrome's pages.
+
+![Pinch to zoom, off by default](2026-11-01/223036-pinch-to-zoom-off-by-default.png)
+
 ### Tracker on GPUI
 
 *21:29* — Tracker moved from the egui kit to Olo's GPUI: folder windows (icons, mini icons, list, columns), the desktop, Get Info, Find, Tracker Status and Quick Look, with BeOS's drag rules through GPUI's own drops and Paste read off the UI thread.

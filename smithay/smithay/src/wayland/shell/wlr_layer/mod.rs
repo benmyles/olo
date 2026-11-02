@@ -44,7 +44,8 @@
 //! // You're now ready to go!
 //! ```
 
-use std::sync::{Arc, Mutex};
+use olo_sync::Mutex;
+use std::sync::Arc;
 
 use tracing::{trace, trace_span};
 use wayland_protocols_wlr::layer_shell::v1::server::{

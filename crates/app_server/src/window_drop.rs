@@ -5,11 +5,12 @@
 //! `App::window_dropped`). From a worker thread, the latest place only:
 //! the compositor never waits on an app.
 
+use olo_sync::Mutex;
 use std::{
     io::Write,
     os::unix::net::UnixStream,
     path::PathBuf,
-    sync::{Mutex, OnceLock, mpsc},
+    sync::{OnceLock, mpsc},
     time::Duration,
 };
 
