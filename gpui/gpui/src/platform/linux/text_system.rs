@@ -83,9 +83,31 @@ struct State {
     /// Glyphs drawn for their bounds, until GPUI asks for their pixels.
     drawn: HashMap<RenderGlyphParams, (Bounds<DevicePixels>, Vec<u8>)>,
     buffer: Option<harfrust::UnicodeBuffer>,
+    /// Each face's shape plans, by the text's direction, script and
+    /// language: harfrust's `shape` made one for every run it shaped, most
+    /// of the time a row of a log took (a screen of new rows, 20–30 ms).
+    plans: HashMap<(usize, harfrust::Direction, harfrust::Script, Option<harfrust::Language>), harfrust::ShapePlan>,
+    /// Words of plain ASCII text as each face shaped them, in its units,
+    /// by a hash of the face and the word (the word kept to check): a word
+    /// is shaped once, as browsers do (harfrust takes ~220 ns a character
+    /// on Noto Sans; a screen of log rows, mostly the same words, 7–12
+    /// ms). Emptied when it grows past `WORDS`.
+    words: HashMap<u64, (Box<str>, Vec<WordGlyph>)>,
     /// Fills glyphs' outlines: one, kept, as every glyph is small.
     raster: ab_glyph_rasterizer::Rasterizer,
 }
+
+/// A shaped glyph in its face's units (`State::words`).
+struct WordGlyph {
+    id: u32,
+    cluster: u32,
+    x_advance: i32,
+    x_offset: i32,
+    y_offset: i32,
+}
+
+/// How many shaped words `State::words` keeps before starting afresh.
+const WORDS: usize = 40_000;
 
 /// Olo's families, for GPUI's own names and the generic ones.
 fn families(name: &str) -> Vec<&str> {
@@ -124,6 +146,8 @@ impl OloTextSystem {
             hinting: HashMap::default(),
             drawn: HashMap::default(),
             buffer: Some(harfrust::UnicodeBuffer::new()),
+            plans: HashMap::default(),
+            words: HashMap::default(),
             raster: ab_glyph_rasterizer::Rasterizer::new(0, 0),
         }))
     }
@@ -646,6 +670,9 @@ impl State {
     }
 
     /// Shapes `text[from..to]` in `face` from `x`; returns where it ends.
+    /// Plain ASCII goes by words ([`State::words`]): each with the spaces
+    /// after it shaped once (nothing joins or kerns across a space in
+    /// such text), the rest as a whole.
     #[allow(clippy::too_many_arguments)]
     fn shape(
         &mut self,
@@ -659,37 +686,55 @@ impl State {
     ) -> f32 {
         let instance = &self.instances[face.0];
         let source = &self.sources[instance.source];
-        let Some(font) = source.font() else {
-            return x;
-        };
         let scale = font_size.0 / instance.units_per_em;
-        let shaper = source
-            .shaper
-            .shaper(&font)
-            .instance(instance.shaper_instance.as_ref())
-            .build();
-        let mut buffer = self.buffer.take().unwrap_or_default();
-        buffer.push_str(&text[from..to]);
-        buffer.guess_segment_properties();
-        let glyphs = shaper.shape(
-            buffer,
-            harfrust::ShapeOptions::new().features(&instance.features),
-        );
         let is_emoji = source.color;
-        let mut shaped = Vec::with_capacity(glyphs.len());
-        for (info, pos) in glyphs.glyph_infos().iter().zip(glyphs.glyph_positions()) {
-            shaped.push(ShapedGlyph {
-                id: GlyphId(info.glyph_id),
-                position: point(
-                    px(x + pos.x_offset as f32 * scale),
-                    px(-pos.y_offset as f32 * scale),
-                ),
-                index: from + info.cluster as usize,
-                is_emoji,
-            });
-            x += pos.x_advance as f32 * scale;
+        let mut shaped = Vec::with_capacity(to - from);
+        let mut place = |x: &mut f32, at: usize, glyphs: &[WordGlyph]| {
+            for g in glyphs {
+                shaped.push(ShapedGlyph {
+                    id: GlyphId(g.id),
+                    position: point(px(*x + g.x_offset as f32 * scale), px(-g.y_offset as f32 * scale)),
+                    index: at + g.cluster as usize,
+                    is_emoji,
+                });
+                *x += g.x_advance as f32 * scale;
+            }
+        };
+        let part = &text[from..to];
+        if part.is_ascii() && !is_emoji {
+            let bytes = part.as_bytes();
+            let mut i = 0;
+            while i < bytes.len() {
+                let start = i;
+                while i < bytes.len() && bytes[i] != b' ' {
+                    i += 1;
+                }
+                while i < bytes.len() && bytes[i] == b' ' {
+                    i += 1;
+                }
+                let word = &part[start..i];
+                let key = {
+                    use std::hash::{Hash, Hasher};
+                    let mut h = collections::FxHasher::default();
+                    (face.0, word).hash(&mut h);
+                    h.finish()
+                };
+                match self.words.get(&key) {
+                    Some((w, glyphs)) if &**w == word => place(&mut x, from + start, glyphs),
+                    _ => {
+                        let glyphs = self.shape_units(word, face);
+                        place(&mut x, from + start, &glyphs);
+                        if self.words.len() >= WORDS {
+                            self.words.clear();
+                        }
+                        self.words.insert(key, (word.into(), glyphs));
+                    }
+                }
+            }
+        } else {
+            let glyphs = self.shape_units(part, face);
+            place(&mut x, from, &glyphs);
         }
-        self.buffer = Some(glyphs.clear());
         match runs.last_mut() {
             Some(last) if last.font_id == face && last.font_size == font_size => last.glyphs.extend(shaped),
             _ => runs.push(ShapedRun {
@@ -699,6 +744,41 @@ impl State {
             }),
         }
         x
+    }
+
+    /// `text` shaped in `face` (harfrust, with the face's plan for its
+    /// direction, script and language), in the face's units, each glyph's
+    /// cluster from `text`'s start.
+    fn shape_units(&mut self, text: &str, face: FontId) -> Vec<WordGlyph> {
+        let instance = &self.instances[face.0];
+        let source = &self.sources[instance.source];
+        let Some(font) = source.font() else {
+            return Vec::new();
+        };
+        let shaper = source
+            .shaper
+            .shaper(&font)
+            .instance(instance.shaper_instance.as_ref())
+            .build();
+        let mut buffer = self.buffer.take().unwrap_or_default();
+        buffer.push_str(text);
+        buffer.guess_segment_properties();
+        let key = (face.0, buffer.direction(), buffer.script(), buffer.language());
+        let plan = self.plans.entry(key).or_insert_with_key(|(_, direction, script, language)| {
+            harfrust::ShapePlan::new(&shaper, *direction, Some(*script), language.as_ref(), &instance.features)
+        });
+        let glyphs = shaper.shape(
+            buffer,
+            harfrust::ShapeOptions::new().features(&instance.features).plan(Some(plan)),
+        );
+        let out = glyphs
+            .glyph_infos()
+            .iter()
+            .zip(glyphs.glyph_positions())
+            .map(|(info, pos)| WordGlyph { id: info.glyph_id, cluster: info.cluster, x_advance: pos.x_advance, x_offset: pos.x_offset, y_offset: pos.y_offset })
+            .collect();
+        self.buffer = Some(glyphs.clear());
+        out
     }
 
     /// Draws a glyph: its bounds (in device pixels from its origin on

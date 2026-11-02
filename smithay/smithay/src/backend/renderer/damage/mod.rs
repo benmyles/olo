@@ -872,7 +872,12 @@ impl OutputDamageTracker {
             // we have to take the element damage to be able to move it around
             let mut element_damage = std::mem::take(&mut self.element_damage);
             let mut element_opaque_regions = std::mem::take(&mut self.element_opaque_regions);
+            let olo_begin = std::time::Instant::now();
             let mut frame = renderer.render(framebuffer, output_size, output_transform)?;
+            // (Olo: what makes a frame slow, named: a step over 4 ms.)
+            if olo_begin.elapsed() > std::time::Duration::from_millis(4) {
+                tracing::warn!(took_ms = olo_begin.elapsed().as_secs_f64() * 1000.0, "slow frame: beginning it");
+            }
 
             element_damage.clear();
             element_damage.extend_from_slice(&self.damage);
@@ -942,6 +947,7 @@ impl OutputDamageTracker {
                     element.capture_framebuffer(&mut frame, element_src, element_geometry, cache)?;
                 }
 
+                let olo_draw = std::time::Instant::now();
                 element.draw(
                     &mut frame,
                     element_src,
@@ -950,6 +956,9 @@ impl OutputDamageTracker {
                     &element_opaque_regions,
                     self.last_state.effects_cache.get(element_id),
                 )?;
+                if olo_draw.elapsed() > std::time::Duration::from_millis(4) {
+                    tracing::warn!(?element_id, ?element_geometry, src = ?element_src, kind = ?element.kind(), took_ms = olo_draw.elapsed().as_secs_f64() * 1000.0, "slow frame: an element's draw");
+                }
             }
 
             // return the element damage so that we can re-use the allocation
@@ -959,6 +968,9 @@ impl OutputDamageTracker {
             let olo_t = std::time::Instant::now();
             let finished = frame.finish();
             crate::backend::renderer::phase("finish", olo_t);
+            if olo_t.elapsed() > std::time::Duration::from_millis(4) {
+                tracing::warn!(took_ms = olo_t.elapsed().as_secs_f64() * 1000.0, "slow frame: finishing it");
+            }
             finished
         })();
 

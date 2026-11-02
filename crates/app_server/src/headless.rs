@@ -251,7 +251,9 @@ pub fn run_headless(size_arg: Option<&str>) {
     let gbm = GbmDevice::new(file).expect("gbm device");
     // SAFETY: the gbm device outlives the display (moved into it).
     let egl = unsafe { EGLDisplay::new(gbm) }.expect("EGL display");
-    let context = EGLContext::new(&egl).expect("EGL context");
+    // (A high priority, as the DRM backend asks: the GPU runs our frames
+    // ahead of clients' work, as on a real display.)
+    let context = EGLContext::new_with_priority(&egl, smithay::backend::egl::context::ContextPriority::High).expect("EGL context");
     // SAFETY: the context is current only on this thread.
     let mut renderer = unsafe { GlesRenderer::new(context) }.expect("GLES renderer");
     info!(?node, "headless renderer ready");

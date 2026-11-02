@@ -411,7 +411,69 @@ impl WrappedLineLayout {
 pub(crate) struct LineLayoutCache {
     previous_frame: Mutex<FrameCache>,
     current_frame: RwLock<FrameCache>,
+    /// Olo: shaped lines no frame has used for a while, kept up to
+    /// [`AGED_GLYPHS`] glyphs, the least lately used going first. Upstream
+    /// kept only what the last frame used: text not drawn every frame
+    /// (cards off screen, rows scrolled away) was shaped again each time
+    /// it was laid out, and a window being resized laid out every card
+    /// of Notifications' history afresh, shaping all, each frame (35–47
+    /// ms). Locked after the frames' (`current_frame`, `previous_frame`).
+    aged: Mutex<Aged>,
     platform_text_system: Arc<dyn PlatformTextSystem>,
+}
+
+/// How many glyphs of shaped lines [`LineLayoutCache::aged`] keeps (a
+/// few megabytes).
+const AGED_GLYPHS: usize = 150_000;
+
+#[derive(Default)]
+struct Aged {
+    lines: FxHashMap<Arc<CacheKey>, (Arc<LineLayout>, u64)>,
+    /// Glyphs kept, and the frames so far (for the least lately used).
+    glyphs: usize,
+    frame: u64,
+}
+
+impl Aged {
+    fn glyphs(line: &LineLayout) -> usize {
+        line.runs.iter().map(|r| r.glyphs.len()).sum::<usize>() + 1
+    }
+
+    fn take(&mut self, key: &dyn AsCacheKeyRef) -> Option<(Arc<CacheKey>, Arc<LineLayout>)> {
+        let (key, (line, _)) = self.lines.remove_entry(key)?;
+        self.glyphs -= Self::glyphs(&line);
+        Some((key, line))
+    }
+
+    /// Keeps lines a frame no longer uses, then lets the least lately
+    /// used go until it's within its glyphs.
+    fn keep(&mut self, lines: impl Iterator<Item = (Arc<CacheKey>, Arc<LineLayout>)>) {
+        self.frame += 1;
+        for (key, line) in lines {
+            // (What it last painted goes, unless something holds it still
+            // (a wrapped line drawn from it): not drawn now, and sprites
+            // are most of a painted line's memory.)
+            if Arc::strong_count(&line) == 1 {
+                *line.painted.0.lock() = Default::default();
+            }
+            self.glyphs += Self::glyphs(&line);
+            if let Some((old, _)) = self.lines.insert(key, (line, self.frame)) {
+                self.glyphs -= Self::glyphs(&old);
+            }
+        }
+        if self.glyphs > AGED_GLYPHS {
+            let mut by_age: Vec<(u64, Arc<CacheKey>)> = self.lines.iter().map(|(k, (_, f))| (*f, k.clone())).collect();
+            by_age.sort_by_key(|(f, _)| *f);
+            for (_, key) in by_age {
+                if self.glyphs <= AGED_GLYPHS * 3 / 4 {
+                    break;
+                }
+                if let Some((line, _)) = self.lines.remove(&key) {
+                    self.glyphs -= Self::glyphs(&line);
+                }
+            }
+        }
+    }
 }
 
 #[derive(Default)]
@@ -433,6 +495,7 @@ impl LineLayoutCache {
         Self {
             previous_frame: Mutex::default(),
             current_frame: RwLock::default(),
+            aged: Mutex::default(),
             platform_text_system,
         }
     }
@@ -480,6 +543,11 @@ impl LineLayoutCache {
         let mut curr_frame = self.current_frame.write();
         let mut prev_frame = self.previous_frame.lock();
         std::mem::swap(&mut *prev_frame, &mut *curr_frame);
+        // (Lines the frame before last used and this one didn't: aged,
+        // not gone.)
+        if !curr_frame.lines.is_empty() {
+            self.aged.lock().keep(curr_frame.lines.drain());
+        }
         curr_frame.lines.clear();
         curr_frame.wrapped_lines.clear();
         curr_frame.used_lines.clear();
@@ -576,7 +644,8 @@ impl LineLayoutCache {
         }
 
         let mut current_frame = RwLockUpgradableReadGuard::upgrade(current_frame);
-        if let Some((key, layout)) = self.previous_frame.lock().lines.remove_entry(key) {
+        let kept = self.previous_frame.lock().lines.remove_entry(key).or_else(|| self.aged.lock().take(key));
+        if let Some((key, layout)) = kept {
             current_frame.lines.insert(key.clone(), layout.clone());
             current_frame.used_lines.push(key);
             layout

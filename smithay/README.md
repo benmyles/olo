@@ -46,3 +46,6 @@ What Olo changed, so far (see "Every frame on time" in
   cycle, and a test session's app_server stopped there); the DRM
   surfaces' `commit_pending` takes the state then the pending lock, as
   everything else does, and `vrr_supported` reads its lock once.
+- The damage tracker warns of a step of a frame over 4 ms: beginning
+  it, an element's draw (naming the element, its place and kind), or
+  finishing it (`slow frame: …`), so a slow frame says where it went.

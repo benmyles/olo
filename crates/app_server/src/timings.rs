@@ -32,6 +32,9 @@ pub struct Timings {
     latest_beat: Duration,
     slowest: Option<(String, Duration)>,
     phases: BTreeMap<&'static str, PhaseTimings>,
+    /// The slowest part of what's being done now (`within`): which
+    /// request of a dispatch of clients' requests held the loop.
+    inner: Option<(String, Duration)>,
 }
 
 impl Timings {
@@ -78,6 +81,36 @@ impl Timings {
         if self.slowest.as_ref().is_none_or(|(_, t)| took > *t) {
             self.slowest = Some((what(), took));
         }
+    }
+
+    /// A part of something being done (a commit within clients'
+    /// requests), `what` it was, since `start`: the slowest names it
+    /// ([`Timings::handled_naming_parts`]).
+    pub fn within(&mut self, what: impl FnOnce() -> String, start: Instant) {
+        if !self.watching() {
+            return;
+        }
+        let took = start.elapsed();
+        if self.inner.as_ref().is_none_or(|(_, t)| took > *t) {
+            self.inner = Some((what(), took));
+        }
+    }
+
+    /// [`Timings::handled`], naming the slowest part noted `within` it
+    /// when that was most of it.
+    pub fn handled_naming_parts(&mut self, what: &str, start: Instant) {
+        let inner = self.inner.take();
+        if !self.watching() {
+            return;
+        }
+        let took = start.elapsed();
+        self.handled(
+            || match inner {
+                Some((part, t)) if t * 2 > took => format!("{what}: {part} ({:.1} ms)", t.as_secs_f64() * 1000.0),
+                _ => what.to_owned(),
+            },
+            start,
+        );
     }
 
     /// Keep counting for a minute, without the heartbeat (capturing

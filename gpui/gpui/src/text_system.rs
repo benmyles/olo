@@ -1174,3 +1174,56 @@ pub(crate) fn font_name_with_fallbacks<'a>(name: &'a str, system: &'a str) -> &'
         _ => name,
     }
 }
+
+#[cfg(all(test, target_os = "linux"))]
+mod olo_shaping_speed {
+    use super::*;
+
+    /// Olo: plain ASCII shaped by words places every glyph where shaping
+    /// the line whole does (a non-ASCII letter at the end makes it go
+    /// whole), in Noto Sans and Noto Sans Mono.
+    #[test]
+    fn words_shape_as_the_whole_line() {
+        let ts = TextSystem::standalone();
+        for family in ["Noto Sans", "Noto Sans Mono"] {
+            let font = crate::font(family);
+            let run = |len: usize| vec![TextRun { len, font: font.clone(), color: crate::black(), background_color: None, underline: None, strikethrough: None, size: None }];
+            for row in ["Nov 02 03:11:11 kernel[42]: usb 3-1: new high-speed USB device", "AVATAR Wave To, office  ffi  T.  Yo'Ld \"\"(x)", "  leading and trailing  "] {
+                let words = ts.layout_line_now(row, px(12.0), &run(row.len()));
+                let whole_text = format!("{row}é");
+                let whole = ts.layout_line_now(&whole_text, px(12.0), &run(whole_text.len()));
+                let a: Vec<_> = words.runs.iter().flat_map(|r| r.glyphs.iter()).map(|g| (g.id, g.index, (g.position.x.0 * 100.0).round())).collect();
+                let b: Vec<_> = whole.runs.iter().flat_map(|r| r.glyphs.iter()).filter(|g| g.index < row.len()).map(|g| (g.id, g.index, (g.position.x.0 * 100.0).round())).collect();
+                assert_eq!(a, b, "{family}: {row}");
+            }
+        }
+    }
+
+    /// Olo: how long shaping takes, a screen of log rows in the UI face
+    /// (`cargo test -p gpui --release --lib shaping_speed -- --ignored
+    /// --nocapture`).
+    #[test]
+    #[ignore]
+    fn shaping_speed() {
+        let ts = TextSystem::standalone();
+        let font = crate::font("Noto Sans");
+        let rows: Vec<String> = (0..140)
+            .map(|i| format!("Nov 02 03:{i:02}:11 kernel[{i}]: usb 3-1: new high-speed USB device number {i} using xhci_hcd; idVendor=05ac, idProduct=12a8, bcdDevice=12.01 (attempt {i})"))
+            .collect();
+        let glyphs: usize = rows.iter().map(|r| r.len()).sum();
+        // (The first time loads the face.)
+        let run = |r: &String| vec![TextRun { len: r.len(), font: font.clone(), color: crate::black(), background_color: None, underline: None, strikethrough: None, size: None }];
+        let _ = ts.layout_line_now(&rows[0], px(12.0), &run(&rows[0]));
+        let t = std::time::Instant::now();
+        for r in &rows {
+            let _ = ts.layout_line_now(r, px(12.0), &run(r));
+        }
+        let took = t.elapsed();
+        println!("{} rows, {glyphs} characters: {:.2} ms, {:.0} ns a character", rows.len(), took.as_secs_f64() * 1000.0, took.as_nanos() as f64 / glyphs as f64);
+        let one = rows.join(" ");
+        let t = std::time::Instant::now();
+        let _ = ts.layout_line_now(&one, px(12.0), &run(&one));
+        let took = t.elapsed();
+        println!("one line of them: {:.2} ms, {:.0} ns a character", took.as_secs_f64() * 1000.0, took.as_nanos() as f64 / one.len() as f64);
+    }
+}

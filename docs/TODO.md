@@ -242,6 +242,35 @@ as they land (with the commit), add new ones as they come up.
   less overdraw, 2.84 screens of quads); frames skipped scrolling at
   2× with frames of 1.4 ms (the scroll events' pacing against the
   frames, not their cost); Log Viewer shaping new rows on the frame.
+  *Then* (same day) shaped lines are aged rather than dropped, shape
+  plans kept, and ASCII shaped by words (gpui/README.md): History's
+  live resize, slowest frame 60 → 17 ms (p50 11.8); Log Viewer's rows
+  arriving with a search, 31.6 → 10.8 ms.
+- **app_server: its frames wait on the GPU behind clients' work**
+  (found 2026-11-02, the full bench: 33 of 376 steps failed, most of
+  them app_server frames of 9–51 ms as a menu opened or a window
+  resized). Smithay's damage tracker now names a slow step: every one
+  is `frame.finish()`, waiting (0.4 ms of CPU) on the GPU. The headless
+  backend made its GL context at normal priority, the DRM backend at
+  high: made high too (the bench's worst, Passwords' menus, 51 → under
+  8.3; Viewer's 21 → 15.7), so the bench is as a real display. *Left*:
+  frames of 9–17 ms as menus open (Viewer, Activity Monitor, Tracker,
+  DiskUsage, Telegram's tabs, Log Viewer's live resize): a client's
+  GPU work the firmware doesn't preempt for ours. Find what it is
+  (`OLO_GPU_TIMINGS` in the client, the DRM backend's syncobj waits),
+  and keep clients' long GPU work short (a new window's first frame,
+  swapchains made).
+- **app_server: Viewer's first menu costs a 14–28 ms frame** (found
+  2026-11-02 by the bench, "app_server's loop stalled"; every run, the
+  first menu only, Viewer only; Tracker's and DeskCalc's first menus
+  1–2 ms). It's the frame's "damage and draw", not the requests. Likely
+  the first use of a buffer of Viewer's that app_server hasn't drawn
+  yet (the menu opening redraws Viewer's window into a swapchain image
+  it barely cycled after its zoom): the check worker makes the buffer's
+  EGL image off the loop, but the first draw sampling it still pays.
+  Try: give the check worker a GL context and sample each new buffer
+  once there (a 1×1 draw), so the BO is mapped before a frame needs it;
+  confirm by timing the first draw of each buffer.
 - **The layout lint on GPUI** (left when egui went, 2026-11-02): the
   egui kit ran a window's view headlessly at its size, light and dark at
   1×, 1.5× and 2×, and failed a test (and `install-session.sh`) on

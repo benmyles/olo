@@ -44,7 +44,10 @@ like pixel alignment is.
    (its first import, milliseconds on some GPUs, every frame of a resize)
    on a worker (`dmabuf_check`), and a commit showing it waits for that
    rather than importing it on the loop. Measure with
-   `tools/dev/perf-fuzz` (`{"type":"timings"}` names what held the loop).
+   `tools/dev/perf-fuzz` (`{"type":"timings"}` names what held the loop;
+   a dispatch of clients' requests names the request in it that took
+   most of it: a commit by its role, a new popup, a popup's grab, as
+   `Timings::within` notes them).
 7. **Stay current without polling.** What is on screen reflects the system
    as it changes: follow files and folders with `olo_ui::watch` (inotify:
    one thread per app, asleep until the kernel has an event; a burst
@@ -209,7 +212,9 @@ message):
   apart: each display's looks, their total and slowest. Asking starts a
   4 ms heartbeat for a minute, so measure its CPU before asking or a
   minute after.
-* `tools/dev/bench` (every app's frames against the budget),
+* `tools/dev/bench` (every app's frames against the budget; `--env
+  K=V` gives every app a switch, to compare without a rebuild, as
+  `--env OLO_PAINT_MEMO=0`),
   `tools/dev/scroll-check` (smoothness and the first frame's latency;
   `--trace` for each frame), `tools/dev/perf-fuzz` (stalls, slow
   answers, growth).

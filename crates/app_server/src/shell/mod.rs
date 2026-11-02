@@ -181,6 +181,7 @@ impl<BackendData: Backend> CompositorHandler for AnvilState<BackendData> {
         let t = std::time::Instant::now();
         self.commit_inner(surface);
         self.timings.phase("commit", t);
+        self.timings.within(|| format!("a commit ({})", smithay::wayland::compositor::get_role(surface).unwrap_or("no role")), t);
     }
 }
 

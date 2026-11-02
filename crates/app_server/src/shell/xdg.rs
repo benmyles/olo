@@ -130,12 +130,14 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
         // Do not send a configure here, the initial configure
         // of a xdg_surface has to be sent during the commit if
         // the surface is not already configured
+        let t = std::time::Instant::now();
 
         self.unconstrain_popup(&surface);
 
         if let Err(err) = self.popups.track_popup(PopupKind::from(surface)) {
             warn!("Failed to track popup: {}", err);
         }
+        self.timings.within(|| "a new popup".into(), t);
     }
 
     fn reposition_request(&mut self, surface: PopupSurface, positioner: PositionerState, token: u32) {
@@ -417,6 +419,14 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
     }
 
     fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {
+        let t = std::time::Instant::now();
+        self.grab_inner(surface, seat, serial);
+        self.timings.within(|| "a popup's grab".into(), t);
+    }
+}
+
+impl<BackendData: Backend + 'static> AnvilState<BackendData> {
+    fn grab_inner(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {
         let seat: Seat<AnvilState<BackendData>> = Seat::from_resource(&seat).unwrap();
         let kind = PopupKind::Xdg(surface);
         if let Some(root) = self.popup_root_focus(&kind) {

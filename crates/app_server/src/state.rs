@@ -1076,7 +1076,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                     unsafe {
                         display.get_mut().dispatch_clients(data).unwrap();
                     }
-                    data.timings.handled(|| "clients' requests".into(), start);
+                    data.timings.handled_naming_parts("clients' requests", start);
                     data.timings.phase("clients' requests", start);
                     Ok(PostAction::Continue)
                 },

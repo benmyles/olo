@@ -289,6 +289,22 @@ What Olo changed, so far:
   everything. `OLO_PAINT_MEMO=0` turns replays off, to compare.
   Notifications' history paints each card so: a hover redrew a screen
   of cards, 36,000 glyphs (paint 5.3 ms → 3.2 at 1×).
+- Shaped lines a frame no longer uses aren't dropped but aged: kept
+  up to 150,000 glyphs, the least lately used going first, their
+  painted sprites let go (`LineLayoutCache::aged`). Upstream kept only
+  what the last frame used, so text not drawn every frame was shaped
+  again each time it was laid out: History's cards at each width of a
+  live resize, all 200 shaped every frame (its slowest frame 60 → 17
+  ms).
+- Shaping (Olo's text system): a face's shape plans are kept, by
+  direction, script and language (harfrust's `shape` made a plan for
+  every run), and plain ASCII is shaped by words, each with the spaces
+  after it shaped once and kept in the face's units (as browsers do;
+  nothing joins or kerns across a space in such text, and a test
+  checks the glyphs land where shaping the line whole puts them). A
+  screen of log rows, 20,850 characters, 6.9–11.9 ms → 2.6
+  (`shaping_speed`); Log Viewer's slowest frame as a search's rows
+  came, 31.6 → 10.8 ms.
 - `OLO_FRAME_PHASES=1`: each frame's time in layout and prepaint,
   paint, finishing the scene and presenting (which waits for the
   previous frame's GPU work), and its sprites, quads and paint
