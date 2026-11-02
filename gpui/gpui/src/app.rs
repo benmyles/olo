@@ -775,8 +775,9 @@ impl App {
     }
 
     /// Olo: called once when the compositor's connection is gone
-    /// (app_server restarted in place, or a protocol error), on the main
-    /// thread with nothing borrowed: save state and re-execute here.
+    /// (app_server restarted in place, or a protocol error) or the GPU
+    /// device is lost (`gpu_device_lost`), on the main thread with
+    /// nothing borrowed: save state and re-execute here.
     pub fn on_compositor_lost<F>(&self, mut callback: F) -> Subscription
     where
         F: 'static + FnMut(&mut App),

@@ -221,15 +221,21 @@ as they land (with the commit), add new ones as they come up.
   shows is laid out without copying entries. What's left of its frame
   is mostly painting text a glyph at a time (below).
 - **GPUI text a glyph at a time is slow at full screen** (found
-  2026-11-01 by the benchmark, as it was before that day's changes): a
-  window full of GPUI kit text (`StyledText`, `TextView`,
-  `ColumnListView` cells, `style::label`) paints each glyph on its own
-  (`Window::paint_glyph`: a lookup and a place in the bounds tree each),
-  so the Notifications History at 1× on a 3456×2234 screen takes 12–25
-  ms a frame (pointer over it, scrolling, menus) and Log Viewer 9–22 ms.
-  Paint lines as StyledEdit's editor does (`Window::paint_glyph_run`,
-  a `GlyphRun` kept with each laid-out line, in a layer), and the whole
-  benchmark at every scale under 8.3 ms.
+  2026-11-01 by the benchmark): a window full of GPUI kit text painted
+  each glyph on its own, so the Notifications History at 1× on a
+  3456×2234 screen took 12–25 ms a frame and Log Viewer 9–22 ms.
+  *Better* 2026-11-02 (gpui/README.md): every line keeps its glyphs as
+  last painted, a scene sorts runs of glyphs rather than each, and draw
+  orders come from a grid (bench at 1×, p50 before → after: History's
+  pointer 14.7 → 7.1 ms, its scrolling 14.7 → 9.4, its menus 25.9 → 8.1;
+  Log Viewer's scrolling 10.8 → 5.1, its menus 11.1 → 5.9). *Left*: a
+  screen of History is 36,000 glyphs drawn afresh for a hover (paint
+  5.3 ms, its GPU 2.4–3.8 ms); its live resize (35–47 ms: every card
+  measured and laid out again) and theme switch; Log Viewer's frames as
+  a new line or a search arrives (23–26 ms: rows shaped on the UI
+  thread); an Activity Monitor panel's first frame (18 ms). Next: draw
+  what didn't change from what was drawn (cached views for History's
+  cards, or a retained layer), shape new rows ahead or off the frame.
 - **The layout lint on GPUI** (left when egui went, 2026-11-02): the
   egui kit ran a window's view headlessly at its size, light and dark at
   1×, 1.5× and 2×, and failed a test (and `install-session.sh`) on
@@ -241,14 +247,6 @@ as they land (with the commit), add new ones as they come up.
   scale, the review's `Parts` and the kit's areas and controls checked,
   `cargo ui-lint` for every fixed-size window and dialog, the kit's own
   widgets clean and its sizes on the 2-point grid.
-- **GPU device loss on GPUI** (left when egui went, 2026-11-02): a
-  driver reset (`VK_ERROR_DEVICE_LOST`, as Asahi's Mesa gives at a
-  failed syncobj transfer) took the egui kit's apps through a fresh
-  start, their state saved, as an upgrade (lost again within 10 s, it
-  ended rather than loop); blade panics instead. Notice it in blade's
-  submit, acquire and wait, re-execute as `upgrade::lost_compositor`
-  does, and a debug-only `{"lose_gpu":true}` on the app's socket to
-  test it.
 
 - **From egui to Olo's own GPUI** (Ben, 2026-10-31): "i think we need to
   rethink the decision to use egui -- it is not performant enough. …
@@ -401,7 +399,9 @@ as they land (with the commit), add new ones as they come up.
      of mipmaps; Quick Look's edits and document pictures still made
      them), the vendored epaint, egui-wgpu and wgpu-hal patches, and 535
      lines of Cargo.lock; HACKING's "Writing an app" in olo-ui's terms.
-     Left from it: the layout lint and GPU device loss (below).
+     Left from it: the layout lint (below). GPU device loss came back
+     on GPUI the same day (blade marks the device lost; the app starts
+     anew with its state, as for the compositor gone).
    - **Every frame on time, every display** (Ben, 2026-11-01: "dropping
      frames is never acceptable: olo must be buttery smooth on all
      displays all the time"; the pointer "definitely way slow/stuttery",

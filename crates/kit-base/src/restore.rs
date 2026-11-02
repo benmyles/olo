@@ -27,9 +27,39 @@ fn slot() -> &'static Mutex<Option<String>> {
 }
 
 /// Takes the file the previous version left, if any, now: kept for
-/// [`take`], the file gone.
+/// [`take`], the file gone; and waits, on a thread, for the children the
+/// previous self left (see [`reap_inherited`]).
 pub fn claim() {
     slot();
+    reap_inherited();
+}
+
+/// A program re-executed in place (an upgrade, the compositor or the GPU
+/// lost) keeps its pid, so the children its previous self started are
+/// still its own, but nothing in it waits for them: Activity Monitor's
+/// helper, whose input pipe closed with the exec, ended and stayed a
+/// zombie, one an upgrade (eleven in a day). A program starts with none
+/// of its own, so whatever children it has as it starts are those: a
+/// thread waits for each (a few microseconds; nothing when there are
+/// none, the usual start).
+fn reap_inherited() {
+    // (Each of our threads' children: after an exec there is one thread.)
+    let Ok(tasks) = std::fs::read_dir("/proc/self/task") else { return };
+    let pids: Vec<libc::pid_t> = tasks
+        .flatten()
+        .filter_map(|t| std::fs::read_to_string(t.path().join("children")).ok())
+        .flat_map(|list| list.split_whitespace().filter_map(|p| p.parse().ok()).collect::<Vec<_>>())
+        .collect();
+    if pids.is_empty() {
+        return;
+    }
+    tracing::info!(?pids, "waiting for the children the previous version left");
+    let _ = std::thread::Builder::new().name("reap-inherited".into()).spawn(move || {
+        for pid in pids {
+            // SAFETY: waits for a child of ours that nothing else waits for.
+            unsafe { libc::waitpid(pid, std::ptr::null_mut(), 0) };
+        }
+    });
 }
 
 /// What the previous version left (once; None on a normal start, or if
@@ -116,5 +146,20 @@ mod tests {
         hand_over(&mut cmd, Some(""));
         hand_over(&mut cmd, None);
         assert!(cmd.get_envs().all(|(k, _)| k != ENV));
+    }
+
+    /// A child the previous self left (forgotten, as an exec forgets it)
+    /// is waited for, so it doesn't stay a zombie.
+    #[test]
+    fn inherited_children_are_reaped() {
+        let child = Command::new("true").spawn().expect("true runs");
+        let pid = child.id();
+        std::mem::forget(child);
+        reap_inherited();
+        let gone = (0..300).any(|_| {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            !std::path::Path::new(&format!("/proc/{pid}")).exists()
+        });
+        assert!(gone, "{pid} is still there");
     }
 }

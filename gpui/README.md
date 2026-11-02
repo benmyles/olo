@@ -264,8 +264,30 @@ What Olo changed, so far:
   is its sprites moved, not tens of thousands of lookups a frame. Kept
   while the scale, the text rendering, the caller's stamp (its colours)
   and where the origin falls within a device pixel stay the same.
-  Sprites sort by texture, not tile: a page of glyphs, in order already,
-  sorts in a pass.
+  Every line of text keeps one (`LineLayout::painted`): a line of plain
+  glyphs (no underline, strikethrough or emoji) painted again, a frame
+  later, is its sprites moved; upstream looked each glyph up and put it
+  in the scene on its own, 1.6 µs a glyph (a screen of Notifications'
+  history, 36,000 glyphs, 15–25 ms a frame).
+- A scene keeps its glyphs once, in runs of one draw order and texture
+  (a line's glyphs share its layer's order), and `finish` sorts the
+  runs, not each sprite (36,000 sprites 2.2 ms, now 0.7); a replayed
+  view copies its ranges. Draw orders come from a grid of cells, each
+  keeping what overlaps it and its highest order (`bounds_tree.rs`),
+  where upstream's bounding volume tree, never rebalanced, grew towards
+  a chain as a frame's things came in reading order (a frame of cards:
+  1.27 ms, now 0.19; the same orders).
+- `OLO_FRAME_PHASES=1`: each frame's time in layout and prepaint,
+  paint, finishing the scene and presenting (which waits for the
+  previous frame's GPU work), and its sprites, quads and paint
+  operations, printed to stderr.
+- A GPU device lost (a driver reset, `VK_ERROR_DEVICE_LOST`) is said,
+  not a panic: blade marks it (`blade_graphics::device_lost`) where a
+  submit, present, wait or acquire finds it (waiting, it answered "not
+  yet" for ever and the frame spun), nothing more is drawn, and GPUI
+  tells `App::on_compositor_lost`'s callers as for the compositor
+  gone (olo-ui re-executes the program with its state).
+  `gpui::lose_gpu_device()` marks it, to test what follows.
 - `Window::note_scroll` (a view's offset, for `{"frames":true}`'s marks,
   so tools/dev/scroll-check and the bench see GPUI's scrolling) and
   `ScrollHandle::set_extent` (a view that scrolls itself tells its

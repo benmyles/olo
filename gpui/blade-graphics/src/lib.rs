@@ -90,6 +90,26 @@ pub use hal::*;
 #[cfg(target_arch = "wasm32")]
 pub const CANVAS_ID: &str = "blade";
 
+/// Olo: the GPU device is lost (a driver reset: `VK_ERROR_DEVICE_LOST`).
+/// Set where a call says so (submitting, presenting, waiting, acquiring
+/// a frame), which then carries on as if nothing were wrong rather than
+/// panic or wait for ever; everything the device made is gone, so the
+/// program starts anew (GPUI re-executes it with its state).
+static DEVICE_LOST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Olo: whether the GPU device is lost ([`DEVICE_LOST`]).
+pub fn device_lost() -> bool {
+    DEVICE_LOST.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Olo: marks the GPU device lost: from a call that found it so, or a
+/// test of what follows.
+pub fn lose_device() {
+    if !DEVICE_LOST.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        log::error!("the GPU device is lost");
+    }
+}
+
 use std::{fmt, num::NonZeroU32};
 
 #[derive(Clone, Debug, Default)]

@@ -522,7 +522,7 @@ impl BladeRenderer {
                 "your device information is: {:?}",
                 self.gpu.device_information()
             );
-            while !self.gpu.wait_for(&last_sp, MAX_FRAME_TIME_MS) {}
+            while !self.gpu.wait_for(&last_sp, MAX_FRAME_TIME_MS) && !gpu::device_lost() {}
         }
     }
 
@@ -805,6 +805,11 @@ impl BladeRenderer {
     }
 
     pub fn draw(&mut self, scene: &Scene) {
+        // Olo: nothing to draw with (a driver reset); the program starts
+        // anew at the end of this turn of its loop.
+        if gpu::device_lost() {
+            return;
+        }
         self.prepare_subpixel_sprites(scene);
         self.command_encoder.start();
         if super::gpu_timings() {

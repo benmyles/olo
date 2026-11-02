@@ -213,6 +213,13 @@ message):
   `tools/dev/scroll-check` (smoothness and the first frame's latency;
   `--trace` for each frame), `tools/dev/perf-fuzz` (stalls, slow
   answers, growth).
+* Where a GPUI app's frame goes: `OLO_FRAME_PHASES=1` prints each
+  frame's layout, paint, scene finish and present (which waits for the
+  previous frame's GPU work) and how many sprites, quads and paint
+  operations it has. Where its time goes inside: sample its UI thread
+  with `eu-stack -1 -i -p PID` a few hundred times while the bench's
+  pointer sweeps it and count the functions on the stacks (perf isn't
+  installed).
 * GPU time: a GPUI app run with `OLO_GPU_TIMINGS=1` prints each frame's
   passes as the GPU timed them, its quads (in screens filled: more than
   one is overdraw) and its sprites. A frame shows on time only if its
@@ -1953,9 +1960,21 @@ for a 3-second `sleep`.
   handshake, and simply goes round again. No app may die of an upgrade.
 * Nor of losing the GPU (a driver reset: `VK_ERROR_DEVICE_LOST`, as
   Asahi's Mesa gives at a failed syncobj transfer): everything the
-  device made is gone. The egui kit started the app anew as an upgrade
-  does (lost again within 10 s, it ended rather than loop); GPUI's blade
-  renderer doesn't yet (TODO.md, "GPU device loss on GPUI").
+  device made is gone (pictures, pages, glyphs), and only the app makes
+  them again. Blade marks the device lost where a submit, present, wait
+  or acquire finds it (gpui/README.md), and the app starts anew as for
+  the compositor gone (`upgrade::lost_compositor`: its state saved,
+  re-executed, same pid). Lost again within 10 s of that start
+  (`OLO_GPU_LOST_AT`, taken out of the environment as it starts), the
+  GPU is broken, not reset, and the app ends rather than go round. Test
+  with the app socket's debug-only `{"lose_gpu":true}`
+  (`olo-menus-PID.sock`), which marks the device lost.
+* A re-executed app keeps its pid, so the children its previous self
+  started are its own still, but nothing in it waits for them: Activity
+  Monitor's helper, its input pipe closed with the exec, ended and
+  stayed a zombie, one an upgrade. `restore::claim` (the first thing
+  `olo_ui::run` does) has a thread wait for whatever children the
+  process has as it starts.
 * app_server puts a window back on its own as it was in every way: a
   window remembered by this app_server whose own process came back
   (`Placement::id`) is stacked among the others by the windows that

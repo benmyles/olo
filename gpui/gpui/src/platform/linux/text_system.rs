@@ -641,6 +641,7 @@ impl State {
             descent: px(descent),
             runs,
             len: text.len(),
+            painted: Default::default(),
         }
     }
 

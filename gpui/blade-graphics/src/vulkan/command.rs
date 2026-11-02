@@ -427,20 +427,21 @@ impl super::CommandEncoder {
     pub(super) fn check_gpu_crash<T>(&self, ret: Result<T, vk::Result>) -> Option<T> {
         match ret {
             Ok(value) => Some(value),
-            Err(vk::Result::ERROR_DEVICE_LOST) => match self.crash_handler {
-                Some(ref ch) => {
+            // Olo: lost (a driver reset), said rather than a panic: the
+            // program starts anew (`crate::lose_device`).
+            Err(vk::Result::ERROR_DEVICE_LOST) => {
+                if let Some(ref ch) = self.crash_handler {
+                    log::error!("GPU has crashed in {}", ch.name);
                     let last_id = unsafe { *(ch.marker_buf.data() as *mut u32) };
                     if last_id != 0 {
                         let (history, last_marker) = ch.extract(last_id);
                         log::error!("Last GPU executed marker is '{last_marker}'");
                         log::info!("Marker history: {}", history);
                     }
-                    panic!("GPU has crashed in {}", ch.name);
                 }
-                None => {
-                    panic!("GPU has crashed, and no debug information is available.");
-                }
-            },
+                crate::lose_device();
+                None
+            }
             Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
                 log::warn!("GPU frame is out of date");
                 None

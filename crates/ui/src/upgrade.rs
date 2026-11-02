@@ -9,8 +9,11 @@
 use std::{
     os::{fd::FromRawFd, unix::process::CommandExt as _},
     path::PathBuf,
-    sync::atomic::{AtomicI32, Ordering},
-    time::SystemTime,
+    sync::{
+        OnceLock,
+        atomic::{AtomicI32, Ordering},
+    },
+    time::{Duration, SystemTime},
 };
 
 use futures::{StreamExt, channel::mpsc};
@@ -35,14 +38,55 @@ extern "C" fn on_signal(_: libc::c_int) {
 /// at once, whatever it was busy with (no compositor, nothing to show
 /// it on). Here, synchronously: GPUI calls this with nothing borrowed,
 /// and its loop may be over.
+///
+/// The GPU device lost (a driver reset, `gpui::gpu_device_lost`) is the
+/// same: what it made (pictures, pages, glyphs) went with it, and only
+/// a fresh start makes them again. Lost again within [`GPU_AGAIN`] of
+/// that start, the GPU is broken rather than reset, and the app ends
+/// rather than go round for ever.
 fn lost_compositor(cx: &mut App, binary: &Binary) {
-    tracing::warn!("the compositor is gone: re-executing to reconnect, with the state saved");
+    let gpu = gpui::gpu_device_lost();
+    if gpu && gpu_lost_before().is_some_and(|at| at.elapsed().unwrap_or_default() < GPU_AGAIN) {
+        tracing::error!("the GPU device is lost again within {} s of the last time: ending", GPU_AGAIN.as_secs());
+        return;
+    }
+    if gpu {
+        tracing::warn!("the GPU device is lost: re-executing to start anew, with the state saved");
+    } else {
+        tracing::warn!("the compositor is gone: re-executing to reconnect, with the state saved");
+    }
     let save = cx.try_global::<Saving>().is_some().then(|| cx.global_mut::<Saving>().0.take()).flatten();
     let state = save.as_ref().and_then(|save| save(cx));
     if let Some(save) = save {
         cx.global_mut::<Saving>().0 = Some(save);
     }
-    binary.exec(state);
+    binary.exec(state, gpu);
+}
+
+/// How soon the GPU lost again means it's broken, not reset.
+const GPU_AGAIN: Duration = Duration::from_secs(10);
+
+/// Names when the GPU device was last lost, for the program re-executed
+/// because of it (seconds since the epoch).
+const GPU_LOST_ENV: &str = "OLO_GPU_LOST_AT";
+
+/// When the previous self lost the GPU device, if that's why this one
+/// started. Claimed (read and taken out of the environment) as the app
+/// starts ([`claim`]), so the programs it starts don't inherit it.
+fn gpu_lost_before() -> Option<SystemTime> {
+    static AT: OnceLock<Option<SystemTime>> = OnceLock::new();
+    *AT.get_or_init(|| {
+        let at = std::env::var(GPU_LOST_ENV).ok()?;
+        // SAFETY: claimed at start-up (`run`, first thing), before the
+        // app starts threads that read the environment.
+        unsafe { std::env::remove_var(GPU_LOST_ENV) };
+        Some(SystemTime::UNIX_EPOCH + Duration::from_secs(at.parse().ok()?))
+    })
+}
+
+/// Takes what the previous self left in the environment, at start-up.
+pub(crate) fn claim() {
+    gpu_lost_before();
 }
 
 type SaveState = Box<dyn Fn(&mut App) -> Option<String>>;
@@ -113,12 +157,17 @@ impl Binary {
         now.is_some() && now != self.id
     }
 
-    /// Replaces this process with the binary now on disk, handing it `state`.
-    fn exec(&self, state: Option<String>) {
+    /// Replaces this process with the binary now on disk, handing it
+    /// `state` (and, when the GPU device was lost, when that was).
+    fn exec(&self, state: Option<String>, gpu_lost: bool) {
         let mut cmd = std::process::Command::new(&self.path);
         cmd.args(std::env::args_os().skip(1));
         olo_xdg::upgrade_env(&mut cmd);
         olo_kit_base::restore::hand_over(&mut cmd, state.as_deref());
+        if gpu_lost {
+            let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();
+            cmd.env(GPU_LOST_ENV, now.as_secs().to_string());
+        }
         tracing::info!(path = %self.path.display(), "re-executing");
         let e = cmd.exec();
         tracing::warn!(?e, "could not start the upgraded binary; carrying on");
@@ -204,7 +253,7 @@ pub(crate) fn init(cx: &mut App) {
                 })
                 .ok()
                 .flatten();
-            binary.exec(state);
+            binary.exec(state, false);
         }
     })
     .detach();

@@ -1,238 +1,119 @@
-use crate::{Bounds, Half};
-use std::{
-    cmp,
-    fmt::Debug,
-    ops::{Add, Sub},
-};
+//! Olo: the draw order of what a scene paints. Each thing gets one more
+//! than the highest order of what it overlaps, so things apart share an
+//! order and are drawn in one batch. Upstream kept them in a bounding
+//! volume tree that never rebalanced: a frame's things come in reading
+//! order, the tree grew towards a chain, and a full screen of cards
+//! (Notifications' history: 1,600 things, each line of text one) took 3
+//! ms a frame to order. Here they go in a grid of cells, each keeping
+//! what overlaps it and its highest order, so a thing looks only at its
+//! neighbours, and at a cell's only when that could raise its order.
+
+use crate::{Bounds, ScaledPixels};
+use collections::FxHashMap;
+use std::fmt::Debug;
+
+/// A cell's side, in device pixels (a few lines of text across).
+const CELL: f32 = 256.0;
+/// Things far outside any window share the edge cells (their order is
+/// still exact: what overlaps is checked, not assumed).
+const FAR: i32 = 512;
+
+/// What a cell's coordinate comes from.
+pub(crate) trait GridUnit: Copy + Clone + Debug + Default + PartialEq + PartialOrd + std::ops::Add<Output = Self> + std::ops::Sub<Output = Self> {
+    fn grid(self) -> f32;
+}
+
+impl GridUnit for ScaledPixels {
+    fn grid(self) -> f32 {
+        self.0
+    }
+}
+
+impl GridUnit for f32 {
+    fn grid(self) -> f32 {
+        self
+    }
+}
+
+#[derive(Debug, Default)]
+struct Cell {
+    /// The highest order of what's in it.
+    max: u32,
+    /// What overlaps it (indices into `BoundsTree::things`).
+    things: Vec<u32>,
+}
 
 #[derive(Debug)]
 pub(crate) struct BoundsTree<U>
 where
-    U: Clone + Debug + Default + PartialEq,
+    U: GridUnit,
 {
-    root: Option<usize>,
-    nodes: Vec<Node<U>>,
-    stack: Vec<usize>,
+    things: Vec<(Bounds<U>, u32)>,
+    /// Cells with something in them this frame; kept (emptied) from frame
+    /// to frame, so a frame like the last allocates nothing.
+    cells: FxHashMap<(i32, i32), Cell>,
 }
 
 impl<U> BoundsTree<U>
 where
-    U: Clone
-        + Debug
-        + PartialEq
-        + PartialOrd
-        + Add<U, Output = U>
-        + Sub<Output = U>
-        + Half
-        + Default,
+    U: GridUnit,
 {
     pub fn clear(&mut self) {
-        self.root = None;
-        self.nodes.clear();
-        self.stack.clear();
+        if self.things.is_empty() {
+            return;
+        }
+        self.things.clear();
+        for cell in self.cells.values_mut() {
+            cell.max = 0;
+            cell.things.clear();
+        }
     }
 
+    /// The cells `bounds` covers: first and last column, first and last row.
+    fn span(bounds: &Bounds<U>) -> (i32, i32, i32, i32) {
+        let at = |v: f32| ((v / CELL).floor() as i32).clamp(-FAR, FAR);
+        let end = bounds.bottom_right();
+        (at(bounds.origin.x.grid()), at(end.x.grid()), at(bounds.origin.y.grid()), at(end.y.grid()))
+    }
+
+    /// `new_bounds`' order: one more than the highest of what it overlaps.
     pub fn insert(&mut self, new_bounds: Bounds<U>) -> u32 {
-        // If the tree is empty, make the root the new leaf.
-        if self.root.is_none() {
-            let new_node = self.push_leaf(new_bounds, 1);
-            self.root = Some(new_node);
-            return 1;
-        }
-
-        // Search for the best place to add the new leaf based on heuristics.
-        let mut max_intersecting_ordering = 0;
-        let mut index = self.root.unwrap();
-        while let Node::Internal {
-            left,
-            right,
-            bounds: node_bounds,
-            ..
-        } = &mut self.nodes[index]
-        {
-            let left = *left;
-            let right = *right;
-            *node_bounds = node_bounds.union(&new_bounds);
-            self.stack.push(index);
-
-            // Descend to the best-fit child, based on which one would increase
-            // the surface area the least. This attempts to keep the tree balanced
-            // in terms of surface area. If there is an intersection with the other child,
-            // add its keys to the intersections vector.
-            let left_cost = new_bounds.union(self.nodes[left].bounds()).half_perimeter();
-            let right_cost = new_bounds
-                .union(self.nodes[right].bounds())
-                .half_perimeter();
-            if left_cost < right_cost {
-                max_intersecting_ordering =
-                    self.find_max_ordering(right, &new_bounds, max_intersecting_ordering);
-                index = left;
-            } else {
-                max_intersecting_ordering =
-                    self.find_max_ordering(left, &new_bounds, max_intersecting_ordering);
-                index = right;
-            }
-        }
-
-        // We've found a leaf ('index' now refers to a leaf node).
-        // We'll insert a new parent node above the leaf and attach our new leaf to it.
-        let sibling = index;
-
-        // Check for collision with the located leaf node
-        let Node::Leaf {
-            bounds: sibling_bounds,
-            order: sibling_ordering,
-            ..
-        } = &self.nodes[index]
-        else {
-            unreachable!();
-        };
-        if sibling_bounds.intersects(&new_bounds) {
-            max_intersecting_ordering = cmp::max(max_intersecting_ordering, *sibling_ordering);
-        }
-
-        let ordering = max_intersecting_ordering + 1;
-        let new_node = self.push_leaf(new_bounds, ordering);
-        let new_parent = self.push_internal(sibling, new_node);
-
-        // If there was an old parent, we need to update its children indices.
-        if let Some(old_parent) = self.stack.last().copied() {
-            let Node::Internal { left, right, .. } = &mut self.nodes[old_parent] else {
-                unreachable!();
-            };
-
-            if *left == sibling {
-                *left = new_parent;
-            } else {
-                *right = new_parent;
-            }
-        } else {
-            // If the old parent was the root, the new parent is the new root.
-            self.root = Some(new_parent);
-        }
-
-        for node_index in self.stack.drain(..).rev() {
-            let Node::Internal {
-                max_order: max_ordering,
-                ..
-            } = &mut self.nodes[node_index]
-            else {
-                unreachable!()
-            };
-            if *max_ordering >= ordering {
-                break;
-            }
-            *max_ordering = ordering;
-        }
-
-        ordering
-    }
-
-    fn find_max_ordering(&self, index: usize, bounds: &Bounds<U>, mut max_ordering: u32) -> u32 {
-        match &self.nodes[index] {
-            Node::Leaf {
-                bounds: node_bounds,
-                order: ordering,
-                ..
-            } => {
-                if bounds.intersects(node_bounds) {
-                    max_ordering = cmp::max(*ordering, max_ordering);
+        let (x0, x1, y0, y1) = Self::span(&new_bounds);
+        let mut max = 0;
+        for y in y0..=y1 {
+            for x in x0..=x1 {
+                let Some(cell) = self.cells.get(&(x, y)) else { continue };
+                if cell.max <= max {
+                    continue;
                 }
-            }
-            Node::Internal {
-                left,
-                right,
-                bounds: node_bounds,
-                max_order: node_max_ordering,
-                ..
-            } => {
-                if bounds.intersects(node_bounds) && max_ordering < *node_max_ordering {
-                    let left_max_ordering = self.nodes[*left].max_ordering();
-                    let right_max_ordering = self.nodes[*right].max_ordering();
-                    if left_max_ordering > right_max_ordering {
-                        max_ordering = self.find_max_ordering(*left, bounds, max_ordering);
-                        max_ordering = self.find_max_ordering(*right, bounds, max_ordering);
-                    } else {
-                        max_ordering = self.find_max_ordering(*right, bounds, max_ordering);
-                        max_ordering = self.find_max_ordering(*left, bounds, max_ordering);
+                for &i in &cell.things {
+                    let (bounds, order) = &self.things[i as usize];
+                    if *order > max && bounds.intersects(&new_bounds) {
+                        max = *order;
                     }
                 }
             }
         }
-        max_ordering
-    }
-
-    fn push_leaf(&mut self, bounds: Bounds<U>, order: u32) -> usize {
-        self.nodes.push(Node::Leaf { bounds, order });
-        self.nodes.len() - 1
-    }
-
-    fn push_internal(&mut self, left: usize, right: usize) -> usize {
-        let left_node = &self.nodes[left];
-        let right_node = &self.nodes[right];
-        let new_bounds = left_node.bounds().union(right_node.bounds());
-        let max_ordering = cmp::max(left_node.max_ordering(), right_node.max_ordering());
-        self.nodes.push(Node::Internal {
-            bounds: new_bounds,
-            left,
-            right,
-            max_order: max_ordering,
-        });
-        self.nodes.len() - 1
+        let order = max + 1;
+        let index = self.things.len() as u32;
+        self.things.push((new_bounds, order));
+        for y in y0..=y1 {
+            for x in x0..=x1 {
+                let cell = self.cells.entry((x, y)).or_default();
+                cell.things.push(index);
+                cell.max = cell.max.max(order);
+            }
+        }
+        order
     }
 }
 
 impl<U> Default for BoundsTree<U>
 where
-    U: Clone + Debug + Default + PartialEq,
+    U: GridUnit,
 {
     fn default() -> Self {
-        BoundsTree {
-            root: None,
-            nodes: Vec::new(),
-            stack: Vec::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-enum Node<U>
-where
-    U: Clone + Debug + Default + PartialEq,
-{
-    Leaf {
-        bounds: Bounds<U>,
-        order: u32,
-    },
-    Internal {
-        left: usize,
-        right: usize,
-        bounds: Bounds<U>,
-        max_order: u32,
-    },
-}
-
-impl<U> Node<U>
-where
-    U: Clone + Debug + Default + PartialEq,
-{
-    fn bounds(&self) -> &Bounds<U> {
-        match self {
-            Node::Leaf { bounds, .. } => bounds,
-            Node::Internal { bounds, .. } => bounds,
-        }
-    }
-
-    fn max_ordering(&self) -> u32 {
-        match self {
-            Node::Leaf {
-                order: ordering, ..
-            } => *ordering,
-            Node::Internal {
-                max_order: max_ordering,
-                ..
-            } => *max_ordering,
-        }
+        BoundsTree { things: Vec::new(), cells: FxHashMap::default() }
     }
 }
 
@@ -299,8 +180,46 @@ mod tests {
         assert_eq!(tree.insert(bounds6), 2); // bounds6 overlaps with bounds4, so it should have a different order
     }
 
+    /// Olo: a frame of cards in columns as Notifications' history paints
+    /// it (a ground, then each card's shadow, plate, icon and lines of
+    /// text), timed: `cargo test -p gpui --release bounds_tree_cards --
+    /// --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn bounds_tree_cards() {
+        let r = |x: f32, y: f32, w: f32, h: f32| Bounds { origin: Point { x, y }, size: Size { width: w, height: h } };
+        let mut rects = vec![r(0.0, 0.0, 3456.0, 2234.0), r(0.0, 30.0, 3456.0, 2204.0)];
+        for col in 0..6 {
+            let x = 10.0 + col as f32 * 570.0;
+            let mut y = 40.0;
+            while y < 2200.0 {
+                rects.push(r(x - 4.0, y - 2.0, 568.0, 128.0));
+                rects.push(r(x, y, 560.0, 120.0));
+                rects.push(r(x + 8.0, y + 8.0, 32.0, 32.0));
+                for line in 0..6 {
+                    rects.push(r(x + 48.0, y + 8.0 + line as f32 * 17.0, 480.0, 16.0));
+                }
+                y += 130.0;
+            }
+        }
+        let t = std::time::Instant::now();
+        let mut orders = Vec::new();
+        for _ in 0..10 {
+            let mut tree = BoundsTree::<f32>::default();
+            orders = rects.iter().map(|b| tree.insert(*b)).collect::<Vec<_>>();
+        }
+        println!("{} rects: {:.3} ms a frame, orders up to {}", rects.len(), t.elapsed().as_secs_f64() * 100.0, orders.iter().max().unwrap());
+    }
+
     #[test]
     fn test_random_iterations() {
+        random_iterations(1.0);
+        // (Olo: spread over many cells, far outside too.)
+        random_iterations(40.0);
+        random_iterations(1000.0);
+    }
+
+    fn random_iterations(spread: f32) {
         let max_bounds = 100;
         for seed in 1..=1000 {
             // let seed = 44;
@@ -311,10 +230,10 @@ mod tests {
             // Insert a random number of random AABBs into the tree.
             let num_bounds = rng.random_range(1..=max_bounds);
             for _ in 0..num_bounds {
-                let min_x: f32 = rng.random_range(-100.0..100.0);
-                let min_y: f32 = rng.random_range(-100.0..100.0);
-                let width: f32 = rng.random_range(0.0..50.0);
-                let height: f32 = rng.random_range(0.0..50.0);
+                let min_x: f32 = rng.random_range(-100.0..100.0) * spread;
+                let min_y: f32 = rng.random_range(-100.0..100.0) * spread;
+                let width: f32 = rng.random_range(0.0..50.0) * spread;
+                let height: f32 = rng.random_range(0.0..50.0) * spread;
                 let bounds = Bounds {
                     origin: Point { x: min_x, y: min_y },
                     size: Size { width, height },

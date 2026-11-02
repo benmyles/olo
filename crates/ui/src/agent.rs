@@ -230,8 +230,14 @@ fn answer(query: Query, cx: &mut App) {
             let window = cx.windows().into_iter().find(|w| w.update(cx, |_, window, _| window.surface_id() == Some(surface)).unwrap_or(false));
             let _ = reply.send(window.and_then(|w| cx.try_global::<Paths>()?.0.get(&w.window_id()).cloned()));
         }
+        // A test of a driver reset (debug builds only): the device is
+        // marked lost, and at the end of this turn the app starts anew.
         Query::LoseGpu(reply) => {
-            let _ = reply.send(false);
+            let lose = cfg!(debug_assertions);
+            if lose {
+                gpui::lose_gpu_device();
+            }
+            let _ = reply.send(lose);
         }
         // One of the app's windows being moved (a tab torn off) is over
         // another of its windows, or was let go there: the strip there

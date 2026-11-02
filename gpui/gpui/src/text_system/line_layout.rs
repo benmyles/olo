@@ -26,6 +26,20 @@ pub struct LineLayout {
     pub runs: Vec<ShapedRun>,
     /// The length of the line in utf-8 bytes
     pub len: usize,
+    /// Olo: its glyphs as last painted, kept with it: drawn again (the
+    /// same text, a frame later) it is its sprites moved, not an atlas
+    /// lookup and a scene insert a glyph (`Window::paint_glyph_run`).
+    pub painted: PaintedGlyphs,
+}
+
+/// Olo: a line's glyphs as last painted ([`LineLayout::painted`]).
+#[derive(Default)]
+pub struct PaintedGlyphs(pub(crate) Mutex<crate::GlyphRun>);
+
+impl std::fmt::Debug for PaintedGlyphs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("PaintedGlyphs")
+    }
 }
 
 /// A run of text that has been shaped .

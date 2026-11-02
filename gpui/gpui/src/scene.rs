@@ -31,7 +31,14 @@ pub(crate) struct Scene {
     pub(crate) underlines: Vec<Underline>,
     pub(crate) segments: Vec<Segment>,
     pub(crate) sectors: Vec<Sector>,
+    /// Sorted by order and texture (`finish`), from `mono_staging`.
     pub(crate) monochrome_sprites: Vec<MonochromeSprite>,
+    /// Olo: glyph sprites as painted, in runs of one order and texture
+    /// (`mono_runs`): a line's glyphs share its layer's order, so
+    /// `finish` sorts a frame's lines, not each of its tens of thousands
+    /// of glyphs, and a replayed view copies its ranges from here.
+    mono_staging: Vec<MonochromeSprite>,
+    mono_runs: Vec<SpriteRun>,
     pub(crate) polychrome_sprites: Vec<PolychromeSprite>,
     pub(crate) image_triangles: Vec<ImageTriangle>,
     pub(crate) surfaces: Vec<PaintSurface>,
@@ -49,6 +56,8 @@ impl Scene {
         self.segments.clear();
         self.sectors.clear();
         self.monochrome_sprites.clear();
+        self.mono_staging.clear();
+        self.mono_runs.clear();
         self.polychrome_sprites.clear();
         self.image_triangles.clear();
         self.surfaces.clear();
@@ -113,7 +122,9 @@ impl Scene {
             }
             Primitive::MonochromeSprite(sprite) => {
                 sprite.order = order;
-                self.monochrome_sprites.push(sprite.clone());
+                let start = self.mono_staging.len();
+                self.mono_staging.push(sprite.clone());
+                self.record_runs(start);
             }
             Primitive::PolychromeSprite(sprite) => {
                 sprite.order = order;
@@ -151,23 +162,54 @@ impl Scene {
         self.paint_operations.push(PaintOperation::Segments(segments));
     }
 
-    /// Olo: many glyphs' sprites at once (`Window::paint_glyphs`), as
-    /// [`Scene::insert_segments`]: a page of text is tens of thousands.
-    pub fn insert_sprites(&mut self, mut sprites: Vec<MonochromeSprite>) {
+    /// Olo: many glyphs' sprites at once (`Window::paint_glyphs`, a
+    /// line's): a page of text is tens of thousands, each written once,
+    /// into `mono_staging`, as runs of one order and texture.
+    pub fn insert_sprites(&mut self, sprites: impl IntoIterator<Item = MonochromeSprite>) {
         let layer = self.layer_stack.last().copied();
-        sprites.retain_mut(|sprite| {
+        let start = self.mono_staging.len();
+        for mut sprite in sprites {
             let clipped = sprite.bounds.intersect(&sprite.content_mask.bounds);
             if clipped.is_empty() {
-                return false;
+                continue;
             }
             sprite.order = layer.unwrap_or_else(|| self.primitive_bounds.insert(clipped));
-            true
-        });
-        if sprites.is_empty() {
+            self.mono_staging.push(sprite);
+        }
+        let end = self.mono_staging.len();
+        if end == start {
             return;
         }
-        self.monochrome_sprites.extend_from_slice(&sprites);
-        self.paint_operations.push(PaintOperation::Sprites(sprites));
+        self.record_runs(start);
+        self.paint_operations.push(PaintOperation::Sprites(start..end));
+    }
+
+    /// Notes the sprites added to `mono_staging` from `start` as runs of
+    /// one order and texture (those of a texture together, as `finish`
+    /// sorted them before: a batch is one texture).
+    fn record_runs(&mut self, start: usize) {
+        let key = |s: &MonochromeSprite| (s.order, texture_key(&s.tile));
+        let first_run = self.mono_runs.len();
+        // (One pass: a line's glyphs are nearly always one run.)
+        let mut k = key(&self.mono_staging[start]);
+        let mut from = start;
+        let mut sorted = true;
+        for i in start + 1..self.mono_staging.len() {
+            let next = key(&self.mono_staging[i]);
+            if next != k {
+                sorted &= next > k;
+                self.mono_runs.push(SpriteRun { order: k.0, texture: k.1, range: from as u32..i as u32 });
+                (k, from) = (next, i);
+            }
+        }
+        self.mono_runs.push(SpriteRun { order: k.0, texture: k.1, range: from as u32..self.mono_staging.len() as u32 });
+        if !sorted {
+            // Glyphs of several textures in one line, interleaved: those
+            // of each together, as one batch.
+            self.mono_runs.truncate(first_run);
+            self.mono_staging[start..].sort_by_key(key);
+            self.record_runs(start);
+        }
     }
 
     pub fn replay(&mut self, range: Range<usize>, prev_scene: &Scene) {
@@ -175,7 +217,7 @@ impl Scene {
             match operation {
                 PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
                 PaintOperation::Segments(segments) => self.insert_segments(segments.clone()),
-                PaintOperation::Sprites(sprites) => self.insert_sprites(sprites.clone()),
+                PaintOperation::Sprites(range) => self.insert_sprites(prev_scene.mono_staging[range.clone()].iter().cloned()),
                 PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
                 PaintOperation::EndLayer => self.pop_layer(),
             }
@@ -194,11 +236,16 @@ impl Scene {
         // batch is), not each tile's own id: a page of glyphs is mostly
         // one texture and in order already, which the sort finds in a
         // pass, where sorting by tile shuffled them all every frame.
-        let texture = |t: &crate::AtlasTile| (t.texture_id.kind as u8, t.texture_id.index);
-        self.monochrome_sprites
-            .sort_by_key(|sprite| (sprite.order, texture(&sprite.tile)));
+        // The glyphs go by their runs (`mono_runs`): the same order as
+        // sorting each, for a sort of a frame's lines.
+        self.mono_runs.sort_by_key(|run| (run.order, run.texture));
+        self.monochrome_sprites.clear();
+        self.monochrome_sprites.reserve(self.mono_staging.len());
+        for run in &self.mono_runs {
+            self.monochrome_sprites.extend_from_slice(&self.mono_staging[run.range.start as usize..run.range.end as usize]);
+        }
         self.polychrome_sprites
-            .sort_by_key(|sprite| (sprite.order, texture(&sprite.tile)));
+            .sort_by_key(|sprite| (sprite.order, texture_key(&sprite.tile)));
         self.image_triangles.sort_by_key(|triangle| triangle.order);
         self.surfaces.sort_by_key(|surface| surface.order);
     }
@@ -329,12 +376,26 @@ pub(crate) enum PrimitiveKind {
     Surface,
 }
 
+/// Olo: glyph sprites of one order and texture, together in a scene's
+/// `mono_staging`.
+struct SpriteRun {
+    order: DrawOrder,
+    texture: (u8, u32),
+    range: Range<u32>,
+}
+
+/// An atlas tile's texture, as sprites are batched by.
+fn texture_key(t: &AtlasTile) -> (u8, u32) {
+    (t.texture_id.kind as u8, t.texture_id.index)
+}
+
 pub(crate) enum PaintOperation {
     Primitive(Primitive),
     /// Olo: a polyline's pieces (`Scene::insert_segments`).
     Segments(Vec<Segment>),
-    /// Olo: a run of glyphs (`Scene::insert_sprites`).
-    Sprites(Vec<MonochromeSprite>),
+    /// Olo: a run of glyphs (`Scene::insert_sprites`), where they are in
+    /// the scene's `mono_staging`.
+    Sprites(Range<usize>),
     StartLayer(Bounds<ScaledPixels>),
     EndLayer,
 }
@@ -1222,5 +1283,63 @@ mod cull_tests {
         s.quads = vec![quad(0, rect(0.0, 0.0, 500.0, 500.0), 1.0), over];
         s.cull_hidden_quads();
         assert_eq!(s.quads.len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{AtlasTextureId, AtlasTextureKind, DevicePixels, TileId, TransformationMatrix};
+
+    fn sprite(x: f32, texture: u32, id: u32) -> MonochromeSprite {
+        let b = Bounds { origin: point(ScaledPixels(x), ScaledPixels(0.0)), size: size(ScaledPixels(8.0), ScaledPixels(8.0)) };
+        MonochromeSprite {
+            order: 0,
+            coverage: 0,
+            bounds: b,
+            content_mask: ContentMask { bounds: Bounds { origin: point(ScaledPixels(-1e4), ScaledPixels(-1e4)), size: size(ScaledPixels(2e4), ScaledPixels(2e4)) } },
+            color: Hsla::default(),
+            tile: AtlasTile {
+                texture_id: AtlasTextureId { index: texture, kind: AtlasTextureKind::Monochrome },
+                tile_id: TileId(id),
+                padding: 0,
+                bounds: Bounds { origin: point(DevicePixels(0), DevicePixels(0)), size: size(DevicePixels(8), DevicePixels(8)) },
+            },
+            transformation: TransformationMatrix::unit(),
+        }
+    }
+
+    /// Olo: glyphs go by runs (`mono_runs`), in the order sorting each
+    /// sprite by order and texture gave: lines in layers, overlapping or
+    /// not, glyphs of two textures interleaved, and sprites alone.
+    #[test]
+    fn sprites_in_runs_keep_the_order_sorting_each_gave() {
+        let mut scene = Scene::default();
+        let mut painted = Vec::new();
+        let mut id = 0;
+        let mut next = |x: f32, t: u32| {
+            id += 1;
+            sprite(x, t, id)
+        };
+        for line in 0..6 {
+            let x = (line % 3) as f32 * 30.0;
+            let bounds = Bounds { origin: point(ScaledPixels(x), ScaledPixels(0.0)), size: size(ScaledPixels(40.0), ScaledPixels(8.0)) };
+            scene.push_layer(bounds);
+            let glyphs: Vec<_> = (0..5).map(|g| next(x + g as f32, if line == 4 { g % 2 } else { 0 })).collect();
+            scene.insert_sprites(glyphs.clone());
+            painted.extend(glyphs.into_iter().map(|g| (g, *scene.layer_stack.last().unwrap())));
+            scene.pop_layer();
+            let alone = next(x + 3.0, 1);
+            scene.insert_primitive(alone.clone());
+            let order = scene.mono_staging.last().unwrap().order;
+            painted.push((alone, order));
+        }
+        scene.finish();
+        // (Each as it went in, with the order the scene gave it, sorted
+        // by order and texture the way finish sorted every sprite.)
+        let mut expected: Vec<_> = painted.into_iter().map(|(s, order)| (order, texture_key(&s.tile), s.tile.tile_id)).collect();
+        expected.sort_by_key(|(order, texture, _)| (*order, *texture));
+        let got: Vec<_> = scene.monochrome_sprites.iter().map(|s| (s.order, texture_key(&s.tile), s.tile.tile_id)).collect();
+        assert_eq!(got, expected);
     }
 }

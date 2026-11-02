@@ -55,6 +55,7 @@ impl ShapedLine {
             descent: layout.descent,
             runs: layout.runs.clone(),
             len,
+            painted: Default::default(),
         });
         self
     }
@@ -208,6 +209,23 @@ fn paint_line(
             line_height * (wrap_boundaries.len() as f32 + 1.),
         ),
     );
+    // Olo: a line of plain glyphs (no underline, strikethrough or emoji:
+    // nearly every line) is painted from what it found last time, moved
+    // (`LineLayout::painted`): a window of text redrawn for a hover was
+    // an atlas lookup and a scene insert a glyph, 1.6 µs each (a full
+    // screen of Notifications' history 15–25 ms a frame).
+    let plain = decoration_runs.iter().all(|r| r.underline.is_none() && r.strikethrough.is_none())
+        && layout.runs.iter().all(|r| r.glyphs.iter().all(|g| !g.is_emoji));
+    if plain {
+        let stamp = line_stamp(line_height, align, align_width, decoration_runs, wrap_boundaries);
+        let mut painted = layout.painted.0.lock();
+        window.paint_layer(line_bounds, |window| {
+            window.paint_glyph_run(&mut painted, origin, stamp, |emit| {
+                plain_glyphs(origin, layout, text, line_height, align, align_width, decoration_runs, wrap_boundaries, emit)
+            })
+        });
+        return Ok(());
+    }
     window.paint_layer(line_bounds, |window| {
         let padding_top = (line_height - layout.ascent - layout.descent) / 2.;
         let baseline_offset = point(px(0.), padding_top + layout.ascent);
@@ -575,6 +593,87 @@ fn paint_line_background(
 
         Ok(())
     })
+}
+
+/// What a plain line's glyph positions and colours depend on besides
+/// its layout and where it starts: its key in `LineLayout::painted`.
+fn line_stamp(
+    line_height: Pixels,
+    align: TextAlign,
+    align_width: Option<Pixels>,
+    decoration_runs: &[DecorationRun],
+    wrap_boundaries: &[WrapBoundary],
+) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = collections::FxHasher::default();
+    line_height.0.to_bits().hash(&mut h);
+    (align as u8).hash(&mut h);
+    align_width.map(|w| w.0.to_bits()).hash(&mut h);
+    for r in decoration_runs {
+        r.len.hash(&mut h);
+        [r.color.h, r.color.s, r.color.l, r.color.a].map(f32::to_bits).hash(&mut h);
+    }
+    for w in wrap_boundaries {
+        (w.run_ix, w.glyph_ix).hash(&mut h);
+    }
+    h.finish()
+}
+
+/// A plain line's glyphs (no decorations, no emoji), each with where it
+/// sits from `origin` (its baseline), its face, size and colour: as
+/// `paint_line` places and colours them.
+#[allow(clippy::too_many_arguments)]
+fn plain_glyphs(
+    origin: Point<Pixels>,
+    layout: &LineLayout,
+    text: &str,
+    line_height: Pixels,
+    align: TextAlign,
+    align_width: Option<Pixels>,
+    decoration_runs: &[DecorationRun],
+    wrap_boundaries: &[WrapBoundary],
+    emit: &mut dyn FnMut(Point<Pixels>, crate::FontId, crate::GlyphId, Pixels, Hsla),
+) {
+    let padding_top = (line_height - layout.ascent - layout.descent) / 2.;
+    let baseline_offset = point(px(0.), padding_top + layout.ascent);
+    let mut decoration_runs = decoration_runs.iter();
+    let mut wraps = wrap_boundaries.iter().peekable();
+    let mut run_end = 0;
+    let mut color = black();
+    let mut glyph_origin = point(
+        aligned_origin_x(origin, align_width.unwrap_or(layout.width), px(0.0), &align, layout, wraps.peek(), text),
+        origin.y,
+    );
+    let mut prev_glyph_position = Point::default();
+    for (run_ix, run) in layout.runs.iter().enumerate() {
+        for (glyph_ix, glyph) in run.glyphs.iter().enumerate() {
+            glyph_origin.x += glyph.position.x - prev_glyph_position.x;
+            if wraps.peek() == Some(&&WrapBoundary { run_ix, glyph_ix }) {
+                wraps.next();
+                glyph_origin.x = aligned_origin_x(origin, align_width.unwrap_or(layout.width), glyph.position.x, &align, layout, wraps.peek(), text);
+                glyph_origin.y += line_height;
+            }
+            prev_glyph_position = glyph.position;
+            if glyph.index >= run_end {
+                let mut style_run = decoration_runs.next();
+                // (A style run that applies to part of a glyph is passed.)
+                while let Some(run) = style_run {
+                    if glyph.index < run_end + (run.len as usize) {
+                        break;
+                    }
+                    run_end += run.len as usize;
+                    style_run = decoration_runs.next();
+                }
+                if let Some(style_run) = style_run {
+                    run_end += style_run.len as usize;
+                    color = style_run.color;
+                } else {
+                    run_end = layout.len;
+                }
+            }
+            emit(glyph_origin + baseline_offset - origin, run.font_id, glyph.id, run.font_size, color);
+        }
+    }
 }
 
 fn aligned_origin_x(

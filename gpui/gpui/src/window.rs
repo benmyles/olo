@@ -955,6 +955,10 @@ pub struct Window {
     pub(crate) needs_present: Rc<Cell<bool>>,
     pub(crate) last_input_timestamp: Rc<Cell<Instant>>,
     pub(crate) frame_stats: FrameStats,
+    /// Olo: where the last draw's time went (`OLO_FRAME_PHASES`): its
+    /// layout and prepaint, paint, and finishing the scene, each from
+    /// the draw's start.
+    phase_marks: [Duration; 3],
     /// Olo: the scroll views this frame drew ([`Window::note_scroll`]).
     frame_scrolls: Vec<[f32; 4]>,
     /// Olo: each glyph this frame painted, its raster bounds and atlas
@@ -1174,6 +1178,20 @@ impl Window {
                                 arena_clear_needed.clear();
                                 let scrolls = std::mem::take(&mut window.frame_scrolls);
                                 window.frame_stats.record(started, drawn, started.elapsed(), scrolls);
+                                if frame_phases() {
+                                    let [layout, paint, finish] = window.phase_marks.map(|d| d.as_secs_f64() * 1000.0);
+                                    let scene = &window.rendered_frame.scene;
+                                    eprintln!(
+                                        "frame {:.2} ms: layout {layout:.2}, paint {:.2}, finish {:.2}, present {:.2}; {} sprites, {} quads, {} operations",
+                                        started.elapsed().as_secs_f64() * 1000.0,
+                                        paint - layout,
+                                        finish - paint,
+                                        (started.elapsed() - drawn).as_secs_f64() * 1000.0,
+                                        scene.monochrome_sprites.len() + scene.polychrome_sprites.len(),
+                                        scene.quads.len(),
+                                        scene.paint_operations.len(),
+                                    );
+                                }
                             })
                             .log_err();
                     });
@@ -1389,6 +1407,7 @@ impl Window {
             needs_present,
             last_input_timestamp,
             frame_stats: FrameStats::default(),
+            phase_marks: Default::default(),
             frame_scrolls: Vec::new(),
             glyph_memo: FxHashMap::default(),
             drop_offer: None,
@@ -2126,7 +2145,9 @@ impl Window {
         if let Some(input_handler) = self.platform_window.take_input_handler() {
             self.rendered_frame.input_handlers.push(Some(input_handler));
         }
-        self.draw_roots(cx);
+        let started = Instant::now();
+        self.draw_roots(cx, started);
+        self.phase_marks[1] = started.elapsed();
         self.outlines.end_frame(self.sprite_atlas.as_ref());
         // Olo: where a window that takes drops took what's dragged over
         // it, told the platform as it changes (one that doesn't, keeps
@@ -2147,6 +2168,7 @@ impl Window {
         self.layout_engine.as_mut().unwrap().clear();
         self.text_system().finish_frame();
         self.next_frame.finish(&mut self.rendered_frame);
+        self.phase_marks[2] = started.elapsed();
 
         self.invalidator.set_phase(DrawPhase::Focus);
         let previous_focus_path = self.rendered_frame.focus_path();
@@ -2222,7 +2244,7 @@ impl Window {
         profiling::finish_frame!();
     }
 
-    fn draw_roots(&mut self, cx: &mut App) {
+    fn draw_roots(&mut self, cx: &mut App, started: Instant) {
         self.invalidator.set_phase(DrawPhase::Prepaint);
         self.tooltip_bounds.take();
 
@@ -2278,6 +2300,7 @@ impl Window {
 
         // Now actually paint the elements.
         self.invalidator.set_phase(DrawPhase::Paint);
+        self.phase_marks[0] = started.elapsed();
         root_element.paint(self, cx);
 
         #[cfg(any(feature = "inspector", debug_assertions))]
@@ -3502,19 +3525,15 @@ impl Window {
         }
         let element_opacity = self.element_opacity();
         let content_mask = self.content_mask().scale(scale_factor);
-        let sprites: Vec<MonochromeSprite> = run
-            .sprites
-            .iter()
-            .map(|(rel, tile, color)| MonochromeSprite {
-                order: 0,
-                coverage: 0,
-                bounds: Bounds { origin: Point { x: ScaledPixels(rel.origin.x.0 + base.x), y: ScaledPixels(rel.origin.y.0 + base.y) }, size: rel.size },
-                content_mask: content_mask.clone(),
-                color: color.opacity(element_opacity),
-                tile: tile.clone(),
-                transformation: TransformationMatrix::unit(),
-            })
-            .collect();
+        let sprites = run.sprites.iter().map(|(rel, tile, color)| MonochromeSprite {
+            order: 0,
+            coverage: 0,
+            bounds: Bounds { origin: Point { x: ScaledPixels(rel.origin.x.0 + base.x), y: ScaledPixels(rel.origin.y.0 + base.y) }, size: rel.size },
+            content_mask: content_mask.clone(),
+            color: color.opacity(element_opacity),
+            tile: tile.clone(),
+            transformation: TransformationMatrix::unit(),
+        });
         self.next_frame.scene.insert_sprites(sprites);
     }
 
@@ -5809,6 +5828,13 @@ pub fn outline(
         border_color: border_color.into(),
         border_style,
     }
+}
+
+/// Olo: each frame's time in its phases and what its scene holds, on
+/// stderr (`OLO_FRAME_PHASES=1`).
+fn frame_phases() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("OLO_FRAME_PHASES").is_some())
 }
 
 /// Olo: a run of glyphs as [`Window::paint_glyph_run`] last found them in

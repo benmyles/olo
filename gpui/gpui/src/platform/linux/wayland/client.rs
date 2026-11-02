@@ -3095,22 +3095,29 @@ fn connect() -> Result<Connection, wayland_client::ConnectError> {
 }
 
 /// (Olo) The compositor's connection gone (hung up, or in protocol
-/// error): told once to whoever asked (`Platform::on_compositor_lost`:
+/// error), or the GPU device lost (`gpu_device_lost`): told once to whoever asked (`Platform::on_compositor_lost`:
 /// olo-ui re-executes the program with its state saved, and doesn't
 /// come back), with no borrow held; then the loop stops. Nothing can
 /// come of the connection again, and its socket, readable for ever,
 /// would wake the loop at once each turn (a program outside a session,
 /// where nobody re-executes, spun printing the error, 2026-11-01).
 fn compositor_lost_check(state: &Rc<RefCell<WaylandClientState>>) {
-    let dead = {
+    let (dead, gpu) = {
         let st = state.borrow();
-        !st.lost && (st.connection.protocol_error().is_some() || hung_up(&st.connection))
+        let gpu = crate::gpu_device_lost();
+        (!st.lost && (gpu || st.connection.protocol_error().is_some() || hung_up(&st.connection)), gpu)
     };
     if !dead {
         return;
     }
     state.borrow_mut().lost = true;
-    log::error!("the compositor's connection is gone");
+    if gpu {
+        // (A driver reset: the windows can't be drawn again, so the
+        // program starts anew as it does for the compositor gone.)
+        log::error!("the GPU device is lost");
+    } else {
+        log::error!("the compositor's connection is gone");
+    }
     let callback = state.borrow_mut().common.callbacks.compositor_lost.take();
     if let Some(mut f) = callback {
         f();

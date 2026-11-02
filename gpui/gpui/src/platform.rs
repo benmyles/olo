@@ -74,6 +74,24 @@ pub use keystroke::*;
 
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 pub(crate) use linux::*;
+
+/// Olo: whether the GPU device is lost (a driver reset): everything it
+/// made is gone, nothing is drawn, and GPUI tells whoever asked
+/// (`App::on_compositor_lost`: olo-ui re-executes the program with its
+/// state saved, as when the compositor goes).
+pub fn gpu_device_lost() -> bool {
+    #[cfg(all(any(target_os = "linux", target_os = "freebsd"), feature = "wayland"))]
+    return blade_graphics::device_lost();
+    #[allow(unreachable_code)]
+    false
+}
+
+/// Olo: marks the GPU device lost, as a driver reset does: a test of
+/// what follows (the agent socket's `{"lose_gpu":true}`, debug builds).
+pub fn lose_gpu_device() {
+    #[cfg(all(any(target_os = "linux", target_os = "freebsd"), feature = "wayland"))]
+    blade_graphics::lose_device();
+}
 #[cfg(all(any(target_os = "linux", target_os = "freebsd"), feature = "wayland"))]
 pub use linux::{lock_session, unlock_session};
 #[cfg(target_os = "macos")]
@@ -943,6 +961,7 @@ impl PlatformTextSystem for NoopTextSystem {
             descent: font_size * (metrics.descent / metrics.units_per_em as f32),
             runs,
             len: text.len(),
+            painted: Default::default(),
         }
     }
 }

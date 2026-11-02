@@ -49,6 +49,16 @@ impl super::Surface {
                     image_index: None,
                 }
             }
+            // Olo: lost (a driver reset): no frame, and the program
+            // starts anew (`crate::lose_device`).
+            Err(vk::Result::ERROR_DEVICE_LOST) => {
+                crate::lose_device();
+                super::Frame {
+                    internal: self.frames[0],
+                    swapchain: self.swapchain,
+                    image_index: None,
+                }
+            }
             Err(other) => panic!("Aquire image error {}", other),
         }
     }

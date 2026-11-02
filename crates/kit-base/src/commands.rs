@@ -24,9 +24,9 @@
 //! `{"path":ID}` → `{"path":"/…"}` (or null): the file or folder the
 //! window with that surface shows (`Cx::set_path`), for its
 //! tab's menu (Open in Tracker);
-//! `{"lose_gpu":true}` → `{"ok":bool}`: debug builds only, destroy the
-//! GPU device, as a driver reset loses it, to test that the app comes
-//! back (the kit's `platform::recover_gpu`);
+//! `{"lose_gpu":true}` → `{"ok":bool}`: debug builds only, mark the
+//! GPU device lost, as a driver reset loses it, to test that the app
+//! comes back (olo-ui's `upgrade::lost_compositor`);
 //! `{"window_over":{"window":ID,"onto":ID|null,"x":X,"y":Y}}` and
 //! `{"window_dropped":{…}}` → `{"ok":true}`: from app_server, a window of
 //! ours moved over another of ours (surface ids, `onto`'s coordinates),
@@ -259,7 +259,7 @@ pub enum Query {
     Review(mpsc::Sender<Vec<WindowReview>>),
     /// The path of the window with the surface with this protocol id.
     Path(u32, mpsc::Sender<Option<PathBuf>>),
-    /// Destroy the GPU device (debug builds; a test of losing it).
+    /// Mark the GPU device lost (debug builds; a test of losing it).
     LoseGpu(mpsc::Sender<bool>),
     WindowOver(WindowAt),
     WindowDropped(WindowAt),
