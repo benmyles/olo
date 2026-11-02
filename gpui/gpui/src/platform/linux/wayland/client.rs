@@ -358,6 +358,8 @@ pub(crate) struct WaylandClientState {
     pub modifiers: Modifiers,
     pub capslock: Capslock,
     axis_source: AxisSource,
+    /// Olo: what the scroll going on comes from (fingers, their glide).
+    scroll_kind: crate::ScrollKind,
     pub mouse_location: Option<Point<Pixels>>,
     continuous_scroll_delta: Option<Point<Pixels>>,
     /// A wheel's notches this pointer frame.
@@ -931,6 +933,7 @@ impl WaylandClient {
             scroll_stopped: false,
             scrolling: false,
             axis_source: AxisSource::Wheel,
+            scroll_kind: crate::ScrollKind::Wheel,
             mouse_location: None,
             continuous_scroll_delta: None,
             discrete_scroll_delta: None,
@@ -2479,6 +2482,14 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientStatePtr {
                         _ => crate::ScrollKind::Wheel,
                     };
                     if let Some(continuous) = continuous.filter(|d| d.x != px(0.0) || d.y != px(0.0)) {
+                        // Olo: the glide taking over from the fingers with
+                        // no stop between: the fingers' scroll ends (they
+                        // lifted), the glide's starts.
+                        if state.scrolling && state.scroll_kind != kind {
+                            out.push(ScrollWheelEvent { position, delta: ScrollDelta::Pixels(point(px(0.0), px(0.0))), modifiers, touch_phase: TouchPhase::Ended, kind: state.scroll_kind });
+                            state.scrolling = false;
+                        }
+                        state.scroll_kind = kind;
                         let phase = if state.scrolling { TouchPhase::Moved } else { TouchPhase::Started };
                         state.scrolling = true;
                         out.push(ScrollWheelEvent { position, delta: ScrollDelta::Pixels(continuous), modifiers, touch_phase: phase, kind });

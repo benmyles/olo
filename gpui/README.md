@@ -295,9 +295,17 @@ What Olo changed, so far:
   a view that scrolls itself keeps its own, as the GPUI kit's editor):
   fingers on a touchpad pull the content past an end against Apple's
   rubber band (a third of the view at most) and it springs back when
-  they lift (a critically damped spring, at rest in about a third of a
-  second); the glide after them bounces off an end as fast as it came
-  (a quarter of the view deep at most), the rest of it spent. A wheel
+  they lift (a critically damped spring, most of the way back in a
+  quarter of a second); the glide after them bounces off an end as fast
+  as it came (a quarter of the view deep at most), the rest of it spent;
+  a glide that takes over from fingers pulling past an end (a touchpad's
+  glide follows them with no stop between: the Wayland client ends the
+  fingers' scroll when it starts) goes on from where they left it. A wheel
   stops at the ends, and an axis with nothing to scroll doesn't
   stretch. `ScrollWheelEvent::kind` says which (`ScrollKind`: from the
   axis source, app_server sending its glide as `Continuous`).
+- A frame asked for while one is being drawn (an animation's next
+  frame: `request_animation_frame`, `on_next_frame`) comes with the
+  display's next frame callback if this one commits, not at once: every
+  animation drew twice a display frame (16.6 ms and 1 ms apart at 60
+  Hz), and a live resize two frames a configure.

@@ -198,6 +198,11 @@ struct FrameLoop {
     /// Olo: the window is gone (its surface destroyed): a frame queued
     /// before draws nothing.
     closed: Cell<bool>,
+    /// A frame is being drawn, and something asked for another meanwhile
+    /// (an animation's next frame): it comes with the display's next
+    /// callback if this one commits, else at once.
+    in_frame: Cell<bool>,
+    wanted: Cell<bool>,
 }
 
 /// What is left to scroll of a wheel's notches, and where.
@@ -737,6 +742,8 @@ impl WaylandWindow {
                 signal,
                 wheel: RefCell::new(None),
                 closed: Cell::new(false),
+                in_frame: Cell::new(false),
+                wanted: Cell::new(false),
             }),
         });
 
@@ -936,10 +943,12 @@ impl WaylandWindowStatePtr {
             force_render: frames.force.take(),
             ..Default::default()
         };
+        frames.in_frame.set(true);
         let drew = match cb.request_frame.as_mut() {
             Some(fun) => fun(options),
             None => false,
         };
+        frames.in_frame.set(false);
         drop(cb);
         log::trace!(target: "olo_frames", "frame: drew {drew}, callback {:?}", frames.callback.get());
         if wheel.is_some() && !drew {
@@ -953,6 +962,11 @@ impl WaylandWindowStatePtr {
             frames.needs_commit.set(false);
             frames.callback.set(FrameCallback::Committed);
             frames.committed_at.set(std::time::Instant::now());
+        }
+        // Another frame asked for while drawing this one: with the next
+        // callback (paced by the display) if this one committed, else now.
+        if frames.wanted.take() {
+            self.schedule_frame();
         }
     }
 
@@ -1017,6 +1031,10 @@ impl WaylandWindowStatePtr {
         let frames = &self.frames;
         log::trace!(target: "olo_frames", "schedule: queued {}, callback {:?}", frames.queued.get(), frames.callback.get());
         if frames.queued.get() || frames.closed.get() {
+            return;
+        }
+        if frames.in_frame.get() {
+            frames.wanted.set(true);
             return;
         }
         if frames.callback.get() == FrameCallback::Committed {

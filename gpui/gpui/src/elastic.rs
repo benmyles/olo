@@ -14,8 +14,8 @@ use crate::{Pixels, Point, ScrollKind, Size, TouchPhase, point, px};
 /// How hard the rubber band pulls back (Apple's 0.55).
 const STIFFNESS: f32 = 0.55;
 /// How fast it springs back (a critically damped spring, per second): at
-/// rest in about a third of a second.
-const SPRING: f32 = 14.0;
+/// rest in about half a second, most of the way in a quarter.
+const SPRING: f32 = 18.0;
 /// A bounce goes at most this far into the view.
 const MOST_BOUNCE: f32 = 0.25;
 
@@ -74,6 +74,12 @@ impl Elastic {
             let kind = if max[i] <= 0.0 && a.pull == 0.0 && a.spring.is_none() { ScrollKind::Wheel } else { kind };
             match kind {
                 ScrollKind::Wheel => {
+                    // (Fingers that never said they lifted: let go.)
+                    if a.pull != 0.0 {
+                        a.spring = Some((rubber(a.pull, view[i]), 0.0, now));
+                        a.pull = 0.0;
+                        moved = true;
+                    }
                     at[i] = (at[i] + d[i]).clamp(lo, hi);
                 }
                 ScrollKind::Fingers => {
@@ -106,7 +112,34 @@ impl Elastic {
                         continue;
                     }
                     let since = a.last.replace(now).map(|t| now.duration_since(t).as_secs_f32());
+                    let most = MOST_BOUNCE * view[i] * SPRING * std::f32::consts::E;
+                    // The fingers lifted while pulling past an end (the
+                    // glide takes over from them): back from where they
+                    // were, as fast as the glide goes there (slowed as the
+                    // rubber band slows it), the rest of the glide spent.
+                    if a.pull != 0.0 {
+                        let speed = d[i] / since.unwrap_or(1.0 / 120.0).clamp(0.004, 0.034) * stretch_rate(a.pull, view[i]);
+                        a.spring = Some((rubber(a.pull, view[i]), speed.clamp(-most, most), now));
+                        a.pull = 0.0;
+                        a.bounced = true;
+                        moved = true;
+                        continue;
+                    }
                     if a.bounced || d[i] == 0.0 {
+                        continue;
+                    }
+                    // Springing back (the fingers lifted past the end just
+                    // now): the glide goes on from where it is, as fast as
+                    // it adds, not from the end.
+                    if let Some(s) = a.spring
+                        && (at[i] <= lo || at[i] >= hi)
+                        && d[i].signum() == (if at[i] >= hi { 1.0 } else { -1.0 })
+                    {
+                        let (x, v) = spring_at(s, now);
+                        let speed = d[i] / since.unwrap_or(1.0 / 120.0).clamp(0.004, 0.034) * stretch_rate(unrubber(x, view[i]), view[i]);
+                        a.spring = Some((x, (v + speed).clamp(-most, most), now));
+                        a.bounced = true;
+                        moved = true;
                         continue;
                     }
                     let t = at[i] + d[i];
@@ -118,7 +151,6 @@ impl Elastic {
                     // of the view deep).
                     at[i] = t.clamp(lo, hi);
                     let speed = d[i] / since.unwrap_or(1.0 / 120.0).clamp(0.004, 0.034);
-                    let most = MOST_BOUNCE * view[i] * SPRING * std::f32::consts::E;
                     a.spring = Some((0.0, speed.clamp(-most, most), now));
                     a.bounced = true;
                     moved = true;
@@ -185,6 +217,17 @@ fn rubber(x: f32, d: f32) -> f32 {
     }
     let d = d / 3.0;
     x.signum() * (1.0 - 1.0 / (x.abs() * STIFFNESS / d + 1.0)) * d
+}
+
+/// How fast the content moves for the fingers at `x` past an end (the
+/// rubber band's slope there).
+fn stretch_rate(x: f32, d: f32) -> f32 {
+    if d <= 0.0 {
+        return 0.0;
+    }
+    let d = d / 3.0;
+    let k = x.abs() * STIFFNESS / d + 1.0;
+    STIFFNESS / (k * k)
 }
 
 /// [`rubber`] undone: how far fingers would have pulled to show `y`.
@@ -279,5 +322,50 @@ mod fit_tests {
         e.scroll(&mut o, point(px(0.0), px(80.0)), ScrollKind::Fingers, TouchPhase::Moved);
         assert!(!e.stretched());
         assert_eq!(e.offset(o).0, o);
+    }
+}
+
+#[cfg(test)]
+mod lift_tests {
+    use super::*;
+
+    #[test]
+    fn a_glide_taking_over_from_pulling_fingers_springs_back() {
+        let mut e = Elastic::default();
+        e.set_extent(Size { width: px(0.0), height: px(1000.0) }, Size { width: px(400.0), height: px(600.0) });
+        let mut o = point(px(0.0), px(0.0));
+        e.scroll(&mut o, point(px(0.0), px(300.0)), ScrollKind::Fingers, TouchPhase::Moved);
+        let pulled = e.offset(o).0.y;
+        assert!(pulled > px(0.0));
+        // No Ended for the fingers: the glide's first move lets them go.
+        e.scroll(&mut o, point(px(0.0), px(40.0)), ScrollKind::Glide, TouchPhase::Moved);
+        let (shown, moving) = e.offset(o);
+        assert!(moving, "springing back");
+        assert!(shown.y > px(0.0));
+        // It comes to rest at the end, the rest of the glide spent.
+        e.scroll(&mut o, point(px(0.0), px(30.0)), ScrollKind::Glide, TouchPhase::Moved);
+        assert_eq!(o.y, px(0.0));
+        std::thread::sleep(std::time::Duration::from_millis(900));
+        let (rest, moving) = e.offset(o);
+        assert!(!moving && rest.y == px(0.0), "{rest:?}");
+    }
+}
+
+#[cfg(test)]
+mod handoff_tests {
+    use super::*;
+
+    #[test]
+    fn a_glide_after_the_fingers_lifted_past_an_end_goes_on_from_there() {
+        let mut e = Elastic::default();
+        e.set_extent(Size { width: px(0.0), height: px(1000.0) }, Size { width: px(400.0), height: px(600.0) });
+        let mut o = point(px(0.0), px(0.0));
+        e.scroll(&mut o, point(px(0.0), px(300.0)), ScrollKind::Fingers, TouchPhase::Moved);
+        let pulled = e.offset(o).0.y;
+        e.scroll(&mut o, point(px(0.0), px(0.0)), ScrollKind::Fingers, TouchPhase::Ended);
+        e.scroll(&mut o, point(px(0.0), px(40.0)), ScrollKind::Glide, TouchPhase::Started);
+        // No jump back to the end: it's still about as far out.
+        let shown = e.offset(o).0.y;
+        assert!((shown - pulled).abs() < px(3.0), "{pulled:?} -> {shown:?}");
     }
 }
