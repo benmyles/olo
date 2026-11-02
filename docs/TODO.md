@@ -2735,14 +2735,18 @@ as they land (with the commit), add new ones as they come up.
   apps (it's slower) and it's most noticeable on the studio display at
   2x where each scrollwheel push doesn't go very far at all". So: a
   wheel notch (and a touchpad's travel) moves Chrome's page as far as
-  it moves a kit app's view at every scale. Look at what app_server
-  sends Wayland clients for a notch (`wl_pointer.axis` value against
-  `axis_value120`, and whether the value is in logical pixels as the
-  protocol means: at 2× a notch's 15 logical px may be being read, or
-  sent, as device pixels and halved), what Chrome does with each
-  (`--enable-features` it may want for high-resolution scrolling), and
-  the kit's own notch distance (`olo_ui` scroll), then make them one;
-  Preferences ▸ Touchpad & Mouse's scrolling speed applies to both.
+  it moves a kit app's view at every scale. Found so far (2026-11-02,
+  headless, Chrome 156): a synthetic notch (axis 15, value120 120, as
+  libinput reports a plain wheel) moves Chrome 48 CSS px at 1× and at
+  2× (devicePixelRatio 2), and StyledEdit 48 px at both (3 lines,
+  `SCROLL_LINES`); Chrome takes value120 over the axis value
+  (wayland_event_source.cc) and olo-wlproxy passes both through. So the
+  difference is in what Ben's mouse (a Razer Viper V2 Pro) sends, or in
+  his Chrome (page zoom, a flag): next, log what app_server gets from
+  libinput for one of its notches (`amount`, `amount_v120`) and sends
+  on, with him turning it once in each app; then make Chrome's step and
+  the kit's one (Preferences ▸ Touchpad & Mouse's scrolling speed for
+  both).
 - **Menus over Deskbar** (Ben, 2026-11-02): "if i am in an app and
   right click close to the deskbar and a menu opens it is under the
   deskbar -- it should always be on top". ~~Fixed~~: a window's menus
