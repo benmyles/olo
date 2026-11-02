@@ -1666,7 +1666,14 @@ impl PlatformWindow for WaylandWindow {
     }
 
     fn content_size(&self) -> Size<Pixels> {
-        self.borrow().bounds.size
+        // Olo: as big as its buffer. At a fractional scale the logical
+        // size times the scale rounds to whole device pixels (453 at 1.5×
+        // is a 680-row buffer, shown a texture pixel to a device pixel);
+        // laid out to the logical size, the last row was never painted:
+        // black along the window's bottom (Terminal's tiles at 1.5×).
+        let state = self.borrow();
+        let d = state.bounds.size.to_device_pixels(state.scale);
+        size(px(d.width.0 as f32 / state.scale), px(d.height.0 as f32 / state.scale))
     }
 
     fn resize(&mut self, size: Size<Pixels>) {
