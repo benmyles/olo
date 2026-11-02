@@ -690,7 +690,10 @@ as they land (with the commit), add new ones as they come up.
   so a new setting is found without listing it again; a test checks
   every panel's controls are in it), shipped with Preferences like
   `PREFERENCE_PANELS`, and agents can ask for the same.
-- **Default apps and Open With** (Ben, 2026-11-01): "ability to choose
+- **Default apps and Open With** (*part done* 2026-11-02: the person's
+  defaults and curated lists in `olo_xdg::open`, and Tracker's Open With
+  ▸ and Always Open With ▸; *left*: Preferences ▸ Default Apps, Other…,
+  Open With on the desktop, file panels and Quick Look) (Ben, 2026-11-01): "ability to choose
   the default app to open different file types with, both through a
   right click context menu and through a centralized default apps
   preference app. also, add an open with menu item when right clicking

@@ -85,6 +85,11 @@ fn ours(mime: &str) -> Option<&'static str> {
 
 /// [`ours`], among the programs `installed` says are there.
 fn ours_among(mime: &str, installed: impl Fn(&str) -> bool) -> Option<&'static str> {
+    ours_for(mime).iter().copied().find(|bin| installed(bin))
+}
+
+/// Olo's apps that open `mime`, the one it opens in first.
+fn ours_for(mime: &str) -> &'static [&'static str] {
     let (major, _) = mime.split_once('/').unwrap_or((mime, ""));
     let candidates: &[&'static str] = match (major, mime) {
         (_, "inode/directory") => &["olo-tracker"],
@@ -111,7 +116,7 @@ fn ours_among(mime: &str, installed: impl Fn(&str) -> bool) -> Option<&'static s
         (_, crate::mime::SETTINGS_BACKUP) => &["olo-preferences"],
         _ => &[],
     };
-    candidates.iter().copied().find(|bin| installed(bin))
+    candidates
 }
 
 /// Olo's apps that open files for other programs too: binary, what kind
@@ -159,6 +164,18 @@ pub fn for_others(bin_dir: &Path) -> (Vec<(String, String)>, String) {
         ));
         for t in list {
             defaults.push_str(&format!("{t}={app_id}.desktop;\n"));
+        }
+    }
+    // The person's own choices over Olo's (Preferences ▸ Default Apps).
+    if let Ok(text) = std::fs::read_to_string(choices_file()) {
+        let mut inside = false;
+        for line in text.lines().map(str::trim) {
+            if line.starts_with('[') {
+                inside = line == DEFAULTS;
+            } else if inside && let Some((t, ids)) = line.split_once('=') {
+                let ids: Vec<String> = ids.split(';').map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned).collect();
+                defaults = with_listed(&defaults, DEFAULTS, t.trim(), &ids);
+            }
         }
     }
     (entries, defaults)
@@ -301,17 +318,20 @@ fn entry_by_file(file: &str) -> Option<DesktopEntry> {
 /// The broader types `mime` is a kind of (text/x-rust → text/plain), from
 /// shared-mime-info's subclasses list.
 fn parents(mime: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let sys = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
-    for dir in sys.split(':').filter(|s| !s.is_empty()) {
-        let Ok(text) = std::fs::read_to_string(Path::new(dir).join("mime/subclasses")) else { continue };
-        for line in text.lines() {
-            if let Some((child, parent)) = line.split_once(' ')
-                && child == mime
-                && !out.iter().any(|p| p == parent)
-            {
-                out.push(parent.to_owned());
-            }
+    // (shared-mime-info's subclasses, read once: a few thousand lines.)
+    static SUBCLASSES: std::sync::LazyLock<Vec<(String, String)>> = std::sync::LazyLock::new(|| {
+        let sys = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
+        let mut v = Vec::new();
+        for dir in sys.split(':').filter(|s| !s.is_empty()) {
+            let Ok(text) = std::fs::read_to_string(Path::new(dir).join("mime/subclasses")) else { continue };
+            v.extend(text.lines().filter_map(|l| l.split_once(' ')).map(|(c, p)| (c.to_owned(), p.to_owned())));
+        }
+        v
+    });
+    let mut out: Vec<String> = Vec::new();
+    for (child, parent) in SUBCLASSES.iter() {
+        if child == mime && !out.iter().any(|p| p == parent) {
+            out.push(parent.clone());
         }
     }
     if mime.starts_with("text/") && mime != "text/plain" && !out.iter().any(|p| p == "text/plain") {
@@ -320,8 +340,13 @@ fn parents(mime: &str) -> Vec<String> {
     out
 }
 
-/// Who opens `mime`.
+/// Who opens `mime`: the person's choice for it (Preferences ▸ Default
+/// Apps, Always Open With), else Olo's own app, else the defaults
+/// mimeapps.list names, else any app that says it opens it.
 pub fn handler(mime: &str) -> Option<Handler> {
+    if let Some(h) = chosen(mime) {
+        return Some(h);
+    }
     let files: Vec<String> = mimeapps_files().iter().filter_map(|f| std::fs::read_to_string(f).ok()).collect();
     // The web browser is the person's choice (Olo's own Chrome
     // otherwise); everything else opens in Olo's apps first.
@@ -348,24 +373,257 @@ pub fn handler(mime: &str) -> Option<Handler> {
             }
         }
     }
-    let all = desktop_entry::all();
+    let all = desktop_entry::all_cached();
     types.iter().find_map(|t| all.iter().find(|e| e.mime_types.iter().any(|m| m == t)).cloned().map(|e| Handler::Entry(Box::new(e))))
 }
 
-/// [`handler`], remembered per type for a while (it reads many files).
+// ---- the person's choices ---------------------------------------------
+
+/// Where the person's own choices are kept, in mimeapps.list's form: the
+/// app each kind opens in (`[Default Applications]`, Preferences ▸ Default
+/// Apps or Open With ▸ Always Open With) and the apps Open With offers
+/// for it, in order (`[Open With]`). Olo reads them before its own apps;
+/// `olo-mimeapps.list` carries the defaults to other programs.
+pub fn choices_file() -> PathBuf {
+    config_home().join("olo/default-apps.list")
+}
+
+const DEFAULTS: &str = "[Default Applications]";
+const OFFERED: &str = "[Open With]";
+
+/// The ids listed for `mime` in `section` of a mimeapps-style `text`.
+fn listed(text: &str, section: &str, mime: &str) -> Vec<String> {
+    let mut inside = false;
+    for line in text.lines().map(str::trim) {
+        if line.starts_with('[') {
+            inside = line == section;
+            continue;
+        }
+        if inside
+            && let Some((k, v)) = line.split_once('=')
+            && k.trim() == mime
+        {
+            return v.split(';').map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned).collect();
+        }
+    }
+    Vec::new()
+}
+
+/// `text` with `mime`'s line in `section` saying `ids` (none: taken out);
+/// the section made if it isn't there.
+fn with_listed(text: &str, section: &str, mime: &str, ids: &[String]) -> String {
+    let line = (!ids.is_empty()).then(|| format!("{mime}={};", ids.join(";")));
+    let mut out = Vec::new();
+    let (mut inside, mut done, mut seen) = (false, false, false);
+    for l in text.lines() {
+        let t = l.trim();
+        if t.starts_with('[') {
+            if inside && !done {
+                out.extend(line.clone());
+                done = true;
+            }
+            inside = t == section;
+            seen |= inside;
+        } else if inside && t.split_once('=').is_some_and(|(k, _)| k.trim() == mime) {
+            if !done {
+                out.extend(line.clone());
+                done = true;
+            }
+            continue;
+        }
+        out.push(l.to_owned());
+    }
+    if !done && line.is_some() {
+        if !seen {
+            out.push(section.to_owned());
+        }
+        out.extend(line);
+    }
+    let mut s = out.join("\n");
+    s.push('\n');
+    s
+}
+
+fn write_atomically(path: &Path, text: &str) -> io::Result<()> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let tmp = path.with_extension("new");
+    std::fs::write(&tmp, text)?;
+    std::fs::rename(&tmp, path)
+}
+
+/// The id a handler goes by in mimeapps lists (`org.gnome.Loupe.desktop`,
+/// `olo.viewer.desktop`).
+pub fn handler_id(h: &Handler) -> Option<String> {
+    match h {
+        Handler::Ours(bin) => crate::apps::app_id_of(bin).map(|id| format!("{id}.desktop")),
+        Handler::Entry(e) => Some(format!("{}.desktop", e.id)),
+    }
+}
+
+/// The handler an id names: one of Olo's apps if installed, else its
+/// desktop entry.
+pub fn handler_of_id(id: &str) -> Option<Handler> {
+    let stem = id.strip_suffix(".desktop").unwrap_or(id);
+    if let Some(short) = stem.strip_prefix("olo.")
+        && let Some(bin) = crate::apps::OUR_APPS.iter().map(|(b, _, _)| *b).find(|b| b.strip_prefix("olo-") == Some(short))
+    {
+        return find_program(bin).is_some().then_some(Handler::Ours(bin));
+    }
+    desktop_entry::all_cached().iter().find(|e| e.id == stem).cloned().map(|e| Handler::Entry(Box::new(e)))
+}
+
+/// The person's choice of app for `mime` (or a broader kind of it), if
+/// they made one and it's still there.
+fn chosen(mime: &str) -> Option<Handler> {
+    let text = std::fs::read_to_string(choices_file()).ok()?;
+    std::iter::once(mime.to_owned()).chain(parents(mime)).find_map(|t| listed(&text, DEFAULTS, &t).iter().find_map(|id| handler_of_id(id)))
+}
+
+/// Whether the person chose `mime`'s app themselves.
+pub fn is_chosen(mime: &str) -> bool {
+    std::fs::read_to_string(choices_file()).is_ok_and(|t| !listed(&t, DEFAULTS, mime).is_empty())
+}
+
+/// Make `handler` the app `mime` opens in (None: Olo's choice again),
+/// for Olo and, through `olo-mimeapps.list`, for other programs.
+pub fn set_default(mime: &str, handler: Option<&Handler>) -> io::Result<()> {
+    let ids: Vec<String> = handler.and_then(handler_id).into_iter().collect();
+    let path = choices_file();
+    write_atomically(&path, &with_listed(&std::fs::read_to_string(&path).unwrap_or_default(), DEFAULTS, mime, &ids))?;
+    // Others: the choice, or Olo's own app again.
+    let others = config_home().join("olo-mimeapps.list");
+    let theirs: Vec<String> = if ids.is_empty() { ours(mime).and_then(|b| handler_id(&Handler::Ours(b))).into_iter().collect() } else { ids };
+    write_atomically(&others, &with_listed(&std::fs::read_to_string(&others).unwrap_or_default(), DEFAULTS, mime, &theirs))?;
+    forget_handlers();
+    Ok(())
+}
+
+/// The apps Open With offers for `mime`, in order, as the person set
+/// them (none: Olo's own choice, [`handlers_for`]).
+pub fn set_offered(mime: &str, handlers: &[Handler]) -> io::Result<()> {
+    let ids: Vec<String> = handlers.iter().filter_map(handler_id).collect();
+    let path = choices_file();
+    write_atomically(&path, &with_listed(&std::fs::read_to_string(&path).unwrap_or_default(), OFFERED, mime, &ids))?;
+    forget_handlers();
+    Ok(())
+}
+
+/// Whether the person set which apps Open With offers for `mime`.
+pub fn is_offered_set(mime: &str) -> bool {
+    std::fs::read_to_string(choices_file()).is_ok_and(|t| !listed(&t, OFFERED, mime).is_empty())
+}
+
+/// How many apps Open With offers at most.
+const OFFER: usize = 8;
+
+/// The apps Open With offers for `mime`: as the person set them, else a
+/// curated few: the one it opens in, Olo's own that open it, then those
+/// whose desktop entries say they open it (or a broader kind of it), by
+/// name; never a long list. Reads files: off the UI thread, or through
+/// [`offer_cached`].
+pub fn handlers_for(mime: &str) -> Vec<Handler> {
+    let mut out: Vec<Handler> = Vec::new();
+    let add = |h: Handler, out: &mut Vec<Handler>| {
+        let id = handler_id(&h);
+        if !out.iter().any(|o| handler_id(o) == id) {
+            out.push(h);
+        }
+    };
+    if let Ok(text) = std::fs::read_to_string(choices_file()) {
+        let set = listed(&text, OFFERED, mime);
+        if !set.is_empty() {
+            for h in set.iter().filter_map(|id| handler_of_id(id)) {
+                add(h, &mut out);
+            }
+            return out;
+        }
+    }
+    if let Some(h) = handler(mime) {
+        add(h, &mut out);
+    }
+    for bin in ours_for(mime).iter().filter(|b| find_program(b).is_some()) {
+        add(Handler::Ours(bin), &mut out);
+    }
+    let mut types = vec![mime.to_owned()];
+    types.extend(parents(mime));
+    let all = desktop_entry::all_cached();
+    let mut claimed: Vec<(usize, &DesktopEntry)> = all
+        .iter()
+        .filter(|e| !e.no_display && e.exec.is_some() && !e.id.starts_with("olo."))
+        .filter_map(|e| types.iter().position(|t| e.mime_types.contains(t)).map(|k| (k, e)))
+        .collect();
+    claimed.sort_by_key(|(k, e)| (*k, e.name.to_lowercase()));
+    for (_, e) in claimed {
+        add(Handler::Entry(Box::new(e.clone())), &mut out);
+    }
+    out.truncate(OFFER);
+    out
+}
+
+/// What Open With offers for a kind, worked out: the id of the app it
+/// opens in, and the apps offered.
+#[derive(Debug, Clone, Default)]
+pub struct Offer {
+    pub default: Option<String>,
+    pub handlers: Vec<Handler>,
+}
+
+type Offers = Mutex<std::collections::HashMap<String, Offer>>;
+static OFFERS: std::sync::OnceLock<Offers> = std::sync::OnceLock::new();
+
+/// [`handlers_for`] (and the default) as last worked out by [`warm`], if
+/// it was: what a menu built on the UI thread offers. None: not known
+/// yet.
+pub fn offer_cached(mime: &str) -> Option<Offer> {
+    OFFERS.get_or_init(Default::default).lock().unwrap().get(mime).cloned()
+}
+
+/// Work out what Open With offers for the kinds in `mimes` (a folder's:
+/// off the UI thread), for [`offer_cached`].
+pub fn warm(mimes: impl IntoIterator<Item = String>) {
+    for m in mimes {
+        if offer_cached(&m).is_none() {
+            let offer = Offer { default: handler(&m).as_ref().and_then(handler_id), handlers: handlers_for(&m) };
+            OFFERS.get_or_init(Default::default).lock().unwrap().insert(m, offer);
+        }
+    }
+}
+
+/// The kind Open With goes by for a file named `name` (by its name
+/// alone: no reading it, as a menu needs), or a folder.
+pub fn kind_of(name: &str, is_dir: bool) -> String {
+    if is_dir { "inode/directory".to_owned() } else { mime::from_name(name).unwrap_or_else(|| "application/octet-stream".to_owned()) }
+}
+
+/// The person changed a choice: what was worked out is worked out again.
+fn forget_handlers() {
+    if let Some(o) = OFFERS.get() {
+        o.lock().unwrap().clear();
+    }
+    if let Some(c) = HANDLERS.get() {
+        c.lock().unwrap().clear();
+    }
+}
+
+type Handlers = Mutex<std::collections::HashMap<String, (std::time::Instant, Option<std::time::SystemTime>, Option<Handler>)>>;
+static HANDLERS: std::sync::OnceLock<Handlers> = std::sync::OnceLock::new();
+
+/// [`handler`], remembered per type for a while (it reads many files),
+/// and until the person changes a choice (here or in another app).
 pub fn handler_cached(mime: &str) -> Option<Handler> {
-    use std::{collections::HashMap, sync::{OnceLock}, time::{Duration, Instant}};
-    type Cache = Mutex<HashMap<String, (Instant, Option<Handler>)>>;
-    static CACHE: OnceLock<Cache> = OnceLock::new();
-    const FRESH: Duration = Duration::from_secs(30);
-    let cache = CACHE.get_or_init(Default::default);
-    if let Some((at, h)) = cache.lock().unwrap().get(mime)
+    const FRESH: std::time::Duration = std::time::Duration::from_secs(30);
+    let stamp = std::fs::metadata(choices_file()).and_then(|m| m.modified()).ok();
+    let cache = HANDLERS.get_or_init(Default::default);
+    if let Some((at, s, h)) = cache.lock().unwrap().get(mime)
         && at.elapsed() < FRESH
+        && *s == stamp
     {
         return h.clone();
     }
     let h = handler(mime);
-    cache.lock().unwrap().insert(mime.to_owned(), (Instant::now(), h.clone()));
+    cache.lock().unwrap().insert(mime.to_owned(), (std::time::Instant::now(), stamp, h.clone()));
     h
 }
 
@@ -545,6 +803,30 @@ fn spawn_pid(argv: &[OsString]) -> io::Result<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn choices_listed_and_changed() {
+        let text = "# mine\n[Default Applications]\nimage/png=org.gnome.Loupe.desktop;\ntext/plain=a.desktop;b.desktop;\n[Added Associations]\nimage/png=x.desktop;\n";
+        assert_eq!(listed(text, DEFAULTS, "text/plain"), ["a.desktop", "b.desktop"]);
+        assert_eq!(listed(text, DEFAULTS, "image/png"), ["org.gnome.Loupe.desktop"]);
+        assert!(listed(text, OFFERED, "image/png").is_empty());
+        // Changed in place, the rest as it was.
+        let t = with_listed(text, DEFAULTS, "image/png", &["olo.viewer.desktop".into()]);
+        assert_eq!(listed(&t, DEFAULTS, "image/png"), ["olo.viewer.desktop"]);
+        assert_eq!(listed(&t, "[Added Associations]", "image/png"), ["x.desktop"]);
+        assert!(t.starts_with("# mine\n[Default Applications]\nimage/png=olo.viewer.desktop;\ntext/plain="));
+        // A new kind goes at its section's end; a new section is made.
+        let t = with_listed(&t, DEFAULTS, "video/mp4", &["mpv.desktop".into()]);
+        assert_eq!(listed(&t, DEFAULTS, "video/mp4"), ["mpv.desktop"]);
+        assert!(t.find("video/mp4").unwrap() < t.find("[Added Associations]").unwrap());
+        let t = with_listed(&t, OFFERED, "image/png", &["a.desktop".into(), "b.desktop".into()]);
+        assert_eq!(listed(&t, OFFERED, "image/png"), ["a.desktop", "b.desktop"]);
+        // Taken out.
+        let t = with_listed(&t, DEFAULTS, "text/plain", &[]);
+        assert!(listed(&t, DEFAULTS, "text/plain").is_empty() && !t.contains("text/plain="));
+        assert_eq!(with_listed("", DEFAULTS, "a/b", &["c.desktop".into()]), "[Default Applications]\na/b=c.desktop;\n");
+        assert_eq!(handler_id(&Handler::Ours("olo-viewer")).as_deref(), Some("olo.viewer.desktop"));
+    }
 
     #[test]
     fn exec_lines() {

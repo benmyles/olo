@@ -722,6 +722,27 @@ impl Tracker {
                     self.go_to(&p, cx);
                 }
             }
+            // Open With ▸ an app (Always: and make it the kind's).
+            c if c.starts_with("open-with:") || c.starts_with("always-open-with:") => {
+                let always = c.starts_with("always-");
+                let id = c.split_once(':').map(|(_, id)| id.to_owned()).unwrap_or_default();
+                let Some(kind) = folder::open_with_kind(&entries) else { return };
+                let paths: Vec<PathBuf> = entries.iter().map(|e| e.path.clone()).collect();
+                // (Finding the app and writing the choice read and write
+                // files: not on the UI thread.)
+                std::thread::spawn(move || {
+                    let Some(h) = olo_xdg::open::handler_of_id(&id) else { return };
+                    if always {
+                        if let Err(e) = olo_xdg::open::set_default(&kind, Some(&h)) {
+                            tracing::warn!("couldn't make {id} the app for {kind}: {e}");
+                        }
+                        olo_xdg::open::warm([kind]);
+                    }
+                    if let Err(e) = olo_xdg::open::open_with(&h, &paths) {
+                        tracing::warn!("open with {id}: {e}");
+                    }
+                });
+            }
             c if c.starts_with("go-place:") => {
                 let dir = PathBuf::from(&c["go-place:".len()..]);
                 if dir.is_dir() {

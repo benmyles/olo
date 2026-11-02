@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Tracker: Open With and Always Open With
+
+*13:51* — A file's menu offers a few apps that suit its kind (its default marked, Olo's own, then those that say they open it), and Always Open With makes one the kind's default for Olo and for other programs.
+
+![Tracker: Open With and Always Open With](2026-11-02/135142-tracker-open-with-and-always-open-with.png)
+
 ### Terminal: text kept legible on any background
 
 *13:42* — Before (top) and after: colours a program picked for a dark terminal (pale greys and blues, bright white) or bands it drew (diff lines, a composer's grey) left text nearly invisible in light mode. Now text keeps WCAG's 4.5:1 against its cell, moved toward black or white just as far as it takes, its hue kept; box drawing and blocks as drawn; faint text still faint.
