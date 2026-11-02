@@ -710,7 +710,10 @@ as they land (with the commit), add new ones as they come up.
   smart tiling does, the model chosen in Preferences ▸ AI) for five
   suggestions from a description, shown as a row to pick from or search
   again; keyboard first, agent-readable.
-- **The keep-warm pixel redraws whole displays** (found porting Agent
+- ~~**The keep-warm pixel redraws whole displays**~~ (done 2026-11-02:
+  it stays in its place on a display without a full-screen window, only
+  its commit changing: one frame a second damaging 1 pixel, from two
+  full redraws of 7.7 Mpx at 2× on a 3456×2234 screen) (found porting Agent
   Screens, 2026-11-01): `render::keep_warm` puts a transparent pixel at
   the top of each display's elements for a frame every second (while
   the desktop was used in the last two minutes), and removes it again
