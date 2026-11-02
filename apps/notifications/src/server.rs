@@ -358,9 +358,12 @@ pub fn note(
         size: text(hint::SIZE).as_deref().and_then(CardSize::parse).unwrap_or_default(),
         source: text(hint::SOURCE),
     };
+    // (One that can be answered goes in its time too, as a message's
+    // banner does on a Mac, to the history: it stays while it's being
+    // answered. Telegram's stayed on the screen for good.)
     let timeout = match expire_timeout {
         0 => None,
-        _ if kind == Kind::Error || reply.is_some() => None,
+        _ if kind == Kind::Error => None,
         t if t < 0 => Some(DEFAULT_TIMEOUT),
         t => Some(Duration::from_millis(t as u64)),
     };
@@ -560,7 +563,8 @@ mod tests {
         let n = note(2, false, "Chat".into(), "".into(), "Ann".into(), "<b>hey</b> you".into(), vec!["inline-reply".into(), "".into()], &hints, -1);
         assert_eq!(n.kind, Kind::Important);
         assert_eq!(n.sound, Some(Sound::Name("message-new-instant".into())));
-        assert_eq!((n.reply.as_deref(), n.actions.len(), n.timeout), (Some("Answer Ann"), 0, None));
+        // (It goes in its time, as any other: it stays while answered.)
+        assert_eq!((n.reply.as_deref(), n.actions.len(), n.timeout), (Some("Answer Ann"), 0, Some(DEFAULT_TIMEOUT)));
         assert_eq!(markup::plain(&n.body), "hey you");
         hints.insert("suppress-sound".to_owned(), OwnedValue::from(true));
         hints.insert("transient".to_owned(), OwnedValue::from(true));

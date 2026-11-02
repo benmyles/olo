@@ -409,16 +409,36 @@ impl Notifications {
         }
     }
 
-    /// Cards whose time is up go (not the one under the pointer).
+    /// A card being used: under the pointer, or a reply begun in it. It
+    /// stays, and has its time again once it isn't (`hover`, `typed`).
+    fn held(&self, c: &Card, cx: &App) -> bool {
+        Some(c.note.id) == self.hovered || c.reply.as_ref().is_some_and(|f| !f.read(cx).text().trim().is_empty())
+    }
+
+    /// Cards whose time is up go (not one being used).
     fn expire(&mut self, cx: &mut Context<Self>) {
         let now = Instant::now();
-        let gone: Vec<u32> = self.cards.iter().take(self.fits).filter(|c| c.until.is_some_and(|u| u <= now) && Some(c.note.id) != self.hovered).map(|c| c.note.id).collect();
+        let gone: Vec<u32> = self.cards.iter().take(self.fits).filter(|c| c.until.is_some_and(|u| u <= now) && !self.held(c, cx)).map(|c| c.note.id).collect();
         for id in gone {
             self.remove(cx, id, Reason::Expired);
         }
-        // The next to go, checked for then.
-        if let Some(next) = self.cards.iter().take(self.fits).filter_map(|c| c.until).min() {
+        // The next to go, checked for then. (Not one being used: its time
+        // past, it was looked for again every 20 ms while the pointer
+        // rested on it.)
+        if let Some(next) = self.cards.iter().take(self.fits).filter(|c| !self.held(c, cx)).filter_map(|c| c.until).min() {
             self.expire_at(next, cx);
+        }
+    }
+
+    /// A reply typed in note `id`'s card changed: emptied, the card has
+    /// its time again (a moment, as when the pointer leaves it).
+    fn typed(&mut self, id: u32, cx: &mut Context<Self>) {
+        let Some(card) = self.cards.iter_mut().find(|c| c.note.id == id) else { return };
+        let empty = card.reply.as_ref().is_some_and(|f| f.read(cx).text().trim().is_empty());
+        if empty && card.until.is_some_and(|u| u < Instant::now() + Duration::from_secs(2)) {
+            let at = Instant::now() + Duration::from_secs(2);
+            card.until = Some(at);
+            self.expire_at(at, cx);
         }
     }
 
@@ -754,7 +774,15 @@ impl Notifications {
 /// A card's reply field (Return sends, as Send does).
 fn reply_field(note: &Note, cx: &mut Context<Notifications>) -> Entity<TextField> {
     let hint = note.reply.clone().unwrap_or_default();
-    text_field(cx, move |f| f.name("Reply").hint(hint))
+    let field = text_field(cx, move |f| f.name("Reply").hint(hint));
+    let id = note.id;
+    cx.subscribe(&field, move |n, _, e: &olo_ui::widgets::TextFieldEvent, cx| {
+        if matches!(e, olo_ui::widgets::TextFieldEvent::Changed) {
+            n.typed(id, cx);
+        }
+    })
+    .detach();
+    field
 }
 
 /// Bring forward a window of the app with this desktop entry or name (a
