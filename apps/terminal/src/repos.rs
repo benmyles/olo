@@ -113,8 +113,13 @@ impl Terminal {
                 self.auto_group(cx, win);
             }
             git::Report::Worktrees(main, list, names) => {
+                let changed = self.worktrees.get(&main) != Some(&list) || self.branches.get(&main) != Some(&names);
                 self.worktrees.insert(main.clone(), list);
                 self.branches.insert(main, names);
+                // The menus (Tabs ▸ Repository) are made as windows draw.
+                if changed {
+                    cx.redraw_all();
+                }
             }
             git::Report::Pr(key, pr) => {
                 let changed = match pr {

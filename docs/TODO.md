@@ -682,19 +682,13 @@ as they land (with the commit), add new ones as they come up.
 - **app_server: a 16 ms frame during Terminal's live resize at 2×**
   (the bench, 2 runs in 5: "16.2 ms drawing 7.7 Mpx; 1.0 ms on a CPU,
   3 waits"): app_server waits, not computes. Not seen resizing
-  StyledEdit or Tracker, nor the egui Terminal. Find what it waits for
-  (a big buffer's first import? Terminal's surface not opaque, so the
-  wallpaper drawn under it?) and keep it off the frame.
-
-- **Terminal: awake when idle**: its agents thread reads every tab's
-  screen every 600 ms, its git thread every tab's folder and repository
-  every second, its GitHub thread wakes every 10 s with nothing due (43
-  wakeups in 15 s with nothing happening). What they look for changes
-  when a shell prints or a repository's files change: look on output
-  (at most every 600 ms, and while a reading settles), follow the
-  repositories' HEAD, refs and worktrees with inotify, and wake GitHub's
-  thread when its next ask is due. (olo-termd sleeps since the GPUI
-  move.)
+  StyledEdit or Tracker, nor the egui Terminal; 2 of 8 runs of the 2×
+  bench, none of 5 resizes done as the bench does in a session of its
+  own. Not the wallpaper (Terminal's surface is opaque) nor importing
+  (that's gathering): the GLES draw blocks, likely on the GPU while the
+  client makes its screen-sized swapchain for the resize (three of 123
+  MB at 2×, on the press). Time app_server's passes on the GPU around
+  it and keep the client's allocation from stalling the compositor.
 
 - **Terminal: scrollback scrolls by whole lines, without elastic ends**
   (Ben: the bounce "should be universal for everything"): scroll by the

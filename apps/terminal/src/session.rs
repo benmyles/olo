@@ -5,10 +5,11 @@
 use std::{
     path::PathBuf,
     sync::{
-        Arc,
+        Arc, OnceLock,
         atomic::{AtomicBool, Ordering},
         mpsc,
     },
+    time::{Duration, Instant},
 };
 
 use alacritty_terminal::{
@@ -36,6 +37,61 @@ pub enum TermEvent {
 
 /// An event from shell `.0` (its id: tabs move between windows).
 pub struct Message(pub u64, pub TermEvent);
+
+/// A thread's wake-up call, coalesced: poked as often as anything
+/// happens, it wakes once. What watches the tabs (agents, repositories)
+/// sleeps on one until a shell prints, not on a timer.
+#[derive(Clone, Default)]
+pub struct Nudge(Arc<(olo_sync::Mutex<bool>, olo_sync::Condvar)>);
+
+impl Nudge {
+    pub fn poke(&self) {
+        let (poked, woken) = &*self.0;
+        let mut p = poked.lock().unwrap();
+        if !*p {
+            *p = true;
+            woken.notify_all();
+        }
+    }
+
+    /// Asleep until poked (or `timeout` has passed), the poke then taken.
+    pub fn wait(&self, timeout: Option<Duration>) {
+        let (poked, woken) = &*self.0;
+        let deadline = timeout.map(|t| Instant::now() + t);
+        let mut p = poked.lock().unwrap();
+        while !*p {
+            p = match deadline {
+                None => woken.wait(p).unwrap(),
+                Some(d) => {
+                    let left = d.saturating_duration_since(Instant::now());
+                    if left.is_zero() {
+                        break;
+                    }
+                    woken.wait_timeout(p, left).unwrap().0
+                }
+            };
+        }
+        *p = false;
+    }
+}
+
+/// Who's poked when any shell prints.
+static ON_OUTPUT: OnceLock<olo_sync::Mutex<Vec<Nudge>>> = OnceLock::new();
+
+/// Poke `nudge` whenever any shell prints (once per burst of output, as
+/// it's coalesced).
+pub fn on_output(nudge: Nudge) {
+    ON_OUTPUT.get_or_init(Default::default).lock().unwrap().push(nudge);
+}
+
+/// A shell printed: wake what watches.
+fn printed() {
+    if let Some(all) = ON_OUTPUT.get() {
+        for n in all.lock().unwrap().iter() {
+            n.poke();
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct Listener {
@@ -370,6 +426,7 @@ fn spawn_feeder(
                         if !out.is_empty() {
                             reply.send(out);
                         }
+                        printed();
                         if draw {
                             wake();
                         }

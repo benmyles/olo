@@ -5810,7 +5810,10 @@ window's group and whether it shows all tabs across an upgrade. A new
 Ctrl key too (⌘⇧D would send Ctrl+D and end the shell).
 
 **Agents** (`src/agent.rs`). A thread looks at every tab (shown or not)
-every 600 ms: if the shell's foreground process is Claude Code (its
+when a shell has printed (`session::on_output`, a `Nudge` every output
+chunk pokes, coalesced), at most every 600 ms, and while a reading
+settles; with nothing printed it sleeps: if the shell's foreground
+process is Claude Code (its
 native build under `…/claude/versions/`, or the npm package under node)
 or Codex, it reads the bottom 30 lines of that tab's screen as a person
 would. A question ("Do you want to…", "❯ 1. Yes", "esc to cancel") means
@@ -5883,13 +5886,19 @@ within 5 s.
 **Repositories** (`src/git.rs`, `src/repos.rs`), in process through
 libgit2 (git2, vendored; no `git` or `gh`). A thread (`git::Watcher`)
 looks at each tab's folder (its foreground program's, else its shell's)
-every second and reads only what changed: the folder, the worktree's
-`HEAD` and the repository's `config` (a folder in no repository is
-looked at again every 5 s, for a `git init`); it reports the tab's
+when a shell has printed (a `cd`, a `git switch`) or a file it follows
+changes (inotify, `olo_kit_base::watch`: the worktree's `HEAD`, the
+repository's `config`, its `HEAD`, `worktrees`, `refs/heads` and
+`packed-refs`, and `.git` in a folder in no repository, for a `git
+init`), at most once a second, and reads only what changed; it reports
+the tab's
 repository (`git::Repo`: name, main worktree, the worktree it's in,
 linked or not, branch, GitHub remotes) and, for each repository a tab is
 in, its worktrees and local branches when `worktrees/*/HEAD`,
-`refs/heads` or `packed-refs` change.
+`refs/heads` or `packed-refs` change (the windows drawn again, as their
+menus list them). GitHub's thread sleeps until the branches wanted
+change or its next ask is due. Idle, Terminal wakes for none of this (2
+wakeups in 30 s, GPUI's own, from 3 a second).
 * A window whose tabs are all in one repository becomes its group on its
   own (`Group::auto`, named after it, in the colour of another window of
   it if there is one); the automatic group follows the tabs (gone when

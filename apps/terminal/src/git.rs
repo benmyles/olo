@@ -22,7 +22,7 @@ use std::{
 
 use olo_kit_base::Proxy;
 
-use crate::io;
+use crate::{io, session::Nudge};
 
 /// The repository a folder is in.
 #[derive(Debug, Clone, PartialEq)]
@@ -71,6 +71,16 @@ fn worktrees_stamp(common: &Path) -> Stamp {
         stamp.extend(heads.iter().map(|h| mtime(h)));
     }
     stamp
+}
+
+/// The files and folders `worktrees_stamp` reads, to follow.
+fn worktrees_followed(common: &Path) -> Vec<PathBuf> {
+    let dir = common.join("worktrees");
+    let mut paths = vec![common.join("HEAD"), dir.clone(), common.join("refs/heads"), common.join("packed-refs")];
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        paths.extend(entries.flatten().map(|e| e.path().join("HEAD")));
+    }
+    paths
 }
 
 /// One of a repository's worktrees.
@@ -570,12 +580,15 @@ struct Seen {
     looked: Option<Instant>,
 }
 
-/// Looks at the tabs it's given until they go. The list is only held
-/// to copy it: the reading is done without it, so a slow disk never holds
-/// up a new tab.
+/// Looks at the tabs it's given until they go: when a shell has printed
+/// (a `cd`, a `git switch`) or a repository's files it follows change
+/// (another program's commit or checkout), at most once a second;
+/// otherwise it sleeps. The list is only held to copy it: the reading is
+/// done without it, so a slow disk never holds up a new tab.
 #[derive(Clone)]
 pub struct Watcher {
     list: Tabs,
+    nudge: Nudge,
 }
 
 /// The tabs it looks at: each one's shell and its state.
@@ -585,13 +598,15 @@ type Tabs = Arc<Mutex<Vec<(u64, Weak<io::Shared>)>>>;
 /// (60 an hour without one).
 const PR_EVERY: Duration = Duration::from_secs(60);
 const PR_EVERY_ANON: Duration = Duration::from_secs(300);
-/// A folder in no repository is looked at again this often (`git init`).
-const NONE_EVERY: Duration = Duration::from_secs(5);
+/// How often the tabs are looked at, at most.
+const LOOK_EVERY: Duration = Duration::from_secs(1);
 
 impl Watcher {
     pub fn start(proxy: Proxy) -> Watcher {
         let list: Tabs = Arc::default();
-        let w = Watcher { list: list.clone() };
+        let nudge = Nudge::default();
+        crate::session::on_output(nudge.clone());
+        let w = Watcher { list: list.clone(), nudge: nudge.clone() };
         // GitHub, on a thread of its own: a slow answer mustn't hold up
         // noticing a `cd`.
         let (want_tx, want_rx) = mpsc::channel::<Vec<PrKey>>();
@@ -600,12 +615,19 @@ impl Watcher {
             let mut asked: HashMap<PrKey, Instant> = HashMap::new();
             let mut wanted: Vec<PrKey> = Vec::new();
             loop {
-                match want_rx.recv_timeout(Duration::from_secs(10)) {
+                // Asleep until the branches wanted change or the next ask
+                // is due.
+                let every = if token().is_some() { PR_EVERY } else { PR_EVERY_ANON };
+                let due = wanted.iter().map(|k| asked.get(k).map_or_else(Instant::now, |t| *t + every)).min();
+                let got = match due {
+                    Some(t) => want_rx.recv_timeout(t.saturating_duration_since(Instant::now())),
+                    None => want_rx.recv().map_err(|_| mpsc::RecvTimeoutError::Disconnected),
+                };
+                match got {
                     Ok(keys) => wanted = keys,
                     Err(mpsc::RecvTimeoutError::Timeout) => {}
                     Err(mpsc::RecvTimeoutError::Disconnected) => return,
                 }
-                let every = if token().is_some() { PR_EVERY } else { PR_EVERY_ANON };
                 asked.retain(|k, _| wanted.contains(k));
                 for key in &wanted {
                     if asked.get(key).is_some_and(|t| t.elapsed() < every) {
@@ -624,8 +646,17 @@ impl Watcher {
             // Each repository's worktrees as last told, by its main one.
             let mut trees: HashMap<PathBuf, Stamp> = HashMap::new();
             let mut seen: HashMap<u64, Seen> = HashMap::new();
+            // The files that say a repository changed, followed (inotify).
+            let poke = nudge.clone();
+            let files = olo_kit_base::watch::watch(Vec::new(), move |_| poke.poke());
+            let mut looked: Option<Instant> = None;
             loop {
-                std::thread::sleep(Duration::from_secs(1));
+                nudge.wait(None);
+                if let Some(t) = looked {
+                    std::thread::sleep((t + LOOK_EVERY).saturating_duration_since(Instant::now()));
+                }
+                looked = Some(Instant::now());
+                let mut followed: Vec<PathBuf> = Vec::new();
                 let mut wanted: Vec<PrKey> = Vec::new();
                 let mut repos: Vec<(PathBuf, PathBuf)> = Vec::new();
                 let tabs = {
@@ -642,7 +673,8 @@ impl Watcher {
                     let same = cwd == w.cwd
                         && match &w.reported {
                             Some(Some(r)) => r.stamp() == w.stamp,
-                            Some(None) => w.looked.is_some_and(|t| t.elapsed() < NONE_EVERY),
+                            // (Its `.git` coming is followed: `git init`.)
+                            Some(None) => true,
                             None => false,
                         };
                     if !same {
@@ -655,7 +687,11 @@ impl Watcher {
                             proxy.send(Report::Repo(*shell, now));
                         }
                     }
-                    let Some(Some(r)) = &w.reported else { continue };
+                    let Some(Some(r)) = &w.reported else {
+                        followed.extend(w.cwd.as_ref().map(|d| d.join(".git")));
+                        continue;
+                    };
+                    followed.extend([r.gitdir.join("HEAD"), r.common.join("config")]);
                     if !repos.iter().any(|(m, _)| *m == r.main) {
                         repos.push((r.main.clone(), r.common.clone()));
                     }
@@ -672,6 +708,7 @@ impl Watcher {
                 }
                 trees.retain(|m, _| repos.iter().any(|(r, _)| r == m));
                 for (main, common) in repos {
+                    followed.extend(worktrees_followed(&common));
                     let stamp = worktrees_stamp(&common);
                     if trees.get(&main) != Some(&stamp) {
                         trees.insert(main.clone(), stamp);
@@ -685,6 +722,9 @@ impl Watcher {
                         return;
                     }
                 }
+                if let Some(f) = &files {
+                    f.set(followed);
+                }
             }
         });
         w
@@ -694,6 +734,7 @@ impl Watcher {
         let mut list = self.list.lock().unwrap();
         if !list.iter().any(|(s, _)| *s == shell) {
             list.push((shell, Arc::downgrade(shared)));
+            self.nudge.poke();
         }
     }
 }

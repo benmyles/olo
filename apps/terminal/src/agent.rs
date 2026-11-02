@@ -1,11 +1,12 @@
 //! Coding agents in a tab (Claude Code, Codex): which one is in the
 //! foreground and what it's doing, read as a person would, from the
 //! program running and what's on its screen. A thread looks at every tab
-//! (shown or not) a few times a second and reports changes to the app.
+//! (shown or not) when a shell has printed, at most every 600 ms, and
+//! reports changes to the app; with nothing printed it sleeps.
 
 use std::{
     sync::{Arc, Mutex, Weak},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use alacritty_terminal::{
@@ -16,7 +17,10 @@ use alacritty_terminal::{
 };
 use olo_kit_base::Proxy;
 
-use crate::{io, session::Listener};
+use crate::{
+    io,
+    session::{Listener, Nudge},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Agent {
@@ -128,19 +132,33 @@ struct Watched {
     seen: Option<(Option<(Agent, State)>, u32)>,
 }
 
-/// Looks at the tabs it's given until they go.
+/// How often the tabs are looked at, at most (while shells print, and
+/// while a reading settles).
+const LOOK_EVERY: Duration = Duration::from_millis(600);
+
+/// Looks at the tabs it's given until they go: when a shell has printed
+/// (what it looks for shows on the screen), and while a reading settles;
+/// otherwise it sleeps.
 #[derive(Clone)]
 pub struct Watcher {
     list: Arc<Mutex<Vec<Watched>>>,
+    nudge: Nudge,
 }
 
 impl Watcher {
     pub fn start(proxy: Proxy) -> Watcher {
         let list: Arc<Mutex<Vec<Watched>>> = Arc::default();
-        let w = Watcher { list: list.clone() };
+        let nudge = Nudge::default();
+        crate::session::on_output(nudge.clone());
+        let w = Watcher { list: list.clone(), nudge: nudge.clone() };
         let _ = std::thread::Builder::new().name("agents".into()).spawn(move || {
+            let mut looked = Instant::now();
             loop {
-                std::thread::sleep(Duration::from_millis(600));
+                let settling = list.lock().unwrap().iter().any(|w| w.seen.is_some());
+                nudge.wait(settling.then_some(LOOK_EVERY));
+                // (At most every LOOK_EVERY, however much is printed.)
+                std::thread::sleep((looked + LOOK_EVERY).saturating_duration_since(Instant::now()));
+                looked = Instant::now();
                 let mut list = list.lock().unwrap();
                 list.retain(|w| w.term.strong_count() > 0);
                 for w in list.iter_mut() {
@@ -180,6 +198,7 @@ impl Watcher {
         let mut list = self.list.lock().unwrap();
         if !list.iter().any(|w| w.shell == shell) {
             list.push(Watched { shell, term: Arc::downgrade(term), shared: Arc::downgrade(shared), reported: None, seen: None });
+            self.nudge.poke();
         }
     }
 }
