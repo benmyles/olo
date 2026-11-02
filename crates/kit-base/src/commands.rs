@@ -102,6 +102,11 @@ pub struct UiNode {
     /// A menu item standing for a minimized window (`menu::Action::minimized`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub minimized: bool,
+    /// None of it shows: scrolled out of its scroll view, clipped away
+    /// (its bounds as laid out). A node partly shown has the bounds of
+    /// what shows, so a click at its middle lands on it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub offscreen: bool,
 }
 
 /// What one window shows.
@@ -131,7 +136,7 @@ impl WindowTree {
     pub fn pickable(mut self) -> WindowTree {
         use std::collections::HashMap;
         let index: HashMap<u64, usize> = self.nodes.iter().enumerate().map(|(i, n)| (n.id, i)).collect();
-        let mut keep: Vec<bool> = self.nodes.iter().map(|n| n.clickable).collect();
+        let mut keep: Vec<bool> = self.nodes.iter().map(|n| n.clickable && !n.offscreen).collect();
         // Children come after their parents: from the end, each kept one
         // keeps its parent.
         for i in (0..self.nodes.len()).rev() {

@@ -27,6 +27,17 @@ struct Facts {
     uptime: Option<(Duration, Instant)>,
 }
 
+/// Test data: a machine as long-winded as they come.
+fn test_facts() -> Facts {
+    Facts {
+        machine: "Lenovo ThinkPad P1 Gen 9 (21KV-CTO1WW) Mobile Workstation".into(),
+        processor: "Intel Core Ultra 7 356H (16 cores: 4 performance, 8 efficient, 4 low-power), 5.1 GHz".into(),
+        memory: "64 GB LPDDR5X-8533".into(),
+        kernel: "Linux 7.3.0-2.fc44.aurora.aarch64 (Fedora Linux 44, Workstation Edition)".into(),
+        uptime: Some((Duration::from_secs(3 * 86_400 + 7 * 3600 + 42 * 60), Instant::now())),
+    }
+}
+
 pub struct State {
     facts: Arc<Mutex<Option<Facts>>>,
     /// When Restart Olo was last clicked, or why it failed.
@@ -39,6 +50,12 @@ pub struct State {
 impl State {
     pub fn new(cx: &mut Context<PanelView>) -> State {
         let facts = Arc::new(Mutex::new(None));
+        // (Tests, the layout lint: a machine described at length, not
+        // this one.)
+        if cfg!(test) {
+            *facts.lock().unwrap() = Some(test_facts());
+            return State { facts, restarted: None, error: None, ticking: false };
+        }
         let (out, proxy) = (facts.clone(), olo_ui::proxy(cx));
         std::thread::spawn(move || {
             *out.lock().unwrap() = Some(gather());

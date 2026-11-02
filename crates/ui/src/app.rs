@@ -258,6 +258,18 @@ impl Render for Frame {
     }
 }
 
+/// What `run` sets up that a window needs, for a window drawn in GPUI's
+/// test app (`crate::lint`): no app_server, no agents' socket.
+#[cfg(feature = "lint")]
+pub(crate) fn init_for_lint(cx: &mut App) {
+    cx.set_global(AppId("olo.lint".into()));
+    bind_keys(cx);
+    crate::widgets::bind_keys(cx);
+    crate::editor::bind_keys(cx);
+    crate::icons::init(cx);
+    cx.set_global(Messages { handler: None, proxy: Proxy::new(|_| {}), quitting: false });
+}
+
 struct AppId(String);
 
 impl Global for AppId {}

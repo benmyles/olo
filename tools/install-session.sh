@@ -36,6 +36,9 @@ as_root() {
     if [ "$(id -u)" = 0 ]; then "$@"; else sudo "$@"; fi
 }
 
+# Every fixed-size window and panel must lay out in every look and scale
+# first (docs/HACKING.md, "The layout lint").
+as_user cargo ui-lint
 as_user cargo build --release --workspace
 # An install from before the rename (Tabula): its folders become Olo's,
 # with links by the old names (as every Olo program does at start, but

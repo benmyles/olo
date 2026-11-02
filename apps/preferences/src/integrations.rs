@@ -55,7 +55,12 @@ impl State {
         })
         .detach();
         let mut st = State { github: Arc::default(), token, adding: false, proxy: olo_ui::proxy(cx), telegram: crate::telegram::State::new(cx) };
-        st.check();
+        // (Tests, the layout lint, never read the keyring.)
+        if cfg!(test) {
+            *st.github.lock().unwrap() = GitHub::None;
+        } else {
+            st.check();
+        }
         st
     }
 }

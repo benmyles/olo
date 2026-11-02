@@ -61,6 +61,16 @@ fn link(proxy: olo_ui::Proxy) -> &'static Link {
     static LINK: OnceLock<Link> = OnceLock::new();
     LINK.get_or_init(|| {
         let shared: Arc<Mutex<Shared>> = Default::default();
+        // Tests (the layout lint): a zone with a long name, and no
+        // timedated.
+        if cfg!(test) {
+            {
+                let mut s = shared.lock().unwrap();
+                s.status = Some(Ok(systime::TimeStatus { timezone: "America/Argentina/ComodRivadavia".into(), ntp: true, ntp_synchronized: true, can_ntp: true, local_rtc: false }));
+                s.zones = Arc::new(["America/Argentina/ComodRivadavia", "America/Indiana/Petersburg", "Europe/London", "Pacific/Port_Moresby"].map(str::to_owned).to_vec());
+            }
+            return Link { shared, tx: channel().0 };
+        }
         let (tx, rx) = channel::<Request>();
         let sh = shared.clone();
         std::thread::Builder::new()

@@ -50,6 +50,28 @@ fn state_of(v: &mut PanelView) -> Option<&mut State> {
 /// ends at the first event after the panel has closed.
 fn watch(proxy: olo_ui::Proxy) -> Shared {
     let devices: Shared = Default::default();
+    // Tests (the layout lint): a MacBook's pad and a mouse named as
+    // long as they come, and no app_server.
+    if cfg!(test) {
+        let device = |name: &str, kind, size_mm, pressure, recommended: &str, vendor, product, bus: &str, dpi, may_sleep| InputDeviceInfo {
+            name: name.into(),
+            kind,
+            size_mm,
+            pressure,
+            recommended: recommended.into(),
+            driver_click: None,
+            vendor,
+            product,
+            bus: bus.into(),
+            dpi,
+            may_sleep,
+        };
+        *devices.lock().unwrap() = Some(vec![
+            device("Apple MTP multi-touch", olo_protocol::touchpad::DeviceKind::AppleMtp, Some((160.0, 100.0)), false, "macbook", 0x05ac, 0x0342, "spi", None, false),
+            device("Logitech G309 LIGHTSPEED Wireless Gaming Mouse (USB Receiver)", olo_protocol::touchpad::DeviceKind::Mouse, None, false, "mouse", 0x046d, 0x40b1, "usb", Some(1600), true),
+        ]);
+        return devices;
+    }
     let out = Arc::downgrade(&devices);
     std::thread::Builder::new()
         .name("input-devices".into())

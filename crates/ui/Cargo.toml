@@ -5,6 +5,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+# The layout lint (`lint`): GPUI's test app, for tests.
+lint = ["gpui/test-support"]
+
 [dependencies]
 olo-sync.workspace = true
 gpui.workspace = true
@@ -23,3 +27,7 @@ olo-images.workspace = true
 libc = "0.2"
 smallvec = "1.6"
 unicode-segmentation = "1.12"
+
+[[test]]
+name = "lint"
+required-features = ["lint"]

@@ -49,11 +49,13 @@ pub struct Control {
     focusable: bool,
     /// Return clicks it, from anywhere in the window (a default button).
     default: bool,
+    /// No wider than what it's in (`shrinks`).
+    shrinks: bool,
 }
 
 /// A control `width` by `height`, drawn by `paint`.
 pub fn control(id: impl Into<ElementId>, width: f32, height: f32, paint: impl FnOnce(Bounds<Pixels>, ControlState, &mut Window, &mut App) + 'static) -> Control {
-    Control { id: id.into(), width: px(width), height: px(height), enabled: true, paint: Some(Box::new(paint)), on_click: None, node: None, value: None, pointing: false, focusable: false, default: false }
+    Control { id: id.into(), width: px(width), height: px(height), enabled: true, paint: Some(Box::new(paint)), on_click: None, node: None, value: None, pointing: false, focusable: false, default: false, shrinks: false }
 }
 
 impl Control {
@@ -102,6 +104,14 @@ impl Control {
         self.pointing = true;
         self
     }
+
+    /// Its width at most what it's in: narrower, its paint draws what
+    /// fits (a menu field's long choice cut short; the layout lint found
+    /// Sound's and Display's run out of their windows).
+    pub fn shrinks(mut self) -> Self {
+        self.shrinks = true;
+        self
+    }
 }
 
 impl IntoElement for Control {
@@ -139,6 +149,10 @@ impl Element for Control {
         style.size.width = self.width.into();
         style.size.height = self.height.into();
         style.flex_shrink = 0.0;
+        if self.shrinks {
+            style.flex_shrink = 1.0;
+            style.max_size.width = gpui::relative(1.0).into();
+        }
         (window.request_layout(style, [], cx), ())
     }
 

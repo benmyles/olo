@@ -8,6 +8,8 @@
 //! thread keeps our copy current and a writer thread sends changes,
 //! newest first, so dragging a slider never blocks the UI.
 
+#[cfg(test)]
+mod lint;
 mod about;
 mod ai;
 mod appearance;

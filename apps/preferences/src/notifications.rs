@@ -46,6 +46,13 @@ pub struct State {
 impl State {
     pub fn new(cx: &mut Context<PanelView>) -> State {
         let (tx, rx) = channel();
+        // Tests (the layout lint): the defaults and apps with long names,
+        // not this account's files.
+        if cfg!(test) {
+            drop(tx);
+            let apps = ["Telegram", "Google Chrome", "Olo Passwords", "Microsoft Teams (work or school)", "Visual Studio Code - Insiders"].map(str::to_owned).to_vec();
+            return State { settings: Some(NotificationSettings::default()), apps, rx, edited: None, _watch: None, scroll: ScrollHandle::new(), ticking: false };
+        }
         let proxy = olo_ui::proxy(cx);
         let read = Arc::new(move || {
             // The settings, and the history (for apps new to it).

@@ -179,11 +179,25 @@ pub(crate) fn finish(window: &Window, title: &str) {
         let scale = window.scale_factor();
         let findings = checks::review(&parts, w, h, scale);
         pending.done.push(WindowReview { title: title.to_owned(), width: w as u32, height: h as u32, scale, layer: None, findings });
+        #[cfg(feature = "lint")]
+        LINT_PARTS.with(|l| l.borrow_mut().insert(id, parts));
         pending.windows.is_empty().then_some(pending.id)
     });
     if let Some(review) = all {
         send(review);
     }
+}
+
+#[cfg(feature = "lint")]
+thread_local! {
+    /// What each window reviewed drew, for the lint's own checks.
+    static LINT_PARTS: RefCell<HashMap<WindowId, Parts>> = RefCell::new(HashMap::new());
+}
+
+/// What `window` drew in its last review (`crate::lint`).
+#[cfg(feature = "lint")]
+pub(crate) fn take_lint_parts(window: WindowId) -> Option<Parts> {
+    LINT_PARTS.with(|l| l.borrow_mut().remove(&window))
 }
 
 /// Answers review `id`, if it's the one pending.

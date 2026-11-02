@@ -30,6 +30,21 @@ impl State {
 
 fn poll(proxy: olo_ui::Proxy) -> Shared {
     let battery: Shared = Default::default();
+    // Tests (the layout lint): a battery with all there is to say, and
+    // not this machine's.
+    if cfg!(test) {
+        *battery.lock().unwrap() = Some(Some(Battery {
+            percent: 87,
+            state: Charge::Discharging,
+            time_to_empty: Some(Duration::from_secs(5 * 3600 + 47 * 60)),
+            time_to_full: None,
+            cycle_count: Some(1284),
+            health: Some(91),
+            charge_limit: Some(80),
+            power_watts: Some(12.4),
+        }));
+        return battery;
+    }
     let out = Arc::downgrade(&battery);
     std::thread::Builder::new()
         .name("battery".into())

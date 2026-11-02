@@ -2465,12 +2465,36 @@ strip's), so centring is measured against it. Call either as it paints.
 
 Run it:
 
-- on a running app (there is no headless test of it on GPUI yet:
-  TODO.md, "The layout lint on GPUI"): every app answers `{"review":true}` on its
+- on a running app: every app answers `{"review":true}` on its
   socket with a `commands::WindowReview` per window (`commands::review(
   pid)`): `$T review NAME [--all]` on a headless session, `olo-screen
   review NAME [--window ID] [--json]` on an agent screen. Switch the
   scale (`$T scale NAME 1`, `1.5`, `2`) and theme and review each.
+- headlessly, as a test: the layout lint (below).
+
+### The layout lint (`olo_ui::lint`, `cargo ui-lint`)
+
+A window's view drawn as it will be shown, without a session: GPUI's
+test platform with Olo's text system and fonts
+(`TestAppContext::with_olo_text`), the window opened as an app opens it
+(`open_window`, the kit's `Frame` around the view), at its size, in
+light and dark, at 1×, 1.5× and 2× (`VisualTestContext::set_scale_factor`,
+the scale changed on the open window, as a display's change does). Each
+time it is reviewed (the errors above) and the lint's own checks run:
+`outside` (a control, anything agents can click, past the window's
+edge), `overlap` (two controls over each other, neither inside the
+other: a control in a row, a cell in a list, isn't over it),
+`text-outside` and `text-over-text` (lines' ink over each other; their
+boxes may touch by their leading). `Lint::window(options, build)`
+returns what it found; `assert_clean` fails a test with it, a line each.
+
+`cargo ui-lint` runs every `ui_lint` test: the kit's own (a form of its
+widgets is clean; controls put over each other are found) and every
+Preferences panel at its size with made-up long display names and the
+panels' test data (no app_server, no devices: their links answer with
+it under `cfg(test)`). `tools/install-session.sh` runs it and stops if
+it fails. A window of a fixed size or a dialog gets a `ui_lint` test
+beside it: build its view with the longest things it can show.
 
 Go through each finding: fix it in the kit or the view, or, when it is
 meant, tell the review why (`own_grid`, `band`) so the next run is

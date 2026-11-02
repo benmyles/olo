@@ -93,8 +93,11 @@ impl RenderOnce for MenuField {
             style::vgradient(window, inner, style::tint(base, 0.82), style::shade(&p, base, 1.05));
             style::frame_rect(window, field, style::shade(&p, p.panel_background, 1.55));
             style::bevel(window, inner, style::c(p.shine), style::shade(&p, base, 1.2));
+            // (Cut short with "…" when the field is narrower than its
+            // choice: it's no wider than what it's in.)
+            let room = field.right() - px(15.0 + m::TIGHT) - (field.left() + px(m::TEXT_INSET));
             let value = window.with_content_mask(Some(gpui::ContentMask { bounds: Bounds::from_corners(field.origin, point(field.right() - px(15.0 + m::TIGHT), field.bottom())) }), |window| {
-                style::label(window, cx, field.left() + px(m::TEXT_INSET), field.center().y, style::Align::Left, shown.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color)
+                style::label_fit(window, cx, field.left() + px(m::TEXT_INSET), field.center().y, style::Align::Left, shown.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color, room)
             });
             // With the keyboard: its label underlined (the choice, when
             // it has none).
@@ -113,6 +116,7 @@ impl RenderOnce for MenuField {
             }
         })
         .enabled(self.enabled)
+        .shrinks()
         .focusable()
         .agent("ComboBox", name, None)
         .on_click(move |at, window, cx| {

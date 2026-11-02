@@ -289,7 +289,12 @@ as they land (with the commit), add new ones as they come up.
   (wp_viewporter's source) while a resize lasts.
 - ~~app_server: Viewer's first menu costs a 14–28 ms frame~~ (the
   dmabuf check worker's lock, above; 2026-11-02).
-- **The layout lint on GPUI** (left when egui went, 2026-11-02): the
+- ~~**The layout lint on GPUI**~~ (done 2026-11-02: `olo_ui::lint`,
+  `cargo ui-lint`, run by install-session.sh; HACKING, "The layout
+  lint": the kit's form and every Preferences panel and tab, light and
+  dark at 1×, 1.5× and 2×, with long device names; it found Sound's and
+  Display's menu fields running out of their windows and tabs' click
+  areas overlapping, both fixed in the kit) (left when egui went, 2026-11-02): the
   egui kit ran a window's view headlessly at its size, light and dark at
   1×, 1.5× and 2×, and failed a test (and `install-session.sh`) on
   anything that ran past its area, controls over each other, labels

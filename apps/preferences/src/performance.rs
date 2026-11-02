@@ -37,14 +37,20 @@ pub struct State {
 impl State {
     pub fn new(cx: &mut Context<PanelView>) -> State {
         let (tx, rx) = channel();
-        let proxy = olo_ui::proxy(cx);
-        let read = Arc::new(move || {
-            let _ = tx.send(PerformanceSettings::load());
-            proxy.send(Msg::Redraw);
-        });
-        let now = read.clone();
-        std::thread::Builder::new().name("performance-read".into()).spawn(move || now()).expect("thread");
-        let watch = olo_ui::watch::watch([PerformanceSettings::path()], move |_| read());
+        // Tests (the layout lint): the defaults, not this account's file.
+        let (settings, watch) = if cfg!(test) {
+            drop(tx);
+            (Some(PerformanceSettings::default()), None)
+        } else {
+            let proxy = olo_ui::proxy(cx);
+            let read = Arc::new(move || {
+                let _ = tx.send(PerformanceSettings::load());
+                proxy.send(Msg::Redraw);
+            });
+            let now = read.clone();
+            std::thread::Builder::new().name("performance-read".into()).spawn(move || now()).expect("thread");
+            (None, olo_ui::watch::watch([PerformanceSettings::path()], move |_| read()))
+        };
         let background = olo_ui::widgets::text_field(cx, |f| f.hint("Program names, comma separated"));
         cx.subscribe(&background, |v, field, e: &TextFieldEvent, cx| {
             if !matches!(e, TextFieldEvent::Changed) {
@@ -55,7 +61,7 @@ impl State {
             cx.notify();
         })
         .detach();
-        State { settings: None, rx, edited: None, background, _watch: watch, scroll: ScrollHandle::new() }
+        State { settings, rx, edited: None, background, _watch: watch, scroll: ScrollHandle::new() }
     }
 }
 
