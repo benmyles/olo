@@ -1725,6 +1725,16 @@ event reaches it.
   on the new app_server named that (a protocol error that ended
   Notifications on a reload). The proxy now treats an object named in a
   recipe but made after it as gone, for programs that leak them.
+  An upgrade restarts olo-wlproxy and app_server one after the other,
+  so a program can lose its window's Vulkan surface mid-frame, or the
+  compositor again while it reconnects: blade answers a lost surface
+  (configuring, acquiring, presenting) with no frame rather than a
+  panic, the renderer makes a new surface on the same window
+  (`BladeRenderer::remake_surface`, at most every 2 s), and a program
+  re-executing connects again if the compositor goes before its
+  registry answers. (Telegram panicked on both, 2026-11-02, so an
+  upgrade closed it; tried by replacing a copy of its binary, SIGURG
+  and `tsession reload` together, twelve times running.)
 - `Window::activation_token(done)` (Olo's GPUI): an xdg-activation token
   from the last click in the window, for another program to raise its
   window with (Notifications hands it to the app whose card was

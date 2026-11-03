@@ -446,6 +446,11 @@ impl super::CommandEncoder {
                 log::warn!("GPU frame is out of date");
                 None
             }
+            // Olo: presenting to a window whose surface is gone.
+            Err(vk::Result::ERROR_SURFACE_LOST_KHR) => {
+                log::warn!("GPU frame's surface is lost");
+                None
+            }
             Err(other) => panic!("GPU error {}", other),
         }
     }

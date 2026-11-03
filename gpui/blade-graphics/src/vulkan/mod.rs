@@ -139,6 +139,12 @@ impl Frame {
             aspects: crate::TexelAspects::COLOR,
         }
     }
+
+    /// Olo: no image to draw into (the surface is lost, or its swapchain
+    /// couldn't be made): the frame is skipped.
+    pub fn is_lost(&self) -> bool {
+        self.internal.image == vk::Image::null()
+    }
 }
 
 fn map_timeout(millis: u32) -> u64 {

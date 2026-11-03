@@ -44,7 +44,19 @@ impl super::Surface {
             Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
                 log::warn!("Acquire failed because the surface is out of date");
                 super::Frame {
-                    internal: self.frames[0],
+                    internal: self.frames.first().copied().unwrap_or_default(),
+                    swapchain: self.swapchain,
+                    image_index: None,
+                }
+            }
+            // Olo: the window's surface is gone (its compositor went away
+            // and came back): no frame (`Frame::is_lost`), nothing drawn,
+            // until the window is made again, never a panic (Telegram's,
+            // 2026-11-02).
+            Err(vk::Result::ERROR_SURFACE_LOST_KHR) => {
+                log::warn!("Acquire failed because the surface is lost");
+                super::Frame {
+                    internal: super::InternalFrame::default(),
                     swapchain: self.swapchain,
                     image_index: None,
                 }
@@ -54,12 +66,20 @@ impl super::Surface {
             Err(vk::Result::ERROR_DEVICE_LOST) => {
                 crate::lose_device();
                 super::Frame {
-                    internal: self.frames[0],
+                    internal: self.frames.first().copied().unwrap_or_default(),
                     swapchain: self.swapchain,
                     image_index: None,
                 }
             }
-            Err(other) => panic!("Aquire image error {}", other),
+            // Olo: no frame rather than a panic, whatever it is.
+            Err(other) => {
+                log::error!("Acquire failed: {other}");
+                super::Frame {
+                    internal: super::InternalFrame::default(),
+                    swapchain: self.swapchain,
+                    image_index: None,
+                }
+            }
         }
     }
 }
@@ -238,15 +258,17 @@ impl super::Context {
         };
         let effective_frame_count = requested_frame_count.max(capabilities.min_image_count);
 
-        let present_modes = unsafe {
-            khr_surface
-                .get_physical_device_surface_present_modes(self.physical_device, surface.raw)
-                .unwrap()
+        // Olo: these too fail once the surface is lost (between the
+        // capabilities above and here: Telegram's panic, 2026-11-02).
+        let present_modes = match unsafe { khr_surface.get_physical_device_surface_present_modes(self.physical_device, surface.raw) } {
+            Ok(m) => m,
+            Err(e) => {
+                log::warn!("the surface can't be reconfigured ({e:?}): its window or compositor is gone");
+                return;
+            }
         };
-        let present_mode = *mode_preferences
-            .iter()
-            .find(|mode| present_modes.contains(mode))
-            .unwrap();
+        // (FIFO is always there.)
+        let present_mode = mode_preferences.iter().copied().find(|mode| present_modes.contains(mode)).unwrap_or(vk::PresentModeKHR::FIFO);
         log::info!("Using surface present mode {:?}", present_mode);
 
         let queue_families = [self.queue_family_index];
@@ -278,10 +300,12 @@ impl super::Context {
                 },
             )
         } else {
-            supported_formats = unsafe {
-                khr_surface
-                    .get_physical_device_surface_formats(self.physical_device, surface.raw)
-                    .unwrap()
+            supported_formats = match unsafe { khr_surface.get_physical_device_surface_formats(self.physical_device, surface.raw) } {
+                Ok(f) => f,
+                Err(e) => {
+                    log::warn!("the surface can't be reconfigured ({e:?}): its window or compositor is gone");
+                    return;
+                }
             };
             match config.color_space {
                 crate::ColorSpace::Linear => {
@@ -359,13 +383,28 @@ impl super::Context {
                 config.allow_exclusive_full_screen
             );
         }
-        let raw_swapchain = unsafe { surface.device.create_swapchain(&create_info, None).unwrap() };
+        // (Failing, the old swapchain stays as it was.)
+        let raw_swapchain = match unsafe { surface.device.create_swapchain(&create_info, None) } {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("the surface's swapchain can't be made ({e:?}): its window or compositor is gone");
+                return;
+            }
+        };
 
         unsafe {
             surface.deinit_swapchain(&self.device.core);
         }
 
-        let images = unsafe { surface.device.get_swapchain_images(raw_swapchain).unwrap() };
+        let images = match unsafe { surface.device.get_swapchain_images(raw_swapchain) } {
+            Ok(i) => i,
+            Err(e) => {
+                // No frames: none is acquired or drawn (`Frame::is_lost`).
+                log::warn!("the surface's swapchain has no images ({e:?})");
+                unsafe { surface.device.destroy_swapchain(raw_swapchain, None) };
+                return;
+            }
+        };
         let target_size = [config.size.width as u16, config.size.height as u16];
         let subresource_range = vk::ImageSubresourceRange {
             aspect_mask: vk::ImageAspectFlags::COLOR,

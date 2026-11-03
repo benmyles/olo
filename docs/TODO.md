@@ -56,12 +56,6 @@ of Finished; a new one goes where its priority puts it.
   list), and what the app shows on starting again must come from what
   Telegram says (its archive, folder 1) over anything the cache kept.
 
-- **Telegram crashed: Vulkan ERROR_SURFACE_LOST_KHR** (seen in the
-  logs 2026-11-02 17:02, after app_server went away and came back):
-  `blade-graphics/src/vulkan/surface.rs:244` unwraps the swapchain's
-  acquire. A lost surface must be made again (the window's surface
-  recreated), never a panic: every kit app shares it.
-
 - **AirPods and voice processing, tried on the real things** (Ben,
   2026-11-02; what's left of "AirPods, natively" and "Voice processing
   for every microphone", below): built and measured headless and in
@@ -897,6 +891,19 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**Telegram crashed: Vulkan ERROR_SURFACE_LOST_KHR**~~ (done
+  2026-11-02: blade-graphics, GPUI's renderer and Wayland client) (seen
+  in the logs at 17:02, during an upgrade): an upgrade restarts
+  olo-wlproxy and app_server one after the other, and Telegram's window
+  lost its Vulkan surface between two queries
+  (`surface.rs:244` unwrapped), so the upgrade closed it instead of
+  re-executing it (Ben then reopened it by hand). Every surface call
+  now answers a lost surface with no frame, the renderer makes the
+  surface again, and a program re-executing connects again if the
+  compositor goes before its registry answers (the second panic the
+  same test found). Tried twelve times running: a copy of the binary
+  replaced, SIGURG and `tsession reload` together.
 
 - ~~**The file panel after Quick Look: tiled, and Open does nothing**~~
   (done 2026-11-02: the look floats over the panel, centred on it; Open

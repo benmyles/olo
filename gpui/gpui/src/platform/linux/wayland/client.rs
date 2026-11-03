@@ -779,12 +779,19 @@ impl WaylandClient {
     pub(crate) fn new() -> Self {
         // Olo: a compositor restarting in place (an upgrade) is back
         // within a second or two; a program re-executing to reconnect
-        // waits for it rather than fail.
-        let conn = {
+        // waits for it rather than fail, and connects again if it goes
+        // once more before answering (an upgrade restarting olo-wlproxy
+        // and app_server one after the other: Telegram's panic on
+        // `registry_queue_init`, 2026-11-02).
+        let (conn, globals, mut event_queue) = {
             let mut tries = 0;
             loop {
-                match connect() {
-                    Ok(c) => break c,
+                let made = connect().map_err(|e| e.to_string()).and_then(|c| match registry_queue_init::<WaylandClientStatePtr>(&c) {
+                    Ok((globals, queue)) => Ok((c, globals, queue)),
+                    Err(e) => Err(e.to_string()),
+                });
+                match made {
+                    Ok(made) => break made,
                     Err(e) if tries < 150 => {
                         if tries == 0 {
                             log::warn!("no compositor yet ({e}); waiting for it");
@@ -796,9 +803,6 @@ impl WaylandClient {
                 }
             }
         };
-
-        let (globals, mut event_queue) =
-            registry_queue_init::<WaylandClientStatePtr>(&conn).unwrap();
         let qh = event_queue.handle();
 
         let mut seat: Option<wl_seat::WlSeat> = None;

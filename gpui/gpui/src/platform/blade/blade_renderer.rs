@@ -424,6 +424,31 @@ pub struct BladeRenderer {
     /// some (only where the GPU blends with a second source).
     subpixel_sprites: Option<Arc<gpu::RenderPipeline>>,
     rendering_parameters: RenderingParameters,
+    /// Olo: the window drawn into, to make its surface again when it's
+    /// lost (`remake_surface`), and when that was last tried.
+    window: Option<RawHandles>,
+    remade: Option<std::time::Instant>,
+}
+
+/// Olo: a window's raw handles, kept to make its surface again: they
+/// stay valid while the window does, which outlives its renderer.
+struct RawHandles {
+    window: raw_window_handle::RawWindowHandle,
+    display: raw_window_handle::RawDisplayHandle,
+}
+
+impl raw_window_handle::HasWindowHandle for RawHandles {
+    fn window_handle(&self) -> Result<raw_window_handle::WindowHandle<'_>, raw_window_handle::HandleError> {
+        // SAFETY: the window this was taken from is still there (above).
+        Ok(unsafe { raw_window_handle::WindowHandle::borrow_raw(self.window) })
+    }
+}
+
+impl raw_window_handle::HasDisplayHandle for RawHandles {
+    fn display_handle(&self) -> Result<raw_window_handle::DisplayHandle<'_>, raw_window_handle::HandleError> {
+        // SAFETY: as for the window.
+        Ok(unsafe { raw_window_handle::DisplayHandle::borrow_raw(self.display) })
+    }
 }
 
 /// Olo: the pipelines for a surface like `info`, from the context's
@@ -456,6 +481,7 @@ impl BladeRenderer {
             .gpu
             .create_surface_configured(window, surface_config)
             .map_err(|err| anyhow::anyhow!("Failed to create surface: {err:?}"))?;
+        let handles = window.window_handle().ok().zip(window.display_handle().ok()).map(|(w, d)| RawHandles { window: w.as_raw(), display: d.as_raw() });
 
         let command_encoder = context.gpu.create_command_encoder(gpu::CommandEncoderDesc {
             name: "main",
@@ -501,7 +527,37 @@ impl BladeRenderer {
             path_targets: None,
             subpixel_sprites: None,
             rendering_parameters,
+            window: handles,
+            remade: None,
         })
+    }
+
+    /// Olo: the window's surface was lost (its compositor went away and
+    /// came back, an upgrade among it: Telegram panicked on it): a new
+    /// one on the same window, at most every 2 s; the lost one kept if
+    /// none can be made.
+    fn remake_surface(&mut self) {
+        let Some(window) = &self.window else { return };
+        if self.remade.is_some_and(|t| t.elapsed() < std::time::Duration::from_secs(2)) {
+            return;
+        }
+        self.remade = Some(std::time::Instant::now());
+        let mut surface = match self.gpu.create_surface(window) {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("the window's surface is lost and can't be made again ({e:?})");
+                return;
+            }
+        };
+        self.wait_for_gpu();
+        let format = self.surface.info().format;
+        self.gpu.destroy_surface(&mut self.surface);
+        self.gpu.reconfigure_surface(&mut surface, self.surface_config);
+        if surface.info().format != format {
+            log::warn!("the window's new surface is {:?}, its pipelines {format:?}", surface.info().format);
+        }
+        self.surface = surface;
+        log::info!("the window's surface was lost: made again");
     }
 
     fn wait_for_gpu(&mut self) {
@@ -857,6 +913,18 @@ impl BladeRenderer {
             profiling::scope!("acquire frame");
             self.surface.acquire_frame()
         };
+        // Olo: no image to draw into (the surface is lost): what's
+        // recorded (the atlas's uploads) goes, nothing is drawn, and the
+        // surface is made again for the next frame.
+        if frame.is_lost() {
+            let sync_point = self.gpu.submit(&mut self.command_encoder);
+            self.instance_belt.flush(&sync_point);
+            self.atlas.after_frame(&sync_point);
+            self.wait_for_gpu();
+            self.last_sync_point = Some(sync_point);
+            self.remake_surface();
+            return;
+        }
         self.command_encoder.init_texture(frame.texture());
 
         let globals = GlobalParams {
