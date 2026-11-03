@@ -39,28 +39,13 @@ of Finished; a new one goes where its priority puts it.
   Waiting on the machine: NVIDIA for apps and external displays, HDR and
   wide colour, VRR, the haptic touchpad, IR face sign-in.
 
-- **Dialogs float on top, never tucked into another window's group**
-  (Ben, 2026-11-02): "in focus mode (and maybe other modes too) when i
-  am in chrome and a passkey dialog appears instead of appearing over
-  chrome it appears over the passwords app and i don't even know it's
-  there i have to go to passwords to even see it. dialogs like this
-  should always open floating at the top layer". Why: the passkey
-  prompt is a Passwords window (`olo.passwords`), and in Focus mode
-  `shell::groups::group_key` groups every window of an app, so it
-  becomes a tab of Passwords' group, behind wherever Passwords is. So:
-  a dialog (a toplevel with a parent, a modal, an approval or request
-  window an app shows for another, as Passwords' passkey and password
-  prompts, polkit's, the portal's, Chrome's own) never groups or
-  tiles, in any mode; it opens floating, in front of everything on the
-  display the person is working on (centred over the window that
-  asked, Chrome here, not over its own app's), gets the keyboard, and
-  stays in front until answered. Apps say a window is a dialog through
-  the kit (a window kind agents can read too), and app_server knows
-  the rest by xdg's parent and fixed size. Check every mode (Focus,
-  tiling, free), with the asking app on another display or workspace.
-
 - **The file panel after Quick Look: tiled, and Open does nothing**
-  (Ben, 2026-11-02): "when i'm in slack and attach a file i correctly
+  (*part done* 2026-11-02: the look floats over the panel, never a tile;
+  *left*: Open doing nothing after a look didn't happen headless, the
+  portal answering with the file each time, the old zoomed look too
+  (`olo-portal --bus`, FileChooser.OpenFile asked as xdg-desktop-portal
+  does), so it needs Slack's own window as the panel's parent: try it
+  again on the real thing after the upgrade) (Ben, 2026-11-02): "when i'm in slack and attach a file i correctly
   get the olo tracker as the file picker. however, when i hit space for
   quick look then the preview gets tiled (i think quick look should
   also be floating). and worse, then i hit the open button in the
@@ -84,6 +69,57 @@ of Finished; a new one goes where its priority puts it.
   restarts; a folder the app asks for itself (`current_folder`) still
   wins, and a remembered folder that's gone falls back to the usual
   one. Olo's own apps' panels the same, by app.
+
+- **Telegram: archived right, unknown senders apart, bulk actions,
+  smaller avatars** (Ben, 2026-11-02): "in telegram app, make the
+  avatars a bit smaller they look oversized now, and also add bulk
+  select and bulk actions to the list of people so that i can e.g.
+  bulk archive, bulk unarchive, delete etc etc and so on. also make it
+  so that any messages from anyone i've never sent a message to go
+  into unknown senders and don't send a notification for them
+  (they're almost always spam) and also don't treat them as
+  unseen/unread. and also with archived for some reason some of my
+  most active chats are saying they're archived, like with "Justin
+  Martinez" and "The Real Bots Team" so i think there's something off
+  with how you're deciding what is and isn't archived." So: (1) **the
+  bug first**: find how a chat is decided archived (the chat list's
+  folder id, `chatListArchive` against the main list, what an update
+  moving a chat says) and why active chats show as archived; check it
+  against what Telegram's own apps show for the same account; (2) an
+  **Unknown Senders** list: a private chat with someone Ben has never
+  written to (no outgoing message in it) goes there, notifies nothing
+  and counts as neither unread nor unseen (Deskbar's badge, the Dock's,
+  the list's), until Ben writes back, which makes it a chat like any
+  other; (3) **bulk select** in the chat list (⌘-click, ⇧-click, ⌘A,
+  a band) with the actions on all chosen: Archive, Unarchive, Mark as
+  Read, Mute, Delete (asking first, saying how many), in the list's
+  context menu and the menu bar, agent-readable; (4) **avatars a bit
+  smaller** in the chat list, measured against the row's text at 1×,
+  1.5× and 2×. Test with the demo account only.
+
+- **Olo Suggestions** (Ben, 2026-11-02): "similar to olo doctor, add an
+  "Olo Suggestions" app and in there it should have things that Olo
+  suggests doing to have the best experience in Olo. they're things
+  that are optional / nice to haves, and Olo should still work fine
+  without them. each one should have a button to apply it and an apply
+  all button. the first suggestion i want is to change the user shell
+  to https://github.com/reubeno/brush (bash rewritten in rust with more
+  features) and if the user applies it then we should install it and
+  update the user's shell to use it as default shell". So: an app
+  built as Doctor is (`apps/doctor`: its checks, its window, its
+  privileged helper and the approval it asks), listing suggestions
+  that aren't problems (Doctor keeps those): each with what it does
+  and why, its state (applied or not, checked off the UI thread), an
+  Apply button, and Apply All; applying shows live progress, can be
+  cancelled, and is safe to run again; agents read and apply them as
+  people do. First suggestion, **brush as the login shell**: build and
+  install brush (`cargo install` of the `brush-shell` crate, as the
+  setup app installs Rust things, into `~/.cargo/bin` or a system
+  path a login shell can be), add it to `/etc/shells`, and make it the
+  person's login shell (`/etc/passwd` through the helper, with the
+  admin approval), Terminal's new shells following; undoing it puts
+  the shell back as it was. Doctor's "Fix in Olo Doctor…" style link
+  from Preferences where it fits.
 
 - **Menus taller than the screen scroll** (found 2026-11-02 in
   Preferences ▸ Default Apps, whose app pop-up listed every app): a
@@ -922,6 +958,33 @@ of Finished; a new one goes where its priority puts it.
 
 ## Finished (most recently finished first)
 
+- ~~**Dialogs float on top, never tucked into another window's group**~~
+  (done 2026-11-02: it wasn't the group. Focus covered an alert naming
+  no window, as an app's own panel, while its app's windows were
+  covered: Passwords' passkey question over Chrome stayed hidden, with
+  the keyboard. Such an alert now always shows, in the middle of the
+  display the person is on, with the keyboard; Standard and Auto-Tiling
+  already showed it over everything. Showing it found a Smithay bug
+  that drew 60 frames a second under any window floating over Focus's,
+  fixed) (Ben, 2026-11-02): "in focus mode (and maybe other modes too) when i
+  am in chrome and a passkey dialog appears instead of appearing over
+  chrome it appears over the passwords app and i don't even know it's
+  there i have to go to passwords to even see it. dialogs like this
+  should always open floating at the top layer". Why: the passkey
+  prompt is a Passwords window (`olo.passwords`), and in Focus mode
+  `shell::groups::group_key` groups every window of an app, so it
+  becomes a tab of Passwords' group, behind wherever Passwords is. So:
+  a dialog (a toplevel with a parent, a modal, an approval or request
+  window an app shows for another, as Passwords' passkey and password
+  prompts, polkit's, the portal's, Chrome's own) never groups or
+  tiles, in any mode; it opens floating, in front of everything on the
+  display the person is working on (centred over the window that
+  asked, Chrome here, not over its own app's), gets the keyboard, and
+  stays in front until answered. Apps say a window is a dialog through
+  the kit (a window kind agents can read too), and app_server knows
+  the rest by xdg's parent and fixed size. Check every mode (Focus,
+  tiling, free), with the asking app on another display or workspace.
+
 - ~~**Voice processing for every microphone**~~ (done 2026-11-02:
   a88b0abb, 9aae5937, cdd46746, 9368dfef, 1aaa7314, 8ba9f10b) (Ben,
   2026-11-02): "research what the SOTA approach to background noise
@@ -949,6 +1012,7 @@ of Finished; a new one goes where its priority puts it.
   AAC-ELD decoder in Rust) while music stays at AAC quality; Preferences
   ▸ AirPods, Bluetooth and Sound, Deskbar's tray and speaker menu, icons
   in every theme; panels taller than the screen scroll.
+
 - ~~**Default apps and Open With**~~ (done 2026-11-02: the person's
   defaults and curated lists in `olo_xdg::open`; Open With ▸, Always
   Open With ▸ and Other… in the kit, `olo_ui::open_with`, on Tracker's

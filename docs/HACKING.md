@@ -3489,7 +3489,10 @@ float (`floats`, as for auto-tiling) show over the one in front
 (`keep_floating_over_focus`); a dialog (a window with a parent) is
 covered with its parent, and an app's own panel (no parent: StyledEdit's
 Find) while all its app's windows are, as BeOS's floating app feel did;
-an app of only panels (DeskCalc) always shows. `WindowInfo::covered`
+an app of only panels (DeskCalc) always shows, and so does an alert that
+names no window (`is_parentless_alert`: Passwords' passkey question
+while Chrome is in front, an app's "Save changes?" asked from Deskbar),
+which asks the person something whichever window shows. `WindowInfo::covered`
 says which are covered, for agents.
 
 Auto-tiling (`shell/autotile.rs`; its module doc is the design) is the
@@ -4101,6 +4104,15 @@ plane hanging off the display with EINVAL on the page flip, and the
 first try took the desktop down with it), and a display that refuses a
 frame's commit draws everything from then on (`planes_refused`), the
 pointer too: a refusal costs a frame, never a restart.
+
+Olo's Smithay also checks every rect in `Rectangle::
+subtract_rects_many_in_place` (which the damage tracker uses to find
+what an opaque region stopped covering): swapping the last rect in for
+one taken out could bring in a piece made in the same pass and leave an
+earlier rect unchecked, so a frame's opaque regions weren't all taken
+from themselves and the same strip was damaged every frame: with any
+window floating over Focus's, app_server drew 60 frames a second while
+nothing changed (2026-11-02; `subtract_rects_many_checks_every_rect`).
 
 Where a frame's time goes: measured on Ben's session (2026-11-01,
 read-only stack samples of app_server's main thread, and Smithay's

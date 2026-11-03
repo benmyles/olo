@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### File panel: the look floats
+
+*16:06* — Space in a file panel (here the portal's, as Slack asks) looks at the file in a floating window over the panel, never a tile.
+
+![File panel: the look floats](2026-11-02/160646-file-panel-the-look-floats.png)
+
+### Focus: an alert from a covered app shows
+
+*16:06* — In Focus mode an alert that names no window (here StyledEdit's 'Save changes?' while Tracker is in front; Passwords' passkey question over Chrome) shows over the window in front, with the keyboard, instead of staying hidden with its app.
+
+![Focus: an alert from a covered app shows](2026-11-02/160645-focus-an-alert-from-a-covered-app-shows.png)
+
 ### Deskbar: voice processing in the speaker's menu
 
 *15:31* — Right-click the speaker: Clean Up Microphone Sound, and in a submenu what it's tuned for, how much background noise to take out, echo and level (through olo-voice --set, as an agent would).

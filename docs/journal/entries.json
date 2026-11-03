@@ -2848,5 +2848,17 @@
     "title": "Deskbar: voice processing in the speaker's menu",
     "caption": "Right-click the speaker: Clean Up Microphone Sound, and in a submenu what it's tuned for, how much background noise to take out, echo and level (through olo-voice --set, as an agent would).",
     "image": "2026-11-02/153140-deskbar-voice-processing-in-the-speaker-s-menu.png"
+  },
+  {
+    "time": "2026-11-02T16:06:45",
+    "title": "Focus: an alert from a covered app shows",
+    "caption": "In Focus mode an alert that names no window (here StyledEdit's 'Save changes?' while Tracker is in front; Passwords' passkey question over Chrome) shows over the window in front, with the keyboard, instead of staying hidden with its app.",
+    "image": "2026-11-02/160645-focus-an-alert-from-a-covered-app-shows.png"
+  },
+  {
+    "time": "2026-11-02T16:06:46",
+    "title": "File panel: the look floats",
+    "caption": "Space in a file panel (here the portal's, as Slack asks) looks at the file in a floating window over the panel, never a tile.",
+    "image": "2026-11-02/160646-file-panel-the-look-floats.png"
   }
 ]

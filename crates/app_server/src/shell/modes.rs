@@ -13,7 +13,8 @@
 //! the pointer, but still in the space, zoomed at the same place, so
 //! showing one is only raising it (its picture is ready, at that size),
 //! and Deskbar, Twitcher and the overview have them as ever. A dialog of
-//! a covered window is covered with it.
+//! a covered window is covered with it; an alert that names no window
+//! (asked by an app whose windows are covered) never is.
 //!
 //! Every window that would be a tile is zoomed (`zoom_window`, so leaving
 //! Focus puts each back where it was) and a new one opens zoomed
@@ -267,6 +268,10 @@ pub fn mark_covered(space: &Space<WindowElement>) {
         }
         let covered = match w.0.toplevel().and_then(|t| t.parent()) {
             Some(parent) => space.elements().any(|p| p.meta().covered.get() && p.wl_surface().as_deref() == Some(&parent)),
+            // An alert that names no window asks the person something,
+            // whichever app's window shows (Passwords' passkey question
+            // over Chrome): it shows over it, never covered with its app.
+            None if super::groups::is_parentless_alert(w) => false,
             // An app's own panel (StyledEdit's Find), as BeOS's floating
             // app feel: shown while one of its app's windows on its
             // display is, covered when they all are. An app of only

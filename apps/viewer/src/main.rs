@@ -191,7 +191,13 @@ impl Viewer {
             _subs: Vec::new(),
         });
         let view = doc.clone();
-        let win = olo_ui::open_window(cx, WindowOptions::new(title, 720.0, 560.0).min_size(min_w, 240.0), move |window, cx| {
+        let mut options = WindowOptions::new(title, 720.0, 560.0).min_size(min_w, 240.0);
+        // A look floats over the panel that asked, as Quick Look does:
+        // never a tile or a tab.
+        if self.look {
+            options = options.dialog();
+        }
+        let win = olo_ui::open_window(cx, options, move |window, cx| {
             // The document has the keyboard (else the window's frame
             // takes it, and the arrows and Space never reach it).
             window.focus(&view.read(cx).focus);

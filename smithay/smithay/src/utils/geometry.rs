@@ -1438,30 +1438,33 @@ impl<N: Coordinate, Kind> Rectangle<N, Kind> {
         others: impl IntoIterator<Item = Self>,
     ) -> Vec<Self> {
         for other in others {
-            let items = rects.len();
-            let mut checked = 0usize;
-            let mut index = 0usize;
-
             // If there is nothing left we can stop,
             // we won't be able to subtract any further
-            if items == 0 {
+            if rects.is_empty() {
                 return rects;
             }
 
-            while checked != items {
-                checked += 1;
-
+            // Each rect there was before this one is checked against it
+            // where it stands: what's left of one takes its place (the
+            // rest go on the end, clear of `other`), and one with
+            // nothing left is emptied and dropped after. (Swapping the
+            // last in for a removed one, as this did, could bring in a
+            // piece made in this pass and leave a rect unchecked: a
+            // compositor's opaque regions then never all subtracted from
+            // themselves, damaging the same area every frame.)
+            let items = rects.len();
+            let mut emptied = false;
+            for index in 0..items {
+                let item = rects[index];
                 // If there is no overlap there is nothing to subtract
-                let Some(intersection) = rects[index].intersection(other) else {
-                    index += 1;
+                let Some(intersection) = item.intersection(other) else {
                     continue;
                 };
 
-                // We now know that we have to subtract the other rect
-                let item = rects.swap_remove(index);
-
                 // If we are completely contained then nothing is left
                 if other.contains_rect(item) {
+                    rects[index] = Rectangle::default();
+                    emptied = true;
                     continue;
                 }
 
@@ -1496,21 +1499,20 @@ impl<N: Coordinate, Kind> Rectangle<N, Kind> {
                         .into(),
                 );
 
-                if !top_rect.is_empty() {
-                    rects.push(top_rect);
+                let mut pieces = [top_rect, left_rect, right_rect, bottom_rect]
+                    .into_iter()
+                    .filter(|r| !r.is_empty());
+                match pieces.next() {
+                    Some(first) => rects[index] = first,
+                    None => {
+                        rects[index] = Rectangle::default();
+                        emptied = true;
+                    }
                 }
-
-                if !left_rect.is_empty() {
-                    rects.push(left_rect);
-                }
-
-                if !right_rect.is_empty() {
-                    rects.push(right_rect);
-                }
-
-                if !bottom_rect.is_empty() {
-                    rects.push(bottom_rect);
-                }
+                rects.extend(pieces);
+            }
+            if emptied {
+                rects.retain(|r| !r.is_empty());
             }
         }
 
@@ -2027,6 +2029,25 @@ impl From<Transform> for WlTransform {
 #[cfg(test)]
 mod tests {
     use super::{Logical, Rectangle, Size, Transform};
+
+    /// Every rect is subtracted from, the ones after a rect whose pieces
+    /// went on the end too (one was left whole when they were swapped in
+    /// over it).
+    #[test]
+    fn subtract_rects_many_checks_every_rect() {
+        let r = |x, y, w, h| Rectangle::<i32, Logical>::new((x, y).into(), (w, h).into());
+        let other = r(10, 10, 10, 10);
+        let rects = vec![r(5, 5, 20, 10), r(12, 12, 2, 2), r(15, 15, 10, 10)];
+        let left = Rectangle::subtract_rects_many_in_place(rects.clone(), [other]);
+        assert!(left.iter().all(|l| !l.overlaps(other)), "{left:?}");
+        // What's left is all that was outside it.
+        let area = |v: &[Rectangle<i32, Logical>]| v.iter().map(|r| r.size.w * r.size.h).sum::<i32>();
+        assert_eq!(area(&left), 20 * 10 - 10 * 5 + 10 * 10 - 5 * 5);
+        // A set less itself is nothing, whatever the order.
+        let set = vec![r(0, 0, 100, 40), r(0, 40, 100, 40), r(30, 10, 20, 50), r(0, 80, 100, 20)];
+        assert!(Rectangle::subtract_rects_many_in_place(set.clone(), set.iter().rev().copied()).is_empty());
+        assert!(Rectangle::subtract_rects_many_in_place(set.clone(), set.iter().copied()).is_empty());
+    }
 
     #[test]
     fn transform_rect_ident() {
