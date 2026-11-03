@@ -422,7 +422,11 @@ of Finished; a new one goes where its priority puts it.
   - Its Touch ID: a sensor the fingerprint service (and so the lock
     screen, the polkit agent, Passwords' unlock, approvals) uses as it
     uses the built-in one, enrolled and chosen in Preferences, reverse
-    engineered as needed, in Rust and in process.
+    engineered as needed, in Rust and in process. Ben, 2026-11-03: "we
+    also want the touch id sensor for it to work both when using on a
+    mac and when on x86 like the thinkpad": the same on an Apple
+    silicon Mac and on an x86 machine (the ThinkPad P1), so nothing of
+    it may lean on a Mac's own Secure Enclave.
   - What Linux sees of it (2026-11-03, read from sysfs with it plugged in
     through the Studio Display's hub, 3-1.1): USB 05ac:029f "Magic
     Keyboard with Touch ID and Numeric Keypad", bcdDevice 0x0420, full
