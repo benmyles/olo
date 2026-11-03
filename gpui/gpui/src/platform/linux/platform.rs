@@ -80,6 +80,10 @@ pub trait LinuxClient {
     fn holds_clipboard(&self) -> bool {
         false
     }
+    /// Olo: as `Platform::external_modifiers`.
+    fn external_modifiers(&self, _fourcc: u32) -> Vec<u64> {
+        Vec::new()
+    }
     fn read_from_primary(&self) -> Option<ClipboardItem>;
     fn read_from_clipboard(&self) -> Option<ClipboardItem>;
     /// Olo: what's on the clipboard if it's ours.
@@ -635,6 +639,10 @@ impl<P: LinuxClient + 'static> Platform for P {
 
     fn holds_clipboard(&self) -> bool {
         LinuxClient::holds_clipboard(self)
+    }
+
+    fn external_modifiers(&self, fourcc: u32) -> Vec<u64> {
+        LinuxClient::external_modifiers(self, fourcc)
     }
 
     fn read_from_primary(&self) -> Option<ClipboardItem> {

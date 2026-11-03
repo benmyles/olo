@@ -187,7 +187,7 @@ impl ScreenCast {
         // The streams, each on its own thread (PipeWire's start can take a
         // moment: off the bus's executor).
         let draw_cursor = cursor & EMBEDDED != 0;
-        let sources: Vec<crate::capture::Source> = picked.iter().map(|s| s.source.clone()).collect();
+        let sources: Vec<olo_capture::Source> = picked.iter().map(|s| s.source.clone()).collect();
         let (to_ui, path) = (self.to_ui.clone(), session_handle.to_string());
         let started = blocking::unblock(move || {
             sources

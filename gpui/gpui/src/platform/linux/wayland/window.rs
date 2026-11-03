@@ -17,8 +17,9 @@ use wayland_client::WEnum;
 use anyhow::Context as _;
 use wayland_client::{
     Proxy,
-    protocol::{wl_output, wl_surface},
+    protocol::{wl_buffer, wl_output, wl_subsurface, wl_surface},
 };
+use wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_buffer_params_v1;
 use wayland_protocols::wp::viewporter::client::wp_viewport;
 use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1;
 use wayland_protocols::xdg::shell::client::xdg_surface;
@@ -160,6 +161,90 @@ pub struct WaylandWindowState {
     in_progress_window_controls: Option<WindowControls>,
     window_controls: WindowControls,
     client_inset: Option<Pixels>,
+    /// Olo: other programs' pictures shown over it, by key
+    /// (`Window::place_external`).
+    externals: HashMap<u64, External>,
+    /// Olo: those synchronized with the frame being drawn (placed anew
+    /// in it, so they move with it), desynchronized once it's committed.
+    externals_synced: Vec<u64>,
+}
+
+/// Olo: another program's picture in GPU memory, shown over a window by
+/// the compositor itself (`Window::place_external`): a subsurface of its
+/// own, scaled to its place by a viewport, the pointer passing through
+/// it to the window. Desynchronized, so each new picture shows as it
+/// comes without the window drawing a frame.
+struct External {
+    surface: wl_surface::WlSurface,
+    sub: wl_subsurface::WlSubsurface,
+    viewport: wp_viewport::WpViewport,
+    /// Where it shows, in the window's logical pixels (None: hidden).
+    place: Option<Bounds<i32>>,
+    /// The buffers made of the pictures that came (by id and size), the
+    /// newest last: each is made once, the producer drawing into a few
+    /// in turn.
+    imported: Vec<(u64, u32, u32, wl_buffer::WlBuffer)>,
+    /// The picture to show.
+    shown: Option<crate::ExternalBuffer>,
+    /// `shown` is attached.
+    attached: bool,
+}
+
+/// Buffers kept made for an external picture (its producer's few, and
+/// some over while a new size replaces them).
+const EXTERNAL_KEEP: usize = 6;
+
+impl External {
+    /// Attach `shown` (made into a buffer the first time) and commit.
+    fn attach(&mut self, globals: &Globals) {
+        let Some(b) = self.shown.as_ref() else { return };
+        let made = self.imported.iter().find(|(id, w, h, _)| (*id, *w, *h) == (b.id, b.width, b.height)).map(|(.., buffer)| buffer.clone());
+        let buffer = match made {
+            Some(buffer) => buffer,
+            None => {
+                let Some(dmabuf) = &globals.linux_dmabuf else { return };
+                let params = dmabuf.create_params(&globals.qh, ());
+                for (i, plane) in b.planes.iter().enumerate() {
+                    use std::os::fd::AsFd as _;
+                    params.add(plane.fd.as_fd(), i as u32, plane.offset, plane.stride, (b.modifier >> 32) as u32, b.modifier as u32);
+                }
+                let release = crate::platform::linux::wayland::ExternalRelease { id: b.id, released: b.released.clone() };
+                let buffer = params.create_immed(b.width as i32, b.height as i32, b.fourcc, zwp_linux_buffer_params_v1::Flags::empty(), &globals.qh, release);
+                params.destroy();
+                if self.imported.len() >= EXTERNAL_KEEP {
+                    let (.., old) = self.imported.remove(0);
+                    old.destroy();
+                }
+                self.imported.push((b.id, b.width, b.height, buffer.clone()));
+                buffer
+            }
+        };
+        self.surface.attach(Some(&buffer), 0, 0);
+        self.surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
+        self.surface.commit();
+        self.attached = true;
+    }
+
+    fn hide(&mut self) {
+        if self.place.take().is_some() || self.attached {
+            self.surface.attach(None, 0, 0);
+            self.surface.commit();
+            self.attached = false;
+        }
+    }
+
+    fn destroy(self) {
+        for (.., buffer) in self.imported {
+            buffer.destroy();
+        }
+        self.viewport.destroy();
+        self.sub.destroy();
+        self.surface.destroy();
+        // (Its buffers' releases won't come now.)
+        if let Some(b) = self.shown {
+            (b.released)(b.id);
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -232,6 +317,25 @@ enum FrameCallback {
 }
 
 impl WaylandWindowState {
+    /// Olo: external picture `key`, its subsurface made the first time;
+    /// false if the compositor can't show one.
+    fn make_external(&mut self, key: u64) -> bool {
+        if self.externals.contains_key(&key) {
+            return true;
+        }
+        let g = &self.globals;
+        let (Some(subcompositor), Some(viewporter), Some(_)) = (&g.subcompositor, &g.viewporter, &g.linux_dmabuf) else { return false };
+        let surface = g.compositor.create_surface(&g.qh, ());
+        let sub = subcompositor.get_subsurface(&surface, &self.surface, &g.qh, ());
+        sub.set_desync();
+        let viewport = viewporter.get_viewport(&surface, &g.qh, ());
+        let region = g.compositor.create_region(&g.qh, ());
+        surface.set_input_region(Some(&region));
+        region.destroy();
+        self.externals.insert(key, External { surface, sub, viewport, place: None, imported: Vec::new(), shown: None, attached: false });
+        true
+    }
+
     pub(crate) fn new(
         handle: AnyWindowHandle,
         surface: wl_surface::WlSurface,
@@ -322,6 +426,8 @@ impl WaylandWindowState {
             in_progress_window_controls: None,
             window_controls: WindowControls::default(),
             client_inset: None,
+            externals: HashMap::default(),
+            externals_synced: Vec::new(),
         })
     }
 
@@ -414,6 +520,9 @@ impl Drop for WaylandWindow {
         let surface_id = state.surface.id();
         let client = state.client.clone();
 
+        for (_, external) in state.externals.drain() {
+            external.destroy();
+        }
         state.renderer.destroy();
         if let Some(decoration) = &state.decoration {
             decoration.destroy();
@@ -1865,6 +1974,68 @@ impl PlatformWindow for WaylandWindow {
         }
     }
 
+    fn place_externals(&self, places: &[(u64, Bounds<Pixels>)]) {
+        let mut state = self.borrow_mut();
+        let state = &mut *state;
+        for (key, e) in state.externals.iter_mut() {
+            if !places.iter().any(|(k, _)| k == key) {
+                e.hide();
+            }
+        }
+        for (key, bounds) in places {
+            if !state.make_external(*key) {
+                return;
+            }
+            let place = Bounds::new(
+                crate::point(bounds.origin.x.0.round() as i32, bounds.origin.y.0.round() as i32),
+                crate::size(bounds.size.width.0.round().max(1.0) as i32, bounds.size.height.0.round().max(1.0) as i32),
+            );
+            let e = state.externals.get_mut(key).unwrap();
+            if e.place == Some(place) {
+                continue;
+            }
+            // Moved with the frame being drawn: synchronized until it's
+            // committed, so the two change together.
+            e.sub.set_sync();
+            e.sub.set_position(place.origin.x, place.origin.y);
+            e.viewport.set_destination(place.size.width, place.size.height);
+            e.place = Some(place);
+            if e.attached || e.shown.is_none() {
+                e.surface.commit();
+            } else {
+                e.attach(&state.globals);
+            }
+            state.externals_synced.push(*key);
+        }
+    }
+
+    fn set_external_buffer(&self, key: u64, buffer: Option<crate::ExternalBuffer>) {
+        let mut state = self.borrow_mut();
+        let state = &mut *state;
+        let Some(buffer) = buffer else {
+            if let Some(e) = state.externals.remove(&key) {
+                e.destroy();
+            }
+            return;
+        };
+        if !state.make_external(key) {
+            return (buffer.released)(buffer.id);
+        }
+        let e = state.externals.get_mut(&key).unwrap();
+        // One never shown never will be now.
+        if let Some(old) = e.shown.take()
+            && !e.attached
+            && old.id != buffer.id
+        {
+            (old.released)(old.id);
+        }
+        e.shown = Some(buffer);
+        e.attached = false;
+        if e.place.is_some() {
+            e.attach(&state.globals);
+        }
+    }
+
     fn set_drop_accept(&self, accept: Option<crate::DropAccept>) {
         let (client, surface) = {
             let state = self.borrow();
@@ -2013,6 +2184,13 @@ impl PlatformWindow for WaylandWindow {
             state.viewport_source = Some(drawn);
         }
         state.renderer.draw(scene);
+        // Olo: the frame committed, external pictures placed with it show
+        // each new picture as it comes again.
+        for key in std::mem::take(&mut state.externals_synced) {
+            if let Some(e) = state.externals.get(&key) {
+                e.sub.set_desync();
+            }
+        }
     }
 
     fn completed_frame(&self) {

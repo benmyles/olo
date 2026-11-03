@@ -1766,6 +1766,27 @@ event reaches it.
   `Window::set_layer_keyboard(LayerKeyboard)` changes a layer surface's
   keyboard as it shows (`OnDemand` while a banner has a reply field,
   `None` otherwise).
+- External pictures (Olo's GPUI): another program's dmabuf shown in a
+  window by the compositor itself, never copied (Agent Screens' Live).
+  - `Window::set_external_buffer(key, Some(ExternalBuffer))` sets the
+    picture `key` shows: an id, size, DRM format and modifier, its
+    planes' descriptors, and `released`, told the id once the compositor
+    is done with it. It's made into a `wl_buffer` once per id (a few
+    kept) and shows at once, with no frame drawn.
+  - `Window::place_external(key, bounds)` is called as the frame paints.
+    It's kept as a paint record, so a cached view's replay brings it
+    along. A key not placed in a frame is hidden, and None lets it go
+    with its buffers.
+  - `Window::external_bounds(bounds)` is where it shows, to the device
+    pixel: corners at whole points, then the device pixels the compositor
+    rounds them to. Draw round that.
+  - `App::external_modifiers(fourcc)` lists the modifiers the compositor
+    takes (linux-dmabuf v3's events). It's empty without a subcompositor,
+    viewporter or linux-dmabuf.
+  - On Wayland it's a desynchronized `wl_subsurface` with an empty input
+    region (the pointer reaches the window under it), scaled by a
+    `wp_viewport`. When the place changes with a frame, it's synchronized
+    until that frame's commit, so window and picture move together.
 - Ordinary hitboxes don't block what is under them: a `Button` or
   `TextControl` placed over something clickable (a card) needs
   `.occlude()` on its wrapper, or the click reaches both.
@@ -4561,7 +4582,9 @@ its request, for the app's Cancel and for holding an upgrade off.
   as one app left goes to the next. `olo-portal read-test NODE OUT.png
   [--dmabuf|--linear]` reads a node as an app does (dmabufs read back
   through gbm), and `share-test` takes the same flags.
-- **Capture** (`capture.rs` in both): the portal is a client of
+- **Capture** (app_server's `capture.rs`; the client is the
+  `olo-capture` crate, shared with Agent Screens' live view,
+  `olo_capture::live`): the portal is a client of
   app_server's ext-image-copy-capture on the direct socket
   (`olo-$WAYLAND_DISPLAY-direct`: olo-wlproxy hides the protocol from
   outside programs). It allocates a dmabuf with gbm on the render node
@@ -6960,14 +6983,39 @@ file, and `--crop` cuts an RGBA picture down in process (png crate).
 The person's side is the window (`olo-screen`, or `olo-screen
 watch NAME`; on the GPUI kit): the screens in a sidebar and the chosen
 one's Live tab, the screen with the agent's pointer drawn in and its
-latest action under it. A picture is taken only when the screen has
-drawn something new (`viewer::watch_screen`: one worker follows the
-screen's `EventKind::Painted`, another asks for a `format: "rgba"`
-picture then, at most eight a second, and reads it back; from an
-app_server before `Painted`, eight a second), only while Live shows, so
-a screen at rest costs nothing to watch; each is resampled on a worker
-to the device size it's shown at (`picture.rs`, the last standing in
-until it's made). Take Control (⌘K) steps in: the person's pointer,
+latest action under it. Live shows the screen's own frames as it draws
+them, never copied (`viewer::stream_live`, `olo_capture::live`):
+- The screen's app_server captures each frame on the GPU into one of
+  three dmabufs in turn. Frames come only when the screen changed, at
+  its refresh (agent screens start at 120 Hz, `screens::fastest`).
+- The viewer hands each buffer to its window (`Window::set_external_buffer`,
+  `ExternalBuffer`), and the person's app_server shows it in the well's
+  place as a subsurface (`Window::place_external`, `picture.rs`).
+- A buffer is captured into again once the person's app_server lets it
+  go (`wl_buffer.release` → `Waker::released`).
+
+The window draws nothing for a frame, and nothing is read back. Dragging
+a window on the screen for 5 s: the viewer used 0.6% of a core for
+~60 frames a second (120 at 120 Hz). Picture by picture it used 30% for
+8 a second and missed pointer-only changes.
+
+The picture's corners sit at whole points (subsurfaces can't be placed
+finer). `Window::external_bounds` gives the device pixels the compositor
+rounds them to, so the frame line drawn round it is flush at every
+scale; measured at 1, 1.25, 1.5, 1.75 and 2×, resized to odd sizes.
+
+Where the two app_servers share no dmabuf layout (`App::external_modifiers`
+empty, or `OLO_SCREEN_PICTURES` set to compare), it takes pictures as
+before:
+- one worker follows the screen's `EventKind::Painted`; another asks for
+  a `format: "rgba"` picture then, at most eight a second, and reads it
+  back (an app_server from before `Painted`: eight a second);
+- each picture is resampled on a worker to the device size it's shown at
+  (the last stands in until it's made).
+
+Either way only while Live shows, so a screen at rest costs nothing to
+watch. A live view that ends (the screen's app_server restarting) starts
+again every half second. Take Control (⌘K) steps in: the person's pointer,
 wheel and keys over the picture go to that screen through another worker
 over a connection kept to it, moves run together to the last (keys by
 their evdev codes on a US keyboard, the agent's, from the keys GPUI

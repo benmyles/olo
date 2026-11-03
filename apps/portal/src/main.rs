@@ -32,7 +32,7 @@ use olo_ui::{
 mod access;
 mod account;
 mod background;
-mod capture;
+use olo_capture as capture;
 mod chooser;
 mod client;
 mod email;

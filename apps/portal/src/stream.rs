@@ -29,7 +29,7 @@ use pipewire as pw;
 use pw::{properties::properties, spa};
 use wayland_client::protocol::wl_buffer::WlBuffer;
 
-use crate::capture::{Capture, Source};
+use olo_capture::{Capture, Source};
 
 /// A running share: setting `stop`, or dropping it, ends it.
 pub struct Share {

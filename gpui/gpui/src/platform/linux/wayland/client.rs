@@ -34,9 +34,10 @@ use wayland_client::{
     Connection, Dispatch, Proxy, QueueHandle, delegate_noop,
     protocol::{
         wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm,
-        wl_shm_pool, wl_surface,
+        wl_shm_pool, wl_subcompositor, wl_subsurface, wl_surface,
     },
 };
+use wayland_protocols::wp::linux_dmabuf::zv1::client::{zwp_linux_buffer_params_v1, zwp_linux_dmabuf_v1};
 use wayland_protocols::wp::cursor_shape::v1::client::{
     wp_cursor_shape_device_v1, wp_cursor_shape_manager_v1,
 };
@@ -146,6 +147,10 @@ pub struct Globals {
     pub idle_inhibit_manager: Option<zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1>,
     /// Olo: each display's size in points (a fractional scale's too).
     pub xdg_output_manager: Option<zxdg_output_manager_v1::ZxdgOutputManagerV1>,
+    /// Olo: other programs' pictures shown over a window, in GPU memory
+    /// (`Window::place_external`).
+    pub subcompositor: Option<wl_subcompositor::WlSubcompositor>,
+    pub linux_dmabuf: Option<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1>,
     pub executor: ForegroundExecutor,
 }
 
@@ -191,6 +196,10 @@ impl Globals {
             text_input_manager: globals.bind(&qh, 1..=1, ()).ok(),
             idle_inhibit_manager: globals.bind(&qh, 1..=1, ()).ok(),
             xdg_output_manager: globals.bind(&qh, 3..=3, ()).ok(),
+            subcompositor: globals.bind(&qh, 1..=1, ()).ok(),
+            // (Version 3: its formats come as events, each with its
+            // modifiers.)
+            linux_dmabuf: globals.bind(&qh, 3..=3, ()).ok(),
             executor,
             qh,
         }
@@ -337,6 +346,9 @@ pub(crate) struct WaylandClientState {
     /// Olo: the context being made on a thread of its own since the
     /// client started (`BladeContext::ahead`), for the first window.
     gpu_context_ahead: Option<std::thread::JoinHandle<anyhow::Result<BladeContext>>>,
+    /// Olo: the modifiers the compositor takes dmabufs of each format
+    /// with (linux-dmabuf's events), for external pictures.
+    dmabuf_modifiers: HashMap<u32, Vec<u64>>,
     wl_seat: wl_seat::WlSeat, // TODO: Multi seat support
     wl_pointer: Option<wl_pointer::WlPointer>,
     wl_keyboard: Option<wl_keyboard::WlKeyboard>,
@@ -893,6 +905,7 @@ impl WaylandClient {
             globals,
             gpu_context: None,
             gpu_context_ahead: Some(BladeContext::ahead()),
+            dmabuf_modifiers: HashMap::default(),
             session_lock: None,
             connection: conn.clone(),
             wl_seat: seat,
@@ -1337,6 +1350,15 @@ impl LinuxClient for WaylandClient {
         self.0.borrow().selection_source.is_some()
     }
 
+    fn external_modifiers(&self, fourcc: u32) -> Vec<u64> {
+        let state = self.0.borrow();
+        let g = &state.globals;
+        if g.subcompositor.is_none() || g.viewporter.is_none() || g.linux_dmabuf.is_none() {
+            return Vec::new();
+        }
+        state.dmabuf_modifiers.get(&fourcc).cloned().unwrap_or_default()
+    }
+
     fn read_from_primary(&self) -> Option<crate::ClipboardItem> {
         self.0.borrow_mut().clipboard.read_primary()
     }
@@ -1481,6 +1503,52 @@ delegate_noop!(WaylandClientStatePtr: ignore zwp_idle_inhibitor_v1::ZwpIdleInhib
 delegate_noop!(WaylandClientStatePtr: ignore org_kde_kwin_blur::OrgKdeKwinBlur);
 delegate_noop!(WaylandClientStatePtr: ignore wp_viewporter::WpViewporter);
 delegate_noop!(WaylandClientStatePtr: ignore wp_viewport::WpViewport);
+delegate_noop!(WaylandClientStatePtr: ignore wl_subcompositor::WlSubcompositor);
+delegate_noop!(WaylandClientStatePtr: ignore wl_subsurface::WlSubsurface);
+delegate_noop!(WaylandClientStatePtr: ignore zwp_linux_buffer_params_v1::ZwpLinuxBufferParamsV1);
+
+impl Dispatch<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1, ()> for WaylandClientStatePtr {
+    fn event(
+        this: &mut Self,
+        _: &zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1,
+        event: zwp_linux_dmabuf_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let zwp_linux_dmabuf_v1::Event::Modifier { format, modifier_hi, modifier_lo } = event {
+            let client = this.get_client();
+            let mut state = client.borrow_mut();
+            let modifier = (u64::from(modifier_hi) << 32) | u64::from(modifier_lo);
+            let list = state.dmabuf_modifiers.entry(format).or_default();
+            if !list.contains(&modifier) {
+                list.push(modifier);
+            }
+        }
+    }
+}
+
+/// Olo: an external picture's buffer (`Window::set_external_buffer`):
+/// its id, told to its owner when the compositor lets it go.
+pub(crate) struct ExternalRelease {
+    pub id: u64,
+    pub released: std::sync::Arc<dyn Fn(u64) + Send + Sync>,
+}
+
+impl Dispatch<wl_buffer::WlBuffer, ExternalRelease> for WaylandClientStatePtr {
+    fn event(
+        _: &mut Self,
+        _: &wl_buffer::WlBuffer,
+        event: wl_buffer::Event,
+        data: &ExternalRelease,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_buffer::Event::Release = event {
+            (data.released)(data.id);
+        }
+    }
+}
 
 impl Dispatch<WlCallback, ObjectId> for WaylandClientStatePtr {
     fn event(

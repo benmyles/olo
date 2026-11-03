@@ -7,12 +7,17 @@
 //! History (`replay`: its actions as they come, to search, filter and
 //! play back) and Stats (`stats`).
 //!
-//! Live takes a picture only when the screen has drawn something new
-//! (its app_server says so, `EventKind::Painted`), at most eight a second:
-//! a screen at rest costs nothing to watch. The pictures are taken by a
-//! worker, input goes out through another (moves run together, over one
-//! connection) and the history is followed by a third, so the window
-//! never waits on a screen or a disk.
+//! Live shows the screen's own frames as it draws them, never copied:
+//! its app_server captures each into one of a few dmabufs on the GPU
+//! (`olo_capture::live`), and the person's compositor shows that over
+//! the window (`Window::place_external`), at the screen's frame rate
+//! with nothing read back. Where the two can't share dmabufs it takes a
+//! picture instead when the screen has drawn something new (its
+//! app_server says so, `EventKind::Painted`), at most eight a second.
+//! Either way a screen at rest costs nothing to watch. Frames come
+//! through a worker, input goes out through another (moves run
+//! together, over one connection) and the history is followed by a
+//! third, so the window never waits on a screen or a disk.
 
 use olo_sync::{Condvar, Mutex};
 use std::{
@@ -27,11 +32,12 @@ use std::{
     time::{Duration, Instant},
 };
 
+use olo_capture::live::{Live, XRGB8888};
 use olo_protocol::{Client, Event, EventKind, ImageFormat, Reply, Request, SyntheticEvent};
 use olo_ui::{
     Frame, Menu, MenuBar, Proxy, agent, file_panel,
     gpui::{
-        App, AppContext as _, Context, Entity, FocusHandle, FontWeight, HitboxBehavior, InteractiveElement as _, IntoElement, KeyDownEvent, KeyUpEvent, Modifiers, ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Render, ScrollDelta,
+        App, AppContext as _, Context, Entity, ExternalBuffer, ExternalPlane, FocusHandle, FontWeight, HitboxBehavior, InteractiveElement as _, IntoElement, KeyDownEvent, KeyUpEvent, Modifiers, ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Render, ScrollDelta,
         ScrollHandle, ScrollWheelEvent, SharedString, Styled as _, Subscription, Task, Window, WindowHandle, canvas, div, point, px, size,
     },
     icons, keys, metrics as m,
@@ -48,8 +54,11 @@ use crate::{
     stats,
 };
 
-/// Frames a second, at most.
+/// Pictures a second, at most, where frames can't be shown live.
 const FPS: f64 = 8.0;
+/// A live view that ended (the screen's app_server restarting) is tried
+/// again this often.
+const LIVE_RETRY: Duration = Duration::from_millis(500);
 /// The sidebar's width, less in a small window.
 const SIDEBAR_W: f32 = 196.0;
 const SIDEBAR_MIN_W: f32 = 160.0;
@@ -69,6 +78,8 @@ pub enum Msg {
     /// each with when it was last used, most recent first.
     Rows(Vec<Row>),
     Frame { name: String, shot: Arc<Shot> },
+    /// A frame shown live: watch `watch`'s.
+    Live { watch: u64, buffer: ExternalBuffer },
     Failed { name: String, message: String },
     Started(Result<Screen, String>),
     Stopped(Result<(), String>),
@@ -206,11 +217,16 @@ fn watch_list(proxy: Proxy) {
     });
 }
 
-/// A screen being watched for the Live tab: a picture is taken each time
-/// it draws something new, at most [`FPS`] a second, until it's dropped.
+/// A screen being watched for the Live tab, until it's dropped: its
+/// frames shown live, or a picture taken each time it draws something
+/// new, at most [`FPS`] a second.
 struct Watching {
     name: String,
+    /// Tells its frames from an earlier watch's.
+    id: u64,
     stop: Arc<AtomicBool>,
+    /// What wakes the live view's worker to end.
+    live: Arc<Mutex<Option<olo_capture::live::Waker>>>,
     /// The connection the screen's events come on (shut to stop).
     events: Arc<Mutex<Option<UnixStream>>>,
     /// Something new to take a picture of.
@@ -220,6 +236,9 @@ struct Watching {
 impl Drop for Watching {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
+        if let Some(w) = self.live.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            w.stop();
+        }
         if let Some(s) = self.events.lock().unwrap_or_else(|e| e.into_inner()).take() {
             let _ = s.shutdown(std::net::Shutdown::Both);
         }
@@ -233,81 +252,144 @@ fn mark(dirty: &(Mutex<bool>, Condvar)) {
     dirty.1.notify_all();
 }
 
-/// Watch screen `name`: one worker hears when it draws something new
-/// (`Painted`; from an app_server before those, every frame's time), the
-/// other takes the picture then.
-fn watch_screen(name: &str, proxy: Proxy) -> Watching {
-    let w = Watching { name: name.to_owned(), stop: Arc::default(), events: Arc::default(), dirty: Arc::new((Mutex::new(true), Condvar::new())) };
+/// Watch screen `name`: its frames shown live where the window's
+/// compositor takes dmabufs with `modifiers` (`stream_live`); else one
+/// worker hears when it draws something new (`Painted`; from an
+/// app_server before those, every frame's time), the other takes the
+/// picture then.
+fn watch_screen(name: &str, proxy: Proxy, modifiers: Vec<u64>) -> Watching {
+    static WATCHES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let w = Watching {
+        name: name.to_owned(),
+        id: WATCHES.fetch_add(1, Ordering::Relaxed),
+        stop: Arc::default(),
+        live: Arc::default(),
+        events: Arc::default(),
+        dirty: Arc::new((Mutex::new(true), Condvar::new())),
+    };
     let period = Duration::from_secs_f64(1.0 / FPS);
-    {
-        let (name, proxy, stop, dirty) = (name.to_owned(), proxy.clone(), w.stop.clone(), w.dirty.clone());
-        let _ = std::thread::Builder::new().name("screen-picture".into()).spawn(move || {
-            // In a folder of their own: the screens' folder is followed
-            // for screens coming and going, not for frames.
-            let views = screens::dir().join("views");
-            let path = views.join(format!("view-{}.rgba", std::process::id()));
-            let _ = std::fs::create_dir_all(&views);
-            loop {
-                {
-                    let mut d = dirty.0.lock().unwrap_or_else(|e| e.into_inner());
-                    while !*d && !stop.load(Ordering::Relaxed) {
-                        d = dirty.1.wait(d).unwrap_or_else(|e| e.into_inner());
-                    }
-                    if stop.load(Ordering::Relaxed) {
-                        break;
-                    }
-                    *d = false;
+    let (id, name, stop, live, events, dirty) = (w.id, name.to_owned(), w.stop.clone(), w.live.clone(), w.events.clone(), w.dirty.clone());
+    let _ = std::thread::Builder::new().name("screen-picture".into()).spawn(move || {
+        if !modifiers.is_empty() && stream_live(id, &name, &proxy, &modifiers, &stop, &live) {
+            return;
+        }
+        follow_paints(&name, stop.clone(), events, dirty.clone(), period);
+        // In a folder of their own: the screens' folder is followed for
+        // screens coming and going, not for frames.
+        let views = screens::dir().join("views");
+        let path = views.join(format!("view-{}.rgba", std::process::id()));
+        let _ = std::fs::create_dir_all(&views);
+        loop {
+            {
+                let mut d = dirty.0.lock().unwrap_or_else(|e| e.into_inner());
+                while !*d && !stop.load(Ordering::Relaxed) {
+                    d = dirty.1.wait(d).unwrap_or_else(|e| e.into_inner());
                 }
-                let began = Instant::now();
-                let shot = screens::get(&name).and_then(|s| {
-                    s.picture(&path, None, true, ImageFormat::Rgba)?;
-                    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
-                    decode(bytes).ok_or_else(|| "the picture was cut short".to_owned())
-                });
                 if stop.load(Ordering::Relaxed) {
                     break;
                 }
-                match shot {
-                    Ok(shot) => proxy.send(Msg::Frame { name: name.clone(), shot: Arc::new(shot) }),
-                    Err(message) => proxy.send(Msg::Failed { name: name.clone(), message }),
-                }
-                std::thread::sleep(period.saturating_sub(began.elapsed()));
+                *d = false;
             }
-            let _ = std::fs::remove_file(&path);
-        });
-    }
-    {
-        let (name, stop, events, dirty) = (name.to_owned(), w.stop.clone(), w.events.clone(), w.dirty.clone());
-        let _ = std::thread::Builder::new().name("screen-events".into()).spawn(move || {
-            let client = screens::get(&name).and_then(|s| Client::connect_to(&s.olo_socket).map_err(|e| e.to_string()));
-            let Ok(mut client) = client else { return };
-            *events.lock().unwrap_or_else(|e| e.into_inner()) = client.closer().ok();
+            let began = Instant::now();
+            let shot = screens::get(&name).and_then(|s| {
+                s.picture(&path, None, true, ImageFormat::Rgba)?;
+                let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+                decode(bytes).ok_or_else(|| "the picture was cut short".to_owned())
+            });
             if stop.load(Ordering::Relaxed) {
-                return;
+                break;
             }
-            match client.request(&Request::SubscribeTo { events: vec![EventKind::Painted] }) {
-                Ok(Reply::Ok) => {
-                    while let Ok(reply) = client.read() {
-                        if stop.load(Ordering::Relaxed) {
-                            return;
-                        }
-                        if let Reply::Event { event: Event::Painted { .. } } = reply {
-                            mark(&dirty);
-                        }
-                    }
-                }
-                // An app_server from before it said when it drew: a
-                // picture each frame's time.
-                _ => {
-                    while !stop.load(Ordering::Relaxed) {
-                        mark(&dirty);
-                        std::thread::sleep(period);
-                    }
-                }
+            match shot {
+                Ok(shot) => proxy.send(Msg::Frame { name: name.clone(), shot: Arc::new(shot) }),
+                Err(message) => proxy.send(Msg::Failed { name: name.clone(), message }),
             }
-        });
-    }
+            std::thread::sleep(period.saturating_sub(began.elapsed()));
+        }
+        let _ = std::fs::remove_file(&path);
+    });
     w
+}
+
+/// Show screen `name`'s frames live until the watch stops (true), or
+/// false at once if they can't come that way (pictures are taken then).
+/// A view that ends (the screen's app_server restarting) starts again.
+fn stream_live(watch: u64, name: &str, proxy: &Proxy, modifiers: &[u64], stop: &AtomicBool, slot: &Mutex<Option<olo_capture::live::Waker>>) -> bool {
+    let mut streamed = false;
+    loop {
+        if stop.load(Ordering::Relaxed) {
+            return true;
+        }
+        let started = screens::get(name).and_then(|s| Live::start(Some(&s.wayland_display), &olo_capture::Source::Output(None), true, modifiers));
+        let mut live = match started {
+            Ok(live) => live,
+            Err(e) if !streamed => {
+                tracing::info!("screen {name}: no live view ({e}); taking pictures");
+                return false;
+            }
+            Err(_) => {
+                std::thread::sleep(LIVE_RETRY);
+                continue;
+            }
+        };
+        let waker = live.waker();
+        *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(waker.clone());
+        // (Stopped as it started: the watch found no waker to wake.)
+        if stop.load(Ordering::Relaxed) {
+            return true;
+        }
+        let released: Arc<dyn Fn(u64) + Send + Sync> = Arc::new(move |id| waker.released(id));
+        loop {
+            match live.next() {
+                Ok(Some(f)) => {
+                    streamed = true;
+                    let planes = f.planes.into_iter().map(|(fd, offset, stride)| ExternalPlane { fd, offset, stride }).collect();
+                    let buffer = ExternalBuffer { id: f.id, width: f.width, height: f.height, fourcc: f.fourcc, modifier: f.modifier, planes, released: released.clone() };
+                    proxy.send(Msg::Live { watch, buffer });
+                }
+                Ok(None) => return true,
+                Err(e) => {
+                    tracing::info!("screen {name}: the live view ended ({e}); starting it again");
+                    break;
+                }
+            }
+        }
+        *slot.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        std::thread::sleep(LIVE_RETRY);
+    }
+}
+
+/// Mark `dirty` each time screen `name` draws something new, until
+/// `stop`.
+fn follow_paints(name: &str, stop: Arc<AtomicBool>, events: Arc<Mutex<Option<UnixStream>>>, dirty: Arc<(Mutex<bool>, Condvar)>, period: Duration) {
+    let name = name.to_owned();
+    let _ = std::thread::Builder::new().name("screen-events".into()).spawn(move || {
+        let client = screens::get(&name).and_then(|s| Client::connect_to(&s.olo_socket).map_err(|e| e.to_string()));
+        let Ok(mut client) = client else { return };
+        *events.lock().unwrap_or_else(|e| e.into_inner()) = client.closer().ok();
+        if stop.load(Ordering::Relaxed) {
+            return;
+        }
+        match client.request(&Request::SubscribeTo { events: vec![EventKind::Painted] }) {
+            Ok(Reply::Ok) => {
+                while let Ok(reply) = client.read() {
+                    if stop.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    if let Reply::Event { event: Event::Painted { .. } } = reply {
+                        mark(&dirty);
+                    }
+                }
+            }
+            // An app_server from before it said when it drew: a picture
+            // each frame's time.
+            _ => {
+                while !stop.load(Ordering::Relaxed) {
+                    mark(&dirty);
+                    std::thread::sleep(period);
+                }
+            }
+        }
+    });
 }
 
 /// Width, height (little-endian u32), then straight RGBA rows (opaque).
@@ -416,6 +498,10 @@ pub struct Viewer {
     tab: Tab,
     /// The screen the Live tab shows, being watched.
     watching: Option<Watching>,
+    /// The modifiers the window's compositor takes BGRx dmabufs with
+    /// (empty: frames can't be shown live; `OLO_SCREEN_PICTURES` set:
+    /// pictures taken anyway, to compare).
+    modifiers: Vec<u64>,
     live: Entity<PictureWell>,
     failure: Option<String>,
     controlling: bool,
@@ -460,6 +546,7 @@ impl Viewer {
             selected,
             tab: saved.tab,
             watching: None,
+            modifiers: if std::env::var_os("OLO_SCREEN_PICTURES").is_some() { Vec::new() } else { cx.external_modifiers(XRGB8888) },
             live: cx.new(|_| PictureWell::new("Screen")),
             failure: None,
             controlling: false,
@@ -535,10 +622,25 @@ impl Viewer {
     fn watch(&mut self, cx: &mut Context<Self>) {
         let live = (self.shown_tab() == Tab::Live).then(|| self.screen().map(|s| s.name.clone())).flatten();
         if self.watching.as_ref().map(|w| &w.name) != live.as_ref() {
-            self.watching = live.map(|n| watch_screen(&n, self.proxy.clone()));
+            if self.watching.take().is_some() {
+                self.forget_live(cx);
+            }
+            self.watching = live.map(|n| watch_screen(&n, self.proxy.clone(), self.modifiers.clone()));
         }
         let shape = self.screen().map(|s| (s.width as f32, s.height as f32));
         self.live.update(cx, |w, _| w.set_shape(shape));
+    }
+
+    /// Let go of the frames shown live (the compositor's buffers of them
+    /// too), once the window is free to be told.
+    fn forget_live(&mut self, cx: &mut Context<Self>) {
+        let key = self.live.read(cx).external_key();
+        self.live.update(cx, |w, cx| w.clear(None, cx));
+        if let Some(win) = self.win {
+            cx.defer(move |cx| {
+                let _ = win.update(cx, |_, window, _| window.set_external_buffer(key, None));
+            });
+        }
     }
 
     /// The tab showing: Live only for a running screen.
@@ -739,6 +841,22 @@ impl Viewer {
                 if self.selected.as_ref() == Some(&name) && self.watching.as_ref().is_some_and(|w| w.name == name) {
                     self.failure = None;
                     self.live.update(cx, |w, cx| w.set_shot(shot, cx));
+                }
+                return;
+            }
+            Msg::Live { watch, buffer } => {
+                let (Some(win), true) = (self.win, self.watching.as_ref().is_some_and(|w| w.id == watch)) else {
+                    return (buffer.released)(buffer.id);
+                };
+                self.failure = None;
+                let size = (buffer.width, buffer.height);
+                let key = self.live.update(cx, |w, cx| {
+                    w.set_live(size, cx);
+                    w.external_key()
+                });
+                if let Err(e) = win.update(cx, |_, window, _| window.set_external_buffer(key, Some(buffer.clone()))) {
+                    tracing::debug!("a live frame with no window to show it: {e}");
+                    (buffer.released)(buffer.id);
                 }
                 return;
             }

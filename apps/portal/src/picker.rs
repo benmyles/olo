@@ -30,10 +30,9 @@ use olo_ui::{
     },
 };
 
-use crate::{
-    capture::{Capture, Source},
-    ui::{self, Answer},
-};
+use olo_capture::{Capture, Source};
+
+use crate::ui::{self, Answer};
 
 /// Source types (bits), as the portal says them.
 pub const SCREENS: u32 = 1;

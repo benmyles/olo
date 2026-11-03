@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Agent Screens: Live at the screen's own frame rate
+
+*21:34* — Live now shows the agent screen's own frames, shared with the person's compositor as dmabufs (a subsurface of the window), at up to 120 frames a second; before, it took up to eight pictures a second and resampled each on the CPU (30% of a core while the screen moved, 0.6% now). The frame line round the picture stays flush at every scale.
+
+![Agent Screens: Live at the screen's own frame rate](2026-11-02/213423-agent-screens-live-at-the-screen-s-own-frame-rat.png)
+
 ### Telegram: changes kept until Telegram has them
 
 *20:30* — Archiving, reading, muting and pinning go into an outbox on disk and leave it only once Telegram has them, sent again on the next start if need be. A line under the chat list shows them going; quitting waits up to 30 s for them (Quit Now quits at once; what's left is kept). The demo account, its changes slowed down to show it.

@@ -1,0 +1,15 @@
+[package]
+name = "olo-capture"
+description = "A client of app_server's screen capture (ext-image-copy-capture, on its direct socket): frames into GPU buffers (dmabufs) or shared memory"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+olo-xdg.workspace = true
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+memmap2 = "0.9"
+libc = "0.2"
+gbm = { version = "0.18", default-features = false }
+tracing.workspace = true

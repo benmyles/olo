@@ -1,13 +1,19 @@
 //! A screen's picture in a sunken well (the Live tab's, the History
 //! tab's): fitted whole, centred, a line round it, or a word in its place
-//! ("Connecting…"). Drawn exactly: each frame is resampled on a worker to
-//! the very device size it's shown at (Lanczos) and drawn a texture pixel
-//! to a device pixel; while one is made (a new frame, a resize) the last
-//! stands in, and what it replaced goes from the window's atlas. Where
-//! the picture went is kept for what goes over it (clicks forwarded to
-//! the screen, a replay's rings).
+//! ("Connecting…"). A picture is drawn exactly: each frame is resampled
+//! on a worker to the very device size it's shown at (Lanczos) and drawn
+//! a texture pixel to a device pixel; while one is made (a new frame, a
+//! resize) the last stands in, and what it replaced goes from the
+//! window's atlas. Frames shown live (`set_live`) are another program's
+//! dmabufs the compositor shows in the well's place
+//! (`Window::place_external`, at whole points), each as it comes, the
+//! window drawing nothing for them. Where the picture went is kept for
+//! what goes over it (clicks forwarded to the screen, a replay's rings).
 
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 
 use olo_ui::{
     gpui::{AppContext as _, Bounds, Context, FontWeight, IntoElement, ParentElement as _, Pixels, Render, RenderImage, SharedString, Styled as _, Task, Window, canvas, div, point, px},
@@ -51,16 +57,41 @@ pub struct PictureWell {
     /// Where the picture went when last painted.
     shown: Option<Bounds<Pixels>>,
     name: SharedString,
+    /// Frames shown live, of this size (pixels), under `key`.
+    live: Option<(u32, u32)>,
+    key: u64,
 }
 
 impl PictureWell {
     pub fn new(name: impl Into<SharedString>) -> PictureWell {
-        PictureWell { shot: None, generation: 0, shape: None, text: None, exact: None, making: None, dropped: Vec::new(), shown: None, name: name.into() }
+        static KEYS: AtomicU64 = AtomicU64::new(1);
+        PictureWell { shot: None, generation: 0, shape: None, text: None, exact: None, making: None, dropped: Vec::new(), shown: None, name: name.into(), live: None, key: KEYS.fetch_add(1, Ordering::Relaxed) }
+    }
+
+    /// Show frames live, of `size` (`Window::set_external_buffer` under
+    /// [`PictureWell::external_key`] gives them): drawn again only when
+    /// that changes.
+    pub fn set_live(&mut self, size: (u32, u32), cx: &mut Context<Self>) {
+        if self.live != Some(size) || self.text.is_some() || self.shot.is_some() {
+            self.live = Some(size);
+            self.text = None;
+            self.shot = None;
+            self.generation += 1;
+            self.making = None;
+            self.dropped.extend(self.exact.take().map(|(_, i)| i));
+            cx.notify();
+        }
+    }
+
+    /// What the frames shown live are given to the window under.
+    pub fn external_key(&self) -> u64 {
+        self.key
     }
 
     /// Show `shot` (a new frame).
     pub fn set_shot(&mut self, shot: Arc<Shot>, cx: &mut Context<Self>) {
         self.shot = Some(shot);
+        self.live = None;
         self.generation += 1;
         self.text = None;
         cx.notify();
@@ -68,8 +99,9 @@ impl PictureWell {
 
     /// Show nothing: `text` in its place (None: just the well).
     pub fn clear(&mut self, text: Option<SharedString>, cx: &mut Context<Self>) {
-        if self.shot.is_some() || self.text != text {
+        if self.shot.is_some() || self.live.is_some() || self.text != text {
             self.shot = None;
+            self.live = None;
             self.generation += 1;
             self.making = None;
             self.dropped.extend(self.exact.take().map(|(_, i)| i));
@@ -93,7 +125,7 @@ impl PictureWell {
     }
 
     pub fn has_shot(&self) -> bool {
-        self.shot.is_some()
+        self.shot.is_some() || self.live.is_some()
     }
 
     /// Where the picture was last drawn (None: no picture showed).
@@ -110,15 +142,27 @@ impl PictureWell {
         let inner = style::inset(window, well, 2.0);
         style::fill_rect(window, inner, style::shade(&p, p.panel_background, 1.18));
         let picture = self.shot.as_ref().filter(|_| self.text.is_none()).cloned();
-        let (w, h) = match &picture {
-            Some(s) => (s.size[0] as f32, s.size[1] as f32),
-            None => self.shape.unwrap_or((16.0, 10.0)),
+        let live = self.live.filter(|_| self.text.is_none());
+        let (w, h) = match (&picture, live) {
+            (Some(s), _) => (s.size[0] as f32, s.size[1] as f32),
+            (None, Some((w, h))) => (w as f32, h as f32),
+            (None, None) => self.shape.unwrap_or((16.0, 10.0)),
         };
         let aspect = w / h.max(1.0);
         let room = Bounds::from_corners(inner.origin + point(px(m::SPACING), px(m::SPACING)), inner.bottom_right() - point(px(m::SPACING), px(m::SPACING)));
         let (rw, rh) = (f32::from(room.size.width).max(1.0), f32::from(room.size.height).max(1.0));
         let (pw, ph) = if rw / rh > aspect { (rh * aspect, rh) } else { (rw, rw / aspect) };
         let pic = style::snap_centred(window, room.center(), pw, ph);
+        if let Some((lw, lh)) = live {
+            // Where the compositor can show it: at whole points.
+            let pic = window.external_bounds(pic);
+            self.shown = Some(pic);
+            let hair = style::hairline(window);
+            style::fill_rect(window, Bounds::from_corners(pic.origin - point(hair, hair), pic.bottom_right() + point(hair, hair)), style::c(p.control_border));
+            window.place_external(self.key, pic);
+            agent::record(window, cx, agent::Node { role: "Image", name: Some(self.name.clone()), value: Some(format!("{lw} × {lh}").into()), bounds: pic, enabled: true, ..Default::default() });
+            return;
+        }
         let Some(shot) = picture else {
             self.shown = None;
             let text = self.text.clone().unwrap_or_default();

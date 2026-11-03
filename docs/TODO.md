@@ -7,6 +7,100 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
+- **A window's tab menu: Close and Quit with their keys** (Ben, 2026-11-02): "for
+  some reason "Close" in the tab context menus doesn't have a shortcut.
+  on the mac profile super+w should close and for the other profiles set
+  them to whatever is standard". The menu is the palette's
+  (apps/palette/src/window_menu.rs): its last item is a plain
+  `.item("Close", "close")`, so no key shows next to it.
+  - app_server's `close-window` shortcut has no key on the Mac and BeOS
+    profiles, and Alt+F4 on Windows (crates/protocol/src/shortcuts.rs).
+  - Each app's own close is `app.close` (crates/protocol/src/app_keys.rs):
+    ⌘W on Mac, Ctrl+W on Windows, Alt+W on BeOS.
+  - Show the profile's key next to Close: ⌘W on Mac, Ctrl+W (with
+    Alt+F4) on Windows, Alt+W on BeOS. Take it from the same tables, so
+    it follows the person's own key changes.
+  - Don't give app_server's `close-window` ⌘W. app_server would then
+    take ⌘W before apps, and apps whose ⌘W closes a tab rather than the
+    window (Terminal, Chrome) would lose it. Choose how the menu's key
+    and the apps' key stay one thing.
+  - Ben, later: "if it is a window with multiple tabs then cmd+w should
+    still close the tab, it would only close the window when the last
+    tab is closed too". So ⌘W closes the tab whose menu it is: one
+    window of a group (`f.grouped`) leaves the group's other tabs open,
+    and an app's own tab (Terminal's, Chrome's) goes as that app's ⌘W
+    does. The whole window closes only with its last tab. The menu's
+    Close does the same, and its label says which (Close Tab while
+    there are others).
+  - Ben, later still: "also add a Quit option to menus and that should
+    be cmd+q on mac and whatever is normal on the other ones. and the
+    diff is cmd+w closes each tab then/or window whereas Quit closes the
+    whole app".
+    - Add Quit (Quit APP, the app's name) under Close.
+    - Show the app's own quit key from `app.quit` (or its own:
+      Terminal's `terminal.quit` is Ctrl+Shift+Q on Windows): ⌘Q on Mac,
+      Ctrl+Q on Windows, Alt+Q on BeOS.
+    - Choosing it quits the whole program, every window of it:
+      - a kit app is asked as its own Quit would be (it may ask to save
+        first);
+      - another program gets each of its windows closed, as Deskbar's
+        Quit does.
+  - Ben, also: "quitting or closing a window should both still show the
+    warning/confirmation (i think we already have this in some places)
+    if there is activity in the tab/window/app to make sure the user
+    meant to close it".
+    - Close (a tab, a window) and Quit from this menu go through the
+      app's own close and quit, never around them. Terminal still asks
+      "Close anyway?" for a tab running something (apps/terminal/src/ui.rs
+      `ConfirmClose`), and an editor still asks to save.
+    - Quit asks once for the whole app, naming what's going on.
+    - Check every kit app that asks today, and give the ones that should
+      ask but don't (a download, a copy under way) the same ask, in the
+      kit.
+  - A test in window_menu.rs's `keys_of`.
+
+- **Deskbar's Olo menu sorted** (Ben, 2026-11-02): "in the olo
+  deskbar menu the applications / other applications / preferences items
+  (and sub items) should all be sorted lexicographically". Today
+  Applications and Preferences follow the order of `OUR_APPS` and
+  `PREFERENCE_PANELS`. Other Applications follows a fixed category order
+  (Accessories … System, then Other), and its entries come in the order
+  they were found (apps/deskbar/src/main.rs, `olo_menu_with_icons`).
+  - Sort every level by its shown name: case-insensitive and in
+    natural order, with ties broken by the exact name.
+  - Keep "Other" last in Other Applications.
+  - Put the sort in the kit, so every menu built from a list can use
+    it.
+
+- **Terminal tells coding agents to use Agent Screens** (Ben,
+  2026-11-02): "check if terminal already injects context to claude
+  code and codex to tell them about using olo's agent screens and how to
+  use them. if not, please add that as a setting in the prefs ->
+  terminal that can be enabled so that claude code and codex will get
+  those instructions and tell them too that they should prefer olo agent
+  screens for the best experience. also make sure that the olo agent
+  screens instructions include information about olo chrome and how to
+  start it so that they don't start the wrong chrome by accident in
+  their agent screen". Checked: nothing injects it today. The session
+  installs the `olo-screens` skill for both agents
+  (crates/session/src/skills.rs, from apps/screen/SKILL.md), but an
+  agent reads a skill only when it thinks it's relevant. Terminal's
+  `olo-terminal --agent-context` hook (apps/terminal/src/agent_context.rs,
+  `SessionStart` and `UserPromptSubmit` in Claude Code's
+  `settings.json` and Codex's `hooks.json`) carries only the tab group
+  and the tab-title line. To do:
+  - A third setting in Preferences ▸ Terminal, off by default ("Tell
+    coding agents to use Olo's Agent Screens"). When on, the same hook
+    says at `SessionStart`:
+    - prefer Agent Screens for anything graphical;
+    - the commands to use;
+    - start the browser with `olo-chrome` (a sandbox `--user-data-dir`),
+      never `google-chrome`/`chromium`/`chrome` or the person's profile;
+    - point to the skill for the rest.
+  - The skill's own Chrome section says the same just as plainly, and
+    that the text is shared with the hook (one source).
+  - Tests with a sandbox HOME, never Ben's agents' real settings.
+
 - **x86 machines, starting with Ben's ThinkPad P1 Gen 9** (Ben; it
   arrives within days; **next once the GPUI migration is done**, before
   the rest of this list: "after all the gpui work is done, prioritize
@@ -181,14 +275,6 @@ of Finished; a new one goes where its priority puts it.
   synchronous work (importing a client's buffer, a fence, a DCP test
   or commit) is what blocks today, and the heartbeat (`timings`)
   finds it. After the reliability work.
-
-- **Agent Screens: Take Control is laggy** (Ben, 2026-10-31): "when using
-  take control in agent screens it is very laggy -- this needs to feel as
-  buttery smooth and be as performant as if we were using the desktop
-  directly." Measure the path (input forwarded to the headless
-  app_server, its frames brought back and shown) frame by frame and make
-  it the same 120 fps, input-to-photon, as the desktop: frames shared as
-  dmabufs rather than copied, input sent at once, no polling.
 
 - **Agent Screens: Chrome opened from a screen's Deskbar lands on the
   person's display** (Ben, 2026-10-31): "i was just using the "Take
@@ -711,6 +797,33 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**Agent Screens: Take Control is laggy**~~ (Ben, 2026-10-31): "when
+  using take control in agent screens it is very laggy -- this needs to
+  feel as buttery smooth and be as performant as if we were using the
+  desktop directly."
+  *Done* (2026-11-02). Live shows the screen's own frames, shared as
+  dmabufs and never copied:
+  - The screen's app_server captures each changed frame on the GPU into
+    one of three buffers (`olo_capture::live`, the portal's capture
+    client made a crate).
+  - The person's app_server shows each as a subsurface of the viewer's
+    window (GPUI's new `Window::place_external` /
+    `set_external_buffer`).
+  - Agent screens start at 120 Hz.
+
+  Measured headless, a window dragged on the screen for 5 s:
+
+  | | Before (pictures) | After (live) |
+  |---|---|---|
+  | Frames shown | ≤ 8/s, none for pointer-only moves | ~60/s at 60 Hz, ~120/s at 120 Hz |
+  | Viewer CPU | 30.0% of a core | 0.6–0.8% |
+  | Agent app_server | 2.4% | 4.2–4.4% |
+  | Person's app_server | 1.2% | 1.4–2.2% |
+
+  The frame line is flush at 1–2× and at odd sizes. Input already went
+  out at once. Input-to-photon wasn't timed end to end: now it's the
+  screen's next frame plus the person's next frame.
 
 - ~~**An outside program's `zwp_primary_selection_offer_v1` request
   refused**~~ (seen 2026-11-01 through olo-wlproxy for pid 21201:

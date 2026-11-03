@@ -6794,6 +6794,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-capture"
+version = "0.1.0"
+dependencies = [
+ "gbm",
+ "libc",
+ "memmap2",
+ "olo-xdg",
+ "tracing",
+ "wayland-client",
+ "wayland-protocols 0.32.13",
+]
+
+[[package]]
 name = "olo-chrome"
 version = "0.1.0"
 dependencies = [
@@ -7141,6 +7154,7 @@ dependencies = [
  "gbm",
  "libc",
  "memmap2",
+ "olo-capture",
  "olo-images",
  "olo-print",
  "olo-protocol",
@@ -7261,6 +7275,7 @@ dependencies = [
  "ab_glyph",
  "fontdb",
  "libc",
+ "olo-capture",
  "olo-protocol",
  "olo-sync",
  "olo-theme",

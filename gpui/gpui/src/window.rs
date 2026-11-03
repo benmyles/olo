@@ -785,6 +785,13 @@ pub(crate) struct PrepaintStateIndex {
     line_layout_index: LineLayoutIndex,
 }
 
+/// Olo: where an external picture was placed (`Window::place_external`),
+/// kept as a paint record so a cached view's replay brings it along.
+struct ExternalPlace {
+    key: u64,
+    bounds: Bounds<Pixels>,
+}
+
 #[derive(Clone, Default)]
 pub(crate) struct PaintIndex {
     scene_index: usize,
@@ -997,6 +1004,11 @@ pub struct Window {
     active: Rc<Cell<bool>>,
     hovered: Rc<Cell<bool>>,
     pub(crate) needs_present: Rc<Cell<bool>>,
+    /// Olo: where the window's external pictures were placed, as last
+    /// told the platform (`place_external`), and whether it ever had
+    /// one (a window that hasn't looks for none).
+    externals_placed: RefCell<Vec<(u64, Bounds<Pixels>)>>,
+    had_externals: Cell<bool>,
     pub(crate) last_input_timestamp: Rc<Cell<Instant>>,
     pub(crate) frame_stats: FrameStats,
     /// Olo: something painted since the last paint memo began wasn't
@@ -1476,6 +1488,8 @@ impl Window {
             active,
             hovered,
             needs_present,
+            externals_placed: RefCell::default(),
+            had_externals: Cell::new(false),
             last_input_timestamp,
             frame_stats: FrameStats::default(),
             paint_unfinished: false,
@@ -2332,6 +2346,20 @@ impl Window {
 
     #[profiling::function]
     fn present(&self) {
+        if self.had_externals.get() {
+            // Olo: the external pictures where this frame placed them
+            // (replayed with a cached view's paint, moved with it).
+            let places: Vec<(u64, Bounds<Pixels>)> = self
+                .rendered_frame
+                .paint_records
+                .iter()
+                .filter_map(|(r, moved)| r.downcast_ref::<ExternalPlace>().map(|p| (p.key, Bounds { origin: p.bounds.origin + *moved, size: p.bounds.size })))
+                .collect();
+            if *self.externals_placed.borrow() != places {
+                self.platform_window.place_externals(&places);
+                *self.externals_placed.borrow_mut() = places;
+            }
+        }
         self.platform_window.draw(&self.rendered_frame.scene);
         self.needs_present.set(false);
         profiling::finish_frame!();
@@ -5004,6 +5032,38 @@ impl Window {
     /// window closes.
     pub fn set_keep_awake(&self, on: bool) {
         self.platform_window.set_keep_awake(on);
+    }
+
+    /// Olo: shows external picture `key` ([`Window::set_external_buffer`])
+    /// at `bounds` this frame: drawn by the compositor itself, over what
+    /// the window draws there, the pointer passing through it to the
+    /// window; moved and resized with the window's frames, while each new
+    /// picture shows as it comes, without one. A picture not placed in a
+    /// frame is hidden. Shown at whole logical pixels (subsurfaces can't
+    /// be placed finer): draw round it at [`Window::external_bounds`].
+    pub fn place_external(&mut self, key: u64, bounds: Bounds<Pixels>) {
+        self.had_externals.set(true);
+        self.next_frame.paint_records.push((Rc::new(ExternalPlace { key, bounds }), Point::default()));
+    }
+
+    /// Olo: where an external picture placed at `bounds` shows, to the
+    /// device pixel: its corners at whole logical pixels, then at the
+    /// device pixels the compositor rounds them to.
+    pub fn external_bounds(&self, bounds: Bounds<Pixels>) -> Bounds<Pixels> {
+        let s = self.scale_factor();
+        let (x, y) = (bounds.origin.x.0.round(), bounds.origin.y.0.round());
+        let (w, h) = (bounds.size.width.0.round().max(1.0), bounds.size.height.0.round().max(1.0));
+        let d = |v: f32| px((v * s).round() / s);
+        Bounds::from_corners(point(d(x), d(y)), point(d(x + w), d(y + h)))
+    }
+
+    /// Olo: the picture external picture `key` shows from now on (another
+    /// program's dmabuf, made into a buffer once by its id); the one it
+    /// replaces is released (`ExternalBuffer::released`) once the
+    /// compositor is done with it. None lets `key` go with its buffers.
+    /// Shows where [`Window::place_external`] placed it, at once.
+    pub fn set_external_buffer(&self, key: u64, buffer: Option<crate::ExternalBuffer>) {
+        self.platform_window.set_external_buffer(key, buffer);
     }
 
     /// Olo: a handle another program's window can name to open over this

@@ -1,10 +1,13 @@
-//! The portal's side of screen capture: a Wayland client of app_server's
-//! ext-image-copy-capture (on the direct socket, where outside programs
-//! never see it). A `Capture` is a session on one output: it learns the
-//! buffer size and formats app_server takes and keeps a buffer of that
-//! size, a dmabuf on the GPU app_server names where it can (app_server
-//! draws into it on the GPU, reading nothing back) else shared memory, and
-//! gives frames as BGRx rows (what WebRTC wants first).
+//! A client of app_server's screen capture, ext-image-copy-capture (on
+//! its direct socket, where outside programs never see it): the portal's
+//! screen sharing, and Agent Screens' live view (`live`). A `Capture` is
+//! a session on one output or window: it learns the buffer size and
+//! formats app_server takes and keeps a buffer of that size, a dmabuf on
+//! the GPU app_server names where it can (app_server draws into it on the
+//! GPU, reading nothing back) else shared memory, and gives frames as
+//! BGRx rows (what WebRTC wants first), or into buffers of the caller's.
+
+pub mod live;
 
 use std::os::fd::{AsFd, FromRawFd, OwnedFd};
 
@@ -100,7 +103,14 @@ impl Capture {
     /// Capture `source` on the compositor at `WAYLAND_DISPLAY`, with the
     /// pointer drawn in if `cursor`.
     pub fn new(source: &Source, cursor: bool) -> Result<Capture, String> {
-        let conn = connect().map_err(|e| format!("can't reach app_server: {e}"))?;
+        let display = std::env::var("WAYLAND_DISPLAY").ok();
+        Self::on(display.as_deref(), source, cursor)
+    }
+
+    /// The same on the app_server of Wayland display `display` (an Agent
+    /// Screen's `wayland-9`; None: `WAYLAND_DISPLAY`'s).
+    pub fn on(display: Option<&str>, source: &Source, cursor: bool) -> Result<Capture, String> {
+        let conn = connect(display).map_err(|e| format!("can't reach app_server: {e}"))?;
         let (globals, mut queue) = registry_queue_init::<State>(&conn).map_err(|e| e.to_string())?;
         let qh = queue.handle();
         let mut state = State::default();
@@ -155,7 +165,7 @@ impl Capture {
             state.dma_device.and_then(|dev| match open_render_node(dev).and_then(|f| gbm::Device::new(f).map_err(|e| e.to_string())) {
                 Ok(d) => Some(d),
                 Err(e) => {
-                    tracing::warn!("portal: no dmabufs ({e}), capturing into shared memory");
+                    tracing::warn!("capture: no dmabufs ({e}), capturing into shared memory");
                     None
                 }
             })
@@ -295,7 +305,7 @@ impl Capture {
                 match self.dma_buffer(w, h) {
                     Ok(b) => Some(b),
                     Err(e) => {
-                        tracing::warn!("portal: {e}; capturing into shared memory");
+                        tracing::warn!("capture: {e}; capturing into shared memory");
                         self.gbm = None;
                         None
                     }
@@ -419,15 +429,24 @@ impl Capture {
 /// In an Olo session, straight to app_server (as the kit does): the
 /// session's socket is olo-wlproxy's, which hides capture from outside
 /// programs.
-fn connect() -> Result<Connection, wayland_client::ConnectError> {
-    if std::env::var_os("WAYLAND_SOCKET").is_none()
-        && let (Some(dir), Ok(display)) = (std::env::var_os("XDG_RUNTIME_DIR"), std::env::var("WAYLAND_DISPLAY"))
+/// app_server's direct socket for `display` (where its capture is), else
+/// the display's own socket.
+fn connect(display: Option<&str>) -> Result<Connection, wayland_client::ConnectError> {
+    let dir = std::env::var_os("XDG_RUNTIME_DIR");
+    if let (Some(dir), Some(display)) = (&dir, display)
         && !display.contains('/')
-        && let Ok(stream) = std::os::unix::net::UnixStream::connect(olo_xdg::legacy::runtime_file(std::path::Path::new(&dir), &format!("olo-{display}-direct")))
+        && let Ok(stream) = std::os::unix::net::UnixStream::connect(olo_xdg::legacy::runtime_file(std::path::Path::new(dir), &format!("olo-{display}-direct")))
     {
         return Connection::from_socket(stream);
     }
-    Connection::connect_to_env()
+    match (display, dir) {
+        (Some(display), Some(dir)) => {
+            let path = if display.starts_with('/') { std::path::PathBuf::from(display) } else { std::path::Path::new(&dir).join(display) };
+            let stream = std::os::unix::net::UnixStream::connect(path).map_err(|_| wayland_client::ConnectError::NoCompositor)?;
+            Connection::from_socket(stream)
+        }
+        _ => Connection::connect_to_env(),
+    }
 }
 
 /// The render node whose device number is `dev`.

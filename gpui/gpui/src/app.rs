@@ -1146,6 +1146,13 @@ impl App {
         self.platform.write_to_primary(item)
     }
 
+    /// Olo: the modifiers the compositor takes `fourcc` dmabufs with for
+    /// a window's external pictures (`Window::place_external`); empty if
+    /// it can't show them.
+    pub fn external_modifiers(&self, fourcc: u32) -> Vec<u64> {
+        self.platform.external_modifiers(fourcc)
+    }
+
     /// Writes data to the platform clipboard.
     pub fn write_to_clipboard(&self, item: ClipboardItem) {
         self.platform.write_to_clipboard(item)

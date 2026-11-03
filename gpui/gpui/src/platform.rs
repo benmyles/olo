@@ -273,6 +273,11 @@ pub(crate) trait Platform: 'static {
     fn holds_clipboard(&self) -> bool {
         false
     }
+    /// Olo: the modifiers the compositor takes `fourcc` dmabufs with for
+    /// windows' external pictures (empty: it can't show them).
+    fn external_modifiers(&self, _fourcc: u32) -> Vec<u64> {
+        Vec::new()
+    }
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     fn read_from_primary(&self) -> Option<ClipboardItem>;
     fn read_from_clipboard(&self) -> Option<ClipboardItem>;
@@ -551,6 +556,19 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// Olo: where the window takes what's dragged over it now (None:
     /// nowhere), as its last frame found.
     fn set_drop_accept(&self, _accept: Option<DropAccept>) {}
+    /// Olo: where each of the window's external pictures shows
+    /// ([`crate::Window::place_external`]), in the frame about to be
+    /// presented: those not listed are hidden. Called just before `draw`.
+    fn place_externals(&self, _places: &[(u64, Bounds<Pixels>)]) {}
+    /// Olo: the picture `key` shows from now on
+    /// ([`crate::Window::set_external_buffer`]); the one it replaces is
+    /// released once the compositor is done with it. None: `key` is let
+    /// go with all its buffers.
+    fn set_external_buffer(&self, _key: u64, buffer: Option<ExternalBuffer>) {
+        if let Some(b) = buffer {
+            (b.released)(b.id)
+        }
+    }
     fn minimize(&self);
     fn zoom(&self);
     fn toggle_fullscreen(&self);
@@ -691,6 +709,46 @@ pub enum DragAction {
     Move,
     /// Asked about (a menu of Move, Copy or Link).
     Ask,
+}
+
+/// Olo: a picture in another program's GPU memory (a dmabuf: an Agent
+/// Screen's frame), shown in a window by the compositor itself, never
+/// copied ([`crate::Window::place_external`]).
+#[derive(Clone)]
+pub struct ExternalBuffer {
+    /// Names the memory: the same id is the same memory (imported once),
+    /// and is what `released` is told.
+    pub id: u64,
+    /// In pixels.
+    pub width: u32,
+    /// In pixels.
+    pub height: u32,
+    /// Its DRM format (`XR24`: BGRx).
+    pub fourcc: u32,
+    /// Its DRM format modifier (its layout in memory).
+    pub modifier: u64,
+    /// Its planes.
+    pub planes: Vec<ExternalPlane>,
+    /// Told the id once the compositor no longer reads the memory, to be
+    /// drawn into again; called on any thread.
+    pub released: Arc<dyn Fn(u64) + Send + Sync>,
+}
+
+impl std::fmt::Debug for ExternalBuffer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExternalBuffer").field("id", &self.id).field("width", &self.width).field("height", &self.height).field("fourcc", &self.fourcc).field("modifier", &self.modifier).finish()
+    }
+}
+
+/// Olo: one plane of an [`ExternalBuffer`].
+#[derive(Clone, Debug)]
+pub struct ExternalPlane {
+    /// The dmabuf.
+    pub fd: Arc<std::os::fd::OwnedFd>,
+    /// Where the plane starts in it, in bytes.
+    pub offset: u32,
+    /// Bytes a row.
+    pub stride: u32,
 }
 
 /// Olo: what is being dragged over a window ([`crate::Window::drop_offer`]),

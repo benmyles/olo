@@ -24,6 +24,7 @@ olo-images.workspace = true
 olo-print = { workspace = true, features = ["gpui"] }
 olo-protocol.workspace = true
 olo-xdg.workspace = true
+olo-capture.workspace = true
 zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }
 async-channel = "2"
 blocking = "1"
