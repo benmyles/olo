@@ -2462,11 +2462,14 @@ found, and the windows scattered) isn't set up until it can, for up to
 without (the wait over) is looked at for its EDID for a minute, and
 when it comes, `display_identified` makes its settings, place and
 workspace its monitor's, its windows going with it.
-`tools/dev/layout-check NAME [--auto]` checks this quickly: it arranges
-a session's screens in an order unlike the one they're found in, puts
-windows on each and on another workspace (auto-tiled with `--auto`),
-reloads app_server and compares every window's display, place, size,
-workspace, and each display's place and workspace. Run it with
+`tools/dev/layout-check NAME [--auto] [--unplug]` checks this quickly:
+it arranges a session's screens in an order unlike the one they're
+found in, puts windows on each and on another workspace (auto-tiled with
+`--auto`), reloads app_server and compares every window's display,
+place, size, workspace, and each display's place and workspace. With
+`--unplug` it unplugs the first screen instead (`plug_display`; with
+`--auto`, holding tiles of thirds), checks its windows went to the main
+display on the same workspaces, plugs it back and compares. Run it with
 `OLO_HEADLESS_LATE_MS=700` and with `OLO_HEADLESS_ANONYMOUS_MS=1500`
 (the screens say who they are only that long after they're found) in
 the environment the session starts with.
@@ -3471,6 +3474,22 @@ or go (`follow_main_output` → `rehome_windows`), windows left on none go to
 the main display, cascaded and shrunk to fit, the rest are re-tiled,
 re-zoomed or fitted where they are, and the pointer is brought back; a
 minimized window is fitted when it comes back.
+
+A display unplugged (`display_leaving`, before its output leaves the
+space: udev's `connector_disconnected`, a display made a mirror, a test
+screen) sends its windows to the main display of the rest, each onto
+the workspace of the same number, tiled or zoomed as it was
+(`move_windows`, so each remembers its round trip), hidden ones hidden,
+and keeps its tiling trees aside by its monitor's key
+(`AutoTiler::leave`). Each window remembers that monitor and workspace
+(`WindowMeta::away`). Plugged in again (`displays_changed` →
+`windows_back_home`), the display gets its trees back
+(`AutoTiler::come_back`) and its windows return onto their workspaces
+exactly as they left (`move_to_output` with `home`: frame, tile and its
+size, zoom), whatever Olo did with them meanwhile; one the person moved
+on purpose meanwhile stays where they put it. Test sessions unplug and
+plug a screen with `{"type":"plug_display","name":"HEADLESS-2",
+"plugged":false}` (its `wl_output` taken away, then offered again).
 
 Fan Out (`fan_out`, ⌃⌘/) stacks the display's windows top-left with their
 tabs side by side: in the order of their tabs' x (front-most first on a

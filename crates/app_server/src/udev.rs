@@ -1915,6 +1915,13 @@ impl AnvilState<UdevData> {
     }
 
     fn connector_disconnected(&mut self, node: DrmNode, connector: connector::Info, crtc: crtc::Handle) {
+        // Its windows to the main display first, while it's still there
+        // to leave, remembered for when it's plugged in again
+        // (`display_leaving`).
+        let leaving = self.backend_data.backends.get(&node).and_then(|d| d.surfaces.get(&crtc)).map(|s| s.output.clone());
+        if let Some(output) = leaving.filter(|o| self.space.outputs().any(|x| x == o)) {
+            self.display_leaving(&output);
+        }
         let mut gone = None;
         let device = if let Some(device) = self.backend_data.backends.get_mut(&node) {
             device

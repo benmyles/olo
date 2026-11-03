@@ -806,6 +806,10 @@ pub struct AutoTiler {
     /// costs next to nothing.
     glance: (Vec<olo_protocol::DisplayWorkspace>, Vec<(u64, Rectangle<i32, Logical>)>, Vec<Rectangle<i32, Logical>>),
     looked: Option<Instant>,
+    /// The trees of displays unplugged, by their monitor's key, with
+    /// their workspaces: back as they were when it's plugged in again
+    /// (`leave`, `come_back`), its windows into their own tiles.
+    away: HashMap<String, Vec<(u32, Node)>>,
 }
 
 impl Default for AutoTiler {
@@ -823,6 +827,7 @@ impl Default for AutoTiler {
             next: None,
             glance: Default::default(),
             looked: None,
+            away: HashMap::new(),
         }
     }
 }
@@ -842,6 +847,34 @@ impl AutoTiler {
     /// Every tree, to keep across a restart.
     pub fn trees(&self) -> impl Iterator<Item = (&(u32, String), &Node)> {
         self.trees.iter()
+    }
+
+    /// The display on connector `name` (the monitor `key`) is being
+    /// unplugged: its trees are kept aside, as they are, before its
+    /// windows leave them.
+    pub fn leave(&mut self, name: &str, key: &str) {
+        let trees: Vec<(u32, String)> = self.trees.keys().filter(|(_, o)| o == name).cloned().collect();
+        if trees.is_empty() {
+            return;
+        }
+        let kept = self.away.entry(key.to_owned()).or_default();
+        kept.clear();
+        for k in trees {
+            if let Some(t) = self.trees.remove(&k) {
+                kept.push((k.0, t));
+            }
+            self.laid.remove(&k);
+        }
+    }
+
+    /// The monitor `key` is plugged in again, on connector `name`: its
+    /// trees back (those it has no tree for now), for its windows to
+    /// come back into.
+    pub fn come_back(&mut self, key: &str, name: &str) {
+        for (ws, t) in self.away.remove(key).unwrap_or_default() {
+            self.trees.entry((ws, name.to_owned())).or_insert(t);
+        }
+        self.dirty = true;
     }
 
     /// Turned off for these: their trees go (the windows stay where they

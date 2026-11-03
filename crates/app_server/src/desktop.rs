@@ -47,6 +47,10 @@ impl Joined {
     }
 }
 
+/// A test screen's `wl_output` global, taken away while it's unplugged
+/// (`plug_display`).
+pub struct OutputGlobal(pub RefCell<Option<smithay::reexports::wayland_server::backend::GlobalId>>);
+
 /// Per-window bookkeeping that isn't decoration.
 pub struct WindowMeta {
     pub id: u64,
@@ -143,6 +147,11 @@ pub struct WindowMeta {
     /// agent) since it was put back after a restart: not put back again
     /// (`layout::check_restored`).
     pub moved_on_purpose: Cell<bool>,
+    /// The display it was on was unplugged, and it was moved to the main
+    /// display (`display_leaving`): that monitor's key and the workspace
+    /// it was on there, for when it's plugged in again
+    /// (`windows_back_home`).
+    pub away: RefCell<Option<(String, u32)>>,
     /// Olo asked it to close (its close box, ⌘W, the window menu, an
     /// agent): when it goes, it is gone, not kept for its app starting
     /// again (`remember_placement`).
@@ -201,6 +210,7 @@ impl WindowElement {
             glow: Cell::new(None),
             glow_pieces: Default::default(),
             moved_on_purpose: Cell::new(false),
+            away: RefCell::new(None),
             closed_by_hand: Cell::new(false),
             pip: Cell::new(false),
         });
@@ -1307,7 +1317,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         if windows.is_empty() {
             return;
         }
-        self.move_windows(&windows, from, to, to_index);
+        self.move_windows(&windows, from, to, to_index, false);
         info!(workspace = index, from = from.name(), to = to.name(), to_index, windows = windows.len(), "moved a workspace's windows");
     }
 
@@ -1323,13 +1333,107 @@ impl<B: Backend + 'static> AnvilState<B> {
             return;
         }
         let index = index.min(self.settings.workspace_count.max(1) - 1);
-        self.move_windows(std::slice::from_ref(window), &from, to, index);
+        self.move_windows(std::slice::from_ref(window), &from, to, index, false);
         info!(window = window.id(), from = from.name(), to = to.name(), index, "moved to another display's workspace");
     }
 
+    /// `gone` is being unplugged (before it leaves the space): its windows
+    /// to the main display of the rest, each onto the workspace of the
+    /// same number, tiled or zoomed as it was (`move_windows`), and its
+    /// tiling trees kept aside (`AutoTiler::leave`), so that plugged in
+    /// again it has them back (`windows_back_home`).
+    pub fn display_leaving(&mut self, gone: &Output) {
+        let rest: Vec<Output> = self.space.outputs().filter(|o| *o != gone).cloned().collect();
+        let display = &self.settings.display;
+        let Some(to) = rest.iter().find(|o| display.is_main(&display_key(o), &o.name())).or(rest.first()).cloned() else { return };
+        let key = display_key(gone);
+        self.auto.leave(&gone.name(), &key);
+        let windows: Vec<WindowElement> = self.all_windows().into_iter().filter(|w| self.display_of(w).as_ref() == Some(gone)).collect();
+        let mut by_workspace: std::collections::BTreeMap<u32, Vec<WindowElement>> = Default::default();
+        for w in windows {
+            let ws = self.workspace_of(&w);
+            *w.meta().away.borrow_mut() = Some((key.clone(), ws));
+            // (Moved on purpose from here on: left where it's put.)
+            w.meta().moved_on_purpose.set(false);
+            by_workspace.entry(ws).or_default().push(w);
+        }
+        for (ws, windows) in by_workspace {
+            info!(display = gone.name(), key, workspace = ws, to = to.name(), windows = windows.len(), "its display unplugged: windows to the main display");
+            self.move_windows(&windows, gone, &to, ws, false);
+        }
+    }
+
+    /// A test session's screen unplugged or plugged in again, as udev
+    /// has a monitor (`Request::PlugDisplay`): its `wl_output` taken away
+    /// or offered again, its windows to the main display and back.
+    pub fn plug_display(&mut self, name: &str, plugged: bool) -> Result<(), String> {
+        let output = self.backend_data.test_display(name)?;
+        if plugged == self.space.outputs().any(|o| *o == output) {
+            return Ok(());
+        }
+        let global = output.user_data().get::<OutputGlobal>();
+        if plugged {
+            if let Some(g) = global {
+                *g.0.borrow_mut() = Some(output.create_global::<Self>(&self.display_handle));
+            }
+            self.apply_output_settings(&output);
+            self.space.map_output(&output, (0, 0));
+        } else {
+            self.display_leaving(&output);
+            self.space.unmap_output(&output);
+            self.space.refresh();
+            self.move_auto_layers(std::slice::from_ref(&output));
+            if let Some(id) = global.and_then(|g| g.0.borrow_mut().take()) {
+                self.display_handle.remove_global::<Self>(id);
+            }
+        }
+        info!(output = name, plugged, "test screen plugged in or unplugged");
+        let pointer = self.pointer.current_location();
+        crate::shell::fixup_positions(&mut self.space, &self.settings.display, pointer);
+        self.apply_mirroring();
+        self.follow_main_output();
+        self.displays_changed();
+        Ok(())
+    }
+
+    /// Windows whose display was unplugged (`display_leaving`) back on it
+    /// now that it's here again, onto their own workspaces, as they were
+    /// (the round trip: frames, tiles, zooms and its tiling trees), unless
+    /// moved on purpose meanwhile. From `displays_changed`.
+    pub fn windows_back_home(&mut self) {
+        let outputs: Vec<(Output, String)> = self.space.outputs().map(|o| (o.clone(), display_key(o))).collect();
+        let mut back: Vec<(Output, Output, u32, Vec<WindowElement>)> = Vec::new();
+        let mut came: Vec<Output> = Vec::new();
+        for w in self.all_windows() {
+            let Some((key, ws)) = w.meta().away.borrow().clone() else { continue };
+            let Some((home, _)) = outputs.iter().find(|(_, k)| *k == key) else { continue };
+            w.meta().away.replace(None);
+            let Some(from) = self.display_of(&w).filter(|f| f != home) else { continue };
+            if w.meta().moved_on_purpose.get() {
+                info!(window = w.id(), display = home.name(), "its display back, but it was moved meanwhile: left where it is");
+                continue;
+            }
+            if !came.contains(home) {
+                came.push(home.clone());
+            }
+            match back.iter_mut().find(|(f, h, s, _)| *f == from && h == home && *s == ws) {
+                Some((.., list)) => list.push(w),
+                None => back.push((from, home.clone(), ws, vec![w])),
+            }
+        }
+        for home in &came {
+            self.auto.come_back(&display_key(home), &home.name());
+        }
+        for (from, home, ws, windows) in back {
+            info!(display = home.name(), workspace = ws, windows = windows.len(), "its display plugged in again: windows back on it");
+            self.move_windows(&windows, &from, &home, ws, true);
+        }
+    }
+
     /// Move `windows`, all on display `from`, to `to`'s workspace
-    /// `to_index`, bottom first so they stack there as they did.
-    fn move_windows(&mut self, windows: &[WindowElement], from: &Output, to: &Output, to_index: u32) {
+    /// `to_index`, bottom first so they stack there as they did (`home`:
+    /// back where they were taken from, `move_to_output`).
+    fn move_windows(&mut self, windows: &[WindowElement], from: &Output, to: &Output, to_index: u32, home: bool) {
         self.overview_interrupted();
         let shown_there = self.showing(to) == to_index;
         let focused = self.focused_window();
@@ -1346,7 +1450,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     self.parked.0.borrow_mut().retain(|p| p != w);
                     self.space.map_element(w.clone(), w.meta().saved_location.get(), false);
                 }
-                self.move_to_output(w, from, to);
+                self.move_to_output(w, from, to, home);
             }
             let mapped = self.space.element_location(w).is_some();
             w.meta().workspace.set(Some(to_index));
@@ -1543,6 +1647,11 @@ impl<B: Backend + 'static> AnvilState<B> {
             }
             crate::render::set_mirror_source(o, source.clone());
             if source.is_some() {
+                // Its windows go as an unplugged display's do, and come
+                // back as it stops mirroring.
+                if self.space.outputs().any(|x| x == o) {
+                    self.display_leaving(o);
+                }
                 self.space.unmap_output(o);
             } else {
                 self.space.map_output(o, (0, 0));
@@ -1559,6 +1668,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let gone: Vec<Output> = changed.into_iter().filter(|o| self.mirrors.contains(o)).collect();
         self.move_auto_layers(&gone);
         self.follow_main_output();
+        self.windows_back_home();
         self.lock_outputs_changed();
         self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
     }

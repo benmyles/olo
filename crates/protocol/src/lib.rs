@@ -237,6 +237,10 @@ pub enum Request {
     SetKeyboardBacklight { level: f32 },
     /// Show each display's name on it for a few seconds.
     IdentifyOutputs,
+    /// Test sessions (headless) only: the screen on connector `name`
+    /// unplugged (`plugged: false`) or plugged in again, as a monitor's
+    /// cable would be (`tools/dev/layout-check --unplug`).
+    PlugDisplay { name: String, plugged: bool },
     /// Take the next key pressed (with its modifiers) as a shortcut rather
     /// than acting on it; it comes back as [`Event::ShortcutRecorded`].
     /// `on: false` stops waiting.

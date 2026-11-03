@@ -164,11 +164,14 @@ of Finished; a new one goes where its priority puts it.
   (7a7c5fd: displays known by their monitors before use, windows back on
   their own displays; `tools/dev/layout-check`). Numbers: done (each
   monitor's number, D0, D1, …, given once and kept in the settings by its
-  key, `DisplaySettings::numbers`). Still to do: unplugging a display moves its
-  windows to the main display on the same workspaces, and plugging it
-  back in returns them, tiles and custom sizes included; a headless
-  test for plugging and unplugging (IPC for test sessions), run by
-  layout-check.
+  key, `DisplaySettings::numbers`). Unplug and plug: done (2026-11-02:
+  `display_leaving`, `windows_back_home`, `AutoTiler::leave` /
+  `come_back`; `plug_display` for test screens, `layout-check
+  --unplug`). Still to do: `layout-check --auto` (the reload) fails, on
+  HEAD before the unplug work too: a floating group on an auto-tiled
+  display comes back tiled (one of its windows loses its float), and
+  the check takes a Terminal whose title lost its "olo — " prefix on
+  re-executing for gone.
 
 - **Every frame on time, every display** (Ben, 2026-11-01: "dropping
   frames is never acceptable: olo must be buttery smooth on all

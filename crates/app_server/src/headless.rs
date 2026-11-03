@@ -183,6 +183,10 @@ impl Backend for HeadlessData {
         tracing::info!(r = gains[0], g = gains[1], b = gains[2], "white point");
     }
 
+    fn test_display(&self, name: &str) -> Result<Output, String> {
+        self.screens.iter().find(|s| s.output.name() == name).map(|s| s.output.clone()).ok_or_else(|| format!("no screen {name}"))
+    }
+
     fn set_mode(&mut self, output: &Output, mode: Mode) -> Result<(), String> {
         if !output.modes().contains(&mode) {
             return Err("the screen doesn't offer that mode".into());
@@ -292,7 +296,8 @@ pub fn run_headless(size_arg: Option<&str>) {
         output.user_data().insert_if_missing(|| crate::desktop::DrmSubpixel(subpixel));
         // (Late, as DRM's come, for tests: `OLO_HEADLESS_LATE_MS`.)
         if late.is_none() {
-            let _global = output.create_global::<AnvilState<HeadlessData>>(&display_handle);
+            let global = output.create_global::<AnvilState<HeadlessData>>(&display_handle);
+            output.user_data().insert_if_missing(|| crate::desktop::OutputGlobal(std::cell::RefCell::new(Some(global))));
         }
         for &m in &modes {
             output.add_mode(m);
@@ -370,7 +375,8 @@ pub fn run_headless(size_arg: Option<&str>) {
             for (i, output) in outputs.iter().enumerate() {
                 let output = output.clone();
                 let _ = event_loop.handle().insert_source(Timer::from_duration(after * (i as u32 + 1)), move |_, _, state| {
-                    let _global = output.create_global::<AnvilState<HeadlessData>>(&state.display_handle);
+                    let global = output.create_global::<AnvilState<HeadlessData>>(&state.display_handle);
+                    output.user_data().insert_if_missing(|| crate::desktop::OutputGlobal(std::cell::RefCell::new(Some(global))));
                     info!(output = output.name(), "headless display added late");
                     add_output(state, &output);
                     state.displays_changed();

@@ -4,7 +4,7 @@
 on it, size, workspace and whether it is hidden, and each display's
 place and workspace, before and after.
 
-  layout-check NAME [--late MS] [--auto]
+  layout-check NAME [--late MS] [--auto] [--unplug]
 
 NAME is a tsession with several screens, started under olo-session, e.g.
 
@@ -18,6 +18,12 @@ the first screen's workspace), reloads app_server and compares. Start
 the session with OLO_HEADLESS_LATE_MS=700 in the environment to have the
 screens found one by one after the windows are back, as a real upgrade
 finds them. Exits 1 on any difference.
+
+With --unplug, rather than reloading, it unplugs the first screen
+(`plug_display`: the auto-tiled one with --auto), checks each of its
+windows went to the main display on the workspace of the same number
+and none was lost, plugs it back in and compares: each window must be
+back on it exactly as it was (tiles and their sizes too).
 """
 
 import json
@@ -145,14 +151,50 @@ def main():
     settle(name)
     if len(new) >= 3:
         ipc(name, {"type": "move_to_workspace", "id": new[2]["id"], "index": 1, "output": order[0]})
+    if "--unplug" in sys.argv and auto and len(new) >= 5:
+        # Tiles of sizes of their own on the screen unplugged: the Terminal
+        # to it, in its left third, the first document in a tile beside.
+        # (The first and fourth documents are one group there: both tiled.)
+        term = new[4]["id"]
+        ipc(name, {"type": "move_to_workspace", "id": term, "index": 0, "output": order[0]})
+        settle(name)
+        for doc in (new[0]["id"], new[3]["id"]):
+            ipc(name, {"type": "set_floating", "id": doc, "floating": False})
+        settle(name)
+        ipc(name, {"type": "run_shortcut", "id": "tile-left-third", "window": term})
     ipc(name, {"type": "switch_workspace", "index": 1, "output": order[-1]})
     settle(name, 2.0)
     was = snapshot(name)
-    tsession("reload", name)
-    # Back, the screens found (late ones too) and the windows settled.
-    time.sleep(12)
-    now = snapshot(name)
     problems = []
+    if "--unplug" in sys.argv:
+        gone = order[0]
+        key = outs[gone]["key"] or gone
+        ipc(name, {"type": "plug_display", "name": gone, "plugged": False})
+        settle(name, 2.0)
+        away = snapshot(name)
+        if key in away["displays"]:
+            problems.append(f"display {key} still there after unplugging it")
+        mains = [o for o in ipc(name, {"type": "outputs"})["outputs"] if o.get("main")]
+        main_key = mains and (mains[0].get("key") or mains[0]["name"])
+        moved = 0
+        for k, v in was["windows"].items():
+            if v["display"] != key:
+                continue
+            n = away["windows"].get(k)
+            if n is None:
+                problems.append(f"{k[0]} “{k[1]}”: gone with its display")
+            elif n["display"] != main_key or n["workspace"] != v["workspace"] or n["minimized"] != v["minimized"]:
+                problems.append(f"{k[0]} “{k[1]}”: away on {n['display']} workspace {n['workspace']}, not the main display's {v['workspace']}")
+            else:
+                moved += 1
+        print(f"unplugged {gone}: {moved} of its windows on the main display ({main_key})")
+        ipc(name, {"type": "plug_display", "name": gone, "plugged": True})
+        settle(name, 3.0)
+    else:
+        tsession("reload", name)
+        # Back, the screens found (late ones too) and the windows settled.
+        time.sleep(12)
+    now = snapshot(name)
     for k, v in was["displays"].items():
         if now["displays"].get(k) != v:
             problems.append(f"display {k}: was {v}, now {now['displays'].get(k)}")

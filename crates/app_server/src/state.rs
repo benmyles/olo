@@ -1783,6 +1783,12 @@ pub trait Backend {
     fn set_mode(&mut self, _output: &Output, _mode: smithay::output::Mode) -> Result<(), String> {
         Err("This display's resolution can't be changed.".into())
     }
+    /// A test session's screen on connector `name`, to unplug or plug in
+    /// again (`Request::PlugDisplay`); real displays are only unplugged
+    /// by hand.
+    fn test_display(&self, _name: &str) -> Result<Output, String> {
+        Err("Only a test session's screens can be unplugged.".into())
+    }
     /// How each display keeps up (`Request::Frames`, frames.rs).
     fn frames(&mut self) -> Vec<olo_protocol::DisplayFrames> {
         Vec::new()

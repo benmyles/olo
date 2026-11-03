@@ -640,6 +640,10 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.set_keyboard_backlight(level);
                 Reply::Ok
             }
+            Request::PlugDisplay { name, plugged } => match self.plug_display(&name, plugged) {
+                Ok(()) => Reply::Ok,
+                Err(message) => Reply::Error { message },
+            },
             Request::IdentifyOutputs => {
                 for info in self.output_infos() {
                     if let Some(o) = self.space.outputs().find(|o| o.name() == info.name) {

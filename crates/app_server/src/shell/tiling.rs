@@ -1109,20 +1109,23 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             return;
         }
         let to = outputs[if back { (i + outputs.len() - 1) % outputs.len() } else { (i + 1) % outputs.len() }].clone();
-        self.move_to_output(window, &from, &to);
+        self.move_to_output(window, &from, &to, false);
         self.focus_window(window);
     }
 
     /// Put a window on `to`, where it was on `from` (a display that may be
     /// gone: then just a free cascade spot). It counts as arriving there:
     /// if it joins a group by itself, its own frame is kept for when it
-    /// is alone again, and going back is still the round trip.
-    pub(crate) fn move_to_output(&mut self, window: &WindowElement, from: &Output, to: &Output) {
-        self.carry_to_output(window, from, to);
+    /// is alone again, and going back is still the round trip. `home`:
+    /// back to the display it was taken from without the person moving it
+    /// (it was unplugged, and is back): exactly as it left, whatever Olo
+    /// did with it meanwhile.
+    pub(crate) fn move_to_output(&mut self, window: &WindowElement, from: &Output, to: &Output, home: bool) {
+        self.carry_to_output(window, from, to, home);
         window.meta().arrived.set(self.space.element_geometry(window));
     }
 
-    fn carry_to_output(&mut self, window: &WindowElement, from: &Output, to: &Output) {
+    fn carry_to_output(&mut self, window: &WindowElement, from: &Output, to: &Output, home: bool) {
         let (Some(dest), Some(zoom_dest)) = (self.usable_area(to), self.tile_area(to)) else { return };
         let zoomed = self.is_zoomed(window);
         let along = Self::zoomed_along(window);
@@ -1149,7 +1152,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             let geometry = self.space.element_geometry(window);
             let arranged = Self::arrangement_of(window);
             let joined_only = |t: &Trip| t.joined.is_some_and(|g| window.meta().joined.get().is_some_and(|j| j.group == g && j.untouched(geometry, arranged)));
-            let back = trip.filter(|t| t.home == to.name() && t.home_area == dest && (t.arrived == here || joined_only(t)));
+            let back = trip.filter(|t| t.home == to.name() && t.home_area == dest && (home || t.arrived == here || joined_only(t)));
             if let Some(t) = &back {
                 // Its own frame and arrangement are the ones it goes back
                 // to now.
