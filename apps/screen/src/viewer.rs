@@ -521,6 +521,8 @@ pub struct Viewer {
     controlling: bool,
     /// The screen it said the person controls (`screens::set_controlled`).
     controlled: Option<String>,
+    /// Its clipboard and the person's as one, while they control it.
+    joined: Option<crate::clip::Joined>,
     /// Modifiers held down on the screen while controlling, and keys.
     held: [bool; 3],
     down: Vec<(String, u32)>,
@@ -571,6 +573,7 @@ impl Viewer {
             failure: None,
             controlling: false,
             controlled: None,
+            joined: None,
             held: [false; 3],
             down: Vec::new(),
             pressed: HashSet::new(),
@@ -698,6 +701,7 @@ impl Viewer {
         if let Some(name) = self.controlled.take() {
             screens::set_controlled(&name, false);
         }
+        self.joined = None;
     }
 
     fn take_control(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -711,6 +715,7 @@ impl Viewer {
             screens::set_controlled(&name, true);
             self.controlled = Some(name);
         }
+        self.joined = self.screen().map(|s| crate::clip::join(s.wayland_display.clone()));
         window.focus(&self.live_focus);
         cx.notify();
     }

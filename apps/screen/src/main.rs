@@ -4,6 +4,7 @@
 //! See `screens.rs` for what a screen is and HACKING.md, "Agent Screens".
 
 mod atspi;
+mod clip;
 mod export;
 mod find;
 mod history;

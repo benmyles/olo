@@ -437,6 +437,15 @@ fn main() {
   went), a picture (`Pasted Picture.png`, of its kind) or text (a
   clipping). `hold_then(clip, ready)` calls `ready` once the display has
   it; `read(types)` is what's copied, in the first of `types` offered.
+  For another display (a socket's name in `XDG_RUNTIME_DIR` or its path;
+  None, the environment's): `read_all(display)` is what's copied, every
+  form of it; `watch(display, now, copied)` hands each thing copied
+  there to `copied`, every form, on a thread of its own (the display
+  says when: nothing is asked meanwhile), until the `Watch` is dropped;
+  `hold_on(display, clip)` serves `clip` there from a thread until
+  something else is copied, taking it off again when the `Held` is
+  dropped unless `Held::keep`. Agent Screens joins a screen's clipboard
+  to the person's with them.
 * **`pbcopy` and `pbpaste`** (`apps/pb`), as macOS's, for people and
   agents in any shell: `pbcopy` puts what it reads on the clipboard as
   text and returns once it's there (a copy of itself, in a session of
@@ -7392,6 +7401,16 @@ that has gone (its pid not an `olo-screen`) controls nothing, and one
 re-executed by an upgrade forgets its own (`clear_controlled_by_me`).
 Two hands on one pointer made a mess before (Ben: "all kinds of weird
 stuff happens").
+
+While the person controls a screen, its clipboard and theirs are one
+(`clip.rs`): what they copy on the screen is on their clipboard and what
+they copied on their own display pastes on the screen, every form of
+it (text, pictures, files), both ways, each side's clipboard watched
+(`clipboard::watch`) and what came from the other side not sent back
+(by a digest of it). Handed back, what of theirs is on the screen's
+clipboard is taken off it (an agent's screen never has the person's
+clipboard on its own); what they copied from the screen stays on
+theirs. It's joined off the UI thread (two displays' connections).
 
 ### Passwords for agent screens (apps/screen/src/shares.rs)
 

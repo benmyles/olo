@@ -7,15 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Agent Screens: copy and paste between the person's display and a
-  screen they're controlling** (Ben, 2026-11-03): "when i am controlling
-  an agent screen i should be able to copy/paste from/to it". So while
-  the person controls a screen, what they copy on it reaches their own
-  clipboard and what they copied on their own display pastes on it
-  (text, pictures, files as the clipboard has them), both ways, only
-  while they're in control (an agent's screen never reads the person's
-  clipboard on its own).
-
 - **Focus mode: a link opened in a browser on the same desktop doesn't
   bring its window forward** (Ben, 2026-11-03, a bug): "when in focus
   mode if i click on e.g. a url and my browser that it should open in is
@@ -930,6 +921,22 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Agent Screens: copy and paste between the person's display and a
+  screen they're controlling**~~ (Ben, 2026-11-03): "when i am controlling
+  an agent screen i should be able to copy/paste from/to it". So while
+  the person controls a screen, what they copy on it reaches their own
+  clipboard and what they copied on their own display pastes on it
+  (text, pictures, files as the clipboard has them), both ways, only
+  while they're in control (an agent's screen never reads the person's
+  clipboard on its own).
+  *Done* 2026-11-03: the screen's clipboard and the person's joined while
+  they control it (`clip.rs`, on the kit's new `clipboard::watch`,
+  `hold_on` and `read_all`), every form both ways, none echoed back;
+  theirs taken off the screen when they hand it back. Tried on a
+  sandboxed screen with `pbcopy`/`pbpaste` on each side: person to
+  screen, screen to person, then handed back: the screen's clipboard
+  empty, and a new copy of the person's not reaching it.
 
 - ~~**Tracker: folders by name, files newest first, a folder's own order
   kept**~~ (Ben, 2026-11-03): "default sort order of folders in tracker
