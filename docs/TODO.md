@@ -102,6 +102,16 @@ of Finished; a new one goes where its priority puts it.
     - app_server's live contacts (`EventKind::TouchContacts`, and
       `SyntheticEvent::Contacts` headless);
     - the settings for it.
+    Ben, also: "you should also write a baseline model by directly
+    writing out the weights that provides a good starting point so that
+    the user training is really fine tuning that base model you made".
+    So: `olo_palm::baseline()`, a 12-10-1 network with weights written
+    by hand from docs/TOUCHPAD.md's measurements (size, pressure for
+    size, edge distance, stillness, peak size), checked on the synthetic
+    contacts to beat the size rule; the filter uses it when there's no
+    trained model and `use_palm_model` is on; `train()` starts from its
+    weights (a small learning rate: fine tuning) instead of random ones,
+    and the trainer says it's refining Olo's own.
     *Next*: the trainer in Preferences ▸ Touchpad & Mouse, a "Train for
     Your Palm" box on the Touch tab (apps/preferences/src/touchpad.rs,
     `touch()`; the panel is 460×586, `panel.rs`), built from:
