@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Agent Screens: a screen renamed
+
+*18:45* — Screen ▸ Rename… or a click on its title: the name the person gives shows in the list and the header, kept with its history (olo-screen rename NAME TITLE; list says it).
+
+![Agent Screens: a screen renamed](2026-11-02/184527-agent-screens-a-screen-renamed.png)
+
 ### Quick Look centred over the file panel
 
 *17:45* — The panel exports its window (xdg-foreign, Window::export_handle) and the Viewer opens the look over it (--over=); app_server keeps a dialog that sizes itself after opening centred over its parent until it's moved.

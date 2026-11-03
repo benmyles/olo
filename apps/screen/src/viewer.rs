@@ -37,7 +37,7 @@ use olo_ui::{
     icons, keys, metrics as m,
     style::{self, c},
     theme,
-    widgets::{Button, EmptyState, Sidebar, TabView, open_alert, sidebar},
+    widgets::{Button, EmptyState, Sidebar, TabView, TextField, TextFieldEvent, open_alert, sidebar},
 };
 use serde::{Deserialize, Serialize};
 
@@ -60,6 +60,9 @@ const FOOTER_H: f32 = m::CONTROL_HEIGHT + 2.0 * m::SPACING;
 /// the screen there, not round the window's controls.
 pub const CONTROLLED: &str = "AgentScreen";
 
+/// The field a screen's name is changed in.
+const RENAME_W: f32 = 320.0;
+
 pub enum Msg {
     Screens(Vec<Screen>),
     /// Every screen to list: running, or stopped with a history kept;
@@ -70,6 +73,7 @@ pub enum Msg {
     Started(Result<Screen, String>),
     Stopped(Result<(), String>),
     Cleared(Result<(), String>),
+    Renamed(Result<(), String>),
 }
 
 /// The chosen screen's tabs.
@@ -103,6 +107,14 @@ struct Saved {
 pub struct Row {
     name: String,
     last_used: Option<u64>,
+    /// The name the person gave it (Rename…), shown for its own.
+    title: Option<String>,
+}
+
+impl Row {
+    fn shown(&self) -> &str {
+        self.title.as_deref().unwrap_or(&self.name)
+    }
 }
 
 /// The screens running (`running`) and those stopped with a history, by
@@ -116,7 +128,8 @@ fn rows(running: &[Screen]) -> Vec<Row> {
         .into_iter()
         .map(|name| {
             let last_used = crate::history::read(&name).iter().map(|a| a.at + a.ms).max();
-            Row { name, last_used }
+            let title = crate::history::title(&name);
+            Row { name, last_used, title }
         })
         .collect();
     rows.sort_by_key(|r| (std::cmp::Reverse(r.last_used), r.name.clone()));
@@ -411,6 +424,10 @@ pub struct Viewer {
     /// timer.
     ticking: Option<(Instant, Task<()>)>,
     proxy: Proxy,
+    /// The chosen screen's name being changed: its field in the header.
+    renaming: Option<(Entity<TextField>, Subscription)>,
+    /// Where the header's title was drawn (a click there renames).
+    title_at: std::rc::Rc<std::cell::Cell<olo_ui::gpui::Bounds<olo_ui::gpui::Pixels>>>,
 }
 
 impl Viewer {
@@ -440,6 +457,8 @@ impl Viewer {
             stats_scroll: ScrollHandle::new(),
             ticking: None,
             proxy,
+            renaming: None,
+            title_at: Default::default(),
         };
         v.watch(cx);
         v
@@ -482,6 +501,8 @@ impl Viewer {
     fn select(&mut self, name: Option<String>, cx: &mut Context<Self>) {
         if self.selected != name {
             self.stop_controlling();
+            // (Another screen chosen: a rename under way is given up.)
+            self.renaming = None;
             self.selected = name;
             self.failure = None;
             self.live.update(cx, |w, cx| w.clear(None, cx));
@@ -710,6 +731,14 @@ impl Viewer {
                 let (proxy, running) = (self.proxy.clone(), self.screens.clone());
                 std::thread::spawn(move || proxy.send(Msg::Rows(rows(&running))));
             }
+            Msg::Renamed(r) => {
+                // (Shown at once; the list read again if it couldn't be kept.)
+                if let Err(e) = r {
+                    self.alert(&e, cx);
+                    let (proxy, running) = (self.proxy.clone(), self.screens.clone());
+                    std::thread::spawn(move || proxy.send(Msg::Rows(rows(&running))));
+                }
+            }
             Msg::Cleared(r) => {
                 if let Err(e) = r {
                     self.alert(&e, cx);
@@ -736,6 +765,8 @@ impl Viewer {
                 .item("New Screen", "new")
                 .key("n")
                 .enabled(!self.busy)
+                .item("Rename…", "rename")
+                .enabled(chosen)
                 .item("Stop Screen…", "stop")
                 .enabled(running)
                 .item("Clear History…", "clear")
@@ -781,6 +812,7 @@ impl Viewer {
     fn command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) {
         match command {
             "new" => self.new_screen(cx),
+            "rename" => self.start_rename(window, cx),
             "stop" => self.ask_stop(cx),
             "clear" => self.ask_clear(cx),
             "export" => self.ask_export(cx),
@@ -817,6 +849,43 @@ impl Viewer {
             }
             "quit" => self.quit(cx),
             _ => {}
+        }
+        cx.notify();
+    }
+
+    /// The chosen screen's name, made a field in the header (Rename…, or
+    /// a click on it): Return keeps what's typed, Escape or an empty
+    /// field puts its own back.
+    fn start_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(row) = self.selected.as_ref().and_then(|n| self.rows.iter().find(|r| &r.name == n)) else { return };
+        let shown = row.shown().to_owned();
+        let field = olo_ui::widgets::text_field(cx, |f| f.name("Name"));
+        field.update(cx, |f, cx| {
+            f.set_text(shown, cx);
+            f.select_all_text(cx);
+        });
+        window.focus(&olo_ui::gpui::Focusable::focus_handle(field.read(cx), cx));
+        let sub = cx.subscribe(&field, |v: &mut Viewer, _, e: &TextFieldEvent, cx| {
+            if matches!(e, TextFieldEvent::Entered) {
+                v.finish_rename(true, cx);
+            }
+        });
+        self.renaming = Some((field, sub));
+        cx.notify();
+    }
+
+    /// The rename done (`keep`: as typed) or given up.
+    fn finish_rename(&mut self, keep: bool, cx: &mut Context<Self>) {
+        let Some((field, _)) = self.renaming.take() else { return };
+        let Some(name) = self.selected.clone() else { return };
+        if keep {
+            let typed = field.read(cx).text().trim().to_owned();
+            let title = (!typed.is_empty() && typed != name).then_some(typed);
+            if let Some(row) = self.rows.iter_mut().find(|r| r.name == name) {
+                row.title = title.clone();
+            }
+            let proxy = self.proxy.clone();
+            std::thread::spawn(move || proxy.send(Msg::Renamed(crate::history::set_title(&name, title.as_deref()))));
         }
         cx.notify();
     }
@@ -880,7 +949,7 @@ impl Viewer {
             items.push(sidebar::Row::heading(*heading));
             names.push(None);
             for r in rs {
-                let row = sidebar::Row::new("agent-screens", r.name.clone());
+                let row = sidebar::Row::new("agent-screens", r.shown().to_owned());
                 items.push(match last_used(r) {
                     Some(t) => row.value(ago_short(t, now)),
                     None => row,
@@ -957,7 +1026,10 @@ impl Viewer {
             parts.push(format!("last {}", stats::ago(t, now)));
         }
         let line = parts.join("  ·  ");
-        let title = SharedString::from(name.to_owned());
+        let title = SharedString::from(self.rows.iter().find(|r| r.name == name).map_or(name, Row::shown).to_owned());
+        let renaming = self.renaming.as_ref().map(|(f, _)| f.clone());
+        let renaming_now = renaming.is_some();
+        let title_at = self.title_at.clone();
         let face = canvas(
             |_, _, _| {},
             move |r, _, window, cx| {
@@ -966,8 +1038,16 @@ impl Viewer {
                 icons::paint(window, icon, "agent-screens");
                 let x = icon.right() + px(m::SPACING);
                 let w = (r.right() - x).max(px(0.0));
-                let t = style::label_fit(window, cx, x, r.top() + px(11.0), style::Align::Left, title.clone(), 15.0, style::ui_font(FontWeight::BOLD), c(p.panel_text), w);
-                agent::record(window, cx, agent::Node { role: "Heading", name: Some(title.clone()), bounds: t, enabled: true, ..Default::default() });
+                // (Its field over it while it's renamed.)
+                if !renaming_now {
+                    let t = style::label_fit(window, cx, x, r.top() + px(11.0), style::Align::Left, title.clone(), 15.0, style::ui_font(FontWeight::BOLD), c(p.panel_text), w);
+                    agent::record(window, cx, agent::Node { role: "Heading", name: Some(title.clone()), bounds: t, enabled: true, ..Default::default() });
+                    title_at.set(t);
+                }
+                // (Left out while a name is typed: the field has the room.)
+                if renaming_now {
+                    return;
+                }
                 let line_y = r.top() + px(29.0);
                 let dot = if running { c(p.success) } else { style::disabled_text(&p) };
                 let d = style::snap_centred(window, point(x + px(4.0), line_y), 8.0, 8.0);
@@ -976,10 +1056,45 @@ impl Viewer {
                 agent::record(window, cx, agent::Node::label(line.clone(), t));
             },
         )
-        .flex_1()
-        .min_w_0()
-        .h_full();
+        .absolute()
+        .inset_0();
         let me = cx.entity();
+        // A click on the title renames it (as Tracker's names); the field,
+        // over where it was, keeps it with Return and gives up with Escape.
+        let clicked = (me.clone(), self.title_at.clone());
+        let face = div().flex_1().min_w_0().h_full().relative().child(face).on_mouse_down(MouseButton::Left, move |e: &MouseDownEvent, window, cx| {
+            if clicked.1.get().contains(&e.position) {
+                // (The press goes no further, and the field takes the
+                // keyboard once it's done: else what's under takes it.)
+                window.prevent_default();
+                cx.stop_propagation();
+                let me = clicked.0.clone();
+                window.defer(cx, move |window, cx| me.update(cx, |v, cx| v.start_rename(window, cx)));
+            }
+        });
+        let face = match renaming {
+            Some(field) => {
+                let cancel = me.clone();
+                face.child(
+                    div()
+                        .absolute()
+                        .left(px(32.0 + m::SPACING))
+                        .right_0()
+                        .top_0()
+                        .bottom_0()
+                        .flex()
+                        .items_center()
+                        .on_key_down(move |e: &KeyDownEvent, _, cx| {
+                            if e.keystroke.key == "escape" {
+                                cancel.update(cx, |v, cx| v.finish_rename(false, cx));
+                                cx.stop_propagation();
+                            }
+                        })
+                        .child(olo_ui::widgets::TextControl::new(field).width(RENAME_W)),
+                )
+            }
+            None => face,
+        };
         let (stop, export) = (me.clone(), me);
         let first = if running {
             Button::new("Stop Screen…").min_width(96.0).on_click(move |_, cx| stop.update(cx, |v, cx| v.ask_stop(cx)))

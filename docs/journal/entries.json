@@ -2914,5 +2914,11 @@
   "title": "Quick Look centred over the file panel",
   "caption": "The panel exports its window (xdg-foreign, Window::export_handle) and the Viewer opens the look over it (--over=); app_server keeps a dialog that sizes itself after opening centred over its parent until it's moved.",
   "image": "2026-11-02/174556-quick-look-centred-over-the-file-panel.png"
+ },
+ {
+  "time": "2026-11-02T18:45:27",
+  "title": "Agent Screens: a screen renamed",
+  "caption": "Screen \u25b8 Rename\u2026 or a click on its title: the name the person gives shows in the list and the header, kept with its history (olo-screen rename NAME TITLE; list says it).",
+  "image": "2026-11-02/184527-agent-screens-a-screen-renamed.png"
  }
 ]

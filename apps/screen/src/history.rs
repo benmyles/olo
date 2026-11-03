@@ -90,6 +90,34 @@ fn actions_path(name: &str) -> PathBuf {
     dir(name).join("actions.jsonl")
 }
 
+fn title_path(name: &str) -> PathBuf {
+    dir(name).join("title")
+}
+
+/// The name the person gave screen `name` (Rename…), if any: kept with
+/// its history, and gone with it.
+pub fn title(name: &str) -> Option<String> {
+    std::fs::read_to_string(title_path(name)).ok().map(|t| t.trim().to_owned()).filter(|t| !t.is_empty())
+}
+
+/// Give screen `name` the name `title` to show by (None or blank: its
+/// own again).
+pub fn set_title(name: &str, title: Option<&str>) -> Result<(), String> {
+    let path = title_path(name);
+    let failed = |e: std::io::Error| format!("couldn't rename {name}: {e}");
+    match title.map(str::trim).filter(|t| !t.is_empty()) {
+        Some(t) => {
+            std::fs::create_dir_all(dir(name)).map_err(failed)?;
+            let tmp = path.with_extension("new");
+            std::fs::write(&tmp, t).and_then(|()| std::fs::rename(&tmp, &path)).map_err(failed)
+        }
+        None => match std::fs::remove_file(&path) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(failed(e)),
+            _ => Ok(()),
+        },
+    }
+}
+
 pub fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }

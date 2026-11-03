@@ -6787,7 +6787,12 @@ an alert with Open in Tracker (`Replay::start_export`). The sidebar (the
 kit's `Sidebar`) has every screen running and every one stopped with a
 history kept, under Running and Stopped, by last use (`viewer::rows`,
 read on a worker; the chosen one's as it acts), each with how long ago,
-and New Screen under them. The chosen screen's header names it and says
+and New Screen under them. A screen can be given a name of its own
+(Screen ▸ Rename…, or a click on its title in the header: a field over
+it, Return keeps it, Escape puts the old back; `olo-screen rename NAME
+[TITLE]`): kept with its history (`history::title`, a `title` file
+beside its actions, gone with it), shown in the list and the header,
+and in `olo-screen list` as `title`. The chosen screen's header names it and says
 how it is (running and its size, up for how long, its actions, the
 last how long ago), with Export Video… and Stop Screen… (Clear
 History… for a stopped one). Stats (`stats.rs`) are the kit's dashboard

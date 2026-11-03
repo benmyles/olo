@@ -450,12 +450,6 @@ of Finished; a new one goes where its priority puts it.
   popups closing in any order, quitting taking windows down, window
   parts (`part::Part`), secrets on the clipboard (`copy::secret`).
 
-- **Agent Screens: rename a screen** (Ben, 2026-10-31): "i should be able
-  to rename an agent screen". A name the person gives (in the list, the
-  screen's title and its menu, as Tracker renames: click the name or
-  Rename…), kept with the screen's history and shown wherever the screen
-  is (Deskbar's item, move-to menus, `olo-screen list`, the agent's tree).
-
 - **Agent Screens: archive and delete, one or many** (Ben, 2026-10-31):
   "i should be able to archive stopped agent screens so that they no
   longer show in the list but there should be a menu option to show
@@ -881,6 +875,15 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**Agent Screens: rename a screen**~~ (done 2026-11-02: Screen ▸
+  Rename… or a click on the header's title; `olo-screen rename`; kept
+  with the history, shown in the list, the header and `olo-screen list`;
+  Deskbar shows only a count, and move-to menus don't exist yet) (Ben, 2026-10-31): "i should be able
+  to rename an agent screen". A name the person gives (in the list, the
+  screen's title and its menu, as Tracker renames: click the name or
+  Rename…), kept with the screen's history and shown wherever the screen
+  is (Deskbar's item, move-to menus, `olo-screen list`, the agent's tree).
 
 - ~~**Displays: kept where they are, numbered for good**~~ (done
   2026-11-02) (Ben, 2026-10-31):

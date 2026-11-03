@@ -29,7 +29,8 @@ usage: olo-screen                         open Agent Screens (watch, take contro
        olo-screen start [NAME] [--size WxH] [--scale N] [--sound]
                                              start a screen (default: agent, 1440x900, 1x, silent);
                                              prints it as JSON
-       olo-screen list                    the screens, as JSON
+       olo-screen list                    the screens, as JSON (with the name each was given)
+       olo-screen rename NAME [TITLE]     give a screen a name to show by (none: its own)
        olo-screen stop NAME               end a screen and everything on it
        olo-screen history NAME [--json] [--kind KIND] [--search TEXT] [--last N] [--clear]
                                              what was done on it: each action, what it matched, how it went
@@ -184,9 +185,19 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             Ok(())
         })(),
         "list" => {
-            println!("{}", serde_json::to_string_pretty(&screens::list()).unwrap_or_default());
+            let listed: Vec<serde_json::Value> = screens::list()
+                .into_iter()
+                .map(|s| {
+                    let title = history::title(&s.name);
+                    let mut v = json!(s);
+                    v["title"] = json!(title);
+                    v
+                })
+                .collect();
+            println!("{}", serde_json::to_string_pretty(&listed).unwrap_or_default());
             Ok(())
         }
+        "rename" => name().and_then(|n| history::set_title(&n, rest.get(1).map(String::as_str))),
         "stop" => name().and_then(|n| screens::stop(&n)),
         "env" => screen().map(|s| {
             for (k, v) in s.env() {
