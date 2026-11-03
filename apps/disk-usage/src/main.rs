@@ -1231,7 +1231,7 @@ fn main() {
             restore: None,
         });
         let view = app.clone();
-        let window = olo_ui::open_window(cx, WindowOptions::new("DiskUsage", 780.0, 560.0).min_size(600.0, 440.0), move |_, _| view);
+        let window = olo_ui::open_window(cx, WindowOptions::new("DiskUsage", 780.0, 560.0).min_size(600.0, 440.0).keep_size("main"), move |_, _| view);
         app.update(cx, |d, cx| {
             d.window = window;
             d.read_volumes(cx);

@@ -52,6 +52,9 @@ pub struct WindowOptions {
     /// that takes the whole of their attention, done with the keyboard
     /// (the palm trainer). `size` is what it's laid out at until then.
     pub fullscreen: bool,
+    /// Opens at the size the window of this name was last left at, `size`
+    /// the first time (`kept`): an app's main window, a document's.
+    pub keep_size: Option<SharedString>,
 }
 
 impl WindowOptions {
@@ -71,6 +74,7 @@ impl WindowOptions {
             foreign_parent: None,
             under_pointer: false,
             fullscreen: false,
+            keep_size: None,
         }
     }
 
@@ -134,6 +138,13 @@ impl WindowOptions {
         self
     }
 
+    /// Opens at the size the app's window called `name` was last left at
+    /// (`size` until there is one), kept as the person changes it.
+    pub fn keep_size(mut self, name: impl Into<SharedString>) -> Self {
+        self.keep_size = Some(name.into());
+        self
+    }
+
     pub fn max_size(mut self, width: f32, height: f32) -> Self {
         self.max_size = Some((width, height));
         self
@@ -159,6 +170,8 @@ pub struct Frame {
     /// Has the keyboard when nothing in the window does, so the menu
     /// bar's keys reach it.
     focus: FocusHandle,
+    /// Its size noted as it changes (`WindowOptions::keep_size`).
+    _kept: Option<gpui::Subscription>,
 }
 
 impl Frame {
@@ -366,8 +379,17 @@ pub fn open_or_raise<T: 'static, V: Render + 'static>(
 pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, build: impl FnOnce(&mut Window, &mut App) -> Entity<V>) -> Option<WindowHandle<Frame>> {
     // (A surface no bigger than nothing has no buffer to show: app_server
     // ends the connection of a program that offers one.)
-    let (w, h) = (options.size.0.max(1.0), options.size.1.max(1.0));
+    let (mut w, mut h) = options.keep_size.as_ref().and_then(|name| crate::kept::size(cx, name)).unwrap_or(options.size);
+    // (Held to what it may be now.)
+    if let Some((min_w, min_h)) = options.min_size {
+        (w, h) = (w.max(min_w), h.max(min_h));
+    }
+    if let Some((max_w, max_h)) = options.max_size {
+        (w, h) = (if max_w > 0.0 { w.min(max_w) } else { w }, if max_h > 0.0 { h.min(max_h) } else { h });
+    }
+    let (w, h) = (w.max(1.0), h.max(1.0));
     let bounds = Bounds::centered(None, size(px(w), px(h)), cx);
+    let keep = options.keep_size.clone();
     let title = options.title.clone();
     let panel = options.panel;
     let namespace = options.layer.as_ref().map(|l| l.namespace.clone());
@@ -408,7 +430,10 @@ pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, bu
                 agent::set_layer(window, cx, n);
             }
             let content = build(window, cx).into();
-            let frame = cx.new(|cx| Frame { title, content, panel, focus: cx.focus_handle() });
+            let frame = cx.new(|cx| {
+                let _kept = keep.map(|name| cx.observe_window_bounds(window, move |_, window, cx| crate::kept::note(cx, &name, window)));
+                Frame { title, content, panel, focus: cx.focus_handle(), _kept }
+            });
             if window.focused(cx).is_none() {
                 let focus = frame.read(cx).focus.clone();
                 window.focus(&focus);
@@ -482,8 +507,10 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
             let _ = tx.unbounded_send(m);
         });
         cx.set_global(Messages { handler: None, proxy, quitting: false });
-        // What the app saved (`store::save`) is on disk before it goes.
-        cx.on_app_quit(|_| {
+        // What the app saved (`store::save`), and the sizes its windows
+        // were left at, are on disk before it goes.
+        cx.on_app_quit(|cx| {
+            crate::kept::write(cx);
             olo_kit_base::store::flush();
             async {}
         })
@@ -510,6 +537,7 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
         })
         .detach();
         cx.on_window_closed(|cx| {
+            crate::kept::write(cx);
             agent::forget_closed(cx);
             crate::cut::forget_closed(cx);
             let open: std::collections::HashSet<gpui::WindowId> = cx.windows().iter().map(|w| w.window_id()).collect();

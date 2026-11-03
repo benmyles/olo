@@ -1074,7 +1074,7 @@ fn main() {
             }
         });
         let (view, title) = (app.clone(), app.read(cx).title());
-        let window = olo_ui::open_window(cx, WindowOptions::new(title, 820.0, 520.0).min_size(560.0, 340.0), move |_, _| view);
+        let window = olo_ui::open_window(cx, WindowOptions::new(title, 820.0, 520.0).min_size(560.0, 340.0).keep_size("main"), move |_, _| view);
         app.update(cx, |l, cx| {
             l.win = window;
             l.start(cx);

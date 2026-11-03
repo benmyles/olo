@@ -1080,7 +1080,7 @@ impl StyledEdit {
         });
         let title = doc.read(cx).title();
         let view = doc.clone();
-        let win = olo_ui::open_window(cx, WindowOptions::new(title, 560.0, 440.0).min_size(280.0, 180.0), move |window, cx| {
+        let win = olo_ui::open_window(cx, WindowOptions::new(title, 560.0, 440.0).min_size(280.0, 180.0).keep_size("document"), move |window, cx| {
             // The editor has the keyboard (else the window's frame does).
             view.read(cx).editor.focus(window);
             view

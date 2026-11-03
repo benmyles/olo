@@ -2495,6 +2495,10 @@ impl PlatformWindow for WaylandWindow {
         }
     }
 
+    fn tiling(&self) -> Tiling {
+        self.borrow().tiling
+    }
+
     fn window_decorations(&self) -> Decorations {
         let state = self.borrow();
         match state.decorations {

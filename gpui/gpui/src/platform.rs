@@ -652,6 +652,11 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn window_decorations(&self) -> Decorations {
         Decorations::Server
     }
+    /// Olo: which sides the compositor holds (xdg's tiled states: in a
+    /// tile, maximized or full screen), whoever draws the decorations.
+    fn tiling(&self) -> Tiling {
+        Tiling::default()
+    }
     fn set_app_id(&mut self, _app_id: &str) {}
     fn map_window(&mut self) -> anyhow::Result<()> {
         Ok(())

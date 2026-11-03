@@ -2112,6 +2112,13 @@ impl Window {
         self.client_inset
     }
 
+    /// Olo: which sides the compositor holds (in a tile, maximized or
+    /// full screen), whoever draws the decorations: a size it chose, not
+    /// the person.
+    pub fn tiling(&self) -> crate::Tiling {
+        self.platform_window.tiling()
+    }
+
     /// Returns whether the title bar window controls need to be rendered by the application (Wayland and X11)
     pub fn window_decorations(&self) -> Decorations {
         self.platform_window.window_decorations()

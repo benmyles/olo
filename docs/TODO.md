@@ -313,7 +313,7 @@ of Finished; a new one goes where its priority puts it.
   window's content scrolling when it doesn't fit (in `Frame`, so no
   panel needs its own); single-instance
   launches; list + search + filter bar wiring; upgrade state saved and
-  restored; window size kept. Done so far (2026-11-01):
+  restored. Done so far (2026-11-01):
   popups closing in any order, quitting taking windows down, window
   parts (`part::Part`), secrets on the clipboard (`copy::secret`);
   2026-11-03, an app's own files read and written whole (`store`:
@@ -323,7 +323,9 @@ of Finished; a new one goes where its priority puts it.
   (`due::{Due, Notice}`: Passwords, Telegram, the only two); a
   window opened or brought forward (`open_or_raise`, `raise`: nineteen
   apps); closing with changes not saved asked the same way everywhere
-  (`widgets::ask_to_save`: StyledEdit, Viewer).
+  (`widgets::ask_to_save`: StyledEdit, Viewer); windows opening at
+  the size they were left at (`WindowOptions::keep_size`, eleven
+  apps; Passwords had its own).
 
 - **Passwords for Agent Screens** (Ben, 2026-10-31): "in the Agent
   Screens app i can choose items from passwords that i want to make

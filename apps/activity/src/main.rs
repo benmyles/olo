@@ -442,7 +442,7 @@ impl Activity {
     /// The main window: opened, or brought forward.
     fn open(&mut self, cx: &mut Context<Self>) {
         let view = cx.entity();
-        let options = WindowOptions::new("Activity Monitor", 900.0, 620.0).min_size(560.0, 400.0);
+        let options = WindowOptions::new("Activity Monitor", 900.0, 620.0).min_size(560.0, 400.0).keep_size("main");
         olo_ui::open_or_raise(
             self.main,
             cx,
@@ -774,7 +774,7 @@ impl Activity {
         cx.defer(move |cx| {
             let v = view.clone();
             let opened = me.clone();
-            let w = olo_ui::open_window(cx, WindowOptions::new(format!("{name} ({pid})"), 620.0, 520.0).min_size(460.0, 380.0), move |window, cx| {
+            let w = olo_ui::open_window(cx, WindowOptions::new(format!("{name} ({pid})"), 620.0, 520.0).min_size(460.0, 380.0).keep_size("inspector"), move |window, cx| {
                 let closing = opened.clone();
                 window.on_window_should_close(cx, move |window, cx| {
                     let id = window.window_handle().window_id();

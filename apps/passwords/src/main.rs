@@ -83,6 +83,9 @@ pub struct Settings {
     #[serde(skip_serializing)]
     clear_seconds: Option<u32>,
     generator: generator::Recipe,
+    /// The window's size, kept here before the kit kept windows' sizes
+    /// (`keep_size`): its first size, then.
+    #[serde(skip_serializing)]
     size: Option<(u32, u32)>,
 }
 
@@ -1501,7 +1504,7 @@ impl Passwords {
                 me.update(cx, |a, _| a.parts = Some(parts));
             }
             let view = me.clone();
-            let handle = olo_ui::open_window(cx, WindowOptions::new("Passwords", w as f32, h as f32).min_size(680.0, 420.0), move |window, cx| {
+            let handle = olo_ui::open_window(cx, WindowOptions::new("Passwords", w as f32, h as f32).min_size(680.0, 420.0).keep_size("main"), move |window, cx| {
                 let closing = view.clone();
                 window.on_window_should_close(cx, move |window, cx| closing.update(cx, |a, cx| a.close_requested(window, cx)));
                 view.update(cx, |a, cx| {
@@ -1521,8 +1524,7 @@ impl Passwords {
     /// The main window's close: asks about an edit first; else Passwords
     /// ends (and so do its other windows).
     fn close_requested(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let size = window.bounds().size;
-        self.settings.size = Some((f32::from(size.width).round() as u32, f32::from(size.height).round() as u32));
+        let _ = window;
         if self.editor.as_ref().is_some_and(|e| e.changed()) {
             self.ask_discard(Then::Close, cx);
             return false;
@@ -1886,10 +1888,6 @@ impl Passwords {
                 if self.editor.as_ref().is_some_and(|e| e.changed()) {
                     self.ask_discard(Then::Close, cx);
                 } else {
-                    let size = window.bounds().size;
-                    if Some(window.window_handle()) == self.main.map(|m| m.into()) {
-                        self.settings.size = Some((f32::from(size.width).round() as u32, f32::from(size.height).round() as u32));
-                    }
                     self.quit(cx);
                 }
             }

@@ -543,7 +543,7 @@ impl Notifications {
         }
         self.history_opening = true;
         let me = cx.entity();
-        let options = WindowOptions::new("Notifications", 400.0, 560.0).min_size(360.0, 240.0);
+        let options = WindowOptions::new("Notifications", 400.0, 560.0).min_size(360.0, 240.0).keep_size("history");
         olo_ui::open_or_raise(
             self.history_win,
             cx,

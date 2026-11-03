@@ -1871,7 +1871,7 @@ fn main() {
         });
         tg.update(cx, |t, _| t.panes = panes.into());
         let view = tg.clone();
-        let win = olo_ui::open_window(cx, WindowOptions::new("Telegram", 980.0, 660.0).min_size(620.0, 420.0), move |window, cx| {
+        let win = olo_ui::open_window(cx, WindowOptions::new("Telegram", 980.0, 660.0).min_size(620.0, 420.0).keep_size("main"), move |window, cx| {
             // Closing the main window ends the app, its other windows too.
             let closing = view.clone();
             window.on_window_should_close(cx, move |_, cx| {

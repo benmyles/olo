@@ -949,7 +949,7 @@ fn main() {
         cx.bind_keys([KeyBinding::new("tab", NoAction, Some(viewer::CONTROLLED)), KeyBinding::new("shift-tab", NoAction, Some(viewer::CONTROLLED))]);
         let app = cx.new(viewer::Viewer::new);
         let view = app.clone();
-        let window = olo_ui::open_window(cx, olo_ui::WindowOptions::new("Agent Screens", 1000.0, 640.0).min_size(660.0, 420.0), move |window, cx| {
+        let window = olo_ui::open_window(cx, olo_ui::WindowOptions::new("Agent Screens", 1000.0, 640.0).min_size(660.0, 420.0).keep_size("main"), move |window, cx| {
             // Closing it ends the app (and any control of a screen).
             let quitting = view.clone();
             window.on_window_should_close(cx, move |_, cx| {

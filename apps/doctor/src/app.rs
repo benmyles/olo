@@ -531,7 +531,7 @@ pub fn run(which: Kind) {
             scroll: ScrollHandle::new(),
         });
         let view = app.clone();
-        let window = olo_ui::open_window(cx, WindowOptions::new(which.title(), 600.0, 560.0).min_size(460.0, 360.0), move |_, _| view);
+        let window = olo_ui::open_window(cx, WindowOptions::new(which.title(), 600.0, 560.0).min_size(460.0, 360.0).keep_size(which.title()), move |_, _| view);
         app.update(cx, |d, cx| {
             d.window = window;
             d.scan(cx);

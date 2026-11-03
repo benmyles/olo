@@ -19,6 +19,7 @@ pub mod due;
 pub mod editor;
 pub mod file_panel;
 pub mod icons;
+mod kept;
 pub mod keys;
 #[cfg(feature = "lint")]
 pub mod lint;

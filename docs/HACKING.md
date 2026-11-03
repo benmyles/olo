@@ -879,6 +879,18 @@ twice). `raise(handle, cx)` alone brings one forward if it's still
 open, as an app launched again does (a second launch hands itself to
 the first, `instance`, which raises its window).
 
+A window that should open at the size it was last left at says so:
+`WindowOptions::keep_size("main")` (a name among the app's windows;
+`size` is its first). Its size is noted as it changes, in memory (a
+live resize writes nothing), and the app's sizes written when one of its
+windows closes or it quits (`kept.rs`, `store`, one file an app in
+`~/.local/state/olo/windows/`); the next opens at it, held to its min
+and max. A size the compositor chose (a tile, zoomed, full screen,
+GPUI's `Window::tiling`) isn't the person's and isn't kept. The layout
+lint ignores kept sizes. Kept: Activity Monitor (and its inspectors),
+Logs, Disk Usage, Notifications' History, Passwords, Telegram,
+StyledEdit's documents, Token Pool, DriveSetup, Doctor, Agent Screens.
+
 Closing (or reverting, or moving on from) something with changes not
 saved asks the same question everywhere: `widgets::ask_to_save(cx, app,
 name, "closing", then)`, "Save changes to “name” before closing?" with

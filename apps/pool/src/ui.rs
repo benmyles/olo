@@ -107,7 +107,7 @@ impl PoolApp {
     /// Opens the window (or brings it to the front).
     pub fn open(&mut self, cx: &mut Context<Self>) {
         let app = cx.entity();
-        let options = WindowOptions::new("Token Pool", 460.0, 560.0).min_size(380.0, 320.0);
+        let options = WindowOptions::new("Token Pool", 460.0, 560.0).min_size(380.0, 320.0).keep_size("main");
         olo_ui::open_or_raise(self.win, cx, options, move |_, cx| cx.new(|cx| PoolWindow::new(app, cx)), |a, w| a.win = w);
         self.read_clients();
     }
