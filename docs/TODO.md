@@ -404,6 +404,38 @@ of Finished; a new one goes where its priority puts it.
     (completions offered and accepted, latency, fine-tunes and what
     each cost).
 
+- **Keyboards we know, starting with Apple's Magic Keyboard with Touch
+  ID (A2520), and its Touch ID as a first-class one** (Ben, 2026-11-03):
+  "add special support in prefs -> keyboards for well known keyboards
+  starting with the external apple keyboard A2520. model it after the
+  way we do it in the mouse section but also it should be a bit more in
+  depth and have it show an image of the actual keyboard and then add
+  any customization options on there and, most importantly, figure out
+  how to support the touch id sensor on this A2520 keyboard so that it
+  works as an alternative first class touch id. if you have to reverse
+  engineer it then do it -- it is plugged in at the moment". So:
+  - Preferences ▸ Keyboard: a known keyboard recognised as Mouse's known
+    mice are, with a picture of it (drawn to ICONS.md) and its own
+    settings on it (its function row and media keys, the Fn/Globe key,
+    the keypad, its battery and connection when wireless,
+    what else it has).
+  - Its Touch ID: a sensor the fingerprint service (and so the lock
+    screen, the polkit agent, Passwords' unlock, approvals) uses as it
+    uses the built-in one, enrolled and chosen in Preferences, reverse
+    engineered as needed, in Rust and in process.
+  - What Linux sees of it (2026-11-03, read from sysfs with it plugged in
+    through the Studio Display's hub, 3-1.1): USB 05ac:029f "Magic
+    Keyboard with Touch ID and Numeric Keypad", bcdDevice 0x0420, full
+    speed. Interface 0 "Device Management" (HID, usbhid), 1 "Keyboard /
+    Boot" (HID, usbhid), 2 "Touch ID": HID class but a single bulk IN
+    endpoint (0x85, 64 bytes), so usbhid leaves it unbound; it's to be
+    talked to directly (control transfers on interface 2 and that bulk
+    endpoint). On a Mac the keyboard's sensor is paired with the Mac's
+    Secure Enclave and matching happens there, so what it sends may be
+    sealed for a Secure Enclave: find out first what it says unpaired,
+    whether a template can be matched on our side at all, and say so
+    before building on it.
+
 - **The kit takes over what every app re-implements** (Ben,
   2026-11-01: "anything these windows/apps are doing that's reusable
   should be made reusable so that we aren't reinventing the wheel
