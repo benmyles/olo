@@ -168,16 +168,6 @@ of Finished; a new one goes where its priority puts it.
   at ~11% with a call on is the tick (now once per 8 ms) and looks;
   per-display render threads (its own TODO).
 
-- **A window opens 15–18 ms sooner** (found porting the Viewer,
-  2026-11-01: its first frame came 23 ms after egui's). *Done*: its
-  renderer is made once, at its device size and the transparency it
-  keeps (it was made transparent at scale 1, then made again
-  opaque, a second set of pipelines with it, then again at its
-  size), and the pipelines are made side by side (10.4 → 4.5 ms).
-  The Viewer's first frame presented 25–31 ms after exec, from 43;
-  DeskCalc pixel for pixel the same. Left: egui's first frame is
-  still ~5 ms sooner (its device and one pipeline).
-
 - **An outside program's `zwp_primary_selection_offer_v1` request
   refused** (seen 2026-11-01 through olo-wlproxy for pid 21201:
   "app_server's error on wl_display@1: invalid method 2, object
@@ -740,6 +730,23 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**A window opens 15–18 ms sooner**~~ (found porting the Viewer,
+  2026-11-01: its first frame came 23 ms after egui's). *Done*: its
+  renderer is made once, at its device size and the transparency it
+  keeps (it was made transparent at scale 1, then made again
+  opaque, a second set of pipelines with it, then again at its
+  size), and the pipelines are made side by side (10.4 → 4.5 ms).
+  The Viewer's first frame presented 25–31 ms after exec, from 43;
+  DeskCalc pixel for pixel the same. Left: egui's first frame is
+  still ~5 ms sooner (its device and one pipeline).
+  *Then* (2026-11-02): the GPU context (4.4 ms) and GPUI's shader
+  (WGSL through naga, 3.0 ms) are made on a thread of their own from the
+  moment the app starts (`BladeContext::ahead`), where they came one
+  after another once the first window was asked for (~3 ms in): the
+  first window made 10.2 → 8.4 ms (DeskCalc, median of 10; 6.9 at
+  best), 11.4 → 9.4 ms (StyledEdit). What's left after it is the
+  pipelines, 1.6 ms (Mesa's disk cache serving them).
 
 - ~~**GPUI text a glyph at a time is slow at full screen**~~ (found
   2026-11-01 by the benchmark): a window full of GPUI kit text painted

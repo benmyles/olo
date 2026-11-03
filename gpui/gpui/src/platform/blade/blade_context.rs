@@ -23,12 +23,34 @@ pub struct BladeContext {
 /// palette at each ⌘Space).
 #[derive(Default)]
 pub(super) struct PipelineCache {
+    /// GPUI's shader, compiled (WGSL through naga: ~3 ms), once.
+    shader: Option<Arc<gpu::Shader>>,
     pub(super) sets: Vec<((gpu::SurfaceInfo, u32), Arc<super::blade_renderer::BladePipelines>)>,
     /// LCD subpixel glyphs' (the second-source blend), by format.
     pub(super) subpixel: Vec<(gpu::TextureFormat, Arc<gpu::RenderPipeline>)>,
 }
 
+impl PipelineCache {
+    /// GPUI's shader, compiled the first time.
+    pub(super) fn shader(&mut self, gpu: &gpu::Context) -> Arc<gpu::Shader> {
+        self.shader
+            .get_or_insert_with(|| Arc::new(gpu.create_shader(gpu::ShaderDesc { source: include_str!("shaders.wgsl") })))
+            .clone()
+    }
+}
+
 impl BladeContext {
+    /// Olo: made off the thread that will open the first window, with
+    /// its shader compiled, while the app starts (the context ~4.4 ms and
+    /// the shader ~3 ms went after the first window was asked for).
+    pub fn ahead() -> std::thread::JoinHandle<anyhow::Result<BladeContext>> {
+        std::thread::spawn(|| {
+            let context = BladeContext::new()?;
+            context.pipelines.lock().unwrap_or_else(|e| e.into_inner()).shader(&context.gpu);
+            Ok(context)
+        })
+    }
+
     pub fn new() -> anyhow::Result<Self> {
         let device_id_forced = match std::env::var("ZED_DEVICE_ID") {
             Ok(val) => parse_pci_id(&val)

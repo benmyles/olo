@@ -334,6 +334,9 @@ pub(crate) struct WaylandClientState {
     /// agent's resident self, holds no GPU device: no driver threads, a
     /// third of the memory).
     gpu_context: Option<BladeContext>,
+    /// Olo: the context being made on a thread of its own since the
+    /// client started (`BladeContext::ahead`), for the first window.
+    gpu_context_ahead: Option<std::thread::JoinHandle<anyhow::Result<BladeContext>>>,
     wl_seat: wl_seat::WlSeat, // TODO: Multi seat support
     wl_pointer: Option<wl_pointer::WlPointer>,
     wl_keyboard: Option<wl_keyboard::WlKeyboard>,
@@ -889,6 +892,7 @@ impl WaylandClient {
             serial_tracker: SerialTracker::new(),
             globals,
             gpu_context: None,
+            gpu_context_ahead: Some(BladeContext::ahead()),
             session_lock: None,
             connection: conn.clone(),
             wl_seat: seat,
@@ -1128,7 +1132,11 @@ impl LinuxClient for WaylandClient {
             (None, None) => (None, state.outputs.iter().map(|(id, o)| (id.clone(), o.clone())).collect()),
         };
         if state.gpu_context.is_none() {
-            state.gpu_context = Some(BladeContext::new()?);
+            let ahead = state.gpu_context_ahead.take().and_then(|t| t.join().ok()).and_then(|made| made.map_err(|e| log::warn!("the GPU context made ahead failed ({e}); again")).ok());
+            state.gpu_context = Some(match ahead {
+                Some(context) => context,
+                None => BladeContext::new()?,
+            });
         }
         let gpu_context = state.gpu_context.as_ref().expect("made above");
         let (window, surface_id) = WaylandWindow::new(

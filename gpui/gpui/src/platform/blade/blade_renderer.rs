@@ -157,16 +157,13 @@ pub(super) struct BladePipelines {
 }
 
 impl BladePipelines {
-    fn new(gpu: &gpu::Context, surface_info: gpu::SurfaceInfo, path_sample_count: u32) -> Self {
+    fn new(gpu: &gpu::Context, shader: &gpu::Shader, surface_info: gpu::SurfaceInfo, path_sample_count: u32) -> Self {
         use gpu::ShaderData as _;
 
         log::info!(
             "Initializing Blade pipelines for surface {:?}",
             surface_info
         );
-        let shader = gpu.create_shader(gpu::ShaderDesc {
-            source: include_str!("shaders.wgsl"),
-        });
         shader.check_struct_size::<GlobalParams>();
         shader.check_struct_size::<SurfaceParams>();
         shader.check_struct_size::<Quad>();
@@ -458,7 +455,8 @@ fn shared_pipelines(gpu: &gpu::Context, cache: &Mutex<PipelineCache>, info: gpu:
     if let Some((_, set)) = cache.sets.iter().find(|(key, _)| *key == (info, path_sample_count)) {
         return set.clone();
     }
-    let set = Arc::new(BladePipelines::new(gpu, info, path_sample_count));
+    let shader = cache.shader(gpu);
+    let set = Arc::new(BladePipelines::new(gpu, &shader, info, path_sample_count));
     cache.sets.push(((info, path_sample_count), set.clone()));
     set
 }
