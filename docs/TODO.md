@@ -360,6 +360,50 @@ of Finished; a new one goes where its priority puts it.
   scrollback shown with it; documented in HACKING with where to use it
   rather than the BeOS bar.
 
+- **Terminal: a tiny model of its own completes brush's commands**
+  (Ben, 2026-11-03): "in prefs -> terminal have an option for using a
+  tiny ai model for brush shell command autocompletion that is
+  accelerated either via simd or gpu. it should be based on the
+  existing bash history and take into account what dir the user is in,
+  what commands have come before in the session, time of day and day of
+  week, and any other pertinent things (maybe other running user
+  apps?). it should fine-tune extremely efficiently and quickly, like
+  maybe updating every minute or so. and the baseline should be
+  hand-written weights by you and then as part of enabling it in the
+  prefs it should do the first fine-tune from the brush shell history.
+  the option should be disabled if brush shell is not active, with a
+  link/button to open olo suggestions to install it first. and it
+  should be integrated into activity monitor under a new AI section
+  that shows the model performance, accepted completions and so on. and
+  then when enabled obv it needs to be added to the users brush shell
+  as the autocompletion/suggestions method. both the training and
+  inference needs to be in rust with hand written ultra optimized gpu
+  and/or simd code (probably best to support both and let the user
+  choose which acceleration method they want it to use) and it must be
+  extremely low latency inference, like <10ms. the idea is that this is
+  a tiny tiny model kinda like the palm detector model (but can be
+  bigger and slower than that one of course). no python is allowed as
+  usual." So:
+  - Preferences ▸ Terminal: an option to complete commands with the
+    model, and which acceleration it uses (SIMD or the GPU, the person's
+    choice). Unavailable while brush isn't the person's shell, with a
+    button that opens Olo Suggestions to set brush up first.
+  - The model: tiny, in Rust, training and inference both, with
+    hand-written SIMD and GPU kernels (as the palm model's). What it
+    sees: the line typed so far, the bash/brush history, the current
+    folder, the session's commands before it, the time of day and day
+    of week, and whatever else helps (the person's running apps,
+    perhaps). Inference well under 10 ms.
+  - Its weights: a baseline written by hand, then a first fine-tune
+    from the brush history as the option is turned on, then a quick
+    fine-tune about every minute from what's been typed since, off the
+    UI thread, costing nothing while nothing new was typed.
+  - brush: the model is its completion and suggestion source once
+    turned on (and only then).
+  - Activity Monitor: a new AI section showing how the model does
+    (completions offered and accepted, latency, fine-tunes and what
+    each cost).
+
 - **The kit takes over what every app re-implements** (Ben,
   2026-11-01: "anything these windows/apps are doing that's reusable
   should be made reusable so that we aren't reinventing the wheel
