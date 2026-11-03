@@ -5,7 +5,9 @@
 //! in: the person's pointer and keys over the picture then go to that
 //! screen, never to their own, until they choose Stop Controlling),
 //! History (`replay`: its actions as they come, to search, filter and
-//! play back) and Stats (`stats`).
+//! play back), Stats (`stats`) and Passwords (`shares`: what of the
+//! person's Passwords the screen has, besides or without what every
+//! screen has, Screen ▸ Passwords for Every Screen…).
 //!
 //! Live shows the screen's own frames as it draws them, never copied:
 //! its app_server captures each into one of a few dmabufs on the GPU
@@ -107,6 +109,7 @@ enum Tab {
     Live,
     History,
     Stats,
+    Passwords,
 }
 
 impl Tab {
@@ -115,6 +118,7 @@ impl Tab {
             Tab::Live => "Live",
             Tab::History => "History",
             Tab::Stats => "Stats",
+            Tab::Passwords => "Passwords",
         }
     }
 }
@@ -540,6 +544,10 @@ pub struct Viewer {
     show_archived: bool,
     /// Where the header's title was drawn (a click there renames).
     title_at: std::rc::Rc<std::cell::Cell<olo_ui::gpui::Bounds<olo_ui::gpui::Pixels>>>,
+    /// The chosen screen's Passwords tab (made when first shown), and the
+    /// window of what every screen has.
+    shares: Option<(String, Entity<crate::shares::Shares>)>,
+    shares_everywhere: Option<WindowHandle<Frame>>,
 }
 
 impl Viewer {
@@ -568,6 +576,8 @@ impl Viewer {
             busy: false,
             replay: None,
             stats_scroll: ScrollHandle::new(),
+            shares: None,
+            shares_everywhere: None,
             ticking: None,
             proxy,
             renaming: None,
@@ -922,7 +932,7 @@ impl Viewer {
         let replay = self.replay.as_ref().map(|(r, _)| r.read(cx));
         let history = tab == Tab::History && replay.is_some_and(|r| r.loaded() && !r.actions().is_empty());
         let playing = replay.is_some_and(Replay::playing);
-        let screen = self.chosen_items(Menu::new("Screen").item("New Screen", "new").key("n").enabled(!self.busy).separator());
+        let screen = self.chosen_items(Menu::new("Screen").item("New Screen", "new").key("n").enabled(!self.busy).item("Passwords for Every Screen…", "shares-everywhere").separator());
         vec![
             screen
                 .item("Clear History…", "clear")
@@ -972,6 +982,7 @@ impl Viewer {
     fn command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) {
         match command {
             "new" => self.new_screen(cx),
+            "shares-everywhere" => crate::shares::open_everywhere(self.shares_everywhere, cx, |v, w| v.shares_everywhere = w),
             "rename" => self.start_rename(window, cx),
             "archive" => self.archive(true, cx),
             "unarchive" => self.archive(false, cx),
@@ -1701,7 +1712,7 @@ impl Render for Viewer {
             r.running = running;
         });
         let header = self.header(&name, cx);
-        let tabs: Vec<Tab> = if running { vec![Tab::Live, Tab::History, Tab::Stats] } else { vec![Tab::History, Tab::Stats] };
+        let tabs: Vec<Tab> = if running { vec![Tab::Live, Tab::History, Tab::Stats, Tab::Passwords] } else { vec![Tab::History, Tab::Stats, Tab::Passwords] };
         let labels: Vec<SharedString> = tabs.iter().map(|t| SharedString::from(t.label())).collect();
         let shown = self.shown_tab();
         let i = tabs.iter().position(|t| *t == shown).unwrap_or(0);
@@ -1709,6 +1720,15 @@ impl Render for Viewer {
             Tab::Live => self.live_tab(cx).into_any_element(),
             Tab::History => replay.clone().into_any_element(),
             Tab::Stats => stats::view(&replay, running, area_w, &self.stats_scroll, cx),
+            Tab::Passwords => {
+                if self.shares.as_ref().is_none_or(|(n, _)| *n != name) {
+                    let for_screen = name.clone();
+                    self.shares = Some((name.clone(), cx.new(|cx| crate::shares::Shares::new(Some(for_screen), cx))));
+                }
+                let shares = self.shares.as_ref().map(|(_, s)| s.clone()).expect("made");
+                shares.update(cx, |s, _| s.width = area_w);
+                shares.into_any_element()
+            }
         };
         let pick = me.clone();
         let tab_view = TabView::new("screen-tabs", labels, i).on_select(move |i, _, cx| {

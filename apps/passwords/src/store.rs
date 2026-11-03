@@ -294,7 +294,16 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
     let mut waiting: Option<Plan> = None;
     let mut plans = 0u64;
     let mut queue: VecDeque<(u64, Job)> = VecDeque::new();
+    // What's shared with agent screens, written again after anything that
+    // may have changed it (an unchanged copy isn't).
+    let mut written: HashMap<std::path::PathBuf, u64> = HashMap::new();
+    let mut copies_due = false;
     loop {
+        if std::mem::take(&mut copies_due)
+            && let Some(v) = vault.as_ref().filter(|v| !v.is_shared())
+        {
+            v.write_copies(&mut written);
+        }
         if queue.is_empty() {
             match rx.recv() {
                 Ok(job) => queue.push_back(job),
@@ -309,6 +318,14 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
         }
         // Only the latest selection's item is worth fetching.
         if matches!(job, Job::Get { .. }) && queue.iter().any(|(_, j)| matches!(j, Job::Get { .. })) {
+            continue;
+        }
+        copies_due = !matches!(job, Job::Get { .. } | Job::Close | Job::Cli { .. } | Job::Sync { .. } | Job::Decline);
+        // What's shared with an agent screen is read only.
+        if vault.as_ref().is_some_and(Vault::is_shared)
+            && matches!(job, Job::Create(_) | Job::Put(_) | Job::Archive { .. } | Job::Delete { .. } | Job::Sync { .. } | Job::RemoveAccount { .. } | Job::Approve { .. } | Job::Reset)
+        {
+            proxy.send(FromStore { generation: gen_of_job, reply: Reply::Error("Shared with this screen: change it in your own Passwords.".into()) });
             continue;
         }
         let reply = |reply: Reply| proxy.send(FromStore { generation: gen_of_job, reply });
@@ -723,11 +740,56 @@ fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], v
                 user_handle: stored.user_handle.clone(),
             }
         }
+        // What's shared with agent screens (the app checked who asks).
+        Request::Shares => shares(c),
+        Request::SetShares { everywhere, screen } => {
+            let shares = &mut c.data.shares;
+            if let Some(ids) = everywhere {
+                shares.everywhere = dedup(ids);
+            }
+            if let Some((name, s)) = screen {
+                let s = olo_keychain::ScreenShares { add: dedup(&s.add), remove: dedup(&s.remove) };
+                if s.is_empty() {
+                    shares.screens.remove(name);
+                } else {
+                    shares.screens.insert(name.clone(), s);
+                }
+            }
+            match c.save() {
+                Ok(()) => Response::Shared,
+                Err(e) => error(&e),
+            }
+        }
         // Answered by the app itself.
         Request::Unlock => Response::Unlocked,
         // Answered on the UI thread.
         Request::Search { .. } | Request::Show { .. } | Request::Cli { .. } | Request::Passkeys { .. } => Response::Error { message: "unexpected".into() },
     }
+}
+
+/// Every item that could be shared with agent screens (no secrets), and
+/// what's shared.
+fn shares(c: &Vault) -> Response {
+    let vault_title = |id: &str| c.data.vaults.iter().find(|v| v.id == id).map(|v| v.title.clone()).unwrap_or_default();
+    let mut items: Vec<olo_keychain::Shareable> = c
+        .data
+        .entries
+        .iter()
+        .filter(|e| e.state == onepassword::ItemState::Active)
+        .map(|e| {
+            let i = &e.item;
+            let subtitle = i.username().filter(|u| !u.is_empty()).map(str::to_owned).or_else(|| i.websites.first().and_then(|w| olo_keychain::host(&w.url))).unwrap_or_default();
+            olo_keychain::Shareable { vault: i.vault_id.clone(), vault_title: vault_title(&i.vault_id), id: i.id.clone(), title: i.title.clone(), subtitle, kind: i.category.label().to_string() }
+        })
+        .collect();
+    items.sort_by_cached_key(|i| (i.title.to_lowercase(), i.id.clone()));
+    Response::Shares { items, everywhere: c.data.shares.everywhere.clone(), screens: c.data.shares.screens.clone() }
+}
+
+/// `ids` once each, in their order.
+fn dedup(ids: &[String]) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    ids.iter().filter(|id| seen.insert(id.as_str())).cloned().collect()
 }
 
 /// Whether a login's website lets it fill the page at `url`.

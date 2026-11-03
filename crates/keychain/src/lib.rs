@@ -59,6 +59,88 @@ pub enum Request {
     /// From `op`: answered once unlocked and the asking terminal session
     /// is allowed.
     Cli { query: CliQuery },
+    /// What's shared with agent screens (Agent Screens' Passwords tab and
+    /// Shared with Every Screen), with every item it could share: once
+    /// unlocked. Never answered to a program on an agent screen.
+    Shares,
+    /// Share these with every screen (`everywhere`), or set what screen
+    /// `screen` has besides (or without) those. Never from a program on
+    /// an agent screen.
+    SetShares { everywhere: Option<Vec<String>>, screen: Option<(String, ScreenShares)> },
+}
+
+/// What one agent screen has besides what every screen has (`add`), and
+/// what it goes without of that (`remove`): item ids.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScreenShares {
+    #[serde(default)]
+    pub add: Vec<String>,
+    #[serde(default)]
+    pub remove: Vec<String>,
+}
+
+impl ScreenShares {
+    /// Nothing besides or without: the screen has what every screen has.
+    pub fn is_empty(&self) -> bool {
+        self.add.is_empty() && self.remove.is_empty()
+    }
+}
+
+/// An item that can be shared, as `Shares` lists it (no secrets).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Shareable {
+    pub vault: String,
+    /// Its vault's name.
+    pub vault_title: String,
+    pub id: String,
+    pub title: String,
+    /// Its website's host, or its username.
+    pub subtitle: String,
+    /// Its kind ("Login", "Secure Note").
+    pub kind: String,
+}
+
+/// Where what's shared with agent screens is kept: a copy of the items
+/// in Passwords' own format, sealed with a key kept beside it, so a
+/// screen's Passwords opens it on its own (whether or not the person's
+/// is open or unlocked). `None` is what every screen has; a screen given
+/// more or less has a copy of its own.
+pub mod shared {
+    use std::path::PathBuf;
+
+    /// The folder agent screens keep their things in.
+    pub fn screens_dir() -> PathBuf {
+        olo_xdg::state_dir().join("screens")
+    }
+
+    /// The copy for `screen` (None: every screen's).
+    pub fn copy_path(screen: Option<&str>) -> PathBuf {
+        copy_path_in(&screens_dir(), screen)
+    }
+
+    /// The copy for `screen` with the screens' things in `dir`.
+    pub fn copy_path_in(dir: &std::path::Path, screen: Option<&str>) -> PathBuf {
+        match screen {
+            Some(name) => dir.join(name).join("passwords.vault"),
+            None => dir.join("passwords.vault"),
+        }
+    }
+
+    /// The key that opens a copy.
+    pub fn key_path(copy: &std::path::Path) -> PathBuf {
+        copy.with_extension("key")
+    }
+
+    /// The agent screen this process is on, if it is on one (its
+    /// session sets `OLO_SCREEN`).
+    pub fn this_screen() -> Option<String> {
+        std::env::var("OLO_SCREEN").ok().filter(|s| !s.is_empty())
+    }
+
+    /// Whether process `pid` runs on an agent screen.
+    pub fn on_a_screen(pid: i32) -> bool {
+        std::fs::read(format!("/proc/{pid}/environ")).map_or(true, |env| env.split(|b| *b == 0).any(|kv| kv.starts_with(b"OLO_SCREEN=") && kv.len() > b"OLO_SCREEN=".len()))
+    }
 }
 
 /// What `op` asks. Items and vaults are named by ID or by name (any case).
@@ -92,9 +174,15 @@ impl Request {
             Request::Logins { .. } | Request::Search { .. } | Request::Passkeys { .. } => Duration::from_secs(15),
             Request::Check { .. } => Duration::from_secs(60),
             // These wait for you to unlock Passwords.
-            Request::Fill { .. } | Request::Save { .. } | Request::Unlock | Request::Show { .. } | Request::PasskeyCreate { .. } | Request::PasskeySign { .. } | Request::Cli { .. } => {
-                Duration::from_secs(300)
-            }
+            Request::Fill { .. }
+            | Request::Save { .. }
+            | Request::Unlock
+            | Request::Show { .. }
+            | Request::PasskeyCreate { .. }
+            | Request::PasskeySign { .. }
+            | Request::Cli { .. }
+            | Request::Shares
+            | Request::SetShares { .. } => Duration::from_secs(300),
         }
     }
 }
@@ -205,6 +293,15 @@ pub enum Response {
     Cli {
         json: serde_json::Value,
     },
+    /// For `Shares`: every item that could be shared, what every screen
+    /// has, and what each screen has besides or without.
+    Shares {
+        items: Vec<Shareable>,
+        everywhere: Vec<String>,
+        screens: std::collections::BTreeMap<String, ScreenShares>,
+    },
+    /// For `SetShares`: kept, and the screens' copies written.
+    Shared,
 }
 
 impl Drop for Response {

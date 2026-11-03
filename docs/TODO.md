@@ -7,6 +7,36 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
+- **Focus mode: a link opened in a browser on the same desktop doesn't
+  bring its window forward** (Ben, 2026-11-03, a bug): "when in focus
+  mode if i click on e.g. a url and my browser that it should open in is
+  on the same desktop with a window already open then it correctly opens
+  it in a tab but it doesn't change focus to the window. weirdly, it does
+  work properly and change focus if the browser is on another display
+  (and maybe another workspace i didn't check). when you fix this also
+  make sure we have extensive tests and fuzz tests around focus mode
+  (and the other window arrangement modes) because we've hit quite a few
+  bugs with their different behaviors and want to make sure they won't
+  keep coming back". So: find why an activation (xdg-activation with
+  the opener's token) on the same display and workspace is refused or
+  lost in focus mode, fix it; then tests for every arrangement mode
+  (standard, focus, auto-tiling, …) of activation, focus and stacking
+  on the same and other workspaces and displays, and a fuzz test that
+  drives random sequences (open, close, activate with and without
+  tokens, move, switch workspaces and modes) against the modes' rules.
+
+- **Auto-tiling: resizing a window is choppy and windows overlap until
+  let go** (Ben, 2026-11-03, a bug): "when in autotile mode and
+  resizing a window it is super choppy while resizing and the windows
+  can overlap and it doesn't all snap into place until i let go. it
+  should be smooth the whole time and the windows should react properly
+  as i resize them". So: while a tiled window's edge is dragged, its
+  neighbours give way frame by frame (the layout worked out at each
+  move, not at the release), every window's new size sent at once and
+  shown together when the clients have drawn it (no window drawn over
+  another, no gap), at the display's rate; measured with `timings` and
+  the bench (a live resize in auto-tiling at 120 Hz, no dropped frames).
+
 - **The palm trainer, full screen and driven from the keyboard** (Ben,
   2026-11-02, with a screenshot of its last step, "Try it", at 2× in
   dark mode): "so the training modal/flow needs work: for one i can't
@@ -307,6 +337,29 @@ of Finished; a new one goes where its priority puts it.
   theme of every Olo look, light and dark, at 1× and 2×, as shots in
   the journal.
 
+- **Activity Monitor: an Inputs section, and the Displays panel
+  polished** (Ben, 2026-11-03): "add an Inputs section in activity
+  monitor, move the pointer + touchpad in there, add a bunch more
+  stats/metrics about them with graphs and such. also polish up with
+  stats/metrics/graphs the Displays panel". So: a sidebar section of its
+  own for input devices, with the pointer's card (`PointerHealth`) and
+  the touchpad's (`TouchHealth`) moved out of Displays; more about each
+  (reports a second, gaps and latency over time as graphs, the palm
+  filter's catches, clicks, scroll and gesture rates, the keyboard's
+  too); and Displays given the same: frame times and drops over time as
+  graphs per display, refresh rate, what's on overlay planes.
+
+- **Terminal: a scroll bar, slim, there when wanted** (Ben,
+  2026-11-03): "show an actual scrollbar in terminal but introduce a new
+  reusable scrollbar type that is like a slim/low-profile scrollbar and
+  that only appears when the pointer is near it or the user has started
+  scrolling already". So: a kit scroll bar of its own kind (thin, no
+  arrows, drawn over the content's edge), hidden until the pointer
+  comes near that edge or a scroll starts, fading out a moment after;
+  draggable, clickable, agent-readable as a ScrollBar; Terminal's
+  scrollback shown with it; documented in HACKING with where to use it
+  rather than the BeOS bar.
+
 - **The kit takes over what every app re-implements** (Ben,
   2026-11-01: "anything these windows/apps are doing that's reusable
   should be made reusable so that we aren't reinventing the wheel
@@ -334,24 +387,6 @@ of Finished; a new one goes where its priority puts it.
   portal dialogs, the screen saver and the supervisor have none);
   a window's content scrolling when the window is shorter than it
   (`WindowOptions::content_height`, in `Frame`: Preferences' panels).
-
-- **Passwords for Agent Screens** (Ben, 2026-10-31): "in the Agent
-  Screens app i can choose items from passwords that i want to make
-  available by default to all new and existing agent screen sessions and
-  these items should be available to the agent by just opening the
-  passwords app in the agent screen and they'll see it unlocked
-  automatically and scoped to just the items i've chosen to make
-  available. on any given agent screen session i should be able to
-  further customize it in a new "Passwords" tab where i can optionally
-  remove any grants already provided or add more. and for both places
-  when defining grants it needs to be powerful: i should be able to
-  search and filter to add/remove multiple matching items in bulk". So:
-  default grants in Agent Screens (settings), per-screen grants in a
-  Passwords tab of each screen (taking away defaults or adding more);
-  Passwords opened on an agent screen opens unlocked, showing (and
-  filling, `op`, Chrome) only the granted items; both editors with the
-  kit's search language and filters, selecting many matches to grant or
-  revoke at once.
 
 - **Move windows to and from Agent Screens** (Ben, 2026-10-31):
   "everywhere we have menu options to move something to a
@@ -780,6 +815,33 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Passwords for Agent Screens**~~ (Ben, 2026-10-31): "in the Agent
+  Screens app i can choose items from passwords that i want to make
+  available by default to all new and existing agent screen sessions and
+  these items should be available to the agent by just opening the
+  passwords app in the agent screen and they'll see it unlocked
+  automatically and scoped to just the items i've chosen to make
+  available. on any given agent screen session i should be able to
+  further customize it in a new "Passwords" tab where i can optionally
+  remove any grants already provided or add more. and for both places
+  when defining grants it needs to be powerful: i should be able to
+  search and filter to add/remove multiple matching items in bulk". So:
+  default grants in Agent Screens (settings), per-screen grants in a
+  Passwords tab of each screen (taking away defaults or adding more);
+  Passwords opened on an agent screen opens unlocked, showing (and
+  filling, `op`, Chrome) only the granted items; both editors with the
+  kit's search language and filters, selecting many matches to grant or
+  revoke at once.
+  *Done* (2026-11-03, HACKING "Passwords for agent screens"): the
+  person chose a copy for each screen with a key it uses on its own
+  (over sharing only while their Passwords is unlocked). Every screen's
+  items in Screen ▸ Passwords for Every Screen…, each screen's more or
+  fewer in its Passwords tab, searched, filtered and changed many at a
+  time; kept sealed in the person's store, changed only from their own
+  display; a screen's Passwords opens its copy unlocked, read only,
+  following changes. Checked headless end to end (two sandboxed
+  sessions, a fixture store), and that an agent on a screen is refused.
 
 - ~~**Tooltips for text that doesn't show in full**~~ (*done in the kit*
   2026-11-02, HACKING "Text cut short": every label the kit cuts with

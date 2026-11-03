@@ -11,6 +11,7 @@ mod picture;
 mod record;
 mod replay;
 mod screens;
+mod shares;
 mod stats;
 mod viewer;
 

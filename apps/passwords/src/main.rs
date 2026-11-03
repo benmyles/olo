@@ -89,6 +89,16 @@ pub struct Settings {
     size: Option<(u32, u32)>,
 }
 
+/// Passwords on an agent screen: what's shared with the screen, opened
+/// already (the person chose what, in Agent Screens), read only, never
+/// locked or synced, and the person's settings left alone.
+pub(crate) fn on_screen() -> bool {
+    olo_keychain::shared::this_screen().is_some()
+}
+
+/// What a screen's Passwords says of a change it can't make.
+const SHARED_ONLY: &str = "Shared with this screen: change it in your own Passwords.";
+
 fn settings_path() -> std::path::PathBuf {
     olo_ui::config_dir().join("passwords.json")
 }
@@ -215,6 +225,9 @@ pub struct Problems {
 /// The screen locked.
 struct ScreenLocked;
 
+/// What's shared with this agent screen changed: opened again.
+struct SharedChanged;
+
 /// How often to sync while unlocked, and how soon after a change here.
 const SYNC_EVERY: Duration = Duration::from_secs(5 * 60);
 const SYNC_AFTER_CHANGE: Duration = Duration::from_secs(3);
@@ -317,6 +330,9 @@ pub struct Passwords {
     countdown: Option<Task<()>>,
     proxy: Proxy,
     _subs: Vec<Subscription>,
+    /// On an agent screen: what's shared with it, followed (the person's
+    /// Passwords writes it again as they share more or less).
+    _shared: Option<olo_ui::watch::Watch>,
 }
 
 /// `s` as a filter value: lower case, words joined by `-`
@@ -773,12 +789,24 @@ impl Passwords {
     }
 
     fn save_settings(&self) {
+        // (A screen's Passwords keeps nothing of its own: these are the
+        // person's.)
+        if on_screen() {
+            return;
+        }
         olo_ui::store::save(settings_path(), &self.settings);
     }
 
     /// Another app asks (Chrome's extension for a page's logins, the
     /// palette, op).
     fn keychain(&mut self, incoming: Incoming, cx: &mut Context<Self>) {
+        // What's shared with agent screens is the person's to choose, from
+        // their own display: never an agent's on a screen (which could
+        // share itself more), nor a screen's Passwords' to say.
+        if matches!(incoming.request, Request::Shares | Request::SetShares { .. }) && (olo_keychain::shared::this_screen().is_some() || olo_keychain::shared::on_a_screen(incoming.pid)) {
+            let message = "What’s shared with agent screens is chosen in Agent Screens on your own display.".into();
+            return incoming.reply(Response::Error { message });
+        }
         if let Request::Cli { query } = &incoming.request {
             if !self.security.op_cli {
                 let message = "Olo’s op is turned off (Preferences ▸ Security).".into();
@@ -826,11 +854,15 @@ impl Passwords {
         // The items the request may concern, by their websites.
         let fits: Box<dyn Fn(&onepassword::Website) -> bool> = match &incoming.request {
             Request::Unlock => return incoming.reply(Response::Unlocked),
+            Request::Shares | Request::SetShares { .. } => {
+                return self.store.send(Job::Keychain { incoming: Box::new(incoming), candidates: Vec::new(), vault: String::new() });
+            }
             Request::Cli { query } => {
                 let Some(session) = cli::session_of(incoming.pid) else {
                     return incoming.reply(Response::Error { message: "op went away".into() });
                 };
-                if !self.grants.check(session) {
+                // (On a screen: what it was given is the agents' there.)
+                if !on_screen() && !self.grants.check(session) {
                     // Ask once per session, however many are waiting.
                     // Allowed while approving without asking; else asked.
                     self.cli_waiting.push((session, incoming));
@@ -1079,6 +1111,9 @@ impl Passwords {
     }
 
     fn do_lock(&mut self, cx: &mut Context<Self>) {
+        if on_screen() {
+            return;
+        }
         if self.editor.as_ref().is_some_and(|e| e.changed()) {
             self.ask_discard(Then::Lock, cx);
             return;
@@ -1232,6 +1267,9 @@ impl Passwords {
     }
 
     fn new_item(&mut self, category: ItemCategory, cx: &mut Context<Self>) {
+        if on_screen() {
+            return self.flash(SHARED_ONLY);
+        }
         if self.lock.locked || self.conn != Conn::Ready || self.vaults.is_empty() {
             return;
         }
@@ -1248,6 +1286,9 @@ impl Passwords {
     }
 
     pub fn edit_selected(&mut self, cx: &mut Context<Self>) {
+        if on_screen() {
+            return self.flash(SHARED_ONLY);
+        }
         let Some(item) = self.selected.as_ref().and_then(|s| self.details.get(s)) else { return };
         if self.overview(&item.id).is_some_and(|o| o.state == ItemState::Archived) {
             return;
@@ -1430,6 +1471,9 @@ impl Passwords {
     }
 
     fn confirm_delete(&mut self, cx: &mut Context<Self>) {
+        if on_screen() {
+            return self.flash(SHARED_ONLY);
+        }
         let Some(o) = self.selected.as_ref().and_then(|s| self.overview(s)).cloned() else { return };
         let message = format!("Delete “{}” for good? This can’t be undone.", o.title);
         let me = cx.entity();
@@ -1719,7 +1763,7 @@ impl Passwords {
             due.extend(self.sync_due);
             due.extend(self.sync_asked.map(|t| t + SYNC_EVERY));
         }
-        if !self.lock.locked && self.security.lock_minutes > 0 {
+        if !self.lock.locked && self.security.lock_minutes > 0 && !on_screen() {
             due.push(self.last_use + Duration::from_secs(self.security.lock_minutes as u64 * 60));
         }
         due.extend(self.status.until());
@@ -1787,22 +1831,23 @@ impl Passwords {
         let has_otp = details.is_some_and(|d| d.fields.iter().any(|f| f.field_type == ItemFieldType::Totp));
         let has_site = selected.is_some_and(|s| !s.websites.is_empty());
 
+        let shared = on_screen();
         let file = Menu::new("File")
             .submenu(category_menu(Menu::new("New Item"), "new:"))
-            .enabled(ready)
+            .enabled(ready && !shared)
             .separator()
             .item("Password Generator", "generator")
             .key("g")
             .separator()
             .item("Lock", "lock")
             .key("l")
-            .enabled(!self.lock.locked)
+            .enabled(!self.lock.locked && !shared)
             .item("Sync Now", "sync")
-            .enabled(ready && !self.settings.accounts.is_empty() && self.sync != Some(SyncState::Running))
+            .enabled(ready && !self.settings.accounts.is_empty() && self.sync != Some(SyncState::Running) && !shared)
             .item("1Password Accounts…", "account")
-            .enabled(!self.lock.locked)
+            .enabled(!self.lock.locked && !shared)
             .item("Reset Passwords…", "reset")
-            .enabled(!self.lock.locked && self.set_up())
+            .enabled(!self.lock.locked && self.set_up() && !shared)
             .separator()
             .item("Close", "close")
             .key("w")
@@ -1825,15 +1870,15 @@ impl Passwords {
         let item = Menu::new("Item")
             .item("Edit", "edit")
             .key("e")
-            .enabled(has && details.is_some() && !archived)
+            .enabled(has && details.is_some() && !archived && !shared)
             .item("Open Website", "open")
             .key("o")
             .enabled(has && has_site)
             .separator()
             .item("Move to Archive", "archive")
-            .enabled(has && !archived)
+            .enabled(has && !archived && !shared)
             .item("Delete…", "delete")
-            .enabled(has);
+            .enabled(has && !shared);
         let mut view = Menu::new("View").item("All Items", "source:all").key("0").checked(self.source == Source::All);
         for (i, v) in self.vaults.iter().enumerate().take(9) {
             // (By place, as app_keys has them: ⌘1 the first vault.)
@@ -1844,7 +1889,9 @@ impl Passwords {
         for (minutes, label) in [(1, "1 Minute"), (5, "5 Minutes"), (10, "10 Minutes"), (30, "30 Minutes"), (60, "1 Hour"), (0, "Never")] {
             lock_after = lock_after.item(label, format!("lockafter:{minutes}")).checked(self.security.lock_minutes == minutes);
         }
-        view = view.separator().submenu(lock_after);
+        if !shared {
+            view = view.separator().submenu(lock_after);
+        }
         vec![file, edit, item, view]
     }
 
@@ -1891,6 +1938,7 @@ impl Passwords {
                     self.quit(cx);
                 }
             }
+            "sync" | "account" | "reset" | "lock" if on_screen() => {}
             "lock" => self.do_lock(cx),
             "account" => self.change_account(cx),
             "sync" => self.sync_and_review(cx),
@@ -1899,6 +1947,7 @@ impl Passwords {
             "find" => self.search_field.clone().update(cx, |f, cx| f.focus(window, cx)),
             "edit" => self.edit_selected(cx),
             "open" => self.open_website(cx),
+            "archive" if on_screen() => self.flash(SHARED_ONLY),
             "archive" => {
                 if let Some(o) = self.selected.as_ref().and_then(|s| self.overview(s)) {
                     self.store.send(Job::Archive { vault: o.vault_id.clone(), item: o.id.clone() });
@@ -1975,6 +2024,14 @@ impl Passwords {
                 }
                 self.security = *security;
                 cx.notify();
+                return;
+            }
+            Err(m) => m,
+        };
+        let msg = match msg.downcast::<SharedChanged>() {
+            Ok(_) => {
+                self.store.send(Job::Close);
+                self.connect(cx);
                 return;
             }
             Err(m) => m,
@@ -2260,8 +2317,14 @@ fn main() {
             });
         }
         let saved: Option<Saved> = olo_ui::restored_state().and_then(|s| serde_json::from_str(&s).ok());
-        // Locked from the start once there are items to protect.
-        let locked = !settings.accounts.is_empty() || settings.local_only;
+        // On an agent screen: what's shared with it, no account of its own.
+        if on_screen() {
+            settings.accounts.clear();
+            settings.local_only = true;
+        }
+        // Locked from the start once there are items to protect (never
+        // what's shared with a screen: the person chose to give it).
+        let locked = !on_screen() && (!settings.accounts.is_empty() || settings.local_only);
         let account_field = text_field(cx, |f| f.name("Account").hint("as in 1Password's sidebar, or its UUID"));
         let lock_field = text_field(cx, |f| f.name("Password").password(true));
         let search = search_field(cx, "Search");
@@ -2350,6 +2413,11 @@ fn main() {
                 countdown: None,
                 proxy: proxy.clone(),
                 _subs: subs,
+                _shared: olo_keychain::shared::this_screen().and_then(|screen| {
+                    let proxy = proxy.clone();
+                    let copies = [olo_keychain::shared::copy_path(Some(&screen)), olo_keychain::shared::copy_path(None)];
+                    olo_ui::watch::watch(copies, move |_| proxy.send(SharedChanged))
+                }),
             };
             let mut unlocked_before = false;
             if let Some(saved) = saved {

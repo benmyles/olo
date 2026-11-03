@@ -356,9 +356,12 @@ fn browser(app: &mut Passwords, window: &mut Window, cx: &mut Context<Passwords>
         .h(px(m::TOOLBAR_HEIGHT))
         .px(px(m::SPACING))
         .flex_shrink_0()
-        .child(Button::new("New Item").on_click_at(move |b, window, cx| {
-            let to = new_me.clone();
-            menu::popup(window, cx, crate::category_menu(Menu::new("New Item"), "new:"), b, Corner::BottomLeft, move |cmd, window, cx| to.update(cx, |a, cx| a.command(cmd, window, cx)));
+        // (Nothing is made on an agent screen: what's there is shared.)
+        .children((!crate::on_screen()).then(|| {
+            Button::new("New Item").on_click_at(move |b, window, cx| {
+                let to = new_me.clone();
+                menu::popup(window, cx, crate::category_menu(Menu::new("New Item"), "new:"), b, Corner::BottomLeft, move |cmd, window, cx| to.update(cx, |a, cx| a.command(cmd, window, cx)));
+            })
         }))
         .child(Button::new("Generator").on_click(move |_, cx| gen_me.update(cx, |a, cx| a.open_generator(None, cx))))
         .child(div().flex_1())
@@ -371,7 +374,9 @@ fn browser(app: &mut Passwords, window: &mut Window, cx: &mut Context<Passwords>
         None if app.loading => "Opening…".into(),
         None => {
             let n = app.visible().len();
-            if app.search.trim().is_empty() { format!("{n} item{}", if n == 1 { "" } else { "s" }) } else { format!("{n} found") }.into()
+            let said = if app.search.trim().is_empty() { format!("{n} item{}", if n == 1 { "" } else { "s" }) } else { format!("{n} found") };
+            // (What a screen's Passwords shows is the person's to change.)
+            if crate::on_screen() { format!("{said} shared with this screen") } else { said }.into()
         }
     };
     let review_click = matches!(app.sync, Some(SyncState::Review { .. } | SyncState::Declined { .. })) && !matches!(app.conn, Conn::Failed(_));
@@ -674,7 +679,7 @@ pub fn detail(app: &mut Passwords, window: &mut Window, cx: &mut Context<Passwor
     };
     let archived = overview.state == ItemState::Archived;
     let edit_me = me.clone();
-    let edit_button = (!archived).then(|| Button::new("Edit").min_width(64.0).on_click(move |_, cx| edit_me.update(cx, |a, cx| a.edit_selected(cx))));
+    let edit_button = (!archived && !crate::on_screen()).then(|| Button::new("Edit").min_width(64.0).on_click(move |_, cx| edit_me.update(cx, |a, cx| a.edit_selected(cx))));
     let mut col = div().w_full().flex().flex_col().child(header(&item.title, item.category, &vault, edit_button));
     if archived {
         let text: SharedString = "This item is in the Archive.".into();

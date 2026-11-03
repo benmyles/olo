@@ -7321,6 +7321,44 @@ that still has Olo's marker line. **Change SKILL.md with the CLI**:
 it is the agents' manual. Headless sessions never write it, so tests
 don't touch the person's home.
 
+### Passwords for agent screens (apps/screen/src/shares.rs)
+
+Agents on a screen get the passwords the person chose, and only those:
+items shared with every screen (Screen ▸ Passwords for Every Screen…)
+and, in each screen's Passwords tab, more or fewer for that screen. Both
+lists are every item Passwords has (titles, usernames, vaults, kinds: no
+secrets), searched and filtered in the kit's language (`vault:`,
+`kind:`, `shared:yes`), several chosen at once (⇧, ⌘, ⌘A) and shared
+or not with Share and Stop Sharing. The tab says how each stands: Every
+screen, This screen (besides), Not here (every screen's, taken away
+here).
+
+The choice is kept in the person's store, sealed with it
+(`vault::Shares`: `everywhere`, and each screen's `ScreenShares { add,
+remove }`), and asked and changed over the keychain socket
+(`Request::Shares`, `SetShares`), which waits for Passwords to be
+unlocked and refuses a program on an agent screen (`OLO_SCREEN` in its
+environment, `shared::on_a_screen`), so an agent can't share itself
+more. After anything that changes the store, Passwords writes what each
+screen has as a store of its own (`Vault::write_copies`): every
+screen's in `~/.local/state/olo/screens/passwords.vault`, and one in
+`screens/NAME/` for each screen given more or less (gone again when it's
+back to every screen's), each sealed with a key kept beside it (0600),
+an unchanged copy not written again. This is the person's choice
+(2026-11-03) over sharing only while their Passwords is unlocked: a
+screen's items are there whether or not their Passwords is open or
+unlocked, and are readable by anything that can read the screen's key.
+
+Passwords started on a screen (`OLO_SCREEN` set) opens its copy, or
+every screen's, with that key alone (`Vault::open_shared`): no lock, no
+setup, no syncing, read only (no New Item or Edit; the store refuses
+changes), the person's settings left alone, `op` answered without asking
+(what's there was given to the screen's agents), and the copy followed:
+shared more or less, it opens again (`SharedChanged`). Its status line
+says "N items shared with this screen". To try it: `cargo test -p
+olo-passwords fixture -- --ignored` writes a store with a few items
+(`OLO_FIXTURE_VAULT`, `OLO_FIXTURE_KEY`).
+
 ## Google Chrome (apps/chrome)
 
 `olo-chrome` is Google Chrome in Olo's applications (`OUR_APPS`).
@@ -7930,7 +7968,9 @@ host, the palette, `op`) on
 `$XDG_RUNTIME_DIR/olo-keychain-$WAYLAND_DISPLAY.sock`
 (`OLO_KEYCHAIN_SOCKET` overrides): one JSON request, one JSON reply per
 connection, and only for our own uid running an `olo-*` program
-(SO_PEERCRED + `/proc/PID/exe`). `olo_keychain::call` blocks, so call
+(SO_PEERCRED + `/proc/PID/exe`); what's shared with agent screens
+(`Shares`, `SetShares`) never to a program on one ("Passwords for agent
+screens"). `olo_keychain::call` blocks, so call
 it from a thread. Requests: `Logins {url}` (title and username of each
 login whose website fits the page, honouring 1Password's autofill
 setting; `Locked` if locked), `Fill {url, vault, id}`, `Check {url,

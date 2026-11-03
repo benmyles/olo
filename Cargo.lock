@@ -6990,6 +6990,7 @@ name = "olo-keychain"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "olo-xdg",
  "psl",
  "serde",
  "serde_json",
@@ -7309,6 +7310,7 @@ dependencies = [
  "fontdb",
  "libc",
  "olo-capture",
+ "olo-keychain",
  "olo-protocol",
  "olo-sync",
  "olo-theme",

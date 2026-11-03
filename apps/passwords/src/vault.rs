@@ -13,11 +13,23 @@
 //! random bytes kept in the login keyring (`olo_system::secrets`),
 //! which PAM unlocks at login, so Touch ID can open Passwords;
 //! `OLO_PASSWORDS_KEYFILE` keeps it in a file instead (tests).
+//!
+//! What's shared with agent screens (`Shares`, chosen in Agent Screens)
+//! is kept in the store too, sealed with it, so only the person's
+//! Passwords changes it. Each time the store changes, its items are
+//! written out again as stores of their own (`write_copies`), one for
+//! every screen and one for each screen given more or less, each sealed
+//! with a key kept beside it (`olo_keychain::shared`): a screen's
+//! Passwords opens its copy with that key alone ([`Vault::open_shared`]),
+//! whether or not the person's is open or unlocked (the person chose
+//! that, 2026-11-03, over sharing only while theirs is unlocked).
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     path::{Path, PathBuf},
 };
+
+use olo_keychain::{ScreenShares, shared};
 
 use chacha20poly1305::{
     XChaCha20Poly1305, XNonce,
@@ -101,6 +113,37 @@ pub struct Data {
     /// into `vault_account`).
     account: Option<String>,
     next_rev: u64,
+    /// What's shared with agent screens.
+    pub shares: Shares,
+}
+
+/// What's shared with agent screens: items every screen has, and what
+/// each screen has besides or without them (item ids).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Shares {
+    pub everywhere: Vec<String>,
+    pub screens: BTreeMap<String, ScreenShares>,
+}
+
+impl Shares {
+    /// The items screen `screen` has (None: what every screen has).
+    pub fn of(&self, screen: Option<&str>) -> HashSet<String> {
+        let mut ids: HashSet<String> = self.everywhere.iter().cloned().collect();
+        if let Some(s) = screen.and_then(|n| self.screens.get(n)) {
+            ids.extend(s.add.iter().cloned());
+            for id in &s.remove {
+                ids.remove(id);
+            }
+        }
+        ids
+    }
+
+    /// The copies there are to write: every screen's, and one for each
+    /// screen given more or less.
+    pub fn copies(&self) -> Vec<Option<String>> {
+        std::iter::once(None).chain(self.screens.iter().filter(|(_, s)| !s.is_empty()).map(|(n, _)| Some(n.clone()))).collect()
+    }
 }
 
 /// What a sync learned, applied with [`Vault::apply`].
@@ -254,9 +297,96 @@ fn local_vault() -> VaultOverview {
 
 impl Vault {
     /// Open the store (making it the first time). Blocks on the keyring.
+    /// On an agent screen, what's shared with it instead.
     pub fn open() -> Result<Vault> {
+        if let Some(screen) = shared::this_screen() {
+            return Self::open_shared(&screen);
+        }
         let keyfile = std::env::var_os("OLO_PASSWORDS_KEYFILE").map(PathBuf::from);
         Self::open_at(path(), keyfile.as_deref())
+    }
+
+    /// What's shared with agent screen `screen`: its own copy if it was
+    /// given more or less than every screen, else every screen's; none
+    /// yet, an empty store (made nowhere: it's never saved).
+    pub fn open_shared(screen: &str) -> Result<Vault> {
+        Self::open_shared_in(&shared::screens_dir(), screen)
+    }
+
+    fn open_shared_in(dir: &Path, screen: &str) -> Result<Vault> {
+        let own = shared::copy_path_in(dir, Some(screen));
+        let file = if own.exists() { own } else { shared::copy_path_in(dir, None) };
+        if !file.exists() {
+            return Ok(Vault { key: Zeroizing::new(random::<32>()), file: PathBuf::new(), data: Data::default() });
+        }
+        let keyfile = shared::key_path(&file);
+        Self::open_at(file, Some(&keyfile))
+    }
+
+    /// Whether this is what's shared with an agent screen: read only.
+    pub fn is_shared(&self) -> bool {
+        shared::this_screen().is_some()
+    }
+
+    /// The shares' copies written again (`Shares::copies`), and copies of
+    /// screens that no longer have one of their own taken away. The
+    /// bytes each was made from are kept in `written`, so an unchanged
+    /// one isn't written again.
+    pub fn write_copies(&self, written: &mut HashMap<PathBuf, u64>) {
+        self.write_copies_in(&shared::screens_dir(), written);
+    }
+
+    fn write_copies_in(&self, dir: &Path, written: &mut HashMap<PathBuf, u64>) {
+        let copies = self.data.shares.copies();
+        for screen in &copies {
+            let ids = self.data.shares.of(screen.as_deref());
+            let file = shared::copy_path_in(dir, screen.as_deref());
+            if let Err(e) = self.write_copy(&ids, &file, &shared::key_path(&file), written) {
+                tracing::warn!("couldn’t share passwords with {}: {e}", screen.as_deref().unwrap_or("every screen"));
+            }
+        }
+        // A screen now as every screen is: its own copy goes.
+        if let Ok(dirs) = std::fs::read_dir(dir) {
+            for d in dirs.flatten().filter(|d| d.path().is_dir()) {
+                let name = d.file_name().to_string_lossy().into_owned();
+                if !copies.iter().any(|c| c.as_deref() == Some(name.as_str())) {
+                    let file = shared::copy_path_in(dir, Some(&name));
+                    if file.exists() {
+                        let _ = std::fs::remove_file(&file);
+                        written.remove(&file);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Items `ids` (those not archived) as a store of their own in `file`,
+    /// with their vaults' names and nothing of syncing, sealed with the
+    /// key in `keyfile` (made the first time).
+    fn write_copy(&self, ids: &HashSet<String>, file: &Path, keyfile: &Path, written: &mut HashMap<PathBuf, u64>) -> Result<()> {
+        let entries: Vec<Entry> = self
+            .data
+            .entries
+            .iter()
+            .filter(|e| ids.contains(&e.item.id) && e.state == ItemState::Active)
+            .map(|e| Entry { item: e.item.clone(), state: e.state, remote: None, dirty: false, rev: 0 })
+            .collect();
+        let vaults: Vec<VaultOverview> = self.data.vaults.iter().filter(|v| entries.iter().any(|e| e.item.vault_id == v.id)).cloned().collect();
+        let copy = Data { vaults, entries, ..Default::default() };
+        let plain = Zeroizing::new(serde_json::to_vec(&copy).map_err(|e| fail(e.to_string()))?);
+        let digest = {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            plain.hash(&mut h);
+            h.finish()
+        };
+        if written.get(file) == Some(&digest) && file.exists() {
+            return Ok(());
+        }
+        let key = key(file.exists(), Some(keyfile))?;
+        write_private(file, &seal(&key, &plain)).map_err(|e| fail(format!("Couldn’t write the shared copy: {e}")))?;
+        written.insert(file.to_owned(), digest);
+        Ok(())
     }
 
     /// The store in `file`, its key in `keyfile` or else the keyring.
@@ -285,6 +415,9 @@ impl Vault {
     }
 
     pub fn save(&self) -> Result<()> {
+        if self.is_shared() {
+            return Err(fail("These are shared from your Passwords: change them there."));
+        }
         let plain = Zeroizing::new(serde_json::to_vec(&self.data).map_err(|e| fail(e.to_string()))?);
         write_private(&self.file, &seal(&self.key, &plain)).map_err(|e| fail(format!("Couldn’t save your passwords: {e}")))
     }
@@ -631,6 +764,76 @@ mod tests {
 
     fn remote_vault(id: &str) -> VaultOverview {
         VaultOverview { id: id.into(), title: "Private".into(), ..local_vault() }
+    }
+
+    /// Shared with agent screens: every screen's copy has what every
+    /// screen has, a screen given more or less a copy of its own, each
+    /// opened with its own key alone; archived items stay out; a screen
+    /// back to what every screen has loses its own copy.
+    #[test]
+    fn shared_with_screens() {
+        let (mut v, dir) = fresh("shares");
+        let screens = dir.join("screens");
+        let (bank, mail, wifi) = (login(&mut v, "Bank"), login(&mut v, "Mail"), login(&mut v, "Wi-Fi"));
+        v.data.shares.everywhere = vec![mail.id.clone(), wifi.id.clone()];
+        v.data.shares.screens.insert("agent".into(), ScreenShares { add: vec![bank.id.clone()], remove: vec![wifi.id.clone()] });
+        let mut written = HashMap::new();
+        v.write_copies_in(&screens, &mut written);
+        let titles = |screen: &str| {
+            let mut t: Vec<String> = Vault::open_shared_in(&screens, screen).unwrap().data.entries.iter().map(|e| e.item.title.clone()).collect();
+            t.sort();
+            t
+        };
+        assert_eq!(titles("agent"), ["Bank", "Mail"]);
+        assert_eq!(titles("other"), ["Mail", "Wi-Fi"]);
+        // Sealed, each with its own key, secrets and all.
+        let copy = shared::copy_path_in(&screens, Some("agent"));
+        assert!(!std::fs::read(&copy).unwrap().windows(7).any(|w| w == b"hunter2"));
+        assert_eq!(Vault::open_shared_in(&screens, "agent").unwrap().get("", &bank.id).unwrap().password(), Some("hunter2"));
+        assert!(Vault::open_at(copy.clone(), Some(&shared::key_path(&shared::copy_path_in(&screens, None)))).is_err());
+        // Unchanged, not written again.
+        let at = std::fs::metadata(&copy).unwrap().modified().unwrap();
+        v.write_copies_in(&screens, &mut written);
+        assert_eq!(std::fs::metadata(&copy).unwrap().modified().unwrap(), at);
+        // Archived: gone from what's shared.
+        v.archive("", &mail.id).unwrap();
+        v.write_copies_in(&screens, &mut written);
+        assert_eq!(titles("other"), ["Wi-Fi"]);
+        // Back to what every screen has: its own copy goes.
+        v.data.shares.screens.clear();
+        v.write_copies_in(&screens, &mut written);
+        assert!(!copy.exists());
+        assert_eq!(titles("agent"), ["Wi-Fi"]);
+        // Nothing shared yet: an empty store, made nowhere.
+        let none = dir.join("none");
+        assert!(Vault::open_shared_in(&none, "agent").unwrap().data.entries.is_empty() && !none.exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A store to try Passwords with (`OLO_FIXTURE_VAULT`, its key in
+    /// `OLO_FIXTURE_KEY`): logins and a note in two vaults. `cargo test
+    /// --release -p olo-passwords fixture -- --ignored`.
+    #[test]
+    #[ignore]
+    fn fixture() {
+        let (Some(file), Some(key)) = (std::env::var_os("OLO_FIXTURE_VAULT"), std::env::var_os("OLO_FIXTURE_KEY")) else { return };
+        let mut v = Vault::open_at(PathBuf::from(file), Some(Path::new(&key))).unwrap();
+        v.data.vaults.push(VaultOverview { id: format!("{LOCAL}work"), title: "Work".into(), ..local_vault() });
+        for (vault, title, user, site) in [
+            (0, "Bank", "ben", "https://bank.example.com"),
+            (0, "Mail", "ben@example.com", "https://mail.example.com"),
+            (1, "GitHub (work)", "ben-work", "https://github.com"),
+            (1, "Build server", "deploy", "https://ci.example.org"),
+            (1, "Staging database", "admin", "https://db.staging.example.org"),
+        ] {
+            let mut p = ItemCreateParams::new(ItemCategory::Login, v.data.vaults[vault].id.clone(), title);
+            p.fields = vec![ItemField::new("username", "username", ItemFieldType::Text, user), ItemField::new("password", "password", ItemFieldType::Concealed, "correct horse battery staple")];
+            p.websites = vec![onepassword::Website { url: site.into(), label: "website".into(), autofill_behavior: onepassword::AutofillBehavior::AnywhereOnWebsite }];
+            v.create(&p).unwrap();
+        }
+        let mut note = ItemCreateParams::new(ItemCategory::SecureNote, v.data.vaults[0].id.clone(), "Wi-Fi at home");
+        note.notes = Some("The network is Olo, the key is on the router.".into());
+        v.create(&note).unwrap();
     }
 
     #[test]
