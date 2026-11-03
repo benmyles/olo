@@ -107,8 +107,21 @@ fn write_files(config: &Path, data: &Path) -> std::io::Result<Written> {
     let unit = put(&config.join("systemd").join("user").join(TARGET), TARGET_UNIT)?;
     if let Some(bin_dir) = crate::exe().parent() {
         open_for_others(bin_dir, config, &data.join("applications"))?;
+        command_names(bin_dir);
     }
     Ok(Written { unit, portals: conf || backend })
+}
+
+/// `pbcopy` and `pbpaste` on PATH, as macOS has them: links to Olo's
+/// (`olo-pbcopy`, `olo-pbpaste`) beside them in `bin_dir` (first on the
+/// session's PATH), never over a program of that name already there.
+fn command_names(bin_dir: &Path) {
+    for (name, ours) in [("pbcopy", "olo-pbcopy"), ("pbpaste", "olo-pbpaste")] {
+        let link = bin_dir.join(name);
+        if bin_dir.join(ours).is_file() && std::fs::symlink_metadata(&link).is_err() {
+            let _ = std::os::unix::fs::symlink(ours, &link);
+        }
+    }
 }
 
 /// Let other programs open files in Olo's apps, as Olo does: the hidden
@@ -231,5 +244,22 @@ mod tests {
         let offer = std::fs::read_to_string(apps.join("olo-mimeapps.list")).unwrap();
         assert!(offer.contains("\nx-scheme-handler/https=google-chrome.desktop;\n") && !defaults.contains("x-scheme-handler"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// pbcopy and pbpaste are Olo's, beside them, unless the person has
+    /// their own.
+    #[test]
+    fn pbcopy_and_pbpaste_named() {
+        let bin = std::env::temp_dir().join(format!("olo-graphical-pb-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&bin);
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join("olo-pbcopy"), "").unwrap();
+        std::fs::write(bin.join("olo-pbpaste"), "").unwrap();
+        std::fs::write(bin.join("pbpaste"), "mine").unwrap();
+        command_names(&bin);
+        command_names(&bin);
+        assert_eq!(std::fs::read_link(bin.join("pbcopy")).unwrap(), Path::new("olo-pbcopy"));
+        assert_eq!(std::fs::read_to_string(bin.join("pbpaste")).unwrap(), "mine");
+        let _ = std::fs::remove_dir_all(&bin);
     }
 }

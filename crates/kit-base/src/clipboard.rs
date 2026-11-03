@@ -80,6 +80,12 @@ pub fn copied_files(mime: &str, data: &[u8]) -> Option<(Vec<std::path::PathBuf>,
 /// Put `clip` on the clipboard and serve it to whoever pastes it, until
 /// something else is copied (or the session ends): this returns then.
 pub fn hold(clip: Clip) -> Result<(), String> {
+    hold_then(clip, || {})
+}
+
+/// [`hold`], `ready` called once it's on the clipboard (the display has
+/// taken it), before serving: `pbcopy`'s copy tells the command it's done.
+pub fn hold_then(clip: Clip, ready: impl FnOnce()) -> Result<(), String> {
     let conn = Connection::connect_to_env().map_err(|e| format!("no display: {e}"))?;
     let (globals, mut queue) = registry_queue_init::<Holder>(&conn).map_err(|e| e.to_string())?;
     let qh = queue.handle();
@@ -92,6 +98,8 @@ pub fn hold(clip: Clip) -> Result<(), String> {
     }
     device.set_selection(Some(&source));
     let mut holder = Holder { clip, done: false, writers: Vec::new() };
+    queue.roundtrip(&mut holder).map_err(|e| e.to_string())?;
+    ready();
     while !holder.done {
         queue.blocking_dispatch(&mut holder).map_err(|e| e.to_string())?;
     }
@@ -109,6 +117,79 @@ struct Holder {
     clip: Clip,
     done: bool,
     writers: Vec<JoinHandle<()>>,
+}
+
+/// What's on the clipboard, in the first of `types` it's offered as
+/// (None: nothing, or none of them), read as a program with no window
+/// can (`ext_data_control_v1`).
+pub fn read(types: &[&str]) -> Result<Option<Vec<u8>>, String> {
+    use std::io::Read as _;
+    let conn = Connection::connect_to_env().map_err(|e| format!("no display: {e}"))?;
+    let (globals, mut queue) = registry_queue_init::<Reader>(&conn).map_err(|e| e.to_string())?;
+    let qh = queue.handle();
+    let manager: ExtDataControlManagerV1 = globals.bind(&qh, 1..=1, ()).map_err(|_| "the display has no clipboard for programs without a window".to_string())?;
+    let seat: WlSeat = globals.bind(&qh, 1..=1, ()).map_err(|_| "the display has no seat".to_string())?;
+    let device = manager.get_data_device(&seat, &qh, ());
+    // The device tells what's on the clipboard at once: its offer, the
+    // offer's types, then the selection.
+    let mut reader = Reader::default();
+    queue.roundtrip(&mut reader).map_err(|e| e.to_string())?;
+    let found = reader.selection.as_ref().and_then(|o| {
+        let offered = reader.types.get(&wayland_client::Proxy::id(o)).cloned().unwrap_or_default();
+        types.iter().find(|t| offered.iter().any(|o| o == *t)).map(|t| (o.clone(), t.to_string()))
+    });
+    let Some((offer, mime)) = found else {
+        device.destroy();
+        return Ok(None);
+    };
+    let (mut r, w) = std::io::pipe().map_err(|e| e.to_string())?;
+    offer.receive(mime, std::os::fd::AsFd::as_fd(&w));
+    conn.flush().map_err(|e| e.to_string())?;
+    drop(w);
+    let mut data = Vec::new();
+    r.read_to_end(&mut data).map_err(|e| e.to_string())?;
+    offer.destroy();
+    device.destroy();
+    let _ = conn.flush();
+    Ok(Some(data))
+}
+
+#[derive(Default)]
+struct Reader {
+    types: std::collections::HashMap<wayland_client::backend::ObjectId, Vec<String>>,
+    selection: Option<ExtDataControlOfferV1>,
+}
+
+impl Dispatch<ExtDataControlDeviceV1, ()> for Reader {
+    fn event(reader: &mut Self, _: &ExtDataControlDeviceV1, event: ext_data_control_device_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        if let ext_data_control_device_v1::Event::Selection { id } = event {
+            reader.selection = id;
+        }
+    }
+
+    wayland_client::event_created_child!(Reader, ExtDataControlDeviceV1, [
+        ext_data_control_device_v1::EVT_DATA_OFFER_OPCODE => (ExtDataControlOfferV1, ()),
+    ]);
+}
+
+impl Dispatch<ExtDataControlOfferV1, ()> for Reader {
+    fn event(reader: &mut Self, offer: &ExtDataControlOfferV1, event: <ExtDataControlOfferV1 as wayland_client::Proxy>::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        if let wayland_protocols::ext::data_control::v1::client::ext_data_control_offer_v1::Event::Offer { mime_type } = event {
+            reader.types.entry(wayland_client::Proxy::id(offer)).or_default().push(mime_type);
+        }
+    }
+}
+
+impl Dispatch<ExtDataControlManagerV1, ()> for Reader {
+    fn event(_: &mut Self, _: &ExtDataControlManagerV1, _: <ExtDataControlManagerV1 as wayland_client::Proxy>::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
+}
+
+impl Dispatch<WlSeat, ()> for Reader {
+    fn event(_: &mut Self, _: &WlSeat, _: <WlSeat as wayland_client::Proxy>::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
+}
+
+impl Dispatch<WlRegistry, GlobalListContents> for Reader {
+    fn event(_: &mut Self, _: &WlRegistry, _: <WlRegistry as wayland_client::Proxy>::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
 }
 
 impl Dispatch<ExtDataControlSourceV1, ()> for Holder {

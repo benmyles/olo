@@ -435,7 +435,16 @@ fn main() {
   the keyboard): for enabling Paste. Tracker copies files so, and its
   Paste takes files (moving cut ones, then holding them copied where they
   went), a picture (`Pasted Picture.png`, of its kind) or text (a
-  clipping).
+  clipping). `hold_then(clip, ready)` calls `ready` once the display has
+  it; `read(types)` is what's copied, in the first of `types` offered.
+* **`pbcopy` and `pbpaste`** (`apps/pb`), as macOS's, for people and
+  agents in any shell: `pbcopy` puts what it reads on the clipboard as
+  text and returns once it's there (a copy of itself, in a session of
+  its own, serves it until something else is copied: `hold_then`);
+  `pbpaste` prints the clipboard's text (`read`). They're
+  `olo-pbcopy` and `olo-pbpaste`, installed with Olo's programs; the
+  session (`graphical::command_names`) and the installer link `pbcopy`
+  and `pbpaste` to them beside them, never over the person's own.
 * **Single instance** (`olo_ui::instance`): call `instance::forward(app_id,
   &args)` first in `main` (returns true if a running copy took the
   arguments; exit then), and `instance::listen(app_id, olo_ui::proxy(cx))`

@@ -59,16 +59,6 @@ of Finished; a new one goes where its priority puts it.
   keyboard, the panel's selection, its `on_done` or the portal's
   reply) and fix it; test both through the portal, as Slack asks.
 
-- **`pbcopy` and `pbpaste` from the command line** (Ben, 2026-11-02):
-  "have olo install a pbcopy shim that copies to the clipboard from the
-  cli". Native, as macOS's: `pbcopy` holds what it reads from stdin on
-  the clipboard (as text, the data-control protocol app_server speaks,
-  `olo_kit_base::clipboard`), so Paste in any app gets it, and stays
-  until something else is copied; `pbpaste` prints the clipboard's text.
-  The session puts them on PATH (`~/.local/bin`, as `olo-logs` is), in
-  every shell and Terminal, and agents use them as people do; no
-  wl-clipboard, nothing wrapped.
-
 - **AirPods and voice processing, tried on the real things** (Ben,
   2026-11-02; what's left of "AirPods, natively" and "Voice processing
   for every microphone", below): built and measured headless and in
@@ -908,6 +898,17 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**`pbcopy` and `pbpaste` from the command line**~~ (done
+  2026-11-02: `apps/pb`, named by the session) (Ben, 2026-11-02):
+  "have olo install a pbcopy shim that copies to the clipboard from the
+  cli". Native, as macOS's: `pbcopy` holds what it reads from stdin on
+  the clipboard (as text, the data-control protocol app_server speaks,
+  `olo_kit_base::clipboard`), so Paste in any app gets it, and stays
+  until something else is copied; `pbpaste` prints the clipboard's text.
+  The session puts them on PATH (`~/.local/bin`, as `olo-logs` is), in
+  every shell and Terminal, and agents use them as people do; no
+  wl-clipboard, nothing wrapped.
 
 - ~~**Menus taller than the screen scroll**~~ (done 2026-11-02: in the
   kit's `menu`, for every app) (found 2026-11-02 in

@@ -1,0 +1,18 @@
+[package]
+name = "olo-pb"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "pbcopy and pbpaste, as macOS's: the clipboard from the command line"
+
+[[bin]]
+name = "olo-pbcopy"
+path = "src/pbcopy.rs"
+
+[[bin]]
+name = "olo-pbpaste"
+path = "src/pbpaste.rs"
+
+[dependencies]
+olo-kit-base.workspace = true
+libc = "0.2"

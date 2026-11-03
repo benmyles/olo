@@ -61,6 +61,10 @@ for b in target/release/olo-*; do
     as_user chmod 755 "$PREFIX/bin/.$name.new"
     as_user mv -f "$PREFIX/bin/.$name.new" "$PREFIX/bin/$name"
 done
+# pbcopy and pbpaste, as macOS has them (never over the person's own).
+for name in pbcopy pbpaste; do
+    [ -e "$PREFIX/bin/olo-$name" ] && [ ! -e "$PREFIX/bin/$name" ] && [ ! -L "$PREFIX/bin/$name" ] && as_user ln -s "olo-$name" "$PREFIX/bin/$name"
+done
 # The programs' old names (Tabula) become links to the new ones: the old
 # login screen entry runs tabula-session, and programs still running
 # re-execute themselves by the names they were started by.

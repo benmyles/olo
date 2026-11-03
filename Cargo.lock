@@ -7033,6 +7033,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-pb"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "olo-kit-base",
+]
+
+[[package]]
 name = "olo-polkit-agent"
 version = "0.1.0"
 dependencies = [
