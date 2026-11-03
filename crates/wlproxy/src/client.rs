@@ -346,10 +346,15 @@ impl Client {
                 o.parent = parent;
             }
         }
-        if desc.is_destructor {
-            self.destroyed(msg.id);
-        }
+        // (Sent as app_server knows it first: once destroyed, the program's
+        // id for one of app_server's objects no longer maps to app_server's.
+        // The two are the same until app_server restarts, when an id the
+        // program still held makes the next app_server's differ.)
+        let id = msg.id;
         self.send_up(msg);
+        if desc.is_destructor {
+            self.destroyed(id);
+        }
     }
 
     /// Note what a request changes; false to drop it.

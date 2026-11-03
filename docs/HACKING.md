@@ -2031,7 +2031,13 @@ for a 3-second `sleep`.
   waiting requests go on after that. The program never notices, and the
   window returns to its place and depth (same pid, new client;
   `Placement::depth` keeps the stacking whatever order programs
-  reconnect in: `layout.rs`).
+  reconnect in: `layout.rs`). Objects app_server made (offers, buffers
+  it sends: ids from 0xff000000) die with it; the program's ids for the
+  next app_server's are the same unless the program still holds that id
+  (`server_id`), and requests are translated before the proxy's books
+  change (a destroy of a remapped offer went up under the program's id,
+  one app_server never made, and the program was cut off with "invalid
+  object": GTK's editor at its first selection after a restart).
 * The proxy shows programs only the globals it can decode
   (`wlproxy/src/interfaces.rs`); add a protocol there before an outside
   program can use it. That is every global app_server has for programs

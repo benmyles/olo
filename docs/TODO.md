@@ -168,25 +168,6 @@ of Finished; a new one goes where its priority puts it.
   at ~11% with a call on is the tick (now once per 8 ms) and looks;
   per-display render threads (its own TODO).
 
-- **An outside program's `zwp_primary_selection_offer_v1` request
-  refused** (seen 2026-11-01 through olo-wlproxy for pid 21201:
-  "app_server's error on wl_display@1: invalid method 2, object
-  zwp_primary_selection_offer_v1"; the interface has receive and
-  destroy only). Find which program sends opcode 2 (a newer
-  interface version it was told it has?) and whether app_server
-  advertises a version it doesn't serve. (Not seen since 2026-11-01
-  13:19, through two days of upgrades.) *Lead* (2026-11-02): not a
-  version (primary selection has only v1); opcode 2 is exactly
-  `wl_data_offer.destroy`, on 0xFF000002, a server-made id: the program
-  destroyed what it held as a clipboard offer whose id app_server had
-  already given to a primary-selection offer. Something freed the data
-  offer's id before the program destroyed it: app_server destroying an
-  offer's resource itself (a selection replaced), or olo-wlproxy's
-  server-id mapping (`s_up`, `free`) across a restart. olo-wlproxy
-  swallows requests to zombies and maps server ids since; a test with
-  a program holding a data offer across `tsession reload`, then
-  destroying it, would show which.
-
 - **app_server's critical path on threads of its own** (Ben,
   2026-11-01: "why run the risk of a blocking call? threads would
   make sure we don't accidentally block"): input → pointer plane
@@ -730,6 +711,34 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**An outside program's `zwp_primary_selection_offer_v1` request
+  refused**~~ (seen 2026-11-01 through olo-wlproxy for pid 21201:
+  "app_server's error on wl_display@1: invalid method 2, object
+  zwp_primary_selection_offer_v1"; the interface has receive and
+  destroy only). Find which program sends opcode 2 (a newer
+  interface version it was told it has?) and whether app_server
+  advertises a version it doesn't serve. (Not seen since 2026-11-01
+  13:19, through two days of upgrades.) *Lead* (2026-11-02): not a
+  version (primary selection has only v1); opcode 2 is exactly
+  `wl_data_offer.destroy`, on 0xFF000002, a server-made id: the program
+  destroyed what it held as a clipboard offer whose id app_server had
+  already given to a primary-selection offer. Something freed the data
+  offer's id before the program destroyed it: app_server destroying an
+  offer's resource itself (a selection replaced), or olo-wlproxy's
+  server-id mapping (`s_up`, `free`) across a restart. olo-wlproxy
+  swallows requests to zombies and maps server ids since; a test with
+  a program holding a data offer across `tsession reload`, then
+  destroying it, would show which.
+  *Found and fixed* (2026-11-02, the test the lead named): GTK's text
+  editor through olo-wlproxy, a selection made, app_server restarted
+  (`tsession reload`), a new selection: cut off with "invalid object
+  0xff000002". The proxy forgot its mapping of a destroyed server
+  object before translating the destroy, so it went up under the
+  program's id; ids match until a restart, after which the next
+  app_server's objects get other ids where the program still holds the
+  old ones. Translated first now: the editor survives three restarts in
+  a row, copying and pasting each time.
 
 - ~~**A window opens 15–18 ms sooner**~~ (found porting the Viewer,
   2026-11-01: its first frame came 23 ms after egui's). *Done*: its
