@@ -1,9 +1,9 @@
 use crate::{
     ActiveTooltip, AnyView, App, Bounds, DispatchPhase, Element, ElementId, GlobalElementId,
     HighlightStyle, Hitbox, HitboxBehavior, InspectorElementId, IntoElement, LayoutId,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, SharedString, Size, TextOverflow,
-    TextRun, TextStyle, TooltipId, WhiteSpace, Window, WrappedLine, WrappedLineLayout,
-    register_tooltip_mouse_handlers, set_tooltip_on_window,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, SharedString, Size, TextAlign,
+    TextOverflow, TextRun, TextStyle, TooltipId, WhiteSpace, Window, WrappedLine,
+    WrappedLineLayout, point, px, register_tooltip_mouse_handlers, set_tooltip_on_window,
 };
 use anyhow::Context as _;
 use smallvec::SmallVec;
@@ -311,6 +311,18 @@ impl IntoElement for StyledText {
 #[derive(Default, Clone)]
 pub struct TextLayout(Rc<RefCell<Option<TextLayoutInner>>>);
 
+/// Olo: text that doesn't show in full where it was painted (truncated
+/// to fit, or running past a side of what it's painted in), noted as a
+/// paint record ([`Window::push_paint_record`]) by the text elements and
+/// by whatever else cuts text, so it can be shown whole (Olo's kit shows
+/// it in a tip, and agents read it whole).
+pub struct CutText {
+    /// The whole text.
+    pub full: SharedString,
+    /// What shows of it, in the window.
+    pub bounds: Bounds<Pixels>,
+}
+
 struct TextLayoutInner {
     len: usize,
     lines: SmallVec<[WrappedLine; 1]>,
@@ -318,6 +330,8 @@ struct TextLayoutInner {
     wrap_width: Option<Pixels>,
     size: Option<Size<Pixels>>,
     bounds: Option<Bounds<Pixels>>,
+    /// Olo: cut short to fit (`TextOverflow::Truncate`).
+    truncated: bool,
 }
 
 impl TextLayout {
@@ -378,6 +392,7 @@ impl TextLayout {
                 }
 
                 let mut line_wrapper = cx.text_system().line_wrapper(text_style.font(), font_size);
+                let whole = text.clone();
                 let text = if let Some(truncate_width) = truncate_width {
                     line_wrapper.truncate_line(
                         text.clone(),
@@ -388,6 +403,7 @@ impl TextLayout {
                 } else {
                     text.clone()
                 };
+                let mut truncated = text != whole;
                 let len = text.len();
 
                 let Some(lines) = window
@@ -408,9 +424,28 @@ impl TextLayout {
                         wrap_width,
                         size: Some(Size::default()),
                         bounds: None,
+                        truncated: false,
                     });
                     return Size::default();
                 };
+
+                // Olo: clamped short of the rows it takes (each line's
+                // rows counted again unclamped: the line cache keeps a
+                // clamped layout under the unclamped one's key).
+                if !truncated
+                    && let (Some(clamp), Some(width)) = (text_style.line_clamp, wrap_width)
+                {
+                    let rows: usize = lines
+                        .iter()
+                        .map(|l| {
+                            l.unwrapped_layout
+                                .compute_wrap_boundaries(&l.text, width, None)
+                                .len()
+                                + 1
+                        })
+                        .sum();
+                    truncated = rows > clamp;
+                }
 
                 let mut size: Size<Pixels> = Size::default();
                 for line in &lines {
@@ -426,6 +461,7 @@ impl TextLayout {
                     wrap_width,
                     size: Some(size),
                     bounds: None,
+                    truncated,
                 });
 
                 size
@@ -476,6 +512,43 @@ impl TextLayout {
             )
             .log_err();
             line_origin.y += line.size(line_height).height;
+        }
+        // Olo: noted whole if it doesn't show in full ([`CutText`]): cut
+        // short, or a line running past a side of its clip (a pixel's
+        // grace; cut at the top or bottom, a row scrolled half out of
+        // view, isn't; a paragraph's too-long word isn't a label cut).
+        let widest = element_state
+            .lines
+            .iter()
+            .map(|l| l.width())
+            .fold(Pixels::ZERO, |a, b| if b > a { b } else { a });
+        let left = match text_style.text_align {
+            TextAlign::Left => bounds.left(),
+            TextAlign::Center => bounds.left() + (bounds.size.width - widest) / 2.0,
+            TextAlign::Right => bounds.right() - widest,
+        };
+        let clip = window.content_mask().bounds;
+        let one_line =
+            matches!(&element_state.lines[..], [line] if line.wrap_boundaries().is_empty());
+        let past =
+            one_line && (left < clip.left() - px(1.0) || left + widest > clip.right() + px(1.0));
+        if element_state.truncated || past {
+            let shows = Bounds::from_corners(
+                point(left.max(clip.left()), bounds.top().max(clip.top())),
+                point(
+                    (left + widest).min(clip.right()),
+                    line_origin.y.min(clip.bottom()),
+                ),
+            );
+            if shows.size.width > Pixels::ZERO
+                && shows.size.height > Pixels::ZERO
+                && !text.trim().is_empty()
+            {
+                window.push_paint_record(Rc::new(CutText {
+                    full: SharedString::from(text.to_owned()),
+                    bounds: shows,
+                }));
+            }
         }
     }
 

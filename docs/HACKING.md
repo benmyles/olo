@@ -816,8 +816,13 @@ pointer leaves the text. What the kit cuts is noted as it's painted:
 cells, tab and strip titles, pop-up menu fields, sidebars, dashboards,
 thumbnails), and a label running past the side of what it's painted in
 (`label`, `label_runs`; a row half scrolled out of view, top or bottom,
-isn't). An app that cuts text itself says so with `cut::note(window,
-full, bounds)` (Tracker's icon names). The notes are paint records, so
+isn't). GPUI's own text elements (a `div().child(text)`, `StyledText`)
+note themselves the same way (`gpui::CutText`, the record `cut::note`
+makes too): truncated (`truncate()`, `text_ellipsis()`), clamped short
+of its rows (`line_clamp`: the sudo sheet's command), or one line
+running past a side of its clip (a paragraph's long word isn't). An app
+that cuts text itself says so with `cut::note(window, full, bounds)`
+(Tracker's icon names, Telegram's attachment chips and bubble lines). The notes are paint records, so
 a cached view's replay keeps them; the pointer's moves look through
 them once after each frame drawn, then through the few rectangles cut
 (0.3–1.9 µs a move in Tracker and Activity Monitor). Agents read cut

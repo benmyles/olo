@@ -3,8 +3,9 @@
 //! rests on it (`tip`, after the usual pause), at once while ⌘ (the Super
 //! key) is held. Every kit window does it (its `Frame` follows the
 //! pointer) for every text the kit cuts (`style::label_fit`,
-//! `label_runs_fit`, a label running past its clip), and for what an app
-//! cuts itself and says so ([`note`]).
+//! `label_runs_fit`, a label running past its clip), for GPUI's own text
+//! elements cut so (a `div().child(text)`: GPUI notes them, `CutText`),
+//! and for what an app cuts itself and says so ([`note`]).
 //!
 //! What was cut is kept with the frame (a paint record: replayed with a
 //! cached view's paint), and looked through only when the pointer moves
@@ -12,13 +13,7 @@
 
 use std::{collections::HashMap, rc::Rc};
 
-use gpui::{App, Bounds, Global, Pixels, Point, SharedString, Window, WindowId, px};
-
-/// Text shown cut short where it was painted.
-struct Cut {
-    full: SharedString,
-    bounds: Bounds<Pixels>,
-}
+use gpui::{App, Bounds, CutText as Cut, Global, Pixels, Point, SharedString, Window, WindowId, px};
 
 /// The texts cut short among a window's paint records, each whole and
 /// where it shows (moved as its record was): for the agent tree, which
@@ -86,8 +81,7 @@ pub(crate) fn moved(window: &mut Window, cx: &mut App, at: Point<Pixels>, now: b
         let seen = cx.default_global::<Cuts>().0.entry(id).or_insert_with(|| Seen { stale: true, ..Default::default() });
         if seen.stale {
             seen.stale = false;
-            seen.cuts =
-                window.paint_records().iter().filter_map(|(r, moved)| r.downcast_ref::<Cut>().map(|c| (Bounds { origin: c.bounds.origin + *moved, size: c.bounds.size }, c.full.clone()))).collect();
+            seen.cuts = cuts_in(window.paint_records());
         }
         // (The last painted: the one on top.)
         let under = seen.cuts.iter().rev().find(|(b, _)| b.contains(&at)).cloned();

@@ -299,33 +299,6 @@ of Finished; a new one goes where its priority puts it.
   theme of every Olo look, light and dark, at 1× and 2×, as shots in
   the journal.
 
-- **Tooltips for text that doesn't show in full** (*done in the kit*
-  2026-11-02, HACKING "Text cut short": every label the kit cuts with
-  "…" or that runs past its clip, Tracker's icon names, Telegram's chat
-  list, Passwords' titles; ⌘ shows it at once; and app_server's window
-  tabs, `tabtip`; a text field whose text runs past it, whole in a tip
-  when it hasn't the keyboard, 2026-11-02, with the field scrolling
-  sideways to its caret while edited, which it never did; Twitcher's
-  label whole on a plate under the panel and the overview's chosen
-  title whole, 2026-11-03, `tabtip::plate`; Telegram's attachment chips
-  and the lines its bubbles cut (reply quotes, forwards, files, polls),
-  2026-11-03. *Left*: text in GPUI's own text elements; agents read cut text whole since
-  2026-11-02, `agent::whole_name`) (Ben, 2026-10-31):
-  "when hovering over anything in olo or any olo app where the text has
-  been truncated or occluded or otherwise is not being displayed in full
-  then there should be a tooltip that appears showing the full text".
-  Everywhere: kit widgets (labels, list cells cut with "…", tab and strip
-  titles, menu items, text fields scrolled sideways, buttons, Deskbar's
-  rows and tray, the chat list's previews), app_server's window tabs, and
-  text painted by hand; a part hidden under something else counts too.
-  Best done once in the kit (where text is cut to fit, remember the full
-  text and its rect; show it in the kit's tip, `olo_kit::tip`, after the
-  usual hover pause) so every app gets it, and agents read the full text
-  as the element's name. Then (Ben, same day): "if the user presses the
-  super key while hovering over it then it should show the tooltip
-  immediately without a delay" (Super while the pointer is on cut-short
-  text shows its tip at once; app_server's own text, window tabs, too).
-
 - **The kit takes over what every app re-implements** (Ben,
   2026-11-01: "anything these windows/apps are doing that's reusable
   should be made reusable so that we aren't reinventing the wheel
@@ -786,6 +759,37 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Tooltips for text that doesn't show in full**~~ (*done in the kit*
+  2026-11-02, HACKING "Text cut short": every label the kit cuts with
+  "…" or that runs past its clip, Tracker's icon names, Telegram's chat
+  list, Passwords' titles; ⌘ shows it at once; and app_server's window
+  tabs, `tabtip`; a text field whose text runs past it, whole in a tip
+  when it hasn't the keyboard, 2026-11-02, with the field scrolling
+  sideways to its caret while edited, which it never did; Twitcher's
+  label whole on a plate under the panel and the overview's chosen
+  title whole, 2026-11-03, `tabtip::plate`; Telegram's attachment chips
+  and the lines its bubbles cut (reply quotes, forwards, files, polls),
+  2026-11-03; and GPUI's own text elements (truncated, clamped short of
+  their rows, a line past its clip: `gpui::CutText`), 2026-11-03,
+  finishing it; text under other text or a control is a layout bug the
+  lint finds, `text-over-text` and `overlap`, not a tip's; agents read
+  cut text whole since
+  2026-11-02, `agent::whole_name`) (Ben, 2026-10-31):
+  "when hovering over anything in olo or any olo app where the text has
+  been truncated or occluded or otherwise is not being displayed in full
+  then there should be a tooltip that appears showing the full text".
+  Everywhere: kit widgets (labels, list cells cut with "…", tab and strip
+  titles, menu items, text fields scrolled sideways, buttons, Deskbar's
+  rows and tray, the chat list's previews), app_server's window tabs, and
+  text painted by hand; a part hidden under something else counts too.
+  Best done once in the kit (where text is cut to fit, remember the full
+  text and its rect; show it in the kit's tip, `olo_kit::tip`, after the
+  usual hover pause) so every app gets it, and agents read the full text
+  as the element's name. Then (Ben, same day): "if the user presses the
+  super key while hovering over it then it should show the tooltip
+  immediately without a delay" (Super while the pointer is on cut-short
+  text shows its tip at once; app_server's own text, window tabs, too).
 
 - ~~**Viewer: HEVC plays**~~ (left from the Viewer's video work): HEVC
   (mp4, Matroska) video shows only its facts; decode it natively as
