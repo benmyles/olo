@@ -83,6 +83,15 @@ of Finished; a new one goes where its priority puts it.
     - A test step: the pad's contacts drawn as fingers or palms, as
       the model and the size rule each call them.
     - The option to use it, and to train again.
+    - Ben, also: "it needs to be a very interactive process with the
+      user instructing them through the whole thing with live feedback
+      and so on". Each step:
+      - says what to do now and shows it;
+      - shows the person's own contacts on the pad as they happen;
+      - says how it's going ("Good, keep resting it", "That was a
+        finger: lift it and rest only your palm", "3 more taps");
+      - moves on by itself once it has what it needs;
+      - can be gone back to or redone.
   - Ben: "for any training you need to use rust (you can use libtorch
     through c/c++ if there's no better rust native solution) don't add
     python". Training, features and inference are Rust (a Rust-native
