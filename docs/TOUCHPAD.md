@@ -244,13 +244,40 @@ fine tuning"): the same network with weights written by hand from the
 measurements above, each hidden unit one sign of a palm (large now,
 large at its largest, light for its size near an edge, still with others
 down, heavy and large) or of a finger (small and moving, small for its
-pressure), with three spare units for training to fill. Untrained it
-catches over 85% of the synthetic palms (the size rule's light edge
-palms included) and loses under 10% of fingers
-(`the_baseline_beats_the_size_rule_untrained`). The filter runs it when
-the option is on and nothing is trained yet; `train()` starts from its
-weights (taken to the samples' scale) with a small learning rate, so a
-few of the person's samples refine it rather than start over.
+pressure), with spare units for training to fill. Untrained it catches
+over 85% of the synthetic palms (the size rule's light edge palms
+included) and loses no fingers (`the_baseline_beats_the_size_rule_untrained`).
+The filter runs only a trained model (Ben: "it does not work well
+without training"); `train()` starts from the baseline's weights (taken
+to the samples' scale) with a small learning rate, so a few of the
+person's samples refine it rather than start over, and keeps the result
+only if it beats the baseline on the touches kept back.
+
+On real hands (2026-11-03, `captures::on_real_hands`: Ben's two
+training runs, kept by the trainer; cost = palms missed + 4 × fingers
+lost):
+
+| | run 1 (dialog trainer: 47 palms, 83 fingers) | run 2 (full-screen trainer: 35, 48) |
+|---|---|---|
+| size rule (1600) | 66.0% caught, 1.2% lost (0.389) | 94.3%, 0% (0.057) |
+| the baseline as written | 95.7%, **53.0%** lost (2.163) | 100%, 0% (0) |
+| the baseline now | 70.2%, 0% (0.298) | 91.4%, 0% (0.086) |
+| the baseline now, or the size | 72.3%, 1.2% (0.325) | 97.1%, 0% (0.029) |
+| trained on the other run | 87.2%, 18.1% (0.851) | 100%, 0% (0) |
+
+As written it took half of a run's still fingertips for palms: several
+features' typical values were guesses that every real contact missed
+(pressure for its size 0.028, not 0.08; shape 0.50, not 0.75: all
+"long"; growth since landing 0.86, not 0.40: every fingertip grows from
+its first report), its context units (grown, still near an edge, long
+at an edge) hardly weighed size, and its threshold was 0. Now those
+scales are the real ones, those units need some size, and the threshold
+is 2 (the lowest that, with the size rule beside it, loses no finger
+the size rule doesn't); with the size rule, as the filter runs, it beats
+size alone on both runs, and as training's start it gives the better
+model of the two tried (run 2 from run 1: 100%, from the old weights
+94.3%). Two runs of one person's hands are little to go on: more
+sittings, and other people's, are what would make it the best.
 
 **Where it runs:** in `touchpad.lua` itself, since the filter has to hide
 a palm before libinput sees it, in the same features and arithmetic

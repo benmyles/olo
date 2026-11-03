@@ -557,7 +557,8 @@ impl TrainerWindow {
         // Kept on disk too (~/.local/state/olo/palm), for Olo's own model
         // to be tuned on real hands later.
         let kept = samples.clone();
-        std::thread::spawn(move || match olo_palm::keep_samples(&olo_xdg::state_dir().join("olo").join("palm"), &kept) {
+        // (state_dir is Olo's own already: it was olo/olo/palm.)
+        std::thread::spawn(move || match olo_palm::keep_samples(&olo_xdg::state_dir().join("palm"), &kept) {
             Ok(p) => tracing::info!("palm trainer: samples kept in {}", p.display()),
             Err(e) => tracing::warn!("palm trainer: samples not kept: {e}"),
         });

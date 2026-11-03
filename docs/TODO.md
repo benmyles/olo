@@ -103,6 +103,16 @@ of Finished; a new one goes where its priority puts it.
   - The Lua filter follows every feature change, with the Rust/Lua
     agreement test.
   - Measured per frame as before (today ~10 µs a frame at 32 units).
+  *Status* (2026-11-03): judged on real hands at last
+  (`captures::on_real_hands`, Ben's two runs, docs/TOUCHPAD.md): as
+  written it lost 53% of one run's fingers (scales guessed wrong, context
+  units blind to size, threshold 0); now the real scales, size-gated
+  units and a threshold of 2: with the size rule it beats size alone on
+  both runs (72.3%/1.2% and 97.1%/0%, against 66.0%/1.2% and
+  94.3%/0%). The trainer kept its runs in ~/.local/state/olo/olo/palm
+  (a doubled "olo"): ~/.local/state/olo/palm from now (Ben's two are in
+  the old place). Left: more runs (more sittings, other people) before
+  any bigger network; `MT_TOOL_PALM` where a driver gives it.
 
 - **x86 machines, starting with Ben's ThinkPad P1 Gen 9** (Ben; it
   arrives within days; **next once the GPUI migration is done**, before
