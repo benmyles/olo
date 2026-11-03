@@ -95,7 +95,7 @@ pub fn backgrounds_ui(ui: &mut Ui, st: &mut BackgroundsState) {
     let rgb = s.workspace_color(ws as u32);
     ui.bbox("Desktop Colour", |ui| {
         // Every workspace has its own entry before one is changed.
-        let set = ui.edit(move |s, c: [u8; 3]| {
+        let set = ui.bind(rgb, move |s, c: [u8; 3]| {
             while s.workspace_colors.len() <= ws {
                 let c = s.workspace_color(s.workspace_colors.len() as u32);
                 s.workspace_colors.push(c);
@@ -130,7 +130,7 @@ pub fn backgrounds_ui(ui: &mut Ui, st: &mut BackgroundsState) {
             },
         };
         let n = pack.len();
-        let set = ui.edit({
+        let set = ui.bind(selected.unwrap_or(0), {
             let (pack, own) = (pack.clone(), own.clone());
             move |s, i: usize| match i {
                 0 => s.wallpaper = None,

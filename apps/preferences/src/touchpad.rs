@@ -355,14 +355,29 @@ fn mice_boxes(ui: &mut Ui, devices: Option<&[InputDeviceInfo]>) {
         problem(ui, format!("{r} is grabbing input devices: a mouse it has grabbed moves through its virtual pointer, and settings made here don't reach it."));
     }
     let found: Vec<&InputDeviceInfo> = all.iter().filter(|d| d.kind == DeviceKind::Mouse && remapper(d).is_none() && d.bus != "virtual").collect();
-    for d in &found {
-        one_mouse(ui, d);
+    // (Two columns: the mice found, and what's for every mouse.)
+    let mice = ui.collect(|ui| {
+        for d in &found {
+            one_mouse(ui, d);
+        }
+    });
+    let every = ui.collect(|ui| every_mouse(ui, devices, found.is_empty()));
+    if mice.is_empty() {
+        for e in every {
+            ui.add(e);
+        }
+    } else {
+        ui.add_columns(mice, every);
     }
+}
+
+/// What's for every mouse: how the others move, the buttons, focus.
+fn every_mouse(ui: &mut Ui, devices: Option<&[InputDeviceInfo]>, none: bool) {
     let s = ui.s.clone();
-    ui.bbox(if found.is_empty() { "Mice" } else { "Other Mice" }, |ui| {
+    ui.bbox(if none { "Mice" } else { "Other Mice" }, |ui| {
         match devices {
             None => ui.note("Looking…"),
-            Some(_) if found.is_empty() => ui.note("No mouse is connected. These settings are for any you connect."),
+            Some(_) if none => ui.note("No mouse is connected. These settings are for any you connect."),
             Some(_) => ui.note("For the mice set to follow the others, and any you connect."),
         }
         ui.slider("mouse-speed", s.mouse_speed as f32, -1.0..=1.0, |sl| sl.step(0.05).label("Mouse speed").limits("Slow", "Fast"), |s, v| s.mouse_speed = v as f64);

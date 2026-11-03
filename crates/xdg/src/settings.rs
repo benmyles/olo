@@ -196,7 +196,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "touchpad", tab: "Mouse", group: "Other Mice", name: "Mouse speed", role: "Slider" },
     Setting { panel: "touchpad", tab: "Mouse", group: "Other Mice", name: "Acceleration", role: "ComboBox" },
     Setting { panel: "touchpad", tab: "Mouse", group: "Buttons", name: "Left-handed (swap the buttons)", role: "CheckBox" },
-    Setting { panel: "touchpad", tab: "Mouse", group: "", name: "Press both buttons for a middle click", role: "CheckBox" },
+    Setting { panel: "touchpad", tab: "Mouse", group: "Buttons", name: "Press both buttons for a middle click", role: "CheckBox" },
     Setting { panel: "touchpad", tab: "Mouse", group: "Focus", name: "Focus follows the pointer", role: "CheckBox" },
     Setting { panel: "touchpad", tab: "Gestures", group: "Scrolling", name: "Scrolling speed", role: "Slider" },
     Setting { panel: "touchpad", tab: "Gestures", group: "Scrolling", name: "Keep scrolling after a flick", role: "CheckBox" },

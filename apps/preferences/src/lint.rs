@@ -65,8 +65,11 @@ fn prefs() -> Prefs {
 fn ui_lint_every_panel() {
     let mut lint = Lint::new();
     let mut found = Vec::new();
-    // (AirPods isn't in the launcher's grid, but is a panel all the same.)
-    for &panel in Panel::ALL.iter().chain(&[Panel::AirPods]) {
+    // (AirPods isn't in the launcher's grid, but is a panel all the same.
+    // Then again with every box's Reset showing, as when changed.)
+    let panels = Panel::ALL.iter().chain(&[Panel::AirPods]);
+    for (&panel, every_reset) in panels.clone().map(|p| (p, false)).chain(panels.filter(|p| p.resettable()).map(|p| (p, true))) {
+        crate::form::EVERY_RESET.with(|c| c.set(every_reset));
         let (w, h) = panel.size();
         let options = WindowOptions::new(panel.title(), w as f32, h as f32);
         // Room kept for what the lint doesn't draw.
@@ -79,7 +82,8 @@ fn ui_lint_every_panel() {
             let prefs = cx.new(|_| prefs());
             cx.new(|cx| PanelView::new(prefs, panel, Settings::default(), window, cx))
         }) {
-            found.push(olo_ui::lint::Found { text: format!("{}: {}", panel.title(), f.text), ..f });
+            let with = if every_reset { " (every Reset showing)" } else { "" };
+            found.push(olo_ui::lint::Found { text: format!("{}{with}: {}", panel.title(), f.text), ..f });
         }
     }
     assert_clean("Preferences' panels", &found);

@@ -452,8 +452,9 @@ fn offered(ui: &mut Ui, st: &State, found: &Found) {
     );
     let (reset_tx, reset_mime) = (st.tx.clone(), mime.clone());
     ui.row(|ui| {
-        ui.note("Tracker's Open With ▸ offers these for this kind, in this order.");
-        ui.add(div().flex_1());
+        // (The note takes what the button leaves, wrapped.)
+        let note = ui.collect(|ui| ui.note("Tracker's Open With ▸ offers these for this kind, in this order."));
+        ui.add(div().flex_1().min_w(px(0.0)).children(note));
         ui.enabled_if(offer.set, |ui| {
             ui.button("Olo's Choice", move |_, _| {
                 let _ = reset_tx.send(Job::Offer(reset_mime.clone(), Vec::new()));

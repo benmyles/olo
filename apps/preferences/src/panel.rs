@@ -229,7 +229,7 @@ impl Panel {
     }
 
     /// Whether the panel has Defaults / Revert.
-    fn resettable(self) -> bool {
+    pub fn resettable(self) -> bool {
         !matches!(self, Panel::About | Panel::AirPods | Panel::Display | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications | Panel::Performance | Panel::Backup | Panel::Integrations | Panel::DefaultApps)
     }
 
@@ -362,6 +362,7 @@ fn layout(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView>) -
     let s = settings.unwrap_or_default();
     let prefs = v.prefs.downgrade();
     let mut ui = Ui::new(window, cx, &s, prefs, &mut v.fields);
+    ui.resets(panel.resettable());
     let power = power.as_ref();
     match (panel, &mut v.state) {
         (Panel::Appearance, _) => appearance::ui(&mut ui),

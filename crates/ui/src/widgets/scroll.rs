@@ -490,7 +490,12 @@ impl RenderOnce for ScrollView {
         let mut content = div().id(self.id.clone()).absolute().left(px(inset)).top(px(inset)).right(px(right)).bottom(px(bottom));
         if !self.own {
             content = content.track_scroll(&self.handle);
-            content = match (vbar, hbar) {
+            // (A hidden bar's content scrolls all the same: clipped to the
+            // view, and measured, so the bar comes when it overflows. Not
+            // scrolling, it ran past the view's bottom, over what's below,
+            // and never showed the bar: Touchpad ▸ Mouse, now and then.)
+            let vscroll = vbar || (self.vertical && self.auto_hide);
+            content = match (vscroll, hbar) {
                 (true, true) => content.overflow_scroll(),
                 (true, false) => content.overflow_y_scroll(),
                 (false, true) => content.overflow_x_scroll(),

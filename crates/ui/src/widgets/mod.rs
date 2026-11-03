@@ -28,7 +28,7 @@ pub use alert::{ALERT_ICON, ALERT_TEXT_X, ALERT_WIDTH, AlertFrame, Conversation,
 pub use scroll::{SCROLL_BAR, ScrollBar, ScrollView};
 pub use slider::Slider;
 pub use status::{StatusBar, level_bar};
-pub use buttons::{Button, CheckBox, RadioButton, button_width, check_box_look};
+pub use buttons::{Button, CheckBox, LinkButton, RadioButton, button_width, check_box_look, link_button_width};
 pub use color::{ColorControl, ColorWell, color_control_height};
 pub use control::{Control, ControlState, control};
 pub use image_view::{ImageView, image_view};

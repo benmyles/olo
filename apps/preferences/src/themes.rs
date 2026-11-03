@@ -105,10 +105,10 @@ fn colors(ui: &mut Ui, s: &Settings) {
         let mut cards = Vec::new();
         for set in ColorSet::ALL {
             let name = set.name(theme);
-            let pick = ui.edit_click(move |s| s.appearance.colors = set.id().to_owned());
+            let on = set == chosen;
+            let pick = ui.bind_click(on, move |s| s.appearance.colors = set.id().to_owned());
             let pick_card = ui.edit_click(move |s| s.appearance.colors = set.id().to_owned());
             let theme_id = theme.id;
-            let on = set == chosen;
             let preview = canvas(|_, _, _| {}, move |b, _, window, cx| paint_preview(window, b, &theme::palette(cx), theme_id, set)).w_full().h(px(PREVIEW_H));
             let plate = canvas(
                 |_, _, _| {},

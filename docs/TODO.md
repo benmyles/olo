@@ -121,13 +121,6 @@ of Finished; a new one goes where its priority puts it.
   as far as the fingers" (HEAD had 0.87–1.13 once). Find what Logs
   redraws for (the session's own journal lines arriving?) and why a
   drag at 1.5× skips a device pixel now and then.
-- **Each section of a preference panel back to its defaults** (Ben,
-  2026-11-02): "there should also be a way to reset any tuning
-  slider/dropdown etc to the defaults for just that section instead of
-  just one defaults button for everything". So: every box of settings
-  (`Ui::bbox`) gets its own way back to the defaults, for what's in it
-  alone, there only when something in it differs from them; the panel's
-  Defaults stays for all of it.
 - **Palm size and the palm model, said plainly** (Ben, 2026-11-02): "is
   the palm size setting etc still applicable when using the model?
   should they be disabled and unused if the model is enabled, like
@@ -862,6 +855,29 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Each section of a preference panel back to its defaults**~~ (Ben,
+  2026-11-02): "there should also be a way to reset any tuning
+  slider/dropdown etc to the defaults for just that section instead of
+  just one defaults button for everything". *Done* (2026-11-03): a box
+  whose settings aren't their defaults has Reset at the end of its top
+  line (the kit's `BBox::action`, a new `LinkButton`), putting back that
+  box's settings alone: every control bound through the form leaves its
+  setter and value in its boxes; set on the defaults they show whether
+  the box changed, and where. Hand-built pickers (wallpaper, desktop
+  colour, screen saver module and corners, colour sets) bound too;
+  Defaults stays for the whole panel. Tried headless: Windows ▸ Space
+  Around Arranged Windows changed, Reset shown in that box only, clicked,
+  back to 8 and gone; light and dark at 1, 1.5 and 2×. The lint draws
+  every resettable panel with every Reset showing too. Found on the
+  way: an auto-hiding ScrollView whose content overflowed on its first
+  frame never showed its bar and drew its content over what's below
+  (Touchpad ▸ Mouse over Defaults and Revert, now and then: the settings
+  index changed between runs); fixed in the kit, and the review no
+  longer takes any clip with a scroll view in it for the scroll view's,
+  which hid that and two more (Default Apps' "Olo's Choice" 12 pt into
+  the inset, Tracker's count bar a line past the window), both fixed;
+  the Mouse tab in two columns.
 
 - ~~**⌘W doesn't close windows**~~ (Ben, 2026-11-03): "cmd+w shortcut
   doesn't actually seem to close windows. it just ignores me when i

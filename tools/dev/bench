@@ -10,9 +10,12 @@ below 120 frames a second.
 `--env K=V` (again for more) is given to every app: an A/B of a switch
 without a rebuild (`--env OLO_PAINT_MEMO=0`).
 
-Build first: `cargo build --release --workspace --bins --examples` (the
-apps and the kit's gallery; `--examples` alone leaves the apps as they
-were). A build older than the sources is named before anything runs.
+Build first: `cargo build --release --workspace` (the apps), then
+`cargo build --release -p olo-ui --examples` (the kit's gallery), apart:
+built in one go, cargo gives the apps the examples' dev-dependencies'
+features (GPUI's test support), and apps built so mark no frames, so
+nothing is measured; a launch with no frames marked fails, saying so.
+A build older than the sources is named before anything runs.
 It starts a session of its own ("bench", the shell's Deskbar and
 desktop, a sandbox home under /var/tmp/olo-bench filled with what makes
 apps work: a 20,000-line document, a folder of 3,000 files, photos, 200
@@ -355,6 +358,10 @@ class Bench:
         slowest = max((o["slowest_us"] for o in tm.get("outputs", [])), default=0)
         st.server = {"frame_max_ms": round(slowest / 1000, 2), "loop_late_ms": round(tm.get("latest_beat_us", 0) / 1000, 1),
                      "slowest": tm.get("slowest"), "frames": sum(o["frames"] for o in tm.get("outputs", []))}
+        if step == "launch and load" and not st.frames:
+            # (A window up, and not one frame marked: nothing it does
+            # will be measured.)
+            st.failures.append("no frames marked: built with the examples in one go (GPUI's test support)? Build the apps alone")
         if st.transition:
             worst = max(st.frames, key=lambda m: m["us"], default=None)
             if worst and worst["us"] > self.budget_us:
@@ -858,10 +865,10 @@ def main():
     only = set(only.split(",")) if only else None
     for exe in ("olo-app-server", "olo-session", "olo-deskbar", os.path.join("examples", "gallery")):
         if not os.path.exists(os.path.join(RELEASE, exe)):
-            sys.exit(f"no target/release/{exe}: cargo build --release --workspace --bins --examples")
+            sys.exit(f"no target/release/{exe}: cargo build --release --workspace, then cargo build --release -p olo-ui --examples")
     stale = stale_builds()
     if stale:
-        print(f"warning: older than the sources (cargo build --release --workspace --bins --examples): {', '.join(stale)}", flush=True)
+        print(f"warning: older than the sources (cargo build --release --workspace, then -p olo-ui --examples): {', '.join(stale)}", flush=True)
     os.makedirs(SCRATCH, exist_ok=True)
     print("fixtures…", flush=True)
     fixtures()

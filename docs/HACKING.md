@@ -1313,8 +1313,11 @@ event reaches it.
   with the current choice over the field: `menu::popup_over`),
   `TextControl` (label, divider,
   the sunken well around a `TextField`), `StringView` (`dim`, `bold`),
-  `BBox` (etched frame, bold label in its top line, `content_width`;
-  agents read it as a `Group` named by its label, round what's in it),
+  `BBox` (etched frame, bold label in its top line, `content_width`,
+  `action` for a `LinkButton` at the top line's end; agents read it as
+  a `Group` named by its label, round what's in it), `LinkButton` (only
+  its words, small, in the link blue, underlined under the pointer,
+  `LABEL_ROW` tall: an action in a line with no room for a button),
   `EmptyState` (an icon, a line, a detail and an action button,
   centred in what it's given: a list or pane with nothing in it).
   Each is a `widgets::Control` underneath: an element that keeps
@@ -1385,7 +1388,10 @@ event reaches it.
   `ScrollBar` with its position, 0 to 1. In a frame it places itself
   inside the frame's two lines on device pixels (`in_frame`).
   `auto_hide(true)` shows the vertical bar only while what it holds
-  overflows (panes side by side).
+  overflows (panes side by side); its content scrolls (clipped to the
+  view, measured) with the bar hidden too, so the bar comes as soon as
+  it overflows (not scrolling, a hidden bar's content ran past the view
+  over what's below and never showed the bar).
 - `style::pill`/`pill_on_baseline`/`pill_width`/`pill_height` (a count
   or tag in a pill, its text on a label's baseline beside it),
   `baseline_at` and `label_on_baseline` (things of different sizes on
@@ -2563,9 +2569,11 @@ ends with the worst numbers per kind of burst. Run it after changing
 anything that runs per frame or per event.
 
 `tools/dev/bench` is the speed benchmark, every app against the 120 Hz
-budget (rule 9). On release builds (`cargo build --release --workspace
---bins --examples`: `--examples` alone builds only the kit's gallery;
-`TSESSION_PROFILE=release` makes tsession run them) it
+budget (rule 9). On release builds (`cargo build --release --workspace`,
+then `cargo build --release -p olo-ui --examples` for the kit's gallery,
+apart: in one go cargo builds the apps with GPUI's test support, and
+those mark no frames; `TSESSION_PROFILE=release` makes tsession run
+them) it
 starts a session of its own ("bench": a 3456×2234 screen, a 16" MacBook
 Pro's, at 120 Hz, with the shell) and a sandbox home under
 /var/tmp/olo-bench filled with what makes apps work (a 20,000-line
@@ -2648,7 +2656,9 @@ recorded otherwise.
     control past the window's edge, or cut off by what it's in; what a
     scroll view cuts is scrolled out of sight, not cut: ScrollView,
     ColumnListView, their bars and a list's header mark themselves,
-    `review::scroll_area`), `overlap` (two controls over each other,
+    `review::scroll_area`; a clip is the scroll view's only when it is
+    the viewport, or the viewport with its frame and bar, not any clip
+    with a scroll view somewhere in it), `overlap` (two controls over each other,
     neither inside the other), `text-outside` and `text-cut` (text past
     the window, or cut off: give it room or `style::fit` it),
     `text-over-text`, `overflow` (anything that starts in a box or a tab
@@ -2816,6 +2826,20 @@ opened, its own `panel::State` and text fields).
   while they're built. Panels that change settings get Defaults and
   Revert (to the values when the window opened) along the bottom, each
   enabled only when it would change something: implement `Panel::reset`.
+  In those panels a box whose settings aren't their defaults has Reset
+  at the end of its top line (`BBox::action`, a `LinkButton`), putting
+  back just that box's: each control bound through `Ui` (`check`,
+  `radio`, `slider`, `menu`, `choose`, `field`/`text`, and `bind` /
+  `bind_click` for one built by hand, given the value it shows) leaves
+  a probe in the boxes it's in, its setter with that value. Set on
+  `Settings::default()`, a box's probes change the defaults only if the
+  box was changed (`Settings`' `==`, then its JSON with floats to five
+  digits, so a percent through f32 is no change: 6 µs); Reset copies
+  where they change them back from the defaults, field by field and an
+  item of a list at a time. A control bound with plain `ui.edit` isn't
+  probed (an action, or a choice the defaults can't name: keyboard
+  profiles). `cargo ui-lint` draws every resettable panel again with
+  every box's Reset showing.
 * Small screens: a panel's window is never taller than the shortest
   display less 64 points (`fits`; Preferences waits for app_server's
   displays, 400 ms at most, before opening one). A panel taller than

@@ -1,16 +1,18 @@
 //! The kit's own widgets through the layout lint (`cargo ui-lint`): a
 //! form laid out as the kit lays one out is clean in every look at every
-//! scale, and controls put over each other are found.
+//! scale (a box with an action in its top line too), and controls put
+//! over each other are found.
 
 use olo_ui::{
     WindowOptions,
     gpui::{AppContext as _, Context, IntoElement, ParentElement as _, Render, Styled as _, Window, div, px},
     lint::{Lint, assert_clean},
     metrics as m,
-    widgets::{Button, CheckBox, RadioButton, TextControl, text_field},
+    widgets::{BBox, Button, CheckBox, RadioButton, TextControl, text_field},
 };
 
-/// A form: a labelled field, choices, and buttons along the bottom.
+/// A form: a labelled field, choices in a box with Reset, and buttons
+/// along the bottom.
 struct Form {
     field: olo_ui::gpui::Entity<olo_ui::widgets::TextField>,
     /// The buttons put over each other (to be found).
@@ -32,15 +34,14 @@ impl Render for Form {
             .gap(px(m::SPACING))
             .child(TextControl::new(self.field.clone()).label("Name:").divider(60.0))
             .child(CheckBox::new("Show the date in the menu bar", true))
-            .child(RadioButton::new("Automatically", true))
-            .child(RadioButton::new("By hand", false))
+            .child(BBox::new("Set the Time").action("Reset", |_, _| {}).child(RadioButton::new("Automatically", true)).child(RadioButton::new("By hand", false)))
             .child(buttons)
     }
 }
 
 fn form(stacked: bool) -> Vec<olo_ui::lint::Found> {
     let mut lint = Lint::new();
-    let options = WindowOptions::new("Form", 360.0, 200.0);
+    let options = WindowOptions::new("Form", 360.0, 226.0);
     lint.window(&options, move |_, cx| {
         let field = text_field(cx, |f| f);
         cx.new(|_| Form { field, stacked })

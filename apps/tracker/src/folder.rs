@@ -985,7 +985,9 @@ impl FolderWin {
     // ---- the window --------------------------------------------------------
 
     /// The bar along the bottom: the count on the left, free space on the
-    /// right (BeOS put the count beside the scroll bar).
+    /// right (BeOS put the count beside the scroll bar). A scroll bar and
+    /// its etched edge tall: the small text's line under the edge (as
+    /// tall as a bar, it ran a line past the window's bottom).
     fn count_bar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let (entries, list) = self.current();
         let n = entries.len();
@@ -1019,7 +1021,7 @@ impl FolderWin {
             },
         )
         .w_full()
-        .h(px(SCROLL_BAR))
+        .h(px(SCROLL_BAR + 2.0))
     }
 
     /// The free space where the folder is (read again every few seconds,

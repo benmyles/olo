@@ -110,6 +110,80 @@ impl RenderOnce for Button {
     }
 }
 
+/// A button that is only its words, in the small font and the link
+/// colour, underlined under the pointer: a small action beside what it
+/// acts on, in a line that has no room for a push button (a box's Reset,
+/// in its top line: `BBox::action`). `LABEL_ROW` tall.
+#[derive(IntoElement)]
+pub struct LinkButton {
+    id: SharedString,
+    label: SharedString,
+    enabled: bool,
+    on_click: Option<Handler>,
+}
+
+impl LinkButton {
+    pub fn new(label: impl Into<SharedString>) -> LinkButton {
+        let label = label.into();
+        LinkButton { id: label.clone(), label, enabled: true, on_click: None }
+    }
+
+    /// Its id, when two share a label (each box's Reset).
+    pub fn id(mut self, id: impl Into<SharedString>) -> Self {
+        self.id = id.into();
+        self
+    }
+
+    pub fn enabled(mut self, on: bool) -> Self {
+        self.enabled = on;
+        self
+    }
+
+    pub fn on_click(mut self, f: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.on_click = Some(Rc::new(f));
+        self
+    }
+}
+
+/// A link button's width for `label` (on the two-point grid).
+pub fn link_button_width(window: &mut Window, label: &str) -> f32 {
+    let tw = f32::from(style::text_width(window, label.to_string(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL)));
+    (tw / 2.0).ceil() * 2.0
+}
+
+impl RenderOnce for LinkButton {
+    fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
+        let w = link_button_width(window, &self.label);
+        let label = self.label.clone();
+        let mut c = control(self.id.clone(), w, m::LABEL_ROW, move |r, s, window, cx| {
+            let p = theme::palette(cx);
+            // (The blue of links, readable on the panel.)
+            let link = olo_theme::readable(p.hue(olo_theme::Hue::Blue), p.panel_background, 4.5);
+            let color = if !s.enabled {
+                style::disabled_text(&p)
+            } else if s.pressed {
+                style::shade(&p, link, 1.25)
+            } else {
+                style::c(link)
+            };
+            let text = style::label(window, cx, r.left(), r.center().y, style::Align::Left, label.to_string(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), color);
+            if s.focused {
+                focus_underline(window, text, &p);
+            } else if s.hovered && s.enabled {
+                style::hline_above(window, text.left(), text.right(), text.bottom(), color);
+            }
+        })
+        .enabled(self.enabled)
+        .focusable()
+        .pointing()
+        .agent("Button", self.label.clone(), None);
+        if let Some(f) = self.on_click {
+            c = c.on_click(move |_, window, cx| f(window, cx));
+        }
+        c
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn paint_button(r: Bounds<Pixels>, s: ControlState, label: &str, default: bool, pushed: bool, font_size: f32, window: &mut Window, cx: &mut App) {
     let p = theme::palette(cx);

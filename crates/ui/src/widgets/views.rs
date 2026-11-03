@@ -143,17 +143,25 @@ impl RenderOnce for Separator {
 pub struct BBox {
     label: Option<SharedString>,
     width: Option<f32>,
+    action: Option<(SharedString, OnAction)>,
     children: SmallVec<[AnyElement; 4]>,
 }
 
 impl BBox {
     pub fn new(label: impl Into<SharedString>) -> BBox {
-        BBox { label: Some(label.into()), width: None, children: SmallVec::new() }
+        BBox { label: Some(label.into()), width: None, action: None, children: SmallVec::new() }
     }
 
     /// Without a label.
     pub fn plain() -> BBox {
-        BBox { label: None, width: None, children: SmallVec::new() }
+        BBox { label: None, width: None, action: None, children: SmallVec::new() }
+    }
+
+    /// A `LinkButton` at the right end of its top line, for what's in it
+    /// (Preferences' Reset: this box's settings back to their defaults).
+    pub fn action(mut self, label: impl Into<SharedString>, on_click: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.action = Some((label.into(), std::rc::Rc::new(on_click)));
+        self
     }
 
     /// What it holds is `w` wide (the frame, its insets wider).
@@ -171,11 +179,13 @@ impl ParentElement for BBox {
 
 impl RenderOnce for BBox {
     fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
-        let label_h = if self.label.is_some() { m::LABEL_ROW } else { 0.0 };
+        let titled = self.label.is_some() || self.action.is_some();
+        let label_h = if titled { m::LABEL_ROW } else { 0.0 };
         let pad = m::BOX_INSET;
         // (Under its label as far as its rows are from each other.)
-        let content_top = if self.label.is_some() { label_h + m::STACK } else { pad };
+        let content_top = if titled { label_h + m::STACK } else { pad };
         let label_w = self.label.as_ref().map(|l| f32::from(style::text_width(window, l.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD))).ceil());
+        let action_w = self.action.as_ref().map(|(l, _)| super::link_button_width(window, l));
         let label = self.label.clone();
         let frame = canvas(
             |_, _, _| {},
@@ -187,7 +197,10 @@ impl RenderOnce for BBox {
                 let frame = Bounds::from_corners(point(b.left(), b.top() + top), b.bottom_right());
                 // (What's in it must fit inside the frame's inset.)
                 crate::review::container(window, Bounds::from_corners(point(frame.left() + px(pad), frame.top()), point(frame.right() - px(pad), frame.bottom() - px(pad))));
-                etched(window, frame, &p, label_w.map(|w| (frame.left() + px(pad - 4.0), frame.left() + px(pad + w + 4.0))));
+                // (Gaps in the top line for the label and the action, as
+                // far from them as from the frame's inset.)
+                let gaps = [label_w.map(|w| (frame.left() + px(pad - 4.0), frame.left() + px(pad + w + 4.0))), action_w.map(|w| (frame.right() - px(pad + w + 4.0), frame.right() - px(pad - 4.0)))];
+                etched(window, frame, &p, &gaps);
                 if let Some(l) = &label {
                     style::label(window, cx, b.left() + px(pad), b.top() + px(label_h / 2.0), style::Align::Left, l.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), style::c(p.panel_text));
                     // What the controls in it are about, for agents (and
@@ -202,6 +215,10 @@ impl RenderOnce for BBox {
         if let Some(w) = self.width {
             b = b.w(px(w + 2.0 * pad));
         }
+        let action = self.action.map(|(l, f)| {
+            let id = SharedString::from(format!("{}-{l}", self.label.as_ref().map_or("box", |s| s.as_ref())));
+            div().absolute().top_0().right(px(pad)).child(super::LinkButton::new(l).id(id).on_click(move |window, cx| f(window, cx)))
+        });
         b.flex()
             .flex_col()
             .gap(px(m::STACK))
@@ -209,22 +226,25 @@ impl RenderOnce for BBox {
             .px(px(pad))
             .pb(px(pad))
             .child(frame)
+            .children(action)
             .children(self.children)
     }
 }
 
 /// The etched rectangle: a dark line, then a light one a line in, on
-/// device pixels at any scale; `gap` leaves room in the top line.
-fn etched(window: &mut Window, frame: Bounds<Pixels>, p: &olo_theme::Palette, gap: Option<(Pixels, Pixels)>) {
+/// device pixels at any scale; `gaps` leave room in the top line.
+fn etched(window: &mut Window, frame: Bounds<Pixels>, p: &olo_theme::Palette, gaps: &[Option<(Pixels, Pixels)>]) {
     let dark = style::shade(p, p.panel_background, 1.22);
     let light = style::c(p.shine);
     let (f, i1, i2) = (style::inset(window, frame, 0.0), style::inset(window, frame, 1.0), style::inset(window, frame, 2.0));
-    let top = |window: &mut Window, y: Pixels, color: Hsla| match gap {
-        Some((a, b)) => {
-            style::hline(window, f.left(), a, y, color);
-            style::hline(window, b, f.right(), y, color);
+    let top = |window: &mut Window, y: Pixels, color: Hsla| {
+        // (Left to right, between the gaps.)
+        let mut x = f.left();
+        for &(a, b) in gaps.iter().flatten() {
+            style::hline(window, x, a, y, color);
+            x = b;
         }
-        None => style::hline(window, f.left(), f.right(), y, color),
+        style::hline(window, x, f.right(), y, color);
     };
     top(window, f.top(), dark);
     top(window, i1.top(), light);

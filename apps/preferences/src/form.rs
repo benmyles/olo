@@ -4,6 +4,13 @@
 //! [`Prefs::edit`] (app_server's copy, and every window showing it). A
 //! panel's own state (what it is busy with, what is selected) is changed
 //! through [`Ui::on_view`], on its window's view.
+//!
+//! A box whose settings aren't their defaults has a Reset in its top
+//! line, putting back just those: each control bound here (`check`,
+//! `radio`, `slider`, `menu`, `choose`, `field`) leaves a probe in the
+//! boxes it's in, its setter with the value it shows; set on the
+//! defaults, the probes change them only if the box was changed, and
+//! where they change them is what Reset puts back.
 
 use std::{collections::HashMap, rc::Rc};
 
@@ -18,6 +25,18 @@ use crate::{PanelView, Prefs};
 
 /// A change to the settings, from a control.
 type Set<T> = Rc<dyn Fn(&mut Settings, T)>;
+
+/// A control's setter with the value it shows (a box's Reset).
+type Probe = Rc<dyn Fn(&mut Settings)>;
+
+thread_local! {
+    /// What a box's Reset goes back to, and its `rounded` JSON.
+    static DEFAULTS: (Rc<Settings>, Rc<Vec<u8>>) = {
+        let d = Settings::default();
+        let json = rounded(&d);
+        (Rc::new(d), Rc::new(json))
+    };
+}
 
 /// A panel's text fields, by id, and what each sets as it is typed in
 /// (the latest render's: a field's setter can depend on what is shown,
@@ -37,11 +56,31 @@ pub struct Ui<'a, 'b> {
     fields: &'a mut Fields,
     items: Vec<AnyElement>,
     enabled: bool,
+    /// The boxes being built, the innermost last: their controls' probes.
+    boxes: Vec<Vec<Probe>>,
+    /// Changed boxes get a Reset (not in panels without Defaults).
+    resets: bool,
 }
 
 impl<'a, 'b> Ui<'a, 'b> {
     pub fn new(window: &'a mut Window, cx: &'a mut Context<'b, PanelView>, s: &'a Settings, prefs: WeakEntity<Prefs>, fields: &'a mut Fields) -> Self {
-        Ui { window, cx, s, prefs, fields, items: Vec::new(), enabled: true }
+        Ui { window, cx, s, prefs, fields, items: Vec::new(), enabled: true, boxes: Vec::new(), resets: false }
+    }
+
+    /// Boxes whose settings aren't their defaults get a Reset.
+    pub fn resets(&mut self, on: bool) {
+        self.resets = on;
+    }
+
+    /// In each box being built: `set`, the setting as it is now.
+    fn probe(&mut self, set: impl Fn(&mut Settings) + 'static) {
+        if self.boxes.is_empty() || !self.resets {
+            return;
+        }
+        let p: Probe = Rc::new(set);
+        for b in &mut self.boxes {
+            b.push(p.clone());
+        }
     }
 
     /// What was added, top to bottom.
@@ -79,6 +118,26 @@ impl<'a, 'b> Ui<'a, 'b> {
         }
     }
 
+    /// [`Ui::edit`] for a control built by hand showing `now`: its box's
+    /// Reset puts it back too.
+    pub fn bind<T: Clone + 'static>(&mut self, now: T, set: impl Fn(&mut Settings, T) + 'static) -> impl Fn(T, &mut Window, &mut App) + 'static {
+        let set = Rc::new(set);
+        let probe = set.clone();
+        self.probe(move |s| probe(s, now.clone()));
+        self.edit(move |s, v| set(s, v))
+    }
+
+    /// [`Ui::edit_click`] for one of a set of choices built by hand (a
+    /// card, a row): Reset puts back the `chosen` one's.
+    pub fn bind_click(&mut self, chosen: bool, set: impl Fn(&mut Settings) + 'static) -> impl Fn(&mut Window, &mut App) + 'static {
+        let set = Rc::new(set);
+        if chosen {
+            let probe = set.clone();
+            self.probe(move |s| probe(s));
+        }
+        self.edit_click(move |s| set(s))
+    }
+
     /// Something to do to the panel's window (its state), for a control.
     pub fn on_view<T: 'static>(&self, f: impl Fn(&mut PanelView, T, &mut Window, &mut Context<PanelView>) + 'static) -> impl Fn(T, &mut Window, &mut App) + 'static {
         let view = self.cx.entity().downgrade();
@@ -102,10 +161,19 @@ impl<'a, 'b> Ui<'a, 'b> {
         std::mem::replace(&mut self.items, outer)
     }
 
-    /// An etched box with its title in its top line.
+    /// An etched box with its title in its top line, and Reset at its
+    /// end while its settings aren't their defaults.
     pub fn bbox(&mut self, title: &str, build: impl FnOnce(&mut Self)) {
+        self.boxes.push(Vec::new());
         let items = self.collect(build);
-        let b = if title.is_empty() { BBox::plain() } else { BBox::new(SharedString::from(title.to_owned())) };
+        let probes = self.boxes.pop().unwrap_or_default();
+        let mut b = if title.is_empty() { BBox::plain() } else { BBox::new(SharedString::from(title.to_owned())) };
+        if self.enabled && (changed(&probes) || every_reset() && !probes.is_empty()) {
+            let prefs = self.prefs.clone();
+            b = b.action("Reset", move |_, cx| {
+                let _ = prefs.update(cx, |p, cx| p.edit(cx, |s| reset(s, &probes)));
+            });
+        }
         self.add(b.children(items));
     }
 
@@ -159,23 +227,41 @@ impl<'a, 'b> Ui<'a, 'b> {
     }
 
     pub fn check(&mut self, label: impl Into<SharedString>, on: bool, set: impl Fn(&mut Settings, bool) + 'static) {
-        let c = CheckBox::new(label, on).enabled(self.enabled).on_toggle(self.edit(set));
+        let set = Rc::new(set);
+        let probe = set.clone();
+        self.probe(move |s| probe(s, on));
+        let c = CheckBox::new(label, on).enabled(self.enabled).on_toggle(self.edit(move |s, v| set(s, v)));
         self.add(c);
     }
 
     pub fn radio(&mut self, label: impl Into<SharedString>, selected: bool, set: impl Fn(&mut Settings) + 'static) {
-        let r = RadioButton::new(label, selected).enabled(self.enabled).on_select(self.edit_click(set));
+        let set = Rc::new(set);
+        if selected {
+            let probe = set.clone();
+            self.probe(move |s| probe(s));
+        }
+        let r = RadioButton::new(label, selected).enabled(self.enabled).on_select(self.edit_click(move |s| set(s)));
         self.add(r);
     }
 
     /// A slider; `with` sets its label, text and limits.
     pub fn slider(&mut self, id: &str, value: f32, range: std::ops::RangeInclusive<f32>, with: impl FnOnce(Slider) -> Slider, set: impl Fn(&mut Settings, f32) + 'static) {
-        let s = with(Slider::new(SharedString::from(id.to_owned()), value, range)).enabled(self.enabled).on_change(self.edit(set));
+        let set = Rc::new(set);
+        let probe = set.clone();
+        self.probe(move |s| probe(s, value));
+        let s = with(Slider::new(SharedString::from(id.to_owned()), value, range)).enabled(self.enabled).on_change(self.edit(move |s, v| set(s, v)));
         self.add(s);
     }
 
     /// A pop-up menu of `options`; `with` sets its label, divider, width.
     pub fn menu(&mut self, id: &str, options: Vec<SharedString>, selected: usize, with: impl FnOnce(MenuField) -> MenuField, set: impl Fn(&mut Settings, usize) + 'static) {
+        let set = Rc::new(set);
+        let probe = set.clone();
+        self.probe(move |s| probe(s, selected));
+        self.menu_of(id, options, selected, with, move |s, i| set(s, i));
+    }
+
+    fn menu_of(&mut self, id: &str, options: Vec<SharedString>, selected: usize, with: impl FnOnce(MenuField) -> MenuField, set: impl Fn(&mut Settings, usize) + 'static) {
         let f = with(MenuField::new(SharedString::from(id.to_owned()), options, selected)).enabled(self.enabled).on_change(self.edit(set));
         self.add(f);
     }
@@ -189,7 +275,11 @@ impl<'a, 'b> Ui<'a, 'b> {
             names.len() - 1
         });
         let values: Vec<T> = choices.iter().map(|(v, _)| v.clone()).collect();
-        self.menu(id, names, selected, with, move |s, i| {
+        let set = Rc::new(set);
+        // (The value itself, as one not among the choices is changed too.)
+        let (probe, now) = (set.clone(), current.clone());
+        self.probe(move |s| probe(s, now.clone()));
+        self.menu_of(id, names, selected, with, move |s, i| {
             if let Some(v) = values.get(i) {
                 set(s, v.clone());
             }
@@ -205,7 +295,10 @@ impl<'a, 'b> Ui<'a, 'b> {
     /// it has the keyboard; typing in it sets what `set` says.
     pub fn field(&mut self, id: &str, value: &str, build: impl FnOnce(TextField) -> TextField, set: impl Fn(&mut Settings, String) + 'static) -> Entity<TextField> {
         let id = SharedString::from(id.to_owned());
-        self.fields.setters.insert(id.clone(), Rc::new(set));
+        let set: Set<String> = Rc::new(set);
+        let (probe, now) = (set.clone(), value.to_owned());
+        self.probe(move |s| probe(s, now.clone()));
+        self.fields.setters.insert(id.clone(), set);
         let field = match self.fields.fields.get(&id) {
             Some(f) => f.clone(),
             None => {
@@ -246,6 +339,116 @@ impl<'a, 'b> Ui<'a, 'b> {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Every box with settings shows its Reset (the layout lint's second
+    /// pass: a long title beside it must still fit).
+    pub static EVERY_RESET: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+fn every_reset() -> bool {
+    EVERY_RESET.with(|c| c.get())
+}
+
+#[cfg(not(test))]
+fn every_reset() -> bool {
+    false
+}
+
+/// Whether a box's settings aren't their defaults: its probes change
+/// the defaults (more than a float's rounding: a slider's percent).
+fn changed(probes: &[Probe]) -> bool {
+    if probes.is_empty() {
+        return false;
+    }
+    let (defaults, probed) = probed(probes);
+    // (Settings' own comparison first, 0.6 µs: most boxes are as they
+    // were. Then their JSON, floats rounded, 6 µs: a Value tree was 30.)
+    *defaults != probed && rounded(&probed) != *DEFAULTS.with(|d| d.1.clone())
+}
+
+/// Settings as JSON with floats to five significant digits: the same
+/// past a float's rounding (a percent through f32 and back).
+fn rounded(s: &Settings) -> Vec<u8> {
+    struct Rounded;
+    impl serde_json::ser::Formatter for Rounded {
+        fn write_f32<W: ?Sized + std::io::Write>(&mut self, w: &mut W, v: f32) -> std::io::Result<()> {
+            write!(w, "{v:.4e}")
+        }
+        fn write_f64<W: ?Sized + std::io::Write>(&mut self, w: &mut W, v: f64) -> std::io::Result<()> {
+            write!(w, "{v:.4e}")
+        }
+    }
+    let mut out = Vec::with_capacity(4096);
+    let _ = serde::Serialize::serialize(s, &mut serde_json::Serializer::with_formatter(&mut out, Rounded));
+    out
+}
+
+/// The defaults, and the defaults with each probe set.
+fn probed(probes: &[Probe]) -> (Rc<Settings>, Settings) {
+    let defaults = DEFAULTS.with(|d| d.0.clone());
+    let mut probed = (*defaults).clone();
+    for p in probes {
+        p(&mut probed);
+    }
+    (defaults, probed)
+}
+
+/// A box's settings back to their defaults: where its probes change
+/// the defaults, `s` takes the defaults' value (its other settings stay).
+fn reset(s: &mut Settings, probes: &[Probe]) {
+    let (defaults, probed) = probed(probes);
+    let (Ok(defaults), Ok(probed), Ok(mut now)) = (serde_json::to_value(&*defaults), serde_json::to_value(&probed), serde_json::to_value(&*s)) else { return };
+    back(&mut now, &defaults, &probed);
+    match serde_json::from_value(now) {
+        Ok(n) => *s = n,
+        Err(e) => tracing::warn!("a box's Reset: {e}"),
+    }
+}
+
+/// Where `probed` differs from `defaults`, `now` takes the default:
+/// field by field, and item by item in lists of the same length.
+fn back(now: &mut serde_json::Value, defaults: &serde_json::Value, probed: &serde_json::Value) {
+    use serde_json::Value;
+    if same(defaults, probed) {
+        return;
+    }
+    match (defaults, probed, now) {
+        (Value::Object(d), Value::Object(p), Value::Object(n)) => {
+            for (k, pv) in p {
+                let Some(dv) = d.get(k) else { continue };
+                match n.get_mut(k) {
+                    Some(nv) => back(nv, dv, pv),
+                    None => {
+                        n.insert(k.clone(), dv.clone());
+                    }
+                }
+            }
+        }
+        (Value::Array(d), Value::Array(p), Value::Array(n)) if d.len() == p.len() && d.len() == n.len() => {
+            for ((dv, pv), nv) in d.iter().zip(p).zip(n.iter_mut()) {
+                back(nv, dv, pv);
+            }
+        }
+        (d, _, n) => *n = d.clone(),
+    }
+}
+
+/// The same settings, numbers within a float's rounding.
+fn same(a: &serde_json::Value, b: &serde_json::Value) -> bool {
+    use serde_json::Value;
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => match (x.as_f64(), y.as_f64()) {
+            (Some(x), Some(y)) => (x - y).abs() <= 1e-5 * x.abs().max(1.0),
+            _ => x == y,
+        },
+        (Value::Object(x), Value::Object(y)) => x.len() == y.len() && x.iter().all(|(k, v)| y.get(k).is_some_and(|w| same(v, w))),
+        (Value::Array(x), Value::Array(y)) => x.len() == y.len() && x.iter().zip(y).all(|(v, w)| same(v, w)),
+        _ => a == b,
+    }
+}
+
 /// The widest of `labels`, and the gap after it: where controls in a
 /// column of labelled ones begin.
 pub fn divider_for(window: &mut Window, labels: &[&str]) -> f32 {
@@ -255,3 +458,55 @@ pub fn divider_for(window: &mut Window, labels: &[&str]) -> f32 {
         .fold(0.0, f32::max)
         + m::LABEL_GAP
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn probe(f: impl Fn(&mut Settings) + 'static) -> Probe {
+        Rc::new(f)
+    }
+
+    #[test]
+    fn a_box_at_its_defaults_has_no_reset() {
+        let d = Settings::default();
+        let (speed, follows) = (d.mouse_speed, d.focus_follows_mouse);
+        assert!(!changed(&[probe(move |s| s.mouse_speed = speed), probe(move |s| s.focus_follows_mouse = follows)]));
+        // (A slider's percent, rounded through f32, is no change.)
+        let percent = (speed * 100.0) as f32;
+        assert!(!changed(&[probe(move |s| s.mouse_speed = (percent / 100.0) as f64)]));
+        assert!(!changed(&[]));
+    }
+
+    #[test]
+    fn reset_puts_back_just_its_box() {
+        let d = Settings::default();
+        let mut s = d.clone();
+        s.mouse_speed = d.mouse_speed + 0.5;
+        s.focus_follows_mouse = !d.focus_follows_mouse;
+        // (Another box's.)
+        s.tiling.gap = d.tiling.gap + 4;
+        let (speed, follows) = (s.mouse_speed, s.focus_follows_mouse);
+        let probes = [probe(move |x| x.mouse_speed = speed), probe(move |x| x.focus_follows_mouse = follows)];
+        assert!(changed(&probes));
+        reset(&mut s, &probes);
+        assert_eq!((s.mouse_speed, s.focus_follows_mouse), (d.mouse_speed, d.focus_follows_mouse));
+        assert_eq!(s.tiling.gap, d.tiling.gap + 4);
+        assert!(!changed(&[probe(move |x| x.mouse_speed = d.mouse_speed)]));
+    }
+
+    #[test]
+    fn reset_puts_back_one_item_of_a_list() {
+        let d = Settings::default();
+        assert!(d.workspace_colors.len() >= 2, "the defaults have colours for workspaces");
+        let mut s = d.clone();
+        s.workspace_colors[0] = [1, 2, 3];
+        s.workspace_colors[1] = [4, 5, 6];
+        // (A box for the first workspace only.)
+        let first = s.workspace_colors[0];
+        reset(&mut s, &[probe(move |x| x.workspace_colors[0] = first)]);
+        assert_eq!(s.workspace_colors[0], d.workspace_colors[0]);
+        assert_eq!(s.workspace_colors[1], [4, 5, 6]);
+    }
+}
+

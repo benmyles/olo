@@ -315,10 +315,17 @@ const CROWDED: f32 = crate::metrics::TIGHT - SAME;
 /// its container's.
 const LINE_ROOM: f32 = 4.0;
 
+/// A scroll view's frame and bar round its viewport: a clip this much
+/// bigger than a viewport is still the scroll view's.
+const SCROLL_FRAME: f32 = 16.0;
+
 /// Whether what `clip` cuts is scrolled out of sight (it's a scroll
-/// view's viewport, or in one), not cut off.
+/// view's viewport, or in one, or the scroll view with its frame), not
+/// cut off. (Not any clip with a scroll view somewhere in it: a pane's
+/// let a scroll view's content run past it, over the buttons below,
+/// unseen: Touchpad ▸ Mouse.)
 fn scrolled(p: &Parts, clip: Rect) -> bool {
-    p.scrolls.iter().any(|s| s.expand(1.0).contains_rect(clip) || clip.expand(1.0).contains_rect(*s))
+    p.scrolls.iter().any(|s| s.expand(1.0).contains_rect(clip) || (clip.expand(1.0).contains_rect(*s) && s.expand(SCROLL_FRAME).contains_rect(clip)))
 }
 
 /// The controls that show (scrolled out of sight they're nowhere).

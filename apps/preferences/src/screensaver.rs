@@ -137,7 +137,7 @@ fn fade(ui: &mut Ui) {
 /// "no" sign); its label beside it.
 fn corner_monitor(ui: &mut Ui, corner: Option<Corner>, label: &str, desktop: [u8; 3], set: impl Fn(&mut Settings, Option<Corner>) + 'static) -> olo_ui::gpui::Div {
     let enabled = ui.enabled();
-    let pick: Rc<dyn Fn(Option<Corner>, &mut Window, &mut olo_ui::gpui::App)> = Rc::new(ui.edit(move |s, k: Option<Corner>| set(s, k)));
+    let pick: Rc<dyn Fn(Option<Corner>, &mut Window, &mut olo_ui::gpui::App)> = Rc::new(ui.bind(corner, move |s, k: Option<Corner>| set(s, k)));
     let monitor = canvas(
         |_, _, _| {},
         move |rect: Bounds<Pixels>, _, window, cx| {
@@ -272,7 +272,7 @@ fn modules(ui: &mut Ui, server: &Server, st: &mut State) {
     let rows = MODULES.iter().enumerate().map(|(i, module)| {
         let chosen = i == current;
         let name = module.name;
-        let pick = ui.edit_click(move |s| s.screen_saver.module = name.to_owned());
+        let pick = ui.bind_click(chosen, move |s| s.screen_saver.module = name.to_owned());
         div()
             .id(SharedString::from(format!("module-{name}")))
             .h(px(m::LIST_ROW))
