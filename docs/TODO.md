@@ -347,6 +347,20 @@ of Finished; a new one goes where its priority puts it.
   Chrome running on that screen), and every launcher there passes the
   screen's `WAYLAND_DISPLAY`/`OLO_SOCKET`. Check the other single-instance
   apps (ours via D-Bus activation, Slack, GTK's GApplication) the same way.
+  *Status* (2026-11-02): Chrome done (bb4dbc4b, 2026-10-31: a profile
+  of the screen's own, `CHROME_CONFIG_HOME`); Olo's apps are fine (their
+  single-instance socket is the display's, `instance::socket_path`).
+  *Left*, all through the session bus a screen shares with the person
+  (on purpose: their keyring, notifications; a headless session never
+  takes its services over): a GTK app's GApplication finds the person's
+  copy by its bus name; an Electron app (Slack, VS Code) hands off to
+  the person's through the lock in their config; and a portal dialog
+  asked from a screen (Chrome's upload, Open With) shows on the
+  person's display (olo-portal is the person's). The fix: a bus of the
+  screen's own with its own portal (as test sessions have), reaching
+  the person's keyring only through Passwords' grants ("Passwords for
+  Agent Screens"); it changes what agents on existing screens reach, so
+  it goes with that item.
 
 - **Terminal: light mode hard to read** (*better* 2026-11-02: text kept
   at 4.5:1 from its cell, `colors::legible`, so a dark terminal's pale
