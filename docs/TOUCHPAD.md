@@ -179,6 +179,60 @@ a later frame. Replaying the capture (`touch_filter`'s `replay_capture`,
 was given in 6151 of 7325 frames, the new one in none, and libinput's
 touches match what the filter meant in every frame.
 
+## Palms told apart by a model of the person's hands (November 2026)
+
+The size rule (`palm_size`) misses palms that are small or light: the
+right-edge palm that rests at 640–1116 while typing. So the filter can
+also run a small network trained on the person's own hands (Ben: "a tiny
+gpu accelerated (or simd accelerated if it's faster) model").
+
+**Research first** (2026-11-02): there was nothing open to take.
+- arXiv (searched to 2026) and Hugging Face have no touchpad palm
+  model or data.
+- Chromium's neural palm filter (Android's `libpalmrejection`, BSD) is
+  for Chromebook touchscreens.
+- ChromeOS's touchpad library goes by thresholds.
+- Synaptics' model (CES 2025) is proprietary.
+- A 2021 Brno thesis published no code.
+- PalmTouch needs raw capacitive images, which this pad doesn't give.
+
+**The model** (crates/palm, `olo-palm`, all Rust):
+- Twelve features a contact, made by `Tracker` from each report: its
+  size and smaller size, pressure, pressure for its size, place,
+  distance from the nearest edge, age, smoothed speed, the most size and
+  pressure it has had, and how many others are down.
+- One hidden layer of ten units: 141 weights.
+- Trained on the machine by full-batch Adam on the class-weighted log
+  loss, in a fraction of a second.
+- A contact is a palm once its score passes the threshold within its
+  first 250 ms; after that it stays what it was (a finger turning palm
+  mid-gesture would stop the gesture).
+- The threshold is chosen so that at most 1% of the fingers kept back
+  from training (every fifth contact) are taken for palms: a palm let
+  through costs less than a finger lost.
+- On made-up MacBook-like contacts it catches the light edge palms the
+  size rule misses, with under 5% of fingers lost on contacts it never
+  saw (`learns_palms_without_losing_fingers`).
+
+**Where it runs:** in `touchpad.lua` itself, since the filter has to hide
+a palm before libinput sees it, in the same features and arithmetic
+(`palm_model_scores_as_rust_does`: Lua and Rust agree to 1e-4).
+- Scoring costs about 2 µs a frame (`frame_cost`, three contacts: 20.1 µs
+  off, 22.3 µs on; 20.8 µs before), about 0.03% of a core at the pad's
+  125 Hz. A GPU dispatch would cost more than the whole network.
+- A contact is scored only in its first 250 ms.
+- With no model, or with it off, the filter is as it was.
+
+**Its samples:** the pad's contacts as reported, from app_server
+(`contacts.rs`). libinput gives out only pointer motion and gestures, and
+a palm the filter hides gives nothing. So libinput's way to the
+devices (`contacts::Interface`, through the session) keeps a copy of the
+pad's descriptor. The loop wakes on it with each report, as it does for
+libinput. Only while someone subscribes to `EventKind::TouchContacts`,
+it reads every slot with `EVIOCGMTSLOTS` (the kernel's state, nothing
+consumed) and sends `Event::TouchContacts` when it changed. Headless,
+`SyntheticEvent::Contacts` stands in for a pad.
+
 ## Preferences ▸ Touchpad & Mouse
 
 - **Touchpad:** the pad app_server found (`Request::InputDevices`:

@@ -45,8 +45,13 @@ pub fn render(t: &TouchpadSettings) -> Option<String> {
         return None;
     }
     let devices: Vec<String> = DEVICES.iter().map(|d| format!("{d:?}")).collect();
+    // The person's palm model, when it's to be used (Train for Your Palm).
+    let model = match (&f.palm_model, f.use_palm_model) {
+        (Some(m), true) if m.w1.len() == olo_palm::HIDDEN * olo_palm::FEATURES => format!(", palm_model = {}", olo_palm::lua(m)),
+        _ => String::new(),
+    };
     let config = format!(
-        "local CONFIG = {{ devices = {{ {} }}, touch_on = {}, touch_off = {}, lift_ms = {}, palm_size = {}, click = {}, press = {}, release = {} }}",
+        "local CONFIG = {{ devices = {{ {} }}, touch_on = {}, touch_off = {}, lift_ms = {}, palm_size = {}, click = {}, press = {}, release = {}{model} }}",
         devices.join(", "),
         f.touch_on,
         f.touch_off.min(f.touch_on),
@@ -123,6 +128,8 @@ mod tests {
     const MINOR: u32 = 0x3_0031;
     const ID: u32 = 0x3_0039;
     const PRESSURE: u32 = 0x3_003a;
+    const POS_X: u32 = 0x3_0035;
+    const POS_Y: u32 = 0x3_0036;
     const BTN_LEFT: u32 = 0x1_0110;
 
     /// The plugin in a stand-in for libinput's Lua API (usages are
@@ -142,14 +149,16 @@ mod tests {
             let lua = mlua::Lua::new();
             lua.load(format!(
                 "evdev = {{ ABS_MT_SLOT = {SLOT}, ABS_MT_TOUCH_MAJOR = {MAJOR}, ABS_MT_TOUCH_MINOR = {MINOR}, \
-                 ABS_MT_TRACKING_ID = {ID}, ABS_MT_PRESSURE = {PRESSURE}, ABS_PRESSURE = 0x30018, BTN_LEFT = {BTN_LEFT} }}
+                 ABS_MT_TRACKING_ID = {ID}, ABS_MT_PRESSURE = {PRESSURE}, ABS_PRESSURE = 0x30018, BTN_LEFT = {BTN_LEFT}, \
+                 ABS_MT_POSITION_X = {POS_X}, ABS_MT_POSITION_Y = {POS_Y} }}
                  hooks = {{}}
                  resolution = {{ [{PRESSURE}] = 1, [0x30018] = 1 }}
                  libinput = {{ register = function() end, log_info = function() end,
                                connect = function(_, _, f) hooks.new = f end }}
                  pad = {{ name = function() return 'Apple MTP multi-touch' end,
                           usages = function() return {{ [{PRESSURE}] = true, [{MAJOR}] = true, [{MINOR}] = true }} end,
-                          absinfos = function() return {{ [{PRESSURE}] = {{ resolution = resolution[{PRESSURE}] }}, [0x30018] = {{ resolution = resolution[0x30018] }} }} end,
+                          absinfos = function() return {{ [{PRESSURE}] = {{ resolution = resolution[{PRESSURE}], minimum = 0, maximum = 6000 }}, [0x30018] = {{ resolution = resolution[0x30018] }},
+                                                         [{POS_X}] = {{ minimum = -7700, maximum = 7700 }}, [{POS_Y}] = {{ minimum = -200, maximum = 9200 }}, [{MAJOR}] = {{ minimum = 0, maximum = 5000 }} }} end,
                           set_absinfo = function(_, u, a) if a.resolution then resolution[u] = a.resolution end end,
                           connect = function(_, _, f) hooks.frame = f end }}"
             ))
@@ -187,6 +196,96 @@ mod tests {
 
     fn sizes(out: &[(u32, i32)]) -> Vec<(u32, i32)> {
         out.iter().copied().filter(|&(u, _)| u == MAJOR || u == MINOR).collect()
+    }
+
+    /// What a frame costs the filter, the palm model off and on (two
+    /// fingers moving, a palm resting): `cargo test --release -p
+    /// app_server frame_cost -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn frame_cost() {
+        use olo_palm::{FEATURES, HIDDEN, PalmModel};
+        let model = PalmModel { mean: vec![0.0; FEATURES], std: vec![1.0; FEATURES], w1: vec![0.01; HIDDEN * FEATURES], b1: vec![0.0; HIDDEN], w2: vec![0.1; HIDDEN], b2: 0.0, threshold: 1e9, decide_ms: 250, ..Default::default() };
+        for on in [false, true] {
+            let mut t = TouchpadSettings::default();
+            t.filter.palm_model = Some(model.clone());
+            t.filter.use_palm_model = on;
+            let mut pad = Pad::new(&t);
+            let start = std::time::Instant::now();
+            const FRAMES: i32 = 20_000;
+            for k in 0..FRAMES {
+                // A new set of contacts every 100 frames (each judged anew).
+                let id = k / 100;
+                let mut events = vec![];
+                for (slot, (x, size)) in [(k * 3, 500), (k * 3 + 900, 520), (6000, 2500)].into_iter().enumerate() {
+                    events.push((SLOT, slot as i32));
+                    if k % 100 == 0 {
+                        events.push((ID, id * 3 + slot as i32));
+                    }
+                    events.extend([(POS_X, x % 7000), (POS_Y, 3000), (PRESSURE, 30), (MAJOR, size), (MINOR, size - 50)]);
+                }
+                pad.frame(8, &events);
+            }
+            let us = start.elapsed().as_secs_f64() * 1e6 / FRAMES as f64;
+            println!("palm model {}: {us:.2} µs a frame (3 contacts)", if on { "on" } else { "off" });
+        }
+    }
+
+    /// The filter's palm model scores contacts as `olo_palm` does: with
+    /// the threshold just under Rust's highest score in the contact's
+    /// first `decide_ms` it's left out as a palm, just over it a finger,
+    /// so the two agree to a ten-thousandth.
+    #[test]
+    fn palm_model_scores_as_rust_does() {
+        use olo_palm::{FEATURES, HIDDEN, PadAxes, PalmModel, TouchContact, Tracker};
+        // A model of no training: seeded weights, every feature in use.
+        let mut seed = 0x2545_f491_4f6c_dd1du64;
+        let mut r = || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed >> 40) as f32 / (1u64 << 24) as f32 - 0.5
+        };
+        let model = PalmModel {
+            mean: (0..FEATURES).map(|_| r() * 0.2).collect(),
+            std: (0..FEATURES).map(|_| 0.2 + r().abs()).collect(),
+            w1: (0..HIDDEN * FEATURES).map(|_| r()).collect(),
+            b1: (0..HIDDEN).map(|_| r()).collect(),
+            w2: (0..HIDDEN).map(|_| r()).collect(),
+            b2: r(),
+            decide_ms: 60,
+            ..Default::default()
+        };
+        // A contact moving, growing and pressing harder, a report every 8 ms.
+        let path: Vec<TouchContact> = (0..12).map(|k| TouchContact { id: 5, x: -3000 + k * 140, y: 1200 + k * 90, major: 600 + k * 35, minor: 450 + k * 20, pressure: 20 + k * 4 }).collect();
+        let axes = PadAxes::macbook();
+        let mut tracker = Tracker::default();
+        let mut best = f32::MIN;
+        for (k, c) in path.iter().enumerate() {
+            let (_, f, age) = tracker.frame(&axes, 8000 * (k as u64 + 1), &[*c])[0];
+            if age <= model.decide_ms {
+                best = best.max(olo_palm::score(&model, &f));
+            }
+        }
+        let run = |threshold: f32| {
+            let mut t = TouchpadSettings::default();
+            t.filter.palm_model = Some(PalmModel { threshold, ..model.clone() });
+            t.filter.use_palm_model = true;
+            let mut pad = Pad::new(&t);
+            let mut last = Vec::new();
+            for (k, c) in path.iter().enumerate() {
+                let mut events = vec![(SLOT, 0)];
+                if k == 0 {
+                    events.push((ID, c.id));
+                }
+                events.extend([(POS_X, c.x), (POS_Y, c.y), (PRESSURE, c.pressure), (MAJOR, c.major), (MINOR, c.minor)]);
+                last = sizes(&pad.frame(8, &events));
+            }
+            last
+        };
+        assert_eq!(run(best - 1e-4), [(MAJOR, 0), (MINOR, 0)], "a palm by Rust's score ({best})");
+        let path_last = path.last().unwrap();
+        assert_eq!(run(best + 1e-4), [(MAJOR, path_last.major), (MINOR, path_last.minor)], "a finger by Rust's score ({best})");
     }
 
     #[test]

@@ -144,7 +144,7 @@ impl Subscriber {
         match &self.kinds {
             Some(k) => k.contains(&kind),
             // (Frames only by name: they come as often as frames do.)
-            None => kind != EventKind::Painted,
+            None => !matches!(kind, EventKind::Painted | EventKind::TouchContacts),
         }
     }
 }

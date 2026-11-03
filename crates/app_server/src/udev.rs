@@ -43,7 +43,7 @@ use smithay::{
         },
         egl::{self, EGLContext, EGLDevice, EGLDisplay, context::ContextPriority},
         input::InputEvent,
-        libinput::{LibinputInputBackend, LibinputSessionInterface},
+        libinput::LibinputInputBackend,
         renderer::{
             DebugFlags, ImportDma, ImportMemWl,
             damage::Error as OutputDamageTrackerError,
@@ -158,6 +158,10 @@ pub struct UdevData {
     touch_filter: Option<String>,
     /// Bumped by each change to the filter, so only the newest restart runs.
     filter_restart: u64,
+    /// Where libinput's way to the devices says which pads it opened
+    /// (`contacts`), and each pad's watch on the loop.
+    pads_opened: smithay::reexports::calloop::channel::Sender<crate::contacts::Pad>,
+    pad_watches: HashMap<std::path::PathBuf, RegistrationToken>,
 }
 
 impl UdevData {
@@ -236,7 +240,7 @@ impl UdevData {
             self.keyboards.clear();
             self.pointers.clear();
         }
-        let context = Libinput::new_with_udev::<LibinputSessionInterface<LibSeatSession>>(self.session.clone().into());
+        let context = Libinput::new_with_udev(crate::contacts::Interface::new(self.session.clone(), self.pads_opened.clone()));
         let touchpad = self.input_settings.as_ref().map(|s| s.touchpad.clone()).unwrap_or_default();
         self.touch_filter = crate::touch_filter::install(&touchpad);
         if self.touch_filter.is_some() {
@@ -256,6 +260,44 @@ impl UdevData {
             Err(e) => error!(%e, "could not watch libinput"),
         }
         info!(touch_filter = self.touch_filter.is_some(), "libinput started");
+    }
+}
+
+/// A pad libinput opened: watched (on the loop, woken when it reports,
+/// as libinput is) for its contacts, said to whoever asks; or closed: no
+/// longer.
+fn watch_pad(state: &mut AnvilState<UdevData>, pad: crate::contacts::Pad) {
+    use smithay::reexports::calloop::{Interest, Mode, PostAction, generic::Generic};
+    match pad {
+        crate::contacts::Pad::Opened(path, fd) => {
+            let Some(mut watch) = crate::contacts::Watch::new(&fd) else { return };
+            let source = Generic::new(fd, Interest::READ, Mode::Level);
+            let token = state.backend_data.loop_handle.insert_source(source, move |ready, fd, state| {
+                // Revoked (the session paused): its close comes next.
+                if ready.error {
+                    return Ok(PostAction::Remove);
+                }
+                if state.ipc.wanted(olo_protocol::EventKind::TouchContacts)
+                    && let Some(contacts) = watch.changed(fd)
+                {
+                    state.ipc.broadcast(olo_protocol::Event::TouchContacts { pad: watch.axes.clone(), time_us: crate::contacts::now_us(), contacts });
+                }
+                Ok(PostAction::Continue)
+            });
+            match token {
+                Ok(token) => {
+                    if let Some(old) = state.backend_data.pad_watches.insert(path, token) {
+                        state.backend_data.loop_handle.remove(old);
+                    }
+                }
+                Err(e) => warn!(%e, "a touchpad's contacts can't be watched"),
+            }
+        }
+        crate::contacts::Pad::Closed(path) => {
+            if let Some(token) = state.backend_data.pad_watches.remove(&path) {
+                state.backend_data.loop_handle.remove(token);
+            }
+        }
     }
 }
 
@@ -824,6 +866,7 @@ pub fn run_udev() {
     }))
     .unwrap();
 
+    let (pads_opened, pads) = smithay::reexports::calloop::channel::channel::<crate::contacts::Pad>();
     let data = UdevData {
         dh: display_handle.clone(),
         dmabuf_state: None,
@@ -846,8 +889,20 @@ pub fn run_udev() {
         libinput: None,
         touch_filter: None,
         filter_restart: 0,
+        pads_opened,
+        pad_watches: HashMap::new(),
     };
     let mut state = AnvilState::init(display, event_loop.handle(), data, true);
+
+    // The pads libinput opens, each watched for its contacts while anyone
+    // asks (`contacts`).
+    if let Err(e) = event_loop.handle().insert_source(pads, |event, _, state| {
+        if let smithay::reexports::calloop::channel::Event::Msg(pad) = event {
+            watch_pad(state, pad);
+        }
+    }) {
+        warn!(%e, "touchpads' contacts can't be watched");
+    }
 
     /*
      * Initialize the udev backend

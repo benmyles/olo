@@ -96,6 +96,13 @@ of Finished; a new one goes where its priority puts it.
     through c/c++ if there's no better rust native solution) don't add
     python". Training, features and inference are Rust (a Rust-native
     crate, or our own: the model is tiny); no Python anywhere.
+  - *Status* (2026-11-02): the model's side is done:
+    - `olo-palm`: features, training and threshold, with tests;
+    - the filter runs it, matching Rust to 1e-4, at about 2 µs a frame;
+    - app_server's live contacts (`EventKind::TouchContacts`, and
+      `SyntheticEvent::Contacts` headless);
+    - the settings for it.
+    *Next*: the trainer in Preferences.
   - (The manual captures below are the fallback, and for measuring.)
   - *Needs Ben* (superseded by the trainer): labelled captures, recorded read-only with no grab
     (`touch_filter`'s `replay_capture` reads them,

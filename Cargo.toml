@@ -27,6 +27,7 @@ olo-screensavers = { path = "crates/screensavers" }
 olo-hvif = { path = "crates/hvif" }
 olo-emoji = { path = "crates/emoji" }
 olo-capture = { path = "crates/capture" }
+olo-palm = { path = "crates/palm" }
 olo-images = { path = "crates/images" }
 olo-token-pool = { path = "crates/pool" }
 olo-ai = { path = "crates/ai" }

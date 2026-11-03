@@ -124,6 +124,79 @@ pub struct TouchFilter {
     /// Summed finger pressure at which a click starts, and ends.
     pub click_press: u32,
     pub click_release: u32,
+    /// A palm model trained on the person's own hands (Train for Your
+    /// Palm), and whether it tells palms apart too (besides
+    /// `palm_size`).
+    pub palm_model: Option<PalmModel>,
+    pub use_palm_model: bool,
+}
+
+/// A palm model trained on the person's own hands (Preferences ▸
+/// Touchpad & Mouse ▸ Train for Your Palm; crates/palm): a small network
+/// the touch filter runs on each contact as it lands, from what the pad
+/// says of it (its size, pressure, place, speed, age, the others on the
+/// pad: `olo_palm::features`, the same in touchpad.lua).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct PalmModel {
+    /// Each feature's mean and spread in what it was trained on: inputs
+    /// are `(x - mean) / std`.
+    pub mean: Vec<f32>,
+    pub std: Vec<f32>,
+    /// The hidden layer's weights (a row of features for each unit) and
+    /// biases.
+    pub w1: Vec<f32>,
+    pub b1: Vec<f32>,
+    /// The output's weights (one for each hidden unit) and bias.
+    pub w2: Vec<f32>,
+    pub b2: f32,
+    /// A contact is a palm once its score passes this in its first
+    /// `decide_ms`; after that, it stays what it was.
+    pub threshold: f32,
+    pub decide_ms: u32,
+    /// When it was trained (seconds since the epoch), from how many
+    /// contacts, and how it did on those kept back from training: the
+    /// share of palms caught and of fingers taken for palms.
+    pub trained: u64,
+    pub contacts: u32,
+    pub palms_caught: f32,
+    pub fingers_lost: f32,
+}
+
+/// One contact on a touchpad as the pad reports it (its own units).
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+pub struct TouchContact {
+    /// Its tracking id: the same while it stays on the pad.
+    pub id: i32,
+    pub x: i32,
+    pub y: i32,
+    pub major: i32,
+    pub minor: i32,
+    pub pressure: i32,
+}
+
+/// A touchpad's axes, for drawing its contacts and making features.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct PadAxes {
+    pub name: String,
+    pub x_min: i32,
+    pub x_max: i32,
+    pub y_min: i32,
+    pub y_max: i32,
+    /// Units a millimetre, across and down (0: unknown).
+    pub x_res: i32,
+    pub y_res: i32,
+    /// The largest touch size and pressure it reports.
+    pub size_max: i32,
+    pub pressure_max: i32,
+}
+
+impl PadAxes {
+    /// A MacBook pad's (Apple MTP, a 16" M2 Max), for tests and headless
+    /// sessions.
+    pub fn macbook() -> PadAxes {
+        PadAxes { name: "Apple MTP multi-touch".into(), x_min: -7700, x_max: 7700, y_min: -200, y_max: 9200, x_res: 98, y_res: 98, size_max: 5000, pressure_max: 6000 }
+    }
 }
 
 impl Default for TouchFilter {
@@ -143,6 +216,8 @@ impl Default for TouchFilter {
             palm_proof_click: true,
             click_press: 120,
             click_release: 75,
+            palm_model: None,
+            use_palm_model: false,
         }
     }
 }

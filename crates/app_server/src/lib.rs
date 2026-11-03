@@ -23,6 +23,7 @@ pub mod shell;
 pub mod state;
 #[cfg(feature = "udev")]
 pub mod udev;
+pub mod contacts;
 #[cfg(feature = "udev")]
 pub mod headless;
 #[cfg(feature = "winit")]

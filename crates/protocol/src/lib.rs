@@ -370,6 +370,10 @@ pub enum SyntheticEvent {
         #[serde(default)]
         dy: i32,
     },
+    /// What's on a touchpad, as a pad's report would say (a MacBook pad's
+    /// axes): sent on as [`Event::TouchContacts`] (headless sessions,
+    /// testing the palm trainer).
+    Contacts { contacts: Vec<touchpad::TouchContact> },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -559,6 +563,9 @@ pub enum EventKind {
     /// [`Event::Painted`]: only when asked for by name (not with
     /// [`Request::Subscribe`]), as it comes as often as frames do.
     Painted,
+    /// [`Event::TouchContacts`]: only by name, as it comes with each of
+    /// the pad's reports (Preferences' palm trainer).
+    TouchContacts,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -592,6 +599,10 @@ pub enum Event {
     /// screenshot shows has changed (headless screens: Agent Screens'
     /// watchers take a picture then, not on a timer).
     Painted { output: String },
+    /// What's on a touchpad now, as the pad reports it (each contact's
+    /// place, size and pressure), after each of its reports while
+    /// anyone asks: the palm trainer's live view and its samples.
+    TouchContacts { pad: touchpad::PadAxes, time_us: u64, contacts: Vec<touchpad::TouchContact> },
 }
 
 impl Event {
@@ -606,6 +617,7 @@ impl Event {
             Event::PowerChanged { .. } => EventKind::Power,
             Event::ShortcutRecorded { .. } => EventKind::ShortcutRecorded,
             Event::Painted { .. } => EventKind::Painted,
+            Event::TouchContacts { .. } => EventKind::TouchContacts,
             Event::InputDevicesChanged { .. } => EventKind::InputDevices,
             Event::KeyGrab { .. } => return None,
         })

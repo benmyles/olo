@@ -1388,6 +1388,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 pointer.axis(self, frame);
                 pointer.frame(self);
             }
+            S::Contacts { contacts } => {
+                // As a MacBook pad's report would say (testing the palm
+                // trainer headless).
+                let _ = (pointer, time);
+                if self.ipc.wanted(olo_protocol::EventKind::TouchContacts) {
+                    let pad = olo_protocol::touchpad::PadAxes::macbook();
+                    self.ipc.broadcast(olo_protocol::Event::TouchContacts { pad, time_us: crate::contacts::now_us(), contacts });
+                }
+            }
             S::Scroll { dx, dy } => {
                 // As from the touchpad: 0, 0 is the fingers lifting.
                 let _ = (pointer, time);

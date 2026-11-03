@@ -1,0 +1,9 @@
+[package]
+name = "olo-palm"
+description = "Palms told apart from fingers on a touchpad: features of each contact, and a small network trained on the person's own hands"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+olo-protocol.workspace = true

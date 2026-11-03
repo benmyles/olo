@@ -282,6 +282,7 @@ dependencies = [
  "mlua",
  "olo-hvif",
  "olo-images",
+ "olo-palm",
  "olo-protocol",
  "olo-sync",
  "olo-system",
@@ -289,6 +290,7 @@ dependencies = [
  "olo-xdg",
  "profiling",
  "rand 0.8.8",
+ "rustix 1.1.5",
  "serde",
  "serde_json",
  "signal-hook 0.3.18",
@@ -7088,6 +7090,13 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+]
+
+[[package]]
+name = "olo-palm"
+version = "0.1.0"
+dependencies = [
+ "olo-protocol",
 ]
 
 [[package]]

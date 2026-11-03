@@ -7,7 +7,10 @@
 --    until it has been below `touch_off` for `lift_ms`), so a finger
 --    hovering just above the glass is not a second finger;
 --  * a contact as large as a palm (`palm_size`) is left out for as long
---    as it lasts;
+--    as it lasts, and so is one the person's palm model (`palm_model`,
+--    trained in Preferences: crates/palm) scores as a palm in its first
+--    `decide_ms` (from the same features, made the same way, as
+--    `olo_palm::Tracker`);
 --  * with a palm on the pad, the driver's click (made from the pressure of
 --    everything touching) counts only if the fingers alone press hard
 --    enough; without one it passes as it is. Olo never clicks when the
@@ -41,10 +44,66 @@ end
 local function contact(state, n)
     local c = state.slots[n]
     if not c then
-        c = { id = -1, pressure = 0, major = 0, minor = 0, on = false, palm = false, low_since = nil }
+        c = { id = -1, pressure = 0, major = 0, minor = 0, x = 0, y = 0, on = false, palm = false, low_since = nil }
         state.slots[n] = c
     end
     return c
+end
+
+-- The palm model's features of contact `c` at `time` (microseconds),
+-- `others` the other contacts down: as `olo_palm::Tracker::frame`.
+local function features(state, c, time, others)
+    local a = state.axes
+    local w = math.max(a.x_max - a.x_min, 1)
+    local h = math.max(a.y_max - a.y_min, 1)
+    local x = (c.x - a.x_min) / w
+    local y = (c.y - a.y_min) / h
+    local size = math.max(c.major, c.minor) / math.max(a.size_max, 1)
+    local small = math.min(c.major, c.minor) / math.max(a.size_max, 1)
+    local pressure = c.pressure / math.max(a.pressure_max, 1)
+    local t = c.track
+    if not t then
+        t = { down = time, x = x, y = y, at = time, speed = 0, peak_size = 0, peak_pressure = 0 }
+        c.track = t
+    end
+    local dt = (time - t.at) / 1e6
+    if dt > 0 then
+        local moved = math.sqrt((x - t.x) ^ 2 + (y - t.y) ^ 2) / dt
+        t.speed = 0.7 * t.speed + 0.3 * moved
+    end
+    t.x, t.y, t.at = x, y, time
+    t.peak_size = math.max(t.peak_size, size)
+    t.peak_pressure = math.max(t.peak_pressure, pressure)
+    local age_ms = (time - t.down) // 1000
+    return {
+        size,
+        small,
+        pressure,
+        pressure / (size + 0.01),
+        x,
+        y,
+        math.min(x, 1 - x, y, 1 - y),
+        math.min(age_ms / 1000, 1),
+        math.min(t.speed, 5) / 5,
+        t.peak_size,
+        t.peak_pressure,
+        math.min(others, 4) / 4,
+    }, age_ms
+end
+
+-- The palm model's score for features `f`: as `olo_palm::score`.
+local function palm_score(m, f)
+    local out = m.b2
+    for j = 1, m.hidden do
+        local a = m.b1[j]
+        for i = 1, m.features do
+            a = a + m.w1[(j - 1) * m.features + i] * ((f[i] - m.mean[i]) / m.std[i])
+        end
+        if a > 0 then
+            out = out + m.w2[j] * a
+        end
+    end
+    return out
 end
 
 -- What libinput was last given for slot `n`'s size (nil: not known).
@@ -82,7 +141,7 @@ local function filter(state, frame, time)
             c.id = v
             if v >= 0 then
                 c.pressure, c.major, c.minor = 0, 0, 0
-                c.on, c.palm, c.low_since = false, false, nil
+                c.on, c.palm, c.low_since, c.track, c.decided = false, false, nil, nil, false
             end
         elseif u == evdev.ABS_MT_PRESSURE then
             contact(state, slot).pressure = v
@@ -92,6 +151,10 @@ local function filter(state, frame, time)
         elseif u == evdev.ABS_MT_TOUCH_MINOR then
             contact(state, slot).minor = v
             sized_minor[slot] = true
+        elseif u == evdev.ABS_MT_POSITION_X then
+            contact(state, slot).x = v
+        elseif u == evdev.ABS_MT_POSITION_Y then
+            contact(state, slot).y = v
         elseif u == evdev.BTN_LEFT and CONFIG.click then
             -- The driver's click: passed on below, unless a palm made it.
             state.driver = v == 1
@@ -102,10 +165,26 @@ local function filter(state, frame, time)
     -- Each contact: does it count, and so the size libinput should see.
     local want = {}
     local fingers, palms = 0, 0
+    local down = 0
+    for _, c in pairs(state.slots) do
+        if c.id >= 0 then
+            down = down + 1
+        end
+    end
+    local model = CONFIG.palm_model
     for n, c in pairs(state.slots) do
         if c.id >= 0 then
             if math.max(c.major, c.minor) >= CONFIG.palm_size then
                 c.palm = true
+            end
+            -- (Judged in its first `decide_ms`; after, nothing to do.)
+            if model and state.axes and not c.palm and not c.decided then
+                local f, age_ms = features(state, c, time, down - 1)
+                if age_ms > model.decide_ms then
+                    c.decided = true
+                elseif palm_score(model, f) > model.threshold then
+                    c.palm = true
+                end
             end
             if not c.on then
                 if c.pressure >= CONFIG.touch_on then
@@ -291,6 +370,12 @@ libinput:connect("new-evdev-device", function(device)
     end
     libinput:log_info("olo: filtering touches on " .. device:name())
     local state = { slot = 0, slots = {}, given = {}, button = false, driver = false, pressure = false }
+    -- The pad's axes, for the palm model's features.
+    local abs = device:absinfos()
+    local ax, ay, am, ap = abs[evdev.ABS_MT_POSITION_X], abs[evdev.ABS_MT_POSITION_Y], abs[evdev.ABS_MT_TOUCH_MAJOR], abs[evdev.ABS_MT_PRESSURE]
+    if ax and ay and am and ap then
+        state.axes = { x_min = ax.minimum, x_max = ax.maximum, y_min = ay.minimum, y_max = ay.maximum, size_max = am.maximum, pressure_max = ap.maximum }
+    end
     device:connect("evdev-frame", function(_, frame, time)
         return filter(state, frame, time)
     end)

@@ -4371,6 +4371,13 @@ context when the filter's settings change.
 `cargo test -p app_server touch_filter` runs the plugin in mlua against
 scripted frames; `examples/touch_filter_probe.rs` runs it on a real
 device (root, read-only).
+The filter can also use a **palm model** trained on the person's hands
+(`TouchFilter::palm_model`, `use_palm_model`; crates/palm, `olo-palm`;
+docs/TOUCHPAD.md "Palms told apart by a model"). Its live samples come
+from app_server's `contacts.rs`, which reads the pad's slots with
+`EVIOCGMTSLOTS` on a copy of libinput's descriptor while anyone
+subscribes to `EventKind::TouchContacts` (only by name).
+`SyntheticEvent::Contacts` stands in for the pad headless.
 
 Preferences ▸ Touchpad & Mouse goes into libinput (`configure_pointer`), with the
 rest set as a Mac trackpad behaves: a two-finger tap is the secondary
