@@ -196,7 +196,7 @@ impl Panel {
     pub fn size(self) -> (u32, u32) {
         match self {
             Panel::Ai => (760, 408),
-            Panel::AirPods => (520, 902),
+            Panel::AirPods => (960, 622),
             Panel::Appearance => (420, 482),
             Panel::Backgrounds => (640, 604),
             Panel::Backup => (420, 258),

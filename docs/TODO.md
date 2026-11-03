@@ -108,9 +108,11 @@ of Finished; a new one goes where its priority puts it.
   through olo-fakesound (it only saw "No sound server" before); the
   hooks (tools/hooks: rustfmt and `cargo ui-lint` before a commit, the
   live lint of changed apps before a push); the palm trainer's screens
-  as `ui_lint` tests (every step and state, full screen). Left: two
-  columns for AirPods (902 tall), Themes (712) and Default Apps (662)
-  where their boxes split well.
+  as `ui_lint` tests (every step and state, full screen); AirPods in two
+  columns (960 × 622, was 520 × 902). Themes and Default Apps stay one:
+  a list of wide theme rows over a row of colour cards, and tabs of
+  lists, want the width, not boxes side by side; both fit a MacBook's
+  982 points.
 - **Logs draws while idle, and a drag in its second list is uneven at
   1.5×** (found by `tools/dev/bench`, 2026-11-03, before and after the
   spacing work alike): Logs draws 90 to 125 frames in the bench's

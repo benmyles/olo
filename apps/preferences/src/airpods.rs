@@ -251,111 +251,117 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let live = a.connected && a.linked;
     let s = a.settings.clone();
 
-    if a.abilities.noise_control {
+    // (Two columns: what they do when pressed and how they listen; how
+    // they sound and what this computer does with them.)
+    let left = ui.collect(|ui| {
+        if a.abilities.noise_control {
+            ui.enabled_if(live, |ui| {
+                let items = ui.collect(|ui| {
+                    let modes: Vec<ListeningMode> = ListeningMode::ALL.into_iter().filter(|m| *m != ListeningMode::Adaptive || a.abilities.adaptive).collect();
+                    let radios: Vec<_> = modes
+                        .iter()
+                        .map(|mode| {
+                            let (ask, mode) = (ask.clone(), *mode);
+                            RadioButton::new(mode.label(), s.listening_mode == Some(mode)).enabled(ui.enabled()).on_select(move |_, _| ask(Change::ListeningMode(mode)))
+                        })
+                        .collect();
+                    ui.add(div().flex().flex_row().flex_wrap().gap_x(px(m::SPACING * 3.0)).gap_y(px(m::STACK)).children(radios));
+                    if a.abilities.adaptive {
+                        let strength = s.adaptive_strength.unwrap_or(50) as f32;
+                        let ask = ask.clone();
+                        ui.add(
+                            Slider::new("adaptive-strength", strength, 0.0..=100.0)
+                                .step(1.0)
+                                .label("Adaptive:")
+                                .limits("More noise", "Less noise")
+                                .enabled(ui.enabled() && s.listening_mode == Some(ListeningMode::Adaptive))
+                                .on_change(move |v, _, _| ask(Change::AdaptiveStrength(v.round() as u8))),
+                        );
+                    }
+                });
+                ui.add(BBox::new("Noise Control").children(items));
+            });
+
+            ui.enabled_if(live, |ui| {
+                let items = ui.collect(|ui| {
+                    ui.label("Press and hold a stem to switch between:");
+                    let chosen = s.press_and_hold_modes.clone();
+                    let checks: Vec<_> = ListeningMode::ALL
+                        .into_iter()
+                        .filter(|m| *m != ListeningMode::Adaptive || a.abilities.adaptive)
+                        .map(|mode| {
+                            let (ask, chosen) = (ask.clone(), chosen.clone());
+                            let on = chosen.contains(&mode);
+                            // At least two are always chosen.
+                            let last_two = on && chosen.len() <= 2;
+                            CheckBox::new(mode.label(), on).enabled(ui.enabled() && !last_two).on_toggle(move |now, _, _| {
+                                let mut modes: Vec<ListeningMode> = chosen.iter().copied().filter(|m| *m != mode).collect();
+                                if now {
+                                    modes.push(mode);
+                                }
+                                ask(Change::PressAndHoldModes(modes));
+                            })
+                        })
+                        .collect();
+                    ui.add(div().flex().flex_row().flex_wrap().gap_x(px(m::SPACING * 3.0)).gap_y(px(m::STACK)).children(checks));
+                    let speeds: Vec<SharedString> = ["Default", "Slower", "Slowest"].into_iter().map(Into::into).collect();
+                    let durations: Vec<SharedString> = ["Default", "Shorter", "Shortest"].into_iter().map(Into::into).collect();
+                    let ask2 = ask.clone();
+                    let speed = MenuField::new("press-speed", speeds, s.press_speed.unwrap_or(0).min(2) as usize)
+                        .label("Press speed:")
+                        .enabled(ui.enabled())
+                        .on_change(move |i, _, _| ask2(Change::PressSpeed(i as u8)));
+                    let ask3 = ask.clone();
+                    let hold = MenuField::new("hold-duration", durations, s.hold_duration.unwrap_or(0).min(2) as usize)
+                        .label("Hold duration:")
+                        .enabled(ui.enabled())
+                        .on_change(move |i, _, _| ask3(Change::HoldDuration(i as u8)));
+                    ui.add(div().flex().flex_row().flex_wrap().items_center().gap_x(px(m::SPACING * 4.0)).gap_y(px(m::STACK)).child(speed).child(hold));
+                });
+                ui.add(BBox::new("Press and Hold").children(items));
+            });
+        }
+    });
+    let right = ui.collect(|ui| {
         ui.enabled_if(live, |ui| {
             let items = ui.collect(|ui| {
-                let modes: Vec<ListeningMode> = ListeningMode::ALL.into_iter().filter(|m| *m != ListeningMode::Adaptive || a.abilities.adaptive).collect();
-                let radios: Vec<_> = modes
-                    .iter()
-                    .map(|mode| {
-                        let (ask, mode) = (ask.clone(), *mode);
-                        RadioButton::new(mode.label(), s.listening_mode == Some(mode)).enabled(ui.enabled()).on_select(move |_, _| ask(Change::ListeningMode(mode)))
-                    })
-                    .collect();
-                ui.add(div().flex().flex_row().gap(px(m::SPACING * 3.0)).children(radios));
+                let check = |ui: &mut Ui, label: &str, on: Option<bool>, make: fn(bool) -> Change| {
+                    let ask = ask.clone();
+                    ui.add(CheckBox::new(label.to_owned(), on.unwrap_or(false)).enabled(ui.enabled() && on.is_some()).on_toggle(move |v, _, _| ask(make(v))));
+                };
                 if a.abilities.adaptive {
-                    let strength = s.adaptive_strength.unwrap_or(50) as f32;
+                    check(ui, "Conversation Awareness: lower the sound when you speak", s.conversation_awareness, Change::ConversationAwareness);
+                    check(ui, "Personalized Volume: adjust the sound to your surroundings", s.personalized_volume, Change::PersonalizedVolume);
+                }
+                if a.abilities.noise_control && a.abilities.buds {
+                    check(ui, "Noise Cancellation with one AirPod in", s.one_bud_noise_cancellation, Change::OneBudNoiseCancellation);
+                }
+                if a.abilities.adaptive {
+                    check(ui, "Volume Swipe: slide on a stem to change the volume", s.volume_swipe, Change::VolumeSwipe);
+                    check(ui, "Charging case sounds", s.case_sounds, Change::CaseSounds);
+                }
+                let mics: Vec<SharedString> = ["Either AirPod", "Always Left", "Always Right"].into_iter().map(Into::into).collect();
+                let at = match s.microphone.unwrap_or_default() {
+                    BudMicrophone::Automatic => 0,
+                    BudMicrophone::Left => 1,
+                    BudMicrophone::Right => 2,
+                };
+                if a.abilities.buds {
                     let ask = ask.clone();
                     ui.add(
-                        Slider::new("adaptive-strength", strength, 0.0..=100.0)
-                            .step(1.0)
-                            .label("Adaptive:")
-                            .limits("More noise", "Less noise")
-                            .enabled(ui.enabled() && s.listening_mode == Some(ListeningMode::Adaptive))
-                            .on_change(move |v, _, _| ask(Change::AdaptiveStrength(v.round() as u8))),
+                        MenuField::new("bud-microphone", mics, at)
+                            .label("Microphone:")
+                            .enabled(ui.enabled())
+                            .on_change(move |i, _, _| ask(Change::Microphone([BudMicrophone::Automatic, BudMicrophone::Left, BudMicrophone::Right][i]))),
                     );
                 }
             });
-            ui.add(BBox::new("Noise Control").children(items));
+            ui.add(BBox::new("Listening").children(items));
         });
 
-        ui.enabled_if(live, |ui| {
-            let items = ui.collect(|ui| {
-                ui.label("Press and hold a stem to switch between:");
-                let chosen = s.press_and_hold_modes.clone();
-                let checks: Vec<_> = ListeningMode::ALL
-                    .into_iter()
-                    .filter(|m| *m != ListeningMode::Adaptive || a.abilities.adaptive)
-                    .map(|mode| {
-                        let (ask, chosen) = (ask.clone(), chosen.clone());
-                        let on = chosen.contains(&mode);
-                        // At least two are always chosen.
-                        let last_two = on && chosen.len() <= 2;
-                        CheckBox::new(mode.label(), on).enabled(ui.enabled() && !last_two).on_toggle(move |now, _, _| {
-                            let mut modes: Vec<ListeningMode> = chosen.iter().copied().filter(|m| *m != mode).collect();
-                            if now {
-                                modes.push(mode);
-                            }
-                            ask(Change::PressAndHoldModes(modes));
-                        })
-                    })
-                    .collect();
-                ui.add(div().flex().flex_row().gap(px(m::SPACING * 3.0)).children(checks));
-                let speeds: Vec<SharedString> = ["Default", "Slower", "Slowest"].into_iter().map(Into::into).collect();
-                let durations: Vec<SharedString> = ["Default", "Shorter", "Shortest"].into_iter().map(Into::into).collect();
-                let ask2 = ask.clone();
-                let speed = MenuField::new("press-speed", speeds, s.press_speed.unwrap_or(0).min(2) as usize)
-                    .label("Press speed:")
-                    .enabled(ui.enabled())
-                    .on_change(move |i, _, _| ask2(Change::PressSpeed(i as u8)));
-                let ask3 = ask.clone();
-                let hold = MenuField::new("hold-duration", durations, s.hold_duration.unwrap_or(0).min(2) as usize)
-                    .label("Hold duration:")
-                    .enabled(ui.enabled())
-                    .on_change(move |i, _, _| ask3(Change::HoldDuration(i as u8)));
-                ui.add(div().flex().flex_row().items_center().gap(px(m::SPACING * 4.0)).child(speed).child(hold));
-            });
-            ui.add(BBox::new("Press and Hold").children(items));
-        });
-    }
-
-    ui.enabled_if(live, |ui| {
-        let items = ui.collect(|ui| {
-            let check = |ui: &mut Ui, label: &str, on: Option<bool>, make: fn(bool) -> Change| {
-                let ask = ask.clone();
-                ui.add(CheckBox::new(label.to_owned(), on.unwrap_or(false)).enabled(ui.enabled() && on.is_some()).on_toggle(move |v, _, _| ask(make(v))));
-            };
-            if a.abilities.adaptive {
-                check(ui, "Conversation Awareness: lower the sound and let voices in when you speak", s.conversation_awareness, Change::ConversationAwareness);
-                check(ui, "Personalized Volume: adjust the sound to your surroundings", s.personalized_volume, Change::PersonalizedVolume);
-            }
-            if a.abilities.noise_control && a.abilities.buds {
-                check(ui, "Noise Cancellation with one AirPod in", s.one_bud_noise_cancellation, Change::OneBudNoiseCancellation);
-            }
-            if a.abilities.adaptive {
-                check(ui, "Volume Swipe: slide on a stem to change the volume", s.volume_swipe, Change::VolumeSwipe);
-                check(ui, "Charging case sounds", s.case_sounds, Change::CaseSounds);
-            }
-            let mics: Vec<SharedString> = ["Either AirPod", "Always Left", "Always Right"].into_iter().map(Into::into).collect();
-            let at = match s.microphone.unwrap_or_default() {
-                BudMicrophone::Automatic => 0,
-                BudMicrophone::Left => 1,
-                BudMicrophone::Right => 2,
-            };
-            if a.abilities.buds {
-                let ask = ask.clone();
-                ui.add(
-                    MenuField::new("bud-microphone", mics, at)
-                        .label("Microphone:")
-                        .enabled(ui.enabled())
-                        .on_change(move |i, _, _| ask(Change::Microphone([BudMicrophone::Automatic, BudMicrophone::Left, BudMicrophone::Right][i]))),
-                );
-            }
-        });
-        ui.add(BBox::new("Listening").children(items));
+        this_computer(ui, link, &a, &settings);
     });
-
-    this_computer(ui, link, &a, &settings);
+    ui.add_columns(left, right);
 
     if let Some(e) = error {
         ui.label(e);

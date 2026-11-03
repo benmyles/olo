@@ -2834,7 +2834,8 @@ opened, its own `panel::State` and text fields).
   other (`ui.columns(left, right)`, or `ui.collect` each side and
   `ui.add_columns` when both sides need the panel's state, as Sound's
   and AI's): boxes that belong together go in one column, and the
-  window is widened (Sound 800, AI 760) rather than made a scroll.
+  window is widened (Sound 800, AI 760, AirPods 960) rather than made a
+  scroll. Rows of choices in a column wrap (`flex_wrap`, `STACK` apart).
   Workers (Bluetooth, the clock, sound, the battery) keep what they read
   behind a lock and send `Msg::Redraw`. Windows open after the update
   that asks for them (`cx.defer`), as their panels read the settings
