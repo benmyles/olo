@@ -523,6 +523,8 @@ pub enum Reply {
         capture: bool,
         #[serde(default)]
         pointer: PointerHealth,
+        #[serde(default)]
+        touch: TouchHealth,
     },
     PointerTrace {
         frames: Vec<PointerFrame>,
@@ -614,6 +616,39 @@ pub struct PointerHealth {
     pub gaps_minute: u32,
     pub longest_gap_us: u64,
     pub interval_us: u64,
+}
+
+/// The touchpad's reports as app_server gets them ([`Reply::Frames`]),
+/// through libinput and Olo's touch filter with its palm model: how many
+/// a second, and how long one took from the pad to app_server (the
+/// kernel's time to its handling: libinput's and the filter's work, and
+/// any wait for the main thread, which draws frames too), over the last
+/// minute: typically, at the 99th percentile and the longest. And what
+/// judges palms, and the main thread's scheduling: it reads the pad.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct TouchHealth {
+    pub reports_second: u32,
+    /// The reports the latencies are of (the last minute's).
+    pub reports_minute: u32,
+    pub latency_p50_us: u64,
+    pub latency_p99_us: u64,
+    pub latency_max_us: u64,
+    /// Olo's touch filter is in libinput, and with it the person's
+    /// trained palm model.
+    pub filter: bool,
+    pub model: bool,
+    /// The model's training (`touchpad::PalmModel`): when (seconds since
+    /// the epoch), from how many contacts, and on those kept back the
+    /// share of palms it caught and of fingers it took for palms.
+    pub trained: u64,
+    pub contacts: u32,
+    pub palms_caught: f32,
+    pub fingers_lost: f32,
+    /// app_server's main thread: its nice, whether it's realtime, and its
+    /// minimum utilisation (of 1024: a fast core at a high clock).
+    pub nice: i32,
+    pub realtime: bool,
+    pub util_min: u32,
 }
 
 /// One frame that drew the pointer ([`Request::PointerTrace`]): the

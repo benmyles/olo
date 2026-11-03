@@ -123,15 +123,17 @@ of Finished; a new one goes where its priority puts it.
   or the model says so: the size is a floor the model can't take away),
   so the Touch tab says so: the model first, with which one is in use,
   then "Always a palm when as large as", with a note on how they mix.
-- **The palm model in Activity, and first in line** (Ben, 2026-11-02):
-  "also, the activity monitor should show perf stats about the palm
-  model when it's enabled and the supervisor should also make sure it
-  prioritizes that model running since it's very latency sensitive".
-  The model runs in app_server's input path (the libinput plugin), so:
-  its cost per frame and per second, contacts judged and palms caught,
-  shown in Activity while it's on; and the input path kept ahead of
-  everything else (its thread's scheduling, as the supervisor sets
-  app_server's), measured before and after.
+- **The touchpad's latency on Ben's machine, and what next** (from the
+  palm model in Activity, 2026-11-03): Activity ▸ Displays ▸ Touchpad
+  now shows how long the pad's reports take to reach app_server (the
+  filter and palm model included) and the main thread's scheduling;
+  only a real pad says it, headless sessions have none. If its 99th
+  percentile is over 4 ms (red: touches waiting on frames being drawn),
+  give libinput a thread of its own, realtime (it never draws, so
+  rtkit's 200 ms limit is safe there, unlike the main thread, which
+  compiles shaders), handing events to the main loop; measure before
+  and after. Also live counts from the plugin (contacts judged, palms
+  left out, its own time a frame), which it doesn't report today.
 
 - **The best baseline palm model there is** (Ben, 2026-11-02): "try to
   optimize the baseline as much as you can -- and if it would be better
@@ -849,6 +851,24 @@ Open; making fast things faster waits here.
 
 ## Finished (most recently finished first)
 
+- ~~**The palm model in Activity, and first in line**~~ (Ben,
+  2026-11-02): "also, the activity monitor should show perf stats about
+  the palm model when it's enabled and the supervisor should also make
+  sure it prioritizes that model running since it's very latency
+  sensitive". *Done* (2026-11-03): Activity ▸ Displays has a Touchpad
+  card: the pad's reports a second and their latency from the kernel to
+  app_server over the last minute (typical, 99th percentile, longest:
+  libinput's and the filter's work, the palm model's included, and any
+  wait for the main thread), red past 4 ms; which judges palms (your
+  model, trained when on how many touches, and how it tested; or the
+  size alone; or libinput's own) and what the main thread runs at (nice,
+  realtime, a fast core). app_server keeps the last minute (21 ns a
+  report). The supervisor holds Olo's tiers every pass instead of once:
+  app_server's main thread, where the model runs, raised again if it's
+  lowered, asked again a minute after rtkit says no. Realtime for the
+  main thread was weighed and not done: it draws and compiles shaders,
+  and rtkit's 200 ms limit would kill it; a thread of its own for input
+  is the next step if Ben's numbers say so (Open).
 - ~~**The whole repo formatted, and kept so**~~ (Ben, 2026-11-03): "you
   can and should also just do a cargo fmt on everything so that it's
   all consistent and add that as something that happens automatically

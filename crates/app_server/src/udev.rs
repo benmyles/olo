@@ -137,6 +137,8 @@ pub struct UdevData {
     libinput: Option<(Libinput, RegistrationToken)>,
     /// The touch filter libinput loaded.
     touch_filter: Option<String>,
+    /// The touchpad's reports' latencies (Activity's Touchpad card).
+    touch: crate::touch_health::Track,
     /// Bumped by each change to the filter, so only the newest restart runs.
     filter_restart: u64,
     /// Where libinput's way to the devices says which pads it opened
@@ -301,7 +303,26 @@ fn on_input_event(data: &mut AnvilState<UdevData>, mut event: InputEvent<Libinpu
             data.ipc.broadcast(olo_protocol::Event::InputDevicesChanged { devices: data.backend_data.input_devices() });
         }
     }
+    note_touch(&mut data.backend_data.touch, &event);
     data.process_input_event(&dh, event)
+}
+
+/// A touchpad's report (what libinput made of its frame, after Olo's
+/// touch filter): how long it took to get here.
+fn note_touch(track: &mut crate::touch_health::Track, event: &InputEvent<LibinputInputBackend>) {
+    use smithay::backend::input::Event as _;
+    let (device, at) = match event {
+        InputEvent::PointerMotion { event } => (event.device(), event.time()),
+        InputEvent::PointerButton { event } => (event.device(), event.time()),
+        InputEvent::PointerAxis { event } => (event.device(), event.time()),
+        InputEvent::GestureSwipeUpdate { event } => (event.device(), event.time()),
+        InputEvent::GesturePinchUpdate { event } => (event.device(), event.time()),
+        _ => return,
+    };
+    // (Touchpads tap; mice don't.)
+    if device.config_tap_finger_count() > 0 {
+        track.note(crate::contacts::now_us(), at.micros());
+    }
 }
 
 /// What Preferences shows of a pointing device.
@@ -393,6 +414,12 @@ impl Backend for UdevData {
     }
     fn frames(&mut self) -> Vec<olo_protocol::DisplayFrames> {
         self.backends.values_mut().flat_map(|b| b.surfaces.values_mut()).map(|s| s.pacing.stats(&s.output.name(), s.output.current_mode().map_or(0, |m| m.refresh.max(0) as u32), s.asleep)).collect()
+    }
+    fn touch_health(&self) -> olo_protocol::TouchHealth {
+        let mut h = self.touch.health(crate::contacts::now_us());
+        h.filter = self.touch_filter.is_some();
+        h.model = self.touch_filter.as_deref().is_some_and(|p| p.contains("palm_model = "));
+        h
     }
 
     fn seat_name(&self) -> String {
@@ -840,6 +867,7 @@ pub fn run_udev() {
         loop_handle: event_loop.handle(),
         libinput: None,
         touch_filter: None,
+        touch: Default::default(),
         filter_restart: 0,
         pads_opened,
         pad_watches: HashMap::new(),

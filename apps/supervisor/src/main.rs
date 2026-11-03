@@ -87,6 +87,9 @@ struct Supervisor {
     /// Olo's own programs found above their tier and raised (or that
     /// couldn't be, noted once).
     raised: HashMap<i32, Raised>,
+    /// When to look again at one above its tier: a minute after rtkit
+    /// said no; never for another session's.
+    raise_again: HashMap<i32, f64>,
     /// The voice services' sound threads looked at, (pid, tid), and when
     /// to look again: never once realtime; a minute after rtkit said no
     /// (it may have room by then: Olo Doctor's fix gives it more).
@@ -238,33 +241,44 @@ impl Supervisor {
 
         // Olo's own tiers first (olo_protocol::performance::tier): each
         // asks for itself as it starts, so one found above its tier is
-        // one rtkit refused then; raised here, its main thread (the one
-        // that matters: every input event and frame; and rtkit allows a
-        // handful of actions a burst, which raising every thread of
-        // every program blew through, "Device or resource busy"). Only
-        // this session's programs: a headless test session's are the
-        // person's too, and not for this supervisor (2026-11-01).
+        // one rtkit refused then, or one lowered since (reniced); raised
+        // here, its main thread (the one that matters: every input event
+        // and frame, and in app_server the touchpad's palm model, judged
+        // as each frame comes; and rtkit allows a handful of actions a
+        // burst, which raising every thread of every program blew
+        // through, "Device or resource busy"). Looked at every pass, so
+        // it stays raised; one rtkit refused, a minute later. Only this
+        // session's programs: a headless test session's are the person's
+        // too, and not for this supervisor (2026-11-01).
         self.raised.retain(|pid, _| alive.contains(pid));
+        self.raise_again.retain(|pid, _| alive.contains(pid));
         for p in &procs {
             let Some(nice) = olo_protocol::performance::tier(&p.name) else { continue };
-            if p.state == 'Z' || self.raised.contains_key(&p.pid) || olo_system::priority::nice_of(p.pid as u32).is_none_or(|n| n <= nice) {
+            if p.state == 'Z' || self.raise_again.get(&p.pid).is_some_and(|at| t < *at) {
                 continue;
             }
+            let Some(before) = olo_system::priority::nice_of(p.pid as u32).filter(|n| *n > nice) else { continue };
             if !same_session(p.pid) {
-                // (Noted once, so it isn't looked at every two seconds.)
-                self.raised.insert(p.pid, Raised { pid: p.pid, name: p.name.clone(), nice_before: 0, nice: 0 });
+                self.raise_again.insert(p.pid, f64::INFINITY);
                 continue;
             }
-            let before = olo_system::priority::nice_of(p.pid as u32).unwrap_or(0);
+            // (Raised before and found above its tier again: lowered.)
+            let again = self.raised.get(&p.pid).is_some_and(|r| r.nice < r.nice_before);
+            let refused = self.raised.get(&p.pid).is_some_and(|r| r.nice == r.nice_before);
             match olo_system::priority::raise_thread(p.pid as u32, p.pid as u32, nice) {
                 Ok(now) => {
                     self.raised.insert(p.pid, Raised { pid: p.pid, name: p.name.clone(), nice_before: before, nice: now });
-                    self.note(format!("Raised {} ({}) to nice {now}: Olo's own, above everything else", p.name, p.pid));
+                    self.raise_again.remove(&p.pid);
+                    let how = if again { format!("again (it was lowered to nice {before})") } else { format!("to nice {now}") };
+                    self.note(format!("Raised {} ({}) {how}: Olo's own, above everything else", p.name, p.pid));
                 }
                 Err(e) => {
-                    // (Once a process: not worth asking every two seconds.)
+                    // (Asked again a minute later; said once.)
                     self.raised.insert(p.pid, Raised { pid: p.pid, name: p.name.clone(), nice_before: before, nice: before });
-                    self.note(format!("Couldn't raise {} ({}): {e}", p.name, p.pid));
+                    self.raise_again.insert(p.pid, t + 60.0);
+                    if !refused {
+                        self.note(format!("Couldn't raise {} ({}): {e}", p.name, p.pid));
+                    }
                 }
             }
         }
@@ -666,6 +680,7 @@ fn main() -> std::process::ExitCode {
             followed: HashMap::new(),
             lowered: HashMap::new(),
             raised: HashMap::new(),
+            raise_again: HashMap::new(),
             realtime: HashMap::new(),
             zombies: HashMap::new(),
             findings: HashMap::new(),

@@ -1023,6 +1023,63 @@ fn displays(app: &Activity, me: &Me, cx: &App) -> Vec<AnyElement> {
         }
         out.push(card.child(facts(rows)).into_any_element());
     }
+    // The touchpad's reports, through Olo's touch filter and the palm
+    // model: judged as each frame comes, on app_server's main thread,
+    // so as quick as that thread is free (it draws frames too).
+    let t = &app.touch_health;
+    if t.filter || t.reports_minute > 0 {
+        let us = |us: u64| if us < 1000 { format!("{us} µs") } else { format!("{:.1} ms", us as f64 / 1000.0) };
+        let palms = if t.model {
+            let when = jiff::Timestamp::from_second(t.trained as i64).ok().map(|w| w.to_zoned(jiff::tz::TimeZone::system()).strftime("%-d %B %Y").to_string()).unwrap_or_default();
+            format!("Your palm model, trained {when} on {} touches", t.contacts)
+        } else if t.filter {
+            "By their size alone: no palm model trained (Preferences ▸ Touchpad & Mouse ▸ Touch)".into()
+        } else {
+            "libinput's own: Olo's touch filter is off".into()
+        };
+        let core = match t.util_min {
+            1024.. => "on a fast core at a high clock".to_owned(),
+            1.. => format!("taken as at least {}% busy", t.util_min * 100 / 1024),
+            0 => "where the scheduler puts it".to_owned(),
+        };
+        let mut rows: Vec<(String, String)> = vec![
+            ("Reports".into(), if t.reports_second > 0 { format!("{} in the last second", t.reports_second) } else { "None in the last second".into() }),
+            (
+                "Latency".into(),
+                if t.reports_minute > 0 {
+                    format!(
+                        "{} typically, {} at the 99th percentile, the longest {} ({} reports in the last minute)",
+                        us(t.latency_p50_us),
+                        us(t.latency_p99_us),
+                        us(t.latency_max_us),
+                        style::thousands(t.reports_minute as usize)
+                    )
+                } else {
+                    "—".into()
+                },
+            ),
+            ("Palms".into(), palms),
+        ];
+        if t.model {
+            rows.push(("Tested".into(), format!("{:.0}% of palms caught, {:.1}% of fingers taken for palms, on touches kept back", t.palms_caught * 100.0, t.fingers_lost * 100.0)));
+        }
+        rows.push(("Runs on".into(), format!("app_server's main thread: nice {}{}, {core}", t.nice, if t.realtime { ", realtime" } else { "" })));
+        // (Half a frame at 120 Hz: a touch waiting that long shows.)
+        let slow = t.reports_minute > 0 && t.latency_p99_us > 4_000;
+        let figure = if t.reports_minute > 0 { us(t.latency_p50_us) } else { "still".to_owned() };
+        let caption = if slow {
+            "Some touches wait for app_server: the pad's reports are judged on the thread that draws, and it was busy"
+        } else if t.reports_minute > 0 {
+            "Touches reach app_server as they come"
+        } else {
+            "Touch the pad to see how quickly its reports arrive"
+        };
+        let mut card = Card::new("displays-touch", "Touchpad").figure(figure).caption(caption);
+        if slow {
+            card = card.figure_ink(c(p.hue(olo_theme::Hue::Red)));
+        }
+        out.push(card.child(facts(rows)).into_any_element());
+    }
     let toggle = me.clone();
     out.push(
         Card::new("displays-capture", "When a Frame Drops")

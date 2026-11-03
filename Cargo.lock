@@ -6764,6 +6764,7 @@ dependencies = [
 name = "olo-activity"
 version = "0.1.0"
 dependencies = [
+ "jiff",
  "libc",
  "olo-kit-base",
  "olo-protocol",

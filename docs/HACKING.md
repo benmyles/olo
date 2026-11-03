@@ -4277,6 +4277,19 @@ hub, 2026-11-01: frames of 67, 10, 50 px with reports 1 ms apart, and
 "stuck for a second" after a pause). No frame can make up for a report
 that never came.
 
+The touchpad's reports are watched as they reach app_server
+(`touch_health::Track`, `TouchHealth` in `{"type":"frames"}`, Activity
+Monitor ▸ Displays' Touchpad card): reports a second and, over the last
+minute, each one's latency from the kernel's time on it to app_server
+handling it (libinput's work, Olo's touch filter and its palm model,
+and any wait for the main thread, which draws too), typically, at the
+99th percentile and the longest; whether the filter and the person's
+palm model are in use (its training date and test numbers); and the
+main thread's nice, realtime or not and `uclamp.min`. Noting a report
+is 21 ns (`note_cost`); the minute's figures, 33 µs, are made when
+asked. A 99th percentile over 4 ms (half a 120 Hz frame) is shown red:
+touches waiting on frames being drawn.
+
 The pointer is Haiku's system cursor set (`crates/hvif/cursors`, from
 Haiku's CursorData.cpp, MIT; see the LICENSE there). `olo-hvif` reads
 the Haiku Vector Icon Format and draws it as Haiku's IconRenderer does
@@ -5628,9 +5641,13 @@ it looks at the person's own processes in /proc (`sample.rs`) and:
   (its `uclamp.min`, rule 9; no privilege needed). The supervisor
   re-asserts a tier for a
   program found above it (rtkit refused at its start, or a thread made
-  since; `priority::raise_process`, every thread), publishes what it
-  raised (`SupervisorState::raised`; Activity Monitor's "Olo's own" row)
-  and notes once a program it couldn't. Only then the focused app over
+  since; `priority::raise_process`, every thread), on every pass: one
+  lowered since (reniced) is raised again, one rtkit refused is asked
+  again a minute later. app_server's main thread matters most: it reads
+  the pad and Olo's touch filter judges palms on it (the palm model, as
+  each frame comes), and it draws. It publishes what it raised
+  (`SupervisorState::raised`; Activity Monitor's "Olo's own" row) and
+  notes once a program it couldn't. Only then the focused app over
   background work, which is the lowering below.
 - **The voice services** (olo-voice, olo-airpods: the audio tier,
   `AUDIO_NICE`, −10 as app_server's): raised as they start, their

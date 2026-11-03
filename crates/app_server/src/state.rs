@@ -1549,6 +1549,11 @@ pub trait Backend {
     fn pointer_trace(&mut self, _output: &str) -> Vec<olo_protocol::PointerFrame> {
         Vec::new()
     }
+    /// How the touchpad's reports reach app_server (touch_health.rs):
+    /// nothing without libinput.
+    fn touch_health(&self) -> olo_protocol::TouchHealth {
+        Default::default()
+    }
 }
 
 /// The socket olo-wlproxy connects to for other programs

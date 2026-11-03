@@ -687,7 +687,14 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Reply::Ok
             }
             Request::Timings { quiet } => Reply::Timings { timings: self.take_timings(quiet) },
-            Request::Frames => Reply::Frames { displays: self.backend_data.frames(), capture: crate::frames::capture(), pointer: self.pointer_track.health() },
+            Request::Frames => {
+                let mut touch = self.backend_data.touch_health();
+                crate::touch_health::scheduling(&mut touch);
+                if let (true, Some(m)) = (touch.model, &self.settings.touchpad.filter.palm_model) {
+                    (touch.trained, touch.contacts, touch.palms_caught, touch.fingers_lost) = (m.trained, m.contacts, m.palms_caught, m.fingers_lost);
+                }
+                Reply::Frames { displays: self.backend_data.frames(), capture: crate::frames::capture(), pointer: self.pointer_track.health(), touch }
+            }
             Request::PointerTrace { output } => Reply::PointerTrace { frames: self.backend_data.pointer_trace(&output) },
             Request::CaptureDrops { on } => {
                 crate::frames::set_capture(on);

@@ -21,6 +21,7 @@ pub mod libei;
 pub mod render;
 pub mod shell;
 pub mod state;
+pub mod touch_health;
 #[cfg(feature = "udev")]
 pub mod udev;
 #[cfg(feature = "winit")]

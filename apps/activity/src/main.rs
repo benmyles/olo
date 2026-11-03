@@ -220,7 +220,28 @@ pub enum Msg {
     Supervisor(Box<olo_protocol::performance::SupervisorState>),
     /// How each display keeps up, whether drops are captured, and the
     /// pointer's reports (`Request::Frames`, from `frames_poller`).
-    Frames(Vec<olo_protocol::DisplayFrames>, bool, olo_protocol::PointerHealth),
+    Frames(Vec<olo_protocol::DisplayFrames>, bool, olo_protocol::PointerHealth, olo_protocol::TouchHealth),
+}
+
+/// The touchpad to look at under OLO_ACTIVITY_DEMO_FRAMES: a MacBook's,
+/// its trained palm model in use.
+fn demo_touch() -> olo_protocol::TouchHealth {
+    olo_protocol::TouchHealth {
+        reports_second: 125,
+        reports_minute: 6_480,
+        latency_p50_us: 410,
+        latency_p99_us: 1_900,
+        latency_max_us: 3_600,
+        filter: true,
+        model: true,
+        trained: 1_793_577_600,
+        contacts: 412,
+        palms_caught: 0.97,
+        fingers_lost: 0.012,
+        nice: -10,
+        realtime: false,
+        util_min: 1024,
+    }
 }
 
 /// Displays to look at under OLO_ACTIVITY_DEMO_FRAMES (a headless
@@ -321,7 +342,7 @@ fn frames_poller(send: impl Fn(Msg) + Send + 'static, rx: mpsc::Receiver<FramesA
         }
         // (Headless test sessions have no displays: made-up ones to look at.)
         if std::env::var_os("OLO_ACTIVITY_DEMO_FRAMES").is_some() {
-            send(Msg::Frames(demo_frames(), capture, olo_protocol::PointerHealth { reports_second: 998, gaps_minute: 3, longest_gap_us: 31_000, interval_us: 1_000 }));
+            send(Msg::Frames(demo_frames(), capture, olo_protocol::PointerHealth { reports_second: 998, gaps_minute: 3, longest_gap_us: 31_000, interval_us: 1_000 }, demo_touch()));
             continue;
         }
         if client.is_none() {
@@ -329,7 +350,7 @@ fn frames_poller(send: impl Fn(Msg) + Send + 'static, rx: mpsc::Receiver<FramesA
         }
         let Some(c) = client.as_mut() else { continue };
         match c.request(&Request::Frames) {
-            Ok(Reply::Frames { displays, capture, pointer }) => send(Msg::Frames(displays, capture, pointer)),
+            Ok(Reply::Frames { displays, capture, pointer, touch }) => send(Msg::Frames(displays, capture, pointer, touch)),
             _ => client = None,
         }
     }
@@ -408,6 +429,8 @@ pub struct Activity {
     pub displays: Vec<olo_protocol::DisplayFrames>,
     pub frames_capture: bool,
     pub pointer_health: olo_protocol::PointerHealth,
+    /// The touchpad's reports and the palm model (the Touchpad card).
+    pub touch_health: olo_protocol::TouchHealth,
     frames: mpsc::Sender<FramesAsk>,
     proxy: Proxy,
     /// The sections' scrolling, kept while each shows.
@@ -1065,10 +1088,11 @@ impl Activity {
             }
             Msg::Helper(m) => return self.heard(m, cx),
             Msg::Supervisor(s) => self.supervisor = *s,
-            Msg::Frames(displays, capture, pointer) => {
+            Msg::Frames(displays, capture, pointer, touch) => {
                 self.displays = displays;
                 self.frames_capture = capture;
                 self.pointer_health = pointer;
+                self.touch_health = touch;
             }
         }
         cx.notify();
@@ -1354,6 +1378,7 @@ fn main() {
                 displays: Vec::new(),
                 frames_capture: false,
                 pointer_health: Default::default(),
+                touch_health: Default::default(),
                 frames: frames_tx,
                 proxy: proxy.clone(),
                 scroll: Default::default(),

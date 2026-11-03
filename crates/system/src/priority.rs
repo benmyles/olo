@@ -97,20 +97,6 @@ pub fn raise_thread(pid: u32, tid: u32, nice: i32) -> std::result::Result<i32, S
 /// (`olo_protocol::performance::CORE_UTIL_MIN`). The threads it starts
 /// afterwards inherit it, as they do its nice.
 pub fn util_min_self(min: u32) -> std::io::Result<()> {
-    #[repr(C)]
-    #[derive(Default)]
-    struct SchedAttr {
-        size: u32,
-        policy: u32,
-        flags: u64,
-        nice: i32,
-        priority: u32,
-        runtime: u64,
-        deadline: u64,
-        period: u64,
-        util_min: u32,
-        util_max: u32,
-    }
     const KEEP_POLICY: u64 = 0x08;
     const KEEP_PARAMS: u64 = 0x10;
     const UTIL_CLAMP_MIN: u64 = 0x20;
@@ -121,6 +107,33 @@ pub fn util_min_self(min: u32) -> std::io::Result<()> {
         return Err(std::io::Error::last_os_error());
     }
     Ok(())
+}
+
+/// The minimum utilisation thread `tid` is taken as (`util_min_self`):
+/// 0 for none, None if it can't be read.
+pub fn util_min_of(tid: u32) -> Option<u32> {
+    let mut attr = SchedAttr::default();
+    // SAFETY: sched_getattr writes at most `size` bytes into `attr`.
+    if unsafe { libc::syscall(libc::SYS_sched_getattr, tid as libc::pid_t, &mut attr as *mut SchedAttr, size_of::<SchedAttr>() as u32, 0) } != 0 {
+        return None;
+    }
+    Some(attr.util_min)
+}
+
+/// The kernel's `struct sched_attr` (sched_setattr(2)).
+#[repr(C)]
+#[derive(Default)]
+struct SchedAttr {
+    size: u32,
+    policy: u32,
+    flags: u64,
+    nice: i32,
+    priority: u32,
+    runtime: u64,
+    deadline: u64,
+    period: u64,
+    util_min: u32,
+    util_max: u32,
 }
 
 /// Every thread of `pid` to `nice`, those above it; how many were raised,

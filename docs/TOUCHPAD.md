@@ -262,6 +262,10 @@ a palm before libinput sees it, in the same features and arithmetic
   than the whole network.
 - A contact is scored only in its first 250 ms.
 - With no trained model, or with it off, the filter is as it was.
+- On app_server's main thread (`CORE_NICE`, a fast core), which the
+  supervisor keeps there every pass. How long the pad's reports take to
+  reach app_server, the filter and model included, is live in Activity
+  Monitor ▸ Displays ▸ Touchpad (HACKING, "The touchpad's reports").
 
 **The trainer** (apps/preferences/src/palm_trainer.rs, "Train for Your
 Palm…" on Preferences ▸ Touchpad & Mouse ▸ Touch). Only a model trained
