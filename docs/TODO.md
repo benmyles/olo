@@ -376,6 +376,17 @@ of Finished; a new one goes where its priority puts it.
   until shown again; kept per tab through a reload; agents read it as
   hidden when tiled and can toggle it.
 
+- **Terminal: tile mode's group headers look unselected while every
+  group shows** (Ben, 2026-11-03, a bug): "in terminal tile mode when all
+  tab groups are being shown (the default) the group headers aren't
+  getting the "selected" style, they look unselected. they should be all
+  selected by default and then i can deselect/reselect as i want". So:
+  with every group shown (tile mode's default, nothing chosen yet), each
+  group's header is drawn selected, as a chosen one is; clicking one
+  deselects it (its group leaves the tiles) and clicking again selects
+  it, from there as now; agents read each header's selected state as it
+  is drawn; checked in light, dark and night at every scale.
+
 - **The command palette: typing "n" first closes it; every shortcut in
   it; files only on Ctrl** (Ben, 2026-11-03): "when i'm in the command
   pallette, if i start by typing "n" it closes the pallette. fix that
