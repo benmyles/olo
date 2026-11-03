@@ -7,6 +7,26 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
+- **The olo-screens skill teaches agents to use the passwords shared
+  with their screen** (Ben, 2026-11-03, a priority): "the olo-screens
+  skill isn't properly teaching agents how to access the passwords
+  shared on their screen. explain to them how they should use the olo
+  passwords integration in olo chrome by right clicking in the field and
+  choosing olo -> passwords in the menu, or by opening the passwords app
+  in the gui. also teach them how they can use the op cli command to get
+  the creds onto the clipboard and paste in themselves that way (and
+  explain that op is a shim for 1password that goes through passwords
+  app)." So the skill says, read from the code that does each:
+  - What's shared with a screen (chosen on the person's own display, in
+    Agent Screens' Passwords tab), and that only that is there.
+  - Filling a login in Olo's Chrome: right-click the field, Olo ▸
+    Passwords, choose the item.
+  - Opening Passwords on the screen and copying from it.
+  - `op`: Olo's 1Password-compatible command, a shim that goes through
+    Passwords (and so sees only what's shared with the screen): getting
+    a username, password or one-time code onto the screen's clipboard,
+    then pasting it where it goes.
+
 - **Focus mode: a link opened in a browser on the same desktop doesn't
   bring its window forward** (Ben, 2026-11-03, a bug): "when in focus
   mode if i click on e.g. a url and my browser that it should open in is
