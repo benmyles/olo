@@ -46,6 +46,19 @@ of Finished; a new one goes where its priority puts it.
     skip them), checked by starting it on a fresh screen and seeing a
     browser window, not a first-run one.
 
+- **Agent Screens: an agent waits while the person has the screen**
+  (Ben, 2026-11-03): "if the user is controlling the agent screen all
+  kinds of weird stuff happens when the agent tries to do things. when
+  the user is controlling and the agent tries to do something it should
+  just tell the agent that the user is controlling and that they should
+  wait for the user to finish before they do anything else." So while
+  the person is controlling a screen (Agent Screens' Take Control), every
+  `olo-screen` action that would act on it (click, type, keys, drag,
+  scroll, start an app, a menu command) is refused at once with a clear
+  answer: the person is controlling this screen, wait until they hand
+  it back (and how to wait for that), doing nothing to the screen; what
+  only reads it (a look, the tree) still answers. The skill says so too.
+
 - **Focus mode: a link opened in a browser on the same desktop doesn't
   bring its window forward** (Ben, 2026-11-03, a bug): "when in focus
   mode if i click on e.g. a url and my browser that it should open in is
