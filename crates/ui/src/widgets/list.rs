@@ -867,7 +867,6 @@ impl RenderOnce for ColumnListView {
             |_, _, _| {},
             move |b, _, window, cx| {
                 let p = theme::palette(cx);
-                style::fill_rect(window, b, style::c(p.list_background));
                 if let Some(text) = &empty {
                     let dim = style::c(olo_theme::mix(p.list_item_text, p.list_background, 0.5));
                     let font = style::ui_font(FontWeight::NORMAL);
@@ -894,6 +893,21 @@ impl RenderOnce for ColumnListView {
             .size_full()
             .key_context(CONTEXT)
             .track_focus(&focus)
+            // The rows' ground, inside the frame's two lines as it draws
+            // them (on device pixels from the list's own edges: laid out
+            // from the bottom it rounded a pixel short at 1.75×); the
+            // header and bars go over it.
+            .child(
+                canvas(
+                    |_, _, _| {},
+                    |b, _, window, cx| {
+                        let p = theme::palette(cx);
+                        style::fill_rect(window, style::inset(window, b, 2.0), style::c(p.list_background));
+                    },
+                )
+                .absolute()
+                .inset_0(),
+            )
             .child(div().absolute().left(px(edge)).top(px(head)).right(px(bar)).bottom(px(hbar)).child(ground).child(list).child(pointer))
             .children(self.header.then(|| div().absolute().left(px(edge)).top(px(edge)).right(px(edge)).h(px(head - edge)).child(header)))
             .child(div().absolute().top(px(head)).right(px(edge)).bottom(px(hbar)).w(px(bar - edge)).child(ScrollBar::vertical(SharedString::from(format!("{}-v", self.id)), base_handle.clone())));

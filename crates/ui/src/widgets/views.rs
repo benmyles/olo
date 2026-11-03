@@ -314,9 +314,11 @@ impl gpui::RenderOnce for EmptyState {
                 .mb(px(m::SPACING - m::TIGHT)),
             );
         }
-        col = col.child(div().text_center().line_height(gpui::relative(style::LINE_HEIGHT)).child(self.text.clone()));
+        // (What it says, for agents too: a label each.)
+        let said = |text: SharedString| gpui::canvas(|_, _, _| {}, move |b, _, window, cx| crate::agent::record(window, cx, crate::agent::Node::label(text.clone(), b))).absolute().inset_0();
+        col = col.child(div().relative().text_center().line_height(gpui::relative(style::LINE_HEIGHT)).child(self.text.clone()).child(said(self.text.clone())));
         if let Some(d) = self.detail.clone() {
-            col = col.child(div().text_center().text_size(px(style::DETAIL_SIZE)).line_height(gpui::relative(style::LINE_HEIGHT)).child(d));
+            col = col.child(div().relative().text_center().text_size(px(style::DETAIL_SIZE)).line_height(gpui::relative(style::LINE_HEIGHT)).child(d.clone()).child(said(d)));
         }
         if let Some((label, f)) = self.action {
             col = col.child(div().mt(px(m::SPACING * 1.5 - m::TIGHT)).child(super::Button::new(label).on_click(move |window, cx| f(window, cx))));
