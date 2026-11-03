@@ -553,6 +553,14 @@ impl RenderOnce for ColumnListView {
             },
             move |b, hitbox, window, cx| {
                 let model = body_model.clone();
+                // Where the rows show from, for the frame's mark (how
+                // evenly it scrolls; where an agent finds it), as a
+                // ScrollView notes its own.
+                {
+                    let handle = model.read(cx).scroll.0.borrow().base_handle.clone();
+                    let (o, m) = (handle.offset(), handle.max_offset());
+                    window.note_scroll([-f32::from(o.x), -f32::from(o.y), f32::from(m.width), f32::from(m.height)]);
+                }
                 if let Some(Drag::Press { from, now, band: true, .. }) = model.read(cx).drag.clone() {
                     // Held near or past the top or bottom: on, a frame at
                     // a time.

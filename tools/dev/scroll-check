@@ -195,7 +195,10 @@ def analyse(kind, marks, start, speed, flick_lift=None):
             if not f:
                 break
             g.append(abs(st))
-        jerk = [b / (a * c) ** 0.5 - 1 for a, b, c in zip(g, g[1:], g[2:]) if a > 0 and c > 0]
+        # (Offsets land on half or whole pixels: a step within half a
+        # pixel of its neighbours' is as even as they can be. A glide's
+        # last pixels, 1, 1, 0.5, aren't a hitch.)
+        jerk = [b / (a * c) ** 0.5 - 1 if abs(b - (a * c) ** 0.5) > 0.5 else 0.0 for a, b, c in zip(g, g[1:], g[2:]) if a > 0 and c > 0]
         if jerk:
             r["glide"] = {"frames": len(g), "sd": round(statistics.pstdev(jerk), 3), "worst": round(max(jerk, key=abs), 3),
                           "off_10pct": sum(1 for x in jerk if abs(x) > 0.10)}

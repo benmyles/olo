@@ -555,7 +555,8 @@ fn main() {
   socket answers, per window, the frames drawn since the last ask and
   the slowest and total time drawing them (`FrameTimes`, microseconds
   from taking input to handing the frame to the GPU), each frame's mark
-  (when, how long, where its scroll views were: `Window::note_scroll`)
+  (when, how long, where its scroll views were: `Window::note_scroll`,
+  which a ScrollView and a ColumnListView each call as they paint)
   and the GPU drawing them. The UI thread answers it, so how long the
   answer takes is how long the app would keep a person waiting
   (`tools/dev/perf-fuzz`).

@@ -168,49 +168,6 @@ of Finished; a new one goes where its priority puts it.
   at ~11% with a call on is the tick (now once per 8 ms) and looks;
   per-display render threads (its own TODO).
 
-- **GPUI text a glyph at a time is slow at full screen** (found
-  2026-11-01 by the benchmark): a window full of GPUI kit text painted
-  each glyph on its own, so the Notifications History at 1× on a
-  3456×2234 screen took 12–25 ms a frame and Log Viewer 9–22 ms.
-  *Better* 2026-11-02 (gpui/README.md): every line keeps its glyphs as
-  last painted, a scene sorts runs of glyphs rather than each, and draw
-  orders come from a grid (bench at 1×, p50 before → after: History's
-  pointer 14.7 → 7.1 ms, its scrolling 14.7 → 9.4, its menus 25.9 → 8.1;
-  Log Viewer's scrolling 10.8 → 5.1, its menus 11.1 → 5.9). *Left*: a
-  screen of History is 36,000 glyphs drawn afresh for a hover (paint
-  5.3 ms, its GPU 2.4–3.8 ms); its live resize (35–47 ms: every card
-  measured and laid out again) and theme switch; Log Viewer's frames as
-  a new line or a search arrives (23–26 ms: rows shaped on the UI
-  thread); an Activity Monitor panel's first frame (18 ms). *Then*
-  History's cards each paint through a paint memo (`Window::paint_memo`:
-  a card unchanged is replayed, moved when scrolled): at 1×, its paint
-  for a hover 5.3 → 3.2 ms; at 2×, frames skipped while scrolling 60 →
-  10. *Left*: at 1× History scrolls at 60 frames a second (its frame
-  ~6 ms and its GPU's ~3 ms together pass the frame: fewer glyphs and
-  less overdraw, 2.84 screens of quads); frames skipped scrolling at
-  2× with frames of 1.4 ms (the scroll events' pacing against the
-  frames, not their cost); Log Viewer shaping new rows on the frame.
-  *Then* the cull cuts grounds by their biggest covers first and
-  shadows skip their blur inside: History's GPU at 1.5× 4.8 → 3.3 ms a
-  frame, its drag's hitches 9 → 3 (its glide still misses a frame now
-  and then).
-  *Then* (same day) shaped lines are aged rather than dropped, shape
-  plans kept, and ASCII shaped by words (gpui/README.md): History's
-  live resize, slowest frame 60 → 17 ms (p50 11.8); Log Viewer's rows
-  arriving with a search, 31.6 → 10.8 ms.
-  *Then* (2026-11-02) frames on the fast cores: the scheduler put a
-  mostly idle UI thread on a slow core at a low clock, and the frame
-  after a pause ran three or four times as long; GPUI's main thread and
-  app_server's ask for a fast core while they run (`uclamp.min`,
-  HACKING rule 9). Paint memos are kept through a cached view replayed
-  whole, an icon coming in and a display event (Activity's 1,400 cells
-  were painted afresh the frame after each). Activity's first frame of
-  its processes 13–17 → 3.7–4.6 ms. The full bench: 21 failed of 382 →
-  2 of 396, every app's slowest frame at most 4.0 ms (from 14.9),
-  app_server's frames all within budget. *Left*: Notifications'
-  first scroll skips a frame at 1× and 1.5× (its frames 1.5–3.3 ms: the
-  pacing, not the cost).
-
 - **A window opens 15–18 ms sooner** (found porting the Viewer,
   2026-11-01: its first frame came 23 ms after egui's). *Done*: its
   renderer is made once, at its device size and the transparency it
@@ -783,6 +740,54 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**GPUI text a glyph at a time is slow at full screen**~~ (found
+  2026-11-01 by the benchmark): a window full of GPUI kit text painted
+  each glyph on its own, so the Notifications History at 1× on a
+  3456×2234 screen took 12–25 ms a frame and Log Viewer 9–22 ms.
+  *Better* 2026-11-02 (gpui/README.md): every line keeps its glyphs as
+  last painted, a scene sorts runs of glyphs rather than each, and draw
+  orders come from a grid (bench at 1×, p50 before → after: History's
+  pointer 14.7 → 7.1 ms, its scrolling 14.7 → 9.4, its menus 25.9 → 8.1;
+  Log Viewer's scrolling 10.8 → 5.1, its menus 11.1 → 5.9). *Left*: a
+  screen of History is 36,000 glyphs drawn afresh for a hover (paint
+  5.3 ms, its GPU 2.4–3.8 ms); its live resize (35–47 ms: every card
+  measured and laid out again) and theme switch; Log Viewer's frames as
+  a new line or a search arrives (23–26 ms: rows shaped on the UI
+  thread); an Activity Monitor panel's first frame (18 ms). *Then*
+  History's cards each paint through a paint memo (`Window::paint_memo`:
+  a card unchanged is replayed, moved when scrolled): at 1×, its paint
+  for a hover 5.3 → 3.2 ms; at 2×, frames skipped while scrolling 60 →
+  10. *Left*: at 1× History scrolls at 60 frames a second (its frame
+  ~6 ms and its GPU's ~3 ms together pass the frame: fewer glyphs and
+  less overdraw, 2.84 screens of quads); frames skipped scrolling at
+  2× with frames of 1.4 ms (the scroll events' pacing against the
+  frames, not their cost); Log Viewer shaping new rows on the frame.
+  *Then* the cull cuts grounds by their biggest covers first and
+  shadows skip their blur inside: History's GPU at 1.5× 4.8 → 3.3 ms a
+  frame, its drag's hitches 9 → 3 (its glide still misses a frame now
+  and then).
+  *Then* (same day) shaped lines are aged rather than dropped, shape
+  plans kept, and ASCII shaped by words (gpui/README.md): History's
+  live resize, slowest frame 60 → 17 ms (p50 11.8); Log Viewer's rows
+  arriving with a search, 31.6 → 10.8 ms.
+  *Then* (2026-11-02) frames on the fast cores: the scheduler put a
+  mostly idle UI thread on a slow core at a low clock, and the frame
+  after a pause ran three or four times as long; GPUI's main thread and
+  app_server's ask for a fast core while they run (`uclamp.min`,
+  HACKING rule 9). Paint memos are kept through a cached view replayed
+  whole, an icon coming in and a display event (Activity's 1,400 cells
+  were painted afresh the frame after each). Activity's first frame of
+  its processes 13–17 → 3.7–4.6 ms. The full bench: 21 failed of 382 →
+  2 of 396, every app's slowest frame at most 4.0 ms (from 14.9),
+  app_server's frames all within budget. *Left*: Notifications'
+  first scroll skips a frame at 1× and 1.5× (its frames 1.5–3.3 ms: the
+  pacing, not the cost).
+  *Done* (2026-11-02): Notifications scrolls evenly at 1× and 1.5×
+  (steps 0.96–1.01 of the fingers', its glide within 1%, frames at most
+  2.5 ms); Log Viewer's list (a ColumnListView, which didn't report its
+  offset, so its scrolling went unmeasured: it does now) drags at
+  1.00–1.00 and glides evenly at 1× and 2×, frames at most 2.4 ms.
 
 - ~~**app_server: a 16 ms frame during Terminal's live resize at 2×**~~
   (the bench, 2 runs in 5: "16.2 ms drawing 7.7 Mpx; 1.0 ms on a CPU,
