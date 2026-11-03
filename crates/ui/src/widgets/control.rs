@@ -152,6 +152,9 @@ impl Element for Control {
         if self.shrinks {
             style.flex_shrink = 1.0;
             style.max_size.width = gpui::relative(1.0).into();
+            // (Narrower in a row, never shorter in a squeezed column: too
+            // little room overflows, where the layout lint sees it.)
+            style.min_size.height = self.height.into();
         }
         (window.request_layout(style, [], cx), ())
     }

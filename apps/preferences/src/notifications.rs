@@ -333,7 +333,9 @@ fn apps_ui(ui: &mut Ui, st: &mut State, s: &NotificationSettings) {
         });
         row = row.child(div().w(px(COLUMN)).flex().justify_center().child(CheckBox::new("", on == all.len()).mixed(on > 0 && on < all.len()).on_toggle(toggle)));
     }
-    ui.add(row.pr(px(14.0)));
+    // (Its marks over the apps' in the scroll view below: the view's
+    // frame and its bar, as the heading.)
+    ui.add(row.pr(px(2.0 + olo_ui::widgets::SCROLL_BAR)));
     let mut rows = Vec::new();
     for app in &apps {
         let a = s.app(app);

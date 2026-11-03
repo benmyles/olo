@@ -1,0 +1,33 @@
+#!/bin/bash
+# Before each push (installed by tools/hooks/install): Git LFS's own push
+# step, then, when UI code is among what's pushed, the live layout lint of
+# every Olo app that changed (tools/dev/ui-lint: each app opened in a
+# headless session, every window and tab reviewed at 1, 1.5 and 2×, light
+# and dark), on release builds made first. A finding stops the push.
+# OLO_SKIP_UI_LINT=1 skips the lint.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+if command -v git-lfs > /dev/null 2>&1; then
+    git lfs pre-push "$@"
+fi
+[ "${OLO_SKIP_UI_LINT:-}" = 1 ] && exit 0
+remote_ref=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || echo origin/main)
+changed=$(git diff --name-only "$remote_ref"...HEAD 2>/dev/null || true)
+echo "$changed" | grep -qE '^(apps/|crates/(ui|kit-base|theme|preview)/|gpui/)' || exit 0
+# Which apps: all of them when the kit or GPUI changed, else those touched.
+picked=()
+if ! echo "$changed" | grep -qE '^(crates/(ui|kit-base|theme|preview)/|gpui/)'; then
+    for app in $(echo "$changed" | sed -nE 's#^apps/([^/]+)/.*#\1#p' | sort -u); do
+        case $app in
+            preferences) picked+=($(/usr/bin/python3 tools/dev/ui-lint --list | grep '^prefs:')) ;;
+            *) picked+=($(/usr/bin/python3 tools/dev/ui-lint --list | grep -ix "$(echo "$app" | tr - ' ')" || true)) ;;
+        esac
+    done
+    [ ${#picked[@]} -eq 0 ] && exit 0
+fi
+echo "pre-push: UI code changed; release build, then the live layout lint…" >&2
+env -u WAYLAND_DISPLAY -u OLO_SOCKET cargo build --release --workspace >&2
+if ! env -u WAYLAND_DISPLAY -u OLO_SOCKET /usr/bin/python3 tools/dev/ui-lint "${picked[@]}" >&2; then
+    echo "pre-push: the live layout lint found the above; fix it (or OLO_SKIP_UI_LINT=1, saying why)." >&2
+    exit 1
+fi

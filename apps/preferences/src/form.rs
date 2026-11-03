@@ -115,6 +115,20 @@ impl<'a, 'b> Ui<'a, 'b> {
         self.add(div().flex().flex_row().items_center().gap(px(gap)).children(items));
     }
 
+    /// Two columns side by side, `SPACING` apart, each as wide as the
+    /// other, their tops lined up: a wide panel's boxes in two stacks
+    /// rather than one tall one.
+    pub fn columns(&mut self, left: impl FnOnce(&mut Self), right: impl FnOnce(&mut Self)) {
+        let (l, r) = (self.collect(left), self.collect(right));
+        self.add_columns(l, r);
+    }
+
+    /// [`Ui::columns`] of what was collected ([`Ui::collect`]) for each.
+    pub fn add_columns(&mut self, left: Vec<AnyElement>, right: Vec<AnyElement>) {
+        let column = |items: Vec<AnyElement>| div().flex_1().min_w(px(0.0)).flex().flex_col().gap(px(m::SPACING)).children(items);
+        self.add(div().flex().flex_row().items_start().gap(px(m::SPACING)).child(column(left)).child(column(right)));
+    }
+
     pub fn row(&mut self, build: impl FnOnce(&mut Self)) {
         self.row_gap(m::SPACING, build);
     }
@@ -136,9 +150,12 @@ impl<'a, 'b> Ui<'a, 'b> {
         self.add(StringView::new(text).dim(!enabled));
     }
 
-    /// A note under a control: dim, wrapped.
+    /// A note under a control: dim, wrapped, closer to the control it's
+    /// about (`TIGHT`) than to what follows (`STACK`).
     pub fn note(&mut self, text: impl Into<SharedString>) {
-        self.add(StringView::new(text).dim(true).wrap(true));
+        // (The first in its box has no control to be close to.)
+        let pull = if self.items.is_empty() { 0.0 } else { m::TIGHT - m::STACK };
+        self.add(div().mt(px(pull)).child(StringView::new(text).dim(true).wrap(true)));
     }
 
     pub fn check(&mut self, label: impl Into<SharedString>, on: bool, set: impl Fn(&mut Settings, bool) + 'static) {

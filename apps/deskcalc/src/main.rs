@@ -49,9 +49,10 @@ const SCIENTIFIC: [[&str; 5]; 4] = [
     ["!", "ceil", "floor", "E", "^"],
 ];
 
-const WIDTH: f32 = 250.0;
-const INSET: f32 = 8.0;
-const GAP: f32 = 4.0;
+const WIDTH: f32 = 266.0;
+// (The kit's rhythm: the window's inset round it all, keys `TIGHT` apart.)
+const INSET: f32 = olo_ui::metrics::WINDOW_INSET;
+const GAP: f32 = olo_ui::metrics::TIGHT;
 const DISPLAY_H: f32 = 36.0;
 const KEY_H: f32 = 34.0;
 /// How long a key stays down when its character is typed.

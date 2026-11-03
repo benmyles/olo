@@ -1,26 +1,34 @@
 //! The spacing system. Every gap, inset and control height in Olo comes
-//! from here, so all windows share one rhythm: a 2px grid, 8px between
-//! controls, 12px from a window's edge to its content.
+//! from here, so all windows share one rhythm: a 2px grid, 12px between
+//! controls, 10 between a box's rows, 16 from a window's edge to its
+//! content. (Opened up on 2026-11-03, Ben: "everything is too cramped …
+//! there should be more space between all the elements and it should
+//! look polished, clean": it was 8, 4 and 12. The layout review holds
+//! every window to it: `layout_review`'s `crowded`, `window-edge`.)
 
 /// Between controls placed side by side or stacked.
-pub const SPACING: f32 = 8.0;
+pub const SPACING: f32 = 12.0;
+/// Between the rows of a box or a form (a control and the next, a note
+/// and what follows it).
+pub const STACK: f32 = 10.0;
 /// The vertical Deskbar's width; notification banners share its column.
 pub const DESKBAR_WIDTH: f32 = 172.0;
-/// Between closely related items (a stack of check boxes).
-pub const TIGHT: f32 = 4.0;
+/// Between closely related items (a note under the control it's about,
+/// a toolbar's controls and its edges).
+pub const TIGHT: f32 = 6.0;
 /// A card's corners (`style::card`), and inside it, from its edge to
 /// what it holds.
 pub const CARD_RADIUS: f32 = 5.0;
-pub const CARD_INSET: f32 = 10.0;
+pub const CARD_INSET: f32 = 12.0;
 /// How far a selection plate (`style::selection_plate`) reaches beyond
 /// the picture or swatch on it.
 pub const SELECTION_PAD: f32 = 4.0;
 /// From a window (or tab panel) edge to its content.
-pub const WINDOW_INSET: f32 = 12.0;
+pub const WINDOW_INSET: f32 = 16.0;
 /// From a BBox's frame to its content.
-pub const BOX_INSET: f32 = 10.0;
+pub const BOX_INSET: f32 = 14.0;
 /// Between a label and the field it names.
-pub const LABEL_GAP: f32 = 8.0;
+pub const LABEL_GAP: f32 = 10.0;
 /// Between a check box / radio mark and its label.
 pub const MARK_GAP: f32 = 6.0;
 /// A check box's mark: a note under its label lines up after it and

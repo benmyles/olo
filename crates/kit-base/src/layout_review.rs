@@ -232,6 +232,48 @@ pub struct Parts {
     /// Areas what's in them is centred across, though nothing fills
     /// them (a tab hanging in a strip).
     pub bands: Vec<Rect>,
+    /// The controls (`Control`), from the agent tree.
+    pub controls: Vec<Control>,
+    /// Text a clip cut short.
+    pub cut_texts: Vec<CutText>,
+    /// Scroll views' viewports: what they cut is scrolled out of sight,
+    /// not cut off.
+    pub scrolls: Vec<Rect>,
+    /// Boxes and panes what's in them must fit in (a BBox's frame, a tab
+    /// view's pane): what starts in one and runs out of it overflows.
+    pub containers: Vec<Rect>,
+    /// Tab views' panes: a window's pages are in them.
+    pub panes: Vec<Rect>,
+}
+
+/// A control agents read and use (the window's agent tree as painted):
+/// where it was laid out, the clip it was painted in, and what it is.
+#[derive(Debug, Clone)]
+pub struct Control {
+    pub rect: Rect,
+    pub clip: Rect,
+    pub role: String,
+    pub name: String,
+    pub clickable: bool,
+}
+
+impl Control {
+    /// What of it shows.
+    pub fn shown(&self) -> Rect {
+        self.rect.intersect(self.clip)
+    }
+
+    fn said(&self) -> String {
+        format!("{} {:?}", self.role, self.name)
+    }
+}
+
+/// Text a clip cut: where it was laid out, the clip, and its start.
+#[derive(Debug, Clone)]
+pub struct CutText {
+    pub rect: Rect,
+    pub clip: Rect,
+    pub label: String,
 }
 
 /// What looks wrong in a frame (its `parts`), drawn at `ppp` device
@@ -250,8 +292,321 @@ pub fn review(parts: &Parts, width: f32, height: f32, ppp: f32) -> Vec<Finding> 
     near_edges(parts, ppp, &mut out);
     off_centre(parts, &mut out);
     uneven_rows(parts, ppp, &mut out);
+    controls(parts, screen, &mut out);
+    texts_over(parts, screen, &mut out);
+    overflow(parts, ppp, &mut out);
+    crowded(parts, ppp, &mut out);
+    window_edges(parts, screen, &mut out);
+    crowded_lines(parts, ppp, &mut out);
+    control_edges(parts, ppp, &mut out);
+    uneven_gaps(parts, ppp, &mut out);
     out.sort_by_key(|f| f.level);
     out
+}
+
+/// Nearer than this to the window's edge (and not on it, nor in a bar
+/// along it), content looks crammed against it: the window's inset, less
+/// a rounding's worth (a centred line of text sits a little in).
+const EDGE_ROOM: f32 = crate::metrics::WINDOW_INSET - 4.0;
+/// Closer than this (and not touching), two things look crammed
+/// together: the closest the rhythm puts them (`metrics::TIGHT`).
+const CROWDED: f32 = crate::metrics::TIGHT - SAME;
+/// Two lines closer than this (and not touching): a box's edge almost on
+/// its container's.
+const LINE_ROOM: f32 = 4.0;
+
+/// Whether what `clip` cuts is scrolled out of sight (it's a scroll
+/// view's viewport, or in one), not cut off.
+fn scrolled(p: &Parts, clip: Rect) -> bool {
+    p.scrolls.iter().any(|s| s.expand(1.0).contains_rect(clip) || clip.expand(1.0).contains_rect(*s))
+}
+
+/// The controls that show (scrolled out of sight they're nowhere).
+fn showing(p: &Parts) -> impl Iterator<Item = &Control> {
+    p.controls.iter().filter(|c| c.clickable && c.role != "Window" && c.shown().is_positive())
+}
+
+/// Controls laid out to nothing, cut off by what they're in or by the
+/// window's edge, or over each other.
+fn controls(p: &Parts, screen: Rect, out: &mut Vec<Finding>) {
+    for c in p.controls.iter().filter(|c| c.clickable && c.role != "Window") {
+        if c.rect.width() < 1.0 || c.rect.height() < 1.0 {
+            push(out, finding(Level::Error, "collapsed", format!("{} is laid out to {:.1}×{:.1}", c.said(), c.rect.width(), c.rect.height()), c.rect));
+            continue;
+        }
+        if !c.shown().is_positive() || c.clip.expand(SAME).contains_rect(c.rect) || scrolled(p, c.clip) {
+            continue;
+        }
+        let (kind, said) = if !screen.expand(SAME).contains_rect(c.rect) { ("outside", "runs past the window") } else { ("cut", "is cut off by what it's in") };
+        push(out, finding(Level::Error, kind, format!("{} ({:.0}×{:.0}) {said}: give it room", c.said(), c.rect.width(), c.rect.height()), c.rect));
+    }
+    let shown: Vec<&Control> = showing(p).collect();
+    for (i, a) in shown.iter().enumerate() {
+        for b in &shown[i + 1..] {
+            let (ra, rb) = (a.shown(), b.shown());
+            let over = ra.intersect(rb);
+            // (One inside the other is a control in a row, a cell in a
+            // list: not over it.)
+            if over.width() > 1.0 && over.height() > 1.0 && !ra.contains_rect(rb) && !rb.contains_rect(ra) {
+                push(out, finding(Level::Error, "overlap", format!("{} and {} overlap by {:.1}×{:.1}", a.said(), b.said(), over.width(), over.height()), over));
+            }
+        }
+    }
+}
+
+/// How far what's in the frame runs out of the box or pane it starts in,
+/// at most (0: it all fits): what a window must grow by.
+pub fn overflow_depth(p: &Parts, ppp: f32) -> f32 {
+    overflows(p, ppp).into_iter().map(|(_, _, d)| d).fold(0.0, f32::max)
+}
+
+/// The empty space at the bottom of what holds a window's content: its
+/// tab view's pane if it has one (the biggest), else the window
+/// (`height` tall): what a window too tall for what it shows has to spare.
+pub fn bottom_slack(p: &Parts, width: f32, height: f32) -> f32 {
+    let mut items: Vec<Rect> = p.texts.iter().map(caps).collect();
+    items.extend(p.controls.iter().filter(|c| c.role != "Window" && c.rect.width() >= 1.0 && !scrolled(p, c.clip)).map(|c| c.rect));
+    // (A list filling the space is content too.)
+    items.extend(p.scrolls.iter().copied());
+    let _ = width;
+    let pane = p.panes.iter().copied().max_by(|a, b| a.area().total_cmp(&b.area()));
+    let (bottom, inside): (f32, Vec<&Rect>) = match pane {
+        Some(b) => (b.max.y, items.iter().filter(|r| b.contains(r.min)).collect()),
+        None => (height, items.iter().collect()),
+    };
+    bottom - inside.iter().map(|r| r.max.y).fold(0.0, f32::max)
+}
+
+/// Each thing that runs out of the bottom of the box or pane it starts
+/// in: what, the box, and by how much.
+fn overflows(p: &Parts, ppp: f32) -> Vec<(String, Rect, f32)> {
+    let mut items: Vec<(Rect, String)> = p.texts.iter().map(|t| (caps(t), quote(t))).collect();
+    items.extend(p.controls.iter().filter(|c| c.role != "Window" && c.rect.width() >= 1.0 && !scrolled(p, c.clip)).map(|c| (c.rect, c.said())));
+    let mut out = Vec::new();
+    for (r, name) in items {
+        // The innermost box it starts in.
+        let Some(b) = p.containers.iter().filter(|b| b.contains(r.min)).min_by(|a, b| a.area().total_cmp(&b.area())) else { continue };
+        let d = r.max.y - b.max.y;
+        // (A device pixel is layout's rounding at 1×.)
+        if d > SAME.max(1.0 / ppp + 0.01) {
+            out.push((name, *b, d));
+        }
+    }
+    out
+}
+
+/// What runs past the right edge of the box or pane it starts in (a
+/// check box's long label into the box's frame).
+fn overflows_right(p: &Parts, ppp: f32) -> Vec<(String, Rect, f32)> {
+    let mut items: Vec<(Rect, String)> = p.texts.iter().map(|t| (caps(t), quote(t))).collect();
+    items.extend(p.controls.iter().filter(|c| c.role != "Window" && c.rect.width() >= 1.0 && !scrolled(p, c.clip)).map(|c| (c.rect, c.said())));
+    let mut out = Vec::new();
+    for (r, name) in items {
+        let Some(b) = p.containers.iter().filter(|b| b.contains(r.min)).min_by(|a, b| a.area().total_cmp(&b.area())) else { continue };
+        let d = r.max.x - b.max.x;
+        if d > SAME.max(1.0 / ppp + 0.01) {
+            out.push((name, *b, d));
+        }
+    }
+    out
+}
+
+/// What runs out of the bottom of its box or pane (a tab's content under
+/// the panel's Defaults row): the window or the box needs that much more.
+fn overflow(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
+    for (name, b, d) in overflows(p, ppp) {
+        push(out, finding(Level::Error, "overflow", format!("{name} runs {d:.1} pt past the bottom of what it's in (y {:.0}): make that (or the window) taller", b.max.y), b));
+    }
+    for (name, b, d) in overflows_right(p, ppp) {
+        push(out, finding(Level::Error, "overflow", format!("{name} runs {d:.1} pt past the right of what it's in (x {:.0}), into its inset: make that (or the window) wider, or say it in fewer words", b.max.x), b));
+    }
+}
+
+/// Text cut off (by what it's in, or the window's edge), or over text.
+fn texts_over(p: &Parts, screen: Rect, out: &mut Vec<Finding>) {
+    for t in &p.cut_texts {
+        if scrolled(p, t.clip) {
+            continue;
+        }
+        let (kind, said) = if !screen.expand(SAME).contains_rect(t.rect) { ("text-outside", "runs past the window") } else { ("text-cut", "is cut off by what it's in") };
+        push(out, finding(Level::Error, kind, format!("{:?} {said} (laid out {:.0} wide, {:.0} shows): give it room, or cut it short with an ellipsis (`style::fit`)", t.label, t.rect.width(), t.rect.intersect(t.clip).width()), t.rect));
+    }
+    for (i, a) in p.texts.iter().enumerate() {
+        for b in &p.texts[i + 1..] {
+            let over = a.rect.intersect(b.rect);
+            // (Lines' boxes touch by their leading, and keys' symbols set
+            // closer than their advance by a point or so; their ink
+            // doesn't.)
+            if over.width() > 2.0 && over.height() > a.size.min(b.size) * 0.4 {
+                push(out, finding(Level::Error, "text-over-text", format!("{} and {} overlap by {:.1}×{:.1}", quote(a), quote(b), over.width(), over.height()), over));
+            }
+        }
+    }
+}
+
+/// The parts of a list or a strip the kit lays out together (rows under
+/// their header, tabs side by side): spaced as the kit means them.
+fn part_of_a_whole(c: &Control) -> bool {
+    matches!(c.role.as_str(), "Row" | "ListItem" | "Cell" | "ColumnHeader" | "Tab" | "MenuItem" | "TreeItem")
+}
+
+/// What shows of text and controls, for spacing: (rect, name, is text,
+/// baseline).
+fn items(p: &Parts) -> Vec<(Rect, String, bool, f32)> {
+    let mut out: Vec<(Rect, String, bool, f32)> = p.texts.iter().map(|t| (caps(t), quote(t), true, t.baseline)).collect();
+    out.extend(showing(p).filter(|c| !part_of_a_whole(c)).map(|c| (c.shown(), c.said(), false, 0.0)));
+    // Paragraphs (a note under a control) say themselves as labels only.
+    out.extend(p.controls.iter().filter(|c| c.role == "Label" && c.shown().is_positive() && c.rect.height() > 20.0).map(|c| (c.shown(), c.said(), false, 0.0)));
+    out
+}
+
+/// Two things (text, controls) side by side or one over the other with
+/// next to no room between them (a point or two).
+fn crowded(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
+    let all = items(p);
+    let touching = SAME.max(1.0 / ppp);
+    for (i, (ra, na, ta, ba)) in all.iter().enumerate() {
+        for (rb, nb, tb, bb) in &all[i + 1..] {
+            // (Two on one grid of its own are spaced by it: a tray's icons.)
+            let grid = grid_of(p, ra);
+            if ra.expand(SAME).contains_rect(*rb) || rb.expand(SAME).contains_rect(*ra) || grid != grid_of(p, rb) || grid.is_some() {
+                continue;
+            }
+            // (A line of text set in pieces, a word apart, is one line.)
+            if *ta && *tb && (ba - bb).abs() <= SAME {
+                continue;
+            }
+            let overlap_y = ra.max.y.min(rb.max.y) - ra.min.y.max(rb.min.y);
+            let overlap_x = ra.max.x.min(rb.max.x) - ra.min.x.max(rb.min.x);
+            let gap_x = (rb.min.x - ra.max.x).max(ra.min.x - rb.max.x);
+            let gap_y = (rb.min.y - ra.max.y).max(ra.min.y - rb.max.y);
+            let side = overlap_y >= 0.5 * ra.height().min(rb.height()) && gap_x > touching && gap_x < CROWDED;
+            let stacked = overlap_x >= 0.5 * ra.width().min(rb.width()) && gap_y > touching && gap_y < CROWDED;
+            if side || stacked {
+                let gap = if side { gap_x } else { gap_y };
+                push(out, finding(Level::Error, "crowded", format!("{na} and {nb} are {gap:.1} pt apart: give them room (`metrics::TIGHT` or `SPACING`)"), ra.union(*rb)));
+            }
+        }
+    }
+}
+
+/// Text or a control almost against the window's edge (not in a bar
+/// along it: a menu bar's, a toolbar's, a list's, which set their own).
+fn window_edges(p: &Parts, screen: Rect, out: &mut Vec<Finding>) {
+    // (Anything painted along an edge sets its own insets: a bar, a list,
+    // a document's page. Not the window's own panel.)
+    let bars: Vec<Rect> = p.covers.iter().copied().filter(|c| c.area() < 0.98 * screen.area()).collect();
+    for (r, name, ..) in items(p) {
+        for (side, d) in [("left", r.min.x - screen.min.x), ("right", screen.max.x - r.max.x), ("top", r.min.y - screen.min.y), ("bottom", screen.max.y - r.max.y)] {
+            let on_edge = |b: &Rect| match side {
+                "left" => b.min.x - screen.min.x <= SAME,
+                "right" => screen.max.x - b.max.x <= SAME,
+                "top" => b.min.y - screen.min.y <= SAME,
+                _ => screen.max.y - b.max.y <= SAME,
+            };
+            // (A view across the window, a document's or a list's, sets
+            // its own insets too.)
+            if bars.iter().any(|b| on_edge(b) && b.expand(SAME).contains_rect(r)) || grid_of(p, &r).is_some() || r.width() >= 0.8 * screen.width() {
+                continue;
+            }
+            if d > SAME && d < EDGE_ROOM {
+                push(out, finding(Level::Error, "window-edge", format!("{name} is {d:.1} pt from the window's {side} edge: inset it (`metrics::WINDOW_INSET`)"), r));
+            }
+        }
+    }
+}
+
+/// Two long lines side by side, a point or three apart: a box's edge
+/// almost on its container's (a box run down onto the tab view's edge).
+fn crowded_lines(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
+    // (Long ones: a box's or a panel's. A scroll bar's lines are a point
+    // apart, and a selection's or a default button's ring a few points
+    // round something small: drawn so.)
+    let lines: Vec<Rect> = p.fills.iter().map(|f| f.rect).filter(|r| r.width().min(r.height()) <= 1.01 && r.width().max(r.height()) >= 120.0).collect();
+    let touching = 1.5f32.max(1.0 / ppp + 0.01);
+    for (i, a) in lines.iter().enumerate() {
+        for b in &lines[i + 1..] {
+            let flat = a.width() > a.height() && b.width() > b.height();
+            let upright = a.height() > a.width() && b.height() > b.width();
+            let (overlap, gap) = if flat {
+                (a.max.x.min(b.max.x) - a.min.x.max(b.min.x), (b.min.y - a.max.y).max(a.min.y - b.max.y))
+            } else if upright {
+                (a.max.y.min(b.max.y) - a.min.y.max(b.min.y), (b.min.x - a.max.x).max(a.min.x - b.max.x))
+            } else {
+                continue;
+            };
+            let shorter = if flat { a.width().min(b.width()) } else { a.height().min(b.height()) };
+            // (A scroll view's frame and its bars and rows inside it are
+            // the kit's, drawn so.)
+            let framing = |a: &Rect, b: &Rect| p.scrolls.iter().any(|s| s.expand(SAME).contains_rect(*a) && !s.contains_rect(*b) && s.expand(LINE_ROOM).intersects(*b));
+            if framing(a, b) || framing(b, a) {
+                continue;
+            }
+            if overlap >= 0.5 * shorter && gap > touching && gap < LINE_ROOM {
+                let text = format!("two lines {gap:.1} pt apart (at {:.0},{:.0} and {:.0},{:.0}): an edge almost on another's; give it room (`metrics::BOX_INSET`, `WINDOW_INSET`)", a.min.x, a.min.y, b.min.x, b.min.y);
+                push(out, finding(Level::Error, "crowded-lines", text, a.union(*b)));
+            }
+        }
+    }
+}
+
+/// Controls down a column almost lined up, on the left or the right.
+fn control_edges(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
+    // (A menu bar's titles are set by their lengths, as tabs are.)
+    let shown: Vec<&Control> = showing(p).filter(|c| !part_of_a_whole(c) && c.role != "MenuBarItem").collect();
+    let right_room = SAME.max(1.0 / ppp + 0.01);
+    // (A check box or radio button ends where its label does: its right
+    // edge lines up with nothing.)
+    let sized = |c: &Control| !matches!(c.role.as_str(), "CheckBox" | "RadioButton" | "Label" | "Link" | "Clickable");
+    for a in &shown {
+        for b in &shown {
+            let (ra, rb) = (a.shown(), b.shown());
+            let below = rb.min.y - ra.max.y;
+            if !(-2.0..=48.0).contains(&below) || grid_of(p, &ra) != grid_of(p, &rb) || section_of(p, &ra) != section_of(p, &rb) {
+                continue;
+            }
+            let dl = (ra.min.x - rb.min.x).abs();
+            let dr = (ra.max.x - rb.max.x).abs();
+            if dl > SAME && dl <= NEAR_EDGE && dr > right_room {
+                push(out, finding(Level::Error, "control-edges", format!("{} (x {:.1}) and {} under it (x {:.1}) almost line up on the left: line them up", a.said(), ra.min.x, b.said(), rb.min.x), ra.union(rb)));
+            } else if dr > right_room && dr <= NEAR_EDGE && dl > SAME && ra.width() >= 40.0 && rb.width() >= 40.0 && sized(a) && sized(b) {
+                push(out, finding(Level::Error, "control-edges", format!("{} (right {:.1}) and {} under it (right {:.1}) almost line up on the right: line them up", a.said(), ra.max.x, b.said(), rb.max.x), ra.union(rb)));
+            }
+        }
+    }
+}
+
+/// The section `r` is in: the innermost band painted round it (a tray's
+/// well, a workspace's row), or none. Things in different sections line
+/// up only by chance.
+fn section_of(p: &Parts, r: &Rect) -> Option<usize> {
+    let c = r.center();
+    p.covers.iter().enumerate().filter(|(_, b)| b.contains(c) && b.expand(SAME).contains_rect(*r)).min_by(|(_, a), (_, b)| a.area().total_cmp(&b.area())).map(|(i, _)| i)
+}
+
+/// A row of controls one height (buttons along the bottom) spaced
+/// unevenly by a point or few.
+fn uneven_gaps(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
+    let shown: Vec<Rect> = showing(p).filter(|c| matches!(c.role.as_str(), "Button" | "CheckBox" | "RadioButton" | "ComboBox" | "PopUpButton" | "TextInput")).map(|c| c.shown()).collect();
+    let rounding = 1.0 / ppp + 0.01;
+    let mut rows: Vec<Vec<Rect>> = Vec::new();
+    for r in shown {
+        match rows.iter_mut().find(|row| (row[0].min.y - r.min.y).abs() <= SAME && (row[0].height() - r.height()).abs() <= SAME) {
+            Some(row) => row.push(r),
+            None => rows.push(vec![r]),
+        }
+    }
+    for mut row in rows {
+        row.sort_by(|a, b| a.min.x.total_cmp(&b.min.x));
+        let gaps: Vec<f32> = row.windows(2).map(|w| w[1].min.x - w[0].max.x).filter(|g| (0.0..=40.0).contains(g)).collect();
+        for w in gaps.windows(2) {
+            let d = (w[0] - w[1]).abs();
+            if d > rounding && d <= NEAR_EDGE {
+                push(out, finding(Level::Error, "uneven-gaps", format!("controls in a row at y {:.0} are {:.1} and {:.1} pt apart: space them evenly", row[0].min.y, w[0], w[1]), row[0].union(*row.last().unwrap())));
+                break;
+            }
+        }
+    }
 }
 
 fn finding(level: Level, kind: &str, text: String, at: Rect) -> Finding {

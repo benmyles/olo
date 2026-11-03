@@ -87,6 +87,8 @@ impl RenderOnce for TabView {
                 let panel = style::snap(window, panel);
                 // The panel: raised, a softer second line inside the dark one.
                 style::bevel(window, panel, style::c(p.shine), style::shade(&p, bg, 1.35));
+                // (What's in it must fit inside its inset.)
+                crate::review::pane(window, Bounds::from_corners(point(outer.left() + px(m::WINDOW_INSET), outer.top() + px(TAB_HEIGHT)), point(outer.right() - px(m::WINDOW_INSET), outer.bottom() - px(m::WINDOW_INSET))));
                 let in_panel = style::inset(window, panel, 1.0);
                 style::vline_left_of(window, in_panel.right(), in_panel.top(), in_panel.bottom(), style::shade(&p, bg, 1.12));
                 style::hline_above(window, in_panel.left(), in_panel.right(), in_panel.bottom(), style::shade(&p, bg, 1.12));

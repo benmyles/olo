@@ -20,7 +20,7 @@ use std::{
 use gpui::{App, Bounds, Pixels, Window, WindowId};
 use olo_kit_base::{
     commands::WindowReview,
-    layout_review::{self as checks, Fill, Icon, Parts, Text},
+    layout_review::{self as checks, Control, CutText, Fill, Icon, Parts, Text},
 };
 
 /// Closer than this, two things count as lined up (a rounding).
@@ -104,8 +104,15 @@ pub(crate) fn text(window: &Window, rect: Bounds<Pixels>, baseline: Pixels, text
     with_parts(window, |parts, clip| {
         let label: String = text.split('\n').next().unwrap_or("").trim().chars().take(28).collect();
         let r = kb(rect);
-        // Text a clip cuts (in a scroll view) is left alone.
-        if label.is_empty() || !clip.expand(SAME).contains_rect(r) {
+        if label.is_empty() {
+            return;
+        }
+        // Text a clip cuts: scrolled out of sight, or cut off (the
+        // checks tell which by the scroll views).
+        if !clip.expand(SAME).contains_rect(r) {
+            if r.intersects(clip) {
+                parts.cut_texts.push(CutText { rect: r, clip, label });
+            }
             return;
         }
         let baseline = f32::from(baseline);
@@ -133,6 +140,27 @@ pub(crate) fn icon(window: &Window, b: Bounds<Pixels>, texture: [usize; 2]) {
 /// it. Call it as it's drawn.
 pub fn own_grid(window: &Window, b: Bounds<Pixels>) {
     with_parts(window, |parts, _| parts.grids.push(kb(b)));
+}
+
+/// `b` is a box or a pane what's in it must fit in (a BBox's frame, a tab
+/// view's pane): the review finds what runs out of it.
+pub fn container(window: &Window, b: Bounds<Pixels>) {
+    with_parts(window, |parts, _| parts.containers.push(kb(b)));
+}
+
+/// `b` is a tab view's pane: what's in it must fit, and a window's pages
+/// are measured in it (the lint's fit check).
+pub fn pane(window: &Window, b: Bounds<Pixels>) {
+    with_parts(window, |parts, _| {
+        parts.containers.push(kb(b));
+        parts.panes.push(kb(b));
+    });
+}
+
+/// `b` is a scroll view's viewport: what it cuts is scrolled out of
+/// sight, not cut off. (ScrollView and ColumnListView say it.)
+pub fn scroll_area(window: &Window, b: Bounds<Pixels>) {
+    with_parts(window, |parts, _| parts.scrolls.push(kb(b)));
 }
 
 /// What is in `b` is centred across it, though nothing is painted to
@@ -173,14 +201,15 @@ pub(crate) fn finish(window: &Window, title: &str) {
     let all = PENDING.with(|p| {
         let mut p = p.borrow_mut();
         let Some(pending) = p.as_mut() else { return None };
-        let Some(parts) = pending.windows.remove(&id) else { return None };
+        let Some(mut parts) = pending.windows.remove(&id) else { return None };
+        parts.controls = controls(window);
         let size = window.viewport_size();
         let (w, h) = (f32::from(size.width), f32::from(size.height));
         let scale = window.scale_factor();
         let findings = checks::review(&parts, w, h, scale);
-        pending.done.push(WindowReview { title: title.to_owned(), width: w as u32, height: h as u32, scale, layer: None, findings });
         #[cfg(feature = "lint")]
-        LINT_PARTS.with(|l| l.borrow_mut().insert(id, parts));
+        OVERFLOW.with(|o| o.borrow_mut().insert(id, (checks::overflow_depth(&parts, scale), checks::bottom_slack(&parts, w, h))));
+        pending.done.push(WindowReview { title: title.to_owned(), width: w as u32, height: h as u32, scale, layer: None, findings });
         pending.windows.is_empty().then_some(pending.id)
     });
     if let Some(review) = all {
@@ -188,16 +217,35 @@ pub(crate) fn finish(window: &Window, title: &str) {
     }
 }
 
-#[cfg(feature = "lint")]
-thread_local! {
-    /// What each window reviewed drew, for the lint's own checks.
-    static LINT_PARTS: RefCell<HashMap<WindowId, Parts>> = RefCell::new(HashMap::new());
+/// The controls the frame painted so far (the agent tree's), each where
+/// it was laid out (moved, a row replayed where it's scrolled to) and the
+/// clip it was painted in.
+fn controls(window: &Window) -> Vec<Control> {
+    let whole = kb(Bounds { origin: gpui::Point::default(), size: window.viewport_size() });
+    window
+        .paint_records_so_far()
+        .iter()
+        .filter_map(|(r, moved)| {
+            let n = r.downcast_ref::<crate::agent::Node>()?;
+            let at = Bounds { origin: n.bounds.origin + *moved, size: n.bounds.size };
+            Some(Control { rect: kb(at), clip: n.clip.map_or(whole, kb), role: n.role.to_owned(), name: n.name.as_ref().map(|s| s.to_string()).unwrap_or_default(), clickable: n.clickable })
+        })
+        .collect()
 }
 
-/// What `window` drew in its last review (`crate::lint`).
 #[cfg(feature = "lint")]
-pub(crate) fn take_lint_parts(window: WindowId) -> Option<Parts> {
-    LINT_PARTS.with(|l| l.borrow_mut().remove(&window))
+thread_local! {
+    /// How far each window's content ran out of its boxes at its last
+    /// review (the lint's fit check grows the window by it).
+    static OVERFLOW: RefCell<HashMap<WindowId, (f32, f32)>> = RefCell::new(HashMap::new());
+}
+
+/// How far `window`'s content ran out of its boxes and panes at its last
+/// review, and the empty space at the bottom of its pane or itself
+/// (`crate::lint`).
+#[cfg(feature = "lint")]
+pub(crate) fn take_overflow(window: WindowId) -> (f32, f32) {
+    OVERFLOW.with(|o| o.borrow_mut().remove(&window)).unwrap_or((0.0, f32::MAX))
 }
 
 /// Answers review `id`, if it's the one pending.

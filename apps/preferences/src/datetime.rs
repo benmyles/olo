@@ -339,7 +339,7 @@ fn date_time(ui: &mut Ui, clock: &ClockSettings, st: &mut State, status: Option<
 /// A calendar day.
 const CELL_W: f32 = 28.0;
 const CELL_H: f32 = 20.0;
-const FACE: f32 = 120.0;
+const FACE: f32 = 136.0;
 /// The month over the weekdays over six weeks.
 const CAL_HEADER: f32 = 22.0;
 const CALENDAR_H: f32 = CAL_HEADER + 18.0 + CELL_H * 6.0 + 6.0;
@@ -544,7 +544,9 @@ fn time_zone(ui: &mut Ui, clock: &ClockSettings, st: &mut State, current: &str, 
     }
     let Some((_, _, rows)) = &st.filtered else { return };
     let rows = rows.clone();
-    let columns = vec![Column::new("Time zone", 200.0), Column::new("Offset", 96.0), Column::new("Time", 96.0).right()];
+    // (All three in the list's width, no scrolling sideways: a long
+    // zone's name is cut short.)
+    let columns = vec![Column::new("Time zone", 186.0), Column::new("Offset", 84.0), Column::new("Time", 84.0).right()];
     let now = Timestamp::now();
     let (zones2, rows2, clock2) = (zones.clone(), rows.clone(), clock.clone());
     let list = ColumnListView::new("zones", &st.zones, columns, rows.len(), move |cell, window, cx| {

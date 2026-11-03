@@ -560,6 +560,7 @@ impl RenderOnce for ColumnListView {
                     let handle = model.read(cx).scroll.0.borrow().base_handle.clone();
                     let (o, m) = (handle.offset(), handle.max_offset());
                     window.note_scroll([-f32::from(o.x), -f32::from(o.y), f32::from(m.width), f32::from(m.height)]);
+                    crate::review::scroll_area(window, b);
                 }
                 if let Some(Drag::Press { from, now, band: true, .. }) = model.read(cx).drag.clone() {
                     // Held near or past the top or bottom: on, a frame at
@@ -740,6 +741,9 @@ impl RenderOnce for ColumnListView {
                 let bg = p.panel_background;
                 style::vgradient(window, b, style::tint(bg, 0.8), style::shade(&p, bg, 1.04));
                 style::hline_above(window, b.left(), b.right(), b.bottom(), style::shade(&p, bg, 1.45));
+                // (It scrolls sideways with the rows: what it cuts is out of
+                // sight, as theirs.)
+                crate::review::scroll_area(window, shown);
                 window.with_content_mask(Some(ContentMask { bounds: shown }), |window| {
                     for (i, (col, &(x0, x1))) in header_columns.iter().zip(&spans).enumerate() {
                         let r = Bounds::from_corners(point(x0, b.top()), point(x1, b.bottom() - px(1.0)));

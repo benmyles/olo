@@ -11,7 +11,7 @@ use olo_sync::Mutex;
 use olo_ui::{
     brand,
     gpui::{Bounds, Context, IntoElement as _, ParentElement as _, Styled as _, canvas, div, point, px, size},
-    icons, metrics as m, theme,
+    icons, metrics as m, style, theme,
     widgets::{BBox, Button, StringView, heading},
 };
 
@@ -218,7 +218,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                     .flex()
                     .flex_row()
                     .child(div().w(px(90.0)).flex_shrink_0().flex().justify_end().pr(px(m::LABEL_GAP)).child(StringView::new(label)))
-                    .child(StringView::new(value.clone())),
+                    // (A long name wraps, under itself: a ThinkPad's model,
+                    // a kernel's build.)
+                    .child(div().flex_1().min_w(px(0.0)).pt(px((m::CONTROL_HEIGHT - style::line_row(style::PLAIN_SIZE)) / 2.0)).child(StringView::new(value.clone()).wrap(true))),
             );
         }
     });

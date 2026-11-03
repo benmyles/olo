@@ -2642,6 +2642,30 @@ recorded otherwise.
     the 2-point grid lands on pixels (1×, 1.5×, 2× and up), not at 1.25×
     or 1.75×, where edges are still crisp but spacing may differ by a
     pixel.
+  - Layout and spacing, on what the kit drew and the window's agent tree
+    (every control as laid out, the clip it was painted in):
+    `collapsed` (a control laid out to nothing), `outside` and `cut` (a
+    control past the window's edge, or cut off by what it's in; what a
+    scroll view cuts is scrolled out of sight, not cut: ScrollView,
+    ColumnListView, their bars and a list's header mark themselves,
+    `review::scroll_area`), `overlap` (two controls over each other,
+    neither inside the other), `text-outside` and `text-cut` (text past
+    the window, or cut off: give it room or `style::fit` it),
+    `text-over-text`, `overflow` (anything that starts in a box or a tab
+    view's pane and runs past its inset, bottom or right: a tab's
+    content under the panel's Defaults, a long check box into its box's
+    frame; boxes and panes mark themselves, `review::container`,
+    `review::pane`), `crowded` (two things, side by side or one over the
+    other, closer than `metrics::TIGHT`; a list's rows and header, tabs,
+    and what's on a grid of its own are spaced by the kit),
+    `window-edge` (content nearer the window's edge than its inset, less
+    4, unless in a bar or a view along that edge), `crowded-lines` (two
+    long lines a point or three apart: a box's edge almost on its
+    container's; a scroll view's frame and bars are the kit's),
+    `control-edges` (controls down a column almost lined up, left or
+    right, in the same section: check boxes' right edges are their
+    labels'), `uneven-gaps` (a row of controls spaced unevenly by a
+    point or few).
 - **Review** (most are mistakes, a few are meant): `near-height` (bands
   stacked or side by side almost one height: a 21 bar over a 22 head),
   `near-level` (text or icons in neighbouring columns a pixel or two off
@@ -2679,17 +2703,41 @@ test platform with Olo's text system and fonts
 (`open_window`, the kit's `Frame` around the view), at its size, in
 light and dark, at 1×, 1.5× and 2× (`VisualTestContext::set_scale_factor`,
 the scale changed on the open window, as a display's change does). Each
-time it is reviewed (the errors above) and the lint's own checks run:
-`outside` (a control, anything agents can click, past the window's
-edge), `overlap` (two controls over each other, neither inside the
-other: a control in a row, a cell in a list, isn't over it),
-`text-outside` and `text-over-text` (lines' ink over each other; their
-boxes may touch by their leading). `Lint::window(options, build)`
+time it is reviewed (the errors above), every tab of its tab views too,
+and the lint's `fit` check runs over all of them: the window fits what
+it shows, nothing running out of its boxes or pane (it says how much
+taller: "make it 742 tall"), its tallest page ending the window's inset
+above the bottom of its pane (or of the window), with no more than
+twice that empty (`Lint::keeps_room(points, why)` allows room for a state
+the lint doesn't draw: Telegram's QR sign-in, a finger being enrolled).
+A control never shrinks below its height in a squeezed column, and a
+Preferences panel's body never below its content, so too little room
+shows as overflow the check can measure. `Lint::window(options, build)`
 returns what it found; `assert_clean` fails a test with it, a line each.
 `Lint::trees(options, build)` gives what agents read of the window
 instead (`agent::tree`, 1× light), as it opens and with each of its
 tabs clicked: for indexes made from what windows show (Preferences'
 settings).
+
+**Every app, live** (`tools/dev/ui-lint [APP…] [--review] [--scales …]`):
+each Olo app with a window opened in a headless session of its own (a
+MacBook's screen, a made-up home from `fixture-home`, its own D-Bus,
+demo data where the app has it), every window and every tab of its tab
+views reviewed at 1, 1.5 and 2×, light and dark, through its socket:
+the same checks on the real app. Errors fail it; `--review` lists the
+review findings too. Release builds (`cargo build --release
+--workspace` first). Preferences' panels run one by one
+(`prefs:touchpad`).
+
+**With every commit and push** (`tools/hooks`, installed by
+`tools/setup.sh`): the pre-commit hook formats the Rust staged
+(rustfmt, by the nearest `rustfmt.toml`: Olo's wide style, upstream's in
+gpui/ and smithay/) and, when UI code is staged, runs `cargo ui-lint`;
+the pre-push hook runs `tools/dev/ui-lint` on the apps the push changed
+(all of them when the kit or GPUI did). A finding stops it
+(`OLO_SKIP_UI_LINT=1` to push regardless, saying why). A layout problem
+found by looking that the lint missed is a missing check: add it, and
+show it fires on the old layout.
 
 `cargo ui-lint` runs every `ui_lint` test: the kit's own (a form of its
 widgets is clean; controls put over each other are found) and every
@@ -2757,6 +2805,11 @@ opened, its own `panel::State` and text fields).
   `radio`, `text` with a text field kept by id, `bbox`, `row`,
   `enabled_if`, `note`); what a panel keeps of
   its own goes in `panel::State` and is changed through `ui.on_view`.
+  A tall panel is two columns, side by side and each as wide as the
+  other (`ui.columns(left, right)`, or `ui.collect` each side and
+  `ui.add_columns` when both sides need the panel's state, as Sound's
+  and AI's): boxes that belong together go in one column, and the
+  window is widened (Sound 800, AI 760) rather than made a scroll.
   Workers (Bluetooth, the clock, sound, the battery) keep what they read
   behind a lock and send `Msg::Redraw`. Windows open after the update
   that asks for them (`cx.defer`), as their panels read the settings

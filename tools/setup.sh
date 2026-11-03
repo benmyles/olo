@@ -141,6 +141,16 @@ else
     tools/dev/sweep --install > /dev/null
     ok "target/ swept daily (olo-sweep.timer)"
 fi
+# Every commit formats what it changes and lints the UI, every push lints
+# the apps it changed live (tools/hooks).
+if [ -L "$(git rev-parse --git-path hooks)/pre-commit" ]; then
+    ok "commits formatted and their UI linted (tools/hooks)"
+elif [ $CHECK = 1 ]; then
+    todo "no formatting and layout lint on commits yet (tools/hooks/install)"
+else
+    tools/hooks/install > /dev/null
+    ok "commits formatted and their UI linted (tools/hooks)"
+fi
 # kache caches rustc's outputs (~/.cargo/config.toml names it as the
 # wrapper); its login service keeps the cache under its size.
 if command -v kache > /dev/null 2>&1; then

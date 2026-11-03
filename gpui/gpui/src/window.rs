@@ -1661,6 +1661,14 @@ impl Window {
         self.removed = true;
     }
 
+    /// Olo: ask this window to close as its close button does: its
+    /// should-close hook first ([`Window::on_window_should_close`]: an
+    /// app's confirmations), then closed if it agrees. Done on the event
+    /// loop's next turn, so the hook can update the window.
+    pub fn request_close(&self) {
+        self.platform_window.request_close();
+    }
+
     /// Obtain the currently focused [`FocusHandle`]. If no elements are focused, returns `None`.
     pub fn focused(&self, cx: &App) -> Option<FocusHandle> {
         self.focus
@@ -2662,6 +2670,13 @@ impl Window {
     /// is: [`Window::paint_memo`] replays moved).
     pub fn paint_records(&self) -> &[(Rc<dyn Any>, Point<Pixels>)] {
         &self.rendered_frame.paint_records
+    }
+
+    /// Olo: what the frame being painted has noted so far, as
+    /// [`Window::paint_records`] has the last one's: for what paints last
+    /// to read all of it (the kit's layout review).
+    pub fn paint_records_so_far(&self) -> &[(Rc<dyn Any>, Point<Pixels>)] {
+        &self.next_frame.paint_records
     }
 
     /// Olo: paints what `paint` paints in `bounds`, or what it painted

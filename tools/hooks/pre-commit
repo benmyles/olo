@@ -1,0 +1,33 @@
+#!/bin/bash
+# Before each commit (installed by tools/hooks/install, from tools/setup.sh):
+#  1. Rust staged is formatted (rustfmt, each file by the rustfmt.toml
+#     nearest it: Olo's wide style, upstream's in gpui/ and smithay/) and
+#     staged again, so the repo stays formatted without anyone asking.
+#  2. When UI code is staged (an app, the kit, GPUI), the layout lint runs
+#     headless (`cargo ui-lint`: every Preferences panel and the kit's
+#     forms at 1, 1.5 and 2×, light and dark) and a finding stops the
+#     commit. docs/HACKING.md, "The layout lint".
+# OLO_SKIP_UI_LINT=1 skips the lint (not the formatting), for a commit
+# that can't wait; say why in its message.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+mapfile -t rust < <(git diff --cached --name-only --diff-filter=ACMR -- '*.rs' | grep -v '^vendor/' || true)
+if [ ${#rust[@]} -gt 0 ]; then
+    # (Partly staged files are formatted whole: say so rather than mix
+    # unstaged work into the commit.)
+    partial=$(git diff --name-only -- "${rust[@]}" || true)
+    rustfmt --edition 2024 "${rust[@]}"
+    if [ -n "$partial" ]; then
+        echo "pre-commit: formatted, but these have unstaged changes too; check and stage them: $partial" >&2
+        exit 1
+    fi
+    git add -- "${rust[@]}"
+fi
+if [ "${OLO_SKIP_UI_LINT:-}" != 1 ] && git diff --cached --name-only | grep -qE '^(apps/|crates/(ui|kit-base|theme|preview)/|gpui/)'; then
+    echo "pre-commit: UI code changed; the layout lint (cargo ui-lint)…" >&2
+    if ! out=$(env -u WAYLAND_DISPLAY -u OLO_SOCKET cargo ui-lint 2>&1); then
+        echo "$out" | grep -E "^  (light|dark) at|panicked|^error" >&2 || echo "$out" | tail -30 >&2
+        echo "pre-commit: the layout lint found the above; fix it (or OLO_SKIP_UI_LINT=1, saying why)." >&2
+        exit 1
+    fi
+fi

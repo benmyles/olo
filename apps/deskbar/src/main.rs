@@ -72,7 +72,7 @@ const NOTE_DOT_FLOOR: f32 = 0.3;
 const NOTE_DOT_WELL: f32 = 0.28;
 /// With the count shown (Preferences ▸ Notifications), its gap from the
 /// dot.
-const NOTE_COUNT_GAP: f32 = 3.0;
+const NOTE_COUNT_GAP: f32 = 6.0;
 /// One arriving shakes the dot side to side: this long, this far, this
 /// many times, settling as it goes.
 const SHAKE: Duration = Duration::from_millis(600);
@@ -84,13 +84,20 @@ const ICON_INSET: f32 = TRAY_TEXT;
 /// The tray: the date and time on a row of their own, then a recessed
 /// well of status icons, each a 16 px glyph on a 22 px grid (so 6 px
 /// between neighbours, and 3 px from the well's edges), centred in as
-/// many rows as it takes, shared out evenly among them.
-const CLOCK_H: f32 = 20.0;
+/// many rows as it takes, shared out evenly among them. (Ben liked them
+/// this close, 2026-11-03: a grid of its own to the layout review.)
+const CLOCK_H: f32 = 32.0;
+/// The date and time's own row in it: `TIGHT` from the tile above and
+/// from the well below.
+const CLOCK_ROW: f32 = 20.0;
 /// Inset of the tray's well from the Deskbar's edges.
 const TRAY_INSET: f32 = 4.0;
 /// Inset of the tray's date and time.
 const TRAY_TEXT: f32 = TRAY_INSET + 5.0;
 const TRAY_PITCH: f32 = 22.0;
+/// How far an icon's plate (lit under the pointer, and where it takes
+/// clicks) reaches beyond its glyph.
+const PLATE: f32 = 3.0;
 /// Below the well, before the applications (on the 2-point grid, so
 /// the rows below land on pixels at 1.5×).
 const TRAY_FOOT: f32 = 4.0;
@@ -1779,9 +1786,11 @@ impl Deskbar {
         let rows = items.div_ceil(fit);
         let per_row = items.div_ceil(rows.max(1)).max(1);
         let tray = rect(0.0, TILE_H, WIDTH, tray_height(rows));
-        let clock_row = rect(0.0, TILE_H, WIDTH, CLOCK_H);
+        let clock_row = rect(0.0, TILE_H + (CLOCK_H - CLOCK_ROW) / 2.0, WIDTH, CLOCK_ROW);
         let (date, time) = status::clock_text(&self.clock);
         let well = rect(TRAY_INSET, TILE_H + CLOCK_H, well_w, rows as f32 * TRAY_PITCH);
+        // (The icons on a grid of their own, their plates near touching.)
+        d.paint(move |window, _| olo_ui::review::own_grid(window, well));
         {
             let (date, time) = (date.clone(), time.clone());
             d.paint(move |window, cx| {
@@ -1815,7 +1824,8 @@ impl Deskbar {
                 let (row, col) = (i / per_row, i % per_row);
                 let in_row = (items - row * per_row).min(per_row);
                 let left = TRAY_INSET + ((well_w - in_row as f32 * TRAY_PITCH) / 2.0).floor();
-                rect(left + col as f32 * TRAY_PITCH + 3.0, TILE_H + CLOCK_H + row as f32 * TRAY_PITCH + 3.0, ICON, ICON)
+                let inset = (TRAY_PITCH - ICON) / 2.0;
+                rect(left + col as f32 * TRAY_PITCH + inset, TILE_H + CLOCK_H + row as f32 * TRAY_PITCH + inset, ICON, ICON)
             })
             .collect();
         let mut slot = slots.into_iter();
@@ -1829,12 +1839,12 @@ impl Deskbar {
             d.paint(move |window, cx| {
                 if lit {
                     let p = theme::palette(cx);
-                    style::fill_rect(window, expand(r, 3.0), c(p.menu_selected_background));
+                    style::fill_rect(window, expand(r, PLATE), c(p.menu_selected_background));
                 }
                 draw(window, cx, r);
-                agent::record(window, cx, agent::Node { role: "Button", name: Some(said.into()), bounds: expand(r, 3.0), enabled: true, clickable: true, ..Default::default() });
+                agent::record(window, cx, agent::Node { role: "Button", name: Some(said.into()), bounds: expand(r, PLATE), enabled: true, clickable: true, ..Default::default() });
             });
-            (r, hit(view, &key, expand(r, 3.0), Some(tip_text)))
+            (r, hit(view, &key, expand(r, PLATE), Some(tip_text)))
         };
         for (it, picture) in apps.iter().zip(pictures) {
             let tip_text = match (it.title.as_str(), it.tooltip.as_str()) {

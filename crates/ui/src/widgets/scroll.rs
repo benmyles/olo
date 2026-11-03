@@ -204,6 +204,9 @@ impl Element for ScrollBar {
 
     fn paint(&mut self, id: Option<&GlobalElementId>, _: Option<&InspectorElementId>, _: Bounds<Pixels>, _: &mut (), hitbox: &mut Hitbox, window: &mut Window, cx: &mut App) {
         let bar = hitbox.bounds;
+        // (Part of its scroll view, for the layout review: it sits in the
+        // view's frame as the kit draws it.)
+        crate::review::scroll_area(window, bar);
         let p = theme::palette(cx);
         let state = window.with_optional_element_state::<Rc<RefCell<BarState>>, _>(id, |s, _| {
             let s = s.flatten().unwrap_or_default();
@@ -504,6 +507,7 @@ impl RenderOnce for ScrollView {
                 window.note_scroll([-f32::from(o.x), -f32::from(o.y), f32::from(m.width), f32::from(m.height)]);
                 let p = theme::palette(cx);
                 let inner = style::inset(window, b, if border { 2.0 } else { 0.0 });
+                crate::review::scroll_area(window, inner);
                 let (r, bt) = (if vbar { px(SCROLL_BAR) } else { px(0.0) }, if hbar { px(SCROLL_BAR) } else { px(0.0) });
                 let background = if desk { Some(crate::editor::desk(&p)) } else { background };
                 if let Some(bg) = background {

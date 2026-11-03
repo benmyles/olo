@@ -7,6 +7,13 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
+- **The whole repo formatted, and kept so** (Ben, 2026-11-03): "you can
+  and should also just do a cargo fmt on everything so that it's all
+  consistent and add that as something that happens automatically with
+  the linters moving forward". A rustfmt.toml in the repo's own style
+  (wide lines), `cargo fmt --all` once, and the hook formats what's
+  committed.
+
 - **The palm trainer, full screen and driven from the keyboard** (Ben,
   2026-11-02, with a screenshot of its last step, "Try it", at 2× in
   dark mode): "so the training modal/flow needs work: for one i can't
@@ -79,6 +86,41 @@ of Finished; a new one goes where its priority puts it.
     errors; the palm trainer's screens as `ui_lint` tests.
   - Run with the build: on every commit that touches UI code (a hook),
     and before install; fix everything they find.
+  Also (Ben, 2026-11-03, with a screenshot of the Touch tab): "honestly
+  everything is too cramped as well -- there should be more space
+  between all the elements and it should look polished, clean. update
+  the linter to reflect that and then fix everything everywhere"; "not
+  being cramped isn't just for preferences it's for everything"; "you
+  could make some of the preferences wider like a 2 column layout
+  instead of one"; "extend the lints to support all the different ux
+  things we have so that it won't miss anything"; "improve the fit check
+  to catch it -- anything you find that the linter didn't find, improve
+  the linter so that next time it will find it"; and of the opened-up
+  Deskbar tray: "i actually think i preferred the deskbar icons like
+  they were before" (put back, a grid of its own to the review).
+  *Status* (2026-11-03): the checks are in the shared review (collapsed,
+  outside, cut, overlap, text-outside, text-cut, text-over-text,
+  overflow, crowded, window-edge, crowded-lines, control-edges,
+  uneven-gaps), the lint's `fit` says how tall a window must be, and
+  `tools/dev/ui-lint` runs every app live; the metrics opened up (TIGHT
+  6, STACK 10, SPACING 12, WINDOW_INSET 16, BOX_INSET 14); every panel
+  refitted from the lint's numbers, Touchpad & Mouse in two columns;
+  DeskCalc, Deskbar's clock, Doctor, About, Date & Time, Notifications
+  fixed; 36 of 36 targets clean live at 1, 1.5 and 2×; Sound and AI in
+  two columns (800 × 466, 760 × 408); the live runner plays Sound
+  through olo-fakesound (it only saw "No sound server" before); the
+  hooks (tools/hooks: rustfmt and `cargo ui-lint` before a commit, the
+  live lint of changed apps before a push). Left: two columns for
+  AirPods (902 tall), Themes (712) and Default Apps (662) where their
+  boxes split well; the palm trainer's screens as `ui_lint` tests.
+- **Logs draws while idle, and a drag in its second list is uneven at
+  1.5×** (found by `tools/dev/bench`, 2026-11-03, before and after the
+  spacing work alike): Logs draws 90 to 125 frames in the bench's
+  "idle 1 s" at every scale (Preferences and Tracker draw none), and
+  "scroll 2" at 1.5× failed once in four runs: "frames moved 0.73–1.27×
+  as far as the fingers" (HEAD had 0.87–1.13 once). Find what Logs
+  redraws for (the session's own journal lines arriving?) and why a
+  drag at 1.5× skips a device pixel now and then.
 - **Each section of a preference panel back to its defaults** (Ben,
   2026-11-02): "there should also be a way to reset any tuning
   slider/dropdown etc to the defaults for just that section instead of
@@ -820,6 +862,18 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**⌘W doesn't close windows**~~ (Ben, 2026-11-03): "cmd+w shortcut
+  doesn't actually seem to close windows. it just ignores me when i
+  press it". *Done* (2026-11-03): ⌘W was only bound by apps with a
+  Close of their own (StyledEdit, Terminal, Tracker); in the rest
+  (Preferences, DeskCalc, Logs, …) nothing took it. The kit's Frame now
+  takes the profile's ⌘W when the app didn't, and closes the window as
+  its tab's close button does (`Window::request_close`, GPUI: the
+  should-close hook first, so an app's confirmations still ask, then
+  closed, on the event loop's next turn). Tried headless: Preferences,
+  DeskCalc, Logs, StyledEdit and Tracker each closed by ⌘W, the last
+  window quitting its app.
 
 - ~~**Viewer: VP9 plays**~~ (left from the Viewer's video work): VP9
   (WebM, Matroska, mp4) showed only its facts. *Done* (2026-11-02):

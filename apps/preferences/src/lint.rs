@@ -33,7 +33,15 @@ fn outputs() -> Vec<OutputInfo> {
         mirror_of: None,
         brightness: Some(0.62),
         number,
-        panel: None,
+        // (The built-in one's facts: the Display panel's tallest.)
+        panel: (number == Some(0)).then(|| olo_protocol::panels::Panel {
+            ppi: Some(254.0),
+            internal: true,
+            technology: olo_protocol::panels::Technology::MiniLed,
+            refresh_hz: 120.0,
+            text_why: "Shown at 2× or more: text is drawn exactly as designed, as on Retina displays.".into(),
+            ..Default::default()
+        }),
     };
     vec![
         display("eDP-1", "Apple Computer Inc", "MacBook Pro Liquid Retina XDR Display (16-inch, 2023)", (345, 223), vec![mode(3456, 2234, 120_000), mode(3024, 1964, 120_000), mode(1728, 1117, 60_000)], 2.0, (0, 0), true, Some(0)),
@@ -61,6 +69,12 @@ fn ui_lint_every_panel() {
     for &panel in Panel::ALL.iter().chain(&[Panel::AirPods]) {
         let (w, h) = panel.size();
         let options = WindowOptions::new(panel.title(), w as f32, h as f32);
+        // Room kept for what the lint doesn't draw.
+        match panel {
+            Panel::Integrations => lint.keeps_room(240.0, "Telegram's sign-in: a QR code to scan, and the code and password steps"),
+            Panel::TouchId => lint.keeps_room(100.0, "a finger being enrolled: what to do, a progress bar and Cancel"),
+            _ => &mut lint,
+        };
         for f in lint.window(&options, move |window, cx| {
             let prefs = cx.new(|_| prefs());
             cx.new(|cx| PanelView::new(prefs, panel, Settings::default(), window, cx))
@@ -160,3 +174,4 @@ fn ui_lint_settings_index() {
         assert!(now == out, "crates/xdg/src/settings.rs isn't the panels' settings as drawn now: OLO_WRITE_SETTINGS=1 cargo ui-lint writes it again");
     }
 }
+

@@ -164,153 +164,174 @@ fn strings(ui: &mut Ui, id: &str, label: &str, choices: &[(&str, &str)], value: 
 }
 
 fn touchpad(ui: &mut Ui, t: &TouchpadSettings, asked: bool, pad: Option<&InputDeviceInfo>) {
-    ui.bbox("This Touchpad", |ui| {
-        match pad {
-            Some(pad) => {
-                let size = pad.size_mm.map(|(w, h)| format!(" · {w:.0} × {h:.0} mm")).unwrap_or_default();
-                ui.label(format!("{}{size}", pad.kind.describe()));
-                ui.note(pad.name.clone());
-            }
-            None if asked => ui.note("No touchpad found."),
-            None => ui.note("Looking…"),
-        }
-        let names: Vec<SharedString> = PROFILES.iter().map(|(_, name, _)| SharedString::from(*name)).collect();
-        let i = PROFILES.iter().position(|(id, _, _)| *id == t.profile).unwrap_or(PROFILES.len() - 1);
-        ui.menu("profile", names, i, |f| f.label("Profile:").divider(70.0), |s, i| {
-            if let Some((id, _, _)) = PROFILES.get(i)
-                && *id != s.touchpad.profile
-            {
-                s.touchpad.apply_profile(id);
-            }
-        });
-        if let Some((_, _, about)) = PROFILES.get(i) {
-            ui.note(*about);
-        }
-        if let Some(pad) = pad {
-            let recommended = pad.recommended.clone();
-            if t.profile == recommended {
-                ui.note("This is the recommended profile for this touchpad.");
-            } else {
-                let name = format!("Use {}", profile_name(&recommended));
-                let use_it = ui.edit_click(move |s| s.touchpad.apply_profile(&recommended));
-                ui.row(|ui| {
-                    ui.button(name, use_it);
-                    ui.note("recommended for this touchpad");
+    ui.columns(
+        |ui| {
+            ui.bbox("This Touchpad", |ui| {
+                match pad {
+                    Some(pad) => {
+                        let size = pad.size_mm.map(|(w, h)| format!(" · {w:.0} × {h:.0} mm")).unwrap_or_default();
+                        ui.label(format!("{}{size}", pad.kind.describe()));
+                        ui.note(pad.name.clone());
+                    }
+                    None if asked => ui.note("No touchpad found."),
+                    None => ui.note("Looking…"),
+                }
+                let names: Vec<SharedString> = PROFILES.iter().map(|(_, name, _)| SharedString::from(*name)).collect();
+                let i = PROFILES.iter().position(|(id, _, _)| *id == t.profile).unwrap_or(PROFILES.len() - 1);
+                ui.menu("profile", names, i, |f| f.label("Profile:").divider(70.0), |s, i| {
+                    if let Some((id, _, _)) = PROFILES.get(i)
+                        && *id != s.touchpad.profile
+                    {
+                        s.touchpad.apply_profile(id);
+                    }
                 });
-            }
-        }
-    });
-    ui.bbox("Basics", |ui| {
-        ui.slider("tracking-speed", t.speed as f32, -1.0..=1.0, |s| s.step(0.05).label("Tracking speed").limits("Slow", "Fast"), |s, v| tuned(s, |t| t.speed = v as f64));
-        ui.check("Tap to click", t.tap_to_click, |s, v| tuned(s, |t| t.tap_to_click = v));
-        ui.enabled_if(t.tap_to_click, |ui| ui.check("Tap and drag", t.tap_and_drag, |s, v| tuned(s, |t| t.tap_and_drag = v)));
-        ui.check("Natural scrolling (content follows your fingers)", t.natural_scroll, |s, v| tuned(s, |t| t.natural_scroll = v));
-        ui.check("Click with two fingers for a secondary click", t.clickfinger, |s, v| tuned(s, |t| t.clickfinger = v));
-    });
+                if let Some((_, _, about)) = PROFILES.get(i) {
+                    ui.note(*about);
+                }
+                if let Some(pad) = pad {
+                    let recommended = pad.recommended.clone();
+                    if t.profile == recommended {
+                        ui.note("This is the recommended profile for this touchpad.");
+                    } else {
+                        let name = format!("Use {}", profile_name(&recommended));
+                        let use_it = ui.edit_click(move |s| s.touchpad.apply_profile(&recommended));
+                        ui.row(|ui| {
+                            ui.button(name, use_it);
+                            ui.note("recommended for this touchpad");
+                        });
+                    }
+                }
+            });
+        },
+        |ui| {
+            ui.bbox("Basics", |ui| {
+                ui.slider("tracking-speed", t.speed as f32, -1.0..=1.0, |s| s.step(0.05).label("Tracking speed").limits("Slow", "Fast"), |s, v| tuned(s, |t| t.speed = v as f64));
+                ui.check("Tap to click", t.tap_to_click, |s, v| tuned(s, |t| t.tap_to_click = v));
+                ui.enabled_if(t.tap_to_click, |ui| ui.check("Tap and drag", t.tap_and_drag, |s, v| tuned(s, |t| t.tap_and_drag = v)));
+                ui.check("Natural scrolling (content follows your fingers)", t.natural_scroll, |s, v| tuned(s, |t| t.natural_scroll = v));
+                ui.check("Click with two fingers for a secondary click", t.clickfinger, |s, v| tuned(s, |t| t.clickfinger = v));
+            });
+        },
+    );
+
 }
 
 fn touch(ui: &mut Ui, t: &TouchpadSettings, pad: Option<&InputDeviceInfo>) {
     let f = t.filter.clone();
-    ui.bbox("Palms and Hovering Fingers", |ui| {
-        ui.check("Ignore hovering fingers and palms", f.enabled, |s, v| tuned(s, |t| t.filter.enabled = v));
-        if pad.is_some_and(|p| !p.pressure) {
-            ui.note("This touchpad doesn't report pressure, so it is left to libinput.");
-        }
-        ui.enabled_if(f.enabled, |ui| {
-            let on = f.touch_on as f32;
-            ui.slider("touch-on", on, 1.0..=40.0, |s| s.step(1.0).label("A touch starts at pressure").value_text(format!("{on:.0}")).limits("Any touch", "Firmer"), |s, v| tuned(s, |t| t.filter.touch_on = v as u32));
-            // The model and the size rule work together: a contact is a
-            // palm if either says so. The model first (it catches what
-            // size alone misses), then the size every contact as large as
-            // is a palm regardless.
-            // Only a model trained on the person's hands is used: the
-            // check is there once one is (the trainer turns it on).
-            let trained = f.palm_model.is_some();
-            ui.enabled_if(trained, |ui| ui.check("Tell palms apart with your palm model", f.use_palm_model && trained, |s, v| tuned(s, |t| t.filter.use_palm_model = v)));
-            ui.note(model_status(f.palm_model.as_ref(), f.use_palm_model));
-            let (prefs, palm_size) = (ui.prefs(), f.palm_size);
-            ui.row(|ui| {
-                // The trainer: full screen, driven from the keyboard.
-                ui.button(if trained { "Train Again…" } else { "Train for Your Palm…" }, move |_, cx| {
-                    if let Some(p) = prefs.upgrade() {
-                        crate::palm_trainer::open(p, palm_size, cx);
+    ui.columns(
+        |ui| {
+            ui.bbox("Palms and Hovering Fingers", |ui| {
+                ui.check("Ignore hovering fingers and palms", f.enabled, |s, v| tuned(s, |t| t.filter.enabled = v));
+                if pad.is_some_and(|p| !p.pressure) {
+                    ui.note("This touchpad doesn't report pressure, so it is left to libinput.");
+                }
+                ui.enabled_if(f.enabled, |ui| {
+                    let on = f.touch_on as f32;
+                    ui.slider("touch-on", on, 1.0..=40.0, |s| s.step(1.0).label("A touch starts at pressure").value_text(format!("{on:.0}")).limits("Any touch", "Firmer"), |s, v| tuned(s, |t| t.filter.touch_on = v as u32));
+                    // The model and the size rule work together: a contact is a
+                    // palm if either says so. The model first (it catches what
+                    // size alone misses), then the size every contact as large as
+                    // is a palm regardless.
+                    // Only a model trained on the person's hands is used: the
+                    // check is there once one is (the trainer turns it on).
+                    let trained = f.palm_model.is_some();
+                    ui.enabled_if(trained, |ui| ui.check("Tell palms apart with your palm model", f.use_palm_model && trained, |s, v| tuned(s, |t| t.filter.use_palm_model = v)));
+                    ui.note(model_status(f.palm_model.as_ref(), f.use_palm_model));
+                    let (prefs, palm_size) = (ui.prefs(), f.palm_size);
+                    ui.row(|ui| {
+                        // The trainer: full screen, driven from the keyboard.
+                        ui.button(if trained { "Train Again…" } else { "Train for Your Palm…" }, move |_, cx| {
+                            if let Some(p) = prefs.upgrade() {
+                                crate::palm_trainer::open(p, palm_size, cx);
+                            }
+                        });
+                        ui.enabled_if(trained, |ui| {
+                            ui.button(
+                                "Forget My Model",
+                                ui.edit_click(|s| {
+                                    s.touchpad.filter.palm_model = None;
+                                    s.touchpad.filter.use_palm_model = false;
+                                }),
+                            )
+                        });
+                    });
+                    let palm = f.palm_size as f32;
+                    ui.slider("palm-size", palm, 600.0..=2000.0, |s| s.step(50.0).label("Always a palm when as large as").value_text(format!("{palm:.0}")).limits("Smaller", "Larger"), |s, v| {
+                        tuned(s, |t| t.filter.palm_size = v as u32)
+                    });
+                    ui.note(if f.use_palm_model && trained { "Whatever the model says: it adds palms, never takes these away." } else { "Without a palm model, size alone tells a palm." });
+                    ui.check("A resting palm can't click (its pressure doesn't count)", f.palm_proof_click, |s, v| tuned(s, |t| t.filter.palm_proof_click = v));
+                });
+            });
+        },
+        |ui| {
+            ui.bbox("Click", |ui| {
+                let mut names: Vec<SharedString> = CLICK_PRESSURES.iter().map(|(n, _, _)| SharedString::from(*n)).collect();
+                let i = match CLICK_PRESSURES.iter().position(|(_, p, r)| *p == f.click_press && *r == f.click_release) {
+                    Some(i) => i,
+                    None => {
+                        names.push(format!("Custom ({}/{})", f.click_press, f.click_release).into());
+                        names.len() - 1
                     }
+                };
+                ui.enabled_if(f.enabled && f.palm_proof_click, |ui| {
+                    ui.menu("click-pressure", names, i, |m| m.label("Click pressure:").divider(110.0), |s, i| {
+                        if let Some((_, press, release)) = CLICK_PRESSURES.get(i) {
+                            tuned(s, |t| (t.filter.click_press, t.filter.click_release) = (*press, *release));
+                        }
+                    });
                 });
-                ui.enabled_if(trained, |ui| {
-                    ui.button(
-                        "Forget My Model",
-                        ui.edit_click(|s| {
-                            s.touchpad.filter.palm_model = None;
-                            s.touchpad.filter.use_palm_model = false;
-                        }),
-                    )
-                });
-            });
-            let palm = f.palm_size as f32;
-            ui.slider("palm-size", palm, 600.0..=2000.0, |s| s.step(50.0).label("Always a palm when as large as").value_text(format!("{palm:.0}")).limits("Smaller", "Larger"), |s, v| {
-                tuned(s, |t| t.filter.palm_size = v as u32)
-            });
-            ui.note(if f.use_palm_model && trained { "Whatever the model says: it adds palms, never takes these away." } else { "Without a palm model, size alone tells a palm." });
-            ui.check("A resting palm can't click (its pressure doesn't count)", f.palm_proof_click, |s, v| tuned(s, |t| t.filter.palm_proof_click = v));
-        });
-    });
-    ui.bbox("Click", |ui| {
-        let mut names: Vec<SharedString> = CLICK_PRESSURES.iter().map(|(n, _, _)| SharedString::from(*n)).collect();
-        let i = match CLICK_PRESSURES.iter().position(|(_, p, r)| *p == f.click_press && *r == f.click_release) {
-            Some(i) => i,
-            None => {
-                names.push(format!("Custom ({}/{})", f.click_press, f.click_release).into());
-                names.len() - 1
-            }
-        };
-        ui.enabled_if(f.enabled && f.palm_proof_click, |ui| {
-            ui.menu("click-pressure", names, i, |m| m.label("Click pressure:").divider(110.0), |s, i| {
-                if let Some((_, press, release)) = CLICK_PRESSURES.get(i) {
-                    tuned(s, |t| (t.filter.click_press, t.filter.click_release) = (*press, *release));
+                if let Some((press, release)) = pad.and_then(|p| p.driver_click) {
+                    ui.note(format!("The pad clicks at {press}/{release} (all contacts together); with a palm on it, Olo counts the click only if the fingers press that hard alone."));
                 }
             });
-        });
-        if let Some((press, release)) = pad.and_then(|p| p.driver_click) {
-            ui.note(format!("The pad clicks at {press}/{release} (all contacts together); with a palm on it, Olo counts the click only if the fingers press that hard alone."));
-        }
-    });
-    ui.bbox("While Typing", |ui| {
-        ui.check("Ignore the touchpad while typing", t.disable_while_typing, |s, v| tuned(s, |t| t.disable_while_typing = v));
-        ui.enabled_if(t.disable_while_typing, |ui| {
-            let choices = [(0u32, "libinput's default"), (300, "0.3 seconds"), (500, "0.5 seconds"), (1000, "1 second"), (2000, "2 seconds")];
-            ui.choose("dwt-timeout", &choices, &t.dwt_timeout_ms, |f| f.label("For:").divider(130.0), |s, v| tuned(s, |t| t.dwt_timeout_ms = v));
-        });
-        ui.check("Ignore the touchpad while the pointing stick is used", t.dwtp, |s, v| tuned(s, |t| t.dwtp = v));
-        ui.check("Turn the touchpad off while a mouse is plugged in", t.off_with_mouse, |s, v| tuned(s, |t| t.off_with_mouse = v));
-    });
+            ui.bbox("While Typing", |ui| {
+                ui.check("Ignore the touchpad while typing", t.disable_while_typing, |s, v| tuned(s, |t| t.disable_while_typing = v));
+                ui.enabled_if(t.disable_while_typing, |ui| {
+                    let choices = [(0u32, "libinput's default"), (300, "0.3 seconds"), (500, "0.5 seconds"), (1000, "1 second"), (2000, "2 seconds")];
+                    ui.choose("dwt-timeout", &choices, &t.dwt_timeout_ms, |f| f.label("For:").divider(130.0), |s, v| tuned(s, |t| t.dwt_timeout_ms = v));
+                });
+                ui.check("Ignore the touchpad while the pointing stick is used", t.dwtp, |s, v| tuned(s, |t| t.dwtp = v));
+                ui.check("Turn the touchpad off while a mouse is plugged in", t.off_with_mouse, |s, v| tuned(s, |t| t.off_with_mouse = v));
+            });
+        },
+    );
+
 }
 
 fn gestures(ui: &mut Ui, t: &TouchpadSettings) {
-    ui.bbox("Scrolling", |ui| {
-        let speed = t.scroll_speed as f32;
-        ui.slider("scroll-speed", speed, 0.25..=3.0, |s| s.step(0.05).label("Scrolling speed").value_text(format!("{speed:.2}×")).limits("Slow", "Fast"), |s, v| tuned(s, |t| t.scroll_speed = v as f64));
-        ui.check("Keep scrolling after a flick", t.momentum, |s, v| tuned(s, |t| t.momentum = v));
-        let glide = t.glide as f32;
-        ui.enabled_if(t.momentum, |ui| {
-            ui.slider("glide", glide, 0.25..=3.0, |s| s.step(0.05).label("Glide").value_text(format!("{glide:.2}×")).limits("Short", "Long"), |s, v| tuned(s, |t| t.glide = v as f64));
-        });
-        strings(ui, "scroll-method", "Scroll with:", &[("two-finger", "Two fingers"), ("edge", "The right edge")], &t.scroll_method, |s, v| tuned(s, |t| t.scroll_method = v));
-        ui.check("Pinch to zoom", t.pinch_zoom, |s, v| tuned(s, |t| t.pinch_zoom = v));
-    });
-    ui.bbox("Clicking and Dragging", |ui| {
-        strings(ui, "button-map", "Two fingers:", &[("lrm", "Secondary click (three: middle)"), ("lmr", "Middle click (three: secondary)")], &t.tap_button_map, |s, v| {
-            tuned(s, |t| {
-                t.clickfinger_button_map = v.clone();
-                t.tap_button_map = v;
-            })
-        });
-        let drags = [(0u8, "Click and hold"), (3, "Three fingers"), (4, "Four fingers")];
-        ui.choose("three-finger-drag", &drags, &t.three_finger_drag, |f| f.label("Drag with:").divider(130.0), |s, v| tuned(s, |t| t.three_finger_drag = v));
-        ui.enabled_if(t.tap_to_click && t.tap_and_drag, |ui| {
-            strings(ui, "drag-lock", "After tap and drag:", &[("off", "Drop on lift"), ("timeout", "Keep briefly"), ("sticky", "Keep until tapped")], &t.drag_lock, |s, v| tuned(s, |t| t.drag_lock = v));
-        });
-        strings(ui, "accel", "Acceleration:", &ACCELS, &t.accel_profile, |s, v| tuned(s, |t| t.accel_profile = v));
-    });
+    ui.columns(
+        |ui| {
+            ui.bbox("Scrolling", |ui| {
+                let speed = t.scroll_speed as f32;
+                ui.slider("scroll-speed", speed, 0.25..=3.0, |s| s.step(0.05).label("Scrolling speed").value_text(format!("{speed:.2}×")).limits("Slow", "Fast"), |s, v| tuned(s, |t| t.scroll_speed = v as f64));
+                ui.check("Keep scrolling after a flick", t.momentum, |s, v| tuned(s, |t| t.momentum = v));
+                let glide = t.glide as f32;
+                ui.enabled_if(t.momentum, |ui| {
+                    ui.slider("glide", glide, 0.25..=3.0, |s| s.step(0.05).label("Glide").value_text(format!("{glide:.2}×")).limits("Short", "Long"), |s, v| tuned(s, |t| t.glide = v as f64));
+                });
+                strings(ui, "scroll-method", "Scroll with:", &[("two-finger", "Two fingers"), ("edge", "The right edge")], &t.scroll_method, |s, v| tuned(s, |t| t.scroll_method = v));
+                ui.check("Pinch to zoom", t.pinch_zoom, |s, v| tuned(s, |t| t.pinch_zoom = v));
+            });
+        },
+        |ui| {
+            ui.bbox("Clicking and Dragging", |ui| {
+                strings(ui, "button-map", "Two fingers:", &[("lrm", "Secondary click (three: middle)"), ("lmr", "Middle click (three: secondary)")], &t.tap_button_map, |s, v| {
+                    tuned(s, |t| {
+                        t.clickfinger_button_map = v.clone();
+                        t.tap_button_map = v;
+                    })
+                });
+                let drags = [(0u8, "Click and hold"), (3, "Three fingers"), (4, "Four fingers")];
+                ui.choose("three-finger-drag", &drags, &t.three_finger_drag, |f| f.label("Drag with:").divider(130.0), |s, v| tuned(s, |t| t.three_finger_drag = v));
+                ui.enabled_if(t.tap_to_click && t.tap_and_drag, |ui| {
+                    strings(ui, "drag-lock", "After tap and drag:", &[("off", "Drop on lift"), ("timeout", "Keep briefly"), ("sticky", "Keep until tapped")], &t.drag_lock, |s, v| tuned(s, |t| t.drag_lock = v));
+                });
+                strings(ui, "accel", "Acceleration:", &ACCELS, &t.accel_profile, |s, v| tuned(s, |t| t.accel_profile = v));
+            });
+        },
+    );
+
 }
 
 /// A remapper's own pointer ("keyd virtual pointer"): the mice it has

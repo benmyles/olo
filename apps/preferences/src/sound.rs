@@ -181,9 +181,13 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     if st.dragging.as_ref().is_some_and(|(.., at)| at.elapsed() > Duration::from_millis(600)) {
         st.dragging = None;
     }
-    section(ui, st, &devices, Kind::Output);
-    section(ui, st, &devices, Kind::Input);
-    voice_section(ui, st, &devices);
+    // (Two columns: the devices, and what's done to the voice.)
+    let left = ui.collect(|ui| {
+        section(ui, st, &devices, Kind::Output);
+        section(ui, st, &devices, Kind::Input);
+    });
+    let right = ui.collect(|ui| voice_section(ui, st, &devices));
+    ui.add_columns(left, right);
 }
 
 /// Voice processing (the voice service): on or off, what for, how much

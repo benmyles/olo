@@ -2082,6 +2082,21 @@ impl PlatformWindow for WaylandWindow {
         }
     }
 
+    fn request_close(&self) {
+        if self.borrow().toplevel.is_none() {
+            return;
+        }
+        let this = self.0.downgrade();
+        self.0.frames.handle.insert_idle(move |_| {
+            if let Some(this) = this.upgrade()
+                && this.handle_toplevel_event(xdg_toplevel::Event::Close)
+            {
+                this.close();
+            }
+        });
+        self.0.frames.signal.wakeup();
+    }
+
     fn toggle_fullscreen(&self) {
         let mut state = self.borrow_mut();
         if !state.fullscreen {

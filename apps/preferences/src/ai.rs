@@ -9,36 +9,42 @@ use crate::form::Ui;
 
 pub fn ui(ui: &mut Ui) {
     let s = ui.s.clone();
-    ui.bbox("Models", |ui| {
-        ui.note("AI features use OpenAI’s models through the Token Pool’s Codex accounts, spent in its order.");
+    // (Two columns: the models and tiling; emoji and agent screens.)
+    let left = ui.collect(|ui| {
+        ui.bbox("Models", |ui| {
+            ui.note("AI features use OpenAI’s models through the Token Pool’s Codex accounts, spent in its order.");
+        });
+        let keys = shortcuts::by_id("smart-tile").map(|i| shortcuts::keys_for(i, &s.keyboard.profile)).unwrap_or_default();
+        let how = match keys.first() {
+            Some(k) => format!("{} looks at the screen and what each window shows, and tiles them: what you’re working on bigger, what you glance at to the side.", k.label(s.keyboard.profile.platform)),
+            None => "Smart Tile (in the command palette) looks at the screen and what each window shows, and tiles them.".into(),
+        };
+        ui.bbox("Smart Tiling", |ui| {
+            feature(ui, "smart-tiling", &s.ai.smart_tiling, "Arrange windows with a model", |s| &mut s.ai.smart_tiling);
+            ui.note(how);
+        });
     });
-    let keys = shortcuts::by_id("smart-tile").map(|i| shortcuts::keys_for(i, &s.keyboard.profile)).unwrap_or_default();
-    let how = match keys.first() {
-        Some(k) => format!("{} looks at the screen and what each window shows, and tiles them: what you’re working on bigger, what you glance at to the side.", k.label(s.keyboard.profile.platform)),
-        None => "Smart Tile (in the command palette) looks at the screen and what each window shows, and tiles them.".into(),
-    };
-    ui.bbox("Smart Tiling", |ui| {
-        feature(ui, "smart-tiling", &s.ai.smart_tiling, "Arrange windows with a model", |s| &mut s.ai.smart_tiling);
-        ui.note(how);
+    let right = ui.collect(|ui| {
+        let keys = shortcuts::by_id("emoji-picker").map(|i| shortcuts::keys_for(i, &s.keyboard.profile)).unwrap_or_default();
+        let how = match keys.first() {
+            Some(k) => format!("In the emoji picker ({}), describe what you want to say and press ⌘↩ for five emoji that say it.", k.label(s.keyboard.profile.platform)),
+            None => "In the emoji picker, describe what you want to say and press ⌘↩ for five emoji that say it.".into(),
+        };
+        ui.bbox("Emoji", |ui| {
+            feature(ui, "emoji", &s.ai.emoji, "Suggest emoji for a description", |s| &mut s.ai.emoji);
+            ui.note(how);
+        });
+        ui.bbox("Agent Screens", |ui| {
+            ui.note("Each agent screen keeps what was done on it and the frames it drew, to replay or export as a video. The oldest goes first.");
+            let size = HISTORY_MB.iter().position(|&(mb, _)| mb == s.ai.screen_history_mb).unwrap_or(2);
+            let sizes: Vec<SharedString> = HISTORY_MB.iter().map(|(_, n)| SharedString::from(*n)).collect();
+            ui.menu("screen-history-size", sizes, size, |f| f.label("Keep up to:").divider(94.0), |s, i| s.ai.screen_history_mb = HISTORY_MB[i].0);
+            let age = HISTORY_DAYS.iter().position(|&(d, _)| d == s.ai.screen_history_days).unwrap_or(2);
+            let ages: Vec<SharedString> = HISTORY_DAYS.iter().map(|(_, n)| SharedString::from(*n)).collect();
+            ui.menu("screen-history-age", ages, age, |f| f.label("For:").divider(94.0), |s, i| s.ai.screen_history_days = HISTORY_DAYS[i].0);
+        });
     });
-    let keys = shortcuts::by_id("emoji-picker").map(|i| shortcuts::keys_for(i, &s.keyboard.profile)).unwrap_or_default();
-    let how = match keys.first() {
-        Some(k) => format!("In the emoji picker ({}), describe what you want to say and press ⌘↩ for five emoji that say it.", k.label(s.keyboard.profile.platform)),
-        None => "In the emoji picker, describe what you want to say and press ⌘↩ for five emoji that say it.".into(),
-    };
-    ui.bbox("Emoji", |ui| {
-        feature(ui, "emoji", &s.ai.emoji, "Suggest emoji for a description", |s| &mut s.ai.emoji);
-        ui.note(how);
-    });
-    ui.bbox("Agent Screens", |ui| {
-        ui.note("Each agent screen keeps what was done on it and the frames it drew, to replay or export as a video. The oldest goes first.");
-        let size = HISTORY_MB.iter().position(|&(mb, _)| mb == s.ai.screen_history_mb).unwrap_or(2);
-        let sizes: Vec<SharedString> = HISTORY_MB.iter().map(|(_, n)| SharedString::from(*n)).collect();
-        ui.menu("screen-history-size", sizes, size, |f| f.label("Keep up to:").divider(94.0), |s, i| s.ai.screen_history_mb = HISTORY_MB[i].0);
-        let age = HISTORY_DAYS.iter().position(|&(d, _)| d == s.ai.screen_history_days).unwrap_or(2);
-        let ages: Vec<SharedString> = HISTORY_DAYS.iter().map(|(_, n)| SharedString::from(*n)).collect();
-        ui.menu("screen-history-age", ages, age, |f| f.label("For:").divider(94.0), |s, i| s.ai.screen_history_days = HISTORY_DAYS[i].0);
-    });
+    ui.add_columns(left, right);
 }
 
 /// How much of each agent screen's history to keep, and for how long.

@@ -444,7 +444,8 @@ impl Render for Doctor {
             if !r.fine.is_empty() {
                 list = list.child(div().pt(px(m::TIGHT)).child(heading(if kind() == Kind::Doctor { "As It Should Be" } else { "Already Applied" })));
                 for f in &r.fine {
-                    let mut text = div().flex_1().min_w_0().flex().flex_col().child(StringView::new(f.title.clone()).height(m::LABEL_ROW));
+                    // (Its detail a step under it: a pair, not one block.)
+                    let mut text = div().flex_1().min_w_0().flex().flex_col().gap(px(2.0)).child(StringView::new(f.title.clone()).height(m::LABEL_ROW));
                     if !f.detail.is_empty() {
                         text = text.child(StringView::new(f.detail.clone()).wrap(true).dim(true));
                     }

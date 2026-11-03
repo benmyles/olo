@@ -244,6 +244,15 @@ impl Render for Frame {
                     cx.stop_propagation();
                     return;
                 }
+                // ⌘W (the profile's Close) on a window whose app has no
+                // Close of its own: closed as its tab's close button does,
+                // the app's confirmations first. (Every window closes with
+                // it: Preferences, DeskCalc and Logs didn't.)
+                if crate::keys::pressed(&olo_kit_base::keys::Shortcut::command(crate::keys::evdev("w")), &e.keystroke) {
+                    window.request_close();
+                    cx.stop_propagation();
+                    return;
+                }
                 // Next and Previous Tab: the window's tab view.
                 let step = tab_step(&e.keystroke);
                 if step != 0

@@ -192,35 +192,35 @@ impl Panel {
     /// at 1×, 1.5× and 2×).
     pub fn size(self) -> (u32, u32) {
         match self {
-            Panel::Ai => (440, 550),
-            Panel::AirPods => (520, 752),
-            Panel::Appearance => (420, 418),
-            Panel::Backgrounds => (640, 530),
-            Panel::Backup => (420, 400),
+            Panel::Ai => (760, 408),
+            Panel::AirPods => (520, 902),
+            Panel::Appearance => (420, 482),
+            Panel::Backgrounds => (640, 604),
+            Panel::Backup => (420, 258),
             Panel::Bluetooth => (440, 340),
             Panel::DateTime => (460, 370),
-            Panel::DefaultApps => (520, 560),
+            Panel::DefaultApps => (520, 662),
             // With its panel: what it is, how Olo draws for it and why.
             Panel::Display => (500, 658),
             Panel::Integrations => (460, 600),
             Panel::Keyboard => (520, 736),
-            Panel::Network => (460, 360),
+            Panel::Network => (460, 318),
             Panel::Notifications => (440, 700),
             Panel::Performance => (480, 680),
-            Panel::Power => (460, 366),
+            Panel::Power => (460, 424),
             Panel::ScreenSaver => (500, 400),
-            Panel::Security => (420, 340),
-            Panel::Sound => (460, 464),
-            Panel::Terminal => (420, 472),
-            Panel::Themes => (560, 672),
+            Panel::Security => (420, 416),
+            Panel::Sound => (800, 466),
+            Panel::Terminal => (420, 538),
+            Panel::Themes => (560, 712),
             Panel::TouchId => (420, 330),
             // Tall enough for Touch with both of its notes (a pad with no
             // pressure and the Apple driver's click thresholds).
-            Panel::Touchpad => (460, 680),
-            Panel::Tracker => (300, 182),
-            Panel::Windows => (400, 548),
-            Panel::Workspaces => (360, 188),
-            Panel::About => (444, 290),
+            Panel::Touchpad => (784, 600),
+            Panel::Tracker => (300, 222),
+            Panel::Windows => (400, 586),
+            Panel::Workspaces => (360, 230),
+            Panel::About => (444, 392),
         }
     }
 
@@ -393,7 +393,10 @@ fn layout(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView>) -
         _ => {}
     }
     let items = ui.take();
-    let body = div().flex_1().min_h_0().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).children(items);
+    // (Never shorter than what's in it: too much pushes Defaults and
+    // Revert off the bottom, where the layout lint sees it, rather than
+    // under them. A list in it shrinks and scrolls.)
+    let body = div().flex_1().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).children(items);
     let root = root.child(body);
     if !panel.resettable() {
         return root;

@@ -572,6 +572,10 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn minimize(&self);
     fn zoom(&self);
     fn toggle_fullscreen(&self);
+    /// Olo: close as the compositor's close does (the window's
+    /// should-close hook asked first: its confirmations), on the event
+    /// loop's next turn, outside any update of the window.
+    fn request_close(&self) {}
     fn is_fullscreen(&self) -> bool;
     /// The callback draws a frame if anything changed, and says if it did.
     fn on_request_frame(&self, callback: Box<dyn FnMut(RequestFrameOptions) -> bool>);

@@ -371,6 +371,9 @@ impl Ruler {
 
     /// Draws it in `rect`.
     fn paint(&self, rect: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        // (Its marks sit on its edges, where they set the text's indents:
+        // a grid of its own to the layout review.)
+        crate::review::own_grid(window, rect);
         let p = theme::palette(cx);
         let s = window.scale_factor();
         let snap = |v: f32| (v * s).round() / s;

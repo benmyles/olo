@@ -1,0 +1,12 @@
+#!/bin/bash
+# Put tools/hooks' pre-commit and pre-push in this clone's .git/hooks (the
+# formatting and the layout lints run with every commit and push). Run by
+# tools/setup.sh; safe to run again.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+hooks=$(git rev-parse --git-path hooks)
+mkdir -p "$hooks"
+for h in pre-commit pre-push; do
+    ln -sf "../../tools/hooks/$h" "$hooks/$h"
+done
+echo "hooks: pre-commit and pre-push from tools/hooks"

@@ -1,0 +1,228 @@
+#!/usr/bin/python3
+"""The layout lint of every Olo app, live: each app with a window opened
+in a headless session of its own (a made-up home, demo data where the
+app has it, its own D-Bus), every window and every tab of its tab views
+reviewed (`{"review":true}` on the app's socket: the checks of
+crates/kit-base/src/layout_review.rs) at 1×, 1.5× and 2×, light and dark.
+Sound comes from olo-fakesound (a speaker, AirPods and a microphone), so
+Preferences ▸ Sound shows its devices, not its empty state.
+Errors fail it; review findings (look closely) are listed with --review.
+
+  tools/dev/ui-lint [--review] [--keep] [--scales 1,1.5,2] [APP...]
+
+APP picks some (by name, as listed with --list, or "prefs:PANEL"). It
+runs release builds: `cargo build --release --workspace` first. Run by
+the pre-push hook when UI code changed (tools/hooks), and by
+tools/install-session.sh. See "The layout lint" in docs/HACKING.md.
+"""
+import json, os, socket, subprocess, sys, time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+TSESSION = os.path.join(ROOT, "tools/dev/tsession")
+BASE = "/tmp/olo-dev"
+RUNTIME = f"/run/user/{os.getuid()}"
+
+# Preferences' panels (Bluetooth stays out of test runs; AirPods needs
+# its fake device).
+PANELS = ["ai", "appearance", "backgrounds", "backup", "datetime", "default-apps", "display", "integrations", "keyboard", "network", "notifications",
+          "performance", "power", "screensaver", "security", "sound", "terminal", "themes", "touchid", "touchpad", "tracker", "windows", "workspaces", "about"]
+
+
+def apps(home):
+    """(name, argv, env, layers): every app with a window, and how to start
+    it safely in a test session."""
+    tg = os.path.join(home, ".telegram-demo")
+    out = [
+        ("Activity", ["olo-activity"], {"OLO_ACTIVITY_HELPER": "off"}, False),
+        ("DeskCalc", ["olo-deskcalc"], {}, False),
+        ("Disk Usage", ["olo-disk-usage", home], {}, False),
+        ("Doctor", ["olo-doctor"], {"OLO_DOCTOR_HELPER": "off"}, False),
+        ("Logs", ["olo-logs"], {}, False),
+        ("Passwords", ["olo-passwords"], {"OLO_PASSWORDS_KEYFILE": os.path.join(home, ".pw-key")}, False),
+        ("StyledEdit", ["olo-styled-edit", os.path.join(home, "README.md")], {}, False),
+        ("Telegram", ["olo-telegram"], {"OLO_TELEGRAM_DEMO": "4", "OLO_TELEGRAM_CACHE": tg + "/cache", "OLO_TELEGRAM_SECRETS": tg + "/secrets"}, False),
+        ("Terminal", ["olo-terminal"], {}, False),
+        ("Tracker", ["olo-tracker", home], {}, False),
+        ("Viewer", ["olo-viewer", os.path.join(home, "Pictures/holiday.png")], {}, False),
+        ("Deskbar", ["olo-deskbar"], {}, True),
+    ]
+    out += [(f"prefs:{p}", ["olo-preferences", p], {}, False) for p in PANELS]
+    return out
+
+
+def sh(*args, check=False):
+    env = dict(os.environ)
+    for k in ("WAYLAND_DISPLAY", "OLO_SOCKET", "OLO_SESSION", "OLO_SESSION_PID", "OLO_REAL_SESSION"):
+        env.pop(k, None)
+    env["TSESSION_PROFILE"] = "release"
+    r = subprocess.run(["/usr/bin/python3", TSESSION, *args], capture_output=True, text=True, env=env)
+    if check and r.returncode:
+        sys.exit(f"tsession {' '.join(args)}: {r.stderr or r.stdout}")
+    return r.stdout
+
+
+def session_env(name):
+    return json.load(open(os.path.join(BASE, name, "env.json")))
+
+
+def ipc(name, req):
+    s = socket.socket(socket.AF_UNIX)
+    s.settimeout(5)
+    s.connect(session_env(name)["OLO_SOCKET"])
+    s.sendall((json.dumps(req) + "\n").encode())
+    a = s.makefile().readline()
+    s.close()
+    return json.loads(a or "{}")
+
+
+def ask_app(pid, req, timeout=6):
+    path = os.path.join(RUNTIME, f"olo-menus-{pid}.sock")
+    if not os.path.exists(path):
+        return None
+    s = socket.socket(socket.AF_UNIX)
+    s.settimeout(timeout)
+    try:
+        s.connect(path)
+        s.sendall((json.dumps(req) + "\n").encode())
+        return json.loads(s.makefile().readline() or "null")
+    except (OSError, ValueError):
+        return None
+    finally:
+        s.close()
+
+
+def ours(pid, home):
+    """A process of this run's (its HOME is ours): the only kind killed."""
+    try:
+        return f"HOME={home}" in open(f"/proc/{pid}/environ").read().split("\0")
+    except OSError:
+        return False
+
+
+def pids_of(exe, home):
+    out = []
+    for p in os.listdir("/proc"):
+        if p.isdigit():
+            try:
+                if os.path.basename(os.readlink(f"/proc/{p}/exe")) == exe and ours(int(p), home):
+                    out.append(int(p))
+            except OSError:
+                pass
+    return out
+
+
+def windows_of(name, pid):
+    return [w for w in ipc(name, {"type": "list_windows"}).get("windows", []) if w.get("pid") == pid]
+
+
+def review(pid, layers):
+    found = []
+    for w in ask_app(pid, {"review": True}, timeout=8) or []:
+        if w.get("layer") and not layers:
+            continue
+        for f in w["findings"]:
+            found.append((w.get("layer") or w["title"], f))
+    return found
+
+
+def tabs(name, pid):
+    """Each window's tabs not shown: (window title, tab name, x, y) in
+    global logical coordinates, to click."""
+    out = []
+    wins = {w["title"]: w for w in windows_of(name, pid)}
+    for tree in ask_app(pid, {"tree": True}) or []:
+        nodes = tree.get("nodes", [])
+        title = nodes[0].get("name") if nodes else None
+        w = wins.get(title)
+        if not w:
+            continue
+        for n in nodes:
+            if n.get("role") == "Tab" and not n.get("selected") and n.get("clickable"):
+                out.append((title, n.get("name"), w["content"]["x"] + n["x"] + n["width"] / 2, w["content"]["y"] + n["y"] + n["height"] / 2))
+    return out
+
+
+def main():
+    a = sys.argv[1:]
+    show_review = "--review" in a
+    keep = "--keep" in a
+    scales = [float(s) for s in (a[a.index("--scales") + 1].split(",") if "--scales" in a else ["1", "1.5", "2"])]
+    picked = [x for i, x in enumerate(a) if not x.startswith("--") and (i == 0 or a[i - 1] != "--scales")]
+    work = f"/var/tmp/olo-ui-lint-{os.getpid()}"
+    home = os.path.join(work, "home")
+    os.makedirs(work, exist_ok=True)
+    # (fixture-home's pictures need the system's Python, which has PIL.)
+    env = dict(os.environ, PATH="/usr/bin:" + os.environ.get("PATH", ""))
+    made = subprocess.run([os.path.join(ROOT, "tools/dev/fixture-home"), home], capture_output=True, text=True, env=env)
+    if made.returncode:
+        sys.exit(f"tools/dev/fixture-home failed: {made.stderr}")
+    specs = apps(home)
+    if "--list" in a:
+        print("\n".join(s[0] for s in specs))
+        return 0
+    if picked:
+        specs = [s for s in specs if s[0] in picked or s[0].lower() in [p.lower() for p in picked]]
+    # (A sound server with devices, for every app: target/release's.)
+    pulse = os.path.join(work, "pulse.sock")
+    fakesound = subprocess.Popen([os.path.join(ROOT, "target/release/olo-fakesound"), pulse], env=dict(os.environ, FAKESOUND_AIRPODS="AA:BB:CC:DD:EE:FF"),
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    name = f"uilint{os.getpid() % 100000}"
+    # (A MacBook's screen: 1512 × 982 points at 2×, as Ben's.)
+    sh("start", name, "3024x1964", "--light", "--scale", "2", "--home", home, check=True)
+    errors, reviews = 0, 0
+    try:
+        for app, argv, env, layers in specs:
+            sh("run", name, f"HOME={home}", f"PULSE_SERVER=unix:{pulse}", "OLO_NO_FINGERPRINT=1", "OLO_ACTIVITY_HELPER=off", "OLO_DOCTOR_HELPER=off", *[f"{k}={v}" for k, v in env.items()], *argv)
+            exe = argv[0]
+            pid = None
+            for _ in range(60):
+                time.sleep(0.25)
+                ps = pids_of(exe, home)
+                if ps and (layers or windows_of(name, ps[0])):
+                    pid = ps[0]
+                    break
+            if pid is None:
+                print(f"{app}: no window came up", flush=True)
+                errors += 1
+                for p in pids_of(exe, home):
+                    os.kill(p, 15)
+                continue
+            time.sleep(1.0)
+            # Each finding once, with the looks it came up in.
+            seen = {}
+            for theme in ("light", "dark"):
+                sh("theme", name, theme)
+                for scale in scales:
+                    sh("scale", name, f"{scale:g}")
+                    time.sleep(0.3)
+                    looks = [(None, review(pid, layers))]
+                    for title, tab, x, y in tabs(name, pid):
+                        sh("click", name, f"{x:.1f}", f"{y:.1f}")
+                        time.sleep(0.4)
+                        looks.append((tab, review(pid, layers)))
+                    for tab, found in looks:
+                        for window, f in found:
+                            key = (f["level"], window, tab, f["kind"], f["text"])
+                            seen.setdefault(key, []).append(f"{theme} {scale:g}×")
+            app_errors = [k for k in seen if k[0].lower() == "error"]
+            app_reviews = [k for k in seen if k[0].lower() != "error"]
+            errors += len(app_errors)
+            reviews += len(app_reviews)
+            print(f"{app}: {len(app_errors)} errors" + (f", {len(app_reviews)} to look at" if show_review else ""), flush=True)
+            for key in app_errors + (app_reviews if show_review else []):
+                level, window, tab, kind, text = key
+                print(f"  - {level.lower()} {kind} in {window}{' ▸ ' + tab if tab else ''}: {text} ({', '.join(seen[key])})", flush=True)
+            for p in pids_of(exe, home):
+                os.kill(p, 15)
+            time.sleep(0.5)
+    finally:
+        fakesound.terminate()
+        if not keep:
+            sh("stop", name)
+            subprocess.run(["rm", "-rf", work])
+    print(f"ui-lint: {errors} errors" + (f", {reviews} to look at" if show_review else ""))
+    return 1 if errors else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

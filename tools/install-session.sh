@@ -40,6 +40,8 @@ as_root() {
 # first (docs/HACKING.md, "The layout lint").
 as_user cargo ui-lint
 as_user cargo build --release --workspace
+# ...and every app's windows, live (tools/dev/ui-lint).
+as_user /usr/bin/python3 tools/dev/ui-lint
 # An install from before the rename (Tabula): its folders become Olo's,
 # with links by the old names (as every Olo program does at start, but
 # before this makes the new ones), so nothing is lost.

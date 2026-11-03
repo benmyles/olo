@@ -138,7 +138,7 @@ impl RenderOnce for Separator {
 }
 
 /// BBox: what it holds in an etched frame, its label (bold) set into the
-/// frame's top line. Items in it stack a little tighter.
+/// frame's top line. Its rows are `metrics::STACK` apart.
 #[derive(IntoElement)]
 pub struct BBox {
     label: Option<SharedString>,
@@ -173,7 +173,8 @@ impl RenderOnce for BBox {
     fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
         let label_h = if self.label.is_some() { m::LABEL_ROW } else { 0.0 };
         let pad = m::BOX_INSET;
-        let content_top = if self.label.is_some() { label_h + m::TIGHT } else { pad };
+        // (Under its label as far as its rows are from each other.)
+        let content_top = if self.label.is_some() { label_h + m::STACK } else { pad };
         let label_w = self.label.as_ref().map(|l| f32::from(style::text_width(window, l.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD))).ceil());
         let label = self.label.clone();
         let frame = canvas(
@@ -184,6 +185,8 @@ impl RenderOnce for BBox {
                 // label's row.
                 let top = px((label_h / 2.0).floor());
                 let frame = Bounds::from_corners(point(b.left(), b.top() + top), b.bottom_right());
+                // (What's in it must fit inside the frame's inset.)
+                crate::review::container(window, Bounds::from_corners(point(frame.left() + px(pad), frame.top()), point(frame.right() - px(pad), frame.bottom() - px(pad))));
                 etched(window, frame, &p, label_w.map(|w| (frame.left() + px(pad - 4.0), frame.left() + px(pad + w + 4.0))));
                 if let Some(l) = &label {
                     style::label(window, cx, b.left() + px(pad), b.top() + px(label_h / 2.0), style::Align::Left, l.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), style::c(p.panel_text));
@@ -201,7 +204,7 @@ impl RenderOnce for BBox {
         }
         b.flex()
             .flex_col()
-            .gap(px(m::TIGHT))
+            .gap(px(m::STACK))
             .pt(px(content_top))
             .px(px(pad))
             .pb(px(pad))
