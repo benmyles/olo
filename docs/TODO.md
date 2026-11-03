@@ -284,40 +284,6 @@ of Finished; a new one goes where its priority puts it.
   immediately without a delay" (Super while the pointer is on cut-short
   text shows its tip at once; app_server's own text, window tabs, too).
 
-- **Rendering made for each display** (Ben, 2026-10-31): "we should also
-  detect the display types and optimize rendering for the specific
-  displays and their types/characteristics don't just assume all
-  displays are the same". Each display's density (pixels per inch from
-  its size), subpixel layout (DRM's, else a guess: a low-density external
-  LCD is RGB stripes, an OLED by its model has none) and refresh rate,
-  with Preferences ▸ Display to correct the layout (a ClearType-tuner
-  style picker); told to clients in wl_output's geometry, so other
-  toolkits benefit too. Olo's GPUI picks per window, by the display it's
-  on: LCD subpixel text (FreeType's LCD filter, dual-source blending) on
-  low-density striped LCDs over opaque backgrounds; grey-scale with light
-  hinting in between; grey-scale unhinted, as macOS, at Retina density.
-  Ben's displays: the MacBook's XDR (254 ppi, 120 Hz), a Studio Display
-  (218 ppi) and a Dell S2425HS (92 ppi, 1x: where it matters most).
-  Preferences ▸ Display (Ben, 2026-10-31): "in the display prefs app we
-  should show each display name/manufacturer/model and
-  technology/features/characteristics and all the settings we've
-  selected/tuned for each one and a little help hint or something
-  explaining why but give the user the ability to override if they
-  want". app_server makes the choices (one place), tells apps and
-  Preferences (`OutputInfo`), and keeps overrides in the display's
-  settings.
-  *Done*: `olo_protocol::panels` (each display's density, technology
-  guessed from what it is, stripe order from the display or guessed,
-  and the text rendering with why; overrides in `OutputConfig`),
-  reported in `OutputInfo::panel` and in wl_output's subpixel; Olo's
-  GPUI draws by it (LCD subpixel text with dual-source blending,
-  unhinted at Retina density). `OLO_HEADLESS_PANEL=530x300,rgb` tests
-  it headless. Preferences ▸ Display's Panel box shows it all, with why,
-  each correctable (Automatic or a choice). Still to do: the kit
-  passing overrides to GPUI (`set_display_text_rendering`) and
-  redrawing, and make/model shown right after a late EDID (fixed in
-  `OutputInfo`).
-
 - **The kit takes over what every app re-implements** (Ben,
   2026-11-01: "anything these windows/apps are doing that's reusable
   should be made reusable so that we aren't reinventing the wheel
@@ -783,6 +749,46 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Rendering made for each display**~~ (Ben, 2026-10-31): "we should also
+  detect the display types and optimize rendering for the specific
+  displays and their types/characteristics don't just assume all
+  displays are the same". Each display's density (pixels per inch from
+  its size), subpixel layout (DRM's, else a guess: a low-density external
+  LCD is RGB stripes, an OLED by its model has none) and refresh rate,
+  with Preferences ▸ Display to correct the layout (a ClearType-tuner
+  style picker); told to clients in wl_output's geometry, so other
+  toolkits benefit too. Olo's GPUI picks per window, by the display it's
+  on: LCD subpixel text (FreeType's LCD filter, dual-source blending) on
+  low-density striped LCDs over opaque backgrounds; grey-scale with light
+  hinting in between; grey-scale unhinted, as macOS, at Retina density.
+  Ben's displays: the MacBook's XDR (254 ppi, 120 Hz), a Studio Display
+  (218 ppi) and a Dell S2425HS (92 ppi, 1x: where it matters most).
+  Preferences ▸ Display (Ben, 2026-10-31): "in the display prefs app we
+  should show each display name/manufacturer/model and
+  technology/features/characteristics and all the settings we've
+  selected/tuned for each one and a little help hint or something
+  explaining why but give the user the ability to override if they
+  want". app_server makes the choices (one place), tells apps and
+  Preferences (`OutputInfo`), and keeps overrides in the display's
+  settings.
+  *Done*: `olo_protocol::panels` (each display's density, technology
+  guessed from what it is, stripe order from the display or guessed,
+  and the text rendering with why; overrides in `OutputConfig`),
+  reported in `OutputInfo::panel` and in wl_output's subpixel; Olo's
+  GPUI draws by it (LCD subpixel text with dual-source blending,
+  unhinted at Retina density). `OLO_HEADLESS_PANEL=530x300,rgb` tests
+  it headless. Preferences ▸ Display's Panel box shows it all, with why,
+  each correctable (Automatic or a choice). The kit passes a person's
+  choice to GPUI (`theme::apply_outputs`, `set_display_text_rendering`)
+  and every window draws again; make and model show right after a late
+  EDID (`OutputInfo`).
+  *Done* (checked 2026-11-02, headless on a 92 ppi RGB panel,
+  `OLO_HEADLESS_PANEL=530x300,rgb`). DeskCalc drew its text in RGB
+  subpixel, as chosen for the panel. `configure_output` with `text:
+  hinted` (Preferences ▸ Display's choice) redrew the running app in
+  grey-scale at once: 0 coloured pixels where there were 4672. Back to
+  Automatic, it was pixel for pixel as it had been.
 
 - ~~**Terminal tells coding agents to use Agent Screens**~~ (Ben,
   2026-11-02): "check if terminal already injects context to claude
