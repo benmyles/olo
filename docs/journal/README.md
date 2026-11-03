@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Text fields scroll to the caret, and show cut text in a tip
+
+*22:12* — A one-line field used to always show its start: typing past its end hid the caret and what was typed (top, before). Now it scrolls sideways while edited, keeping the caret in view (middle). Unfocused, it shows its start again, and the whole text is in a tip on hover (bottom). Never a password's.
+
+![Text fields scroll to the caret, and show cut text in a tip](2026-11-02/221250-text-fields-scroll-to-the-caret-and-show-cut-tex.png)
+
 ### Preferences ▸ Terminal: tell coding agents to use Agent Screens
 
 *22:02* — A third Coding Agents setting: Claude Code and Codex are told as they start to test and use desktop apps and web pages on Agent Screens of their own, and how, Olo's Chrome included, so they never start a Chrome on the person's screen. The panel is taller to fit it.

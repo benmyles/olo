@@ -7,7 +7,7 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Palms told apart by a tiny model** (Ben, 2026-11-02): "enhance the
+- **Palms told apart by a tiny model, trained in Preferences** (Ben, 2026-11-02): "enhance the
   palm detection with an optional new feature (can be enabled in
   touchpad prefs) that uses a tiny gpu accelerated (or simd accelerated
   if it's faster) model to detect palm detection and ignore the palm on
@@ -62,7 +62,29 @@ of Finished; a new one goes where its priority puts it.
         minor, orientation, pressure).
     - So: our own small model, Chromium's kind of features taken to the
       pad, trained on captures of Ben's MacBook.
-  - *Needs Ben*: labelled captures, recorded read-only with no grab
+  - **How** (Ben, later the same day): "actually, let's do it by adding
+    a "Train for your palm" section in the touchpad preferences that
+    then walks the user through a training regime, asking them to do
+    different things like rest their palm and tap/scroll with and
+    without palm and so on to collect enough samples to build the model
+    and then let the user test -- it should be visual with generated
+    olo style instructional animations and walk the user through the
+    whole process from calibration to testing". So: a guided trainer in
+    Preferences ▸ Touchpad & Mouse, made from the kit's parts:
+    - Calibration: the pad's size and a resting finger's and palm's
+      contact.
+    - Exercises, each with an Olo-style animation of the hands on the
+      pad and a live drawing of what the pad sees: rest the palms; type
+      with palms resting; tap, point, scroll and click, with and without
+      a palm down; thumbs at the edge. Each says how many samples it
+      still needs.
+    - The model trained on the machine, off the UI thread with live
+      progress, and kept with the person's settings.
+    - A test step: the pad's contacts drawn as fingers or palms, as
+      the model and the size rule each call them.
+    - The option to use it, and to train again.
+  - (The manual captures below are the fallback, and for measuring.)
+  - *Needs Ben* (superseded by the trainer): labelled captures, recorded read-only with no grab
     (`touch_filter`'s `replay_capture` reads them,
     `OLO_TOUCH_CAPTURE`). Two minutes each:
     - `sudo timeout 120 cat /dev/input/event5 > palms.evdev`: typing,
@@ -265,8 +287,10 @@ of Finished; a new one goes where its priority puts it.
   2026-11-02, HACKING "Text cut short": every label the kit cuts with
   "…" or that runs past its clip, Tracker's icon names, Telegram's chat
   list, Passwords' titles; ⌘ shows it at once; and app_server's window
-  tabs, `tabtip`. *Left*: app_server's other text (Twitcher, the
-  overview's labels), text fields scrolled sideways, Telegram's
+  tabs, `tabtip`; a text field whose text runs past it, whole in a tip
+  when it hasn't the keyboard, 2026-11-02, with the field scrolling
+  sideways to its caret while edited, which it never did. *Left*:
+  app_server's other text (Twitcher, the overview's labels), Telegram's
   attachment chips and bubbles, text in GPUI's own text elements; agents read cut text whole since
   2026-11-02, `agent::whole_name`) (Ben, 2026-10-31):
   "when hovering over anything in olo or any olo app where the text has

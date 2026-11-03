@@ -1266,7 +1266,11 @@ event reaches it.
   pixels, blinking only while it has the keyboard in an active window,
   and for ten seconds after the last keystroke or click (then it stays:
   a window left with a field that has the keyboard draws nothing, as
-  GTK's `gtk-cursor-blink-timeout`);
+  GTK's `gtk-cursor-blink-timeout`). Text wider than the field
+  scrolls sideways while it's edited, keeping the caret in view
+  (`scroll_x`, as BeOS's text views). Unfocused, the field shows its
+  start, and the whole text is in a tip on hover (`cut::note`; never a
+  password's).
   `TextFieldEvent::Changed` and `Typed`. No frame: callers draw the
   well (`TextControl` does). `set_colors` colours parts of its text from
   the text (a search's filters), `selection`/`set_selection`,

@@ -176,6 +176,9 @@ pub struct TextField {
     paragraphs: Vec<gpui::WrappedLine>,
     line_height: Pixels,
     scroll: Pixels,
+    /// How far a one-line field's text is scrolled sideways (to keep the
+    /// caret in view while it's edited).
+    scroll_x: Pixels,
     /// Up and down keep to this column.
     goal_x: Option<Pixels>,
 }
@@ -226,6 +229,7 @@ impl TextField {
             paragraphs: Vec::new(),
             line_height: px(style::PLAIN_SIZE * style::LINE_HEIGHT),
             scroll: px(0.0),
+            scroll_x: px(0.0),
             goal_x: None,
         }
     }
@@ -1118,22 +1122,43 @@ impl Element for FieldElement {
         };
         let size_px = field.font_size;
         let line = window.text_system().shape_line(text.clone(), px(size_px), &runs, None);
+        let focused = field.focus.is_focused(window);
+        // Wider than the field, it scrolls sideways while it's edited, so
+        // the caret stays in view (as BeOS's text views do); else its
+        // start shows, and what's cut off its end is in a tip.
+        let caret_w = style::hairline(window);
+        let over = line.width + caret_w > bounds.size.width;
+        let scroll_x = if over && focused {
+            let caret_x = line.x_for_index(field.to_shown(field.caret()));
+            let most = line.width + caret_w - bounds.size.width;
+            let kept = field.scroll_x.min(most).max(px(0.0));
+            if caret_x < kept {
+                caret_x
+            } else if caret_x + caret_w > kept + bounds.size.width {
+                caret_x + caret_w - bounds.size.width
+            } else {
+                kept
+            }
+        } else {
+            px(0.0)
+        };
         // The line's capitals centred in the field, its baseline on a
-        // device pixel; its left at the inset, or its right.
+        // device pixel; its left at the inset (less the scroll), or its
+        // right.
         let left = match field.align {
-            Align::Left => bounds.origin.x,
-            Align::Right => bounds.right() - line.width,
+            Align::Right if !over => bounds.right() - line.width,
+            _ => bounds.origin.x - scroll_x,
         };
         let left = style::snap_coord(window, left);
         let baseline = style::snap_coord(window, bounds.center().y + px(size_px * style::CAP_HEIGHT / 2.0));
         let top = baseline - line.ascent;
         let height = line.ascent + line.descent;
         let drawn = Bounds { origin: point(left, top), size: size(line.width, height) };
-        let focused = field.focus.is_focused(window);
         let selected = field.to_shown(field.selected.start)..field.to_shown(field.selected.end);
         let (caret, caret_on) = (field.to_shown(field.caret()), field.caret_on && field.enabled);
         let name = field.name.clone();
         let (hint, marked, right) = (field.hint.clone(), field.marked.clone(), field.align == Align::Right);
+        let tip = over && !focused && !field.password;
         if field.enabled {
             window.handle_input(&field.focus.clone(), ElementInputHandler::new(bounds, self.field.clone()), cx);
         }
@@ -1160,11 +1185,16 @@ impl Element for FieldElement {
                 let w = style::hairline(window);
                 style::fill_rect(window, Bounds { origin: point(x, top), size: size(w, height) }, style::c(palette.navigation_base));
             }
+            // Cut off the field's end (never a password's): whole in a tip.
+            if tip {
+                crate::cut::note(window, text.clone(), bounds);
+            }
         });
         agent::record(window, cx, agent::Node { role: "TextInput", name: (!name.is_empty()).then_some(name), value: Some(text), bounds, enabled: true, clickable: true, focused, ..Default::default() });
         self.field.update(cx, |f, _| {
             f.line = Some(line);
             f.drawn = Some(drawn);
+            f.scroll_x = scroll_x;
         });
     }
 }
