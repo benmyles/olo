@@ -8,12 +8,15 @@
 //! groove, a triangle for a submenu, which opens beside its item. ↑ ↓
 //! choose, → opens a submenu, ← and Escape close a level, Enter or Space
 //! takes the item; a release over an item takes it. Agents read each
-//! item (`MenuItem`, with whether it's checked or can be chosen).
+//! item (`MenuItem`, with whether it's checked or can be chosen). One
+//! taller than its display scrolls, with an arrow at each end there's
+//! more past (the pointer resting there scrolls it), the wheel and the
+//! keys.
 
 use std::{cell::RefCell, rc::Rc};
 
 use gpui::{
-    AnyWindowHandle, App, AppContext as _, Bounds, Context, Corner, FocusHandle, Focusable, FontWeight, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Render, RenderOnce, SharedString, Styled as _, Window, WindowBounds, WindowHandle, WindowKind, canvas, div, point, px, size,
+    AnyWindowHandle, App, AppContext as _, Bounds, ContentMask, Context, Corner, FocusHandle, Focusable, FontWeight, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Render, RenderOnce, ScrollWheelEvent, SharedString, Styled as _, Task, Window, WindowBounds, WindowHandle, WindowKind, canvas, div, point, px, size,
 };
 
 use crate::{
@@ -30,6 +33,12 @@ const SHORTCUT_GAP: f32 = 28.0;
 const POPUP_BORDER: f32 = 1.0;
 const POPUP_PAD: f32 = 4.0;
 const MIN_WIDTH: f32 = 120.0;
+/// A menu taller than its display: kept this far from the display's top
+/// and bottom, with a scroll arrow this tall at each end there's more
+/// past, which scrolls it this fast while the pointer rests on it.
+const SCREEN_MARGIN: f32 = 24.0;
+const ARROW_HEIGHT: f32 = 16.0;
+const ARROW_SPEED: f32 = 480.0;
 /// Item icons, and the room between one and its label.
 const ICON_SIZE: f32 = 16.0;
 const ICON_GAP: f32 = olo_kit_base::metrics::MARK_GAP;
@@ -468,9 +477,28 @@ pub fn context_menu_then(window: &mut Window, cx: &mut App, menu: Menu, position
 fn open(window: &mut Window, cx: &mut App, menu: Menu, place: Place, on_choose: OnChoose, parent_menu: Option<WindowHandle<MenuPopup>>, on_close: Option<Rc<dyn Fn(&mut App)>>) -> Option<WindowHandle<MenuPopup>> {
     // (A menu field's items stay as counted: one of them lies over it.)
     let menu = if place.selected.is_none() { menu.tidied() } else { menu };
-    let (w, h) = popup_size(window, &menu);
+    let (w, full_h) = popup_size(window, &menu);
     let w = w.max(place.min_width);
-    let Place { anchor, corner, offset, selected, .. } = place;
+    let Place { anchor, corner, mut offset, selected, .. } = place;
+    // Taller than the display: as tall as it allows, its items scrolled
+    // (the one chosen in view: a pop-up field's over the field still).
+    let room = window.display(cx).map_or(f32::MAX, |d| f32::from(d.bounds().size.height) - 2.0 * SCREEN_MARGIN);
+    let h = if full_h <= room {
+        full_h
+    } else {
+        // Whole items and one arrow: at either end, nothing half shown.
+        let n = ((room - 2.0 * POPUP_PAD - ARROW_HEIGHT) / ITEM_HEIGHT).floor().max(4.0);
+        2.0 * POPUP_PAD + ARROW_HEIGHT + n * ITEM_HEIGHT
+    };
+    let content = full_h - 2.0 * POPUP_PAD;
+    let mut scroll = 0.0;
+    if h < full_h
+        && let Some(i) = selected
+    {
+        let view = h - 2.0 * POPUP_PAD - 2.0 * ARROW_HEIGHT;
+        scroll = (item_offset(&menu, i) - (view - ITEM_HEIGHT) / 2.0).clamp(0.0, content - (h - 2.0 * POPUP_PAD));
+        offset.y += px(scroll);
+    }
     let owner = parent_menu.as_ref().map_or_else(|| window.window_handle(), |_| window.window_handle());
     let origin = parent_menu.and_then(|p| p.update(cx, |m, _, _| m.origin).ok()).unwrap_or(owner);
     let app_id = crate::app::app_id(cx);
@@ -483,7 +511,7 @@ fn open(window: &mut Window, cx: &mut App, menu: Menu, place: Place, on_choose: 
             ..Default::default()
         },
         move |window, cx| {
-            let view = cx.new(|cx| MenuPopup { menu, selected, focus: cx.focus_handle(), on_choose, origin, owner, sub: None, rows: Rc::default(), pressed_inside: false });
+            let view = cx.new(|cx| MenuPopup { menu, selected, focus: cx.focus_handle(), on_choose, origin, owner, sub: None, rows: Rc::default(), pressed_inside: false, scroll, content, view_h: h - 2.0 * POPUP_PAD, scrolling: None, pointer: None });
             window.focus(&view.focus_handle(cx));
             if let Some(f) = on_close {
                 cx.observe_release(&view, move |_, cx| f(cx)).detach();
@@ -510,6 +538,16 @@ pub struct MenuPopup {
     /// A press began in it (a click, rather than the release of the
     /// press that opened it).
     pressed_inside: bool,
+    /// Scrolled this far down its items (a menu taller than its display),
+    /// of `content` in all, `view_h` showing (arrows included).
+    scroll: f32,
+    content: f32,
+    view_h: f32,
+    /// Scrolling while the pointer rests on an arrow: which way, and the
+    /// ticks doing it; and where the pointer last was (the item under it
+    /// is the one lit as the items scroll by).
+    scrolling: Option<(f32, Task<()>)>,
+    pointer: Option<gpui::Point<Pixels>>,
 }
 
 impl Focusable for MenuPopup {
@@ -540,7 +578,109 @@ impl MenuPopup {
     }
 
     fn row_at(&self, p: gpui::Point<Pixels>) -> Option<usize> {
+        // (Not under a scroll arrow.)
+        if self.arrow_at(p).is_some() {
+            return None;
+        }
         self.rows.borrow().iter().position(|r| r.contains(&p))
+    }
+
+    /// How far it can scroll.
+    fn max_scroll(&self) -> f32 {
+        (self.content - self.view_h).max(0.0)
+    }
+
+    /// The arrows shown: more above, more below.
+    fn arrows(&self) -> (bool, bool) {
+        (self.scroll > 0.5, self.scroll < self.max_scroll() - 0.5)
+    }
+
+    /// The scroll arrow under `p` (window coordinates): -1 up, 1 down.
+    fn arrow_at(&self, p: gpui::Point<Pixels>) -> Option<f32> {
+        let (up, down) = self.arrows();
+        let y = f32::from(p.y);
+        if up && y < POPUP_PAD + ARROW_HEIGHT {
+            Some(-1.0)
+        } else if down && y > POPUP_PAD + self.view_h - ARROW_HEIGHT {
+            Some(1.0)
+        } else {
+            None
+        }
+    }
+
+    fn scroll_to(&mut self, to: f32) -> bool {
+        let to = to.clamp(0.0, self.max_scroll());
+        let moved = (to - self.scroll).abs() > 0.01;
+        self.scroll = to;
+        if moved {
+            self.follow_pointer();
+        }
+        moved
+    }
+
+    /// The item now under the pointer lit (the items moved under it).
+    fn follow_pointer(&mut self) {
+        let Some(p) = self.pointer.filter(|p| self.arrow_at(*p).is_none()) else { return };
+        let mut y = f32::from(p.y) - POPUP_PAD + self.scroll;
+        for (i, item) in self.menu.items.iter().enumerate() {
+            let h = if matches!(item, MenuItem::Separator) { SEPARATOR_HEIGHT } else { ITEM_HEIGHT };
+            if y < h {
+                if self.selectable(i) && self.sub.is_none() {
+                    self.selected = Some(i);
+                }
+                return;
+            }
+            y -= h;
+        }
+    }
+
+    /// The selected item brought into view (between the arrows).
+    fn reveal(&mut self) {
+        let Some(i) = self.selected else { return };
+        if self.max_scroll() <= 0.0 {
+            return;
+        }
+        let top = item_offset(&self.menu, i);
+        let h = if matches!(self.menu.items[i], MenuItem::Separator) { SEPARATOR_HEIGHT } else { ITEM_HEIGHT };
+        let (lo, hi) = (self.scroll + ARROW_HEIGHT, self.scroll + self.view_h - ARROW_HEIGHT);
+        if top < lo {
+            self.scroll_to(top - ARROW_HEIGHT);
+        } else if top + h > hi {
+            self.scroll_to(top + h - self.view_h + ARROW_HEIGHT);
+        }
+    }
+
+    /// The pointer on an arrow (`dir`), or off them (None): scrolling,
+    /// a tick a frame, while it rests there and there's more.
+    fn rest_on_arrow(&mut self, dir: Option<f32>, cx: &mut Context<Self>) {
+        if dir == self.scrolling.as_ref().map(|(d, _)| *d) {
+            return;
+        }
+        let Some(dir) = dir else {
+            self.scrolling = None;
+            return;
+        };
+        let task = cx.spawn(async move |this, cx| {
+            let mut last = std::time::Instant::now();
+            loop {
+                cx.background_executor().timer(std::time::Duration::from_millis(8)).await;
+                let now = std::time::Instant::now();
+                let step = ARROW_SPEED * (now - last).as_secs_f32();
+                last = now;
+                let more = this
+                    .update(cx, |m, cx| {
+                        let moved = m.scroll_to(m.scroll + dir * step);
+                        cx.notify();
+                        moved
+                    })
+                    .unwrap_or(false);
+                if !more {
+                    let _ = this.update(cx, |m, _| m.scrolling = None);
+                    return;
+                }
+            }
+        });
+        self.scrolling = Some((dir, task));
     }
 
     /// Takes the item: a command goes to the window, every menu closes.
@@ -601,8 +741,14 @@ impl MenuPopup {
 
     fn key_down(&mut self, e: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         match e.keystroke.key.as_str() {
-            "down" => self.selected = self.step(1),
-            "up" => self.selected = self.step(-1),
+            "down" => {
+                self.selected = self.step(1);
+                self.reveal();
+            }
+            "up" => {
+                self.selected = self.step(-1);
+                self.reveal();
+            }
             "right" => {
                 if let Some(i) = self.selected
                     && matches!(self.menu.items[i], MenuItem::Submenu(_))
@@ -626,6 +772,8 @@ impl MenuPopup {
     }
 
     fn mouse_move(&mut self, e: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
+        self.pointer = Some(e.position);
+        self.rest_on_arrow(self.arrow_at(e.position), cx);
         let over = self.row_at(e.position).filter(|&i| self.selectable(i));
         if over != self.selected && over.is_some() {
             self.selected = over;
@@ -633,6 +781,13 @@ impl MenuPopup {
                 Some(i) if matches!(self.menu.items[i], MenuItem::Submenu(_)) => self.open_sub(i, window, cx),
                 _ => self.close_sub(cx),
             }
+            cx.notify();
+        }
+    }
+
+    fn wheel(&mut self, e: &ScrollWheelEvent, _: &mut Window, cx: &mut Context<Self>) {
+        let dy = f32::from(e.delta.pixel_delta(px(ITEM_HEIGHT)).y);
+        if self.scroll_to(self.scroll - dy) {
             cx.notify();
         }
     }
@@ -657,6 +812,7 @@ impl Render for MenuPopup {
         let rows = self.rows.clone();
         let selectable: Vec<bool> = (0..menu.items.len()).map(|i| self.selectable(i)).collect();
         let (icon_left, label_left) = columns(&menu);
+        let (scroll, (arrow_up, arrow_down)) = (self.scroll, self.arrows());
         let paint = canvas(
             |_, _, _| {},
             move |b, _, window, cx| {
@@ -666,11 +822,31 @@ impl Render for MenuPopup {
                 let lined = style::inset(window, b, 1.0);
                 style::hline(window, lined.left(), lined.right(), lined.top(), style::c(p.shine));
                 style::vline(window, lined.left(), lined.top(), lined.bottom(), style::c(p.shine));
-                let mut y = b.top() + px(POPUP_PAD);
+                let mut y = b.top() + px(POPUP_PAD - scroll);
                 let (left, right) = (b.left() + px(POPUP_BORDER), b.right() - px(POPUP_BORDER));
+                // Scrolled: the items between the arrows, each arrow on
+                // the menu's ground.
+                let items_top = b.top() + px(POPUP_PAD + if arrow_up { ARROW_HEIGHT } else { 0.0 });
+                let items_bottom = b.bottom() - px(POPUP_PAD + if arrow_down { ARROW_HEIGHT } else { 0.0 });
+                for (on, dir, top) in [(arrow_up, -1.0f32, b.top() + px(POPUP_PAD)), (arrow_down, 1.0, b.bottom() - px(POPUP_PAD + ARROW_HEIGHT))] {
+                    if on {
+                        let c = style::snap_centred(window, point(b.center().x, top + px(ARROW_HEIGHT / 2.0)), 8.0, 8.0).center();
+                        let mut path = PathBuilder::fill();
+                        path.move_to(point(c.x - px(4.5), c.y - px(2.25 * dir)));
+                        path.line_to(point(c.x + px(4.5), c.y - px(2.25 * dir)));
+                        path.line_to(point(c.x, c.y + px(2.25 * dir)));
+                        path.close();
+                        if let Ok(path) = path.build() {
+                            window.paint_path(path, style::c(p.menu_item_text));
+                        }
+                        agent::record(window, cx, agent::Node::button(if dir < 0.0 { "Scroll Up" } else { "Scroll Down" }, Bounds::from_corners(point(left, top), point(right, top + px(ARROW_HEIGHT)))));
+                    }
+                }
+                let mask = ContentMask { bounds: Bounds::from_corners(point(b.left(), items_top), point(b.right(), items_bottom)) };
                 let mut placed = rows.borrow_mut();
                 placed.clear();
                 let font = style::ui_font(FontWeight::NORMAL);
+                window.with_content_mask(Some(mask), |window| {
                 for (i, item) in menu.items.iter().enumerate() {
                     let h = px(if matches!(item, MenuItem::Separator) { SEPARATOR_HEIGHT } else { ITEM_HEIGHT });
                     let row = Bounds::from_corners(point(left, y), point(right, y + h));
@@ -738,6 +914,7 @@ impl Render for MenuPopup {
                         }
                     }
                 }
+                });
             },
         )
         .size_full();
@@ -749,6 +926,7 @@ impl Render for MenuPopup {
             .on_mouse_down(MouseButton::Left, cx.listener(|m, _, _, _| m.pressed_inside = true))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::mouse_up))
             .on_mouse_up(MouseButton::Right, cx.listener(Self::mouse_up))
+            .on_scroll_wheel(cx.listener(Self::wheel))
             .child(paint)
     }
 }

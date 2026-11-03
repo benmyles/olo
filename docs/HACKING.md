@@ -734,6 +734,16 @@ anchor, corner, on_choose)` (`MenuField`'s is one). `on_choose` gets the
 chosen item's command: an app's own context menus use its menu bar's
 command names and send them where the bar's go.
 
+A menu taller than its display is as tall as the display allows (24 pt
+off its top and bottom, a whole number of items and one arrow, so
+neither end shows half an item) and scrolls, as BeOS's did: an arrow at
+each end there's more past, which scrolls it (480 pt/s, a tick every
+8 ms only while the pointer rests there and there's more) with the item
+under the pointer lit as they pass; the wheel scrolls it, and ↑↓ bring
+the item chosen into view. A pop-up field's menu opens scrolled to the
+item chosen, over the field. Agents read every item, shown or not, and
+the arrows (Scroll Up, Scroll Down).
+
 Every item with keys shows them, right-aligned, as the keyboard
 profile's platform writes them (on a Mac in Mac order, "⌘O", "⇧⌘T",
 "⌃⌘H"; on Windows "Ctrl+O"; on BeOS "Alt+O"), in context menus as in the

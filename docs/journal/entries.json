@@ -2884,5 +2884,11 @@
   "title": "Olo Suggestions: applied, and undone",
   "caption": "What's applied is listed with a button that undoes it (here: Use bash Again).",
   "image": "2026-11-02/165249-olo-suggestions-applied-and-undone.png"
+ },
+ {
+  "time": "2026-11-02T17:06:29",
+  "title": "Menus taller than the screen scroll",
+  "caption": "A kit menu longer than its display stops short of its edges and scrolls: an arrow at each end there's more past scrolls it while the pointer rests there; the wheel and the keys too. Here Default Apps' every app, at the top and scrolled to the end.",
+  "image": "2026-11-02/170629-menus-taller-than-the-screen-scroll.png"
  }
 ]

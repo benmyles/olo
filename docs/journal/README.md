@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Menus taller than the screen scroll
+
+*17:06* — A kit menu longer than its display stops short of its edges and scrolls: an arrow at each end there's more past scrolls it while the pointer rests there; the wheel and the keys too. Here Default Apps' every app, at the top and scrolled to the end.
+
+![Menus taller than the screen scroll](2026-11-02/170629-menus-taller-than-the-screen-scroll.png)
+
 ### Olo Suggestions: applied, and undone
 
 *16:52* — What's applied is listed with a button that undoes it (here: Use bash Again).

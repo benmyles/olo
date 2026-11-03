@@ -59,15 +59,6 @@ of Finished; a new one goes where its priority puts it.
   keyboard, the panel's selection, its `on_done` or the portal's
   reply) and fix it; test both through the portal, as Slack asks.
 
-- **Menus taller than the screen scroll** (found 2026-11-02 in
-  Preferences ▸ Default Apps, whose app pop-up listed every app): a
-  kit menu longer than the display runs off its edge, and what's past
-  it can't be reached. As BeOS's did: a menu is kept to the display
-  (the compositor's constraints), and one that doesn't fit scrolls,
-  with arrows at its ends that scroll while the pointer rests on them,
-  the wheel, and the keyboard's ↑↓ bringing the item into view; agents
-  read every item, shown or not.
-
 - **`pbcopy` and `pbpaste` from the command line** (Ben, 2026-11-02):
   "have olo install a pbcopy shim that copies to the clipboard from the
   cli". Native, as macOS's: `pbcopy` holds what it reads from stdin on
@@ -917,6 +908,16 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**Menus taller than the screen scroll**~~ (done 2026-11-02: in the
+  kit's `menu`, for every app) (found 2026-11-02 in
+  Preferences ▸ Default Apps, whose app pop-up listed every app): a
+  kit menu longer than the display runs off its edge, and what's past
+  it can't be reached. As BeOS's did: a menu is kept to the display
+  (the compositor's constraints), and one that doesn't fit scrolls,
+  with arrows at its ends that scroll while the pointer rests on them,
+  the wheel, and the keyboard's ↑↓ bringing the item into view; agents
+  read every item, shown or not.
 
 - ~~**Olo Suggestions**~~ (done 2026-11-02: `olo-suggestions`, Olo
   Doctor's body with a `Kind`; brush built with Olo as `olo-brush` and
