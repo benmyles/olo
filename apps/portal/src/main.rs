@@ -157,8 +157,15 @@ impl Portal {
     }
 
     /// Open a file panel for another program (the FileChooser portal).
+    /// It opens where it was last for the app that asked (unless the app
+    /// named a file to save over: in its folder), else where the app
+    /// asks, else Home; where it was left is kept for the app's next.
     fn open_panel(&mut self, cx: &mut Context<Self>, ask: files::Ask) {
-        let dir = ask.folder.clone().filter(|d| d.is_dir()).unwrap_or_else(|| std::env::var_os("HOME").map_or_else(|| "/".into(), Into::into));
+        let saving = matches!(ask.purpose, files::Purpose::Save | files::Purpose::SaveFiles);
+        // (A small file read, as the panel's own folder pop-up reads it.)
+        let last = (!ask.at_file).then(|| olo_ui::places::last_for(&ask.app, saving)).flatten();
+        let asked = ask.folder.clone().filter(|d| d.is_dir());
+        let dir = last.or(asked).unwrap_or_else(|| std::env::var_os("HOME").map_or_else(|| "/".into(), Into::into));
         let (default, mut panel) = match ask.purpose {
             files::Purpose::Open if ask.multiple => ("Open", FilePanel::open(dir).multiple()),
             files::Purpose::Open => ("Open", FilePanel::open(dir)),
@@ -172,7 +179,10 @@ impl Portal {
         let request = ask.request.clone();
         // (Answered once; closed from its tab, it says Cancelled.)
         let mut answer = ui::Answer::new(ask.reply, None);
+        let app = ask.app.clone();
         let win = file_panel::show_in(cx, options, panel, move |a, _| {
+            let (app, dir) = (app.clone(), a.dir.clone());
+            std::thread::spawn(move || olo_ui::places::left_in(&app, saving, &dir));
             let paths = match a.result {
                 PanelResult::Chosen(p) => Some(vec![p]),
                 PanelResult::Several(ps) => Some(ps),

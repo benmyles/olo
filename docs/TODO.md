@@ -59,17 +59,6 @@ of Finished; a new one goes where its priority puts it.
   keyboard, the panel's selection, its `on_done` or the portal's
   reply) and fix it; test both through the portal, as Slack asks.
 
-- **The file picker opens where it was last, for each app** (Ben,
-  2026-11-02): "olo tracker when launched as a file picker from another
-  app should remember and reopen in the last location it was in for
-  that app specifically (if any)". So: the file panel `olo-portal`
-  shows for an app (FileChooser, by the asking app's id) opens in the
-  folder it was last in for that app, Open and Save each, kept in
-  Olo's config (`places`, beside the recent folders) and kept across
-  restarts; a folder the app asks for itself (`current_folder`) still
-  wins, and a remembered folder that's gone falls back to the usual
-  one. Olo's own apps' panels the same, by app.
-
 - **Telegram: archived right, unknown senders apart, bulk actions,
   smaller avatars** (Ben, 2026-11-02): "in telegram app, make the
   avatars a bit smaller they look oversized now, and also add bulk
@@ -170,6 +159,28 @@ of Finished; a new one goes where its priority puts it.
     another was heard first).
   - Deskbar: the AirPods' levels from their broadcast while they're not
     connected (the service has them now).
+
+- **Sound ▸ Voice Processing: try it on your own voice** (Ben,
+  2026-11-02): "in the sound settings -> voice processing section, add
+  something where the user can test the settings by recording a short
+  sample and then we show in real time some kind of audio frequency
+  graph/visualization and what it's doing and then report the
+  processing delay stats/metrics and also of course let them play it
+  back to hear it (let them play it back both with and without the
+  processing applied so they can see and hear the difference)". So: a
+  Test button in the Voice Processing box records a few seconds from
+  the chosen microphone, raw and through `olo-voice`'s chain with the
+  settings as they are (both kept, in memory, never written out
+  unasked); while recording and playing, a live spectrogram (or
+  spectrum) of the raw and the processed side by side, with what each
+  stage is doing shown on it (echo removed, noise suppressed, level
+  turned up or down: the chain's own figures); then the delay it adds
+  (median, worst, per stage) and how hard it worked (its share of a
+  core, frames late); and Play Original and Play Processed to hear the
+  difference, switching between them at the same place. Drawn by the
+  kit (a chart any app could use), the work on threads of its own, as
+  fast as the live path; agents read the figures. Test with
+  `tools/dev/pw-sandbox`, never the person's own sound.
 
 - **Chrome scrolls slower than Olo's apps** (Ben, 2026-11-02): "in
   chrome scrolling does not seem to be the same speed as olo native
@@ -957,6 +968,21 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**The file picker opens where it was last, for each app**~~ (done
+  2026-11-02: `places::last_for` / `left_in`, the portal's panel by the
+  asking app, the focused window's when the portal names none) (Ben,
+  2026-11-02): "olo tracker when launched as a file picker from another
+  app should remember and reopen in the last location it was in for
+  that app specifically (if any)". So: the file panel `olo-portal`
+  shows for an app (FileChooser, by the asking app's id) opens in the
+  folder it was last in for that app, Open and Save each, kept in
+  Olo's config (`places`, beside the recent folders) and kept across
+  restarts; the app's own `current_folder` only when there's none (a
+  save of a file it names starts in that file's folder), and a
+  remembered folder that's gone falls back to it. (Olo's own apps start
+  their panels where they mean to, a document's own folder, so this is
+  the portal's.)
 
 - ~~**Dialogs float on top, never tucked into another window's group**~~
   (done 2026-11-02: it wasn't the group. Focus covered an alert naming

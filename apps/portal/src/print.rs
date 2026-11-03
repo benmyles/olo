@@ -98,10 +98,12 @@ impl Print {
         let folder = std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join("Documents")).filter(|d| d.is_dir());
         (self.to_ui)(ToUi::Files(crate::files::Ask {
             request: handle.to_string(),
+            app: String::new(),
             parent,
             title: "Save as PDF".into(),
             purpose: crate::files::Purpose::Save,
             folder,
+            at_file: false,
             name,
             filters: Vec::new(),
             current: 0,

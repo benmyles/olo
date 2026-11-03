@@ -2,7 +2,9 @@
 //! Documents, …), favourites they add, and the ones gone to lately. Every
 //! file panel's folder pop-up and Tracker's Go menu show them, from one
 //! file, `~/.config/olo/places.json` (agents can read and change it too),
-//! as BeOS's file panel kept Favorites and Recent Folders.
+//! as BeOS's file panel kept Favorites and Recent Folders. It also keeps
+//! the folder a panel was last in for each app that asked through the
+//! portal, for opening and for saving, so the next opens there.
 
 use std::path::{Path, PathBuf};
 
@@ -16,6 +18,19 @@ pub struct Places {
     /// Most recent first.
     #[serde(default)]
     pub recent: Vec<PathBuf>,
+    /// The folder a panel was last in for each app (by its id), opening
+    /// and saving.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub apps: std::collections::BTreeMap<String, AppFolders>,
+}
+
+/// Where an app's panels were last.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AppFolders {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub save: Option<PathBuf>,
 }
 
 fn path() -> PathBuf {
@@ -59,6 +74,29 @@ pub fn visited(dir: &Path) {
     save(&p);
 }
 
+/// The folder `app`'s panel was last in (`saving`: a Save panel's), if
+/// it's still there.
+pub fn last_for(app: &str, saving: bool) -> Option<PathBuf> {
+    let p = load();
+    let f = p.apps.get(app)?;
+    if saving { f.save.clone() } else { f.open.clone() }.filter(|d| d.is_dir())
+}
+
+/// `app`'s panel was left in `dir` (`saving`: a Save panel).
+pub fn left_in(app: &str, saving: bool, dir: &Path) {
+    if app.is_empty() {
+        return;
+    }
+    let mut p = load();
+    let f = p.apps.entry(app.to_owned()).or_default();
+    let slot = if saving { &mut f.save } else { &mut f.open };
+    if slot.as_deref() == Some(dir) {
+        return;
+    }
+    *slot = Some(dir.to_path_buf());
+    save(&p);
+}
+
 /// The standard folders that are there: Home, then Desktop, Documents,
 /// Downloads, Pictures, Music and Videos (as `user-dirs.dirs` names them).
 pub fn standard() -> Vec<(String, PathBuf)> {
@@ -96,5 +134,19 @@ mod tests {
         assert!(s.iter().all(|(_, d)| d.is_dir()));
         assert_eq!(label(Path::new("/")), "/");
         assert_eq!(label(Path::new("/a/bc")), "bc");
+    }
+
+    /// A file from before apps' folders were kept still reads; they're
+    /// kept by app, opening and saving apart, and written only if any.
+    #[test]
+    fn apps_folders_kept() {
+        let old: Places = serde_json::from_str(r#"{"favorites":["/a"],"recent":["/b"]}"#).unwrap();
+        assert!(old.apps.is_empty() && old.favorites == [PathBuf::from("/a")]);
+        assert!(!serde_json::to_string(&old).unwrap().contains("apps"));
+        let mut p = old;
+        p.apps.insert("com.slack.Slack".into(), AppFolders { open: Some("/home/x/Pictures".into()), save: None });
+        let back: Places = serde_json::from_str(&serde_json::to_string(&p).unwrap()).unwrap();
+        assert_eq!(back, p);
+        assert_eq!(back.apps["com.slack.Slack"].save, None);
     }
 }

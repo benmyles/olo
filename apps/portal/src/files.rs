@@ -30,11 +30,17 @@ pub enum Purpose {
 /// What a panel was asked (from the portal).
 pub struct Ask {
     pub request: String,
+    /// The app asking (its id, as the portal or its window has it; empty
+    /// if neither says), whose panel opens where it was last.
+    pub app: String,
     pub parent: String,
     pub title: String,
     pub purpose: Purpose,
-    /// Where it starts.
+    /// Where the app asked it to start (`current_folder`, or the folder
+    /// of `current_file`), and whether it named a file to save over
+    /// (whose folder it then starts in, whatever was last).
     pub folder: Option<PathBuf>,
+    pub at_file: bool,
     /// The name proposed for a save.
     pub name: String,
     /// The filters offered (none: every file), and the one shown first.
@@ -96,7 +102,7 @@ pub fn filters(list: &[PortalFilter], current: Option<&PortalFilter>) -> (Vec<Po
 }
 
 impl FileChooser {
-    async fn ask(&self, handle: OwnedObjectPath, parent: String, title: String, purpose: Purpose, options: &HashMap<String, OwnedValue>, server: &zbus::ObjectServer) -> Option<(Chosen, Vec<PortalFilter>)> {
+    async fn ask(&self, handle: OwnedObjectPath, app: String, parent: String, title: String, purpose: Purpose, options: &HashMap<String, OwnedValue>, server: &zbus::ObjectServer) -> Option<(Chosen, Vec<PortalFilter>)> {
         let given: Vec<PortalFilter> = options.get("filters").and_then(|v| <Vec<PortalFilter>>::try_from(v.try_clone().ok()?).ok()).unwrap_or_default();
         let current: Option<PortalFilter> = options.get("current_filter").and_then(|v| <PortalFilter>::try_from(v.try_clone().ok()?).ok());
         let (list, current) = filters(&given, current.as_ref());
@@ -114,11 +120,15 @@ impl FileChooser {
             n if !n.is_empty() => n,
             _ => current_file.as_ref().and_then(|f| f.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
         };
+        // An app the portal can't name (not sandboxed, not started in a
+        // scope it knows): the one whose window has the keyboard, which
+        // asked.
+        let app = if app.is_empty() { blocking::unblock(focused_app).await } else { app };
         let (tx, rx) = async_channel::bounded(1);
         let request = crate::portal::RequestObject { handle: handle.to_string(), to_ui: self.to_ui.clone() };
         let _ = server.at(handle.as_ref(), request).await;
         let filters = list.iter().map(filter).collect();
-        (self.to_ui)(ToUi::Files(Ask { request: handle.to_string(), parent, title, purpose, folder, name, filters, current, multiple, choices, reply: tx }));
+        (self.to_ui)(ToUi::Files(Ask { request: handle.to_string(), app, parent, title, purpose, folder, at_file: current_file.is_some(), name, filters, current, multiple, choices, reply: tx }));
         let chosen = rx.recv().await.ok().flatten();
         let _ = server.remove::<crate::portal::RequestObject, _>(handle.as_ref()).await;
         chosen.map(|c| (c, list))
@@ -137,6 +147,14 @@ fn answer(uris: Vec<PathBuf>, chosen: &Chosen, filters: &[PortalFilter]) -> (u32
     (0, results)
 }
 
+/// The app whose window has the keyboard (empty: none, or app_server
+/// can't be asked).
+fn focused_app() -> String {
+    use olo_protocol::{Client, Reply, Request};
+    let Ok(Reply::Windows { windows }) = Client::connect().and_then(|mut c| c.request(&Request::ListWindows)) else { return String::new() };
+    windows.into_iter().find(|w| w.focused).map(|w| w.app_id).unwrap_or_default()
+}
+
 /// The person cancelled.
 fn cancelled() -> (u32, HashMap<String, OwnedValue>) {
     (1, HashMap::new())
@@ -147,7 +165,7 @@ impl FileChooser {
     async fn open_file(
         &self,
         handle: OwnedObjectPath,
-        _app_id: String,
+        app_id: String,
         parent_window: String,
         title: String,
         options: HashMap<String, OwnedValue>,
@@ -155,7 +173,7 @@ impl FileChooser {
     ) -> (u32, HashMap<String, OwnedValue>) {
         let folder = options.get("directory").and_then(|v| bool::try_from(v).ok()).unwrap_or(false);
         let purpose = if folder { Purpose::Folder } else { Purpose::Open };
-        match self.ask(handle, parent_window, title, purpose, &options, server).await {
+        match self.ask(handle, app_id, parent_window, title, purpose, &options, server).await {
             Some((c, filters)) => answer(c.paths.clone(), &c, &filters),
             None => cancelled(),
         }
@@ -164,13 +182,13 @@ impl FileChooser {
     async fn save_file(
         &self,
         handle: OwnedObjectPath,
-        _app_id: String,
+        app_id: String,
         parent_window: String,
         title: String,
         options: HashMap<String, OwnedValue>,
         #[zbus(object_server)] server: &zbus::ObjectServer,
     ) -> (u32, HashMap<String, OwnedValue>) {
-        match self.ask(handle, parent_window, title, Purpose::Save, &options, server).await {
+        match self.ask(handle, app_id, parent_window, title, Purpose::Save, &options, server).await {
             Some((c, filters)) => answer(c.paths.clone(), &c, &filters),
             None => cancelled(),
         }
@@ -179,7 +197,7 @@ impl FileChooser {
     async fn save_files(
         &self,
         handle: OwnedObjectPath,
-        _app_id: String,
+        app_id: String,
         parent_window: String,
         title: String,
         options: HashMap<String, OwnedValue>,
@@ -187,7 +205,7 @@ impl FileChooser {
     ) -> (u32, HashMap<String, OwnedValue>) {
         use std::os::unix::ffi::OsStringExt;
         let files: Vec<Vec<u8>> = options.get("files").and_then(|v| <Vec<Vec<u8>>>::try_from(v.try_clone().ok()?).ok()).unwrap_or_default();
-        let Some((c, filters)) = self.ask(handle, parent_window, title, Purpose::SaveFiles, &options, server).await else { return cancelled() };
+        let Some((c, filters)) = self.ask(handle, app_id, parent_window, title, Purpose::SaveFiles, &options, server).await else { return cancelled() };
         let Some(dir) = c.paths.first().cloned() else { return cancelled() };
         let names = files.into_iter().map(|f| PathBuf::from(std::ffi::OsString::from_vec(f.into_iter().take_while(|b| *b != 0).collect())));
         answer(names.filter_map(|n| n.file_name().map(|f| dir.join(f))).collect(), &c, &filters)

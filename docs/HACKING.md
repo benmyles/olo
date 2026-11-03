@@ -4514,9 +4514,12 @@ its request, for the app's Cancel and for holding an upgrade off.
 - **Open and Save** (`files.rs`): the FileChooser portal's OpenFile,
   SaveFile and SaveFiles as the GPUI kit's file panel
   (`file_panel::show_in`, in `file_panel::window_options` over the
-  asking window), titled as the app asks, starting in its
-  `current_folder` (a save's `current_file`'s), proposing its
-  `current_name`. The app's filters (globs and MIME types; `current_filter`
+  asking window), titled as the app asks, starting where that app's
+  panel was last (`places::last_for`, opening and saving apart, kept in
+  `places.json` as the panel goes, `left_in`, Cancel included; by the
+  app id the portal gives, else the app whose window has the keyboard),
+  else in its `current_folder`; a save naming a `current_file` starts
+  in that file's folder. It proposes the app's `current_name`. The app's filters (globs and MIME types; `current_filter`
   shown first, or added) are the panel's Show pop-up, `multiple` lets it
   choose several files, and its `choices` sit above the buttons; the
   answer carries the `uris`, the filter shown and the choices made.
