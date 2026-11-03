@@ -1142,11 +1142,15 @@ pub struct TerminalSettings {
     /// are told to keep it saying what they're working on (Terminal's
     /// agent_title.rs; off by default).
     pub agent_titles: bool,
+    /// Claude Code and Codex are told to use Olo's Agent Screens for
+    /// anything graphical, and how, Olo's Chrome included (Terminal's
+    /// agent_context.rs, apps/screen/agent-context.md; off by default).
+    pub agent_screens: bool,
 }
 
 impl Default for TerminalSettings {
     fn default() -> Self {
-        TerminalSettings { worktrees: "~/worktrees".into(), agent_context: false, agent_titles: false }
+        TerminalSettings { worktrees: "~/worktrees".into(), agent_context: false, agent_titles: false, agent_screens: false }
     }
 }
 

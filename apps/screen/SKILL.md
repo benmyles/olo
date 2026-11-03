@@ -34,11 +34,20 @@ started with `--sound`. Stop your screens when you are done.
 
 ## A web browser
 
-Olo has Google Chrome (as a Wayland program): `olo-screen run agent
-olo-chrome URL`. Chrome keeps one process per profile, so if the
-person already has Chrome open, a launch with their profile opens its
-window on *their* screen. Unless the task needs their signed-in sites,
-give it a profile of its own:
+Use Olo's Chrome, always through the screen:
+
+```sh
+olo-screen run agent olo-chrome https://example.com
+```
+
+It opens on that screen, in the screen's own Chrome profile (kept with
+its history, so cookies and sign-ins last as long as the screen's
+history does). **Never** start `google-chrome`, `google-chrome-stable`,
+`chromium` or `chrome` yourself. Never give it the person's profile
+either (a `--user-data-dir` in `~/.config`): Chrome keeps one process
+per profile, and it would hand the window to the person's running
+Chrome, on *their* screen. For a profile that starts empty each time,
+give it a folder of its own:
 
 ```sh
 olo-screen run agent olo-chrome --user-data-dir="$(mktemp -d)" https://example.com

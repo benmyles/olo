@@ -170,6 +170,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "sound", tab: "", group: "", name: "Even out the voice's level", role: "CheckBox" },
     Setting { panel: "terminal", tab: "", group: "Coding Agents", name: "Tell coding agents about the repositories in their tab group", role: "CheckBox" },
     Setting { panel: "terminal", tab: "", group: "Coding Agents", name: "Let coding agents keep their tab’s title current", role: "CheckBox" },
+    Setting { panel: "terminal", tab: "", group: "Coding Agents", name: "Tell coding agents to use Olo’s Agent Screens", role: "CheckBox" },
     Setting { panel: "themes", tab: "", group: "", name: "BeBox", role: "RadioButton" },
     Setting { panel: "themes", tab: "", group: "", name: "Soft Be", role: "RadioButton" },
     Setting { panel: "themes", tab: "", group: "", name: "Toybox", role: "RadioButton" },

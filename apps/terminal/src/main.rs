@@ -552,9 +552,10 @@ pub(crate) struct Terminal {
     /// may have started without writing anything).
     retitling: bool,
     /// Preferences ▸ Terminal: coding agents told about their tab's group
-    /// (agent_context.rs) and keeping its title (agent_title.rs; None:
-    /// not heard yet), and what was last kept for their hook and tool.
-    agent_context: Option<(bool, bool)>,
+    /// (agent_context.rs), keeping its title (agent_title.rs) and told
+    /// to use Agent Screens (None: not heard yet), and what was last kept
+    /// for their hook and tool.
+    agent_context: Option<AgentContext>,
     agent_snapshot: Option<agent_context::Snapshot>,
     /// sudo requests approved without asking, by connection, with the
     /// window they came from (a window asks if the password doesn't do).
@@ -563,11 +564,21 @@ pub(crate) struct Terminal {
 
 
 /// Preferences ▸ Terminal's coding agent settings, as they change: told
-/// about their tab's group (agent_context.rs), and keeping their tab's
-/// title current (agent_title.rs).
+/// about their tab's group (agent_context.rs), keeping their tab's title
+/// current (agent_title.rs), and told to use Agent Screens
+/// (agent_context.rs, `SCREENS`).
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct AgentContext {
     groups: bool,
     titles: bool,
+    screens: bool,
+}
+
+impl AgentContext {
+    /// Any of them: the hook is in, and its file kept.
+    fn any(self) -> bool {
+        self.groups || self.titles || self.screens
+    }
 }
 
 /// How soon a tab's agent must be seen again after a restart to keep
@@ -2103,7 +2114,7 @@ impl Terminal {
             Err(m) => m,
         };
         let message = match message.downcast::<AgentContext>() {
-            Ok(on) => return self.set_agent_context(on.groups, on.titles),
+            Ok(on) => return self.set_agent_context(*on),
             Err(m) => m,
         };
         let message = match message.downcast::<daemon::Report>() {
@@ -2240,16 +2251,16 @@ impl Terminal {
     /// Preferences ▸ Terminal's agent settings: the agents' hook (either)
     /// and title tool (`titles`) put in or taken out, off the UI thread,
     /// and their file kept or not.
-    fn set_agent_context(&mut self, groups: bool, titles: bool) {
+    fn set_agent_context(&mut self, now: AgentContext) {
         let was = self.agent_context;
-        if was == Some((groups, titles)) {
+        if was == Some(now) {
             return;
         }
-        self.agent_context = Some((groups, titles));
+        self.agent_context = Some(now);
         self.agent_snapshot = None;
-        let on = groups || titles;
-        let hooks = was.is_none_or(|(g, t)| (g || t) != on);
-        let tool = was.is_none_or(|(_, t)| t != titles);
+        let (on, titles) = (now.any(), now.titles);
+        let hooks = was.is_none_or(|w| w.any() != on);
+        let tool = was.is_none_or(|w| w.titles != titles);
         let exe = std::env::current_exe().ok().map(|e| e.to_str().and_then(|s| s.strip_suffix(" (deleted)")).map(PathBuf::from).unwrap_or(e));
         std::thread::spawn(move || {
             if !on {
@@ -2304,7 +2315,7 @@ impl Terminal {
     /// While coding agents are told about their groups: each tab's shell,
     /// group, folder and agent, kept for the hook when they change.
     fn keep_agent_snapshot(&mut self) {
-        let Some((groups, titles)) = self.agent_context.filter(|(g, t)| *g || *t) else { return };
+        let Some(AgentContext { groups, titles, screens }) = self.agent_context.filter(|a| a.any()) else { return };
         let display = olo_xdg::display_name();
         let tabs = self
             .windows
@@ -2323,7 +2334,7 @@ impl Terminal {
                 })
             })
             .collect();
-        let snapshot = agent_context::Snapshot { tabs, groups, titles };
+        let snapshot = agent_context::Snapshot { tabs, groups, titles, screens };
         if self.agent_snapshot.as_ref() == Some(&snapshot) {
             return;
         }
@@ -2506,7 +2517,7 @@ fn main() {
             let _ = t.update(cx, |t, cx| t.window_dropped(cx, window, onto, Some(place)));
         });
         olo_kit_base::settings::watch(move |s| {
-            proxy.send(AgentContext { groups: s.terminal.agent_context, titles: s.terminal.agent_titles });
+            proxy.send(AgentContext { groups: s.terminal.agent_context, titles: s.terminal.agent_titles, screens: s.terminal.agent_screens });
             proxy.send(repos::WorktreesAt(s.terminal.worktrees));
         });
     });

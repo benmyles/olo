@@ -21,7 +21,11 @@
 //!
 //! The same hook tells them to keep their tab's title current when that
 //! setting is on (agent_title.rs: at the start, then a line with each
-//! prompt); the file is kept while either is on, and says which.
+//! prompt), and to use Olo's Agent Screens for anything graphical, and
+//! how (Preferences ▸ Terminal ▸ "Tell coding agents to use Olo's Agent
+//! Screens": at the start, [`SCREENS`], kept beside the screens' skill;
+//! said to any agent in an Olo session, in a tab or not). The file is
+//! kept while any is on, and says which.
 
 use std::{
     io::Read,
@@ -37,6 +41,10 @@ pub const FLAG: &str = "--agent-context";
 
 /// The events it is a hook of.
 const EVENTS: [&str; 2] = ["SessionStart", "UserPromptSubmit"];
+
+/// What agents are told about Agent Screens at the start (with the
+/// screens' skill, apps/screen/SKILL.md, which says the rest).
+pub const SCREENS: &str = include_str!("../../screen/agent-context.md");
 
 /// A tab, as the hook needs it.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -61,11 +69,13 @@ pub struct Snapshot {
     pub groups: bool,
     /// Agents keep their tabs' titles current (agent_title.rs).
     pub titles: bool,
+    /// Agents are told to use Agent Screens ([`SCREENS`]).
+    pub screens: bool,
 }
 
 impl Default for Snapshot {
     fn default() -> Self {
-        Snapshot { tabs: Vec::new(), groups: true, titles: false }
+        Snapshot { tabs: Vec::new(), groups: true, titles: false, screens: false }
     }
 }
 
@@ -86,7 +96,7 @@ const SNAPSHOT: &str = "olo-terminal-groups";
 /// Terminal's settings: they're the person's, one for all).
 pub fn read_all() -> Option<Snapshot> {
     let mut tabs = Vec::new();
-    let (mut any, mut groups, mut titles) = (false, false, false);
+    let (mut any, mut groups, mut titles, mut screens) = (false, false, false, false);
     for e in std::fs::read_dir(runtime_dir()).ok()?.flatten() {
         let name = e.file_name();
         let name = name.to_string_lossy();
@@ -97,11 +107,12 @@ pub fn read_all() -> Option<Snapshot> {
             any = true;
             groups |= s.groups;
             titles |= s.titles;
+            screens |= s.screens;
             // (Not a Terminal's that has gone: its shells have.)
             tabs.extend(s.tabs.into_iter().filter(|t| t.shell.is_none_or(|p| Path::new(&format!("/proc/{p}")).exists())));
         }
     }
-    any.then_some(Snapshot { tabs, groups, titles })
+    any.then_some(Snapshot { tabs, groups, titles, screens })
 }
 
 /// Keep `s` for the hook (a new file put in place of the old, for this
@@ -288,20 +299,29 @@ pub fn run() -> std::process::ExitCode {
     let ancestors = ancestors();
     let read = read_all;
     // A tab just opened may not be in it yet (it's kept every two
-    // seconds): a moment's grace, at the start only.
+    // seconds): a moment's grace, at the start only, where the tab is
+    // wanted (Agent Screens' words aren't the tab's).
     let mut snapshot = read();
     let deadline = std::time::Instant::now() + Duration::from_millis(2500);
     while event == "SessionStart"
-        && snapshot.is_some()
-        && snapshot.as_ref().is_some_and(|s| tab_of(s, &ancestors, cwd.as_deref()).is_none())
+        && snapshot.as_ref().is_some_and(|s| (s.groups || s.titles) && tab_of(s, &ancestors, cwd.as_deref()).is_none())
         && std::time::Instant::now() < deadline
     {
         std::thread::sleep(Duration::from_millis(250));
         snapshot = read();
     }
     let Some(s) = snapshot else { return std::process::ExitCode::SUCCESS };
-    let Some(tab) = tab_of(&s, &ancestors, cwd.as_deref()) else { return std::process::ExitCode::SUCCESS };
     let mut said = Vec::new();
+    // Agent Screens: at the start, to any agent in an Olo session.
+    if s.screens && event == "SessionStart" && std::env::var_os("OLO_SESSION").is_some() {
+        said.push(SCREENS.trim().to_owned());
+    }
+    let Some(tab) = tab_of(&s, &ancestors, cwd.as_deref()) else {
+        if !said.is_empty() {
+            println!("{}", said.join("\n\n"));
+        }
+        return std::process::ExitCode::SUCCESS;
+    };
     // Its title: how at the start, a reminder with each prompt.
     if s.titles {
         said.push(if event == "UserPromptSubmit" { crate::agent_title::REMINDER } else { crate::agent_title::INSTRUCTIONS }.to_owned());
@@ -335,6 +355,19 @@ mod tests {
 
     fn place(p: &Path) -> Place {
         Place { path: p.to_path_buf(), describe: format!("{} (repository {})", p.display(), p.file_name().unwrap().to_string_lossy()) }
+    }
+
+    #[test]
+    fn agent_screens_words_name_olo_chrome() {
+        // What agents are told: Olo's Chrome on the screen, never another.
+        assert!(SCREENS.contains("olo-screen run NAME olo-chrome URL"));
+        assert!(SCREENS.contains("Never start `google-chrome`"));
+        assert!(SCREENS.contains("olo-screen start"));
+        let s: Snapshot = serde_json::from_str(r#"{"tabs":[],"screens":true}"#).unwrap();
+        assert!(s.screens && s.groups && !s.titles);
+        // From a Terminal before the setting: off.
+        let old: Snapshot = serde_json::from_str(r#"{"tabs":[],"groups":true,"titles":true}"#).unwrap();
+        assert!(!old.screens);
     }
 
     #[test]

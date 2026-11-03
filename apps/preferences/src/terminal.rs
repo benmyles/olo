@@ -1,7 +1,8 @@
 //! Terminal: where New Worktree… (a repository group's menu) makes a
 //! repository's worktrees, whether coding agents are told about the
-//! repositories in their tab's group, and whether they keep their tab's
-//! title current. Terminal follows them live.
+//! repositories in their tab's group, whether they keep their tab's
+//! title current, and whether they're told to use Agent Screens.
+//! Terminal follows them live.
 
 use olo_ui::{gpui::Font, metrics as m};
 
@@ -24,5 +25,8 @@ pub fn ui(ui: &mut Ui) {
         ui.space(m::TIGHT);
         ui.check("Let coding agents keep their tab’s title current", t.agent_titles, |s, v| s.terminal.agent_titles = v);
         ui.note("Claude Code and Codex get a tool to title their tab with what they’re working on, and are asked to keep it current. They see the tool from their next start.");
+        ui.space(m::TIGHT);
+        ui.check("Tell coding agents to use Olo’s Agent Screens", t.agent_screens, |s, v| s.terminal.agent_screens = v);
+        ui.note("Claude Code and Codex are told, as they start, to test and use desktop apps and web pages on screens of their own that you can watch and take over, never on yours, and how: Olo’s Chrome included, so they never start one on your screen.");
     });
 }

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Preferences ▸ Terminal: tell coding agents to use Agent Screens
+
+*22:02* — A third Coding Agents setting: Claude Code and Codex are told as they start to test and use desktop apps and web pages on Agent Screens of their own, and how, Olo's Chrome included, so they never start a Chrome on the person's screen. The panel is taller to fit it.
+
+![Preferences ▸ Terminal: tell coding agents to use Agent Screens](2026-11-02/220212-preferences-terminal-tell-coding-agents-to-use-a.png)
+
 ### Agent Screens: Live at the screen's own frame rate
 
 *21:34* — Live now shows the agent screen's own frames, shared with the person's compositor as dmabufs (a subsurface of the window), at up to 120 frames a second; before, it took up to eight pictures a second and resampled each on the CPU (30% of a core while the screen moved, 0.6% now). The frame line round the picture stays flush at every scale.

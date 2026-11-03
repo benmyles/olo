@@ -2950,5 +2950,11 @@
   "title": "Agent Screens: Live at the screen's own frame rate",
   "caption": "Live now shows the agent screen's own frames, shared with the person's compositor as dmabufs (a subsurface of the window), at up to 120 frames a second; before, it took up to eight pictures a second and resampled each on the CPU (30% of a core while the screen moved, 0.6% now). The frame line round the picture stays flush at every scale.",
   "image": "2026-11-02/213423-agent-screens-live-at-the-screen-s-own-frame-rat.png"
+ },
+ {
+  "time": "2026-11-02T22:02:12",
+  "title": "Preferences \u25b8 Terminal: tell coding agents to use Agent Screens",
+  "caption": "A third Coding Agents setting: Claude Code and Codex are told as they start to test and use desktop apps and web pages on Agent Screens of their own, and how, Olo's Chrome included, so they never start a Chrome on the person's screen. The panel is taller to fit it.",
+  "image": "2026-11-02/220212-preferences-terminal-tell-coding-agents-to-use-a.png"
  }
 ]

@@ -7,35 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Terminal tells coding agents to use Agent Screens** (Ben,
-  2026-11-02): "check if terminal already injects context to claude
-  code and codex to tell them about using olo's agent screens and how to
-  use them. if not, please add that as a setting in the prefs ->
-  terminal that can be enabled so that claude code and codex will get
-  those instructions and tell them too that they should prefer olo agent
-  screens for the best experience. also make sure that the olo agent
-  screens instructions include information about olo chrome and how to
-  start it so that they don't start the wrong chrome by accident in
-  their agent screen". Checked: nothing injects it today. The session
-  installs the `olo-screens` skill for both agents
-  (crates/session/src/skills.rs, from apps/screen/SKILL.md), but an
-  agent reads a skill only when it thinks it's relevant. Terminal's
-  `olo-terminal --agent-context` hook (apps/terminal/src/agent_context.rs,
-  `SessionStart` and `UserPromptSubmit` in Claude Code's
-  `settings.json` and Codex's `hooks.json`) carries only the tab group
-  and the tab-title line. To do:
-  - A third setting in Preferences ▸ Terminal, off by default ("Tell
-    coding agents to use Olo's Agent Screens"). When on, the same hook
-    says at `SessionStart`:
-    - prefer Agent Screens for anything graphical;
-    - the commands to use;
-    - start the browser with `olo-chrome` (a sandbox `--user-data-dir`),
-      never `google-chrome`/`chromium`/`chrome` or the person's profile;
-    - point to the skill for the rest.
-  - The skill's own Chrome section says the same just as plainly, and
-    that the text is shared with the hook (one source).
-  - Tests with a sandbox HOME, never Ben's agents' real settings.
-
 - **x86 machines, starting with Ben's ThinkPad P1 Gen 9** (Ben; it
   arrives within days; **next once the GPUI migration is done**, before
   the rest of this list: "after all the gpui work is done, prioritize
@@ -732,6 +703,54 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**Terminal tells coding agents to use Agent Screens**~~ (Ben,
+  2026-11-02): "check if terminal already injects context to claude
+  code and codex to tell them about using olo's agent screens and how to
+  use them. if not, please add that as a setting in the prefs ->
+  terminal that can be enabled so that claude code and codex will get
+  those instructions and tell them too that they should prefer olo agent
+  screens for the best experience. also make sure that the olo agent
+  screens instructions include information about olo chrome and how to
+  start it so that they don't start the wrong chrome by accident in
+  their agent screen". Checked: nothing injects it today. The session
+  installs the `olo-screens` skill for both agents
+  (crates/session/src/skills.rs, from apps/screen/SKILL.md), but an
+  agent reads a skill only when it thinks it's relevant. Terminal's
+  `olo-terminal --agent-context` hook (apps/terminal/src/agent_context.rs,
+  `SessionStart` and `UserPromptSubmit` in Claude Code's
+  `settings.json` and Codex's `hooks.json`) carries only the tab group
+  and the tab-title line. To do:
+  - A third setting in Preferences ▸ Terminal, off by default ("Tell
+    coding agents to use Olo's Agent Screens"). When on, the same hook
+    says at `SessionStart`:
+    - prefer Agent Screens for anything graphical;
+    - the commands to use;
+    - start the browser with `olo-chrome` (a sandbox `--user-data-dir`),
+      never `google-chrome`/`chromium`/`chrome` or the person's profile;
+    - point to the skill for the rest.
+  - The skill's own Chrome section says the same just as plainly, and
+    that the text is shared with the hook (one source).
+  - Tests with a sandbox HOME, never Ben's agents' real settings.
+  *Done* (2026-11-02): Preferences ▸ Terminal ▸ Coding Agents ▸ "Tell
+  coding agents to use Olo's Agent Screens" (`agent_screens`, off).
+  - Terminal's hook, at `SessionStart`, gives any agent in an Olo
+    session `apps/screen/agent-context.md`:
+    - prefer a screen of your own for anything graphical;
+    - the commands;
+    - web pages in `olo-screen run NAME olo-chrome URL`, never a
+      `google-chrome`/`chromium` of your own or the person's profile;
+    - the skill for the rest.
+  - The skill's Chrome section now says the same; its old
+    "the person's profile by default" was out of date, since screens
+    have their own.
+  - Checked: the hook prints it at the start only, not with prompts and
+    not outside an Olo session, in 3 ms (no wait for a tab it doesn't
+    need).
+  - The panel was made taller (420×472). The review is clean at 1, 1.5
+    and 2×, light and dark.
+  - New test: `agent_screens_words_name_olo_chrome`. The settings index
+    was regenerated.
 
 - ~~**A window's tab menu: Close and Quit with their keys**~~ (Ben, 2026-11-02): "for
   some reason "Close" in the tab context menus doesn't have a shortcut.

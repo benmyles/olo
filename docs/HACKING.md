@@ -2813,7 +2813,9 @@ opened, its own `panel::State` and text fields).
   Agents' "Tell coding agents about the repositories in their tab group"
   (`agent_context`, off; see Terminal's **Coding agents' context**) and
   "Let coding agents keep their tab's title current" (`agent_titles`,
-  off; Terminal's **Coding agents' tab titles**).
+  off; Terminal's **Coding agents' tab titles**) and "Tell coding agents
+  to use Olo's Agent Screens" (`agent_screens`, off; Terminal's **Coding
+  agents and Agent Screens**).
   Terminal follows them live (`settings::watch`).
 * Windows (`windows.rs`) sets the space Olo leaves around the windows it
   arranges (`Settings::tiling`: margin at the display's edges, gap
@@ -5966,6 +5968,26 @@ its daemon (by the session's folder, a tab running an agent first, with
 `UserPromptSubmit` only if it changed since it last told that session
 (`$XDG_RUNTIME_DIR/olo-agent-context/<session>`), so a tab joining or
 leaving the group is known from the next turn.
+
+**Coding agents and Agent Screens** (`agent_context::SCREENS`;
+Preferences ▸ Terminal ▸ Coding Agents, off by default).
+- When on, the same hook tells a Claude Code or Codex in an Olo session
+  (`OLO_SESSION`), in a tab or not, as it starts (`SessionStart`, which
+  is also after a compaction):
+  - to prefer an Agent Screen of its own for anything graphical, never
+    the person's screen;
+  - the few `olo-screen` commands it needs;
+  - that web pages go in Olo's Chrome on the screen (`olo-screen run
+    NAME olo-chrome URL`, in the screen's own profile), never a
+    `google-chrome`/`chromium` it starts itself or the person's profile
+    (Chrome would hand the window to the person's Chrome on their screen);
+  - that the `olo-screens` skill has the rest.
+- The words are `apps/screen/agent-context.md`, beside the skill
+  (`apps/screen/SKILL.md`, whose Chrome section says the same), so the
+  two are changed together.
+- Terminal's file carries `screens` for the hook. It waits for the
+  agent's tab (up to 2.5 s) only when the group or title settings need
+  it: with this one alone, the hook answers in about 3 ms.
 
 **Coding agents' tab titles** (`src/agent_title.rs`; Preferences ▸
 Terminal ▸ Coding Agents, off by default). A Claude Code or Codex in a
