@@ -31,7 +31,8 @@
 //! row; Tile All balances the tree; dragging a tile onto another swaps
 //! them, or onto one's edge puts it beside it; dragging an edge moves the
 //! split to just where it is let go (no grid: the windows are as sized,
-//! and the rest go on fitting around them as windows come and go). Zoom
+//! and the rest go on fitting around them as windows come and go), the
+//! tiles beside it following each step and shown with it (`rounds`). Zoom
 //! still zooms a window over the tiles, and unzooming puts it back. ⌃⌘Z
 //! undoes the last change to a tree (and turning auto-tiling on).
 //!
@@ -381,44 +382,71 @@ fn span((x, y, w, h): Part, cut: Cut) -> (f32, f32) {
     }
 }
 
+/// What of the gap between tiles each side of a tile gives up, in
+/// fractions of the area (as `tiling::part` lays them): `lead` at its
+/// left and top sides, `trail` at its right and bottom ones, and nothing
+/// at the area's edges.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Inset {
+    pub lead: (f32, f32),
+    pub trail: (f32, f32),
+}
+
+impl Inset {
+    pub fn of(area: Rectangle<i32, Logical>, gap: i32) -> Inset {
+        let half = gap / 2;
+        let (w, h) = (area.size.w.max(1) as f32, area.size.h.max(1) as f32);
+        Inset { lead: ((gap - half) as f32 / w, (gap - half) as f32 / h), trail: (half as f32 / w, half as f32 / h) }
+    }
+}
+
 /// Each leaf that takes room (the windows, and the places that hold
 /// theirs) and its part of the area, from the top left. `min` is each
-/// window's least size in fractions of the area (gap included): a split
-/// gives each side at least that, where both fit, whatever its ratio.
-pub fn layout<'a>(node: &'a Node, min: &dyn Fn(u64) -> (f32, f32)) -> Vec<(&'a Node, Part)> {
+/// window's least size in fractions of the area, a whole gap with it: a
+/// split gives each side at least that, where both fit, whatever its
+/// ratio, less what of the gap a tile at the area's edge doesn't give up
+/// (`inset`: there it has room to its least size and no more).
+pub fn layout<'a>(node: &'a Node, min: &dyn Fn(u64) -> (f32, f32), inset: Inset) -> Vec<(&'a Node, Part)> {
     let mut m = Vec::new();
     measure(node, min, &mut m);
     let mut out = Vec::new();
     if m[0].shows {
-        place(node, (0.0, 0.0, 1.0, 1.0), &m, 0, &mut out);
+        place(node, (0.0, 0.0, 1.0, 1.0), &m, 0, &mut out, inset);
     }
     out
 }
 
-fn place<'a>(node: &'a Node, r: Part, m: &[Measure], i: usize, out: &mut Vec<(&'a Node, Part)>) {
+fn place<'a>(node: &'a Node, r: Part, m: &[Measure], i: usize, out: &mut Vec<(&'a Node, Part)>, inset: Inset) {
     let Node::Split { cut, ratio, a, b } = node else {
         out.push((node, r));
         return;
     };
     let (ia, ib) = (i + 1, i + 1 + m[i + 1].len);
     match (m[ia].shows, m[ib].shows) {
-        (true, false) => place(a, r, m, ia, out),
-        (false, true) => place(b, r, m, ib, out),
+        (true, false) => place(a, r, m, ia, out, inset),
+        (false, true) => place(b, r, m, ib, out, inset),
         (false, false) => {}
         (true, true) => {
-            let (ra, rb) = divide(*cut, laid_ratio(*cut, *ratio, r, m[ia], m[ib]), r);
-            place(a, ra, m, ia, out);
-            place(b, rb, m, ib, out);
+            let (ra, rb) = divide(*cut, laid_ratio(*cut, *ratio, r, m[ia], m[ib], inset), r);
+            place(a, ra, m, ia, out, inset);
+            place(b, rb, m, ib, out, inset);
         }
     }
 }
 
 /// The ratio a split of room `r` is laid out at: as it is, unless its two
 /// sides' least sizes (`ma`, `mb`) hold it off that.
-fn laid_ratio(cut: Cut, ratio: f32, r: Part, ma: Measure, mb: Measure) -> f32 {
-    let (_, len) = span(r, cut);
+fn laid_ratio(cut: Cut, ratio: f32, r: Part, ma: Measure, mb: Measure, inset: Inset) -> f32 {
+    let (start, len) = span(r, cut);
     let pick = |mm: Measure| if cut == Cut::Columns { mm.min.0 } else { mm.min.1 };
-    let (lo, hi) = (pick(ma) / len.max(1e-6), 1.0 - pick(mb) / len.max(1e-6));
+    // Each side's least, its gap as it is there: a tile gives up `lead`
+    // of it at its start and `trail` at its end, none at the area's edge
+    // (each min counts a whole gap, `lead` and `trail`).
+    let (lead, trail) = if cut == Cut::Columns { (inset.lead.0, inset.trail.0) } else { (inset.lead.1, inset.trail.1) };
+    let (at_start, at_end) = (start <= 1e-6, start + len >= 1.0 - 1e-6);
+    let need_a = pick(ma) - if at_start { lead } else { 0.0 };
+    let need_b = pick(mb) - if at_end { trail } else { 0.0 };
+    let (lo, hi) = (need_a.max(0.0) / len.max(1e-6), 1.0 - need_b.max(0.0) / len.max(1e-6));
     if lo <= hi {
         ratio.clamp(lo, hi)
     } else {
@@ -446,17 +474,17 @@ pub fn with_ratios_of(node: &Node, laid: &Node) -> Node {
 /// `node` with each split at the ratio it is laid out at (its windows'
 /// least sizes may hold an edge off where it was dragged to): a tree kept
 /// across a restart lays out the same before they are known again.
-pub fn as_laid_out(node: &Node, min: &dyn Fn(u64) -> (f32, f32)) -> Node {
-    fn go(node: &Node, r: Part, m: &[Measure], i: usize) -> Node {
+pub fn as_laid_out(node: &Node, min: &dyn Fn(u64) -> (f32, f32), inset: Inset) -> Node {
+    fn go(node: &Node, r: Part, m: &[Measure], i: usize, inset: Inset) -> Node {
         let Node::Split { cut, ratio, a, b } = node else { return node.clone() };
         let (ia, ib) = (i + 1, i + 1 + m[i + 1].len);
-        let ratio = if m[ia].shows && m[ib].shows { laid_ratio(*cut, *ratio, r, m[ia], m[ib]) } else { *ratio };
+        let ratio = if m[ia].shows && m[ib].shows { laid_ratio(*cut, *ratio, r, m[ia], m[ib], inset) } else { *ratio };
         let (ra, rb) = divide(*cut, ratio, r);
-        Node::split(*cut, ratio, go(a, ra, m, ia), go(b, rb, m, ib))
+        Node::split(*cut, ratio, go(a, ra, m, ia, inset), go(b, rb, m, ib, inset))
     }
     let mut m = Vec::new();
     measure(node, min, &mut m);
-    go(node, (0.0, 0.0, 1.0, 1.0), &m, 0)
+    go(node, (0.0, 0.0, 1.0, 1.0), &m, 0, inset)
 }
 
 /// `ids` in a tree as even as it can be: halves (by count) side by side
@@ -1008,7 +1036,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 let laid = match area {
                     Some(area) => {
                         let mins = self.auto_mins(&windows, area);
-                        as_laid_out(t, &|id| mins.get(&id).copied().unwrap_or((0.0, 0.0)))
+                        as_laid_out(t, &|id| mins.get(&id).copied().unwrap_or((0.0, 0.0)), Inset::of(area, self.tile_gap()))
                     }
                     None => t.clone(),
                 };
@@ -1311,7 +1339,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             }
             if !t.any_leaf(&|n| closing(n)) {
                 let mins = self.auto_mins(&units, area);
-                self.auto.laid.insert(key.clone(), as_laid_out(&t, &|id| mins.get(&id).copied().unwrap_or((0.0, 0.0))));
+                self.auto.laid.insert(key.clone(), as_laid_out(&t, &|id| mins.get(&id).copied().unwrap_or((0.0, 0.0)), Inset::of(area, self.tile_gap())));
             }
             self.auto_apply(output, &t, &units);
             self.auto.trees.insert(key, t);
@@ -1406,7 +1434,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let windows = self.all_windows();
         let mins = self.auto_mins(&windows, area);
         let min = |i: u64| mins.get(&i).copied().unwrap_or((0.0, 0.0));
-        let laid: Vec<(Node, Part)> = layout(t, &min).into_iter().map(|(n, p)| (n.clone(), p)).collect();
+        let laid: Vec<(Node, Part)> = layout(t, &min, Inset::of(area, self.tile_gap())).into_iter().map(|(n, p)| (n.clone(), p)).collect();
         let size = |p: &Part| p.2 * area.size.w as f32 * p.3 * area.size.h as f32;
         let biggest_hole = laid.iter().filter(|(n, _)| *n == Node::hole()).enumerate().max_by(|a, b| size(&a.1.1).total_cmp(&size(&b.1.1)));
         if let Some((nth, _)) = biggest_hole {
@@ -1444,19 +1472,21 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// Every window of `tree` (`units`, on `output`) moved into its tile.
     /// Zoomed and full-screen ones only learn their tile (unzoomed, they
     /// go there); the one being dragged by its tab or edges is left to the
-    /// drag.
+    /// drag, and so are the neighbours following its edges (the tree has
+    /// their tiles where they were till the drag ends: laid out, they were
+    /// asked back there each turn, against the drag).
     fn auto_apply(&mut self, output: &Output, tree: &Node, units: &[WindowElement]) {
         let Some(area) = self.tile_area(output) else { return };
         let gap = self.tile_gap();
         let mins = self.auto_mins(units, area);
         let min = |i: u64| mins.get(&i).copied().unwrap_or((0.0, 0.0));
-        let dragged = self.tile_drag.as_ref().map(|d| d.window());
-        let placed: Vec<(u64, Part)> = layout(tree, &min).into_iter().filter_map(|(n, p)| if let Node::Window(i) = n { Some((*i, p)) } else { None }).collect();
+        let moving_by_drag = |s: &Self, w: &WindowElement| s.tile_drag.as_ref().is_some_and(|d| d.moves(w));
+        let placed: Vec<(u64, Part)> = layout(tree, &min, Inset::of(area, gap)).into_iter().filter_map(|(n, p)| if let Node::Window(i) = n { Some((*i, p)) } else { None }).collect();
         for (id, f) in placed {
             let Some(w) = units.iter().find(|w| w.id() == id).cloned() else { continue };
             let was_tiled = Self::tiled(&w).is_some();
             Self::set_tile_state(&w, Some(Tile::Cell), Some(f));
-            if self.is_zoomed(&w) || fullscreen(&w) || self.auto.moving.as_ref() == Some(&w) || dragged.as_ref() == Some(&w) {
+            if self.is_zoomed(&w) || fullscreen(&w) || self.auto.moving.as_ref() == Some(&w) || moving_by_drag(self, &w) {
                 continue;
             }
             // No smaller than it can be, and on the display even so (where
@@ -1670,7 +1700,7 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     /// The middle of each tile of `tree`, in fractions of the area.
     fn auto_centres(&self, tree: &Node) -> HashMap<u64, (f32, f32)> {
-        layout(tree, &|_| (0.0, 0.0)).into_iter().filter_map(|(n, p)| if let Node::Window(i) = n { Some((*i, (p.0 + p.2 / 2.0, p.1 + p.3 / 2.0))) } else { None }).collect()
+        layout(tree, &|_| (0.0, 0.0), Inset::default()).into_iter().filter_map(|(n, p)| if let Node::Window(i) = n { Some((*i, (p.0 + p.2 / 2.0, p.1 + p.3 / 2.0))) } else { None }).collect()
     }
 
     /// A tiling command for a tile: its part, the rest tiled around it.
@@ -1866,7 +1896,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let units = self.all_windows();
         let mins = self.auto_mins(&units, area);
         let min = |i: u64| mins.get(&i).copied().unwrap_or((0.0, 0.0));
-        let target = layout(&self.auto.trees[&to], &min).into_iter().find_map(|(n, r)| match n {
+        let target = layout(&self.auto.trees[&to], &min, Inset::of(area, self.tile_gap())).into_iter().find_map(|(n, r)| match n {
             Node::Window(i) if *i != w.id() && p.0 >= r.0 && p.0 < r.0 + r.2 && p.1 >= r.1 && p.1 < r.1 + r.3 => Some((*i, r)),
             _ => None,
         });
@@ -1935,7 +1965,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         // laid out again).
         if let Some(area) = self.window_output(w).and_then(|o| self.tile_area(&o)) {
             let mins = self.auto_mins(&self.all_windows(), area);
-            tree = as_laid_out(&tree, &|i| mins.get(&i).copied().unwrap_or((0.0, 0.0)));
+            tree = as_laid_out(&tree, &|i| mins.get(&i).copied().unwrap_or((0.0, 0.0)), Inset::of(area, self.tile_gap()));
         }
         self.auto_put(key, tree);
     }
@@ -1961,7 +1991,7 @@ mod tests {
         assert_eq!(node.to_string(), "[·#10 | [·#20 / ·#99]60]30");
         node.each_leaf(&mut |n| assert!(matches!(n, Node::Kept(Kept { holds: true, until: Some(_), .. }))));
         // A least size of half the room holds the edge at a half.
-        let laid = as_laid_out(&Node::split(Cut::Columns, 0.3, w(1), w(2)), &|id| if id == 1 { (0.5, 0.0) } else { (0.0, 0.0) });
+        let laid = as_laid_out(&Node::split(Cut::Columns, 0.3, w(1), w(2)), &|id| if id == 1 { (0.5, 0.0) } else { (0.0, 0.0) }, Inset::default());
         assert!(matches!(laid, Node::Split { ratio, .. } if (ratio - 0.5).abs() < 1e-6));
         // The shape's ratios from the tree as it was laid out.
         let now = Node::split(Cut::Columns, 0.5, Node::Kept(Kept { who: Who::Window(1), holds: false, until: None }), w(2));
@@ -1973,8 +2003,37 @@ mod tests {
         Node::Window(id)
     }
 
+    /// A tile at its least size beside the area's edge stays that size
+    /// when the tree is laid out again (an edge dragged till it stopped
+    /// there): its least counts a whole gap, but there it gives up only
+    /// half of one. (It was laid out 4 px wider, and its neighbours moved
+    /// as the drag was let go.)
+    #[test]
+    fn a_tile_at_its_least_beside_the_edge_stays_so() {
+        let area = Rectangle::new((0, 0).into(), (1000, 800).into());
+        let gap = 8;
+        // Window 1's least frame 200 wide, with a whole gap; 2's small.
+        let min = |id: u64| if id == 1 { (208.0 / 1000.0, 0.0) } else { (0.1, 0.0) };
+        // Where the drag left it: its frame 200 wide (its part's right
+        // edge half a gap past that).
+        let ratio = 204.0 / 1000.0;
+        let laid = as_laid_out(&Node::split(Cut::Columns, ratio, w(1), w(2)), &min, Inset::of(area, gap));
+        let Node::Split { ratio: kept, .. } = laid else { panic!("{laid}") };
+        assert!((kept - ratio).abs() < 1e-6, "{kept}");
+        let p = layout(&laid, &min, Inset::of(area, gap));
+        assert_eq!(crate::shell::tiling::part(area, p[0].1, gap).size.w, 200);
+        // On the other side too, and in the middle a whole gap still holds.
+        let at_end = as_laid_out(&Node::split(Cut::Columns, 1.0 - ratio, w(2), w(1)), &min, Inset::of(area, gap));
+        let Node::Split { ratio: kept, .. } = at_end else { panic!() };
+        assert!((kept - (1.0 - ratio)).abs() < 1e-6, "{kept}");
+        let middle = Node::split(Cut::Columns, 0.1, w(3), Node::split(Cut::Columns, 0.1, w(1), w(2)));
+        let p = layout(&middle, &|id| if id == 1 { (208.0 / 1000.0, 0.0) } else { (0.05, 0.0) }, Inset::of(area, gap));
+        let one = p.iter().find(|(n, _)| **n == w(1)).unwrap().1;
+        assert!(crate::shell::tiling::part(area, one, gap).size.w >= 200);
+    }
+
     fn parts(t: &Node) -> Vec<(u64, Part)> {
-        layout(t, &|_| (0.0, 0.0)).into_iter().filter_map(|(n, p)| if let Node::Window(i) = n { Some((*i, p)) } else { None }).collect()
+        layout(t, &|_| (0.0, 0.0), Inset::default()).into_iter().filter_map(|(n, p)| if let Node::Window(i) = n { Some((*i, p)) } else { None }).collect()
     }
 
     fn near(p: Part, q: Part) -> bool {
@@ -2012,10 +2071,10 @@ mod tests {
     #[test]
     fn splits_keep_minimum_sizes() {
         let t = Node::split(Cut::Columns, 0.1, w(1), w(2));
-        let p = layout(&t, &|i| if i == 1 { (0.3, 0.1) } else { (0.2, 0.1) });
+        let p = layout(&t, &|i| if i == 1 { (0.3, 0.1) } else { (0.2, 0.1) }, Inset::default());
         assert!((p[0].1.2 - 0.3).abs() < 1e-5, "{p:?}");
         // Both can't fit: each its share of what they want.
-        let p = layout(&t, &|_| (0.6, 0.1));
+        let p = layout(&t, &|_| (0.6, 0.1), Inset::default());
         assert!((p[0].1.2 - 0.5).abs() < 1e-5, "{p:?}");
         // A ratio is kept, though the layout gave it more for now.
         assert_eq!(t, Node::split(Cut::Columns, 0.1, w(1), w(2)));

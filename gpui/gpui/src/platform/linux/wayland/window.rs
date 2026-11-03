@@ -160,6 +160,12 @@ pub struct WaylandWindowState {
     hovered: bool,
     in_progress_configure: Option<InProgressConfigure>,
     resize_throttle: bool,
+    /// Olo: a configure that came while a resize by hand was throttled
+    /// (its serial, and what it asked): done at the next frame, not
+    /// dropped. Dropped, it was never acknowledged, and a compositor that
+    /// sends the next size once a window has drawn the last (app_server's
+    /// drag rounds) waited for it in vain.
+    throttled_configure: Option<(u32, InProgressConfigure)>,
     /// Olo: being resized by hand (xdg's `resizing`): its swapchain has
     /// room to grow, and is made to fit once the size rests.
     resizing: bool,
@@ -464,6 +470,7 @@ impl WaylandWindowState {
             window_bounds: options.bounds,
             in_progress_configure: None,
             resize_throttle: false,
+            throttled_configure: None,
             resizing: false,
             viewport_source: None,
             client,
@@ -1220,7 +1227,18 @@ impl WaylandWindowStatePtr {
             frames.callback.set(FrameCallback::Asked);
         }
         state.resize_throttle = false;
+        let throttled = state.throttled_configure.take();
         drop(state);
+        // (A resize by hand's configure that waited for this frame: done
+        // now, and drawn by it.)
+        // (Not if a newer one is on its way: it says all this one did.)
+        if let Some((serial, configure)) = throttled {
+            let newer = self.state.borrow().in_progress_configure.is_some();
+            if !newer {
+                self.state.borrow_mut().in_progress_configure = Some(configure);
+                self.handle_xdg_surface_event(xdg_surface::Event::Configure { serial });
+            }
+        }
         let wheel = self.wheel_step();
         if let Some(step) = wheel.clone() {
             self.handle_input(PlatformInput::ScrollWheel(step));
@@ -1436,7 +1454,9 @@ impl WaylandWindowStatePtr {
                         }
                     }
                     // Limit interactive resizes to once per vblank
+                    // (Olo: the one that came meanwhile done then).
                     if configure.resizing && state.resize_throttle {
+                        state.throttled_configure = Some((serial, configure));
                         return;
                     } else if configure.resizing {
                         state.resize_throttle = true;

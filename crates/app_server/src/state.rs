@@ -219,6 +219,14 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub recent: Vec<u64>,
     /// A tiled window's edges being dragged (see `shell::tiling`).
     pub tile_drag: Option<crate::shell::tiling::TileDrag>,
+    /// Its step on the way to the screen (`shell::rounds`), and how many
+    /// there have been.
+    pub round: Option<crate::shell::rounds::Round>,
+    pub rounds: u64,
+    /// The windows of a drag's last round, once the one on its way shows,
+    /// and the ones a layout puts in it as it's made (`tile_drag_end`).
+    pub round_then: Vec<crate::shell::WindowElement>,
+    pub round_collecting: Option<Vec<crate::shell::WindowElement>>,
     /// Auto-tiling's trees (`shell::autotile`).
     pub auto: crate::shell::autotile::AutoTiler,
     /// A tab ⌘-dragged along its group's, out of it or into another
@@ -1125,6 +1133,10 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             twitch: None,
             recent: Vec::new(),
             tile_drag: None,
+            round: None,
+            rounds: 0,
+            round_then: Vec::new(),
+            round_collecting: None,
             auto: Default::default(),
             tab_drag: None,
             tile_followers: Vec::new(),

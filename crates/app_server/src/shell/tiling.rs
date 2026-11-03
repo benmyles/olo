@@ -285,13 +285,20 @@ pub struct TileDrag {
     start: Rectangle<i32, Logical>,
     sides: Vec<Side>,
     links: Vec<Link>,
-    /// The size change last applied to the neighbours.
+    /// The size change last applied to the neighbours, and the one the
+    /// drag has got to (which the next round applies: `rounds`).
     applied: (i32, i32),
+    wanted: (i32, i32),
 }
 
 impl TileDrag {
     pub fn window(&self) -> WindowElement {
         self.window.clone()
+    }
+
+    /// `w` is the window dragged, or a neighbour following it.
+    pub fn moves(&self, w: &WindowElement) -> bool {
+        self.window == *w || self.links.iter().any(|l| l.window == *w)
     }
 }
 
@@ -872,7 +879,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if links.is_empty() && !self.auto_tiled(window) {
             self.forget_tile(window);
         }
-        self.tile_drag = Some(TileDrag { window: window.clone(), start, sides: sides.to_vec(), links, applied: (0, 0) });
+        self.tile_drag = Some(TileDrag { window: window.clone(), start, sides: sides.to_vec(), links, applied: (0, 0), wanted: (0, 0) });
     }
 
     /// The smallest frame a window takes: its app's minimum content size
@@ -932,40 +939,74 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         (dw, dh)
     }
 
-    /// The dragged window's size changed by `d` from where it began: move
-    /// its neighbours' sides with it.
-    pub fn tile_drag_apply(&mut self, d: (i32, i32)) {
-        let Some(t) = self.tile_drag.as_mut() else { return };
-        if t.applied == d || t.links.is_empty() {
+    /// The dragged window's size changed by `d` from where it began: its
+    /// neighbours' sides move with it, in the next round (`rounds`): true
+    /// if it has neighbours that follow (its own size then goes with
+    /// theirs, `tile_drag_next`).
+    pub fn tile_drag_want(&mut self, d: (i32, i32)) -> bool {
+        let Some(t) = self.tile_drag.as_mut() else { return false };
+        t.wanted = d;
+        !t.links.is_empty()
+    }
+
+    /// A drag whose neighbours follow, its steps shown in rounds.
+    pub fn drag_in_rounds(&self) -> bool {
+        self.tile_drag.as_ref().is_some_and(|t| !t.links.is_empty())
+    }
+
+    /// The next round of a drag, unless one is on its way: the dragged
+    /// window's size (its pending state, the grab's) and its neighbours',
+    /// for where the drag has got to, asked at once.
+    pub fn tile_drag_next(&mut self) {
+        if self.in_round() {
             return;
         }
-        t.applied = d;
-        for (w, start, target) in targets(&t.links, d) {
-            self.follow(&w, start, target);
+        let Some(t) = self.tile_drag.as_mut() else { return };
+        if t.links.is_empty() || !t.window.alive() {
+            return;
         }
+        let d = t.wanted;
+        let mut windows = vec![t.window.clone()];
+        if t.applied != d {
+            t.applied = d;
+            for (w, start, target) in targets(&t.links, d) {
+                self.ask_to_follow(&w, start, target);
+                windows.push(w);
+            }
+        }
+        self.round_send(&windows);
     }
 
     /// Ask a neighbour that began at `start` for the frame `target`: now
     /// if it has answered the last size asked, else when it does. It moves
     /// when it draws it (`tile_follower_drew`).
     pub(super) fn follow(&mut self, window: &WindowElement, start: Rectangle<i32, Logical>, target: Rectangle<i32, Logical>) {
+        self.ask_to_follow(window, start, target);
+        // (A drag's last round being made: it goes with that.)
+        if let Some(collecting) = self.round_collecting.as_mut() {
+            collecting.push(window.clone());
+            return;
+        }
+        let WindowSurface::Wayland(t) = window.0.underlying_surface();
+        // (One in a drag's round has its size sent with the round.)
+        if t.is_initial_configure_sent() && !self.round_has(window) {
+            super::grabs::send_when_caught_up(t);
+        }
+    }
+
+    /// `follow`, the size left to send (a round sends it).
+    fn ask_to_follow(&mut self, window: &WindowElement, start: Rectangle<i32, Logical>, target: Rectangle<i32, Logical>) {
         let asked = Instant::now();
         match self.tile_followers.iter_mut().find(|f| f.window == *window) {
             Some(f) => (f.start, f.target, f.asked) = (start, target, asked),
             None => self.tile_followers.push(Follower { window: window.clone(), start, target, asked }),
         }
         let content = window.inner_size(target.size);
-        match window.0.underlying_surface() {
-            WindowSurface::Wayland(t) => {
-                t.with_pending_state(|state| {
-                    state.states.unset(xdg_toplevel::State::Maximized);
-                    state.size = Some(content);
-                });
-                if t.is_initial_configure_sent() {
-                    super::grabs::send_when_caught_up(t);
-                }
-            }
-        }
+        let WindowSurface::Wayland(t) = window.0.underlying_surface();
+        t.with_pending_state(|state| {
+            state.states.unset(xdg_toplevel::State::Maximized);
+            state.size = Some(content);
+        });
     }
 
     /// Where `window` began, if it is still on its way to a frame it was
@@ -1003,7 +1044,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         match window.0.underlying_surface() {
             WindowSurface::Wayland(t) => {
                 if t.has_pending_changes() {
-                    super::grabs::send_when_caught_up(t);
+                    if !self.drag_in_rounds() && !self.round_has(window) {
+                        super::grabs::send_when_caught_up(t);
+                    }
                 } else if self.tile_drag.is_none() && !super::grabs::awaiting_ack(t) && (geo.size == target.size || !can_be(window, target.size) || asked.elapsed() > FOLLOW_LIMIT) {
                     self.tile_followers.remove(i);
                 }
@@ -1014,24 +1057,44 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// The drag ended: the dragged window and its neighbours keep the
     /// parts they now have.
     pub fn tile_drag_end(&mut self) {
-        let Some(t) = self.tile_drag.take() else { return };
+        let Some(mut t) = self.tile_drag.take() else { return };
         if t.links.is_empty() {
             return;
         }
+        // Where it was let go, the last round (after the one on its way):
+        // its size (`end_resize` left it to send) and its neighbours'.
+        let mut windows = vec![t.window.clone()];
+        if t.applied != t.wanted {
+            t.applied = t.wanted;
+            for (w, start, target) in targets(&t.links, t.wanted) {
+                self.ask_to_follow(&w, start, target);
+                windows.push(w);
+            }
+        }
         let window = t.window.clone();
         let gap = self.tile_gap();
-        let Some(area) = self.window_output(&t.window).and_then(|o| self.tile_area(&o)) else { return };
-        self.tile_followers.retain(|f| f.window.alive());
-        // The frames the drag asked for (they may not have drawn them yet).
-        let mut frames: Vec<(WindowElement, Rectangle<i32, Logical>)> = targets(&t.links, t.applied).into_iter().map(|(w, _, r)| (w, r)).collect();
-        // Its own frame as the drag left it (it may not have drawn it yet).
-        let own = t.sides.iter().fold(t.start, |r, &side| with_side(r, side, moved(side, t.applied)));
-        frames.push((t.window.clone(), own));
-        for (w, r) in frames {
-            Self::set_part(&w, Some(fraction_of(area, r, gap)));
+        if let Some(area) = self.window_output(&t.window).and_then(|o| self.tile_area(&o)) {
+            self.tile_followers.retain(|f| f.window.alive());
+            // The frames the drag asked for (they may not have drawn them yet).
+            let mut frames: Vec<(WindowElement, Rectangle<i32, Logical>)> = targets(&t.links, t.applied).into_iter().map(|(w, _, r)| (w, r)).collect();
+            // Its own frame as the drag left it (it may not have drawn it yet).
+            let own = t.sides.iter().fold(t.start, |r, &side| with_side(r, side, moved(side, t.applied)));
+            frames.push((t.window.clone(), own));
+            for (w, r) in frames {
+                Self::set_part(&w, Some(fraction_of(area, r, gap)));
+            }
+            // Auto-tiled: the splits move just there, and what that lays out
+            // otherwise than the drag left it (a least size holding an edge
+            // off where it went) goes in the same round.
+            self.round_collecting = Some(Vec::new());
+            self.auto_drag_ended(&window);
+            for w in self.round_collecting.take().unwrap_or_default() {
+                if !windows.contains(&w) {
+                    windows.push(w);
+                }
+            }
         }
-        // Auto-tiled: the splits move just there.
-        self.auto_drag_ended(&window);
+        self.round_last(windows);
     }
 
     /// In a tile or zoomed (Restore would change it).

@@ -7,17 +7,32 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Auto-tiling: resizing a window is choppy and windows overlap until
-  let go** (Ben, 2026-11-03, a bug): "when in autotile mode and
-  resizing a window it is super choppy while resizing and the windows
-  can overlap and it doesn't all snap into place until i let go. it
-  should be smooth the whole time and the windows should react properly
-  as i resize them". So: while a tiled window's edge is dragged, its
-  neighbours give way frame by frame (the layout worked out at each
-  move, not at the release), every window's new size sent at once and
-  shown together when the clients have drawn it (no window drawn over
-  another, no gap), at the display's rate; measured with `timings` and
-  the bench (a live resize in auto-tiling at 120 Hz, no dropped frames).
+- **Auto-tiling: an in-place reload puts the windows in each other's
+  tiles** (found 2026-11-03, testing the drag rounds): three tiles
+  `[Terminal | [StyledEdit / Tracker]]`, `tsession reload`: the tree
+  comes back right (`tiles kept from before the restart …
+  [·#3 | [·#1 / ·#2]]`, Terminal put back with slot 3), but each window
+  is claimed as a new tile at its first commit (`a new window into its
+  tile`, `auto_claim`, before its saved place is known) instead of
+  taking the tile kept for it (`auto_returned` never logs "back in its
+  tile"), and 20 s later the kept tiles are given up and the windows
+  laid out afresh in another order. Find why the returning windows
+  aren't known as returning when they're first claimed (their placement
+  comes after the first commit?), fix it, and add the case to
+  upgrade-check (a session in Auto-Tiling: every window in its own tile
+  after a reload, at 1×, 1.5× and 2×).
+
+- **Drag rounds: the last looks out of step in deeper trees** (found
+  2026-11-03 by auto-fuzz's mid-drag check): `tsession start af
+  3024x1890 --scale 1.75 --session --shell`, `tools/dev/auto-fuzz af
+  --seed 11 --steps 150`: 9 drags of the 150 steps have one to four
+  looks (of ~200) with tiles out of step, mostly at the very start of a
+  fast drag or as it's let go, in trees of four or more tiles with
+  groups (e.g. step 146: two tiles 227 px ahead of the two across the
+  edge for one look). Find which windows aren't in the round then (not
+  linked, a group's front changing, a tile laid out at the release
+  outside it), put them in, and keep the seed passing at 1×, 1.5×, 1.75×
+  and 2×.
 
 - **⌘` moves a window from another workspace to this one** (found by
   wm-fuzz, 2026-11-03, seed 5 step 124 on a `2560x1600,1920x1080`
@@ -955,6 +970,38 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Auto-tiling: resizing a window is choppy and windows overlap until
+  let go**~~ (Ben, 2026-11-03, a bug): "when in autotile mode and
+  resizing a window it is super choppy while resizing and the windows
+  can overlap and it doesn't all snap into place until i let go. it
+  should be smooth the whole time and the windows should react properly
+  as i resize them". So: while a tiled window's edge is dragged, its
+  neighbours give way frame by frame (the layout worked out at each
+  move, not at the release), every window's new size sent at once and
+  shown together when the clients have drawn it (no window drawn over
+  another, no gap), at the display's rate; measured with `timings` and
+  the bench (a live resize in auto-tiling at 120 Hz, no dropped frames).
+  *Done* 2026-11-03: each step of an edge drag is a round
+  (app_server `shell/rounds.rs`): the dragged window and the tiles
+  following it are asked their sizes at once, and what each draws waits
+  (a commit blocker) till all have drawn it at the size asked and their
+  GPU fences are done, then all show in the same frame; the next round
+  goes as one shows, and letting go is the last. Measured with a sampler
+  every 3 ms through drags (release builds, 120 Hz): before, tiles a gap
+  apart drifted by up to 295 px in 60% of samples of a fast drag (632 px
+  in auto-fuzz); after, none in any sample, one layout a frame (a round
+  7 ms, at 60 Hz 15 ms). Found on the way and fixed: auto-tiling's
+  layout asked the following tiles back to their old tiles every turn of
+  the drag; Olo's GPUI dropped a configure that came while a resize was
+  throttled, never acknowledging it (now done at the next frame); a tile
+  at its least size beside the area's edge was laid out 4 px wider as
+  the drag ended (`Inset`, with a test). auto-fuzz now fails a drag on
+  any look with tiles out of step (`MidDrag`); it failed every drag of
+  the old build and passes 90 of 90 drags of three tiles at 1×; at 1.75×
+  with groups and deeper trees a few single looks stay out of step (the
+  next item). The last round has what auto-tiling lays out as the drag
+  ends too (`round_collecting`).
 
 - ~~**Focus mode: a link opened in a browser on the same desktop doesn't
   bring its window forward**~~ (Ben, 2026-11-03, a bug): "when in focus

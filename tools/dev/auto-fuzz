@@ -30,6 +30,10 @@ What is checked, after every step once the windows have settled:
   * nothing moves a moment later: a size asked for earlier doesn't land
     late, putting a tile somewhere else (a Tracker beside a Terminal
     dragged wider, out past Deskbar);
+  * and during each drag, sampled every few milliseconds (`MidDrag`):
+    no tile over another, and tiles side by side as it began still the
+    gap apart (each step shows at once, app_server's `rounds`: before
+    them, neighbours trailed the edge by up to 300 px);
   * wm-fuzz's sanity checks: app_server answers, one shown window has the
     keyboard, groups hold together, app_server never panics.
 
@@ -46,6 +50,57 @@ fr, contains, overlap, Failure = wm.fr, wm.contains, wm.overlap, wm.Failure
 STILL = 0.4
 # More windows than this on a workspace and their least sizes may not fit.
 MOST = 5
+
+
+class MidDrag:
+    """The tiles' frames, sampled on a thread of its own every few
+    milliseconds from now till `stop`, and which were side by side (a
+    gap apart) as it began."""
+
+    def __init__(self, fuzz, wins):
+        import threading
+        self.fuzz, self.samples, self.done = fuzz, [], threading.Event()
+        tiles = self.fronts(wins)
+        self.start = tiles
+        pairs = []
+        for a, (ax, ay, aw, ah) in tiles.items():
+            for b, (bx, by, bw, bh) in tiles.items():
+                if a != b and 0 <= bx - (ax + aw) <= 16 and min(ay + ah, by + bh) - max(ay, by) > 40:
+                    pairs.append((a, b, "x", bx - (ax + aw)))
+                if a != b and 0 <= by - (ay + ah) <= 16 and min(ax + aw, bx + bw) - max(ax, bx) > 40:
+                    pairs.append((a, b, "y", by - (ay + ah)))
+        # The ones a gap apart, as app_server links them to follow an edge
+        # (within 2 px of it: tiling.rs `links_for`); the gap the most of
+        # them are apart is the tile gap.
+        gaps = [p[3] for p in pairs]
+        gap = max(set(gaps), key=gaps.count) if gaps else 0
+        self.pairs = [p for p in pairs if abs(p[3] - gap) <= 2]
+        self.t0 = time.time()
+        self.thread = threading.Thread(target=self.run, daemon=True)
+        self.thread.start()
+
+    def fronts(self, wins):
+        """Each tile's frame, by its window (a group's: the front one's,
+        what shows; a tab behind it isn't drawn, and follows it)."""
+        out = {}
+        for i in self.fuzz.tiles(wins):
+            g = wins[i].get("group")
+            front = next((j for j, w in wins.items() if g is not None and w.get("group") == g and not w.get("behind") and fr(w)), i)
+            out[i] = fr(wins[front])
+        return out
+
+    def run(self):
+        while not self.done.is_set():
+            try:
+                wins = self.fuzz.windows()
+            except Failure:
+                return
+            self.samples.append((time.time() - self.t0, self.fronts(wins)))
+            time.sleep(0.004)
+
+    def stop(self):
+        self.done.set()
+        self.thread.join()
 
 
 class AutoFuzz(wm.Fuzz):
@@ -182,6 +237,8 @@ class AutoFuzz(wm.Fuzz):
         self.log(f"drag {a}'s {side} edge from {wm.fmt(start)} to {wm.fmt(end)}" + (f" by way of {wm.fmt(over)}" if over else "")
                  + f" in {steps} steps {step_s * 1000:.0f} ms apart, held {hold:.2f} s")
         ev = lambda e: self.req({"type": "synthetic", "events": [e]})
+        # Watched as it goes, a few milliseconds apart (`check_mid_drag`).
+        watch = MidDrag(self, wins)
         ev({"type": "move", "x": start[0], "y": start[1]})
         time.sleep(0.03)
         ev({"type": "button", "button": wm.BTN_LEFT, "pressed": True})
@@ -196,6 +253,31 @@ class AutoFuzz(wm.Fuzz):
         ev({"type": "button", "button": wm.BTN_LEFT, "pressed": False})
         self.last_press = time.time()
         self.after(f"dragging {a}'s {side} edge")
+        watch.stop()
+        self.check_mid_drag(f"dragging {a}'s {side} edge", watch)
+
+    def check_mid_drag(self, what, watch):
+        """While the edge moved, every sample: no tile over another, and
+        tiles side by side when it began still a gap apart (they move
+        together: app_server shows each step of a drag at once, `rounds`)."""
+        bad = []
+        for t, tiles in watch.samples:
+            over = [(i, j) for n, i in enumerate(tiles) for j in list(tiles)[n + 1:] if overlap(tiles[i], tiles[j])]
+            apart = []
+            for a, b, axis, gap in watch.pairs:
+                if a not in tiles or b not in tiles:
+                    continue
+                (ax, ay, aw, ah), (bx, by, bw, bh) = tiles[a], tiles[b]
+                d = bx - (ax + aw) if axis == "x" else by - (ay + ah)
+                if abs(d - gap) > 1:
+                    apart.append((a, b, d - gap))
+            if over or apart:
+                bad.append((t, over, apart, tiles))
+        if bad:
+            t, over, apart, tiles = max(bad, key=lambda b: sum(abs(x[2]) for x in b[2]) + 1000 * len(b[1]))
+            self.fail(f"{what}: mid-drag, {len(bad)} of {len(watch.samples)} looks had tiles out of step (worst at {t * 1000:.0f} ms: "
+                      + (f"{over} overlapping" if over else "") + (f" {[(a, b, f'{d:+d} px') for a, b, d in apart]} apart by more than the gap" if apart else "")
+                      + f")\n  {'; '.join(f'{i} {f}' for i, f in sorted(tiles.items()))}\n  as it began: {'; '.join(f'{i} {f}' for i, f in sorted(watch.start.items()))}")
 
     def op_open(self, wins, shown):
         if len(self.tiles(wins)) >= MOST:

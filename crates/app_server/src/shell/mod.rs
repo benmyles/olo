@@ -45,6 +45,7 @@ mod grabs;
 pub mod groups;
 pub mod modes;
 pub mod pip;
+pub mod rounds;
 pub mod tabdrag;
 pub mod tiling;
 mod wm;
@@ -115,6 +116,10 @@ impl<BackendData: Backend> CompositorHandler for AnvilState<BackendData> {
 
     fn new_surface(&mut self, surface: &WlSurface) {
         add_pre_commit_hook::<Self, _>(surface, move |state, _dh, surface| {
+            // A tile drawing a drag's step waits for the rest (`rounds`),
+            // and for its fence, which may come after the rest: the round
+            // shows once all are drawn on the GPU.
+            let round = state.round_commit(surface);
             #[cfg(feature = "udev")]
             let mut acquire_point = None;
             let maybe_dmabuf = with_states(surface, |surface_data| {
@@ -138,26 +143,40 @@ impl<BackendData: Backend> CompositorHandler for AnvilState<BackendData> {
                     && let Ok((blocker, source)) = acquire_point.generate_blocker()
                 {
                     let client = surface.client().unwrap();
+                    let fenced = surface.clone();
                     let res = state.handle.insert_source(source, move |_, _, data| {
                         let dh = data.display_handle.clone();
                         data.client_compositor_state(&client).blocker_cleared(data, &dh);
+                        if let Some(n) = round {
+                            data.round_ready(&fenced, n);
+                        }
                         Ok(())
                     });
                     if res.is_ok() {
                         add_blocker(surface, blocker);
+                        if round.is_some() {
+                            state.round_fenced(surface);
+                        }
                         return;
                     }
                 }
                 if let Ok((blocker, source)) = dmabuf.generate_blocker(Interest::READ)
                     && let Some(client) = surface.client()
                 {
+                    let fenced = surface.clone();
                     let res = state.handle.insert_source(source, move |_, _, data| {
                         let dh = data.display_handle.clone();
                         data.client_compositor_state(&client).blocker_cleared(data, &dh);
+                        if let Some(n) = round {
+                            data.round_ready(&fenced, n);
+                        }
                         Ok(())
                     });
                     if res.is_ok() {
                         add_blocker(surface, blocker);
+                        if round.is_some() {
+                            state.round_fenced(surface);
+                        }
                     }
                 }
             }
@@ -232,7 +251,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             });
         }
 
-        ensure_initial_configure(surface, &self.space, &mut self.popups);
+        let rounds = self.drag_in_rounds();
+        ensure_initial_configure(surface, &self.space, &mut self.popups, rounds);
         self.focus_shown_layer(surface);
     }
 
@@ -457,7 +477,7 @@ fn keep_on_screen(space: &mut Space<WindowElement>, surface: &WlSurface, window:
 /// (`focus_shown_layer`).
 struct LayerShown(std::cell::Cell<bool>);
 
-fn ensure_initial_configure(surface: &WlSurface, space: &Space<WindowElement>, popups: &mut PopupManager) {
+fn ensure_initial_configure(surface: &WlSurface, space: &Space<WindowElement>, popups: &mut PopupManager, rounds: bool) {
     with_surface_tree_upward(
         surface,
         (),
@@ -476,7 +496,8 @@ fn ensure_initial_configure(surface: &WlSurface, space: &Space<WindowElement>, p
                 toplevel.send_configure();
             }
             let resizing = with_states(surface, |states| states.data_map.get::<RefCell<SurfaceData>>().is_some_and(|d| matches!(d.borrow().resize_state, ResizeState::Resizing(_))));
-            if resizing {
+            // (In rounds, the next size goes with the round: `rounds`.)
+            if resizing && !rounds {
                 grabs::resize_caught_up(toplevel);
             }
         }

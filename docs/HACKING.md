@@ -2621,9 +2621,15 @@ windows opening, closing, grouping, ungrouping and changing tabs and
 workspace trips between; `--reloads` restarts app_server now and then.
 After each step, once the windows settle, every tile (one per group) must
 be inside the tiling area with no two overlapping, and stay put for a
-moment after (nothing still on its way to land somewhere else). Each
-step's line has the time, to find it in the session's log. Run it after
-changing anything in `autotile.rs`, `tiling.rs` or the resize grabs.
+moment after (nothing still on its way to land somewhere else). During
+each drag it samples the tiles every few milliseconds on a thread of
+its own (`MidDrag`): no tile may be over another, and tiles side by side
+as it began, the tile gap apart (as app_server links them), must stay
+that gap apart in every look (`check_mid_drag`). The build before drag
+rounds failed every drag of it, by up to 632 px. Each step's line has
+the time, to find it in the session's log. Run it after changing
+anything in `autotile.rs`, `tiling.rs`, `rounds.rs` or the resize
+grabs.
 
 `tools/dev/mode-fuzz NAME [--seed N] [--steps N] [--only OPS] [--keep-going]`
 drives the windowing modes (built on wm-fuzz, on a `--session --shell`
@@ -3784,14 +3790,37 @@ else its own frame. Moving it by hand forgets the tile (`forget_tile`).
 Resizing it by an edge moves its tiled neighbours with it (`TileDrag`,
 driven by the resize grabs): at the drag's start, `links_for` finds the
 other tiled windows on the display with a side on that edge's line
-(across the gap, or in line), which follow it live. They're paced like
-the dragged window (`send_when_caught_up`): a new size goes out only
-once they've answered the last, and each is moved only when it commits
+(across the gap, or in line), which follow it live. Each step of the
+drag is a round (`shell::rounds`): the dragged window and every
+neighbour are sent their new sizes at once (`tile_drag_next`, from
+where the pointer has got to), and what each draws for it waits, a
+commit blocker (`dmabuf_check::Gate`, in the pre-commit hook:
+`round_commit`), till every one has drawn it at the size asked and its
+GPU fence says the drawing is done (`round_fenced`, `round_ready`), so
+they show in the same frame: no tile over another and no gap between
+them at any moment. The next round goes as one shows, so the tiles move
+at the rate the slowest of them draws, the display's when they keep up
+(at 120 Hz a round takes 7 ms, one a frame); one that hasn't drawn in
+`LIMIT` (50 ms) shows when it does and the rest don't wait. Letting go
+is a round too (`round_last`: the dragged window's final configure,
+which `end_resize` leaves to it, with the neighbours' last sizes and
+whatever auto-tiling lays out otherwise as the drag ends, which `follow`
+puts in it while it's made: `round_collecting`).
+Without rounds each window was paced on its own and moved when it drew:
+neighbours trailed the edge by up to 600 px or ran over the dragged
+window, and some apps answer a configure with a frame of the size
+before (the kit's GPUI may: its window geometry is the new size at
+once, but the frame drawn came from the old one), so a member counts as
+drawn only by a buffer of the size asked (the viewport's source at the
+window's scale, for the kit's apps, which draw into part of a bigger
+buffer). Each window is moved only when it commits
 (`tile_follower_drew`: the sides that don't move stay put, whatever size
 it drew), and keeps catching up after the drag (`Follower`). A
-neighbour linked on two sides (a corner drag) moves both. Sending one
-per pointer motion queued configures faster than apps draw: the
-neighbour lagged seconds behind and overlapped the window being dragged.
+neighbour linked on two sides (a corner drag) moves both. Auto-tiling's
+layout leaves every window the drag moves to it (`TileDrag::moves`):
+the tree has their tiles where they were until the drag ends, and laid
+out each turn it asked them back there, against the drag. `timings`
+counts rounds as phases (`drag round`, and `drag round (out of time)`).
 The drag stops where
 one would get smaller than its app's minimum or `MIN_TILE`; at the end
 each keeps its new part (`TilePart`, fractions that `part` turns back
@@ -3987,7 +4016,12 @@ workspace, in whatever order the apps come back. Without saved trees
 (from an app_server before them) they are made again from the windows'
 saved parts (`auto_adopt`, `WindowMeta::restored_part`). An edge drag's
 splits are set where the windows' least sizes let them be
-(`auto_drag_ended`). A hand's choice to float or tile a window
+(`auto_drag_ended`). Each window's least size counts a whole gap
+(`auto_mins`), but a tile at the area's edge gives up only half of one
+there (`tiling::part`): a split's limits take that back (`Inset`, in
+`layout` and `as_laid_out`), else a tile dragged to its least size
+beside the edge was laid out 4 px wider as the drag was let go, and its
+neighbours jumped. A hand's choice to float or tile a window
 (`Placement::floating`) comes back too.
 
 Picture in picture (`shell::pip`) is a video, or a page, popped out of

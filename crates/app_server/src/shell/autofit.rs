@@ -356,7 +356,8 @@ mod tests {
 
     /// No two windows' tiles, at their least sizes, overlap.
     fn fits(t: &Node, min: &dyn Fn(u64) -> Size) -> bool {
-        layout(t, min).iter().all(|(n, p)| match n {
+        // (Whole gaps: a tree that fits so fits as laid out, `Inset`.)
+        layout(t, min, Default::default()).iter().all(|(n, p)| match n {
             Node::Window(id) => {
                 let m = min(*id);
                 p.2 + EPS >= m.0 && p.3 + EPS >= m.1

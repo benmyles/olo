@@ -302,7 +302,11 @@ fn end_resize<BackendData: Backend>(
         state.states.unset(xdg_toplevel::State::Resizing);
         state.size = Some(last);
     });
-    xdg.send_pending_configure();
+    // (With neighbours following, it goes with theirs, in the drag's last
+    // round: `tile_drag_end`.)
+    if !data.drag_in_rounds() {
+        xdg.send_pending_configure();
+    }
     if edges.intersects(ResizeEdge::TOP_LEFT) {
         let geometry = window.0.geometry();
         let mut location = data.space.element_location(window).unwrap();
@@ -422,7 +426,9 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerResiz
         (new_window_width, new_window_height) = (init.w + dw, init.h + dh);
         new_window_width = new_window_width.max(min_width).min(max_width);
         new_window_height = new_window_height.max(min_height).min(max_height);
-        data.tile_drag_apply((new_window_width - init.w, new_window_height - init.h));
+        // (With neighbours following, its size goes with theirs, in a
+        // round: `rounds`.)
+        let rounds = data.tile_drag_want((new_window_width - init.w, new_window_height - init.h));
 
         self.last_window_size = (new_window_width, new_window_height).into();
 
@@ -432,7 +438,11 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerResiz
                     state.states.set(xdg_toplevel::State::Resizing);
                     state.size = Some(self.last_window_size);
                 });
-                send_when_caught_up(xdg);
+                if rounds {
+                    data.tile_drag_next();
+                } else {
+                    send_when_caught_up(xdg);
+                }
             }
         }
     }
@@ -606,7 +616,9 @@ impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchResizeSur
         (new_window_width, new_window_height) = (init.w + dw, init.h + dh);
         new_window_width = new_window_width.max(min_width).min(max_width);
         new_window_height = new_window_height.max(min_height).min(max_height);
-        data.tile_drag_apply((new_window_width - init.w, new_window_height - init.h));
+        // (With neighbours following, its size goes with theirs, in a
+        // round: `rounds`.)
+        let rounds = data.tile_drag_want((new_window_width - init.w, new_window_height - init.h));
 
         self.last_window_size = (new_window_width, new_window_height).into();
 
@@ -616,7 +628,11 @@ impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchResizeSur
                     state.states.set(xdg_toplevel::State::Resizing);
                     state.size = Some(self.last_window_size);
                 });
-                send_when_caught_up(xdg);
+                if rounds {
+                    data.tile_drag_next();
+                } else {
+                    send_when_caught_up(xdg);
+                }
             }
         }
     }

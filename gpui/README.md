@@ -378,7 +378,12 @@ What Olo changed, so far:
   pixel); 1.5 s after the resize ends it is made to fit
   (`BladeRenderer::update_drawable_size_within`). A swapchain made is
   new GPU memory, 10 ms and more for a big one on Apple's GPU, and
-  upstream made one for every size the window went through.
+  upstream made one for every size the window went through. A
+  configure that comes while such a resize is throttled (one a frame)
+  waits for the next frame and is done then (`throttled_configure`):
+  upstream dropped it, unacknowledged, and a compositor that sends the
+  next size once a window has drawn the last (app_server's drag rounds)
+  waited for it in vain, the tile beside it a step ahead.
 - `OLO_GPU_TIMINGS=1`: every pass timed on the GPU, and each frame's
   times, its quads (in screens filled) and sprites printed to stderr.
 - Drops a window takes itself: what's dragged over a window
