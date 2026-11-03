@@ -6982,6 +6982,7 @@ dependencies = [
  "image",
  "jxl-oxide",
  "rav1d",
+ "rust_h265",
 ]
 
 [[package]]
@@ -9472,6 +9473,12 @@ dependencies = [
  "cfg-if",
  "ordered-multimap",
 ]
+
+[[package]]
+name = "rust_h265"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "673f6ab280648836c8a4b2bdaf4877532b2715e3fdcf6e37a2f46ebed41c8cfd"
 
 [[package]]
 name = "rustc-demangle"

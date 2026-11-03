@@ -17,7 +17,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use olo_images::{av1, vp9};
+use olo_images::{av1, hevc, vp9};
 
 use crate::{
     Bitmap, audio,
@@ -456,6 +456,10 @@ struct Packet {
 
 trait Demux: Send {
     fn codec(&self) -> Codec;
+    /// HEVC's track: its decoder configuration and colour.
+    fn hevc(&self) -> Option<(hevc::Config, hevc::Colour)> {
+        None
+    }
     fn next(&mut self) -> Option<Packet>;
     /// Go to the key frame at or before `secs`.
     fn seek(&mut self, secs: f64);
@@ -486,7 +490,7 @@ pub fn probe(input: &Input) -> Result<Info, String> {
         info.duration = mk.info().duration().map(|d| d * scale / 1e9);
         for t in mk.tracks() {
             if let Some(v) = t.video() {
-                if !info.picture && matches!(t.codec_id(), "V_MPEG4/ISO/AVC" | "V_AV1" | "V_VP9") {
+                if !info.picture && matches!(t.codec_id(), "V_MPEG4/ISO/AVC" | "V_AV1" | "V_VP9" | "V_MPEGH/ISO/HEVC") {
                     info.picture = true;
                     (info.width, info.height) = (v.pixel_width().get() as u32, v.pixel_height().get() as u32);
                 }
@@ -500,7 +504,7 @@ pub fn probe(input: &Input) -> Result<Info, String> {
         info.duration = (d > 0.0).then_some(d);
         for t in r.tracks().values() {
             match t.media_type() {
-                Ok(mp4::MediaType::H264 | mp4::MediaType::VP9) if !info.picture => {
+                Ok(mp4::MediaType::H264 | mp4::MediaType::H265 | mp4::MediaType::VP9) if !info.picture => {
                     info.picture = true;
                     (info.width, info.height) = (t.width() as u32, t.height() as u32);
                 }
@@ -518,16 +522,18 @@ enum Codec {
     H264,
     Av1,
     Vp9,
+    Hevc,
 }
 
 enum Decoder {
     H264(Box<openh264::decoder::Decoder>),
     Av1(av1::Decoder),
     Vp9(vp9::Decoder),
+    Hevc(hevc::Decoder),
 }
 
 impl Decoder {
-    fn new(codec: Codec) -> Result<Decoder, String> {
+    fn new(codec: Codec, demux: &dyn Demux) -> Result<Decoder, String> {
         Ok(match codec {
             // Never flush after a packet: a picture forced out early breaks
             // the reordering of B-frames, and every B-frame after it fails.
@@ -540,6 +546,10 @@ impl Decoder {
             // out a few units late.
             Codec::Av1 => Decoder::Av1(av1::Decoder::new(0, 0)?),
             Codec::Vp9 => Decoder::Vp9(vp9::Decoder::new(0)),
+            Codec::Hevc => {
+                let (config, colour) = demux.hevc().ok_or("no HEVC configuration")?;
+                Decoder::Hevc(hevc::Decoder::new(config, colour, 0))
+            }
         })
     }
 }
@@ -548,13 +558,14 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
     let (m, cv) = shared;
     let mut demux = open(input)?;
     let codec = demux.codec();
-    let mut dec = Decoder::new(codec)?;
+    let mut dec = Decoder::new(codec, demux.as_ref())?;
     // Presentation times of packets sent and not yet out: decoders hand
     // pictures back in display order, so each takes the earliest.
     let mut times: BinaryHeap<Reverse<i64>> = BinaryHeap::new();
     let mut from = 0.0;
     let mut av1_out = Vec::new();
     let mut vp9_out = Vec::new();
+    let mut hevc_out = Vec::new();
     // Queue a picture (made only if it will be shown); false once a seek
     // or stop makes the rest pointless.
     let push = |times: &mut BinaryHeap<Reverse<i64>>, from: f64, pic: &dyn Fn() -> Pic| -> bool {
@@ -602,7 +613,8 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
                 match &mut dec {
                     // (Its workers kept.)
                     Decoder::Vp9(d) => d.reset(),
-                    _ => dec = Decoder::new(codec)?,
+                    Decoder::Hevc(d) => d.reset(),
+                    _ => dec = Decoder::new(codec, demux.as_ref())?,
                 }
                 times.clear();
                 from = t;
@@ -639,6 +651,24 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
                     None => d.flush(&mut av1_out),
                 }
                 for f in av1_out.drain(..) {
+                    let f = Arc::new(f);
+                    if !push(&mut times, from, &|| Pic::Planes(f.clone())) {
+                        break;
+                    }
+                }
+            }
+            // HEVC's come in display order, as H.264's and AV1's.
+            (Decoder::Hevc(d), p) => {
+                hevc_out.clear();
+                match &p {
+                    Some(p) => {
+                        if let Err(e) = d.decode(&p.data, &mut hevc_out) {
+                            tracing::debug!("hevc: {e}");
+                        }
+                    }
+                    None => d.flush(&mut hevc_out),
+                }
+                for f in hevc_out.drain(..) {
                     let f = Arc::new(f);
                     if !push(&mut times, from, &|| Pic::Planes(f.clone())) {
                         break;
@@ -682,8 +712,10 @@ struct Mp4 {
     codec: Codec,
     timescale: f64,
     /// Sent before each key frame: H.264's parameter sets, in start-code
-    /// form, or AV1's sequence header (VP9 needs none).
+    /// form, or AV1's sequence header (VP9 needs none; HEVC's decoder
+    /// starts from its own, `hevc`).
     sets: Vec<u8>,
+    hevc: Option<(hevc::Config, hevc::Colour)>,
     nal_len: usize,
     /// Each sample's decode time, and the key frames (1-based).
     times: Vec<u64>,
@@ -704,13 +736,20 @@ impl Mp4 {
             Ok(mp4::MediaType::VP9) => Some((*id, t, Codec::Vp9)),
             _ => None,
         });
-        // AV1, which the mp4 crate doesn't know: its track and sequence
-        // header found by walking the boxes.
+        // AV1, which the mp4 crate doesn't know, and HEVC, whose `hvc1` it
+        // doesn't know and `hev1`'s `hvcC` it skips: their tracks found by
+        // walking the boxes.
         let av1 = if known.is_none() { input.open().ok().and_then(|(mut f, len)| media::mp4_av1(&mut f, len)) } else { None };
-        let (track, t, codec) = match (known, &av1) {
-            (Some(k), _) => k,
-            (None, Some(a)) => (a.id, reader.tracks().get(&a.id).ok_or("no AV1 track")?, Codec::Av1),
+        let hv = if known.is_none() && av1.is_none() { input.open().ok().and_then(|(mut f, len)| media::mp4_hevc(&mut f, len)) } else { None };
+        let (track, t, codec) = match (known, &av1, &hv) {
+            (Some(k), ..) => k,
+            (None, Some(a), _) => (a.id, reader.tracks().get(&a.id).ok_or("no AV1 track")?, Codec::Av1),
+            (None, None, Some(h)) => (h.id, reader.tracks().get(&h.id).ok_or("no HEVC track")?, Codec::Hevc),
             _ => return Err("This video's format can't be played.".into()),
+        };
+        let hevc = match &hv {
+            Some(h) => Some((hevc::config(&h.record).ok_or("no hvcC")?, h.colour)),
+            None => None,
         };
         let stbl = &t.trak.mdia.minf.stbl;
         let mut sets = Vec::new();
@@ -718,7 +757,7 @@ impl Mp4 {
         match (&av1, codec) {
             // Its sequence header goes before each key frame.
             (Some(a), _) => sets.extend_from_slice(&a.obus),
-            (None, Codec::Vp9) => {}
+            (None, Codec::Vp9 | Codec::Hevc) => {}
             (None, _) => {
                 let avcc = &stbl.stsd.avc1.as_ref().ok_or("no avcC")?.avcc;
                 for ps in avcc.sequence_parameter_sets.iter().chain(&avcc.picture_parameter_sets) {
@@ -749,13 +788,17 @@ impl Mp4 {
                 break;
             }
         }
-        Ok(Mp4 { track, codec, timescale, shift, sets, nal_len, times, syncs: stbl.stss.as_ref().map(|s| s.entries.clone()), next: 1, reader })
+        Ok(Mp4 { track, codec, timescale, shift, sets, hevc, nal_len, times, syncs: stbl.stss.as_ref().map(|s| s.entries.clone()), next: 1, reader })
     }
 }
 
 impl Demux for Mp4 {
     fn codec(&self) -> Codec {
         self.codec
+    }
+
+    fn hevc(&self) -> Option<(hevc::Config, hevc::Colour)> {
+        self.hevc.clone()
     }
 
     fn next(&mut self) -> Option<Packet> {
@@ -771,9 +814,9 @@ impl Demux for Mp4 {
                 data.extend_from_slice(&self.sets);
             }
             // (AV1 samples are OBUs as the decoder takes them, VP9's
-            // frames or superframes.)
+            // frames or superframes, HEVC's length-prefixed NAL units.)
             match self.codec {
-                Codec::Av1 | Codec::Vp9 => data.extend_from_slice(&s.bytes),
+                Codec::Av1 | Codec::Vp9 | Codec::Hevc => data.extend_from_slice(&s.bytes),
                 Codec::H264 => media::avcc_to_annexb(&s.bytes, self.nal_len, &mut data),
             }
             let pts = (s.start_time as i64 + s.rendering_offset as i64) as f64 / self.timescale + self.shift;
@@ -800,6 +843,7 @@ struct Mkv {
     scale: f64,
     sets: Vec<u8>,
     nal_len: usize,
+    hevc: Option<(hevc::Config, hevc::Colour)>,
     frame: matroska_demuxer::Frame,
     /// Send the parameter sets before the next picture (start, seeks).
     fresh: bool,
@@ -807,9 +851,14 @@ struct Mkv {
 
 impl Mkv {
     /// Whether the frame read is a key frame: as its block says, else
-    /// (block groups say nothing) as VP9's own header does.
+    /// (block groups say nothing) as VP9's own header, or HEVC's NAL
+    /// units, do.
     fn key(&self) -> bool {
-        self.frame.is_keyframe.unwrap_or_else(|| self.codec == Codec::Vp9 && vp9::is_keyframe(&self.frame.data))
+        self.frame.is_keyframe.unwrap_or_else(|| match (self.codec, &self.hevc) {
+            (Codec::Vp9, _) => vp9::is_keyframe(&self.frame.data),
+            (Codec::Hevc, Some((c, _))) => hevc::is_keyframe(&self.frame.data, c.nal_len),
+            _ => false,
+        })
     }
 
     fn open(input: &Input) -> Result<Mkv, String> {
@@ -823,9 +872,15 @@ impl Mkv {
                 "V_MPEG4/ISO/AVC" => Some((t, Codec::H264)),
                 "V_AV1" => Some((t, Codec::Av1)),
                 "V_VP9" => Some((t, Codec::Vp9)),
+                "V_MPEGH/ISO/HEVC" => Some((t, Codec::Hevc)),
                 _ => None,
             })
             .ok_or("This video's format can't be played.")?;
+        // HEVC's CodecPrivate is its decoder configuration record.
+        let hevc = match codec {
+            Codec::Hevc => Some((t.codec_private().and_then(hevc::config).ok_or("no HEVC configuration")?, t.video().map(media::mkv_colour).unwrap_or_default())),
+            _ => None,
+        };
         // AV1 blocks are OBUs as the decoder takes them, with sequence
         // headers in key frames; VP9's are frames or superframes.
         let (mut nal_len, mut sets) = (0, Vec::new());
@@ -837,13 +892,17 @@ impl Mkv {
                 sets.extend_from_slice(&p);
             }
         }
-        Ok(Mkv { track: t.track_number().get(), codec, scale: file.info().timestamp_scale().get() as f64 / 1e9, sets, nal_len, frame: matroska_demuxer::Frame::default(), fresh: true, file })
+        Ok(Mkv { track: t.track_number().get(), codec, scale: file.info().timestamp_scale().get() as f64 / 1e9, sets, nal_len, hevc, frame: matroska_demuxer::Frame::default(), fresh: true, file })
     }
 }
 
 impl Demux for Mkv {
     fn codec(&self) -> Codec {
         self.codec
+    }
+
+    fn hevc(&self) -> Option<(hevc::Config, hevc::Colour)> {
+        self.hevc.clone()
     }
 
     fn next(&mut self) -> Option<Packet> {
@@ -941,15 +1000,18 @@ mod tests {
         let worker = std::thread::spawn(move || decode(&Input::file(&p), &s));
         let (m, cv) = &*shared;
         let mut sh = m.lock().unwrap();
-        while sh.queue.len() < 3 && !sh.eof {
+        // (Three, or as many as it queues: two of 1080p's, by their bytes.)
+        let want = |sh: &Shared| 3.min(if sh.ahead == 0 { 3 } else { sh.ahead });
+        while sh.queue.len() < want(&sh) && !sh.eof {
             sh = cv.wait_timeout(sh, Duration::from_millis(50)).unwrap().0;
         }
         let pts: Vec<f64> = sh.queue.iter().map(|f| f.pts).collect();
+        let wanted = want(&sh);
         sh.stop = true;
         drop(sh);
         cv.notify_all();
         worker.join().unwrap().unwrap();
-        assert!(pts.len() >= 3, "{name} @ {target}: {pts:?}");
+        assert!(pts.len() >= wanted, "{name} @ {target}: {pts:?}");
         // The first picture is the one showing at the target.
         assert!((pts[0] - target).abs() < 0.05, "{name} @ {target}: {pts:?}");
         assert!(pts.windows(2).all(|w| w[1] > w[0]), "{name}: in order {pts:?}");
@@ -988,6 +1050,32 @@ mod tests {
             let Ok(crate::load::Update::Body(crate::load::Body::Media(m))) = media::video(&path, &Arc::new(std::sync::atomic::AtomicBool::new(false))) else { panic!("no facts") };
             assert!(m.playable && m.picture.is_some(), "{name}: {:?}", m.rows);
             assert!(m.note.starts_with("VP9 video, 640 × 360"), "{name}: {}", m.note);
+        }
+    }
+
+    /// HEVC in MPEG-4 (`hev1` and `hvc1`) and Matroska: `OLO_SAMPLES=dir`
+    /// with hevc.mp4, hvc1.mp4 and hevc.mkv (any 1080p HEVC with B-frames,
+    /// 10 s at 30 fps: the Jellyfish and Big Buck Bunny test clips, the
+    /// last two remuxed with `ffmpeg -c copy`, `-tag:v hvc1` for the
+    /// second) and hevc-10bit.mp4 (JCT-VC's WPP_D_ericsson_MAIN10_2 put in
+    /// an mp4 likewise: Main 10, 48 pictures); every picture comes out, in
+    /// order, seeks land, and each file's poster and facts.
+    #[test]
+    #[ignore]
+    fn hevc_plays() {
+        let dir = std::path::PathBuf::from(std::env::var("OLO_SAMPLES").expect("OLO_SAMPLES"));
+        for name in names(&["hevc.mp4", "hvc1.mp4", "hevc.mkv", "hevc-10bit.mp4"]) {
+            let path = dir.join(&name);
+            let want = if name == "hevc-10bit.mp4" { 48 } else { 300 };
+            assert_eq!(all_pictures(&path).len(), want, "{name}: every picture");
+            if want == 300 {
+                for target in [0.0, 5.0, 2.5] {
+                    seeks(&path, target);
+                }
+            }
+            let Ok(crate::load::Update::Body(crate::load::Body::Media(m))) = media::video(&path, &Arc::new(std::sync::atomic::AtomicBool::new(false))) else { panic!("no facts") };
+            assert!(m.playable && m.picture.is_some(), "{name}: {:?}", m.rows);
+            assert!(m.note.starts_with("HEVC video"), "{name}: {}", m.note);
         }
     }
 
@@ -1054,14 +1142,14 @@ mod tests {
         assert_eq!((QUEUE_BYTES / (1280 * 720 * 3 / 2)).clamp(2, AHEAD), AHEAD);
     }
 
-    /// Pictures decoded (and made RGBA) per second from av1-1080.mkv and
-    /// vp9-1080.webm (4 s of 1080p AV1 and VP9): needs to stay well above
-    /// 30 in release builds.
+    /// Pictures decoded (and made RGBA) per second from av1-1080.mkv,
+    /// vp9-1080.webm and hevc.mp4 (1080p AV1, VP9 and HEVC): needs to stay
+    /// well above 30 in release builds.
     #[test]
     #[ignore]
     fn keeps_up() {
         let dir = std::path::PathBuf::from(std::env::var("OLO_SAMPLES").expect("OLO_SAMPLES"));
-        for name in names(&["av1-1080.mkv", "vp9-1080.webm", "gop.mp4", "av1.mp4"]) {
+        for name in names(&["av1-1080.mkv", "vp9-1080.webm", "hevc.mp4", "gop.mp4", "av1.mp4"]) {
             let path = dir.join(&name);
             let shared = Arc::new((Mutex::new(Shared::default()), Condvar::new()));
             let s = shared.clone();

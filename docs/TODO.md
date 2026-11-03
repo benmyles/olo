@@ -724,17 +724,6 @@ of Finished; a new one goes where its priority puts it.
   pre-scaled icon for the device size, on whole device pixels, never
   resampled; checked by the layout review at every scale.
 
-- **Viewer: HEVC plays** (left from the Viewer's video work): HEVC
-  (mp4, Matroska) video shows only its facts; decode it natively as
-  H.264, AV1 and VP9 are. *Status* (2026-11-02): crates.io has
-  pure-Rust HEVC decoders now (`rusty_h265` 0.6, from the ITU-T spec,
-  with a SIMD companion crate; `rust_h265` 0.4, Main, Main 10 and range
-  extensions), so it no longer needs libde265: pick one by correctness
-  on real phone footage (10-bit HDR included) and speed against VP9's
-  ~120 pictures/s at 1080p, then wire it as VP9 is (an `hevc` module in
-  crates/images giving `av1::Frame`s, `Codec::Hevc`, `hvc1`/`hev1` and
-  `V_MPEGH/ISO/HEVC`, the poster, `playable`).
-
 ## Maybe one day
 
 Tabled (Ben, 2026-11-02): "performance seems pretty solid now in olo so
@@ -795,6 +784,29 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Viewer: HEVC plays**~~ (left from the Viewer's video work): HEVC
+  (mp4, Matroska) video shows only its facts; decode it natively as
+  H.264, AV1 and VP9 are. *Status* (2026-11-02): crates.io has
+  pure-Rust HEVC decoders now (`rusty_h265` 0.6, from the ITU-T spec,
+  with a SIMD companion crate; `rust_h265` 0.4, Main, Main 10 and range
+  extensions), so it no longer needs libde265: pick one by correctness
+  on real phone footage (10-bit HDR included) and speed against VP9's
+  ~120 pictures/s at 1080p, then wire it as VP9 is (an `hevc` module in
+  crates/images giving `av1::Frame`s, `Codec::Hevc`, `hvc1`/`hev1` and
+  `V_MPEGH/ISO/HEVC`, the poster, `playable`).
+  *Done* (2026-11-03): rust_h265 0.4 (MIT/Apache), as `olo_images::hevc`,
+  chosen over rusty_h265 0.6 by measuring: both bit-exact on 35 JCT-VC
+  conformance streams (8 and 10 bit, tiles, WPP, dependent slices,
+  unequal bit depths) and identical on two real 1080p clips; rust_h265
+  faster alone (104 and 87 pictures/s against 93 and 68) and threaded
+  (250 and 341 at four). HEVC plays from mp4 (`hvc1` and `hev1`: the
+  mp4 crate skips `hvcC`, so `media::mp4_hevc` walks to it and `colr`)
+  and Matroska (`V_MPEGH/ISO/HEVC`), with posters, seeks and its colour
+  (the container's matrix and range, else BT.709 from 720 lines up):
+  160–240 pictures/s at 1080p through the player (VP9 124–132, AV1
+  111–125). `hevc_plays` checks all of it; phone footage (10-bit HDR)
+  still to try: no HDR tone mapping yet, as for AV1.
 
 - ~~**Logs: a drag in its second list is uneven at 1.5× now and then**~~
   (found by `tools/dev/bench`, 2026-11-03): "frames moved 0.73–1.27× as

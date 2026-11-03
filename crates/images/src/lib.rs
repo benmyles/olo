@@ -433,6 +433,140 @@ pub mod vp9 {
     }
 }
 
+/// HEVC (H.265) video, decoded in process by rust_h265 (pure Rust: Main,
+/// Main 10 and the range extensions, bit-exact on the JCT-VC conformance
+/// streams), its pictures as AV1's [`Frame`]s.
+pub mod hevc {
+    pub use super::av1::Frame;
+    use rav1d::include::dav1d::headers::*;
+
+    /// What a track's HEVCDecoderConfigurationRecord says (MP4's `hvcC`,
+    /// Matroska's CodecPrivate): each NAL unit's length's size, and the
+    /// parameter sets (VPS, SPS, PPS) to start from.
+    #[derive(Clone, Debug, Default)]
+    pub struct Config {
+        pub nal_len: u8,
+        pub sets: Vec<Vec<u8>>,
+    }
+
+    /// The record `r` read, or None if it isn't one.
+    pub fn config(r: &[u8]) -> Option<Config> {
+        // 22 bytes of profile and stream facts (the length's size in the
+        // last), the number of arrays, then each: its NAL type, how many,
+        // and each one's length and bytes.
+        let nal_len = (r.get(21)? & 3) + 1;
+        let arrays = *r.get(22)? as usize;
+        let mut at = 23;
+        let mut sets = Vec::new();
+        for _ in 0..arrays {
+            let n = u16::from_be_bytes(r.get(at + 1..at + 3)?.try_into().ok()?) as usize;
+            at += 3;
+            for _ in 0..n {
+                let len = u16::from_be_bytes(r.get(at..at + 2)?.try_into().ok()?) as usize;
+                sets.push(r.get(at + 2..at + 2 + len)?.to_vec());
+                at += 2 + len;
+            }
+        }
+        Some(Config { nal_len, sets })
+    }
+
+    /// How the samples are coloured: H.273's matrix (MP4's `colr`, nclx;
+    /// Matroska's MatrixCoefficients) and full range. Unknown, BT.709 for
+    /// a picture 720 lines and up and BT.601 under, as players assume.
+    #[derive(Clone, Copy, Debug, Default, PartialEq)]
+    pub struct Colour {
+        pub matrix: Option<u32>,
+        pub full_range: bool,
+    }
+
+    /// Whether a sample (length-prefixed NAL units) holds a picture that
+    /// starts the stream afresh (IRAP: BLA, IDR or CRA).
+    pub fn is_keyframe(sample: &[u8], nal_len: u8) -> bool {
+        rust_h265::parse_hvcc(sample, nal_len).iter().any(|n| n.nal_unit_type.is_irap())
+    }
+
+    /// A stream of HEVC pictures, in display order.
+    pub struct Decoder {
+        dec: rust_h265::Decoder,
+        config: Config,
+        colour: Colour,
+        threads: usize,
+    }
+
+    impl Decoder {
+        /// Starting from `config`'s parameter sets, on `threads` threads (0:
+        /// as many as the machine has, up to four, past which 1080p goes no
+        /// faster: pictures then come out a sample or two late).
+        pub fn new(config: Config, colour: Colour, threads: usize) -> Decoder {
+            let threads = if threads == 0 { std::thread::available_parallelism().map_or(1, |n| n.get()).min(4) } else { threads };
+            Decoder { dec: start(&config, threads), config, colour, threads }
+        }
+
+        /// One sample (length-prefixed NAL units): the pictures ready
+        /// join `out`, in display order.
+        pub fn decode(&mut self, sample: &[u8], out: &mut Vec<Frame>) -> Result<(), String> {
+            let mut failed = None;
+            for nal in rust_h265::parse_hvcc(sample, self.config.nal_len) {
+                match self.dec.decode_nal(&nal) {
+                    Ok(Some(f)) => out.extend(frame(&f, self.colour)),
+                    Ok(None) => {}
+                    Err(e) => failed = Some(format!("HEVC: {e:?}")),
+                }
+                while let Some(f) = self.dec.next_output() {
+                    out.extend(frame(&f, self.colour));
+                }
+            }
+            failed.map_or(Ok(()), Err)
+        }
+
+        /// At the end of the stream: the pictures still inside.
+        pub fn flush(&mut self, out: &mut Vec<Frame>) {
+            while let Some(f) = self.dec.flush() {
+                out.extend(frame(&f, self.colour));
+            }
+        }
+
+        /// Forget the stream so far (after a seek, before its key frame).
+        pub fn reset(&mut self) {
+            self.dec = start(&self.config, self.threads);
+        }
+    }
+
+    fn start(config: &Config, threads: usize) -> rust_h265::Decoder {
+        let mut dec = rust_h265::Decoder::new().with_display_order().with_threads(threads.max(1));
+        for set in &config.sets {
+            if let Some(nal) = rust_h265::parse_nal(set) {
+                let _ = dec.decode_nal(&nal);
+            }
+        }
+        dec
+    }
+
+    /// A picture's planes as a frame.
+    fn frame(f: &rust_h265::Frame, colour: Colour) -> Option<Frame> {
+        let (w, h) = (f.width as usize, f.height as usize);
+        if w == 0 || h == 0 {
+            return None;
+        }
+        let (sx, sy) = match f.chroma_format_idc {
+            1 => (1, 1),
+            2 => (1, 0),
+            3 => (0, 0),
+            _ => return None,
+        };
+        let (cw, ch) = ((w + sx) >> sx, (h + sy) >> sy);
+        let plane = |p: &rust_h265::PixelData, n: usize| -> Option<Vec<u16>> {
+            match p {
+                rust_h265::PixelData::U8(v) => Some(v.get(..n)?.iter().map(|&s| s as u16).collect()),
+                rust_h265::PixelData::U16(v) => Some(v.get(..n)?.to_vec()),
+            }
+        };
+        let planes = [plane(&f.y, w * h)?, plane(&f.u, cw * ch)?, plane(&f.v, cw * ch)?];
+        let matrix = colour.matrix.unwrap_or(if h >= 720 { DAV1D_MC_BT709 } else { DAV1D_MC_BT601 });
+        Some(Frame::from_planes(f.width, f.height, f.bit_depth as u32, Some((sx as u32, sy as u32)), planes, [w, cw, cw], matrix, colour.full_range))
+    }
+}
+
 fn heic(data: &[u8]) -> Result<DynamicImage, String> {
     let img = heifer::decode(data).map_err(|e| e.to_string())?;
     if img.width as u64 * img.height as u64 > MAX_PIXELS {

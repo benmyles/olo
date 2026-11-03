@@ -132,12 +132,21 @@ fn mp4(path: &Path, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), Strin
     if let Some(a) = &av1 {
         video = Some((a.id, "AV1"));
     }
+    // HEVC: `hvc1` the crate doesn't know, `hev1` whose `hvcC` it skips.
+    let hevc = if video.is_none_or(|v| v.1 == "HEVC") { std::fs::File::open(path).ok().and_then(|mut f| mp4_hevc(&mut f, size)) } else { None };
+    if let Some(hv) = &hevc {
+        video = Some((hv.id, "HEVC"));
+    }
     let Some((id, codec)) = video else {
         m.note = "MPEG-4 file".into();
         return Ok(());
     };
     let t = &r.tracks()[&id];
-    let (w, h) = av1.as_ref().map_or((t.width(), t.height()), |a| (a.width, a.height));
+    let (w, h) = match (&av1, &hevc) {
+        (Some(a), _) => (a.width, a.height),
+        (_, Some(hv)) => (hv.width, hv.height),
+        _ => (t.width(), t.height()),
+    };
     let fps = t.frame_rate();
     m.rows.push(("Size".into(), format!("{w} × {h}")));
     let mut fmt = codec.to_string();
@@ -165,6 +174,30 @@ fn mp4(path: &Path, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), Strin
             let Ok(Some(sample)) = r.read_sample(id, sid) else { continue };
             let data = if sid == start { [a.obus.as_slice(), &sample.bytes].concat() } else { sample.bytes.to_vec() };
             dec.decode(&data, &mut out)?;
+        }
+        if let Some(f) = out.first() {
+            m.picture = Some(Arc::new(Bitmap::from_rgba_unmultiplied([f.width as usize, f.height as usize], &f.to_rgba())));
+        }
+        return Ok(());
+    }
+    if let Some(config) = hevc.as_ref().and_then(|hv| olo_images::hevc::config(&hv.record)) {
+        m.playable = true;
+        // A key frame a tenth of the way in.
+        let count = t.sample_count();
+        let syncs = t.trak.mdia.minf.stbl.stss.as_ref().map(|s| s.entries.clone()).unwrap_or_else(|| vec![1]);
+        let start = syncs.iter().copied().filter(|&s| s <= (count / 10).max(1)).max().unwrap_or(1);
+        let colour = hevc.as_ref().map(|hv| hv.colour).unwrap_or_default();
+        let mut dec = olo_images::hevc::Decoder::new(config, colour, 1);
+        let mut out = Vec::new();
+        for sid in start..=(start + 120).min(count) {
+            if cancel.load(Ordering::Relaxed) || !out.is_empty() {
+                break;
+            }
+            let Ok(Some(sample)) = r.read_sample(id, sid) else { continue };
+            let _ = dec.decode(&sample.bytes, &mut out);
+        }
+        if out.is_empty() {
+            dec.flush(&mut out);
         }
         if let Some(f) = out.first() {
             m.picture = Some(Arc::new(Bitmap::from_rgba_unmultiplied([f.width as usize, f.height as usize], &f.to_rgba())));
@@ -239,12 +272,12 @@ fn mkv(path: &Path, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), Strin
         if let Some(v) = t.video()
             && video.is_none()
         {
-            video = Some((t.track_number().get(), id.to_owned(), v.pixel_width().get(), v.pixel_height().get(), t.codec_private().map(<[u8]>::to_vec)));
+            video = Some((t.track_number().get(), id.to_owned(), v.pixel_width().get(), v.pixel_height().get(), t.codec_private().map(<[u8]>::to_vec), mkv_colour(v)));
         } else if audio.is_none() && id.starts_with("A_") {
             audio = Some(codec_name(id));
         }
     }
-    let Some((track, id, w, h, private)) = video else {
+    let Some((track, id, w, h, private, colour)) = video else {
         m.note = "Matroska file".into();
         return Ok(());
     };
@@ -265,6 +298,11 @@ fn mkv(path: &Path, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), Strin
     if id == "V_VP9" {
         m.playable = true;
         return vp9_poster(&mut mk, track, m, cancel);
+    }
+    if id == "V_MPEGH/ISO/HEVC" {
+        let Some(config) = private.as_deref().and_then(olo_images::hevc::config) else { return Ok(()) };
+        m.playable = true;
+        return hevc_poster(&mut mk, track, config, colour, m, cancel);
     }
     if id != "V_MPEG4/ISO/AVC" {
         return Ok(());
@@ -343,6 +381,61 @@ fn vp9_poster<R: std::io::Read + std::io::Seek>(mk: &mut matroska_demuxer::Matro
     Ok(())
 }
 
+/// The first HEVC picture.
+fn hevc_poster<R: std::io::Read + std::io::Seek>(
+    mk: &mut matroska_demuxer::MatroskaFile<R>,
+    track: u64,
+    config: olo_images::hevc::Config,
+    colour: olo_images::hevc::Colour,
+    m: &mut Media,
+    cancel: &Arc<AtomicBool>,
+) -> Result<(), String> {
+    let mut dec = olo_images::hevc::Decoder::new(config, colour, 1);
+    let mut frame = matroska_demuxer::Frame::default();
+    let mut out = Vec::new();
+    let mut tries = 0;
+    while out.is_empty() && tries < 120 && mk.next_frame(&mut frame).unwrap_or(false) {
+        if cancel.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+        if frame.track == track {
+            tries += 1;
+            let _ = dec.decode(&frame.data, &mut out);
+        }
+    }
+    if out.is_empty() {
+        dec.flush(&mut out);
+    }
+    if let Some(f) = out.first() {
+        m.picture = Some(Arc::new(Bitmap::from_rgba_unmultiplied([f.width as usize, f.height as usize], &f.to_rgba())));
+    }
+    Ok(())
+}
+
+/// A Matroska video track's colour, as HEVC's decoding takes it (H.273's
+/// matrix code; full range).
+pub(crate) fn mkv_colour(v: &matroska_demuxer::Video) -> olo_images::hevc::Colour {
+    use matroska_demuxer::{MatrixCoefficients as M, Range};
+    let Some(c) = v.colour() else { return Default::default() };
+    let matrix = c.matrix_coefficients().and_then(|m| match m {
+        M::Identity => Some(0),
+        M::Bt709 => Some(1),
+        M::Fcc73682 => Some(4),
+        M::Bt470bg => Some(5),
+        M::Smpte170 => Some(6),
+        M::Smpte240 => Some(7),
+        M::YCoCg => Some(8),
+        M::Bt2020Ncl => Some(9),
+        M::Bt2020Cl => Some(10),
+        M::SmpteSt2085 => Some(11),
+        M::ChromaDerivedNcl => Some(12),
+        M::ChromaDerivedCl => Some(13),
+        M::Bt2100 => Some(14),
+        M::Unknown => None,
+    });
+    olo_images::hevc::Colour { matrix, full_range: c.range() == Some(Range::Full) }
+}
+
 /// An MPEG-4 file's AV1 track (an `av01` sample entry, which the mp4
 /// crate passes over, though it keeps the track's sample tables): its id,
 /// picture size and the sequence header OBUs of its `av1C`.
@@ -356,11 +449,39 @@ pub(crate) struct Av1Track {
 /// The AV1 track of the MPEG-4 file `r` (`len` bytes long), found by
 /// walking its boxes to each track's sample description.
 pub(crate) fn mp4_av1<R: std::io::Read + std::io::Seek>(r: &mut R, len: u64) -> Option<Av1Track> {
+    let moov = moov(r, len)?;
+    for trak in children(&moov, b"trak") {
+        // tkhd: version and flags, two times (four or eight bytes each),
+        // then the track's id.
+        let tkhd = children(trak, b"tkhd").next()?;
+        let off = if tkhd.first() == Some(&1) { 20 } else { 12 };
+        let id = u32::from_be_bytes(tkhd.get(off..off + 4)?.try_into().ok()?);
+        let Some(stsd) = within(trak, &[b"mdia", b"minf", b"stbl", b"stsd"]) else { continue };
+        // Version, flags and the entry count, then the entries.
+        for (kind, entry) in boxes(stsd.get(8..)?) {
+            if &kind != b"av01" {
+                continue;
+            }
+            // A visual sample entry's 78 bytes of fields (its width and
+            // height 24 bytes in), then its boxes; av1C's four bytes of
+            // fields, then the OBUs.
+            let width = u16::from_be_bytes(entry.get(24..26)?.try_into().ok()?);
+            let height = u16::from_be_bytes(entry.get(26..28)?.try_into().ok()?);
+            let av1c = children(entry.get(78..)?, b"av1C").next()?;
+            return Some(Av1Track { id, width, height, obus: av1c.get(4..)?.to_vec() });
+        }
+    }
+    None
+}
+
+/// An MPEG-4 file's `moov` box (`r`, `len` bytes long), read whole: it
+/// holds only tables, and is small next to the pictures.
+fn moov<R: std::io::Read + std::io::Seek>(r: &mut R, len: u64) -> Option<Vec<u8>> {
     use std::io::SeekFrom;
     // The top-level boxes, as far as `moov` (read whole: it holds only
     // tables, and is small next to the pictures).
     let mut at = 0u64;
-    let moov = loop {
+    loop {
         if at + 8 > len {
             return None;
         }
@@ -383,29 +504,53 @@ pub(crate) fn mp4_av1<R: std::io::Read + std::io::Seek>(r: &mut R, len: u64) -> 
             }
             let mut b = vec![0; (size - head) as usize];
             r.read_exact(&mut b).ok()?;
-            break b;
+            return Some(b);
         }
         at += size;
-    };
+    }
+}
+
+/// An MPEG-4 file's HEVC track (an `hvc1` or `hev1` sample entry, whose
+/// `hvcC` the mp4 crate reads only the version of): its id, picture size,
+/// decoder configuration record and colour (its `colr`, when it has one).
+pub(crate) struct HevcTrack {
+    pub id: u32,
+    pub width: u16,
+    pub height: u16,
+    pub record: Vec<u8>,
+    pub colour: olo_images::hevc::Colour,
+}
+
+/// The HEVC track of the MPEG-4 file `r` (`len` bytes long).
+pub(crate) fn mp4_hevc<R: std::io::Read + std::io::Seek>(r: &mut R, len: u64) -> Option<HevcTrack> {
+    let moov = moov(r, len)?;
     for trak in children(&moov, b"trak") {
-        // tkhd: version and flags, two times (four or eight bytes each),
-        // then the track's id.
         let tkhd = children(trak, b"tkhd").next()?;
         let off = if tkhd.first() == Some(&1) { 20 } else { 12 };
         let id = u32::from_be_bytes(tkhd.get(off..off + 4)?.try_into().ok()?);
         let Some(stsd) = within(trak, &[b"mdia", b"minf", b"stbl", b"stsd"]) else { continue };
-        // Version, flags and the entry count, then the entries.
         for (kind, entry) in boxes(stsd.get(8..)?) {
-            if &kind != b"av01" {
+            if &kind != b"hvc1" && &kind != b"hev1" {
                 continue;
             }
-            // A visual sample entry's 78 bytes of fields (its width and
-            // height 24 bytes in), then its boxes; av1C's four bytes of
-            // fields, then the OBUs.
             let width = u16::from_be_bytes(entry.get(24..26)?.try_into().ok()?);
             let height = u16::from_be_bytes(entry.get(26..28)?.try_into().ok()?);
-            let av1c = children(entry.get(78..)?, b"av1C").next()?;
-            return Some(Av1Track { id, width, height, obus: av1c.get(4..)?.to_vec() });
+            let inner = entry.get(78..)?;
+            let record = children(inner, b"hvcC").next()?.to_vec();
+            // colr: nclx (ISO) or nclc (QuickTime, limited range), then
+            // primaries, transfer and matrix, H.273's codes; nclx's range
+            // flag after.
+            let mut colour = olo_images::hevc::Colour::default();
+            if let Some(c) = children(inner, b"colr").next()
+                && matches!(c.get(0..4), Some(b"nclx" | b"nclc"))
+                && let Some(m) = c.get(8..10)
+            {
+                let matrix = u16::from_be_bytes([m[0], m[1]]) as u32;
+                // (2: unspecified.)
+                colour.matrix = (matrix != 2).then_some(matrix);
+                colour.full_range = &c[0..4] == b"nclx" && c.get(10).is_some_and(|b| b & 0x80 != 0);
+            }
+            return Some(HevcTrack { id, width, height, record, colour });
         }
     }
     None
