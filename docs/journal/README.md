@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Train for Your Palm, in a dialog of its own
+
+*23:13* — The palm trainer moved out of the Touch tab (where it ran off the panel) into a 560×440 dialog opened from a button. The film is a laptop's deck, keys and the pad between the palm rests, with the hands resting and lifting; beside it the pad live, its own shape, each touch drawn as the model calls it: here one hand's palm half over the left edge, which the size rule misses (the red ring) and the model catches. A sixth exercise gathers exactly that case.
+
+![Train for Your Palm, in a dialog of its own](2026-11-02/231348-train-for-your-palm-in-a-dialog-of-its-own.png)
+
 ### Preferences ▸ Touchpad ▸ Touch: Train for Your Palm
 
 *22:41* — A guided run through five exercises on the touchpad, each shown as an Olo-style animation of hands on a pad (left) and mirrored live by what the pad sees (right: a palm in orange, a finger in blue), with a word on how it's going and how many more touches it needs. Then Olo's hand-written palm model is refined to the person's hands off the UI thread, kept in the settings, and tried live.

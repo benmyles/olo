@@ -16,7 +16,7 @@ use olo_protocol::{
 };
 use olo_sync::Mutex;
 use olo_ui::{
-    gpui::{AppContext as _, Context, ParentElement as _, ScrollHandle, SharedString, Styled as _, div, px},
+    gpui::{Context, ParentElement as _, ScrollHandle, SharedString, Styled as _, div, px},
     metrics as m, style, theme,
     widgets::{Button, ScrollView, StringView, TabView},
 };
@@ -30,75 +30,14 @@ pub struct State {
     tab: usize,
     devices: Shared,
     scroll: ScrollHandle,
-    /// Train for Your Palm (palm_trainer.rs).
-    trainer: crate::palm_trainer::Trainer,
 }
 
 impl State {
     pub fn new(cx: &mut Context<PanelView>) -> State {
-        State { tab: 0, devices: watch(olo_ui::proxy(cx)), scroll: ScrollHandle::new(), trainer: crate::palm_trainer::Trainer::new() }
+        State { tab: 0, devices: watch(olo_ui::proxy(cx)), scroll: ScrollHandle::new() }
     }
 }
 
-/// The palm trainer, for its controls.
-pub(crate) fn trainer_of(v: &mut PanelView) -> Option<&mut crate::palm_trainer::Trainer> {
-    state_of(v).map(|st| &mut st.trainer)
-}
-
-/// Refine Olo's palm model on the trainer's samples, off the UI thread
-/// with progress, and keep it in the settings (and turn it on).
-pub(crate) fn train(v: &mut PanelView, cx: &mut Context<PanelView>) {
-    let palm_size = v.prefs.read(cx).settings.as_ref().map(|s| s.touchpad.filter.palm_size).unwrap_or(1600);
-    let Some(st) = state_of(v) else { return };
-    let samples = st.trainer.take_samples();
-    let progress = st.trainer.progress.clone();
-    // Kept on disk too (~/.local/state/olo/palm), for the baseline to be
-    // tuned on real hands later.
-    {
-        let kept = samples.clone();
-        std::thread::spawn(move || match olo_palm::keep_samples(&olo_xdg::state_dir().join("olo").join("palm"), &kept) {
-            Ok(p) => tracing::info!("palm trainer: samples kept in {}", p.display()),
-            Err(e) => tracing::warn!("palm trainer: samples not kept: {e}"),
-        });
-    }
-    *progress.lock().unwrap() = 0.0;
-    let proxy = olo_ui::proxy(cx);
-    let task = cx.background_spawn(async move {
-        olo_palm::train(&samples, palm_size, |p| {
-            *progress.lock().unwrap() = p;
-            proxy.send(Msg::Redraw);
-        })
-    });
-    cx.spawn(async move |me, cx| {
-        let out = task.await;
-        let _ = me.update(cx, |v, cx| {
-            match out {
-                Some((model, report)) => {
-                    let prefs = v.prefs.clone();
-                    let kept = model.clone();
-                    prefs.update(cx, |p, cx| {
-                        p.edit(cx, move |s| {
-                            s.touchpad.filter.palm_model = Some(kept.clone());
-                            s.touchpad.filter.use_palm_model = true;
-                        })
-                    });
-                    if let Some(t) = trainer_of(v) {
-                        t.model = Some(model);
-                        t.report = Some(report);
-                        t.advance(olo_ui::proxy(cx));
-                    }
-                }
-                None => {
-                    if let Some(t) = trainer_of(v) {
-                        t.failed = Some("Too few touches of one kind to learn from: try again with more.".into());
-                    }
-                }
-            }
-            cx.notify();
-        });
-    })
-    .detach();
-}
 
 fn state_of(v: &mut PanelView) -> Option<&mut State> {
     match &mut v.state {
@@ -193,10 +132,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let t = ui.s.touchpad.clone();
     let items = ui.collect(|ui| match st.tab {
         0 => touchpad(ui, &t, devices.is_some(), pad.as_ref()),
-        1 => {
-            touch(ui, &t, pad.as_ref());
-            crate::palm_trainer::ui(ui, &mut st.trainer, t.filter.palm_size);
-        }
+        1 => touch(ui, &t, pad.as_ref()),
         2 => gestures(ui, &t),
         _ => {
             let items = ui.collect(|ui| mice_boxes(ui, devices.as_deref()));
@@ -289,6 +225,14 @@ fn touch(ui: &mut Ui, t: &TouchpadSettings, pad: Option<&InputDeviceInfo>) {
             ui.check("A resting palm can't click (its pressure doesn't count)", f.palm_proof_click, |s, v| tuned(s, |t| t.filter.palm_proof_click = v));
             let trained = f.palm_model.is_some();
             ui.check(if trained { "Tell palms apart with the model trained on your hands" } else { "Tell palms apart with Olo's palm model" }, f.use_palm_model, |s, v| tuned(s, |t| t.filter.use_palm_model = v));
+            // The trainer, in a dialog of its own (its live view and
+            // animation don't fit the panel).
+            let (prefs, palm_size) = (ui.prefs(), f.palm_size);
+            ui.button("Train for Your Palm…", move |_, cx| {
+                if let Some(p) = prefs.upgrade() {
+                    crate::palm_trainer::open(p, palm_size, cx);
+                }
+            });
         });
     });
     ui.bbox("Click", |ui| {

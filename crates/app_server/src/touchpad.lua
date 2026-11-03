@@ -204,7 +204,7 @@ local function filter(state, frame, time)
                 local f, age_ms = features(state, c, time, down - 1, nearest)
                 if age_ms > model.decide_ms then
                     c.decided = true
-                elseif palm_score(model, f) > model.threshold then
+                elseif age_ms >= (model.min_age_ms or 0) and palm_score(model, f) > model.threshold then
                     c.palm = true
                 end
             end

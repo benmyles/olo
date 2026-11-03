@@ -28,6 +28,11 @@ pub const HIDDEN: usize = 32;
 /// stays what it was (a finger found to be a palm mid-gesture would stop
 /// the gesture).
 pub const DECIDE_MS: u32 = 250;
+/// Not before it's this old (five of the pad's reports): in its first
+/// report nothing has moved, so a finger landing at the edge looks like
+/// a heel; by now its speed shows. A heel hidden 40 ms late moves
+/// nothing (the filter counts no motion for it) and can't tap.
+pub const MIN_AGE_MS: u32 = 40;
 /// The share of fingers kept back from training that may be taken for
 /// palms, at most, when choosing the threshold.
 pub const FINGER_LOSS: f32 = 0.01;
@@ -196,16 +201,20 @@ pub fn baseline() -> PalmModel {
     set(23, 0.2, &[(14, -0.9), (11, 0.6), (0, -0.5)]);
     // 24: while typing (a key just pressed), large-ish and still.
     set(24, -0.6, &[(17, -1.0), (0, 0.5), (8, -0.4)]);
-    // 25–31: spare, each looking lightly at a pair of features (the
+    // 25: over a side edge (a one-handed rest): at the edge, still,
+    // some size, grown since it landed (what's on the glass of a heel
+    // half over the rim).
+    set(25, -0.3, &[(6, -1.0), (8, -0.6), (0, 0.3), (13, 0.3)]);
+    // 26–31: spare, each looking lightly at a pair of features (the
     // angle and approaching size among them), so training has room to
     // learn what the ones above don't say.
-    for j in 25..HIDDEN {
+    for j in 26..HIDDEN {
         let (a, b) = ((j * 5) % FEATURES, (j * 7 + 3) % FEATURES);
         set(j, 0.0, &[(a, 0.15), (b, -0.15)]);
     }
     let mut w2 = vec![0.0f32; HIDDEN];
-    w2[..25].copy_from_slice(&[1.1, 0.9, 1.0, 0.7, 0.8, -1.0, -0.9, 0.6, 0.5, 0.6, 1.2, 0.8, 0.6, 0.7, 0.6, 0.7, -0.8, -0.7, -0.8, -0.7, -0.7, -0.9, 0.7, -0.7, 0.8]);
-    PalmModel { mean, std, w1, b1, w2, b2: -1.0, threshold: 0.0, decide_ms: DECIDE_MS, ..Default::default() }
+    w2[..26].copy_from_slice(&[1.1, 0.9, 1.0, 0.7, 0.8, -1.0, -0.9, 0.6, 0.5, 0.6, 1.2, 0.8, 0.6, 0.7, 0.6, 0.7, -0.8, -0.7, -0.8, -0.7, -0.7, -0.9, 0.7, -0.7, 0.8, 0.6]);
+    PalmModel { mean, std, w1, b1, w2, b2: -1.0, threshold: 0.0, decide_ms: DECIDE_MS, min_age_ms: MIN_AGE_MS, ..Default::default() }
 }
 
 /// The model's score for a contact's features: above its threshold, a
@@ -368,7 +377,7 @@ pub fn train(contacts: &[Labelled], palm_size: u32, mut progress: impl FnMut(f32
             progress(epoch as f32 / EPOCHS as f32);
         }
     }
-    let mut model = PalmModel { mean: mean.to_vec(), std: std.to_vec(), w1, b1, w2, b2, threshold: 0.0, decide_ms: DECIDE_MS, ..Default::default() };
+    let mut model = PalmModel { mean: mean.to_vec(), std: std.to_vec(), w1, b1, w2, b2, threshold: 0.0, decide_ms: DECIDE_MS, min_age_ms: MIN_AGE_MS, ..Default::default() };
 
     // The threshold: a contact's verdict is its highest score in its
     // first `DECIDE_MS`; the lowest that takes at most `FINGER_LOSS` of
@@ -428,7 +437,7 @@ pub fn keep_samples(dir: &std::path::Path, contacts: &[Labelled]) -> Result<std:
 pub fn lua(m: &PalmModel) -> String {
     let list = |v: &[f32]| v.iter().map(|x| format!("{x:e}")).collect::<Vec<_>>().join(", ");
     format!(
-        "{{ mean = {{ {} }}, std = {{ {} }}, w1 = {{ {} }}, b1 = {{ {} }}, w2 = {{ {} }}, b2 = {:e}, threshold = {:e}, decide_ms = {}, features = {FEATURES}, hidden = {HIDDEN} }}",
+        "{{ mean = {{ {} }}, std = {{ {} }}, w1 = {{ {} }}, b1 = {{ {} }}, w2 = {{ {} }}, b2 = {:e}, threshold = {:e}, decide_ms = {}, min_age_ms = {}, features = {FEATURES}, hidden = {HIDDEN} }}",
         list(&m.mean),
         list(&m.std),
         list(&m.w1),
@@ -436,7 +445,8 @@ pub fn lua(m: &PalmModel) -> String {
         list(&m.w2),
         m.b2,
         m.threshold,
-        m.decide_ms
+        m.decide_ms,
+        m.min_age_ms
     )
 }
 
@@ -466,7 +476,7 @@ mod tests {
                 let c = TouchContact { id: k as i32, x, y, major: size, minor: (size as f32 * 0.8) as i32, pressure, ..Default::default() };
                 let t = 1_000_000 + f * 8000;
                 for (_, feats, age) in tracker.frame(&axes, t, &[c]) {
-                    if age <= DECIDE_MS {
+                    if (MIN_AGE_MS..=DECIDE_MS).contains(&age) {
                         frames.push(feats);
                     }
                 }
@@ -500,6 +510,57 @@ mod tests {
         assert!(r.palms_caught > r.size_rule_palms_caught && r.palms_caught > 0.85, "{r:?}");
         assert!(r.fingers_lost < 0.1, "{r:?}");
         assert!(lua(&m).contains("hidden = 32") && lua(&m).contains("features = 18"));
+    }
+
+    /// One hand's heel half over the pad's left or right rim (what the
+    /// glass sees: a smallish, long, light, still contact at the very
+    /// edge, growing as it settles, alone), against fingers scrolling
+    /// along the right edge (moving, round, small).
+    fn made_edge(seed: u64, count: usize) -> Vec<Labelled> {
+        let axes = PadAxes::macbook();
+        let mut rng = Rng(seed);
+        let mut out = Vec::new();
+        for k in 0..count {
+            let palm = k % 2 == 0;
+            let mut tracker = Tracker::default();
+            let left = rng.next() < 0.5;
+            let (mut x, mut y) = if palm {
+                (if left { axes.x_min + (rng.next() * 300.0) as i32 } else { axes.x_max - (rng.next() * 300.0) as i32 }, 3000 + (rng.next() * 5000.0) as i32)
+            } else {
+                (axes.x_max - 200 - (rng.next() * 500.0) as i32, 1500 + (rng.next() * 3000.0) as i32)
+            };
+            let vy = if palm { 0 } else { 120 + (rng.next() * 120.0) as i32 };
+            let full = if palm { 700 + (rng.next() * 800.0) as i32 } else { 300 + (rng.next() * 300.0) as i32 };
+            let pressure = if palm { 4 + (rng.next() * 56.0) as i32 } else { 10 + (rng.next() * 40.0) as i32 };
+            let mut frames = Vec::new();
+            for f in 0..30u64 {
+                y += vy;
+                // A settling heel grows over its first frames.
+                let size = if palm { (full as f32 * (0.7 + 0.3 * (f as f32 / 8.0).min(1.0))) as i32 } else { full };
+                let minor = (size as f32 * if palm { 0.5 } else { 0.85 }) as i32;
+                let c = TouchContact { id: k as i32, x, y, major: size, minor, pressure, ..Default::default() };
+                let _ = &mut x;
+                for (_, feats, age) in tracker.frame(&axes, 1_000_000 + f * 8000, &[c]) {
+                    if (MIN_AGE_MS..=DECIDE_MS).contains(&age) {
+                        frames.push(feats);
+                    }
+                }
+            }
+            out.push(Labelled { frames, palm, size: full });
+        }
+        out
+    }
+
+    #[test]
+    fn the_baseline_catches_a_palm_over_the_edge() {
+        let m = baseline();
+        let contacts = made_edge(11, 300);
+        let r = judge(&m, &contacts.iter().collect::<Vec<_>>(), 1600);
+        // The size rule misses every one of these (too small); the
+        // baseline catches most without taking the edge fingers.
+        assert_eq!(r.size_rule_palms_caught, 0.0, "{r:?}");
+        assert!(r.palms_caught > 0.9, "{r:?}");
+        assert!(r.fingers_lost < 0.1, "{r:?}");
     }
 
     #[test]

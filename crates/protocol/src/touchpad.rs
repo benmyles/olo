@@ -150,10 +150,13 @@ pub struct PalmModel {
     /// The output's weights (one for each hidden unit) and bias.
     pub w2: Vec<f32>,
     pub b2: f32,
-    /// A contact is a palm once its score passes this in its first
-    /// `decide_ms`; after that, it stays what it was.
+    /// A contact is a palm once its score passes this between
+    /// `min_age_ms` (before that nothing has moved yet: a finger landing
+    /// at the edge looks like a heel) and `decide_ms` old; after that,
+    /// it stays what it was.
     pub threshold: f32,
     pub decide_ms: u32,
+    pub min_age_ms: u32,
     /// When it was trained (seconds since the epoch), from how many
     /// contacts, and how it did on those kept back from training: the
     /// share of palms caught and of fingers taken for palms.

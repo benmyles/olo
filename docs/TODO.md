@@ -7,21 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **The palm trainer in a modal of its own** (Ben, 2026-11-02, with a
-  screenshot of the Touch tab at 2× in dark mode: the trainer's box ran
-  under Defaults and Revert): "uh that's not going to work it doesn't
-  fit. it should be a new modal for the trainer". So: the Touch tab
-  keeps only a button, "Train for Your Palm…", beside the model option;
-  it opens the trainer (apps/preferences/src/palm_trainer.rs, its
-  steps, animation, live pad, feedback, progress and test as they are)
-  in a window of its own, a modal dialog of the Preferences window
-  (`olo_ui::open_window` with the kit's dialog options, as the palette's
-  `overlay`/window_menu does; sized for its content, ~560×480 at 1×,
-  never scrolling), with Cancel and the step buttons in its bottom
-  row; closing it stops the worker. The Touchpad panel goes back to
-  460×586. Check at 1, 1.5 and 2×, light and dark, headless with
-  `SyntheticEvent::Contacts`.
-
 - **The best baseline palm model there is** (Ben, 2026-11-02): "try to
   optimize the baseline as much as you can -- and if it would be better
   being even bigger / more features then do that but make it the
@@ -742,6 +727,29 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**The palm trainer in a modal of its own**~~ (Ben, 2026-11-02, with a
+  screenshot of the Touch tab at 2× in dark mode: the trainer's box ran
+  under Defaults and Revert): "uh that's not going to work it doesn't
+  fit. it should be a new modal for the trainer". So: the Touch tab
+  keeps only a button, "Train for Your Palm…", beside the model option;
+  it opens the trainer (apps/preferences/src/palm_trainer.rs, its
+  steps, animation, live pad, feedback, progress and test as they are)
+  in a window of its own, a modal dialog of the Preferences window
+  (`olo_ui::open_window` with the kit's dialog options, as the palette's
+  `overlay`/window_menu does; sized for its content, ~560×480 at 1×,
+  never scrolling), with Cancel and the step buttons in its bottom
+  row; closing it stops the worker. The Touchpad panel goes back to
+  460×586. Check at 1, 1.5 and 2×, light and dark, headless with
+  `SyntheticEvent::Contacts`.
+  *Done* (2026-11-02): a 560×440 dialog from "Train for Your Palm…";
+  the Touch tab is back to 460×586. The film is a laptop's deck (keys,
+  the pad between the palm rests); the pad live is the pad's own
+  shape, contacts clipped to it. Also, from Ben's question about one
+  hand's palm over the left or right edge: a sixth exercise for it, a
+  hand-written unit, and no verdict before a contact is 40 ms old (an
+  edge finger's first report looked like a heel). Review clean at 1,
+  1.5 and 2×.
 
 - ~~**Palms told apart by a tiny model, trained in Preferences**~~ (Ben, 2026-11-02): "enhance the
   palm detection with an optional new feature (can be enabled in

@@ -221,9 +221,16 @@ gpu accelerated (or simd accelerated if it's faster) model").
   small at its largest), ten spare for training.
 - Trained on the machine by full-batch Adam on the class-weighted log
   loss, in a fraction of a second.
-- A contact is a palm once its score passes the threshold within its
-  first 250 ms; after that it stays what it was (a finger turning palm
-  mid-gesture would stop the gesture).
+- A contact is a palm once its score passes the threshold between 40 ms
+  and 250 ms old. Not before 40 ms (`MIN_AGE_MS`, five reports): in a
+  contact's first report nothing has moved, so a finger landing at the
+  edge looks like a heel over it, and the baseline took 85% of edge
+  scrolling fingers for palms until it waited for their speed (Ben,
+  2026-11-02: one hand's palm half over the left or right edge must
+  work out of the box; `the_baseline_catches_a_palm_over_the_edge`:
+  every such palm caught, under 10% of edge fingers lost). A heel hidden
+  40 ms late moves nothing and can't tap. Not after 250 ms: a finger
+  turning palm mid-gesture would stop the gesture.
 - The threshold is chosen so that at most 1% of the fingers kept back
   from training (every fifth contact) are taken for palms: a palm let
   through costs less than a finger lost.
@@ -256,10 +263,13 @@ a palm before libinput sees it, in the same features and arithmetic
 - A contact is scored only in its first 250 ms.
 - With no model, or with it off, the filter is as it was.
 
-**The trainer** (apps/preferences/src/palm_trainer.rs, Preferences ▸
-Touchpad & Mouse ▸ Touch ▸ "Train for Your Palm"): optional, to
-personalize the model. Five exercises (rest the palms; type with them
-resting; point and scroll; tap and click; point with a palm resting),
+**The trainer** (apps/preferences/src/palm_trainer.rs, a dialog of its
+own, "Train for Your Palm…" on Preferences ▸ Touchpad & Mouse ▸ Touch:
+the box in the tab ran off the panel, Ben's screenshot): optional, to
+personalize the model. Six exercises (rest the palms; one hand's palm
+half over the left edge, then the right, as a hand resting alone does;
+type with them resting; point and scroll; tap and click; point with a
+palm resting), each shown first on the intro's film in turn,
 each an Olo-style animation of hands on a pad beside the pad live (a
 palm orange, a finger blue, a ring where the size rule disagrees), a
 line on how it's going ("Good. 7 more.", "That looked like a finger:
