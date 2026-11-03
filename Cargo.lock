@@ -7187,11 +7187,13 @@ version = "0.1.0"
 dependencies = [
  "jiff",
  "libc",
+ "olo-palm",
  "olo-protocol",
  "olo-screensavers",
  "olo-sync",
  "olo-system",
  "olo-tg",
+ "olo-theme",
  "olo-ui",
  "olo-xdg",
  "qrcode",

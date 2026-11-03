@@ -7,140 +7,33 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Palms told apart by a tiny model, trained in Preferences** (Ben, 2026-11-02): "enhance the
-  palm detection with an optional new feature (can be enabled in
-  touchpad prefs) that uses a tiny gpu accelerated (or simd accelerated
-  if it's faster) model to detect palm detection and ignore the palm on
-  the touchpad. do research to see if there's anything like that out
-  there already, and if not then train up a small model to do it. if
-  you can't find anything or it's not viable then try to do it with
-  heuristics/decision trees or something but i bet you can find a model
-  out there to do it".
-  - Today: Olo's touch filter (app_server `touch_filter.rs`, the
-    libinput Lua plugin `touchpad.lua`, docs/TOUCHPAD.md) calls a touch
-    a palm by its size alone (`palm_size`, 1600 on the MacBook, from
-    measured fingers and palms), and takes the click from the fingers'
-    pressure.
-  - Research first: published palm-rejection models (ChromeOS's
-    touchpad palm model in its gestures library, Apple's and Microsoft's
-    papers, academic ones on capacitive pads) and the features they use
-    per contact over time: size, pressure, shape (major/minor,
-    orientation), speed, position from the edges, how long it has been
-    down.
-  - Use one where there's one fit to run; else train a small one
-    (a few-kilobyte MLP or gradient-boosted trees) on captures from the
-    MacBook pad (/dev/input/event5, read-only), labelled by deliberate
-    sessions: typing with palms resting, thumbs at the edge, real
-    gestures.
-  - Run it in the filter's path per frame of contacts, on the CPU with
-    SIMD unless the GPU is measured faster: microseconds a frame, no
-    allocation, nothing when no finger is down.
-  - An option in Preferences ▸ Touchpad & Mouse ("Tell palms apart with
-    a model"), off by default, beside the size rule it improves on.
-  - Measured against the size rule on held-out captures (palms missed,
-    fingers lost), and its cost per frame, with the numbers in the
-    commit.
-  - *Research* (2026-11-02): there is no open touchpad palm model to
-    take.
-    - arXiv, searched up to 2026, has nothing on touchpad palm
-      rejection: its "palm" papers are palmprint biometrics.
-    - Hugging Face has no such model or dataset.
-    - Closest:
-      - Chromium's `NeuralStylusPalmDetectionFilter`, in Android's
-        `libpalmrejection` (BSD): a small network for Chromebook
-        touchscreens. It scores a stroke from its first 3–12 samples
-        (size in mm, pressure, edges, speed) and its nearest
-        neighbours; 173–325 inputs; output thresholds 0.9–4.5.
-      - ChromeOS's touchpad gestures library: heuristics only (palm
-        pressure 200, width 21.2 mm, edge zones, a "fat finger"
-        reclassified by low peak pressure).
-      - Synaptics' neural palm rejection (CES 2025): proprietary.
-      - A 2021 Brno thesis ("Laptop Touchpad Palm Detection with
-        AI/ML"): reports good accuracy, but published no code or data.
-      - PalmTouch (2018): a CNN on phones' raw capacitive images, which
-        the MacBook pad doesn't give (contacts only: position, major,
-        minor, orientation, pressure).
-    - So: our own small model, Chromium's kind of features taken to the
-      pad, trained on captures of Ben's MacBook.
-  - **How** (Ben, later the same day): "actually, let's do it by adding
-    a "Train for your palm" section in the touchpad preferences that
-    then walks the user through a training regime, asking them to do
-    different things like rest their palm and tap/scroll with and
-    without palm and so on to collect enough samples to build the model
-    and then let the user test -- it should be visual with generated
-    olo style instructional animations and walk the user through the
-    whole process from calibration to testing". So: a guided trainer in
-    Preferences ▸ Touchpad & Mouse, made from the kit's parts:
-    - Calibration: the pad's size and a resting finger's and palm's
-      contact.
-    - Exercises, each with an Olo-style animation of the hands on the
-      pad and a live drawing of what the pad sees: rest the palms; type
-      with palms resting; tap, point, scroll and click, with and without
-      a palm down; thumbs at the edge. Each says how many samples it
-      still needs.
-    - The model trained on the machine, off the UI thread with live
-      progress, and kept with the person's settings.
-    - A test step: the pad's contacts drawn as fingers or palms, as
-      the model and the size rule each call them.
-    - The option to use it, and to train again.
-    - Ben, also: "it needs to be a very interactive process with the
-      user instructing them through the whole thing with live feedback
-      and so on". Each step:
-      - says what to do now and shows it;
-      - shows the person's own contacts on the pad as they happen;
-      - says how it's going ("Good, keep resting it", "That was a
-        finger: lift it and rest only your palm", "3 more taps");
-      - moves on by itself once it has what it needs;
-      - can be gone back to or redone.
-  - Ben: "for any training you need to use rust (you can use libtorch
-    through c/c++ if there's no better rust native solution) don't add
-    python". Training, features and inference are Rust (a Rust-native
-    crate, or our own: the model is tiny); no Python anywhere.
-  - *Status* (2026-11-02): the model's side is done:
-    - `olo-palm`: features, training and threshold, with tests;
-    - the filter runs it, matching Rust to 1e-4, at about 2 µs a frame;
-    - app_server's live contacts (`EventKind::TouchContacts`, and
-      `SyntheticEvent::Contacts` headless);
-    - the settings for it.
-    Ben, also: "you should also write a baseline model by directly
-    writing out the weights that provides a good starting point so that
-    the user training is really fine tuning that base model you made".
-    *Done* (2026-11-02): `olo_palm::baseline()`, weights by hand from
-    docs/TOUCHPAD.md's measurements; untrained it beats the size rule on
-    the synthetic contacts (>85% of palms, <10% of fingers lost); the
-    filter runs it with `use_palm_model` on and nothing trained;
-    `train()` fine-tunes from it (lr 0.01). *Left*: the trainer says it's
-    refining Olo's own.
-    *Next*: the trainer in Preferences ▸ Touchpad & Mouse, a "Train for
-    Your Palm" box on the Touch tab (apps/preferences/src/touchpad.rs,
-    `touch()`; the panel is 460×586, `panel.rs`), built from:
-    - the pad drawn with `gpui::PathBuilder::fill()`/`stroke()` and
-      `window.paint_path` (as `style::latch`), contacts as ellipses from
-      `Event::TouchContacts` on a watcher thread like `touchpad::watch`;
-    - animations by `window.request_animation_frame()` in a canvas, as
-      `spotlight.rs` does, stilled when nothing moves;
-    - progress with `widgets::StatusBar::new(fraction)`;
-    - training on `cx.background_spawn`, the model written through
-      `ui.edit`/`prefs.update(.., p.edit(..))` into
-      `s.touchpad.filter.palm_model`, `use_palm_model`;
-    - the trainer's state in `touchpad::State` (reached by `state_of`),
-      redrawn with `Msg::Redraw`;
-    - tested headless with `SyntheticEvent::Contacts` through
-      `tsession ipc`.
-  - (The manual captures below are the fallback, and for measuring.)
-  - *Needs Ben* (superseded by the trainer): labelled captures, recorded read-only with no grab
-    (`touch_filter`'s `replay_capture` reads them,
-    `OLO_TOUCH_CAPTURE`). Two minutes each:
-    - `sudo timeout 120 cat /dev/input/event5 > palms.evdev`: typing,
-      palms resting as they do, the pad not used on purpose (every
-      contact a palm, thumb or knuckle);
-    - `… > fingers.evdev`: the pad used as usual (pointing, scrolling,
-      clicks, gestures), palms kept off it (every contact meant);
-    - `… > mixed.evdev`: real work, both at once, to try it on.
-    - Then: features per contact, a model trained and checked on
-      held-out parts, run in `touchpad.lua` (tens of multiply-adds a
-      contact: Lua costs microseconds, where a GPU dispatch would cost
-      far more), the Preferences option, and the numbers.
+- **The best baseline palm model there is** (Ben, 2026-11-02): "try to
+  optimize the baseline as much as you can -- and if it would be better
+  being even bigger / more features then do that but make it the
+  world's best baseline palm detection model that blows away anything
+  else". Today: `olo_palm::baseline()`, 14 features, 32 units, 22
+  written by hand, judged only on synthetic contacts. To be the best it
+  has to be judged on real hands, so:
+  - Gather real captures: the trainer's samples (every labelled
+    contact) saved to `~/.local/state/olo/palm/` as JSON when a run
+    finishes, so they can be studied; plus the three two-minute
+    manual captures from the finished item.
+  - More features where they tell: distance to the nearest other
+    contact (a palm sits far from the typing fingers; two scrolling
+    fingers sit close), `ABS_MT_ORIENTATION` if the pad reports it, the
+    contact's size growth over its first 50 ms, time since the last
+    key press (app_server knows: palms rest while typing), and the
+    pad's own `MT_TOOL_PALM` where a driver gives it.
+  - A bigger network only if the real data wants it (64 units, or two
+    layers), chosen by held-out error, never by feel; every unit still
+    explained in the source.
+  - The baseline's weights then set by training on the real captures
+    (seeded from the hand-written ones) and written back into the
+    source as constants, with its held-out numbers beside the size
+    rule's in docs/TOUCHPAD.md.
+  - The Lua filter follows every feature change, with the Rust/Lua
+    agreement test.
+  - Measured per frame as before (today ~10 µs a frame at 32 units).
 
 - **x86 machines, starting with Ben's ThinkPad P1 Gen 9** (Ben; it
   arrives within days; **next once the GPUI migration is done**, before
@@ -817,6 +710,151 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Palms told apart by a tiny model, trained in Preferences**~~ (Ben, 2026-11-02): "enhance the
+  palm detection with an optional new feature (can be enabled in
+  touchpad prefs) that uses a tiny gpu accelerated (or simd accelerated
+  if it's faster) model to detect palm detection and ignore the palm on
+  the touchpad. do research to see if there's anything like that out
+  there already, and if not then train up a small model to do it. if
+  you can't find anything or it's not viable then try to do it with
+  heuristics/decision trees or something but i bet you can find a model
+  out there to do it".
+  - Today: Olo's touch filter (app_server `touch_filter.rs`, the
+    libinput Lua plugin `touchpad.lua`, docs/TOUCHPAD.md) calls a touch
+    a palm by its size alone (`palm_size`, 1600 on the MacBook, from
+    measured fingers and palms), and takes the click from the fingers'
+    pressure.
+  - Research first: published palm-rejection models (ChromeOS's
+    touchpad palm model in its gestures library, Apple's and Microsoft's
+    papers, academic ones on capacitive pads) and the features they use
+    per contact over time: size, pressure, shape (major/minor,
+    orientation), speed, position from the edges, how long it has been
+    down.
+  - Use one where there's one fit to run; else train a small one
+    (a few-kilobyte MLP or gradient-boosted trees) on captures from the
+    MacBook pad (/dev/input/event5, read-only), labelled by deliberate
+    sessions: typing with palms resting, thumbs at the edge, real
+    gestures.
+  - Run it in the filter's path per frame of contacts, on the CPU with
+    SIMD unless the GPU is measured faster: microseconds a frame, no
+    allocation, nothing when no finger is down.
+  - An option in Preferences ▸ Touchpad & Mouse ("Tell palms apart with
+    a model"), off by default, beside the size rule it improves on.
+  - Measured against the size rule on held-out captures (palms missed,
+    fingers lost), and its cost per frame, with the numbers in the
+    commit.
+  - *Research* (2026-11-02): there is no open touchpad palm model to
+    take.
+    - arXiv, searched up to 2026, has nothing on touchpad palm
+      rejection: its "palm" papers are palmprint biometrics.
+    - Hugging Face has no such model or dataset.
+    - Closest:
+      - Chromium's `NeuralStylusPalmDetectionFilter`, in Android's
+        `libpalmrejection` (BSD): a small network for Chromebook
+        touchscreens. It scores a stroke from its first 3–12 samples
+        (size in mm, pressure, edges, speed) and its nearest
+        neighbours; 173–325 inputs; output thresholds 0.9–4.5.
+      - ChromeOS's touchpad gestures library: heuristics only (palm
+        pressure 200, width 21.2 mm, edge zones, a "fat finger"
+        reclassified by low peak pressure).
+      - Synaptics' neural palm rejection (CES 2025): proprietary.
+      - A 2021 Brno thesis ("Laptop Touchpad Palm Detection with
+        AI/ML"): reports good accuracy, but published no code or data.
+      - PalmTouch (2018): a CNN on phones' raw capacitive images, which
+        the MacBook pad doesn't give (contacts only: position, major,
+        minor, orientation, pressure).
+    - So: our own small model, Chromium's kind of features taken to the
+      pad, trained on captures of Ben's MacBook.
+  - **How** (Ben, later the same day): "actually, let's do it by adding
+    a "Train for your palm" section in the touchpad preferences that
+    then walks the user through a training regime, asking them to do
+    different things like rest their palm and tap/scroll with and
+    without palm and so on to collect enough samples to build the model
+    and then let the user test -- it should be visual with generated
+    olo style instructional animations and walk the user through the
+    whole process from calibration to testing". So: a guided trainer in
+    Preferences ▸ Touchpad & Mouse, made from the kit's parts:
+    - Calibration: the pad's size and a resting finger's and palm's
+      contact.
+    - Exercises, each with an Olo-style animation of the hands on the
+      pad and a live drawing of what the pad sees: rest the palms; type
+      with palms resting; tap, point, scroll and click, with and without
+      a palm down; thumbs at the edge. Each says how many samples it
+      still needs.
+    - The model trained on the machine, off the UI thread with live
+      progress, and kept with the person's settings.
+    - A test step: the pad's contacts drawn as fingers or palms, as
+      the model and the size rule each call them.
+    - The option to use it, and to train again.
+    - Ben, also: "it needs to be a very interactive process with the
+      user instructing them through the whole thing with live feedback
+      and so on". Each step:
+      - says what to do now and shows it;
+      - shows the person's own contacts on the pad as they happen;
+      - says how it's going ("Good, keep resting it", "That was a
+        finger: lift it and rest only your palm", "3 more taps");
+      - moves on by itself once it has what it needs;
+      - can be gone back to or redone.
+  - Ben: "for any training you need to use rust (you can use libtorch
+    through c/c++ if there's no better rust native solution) don't add
+    python". Training, features and inference are Rust (a Rust-native
+    crate, or our own: the model is tiny); no Python anywhere.
+  - *Status* (2026-11-02): the model's side is done:
+    - `olo-palm`: features, training and threshold, with tests;
+    - the filter runs it, matching Rust to 1e-4, at about 2 µs a frame;
+    - app_server's live contacts (`EventKind::TouchContacts`, and
+      `SyntheticEvent::Contacts` headless);
+    - the settings for it.
+    Ben, also: "you should also write a baseline model by directly
+    writing out the weights that provides a good starting point so that
+    the user training is really fine tuning that base model you made".
+    *Done* (2026-11-02): `olo_palm::baseline()`, weights by hand from
+    docs/TOUCHPAD.md's measurements; untrained it beats the size rule on
+    the synthetic contacts (>85% of palms, <10% of fingers lost); the
+    filter runs it with `use_palm_model` on and nothing trained;
+    `train()` fine-tunes from it (lr 0.01). *Left*: the trainer says it's
+    refining Olo's own.
+    *Next*: the trainer in Preferences ▸ Touchpad & Mouse, a "Train for
+    Your Palm" box on the Touch tab (apps/preferences/src/touchpad.rs,
+    `touch()`; the panel is 460×586, `panel.rs`), built from:
+    - the pad drawn with `gpui::PathBuilder::fill()`/`stroke()` and
+      `window.paint_path` (as `style::latch`), contacts as ellipses from
+      `Event::TouchContacts` on a watcher thread like `touchpad::watch`;
+    - animations by `window.request_animation_frame()` in a canvas, as
+      `spotlight.rs` does, stilled when nothing moves;
+    - progress with `widgets::StatusBar::new(fraction)`;
+    - training on `cx.background_spawn`, the model written through
+      `ui.edit`/`prefs.update(.., p.edit(..))` into
+      `s.touchpad.filter.palm_model`, `use_palm_model`;
+    - the trainer's state in `touchpad::State` (reached by `state_of`),
+      redrawn with `Msg::Redraw`;
+    - tested headless with `SyntheticEvent::Contacts` through
+      `tsession ipc`.
+  - (The manual captures below are the fallback, and for measuring.)
+  - *Needs Ben* (superseded by the trainer): labelled captures, recorded read-only with no grab
+    (`touch_filter`'s `replay_capture` reads them,
+    `OLO_TOUCH_CAPTURE`). Two minutes each:
+    - `sudo timeout 120 cat /dev/input/event5 > palms.evdev`: typing,
+      palms resting as they do, the pad not used on purpose (every
+      contact a palm, thumb or knuckle);
+    - `… > fingers.evdev`: the pad used as usual (pointing, scrolling,
+      clicks, gestures), palms kept off it (every contact meant);
+    - `… > mixed.evdev`: real work, both at once, to try it on.
+    - Then: features per contact, a model trained and checked on
+      held-out parts, run in `touchpad.lua` (tens of multiply-adds a
+      contact: Lua costs microseconds, where a GPU dispatch would cost
+      far more), the Preferences option, and the numbers.
+  *Done* (2026-11-02; docs/TOUCHPAD.md "Palms told apart by a model",
+  "The trainer"): `olo-palm` (14 features, 32 hidden units, 22 written
+  by hand: the baseline beats the size rule untrained), the filter
+  running it at ~10 µs a frame, app_server's live contacts, the guided
+  trainer in Preferences ▸ Touchpad ▸ Touch with animations, live pad,
+  feedback, progress and a test step, the option beside the size rule.
+  The model is in `Settings`, so Backup's export/import carries it
+  (Ben, 2026-11-02). *Left for Ben*: try it on his own hands (the
+  synthetic contacts can't say how real palms score), and tune the
+  hand-written units from what the Test step shows.
 
 - ~~**Rendering made for each display**~~ (Ben, 2026-10-31): "we should also
   detect the display types and optimize rendering for the specific

@@ -36,6 +36,7 @@ mod telegram;
 mod terminal;
 mod themes;
 mod touchid;
+mod palm_trainer;
 mod touchpad;
 mod tracker;
 mod windows;

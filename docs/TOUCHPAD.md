@@ -202,9 +202,16 @@ gpu accelerated (or simd accelerated if it's faster) model").
   distance from the nearest edge, age, smoothed speed, the most size and
   pressure it has had, how many others are down, its shape (round or
   long) and how it has grown since it landed.
-- One hidden layer of 24 units: 385 weights (Ben asked for a bigger
-  one, 2026-11-02: ten hand-written units, fourteen spare for
-  training).
+- One hidden layer of 32 units: 513 weights. Ben (2026-11-02): "make
+  the model even bigger and write them out as best you can for an
+  optimal baseline model and then we can frame the training as optional
+  to personalize it": 22 units written by hand, each one sign of a palm
+  (large; at its largest; light for its size at an edge; still with
+  others down; heavy; long; grown; at the bottom corners; very large;
+  large and still; light and just landed; long at an edge; many down;
+  pressed) or of a finger (small and moving; small, round and young;
+  small in the middle; fast; two small together; a fingertip pressing;
+  small at its largest), ten spare for training.
 - Trained on the machine by full-batch Adam on the class-weighted log
   loss, in a fraction of a second.
 - A contact is a palm once its score passes the threshold within its
@@ -240,6 +247,25 @@ a palm before libinput sees it, in the same features and arithmetic
   125 Hz. A GPU dispatch would cost more than the whole network.
 - A contact is scored only in its first 250 ms.
 - With no model, or with it off, the filter is as it was.
+
+**The trainer** (apps/preferences/src/palm_trainer.rs, Preferences ▸
+Touchpad & Mouse ▸ Touch ▸ "Train for Your Palm"): optional, to
+personalize the model. Five exercises (rest the palms; type with them
+resting; point and scroll; tap and click; point with a palm resting),
+each an Olo-style animation of hands on a pad beside the pad live (a
+palm orange, a finger blue, a ring where the size rule disagrees), a
+line on how it's going ("Good. 7 more.", "That looked like a finger:
+rest only your palms here", by the baseline's call) and a bar; Next
+once it has enough, Again to redo. Contacts come from
+`EventKind::TouchContacts` on a worker that follows them with
+`Tracker` and labels each as it lifts (palms-only or fingers-only
+steps; in the mixed one the first down that stays still is the palm).
+Training runs on `background_spawn` with progress, the model goes into
+the settings (`use_palm_model` on), and a Test step draws each touch as
+the model calls it, with how it did on touches kept back beside the
+size rule. Checked headless with `SyntheticEvent::Contacts`. The model
+is in `Settings`, so Preferences ▸ Backup's export and import carry it
+with everything else.
 
 **Its samples:** the pad's contacts as reported, from app_server
 (`contacts.rs`). libinput gives out only pointer motion and gestures, and

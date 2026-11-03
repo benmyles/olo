@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Preferences ▸ Touchpad ▸ Touch: Train for Your Palm
+
+*22:41* — A guided run through five exercises on the touchpad, each shown as an Olo-style animation of hands on a pad (left) and mirrored live by what the pad sees (right: a palm in orange, a finger in blue), with a word on how it's going and how many more touches it needs. Then Olo's hand-written palm model is refined to the person's hands off the UI thread, kept in the settings, and tried live.
+
+![Preferences ▸ Touchpad ▸ Touch: Train for Your Palm](2026-11-02/224115-preferences-touchpad-touch-train-for-your-palm.png)
+
 ### Text fields scroll to the caret, and show cut text in a tip
 
 *22:12* — A one-line field used to always show its start: typing past its end hid the caret and what was typed (top, before). Now it scrolls sideways while edited, keeping the caret in view (middle). Unfocused, it shows its start again, and the whole text is in a tip on hover (bottom). Never a password's.

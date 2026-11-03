@@ -11,6 +11,8 @@ path = "src/main.rs"
 [dependencies]
 olo-ui.workspace = true
 olo-xdg.workspace = true
+olo-palm.workspace = true
+olo-theme.workspace = true
 olo-protocol.workspace = true
 olo-screensavers = { workspace = true, features = ["gpui"] }
 olo-system.workspace = true

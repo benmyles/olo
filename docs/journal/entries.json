@@ -2962,5 +2962,11 @@
   "title": "Text fields scroll to the caret, and show cut text in a tip",
   "caption": "A one-line field used to always show its start: typing past its end hid the caret and what was typed (top, before). Now it scrolls sideways while edited, keeping the caret in view (middle). Unfocused, it shows its start again, and the whole text is in a tip on hover (bottom). Never a password's.",
   "image": "2026-11-02/221250-text-fields-scroll-to-the-caret-and-show-cut-tex.png"
+ },
+ {
+  "time": "2026-11-02T22:41:15",
+  "title": "Preferences \u25b8 Touchpad \u25b8 Touch: Train for Your Palm",
+  "caption": "A guided run through five exercises on the touchpad, each shown as an Olo-style animation of hands on a pad (left) and mirrored live by what the pad sees (right: a palm in orange, a finger in blue), with a word on how it's going and how many more touches it needs. Then Olo's hand-written palm model is refined to the person's hands off the UI thread, kept in the settings, and tried live.",
+  "image": "2026-11-02/224115-preferences-touchpad-touch-train-for-your-palm.png"
  }
 ]

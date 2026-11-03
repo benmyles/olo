@@ -23,7 +23,7 @@ pub use olo_protocol::touchpad::{PadAxes, PalmModel, TouchContact};
 /// How many features a contact has.
 pub const FEATURES: usize = 14;
 /// The hidden layer's size.
-pub const HIDDEN: usize = 24;
+pub const HIDDEN: usize = 32;
 /// A contact is judged in its first this many milliseconds; after, it
 /// stays what it was (a finger found to be a palm mid-gesture would stop
 /// the gesture).
@@ -144,14 +144,38 @@ pub fn baseline() -> PalmModel {
     set(8, -0.5, &[(13, 0.9), (0, 0.3)]);
     // 9: at the bottom corners, large (where palms rest).
     set(9, -0.8, &[(5, 0.6), (6, -0.6), (0, 0.5)]);
-    // 10–23: spare, each looking lightly at a pair of features, so
+    // 10: very large, whatever else (nothing a finger does).
+    set(10, -2.2, &[(0, 1.4), (9, 0.6)]);
+    // 11: large and still (resting), old enough to be sure.
+    set(11, -0.9, &[(0, 0.8), (8, -0.9), (7, 0.4)]);
+    // 12: light and large, just landed (a palm coming down).
+    set(12, -0.4, &[(0, 0.7), (3, -0.6), (7, -0.6)]);
+    // 13: long, at an edge, still (a heel on the rim).
+    set(13, -0.3, &[(12, -0.7), (6, -0.8), (8, -0.5)]);
+    // 14: many others down and large-ish (typing with both heels).
+    set(14, -0.5, &[(11, 1.0), (0, 0.4), (8, -0.3)]);
+    // 15: heavy for a finger, at its peak large (a pressed palm).
+    set(15, -0.7, &[(10, 1.0), (9, 0.6)]);
+    // 16: a finger: small, round and young (a tap landing).
+    set(16, 0.3, &[(0, -0.7), (12, 0.6), (7, -0.4)]);
+    // 17: a finger: small and in the middle of the pad.
+    set(17, 0.2, &[(0, -0.6), (6, 0.8)]);
+    // 18: a finger: medium, moving fast (pointing).
+    set(18, 0.0, &[(8, 1.0), (0, -0.3)]);
+    // 19: a finger: one other down, both small (two-finger scrolling).
+    set(19, 0.1, &[(11, 0.5), (0, -0.8), (8, 0.4)]);
+    // 20: a finger: heavier than its size says (a fingertip pressing).
+    set(20, 0.0, &[(3, 1.0), (0, -0.4), (9, -0.3)]);
+    // 21: a finger: small at its largest, however old.
+    set(21, 0.3, &[(9, -1.0), (7, 0.3)]);
+    // 22–31: spare, each looking lightly at a pair of features, so
     // training has room to learn what the ones above don't say.
-    for j in 10..HIDDEN {
+    for j in 22..HIDDEN {
         let (a, b) = ((j * 5) % FEATURES, (j * 7 + 3) % FEATURES);
         set(j, 0.0, &[(a, 0.15), (b, -0.15)]);
     }
     let mut w2 = vec![0.0f32; HIDDEN];
-    w2[..10].copy_from_slice(&[1.1, 0.9, 1.0, 0.7, 0.8, -1.0, -0.9, 0.6, 0.5, 0.6]);
+    w2[..22].copy_from_slice(&[1.1, 0.9, 1.0, 0.7, 0.8, -1.0, -0.9, 0.6, 0.5, 0.6, 1.2, 0.8, 0.6, 0.7, 0.6, 0.7, -0.8, -0.7, -0.8, -0.7, -0.7, -0.9]);
     PalmModel { mean, std, w1, b1, w2, b2: -1.0, threshold: 0.0, decide_ms: DECIDE_MS, ..Default::default() }
 }
 
@@ -434,7 +458,7 @@ mod tests {
         let r = judge(&m, &contacts.iter().collect::<Vec<_>>(), 1600);
         assert!(r.palms_caught > r.size_rule_palms_caught && r.palms_caught > 0.85, "{r:?}");
         assert!(r.fingers_lost < 0.1, "{r:?}");
-        assert!(lua(&m).contains("hidden = 24") && lua(&m).contains("features = 14"));
+        assert!(lua(&m).contains("hidden = 32") && lua(&m).contains("features = 14"));
     }
 
     #[test]

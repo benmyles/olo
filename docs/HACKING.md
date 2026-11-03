@@ -4377,7 +4377,9 @@ docs/TOUCHPAD.md "Palms told apart by a model"). Its live samples come
 from app_server's `contacts.rs`, which reads the pad's slots with
 `EVIOCGMTSLOTS` on a copy of libinput's descriptor while anyone
 subscribes to `EventKind::TouchContacts` (only by name).
-`SyntheticEvent::Contacts` stands in for the pad headless.
+`SyntheticEvent::Contacts` stands in for the pad headless. Preferences'
+"Train for Your Palm" (apps/preferences/src/palm_trainer.rs) personalizes
+the model: see docs/TOUCHPAD.md "The trainer".
 
 Preferences ▸ Touchpad & Mouse goes into libinput (`configure_pointer`), with the
 rest set as a Mac trackpad behaves: a two-finger tap is the secondary
