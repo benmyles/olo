@@ -247,6 +247,38 @@ fn answer(query: Query, cx: &mut App) {
             cx.default_global::<Agents>().invoke = invoke;
             let _ = reply.send(ok);
         }
+        Query::MenusIn(surface, reply) => {
+            catch_up(cx);
+            let menus = match cx.try_global::<Agents>() {
+                // An app that says its menus itself has one window's.
+                Some(a) if a.menus.is_some() => {
+                    let menus = cx.global_mut::<Agents>().menus.take();
+                    let out = menus.as_ref().map(|m| m(cx));
+                    cx.global_mut::<Agents>().menus = menus;
+                    out
+                }
+                Some(a) => {
+                    let app_id = a.app_id.clone();
+                    let bar = by_surface(cx, surface).and_then(|w| crate::menu::bar_menus(w.window_id(), cx));
+                    bar.map(|(menus, _)| Menus { app_id: app_id.clone(), entries: menus.iter().flat_map(|m| m.entries(&app_id).entries).collect() })
+                }
+                None => None,
+            };
+            let _ = reply.send(menus.unwrap_or_default());
+        }
+        Query::InvokeIn(ask, reply) => {
+            catch_up(cx);
+            let invoke = cx.default_global::<Agents>().invoke.take();
+            let ok = match &invoke {
+                Some(f) => f(&ask.command, cx),
+                None => by_surface(cx, ask.surface)
+                    .and_then(|w| Some((w, crate::menu::bar_menus(w.window_id(), cx)?)))
+                    .filter(|(_, (menus, _))| menus.iter().any(|m| m.find_action(&ask.command).is_some_and(|a| a.enabled)))
+                    .is_some_and(|(w, (_, on_command))| w.update(cx, |_, window, cx| on_command(&ask.command, window, cx)).is_ok()),
+            };
+            cx.default_global::<Agents>().invoke = invoke;
+            let _ = reply.send(ok);
+        }
         Query::Tree(reply) => {
             catch_up(cx);
             let trees = cx.windows().into_iter().filter_map(|w| tree(w, cx)).collect();

@@ -6590,7 +6590,21 @@ put it away.
   next/previous display (with more than one), Open in Tracker (when the window's program says
   what it shows: `commands::path`, asked of its pid with its
   `WindowInfo::surface`), Send to Back (BeOS's right-click on the tab,
-  `Request::SendToBack`) and Close. Its items are the shortcuts', done
+  `Request::SendToBack`), then Close and Quit APP.
+  Close and Quit are the app's own, as its keys press them:
+  - A kit app's come from that window's menus (`commands::menus_in(pid,
+    surface)`) and are chosen there (`commands::invoke_in`), with their
+    labels and keys: Terminal's Close Tab with a tab of several closes
+    that tab alone. Whatever the app asks first, it still asks (Terminal's
+    "still running", StyledEdit's "Save changes").
+  - Another program's Close closes the window (`Request::Close`). Its
+    Quit closes each of its windows, as Deskbar's Close All does. Both
+    show the profile's keys for every app's Close and Quit
+    (`app_keys::app_key`: ⌘W and ⌘Q on a Mac, Ctrl+W and Ctrl+Q on
+    Windows, Alt+W and Alt+Q on BeOS).
+
+  The app is named as Deskbar names it (`olo_xdg::apps::app_name`). The
+  other items are the shortcuts', done
   through `RunShortcut { id, window }`, so the menu, the keys and the
   palette always agree, and each shows the person's own keys for it
   (`shortcuts::keys_for` with their `ShortcutSettings`); agents read and

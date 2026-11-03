@@ -7,58 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **A window's tab menu: Close and Quit with their keys** (Ben, 2026-11-02): "for
-  some reason "Close" in the tab context menus doesn't have a shortcut.
-  on the mac profile super+w should close and for the other profiles set
-  them to whatever is standard". The menu is the palette's
-  (apps/palette/src/window_menu.rs): its last item is a plain
-  `.item("Close", "close")`, so no key shows next to it.
-  - app_server's `close-window` shortcut has no key on the Mac and BeOS
-    profiles, and Alt+F4 on Windows (crates/protocol/src/shortcuts.rs).
-  - Each app's own close is `app.close` (crates/protocol/src/app_keys.rs):
-    ⌘W on Mac, Ctrl+W on Windows, Alt+W on BeOS.
-  - Show the profile's key next to Close: ⌘W on Mac, Ctrl+W (with
-    Alt+F4) on Windows, Alt+W on BeOS. Take it from the same tables, so
-    it follows the person's own key changes.
-  - Don't give app_server's `close-window` ⌘W. app_server would then
-    take ⌘W before apps, and apps whose ⌘W closes a tab rather than the
-    window (Terminal, Chrome) would lose it. Choose how the menu's key
-    and the apps' key stay one thing.
-  - Ben, later: "if it is a window with multiple tabs then cmd+w should
-    still close the tab, it would only close the window when the last
-    tab is closed too". So ⌘W closes the tab whose menu it is: one
-    window of a group (`f.grouped`) leaves the group's other tabs open,
-    and an app's own tab (Terminal's, Chrome's) goes as that app's ⌘W
-    does. The whole window closes only with its last tab. The menu's
-    Close does the same, and its label says which (Close Tab while
-    there are others).
-  - Ben, later still: "also add a Quit option to menus and that should
-    be cmd+q on mac and whatever is normal on the other ones. and the
-    diff is cmd+w closes each tab then/or window whereas Quit closes the
-    whole app".
-    - Add Quit (Quit APP, the app's name) under Close.
-    - Show the app's own quit key from `app.quit` (or its own:
-      Terminal's `terminal.quit` is Ctrl+Shift+Q on Windows): ⌘Q on Mac,
-      Ctrl+Q on Windows, Alt+Q on BeOS.
-    - Choosing it quits the whole program, every window of it:
-      - a kit app is asked as its own Quit would be (it may ask to save
-        first);
-      - another program gets each of its windows closed, as Deskbar's
-        Quit does.
-  - Ben, also: "quitting or closing a window should both still show the
-    warning/confirmation (i think we already have this in some places)
-    if there is activity in the tab/window/app to make sure the user
-    meant to close it".
-    - Close (a tab, a window) and Quit from this menu go through the
-      app's own close and quit, never around them. Terminal still asks
-      "Close anyway?" for a tab running something (apps/terminal/src/ui.rs
-      `ConfirmClose`), and an editor still asks to save.
-    - Quit asks once for the whole app, naming what's going on.
-    - Check every kit app that asks today, and give the ones that should
-      ask but don't (a download, a copy under way) the same ask, in the
-      kit.
-  - A test in window_menu.rs's `keys_of`.
-
 - **Terminal tells coding agents to use Agent Screens** (Ben,
   2026-11-02): "check if terminal already injects context to claude
   code and codex to tell them about using olo's agent screens and how to
@@ -784,6 +732,76 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**A window's tab menu: Close and Quit with their keys**~~ (Ben, 2026-11-02): "for
+  some reason "Close" in the tab context menus doesn't have a shortcut.
+  on the mac profile super+w should close and for the other profiles set
+  them to whatever is standard". The menu is the palette's
+  (apps/palette/src/window_menu.rs): its last item is a plain
+  `.item("Close", "close")`, so no key shows next to it.
+  - app_server's `close-window` shortcut has no key on the Mac and BeOS
+    profiles, and Alt+F4 on Windows (crates/protocol/src/shortcuts.rs).
+  - Each app's own close is `app.close` (crates/protocol/src/app_keys.rs):
+    ⌘W on Mac, Ctrl+W on Windows, Alt+W on BeOS.
+  - Show the profile's key next to Close: ⌘W on Mac, Ctrl+W (with
+    Alt+F4) on Windows, Alt+W on BeOS. Take it from the same tables, so
+    it follows the person's own key changes.
+  - Don't give app_server's `close-window` ⌘W. app_server would then
+    take ⌘W before apps, and apps whose ⌘W closes a tab rather than the
+    window (Terminal, Chrome) would lose it. Choose how the menu's key
+    and the apps' key stay one thing.
+  - Ben, later: "if it is a window with multiple tabs then cmd+w should
+    still close the tab, it would only close the window when the last
+    tab is closed too". So ⌘W closes the tab whose menu it is: one
+    window of a group (`f.grouped`) leaves the group's other tabs open,
+    and an app's own tab (Terminal's, Chrome's) goes as that app's ⌘W
+    does. The whole window closes only with its last tab. The menu's
+    Close does the same, and its label says which (Close Tab while
+    there are others).
+  - Ben, later still: "also add a Quit option to menus and that should
+    be cmd+q on mac and whatever is normal on the other ones. and the
+    diff is cmd+w closes each tab then/or window whereas Quit closes the
+    whole app".
+    - Add Quit (Quit APP, the app's name) under Close.
+    - Show the app's own quit key from `app.quit` (or its own:
+      Terminal's `terminal.quit` is Ctrl+Shift+Q on Windows): ⌘Q on Mac,
+      Ctrl+Q on Windows, Alt+Q on BeOS.
+    - Choosing it quits the whole program, every window of it:
+      - a kit app is asked as its own Quit would be (it may ask to save
+        first);
+      - another program gets each of its windows closed, as Deskbar's
+        Quit does.
+  - Ben, also: "quitting or closing a window should both still show the
+    warning/confirmation (i think we already have this in some places)
+    if there is activity in the tab/window/app to make sure the user
+    meant to close it".
+    - Close (a tab, a window) and Quit from this menu go through the
+      app's own close and quit, never around them. Terminal still asks
+      "Close anyway?" for a tab running something (apps/terminal/src/ui.rs
+      `ConfirmClose`), and an editor still asks to save.
+    - Quit asks once for the whole app, naming what's going on.
+    - Check every kit app that asks today, and give the ones that should
+      ask but don't (a download, a copy under way) the same ask, in the
+      kit.
+  - A test in window_menu.rs's `keys_of`.
+  *Done* (2026-11-02):
+  - A kit app's Close and Quit are its own, run in that window (the new
+    `commands::menus_in` / `invoke_in`), with its labels and keys.
+  - Another program's Close closes the window, and its Quit closes each
+    of its windows. Both show the profile's keys for every app's Close
+    and Quit.
+  - `olo_xdg::apps::app_name` names the app, shared with Deskbar.
+
+  Tried headless (release) at 1×:
+  - StyledEdit with unsaved text: "Close ⌘W" and "Quit StyledEdit ⌘Q",
+    and each asks "Save changes…" first.
+  - Terminal with two tabs: "Close Tab ⌘W" closed one and kept the
+    window. With one busy tab, "Close" asked that `sleep` was still
+    running.
+
+  The palette's test covers the Mac and Windows keys, another
+  program's items and a kit app's. A program's own tabs (Chrome's) go
+  with its window from this menu; ⌘W in it still closes one.
 
 - ~~**Deskbar's Olo menu sorted**~~ (Ben, 2026-11-02): "in the olo
   deskbar menu the applications / other applications / preferences items

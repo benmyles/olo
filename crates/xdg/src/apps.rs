@@ -61,6 +61,26 @@ pub const PREFERENCE_PANELS: &[(&str, &str, &str)] = &[
     ("workspaces", "Workspaces", "workspaces"),
 ];
 
+/// What to call the app `app_id` (or a program's name) and its icon:
+/// ours, else its desktop entry's (`entry`, as `desktop_entry::find`
+/// finds it), else the id's last part capitalised.
+pub fn app_name(app_id: &str, entry: Option<&crate::desktop_entry::DesktopEntry>) -> (String, Option<String>) {
+    if let Some((n, i)) = our_app(app_id) {
+        (n.to_owned(), Some(i.to_owned()))
+    } else if let Some(e) = entry {
+        (e.name.clone(), e.icon.clone())
+    } else if !app_id.is_empty() {
+        let last = app_id.rsplit('.').next().unwrap_or(app_id);
+        let mut name: String = last.to_owned();
+        if let Some(f) = name.get_mut(0..1) {
+            f.make_ascii_uppercase();
+        }
+        (name, Some(app_id.to_owned()))
+    } else {
+        (String::new(), None)
+    }
+}
+
 /// App ids of our own apps map straight to names and icons.
 pub fn our_app(app_id: &str) -> Option<(&'static str, &'static str)> {
     let short = app_id.strip_prefix("olo.").unwrap_or(app_id);

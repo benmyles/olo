@@ -6,6 +6,9 @@
 //!
 //! Newline-delimited JSON, one request and one answer per connection:
 //! `{"menus":true}` → [`Menus`]; `{"invoke":"cmd"}` → `{"ok":bool}`;
+//! `{"menus_in":ID}` and `{"invoke_in":{"surface":ID,"command":"cmd"}}`:
+//! the same for the window with that surface (`wl_surface` id), not the
+//! front one (a window's tab menu: Close and Quit as the app's own);
 //! `{"tree":true}` → a [`WindowTree`] per window: what each shows, as
 //! an accessibility tree, made for one frame on demand (so agents read
 //! the widgets, their text and places rather than pixels);
@@ -230,6 +233,8 @@ pub struct WindowReview {
 pub enum Ask {
     Menus(bool),
     Invoke(String),
+    MenusIn(u32),
+    InvokeIn(InvokeIn),
     Tree(bool),
     Hints(Vec<u32>),
     Focus(u64),
@@ -239,6 +244,13 @@ pub enum Ask {
     LoseGpu(bool),
     WindowOver(WindowAt),
     WindowDropped(WindowAt),
+}
+
+/// A command to choose in one window's menus.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InvokeIn {
+    pub surface: u32,
+    pub command: String,
 }
 
 /// app_server's word that a window of ours being moved is over another
@@ -256,6 +268,9 @@ pub struct WindowAt {
 pub enum Query {
     Menus(mpsc::Sender<Menus>),
     Invoke(String, mpsc::Sender<bool>),
+    /// The same in the window with the surface with this protocol id.
+    MenusIn(u32, mpsc::Sender<Menus>),
+    InvokeIn(InvokeIn, mpsc::Sender<bool>),
     Tree(mpsc::Sender<Vec<WindowTree>>),
     /// The trees of the surfaces with these protocol ids, pickable only.
     Hints(Vec<u32>, mpsc::Sender<Vec<WindowTree>>),
@@ -347,6 +362,17 @@ pub fn listen(to: impl Fn(Query) + Send + 'static) -> Option<Listening> {
                         to(Query::Invoke(cmd, tx));
                         serde_json::to_string(&serde_json::json!({ "ok": rx.recv_timeout(WAIT).unwrap_or(false) }))
                     }
+                    Ok(Ask::MenusIn(surface)) => {
+                        let (tx, rx) = mpsc::channel();
+                        to(Query::MenusIn(surface, tx));
+                        serde_json::to_string(&rx.recv_timeout(WAIT).unwrap_or_default())
+                    }
+                    Ok(Ask::InvokeIn(ask)) => {
+                        tracing::info!(command = %ask.command, surface = ask.surface, by = %peer(&s), "asked to choose a window's menu command");
+                        let (tx, rx) = mpsc::channel();
+                        to(Query::InvokeIn(ask, tx));
+                        serde_json::to_string(&serde_json::json!({ "ok": rx.recv_timeout(WAIT).unwrap_or(false) }))
+                    }
                     Ok(Ask::Focus(id)) => {
                         to(Query::Focus(id));
                         serde_json::to_string(&serde_json::json!({ "ok": true }))
@@ -420,8 +446,8 @@ pub fn serve_trees(pid: u32, app_id: &str, trees: impl Fn() -> Vec<WindowTree> +
                 continue;
             }
             let answer = match serde_json::from_str::<Ask>(&line) {
-                Ok(Ask::Menus(_)) => serde_json::to_string(&Menus { app_id: app_id.clone(), entries: Vec::new() }),
-                Ok(Ask::Invoke(_) | Ask::Focus(_) | Ask::LoseGpu(_) | Ask::WindowOver(_) | Ask::WindowDropped(_)) => serde_json::to_string(&serde_json::json!({ "ok": false })),
+                Ok(Ask::Menus(_) | Ask::MenusIn(_)) => serde_json::to_string(&Menus { app_id: app_id.clone(), entries: Vec::new() }),
+                Ok(Ask::Invoke(_) | Ask::InvokeIn(_) | Ask::Focus(_) | Ask::LoseGpu(_) | Ask::WindowOver(_) | Ask::WindowDropped(_)) => serde_json::to_string(&serde_json::json!({ "ok": false })),
                 Ok(Ask::Frames(_)) => serde_json::to_string(&Vec::<FrameTimes>::new()),
                 Ok(Ask::Review(_)) => serde_json::to_string(&Vec::<WindowReview>::new()),
                 Ok(Ask::Path(_)) => serde_json::to_string(&serde_json::json!({ "path": null })),
@@ -464,6 +490,23 @@ pub fn menus(pid: u32) -> Option<Menus> {
 /// its last active window. Blocks briefly: call it off the UI thread.
 pub fn invoke(pid: u32, command: &str) -> bool {
     ask(pid, &Ask::Invoke(command.to_owned()))
+        .and_then(|a| serde_json::from_str::<serde_json::Value>(&a).ok())
+        .is_some_and(|v| v["ok"] == true)
+}
+
+/// The menus of the window with surface `surface` (its protocol id,
+/// [`olo_protocol::WindowInfo::surface`]) of the kit app with process id
+/// `pid` (None if it isn't one, or doesn't answer in time). Blocks
+/// briefly: call it off the UI thread.
+pub fn menus_in(pid: u32, surface: u32) -> Option<Menus> {
+    serde_json::from_str(&ask(pid, &Ask::MenusIn(surface))?).ok()
+}
+
+/// Choose `command` from the menus of that window, as if from its menu
+/// bar (its own Close, which may ask first). Blocks briefly: call it off
+/// the UI thread.
+pub fn invoke_in(pid: u32, surface: u32, command: &str) -> bool {
+    ask(pid, &Ask::InvokeIn(InvokeIn { surface, command: command.to_owned() }))
         .and_then(|a| serde_json::from_str::<serde_json::Value>(&a).ok())
         .is_some_and(|v| v["ok"] == true)
 }

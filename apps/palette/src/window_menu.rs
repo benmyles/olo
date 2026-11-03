@@ -5,6 +5,14 @@
 //! (over a clear full-screen layer that takes the click outside it), so
 //! agents read and choose from it as from any menu; the layer goes when
 //! the menu does.
+//!
+//! Close and Quit at its end are the app's own, as its keys press them:
+//! a kit app's from that window's menus (`commands::menus_in`, chosen
+//! with `invoke_in`: Terminal's Close Tab with a tab of several, a
+//! question first where it asks one), with their labels and keys;
+//! another program's closes the window, and Quit closes each of its
+//! windows, as Deskbar's Close All does, under the profile's keys for
+//! every app's Close and Quit (⌘W and ⌘Q on a Mac).
 
 use std::path::PathBuf;
 
@@ -14,7 +22,7 @@ use olo_ui::{
     menu::{self, Menu, MenuPopup},
     tracker,
 };
-use olo_protocol::{Client, KeyboardProfile, Reply, Request, shortcuts};
+use olo_protocol::{Client, KeyboardProfile, Reply, Request, app_keys, shortcuts};
 
 /// What `--window-menu` asked for.
 #[derive(Debug, Clone, PartialEq)]
@@ -63,6 +71,23 @@ pub struct Facts {
     /// The file or folder it shows, if its program says
     /// (`Cx::set_path`): Open in Tracker. (Not Tracker's own windows.)
     pub path: Option<PathBuf>,
+    /// Its program (its process and the window's surface, to choose from
+    /// that window's menus), and the app's name.
+    pub app: Owner,
+}
+
+/// Whose window it is, and the app's own Close and Quit if it's on the
+/// kit.
+#[derive(Clone, Debug, Default)]
+pub struct Owner {
+    pub pid: Option<u32>,
+    pub surface: Option<u32>,
+    pub app_id: String,
+    pub name: String,
+    /// The app's Close and Quit in that window's menus: label, keys,
+    /// enabled.
+    pub close: Option<(String, Option<String>, bool)>,
+    pub quit: Option<(String, Option<String>, bool)>,
 }
 
 /// Ask app_server about the window, then hand the answer to the app.
@@ -99,7 +124,13 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             _ => None,
         };
         let (rolled, grouped, floating) = (w.rolled, w.group.is_some(), w.floating);
-        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, display, displays, others, rolled, grouped, auto, floating, keys, path });
+        let pid = w.pid.map(|p| p as u32);
+        let own = pid.zip(w.surface).and_then(|(pid, surface)| olo_ui::commands::menus_in(pid, surface)).map(|m| m.entries).unwrap_or_default();
+        let find = |command: &str| own.iter().find(|e| e.command == command && e.path.len() == 1).map(|e| (e.label.clone(), e.keys.clone(), e.enabled));
+        let entry = if olo_xdg::apps::our_app(&w.app_id).is_some() { None } else { olo_xdg::desktop_entry::find(&w.app_id) };
+        let (name, _) = olo_xdg::apps::app_name(&w.app_id, entry.as_ref());
+        let app = Owner { pid, surface: w.surface, app_id: w.app_id.clone(), name, close: find("close"), quit: find("quit") };
+        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, display, displays, others, rolled, grouped, auto, floating, keys, path, app });
     });
 }
 
@@ -109,6 +140,22 @@ fn keys(f: &Facts, id: &str) -> Option<String> {
     let info = shortcuts::by_id(id);
     debug_assert!(info.is_some(), "{id}");
     shortcuts::keys_for(info?, &f.keys).first().map(|c| c.label(f.keys.platform))
+}
+
+/// The keys every app's command `command` ("close", "quit") has in the
+/// profile, as its platform writes them.
+fn app_keys(f: &Facts, command: &str) -> Option<String> {
+    let entry = app_keys::app_key(&f.app.app_id, command)?;
+    shortcuts::entry(entry.id)?.keys(&f.keys).first().map(|c| c.label(f.keys.platform))
+}
+
+/// "Quit Terminal" (the app's own "Quit", or another program's).
+fn quit_label(f: &Facts, own: Option<&str>) -> String {
+    match own {
+        Some(label) if label != "Quit" => label.to_owned(),
+        _ if f.app.name.is_empty() => "Quit".to_owned(),
+        _ => format!("Quit {}", f.app.name),
+    }
 }
 
 pub fn build(f: &Facts) -> Menu {
@@ -191,11 +238,50 @@ pub fn build(f: &Facts) -> Menu {
         // As ⌘-dragging its tab out of the group does.
         m = m.item("Remove from Group", "ungroup");
     }
-    m.item("Send to Back", "send-to-back").separator().item("Close", "close")
+    m = m.item("Send to Back", "send-to-back").separator();
+    // The app's own Close and Quit, as its keys press them.
+    let item = |m: Menu, label: String, command: &str, keys: Option<String>, enabled: bool| {
+        let m = m.item(label, command).enabled(enabled);
+        match keys {
+            Some(k) => m.keys(k),
+            None => m,
+        }
+    };
+    m = match &f.app.close {
+        Some((label, keys, enabled)) => item(m, label.clone(), "app-close", keys.clone(), *enabled),
+        None => item(m, "Close".into(), "close", app_keys(f, "close"), true),
+    };
+    match &f.app.quit {
+        Some((label, keys, enabled)) => item(m, quit_label(f, Some(label)), "app-quit", keys.clone(), *enabled),
+        None => item(m, quit_label(f, None), "quit-all", app_keys(f, "quit"), true),
+    }
 }
 
-/// Do `command` to `window`, off the UI thread.
-pub fn perform(window: u64, command: &str) {
+/// Do `command` to `window` (of `app`), off the UI thread.
+pub fn perform(window: u64, app: &Owner, command: &str) {
+    // The app's own Close and Quit, in that window.
+    if let ("app-close" | "app-quit", Some(pid), Some(surface)) = (command, app.pid, app.surface) {
+        let command = if command == "app-close" { "close" } else { "quit" };
+        let _ = std::thread::Builder::new().name("window-menu-do".into()).spawn(move || {
+            if !olo_ui::commands::invoke_in(pid, surface, command) {
+                tracing::warn!("the app (pid {pid}) didn't take its {command}");
+            }
+        });
+        return;
+    }
+    // Another program quit: each of its windows closed.
+    if command == "quit-all" {
+        let (pid, app_id) = (app.pid, app.app_id.clone());
+        let _ = std::thread::Builder::new().name("window-menu-do".into()).spawn(move || {
+            let Ok(mut c) = Client::connect() else { return };
+            let Ok(Reply::Windows { windows }) = c.request(&Request::ListWindows) else { return };
+            let same = |w: &olo_protocol::WindowInfo| w.id == window || (!app_id.is_empty() && w.app_id == app_id) || (pid.is_some() && w.pid.map(|p| p as u32) == pid);
+            for w in windows.iter().filter(|w| same(w)) {
+                let _ = c.request(&Request::Close { id: w.id });
+            }
+        });
+        return;
+    }
     let req = if let Some(id) = command.strip_prefix("shortcut:") {
         Request::RunShortcut { id: id.to_owned(), window: Some(window) }
     } else if let Some(rest) = command.strip_prefix("workspace:") {
@@ -225,6 +311,7 @@ pub fn perform(window: u64, command: &str) {
 /// click on the layer: elsewhere on the screen).
 struct Layer {
     window: u64,
+    app: Owner,
     path: Option<PathBuf>,
     at: Point<Pixels>,
     menu: Option<Menu>,
@@ -252,7 +339,7 @@ impl Render for Layer {
                     }
                 });
                 let Some(menu) = me.update(cx, |l, _| l.menu.take()) else { return };
-                let (target, path, at) = me.read_with(cx, |l, _| (l.window, l.path.clone(), l.at));
+                let (target, app, path, at) = me.read_with(cx, |l, _| (l.window, l.app.clone(), l.path.clone(), l.at));
                 let layer = window.window_handle();
                 // After this frame: a window opened while one paints
                 // would draw into the frame's arena.
@@ -269,7 +356,7 @@ impl Render for Layer {
                                     tracing::warn!("couldn't show {} in Tracker: {e}", path.display());
                                 }
                             }
-                            _ => perform(target, cmd),
+                            _ => perform(target, &app, cmd),
                         },
                         move |cx: &mut App| {
                             let _ = layer.update(cx, |_, window, _| window.remove_window());
@@ -290,7 +377,7 @@ impl Render for Layer {
 /// Covers the window's output with the clear layer and pops its menu.
 pub fn open(facts: Facts, cx: &mut App) -> Option<WindowHandle<Frame>> {
     let output = facts.ask.output.clone().filter(|o| cx.displays().iter().any(|d| d.name().as_deref() == Some(o.as_str())));
-    let layer = cx.new(|_| Layer { window: facts.ask.window, path: facts.path.clone(), at: point(px(facts.ask.at.0), px(facts.ask.at.1)), menu: Some(build(&facts)), popup: None });
+    let layer = cx.new(|_| Layer { window: facts.ask.window, app: facts.app.clone(), path: facts.path.clone(), at: point(px(facts.ask.at.0), px(facts.ask.at.1)), menu: Some(build(&facts)), popup: None });
     // The menu is a popup of the layer and takes the keyboard itself
     // (app_server gives every key to a layer that holds it exclusively).
     let options = crate::overlay("Window Menu", "window-menu", output).layer_options(|l| l.keyboard = LayerKeyboard::OnDemand);
@@ -311,7 +398,7 @@ mod tests {
         let mut changed = KeyboardProfile::default();
         changed.shortcuts.insert("zoom".into(), vec!["Ctrl+Cmd+Z".into()]);
         changed.shortcuts.insert("center".into(), vec![]);
-        let facts = Facts { ask, title: "Notes".into(), workspace: 1, workspaces: 3, displays: 2, rolled: false, grouped: true, auto: false, floating: false, keys: changed, path: None, display: Some(1), others: vec![("HDMI-A-1".into(), 0)] };
+        let facts = Facts { ask, title: "Notes".into(), workspace: 1, workspaces: 3, displays: 2, rolled: false, grouped: true, auto: false, floating: false, keys: changed, path: None, display: Some(1), others: vec![("HDMI-A-1".into(), 0)], app: Owner { app_id: "org.gnome.gedit".into(), name: "Gedit".into(), ..Default::default() } };
         fn commands(m: &Menu, out: &mut Vec<String>) {
             for item in &m.items {
                 match item {
@@ -326,7 +413,7 @@ mod tests {
         for c in &all {
             let known = c.strip_prefix("shortcut:").is_some_and(|id| shortcuts::SHORTCUTS.iter().any(|s| s.id == id))
                 || c.starts_with("workspace:")
-                || ["send-to-back", "close", "ungroup", tracker::COMMAND].contains(&c.as_str());
+                || ["send-to-back", "close", "quit-all", "ungroup", tracker::COMMAND].contains(&c.as_str());
             assert!(known, "{c}");
         }
         // Remove from Group only for a window in one.
@@ -356,6 +443,32 @@ mod tests {
         assert_eq!(keys_of("Zoom"), Some(Some("⌃⌘Z".into())));
         assert_eq!(keys_of("Hide"), Some(Some("⌘M".into())));
         assert_eq!(keys_of("Center"), Some(None));
+        // Another program's Close and Quit: the window, and all of its
+        // windows, under every app's keys in the profile.
+        assert_eq!(keys_of("Close"), Some(Some("⌘W".into())));
+        assert_eq!(keys_of("Quit Gedit"), Some(Some("⌘Q".into())));
+        assert!(all.ends_with(&["close".to_owned(), "quit-all".to_owned()]));
+        let mut windows = facts.clone();
+        windows.keys.platform = olo_protocol::shortcuts::Platform::Windows;
+        let on_windows = build(&windows);
+        let said: Vec<(String, Option<String>)> = on_windows.items.iter().rev().take(2).filter_map(|i| if let menu::MenuItem::Action(a) = i { Some((a.label.clone(), a.keys.clone())) } else { None }).collect();
+        assert_eq!(said, [("Quit Gedit".to_owned(), Some("Ctrl+Q".to_owned())), ("Close".to_owned(), Some("Ctrl+W".to_owned()))]);
+        // A kit app's are its own, from that window's menus: Terminal's
+        // Close Tab with a tab of several, chosen in the app.
+        let kit = Facts {
+            app: Owner {
+                pid: Some(42),
+                surface: Some(9),
+                app_id: "olo.terminal".into(),
+                name: "Terminal".into(),
+                close: Some(("Close Tab".into(), Some("⌘W".into()), true)),
+                quit: Some(("Quit".into(), Some("⌘Q".into()), true)),
+            },
+            ..facts.clone()
+        };
+        let kit_menu = build(&kit);
+        let last: Vec<(String, String, Option<String>)> = kit_menu.items.iter().rev().take(2).filter_map(|i| if let menu::MenuItem::Action(a) = i { Some((a.label.clone(), a.command.clone(), a.keys.clone())) } else { None }).collect();
+        assert_eq!(last, [("Quit Terminal".to_owned(), "app-quit".to_owned(), Some("⌘Q".to_owned())), ("Close Tab".to_owned(), "app-close".to_owned(), Some("⌘W".to_owned()))]);
         let Some(menu::MenuItem::Submenu(spaces)) = menu.items.iter().find(|i| matches!(i, menu::MenuItem::Submenu(s) if s.title == "Move to Workspace")) else { panic!() };
         let menu::MenuItem::Action(first) = &spaces.items[0] else { panic!() };
         // Every display's workspaces, named for theirs, left to right: its

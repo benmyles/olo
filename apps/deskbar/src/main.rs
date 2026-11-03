@@ -514,20 +514,9 @@ impl Deskbar {
     /// What to call the app `app_id` (or a program's name), and its icon:
     /// ours, its desktop entry's, else the id's last part capitalised.
     fn app_name(&mut self, app_id: &str) -> (String, Option<String>) {
-        if let Some((n, i)) = our_app(app_id) {
-            (n.to_owned(), Some(i.to_owned()))
-        } else if let Some(e) = self.entry(app_id) {
-            (e.name.clone(), e.icon.clone())
-        } else if !app_id.is_empty() {
-            let last = app_id.rsplit('.').next().unwrap_or(app_id);
-            let mut name: String = last.to_owned();
-            if let Some(f) = name.get_mut(0..1) {
-                f.make_ascii_uppercase();
-            }
-            (name, Some(app_id.to_owned()))
-        } else {
-            (String::new(), None)
-        }
+        // (Ours need no entry: none looked for.)
+        let entry = if our_app(app_id).is_some() { None } else { self.entry(app_id) };
+        olo_xdg::apps::app_name(app_id, entry.as_ref())
     }
 
     fn set_windows(&mut self, windows: Vec<WindowInfo>) {
