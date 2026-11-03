@@ -202,6 +202,24 @@ of Finished; a new one goes where its priority puts it.
   - Deskbar: the AirPods' levels from their broadcast while they're not
     connected (the service has them now).
 
+- **Voice Processing's device named for the one it processes** (Ben,
+  2026-11-03): "when the voice processing is enabled if there is a new
+  sound device added that gets the processing that device should be
+  named appropriately, e.g. "AirPods (Voice Processing)" not just
+  "AirPods" b/c there's no way to tell it apart". Now olo-voice's
+  source is always "Microphone (Voice Processing)" (apps/voice
+  engine.rs, `NODE_DESCRIPTION`), whatever it listens to, and a device
+  that arrives and is processed shows under its own name. So: every
+  processed source is named after the microphone it processes, with
+  " (Voice Processing)" after it ("AirPods (Voice Processing)",
+  "MacBook Pro Microphone (Voice Processing)"), renamed as the chosen
+  microphone changes or a new one arrives and is taken up; the same
+  name everywhere a device is listed (Preferences ▸ Sound, Deskbar's
+  sound menu, Activity Monitor, Chrome's and other apps' pickers
+  through PipeWire), so the raw device and the processed one are
+  always told apart; tried with `tools/dev/pw-sandbox` and a device
+  plugged in while it runs.
+
 - **Sound ▸ Voice Processing: try it on your own voice** (Ben,
   2026-11-02): "in the sound settings -> voice processing section, add
   something where the user can test the settings by recording a short
