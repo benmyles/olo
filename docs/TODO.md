@@ -307,8 +307,9 @@ of Finished; a new one goes where its priority puts it.
   when it hasn't the keyboard, 2026-11-02, with the field scrolling
   sideways to its caret while edited, which it never did; Twitcher's
   label whole on a plate under the panel and the overview's chosen
-  title whole, 2026-11-03, `tabtip::plate`. *Left*: Telegram's
-  attachment chips and bubbles, text in GPUI's own text elements; agents read cut text whole since
+  title whole, 2026-11-03, `tabtip::plate`; Telegram's attachment chips
+  and the lines its bubbles cut (reply quotes, forwards, files, polls),
+  2026-11-03. *Left*: text in GPUI's own text elements; agents read cut text whole since
   2026-11-02, `agent::whole_name`) (Ben, 2026-10-31):
   "when hovering over anything in olo or any olo app where the text has
   been truncated or occluded or otherwise is not being displayed in full

@@ -883,13 +883,14 @@ pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut
         let mut x = x0 + m::SPACING + 36.0;
         let font = style::ui_font(FontWeight::NORMAL);
         for f in &conv.files {
-            let name = f.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+            let whole: olo_ui::gpui::SharedString = f.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned()).into();
             // Cut short to 200 pt once, here; the chip fits what's left.
-            let name = style::fit(window, name.into(), style::DETAIL_SIZE, &font, px(200.0)).to_string();
-            let cw = f32::from(style::text_width(window, name.clone(), style::DETAIL_SIZE, font.clone())).ceil() + 34.0;
-            let chip = r(x, y, cw, 24.0);
-            x += cw + 6.0;
-            files.push((chip, r(f32::from(chip.right()) - 21.0, y + 3.0, 18.0, 18.0), name));
+            let name = style::fit(window, whole.clone(), style::DETAIL_SIZE, &font, px(200.0));
+            let tw = f32::from(style::text_width(window, name.clone(), style::DETAIL_SIZE, font.clone())).ceil();
+            let chip = r(x, y, tw + 34.0, 24.0);
+            x += tw + 34.0 + 6.0;
+            let cut = (name != whole).then(|| (whole.clone(), r(f32::from(chip.origin.x) + 10.0, y, tw, 24.0)));
+            files.push((chip, r(f32::from(chip.right()) - 21.0, y + 3.0, 18.0, 18.0), name, whole, cut));
         }
         y += 32.0;
     }
@@ -946,12 +947,15 @@ pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut
                 close_mark(window, x.center(), if x_hot { c(p.panel_text) } else { style::disabled_text(&p) });
                 olo_ui::agent::record(window, cx, olo_ui::agent::Node::button("Cancel Reply", x));
             }
-            for ((chip, xr, name), hot) in files.into_iter().zip(file_hots) {
+            for ((chip, xr, name, whole, cut), hot) in files.into_iter().zip(file_hots) {
                 let chip = style::snap(window, chip);
                 window.paint_quad(olo_ui::gpui::fill(chip, look.accent.opacity(0.15)).corner_radii(px(12.0)));
-                style::label(window, cx, chip.origin.x + px(10.0), chip.center().y, Align::Left, name.clone(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), c(p.panel_text));
+                style::label(window, cx, chip.origin.x + px(10.0), chip.center().y, Align::Left, name, style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), c(p.panel_text));
+                if let Some((whole, at)) = cut {
+                    olo_ui::cut::note(window, whole, at);
+                }
                 close_mark(window, xr.center(), if hot { c(p.panel_text) } else { style::disabled_text(&p) });
-                olo_ui::agent::record(window, cx, olo_ui::agent::Node::button(format!("Remove {name}"), xr));
+                olo_ui::agent::record(window, cx, olo_ui::agent::Node::button(format!("Remove {whole}"), xr));
             }
             paperclip(window, attach.center(), if attach_hot { look.accent } else { style::disabled_text(&p) });
             olo_ui::agent::record(window, cx, olo_ui::agent::Node::button("Attach Files", attach));
@@ -979,7 +983,7 @@ pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut
         let t = me.clone();
         hits.push(crate::hit(me, "cancel-reply", *x).on_click(move |_, window, cx| t.update(cx, |tg, cx| tg.conv_act(Act::CancelReply, window, cx))).into_any_element());
     }
-    for (i, (_, xr, _)) in files.iter().enumerate() {
+    for (i, (_, xr, ..)) in files.iter().enumerate() {
         let t = me.clone();
         hits.push(crate::hit(me, &format!("unstage:{i}"), *xr).on_click(move |_, window, cx| t.update(cx, |tg, cx| tg.conv_act(Act::Unstage(i), window, cx))).into_any_element());
     }

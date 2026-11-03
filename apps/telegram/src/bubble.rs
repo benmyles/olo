@@ -190,6 +190,8 @@ pub struct Line {
     pub shaped: ShapedLine,
     pub w: f32,
     pub h: f32,
+    /// The whole text, if it's cut short: its tip (`olo_ui::cut`).
+    pub full: Option<SharedString>,
 }
 
 impl Line {
@@ -201,6 +203,9 @@ impl Line {
 
     pub fn paint(&self, window: &mut Window, cx: &mut App, at: Point<Pixels>) {
         let _ = self.shaped.paint(at, px(self.h), window, cx);
+        if let Some(full) = &self.full {
+            olo_ui::cut::note(window, full.clone(), Bounds { origin: at, size: size(px(self.w), px(self.h)) });
+        }
     }
 }
 
@@ -219,14 +224,15 @@ pub fn italic() -> Font {
 
 /// `text` on one line, cut short with "…" past `max_w`.
 pub fn line(window: &mut Window, text: &str, size: f32, font: Font, color: Hsla, max_w: Option<f32>) -> Line {
-    let text: SharedString = text.replace('\n', " ").into();
+    let whole: SharedString = text.replace('\n', " ").into();
     let text = match max_w {
-        Some(w) => style::fit(window, text, size, &font, px(w.max(10.0))),
-        None => text,
+        Some(w) => style::fit(window, whole.clone(), size, &font, px(w.max(10.0))),
+        None => whole.clone(),
     };
+    let full = (text != whole).then_some(whole);
     let run = TextRun { len: text.len(), font, color, background_color: None, underline: None, strikethrough: None, size: None };
     let shaped = window.text_system().shape_line(text, px(size), &[run], None);
-    Line { w: f32::from(shaped.width), h: line_height(size), shaped }
+    Line { w: f32::from(shaped.width), h: line_height(size), shaped, full }
 }
 
 /// Text wrapped to a width, paragraph by paragraph.
