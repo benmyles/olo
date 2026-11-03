@@ -651,21 +651,16 @@ of Finished; a new one goes where its priority puts it.
   pre-scaled icon for the device size, on whole device pixels, never
   resampled; checked by the layout review at every scale.
 
-- **Viewer: VP9 and HEVC play** (left from the Viewer's video work):
-  VP9 (WebM) and HEVC (mp4, Matroska) video show only their facts;
-  decode them natively (a Rust VP9 decoder, HEVC as far as patents and
-  crates allow) as H.264 and AV1 are.
-  *Status* (2026-11-02): VP9 has a clean-room pure-Rust decoder now,
-  `filmcraft-vp9` 0.9 (MIT/Apache; `Decoder::with_threads(n)`,
-  `decode(&chunk, pts) -> Result<Vec<Picture>>`, `flush()`, `reset()`
-  after a seek; `Picture { width, height, bit_depth, y, u, v: Plane
-  (U8/U16), y_stride, uv_stride, pts, key, .. }`), added to
-  crates/images and building on aarch64. Next: a `vp9` module in
-  crates/images beside `av1` (frames to RGBA/BGRA), `Codec::Vp9` in
-  crates/preview/src/video.rs (Matroska `V_VP9`, mp4 `vp09`), the
-  poster in media.rs, `playable`; measured against AV1's decode time.
-  HEVC: no pure-Rust decoder; libde265 isn't in Fedora (patents), so
-  it stays facts-only unless a crate builds it from source.
+- **Viewer: HEVC plays** (left from the Viewer's video work): HEVC
+  (mp4, Matroska) video shows only its facts; decode it natively as
+  H.264, AV1 and VP9 are. *Status* (2026-11-02): crates.io has
+  pure-Rust HEVC decoders now (`rusty_h265` 0.6, from the ITU-T spec,
+  with a SIMD companion crate; `rust_h265` 0.4, Main, Main 10 and range
+  extensions), so it no longer needs libde265: pick one by correctness
+  on real phone footage (10-bit HDR included) and speed against VP9's
+  ~120 pictures/s at 1080p, then wire it as VP9 is (an `hevc` module in
+  crates/images giving `av1::Frame`s, `Codec::Hevc`, `hvc1`/`hev1` and
+  `V_MPEGH/ISO/HEVC`, the poster, `playable`).
 
 ## Maybe one day
 
@@ -727,6 +722,19 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Viewer: VP9 plays**~~ (left from the Viewer's video work): VP9
+  (WebM, Matroska, mp4) showed only its facts. *Done* (2026-11-02):
+  decoded in process by `filmcraft-vp9` 0.9 (clean-room pure Rust, MIT/
+  Apache, profiles 0 to 3), as `olo_images::vp9` beside `av1`: the same
+  planes (`av1::Frame`), so the same RGBA/BGRA conversion, queue and
+  posters. Pictures keep their sample's time, so a damaged sample
+  doesn't shift the ones after it; a seek resets the decoder and keeps
+  its workers; Matroska block groups' key frames are read from VP9's
+  own header. 1080p VP9 decodes (and turns RGBA) at ~120 pictures a
+  second on this machine, AV1 at 139 to 190. Tests: `vp9_plays` (mp4
+  and 10-bit WebM, every picture in order, posters, facts), VP9 in
+  `seeks_to_the_frame` and `keeps_up`.
 
 - ~~**The palm trainer in a modal of its own**~~ (Ben, 2026-11-02, with a
   screenshot of the Touch tab at 2× in dark mode: the trainer's box ran

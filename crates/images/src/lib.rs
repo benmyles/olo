@@ -229,6 +229,14 @@ pub mod av1 {
             (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8
         }
 
+        /// A frame from planes another decoder made (VP9's): each plane
+        /// row by row, `stride` samples a row; `matrix` as dav1d's
+        /// `DAV1D_MC_*` (ISO/IEC 23091-4's matrix coefficients).
+        #[allow(clippy::too_many_arguments)]
+        pub(crate) fn from_planes(width: u32, height: u32, bpc: u32, chroma: Option<(u32, u32)>, planes: [Vec<u16>; 3], stride: [usize; 3], matrix: u32, full_range: bool) -> Frame {
+            Frame { width, height, bpc, chroma, planes, stride, matrix, full_range }
+        }
+
         #[cfg(test)]
         pub(crate) fn synthetic(width: u32, height: u32, bpc: u32, chroma: (u32, u32), planes: [Vec<u16>; 3], matrix: u32, full_range: bool) -> Frame {
             let cw = (width as usize + chroma.0 as usize) >> chroma.0;
@@ -335,6 +343,96 @@ pub mod av1 {
             }
             out
         }
+    }
+}
+
+/// VP9 through filmcraft-vp9, a pure-Rust decoder (clean-room, from the
+/// VP9 bitstream specification), as frames like AV1's: the same planes,
+/// so the same conversion to RGBA and BGRA, posters and player.
+pub mod vp9 {
+    pub use super::av1::Frame;
+    /// Whether a sample starts with a key frame, and its stream's facts.
+    pub use filmcraft_vp9::{KeyframeInfo, is_keyframe, keyframe_info};
+    use rav1d::include::dav1d::headers::*;
+
+    /// A stream of VP9 frames (each sample a frame or a superframe, as
+    /// WebM, Matroska and MP4 store them).
+    pub struct Decoder(filmcraft_vp9::Decoder);
+
+    impl Decoder {
+        /// `threads` workers (0: as many as the machine has, up to eight;
+        /// pictures may then come out a sample or two late).
+        pub fn new(threads: usize) -> Decoder {
+            let n = if threads == 0 { std::thread::available_parallelism().map_or(1, |n| n.get()).min(8) } else { threads };
+            Decoder(filmcraft_vp9::Decoder::with_threads(n))
+        }
+
+        /// One sample, shown at `pts`: the pictures finished so far join
+        /// `out` in order, each with the `pts` of the sample that showed it.
+        pub fn decode(&mut self, sample: &[u8], pts: i64, out: &mut Vec<(i64, Frame)>) -> Result<(), String> {
+            let pics = self.0.decode(sample, pts).map_err(|e| format!("VP9: {e}"))?;
+            out.extend(pics.iter().filter_map(|p| Some((p.pts, frame(p)?))));
+            Ok(())
+        }
+
+        /// At the end of the stream: the pictures still inside.
+        pub fn flush(&mut self, out: &mut Vec<(i64, Frame)>) {
+            out.extend(self.0.flush().iter().filter_map(|p| Some((p.pts, frame(p)?))));
+        }
+
+        /// Forget the stream so far (after a seek, before its key frame),
+        /// keeping the workers.
+        pub fn reset(&mut self) {
+            self.0.reset();
+        }
+    }
+
+    /// A still: the first picture in `sample` (a key frame).
+    pub fn decode(sample: &[u8]) -> Result<Frame, String> {
+        // Callers decode on a worker already.
+        let mut dec = Decoder::new(1);
+        let mut out = Vec::new();
+        dec.decode(sample, 0, &mut out)?;
+        if out.is_empty() {
+            dec.flush(&mut out);
+        }
+        out.into_iter().next().map(|(_, f)| f).ok_or_else(|| "no picture in the VP9 data".into())
+    }
+
+    /// VP9's colour space as dav1d's matrix (0 unknown: BT.601, as for
+    /// AV1; 7 sRGB: the planes are G, B, R, as AV1's identity).
+    fn matrix(space: u8) -> u32 {
+        match space {
+            2 => DAV1D_MC_BT709,
+            4 => DAV1D_MC_SMPTE240,
+            5 => DAV1D_MC_BT2020_NCL,
+            7 => DAV1D_MC_IDENTITY,
+            1 | 3 => DAV1D_MC_BT601,
+            _ => DAV1D_MC_UNKNOWN,
+        }
+    }
+
+    /// A picture's planes, cropped to its size, as a frame.
+    fn frame(p: &filmcraft_vp9::Picture) -> Option<Frame> {
+        let (w, h) = (p.width as usize, p.height as usize);
+        if w == 0 || h == 0 {
+            return None;
+        }
+        let (cw, ch) = (p.chroma_width as usize, p.chroma_height as usize);
+        let copy = |plane: &filmcraft_vp9::Plane, stride: usize, pw: usize, ph: usize| -> Option<Vec<u16>> {
+            let mut out = Vec::with_capacity(pw * ph);
+            for y in 0..ph {
+                let row = y * stride;
+                match plane {
+                    filmcraft_vp9::Plane::U8(v) => out.extend(v.get(row..row + pw)?.iter().map(|&s| s as u16)),
+                    filmcraft_vp9::Plane::U16(v) => out.extend_from_slice(v.get(row..row + pw)?),
+                }
+            }
+            Some(out)
+        };
+        let planes = [copy(&p.y, p.y_stride, w, h)?, copy(&p.u, p.uv_stride, cw, ch)?, copy(&p.v, p.uv_stride, cw, ch)?];
+        let chroma = Some((p.subsampling_x as u32, p.subsampling_y as u32));
+        Some(Frame::from_planes(p.width, p.height, p.bit_depth, chroma, planes, [w, cw, cw], matrix(p.color.color_space), p.color.full_range))
     }
 }
 

@@ -189,6 +189,26 @@ fn mp4(path: &Path, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), Strin
         }
         return Ok(());
     }
+    if codec == "VP9" {
+        m.playable = true;
+        // A key frame a tenth of the way in, which decodes on its own.
+        let count = t.sample_count();
+        let syncs = t.trak.mdia.minf.stbl.stss.as_ref().map(|s| s.entries.clone()).unwrap_or_else(|| vec![1]);
+        let start = syncs.iter().copied().filter(|&s| s <= (count / 10).max(1)).max().unwrap_or(1);
+        let mut dec = olo_images::vp9::Decoder::new(1);
+        let mut out = Vec::new();
+        for sid in start..=(start + 120).min(count) {
+            if cancel.load(Ordering::Relaxed) || !out.is_empty() {
+                break;
+            }
+            let Ok(Some(sample)) = r.read_sample(id, sid) else { continue };
+            dec.decode(&sample.bytes, 0, &mut out)?;
+        }
+        if let Some((_, f)) = out.first() {
+            m.picture = Some(Arc::new(Bitmap::from_rgba_unmultiplied([f.width as usize, f.height as usize], &f.to_rgba())));
+        }
+        return Ok(());
+    }
     if codec != "H.264" {
         return Ok(());
     }
@@ -257,6 +277,10 @@ fn mkv(path: &Path, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), Strin
         m.playable = true;
         return av1_poster(&mut mk, track, m, cancel);
     }
+    if id == "V_VP9" {
+        m.playable = true;
+        return vp9_poster(&mut mk, track, m, cancel);
+    }
     if id != "V_MPEG4/ISO/AVC" {
         return Ok(());
     }
@@ -308,6 +332,27 @@ fn av1_poster<R: std::io::Read + std::io::Seek>(mk: &mut matroska_demuxer::Matro
         }
     }
     if let Some(f) = out.first() {
+        m.picture = Some(Arc::new(Bitmap::from_rgba_unmultiplied([f.width as usize, f.height as usize], &f.to_rgba())));
+    }
+    Ok(())
+}
+
+/// The first VP9 picture.
+fn vp9_poster<R: std::io::Read + std::io::Seek>(mk: &mut matroska_demuxer::MatroskaFile<R>, track: u64, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), String> {
+    let mut dec = olo_images::vp9::Decoder::new(1);
+    let mut frame = matroska_demuxer::Frame::default();
+    let mut out = Vec::new();
+    let mut tries = 0;
+    while out.is_empty() && tries < 120 && mk.next_frame(&mut frame).unwrap_or(false) {
+        if cancel.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+        if frame.track == track {
+            tries += 1;
+            dec.decode(&frame.data, 0, &mut out)?;
+        }
+    }
+    if let Some((_, f)) = out.first() {
         m.picture = Some(Arc::new(Bitmap::from_rgba_unmultiplied([f.width as usize, f.height as usize], &f.to_rgba())));
     }
     Ok(())
