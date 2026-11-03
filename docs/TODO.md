@@ -7,6 +7,21 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
+- **The palm trainer in a modal of its own** (Ben, 2026-11-02, with a
+  screenshot of the Touch tab at 2× in dark mode: the trainer's box ran
+  under Defaults and Revert): "uh that's not going to work it doesn't
+  fit. it should be a new modal for the trainer". So: the Touch tab
+  keeps only a button, "Train for Your Palm…", beside the model option;
+  it opens the trainer (apps/preferences/src/palm_trainer.rs, its
+  steps, animation, live pad, feedback, progress and test as they are)
+  in a window of its own, a modal dialog of the Preferences window
+  (`olo_ui::open_window` with the kit's dialog options, as the palette's
+  `overlay`/window_menu does; sized for its content, ~560×480 at 1×,
+  never scrolling), with Cancel and the step buttons in its bottom
+  row; closing it stops the worker. The Touchpad panel goes back to
+  460×586. Check at 1, 1.5 and 2×, light and dark, headless with
+  `SyntheticEvent::Contacts`.
+
 - **The best baseline palm model there is** (Ben, 2026-11-02): "try to
   optimize the baseline as much as you can -- and if it would be better
   being even bigger / more features then do that but make it the
@@ -655,6 +670,17 @@ of Finished; a new one goes where its priority puts it.
   VP9 (WebM) and HEVC (mp4, Matroska) video show only their facts;
   decode them natively (a Rust VP9 decoder, HEVC as far as patents and
   crates allow) as H.264 and AV1 are.
+  *Status* (2026-11-02): VP9 has a clean-room pure-Rust decoder now,
+  `filmcraft-vp9` 0.9 (MIT/Apache; `Decoder::with_threads(n)`,
+  `decode(&chunk, pts) -> Result<Vec<Picture>>`, `flush()`, `reset()`
+  after a seek; `Picture { width, height, bit_depth, y, u, v: Plane
+  (U8/U16), y_stride, uv_stride, pts, key, .. }`), added to
+  crates/images and building on aarch64. Next: a `vp9` module in
+  crates/images beside `av1` (frames to RGBA/BGRA), `Codec::Vp9` in
+  crates/preview/src/video.rs (Matroska `V_VP9`, mp4 `vp09`), the
+  poster in media.rs, `playable`; measured against AV1's decode time.
+  HEVC: no pure-Rust decoder; libde265 isn't in Fedora (patents), so
+  it stays facts-only unless a crate builds it from source.
 
 ## Maybe one day
 

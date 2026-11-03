@@ -3150,6 +3150,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "filmcraft-bitstream"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08f8be9fae696d78e233591b4d57871c39f15ac0ac7445168356cda705efa499"
+
+[[package]]
+name = "filmcraft-vp9"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a249ac83276e0f3da68570eb7e4956833accb5a99aa87a222ead00591046698"
+dependencies = [
+ "filmcraft-bitstream",
+ "rayon",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6959,6 +6976,7 @@ name = "olo-images"
 version = "0.1.0"
 dependencies = [
  "avif-parse",
+ "filmcraft-vp9",
  "heifer",
  "image",
  "jxl-oxide",
