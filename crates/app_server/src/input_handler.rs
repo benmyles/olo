@@ -717,30 +717,36 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                         return;
                     }
 
-                let layers = layer_map_for_output(output);
-                if let Some(layer) = layers
-                    .layer_under(WlrLayer::Overlay, location - output_geo.loc.to_f64())
-                    .or_else(|| layers.layer_under(WlrLayer::Top, location - output_geo.loc.to_f64()))
-                    && let Some((_, _)) = layer.surface_under(
-                        location
-                            - output_geo.loc.to_f64()
-                            - layers.layer_geometry(layer).unwrap().loc.to_f64(),
-                        WindowSurfaceType::ALL,
-                    )
-                {
-                    // One that takes the keyboard gets it; one that never
-                    // does (Deskbar) leaves it where it is: a click on
-                    // Deskbar went through to the desktop under it, which
-                    // took the keyboard from the window being typed into.
+                // The front layer surface of `layer` at `location`, its
+                // menus too or (they're over it all: `layer_menu_under`) not.
+                let front = |layer, kind| {
+                    let at = location - output_geo.loc.to_f64();
+                    let layers = layer_map_for_output(output);
+                    layers
+                        .layers_on(layer)
+                        .rev()
+                        .find(|l| layers.layer_geometry(l).is_some_and(|g| l.surface_under(at - g.loc.to_f64(), kind).is_some()))
+                        .cloned()
+                };
+                // One that takes the keyboard gets it; one that never does
+                // (Deskbar) leaves it where it is: a click on Deskbar went
+                // through to the desktop under it, which took the keyboard
+                // from the window being typed into.
+                let take = |state: &mut Self, layer: smithay::desktop::LayerSurface| {
                     if layer.can_receive_keyboard_focus() {
-                        keyboard.set_focus(self, Some(layer.clone().into()), serial);
+                        keyboard.set_focus(state, Some(layer.into()), serial);
                     }
+                };
+                if let Some(layer) = front(WlrLayer::Overlay, WindowSurfaceType::ALL) {
+                    return take(self, layer);
+                }
+                // A layer surface's menu (Deskbar's, the desktop's), over
+                // the windows and the Top layer: not what is under it.
+                if self.layer_menu_under(output, location).is_some() {
                     return;
                 }
-                drop(layers);
-                // A desktop menu, over the windows: not the window under it.
-                if self.lower_layer_menu_under(output, location).is_some() {
-                    return;
+                if let Some(layer) = front(WlrLayer::Top, WindowSurfaceType::ALL - WindowSurfaceType::POPUP) {
+                    return take(self, layer);
                 }
             }
 
@@ -792,13 +798,16 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         })?;
         let output_geo = self.space.output_geometry(output).unwrap();
         // (Before the layer map is taken: it takes it too.)
-        let menu = self.lower_layer_menu_under(output, pos);
+        let menu = self.layer_menu_under(output, pos).map(|(surface, loc)| (PointerFocusTarget::from(surface), loc));
         let layers = layer_map_for_output(output);
+        // The front surface of `layer` at `pos`: the Overlay layer's with
+        // its menus, the rest without (`menu` has them, over everything).
         let layer_under = |layer| {
-            layers.layer_under(layer, pos - output_geo.loc.to_f64()).and_then(|layer| {
-                let layer_loc = layers.layer_geometry(layer).unwrap().loc;
-                layer
-                    .surface_under(pos - output_geo.loc.to_f64() - layer_loc.to_f64(), WindowSurfaceType::ALL)
+            let kind = if layer == WlrLayer::Overlay { WindowSurfaceType::ALL } else { WindowSurfaceType::ALL - WindowSurfaceType::POPUP };
+            let at = pos - output_geo.loc.to_f64();
+            layers.layers_on(layer).rev().find_map(|l| {
+                let layer_loc = layers.layer_geometry(l)?.loc;
+                l.surface_under(at - layer_loc.to_f64(), kind)
                     .map(|(surface, loc)| (PointerFocusTarget::from(surface), loc + layer_loc + output_geo.loc))
             })
         };
@@ -806,7 +815,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         // The overview out: only what is over it (Deskbar) takes the
         // pointer; windows and the desktop under it don't.
         if self.overview.as_ref().is_some_and(|o| !o.leaving()) {
-            return layer_under(WlrLayer::Overlay).or_else(|| layer_under(WlrLayer::Top)).map(|(s, l)| (s, l.to_f64()));
+            return layer_under(WlrLayer::Overlay).or(menu).or_else(|| layer_under(WlrLayer::Top)).map(|(s, l)| (s, l.to_f64()));
         }
         let mut under = None;
         if let Some((surface, loc)) = output
@@ -817,7 +826,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         {
             under = Some((surface, loc + output_geo.loc));
         } else if let Some(focus) = layer_under(WlrLayer::Overlay)
-            .or_else(|| menu.map(|(surface, loc)| (PointerFocusTarget::from(surface), loc)))
+            .or(menu)
             // A window's menus, drawn over Deskbar (`menu_elements`).
             .or_else(|| self.window_menu_under(pos))
             .or_else(|| layer_under(WlrLayer::Top))
@@ -844,15 +853,16 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         })
     }
 
-    /// The surface of a desktop menu at `pos` (global), and where it is
-    /// (`shell::lower_layer_menus`). Takes `output`'s layer map.
-    fn lower_layer_menu_under(
+    /// The surface of a layer surface's menu at `pos` (global), Deskbar's
+    /// or the desktop's, and where it is (`shell::layer_menus`). Takes
+    /// `output`'s layer map.
+    fn layer_menu_under(
         &self,
         output: &smithay::output::Output,
         pos: Point<f64, Logical>,
     ) -> Option<(smithay::reexports::wayland_server::protocol::wl_surface::WlSurface, Point<i32, Logical>)> {
         let origin = self.space.output_geometry(output)?.loc;
-        crate::shell::lower_layer_menus(output)
+        crate::shell::layer_menus(output, &crate::shell::MENU_LAYERS)
             .into_iter()
             .find_map(|(menu, at)| under_from_surface_tree(&menu, pos, origin + at, WindowSurfaceType::ALL))
     }

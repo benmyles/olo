@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Deskbar's menus over banners
+
+*17:26* — Layer surfaces' menus are drawn and hit-tested over the whole Top layer, so Deskbar's menus are over any banner (shell::layer_menus).
+
+![Deskbar's menus over banners](2026-11-02/172612-deskbar-s-menus-over-banners.png)
+
+### Banners over Deskbar's menu (before)
+
+*17:26* — Before: a notification banner, a Top layer surface that came after Deskbar, drew over Deskbar's menus and took their clicks.
+
+![Banners over Deskbar's menu (before)](2026-11-02/172611-banners-over-deskbar-s-menu-before.png)
+
 ### Menus taller than the screen scroll
 
 *17:06* — A kit menu longer than its display stops short of its edges and scrolls: an arrow at each end there's more past scrolls it while the pointer rests there; the wheel and the keys too. Here Default Apps' every app, at the top and scrolled to the end.

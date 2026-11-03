@@ -283,10 +283,11 @@ where
 }
 
 /// The layer surfaces and windows, front first, as smithay's
-/// `space_render_elements` draws them but for the menus of the Background
-/// and Bottom layers (`shell::lower_layer_menus`): over the windows and
-/// the Top layer rather than under the windows with their surface. With
-/// the overview out on `output`, it stands in for the windows.
+/// `space_render_elements` draws them but for the layer surfaces' menus
+/// (`shell::layer_menus`): over the windows and the whole Top layer
+/// rather than with their surface (the desktop's under the windows,
+/// Deskbar's under a notification banner). With the overview out on
+/// `output`, it stands in for the windows.
 fn space_elements<R>(
     renderer: &mut R,
     space: &Space<WindowElement>,
@@ -326,13 +327,16 @@ where
     };
     let t = std::time::Instant::now();
     whole(renderer, &mut out, Layer::Overlay);
-    for (menu, at) in crate::shell::lower_layer_menus(output) {
+    for (menu, at) in crate::shell::layer_menus(output, &crate::shell::MENU_LAYERS) {
         tree(renderer, &mut out, &menu, at);
     }
     // The windows' menus go here, over Deskbar (gathered with them).
     let menus_at = out.len();
     let mut menus = Vec::new();
-    whole(renderer, &mut out, Layer::Top);
+    // The Top layer itself (Deskbar, banners), its menus over it all.
+    for (l, at) in layers.iter().filter(|(l, _)| l.layer() == Layer::Top) {
+        tree(renderer, &mut out, l.wl_surface(), *at);
+    }
     part("gather: upper layers", t);
     let t = std::time::Instant::now();
     let window = |e| OutputRenderElements::Space(SpaceRenderElements::Element(Wrap::from(e)));

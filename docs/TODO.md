@@ -325,10 +325,6 @@ of Finished; a new one goes where its priority puts it.
   advertises a version it doesn't serve. (Not seen since 2026-11-01
   13:19.)
 
-- **Notification banners draw over Deskbar's menus** (seen
-  2026-11-01: a banner's layer sits above a menu popup). Menus should
-  be above banners, or banners should keep off an open menu.
-
 - **app_server's critical path on threads of its own** (Ben,
   2026-11-01: "why run the risk of a blocking call? threads would
   make sure we don't accidentally block"): input → pointer plane
@@ -898,6 +894,15 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**Notification banners draw over Deskbar's menus**~~ (done
+  2026-11-02: app_server render.rs, `shell::layer_menus`) (seen
+  2026-11-01: a banner's layer sits above a menu popup). A layer
+  surface's menus went with it, so a banner (a Top layer surface that
+  came after Deskbar) drew over Deskbar's menus and took their clicks.
+  Every layer surface's menus but the Overlay's are now drawn, hit-tested
+  and given focus over the whole Top layer, as the desktop's already
+  were over the windows.
 
 - ~~**`pbcopy` and `pbpaste` from the command line**~~ (done
   2026-11-02: `apps/pb`, named by the session) (Ben, 2026-11-02):

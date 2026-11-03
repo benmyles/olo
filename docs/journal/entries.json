@@ -2890,5 +2890,17 @@
   "title": "Menus taller than the screen scroll",
   "caption": "A kit menu longer than its display stops short of its edges and scrolls: an arrow at each end there's more past scrolls it while the pointer rests there; the wheel and the keys too. Here Default Apps' every app, at the top and scrolled to the end.",
   "image": "2026-11-02/170629-menus-taller-than-the-screen-scroll.png"
+ },
+ {
+  "time": "2026-11-02T17:26:11",
+  "title": "Banners over Deskbar's menu (before)",
+  "caption": "Before: a notification banner, a Top layer surface that came after Deskbar, drew over Deskbar's menus and took their clicks.",
+  "image": "2026-11-02/172611-banners-over-deskbar-s-menu-before.png"
+ },
+ {
+  "time": "2026-11-02T17:26:12",
+  "title": "Deskbar's menus over banners",
+  "caption": "Layer surfaces' menus are drawn and hit-tested over the whole Top layer, so Deskbar's menus are over any banner (shell::layer_menus).",
+  "image": "2026-11-02/172612-deskbar-s-menus-over-banners.png"
  }
 ]

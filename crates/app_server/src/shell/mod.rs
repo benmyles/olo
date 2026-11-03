@@ -63,16 +63,17 @@ pub(crate) use self::deco::fill;
 pub use self::element::*;
 pub use self::grabs::*;
 
-/// The menus of the Background and Bottom layers (the desktop's), each
-/// with where it is on `output`, front first. Like any menu they go over
-/// the windows and the Top layer (Deskbar), under only the Overlay layer,
-/// not under the windows with their surface, where smithay would put
-/// them: render.rs draws them there, and `surface_under` finds them there.
-pub fn lower_layer_menus(output: &Output) -> Vec<(WlSurface, Point<i32, Logical>)> {
+/// The menus of the layer surfaces on `on` (in that order, each layer's
+/// front first), each with where it is on `output`. Like any menu they go
+/// over the windows and every layer surface but the Overlay layer's, not
+/// with their own surface, where smithay would put them: the desktop's
+/// (Background, Bottom) would go under the windows, and Deskbar's under a
+/// notification banner, a Top layer surface that came after it. render.rs
+/// draws them there, and `surface_under` finds them there.
+pub fn layer_menus(output: &Output, on: &[Layer]) -> Vec<(WlSurface, Point<i32, Logical>)> {
     let map = layer_map_for_output(output);
-    map.layers()
-        .rev()
-        .filter(|l| matches!(l.layer(), Layer::Background | Layer::Bottom))
+    on.iter()
+        .flat_map(|&layer| map.layers_on(layer).rev())
         .filter_map(|l| map.layer_geometry(l).map(|g| (l, g.loc)))
         .flat_map(|(l, at)| {
             PopupManager::popups_for_surface(l.wl_surface())
@@ -80,6 +81,10 @@ pub fn lower_layer_menus(output: &Output) -> Vec<(WlSurface, Point<i32, Logical>
         })
         .collect()
 }
+
+/// The layers whose menus `layer_menus` lifts: all but the Overlay's,
+/// the upper first.
+pub const MENU_LAYERS: [Layer; 3] = [Layer::Top, Layer::Bottom, Layer::Background];
 
 #[derive(Default)]
 pub struct FullscreenSurface(RefCell<Option<WindowElement>>);

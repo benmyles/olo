@@ -2911,14 +2911,17 @@ opened, its own `panel::State` and text fields).
   Workspace 2") all use it; `display_label` and `display_number_text`
   spell it, with a minus sign.
   render.rs draws the layers itself, front to back: Overlay, the menus
-  of the Background and Bottom layers (the desktop's right-click menu,
-  `shell::lower_layer_menus`), the windows' menus (their popups,
-  `WindowElement::menu_elements`, gathered with the windows and drawn
-  apart from them: `render_parts` without), Top (Deskbar), the windows,
-  then the Background and Bottom surfaces; `surface_under` and keyboard
-  focus find them in the same order (`window_menu_under`), so a desktop
-  menu opened over a window is in front of it and takes its clicks, and
-  a window's menu opened by Deskbar is over Deskbar (it went under).
+  of the Top, Bottom and Background layers (Deskbar's, the desktop's
+  right-click menu: `shell::layer_menus`), the windows' menus (their
+  popups, `WindowElement::menu_elements`, gathered with the windows and
+  drawn apart from them: `render_parts` without), the Top layer's
+  surfaces (Deskbar, notification banners), the windows, then the
+  Background and Bottom surfaces; `surface_under` and keyboard focus
+  find them in the same order (`layer_menu_under`, `window_menu_under`),
+  so a desktop menu opened over a window is in front of it and takes
+  its clicks, a window's menu opened by Deskbar is over Deskbar (it went
+  under), and Deskbar's menus are over a banner that came after it (a
+  layer surface's menus went with it, under any later one).
   Identify (`IdentifyOutputs`) shows each display's name for 4 s
   (app_server `identify.rs`). Settings are kept per monitor under
   `olo_protocol::display_key` ("make model serial" from the EDID,
