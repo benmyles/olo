@@ -34,7 +34,7 @@ use olo_ui::{
     search::{SearchEvent, SearchField, search_field},
     style::{self, Align, c},
     theme,
-    widgets::{BBox, Button, CheckBox, EmptyState, ScrollView, StringView, TextField, TextFieldEvent, button_row, open_alert, text_field},
+    widgets::{BBox, Button, CheckBox, EmptyState, ScrollView, StatusBar, StringView, TextField, TextFieldEvent, button_row, open_alert, text_field},
 };
 use serde::{Deserialize, Serialize};
 
@@ -118,7 +118,19 @@ pub struct Tg {
     list_rect: Bounds<Pixels>,
     conv_rect: Bounds<Pixels>,
     composer_rect: Bounds<Pixels>,
+    /// The person's changes on their way to Telegram: (waiting, of how
+    /// many, Telegram's asked wait), from `Event::Sync`.
+    sync: (usize, usize, Option<u32>),
+    /// Quitting, once they're sent or by then.
+    quitting: Option<Instant>,
 }
+
+/// How long quitting waits for the changes still on their way (they're
+/// kept and sent next time if it gives up).
+const QUIT_WAIT: Duration = Duration::from_secs(30);
+/// The line under the chat list while changes are on their way: its
+/// label, the bar, and room round them.
+const SYNC_H: f32 = 44.0;
 
 /// Which pane.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -222,6 +234,24 @@ impl Tg {
     }
 
     /// Redraws in `d` (or sooner, if one is due sooner already).
+    /// Quit: at once, unless changes are on their way to Telegram; then
+    /// once they're sent, or `QUIT_WAIT` on (they're kept on disk and go
+    /// next time), showing how they go.
+    fn quit(&mut self, cx: &mut Context<Self>) {
+        if self.sync.0 == 0 || self.quitting.is_some_and(|q| Instant::now() >= q) {
+            return cx.quit();
+        }
+        if self.quitting.is_none() {
+            self.quitting = Some(Instant::now() + QUIT_WAIT);
+            cx.spawn(async move |tg, cx| {
+                cx.background_executor().timer(QUIT_WAIT).await;
+                let _ = tg.update(cx, |_, cx| cx.quit());
+            })
+            .detach();
+        }
+        cx.notify();
+    }
+
     fn wake_in(&mut self, d: Duration, cx: &mut Context<Self>) {
         let at = Instant::now() + d;
         if self.wake.as_ref().is_some_and(|(w, _)| *w <= at) {
@@ -499,6 +529,12 @@ impl Tg {
                 None => self.banner = Some((format!("No one on Telegram is called {username}."), Instant::now() + Duration::from_secs(6))),
             },
             Event::Error(e) => self.banner = Some((e, Instant::now() + Duration::from_secs(8))),
+            Event::Sync { pending, total, waiting } => {
+                self.sync = (pending, total, waiting);
+                if pending == 0 && self.quitting.is_some() {
+                    cx.quit();
+                }
+            }
         }
         let unread = self.store.total_unread();
         if unread != self.badge {
@@ -999,7 +1035,8 @@ impl Tg {
 
     fn command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) {
         match command {
-            "quit" | "close" => cx.quit(),
+            "quit" | "close" => self.quit(cx),
+            "quit-now" => cx.quit(),
             "contacts" => self.open_contacts(cx),
             "find" => self.search.update(cx, |s, cx| s.focus(window, cx)),
             "attach" => self.attach(cx),
@@ -1181,9 +1218,37 @@ impl Render for Tg {
                 let left = Bounds { origin: full.origin, size: size(px(lw), full.size.height) };
                 let rx = style::snap_coord(window, px(lw) + style::hairline(window));
                 let right = Bounds::from_corners(point(rx, full.origin.y), full.bottom_right());
-                self.list_rect = left;
+                // Changes on their way to Telegram: a line under the list.
+                let (pending, total, waiting) = self.sync;
+                self.list_rect = if pending > 0 {
+                    let line = Bounds::from_corners(point(left.origin.x, left.bottom() - px(SYNC_H)), left.bottom_right());
+                    let done = total.saturating_sub(pending) as f32 / total.max(1) as f32;
+                    let label = if pending == 1 { "Sending a change to Telegram…".to_owned() } else { format!("Sending {pending} changes to Telegram…") };
+                    let trailing = match (&self.status, waiting) {
+                        (Status::Offline(_), _) => "offline: sent when back".to_owned(),
+                        (_, Some(s)) => format!("Telegram asks to wait {s} s"),
+                        _ => format!("{} of {total} sent", total - pending),
+                    };
+                    let edge = c(p.shadow);
+                    layer = layer.child(
+                        div()
+                            .absolute()
+                            .left(line.origin.x)
+                            .top(line.origin.y)
+                            .w(line.size.width)
+                            .h(line.size.height)
+                            .bg(c(p.panel_background))
+                            .px(px(m::SPACING))
+                            .pt(px(m::SPACING + 1.0))
+                            .child(canvas(|_, _, _| {}, move |b, _, window, _| style::hline(window, b.left(), b.right(), b.top(), edge)).absolute().inset_0())
+                            .child(StatusBar::new(done).label(label).trailing(trailing).bar_height(6.0)),
+                    );
+                    Bounds::from_corners(left.origin, point(left.right(), line.top()))
+                } else {
+                    left
+                };
                 if let Some((_, p)) = self.panes.iter().find(|p| p.0 == Kind::List) {
-                    layer = layer.child(pane(p, left));
+                    layer = layer.child(pane(p, self.list_rect));
                 }
                 let shadow = c(p.shadow);
                 layer = layer.child(canvas(|_, _, _| {}, move |_, _, window, _| style::vline(window, left.right(), left.origin.y, left.bottom(), shadow)).absolute().inset_0());
@@ -1252,6 +1317,34 @@ impl Render for Tg {
                     }
                 }
             }
+        }
+        // Quitting while changes are on their way: how they go, and Quit
+        // Now (what's left is kept and sent next time).
+        if let Some(until) = self.quitting {
+            let (pending, total, waiting) = self.sync;
+            let left_s = until.saturating_duration_since(Instant::now()).as_secs();
+            self.wake_in(Duration::from_secs(1), cx);
+            let done = total.saturating_sub(pending) as f32 / total.max(1) as f32;
+            let what = if pending == 1 { "1 change".to_owned() } else { format!("{pending} changes") };
+            let trailing = match waiting {
+                Some(s) => format!("Telegram asks to wait {s} s"),
+                None => format!("quitting in {left_s} s at most"),
+            };
+            let quit_now = me.clone();
+            let sheet = div()
+                .w(px(360.0))
+                .flex()
+                .flex_col()
+                .gap(px(m::SPACING))
+                .p(px(m::WINDOW_INSET))
+                .bg(c(p.panel_background))
+                .border_1()
+                .border_color(c(p.shadow))
+                .child(StringView::new("Sending your changes to Telegram").bold(true))
+                .child(StringView::new(format!("{what} to chats (archived, read, muted or pinned) still to send. Whatever isn’t sent now is kept and sent when Telegram next opens.")).wrap(true))
+                .child(StatusBar::new(done).trailing(trailing).bar_height(8.0))
+                .child(button_row().child(Button::new("Quit Now").on_click(move |_, cx| quit_now.update(cx, |_, cx| cx.quit()))));
+            layer = layer.child(div().absolute().inset_0().flex().items_center().justify_center().bg(c(p.shadow).opacity(0.25)).child(sheet));
         }
         let (t_move, t_up, t_drop) = (me.clone(), me.clone(), me.clone());
         div()
@@ -1631,6 +1724,8 @@ fn main() {
                 store: store::Store::default(),
                 pics: pics::Pics::new(olo_ui::proxy(cx)),
                 status: Status::Connecting,
+                sync: (0, 0, None),
+                quitting: None,
                 me: None,
                 view: list::View { folder: restored.folder, ..list::View::default() },
                 found: list::Found::default(),
@@ -1691,9 +1786,11 @@ fn main() {
         let view = tg.clone();
         let win = olo_ui::open_window(cx, WindowOptions::new("Telegram", 980.0, 660.0).min_size(620.0, 420.0), move |window, cx| {
             // Closing the main window ends the app, its other windows too.
-            window.on_window_should_close(cx, |_, cx| {
-                cx.quit();
-                true
+            let closing = view.clone();
+            window.on_window_should_close(cx, move |_, cx| {
+                // (Changes still on their way: it quits once they're sent.)
+                closing.update(cx, |tg, cx| tg.quit(cx));
+                false
             });
             view
         });

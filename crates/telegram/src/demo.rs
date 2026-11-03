@@ -43,6 +43,9 @@ struct Demo {
     next_id: MsgId,
     sink: Sink,
     pictures: PathBuf,
+    /// Changes "on their way" (`OLO_TELEGRAM_DEMO_SEND_MS`: each takes
+    /// that long, to see the sync line and quitting wait), of how many.
+    sending: (usize, usize),
 }
 
 fn now() -> i64 {
@@ -125,7 +128,7 @@ impl Demo {
     fn new(sink: Sink) -> Demo {
         let t = now();
         let pictures = crate::account::dir().join("demo");
-        let mut d = Demo { now: t, chats: HashMap::new(), msgs: HashMap::new(), next_id: 10_000, sink, pictures };
+        let mut d = Demo { now: t, chats: HashMap::new(), msgs: HashMap::new(), next_id: 10_000, sink, pictures, sending: (0, 0) };
         let mira = || Some(person(MIRA, "Mira Okafor"));
         let theo = || Some(person(THEO, "Theo Brandt"));
         let jun = || Some(person(JUN, "Jun Park"));
@@ -491,6 +494,29 @@ pub fn spawn(mut from: UnboundedReceiver<Cmd>, sink: Sink) {
 
 fn handle(demo: &Arc<Mutex<Demo>>, cmd: Cmd) {
     let mut d = demo.lock().unwrap();
+    // The person's changes take a while to "reach Telegram" when asked
+    // to, as the real account's outbox shows them (shown at once all the
+    // same).
+    let ms = std::env::var("OLO_TELEGRAM_DEMO_SEND_MS").ok().and_then(|v| v.parse::<u64>().ok()).filter(|ms| *ms > 0);
+    if let Some(ms) = ms
+        && matches!(cmd, Cmd::Archive { .. } | Cmd::Mute { .. } | Cmd::PinChat { .. } | Cmd::MarkUnread { .. })
+    {
+        d.sending.0 += 1;
+        d.sending.1 += 1;
+        let (pending, total) = d.sending;
+        d.emit(Event::Sync { pending, total, waiting: None });
+        let demo = demo.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(ms * pending as u64));
+            let mut d = demo.lock().unwrap();
+            d.sending.0 -= 1;
+            if d.sending.0 == 0 {
+                d.sending.1 = 0;
+            }
+            let (pending, total) = d.sending;
+            d.emit(Event::Sync { pending, total, waiting: None });
+        });
+    }
     match cmd {
         Cmd::Chats => {
             d.emit(Event::Folders(vec![

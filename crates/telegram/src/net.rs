@@ -29,6 +29,7 @@ use grammers_session::{
 use grammers_tl_types as tl;
 use tokio::sync::mpsc::UnboundedReceiver;
 
+use crate::outbox::{Change, Outbox};
 use crate::{
     account::{self, Store},
     backend::{Cmd, Event, Outgoing, Pic, Sink, Status},
@@ -75,6 +76,15 @@ struct Ctx {
     /// come out of order.
     confirming: Mutex<HashSet<ChatId>>,
     confirm_due: tokio::sync::Notify,
+    /// The person's changes not yet in Telegram (`outbox`), and what
+    /// wakes the task sending them.
+    outbox: Mutex<Outbox>,
+    outbox_due: tokio::sync::Notify,
+    /// How many there were when the sending began (for "3 of 7").
+    outbox_total: AtomicI64,
+    /// The chat list has been read whole from Telegram this run (a chat
+    /// not in it is gone).
+    list_whole: std::sync::atomic::AtomicBool,
 }
 
 fn now() -> i64 {
@@ -155,6 +165,29 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> 
     tokio::task::spawn_blocking(f).await.expect("a blocking task")
 }
 
+/// Why a change didn't get to Telegram.
+#[derive(Debug)]
+enum Failed {
+    /// Not now (asked to wait: `flood`, its seconds; offline; a chat not
+    /// known yet): again after the wait.
+    Later(Duration, Option<u32>),
+    /// Telegram won't take it (the chat is gone, not ours to change).
+    Refused(String),
+}
+
+impl Failed {
+    fn of(e: &InvocationError) -> Failed {
+        match e {
+            InvocationError::Rpc(r) if r.code == 420 => {
+                let s = r.value.unwrap_or(5);
+                Failed::Later(Duration::from_secs(u64::from(s)), Some(s))
+            }
+            InvocationError::Rpc(r) if (400..500).contains(&r.code) => Failed::Refused(explain(e)),
+            _ => Failed::Later(Duration::from_secs(5), None),
+        }
+    }
+}
+
 /// Whether incoming message `m` makes one more unread in chat `c`: newer
 /// than any message the row knows and than what's read. An update
 /// replayed (caught up on) after the list was read counts nothing again.
@@ -216,7 +249,12 @@ async fn run(mut from: UnboundedReceiver<Cmd>, sink: Sink) {
         fetching: Mutex::new(HashSet::new()),
         confirming: Mutex::new(HashSet::new()),
         confirm_due: tokio::sync::Notify::new(),
+        outbox: Mutex::new(blocking(Outbox::load).await),
+        outbox_due: tokio::sync::Notify::new(),
+        outbox_total: AtomicI64::new(0),
+        list_whole: std::sync::atomic::AtomicBool::new(false),
     });
+    ctx.emit_sync(None);
     // Chats' states as Telegram has them now, for those updates changed.
     {
         let ctx = ctx.clone();
@@ -292,6 +330,17 @@ async fn run(mut from: UnboundedReceiver<Cmd>, sink: Sink) {
         }
     }
     sink(Event::Status(Status::Updating));
+    // The person's changes, sent as they're made, and what was left
+    // unsent last time now.
+    {
+        let ctx = ctx.clone();
+        tokio::spawn(async move {
+            loop {
+                ctx.send_outbox().await;
+                ctx.outbox_due.notified().await;
+            }
+        });
+    }
     // Save the session now and then (the keyring only when it changed).
     {
         let store = store.clone();
@@ -348,6 +397,8 @@ async fn run(mut from: UnboundedReceiver<Cmd>, sink: Sink) {
                         (ctx.sink)(Event::Status(Status::Offline(explain(&e))));
                         tokio::time::sleep(Duration::from_secs(2)).await;
                         (ctx.sink)(Event::Status(Status::Online));
+                        // Back: the changes waiting go now.
+                        ctx.outbox_due.notify_one();
                     }
                 }
             }
@@ -876,7 +927,9 @@ impl Ctx {
         self.chats.lock().unwrap().get(&id).cloned()
     }
 
-    fn put_chat(&self, c: Chat) {
+    fn put_chat(&self, mut c: Chat) {
+        // What the person changed and Telegram doesn't have yet shows.
+        self.outbox.lock().unwrap().apply_to(&mut c);
         self.chats.lock().unwrap().insert(c.id, c.clone());
         self.cache_due.notify_one();
         self.emit(Event::Chat(c));
@@ -1073,7 +1126,13 @@ impl Ctx {
     /// The whole chat list (the main list, then the archive), in pages.
     async fn load_chats(&self, cached_first: bool) -> Result<(), String> {
         let _one = self.loading.lock().await;
-        if cached_first && let Some(c) = blocking(Self::cached_chats).await {
+        if cached_first && let Some(mut c) = blocking(Self::cached_chats).await {
+            {
+                let o = self.outbox.lock().unwrap();
+                for chat in &mut c {
+                    o.apply_to(chat);
+                }
+            }
             {
                 let mut known = self.chats.lock().unwrap();
                 for chat in &c {
@@ -1094,11 +1153,17 @@ impl Ctx {
         for folder in [Some(0), Some(1)] {
             let mut offset = (0, 0, tl::enums::InputPeer::Empty);
             loop {
-                let (page, next) = self.dialogs_retrying(folder, offset).await.map_err(|e| {
+                let (mut page, next) = self.dialogs_retrying(folder, offset).await.map_err(|e| {
                     tracing::warn!("telegram: the chat list stopped after {pages} pages: {e}");
                     explain(&e)
                 })?;
                 pages += 1;
+                {
+                    let o = self.outbox.lock().unwrap();
+                    for c in &mut page {
+                        o.apply_to(c);
+                    }
+                }
                 {
                     let mut known = self.chats.lock().unwrap();
                     for c in &page {
@@ -1120,6 +1185,9 @@ impl Ctx {
         // goes by) goes, as from the list (`Store::whole`).
         self.chats.lock().unwrap().retain(|id, _| live.contains(id));
         self.cache_ready.store(true, Ordering::Relaxed);
+        self.list_whole.store(true, Ordering::Relaxed);
+        // Changes waiting for a chat not known till now go.
+        self.outbox_due.notify_one();
         self.cache_due.notify_one();
         self.cache_soon.notify_one();
         tracing::info!("telegram: the chat list: {main} in the main list, {archived} archived, in {pages} pages");
@@ -1159,8 +1227,167 @@ impl Ctx {
 
     /// The folder Telegram has a chat in now (0 the main list, 1 the
     /// archive), asked.
-    async fn folder_now(&self, peer: &PeerRef) -> Option<i32> {
-        self.folders_now(std::slice::from_ref(peer)).await.into_values().next()
+    /// A change of the person's: on disk, shown, and on its way.
+    fn queue(&self, change: Change) {
+        let chat = change.chat();
+        {
+            let mut o = self.outbox.lock().unwrap();
+            if o.is_empty() {
+                self.outbox_total.store(0, Ordering::Relaxed);
+            }
+            o.push(change);
+            o.save();
+        }
+        self.outbox_total.fetch_add(1, Ordering::Relaxed);
+        if let Some(c) = self.known_chat(chat) {
+            self.put_chat(c);
+        }
+        self.emit_sync(None);
+        self.outbox_due.notify_one();
+    }
+
+    /// How many changes wait to be sent (and, if Telegram asked, for how
+    /// long).
+    fn emit_sync(&self, waiting: Option<u32>) {
+        let pending = self.outbox.lock().unwrap().len();
+        let total = (self.outbox_total.load(Ordering::Relaxed).max(0) as usize).max(pending);
+        self.emit(Event::Sync { pending, total, waiting });
+    }
+
+    /// Send what's waiting until none is: archive moves together, a
+    /// hundred to a request, the rest one by one. A change Telegram
+    /// refuses is dropped (said, and the chat read again), as is one for a
+    /// chat gone from the list; one it can't take now (asked to wait,
+    /// offline, a chat not known yet) is tried again after a wait, longer
+    /// each time up to a minute, for as long as it waits (and at once when
+    /// the connection comes back or another change is made).
+    async fn send_outbox(&self) {
+        let mut backoff = 0u32;
+        loop {
+            let waiting: Vec<Change> = self.outbox.lock().unwrap().changes().to_vec();
+            if waiting.is_empty() {
+                self.emit_sync(None);
+                return;
+            }
+            let (moves, rest): (Vec<Change>, Vec<Change>) = waiting.into_iter().partition(|c| matches!(c, Change::Archive { .. }));
+            let mut batches: Vec<Vec<Change>> = moves.chunks(100).map(<[Change]>::to_vec).collect();
+            batches.extend(rest.into_iter().map(|c| vec![c]));
+            let mut later: Option<(Duration, Option<u32>)> = None;
+            let mut progress = false;
+            for batch in batches {
+                match self.send_changes(&batch).await {
+                    Ok(left) => {
+                        let done: Vec<Change> = batch.iter().filter(|c| !left.contains(c)).cloned().collect();
+                        progress |= !done.is_empty();
+                        self.sent(&done);
+                        if !left.is_empty() {
+                            later = later.or(Some((Duration::from_secs(5), None)));
+                        }
+                    }
+                    Err(Failed::Refused(why)) => {
+                        tracing::warn!("telegram: {batch:?} refused: {why}");
+                        self.emit(Event::Error(format!("Telegram didn’t take a change ({why}).")));
+                        self.sent(&batch);
+                    }
+                    Err(Failed::Later(wait, flood)) => {
+                        later = Some((wait, flood));
+                        // (Asked to wait, or offline: the rest would fare
+                        // the same.)
+                        break;
+                    }
+                }
+            }
+            let Some((wait, flood)) = later else { continue };
+            backoff = if progress { 0 } else { backoff + 1 };
+            let wait = wait.max(Duration::from_secs((5u64 << backoff.min(4)).min(60)));
+            tracing::info!("telegram: {} changes to send, again in {} s", self.outbox.lock().unwrap().len(), wait.as_secs());
+            self.emit_sync(flood);
+            tokio::select! {
+                _ = tokio::time::sleep(wait) => {}
+                _ = self.outbox_due.notified() => {}
+            }
+        }
+    }
+
+    /// Those changes are in Telegram: off the disk, and the chats read
+    /// again from it.
+    fn sent(&self, done: &[Change]) {
+        {
+            let mut o = self.outbox.lock().unwrap();
+            o.sent(done);
+            o.save();
+        }
+        for c in done {
+            self.confirm(c.chat());
+        }
+        self.emit_sync(None);
+    }
+
+    /// Send `batch`; the changes left for later (their chats not known
+    /// yet). A change for a chat gone from the list is done with.
+    async fn send_changes(&self, batch: &[Change]) -> Result<Vec<Change>, Failed> {
+        let mut left = Vec::new();
+        let mut resolved = Vec::new();
+        for c in batch {
+            match self.peer(c.chat()).await {
+                Ok(p) => resolved.push((c.clone(), p)),
+                Err(_) if self.list_whole.load(Ordering::Relaxed) && self.known_chat(c.chat()).is_none() => {
+                    tracing::info!("telegram: {c:?} dropped: the chat is gone");
+                }
+                Err(e) => {
+                    tracing::info!("telegram: {c:?} waits: {e}");
+                    left.push(c.clone());
+                }
+            }
+        }
+        match resolved.as_slice() {
+            [] => {}
+            [(Change::Archive { .. }, _), ..] => {
+                let peers = resolved
+                    .iter()
+                    .filter_map(|(c, p)| match *c {
+                        Change::Archive { on, .. } => Some(tl::enums::InputFolderPeer::Peer(tl::types::InputFolderPeer { peer: Self::input_peer(p), folder_id: i32::from(on) })),
+                        _ => None,
+                    })
+                    .collect();
+                let r = self.client.invoke(&tl::functions::folders::EditPeerFolders { folder_peers: peers }).await.map_err(|e| Failed::of(&e))?;
+                for (c, _) in &resolved {
+                    if let Change::Archive { chat, on } = *c {
+                        tracing::info!("telegram: chat {chat} into folder {}: Telegram says {:?}", i32::from(on), folder_in(&r, chat));
+                    }
+                }
+            }
+            [(Change::Pin { on, .. }, p)] => {
+                let dp = tl::enums::InputDialogPeer::Peer(tl::types::InputDialogPeer { peer: Self::input_peer(p) });
+                self.client.invoke(&tl::functions::messages::ToggleDialogPin { pinned: *on, peer: dp }).await.map_err(|e| Failed::of(&e))?;
+            }
+            [(Change::Mute { on, .. }, p)] => {
+                let settings = tl::enums::InputPeerNotifySettings::Settings(tl::types::InputPeerNotifySettings {
+                    show_previews: None,
+                    silent: None,
+                    mute_until: Some(if *on { i32::MAX } else { 0 }),
+                    sound: None,
+                    stories_muted: None,
+                    stories_hide_sender: None,
+                    stories_sound: None,
+                });
+                let np = tl::enums::InputNotifyPeer::Peer(tl::types::InputNotifyPeer { peer: Self::input_peer(p) });
+                self.client.invoke(&tl::functions::account::UpdateNotifySettings { peer: np, settings }).await.map_err(|e| Failed::of(&e))?;
+            }
+            [(Change::Read { up_to, .. }, p)] => {
+                if p.id.kind() == PeerKind::Channel {
+                    self.client.invoke(&tl::functions::channels::ReadHistory { channel: p.into(), max_id: *up_to }).await.map_err(|e| Failed::of(&e))?;
+                } else {
+                    self.client.invoke(&tl::functions::messages::ReadHistory { peer: Self::input_peer(p), max_id: *up_to }).await.map_err(|e| Failed::of(&e))?;
+                }
+            }
+            [(Change::MarkUnread { on, .. }, p)] => {
+                let dp = tl::enums::InputDialogPeer::Peer(tl::types::InputDialogPeer { peer: Self::input_peer(p) });
+                self.client.invoke(&tl::functions::messages::MarkDialogUnread { unread: *on, parent_peer: None, peer: dp }).await.map_err(|e| Failed::of(&e))?;
+            }
+            _ => {}
+        }
+        Ok(left)
     }
 
     /// Read chat `id`'s state from Telegram again in a moment.
@@ -1205,21 +1432,6 @@ impl Ctx {
                 self.put_chat(c);
             }
         }
-    }
-
-    /// The folders Telegram has these chats in now, in one ask.
-    async fn folders_now(&self, peers: &[PeerRef]) -> HashMap<ChatId, i32> {
-        let asked = peers.iter().map(|p| tl::enums::InputDialogPeer::Peer(tl::types::InputDialogPeer { peer: Self::input_peer(p) })).collect();
-        let Ok(tl::enums::messages::PeerDialogs::Dialogs(d)) = self.client.invoke(&tl::functions::messages::GetPeerDialogs { peers: asked }).await else {
-            return HashMap::new();
-        };
-        d.dialogs
-            .into_iter()
-            .filter_map(|d| match d {
-                tl::enums::Dialog::Dialog(d) => Some((id_of(&d.peer), d.folder_id.unwrap_or(0))),
-                _ => None,
-            })
-            .collect()
     }
 
     async fn send(&self, out: Outgoing) -> Result<(), String> {
@@ -1465,33 +1677,15 @@ impl Ctx {
                     self.emit(Event::Edited(m));
                 }
             }
+            // The person's changes to their chats: kept until Telegram has
+            // them (`outbox`), shown at once.
             Cmd::Read { chat, up_to } => {
-                let peer = self.peer(chat).await?;
-                if peer.id.kind() == PeerKind::Channel {
-                    self.client.invoke(&tl::functions::channels::ReadHistory { channel: (&peer).into(), max_id: up_to }).await.map_err(|e| explain(&e))?;
-                } else {
-                    self.client.invoke(&tl::functions::messages::ReadHistory { peer: Self::input_peer(&peer), max_id: up_to }).await.map_err(|e| explain(&e))?;
+                if self.known_chat(chat).is_some_and(|c| c.marked) {
+                    self.queue(Change::MarkUnread { chat, on: false });
                 }
-                if let Some(mut c) = self.known_chat(chat) {
-                    if c.marked {
-                        let _ = self.mark_unread(chat, false).await;
-                    }
-                    c.read_inbox = c.read_inbox.max(up_to);
-                    if c.last.as_ref().is_none_or(|l| l.id <= up_to) {
-                        c.unread = 0;
-                        c.mentions = 0;
-                    }
-                    c.marked = false;
-                    self.put_chat(c);
-                }
+                self.queue(Change::Read { chat, up_to });
             }
-            Cmd::MarkUnread { chat, on } => {
-                self.mark_unread(chat, on).await?;
-                if let Some(mut c) = self.known_chat(chat) {
-                    c.marked = on;
-                    self.put_chat(c);
-                }
-            }
+            Cmd::MarkUnread { chat, on } => self.queue(Change::MarkUnread { chat, on }),
             Cmd::Typing { chat, topic, doing } => {
                 let peer = self.peer(chat).await?;
                 let action = match doing {
@@ -1524,38 +1718,8 @@ impl Ctx {
                     self.put_chat(c);
                 }
             }
-            Cmd::PinChat { chat, on } => {
-                let peer = self.peer(chat).await?;
-                let dp = tl::enums::InputDialogPeer::Peer(tl::types::InputDialogPeer { peer: Self::input_peer(&peer) });
-                self.client.invoke(&tl::functions::messages::ToggleDialogPin { pinned: on, peer: dp }).await.map_err(|e| explain(&e))?;
-                if let Some(mut c) = self.known_chat(chat) {
-                    c.pinned = on;
-                    self.put_chat(c);
-                }
-            }
-            Cmd::Archive { chat, on } => {
-                let peer = self.peer(chat).await?;
-                let folder = i32::from(on);
-                let fp = tl::enums::InputFolderPeer::Peer(tl::types::InputFolderPeer { peer: Self::input_peer(&peer), folder_id: folder });
-                let r = self.client.invoke(&tl::functions::folders::EditPeerFolders { folder_peers: vec![fp] }).await.map_err(|e| explain(&e))?;
-                // Where Telegram has it now: as its answer says, else asked,
-                // so the list shows that, not what was asked for.
-                let said = folder_in(&r, chat);
-                let now = match said {
-                    Some(f) => Some(f),
-                    None => self.folder_now(&peer).await,
-                };
-                tracing::info!("telegram: chat {chat} asked into folder {folder}: Telegram has it in {now:?}{}", if said.is_some() { "" } else { " (asked again)" });
-                let now = now.unwrap_or(folder);
-                if now != folder {
-                    self.emit(Event::Error(if on { "Telegram didn’t archive the chat." } else { "Telegram kept the chat archived." }.into()));
-                }
-                if let Some(mut c) = self.known_chat(chat) {
-                    c.archived = now == 1;
-                    c.pinned = false;
-                    self.put_chat(c);
-                }
-            }
+            Cmd::PinChat { chat, on } => self.queue(Change::Pin { chat, on }),
+            Cmd::Archive { chat, on } => self.queue(Change::Archive { chat, on }),
             Cmd::DeleteChat { chat } => {
                 let peer = self.peer(chat).await?;
                 self.client.delete_dialog(peer).await.map_err(|e| explain(&e))?;
@@ -1563,24 +1727,7 @@ impl Ctx {
                 self.cache_due.notify_one();
                 self.emit(Event::ChatGone(chat));
             }
-            Cmd::Mute { chat, on } => {
-                let peer = self.peer(chat).await?;
-                let settings = tl::enums::InputPeerNotifySettings::Settings(tl::types::InputPeerNotifySettings {
-                    show_previews: None,
-                    silent: None,
-                    mute_until: Some(if on { i32::MAX } else { 0 }),
-                    sound: None,
-                    stories_muted: None,
-                    stories_hide_sender: None,
-                    stories_sound: None,
-                });
-                let np = tl::enums::InputNotifyPeer::Peer(tl::types::InputNotifyPeer { peer: Self::input_peer(&peer) });
-                self.client.invoke(&tl::functions::account::UpdateNotifySettings { peer: np, settings }).await.map_err(|e| explain(&e))?;
-                if let Some(mut c) = self.known_chat(chat) {
-                    c.muted = on;
-                    self.put_chat(c);
-                }
-            }
+            Cmd::Mute { chat, on } => self.queue(Change::Mute { chat, on }),
             Cmd::PinMessage { chat, id, on } => {
                 let peer = self.peer(chat).await?;
                 if on {
@@ -1684,13 +1831,6 @@ impl Ctx {
                 self.emit(Event::Status(Status::SignedOut));
             }
         }
-        Ok(())
-    }
-
-    async fn mark_unread(&self, chat: ChatId, on: bool) -> Result<(), String> {
-        let peer = self.peer(chat).await?;
-        let dp = tl::enums::InputDialogPeer::Peer(tl::types::InputDialogPeer { peer: Self::input_peer(&peer) });
-        self.client.invoke(&tl::functions::messages::MarkDialogUnread { unread: on, parent_peer: None, peer: dp }).await.map_err(|e| explain(&e))?;
         Ok(())
     }
 }

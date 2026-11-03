@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Telegram: changes kept until Telegram has them
+
+*20:30* — Archiving, reading, muting and pinning go into an outbox on disk and leave it only once Telegram has them, sent again on the next start if need be. A line under the chat list shows them going; quitting waits up to 30 s for them (Quit Now quits at once; what's left is kept). The demo account, its changes slowed down to show it.
+
+![Telegram: changes kept until Telegram has them](2026-11-02/203039-telegram-changes-kept-until-telegram-has-them.png)
+
 ### Preferences ▸ AI: Emoji
 
 *20:02* — The emoji picker's AI suggestions get their own switch, model and effort (low by default: they're asked while you wait), as Smart Tiling has; the panel grows to fit them.

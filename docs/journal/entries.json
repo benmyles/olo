@@ -2938,5 +2938,11 @@
   "title": "Preferences \u25b8 AI: Emoji",
   "caption": "The emoji picker's AI suggestions get their own switch, model and effort (low by default: they're asked while you wait), as Smart Tiling has; the panel grows to fit them.",
   "image": "2026-11-02/200209-preferences-ai-emoji.png"
+ },
+ {
+  "time": "2026-11-02T20:30:39",
+  "title": "Telegram: changes kept until Telegram has them",
+  "caption": "Archiving, reading, muting and pinning go into an outbox on disk and leave it only once Telegram has them, sent again on the next start if need be. A line under the chat list shows them going; quitting waits up to 30 s for them (Quit Now quits at once; what's left is kept). The demo account, its changes slowed down to show it.",
+  "image": "2026-11-02/203039-telegram-changes-kept-until-telegram-has-them.png"
  }
 ]

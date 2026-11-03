@@ -795,6 +795,20 @@ of Finished; a new one goes where its priority puts it.
 
 ## Finished (most recently finished first)
 
+- ~~**Telegram: changes that never reached Telegram**~~ (Ben,
+  2026-11-02: "telegram still doesn't work"; "is it possible that when
+  i unarchive it isn't ever getting to telegram server? like maybe i'm
+  quitting before it syncs?"; "add a status icon or something and when
+  it's quiting wait up to 30s whilst showing sync status"). It was:
+  each change a request nothing kept, quitting cutting off those in
+  flight, bulk unarchive sent as one request a chat (Telegram throttles
+  that). Now an outbox on disk (sent until Telegram has it, again on
+  the next start; archive moves 100 to a request; waits honoured), a
+  sync line under the chat list, and quitting that waits up to 30 s
+  showing the changes go (Quit Now). And Olo's own programs started by
+  Deskbar, Tracker or the palette log to the journal (they went to
+  /dev/null: Telegram opened from Deskbar left nothing to read).
+
 - ~~**app_server: its frames wait on the GPU behind clients' work**~~
   (found 2026-11-02, the full bench: 33 of 376 steps failed, most of
   them app_server frames of 9–51 ms as a menu opened or a window

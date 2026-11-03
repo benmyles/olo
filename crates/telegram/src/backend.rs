@@ -137,6 +137,11 @@ pub enum Event {
     Contacts(Vec<Contact>),
     /// `Resolve`'s answer.
     Resolved { username: String, chat: Option<Chat> },
+    /// The person's changes (archived, read, muted, pinned) not yet in
+    /// Telegram: `pending` of the `total` made since all were last sent;
+    /// `waiting`: Telegram asked us to wait that many seconds. They're
+    /// kept on disk until sent, across quitting.
+    Sync { pending: usize, total: usize, waiting: Option<u32> },
     /// Something went wrong that the person should hear about.
     Error(String),
 }

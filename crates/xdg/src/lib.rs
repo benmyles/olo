@@ -279,7 +279,8 @@ pub fn display_name() -> String {
     display.rsplit('/').next().unwrap_or_default().to_owned()
 }
 
-/// Run a shell command line detached from us (own session, no stdio).
+/// Run a shell command line detached from us (own session, no stdin or
+/// stdout; Olo's own programs keep our stderr, the journal).
 /// Our own programs are found beside us first, as `find_program` finds
 /// them: the login screen gives a session a bare PATH that needn't
 /// include where Olo is installed (~/.local/bin).
@@ -308,7 +309,12 @@ fn spawn_detached_pid(cmd: &str) -> std::io::Result<u32> {
             c.env("PATH", path);
         }
     }
-    c.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    c.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null());
+    // Olo's own programs log where we do (the session's journal); others'
+    // chatter is theirs.
+    if !cmd.split_whitespace().next().is_some_and(|p| scope::ours(p.as_ref())) {
+        c.stderr(std::process::Stdio::null());
+    }
     // SAFETY: setsid is async-signal-safe.
     unsafe {
         c.pre_exec(|| {

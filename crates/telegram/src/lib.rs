@@ -12,6 +12,7 @@ pub mod backend;
 pub mod demo;
 pub mod model;
 pub mod net;
+pub mod outbox;
 pub mod signin;
 
 pub use backend::{Backend, Cmd, Event, Outgoing, Pic, Status};
