@@ -50,6 +50,10 @@ pub struct Chat {
     pub muted: bool,
     pub verified: bool,
     pub contact: bool,
+    /// Someone who isn't a contact wrote and we never have: in Unknown
+    /// Senders, not notified, not counted unread (until we write back).
+    #[serde(default)]
+    pub unknown: bool,
     pub last: Option<Preview>,
     pub draft: Option<String>,
     /// Where it sorts (the latest message's or draft's time).
@@ -64,6 +68,16 @@ pub struct Chat {
     pub seen: Option<Seen>,
     /// Pinned in the list's order (a lower one first).
     pub pin_order: u32,
+}
+
+/// Telegram's own service notifications (login codes, notices): never
+/// an unknown sender.
+pub const SERVICE_NOTIFICATIONS: ChatId = 777000;
+
+/// Whether a person's chat is from an unknown sender, by who they are
+/// and whether we've written to them (`written`).
+pub fn stranger(id: ChatId, kind: ChatKind, contact: bool, verified: bool, written: bool) -> bool {
+    kind == ChatKind::User && !contact && !verified && !written && id != SERVICE_NOTIFICATIONS
 }
 
 impl Chat {
@@ -380,6 +394,10 @@ impl Folder {
             return false;
         }
         if self.exclude_archived && chat.archived {
+            return false;
+        }
+        // Unknown senders are in a list of their own.
+        if chat.unknown {
             return false;
         }
         match chat.kind {

@@ -60,6 +60,11 @@ pub struct Store {
     pub version: u64,
     /// The whole list has come.
     pub complete: bool,
+    /// The chats Telegram has given since the list was last whole (its
+    /// pages, and any a live update touched): the rest, once it is whole
+    /// again, are gone (left, deleted) and go from the list, whatever
+    /// the cache from before said of them.
+    pub live: std::collections::HashSet<ChatId>,
 }
 
 impl Store {
@@ -72,6 +77,17 @@ impl Store {
         }
         self.chats.insert(c.id, c);
         self.version += 1;
+    }
+
+    /// The whole list has come from Telegram: what it didn't give goes.
+    pub fn whole(&mut self) {
+        let live = std::mem::take(&mut self.live);
+        let before = self.chats.len();
+        self.chats.retain(|id, _| live.contains(id));
+        if self.chats.len() != before {
+            self.version += 1;
+        }
+        self.complete = true;
     }
 
     /// Sort the list: pinned (in their order), then the latest first.
@@ -172,7 +188,7 @@ impl Store {
     }
 
     pub fn total_unread(&self) -> u32 {
-        self.chats.values().filter(|c| !c.muted && !c.archived).map(|c| c.unread + u32::from(c.marked && c.unread == 0)).sum()
+        self.chats.values().filter(|c| !c.muted && !c.archived && !c.unknown).map(|c| c.unread + u32::from(c.marked && c.unread == 0)).sum()
     }
 
     /// Who is doing what in a chat now ("Mira is typing").
@@ -207,6 +223,23 @@ mod tests {
         s.put_chat(Chat { pin_order: 0, ..chat(4, 1, true) });
         s.sort();
         assert_eq!(s.order, [4, 3, 2, 1]);
+    }
+
+    /// A chat the cache had that Telegram no longer gives (left, or kept
+    /// under an id it no longer goes by, archived then) goes once the
+    /// list is whole; one a live update touched stays.
+    #[test]
+    fn whole_list_drops_what_telegram_no_longer_gives() {
+        let mut s = Store::default();
+        s.put_chat(Chat { archived: true, title: "A ghost".into(), ..chat(9, 50, false) });
+        s.put_chat(chat(1, 10, false));
+        s.live.insert(1);
+        s.put_chat(chat(2, 20, false));
+        s.live.insert(2);
+        s.whole();
+        s.sort();
+        assert_eq!(s.order, [2, 1]);
+        assert!(s.complete && s.live.is_empty());
     }
 
     #[test]

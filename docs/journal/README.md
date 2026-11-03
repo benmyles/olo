@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Telegram: chats chosen together
+
+*16:37* — ⌘-click, ⇧-click or Edit ▸ Select All Chats chooses several; their menu archives, unarchives, marks read, mutes or deletes them all (asking first).
+
+![Telegram: chats chosen together](2026-11-02/163702-telegram-chats-chosen-together.png)
+
+### Telegram: Unknown Senders
+
+*16:37* — People who aren't contacts and were never written to get a list of their own under the archive: no notification, no unread count, until written back to. Avatars are 40 pt, from 46.
+
+![Telegram: Unknown Senders](2026-11-02/163701-telegram-unknown-senders.png)
+
 ### File panel: the look floats
 
 *16:06* — Space in a file panel (here the portal's, as Slack asks) looks at the file in a floating window over the panel, never a tile.

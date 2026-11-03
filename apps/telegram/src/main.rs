@@ -100,6 +100,11 @@ pub struct Tg {
     /// The list's rows as last built, the one under the pointer, and the
     /// rows' top as last painted (window coordinates).
     list_rows: Vec<list::Row>,
+    /// Chats chosen together in the list (⌘-click, ⇧-click, Select All
+    /// Chats), for what's done to them all; and the one a ⇧-click runs
+    /// from.
+    chosen: Vec<ChatId>,
+    chosen_from: Option<ChatId>,
     list_hover: Option<usize>,
     list_top: Rc<Cell<f32>>,
     /// The divider being dragged: where it was pressed and the width then.
@@ -336,7 +341,8 @@ impl Tg {
 
     fn notify_new(&mut self, m: &Message) {
         let Some(chat) = self.store.chats.get(&m.chat) else { return };
-        if m.out || chat.muted || m.service.is_some() {
+        // (Unknown senders are almost always spam: they wait, unannounced.)
+        if m.out || chat.muted || chat.unknown || m.service.is_some() {
             return;
         }
         // Not while the person is looking at it.
@@ -369,12 +375,15 @@ impl Tg {
             Event::Me(m) => self.me = Some(m),
             Event::Chats { chats, done, cached } => {
                 for c in chats {
+                    if !cached {
+                        self.store.live.insert(c.id);
+                    }
                     self.store.put_chat(c);
                 }
-                self.store.sort();
                 if done && !cached {
-                    self.store.complete = true;
+                    self.store.whole();
                 }
+                self.store.sort();
                 // The chat open before a reload, once it's known.
                 if self.conv.is_none()
                     && let Some(chat) = self.restored.chat.take()
@@ -402,6 +411,8 @@ impl Tg {
                     }
                 }
                 let retitle = self.conv.as_ref().is_some_and(|cv| cv.chat == c.id).then(|| c.title.clone());
+                // (Live from Telegram: kept when the list is whole.)
+                self.store.live.insert(c.id);
                 self.store.put_chat(c);
                 self.store.sort();
                 if let Some(t) = retitle {
@@ -628,7 +639,7 @@ impl Tg {
                 let mine = m.out;
                 let everyone = mine && self.store.chats.get(&chat).is_some_and(|c| c.kind != ChatKind::Channel);
                 let text = if everyone { "Delete this message for everyone in the chat?" } else { "Delete this message for you?" };
-                self.ask("Delete Message", text, "Delete", Cmd::Delete { chat, ids: vec![id], everyone: mine }, cx);
+                self.ask("Delete Message", text, "Delete", vec![Cmd::Delete { chat, ids: vec![id], everyone: mine }], cx);
             }
             c2 if c2.starts_with("react:") => {
                 let e = c2.trim_start_matches("react:").to_owned();
@@ -639,6 +650,70 @@ impl Tg {
         }
         let _ = window;
         cx.notify();
+    }
+
+    /// The chats chosen together that are still there, in the list's
+    /// order.
+    fn chosen_chats(&self) -> Vec<Chat> {
+        self.store.order.iter().filter(|id| self.chosen.contains(id)).filter_map(|id| self.store.chats.get(id).cloned()).collect()
+    }
+
+    /// `cmd` (`chats:…`) done to every chat chosen together: archived or
+    /// not, read, muted or not, deleted (asked first).
+    fn chats_command(&mut self, cmd: &str, cx: &mut Context<Self>) {
+        let chats = self.chosen_chats();
+        if chats.is_empty() {
+            return;
+        }
+        let send = |tg: &mut Tg, f: &dyn Fn(&Chat) -> Option<Cmd>| {
+            for c in &chats {
+                if let Some(cmd) = f(c) {
+                    tg.backend.send(cmd);
+                }
+            }
+        };
+        match cmd {
+            "chats:archive" => send(self, &|c| (!c.archived).then_some(Cmd::Archive { chat: c.id, on: true })),
+            "chats:unarchive" => send(self, &|c| c.archived.then_some(Cmd::Archive { chat: c.id, on: false })),
+            "chats:read" => send(self, &|c| (c.unread > 0 || c.marked).then(|| Cmd::Read { chat: c.id, up_to: c.last.as_ref().map_or(0, |l| l.id) })),
+            "chats:mute" => send(self, &|c| (!c.muted).then_some(Cmd::Mute { chat: c.id, on: true })),
+            "chats:unmute" => send(self, &|c| c.muted.then_some(Cmd::Mute { chat: c.id, on: false })),
+            "chats:delete" => {
+                let n = chats.len();
+                let leaves = chats.iter().any(|c| matches!(c.kind, ChatKind::Group | ChatKind::Forum | ChatKind::Channel));
+                let message = format!(
+                    "Delete {n} chats? Their messages go from this account{}. This can’t be undone.",
+                    if leaves { ", and you leave the groups and channels among them" } else { "" }
+                );
+                let cmds = chats.iter().map(|c| Cmd::DeleteChat { chat: c.id }).collect();
+                self.ask("Delete Chats", message, "Delete", cmds, cx);
+                return;
+            }
+            _ => return,
+        }
+        self.chosen.clear();
+        cx.notify();
+    }
+
+    /// The menu for the chats chosen together (the list's, the Chat
+    /// menu's).
+    fn chats_menu(&self, mut menu: Menu) -> Menu {
+        let chats = self.chosen_chats();
+        let n = chats.len();
+        if chats.iter().any(|c| !c.archived) {
+            menu = menu.item(format!("Archive {n} Chats"), "chats:archive");
+        }
+        if chats.iter().any(|c| c.archived) {
+            menu = menu.item(format!("Unarchive {n} Chats"), "chats:unarchive");
+        }
+        menu = menu.item("Mark as Read", "chats:read").enabled(chats.iter().any(|c| c.unread > 0 || c.marked));
+        if chats.iter().any(|c| !c.muted) {
+            menu = menu.item("Mute", "chats:mute");
+        }
+        if chats.iter().any(|c| c.muted) {
+            menu = menu.item("Unmute", "chats:unmute");
+        }
+        menu.separator().item(format!("Delete {n} Chats…"), "chats:delete")
     }
 
     fn chat_command(&mut self, chat: ChatId, cmd: &str, cx: &mut Context<Self>) {
@@ -661,21 +736,22 @@ impl Tg {
     }
 
     /// An alert asking before `cmd` goes (deleting, signing out).
-    fn ask(&mut self, title: &'static str, message: &'static str, yes: &'static str, cmd: Cmd, cx: &mut Context<Self>) {
+    fn ask(&mut self, title: &'static str, message: impl Into<String>, yes: &'static str, cmds: Vec<Cmd>, cx: &mut Context<Self>) {
+        let message: String = message.into();
         if let Some(w) = self.alert.take() {
             cx.close_window(w);
         }
         let me = cx.entity();
         cx.defer(move |cx| {
             let to = me.clone();
-            let cmd = std::cell::RefCell::new(Some(cmd));
-            let w = open_alert(cx, title, "warning", message, &["Cancel", yes], move |choice, cx| {
+            let cmds = std::cell::RefCell::new(cmds);
+            let w = open_alert(cx, title, "warning", &message, &["Cancel", yes], move |choice, cx| {
                 to.update(cx, |tg, _| {
                     tg.alert = None;
-                    if choice == Some(1)
-                        && let Some(cmd) = cmd.borrow_mut().take()
-                    {
-                        tg.backend.send(cmd);
+                    if choice == Some(1) {
+                        for cmd in cmds.borrow_mut().drain(..) {
+                            tg.backend.send(cmd);
+                        }
                     }
                 })
             });
@@ -895,9 +971,11 @@ impl Tg {
         let ready = matches!(self.status, Status::Online | Status::Updating | Status::Connecting | Status::Offline(_) | Status::Waiting(_));
         let chat = self.conv.as_ref().and_then(|c| self.store.chats.get(&c.chat));
         let file = Menu::new("File").item("Contacts", "contacts").key("k").enabled(ready).separator().item("Close", "close").key("w").item("Quit", "quit").key("q");
-        let edit = Menu::new("Edit").item("Find Chat", "find").key("f").enabled(ready);
+        let edit = Menu::new("Edit").item("Find Chat", "find").key("f").enabled(ready).item("Select All Chats", "select-all-chats").enabled(ready).item("Deselect All Chats", "deselect-chats").enabled(!self.chosen.is_empty());
         let mut chat_menu = Menu::new("Chat").item("Attach Files…", "attach").key("o").enabled(chat.is_some()).item("Chat Info", "info").key("i").enabled(chat.is_some()).separator();
-        if let Some(c) = chat {
+        if self.chosen.len() > 1 {
+            chat_menu = self.chats_menu(chat_menu);
+        } else if let Some(c) = chat {
             chat_menu = chat_menu
                 .item(if c.pinned { "Unpin" } else { "Pin" }, "chat:pin")
                 .item(if c.muted { "Unmute" } else { "Mute" }, "chat:mute")
@@ -908,7 +986,7 @@ impl Tg {
         for (i, f) in self.store.folders.iter().enumerate().take(8) {
             view = view.item(f.title.clone(), format!("folder:{}", i + 1)).key(&(i + 1).to_string()).checked(self.view.folder == Some(f.id));
         }
-        view = view.item("Archived Chats", "archive").key("9").checked(self.view.archive).separator().item("Previous Chat", "prev").key("up").item("Next Chat", "next").key("down");
+        view = view.item("Archived Chats", "archive").key("9").checked(self.view.archive).item("Unknown Senders", "unknown").checked(self.view.unknown).separator().item("Previous Chat", "prev").key("up").item("Next Chat", "next").key("down");
         let account = Menu::new("Account")
             .item(self.me.as_ref().map_or_else(|| "Not Signed In".into(), |m| m.name.clone()), "me")
             .enabled(false)
@@ -930,6 +1008,12 @@ impl Tg {
                     self.open_info(chat, cx);
                 }
             }
+            c if c.starts_with("chats:") => self.chats_command(c, cx),
+            "select-all-chats" => {
+                self.chosen = list::shown(&self.store, &self.view);
+                self.chosen_from = self.chosen.first().copied();
+            }
+            "deselect-chats" => self.chosen.clear(),
             c if c.starts_with("chat:") => {
                 if let Some(chat) = self.conv.as_ref().map(|c| c.chat) {
                     self.chat_command(chat, c, cx);
@@ -938,9 +1022,16 @@ impl Tg {
             "folder:all" => {
                 self.view.folder = None;
                 self.view.archive = false;
+                self.view.unknown = false;
             }
             "archive" => {
                 self.view.archive = true;
+                self.view.unknown = false;
+                self.view.folder = None;
+            }
+            "unknown" => {
+                self.view.unknown = true;
+                self.view.archive = false;
                 self.view.folder = None;
             }
             c if c.starts_with("folder:") => {
@@ -948,6 +1039,7 @@ impl Tg {
                 let n: usize = c.trim_start_matches("folder:").parse().unwrap_or(0);
                 self.view.folder = n.checked_sub(1).and_then(|i| self.store.folders.get(i)).map(|f| f.id);
                 self.view.archive = false;
+                self.view.unknown = false;
             }
             "prev" | "next" => {
                 let ids = list::shown(&self.store, &self.view);
@@ -964,7 +1056,7 @@ impl Tg {
             "integrations" => {
                 let _ = olo_xdg::spawn_detached("olo-preferences integrations");
             }
-            "signout" => self.ask("Sign Out", "Sign out of Telegram on this computer? Your chats stay on Telegram.", "Sign Out", Cmd::SignOut, cx),
+            "signout" => self.ask("Sign Out", "Sign out of Telegram on this computer? Your chats stay on Telegram.", "Sign Out", vec![Cmd::SignOut], cx),
             _ => {}
         }
         cx.notify();
@@ -1569,6 +1661,8 @@ fn main() {
                 hot: None,
                 list_scroll: ScrollHandle::new(),
                 list_rows: Vec::new(),
+                chosen: Vec::new(),
+                chosen_from: None,
                 list_hover: None,
                 list_top: Rc::default(),
                 grip: None,

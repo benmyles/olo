@@ -7664,11 +7664,25 @@ A Telegram client of Olo's own: MTProto in process through grammers
   are drawn and decodes them on two workers into GPUI images (BGRA).
   `list` is the chat list (the search field, asking Telegram after a
   pause in typing; folders as chips with the rest under More, pinned
-  chats, the archive's row, unread and mention counts, typing in place
-  of the preview; while searching, matching chats then Telegram's
-  people, chats and messages): its rows are painted in one canvas,
-  only those near the view, and found under the pointer by arithmetic
-  (60 pt each). `conv` is the conversation: its header, a forum's
+  chats, the archive's row and Unknown Senders', unread and mention
+  counts, typing in place of the preview; while searching, matching
+  chats then Telegram's people, chats and messages): its rows are
+  painted in one canvas, only those near the view, and found under the
+  pointer by arithmetic (60 pt each, the picture 40 across). The list
+  comes as the main list (folder 0) then the archive (folder 1), each
+  chat's place as Telegram has it; once it's whole, chats it no longer
+  gave go (`Store::whole`: left, deleted, cached from before).
+  **Unknown Senders** (`Chat::unknown`, `model::stranger`): a person who
+  isn't a contact (nor verified, nor Telegram's service notifications)
+  and whom we've never written to (nothing of ours read there, the
+  latest not ours) is in a list of their own, behind its row: no
+  notification, no unread count, in no folder, until we write back.
+  **Chosen together**: ⌘-click chooses chats one by one (with the one
+  open), ⇧-click a run of them, Edit ▸ Select All Chats every one the
+  list shows; the Chat menu and a chosen row's menu then act on them
+  all (Archive, Unarchive, Mark as Read, Mute, Unmute, Delete…, which
+  asks, saying how many; `Cmd::DeleteChat` deletes a person's history
+  and leaves a group or channel, as Telegram's apps do). `conv` is the conversation: its header, a forum's
   topics as chips, the messages laid out once per message and width
   (`bubble::Laid`, kept by a digest of what the layout depends on) and
   painted in one canvas inside a `ScrollView`, only those within a
@@ -7711,7 +7725,8 @@ A Telegram client of Olo's own: MTProto in process through grammers
   answered from the banner (`Note::reply`, `NoteEvent::Replied`); the
   unread count is Deskbar's badge (`Notifier::badge`); folders, chats
   and messages are commands with keys (`app_keys::TELEGRAM`: ⌘1–8 for
-  folders, ⌘9 the archive, ⌘↑/⌘↓ the previous and next chat), and
+  folders, ⌘9 the archive, View ▸ Unknown Senders, ⌘↑/⌘↓ the previous
+  and next chat), and
   every row, bubble and button in view is in the agents' tree (a
   scrolled list's rows painted beyond its edges aren't).
 * **Not yet**: recording voice notes (no Opus encoder in Rust yet), and

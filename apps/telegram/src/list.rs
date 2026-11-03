@@ -21,7 +21,7 @@ use olo_ui::{
 use crate::{Tg, bubble, store::Store, when};
 
 pub const ROW: f32 = 60.0;
-const PICTURE: f32 = 46.0;
+const PICTURE: f32 = 40.0;
 pub const WIDTH: f32 = 300.0;
 pub const MIN_WIDTH: f32 = 220.0;
 /// The folders' row.
@@ -33,6 +33,8 @@ pub struct View {
     /// A folder (its id), or all chats.
     pub folder: Option<i32>,
     pub archive: bool,
+    /// Unknown senders' chats (`Chat::unknown`).
+    pub unknown: bool,
     pub query: String,
 }
 
@@ -64,7 +66,10 @@ pub fn shown(store: &Store, view: &View) -> Vec<ChatId> {
             }
             match folder {
                 Some(f) => f.admits(c),
-                None => c.archived == view.archive,
+                // The archive has its own, unknown or not; unknown
+                // senders theirs; all chats the rest.
+                None if view.archive => c.archived,
+                None => !c.archived && c.unknown == view.unknown,
             }
         })
         .copied()
@@ -79,7 +84,9 @@ pub fn shown(store: &Store, view: &View) -> Vec<ChatId> {
 /// The text a row's name and preview say, for agents.
 fn describe(c: &Chat) -> String {
     let mut s = c.title.clone();
-    if c.unread > 0 {
+    if c.unknown {
+        s.push_str(", unknown sender");
+    } else if c.unread > 0 {
         s.push_str(&format!(", {} unread", c.unread));
     }
     if c.mentions > 0 {
@@ -99,6 +106,7 @@ fn describe(c: &Chat) -> String {
 #[derive(Clone, Copy, PartialEq)]
 pub enum Row {
     Archive,
+    Unknown,
     Chat(ChatId),
     /// A chat Telegram's search found (its index there).
     Found(usize),
@@ -112,9 +120,13 @@ pub fn rows(store: &Store, view: &View, found: &Found) -> Vec<Row> {
     let searching = !view.query.trim().is_empty();
     let ids = shown(store, view);
     let mut rows = Vec::with_capacity(ids.len() + 4);
-    // The archive's row, at the top of all chats.
-    if !searching && !view.archive && view.folder.is_none() && store.chats.values().any(|c| c.archived) {
+    // The archive's row and unknown senders', at the top of all chats.
+    let top = !searching && !view.archive && !view.unknown && view.folder.is_none();
+    if top && store.chats.values().any(|c| c.archived) {
         rows.push(Row::Archive);
+    }
+    if top && store.chats.values().any(|c| c.unknown && !c.archived) {
+        rows.push(Row::Unknown);
     }
     rows.extend(ids.iter().map(|&id| Row::Chat(id)));
     if searching {
@@ -129,7 +141,10 @@ pub fn rows(store: &Store, view: &View, found: &Found) -> Vec<Row> {
 /// What a row paints, gathered for the rows near the view.
 enum Draw {
     Heading(&'static str),
-    Archive { names: String, unread: u32 },
+    /// The archive's row or unknown senders': its title, icon, a few of
+    /// its chats' names and the unread among them (unknown senders: none
+    /// counted).
+    Pile { title: &'static str, icon: &'static str, names: String, unread: u32 },
     Chat { c: Box<Chat>, pic: Option<Arc<RenderImage>>, selected: bool, typing: Option<String> },
     Msg { title: String, chat: ChatId, saved: bool, pic: Option<Arc<RenderImage>>, summary: String, date: i64 },
 }
@@ -157,15 +172,17 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
 
     // Folders, as chips (with the archive's back row when in it).
     let searching = !tg.view.query.trim().is_empty();
-    if !searching && (tg.view.archive || !tg.store.folders.is_empty()) {
+    if !searching && (tg.view.archive || tg.view.unknown || !tg.store.folders.is_empty()) {
         let row = r(x0, top, w, FOLDERS);
-        if tg.view.archive {
+        if tg.view.archive || tg.view.unknown {
+            let title = if tg.view.archive { "Archived Chats" } else { "Unknown Senders" };
             let t = me.clone();
             hits.push(
                 crate::hit(&me, "archive-back", row)
                     .on_click(move |_, _, cx| {
                         t.update(cx, |tg, cx| {
                             tg.view.archive = false;
+                            tg.view.unknown = false;
                             cx.notify();
                         })
                     })
@@ -175,13 +192,13 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
                 let p = theme::palette(cx);
                 let ink = c(p.panel_text);
                 back_arrow(window, point(row.origin.x + px(m::SPACING + 4.0), row.center().y), ink);
-                style::label(window, cx, row.origin.x + px(m::SPACING + 16.0), row.center().y, Align::Left, "Archived Chats", style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), ink);
+                style::label(window, cx, row.origin.x + px(m::SPACING + 16.0), row.center().y, Align::Left, title, style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), ink);
                 olo_ui::agent::record(window, cx, olo_ui::agent::Node::button("Back to Chats", row));
             }));
         } else {
             let chips: Vec<(Option<i32>, String, u32)> = std::iter::once((None, "All Chats".to_owned(), 0))
                 .chain(tg.store.folders.iter().map(|f| {
-                    let unread = tg.store.chats.values().filter(|c| f.admits(c) && !c.muted).filter(|c| c.unread > 0 || c.marked).count() as u32;
+                    let unread = tg.store.chats.values().filter(|c| f.admits(c) && !c.muted && !c.unknown).filter(|c| c.unread > 0 || c.marked).count() as u32;
                     (Some(f.id), f.title.clone(), unread)
                 }))
                 .collect();
@@ -314,14 +331,22 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
     for (i, row) in rows.iter().enumerate().take(last).skip(first) {
         let d = match *row {
             Row::Heading(t) => Draw::Heading(t),
-            Row::Archive => {
-                let archived: Vec<&Chat> = tg.store.order.iter().filter_map(|id| tg.store.chats.get(id)).filter(|c| c.archived).collect();
-                Draw::Archive { names: archived.iter().take(4).map(|c| c.title.as_str()).collect::<Vec<_>>().join(", "), unread: archived.iter().map(|c| c.unread).sum() }
+            Row::Archive | Row::Unknown => {
+                let archive = *row == Row::Archive;
+                let pile: Vec<&Chat> = tg.store.order.iter().filter_map(|id| tg.store.chats.get(id)).filter(|c| if archive { c.archived } else { c.unknown && !c.archived }).collect();
+                let names = pile.iter().take(4).map(|c| c.title.as_str()).collect::<Vec<_>>().join(", ");
+                if archive {
+                    Draw::Pile { title: "Archived Chats", icon: "archive", names, unread: pile.iter().map(|c| c.unread).sum() }
+                } else {
+                    Draw::Pile { title: "Unknown Senders", icon: "mail", names, unread: 0 }
+                }
             }
             Row::Chat(id) => {
                 let Some(ch) = tg.store.chats.get(&id) else { continue };
                 let pic = if ch.photo.is_some() && ch.kind != ChatKind::Saved { tg.pics.get(&Pic::Avatar(id), &tg.backend) } else { None };
-                Draw::Chat { c: Box::new(ch.clone()), pic, selected: selected_chat == Some(id), typing: tg.store.doing(id, None, now) }
+                // Those chosen together, else the one open.
+                let selected = if tg.chosen.is_empty() { selected_chat == Some(id) } else { tg.chosen.contains(&id) };
+                Draw::Chat { c: Box::new(ch.clone()), pic, selected, typing: tg.store.doing(id, None, now) }
             }
             Row::Found(k) => {
                 let ch = &tg.found.chats[k];
@@ -398,7 +423,49 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
                         cx.notify();
                         None
                     }
-                    Row::Chat(id) => Some(Act::Open(id)),
+                    Row::Unknown => {
+                        tg.view.unknown = true;
+                        cx.notify();
+                        None
+                    }
+                    Row::Chat(id) => {
+                        let mods = mc.down.modifiers;
+                        if mods.control || mods.platform {
+                            // ⌘: this one chosen too, or not (with the
+                            // chat open, when it's the first).
+                            match tg.chosen.iter().position(|c| *c == id) {
+                                Some(i) => {
+                                    tg.chosen.remove(i);
+                                }
+                                None => {
+                                    if tg.chosen.is_empty()
+                                        && let Some(open) = tg.conv.as_ref().map(|c| c.chat).filter(|o| *o != id)
+                                    {
+                                        tg.chosen.push(open);
+                                    }
+                                    tg.chosen.push(id);
+                                }
+                            }
+                            tg.chosen_from = Some(id);
+                            cx.notify();
+                            None
+                        } else if mods.shift {
+                            // ⇧: every chat from the last chosen (or the
+                            // one open) to this one.
+                            let ids: Vec<ChatId> = tg.list_rows.iter().filter_map(|r| if let Row::Chat(c) = r { Some(*c) } else { None }).collect();
+                            let from = tg.chosen_from.or(tg.conv.as_ref().map(|c| c.chat)).and_then(|f| ids.iter().position(|x| *x == f));
+                            if let Some(to) = ids.iter().position(|x| *x == id) {
+                                let from = from.unwrap_or(to);
+                                tg.chosen = ids[from.min(to)..=from.max(to)].to_vec();
+                            }
+                            cx.notify();
+                            None
+                        } else {
+                            tg.chosen.clear();
+                            tg.chosen_from = Some(id);
+                            Some(Act::Open(id))
+                        }
+                    }
                     Row::Found(k) => tg.found.chats.get(k).map(|c| Act::Open(c.id)),
                     Row::Msg(k) => tg.found.msgs.get(k).map(|m| Act::OpenAt(m.chat, m.id)),
                     Row::Heading(_) => None,
@@ -411,6 +478,11 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
         .on_mouse_down(MouseButton::Right, move |e: &MouseDownEvent, window, cx| {
             let menu = t_menu.update(cx, |tg, _| {
                 let Row::Chat(id) = tg.list_row_at(e.position).and_then(|i| tg.list_rows.get(i).copied())? else { return None };
+                // On one of several chosen: what's done to them all.
+                if tg.chosen.len() > 1 && tg.chosen.contains(&id) {
+                    return Some((id, tg.chats_menu(Menu::new(""))));
+                }
+                tg.chosen.clear();
                 let c = tg.store.chats.get(&id)?;
                 Some((
                     id,
@@ -424,7 +496,15 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
             });
             if let Some((id, menu)) = menu {
                 let to = t_menu.clone();
-                olo_ui::menu::context_menu(window, cx, menu, e.position, move |cmd, window, cx| to.update(cx, |tg, cx| tg.list_act(Act::Command(id, cmd.to_owned()), window, cx)));
+                olo_ui::menu::context_menu(window, cx, menu, e.position, move |cmd, window, cx| {
+                    to.update(cx, |tg, cx| {
+                        if cmd.starts_with("chats:") {
+                            tg.chats_command(cmd, cx);
+                        } else {
+                            tg.list_act(Act::Command(id, cmd.to_owned()), window, cx);
+                        }
+                    })
+                });
             }
         });
     let list_bg = p.list_background;
@@ -436,7 +516,7 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
         .h(body.size.height)
         .child(ScrollView::new("chat-list", &tg.list_scroll).border(false).background(list_bg).auto_hide(true).child(content));
     if total == 0 && !searching && tg.store.complete {
-        let msg = if tg.view.archive { "No archived chats." } else if tg.view.folder.is_some() { "No chats in this folder." } else { "No chats yet." };
+        let msg = if tg.view.archive { "No archived chats." } else if tg.view.unknown { "No unknown senders." } else if tg.view.folder.is_some() { "No chats in this folder." } else { "No chats yet." };
         hits.push(
             canvas(
                 |_, _, _| {},
@@ -501,14 +581,14 @@ fn paint_row(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, d: Draw, p: &
                 crate::seen(window, cx, olo_ui::agent::Node::label(t, r));
             }
         }
-        Draw::Archive { names, unread } => {
+        Draw::Pile { title, icon: icon_name, names, unread } => {
             if hovered {
                 style::fill_rect(window, r, ink.opacity(0.05));
             }
             window.paint_sector(pic.center(), px(0.0), px(PICTURE / 2.0), 0.0, std::f32::consts::TAU, c(theme_palette::mix(p.list_background, p.list_item_text, 0.35)));
             let icon = Bounds { origin: point(pic.center().x - px(13.0), pic.center().y - px(13.0)), size: size(px(26.0), px(26.0)) };
-            olo_ui::icons::paint(window, icon, "archive");
-            style::label_on_baseline(window, cx, x, base1, Align::Left, "Archived Chats", title_size, bold.clone(), ink);
+            olo_ui::icons::paint(window, icon, icon_name);
+            style::label_on_baseline(window, cx, x, base1, Align::Left, title, title_size, bold.clone(), ink);
             let mut room = r.right() - px(12.0) - x;
             if unread > 0 {
                 let t = unread.to_string();
@@ -517,7 +597,7 @@ fn paint_row(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, d: Draw, p: &
                 room -= px(w + 6.0);
             }
             label_fit_on(window, cx, x, base2, one_line(&names), small, normal, dim, room);
-            crate::seen(window, cx, olo_ui::agent::Node::button("Archived Chats", r));
+            crate::seen(window, cx, olo_ui::agent::Node::button(title, r));
         }
         Draw::Msg { title, chat, saved, pic: img, summary, date } => {
             if hovered {
@@ -627,7 +707,8 @@ fn chat_row(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, ch: &Chat, img
     // The preview, and the counts at its right.
     let mut pxr = right;
     let pill_size = 10.0;
-    let count = if ch.unread > 0 { Some(ch.unread.to_string()) } else if ch.marked { Some(String::new()) } else { None };
+    // (Unknown senders' aren't counted unread: they wait, unannounced.)
+    let count = if ch.unknown { None } else if ch.unread > 0 { Some(ch.unread.to_string()) } else if ch.marked { Some(String::new()) } else { None };
     if let Some(n) = &count {
         let fill = if ch.muted { c(theme_palette::mix(p.list_item_text, p.list_background, 0.55)) } else { accent };
         let fill = if selected { white() } else { fill };
@@ -681,9 +762,10 @@ fn chat_row(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, ch: &Chat, img
     crate::seen(window, cx, olo_ui::agent::Node { role: "ListItem", name: Some(describe(ch).into()), bounds: r, enabled: true, clickable: true, selected: Some(selected), ..Default::default() });
 }
 
-/// Saved Messages' bookmark, on a picture `d` across.
+/// Saved Messages' bookmark, on a picture `d` across (drawn for one 46
+/// across).
 pub fn bookmark(window: &mut Window, cc: Point<Pixels>, d: f32, ink: Hsla) {
-    let k = d / PICTURE;
+    let k = d / 46.0;
     let at = |dx: f32, dy: f32| point(cc.x + px(dx * k), cc.y + px(dy * k));
     let mut path = PathBuilder::fill();
     path.move_to(at(-7.0, -10.0));

@@ -59,33 +59,6 @@ of Finished; a new one goes where its priority puts it.
   keyboard, the panel's selection, its `on_done` or the portal's
   reply) and fix it; test both through the portal, as Slack asks.
 
-- **Telegram: archived right, unknown senders apart, bulk actions,
-  smaller avatars** (Ben, 2026-11-02): "in telegram app, make the
-  avatars a bit smaller they look oversized now, and also add bulk
-  select and bulk actions to the list of people so that i can e.g.
-  bulk archive, bulk unarchive, delete etc etc and so on. also make it
-  so that any messages from anyone i've never sent a message to go
-  into unknown senders and don't send a notification for them
-  (they're almost always spam) and also don't treat them as
-  unseen/unread. and also with archived for some reason some of my
-  most active chats are saying they're archived, like with "Justin
-  Martinez" and "The Real Bots Team" so i think there's something off
-  with how you're deciding what is and isn't archived." So: (1) **the
-  bug first**: find how a chat is decided archived (the chat list's
-  folder id, `chatListArchive` against the main list, what an update
-  moving a chat says) and why active chats show as archived; check it
-  against what Telegram's own apps show for the same account; (2) an
-  **Unknown Senders** list: a private chat with someone Ben has never
-  written to (no outgoing message in it) goes there, notifies nothing
-  and counts as neither unread nor unseen (Deskbar's badge, the Dock's,
-  the list's), until Ben writes back, which makes it a chat like any
-  other; (3) **bulk select** in the chat list (⌘-click, ⇧-click, ⌘A,
-  a band) with the actions on all chosen: Archive, Unarchive, Mark as
-  Read, Mute, Delete (asking first, saying how many), in the list's
-  context menu and the menu bar, agent-readable; (4) **avatars a bit
-  smaller** in the chat list, measured against the row's text at 1×,
-  1.5× and 2×. Test with the demo account only.
-
 - **Olo Suggestions** (Ben, 2026-11-02): "similar to olo doctor, add an
   "Olo Suggestions" app and in there it should have things that Olo
   suggests doing to have the best experience in Olo. they're things
@@ -968,6 +941,42 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**Telegram: archived right, unknown senders apart, bulk actions,
+  smaller avatars**~~ (done 2026-11-02, as far as the demo shows: the
+  list now comes as the main list then the archive, each authoritative,
+  and chats the live list no longer gives (cached from before, left,
+  deleted) go once it's whole: two such, archived, named like active
+  chats, would look just like this; Unknown Senders; ⌘-click, ⇧-click
+  and Select All Chats with Archive, Unarchive, Mark as Read, Mute,
+  Unmute and Delete on them all; avatars 40 pt from 46. *Ben to check*:
+  whether Justin Martinez and The Real Bots Team still show archived
+  after the upgrade; if so, Chat Info on one says which chat it is)
+  (Ben, 2026-11-02): "in telegram app, make the
+  avatars a bit smaller they look oversized now, and also add bulk
+  select and bulk actions to the list of people so that i can e.g.
+  bulk archive, bulk unarchive, delete etc etc and so on. also make it
+  so that any messages from anyone i've never sent a message to go
+  into unknown senders and don't send a notification for them
+  (they're almost always spam) and also don't treat them as
+  unseen/unread. and also with archived for some reason some of my
+  most active chats are saying they're archived, like with "Justin
+  Martinez" and "The Real Bots Team" so i think there's something off
+  with how you're deciding what is and isn't archived." So: (1) **the
+  bug first**: find how a chat is decided archived (the chat list's
+  folder id, `chatListArchive` against the main list, what an update
+  moving a chat says) and why active chats show as archived; check it
+  against what Telegram's own apps show for the same account; (2) an
+  **Unknown Senders** list: a private chat with someone Ben has never
+  written to (no outgoing message in it) goes there, notifies nothing
+  and counts as neither unread nor unseen (Deskbar's badge, the Dock's,
+  the list's), until Ben writes back, which makes it a chat like any
+  other; (3) **bulk select** in the chat list (⌘-click, ⇧-click, ⌘A,
+  a band) with the actions on all chosen: Archive, Unarchive, Mark as
+  Read, Mute, Delete (asking first, saying how many), in the list's
+  context menu and the menu bar, agent-readable; (4) **avatars a bit
+  smaller** in the chat list, measured against the row's text at 1×,
+  1.5× and 2×. Test with the demo account only.
 
 - ~~**The file picker opens where it was last, for each app**~~ (done
   2026-11-02: `places::last_for` / `left_in`, the portal's panel by the

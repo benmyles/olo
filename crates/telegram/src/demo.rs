@@ -30,6 +30,9 @@ const RELEASES: ChatId = -1_000_000_000_601;
 const RUST: ChatId = -1_000_000_000_602;
 const OLDPROJ: ChatId = -503;
 const NEWS: ChatId = -1_000_000_000_604;
+/// Two people who wrote first, never written back to: unknown senders.
+const STRANGER: ChatId = 1_500_001;
+const STRANGER2: ChatId = 1_500_002;
 /// Generated chats start here.
 const MANY: ChatId = 2_000_000;
 
@@ -287,6 +290,14 @@ impl Demo {
         m.views = Some(3_210);
         d.add(Chat { archived: true, unread: 3, muted: true, ..chat(NEWS, ChatKind::Channel, "City Newsletter") }, s.msgs);
 
+        // Unknown senders: not contacts, never written to.
+        let mut s = Script::new(STRANGER, t);
+        s.say(30, Some(person(STRANGER, "Crypto Deals Daily")), "🚀 Exclusive offer! Double your coins in 24 hours, DM now");
+        d.add(Chat { contact: false, unknown: true, unread: 1, ..chat(STRANGER, ChatKind::User, "Crypto Deals Daily") }, s.msgs);
+        let mut s = Script::new(STRANGER2, t);
+        s.say(60 * 6, Some(person(STRANGER2, "Alex Recruiter")), "Hi! Saw your profile, are you open to new roles?");
+        d.add(Chat { contact: false, unknown: true, unread: 1, ..chat(STRANGER2, ChatKind::User, "Alex Recruiter") }, s.msgs);
+
         // Many more, for scrolling.
         let extra: usize = std::env::var("OLO_TELEGRAM_DEMO").ok().and_then(|v| v.parse().ok()).unwrap_or(24);
         const FIRST: [&str; 12] = ["Ada", "Ben", "Cleo", "Dev", "Emma", "Finn", "Gia", "Hugo", "Iris", "Jonas", "Kai", "Lena"];
@@ -538,6 +549,8 @@ fn handle(demo: &Arc<Mutex<Demo>>, cmd: Cmd) {
             d.refresh_last(out.chat);
             if let Some(c) = d.chats.get_mut(&out.chat) {
                 c.draft = None;
+                // Written back: known now.
+                c.unknown = false;
             }
             let (local, chat) = (out.local, out.chat);
             let dm = demo.clone();
@@ -677,6 +690,11 @@ fn handle(demo: &Arc<Mutex<Demo>>, cmd: Cmd) {
                 c.muted = on;
             }
             d.chat_changed(chat);
+        }
+        Cmd::DeleteChat { chat } => {
+            d.chats.remove(&chat);
+            d.msgs.remove(&chat);
+            d.emit(Event::ChatGone(chat));
         }
         Cmd::PinMessage { chat, id, on } => {
             if let Some(m) = d.find(chat, id) {

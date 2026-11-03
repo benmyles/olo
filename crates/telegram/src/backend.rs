@@ -33,6 +33,9 @@ pub enum Cmd {
     Draft { chat: ChatId, text: String },
     PinChat { chat: ChatId, on: bool },
     Archive { chat: ChatId, on: bool },
+    /// The chat goes from the list, as Telegram's own apps delete one: a
+    /// person's history deleted (for us), a group or channel left.
+    DeleteChat { chat: ChatId },
     Mute { chat: ChatId, on: bool },
     PinMessage { chat: ChatId, id: MsgId, on: bool },
     /// A picture: a chat's or person's (`Pic::Avatar`), or a message's

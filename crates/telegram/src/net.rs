@@ -516,6 +516,9 @@ impl Ctx {
             muted,
             verified: w.verified,
             contact: w.contact,
+            // We've written if they've read something of ours, or the
+            // latest is ours.
+            unknown: crate::model::stranger(id, kind, w.contact, w.verified, d.read_outbox_max_id > 0 || last.is_some_and(|m| m.out)),
             last: last.map(Preview::of),
             draft: draft.map(|d| d.0),
             order,
@@ -758,9 +761,14 @@ impl Ctx {
             Some(c) => c,
             None => {
                 let w = self.who.lock().unwrap().get(&m.chat).cloned().unwrap_or_default();
-                Chat { id: m.chat, kind: w.kind, title: w.name, username: w.username, photo: w.photo, contact: w.contact, verified: w.verified, members: w.members, seen: w.seen, ..Chat::default() }
+                let unknown = crate::model::stranger(m.chat, w.kind, w.contact, w.verified, m.out);
+                Chat { id: m.chat, kind: w.kind, title: w.name, username: w.username, photo: w.photo, contact: w.contact, verified: w.verified, unknown, members: w.members, seen: w.seen, ..Chat::default() }
             }
         };
+        // Writing back makes them known.
+        if new && m.out {
+            c.unknown = false;
+        }
         if c.last.as_ref().is_none_or(|l| l.id <= m.id) {
             c.last = Some(Preview::of(m));
             c.order = c.order.max(m.date);
@@ -929,7 +937,10 @@ impl Ctx {
             self.emit(Event::Folders(f));
         }
         let mut all = Vec::new();
-        for folder in [None, Some(1)] {
+        // The main list (folder 0), then the archive (1): each chat's
+        // place as Telegram has it. (No folder asks for every chat at
+        // once, archived ones in among the rest.)
+        for folder in [Some(0), Some(1)] {
             let mut offset = (0, 0, tl::enums::InputPeer::Empty);
             loop {
                 let (page, next) = self.dialogs(folder, offset).await.map_err(|e| explain(&e))?;
@@ -1274,6 +1285,12 @@ impl Ctx {
                     c.pinned = false;
                     self.put_chat(c);
                 }
+            }
+            Cmd::DeleteChat { chat } => {
+                let peer = self.peer(chat).await?;
+                self.client.delete_dialog(peer).await.map_err(|e| explain(&e))?;
+                self.chats.lock().unwrap().remove(&chat);
+                self.emit(Event::ChatGone(chat));
             }
             Cmd::Mute { chat, on } => {
                 let peer = self.peer(chat).await?;
