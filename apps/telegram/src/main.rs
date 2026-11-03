@@ -23,6 +23,7 @@ use std::{
 use olo_tg::{Backend, Chat, ChatId, ChatKind, Cmd, Contact, Doing, Event, Me, Media, Message, MsgId, Outgoing, Pending, Pic, Status};
 use olo_ui::{
     Frame, Menu, MenuBar, WindowOptions,
+    due::{Due, Notice},
     file_panel::{self, FilePanel, PanelResult},
     gpui::{
         AnyElement, AnyView, App, AppContext as _, Bounds, ClipboardItem, Context, CursorStyle, Div, Entity, EntityId, ExternalPaths, FocusHandle, FontWeight, Hitbox, HitboxBehavior,
@@ -86,7 +87,7 @@ pub struct Tg {
     drafts: HashMap<ChatId, String>,
     /// The messages of chats left lately, laid out: going back is instant.
     kept: Vec<(ChatId, conv::Layouts)>,
-    banner: Option<(String, Instant)>,
+    banner: Notice,
     /// The search last sent to Telegram, and the pause before the next.
     searched: String,
     searching: Option<Task<()>>,
@@ -112,7 +113,7 @@ pub struct Tg {
     grip: Option<(f32, f32)>,
     /// A redraw due (a flash going out, typing gone quiet, a voice
     /// message's progress).
-    wake: Option<(Instant, Task<()>)>,
+    wake: Due,
     title: String,
     /// The window's panes, each a view of its own, and where they are.
     panes: Vec<(Kind, Entity<Pane>)>,
@@ -254,18 +255,9 @@ impl Tg {
     }
 
     fn wake_in(&mut self, d: Duration, cx: &mut Context<Self>) {
-        let at = Instant::now() + d;
-        if self.wake.as_ref().is_some_and(|(w, _)| *w <= at) {
-            return;
-        }
-        let task = cx.spawn(async move |tg, cx| {
-            cx.background_executor().timer(d).await;
-            let _ = tg.update(cx, |tg, cx| {
-                tg.wake = None;
-                cx.notify();
-            });
-        });
-        self.wake = Some((at, task));
+        let mut wake = std::mem::take(&mut self.wake);
+        wake.by(Instant::now() + d, cx);
+        self.wake = wake;
     }
 
     /// The window's title, when it changes.
@@ -471,7 +463,7 @@ impl Tg {
             Event::Sent { local, msg } => self.store.sent(local, Some(msg)),
             Event::SendFailed { local, why, .. } => {
                 self.store.sent(local, None);
-                self.banner = Some((why, Instant::now() + Duration::from_secs(8)));
+                self.banner.say(why, Duration::from_secs(8));
             }
             Event::Edited(m) => self.store.message(m),
             Event::Deleted { chat, ids } => self.store.deleted(chat, &ids),
@@ -505,7 +497,7 @@ impl Tg {
             Event::Progress { .. } => {}
             Event::FetchFailed { pic, why } => {
                 if matches!(pic, Pic::File(..)) {
-                    self.banner = Some((why, Instant::now() + Duration::from_secs(8)));
+                    self.banner.say(why, Duration::from_secs(8));
                 }
                 self.pics.fetch_failed(pic);
             }
@@ -527,9 +519,9 @@ impl Tg {
                     }
                     self.open_chat(id, None, cx);
                 }
-                None => self.banner = Some((format!("No one on Telegram is called {username}."), Instant::now() + Duration::from_secs(6))),
+                None => self.banner.say(format!("No one on Telegram is called {username}."), Duration::from_secs(6)),
             },
-            Event::Error(e) => self.banner = Some((e, Instant::now() + Duration::from_secs(8))),
+            Event::Error(e) => self.banner.say(e, Duration::from_secs(8)),
             Event::Sync { pending, total, waiting } => {
                 self.sync = (pending, total, waiting);
                 if pending == 0 && self.quitting.is_some() {
@@ -1340,39 +1332,34 @@ impl Render for Tg {
                         ),
                 );
                 // A problem to tell, across the conversation's top.
-                if let Some((text, until)) = self.banner.clone() {
-                    let left_for = until.saturating_duration_since(Instant::now());
-                    if left_for.is_zero() {
-                        self.banner = None;
-                    } else {
-                        self.wake_in(left_for, cx);
-                        let b = Bounds { origin: point(right.origin.x + px(12.0), right.origin.y + px(conv::HEADER + 8.0)), size: size(right.size.width - px(24.0), px(30.0)) };
-                        let failure = c(p.failure).opacity(0.92);
-                        layer = layer.child(
-                            canvas(
-                                |_, _, _| {},
-                                move |_, _, window, cx| {
-                                    let b = style::snap(window, b);
-                                    window.paint_quad(olo_ui::gpui::fill(b, failure).corner_radii(px(8.0)));
-                                    style::label_fit(
-                                        window,
-                                        cx,
-                                        b.origin.x + px(12.0),
-                                        b.center().y,
-                                        Align::Left,
-                                        text.clone(),
-                                        style::PLAIN_SIZE,
-                                        style::ui_font(FontWeight::NORMAL),
-                                        white(),
-                                        b.size.width - px(24.0),
-                                    );
-                                    olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Alert", name: Some(text.clone().into()), bounds: b, ..Default::default() });
-                                },
-                            )
-                            .absolute()
-                            .inset_0(),
-                        );
-                    }
+                if let (Some(text), Some(until)) = (self.banner.text().cloned(), self.banner.until()) {
+                    self.wake_in(until.saturating_duration_since(Instant::now()), cx);
+                    let b = Bounds { origin: point(right.origin.x + px(12.0), right.origin.y + px(conv::HEADER + 8.0)), size: size(right.size.width - px(24.0), px(30.0)) };
+                    let failure = c(p.failure).opacity(0.92);
+                    layer = layer.child(
+                        canvas(
+                            |_, _, _| {},
+                            move |_, _, window, cx| {
+                                let b = style::snap(window, b);
+                                window.paint_quad(olo_ui::gpui::fill(b, failure).corner_radii(px(8.0)));
+                                style::label_fit(
+                                    window,
+                                    cx,
+                                    b.origin.x + px(12.0),
+                                    b.center().y,
+                                    Align::Left,
+                                    text.clone(),
+                                    style::PLAIN_SIZE,
+                                    style::ui_font(FontWeight::NORMAL),
+                                    white(),
+                                    b.size.width - px(24.0),
+                                );
+                                olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Alert", name: Some(text.clone().into()), bounds: b, ..Default::default() });
+                            },
+                        )
+                        .absolute()
+                        .inset_0(),
+                    );
                 }
             }
         }
@@ -1846,7 +1833,7 @@ fn main() {
                 focused: true,
                 drafts: HashMap::new(),
                 kept: Vec::new(),
-                banner: None,
+                banner: Notice::default(),
                 searched: String::new(),
                 searching: None,
                 restored,
@@ -1861,7 +1848,7 @@ fn main() {
                 list_hover: None,
                 list_top: Rc::default(),
                 grip: None,
-                wake: None,
+                wake: Due::default(),
                 title: "Telegram".into(),
                 panes: Vec::new(),
                 list_rect: Bounds::default(),

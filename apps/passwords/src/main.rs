@@ -30,6 +30,7 @@ use olo_keychain::{Incoming, Request, Response};
 use olo_protocol::PasswordsSecurity;
 use olo_ui::{
     Frame, Menu, MenuBar, Proxy, WindowOptions,
+    due::{Due, Notice},
     gpui::{
         AnyElement, App, AppContext as _, Context, Entity, FocusHandle, InteractiveElement as _, IntoElement, KeyDownEvent, MouseDownEvent, OutgoingDrag, ParentElement as _, Render, ScrollHandle,
         SharedString, StyleRefinement, Styled as _, Subscription, Task, Window, WindowHandle, div, point, px,
@@ -271,7 +272,7 @@ pub struct Passwords {
     generator: Option<(WindowHandle<Frame>, Entity<GeneratorView>)>,
     /// The terminal sessions being asked about (an alert showing).
     allow_shown: HashSet<cli::Session>,
-    status: Option<(String, Instant)>,
+    status: Notice,
     last_use: Instant,
     /// Just unlocked: the password field gives up the keyboard.
     pub unlocked: bool,
@@ -307,8 +308,8 @@ pub struct Passwords {
     pub editor_scroll: ScrollHandle,
     pub sources_scroll: ScrollHandle,
     /// The next time something is due (an auto-lock, a sync, the status
-    /// line clearing), and the timer for it.
-    wake: Option<(Instant, Task<()>)>,
+    /// line clearing): its timer.
+    wake: Due,
     /// One-time codes counting down in the item pane: its tick.
     countdown: Option<Task<()>>,
     proxy: Proxy,
@@ -767,7 +768,7 @@ impl Passwords {
 
     /// Says `text` in the status line for a few seconds.
     fn flash(&mut self, text: impl Into<String>) {
-        self.status = Some((text.into(), Instant::now()));
+        self.status.say(text.into(), STATUS_FOR);
     }
 
     fn save_settings(&self) {
@@ -1677,8 +1678,8 @@ impl Passwords {
                 self.changed_here();
             }
             Reply::Error(message) => {
-                if self.status.as_ref().is_some_and(|(s, _)| s == "Saving…") {
-                    self.status = None;
+                if self.status.says("Saving…") {
+                    self.status.clear();
                 }
                 self.show_error(message, cx);
             }
@@ -1721,7 +1722,7 @@ impl Passwords {
         if !self.lock.locked && self.security.lock_minutes > 0 {
             due.push(self.last_use + Duration::from_secs(self.security.lock_minutes as u64 * 60));
         }
-        due.extend(self.status.as_ref().map(|(_, at)| *at + STATUS_FOR));
+        due.extend(self.status.until());
         due.into_iter().min()
     }
 
@@ -1729,19 +1730,9 @@ impl Passwords {
     /// nothing).
     fn schedule(&mut self, cx: &mut Context<Self>) {
         let due = self.next_due();
-        if self.wake.as_ref().map(|(at, _)| *at) == due {
-            return;
-        }
-        self.wake = due.map(|at| {
-            let task = cx.spawn(async move |this, cx| {
-                cx.background_executor().timer(at.saturating_duration_since(Instant::now())).await;
-                let _ = this.update(cx, |a, cx| {
-                    a.wake = None;
-                    a.tick(cx);
-                });
-            });
-            (at, task)
-        });
+        let mut wake = std::mem::take(&mut self.wake);
+        wake.at(due, cx, |a, cx| a.tick(cx));
+        self.wake = wake;
     }
 
     fn tick(&mut self, cx: &mut Context<Self>) {
@@ -1755,9 +1746,6 @@ impl Passwords {
         let idle = now.saturating_duration_since(self.last_use);
         if !self.lock.locked && self.security.lock_minutes > 0 && idle >= Duration::from_secs(self.security.lock_minutes as u64 * 60) && self.editor.as_ref().is_none_or(|e| !e.changed()) {
             self.do_lock(cx);
-        }
-        if self.status.as_ref().is_some_and(|(_, at)| now >= *at + STATUS_FOR) {
-            self.status = None;
         }
         cx.notify();
     }
@@ -2342,7 +2330,7 @@ fn main() {
                 parts: None,
                 generator: None,
                 allow_shown: HashSet::new(),
-                status: None,
+                status: Notice::default(),
                 last_use: Instant::now(),
                 unlocked: false,
                 waiting: Vec::new(),
@@ -2362,7 +2350,7 @@ fn main() {
                 detail_scroll: ScrollHandle::new(),
                 editor_scroll: ScrollHandle::new(),
                 sources_scroll: ScrollHandle::new(),
-                wake: None,
+                wake: Due::default(),
                 countdown: None,
                 proxy: proxy.clone(),
                 _subs: subs,

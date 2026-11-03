@@ -101,3 +101,47 @@ fn ui_lint_cut_gpui_text_is_read_whole() {
         assert!(!labels.iter().any(|l| l == whole), "{whole:?} shows in full but is read as cut: {labels:#?}");
     }
 }
+
+/// A view with one timer for what it has due.
+#[derive(Default)]
+struct Waits {
+    due: olo_ui::due::Due,
+    woke: u32,
+}
+
+/// `Due` wakes its view once, at the time set; set to the same time
+/// again it keeps its timer, set to none it's gone, and `by` keeps the
+/// soonest.
+#[test]
+fn ui_lint_due_wakes_once_at_its_time() {
+    use std::time::{Duration, Instant};
+    let cx = olo_ui::gpui::TestAppContext::single();
+    let view = cx.update(|cx| cx.new(|_| Waits::default()));
+    let at = Instant::now() + Duration::from_secs(5);
+    let set = |at: Option<Instant>| {
+        view.update(&mut cx.clone(), |w, cx| {
+            let mut due = std::mem::take(&mut w.due);
+            due.at(at, cx, |w: &mut Waits, _| w.woke += 1);
+            w.due = due;
+        })
+    };
+    set(Some(at));
+    set(Some(at));
+    cx.executor().advance_clock(Duration::from_secs(4));
+    assert_eq!(view.read_with(&cx, |w, _| w.woke), 0);
+    cx.executor().advance_clock(Duration::from_secs(2));
+    assert_eq!(view.read_with(&cx, |w, _| w.woke), 1);
+    // None: no timer.
+    set(Some(Instant::now() + Duration::from_secs(5)));
+    set(None);
+    cx.executor().advance_clock(Duration::from_secs(10));
+    assert_eq!(view.read_with(&cx, |w, _| (w.woke, w.due.when())), (1, None));
+    // `by`: the soonest asked.
+    view.update(&mut cx.clone(), |w, cx| {
+        w.due.by(Instant::now() + Duration::from_secs(9), cx);
+        w.due.by(Instant::now() + Duration::from_secs(3), cx);
+        w.due.by(Instant::now() + Duration::from_secs(6), cx);
+        let left = w.due.when().unwrap().saturating_duration_since(Instant::now());
+        assert!(left <= Duration::from_secs(3) && left > Duration::from_secs(2), "{left:?}");
+    });
+}

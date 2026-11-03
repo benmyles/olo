@@ -366,8 +366,8 @@ fn browser(app: &mut Passwords, window: &mut Window, cx: &mut Context<Passwords>
 
     // The status line: what's going on, and the sync's state on the
     // right (a click shows a problem in full, or the changes waiting).
-    let left: SharedString = match &app.status {
-        Some((s, _)) => s.clone().into(),
+    let left: SharedString = match app.status.text() {
+        Some(s) => s.clone(),
         None if app.loading => "Opening…".into(),
         None => {
             let n = app.visible().len();

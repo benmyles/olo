@@ -870,6 +870,16 @@ as the app quits (`on_app_quit`) and before an upgrade re-execs it
 (`store::flush`), so a setting changed just before the last window
 closes isn't lost.
 
+What a view has to do at some time goes through `due` (olo-ui), so
+nothing runs while nothing is due: `Due` is one timer for the next
+thing, set to when that is (`at(when, cx, then)`: the timer there is
+kept if it's for the same time; None, no timer) or kept to the soonest
+asked (`by(when, cx)`, which draws the view again then and lets its
+render say what's next); `Notice` is a message that goes of itself
+(`say(text, for)`, `text()` while it lasts, `until()` for the view's
+`Due`): Passwords' status line ("Deleted “Bank”.", its auto-lock and
+sync on the same `Due`), Telegram's problem banner.
+
 Text fields behave the same everywhere: a click places the caret, a
 double click selects a word, a triple click the line, and a right press
 opens Cut / Copy / Paste / Select All, keeping the selection it landed

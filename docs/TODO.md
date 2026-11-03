@@ -312,15 +312,16 @@ of Finished; a new one goes where its priority puts it.
   olo-ui (documented in HACKING) and every app switched to it: a
   window's content scrolling when it doesn't fit (in `Frame`, so no
   panel needs its own); "open this window, or bring it forward"; closing with
-  unsaved changes (ask, then close or carry on); a status line whose
-  message clears itself; single-instance launches; one timer for the
-  next thing due; list + search + filter bar wiring; upgrade state
-  saved and restored; window size kept. Done so far (2026-11-01):
+  unsaved changes (ask, then close or carry on); single-instance
+  launches; list + search + filter bar wiring; upgrade state saved and
+  restored; window size kept. Done so far (2026-11-01):
   popups closing in any order, quitting taking windows down, window
   parts (`part::Part`), secrets on the clipboard (`copy::secret`);
   2026-11-03, an app's own files read and written whole (`store`:
   load, save off the thread in order, flushed on quit and upgrade),
-  fourteen apps switched (six wrote straight over the file).
+  fourteen apps switched (six wrote straight over the file); one
+  timer for the next thing due and a message that clears itself
+  (`due::{Due, Notice}`: Passwords, Telegram, the only two).
 
 - **Passwords for Agent Screens** (Ben, 2026-10-31): "in the Agent
   Screens app i can choose items from passwords that i want to make
