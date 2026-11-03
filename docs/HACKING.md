@@ -7809,6 +7809,25 @@ A Telegram client of Olo's own: MTProto in process through grammers
   list: N in the main list, M archived, in P pages"), each page asked
   again and each move are logged (`olo-logs --print --program
   olo-telegram`).
+  **Updates, each applied once.** Every update in an account's sequence
+  has its place in it (pts; each channel its own), and grammers fills
+  gaps and drops repeats within a run but keeps where it got to only
+  when asked (`UpdateStream::sync_update_state`, "not automatically
+  done"): it's asked after every update handled, and the session saves
+  it with the rest every 10 s and on quitting. (It never was, so every
+  start replayed everything since signing in, onto the fresh list: old
+  messages counted unread again, old moves to the archive undoing
+  later ones.) Starting again catches up from there when that's under
+  six hours old (`CATCH_UP_SECS`), else starts from now (the list is
+  read whole anyway; this needs the account itself among the peers
+  kept, `Store::knows_self`, else it still catches up). And what an
+  update says can't undo what's newer: an incoming message counts
+  unread only if newer than the row's last message and than what's read
+  (`counts_unread`), a read only if it reads further (`read_moves_on`),
+  and an update that changes a chat's state (archived, read, marked
+  unread, muted, pinned) has the chat read again from Telegram a moment
+  later, in batches of up to 100 (`confirm`, `getPeerDialogs`), what it
+  has now winning.
   **Unknown Senders** (`Chat::unknown`, `model::stranger`): a person who
   isn't a contact (nor verified, nor Telegram's service notifications)
   and whom we've never written to (nothing of ours read there, the

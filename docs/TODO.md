@@ -39,23 +39,6 @@ of Finished; a new one goes where its priority puts it.
   Waiting on the machine: NVIDIA for apps and external displays, HDR and
   wide colour, VRR, the haptic touchpad, IR face sign-in.
 
-- **Telegram: unarchived chats go back to Archived on every reopen**
-  (Ben, 2026-11-02): "every time i reopen telegram all my unarchived
-  conversations move back to archived every time". (*part done*
-  2026-11-02: the cache was written only after a whole list loaded, and
-  a load stopped at the first failed page (a FLOOD_WAIT over 60 s, or a
-  second one: every launch and upgrade fetches every page), leaving the
-  rest, archive flags and ghosts, as the old cache had them, every time.
-  Now a failed page is asked again, one load at a time, the cache
-  follows each change, and an archive change shows where Telegram
-  really put the chat, saying so if it didn't move; loads and moves are
-  logged. *Left*: Ben to check after the upgrade; if it happens again,
-  `olo-logs --print --program olo-telegram` says whether Telegram kept
-  the chat archived or a load failed.) Unarchiving must
-  reach Telegram (the chat's folder changed there, not only in the
-  list), and what the app shows on starting again must come from what
-  Telegram says (its archive, folder 1) over anything the cache kept.
-
 - **AirPods and voice processing, tried on the real things** (Ben,
   2026-11-02; what's left of "AirPods, natively" and "Voice processing
   for every microphone", below): built and measured headless and in
@@ -875,6 +858,27 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**Telegram: unarchived chats go back to Archived on every reopen,
+  and read chats come back unread**~~ (Ben, 2026-11-02: "every time i
+  reopen telegram all my unarchived conversations move back to
+  archived"; "it keeps saying that my messages for justin are unread";
+  "every time i start it very briefly shows me the right chats not
+  archived but then flashes to put them archived"). The cause: the
+  updates stream's place (pts) was never saved (grammers keeps it only
+  when asked, `sync_update_state`), so every start replayed every update
+  since signing in, after the list was read: each old message counted
+  unread again (Justin's 35), each old move to the archive undid the
+  later unarchive. Now the place is saved after each update; a start
+  more than six hours on begins from now; a message counts unread only
+  if newer than the row's last and than what's read, a read only if it
+  reads further; and an update that changes a chat's state has the chat
+  read again from Telegram (`getPeerDialogs`, batched), which wins.
+  Kit apps log Olo's own info again (`warn,usvg=error,olo=info`, as
+  documented; it had become `warn` with the move from egui), so the
+  chat list's loads and moves are in the journal. (Earlier the same
+  day: a failed page asked again, the cache following each change, a
+  move shown where Telegram put it.)
 
 - ~~**Agent Screens: archive and delete, one or many**~~ (done
   2026-11-02: the kit Sidebar chooses several, `also`/`on_pick`/

@@ -69,6 +69,12 @@ struct Ctx {
     /// Each message's media as Telegram described it (to download it).
     media: Mutex<HashMap<(ChatId, MsgId), tl::enums::MessageMedia>>,
     fetching: Mutex<HashSet<Pic>>,
+    /// Chats an update changed the state of (archived, read, marked,
+    /// muted, pinned): read again from Telegram in a moment, in batches
+    /// (`confirm`), so what it has now wins over an update replayed or
+    /// come out of order.
+    confirming: Mutex<HashSet<ChatId>>,
+    confirm_due: tokio::sync::Notify,
 }
 
 fn now() -> i64 {
@@ -149,6 +155,24 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> 
     tokio::task::spawn_blocking(f).await.expect("a blocking task")
 }
 
+/// Whether incoming message `m` makes one more unread in chat `c`: newer
+/// than any message the row knows and than what's read. An update
+/// replayed (caught up on) after the list was read counts nothing again.
+fn counts_unread(c: &Chat, m: &Message) -> bool {
+    !m.out && m.id > c.read_inbox && c.last.as_ref().is_none_or(|l| l.id < m.id)
+}
+
+/// Whether an update saying chat `c` was read up to `up_to` is news: one
+/// no newer than what's known read (replayed) carries a count of those
+/// left unread older than ours.
+fn read_moves_on(c: &Chat, up_to: MsgId) -> bool {
+    up_to > c.read_inbox
+}
+
+/// How far back starting again catches up on updates: further, the
+/// chat list read whole is all that's needed.
+const CATCH_UP_SECS: i64 = 6 * 3600;
+
 async fn run(mut from: UnboundedReceiver<Cmd>, sink: Sink) {
     let api = match blocking(account::api).await {
         Ok(Some(api)) => api,
@@ -190,7 +214,34 @@ async fn run(mut from: UnboundedReceiver<Cmd>, sink: Sink) {
         cache_ready: std::sync::atomic::AtomicBool::new(false),
         media: Mutex::new(HashMap::new()),
         fetching: Mutex::new(HashSet::new()),
+        confirming: Mutex::new(HashSet::new()),
+        confirm_due: tokio::sync::Notify::new(),
     });
+    // Chats' states as Telegram has them now, for those updates changed.
+    {
+        let ctx = ctx.clone();
+        tokio::spawn(async move {
+            loop {
+                ctx.confirm_due.notified().await;
+                // (The rest of the burst: a catch-up, an archive of many.)
+                tokio::time::sleep(Duration::from_millis(300)).await;
+                loop {
+                    let ids: Vec<ChatId> = {
+                        let mut c = ctx.confirming.lock().unwrap();
+                        let ids: Vec<ChatId> = c.iter().copied().take(100).collect();
+                        for id in &ids {
+                            c.remove(id);
+                        }
+                        ids
+                    };
+                    if ids.is_empty() {
+                        break;
+                    }
+                    ctx.confirm_now(&ids).await;
+                }
+            }
+        });
+    }
     // The chat list on disk follows it (a chat archived or not, a page
     // loaded), so starting again shows what was last known, even when the
     // last load never finished: it was written only after a whole list,
@@ -258,7 +309,18 @@ async fn run(mut from: UnboundedReceiver<Cmd>, sink: Sink) {
     {
         let ctx = ctx.clone();
         tokio::spawn(async move {
-            let cfg = grammers_mtsender::UpdatesConfiguration { catch_up: true, ..Default::default() };
+            // What came while Olo's Telegram was closed, from where it
+            // last got to; not from days back (the chat list is read
+            // whole anyway, and replaying days of messages and moves
+            // only lands old state on it).
+            let age = now() - ctx.store.updates_date();
+            // (Starting from now needs the account among the peers kept;
+            // without it, catching up is still safe, only slower.)
+            let catch_up = age < CATCH_UP_SECS || !ctx.store.knows_self();
+            if !catch_up {
+                tracing::info!("telegram: the updates were last caught up {} h ago: starting from now", age / 3600);
+            }
+            let cfg = grammers_mtsender::UpdatesConfiguration { catch_up, ..Default::default() };
             let mut stream = match ctx.client.stream_updates(updates, cfg).await {
                 Ok(s) => s,
                 Err(e) => {
@@ -274,6 +336,13 @@ async fn run(mut from: UnboundedReceiver<Cmd>, sink: Sink) {
                             ctx.remember_peer(p).await;
                         }
                         ctx.update(update).await;
+                        // Where we've got to, into the session (on disk
+                        // with its next save): grammers doesn't keep it
+                        // itself, and without it every start replayed
+                        // everything since signing in.
+                        if let Err(e) = stream.sync_update_state().await {
+                            tracing::warn!("telegram: the updates' state couldn't be kept: {e}");
+                        }
                     }
                     Err(e) => {
                         (ctx.sink)(Event::Status(Status::Offline(explain(&e))));
@@ -827,11 +896,12 @@ impl Ctx {
         if new && m.out {
             c.unknown = false;
         }
+        let unread = new && counts_unread(&c, m);
         if c.last.as_ref().is_none_or(|l| l.id <= m.id) {
             c.last = Some(Preview::of(m));
             c.order = c.order.max(m.date);
         }
-        if new && !m.out {
+        if unread {
             c.unread += 1;
             if m.mentioned {
                 c.mentions += 1;
@@ -901,37 +971,45 @@ impl Ctx {
                 }
             }
             U::DialogPinned(p) => {
-                if let tl::enums::DialogPeer::Peer(dp) = p.peer
-                    && let Some(mut c) = self.known_chat(id_of(&dp.peer))
-                {
-                    c.pinned = p.pinned;
-                    self.put_chat(c);
+                if let tl::enums::DialogPeer::Peer(dp) = p.peer {
+                    let id = id_of(&dp.peer);
+                    if let Some(mut c) = self.known_chat(id) {
+                        c.pinned = p.pinned;
+                        self.put_chat(c);
+                    }
+                    self.confirm(id);
                 }
             }
             U::DialogUnreadMark(u) => {
-                if let tl::enums::DialogPeer::Peer(dp) = u.peer
-                    && let Some(mut c) = self.known_chat(id_of(&dp.peer))
-                {
-                    c.marked = u.unread;
-                    self.put_chat(c);
+                if let tl::enums::DialogPeer::Peer(dp) = u.peer {
+                    let id = id_of(&dp.peer);
+                    if let Some(mut c) = self.known_chat(id) {
+                        c.marked = u.unread;
+                        self.put_chat(c);
+                    }
+                    self.confirm(id);
                 }
             }
             U::FolderPeers(f) => {
                 for p in f.folder_peers {
                     let tl::enums::FolderPeer::Peer(p) = p;
-                    if let Some(mut c) = self.known_chat(id_of(&p.peer)) {
+                    let id = id_of(&p.peer);
+                    if let Some(mut c) = self.known_chat(id) {
                         c.archived = p.folder_id == 1;
                         self.put_chat(c);
                     }
+                    self.confirm(id);
                 }
             }
             U::NotifySettings(n) => {
-                if let tl::enums::NotifyPeer::Peer(p) = n.peer
-                    && let Some(mut c) = self.known_chat(id_of(&p.peer))
-                {
-                    let tl::enums::PeerNotifySettings::Settings(s) = n.notify_settings;
-                    c.muted = s.mute_until.is_some_and(|t| t as i64 > now());
-                    self.put_chat(c);
+                if let tl::enums::NotifyPeer::Peer(p) = n.peer {
+                    let id = id_of(&p.peer);
+                    if let Some(mut c) = self.known_chat(id) {
+                        let tl::enums::PeerNotifySettings::Settings(s) = n.notify_settings;
+                        c.muted = s.mute_until.is_some_and(|t| t as i64 > now());
+                        self.put_chat(c);
+                    }
+                    self.confirm(id);
                 }
             }
             U::UserStatus(s) => {
@@ -957,9 +1035,15 @@ impl Ctx {
     }
 
     fn read(&self, chat: ChatId, outbox: bool, up_to: MsgId, still_unread: Option<i32>) {
+        if !outbox {
+            // (How many are left unread is as of the update; read again.)
+            self.confirm(chat);
+        }
         if let Some(mut c) = self.known_chat(chat) {
             if outbox {
                 c.read_outbox = c.read_outbox.max(up_to);
+            } else if !read_moves_on(&c, up_to) {
+                return;
             } else {
                 c.read_inbox = c.read_inbox.max(up_to);
                 c.unread = still_unread.map_or(0, |n| n.max(0) as u32);
@@ -1076,16 +1160,66 @@ impl Ctx {
     /// The folder Telegram has a chat in now (0 the main list, 1 the
     /// archive), asked.
     async fn folder_now(&self, peer: &PeerRef) -> Option<i32> {
-        let r = self
-            .client
-            .invoke(&tl::functions::messages::GetPeerDialogs { peers: vec![tl::enums::InputDialogPeer::Peer(tl::types::InputDialogPeer { peer: Self::input_peer(peer) })] })
-            .await
-            .ok()?;
-        let tl::enums::messages::PeerDialogs::Dialogs(d) = r;
-        d.dialogs.into_iter().find_map(|d| match d {
-            tl::enums::Dialog::Dialog(d) => Some(d.folder_id.unwrap_or(0)),
-            _ => None,
-        })
+        self.folders_now(std::slice::from_ref(peer)).await.into_values().next()
+    }
+
+    /// Read chat `id`'s state from Telegram again in a moment.
+    fn confirm(&self, id: ChatId) {
+        self.confirming.lock().unwrap().insert(id);
+        self.confirm_due.notify_one();
+    }
+
+    /// The state of chats `ids` (100 at most) as Telegram has it now:
+    /// archived, unread, marked, muted, pinned, read up to where.
+    async fn confirm_now(&self, ids: &[ChatId]) {
+        let mut peers = Vec::new();
+        for id in ids {
+            if let Ok(p) = self.peer(*id).await {
+                peers.push(tl::enums::InputDialogPeer::Peer(tl::types::InputDialogPeer { peer: Self::input_peer(&p) }));
+            }
+        }
+        if peers.is_empty() {
+            return;
+        }
+        let d = match self.client.invoke(&tl::functions::messages::GetPeerDialogs { peers }).await {
+            Ok(tl::enums::messages::PeerDialogs::Dialogs(d)) => d,
+            Err(e) => {
+                tracing::warn!("telegram: {} chats' state couldn't be read again: {e}", ids.len());
+                return;
+            }
+        };
+        for d in &d.dialogs {
+            let tl::enums::Dialog::Dialog(d) = d else { continue };
+            let Some(mut c) = self.known_chat(id_of(&d.peer)) else { continue };
+            let now = self.chat_of(d, None, false);
+            let was = c.clone();
+            c.archived = now.archived;
+            c.unread = now.unread;
+            c.mentions = now.mentions;
+            c.marked = now.marked;
+            c.muted = now.muted;
+            c.pinned = now.pinned;
+            c.read_inbox = now.read_inbox;
+            c.read_outbox = c.read_outbox.max(now.read_outbox);
+            if c != was {
+                self.put_chat(c);
+            }
+        }
+    }
+
+    /// The folders Telegram has these chats in now, in one ask.
+    async fn folders_now(&self, peers: &[PeerRef]) -> HashMap<ChatId, i32> {
+        let asked = peers.iter().map(|p| tl::enums::InputDialogPeer::Peer(tl::types::InputDialogPeer { peer: Self::input_peer(p) })).collect();
+        let Ok(tl::enums::messages::PeerDialogs::Dialogs(d)) = self.client.invoke(&tl::functions::messages::GetPeerDialogs { peers: asked }).await else {
+            return HashMap::new();
+        };
+        d.dialogs
+            .into_iter()
+            .filter_map(|d| match d {
+                tl::enums::Dialog::Dialog(d) => Some((id_of(&d.peer), d.folder_id.unwrap_or(0))),
+                _ => None,
+            })
+            .collect()
     }
 
     async fn send(&self, out: Outgoing) -> Result<(), String> {
@@ -1866,5 +2000,28 @@ mod tests {
         assert_eq!(e, [Entity { start: 6, end: 10, kind: EntityKind::Bold }]);
         let back = entity_to_raw(text, &e[0]).unwrap();
         assert_eq!(format!("{back:?}"), format!("{:?}", raw[0]));
+    }
+}
+
+#[cfg(test)]
+mod replay_tests {
+    use super::*;
+
+    /// Updates caught up on after the chat list was read change nothing
+    /// they already account for: Justin's 35 unread came from old
+    /// messages counted again on every start.
+    #[test]
+    fn replayed_updates_change_nothing() {
+        let msg = |id, out| Message { id, chat: 5, out, ..Message::default() };
+        let chat = Chat { id: 5, read_inbox: 40, last: Some(Preview::of(&msg(42, false))), unread: 2, ..Chat::default() };
+        // Already in the list (and so in its count), or read: not again.
+        assert!(!counts_unread(&chat, &msg(42, false)));
+        assert!(!counts_unread(&chat, &msg(30, false)));
+        // New, from them: one more; ours: none.
+        assert!(counts_unread(&chat, &msg(43, false)));
+        assert!(!counts_unread(&chat, &msg(43, true)));
+        // A read older than, or as old as, what's known read is old news.
+        assert!(!read_moves_on(&chat, 35) && !read_moves_on(&chat, 40));
+        assert!(read_moves_on(&chat, 42));
     }
 }

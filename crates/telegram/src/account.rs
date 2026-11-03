@@ -221,6 +221,17 @@ impl Store {
         Ok(())
     }
 
+    /// Whether the account itself is among the peers kept (grammers needs
+    /// it to start the updates from now rather than catch up).
+    pub fn knows_self(&self) -> bool {
+        self.data().is_ok_and(|d| d.peer_infos.values().any(|p| matches!(p, PeerInfo::User { is_self: Some(true), .. })))
+    }
+
+    /// When the updates were last caught up to (Unix seconds; 0: never).
+    pub fn updates_date(&self) -> i64 {
+        self.data().map_or(0, |d| i64::from(d.updates_state.date))
+    }
+
     /// What's known of a peer (its access hash), without asking Telegram.
     pub fn peer_info(&self, id: PeerId) -> Option<PeerInfo> {
         self.data().ok()?.peer_infos.get(&id).cloned()
@@ -259,7 +270,15 @@ impl Session for Store {
     }
 
     fn peer(&self, peer: PeerId) -> BoxFuture<'_, Result<Option<PeerInfo>, Poisoned>> {
-        Box::pin(async move { Ok(self.data()?.peer_infos.get(&peer).cloned()) })
+        Box::pin(async move {
+            let data = self.data()?;
+            // The account itself, asked for by grammers' stand-in id (to
+            // start the updates from now, `catch_up` off).
+            if peer == PeerId::self_user() {
+                return Ok(data.peer_infos.values().find(|p| matches!(p, PeerInfo::User { is_self: Some(true), .. })).cloned());
+            }
+            Ok(data.peer_infos.get(&peer).cloned())
+        })
     }
 
     fn cache_peer(&self, peer: PeerInfo) -> BoxFuture<'_, Result<(), Poisoned>> {
@@ -331,6 +350,12 @@ mod tests {
         assert_eq!(signed_in().unwrap().unwrap().name, "Ann");
         use std::os::unix::fs::PermissionsExt;
         assert_eq!(std::fs::metadata(dir.join("cache")).unwrap().permissions().mode() & 0o777, 0o700);
+        // The account itself, by grammers' stand-in id.
+        assert!(!back.knows_self());
+        rt.block_on(back.cache_peer(PeerInfo::User { id: 77, auth: None, bot: Some(false), is_self: Some(true) })).unwrap();
+        rt.block_on(back.cache_peer(PeerInfo::User { id: 78, auth: None, bot: Some(false), is_self: Some(false) })).unwrap();
+        assert!(back.knows_self());
+        assert_eq!(rt.block_on(back.peer(PeerId::self_user())).unwrap().map(|p| p.id()), PeerId::user(77));
         forget_session().unwrap();
         assert!(Store::load().unwrap().is_none() && !dir.join("cache").exists());
         std::fs::remove_dir_all(&dir).unwrap();
