@@ -60,7 +60,8 @@ fn watch(proxy: olo_ui::Proxy) -> Shared {
             size_mm,
             pressure,
             recommended: recommended.into(),
-            driver_click: None,
+            // (The Apple driver's thresholds: the Click box's note.)
+            driver_click: (kind == olo_protocol::touchpad::DeviceKind::AppleMtp).then_some((1200, 800)),
             vendor,
             product,
             bus: bus.into(),
@@ -218,21 +219,39 @@ fn touch(ui: &mut Ui, t: &TouchpadSettings, pad: Option<&InputDeviceInfo>) {
         ui.enabled_if(f.enabled, |ui| {
             let on = f.touch_on as f32;
             ui.slider("touch-on", on, 1.0..=40.0, |s| s.step(1.0).label("A touch starts at pressure").value_text(format!("{on:.0}")).limits("Any touch", "Firmer"), |s, v| tuned(s, |t| t.filter.touch_on = v as u32));
+            // The model and the size rule work together: a contact is a
+            // palm if either says so. The model first (it catches what
+            // size alone misses), then the size every contact as large as
+            // is a palm regardless.
+            // Only a model trained on the person's hands is used: the
+            // check is there once one is (the trainer turns it on).
+            let trained = f.palm_model.is_some();
+            ui.enabled_if(trained, |ui| ui.check("Tell palms apart with your palm model", f.use_palm_model && trained, |s, v| tuned(s, |t| t.filter.use_palm_model = v)));
+            ui.note(model_status(f.palm_model.as_ref(), f.use_palm_model));
+            let (prefs, palm_size) = (ui.prefs(), f.palm_size);
+            ui.row(|ui| {
+                // The trainer: full screen, driven from the keyboard.
+                ui.button(if trained { "Train Again…" } else { "Train for Your Palm…" }, move |_, cx| {
+                    if let Some(p) = prefs.upgrade() {
+                        crate::palm_trainer::open(p, palm_size, cx);
+                    }
+                });
+                ui.enabled_if(trained, |ui| {
+                    ui.button(
+                        "Forget My Model",
+                        ui.edit_click(|s| {
+                            s.touchpad.filter.palm_model = None;
+                            s.touchpad.filter.use_palm_model = false;
+                        }),
+                    )
+                });
+            });
             let palm = f.palm_size as f32;
-            ui.slider("palm-size", palm, 600.0..=2000.0, |s| s.step(50.0).label("A palm is a contact as large as").value_text(format!("{palm:.0}")).limits("Smaller", "Larger"), |s, v| {
+            ui.slider("palm-size", palm, 600.0..=2000.0, |s| s.step(50.0).label("Always a palm when as large as").value_text(format!("{palm:.0}")).limits("Smaller", "Larger"), |s, v| {
                 tuned(s, |t| t.filter.palm_size = v as u32)
             });
+            ui.note(if f.use_palm_model && trained { "Whatever the model says: it adds palms, never takes these away." } else { "Without a palm model, size alone tells a palm." });
             ui.check("A resting palm can't click (its pressure doesn't count)", f.palm_proof_click, |s, v| tuned(s, |t| t.filter.palm_proof_click = v));
-            let trained = f.palm_model.is_some();
-            ui.check(if trained { "Tell palms apart with the model trained on your hands" } else { "Tell palms apart with Olo's palm model" }, f.use_palm_model, |s, v| tuned(s, |t| t.filter.use_palm_model = v));
-            // The trainer, in a dialog of its own (its live view and
-            // animation don't fit the panel).
-            let (prefs, palm_size) = (ui.prefs(), f.palm_size);
-            ui.button("Train for Your Palm…", move |_, cx| {
-                if let Some(p) = prefs.upgrade() {
-                    crate::palm_trainer::open(p, palm_size, cx);
-                }
-            });
         });
     });
     ui.bbox("Click", |ui| {
@@ -406,4 +425,22 @@ fn one_mouse(ui: &mut Ui, d: &InputDeviceInfo) {
             problem(ui, "USB power management may put it to sleep, and then it loses the first movement when the hand moves again.".into());
         }
     });
+}
+
+/// Which palm model the filter uses, and how the person's did when it
+/// was trained.
+fn model_status(trained: Option<&olo_protocol::touchpad::PalmModel>, on: bool) -> String {
+    match trained {
+        None => "Palms are told apart by their size alone. A palm model learns your hands (resting, at the edge, while typing): Train for Your Palm to make one; it's used once trained.".into(),
+        Some(_) if !on => "Off: palms are told apart by their size alone.".into(),
+        Some(m) => {
+            let when = jiff::Timestamp::from_second(m.trained as i64).ok().map(|t| t.to_zoned(jiff::tz::TimeZone::system()).strftime("%-d %B %Y").to_string()).unwrap_or_default();
+            format!(
+                "In use: yours, trained {when} on {} touches; on touches kept back it caught {:.0}% of palms and took {:.0}% of fingers for palms.",
+                m.contacts,
+                m.palms_caught * 100.0,
+                m.fingers_lost * 100.0
+            )
+        }
+    }
 }

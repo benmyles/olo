@@ -37,6 +37,7 @@ mod terminal;
 mod themes;
 mod touchid;
 mod palm_trainer;
+mod typing_tutor;
 mod touchpad;
 mod tracker;
 mod windows;

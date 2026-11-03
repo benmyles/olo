@@ -216,7 +216,7 @@ impl Panel {
             Panel::TouchId => (420, 330),
             // Tall enough for Touch with both of its notes (a pad with no
             // pressure and the Apple driver's click thresholds).
-            Panel::Touchpad => (460, 586),
+            Panel::Touchpad => (460, 680),
             Panel::Tracker => (300, 182),
             Panel::Windows => (400, 548),
             Panel::Workspaces => (360, 188),

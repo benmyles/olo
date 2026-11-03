@@ -13,6 +13,10 @@ use olo_theme::{Palette, Rgba};
 /// monospaced face's.
 pub const PLAIN_SIZE: f32 = 12.0;
 pub const SMALL_SIZE: f32 = 10.5;
+/// A full-screen view's title (the palm trainer's step) and its lead
+/// text under it.
+pub const TITLE_SIZE: f32 = 24.0;
+pub const LEAD_SIZE: f32 = 15.0;
 /// Secondary text a point under the plain size: a row's subtitle and
 /// kind, a chip, a caption.
 pub const DETAIL_SIZE: f32 = PLAIN_SIZE - 1.0;
@@ -29,6 +33,12 @@ pub const LINE_HEIGHT: f32 = 1.362;
 /// Cap height as a fraction of the font size (Noto Sans's: 714 of its
 /// 1000 units).
 pub const CAP_HEIGHT: f32 = 0.714;
+
+/// The row a line of text `size` points tall sits in: its line height,
+/// up to the 2-point grid (`metrics`).
+pub fn line_row(size: f32) -> f32 {
+    (size * LINE_HEIGHT / 2.0).ceil() * 2.0
+}
 
 /// A palette colour.
 pub fn c(rgba: Rgba) -> Hsla {

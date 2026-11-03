@@ -939,7 +939,11 @@ fn draw_outline(
     };
     let darken = darkening(params.font_size.0) * params.scale_factor;
     let reach = f64::from(darken / 2.0);
-    let b = path.control_box().inflate(reach * across, reach);
+    let path = if darken > 0.0 { embolden(&path, reach) } else { path };
+    // (The box of what's filled, emboldened: a pixel the outline reaches
+    // outside the grid would leave its row's coverage unsummed, a grey
+    // bar across the glyph.)
+    let b = path.control_box();
     // Whole pixels, and for LCD glyphs one more each side, where the
     // filter spreads them.
     let spread = if lcd.is_some() { 1.0 } else { 0.0 };
@@ -950,7 +954,6 @@ fn draw_outline(
         return None;
     }
     let samples = (f64::from(width) * across) as u16;
-    let path = if darken > 0.0 { embolden(&path, reach) } else { path };
     let coverage = fill(raster, &path, (-x0 * across, -y0), samples.into(), height.into());
     let pixels = match lcd {
         Some(layout) => lcd_filter(&coverage, width.into(), height.into(), layout),
@@ -1208,9 +1211,16 @@ fn embolden(path: &kurbo::BezPath, r: f64) -> kurbo::BezPath {
                 let (Some(before), Some(after)) = (before, after) else { return p };
                 let (n_in, n_out) = (normal((p - before).normalize()), normal((after - p).normalize()));
                 // v·n_in = v·n_out = r; a hairpin (the normals opposed)
-                // stays put rather than shoot out.
+                // stays put rather than shoot out, and a sharp corner (a
+                // w's points) moves at most 2r, as FreeType limits its
+                // miters: further, it would spike past the glyph's box.
                 let d = 1.0 + n_in.dot(n_out);
-                if d < 0.05 { p } else { p + (n_in + n_out) * (r / d) }
+                if d < 0.05 {
+                    return p;
+                }
+                let v = (n_in + n_out) * (r / d);
+                let most = 2.0 * r;
+                p + if v.hypot() > most { v * (most / v.hypot()) } else { v }
             })
             .collect();
         let mut at = moved.iter().copied();
@@ -1314,6 +1324,59 @@ mod tests {
             best = best.min(t.elapsed().as_secs_f64() * 1e6 / lines.len() as f64);
         }
         eprintln!("a new line laid out in {best:.2} µs");
+    }
+
+    /// A glyph with sharp corners (w, v, A), emboldened as small text
+    /// is, never spills out of its bitmap: a pixel its outline doesn't
+    /// touch stays empty, at every size, scale and subpixel offset. (A
+    /// w's points once reached past its box, and the rows they crossed
+    /// were left grey: a box round the letter.)
+    #[test]
+    fn sharp_glyphs_stay_in_their_box() {
+        use kurbo::Shape as _;
+        let data = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/fonts/NotoSans[wght].ttf")).expect("Olo's Noto Sans");
+        let font = FontRef::new(&data).expect("a font");
+        let outlines = font.outline_glyphs();
+        let charmap = font.charmap();
+        let mut raster = ab_glyph_rasterizer::Rasterizer::new(0, 0);
+        let mut worst = (0u8, String::new());
+        for ch in "wvWVyAMk".chars() {
+            let glyph_id = charmap.map(ch).expect("in the font");
+            let glyph = outlines.get(glyph_id).expect("an outline");
+            for points in [9.0f32, 10.5, 11.0, 12.0, 13.0, 15.0, 18.0, 20.0] {
+                for scale in [1.0f32, 1.5, 2.0] {
+                    for x in 0..SUBPIXEL_VARIANTS_X {
+                        let params = RenderGlyphParams {
+                            font_id: FontId(0),
+                            glyph_id: GlyphId(glyph_id.to_u32()),
+                            font_size: px(points),
+                            subpixel_variant: point(x, 0),
+                            scale_factor: scale,
+                            is_emoji: false,
+                            rendering: TextRendering::Unhinted,
+                        };
+                        let ppem = points * scale;
+                        let (b, pixels) = draw_outline(&outlines, &Location::default(), None, &mut raster, &params, ppem).expect("drawn");
+                        // The outline as drawn: placed and emboldened alike.
+                        let mut path = kurbo::BezPath::new();
+                        let mut pen = Pen { path: &mut path, x: f64::from(x) / f64::from(SUBPIXEL_VARIANTS_X), across: 1.0 };
+                        glyph.draw(DrawSettings::unhinted(Ppem::new(ppem), &Location::default()), &mut pen).expect("an outline");
+                        let path = embolden(&path, f64::from(darkening(points) * scale / 2.0));
+                        let (w, h) = (b.size.width.0 as usize, b.size.height.0 as usize);
+                        for (i, &a) in pixels.iter().enumerate() {
+                            let (px0, py0) = ((i % w) as f64 + f64::from(b.origin.x.0), (i / w) as f64 + f64::from(b.origin.y.0));
+                            let touched = (0..64).any(|k| path.winding(kurbo::Point::new(px0 + (k % 8) as f64 / 8.0 + 1.0 / 16.0, py0 + (k / 8) as f64 / 8.0 + 1.0 / 16.0)) != 0);
+                            if !touched && a > worst.0 {
+                                worst = (a, format!("{ch:?} at {points} pt, {scale}×, variant {x}, pixel {} of {w}×{h}", i));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // (A pixel the outline only grazes between samples may hold a few
+        // levels.)
+        assert!(worst.0 <= 24, "ink outside the outline: {}/255 ({})", worst.0, worst.1);
     }
 
     /// Glyphs are filled to their true coverage: each pixel of Noto

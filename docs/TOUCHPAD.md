@@ -261,29 +261,55 @@ a palm before libinput sees it, in the same features and arithmetic
   0.17% of a core at the pad's 125 Hz. A GPU dispatch would cost more
   than the whole network.
 - A contact is scored only in its first 250 ms.
-- With no model, or with it off, the filter is as it was.
+- With no trained model, or with it off, the filter is as it was.
 
-**The trainer** (apps/preferences/src/palm_trainer.rs, a dialog of its
-own, "Train for Your Palm…" on Preferences ▸ Touchpad & Mouse ▸ Touch:
-the box in the tab ran off the panel, Ben's screenshot): optional, to
-personalize the model. Six exercises (rest the palms; one hand's palm
-half over the left edge, then the right, as a hand resting alone does;
-type with them resting; point and scroll; tap and click; point with a
-palm resting), each shown first on the intro's film in turn,
-each an Olo-style animation of hands on a pad beside the pad live (a
-palm orange, a finger blue, a ring where the size rule disagrees), a
-line on how it's going ("Good. 7 more.", "That looked like a finger:
-rest only your palms here", by the baseline's call) and a bar; Next
-once it has enough, Again to redo. Contacts come from
-`EventKind::TouchContacts` on a worker that follows them with
-`Tracker` and labels each as it lifts (palms-only or fingers-only
-steps; in the mixed one the first down that stays still is the palm).
-Training runs on `background_spawn` with progress, the model goes into
-the settings (`use_palm_model` on), and a Test step draws each touch as
-the model calls it, with how it did on touches kept back beside the
-size rule. Checked headless with `SyntheticEvent::Contacts`. The model
-is in `Settings`, so Preferences ▸ Backup's export and import carry it
-with everything else.
+**The trainer** (apps/preferences/src/palm_trainer.rs, "Train for Your
+Palm…" on Preferences ▸ Touchpad & Mouse ▸ Touch). Only a model trained
+on the person's hands is used: Olo's own (`baseline`) is where training
+starts, not one to use as it is (Ben, 2026-11-02: "it does not work
+well without training"), so the Touch tab's check is there once a model
+is, and training turns it on.
+- **Full screen, from the keyboard** (Ben: "i can't click the buttons
+  because i am using the mouse to do stuff"): `WindowOptions::fullscreen`,
+  nothing clickable; Space goes on once a step has what it needs,
+  Backspace starts the step over, Esc quits (twice once touches are
+  gathered: they'd be dropped), R trains again from the summary and the
+  try. The keys show at the bottom as `KeyHint`s (a cap and what it does,
+  dim while it does nothing); agents read them and press them.
+- **Six exercises**, each a film of hands on a laptop's deck beside the
+  pad live: rest both palms (10), one palm half over the left edge (5)
+  then the right (5), type with the palms down (8 palm touches while
+  typing), point and scroll (12 moving fingers), tap (12), point with a
+  palm down (3 palm rests, 10 fingers with a palm down). The typing one
+  is a 1990s typing tutor (`typing_tutor.rs`, Ben: "show the user
+  something to type … make it a real throwback"): a lesson on ruled
+  paper, the next letter marked (red after a wrong key), a keyboard with
+  each finger's keys in its colour, the next key lit and its finger
+  ringed, speed and accuracy; Return goes on there, so a typed space
+  never skips the step.
+- **Every touch judged as it lifts** (`judge`, pure and tested): counted
+  if it's what the step asks for ("A palm, resting. Good."), dropped with
+  why if not ("That was a fingertip: rest the heel of your hand, below
+  the thumb.", "That was in the middle: …", "Too quick: …"), so nothing
+  is learned under the wrong name. A ring on the pad where each touch
+  lifted, green or red, fades in 1.5 s; each goal's count is a row of
+  dots.
+- **Training** on `background_spawn` with progress. The model is kept
+  only if it does at least as well as Olo's own on the touches kept back
+  (`Report::better_than_baseline`, a finger taken for a palm counting
+  four palms missed). The summary says which, and whether app_server
+  really has it: it asks (`Request::GetSettings`) rather than trusting
+  Preferences' own copy, since an app_server older than the field drops
+  it (what happened to Ben's first run). It shows touches gathered and
+  how the new model, Olo's own and size alone did on those kept back.
+  "Try it" (only for a model kept) draws each touch as the new model
+  calls it, with counts.
+- The Touch tab says which model is in use, when it was trained, on how
+  many touches and how it did, with "Train Again…" and "Forget My Model";
+  the size rule is "Always a palm when as large as", with a note that
+  the model only adds palms to it.
+- Checked headless with `SyntheticEvent::Contacts`. The model is in
+  `Settings`, so Preferences ▸ Backup's export and import carry it.
 
 **Its samples:** the pad's contacts as reported, from app_server
 (`contacts.rs`). libinput gives out only pointer motion and gestures, and

@@ -200,7 +200,11 @@ What Olo changed, so far:
   moved out along its corner's bisector), then filled: a stroke round
   the outline did the same at three times the cost (40 µs a glyph
   against 13), and two layers' blending made its fringes a shade
-  heavier (total ink within 1%, the same look at every scale).
+  heavier (total ink within 1%, the same look at every scale). A sharp
+  corner's point moves at most twice the reach (a miter limit, as
+  FreeType's), and the glyph's bitmap is sized from the emboldened
+  outline: a w's points once reached past it, and the rows they crossed
+  were left grey, a box round the letter (`sharp_glyphs_stay_in_their_box`).
 - Text drawn for the display a window is on (`TextRendering`, chosen by
   `olo_protocol::panels::text_mode` from the display's density, colour
   stripes and rotation): grey-scale unhinted at Retina density (as

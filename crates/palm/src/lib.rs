@@ -243,7 +243,8 @@ pub struct Labelled {
 }
 
 /// How a model did on the contacts kept back from training, beside the
-/// size rule (`palm_size`) on the same ones.
+/// size rule (`palm_size`) and Olo's own model ([`baseline`]) on the same
+/// ones.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Report {
     pub contacts: usize,
@@ -253,6 +254,24 @@ pub struct Report {
     pub fingers_lost: f32,
     pub size_rule_palms_caught: f32,
     pub size_rule_fingers_lost: f32,
+    pub baseline_palms_caught: f32,
+    pub baseline_fingers_lost: f32,
+}
+
+/// How much worse a finger taken for a palm is than a palm missed (a
+/// finger lost stops what the person was doing).
+const FINGER_COST: f32 = 4.0;
+
+impl Report {
+    /// Whether the trained model is worth keeping over Olo's own: no worse
+    /// on the contacts kept back, a finger lost counting [`FINGER_COST`]
+    /// palms missed. (No better is kept: it is fitted to the person's
+    /// hands.)
+    pub fn better_than_baseline(&self) -> bool {
+        let ours = self.palms_caught - FINGER_COST * self.fingers_lost;
+        let theirs = self.baseline_palms_caught - FINGER_COST * self.baseline_fingers_lost;
+        ours >= theirs - 1e-4
+    }
 }
 
 /// A small, seeded random number generator (the tests' made-up contacts).
@@ -390,7 +409,9 @@ pub fn train(contacts: &[Labelled], palm_size: u32, mut progress: impl FnMut(f32
     let at = finger_scores.len().saturating_sub(allowed + 1);
     model.threshold = finger_scores.get(at).map_or(0.0, |s| s.max(0.0) + 1e-3);
 
-    let report = judge(&model, &held, palm_size);
+    let mut report = judge(&model, &held, palm_size);
+    let base = judge(&baseline(), &held, palm_size);
+    (report.baseline_palms_caught, report.baseline_fingers_lost) = (base.palms_caught, base.fingers_lost);
     model.contacts = contacts.len() as u32;
     model.palms_caught = report.palms_caught;
     model.fingers_lost = report.fingers_lost;
@@ -418,6 +439,7 @@ pub fn judge(m: &PalmModel, contacts: &[&Labelled], palm_size: u32) -> Report {
         fingers_lost: share(fingers.iter().filter(|c| is_palm(m, c)).count(), fingers.len()),
         size_rule_palms_caught: share(palms.iter().filter(|c| by_size(c)).count(), palms.len()),
         size_rule_fingers_lost: share(fingers.iter().filter(|c| by_size(c)).count(), fingers.len()),
+        ..Default::default()
     }
 }
 
@@ -507,6 +529,7 @@ mod tests {
         let m = baseline();
         let contacts = made(3, 300);
         let r = judge(&m, &contacts.iter().collect::<Vec<_>>(), 1600);
+        eprintln!("the baseline, untrained: {r:?}");
         assert!(r.palms_caught > r.size_rule_palms_caught && r.palms_caught > 0.85, "{r:?}");
         assert!(r.fingers_lost < 0.1, "{r:?}");
         assert!(lua(&m).contains("hidden = 32") && lua(&m).contains("features = 18"));
@@ -556,6 +579,7 @@ mod tests {
         let m = baseline();
         let contacts = made_edge(11, 300);
         let r = judge(&m, &contacts.iter().collect::<Vec<_>>(), 1600);
+        eprintln!("the baseline at the edge: {r:?}");
         // The size rule misses every one of these (too small); the
         // baseline catches most without taking the edge fingers.
         assert_eq!(r.size_rule_palms_caught, 0.0, "{r:?}");

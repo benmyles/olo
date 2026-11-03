@@ -44,11 +44,16 @@ pub struct WindowOptions {
     /// `under-pointer`): a tab torn off a strip, to move with it
     /// ([`begin_move`]).
     pub under_pointer: bool,
+    /// Opens full screen, on the display the person is at (asked before
+    /// its first frame, so it's never drawn at `size` first): something
+    /// that takes the whole of their attention, done with the keyboard
+    /// (the palm trainer). `size` is what it's laid out at until then.
+    pub fullscreen: bool,
 }
 
 impl WindowOptions {
     pub fn new(title: impl Into<SharedString>, width: f32, height: f32) -> Self {
-        WindowOptions { title: title.into(), size: (width, height), min_size: None, max_size: None, panel: true, floating: false, layer: None, dialog: None, fixed: false, lock_output: None, child: false, foreign_parent: None, under_pointer: false }
+        WindowOptions { title: title.into(), size: (width, height), min_size: None, max_size: None, panel: true, floating: false, layer: None, dialog: None, fixed: false, lock_output: None, child: false, foreign_parent: None, under_pointer: false, fullscreen: false }
     }
 
     /// A BAlert window `width` × `height`: fixed, modal over the app's
@@ -105,6 +110,12 @@ impl WindowOptions {
     /// (see [`Self::child`]).
     pub fn child(mut self) -> Self {
         self.child = true;
+        self
+    }
+
+    /// Opens full screen (see [`Self::fullscreen`]).
+    pub fn fullscreen(mut self) -> Self {
+        self.fullscreen = true;
         self
     }
 
@@ -317,7 +328,7 @@ pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, bu
     let namespace = options.layer.as_ref().map(|l| l.namespace.clone());
     cx.open_window(
         gpui::WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(bounds)),
+            window_bounds: Some(if options.fullscreen { WindowBounds::Fullscreen(bounds) } else { WindowBounds::Windowed(bounds) }),
             titlebar: Some(TitlebarOptions { title: Some(title.clone()), ..Default::default() }),
             app_id: Some(app_id(cx)),
             window_min_size: options.min_size.map(|(w, h)| size(px(w), px(h))),

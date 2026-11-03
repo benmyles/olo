@@ -45,11 +45,12 @@ pub fn render(t: &TouchpadSettings) -> Option<String> {
         return None;
     }
     let devices: Vec<String> = DEVICES.iter().map(|d| format!("{d:?}")).collect();
-    // The palm model, when it's to be used: the person's (Train for Your
-    // Palm), else Olo's own baseline.
+    // The palm model, when it's to be used: only one trained on the
+    // person's hands (Train for Your Palm). Olo's own is where training
+    // starts, not one to use untrained (Ben, 2026-11-02: "it does not
+    // work well without training").
     let model = match (&f.palm_model, f.use_palm_model) {
         (Some(m), true) if m.w1.len() == olo_palm::HIDDEN * olo_palm::FEATURES => format!(", palm_model = {}", olo_palm::lua(m)),
-        (_, true) => format!(", palm_model = {}", olo_palm::lua(&olo_palm::baseline())),
         _ => String::new(),
     };
     let config = format!(
@@ -114,6 +115,12 @@ mod tests {
         let mut t = TouchpadSettings::default();
         let lua = render(&t).unwrap();
         assert!(lua.contains("local CONFIG = { devices = { \"Apple MTP\" }, touch_on = 1, touch_off = 1, lift_ms = 60, palm_size = 1600, click = true, press = 120, release = 75 }"));
+        // Turned on, untrained: no model (Olo's own isn't used as it is)...
+        t.filter.use_palm_model = true;
+        assert!(render(&t).unwrap().contains("release = 75 }"));
+        // ...trained, the person's.
+        t.filter.palm_model = Some(olo_palm::baseline());
+        assert!(render(&t).unwrap().contains("release = 75, palm_model = { mean = {"));
         assert!(!lua.contains("@CONFIG@"));
         t.filter.enabled = false;
         assert_eq!(render(&t), None);
@@ -352,7 +359,9 @@ mod tests {
     #[test]
     fn a_touch_ends_only_after_leaving_the_glass() {
         let mut pad = Pad::new(&TouchpadSettings::default());
-        pad.frame(8, &[(SLOT, 0), (ID, 1), (PRESSURE, 20), (MAJOR, 400), (MINOR, 300)]);
+        // (In the middle of the pad: still and light at its very edge, a
+        // contact is a heel resting there, to the palm model.)
+        pad.frame(8, &[(SLOT, 0), (ID, 1), (MID_X, 0), (MID_Y, 4500), (PRESSURE, 20), (MAJOR, 400), (MINOR, 300)]);
         // A moment with no pressure while moving keeps the touch...
         assert_eq!(sizes(&pad.frame(8, &[(PRESSURE, 0)])), []);
         assert_eq!(sizes(&pad.frame(40, &[(PRESSURE, 0)])), []);
@@ -369,12 +378,16 @@ mod tests {
         assert_eq!(sizes(&out), [(MAJOR, 400), (MINOR, 300)]);
     }
 
+    /// A contact's place (`ABS_MT_POSITION_X`, `_Y`).
+    const MID_X: u32 = 0x3_0035;
+    const MID_Y: u32 = 0x3_0036;
+
     /// A fast, light swipe on the 16" M2 Max peaked at pressure 5 over
     /// 12 mm; a threshold of 13 lost it (docs/TOUCHPAD.md).
     #[test]
     fn a_light_swipe_counts() {
         let mut pad = Pad::new(&TouchpadSettings::default());
-        let out = pad.frame(8, &[(SLOT, 0), (ID, 1), (PRESSURE, 0), (MAJOR, 300), (MINOR, 794)]);
+        let out = pad.frame(8, &[(SLOT, 0), (ID, 1), (MID_X, 0), (MID_Y, 4500), (PRESSURE, 0), (MAJOR, 300), (MINOR, 794)]);
         assert_eq!(sizes(&out), [(MAJOR, 0), (MINOR, 0)], "not yet on the glass");
         let out = pad.frame(8, &[(PRESSURE, 3), (MINOR, 790)]);
         assert_eq!(sizes(&out), [(MINOR, 300), (MAJOR, 790)]);

@@ -31,6 +31,15 @@ impl StringView {
         self
     }
 
+    /// At `points` (a full-screen view's title, `style::TITLE_SIZE`); a
+    /// line of it is centred in a row of its own height
+    /// (`style::line_row`) unless [`Self::height`] says another.
+    pub fn size(mut self, points: f32) -> Self {
+        self.size = points;
+        self.height = self.height.max(style::line_row(points));
+        self
+    }
+
     /// A paragraph: wrapped to the width it's given, as tall as it takes.
     pub fn wrap(mut self, on: bool) -> Self {
         self.wrap = on;

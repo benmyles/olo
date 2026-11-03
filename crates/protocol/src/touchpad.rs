@@ -116,7 +116,8 @@ pub struct TouchFilter {
     /// ...and ends once it has been below this for `lift_ms`.
     pub touch_off: u32,
     pub lift_ms: u32,
-    /// A contact this large (the pad's touch-size units) is a palm.
+    /// A contact this large (the pad's touch-size units) is a palm,
+    /// whatever the palm model says: the model only adds palms.
     pub palm_size: u32,
     /// Make the click from the fingers' pressure (palms left out) instead
     /// of the driver's sum over everything touching.
@@ -126,7 +127,8 @@ pub struct TouchFilter {
     pub click_release: u32,
     /// A palm model trained on the person's own hands (Train for Your
     /// Palm), and whether it tells palms apart too (besides
-    /// `palm_size`).
+    /// `palm_size`). Only a trained one is used: Olo's own
+    /// (`olo_palm::baseline`) is where training starts.
     pub palm_model: Option<PalmModel>,
     pub use_palm_model: bool,
 }
@@ -228,6 +230,9 @@ impl Default for TouchFilter {
             click_press: 120,
             click_release: 75,
             palm_model: None,
+            // Off until the person turns it on (Ben, 2026-11-02: "the
+            // built in model should NOT be enabled by default it does not
+            // work well without training"); training turns it on.
             use_palm_model: false,
         }
     }

@@ -7,6 +7,104 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
+- **The palm trainer, full screen and driven from the keyboard** (Ben,
+  2026-11-02, with a screenshot of its last step, "Try it", at 2× in
+  dark mode): "so the training modal/flow needs work: for one i can't
+  click the buttons because i am using the mouse to do stuff. we should
+  make it so that the trainer is full screen and the continue steps
+  etc. are indicated by pressing the spacebar or something, and it
+  needs to be clearer about what is expected for each step with clear
+  feedback as to whether i did it right, and when it finishes it needs
+  to show a proper summary and tell me if it actually created the
+  custom model or not and then in the touch preferneces it needs to
+  also show if it's using the trained model or not and stats on it and
+  you need to carefully qa every window/state screen for it to make
+  sure everything fits and works together and looks good". So:
+  - Full screen, and never needs the pointer: Space goes on, keys for
+    again, back and quit shown on screen (typing steps take their
+    sentence first, so a typed space never skips a step).
+  - Each step says exactly what to do, judges each try as it happens
+    ("that was a fingertip, rest the flat of your hand") and shows its
+    count of good tries; a step is done when it has enough.
+  - The end shows a summary: whether a model was made and saved and is
+    in use now (or why not), touches gathered, and how it does against
+    the built-in model and the size rule on touches kept back.
+  - Preferences ▸ Touchpad says which model is in use (yours, with its
+    date and numbers, or the built-in one) and can forget yours.
+  - The typing exercise as a 90s typing tutor (Ben, 2026-11-02): "for
+    the typing portion show the user something to type (style it like
+    the old school mavis beacon typing tutor from macos -- generate some
+    imagery that looks just like mavis beacon showed and make it a real
+    throwback for people that remember it) because otherwise it's easy
+    to struggle with just thinking about what to type and it's not
+    natural". A lesson strip to type, an on-screen keyboard with each
+    finger's keys in its colour and the next key lit, hands on the home
+    row, speed and accuracy; drawn in Olo's own style (the look, not the
+    product's name, logo or the person on its box).
+  - Enabling the model requires training (Ben: "in fact, change the ux
+    so that enabling it requires doing the training"): only a trained
+    model is used; the check is there once one is.
+  *Status* (2026-11-03): done and built for Ben to try (full screen,
+  keyboard, judged touches with rings and dots, the typing tutor, the
+  summary confirmed with app_server, the try, the Touch tab's status
+  and Forget My Model; walked through headless with synthetic touches at
+  2× dark). Found on the way: a w's points spilled out of its glyph's
+  bitmap when emboldened (a grey box round the letter, any app), fixed
+  in GPUI. Left: QA at 1 and 1.5×, light and night, and the trainer's
+  screens as `ui_lint` tests with the new checks.
+  - QA every screen and state at 1, 1.5 and 2×, light, dark and night.
+
+- **UX linters for every Olo app, run with the build** (Ben,
+  2026-11-02): "also when you do the fixes for the trainer ux can you see
+  if you can add some ux linters that check spacing and layout and
+  window fit and everything and that run as part of the build because
+  most of these silly positioning/spacing things should be flaggable
+  automatically we keep hitting them and it just shouldn't be such a big
+  problem to have consistent, polished ux"; "and when i say "add some ux
+  linters" i mean make some and integrate them of course"; "and the
+  linters should apply to all olo native apps / prefs etc and fix any
+  issues you find when you run it". Today `cargo ui-lint` (olo-ui and
+  Preferences only, run by hand and by install-session) enforces the
+  review's pixel errors plus overlap / outside / text-over-text; the
+  review's spacing findings (near-edge, near-level, off-centre,
+  uneven-rows, near-height) are only advice. So:
+  - The checks in the shared review (`layout_review`), so a live app's
+    review (`tsession review`, `olo-screen review`) runs them too, plus
+    new ones: content against the window's edges (the 12-point inset),
+    controls crowding each other, controls almost lined up (left and
+    right edges), uneven gaps in a row of buttons, a fixed window or
+    dialog that doesn't fit its content (cut, or far taller).
+  - Every Olo app with a window linted live: a runner that opens each in
+    a headless session at 1, 1.5 and 2×, light and dark, and fails on
+    errors; the palm trainer's screens as `ui_lint` tests.
+  - Run with the build: on every commit that touches UI code (a hook),
+    and before install; fix everything they find.
+- **Each section of a preference panel back to its defaults** (Ben,
+  2026-11-02): "there should also be a way to reset any tuning
+  slider/dropdown etc to the defaults for just that section instead of
+  just one defaults button for everything". So: every box of settings
+  (`Ui::bbox`) gets its own way back to the defaults, for what's in it
+  alone, there only when something in it differs from them; the panel's
+  Defaults stays for all of it.
+- **Palm size and the palm model, said plainly** (Ben, 2026-11-02): "is
+  the palm size setting etc still applicable when using the model?
+  should they be disabled and unused if the model is enabled, like
+  either/or? it's confusing right now so either make it clear that they
+  are not mutually exclusive or make it so one or the other is chosen".
+  They work together (a contact is a palm if it's as large as the size
+  or the model says so: the size is a floor the model can't take away),
+  so the Touch tab says so: the model first, with which one is in use,
+  then "Always a palm when as large as", with a note on how they mix.
+- **The palm model in Activity, and first in line** (Ben, 2026-11-02):
+  "also, the activity monitor should show perf stats about the palm
+  model when it's enabled and the supervisor should also make sure it
+  prioritizes that model running since it's very latency sensitive".
+  The model runs in app_server's input path (the libinput plugin), so:
+  its cost per frame and per second, contacts judged and palms caught,
+  shown in Activity while it's on; and the input path kept ahead of
+  everything else (its thread's scheduling, as the supervisor sets
+  app_server's), measured before and after.
+
 - **The best baseline palm model there is** (Ben, 2026-11-02): "try to
   optimize the baseline as much as you can -- and if it would be better
   being even bigger / more features then do that but make it the

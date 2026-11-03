@@ -563,6 +563,11 @@ fn main() {
 * **⌘A in text fields** selects all of the field: a `TextField` with the
   keyboard takes ⌘A, ⌘C, ⌘X and ⌘V itself; otherwise they go to the
   menu's Select All, Copy, Cut and Paste.
+* **Full screen**: `WindowOptions::new(..).fullscreen()` opens it full
+  screen on the display the person is at, asked before its first frame
+  (GPUI's `WindowBounds::Fullscreen`; app_server folds it into the first
+  configure), for something that takes the whole of the person's
+  attention and is done from the keyboard (the palm trainer).
 * **Fixed-size windows**: `WindowOptions::new(..).min_size(w, h)` with
   `fixed` (preference panels, alerts); `max_size(w, h)` fixes a side
   where it's no larger than the smallest (a Find panel's height), and
@@ -1100,7 +1105,10 @@ at)` the one at the caret. Misspelled words get a red wave under them
    their thousands separated, `style::thousands(n)` ("30,001 actions").
    Fonts: `style::ui_font(weight)` and `style::mono_font(weight)`, at
    `PLAIN_SIZE` (12), `DETAIL_SIZE` (11: a subtitle, a caption, a chip)
-   or `SMALL_SIZE` (10.5: graphs' labels, headings in capitals). The
+   or `SMALL_SIZE` (10.5: graphs' labels, headings in capitals); a
+   full-screen view's title at `TITLE_SIZE` (24) and its lead text at
+   `LEAD_SIZE` (15), each line in `style::line_row(size)` (its line
+   height up to the 2-point grid). The
    faces are Noto, shipped with Olo in `data/fonts` (see its README: Noto
    Sans and Noto Sans Mono, variable, with Symbols, Symbols 2 and Math
    for what they lack; OFL) and installed to `share/olo/fonts`
@@ -1462,6 +1470,10 @@ event reaches it.
   moving a pixel redraws the layer, not the cards, legends and figures
   around it (Activity Monitor's CPU section: 4.2 ms a frame to 1.4).
 - `StringView::wrap(true)` (a paragraph, as tall as it wraps to),
+  `StringView::size(points)` (a title's or lead's size, its row grown to
+  fit), `widgets::KeyHint::new("Space", "Next")` (a key's cap and what
+  it does, `enabled(false)` dim: for views driven from the keyboard,
+  where nothing needs the pointer; agents read "Space: Next"),
   `widgets::heading(text)` (bold, a label row tall) and
   `widgets::separator()` (a groove across).
 - `widgets::TabStrip::new(id, tabs, active)`: a row of document tabs
