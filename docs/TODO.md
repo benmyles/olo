@@ -222,7 +222,19 @@ of Finished; a new one goes where its priority puts it.
   difference, switching between them at the same place. Drawn by the
   kit (a chart any app could use), the work on threads of its own, as
   fast as the live path; agents read the figures. Test with
-  `tools/dev/pw-sandbox`, never the person's own sound.
+  `tools/dev/pw-sandbox`, never the person's own sound. Ben, again
+  (2026-11-03, for later): "prefs -> sound -> voice processing needs a
+  way for the user to test the settings by recording a sample and
+  hearing how it sounds on the different settings, and also seeing what
+  the added latency is for each test and how it was accelerated (simd
+  type or gpu etc)". So the one recording runs through more than the
+  settings in use: each setting worth comparing (each stage on and off,
+  its levels, the models there are) is a test of its own over the same
+  sample, listed with the latency it adds (median and worst, per stage)
+  and what ran it (the SIMD kind, NEON, AVX2, AVX-512, …, scalar, or the
+  GPU and its backend), each one played back at the same place to hear
+  them side by side, and the one that sounds best made the setting in
+  one click.
 
 - **Chrome scrolls slower than Olo's apps** (Ben, 2026-11-02): "in
   chrome scrolling does not seem to be the same speed as olo native
