@@ -272,8 +272,14 @@ of Finished; a new one goes where its priority puts it.
 - **Terminal: light mode hard to read** (*better* 2026-11-02: text kept
   at 4.5:1 from its cell, `colors::legible`, so a dark terminal's pale
   colours and the default text on bands programs draw read in light
-  mode; *left*: the run through Codex, Claude Code and the TUIs below in
-  every look, and the looks' palettes tuned) (Ben, 2026-10-31): "in light
+  mode; 2026-11-03: ls, git log/show, vim, htop, btop, man/less and fzf
+  run in all 16 schemes the looks offer, at 1× and 2× (headless,
+  sandboxed), every one legible, vim taking light or dark colours from
+  the OSC 11 answer; what's dark in light mode is the programs' own
+  dark-only defaults (btop's black theme, fzf's selected line);
+  light/dark reports (DEC mode 2031) so a program hears when the
+  colours turn; *left*: Codex and Claude Code, which must be run on
+  Ben's accounts, so by Ben) (Ben, 2026-10-31): "in light
   mode my terminal is really hard to read i'm not sure why or what's
   conflicting but can you figure out a way so that the terminal gets
   properly themed with colors that look beautiful and have high

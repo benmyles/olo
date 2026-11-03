@@ -6302,6 +6302,17 @@ Powerline's, `colors::graphic`). Per cell after faint and inverse;
 14 ns a cell legible already, 56 ns moved, and the last pair is kept
 (colours come in runs), on rows rebuilt only.
 
+Programs learn the colours by asking: OSC 4/10/11 are answered with the
+scheme's own (`session.rs`), and light or dark with DEC mode 2031 (as
+contour, Ghostty and kitty do, and Neovim reads): `CSI ? 996 n` is
+answered `CSI ? 997 ; 1 n` (dark) or `; 2 n` (light), by the scheme's
+background (`Scheme::dark`); a program that turned the mode on
+(`CSI ? 2031 h`) is sent the same unasked when the tab's colours turn
+from light to dark or back (the look's appearance, View ▸ Colors), so
+it picks its own again without being restarted. The io scanner notes
+the mode on its way past (no pass of its own over the output), and
+olo-termd keeps it in a shell's replay.
+
 **sudo in a window** (`src/sudo.rs`, `src/olo_sudo.rs`, `src/sudo_wire.rs`).
 A coding agent's commands have no terminal to type a password into
 (Claude Code runs each in a session of its own, reading /dev/null), so

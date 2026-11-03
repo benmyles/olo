@@ -37,6 +37,13 @@ impl Scheme {
         Scheme::from(&olo_theme::Palette::light().terminal)
     }
 
+    /// Dark (light text on a dark ground), as programs asking are told
+    /// (`io::light_or_dark`): its background nearer black than white.
+    pub fn dark(&self) -> bool {
+        let l = luminance(self.background);
+        ratio(0.0, l) < ratio(1.0, l)
+    }
+
     /// The colour `index` of the 256-colour palette.
     fn indexed(&self, i: u8) -> Rgb {
         match i {

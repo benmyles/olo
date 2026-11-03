@@ -719,9 +719,17 @@ impl Terminal {
         }
         t.tab().session.woke();
         {
-            let mut current = t.tab().session.shared.scheme.lock().unwrap();
+            let session = &t.tab().session;
+            let mut current = session.shared.scheme.lock().unwrap();
             if *current != scheme {
+                // Turned light or dark: a program that asked to hear is
+                // told (DEC mode 2031), so it picks its colours again.
+                let turned = current.dark() != scheme.dark();
                 *current = scheme.clone();
+                drop(current);
+                if turned && session.shared.reports.load(std::sync::atomic::Ordering::Relaxed) {
+                    session.write(crate::io::light_or_dark(scheme.dark()).to_vec());
+                }
             }
         }
         // The window's size for its grid, once the cells are known.

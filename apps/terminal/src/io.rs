@@ -15,7 +15,7 @@ use std::{
     os::fd::{AsRawFd, OwnedFd},
     sync::{
         Mutex,
-        atomic::{AtomicI32, AtomicU32, Ordering},
+        atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering},
     },
     time::Instant,
 };
@@ -70,6 +70,23 @@ pub struct Scanner {
     esc: bool,
     /// Inside a capture, the last byte was ESC (the terminator may follow).
     capture_esc: bool,
+    /// The program turned light/dark reports (DEC mode 2031) on or off,
+    /// last, in what was scanned.
+    pub reports: Option<bool>,
+    /// It asked whether the terminal is light or dark (`CSI ? 996 n`).
+    pub asked: bool,
+}
+
+/// Light/dark reports (contour's DEC mode 2031, as Ghostty, kitty and
+/// Neovim have it): turned on and off, and the question.
+const REPORTS_ON: &[u8] = b"\x1b[?2031h";
+const REPORTS_OFF: &[u8] = b"\x1b[?2031l";
+const LIGHT_OR_DARK: &[u8] = b"\x1b[?996n";
+
+/// The answer to [`LIGHT_OR_DARK`], and what's sent unasked when it
+/// changes while reports are on: 1 dark, 2 light.
+pub fn light_or_dark(dark: bool) -> &'static [u8] {
+    if dark { b"\x1b[?997;1n" } else { b"\x1b[?997;2n" }
 }
 
 impl Scanner {
@@ -191,6 +208,19 @@ impl Scanner {
                         Some(b'_') => Some(Kind::Apc),
                         Some(b'P') => Some(Kind::DcsHeader),
                         Some(b']') => Some(Kind::OscHeader),
+                        // (A CSI vte keeps; light/dark reports noted on
+                        // the way.)
+                        Some(b'[') if input[at..].len() >= LIGHT_OR_DARK.len() && input[at + 2] == b'?' => {
+                            let rest = &input[at..];
+                            if rest.starts_with(REPORTS_ON) {
+                                self.reports = Some(true);
+                            } else if rest.starts_with(REPORTS_OFF) {
+                                self.reports = Some(false);
+                            } else if rest.starts_with(LIGHT_OR_DARK) {
+                                self.asked = true;
+                            }
+                            None
+                        }
                         None => {
                             // Can't tell yet: hold the ESC for the next read.
                             if at > text_start {
@@ -261,6 +291,9 @@ pub struct Shared {
     pub pid: AtomicI32,
     /// The PTY it runs in, to see what's in the foreground.
     pub pty: Mutex<Option<OwnedFd>>,
+    /// The program wants to hear when the colours turn light or dark
+    /// (DEC mode 2031).
+    pub reports: AtomicBool,
 }
 
 impl Shared {
@@ -272,6 +305,7 @@ impl Shared {
             scheme: Mutex::new(scheme),
             pid: AtomicI32::new(0),
             pty: Mutex::new(None),
+            reports: AtomicBool::new(false),
         }
     }
 
@@ -321,6 +355,12 @@ impl Feeder {
     pub fn feed<T: EventListener>(&mut self, term: &mut Term<T>, shared: &Shared, bytes: &[u8], reply: &mut Vec<u8>) -> bool {
         let mut pieces = Vec::new();
         self.scanner.feed(bytes, &mut pieces);
+        if let Some(on) = self.scanner.reports.take() {
+            shared.reports.store(on, Ordering::Relaxed);
+        }
+        if std::mem::take(&mut self.scanner.asked) {
+            reply.extend_from_slice(light_or_dark(shared.scheme.lock().unwrap().dark()));
+        }
         for piece in pieces {
             match piece {
                 Piece::Text(text) => self.parser.advance(term, text),
@@ -386,6 +426,63 @@ mod tests {
         assert_eq!(r.concat(), "T:\x1b]0T:;title\x07x");
         let r = run(&[b"\x1bP$qm\x1b\\"]);
         assert_eq!(r.concat(), "T:\x1bP$T:qm\x1b\\");
+    }
+
+    #[test]
+    fn light_and_dark_reports() {
+        // Turned on, asked, turned off: noted, and the sequences still
+        // go to vte.
+        let mut s = Scanner::default();
+        let mut pieces = Vec::new();
+        s.feed(b"a\x1b[?2031hb\x1b[?996nc", &mut pieces);
+        assert_eq!((s.reports, s.asked), (Some(true), true));
+        assert_eq!(pieces, [Piece::Text(b"a\x1b[?2031hb\x1b[?996nc")]);
+        s.reports = None;
+        s.asked = false;
+        s.feed(b"\x1b[?2031l\x1b[?2004h", &mut Vec::new());
+        assert_eq!((s.reports, s.asked), (Some(false), false));
+        // Answered by what the colours are, through the feeder.
+        let shared = Shared::new((8, 16), Size { cols: 20, rows: 5 }, crate::colors::Scheme::light());
+        let mut term = Term::new(alacritty_terminal::term::Config::default(), &Size { cols: 20, rows: 5 }, alacritty_terminal::event::VoidListener);
+        let (mut feeder, mut reply) = (Feeder::default(), Vec::new());
+        feeder.feed(&mut term, &shared, b"\x1b[?2031h\x1b[?996n", &mut reply);
+        assert!(shared.reports.load(Ordering::Relaxed));
+        assert_eq!(reply, b"\x1b[?997;2n");
+        *shared.scheme.lock().unwrap() = crate::colors::Scheme::from(&olo_theme::looks::terminal("mocha").unwrap());
+        reply.clear();
+        feeder.feed(&mut term, &shared, b"\x1b[?996n\x1b[?2031l", &mut reply);
+        assert_eq!(reply, b"\x1b[?997;1n");
+        assert!(!shared.reports.load(Ordering::Relaxed));
+    }
+
+    /// What scanning costs on colourful output (a CSI every few bytes):
+    /// `cargo test --release -p olo-terminal scan_cost -- --ignored
+    /// --nocapture`.
+    #[test]
+    #[ignore]
+    fn scan_cost() {
+        let line = b"\x1b[38;5;244m drwxr-xr-x\x1b[0m \x1b[1;34mdocs\x1b[0m \x1b[?25l\x1b[2;3H\x1b[32m+added line\x1b[m\r\n";
+        let text: Vec<u8> = line.iter().copied().cycle().take(64 << 20).collect();
+        let mut s = Scanner::default();
+        let start = std::time::Instant::now();
+        for chunk in text.chunks(64 * 1024) {
+            let mut pieces = Vec::new();
+            s.feed(chunk, &mut pieces);
+            std::hint::black_box(&pieces);
+        }
+        let secs = start.elapsed().as_secs_f64();
+        println!("scanning {:.0} MB/s ({:.2} ms for 64 MiB)", 64.0 * 1.048576 / secs, secs * 1e3);
+        // And all a shell's output goes through: into an emulator too.
+        let size = Size { cols: 120, rows: 40 };
+        let shared = Shared::new((8, 16), size, crate::colors::Scheme::light());
+        let mut term = Term::new(alacritty_terminal::term::Config::default(), &size, alacritty_terminal::event::VoidListener);
+        let mut feeder = Feeder::default();
+        let start = std::time::Instant::now();
+        for chunk in text.chunks(64 * 1024) {
+            feeder.feed(&mut term, &shared, chunk, &mut Vec::new());
+        }
+        let secs = start.elapsed().as_secs_f64();
+        println!("feeding {:.0} MB/s ({:.0} ms for 64 MiB)", 64.0 * 1.048576 / secs, secs * 1e3);
     }
 
     #[test]

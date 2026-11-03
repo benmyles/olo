@@ -411,7 +411,7 @@ fn attach(st: &mut State, conn: u64, id: u64, grid: Grid) {
     shell.resize(grid);
     let mut term = shell.term.lock();
     let title = shell.title.lock().unwrap().clone();
-    let replay = replay::snapshot(&mut term, title.as_deref(), &shell.shared.images.lock().unwrap());
+    let replay = replay::snapshot(&mut term, title.as_deref(), &shell.shared.images.lock().unwrap(), shell.shared.reports.load(Ordering::Relaxed));
     let alt = term.mode().contains(TermMode::ALT_SCREEN);
     let mut data = shell.pid.to_le_bytes().to_vec();
     data.extend_from_slice(&replay);
@@ -744,7 +744,7 @@ fn upgrade(st: &St, binary: &Binary, listener: &UnixListener, lock: &File) {
     for (&id, sh) in &s.shells {
         let mut term = sh.term.lock();
         let title = sh.title.lock().unwrap().clone();
-        let replay = replay::snapshot(&mut term, title.as_deref(), &sh.shared.images.lock().unwrap());
+        let replay = replay::snapshot(&mut term, title.as_deref(), &sh.shared.images.lock().unwrap(), sh.shared.reports.load(Ordering::Relaxed));
         carried.shells.push(CarriedShell { id, fd: sh.master.as_raw_fd(), pid: sh.pid, grid: sh.grid, title, replay });
     }
     let fds: Vec<RawFd> = carried.shells.iter().map(|c| c.fd).chain([carried.listener, carried.lock]).collect();

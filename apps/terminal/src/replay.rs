@@ -220,7 +220,7 @@ fn modes(out: &mut String, mode: TermMode) {
 
 /// Output that brings a fresh emulator to where `term` is. (It swaps
 /// `term`'s screens to read the one not showing, and puts them back.)
-pub fn snapshot<T: EventListener>(term: &mut Term<T>, title: Option<&str>, store: &Store) -> Vec<u8> {
+pub fn snapshot<T: EventListener>(term: &mut Term<T>, title: Option<&str>, store: &Store, reports: bool) -> Vec<u8> {
     let mut images = Images { store, sent: HashSet::new() };
     // Start from nothing (a re-attaching Terminal has a screen already).
     let mut out = String::from("\x1bc");
@@ -237,6 +237,10 @@ pub fn snapshot<T: EventListener>(term: &mut Term<T>, title: Option<&str>, store
         history(&mut out, term.grid(), &mut images);
     }
     modes(&mut out, *term.mode());
+    // Light/dark reports (DEC mode 2031: not one of alacritty's).
+    if reports {
+        out.push_str("\x1b[?2031h");
+    }
     let style = term.cursor_style();
     // DECSCUSR (a steady block is where we start).
     let shape = match (style.shape, style.blinking) {
@@ -333,12 +337,12 @@ mod tests {
         let mut cleared = term(20, 5);
         feed(&mut cleared, b"one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix\x1b[H\x1b[2J$ ");
         for t in [&mut a, &mut cleared] {
-            let replay = snapshot(t, Some("hi"), &Store::default());
+            let replay = snapshot(t, Some("hi"), &Store::default(), false);
             let mut b = term(20, 5);
             feed(&mut b, &replay);
             same(t, &b);
         }
-        let replay = String::from_utf8(snapshot(&mut a, None, &Store::default())).unwrap();
+        let replay = String::from_utf8(snapshot(&mut a, None, &Store::default(), false)).unwrap();
         assert!(replay.contains("\x1b[0;31mred"));
     }
 
@@ -348,7 +352,10 @@ mod tests {
         feed(&mut a, b"before\r\n$ vim\r\n");
         feed(&mut a, b"\x1b[?1049h\x1b[?1h\x1b=\x1b[?2004h\x1b[?1000h\x1b[?1006h\x1b[>1u\x1b[?25l\x1b[5 q");
         feed(&mut a, b"\x1b[2;3Hhello\x1b[5;1H~ status\x1b[3;4H");
-        let replay = snapshot(&mut a, Some("vim"), &Store::default());
+        let replay = snapshot(&mut a, Some("vim"), &Store::default(), false);
+        assert!(!String::from_utf8_lossy(&replay).contains("2031"));
+        // Light/dark reports asked for are asked for again.
+        assert!(String::from_utf8_lossy(&snapshot(&mut a, Some("vim"), &Store::default(), true)).contains("\x1b[?2031h"));
         // Reading the primary screen left the alternate one as it was.
         let mut again = term(20, 5);
         feed(&mut again, b"before\r\n$ vim\r\n\x1b[?1049h\x1b[?1h\x1b=\x1b[?2004h\x1b[?1000h\x1b[?1006h\x1b[>1u\x1b[?25l\x1b[5 q\x1b[2;3Hhello\x1b[5;1H~ status\x1b[3;4H");
@@ -405,7 +412,7 @@ mod tests {
         feed_images(&mut a, &sa, format!("top\r\n\x1b_Ga=T,f=32,s=20,v=40,i=7,q=2;{data}\x1b\\after").as_bytes());
         // olo-termd keeps them compressed.
         sa.images.lock().unwrap().pack();
-        let replay = snapshot(&mut a, None, &sa.images.lock().unwrap());
+        let replay = snapshot(&mut a, None, &sa.images.lock().unwrap(), false);
         let mut b = term(20, 5);
         feed_images(&mut b, &sb, &replay);
         same(&a, &b);
