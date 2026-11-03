@@ -109,6 +109,27 @@ fn ui_lint_every_panel() {
     assert_clean("Preferences' panels", &found);
 }
 
+/// Train for Your Palm, full screen: each step in each of its states (a
+/// touch judged, the longest miss, done, Esc pressed once; the summary's
+/// outcomes) on the screen it's laid out for and on a MacBook's at 2×.
+#[test]
+fn ui_lint_the_palm_trainer() {
+    let mut lint = Lint::new();
+    let mut found = Vec::new();
+    for (w, h) in [(1280.0, 800.0), (1512.0, 982.0)] {
+        for (name, step, v) in crate::palm_trainer::lint_states() {
+            let options = WindowOptions::new("Train for Your Palm", w, h).fullscreen();
+            for f in lint.window(&options, move |_, cx| {
+                let prefs = cx.new(|_| prefs());
+                cx.new(|cx| crate::palm_trainer::TrainerWindow::for_lint(prefs, step, v, cx))
+            }) {
+                found.push(olo_ui::lint::Found { text: format!("{w}×{h}, {name}: {}", f.text), ..f });
+            }
+        }
+    }
+    assert_clean("the palm trainer", &found);
+}
+
 /// A name from the test data or this computer: a display's ("D0 Built-in
 /// Display"), as the Display panel's buttons for them are named.
 fn this_machines(name: &str) -> bool {

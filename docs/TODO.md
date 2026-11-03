@@ -53,6 +53,10 @@ of Finished; a new one goes where its priority puts it.
   in GPUI. Left: QA at 1 and 1.5×, light and night, and the trainer's
   screens as `ui_lint` tests with the new checks.
   - QA every screen and state at 1, 1.5 and 2×, light, dark and night.
+  *Status* (2026-11-03): every step in every state is a `ui_lint` test
+  (`ui_lint_the_palm_trainer`: 36 states, at 1280 × 800 and 1512 × 982,
+  1, 1.5 and 2×, light and dark; night is app_server's warm tint, not
+  a palette): clean. Left: Ben's go on his pad with the new build.
 
 - **UX linters for every Olo app, run with the build** (Ben,
   2026-11-02): "also when you do the fixes for the trainer ux can you see
@@ -103,9 +107,10 @@ of Finished; a new one goes where its priority puts it.
   two columns (800 × 466, 760 × 408); the live runner plays Sound
   through olo-fakesound (it only saw "No sound server" before); the
   hooks (tools/hooks: rustfmt and `cargo ui-lint` before a commit, the
-  live lint of changed apps before a push). Left: two columns for
-  AirPods (902 tall), Themes (712) and Default Apps (662) where their
-  boxes split well; the palm trainer's screens as `ui_lint` tests.
+  live lint of changed apps before a push); the palm trainer's screens
+  as `ui_lint` tests (every step and state, full screen). Left: two
+  columns for AirPods (902 tall), Themes (712) and Default Apps (662)
+  where their boxes split well.
 - **Logs draws while idle, and a drag in its second list is uneven at
   1.5×** (found by `tools/dev/bench`, 2026-11-03, before and after the
   spacing work alike): Logs draws 90 to 125 frames in the bench's

@@ -135,9 +135,11 @@ impl Lint {
                     let fits = (((lowest + m::WINDOW_INSET) / 2.0).ceil() * 2.0) as u32;
                     let text = format!("what it shows ends {room:.1} pt above its bottom (the window's inset is {}): make it {fits} tall", m::WINDOW_INSET);
                     found.push(Found { look, scale, kind: "fit".into(), text });
-                } else if slack > 2.0 * m::WINDOW_INSET + self.room + 0.5 {
+                } else if !options.fullscreen && slack > 2.0 * m::WINDOW_INSET + self.room + 0.5 {
                     // (Its tallest tab leaves this much empty at the
-                    // bottom of its pane, or of the window.)
+                    // bottom of its pane, or of the window. Not a full
+                    // screen one's: the screen sizes it, and what it shows
+                    // is centred in it.)
                     let fits = (((height - (slack - m::WINDOW_INSET)) / 2.0).ceil() * 2.0) as u32;
                     let text = format!("its tallest page leaves {slack:.1} pt empty at the bottom (the inset is {}): make it {fits} tall", m::WINDOW_INSET);
                     found.push(Found { look, scale, kind: "fit".into(), text });

@@ -1086,6 +1086,83 @@ fn results(r: &Report) -> AnyElement {
         .into_any_element()
 }
 
+/// Each screen in each of its states, for the layout lint
+/// (`ui_lint_the_palm_trainer`): a name, the step, and which state.
+#[cfg(test)]
+pub(crate) fn lint_states() -> Vec<(String, Step, u8)> {
+    let mut out = vec![("the introduction".to_owned(), Step::Intro, 0)];
+    for s in EXERCISES {
+        for (v, how) in ["fresh", "halfway", "a miss", "done", "quitting"].into_iter().enumerate() {
+            out.push((format!("{}, {how}", s.words().0), s, v as u8));
+        }
+    }
+    out.push(("training".into(), Step::Training, 0));
+    for (v, how) in ["kept, saving", "kept and saved", "kept, not saved", "worse", "too few"].into_iter().enumerate() {
+        out.push((format!("the summary, {how}"), Step::Summary, v as u8));
+    }
+    out.push(("the try".into(), Step::Test, 0));
+    out
+}
+
+#[cfg(test)]
+impl TrainerWindow {
+    /// The window at `step` in state `v` of `lint_states`, with a
+    /// MacBook's pad, the longest things each shows.
+    pub(crate) fn for_lint(prefs: Entity<Prefs>, step: Step, v: u8, cx: &mut Context<Self>) -> TrainerWindow {
+        let mut w = TrainerWindow::new(prefs, 1600, cx);
+        w.live.lock().unwrap().axes =
+            Some(PadAxes { name: "Apple MTP multi-touch".into(), x_min: -7700, x_max: 7700, y_min: -200, y_max: 9200, x_res: 98, y_res: 98, size_max: 4000, ..Default::default() });
+        w.step = step;
+        let goals = step.goals();
+        w.tally = match v {
+            1 => goals.iter().map(|(_, n)| n / 2).collect(),
+            3 => goals.iter().map(|(_, n)| *n).collect(),
+            _ => vec![0; goals.len()],
+        };
+        let say = |good, text| Some(Said { good, text, at: Instant::now(), place: (0.5, 0.5) });
+        w.said = match v {
+            1 => say(true, "A finger, with your palm down. Good."),
+            // (The longest of the misses.)
+            2 => say(false, "Rest the heel of your hand, not a fingertip, at or over the edge."),
+            _ => None,
+        };
+        w.quitting = v == 4;
+        if step == Step::TypeWithPalms && v > 0 {
+            w.tutor.typed = 12;
+        }
+        let report = Report {
+            contacts: 96,
+            palms: 41,
+            fingers: 55,
+            palms_caught: 0.97,
+            fingers_lost: 0.018,
+            size_rule_palms_caught: 0.71,
+            size_rule_fingers_lost: 0.0,
+            baseline_palms_caught: 0.88,
+            baseline_fingers_lost: 0.036,
+        };
+        if step == Step::Summary {
+            w.samples = (0..480).map(|i| Labelled { palm: i % 3 == 0, ..Default::default() }).collect();
+            w.outcome = Some(match v {
+                0..=2 => Outcome::Kept(report),
+                3 => Outcome::Worse(report),
+                _ => Outcome::TooFew,
+            });
+            *w.saved.lock().unwrap() = match v {
+                1 => Some(true),
+                2 => Some(false),
+                _ => None,
+            };
+        }
+        if step == Step::Training {
+            w.samples = (0..480).map(|_| Labelled::default()).collect();
+            *w.progress.lock().unwrap() = 0.4;
+        }
+        w.tried = (1_284, 316);
+        w
+    }
+}
+
 impl Render for TrainerWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if !self.focused {

@@ -2762,9 +2762,15 @@ show it fires on the old layout.
 widgets is clean; controls put over each other are found) and every
 Preferences panel at its size with made-up long display names and the
 panels' test data (no app_server, no devices: their links answer with
-it under `cfg(test)`). `tools/install-session.sh` runs it and stops if
-it fails. A window of a fixed size or a dialog gets a `ui_lint` test
-beside it: build its view with the longest things it can show.
+it under `cfg(test)`), and Train for Your Palm full screen at 1280 × 800
+and a MacBook's 1512 × 982, every step in every state
+(`palm_trainer::lint_states`: fresh, a touch judged, the longest miss,
+done, Esc pressed once; training; each of the summary's outcomes; the
+try). `tools/install-session.sh` runs it and stops if it fails. A
+window of a fixed size or a dialog gets a `ui_lint` test beside it:
+build its view with the longest things it can show. A full-screen one
+(`WindowOptions::fullscreen`) is centred in what the screen gives it,
+so the fit check doesn't ask it to be shorter.
 
 Go through each finding: fix it in the kit or the view, or, when it is
 meant, tell the review why (`own_grid`, `band`) so the next run is
