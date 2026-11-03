@@ -59,6 +59,15 @@ of Finished; a new one goes where its priority puts it.
   it back (and how to wait for that), doing nothing to the screen; what
   only reads it (a look, the tree) still answers. The skill says so too.
 
+- **Agent Screens: copy and paste between the person's display and a
+  screen they're controlling** (Ben, 2026-11-03): "when i am controlling
+  an agent screen i should be able to copy/paste from/to it". So while
+  the person controls a screen, what they copy on it reaches their own
+  clipboard and what they copied on their own display pastes on it
+  (text, pictures, files as the clipboard has them), both ways, only
+  while they're in control (an agent's screen never reads the person's
+  clipboard on its own).
+
 - **Focus mode: a link opened in a browser on the same desktop doesn't
   bring its window forward** (Ben, 2026-11-03, a bug): "when in focus
   mode if i click on e.g. a url and my browser that it should open in is
