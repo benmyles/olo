@@ -168,17 +168,6 @@ of Finished; a new one goes where its priority puts it.
   at ~11% with a call on is the tick (now once per 8 ms) and looks;
   per-display render threads (its own TODO).
 
-- **app_server: a 16 ms frame during Terminal's live resize at 2×**
-  (the bench, 2 runs in 5: "16.2 ms drawing 7.7 Mpx; 1.0 ms on a CPU,
-  3 waits"): app_server waits, not computes. Not seen resizing
-  StyledEdit or Tracker, nor the egui Terminal; 2 of 8 runs of the 2×
-  bench, none of 5 resizes done as the bench does in a session of its
-  own. Not the wallpaper (Terminal's surface is opaque) nor importing
-  (that's gathering): the GLES draw blocks, likely on the GPU while the
-  client makes its screen-sized swapchain for the resize (three of 123
-  MB at 2×, on the press). Time app_server's passes on the GPU around
-  it and keep the client's allocation from stalling the compositor.
-
 - **GPUI text a glyph at a time is slow at full screen** (found
   2026-11-01 by the benchmark): a window full of GPUI kit text painted
   each glyph on its own, so the Notifications History at 1× on a
@@ -794,6 +783,21 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**app_server: a 16 ms frame during Terminal's live resize at 2×**~~
+  (the bench, 2 runs in 5: "16.2 ms drawing 7.7 Mpx; 1.0 ms on a CPU,
+  3 waits"): app_server waits, not computes. Not seen resizing
+  StyledEdit or Tracker, nor the egui Terminal; 2 of 8 runs of the 2×
+  bench, none of 5 resizes done as the bench does in a session of its
+  own. Not the wallpaper (Terminal's surface is opaque) nor importing
+  (that's gathering): the GLES draw blocks, likely on the GPU while the
+  client makes its screen-sized swapchain for the resize (three of 123
+  MB at 2×, on the press). Time app_server's passes on the GPU around
+  it and keep the client's allocation from stalling the compositor.
+  *Gone* (2026-11-02): four bench runs of Terminal at 2×, its live
+  resize's app_server frames at most 0.58–1.84 ms (and Terminal's own
+  at most 0.76–3.75), since the GPU-wait fixes and GPUI drawing a live
+  resize in part of a bigger swapchain.
 
 - ~~**Telegram: changes that never reached Telegram**~~ (Ben,
   2026-11-02: "telegram still doesn't work"; "is it possible that when
