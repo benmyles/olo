@@ -301,7 +301,17 @@ of Finished; a new one goes where its priority puts it.
   destroy only). Find which program sends opcode 2 (a newer
   interface version it was told it has?) and whether app_server
   advertises a version it doesn't serve. (Not seen since 2026-11-01
-  13:19.)
+  13:19, through two days of upgrades.) *Lead* (2026-11-02): not a
+  version (primary selection has only v1); opcode 2 is exactly
+  `wl_data_offer.destroy`, on 0xFF000002, a server-made id: the program
+  destroyed what it held as a clipboard offer whose id app_server had
+  already given to a primary-selection offer. Something freed the data
+  offer's id before the program destroyed it: app_server destroying an
+  offer's resource itself (a selection replaced), or olo-wlproxy's
+  server-id mapping (`s_up`, `free`) across a restart. olo-wlproxy
+  swallows requests to zombies and maps server ids since; a test with
+  a program holding a data offer across `tsession reload`, then
+  destroying it, would show which.
 
 - **app_server's critical path on threads of its own** (Ben,
   2026-11-01: "why run the risk of a blocking call? threads would
