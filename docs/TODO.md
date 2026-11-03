@@ -58,69 +58,11 @@ of Finished; a new one goes where its priority puts it.
   1, 1.5 and 2×, light and dark; night is app_server's warm tint, not
   a palette): clean. Left: Ben's go on his pad with the new build.
 
-- **UX linters for every Olo app, run with the build** (Ben,
-  2026-11-02): "also when you do the fixes for the trainer ux can you see
-  if you can add some ux linters that check spacing and layout and
-  window fit and everything and that run as part of the build because
-  most of these silly positioning/spacing things should be flaggable
-  automatically we keep hitting them and it just shouldn't be such a big
-  problem to have consistent, polished ux"; "and when i say "add some ux
-  linters" i mean make some and integrate them of course"; "and the
-  linters should apply to all olo native apps / prefs etc and fix any
-  issues you find when you run it". Today `cargo ui-lint` (olo-ui and
-  Preferences only, run by hand and by install-session) enforces the
-  review's pixel errors plus overlap / outside / text-over-text; the
-  review's spacing findings (near-edge, near-level, off-centre,
-  uneven-rows, near-height) are only advice. So:
-  - The checks in the shared review (`layout_review`), so a live app's
-    review (`tsession review`, `olo-screen review`) runs them too, plus
-    new ones: content against the window's edges (the 12-point inset),
-    controls crowding each other, controls almost lined up (left and
-    right edges), uneven gaps in a row of buttons, a fixed window or
-    dialog that doesn't fit its content (cut, or far taller).
-  - Every Olo app with a window linted live: a runner that opens each in
-    a headless session at 1, 1.5 and 2×, light and dark, and fails on
-    errors; the palm trainer's screens as `ui_lint` tests.
-  - Run with the build: on every commit that touches UI code (a hook),
-    and before install; fix everything they find.
-  Also (Ben, 2026-11-03, with a screenshot of the Touch tab): "honestly
-  everything is too cramped as well -- there should be more space
-  between all the elements and it should look polished, clean. update
-  the linter to reflect that and then fix everything everywhere"; "not
-  being cramped isn't just for preferences it's for everything"; "you
-  could make some of the preferences wider like a 2 column layout
-  instead of one"; "extend the lints to support all the different ux
-  things we have so that it won't miss anything"; "improve the fit check
-  to catch it -- anything you find that the linter didn't find, improve
-  the linter so that next time it will find it"; and of the opened-up
-  Deskbar tray: "i actually think i preferred the deskbar icons like
-  they were before" (put back, a grid of its own to the review).
-  *Status* (2026-11-03): the checks are in the shared review (collapsed,
-  outside, cut, overlap, text-outside, text-cut, text-over-text,
-  overflow, crowded, window-edge, crowded-lines, control-edges,
-  uneven-gaps), the lint's `fit` says how tall a window must be, and
-  `tools/dev/ui-lint` runs every app live; the metrics opened up (TIGHT
-  6, STACK 10, SPACING 12, WINDOW_INSET 16, BOX_INSET 14); every panel
-  refitted from the lint's numbers, Touchpad & Mouse in two columns;
-  DeskCalc, Deskbar's clock, Doctor, About, Date & Time, Notifications
-  fixed; 36 of 36 targets clean live at 1, 1.5 and 2×; Sound and AI in
-  two columns (800 × 466, 760 × 408); the live runner plays Sound
-  through olo-fakesound (it only saw "No sound server" before); the
-  hooks (tools/hooks: rustfmt and `cargo ui-lint` before a commit, the
-  live lint of changed apps before a push); the palm trainer's screens
-  as `ui_lint` tests (every step and state, full screen); AirPods in two
-  columns (960 × 622, was 520 × 902). Themes and Default Apps stay one:
-  a list of wide theme rows over a row of colour cards, and tabs of
-  lists, want the width, not boxes side by side; both fit a MacBook's
-  982 points.
-- **Logs draws while idle, and a drag in its second list is uneven at
-  1.5×** (found by `tools/dev/bench`, 2026-11-03, before and after the
-  spacing work alike): Logs draws 90 to 125 frames in the bench's
-  "idle 1 s" at every scale (Preferences and Tracker draw none), and
-  "scroll 2" at 1.5× failed once in four runs: "frames moved 0.73–1.27×
-  as far as the fingers" (HEAD had 0.87–1.13 once). Find what Logs
-  redraws for (the session's own journal lines arriving?) and why a
-  drag at 1.5× skips a device pixel now and then.
+- **Logs: a drag in its second list is uneven at 1.5× now and then**
+  (found by `tools/dev/bench`, 2026-11-03, before and after the spacing
+  work alike): "scroll 2" at 1.5× failed once in four runs: "frames
+  moved 0.73–1.27× as far as the fingers" (HEAD had 0.87–1.13 once).
+  Find why a drag at 1.5× skips a device pixel now and then.
 - **Palm size and the palm model, said plainly** (Ben, 2026-11-02): "is
   the palm size setting etc still applicable when using the model?
   should they be disabled and unused if the model is enabled, like
@@ -858,6 +800,69 @@ Open; making fast things faster waits here.
 
 ## Finished (most recently finished first)
 
+- ~~**UX linters for every Olo app, run with the build**~~ (Ben,
+  2026-11-02): "also when you do the fixes for the trainer ux can you see
+  if you can add some ux linters that check spacing and layout and
+  window fit and everything and that run as part of the build because
+  most of these silly positioning/spacing things should be flaggable
+  automatically we keep hitting them and it just shouldn't be such a big
+  problem to have consistent, polished ux"; "and when i say "add some ux
+  linters" i mean make some and integrate them of course"; "and the
+  linters should apply to all olo native apps / prefs etc and fix any
+  issues you find when you run it". Today `cargo ui-lint` (olo-ui and
+  Preferences only, run by hand and by install-session) enforces the
+  review's pixel errors plus overlap / outside / text-over-text; the
+  review's spacing findings (near-edge, near-level, off-centre,
+  uneven-rows, near-height) are only advice. So:
+  - The checks in the shared review (`layout_review`), so a live app's
+    review (`tsession review`, `olo-screen review`) runs them too, plus
+    new ones: content against the window's edges (the 12-point inset),
+    controls crowding each other, controls almost lined up (left and
+    right edges), uneven gaps in a row of buttons, a fixed window or
+    dialog that doesn't fit its content (cut, or far taller).
+  - Every Olo app with a window linted live: a runner that opens each in
+    a headless session at 1, 1.5 and 2×, light and dark, and fails on
+    errors; the palm trainer's screens as `ui_lint` tests.
+  - Run with the build: on every commit that touches UI code (a hook),
+    and before install; fix everything they find.
+  Also (Ben, 2026-11-03, with a screenshot of the Touch tab): "honestly
+  everything is too cramped as well -- there should be more space
+  between all the elements and it should look polished, clean. update
+  the linter to reflect that and then fix everything everywhere"; "not
+  being cramped isn't just for preferences it's for everything"; "you
+  could make some of the preferences wider like a 2 column layout
+  instead of one"; "extend the lints to support all the different ux
+  things we have so that it won't miss anything"; "improve the fit check
+  to catch it -- anything you find that the linter didn't find, improve
+  the linter so that next time it will find it"; and of the opened-up
+  Deskbar tray: "i actually think i preferred the deskbar icons like
+  they were before" (put back, a grid of its own to the review).
+  *Done* (2026-11-03): the checks are in the shared review (collapsed,
+  outside, cut, overlap, text-outside, text-cut, text-over-text,
+  overflow, crowded, window-edge, crowded-lines, control-edges,
+  uneven-gaps), the lint's `fit` says how tall a window must be, and
+  `tools/dev/ui-lint` runs every app live; the metrics opened up (TIGHT
+  6, STACK 10, SPACING 12, WINDOW_INSET 16, BOX_INSET 14); every panel
+  refitted from the lint's numbers, Touchpad & Mouse in two columns;
+  DeskCalc, Deskbar's clock, Doctor, About, Date & Time, Notifications
+  fixed; 36 of 36 targets clean live at 1, 1.5 and 2×; Sound and AI in
+  two columns (800 × 466, 760 × 408); the live runner plays Sound
+  through olo-fakesound (it only saw "No sound server" before); the
+  hooks (tools/hooks: rustfmt and `cargo ui-lint` before a commit, the
+  live lint of changed apps before a push); the palm trainer's screens
+  as `ui_lint` tests (every step and state, full screen); AirPods in two
+  columns (960 × 622, was 520 × 902). Themes and Default Apps stay one:
+  a list of wide theme rows over a row of colour cards, and tabs of
+  lists, want the width, not boxes side by side; both fit a MacBook's
+  982 points.
+- ~~**Logs draws while idle**~~ (found by `tools/dev/bench`, 2026-11-03):
+  90 to 125 frames in the bench's "idle 1 s". *Done* (2026-11-03): it was
+  the journal still loading, a frame for every 4,000-line batch, every
+  vblank for as long as a long journal takes (4 s for 400,000 lines
+  from a cold cache). What's read now goes to the window at most every
+  100 ms as it loads (the first batch at once), continuations still
+  joined to their lines. The bench at 2×: launch and load 272 → 32
+  frames, idle 1 s 93 → 8 (the live tail's 10 Hz).
 - ~~**The palm model in Activity, and first in line**~~ (Ben,
   2026-11-02): "also, the activity monitor should show perf stats about
   the palm model when it's enabled and the supervisor should also make

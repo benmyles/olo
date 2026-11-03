@@ -56,6 +56,11 @@ pub fn run(follow: bool, on: &mut dyn FnMut(Update) -> bool) {
     let mut entries = Vec::new();
     let mut active: Option<Journal> = None;
     let last = files.len() - 1;
+    // (What's read goes to the window at most every `PACE` while it
+    // loads, the first batch at once: a frame each batch was every
+    // vblank for the seconds a long journal takes, for a count going up.)
+    let mut pending = Pending::new(&builder);
+    let mut sent: Option<std::time::Instant> = None;
     for (i, path) in files.iter().enumerate() {
         let mut j = match Journal::open(path) {
             Ok(j) => j,
@@ -73,13 +78,20 @@ pub fn run(follow: bool, on: &mut dyn FnMut(Update) -> bool) {
             if entries.is_empty() {
                 break;
             }
-            if !on(build(&mut builder, &entries)) {
-                return;
+            pending.add(&mut builder, &entries);
+            if sent.is_none_or(|t| t.elapsed() >= PACE) {
+                if !on(std::mem::replace(&mut pending, Pending::new(&builder)).update()) {
+                    return;
+                }
+                sent = Some(std::time::Instant::now());
             }
         }
         if i == last {
             active = Some(j);
         }
+    }
+    if !pending.is_empty() && !on(pending.update()) {
+        return;
     }
     if !on(Update::Loaded) || !follow {
         return;
@@ -124,23 +136,48 @@ pub fn run(follow: bool, on: &mut dyn FnMut(Update) -> bool) {
 }
 
 fn build(builder: &mut Builder, entries: &[journal::Entry]) -> Update {
-    let mut new: Vec<Line> = Vec::with_capacity(entries.len());
-    let mut more = Vec::new();
-    let first = builder.count;
-    for e in entries {
-        match builder.add(e) {
-            Some(Built::New(l)) => new.push(l),
-            // A continuation of a line in this batch goes straight onto it.
-            Some(Built::Continues { index, text }) if index >= first => {
-                let l = &mut new[index - first];
-                l.message.push('\n');
-                l.message.push_str(&text);
+    let mut p = Pending::new(builder);
+    p.add(builder, entries);
+    p.update()
+}
+
+/// Lines made and not yet sent: those from index `first` on, and more
+/// text for lines sent before.
+struct Pending {
+    first: usize,
+    new: Vec<Line>,
+    more: Vec<(usize, String)>,
+}
+
+impl Pending {
+    fn new(builder: &Builder) -> Pending {
+        Pending { first: builder.count, new: Vec::new(), more: Vec::new() }
+    }
+
+    fn add(&mut self, builder: &mut Builder, entries: &[journal::Entry]) {
+        self.new.reserve(entries.len());
+        for e in entries {
+            match builder.add(e) {
+                Some(Built::New(l)) => self.new.push(l),
+                // A continuation of a line not sent yet goes straight onto it.
+                Some(Built::Continues { index, text }) if index >= self.first => {
+                    let l = &mut self.new[index - self.first];
+                    l.message.push('\n');
+                    l.message.push_str(&text);
+                }
+                Some(Built::Continues { index, text }) => self.more.push((index, text)),
+                None => {}
             }
-            Some(Built::Continues { index, text }) => more.push((index, text)),
-            None => {}
         }
     }
-    Update::Lines { new, more }
+
+    fn is_empty(&self) -> bool {
+        self.new.is_empty() && self.more.is_empty()
+    }
+
+    fn update(self) -> Update {
+        Update::Lines { new: self.new, more: self.more }
+    }
 }
 
 /// Read the log file `path` (one an app writes beside the journal: an
