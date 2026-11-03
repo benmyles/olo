@@ -46,13 +46,13 @@ pub struct Loader {
 
 /// Put `v` in place of `entries`, keeping the selection (by path) and
 /// selecting `extra` too.
-pub fn replace_entries(entries: &mut Vec<Entry>, list: &mut ListState, mut v: Vec<Entry>, sort: (SortKey, bool), extra: &mut Vec<PathBuf>) {
+pub fn replace_entries(entries: &mut Vec<Entry>, list: &mut ListState, mut v: Vec<Entry>, sort: Order, extra: &mut Vec<PathBuf>) {
     let mut keep: Vec<PathBuf> = list.selected.iter().filter_map(|&i| entries.get(i)).map(|e| e.path.clone()).collect();
     keep.append(extra);
     // Where a ⇧ range starts and the keyboard is, by item too.
     let path = |row: Option<usize>| row.and_then(|i| entries.get(i)).map(|e| e.path.clone());
     let (anchor, cursor) = (path(list.anchor), path(list.cursor));
-    sort_entries(&mut v, sort.0, sort.1);
+    sort_entries(&mut v, sort);
     *entries = v;
     list.selected = entries.iter().enumerate().filter(|(_, e)| keep.contains(&e.path)).map(|(i, _)| i).collect();
     let row = |p: Option<PathBuf>| p.and_then(|p| entries.iter().position(|e| e.path == p));
@@ -68,11 +68,21 @@ pub enum SortKey {
     Kind,
 }
 
-pub fn sort_entries(entries: &mut [Entry], key: SortKey, asc: bool) {
+/// How a folder's items are put in order: `None` is Olo's own, the
+/// folders by name and then the files most recently changed first;
+/// `Some` a key chosen by hand (`sorts`), up or down, folders still
+/// first.
+pub type Order = Option<(SortKey, bool)>;
+
+pub fn sort_entries(entries: &mut [Entry], order: Order) {
     entries.sort_by(|a, b| {
         // Folders first, then the chosen key; names break ties.
         let folders = b.is_dir.cmp(&a.is_dir);
         let name = || olo_kit_base::files::natural_cmp(&a.name, &b.name);
+        let Some((key, asc)) = order else {
+            let newest = || b.modified.cmp(&a.modified).then_with(name);
+            return folders.then_with(|| if a.is_dir { name() } else { newest() });
+        };
         let o = match key {
             SortKey::Name => name(),
             SortKey::Size => a.size.cmp(&b.size).then_with(name),
@@ -478,5 +488,43 @@ impl FolderWin {
             return None;
         }
         self.panes.iter().position(|p| p.path == dir).map(|k| k + 1)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{Duration, UNIX_EPOCH};
+
+    use super::*;
+
+    fn item(name: &str, dir: bool, at: u64) -> Entry {
+        Entry {
+            path: PathBuf::from("/f").join(name),
+            name: name.into(),
+            is_dir: dir,
+            is_link: false,
+            size: at,
+            modified: Some(UNIX_EPOCH + Duration::from_secs(at)),
+            mode: 0o644,
+            kind: if dir { fs::Kind::Folder } else { fs::Kind::Text },
+            app_icon: None,
+            downloading: None,
+        }
+    }
+
+    fn names(v: &[Entry]) -> Vec<&str> {
+        v.iter().map(|e| e.name.as_str()).collect()
+    }
+
+    #[test]
+    fn folders_by_name_then_files_newest_first() {
+        let mut v = vec![item("old.txt", false, 1), item("b", true, 9), item("new.txt", false, 3), item("A10", true, 1), item("a2", true, 5), item("mid.txt", false, 2)];
+        sort_entries(&mut v, None);
+        assert_eq!(names(&v), ["a2", "A10", "b", "new.txt", "mid.txt", "old.txt"]);
+        // Chosen by hand: that key for all, folders still first.
+        sort_entries(&mut v, Some((SortKey::Name, true)));
+        assert_eq!(names(&v), ["a2", "A10", "b", "mid.txt", "new.txt", "old.txt"]);
+        sort_entries(&mut v, Some((SortKey::Modified, false)));
+        assert_eq!(names(&v), ["b", "a2", "A10", "new.txt", "mid.txt", "old.txt"]);
     }
 }

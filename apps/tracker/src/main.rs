@@ -15,6 +15,7 @@ mod model;
 mod ops;
 mod panels;
 mod quicklook;
+mod sorts;
 mod thumbs;
 mod watch;
 
@@ -205,6 +206,9 @@ struct SavedFolder {
     size: (u32, u32),
     view: ViewMode,
     sort: (SortKey, bool),
+    /// `sort` was chosen (else Olo's own order: as before it was kept).
+    #[serde(default)]
+    own_sort: bool,
     selected: Vec<PathBuf>,
 }
 
@@ -488,13 +492,15 @@ impl Tracker {
             if !f.path.is_dir() {
                 continue;
             }
-            let (sort, selected) = (f.sort, f.selected);
+            let (sort, selected) = (f.own_sort.then_some(f.sort), f.selected);
             self.new_folder_window(
                 f.path,
                 f.view,
                 f.size,
                 move |w| {
-                    w.sort = sort;
+                    if sort.is_some() {
+                        w.sort = sort;
+                    }
                     w.select_paths(&selected);
                 },
                 cx,
@@ -722,6 +728,11 @@ impl Tracker {
                 self.hidden = !self.hidden;
                 self.reload_all(cx);
             }
+            "sort-default" => update(cx, &mut |f, cx| {
+                f.sort = None;
+                sorts::remember(cx, &f.path, None);
+                f.resort();
+            }),
             "sort-name" | "sort-size" | "sort-modified" | "sort-kind" => {
                 let key = match cmd {
                     "sort-size" => SortKey::Size,
@@ -729,8 +740,12 @@ impl Tracker {
                     "sort-kind" => SortKey::Kind,
                     _ => SortKey::Name,
                 };
-                update(cx, &mut |f, _| {
-                    f.sort = (key, if f.sort.0 == key { !f.sort.1 } else { true });
+                update(cx, &mut |f, cx| {
+                    f.sort = Some(match f.sort {
+                        Some((k, asc)) if k == key => (key, !asc),
+                        _ => (key, true),
+                    });
+                    sorts::remember(cx, &f.path, f.sort);
                     f.resort();
                 });
             }
@@ -1388,7 +1403,14 @@ impl Tracker {
             match &s.win {
                 Win::Folder(f) => {
                     let f = f.read(cx);
-                    saved.folders.push(SavedFolder { path: f.path.clone(), size: f.size, view: f.view, sort: f.sort, selected: f.selected_paths() });
+                    saved.folders.push(SavedFolder {
+                        path: f.path.clone(),
+                        size: f.size,
+                        view: f.view,
+                        sort: f.sort.unwrap_or((SortKey::Name, true)),
+                        own_sort: f.sort.is_some(),
+                        selected: f.selected_paths(),
+                    });
                 }
                 Win::Find(_) => saved.find += 1,
                 Win::Desktop(d) => saved.desktop_selected = d.read(cx).selected_paths(),

@@ -7,17 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Tracker: folders by name, files newest first, a folder's own order
-  kept** (Ben, 2026-11-03): "default sort order of folders in tracker
-  should be lexographically and files should be by last modified (most
-  recent first) -- but if the user changes the sorting remember it for
-  that specific folder". So, in every view: the folders in a window
-  first, by name (natural order, as Tracker's names sort), then the
-  files, most recently modified first; a column clicked (or a sort chosen
-  from the menu) in a folder is kept for that folder (with its window's
-  other state, as BeOS kept it in the folder's attributes) and used each
-  time it opens, every other folder keeping the default.
-
 - **Agent Screens: copy and paste between the person's display and a
   screen they're controlling** (Ben, 2026-11-03): "when i am controlling
   an agent screen i should be able to copy/paste from/to it". So while
@@ -929,6 +918,23 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Tracker: folders by name, files newest first, a folder's own order
+  kept**~~ (Ben, 2026-11-03): "default sort order of folders in tracker
+  should be lexographically and files should be by last modified (most
+  recent first) -- but if the user changes the sorting remember it for
+  that specific folder". So, in every view: the folders in a window
+  first, by name (natural order, as Tracker's names sort), then the
+  files, most recently modified first; a column clicked (or a sort chosen
+  from the menu) in a folder is kept for that folder (with its window's
+  other state, as BeOS kept it in the folder's attributes) and used each
+  time it opens, every other folder keeping the default.
+  *Done* 2026-11-03: Olo's order in every view (folders by name, then
+  files newest first, the header marked Modified ▼); a column clicked or
+  a Sort By chosen is kept for that folder (`sorts.json` in Tracker's
+  state) and used whenever it opens; Sort By ▸ Folders by Name, Files by
+  Date goes back. Tried in a headless session: the default, Name chosen,
+  the window closed and the folder opened again by name, then back.
 
 - ~~**Agent Screens: an agent waits while the person has the screen**~~
   (Ben, 2026-11-03): "if the user is controlling the agent screen all

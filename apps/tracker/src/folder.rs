@@ -32,7 +32,7 @@ use crate::{
     Tracker, ViewMode, columns,
     fs::{self, Entry},
     items::{self, ItemLayout, Look, Rename, Spring},
-    model::{Loader, Pane, SortKey},
+    model::{Loader, Order, Pane, SortKey},
 };
 
 /// How long after a click on a selected item's name editing starts (a
@@ -56,7 +56,8 @@ pub struct FolderWin {
     pub entries: Vec<Entry>,
     pub view: ViewMode,
     pub list: ListState,
-    pub sort: (SortKey, bool),
+    /// Its folder's order (`sorts`: the one chosen for it, else Olo's).
+    pub sort: Order,
     /// Changed on disk while being listed: list again when it lands.
     pub dirty: bool,
     pub error: Option<String>,
@@ -173,12 +174,13 @@ impl FolderWin {
         let loader = Loader { win: cx.entity_id(), proxy: olo_ui::proxy(cx) };
         let list_model = ListModel::new(cx, true);
         cx.observe(&list_model, |_, _, cx| cx.notify()).detach();
+        let sort = crate::sorts::of(cx, &path);
         let mut w = FolderWin {
             path,
             entries: Vec::new(),
             view,
             list: ListState { multiple: true, ..Default::default() },
-            sort: (SortKey::Name, true),
+            sort,
             dirty: false,
             error: None,
             editing: None,
@@ -368,7 +370,7 @@ impl FolderWin {
             .key("a")
             .item("Invert Selection", "invert")
             .key("s");
-        let sort = |k: SortKey| self.sort.0 == k;
+        let sort = |k: SortKey| self.sort.is_some_and(|(s, _)| s == k);
         let window = Menu::new("Window")
             .item("Icon View", "view-icons")
             .key("1")
@@ -385,6 +387,9 @@ impl FolderWin {
             .separator()
             .submenu(
                 Menu::new("Sort By")
+                    .item("Folders by Name, Files by Date", "sort-default")
+                    .checked(self.sort.is_none())
+                    .separator()
                     .item("Name", "sort-name")
                     .checked(sort(SortKey::Name))
                     .item("Size", "sort-size")
@@ -893,7 +898,8 @@ impl FolderWin {
             SortKey::Modified => 2,
             SortKey::Kind => 3,
         };
-        let sort = Some((key_col(self.sort.0), self.sort.1));
+        // (Olo's own order shows as its files': newest first.)
+        let sort = Some(self.sort.map_or((key_col(SortKey::Modified), false), |(k, asc)| (key_col(k), asc)));
         let reveal = self.take_show();
         // The window's selection is the list's.
         let list = self.list.clone();
@@ -945,8 +951,9 @@ impl FolderWin {
             let Some((col, asc)) = sort_model.read(cx).state.sort else { return };
             let key = [SortKey::Name, SortKey::Size, SortKey::Modified, SortKey::Kind][col.min(3)];
             sort_me.update(cx, |f, cx| {
-                if f.sort != (key, asc) {
-                    f.sort = (key, asc);
+                if f.sort != Some((key, asc)) {
+                    f.sort = Some((key, asc));
+                    crate::sorts::remember(cx, &f.path, f.sort);
                     f.resort();
                     cx.notify();
                 }

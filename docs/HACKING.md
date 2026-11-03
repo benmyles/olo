@@ -7088,7 +7088,15 @@ deferred so the Tracker can update the window back):
 
 - `FolderWin` (folder.rs, model.rs, columns.rs): the folder's items
   listed on a worker and kept by the watcher, the selection kept by
-  item; icon and mini-icon views drawn in a canvas from what shows
+  item, in Olo's order (`model::Order` None: the folders by name, then
+  the files most recently changed first; the list's header shows
+  Modified ▼) unless an order was chosen for that folder by hand (a
+  column clicked, Window ▸ Sort By), which it keeps
+  (`sorts.rs`: `~/.local/state/olo/tracker/sorts.json`, by folder, as
+  BeOS kept a window's columns in its folder; a file of Tracker's own
+  since the system's folders can't be written) and opens in again in
+  any window; Sort By ▸ Folders by Name, Files by Date goes back to
+  Olo's and forgets it; icon and mini-icon views drawn in a canvas from what shows
   only (items.rs: labels wrapped to two lines, four when selected,
   kept by text, font, width and scale so a scroll or a band shapes no
   name it has shaped before; the selected icon tinted and its label
