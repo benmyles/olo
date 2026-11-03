@@ -34,6 +34,17 @@ of Finished; a new one goes where its priority puts it.
     start another Chrome or Chromium installed on the machine (and
     why: no Olo integration, no shared passwords, not the screen's
     profile), and shows the exact way to start it on a screen.
+  - Ben, later the same day: "what's actually happening is agents are
+    getting a fresh chrome profile in an agent screen and that's asking
+    them to accept tos and showing first run window. when using
+    olo-chrome if there is no profile set then we should have it use one
+    that has the tos etc. accepted so that it's ready to go for the
+    agents". So `olo-chrome` started without a profile of its own (an
+    agent screen's first run) starts in one that's ready: first run,
+    terms and welcome pages already behind it (Chrome's first-run
+    sentinel, its master preferences / initial prefs, the policies that
+    skip them), checked by starting it on a fresh screen and seeing a
+    browser window, not a first-run one.
 
 - **Focus mode: a link opened in a browser on the same desktop doesn't
   bring its window forward** (Ben, 2026-11-03, a bug): "when in focus
