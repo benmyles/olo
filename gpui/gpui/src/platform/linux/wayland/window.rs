@@ -866,6 +866,16 @@ impl WaylandWindow {
                 if let (Some(tags), Some(tag)) = (&globals.toplevel_tags, &params.toplevel_tag) {
                     tags.set_toplevel_tag(&toplevel, tag.clone());
                 }
+                // Olo: whose window it is, and its title, with the first
+                // commit (just below), not after it: app_server knows a
+                // window coming back from a restart by them, and claims
+                // its place (its tile) at that commit.
+                if let Some(app_id) = &params.app_id {
+                    toplevel.set_app_id(app_id.clone());
+                }
+                if let Some(title) = params.titlebar.as_ref().and_then(|t| t.title.as_ref()) {
+                    toplevel.set_title(title.to_string());
+                }
                 (Some(toplevel), None)
             }
         };

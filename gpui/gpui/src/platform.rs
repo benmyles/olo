@@ -1570,6 +1570,12 @@ pub(crate) struct WindowParams {
     /// Olo: the window's tags (`WindowOptions::toplevel_tag`).
     pub toplevel_tag: Option<String>,
 
+    /// Olo: its app id (`WindowOptions::app_id`), set with the title
+    /// before the surface's first commit, so the compositor knows whose
+    /// window it is from the start (app_server puts a window coming back
+    /// from a restart in its own place, its tile, then).
+    pub app_id: Option<String>,
+
     /// Olo: where a layer surface sits (`WindowOptions::layer_shell`).
     pub layer_shell: Option<LayerShellOptions>,
 

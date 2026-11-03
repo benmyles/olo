@@ -372,6 +372,12 @@ What Olo changed, so far:
   filled the window two or three times a frame, the GPU's biggest cost
   (a full-screen StyledEdit at 1×: 2.3 → 1.3 ms of GPU a frame, the
   quads 2.01 → 1.01 screens).
+- A window's app id and title go with its first commit
+  (`WindowParams::app_id`), not after it: Olo commits a new window at
+  once, before the renderer's GPU work, and app_server knows a window
+  coming back from a restart by them at that commit (it took each for a
+  new tile before, and auto-tiled windows came back in each other's
+  tiles).
 - A window resized by hand (xdg's `resizing`) gets a swapchain as big
   as its screen on the press, before anything moves, and shows only its
   part of it (`wp_viewport`'s source, one buffer pixel to a device

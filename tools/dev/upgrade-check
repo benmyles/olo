@@ -2,7 +2,7 @@
 """Upgrade check: windows must come back from an Olo upgrade exactly as
 they were (display, workspace, frame, minimized), auto-tiled ones too.
 
-  upgrade-check NAME [--times N] [--reload-only] [--no-touch]
+  upgrade-check NAME [--times N] [--reload-only] [--no-touch] [--auto-tiled]
 
 NAME is a tsession under olo-session (`--session`, with `--shell` for
 Deskbar). Arrange its windows first (auto-tiling with edges dragged,
@@ -18,6 +18,13 @@ one, outside programs). Then each round:
     in place at once (`tsession reload`), so the apps' windows close and
     come back while app_server goes;
   * waits for the windows to settle and compares.
+
+--auto-tiled arranges it first: Auto-Tiling on the active display, and
+a Terminal, a StyledEdit and a Tracker opened into it if it has fewer
+than three windows (an in-place reload put them in each other's tiles
+for a while, the kit claiming its place only after a window's first
+commit; run it so after changing the kit's windows or GPUI's Wayland
+platform too).
 
 --reload-only restarts app_server without the SIGURGs (the apps
 re-execute as they reconnect: windows all come back at once);
@@ -125,6 +132,17 @@ def main():
     times = int(a[a.index("--times") + 1]) if "--times" in a else 3
     touch = "--no-touch" not in a
     signal = touch and "--reload-only" not in a
+    if "--auto-tiled" in a:
+        ipc(name, {"type": "set_windowing_mode", "mode": "auto_tiling"})
+        for app, args in [("olo-terminal", []), ("olo-styled-edit", ["--new-window"]), ("olo-tracker", ["/usr"])]:
+            if len(windows(name)) >= 3:
+                break
+            n = len(windows(name))
+            subprocess.run(TS + ["run", name, app, *args], capture_output=True)
+            t0 = time.time()
+            while len(windows(name)) <= n and time.time() - t0 < 10:
+                time.sleep(0.1)
+        settled(name, 1)
     before, ws, showing = snapshot(name)
     bad = 0
     for i in range(times):

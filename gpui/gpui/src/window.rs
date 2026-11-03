@@ -1192,6 +1192,7 @@ impl Window {
                 window_min_size,
                 window_max_size,
                 toplevel_tag,
+                app_id: app_id.clone(),
                 layer_shell,
                 dialog,
                 foreign_parent,

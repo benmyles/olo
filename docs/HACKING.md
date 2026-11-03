@@ -2661,9 +2661,13 @@ of a minute. Run both after changing `modes.rs`, groups, activation
 token olo-chrome passed before its fix and the matrix fails every
 Chrome case with the opener's token.
 
-`tools/dev/upgrade-check NAME [--times N] [--reload-only] [--no-touch]`
+`tools/dev/upgrade-check NAME [--times N] [--reload-only] [--no-touch] [--auto-tiled]`
 checks that windows come back from an upgrade exactly (display,
-workspace, frame, minimized). Arrange a `--session --shell` tsession
+workspace, frame, minimized); `--auto-tiled` arranges three windows in
+Auto-Tiling first, the case that broke when Olo's GPUI first committed a
+window before naming it (it sets the app id and title before the first
+commit now: app_server claims a returning window's place, its tile, at
+that commit). Arrange a `--session --shell` tsession
 (auto-tiling with edges dragged, floating and zoomed windows, other
 workspaces and displays showing, a minimized tile, an outside program in
 a tile, a window hanging over onto another display), then each round it

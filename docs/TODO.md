@@ -7,21 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Auto-tiling: an in-place reload puts the windows in each other's
-  tiles** (found 2026-11-03, testing the drag rounds): three tiles
-  `[Terminal | [StyledEdit / Tracker]]`, `tsession reload`: the tree
-  comes back right (`tiles kept from before the restart …
-  [·#3 | [·#1 / ·#2]]`, Terminal put back with slot 3), but each window
-  is claimed as a new tile at its first commit (`a new window into its
-  tile`, `auto_claim`, before its saved place is known) instead of
-  taking the tile kept for it (`auto_returned` never logs "back in its
-  tile"), and 20 s later the kept tiles are given up and the windows
-  laid out afresh in another order. Find why the returning windows
-  aren't known as returning when they're first claimed (their placement
-  comes after the first commit?), fix it, and add the case to
-  upgrade-check (a session in Auto-Tiling: every window in its own tile
-  after a reload, at 1×, 1.5× and 2×).
-
 - **Drag rounds: the last looks out of step in deeper trees** (found
   2026-11-03 by auto-fuzz's mid-drag check): `tsession start af
   3024x1890 --scale 1.75 --session --shell`, `tools/dev/auto-fuzz af
@@ -970,6 +955,30 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Auto-tiling: an in-place reload puts the windows in each other's
+  tiles**~~ (found 2026-11-03, testing the drag rounds): three tiles
+  `[Terminal | [StyledEdit / Tracker]]`, `tsession reload`: the tree
+  comes back right (`tiles kept from before the restart …
+  [·#3 | [·#1 / ·#2]]`, Terminal put back with slot 3), but each window
+  is claimed as a new tile at its first commit (`a new window into its
+  tile`, `auto_claim`, before its saved place is known) instead of
+  taking the tile kept for it (`auto_returned` never logs "back in its
+  tile"), and 20 s later the kept tiles are given up and the windows
+  laid out afresh in another order. Find why the returning windows
+  aren't known as returning when they're first claimed (their placement
+  comes after the first commit?), fix it, and add the case to
+  upgrade-check (a session in Auto-Tiling: every window in its own tile
+  after a reload, at 1×, 1.5× and 2×).
+  *Done* 2026-11-03: Olo's GPUI committed a new window before naming it
+  (its first commit goes at once, before the renderer starts, and the
+  app id and title came after), so at that commit app_server couldn't
+  tell a returning window from a new one and gave each a new tile. The
+  app id and title now go with the first commit (`WindowParams::app_id`),
+  and each window takes back its own tile ("back in its tile"), at 1×,
+  1.5× and 2×, after two reloads in a row. Broken since GPUI was
+  vendored (2026-10-31). `upgrade-check --auto-tiled` arranges the case
+  itself: the old build fails it, the new passes (reload and re-execute).
 
 - ~~**Auto-tiling: resizing a window is choppy and windows overlap until
   let go**~~ (Ben, 2026-11-03, a bug): "when in autotile mode and
