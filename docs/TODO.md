@@ -7,6 +7,40 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
+- **Palms told apart by a tiny model** (Ben, 2026-11-02): "enhance the
+  palm detection with an optional new feature (can be enabled in
+  touchpad prefs) that uses a tiny gpu accelerated (or simd accelerated
+  if it's faster) model to detect palm detection and ignore the palm on
+  the touchpad. do research to see if there's anything like that out
+  there already, and if not then train up a small model to do it. if
+  you can't find anything or it's not viable then try to do it with
+  heuristics/decision trees or something but i bet you can find a model
+  out there to do it".
+  - Today: Olo's touch filter (app_server `touch_filter.rs`, the
+    libinput Lua plugin `touchpad.lua`, docs/TOUCHPAD.md) calls a touch
+    a palm by its size alone (`palm_size`, 1600 on the MacBook, from
+    measured fingers and palms), and takes the click from the fingers'
+    pressure.
+  - Research first: published palm-rejection models (ChromeOS's
+    touchpad palm model in its gestures library, Apple's and Microsoft's
+    papers, academic ones on capacitive pads) and the features they use
+    per contact over time: size, pressure, shape (major/minor,
+    orientation), speed, position from the edges, how long it has been
+    down.
+  - Use one where there's one fit to run; else train a small one
+    (a few-kilobyte MLP or gradient-boosted trees) on captures from the
+    MacBook pad (/dev/input/event5, read-only), labelled by deliberate
+    sessions: typing with palms resting, thumbs at the edge, real
+    gestures.
+  - Run it in the filter's path per frame of contacts, on the CPU with
+    SIMD unless the GPU is measured faster: microseconds a frame, no
+    allocation, nothing when no finger is down.
+  - An option in Preferences ▸ Touchpad & Mouse ("Tell palms apart with
+    a model"), off by default, beside the size rule it improves on.
+  - Measured against the size rule on held-out captures (palms missed,
+    fingers lost), and its cost per frame, with the numbers in the
+    commit.
+
 - **x86 machines, starting with Ben's ThinkPad P1 Gen 9** (Ben; it
   arrives within days; **next once the GPUI migration is done**, before
   the rest of this list: "after all the gpui work is done, prioritize
@@ -133,54 +167,6 @@ of Finished; a new one goes where its priority puts it.
   modeset needed; and if the driver refuses it, `reset_state` and
   modeset as now. It needs trying on the real displays (an upgrade
   the person agrees to try), so it isn't shipped blind.
-
-- **Every frame on time, every display** (Ben, 2026-11-01: "dropping
-  frames is never acceptable: olo must be buttery smooth on all
-  displays all the time"; the pointer "definitely way slow/stuttery",
-  worst on the Studio Display; app_server at 20% of a core). Done
-  2026-11-01 (HACKING "Every frame on time"): per-display pacing from
-  measured cost and observed drops; `{"type":"frames"}`,
-  `capture_drops`, Activity Monitor ▸ Displays; the pointer on an
-  overlay plane as cursor plane, clipped at the display's edge in
-  Olo's Smithay (the first try, unclipped, had apple-drm refuse the
-  flip and app_server restart eight times; a refused flip no longer
-  kills it); windows as scan-out candidates; Smithay vendored with
-  phase timings and scan-out reasons. Found: a 5K frame's 5 ms is
-  all `render_output`, and in it the GPU submit (asahi's
-  agx_flush_batch from the fence) and syncobj waits, ~3 ms a frame
-  in the kernel; plane assignment and atomic tests cost 0.0 ms.
-  **Found since** (2026-11-01, later): the 5 ms was Smithay's GLES
-  renderer making a fence per texture drawn (a GPU submit an
-  element); one fence a frame took the 5K's draw to 0.2/1.2 ms
-  (p50/p95), drops to 0–1 a minute, app_server's kernel time from
-  13% to 1.5%. The pointer's remaining "jitter" and "stuck" are the
-  mouse's reports (Razer Viper V2 Pro, 2.4 GHz receiver on a hub,
-  USB autosuspend on): 429 gaps over 5 ms a minute, the longest 39 ms,
-  673 of 1000 reports a second (`PointerHealth`, Activity Monitor ▸
-  Displays ▸ Pointer). `71-olo-input.rules` keeps receivers awake;
-  the radio is the person's to fix (the receiver nearer, its
-  extender, a lower polling rate). **Next**: windows on overlay
-  planes (OLO_OVERLAY_PLANES=1) once the pointer and such a plane
-  agree (a client's cursor on the plane rendered right, or the
-  pointer's plane above every window plane and the window refused
-  while the pointer is drawn in the frame over it); the "draws"
-  0.2 ms and "finish" 0.2 ms are what's left of a frame; app_server
-  at ~11% with a call on is the tick (now once per 8 ms) and looks;
-  per-display render threads (its own TODO).
-
-- **app_server's critical path on threads of its own** (Ben,
-  2026-11-01: "why run the risk of a blocking call? threads would
-  make sure we don't accidentally block"): input → pointer plane
-  update → commit never shares a thread with anything that can
-  block. Design: an input-and-cursor thread owning libinput and the
-  cursor planes (a pointer move is a plane property commit, no frame);
-  a render-and-commit thread per display owning its GL context, DRM
-  surface and pacing (a slow 5K frame can't delay the built-in
-  display's); the Wayland clients and IPC on the main loop, handing
-  each display's thread a snapshot of what to draw. Our own
-  synchronous work (importing a client's buffer, a fence, a DCP test
-  or commit) is what blocks today, and the heartbeat (`timings`)
-  finds it. After the reliability work.
 
 - **Agent Screens: Chrome opened from a screen's Deskbar lands on the
   person's display** (Ben, 2026-10-31): "i was just using the "Take
@@ -701,6 +687,61 @@ of Finished; a new one goes where its priority puts it.
   VP9 (WebM) and HEVC (mp4, Matroska) video show only their facts;
   decode them natively (a Rust VP9 decoder, HEVC as far as patents and
   crates allow) as H.264 and AV1 are.
+
+## Maybe one day
+
+Tabled (Ben, 2026-11-02): "performance seems pretty solid now in olo so
+you can table the rest of the performance related items under a "maybe
+one day" section in the todos and skip them". Not worked on unless he
+asks again.
+
+- **Every frame on time, every display** (Ben, 2026-11-01: "dropping
+  frames is never acceptable: olo must be buttery smooth on all
+  displays all the time"; the pointer "definitely way slow/stuttery",
+  worst on the Studio Display; app_server at 20% of a core). Done
+  2026-11-01 (HACKING "Every frame on time"): per-display pacing from
+  measured cost and observed drops; `{"type":"frames"}`,
+  `capture_drops`, Activity Monitor ▸ Displays; the pointer on an
+  overlay plane as cursor plane, clipped at the display's edge in
+  Olo's Smithay (the first try, unclipped, had apple-drm refuse the
+  flip and app_server restart eight times; a refused flip no longer
+  kills it); windows as scan-out candidates; Smithay vendored with
+  phase timings and scan-out reasons. Found: a 5K frame's 5 ms is
+  all `render_output`, and in it the GPU submit (asahi's
+  agx_flush_batch from the fence) and syncobj waits, ~3 ms a frame
+  in the kernel; plane assignment and atomic tests cost 0.0 ms.
+  **Found since** (2026-11-01, later): the 5 ms was Smithay's GLES
+  renderer making a fence per texture drawn (a GPU submit an
+  element); one fence a frame took the 5K's draw to 0.2/1.2 ms
+  (p50/p95), drops to 0–1 a minute, app_server's kernel time from
+  13% to 1.5%. The pointer's remaining "jitter" and "stuck" are the
+  mouse's reports (Razer Viper V2 Pro, 2.4 GHz receiver on a hub,
+  USB autosuspend on): 429 gaps over 5 ms a minute, the longest 39 ms,
+  673 of 1000 reports a second (`PointerHealth`, Activity Monitor ▸
+  Displays ▸ Pointer). `71-olo-input.rules` keeps receivers awake;
+  the radio is the person's to fix (the receiver nearer, its
+  extender, a lower polling rate). **Next**: windows on overlay
+  planes (OLO_OVERLAY_PLANES=1) once the pointer and such a plane
+  agree (a client's cursor on the plane rendered right, or the
+  pointer's plane above every window plane and the window refused
+  while the pointer is drawn in the frame over it); the "draws"
+  0.2 ms and "finish" 0.2 ms are what's left of a frame; app_server
+  at ~11% with a call on is the tick (now once per 8 ms) and looks;
+  per-display render threads (its own TODO).
+
+- **app_server's critical path on threads of its own** (Ben,
+  2026-11-01: "why run the risk of a blocking call? threads would
+  make sure we don't accidentally block"): input → pointer plane
+  update → commit never shares a thread with anything that can
+  block. Design: an input-and-cursor thread owning libinput and the
+  cursor planes (a pointer move is a plane property commit, no frame);
+  a render-and-commit thread per display owning its GL context, DRM
+  surface and pacing (a slow 5K frame can't delay the built-in
+  display's); the Wayland clients and IPC on the main loop, handing
+  each display's thread a snapshot of what to draw. Our own
+  synchronous work (importing a client's buffer, a fence, a DCP test
+  or commit) is what blocks today, and the heartbeat (`timings`)
+  finds it. After the reliability work.
 
 ## Finished (most recently finished first)
 
