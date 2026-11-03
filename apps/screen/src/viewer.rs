@@ -519,6 +519,8 @@ pub struct Viewer {
     live: Entity<PictureWell>,
     failure: Option<String>,
     controlling: bool,
+    /// The screen it said the person controls (`screens::set_controlled`).
+    controlled: Option<String>,
     /// Modifiers held down on the screen while controlling, and keys.
     held: [bool; 3],
     down: Vec<(String, u32)>,
@@ -568,6 +570,7 @@ impl Viewer {
             live: cx.new(|_| PictureWell::new("Screen")),
             failure: None,
             controlling: false,
+            controlled: None,
             held: [false; 3],
             down: Vec::new(),
             pressed: HashSet::new(),
@@ -692,6 +695,9 @@ impl Viewer {
         }
         self.held = [false; 3];
         self.controlling = false;
+        if let Some(name) = self.controlled.take() {
+            screens::set_controlled(&name, false);
+        }
     }
 
     fn take_control(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -700,6 +706,11 @@ impl Viewer {
         }
         self.set_tab(Tab::Live, cx);
         self.controlling = true;
+        // (Agents' actions on it wait meanwhile: olo-screen reads it.)
+        if let Some(name) = self.selected.clone() {
+            screens::set_controlled(&name, true);
+            self.controlled = Some(name);
+        }
         window.focus(&self.live_focus);
         cx.notify();
     }

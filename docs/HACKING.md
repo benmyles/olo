@@ -7373,6 +7373,18 @@ that still has Olo's marker line. **Change SKILL.md with the CLI**:
 it is the agents' manual. Headless sessions never write it, so tests
 don't touch the person's home.
 
+While the person controls a screen (Take Control), the viewer writes
+`NAME.control` (its pid) in the screens' folder, and `olo-screen`
+refuses every action on that screen (`history::ACTIONS` but `start`,
+and `maximize`) with "the person is controlling screen NAME …: nothing
+was done. Wait until they hand it back (olo-screen wait NAME --free)",
+kept in the screen's history like any action; reading it still answers.
+Stop Controlling, a quit or another screen chosen removes it; a viewer
+that has gone (its pid not an `olo-screen`) controls nothing, and one
+re-executed by an upgrade forgets its own (`clear_controlled_by_me`).
+Two hands on one pointer made a mess before (Ben: "all kinds of weird
+stuff happens").
+
 ### Passwords for agent screens (apps/screen/src/shares.rs)
 
 Agents on a screen get the passwords the person chose, and only those:

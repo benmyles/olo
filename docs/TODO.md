@@ -7,19 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Agent Screens: an agent waits while the person has the screen**
-  (Ben, 2026-11-03): "if the user is controlling the agent screen all
-  kinds of weird stuff happens when the agent tries to do things. when
-  the user is controlling and the agent tries to do something it should
-  just tell the agent that the user is controlling and that they should
-  wait for the user to finish before they do anything else." So while
-  the person is controlling a screen (Agent Screens' Take Control), every
-  `olo-screen` action that would act on it (click, type, keys, drag,
-  scroll, start an app, a menu command) is refused at once with a clear
-  answer: the person is controlling this screen, wait until they hand
-  it back (and how to wait for that), doing nothing to the screen; what
-  only reads it (a look, the tree) still answers. The skill says so too.
-
 - **Tracker: folders by name, files newest first, a folder's own order
   kept** (Ben, 2026-11-03): "default sort order of folders in tracker
   should be lexographically and files should be by last modified (most
@@ -938,6 +925,26 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Agent Screens: an agent waits while the person has the screen**~~
+  (Ben, 2026-11-03): "if the user is controlling the agent screen all
+  kinds of weird stuff happens when the agent tries to do things. when
+  the user is controlling and the agent tries to do something it should
+  just tell the agent that the user is controlling and that they should
+  wait for the user to finish before they do anything else." So while
+  the person is controlling a screen (Agent Screens' Take Control), every
+  `olo-screen` action that would act on it (click, type, keys, drag,
+  scroll, start an app, a menu command) is refused at once with a clear
+  answer: the person is controlling this screen, wait until they hand
+  it back (and how to wait for that), doing nothing to the screen; what
+  only reads it (a look, the tree) still answers. The skill says so too.
+  *Done* 2026-11-03: while the person controls a screen the viewer marks
+  it (`NAME.control`, its pid) and `olo-screen` refuses every action on
+  it, doing nothing, with that message (kept in the screen's history);
+  reads still answer; `olo-screen wait NAME --free` waits for the
+  hand-back. Tried on a sandboxed screen: refused while controlled,
+  `wait --free` returned as ⌘K handed it back, the next click went
+  through. The skill says what to do.
 
 - ~~**The olo-screens skill teaches agents to use the passwords shared
   with their screen**~~ (Ben, 2026-11-03, a priority): "the olo-screens

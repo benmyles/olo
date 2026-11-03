@@ -62,6 +62,58 @@ fn entry(name: &str) -> PathBuf {
     dir().join(format!("{name}.json"))
 }
 
+/// Marks that the person has screen `name`'s pointer and keys (Agent
+/// Screens' Take Control), in `dir`: the viewer's pid, while they have
+/// them.
+fn control_file(dir: &Path, name: &str) -> PathBuf {
+    dir.join(format!("{name}.control"))
+}
+
+/// The person takes screen `name` over (`true`) or hands it back: said
+/// for `olo-screen`, which does nothing to the screen meanwhile.
+pub fn set_controlled(name: &str, on: bool) {
+    set_controlled_in(&dir(), name, on);
+}
+
+fn set_controlled_in(dir: &Path, name: &str, on: bool) {
+    let file = control_file(dir, name);
+    if on {
+        let _ = std::fs::create_dir_all(dir);
+        let _ = std::fs::write(&file, std::process::id().to_string());
+    } else {
+        let _ = std::fs::remove_file(&file);
+    }
+}
+
+/// Whether the person is controlling screen `name` now (a viewer that
+/// took it over and has since gone doesn't count).
+pub fn controlled(name: &str) -> bool {
+    controlled_in(&dir(), name)
+}
+
+fn controlled_in(dir: &Path, name: &str) -> bool {
+    let Some(pid) = std::fs::read_to_string(control_file(dir, name)).ok().and_then(|s| s.trim().parse::<u32>().ok()) else { return false };
+    // (The viewer is this program, in its window.)
+    let ours = |exe: PathBuf| exe.file_name().is_some_and(|n| std::env::current_exe().ok().and_then(|me| me.file_name().map(|m| m == n)).unwrap_or(false));
+    std::fs::read_link(format!("/proc/{pid}/exe")).is_ok_and(ours)
+}
+
+/// Forget the screens this process said the person controls (a viewer
+/// starting: an upgrade re-executes it with the same pid).
+pub fn clear_controlled_by_me() {
+    clear_controlled_in(&dir());
+}
+
+fn clear_controlled_in(dir: &Path) {
+    let me = std::process::id().to_string();
+    for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        let path = entry.path();
+        if path.extension().is_some_and(|e| e == "control") && std::fs::read_to_string(&path).is_ok_and(|s| s.trim() == me) {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
 /// A name a screen can have: letters, digits, `-` and `_`.
 pub fn valid_name(name: &str) -> bool {
     !name.is_empty() && name.len() <= 40 && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
@@ -397,6 +449,7 @@ pub fn stop(name: &str) -> Result<(), String> {
     // when their compositor does).
     let _ = std::fs::remove_file(entry(name));
     let _ = std::fs::remove_file(dir().join(format!("{name}-settings.json")));
+    let _ = std::fs::remove_file(control_file(&dir(), name));
     if screen.alive() { Err(format!("screen {name} is still ending")) } else { Ok(()) }
 }
 
@@ -577,6 +630,27 @@ mod tests {
 
     /// Chrome on a screen keeps a profile of the screen's own, so it
     /// runs there rather than handing its window to the person's Chrome.
+    #[test]
+    fn an_agent_waits_while_the_person_controls() {
+        let dir = std::env::temp_dir().join(format!("olo-screen-control-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(!controlled_in(&dir, "agent"));
+        set_controlled_in(&dir, "agent", true);
+        assert!(controlled_in(&dir, "agent") && !controlled_in(&dir, "agent-2"));
+        set_controlled_in(&dir, "agent", false);
+        assert!(!controlled_in(&dir, "agent"));
+        // A viewer that has gone (another program on that pid, or none)
+        // controls nothing.
+        std::fs::write(control_file(&dir, "agent"), "1").unwrap();
+        assert!(!controlled_in(&dir, "agent"));
+        // Started again (an upgrade's exec: the same pid), it forgets
+        // what it said before.
+        set_controlled_in(&dir, "agent", true);
+        clear_controlled_in(&dir);
+        assert!(!controlled_in(&dir, "agent"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn chrome_has_a_profile_of_its_own() {
         let s = Screen { name: "work".into(), wayland_display: "wayland-9".into(), olo_socket: "/x".into(), pid: 1, width: 1, height: 1, scale: 1.0, sound: false, started: 0 };

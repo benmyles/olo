@@ -73,6 +73,8 @@ usage: olo-screen                         open Agent Screens (watch, take contro
        olo-screen select NAME FIND… ITEM  open a dropdown, choose ITEM from its menu
        olo-screen wait NAME [FIND…] [--gone] [--idle] [--timeout MS]
                                              until it shows (or goes, or the windows stop changing)
+       olo-screen wait NAME --free [--timeout MS]
+                                             until the person hands the screen back (Take Control)
        olo-screen scroll-to NAME FIND… [--at X,Y]
                                              scroll the list (under X,Y) until it shows
        olo-screen move NAME X Y
@@ -86,6 +88,10 @@ usage: olo-screen                         open Agent Screens (watch, take contro
                                              mouse-wheel notches (positive: down/right), one at a time
        olo-screen key NAME CHORD…         e.g. Cmd+S, Ctrl+Shift+T, Enter, Esc, Tab, Down
        olo-screen type NAME TEXT          type text (what a US keyboard types)
+
+While the person controls a screen (Agent Screens' Take Control), every
+action on it is refused, doing nothing, until they hand it back: reading
+it (windows, tree, look) still answers.
 
 FIND is --name NAME (exact, else part of it; a value counts too), --role ROLE,
 --match ROLE:TEXT, --text TEXT (in the name or value), --index N (from 0, when
@@ -157,10 +163,26 @@ fn answered(v: serde_json::Value) {
     ANSWER.with(|a| *a.borrow_mut() = Some(v));
 }
 
+/// What an action is told while the person controls screen `name`.
+fn controlled_answer(name: &str) -> String {
+    format!(
+        "the person is controlling screen {name} (Agent Screens' Take Control): nothing was done. Wait until they hand it back (olo-screen wait {name} --free), then look at it again before going on: they may have changed what's on it."
+    )
+}
+
 fn run_command(args: &[String]) -> Option<Result<(), String>> {
     let command = args.first()?.as_str();
     let rest = &args[1..];
     let name = || rest.first().cloned().ok_or_else(|| format!("{command} needs a screen's name"));
+    // While the person has the screen, an agent's actions wait for them
+    // (reading it still answers): two hands on one pointer made a mess.
+    if command != "start"
+        && (history::ACTIONS.contains(&command) || command == "maximize")
+        && let Some(n) = rest.first()
+        && screens::controlled(n)
+    {
+        return Some(Err(controlled_answer(n)));
+    }
     let screen = || screens::get(&name()?);
     let input = |events: Vec<SyntheticEvent>| screen()?.input(events);
     Some(match command {
@@ -492,6 +514,20 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
         })(),
         "wait" => (|| {
             let s = screen()?;
+            // (Until the person hands it back, by default as long as
+            // they like.)
+            if has(rest, "--free") {
+                let ms = option(rest, "--timeout").map(|t| t.parse::<u64>().map_err(|_| "--timeout is milliseconds")).transpose()?;
+                let until = ms.map(|ms| std::time::Instant::now() + Duration::from_millis(ms));
+                while screens::controlled(&s.name) {
+                    if until.is_some_and(|u| std::time::Instant::now() >= u) {
+                        return Err(format!("the person is still controlling screen {}", s.name));
+                    }
+                    std::thread::sleep(Duration::from_millis(250));
+                }
+                print_json(&json!({ "free": true }));
+                return Ok(());
+            }
             let ms = option(rest, "--timeout").map(|t| t.parse::<u64>().map_err(|_| "--timeout is milliseconds")).transpose()?.unwrap_or(10_000);
             let timeout = Duration::from_millis(ms);
             if has(rest, "--idle") {
@@ -501,7 +537,7 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                 let found = find::wait_for(&s, &q, has(rest, "--gone"), timeout)?;
                 print_json(&json!({ "found": found }));
             } else if !has(rest, "--idle") {
-                return Err("wait for what? --idle, --name, --role, --match or --text (with --gone, until it goes)".into());
+                return Err("wait for what? --idle, --free, --name, --role, --match or --text (with --gone, until it goes)".into());
             }
             Ok(())
         })(),
@@ -948,6 +984,9 @@ fn main() {
         instance::listen(APP_ID, olo_ui::proxy(cx));
         // Tab and ⇧Tab on a screen being controlled go to it.
         cx.bind_keys([KeyBinding::new("tab", NoAction, Some(viewer::CONTROLLED)), KeyBinding::new("shift-tab", NoAction, Some(viewer::CONTROLLED))]);
+        // (Re-executed by an upgrade, the same pid: what it said it
+        // controlled before isn't so now.)
+        screens::clear_controlled_by_me();
         let app = cx.new(viewer::Viewer::new);
         let view = app.clone();
         let window = olo_ui::open_window(cx, olo_ui::WindowOptions::new("Agent Screens", 1000.0, 640.0).min_size(660.0, 420.0).keep_size("main"), move |window, cx| {

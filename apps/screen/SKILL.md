@@ -219,6 +219,21 @@ olo-screen history agent --export /tmp/agent.mp4   # all of it as a video, quiet
 olo-screen history agent --clear
 ```
 
+## When the person takes control
+
+The person can take your screen over (Agent Screens' Take Control) to
+do something themselves. Meanwhile every action you try on it (`click`,
+`type`, `key`, `run`, `invoke`, `stop`, …) is refused and does nothing:
+it fails with "the person is controlling screen NAME". Then stop and
+wait for them; don't retry around it:
+
+```sh
+olo-screen wait agent --free            # returns once they hand it back
+```
+
+Then look again (`tree`, `windows`, `look`) before going on: they may
+have changed what's on it. Reading the screen works throughout.
+
 ## Working well
 
 - After each action, check the result (`tree`, or `look` for non-Olo
