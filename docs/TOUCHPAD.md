@@ -186,6 +186,15 @@ right-edge palm that rests at 640–1116 while typing. So the filter can
 also run a small network trained on the person's own hands (Ben: "a tiny
 gpu accelerated (or simd accelerated if it's faster) model").
 
+**Where a driver tags palms itself** (`MT_TOOL_PALM`: hid-multitouch's
+confidence bit, on most x86 precision touchpads), libinput leaves those
+contacts out before anything else; the plugin passes the tool type on as
+it came (it rewrites only sizes, pressure and the click), so that works
+with Olo's filter on too. Apple's MTP driver reports no tool type
+(`ABS_MT_TOOL_TYPE` isn't among event5's axes: checked 2026-11-03 in
+`/sys/class/input/event5/device/capabilities/abs`), so on this pad it's
+the size rule and the model.
+
 **Research first** (2026-11-02): there was nothing open to take.
 - arXiv (searched to 2026) and Hugging Face have no touchpad palm
   model or data.

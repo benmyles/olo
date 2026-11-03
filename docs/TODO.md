@@ -91,8 +91,10 @@ of Finished; a new one goes where its priority puts it.
     none tracked yet. Then: the seconds since a key was last pressed (app_server
     notes key presses; the plugin watches the keyboards' frames), with
     a unit for "while typing": 18 features, 641 weights, 33.7 µs a
-    frame on. *Left*: the pad's `MT_TOOL_PALM` where a driver gives
-    it, and the real-capture tuning below.
+    frame on. `MT_TOOL_PALM` where a driver gives it (2026-11-03):
+    libinput leaves those out itself and the plugin passes the tool type
+    on; Ben's pad reports none (docs/TOUCHPAD.md). *Left*: the
+    real-capture tuning below.
   - A bigger network only if the real data wants it (64 units, or two
     layers), chosen by held-out error, never by feel; every unit still
     explained in the source.
@@ -112,7 +114,7 @@ of Finished; a new one goes where its priority puts it.
   94.3%/0%). The trainer kept its runs in ~/.local/state/olo/olo/palm
   (a doubled "olo"): ~/.local/state/olo/palm from now (Ben's two are in
   the old place). Left: more runs (more sittings, other people) before
-  any bigger network; `MT_TOOL_PALM` where a driver gives it.
+  any bigger network.
 
 - **x86 machines, starting with Ben's ThinkPad P1 Gen 9** (Ben; it
   arrives within days; **next once the GPUI migration is done**, before
