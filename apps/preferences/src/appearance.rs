@@ -33,17 +33,19 @@ pub fn ui(ui: &mut Ui) {
         });
         ui.enabled_if(night.mode != NightLightMode::Off, |ui| {
             let text = format!("{} K", night.temperature);
-            ui.slider("warmth", night.temperature as f32, 2500.0..=6000.0, |s| s.step(100.0).label("Warmth").value_text(text).limits("Warmer", "Cooler"), |s, k| {
-                s.appearance.night_light.temperature = k as u32
-            });
+            ui.slider(
+                "warmth",
+                night.temperature as f32,
+                2500.0..=6000.0,
+                |s| s.step(100.0).label("Warmth").value_text(text).limits("Warmer", "Cooler"),
+                |s, k| s.appearance.night_light.temperature = k as u32,
+            );
         });
     });
     let size = ui.s.tab_font_size;
     ui.slider("title-size", size, 10.0..=16.0, |s| s.step(1.0).label("Window title size").value_text(format!("{size:.0} pt")), |s, v| s.tab_font_size = v);
     let chars = ui.s.tab_title_chars as f32;
-    ui.slider("title-chars", chars, 20.0..=200.0, |s| s.step(10.0).label("Longest window title").value_text(format!("{chars:.0} characters")), |s, v| {
-        s.tab_title_chars = v as u32
-    });
+    ui.slider("title-chars", chars, 20.0..=200.0, |s| s.step(10.0).label("Longest window title").value_text(format!("{chars:.0} characters")), |s, v| s.tab_title_chars = v as u32);
     ui.check("Show icons in the Deskbar menu", a.menu_icons, |s, v| s.appearance.menu_icons = v);
     // A new window glows a moment, to catch the eye.
     let choices = [2u32, 3, 5, 8, 10, 15, 30];
@@ -58,11 +60,17 @@ pub fn ui(ui: &mut Ui) {
     ui.row(|ui| {
         ui.check("Glow new windows for", a.glow_new_windows, |s, v| s.appearance.glow_new_windows = v);
         ui.enabled_if(a.glow_new_windows, |ui| {
-            ui.menu("glow-seconds", names, i, |f| f.width(110.0), move |s, i| {
-                if let Some(&c) = choices.get(i) {
-                    s.appearance.glow_seconds = c;
-                }
-            });
+            ui.menu(
+                "glow-seconds",
+                names,
+                i,
+                |f| f.width(110.0),
+                move |s, i| {
+                    if let Some(&c) = choices.get(i) {
+                        s.appearance.glow_seconds = c;
+                    }
+                },
+            );
         });
     });
 }

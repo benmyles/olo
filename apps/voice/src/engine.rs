@@ -164,7 +164,14 @@ struct Captures {
     weak: Vec<pw::stream::StreamWeak>,
 }
 
-fn capture(core: &pw::core::CoreRc, target: &str, monitor: bool, latency: &str, processing: Arc<Mutex<Processing>>, stats: Arc<Stats>) -> Result<(pw::stream::StreamRc, Box<dyn std::any::Any>), String> {
+fn capture(
+    core: &pw::core::CoreRc,
+    target: &str,
+    monitor: bool,
+    latency: &str,
+    processing: Arc<Mutex<Processing>>,
+    stats: Arc<Stats>,
+) -> Result<(pw::stream::StreamRc, Box<dyn std::any::Any>), String> {
     let name = if monitor { "Olo Voice: echo reference" } else { "Olo Voice: microphone" };
     let mut props = properties! {
         *pw::keys::MEDIA_TYPE => "Audio",
@@ -340,9 +347,7 @@ fn run(config: Config, rx: pw::channel::Receiver<Message>, stats: Arc<Stats>, ch
         .map_err(|e| e.to_string())?;
     let format = format_param()?;
     let mut params = [pw::spa::pod::Pod::from_bytes(&format).ok_or("format")?];
-    source
-        .connect(spa::utils::Direction::Output, None, pw::stream::StreamFlags::MAP_BUFFERS | pw::stream::StreamFlags::RT_PROCESS, &mut params)
-        .map_err(|e| e.to_string())?;
+    source.connect(spa::utils::Direction::Output, None, pw::stream::StreamFlags::MAP_BUFFERS | pw::stream::StreamFlags::RT_PROCESS, &mut params).map_err(|e| e.to_string())?;
 
     let weak = mainloop.downgrade();
     let _rx = rx.attach(mainloop.loop_(), {

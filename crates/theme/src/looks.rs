@@ -147,24 +147,8 @@ pub const THEMES: &[Theme] = &[
         name: "BeBox",
         about: "Graphite and blinking lights.",
         colors_about: "Graphite greys, Be blue and an amber tab.",
-        light: Seeds {
-            panel: hex(0xd5d8dd),
-            ink: hex(0x1c1f24),
-            document: hex(0xf8f9fb),
-            control: hex(0xeceef2),
-            tab: hex(0xf5c400),
-            on_tab: hex(0x1c1f24),
-            tooltip: hex(0xfdf4cc),
-            ..LIGHT
-        },
-        dark: Seeds {
-            panel: hex(0x2a2d32),
-            ink: hex(0xe1e4e9),
-            document: hex(0x1b1d21),
-            control: hex(0x393d43),
-            tooltip: hex(0x3c3a2e),
-            ..DARK
-        },
+        light: Seeds { panel: hex(0xd5d8dd), ink: hex(0x1c1f24), document: hex(0xf8f9fb), control: hex(0xeceef2), tab: hex(0xf5c400), on_tab: hex(0x1c1f24), tooltip: hex(0xfdf4cc), ..LIGHT },
+        dark: Seeds { panel: hex(0x2a2d32), ink: hex(0xe1e4e9), document: hex(0x1b1d21), control: hex(0x393d43), tooltip: hex(0x3c3a2e), ..DARK },
         catppuccin: Accent::Peach,
     },
     Theme {
@@ -588,14 +572,7 @@ pub fn build(s: &Seeds, mode: ThemeMode, terminal: Terminal) -> Palette {
             tab_text_focused: readable(s.on_tab, s.tab, 4.5),
             tab_text_unfocused: readable(mix(ink, p, 0.37), mix(p, WHITE, 0.41), 4.5),
             frame_focused: [mix(p, ink, 0.5), mix(p, WHITE, 0.85), p, p, mix(p, ink, 0.3), mix(p, ink, 0.5)],
-            frame_unfocused: [
-                mix(p, ink, 0.37),
-                mix(p, WHITE, 0.8),
-                mix(p, WHITE, 0.2),
-                mix(p, WHITE, 0.2),
-                mix(p, ink, 0.22),
-                mix(p, ink, 0.37),
-            ],
+            frame_unfocused: [mix(p, ink, 0.37), mix(p, WHITE, 0.8), mix(p, WHITE, 0.2), mix(p, WHITE, 0.2), mix(p, ink, 0.22), mix(p, ink, 0.37)],
             hues: s.hues,
             terminal,
         },
@@ -646,14 +623,7 @@ pub fn build(s: &Seeds, mode: ThemeMode, terminal: Terminal) -> Palette {
             tab_text_focused: readable(s.on_tab, s.tab, 4.5),
             tab_text_unfocused: readable(mix(ink, p, 0.18), mix(p, ink, 0.15), 4.5),
             frame_focused: [mix(p, BLACK, 0.77), mix(p, ink, 0.29), mix(p, ink, 0.08), mix(p, ink, 0.08), mix(p, BLACK, 0.3), mix(p, BLACK, 0.77)],
-            frame_unfocused: [
-                mix(p, BLACK, 0.63),
-                mix(p, ink, 0.2),
-                mix(p, ink, 0.04),
-                mix(p, ink, 0.04),
-                mix(p, BLACK, 0.26),
-                mix(p, BLACK, 0.63),
-            ],
+            frame_unfocused: [mix(p, BLACK, 0.63), mix(p, ink, 0.2), mix(p, ink, 0.04), mix(p, ink, 0.04), mix(p, BLACK, 0.26), mix(p, BLACK, 0.63)],
             hues: s.hues,
             terminal,
         },
@@ -699,11 +669,7 @@ mod tests {
     use crate::Hue;
 
     fn every() -> impl Iterator<Item = (String, Palette)> {
-        THEMES.iter().flat_map(|t| {
-            ColorSet::ALL.into_iter().flat_map(move |c| {
-                [ThemeMode::Light, ThemeMode::Dark].map(|m| (format!("{} {} {m:?}", t.id, c.id()), palette(t.id, c.id(), m)))
-            })
-        })
+        THEMES.iter().flat_map(|t| ColorSet::ALL.into_iter().flat_map(move |c| [ThemeMode::Light, ThemeMode::Dark].map(|m| (format!("{} {} {m:?}", t.id, c.id()), palette(t.id, c.id(), m)))))
     }
 
     #[test]

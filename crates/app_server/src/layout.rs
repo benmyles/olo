@@ -207,12 +207,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             let p = meta.returning.borrow().clone()?;
             info!(app_id = %p.app_id, x = p.x, y = p.y, "a window coming back, not shown yet: keeping its place");
             let owner = meta.owner.borrow().clone();
-            return Some(Placement {
-                at: now(),
-                pid: owner.as_ref().map_or(p.pid, |(pid, _)| *pid),
-                client: owner.map(|(_, c)| c).or(p.client.clone()),
-                ..p
-            });
+            return Some(Placement { at: now(), pid: owner.as_ref().map_or(p.pid, |(pid, _)| *pid), client: owner.map(|(_, c)| c).or(p.client.clone()), ..p });
         }
         // Away (minimized, on a workspace not showing): where it comes back
         // to, along with its display if that moved meanwhile (`unpark`).
@@ -378,11 +373,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let trees: Vec<crate::shell::autotile::SavedTree> = self
             .auto_trees_as_laid_out()
             .into_iter()
-            .map(|((workspace, output), t)| crate::shell::autotile::SavedTree {
-                workspace,
-                output,
-                tree: crate::shell::autotile::SavedNode::of(&t, &slots, &like),
-            })
+            .map(|((workspace, output), t)| crate::shell::autotile::SavedTree { workspace, output, tree: crate::shell::autotile::SavedNode::of(&t, &slots, &like) })
             .collect();
         if let Some(tp) = trees_path() {
             match serde_json::to_string(&trees) {
@@ -424,20 +415,14 @@ impl<B: Backend + 'static> AnvilState<B> {
         let owner = window.meta().owner.borrow().clone();
         let age = |e: &Placement| now().saturating_sub(e.at);
         // The same process, reconnected or re-executed.
-        let same = |e: &Placement| {
-            age(e) < KEEP.as_secs() && owner.as_ref().is_none_or(|(pid, client)| (e.pid == 0 || e.pid == *pid) && e.client.as_ref() != Some(client))
-        };
+        let same = |e: &Placement| age(e) < KEEP.as_secs() && owner.as_ref().is_none_or(|(pid, client)| (e.pid == 0 || e.pid == *pid) && e.client.as_ref() != Some(client));
         // An alert or a dialog of an app started again is a new one: in
         // the middle of the screen or over its parent, not where the last
         // one was (which may have been on a screen of another size).
         let transient = window.0.toplevel().is_some_and(|t| t.parent().is_some()) || crate::shell::groups::is_parentless_alert(window);
         // The app started again: its old process is gone.
         let restarted = |e: &Placement| {
-            !transient
-                && age(e) < RESTART_KEEP.as_secs()
-                && e.pid > 0
-                && owner.as_ref().is_some_and(|(pid, _)| e.pid != *pid)
-                && !std::path::Path::new(&format!("/proc/{}", e.pid)).exists()
+            !transient && age(e) < RESTART_KEEP.as_secs() && e.pid > 0 && owner.as_ref().is_some_and(|(pid, _)| e.pid != *pid) && !std::path::Path::new(&format!("/proc/{}", e.pid)).exists()
         };
         // The newest first: the place it had last.
         let i = (0..self.layout.len()).rev().find(|&i| {
@@ -623,12 +608,8 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// whatever order their clients reconnected in. Windows opened since
     /// stay where they are.
     fn restack_returning(&mut self, window: &WindowElement, depth: u32) {
-        let mut over: Vec<(u32, WindowElement)> = self
-            .space
-            .elements()
-            .filter(|w| *w != window)
-            .filter_map(|w| w.meta().restored_depth.get().filter(|(d, t)| *d > depth && t.elapsed() < KEEP).map(|(d, _)| (d, w.clone())))
-            .collect();
+        let mut over: Vec<(u32, WindowElement)> =
+            self.space.elements().filter(|w| *w != window).filter_map(|w| w.meta().restored_depth.get().filter(|(d, t)| *d > depth && t.elapsed() < KEEP).map(|(d, _)| (d, w.clone()))).collect();
         over.sort_by_key(|(d, _)| std::cmp::Reverse(*d));
         for (_, w) in &over {
             self.space.raise_element_above(w, window, false);
@@ -642,9 +623,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// group, as a window dragged out of it).
     pub fn place_under_pointer(&mut self, surface: &WlSurface) {
         use smithay::wayland::{compositor, xdg_toplevel_tag::XdgToplevelTagSurfaceData};
-        let tagged = compositor::with_states(surface, |s| {
-            s.data_map.get::<XdgToplevelTagSurfaceData>().is_some_and(|d| d.tag().is_some_and(|t| t.split_whitespace().any(|t| t == "under-pointer")))
-        });
+        let tagged = compositor::with_states(surface, |s| s.data_map.get::<XdgToplevelTagSurfaceData>().is_some_and(|d| d.tag().is_some_and(|t| t.split_whitespace().any(|t| t == "under-pointer"))));
         if !tagged {
             return;
         }

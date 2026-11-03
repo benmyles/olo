@@ -207,10 +207,7 @@ impl Live {
 
     /// Until app_server says something, or the waker pokes.
     fn wait(&mut self) -> Result<(), String> {
-        let mut fds = [
-            libc::pollfd { fd: self.conn.as_fd().as_raw_fd(), events: libc::POLLIN, revents: 0 },
-            libc::pollfd { fd: self.wake.0.fd.as_raw_fd(), events: libc::POLLIN, revents: 0 },
-        ];
+        let mut fds = [libc::pollfd { fd: self.conn.as_fd().as_raw_fd(), events: libc::POLLIN, revents: 0 }, libc::pollfd { fd: self.wake.0.fd.as_raw_fd(), events: libc::POLLIN, revents: 0 }];
         // SAFETY: two valid pollfds.
         let n = unsafe { libc::poll(fds.as_mut_ptr(), 2, -1) };
         if n < 0 {

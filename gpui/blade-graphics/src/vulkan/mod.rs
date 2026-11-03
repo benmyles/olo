@@ -548,7 +548,11 @@ impl crate::traits::CommandDevice for Context {
         let timeout_ns = map_timeout(timeout_ms);
         // Olo: a lost device has nothing more to wait for (waiting on, it
         // answered "not yet" for ever, and GPUI's wait spun).
-        match unsafe { self.device.timeline_semaphore.wait_semaphores(&wait_info, timeout_ns) } {
+        match unsafe {
+            self.device
+                .timeline_semaphore
+                .wait_semaphores(&wait_info, timeout_ns)
+        } {
             Ok(()) => true,
             Err(vk::Result::ERROR_DEVICE_LOST) => {
                 crate::lose_device();

@@ -13,7 +13,7 @@ use olo_protocol::{NoteLook, NoteStyle};
 use olo_theme::Rgba;
 use olo_ui::{
     agent,
-    gpui::{self, App, Bounds, BorderStyle, Corners, Font, FontStyle, FontWeight, Hsla, Pixels, Point, SharedString, TextAlign, TextRun, UnderlineStyle, Window, WrappedLine, point, px, size},
+    gpui::{self, App, BorderStyle, Bounds, Corners, Font, FontStyle, FontWeight, Hsla, Pixels, Point, SharedString, TextAlign, TextRun, UnderlineStyle, Window, WrappedLine, point, px, size},
     style, theme, widgets,
 };
 

@@ -77,10 +77,8 @@ pub fn kind_for(path: &Path, is_dir: bool, mode: u32) -> Kind {
         return Kind::Executable;
     }
     match ext.as_str() {
-        "txt" | "md" | "rs" | "toml" | "json" | "yaml" | "yml" | "c" | "h" | "cpp" | "hpp" | "py" | "sh" | "js"
-        | "ts" | "html" | "css" | "xml" | "conf" | "ini" | "log" | "csv" | "go" | "java" | "lua" | "rb" | "desktop" => {
-            Kind::Text
-        }
+        "txt" | "md" | "rs" | "toml" | "json" | "yaml" | "yml" | "c" | "h" | "cpp" | "hpp" | "py" | "sh" | "js" | "ts" | "html" | "css" | "xml" | "conf" | "ini" | "log" | "csv" | "go" | "java"
+        | "lua" | "rb" | "desktop" => Kind::Text,
         "png" | "jpg" | "jpeg" | "jxl" | "gif" | "webp" | "bmp" | "tif" | "tiff" | "svg" | "heic" | "heif" | "hif" | "avif" | "ico" => Kind::Image,
         "mp3" | "flac" | "ogg" | "oga" | "wav" | "m4a" | "aac" | "opus" | "aiff" | "aif" => Kind::Audio,
         "mp4" | "mkv" | "webm" | "mov" | "avi" | "m4v" => Kind::Video,
@@ -94,7 +92,13 @@ pub fn kind_for(path: &Path, is_dir: bool, mode: u32) -> Kind {
         "appimage" => Kind::Application,
         "olo-backup" => Kind::SettingsBackup,
         _ if mode & 0o111 != 0 => Kind::Executable,
-        "" => if sniff_text(path) { Kind::Text } else { Kind::Document },
+        "" => {
+            if sniff_text(path) {
+                Kind::Text
+            } else {
+                Kind::Document
+            }
+        }
         _ => Kind::Document,
     }
 }
@@ -225,17 +229,8 @@ pub fn format_time(t: Option<SystemTime>) -> String {
     };
     const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     let h = tm.tm_hour % 12;
-    format!(
-        "{} {}, {}, {}:{:02} {}",
-        MONTHS[tm.tm_mon as usize % 12],
-        tm.tm_mday,
-        tm.tm_year + 1900,
-        if h == 0 { 12 } else { h },
-        tm.tm_min,
-        if tm.tm_hour < 12 { "AM" } else { "PM" }
-    )
+    format!("{} {}, {}, {}:{:02} {}", MONTHS[tm.tm_mon as usize % 12], tm.tm_mday, tm.tm_year + 1900, if h == 0 { 12 } else { h }, tm.tm_min, if tm.tm_hour < 12 { "AM" } else { "PM" })
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -353,11 +348,7 @@ pub fn named_file(mime: &str) -> Option<String> {
 /// and the text.
 pub fn moz_url(data: &[u8]) -> Option<(String, String)> {
     let utf16 = data.len() >= 2 && data.len().is_multiple_of(2) && data.iter().skip(1).step_by(2).filter(|b| **b == 0).count() * 2 >= data.len() / 2;
-    let text = if utf16 {
-        String::from_utf16_lossy(&data.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect::<Vec<_>>())
-    } else {
-        String::from_utf8_lossy(data).into_owned()
-    };
+    let text = if utf16 { String::from_utf16_lossy(&data.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect::<Vec<_>>()) } else { String::from_utf8_lossy(data).into_owned() };
     let text = text.trim_matches(char::from(0));
     let mut lines = text.lines();
     let url = lines.next()?.trim().to_owned();

@@ -594,13 +594,7 @@ impl Shared {
         let t = now();
         let due: Vec<String> = {
             let p = self.pool.lock().unwrap();
-            p.saved
-                .accounts
-                .iter()
-                .filter(|a| a.enabled && a.signed_out.is_none() && a.redeem_tried.is_none_or(|r| t - r >= 60))
-                .filter(|a| a.spend_before_expiry(t))
-                .map(|a| a.id.clone())
-                .collect()
+            p.saved.accounts.iter().filter(|a| a.enabled && a.signed_out.is_none() && a.redeem_tried.is_none_or(|r| t - r >= 60)).filter(|a| a.spend_before_expiry(t)).map(|a| a.id.clone()).collect()
         };
         for id in due {
             match self.redeem(&id).await {
@@ -773,11 +767,7 @@ struct Ctx {
 }
 
 pub fn router(shared: Arc<Shared>, port: u16) -> Router {
-    Router::new()
-        .route("/claude/v1/{*rest}", any(claude))
-        .route("/codex/v1/{*rest}", any(codex))
-        .route("/pool/status", get(status))
-        .with_state(Ctx { shared, port })
+    Router::new().route("/claude/v1/{*rest}", any(claude)).route("/codex/v1/{*rest}", any(codex)).route("/pool/status", get(status)).with_state(Ctx { shared, port })
 }
 
 /// Only clients on this computer, and never a web page: a browser sends
@@ -1282,4 +1272,3 @@ mod tests {
         assert!(!returned("set-cookie") && returned("anthropic-ratelimit-unified-5h-utilization"));
     }
 }
-

@@ -55,7 +55,12 @@ pub enum Msg {
     DirSize(EntityId, u64, u64),
     Found(EntityId, u64, Vec<find::Hit>, bool),
     JobDone(u64, ops::Outcome),
-    Listed { win: EntityId, path: PathBuf, generation: u64, result: Result<Vec<Entry>, String> },
+    Listed {
+        win: EntityId,
+        path: PathBuf,
+        generation: u64,
+        result: Result<Vec<Entry>, String>,
+    },
     /// A job has been running a while: time to show the status window.
     JobSlow(u64),
     /// Files changed in folders being shown.
@@ -70,18 +75,8 @@ pub enum Msg {
 
 /// What Paste takes from the clipboard, best first: files (as file
 /// managers copy them), a picture, text.
-const PASTEABLE: &[&str] = &[
-    olo_kit_base::clipboard::FILES[0],
-    olo_kit_base::clipboard::FILES[1],
-    "image/png",
-    "image/jpeg",
-    "image/webp",
-    "image/gif",
-    "image/",
-    "text/plain;charset=utf-8",
-    "text/plain",
-    "UTF8_STRING",
-];
+const PASTEABLE: &[&str] =
+    &[olo_kit_base::clipboard::FILES[0], olo_kit_base::clipboard::FILES[1], "image/png", "image/jpeg", "image/webp", "image/gif", "image/", "text/plain;charset=utf-8", "text/plain", "UTF8_STRING"];
 
 /// Jobs that finish sooner than this never show the status window.
 const STATUS_DELAY: Duration = Duration::from_millis(400);
@@ -1393,13 +1388,7 @@ impl Tracker {
             match &s.win {
                 Win::Folder(f) => {
                     let f = f.read(cx);
-                    saved.folders.push(SavedFolder {
-                        path: f.path.clone(),
-                        size: f.size,
-                        view: f.view,
-                        sort: f.sort,
-                        selected: f.selected_paths(),
-                    });
+                    saved.folders.push(SavedFolder { path: f.path.clone(), size: f.size, view: f.view, sort: f.sort, selected: f.selected_paths() });
                 }
                 Win::Find(_) => saved.find += 1,
                 Win::Desktop(d) => saved.desktop_selected = d.read(cx).selected_paths(),

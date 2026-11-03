@@ -1,4 +1,3 @@
-use olo_sync::{Mutex, RwLock};
 use drm::control::Device as ControlDevice;
 use drm::control::atomic::AtomicModeReq;
 use drm::control::connector::Interface;
@@ -6,6 +5,7 @@ use drm::control::property::ValueType;
 use drm::control::{
     AtomicCommitFlags, Mode, PlaneType, connector, crtc, dumbbuffer::DumbBuffer, framebuffer, plane, property,
 };
+use olo_sync::{Mutex, RwLock};
 
 #[cfg(debug_assertions)]
 use std::collections::HashMap;

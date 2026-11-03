@@ -109,8 +109,7 @@ fn check(ui: &mut Ui, label: impl Into<SharedString>, on: bool, f: impl Fn(&mut 
 fn known_apps() -> Vec<String> {
     let path = olo_ui::state_dir().join("notifications").join("history.json");
     let v: serde_json::Value = std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
-    let mut apps: Vec<String> =
-        v.as_array().into_iter().flatten().filter_map(|e| e["app"].as_str()).filter(|a| !a.is_empty()).map(str::to_owned).collect();
+    let mut apps: Vec<String> = v.as_array().into_iter().flatten().filter_map(|e| e["app"].as_str()).filter(|a| !a.is_empty()).map(str::to_owned).collect();
     apps.sort_by_key(|a| a.to_lowercase());
     apps.dedup();
     apps
@@ -307,15 +306,28 @@ fn apps_ui(ui: &mut Ui, st: &mut State, s: &NotificationSettings) {
     ui.add(head.pr(px(2.0 + 14.0 - COLUMN / 2.0 + COLUMN / 2.0)));
     if apps.is_empty() {
         ui.add(
-            div()
-                .flex_1()
-                .min_h(px(60.0))
-                .child(canvas(|_, _, _| {}, move |b, _, window, cx| {
-                    let p = theme::palette(cx);
-                    style::fill_rect(window, b, c(p.document_background));
-                    style::sunken(window, b, &p, false);
-                    style::label(window, cx, b.center().x, b.center().y, style::Align::Center, "Apps appear here once they have sent a notification.", style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
-                }).size_full()),
+            div().flex_1().min_h(px(60.0)).child(
+                canvas(
+                    |_, _, _| {},
+                    move |b, _, window, cx| {
+                        let p = theme::palette(cx);
+                        style::fill_rect(window, b, c(p.document_background));
+                        style::sunken(window, b, &p, false);
+                        style::label(
+                            window,
+                            cx,
+                            b.center().x,
+                            b.center().y,
+                            style::Align::Center,
+                            "Apps appear here once they have sent a notification.",
+                            style::SMALL_SIZE,
+                            style::ui_font(FontWeight::NORMAL),
+                            style::disabled_text(&p),
+                        );
+                    },
+                )
+                .size_full(),
+            ),
         );
         return;
     }

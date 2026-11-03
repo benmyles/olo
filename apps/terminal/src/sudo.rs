@@ -6,20 +6,19 @@
 //! has it, then the password. Cancel, Escape or the close box says no.
 
 use std::{
-    sync::atomic::{AtomicBool, Ordering},
     io::{BufRead, BufReader, Write},
     os::{
         fd::AsRawFd,
         unix::net::{UnixListener, UnixStream},
     },
     path::{Path, PathBuf},
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 use olo_kit_base::Proxy;
 use olo_ui::{
     gpui::{AnyElement, App, Entity, FocusHandle, InteractiveElement as _, IntoElement, ParentElement as _, Styled as _, Window, div, px},
-    metrics as m,
-    style,
+    metrics as m, style,
     widgets::{self, Button, Conversation, ConversationField, TextField, TextFieldEvent},
 };
 
@@ -83,7 +82,14 @@ pub fn shell_env(env: &mut Vec<(String, String)>) {
 pub enum Event {
     /// A sudo wants a password: from process `pid`, answered on `stream`;
     /// `approval` while requests are approved without asking.
-    Begin { conn: u64, pid: i32, stream: UnixStream, args: Vec<String>, tty: bool, approval: Option<Approval> },
+    Begin {
+        conn: u64,
+        pid: i32,
+        stream: UnixStream,
+        args: Vec<String>,
+        tty: bool,
+        approval: Option<Approval>,
+    },
     Said(u64, Ask),
     /// It went (done, or stopped).
     Gone(u64),
@@ -374,7 +380,6 @@ impl Request {
             self.conv.info = "Touch the fingerprint sensor, or wait to type your password.".into();
         }
     }
-
 }
 
 impl Terminal {

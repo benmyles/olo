@@ -676,7 +676,10 @@ impl<P: LinuxClient + 'static> Platform for P {
 /// threads it starts from now on don't inherit it (or a raised
 /// priority): their work isn't a frame's.
 fn util_floor() {
-    let min = env::var("OLO_UTIL_MIN").ok().and_then(|v| v.parse().ok()).unwrap_or(olo_protocol::performance::UI_UTIL_MIN);
+    let min = env::var("OLO_UTIL_MIN")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(olo_protocol::performance::UI_UTIL_MIN);
     if min == 0 {
         return;
     }
@@ -697,11 +700,20 @@ fn util_floor() {
     const RESET_ON_FORK: u64 = 0x01;
     const KEEP_PARAMS: u64 = 0x10;
     const UTIL_CLAMP_MIN: u64 = 0x20;
-    let attr = SchedAttr { size: size_of::<SchedAttr>() as u32, policy: libc::SCHED_OTHER as u32, flags: RESET_ON_FORK | KEEP_PARAMS | UTIL_CLAMP_MIN, util_min: min.min(1024), ..Default::default() };
+    let attr = SchedAttr {
+        size: size_of::<SchedAttr>() as u32,
+        policy: libc::SCHED_OTHER as u32,
+        flags: RESET_ON_FORK | KEEP_PARAMS | UTIL_CLAMP_MIN,
+        util_min: min.min(1024),
+        ..Default::default()
+    };
     // SAFETY: sched_setattr reads `attr`, of the size it's told, for this
     // thread (0).
     if unsafe { libc::syscall(libc::SYS_sched_setattr, 0, &attr as *const SchedAttr, 0) } != 0 {
-        log::info!("the windows' thread keeps the scheduler's choice of core: {}", std::io::Error::last_os_error());
+        log::info!(
+            "the windows' thread keeps the scheduler's choice of core: {}",
+            std::io::Error::last_os_error()
+        );
     }
 }
 

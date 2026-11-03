@@ -284,10 +284,7 @@ impl GlobalShortcuts {
             old.close();
         }
         let get = |props: &HashMap<String, OwnedValue>, k: &str| props.get(k).and_then(|v| String::try_from(v.try_clone().ok()?).ok()).unwrap_or_default();
-        let wanted: Vec<Wanted> = shortcuts
-            .iter()
-            .map(|(id, props)| Wanted { id: id.clone(), description: get(props, "description"), keys: trigger(&get(props, "preferred_trigger")) })
-            .collect();
+        let wanted: Vec<Wanted> = shortcuts.iter().map(|(id, props)| Wanted { id: id.clone(), description: get(props, "description"), keys: trigger(&get(props, "preferred_trigger")) }).collect();
         // Allowed before, as they are now: no need to ask again.
         let mut allowed = blocking::unblock(load_allowed).await;
         let known = !app.is_empty() && allowed.get(&app).is_some_and(|a| *a == wanted);
@@ -441,7 +438,18 @@ impl Render for Dialog {
                     let top = b.top() + px(i as f32 * m::LABEL_ROW);
                     let mid = top + px(m::LABEL_ROW / 2.0);
                     let keys_w = if *usable { px(style::key_combo_width(window, keys)) } else { style::text_width(window, keys.clone(), style::PLAIN_SIZE, font.clone()) };
-                    style::label_fit(window, cx, b.left(), mid, Align::Left, what.clone(), style::PLAIN_SIZE, font.clone(), style::c(p.panel_text), (b.size.width - keys_w - px(m::SPACING)).max(px(0.0)));
+                    style::label_fit(
+                        window,
+                        cx,
+                        b.left(),
+                        mid,
+                        Align::Left,
+                        what.clone(),
+                        style::PLAIN_SIZE,
+                        font.clone(),
+                        style::c(p.panel_text),
+                        (b.size.width - keys_w - px(m::SPACING)).max(px(0.0)),
+                    );
                     if *usable {
                         style::key_combo(window, cx, point(b.right(), mid), keys, style::c(p.panel_text));
                     } else {

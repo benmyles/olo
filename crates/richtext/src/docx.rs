@@ -94,9 +94,7 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
         sect.push_str("<w:footerReference w:type=\"default\" r:id=\"rIdFooter\"/>");
     }
     sect.push_str("</w:sectPr>");
-    let document = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:document xmlns:w=\"{W}\" xmlns:r=\"{R}\" xmlns:wp=\"{WP}\"><w:body>{body}{sect}</w:body></w:document>"
-    );
+    let document = format!("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:document xmlns:w=\"{W}\" xmlns:r=\"{R}\" xmlns:wp=\"{WP}\"><w:body>{body}{sect}</w:body></w:document>");
     let mut rels = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Relationships xmlns=\"{PKG}\">\
          <Relationship Id=\"rIdStyles\" Type=\"{R}/styles\" Target=\"styles.xml\"/>\
@@ -272,10 +270,7 @@ fn picture<'a>(out: &mut String, pic: &'a Picture, align: Align, refs: &mut Refs
 /// parts a tab apart at a centre and a right stop, `{page}` and `{pages}`
 /// as Word's PAGE and NUMPAGES fields.
 fn header_part(tag: &str, parts: &[String; 3]) -> String {
-    let mut p = format!(
-        "<w:p><w:pPr><w:tabs><w:tab w:val=\"center\" w:pos=\"{}\"/><w:tab w:val=\"right\" w:pos=\"{TEXT_WIDTH}\"/></w:tabs></w:pPr>",
-        TEXT_WIDTH / 2
-    );
+    let mut p = format!("<w:p><w:pPr><w:tabs><w:tab w:val=\"center\" w:pos=\"{}\"/><w:tab w:val=\"right\" w:pos=\"{TEXT_WIDTH}\"/></w:tabs></w:pPr>", TEXT_WIDTH / 2);
     for (k, part) in parts.iter().enumerate() {
         if k > 0 {
             p.push_str("<w:r><w:tab/></w:r>");

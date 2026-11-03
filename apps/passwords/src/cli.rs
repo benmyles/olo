@@ -14,9 +14,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+use olo_keychain::{CliQuery, Response};
 use onepassword::{Item, ItemCategory, ItemFieldType, ItemState, VaultOverview, reference, totp::Totp};
 use serde_json::{Value, json};
-use olo_keychain::{CliQuery, Response};
 
 use crate::vault::{Data, Entry};
 
@@ -52,8 +52,7 @@ pub struct Asker {
 
 pub fn asker(pid: i32) -> Asker {
     let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
-    let mut args: Vec<String> =
-        cmdline.split(|&b| b == 0).filter(|a| !a.is_empty()).map(|a| String::from_utf8_lossy(a).into_owned()).collect();
+    let mut args: Vec<String> = cmdline.split(|&b| b == 0).filter(|a| !a.is_empty()).map(|a| String::from_utf8_lossy(a).into_owned()).collect();
     if let Some(first) = args.first_mut() {
         *first = first.rsplit('/').next().unwrap_or(first).to_string();
     }
@@ -61,9 +60,7 @@ pub fn asker(pid: i32) -> Asker {
     if command.chars().count() > 120 {
         command = command.chars().take(119).collect::<String>() + "…";
     }
-    let ppid = std::fs::read_to_string(format!("/proc/{pid}/stat"))
-        .ok()
-        .and_then(|s| s[s.rfind(')')? + 2..].split_whitespace().nth(1)?.parse::<i32>().ok());
+    let ppid = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok().and_then(|s| s[s.rfind(')')? + 2..].split_whitespace().nth(1)?.parse::<i32>().ok());
     let parent = ppid.and_then(|p| std::fs::read_to_string(format!("/proc/{p}/comm")).ok()).map(|s| s.trim().to_string());
     let home = std::env::var("HOME").unwrap_or_default();
     let cwd = std::fs::read_link(format!("/proc/{pid}/cwd")).ok().map(|p| {
@@ -186,10 +183,15 @@ fn item<'a>(data: &'a Data, vault_key: Option<&str>, key: &str) -> Result<&'a En
         None => None,
     };
     let list = active(data).filter(move |e| in_vault.as_ref().is_none_or(|v| &e.item.vault_id == v));
-    find(list, key, |e| &e.item.id, |e| &e.item.title).map_err(|e| format!("\"{key}\" isn't an item{}: {e}", match vault_key {
-        Some(v) => format!(" in vault {v}"),
-        None => String::new(),
-    }))
+    find(list, key, |e| &e.item.id, |e| &e.item.title).map_err(|e| {
+        format!(
+            "\"{key}\" isn't an item{}: {e}",
+            match vault_key {
+                Some(v) => format!(" in vault {v}"),
+                None => String::new(),
+            }
+        )
+    })
 }
 
 fn vault_name(data: &Data, id: &str) -> String {
@@ -306,11 +308,7 @@ pub fn resolve(data: &Data, text: &str) -> Result<String, String> {
     let sections: Option<Vec<&str>> = match &r.section {
         Some(s) => {
             let by_id: Vec<&str> = i.sections.iter().filter(|x| x.id == *s).map(|x| x.id.as_str()).collect();
-            let found = if by_id.is_empty() {
-                i.sections.iter().filter(|x| x.title.eq_ignore_ascii_case(s)).map(|x| x.id.as_str()).collect()
-            } else {
-                by_id
-            };
+            let found = if by_id.is_empty() { i.sections.iter().filter(|x| x.title.eq_ignore_ascii_case(s)).map(|x| x.id.as_str()).collect() } else { by_id };
             if found.is_empty() {
                 return Err(format!("{text}: no section \"{s}\" in item \"{}\"", i.title));
             }
@@ -318,13 +316,8 @@ pub fn resolve(data: &Data, text: &str) -> Result<String, String> {
         }
         None => None,
     };
-    let candidates = || {
-        i.fields.iter().filter(|f| sections.as_ref().is_none_or(|ids| f.section_id.as_deref().is_some_and(|id| ids.contains(&id))))
-    };
-    let field = candidates()
-        .find(|f| f.id == r.field)
-        .or_else(|| candidates().find(|f| f.title.eq_ignore_ascii_case(&r.field)))
-        .ok_or_else(not_found)?;
+    let candidates = || i.fields.iter().filter(|f| sections.as_ref().is_none_or(|ids| f.section_id.as_deref().is_some_and(|id| ids.contains(&id))));
+    let field = candidates().find(|f| f.id == r.field).or_else(|| candidates().find(|f| f.title.eq_ignore_ascii_case(&r.field))).ok_or_else(not_found)?;
     Ok(match r.attribute {
         Some(reference::Attribute::Otp) => Totp::parse(&field.value).map_err(|e| format!("{text}: {e}"))?.now().0,
         Some(reference::Attribute::Type) => field_type(field.field_type).to_string(),
@@ -343,12 +336,7 @@ pub fn resolve(data: &Data, text: &str) -> Result<String, String> {
 /// Answer `query` from the store (everything but accounts and signing in).
 pub fn answer(data: &Data, query: &CliQuery) -> Response {
     let result = match query {
-        CliQuery::Vaults => Ok(Value::Array(
-            data.vaults
-                .iter()
-                .map(|v| json!({ "id": v.id, "name": v.title, "content_version": v.content_version }))
-                .collect(),
-        )),
+        CliQuery::Vaults => Ok(Value::Array(data.vaults.iter().map(|v| json!({ "id": v.id, "name": v.title, "content_version": v.content_version })).collect())),
         CliQuery::Items { vault: v } => (|| {
             let only = match v {
                 Some(v) => Some(vault(data, v)?.id.clone()),

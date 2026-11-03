@@ -15,7 +15,8 @@
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 use gpui::{
-    App, Bounds, Context, Entity, FontWeight, HitboxBehavior, Hsla, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, Point, Render, RenderOnce, SharedString, Styled as _, Window, canvas, point, px, size,
+    App, Bounds, Context, Entity, FontWeight, HitboxBehavior, Hsla, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, Point, Render, RenderOnce, SharedString, Styled as _, Window,
+    canvas, point, px, size,
 };
 use olo_kit_base::metrics as m;
 
@@ -364,7 +365,11 @@ impl RenderOnce for Graph {
                 });
                 // What agents read: each series' latest value.
                 let said = series.iter().map(|line| format!("{}: {}", line.name, line.latest().map(|v| say(line, v)).unwrap_or_else(|| "–".into()))).collect::<Vec<_>>().join(", ");
-                agent::record(window, cx, agent::Node { role: "Figure", name: Some("Graph".into()), value: Some(said.into()), bounds: rect, enabled: true, clickable: on_click.is_some(), ..Default::default() });
+                agent::record(
+                    window,
+                    cx,
+                    agent::Node { role: "Figure", name: Some("Graph".into()), value: Some(said.into()), bounds: rect, enabled: true, clickable: on_click.is_some(), ..Default::default() },
+                );
 
                 let (st, hb, hover_f) = (state.clone(), hitbox.clone(), on_hover.clone());
                 window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, cx| {
@@ -627,7 +632,11 @@ impl RenderOnce for CellGrid {
                         let out = Bounds::from_corners(point(well.left() - line, well.top() - line), point(well.right() + line, well.bottom() + line));
                         style::frame_rect(window, out, style::c(p.selection_edge()));
                     }
-                    agent::record(window, cx, agent::Node { role: "Button", name: Some(item.name.clone()), bounds: *well, enabled: true, clickable: on_click.is_some(), selected: Some(item.selected), ..Default::default() });
+                    agent::record(
+                        window,
+                        cx,
+                        agent::Node { role: "Button", name: Some(item.name.clone()), bounds: *well, enabled: true, clickable: on_click.is_some(), selected: Some(item.selected), ..Default::default() },
+                    );
                 }
                 if let Some(f) = on_click {
                     let n = cells.len();

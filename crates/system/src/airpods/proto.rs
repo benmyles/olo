@@ -91,9 +91,25 @@ pub enum Setting {
 impl Setting {
     pub fn from_byte(b: u8) -> Option<Setting> {
         use Setting::*;
-        [Microphone, OwnsConnection, EarDetection, ListeningMode, PressAndHold, PressSpeed, HoldDuration, ListeningModes, OneBudAnc, AdaptiveVolume, Conversation, AdaptiveStrength, CaseSounds, AllowOff, VolumeSwipe]
-            .into_iter()
-            .find(|s| *s as u8 == b)
+        [
+            Microphone,
+            OwnsConnection,
+            EarDetection,
+            ListeningMode,
+            PressAndHold,
+            PressSpeed,
+            HoldDuration,
+            ListeningModes,
+            OneBudAnc,
+            AdaptiveVolume,
+            Conversation,
+            AdaptiveStrength,
+            CaseSounds,
+            AllowOff,
+            VolumeSwipe,
+        ]
+        .into_iter()
+        .find(|s| *s as u8 == b)
     }
 }
 
@@ -213,18 +229,33 @@ pub enum Press {
 pub enum Message {
     Battery(Vec<Level>),
     /// The bud whose microphone is used first, then the other.
-    Ear { primary: Placement, secondary: Placement },
-    Setting { setting: Option<Setting>, id: u8, value: [u8; 4] },
+    Ear {
+        primary: Placement,
+        secondary: Placement,
+    },
+    Setting {
+        setting: Option<Setting>,
+        id: u8,
+        value: [u8; 4],
+    },
     /// Conversation Awareness: the wearer started speaking (low levels:
     /// turn the sound down) or stopped (8 and up: back to normal).
-    Conversation { level: u8 },
+    Conversation {
+        level: u8,
+    },
     Info(Info),
     Keys(Keys),
-    StemPress { press: Press, left: bool },
+    StemPress {
+        press: Press,
+        left: bool,
+    },
     /// Frames of their microphone stream: (timestamp, AAC-ELD frame).
     Audio(Vec<(u32, Vec<u8>)>),
     /// Anything else, kept whole for whoever wants it.
-    Other { opcode: u16, data: Vec<u8> },
+    Other {
+        opcode: u16,
+        data: Vec<u8>,
+    },
 }
 
 /// A message with this opcode and body.
@@ -455,10 +486,7 @@ mod tests {
     #[test]
     fn reads_the_rest() {
         assert_eq!(parse(&hex("04 00 04 00 06 00 00 02")), Some(Message::Ear { primary: Placement::InEar, secondary: Placement::InCase }));
-        assert_eq!(
-            parse(&hex("04 00 04 00 09 00 0D 02 00 00 00")),
-            Some(Message::Setting { setting: Some(Setting::ListeningMode), id: 0x0D, value: [2, 0, 0, 0] })
-        );
+        assert_eq!(parse(&hex("04 00 04 00 09 00 0D 02 00 00 00")), Some(Message::Setting { setting: Some(Setting::ListeningMode), id: 0x0D, value: [2, 0, 0, 0] }));
         assert_eq!(parse(&hex("04 00 04 00 4B 00 02 00 01 02")), Some(Message::Conversation { level: 2 }));
         assert_eq!(parse(&hex("04 00 04 00 19 00 06 01")), Some(Message::StemPress { press: Press::Double, left: true }));
         assert_eq!(parse(&hex("04 00 04 00 77 00 01 02")), Some(Message::Other { opcode: 0x77, data: vec![1, 2] }));

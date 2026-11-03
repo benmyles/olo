@@ -14,11 +14,10 @@ use olo_kit_base::list::SelectionBand;
 use olo_ui::{
     Menu, WindowOptions,
     gpui::{
-        self, Bounds, Context, DragAction, FocusHandle, InteractiveElement as _, IntoElement, KeyDownEvent, Keystroke, LayerKeyboard, LayerShellLayer, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels,
-        Point, Render, Styled as _, WeakEntity, Window, canvas, div, point, px, size,
+        self, Bounds, Context, DragAction, FocusHandle, InteractiveElement as _, IntoElement, KeyDownEvent, Keystroke, LayerKeyboard, LayerShellLayer, MouseButton, MouseDownEvent, MouseMoveEvent,
+        MouseUpEvent, ParentElement as _, Pixels, Point, Render, Styled as _, WeakEntity, Window, canvas, div, point, px, size,
     },
-    menu, metrics as m,
-    style, theme,
+    menu, metrics as m, style, theme,
 };
 
 use crate::{
@@ -506,7 +505,11 @@ impl Desktop {
                 let (at, ask) = (press.at, press.button == MouseButton::Right);
                 // Every icon can be moved about the desktop.
                 let layouts = self.layouts.borrow();
-                let icons = self.selected.iter().filter_map(|&j| Some((place_key(&self.item(j)?.entry.path), layouts.get(j)?.icon.origin - point(px((ICON_CELL.0 - items::ICON) / 2.0), px(m::TIGHT))))).collect();
+                let icons = self
+                    .selected
+                    .iter()
+                    .filter_map(|&j| Some((place_key(&self.item(j)?.entry.path), layouts.get(j)?.icon.origin - point(px((ICON_CELL.0 - items::ICON) / 2.0), px(m::TIGHT)))))
+                    .collect();
                 let icon = layouts.get(i).map(|l| l.icon).unwrap_or_default();
                 drop(layouts);
                 self.dragging = Some((at, icons));

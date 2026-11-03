@@ -235,12 +235,14 @@ impl Render for Dialog {
                 }));
             } else {
                 let labels: Vec<SharedString> = ch.options.iter().map(|(_, l)| SharedString::from(l.clone())).collect();
-                choices = choices.child(MenuField::new(SharedString::from(format!("choice-{i}")), labels, self.picked[i]).label(SharedString::from(ch.label.clone())).width(COLUMN).on_change(move |k, _, cx| {
-                    me.update(cx, |d, cx| {
-                        d.picked[i] = k;
-                        cx.notify();
-                    })
-                }));
+                choices = choices.child(MenuField::new(SharedString::from(format!("choice-{i}")), labels, self.picked[i]).label(SharedString::from(ch.label.clone())).width(COLUMN).on_change(
+                    move |k, _, cx| {
+                        me.update(cx, |d, cx| {
+                            d.picked[i] = k;
+                            cx.notify();
+                        })
+                    },
+                ));
             }
         }
         let deny = if self.deny.is_empty() { "Deny".to_owned() } else { self.deny.clone() };

@@ -5,8 +5,8 @@
 
 use std::time::{Duration, Instant};
 
-use serde::Serialize;
 use olo_ui::commands::UiNode;
+use serde::Serialize;
 
 use crate::{ScreenTree, option, screens::Screen, trees};
 

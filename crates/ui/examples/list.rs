@@ -4,9 +4,8 @@
 use std::rc::Rc;
 
 use olo_ui::{
-    WindowOptions,
+    MenuBar, WindowOptions,
     gpui::{AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString, Styled as _, Window, div, px},
-    MenuBar,
     menu::{self, Menu},
     metrics as m,
     widgets::{Column, ColumnListView, ListModel, StringView},
@@ -36,8 +35,32 @@ struct Lists {
 impl Lists {
     fn menus(&self) -> Vec<Menu> {
         vec![
-            Menu::new("File").item("New", "new").key("n").item("Open…", "open").key("o").separator().submenu(Menu::new("Recent").item("one.txt", "r1").item("two.txt", "r2")).separator().item("Close", "close").key("w").item("Quit", "quit").key("q"),
-            Menu::new("Edit").item("Undo", "undo").key("z").item("Redo", "redo").shift_key("z").separator().item("Cut", "cut").key("x").item("Copy", "copy").key("c").item("Paste", "paste").key("v").item("Select All", "all").key("a"),
+            Menu::new("File")
+                .item("New", "new")
+                .key("n")
+                .item("Open…", "open")
+                .key("o")
+                .separator()
+                .submenu(Menu::new("Recent").item("one.txt", "r1").item("two.txt", "r2"))
+                .separator()
+                .item("Close", "close")
+                .key("w")
+                .item("Quit", "quit")
+                .key("q"),
+            Menu::new("Edit")
+                .item("Undo", "undo")
+                .key("z")
+                .item("Redo", "redo")
+                .shift_key("z")
+                .separator()
+                .item("Cut", "cut")
+                .key("x")
+                .item("Copy", "copy")
+                .key("c")
+                .item("Paste", "paste")
+                .key("v")
+                .item("Select All", "all")
+                .key("a"),
             Menu::new("Options").item("Wrap Lines", "wrap").checked(self.wrap),
         ]
     }
@@ -60,7 +83,8 @@ impl Render for Lists {
         })
         .on_context(move |_, at, window, cx| {
             let chosen = chosen.clone();
-            let menu = Menu::new("").item("Quit Application", "quit-app").item("Kill Process", "kill").separator().submenu(Menu::new("Priority").item("Low", "low").item("Normal", "normal").checked(true));
+            let menu =
+                Menu::new("").item("Quit Application", "quit-app").item("Kill Process", "kill").separator().submenu(Menu::new("Priority").item("Low", "low").item("Normal", "normal").checked(true));
             menu::context_menu(window, cx, menu, at, move |command, _, cx| {
                 chosen.update(cx, |l, cx| {
                     l.last = format!("chose {command}").into();

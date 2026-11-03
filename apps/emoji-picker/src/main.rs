@@ -24,7 +24,8 @@ use olo_protocol::{Client, Reply, Request};
 use olo_ui::{
     Frame, WindowOptions,
     gpui::{
-        AppContext as _, Bounds, Context, Entity, Focusable as _, FontWeight, HitboxBehavior, InteractiveElement as _, IntoElement, KeyDownEvent, LayerKeyboard, LayerShellLayer, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Render, ScrollWheelEvent, SharedString, Styled as _, Task, Window, WindowHandle, canvas, div, point, px, size,
+        AppContext as _, Bounds, Context, Entity, Focusable as _, FontWeight, HitboxBehavior, InteractiveElement as _, IntoElement, KeyDownEvent, LayerKeyboard, LayerShellLayer, MouseButton,
+        MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Render, ScrollWheelEvent, SharedString, Styled as _, Task, Window, WindowHandle, canvas, div, point, px, size,
     },
     icons,
     instance::{self, Launch},
@@ -203,7 +204,11 @@ impl Picker {
         window.warm_text(&font, px(EMOJI), texts);
         // The tabs, the hands and the one shown big.
         window.warm_text(&font, px(16.0), GROUPS.iter().map(|g| SharedString::from(g.1)).chain(["🕘".into()]).collect::<Vec<_>>());
-        window.warm_text(&font, px(TONE - 4.0), Tone::ALL.iter().filter_map(|t| emojis::get("✋").and_then(|h| t.0.map_or(Some(h), |s| h.with_skin_tone(s)))).map(|h| SharedString::from(h.as_str())).collect::<Vec<_>>());
+        window.warm_text(
+            &font,
+            px(TONE - 4.0),
+            Tone::ALL.iter().filter_map(|t| emojis::get("✋").and_then(|h| t.0.map_or(Some(h), |s| h.with_skin_tone(s)))).map(|h| SharedString::from(h.as_str())).collect::<Vec<_>>(),
+        );
     }
 
     fn hide(&mut self, cx: &mut Context<Self>) {
@@ -460,7 +465,9 @@ impl Picker {
                 let Ok(going) = this.update(cx, |p, cx| {
                     cx.notify();
                     p.asking.is_some()
-                }) else { return };
+                }) else {
+                    return;
+                };
                 if !going {
                     return;
                 }
@@ -626,7 +633,11 @@ impl Render for Picker {
                     }
                     let mid = style::snap_coord(window, r.center().y);
                     style::label(window, cx, r.center().x, mid, Align::Center, *icon, 16.0, font.clone(), c(p.panel_text));
-                    olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Tab", name: Some((*name).into()), bounds: r, enabled: true, clickable: true, selected: Some(on), ..Default::default() });
+                    olo_ui::agent::record(
+                        window,
+                        cx,
+                        olo_ui::agent::Node { role: "Tab", name: Some((*name).into()), bounds: r, enabled: true, clickable: true, selected: Some(on), ..Default::default() },
+                    );
                 }
                 let count = tabs.len();
                 let m1 = tabs_me.clone();
@@ -677,7 +688,18 @@ impl Render for Picker {
                             }
                             Line::Note(text) => {
                                 let mid = style::snap_coord(window, y + h / 2.0);
-                                let b = style::label_fit(window, cx, grid.left() + px(m::SPACING), mid, Align::Left, text.clone(), style::PLAIN_SIZE, font.clone(), c(p.document_text), grid.size.width - px(2.0 * m::SPACING));
+                                let b = style::label_fit(
+                                    window,
+                                    cx,
+                                    grid.left() + px(m::SPACING),
+                                    mid,
+                                    Align::Left,
+                                    text.clone(),
+                                    style::PLAIN_SIZE,
+                                    font.clone(),
+                                    c(p.document_text),
+                                    grid.size.width - px(2.0 * m::SPACING),
+                                );
                                 olo_ui::agent::record(window, cx, olo_ui::agent::Node { clip: Some(inner), ..olo_ui::agent::Node::label(text.clone(), b) });
                             }
                             Line::Cells(r) => {
@@ -690,7 +712,21 @@ impl Render for Picker {
                                     let mid = style::snap_coord(window, b.center().y);
                                     style::label(window, cx, b.center().x, mid, Align::Center, cells[i].text.clone(), EMOJI, font.clone(), c(p.document_text));
                                     let name = names[i].unwrap_or("Emoji");
-                                    olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Button", name: Some(name.into()), value: Some(cells[i].text.clone()), bounds: b, enabled: true, clickable: true, selected: Some(i == selected), clip: Some(inner), ..Default::default() });
+                                    olo_ui::agent::record(
+                                        window,
+                                        cx,
+                                        olo_ui::agent::Node {
+                                            role: "Button",
+                                            name: Some(name.into()),
+                                            value: Some(cells[i].text.clone()),
+                                            bounds: b,
+                                            enabled: true,
+                                            clickable: true,
+                                            selected: Some(i == selected),
+                                            clip: Some(inner),
+                                            ..Default::default()
+                                        },
+                                    );
                                     spots.push((b, i));
                                 }
                             }
@@ -797,7 +833,11 @@ impl Render for Picker {
                         None => Some(h),
                     });
                     style::label(window, cx, b.center().x, mid, Align::Center, hand.map_or("✋", |h| h.as_str()), TONE - 4.0, font.clone(), c(p.panel_text));
-                    olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "RadioButton", name: Some(t.name().into()), bounds: b, enabled: true, clickable: true, checked: Some(*t == tone), ..Default::default() });
+                    olo_ui::agent::record(
+                        window,
+                        cx,
+                        olo_ui::agent::Node { role: "RadioButton", name: Some(t.name().into()), bounds: b, enabled: true, clickable: true, checked: Some(*t == tone), ..Default::default() },
+                    );
                     spots.push((b, *t));
                 }
                 // What it is, between.
@@ -831,19 +871,11 @@ impl Render for Picker {
         .inset_0();
 
         let keys = me.clone();
-        div()
-            .size_full()
-            .relative()
-            .child(backdrop)
-            .child(tab_strip)
-            .child(grid_paint)
-            .child(status_paint)
-            .child(query)
-            .capture_key_down(move |e: &KeyDownEvent, _, cx| {
-                if keys.update(cx, |p, cx| p.key(e, cx)) {
-                    cx.stop_propagation();
-                }
-            })
+        div().size_full().relative().child(backdrop).child(tab_strip).child(grid_paint).child(status_paint).child(query).capture_key_down(move |e: &KeyDownEvent, _, cx| {
+            if keys.update(cx, |p, cx| p.key(e, cx)) {
+                cx.stop_propagation();
+            }
+        })
     }
 }
 

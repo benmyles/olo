@@ -12,14 +12,11 @@
 //! into view, a small picture's pixels kept as they are (nearest). While
 //! a resampling is made (a zoom, a resize), the last one stands in.
 
-use std::{
-    collections::HashMap,
-    rc::Rc,
-    sync::Arc,
-};
+use std::{collections::HashMap, rc::Rc, sync::Arc};
 
 use gpui::{
-    App, AppContext as _, Bounds, Context, CursorStyle, Entity, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, Render, RenderImage, ScrollDelta, ScrollWheelEvent, Size, Styled as _, Task, Window, canvas, div, point, px, size,
+    App, AppContext as _, Bounds, Context, CursorStyle, Entity, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point,
+    Render, RenderImage, ScrollDelta, ScrollWheelEvent, Size, Styled as _, Task, Window, canvas, div, point, px, size,
 };
 use olo_kit_base::metrics as m;
 
@@ -504,7 +501,10 @@ fn to_bgra(px: &mut [u8]) {
 /// screen at 1.4×), as an image to draw a texel a device pixel (a
 /// cover, a poster, an agent's screen; call it off the UI thread).
 pub fn resampled(src: &dyn Rgba, (w, h): (u32, u32)) -> Option<Arc<RenderImage>> {
-    use fast_image_resize::{FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer, images::{Image, ImageRef}};
+    use fast_image_resize::{
+        FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer,
+        images::{Image, ImageRef},
+    };
     let [sw, sh] = src.size();
     let mut out = if (sw as u32, sh as u32) == (w, h) {
         src.rgba().to_vec()
@@ -579,7 +579,10 @@ mod resample_timing {
     #[test]
     #[ignore]
     fn filters() {
-        use fast_image_resize::{FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer, images::{Image, ImageRef}};
+        use fast_image_resize::{
+            FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer,
+            images::{Image, ImageRef},
+        };
         let (sw, sh) = (1024u32, 640u32);
         let src: Vec<u8> = (0..sw * sh * 4).map(|i| (i * 7 % 251) as u8).collect();
         for (to_w, to_h) in [(1421u32, 888u32), (710, 444)] {

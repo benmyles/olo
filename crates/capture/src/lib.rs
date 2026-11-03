@@ -119,7 +119,8 @@ impl Capture {
         let copier: ext_image_copy_capture_manager_v1::ExtImageCopyCaptureManagerV1 = globals.bind(&qh, 1..=1, ()).map_err(|_| "app_server offers no ext-image-copy-capture".to_owned())?;
         let (image_source, name) = match source {
             Source::Output(name) => {
-                let sources: ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1 = globals.bind(&qh, 1..=1, ()).map_err(|_| "app_server offers no output capture (ext-image-capture-source)".to_owned())?;
+                let sources: ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1 =
+                    globals.bind(&qh, 1..=1, ()).map_err(|_| "app_server offers no output capture (ext-image-capture-source)".to_owned())?;
                 for g in globals.contents().clone_list().iter().filter(|g| g.interface == "wl_output") {
                     let o: wl_output::WlOutput = globals.registry().bind(g.name, g.version.min(4), &qh, ());
                     state.outputs.push((o, String::new()));
@@ -152,7 +153,8 @@ impl Capture {
                 (made, name)
             }
         };
-        let session = copier.create_session(&image_source, if cursor { ext_image_copy_capture_manager_v1::Options::PaintCursors } else { ext_image_copy_capture_manager_v1::Options::empty() }, &qh, ());
+        let session =
+            copier.create_session(&image_source, if cursor { ext_image_copy_capture_manager_v1::Options::PaintCursors } else { ext_image_copy_capture_manager_v1::Options::empty() }, &qh, ());
         while !state.constraints_done && !state.stopped {
             queue.blocking_dispatch(&mut state).map_err(|e| e.to_string())?;
         }
@@ -230,10 +232,8 @@ impl Capture {
     fn dma_buffer(&self, w: u32, h: u32) -> Result<(wl_buffer::WlBuffer, gbm::BufferObject<()>, wl_shm::Format), String> {
         let (gbm, dmabuf) = (self.gbm.as_ref().ok_or("no GPU")?, self.dmabuf.as_ref().ok_or("no linux-dmabuf")?);
         let pick = [(gbm::Format::Xrgb8888, wl_shm::Format::Xrgb8888), (gbm::Format::Argb8888, wl_shm::Format::Argb8888)];
-        let (fourcc, shm_format, modifiers) = pick
-            .into_iter()
-            .find_map(|(f, s)| self.state.dma_formats.iter().find(|(c, _)| *c == f as u32).map(|(_, m)| (f, s, m.clone())))
-            .ok_or("app_server draws no BGRx or BGRA dmabufs")?;
+        let (fourcc, shm_format, modifiers) =
+            pick.into_iter().find_map(|(f, s)| self.state.dma_formats.iter().find(|(c, _)| *c == f as u32).map(|(_, m)| (f, s, m.clone()))).ok_or("app_server draws no BGRx or BGRA dmabufs")?;
         // Linear when asked (`OLO_PORTAL_LINEAR`, to compare), else what the
         // GPU likes best of what app_server draws.
         let linear = u64::from(gbm::Modifier::Linear);
@@ -455,9 +455,7 @@ fn open_render_node(dev: libc::dev_t) -> Result<std::fs::File, String> {
     let dir = std::fs::read_dir("/dev/dri").map_err(|e| format!("/dev/dri: {e}"))?;
     for entry in dir.flatten() {
         let path = entry.path();
-        if path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("renderD"))
-            && std::fs::metadata(&path).is_ok_and(|m| m.rdev() == dev)
-        {
+        if path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("renderD")) && std::fs::metadata(&path).is_ok_and(|m| m.rdev() == dev) {
             return std::fs::OpenOptions::new().read(true).write(true).open(&path).map_err(|e| format!("{}: {e}", path.display()));
         }
     }
@@ -559,4 +557,3 @@ ignore!(
     ext_image_capture_source_v1::ExtImageCaptureSourceV1,
     ext_image_copy_capture_manager_v1::ExtImageCopyCaptureManagerV1
 );
-

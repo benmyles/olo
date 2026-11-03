@@ -154,7 +154,13 @@ impl Demo {
         m.reply_to = Some(ReplyTo { id: 3, from: Some("Mira Okafor".into()), text: Some("Photo: Unreal. I took this from the ridge".into()) });
         s.say(60 * 25 - 1, mira(), "Saturday? I'll bring coffee ☕");
         let m = s.say(45, mira(), "Also, the trail guide I mentioned: https://trails.example.org/ridge-loop");
-        m.media = Some(Media::WebPage { url: "https://trails.example.org/ridge-loop".into(), site: Some("Trail Guide".into()), title: Some("Ridge Loop — 11 km, 640 m up".into()), description: Some("A steady climb through pines to the open ridge, with views over the whole valley. Best at dawn.".into()), photo: false });
+        m.media = Some(Media::WebPage {
+            url: "https://trails.example.org/ridge-loop".into(),
+            site: Some("Trail Guide".into()),
+            title: Some("Ridge Loop — 11 km, 640 m up".into()),
+            description: Some("A steady climb through pines to the open ridge, with views over the whole valley. Best at dawn.".into()),
+            photo: false,
+        });
         let m = s.say(40, you(), "Perfect, saved it. Saturday works for me");
         react(m, &[("👍", 1, false)]);
         let m = s.say(12, mira(), "");
@@ -188,7 +194,13 @@ impl Demo {
         m.entities = Vec::new();
         mark(m, "never", EntityKind::Bold);
         let m = s.say(90, jun(), "");
-        m.media = Some(Media::Poll { question: "Which onboarding illustration style?".into(), answers: vec![("Flat line art".into(), 3), ("Soft 3D".into(), 5), ("Photos".into(), 1)], voters: 9, closed: false, quiz: false });
+        m.media = Some(Media::Poll {
+            question: "Which onboarding illustration style?".into(),
+            answers: vec![("Flat line art".into(), 3), ("Soft 3D".into(), 5), ("Photos".into(), 1)],
+            voters: 9,
+            closed: false,
+            quiz: false,
+        });
         let m = s.say(20, theo(), "Soft 3D it is then 🎉");
         react(m, &[("🎉", 3, false), ("❤️", 1, false)]);
         let m = s.say(6, elif(), "I'll update the illustrations page tonight");
@@ -209,7 +221,13 @@ impl Demo {
         let m = s.say(60 * 7, None, "Olo 1.0 beta: StyledEdit gets pictures, page view and Word documents. Read the notes: https://olo.example.org/notes/1.0");
         m.views = Some(9_311);
         m.replies = Some(84);
-        m.media = Some(Media::WebPage { url: "https://olo.example.org/notes/1.0".into(), site: Some("Olo".into()), title: Some("What’s new in Olo 1.0".into()), description: Some("Pictures in documents, page view, headers and footers, and a whole new Telegram.".into()), photo: false });
+        m.media = Some(Media::WebPage {
+            url: "https://olo.example.org/notes/1.0".into(),
+            site: Some("Olo".into()),
+            title: Some("What’s new in Olo 1.0".into()),
+            description: Some("Pictures in documents, page view, headers and footers, and a whole new Telegram.".into()),
+            photo: false,
+        });
         react(m, &[("🎉", 266, true), ("❤️", 98, false)]);
         let c = Chat { members: Some(24_310), verified: true, muted: true, unread: 1, ..chat(RELEASES, ChatKind::Channel, "Olo Releases") };
         d.add(c, s.msgs);
@@ -305,7 +323,8 @@ impl Demo {
         let extra: usize = std::env::var("OLO_TELEGRAM_DEMO").ok().and_then(|v| v.parse().ok()).unwrap_or(24);
         const FIRST: [&str; 12] = ["Ada", "Ben", "Cleo", "Dev", "Emma", "Finn", "Gia", "Hugo", "Iris", "Jonas", "Kai", "Lena"];
         const LAST: [&str; 9] = ["Ito", "Novak", "Silva", "Moreau", "Haddad", "Kowalski", "Nakamura", "Olsen", "Rossi"];
-        const LINES: [&str; 8] = ["See you then!", "Sounds good 👍", "Can you call me when you're free?", "Haha, exactly", "Sent you the photos", "On my way", "Happy birthday!! 🎂", "Let me check and get back to you"];
+        const LINES: [&str; 8] =
+            ["See you then!", "Sounds good 👍", "Can you call me when you're free?", "Haha, exactly", "Sent you the photos", "On my way", "Happy birthday!! 🎂", "Let me check and get back to you"];
         for i in 0..extra {
             let id = MANY + i as i64;
             let name = format!("{} {}", FIRST[i % FIRST.len()], LAST[(i / FIRST.len()) % LAST.len()]);
@@ -425,12 +444,8 @@ fn wave(seed: i64, n: usize) -> Vec<u8> {
 
 /// A picture of hills under a sky, `w`×`h`, as a PNG (the demo's photos).
 fn landscape(w: u32, h: u32, seed: u64) -> Vec<u8> {
-    let hues: [([f32; 3], [f32; 3]); 4] = [
-        ([0.98, 0.62, 0.38], [0.36, 0.30, 0.55]),
-        ([0.55, 0.78, 0.96], [0.20, 0.42, 0.30]),
-        ([0.99, 0.80, 0.55], [0.45, 0.25, 0.30]),
-        ([0.70, 0.84, 0.95], [0.25, 0.35, 0.50]),
-    ];
+    let hues: [([f32; 3], [f32; 3]); 4] =
+        [([0.98, 0.62, 0.38], [0.36, 0.30, 0.55]), ([0.55, 0.78, 0.96], [0.20, 0.42, 0.30]), ([0.99, 0.80, 0.55], [0.45, 0.25, 0.30]), ([0.70, 0.84, 0.95], [0.25, 0.35, 0.50])];
     let (sky, land) = hues[(seed % 4) as usize];
     let phase = (seed % 97) as f32 / 15.0;
     let mut px = Vec::with_capacity((w * h * 3) as usize);
@@ -474,7 +489,12 @@ pub fn spawn(mut from: UnboundedReceiver<Cmd>, sink: Sink) {
             if let Some(every) = std::env::var("OLO_TELEGRAM_DEMO_EVERY").ok().and_then(|v| v.parse::<u64>().ok()).filter(|&s| s > 0) {
                 let d = demo.clone();
                 tokio::spawn(async move {
-                    const SAY: [(ChatId, &str, &str); 4] = [(MIRA, "Mira Okafor", "Just checked the forecast, Saturday looks clear ☀️"), (THEO, "Theo Brandt", "Running 5 minutes late!"), (CREW, "Jun Park", "Pushed the new illustrations, have a look"), (JUN, "Jun Park", "Are you around for a quick call?")];
+                    const SAY: [(ChatId, &str, &str); 4] = [
+                        (MIRA, "Mira Okafor", "Just checked the forecast, Saturday looks clear ☀️"),
+                        (THEO, "Theo Brandt", "Running 5 minutes late!"),
+                        (CREW, "Jun Park", "Pushed the new illustrations, have a look"),
+                        (JUN, "Jun Park", "Are you around for a quick call?"),
+                    ];
                     let mut k = 0;
                     loop {
                         tokio::time::sleep(Duration::from_secs(every)).await;
@@ -523,7 +543,18 @@ fn handle(demo: &Arc<Mutex<Demo>>, cmd: Cmd) {
                 Folder { id: 2, title: "Personal".into(), emoticon: Some("👤".into()), contacts: true, non_contacts: true, exclude_archived: true, ..Folder::default() },
                 Folder { id: 3, title: "Groups".into(), emoticon: Some("👥".into()), groups: true, exclude_archived: true, ..Folder::default() },
                 Folder { id: 4, title: "Channels".into(), emoticon: Some("📢".into()), channels: true, bots: true, exclude_archived: true, ..Folder::default() },
-                Folder { id: 5, title: "Unread".into(), emoticon: Some("✅".into()), contacts: true, non_contacts: true, groups: true, channels: true, bots: true, exclude_read: true, ..Folder::default() },
+                Folder {
+                    id: 5,
+                    title: "Unread".into(),
+                    emoticon: Some("✅".into()),
+                    contacts: true,
+                    non_contacts: true,
+                    groups: true,
+                    channels: true,
+                    bots: true,
+                    exclude_read: true,
+                    ..Folder::default()
+                },
             ]));
             let mut all: Vec<Chat> = d.chats.values().cloned().collect();
             all.sort_by_key(|c| std::cmp::Reverse(c.order));
@@ -570,7 +601,19 @@ fn handle(demo: &Arc<Mutex<Demo>>, cmd: Cmd) {
                 let m = d.msgs.get(&out.chat)?.iter().find(|m| m.id == r)?;
                 Some(ReplyTo { id: r, from: m.from.as_ref().map(|f| f.name.clone()), text: Some(m.summary()) })
             });
-            let msg = Message { id, chat: out.chat, from: Some(me()), date: now(), out: true, text: out.text.clone(), entities: out.entities.clone(), reply_to, media, topic: out.topic, ..Message::default() };
+            let msg = Message {
+                id,
+                chat: out.chat,
+                from: Some(me()),
+                date: now(),
+                out: true,
+                text: out.text.clone(),
+                entities: out.entities.clone(),
+                reply_to,
+                media,
+                topic: out.topic,
+                ..Message::default()
+            };
             d.msgs.entry(out.chat).or_default().push(msg.clone());
             d.refresh_last(out.chat);
             if let Some(c) = d.chats.get_mut(&out.chat) {
@@ -761,7 +804,12 @@ fn handle(demo: &Arc<Mutex<Demo>>, cmd: Cmd) {
             d.emit(Event::Results { query, chats, msgs });
         }
         Cmd::Contacts => {
-            let mut people: Vec<Contact> = d.chats.values().filter(|c| c.kind == ChatKind::User).map(|c| Contact { id: c.id, name: c.title.clone(), phone: None, username: c.username.clone(), photo: None, seen: c.seen.clone() }).collect();
+            let mut people: Vec<Contact> = d
+                .chats
+                .values()
+                .filter(|c| c.kind == ChatKind::User)
+                .map(|c| Contact { id: c.id, name: c.title.clone(), phone: None, username: c.username.clone(), photo: None, seen: c.seen.clone() })
+                .collect();
             people.sort_by(|a, b| a.name.cmp(&b.name));
             d.emit(Event::Contacts(people));
         }

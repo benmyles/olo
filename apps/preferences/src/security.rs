@@ -33,11 +33,17 @@ pub fn ui(ui: &mut Ui) {
                 names.len() - 1
             }
         };
-        ui.menu("pw-clear", names, i, |f| f.label("Clear copied secrets after:").divider(170.0), |s, i| {
-            if let Some(&c) = CHOICES.get(i) {
-                s.security.passwords.clear_seconds = c;
-            }
-        });
+        ui.menu(
+            "pw-clear",
+            names,
+            i,
+            |f| f.label("Clear copied secrets after:").divider(170.0),
+            |s, i| {
+                if let Some(&c) = CHOICES.get(i) {
+                    s.security.passwords.clear_seconds = c;
+                }
+            },
+        );
     });
 }
 

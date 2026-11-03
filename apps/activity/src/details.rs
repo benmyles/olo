@@ -304,9 +304,8 @@ pub fn read_details(pid: i32) -> Result<Details, String> {
             .filter_map(|e| {
                 let fd: i32 = e.file_name().to_str()?.parse().ok()?;
                 let target = link(e.path())?;
-                let flags = read(dir.join("fdinfo").join(fd.to_string()))
-                    .and_then(|t| t.lines().find_map(|l| l.strip_prefix("flags:")).and_then(|v| u32::from_str_radix(v.trim(), 8).ok()))
-                    .unwrap_or(0);
+                let flags =
+                    read(dir.join("fdinfo").join(fd.to_string())).and_then(|t| t.lines().find_map(|l| l.strip_prefix("flags:")).and_then(|v| u32::from_str_radix(v.trim(), 8).ok())).unwrap_or(0);
                 let mode = match flags & 3 {
                     0 => "r",
                     1 => "w",
@@ -321,11 +320,7 @@ pub fn read_details(pid: i32) -> Result<Details, String> {
     }
     d.regions = read(dir.join("maps")).filter(|m| !m.is_empty() || d.exe.is_some()).map(|m| regions(&m));
     d.environment = std::fs::read(dir.join("environ")).ok().map(|b| {
-        let mut env: Vec<(String, String)> = String::from_utf8_lossy(&b)
-            .split('\0')
-            .filter_map(|kv| kv.split_once('='))
-            .map(|(k, v)| (k.to_owned(), v.to_owned()))
-            .collect();
+        let mut env: Vec<(String, String)> = String::from_utf8_lossy(&b).split('\0').filter_map(|kv| kv.split_once('=')).map(|(k, v)| (k.to_owned(), v.to_owned())).collect();
         env.sort();
         env
     });

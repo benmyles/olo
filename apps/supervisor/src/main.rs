@@ -31,8 +31,8 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use olo_ui::{gpui::App, instance, widgets};
 use olo_protocol::performance::{Finding, FindingKind, LogEntry, Lowered, PerformanceSettings, Raised, SupervisorState};
+use olo_ui::{gpui::App, instance, widgets};
 
 const APP_ID: &str = "olo.supervisor";
 const EVERY: Duration = Duration::from_secs(2);
@@ -461,7 +461,10 @@ impl Supervisor {
             memory_stall: system.stall_some,
         };
         // (Memory moves every time: compared without it.)
-        let same = self.published.as_ref().is_some_and(|p| SupervisorState { memory_available: 0.0, memory_stall: 0.0, ..p.clone() } == SupervisorState { memory_available: 0.0, memory_stall: 0.0, ..state.clone() });
+        let same = self
+            .published
+            .as_ref()
+            .is_some_and(|p| SupervisorState { memory_available: 0.0, memory_stall: 0.0, ..p.clone() } == SupervisorState { memory_available: 0.0, memory_stall: 0.0, ..state.clone() });
         if !same || self.published.is_none() {
             if let Err(e) = state.save() {
                 tracing::warn!("supervisor: can't publish its state: {e}");

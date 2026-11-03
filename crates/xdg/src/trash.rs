@@ -9,10 +9,7 @@ use std::{
 };
 
 pub fn trash_dir() -> PathBuf {
-    std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_else(|| "/".into())).join(".local/share"))
-        .join("Trash")
+    std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_else(|| "/".into())).join(".local/share")).join("Trash")
 }
 
 pub fn trash_files() -> PathBuf {
@@ -69,12 +66,8 @@ pub fn trash_origin(item: &Path) -> std::io::Result<(PathBuf, PathBuf)> {
     let mut info_name = name.to_os_string();
     info_name.push(".trashinfo");
     let info = trash.join("info").join(info_name);
-    let text = fs::read_to_string(&info)
-        .map_err(|_| std::io::Error::other(format!("there’s no record of where “{}” came from", name.to_string_lossy())))?;
-    let path = text
-        .lines()
-        .find_map(|l| l.strip_prefix("Path="))
-        .ok_or_else(|| std::io::Error::other(format!("the record of where “{}” came from is damaged", name.to_string_lossy())))?;
+    let text = fs::read_to_string(&info).map_err(|_| std::io::Error::other(format!("there’s no record of where “{}” came from", name.to_string_lossy())))?;
+    let path = text.lines().find_map(|l| l.strip_prefix("Path=")).ok_or_else(|| std::io::Error::other(format!("the record of where “{}” came from is damaged", name.to_string_lossy())))?;
     let path = PathBuf::from(std::ffi::OsString::from_vec(percent_decode(path)));
     // Relative paths are relative to the Trash's top directory (the
     // file system's, for a $topdir/.Trash-uid); ours is the home one.
@@ -114,7 +107,6 @@ fn percent_encode(p: &Path) -> String {
     out
 }
 
-
 fn format_iso_now() -> String {
     // SAFETY: as in format_time.
     let tm = unsafe {
@@ -123,15 +115,7 @@ fn format_iso_now() -> String {
         libc::localtime_r(&t, &mut tm);
         tm
     };
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
-        tm.tm_year + 1900,
-        tm.tm_mon + 1,
-        tm.tm_mday,
-        tm.tm_hour,
-        tm.tm_min,
-        tm.tm_sec
-    )
+    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec)
 }
 
 /// Move `path` into the Trash when it is on the same volume as the Trash

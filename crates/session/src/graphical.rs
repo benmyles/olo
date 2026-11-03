@@ -167,14 +167,18 @@ pub fn start() {
         Ok(w) => w,
         Err(e) => return log(format!("could not set up the graphical session: {e}")),
     };
-    if written.unit && let Err(e) = olo_system::env::reload_units() {
+    if written.unit
+        && let Err(e) = olo_system::env::reload_units()
+    {
         log(format!("could not reload systemd units: {e}"));
     }
     if let Err(e) = olo_system::env::start_unit(TARGET, true) {
         log(format!("could not start {TARGET}: {e}"));
     }
     // A portal started before (by an app) still has the old backends.
-    if written.portals && let Err(e) = olo_system::env::try_restart_unit("xdg-desktop-portal.service") {
+    if written.portals
+        && let Err(e) = olo_system::env::try_restart_unit("xdg-desktop-portal.service")
+    {
         log(format!("could not restart xdg-desktop-portal: {e}"));
     }
 }

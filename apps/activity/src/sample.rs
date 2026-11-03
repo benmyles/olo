@@ -449,10 +449,7 @@ fn probe() -> Probe {
     add("threads", "Threads", Unit::Count, Hue::Blue, None, Group::Main);
     add("load", "Load average", Unit::Load, Hue::Purple, None, Group::Main);
 
-    let freq: Vec<PathBuf> = (0..1024)
-        .map(|i| PathBuf::from(format!("/sys/devices/system/cpu/cpu{i}/cpufreq/scaling_cur_freq")))
-        .take_while(|p| p.exists())
-        .collect();
+    let freq: Vec<PathBuf> = (0..1024).map(|i| PathBuf::from(format!("/sys/devices/system/cpu/cpu{i}/cpufreq/scaling_cur_freq"))).take_while(|p| p.exists()).collect();
     if !freq.is_empty() {
         add("cpu-freq", "CPU frequency", Unit::Megahertz, Hue::Orange, None, Group::Main);
     }
@@ -508,12 +505,7 @@ fn probe() -> Probe {
         add(&format!("net:{n}:tx"), &format!("{n} send"), Unit::Rate, SPREAD[(2 * i + 6) % SPREAD.len()], None, Group::Network);
     }
     // The GPU: Asahi's statistics, else amdgpu's busy percentage.
-    let gpu = std::fs::read_dir("/sys/class/drm")
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|e| e.path().join("device"))
-        .find(|d| d.join("agx_stats").exists() || d.join("gpu_busy_percent").exists());
+    let gpu = std::fs::read_dir("/sys/class/drm").into_iter().flatten().flatten().map(|e| e.path().join("device")).find(|d| d.join("agx_stats").exists() || d.join("gpu_busy_percent").exists());
     if let Some(g) = &gpu {
         add("gpu-busy", "GPU busy", Unit::Percent, Hue::Purple, Some(100.0), Group::Gpu);
         if g.join("agx_stats").exists() {
@@ -531,13 +523,8 @@ fn probe() -> Probe {
     let mut seen: HashMap<String, usize> = HashMap::new();
     for h in hwmons {
         let chip = read(h.join("name")).trim().to_owned();
-        let mut inputs: Vec<PathBuf> = std::fs::read_dir(&h)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().ends_with("_input")))
-            .collect();
+        let mut inputs: Vec<PathBuf> =
+            std::fs::read_dir(&h).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().ends_with("_input"))).collect();
         inputs.sort();
         for input in inputs {
             let file = input.file_name().unwrap_or_default().to_string_lossy().into_owned();
@@ -958,7 +945,13 @@ fn connections_of(sockets: &[crate::netdiag::Socket], owner: &HashMap<u64, i32>,
         .iter()
         .map(|s| {
             let pid = owner.get(&s.inode).copied();
-            let state = if s.tcp { tcp_state_of(s.state) } else if s.state == 7 { "" } else { "Connected" };
+            let state = if s.tcp {
+                tcp_state_of(s.state)
+            } else if s.state == 7 {
+                ""
+            } else {
+                "Connected"
+            };
             Connection {
                 proto: if s.tcp { "TCP" } else { "UDP" }.into(),
                 local: endpoint(s.local),
@@ -975,7 +968,14 @@ fn connections_of(sockets: &[crate::netdiag::Socket], owner: &HashMap<u64, i32>,
 /// sockets' counters now and at the last look (`before`): a socket new
 /// since counts in full, one gone counts no more. Those whose files can't
 /// be seen get none.
-fn traffic(procs: &mut [Proc], sockets: &[crate::netdiag::Socket], owner: &HashMap<u64, i32>, seen: &std::collections::HashSet<i32>, before: Option<&HashMap<u64, (u64, u64)>>, elapsed: f64) -> HashMap<u64, (u64, u64)> {
+fn traffic(
+    procs: &mut [Proc],
+    sockets: &[crate::netdiag::Socket],
+    owner: &HashMap<u64, i32>,
+    seen: &std::collections::HashSet<i32>,
+    before: Option<&HashMap<u64, (u64, u64)>>,
+    elapsed: f64,
+) -> HashMap<u64, (u64, u64)> {
     let mut by_pid: HashMap<i32, (u64, u64)> = HashMap::new();
     let mut now = HashMap::new();
     for s in sockets.iter().filter(|s| s.tcp) {
@@ -1262,24 +1262,15 @@ fn system(probe: &Probe, mi: &str, static_disks: &[Disk], disk_rates: &HashMap<S
         let compatible = read(g.join("uevent")).lines().find_map(|l| l.strip_prefix("OF_COMPATIBLE_0=").map(str::to_owned)).unwrap_or_default();
         let mem = read(g.join("gpu_memory"));
         let field = |k: &str| mem.lines().find_map(|l| l.strip_prefix(k)).map_or(0, num);
-        let (used, limit) = if mem.is_empty() {
-            (num(&read(g.join("mem_info_vram_used"))), num(&read(g.join("mem_info_vram_total"))))
-        } else {
-            (field("user_resident ") + field("kernel_resident "), field("limit "))
-        };
+        let (used, limit) =
+            if mem.is_empty() { (num(&read(g.join("mem_info_vram_used"))), num(&read(g.join("mem_info_vram_total")))) } else { (field("user_resident ") + field("kernel_resident "), field("limit ")) };
         let stats = read(g.join("agx_stats"));
         let name = match apple_chip(&s.model) {
             Some(chip) if compatible.starts_with("apple,agx") => format!("Apple {chip} GPU"),
             _ if compatible.is_empty() => driver.clone(),
             _ => compatible,
         };
-        s.gpu = Some(Gpu {
-            name,
-            driver,
-            memory_used: used,
-            memory_limit: limit,
-            jobs: stats.lines().find_map(|l| l.strip_prefix("jobs ")).map_or(0, num),
-        });
+        s.gpu = Some(Gpu { name, driver, memory_used: used, memory_limit: limit, jobs: stats.lines().find_map(|l| l.strip_prefix("jobs ")).map_or(0, num) });
     }
     s.tunables = TUNABLES.iter().map(|(k, _)| ((*k).to_owned(), read(sysctl_path(k)).trim().to_owned())).filter(|(_, v)| !v.is_empty()).collect();
     let nr: Vec<u64> = read("/proc/sys/fs/file-nr").split_whitespace().map(num).collect();
@@ -1411,9 +1402,7 @@ pub fn start(control: Control, send_sources: impl FnOnce(Vec<Source>) + Send + '
                 c.interrupts = stat.lines().find_map(|l| l.strip_prefix("intr ")).and_then(|r| r.split_whitespace().next()).map_or(0, num);
                 values.push(rate(c.interrupts, p.map(|p| p.interrupts)));
 
-                let procs = std::fs::read_dir("/proc")
-                    .map(|rd| rd.flatten().filter(|e| e.file_name().to_str().is_some_and(|s| s.bytes().all(|b| b.is_ascii_digit()))).count())
-                    .unwrap_or(0);
+                let procs = std::fs::read_dir("/proc").map(|rd| rd.flatten().filter(|e| e.file_name().to_str().is_some_and(|s| s.bytes().all(|b| b.is_ascii_digit()))).count()).unwrap_or(0);
                 values.push(procs as f64);
                 // "running/total" scheduling entities: the total is threads.
                 let loadavg = read("/proc/loadavg");
@@ -1513,9 +1502,7 @@ pub fn start(control: Control, send_sources: impl FnOnce(Vec<Source>) + Send + '
                     // have is moving bytes (or, for the list of
                     // connections, now and then): a socket keeps its owner.
                     let before = p.and_then(|p| p.sockets.as_ref());
-                    let active_unknown = sockets.iter().any(|s| {
-                        s.tcp && s.inode != 0 && !owners.0.contains_key(&s.inode) && before.is_some_and(|b| b.get(&s.inode) != Some(&(s.sent, s.received)))
-                    });
+                    let active_unknown = sockets.iter().any(|s| s.tcp && s.inode != 0 && !owners.0.contains_key(&s.inode) && before.is_some_and(|b| b.get(&s.inode) != Some(&(s.sent, s.received))));
                     let stale = want_connections && owners.1.is_none_or(|t: Instant| t.elapsed() > Duration::from_secs(5));
                     if active_unknown || stale || owners.1.is_none() {
                         owners = (socket_owners(list).0, Some(now));
@@ -1541,7 +1528,16 @@ pub fn start(control: Control, send_sources: impl FnOnce(Vec<Source>) + Send + '
                 if health_at.as_ref().is_none_or(|(t, _)| t.elapsed() > Duration::from_secs(60)) {
                     let mut ctrls: Vec<String> = probe.disks.iter().filter_map(|d| crate::smart::controller_of(d)).collect();
                     ctrls.dedup();
-                    health_at = Some((now, ctrls.into_iter().map(|c| { let h = crate::smart::read(&c).ok(); (c, h) }).collect()));
+                    health_at = Some((
+                        now,
+                        ctrls
+                            .into_iter()
+                            .map(|c| {
+                                let h = crate::smart::read(&c).ok();
+                                (c, h)
+                            })
+                            .collect(),
+                    ));
                 }
                 system.health = health_at.as_ref().map(|(_, h)| h.clone()).unwrap_or_default();
                 c.idle = idle_names.iter().map(|(i, ..)| idle_time(probe.cpus, *i)).collect();
@@ -1551,7 +1547,12 @@ pub fn start(control: Control, send_sources: impl FnOnce(Vec<Source>) + Send + '
                         .iter()
                         .zip(&c.idle)
                         .zip(&p.idle)
-                        .map(|(((_, name, what, latency), now), was)| IdleState { name: name.clone(), what: what.clone(), share: (now.saturating_sub(*was) as f64 / all * 100.0).min(100.0), latency_us: *latency })
+                        .map(|(((_, name, what, latency), now), was)| IdleState {
+                            name: name.clone(),
+                            what: what.clone(),
+                            share: (now.saturating_sub(*was) as f64 / all * 100.0).min(100.0),
+                            latency_us: *latency,
+                        })
                         .collect();
                 }
                 if control.want_gpu_clients.load(Ordering::Relaxed)
@@ -1660,9 +1661,13 @@ mod tests {
         control.set(Wants { interval_ms: 100, processes: true, connections: true, gpu_clients: true });
         let (tx, rx) = std::sync::mpsc::channel();
         let (stx, srx) = std::sync::mpsc::channel();
-        start(control, move |s| stx.send(s).unwrap(), move |s| {
-            let _ = tx.send(s);
-        });
+        start(
+            control,
+            move |s| stx.send(s).unwrap(),
+            move |s| {
+                let _ = tx.send(s);
+            },
+        );
         let sources = srx.recv_timeout(Duration::from_secs(5)).unwrap();
         let _first = rx.recv_timeout(Duration::from_secs(5)).unwrap();
         let second = rx.recv_timeout(Duration::from_secs(5)).unwrap();

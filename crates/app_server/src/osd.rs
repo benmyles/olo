@@ -34,9 +34,15 @@ use crate::{
 pub enum Indicator {
     Brightness(f32),
     KeyboardBacklight(f32),
-    Volume { level: f32, muted: bool },
+    Volume {
+        level: f32,
+        muted: bool,
+    },
     /// On or off, with a line saying for how long.
-    Caffeinated { on: bool, detail: String },
+    Caffeinated {
+        on: bool,
+        detail: String,
+    },
     /// A windowing mode chosen (⌃⌥⌘T, ⌃⌥⌘O).
     Mode(olo_protocol::WindowingMode),
 }

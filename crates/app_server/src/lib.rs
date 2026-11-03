@@ -2,17 +2,17 @@
 #![allow(clippy::collapsible_match)]
 // If no backend is enabled, a large portion of the codebase is unused.
 // So silence this useless warning for the CI.
-#![cfg_attr(
-    not(any(feature = "winit", feature = "udev")),
-    allow(dead_code, unused_imports)
-)]
+#![cfg_attr(not(any(feature = "winit", feature = "udev")), allow(dead_code, unused_imports))]
 
 #[cfg(feature = "udev")]
 pub mod capture;
+pub mod contacts;
 pub mod cursor;
 pub mod drawing;
 pub mod focus;
 pub mod grabs;
+#[cfg(feature = "udev")]
+pub mod headless;
 pub mod hints;
 pub mod icon_theme;
 pub mod input_handler;
@@ -23,15 +23,14 @@ pub mod shell;
 pub mod state;
 #[cfg(feature = "udev")]
 pub mod udev;
-pub mod contacts;
-#[cfg(feature = "udev")]
-pub mod headless;
 #[cfg(feature = "winit")]
 pub mod winit;
 
 pub mod approve;
 pub mod desktop;
 pub mod dmabuf_check;
+pub mod frames;
+pub mod handover;
 pub mod identify;
 pub mod insert;
 pub mod ipc;
@@ -39,22 +38,20 @@ pub mod keymap;
 pub mod layout;
 pub mod lock;
 pub mod momentum;
-pub mod pace;
 pub mod night;
 pub mod osd;
 pub mod overview;
+pub mod pace;
 pub mod power;
 pub mod saver;
-pub mod scroll;
 pub mod screenshot;
+pub mod scroll;
+pub mod sockfile;
 pub mod spotlight;
 pub mod tabtip;
-pub mod sockfile;
 pub mod text;
 pub mod theme;
 pub mod timings;
-pub mod frames;
-pub mod handover;
 pub mod toolkits;
 pub mod touch_filter;
 pub mod twitcher;
@@ -82,8 +79,6 @@ pub fn stop_on_signals(running: std::sync::Arc<std::sync::atomic::AtomicBool>) {
     for sig in [libc::SIGTERM, libc::SIGINT, libc::SIGHUP] {
         let running = running.clone();
         // SAFETY: the handler only stores to an atomic.
-        let _ = unsafe {
-            signal_hook::low_level::register(sig, move || running.store(false, std::sync::atomic::Ordering::SeqCst))
-        };
+        let _ = unsafe { signal_hook::low_level::register(sig, move || running.store(false, std::sync::atomic::Ordering::SeqCst)) };
     }
 }

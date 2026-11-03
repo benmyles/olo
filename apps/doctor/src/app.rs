@@ -428,7 +428,12 @@ impl Render for Doctor {
                     Some(fix) => {
                         let (me, id) = (me.clone(), f.id.clone());
                         let label = if matches!(outcome, Some(Outcome::Failed(_))) { "Try Again".to_owned() } else { fix.label.clone() };
-                        row = row.child(Button::new(label).id(format!("fix-{}", f.id)).enabled(outcome != Some(&Outcome::Fixing)).on_click(move |_, cx| me.update(cx, |d, cx| d.fix(std::slice::from_ref(&id), cx))));
+                        row = row.child(
+                            Button::new(label)
+                                .id(format!("fix-{}", f.id))
+                                .enabled(outcome != Some(&Outcome::Fixing))
+                                .on_click(move |_, cx| me.update(cx, |d, cx| d.fix(std::slice::from_ref(&id), cx))),
+                        );
                     }
                     None => row = row.child(StringView::new(if kind() == Kind::Doctor { "Fixed by hand" } else { "Not yet" }).dim(true)),
                 }
@@ -459,7 +464,12 @@ impl Render for Doctor {
                             Some(Outcome::Failed(_)) => "Try Again".to_owned(),
                             _ => u.fix.label.clone(),
                         };
-                        line = line.child(Button::new(label).id(format!("fix-{}", u.id)).enabled(outcome != Some(&Outcome::Fixing)).on_click(move |_, cx| me.update(cx, |d, cx| d.fix(std::slice::from_ref(&id), cx))));
+                        line = line.child(
+                            Button::new(label)
+                                .id(format!("fix-{}", u.id))
+                                .enabled(outcome != Some(&Outcome::Fixing))
+                                .on_click(move |_, cx| me.update(cx, |d, cx| d.fix(std::slice::from_ref(&id), cx))),
+                        );
                         if let Some(Outcome::Failed(e)) = outcome {
                             line = line.child(StringView::new(e.clone()).wrap(true).color(style::c(p.failure)));
                         }
@@ -468,22 +478,17 @@ impl Render for Doctor {
                 }
             }
         }
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .child(bar)
-            .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .flex()
-                    .flex_col()
-                    .gap(px(m::SPACING + 2.0))
-                    .p(px(m::WINDOW_INSET))
-                    .child(header)
-                    .child(div().flex_1().min_h_0().child(ScrollView::new("doctor-findings", &self.scroll).border(false).child(list))),
-            )
+        div().size_full().flex().flex_col().child(bar).child(
+            div()
+                .flex_1()
+                .min_h_0()
+                .flex()
+                .flex_col()
+                .gap(px(m::SPACING + 2.0))
+                .p(px(m::WINDOW_INSET))
+                .child(header)
+                .child(div().flex_1().min_h_0().child(ScrollView::new("doctor-findings", &self.scroll).border(false).child(list))),
+        )
     }
 }
 

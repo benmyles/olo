@@ -137,7 +137,8 @@ pub fn guess_technology(make: &str, model: &str, internal: bool, ppi: Option<f32
 }
 
 /// Monitors with OLED panels whose names don't say so.
-const OLED_MODELS: &[&str] = &["aw3423", "aw2725", "aw3225", "pg27aqdm", "pg32ucdm", "pg34wcdm", "lg ultragear 27gr95", "27gs95", "32gs95", "45gr95", "mpg 271qr", "mag 271qpx", "mpg 321urx", "odyssey oled", "g85sb", "g95sc"];
+const OLED_MODELS: &[&str] =
+    &["aw3423", "aw2725", "aw3225", "pg27aqdm", "pg32ucdm", "pg34wcdm", "lg ultragear 27gr95", "27gs95", "32gs95", "45gr95", "mpg 271qr", "mag 271qpx", "mpg 321urx", "odyssey oled", "g85sb", "g95sc"];
 
 /// The stripes' order when the display doesn't say: an LCD's are RGB
 /// across (nearly all are), an OLED's can't be used.

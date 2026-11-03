@@ -364,7 +364,13 @@ enum Report {
 
 enum Phase {
     Idle,
-    Working { what: &'static str, done: u64, total: u64, cancel: Arc<AtomicBool>, cancellable: bool },
+    Working {
+        what: &'static str,
+        done: u64,
+        total: u64,
+        cancel: Arc<AtomicBool>,
+        cancellable: bool,
+    },
     /// A backup chosen for import: what it holds, before replacing.
     Confirm(PathBuf, Manifest),
 }
@@ -506,11 +512,8 @@ fn ask(ui: &Ui, export: bool) -> impl Fn(&mut olo_ui::gpui::Window, &mut olo_ui:
     let view = ui.cx.entity().downgrade();
     move |_, cx| {
         let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
-        let (title, panel) = if export {
-            ("Export Settings", FilePanel::save(home, suggested_name()).types(&[EXTENSION]))
-        } else {
-            ("Import Settings", FilePanel::open(home).types(&[EXTENSION, OLD_EXTENSION]))
-        };
+        let (title, panel) =
+            if export { ("Export Settings", FilePanel::save(home, suggested_name()).types(&[EXTENSION])) } else { ("Import Settings", FilePanel::open(home).types(&[EXTENSION, OLD_EXTENSION])) };
         let view = view.clone();
         file_panel::show(cx, title, panel, move |a, cx| {
             let PanelResult::Chosen(path) = a.result else { return };
@@ -578,15 +581,22 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             let rows = groups.len().min(5).max(1) as f32;
             let list = groups.into_iter().map(|(app, files, bytes)| {
                 let what = format!("{} {}, {}", files, if files == 1 { "file" } else { "files" }, size_text(bytes));
-                canvas(|_, _, _| {}, move |r, _, window, cx| {
-                    let p = theme::palette(cx);
-                    style::label(window, cx, r.left() + px(6.0), r.center().y, style::Align::Left, app.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), c(p.document_text));
-                    style::label(window, cx, r.right() - px(6.0), r.center().y, style::Align::Right, what.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
-                })
+                canvas(
+                    |_, _, _| {},
+                    move |r, _, window, cx| {
+                        let p = theme::palette(cx);
+                        style::label(window, cx, r.left() + px(6.0), r.center().y, style::Align::Left, app.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), c(p.document_text));
+                        style::label(window, cx, r.right() - px(6.0), r.center().y, style::Align::Right, what.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
+                    },
+                )
                 .w_full()
                 .h(px(m::LIST_ROW))
             });
-            ui.add(div().h(px(rows * m::LIST_ROW + 4.0)).child(ScrollView::new("backup-groups", &st.scroll).background(p.document_background).auto_hide(true).child(div().flex().flex_col().children(list.collect::<Vec<_>>()))));
+            ui.add(
+                div()
+                    .h(px(rows * m::LIST_ROW + 4.0))
+                    .child(ScrollView::new("backup-groups", &st.scroll).background(p.document_background).auto_hide(true).child(div().flex().flex_col().children(list.collect::<Vec<_>>()))),
+            );
             let src = src.clone();
             let go = ui.on_click_view(move |v, _, cx| {
                 if let Some(st) = state_of(v) {

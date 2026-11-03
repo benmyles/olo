@@ -45,11 +45,8 @@ pub fn claim() {
 fn reap_inherited() {
     // (Each of our threads' children: after an exec there is one thread.)
     let Ok(tasks) = std::fs::read_dir("/proc/self/task") else { return };
-    let pids: Vec<libc::pid_t> = tasks
-        .flatten()
-        .filter_map(|t| std::fs::read_to_string(t.path().join("children")).ok())
-        .flat_map(|list| list.split_whitespace().filter_map(|p| p.parse().ok()).collect::<Vec<_>>())
-        .collect();
+    let pids: Vec<libc::pid_t> =
+        tasks.flatten().filter_map(|t| std::fs::read_to_string(t.path().join("children")).ok()).flat_map(|list| list.split_whitespace().filter_map(|p| p.parse().ok()).collect::<Vec<_>>()).collect();
     if pids.is_empty() {
         return;
     }

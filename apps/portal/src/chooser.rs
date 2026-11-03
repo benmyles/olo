@@ -12,7 +12,10 @@ use std::collections::HashMap;
 
 use olo_ui::{
     Frame, WindowOptions,
-    gpui::{App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled as _, WeakEntity, Window, WindowHandle, canvas, div, px},
+    gpui::{
+        App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled as _, WeakEntity, Window, WindowHandle, canvas, div,
+        px,
+    },
     metrics as m,
     style::{self, Align},
     theme,

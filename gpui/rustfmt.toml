@@ -1,0 +1,2 @@
+# Upstream GPUI (Zed) style, so merging from it stays easy.
+edition = "2024"

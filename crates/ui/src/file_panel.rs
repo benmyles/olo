@@ -24,7 +24,8 @@ use std::{
 
 use futures::{StreamExt, channel::mpsc};
 use gpui::{
-    App, AppContext as _, Context, Corner, Entity, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, PathBuilder, Render, SharedString, Styled as _, Subscription, Task, Window, WindowHandle, canvas, div, point, px,
+    App, AppContext as _, Context, Corner, Entity, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, PathBuilder, Render, SharedString, Styled as _, Subscription,
+    Task, Window, WindowHandle, canvas, div, point, px,
 };
 use olo_kit_base::{
     files::{self, Kind},
@@ -34,8 +35,7 @@ use olo_kit_base::{
 use crate::{
     Frame, WindowOptions, icons,
     menu::{self, Menu},
-    open_with,
-    style, theme,
+    open_with, style, theme,
     widgets::{Button, CheckBox, Column, ColumnListView, ListModel, MenuField, SCROLL_BAR, TextControl, TextField, TextFieldEvent, text_field},
 };
 
@@ -683,7 +683,17 @@ impl Render for PanelView {
                 let p = theme::palette(cx);
                 let ir = style::snap_centred(window, point(b.left() + px(16.0), b.center().y), 16.0, 16.0);
                 icons::paint(window, ir, icon);
-                style::label(window, cx, ir.right() + px(m::TIGHT * 2.0), b.center().y, style::Align::Left, title.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::c(p.control_text));
+                style::label(
+                    window,
+                    cx,
+                    ir.right() + px(m::TIGHT * 2.0),
+                    b.center().y,
+                    style::Align::Left,
+                    title.clone(),
+                    style::PLAIN_SIZE,
+                    style::ui_font(FontWeight::NORMAL),
+                    style::c(p.control_text),
+                );
                 // A small down arrow at the right of the pop-up.
                 let (ax, ay) = (b.right() - px(14.0), b.center().y);
                 let mut path = PathBuilder::fill();
@@ -750,14 +760,7 @@ impl Render for PanelView {
             })
         });
 
-        let mut panel = div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .gap(px(m::SPACING))
-            .p(px(m::WINDOW_INSET))
-            .child(top)
-            .child(div().flex_1().min_h_0().child(list));
+        let mut panel = div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).child(top).child(div().flex_1().min_h_0().child(list));
 
         // Bottom: the name (Save), the app's choices and the buttons (with
         // the Show pop-up).
@@ -780,14 +783,15 @@ impl Render for PanelView {
             } else {
                 let picked = ch.options.iter().position(|(o, _)| *o == ch.value).unwrap_or(0);
                 let options: Vec<SharedString> = ch.options.iter().map(|(_, l)| l.clone().into()).collect();
-                panel = panel.child(div().w(px(width * 0.7)).child(MenuField::new(format!("panel-choice-{i}"), options, picked).label(ch.label.clone()).divider(divider).on_change(move |k, _, cx| {
-                    set.update(cx, |v, cx| {
-                        if let Some((o, _)) = v.panel.choices[i].options.get(k) {
-                            v.panel.choices[i].value = o.clone();
-                        }
-                        cx.notify();
-                    })
-                })));
+                panel =
+                    panel.child(div().w(px(width * 0.7)).child(MenuField::new(format!("panel-choice-{i}"), options, picked).label(ch.label.clone()).divider(divider).on_change(move |k, _, cx| {
+                        set.update(cx, |v, cx| {
+                            if let Some((o, _)) = v.panel.choices[i].options.get(k) {
+                                v.panel.choices[i].value = o.clone();
+                            }
+                            cx.notify();
+                        })
+                    })));
             }
         }
         let mut row = div().flex().items_center().gap(px(m::SPACING + 2.0)).h(px(m::CONTROL_HEIGHT));

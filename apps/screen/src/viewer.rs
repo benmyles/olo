@@ -37,8 +37,9 @@ use olo_protocol::{Client, Event, EventKind, ImageFormat, Reply, Request, Synthe
 use olo_ui::{
     Frame, Menu, MenuBar, Proxy, agent, file_panel,
     gpui::{
-        App, AppContext as _, Context, Entity, ExternalBuffer, ExternalPlane, FocusHandle, FontWeight, HitboxBehavior, InteractiveElement as _, IntoElement, KeyDownEvent, KeyUpEvent, Modifiers, ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Render, ScrollDelta,
-        ScrollHandle, ScrollWheelEvent, SharedString, Styled as _, Subscription, Task, Window, WindowHandle, canvas, div, point, px, size,
+        App, AppContext as _, Context, Entity, ExternalBuffer, ExternalPlane, FocusHandle, FontWeight, HitboxBehavior, InteractiveElement as _, IntoElement, KeyDownEvent, KeyUpEvent, Modifiers,
+        ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Render, ScrollDelta, ScrollHandle, ScrollWheelEvent, SharedString, Styled as _,
+        Subscription, Task, Window, WindowHandle, canvas, div, point, px, size,
     },
     icons, keys, metrics as m,
     style::{self, c},
@@ -77,10 +78,19 @@ pub enum Msg {
     /// Every screen to list: running, or stopped with a history kept;
     /// each with when it was last used, most recent first.
     Rows(Vec<Row>),
-    Frame { name: String, shot: Arc<Shot> },
+    Frame {
+        name: String,
+        shot: Arc<Shot>,
+    },
     /// A frame shown live: watch `watch`'s.
-    Live { watch: u64, buffer: ExternalBuffer },
-    Failed { name: String, message: String },
+    Live {
+        watch: u64,
+        buffer: ExternalBuffer,
+    },
+    Failed {
+        name: String,
+        message: String,
+    },
     Started(Result<Screen, String>),
     Stopped(Result<(), String>),
     Cleared(Result<(), String>),
@@ -707,10 +717,7 @@ impl Viewer {
         let shown = |n: &String| self.rows.iter().find(|r| &r.name == n).map_or(n.as_str(), Row::shown).to_owned();
         let (message, button) = match names.as_slice() {
             [] => return,
-            [one] => (
-                format!("Stop the screen “{}”? The agent’s programs on it are closed, and anything it hasn’t saved is lost. Its history is kept.", shown(one)),
-                "Stop Screen".to_owned(),
-            ),
+            [one] => (format!("Stop the screen “{}”? The agent’s programs on it are closed, and anything it hasn’t saved is lost. Its history is kept.", shown(one)), "Stop Screen".to_owned()),
             many => (
                 format!("Stop {} screens? The agents’ programs on them are closed, and anything they haven’t saved is lost. Their histories are kept.", many.len()),
                 format!("Stop {} Screens", many.len()),
@@ -927,11 +934,7 @@ impl Viewer {
                 .separator()
                 .item("Quit", "quit")
                 .key("q"),
-            Menu::new("Edit")
-                .item("Select All Screens", "select-all")
-                .enabled(!self.rows.is_empty())
-                .item("Deselect All Screens", "deselect")
-                .enabled(!self.also.is_empty()),
+            Menu::new("Edit").item("Select All Screens", "select-all").enabled(!self.rows.is_empty()).item("Deselect All Screens", "deselect").enabled(!self.also.is_empty()),
             Menu::new("View")
                 .item("Live", "tab-live")
                 .key("1")
@@ -1023,10 +1026,7 @@ impl Viewer {
     /// and (with View ▸ Show Archived) archived.
     fn groups(&self) -> Vec<(&'static str, Vec<&Row>)> {
         let running = |n: &str| self.screens.iter().any(|s| s.name == n);
-        let mut groups = vec![
-            ("Running", self.rows.iter().filter(|r| running(&r.name)).collect()),
-            ("Stopped", self.rows.iter().filter(|r| !running(&r.name) && !r.archived).collect()),
-        ];
+        let mut groups = vec![("Running", self.rows.iter().filter(|r| running(&r.name)).collect()), ("Stopped", self.rows.iter().filter(|r| !running(&r.name) && !r.archived).collect())];
         if self.show_archived {
             groups.push(("Archived", self.rows.iter().filter(|r| !running(&r.name) && r.archived).collect()));
         }
@@ -1388,7 +1388,18 @@ impl Viewer {
                 let dot = if running { c(p.success) } else { style::disabled_text(&p) };
                 let d = style::snap_centred(window, point(x + px(4.0), line_y), 8.0, 8.0);
                 window.paint_quad(olo_ui::gpui::fill(d, dot).corner_radii(d.size.width / 2.0));
-                let t = style::label_fit(window, cx, x + px(14.0), line_y, style::Align::Left, line.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p), (w - px(14.0)).max(px(0.0)));
+                let t = style::label_fit(
+                    window,
+                    cx,
+                    x + px(14.0),
+                    line_y,
+                    style::Align::Left,
+                    line.clone(),
+                    style::PLAIN_SIZE,
+                    style::ui_font(FontWeight::NORMAL),
+                    style::disabled_text(&p),
+                    (w - px(14.0)).max(px(0.0)),
+                );
                 agent::record(window, cx, agent::Node::label(line.clone(), t));
             },
         )

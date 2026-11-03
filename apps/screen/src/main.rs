@@ -16,10 +16,10 @@ mod viewer;
 
 use std::{path::PathBuf, time::Duration};
 
+use olo_protocol::{Frame, ImageFormat, Reply, Request, SyntheticEvent, WindowInfo};
+use olo_ui::{commands, instance};
 use serde::Serialize;
 use serde_json::json;
-use olo_ui::{commands, instance};
-use olo_protocol::{Frame, ImageFormat, Reply, Request, SyntheticEvent, WindowInfo};
 
 const APP_ID: &str = "olo.screen";
 
@@ -373,11 +373,8 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             pids.sort_unstable();
             pids.dedup();
             let asked: Vec<_> = pids.into_iter().map(|pid| std::thread::spawn(move || commands::review(pid))).collect();
-            let reviews: Vec<commands::WindowReview> = asked
-                .into_iter()
-                .flat_map(|r| r.join().ok().flatten().unwrap_or_default())
-                .filter(|r| r.layer.is_none() && windows.iter().any(|w| w.title == r.title))
-                .collect();
+            let reviews: Vec<commands::WindowReview> =
+                asked.into_iter().flat_map(|r| r.join().ok().flatten().unwrap_or_default()).filter(|r| r.layer.is_none() && windows.iter().any(|w| w.title == r.title)).collect();
             if has(rest, "--json") {
                 println!("{}", serde_json::to_string_pretty(&reviews).unwrap_or_default());
             } else if reviews.is_empty() {
@@ -568,7 +565,8 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
 
 /// The arguments that aren't flags (nor flags' values).
 fn positionals(args: &[String]) -> Vec<String> {
-    const VALUED: [&str; 15] = ["--at", "--name", "--role", "--match", "--text", "--index", "--window", "--timeout", "--steps", "--duration", "--crop", "--name-contains", "--contains", "--depth", "--max-len"];
+    const VALUED: [&str; 15] =
+        ["--at", "--name", "--role", "--match", "--text", "--index", "--window", "--timeout", "--steps", "--duration", "--crop", "--name-contains", "--contains", "--depth", "--max-len"];
     let mut out = Vec::new();
     let mut skip = false;
     for a in args {
@@ -593,7 +591,13 @@ fn stats_text(v: &serde_json::Value) -> String {
     let ms = |k: &str| v[k].as_u64().unwrap_or(0);
     let dur = |ms: u64| {
         let s = ms / 1000;
-        if s >= 3600 { format!("{} h {} min", s / 3600, s / 60 % 60) } else if s >= 60 { format!("{} min {} s", s / 60, s % 60) } else { format!("{s} s") }
+        if s >= 3600 {
+            format!("{} h {} min", s / 3600, s / 60 % 60)
+        } else if s >= 60 {
+            format!("{} min {} s", s / 60, s % 60)
+        } else {
+            format!("{s} s")
+        }
     };
     let when = |k: &str| v[k].as_u64().map(history::clock).unwrap_or_else(|| "never".into());
     let kinds: Vec<String> = v["actions"].as_object().map(|o| o.iter().map(|(k, n)| format!("{k} {n}")).collect()).unwrap_or_default();
@@ -607,7 +611,10 @@ fn stats_text(v: &serde_json::Value) -> String {
         dur(ms("ran_ms")),
         dur(ms("active_ms")),
         if kinds.is_empty() { "none".into() } else { kinds.join(", ") },
-        match v["failed"].as_u64() { Some(n) if n > 0 => format!(" ({n} failed)"), _ => String::new() },
+        match v["failed"].as_u64() {
+            Some(n) if n > 0 => format!(" ({n} failed)"),
+            _ => String::new(),
+        },
         if programs.is_empty() { "none".into() } else { programs.join(", ") },
     )
 }
@@ -757,20 +764,19 @@ fn trees(s: &screens::Screen, only: Option<u64>) -> Result<Vec<ScreenTree>, Stri
     pids.sort_unstable();
     pids.dedup();
     // A program not on Olo's kit: its tree over AT-SPI (GTK, Qt).
-    let asked: Vec<_> =
-        pids.iter().map(|&pid| (pid, std::thread::spawn(move || commands::tree(pid).filter(|t| !t.is_empty()).or_else(|| atspi::trees(pid))))).collect();
+    let asked: Vec<_> = pids.iter().map(|&pid| (pid, std::thread::spawn(move || commands::tree(pid).filter(|t| !t.is_empty()).or_else(|| atspi::trees(pid))))).collect();
     // Windows only: Deskbar and other layer surfaces have no window here.
-    let mut answers: Vec<(u32, Vec<commands::WindowTree>)> = asked
-        .into_iter()
-        .map(|(pid, t)| (pid, t.join().ok().flatten().unwrap_or_default().into_iter().filter(|t| t.layer.is_none()).collect()))
-        .collect();
+    let mut answers: Vec<(u32, Vec<commands::WindowTree>)> =
+        asked.into_iter().map(|(pid, t)| (pid, t.join().ok().flatten().unwrap_or_default().into_iter().filter(|t| t.layer.is_none()).collect())).collect();
     let mut out = Vec::new();
     for w in windows {
         let (Some(content), Some(pid)) = (w.content, w.pid) else { continue };
         let Some((_, mine)) = answers.iter_mut().find(|(p, _)| *p == pid as u32) else { continue };
         // An app's windows are told apart by title (and by size, if two share one).
         // Chrome's are named by their page ("Page - Google Chrome").
-        let Some(i) = mine.iter().position(|t| t.title == w.title && t.width as i32 == content.width && t.height as i32 == content.height)
+        let Some(i) = mine
+            .iter()
+            .position(|t| t.title == w.title && t.width as i32 == content.width && t.height as i32 == content.height)
             .or_else(|| mine.iter().position(|t| t.title == w.title))
             .or_else(|| mine.iter().position(|t| !t.title.is_empty() && w.title.starts_with(&t.title) && t.width as i32 == content.width))
             .or_else(|| mine.iter().position(|t| t.width as i32 == content.width && t.height as i32 == content.height))
@@ -900,7 +906,14 @@ fn outline(trees: &[ScreenTree], filter: &Filter) -> String {
             if let (Some(row), Some(rows)) = (n.row, n.rows) {
                 let _ = write!(o, " row {}/{rows}", row + 1);
             }
-            for (on, word) in [(!n.enabled, "disabled"), (n.clickable && !matches!(n.role.as_str(), "Clickable" | "Button" | "Link" | "MenuItem" | "Row"), "clickable"), (n.focused, "focused"), (n.checked == Some(true), "checked"), (n.selected == Some(true), "selected"), (n.minimized, "minimized")] {
+            for (on, word) in [
+                (!n.enabled, "disabled"),
+                (n.clickable && !matches!(n.role.as_str(), "Clickable" | "Button" | "Link" | "MenuItem" | "Row"), "clickable"),
+                (n.focused, "focused"),
+                (n.checked == Some(true), "checked"),
+                (n.selected == Some(true), "selected"),
+                (n.minimized, "minimized"),
+            ] {
                 if on {
                     let _ = write!(o, " {word}");
                 }

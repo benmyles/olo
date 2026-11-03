@@ -50,12 +50,7 @@ fn globs() -> &'static Globs {
                 let mut parts = line.splitn(4, ':');
                 let (Some(w), Some(mime), Some(pattern)) = (parts.next(), parts.next(), parts.next()) else { continue };
                 let flags = parts.next().unwrap_or("");
-                all.push(Glob {
-                    weight: w.parse().unwrap_or(50),
-                    mime: mime.to_owned(),
-                    pattern: pattern.to_owned(),
-                    case_sensitive: flags.split(',').any(|f| f == "cs"),
-                });
+                all.push(Glob { weight: w.parse().unwrap_or(50), mime: mime.to_owned(), pattern: pattern.to_owned(), case_sensitive: flags.split(',').any(|f| f == "cs") });
             }
         }
         let (mut folded, mut exact, mut others) = (HashMap::<String, Vec<usize>>::new(), HashMap::<String, Vec<usize>>::new(), Vec::new());
@@ -191,10 +186,7 @@ fn from_name_globs(name: &str) -> Option<String> {
     hits.extend(suffixes(name).iter().filter_map(|k| db.exact.get(k)).flatten().copied());
     let (lower_chars, exact_chars): (Vec<char>, Vec<char>) = (lower.chars().collect(), name.chars().collect());
     hits.extend(db.others.iter().filter(|(i, p)| glob_match(p, if db.all[*i].case_sensitive { &exact_chars } else { &lower_chars })).map(|(i, _)| *i));
-    hits.into_iter()
-        .map(|i| &db.all[i])
-        .max_by_key(|g| (g.weight, g.pattern.len()))
-        .map(|g| g.mime.clone())
+    hits.into_iter().map(|i| &db.all[i]).max_by_key(|g| (g.weight, g.pattern.len())).map(|g| g.mime.clone())
 }
 
 /// The type of the file at `path`: folders, then the name, then a look at
@@ -231,8 +223,7 @@ fn sniff(head: &[u8]) -> &'static str {
         return "text/plain";
     }
     // Text if it decodes and has no NULs or stray control bytes.
-    let texty = utf8_prefix(head)
-        && !head.iter().any(|&b| b == 0 || (b < 0x20 && !b"\t\n\r\x0c\x1b".contains(&b)));
+    let texty = utf8_prefix(head) && !head.iter().any(|&b| b == 0 || (b < 0x20 && !b"\t\n\r\x0c\x1b".contains(&b)));
     if texty { "text/plain" } else { "application/octet-stream" }
 }
 

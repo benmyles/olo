@@ -61,7 +61,12 @@ fn avif(data: &[u8]) -> Result<DynamicImage, String> {
 pub mod av1 {
     use std::{mem::MaybeUninit, ptr::NonNull};
 
-    use rav1d::include::dav1d::{data::Dav1dData, dav1d::{Dav1dContext, Dav1dSettings}, headers::*, picture::Dav1dPicture};
+    use rav1d::include::dav1d::{
+        data::Dav1dData,
+        dav1d::{Dav1dContext, Dav1dSettings},
+        headers::*,
+        picture::Dav1dPicture,
+    };
     use rav1d::src::lib::*;
 
     const EAGAIN: i32 = 11;
@@ -258,11 +263,7 @@ pub mod av1 {
             let shift = (self.bpc - 8) as i32;
             let max = ((1u32 << self.bpc) - 1) as f32;
             let half = (1u32 << (self.bpc - 1)) as f32;
-            let (y0, ys, cs) = if self.full_range {
-                (0.0, max, max)
-            } else {
-                ((16 << shift) as f32, (219 << shift) as f32, (224 << shift) as f32)
-            };
+            let (y0, ys, cs) = if self.full_range { (0.0, max, max) } else { ((16 << shift) as f32, (219 << shift) as f32, (224 << shift) as f32) };
             let (kr, kb) = self.coefficients();
             let kg = 1.0 - kr - kb;
             let (w, h) = (self.width, self.height);
@@ -302,11 +303,7 @@ pub mod av1 {
             let shift = (self.bpc - 8) as i32;
             let max = ((1u32 << self.bpc) - 1) as f32;
             let half = (1u32 << (self.bpc - 1)) as f32;
-            let (y0, ys, cs) = if self.full_range {
-                (0.0, max, max)
-            } else {
-                ((16 << shift) as f32, (219 << shift) as f32, (224 << shift) as f32)
-            };
+            let (y0, ys, cs) = if self.full_range { (0.0, max, max) } else { ((16 << shift) as f32, (219 << shift) as f32, (224 << shift) as f32) };
             let (kr, kb) = self.coefficients();
             let kg = 1.0 - kr - kb;
             let (w, h) = (self.width, self.height);
@@ -483,12 +480,7 @@ mod tests {
     /// The fixed-point path matches the floating-point one.
     #[test]
     fn yuv_fast_path() {
-        for (bpc, full, matrix, chroma) in [
-            (8, false, 1, (1u32, 1u32)),
-            (8, true, 6, (1, 0)),
-            (10, false, 9, (1, 1)),
-            (12, true, 1, (0, 0)),
-        ] {
+        for (bpc, full, matrix, chroma) in [(8, false, 1, (1u32, 1u32)), (8, true, 6, (1, 0)), (10, false, 9, (1, 1)), (12, true, 1, (0, 0))] {
             let (w, h) = (37u32, 9u32);
             let (cw, ch) = ((w as usize + chroma.0 as usize) >> chroma.0, (h as usize + chroma.1 as usize) >> chroma.1);
             let top = (1u32 << bpc) - 1;

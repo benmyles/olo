@@ -85,16 +85,39 @@ enum Extra {
     Surface(Box<Surface>),
     /// How to make the buffer again (`TEMP` standing for a temporary
     /// object), and whether app_server still holds it.
-    Buffer { recipe: Vec<Msg>, busy: bool, via: Option<Parent> },
-    Pool { size: i32 },
-    Params { adds: Vec<Msg>, used: bool },
+    Buffer {
+        recipe: Vec<Msg>,
+        busy: bool,
+        via: Option<Parent>,
+    },
+    Pool {
+        size: i32,
+    },
+    Params {
+        adds: Vec<Msg>,
+        used: bool,
+    },
     Region(Rects),
-    XdgSurface { surface: u32, role: Option<u32> },
-    Popup { xdg: u32 },
-    Toplevel { xdg: u32 },
-    Layer { surface: u32 },
-    Subsurface { surface: u32, parent: u32 },
-    Token { done: bool },
+    XdgSurface {
+        surface: u32,
+        role: Option<u32>,
+    },
+    Popup {
+        xdg: u32,
+    },
+    Toplevel {
+        xdg: u32,
+    },
+    Layer {
+        surface: u32,
+    },
+    Subsurface {
+        surface: u32,
+        parent: u32,
+    },
+    Token {
+        done: bool,
+    },
 }
 
 /// What an object was made from, as it was then: the id may since have
@@ -635,9 +658,7 @@ impl Client {
         let ev = |name: &str, args: Vec<Arg>| Msg::new(id, event(iface, name), args);
         let msg = match iface.name {
             "xdg_popup" => Some(ev("popup_done", vec![])),
-            "wl_data_source" | "zwp_primary_selection_source_v1" | "ext_data_control_source_v1" | "zwlr_data_control_source_v1" => {
-                Some(ev("cancelled", vec![]))
-            }
+            "wl_data_source" | "zwp_primary_selection_source_v1" | "ext_data_control_source_v1" | "zwlr_data_control_source_v1" => Some(ev("cancelled", vec![])),
             "zwp_locked_pointer_v1" => Some(ev("unlocked", vec![])),
             // A lease is the old app_server's; tablets, tools and pads come
             // again (announced anew) from the next.
@@ -978,9 +999,19 @@ impl Client {
                         self.zombify(id);
                     }
                 }
-                "xdg_popup" | "xdg_positioner" | "wl_data_source" | "zwp_primary_selection_source_v1" | "ext_data_control_source_v1"
-                | "zwlr_data_control_source_v1" | "zwp_locked_pointer_v1" | "zwp_confined_pointer_v1" | "zxdg_exported_v2" | "zxdg_imported_v2"
-                | "xdg_activation_token_v1" | "wp_drm_lease_v1" | "wp_drm_lease_request_v1" => self.zombify(id),
+                "xdg_popup"
+                | "xdg_positioner"
+                | "wl_data_source"
+                | "zwp_primary_selection_source_v1"
+                | "ext_data_control_source_v1"
+                | "zwlr_data_control_source_v1"
+                | "zwp_locked_pointer_v1"
+                | "zwp_confined_pointer_v1"
+                | "zxdg_exported_v2"
+                | "zxdg_imported_v2"
+                | "xdg_activation_token_v1"
+                | "wp_drm_lease_v1"
+                | "wp_drm_lease_request_v1" => self.zombify(id),
                 _ if id >= SERVER_START => self.zombify(id),
                 _ => {}
             }
@@ -1074,12 +1105,7 @@ impl Client {
             }
         }
 
-        let mut order: Vec<(u64, u32)> = self
-            .objs
-            .iter()
-            .filter(|(id, o)| **id > 1 && **id < SERVER_START && o.live() && o.iface.name != "wl_registry")
-            .map(|(id, o)| (o.seq, *id))
-            .collect();
+        let mut order: Vec<(u64, u32)> = self.objs.iter().filter(|(id, o)| **id > 1 && **id < SERVER_START && o.live() && o.iface.name != "wl_registry").map(|(id, o)| (o.seq, *id)).collect();
         order.sort_unstable();
         for &(_, id) in &order {
             self.replay_create(id);
@@ -1110,9 +1136,7 @@ impl Client {
             .filter(|(_, id)| {
                 let o = &self.objs[id];
                 match &o.x {
-                    Extra::Surface(s) if !o.zombie => {
-                        s.layer.is_some_and(|l| !self.is_zombie(l)) || s.xdg.and_then(|x| self.role(x)).is_some_and(|r| self.objs[&r].iface.name == "xdg_toplevel")
-                    }
+                    Extra::Surface(s) if !o.zombie => s.layer.is_some_and(|l| !self.is_zombie(l)) || s.xdg.and_then(|x| self.role(x)).is_some_and(|r| self.objs[&r].iface.name == "xdg_toplevel"),
                     _ => false,
                 }
             })

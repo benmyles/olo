@@ -56,10 +56,7 @@ impl Watcher {
         }
         let (rx_end, wake) = unsafe { (OwnedFd::from_raw_fd(pipe[0]), OwnedFd::from_raw_fd(pipe[1])) };
         let (tx, rx) = mpsc::channel();
-        std::thread::Builder::new()
-            .name("watch".into())
-            .spawn(move || run(inotify, rx_end, rx, send))
-            .ok()?;
+        std::thread::Builder::new().name("watch".into()).spawn(move || run(inotify, rx_end, rx, send)).ok()?;
         Some(Watcher { tx, wake, current: BTreeSet::new() })
     }
 

@@ -4,8 +4,7 @@ use crate::{Anchor, Clock, Color32, Frame, Info, Module, Opt, Rect, Rng, STEP, g
 
 // ---- Blackness ------------------------------------------------------------
 
-pub const BLACKNESS: Info =
-    Info { name: "Blackness", about: "Basic blackness", options: &[], uses_desktop: false, make: |_, _| Box::new(Blackness) };
+pub const BLACKNESS: Info = Info { name: "Blackness", about: "Basic blackness", options: &[], uses_desktop: false, make: |_, _| Box::new(Blackness) };
 
 struct Blackness;
 
@@ -57,9 +56,7 @@ pub const ICONS: Info = Info {
     about: "Icons",
     options: &[Opt::Slider { key: "count", label: "Icons at a time", min: 2.0, max: 30.0, default: 12.0 }],
     uses_desktop: false,
-    make: |o, seed| {
-        Box::new(Icons { rng: Rng::new(seed), shown: Vec::new(), max: get_f32(o, "count", 12.0) as usize, next: 0.0 })
-    },
+    make: |o, seed| Box::new(Icons { rng: Rng::new(seed), shown: Vec::new(), max: get_f32(o, "count", 12.0) as usize, next: 0.0 }),
 };
 
 /// The system's icons, appearing here and there and fading away.
@@ -124,13 +121,7 @@ impl Module for Icons {
         self.shown.retain(|s| s.age < s.life);
         if self.next <= 0.0 && self.shown.len() < self.max {
             let size = [32.0, 48.0, 64.0, 96.0, 128.0][self.rng.below(5)];
-            self.shown.push(Shown {
-                name: ICON_NAMES[self.rng.below(ICON_NAMES.len())],
-                at: (self.rng.f32(), self.rng.f32()),
-                size,
-                age: 0.0,
-                life: self.rng.range(3.0, 6.0),
-            });
+            self.shown.push(Shown { name: ICON_NAMES[self.rng.below(ICON_NAMES.len())], at: (self.rng.f32(), self.rng.f32()), size, age: 0.0, life: self.rng.range(3.0, 6.0) });
             self.next = self.rng.range(0.2, 0.6);
         }
         let k = f.k();
@@ -151,16 +142,7 @@ pub const SPOTS: Info = Info {
     about: "Spots",
     options: &[Opt::Slider { key: "rate", label: "Spots per second", min: 5.0, max: 120.0, default: 30.0 }],
     uses_desktop: false,
-    make: |o, seed| {
-        Box::new(Spots {
-            rng: Rng::new(seed),
-            spots: Vec::new(),
-            rate: get_f32(o, "rate", 30.0),
-            clock: Clock::new(),
-            owed: 0.0,
-            fading: None,
-        })
-    },
+    make: |o, seed| Box::new(Spots { rng: Rng::new(seed), spots: Vec::new(), rate: get_f32(o, "rate", 30.0), clock: Clock::new(), owed: 0.0, fading: None }),
 };
 
 struct Spot {

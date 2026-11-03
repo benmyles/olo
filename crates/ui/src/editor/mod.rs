@@ -54,7 +54,9 @@ use std::{
 };
 
 use gpui::{
-    App, Bounds, ClipboardItem, Context, CursorStyle, DispatchPhase, Element, ElementId, Entity, FocusHandle, GlobalElementId, Hitbox, HitboxBehavior, Hsla, InspectorElementId, InteractiveElement as _, IntoElement, KeyBinding, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, RenderImage, ScrollHandle, ScrollWheelEvent, SharedString, Style, Styled as _, Task, UTF16Selection, Window, actions, div, point, px, relative, size,
+    App, Bounds, ClipboardItem, Context, CursorStyle, DispatchPhase, Element, ElementId, Entity, FocusHandle, GlobalElementId, Hitbox, HitboxBehavior, Hsla, InspectorElementId,
+    InteractiveElement as _, IntoElement, KeyBinding, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, RenderImage, ScrollHandle,
+    ScrollWheelEvent, SharedString, Style, Styled as _, Task, UTF16Selection, Window, actions, div, point, px, relative, size,
 };
 pub use layout::{Align, Kind, Laid, Metrics, Params, Shaper, Span, TabAlign, TabStop, TabStops, Unit, lay_out, line as lay_out_line};
 use olo_kit_base::metrics as m;
@@ -398,10 +400,15 @@ enum Gesture {
     /// The primary button went down on the text: dragging selects.
     Selecting,
     /// A press on the selection, not yet a drag of its text or a click.
-    Armed { press: Point<Pixels>, at: usize },
+    Armed {
+        press: Point<Pixels>,
+        at: usize,
+    },
     /// The selection's text being dragged within the view: where it would
     /// go (a caret there).
-    Moving { to: Option<usize> },
+    Moving {
+        to: Option<usize>,
+    },
 }
 
 /// How layouts are made: the wrap width (None: no wrapping), alignment
@@ -691,7 +698,15 @@ impl Editor {
     /// text now.
     pub fn replaced(&mut self, text: &str, removed: Range<usize>, inserted: usize) {
         let delta = inserted as isize - removed.len() as isize;
-        let shift = |at: usize| if at >= removed.end { (at as isize + delta) as usize } else if at > removed.start { removed.start } else { at };
+        let shift = |at: usize| {
+            if at >= removed.end {
+                (at as isize + delta) as usize
+            } else if at > removed.start {
+                removed.start
+            } else {
+                at
+            }
+        };
         let p0 = self.para_of(removed.start);
         let p1 = self.para_of(removed.end);
         let start = self.paras[p0].start;
@@ -1620,7 +1635,13 @@ impl Editor {
         let focused = self.focus.is_focused(window) && window.is_window_active();
         let sel = self.selection();
         let dark = p.mode == olo_theme::ThemeMode::Dark;
-        let fill = style::c(p.control_highlight).opacity(if !focused { 0.3 } else if dark { 0.75 } else { 0.55 });
+        let fill = style::c(p.control_highlight).opacity(if !focused {
+            0.3
+        } else if dark {
+            0.75
+        } else {
+            0.55
+        });
         let text_color = style::c(p.document_text);
         let clip = (f32::from(view.top()), f32::from(view.bottom()));
         let px1 = 1.0 / s;
@@ -1850,7 +1871,20 @@ impl Editor {
         let rule_here = o.editable && self.rules.iter().any(|(r, ..)| r.contains(&on_rule));
         window.set_cursor_style(if rule_here || self.column_drag.is_some() { CursorStyle::ResizeColumn } else { CursorStyle::IBeam }, hitbox);
         // For agents (and screen readers): the whole text, where it shows.
-        agent::record(window, cx, agent::Node { role: "TextInput", name: None, value: Some(self.agent_text.get_or_insert_with(|| SharedString::from(doc.text().to_owned())).clone()), bounds: view, enabled: o.editable, clickable: true, focused, ..Default::default() });
+        agent::record(
+            window,
+            cx,
+            agent::Node {
+                role: "TextInput",
+                name: None,
+                value: Some(self.agent_text.get_or_insert_with(|| SharedString::from(doc.text().to_owned())).clone()),
+                bounds: view,
+                enabled: o.editable,
+                clickable: true,
+                focused,
+                ..Default::default()
+            },
+        );
         self.kept.roll();
         self.shapes.roll();
     }
@@ -1885,8 +1919,41 @@ enum Cmd {
 actions!(
     olo_editor,
     [
-        Left, Right, WordLeft, WordRight, SelectLeft, SelectRight, SelectWordLeft, SelectWordRight, Up, Down, SelectUp, SelectDown, Home, End, SelectHome, SelectEnd, DocStart, DocEnd, SelectDocStart, SelectDocEnd, PageUp, PageDown, SelectPageUp, SelectPageDown,
-        Backspace, DeleteWordLeft, Delete, DeleteWordRight, SelectAll, Copy, Cut, Paste, Enter, Tab, BackTab
+        Left,
+        Right,
+        WordLeft,
+        WordRight,
+        SelectLeft,
+        SelectRight,
+        SelectWordLeft,
+        SelectWordRight,
+        Up,
+        Down,
+        SelectUp,
+        SelectDown,
+        Home,
+        End,
+        SelectHome,
+        SelectEnd,
+        DocStart,
+        DocEnd,
+        SelectDocStart,
+        SelectDocEnd,
+        PageUp,
+        PageDown,
+        SelectPageUp,
+        SelectPageDown,
+        Backspace,
+        DeleteWordLeft,
+        Delete,
+        DeleteWordRight,
+        SelectAll,
+        Copy,
+        Cut,
+        Paste,
+        Enter,
+        Tab,
+        BackTab
     ]
 );
 
@@ -2046,7 +2113,13 @@ pub fn view<V: EditorHost>(host: &Entity<V>, key: usize, editor: &Editor, option
 
 /// Lets `f` at editor `key` of `host` with its document and a text system
 /// (outside a frame: a press, a key).
-fn with<V: EditorHost, R: Default>(host: &Entity<V>, key: usize, window: &mut Window, cx: &mut App, mut f: impl FnMut(&mut Editor, &mut dyn Document, &dyn Shaper, &mut Window, &mut Context<V>) -> R) -> R {
+fn with<V: EditorHost, R: Default>(
+    host: &Entity<V>,
+    key: usize,
+    window: &mut Window,
+    cx: &mut App,
+    mut f: impl FnMut(&mut Editor, &mut dyn Document, &dyn Shaper, &mut Window, &mut Context<V>) -> R,
+) -> R {
     let sh = window.text_system().clone();
     let mut out = R::default();
     host.update(cx, |v, cx| {
@@ -2109,8 +2182,22 @@ impl<V: EditorHost> Element for EditorElement<V> {
                 && let Some(p) = ed.pointer
             {
                 let _ = pointer;
-                let past = if p.y < bounds.top() { f32::from(p.y - bounds.top()) } else if p.y > bounds.bottom() { f32::from(p.y - bounds.bottom()) } else { 0.0 };
-                let past_x = if o.wrap { 0.0 } else if p.x < bounds.left() { f32::from(p.x - bounds.left()) } else if p.x > bounds.right() { f32::from(p.x - bounds.right()) } else { 0.0 };
+                let past = if p.y < bounds.top() {
+                    f32::from(p.y - bounds.top())
+                } else if p.y > bounds.bottom() {
+                    f32::from(p.y - bounds.bottom())
+                } else {
+                    0.0
+                };
+                let past_x = if o.wrap {
+                    0.0
+                } else if p.x < bounds.left() {
+                    f32::from(p.x - bounds.left())
+                } else if p.x > bounds.right() {
+                    f32::from(p.x - bounds.right())
+                } else {
+                    0.0
+                };
                 if past != 0.0 || past_x != 0.0 {
                     // Faster the further out, a frame at a time.
                     let speed = |d: f32| d.signum() * (d.abs() * 0.25).clamp(1.0, 40.0);
@@ -2125,10 +2212,7 @@ impl<V: EditorHost> Element for EditorElement<V> {
             }
             if again {
                 // The caret follows along the edge.
-                let edge = (
-                    f32::from(p_clamp(pointer.x, bounds.left() + px(0.5), bounds.right() - px(0.5))),
-                    f32::from(p_clamp(pointer.y, bounds.top() + px(0.5), bounds.bottom() - px(0.5))),
-                );
+                let edge = (f32::from(p_clamp(pointer.x, bounds.left() + px(0.5), bounds.right() - px(0.5))), f32::from(p_clamp(pointer.y, bounds.top() + px(0.5), bounds.bottom() - px(0.5))));
                 let c = ed.to_content(point(px(edge.0), px(edge.1)));
                 let (at, next) = ed.byte_at(doc, sh, &ed.shown.o.clone(), c);
                 ed.caret = at;
@@ -2768,7 +2852,15 @@ fn next_word(t: &str, at: usize) -> usize {
 fn word_at(t: &str, at: usize) -> Range<usize> {
     let c = t[at..].chars().next().or_else(|| t[..at].chars().next_back());
     let Some(c) = c else { return at..at };
-    let class = |x: char| if is_word(x) { 0 } else if x.is_whitespace() && x != '\n' { 1 } else { 2 };
+    let class = |x: char| {
+        if is_word(x) {
+            0
+        } else if x.is_whitespace() && x != '\n' {
+            1
+        } else {
+            2
+        }
+    };
     let k = class(c);
     if k == 2 {
         let start = if t[at..].starts_with(c) { at } else { at - c.len_utf8() };

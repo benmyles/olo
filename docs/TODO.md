@@ -7,13 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **The whole repo formatted, and kept so** (Ben, 2026-11-03): "you can
-  and should also just do a cargo fmt on everything so that it's all
-  consistent and add that as something that happens automatically with
-  the linters moving forward". A rustfmt.toml in the repo's own style
-  (wide lines), `cargo fmt --all` once, and the hook formats what's
-  committed.
-
 - **The palm trainer, full screen and driven from the keyboard** (Ben,
   2026-11-02, with a screenshot of its last step, "Try it", at 2× in
   dark mode): "so the training modal/flow needs work: for one i can't
@@ -856,6 +849,18 @@ Open; making fast things faster waits here.
 
 ## Finished (most recently finished first)
 
+- ~~**The whole repo formatted, and kept so**~~ (Ben, 2026-11-03): "you
+  can and should also just do a cargo fmt on everything so that it's
+  all consistent and add that as something that happens automatically
+  with the linters moving forward". *Done* (2026-11-03): `cargo fmt` over
+  the workspace (450 files), each by the rustfmt.toml nearest it: Olo's
+  wide style at the root (200, `use_small_heuristics = "Max"`), upstream's
+  in gpui/ (Blade's crates 2021) and smithay/ (110); vendor/ left as its
+  authors wrote it (`cargo fmt --all` would format it too). The
+  pre-commit hook formats what's staged (tools/hooks, installed by
+  tools/setup.sh). Built and tested after: the same tests pass (Activity's
+  two that need priorities this sandbox lacks aside); olo-sync's
+  lock-order test now runs only in debug builds, where locks are checked.
 - ~~**Each section of a preference panel back to its defaults**~~ (Ben,
   2026-11-02): "there should also be a way to reset any tuning
   slider/dropdown etc to the defaults for just that section instead of

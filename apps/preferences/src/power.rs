@@ -12,7 +12,11 @@ use olo_ui::{
     widgets::CheckBox,
 };
 
-use crate::{Msg, PanelView, form::{Ui, divider_for}, server::Server};
+use crate::{
+    Msg, PanelView,
+    form::{Ui, divider_for},
+    server::Server,
+};
 
 /// What the poller last read: None until it has; Some(None) for no battery.
 type Shared = Arc<Mutex<Option<Option<Battery>>>>;
@@ -121,11 +125,17 @@ pub fn minutes_menu(ui: &mut Ui, id: &str, label: &str, divider: f32, choices: &
         }
     };
     let label = SharedString::from(label.to_owned());
-    ui.menu(id, names, i, |f| f.label(label).divider(divider), move |s, i| {
-        if let Some(&m) = choices.get(i) {
-            set(s, m);
-        }
-    });
+    ui.menu(
+        id,
+        names,
+        i,
+        |f| f.label(label).divider(divider),
+        move |s, i| {
+            if let Some(&m) = choices.get(i) {
+                set(s, m);
+            }
+        },
+    );
 }
 
 pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut State) {
@@ -156,9 +166,7 @@ pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut St
         minutes_menu(ui, "display-off", OFF, divider, DISPLAY_OFF, p.display_off_minutes, |s, m| s.power.display_off_minutes = m);
         minutes_menu(ui, "sleep", SLEEP_AFTER, divider, SLEEP, p.sleep_minutes, |s, m| s.power.sleep_minutes = m);
         ui.enabled_if(p.sleep_minutes > 0, |ui| ui.check("Only on battery power", p.sleep_on_battery_only, |s, v| s.power.sleep_on_battery_only = v));
-        ui.enabled_if(p.display_off_minutes > 0, |ui| {
-            ui.check("Lock the screen when the display turns off", p.lock_on_display_off, |s, v| s.power.lock_on_display_off = v)
-        });
+        ui.enabled_if(p.display_off_minutes > 0, |ui| ui.check("Lock the screen when the display turns off", p.lock_on_display_off, |s, v| s.power.lock_on_display_off = v));
     });
 
     ui.bbox("Caffeinated", |ui| {
@@ -182,16 +190,7 @@ mod tests {
     use super::*;
 
     fn b(percent: u32, state: Charge) -> Battery {
-        Battery {
-            percent,
-            state,
-            time_to_empty: None,
-            time_to_full: None,
-            cycle_count: None,
-            health: None,
-            charge_limit: None,
-            power_watts: None,
-        }
+        Battery { percent, state, time_to_empty: None, time_to_full: None, cycle_count: None, health: None, charge_limit: None, power_watts: None }
     }
 
     #[test]

@@ -51,9 +51,7 @@ pub fn parse(edid: &[u8]) -> Option<Edid> {
 /// The EDID of the monitor on a DRM connector ("DP-1"), from sysfs.
 pub fn for_connector(connector: &str) -> Option<Edid> {
     let dir = std::fs::read_dir("/sys/class/drm").ok()?;
-    let entry = dir
-        .flatten()
-        .find(|e| e.file_name().to_string_lossy().split_once('-').is_some_and(|(card, c)| card.starts_with("card") && c == connector))?;
+    let entry = dir.flatten().find(|e| e.file_name().to_string_lossy().split_once('-').is_some_and(|(card, c)| card.starts_with("card") && c == connector))?;
     parse(&std::fs::read(entry.path().join("edid")).ok()?)
 }
 

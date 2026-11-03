@@ -99,8 +99,13 @@ impl Problem {
 /// failures before notes, then by item; repeats dropped.
 pub fn grouped(mut list: Vec<Problem>) -> Vec<Problem> {
     list.sort_by(|a, b| {
-        (a.vault.is_empty(), a.vault.to_lowercase(), a.note, a.item.is_some(), a.item.as_ref().map(|i| i.to_lowercase()))
-            .cmp(&(b.vault.is_empty(), b.vault.to_lowercase(), b.note, b.item.is_some(), b.item.as_ref().map(|i| i.to_lowercase())))
+        (a.vault.is_empty(), a.vault.to_lowercase(), a.note, a.item.is_some(), a.item.as_ref().map(|i| i.to_lowercase())).cmp(&(
+            b.vault.is_empty(),
+            b.vault.to_lowercase(),
+            b.note,
+            b.item.is_some(),
+            b.item.as_ref().map(|i| i.to_lowercase()),
+        ))
     });
     list.dedup();
     list
@@ -199,12 +204,7 @@ fn params(item: &Item, vault: &str) -> ItemCreateParams {
 }
 
 fn client(account: &str, socket: &str) -> Result<Client, String> {
-    Client::builder()
-        .desktop_app_integration(account)
-        .integration_info("Olo Passwords", env!("CARGO_PKG_VERSION"))
-        .desktop_socket(socket)
-        .build()
-        .map_err(|e| describe(&e))
+    Client::builder().desktop_app_integration(account).integration_info("Olo Passwords", env!("CARGO_PKG_VERSION")).desktop_socket(socket).build().map_err(|e| describe(&e))
 }
 
 /// The parts of an item that differ between `old` and `new`, named as
@@ -282,15 +282,7 @@ pub fn plan(snaps: &[Snapshot], socket: &str) -> Result<Plan, String> {
 fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
     let c = client(&snap.account, socket)?;
     let vaults = c.vaults().list(None).map_err(|e| describe(&e))?;
-    let mut p = Part {
-        account: snap.account.clone(),
-        label: snap.label.clone(),
-        rows: Vec::new(),
-        problems: Vec::new(),
-        down: Vec::new(),
-        up: Vec::new(),
-        titles: HashMap::new(),
-    };
+    let mut p = Part { account: snap.account.clone(), label: snap.label.clone(), rows: Vec::new(), problems: Vec::new(), down: Vec::new(), up: Vec::new(), titles: HashMap::new() };
     // With several accounts, a vault is named with its account's.
     let name = |v: &onepassword::VaultOverview| if snap.label.is_empty() { v.title.clone() } else { format!("{} ({})", v.title, snap.label) };
     let title_of = |id: &str| -> String { vaults.iter().chain(&snap.vaults).find(|v| v.id == id).map(name).unwrap_or_default() };
@@ -347,11 +339,7 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
                     p.down.push(Change::Archived { id: o.id.clone(), updated_at: o.updated_at });
                 }
                 (Some(e), Some(seen)) if seen.state != ItemState::Archived => {
-                    p.problems.push(Problem::error(
-                        &title_of(&v.id),
-                        Some(&e.item.title),
-                        "Archived in 1Password but changed here, so yours wasn’t sent. Restore it in 1Password to sync it.",
-                    ));
+                    p.problems.push(Problem::error(&title_of(&v.id), Some(&e.item.title), "Archived in 1Password but changed here, so yours wasn’t sent. Restore it in 1Password to sync it."));
                 }
                 // Changed while archived: nothing to read.
                 _ => {}
@@ -359,12 +347,7 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
         }
         if left_out > 0 {
             let n = if left_out == 1 { "1 archived item isn’t".to_string() } else { format!("{left_out} archived items aren’t") };
-            p.problems.push(Problem {
-                vault: title_of(&v.id),
-                item: None,
-                reason: format!("{n} copied: 1Password doesn’t let other apps read its archive."),
-                note: true,
-            });
+            p.problems.push(Problem { vault: title_of(&v.id), item: None, reason: format!("{n} copied: 1Password doesn’t let other apps read its archive."), note: true });
         }
         let titles: HashMap<&str, &str> = list.iter().map(|o| (o.id.as_str(), o.title.as_str())).collect();
         for ids in stale.chunks(BATCH) {
@@ -395,10 +378,7 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
                 match local.get(id.as_str()) {
                     None => p.rows.push(row(true, What::Add, &item, String::new())),
                     Some(e) if e.dirty && e.remote.as_ref().is_some_and(|r| r.version != item.version) => {
-                        let detail = format!(
-                            "Changed both here and in 1Password: 1Password’s version replaces it here, and yours is kept as “{} (conflict)”",
-                            e.item.title
-                        );
+                        let detail = format!("Changed both here and in 1Password: 1Password’s version replaces it here, and yours is kept as “{} (conflict)”", e.item.title);
                         p.rows.push(row(true, What::Conflict, &item, detail));
                     }
                     // Only ours changed; it goes up next time.
@@ -433,8 +413,7 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
     }
 
     // Up: 1Password's copies of our changed items, to compare.
-    let dirty: Vec<&Entry> =
-        snap.entries.iter().filter(|e| e.dirty && !changed_there.contains(&e.item.id) && !archived_there.contains(&e.item.id)).collect();
+    let dirty: Vec<&Entry> = snap.entries.iter().filter(|e| e.dirty && !changed_there.contains(&e.item.id) && !archived_there.contains(&e.item.id)).collect();
     let mut theirs: HashMap<String, Item> = HashMap::new();
     let mut by_vault: HashMap<&str, Vec<String>> = HashMap::new();
     for e in dirty.iter().filter(|e| e.remote.is_some() && known.contains(e.item.vault_id.as_str())) {
@@ -486,10 +465,7 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
                 };
                 if there.version != seen.version {
                     // Changed there after all: as for a conflict found above.
-                    let detail = format!(
-                        "Changed both here and in 1Password: 1Password’s version replaces it here, and yours is kept as “{} (conflict)”",
-                        e.item.title
-                    );
+                    let detail = format!("Changed both here and in 1Password: 1Password’s version replaces it here, and yours is kept as “{} (conflict)”", e.item.title);
                     p.rows.push(row(true, What::Conflict, &there, detail));
                     p.down.push(Change::Fetched { item: Box::new(there), state: seen.state });
                     continue;
@@ -781,11 +757,7 @@ mod tests {
         let snap = w.vault.snapshot(ACCOUNT, true);
         let plan = super::plan(&[snap], &w.socket).unwrap();
         assert!(!plan.rows.iter().any(|r| r.title == "Build box"), "not offered");
-        assert!(
-            plan.problems.iter().any(|e| e.item.as_deref() == Some("Build box") && e.reason.contains("tags in plain letters")),
-            "{:?}",
-            plan.problems
-        );
+        assert!(plan.problems.iter().any(|e| e.item.as_deref() == Some("Build box") && e.reason.contains("tags in plain letters")), "{:?}", plan.problems);
         let r = super::apply(plan, &w.socket).unwrap();
         assert!(r.problems.iter().all(|e| e.item.as_deref() == Some("Build box")), "{:?}", r.problems);
         w.vault.apply(r.changes).unwrap();
@@ -803,13 +775,7 @@ mod tests {
         assert_eq!(person.field("birthdate").unwrap().value, "1990-04-13");
         assert_eq!(
             person.field("address").unwrap().details,
-            Some(ItemFieldDetails::Address(Some(AddressFieldDetails {
-                street: "12 Birch Lane".into(),
-                city: "Salem".into(),
-                state: "OR".into(),
-                zip: "97201".into(),
-                country: "us".into(),
-            })))
+            Some(ItemFieldDetails::Address(Some(AddressFieldDetails { street: "12 Birch Lane".into(), city: "Salem".into(), state: "OR".into(), zip: "97201".into(), country: "us".into() })))
         );
         // And here as there.
         assert_eq!(w.local("Old Card").unwrap().field("expiry").unwrap().value, "08/2029");

@@ -81,10 +81,19 @@ pub struct IconPath {
 pub enum Transformer {
     Affine(Transform),
     /// Grows (positive width) or shrinks the outline by half the width.
-    Contour { width: f32, join: u8, miter: f32 },
+    Contour {
+        width: f32,
+        join: u8,
+        miter: f32,
+    },
     /// Haiku's perspective transformer; read but drawn without it.
     Perspective([f32; 9]),
-    Stroke { width: f32, join: u8, cap: u8, miter: f32 },
+    Stroke {
+        width: f32,
+        join: u8,
+        cap: u8,
+        miter: f32,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -273,15 +282,7 @@ impl Icon {
             let style = r.u8()? as usize;
             let paths = (0..r.u8()?).map(|_| r.u8().map(usize::from)).collect::<Result<_, _>>()?;
             let flags = r.u8()?;
-            let mut shape = Shape {
-                style,
-                paths,
-                transform: Transform::identity(),
-                hinting: flags & 1 << 2 != 0,
-                min_scale: 0.0,
-                max_scale: 4.0,
-                transformers: Vec::new(),
-            };
+            let mut shape = Shape { style, paths, transform: Transform::identity(), hinting: flags & 1 << 2 != 0, min_scale: 0.0, max_scale: 4.0, transformers: Vec::new() };
             if flags & 1 << 1 != 0 {
                 shape.transform = r.matrix()?;
             } else if flags & 1 << 5 != 0 {
@@ -440,7 +441,11 @@ enum Geometry {
     Fill(Path),
     /// A contour transformer's result: the fill grown or shrunk by its
     /// outline (a stroke as wide as the contour).
-    Contour { base: Path, outline: Path, grow: bool },
+    Contour {
+        base: Path,
+        outline: Path,
+        grow: bool,
+    },
 }
 
 impl Geometry {

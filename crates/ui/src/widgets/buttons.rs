@@ -99,7 +99,11 @@ impl RenderOnce for Button {
         let w = (((tw + 2.0 * pad).max(self.min_width)) / 2.0).ceil() * 2.0;
         let h = if self.small { SMALL_BUTTON_HEIGHT } else { m::CONTROL_HEIGHT };
         let (label, default, pushed) = (self.label.clone(), self.default, self.pushed);
-        let mut c = control(self.id.clone(), w, h, move |r, s, window, cx| paint_button(r, s, &label, default, pushed, font_size, window, cx)).enabled(self.enabled).focusable().agent("Button", self.label.clone(), None);
+        let mut c = control(self.id.clone(), w, h, move |r, s, window, cx| paint_button(r, s, &label, default, pushed, font_size, window, cx)).enabled(self.enabled).focusable().agent(
+            "Button",
+            self.label.clone(),
+            None,
+        );
         if default {
             c = c.default_key();
         }

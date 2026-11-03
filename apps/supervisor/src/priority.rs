@@ -17,9 +17,7 @@ const IOPRIO_CLASS_IDLE: i32 = 3;
 const IOPRIO_WHO_PROCESS: i32 = 1;
 
 fn threads(pid: i32) -> Vec<i32> {
-    std::fs::read_dir(Path::new("/proc").join(pid.to_string()).join("task"))
-        .map(|d| d.flatten().filter_map(|e| e.file_name().to_str()?.parse().ok()).collect())
-        .unwrap_or_default()
+    std::fs::read_dir(Path::new("/proc").join(pid.to_string()).join("task")).map(|d| d.flatten().filter_map(|e| e.file_name().to_str()?.parse().ok()).collect()).unwrap_or_default()
 }
 
 fn ioprio_set(tid: i32, class: i32, level: i32) -> bool {

@@ -876,7 +876,10 @@ impl OutputDamageTracker {
             let mut frame = renderer.render(framebuffer, output_size, output_transform)?;
             // (Olo: what makes a frame slow, named: a step over 4 ms.)
             if olo_begin.elapsed() > std::time::Duration::from_millis(4) {
-                tracing::warn!(took_ms = olo_begin.elapsed().as_secs_f64() * 1000.0, "slow frame: beginning it");
+                tracing::warn!(
+                    took_ms = olo_begin.elapsed().as_secs_f64() * 1000.0,
+                    "slow frame: beginning it"
+                );
             }
 
             element_damage.clear();
@@ -969,7 +972,10 @@ impl OutputDamageTracker {
             let finished = frame.finish();
             crate::backend::renderer::phase("finish", olo_t);
             if olo_t.elapsed() > std::time::Duration::from_millis(4) {
-                tracing::warn!(took_ms = olo_t.elapsed().as_secs_f64() * 1000.0, "slow frame: finishing it");
+                tracing::warn!(
+                    took_ms = olo_t.elapsed().as_secs_f64() * 1000.0,
+                    "slow frame: finishing it"
+                );
             }
             finished
         })();

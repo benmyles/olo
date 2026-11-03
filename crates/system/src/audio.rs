@@ -1,18 +1,9 @@
 //! Sound devices and their volumes, over the PulseAudio native protocol (which
 //! PipeWire serves too), with a change feed instead of polling.
 
-use std::{
-    ffi::CString,
-    io::BufReader,
-    os::unix::net::UnixStream,
-    path::PathBuf,
-    time::Duration,
-};
+use std::{ffi::CString, io::BufReader, os::unix::net::UnixStream, path::PathBuf, time::Duration};
 
-use pulseaudio::protocol::{
-    self, ChannelVolume, Command, CommandReply, ProtocolError, SetDeviceMuteParams, SetDeviceVolumeParams,
-    SubscriptionMask, Volume as PaVolume,
-};
+use pulseaudio::protocol::{self, ChannelVolume, Command, CommandReply, ProtocolError, SetDeviceMuteParams, SetDeviceVolumeParams, SubscriptionMask, Volume as PaVolume};
 
 pub type Result<T> = std::result::Result<T, ProtocolError>;
 
@@ -32,9 +23,7 @@ fn socket_path() -> Option<PathBuf> {
     {
         return Some(p.into());
     }
-    let runtime = std::env::var_os("PULSE_RUNTIME_PATH")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("XDG_RUNTIME_DIR").map(|d| PathBuf::from(d).join("pulse")))?;
+    let runtime = std::env::var_os("PULSE_RUNTIME_PATH").map(PathBuf::from).or_else(|| std::env::var_os("XDG_RUNTIME_DIR").map(|d| PathBuf::from(d).join("pulse")))?;
     let p = runtime.join("native");
     p.exists().then_some(p)
 }
@@ -98,14 +87,9 @@ impl Conn {
         let device = |name: &CString, description: &Option<CString>, cvolume: &ChannelVolume, muted: bool, default: &str, props: &protocol::Props| {
             let name = name.to_string_lossy().into_owned();
             Device {
-                private: bluetooth(props).is_some()
-                    || prop(props, "device.form_factor").is_some_and(|f| matches!(f.as_str(), "headphone" | "headset" | "handset" | "hands-free" | "earpiece")),
+                private: bluetooth(props).is_some() || prop(props, "device.form_factor").is_some_and(|f| matches!(f.as_str(), "headphone" | "headset" | "handset" | "hands-free" | "earpiece")),
                 bluetooth: bluetooth(props),
-                description: description
-                    .as_ref()
-                    .map(|d| tidy_description(&d.to_string_lossy()))
-                    .filter(|d| !d.is_empty())
-                    .unwrap_or_else(|| name.clone()),
+                description: description.as_ref().map(|d| tidy_description(&d.to_string_lossy())).filter(|d| !d.is_empty()).unwrap_or_else(|| name.clone()),
                 is_default: name == default,
                 volume: Volume { level: level(cvolume), muted },
                 channels: cvolume.channels().len().max(1),
@@ -126,11 +110,7 @@ impl Conn {
             })
             .collect();
         // A sink's monitor isn't a microphone.
-        let inputs = sources
-            .iter()
-            .filter(|s| s.monitor_of_sink_index.is_none())
-            .map(|s| device(&s.name, &s.description, &s.cvolume, s.muted, &default_in, &s.props))
-            .collect();
+        let inputs = sources.iter().filter(|s| s.monitor_of_sink_index.is_none()).map(|s| device(&s.name, &s.description, &s.cvolume, s.muted, &default_in, &s.props)).collect();
         Ok(Devices { outputs, inputs })
     }
 }
@@ -144,11 +124,7 @@ fn prop(props: &protocol::Props, key: &str) -> Option<String> {
 
 /// How a Bluetooth device's sound is carried (PipeWire's properties).
 fn bluetooth(props: &protocol::Props) -> Option<Bluetooth> {
-    Some(Bluetooth {
-        address: prop(props, "api.bluez5.address")?,
-        codec: prop(props, "api.bluez5.codec").unwrap_or_default(),
-        profile: prop(props, "api.bluez5.profile").unwrap_or_default(),
-    })
+    Some(Bluetooth { address: prop(props, "api.bluez5.address")?, codec: prop(props, "api.bluez5.codec").unwrap_or_default(), profile: prop(props, "api.bluez5.profile").unwrap_or_default() })
 }
 
 /// Drop Apple board codes ("MacBook Pro J416 Speakers" → "MacBook Pro
@@ -167,11 +143,7 @@ fn tidy_description(s: &str) -> String {
 
 fn level(cvolume: &ChannelVolume) -> f32 {
     let ch = cvolume.channels();
-    if ch.is_empty() {
-        0.0
-    } else {
-        ch.iter().map(|v| v.as_u32() as f32).sum::<f32>() / ch.len() as f32 / PaVolume::NORM.as_u32() as f32
-    }
+    if ch.is_empty() { 0.0 } else { ch.iter().map(|v| v.as_u32() as f32).sum::<f32>() / ch.len() as f32 / PaVolume::NORM.as_u32() as f32 }
 }
 
 fn channel_volume(level: f32, channels: usize) -> ChannelVolume {
@@ -335,11 +307,7 @@ pub fn set_default(kind: Kind, name: &str) -> Result<()> {
 
 /// Set every channel of device `name` to `level` (0.0–1.0).
 pub fn set_device_volume(kind: Kind, name: &str, level: f32, channels: usize) -> Result<()> {
-    let params = SetDeviceVolumeParams {
-        device_index: None,
-        device_name: Some(CString::new(name).map_err(|e| ProtocolError::Invalid(e.to_string()))?),
-        volume: channel_volume(level, channels),
-    };
+    let params = SetDeviceVolumeParams { device_index: None, device_name: Some(CString::new(name).map_err(|e| ProtocolError::Invalid(e.to_string()))?), volume: channel_volume(level, channels) };
     Conn::connect()?.ack(&match kind {
         Kind::Output => Command::SetSinkVolume(params),
         Kind::Input => Command::SetSourceVolume(params),
@@ -347,11 +315,7 @@ pub fn set_device_volume(kind: Kind, name: &str, level: f32, channels: usize) ->
 }
 
 pub fn set_device_muted(kind: Kind, name: &str, mute: bool) -> Result<()> {
-    let params = SetDeviceMuteParams {
-        device_index: None,
-        device_name: Some(CString::new(name).map_err(|e| ProtocolError::Invalid(e.to_string()))?),
-        mute,
-    };
+    let params = SetDeviceMuteParams { device_index: None, device_name: Some(CString::new(name).map_err(|e| ProtocolError::Invalid(e.to_string()))?), mute };
     Conn::connect()?.ack(&match kind {
         Kind::Output => Command::SetSinkMute(params),
         Kind::Input => Command::SetSourceMute(params),
@@ -404,19 +368,11 @@ pub fn volume() -> Result<Volume> {
 pub fn set_volume(level: f32) -> Result<()> {
     let mut c = Conn::connect()?;
     let volume = channel_volume(level, c.sink()?.cvolume.channels().len());
-    c.ack(&Command::SetSinkVolume(SetDeviceVolumeParams {
-        device_index: None,
-        device_name: Some(CString::new(DEFAULT_SINK).unwrap()),
-        volume,
-    }))
+    c.ack(&Command::SetSinkVolume(SetDeviceVolumeParams { device_index: None, device_name: Some(CString::new(DEFAULT_SINK).unwrap()), volume }))
 }
 
 pub fn set_muted(mute: bool) -> Result<()> {
-    Conn::connect()?.ack(&Command::SetSinkMute(SetDeviceMuteParams {
-        device_index: None,
-        device_name: Some(CString::new(DEFAULT_SINK).unwrap()),
-        mute,
-    }))
+    Conn::connect()?.ack(&Command::SetSinkMute(SetDeviceMuteParams { device_index: None, device_name: Some(CString::new(DEFAULT_SINK).unwrap()), mute }))
 }
 
 pub fn toggle_mute() -> Result<()> {

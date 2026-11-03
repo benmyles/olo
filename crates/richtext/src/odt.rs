@@ -208,12 +208,7 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
             })
             .collect::<String>()
     };
-    let _ = write!(
-        auto,
-        "<text:list-style style:name=\"LBullets\">{}</text:list-style><text:list-style style:name=\"LNumbers\">{}</text:list-style>",
-        level_styles(true),
-        level_styles(false)
-    );
+    let _ = write!(auto, "<text:list-style style:name=\"LBullets\">{}</text:list-style><text:list-style style:name=\"LNumbers\">{}</text:list-style>", level_styles(true), level_styles(false));
     if let Some(f) = &doc.font
         && !fonts.contains(f)
     {
@@ -249,7 +244,8 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, String> {
             }
             let _ = write!(named_too, "<style:style style:name=\"{style}\" style:family=\"paragraph\" style:parent-style-name=\"Standard\" style:class=\"extra\">{stops}</style:style>");
             // (The text then at an inch, as without one.)
-            let _ = write!(layout, "<style:{tag}-style><style:header-footer-properties fo:min-height=\"0in\" fo:margin-{}=\"0.3in\"/></style:{tag}-style>", if tag == "header" { "bottom" } else { "top" });
+            let _ =
+                write!(layout, "<style:{tag}-style><style:header-footer-properties fo:min-height=\"0in\" fo:margin-{}=\"0.3in\"/></style:{tag}-style>", if tag == "header" { "bottom" } else { "top" });
             let _ = write!(master, "<style:{tag}><text:p text:style-name=\"{style}\">");
             for (k, part) in parts.iter().enumerate() {
                 if k > 0 {

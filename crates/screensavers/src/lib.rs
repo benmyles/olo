@@ -131,19 +131,8 @@ impl Info {
 }
 
 /// Every module, in R5's order.
-pub static MODULES: &[Info] = &[
-    basic::BLACKNESS,
-    basic::BUY_NOW,
-    desktop::FLIP,
-    basic::ICONS,
-    desktop::LENS,
-    lines::LISSART,
-    message::MESSAGE,
-    lines::SPIRAL,
-    basic::SPOTS,
-    lines::STRING_THEME,
-    lines::SUPER_STRING,
-];
+pub static MODULES: &[Info] =
+    &[basic::BLACKNESS, basic::BUY_NOW, desktop::FLIP, basic::ICONS, desktop::LENS, lines::LISSART, message::MESSAGE, lines::SPIRAL, basic::SPOTS, lines::STRING_THEME, lines::SUPER_STRING];
 
 pub fn find(name: &str) -> Option<&'static Info> {
     MODULES.iter().find(|m| m.name == name)
@@ -214,22 +203,7 @@ mod tests {
     #[test]
     fn modules_are_r5s() {
         let names: Vec<&str> = MODULES.iter().map(|m| m.name).collect();
-        assert_eq!(
-            names,
-            [
-                "Blackness",
-                "BuyNow",
-                "Flip",
-                "Icons",
-                "Lens",
-                "Lissart",
-                "Message",
-                "Spiral",
-                "Spots",
-                "StringTheme",
-                "SuperString"
-            ]
-        );
+        assert_eq!(names, ["Blackness", "BuyNow", "Flip", "Icons", "Lens", "Lissart", "Message", "Spiral", "Spots", "StringTheme", "SuperString"]);
         assert!(find("SuperString").is_some_and(|m| m.about == "SuperString, by Jon Watte"));
     }
 

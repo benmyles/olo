@@ -14,17 +14,17 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 pub mod airpods;
-pub mod voice;
+pub mod app_keys;
+pub mod mice;
 pub mod notifications;
 pub mod panels;
-pub mod mice;
 pub mod performance;
 pub mod sharing;
-pub mod app_keys;
 pub mod shortcuts;
 pub mod touchpad;
-pub use sharing::SharingState;
+pub mod voice;
 pub use notifications::{AppNotifications, CardSize, HistoryView, NoteApp, NoteLook, NoteStyle, NotificationSettings, NotificationState};
+pub use sharing::SharingState;
 pub use shortcuts::{AutoTiling, Chord, CommandKey, KeyboardProfile, ModeChoice, Platform, Shortcut, ShortcutSettings, Tile, TilingSettings, WindowingMode};
 
 pub const SOCKET_ENV: &str = "OLO_SOCKET";
@@ -46,7 +46,9 @@ pub enum Request {
     /// Start receiving only these kinds of [`Event`] on this connection
     /// (an app_server from before this answers an error: then
     /// [`Request::Subscribe`]; [`Client::into_events_of`] does both).
-    SubscribeTo { events: Vec<EventKind> },
+    SubscribeTo {
+        events: Vec<EventKind>,
+    },
     /// Take these keys for this connection, each `(id, keys)` with keys as
     /// a [`shortcuts::Chord`] is written ("Ctrl+Alt+K"): another program's
     /// global shortcuts (the GlobalShortcuts portal). They replace what
@@ -55,15 +57,21 @@ pub enum Request {
     /// nor while the screen is locked), and are let go when it closes.
     /// Keys app_server has (its own shortcuts) or another connection took
     /// are refused: [`Reply::KeysGrabbed`] says which.
-    GrabKeys { keys: Vec<(String, String)> },
+    GrabKeys {
+        keys: Vec<(String, String)>,
+    },
     ListWindows,
-    Activate { id: WindowId },
+    Activate {
+        id: WindowId,
+    },
     /// Bring these windows forward together, as clicking an application
     /// in Deskbar does: minimized ones come back, and if they are on
     /// another workspace it goes there. Among themselves they keep the
     /// order they were used in, so the one used last ends in front, with
     /// the focus.
-    ActivateAll { ids: Vec<WindowId> },
+    ActivateAll {
+        ids: Vec<WindowId>,
+    },
     /// An xdg-activation token for a program about to be started (as
     /// `XDG_ACTIVATION_TOKEN`), so the window it opens, or the running
     /// instance it hands its work to (a link opening as a new tab in
@@ -71,11 +79,19 @@ pub enum Request {
     /// without a click to take a token from (a link opened from a shell).
     ActivationToken,
     /// BeOS "minimize": hide the window; Deskbar shows it greyed out.
-    Minimize { id: WindowId },
-    Close { id: WindowId },
-    ToggleZoom { id: WindowId },
+    Minimize {
+        id: WindowId,
+    },
+    Close {
+        id: WindowId,
+    },
+    ToggleZoom {
+        id: WindowId,
+    },
     /// Push a window behind all the others (BeOS's right-click on the tab).
-    SendToBack { id: WindowId },
+    SendToBack {
+        id: WindowId,
+    },
     /// Put a window in the group of window `with` (or a new group with
     /// it, if it is in none), whatever their apps, its tab at `index`
     /// among the group's (else last), as ⌘-dragging its tab onto that
@@ -90,14 +106,22 @@ pub enum Request {
     /// Take a window out of its group, as ⌘-dragging its tab away does: on
     /// its own from then on (it no longer joins its app's group), stepped
     /// out so the group shows, in front.
-    UngroupWindow { id: WindowId },
+    UngroupWindow {
+        id: WindowId,
+    },
     /// Move a window's tab to `index` among its group's tabs.
-    MoveTab { id: WindowId, index: u32 },
+    MoveTab {
+        id: WindowId,
+        index: u32,
+    },
     /// Put a window's frame (tab and border included, as
     /// [`WindowInfo::frame`]) here, at this size; no longer zoomed. It
     /// may hang off a display's edge, but no further than a person could
     /// leave it: its top edge on the display, enough of it to take hold of.
-    Place { id: WindowId, frame: Frame },
+    Place {
+        id: WindowId,
+        frame: Frame,
+    },
     /// The workspaces: how many each display has, and which each shows.
     Workspaces,
     /// Show workspace `index` on a display (`output`, a connector; else
@@ -133,8 +157,13 @@ pub enum Request {
     /// Go to display `output` (a connector), as Deskbar's display menu
     /// does: the pointer to the middle of it, the keyboard to its front
     /// window (none: its desktop).
-    FocusDisplay { output: String },
-    ConfigureOutput { name: String, config: OutputConfig },
+    FocusDisplay {
+        output: String,
+    },
+    ConfigureOutput {
+        name: String,
+        config: OutputConfig,
+    },
     /// The pointing devices plugged in: touchpads (with the kind of pad and
     /// the profile that suits it) and mice.
     InputDevices,
@@ -162,7 +191,9 @@ pub enum Request {
         #[serde(default)]
         show: Option<bool>,
     },
-    SetSettings { settings: Settings },
+    SetSettings {
+        settings: Settings,
+    },
     /// Save a PNG of one screen (`output`, or the one the pointer is on)
     /// or of one window, answering once the file is complete.
     Screenshot {
@@ -211,7 +242,9 @@ pub enum Request {
     /// saver or lock) for as long as this connection stays open, for
     /// `why` (an app's call or video: the Inhibit portal, the
     /// ScreenSaver service). Counted among the app inhibitors.
-    KeepAwake { why: String },
+    KeepAwake {
+        why: String,
+    },
     /// Approve requests without asking (sudo in Terminal, unlocking
     /// Passwords) for `minutes` (5 to a day), or stop (None). Turning it
     /// on takes the account password, checked through PAM before the
@@ -230,21 +263,33 @@ pub enum Request {
     /// answered, and only while it is on.
     AutoApproveSecret,
     /// Built-in display brightness, 0.0–1.0 (perceptual).
-    SetBrightness { level: f32 },
+    SetBrightness {
+        level: f32,
+    },
     /// A display's brightness (`name` its connector), kept for it.
-    SetOutputBrightness { name: String, level: f32 },
+    SetOutputBrightness {
+        name: String,
+        level: f32,
+    },
     /// Keyboard backlight, 0.0–1.0 (perceptual).
-    SetKeyboardBacklight { level: f32 },
+    SetKeyboardBacklight {
+        level: f32,
+    },
     /// Show each display's name on it for a few seconds.
     IdentifyOutputs,
     /// Test sessions (headless) only: the screen on connector `name`
     /// unplugged (`plugged: false`) or plugged in again, as a monitor's
     /// cable would be (`tools/dev/layout-check --unplug`).
-    PlugDisplay { name: String, plugged: bool },
+    PlugDisplay {
+        name: String,
+        plugged: bool,
+    },
     /// Take the next key pressed (with its modifiers) as a shortcut rather
     /// than acting on it; it comes back as [`Event::ShortcutRecorded`].
     /// `on: false` stops waiting.
-    RecordShortcut { on: bool },
+    RecordShortcut {
+        on: bool,
+    },
     /// Do one of the shortcuts (its id in [`shortcuts::SHORTCUTS`]), to
     /// `window` rather than the focused one if given (the command palette
     /// holds the keyboard while it is open).
@@ -255,14 +300,18 @@ pub enum Request {
     },
     /// Tile the resizable windows of app `app_id` on this workspace in a
     /// grid on the active display, in front of the rest.
-    TileApp { app_id: String },
+    TileApp {
+        app_id: String,
+    },
     /// The active display's tiling area and the windows on it (front
     /// first, with frames), for an arranger such as Smart Tiling.
     Arrangement,
     /// Put windows of the active display in parts of its tiling area,
     /// tiled there (dragging an edge resizes the neighbours) and undoable
     /// with Undo Window Arrangement. Windows not listed stay as they are.
-    Arrange { windows: Vec<Placement> },
+    Arrange {
+        windows: Vec<Placement>,
+    },
     /// Each display's windowing mode on a workspace (each display's
     /// showing unless given).
     WindowingMode {
@@ -317,12 +366,16 @@ pub enum Request {
         floating: Option<bool>,
     },
     /// Inject input as if from a device (for automated UI tests).
-    Synthetic { events: Vec<SyntheticEvent> },
+    Synthetic {
+        events: Vec<SyntheticEvent>,
+    },
     /// Put `text` into the focused field as an input method would (the
     /// emoji picker; any text, not only what a keyboard types). It waits,
     /// a second at most, while the asking program has the keyboard; a
     /// window with no text-input-v3 field gets it as keys.
-    InsertText { text: String },
+    InsertText {
+        text: String,
+    },
     /// Displays with nothing new rest (look again only when woken, or now
     /// and then) or look every frame: `on`, `off`, or (None) as app_server
     /// has it for its kind of display. Until app_server restarts.
@@ -345,10 +398,14 @@ pub enum Request {
     /// Log what went into every frame that misses its vblank (`on`), as
     /// a `frames` record in the log: Activity Monitor's "Capture debug
     /// information". Until app_server restarts.
-    CaptureDrops { on: bool },
+    CaptureDrops {
+        on: bool,
+    },
     /// The last 120 frames of display `output` that drew the pointer
     /// ([`PointerFrame`]): to measure how evenly it moves.
-    PointerTrace { output: String },
+    PointerTrace {
+        output: String,
+    },
     Quit,
 }
 
@@ -380,10 +437,18 @@ pub enum SyntheticEvent {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Reply {
     Ok,
-    Pong { version: String },
-    Error { message: String },
-    ActivationToken { token: String },
-    Windows { windows: Vec<WindowInfo> },
+    Pong {
+        version: String,
+    },
+    Error {
+        message: String,
+    },
+    ActivationToken {
+        token: String,
+    },
+    Windows {
+        windows: Vec<WindowInfo>,
+    },
     /// How many workspaces each display has, the one showing on the
     /// active display (`current`), and each display's (`displays`).
     Workspaces {
@@ -392,32 +457,65 @@ pub enum Reply {
         #[serde(default)]
         displays: Vec<DisplayWorkspace>,
     },
-    Outputs { outputs: Vec<OutputInfo> },
-    InputDevices { devices: Vec<touchpad::InputDeviceInfo> },
-    Settings { settings: Settings },
+    Outputs {
+        outputs: Vec<OutputInfo>,
+    },
+    InputDevices {
+        devices: Vec<touchpad::InputDeviceInfo>,
+    },
+    Settings {
+        settings: Settings,
+    },
     /// [`Request::Looks`]' answer: the themes in Preferences' order, and
     /// the palette in use.
-    Looks { themes: Vec<LookInfo>, palette: olo_theme::Palette },
-    Palette { palette: olo_theme::Palette },
+    Looks {
+        themes: Vec<LookInfo>,
+        palette: olo_theme::Palette,
+    },
+    Palette {
+        palette: olo_theme::Palette,
+    },
     /// The keyboard hints showing now (none when they're off).
-    Hints { hints: Vec<HintInfo> },
+    Hints {
+        hints: Vec<HintInfo>,
+    },
     /// [`Request::Overview`]'s answer.
-    Overview { overview: OverviewInfo },
+    Overview {
+        overview: OverviewInfo,
+    },
     /// [`Request::Arrangement`]'s answer: the display's connector, the
     /// area tiling uses (global logical pixels: the display less Deskbar
     /// and the margins), and its windows on this workspace, front first.
-    Arrangement { output: String, area: Frame, windows: Vec<WindowInfo> },
+    Arrangement {
+        output: String,
+        area: Frame,
+        windows: Vec<WindowInfo>,
+    },
     /// [`Request::AutoTiling`]'s answer: each display, on the workspace
     /// asked about (`workspace`: the active display's showing if none was).
-    AutoTiling { workspace: u32, displays: Vec<AutoTilingInfo> },
+    AutoTiling {
+        workspace: u32,
+        displays: Vec<AutoTilingInfo>,
+    },
     /// [`Request::WindowingMode`]'s answer: each display, as AutoTiling's.
-    WindowingMode { workspace: u32, displays: Vec<WindowingModeInfo> },
-    Power { status: PowerStatus },
+    WindowingMode {
+        workspace: u32,
+        displays: Vec<WindowingModeInfo>,
+    },
+    Power {
+        status: PowerStatus,
+    },
     /// After [`Request::GrabKeys`]: the ids whose keys weren't taken.
-    KeysGrabbed { refused: Vec<String> },
+    KeysGrabbed {
+        refused: Vec<String>,
+    },
     /// [`Request::AutoApproveSecret`]'s answer.
-    Secret { password: String },
-    Timings { timings: Timings },
+    Secret {
+        password: String,
+    },
+    Timings {
+        timings: Timings,
+    },
     /// [`Request::Frames`]: each display, the pointer's reports, and
     /// whether drops are captured.
     Frames {
@@ -426,8 +524,12 @@ pub enum Reply {
         #[serde(default)]
         pointer: PointerHealth,
     },
-    PointerTrace { frames: Vec<PointerFrame> },
-    Event { event: Event },
+    PointerTrace {
+        frames: Vec<PointerFrame>,
+    },
+    Event {
+        event: Event,
+    },
 }
 
 /// [`Request::Timings`]'s answer: how app_server kept up since the last
@@ -572,7 +674,9 @@ pub enum EventKind {
 #[serde(tag = "type", rename_all = "snake_case")]
 #[allow(clippy::large_enum_variant)]
 pub enum Event {
-    WindowsChanged { windows: Vec<WindowInfo> },
+    WindowsChanged {
+        windows: Vec<WindowInfo>,
+    },
     /// A display switched workspace, another display became the active
     /// one, or the count changed: as [`Reply::Workspaces`].
     WorkspaceChanged {
@@ -581,24 +685,39 @@ pub enum Event {
         #[serde(default)]
         displays: Vec<DisplayWorkspace>,
     },
-    SettingsChanged { settings: Settings },
-    OutputsChanged { outputs: Vec<OutputInfo> },
+    SettingsChanged {
+        settings: Settings,
+    },
+    OutputsChanged {
+        outputs: Vec<OutputInfo>,
+    },
     /// Caffeinated, display asleep, brightness or app inhibitors changed.
-    PowerChanged { status: PowerStatus },
+    PowerChanged {
+        status: PowerStatus,
+    },
     /// The key pressed after [`Request::RecordShortcut`], as a [`Chord`]
     /// ("Shift+Cmd+Left"); "" for Backspace or Delete alone (no keys);
     /// None if it was cancelled (Escape alone, or nothing for a while).
-    ShortcutRecorded { keys: Option<String> },
+    ShortcutRecorded {
+        keys: Option<String>,
+    },
     /// A pointing device came or went: every one now, as
     /// [`Reply::InputDevices`].
-    InputDevicesChanged { devices: Vec<touchpad::InputDeviceInfo> },
+    InputDevicesChanged {
+        devices: Vec<touchpad::InputDeviceInfo>,
+    },
     /// A key taken with [`Request::GrabKeys`] went down or up (sent only
     /// to the connection that took it).
-    KeyGrab { id: String, pressed: bool },
+    KeyGrab {
+        id: String,
+        pressed: bool,
+    },
     /// A display drew a frame with something new on it: what a
     /// screenshot shows has changed (headless screens: Agent Screens'
     /// watchers take a picture then, not on a timer).
-    Painted { output: String },
+    Painted {
+        output: String,
+    },
     /// What's on a touchpad now, as the pad reports it (each contact's
     /// place, size and pressure), after each of its reports while
     /// anyone asks: the palm trainer's live view and its samples.
@@ -1102,12 +1221,7 @@ impl AiFeature {
 /// The models AI features can use, the default first: id, name. OpenAI's
 /// current ones for Codex, reached through the Token Pool's Codex
 /// accounts.
-pub const AI_MODELS: &[(&str, &str)] = &[
-    ("gpt-6-astra", "Astra 6"),
-    ("gpt-6.1-sol", "Sol 6.1"),
-    ("gpt-6.1-terra", "Terra 6.1"),
-    ("gpt-6-luna", "Luna 6"),
-];
+pub const AI_MODELS: &[(&str, &str)] = &[("gpt-6-astra", "Astra 6"), ("gpt-6.1-sol", "Sol 6.1"), ("gpt-6.1-terra", "Terra 6.1"), ("gpt-6-luna", "Luna 6")];
 
 /// Effort levels, least first: id, name.
 pub const AI_EFFORTS: &[(&str, &str)] = &[("low", "Low"), ("medium", "Medium"), ("high", "High"), ("xhigh", "Extra High"), ("max", "Max")];
@@ -1248,16 +1362,7 @@ pub struct ScreenSaverSettings {
 
 impl Default for ScreenSaverSettings {
     fn default() -> Self {
-        ScreenSaverSettings {
-            enabled: true,
-            module: "SuperString".into(),
-            run_minutes: 5,
-            lock: false,
-            lock_minutes: 5,
-            fade_now: None,
-            never_fade: None,
-            options: Default::default(),
-        }
+        ScreenSaverSettings { enabled: true, module: "SuperString".into(), run_minutes: 5, lock: false, lock_minutes: 5, fade_now: None, never_fade: None, options: Default::default() }
     }
 }
 
@@ -1306,11 +1411,7 @@ pub struct DisplaySettings {
 /// else its connector.
 pub fn display_key(connector: &str, make: &str, model: &str, serial: &str) -> String {
     let known = |s: &str| !s.trim().is_empty() && s != "Unknown";
-    if known(make) && known(model) && known(serial) {
-        format!("{} {} {}", make.trim(), model.trim(), serial.trim())
-    } else {
-        connector.to_owned()
-    }
+    if known(make) && known(model) && known(serial) { format!("{} {} {}", make.trim(), model.trim(), serial.trim()) } else { connector.to_owned() }
 }
 
 impl Default for DisplaySettings {
@@ -1740,43 +1841,19 @@ impl Default for KeyboardSettings {
             find_on_command_tap: None,
             hints: false,
             double_press_ms: 400,
-            terminal_apps: [
-                "olo.terminal",
-                "org.gnome.Ptyxis",
-                "org.gnome.Console",
-                "org.gnome.Terminal",
-                "com.mitchellh.ghostty",
-                "foot",
-                "kitty",
-                "Alacritty",
-                "org.wezfurlong.wezterm",
-            ]
-            .map(String::from)
-            .to_vec(),
-            browser_apps: [
-                "google-chrome",
-                "google-chrome-beta",
-                "google-chrome-unstable",
-                "chromium",
-                "chromium-browser",
-                "brave-browser",
-                "microsoft-edge",
-                "firefox",
-                "org.mozilla.firefox",
-            ]
-            .map(String::from)
-            .to_vec(),
+            terminal_apps: ["olo.terminal", "org.gnome.Ptyxis", "org.gnome.Console", "org.gnome.Terminal", "com.mitchellh.ghostty", "foot", "kitty", "Alacritty", "org.wezfurlong.wezterm"]
+                .map(String::from)
+                .to_vec(),
+            browser_apps: ["google-chrome", "google-chrome-beta", "google-chrome-unstable", "chromium", "chromium-browser", "brave-browser", "microsoft-edge", "firefox", "org.mozilla.firefox"]
+                .map(String::from)
+                .to_vec(),
         }
     }
 }
 
 impl Settings {
     pub fn workspace_color(&self, index: u32) -> [u8; 3] {
-        self.workspace_colors
-            .get(index as usize)
-            .or_else(|| self.workspace_colors.first())
-            .copied()
-            .unwrap_or([51, 102, 152])
+        self.workspace_colors.get(index as usize).or_else(|| self.workspace_colors.first()).copied().unwrap_or([51, 102, 152])
     }
 
     /// Settings saved before keyboard profiles: their command key, Caps

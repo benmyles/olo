@@ -7,18 +7,15 @@
 //! encodes the PNG and writes it (as `NAME.part`, then renamed, so readers
 //! never see half a file). The requester is answered once it is on disk.
 
-use std::{
-    path::PathBuf,
-    rc::Rc,
-};
+use std::{path::PathBuf, rc::Rc};
 
+use olo_protocol::{ImageFormat, Reply};
 use smithay::{
     backend::renderer::{Color32F, ExportMem, ImportAll, ImportMem, Offscreen, Renderer, element::AsRenderElements},
     desktop::{Space, space::SpaceElement},
     output::Output,
     utils::{Logical, Point, Rectangle},
 };
-use olo_protocol::{ImageFormat, Reply};
 use tracing::warn;
 
 use crate::{
@@ -54,12 +51,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             let window = self.space.elements().find(|w| w.id() == id).ok_or("no such window on screen")?;
             let geo = self.space.element_geometry(window).ok_or("no such window on screen")?;
             // The output that shows most of it.
-            shot.output = self
-                .space
-                .outputs()
-                .filter_map(|o| Some((o, self.space.output_geometry(o)?.intersection(geo)?)))
-                .max_by_key(|(_, r)| r.size.w * r.size.h)
-                .map(|(o, _)| o.name());
+            shot.output = self.space.outputs().filter_map(|o| Some((o, self.space.output_geometry(o)?.intersection(geo)?))).max_by_key(|(_, r)| r.size.w * r.size.h).map(|(o, _)| o.name());
             if shot.output.is_none() {
                 return Err("the window is off screen".into());
             }
@@ -80,9 +72,7 @@ impl IpcState {
     /// The shots `output`'s frame should take.
     pub fn shots_for(&mut self, output: &Output) -> Vec<Shot> {
         let name = output.name();
-        let (mine, rest) = std::mem::take(&mut self.pending_screenshots)
-            .into_iter()
-            .partition(|s| s.output.as_ref().is_none_or(|o| *o == name));
+        let (mine, rest) = std::mem::take(&mut self.pending_screenshots).into_iter().partition(|s| s.output.as_ref().is_none_or(|o| *o == name));
         self.pending_screenshots = rest;
         mine
     }
@@ -112,8 +102,7 @@ pub fn take<R, T>(
     let captured = match shot.window {
         _ if shot.window.is_some() && locked => Err("the screen is locked".to_owned()),
         Some(id) => capture_window(renderer, space, id, scale, shot.border),
-        None => crate::render::capture(renderer, output, space, overlays, overview, clear_color, locked)
-            .map(|img| (img, space.output_geometry(output).unwrap_or_default())),
+        None => crate::render::capture(renderer, output, space, overlays, overview, clear_color, locked).map(|img| (img, space.output_geometry(output).unwrap_or_default())),
     };
     let captured = captured.map(|(img, rect)| {
         // Where the pointer is in the picture, in pixels (if it's in it).
@@ -126,13 +115,7 @@ pub fn take<R, T>(
 
 /// Render one window, alone over transparency: its tab and border too
 /// with `border` (the tab's shape is kept), or only what the client drew.
-fn capture_window<R, T>(
-    renderer: &mut R,
-    space: &Space<WindowElement>,
-    id: u64,
-    scale: f64,
-    border: bool,
-) -> Result<(image::RgbaImage, Rectangle<i32, Logical>), String>
+fn capture_window<R, T>(renderer: &mut R, space: &Space<WindowElement>, id: u64, scale: f64, border: bool) -> Result<(image::RgbaImage, Rectangle<i32, Logical>), String>
 where
     R: Renderer + ImportAll + ImportMem + Offscreen<T> + ExportMem,
     R::TextureId: Clone + Send + 'static,
@@ -143,11 +126,7 @@ where
     let geo = SpaceElement::geometry(window);
     // Where the element draws from, as Space does it.
     let origin = at - geo.loc;
-    let rect = if border || !window.decorated() {
-        Rectangle::new(at, geo.size)
-    } else {
-        Rectangle::new(origin + crate::shell::deco::content_offset(), window.content_size())
-    };
+    let rect = if border || !window.decorated() { Rectangle::new(at, geo.size) } else { Rectangle::new(origin + crate::shell::deco::content_offset(), window.content_size()) };
     let location = (origin - rect.loc).to_f64().to_physical(scale).to_i32_round();
     // Whole, though it is behind others in its group (marked so again
     // before the next frame).
@@ -186,10 +165,9 @@ fn save(ipc: &mut IpcState, shot: Shot, captured: Result<Captured, String>) {
             part.push(".part");
             let part = PathBuf::from(part);
             let res = match format {
-                ImageFormat::Png => image::DynamicImage::ImageRgba8(img)
-                    .save_with_format(&part, image::ImageFormat::Png)
-                    .and_then(|()| std::fs::rename(&part, &path).map_err(Into::into))
-                    .map_err(|e| e.to_string()),
+                ImageFormat::Png => {
+                    image::DynamicImage::ImageRgba8(img).save_with_format(&part, image::ImageFormat::Png).and_then(|()| std::fs::rename(&part, &path).map_err(Into::into)).map_err(|e| e.to_string())
+                }
                 ImageFormat::Rgba => {
                     let mut bytes = Vec::with_capacity(8 + img.as_raw().len());
                     bytes.extend_from_slice(&img.width().to_le_bytes());

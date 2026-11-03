@@ -117,25 +117,11 @@ impl Backlight {
 
     pub fn set_raw(&self, raw: u32) -> Result<()> {
         let conn = bus::system()?;
-        let set = |session: &str| {
-            bus::call::<_, ()>(
-                conn,
-                "org.freedesktop.login1",
-                session,
-                "org.freedesktop.login1.Session",
-                "SetBrightness",
-                &(self.subsystem, self.name.as_str(), raw.min(self.max)),
-            )
-        };
+        let set =
+            |session: &str| bus::call::<_, ()>(conn, "org.freedesktop.login1", session, "org.freedesktop.login1.Session", "SetBrightness", &(self.subsystem, self.name.as_str(), raw.min(self.max)));
         // Our own session if we are in one, else the user's graphical one.
         set("/org/freedesktop/login1/session/auto").or_else(|_| {
-            let (_, path): (String, zvariant::OwnedObjectPath) = bus::property(
-                conn,
-                "org.freedesktop.login1",
-                "/org/freedesktop/login1/user/self",
-                "org.freedesktop.login1.User",
-                "Display",
-            )?;
+            let (_, path): (String, zvariant::OwnedObjectPath) = bus::property(conn, "org.freedesktop.login1", "/org/freedesktop/login1/user/self", "org.freedesktop.login1.User", "Display")?;
             set(path.as_str())
         })
     }

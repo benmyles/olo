@@ -23,7 +23,9 @@ use olo_theme::{Hue, Palette, mix, readable};
 use olo_ui::{
     agent,
     gpui::{
-        self, AppContext as _, Bounds, Context, CursorStyle, Font, FontStyle, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Point, Render, RenderImage, ScrollHandle, SharedString, StrikethroughStyle, Styled as _, Task, TextAlign, TextRun, Window, WrappedLine, canvas, div, point, px, size,
+        self, AppContext as _, Bounds, Context, CursorStyle, Font, FontStyle, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent,
+        MouseMoveEvent, ParentElement as _, Pixels, Point, Render, RenderImage, ScrollHandle, SharedString, StrikethroughStyle, Styled as _, Task, TextAlign, TextRun, Window, WrappedLine, canvas,
+        div, point, px, size,
     },
     style, theme,
     widgets::{ScrollView, image_view},
@@ -151,12 +153,28 @@ struct Laid {
 }
 
 enum Draw {
-    Text { at: (f32, f32), lines: SmallVec<[WrappedLine; 1]>, leading: f32 },
+    Text {
+        at: (f32, f32),
+        lines: SmallVec<[WrappedLine; 1]>,
+        leading: f32,
+    },
     Fill(Rect, f32, Hsla),
     /// A one-point line: horizontal (from x0 to x1 at y) or vertical, its
     /// top or left edge at the place given, or (`ends`) its bottom or right.
-    HLine { x0: f32, x1: f32, y: f32, ends: bool, color: Hsla },
-    VLine { x: f32, y0: f32, y1: f32, ends: bool, color: Hsla },
+    HLine {
+        x0: f32,
+        x1: f32,
+        y: f32,
+        ends: bool,
+        color: Hsla,
+    },
+    VLine {
+        x: f32,
+        y0: f32,
+        y1: f32,
+        ends: bool,
+        color: Hsla,
+    },
     Bullet((f32, f32), usize, Hsla),
     Check((f32, f32), bool),
     /// Block `block`'s picture.
@@ -493,7 +511,15 @@ impl RichView {
                 self.at.quotes.push((top, color, callout.is_some()));
                 if let Some(k) = callout {
                     let title = k.title();
-                    let run = TextRun { len: title.len(), font: font(false, true, false), color: style::c(p.hue_text(callout_hue(*k))), background_color: None, underline: None, strikethrough: None, size: None };
+                    let run = TextRun {
+                        len: title.len(),
+                        font: font(false, true, false),
+                        color: style::c(p.hue_text(callout_hue(*k))),
+                        background_color: None,
+                        underline: None,
+                        strikethrough: None,
+                        size: None,
+                    };
                     let lines = window.text_system().shape_text(title.into(), px(BODY), &[run], None, None).unwrap_or_default();
                     laid.text = title.into();
                     laid.draws.push(Draw::Text { at: (x0 + QUOTE_INDENT, y), lines, leading: LEADING });

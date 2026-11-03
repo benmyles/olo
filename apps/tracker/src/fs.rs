@@ -199,11 +199,7 @@ pub fn display_name(path: &Path) -> String {
 
 /// The boot volume's name, as BeOS showed it on the desktop.
 pub fn volume_label() -> String {
-    fs::read_to_string("/etc/hostname")
-        .ok()
-        .map(|s| s.trim().to_owned())
-        .filter(|s| !s.is_empty() && s != "localhost")
-        .unwrap_or_else(|| "System".into())
+    fs::read_to_string("/etc/hostname").ok().map(|s| s.trim().to_owned()).filter(|s| !s.is_empty() && s != "localhost").unwrap_or_else(|| "System".into())
 }
 
 // ---- operations ---------------------------------------------------------
@@ -216,11 +212,6 @@ pub fn copy_target(from: &Path, dir: &Path) -> PathBuf {
     let name = from.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     if from.parent() == Some(dir) { unique(dir, &copy_name(&name)) } else { unique(dir, &name) }
 }
-
-
-
-
-
 
 /// "notes copy.txt" for "notes.txt"; copying a copy gives "notes copy.txt"
 /// again (made unique as "notes copy 2.txt"), never "notes copy copy.txt".

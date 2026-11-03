@@ -34,8 +34,7 @@ fn bad(why: &str) -> Error {
 }
 
 fn base32(text: &str) -> Result<Vec<u8>, Error> {
-    let clean: String =
-        text.chars().filter(|c| !c.is_whitespace() && *c != '-' && *c != '=').map(|c| c.to_ascii_uppercase()).collect();
+    let clean: String = text.chars().filter(|c| !c.is_whitespace() && *c != '-' && *c != '=').map(|c| c.to_ascii_uppercase()).collect();
     if clean.is_empty() {
         return Err(bad("the secret is empty"));
     }
@@ -50,14 +49,7 @@ impl Totp {
     pub fn parse(value: &str) -> Result<Totp, Error> {
         let value = value.trim();
         if !value.to_ascii_lowercase().starts_with("otpauth://") {
-            return Ok(Totp {
-                secret: base32(value)?,
-                algorithm: Algorithm::Sha1,
-                digits: 6,
-                period: 30,
-                issuer: None,
-                account: None,
-            });
+            return Ok(Totp { secret: base32(value)?, algorithm: Algorithm::Sha1, digits: 6, period: 30, issuer: None, account: None });
         }
         let url = url::Url::parse(value).map_err(|_| bad("the URI doesn't parse"))?;
         if url.host_str().map(str::to_ascii_lowercase).as_deref() != Some("totp") {
@@ -127,10 +119,7 @@ fn mac(algorithm: Algorithm, key: &[u8], message: &[u8]) -> Vec<u8> {
 }
 
 fn percent_decode(text: &str) -> String {
-    url::form_urlencoded::parse(format!("x={}", text.replace('+', "%2B")).as_bytes())
-        .next()
-        .map(|(_, v)| v.into_owned())
-        .unwrap_or_default()
+    url::form_urlencoded::parse(format!("x={}", text.replace('+', "%2B")).as_bytes()).next().map(|(_, v)| v.into_owned()).unwrap_or_default()
 }
 
 #[cfg(test)]

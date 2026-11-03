@@ -11,14 +11,7 @@
 use std::path::Path;
 
 /// Calls that hold a surface's lock while their closure runs.
-const LOCKING: &[&str] = &[
-    "with_pending_state",
-    "with_states",
-    "with_committed_state",
-    "with_cached_state",
-    "with_surface_tree_upward",
-    "with_surface_tree_downward",
-];
+const LOCKING: &[&str] = &["with_pending_state", "with_states", "with_committed_state", "with_cached_state", "with_surface_tree_upward", "with_surface_tree_downward"];
 
 /// Calls that take a surface's lock (WindowElement's helpers check the
 /// toplevel's state; sending a configure reads it; Space asks elements for

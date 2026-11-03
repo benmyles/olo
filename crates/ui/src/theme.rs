@@ -54,10 +54,7 @@ fn initial() -> Appearance {
     if let Some(s) = &settings {
         olo_kit_base::keys::set(&s.keyboard.profile);
     }
-    let mut a = settings.map(|s| s.appearance).unwrap_or_else(|| Appearance {
-        colors: env("OLO_COLORS").unwrap_or_default(),
-        ..Appearance::default()
-    });
+    let mut a = settings.map(|s| s.appearance).unwrap_or_else(|| Appearance { colors: env("OLO_COLORS").unwrap_or_default(), ..Appearance::default() });
     if let Some(mode) = env("OLO_THEME") {
         a.effective_theme = if mode == "dark" { ThemeMode::Dark } else { ThemeMode::Light };
     }

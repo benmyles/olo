@@ -49,9 +49,7 @@ impl Subject {
     fn to_dbus(&self) -> (&'static str, HashMap<&'static str, Value<'_>>) {
         match self {
             Subject::Session(id) => ("unix-session", HashMap::from([("session-id", Value::from(id.as_str()))])),
-            Subject::Process { pid, start_time } => {
-                ("unix-process", HashMap::from([("pid", Value::from(*pid)), ("start-time", Value::from(*start_time))]))
-            }
+            Subject::Process { pid, start_time } => ("unix-process", HashMap::from([("pid", Value::from(*pid)), ("start-time", Value::from(*start_time))])),
         }
     }
 }
@@ -224,9 +222,7 @@ impl Agent {
     /// Export the agent and register it with polkitd for `subject`. `on`
     /// is called from zbus's thread; hand the event to the UI.
     pub fn register(subject: Subject, on: impl Fn(Event) + Send + Sync + 'static) -> Result<Agent> {
-        let conn = zbus::blocking::connection::Builder::system()?
-            .serve_at(AGENT_PATH, AgentObject { on: Arc::new(on) })?
-            .build()?;
+        let conn = zbus::blocking::connection::Builder::system()?.serve_at(AGENT_PATH, AgentObject { on: Arc::new(on) })?.build()?;
         let locale = std::env::var("LANG").unwrap_or_else(|_| "C".into());
         bus::call::<_, ()>(&conn, AUTHORITY, AUTHORITY_PATH, AUTHORITY_IFACE, "RegisterAuthenticationAgent", &(subject.to_dbus(), locale, AGENT_PATH))?;
         Ok(Agent { conn, subject })
@@ -241,14 +237,7 @@ impl Drop for Agent {
 
 /// The logind session this process belongs to.
 pub fn own_session() -> Result<String> {
-    let path: zvariant::OwnedObjectPath = bus::call(
-        bus::system()?,
-        "org.freedesktop.login1",
-        "/org/freedesktop/login1",
-        "org.freedesktop.login1.Manager",
-        "GetSessionByPID",
-        &(std::process::id(),),
-    )?;
+    let path: zvariant::OwnedObjectPath = bus::call(bus::system()?, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "GetSessionByPID", &(std::process::id(),))?;
     bus::property(bus::system()?, "org.freedesktop.login1", path.as_str(), "org.freedesktop.login1.Session", "Id")
 }
 
@@ -257,14 +246,8 @@ pub fn own_session() -> Result<String> {
 pub fn check_interactive(action_id: &str) -> Result<bool> {
     let subject = Subject::process(std::process::id()).ok_or_else(|| zbus::Error::Failure("no /proc entry".into()))?;
     let details: HashMap<&str, &str> = HashMap::new();
-    let (authorized, _challenge, _details): (bool, bool, HashMap<String, String>) = bus::call(
-        bus::system()?,
-        AUTHORITY,
-        AUTHORITY_PATH,
-        AUTHORITY_IFACE,
-        "CheckAuthorization",
-        &(subject.to_dbus(), action_id, details, 1u32, ""),
-    )?;
+    let (authorized, _challenge, _details): (bool, bool, HashMap<String, String>) =
+        bus::call(bus::system()?, AUTHORITY, AUTHORITY_PATH, AUTHORITY_IFACE, "CheckAuthorization", &(subject.to_dbus(), action_id, details, 1u32, ""))?;
     Ok(authorized)
 }
 
@@ -274,7 +257,10 @@ pub fn check_interactive(action_id: &str) -> Result<bool> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HelperEvent {
     /// PAM wants an answer (`echo`: may be shown as typed).
-    Prompt { text: String, echo: bool },
+    Prompt {
+        text: String,
+        echo: bool,
+    },
     Info(String),
     Error(String),
     /// Finished: authenticated or not.
@@ -323,12 +309,7 @@ impl Helper {
     /// Start the helper for `user`; its events arrive on a thread through
     /// `on`, ending with `Done` (also sent if it dies).
     pub fn start(user: &str, cookie: &str, on: impl Fn(HelperEvent) + Send + 'static) -> std::io::Result<Helper> {
-        let mut child = Command::new(helper_path())
-            .arg(user)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()?;
+        let mut child = Command::new(helper_path()).arg(user).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()?;
         let mut stdin = child.stdin.take().expect("piped");
         let stdout = child.stdout.take().expect("piped");
         // The cookie goes on stdin, not argv, where anyone could read it.

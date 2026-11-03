@@ -3,8 +3,8 @@
 //! threads. The sensor is claimed only while the locked window has the
 //! keyboard, so it never holds it from sudo or the lock screen.
 
-use olo_ui::Proxy;
 use olo_system::{auth, fingerprint};
+use olo_ui::Proxy;
 use zeroize::Zeroize;
 
 pub enum LockMsg {
@@ -38,16 +38,7 @@ pub struct Lock {
 impl Lock {
     pub fn new(proxy: Proxy, locked: bool) -> Lock {
         let finger = if std::env::var_os("OLO_NO_FINGERPRINT").is_some() { Finger::Off } else { Finger::Idle };
-        Lock {
-            locked,
-            password: String::new(),
-            checking: false,
-            error: None,
-            finger,
-            stop: None,
-            user: auth::current_user().unwrap_or_default(),
-            proxy,
-        }
+        Lock { locked, password: String::new(), checking: false, error: None, finger, stop: None, user: auth::current_user().unwrap_or_default(), proxy }
     }
 
     pub fn user(&self) -> &str {
@@ -121,9 +112,7 @@ impl Lock {
     pub fn message(&mut self, msg: LockMsg) -> bool {
         match msg {
             LockMsg::Finger(fingerprint::Event::Match) => return self.unlock(),
-            LockMsg::Finger(fingerprint::Event::Ready { swipe }) => {
-                self.finger = Finger::Listening(if swipe { "Swipe your finger" } else { "Touch ID or enter your password" }.into())
-            }
+            LockMsg::Finger(fingerprint::Event::Ready { swipe }) => self.finger = Finger::Listening(if swipe { "Swipe your finger" } else { "Touch ID or enter your password" }.into()),
             LockMsg::Finger(fingerprint::Event::Retry(s)) => self.finger = Finger::Listening(s),
             LockMsg::Finger(fingerprint::Event::NoMatch) => self.finger = Finger::Listening("Not recognised. Try again".into()),
             LockMsg::Finger(fingerprint::Event::Failed(_)) | LockMsg::NoFinger => {

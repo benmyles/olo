@@ -251,7 +251,6 @@ fn row_menu(app: &Activity, p: &Proc) -> Menu {
     menu
 }
 
-
 /// The filters' menus for the processes now (made again when they change).
 fn facets_now(app: &mut Activity, cx: &mut Context<Activity>) -> Rc<Vec<Facet>> {
     if let Some((g, f)) = &app.facets
@@ -506,7 +505,8 @@ pub fn view(app: &mut Activity, width: f32, list: AnyView, window: &mut Window, 
     let rows = rows_now(app);
     // The totals and the buttons under the list.
     let threads: u64 = app.processes.iter().map(|p| p.threads as u64).sum();
-    let summary: SharedString = format!("{} of {} processes, {threads} threads · {} CPU", rows.refs.len(), app.processes.len(), app.latest("cpu").map(|v| format!("{v:.0}%")).unwrap_or_default()).into();
+    let summary: SharedString =
+        format!("{} of {} processes, {threads} threads · {} CPU", rows.refs.len(), app.processes.len(), app.latest("cpu").map(|v| format!("{v:.0}%")).unwrap_or_default()).into();
     let sel = app.selected_proc().map(|p| p.pid);
     let bw = 96.0;
     let button = |label: &'static str, cmd: &'static str| {

@@ -144,10 +144,7 @@ fn prop<T: TryFrom<OwnedValue>>(conn: &Connection, dest: &str, path: &str, iface
 
 /// The driver behind network interface `name` ("brcmfmac").
 fn driver_of(name: &str) -> String {
-    std::fs::read_link(format!("/sys/class/net/{name}/device/driver"))
-        .ok()
-        .and_then(|p| p.file_name().map(|f| f.to_string_lossy().into_owned()))
-        .unwrap_or_default()
+    std::fs::read_link(format!("/sys/class/net/{name}/device/driver")).ok().and_then(|p| p.file_name().map(|f| f.to_string_lossy().into_owned())).unwrap_or_default()
 }
 
 /// Unbind and bind interface `name`'s device from its driver (the

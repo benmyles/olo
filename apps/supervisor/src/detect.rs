@@ -118,8 +118,20 @@ pub fn spin(fine: &VecDeque<Sample>, th: &Thresholds) -> Option<Judged> {
     let io_kb = (b.io.saturating_sub(a.io)) as f64 / dt / 1024.0;
     let moved = (b.memory as f64 - a.memory as f64).abs();
     let (sw, iw) = (f64::from(th.spin_switches), f64::from(th.spin_io_kb));
-    let s_switch = if switches <= sw { 1.0 } else if switches <= sw * 5.0 { 0.4 } else { 0.0 };
-    let s_io = if io_kb <= iw { 1.0 } else if io_kb <= iw * 10.0 { 0.4 } else { 0.0 };
+    let s_switch = if switches <= sw {
+        1.0
+    } else if switches <= sw * 5.0 {
+        0.4
+    } else {
+        0.0
+    };
+    let s_io = if io_kb <= iw {
+        1.0
+    } else if io_kb <= iw * 10.0 {
+        0.4
+    } else {
+        0.0
+    };
     let s_mem = if moved < 2.0 * MB { 1.0 } else { 0.4 };
     // How long it has been so (from the whole history kept).
     let longest = fine.back().map_or(dt, |l| {

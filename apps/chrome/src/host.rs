@@ -31,9 +31,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use serde_json::{Value, json};
 use olo_keychain::{CallError, Request, Response};
 use olo_kit_base::commands::{self, WindowTree};
+use serde_json::{Value, json};
 
 use crate::downloads::{Download, Downloads};
 use crate::profile;

@@ -230,7 +230,12 @@ mod tests {
         let mut sheet = Pixmap::new(cols * cell, rows * cell).unwrap();
         for row in 0..rows {
             let ground = if row % 2 == 0 { tiny_skia::Color::from_rgba8(216, 216, 216, 255) } else { tiny_skia::Color::from_rgba8(40, 40, 48, 255) };
-            sheet.fill_rect(tiny_skia::Rect::from_xywh(0.0, (row * cell) as f32, (cols * cell) as f32, cell as f32).unwrap(), &tiny_skia::Paint { shader: tiny_skia::Shader::SolidColor(ground), ..Default::default() }, tiny_skia::Transform::identity(), None);
+            sheet.fill_rect(
+                tiny_skia::Rect::from_xywh(0.0, (row * cell) as f32, (cols * cell) as f32, cell as f32).unwrap(),
+                &tiny_skia::Paint { shader: tiny_skia::Shader::SolidColor(ground), ..Default::default() },
+                tiny_skia::Transform::identity(),
+                None,
+            );
         }
         for (col, shape) in Shape::ALL.into_iter().enumerate() {
             for (row, scale) in [1.0, 1.0, 1.5, 1.5, 2.0, 2.0].into_iter().enumerate() {

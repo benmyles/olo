@@ -1,7 +1,6 @@
 use olo_sync::Mutex;
 use std::cell::RefCell;
 
-
 use wayland_protocols_wlr::data_control::v1::server::zwlr_data_control_source_v1::{
     self, ZwlrDataControlSourceV1,
 };

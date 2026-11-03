@@ -15,9 +15,9 @@
 
 mod actions;
 mod details;
-mod netdiag;
 mod helper;
 mod inspector;
+mod netdiag;
 mod processes;
 mod sample;
 mod sections;
@@ -33,20 +33,16 @@ use actions::{Action, Refusal};
 use details::Details;
 use helper::{FromHelper, Helper, ToHelper, Way};
 use olo_ui::{
-    Frame, Menu, MenuBar, Proxy, WindowOptions, menu,
+    Frame, Menu, MenuBar, Proxy, WindowOptions,
     gpui::{
-        AnyElement, AnyView, App, AppContext as _, ClipboardItem, Context, Entity, FocusHandle, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render, StyleRefinement, Styled as _,
-        Subscription, Window, WindowHandle, div, px,
+        AnyElement, AnyView, App, AppContext as _, ClipboardItem, Context, Entity, FocusHandle, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render, StyleRefinement,
+        Styled as _, Subscription, Window, WindowHandle, div, px,
     },
     instance::{self, Launch},
-    metrics as m,
+    menu, metrics as m,
     part::Part,
     search::{SearchEvent, SearchField, search_field},
-    widgets::{
-        AlertFrame, Button, GraphLayer, GraphShelf, ListModel, Sidebar, TextControl, TextField, TextFieldEvent, button_row, open_alert, paragraph,
-        sidebar::Row,
-        text_field,
-    },
+    widgets::{AlertFrame, Button, GraphLayer, GraphShelf, ListModel, Sidebar, TextControl, TextField, TextFieldEvent, button_row, open_alert, paragraph, sidebar::Row, text_field},
 };
 use sample::{Connection, Proc, Sample, Source, System};
 use serde::{Deserialize, Serialize};
@@ -182,10 +178,7 @@ impl Settings {
 impl Default for Settings {
     fn default() -> Self {
         Settings {
-            views: vec![
-                vec!["cpu".into(), "memory".into(), "cached".into()],
-                vec!["net-rx".into(), "net-tx".into(), "disk-read".into(), "disk-write".into()],
-            ],
+            views: vec![vec!["cpu".into(), "memory".into(), "cached".into()], vec!["net-rx".into(), "net-tx".into(), "disk-read".into(), "disk-write".into()]],
             interval_ms: 1000,
             section: Section::Overview,
             sort: Some((3, false)),
@@ -236,9 +229,57 @@ pub enum Msg {
 fn demo_frames() -> Vec<olo_protocol::DisplayFrames> {
     use olo_protocol::DisplayFrames;
     vec![
-        DisplayFrames { output: "DP-1".into(), refresh_mhz: 60_000, fps: 48.0, frames: 184_211, late: 1_902, late_minute: 7, render_min_us: 410, render_p50_us: 4_900, render_p95_us: 7_400, render_max_us: 9_600, budget_us: 9_750, delay_us: 6_917, cursor_plane: true, scanout: "1 on a plane; 7 drawn (1 overlaps, 6 not tried)".into(), resting: false },
-        DisplayFrames { output: "eDP-1".into(), refresh_mhz: 120_000, fps: 120.0, frames: 402_118, late: 3, late_minute: 0, render_min_us: 180, render_p50_us: 700, render_p95_us: 2_900, render_max_us: 4_100, budget_us: 4_125, delay_us: 4_208, cursor_plane: true, scanout: "1 on a plane; 7 drawn (1 overlaps, 6 not tried)".into(), resting: false },
-        DisplayFrames { output: "DP-2".into(), refresh_mhz: 60_000, fps: 0.0, frames: 9_120, late: 0, late_minute: 0, render_min_us: 90, render_p50_us: 110, render_p95_us: 700, render_max_us: 1_300, budget_us: 6_667, delay_us: 10_000, cursor_plane: false, scanout: "0 on a plane; 3 drawn (3 not tried)".into(), resting: true },
+        DisplayFrames {
+            output: "DP-1".into(),
+            refresh_mhz: 60_000,
+            fps: 48.0,
+            frames: 184_211,
+            late: 1_902,
+            late_minute: 7,
+            render_min_us: 410,
+            render_p50_us: 4_900,
+            render_p95_us: 7_400,
+            render_max_us: 9_600,
+            budget_us: 9_750,
+            delay_us: 6_917,
+            cursor_plane: true,
+            scanout: "1 on a plane; 7 drawn (1 overlaps, 6 not tried)".into(),
+            resting: false,
+        },
+        DisplayFrames {
+            output: "eDP-1".into(),
+            refresh_mhz: 120_000,
+            fps: 120.0,
+            frames: 402_118,
+            late: 3,
+            late_minute: 0,
+            render_min_us: 180,
+            render_p50_us: 700,
+            render_p95_us: 2_900,
+            render_max_us: 4_100,
+            budget_us: 4_125,
+            delay_us: 4_208,
+            cursor_plane: true,
+            scanout: "1 on a plane; 7 drawn (1 overlaps, 6 not tried)".into(),
+            resting: false,
+        },
+        DisplayFrames {
+            output: "DP-2".into(),
+            refresh_mhz: 60_000,
+            fps: 0.0,
+            frames: 9_120,
+            late: 0,
+            late_minute: 0,
+            render_min_us: 90,
+            render_p50_us: 110,
+            render_p95_us: 700,
+            render_max_us: 1_300,
+            budget_us: 6_667,
+            delay_us: 10_000,
+            cursor_plane: false,
+            scanout: "0 on a plane; 3 drawn (3 not tried)".into(),
+            resting: true,
+        },
     ]
 }
 
@@ -1222,8 +1263,7 @@ fn main() {
     olo_ui::run(APP_ID, move |cx| {
         let proxy = olo_ui::proxy(cx);
         instance::listen(APP_ID, proxy.clone());
-        let settings: Settings =
-            std::fs::read_to_string(settings_path()).ok().and_then(|t| serde_json::from_str::<Settings>(&t).ok()).map(Settings::migrate).unwrap_or_default();
+        let settings: Settings = std::fs::read_to_string(settings_path()).ok().and_then(|t| serde_json::from_str::<Settings>(&t).ok()).map(Settings::migrate).unwrap_or_default();
         let control = sample::Control::new(settings.interval_ms);
         let (p1, p2) = (proxy.clone(), proxy.clone());
         sample::start(control.clone(), move |s| p1.send(Msg::Sources(s, false)), move |s| p2.send(Msg::Sample(Box::new(s), false)));

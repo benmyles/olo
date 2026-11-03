@@ -334,10 +334,7 @@ impl EchoCanceller {
                     *p = m - *o;
                 }
                 (self.ahead_fast, self.ahead_slow, self.spread_fast, self.spread_slow) = (0.0, 0.0, 0.0, 0.0);
-            } else if signif(-diff, 4.0 * fore_e * between, 1.0)
-                || signif(-self.ahead_fast, 4.0 * self.spread_fast, 1.0)
-                || signif(-self.ahead_slow, 4.0 * self.spread_slow, 1.0)
-            {
+            } else if signif(-diff, 4.0 * fore_e * between, 1.0) || signif(-self.ahead_fast, 4.0 * self.spread_fast, 1.0) || signif(-self.ahead_slow, 4.0 * self.spread_slow, 1.0) {
                 self.w.re.copy_from_slice(&self.fore.re);
                 self.w.im.copy_from_slice(&self.fore.im);
                 background.copy_from_slice(out);
@@ -410,9 +407,7 @@ impl EchoCanceller {
             let ws = part * BINS..(part + 1) * BINS;
             let (xr, xi) = (&self.x.re[xs.clone()], &self.x.im[xs]);
             let (wr, wi) = (&w.re[ws.clone()], &w.im[ws]);
-            for ((((er, ei), (xr, xi)), wr), wi) in
-                self.echo.re.iter_mut().zip(self.echo.im.iter_mut()).zip(xr.iter().zip(xi)).zip(wr).zip(wi)
-            {
+            for ((((er, ei), (xr, xi)), wr), wi) in self.echo.re.iter_mut().zip(self.echo.im.iter_mut()).zip(xr.iter().zip(xi)).zip(wr).zip(wi) {
                 *er += wr * xr - wi * xi;
                 *ei += wr * xi + wi * xr;
             }

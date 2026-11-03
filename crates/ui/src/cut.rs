@@ -86,7 +86,8 @@ pub(crate) fn moved(window: &mut Window, cx: &mut App, at: Point<Pixels>, now: b
         let seen = cx.default_global::<Cuts>().0.entry(id).or_insert_with(|| Seen { stale: true, ..Default::default() });
         if seen.stale {
             seen.stale = false;
-            seen.cuts = window.paint_records().iter().filter_map(|(r, moved)| r.downcast_ref::<Cut>().map(|c| (Bounds { origin: c.bounds.origin + *moved, size: c.bounds.size }, c.full.clone()))).collect();
+            seen.cuts =
+                window.paint_records().iter().filter_map(|(r, moved)| r.downcast_ref::<Cut>().map(|c| (Bounds { origin: c.bounds.origin + *moved, size: c.bounds.size }, c.full.clone()))).collect();
         }
         // (The last painted: the one on top.)
         let under = seen.cuts.iter().rev().find(|(b, _)| b.contains(&at)).cloned();

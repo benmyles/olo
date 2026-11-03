@@ -27,12 +27,39 @@ pub struct Font {
 pub enum Item {
     /// Text whose baseline starts at (`x`, `y`), `width` long (as the app
     /// laid it out: its underline and strike-through run so far).
-    Text { x: f32, y: f32, text: String, font: Font, size: f32, color: Rgb, width: f32, underline: bool, strike: bool },
-    Rect { x: f32, y: f32, w: f32, h: f32, color: Rgb },
-    Line { from: (f32, f32), to: (f32, f32), width: f32, color: Rgb },
+    Text {
+        x: f32,
+        y: f32,
+        text: String,
+        font: Font,
+        size: f32,
+        color: Rgb,
+        width: f32,
+        underline: bool,
+        strike: bool,
+    },
+    Rect {
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        color: Rgb,
+    },
+    Line {
+        from: (f32, f32),
+        to: (f32, f32),
+        width: f32,
+        color: Rgb,
+    },
     /// A picture (a PNG, JPEG, GIF or WebP file's bytes) filling the
     /// box whose top left is (`x`, `y`).
-    Image { x: f32, y: f32, w: f32, h: f32, data: std::sync::Arc<Vec<u8>> },
+    Image {
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        data: std::sync::Arc<Vec<u8>>,
+    },
 }
 
 /// One page: its size (points) and what is on it.

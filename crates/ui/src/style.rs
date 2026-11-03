@@ -413,7 +413,18 @@ pub fn soft_shadow(window: &mut Window, r: Bounds<Pixels>, palette: &Palette) {
 
 /// [`label`] cut short with "…" to fit `max_width` ([`fit`]).
 #[allow(clippy::too_many_arguments)]
-pub fn label_fit(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pixels, align: Align, text: impl Into<SharedString>, font_size: f32, font: Font, color: Hsla, max_width: Pixels) -> Bounds<Pixels> {
+pub fn label_fit(
+    window: &mut Window,
+    cx: &mut App,
+    x: Pixels,
+    center_y: Pixels,
+    align: Align,
+    text: impl Into<SharedString>,
+    font_size: f32,
+    font: Font,
+    color: Hsla,
+    max_width: Pixels,
+) -> Bounds<Pixels> {
     let text = text.into();
     // (Shaped once when it fits, as nearly everything does: a table's
     // screen of cells is 1,500 of them.)
@@ -433,11 +444,14 @@ pub fn label_fit(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pixels,
 /// line, the capitals centred on `center_y`, the baseline on a pixel.
 pub fn label_runs(window: &mut Window, cx: &mut App, x: Pixels, center_y: Pixels, align: Align, text: SharedString, font_size: f32, runs: &[TextRun]) -> Bounds<Pixels> {
     let line = window.text_system().shape_line(text.clone(), px(font_size), runs, None);
-    let left = snap_coord(window, match align {
-        Align::Left => x,
-        Align::Center => x - line.width / 2.0,
-        Align::Right => x - line.width,
-    });
+    let left = snap_coord(
+        window,
+        match align {
+            Align::Left => x,
+            Align::Center => x - line.width / 2.0,
+            Align::Right => x - line.width,
+        },
+    );
     let baseline = snap_coord(window, center_y + px(font_size * CAP_HEIGHT / 2.0));
     let top = baseline - line.ascent;
     let height = line.ascent + line.descent;
@@ -501,12 +515,8 @@ pub fn selection_wash(window: &mut Window, r: Bounds<Pixels>, palette: &Palette)
 /// sets a selected icon on its highlight.
 pub fn selection_plate(window: &mut Window, r: Bounds<Pixels>, palette: &Palette) {
     let r = snap(window, r.dilate(px(olo_kit_base::metrics::SELECTION_PAD)));
-    window.paint_quad(
-        gpui::fill(r, c(palette.list_selected_background))
-            .corner_radii(px(olo_kit_base::metrics::CARD_RADIUS))
-            .border_widths(hairline(window))
-            .border_color(c(palette.selection_edge())),
-    );
+    window
+        .paint_quad(gpui::fill(r, c(palette.list_selected_background)).corner_radii(px(olo_kit_base::metrics::CARD_RADIUS)).border_widths(hairline(window)).border_color(c(palette.selection_edge())));
 }
 
 /// The ground of a group that is current as a whole (Deskbar's workspace
@@ -547,7 +557,18 @@ pub fn label_on_baseline(window: &mut Window, cx: &mut App, x: Pixels, baseline:
 /// [`label_on_baseline`] cut short with "…" to fit `max_width` ([`label_fit`]:
 /// its whole in a tip for the pointer resting on it).
 #[allow(clippy::too_many_arguments)]
-pub fn label_on_baseline_fit(window: &mut Window, cx: &mut App, x: Pixels, baseline: Pixels, align: Align, text: impl Into<SharedString>, font_size: f32, font: Font, color: Hsla, max_width: Pixels) -> Bounds<Pixels> {
+pub fn label_on_baseline_fit(
+    window: &mut Window,
+    cx: &mut App,
+    x: Pixels,
+    baseline: Pixels,
+    align: Align,
+    text: impl Into<SharedString>,
+    font_size: f32,
+    font: Font,
+    color: Hsla,
+    max_width: Pixels,
+) -> Bounds<Pixels> {
     label_fit(window, cx, x, baseline - px(font_size * CAP_HEIGHT / 2.0), align, text, font_size, font, color, max_width)
 }
 

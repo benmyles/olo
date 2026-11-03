@@ -15,11 +15,11 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+use olo_protocol::{Event, PowerStatus};
 use smithay::reexports::{
     calloop,
     wayland_server::{Resource, protocol::wl_surface::WlSurface},
 };
-use olo_protocol::{Event, PowerStatus};
 use tracing::{info, warn};
 
 use crate::state::{AnvilState, Backend};
@@ -47,7 +47,10 @@ pub mod keys {
 enum Job {
     /// Hold an inhibitor (also against the lid switch with `lid`), or
     /// none.
-    Caffeinate { on: bool, lid: bool },
+    Caffeinate {
+        on: bool,
+        lid: bool,
+    },
     Brightness(u32),
     KeyboardBacklight(u32),
     Suspend,
@@ -360,12 +363,7 @@ fn run(job: Job, w: &mut Worker) {
 
 impl<B: Backend> AnvilState<B> {
     pub fn power_status(&self) -> olo_protocol::PowerStatus {
-        olo_protocol::PowerStatus {
-            screen_saver: self.saver.running(),
-            locked: self.lock.locked(),
-            auto_approve_until: self.auto_approve_until(),
-            ..self.power.status()
-        }
+        olo_protocol::PowerStatus { screen_saver: self.saver.running(), locked: self.lock.locked(), auto_approve_until: self.auto_approve_until(), ..self.power.status() }
     }
 
     pub fn power_changed(&mut self) {
@@ -443,11 +441,7 @@ impl<B: Backend> AnvilState<B> {
             lock = settings.lock_on_display_off;
         }
         let display_asleep = p.display_asleep;
-        if settings.sleep_minutes > 0
-            && idle >= minutes(settings.sleep_minutes)
-            && !p.slept
-            && (!settings.sleep_on_battery_only || !olo_system::battery::on_ac())
-        {
+        if settings.sleep_minutes > 0 && idle >= minutes(settings.sleep_minutes) && !p.slept && (!settings.sleep_on_battery_only || !olo_system::battery::on_ac()) {
             p.slept = true;
             if p.jobs.is_some() {
                 info!(?idle, "sleeping");

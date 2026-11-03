@@ -5,7 +5,10 @@
 
 use olo_system::keyring_prompt::{Answer, Event, Kind, Props};
 use olo_ui::{
-    gpui::{AnyWindowHandle, App, AppContext as _, Context, Entity, FocusHandle, Focusable as _, InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled as _, Window, div, px},
+    gpui::{
+        AnyWindowHandle, App, AppContext as _, Context, Entity, FocusHandle, Focusable as _, InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled as _, Window, div,
+        px,
+    },
     metrics as m, style, theme,
     widgets::{self, AlertFrame, Button, CheckBox, StringView, TextControl, TextField, TextFieldEvent, alert, button_row, paragraph, paragraph_height, text_field},
 };

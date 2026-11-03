@@ -1,0 +1,3 @@
+# Upstream Blade style, edition 2021 as its Cargo.toml (gpui/rustfmt.toml
+# is 2024), so merging from it stays easy.
+edition = "2021"

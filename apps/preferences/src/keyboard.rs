@@ -74,7 +74,9 @@ pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut St
         cx.notify();
     });
     let tabs: Vec<SharedString> = ["Keyboard", "Shortcuts"].into_iter().map(SharedString::from).collect();
-    ui.add(div().flex_1().min_h_0().child(TabView::new("keyboard-tabs", tabs, st.tab).on_select(pick).child(div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items))));
+    ui.add(
+        div().flex_1().min_h_0().child(TabView::new("keyboard-tabs", tabs, st.tab).on_select(pick).child(div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items))),
+    );
 }
 
 fn keyboard(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut State) {
@@ -85,23 +87,39 @@ fn keyboard(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut 
         names.push(k.layout.clone().into());
         names.len() - 1
     });
-    ui.menu("layout", names, i, |f| f.label("Layout:").divider(60.0), |s, i| {
-        if let Some((id, _)) = LAYOUTS.get(i)
-            && *id != s.keyboard.layout
-        {
-            s.keyboard.layout = id.to_string();
-            s.keyboard.variant.clear();
-        }
-    });
+    ui.menu(
+        "layout",
+        names,
+        i,
+        |f| f.label("Layout:").divider(60.0),
+        |s, i| {
+            if let Some((id, _)) = LAYOUTS.get(i)
+                && *id != s.keyboard.layout
+            {
+                s.keyboard.layout = id.to_string();
+                s.keyboard.variant.clear();
+            }
+        },
+    );
 
     let test = st.test.clone();
     ui.bbox("Key Repeat", |ui| {
         let rate = k.repeat_rate_hz as f32;
-        ui.slider("repeat-rate", rate, 5.0..=60.0, |s| s.step(1.0).label("Repeat rate").value_text(format!("{rate:.0} per second")).limits("Slow", "Fast"), |s, v| s.keyboard.repeat_rate_hz = v as i32);
+        ui.slider(
+            "repeat-rate",
+            rate,
+            5.0..=60.0,
+            |s| s.step(1.0).label("Repeat rate").value_text(format!("{rate:.0} per second")).limits("Slow", "Fast"),
+            |s, v| s.keyboard.repeat_rate_hz = v as i32,
+        );
         let delay = k.repeat_delay_ms as f32;
-        ui.slider("repeat-delay", delay, 150.0..=1000.0, |s| s.step(25.0).label("Delay until repeat").value_text(format!("{delay:.0} ms")).limits("Short", "Long"), |s, v| {
-            s.keyboard.repeat_delay_ms = v as i32
-        });
+        ui.slider(
+            "repeat-delay",
+            delay,
+            150.0..=1000.0,
+            |s| s.step(25.0).label("Delay until repeat").value_text(format!("{delay:.0} ms")).limits("Short", "Long"),
+            |s, v| s.keyboard.repeat_delay_ms = v as i32,
+        );
         ui.add(TextControl::new(test).label("Typing test:"));
     });
 
@@ -111,7 +129,13 @@ fn keyboard(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut 
         ui.check("Press Control twice for keyboard hints", k.hints, |s, v| s.keyboard.hints = v);
         let speed = k.double_press_ms as f32;
         ui.enabled_if(k.hints, |ui| {
-            ui.slider("double-press", speed, 150.0..=800.0, |s| s.step(25.0).label("Double-press speed").value_text(format!("{speed:.0} ms")).limits("Fast", "Slow"), |s, v| s.keyboard.double_press_ms = v as u32);
+            ui.slider(
+                "double-press",
+                speed,
+                150.0..=800.0,
+                |s| s.step(25.0).label("Double-press speed").value_text(format!("{speed:.0} ms")).limits("Fast", "Slow"),
+                |s, v| s.keyboard.double_press_ms = v as u32,
+            );
         });
         ui.note("A letter goes on everything you can pick: controls, menu items, windows, Deskbar. Type one to pick it, or to letter what’s inside; Backspace goes back, Esc puts them away.");
     });
@@ -225,12 +249,18 @@ pub fn profile(ui: &mut Ui, saving: Option<&Entity<TextField>>) {
         // A change to the profile's keys makes a platform's "… (Customized)".
         let titles: Vec<SharedString> = CommandKey::ALL.iter().map(|c| SharedString::from(c.title())).collect();
         let c = CommandKey::ALL.iter().position(|c| *c == k.profile.command_key).unwrap_or(0);
-        ui.menu("command-key", titles, c, |f| f.label("Command key:").divider(DIVIDER), |s, i| {
-            if s.keyboard.profile.command_key != CommandKey::ALL[i] {
-                s.keyboard.profile.command_key = CommandKey::ALL[i];
-                s.keyboard.profile_changed();
-            }
-        });
+        ui.menu(
+            "command-key",
+            titles,
+            c,
+            |f| f.label("Command key:").divider(DIVIDER),
+            |s, i| {
+                if s.keyboard.profile.command_key != CommandKey::ALL[i] {
+                    s.keyboard.profile.command_key = CommandKey::ALL[i];
+                    s.keyboard.profile_changed();
+                }
+            },
+        );
         ui.check("Caps Lock is another Control key", k.profile.caps_lock_control, |s, v| {
             if s.keyboard.profile.caps_lock_control != v {
                 s.keyboard.profile.caps_lock_control = v;

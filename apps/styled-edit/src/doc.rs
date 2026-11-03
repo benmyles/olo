@@ -12,12 +12,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use serde::{Deserialize, Serialize};
 use olo_ui::{
     editor::{self, PICTURE, Span},
     gpui::{Font, Hsla, Rgba},
     widgets::ruler,
 };
+use serde::{Deserialize, Serialize};
 
 /// The sizes the Font menu offers (any size can be stored).
 pub const SIZES: [f32; 10] = [9.0, 10.0, 11.0, 12.0, 14.0, 18.0, 24.0, 36.0, 48.0, 72.0];
@@ -70,17 +70,7 @@ impl Picture {
 
 impl Default for Style {
     fn default() -> Self {
-        Style {
-            family: String::new(),
-            size: DEFAULT_SIZE,
-            bold: false,
-            italic: false,
-            underline: false,
-            strikeout: false,
-            color: None,
-            link: None,
-            picture: None,
-        }
+        Style { family: String::new(), size: DEFAULT_SIZE, bold: false, italic: false, underline: false, strikeout: false, color: None, link: None, picture: None }
     }
 }
 
@@ -151,7 +141,13 @@ impl Kind {
         s.size = size;
         s.bold = bold;
         s.italic = italic;
-        s.family = if self == Kind::Code { MONOSPACE.into() } else if s.family == MONOSPACE { String::new() } else { std::mem::take(&mut s.family) };
+        s.family = if self == Kind::Code {
+            MONOSPACE.into()
+        } else if s.family == MONOSPACE {
+            String::new()
+        } else {
+            std::mem::take(&mut s.family)
+        };
     }
 
     /// Space above and below it, in points.
@@ -859,7 +855,11 @@ impl Doc {
         self.text.replace_range(removed.clone(), &s.was);
         self.index_runs();
         self.index_paras();
-        if redoing { self.undo.push(back) } else { self.redo.push(back) }
+        if redoing {
+            self.undo.push(back)
+        } else {
+            self.redo.push(back)
+        }
         self.last_edit = None;
         self.typing = None;
         self.generation += 1;

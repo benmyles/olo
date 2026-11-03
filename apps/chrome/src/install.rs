@@ -46,10 +46,7 @@ pub struct Package {
 }
 
 fn data_home() -> PathBuf {
-    std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/share"))
+    std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/share"))
 }
 
 /// Where Chrome is kept: a folder per version and `current`.
@@ -75,14 +72,7 @@ fn arch() -> Result<&'static str, String> {
 fn agent() -> ureq::Agent {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let tls = ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build();
-    ureq::Agent::config_builder()
-        .tls_config(tls)
-        .max_redirects(10)
-        .user_agent("Olo")
-        .timeout_connect(Some(Duration::from_secs(30)))
-        .timeout_per_read(Some(Duration::from_secs(60)))
-        .build()
-        .into()
+    ureq::Agent::config_builder().tls_config(tls).max_redirects(10).user_agent("Olo").timeout_connect(Some(Duration::from_secs(30))).timeout_per_read(Some(Duration::from_secs(60))).build().into()
 }
 
 fn get(agent: &ureq::Agent, url: &str) -> Result<ureq::Body, String> {

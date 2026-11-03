@@ -26,15 +26,8 @@ const NFC_BULLET: i32 = 23;
 const NFC_NONE: i32 = 255;
 
 /// The style sheet: each kind's style number is its place here.
-const KINDS: [(Kind, &str); 7] = [
-    (Kind::Body, "Normal"),
-    (Kind::Heading1, "heading 1"),
-    (Kind::Heading2, "heading 2"),
-    (Kind::Heading3, "heading 3"),
-    (Kind::Title, "Title"),
-    (Kind::Quote, "Quote"),
-    (Kind::Code, "Source Code"),
-];
+const KINDS: [(Kind, &str); 7] =
+    [(Kind::Body, "Normal"), (Kind::Heading1, "heading 1"), (Kind::Heading2, "heading 2"), (Kind::Heading3, "heading 3"), (Kind::Title, "Title"), (Kind::Quote, "Quote"), (Kind::Code, "Source Code")];
 
 /// How a kind of paragraph looks (sizes in points, spacing in twips),
 /// as the DOCX writer's styles have it: what the writer spells out on
@@ -93,11 +86,7 @@ fn text(s: &str) -> String {
 fn list_def(id: u32, bullet: bool) -> String {
     let mut s = format!("{{\\list\\listtemplateid{id}\\listhybrid");
     for l in 0..9 {
-        let (nfc, level_text, numbers) = if bullet {
-            (NFC_BULLET, format!("\\'01{}", ["\\u8226?", "\\u9702?", "\\u9642?"][l % 3]), "")
-        } else {
-            (0, format!("\\'02\\'0{l}."), "\\'01")
-        };
+        let (nfc, level_text, numbers) = if bullet { (NFC_BULLET, format!("\\'01{}", ["\\u8226?", "\\u9702?", "\\u9642?"][l % 3]), "") } else { (0, format!("\\'02\\'0{l}."), "\\'01") };
         let indent = LEVEL * (l as i32 + 1);
         let _ = write!(
             s,
@@ -954,9 +943,8 @@ impl Reader {
             }
             "shppict" => return,
             "upr" => return self.st.dest = Dest::Skip,
-            "info" | "pict" | "headerl" | "headerf" | "footerl" | "footerf" | "footnote"
-            | "object" | "xe" | "tc" | "txe" | "rxe" | "annotation" | "atnid" | "atnauthor" | "listtext" | "pntext" | "nonshppict"
-            | "shp" | "template" | "revtbl" | "filetbl" | "comment" | "doccomm" => return self.st.dest = Dest::Skip,
+            "info" | "pict" | "headerl" | "headerf" | "footerl" | "footerf" | "footnote" | "object" | "xe" | "tc" | "txe" | "rxe" | "annotation" | "atnid" | "atnauthor" | "listtext" | "pntext"
+            | "nonshppict" | "shp" | "template" | "revtbl" | "filetbl" | "comment" | "doccomm" => return self.st.dest = Dest::Skip,
             _ if ignorable && !matches!(dest, Dest::Lists | Dest::Overrides) => return self.st.dest = Dest::Skip,
             _ => {}
         }

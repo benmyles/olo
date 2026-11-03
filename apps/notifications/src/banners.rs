@@ -16,8 +16,8 @@ use olo_protocol::NoteLook;
 use olo_ui::{
     agent,
     gpui::{
-        self, App, Bounds, ClickEvent, Context, CursorStyle, Entity, FontWeight, InteractiveElement as _, IntoElement, LayerKeyboard, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Point, Render, StatefulInteractiveElement as _, Styled as _, Subscription,
-        Window, canvas, div, point, prelude::FluentBuilder as _, px, size,
+        self, App, Bounds, ClickEvent, Context, CursorStyle, Entity, FontWeight, InteractiveElement as _, IntoElement, LayerKeyboard, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _,
+        Pixels, Point, Render, StatefulInteractiveElement as _, Styled as _, Subscription, Window, canvas, div, point, prelude::FluentBuilder as _, px, size,
     },
     style::{self, Align},
     theme,
@@ -25,7 +25,9 @@ use olo_ui::{
 };
 
 use crate::{
-    Card, GAP, Notifications, SHOWN, WIDTH, look, markup::Span, note_menu, paint_mark, pictures, raise_app,
+    Card, GAP, Notifications, SHOWN, WIDTH, look,
+    markup::Span,
+    note_menu, paint_mark, pictures, raise_app,
     server::{Kind, Reason},
     web,
 };
@@ -207,7 +209,16 @@ impl Banners {
                 let (app_name, desktop_entry, icon, accent, via, source) = &notes[i];
                 match groups.iter_mut().find(|g| g.app == *app_name) {
                     Some(g) => g.cards.push(card.clone()),
-                    None => groups.push(Group { app: app_name.clone(), frame: Bounds::default(), cards: vec![card.clone()], desktop_entry: desktop_entry.clone(), icon: icon.clone(), accent: *accent, via: *via, source: source.clone() }),
+                    None => groups.push(Group {
+                        app: app_name.clone(),
+                        frame: Bounds::default(),
+                        cards: vec![card.clone()],
+                        desktop_entry: desktop_entry.clone(),
+                        icon: icon.clone(),
+                        accent: *accent,
+                        via: *via,
+                        source: source.clone(),
+                    }),
                 }
             }
             let mut y = 0.0;
@@ -346,7 +357,18 @@ impl Render for Banners {
                         close_room += f32::from(r.size.width) + 8.0;
                     }
                     let name_x = small.right() + px(6.0);
-                    let n = style::label_fit(window, cx, name_x, mid, Align::Left, name.to_owned(), style::DETAIL_SIZE, style::ui_font(FontWeight::BOLD), style::c(p.panel_text), head.right() - px(PAD + close_room) - name_x);
+                    let n = style::label_fit(
+                        window,
+                        cx,
+                        name_x,
+                        mid,
+                        Align::Left,
+                        name.to_owned(),
+                        style::DETAIL_SIZE,
+                        style::ui_font(FontWeight::BOLD),
+                        style::c(p.panel_text),
+                        head.right() - px(PAD + close_room) - name_x,
+                    );
                     agent::record(window, cx, agent::Node::label(name.to_owned(), n));
                     if let Some(src) = &g.source {
                         let x = n.right() + px(5.0);
@@ -524,7 +546,14 @@ impl Render for Banners {
 
 /// A close box's place: it lights under the pointer and closes on a
 /// click (`what` for agents).
-fn close_area(id: (&'static str, u32), r: Bounds<Pixels>, what: String, key: (u32, bool), me: &Entity<Banners>, on_click: impl Fn(&mut Banners, &mut Window, &mut Context<Banners>) + 'static) -> impl IntoElement {
+fn close_area(
+    id: (&'static str, u32),
+    r: Bounds<Pixels>,
+    what: String,
+    key: (u32, bool),
+    me: &Entity<Banners>,
+    on_click: impl Fn(&mut Banners, &mut Window, &mut Context<Banners>) + 'static,
+) -> impl IntoElement {
     let (hover_me, click_me) = (me.clone(), me.clone());
     div()
         .id(id)

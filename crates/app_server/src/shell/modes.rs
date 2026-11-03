@@ -22,12 +22,12 @@
 //! go, on the display it was let go on. The arranging commands (tiling,
 //! Tile All, Cascade, Fan Out, Smart Tile) leave Focus for Standard.
 
+use olo_protocol::WindowingMode;
 use smithay::{
     desktop::{Space, WindowSurface},
     output::Output,
     reexports::{wayland_protocols::xdg::shell::server::xdg_toplevel, wayland_server::protocol::wl_surface::WlSurface},
 };
-use olo_protocol::WindowingMode;
 use tracing::info;
 
 use super::WindowElement;
@@ -136,19 +136,12 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     /// Once a turn (`tick`): which windows Focus shows, covers and zooms.
     pub fn focus_tick(&mut self) {
-        let focus: Vec<Output> = if self.any_focus() {
-            self.space.outputs().filter(|o| self.mode_now(o) == WindowingMode::Focus).cloned().collect()
-        } else {
-            Vec::new()
-        };
+        let focus: Vec<Output> = if self.any_focus() { self.space.outputs().filter(|o| self.mode_now(o) == WindowingMode::Focus).cloned().collect() } else { Vec::new() };
         if focus.is_empty() && !self.space.elements().any(|w| w.meta().focus_on.get().is_some() || w.meta().focus_display.get().is_some() || w.meta().focus_zoomed.get()) {
             return;
         }
         // Not while a window is held: it zooms where it is let go.
-        let held = self.pointer.is_grabbed()
-            || self.seat.get_touch().is_some_and(|t| t.is_grabbed())
-            || self.tab_drag.is_some()
-            || self.tile_drag.is_some();
+        let held = self.pointer.is_grabbed() || self.seat.get_touch().is_some_and(|t| t.is_grabbed()) || self.tab_drag.is_some() || self.tile_drag.is_some();
         let windows: Vec<WindowElement> = self.space.elements().cloned().collect();
         for w in &windows {
             let display = if focus.is_empty() { None } else { self.window_output(w).and_then(|o| focus.iter().position(|f| *f == o)) };

@@ -30,23 +30,12 @@ fn bounce(p: &mut Unit, v: &mut Unit) {
 pub const LISSART: Info = Info {
     name: "Lissart",
     about: "Lissart, by Christopher Tate",
-    options: &[
-        Opt::Slider { key: "lines", label: "Lines", min: 100.0, max: 800.0, default: 480.0 },
-        Opt::Slider { key: "saturation", label: "Saturation", min: 0.0, max: 1.0, default: 0.6 },
-    ],
+    options: &[Opt::Slider { key: "lines", label: "Lines", min: 100.0, max: 800.0, default: 480.0 }, Opt::Slider { key: "saturation", label: "Saturation", min: 0.0, max: 1.0, default: 0.6 }],
     uses_desktop: false,
     make: |o, seed| {
         let mut rng = Rng::new(seed);
         let figure = Figure::random(&mut rng);
-        Box::new(Lissart {
-            rng,
-            figure,
-            old: None,
-            t: 0.0,
-            age: 0.0,
-            lines: get_f32(o, "lines", 480.0) as usize,
-            saturation: get_f32(o, "saturation", 0.6),
-        })
+        Box::new(Lissart { rng, figure, old: None, t: 0.0, age: 0.0, lines: get_f32(o, "lines", 480.0) as usize, saturation: get_f32(o, "saturation", 0.6) })
     },
 };
 
@@ -66,12 +55,7 @@ impl Figure {
     fn random(rng: &mut Rng) -> Figure {
         let f = |rng: &mut Rng| (1 + rng.below(4)) as f32;
         let p = |rng: &mut Rng| rng.range(0.0, std::f32::consts::TAU);
-        Figure {
-            freq: [(f(rng), f(rng)), (f(rng), f(rng))],
-            phase: [(p(rng), p(rng)), (p(rng), p(rng))],
-            hue: rng.f32(),
-            drift: rng.range(0.05, 0.15),
-        }
+        Figure { freq: [(f(rng), f(rng)), (f(rng), f(rng))], phase: [(p(rng), p(rng)), (p(rng), p(rng))], hue: rng.f32(), drift: rng.range(0.05, 0.15) }
     }
 
     fn point(&self, i: usize, s: f32, t: f32) -> Unit {
@@ -162,12 +146,7 @@ struct SpiralShape {
 
 impl SpiralShape {
     fn random(rng: &mut Rng, arms: usize) -> SpiralShape {
-        SpiralShape {
-            pitch: rng.range(0.025, 0.06) * arms as f32,
-            hue: rng.f32(),
-            spin: if rng.f32() < 0.5 { 1.0 } else { -1.0 },
-            wobble: rng.range(0.0, 0.25),
-        }
+        SpiralShape { pitch: rng.range(0.025, 0.06) * arms as f32, hue: rng.f32(), spin: if rng.f32() < 0.5 { 1.0 } else { -1.0 }, wobble: rng.range(0.0, 0.25) }
     }
 }
 
@@ -242,16 +221,7 @@ pub const SUPER_STRING: Info = Info {
         let mut rng = Rng::new(seed);
         let mut speed = || rng.range(0.0022, 0.006) * if rng.f32() < 0.5 { -1.0 } else { 1.0 };
         let v = [(speed(), speed()), (speed(), speed())];
-        Box::new(SuperString {
-            ends: [(0.3, 0.4), (0.7, 0.6)],
-            v,
-            lines: VecDeque::new(),
-            color: hsv(rng.f32(), 0.9, 1.0),
-            recolor: 0.0,
-            rng,
-            fade: get_bool(o, "fade", false),
-            clock: Clock::new(),
-        })
+        Box::new(SuperString { ends: [(0.3, 0.4), (0.7, 0.6)], v, lines: VecDeque::new(), color: hsv(rng.f32(), 0.9, 1.0), recolor: 0.0, rng, fade: get_bool(o, "fade", false), clock: Clock::new() })
     },
 };
 
@@ -350,9 +320,7 @@ fn closed_curve(pts: &[Pos2], per: usize) -> Vec<Pos2> {
         for k in 0..per {
             let t = k as f32 / per as f32;
             let (t2, t3) = (t * t, t * t * t);
-            let w = |a: f32, b: f32, c: f32, d: f32| {
-                0.5 * (2.0 * b + (-a + c) * t + (2.0 * a - 5.0 * b + 4.0 * c - d) * t2 + (-a + 3.0 * b - 3.0 * c + d) * t3)
-            };
+            let w = |a: f32, b: f32, c: f32, d: f32| 0.5 * (2.0 * b + (-a + c) * t + (2.0 * a - 5.0 * b + 4.0 * c - d) * t2 + (-a + 3.0 * b - 3.0 * c + d) * t3);
             out.push(pos2(w(p0.x, p1.x, p2.x, p3.x), w(p0.y, p1.y, p2.y, p3.y)));
         }
     }

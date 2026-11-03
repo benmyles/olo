@@ -22,9 +22,8 @@ pub const GROUPS: [(&str, &str); 9] = [
 /// The most used, most first (Unicode's emoji frequency, 2021): among
 /// matches as good, these come first.
 const COMMON: &[&str] = &[
-    "😂", "❤️", "🤣", "👍", "😭", "🙏", "😘", "🥰", "😍", "😊", "🎉", "😁", "💕", "🥺", "😅", "🔥", "☺️", "🤦", "♥️", "🤷",
-    "🙄", "😆", "🤗", "😉", "🎂", "🤔", "👏", "🙂", "😳", "🥳", "😎", "👌", "💜", "😔", "💪", "✨", "💖", "👀", "😋", "😏",
-    "😢", "👉", "💗", "😩", "💯", "🌹", "💞", "🎈", "💙", "😃",
+    "😂", "❤️", "🤣", "👍", "😭", "🙏", "😘", "🥰", "😍", "😊", "🎉", "😁", "💕", "🥺", "😅", "🔥", "☺️", "🤦", "♥️", "🤷", "🙄", "😆", "🤗", "😉", "🎂", "🤔", "👏", "🙂", "😳", "🥳", "😎", "👌",
+    "💜", "😔", "💪", "✨", "💖", "👀", "😋", "😏", "😢", "👉", "💗", "😩", "💯", "🌹", "💞", "🎈", "💙", "😃",
 ];
 
 pub struct Emoji {
@@ -280,7 +279,14 @@ impl Recents {
     pub fn boost(&self, base: &str) -> i32 {
         let Some(&(count, when)) = self.picked.get(base) else { return 0 };
         let days = Self::now().saturating_sub(when) / 86_400;
-        count.min(20) as i32 * 3 + if days < 1 { 20 } else if days < 7 { 10 } else { 0 }
+        count.min(20) as i32 * 3
+            + if days < 1 {
+                20
+            } else if days < 7 {
+                10
+            } else {
+                0
+            }
     }
 
     /// The ones picked most, often and lately, first.

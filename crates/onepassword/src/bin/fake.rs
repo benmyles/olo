@@ -23,11 +23,7 @@ fn main() {
             }
         }
     }
-    let contents = data
-        .as_ref()
-        .and_then(|path| std::fs::read(path).ok())
-        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-        .unwrap_or_else(|| onepassword::fake::sample(&account));
+    let contents = data.as_ref().and_then(|path| std::fs::read(path).ok()).and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or_else(|| onepassword::fake::sample(&account));
     if let Some(dir) = accounts {
         let _ = std::fs::create_dir_all(&dir);
         let mut listed = vec![onepassword::fake::local_account(&contents)];

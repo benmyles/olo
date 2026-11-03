@@ -234,13 +234,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 }),
         );
     }
-    let a = st
-        .chosen
-        .as_ref()
-        .and_then(|c| state.by_address(c))
-        .or_else(|| state.connected())
-        .unwrap_or(&state.devices[0])
-        .clone();
+    let a = st.chosen.as_ref().and_then(|c| state.by_address(c)).or_else(|| state.connected()).unwrap_or(&state.devices[0]).clone();
     st.chosen = Some(a.address.clone());
     let address = Some(a.address.clone());
     let ask = {
@@ -350,9 +344,12 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             };
             if a.abilities.buds {
                 let ask = ask.clone();
-                ui.add(MenuField::new("bud-microphone", mics, at).label("Microphone:").enabled(ui.enabled()).on_change(move |i, _, _| {
-                    ask(Change::Microphone([BudMicrophone::Automatic, BudMicrophone::Left, BudMicrophone::Right][i]))
-                }));
+                ui.add(
+                    MenuField::new("bud-microphone", mics, at)
+                        .label("Microphone:")
+                        .enabled(ui.enabled())
+                        .on_change(move |i, _, _| ask(Change::Microphone([BudMicrophone::Automatic, BudMicrophone::Left, BudMicrophone::Right][i]))),
+                );
             }
         });
         ui.add(BBox::new("Listening").children(items));
@@ -426,7 +423,11 @@ fn this_computer(ui: &mut Ui, link: &'static Link, a: &AirPods, settings: &AirPo
             let _ = link.tx.send(Job::Ask(Request::Set { address: address.clone(), change: Change::EarDetection(on) }));
         }));
         if a.abilities.adaptive {
-            ui.add(CheckBox::new("Lower this computer's sound while you speak", settings.lower_when_speaking).enabled(a.settings.conversation_awareness != Some(false)).on_toggle(save(|s, on| s.lower_when_speaking = on)));
+            ui.add(
+                CheckBox::new("Lower this computer's sound while you speak", settings.lower_when_speaking)
+                    .enabled(a.settings.conversation_awareness != Some(false))
+                    .on_toggle(save(|s, on| s.lower_when_speaking = on)),
+            );
         }
         let listening = link.shared.lock().unwrap().state.listening;
         ui.add(CheckBox::new("Connect automatically when you put them in near this computer", settings.connect_automatically).enabled(listening).on_toggle(save(|s, on| s.connect_automatically = on)));
@@ -434,11 +435,8 @@ fn this_computer(ui: &mut Ui, link: &'static Link, a: &AirPods, settings: &AirPo
         if !listening {
             ui.note("These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.");
         }
-        let choices = [
-            (MicrophoneChoice::Computer, "This Computer's Microphones"),
-            (MicrophoneChoice::AirPods, "AirPods (High Quality)"),
-            (MicrophoneChoice::AirPodsHeadset, "AirPods (Call Quality)"),
-        ];
+        let choices =
+            [(MicrophoneChoice::Computer, "This Computer's Microphones"), (MicrophoneChoice::AirPods, "AirPods (High Quality)"), (MicrophoneChoice::AirPodsHeadset, "AirPods (Call Quality)")];
         let at = choices.iter().position(|(c, _)| *c == settings.microphone).unwrap_or(0);
         let names: Vec<SharedString> = choices.iter().map(|(_, n)| SharedString::from(*n)).collect();
         let values: Vec<MicrophoneChoice> = choices.iter().map(|(c, _)| *c).collect();

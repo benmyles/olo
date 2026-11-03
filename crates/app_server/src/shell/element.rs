@@ -1,25 +1,19 @@
 use std::{borrow::Cow, time::Duration};
 
 use smithay::{
+    backend::input::ButtonState,
     backend::{
         input::InputTime,
         renderer::{
             ImportAll, ImportMem, Renderer, Texture,
-            element::{
-                AsRenderElements, memory::MemoryRenderBufferRenderElement, solid::SolidColorRenderElement,
-                surface::WaylandSurfaceRenderElement,
-            },
+            element::{AsRenderElements, memory::MemoryRenderBufferRenderElement, solid::SolidColorRenderElement, surface::WaylandSurfaceRenderElement},
         },
     },
-    desktop::{
-        Window, WindowSurface, WindowSurfaceType, space::SpaceElement, utils::OutputPresentationFeedback,
-    },
-    backend::input::ButtonState,
+    desktop::{Window, WindowSurface, WindowSurfaceType, space::SpaceElement, utils::OutputPresentationFeedback},
     input::{
         Seat,
         pointer::{
-            AxisFrame, ButtonEvent, GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent,
-            GesturePinchEndEvent, GesturePinchUpdateEvent, GestureSwipeBeginEvent, GestureSwipeEndEvent,
+            AxisFrame, ButtonEvent, GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent, GesturePinchEndEvent, GesturePinchUpdateEvent, GestureSwipeBeginEvent, GestureSwipeEndEvent,
             GestureSwipeUpdateEvent, MotionEvent, PointerTarget, RelativeMotionEvent,
         },
         tablet::tool::TabletToolTarget,
@@ -27,9 +21,7 @@ use smithay::{
     },
     output::Output,
     reexports::{
-        wayland_protocols::{
-            wp::presentation_time::server::wp_presentation_feedback, xdg::shell::server::xdg_toplevel,
-        },
+        wayland_protocols::{wp::presentation_time::server::wp_presentation_feedback, xdg::shell::server::xdg_toplevel},
         wayland_server::protocol::wl_surface::WlSurface,
     },
     render_elements,
@@ -55,33 +47,19 @@ impl WindowElement {
             return false;
         }
         match self.0.underlying_surface() {
-            WindowSurface::Wayland(t) => !t.with_committed_state(|s| {
-                s.is_some_and(|s| s.states.contains(xdg_toplevel::State::Fullscreen))
-            }),
+            WindowSurface::Wayland(t) => !t.with_committed_state(|s| s.is_some_and(|s| s.states.contains(xdg_toplevel::State::Fullscreen))),
         }
     }
 
     pub fn title(&self) -> String {
         match self.0.underlying_surface() {
-            WindowSurface::Wayland(t) => with_states(t.wl_surface(), |states| {
-                states
-                    .data_map
-                    .get::<XdgToplevelSurfaceData>()
-                    .and_then(|d| d.lock().unwrap().title.clone())
-            })
-            .unwrap_or_default(),
+            WindowSurface::Wayland(t) => with_states(t.wl_surface(), |states| states.data_map.get::<XdgToplevelSurfaceData>().and_then(|d| d.lock().unwrap().title.clone())).unwrap_or_default(),
         }
     }
 
     pub fn app_id(&self) -> String {
         match self.0.underlying_surface() {
-            WindowSurface::Wayland(t) => with_states(t.wl_surface(), |states| {
-                states
-                    .data_map
-                    .get::<XdgToplevelSurfaceData>()
-                    .and_then(|d| d.lock().unwrap().app_id.clone())
-            })
-            .unwrap_or_default(),
+            WindowSurface::Wayland(t) => with_states(t.wl_surface(), |states| states.data_map.get::<XdgToplevelSurfaceData>().and_then(|d| d.lock().unwrap().app_id.clone())).unwrap_or_default(),
         }
     }
 
@@ -93,11 +71,7 @@ impl WindowElement {
     /// Offset from this element's render origin to the client's render origin.
     pub(crate) fn client_render_offset(&self) -> Point<i32, Logical> {
         let geo = SpaceElement::geometry(&self.0);
-        if self.decorated() {
-            deco::content_offset() - geo.loc
-        } else {
-            Point::default()
-        }
+        if self.decorated() { deco::content_offset() - geo.loc } else { Point::default() }
     }
 
     /// Where the client's geometry starts relative to the element location.
@@ -117,8 +91,7 @@ impl WindowElement {
     pub fn will_be_decorated(&self) -> bool {
         use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
         let WindowSurface::Wayland(t) = self.0.underlying_surface();
-        let (server, fullscreen) =
-            t.with_pending_state(|s| (s.decoration_mode == Some(Mode::ServerSide), s.states.contains(xdg_toplevel::State::Fullscreen)));
+        let (server, fullscreen) = t.with_pending_state(|s| (s.decoration_mode == Some(Mode::ServerSide), s.states.contains(xdg_toplevel::State::Fullscreen)));
         (server || crate::state::kde_server_side(t.wl_surface())) && !fullscreen
     }
 
@@ -157,11 +130,7 @@ impl WindowElement {
         self.decoration().is_on_decoration(&title, content, location)
     }
 
-    pub fn surface_under(
-        &self,
-        location: Point<f64, Logical>,
-        window_type: WindowSurfaceType,
-    ) -> Option<(PointerFocusTarget, Point<i32, Logical>)> {
+    pub fn surface_under(&self, location: Point<f64, Logical>, window_type: WindowSurfaceType) -> Option<(PointerFocusTarget, Point<i32, Logical>)> {
         // Behind the window Focus shows (`shell::modes`).
         if self.meta().covered.get() {
             return None;
@@ -176,9 +145,7 @@ impl WindowElement {
 
         let surface_under = self.0.surface_under(location - offset.to_f64(), window_type);
         let (under, loc) = match self.0.underlying_surface() {
-            WindowSurface::Wayland(_) => {
-                surface_under.map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc))
-            }
+            WindowSurface::Wayland(_) => surface_under.map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc)),
         }?;
         Some((under, loc + offset))
     }
@@ -190,48 +157,29 @@ impl WindowElement {
         self.0.with_surfaces(processor);
     }
 
-    pub fn send_frame<T, F>(
-        &self,
-        output: &Output,
-        time: T,
-        throttle: Option<Duration>,
-        primary_scan_out_output: F,
-    ) where
+    pub fn send_frame<T, F>(&self, output: &Output, time: T, throttle: Option<Duration>, primary_scan_out_output: F)
+    where
         T: Into<Duration>,
         F: FnMut(&WlSurface, &WlSurfaceData) -> Option<Output> + Copy,
     {
         self.0.send_frame(output, time, throttle, primary_scan_out_output)
     }
 
-    pub fn send_dmabuf_feedback<'a, P, F>(
-        &self,
-        output: &Output,
-        primary_scan_out_output: P,
-        select_dmabuf_feedback: F,
-    ) where
+    pub fn send_dmabuf_feedback<'a, P, F>(&self, output: &Output, primary_scan_out_output: P, select_dmabuf_feedback: F)
+    where
         P: FnMut(&WlSurface, &WlSurfaceData) -> Option<Output> + Copy,
         F: Fn(&WlSurface, &WlSurfaceData) -> &'a DmabufFeedback + Copy,
     {
-        self.0
-            .send_dmabuf_feedback(output, primary_scan_out_output, select_dmabuf_feedback)
+        self.0.send_dmabuf_feedback(output, primary_scan_out_output, select_dmabuf_feedback)
     }
 
-    pub fn take_presentation_feedback<F1, F2>(
-        &self,
-        output_feedback: &mut OutputPresentationFeedback,
-        primary_scan_out_output: F1,
-        presentation_feedback_flags: F2,
-    ) where
+    pub fn take_presentation_feedback<F1, F2>(&self, output_feedback: &mut OutputPresentationFeedback, primary_scan_out_output: F1, presentation_feedback_flags: F2)
+    where
         F1: FnMut(&WlSurface, &WlSurfaceData) -> Option<Output> + Copy,
         F2: FnMut(&WlSurface, &WlSurfaceData) -> wp_presentation_feedback::Kind + Copy,
     {
-        self.0.take_presentation_feedback(
-            output_feedback,
-            primary_scan_out_output,
-            presentation_feedback_flags,
-        )
+        self.0.take_presentation_feedback(output_feedback, primary_scan_out_output, presentation_feedback_flags)
     }
-
 
     #[inline]
     pub fn is_wayland(&self) -> bool {
@@ -282,143 +230,51 @@ impl<BackendData: Backend> PointerTarget<AnvilState<BackendData>> for SSD {
     fn motion(&self, _seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &MotionEvent) {
         data.deco_motion(&self.0, event.location);
     }
-    fn relative_motion(
-        &self,
-        _seat: &Seat<AnvilState<BackendData>>,
-        _data: &mut AnvilState<BackendData>,
-        _event: &RelativeMotionEvent,
-    ) {
-    }
+    fn relative_motion(&self, _seat: &Seat<AnvilState<BackendData>>, _data: &mut AnvilState<BackendData>, _event: &RelativeMotionEvent) {}
     fn button(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &ButtonEvent) {
         let pressed = event.state == ButtonState::Pressed;
         data.deco_button(seat, &self.0, event.button, pressed, event.serial);
     }
     fn axis(&self, _seat: &Seat<AnvilState<BackendData>>, _data: &mut AnvilState<BackendData>, _frame: AxisFrame) {}
     fn frame(&self, _seat: &Seat<AnvilState<BackendData>>, _data: &mut AnvilState<BackendData>) {}
-    fn leave(
-        &self,
-        _seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        _serial: Serial,
-        _time: InputTime,
-    ) {
+    fn leave(&self, _seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, _serial: Serial, _time: InputTime) {
         data.deco_leave(&self.0);
     }
-    fn gesture_swipe_begin(
-        &self,
-        _seat: &Seat<AnvilState<BackendData>>,
-        _data: &mut AnvilState<BackendData>,
-        _event: &GestureSwipeBeginEvent,
-    ) {
-    }
-    fn gesture_swipe_update(
-        &self,
-        _seat: &Seat<AnvilState<BackendData>>,
-        _data: &mut AnvilState<BackendData>,
-        _event: &GestureSwipeUpdateEvent,
-    ) {
-    }
-    fn gesture_swipe_end(
-        &self,
-        _seat: &Seat<AnvilState<BackendData>>,
-        _data: &mut AnvilState<BackendData>,
-        _event: &GestureSwipeEndEvent,
-    ) {
-    }
-    fn gesture_pinch_begin(
-        &self,
-        _seat: &Seat<AnvilState<BackendData>>,
-        _data: &mut AnvilState<BackendData>,
-        _event: &GesturePinchBeginEvent,
-    ) {
-    }
-    fn gesture_pinch_update(
-        &self,
-        _seat: &Seat<AnvilState<BackendData>>,
-        _data: &mut AnvilState<BackendData>,
-        _event: &GesturePinchUpdateEvent,
-    ) {
-    }
-    fn gesture_pinch_end(
-        &self,
-        _seat: &Seat<AnvilState<BackendData>>,
-        _data: &mut AnvilState<BackendData>,
-        _event: &GesturePinchEndEvent,
-    ) {
-    }
-    fn gesture_hold_begin(
-        &self,
-        _seat: &Seat<AnvilState<BackendData>>,
-        _data: &mut AnvilState<BackendData>,
-        _event: &GestureHoldBeginEvent,
-    ) {
-    }
-    fn gesture_hold_end(
-        &self,
-        _seat: &Seat<AnvilState<BackendData>>,
-        _data: &mut AnvilState<BackendData>,
-        _event: &GestureHoldEndEvent,
-    ) {
-    }
+    fn gesture_swipe_begin(&self, _seat: &Seat<AnvilState<BackendData>>, _data: &mut AnvilState<BackendData>, _event: &GestureSwipeBeginEvent) {}
+    fn gesture_swipe_update(&self, _seat: &Seat<AnvilState<BackendData>>, _data: &mut AnvilState<BackendData>, _event: &GestureSwipeUpdateEvent) {}
+    fn gesture_swipe_end(&self, _seat: &Seat<AnvilState<BackendData>>, _data: &mut AnvilState<BackendData>, _event: &GestureSwipeEndEvent) {}
+    fn gesture_pinch_begin(&self, _seat: &Seat<AnvilState<BackendData>>, _data: &mut AnvilState<BackendData>, _event: &GesturePinchBeginEvent) {}
+    fn gesture_pinch_update(&self, _seat: &Seat<AnvilState<BackendData>>, _data: &mut AnvilState<BackendData>, _event: &GesturePinchUpdateEvent) {}
+    fn gesture_pinch_end(&self, _seat: &Seat<AnvilState<BackendData>>, _data: &mut AnvilState<BackendData>, _event: &GesturePinchEndEvent) {}
+    fn gesture_hold_begin(&self, _seat: &Seat<AnvilState<BackendData>>, _data: &mut AnvilState<BackendData>, _event: &GestureHoldBeginEvent) {}
+    fn gesture_hold_end(&self, _seat: &Seat<AnvilState<BackendData>>, _data: &mut AnvilState<BackendData>, _event: &GestureHoldEndEvent) {}
 }
 
 impl<BackendData: Backend> TouchTarget<AnvilState<BackendData>> for SSD {
-    fn down(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        event: &smithay::input::touch::DownEvent,
-    ) {
+    fn down(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &smithay::input::touch::DownEvent) {
         data.deco_motion(&self.0, event.location);
         data.deco_button(seat, &self.0, BTN_LEFT, true, event.serial);
     }
 
-    fn up(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        event: &smithay::input::touch::UpEvent,
-    ) {
+    fn up(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &smithay::input::touch::UpEvent) {
         data.deco_button(seat, &self.0, BTN_LEFT, false, event.serial);
     }
 
-    fn motion(
-        &self,
-        _seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        event: &smithay::input::touch::MotionEvent,
-    ) {
+    fn motion(&self, _seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &smithay::input::touch::MotionEvent) {
         data.deco_motion(&self.0, event.location);
     }
 
-    fn frame(&self, _seat: &Seat<AnvilState<BackendData>>, _data: &mut AnvilState<BackendData>, _marker: FrameMarker) {
-    }
+    fn frame(&self, _seat: &Seat<AnvilState<BackendData>>, _data: &mut AnvilState<BackendData>, _marker: FrameMarker) {}
 
     fn cancel(&self, _seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, _marker: FrameMarker) {
         data.deco_leave(&self.0);
     }
 
-    fn shape(
-        &self,
-        _seat: &Seat<AnvilState<BackendData>>,
-        _data: &mut AnvilState<BackendData>,
-        _event: &smithay::input::touch::ShapeEvent,
-    ) {
-    }
+    fn shape(&self, _seat: &Seat<AnvilState<BackendData>>, _data: &mut AnvilState<BackendData>, _event: &smithay::input::touch::ShapeEvent) {}
 
-    fn orientation(
-        &self,
-        _seat: &Seat<AnvilState<BackendData>>,
-        _data: &mut AnvilState<BackendData>,
-        _event: &smithay::input::touch::OrientationEvent,
-    ) {
-    }
+    fn orientation(&self, _seat: &Seat<AnvilState<BackendData>>, _data: &mut AnvilState<BackendData>, _event: &smithay::input::touch::OrientationEvent) {}
 
-    fn last_frame(
-        &self,
-        _seat: &Seat<AnvilState<BackendData>>,
-        _data: &mut AnvilState<BackendData>,
-    ) -> Option<FrameMarker> {
+    fn last_frame(&self, _seat: &Seat<AnvilState<BackendData>>, _data: &mut AnvilState<BackendData>) -> Option<FrameMarker> {
         None
     }
 }
@@ -434,12 +290,7 @@ impl<BackendData: Backend> TabletToolTarget<AnvilState<BackendData>> for SSD {
     ) {
     }
 
-    fn proximity_out(
-        &self,
-        _seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        _tool_descriptor: &smithay::backend::input::TabletToolDescriptor,
-    ) {
+    fn proximity_out(&self, _seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, _tool_descriptor: &smithay::backend::input::TabletToolDescriptor) {
         data.deco_leave(&self.0);
     }
 
@@ -491,24 +342,13 @@ impl<BackendData: Backend> TabletToolTarget<AnvilState<BackendData>> for SSD {
     ) {
     }
 
-    fn frame(
-        &self,
-        _seat: &Seat<AnvilState<BackendData>>,
-        _data: &mut AnvilState<BackendData>,
-        _tool_descriptor: &smithay::backend::input::TabletToolDescriptor,
-        _time: InputTime,
-    ) {
-    }
+    fn frame(&self, _seat: &Seat<AnvilState<BackendData>>, _data: &mut AnvilState<BackendData>, _tool_descriptor: &smithay::backend::input::TabletToolDescriptor, _time: InputTime) {}
 }
 
 impl SpaceElement for WindowElement {
     fn geometry(&self) -> Rectangle<i32, Logical> {
         let geo = SpaceElement::geometry(&self.0);
-        if self.decorated() {
-            Rectangle::from_size(geo.size + deco::extra_size())
-        } else {
-            geo
-        }
+        if self.decorated() { Rectangle::from_size(geo.size + deco::extra_size()) } else { geo }
     }
     fn bbox(&self) -> Rectangle<i32, Logical> {
         let bbox = SpaceElement::bbox(&self.0);
@@ -531,8 +371,7 @@ impl SpaceElement for WindowElement {
         // filling a display is found by that display alone.)
         !self.meta().covered.get()
             && !self.meta().fullscreen.get()
-            && (self.on_decoration(*point)
-                || !self.tab_only() && SpaceElement::is_in_input_region(&self.0, &(*point - self.client_render_offset().to_f64())))
+            && (self.on_decoration(*point) || !self.tab_only() && SpaceElement::is_in_input_region(&self.0, &(*point - self.client_render_offset().to_f64())))
     }
     fn z_index(&self) -> u8 {
         SpaceElement::z_index(&self.0)
@@ -634,13 +473,7 @@ where
 {
     type RenderElement = WindowRenderElement<R>;
 
-    fn render_elements<C: From<Self::RenderElement>>(
-        &self,
-        renderer: &mut R,
-        location: Point<i32, Physical>,
-        scale: Scale<f64>,
-        alpha: f32,
-    ) -> Vec<C> {
+    fn render_elements<C: From<Self::RenderElement>>(&self, renderer: &mut R, location: Point<i32, Physical>, scale: Scale<f64>, alpha: f32) -> Vec<C> {
         self.render_parts(renderer, location, scale, alpha, true)
     }
 }
@@ -665,9 +498,7 @@ impl WindowElement {
             let title = self.title();
             let content = self.content_size();
             let start = std::time::Instant::now();
-            let (tabs, frame) =
-                self.decoration()
-                    .render_elements(renderer, &title, content, location, scale, alpha);
+            let (tabs, frame) = self.decoration().render_elements(renderer, &title, content, location, scale, alpha);
             if self.tab_only() {
                 return tabs.into_iter().map(WindowRenderElement::Tab).map(C::from).collect();
             }
@@ -705,10 +536,7 @@ impl WindowElement {
             if glow > 0.0 {
                 // Round what it draws as its window (its own frame, if any).
                 let g = self.0.geometry();
-                let outline = Rectangle::<i32, Physical>::new(
-                    location + g.loc.to_physical_precise_round(scale),
-                    g.size.to_physical_precise_round(scale),
-                );
+                let outline = Rectangle::<i32, Physical>::new(location + g.loc.to_physical_precise_round(scale), g.size.to_physical_precise_round(scale));
                 let halo = self.meta().glow_pieces.borrow_mut().elements(renderer, outline, None, scale.x, glow);
                 elements.extend(halo.into_iter().map(WindowRenderElement::Tab).map(C::from));
             }

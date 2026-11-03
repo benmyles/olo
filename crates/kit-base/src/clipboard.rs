@@ -49,10 +49,7 @@ pub fn files(paths: &[std::path::PathBuf], cut: bool) -> Clip {
     let gnome = format!("{}\n{}", if cut { "cut" } else { "copy" }, uris.join("\n"));
     let list: String = uris.iter().map(|u| format!("{u}\r\n")).collect();
     let text = paths.iter().map(|p| p.to_string_lossy().into_owned()).collect::<Vec<_>>().join("\n");
-    let mut clip: Clip = vec![
-        (FILES[0].into(), gnome.into_bytes().into()),
-        (FILES[1].into(), list.into_bytes().into()),
-    ];
+    let mut clip: Clip = vec![(FILES[0].into(), gnome.into_bytes().into()), (FILES[1].into(), list.into_bytes().into())];
     if cut {
         clip.push(("application/x-kde-cutselection".into(), Arc::from(&b"1"[..])));
     }
@@ -214,9 +211,7 @@ impl Dispatch<ExtDataControlDeviceV1, ()> for Holder {
     fn event(holder: &mut Self, _: &ExtDataControlDeviceV1, event: ext_data_control_device_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
         match event {
             // What is on the clipboard now (ours, at first): not wanted.
-            ext_data_control_device_v1::Event::Selection { id: Some(offer) } | ext_data_control_device_v1::Event::PrimarySelection { id: Some(offer) } => {
-                offer.destroy()
-            }
+            ext_data_control_device_v1::Event::Selection { id: Some(offer) } | ext_data_control_device_v1::Event::PrimarySelection { id: Some(offer) } => offer.destroy(),
             ext_data_control_device_v1::Event::Finished => holder.done = true,
             _ => {}
         }
@@ -242,4 +237,3 @@ impl Dispatch<WlSeat, ()> for Holder {
 impl Dispatch<WlRegistry, GlobalListContents> for Holder {
     fn event(_: &mut Self, _: &WlRegistry, _: <WlRegistry as wayland_client::Proxy>::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
 }
-

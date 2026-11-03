@@ -16,7 +16,9 @@ pub fn ui(ui: &mut Ui) {
         });
         let keys = shortcuts::by_id("smart-tile").map(|i| shortcuts::keys_for(i, &s.keyboard.profile)).unwrap_or_default();
         let how = match keys.first() {
-            Some(k) => format!("{} looks at the screen and what each window shows, and tiles them: what you’re working on bigger, what you glance at to the side.", k.label(s.keyboard.profile.platform)),
+            Some(k) => {
+                format!("{} looks at the screen and what each window shows, and tiles them: what you’re working on bigger, what you glance at to the side.", k.label(s.keyboard.profile.platform))
+            }
             None => "Smart Tile (in the command palette) looks at the screen and what each window shows, and tiles them.".into(),
         };
         ui.bbox("Smart Tiling", |ui| {

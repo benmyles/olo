@@ -125,7 +125,11 @@ enum Job {
     Default(usize, usize, String),
     /// The person's kind `i` opens in app.
     OwnDefault(usize, String),
-    AddKind { name: String, extensions: Vec<String>, app: Option<String> },
+    AddKind {
+        name: String,
+        extensions: Vec<String>,
+        app: Option<String>,
+    },
     RemoveKind(usize),
     /// What Open With offers for a type (empty: Olo's choice again).
     Offer(String, Vec<String>),
@@ -279,7 +283,12 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         cx.notify();
     });
     let tabs: Vec<SharedString> = TABS.into_iter().map(SharedString::from).collect();
-    ui.add(div().flex_1().min_h_0().child(TabView::new("default-apps-tabs", tabs, st.tab).on_select(pick).child(div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items))));
+    ui.add(
+        div()
+            .flex_1()
+            .min_h_0()
+            .child(TabView::new("default-apps-tabs", tabs, st.tab).on_select(pick).child(div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items))),
+    );
 }
 
 /// A kind's pop-up: its apps, the one it opens in chosen; `send` the job
@@ -436,19 +445,17 @@ fn offered(ui: &mut Ui, st: &State, found: &Found) {
     .on_select(|_, cx| cx.refresh_windows());
     let button = |label: &str, on: bool, f| Button::new(label.to_owned()).enabled(on).min_width(BUTTON_W).on_click(f);
     ui.add(
-        BBox::new("Open With Offers")
-            .child(div().h(px(m::LIST_ROW * 8.0 + 2.0)).child(list))
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .gap(px(m::SPACING))
-                    .child(MenuField::new("open-with-add", add_names, 0).width(MENU_W - BUTTON_W).enabled(!addable.is_empty()).on_change(add))
-                    .child(div().flex_1())
-                    .child(button("Move Up", can_up, up))
-                    .child(button("Move Down", can_down, down))
-                    .child(button("Remove", can_remove, remove)),
-            ),
+        BBox::new("Open With Offers").child(div().h(px(m::LIST_ROW * 8.0 + 2.0)).child(list)).child(
+            div()
+                .flex()
+                .flex_row()
+                .gap(px(m::SPACING))
+                .child(MenuField::new("open-with-add", add_names, 0).width(MENU_W - BUTTON_W).enabled(!addable.is_empty()).on_change(add))
+                .child(div().flex_1())
+                .child(button("Move Up", can_up, up))
+                .child(button("Move Down", can_down, down))
+                .child(button("Remove", can_remove, remove)),
+        ),
     );
     let (reset_tx, reset_mime) = (st.tx.clone(), mime.clone());
     ui.row(|ui| {

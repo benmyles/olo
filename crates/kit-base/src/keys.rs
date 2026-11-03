@@ -164,12 +164,7 @@ pub fn shortcut(command: &str) -> Option<Shortcut> {
 /// (Terminal, to its shell).
 pub fn own_shortcuts(app: &str, raw: bool) -> Vec<Shortcut> {
     let p = profile();
-    app_keys::APP_KEYS
-        .iter()
-        .filter(|e| e.app == Some(app))
-        .flat_map(|e| shortcuts::entry(e.id).map(|x| x.keys(&p)).unwrap_or_default())
-        .filter_map(|c| app_side(&c, p.command_key, raw))
-        .collect()
+    app_keys::APP_KEYS.iter().filter(|e| e.app == Some(app)).flat_map(|e| shortcuts::entry(e.id).map(|x| x.keys(&p)).unwrap_or_default()).filter_map(|c| app_side(&c, p.command_key, raw)).collect()
 }
 
 /// A menu item with keys the profile doesn't list: they can't be changed

@@ -22,25 +22,51 @@ pub enum UnitAction {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Step {
     /// Write a whole file (through a sibling, then renamed into place).
-    WriteFile { path: PathBuf, content: String, mode: u32 },
+    WriteFile {
+        path: PathBuf,
+        content: String,
+        mode: u32,
+    },
     /// Copy a file (a program) whole, owned by whoever runs the step.
-    CopyFile { from: PathBuf, to: PathBuf, mode: u32 },
+    CopyFile {
+        from: PathBuf,
+        to: PathBuf,
+        mode: u32,
+    },
     /// Have NetworkManager read its configuration again.
     NetworkManagerReload,
     /// Write a value to a sysfs attribute.
-    WriteSysfs { path: PathBuf, value: String },
+    WriteSysfs {
+        path: PathBuf,
+        value: String,
+    },
     /// Remove a file (already gone is fine).
-    RemoveFile { path: PathBuf },
+    RemoveFile {
+        path: PathBuf,
+    },
     /// Act on a system (not user) systemd unit.
-    Unit { name: String, action: UnitAction },
-    Signal { pid: i32, signal: i32 },
+    Unit {
+        name: String,
+        action: UnitAction,
+    },
+    Signal {
+        pid: i32,
+        signal: i32,
+    },
     /// List a program in /etc/shells (a login shell must be there).
-    AddShell { path: PathBuf },
+    AddShell {
+        path: PathBuf,
+    },
     /// Run a shell once (`-c 'exit 0'`): it starts, before it's anyone's
     /// login shell.
-    TryShell { path: PathBuf },
+    TryShell {
+        path: PathBuf,
+    },
     /// Make `shell` `user`'s login shell (AccountsService's SetShell).
-    SetLoginShell { user: String, shell: PathBuf },
+    SetLoginShell {
+        user: String,
+        shell: PathBuf,
+    },
 }
 
 impl Step {
@@ -85,11 +111,7 @@ impl Step {
             Step::Unit { name, action } => unit(name, action).map_err(|e| format!("{}: {e}", self.describe())),
             Step::Signal { pid, signal } => {
                 // SAFETY: kill with a pid and signal number has no memory effects.
-                if unsafe { libc::kill(*pid, *signal) } == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) {
-                    Ok(())
-                } else {
-                    Err(failed(std::io::Error::last_os_error()))
-                }
+                if unsafe { libc::kill(*pid, *signal) } == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) { Ok(()) } else { Err(failed(std::io::Error::last_os_error())) }
             }
             Step::AddShell { path } => add_shell(path).map_err(failed),
             Step::TryShell { path } => try_shell(path),

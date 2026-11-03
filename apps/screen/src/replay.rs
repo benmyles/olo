@@ -25,9 +25,9 @@ use std::{
 };
 
 use olo_ui::{
-    Proxy,
+    Proxy, agent,
     gpui::{App, AppContext as _, Context, Entity, EventEmitter, FontWeight, IntoElement, ParentElement as _, Render, SharedString, Styled as _, Task, TextRun, Window, canvas, div, point, px},
-    agent, metrics as m,
+    metrics as m,
     search::{self, Facet, FilterBar, Query, SearchEvent, SearchField, search_field},
     style::{self, c},
     theme,
@@ -43,11 +43,27 @@ use crate::{
 pub enum ReplayMsg {
     /// What was added to the history (or all of it, `reset`), and the
     /// frames kept so far.
-    Loaded { name: String, actions: Vec<Action>, texts: Vec<String>, reset: bool, segments: Arc<Vec<record::Segment>> },
-    Frame { name: String, at: u64, shot: Arc<Shot> },
+    Loaded {
+        name: String,
+        actions: Vec<Action>,
+        texts: Vec<String>,
+        reset: bool,
+        segments: Arc<Vec<record::Segment>>,
+    },
+    Frame {
+        name: String,
+        at: u64,
+        shot: Arc<Shot>,
+    },
     /// Exporting: how far it has got (0–1), then how it ended.
-    Progress { name: String, done: f32 },
-    Exported { name: String, result: Result<PathBuf, String> },
+    Progress {
+        name: String,
+        done: f32,
+    },
+    Exported {
+        name: String,
+        result: Result<PathBuf, String>,
+    },
 }
 
 /// What the window hears from a history: an export ended.
@@ -189,11 +205,8 @@ fn follow(name: &str, proxy: Proxy) -> Option<olo_ui::watch::Watch> {
             first = false;
             // Until the folder changes (or the watch is dropped: done), or
             // frames left unread are due.
-            let changed = if read_frames {
-                rx.recv().map_err(|_| RecvTimeoutError::Disconnected)
-            } else {
-                rx.recv_timeout(FRAMES_EVERY.saturating_sub(frames_read.map_or(Duration::ZERO, |t| t.elapsed())))
-            };
+            let changed =
+                if read_frames { rx.recv().map_err(|_| RecvTimeoutError::Disconnected) } else { rx.recv_timeout(FRAMES_EVERY.saturating_sub(frames_read.map_or(Duration::ZERO, |t| t.elapsed()))) };
             match changed {
                 Ok(()) => {
                     std::thread::sleep(SETTLE);
@@ -385,7 +398,13 @@ impl Replay {
                     self.started = Some(a.at);
                 }
                 if self.size.is_none() || reset {
-                    self.size = self.actions.iter().rev().find(|a| a.kind == "start" && a.error.is_none()).and_then(|a| a.result.as_ref()).and_then(|r| Some((r["width"].as_f64()? as f32, r["height"].as_f64()? as f32)));
+                    self.size = self
+                        .actions
+                        .iter()
+                        .rev()
+                        .find(|a| a.kind == "start" && a.error.is_none())
+                        .and_then(|a| a.result.as_ref())
+                        .and_then(|r| Some((r["width"].as_f64()? as f32, r["height"].as_f64()? as f32)));
                     let shape = self.size;
                     self.well.update(cx, |w, _| w.set_shape(shape));
                 }
@@ -727,14 +746,12 @@ impl Replay {
         if used + m::TIGHT + SPEED_W + m::SPACING + LATEST_W <= width {
             let speeds: Vec<SharedString> = SPEEDS.iter().map(|s| SharedString::from(*s)).collect();
             let set = me.clone();
-            buttons = buttons.child(
-                div().child(MenuField::new(format!("replay-speed-{}", self.name), speeds, self.speed).width(SPEED_W).on_change(move |i, _, cx| {
-                    set.update(cx, |r, cx| {
-                        r.speed = i;
-                        cx.notify();
-                    })
-                })),
-            );
+            buttons = buttons.child(div().child(MenuField::new(format!("replay-speed-{}", self.name), speeds, self.speed).width(SPEED_W).on_change(move |i, _, cx| {
+                set.update(cx, |r, cx| {
+                    r.speed = i;
+                    cx.notify();
+                })
+            })));
         }
         let latest = Button::new(if running { "Live" } else { "Latest" }).id("replay-latest").min_width(LATEST_W).pushed(following).enabled(!following || running).on_click(on(&me, Replay::latest));
         // The scrubber and the time; or the export under way.
@@ -772,16 +789,16 @@ impl Replay {
                 .items_center()
                 .gap(px(m::SPACING))
                 .h(px(m::CONTROL_HEIGHT))
-                .child(div().flex_1().min_w_0().child(Slider::new(format!("replay-scrub-{}", self.name), secs.min(total), 0.0..=total).on_change(move |v, _, cx| scrub.update(cx, |r, cx| r.scrub(v, cx)))))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .child(Slider::new(format!("replay-scrub-{}", self.name), secs.min(total), 0.0..=total).on_change(move |v, _, cx| scrub.update(cx, |r, cx| r.scrub(v, cx)))),
+                )
                 .child(label)
         };
         if two_rows {
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(m::TIGHT))
-                .child(middle)
-                .child(div().flex().flex_row().items_center().child(buttons).child(div().flex_1()).child(latest))
+            div().flex().flex_col().gap(px(m::TIGHT)).child(middle).child(div().flex().flex_row().items_center().child(buttons).child(div().flex_1()).child(latest))
         } else {
             div().flex().flex_row().items_center().gap(px(m::SPACING)).child(buttons).child(div().flex_1().min_w_0().child(middle)).child(latest)
         }
@@ -810,7 +827,18 @@ impl Replay {
                     };
                     let w = style::label(window, cx, r.right(), y1, style::Align::Right, when.clone(), style::PLAIN_SIZE, plain.clone(), style::disabled_text(&p));
                     let cmd = command(a);
-                    let t = style::label_fit(window, cx, r.left(), y1, style::Align::Left, cmd.clone(), style::PLAIN_SIZE, bold.clone(), c(p.panel_text), (w.left() - px(m::SPACING) - r.left()).max(px(0.0)));
+                    let t = style::label_fit(
+                        window,
+                        cx,
+                        r.left(),
+                        y1,
+                        style::Align::Left,
+                        cmd.clone(),
+                        style::PLAIN_SIZE,
+                        bold.clone(),
+                        c(p.panel_text),
+                        (w.left() - px(m::SPACING) - r.left()).max(px(0.0)),
+                    );
                     agent::record(window, cx, agent::Node { value: Some(when.into()), ..agent::Node::label(cmd, t) });
                     let (text, color) = match (&a.error, outcome(a)) {
                         (Some(e), _) => (format!("✗ Failed: {e}"), c(p.failure)),
@@ -923,7 +951,15 @@ impl Replay {
                             let grow = since as f32 / RING_MS as f32;
                             let color = c(p.keyboard_navigation).opacity(1.0 - grow);
                             let radius = px(6.0 + 10.0 * grow);
-                            window.paint_quad(olo_ui::gpui::outline(olo_ui::gpui::Bounds::centered_at(center, olo_ui::gpui::size(radius * 2.0 + px(2.0), radius * 2.0 + px(2.0))), color, olo_ui::gpui::BorderStyle::Solid).corner_radii(radius + px(1.0)).border_widths(px(2.0)));
+                            window.paint_quad(
+                                olo_ui::gpui::outline(
+                                    olo_ui::gpui::Bounds::centered_at(center, olo_ui::gpui::size(radius * 2.0 + px(2.0), radius * 2.0 + px(2.0))),
+                                    color,
+                                    olo_ui::gpui::BorderStyle::Solid,
+                                )
+                                .corner_radii(radius + px(1.0))
+                                .border_widths(px(2.0)),
+                            );
                         }
                         if (a.kind == "key" || a.kind == "type") && since < CAPTION_MS && !captioned {
                             captioned = true;

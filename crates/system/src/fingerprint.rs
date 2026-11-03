@@ -17,7 +17,9 @@ const DEVICE: &str = "net.reactivated.Fprint.Device";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
     /// The sensor is listening ("press" or "swipe").
-    Ready { swipe: bool },
+    Ready {
+        swipe: bool,
+    },
     /// A bad read: say this and keep listening.
     Retry(String),
     /// A finger that isn't enrolled; still listening.
@@ -56,8 +58,7 @@ impl Stop {
 
 fn device() -> Result<Proxy<'static>> {
     let conn = bus::system()?;
-    let path: zvariant::OwnedObjectPath =
-        bus::call(conn, DEST, "/net/reactivated/Fprint/Manager", "net.reactivated.Fprint.Manager", "GetDefaultDevice", &())?;
+    let path: zvariant::OwnedObjectPath = bus::call(conn, DEST, "/net/reactivated/Fprint/Manager", "net.reactivated.Fprint.Manager", "GetDefaultDevice", &())?;
     Proxy::new(conn, DEST, path, DEVICE)
 }
 
@@ -118,7 +119,9 @@ pub fn delete(user: &str, finger: &str) -> Result<()> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EnrollEvent {
     /// Listening; this many good touches are needed in all.
-    Ready { stages: u32 },
+    Ready {
+        stages: u32,
+    },
     /// One more good touch.
     Stage,
     /// A bad touch: say this and keep going.
@@ -162,9 +165,7 @@ pub fn enroll(user: &str, finger: &str, stop: &Stop, mut on: impl FnMut(EnrollEv
                     return Ok(true);
                 }
                 "enroll-stage-passed" => on(EnrollEvent::Stage),
-                r @ ("enroll-retry-scan" | "enroll-swipe-too-short" | "enroll-finger-not-centered" | "enroll-remove-and-retry") => {
-                    on(EnrollEvent::Retry(describe_enroll(r).into()))
-                }
+                r @ ("enroll-retry-scan" | "enroll-swipe-too-short" | "enroll-finger-not-centered" | "enroll-remove-and-retry") => on(EnrollEvent::Retry(describe_enroll(r).into())),
                 r => {
                     on(EnrollEvent::Failed(describe_enroll(r).into()));
                     return Ok(false);
@@ -243,9 +244,7 @@ pub fn verify(user: &str, stop: &Stop, mut on: impl FnMut(Event)) -> Result<bool
                         return Ok(true);
                     }
                     "verify-no-match" => on(Event::NoMatch),
-                    r if r.starts_with("verify-") && !matches!(r, "verify-disconnected" | "verify-unknown-error") => {
-                        on(Event::Retry(describe(r).into()))
-                    }
+                    r if r.starts_with("verify-") && !matches!(r, "verify-disconnected" | "verify-unknown-error") => on(Event::Retry(describe(r).into())),
                     r => {
                         on(Event::Failed(describe(r).into()));
                         return Ok(false);

@@ -30,9 +30,7 @@ pub struct Link {
 
 fn url_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| {
-        Regex::new(r#"(?:https?|ftp|file|ssh|git)://[^\s<>"'`{}|\\^\x00-\x1f]+|mailto:[^\s<>"'`]+|www\.[^\s<>"'`]+\.[^\s<>"'`]+"#).unwrap()
-    })
+    RE.get_or_init(|| Regex::new(r#"(?:https?|ftp|file|ssh|git)://[^\s<>"'`{}|\\^\x00-\x1f]+|mailto:[^\s<>"'`]+|www\.[^\s<>"'`]+\.[^\s<>"'`]+"#).unwrap())
 }
 
 fn path_re() -> &'static Regex {
@@ -230,9 +228,7 @@ mod tests {
     use super::*;
 
     fn link(line: &str, col: usize) -> Option<Link> {
-        find(line, col, Path::new("/work"), |p| {
-            ["/work/src/main.rs", "/etc/hosts", "/work/README.md", "/work/src"].iter().any(|e| Path::new(e) == p)
-        })
+        find(line, col, Path::new("/work"), |p| ["/work/src/main.rs", "/etc/hosts", "/work/README.md", "/work/src"].iter().any(|e| Path::new(e) == p))
     }
 
     #[test]

@@ -89,7 +89,15 @@ struct State {
     /// Each face's shape plans, by the text's direction, script and
     /// language: harfrust's `shape` made one for every run it shaped, most
     /// of the time a row of a log took (a screen of new rows, 20–30 ms).
-    plans: HashMap<(usize, harfrust::Direction, harfrust::Script, Option<harfrust::Language>), harfrust::ShapePlan>,
+    plans: HashMap<
+        (
+            usize,
+            harfrust::Direction,
+            harfrust::Script,
+            Option<harfrust::Language>,
+        ),
+        harfrust::ShapePlan,
+    >,
     /// Words of plain ASCII text as each face shaped them, in its units,
     /// by a hash of the face and the word (the word kept to check): a word
     /// is shaped once, as browsers do (harfrust takes ~220 ns a character
@@ -290,7 +298,11 @@ impl PlatformTextSystem for OloTextSystem {
         let mut state = self.0.write();
         // A colour glyph stays for the next window; another goes to the
         // atlas that asked.
-        let drawn = if params.is_emoji { state.drawn.get(params).cloned() } else { state.drawn.remove(params) };
+        let drawn = if params.is_emoji {
+            state.drawn.get(params).cloned()
+        } else {
+            state.drawn.remove(params)
+        };
         let drawn = match drawn {
             Some(drawn) => drawn,
             None => {
@@ -307,7 +319,10 @@ impl PlatformTextSystem for OloTextSystem {
     /// Olo: draws `params` ahead of need, each the first time, without
     /// holding the text system while it draws (colour glyphs as outline
     /// ones are in `draw_ahead`).
-    fn draw_glyphs_ahead(&self, params: &[RenderGlyphParams]) -> Vec<(RenderGlyphParams, Bounds<DevicePixels>)> {
+    fn draw_glyphs_ahead(
+        &self,
+        params: &[RenderGlyphParams],
+    ) -> Vec<(RenderGlyphParams, Bounds<DevicePixels>)> {
         let mut out = Vec::new();
         for p in params {
             let job = {
@@ -315,7 +330,9 @@ impl PlatformTextSystem for OloTextSystem {
                 if state.drawn.contains_key(p) {
                     continue;
                 }
-                let Some(instance) = state.instances.get(p.font_id.0) else { continue };
+                let Some(instance) = state.instances.get(p.font_id.0) else {
+                    continue;
+                };
                 let source = &state.sources[instance.source];
                 if !source.color {
                     continue;
@@ -354,20 +371,35 @@ impl PlatformTextSystem for OloTextSystem {
     /// drawing a glyph waits for nothing): what it needs taken under a
     /// moment's read, drawn on a rasterizer of its own, the pixels kept
     /// for frames to take in a moment's write.
-    fn draw_ahead(&self, font_id: FontId, font_size: Pixels, scale_factor: f32, rendering: TextRendering, chars: &[char]) -> Vec<(RenderGlyphParams, Bounds<DevicePixels>)> {
+    fn draw_ahead(
+        &self,
+        font_id: FontId,
+        font_size: Pixels,
+        scale_factor: f32,
+        rendering: TextRendering,
+        chars: &[char],
+    ) -> Vec<(RenderGlyphParams, Bounds<DevicePixels>)> {
         let (data, index, location) = {
             let state = self.0.read();
-            let Some(instance) = state.instances.get(font_id.0) else { return Vec::new() };
+            let Some(instance) = state.instances.get(font_id.0) else {
+                return Vec::new();
+            };
             let source = &state.sources[instance.source];
             if source.color {
                 return Vec::new();
             }
             (source.data.clone(), source.index, instance.location.clone())
         };
-        let Ok(font) = FontRef::from_index((*data).as_ref(), index) else { return Vec::new() };
+        let Ok(font) = FontRef::from_index((*data).as_ref(), index) else {
+            return Vec::new();
+        };
         let ppem = font_size.0 * scale_factor;
         let outlines = font.outline_glyphs();
-        let hinting = if matches!(rendering, TextRendering::Unhinted) { None } else { hinting_at(&outlines, ppem, &location) };
+        let hinting = if matches!(rendering, TextRendering::Unhinted) {
+            None
+        } else {
+            hinting_at(&outlines, ppem, &location)
+        };
         let charmap = font.charmap();
         let mut raster = ab_glyph_rasterizer::Rasterizer::new(0, 0);
         let mut drawn = Vec::new();
@@ -384,7 +416,14 @@ impl PlatformTextSystem for OloTextSystem {
                     is_emoji: false,
                     rendering,
                 };
-                if let Some(glyph) = draw_outline(&outlines, &location, hinting.as_ref(), &mut raster, &params, ppem) {
+                if let Some(glyph) = draw_outline(
+                    &outlines,
+                    &location,
+                    hinting.as_ref(),
+                    &mut raster,
+                    &params,
+                    ppem,
+                ) {
                     drawn.push((params, glyph));
                 }
             }
@@ -422,7 +461,11 @@ impl State {
     }
 
     fn find_in(&mut self, system: bool, name: &str, weight: f32, italic: bool) -> Option<usize> {
-        let db = if system { self.system.as_ref()? } else { &self.own };
+        let db = if system {
+            self.system.as_ref()?
+        } else {
+            &self.own
+        };
         let faces: Vec<(fontdb::ID, bool, f32)> = db
             .faces()
             .filter(|f| f.families.iter().any(|(family, _)| family == name))
@@ -460,7 +503,11 @@ impl State {
         if let Some(source) = self.source_ids.get(&(system, id)) {
             return Some(*source);
         }
-        let db = if system { self.system.as_ref()? } else { &self.own };
+        let db = if system {
+            self.system.as_ref()?
+        } else {
+            &self.own
+        };
         let info = db.face(id)?;
         let family = info.families.first()?.0.clone();
         let italic = info.style != fontdb::Style::Normal;
@@ -563,11 +610,7 @@ impl State {
             .iter()
             .filter_map(|(name, value)| {
                 let tag: [u8; 4] = name.as_bytes().try_into().ok()?;
-                Some(harfrust::Feature::new(
-                    harfrust::Tag::new(&tag),
-                    *value,
-                    ..,
-                ))
+                Some(harfrust::Feature::new(harfrust::Tag::new(&tag), *value, ..))
             })
             .collect();
         let id = FontId(self.instances.len());
@@ -747,7 +790,10 @@ impl State {
             for g in glyphs {
                 shaped.push(ShapedGlyph {
                     id: GlyphId(g.id),
-                    position: point(px(*x + g.x_offset as f32 * scale), px(-g.y_offset as f32 * scale)),
+                    position: point(
+                        px(*x + g.x_offset as f32 * scale),
+                        px(-g.y_offset as f32 * scale),
+                    ),
                     index: at + g.cluster as usize,
                     is_emoji,
                 });
@@ -790,7 +836,9 @@ impl State {
             place(&mut x, from, &glyphs);
         }
         match runs.last_mut() {
-            Some(last) if last.font_id == face && last.font_size == font_size => last.glyphs.extend(shaped),
+            Some(last) if last.font_id == face && last.font_size == font_size => {
+                last.glyphs.extend(shaped)
+            }
             _ => runs.push(ShapedRun {
                 font_id: face,
                 font_size,
@@ -817,19 +865,41 @@ impl State {
         let mut buffer = self.buffer.take().unwrap_or_default();
         buffer.push_str(text);
         buffer.guess_segment_properties();
-        let key = (face.0, buffer.direction(), buffer.script(), buffer.language());
-        let plan = self.plans.entry(key).or_insert_with_key(|(_, direction, script, language)| {
-            harfrust::ShapePlan::new(&shaper, *direction, Some(*script), language.as_ref(), &instance.features)
-        });
+        let key = (
+            face.0,
+            buffer.direction(),
+            buffer.script(),
+            buffer.language(),
+        );
+        let plan = self
+            .plans
+            .entry(key)
+            .or_insert_with_key(|(_, direction, script, language)| {
+                harfrust::ShapePlan::new(
+                    &shaper,
+                    *direction,
+                    Some(*script),
+                    language.as_ref(),
+                    &instance.features,
+                )
+            });
         let glyphs = shaper.shape(
             buffer,
-            harfrust::ShapeOptions::new().features(&instance.features).plan(Some(plan)),
+            harfrust::ShapeOptions::new()
+                .features(&instance.features)
+                .plan(Some(plan)),
         );
         let out = glyphs
             .glyph_infos()
             .iter()
             .zip(glyphs.glyph_positions())
-            .map(|(info, pos)| WordGlyph { id: info.glyph_id, cluster: info.cluster, x_advance: pos.x_advance, x_offset: pos.x_offset, y_offset: pos.y_offset })
+            .map(|(info, pos)| WordGlyph {
+                id: info.glyph_id,
+                cluster: info.cluster,
+                x_advance: pos.x_advance,
+                x_offset: pos.x_offset,
+                y_offset: pos.y_offset,
+            })
             .collect();
         self.buffer = Some(glyphs.clear());
         out
@@ -860,7 +930,10 @@ impl State {
             let mut freed = 0;
             for other_scales_only in [true, false] {
                 self.drawn.retain(|p, d| {
-                    if !p.is_emoji || freed > KEEP / 2 || (other_scales_only && p.scale_factor == now_scale) {
+                    if !p.is_emoji
+                        || freed > KEEP / 2
+                        || (other_scales_only && p.scale_factor == now_scale)
+                    {
                         return true;
                     }
                     freed += d.1.len();
@@ -879,22 +952,40 @@ impl State {
         let instance = &self.instances[params.font_id.0];
         let source = &self.sources[instance.source];
         if source.color {
-            return draw_color_data(source.data.clone(), source.index, &instance.location, params.glyph_id, ppem);
+            return draw_color_data(
+                source.data.clone(),
+                source.index,
+                &instance.location,
+                params.glyph_id,
+                ppem,
+            );
         }
         let font = source.font()?;
         let outlines = font.outline_glyphs();
         let hinted = !matches!(params.rendering, TextRendering::Unhinted);
         let key = (params.font_id.0, ppem.to_bits());
         if hinted && !self.hinting.contains_key(&key) {
-            self.hinting.insert(key, hinting_at(&outlines, ppem, &instance.location)?);
+            self.hinting
+                .insert(key, hinting_at(&outlines, ppem, &instance.location)?);
         }
         let hinting = if hinted { self.hinting.get(&key) } else { None };
-        draw_outline(&outlines, &instance.location, hinting, &mut self.raster, params, ppem)
+        draw_outline(
+            &outlines,
+            &instance.location,
+            hinting,
+            &mut self.raster,
+            params,
+            ppem,
+        )
     }
 }
 
 /// The light autohinting (vertical only) for a face at `ppem`.
-fn hinting_at(outlines: &skrifa::outline::OutlineGlyphCollection, ppem: f32, location: &Location) -> Option<HintingInstance> {
+fn hinting_at(
+    outlines: &skrifa::outline::OutlineGlyphCollection,
+    ppem: f32,
+    location: &Location,
+) -> Option<HintingInstance> {
     HintingInstance::new(
         outlines,
         Ppem::new(ppem),
@@ -934,12 +1025,20 @@ fn draw_outline(
         across,
     };
     match hinting {
-        Some(hinting) if !unhinted => glyph.draw(DrawSettings::hinted(hinting, false), &mut pen).ok()?,
-        _ => glyph.draw(DrawSettings::unhinted(Ppem::new(ppem), location), &mut pen).ok()?,
+        Some(hinting) if !unhinted => glyph
+            .draw(DrawSettings::hinted(hinting, false), &mut pen)
+            .ok()?,
+        _ => glyph
+            .draw(DrawSettings::unhinted(Ppem::new(ppem), location), &mut pen)
+            .ok()?,
     };
     let darken = darkening(params.font_size.0) * params.scale_factor;
     let reach = f64::from(darken / 2.0);
-    let path = if darken > 0.0 { embolden(&path, reach) } else { path };
+    let path = if darken > 0.0 {
+        embolden(&path, reach)
+    } else {
+        path
+    };
     // (The box of what's filled, emboldened: a pixel the outline reaches
     // outside the grid would leave its row's coverage unsummed, a grey
     // bar across the glyph.)
@@ -947,14 +1046,23 @@ fn draw_outline(
     // Whole pixels, and for LCD glyphs one more each side, where the
     // filter spreads them.
     let spread = if lcd.is_some() { 1.0 } else { 0.0 };
-    let (x0, x1) = ((b.x0 / across).floor() - spread, (b.x1 / across).ceil() + spread);
+    let (x0, x1) = (
+        (b.x0 / across).floor() - spread,
+        (b.x1 / across).ceil() + spread,
+    );
     let (y0, y1) = (b.y0.floor(), b.y1.ceil());
     let (width, height) = ((x1 - x0) as u16, (y1 - y0) as u16);
     if width == 0 || height == 0 {
         return None;
     }
     let samples = (f64::from(width) * across) as u16;
-    let coverage = fill(raster, &path, (-x0 * across, -y0), samples.into(), height.into());
+    let coverage = fill(
+        raster,
+        &path,
+        (-x0 * across, -y0),
+        samples.into(),
+        height.into(),
+    );
     let pixels = match lcd {
         Some(layout) => lcd_filter(&coverage, width.into(), height.into(), layout),
         None => coverage,
@@ -1043,11 +1151,7 @@ fn draw_color_data(
     let (ox, oy) = (ppem, 2.0 * ppem);
     let blob: Arc<dyn AsRef<[u8]> + Send + Sync> = data;
     let font = peniko::FontData::new(peniko::Blob::new(blob), index);
-    let coords: Vec<i16> = location
-        .coords()
-        .iter()
-        .map(|c| c.to_bits())
-        .collect();
+    let coords: Vec<i16> = location.coords().iter().map(|c| c.to_bits()).collect();
     let mut ctx = vello_cpu::RenderContext::new(canvas, canvas);
     let mut resources = vello_cpu::Resources::new();
     ctx.set_paint(vello_cpu::color::OpaqueColor::<vello_cpu::color::Srgb>::WHITE);
@@ -1133,7 +1237,13 @@ fn emoji(ch: char, next: Option<char>) -> bool {
 /// single line, a sixth of a pixel off at text sizes). A glyph is small,
 /// so this takes a few microseconds where a vector renderer's setup alone
 /// took tens.
-fn fill(raster: &mut ab_glyph_rasterizer::Rasterizer, path: &kurbo::BezPath, offset: (f64, f64), width: usize, height: usize) -> Vec<u8> {
+fn fill(
+    raster: &mut ab_glyph_rasterizer::Rasterizer,
+    path: &kurbo::BezPath,
+    offset: (f64, f64),
+    width: usize,
+    height: usize,
+) -> Vec<u8> {
     use ab_glyph_rasterizer::point as pt;
     use kurbo::PathEl;
     raster.reset(width, height);
@@ -1188,7 +1298,10 @@ fn embolden(path: &kurbo::BezPath, r: f64) -> kurbo::BezPath {
     let mut start = 0;
     while start < els.len() {
         // A contour: from a move to the next (or the end).
-        let end = els[start + 1..].iter().position(|e| matches!(e, PathEl::MoveTo(_))).map_or(els.len(), |i| start + 1 + i);
+        let end = els[start + 1..]
+            .iter()
+            .position(|e| matches!(e, PathEl::MoveTo(_)))
+            .map_or(els.len(), |i| start + 1 + i);
         let contour = &els[start..end];
         let mut points: Vec<Point> = Vec::new();
         for el in contour {
@@ -1200,7 +1313,11 @@ fn embolden(path: &kurbo::BezPath, r: f64) -> kurbo::BezPath {
             }
         }
         // (A closing point on the first is the first.)
-        let n = if points.len() > 1 && points[points.len() - 1] == points[0] { points.len() - 1 } else { points.len() };
+        let n = if points.len() > 1 && points[points.len() - 1] == points[0] {
+            points.len() - 1
+        } else {
+            points.len()
+        };
         let moved: Vec<Point> = (0..points.len())
             .map(|i| {
                 let k = i % n.max(1);
@@ -1208,8 +1325,13 @@ fn embolden(path: &kurbo::BezPath, r: f64) -> kurbo::BezPath {
                 // The nearest different points either side.
                 let before = (1..n).map(|j| points[(k + n - j) % n]).find(|q| *q != p);
                 let after = (1..n).map(|j| points[(k + j) % n]).find(|q| *q != p);
-                let (Some(before), Some(after)) = (before, after) else { return p };
-                let (n_in, n_out) = (normal((p - before).normalize()), normal((after - p).normalize()));
+                let (Some(before), Some(after)) = (before, after) else {
+                    return p;
+                };
+                let (n_in, n_out) = (
+                    normal((p - before).normalize()),
+                    normal((after - p).normalize()),
+                );
                 // v·n_in = v·n_out = r; a hairpin (the normals opposed)
                 // stays put rather than shoot out, and a sharp corner (a
                 // w's points) moves at most 2r, as FreeType limits its
@@ -1220,7 +1342,11 @@ fn embolden(path: &kurbo::BezPath, r: f64) -> kurbo::BezPath {
                 }
                 let v = (n_in + n_out) * (r / d);
                 let most = 2.0 * r;
-                p + if v.hypot() > most { v * (most / v.hypot()) } else { v }
+                p + if v.hypot() > most {
+                    v * (most / v.hypot())
+                } else {
+                    v
+                }
             })
             .collect();
         let mut at = moved.iter().copied();
@@ -1295,7 +1421,11 @@ mod tests {
     #[ignore]
     fn shaping_cost() {
         let system = OloTextSystem::new();
-        let data = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/fonts/NotoSans[wght].ttf")).expect("Olo's Noto Sans");
+        let data = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../data/fonts/NotoSans[wght].ttf"
+        ))
+        .expect("Olo's Noto Sans");
         system.add_fonts(vec![Cow::Owned(data)]).unwrap();
         let id = system.font_id(&crate::font("Noto Sans")).unwrap();
         let cells = |n: usize, round: usize| -> Vec<String> {
@@ -1312,14 +1442,30 @@ mod tests {
         };
         // (Warm: the faces' tables, plans.)
         for line in cells(500, 0) {
-            system.layout_line(&line, px(13.0), &[FontRun { len: line.len(), font_id: id, size: None }]);
+            system.layout_line(
+                &line,
+                px(13.0),
+                &[FontRun {
+                    len: line.len(),
+                    font_id: id,
+                    size: None,
+                }],
+            );
         }
         let mut best = f64::MAX;
         for round in 1..8 {
             let lines = cells(1000, round);
             let t = std::time::Instant::now();
             for line in &lines {
-                system.layout_line(line, px(13.0), &[FontRun { len: line.len(), font_id: id, size: None }]);
+                system.layout_line(
+                    line,
+                    px(13.0),
+                    &[FontRun {
+                        len: line.len(),
+                        font_id: id,
+                        size: None,
+                    }],
+                );
             }
             best = best.min(t.elapsed().as_secs_f64() * 1e6 / lines.len() as f64);
         }
@@ -1334,7 +1480,11 @@ mod tests {
     #[test]
     fn sharp_glyphs_stay_in_their_box() {
         use kurbo::Shape as _;
-        let data = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/fonts/NotoSans[wght].ttf")).expect("Olo's Noto Sans");
+        let data = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../data/fonts/NotoSans[wght].ttf"
+        ))
+        .expect("Olo's Noto Sans");
         let font = FontRef::new(&data).expect("a font");
         let outlines = font.outline_glyphs();
         let charmap = font.charmap();
@@ -1356,18 +1506,49 @@ mod tests {
                             rendering: TextRendering::Unhinted,
                         };
                         let ppem = points * scale;
-                        let (b, pixels) = draw_outline(&outlines, &Location::default(), None, &mut raster, &params, ppem).expect("drawn");
+                        let (b, pixels) = draw_outline(
+                            &outlines,
+                            &Location::default(),
+                            None,
+                            &mut raster,
+                            &params,
+                            ppem,
+                        )
+                        .expect("drawn");
                         // The outline as drawn: placed and emboldened alike.
                         let mut path = kurbo::BezPath::new();
-                        let mut pen = Pen { path: &mut path, x: f64::from(x) / f64::from(SUBPIXEL_VARIANTS_X), across: 1.0 };
-                        glyph.draw(DrawSettings::unhinted(Ppem::new(ppem), &Location::default()), &mut pen).expect("an outline");
+                        let mut pen = Pen {
+                            path: &mut path,
+                            x: f64::from(x) / f64::from(SUBPIXEL_VARIANTS_X),
+                            across: 1.0,
+                        };
+                        glyph
+                            .draw(
+                                DrawSettings::unhinted(Ppem::new(ppem), &Location::default()),
+                                &mut pen,
+                            )
+                            .expect("an outline");
                         let path = embolden(&path, f64::from(darkening(points) * scale / 2.0));
                         let (w, h) = (b.size.width.0 as usize, b.size.height.0 as usize);
                         for (i, &a) in pixels.iter().enumerate() {
-                            let (px0, py0) = ((i % w) as f64 + f64::from(b.origin.x.0), (i / w) as f64 + f64::from(b.origin.y.0));
-                            let touched = (0..64).any(|k| path.winding(kurbo::Point::new(px0 + (k % 8) as f64 / 8.0 + 1.0 / 16.0, py0 + (k / 8) as f64 / 8.0 + 1.0 / 16.0)) != 0);
+                            let (px0, py0) = (
+                                (i % w) as f64 + f64::from(b.origin.x.0),
+                                (i / w) as f64 + f64::from(b.origin.y.0),
+                            );
+                            let touched = (0..64).any(|k| {
+                                path.winding(kurbo::Point::new(
+                                    px0 + (k % 8) as f64 / 8.0 + 1.0 / 16.0,
+                                    py0 + (k / 8) as f64 / 8.0 + 1.0 / 16.0,
+                                )) != 0
+                            });
                             if !touched && a > worst.0 {
-                                worst = (a, format!("{ch:?} at {points} pt, {scale}×, variant {x}, pixel {} of {w}×{h}", i));
+                                worst = (
+                                    a,
+                                    format!(
+                                        "{ch:?} at {points} pt, {scale}×, variant {x}, pixel {} of {w}×{h}",
+                                        i
+                                    ),
+                                );
                             }
                         }
                     }
@@ -1376,7 +1557,12 @@ mod tests {
         }
         // (A pixel the outline only grazes between samples may hold a few
         // levels.)
-        assert!(worst.0 <= 24, "ink outside the outline: {}/255 ({})", worst.0, worst.1);
+        assert!(
+            worst.0 <= 24,
+            "ink outside the outline: {}/255 ({})",
+            worst.0,
+            worst.1
+        );
     }
 
     /// Glyphs are filled to their true coverage: each pixel of Noto
@@ -1387,7 +1573,11 @@ mod tests {
     #[test]
     fn fill_is_exact() {
         use kurbo::Shape as _;
-        let data = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/fonts/NotoSans[wght].ttf")).expect("Olo's Noto Sans");
+        let data = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../data/fonts/NotoSans[wght].ttf"
+        ))
+        .expect("Olo's Noto Sans");
         let font = FontRef::new(&data).expect("a font");
         let outlines = font.outline_glyphs();
         let charmap = font.charmap();
@@ -1395,10 +1585,21 @@ mod tests {
         let (mut worst, mut total, mut n) = (0u32, 0u64, 0u64);
         for ppem in [10.5f32, 13.0, 16.5, 22.0, 36.0] {
             for ch in "AaBgQ@&8e(ß".chars() {
-                let Some(glyph) = charmap.map(ch).and_then(|g| outlines.get(g)) else { continue };
+                let Some(glyph) = charmap.map(ch).and_then(|g| outlines.get(g)) else {
+                    continue;
+                };
                 let mut path = kurbo::BezPath::new();
-                let mut pen = Pen { path: &mut path, x: 0.3, across: 1.0 };
-                glyph.draw(DrawSettings::unhinted(Ppem::new(ppem), &Location::default()), &mut pen).expect("an outline");
+                let mut pen = Pen {
+                    path: &mut path,
+                    x: 0.3,
+                    across: 1.0,
+                };
+                glyph
+                    .draw(
+                        DrawSettings::unhinted(Ppem::new(ppem), &Location::default()),
+                        &mut pen,
+                    )
+                    .expect("an outline");
                 let path = embolden(&path, 0.05);
                 let b = path.control_box();
                 let (x0, y0) = (b.x0.floor(), b.y0.floor());
@@ -1406,8 +1607,16 @@ mod tests {
                 let ours = fill(&mut raster, &path, (-x0, -y0), w, h);
                 for (i, &a) in ours.iter().enumerate() {
                     let (x, y) = ((i % w) as f64 + x0, (i / w) as f64 + y0);
-                    let inside = (0..256).filter(|k| path.winding(kurbo::Point::new(x + (k % 16) as f64 / 16.0 + 1.0 / 32.0, y + (k / 16) as f64 / 16.0 + 1.0 / 32.0)) != 0).count();
-                    let d = (i32::from(a) - (inside as f64 * 255.0 / 256.0).round() as i32).unsigned_abs();
+                    let inside = (0..256)
+                        .filter(|k| {
+                            path.winding(kurbo::Point::new(
+                                x + (k % 16) as f64 / 16.0 + 1.0 / 32.0,
+                                y + (k / 16) as f64 / 16.0 + 1.0 / 32.0,
+                            )) != 0
+                        })
+                        .count();
+                    let d = (i32::from(a) - (inside as f64 * 255.0 / 256.0).round() as i32)
+                        .unsigned_abs();
                     worst = worst.max(d);
                     total += u64::from(d);
                     n += 1;
@@ -1416,7 +1625,10 @@ mod tests {
         }
         let mean = total as f64 / n as f64;
         // (The samples are within a few levels themselves.)
-        assert!(worst <= 10 && mean < 1.5, "worst {worst}/255, mean {mean:.3}/255 over {n} pixels");
+        assert!(
+            worst <= 10 && mean < 1.5,
+            "worst {worst}/255, mean {mean:.3}/255 over {n} pixels"
+        );
     }
 
     /// Emboldening grows a square by `r` on every side, and shrinks a
@@ -1433,7 +1645,10 @@ mod tests {
                 pts
             };
             let mut path = kurbo::BezPath::new();
-            for (contour, cw) in [(square(0.0, 0.0, 10.0, !flip), !flip), (square(3.0, 3.0, 4.0, flip), flip)] {
+            for (contour, cw) in [
+                (square(0.0, 0.0, 10.0, !flip), !flip),
+                (square(3.0, 3.0, 4.0, flip), flip),
+            ] {
                 let _ = cw;
                 path.move_to(contour[0]);
                 for p in &contour[1..] {
@@ -1443,7 +1658,11 @@ mod tests {
             }
             let grown = embolden(&path, 0.5);
             // Outer 11 × 11, hole 3 × 3.
-            assert!((grown.area().abs() - (121.0 - 9.0)).abs() < 1e-9, "{}", grown.area());
+            assert!(
+                (grown.area().abs() - (121.0 - 9.0)).abs() < 1e-9,
+                "{}",
+                grown.area()
+            );
         }
     }
 }

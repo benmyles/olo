@@ -10,7 +10,8 @@ Errors fail it; review findings (look closely) are listed with --review.
 
   tools/dev/ui-lint [--review] [--keep] [--scales 1,1.5,2] [APP...]
 
-APP picks some (by name, as listed with --list, or "prefs:PANEL"). It
+APP picks some (by name, as listed with --list, or its directory in apps/
+as "disk-usage", or "prefs:PANEL"; case and spaces don't count). It
 runs release builds: `cargo build --release --workspace` first. Run by
 the pre-push hook when UI code changed (tools/hooks), and by
 tools/install-session.sh. See "The layout lint" in docs/HACKING.md.
@@ -150,18 +151,26 @@ def main():
     picked = [x for i, x in enumerate(a) if not x.startswith("--") and (i == 0 or a[i - 1] != "--scales")]
     work = f"/var/tmp/olo-ui-lint-{os.getpid()}"
     home = os.path.join(work, "home")
-    os.makedirs(work, exist_ok=True)
-    # (fixture-home's pictures need the system's Python, which has PIL.)
-    env = dict(os.environ, PATH="/usr/bin:" + os.environ.get("PATH", ""))
-    made = subprocess.run([os.path.join(ROOT, "tools/dev/fixture-home"), home], capture_output=True, text=True, env=env)
-    if made.returncode:
-        sys.exit(f"tools/dev/fixture-home failed: {made.stderr}")
     specs = apps(home)
     if "--list" in a:
         print("\n".join(s[0] for s in specs))
         return 0
     if picked:
-        specs = [s for s in specs if s[0] in picked or s[0].lower() in [p.lower() for p in picked]]
+        # ("Disk Usage", "disk-usage" and "diskusage" are one.)
+        norm = lambda x: "".join(c for c in x.lower() if c.isalnum() or c == ":")
+        want = {norm(p) for p in picked}
+        specs = [s for s in specs if norm(s[0]) in want]
+        if not specs:
+            print("ui-lint: none of those has a window to lint")
+            return 0
+    # (Made only now: --list and an empty pick leave nothing behind.
+    # fixture-home's pictures need the system's Python, which has PIL.)
+    os.makedirs(work, exist_ok=True)
+    env = dict(os.environ, PATH="/usr/bin:" + os.environ.get("PATH", ""))
+    made = subprocess.run([os.path.join(ROOT, "tools/dev/fixture-home"), home], capture_output=True, text=True, env=env)
+    if made.returncode:
+        subprocess.run(["rm", "-rf", work])
+        sys.exit(f"tools/dev/fixture-home failed: {made.stderr}")
     # (A sound server with devices, for every app: target/release's.)
     pulse = os.path.join(work, "pulse.sock")
     fakesound = subprocess.Popen([os.path.join(ROOT, "target/release/olo-fakesound"), pulse], env=dict(os.environ, FAKESOUND_AIRPODS="AA:BB:CC:DD:EE:FF"),

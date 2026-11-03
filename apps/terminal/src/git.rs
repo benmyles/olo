@@ -100,25 +100,13 @@ pub fn look(dir: &Path) -> Option<Repo> {
     let main = main_of(&repo)?;
     let name = main.file_name()?.to_string_lossy().trim_end_matches(".git").to_owned();
     let branch = repo.head().ok().filter(|h| h.is_branch()).and_then(|h| h.shorthand().map(str::to_owned));
-    let github = ["origin", "upstream"]
-        .iter()
-        .filter_map(|r| repo.find_remote(r).ok().and_then(|r| r.url().and_then(github_of)))
-        .fold(Vec::new(), |mut v, g| {
-            if !v.contains(&g) {
-                v.push(g);
-            }
-            v
-        });
-    Some(Repo {
-        name,
-        linked: repo.is_worktree(),
-        main: tidy(&main),
-        here: tidy(&here),
-        branch,
-        github,
-        gitdir: repo.path().to_path_buf(),
-        common: repo.commondir().to_path_buf(),
-    })
+    let github = ["origin", "upstream"].iter().filter_map(|r| repo.find_remote(r).ok().and_then(|r| r.url().and_then(github_of))).fold(Vec::new(), |mut v, g| {
+        if !v.contains(&g) {
+            v.push(g);
+        }
+        v
+    });
+    Some(Repo { name, linked: repo.is_worktree(), main: tidy(&main), here: tidy(&here), branch, github, gitdir: repo.path().to_path_buf(), common: repo.commondir().to_path_buf() })
 }
 
 /// The main worktree of the repository `repo` is (in) one of.
@@ -156,12 +144,7 @@ pub fn github_of(url: &str) -> Option<(String, String)> {
 pub fn worktrees(main: &Path) -> Vec<Worktree> {
     let Ok(repo) = git2::Repository::open(main) else { return Vec::new() };
     let branch_of = |r: &git2::Repository| r.head().ok().filter(|h| h.is_branch()).and_then(|h| h.shorthand().map(str::to_owned));
-    let mut out = vec![Worktree {
-        name: main.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
-        path: main.to_path_buf(),
-        branch: branch_of(&repo),
-        main: true,
-    }];
+    let mut out = vec![Worktree { name: main.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), path: main.to_path_buf(), branch: branch_of(&repo), main: true }];
     let mut linked: Vec<Worktree> = repo
         .worktrees()
         .map(|names| {
@@ -322,12 +305,7 @@ pub fn add(main: &Path, name: &str, path: &Path, progress: &Progress) -> Result<
 /// The linked worktree of `main` at `path`.
 fn find(repo: &git2::Repository, path: &Path) -> Result<git2::Worktree, String> {
     let names = repo.worktrees().map_err(|e| e.message().to_owned())?;
-    names
-        .iter()
-        .flatten()
-        .filter_map(|n| repo.find_worktree(n).ok())
-        .find(|w| tidy(w.path()) == tidy(path))
-        .ok_or_else(|| "That isn't one of the repository's worktrees.".to_owned())
+    names.iter().flatten().filter_map(|n| repo.find_worktree(n).ok()).find(|w| tidy(w.path()) == tidy(path)).ok_or_else(|| "That isn't one of the repository's worktrees.".to_owned())
 }
 
 /// Rename the worktree at `path` to `new` (its folder, beside where it
@@ -479,13 +457,7 @@ pub fn signed_out() -> bool {
 fn agent() -> ureq::Agent {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let tls = ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build();
-    ureq::Agent::config_builder()
-        .tls_config(tls)
-        .user_agent("Olo Terminal")
-        .timeout_global(Some(Duration::from_secs(15)))
-        .http_status_as_error(false)
-        .build()
-        .into()
+    ureq::Agent::config_builder().tls_config(tls).user_agent("Olo Terminal").timeout_global(Some(Duration::from_secs(15))).http_status_as_error(false).build().into()
 }
 
 fn get_json(agent: &ureq::Agent, url: &str, token: Option<&str>) -> Result<serde_json::Value, String> {
@@ -527,13 +499,7 @@ pub fn pull_request(key: &PrKey) -> Result<Option<Pr>, String> {
     } else {
         None
     };
-    Ok(Some(Pr {
-        number: p["number"].as_u64().unwrap_or(0),
-        title: p["title"].as_str().unwrap_or_default().to_owned(),
-        url: p["html_url"].as_str().unwrap_or_default().to_owned(),
-        state,
-        checks,
-    }))
+    Ok(Some(Pr { number: p["number"].as_u64().unwrap_or(0), title: p["title"].as_str().unwrap_or_default().to_owned(), url: p["html_url"].as_str().unwrap_or_default().to_owned(), state, checks }))
 }
 
 /// `s` for a URL: every byte but letters, digits and `-._~` as `%XX`.

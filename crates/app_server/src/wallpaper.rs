@@ -15,12 +15,12 @@ use std::{
     sync::mpsc,
 };
 
+use crate::render::Exact;
 use fast_image_resize::{
     self as fir, PixelType, ResizeAlg, ResizeOptions, Resizer,
     images::{Image, ImageRef},
 };
 use image::{DynamicImage, RgbaImage};
-use crate::render::Exact;
 use smithay::{
     backend::{
         allocator::Fourcc,
@@ -162,9 +162,7 @@ fn load(path: &Path, (w, h): (u32, u32)) -> Result<RgbaImage, String> {
     let (cw, ch) = (((w as f64 / scale).round() as u32).clamp(1, sw), ((h as f64 / scale).round() as u32).clamp(1, sh));
     let src = ImageRef::new(img.width(), img.height(), img.as_raw(), PixelType::U8x4).map_err(|e| e.to_string())?;
     let mut scaled = Image::new(w, h, PixelType::U8x4);
-    let options = ResizeOptions::new()
-        .resize_alg(ResizeAlg::Convolution(fir::FilterType::CatmullRom))
-        .crop(((sw - cw) / 2) as f64, ((sh - ch) / 2) as f64, cw as f64, ch as f64);
+    let options = ResizeOptions::new().resize_alg(ResizeAlg::Convolution(fir::FilterType::CatmullRom)).crop(((sw - cw) / 2) as f64, ((sh - ch) / 2) as f64, cw as f64, ch as f64);
     Resizer::new().resize(&src, &mut scaled, &options).map_err(|e| e.to_string())?;
     drop(img);
     let mut out = RgbaImage::from_raw(w, h, scaled.into_vec()).ok_or("scaled picture of the wrong size")?;
@@ -261,9 +259,7 @@ where
     R: Renderer + ImportMem,
     R::TextureId: Send + Clone + 'static,
 {
-    let strip = |renderer: &mut R, w: i32, (top, h, buffer): &(i32, i32, MemoryRenderBuffer)| {
-        crate::render::picture(renderer, (0.0, *top as f64).into(), buffer, (w, *h), None, Kind::Unspecified)
-    };
+    let strip = |renderer: &mut R, w: i32, (top, h, buffer): &(i32, i32, MemoryRenderBuffer)| crate::render::picture(renderer, (0.0, *top as f64).into(), buffer, (w, *h), None, Kind::Unspecified);
     let mut slot = slot(output).lock().unwrap();
     if let Some((strips, done)) = &mut slot.coming {
         // (Made now, the element uploads its texture; it is kept with the
@@ -310,13 +306,7 @@ mod tests {
     #[test]
     fn jpeg_xl() {
         // Fedora ships its backgrounds as JPEG XL; use one when present.
-        let Some(path) = std::fs::read_dir("/usr/share/backgrounds/gnome")
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|e| e.path())
-            .find(|p| p.extension().is_some_and(|e| e == "jxl"))
-        else {
+        let Some(path) = std::fs::read_dir("/usr/share/backgrounds/gnome").into_iter().flatten().flatten().map(|e| e.path()).find(|p| p.extension().is_some_and(|e| e == "jxl")) else {
             return;
         };
         let out = load(&path, (64, 40)).unwrap();

@@ -261,10 +261,12 @@ impl Render for OpenWithWin {
             }))
             .child(TextControl::new(self.field.clone()).label("Find:"))
             .child(div().flex_1().min_h_0().flex().flex_col().child(list))
-            .child(CheckBox::new(always, self.always).on_toggle(move |on, _, cx| always_me.update(cx, |w, cx| {
-                w.always = on;
-                cx.notify();
-            })))
+            .child(CheckBox::new(always, self.always).on_toggle(move |on, _, cx| {
+                always_me.update(cx, |w, cx| {
+                    w.always = on;
+                    cx.notify();
+                })
+            }))
             .child(
                 div()
                     .flex()

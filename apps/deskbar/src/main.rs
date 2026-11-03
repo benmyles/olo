@@ -37,7 +37,9 @@ use olo_protocol::{Client, DisplayWorkspace, Event, KeyboardProfile, NoteApp, Ou
 use olo_ui::{
     Frame, Menu, MenuItem, WindowOptions, agent, dnd,
     gpui::{
-        AnyElement, App, AppContext as _, Bounds, ClickEvent, ContentMask, Context, Corner, Entity, ExternalPaths, FontWeight, InteractiveElement as _, IntoElement, LayerKeyboard, LayerShellLayer, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Point, Render, RenderImage, ScrollWheelEvent, SharedString, StatefulInteractiveElement as _, Styled as _, Task, Window, WindowHandle, canvas, div, point, px, size,
+        AnyElement, App, AppContext as _, Bounds, ClickEvent, ContentMask, Context, Corner, Entity, ExternalPaths, FontWeight, InteractiveElement as _, IntoElement, LayerKeyboard, LayerShellLayer,
+        MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Point, Render, RenderImage, ScrollWheelEvent, SharedString, StatefulInteractiveElement as _, Styled as _, Task,
+        Window, WindowHandle, canvas, div, point, px, size,
     },
     icons, menu,
     palette::{Palette, Rgba},
@@ -1067,10 +1069,7 @@ impl Deskbar {
     fn badge_of(&mut self, team: &Team) -> Option<sni::Badge> {
         let app_id = team.windows.first().map(|w| w.app_id.clone()).unwrap_or_default();
         let entry = self.entry(&app_id);
-        self.badges
-            .iter()
-            .find(|b| same_app(&NoteApp { desktop_entry: Some(b.app.clone()), ..Default::default() }, &app_id, entry.as_ref(), &team.name))
-            .cloned()
+        self.badges.iter().find(|b| same_app(&NoteApp { desktop_entry: Some(b.app.clone()), ..Default::default() }, &app_id, entry.as_ref(), &team.name)).cloned()
     }
 
     /// Whether the applications under `display`'s workspace `ws`'s
@@ -1340,11 +1339,7 @@ fn sound_menu(devices: Option<&olo_system::audio::Devices>, pods: Option<&olo_pr
             m = m.item("Personalized Volume", format!("airpods:set personalized-volume {}", if on { "off" } else { "on" })).checked(on);
         }
         if !p.sound.card.is_empty() {
-            m = m
-                .item("Music Quality (AAC)", "airpods:quality music")
-                .checked(p.sound.high_quality)
-                .item("Call Quality, with Microphone", "airpods:quality calls")
-                .checked(!p.sound.high_quality);
+            m = m.item("Music Quality (AAC)", "airpods:quality music").checked(p.sound.high_quality).item("Call Quality, with Microphone", "airpods:quality calls").checked(!p.sound.high_quality);
         }
         m = m.separator().item("AirPods Settings…", "pref:airpods");
     } else {
@@ -1531,7 +1526,13 @@ struct BarView {
 
 impl BarView {
     fn set_hot(&mut self, key: &SharedString, on: bool, cx: &mut Context<Self>) {
-        let hot = if on { Some(key.clone()) } else if self.hot.as_ref() == Some(key) { None } else { return };
+        let hot = if on {
+            Some(key.clone())
+        } else if self.hot.as_ref() == Some(key) {
+            None
+        } else {
+            return;
+        };
         if hot != self.hot {
             self.hot = hot;
             cx.notify();
@@ -1758,7 +1759,8 @@ impl Deskbar {
             it.title = self.app_name(&it.program.clone()).0;
         }
         let px_size = (ICON * window.scale_factor()).round() as u32;
-        let pictures: Vec<Option<Arc<RenderImage>>> = apps.iter().map(|it| self.tray_pictures.entry((it.key.clone(), it.serial, px_size)).or_insert_with(|| sni::picture(it, px_size)).clone()).collect();
+        let pictures: Vec<Option<Arc<RenderImage>>> =
+            apps.iter().map(|it| self.tray_pictures.entry((it.key.clone(), it.serial, px_size)).or_insert_with(|| sni::picture(it, px_size)).clone()).collect();
         // This Deskbar's display, with several: its number, to go to another.
         let display_number = display.as_deref().and_then(|dn| olo_protocol::display_number(&self.outputs, dn));
         let items = apps.len()
@@ -1806,7 +1808,13 @@ impl Deskbar {
         {
             let m = model.clone();
             let said = format!("{date} {time}");
-            d.paint(move |window, cx| agent::record(window, cx, agent::Node { role: "Button", name: Some("Date & Time preferences".into()), value: Some(said.into()), bounds: clock_row, enabled: true, clickable: true, ..Default::default() }));
+            d.paint(move |window, cx| {
+                agent::record(
+                    window,
+                    cx,
+                    agent::Node { role: "Button", name: Some("Date & Time preferences".into()), value: Some(said.into()), bounds: clock_row, enabled: true, clickable: true, ..Default::default() },
+                )
+            });
             d.hits.push(
                 hit(view, "clock", clock_row, Some("Date & Time preferences".into()))
                     .on_any_button(move |e, _, cx| {
@@ -1831,21 +1839,22 @@ impl Deskbar {
         let mut slot = slots.into_iter();
         // A tray item: its glyph drawn (lit while hot or its menu is
         // open), its tip, and what the pointer does on it.
-        let mut tray_item = |d: &mut Drawing, id: &str, tip_text: String, draw: Box<dyn FnOnce(&mut Window, &mut App, Bounds<Pixels>)>| -> (Bounds<Pixels>, olo_ui::gpui::Stateful<olo_ui::gpui::Div>) {
-            let r = slot.next().expect("a slot for each tray item");
-            let key = format!("tray:{id}");
-            let lit = pointer.open(&key);
-            let said = tip_text.clone();
-            d.paint(move |window, cx| {
-                if lit {
-                    let p = theme::palette(cx);
-                    style::fill_rect(window, expand(r, PLATE), c(p.menu_selected_background));
-                }
-                draw(window, cx, r);
-                agent::record(window, cx, agent::Node { role: "Button", name: Some(said.into()), bounds: expand(r, PLATE), enabled: true, clickable: true, ..Default::default() });
-            });
-            (r, hit(view, &key, expand(r, PLATE), Some(tip_text)))
-        };
+        let mut tray_item =
+            |d: &mut Drawing, id: &str, tip_text: String, draw: Box<dyn FnOnce(&mut Window, &mut App, Bounds<Pixels>)>| -> (Bounds<Pixels>, olo_ui::gpui::Stateful<olo_ui::gpui::Div>) {
+                let r = slot.next().expect("a slot for each tray item");
+                let key = format!("tray:{id}");
+                let lit = pointer.open(&key);
+                let said = tip_text.clone();
+                d.paint(move |window, cx| {
+                    if lit {
+                        let p = theme::palette(cx);
+                        style::fill_rect(window, expand(r, PLATE), c(p.menu_selected_background));
+                    }
+                    draw(window, cx, r);
+                    agent::record(window, cx, agent::Node { role: "Button", name: Some(said.into()), bounds: expand(r, PLATE), enabled: true, clickable: true, ..Default::default() });
+                });
+                (r, hit(view, &key, expand(r, PLATE), Some(tip_text)))
+            };
         for (it, picture) in apps.iter().zip(pictures) {
             let tip_text = match (it.title.as_str(), it.tooltip.as_str()) {
                 (t, "") => t.to_owned(),
@@ -1919,7 +1928,12 @@ impl Deskbar {
         }
         if let (Some(n), Some(own)) = (display_number, display.clone()) {
             let name = self.outputs.iter().find(|o| o.name == own).map(|o| o.display_name()).unwrap_or_default();
-            let (r, h) = tray_item(&mut d, "display", format!("Display {}: {name}. Click to go to another display.", olo_protocol::display_number_text(n)), Box::new(move |window, cx, r| status::draw_display(window, cx, r, &theme::palette(cx), n)));
+            let (r, h) = tray_item(
+                &mut d,
+                "display",
+                format!("Display {}: {name}. Click to go to another display.", olo_protocol::display_number_text(n)),
+                Box::new(move |window, cx, r| status::draw_display(window, cx, r, &theme::palette(cx), n)),
+            );
             let (m, v) = (model.clone(), view.clone());
             d.hits.push(
                 h.on_any_button(move |e, window, cx| {
@@ -2058,7 +2072,11 @@ impl Deskbar {
             );
         }
         if let Some(vol) = st.volume {
-            let tip_text = if vol.muted { "Muted. Click to unmute; right-click for sound devices.".into() } else { format!("Volume {}%. Click to mute; right-click for sound devices.", (vol.level * 100.0).round()) };
+            let tip_text = if vol.muted {
+                "Muted. Click to unmute; right-click for sound devices.".into()
+            } else {
+                format!("Volume {}%. Click to mute; right-click for sound devices.", (vol.level * 100.0).round())
+            };
             let (r, h) = tray_item(&mut d, "volume", tip_text, Box::new(move |window, cx, r| status::draw_volume(window, r, &theme::palette(cx), vol.level, vol.muted)));
             let (m, m2, v) = (model.clone(), model.clone(), view.clone());
             let (m3, v3, menu_of) = (model.clone(), view.clone(), (st.sound.clone(), st.airpods.clone(), vol.muted, st.voice));
@@ -2178,7 +2196,10 @@ impl Deskbar {
                         m.update(cx, |d, cx| d.run_command(&cmd, cx));
                     }
                     MouseButton::Right => {
-                        let menu = { let d = m.read(cx); approve::menu(d.approve_until, &d.clock) };
+                        let menu = {
+                            let d = m.read(cx);
+                            approve::menu(d.approve_until, &d.clock)
+                        };
                         let mm = m.clone();
                         open_menu(window, cx, &v, "tray:approve", r, menu, move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
                     }
@@ -2481,7 +2502,16 @@ impl Deskbar {
             agent::record(
                 window,
                 cx,
-                agent::Node { role: "Button", name: Some(name.into()), value: (!said.is_empty()).then(|| said.join(", ").into()), bounds: r, enabled: true, clickable: true, selected: Some(chosen), ..Default::default() },
+                agent::Node {
+                    role: "Button",
+                    name: Some(name.into()),
+                    value: (!said.is_empty()).then(|| said.join(", ").into()),
+                    bounds: r,
+                    enabled: true,
+                    clickable: true,
+                    selected: Some(chosen),
+                    ..Default::default()
+                },
             );
         });
 

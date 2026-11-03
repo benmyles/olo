@@ -63,13 +63,7 @@ pub fn processes(uid: u32, t: f64) -> Vec<Proc> {
                 name,
                 state,
                 start: f.get(19)?.parse().ok()?,
-                sample: Sample {
-                    t,
-                    cpu,
-                    switches: field(&status, "voluntary_ctxt_switches").and_then(|v| v.parse().ok()).unwrap_or(0),
-                    io,
-                    memory: kb(&status, "RssAnon") + kb(&status, "VmSwap"),
-                },
+                sample: Sample { t, cpu, switches: field(&status, "voluntary_ctxt_switches").and_then(|v| v.parse().ok()).unwrap_or(0), io, memory: kb(&status, "RssAnon") + kb(&status, "VmSwap") },
             })
         })
         .collect()
@@ -97,9 +91,7 @@ pub fn swapped_out() -> u64 {
 pub fn system(pages_per_s: f32) -> System {
     let mem = std::fs::read_to_string("/proc/meminfo").unwrap_or_default();
     let psi = std::fs::read_to_string("/proc/pressure/memory").unwrap_or_default();
-    let avg10 = |kind: &str| -> f32 {
-        psi.lines().find(|l| l.starts_with(kind)).and_then(|l| l.split_whitespace().find_map(|w| w.strip_prefix("avg10="))).and_then(|v| v.parse().ok()).unwrap_or(0.0)
-    };
+    let avg10 = |kind: &str| -> f32 { psi.lines().find(|l| l.starts_with(kind)).and_then(|l| l.split_whitespace().find_map(|w| w.strip_prefix("avg10="))).and_then(|v| v.parse().ok()).unwrap_or(0.0) };
     System { total: kb(&mem, "MemTotal"), available: kb(&mem, "MemAvailable"), stall_some: avg10("some"), stall_full: avg10("full"), swapping: pages_per_s }
 }
 

@@ -219,7 +219,9 @@ enum Ev {
     /// A shell's program has gone.
     Exited(u64),
     /// A Terminal disconnected (saying goodbye first, or not).
-    Gone { bye: bool },
+    Gone {
+        bye: bool,
+    },
     Upgrade,
     /// Asked to re-execute (whether or not there's a new version).
     Restart,
@@ -1037,8 +1039,7 @@ fn main() {
     });
     let (events_tx, events) = mpsc::channel();
     let started = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    let st: St =
-        Arc::new(Mutex::new(State { shells: HashMap::new(), clients: HashMap::new(), seq: 0, env: Vec::new(), events: events_tx.clone(), started }));
+    let st: St = Arc::new(Mutex::new(State { shells: HashMap::new(), clients: HashMap::new(), seq: 0, env: Vec::new(), events: events_tx.clone(), started }));
     // Shells start where Terminal says; we sit in the home directory.
     if let Some(home) = std::env::var_os("HOME") {
         let _ = std::env::set_current_dir(home);

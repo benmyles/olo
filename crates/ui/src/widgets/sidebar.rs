@@ -20,8 +20,8 @@
 use std::rc::Rc;
 
 use gpui::{
-    App, Bounds, Entity, FocusHandle, FontWeight, HitboxBehavior, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, RenderOnce, ScrollHandle, SharedString, Styled as _, Window, canvas, div, point,
-    px, size,
+    App, Bounds, Entity, FocusHandle, FontWeight, HitboxBehavior, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, RenderOnce,
+    ScrollHandle, SharedString, Styled as _, Window, canvas, div, point, px, size,
 };
 use olo_kit_base::metrics as m;
 
@@ -193,7 +193,13 @@ impl RenderOnce for Sidebar {
             let top: f32 = m::TIGHT + rows[..chosen.min(rows.len())].iter().map(Row::tall).sum::<f32>();
             let (view, offset) = (f32::from(scroll.bounds().size.height), -f32::from(scroll.offset().y));
             if view > 0.0 {
-                let y = if top < offset { Some(top - m::TIGHT) } else if top + ROW > offset + view { Some(top + ROW - view) } else { None };
+                let y = if top < offset {
+                    Some(top - m::TIGHT)
+                } else if top + ROW > offset + view {
+                    Some(top + ROW - view)
+                } else {
+                    None
+                };
                 if let Some(y) = y {
                     scroll.set_offset(point(px(0.0), px(-y.max(0.0))));
                 }
@@ -239,7 +245,17 @@ impl RenderOnce for Sidebar {
                         continue;
                     }
                     if row.heading {
-                        let t = style::label(window, cx, r.left() + px(m::WINDOW_INSET), r.center().y + px(2.0), style::Align::Left, row.label.to_uppercase(), style::SMALL_SIZE, bold.clone(), style::disabled_text(&p));
+                        let t = style::label(
+                            window,
+                            cx,
+                            r.left() + px(m::WINDOW_INSET),
+                            r.center().y + px(2.0),
+                            style::Align::Left,
+                            row.label.to_uppercase(),
+                            style::SMALL_SIZE,
+                            bold.clone(),
+                            style::disabled_text(&p),
+                        );
                         agent::record(window, cx, agent::Node { role: "Heading", name: Some(row.label.clone()), bounds: t, enabled: true, ..Default::default() });
                         continue;
                     }
@@ -263,7 +279,20 @@ impl RenderOnce for Sidebar {
                         let quiet = if selected { text } else { style::disabled_text(&p) };
                         style::label(window, cx, r.right() - px(m::WINDOW_INSET), r.center().y, style::Align::Right, v.clone(), style::PLAIN_SIZE, plain.clone(), quiet);
                     }
-                    agent::record(window, cx, agent::Node { role: "ListItem", name: Some(row.label.clone()), value: row.value.clone(), bounds: r, enabled: true, clickable: true, selected: Some(selected), ..Default::default() });
+                    agent::record(
+                        window,
+                        cx,
+                        agent::Node {
+                            role: "ListItem",
+                            name: Some(row.label.clone()),
+                            value: row.value.clone(),
+                            bounds: r,
+                            enabled: true,
+                            clickable: true,
+                            selected: Some(selected),
+                            ..Default::default()
+                        },
+                    );
                 }
                 let (st, hbs) = (paint_state.clone(), hitboxes.clone());
                 window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, cx| {

@@ -121,7 +121,9 @@ pub(crate) fn place(outline: &PathOutline, bounds: Bounds<Pixels>, scale: f32) -
                 data.extend(p(ctrl));
                 data.extend(p(to));
             }
-            PathEvent::Cubic { ctrl1, ctrl2, to, .. } => {
+            PathEvent::Cubic {
+                ctrl1, ctrl2, to, ..
+            } => {
                 data.push(-4);
                 data.extend(p(ctrl1));
                 data.extend(p(ctrl2));
@@ -199,20 +201,32 @@ fn rasterize(key: &OutlineKey) -> Option<(u16, u16, Vec<u8>)> {
             ctx.stroke_path(&path);
         }
         None => {
-            ctx.set_fill_rule(if d[3] == 1 { peniko::Fill::EvenOdd } else { peniko::Fill::NonZero });
+            ctx.set_fill_rule(if d[3] == 1 {
+                peniko::Fill::EvenOdd
+            } else {
+                peniko::Fill::NonZero
+            });
             ctx.fill_path(&path);
         }
     }
     let mut pixmap = vello_cpu::Pixmap::new(w, h);
     let mut resources = vello_cpu::Resources::new();
     ctx.render(&mut pixmap, &mut resources);
-    let coverage = pixmap.data_as_u8_slice().chunks_exact(4).map(|p| p[3]).collect();
+    let coverage = pixmap
+        .data_as_u8_slice()
+        .chunks_exact(4)
+        .map(|p| p[3])
+        .collect();
     Some((w, h, coverage))
 }
 
 impl Outlines {
     /// The atlas tile for `key`, made if it isn't there.
-    pub fn tile(&mut self, atlas: &dyn PlatformAtlas, key: &OutlineKey) -> anyhow::Result<Option<AtlasTile>> {
+    pub fn tile(
+        &mut self,
+        atlas: &dyn PlatformAtlas,
+        key: &OutlineKey,
+    ) -> anyhow::Result<Option<AtlasTile>> {
         let tile = atlas.get_or_insert_with(&AtlasKey::Outline(key.clone()), &mut || {
             Ok(rasterize(key).map(|(w, h, bytes)| {
                 (

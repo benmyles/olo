@@ -19,6 +19,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use olo_theme::{Palette, Rgba, deco::*, fonts, mix};
 use smithay::{
     backend::{
         allocator::Fourcc,
@@ -34,11 +35,7 @@ use smithay::{
     },
     utils::{Buffer, Logical, Physical, Point, Rectangle, Scale, Size, Transform},
 };
-use olo_theme::{Palette, Rgba, deco::*, fonts, mix};
-use tiny_skia::{
-    Color, GradientStop, LinearGradient, Paint, Pixmap, Rect, Shader, SpreadMode,
-    Transform as SkTransform,
-};
+use tiny_skia::{Color, GradientStop, LinearGradient, Paint, Pixmap, Rect, Shader, SpreadMode, Transform as SkTransform};
 
 use super::{ResizeEdge, WindowElement};
 use crate::{render::Exact, text, theme};
@@ -342,16 +339,10 @@ impl TabLayout {
         Rectangle::new((self.x, 0).into(), (self.width, TAB_HEIGHT).into())
     }
     pub fn close_rect(&self) -> Rectangle<i32, Logical> {
-        Rectangle::new(
-            (self.x + BOX_INSET, (TAB_HEIGHT - BOX_SIZE) / 2).into(),
-            (BOX_SIZE, BOX_SIZE).into(),
-        )
+        Rectangle::new((self.x + BOX_INSET, (TAB_HEIGHT - BOX_SIZE) / 2).into(), (BOX_SIZE, BOX_SIZE).into())
     }
     pub fn zoom_rect(&self) -> Rectangle<i32, Logical> {
-        Rectangle::new(
-            (self.x + self.width - BOX_INSET - BOX_SIZE, (TAB_HEIGHT - BOX_SIZE) / 2).into(),
-            (BOX_SIZE, BOX_SIZE).into(),
-        )
+        Rectangle::new((self.x + self.width - BOX_INSET - BOX_SIZE, (TAB_HEIGHT - BOX_SIZE) / 2).into(), (BOX_SIZE, BOX_SIZE).into())
     }
     /// Room for the title between the boxes.
     pub fn title_space(&self) -> i32 {
@@ -434,9 +425,7 @@ impl Decoration {
                 return Part::None;
             }
             // Generous hit boxes: the full tab height around each box.
-            let grow = |r: Rectangle<i32, Logical>| {
-                Rectangle::<i32, Logical>::new((r.loc.x - 2, 0).into(), (r.size.w + 4, TAB_HEIGHT).into())
-            };
+            let grow = |r: Rectangle<i32, Logical>| Rectangle::<i32, Logical>::new((r.loc.x - 2, 0).into(), (r.size.w + 4, TAB_HEIGHT).into());
             if contains(grow(tab.close_rect())) {
                 return Part::Close;
             }
@@ -547,16 +536,7 @@ impl Decoration {
 
         // Tab: rendered to a pixmap at the exact device size it covers.
         let phys = (tx(tab.x + tab.width) - tx(tab.x), frame_top);
-        let key = TabKey {
-            title: cut(title).into_owned(),
-            focused: self.focused,
-            hover: self.hover,
-            pressed: self.pressed,
-            width: tab.width,
-            phys,
-            generation,
-            target: self.target,
-        };
+        let key = TabKey { title: cut(title).into_owned(), focused: self.focused, hover: self.hover, pressed: self.pressed, width: tab.width, phys, generation, target: self.target };
         warm_tabs(renderer, phys.1);
         // A look drawn before, or done by the worker, is shown at once; a
         // new one is asked of the worker (the first is drawn here: there
@@ -655,13 +635,7 @@ impl Decoration {
                     continue;
                 }
                 let c = theme::to_f32(color);
-                frame.push(SolidColorRenderElement::new(
-                    self.frame_ids[i * 4 + j].clone(),
-                    geo,
-                    self.frame_commit,
-                    [c[0] * alpha, c[1] * alpha, c[2] * alpha, c[3] * alpha],
-                    Kind::Unspecified,
-                ));
+                frame.push(SolidColorRenderElement::new(self.frame_ids[i * 4 + j].clone(), geo, self.frame_commit, [c[0] * alpha, c[1] * alpha, c[2] * alpha, c[3] * alpha], Kind::Unspecified));
             }
             (l, t, r, b) = (l + n, t + n, r - n, b - n);
         }
@@ -725,19 +699,9 @@ fn draw_tab(palette: &Palette, key: &TabKey, tab: &TabLayout, s: f64) -> Pixmap 
     let (hair, bevel) = lines(s);
 
     let (base, light, shadow, text_color) = if key.focused {
-        (
-            palette.tab_focused,
-            palette.tab_focused_light,
-            palette.tab_focused_shadow,
-            palette.tab_text_focused,
-        )
+        (palette.tab_focused, palette.tab_focused_light, palette.tab_focused_shadow, palette.tab_text_focused)
     } else {
-        (
-            palette.tab_unfocused,
-            palette.tab_unfocused_light,
-            palette.tab_unfocused_shadow,
-            palette.tab_text_unfocused,
-        )
+        (palette.tab_unfocused, palette.tab_unfocused_light, palette.tab_unfocused_shadow, palette.tab_text_unfocused)
     };
     let outline = if key.focused { palette.frame_focused[0] } else { palette.frame_unfocused[0] };
     // Where a dragged tab would go: tinted, and outlined twice as thick
@@ -800,12 +764,8 @@ fn draw_tab(palette: &Palette, key: &TabKey, tab: &TabLayout, s: f64) -> Pixmap 
 
 impl WindowElement {
     pub fn decoration(&self) -> RefMut<'_, Decoration> {
-        self.user_data()
-            .insert_if_missing(|| RefCell::new(Decoration::default()));
-        self.user_data()
-            .get::<RefCell<Decoration>>()
-            .unwrap()
-            .borrow_mut()
+        self.user_data().insert_if_missing(|| RefCell::new(Decoration::default()));
+        self.user_data().get::<RefCell<Decoration>>().unwrap().borrow_mut()
     }
 
     pub fn set_ssd(&self, ssd: bool) {
@@ -845,7 +805,16 @@ mod title_tests {
                 let t = std::time::Instant::now();
                 let tab = d.tab_layout(title, (800, 600).into());
                 let laid = t.elapsed();
-                let key = TabKey { title: title.to_string(), focused: i % 2 == 0, hover: Part::None, pressed: Part::None, width: tab.width, phys: ((tab.width as f64 * s) as i32, (TAB_HEIGHT as f64 * s) as i32), generation: 0, target: false };
+                let key = TabKey {
+                    title: title.to_string(),
+                    focused: i % 2 == 0,
+                    hover: Part::None,
+                    pressed: Part::None,
+                    width: tab.width,
+                    phys: ((tab.width as f64 * s) as i32, (TAB_HEIGHT as f64 * s) as i32),
+                    generation: 0,
+                    target: false,
+                };
                 let t = std::time::Instant::now();
                 let _ = draw_tab(&palette, &key, &tab, s);
                 eprintln!("{title:24} at {s}: measured {:.2} ms, drawn {:.2} ms", laid.as_secs_f64() * 1e3, t.elapsed().as_secs_f64() * 1e3);

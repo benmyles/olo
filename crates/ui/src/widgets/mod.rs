@@ -25,25 +25,25 @@ pub mod tooltip;
 pub mod views;
 
 pub use alert::{ALERT_ICON, ALERT_TEXT_X, ALERT_WIDTH, AlertFrame, Conversation, ConversationField, alert_height, alert_title, alert_width, button_row, open_alert, paragraph, paragraph_height};
-pub use scroll::{SCROLL_BAR, ScrollBar, ScrollView};
-pub use slider::Slider;
-pub use status::{StatusBar, level_bar};
 pub use buttons::{Button, CheckBox, LinkButton, RadioButton, button_width, check_box_look, link_button_width};
+pub use charts::{CellGrid, Graph, GraphLayer, GraphShelf, GridCell, LegendItem, Series, legend, legend_height, nice_ceiling};
 pub use color::{ColorControl, ColorWell, color_control_height};
 pub use control::{Control, ControlState, control};
 pub use image_view::{ImageView, image_view};
 pub use key_hint::KeyHint;
 pub use list::{Cell, Column, ColumnListView, HEADER_HEIGHT, ListModel};
 pub use menu_field::MenuField;
+pub use scroll::{SCROLL_BAR, ScrollBar, ScrollView};
+pub use sidebar::Sidebar;
+pub use slider::Slider;
+pub use status::{StatusBar, level_bar};
+pub use strip::{STRIP_HEIGHT, STRIP_ROW, STRIP_SIDE_HEAD, STRIP_SIDE_MAX, STRIP_SIDE_MIN, STRIP_SIDE_WIDTH, StripAction, StripGroup, StripTab, TabStrip};
+pub use tabs::{TAB_HEIGHT, TabView};
 pub use text_control::TextControl;
 pub use text_field::{TextField, TextFieldEvent, text_field};
 pub use text_view::{TextView, text_view};
-pub use sidebar::Sidebar;
-pub use strip::{STRIP_HEIGHT, STRIP_ROW, STRIP_SIDE_HEAD, STRIP_SIDE_MAX, STRIP_SIDE_MIN, STRIP_SIDE_WIDTH, StripAction, StripGroup, StripTab, TabStrip};
-pub use tabs::{TAB_HEIGHT, TabView};
 pub use thumbs::{Thumbnail, ThumbnailPicker};
 pub use tooltip::tooltip;
-pub use charts::{CellGrid, Graph, GraphLayer, GraphShelf, GridCell, LegendItem, Series, legend, legend_height, nice_ceiling};
 pub use views::{BBox, EmptyState, Separator, StringView, heading, separator};
 
 /// The widgets' keys.

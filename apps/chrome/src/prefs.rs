@@ -38,8 +38,7 @@ fn running(dir: &Path) -> bool {
 /// The profiles in `dir` (from `Local State`; `Default` for a new one).
 fn profiles(dir: &Path) -> Vec<PathBuf> {
     let state: Option<Value> = std::fs::read(dir.join("Local State")).ok().and_then(|b| serde_json::from_slice(&b).ok());
-    let mut names: Vec<String> =
-        state.as_ref().and_then(|s| s.pointer("/profile/info_cache")?.as_object().map(|m| m.keys().cloned().collect())).unwrap_or_default();
+    let mut names: Vec<String> = state.as_ref().and_then(|s| s.pointer("/profile/info_cache")?.as_object().map(|m| m.keys().cloned().collect())).unwrap_or_default();
     if names.is_empty() {
         names.push("Default".into());
     }

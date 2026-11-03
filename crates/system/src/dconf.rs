@@ -29,14 +29,7 @@ pub fn set(keys: &[(&str, Setting)]) -> Result<()> {
     };
     let changes: HashMap<&str, Option<Value<'_>>> = keys.iter().map(|(k, v)| (*k, Some(value(v)))).collect();
     let blob = changeset(&changes)?;
-    let _tag: String = bus::call(
-        bus::session()?,
-        "ca.desrt.dconf",
-        "/ca/desrt/dconf/Writer/user",
-        "ca.desrt.dconf.Writer",
-        "Change",
-        &(blob.as_slice(),),
-    )?;
+    let _tag: String = bus::call(bus::session()?, "ca.desrt.dconf", "/ca/desrt/dconf/Writer/user", "ca.desrt.dconf.Writer", "Change", &(blob.as_slice(),))?;
     Ok(())
 }
 

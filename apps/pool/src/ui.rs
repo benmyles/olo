@@ -592,10 +592,7 @@ impl Render for PoolWindow {
 /// The app's menu bar, on each of its windows; Close closes the one
 /// it's in.
 pub fn menu_bar(app: &Entity<PoolApp>) -> MenuBar {
-    let menus = vec![
-        Menu::new("Pool").item("Read Quota Now", "refresh").key("r").item("Clients", "clients").key("l").separator().item("Close", "close").key("w"),
-        PoolApp::add_menu(),
-    ];
+    let menus = vec![Menu::new("Pool").item("Read Quota Now", "refresh").key("r").item("Clients", "clients").key("l").separator().item("Close", "close").key("w"), PoolApp::add_menu()];
     let app = app.clone();
     MenuBar::new(menus, move |cmd, window, cx| match cmd {
         "close" => window.remove_window(),
@@ -644,7 +641,8 @@ fn header(a: &PoolApp, pool: &Pool, p: &olo_ui::palette::Palette, app: &Entity<P
     for prov in PROVIDERS {
         let on = a.clients.is_some_and(|c| c[client_index(prov)]);
         let app = app.clone();
-        checks = checks.child(CheckBox::new(format!("{} uses the pool", prov.client()), on).enabled(a.clients.is_some()).on_toggle(move |on, _, cx| app.update(cx, |a, cx| a.set_client(prov, on, cx))));
+        checks =
+            checks.child(CheckBox::new(format!("{} uses the pool", prov.client()), on).enabled(a.clients.is_some()).on_toggle(move |on, _, cx| app.update(cx, |a, cx| a.set_client(prov, on, cx))));
     }
     div().flex().flex_col().gap(px(m::SPACING)).child(first).child(grid).child(StringView::new(text).dim(true)).child(checks)
 }
@@ -692,18 +690,17 @@ fn card(a: &PoolApp, pool: &Pool, account: &Account, p: &olo_ui::palette::Palett
         b = b.child(StringView::new(if account.synced.is_some() { "No quota reported." } else { "Reading its quota…" }).dim(true));
     }
     let today = if account.today.0 == olo_token_pool::model::today() { account.today.1.clone() } else { Default::default() };
-    b = b.child(StringView::new(format!(
-        "Today: {} request{} · {} in · {} out",
-        today.requests,
-        if today.requests == 1 { "" } else { "s" },
-        tokens(today.input_tokens),
-        tokens(today.output_tokens)
-    )));
+    b = b.child(StringView::new(format!("Today: {} request{} · {} in · {} out", today.requests, if today.requests == 1 { "" } else { "s" }, tokens(today.input_tokens), tokens(today.output_tokens))));
     // Its latest requests, oldest first, coloured by how they ended.
     let cells: Vec<GridCell> = account
         .recent
         .iter()
-        .map(|r| GridCell { color: Some(outcome_color(p, r.outcome)), mark: None, name: format!("{}: {} at {}", r.outcome.label(), r.model, clock(r.at)).into(), selected: a.picked == Some(Pick::Done(account.id.clone(), r.clone())) })
+        .map(|r| GridCell {
+            color: Some(outcome_color(p, r.outcome)),
+            mark: None,
+            name: format!("{}: {} at {}", r.outcome.label(), r.model, clock(r.at)).into(),
+            selected: a.picked == Some(Pick::Done(account.id.clone(), r.clone())),
+        })
         .collect();
     let (picker, id, recent) = (app.clone(), account.id.clone(), account.recent.clone());
     b = b.child(CellGrid::new(cells).cell_size(12.0).slots(RECENT).on_click(move |i, _, cx| picker.update(cx, |a, cx| a.pick(Pick::Done(id.clone(), recent[i].clone()), cx))));

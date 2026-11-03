@@ -314,10 +314,7 @@ pub(crate) fn is_parentless_alert(w: &WindowElement) -> bool {
         shell::xdg::{XdgToplevelSurfaceData, dialog::ToplevelDialogHint},
     };
     let WindowSurface::Wayland(t) = w.0.underlying_surface();
-    t.parent().is_none()
-        && compositor::with_states(t.wl_surface(), |s| {
-            s.data_map.get::<XdgToplevelSurfaceData>().is_some_and(|d| d.lock().unwrap().dialog_hint == ToplevelDialogHint::Modal)
-        })
+    t.parent().is_none() && compositor::with_states(t.wl_surface(), |s| s.data_map.get::<XdgToplevelSurfaceData>().is_some_and(|d| d.lock().unwrap().dialog_hint == ToplevelDialogHint::Modal))
 }
 
 /// The frame size `w` was asked for and hasn't drawn yet, if any.
@@ -406,10 +403,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         }
         let Some(key) = self.group_key(w) else { return Vec::new() };
         let display = self.display_of(w);
-        self.all_windows()
-            .into_iter()
-            .filter(|o| o != w && self.shows(o) && !o.meta().minimized.get() && self.display_of(o) == display && self.group_key(o).as_ref() == Some(&key))
-            .collect()
+        self.all_windows().into_iter().filter(|o| o != w && self.shows(o) && !o.meta().minimized.get() && self.display_of(o) == display && self.group_key(o).as_ref() == Some(&key)).collect()
     }
 
     /// What `w` groups by, if anything. In Focus mode (`modes`) an app's
@@ -454,9 +448,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// the same for all of them, so a group's windows aren't split by
     /// their sizes' few points (Terminal's grid).
     fn group_display(&self, w: &WindowElement) -> String {
-        let under = |o: &WindowElement| {
-            self.heading_frame(o).and_then(|f| self.space.output_under((f.loc + f.size.downscale(2).to_point()).to_f64()).next().cloned())
-        };
+        let under = |o: &WindowElement| self.heading_frame(o).and_then(|f| self.space.output_under((f.loc + f.size.downscale(2).to_point()).to_f64()).next().cloned());
         if let Some(o) = under(w) {
             return o.name();
         }
@@ -498,9 +490,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 continue;
             }
             let rest: Vec<&WindowElement> = g.iter().filter(|w| !leaving.contains(w)).collect();
-            if !matches!(rest.first().and_then(|w| self.group_key(w)), Some(GroupKey::App(_)))
-                || rest.iter().any(|w| *w.meta().grouping.borrow() == Grouping::Auto)
-            {
+            if !matches!(rest.first().and_then(|w| self.group_key(w)), Some(GroupKey::App(_))) || rest.iter().any(|w| *w.meta().grouping.borrow() == Grouping::Auto) {
                 continue;
             }
             let to = if rest.len() > 1 { Grouping::With(GroupKey::Id(new_group_id())) } else { Grouping::Alone };
@@ -533,9 +523,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 GroupKey::Id(n) => Some(*n),
                 GroupKey::App(app) => before.numbers.iter().find(|((a, d), _)| a == app && d == display).map(|(_, n)| *n),
             };
-            let was_member = |w: &WindowElement| {
-                number_before.is_some_and(|n| before.list.iter().any(|(m, g)| *m == n && g.contains(w))) || before.away.iter().any(|(a, m)| a == w && *m)
-            };
+            let was_member = |w: &WindowElement| number_before.is_some_and(|n| before.list.iter().any(|(m, g)| *m == n && g.contains(w))) || before.away.iter().any(|(a, m)| a == w && *m);
             let was_seen = |w: &WindowElement| before.seen_on.iter().any(|(s, d)| s == w && d == display) || before.away.iter().any(|(a, _)| a == w);
             let leads = |w: &&WindowElement| !before.joining.contains(w) && was_settling(w).is_none();
             // Auto-tiled, its tile says where the group is: the window in
@@ -544,14 +532,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             // the one that was there first.
             let tiled: Vec<WindowElement> = g.iter().filter(|w| self.tree_of(w).is_some()).cloned().collect();
             let pool = if tiled.is_empty() { g } else { &tiled };
-            let leader = pool
-                .iter()
-                .rev()
-                .filter(leads)
-                .find(|w| was_member(w))
-                .or_else(|| pool.iter().rev().filter(leads).find(|w| was_seen(w)))
-                .unwrap_or(&pool[pool.len() - 1])
-                .clone();
+            let leader = pool.iter().rev().filter(leads).find(|w| was_member(w)).or_else(|| pool.iter().rev().filter(leads).find(|w| was_seen(w))).unwrap_or(&pool[pool.len() - 1]).clone();
             let Some(mut frame) = self.space.element_geometry(&leader) else { continue };
             // Where it is going, not the size it is leaving: a window that
             // has just joined (opened, come back, arrived) leads from the
@@ -639,12 +620,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         // group that came apart still on screen stepped out like a
         // cascade, so the windows it hid show. (Not the window being
         // dragged: its tab is the drag's.)
-        let left: Vec<(WindowElement, u64)> = before
-            .list
-            .iter()
-            .flat_map(|(n, g)| g.iter().map(move |w| (w.clone(), *n)))
-            .filter(|(w, _)| !list.iter().any(|(_, g)| g.contains(w)) && Some(w) != dragged.as_ref())
-            .collect();
+        let left: Vec<(WindowElement, u64)> =
+            before.list.iter().flat_map(|(n, g)| g.iter().map(move |w| (w.clone(), *n))).filter(|(w, _)| !list.iter().any(|(_, g)| g.contains(w)) && Some(w) != dragged.as_ref()).collect();
         for (w, _) in &left {
             let mut d = w.decoration();
             if d.tab_width.take().is_some() {

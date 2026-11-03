@@ -191,8 +191,7 @@ fn fake_worker(sh: &Arc<Mutex<Shared>>, proxy: &olo_ui::Proxy, rx: &std::sync::m
             }
             Request::Enroll(f) => {
                 let stop = Stop::default();
-                sh.lock().unwrap().enrolling =
-                    Some(Enrolling { finger: f.clone(), stages: 5, passed: 0, message: "Touch the sensor, lift, and touch again.".into(), stop: stop.clone() });
+                sh.lock().unwrap().enrolling = Some(Enrolling { finger: f.clone(), stages: 5, passed: 0, message: "Touch the sensor, lift, and touch again.".into(), stop: stop.clone() });
                 for _ in 0..5 {
                     proxy.send(Msg::Redraw);
                     std::thread::sleep(Duration::from_millis(1500));
@@ -289,21 +288,19 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let list = ColumnListView::new("fingers", &st.list, vec![Column::new("Finger", 300.0)], fingers.len(), move |cell, window, cx| cell.text(window, cx, fp::finger_name(&rows[cell.row])))
         .on_select(|_, cx| cx.refresh_windows());
     ui.add(
-        BBox::new(format!("Fingerprints for {}", user()))
-            .child(div().h(px(104.0)).child(list))
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .gap(px(m::SPACING))
-                    .child(MenuField::new("add-finger", names, add).width(150.0).enabled(idle && !free.is_empty()).on_change(pick))
-                    .child(Button::new("Add Fingerprint").enabled(idle && !free.is_empty()).on_click(move |_, _| {
-                        if let Some(f) = add_free.get(add) {
-                            let _ = link.tx.send(Request::Enroll((*f).to_owned()));
-                        }
-                    }))
-                    .child(Button::new("Remove").enabled(idle && selected.is_some()).on_click(remove)),
-            ),
+        BBox::new(format!("Fingerprints for {}", user())).child(div().h(px(104.0)).child(list)).child(
+            div()
+                .flex()
+                .flex_row()
+                .gap(px(m::SPACING))
+                .child(MenuField::new("add-finger", names, add).width(150.0).enabled(idle && !free.is_empty()).on_change(pick))
+                .child(Button::new("Add Fingerprint").enabled(idle && !free.is_empty()).on_click(move |_, _| {
+                    if let Some(f) = add_free.get(add) {
+                        let _ = link.tx.send(Request::Enroll((*f).to_owned()));
+                    }
+                }))
+                .child(Button::new("Remove").enabled(idle && selected.is_some()).on_click(remove)),
+        ),
     );
 
     if let Some((finger, stages, passed, message, stop)) = enrolling {

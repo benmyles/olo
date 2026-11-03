@@ -33,12 +33,7 @@ pub fn blocked_until(a: &Account, family: &str, now: i64) -> Option<i64> {
 /// When `a`'s soonest usable quota for `family` resets (unknown: never,
 /// so it goes last).
 pub fn expiry(a: &Account, family: &str, now: i64) -> i64 {
-    a.windows
-        .iter()
-        .filter(|w| w.applies_to(family) && w.used < 100.0)
-        .filter_map(|w| w.resets_at.filter(|&r| r > now))
-        .min()
-        .unwrap_or(i64::MAX)
+    a.windows.iter().filter(|w| w.applies_to(family) && w.used < 100.0).filter_map(|w| w.resets_at.filter(|&r| r > now)).min().unwrap_or(i64::MAX)
 }
 
 /// Whether `a` may serve `provider`'s `family` now (`has_credential`:
@@ -49,19 +44,8 @@ pub fn eligible(a: &Account, provider: Provider, family: &str, now: i64, has_cre
 
 /// The account to use, of those `eligible` and not in `tried`; `sticky`
 /// is the one serving this provider and family lately.
-pub fn pick<'a>(
-    accounts: &'a [Account],
-    provider: Provider,
-    family: &str,
-    sticky: Option<&str>,
-    now: i64,
-    tried: &[String],
-    has_credential: impl Fn(&Account) -> bool,
-) -> Option<&'a Account> {
-    let mut ok: Vec<&Account> = accounts
-        .iter()
-        .filter(|a| !tried.contains(&a.id) && has_credential(a) && eligible(a, provider, family, now, true))
-        .collect();
+pub fn pick<'a>(accounts: &'a [Account], provider: Provider, family: &str, sticky: Option<&str>, now: i64, tried: &[String], has_credential: impl Fn(&Account) -> bool) -> Option<&'a Account> {
+    let mut ok: Vec<&Account> = accounts.iter().filter(|a| !tried.contains(&a.id) && has_credential(a) && eligible(a, provider, family, now, true)).collect();
     ok.sort_by(|a, b| (expiry(a, family, now), a.created, &a.id).cmp(&(expiry(b, family, now), b.created, &b.id)));
     let best = *ok.first()?;
     if let Some(s) = sticky.and_then(|id| ok.iter().find(|a| a.id == id)) {
@@ -77,11 +61,7 @@ pub fn pick<'a>(
 /// When the first of `provider`'s accounts could serve `family` again,
 /// for a Retry-After when none can now.
 pub fn next_available(accounts: &[Account], provider: Provider, family: &str, now: i64) -> Option<i64> {
-    accounts
-        .iter()
-        .filter(|a| a.provider == provider && a.enabled && a.signed_out.is_none())
-        .filter_map(|a| blocked_until(a, family, now))
-        .min()
+    accounts.iter().filter(|a| a.provider == provider && a.enabled && a.signed_out.is_none()).filter_map(|a| blocked_until(a, family, now)).min()
 }
 
 #[cfg(test)]
@@ -92,11 +72,7 @@ mod tests {
     fn acct(id: &str, created: i64, windows: &[(f64, Option<i64>)]) -> Account {
         let mut a = Account::new(id.into(), id.into(), Provider::Claude);
         a.created = created;
-        a.windows = windows
-            .iter()
-            .enumerate()
-            .map(|(i, &(used, resets_at))| Window { name: format!("w{i}"), label: String::new(), used, resets_at, models: vec![] })
-            .collect();
+        a.windows = windows.iter().enumerate().map(|(i, &(used, resets_at))| Window { name: format!("w{i}"), label: String::new(), used, resets_at, models: vec![] }).collect();
         a
     }
 

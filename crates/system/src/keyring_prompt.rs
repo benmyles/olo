@@ -173,9 +173,7 @@ impl Shared {
             .spawn(
                 async move {
                     let Ok(conn) = me.conn().ok_or(()) else { return };
-                    let r = conn
-                        .call_method(Some(callback.sender.as_str()), callback.path.as_str(), Some(CALLBACK), "PromptReady", &(reply, props, exchange))
-                        .await;
+                    let r = conn.call_method(Some(callback.sender.as_str()), callback.path.as_str(), Some(CALLBACK), "PromptReady", &(reply, props, exchange)).await;
                     if let Err(e) = r {
                         tracing::debug!("keyring prompt: the caller didn't take the answer: {e}");
                         me.stop(&callback, false);
@@ -651,7 +649,12 @@ mod tests {
             collection
         };
         let locked = || -> bool {
-            let v: OwnedValue = conn.call_method(Some(SS), collection.as_str(), Some("org.freedesktop.DBus.Properties"), "Get", &("org.freedesktop.Secret.Collection", "Locked")).unwrap().body().deserialize().unwrap();
+            let v: OwnedValue = conn
+                .call_method(Some(SS), collection.as_str(), Some("org.freedesktop.DBus.Properties"), "Get", &("org.freedesktop.Secret.Collection", "Locked"))
+                .unwrap()
+                .body()
+                .deserialize()
+                .unwrap();
             bool::try_from(v).unwrap()
         };
         assert!(!locked());

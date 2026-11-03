@@ -154,7 +154,11 @@ impl RenderOnce for ThumbnailPicker {
                     if on && paint_focus.is_focused(window) {
                         style::hline_above(window, t.left(), t.right(), t.bottom(), style::c(p.keyboard_navigation));
                     }
-                    agent::record(window, cx, agent::Node { role: "RadioButton", name: Some(item.label.clone()), bounds: *r, enabled: true, clickable: true, selected: Some(on), checked: Some(on), ..Default::default() });
+                    agent::record(
+                        window,
+                        cx,
+                        agent::Node { role: "RadioButton", name: Some(item.label.clone()), bounds: *r, enabled: true, clickable: true, selected: Some(on), checked: Some(on), ..Default::default() },
+                    );
                 }
                 let (select, open, focus) = (select.clone(), open.clone(), paint_focus.clone());
                 window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {

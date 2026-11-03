@@ -30,6 +30,7 @@ use std::{
 
 use model::{Level, Line, Now, Query, Since};
 use olo_kit_base::list::ListState;
+use olo_theme::Palette;
 use olo_ui::{
     Frame, Menu, MenuBar, WindowOptions, agent,
     file_panel::{self, FilePanel, PanelResult},
@@ -41,23 +42,15 @@ use olo_ui::{
     theme,
     widgets::{Button, CheckBox, Column, ColumnListView, ListModel, SCROLL_BAR, TextView, text_view},
 };
-use olo_theme::Palette;
 use reader::Update;
 use serde::{Deserialize, Serialize};
 
 const APP_ID: &str = "olo.logs";
 const TITLE: &str = "Log Viewer";
 
-const LEVELS: [(Level, &str); 4] =
-    [(Level::Debug, "Everything"), (Level::Info, "Info and Above"), (Level::Warning, "Warnings and Errors"), (Level::Error, "Errors Only")];
+const LEVELS: [(Level, &str); 4] = [(Level::Debug, "Everything"), (Level::Info, "Info and Above"), (Level::Warning, "Warnings and Errors"), (Level::Error, "Errors Only")];
 const LEVEL_CODES: [&str; 4] = ["debug", "info", "warning", "error"];
-const TIMES: [(Since, &str); 5] = [
-    (Since::Minutes(10), "Last 10 Minutes"),
-    (Since::Minutes(60), "Last Hour"),
-    (Since::Today, "Today"),
-    (Since::Boot, "Since Startup"),
-    (Since::All, "Everything"),
-];
+const TIMES: [(Since, &str); 5] = [(Since::Minutes(10), "Last 10 Minutes"), (Since::Minutes(60), "Last Hour"), (Since::Today, "Today"), (Since::Boot, "Since Startup"), (Since::All, "Everything")];
 
 /// The height of the pane under the list with the selected line in full.
 const DETAIL: f32 = 112.0;
@@ -476,7 +469,10 @@ impl Logs {
             self.show_detail(cx);
         }
         self.at_end = following;
-        if following && self.settings.live && let Some(last) = self.view.len().checked_sub(1) {
+        if following
+            && self.settings.live
+            && let Some(last) = self.view.len().checked_sub(1)
+        {
             self.list.update(cx, |l, _| l.reveal(last));
         }
         cx.notify();
@@ -829,23 +825,13 @@ impl Render for Logs {
             })
         });
         let controls = if one_row {
-            div()
-                .flex()
-                .flex_row()
-                .gap(px(m::SPACING))
-                .child(div().w(px(width - bar_w - m::SPACING)).child(self.search.clone()))
-                .child(filters.max_width(bar_w))
+            div().flex().flex_row().gap(px(m::SPACING)).child(div().w(px(width - bar_w - m::SPACING)).child(self.search.clone())).child(filters.max_width(bar_w))
         } else {
             // Under the search, its first menu's text over the list's
             // first column's (inside the list's two lines of frame).
             let frame = f32::from(style::inset(window, olo_ui::gpui::Bounds::default(), 2.0).left());
             let indent = frame + m::CELL_INSET - m::TEXT_INSET;
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(m::SPACING))
-                .child(self.search.clone())
-                .child(div().pl(px(indent)).child(filters.max_width(width - indent)))
+            div().flex().flex_col().gap(px(m::SPACING)).child(self.search.clone()).child(div().pl(px(indent)).child(filters.max_width(width - indent)))
         };
 
         let list = match &self.failed {
@@ -859,7 +845,18 @@ impl Render for Logs {
                             |_, _, _| {},
                             move |b, _, window, cx| {
                                 let p = theme::palette(cx);
-                                style::label_fit(window, cx, b.center().x, b.center().y, style::Align::Center, why.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), c(p.panel_text), b.size.width);
+                                style::label_fit(
+                                    window,
+                                    cx,
+                                    b.center().x,
+                                    b.center().y,
+                                    style::Align::Center,
+                                    why.clone(),
+                                    style::PLAIN_SIZE,
+                                    style::ui_font(FontWeight::NORMAL),
+                                    c(p.panel_text),
+                                    b.size.width,
+                                );
                                 agent::record(window, cx, agent::Node::label(why.clone(), b));
                             },
                         )
@@ -890,26 +887,15 @@ impl Render for Logs {
             .h_full(),
         );
         let live = me.clone();
-        foot = foot.child(div().w(px(64.0)).flex().justify_center().child(CheckBox::new("Live", self.settings.live).on_toggle(move |_, window, cx| live.update(cx, |l, cx| l.command("live", window, cx)))));
+        foot = foot
+            .child(div().w(px(64.0)).flex().justify_center().child(CheckBox::new("Live", self.settings.live).on_toggle(move |_, window, cx| live.update(cx, |l, cx| l.command("live", window, cx)))));
 
         div()
             .size_full()
             .flex()
             .flex_col()
             .child(bar)
-            .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .p(px(m::WINDOW_INSET))
-                    .flex()
-                    .flex_col()
-                    .gap(px(m::SPACING))
-                    .child(controls)
-                    .child(list)
-                    .child(div().h(px(DETAIL)).child(self.detail.clone()))
-                    .child(foot),
-            )
+            .child(div().flex_1().min_h_0().p(px(m::WINDOW_INSET)).flex().flex_col().gap(px(m::SPACING)).child(controls).child(list).child(div().h(px(DETAIL)).child(self.detail.clone())).child(foot))
     }
 }
 
@@ -1028,16 +1014,7 @@ fn iso_time(micros: u64) -> String {
         libc::gmtime_r(&t, &mut tm);
         tm
     };
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
-        tm.tm_year + 1900,
-        tm.tm_mon + 1,
-        tm.tm_mday,
-        tm.tm_hour,
-        tm.tm_min,
-        tm.tm_sec,
-        (micros / 1000) % 1000
-    )
+    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, (micros / 1000) % 1000)
 }
 
 fn main() {
@@ -1189,5 +1166,4 @@ mod tests {
         assert_eq!((lines[1].level, lines[2].message.as_str()), (super::Level::Error, "two"));
         std::fs::remove_dir_all(&dir).unwrap();
     }
-
 }

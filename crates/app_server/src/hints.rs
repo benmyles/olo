@@ -24,8 +24,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use serde::Deserialize;
 use crate::render::Exact;
+use serde::Deserialize;
 use smithay::{
     backend::{
         allocator::Fourcc,
@@ -38,10 +38,10 @@ use smithay::{
         },
     },
     desktop::{layer_map_for_output, utils::surface_primary_scanout_output},
-    reexports::wayland_server::{Resource, protocol::wl_surface::WlSurface},
-    wayland::{compositor::with_states, seat::WaylandFocus},
     reexports::calloop::timer::{TimeoutAction, Timer},
+    reexports::wayland_server::{Resource, protocol::wl_surface::WlSurface},
     utils::{Buffer, Logical, Physical, Point, Rectangle, Size, Transform},
+    wayland::{compositor::with_states, seat::WaylandFocus},
 };
 use tiny_skia::Pixmap;
 
@@ -193,9 +193,7 @@ pub fn build(tree: &WindowTree, origin: (f64, f64), pid: u32) -> Vec<Node> {
     let content = Rect { x: 0.0, y: 0.0, w: tree.width, h: tree.height };
     let rect = |n: &UiNode| Rect { x: n.x, y: n.y, w: n.width, h: n.height };
     // Menu items hang outside the window; everything else must show in it.
-    let target = |n: &UiNode| {
-        n.clickable && n.enabled && n.width > 0.0 && n.height > 0.0 && (n.role == "MenuItem" || content.contains_point(rect(n).centre()))
-    };
+    let target = |n: &UiNode| n.clickable && n.enabled && n.width > 0.0 && n.height > 0.0 && (n.role == "MenuItem" || content.contains_point(rect(n).centre()));
     let mut targets: Vec<bool> = nodes.iter().map(target).collect();
     // A nameless area behind others (a list's background) is not one, nor
     // is the outside of a control around its own inside (a menu field
@@ -717,10 +715,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let mut places = Vec::new();
         let infos = self.window_infos_with_frames();
         // The focused window, or (a menu has the keyboard) the front one.
-        let want = window
-            .map(|w| w.id())
-            .or_else(|| infos.iter().find(|i| i.focused).map(|i| i.id))
-            .or_else(|| self.space.elements().next_back().map(|w| w.id()));
+        let want = window.map(|w| w.id()).or_else(|| infos.iter().find(|i| i.focused).map(|i| i.id)).or_else(|| self.space.elements().next_back().map(|w| w.id()));
         for i in infos.iter().filter(|i| Some(i.id) == want) {
             if let (Some(pid), Some(c)) = (i.pid, i.content) {
                 let content = Rect { x: c.x as f64, y: c.y as f64, w: c.width as f64, h: c.height as f64 };

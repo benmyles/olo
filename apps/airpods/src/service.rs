@@ -94,35 +94,28 @@ struct Service {
 
 fn service() -> &'static Service {
     static S: OnceLock<Service> = OnceLock::new();
-    S.get_or_init(|| {
-        Service {
-            inner: Mutex::new(Inner {
-                devices: BTreeMap::new(),
-                settings: AirPodsSettings::load(),
-                published: None,
-                inputs: Vec::new(),
-                computer_input: None,
-                sound_seen: false,
-                fake: std::env::var_os("OLO_FAKE_AIRPODS").is_some(),
-                listening: false,
-                not_listening: None,
-                keys: BTreeMap::new(),
-                keys_read: None,
-                playing: false,
-                expiring: false,
-            }),
-        }
+    S.get_or_init(|| Service {
+        inner: Mutex::new(Inner {
+            devices: BTreeMap::new(),
+            settings: AirPodsSettings::load(),
+            published: None,
+            inputs: Vec::new(),
+            computer_input: None,
+            sound_seen: false,
+            fake: std::env::var_os("OLO_FAKE_AIRPODS").is_some(),
+            listening: false,
+            not_listening: None,
+            keys: BTreeMap::new(),
+            keys_read: None,
+            playing: false,
+            expiring: false,
+        }),
     })
 }
 
 /// Publish the state if it changed (the lock held by the caller).
 fn publish(inner: &mut Inner) {
-    let state = AirPodsState {
-        pid: std::process::id(),
-        devices: inner.devices.values().map(|d| d.info.clone()).collect(),
-        listening: inner.listening,
-        not_listening: inner.not_listening.clone(),
-    };
+    let state = AirPodsState { pid: std::process::id(), devices: inner.devices.values().map(|d| d.info.clone()).collect(), listening: inner.listening, not_listening: inner.not_listening.clone() };
     if inner.published.as_ref() == Some(&state) {
         return;
     }
@@ -775,7 +768,11 @@ pub fn microphone_wanted(addr: &str, on: bool) -> bool {
 fn set_quality(addr: &str, high: bool) -> Result<(), String> {
     let card = audio::cards().map_err(|e| e.to_string())?.into_iter().find(|c| c.address.as_deref().is_some_and(|a| a.eq_ignore_ascii_case(addr))).ok_or("Their sound isn't connected.")?;
     let want = |p: &str| if high { p.starts_with("a2dp") } else { p.starts_with("headset") };
-    let profile = card.profiles.iter().filter(|(n, _, available)| *available && want(n)).map(|(n, ..)| n.clone()).next().ok_or(if high { "They can't play at music quality now." } else { "Their microphone isn't available." })?;
+    let profile = card.profiles.iter().filter(|(n, _, available)| *available && want(n)).map(|(n, ..)| n.clone()).next().ok_or(if high {
+        "They can't play at music quality now."
+    } else {
+        "Their microphone isn't available."
+    })?;
     audio::set_card_profile(&card.name, &profile).map_err(|e| e.to_string())
 }
 
@@ -798,7 +795,13 @@ fn follow_settings() {
 fn pick(inner: &Inner, address: &Option<String>) -> Result<String, String> {
     match address {
         Some(a) => inner.devices.keys().find(|k| k.eq_ignore_ascii_case(a)).cloned().ok_or_else(|| format!("No AirPods paired at {a}.")),
-        None => inner.devices.values().find(|d| d.info.connected).or_else(|| inner.devices.values().next()).map(|d| d.info.address.clone()).ok_or_else(|| "No AirPods are paired with this computer.".to_owned()),
+        None => inner
+            .devices
+            .values()
+            .find(|d| d.info.connected)
+            .or_else(|| inner.devices.values().next())
+            .map(|d| d.info.address.clone())
+            .ok_or_else(|| "No AirPods are paired with this computer.".to_owned()),
     }
 }
 
@@ -1034,7 +1037,14 @@ fn fake_pair() {
             press_speed: Some(0),
             hold_duration: Some(0),
         },
-        sound: ap::Sound { output: "bluez_output.AA_BB_CC_DD_EE_FF.1".into(), input: String::new(), microphone: String::new(), codec: "aac".into(), high_quality: true, card: "bluez_card.AA_BB_CC_DD_EE_FF".into() },
+        sound: ap::Sound {
+            output: "bluez_output.AA_BB_CC_DD_EE_FF.1".into(),
+            input: String::new(),
+            microphone: String::new(),
+            codec: "aac".into(),
+            high_quality: true,
+            card: "bluez_card.AA_BB_CC_DD_EE_FF".into(),
+        },
     };
     publish(&mut inner);
 }

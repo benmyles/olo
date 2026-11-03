@@ -30,7 +30,10 @@ pub enum ToHelper {
 pub enum FromHelper {
     Ready,
     /// The steps' outcomes, in order; the first failure stops the rest.
-    Done { id: u64, results: Vec<Result<(), String>> },
+    Done {
+        id: u64,
+        results: Vec<Result<(), String>>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -162,7 +165,11 @@ mod tests {
     fn the_helper_runs_steps_in_order_and_stops_at_a_failure() {
         let dir = std::path::PathBuf::from(format!("/var/tmp/olo-doctor-helper-test-{}", std::process::id()));
         let file = dir.join("a");
-        let steps = vec![Step::WriteFile { path: file.clone(), content: "hi".into(), mode: 0o600 }, Step::WriteSysfs { path: dir.join("missing/b"), value: "x".into() }, Step::RemoveFile { path: file.clone() }];
+        let steps = vec![
+            Step::WriteFile { path: file.clone(), content: "hi".into(), mode: 0o600 },
+            Step::WriteSysfs { path: dir.join("missing/b"), value: "x".into() },
+            Step::RemoveFile { path: file.clone() },
+        ];
         let input = format!("not json\n{}\n", serde_json::to_string(&ToHelper::Run { id: 7, steps }).unwrap());
         let mut out = Vec::new();
         serve_on(input.as_bytes(), &mut out);

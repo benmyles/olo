@@ -64,12 +64,7 @@ pub fn read_claude(dir: &Path) -> Result<Found, String> {
         .unwrap_or(Value::Null);
     Ok(Found {
         provider: Provider::Claude,
-        credential: Credential {
-            access: access.to_owned(),
-            refresh: o["refreshToken"].as_str().map(str::to_owned),
-            expires_at: timestamp(&o["expiresAt"]),
-            account_id: None,
-        },
+        credential: Credential { access: access.to_owned(), refresh: o["refreshToken"].as_str().map(str::to_owned), expires_at: timestamp(&o["expiresAt"]), account_id: None },
         email: account["emailAddress"].as_str().map(str::to_owned),
         plan: o["subscriptionType"].as_str().map(str::to_owned),
         org: account["organizationUuid"].as_str().map(str::to_owned),

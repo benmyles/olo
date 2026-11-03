@@ -35,9 +35,7 @@ use alacritty_terminal::{
     vte::ansi::{Color, CursorShape, NamedColor, Rgb},
 };
 use olo_ui::{
-    gpui::{
-        self, App, Bounds, ContentMask, FontId, FontWeight, GlyphId, GlyphRun, Hsla, Keystroke, Modifiers, PathBuilder, Pixels, RenderImage, TextRun, Window, point, px, size,
-    },
+    gpui::{self, App, Bounds, ContentMask, FontId, FontWeight, GlyphId, GlyphRun, Hsla, Keystroke, Modifiers, PathBuilder, Pixels, RenderImage, TextRun, Window, point, px, size},
     style,
 };
 
@@ -677,13 +675,8 @@ pub fn paint(window: &mut Window, cx: &mut App, rect: Bounds<Pixels>, p: Paint, 
             }
         }
     });
-    let image_cells: Vec<(i32, usize, u32, usize)> = cache
-        .rows
-        .iter()
-        .enumerate()
-        .filter_map(|(r, d)| Some((first + r as i32, d.as_ref()?)))
-        .flat_map(|(line, d)| d.images.iter().map(move |&(col, uid, row)| (line, col, uid, row)))
-        .collect();
+    let image_cells: Vec<(i32, usize, u32, usize)> =
+        cache.rows.iter().enumerate().filter_map(|(r, d)| Some((first + r as i32, d.as_ref()?))).flat_map(|(line, d)| d.images.iter().map(move |&(col, uid, row)| (line, col, uid, row))).collect();
     drop(cache);
     draw_images(window, s, &image_cells, pane, &at, m.cell);
 
@@ -739,7 +732,9 @@ pub fn paint(window: &mut Window, cx: &mut App, rect: Bounds<Pixels>, p: Paint, 
             }
             (false, _) => {
                 let t = line_px.max(0.5);
-                window.paint_quad(gpui::outline(Bounds { origin: point(px(x + t / 2.0), px(y + t / 2.0)), size: size(px(w - t), px(ch - t)) }, cursor_color, gpui::BorderStyle::Solid).border_widths(px(2.0 * t)));
+                window.paint_quad(
+                    gpui::outline(Bounds { origin: point(px(x + t / 2.0), px(y + t / 2.0)), size: size(px(w - t), px(ch - t)) }, cursor_color, gpui::BorderStyle::Solid).border_widths(px(2.0 * t)),
+                );
             }
         }
     }
@@ -1349,7 +1344,13 @@ pub fn key(s: &Session, k: Key, pressed: bool, repeat: bool) -> bool {
         }
     }
     if mode.intersects(TermMode::KITTY_KEYBOARD_PROTOCOL) {
-        let event = if !pressed { 3 } else if repeat { 2 } else { 1 };
+        let event = if !pressed {
+            3
+        } else if repeat {
+            2
+        } else {
+            1
+        };
         if let Some(bytes) = kitty_key(k, mode, event) {
             s.write(bytes);
             if pressed {
@@ -1594,7 +1595,13 @@ impl Mouse {
             sel.update(point, side);
         }
         // Past the top or bottom: a line scrolled.
-        let past = if pos.y < rect.top() { 1 } else if pos.y > rect.bottom() { -1 } else { 0 };
+        let past = if pos.y < rect.top() {
+            1
+        } else if pos.y > rect.bottom() {
+            -1
+        } else {
+            0
+        };
         if past != 0 {
             t.scroll_display(Scroll::Delta(past));
         }

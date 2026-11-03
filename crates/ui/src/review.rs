@@ -10,12 +10,7 @@
 //! What is in an area on a grid of its own ([`own_grid`]) or centred in
 //! a band nothing fills ([`band`]) is marked so.
 
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    sync::mpsc,
-    time::Duration,
-};
+use std::{cell::RefCell, collections::HashMap, sync::mpsc, time::Duration};
 
 use gpui::{App, Bounds, Pixels, Window, WindowId};
 use olo_kit_base::{

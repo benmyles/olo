@@ -12,7 +12,6 @@ use olo_sync::Mutex;
 use std::{net::SocketAddr, path::Path, sync::Arc};
 
 use axum::{Router, body::Body, http::HeaderMap, response::Response, routing::post};
-use serde_json::json;
 use olo_token_pool::{
     authority::Authority,
     gateway::Shared,
@@ -21,6 +20,7 @@ use olo_token_pool::{
     store::Saved,
     upstream::Upstreams,
 };
+use serde_json::json;
 
 /// A Messages stream as Anthropic sends it, saying `text`.
 fn claude_stream(text: &str) -> String {
@@ -189,7 +189,8 @@ async fn codex_on_its_subscription_through_the_proxy() {
     // proxy and the bundle in the `.env` it reads as it starts.
     let home = dir.path().join("codex");
     write(&home.join(".env"), &format!("HTTPS_PROXY={}\nSSL_CERT_FILE={}\nNO_PROXY=localhost,127.0.0.1,::1\n", intercept::url(proxy.port()), bundle.display()));
-    let auth = json!({"https://api.openai.com/auth": {"chatgpt_plan_type": "pro", "chatgpt_account_id": "their-account", "chatgpt_user_id": "user-1"}, "email": "someone@example.com", "exp": now() + 3600});
+    let auth =
+        json!({"https://api.openai.com/auth": {"chatgpt_plan_type": "pro", "chatgpt_account_id": "their-account", "chatgpt_user_id": "user-1"}, "email": "someone@example.com", "exp": now() + 3600});
     let tokens = json!({"id_token": jwt(auth.clone()), "access_token": jwt(auth), "refresh_token": "their-refresh", "account_id": "their-account"});
     write(&home.join("auth.json"), &json!({"OPENAI_API_KEY": null, "tokens": tokens, "last_refresh": chrono_now()}).to_string());
     write(&home.join("config.toml"), "model = \"gpt-5-codex\"\n");
@@ -319,7 +320,8 @@ async fn codex_daemon_follows_the_pool() {
     // proxy then one that goes nowhere, to keep it off the network).
     let dotenv = |proxy: &str| format!("HTTPS_PROXY={proxy}\nSSL_CERT_FILE={}\nNO_PROXY=localhost,127.0.0.1,::1\n", bundle.display());
     write(&home.join(".env"), &dotenv("http://127.0.0.1:9"));
-    let auth = json!({"https://api.openai.com/auth": {"chatgpt_plan_type": "pro", "chatgpt_account_id": "their-account", "chatgpt_user_id": "user-1"}, "email": "someone@example.com", "exp": now() + 3600});
+    let auth =
+        json!({"https://api.openai.com/auth": {"chatgpt_plan_type": "pro", "chatgpt_account_id": "their-account", "chatgpt_user_id": "user-1"}, "email": "someone@example.com", "exp": now() + 3600});
     let tokens = json!({"id_token": jwt(auth.clone()), "access_token": jwt(auth), "refresh_token": "their-refresh", "account_id": "their-account"});
     write(&home.join("auth.json"), &json!({"OPENAI_API_KEY": null, "tokens": tokens, "last_refresh": chrono_now()}).to_string());
     write(&home.join("config.toml"), "model = \"gpt-5-codex\"\n");

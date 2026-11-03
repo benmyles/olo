@@ -136,9 +136,7 @@ impl CropFrame {
                 s
             }),
         };
-        let sel = sel
-            .map(|s| [s[0].max(0.0).round(), s[1].max(0.0).round(), s[2].min(fw).round(), s[3].min(fh).round()])
-            .filter(|s| s[2] - s[0] >= 1.0 && s[3] - s[1] >= 1.0);
+        let sel = sel.map(|s| [s[0].max(0.0).round(), s[1].max(0.0).round(), s[2].min(fw).round(), s[3].min(fh).round()]).filter(|s| s[2] - s[0] >= 1.0 && s[3] - s[1] >= 1.0);
         let changed = sel != self.sel;
         self.sel = sel;
         changed

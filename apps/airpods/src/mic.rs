@@ -287,9 +287,7 @@ fn source(addr: &str, label: &str, ring: Arc<Mutex<Ring>>, node: Arc<Mutex<Optio
     .0
     .into_inner();
     let mut params = [pw::spa::pod::Pod::from_bytes(&format).ok_or("format")?];
-    stream
-        .connect(spa::utils::Direction::Output, None, pw::stream::StreamFlags::MAP_BUFFERS | pw::stream::StreamFlags::RT_PROCESS, &mut params)
-        .map_err(|e| e.to_string())?;
+    stream.connect(spa::utils::Direction::Output, None, pw::stream::StreamFlags::MAP_BUFFERS | pw::stream::StreamFlags::RT_PROCESS, &mut params).map_err(|e| e.to_string())?;
     let _quit = quit.attach(mainloop.loop_(), move |_| {
         if let Some(l) = weak.upgrade() {
             l.quit();

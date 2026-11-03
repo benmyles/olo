@@ -214,14 +214,35 @@ fn paint_line(
     // (`LineLayout::painted`): a window of text redrawn for a hover was
     // an atlas lookup and a scene insert a glyph, 1.6 µs each (a full
     // screen of Notifications' history 15–25 ms a frame).
-    let plain = decoration_runs.iter().all(|r| r.underline.is_none() && r.strikethrough.is_none())
-        && layout.runs.iter().all(|r| r.glyphs.iter().all(|g| !g.is_emoji));
+    let plain = decoration_runs
+        .iter()
+        .all(|r| r.underline.is_none() && r.strikethrough.is_none())
+        && layout
+            .runs
+            .iter()
+            .all(|r| r.glyphs.iter().all(|g| !g.is_emoji));
     if plain {
-        let stamp = line_stamp(line_height, align, align_width, decoration_runs, wrap_boundaries);
+        let stamp = line_stamp(
+            line_height,
+            align,
+            align_width,
+            decoration_runs,
+            wrap_boundaries,
+        );
         let mut painted = layout.painted.0.lock();
         window.paint_layer(line_bounds, |window| {
             window.paint_glyph_run(&mut painted, origin, stamp, |emit| {
-                plain_glyphs(origin, layout, text, line_height, align, align_width, decoration_runs, wrap_boundaries, emit)
+                plain_glyphs(
+                    origin,
+                    layout,
+                    text,
+                    line_height,
+                    align,
+                    align_width,
+                    decoration_runs,
+                    wrap_boundaries,
+                    emit,
+                )
             })
         });
         return Ok(());
@@ -613,7 +634,9 @@ fn line_stamp(
     align_width.map(|w| w.0.to_bits()).hash(&mut h);
     for r in decoration_runs {
         r.len.hash(&mut h);
-        [r.color.h, r.color.s, r.color.l, r.color.a].map(f32::to_bits).hash(&mut h);
+        [r.color.h, r.color.s, r.color.l, r.color.a]
+            .map(f32::to_bits)
+            .hash(&mut h);
     }
     for w in wrap_boundaries {
         (w.run_ix, w.glyph_ix).hash(&mut h);
@@ -643,7 +666,15 @@ fn plain_glyphs(
     let mut run_end = 0;
     let mut color = black();
     let mut glyph_origin = point(
-        aligned_origin_x(origin, align_width.unwrap_or(layout.width), px(0.0), &align, layout, wraps.peek(), text),
+        aligned_origin_x(
+            origin,
+            align_width.unwrap_or(layout.width),
+            px(0.0),
+            &align,
+            layout,
+            wraps.peek(),
+            text,
+        ),
         origin.y,
     );
     let mut prev_glyph_position = Point::default();
@@ -652,7 +683,15 @@ fn plain_glyphs(
             glyph_origin.x += glyph.position.x - prev_glyph_position.x;
             if wraps.peek() == Some(&&WrapBoundary { run_ix, glyph_ix }) {
                 wraps.next();
-                glyph_origin.x = aligned_origin_x(origin, align_width.unwrap_or(layout.width), glyph.position.x, &align, layout, wraps.peek(), text);
+                glyph_origin.x = aligned_origin_x(
+                    origin,
+                    align_width.unwrap_or(layout.width),
+                    glyph.position.x,
+                    &align,
+                    layout,
+                    wraps.peek(),
+                    text,
+                );
                 glyph_origin.y += line_height;
             }
             prev_glyph_position = glyph.position;
@@ -673,7 +712,13 @@ fn plain_glyphs(
                     run_end = layout.len;
                 }
             }
-            emit(glyph_origin + baseline_offset - origin, run.font_id, glyph.id, run.font_size, color);
+            emit(
+                glyph_origin + baseline_offset - origin,
+                run.font_id,
+                glyph.id,
+                run.font_size,
+                color,
+            );
         }
     }
 }
@@ -708,7 +753,9 @@ fn aligned_origin_x(
 /// spaces before it, which hang past the edge (a centred or right-aligned
 /// row is placed by its words, not its spaces; upstream counted them).
 fn row_end(layout: &LineLayout, text: &str, boundary: &WrapBoundary) -> Pixels {
-    let mut end = layout.runs[boundary.run_ix].glyphs[boundary.glyph_ix].position.x;
+    let mut end = layout.runs[boundary.run_ix].glyphs[boundary.glyph_ix]
+        .position
+        .x;
     let (mut run, mut glyph) = (boundary.run_ix, boundary.glyph_ix);
     loop {
         if glyph == 0 {
@@ -721,7 +768,11 @@ fn row_end(layout: &LineLayout, text: &str, boundary: &WrapBoundary) -> Pixels {
         }
         glyph -= 1;
         let g = &layout.runs[run].glyphs[glyph];
-        if !text.get(g.index..).and_then(|t| t.chars().next()).is_some_and(char::is_whitespace) {
+        if !text
+            .get(g.index..)
+            .and_then(|t| t.chars().next())
+            .is_some_and(char::is_whitespace)
+        {
             break;
         }
         end = g.position.x;

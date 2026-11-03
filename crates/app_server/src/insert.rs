@@ -96,10 +96,7 @@ impl<B: Backend> AnvilState<B> {
         if matches!(focus, KeyboardFocusTarget::Surface(_)) {
             return;
         }
-        let theirs = focus
-            .wl_surface()
-            .and_then(|s| s.client())
-            .and_then(|c| client_pid(&c, &self.display_handle));
+        let theirs = focus.wl_surface().and_then(|s| s.client()).and_then(|c| client_pid(&c, &self.display_handle));
         if theirs.is_some() && theirs == self.inserting.from {
             return;
         }

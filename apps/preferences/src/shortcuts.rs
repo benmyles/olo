@@ -146,7 +146,19 @@ pub fn ui(ui: &mut Ui, server: &Server, st: &mut State) {
                         } else {
                             style::key_combo(window, cx, right, &keys, fg);
                         }
-                        olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "ListItem", name: Some(format!("{}: {keys}", info.title).into()), bounds: r, enabled: true, clickable: true, selected: Some(on), ..Default::default() });
+                        olo_ui::agent::record(
+                            window,
+                            cx,
+                            olo_ui::agent::Node {
+                                role: "ListItem",
+                                name: Some(format!("{}: {keys}", info.title).into()),
+                                bounds: r,
+                                enabled: true,
+                                clickable: true,
+                                selected: Some(on),
+                                ..Default::default()
+                            },
+                        );
                     }
                 }
             }
@@ -179,15 +191,8 @@ pub fn ui(ui: &mut Ui, server: &Server, st: &mut State) {
         }
         cx.notify();
     });
-    ui.add(
-        div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .child(div().flex_1().child(StringView::new(text).dim(dim)))
-            .child(Button::new("Default Keys").enabled(has_own).on_click(move |window, cx| {
-                defaults(window, cx);
-                clear_note(window, cx);
-            })),
-    );
+    ui.add(div().flex().flex_row().items_center().child(div().flex_1().child(StringView::new(text).dim(dim))).child(Button::new("Default Keys").enabled(has_own).on_click(move |window, cx| {
+        defaults(window, cx);
+        clear_note(window, cx);
+    })));
 }

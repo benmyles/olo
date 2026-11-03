@@ -191,9 +191,7 @@ impl Roots {
         let uid = sudo_uid.unwrap_or_else(|| unsafe { libc::getuid() });
         let scope = scope_of(&std::fs::read_to_string("/proc/self/cgroup").unwrap_or_default());
         // AirPods paired, as BlueZ says (the service needn't be running).
-        let airpods = olo_system::bluetooth::status()
-            .map(|s| s.devices.iter().any(|d| d.paired && d.modalias.as_deref().is_some_and(olo_system::airpods::is_airpods)))
-            .unwrap_or(false);
+        let airpods = olo_system::bluetooth::status().map(|s| s.devices.iter().any(|d| d.paired && d.modalias.as_deref().is_some_and(olo_system::airpods::is_airpods))).unwrap_or(false);
         Roots { fs: PathBuf::from("/"), bin, uid, scope, units: Box::new(crate::fix::unit_state), airpods }
     }
 }
@@ -249,12 +247,7 @@ fn processes(fs: &Path) -> Vec<Proc> {
 
 /// The input devices' names (/proc/bus/input/devices).
 fn input_device_names(fs: &Path) -> Vec<String> {
-    std::fs::read_to_string(fs.join("proc/bus/input/devices"))
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|l| l.strip_prefix("N: Name=\""))
-        .map(|n| n.trim_end_matches('"').to_owned())
-        .collect()
+    std::fs::read_to_string(fs.join("proc/bus/input/devices")).unwrap_or_default().lines().filter_map(|l| l.strip_prefix("N: Name=\"")).map(|n| n.trim_end_matches('"').to_owned()).collect()
 }
 
 fn read(path: &Path) -> Option<String> {
@@ -761,11 +754,13 @@ fn voice_realtime(roots: &Roots, procs: &[Proc], r: &mut Report) {
         steps: vec![
             Step::WriteFile {
                 path: "/etc/systemd/system/rtkit-daemon.service.d/olo.conf".into(),
-                content: format!("# Olo: room for the voice services' sound to be realtime (Olo Doctor).
+                content: format!(
+                    "# Olo: room for the voice services' sound to be realtime (Olo Doctor).
 [Service]
 ExecStart=
 ExecStart=/{d} --processes-per-user-max=64 --threads-per-user-max=256
-"),
+"
+                ),
                 mode: 0o644,
             },
             Step::Unit { name: "rtkit-daemon.service".into(), action: UnitAction::Reload },
@@ -846,7 +841,9 @@ fn stale(roots: &Roots, procs: &[Proc], r: &mut Report) {
 fn login_entry(roots: &Roots, r: &mut Report) {
     let path = roots.fs.join(SESSION_ENTRY_PATH);
     let session = roots.bin.join("olo-session");
-    let wanted: String = SESSION_ENTRY.lines().filter(|l| !l.starts_with("TryExec=")).map(|l| if l.starts_with("Exec=") { format!("Exec={}", session.display()) } else { l.to_owned() }).collect::<Vec<_>>().join("\n") + "\n";
+    let wanted: String =
+        SESSION_ENTRY.lines().filter(|l| !l.starts_with("TryExec=")).map(|l| if l.starts_with("Exec=") { format!("Exec={}", session.display()) } else { l.to_owned() }).collect::<Vec<_>>().join("\n")
+            + "\n";
     let installed = std::fs::read_to_string(&path).ok();
     let exec = installed.as_deref().and_then(|t| t.lines().find_map(|l| l.strip_prefix("Exec=")).map(str::to_owned));
     let runs = exec.as_deref().is_some_and(|e| Path::new(e).exists() || !e.contains('/'));
@@ -948,7 +945,11 @@ mod tests {
         let r = scan(&roots);
         let ids: Vec<&str> = r.findings.iter().map(|f| f.id.as_str()).collect();
         assert_eq!(r.find("foreign").unwrap().title, "A program of another desktop runs in this session");
-        assert_eq!(ids, ["remapper:keyd", "foreign", "rule:input", "autosuspend:3-1.3", "rule:displays", "wifi-heal", "rtkit", "voice-realtime", "airpods-listening", "uclamp", "stale", "login"], "{r:#?}");
+        assert_eq!(
+            ids,
+            ["remapper:keyd", "foreign", "rule:input", "autosuspend:3-1.3", "rule:displays", "wifi-heal", "rtkit", "voice-realtime", "airpods-listening", "uclamp", "stale", "login"],
+            "{r:#?}"
+        );
         let voice = r.find("voice-realtime").unwrap();
         assert!(voice.detail.starts_with("olo-voice asked rtkit"), "{}", voice.detail);
         assert!(matches!(&voice.fix.as_ref().unwrap().steps[0], Step::WriteFile { content, .. } if content.contains("ExecStart=/usr/libexec/rtkit-daemon --processes-per-user-max=64")));
@@ -996,7 +997,9 @@ mod tests {
         let foreign = r.find("foreign").unwrap();
         assert!(foreign.detail.contains("GNOME's power daemon (gsd-power, process 901)"));
         let login = r.find("login").unwrap();
-        assert!(matches!(&login.fix.as_ref().unwrap().steps[0], Step::WriteFile { content, .. } if content.contains(&format!("Exec={}/olo-session\n", roots.bin.display())) && !content.contains("TryExec")));
+        assert!(
+            matches!(&login.fix.as_ref().unwrap().steps[0], Step::WriteFile { content, .. } if content.contains(&format!("Exec={}/olo-session\n", roots.bin.display())) && !content.contains("TryExec"))
+        );
         assert!(r.fine.is_empty(), "{:?}", r.fine);
         let _ = std::fs::remove_dir_all(&fs);
     }
@@ -1023,7 +1026,9 @@ mod tests {
         w(HEAL_UNIT_PATH, HEAL_UNIT);
         w(BRCMFMAC_CONF_PATH, BRCMFMAC_CONF);
         w(UTIL_CLAMP_PATH, "1024\n");
-        roots.units = Box::new(|name: &str| Ok(if matches!(name, "rtkit-daemon.service" | "olo-wifi-heal.service") { UnitState { loaded: true, active: true, enabled: true, path: None } } else { UnitState::default() }));
+        roots.units = Box::new(|name: &str| {
+            Ok(if matches!(name, "rtkit-daemon.service" | "olo-wifi-heal.service") { UnitState { loaded: true, active: true, enabled: true, path: None } } else { UnitState::default() })
+        });
         let r = scan(&roots);
         assert!(r.findings.is_empty(), "{:#?}", r.findings);
         let titles: Vec<&str> = r.fine.iter().map(|f| f.title.as_str()).collect();

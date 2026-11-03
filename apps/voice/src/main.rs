@@ -126,8 +126,7 @@ fn service() -> ExitCode {
     let mut devices: Option<Devices> = None;
     // The microphone chosen before a restart or an upgrade (the state file
     // outlives its process).
-    let mut microphone: Option<String> =
-        std::fs::read_to_string(State::path()).ok().and_then(|t| serde_json::from_str::<State>(&t).ok()).and_then(|s| s.microphone);
+    let mut microphone: Option<String> = std::fs::read_to_string(State::path()).ok().and_then(|t| serde_json::from_str::<State>(&t).ok()).and_then(|s| s.microphone);
     let mut engine: Option<engine::Engine> = None;
     let mut config: Option<engine::Config> = None;
     let mut state = State { pid: std::process::id(), ..State::default() };

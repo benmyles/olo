@@ -26,12 +26,18 @@ pub enum Step {
     /// Waiting for a phone number (or `qr`).
     Phone,
     /// Waiting for the code sent to `phone`.
-    Code { phone: String },
+    Code {
+        phone: String,
+    },
     /// Waiting for the two-step password.
-    Password { hint: Option<String> },
+    Password {
+        hint: Option<String>,
+    },
     /// Show this as a QR code to scan with Telegram on a phone
     /// (Settings ▸ Devices ▸ Link Desktop Device); it changes every 30 s.
-    Qr { url: String },
+    Qr {
+        url: String,
+    },
     /// Asking Telegram (a step was taken).
     Working,
     Done(Me),

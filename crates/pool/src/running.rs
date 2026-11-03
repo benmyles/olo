@@ -6,12 +6,7 @@
 //! pool's settings, its connections and its conversations). Read from
 //! /proc, and the daemon over its control socket, so off the UI thread.
 
-use std::{
-    collections::HashMap,
-    os::unix::fs::MetadataExt,
-    path::PathBuf,
-    time::SystemTime,
-};
+use std::{collections::HashMap, os::unix::fs::MetadataExt, path::PathBuf, time::SystemTime};
 
 use serde::Serialize;
 
@@ -145,9 +140,8 @@ pub fn scan(proxy_port: u16) -> Running {
         }
         let Ok(exe) = std::fs::read_link(format!("/proc/{pid}/exe")) else { continue };
         let exe = exe.to_str().and_then(|x| x.strip_suffix(" (deleted)")).map(PathBuf::from).unwrap_or(exe);
-        let args: Vec<String> = std::fs::read(format!("/proc/{pid}/cmdline"))
-            .map(|b| b.split(|&c| c == 0).filter(|a| !a.is_empty()).map(|a| String::from_utf8_lossy(a).into_owned()).collect())
-            .unwrap_or_default();
+        let args: Vec<String> =
+            std::fs::read(format!("/proc/{pid}/cmdline")).map(|b| b.split(|&c| c == 0).filter(|a| !a.is_empty()).map(|a| String::from_utf8_lossy(a).into_owned()).collect()).unwrap_or_default();
         let program = Program { pid, exe, args };
         let provider = [Provider::Claude, Provider::Codex].into_iter().find(|&p| program.is_client(p));
         // Codex's daemon and its keeper are Codex's, not windows.
@@ -155,12 +149,7 @@ pub fn scan(proxy_port: u16) -> Running {
             continue;
         }
         let Some(started) = codex_daemon::started(pid as i32) else { continue };
-        let process = Process {
-            pid,
-            started: secs(started),
-            cwd: std::fs::read_link(format!("/proc/{pid}/cwd")).ok(),
-            connections: connections(pid, &table, proxy_port),
-        };
+        let process = Process { pid, started: secs(started), cwd: std::fs::read_link(format!("/proc/{pid}/cwd")).ok(), connections: connections(pid, &table, proxy_port) };
         match provider {
             Some(Provider::Claude) => out.claude.push(process),
             _ => out.codex.push(process),

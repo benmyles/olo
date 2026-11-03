@@ -8,7 +8,10 @@ use olo_ui::{
     widgets::{Button, ScrollView, StringView},
 };
 
-use crate::{PanelView, about, ai, airpods, appearance, backup, bluetooth, datetime, default_apps, display, form::Ui, integrations, keyboard, network, notifications, performance, power, screensaver, security, sound, terminal, themes, touchid, touchpad, tracker, windows, workspaces};
+use crate::{
+    PanelView, about, ai, airpods, appearance, backup, bluetooth, datetime, default_apps, display, form::Ui, integrations, keyboard, network, notifications, performance, power, screensaver, security,
+    sound, terminal, themes, touchid, touchpad, tracker, windows, workspaces,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
@@ -225,12 +228,39 @@ impl Panel {
     }
 
     pub fn needs_server(self) -> bool {
-        !matches!(self, Panel::About | Panel::AirPods | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications | Panel::Performance | Panel::Backup | Panel::Integrations | Panel::DefaultApps)
+        !matches!(
+            self,
+            Panel::About
+                | Panel::AirPods
+                | Panel::Sound
+                | Panel::Network
+                | Panel::Bluetooth
+                | Panel::TouchId
+                | Panel::Notifications
+                | Panel::Performance
+                | Panel::Backup
+                | Panel::Integrations
+                | Panel::DefaultApps
+        )
     }
 
     /// Whether the panel has Defaults / Revert.
     pub fn resettable(self) -> bool {
-        !matches!(self, Panel::About | Panel::AirPods | Panel::Display | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications | Panel::Performance | Panel::Backup | Panel::Integrations | Panel::DefaultApps)
+        !matches!(
+            self,
+            Panel::About
+                | Panel::AirPods
+                | Panel::Display
+                | Panel::Sound
+                | Panel::Network
+                | Panel::Bluetooth
+                | Panel::TouchId
+                | Panel::Notifications
+                | Panel::Performance
+                | Panel::Backup
+                | Panel::Integrations
+                | Panel::DefaultApps
+        )
     }
 
     /// Put this panel's part of `settings` back to `from`.
@@ -277,7 +307,18 @@ impl Panel {
                 settings.appearance.colors = from.appearance.colors.clone();
                 settings.wallpaper = from.wallpaper.clone();
             }
-            Panel::Display | Panel::Backup | Panel::About | Panel::AirPods | Panel::Sound | Panel::Network | Panel::Bluetooth | Panel::TouchId | Panel::Notifications | Panel::Performance | Panel::Integrations | Panel::DefaultApps => {}
+            Panel::Display
+            | Panel::Backup
+            | Panel::About
+            | Panel::AirPods
+            | Panel::Sound
+            | Panel::Network
+            | Panel::Bluetooth
+            | Panel::TouchId
+            | Panel::Notifications
+            | Panel::Performance
+            | Panel::Integrations
+            | Panel::DefaultApps => {}
         }
     }
 }
@@ -433,8 +474,7 @@ mod tests {
     /// Deskbar's menu and our panels agree on arguments, names and icons.
     #[test]
     fn deskbar_lists_every_panel() {
-        let ours: Vec<(&str, &str, &str)> =
-            Panel::ALL.iter().filter(|p| **p != Panel::About).map(|p| (p.arg(), p.title(), p.icon())).collect();
+        let ours: Vec<(&str, &str, &str)> = Panel::ALL.iter().filter(|p| **p != Panel::About).map(|p| (p.arg(), p.title(), p.icon())).collect();
         assert_eq!(ours, olo_xdg::apps::PREFERENCE_PANELS);
         for (arg, _, _) in olo_xdg::apps::PREFERENCE_PANELS {
             assert!(Panel::from_arg(arg).is_some());

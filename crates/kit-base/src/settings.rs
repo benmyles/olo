@@ -22,20 +22,22 @@ pub fn watch(f: impl Fn(Settings) + Send + 'static) {
     }
     std::thread::Builder::new()
         .name("settings-watch".into())
-        .spawn(move || loop {
-            if let Some(s) = current() {
-                f(s);
-            }
-            if let Ok(client) = Client::connect()
-                && let Ok(events) = client.into_events_of(&[EventKind::Settings])
-            {
-                for event in events {
-                    if let Ok(Event::SettingsChanged { settings }) = event {
-                        f(settings);
+        .spawn(move || {
+            loop {
+                if let Some(s) = current() {
+                    f(s);
+                }
+                if let Ok(client) = Client::connect()
+                    && let Ok(events) = client.into_events_of(&[EventKind::Settings])
+                {
+                    for event in events {
+                        if let Ok(Event::SettingsChanged { settings }) = event {
+                            f(settings);
+                        }
                     }
                 }
+                std::thread::sleep(Duration::from_millis(500));
             }
-            std::thread::sleep(Duration::from_millis(500));
         })
         .ok();
 }
@@ -49,22 +51,24 @@ pub fn watch_power(f: impl Fn(PowerStatus) + Send + 'static) {
     }
     std::thread::Builder::new()
         .name("power-watch".into())
-        .spawn(move || loop {
-            if let Ok(mut c) = Client::connect()
-                && let Ok(Reply::Power { status }) = c.request(&Request::PowerStatus)
-            {
-                f(status);
-            }
-            if let Ok(client) = Client::connect()
-                && let Ok(events) = client.into_events_of(&[EventKind::Power])
-            {
-                for event in events {
-                    if let Ok(Event::PowerChanged { status }) = event {
-                        f(status);
+        .spawn(move || {
+            loop {
+                if let Ok(mut c) = Client::connect()
+                    && let Ok(Reply::Power { status }) = c.request(&Request::PowerStatus)
+                {
+                    f(status);
+                }
+                if let Ok(client) = Client::connect()
+                    && let Ok(events) = client.into_events_of(&[EventKind::Power])
+                {
+                    for event in events {
+                        if let Ok(Event::PowerChanged { status }) = event {
+                            f(status);
+                        }
                     }
                 }
+                std::thread::sleep(Duration::from_millis(500));
             }
-            std::thread::sleep(Duration::from_millis(500));
         })
         .ok();
 }

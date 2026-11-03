@@ -54,8 +54,7 @@ fn levels(x: &[f32]) -> Vec<f32> {
 /// than 6 dB ("chopped").
 fn kept(voice: &[f32], other: &[f32], out: &[f32]) -> (f32, f32) {
     let (v, n, o) = (levels(voice), levels(other), levels(out));
-    let mut diffs: Vec<f32> =
-        v.iter().zip(&n).zip(&o).filter(|((v, n), _)| **v > -60.0 && **v > **n).map(|((v, _), o)| o - v).collect();
+    let mut diffs: Vec<f32> = v.iter().zip(&n).zip(&o).filter(|((v, n), _)| **v > -60.0 && **v > **n).map(|((v, _), o)| o - v).collect();
     diffs.sort_by(f32::total_cmp);
     let chopped = diffs.iter().filter(|d| **d < -6.0).count() as f32 / diffs.len() as f32;
     (diffs[diffs.len() / 2], chopped)
@@ -127,10 +126,7 @@ fn turning_noise_suppression_down_leaves_more_of_the_room() {
     let clean = speech("slt", 0.3);
     let noise = room_noise(clean.len(), 0.06, 9);
     let mic: Vec<f32> = clean.iter().zip(&noise).map(|(a, b)| a + b).collect();
-    let left: Vec<f32> = [Noise::Moderate, Noise::Strong, Noise::Full]
-        .into_iter()
-        .map(|noise| in_pauses(&clean, &run(Settings { noise, ..noise_only(Mode::Recording) }, &mic, None).0))
-        .collect();
+    let left: Vec<f32> = [Noise::Moderate, Noise::Strong, Noise::Full].into_iter().map(|noise| in_pauses(&clean, &run(Settings { noise, ..noise_only(Mode::Recording) }, &mic, None).0)).collect();
     let input = in_pauses(&clean, &mic);
     eprintln!("noise left in pauses: moderate {:.1}, strong {:.1}, full {:.1} dBFS (in: {input:.1})", left[0], left[1], left[2]);
     // Moderate keeps about 18 dB of it, Strong 30, Full as little as it can.
@@ -147,8 +143,7 @@ fn music(n: usize) -> Vec<f32> {
             let t = i as f32 / RATE as f32;
             let tau = 2.0 * std::f32::consts::PI;
             let beat = 0.6 + 0.4 * (tau * 2.0 * t).sin().max(0.0);
-            0.15 * beat * ((tau * 220.0 * t).sin() + 0.7 * (tau * 277.2 * t).sin() + 0.5 * (tau * 329.6 * t).sin() + 0.3 * (tau * 880.0 * t).sin())
-                + 0.03 * rng.uniform()
+            0.15 * beat * ((tau * 220.0 * t).sin() + 0.7 * (tau * 277.2 * t).sin() + 0.5 * (tau * 329.6 * t).sin() + 0.3 * (tau * 880.0 * t).sin()) + 0.03 * rng.uniform()
         })
         .collect()
 }
@@ -197,10 +192,7 @@ fn talking_over_the_music_keeps_the_voice_and_drops_the_echo() {
             let talk = 4 * RATE..out.len();
             let (level, chopped) = kept(&near[talk.clone()], &echo[talk.clone()], &out[talk.clone()]);
             let (echo_in, echo_out) = (in_pauses(&near[talk.clone()], &mic[talk.clone()]), in_pauses(&near[talk.clone()], &out[talk]));
-            eprintln!(
-                "{who} {mode:?}, talking over music: voice {level:+.1} dB ({:.0}% chopped), echo between words {echo_in:.1} → {echo_out:.1} dBFS, {us:.0} µs a frame",
-                chopped * 100.0
-            );
+            eprintln!("{who} {mode:?}, talking over music: voice {level:+.1} dB ({:.0}% chopped), echo between words {echo_in:.1} → {echo_out:.1} dBFS, {us:.0} µs a frame", chopped * 100.0);
             assert!(level.abs() < 2.0 && chopped < 0.1, "{who} {mode:?}: voice {level:.1} dB, {chopped} chopped");
             assert!(echo_in - echo_out > 30.0, "{who} {mode:?}: echo only {:.1} dB down", echo_in - echo_out);
         }
@@ -327,10 +319,7 @@ fn talking_over_the_other_person_keeps_the_voice_and_drops_theirs() {
             let talk = 4 * RATE..out.len();
             let (level, chopped) = kept(&near[talk.clone()], &echo[talk.clone()], &out[talk.clone()]);
             let (echo_in, echo_out) = (in_pauses(&near[talk.clone()], &mic[talk.clone()]), in_pauses(&near[talk.clone()], &out[talk]));
-            eprintln!(
-                "{near_who} over {far_who}, {mode:?}: voice {level:+.1} dB ({:.0}% chopped), their voice between words {echo_in:.1} → {echo_out:.1} dBFS",
-                chopped * 100.0
-            );
+            eprintln!("{near_who} over {far_who}, {mode:?}: voice {level:+.1} dB ({:.0}% chopped), their voice between words {echo_in:.1} → {echo_out:.1} dBFS", chopped * 100.0);
             assert!(level.abs() < 1.5 && chopped < 0.05, "{near_who} {mode:?}: voice {level:.1} dB, {chopped} chopped");
             assert!(echo_in - echo_out > 40.0, "{near_who} {mode:?}: echo only {:.1} dB down", echo_in - echo_out);
         }

@@ -202,16 +202,11 @@ impl Terminal {
             .child(div().flex_1().min_h(px(60.0)).child(list))
             .child(div().h(px(m::SPACING - m::TIGHT)))
             .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .child(div().flex_1().child(StringView::new(note).dim(true)))
-                    .child(
-                        widgets::button_row()
-                            .child(Button::new("Start Over…").enabled(can_start_over).on_click(move |window, cx| over(&(), window, cx)))
-                            .child(Button::new(label).default(true).enabled(can_restart).on_click(move |window, cx| restart(&(), window, cx))),
-                    ),
+                div().flex().flex_row().items_center().child(div().flex_1().child(StringView::new(note).dim(true))).child(
+                    widgets::button_row()
+                        .child(Button::new("Start Over…").enabled(can_start_over).on_click(move |window, cx| over(&(), window, cx)))
+                        .child(Button::new(label).default(true).enabled(can_restart).on_click(move |window, cx| restart(&(), window, cx))),
+                ),
             )
             .into_any_element()
     }

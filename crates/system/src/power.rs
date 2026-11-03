@@ -56,8 +56,7 @@ pub enum LoginEvent {
 /// graphical one.
 fn session_path(conn: &zbus::blocking::Connection) -> Result<zvariant::OwnedObjectPath> {
     bus::call(conn, DEST, PATH, MANAGER, "GetSessionByPID", &(std::process::id(),)).or_else(|_| {
-        let (_, path): (String, zvariant::OwnedObjectPath) =
-            bus::property(conn, DEST, "/org/freedesktop/login1/user/self", "org.freedesktop.login1.User", "Display")?;
+        let (_, path): (String, zvariant::OwnedObjectPath) = bus::property(conn, DEST, "/org/freedesktop/login1/user/self", "org.freedesktop.login1.User", "Display")?;
         Ok(path)
     })
 }

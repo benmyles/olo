@@ -14,14 +14,14 @@ use std::{
 use olo_kit_base::list::{ListState, Mods, SelectionBand, TypeSelect};
 use olo_ui::{
     Menu, MenuBar,
+    gpui::Focusable as _,
     gpui::{
-        self, App, Bounds, Context, Entity, EntityId, FocusHandle, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels,
-        Point, Render, ScrollHandle, Styled as _, Task, WeakEntity, Window, canvas, div, point, px, size,
+        self, App, Bounds, Context, Entity, EntityId, FocusHandle, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent,
+        MouseUpEvent, ParentElement as _, Pixels, Point, Render, ScrollHandle, Styled as _, Task, WeakEntity, Window, canvas, div, point, px, size,
     },
     menu, metrics as m,
     style::{self, Align},
     theme,
-    gpui::Focusable as _,
     widgets::{
         SCROLL_BAR, ScrollView, TextFieldEvent,
         list::{Column, ColumnListView, ListModel},
@@ -136,10 +136,7 @@ impl IconGeo {
     /// Item `i`'s cell, in the window.
     fn cell_at(&self, i: usize) -> Bounds<Pixels> {
         let (c, r) = (i % self.cols.max(1), i / self.cols.max(1));
-        Bounds {
-            origin: point(self.origin.x + px(self.inset + c as f32 * self.cell.0), self.origin.y + px(self.inset + r as f32 * self.cell.1)),
-            size: size(px(self.cell.0), px(self.cell.1)),
-        }
+        Bounds { origin: point(self.origin.x + px(self.inset + c as f32 * self.cell.0), self.origin.y + px(self.inset + r as f32 * self.cell.1)), size: size(px(self.cell.0), px(self.cell.1)) }
     }
 }
 
@@ -353,11 +350,7 @@ impl FolderWin {
             .key("t")
             .enabled(has_sel && !in_trash);
         if in_trash {
-            file = file
-                .item("Restore", "restore")
-                .enabled(has_sel && self.current_dir() == fs::trash_files())
-                .item("Empty Trash", "empty-trash")
-                .enabled(!fs::trash_is_empty());
+            file = file.item("Restore", "restore").enabled(has_sel && self.current_dir() == fs::trash_files()).item("Empty Trash", "empty-trash").enabled(!fs::trash_is_empty());
         }
         let file = file.separator().item("Close", "close").key("w").item("Quit", "quit").key("q");
         let edit = Menu::new("Edit")
@@ -803,7 +796,8 @@ impl FolderWin {
                 // state so it can be drawn.
                 let first = ((f32::from(clip.top() - b.top()) - inset) / cell.1).floor().max(0.0) as usize * cols;
                 let last = (((f32::from(clip.bottom() - b.top()) - inset) / cell.1).ceil().max(0.0) as usize + 1) * cols;
-                let cell_at = |i: usize| Bounds { origin: point(b.left() + px(inset + (i % cols) as f32 * cell.0), b.top() + px(inset + (i / cols) as f32 * cell.1)), size: size(px(cell.0), px(cell.1)) };
+                let cell_at =
+                    |i: usize| Bounds { origin: point(b.left() + px(inset + (i % cols) as f32 * cell.0), b.top() + px(inset + (i / cols) as f32 * cell.1)), size: size(px(cell.0), px(cell.1)) };
                 // (Laid out from the window's entries where they are: no
                 // copies of what shows, a frame's worth of allocations.)
                 let (layouts, editing, band, took, drop_on, spring_to) = {

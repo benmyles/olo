@@ -9,17 +9,40 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Action {
-    Signal { pid: i32, signal: i32 },
+    Signal {
+        pid: i32,
+        signal: i32,
+    },
     /// Every thread's nice value.
-    Nice { pid: i32, nice: i32 },
-    Affinity { pid: i32, cores: Vec<usize> },
+    Nice {
+        pid: i32,
+        nice: i32,
+    },
+    Affinity {
+        pid: i32,
+        cores: Vec<usize>,
+    },
     /// A limit (`details::resource`'s name); None is unlimited.
-    Limit { pid: i32, resource: String, soft: Option<u64>, hard: Option<u64> },
-    OomAdjust { pid: i32, value: i32 },
+    Limit {
+        pid: i32,
+        resource: String,
+        soft: Option<u64>,
+        hard: Option<u64>,
+    },
+    OomAdjust {
+        pid: i32,
+        value: i32,
+    },
     /// One of `sample::TUNABLES`.
-    Sysctl { name: String, value: String },
+    Sysctl {
+        name: String,
+        value: String,
+    },
     /// A cpufreq policy's governor (one it offers).
-    Governor { policy: usize, governor: String },
+    Governor {
+        policy: usize,
+        governor: String,
+    },
 }
 
 /// Why an action failed, and whether full access would do it.
@@ -55,12 +78,7 @@ fn os_error(what: &str) -> Refusal {
 
 /// The threads of `pid` (a priority or affinity is per thread).
 fn threads(pid: i32) -> Vec<i32> {
-    let mut v: Vec<i32> = std::fs::read_dir(format!("/proc/{pid}/task"))
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|e| e.file_name().to_str()?.parse().ok())
-        .collect();
+    let mut v: Vec<i32> = std::fs::read_dir(format!("/proc/{pid}/task")).into_iter().flatten().flatten().filter_map(|e| e.file_name().to_str()?.parse().ok()).collect();
     if v.is_empty() {
         v.push(pid);
     }

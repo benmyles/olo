@@ -116,13 +116,7 @@ fn finished(kind: Kind, sources: &[PathBuf], dest: Option<&Path>) -> String {
 }
 
 /// Start a job on a worker thread; `done` runs on that thread when it ends.
-pub fn start(
-    id: u64,
-    kind: Kind,
-    sources: Vec<PathBuf>,
-    dest: Option<PathBuf>,
-    done: impl FnOnce(Outcome) + Send + 'static,
-) -> Job {
+pub fn start(id: u64, kind: Kind, sources: Vec<PathBuf>, dest: Option<PathBuf>, done: impl FnOnce(Outcome) + Send + 'static) -> Job {
     let job = Job {
         id,
         title: title(kind, &sources, dest.as_deref()),
@@ -259,11 +253,7 @@ impl Worker<'_> {
                 }
                 let _ = exchange(&info, &old_info);
                 // Left by an emptying that was cut short: going too.
-                let earlier: Vec<PathBuf> = sfs::read_dir(&trash)?
-                    .flatten()
-                    .filter(|e| e.file_name().to_string_lossy().starts_with(EMPTYING) && e.path() != stage)
-                    .map(|e| e.path())
-                    .collect();
+                let earlier: Vec<PathBuf> = sfs::read_dir(&trash)?.flatten().filter(|e| e.file_name().to_string_lossy().starts_with(EMPTYING) && e.path() != stage).map(|e| e.path()).collect();
                 let r = self.empty_in(&old_files, &old_info).and_then(|()| {
                     for e in &earlier {
                         self.remove(e).map_err(|err| context(err, e))?;
@@ -370,9 +360,7 @@ impl Worker<'_> {
             self.check()?;
             let n = if kernel {
                 // SAFETY: valid fds; null offsets use and advance the file positions.
-                let n = unsafe {
-                    libc::copy_file_range(src.as_raw_fd(), std::ptr::null_mut(), dst.as_raw_fd(), std::ptr::null_mut(), CHUNK, 0)
-                };
+                let n = unsafe { libc::copy_file_range(src.as_raw_fd(), std::ptr::null_mut(), dst.as_raw_fd(), std::ptr::null_mut(), CHUNK, 0) };
                 if n < 0 {
                     let e = io::Error::last_os_error();
                     match e.raw_os_error() {
@@ -488,11 +476,7 @@ pub fn amount(job: &Job) -> String {
 pub fn detail(job: &Job) -> String {
     let p = &job.progress;
     let current = p.current.lock().map(|c| c.clone()).unwrap_or_default();
-    let (tb, ti, di) = (
-        p.total_bytes.load(Ordering::Relaxed),
-        p.total_items.load(Ordering::Relaxed),
-        p.done_items.load(Ordering::Relaxed),
-    );
+    let (tb, ti, di) = (p.total_bytes.load(Ordering::Relaxed), p.total_items.load(Ordering::Relaxed), p.done_items.load(Ordering::Relaxed));
     let mut parts = vec![current];
     if p.counting.load(Ordering::Relaxed) {
         parts.push(format!("{} found so far", plural(ti, "item")));
@@ -505,11 +489,7 @@ pub fn detail(job: &Job) -> String {
         let elapsed = job.started.elapsed().as_secs_f64();
         if f > 0.02 && elapsed > 2.0 {
             let left = elapsed * (1.0 - f) / f;
-            parts.push(if left < 60.0 {
-                format!("about {} s left", left.ceil().max(1.0))
-            } else {
-                format!("about {} min left", (left / 60.0).ceil())
-            });
+            parts.push(if left < 60.0 { format!("about {} s left", left.ceil().max(1.0)) } else { format!("about {} min left", (left / 60.0).ceil()) });
         }
     }
     parts.retain(|s| !s.is_empty());

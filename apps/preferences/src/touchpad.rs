@@ -38,7 +38,6 @@ impl State {
     }
 }
 
-
 fn state_of(v: &mut PanelView) -> Option<&mut State> {
     match &mut v.state {
         panel::State::Touchpad(st) => Some(st),
@@ -147,7 +146,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         cx.notify();
     });
     let tabs: Vec<SharedString> = ["Touchpad", "Touch", "Gestures", "Mouse"].into_iter().map(SharedString::from).collect();
-    ui.add(div().flex_1().min_h_0().child(TabView::new("touchpad-tabs", tabs, st.tab).on_select(pick).child(div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items))));
+    ui.add(
+        div().flex_1().min_h_0().child(TabView::new("touchpad-tabs", tabs, st.tab).on_select(pick).child(div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items))),
+    );
 }
 
 fn profile_name(id: &str) -> &str {
@@ -178,13 +179,19 @@ fn touchpad(ui: &mut Ui, t: &TouchpadSettings, asked: bool, pad: Option<&InputDe
                 }
                 let names: Vec<SharedString> = PROFILES.iter().map(|(_, name, _)| SharedString::from(*name)).collect();
                 let i = PROFILES.iter().position(|(id, _, _)| *id == t.profile).unwrap_or(PROFILES.len() - 1);
-                ui.menu("profile", names, i, |f| f.label("Profile:").divider(70.0), |s, i| {
-                    if let Some((id, _, _)) = PROFILES.get(i)
-                        && *id != s.touchpad.profile
-                    {
-                        s.touchpad.apply_profile(id);
-                    }
-                });
+                ui.menu(
+                    "profile",
+                    names,
+                    i,
+                    |f| f.label("Profile:").divider(70.0),
+                    |s, i| {
+                        if let Some((id, _, _)) = PROFILES.get(i)
+                            && *id != s.touchpad.profile
+                        {
+                            s.touchpad.apply_profile(id);
+                        }
+                    },
+                );
                 if let Some((_, _, about)) = PROFILES.get(i) {
                     ui.note(*about);
                 }
@@ -213,7 +220,6 @@ fn touchpad(ui: &mut Ui, t: &TouchpadSettings, asked: bool, pad: Option<&InputDe
             });
         },
     );
-
 }
 
 fn touch(ui: &mut Ui, t: &TouchpadSettings, pad: Option<&InputDeviceInfo>) {
@@ -227,7 +233,13 @@ fn touch(ui: &mut Ui, t: &TouchpadSettings, pad: Option<&InputDeviceInfo>) {
                 }
                 ui.enabled_if(f.enabled, |ui| {
                     let on = f.touch_on as f32;
-                    ui.slider("touch-on", on, 1.0..=40.0, |s| s.step(1.0).label("A touch starts at pressure").value_text(format!("{on:.0}")).limits("Any touch", "Firmer"), |s, v| tuned(s, |t| t.filter.touch_on = v as u32));
+                    ui.slider(
+                        "touch-on",
+                        on,
+                        1.0..=40.0,
+                        |s| s.step(1.0).label("A touch starts at pressure").value_text(format!("{on:.0}")).limits("Any touch", "Firmer"),
+                        |s, v| tuned(s, |t| t.filter.touch_on = v as u32),
+                    );
                     // The model and the size rule work together: a contact is a
                     // palm if either says so. The model first (it catches what
                     // size alone misses), then the size every contact as large as
@@ -256,9 +268,13 @@ fn touch(ui: &mut Ui, t: &TouchpadSettings, pad: Option<&InputDeviceInfo>) {
                         });
                     });
                     let palm = f.palm_size as f32;
-                    ui.slider("palm-size", palm, 600.0..=2000.0, |s| s.step(50.0).label("Always a palm when as large as").value_text(format!("{palm:.0}")).limits("Smaller", "Larger"), |s, v| {
-                        tuned(s, |t| t.filter.palm_size = v as u32)
-                    });
+                    ui.slider(
+                        "palm-size",
+                        palm,
+                        600.0..=2000.0,
+                        |s| s.step(50.0).label("Always a palm when as large as").value_text(format!("{palm:.0}")).limits("Smaller", "Larger"),
+                        |s, v| tuned(s, |t| t.filter.palm_size = v as u32),
+                    );
                     ui.note(if f.use_palm_model && trained { "Whatever the model says: it adds palms, never takes these away." } else { "Without a palm model, size alone tells a palm." });
                     ui.check("A resting palm can't click (its pressure doesn't count)", f.palm_proof_click, |s, v| tuned(s, |t| t.filter.palm_proof_click = v));
                 });
@@ -275,11 +291,17 @@ fn touch(ui: &mut Ui, t: &TouchpadSettings, pad: Option<&InputDeviceInfo>) {
                     }
                 };
                 ui.enabled_if(f.enabled && f.palm_proof_click, |ui| {
-                    ui.menu("click-pressure", names, i, |m| m.label("Click pressure:").divider(110.0), |s, i| {
-                        if let Some((_, press, release)) = CLICK_PRESSURES.get(i) {
-                            tuned(s, |t| (t.filter.click_press, t.filter.click_release) = (*press, *release));
-                        }
-                    });
+                    ui.menu(
+                        "click-pressure",
+                        names,
+                        i,
+                        |m| m.label("Click pressure:").divider(110.0),
+                        |s, i| {
+                            if let Some((_, press, release)) = CLICK_PRESSURES.get(i) {
+                                tuned(s, |t| (t.filter.click_press, t.filter.click_release) = (*press, *release));
+                            }
+                        },
+                    );
                 });
                 if let Some((press, release)) = pad.and_then(|p| p.driver_click) {
                     ui.note(format!("The pad clicks at {press}/{release} (all contacts together); with a palm on it, Olo counts the click only if the fingers press that hard alone."));
@@ -296,7 +318,6 @@ fn touch(ui: &mut Ui, t: &TouchpadSettings, pad: Option<&InputDeviceInfo>) {
             });
         },
     );
-
 }
 
 fn gestures(ui: &mut Ui, t: &TouchpadSettings) {
@@ -304,7 +325,13 @@ fn gestures(ui: &mut Ui, t: &TouchpadSettings) {
         |ui| {
             ui.bbox("Scrolling", |ui| {
                 let speed = t.scroll_speed as f32;
-                ui.slider("scroll-speed", speed, 0.25..=3.0, |s| s.step(0.05).label("Scrolling speed").value_text(format!("{speed:.2}×")).limits("Slow", "Fast"), |s, v| tuned(s, |t| t.scroll_speed = v as f64));
+                ui.slider(
+                    "scroll-speed",
+                    speed,
+                    0.25..=3.0,
+                    |s| s.step(0.05).label("Scrolling speed").value_text(format!("{speed:.2}×")).limits("Slow", "Fast"),
+                    |s, v| tuned(s, |t| t.scroll_speed = v as f64),
+                );
                 ui.check("Keep scrolling after a flick", t.momentum, |s, v| tuned(s, |t| t.momentum = v));
                 let glide = t.glide as f32;
                 ui.enabled_if(t.momentum, |ui| {
@@ -325,13 +352,14 @@ fn gestures(ui: &mut Ui, t: &TouchpadSettings) {
                 let drags = [(0u8, "Click and hold"), (3, "Three fingers"), (4, "Four fingers")];
                 ui.choose("three-finger-drag", &drags, &t.three_finger_drag, |f| f.label("Drag with:").divider(130.0), |s, v| tuned(s, |t| t.three_finger_drag = v));
                 ui.enabled_if(t.tap_to_click && t.tap_and_drag, |ui| {
-                    strings(ui, "drag-lock", "After tap and drag:", &[("off", "Drop on lift"), ("timeout", "Keep briefly"), ("sticky", "Keep until tapped")], &t.drag_lock, |s, v| tuned(s, |t| t.drag_lock = v));
+                    strings(ui, "drag-lock", "After tap and drag:", &[("off", "Drop on lift"), ("timeout", "Keep briefly"), ("sticky", "Keep until tapped")], &t.drag_lock, |s, v| {
+                        tuned(s, |t| t.drag_lock = v)
+                    });
                 });
                 strings(ui, "accel", "Acceleration:", &ACCELS, &t.accel_profile, |s, v| tuned(s, |t| t.accel_profile = v));
             });
         },
     );
-
 }
 
 /// A remapper's own pointer ("keyd virtual pointer"): the mice it has
@@ -426,13 +454,15 @@ fn one_mouse(ui: &mut Ui, d: &InputDeviceInfo) {
             Some(_) => "recommended",
         };
         let (k, name, vendor, product) = (key.clone(), d.name.clone(), d.vendor, d.product);
-        strings(ui, &format!("mouse-{key}"), "Settings:", &[("recommended", "Recommended for it"), ("others", "As the other mice"), ("custom", "Its own")], current, move |s, chosen| match chosen.as_str() {
-            "others" => drop(s.mice.remove(&k)),
-            "recommended" => drop(s.mice.insert(k.clone(), MouseTuning::default())),
-            _ => {
-                // Its own, starting from what it has now.
-                let (speed, accel) = mice::effective(s, &name, vendor, product);
-                s.mice.insert(k.clone(), MouseTuning { profile: "custom".into(), speed, accel });
+        strings(ui, &format!("mouse-{key}"), "Settings:", &[("recommended", "Recommended for it"), ("others", "As the other mice"), ("custom", "Its own")], current, move |s, chosen| {
+            match chosen.as_str() {
+                "others" => drop(s.mice.remove(&k)),
+                "recommended" => drop(s.mice.insert(k.clone(), MouseTuning::default())),
+                _ => {
+                    // Its own, starting from what it has now.
+                    let (speed, accel) = mice::effective(s, &name, vendor, product);
+                    s.mice.insert(k.clone(), MouseTuning { profile: "custom".into(), speed, accel });
+                }
             }
         });
         let class = model.map_or(Class::Everyday, |m| m.class);
@@ -440,11 +470,17 @@ fn one_mouse(ui: &mut Ui, d: &InputDeviceInfo) {
             None => ui.note(format!("Follows Other Mice below. Recommended for it: {}.", class.short())),
             Some(t) if t.profile == "custom" => {
                 let k = key.clone();
-                ui.slider(&format!("mouse-speed-{key}"), t.speed as f32, -1.0..=1.0, |sl| sl.step(0.05).label("Speed").limits("Slow", "Fast"), move |s, v| {
-                    if let Some(t) = s.mice.get_mut(&k) {
-                        t.speed = v as f64;
-                    }
-                });
+                ui.slider(
+                    &format!("mouse-speed-{key}"),
+                    t.speed as f32,
+                    -1.0..=1.0,
+                    |sl| sl.step(0.05).label("Speed").limits("Slow", "Fast"),
+                    move |s, v| {
+                        if let Some(t) = s.mice.get_mut(&k) {
+                            t.speed = v as f64;
+                        }
+                    },
+                );
                 let k = key.clone();
                 strings(ui, &format!("mouse-accel-{key}"), "Acceleration:", &ACCELS, &t.accel, move |s, v| {
                     if let Some(t) = s.mice.get_mut(&k) {

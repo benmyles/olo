@@ -206,7 +206,13 @@ fn codex_label(kind: &str, seconds: Option<i64>) -> String {
         Some(604_800) => "Weekly".into(),
         Some(s) if s % 86_400 == 0 => format!("{}-day", s / 86_400),
         Some(s) if s % 3_600 == 0 => format!("{}-hour", s / 3_600),
-        _ => if kind == "primary" { "Primary".into() } else { "Secondary".into() },
+        _ => {
+            if kind == "primary" {
+                "Primary".into()
+            } else {
+                "Secondary".into()
+            }
+        }
     }
 }
 
@@ -315,7 +321,13 @@ pub async fn redeem(client: &Client, up: &Upstreams, p: Provider, c: &Credential
             (format!("{}/api/organizations/{org}/reset_rate_limits", up.claude), json!({"program": program, "grant_id": credit.id, "request_id": request}))
         }
     };
-    let r = authorize(client.post(url), p, c).header("anthropic-beta", OAUTH_BETA).timeout(Duration::from_secs(30)).json(&body).send().await.map_err(|e| Failure::Other(format!("Redeeming a reset credit: {e}")))?;
+    let r = authorize(client.post(url), p, c)
+        .header("anthropic-beta", OAUTH_BETA)
+        .timeout(Duration::from_secs(30))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| Failure::Other(format!("Redeeming a reset credit: {e}")))?;
     if !r.status().is_success() {
         return Err(http_failure("Redeeming a reset credit", r).await);
     }
@@ -364,9 +376,8 @@ pub fn header_windows(h: &axum::http::HeaderMap, p: Provider, family: &str, stat
         Provider::Codex => {
             for kind in ["primary", "secondary"] {
                 if let Some(used) = header_num(h, &format!("x-codex-{kind}-used-percent")) {
-                    let resets_at = header_num(h, &format!("x-codex-{kind}-reset-at"))
-                        .map(|v| v as i64)
-                        .or_else(|| header_num(h, &format!("x-codex-{kind}-reset-after-seconds")).map(|v| now + v as i64));
+                    let resets_at =
+                        header_num(h, &format!("x-codex-{kind}-reset-at")).map(|v| v as i64).or_else(|| header_num(h, &format!("x-codex-{kind}-reset-after-seconds")).map(|v| now + v as i64));
                     let minutes = header_num(h, &format!("x-codex-{kind}-window-minutes")).map(|m| m as i64 * 60);
                     // Without the length, keep the name the usage report gave.
                     let label = if minutes.is_some() { codex_label(kind, minutes) } else { String::new() };

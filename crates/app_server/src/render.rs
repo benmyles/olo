@@ -2,19 +2,16 @@ use smithay::{
     backend::{
         allocator::Fourcc,
         renderer::{
-        Color32F, ExportMem, ImportAll, ImportMem, Offscreen, Renderer, TextureMapping,
-        damage::{Error as OutputDamageTrackerError, OutputDamageTracker, RenderOutputResult},
-        utils::{CommitCounter, DamageSet, OpaqueRegions},
-        element::{
-            AsRenderElements, Element, Id, Kind, RenderElement, UnderlyingStorage, Wrap,
-            memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement},
-            surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
-            utils::{
-                CropRenderElement, Relocate, RelocateRenderElement,
-                RescaleRenderElement,
+            Color32F, ExportMem, ImportAll, ImportMem, Offscreen, Renderer, TextureMapping,
+            damage::{Error as OutputDamageTrackerError, OutputDamageTracker, RenderOutputResult},
+            element::{
+                AsRenderElements, Element, Id, Kind, RenderElement, UnderlyingStorage, Wrap,
+                memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement},
+                surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
+                utils::{CropRenderElement, Relocate, RelocateRenderElement, RescaleRenderElement},
             },
+            utils::{CommitCounter, DamageSet, OpaqueRegions},
         },
-    },
     },
     desktop::{
         LayerSurface, layer_map_for_output,
@@ -70,9 +67,7 @@ smithay::backend::renderer::element::render_elements! {
     Preview=CropRenderElement<RelocateRenderElement<RescaleRenderElement<WindowRenderElement<R>>>>,
 }
 
-impl<R: Renderer + ImportAll + ImportMem, E: RenderElement<R> + std::fmt::Debug> std::fmt::Debug
-    for OutputRenderElements<R, E>
-{
+impl<R: Renderer + ImportAll + ImportMem, E: RenderElement<R> + std::fmt::Debug> std::fmt::Debug for OutputRenderElements<R, E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Space(arg0) => f.debug_tuple("Space").field(arg0).finish(),
@@ -152,36 +147,20 @@ impl<R: Renderer, E: RenderElement<R>> RenderElement<R> for Exact<E> {
 /// `buffer` (buffer scale 1) drawn into `rect` (device pixels): its
 /// `src` pixels, all of it for a picture drawn at that size, or one
 /// pixel stretched for a line.
-pub fn exact<R>(
-    renderer: &mut R,
-    rect: Rectangle<i32, Physical>,
-    buffer: &MemoryRenderBuffer,
-    src: (i32, i32),
-    alpha: Option<f32>,
-    kind: Kind,
-) -> Option<Exact<MemoryRenderBufferRenderElement<R>>>
+pub fn exact<R>(renderer: &mut R, rect: Rectangle<i32, Physical>, buffer: &MemoryRenderBuffer, src: (i32, i32), alpha: Option<f32>, kind: Kind) -> Option<Exact<MemoryRenderBufferRenderElement<R>>>
 where
     R: Renderer + ImportMem,
     R::TextureId: Send + Clone + 'static,
 {
     let from = Rectangle::from_size((src.0 as f64, src.1 as f64).into());
     let size: Size<i32, Logical> = (rect.size.w, rect.size.h).into();
-    let inner =
-        MemoryRenderBufferRenderElement::from_buffer(renderer, rect.loc.to_f64(), buffer, alpha, Some(from), Some(size), kind)
-            .ok()?;
+    let inner = MemoryRenderBufferRenderElement::from_buffer(renderer, rect.loc.to_f64(), buffer, alpha, Some(from), Some(size), kind).ok()?;
     Some(Exact { inner, rect })
 }
 
 /// [`exact`] for a picture drawn at its own size, `size` device pixels,
 /// its top left at `at` (to the nearest device pixel).
-pub fn picture<R>(
-    renderer: &mut R,
-    at: Point<f64, Physical>,
-    buffer: &MemoryRenderBuffer,
-    size: (i32, i32),
-    alpha: Option<f32>,
-    kind: Kind,
-) -> Option<Exact<MemoryRenderBufferRenderElement<R>>>
+pub fn picture<R>(renderer: &mut R, at: Point<f64, Physical>, buffer: &MemoryRenderBuffer, size: (i32, i32), alpha: Option<f32>, kind: Kind) -> Option<Exact<MemoryRenderBufferRenderElement<R>>>
 where
     R: Renderer + ImportMem,
     R::TextureId: Send + Clone + 'static,
@@ -226,10 +205,7 @@ pub fn fit(source: Size<i32, Physical>, mirror: Size<i32, Physical>) -> Fit {
 /// [`fit`] for a mirror output and its source.
 pub fn fit_outputs(mirror: &Output, source: &Output, space: &Space<WindowElement>) -> Fit {
     let size = |o: &Output| o.current_mode().map(|m| o.current_transform().transform_size(m.size)).unwrap_or_default();
-    let from = space
-        .output_geometry(source)
-        .map(|g| g.size.to_f64().to_physical(source.current_scale().fractional_scale()).to_i32_round())
-        .unwrap_or_else(|| size(source));
+    let from = space.output_geometry(source).map(|g| g.size.to_f64().to_physical(source.current_scale().fractional_scale()).to_i32_round()).unwrap_or_else(|| size(source));
     fit(from, size(mirror))
 }
 
@@ -288,12 +264,7 @@ where
 /// rather than with their surface (the desktop's under the windows,
 /// Deskbar's under a notification banner). With the overview out on
 /// `output`, it stands in for the windows.
-fn space_elements<R>(
-    renderer: &mut R,
-    space: &Space<WindowElement>,
-    output: &Output,
-    overview: Option<&crate::overview::Overview>,
-) -> Vec<OutputRenderElements<R, WindowRenderElement<R>>>
+fn space_elements<R>(renderer: &mut R, space: &Space<WindowElement>, output: &Output, overview: Option<&crate::overview::Overview>) -> Vec<OutputRenderElements<R, WindowRenderElement<R>>>
 where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: Clone + Send + 'static,
@@ -308,21 +279,13 @@ where
     let whole = |renderer: &mut R, out: &mut Vec<_>, layer: Layer| {
         for (l, at) in layers.iter().filter(|(l, _)| l.layer() == layer) {
             let start = std::time::Instant::now();
-            let elements: Vec<WaylandSurfaceRenderElement<R>> =
-                AsRenderElements::<R>::render_elements(l, renderer, at.to_physical_precise_round(scale), scale.into(), 1.0);
+            let elements: Vec<WaylandSurfaceRenderElement<R>> = AsRenderElements::<R>::render_elements(l, renderer, at.to_physical_precise_round(scale), scale.into(), 1.0);
             slow_elements(start, || format!("layer {}", l.namespace()));
             out.extend(elements.into_iter().map(|e| OutputRenderElements::Space(SpaceRenderElements::Surface(e))));
         }
     };
     let tree = |renderer: &mut R, out: &mut Vec<_>, surface: &WlSurface, at: Point<i32, Logical>| {
-        let elements: Vec<WaylandSurfaceRenderElement<R>> = render_elements_from_surface_tree(
-            renderer,
-            surface,
-            at.to_physical_precise_round(scale),
-            scale,
-            1.0,
-            Kind::Unspecified,
-        );
+        let elements: Vec<WaylandSurfaceRenderElement<R>> = render_elements_from_surface_tree(renderer, surface, at.to_physical_precise_round(scale), scale, 1.0, Kind::Unspecified);
         out.extend(elements.into_iter().map(|e| OutputRenderElements::Space(SpaceRenderElements::Surface(e))));
     };
     let t = std::time::Instant::now();
@@ -500,13 +463,7 @@ fn keep_warm(output: &Output, fullscreen: bool) -> Option<smithay::backend::rend
         w.changed = changed.then(|| name.clone());
         showing?;
         let id = w.ids.entry(name).or_insert_with(Id::new).clone();
-        Some(smithay::backend::renderer::element::solid::SolidColorRenderElement::new(
-            id,
-            Rectangle::from_size((1, 1).into()),
-            w.commit,
-            [0.0, 0.0, 0.0, 0.0],
-            Kind::Unspecified,
-        ))
+        Some(smithay::backend::renderer::element::solid::SolidColorRenderElement::new(id, Rectangle::from_size((1, 1).into()), w.commit, [0.0, 0.0, 0.0, 0.0], Kind::Unspecified))
     })
 }
 
@@ -559,7 +516,14 @@ pub fn rests(_real: bool) -> bool {
 /// Resting on or off for every display from now (`Request::SetResting`),
 /// or (None) as the backend has it.
 pub fn set_rests(on: Option<bool>) {
-    REST.store(match on { Some(true) => ON, Some(false) => OFF, None => DEFAULT }, std::sync::atomic::Ordering::Relaxed);
+    REST.store(
+        match on {
+            Some(true) => ON,
+            Some(false) => OFF,
+            None => DEFAULT,
+        },
+        std::sync::atomic::Ordering::Relaxed,
+    );
 }
 
 static REST: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(UNSET);
@@ -608,8 +572,7 @@ where
 {
     // The brightness / volume indicator, over everything but the pointer.
     let screen = space.output_geometry(output).map(|g| g.size).unwrap_or_default();
-    let indicator = crate::osd::element(renderer, output, screen)
-        .map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e)));
+    let indicator = crate::osd::element(renderer, output, screen).map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e)));
     // A tab's cut title, whole (`tabtip`), as high.
     let tab_tip = crate::tabtip::element(renderer, output).map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e)));
     // Locked: nothing but what the caller passed (the pointer and the lock
@@ -620,37 +583,18 @@ where
         add_indicator(&mut elements, indicator);
         return (elements, Color32F::new(r, g, b, a));
     }
-    if let Some(window) = output
-        .user_data()
-        .get::<FullscreenSurface>()
-        .and_then(|f| f.get())
-    {
+    if let Some(window) = output.user_data().get::<FullscreenSurface>().and_then(|f| f.get()) {
         let scale = output.current_scale().fractional_scale().into();
-        let window_render_elements: Vec<WindowRenderElement<R>> =
-            AsRenderElements::<R>::render_elements(&window, renderer, (0, 0).into(), scale, 1.0);
+        let window_render_elements: Vec<WindowRenderElement<R>> = AsRenderElements::<R>::render_elements(&window, renderer, (0, 0).into(), scale, 1.0);
 
-        let elements = custom_elements
-            .into_iter()
-            .map(OutputRenderElements::from)
-            .chain(
-                window_render_elements
-                    .into_iter()
-                    .map(|e| OutputRenderElements::Window(Wrap::from(e))),
-            )
-            .collect::<Vec<_>>();
+        let elements = custom_elements.into_iter().map(OutputRenderElements::from).chain(window_render_elements.into_iter().map(|e| OutputRenderElements::Window(Wrap::from(e)))).collect::<Vec<_>>();
         let mut elements = elements;
         add_indicator(&mut elements, indicator);
         (elements, CLEAR_COLOR_FULLSCREEN)
     } else {
-        let mut output_render_elements = custom_elements
-            .into_iter()
-            .map(OutputRenderElements::from)
-            .collect::<Vec<_>>();
+        let mut output_render_elements = custom_elements.into_iter().map(OutputRenderElements::from).collect::<Vec<_>>();
         // Preferences ▸ Display ▸ Identify, over the windows.
-        output_render_elements.extend(
-            crate::identify::element(renderer, output)
-                .map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))),
-        );
+        output_render_elements.extend(crate::identify::element(renderer, output).map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))));
         add_indicator(&mut output_render_elements, indicator);
         add_indicator(&mut output_render_elements, tab_tip);
 
@@ -659,11 +603,7 @@ where
         output_render_elements.extend(space_elements(renderer, space, output, overview));
         // The wallpaper goes under everything, over the workspace colour.
         let start = std::time::Instant::now();
-        output_render_elements.extend(
-            crate::wallpaper::element(renderer, output)
-                .into_iter()
-                .map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))),
-        );
+        output_render_elements.extend(crate::wallpaper::element(renderer, output).into_iter().map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))));
         slow_elements(start, || "the wallpaper".into());
         part("gather: wallpaper", start);
 
@@ -691,8 +631,7 @@ where
 {
     let start = std::time::Instant::now();
     let cpu = ThreadUse::now();
-    let (elements, clear_color) =
-        output_elements(output, space, custom_elements, renderer, overview, desktop_color, locked);
+    let (elements, clear_color) = output_elements(output, space, custom_elements, renderer, overview, desktop_color, locked);
     let elements = frame(elements, fit);
     note_content(output, &elements);
     let gathered = start.elapsed();
@@ -879,7 +818,13 @@ where
 /// on; the elements, and its size in pixels and that scale. One `parked`
 /// (on another workspace, hidden) is drawn from what it showed last, at
 /// `output`'s scale (the display it's parked on, whose frame this is).
-pub fn window_picture<R>(renderer: &mut R, space: &Space<WindowElement>, parked: &[WindowElement], output: &Output, id: u64) -> Option<(Vec<FrameElements<R, WindowRenderElement<R>>>, Size<i32, Physical>, f64)>
+pub fn window_picture<R>(
+    renderer: &mut R,
+    space: &Space<WindowElement>,
+    parked: &[WindowElement],
+    output: &Output,
+    id: u64,
+) -> Option<(Vec<FrameElements<R, WindowRenderElement<R>>>, Size<i32, Physical>, f64)>
 where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: smithay::backend::renderer::Texture + Clone + Send + 'static,
@@ -930,13 +875,7 @@ where
 
 /// Draw `elements` into a new `size` buffer and read it back, top row first
 /// (premultiplied RGBA).
-pub fn offscreen<R, T, E>(
-    renderer: &mut R,
-    size: Size<i32, Physical>,
-    scale: f64,
-    elements: &[E],
-    clear_color: Color32F,
-) -> Result<image::RgbaImage, String>
+pub fn offscreen<R, T, E>(renderer: &mut R, size: Size<i32, Physical>, scale: f64, elements: &[E], clear_color: Color32F) -> Result<image::RgbaImage, String>
 where
     R: Renderer + Offscreen<T> + ExportMem,
     R::Error: std::fmt::Display,
@@ -951,12 +890,8 @@ where
     let mapping = {
         let mut fb = renderer.bind(&mut target).map_err(err)?;
         let mut damage_tracker = OutputDamageTracker::new(size, scale, Transform::Normal);
-        damage_tracker
-            .render_output(renderer, &mut fb, 0, elements, clear_color)
-            .map_err(|e| format!("{e:?}"))?;
-        renderer
-            .copy_framebuffer(&fb, Rectangle::from_size(buffer_size), Fourcc::Abgr8888)
-            .map_err(err)?
+        damage_tracker.render_output(renderer, &mut fb, 0, elements, clear_color).map_err(|e| format!("{e:?}"))?;
+        renderer.copy_framebuffer(&fb, Rectangle::from_size(buffer_size), Fourcc::Abgr8888).map_err(err)?
     };
     let flipped = mapping.flipped();
     let data = renderer.map_texture(&mapping).map_err(err)?.to_vec();

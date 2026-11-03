@@ -13,12 +13,7 @@ use std::{
 use alacritty_terminal::event::WindowSize;
 
 fn winsize(size: WindowSize) -> libc::winsize {
-    libc::winsize {
-        ws_row: size.num_lines,
-        ws_col: size.num_cols,
-        ws_xpixel: size.num_cols.saturating_mul(size.cell_width),
-        ws_ypixel: size.num_lines.saturating_mul(size.cell_height),
-    }
+    libc::winsize { ws_row: size.num_lines, ws_col: size.num_cols, ws_xpixel: size.num_cols.saturating_mul(size.cell_width), ws_ypixel: size.num_lines.saturating_mul(size.cell_height) }
 }
 
 pub fn set_cloexec(fd: RawFd, on: bool) {
@@ -89,24 +84,13 @@ impl Pty {
         };
         // A login shell when starting the default shell, like BeOS
         // Terminal (argv[0] starting with '-').
-        let argv0 = if command.is_none() {
-            format!("-{}", Path::new(&shell).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or(shell.clone()))
-        } else {
-            program.clone()
-        };
+        let argv0 = if command.is_none() { format!("-{}", Path::new(&shell).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or(shell.clone())) } else { program.clone() };
         let c_program = CString::new(program.clone()).map_err(io::Error::other)?;
-        let c_args: Vec<CString> = std::iter::once(argv0)
-            .chain(args)
-            .map(|a| CString::new(a).map_err(io::Error::other))
-            .collect::<io::Result<_>>()?;
+        let c_args: Vec<CString> = std::iter::once(argv0).chain(args).map(|a| CString::new(a).map_err(io::Error::other)).collect::<io::Result<_>>()?;
         let mut c_argv: Vec<*const libc::c_char> = c_args.iter().map(|a| a.as_ptr()).collect();
         c_argv.push(std::ptr::null());
 
-        let mut env: Vec<(String, String)> = env
-            .iter()
-            .filter(|(k, _)| !matches!(k.as_str(), "XDG_ACTIVATION_TOKEN" | "DESKTOP_STARTUP_ID" | "OLO_RESTORE"))
-            .cloned()
-            .collect();
+        let mut env: Vec<(String, String)> = env.iter().filter(|(k, _)| !matches!(k.as_str(), "XDG_ACTIVATION_TOKEN" | "DESKTOP_STARTUP_ID" | "OLO_RESTORE")).cloned().collect();
         for (k, v) in [("TERM", "xterm-256color"), ("COLORTERM", "truecolor"), ("TERM_PROGRAM", "Olo-Terminal")] {
             env.retain(|(ek, _)| ek != k);
             env.push((k.into(), v.into()));

@@ -11,7 +11,10 @@ use std::sync::{
 
 use olo_kit_base::metrics as m;
 use olo_ui::{
-    gpui::{self, AppContext as _, Context, Entity, Focusable as _, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render, SharedString, Styled as _, Subscription, Task, Window, canvas, div, px},
+    gpui::{
+        self, AppContext as _, Context, Entity, Focusable as _, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render, SharedString, Styled as _, Subscription,
+        Task, Window, canvas, div, px,
+    },
     review,
     style::{self, Align},
     theme,
@@ -219,12 +222,6 @@ impl Render for TableView {
         // The cells line up with each other, not with the bar's search.
         let grid = canvas(|_, _, _| {}, |b, _, window, _| review::own_grid(window, b)).absolute().size_full();
         let _ = p;
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .child(bar)
-            .child(div().relative().flex_1().min_h_0().child(grid).child(list))
-            .into_any_element()
+        div().size_full().flex().flex_col().child(bar).child(div().relative().flex_1().min_h_0().child(grid).child(list)).into_any_element()
     }
 }

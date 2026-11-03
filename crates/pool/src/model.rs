@@ -268,11 +268,7 @@ impl Account {
         let shared: Vec<&Window> = self.windows.iter().filter(|w| w.models.is_empty()).collect();
         let worth = |at: i64| shared.iter().map(|w| w.used_at(now, at)).fold(0.0, f64::max);
         let last = expires - EXPIRY_MARGIN;
-        let later = shared
-            .iter()
-            .filter_map(|w| w.resets_at.map(|r| r - RESET_MARGIN))
-            .chain(std::iter::once(last))
-            .filter(|&m| m > now && m < expires);
+        let later = shared.iter().filter_map(|w| w.resets_at.map(|r| r - RESET_MARGIN)).chain(std::iter::once(last)).filter(|&m| m > now && m < expires);
         let best_later = later.map(worth).fold(0.0, f64::max);
         let here = worth(now);
         // Ties wait: later is as good, and keeps the choice open.

@@ -88,9 +88,7 @@ impl Lock {
     pub fn new<B: Backend + 'static>(dh: &DisplayHandle) -> Lock {
         let allowed: Arc<Mutex<Option<ClientId>>> = Default::default();
         let filter = allowed.clone();
-        let state = SessionLockManagerState::new::<AnvilState<B>, _>(dh, move |client: &Client| {
-            filter.lock().unwrap().as_ref() == Some(&client.id())
-        });
+        let state = SessionLockManagerState::new::<AnvilState<B>, _>(dh, move |client: &Client| filter.lock().unwrap().as_ref() == Some(&client.id()));
         Lock { state, allowed, locked: false, surfaces: Vec::new(), locker: None, last_spawn: None, focus_before: None, over: None, sleep_guard: None }
     }
 
@@ -124,14 +122,7 @@ where
                 && let Some(geo) = map.layer_geometry(layer)
             {
                 let at = geo.loc.to_physical_precise_round(scale);
-                out.extend(render_elements_from_surface_tree(
-                    renderer,
-                    layer.wl_surface(),
-                    at,
-                    scale,
-                    1.0,
-                    Kind::Unspecified,
-                ));
+                out.extend(render_elements_from_surface_tree(renderer, layer.wl_surface(), at, scale, 1.0, Kind::Unspecified));
             }
         }
     }
@@ -178,11 +169,11 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// Lock before the machine sleeps (logind waits for us) and when logind
     /// asks (`loginctl lock-session`).
     pub fn watch_login(&mut self) {
+        use olo_system::power::LoginEvent;
         use smithay::reexports::calloop::{
             channel::{self, Event as ChannelEvent},
             timer::{TimeoutAction, Timer},
         };
-        use olo_system::power::LoginEvent;
         let (tx, rx) = channel::channel();
         if let Err(e) = olo_system::power::watch_login(move |e| {
             let _ = tx.send(e);
@@ -200,9 +191,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                         state.lock.sleep_guard = Some((guard, Instant::now()));
                         // Let the sleep go once every screen is covered.
                         let _ = state.handle.insert_source(Timer::from_duration(SLEEP_POLL), |_, _, state| {
-                            if state.lock_covers_outputs()
-                                || state.lock.sleep_guard.as_ref().is_none_or(|(_, t)| t.elapsed() > SLEEP_WAIT)
-                            {
+                            if state.lock_covers_outputs() || state.lock.sleep_guard.as_ref().is_none_or(|(_, t)| t.elapsed() > SLEEP_WAIT) {
                                 state.lock.sleep_guard = None;
                                 return TimeoutAction::Drop;
                             }
@@ -221,12 +210,7 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     /// A lock surface on every output.
     fn lock_covers_outputs(&self) -> bool {
-        self.space.outputs().all(|o| {
-            self.lock.surface_for(o).is_some_and(|s| {
-                smithay::backend::renderer::utils::with_renderer_surface_state(s, |st| st.buffer().is_some())
-                    .unwrap_or(false)
-            })
-        })
+        self.space.outputs().all(|o| self.lock.surface_for(o).is_some_and(|s| smithay::backend::renderer::utils::with_renderer_surface_state(s, |st| st.buffer().is_some()).unwrap_or(false)))
     }
 
     /// Keep a lock screen running while locked (start it, or again after a
@@ -266,15 +250,11 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// (WAYLAND_SOCKET), so we know which client it is. Returns the client
     /// and a flag set when it disconnects.
     pub fn spawn_private(&mut self, name: &str, args: &[String]) -> std::io::Result<(ClientId, Arc<AtomicBool>)> {
-        let program = olo_xdg::find_program(name)
-            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, format!("{name} is not installed")))?;
+        let program = olo_xdg::find_program(name).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, format!("{name} is not installed")))?;
         let (ours, theirs) = std::os::unix::net::UnixStream::pair()?;
         let gone = Arc::new(AtomicBool::new(false));
         let client_state = ClientState { gone: Some(gone.clone()), ..ClientState::default() };
-        let client = self
-            .display_handle
-            .insert_client(ours, Arc::new(client_state))
-            .map_err(|e| std::io::Error::other(e.to_string()))?;
+        let client = self.display_handle.insert_client(ours, Arc::new(client_state)).map_err(|e| std::io::Error::other(e.to_string()))?;
         let fd = theirs.as_raw_fd();
         let mut cmd = std::process::Command::new(program);
         cmd.args(args).env("WAYLAND_SOCKET", fd.to_string()).env_remove("WAYLAND_DISPLAY");

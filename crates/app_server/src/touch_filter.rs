@@ -31,10 +31,8 @@ const QUIRKS_FILE: &str = "olo-touchpad.quirks";
 
 /// The quirk that lets pressure through to the plugin.
 pub fn quirks() -> String {
-    let sections: Vec<String> = DEVICES
-        .iter()
-        .map(|d| format!("[Olo touch filter: {d}]\nMatchUdevType=touchpad\nMatchName=*{d}*\nAttrInputProp=-INPUT_PROP_PRESSUREPAD\nAttrPalmPressureThreshold=0\n"))
-        .collect();
+    let sections: Vec<String> =
+        DEVICES.iter().map(|d| format!("[Olo touch filter: {d}]\nMatchUdevType=touchpad\nMatchName=*{d}*\nAttrInputProp=-INPUT_PROP_PRESSUREPAD\nAttrPalmPressureThreshold=0\n")).collect();
     format!("# Written by Olo's app_server while its touch filter is on (docs/TOUCHPAD.md).\n\n{}", sections.join("\n"))
 }
 
@@ -87,10 +85,8 @@ pub fn install(t: &TouchpadSettings) -> Option<String> {
     let (path, quirks_path) = (dir.join(FILE), quirks_dir.join(QUIRKS_FILE));
     match &plugin {
         Some(text) => {
-            let written = std::fs::create_dir_all(&dir)
-                .and_then(|_| std::fs::write(&path, text))
-                .and_then(|_| std::fs::create_dir_all(&quirks_dir))
-                .and_then(|_| std::fs::write(&quirks_path, quirks()));
+            let written =
+                std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, text)).and_then(|_| std::fs::create_dir_all(&quirks_dir)).and_then(|_| std::fs::write(&quirks_path, quirks()));
             if let Err(e) = written {
                 tracing::warn!(%e, path = %path.display(), "could not write the touch filter");
                 let _ = std::fs::remove_file(&path);
@@ -214,7 +210,17 @@ mod tests {
     #[ignore]
     fn frame_cost() {
         use olo_palm::{FEATURES, HIDDEN, PalmModel};
-        let model = PalmModel { mean: vec![0.0; FEATURES], std: vec![1.0; FEATURES], w1: vec![0.01; HIDDEN * FEATURES], b1: vec![0.0; HIDDEN], w2: vec![0.1; HIDDEN], b2: 0.0, threshold: 1e9, decide_ms: 250, ..Default::default() };
+        let model = PalmModel {
+            mean: vec![0.0; FEATURES],
+            std: vec![1.0; FEATURES],
+            w1: vec![0.01; HIDDEN * FEATURES],
+            b1: vec![0.0; HIDDEN],
+            w2: vec![0.1; HIDDEN],
+            b2: 0.0,
+            threshold: 1e9,
+            decide_ms: 250,
+            ..Default::default()
+        };
         for on in [false, true] {
             let mut t = TouchpadSettings::default();
             t.filter.palm_model = Some(model.clone());
@@ -266,7 +272,8 @@ mod tests {
             ..Default::default()
         };
         // A contact moving, growing and pressing harder, a report every 8 ms.
-        let path: Vec<TouchContact> = (0..12).map(|k| TouchContact { id: 5, x: -3000 + k * 140, y: 1200 + k * 90, major: 600 + k * 35, minor: 450 + k * 20, pressure: 20 + k * 4, ..Default::default() }).collect();
+        let path: Vec<TouchContact> =
+            (0..12).map(|k| TouchContact { id: 5, x: -3000 + k * 140, y: 1200 + k * 90, major: 600 + k * 35, minor: 450 + k * 20, pressure: 20 + k * 4, ..Default::default() }).collect();
         let axes = PadAxes::macbook();
         let mut tracker = Tracker::default();
         let mut best = f32::MIN;
@@ -478,7 +485,9 @@ mod tests {
         }
         let t = TouchpadSettings::default();
         let new = render(&t).unwrap();
-        let old = std::env::var("OLO_TOUCH_OLD").ok().map(|p| std::fs::read_to_string(p).unwrap().replacen("local CONFIG = {} -- @CONFIG@ (replaced by app_server)", new.lines().find(|l| l.starts_with("local CONFIG")).unwrap(), 1));
+        let old = std::env::var("OLO_TOUCH_OLD")
+            .ok()
+            .map(|p| std::fs::read_to_string(p).unwrap().replacen("local CONFIG = {} -- @CONFIG@ (replaced by app_server)", new.lines().find(|l| l.starts_with("local CONFIG")).unwrap(), 1));
         // libinput's limit: what it was given (a frame it held back), or
         // 63 (one it hadn't).
         let run = |source: &str, limit: Option<usize>| {

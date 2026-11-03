@@ -62,7 +62,16 @@ const SHELL: &[&[&str]] = &[&["olo-deskbar"], &["olo-tracker", "--desktop"]];
 /// Performance) looks after the person's own processes; Olo Doctor tells
 /// of problems at login and of the Wi-Fi healer's resets; the AirPods
 /// service talks to the computer's own Bluetooth.
-const REAL_SHELL: &[&[&str]] = &[&["olo-polkit-agent"], &["olo-notifications"], &["olo-portal", "--service"], &["olo-pool", "--service"], &["olo-supervisor"], &["olo-doctor", "--watch"], &["olo-airpods", "--service"], &["olo-voice", "--service"]];
+const REAL_SHELL: &[&[&str]] = &[
+    &["olo-polkit-agent"],
+    &["olo-notifications"],
+    &["olo-portal", "--service"],
+    &["olo-pool", "--service"],
+    &["olo-supervisor"],
+    &["olo-doctor", "--watch"],
+    &["olo-airpods", "--service"],
+    &["olo-voice", "--service"],
+];
 /// Give up restarting something that crashes this often.
 const CRASH_LIMIT: usize = 5;
 const CRASH_WINDOW: Duration = Duration::from_secs(60);
@@ -103,9 +112,10 @@ pub fn run() {
 // ---- the control commands ---------------------------------------------------
 
 fn signal_session(sig: i32) {
-    let pid = std::env::var("OLO_SESSION_PID").ok().and_then(|p| p.parse::<i32>().ok()).or_else(|| {
-        std::fs::read_to_string(run_file(format!("olo-session-{}.pid", olo_xdg::display_name()))).ok()?.trim().parse().ok()
-    });
+    let pid = std::env::var("OLO_SESSION_PID")
+        .ok()
+        .and_then(|p| p.parse::<i32>().ok())
+        .or_else(|| std::fs::read_to_string(run_file(format!("olo-session-{}.pid", olo_xdg::display_name()))).ok()?.trim().parse().ok());
     let Some(pid) = pid else {
         eprintln!("olo-session: no running session found (is $OLO_SESSION_PID set?)");
         std::process::exit(1);
@@ -307,9 +317,7 @@ impl Session {
             }
         }
         // SAFETY: these fds were ours before exec (CLOEXEC cleared for it).
-        let (wayland, ipc, lock) = unsafe {
-            (UnixListener::from_raw_fd(r.wayland_fd), UnixListener::from_raw_fd(r.ipc_fd), std::fs::File::from_raw_fd(r.lock_fd))
-        };
+        let (wayland, ipc, lock) = unsafe { (UnixListener::from_raw_fd(r.wayland_fd), UnixListener::from_raw_fd(r.ipc_fd), std::fs::File::from_raw_fd(r.lock_fd)) };
         for fd in [r.wayland_fd, r.ipc_fd, r.lock_fd] {
             set_cloexec(fd, true);
         }
@@ -640,10 +648,13 @@ impl Session {
         if self.proxy.is_some() {
             paths.extend([self.direct_path(), self.proxied_path()]);
         }
-        self.files = paths.into_iter().map(|p| {
-            let id = identity(&p);
-            (p, id)
-        }).collect();
+        self.files = paths
+            .into_iter()
+            .map(|p| {
+                let id = identity(&p);
+                (p, id)
+            })
+            .collect();
     }
 
     /// Make our socket files again if they've gone (something removed
@@ -1053,10 +1064,8 @@ fn set_session_env(display: &str, ipc: &Path) {
 /// Tell systemd and D-Bus activation about the session, so portals and
 /// services started on demand find our display.
 fn export_environment() {
-    let vars: Vec<(&str, String)> = ["WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE", "OLO_SOCKET", "XCURSOR_THEME", "XCURSOR_SIZE"]
-        .into_iter()
-        .filter_map(|k| Some((k, std::env::var(k).ok()?)))
-        .collect();
+    let vars: Vec<(&str, String)> =
+        ["WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE", "OLO_SOCKET", "XCURSOR_THEME", "XCURSOR_SIZE"].into_iter().filter_map(|k| Some((k, std::env::var(k).ok()?))).collect();
     // D-Bus calls can stall if a bus is slow to answer; don't hold up start-up.
     std::thread::spawn(move || {
         let pairs: Vec<(&str, &str)> = vars.iter().map(|(k, v)| (*k, v.as_str())).collect();

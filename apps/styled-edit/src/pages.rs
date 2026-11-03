@@ -197,12 +197,7 @@ fn space_width(sh: &dyn Shaper, span: &Span) -> f32 {
 pub fn margin_lines(page: Option<&Margins>, k: usize, n: usize) -> Vec<(String, f32)> {
     let height = olo_print::local_paper().height;
     match page {
-        Some(m) => m
-            .header
-            .iter()
-            .map(|p| (Margins::fill(p, k + 1, n), MARGIN / 2.0))
-            .chain(m.footer.iter().map(|p| (Margins::fill(p, k + 1, n), height - MARGIN / 2.0)))
-            .collect(),
+        Some(m) => m.header.iter().map(|p| (Margins::fill(p, k + 1, n), MARGIN / 2.0)).chain(m.footer.iter().map(|p| (Margins::fill(p, k + 1, n), height - MARGIN / 2.0))).collect(),
         None if n > 1 => vec![(String::new(), 0.0), (String::new(), 0.0), (String::new(), 0.0), (String::new(), 0.0), ((k + 1).to_string(), height - MARGIN / 2.0), (String::new(), 0.0)],
         None => Vec::new(),
     }
@@ -280,7 +275,14 @@ mod tests {
     use super::*;
 
     fn input(text: &str) -> Input {
-        Input { text: text.into(), runs: vec![Run { len: text.len(), style: Style::default() }], paras: vec![Para::default(); text.split('\n').count()], align: Align::Left, page: None, text_system: TextSystem::standalone() }
+        Input {
+            text: text.into(),
+            runs: vec![Run { len: text.len(), style: Style::default() }],
+            paras: vec![Para::default(); text.split('\n').count()],
+            align: Align::Left,
+            page: None,
+            text_system: TextSystem::standalone(),
+        }
     }
 
     #[test]
@@ -299,10 +301,7 @@ mod tests {
     #[test]
     fn table_rows_are_ruled_cells() {
         let mut i = input("Name\tSize\na\t1");
-        i.paras = vec![
-            Para { row: Some(crate::doc::Row { header: true, ..Default::default() }), ..Para::default() },
-            Para { row: Some(crate::doc::Row::default()), ..Para::default() },
-        ];
+        i.paras = vec![Para { row: Some(crate::doc::Row { header: true, ..Default::default() }), ..Para::default() }, Para { row: Some(crate::doc::Row::default()), ..Para::default() }];
         let paper = olo_print::PAPERS[0];
         let pages = pages(i, paper);
         let items = &pages[0].items;

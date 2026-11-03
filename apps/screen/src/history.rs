@@ -16,9 +16,8 @@ use serde::{Deserialize, Serialize};
 
 /// The commands that act on a screen (its history). Reads (`tree`,
 /// `look`, `windows`, `menus`, `wait`) change nothing and are left out.
-pub const ACTIONS: &[&str] = &[
-    "start", "stop", "run", "click", "move", "down", "up", "drag", "scroll", "wheel", "key", "type", "set", "select", "scroll-to", "invoke", "focus", "close", "minimize", "zoom", "resize", "place",
-];
+pub const ACTIONS: &[&str] =
+    &["start", "stop", "run", "click", "move", "down", "up", "drag", "scroll", "wheel", "key", "type", "set", "select", "scroll-to", "invoke", "focus", "close", "minimize", "zoom", "resize", "place"];
 
 /// The most a screen's history takes on disk.
 const MAX_BYTES: u64 = 8 << 20;

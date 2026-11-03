@@ -90,20 +90,12 @@ fn write_manifest(m: &Manifest) -> Result<(), String> {
 /// Claude Code's settings for the pool, as environment variables in its
 /// settings.json.
 fn claude_env(port: u16) -> Vec<(&'static str, String)> {
-    vec![
-        ("HTTPS_PROXY", crate::intercept::url(port)),
-        ("NODE_EXTRA_CA_CERTS", crate::authority::cert_path().display().to_string()),
-        ("NO_PROXY", NO_PROXY.to_owned()),
-    ]
+    vec![("HTTPS_PROXY", crate::intercept::url(port)), ("NODE_EXTRA_CA_CERTS", crate::authority::cert_path().display().to_string()), ("NO_PROXY", NO_PROXY.to_owned())]
 }
 
 /// Codex's, in its `.env`.
 pub(crate) fn codex_env(port: u16) -> Vec<(&'static str, String)> {
-    vec![
-        ("HTTPS_PROXY", crate::intercept::url(port)),
-        ("SSL_CERT_FILE", crate::authority::bundle_path().display().to_string()),
-        ("NO_PROXY", NO_PROXY.to_owned()),
-    ]
+    vec![("HTTPS_PROXY", crate::intercept::url(port)), ("SSL_CERT_FILE", crate::authority::bundle_path().display().to_string()), ("NO_PROXY", NO_PROXY.to_owned())]
 }
 
 fn read_json(path: &std::path::Path) -> Result<Value, String> {
@@ -148,8 +140,9 @@ fn through_proxy(provider: Provider, port: u16) -> bool {
 /// Pointed at the pool as an API endpoint of its own.
 fn the_old_way(provider: Provider) -> bool {
     match provider {
-        Provider::Claude => read_json(&claude_dir().join("settings.json"))
-            .is_ok_and(|v| v["env"]["ANTHROPIC_BASE_URL"].as_str().is_some_and(|u| u.starts_with("http://127.0.0.1:") && u.ends_with("/claude"))),
+        Provider::Claude => {
+            read_json(&claude_dir().join("settings.json")).is_ok_and(|v| v["env"]["ANTHROPIC_BASE_URL"].as_str().is_some_and(|u| u.starts_with("http://127.0.0.1:") && u.ends_with("/claude")))
+        }
         Provider::Codex => {
             let Ok(text) = std::fs::read_to_string(codex_dir().join("config.toml")) else { return false };
             text.parse::<DocumentMut>().ok().is_some_and(|d| d.get("model_provider").and_then(Item::as_str).is_some_and(|p| p == PROVIDER_ID || p == OLD_PROVIDER_ID))

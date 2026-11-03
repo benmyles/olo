@@ -68,9 +68,10 @@ fn real_sudo() -> Option<PathBuf> {
     }
     let me = std::env::current_exe().ok().and_then(|p| p.canonicalize().ok());
     let path = std::env::var_os("PATH").unwrap_or_default();
-    std::env::split_paths(&path).chain(["/usr/bin", "/bin"].map(PathBuf::from)).map(|d| d.join("sudo")).find(|p| {
-        std::fs::metadata(p).is_ok_and(|md| md.is_file() && md.uid() == 0 && md.mode() & libc::S_ISUID != 0) && p.canonicalize().ok() != me
-    })
+    std::env::split_paths(&path)
+        .chain(["/usr/bin", "/bin"].map(PathBuf::from))
+        .map(|d| d.join("sudo"))
+        .find(|p| std::fs::metadata(p).is_ok_and(|md| md.is_file() && md.uid() == 0 && md.mode() & libc::S_ISUID != 0) && p.canonicalize().ok() != me)
 }
 
 /// sudo reads its password some other way with these options, or asks
@@ -93,8 +94,7 @@ fn passes_through(args: &[OsString]) -> bool {
             if matches!(name, "non-interactive" | "stdin" | "askpass" | "reset-timestamp" | "remove-timestamp" | "help" | "version") {
                 return true;
             }
-            value_next = !long.contains('=')
-                && matches!(name, "close-from" | "chdir" | "group" | "host" | "prompt" | "chroot" | "role" | "type" | "command-timeout" | "other-user" | "user");
+            value_next = !long.contains('=') && matches!(name, "close-from" | "chdir" | "group" | "host" | "prompt" | "chroot" | "role" | "type" | "command-timeout" | "other-user" | "user");
             continue;
         }
         for (i, ch) in a[1..].char_indices() {
@@ -239,21 +239,12 @@ fn ask(sudo: &Path, stream: UnixStream, args: &[OsString]) -> Outcome {
         let _ = out.write_all(&sudo_wire::line(&a));
     };
     let mut replies = BufReader::new(stream);
-    let begin = Ask::Begin {
-        args: args.iter().map(|a| a.to_string_lossy().into_owned()).collect(),
-        cwd: std::env::current_dir().ok(),
-        tty: has_tty(),
-    };
+    let begin = Ask::Begin { args: args.iter().map(|a| a.to_string_lossy().into_owned()).collect(), cwd: std::env::current_dir().ok(), tty: has_tty() };
     say(begin);
     if read_reply(&mut replies) != Some(Reply::Go) {
         return Outcome::Pass;
     }
-    let spawned = sudo_command(sudo)
-        .args(["-S", "-v", "-p", PROMPT])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn();
+    let spawned = sudo_command(sudo).args(["-S", "-v", "-p", PROMPT]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn();
     let Ok(mut child) = spawned else { return Outcome::Pass };
     CHILD.store(child.id() as i32, Ordering::Relaxed);
     pass_signals_on();

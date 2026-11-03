@@ -10,12 +10,7 @@ pub const MESSAGE: Info = Info {
     options: &[Opt::Text { key: "text", label: "Text (empty for sayings)", default: "" }],
     uses_desktop: false,
     make: |o, seed| {
-        let mut m = Message {
-            rng: Rng::new(seed),
-            custom: get_text(o, "text", "").trim().to_owned(),
-            page: Page::default(),
-            next: 0.0,
-        };
+        let mut m = Message { rng: Rng::new(seed), custom: get_text(o, "text", "").trim().to_owned(), page: Page::default(), next: 0.0 };
         m.turn();
         Box::new(m)
     },
@@ -77,16 +72,8 @@ const SIZES: [f32; 3] = [56.0, 110.0, 200.0];
 
 impl Message {
     fn turn(&mut self) {
-        let text = if self.custom.is_empty() {
-            SAYINGS[self.rng.below(SAYINGS.len())].to_owned()
-        } else {
-            self.custom.clone()
-        };
-        let words: Vec<String> = text
-            .split_whitespace()
-            .filter(|w| *w != "--")
-            .map(str::to_owned)
-            .collect();
+        let text = if self.custom.is_empty() { SAYINGS[self.rng.below(SAYINGS.len())].to_owned() } else { self.custom.clone() };
+        let words: Vec<String> = text.split_whitespace().filter(|w| *w != "--").map(str::to_owned).collect();
         // Enough words to cover the screen: the message, again and again.
         let queue: Vec<String> = words.iter().cycle().take(words.len().max(1) * (40 / words.len().max(1) + 1)).cloned().collect();
         self.page = Page { text, hue: self.rng.f32(), words: Vec::new(), queue, age: 0.0 };
@@ -125,10 +112,7 @@ impl Module for Message {
         let text = f.canvas.measure(&self.page.text, font, wrap);
         let pad = vec2(14.0, 8.0) * k;
         let size = text + pad * 2.0;
-        let r = Rect::from_min_size(
-            pos2(f.rect.center().x - size.x / 2.0, f.rect.bottom() - size.y - 0.08 * f.rect.height()),
-            size,
-        );
+        let r = Rect::from_min_size(pos2(f.rect.center().x - size.x / 2.0, f.rect.bottom() - size.y - 0.08 * f.rect.height()), size);
         f.canvas.rect_filled(r, 6.0 * k, Color32::from_black_alpha(90));
         f.canvas.text(r.min + pad, &self.page.text, font, wrap, hsv(hue, 0.55, 1.0));
     }

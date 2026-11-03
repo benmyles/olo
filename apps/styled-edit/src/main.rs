@@ -25,12 +25,11 @@ use olo_ui::{
     editor::{self, EditKey, Editor, EditorHost},
     file_panel::{FilePanel, Filter, PanelResult},
     gpui::{
-        self, App, AppContext as _, ClipboardEntry, ClipboardItem, Context, Entity, EntityId, ExternalPaths, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Pixels, Point, Render, Styled as _, Subscription, WeakEntity, Window,
-        WindowHandle, canvas, div, px,
+        self, App, AppContext as _, ClipboardEntry, ClipboardItem, Context, Entity, EntityId, ExternalPaths, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _,
+        Pixels, Point, Render, Styled as _, Subscription, WeakEntity, Window, WindowHandle, canvas, div, px,
     },
     instance::{self, Launch},
-    metrics as m,
-    style, theme,
+    metrics as m, style, theme,
     widgets::{
         Button, CheckBox, SCROLL_BAR, TextControl, TextField, TextFieldEvent, button_row, heading, open_alert,
         ruler::{self, Ruler, RulerEvent},
@@ -276,7 +275,19 @@ impl EditorHost for DocView {
             menu = menu.separator().item("Ignore Spelling", "spell:ignore").item("Learn Spelling", "spell:learn").separator();
         }
         // The Edit menu's own commands, so styles go along.
-        let menu = menu.item("Cut", "cut").enabled(editable && selected).keys("⌘X").item("Copy", "copy").enabled(selected).keys("⌘C").item("Paste", "paste").enabled(editable).keys("⌘V").separator().item("Select All", "select-all").keys("⌘A");
+        let menu = menu
+            .item("Cut", "cut")
+            .enabled(editable && selected)
+            .keys("⌘X")
+            .item("Copy", "copy")
+            .enabled(selected)
+            .keys("⌘C")
+            .item("Paste", "paste")
+            .enabled(editable)
+            .keys("⌘V")
+            .separator()
+            .item("Select All", "select-all")
+            .keys("⌘A");
         let (app, me) = (self.app.clone(), cx.entity());
         olo_ui::menu::context_menu(window, cx, menu, at, move |cmd, window, cx| {
             if let Some(app) = app.upgrade() {
@@ -1190,19 +1201,21 @@ impl StyledEdit {
             Purpose::Picture => (
                 "Insert Picture",
                 FilePanel::open(dir).filters(
-                    vec![Filter::new("Pictures")
-                        .glob("*.png")
-                        .glob("*.jpg")
-                        .glob("*.jpeg")
-                        .glob("*.gif")
-                        .glob("*.webp")
-                        .glob("*.bmp")
-                        .glob("*.tif")
-                        .glob("*.tiff")
-                        .glob("*.heic")
-                        .glob("*.avif")
-                        .glob("*.jxl")
-                        .mime("image/")],
+                    vec![
+                        Filter::new("Pictures")
+                            .glob("*.png")
+                            .glob("*.jpg")
+                            .glob("*.jpeg")
+                            .glob("*.gif")
+                            .glob("*.webp")
+                            .glob("*.bmp")
+                            .glob("*.tif")
+                            .glob("*.tiff")
+                            .glob("*.heic")
+                            .glob("*.avif")
+                            .glob("*.jxl")
+                            .mime("image/"),
+                    ],
                     0,
                 ),
             ),
@@ -1264,7 +1277,14 @@ impl StyledEdit {
     /// draws it).
     fn page_input(&self, doc: &Entity<DocView>, cx: &App) -> (pages::Input, String) {
         let d = doc.read(cx);
-        let input = pages::Input { text: d.doc.text().to_owned(), runs: d.doc.runs().to_vec(), paras: d.doc.paras().to_vec(), align: d.doc.align, page: d.doc.page.clone(), text_system: cx.text_system().clone() };
+        let input = pages::Input {
+            text: d.doc.text().to_owned(),
+            runs: d.doc.runs().to_vec(),
+            paras: d.doc.paras().to_vec(),
+            align: d.doc.align,
+            page: d.doc.page.clone(),
+            text_system: cx.text_system().clone(),
+        };
         (input, d.title())
     }
 
@@ -1322,7 +1342,8 @@ impl StyledEdit {
             doc.update(cx, |d, _| d.after_save = after);
             return self.open_panel(Some(doc.clone()), Purpose::SaveAs, cx);
         };
-        let (text, runs, paras, align, wrap, page, generation) = (d.doc.text().to_owned(), d.doc.runs().to_vec(), d.doc.paras().to_vec(), d.doc.align, d.doc.wrap, d.doc.page.clone(), d.doc.generation);
+        let (text, runs, paras, align, wrap, page, generation) =
+            (d.doc.text().to_owned(), d.doc.runs().to_vec(), d.doc.paras().to_vec(), d.doc.align, d.doc.wrap, d.doc.page.clone(), d.doc.generation);
         doc.update(cx, |d, cx| {
             d.saving = true;
             d.after_save = after;
@@ -1555,7 +1576,10 @@ impl StyledEdit {
     /// Files dropped on document `doc`'s window: a picture goes in it (at
     /// the caret); anything else opens.
     fn dropped(&mut self, doc: &Entity<DocView>, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
-        let editable = { let d = doc.read(cx); !d.loading && !d.read_only };
+        let editable = {
+            let d = doc.read(cx);
+            !d.loading && !d.read_only
+        };
         for p in paths {
             if editable && is_picture(&p) {
                 self.put_picture(doc, p, None, cx);
@@ -1895,12 +1919,11 @@ impl Render for FindView {
         if self.replace {
             fields = fields.child(TextControl::new(self.with.clone()).label("Replace with:").divider(divider));
         }
-        let mut checks = div()
-            .flex()
-            .flex_col()
-            .child(check("Case-sensitive", self.s.case, |s, on| s.case = on))
-            .child(check("Wrap-around search", self.s.wrap, |s, on| s.wrap = on))
-            .child(check("Search backwards", self.s.backwards, |s, on| s.backwards = on));
+        let mut checks = div().flex().flex_col().child(check("Case-sensitive", self.s.case, |s, on| s.case = on)).child(check("Wrap-around search", self.s.wrap, |s, on| s.wrap = on)).child(check(
+            "Search backwards",
+            self.s.backwards,
+            |s, on| s.backwards = on,
+        ));
         if self.replace {
             checks = checks.child(check("Replace all occurrences", self.s.all, |s, on| s.all = on));
         }

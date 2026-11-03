@@ -12,11 +12,8 @@ use smithay::{
     input::{
         Seat,
         pointer::{
-            AxisFrame, ButtonEvent, CursorIcon, CursorImageStatus, Focus, GestureHoldBeginEvent,
-            GestureHoldEndEvent, GesturePinchBeginEvent, GesturePinchEndEvent, GesturePinchUpdateEvent,
-            GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent,
-            GrabStartData as PointerGrabStartData, MotionEvent, PointerGrab, PointerInnerHandle,
-            RelativeMotionEvent,
+            AxisFrame, ButtonEvent, CursorIcon, CursorImageStatus, Focus, GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent, GesturePinchEndEvent, GesturePinchUpdateEvent,
+            GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent, GrabStartData as PointerGrabStartData, MotionEvent, PointerGrab, PointerInnerHandle, RelativeMotionEvent,
         },
     },
     reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
@@ -100,14 +97,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         self.cursor_status = CursorImageStatus::default_named();
     }
 
-    pub fn deco_button(
-        &mut self,
-        seat: &Seat<Self>,
-        window: &WindowElement,
-        button: u32,
-        pressed: bool,
-        serial: Serial,
-    ) {
+    pub fn deco_button(&mut self, seat: &Seat<Self>, window: &WindowElement, button: u32, pressed: bool, serial: Serial) {
         let hover = window.decoration().hover;
         if pressed {
             self.tab_tip_pressed();
@@ -135,10 +125,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     self.toggle_rolled(window);
                     return;
                 }
-                let shift = seat
-                    .get_keyboard()
-                    .map(|k| k.modifier_state().shift)
-                    .unwrap_or(false);
+                let shift = seat.get_keyboard().map(|k| k.modifier_state().shift).unwrap_or(false);
                 // ⌘-drag: along its group's tabs, out of the group, or into
                 // another (shell/tabdrag.rs).
                 if self.command_held() && self.groupable(window) {
@@ -172,8 +159,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             WindowSurface::Wayland(w) => {
                 let seat = seat.clone();
                 let toplevel = w.clone();
-                self.handle
-                    .insert_idle(move |data| data.move_request_xdg(&toplevel, &seat, serial));
+                self.handle.insert_idle(move |data| data.move_request_xdg(&toplevel, &seat, serial));
             }
         }
     }
@@ -183,9 +169,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             WindowSurface::Wayland(w) => {
                 let seat = seat.clone();
                 let toplevel = w.clone();
-                self.handle.insert_idle(move |data| {
-                    data.resize_request_xdg(&toplevel, &seat, serial, edges)
-                });
+                self.handle.insert_idle(move |data| data.resize_request_xdg(&toplevel, &seat, serial, edges));
             }
         }
     }
@@ -424,11 +408,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             self.set_frame(window, frame, false);
             return;
         }
-        let pre = window
-            .user_data()
-            .get::<PreZoom>()
-            .and_then(|p| p.0.borrow_mut().take())
-            .map(|r| self.put_back_at(r));
+        let pre = window.user_data().get::<PreZoom>().and_then(|p| p.0.borrow_mut().take()).map(|r| self.put_back_at(r));
         // (Worked out before taking the surface's lock: inner_size takes it
         // too, and taking it twice hangs the whole desktop.)
         let size = pre.map(|r| window.inner_size(r.size));
@@ -498,24 +478,14 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for TabSlideGrab
         handle.relative_motion(data, focus, event);
     }
 
-    fn button(
-        &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
-        event: &ButtonEvent,
-    ) {
+    fn button(&mut self, data: &mut AnvilState<BackendData>, handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>, event: &ButtonEvent) {
         handle.button(data, event);
         if handle.current_pressed().is_empty() {
             handle.unset_grab(self, data, event.serial, event.time, true);
         }
     }
 
-    fn axis(
-        &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
-        details: AxisFrame,
-    ) {
+    fn axis(&mut self, data: &mut AnvilState<BackendData>, handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>, details: AxisFrame) {
         handle.axis(data, details)
     }
 
@@ -523,75 +493,35 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for TabSlideGrab
         handle.frame(data);
     }
 
-    fn gesture_swipe_begin(
-        &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
-        event: &GestureSwipeBeginEvent,
-    ) {
+    fn gesture_swipe_begin(&mut self, data: &mut AnvilState<BackendData>, handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>, event: &GestureSwipeBeginEvent) {
         handle.gesture_swipe_begin(data, event)
     }
 
-    fn gesture_swipe_update(
-        &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
-        event: &GestureSwipeUpdateEvent,
-    ) {
+    fn gesture_swipe_update(&mut self, data: &mut AnvilState<BackendData>, handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>, event: &GestureSwipeUpdateEvent) {
         handle.gesture_swipe_update(data, event)
     }
 
-    fn gesture_swipe_end(
-        &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
-        event: &GestureSwipeEndEvent,
-    ) {
+    fn gesture_swipe_end(&mut self, data: &mut AnvilState<BackendData>, handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>, event: &GestureSwipeEndEvent) {
         handle.gesture_swipe_end(data, event)
     }
 
-    fn gesture_pinch_begin(
-        &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
-        event: &GesturePinchBeginEvent,
-    ) {
+    fn gesture_pinch_begin(&mut self, data: &mut AnvilState<BackendData>, handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>, event: &GesturePinchBeginEvent) {
         handle.gesture_pinch_begin(data, event)
     }
 
-    fn gesture_pinch_update(
-        &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
-        event: &GesturePinchUpdateEvent,
-    ) {
+    fn gesture_pinch_update(&mut self, data: &mut AnvilState<BackendData>, handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>, event: &GesturePinchUpdateEvent) {
         handle.gesture_pinch_update(data, event)
     }
 
-    fn gesture_pinch_end(
-        &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
-        event: &GesturePinchEndEvent,
-    ) {
+    fn gesture_pinch_end(&mut self, data: &mut AnvilState<BackendData>, handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>, event: &GesturePinchEndEvent) {
         handle.gesture_pinch_end(data, event)
     }
 
-    fn gesture_hold_begin(
-        &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
-        event: &GestureHoldBeginEvent,
-    ) {
+    fn gesture_hold_begin(&mut self, data: &mut AnvilState<BackendData>, handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>, event: &GestureHoldBeginEvent) {
         handle.gesture_hold_begin(data, event)
     }
 
-    fn gesture_hold_end(
-        &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
-        event: &GestureHoldEndEvent,
-    ) {
+    fn gesture_hold_end(&mut self, data: &mut AnvilState<BackendData>, handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>, event: &GestureHoldEndEvent) {
         handle.gesture_hold_end(data, event)
     }
 

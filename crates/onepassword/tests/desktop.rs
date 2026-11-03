@@ -3,8 +3,7 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use onepassword::{
-    Client, Error, ItemCategory, ItemCreateParams, ItemField, ItemFieldType, ItemListFilter, ItemListFilterByState,
-    ItemState, PasswordRecipe, Secrets,
+    Client, Error, ItemCategory, ItemCreateParams, ItemField, ItemFieldType, ItemListFilter, ItemListFilterByState, ItemState, PasswordRecipe, Secrets,
     fake::{Fake, sample},
 };
 
@@ -14,12 +13,7 @@ fn fake() -> (Fake, Client) {
     static N: AtomicU32 = AtomicU32::new(0);
     let socket = format!("olo-onepassword-test-{}-{}", std::process::id(), N.fetch_add(1, Ordering::Relaxed));
     let fake = Fake::start(&socket, sample(ACCOUNT)).unwrap();
-    let client = Client::builder()
-        .desktop_app_integration(ACCOUNT)
-        .integration_info("SDK tests", "1")
-        .desktop_socket(&socket)
-        .build()
-        .unwrap();
+    let client = Client::builder().desktop_app_integration(ACCOUNT).integration_info("SDK tests", "1").desktop_socket(&socket).build().unwrap();
     (fake, client)
 }
 
@@ -45,10 +39,7 @@ fn create_edit_archive_delete() {
     let (_fake, client) = fake();
     let vault = client.vaults().list(None).unwrap()[0].id.clone();
     let mut params = ItemCreateParams::new(ItemCategory::Login, &vault, "New Login");
-    params.fields = vec![
-        ItemField::new("username", "username", ItemFieldType::Text, "me"),
-        ItemField::new("password", "password", ItemFieldType::Concealed, "s3cret"),
-    ];
+    params.fields = vec![ItemField::new("username", "username", ItemFieldType::Text, "me"), ItemField::new("password", "password", ItemFieldType::Concealed, "s3cret")];
     let mut item = client.items().create(&params).unwrap();
     assert_eq!(item.version, 1);
     item.field_mut("password").unwrap().value = "better-s3cret".into();
@@ -60,10 +51,7 @@ fn create_edit_archive_delete() {
 
     client.items().archive(&vault, &item.id).unwrap();
     assert!(!client.items().list(&vault, &[]).unwrap().iter().any(|i| i.id == item.id));
-    let archived = client
-        .items()
-        .list(&vault, &[ItemListFilter::ByState(ItemListFilterByState { active: false, archived: true })])
-        .unwrap();
+    let archived = client.items().list(&vault, &[ItemListFilter::ByState(ItemListFilterByState { active: false, archived: true })]).unwrap();
     assert_eq!(archived.len(), 1);
     assert_eq!(archived[0].state, ItemState::Archived);
     client.items().delete(&vault, &item.id).unwrap();
@@ -76,10 +64,7 @@ fn secrets() {
     assert_eq!(client.secrets().resolve("op://Personal/GitHub/password").unwrap(), "tusk-Ample-dimly-9-Rover");
     assert_eq!(client.secrets().resolve("op://Personal/GitHub/Security/one-time password?attribute=otp").unwrap().len(), 6);
     assert!(matches!(client.secrets().resolve("op://Personal/GitHub"), Err(Error::InvalidReference(_))));
-    let all = client
-        .secrets()
-        .resolve_all(&["op://Household/Build box/password".into(), "op://Personal/Nope/password".into()])
-        .unwrap();
+    let all = client.secrets().resolve_all(&["op://Household/Build box/password".into(), "op://Personal/Nope/password".into()]).unwrap();
     let ok = all.individual_responses["op://Household/Build box/password"].clone().into_result().unwrap().unwrap();
     assert_eq!(ok.secret, "Oxbow-Lantern-42");
     assert!(all.individual_responses["op://Personal/Nope/password"].clone().into_result().is_err());

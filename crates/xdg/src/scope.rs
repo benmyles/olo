@@ -51,9 +51,7 @@ pub fn place(pid: u32, app_id: &str) {
     }
     let name = unit_name(app_id, pid);
     let _ = std::thread::Builder::new().name("app-scope".into()).spawn(move || {
-        let started = zbus::blocking::connection::Builder::session()
-            .and_then(|b| b.method_timeout(PATIENCE).build())
-            .and_then(|bus| start(&bus, &name, pid));
+        let started = zbus::blocking::connection::Builder::session().and_then(|b| b.method_timeout(PATIENCE).build()).and_then(|bus| start(&bus, &name, pid));
         match started {
             Ok(()) => tracing::debug!("started {name}"),
             Err(e) => tracing::debug!("{name}: {e}"),
@@ -63,16 +61,9 @@ pub fn place(pid: u32, app_id: &str) {
 
 /// Ask systemd's manager on `bus` for scope `name` holding `pid`.
 fn start(bus: &zbus::blocking::Connection, name: &str, pid: u32) -> zbus::Result<()> {
-    let properties: Vec<(&str, Value)> =
-        vec![("PIDs", Value::from(vec![pid])), ("CollectMode", Value::from("inactive-or-failed")), ("Description", Value::from("Application started by Olo"))];
+    let properties: Vec<(&str, Value)> = vec![("PIDs", Value::from(vec![pid])), ("CollectMode", Value::from("inactive-or-failed")), ("Description", Value::from("Application started by Olo"))];
     let aux: Vec<(&str, Vec<(&str, Value)>)> = Vec::new();
-    bus.call_method(
-        Some("org.freedesktop.systemd1"),
-        "/org/freedesktop/systemd1",
-        Some("org.freedesktop.systemd1.Manager"),
-        "StartTransientUnit",
-        &(name, "fail", properties, aux),
-    )?;
+    bus.call_method(Some("org.freedesktop.systemd1"), "/org/freedesktop/systemd1", Some("org.freedesktop.systemd1.Manager"), "StartTransientUnit", &(name, "fail", properties, aux))?;
     Ok(())
 }
 
@@ -141,14 +132,7 @@ mod tests {
         let (tx, rx) = std::sync::mpsc::channel();
         let guid = zbus::Guid::generate();
         let server = std::thread::spawn(move || {
-            zbus::blocking::connection::Builder::async_io_unix_stream(a)
-                .server(guid)
-                .unwrap()
-                .p2p()
-                .serve_at("/org/freedesktop/systemd1", Manager(tx))
-                .unwrap()
-                .build()
-                .unwrap()
+            zbus::blocking::connection::Builder::async_io_unix_stream(a).server(guid).unwrap().p2p().serve_at("/org/freedesktop/systemd1", Manager(tx)).unwrap().build().unwrap()
         });
         let bus = zbus::blocking::connection::Builder::async_io_unix_stream(b).p2p().method_timeout(PATIENCE).build().unwrap();
         let _server = server.join().unwrap();

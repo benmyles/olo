@@ -73,14 +73,7 @@ pub fn show(output: &Output, title: &str, detail: &str) {
     let s = output.current_scale().fractional_scale();
     let pm = draw(title, detail, s);
     let size: Size<i32, Buffer> = (pm.width() as i32, pm.height() as i32).into();
-    let buffer = MemoryRenderBuffer::from_slice(
-        pm.data(),
-        Fourcc::Abgr8888,
-        size,
-        1,
-        Transform::Normal,
-        Some(vec![Rectangle::from_size(size)]),
-    );
+    let buffer = MemoryRenderBuffer::from_slice(pm.data(), Fourcc::Abgr8888, size, 1, Transform::Normal, Some(vec![Rectangle::from_size(size)]));
     *badge(output).0.lock().unwrap() = Some((Instant::now() + SHOWN, buffer, (size.w, size.h)));
 }
 

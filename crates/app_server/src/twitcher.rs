@@ -23,6 +23,7 @@ use std::{
 };
 
 use crate::render::Exact;
+use olo_theme::Palette;
 use smithay::{
     backend::{
         allocator::Fourcc,
@@ -36,7 +37,6 @@ use smithay::{
     },
     utils::{Buffer, Physical, Point, Rectangle, Size, Transform},
 };
-use olo_theme::Palette;
 use tiny_skia::{FillRule, FilterQuality, Paint, PathBuilder, Pixmap, PixmapPaint, Transform as SkTransform};
 
 use crate::{shell::fill, text, theme};
@@ -278,14 +278,7 @@ impl Overlay {
 
     /// The Twitcher panel centred in output `output` of `output_size`
     /// (logical) at `scale`, or None if there is nothing to show.
-    pub fn element<R>(
-        &mut self,
-        renderer: &mut R,
-        shown: &Shown,
-        output: &str,
-        output_size: Size<i32, smithay::utils::Logical>,
-        scale: f64,
-    ) -> Option<Exact<MemoryRenderBufferRenderElement<R>>>
+    pub fn element<R>(&mut self, renderer: &mut R, shown: &Shown, output: &str, output_size: Size<i32, smithay::utils::Logical>, scale: f64) -> Option<Exact<MemoryRenderBufferRenderElement<R>>>
     where
         R: Renderer + ImportMem,
         R::TextureId: Send + Clone + 'static,
@@ -294,34 +287,20 @@ impl Overlay {
             return None;
         }
         let here = shown.displays.iter().position(|d| d.output == output);
-        let key = Key {
-            shown: shown.clone(),
-            here,
-            looked_up: LOOKED_UP.load(std::sync::atomic::Ordering::Relaxed),
-            scale_milli: (scale * 1000.0).round() as i64,
-            generation: theme::generation(),
-        };
+        let key = Key { shown: shown.clone(), here, looked_up: LOOKED_UP.load(std::sync::atomic::Ordering::Relaxed), scale_milli: (scale * 1000.0).round() as i64, generation: theme::generation() };
         if let Some(i) = self.cached.iter().position(|(k, _, _)| *k == key) {
             let looked = self.cached.remove(i);
             self.cached.insert(0, looked);
         } else {
             let pixmap = draw(&theme::palette(), shown, here, scale);
             let size: Size<i32, Buffer> = (pixmap.width() as i32, pixmap.height() as i32).into();
-            let buffer = MemoryRenderBuffer::from_slice(
-                pixmap.data(),
-                Fourcc::Abgr8888,
-                size,
-                1,
-                Transform::Normal,
-                Some(vec![Rectangle::from_size(size)]),
-            );
+            let buffer = MemoryRenderBuffer::from_slice(pixmap.data(), Fourcc::Abgr8888, size, 1, Transform::Normal, Some(vec![Rectangle::from_size(size)]));
             self.cached.insert(0, (key, buffer, (size.w, size.h).into()));
             self.cached.truncate(LOOKS * shown.displays.len().max(1));
         }
         let (_, buffer, phys) = self.cached.first()?;
         let out = output_size.to_f64().to_physical(scale);
-        let loc: Point<f64, Physical> =
-            (((out.w - phys.w as f64) / 2.0).round(), ((out.h - phys.h as f64) / 2.0).round()).into();
+        let loc: Point<f64, Physical> = (((out.w - phys.w as f64) / 2.0).round(), ((out.h - phys.h as f64) / 2.0).round()).into();
         crate::render::picture(renderer, loc, buffer, (phys.w, phys.h), None, Kind::Unspecified)
     }
 }
@@ -396,9 +375,7 @@ pub fn cell_at(shown: &Shown, output_size: (i32, i32), at: (f64, f64)) -> Option
     }
     let lay = layout(shown);
     let (x, y) = (at.0 - (output_size.0 - lay.size.0) as f64 / 2.0, at.1 - (output_size.1 - lay.size.1) as f64 / 2.0);
-    cell_places(shown, &lay).into_iter().find_map(|(cell, (cx, cy))| {
-        ((cx as f64..(cx + CELL) as f64).contains(&x) && (cy as f64..(cy + CELL) as f64).contains(&y)).then_some(cell)
-    })
+    cell_places(shown, &lay).into_iter().find_map(|(cell, (cx, cy))| ((cx as f64..(cx + CELL) as f64).contains(&x) && (cy as f64..(cy + CELL) as f64).contains(&y)).then_some(cell))
 }
 
 /// Twitcher at `s` device pixels per logical one, on display `here` of
@@ -437,11 +414,7 @@ fn draw(p: &Palette, shown: &Shown, here: Option<usize>, s: f64) -> Pixmap {
             // grouped.
             let y = px(top - ROW_GAP / 2);
             let etch = p.shade(p.panel_background, 1.22);
-            let spans: Vec<(i32, i32)> = if grouped {
-                lay.columns.iter().map(|&(x, cw)| (x + BOX_PAD, cw - 2 * BOX_PAD)).collect()
-            } else {
-                vec![(PAD, lw - 2 * PAD)]
-            };
+            let spans: Vec<(i32, i32)> = if grouped { lay.columns.iter().map(|&(x, cw)| (x + BOX_PAD, cw - 2 * BOX_PAD)).collect() } else { vec![(PAD, lw - 2 * PAD)] };
             for (x, sw) in spans {
                 fill(&mut pm, px(x), y - u, px(x + sw) - px(x), u, etch);
                 fill(&mut pm, px(x), y, px(x + sw) - px(x), u, p.shine);
@@ -461,11 +434,7 @@ fn draw(p: &Palette, shown: &Shown, here: Option<usize>, s: f64) -> Pixmap {
 
     // The chosen app's name (or window's title) beneath.
     if let Some(e) = shown.selected() {
-        let label = e
-            .title
-            .clone()
-            .or_else(|| info(&e.app_id).map(|i| i.name))
-            .unwrap_or_else(|| fallback_name(&e.app_id));
+        let label = e.title.clone().or_else(|| info(&e.app_id).map(|i| i.name)).unwrap_or_else(|| fallback_name(&e.app_id));
         let label = text::ellipsize(&label, size, true, (px(lw - 2 * PAD)) as f32);
         let tw = text::measure(&label, size, true);
         let y = text::top_for_centre(px(lh - PAD - LABEL) as f32 + px(LABEL) as f32 / 2.0, size, true);
@@ -607,13 +576,8 @@ mod tests {
     #[test]
     fn cells_under_the_pointer() {
         let entry = |display| Entry { app_id: "olo.terminal".into(), title: None, display };
-        let shown = Shown {
-            rows: vec![Row { workspace: 0, entries: vec![entry(0), entry(0)] }, Row { workspace: 2, entries: vec![entry(0)] }],
-            displays: Vec::new(),
-            row: 0,
-            index: 0,
-            letters: false,
-        };
+        let shown =
+            Shown { rows: vec![Row { workspace: 0, entries: vec![entry(0), entry(0)] }, Row { workspace: 2, entries: vec![entry(0)] }], displays: Vec::new(), row: 0, index: 0, letters: false };
         let lay = layout(&shown);
         let out = (1600, 1000);
         let origin = ((out.0 - lay.size.0) as f64 / 2.0, (out.1 - lay.size.1) as f64 / 2.0);

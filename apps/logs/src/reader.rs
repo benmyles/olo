@@ -9,12 +9,15 @@ use std::{sync::Arc, time::Duration};
 
 use crate::{
     journal::{self, Journal},
-    model::{self, Built, Builder, Line},
+    model::{self, Builder, Built, Line},
 };
 
 pub enum Update {
     /// New lines, and more text for lines already sent (by index).
-    Lines { new: Vec<Line>, more: Vec<(usize, String)> },
+    Lines {
+        new: Vec<Line>,
+        more: Vec<(usize, String)>,
+    },
     /// Everything there was has been read; new lines follow as written.
     Loaded,
     Failed(String),

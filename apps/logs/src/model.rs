@@ -245,7 +245,10 @@ pub struct Builder {
 pub enum Built {
     New(Line),
     /// More text for line `index`.
-    Continues { index: usize, text: String },
+    Continues {
+        index: usize,
+        text: String,
+    },
 }
 
 impl Builder {
@@ -275,7 +278,13 @@ impl Builder {
                 // Olo's programs log warnings through tracing; what they
                 // print to stderr themselves (which the session's journal
                 // stream files as warnings) is news unless it says otherwise.
-                Level::Warning if is_olo(&program) => if says_trouble(&text) { Level::Warning } else { Level::Info },
+                Level::Warning if is_olo(&program) => {
+                    if says_trouble(&text) {
+                        Level::Warning
+                    } else {
+                        Level::Info
+                    }
+                }
                 l => l,
             });
             (level, text.trim_end().to_owned())
@@ -567,11 +576,7 @@ mod tests {
     use super::*;
 
     fn entry(t: u64, pid: &str, comm: &str, msg: &str) -> Entry {
-        Entry {
-            realtime: t,
-            fields: vec![(Field::Message, msg.into()), (Field::Pid, pid.into()), (Field::Comm, comm.into()), (Field::Priority, "6".into())],
-            ..Default::default()
-        }
+        Entry { realtime: t, fields: vec![(Field::Message, msg.into()), (Field::Pid, pid.into()), (Field::Comm, comm.into()), (Field::Priority, "6".into())], ..Default::default() }
     }
 
     #[test]
@@ -672,5 +677,4 @@ mod tests {
         assert_eq!(file_line("couldn't open the socket", &p, 7, [0; 16]).level, Level::Warning);
         assert!(continues_line("    at main.rs:3") && !continues_line("next"));
     }
-
 }

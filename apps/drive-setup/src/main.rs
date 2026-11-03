@@ -31,7 +31,8 @@ use olo_ui::{
     file_panel::{self, FilePanel, PanelResult},
     files::format_size,
     gpui::{
-        self, App, AppContext as _, Bounds, Context, Entity, FocusHandle, Focusable as _, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Point, Render, SharedString, Styled as _, Task, WeakEntity, Window, WindowHandle, canvas, div, point, px, size,
+        self, App, AppContext as _, Bounds, Context, Entity, FocusHandle, Focusable as _, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Point, Render, SharedString,
+        Styled as _, Task, WeakEntity, Window, WindowHandle, canvas, div, point, px, size,
     },
     icons,
     instance::{self, Launch},
@@ -39,7 +40,8 @@ use olo_ui::{
     style::{self, c},
     theme, tracker,
     widgets::{
-        AlertFrame, Button, CheckBox, Column, ColumnListView, ListModel, MenuField, Slider, StatusBar, TextControl, TextField, alert, button_row, level_bar, open_alert, paragraph, paragraph_height, text_field, ALERT_TEXT_X,
+        ALERT_TEXT_X, AlertFrame, Button, CheckBox, Column, ColumnListView, ListModel, MenuField, Slider, StatusBar, TextControl, TextField, alert, button_row, level_bar, open_alert, paragraph,
+        paragraph_height, text_field,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -125,7 +127,13 @@ fn push_volume(out: &mut Vec<Row>, v: &Volume, depth: usize) {
 fn rows(status: &Status) -> Vec<Row> {
     let mut out = Vec::new();
     for d in &status.disks {
-        out.push(Row { item: Item::Disk(d.path.clone()), depth: 0, icon: Some(disk_icon(d)), cells: [d.name(), short(&d.device), table_name(d), format_size(d.size), String::new(), String::new()], space: None });
+        out.push(Row {
+            item: Item::Disk(d.path.clone()),
+            depth: 0,
+            icon: Some(disk_icon(d)),
+            cells: [d.name(), short(&d.device), table_name(d), format_size(d.size), String::new(), String::new()],
+            space: None,
+        });
         for s in d.segments() {
             match s {
                 Segment::Volume(i) => {
@@ -440,14 +448,16 @@ impl Render for Form {
         let col_w = FORM_W - ALERT_TEXT_X - m::WINDOW_INSET;
         let slider = |id: &'static str, value: f32, lo: f32, hi: f32| {
             let me = me.clone();
-            Slider::new(id, value, lo..=hi).step(1.0).label("Size:").value_text(format_size((value as u64) * MIB)).limits(format_size((lo as u64) * MIB), format_size((hi as u64) * MIB)).on_change(move |v, _, cx| {
-                me.update(cx, |form, cx| {
-                    if let FormKind::Create { size, .. } | FormKind::Resize { size, .. } = &mut form.kind {
-                        *size = v;
-                    }
-                    cx.notify();
-                })
-            })
+            Slider::new(id, value, lo..=hi).step(1.0).label("Size:").value_text(format_size((value as u64) * MIB)).limits(format_size((lo as u64) * MIB), format_size((hi as u64) * MIB)).on_change(
+                move |v, _, cx| {
+                    me.update(cx, |form, cx| {
+                        if let FormKind::Create { size, .. } | FormKind::Resize { size, .. } = &mut form.kind {
+                            *size = v;
+                        }
+                        cx.notify();
+                    })
+                },
+            )
         };
         // The icon, the message, the fields and their height, the default
         // button.
@@ -455,7 +465,12 @@ impl Render for Form {
             FormKind::Format { message, fs, .. } => ("warning", message.clone(), Form::fs_fields(fs, true, &me, cx), fs.height(true, cx), "Format"),
             FormKind::Create { message, fs, max, size, .. } => {
                 let max_mib = (*max / MIB).max(1) as f32;
-                let fields = div().flex().flex_col().child(div().h(px(SLIDER_H)).child(slider("drive-setup-size", *size, 1.0, max_mib))).child(div().h(px(m::SPACING))).child(Form::fs_fields(fs, false, &me, cx));
+                let fields = div()
+                    .flex()
+                    .flex_col()
+                    .child(div().h(px(SLIDER_H)).child(slider("drive-setup-size", *size, 1.0, max_mib)))
+                    .child(div().h(px(m::SPACING)))
+                    .child(Form::fs_fields(fs, false, &me, cx));
                 ("drive-setup", message.clone(), fields, SLIDER_H + m::SPACING + fs.height(false, cx), "Create")
             }
             FormKind::Resize { title, current, max, size, can, .. } => {
@@ -475,14 +490,12 @@ impl Render for Form {
                 };
                 ("drive-setup", message, fields, h, "Resize")
             }
-            FormKind::Rename { title, name, .. } => (
-                "drive-setup",
-                format!("A new name for “{title}”:"),
-                div().h(px(m::CONTROL_HEIGHT)).child(TextControl::new(name.clone())),
-                m::CONTROL_HEIGHT,
-                "Rename",
-            ),
-            FormKind::Unlock { title, pass, .. } => ("vault", format!("“{title}” is encrypted. Its passphrase:"), div().h(px(m::CONTROL_HEIGHT)).child(TextControl::new(pass.clone())), m::CONTROL_HEIGHT, "Unlock"),
+            FormKind::Rename { title, name, .. } => {
+                ("drive-setup", format!("A new name for “{title}”:"), div().h(px(m::CONTROL_HEIGHT)).child(TextControl::new(name.clone())), m::CONTROL_HEIGHT, "Rename")
+            }
+            FormKind::Unlock { title, pass, .. } => {
+                ("vault", format!("“{title}” is encrypted. Its passphrase:"), div().h(px(m::CONTROL_HEIGHT)).child(TextControl::new(pass.clone())), m::CONTROL_HEIGHT, "Unlock")
+            }
             FormKind::Table { disk, kind, erase } => {
                 let message = format!("A new partition table erases everything on “{}” ({}, {}): every partition on it goes.", disk.name(), disk.device, format_size(disk.size));
                 let (k, e) = (me.clone(), me.clone());
@@ -490,14 +503,16 @@ impl Render for Form {
                     .flex()
                     .flex_col()
                     .child(div().h(px(m::CONTROL_HEIGHT)).child(
-                        MenuField::new("drive-setup-table", vec!["GUID (GPT, for anything recent)".into(), "MBR (for older devices)".into()], *kind).label("Type:").divider(DIVIDER).on_change(move |i, _, cx| {
-                            k.update(cx, |form, cx| {
-                                if let FormKind::Table { kind, .. } = &mut form.kind {
-                                    *kind = i;
-                                }
-                                cx.notify();
-                            })
-                        }),
+                        MenuField::new("drive-setup-table", vec!["GUID (GPT, for anything recent)".into(), "MBR (for older devices)".into()], *kind).label("Type:").divider(DIVIDER).on_change(
+                            move |i, _, cx| {
+                                k.update(cx, |form, cx| {
+                                    if let FormKind::Table { kind, .. } = &mut form.kind {
+                                        *kind = i;
+                                    }
+                                    cx.notify();
+                                })
+                            },
+                        ),
                     ))
                     .child(div().h(px(m::TIGHT)))
                     .child(div().h(px(m::CONTROL_HEIGHT)).flex().items_center().child(CheckBox::new("Overwrite the old data with zeros (slow)", *erase).on_toggle(move |v, _, cx| {
@@ -594,7 +609,8 @@ impl Render for Bench {
                 if samples.len() > 1 {
                     let step = f32::from(inner.size.width) / (BENCH_SAMPLES - 1) as f32;
                     let h = f32::from(inner.size.height);
-                    let pts: Vec<Point<Pixels>> = samples.iter().enumerate().map(|(i, &v)| point(inner.left() + px(i as f32 * step), inner.bottom() - px(2.0 + (v / top) as f32 * (h - 4.0)))).collect();
+                    let pts: Vec<Point<Pixels>> =
+                        samples.iter().enumerate().map(|(i, &v)| point(inner.left() + px(i as f32 * step), inner.bottom() - px(2.0 + (v / top) as f32 * (h - 4.0)))).collect();
                     let ink = c(p.keyboard_navigation);
                     window.with_content_mask(Some(gpui::ContentMask { bounds: inner }), |window| {
                         window.paint_layer(inner, |window| {
@@ -605,7 +621,11 @@ impl Render for Bench {
                     });
                 }
                 style::sunken(window, b, &p, false);
-                olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Figure", name: Some("Read speed".into()), value: samples.last().map(|v| rate_text(*v).into()), bounds: b, enabled: true, ..Default::default() });
+                olo_ui::agent::record(
+                    window,
+                    cx,
+                    olo_ui::agent::Node { role: "Figure", name: Some("Read speed".into()), value: samples.last().map(|v| rate_text(*v).into()), bounds: b, enabled: true, ..Default::default() },
+                );
             },
         )
         .w_full()
@@ -873,7 +893,14 @@ impl DriveSetup {
     /// Do `work` on a worker as the step under way: it can report
     /// progress, and says what to select after. `fail` begins the alert
     /// if it fails.
-    fn run(&mut self, what: String, fail: String, stop: Option<Arc<AtomicBool>>, work: impl FnOnce(&dyn Fn(Option<f32>, String)) -> Result<Option<Item>, String> + Send + 'static, cx: &mut Context<Self>) {
+    fn run(
+        &mut self,
+        what: String,
+        fail: String,
+        stop: Option<Arc<AtomicBool>>,
+        work: impl FnOnce(&dyn Fn(Option<f32>, String)) -> Result<Option<Item>, String> + Send + 'static,
+        cx: &mut Context<Self>,
+    ) {
         if self.working.is_some() {
             return;
         }
@@ -1101,10 +1128,22 @@ impl DriveSetup {
                 self.run(format!("Resizing “{title}”…"), format!("“{title}” couldn't be resized."), None, move |_| e(disks::resize(&path, current, size, has_fs)), cx);
             }
             Submit::Rename { path, title, fs, name } => {
-                self.run(format!("Renaming “{title}”…"), format!("“{title}” couldn't be renamed."), None, move |_| e(if fs { disks::set_label(&path, &name) } else { disks::set_partition_name(&path, &name) }), cx);
+                self.run(
+                    format!("Renaming “{title}”…"),
+                    format!("“{title}” couldn't be renamed."),
+                    None,
+                    move |_| e(if fs { disks::set_label(&path, &name) } else { disks::set_partition_name(&path, &name) }),
+                    cx,
+                );
             }
             Submit::Unlock { path, title, pass } => {
-                self.run(format!("Unlocking “{title}”…"), format!("“{title}” couldn't be unlocked."), None, move |_| disks::unlock(&path, &pass).map(|p| Some(Item::Volume(p))).map_err(|e| disks::error_text(&e)), cx);
+                self.run(
+                    format!("Unlocking “{title}”…"),
+                    format!("“{title}” couldn't be unlocked."),
+                    None,
+                    move |_| disks::unlock(&path, &pass).map(|p| Some(Item::Volume(p))).map_err(|e| disks::error_text(&e)),
+                    cx,
+                );
             }
             Submit::Table { disk, kind, erase } => {
                 let name = disk.name();
@@ -1443,7 +1482,17 @@ impl Render for DriveSetup {
                     move |b, _, window, cx| {
                         if let Some(e) = &error {
                             let p = theme::palette(cx);
-                            style::label(window, cx, b.center().x, b.center().y, style::Align::Center, format!("Can't see the disks: {e}"), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), c(p.failure));
+                            style::label(
+                                window,
+                                cx,
+                                b.center().x,
+                                b.center().y,
+                                style::Align::Center,
+                                format!("Can't see the disks: {e}"),
+                                style::PLAIN_SIZE,
+                                style::ui_font(FontWeight::NORMAL),
+                                c(p.failure),
+                            );
                         }
                     },
                 )
@@ -1503,14 +1552,8 @@ impl Render for DriveSetup {
                 l.reveal(i);
             }
         });
-        let columns = [
-            Column::new("Name", 200.0),
-            Column::new("Device", 84.0),
-            Column::new("Contents", 120.0),
-            Column::new("Size", 72.0).right(),
-            Column::new("Free", 130.0),
-            Column::new("Mounted At", 140.0),
-        ];
+        let columns =
+            [Column::new("Name", 200.0), Column::new("Device", 84.0), Column::new("Contents", 120.0), Column::new("Size", 72.0).right(), Column::new("Free", 130.0), Column::new("Mounted At", 140.0)];
         let (cells, sel_rows, ctx_rows, open_rows) = (rows.clone(), rows.clone(), rows.clone(), rows.clone());
         let (sel, ctx, open) = (me.clone(), me.clone(), me.clone());
         let list = ColumnListView::new("drive-setup-list", &self.list, columns, rows.len(), move |cell, window, cx| {
@@ -1609,7 +1652,13 @@ impl Render for DriveSetup {
 
 /// MB/s in words (GB/s when fast).
 fn rate_text(mb: f64) -> String {
-    if mb >= 1000.0 { format!("{:.1} GB/s", mb / 1000.0) } else if mb >= 100.0 { format!("{mb:.0} MB/s") } else { format!("{mb:.1} MB/s") }
+    if mb >= 1000.0 {
+        format!("{:.1} GB/s", mb / 1000.0)
+    } else if mb >= 100.0 {
+        format!("{mb:.0} MB/s")
+    } else {
+        format!("{mb:.1} MB/s")
+    }
 }
 
 /// The disk or volume named by `device` (/dev/sda1, sda1, or a UDisks
@@ -1711,7 +1760,9 @@ fn main() {
                     if d.window.is_some() {
                         d.refresh(cx);
                     }
-                }) else { break };
+                }) else {
+                    break;
+                };
             }
         })
         .detach();
@@ -1735,7 +1786,8 @@ mod tests {
         let mut luks = volume("sdb2", 600 * MIB, 300 * MIB, "crypto_LUKS");
         luks.encrypted = true;
         luks.cleartext = Some(Box::new(volume("dm-0", 0, 298 * MIB, "ext4")));
-        let disk = Disk { path: "sdb".into(), device: "/dev/sdb".into(), size: 1000 * MIB, table: Some("gpt".into()), volumes: vec![volume("sdb1", MIB, 499 * MIB, "exfat"), luks], ..Default::default() };
+        let disk =
+            Disk { path: "sdb".into(), device: "/dev/sdb".into(), size: 1000 * MIB, table: Some("gpt".into()), volumes: vec![volume("sdb1", MIB, 499 * MIB, "exfat"), luks], ..Default::default() };
         let status = Status { disks: vec![disk], ..Default::default() };
         let r = rows(&status);
         let items: Vec<(Item, usize)> = r.iter().map(|r| (r.item.clone(), r.depth)).collect();

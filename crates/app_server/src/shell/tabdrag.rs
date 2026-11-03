@@ -21,17 +21,15 @@
 
 use std::time::Instant;
 
+use olo_theme::deco::TAB_HEIGHT;
 use smithay::{
     desktop::space::SpaceElement,
     input::pointer::{
-        AxisFrame, ButtonEvent, CursorIcon, CursorImageStatus, Focus, GestureHoldBeginEvent, GestureHoldEndEvent,
-        GesturePinchBeginEvent, GesturePinchEndEvent, GesturePinchUpdateEvent, GestureSwipeBeginEvent,
-        GestureSwipeEndEvent, GestureSwipeUpdateEvent, GrabStartData as PointerGrabStartData, MotionEvent, PointerGrab,
-        PointerInnerHandle, RelativeMotionEvent,
+        AxisFrame, ButtonEvent, CursorIcon, CursorImageStatus, Focus, GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent, GesturePinchEndEvent, GesturePinchUpdateEvent,
+        GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent, GrabStartData as PointerGrabStartData, MotionEvent, PointerGrab, PointerInnerHandle, RelativeMotionEvent,
     },
     utils::{IsAlive, Logical, Point, Rectangle, Serial},
 };
-use olo_theme::deco::TAB_HEIGHT;
 
 use super::{
     WindowElement,
@@ -401,24 +399,14 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for TabDragGrab<
         handle.relative_motion(data, focus, event);
     }
 
-    fn button(
-        &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
-        event: &ButtonEvent,
-    ) {
+    fn button(&mut self, data: &mut AnvilState<BackendData>, handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>, event: &ButtonEvent) {
         handle.button(data, event);
         if handle.current_pressed().is_empty() {
             handle.unset_grab(self, data, event.serial, event.time, true);
         }
     }
 
-    fn axis(
-        &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
-        details: AxisFrame,
-    ) {
+    fn axis(&mut self, data: &mut AnvilState<BackendData>, handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>, details: AxisFrame) {
         handle.axis(data, details)
     }
 
@@ -426,75 +414,35 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for TabDragGrab<
         handle.frame(data);
     }
 
-    fn gesture_swipe_begin(
-        &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
-        event: &GestureSwipeBeginEvent,
-    ) {
+    fn gesture_swipe_begin(&mut self, data: &mut AnvilState<BackendData>, handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>, event: &GestureSwipeBeginEvent) {
         handle.gesture_swipe_begin(data, event)
     }
 
-    fn gesture_swipe_update(
-        &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
-        event: &GestureSwipeUpdateEvent,
-    ) {
+    fn gesture_swipe_update(&mut self, data: &mut AnvilState<BackendData>, handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>, event: &GestureSwipeUpdateEvent) {
         handle.gesture_swipe_update(data, event)
     }
 
-    fn gesture_swipe_end(
-        &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
-        event: &GestureSwipeEndEvent,
-    ) {
+    fn gesture_swipe_end(&mut self, data: &mut AnvilState<BackendData>, handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>, event: &GestureSwipeEndEvent) {
         handle.gesture_swipe_end(data, event)
     }
 
-    fn gesture_pinch_begin(
-        &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
-        event: &GesturePinchBeginEvent,
-    ) {
+    fn gesture_pinch_begin(&mut self, data: &mut AnvilState<BackendData>, handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>, event: &GesturePinchBeginEvent) {
         handle.gesture_pinch_begin(data, event)
     }
 
-    fn gesture_pinch_update(
-        &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
-        event: &GesturePinchUpdateEvent,
-    ) {
+    fn gesture_pinch_update(&mut self, data: &mut AnvilState<BackendData>, handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>, event: &GesturePinchUpdateEvent) {
         handle.gesture_pinch_update(data, event)
     }
 
-    fn gesture_pinch_end(
-        &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
-        event: &GesturePinchEndEvent,
-    ) {
+    fn gesture_pinch_end(&mut self, data: &mut AnvilState<BackendData>, handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>, event: &GesturePinchEndEvent) {
         handle.gesture_pinch_end(data, event)
     }
 
-    fn gesture_hold_begin(
-        &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
-        event: &GestureHoldBeginEvent,
-    ) {
+    fn gesture_hold_begin(&mut self, data: &mut AnvilState<BackendData>, handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>, event: &GestureHoldBeginEvent) {
         handle.gesture_hold_begin(data, event)
     }
 
-    fn gesture_hold_end(
-        &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
-        event: &GestureHoldEndEvent,
-    ) {
+    fn gesture_hold_end(&mut self, data: &mut AnvilState<BackendData>, handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>, event: &GestureHoldEndEvent) {
         handle.gesture_hold_end(data, event)
     }
 

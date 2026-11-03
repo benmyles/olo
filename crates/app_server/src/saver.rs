@@ -13,12 +13,12 @@ use std::{
     time::{Duration, Instant},
 };
 
+use olo_protocol::Corner;
 use smithay::{
     input::pointer::CursorImageStatus,
     reexports::wayland_server::backend::{ClientId, DisconnectReason},
     utils::{Logical, Point},
 };
-use olo_protocol::Corner;
 use tracing::{info, warn};
 
 use crate::state::{AnvilState, Backend};
@@ -68,8 +68,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         let ss = self.settings.screen_saver.clone();
         let options = ss.options.get(&ss.module).cloned().unwrap_or_default();
-        let mut args =
-            vec!["--module".to_owned(), ss.module.clone(), "--options".to_owned(), serde_json::to_string(&options).unwrap()];
+        let mut args = vec!["--module".to_owned(), ss.module.clone(), "--options".to_owned(), serde_json::to_string(&options).unwrap()];
         if DESKTOP_MODULES.contains(&ss.module.as_str())
             && !self.lock.locked()
             && let Some(path) = desktop_picture()

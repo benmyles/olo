@@ -171,10 +171,7 @@ mod tests {
     #[test]
     fn env_files() {
         let vars = env_file("# c\nexport A=op://V/I/f\nB=\"quoted # not a comment\"\nC=x # comment\n\nD='s'\n");
-        assert_eq!(
-            vars,
-            [("A".into(), "op://V/I/f".into()), ("B".into(), "quoted # not a comment".into()), ("C".into(), "x".into()), ("D".into(), "s".into())]
-        );
+        assert_eq!(vars, [("A".into(), "op://V/I/f".into()), ("B".into(), "quoted # not a comment".into()), ("C".into(), "x".into()), ("D".into(), "s".into())]);
     }
 
     #[test]

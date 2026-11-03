@@ -56,13 +56,7 @@ impl Stored {
 /// The item's passkey, if it has one.
 pub fn stored(item: &Item) -> Option<Stored> {
     let get = |id: &str| item.field(id).filter(|f| f.section_id.as_deref() == Some(SECTION)).map(|f| f.value.clone());
-    Some(Stored {
-        credential_id: get(CREDENTIAL).filter(|c| !c.is_empty())?,
-        rp_id: get(RP)?,
-        user_handle: get(USER).unwrap_or_default(),
-        user_name: get(NAME).unwrap_or_default(),
-        key: get(KEY)?,
-    })
+    Some(Stored { credential_id: get(CREDENTIAL).filter(|c| !c.is_empty())?, rp_id: get(RP)?, user_handle: get(USER).unwrap_or_default(), user_name: get(NAME).unwrap_or_default(), key: get(KEY)? })
 }
 
 /// Whether a website saved with an item is near enough to `rp_id` for
@@ -137,10 +131,7 @@ impl New {
 /// What an item's view shows of its passkey: the site and the account
 /// (its key and ids stay out of sight).
 pub fn shown(fields: &[&ItemField]) -> Vec<ItemField> {
-    [(RP, "site"), (NAME, "user name")]
-        .into_iter()
-        .filter_map(|(id, title)| fields.iter().find(|f| f.id == id).map(|f| ItemField { title: title.into(), ..(*f).clone() }))
-        .collect()
+    [(RP, "site"), (NAME, "user name")].into_iter().filter_map(|(id, title)| fields.iter().find(|f| f.id == id).map(|f| ItemField { title: title.into(), ..(*f).clone() })).collect()
 }
 
 pub fn section() -> ItemSection {

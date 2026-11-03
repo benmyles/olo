@@ -10,11 +10,11 @@ use std::{
     rc::Rc,
 };
 
+use olo_protocol::{Event, EventKind, Reply, Request};
 use smithay::reexports::calloop::{
     Interest, LoopHandle, Mode, PostAction,
     generic::{Generic, NoIoDrop},
 };
-use olo_protocol::{Event, EventKind, Reply, Request};
 use tracing::{debug, info, warn};
 
 use crate::state::{AnvilState, Backend};
@@ -60,9 +60,7 @@ impl Conn {
         // SAFETY: as in `peer`.
         let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
         let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
-        let got = unsafe {
-            libc::getsockopt(self.stream.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, (&raw mut cred).cast(), &mut len)
-        };
+        let got = unsafe { libc::getsockopt(self.stream.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, (&raw mut cred).cast(), &mut len) };
         // SAFETY: getuid can't fail.
         if got != 0 || cred.uid != unsafe { libc::getuid() } {
             return false;
@@ -90,15 +88,7 @@ impl Conn {
         // most `len` bytes into it.
         let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
         let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
-        let got = unsafe {
-            libc::getsockopt(
-                self.stream.as_raw_fd(),
-                libc::SOL_SOCKET,
-                libc::SO_PEERCRED,
-                (&raw mut cred).cast(),
-                &mut len,
-            )
-        };
+        let got = unsafe { libc::getsockopt(self.stream.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, (&raw mut cred).cast(), &mut len) };
         (got == 0).then_some(cred.pid)
     }
 }
@@ -208,13 +198,8 @@ impl IpcState {
 
 /// Open the socket and register it with the event loop. Sets
 /// `$OLO_SOCKET` for every process app_server starts afterwards.
-pub fn init<B: Backend + 'static>(
-    handle: &LoopHandle<'static, AnvilState<B>>,
-    wayland_socket: &str,
-) -> std::io::Result<IpcState> {
-    let dir = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir);
+pub fn init<B: Backend + 'static>(handle: &LoopHandle<'static, AnvilState<B>>, wayland_socket: &str) -> std::io::Result<IpcState> {
+    let dir = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
     let mut path = dir.join(format!("olo-{wayland_socket}.sock"));
     // olo-session may own the socket (so it survives our restarts), under
     // its old name if the session started on a build from before the
@@ -236,22 +221,19 @@ pub fn init<B: Backend + 'static>(
     info!(path = %path.display(), "IPC listening");
 
     handle
-        .insert_source(
-            Generic::new(listener, Interest::READ, Mode::Level),
-            |_, listener, state| {
-                loop {
-                    match listener.accept() {
-                        Ok((stream, _)) => accept(state, stream),
-                        Err(e) if e.kind() == ErrorKind::WouldBlock => break,
-                        Err(e) => {
-                            warn!(?e, "IPC accept failed");
-                            break;
-                        }
+        .insert_source(Generic::new(listener, Interest::READ, Mode::Level), |_, listener, state| {
+            loop {
+                match listener.accept() {
+                    Ok((stream, _)) => accept(state, stream),
+                    Err(e) if e.kind() == ErrorKind::WouldBlock => break,
+                    Err(e) => {
+                        warn!(?e, "IPC accept failed");
+                        break;
                     }
                 }
-                Ok(PostAction::Continue)
-            },
-        )
+            }
+            Ok(PostAction::Continue)
+        })
         .map_err(|e| std::io::Error::other(e.to_string()))?;
 
     // An inherited socket's file belongs to olo-session: don't remove it.
@@ -270,17 +252,7 @@ pub fn init<B: Backend + 'static>(
             }
         })
         .map_err(|e| std::io::Error::other(e.to_string()))?;
-    Ok(IpcState {
-        path,
-        _file: file,
-        subscribers: Vec::new(),
-        key_grabs: Vec::new(),
-        pending_screenshots: Vec::new(),
-        recording: None,
-        saving: Default::default(),
-        next_save: 0,
-        saved: Some(saved),
-    })
+    Ok(IpcState { path, _file: file, subscribers: Vec::new(), key_grabs: Vec::new(), pending_screenshots: Vec::new(), recording: None, saving: Default::default(), next_save: 0, saved: Some(saved) })
 }
 
 impl IpcState {
@@ -304,49 +276,48 @@ fn accept<B: Backend + 'static>(state: &mut AnvilState<B>, stream: UnixStream) {
     let _ = read_half.set_nonblocking(true);
     let conn = Rc::new(Conn { stream, dead: RefCell::new(false) });
     let mut buf = Vec::<u8>::new();
-    let res = state.handle.insert_source(
-        Generic::new(read_half, Interest::READ, Mode::Level),
-        move |_, stream: &mut NoIoDrop<UnixStream>, state| {
-            let mut chunk = [0u8; 4096];
-            loop {
-                // SAFETY: we only read; the fd stays registered until we return Remove.
-                let s = unsafe { stream.get_mut() };
-                match s.read(&mut chunk) {
-                    Ok(0) => {
-                        *conn.dead.borrow_mut() = true;
-                        state.ipc_closed(&conn);
-                        return Ok(PostAction::Remove);
-                    }
-                    Ok(n) => buf.extend_from_slice(&chunk[..n]),
-                    Err(e) if e.kind() == ErrorKind::WouldBlock => break,
-                    Err(_) => {
-                        *conn.dead.borrow_mut() = true;
-                        state.ipc_closed(&conn);
-                        return Ok(PostAction::Remove);
-                    }
+    let res = state.handle.insert_source(Generic::new(read_half, Interest::READ, Mode::Level), move |_, stream: &mut NoIoDrop<UnixStream>, state| {
+        let mut chunk = [0u8; 4096];
+        loop {
+            // SAFETY: we only read; the fd stays registered until we return Remove.
+            let s = unsafe { stream.get_mut() };
+            match s.read(&mut chunk) {
+                Ok(0) => {
+                    *conn.dead.borrow_mut() = true;
+                    state.ipc_closed(&conn);
+                    return Ok(PostAction::Remove);
+                }
+                Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => break,
+                Err(_) => {
+                    *conn.dead.borrow_mut() = true;
+                    state.ipc_closed(&conn);
+                    return Ok(PostAction::Remove);
                 }
             }
-            while let Some(pos) = buf.iter().position(|&b| b == b'\n') {
-                let line: Vec<u8> = buf.drain(..=pos).collect();
-                let line = String::from_utf8_lossy(&line);
-                let line = line.trim();
-                if line.is_empty() {
-                    continue;
-                }
-                match serde_json::from_str::<Request>(line) {
-                    Ok(req) => {
-                        let start = std::time::Instant::now();
-                        if let Some(reply) = state.handle_ipc(req, &conn) {
-                            conn.send(&reply);
-                        }
-                        state.timings.handled(|| format!("request {}", serde_json::from_str::<serde_json::Value>(line).ok().and_then(|v| v["type"].as_str().map(str::to_owned)).unwrap_or_default()), start);
-                    }
-                    Err(e) => conn.send(&Reply::Error { message: format!("bad request: {e}") }),
-                }
+        }
+        while let Some(pos) = buf.iter().position(|&b| b == b'\n') {
+            let line: Vec<u8> = buf.drain(..=pos).collect();
+            let line = String::from_utf8_lossy(&line);
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
             }
-            Ok(if conn.is_dead() { PostAction::Remove } else { PostAction::Continue })
-        },
-    );
+            match serde_json::from_str::<Request>(line) {
+                Ok(req) => {
+                    let start = std::time::Instant::now();
+                    if let Some(reply) = state.handle_ipc(req, &conn) {
+                        conn.send(&reply);
+                    }
+                    state
+                        .timings
+                        .handled(|| format!("request {}", serde_json::from_str::<serde_json::Value>(line).ok().and_then(|v| v["type"].as_str().map(str::to_owned)).unwrap_or_default()), start);
+                }
+                Err(e) => conn.send(&Reply::Error { message: format!("bad request: {e}") }),
+            }
+        }
+        Ok(if conn.is_dead() { PostAction::Remove } else { PostAction::Continue })
+    });
     if let Err(e) = res {
         warn!(?e, "could not register IPC client");
     }
@@ -406,11 +377,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 for w in &windows {
                     self.restore_window(w);
                 }
-                if windows.is_empty() {
-                    not_found()
-                } else {
-                    Reply::Ok
-                }
+                if windows.is_empty() { not_found() } else { Reply::Ok }
             }
             Request::Minimize { id } => match self.window_by_id(id) {
                 Some(w) => {
@@ -524,9 +491,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Some(_) => Reply::Error { message: format!("window {id} isn't showing") },
                 None => not_found(),
             },
-            Request::WindowingMode { workspace } => {
-                Reply::WindowingMode { workspace: workspace.unwrap_or_else(|| self.workspace()), displays: self.windowing_mode_infos(workspace) }
-            }
+            Request::WindowingMode { workspace } => Reply::WindowingMode { workspace: workspace.unwrap_or_else(|| self.workspace()), displays: self.windowing_mode_infos(workspace) },
             Request::SetWindowingMode { mode, workspace, output } => {
                 let o = match output {
                     Some(name) => match self.space.outputs().find(|o| o.name() == name).cloned() {
@@ -539,9 +504,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.set_windowing_mode(mode, workspace, o);
                 Reply::WindowingMode { workspace: ws, displays: self.windowing_mode_infos(workspace) }
             }
-            Request::AutoTiling { workspace } => {
-                Reply::AutoTiling { workspace: workspace.unwrap_or_else(|| self.workspace()), displays: self.auto_tiling_infos(workspace) }
-            }
+            Request::AutoTiling { workspace } => Reply::AutoTiling { workspace: workspace.unwrap_or_else(|| self.workspace()), displays: self.auto_tiling_infos(workspace) },
             Request::SetAutoTiling { on, workspace, output } => {
                 let o = match output {
                     Some(name) => match self.space.outputs().find(|o| o.name() == name).cloned() {
@@ -561,11 +524,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
                 None => not_found(),
             },
-            Request::Workspaces => Reply::Workspaces {
-                current: self.workspace(),
-                count: self.settings.workspace_count,
-                displays: self.display_workspaces(),
-            },
+            Request::Workspaces => Reply::Workspaces { current: self.workspace(), count: self.settings.workspace_count, displays: self.display_workspaces() },
             Request::SwitchWorkspace { index, output: None } => {
                 self.switch_workspace(index);
                 Reply::Ok
@@ -689,11 +648,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             Request::Looks => Reply::Looks { themes: olo_protocol::LookInfo::all(), palette: (*crate::theme::palette()).clone() },
             Request::Palette { theme, colors, mode } => {
                 let a = &self.settings.appearance;
-                let palette = olo_theme::looks::palette(
-                    theme.as_deref().unwrap_or(&a.icon_theme),
-                    colors.as_deref().unwrap_or(&a.colors),
-                    mode.unwrap_or(a.effective_theme),
-                );
+                let palette = olo_theme::looks::palette(theme.as_deref().unwrap_or(&a.icon_theme), colors.as_deref().unwrap_or(&a.colors), mode.unwrap_or(a.effective_theme));
                 Reply::Palette { palette }
             }
             Request::Hints => Reply::Hints { hints: self.hints.infos() },
@@ -721,15 +676,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Reply::Ok
             }
             Request::Screenshot { path, output, window, border, pointer, format } => {
-                let shot = crate::screenshot::Shot {
-                    path: PathBuf::from(path),
-                    conn: Some(conn.clone()),
-                    output,
-                    window,
-                    border,
-                    pointer,
-                    format,
-                };
+                let shot = crate::screenshot::Shot { path: PathBuf::from(path), conn: Some(conn.clone()), output, window, border, pointer, format };
                 match self.request_screenshot(shot) {
                     Ok(()) => return None,
                     Err(message) => Reply::Error { message },

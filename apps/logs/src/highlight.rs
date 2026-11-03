@@ -22,8 +22,30 @@ pub enum Kind {
 }
 
 /// Words that mark trouble.
-const BAD: &[&str] =
-    &["error", "errors", "failed", "failure", "fail", "fails", "couldn't", "couldn’t", "can't", "can’t", "cannot", "panicked", "panic", "fatal", "denied", "refused", "invalid", "unable", "missing", "crashed", "timeout", "timed"];
+const BAD: &[&str] = &[
+    "error",
+    "errors",
+    "failed",
+    "failure",
+    "fail",
+    "fails",
+    "couldn't",
+    "couldn’t",
+    "can't",
+    "can’t",
+    "cannot",
+    "panicked",
+    "panic",
+    "fatal",
+    "denied",
+    "refused",
+    "invalid",
+    "unable",
+    "missing",
+    "crashed",
+    "timeout",
+    "timed",
+];
 
 /// The spans of `text` and what each is; they cover it in order.
 pub fn spans(text: &str) -> Vec<(Range<usize>, Kind)> {
@@ -76,7 +98,11 @@ pub fn spans(text: &str) -> Vec<(Range<usize>, Kind)> {
             continue;
         }
         // URLs and paths.
-        if rest.starts_with("http://") || rest.starts_with("https://") || rest.starts_with("file://") || ((c == b'/' || rest.starts_with("~/")) && (i == 0 || b" (=[\"'".contains(&b[i - 1])) && rest.len() > 1 && !rest[1..].starts_with([' ', '/'])) {
+        if rest.starts_with("http://")
+            || rest.starts_with("https://")
+            || rest.starts_with("file://")
+            || ((c == b'/' || rest.starts_with("~/")) && (i == 0 || b" (=[\"'".contains(&b[i - 1])) && rest.len() > 1 && !rest[1..].starts_with([' ', '/']))
+        {
             let e = i + rest.find(|ch: char| ch.is_whitespace() || "\"'(),;<>[]{}".contains(ch)).unwrap_or(rest.len());
             let e = e - text[i..e].len() + text[i..e].trim_end_matches(['.', ':']).len();
             push(&mut out, i..e, Kind::Path);
@@ -93,7 +119,9 @@ pub fn spans(text: &str) -> Vec<(Range<usize>, Kind)> {
             let after = text[e..].trim_start_matches(' ');
             let kind = if is_number(word) {
                 Kind::Number
-            } else if after.starts_with('=') && !after.starts_with("==") || (after.starts_with(':') && !after.starts_with("::") && word.chars().all(|c| c.is_ascii_lowercase() || c == '_') && word.contains('_')) {
+            } else if after.starts_with('=') && !after.starts_with("==")
+                || (after.starts_with(':') && !after.starts_with("::") && word.chars().all(|c| c.is_ascii_lowercase() || c == '_') && word.contains('_'))
+            {
                 Kind::Key
             } else if word.chars().next().is_some_and(char::is_uppercase) && (after.starts_with('(') || after.starts_with('{')) {
                 Kind::Type
@@ -166,7 +194,9 @@ mod tests {
 
     #[test]
     fn spans_cover_the_text() {
-        for text in ["", "plain words.", "a “quoted” bit and 'x' and don't", "see https://example.com/a?b=1, then ~/x", "0x1f -3 1.5 v1.2.3 ünïcode", "unterminated \"quote", "an… ellipsis — and ’quotes’ ✓"] {
+        for text in
+            ["", "plain words.", "a “quoted” bit and 'x' and don't", "see https://example.com/a?b=1, then ~/x", "0x1f -3 1.5 v1.2.3 ünïcode", "unterminated \"quote", "an… ellipsis — and ’quotes’ ✓"]
+        {
             let s = spans(text);
             let mut at = 0;
             for (r, _) in &s {

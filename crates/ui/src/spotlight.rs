@@ -99,7 +99,13 @@ pub(crate) fn paint(window: &mut Window, cx: &mut App) {
         return;
     }
     // In, held, out.
-    let a = if t < COMING { t / COMING } else if t > total - GOING { (total - t) / GOING } else { 1.0 };
+    let a = if t < COMING {
+        t / COMING
+    } else if t > total - GOING {
+        (total - t) / GOING
+    } else {
+        1.0
+    };
     let p = theme::palette(cx);
     let mut ring = style::c(p.navigation_base);
     let mut wash = ring;

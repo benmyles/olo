@@ -29,22 +29,45 @@ pub type Image = Arc<Bitmap>;
 pub enum Body {
     /// `full` is the picture's own size in pixels (the image may have
     /// been scaled down to fit a texture).
-    Image { image: Image, full: [f32; 2], note: String },
+    Image {
+        image: Image,
+        full: [f32; 2],
+        note: String,
+    },
     /// A PDF: pages arrive one by one (`Update::Page`).
     /// `want` asks the worker to render a page (it answers with
     /// `Update::Page`).
-    Pages { pages: Vec<Option<Image>>, page_size: (f32, f32), note: String, want: std::sync::mpsc::Sender<usize> },
+    Pages {
+        pages: Vec<Option<Image>>,
+        page_size: (f32, f32),
+        note: String,
+        want: std::sync::mpsc::Sender<usize>,
+    },
     Text(text::Text),
     /// Formatted documents: Markdown, Word, OpenDocument, PowerPoint.
-    Rich { blocks: Vec<doc::Block>, note: String },
+    Rich {
+        blocks: Vec<doc::Block>,
+        note: String,
+    },
     /// Spreadsheets and CSV: each sheet's rows.
-    Table { sheets: Vec<(String, crate::table::Rows)>, note: String },
+    Table {
+        sheets: Vec<(String, crate::table::Rows)>,
+        note: String,
+    },
     /// Folders and archives.
-    Listing { items: Vec<archive::Item>, note: String },
+    Listing {
+        items: Vec<archive::Item>,
+        note: String,
+    },
     Media(media::Media),
-    Font { data: Arc<Vec<u8>>, note: String },
+    Font {
+        data: Arc<Vec<u8>>,
+        note: String,
+    },
     /// Nothing more to show than the icon and facts.
-    Card { note: String },
+    Card {
+        note: String,
+    },
 }
 
 pub enum Update {
@@ -143,11 +166,7 @@ fn svg(path: &Path, max: u32) -> Result<Update, String> {
     let mut pixmap = resvg::tiny_skia::Pixmap::new(w.max(1), h.max(1)).ok_or("This drawing is empty.")?;
     resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(k, k), &mut pixmap.as_mut());
     let image = Arc::new(Bitmap::from_rgba_premultiplied([pixmap.width() as usize, pixmap.height() as usize], pixmap.take()));
-    Ok(Update::Body(Body::Image {
-        image,
-        full: [size.width(), size.height()],
-        note: format!("SVG drawing, {} × {}", size.width().round(), size.height().round()),
-    }))
+    Ok(Update::Body(Body::Image { image, full: [size.width(), size.height()], note: format!("SVG drawing, {} × {}", size.width().round(), size.height().round()) }))
 }
 
 fn font(path: &Path) -> Result<Update, String> {

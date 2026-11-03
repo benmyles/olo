@@ -53,10 +53,7 @@ fn exec_word(w: &str) -> String {
 /// started by D-Bus activation).
 pub fn login_item(app_id: &str, commandline: &[String], flags: u32) -> String {
     let exec: Vec<String> = commandline.iter().map(|w| exec_word(w)).collect();
-    let mut text = format!(
-        "[Desktop Entry]\nType=Application\nName={app_id}\nExec={}\nX-Flatpak={app_id}\n# Written by Olo's Background portal at the app's asking.\n",
-        exec.join(" ")
-    );
+    let mut text = format!("[Desktop Entry]\nType=Application\nName={app_id}\nExec={}\nX-Flatpak={app_id}\n# Written by Olo's Background portal at the app's asking.\n", exec.join(" "));
     if flags & 1 != 0 {
         text.push_str("DBusActivatable=true\n");
     }

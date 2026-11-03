@@ -10,9 +10,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use chrono::Datelike;
-use rcgen::{
-    BasicConstraints, CertificateParams, DistinguishedName, DnType, ExtendedKeyUsagePurpose, GeneralSubtree, IsCa, Issuer, KeyPair, KeyUsagePurpose, NameConstraints,
-};
+use rcgen::{BasicConstraints, CertificateParams, DistinguishedName, DnType, ExtendedKeyUsagePurpose, GeneralSubtree, IsCa, Issuer, KeyPair, KeyUsagePurpose, NameConstraints};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 
 /// The hosts the pool answers for: the subscriptions' model APIs.
@@ -132,11 +130,8 @@ impl Authority {
             let signing = provider.key_provider.load_private_key(private).map_err(|e| e.to_string())?;
             resolver.add(host, rustls::sign::CertifiedKey::new(chain, signing)).map_err(|e| e.to_string())?;
         }
-        let mut config = rustls::ServerConfig::builder_with_provider(provider)
-            .with_safe_default_protocol_versions()
-            .map_err(|e| e.to_string())?
-            .with_no_client_auth()
-            .with_cert_resolver(Arc::new(resolver));
+        let mut config =
+            rustls::ServerConfig::builder_with_provider(provider).with_safe_default_protocol_versions().map_err(|e| e.to_string())?.with_no_client_auth().with_cert_resolver(Arc::new(resolver));
         // One request at a time on a connection, as the clients' HTTP/1.1.
         config.alpn_protocols = vec![b"http/1.1".to_vec()];
         Ok(Arc::new(config))

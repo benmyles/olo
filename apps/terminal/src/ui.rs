@@ -13,18 +13,14 @@
 //! shortcuts; text typed (and an input method's) comes through
 //! `EntityInputHandler`.
 
-use std::{
-    collections::HashMap,
-    ops::Range,
-    path::PathBuf,
-    rc::Rc,
-    time::Duration,
-};
+use std::{collections::HashMap, ops::Range, path::PathBuf, rc::Rc, time::Duration};
 
 use olo_ui::{
     Frame,
     gpui::{
-        self, AnyElement, App, AppContext as _, Bounds, Context, CursorStyle, DispatchPhase, ElementInputHandler, Entity, EntityId, EntityInputHandler, FocusHandle, Focusable, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyBinding, KeyDownEvent, KeyUpEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, NoAction, ParentElement as _, Pixels, Render, ScrollWheelEvent, SharedString, Styled as _, UTF16Selection, WeakEntity, Window, WindowHandle, canvas, div, point, px, size,
+        self, AnyElement, App, AppContext as _, Bounds, Context, CursorStyle, DispatchPhase, ElementInputHandler, Entity, EntityId, EntityInputHandler, FocusHandle, Focusable, FontWeight, Hitbox,
+        HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyBinding, KeyDownEvent, KeyUpEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, NoAction, ParentElement as _,
+        Pixels, Render, ScrollWheelEvent, SharedString, Styled as _, UTF16Selection, WeakEntity, Window, WindowHandle, canvas, div, point, px, size,
     },
     icons,
     menu::{self, Menu, MenuBar},
@@ -810,9 +806,7 @@ impl Terminal {
         // window's bottom row) is the terminal's colour, not black.
         let behind = view::screen_colors(&t.tab().session, &scheme).0;
         let mut root = div().size_full().relative().bg(behind).key_context(SCREEN).track_focus(&focus);
-        root = root
-            .on_key_down(cx.listener(move |t, e: &KeyDownEvent, window, cx| t.key_down(id, e, window, cx)))
-            .on_key_up(cx.listener(move |t, e: &KeyUpEvent, _, cx| t.key_up(id, e, cx)));
+        root = root.on_key_down(cx.listener(move |t, e: &KeyDownEvent, window, cx| t.key_down(id, e, window, cx))).on_key_up(cx.listener(move |t, e: &KeyUpEvent, _, cx| t.key_up(id, e, cx)));
         let p = theme::palette(cx);
         let me = cx.weak_entity();
         let bell = t.tab().bell.map(|at| at.elapsed().as_secs_f32()).filter(|a| *a < 0.15);
@@ -860,7 +854,11 @@ impl Terminal {
                         if hitbox.is_hovered(window)
                             && let Some(o) = window.drop_offer().filter(|o| o.copy)
                         {
-                            let mime = if o.types.iter().any(|t| t == "text/uri-list") { Some("text/uri-list") } else { ["text/plain;charset=utf-8", "UTF8_STRING", "text/plain"].into_iter().find(|t| o.types.iter().any(|x| x == t)) };
+                            let mime = if o.types.iter().any(|t| t == "text/uri-list") {
+                                Some("text/uri-list")
+                            } else {
+                                ["text/plain;charset=utf-8", "UTF8_STRING", "text/plain"].into_iter().find(|t| o.types.iter().any(|x| x == t))
+                            };
                             if let Some(mime) = mime {
                                 window.accept_drop("screen", mime, gpui::DragAction::Copy);
                                 let p = theme::palette(cx);
@@ -1462,7 +1460,19 @@ impl Terminal {
                     }
                     let dot = Bounds::centered_at(r.center(), size(px(SWATCH - 6.0), px(SWATCH - 6.0)));
                     window.paint_quad(gpui::fill(dot, groups::color(i, &look)).corner_radii(px(SWATCH / 2.0 - 3.0)));
-                    olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "RadioButton", name: Some(groups::COLORS[i].name().into()), bounds: r, enabled: true, clickable: true, selected: Some(color == i), ..Default::default() });
+                    olo_ui::agent::record(
+                        window,
+                        cx,
+                        olo_ui::agent::Node {
+                            role: "RadioButton",
+                            name: Some(groups::COLORS[i].name().into()),
+                            bounds: r,
+                            enabled: true,
+                            clickable: true,
+                            selected: Some(color == i),
+                            ..Default::default()
+                        },
+                    );
                     let me = me.clone();
                     window.on_mouse_event(move |e: &MouseDownEvent, phase, _, cx| {
                         if phase == DispatchPhase::Bubble && e.button == MouseButton::Left && r.contains(&e.position) {

@@ -55,7 +55,8 @@ impl LineWrapper {
                 // than pushing the word before it down a row ("…with Ann
                 // at" fits when "at" does), as typesetters, CSS and egui
                 // wrap. Leading spaces (an indent) still count.
-                let hangs = matches!(candidate, WrapBoundaryCandidate::Char { character: ' ' }) && first_non_whitespace_ix.is_some();
+                let hangs = matches!(candidate, WrapBoundaryCandidate::Char { character: ' ' })
+                    && first_non_whitespace_ix.is_some();
                 let mut new_prev_c = prev_c;
                 let item_width = match candidate {
                     WrapBoundaryCandidate::Char { character: c } => {

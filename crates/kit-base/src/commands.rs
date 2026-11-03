@@ -489,9 +489,7 @@ pub fn menus(pid: u32) -> Option<Menus> {
 /// Choose `command` from the menus of the app with process id `pid`, in
 /// its last active window. Blocks briefly: call it off the UI thread.
 pub fn invoke(pid: u32, command: &str) -> bool {
-    ask(pid, &Ask::Invoke(command.to_owned()))
-        .and_then(|a| serde_json::from_str::<serde_json::Value>(&a).ok())
-        .is_some_and(|v| v["ok"] == true)
+    ask(pid, &Ask::Invoke(command.to_owned())).and_then(|a| serde_json::from_str::<serde_json::Value>(&a).ok()).is_some_and(|v| v["ok"] == true)
 }
 
 /// The menus of the window with surface `surface` (its protocol id,
@@ -506,17 +504,13 @@ pub fn menus_in(pid: u32, surface: u32) -> Option<Menus> {
 /// bar (its own Close, which may ask first). Blocks briefly: call it off
 /// the UI thread.
 pub fn invoke_in(pid: u32, surface: u32, command: &str) -> bool {
-    ask(pid, &Ask::InvokeIn(InvokeIn { surface, command: command.to_owned() }))
-        .and_then(|a| serde_json::from_str::<serde_json::Value>(&a).ok())
-        .is_some_and(|v| v["ok"] == true)
+    ask(pid, &Ask::InvokeIn(InvokeIn { surface, command: command.to_owned() })).and_then(|a| serde_json::from_str::<serde_json::Value>(&a).ok()).is_some_and(|v| v["ok"] == true)
 }
 
 /// Give the keyboard to the widget with tree id `node` in the kit app
 /// with process id `pid`. Blocks briefly: call it off the UI thread.
 pub fn focus(pid: u32, node: u64) -> bool {
-    ask(pid, &Ask::Focus(node))
-        .and_then(|a| serde_json::from_str::<serde_json::Value>(&a).ok())
-        .is_some_and(|v| v["ok"] == true)
+    ask(pid, &Ask::Focus(node)).and_then(|a| serde_json::from_str::<serde_json::Value>(&a).ok()).is_some_and(|v| v["ok"] == true)
 }
 
 /// What the windows of the kit app with process id `pid` show (None if

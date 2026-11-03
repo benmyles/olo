@@ -7,8 +7,8 @@
 use std::rc::Rc;
 
 use gpui::{
-    App, AppContext as _, Bounds, Entity, HitboxBehavior, Hsla, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, RenderOnce, SharedString, Styled as _, Window, canvas,
-    div, point, px, rgb as hex,
+    App, AppContext as _, Bounds, Entity, HitboxBehavior, Hsla, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, RenderOnce, SharedString,
+    Styled as _, Window, canvas, div, point, px, rgb as hex,
 };
 use olo_kit_base::metrics as m;
 
@@ -145,7 +145,19 @@ impl RenderOnce for ColorControl {
                     }
                 }
                 style::sunken(window, b, &p, false);
-                agent::record(window, cx, agent::Node { role: "ColorWell", name: Some("Colour".into()), value: Some(format!("{} {} {}", rgb[0], rgb[1], rgb[2]).into()), bounds: b, enabled, clickable: enabled, ..Default::default() });
+                agent::record(
+                    window,
+                    cx,
+                    agent::Node {
+                        role: "ColorWell",
+                        name: Some("Colour".into()),
+                        value: Some(format!("{} {} {}", rgb[0], rgb[1], rgb[2]).into()),
+                        bounds: b,
+                        enabled,
+                        clickable: enabled,
+                        ..Default::default()
+                    },
+                );
                 if !enabled {
                     return;
                 }
@@ -192,9 +204,12 @@ impl RenderOnce for ColorControl {
         )
         .w(px(ramp_width))
         .h(px(height()));
-        let numbers = div().flex().flex_col().gap(px(m::TIGHT)).w(px(FIELD_W)).children(
-            fields.into_iter().zip(["Red:", "Green:", "Blue:"]).map(|(f, label)| TextControl::new(f).label(label).divider(FIELD_W - 40.0).width(FIELD_W)),
-        );
+        let numbers = div()
+            .flex()
+            .flex_col()
+            .gap(px(m::TIGHT))
+            .w(px(FIELD_W))
+            .children(fields.into_iter().zip(["Red:", "Green:", "Blue:"]).map(|(f, label)| TextControl::new(f).label(label).divider(FIELD_W - 40.0).width(FIELD_W)));
         let _ = id;
         div().flex().flex_row().gap(px(m::SPACING)).child(ramps).child(numbers)
     }

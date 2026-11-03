@@ -24,7 +24,11 @@ use crate::wire::{self, Frame, Grid};
 /// What a shell's thread gets.
 pub enum Chunk {
     /// Attached (again): start over from `replay`.
-    Attached { pid: i32, pty: Option<OwnedFd>, replay: Vec<u8> },
+    Attached {
+        pid: i32,
+        pty: Option<OwnedFd>,
+        replay: Vec<u8>,
+    },
     Output(Vec<u8>),
     Exited(Option<i32>),
     /// Another Terminal has it now.
@@ -74,9 +78,7 @@ impl Writer {
 }
 
 fn hello() -> Frame {
-    let mut env: Vec<(String, String)> = std::env::vars()
-        .filter(|(k, _)| !matches!(k.as_str(), "XDG_ACTIVATION_TOKEN" | "DESKTOP_STARTUP_ID" | "OLO_RESTORE"))
-        .collect();
+    let mut env: Vec<(String, String)> = std::env::vars().filter(|(k, _)| !matches!(k.as_str(), "XDG_ACTIVATION_TOKEN" | "DESKTOP_STARTUP_ID" | "OLO_RESTORE")).collect();
     crate::sudo::shell_env(&mut env);
     Frame::json(wire::HELLO, 0, &wire::Hello { pid: std::process::id() as i32, env })
 }

@@ -8,12 +8,12 @@ use std::{
     time::Duration,
 };
 
+use olo_protocol::{Client, Reply, Request, WindowInfo, shortcuts};
 use olo_ui::{Proxy, commands};
 use olo_xdg::{
     apps::{OUR_APPS, PREFERENCE_PANELS, our_app},
     desktop_entry,
 };
-use olo_protocol::{Client, Reply, Request, WindowInfo, shortcuts};
 
 /// What a result is (shown at its right, and how it ranks among equals).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -73,11 +73,17 @@ pub enum Action {
     Shortcut(String),
     Activate(u64),
     /// A command from the menus of the app with this process id.
-    Menu { pid: u32, command: String },
+    Menu {
+        pid: u32,
+        command: String,
+    },
     Open(PathBuf),
     /// A folder, or a file in its folder, shown in Tracker.
     Reveal(PathBuf),
-    Password { vault: String, id: String },
+    Password {
+        vault: String,
+        id: String,
+    },
     Copy(String),
     /// The desktop's light or dark appearance.
     Theme(bool),
@@ -161,7 +167,12 @@ pub fn go_to(text: &str, copied: bool) -> Option<Item> {
     let (shown, path) = olo_kit_base::files::written_path(text)?;
     let dir = std::fs::metadata(&path).ok()?.is_dir();
     let what = if copied { "The path in the clipboard, in Tracker" } else { "In Tracker" };
-    Some(Item::new(Kind::Command, format!("Go to {shown}"), Action::Reveal(path)).subtitle(what).icon(if dir { "folder" } else { "document" }).keywords("go to folder file path clipboard tracker reveal"))
+    Some(
+        Item::new(Kind::Command, format!("Go to {shown}"), Action::Reveal(path))
+            .subtitle(what)
+            .icon(if dir { "folder" } else { "document" })
+            .keywords("go to folder file path clipboard tracker reveal"),
+    )
 }
 
 /// What settings are also called, in other systems and in everyday
@@ -232,18 +243,13 @@ pub fn fixed() -> Vec<Item> {
         }
         let keywords = format!("{} {}", e.generic_name.clone().unwrap_or_default(), e.id.replace(['.', '-'], " "));
         let action = if e.terminal { Action::Launch(format!("olo-terminal -e {cmd}"), String::new()) } else { Action::Launch(cmd, e.id.clone()) };
-        let mut item = Item::new(Kind::Application, e.name.clone(), action)
-            .keywords(keywords)
-            .subtitle(e.comment.clone().unwrap_or_default());
+        let mut item = Item::new(Kind::Application, e.name.clone(), action).keywords(keywords).subtitle(e.comment.clone().unwrap_or_default());
         item.icon = e.icon.clone();
         items.push(item);
     }
     for (arg, name, icon) in PREFERENCE_PANELS {
         items.push(
-            Item::new(Kind::Preference, *name, Action::Spawn(vec!["olo-preferences".into(), arg.to_string()]))
-                .icon(*icon)
-                .subtitle("Preferences")
-                .keywords(format!("settings preferences {arg}")),
+            Item::new(Kind::Preference, *name, Action::Spawn(vec!["olo-preferences".into(), arg.to_string()])).icon(*icon).subtitle("Preferences").keywords(format!("settings preferences {arg}")),
         );
     }
     // Every setting in the panels (`olo_xdg::settings`, made from them as
@@ -285,10 +291,12 @@ pub fn context() -> (Option<WindowInfo>, Vec<Item>) {
     let front = windows.iter().find(|w| w.focused).cloned();
     for info in shortcuts::SHORTCUTS.iter().filter(|i| i.action != olo_protocol::Shortcut::Palette) {
         let keys = shortcuts::keys_for(info, &profile);
-        let mut item = Item::new(Kind::Shortcut, info.title, Action::Shortcut(info.id.into()))
-            .subtitle(info.group)
-            .icon(shortcut_icon(info.group))
-            .keywords(format!("{} {}{}", info.id.replace('-', " "), info.group, if info.action == olo_protocol::Shortcut::Hide { " minimize minimise" } else { "" }));
+        let mut item = Item::new(Kind::Shortcut, info.title, Action::Shortcut(info.id.into())).subtitle(info.group).icon(shortcut_icon(info.group)).keywords(format!(
+            "{} {}{}",
+            info.id.replace('-', " "),
+            info.group,
+            if info.action == olo_protocol::Shortcut::Hide { " minimize minimise" } else { "" }
+        ));
         item.keys = keys.first().map(|c| c.label(profile.platform));
         // Window shortcuts need a window to act on.
         item.enabled = front.is_some() || info.group != shortcuts::WINDOWS;
@@ -330,9 +338,11 @@ pub fn menus(front: &WindowInfo) -> Vec<Item> {
         .into_iter()
         .map(|e| {
             let path = e.path.join(" ▸ ");
-            let mut item = Item::new(Kind::Command, e.label.trim_end_matches('…').to_owned(), Action::Menu { pid, command: e.command })
-                .subtitle(format!("{app} ▸ {path}"))
-                .keywords(format!("{} {}", e.path.join(" "), app));
+            let mut item = Item::new(Kind::Command, e.label.trim_end_matches('…').to_owned(), Action::Menu { pid, command: e.command }).subtitle(format!("{app} ▸ {path}")).keywords(format!(
+                "{} {}",
+                e.path.join(" "),
+                app
+            ));
             item.keys = e.keys;
             item.icon = icon.clone();
             item.enabled = e.enabled;
@@ -402,16 +412,8 @@ impl Index {
             self.forget(dir);
             return;
         }
-        let now: std::collections::BTreeSet<PathBuf> = ignore::WalkBuilder::new(dir)
-            .hidden(true)
-            .git_global(false)
-            .follow_links(false)
-            .max_depth(Some(1))
-            .build()
-            .flatten()
-            .filter(|e| e.depth() == 1)
-            .map(|e| e.into_path())
-            .collect();
+        let now: std::collections::BTreeSet<PathBuf> =
+            ignore::WalkBuilder::new(dir).hidden(true).git_global(false).follow_links(false).max_depth(Some(1)).build().flatten().filter(|e| e.depth() == 1).map(|e| e.into_path()).collect();
         let had: Vec<PathBuf> = self.files.range(dir.to_owned()..).take_while(|q| q.starts_with(dir)).filter(|q| q.parent() == Some(dir)).cloned().collect();
         for gone in had.iter().filter(|p| !now.contains(*p)) {
             self.forget(gone);
@@ -479,14 +481,9 @@ pub fn find_passwords(query: &str) -> Vec<Item> {
         return Vec::new();
     }
     match olo_keychain::call(&olo_keychain::Request::Search { query: query.to_owned() }) {
-        Ok(olo_keychain::Response::Items { ref items }) => items
-            .iter()
-            .map(|f| {
-                Item::new(Kind::Password, f.title.clone(), Action::Password { vault: f.vault.clone(), id: f.id.clone() })
-                    .subtitle(f.subtitle.clone())
-                    .icon("passwords")
-            })
-            .collect(),
+        Ok(olo_keychain::Response::Items { ref items }) => {
+            items.iter().map(|f| Item::new(Kind::Password, f.title.clone(), Action::Password { vault: f.vault.clone(), id: f.id.clone() }).subtitle(f.subtitle.clone()).icon("passwords")).collect()
+        }
         // Say why there are none, and offer the way in.
         Ok(olo_keychain::Response::Locked) => vec![
             Item::new(Kind::Password, "Unlock Passwords to search its items", Action::Spawn(vec!["olo-passwords".into()]))
@@ -541,9 +538,13 @@ pub fn perform(action: Action, front: Option<u64>) {
         let result = match action {
             Action::Launch(cmd, id) => olo_xdg::spawn_detached_app(&cmd, &id).map_err(|e| e.to_string()),
             Action::Spawn(argv) => match olo_xdg::find_program(&argv[0]) {
-                Some(path) => std::process::Command::new(path).args(&argv[1..]).spawn().map(|mut c| {
-                    std::thread::spawn(move || c.wait());
-                }).map_err(|e| e.to_string()),
+                Some(path) => std::process::Command::new(path)
+                    .args(&argv[1..])
+                    .spawn()
+                    .map(|mut c| {
+                        std::thread::spawn(move || c.wait());
+                    })
+                    .map_err(|e| e.to_string()),
                 None => Err(format!("{} isn’t installed", argv[0])),
             },
             Action::Shortcut(id) => {

@@ -2,14 +2,14 @@
 //! stretch of free space to scale (but never too thin to click), coloured
 //! by what is on it, as in Haiku's DriveSetup.
 
+use olo_system::disks::{Disk, Segment, Volume};
+use olo_theme::{Hue, Palette, mix};
 use olo_ui::{
     files::format_size,
     gpui::{App, Bounds, FontWeight, Hitbox, HitboxBehavior, MouseButton, MouseDownEvent, Pixels, Point, Window, point, px},
     style::{self, c},
     theme,
 };
-use olo_system::disks::{Disk, Segment, Volume};
-use olo_theme::{Hue, Palette, mix};
 
 use crate::Item;
 

@@ -18,9 +18,7 @@ use olo_system::network::{self as nm, Device, Enterprise, Kind, Network, Status}
 use olo_ui::{
     WindowOptions,
     file_panel::{self, FilePanel, PanelResult},
-    gpui::{
-        AnyElement, App, AppContext as _, Bounds, Context, Entity, Hsla, IntoElement, ParentElement as _, PathBuilder, Pixels, Render, SharedString, Styled as _, Window, div, point, px, size,
-    },
+    gpui::{AnyElement, App, AppContext as _, Bounds, Context, Entity, Hsla, IntoElement, ParentElement as _, PathBuilder, Pixels, Render, SharedString, Styled as _, Window, div, point, px, size},
     metrics as m, style,
     widgets::{Button, CheckBox, Column, ColumnListView, EmptyState, ListModel, MenuField, StringView, TabView, TextControl, TextField, TextFieldEvent, separator},
 };
@@ -171,7 +169,11 @@ fn fake_worker(sh: &Arc<Mutex<Shared>>, wake: &dyn Fn(), rx: &std::sync::mpsc::R
         let joined = match req {
             Request::Join(_, n, _) => Some(n.ssid),
             Request::JoinEnterprise(_, n, e) => {
-                tracing::info!("fake join of {}: {:?}", n.ssid, nm::enterprise_settings(&Enterprise { password: "…".into(), key_password: String::new(), ..*e }).get("802-1x").map(|x| x.keys().collect::<Vec<_>>()));
+                tracing::info!(
+                    "fake join of {}: {:?}",
+                    n.ssid,
+                    nm::enterprise_settings(&Enterprise { password: "…".into(), key_password: String::new(), ..*e }).get("802-1x").map(|x| x.keys().collect::<Vec<_>>())
+                );
                 Some(n.ssid)
             }
             Request::Disconnect(_) => {
@@ -394,9 +396,14 @@ fn wifi(ui: &mut Ui, st: &mut State, status: &Status, busy: bool) {
     let mut row: Vec<AnyElement> = Vec::new();
     if net.active {
         let path = dev.path.clone();
-        row.push(Button::new("Disconnect").enabled(!busy).on_click(move |_, _| {
-            let _ = link.tx.send(Request::Disconnect(path.clone()));
-        }).into_any_element());
+        row.push(
+            Button::new("Disconnect")
+                .enabled(!busy)
+                .on_click(move |_, _| {
+                    let _ = link.tx.send(Request::Disconnect(path.clone()));
+                })
+                .into_any_element(),
+        );
     } else {
         // WPA passwords are 8 to 63 characters.
         let ready = !needs_password || (8..=63).contains(&st.password.read(ui.cx).text().len());
@@ -411,9 +418,14 @@ fn wifi(ui: &mut Ui, st: &mut State, status: &Status, busy: bool) {
     }
     if net.known {
         let ssid = net.ssid.clone();
-        row.push(Button::new("Forget").enabled(!busy).on_click(move |_, _| {
-            let _ = link.tx.send(Request::Forget(ssid.clone()));
-        }).into_any_element());
+        row.push(
+            Button::new("Forget")
+                .enabled(!busy)
+                .on_click(move |_, _| {
+                    let _ = link.tx.send(Request::Forget(ssid.clone()));
+                })
+                .into_any_element(),
+        );
     }
     ui.add(div().flex().flex_row().gap(px(m::SPACING)).children(row));
 }

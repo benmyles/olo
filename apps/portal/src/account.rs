@@ -36,10 +36,7 @@ pub fn who() -> (String, String) {
 /// else `~/.face`.
 pub fn picture(user: &str) -> Option<PathBuf> {
     let home = std::env::var_os("HOME").map(PathBuf::from);
-    [Some(PathBuf::from("/var/lib/AccountsService/icons").join(user)), home.map(|h| h.join(".face"))]
-        .into_iter()
-        .flatten()
-        .find(|p| std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.len() > 0))
+    [Some(PathBuf::from("/var/lib/AccountsService/icons").join(user)), home.map(|h| h.join(".face"))].into_iter().flatten().find(|p| std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.len() > 0))
 }
 
 /// The question, as the dialog asks it.
@@ -103,10 +100,7 @@ mod tests {
 
     #[test]
     fn asks_by_name() {
-        assert_eq!(
-            question("Slack", "Ann Lee", "ann", true),
-            ("Share your name and picture with Slack?".to_owned(), "Ann Lee (ann)".to_owned())
-        );
+        assert_eq!(question("Slack", "Ann Lee", "ann", true), ("Share your name and picture with Slack?".to_owned(), "Ann Lee (ann)".to_owned()));
         assert_eq!(question("", "ann", "ann", false), ("Share your name with this program?".to_owned(), "ann".to_owned()));
         let (user, full) = who();
         assert!(!user.is_empty() && !full.is_empty());

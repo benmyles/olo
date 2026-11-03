@@ -50,9 +50,15 @@ pub fn insert(doc: &mut Doc, i: usize, rows: usize, columns: usize, selection: R
     let tail = if last { "\n" } else { "" };
     let (at, with, start) = if in_place { (r.start, format!("{body}{tail}"), r.start) } else { (r.end, format!("\n{body}{tail}"), r.end + 1) };
     let end = start + body.len() + tail.len();
-    let change = doc.replace_paras(std::slice::from_ref(&(at..at)), &with, selection, |_| start..end, |k, p| {
-        *p = if k < rows { Para { row: Some(Row { header: k == 0, ..Row::default() }), ..Para::default() } } else { Para::default() };
-    })?;
+    let change = doc.replace_paras(
+        std::slice::from_ref(&(at..at)),
+        &with,
+        selection,
+        |_| start..end,
+        |k, p| {
+            *p = if k < rows { Para { row: Some(Row { header: k == 0, ..Row::default() }), ..Para::default() } } else { Para::default() };
+        },
+    )?;
     Some((change, start..start))
 }
 
@@ -62,12 +68,18 @@ pub fn insert(doc: &mut Doc, i: usize, rows: usize, columns: usize, selection: R
 pub fn convert(doc: &mut Doc, range: Range<usize>, to_table: bool, selection: Range<usize>) -> Done {
     let rows = if to_table { doc.paras_in(range) } else { table_of(doc, doc.para_index(range.start))? };
     let whole = doc.para_range(rows.start).start..doc.para_range(rows.end - 1).end;
-    let change = doc.replace_paras(&[], "", selection.clone(), |_| whole.clone(), |_, p| {
-        p.row = to_table.then(Row::default);
-        if to_table {
-            p.list = List::None;
-        }
-    })?;
+    let change = doc.replace_paras(
+        &[],
+        "",
+        selection.clone(),
+        |_| whole.clone(),
+        |_, p| {
+            p.row = to_table.then(Row::default);
+            if to_table {
+                p.list = List::None;
+            }
+        },
+    )?;
     Some((change, selection))
 }
 
@@ -76,11 +88,17 @@ pub fn toggle_header(doc: &mut Doc, i: usize, selection: Range<usize>) -> Done {
     let t = table_of(doc, i)?;
     let on = !doc.paras()[t.start].row.as_ref()?.header;
     let start = doc.para_range(t.start).start;
-    let change = doc.replace_paras(&[], "", selection.clone(), |_| start..start, |_, p| {
-        if let Some(r) = &mut p.row {
-            r.header = on;
-        }
-    })?;
+    let change = doc.replace_paras(
+        &[],
+        "",
+        selection.clone(),
+        |_| start..start,
+        |_, p| {
+            if let Some(r) = &mut p.row {
+                r.header = on;
+            }
+        },
+    )?;
     Some((change, selection))
 }
 
@@ -196,11 +214,17 @@ pub fn delete_column(doc: &mut Doc, i: usize, at: usize, selection: Range<usize>
 pub fn set_columns(doc: &mut Doc, i: usize, columns: Vec<f32>, selection: Range<usize>) -> Done {
     let t = table_of(doc, i)?;
     let whole = doc.para_range(t.start).start..doc.para_range(t.end - 1).end;
-    let change = doc.replace_paras(&[], "", selection.clone(), |_| whole.clone(), |_, p| {
-        if let Some(r) = &mut p.row {
-            r.columns = columns.clone();
-        }
-    })?;
+    let change = doc.replace_paras(
+        &[],
+        "",
+        selection.clone(),
+        |_| whole.clone(),
+        |_, p| {
+            if let Some(r) = &mut p.row {
+                r.columns = columns.clone();
+            }
+        },
+    )?;
     Some((change, selection))
 }
 
@@ -208,11 +232,17 @@ pub fn set_columns(doc: &mut Doc, i: usize, columns: Vec<f32>, selection: Range<
 pub fn even_columns(doc: &mut Doc, i: usize, selection: Range<usize>) -> Done {
     let t = table_of(doc, i)?;
     let whole = doc.para_range(t.start).start..doc.para_range(t.end - 1).end;
-    let change = doc.replace_paras(&[], "", selection.clone(), |_| whole.clone(), |_, p| {
-        if let Some(r) = &mut p.row {
-            r.columns.clear();
-        }
-    })?;
+    let change = doc.replace_paras(
+        &[],
+        "",
+        selection.clone(),
+        |_| whole.clone(),
+        |_, p| {
+            if let Some(r) = &mut p.row {
+                r.columns.clear();
+            }
+        },
+    )?;
     Some((change, selection))
 }
 

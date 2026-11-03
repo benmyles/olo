@@ -195,7 +195,10 @@ pub enum EntityKind {
 impl EntityKind {
     /// Clicking it goes somewhere.
     pub fn is_link(&self) -> bool {
-        matches!(self, EntityKind::Url | EntityKind::TextUrl(_) | EntityKind::Mention | EntityKind::MentionName(_) | EntityKind::Email | EntityKind::Phone | EntityKind::Hashtag | EntityKind::BotCommand)
+        matches!(
+            self,
+            EntityKind::Url | EntityKind::TextUrl(_) | EntityKind::Mention | EntityKind::MentionName(_) | EntityKind::Email | EntityKind::Phone | EntityKind::Hashtag | EntityKind::BotCommand
+        )
     }
 }
 
@@ -401,7 +404,13 @@ impl Folder {
             return false;
         }
         match chat.kind {
-            ChatKind::User | ChatKind::Saved => if chat.contact { self.contacts } else { self.non_contacts },
+            ChatKind::User | ChatKind::Saved => {
+                if chat.contact {
+                    self.contacts
+                } else {
+                    self.non_contacts
+                }
+            }
             ChatKind::Bot => self.bots,
             ChatKind::Group | ChatKind::Forum => self.groups,
             ChatKind::Channel => self.channels,

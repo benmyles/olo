@@ -17,11 +17,11 @@ pub mod cut;
 pub mod dnd;
 pub mod editor;
 pub mod file_panel;
-mod lock;
 pub mod icons;
 pub mod keys;
 #[cfg(feature = "lint")]
 pub mod lint;
+mod lock;
 pub mod menu;
 pub mod open_with;
 pub mod part;
@@ -37,11 +37,11 @@ mod upgrade;
 pub mod widgets;
 pub mod workspaces;
 
-pub use app::{on_displays_changed, FocusNext, FocusPrev, Frame, WindowOptions, app_id, begin_move, message_handler, open_window, proxy, run, stay_resident, tab_step};
+pub use app::{FocusNext, FocusPrev, Frame, WindowOptions, app_id, begin_move, message_handler, on_displays_changed, open_window, proxy, run, stay_resident, tab_step};
+pub use gpui;
 pub use lock::{lock_session, unlock_session};
 pub use menu::{Menu, MenuBar, MenuItem};
-pub use upgrade::{on_upgrade, on_upgrade_due, restored_state, upgrade_waits_while};
-pub use gpui;
 pub use olo_kit_base::{Proxy, clipboard, commands, files, instance, metrics, notify, places, settings, tracker, watch};
 pub use olo_theme as palette;
 pub use olo_xdg::{config_dir, state_dir};
+pub use upgrade::{on_upgrade, on_upgrade_due, restored_state, upgrade_waits_while};

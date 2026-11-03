@@ -7,11 +7,7 @@
 //! `toolkits.rs` names the theme in GSettings (`cursor-theme`) and
 //! olo-session in `XCURSOR_THEME`.
 
-use std::{
-    io,
-    path::Path,
-    str::FromStr,
-};
+use std::{io, path::Path, str::FromStr};
 
 use olo_hvif::cursor::Shape;
 use smithay::input::pointer::CursorIcon;
@@ -32,10 +28,42 @@ const SCALES: [f64; 8] = [1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0];
 /// Every CSS cursor name (cursor-shape-v1's, and the freedesktop cursor
 /// spec's).
 const NAMES: [&str; 36] = [
-    "default", "context-menu", "help", "pointer", "progress", "wait", "cell", "crosshair", "text", "vertical-text", "alias", "copy",
-    "move", "no-drop", "not-allowed", "grab", "grabbing", "e-resize", "n-resize", "ne-resize", "nw-resize", "s-resize", "se-resize",
-    "sw-resize", "w-resize", "ew-resize", "ns-resize", "nesw-resize", "nwse-resize", "col-resize", "row-resize", "all-scroll",
-    "zoom-in", "zoom-out", "dnd-ask", "all-resize",
+    "default",
+    "context-menu",
+    "help",
+    "pointer",
+    "progress",
+    "wait",
+    "cell",
+    "crosshair",
+    "text",
+    "vertical-text",
+    "alias",
+    "copy",
+    "move",
+    "no-drop",
+    "not-allowed",
+    "grab",
+    "grabbing",
+    "e-resize",
+    "n-resize",
+    "ne-resize",
+    "nw-resize",
+    "s-resize",
+    "se-resize",
+    "sw-resize",
+    "w-resize",
+    "ew-resize",
+    "ns-resize",
+    "nesw-resize",
+    "nwse-resize",
+    "col-resize",
+    "row-resize",
+    "all-scroll",
+    "zoom-in",
+    "zoom-out",
+    "dnd-ask",
+    "all-resize",
 ];
 
 /// The Xcursor file for `shape`: the image at each of `SCALES`, its

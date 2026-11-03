@@ -63,7 +63,11 @@ impl RenderOnce for StatusBar {
                 }
                 let bar = Bounds::from_corners(point(b.left(), b.top() + px(top)), b.bottom_right());
                 level_bar(window, bar, fraction, color, &p);
-                agent::record(window, cx, agent::Node { role: "ProgressBar", name: label.clone(), value: Some(format!("{:.0}%", fraction.clamp(0.0, 1.0) * 100.0).into()), bounds: b, enabled: true, ..Default::default() });
+                agent::record(
+                    window,
+                    cx,
+                    agent::Node { role: "ProgressBar", name: label.clone(), value: Some(format!("{:.0}%", fraction.clamp(0.0, 1.0) * 100.0).into()), bounds: b, enabled: true, ..Default::default() },
+                );
             },
         )
         .w_full()

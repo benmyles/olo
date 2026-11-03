@@ -119,7 +119,10 @@ impl EventListener for Listener {
             // "What colour is X?": light/dark detection asks for the
             // background (OSC 11).
             Event::ColorRequest(index, format) => {
-                use alacritty_terminal::{term::color::Colors, vte::ansi::{Color, NamedColor}};
+                use alacritty_terminal::{
+                    term::color::Colors,
+                    vte::ansi::{Color, NamedColor},
+                };
                 let scheme = self.shared.scheme.lock().unwrap().clone();
                 let none = Colors::default();
                 let color = match index {
@@ -134,12 +137,7 @@ impl EventListener for Listener {
             Event::TextAreaSizeRequest(format) => {
                 let cell = self.shared.cell.load(Ordering::Relaxed);
                 let grid = self.shared.grid.load(Ordering::Relaxed);
-                let ws = WindowSize {
-                    num_cols: (grid >> 16) as u16,
-                    num_lines: (grid & 0xffff) as u16,
-                    cell_width: (cell >> 16) as u16,
-                    cell_height: (cell & 0xffff) as u16,
-                };
+                let ws = WindowSize { num_cols: (grid >> 16) as u16, num_lines: (grid & 0xffff) as u16, cell_width: (cell >> 16) as u16, cell_height: (cell & 0xffff) as u16 };
                 self.writer.send(format(ws).into_bytes());
                 return;
             }
@@ -153,14 +151,25 @@ pub use crate::io::Size;
 
 /// How a window gets its shell.
 pub enum Start {
-    Spawn { command: Option<Vec<String>>, cwd: Option<PathBuf> },
+    Spawn {
+        command: Option<Vec<String>>,
+        cwd: Option<PathBuf>,
+    },
     /// A new shell in place of `from`, gone with the session it ran in:
     /// what it showed first (olo-termd kept it).
-    Restore { cwd: Option<PathBuf>, from: u64 },
+    Restore {
+        cwd: Option<PathBuf>,
+        from: u64,
+    },
     /// One olo-termd already has.
     Attach(u64),
     /// One this process ran itself, before olo-termd: hand it over.
-    Adopt { pty: std::os::fd::OwnedFd, pid: i32, title: Option<String>, replay: String },
+    Adopt {
+        pty: std::os::fd::OwnedFd,
+        pid: i32,
+        title: Option<String>,
+        replay: String,
+    },
 }
 
 pub struct Session {
@@ -222,9 +231,7 @@ impl Session {
         spawn_feeder(rx, term.clone(), shared.clone(), wake, writer, exited);
         match start {
             Start::Spawn { command, cwd } => link.spawn(id, tx, wire::Spawn { command, cwd, grid: grid(size, cell), restore: None }),
-            Start::Restore { cwd, from } => {
-                link.spawn(id, tx, wire::Spawn { command: None, cwd: cwd.filter(|d| d.is_dir()), grid: grid(size, cell), restore: Some(from) })
-            }
+            Start::Restore { cwd, from } => link.spawn(id, tx, wire::Spawn { command: None, cwd: cwd.filter(|d| d.is_dir()), grid: grid(size, cell), restore: Some(from) }),
             Start::Attach(id) => link.attach(id, tx, grid(size, cell)),
             Start::Adopt { pty, pid, title, replay } => {
                 link.adopt(id, tx, wire::Adopt { pid, grid: grid(size, cell), title, replay }, pty);

@@ -85,7 +85,8 @@ impl State {
         let phone = field(cx, "+1 555 123 4567", false);
         let code = field(cx, "12345", false);
         let password = field(cx, "", true);
-        let mut st = State { known: Arc::default(), api_id, api_hash, editing_api: false, signin: None, step: Arc::default(), phone, code, password, problem: None, proxy: olo_ui::proxy(cx), ticking: false };
+        let mut st =
+            State { known: Arc::default(), api_id, api_hash, editing_api: false, signin: None, step: Arc::default(), phone, code, password, problem: None, proxy: olo_ui::proxy(cx), ticking: false };
         // (Tests, the layout lint, never read the keyring.)
         if cfg!(test) {
             *st.known.lock().unwrap() = Known::NoApi;
@@ -288,7 +289,14 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                         s.qr();
                     }
                 });
-                items.push(buttons(vec![Button::new("Send Code").default(true).enabled(ready).on_click(send).into_any_element(), Button::new("Use a QR Code").on_click(qr_code).into_any_element(), Button::new("Cancel").on_click(cancel(ui)).into_any_element()]).into_any_element());
+                items.push(
+                    buttons(vec![
+                        Button::new("Send Code").default(true).enabled(ready).on_click(send).into_any_element(),
+                        Button::new("Use a QR Code").on_click(qr_code).into_any_element(),
+                        Button::new("Cancel").on_click(cancel(ui)).into_any_element(),
+                    ])
+                    .into_any_element(),
+                );
             }
             Step::Code { .. } => {
                 items.push(StringView::new("Telegram sent a code to Telegram on your other devices (or by text message). Type it here.").dim(true).wrap(true).into_any_element());
@@ -300,7 +308,10 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                         s.code(st.code.read(cx).text());
                     }
                 });
-                items.push(buttons(vec![Button::new("Sign In").default(true).enabled(ready).on_click(sign_in).into_any_element(), Button::new("Cancel").on_click(cancel(ui)).into_any_element()]).into_any_element());
+                items.push(
+                    buttons(vec![Button::new("Sign In").default(true).enabled(ready).on_click(sign_in).into_any_element(), Button::new("Cancel").on_click(cancel(ui)).into_any_element()])
+                        .into_any_element(),
+                );
             }
             Step::Password { hint } => {
                 items.push(StringView::new("This account has a two-step password.").dim(true).wrap(true).into_any_element());
@@ -315,7 +326,10 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                     }
                     st.password.update(cx, |f, cx| f.clear_secret(cx));
                 });
-                items.push(buttons(vec![Button::new("Sign In").default(true).enabled(ready).on_click(sign_in).into_any_element(), Button::new("Cancel").on_click(cancel(ui)).into_any_element()]).into_any_element());
+                items.push(
+                    buttons(vec![Button::new("Sign In").default(true).enabled(ready).on_click(sign_in).into_any_element(), Button::new("Cancel").on_click(cancel(ui)).into_any_element()])
+                        .into_any_element(),
+                );
             }
             Step::Qr { url } => {
                 items.push(StringView::new("On your phone, open Telegram ▸ Settings ▸ Devices ▸ Link Desktop Device, and point it at this code.").dim(true).wrap(true).into_any_element());
@@ -325,12 +339,15 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                         .flex()
                         .justify_center()
                         .child(
-                            canvas(|_, _, _| {}, move |b, _, window, cx| {
-                                qr(window, b, &url);
-                                if !url.is_empty() {
-                                    olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Image", name: Some(format!("QR code: {url}").into()), bounds: b, ..Default::default() });
-                                }
-                            })
+                            canvas(
+                                |_, _, _| {},
+                                move |b, _, window, cx| {
+                                    qr(window, b, &url);
+                                    if !url.is_empty() {
+                                        olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Image", name: Some(format!("QR code: {url}").into()), bounds: b, ..Default::default() });
+                                    }
+                                },
+                            )
                             .w(px(188.0))
                             .h(px(188.0)),
                         )
@@ -368,7 +385,12 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
 
     // The API ID and hash.
     if st.editing_api || known == Known::NoApi {
-        items.push(StringView::new("Make one at my.telegram.org ▸ API development tools (sign in there with your phone number), then copy its App api_id and api_hash here.").dim(true).wrap(true).into_any_element());
+        items.push(
+            StringView::new("Make one at my.telegram.org ▸ API development tools (sign in there with your phone number), then copy its App api_id and api_hash here.")
+                .dim(true)
+                .wrap(true)
+                .into_any_element(),
+        );
         let divider = divider_for(ui.window, &["API ID:", "API hash:"]);
         items.push(TextControl::new(st.api_id.clone()).label("API ID:").divider(divider).into_any_element());
         items.push(TextControl::new(st.api_hash.clone()).label("API hash:").divider(divider).into_any_element());

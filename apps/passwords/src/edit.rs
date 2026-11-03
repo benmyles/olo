@@ -5,16 +5,13 @@
 //! expiry of 8/29 is saved as 08/2029); an address is edited as its
 //! parts. Saving what 1Password would refuse says why instead.
 
-use onepassword::{
-    AddressFieldDetails, AutofillBehavior, Item, ItemCategory, ItemCreateParams, ItemField, ItemFieldDetails, ItemFieldType, ItemSection,
-    VaultOverview, Website, fields,
-};
 use olo_ui::{
     Menu,
     gpui::{AnyElement, App, Context, Corner, Entity, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, SharedString, Styled as _, Subscription, canvas, div, px},
     menu, metrics as m, style, theme,
     widgets::{Button, MenuField, StringView, TextControl, TextField, TextFieldEvent, button_row, heading, text_field},
 };
+use onepassword::{AddressFieldDetails, AutofillBehavior, Item, ItemCategory, ItemCreateParams, ItemField, ItemFieldDetails, ItemFieldType, ItemSection, VaultOverview, Website, fields};
 
 use crate::Passwords;
 
@@ -68,27 +65,14 @@ fn template(category: ItemCategory) -> Vec<EditField> {
             field("cvv", "verification number", Concealed),
             field("expiry", "expiry date", MonthYear),
         ],
-        ItemCategory::Identity => vec![
-            field("firstname", "first name", Text),
-            field("lastname", "last name", Text),
-            field("email", "email", Email),
-            field("phone", "phone", Phone),
-        ],
-        ItemCategory::ApiCredentials => vec![
-            field("username", "username", Text),
-            field("credential", "credential", Concealed),
-            field("hostname", "hostname", Text),
-        ],
+        ItemCategory::Identity => vec![field("firstname", "first name", Text), field("lastname", "last name", Text), field("email", "email", Email), field("phone", "phone", Phone)],
+        ItemCategory::ApiCredentials => vec![field("username", "username", Text), field("credential", "credential", Concealed), field("hostname", "hostname", Text)],
         ItemCategory::Server => {
             vec![field("url", "URL", Text), field("username", "username", Text), field("password", "password", Concealed)]
         }
-        ItemCategory::Database => vec![
-            field("hostname", "server", Text),
-            field("port", "port", Text),
-            field("database", "database", Text),
-            field("username", "username", Text),
-            field("password", "password", Concealed),
-        ],
+        ItemCategory::Database => {
+            vec![field("hostname", "server", Text), field("port", "port", Text), field("database", "database", Text), field("username", "username", Text), field("password", "password", Concealed)]
+        }
         ItemCategory::BankAccount => vec![
             field("bankName", "bank name", Text),
             field("owner", "name on account", Text),
@@ -96,11 +80,7 @@ fn template(category: ItemCategory) -> Vec<EditField> {
             field("routingNo", "routing number", Text),
             field("telephonePin", "PIN", Concealed),
         ],
-        ItemCategory::Email => vec![
-            field("username", "username", Email),
-            field("password", "password", Concealed),
-            field("server", "server", Text),
-        ],
+        ItemCategory::Email => vec![field("username", "username", Email), field("password", "password", Concealed), field("server", "server", Text)],
         ItemCategory::Router => vec![field("network_name", "network name", Text), field("wireless_password", "password", Concealed)],
         ItemCategory::SoftwareLicense => vec![field("reg_code", "license key", Concealed), field("reg_name", "licensed to", Text)],
         _ => Vec::new(),
@@ -153,23 +133,8 @@ impl Editor {
         {
             f.value = pw;
         }
-        let websites = if category == ItemCategory::Login {
-            vec![(String::new(), "website".into(), AutofillBehavior::AnywhereOnWebsite)]
-        } else {
-            Vec::new()
-        };
-        Editor {
-            base: None,
-            category,
-            vault,
-            title: String::new(),
-            fields,
-            sections: Vec::new(),
-            websites,
-            notes: String::new(),
-            tags: String::new(),
-            error: None,
-        }
+        let websites = if category == ItemCategory::Login { vec![(String::new(), "website".into(), AutofillBehavior::AnywhereOnWebsite)] } else { Vec::new() };
+        Editor { base: None, category, vault, title: String::new(), fields, sections: Vec::new(), websites, notes: String::new(), tags: String::new(), error: None }
     }
 
     pub fn edit(item: &Item, vault: usize) -> Editor {
@@ -301,12 +266,7 @@ impl Editor {
     /// Whether saving would change anything.
     pub fn changed(&self) -> bool {
         match &self.base {
-            None => {
-                !self.title.trim().is_empty()
-                    || self.fields.iter().any(|f| !f.value.is_empty())
-                    || self.websites.iter().any(|w| !w.0.trim().is_empty())
-                    || !self.notes.is_empty()
-            }
+            None => !self.title.trim().is_empty() || self.fields.iter().any(|f| !f.value.is_empty()) || self.websites.iter().any(|w| !w.0.trim().is_empty()) || !self.notes.is_empty(),
             Some(base) => self.to_item().is_some_and(|i| {
                 // Values compared as 1Password has them, addresses by their parts.
                 let value = |f: &ItemField| match f.field_type {
@@ -389,7 +349,18 @@ impl EditForm {
         let title = field(cx, "Title", e.category.label(), &e.title, false, Box::new(|ed, t| ed.title = t));
         let (mut labels, mut values, mut parts) = (Vec::new(), Vec::new(), Vec::new());
         for (i, f) in e.fields.iter().enumerate() {
-            labels.push(field(cx, "Label", kind_label(f.kind), &f.label, false, Box::new(move |ed, t| if let Some(f) = ed.fields.get_mut(i) { f.label = t })));
+            labels.push(field(
+                cx,
+                "Label",
+                kind_label(f.kind),
+                &f.label,
+                false,
+                Box::new(move |ed, t| {
+                    if let Some(f) = ed.fields.get_mut(i) {
+                        f.label = t
+                    }
+                }),
+            ));
             let hint = match f.kind {
                 ItemFieldType::Totp => "otpauth:// URI or secret",
                 ItemFieldType::MonthYear => "MM/YYYY",
@@ -399,27 +370,59 @@ impl EditForm {
                 _ => "",
             };
             let (value, secret) = if f.kind == ItemFieldType::Address { (&f.address.street, false) } else { (&f.value, concealed(f.kind) && !f.reveal) };
-            values.push(field(cx, kind_label(f.kind), hint, value, secret, Box::new(move |ed, t| {
-                if let Some(f) = ed.fields.get_mut(i) {
-                    if f.kind == ItemFieldType::Address { f.address.street = t } else { f.value = t }
-                }
-            })));
+            values.push(field(
+                cx,
+                kind_label(f.kind),
+                hint,
+                value,
+                secret,
+                Box::new(move |ed, t| {
+                    if let Some(f) = ed.fields.get_mut(i) {
+                        if f.kind == ItemFieldType::Address { f.address.street = t } else { f.value = t }
+                    }
+                }),
+            ));
             let mut rest = Vec::new();
             if f.kind == ItemFieldType::Address {
                 let a = &f.address;
-                let sets: [(&str, &str, fn(&mut AddressFieldDetails, String)); 4] = [
-                    (&a.city, "city", |a, t| a.city = t),
-                    (&a.state, "state", |a, t| a.state = t),
-                    (&a.zip, "ZIP code", |a, t| a.zip = t),
-                    (&a.country, "country", |a, t| a.country = t),
-                ];
+                let sets: [(&str, &str, fn(&mut AddressFieldDetails, String)); 4] =
+                    [(&a.city, "city", |a, t| a.city = t), (&a.state, "state", |a, t| a.state = t), (&a.zip, "ZIP code", |a, t| a.zip = t), (&a.country, "country", |a, t| a.country = t)];
                 for (text, hint, set) in sets {
-                    rest.push(field(cx, hint, hint, text, false, Box::new(move |ed, t| if let Some(f) = ed.fields.get_mut(i) { set(&mut f.address, t) })));
+                    rest.push(field(
+                        cx,
+                        hint,
+                        hint,
+                        text,
+                        false,
+                        Box::new(move |ed, t| {
+                            if let Some(f) = ed.fields.get_mut(i) {
+                                set(&mut f.address, t)
+                            }
+                        }),
+                    ));
                 }
             }
             parts.push(rest);
         }
-        let websites = e.websites.iter().enumerate().map(|(i, (url, ..))| field(cx, "Website", "example.com", url, false, Box::new(move |ed, t| if let Some(w) = ed.websites.get_mut(i) { w.0 = t }))).collect();
+        let websites = e
+            .websites
+            .iter()
+            .enumerate()
+            .map(|(i, (url, ..))| {
+                field(
+                    cx,
+                    "Website",
+                    "example.com",
+                    url,
+                    false,
+                    Box::new(move |ed, t| {
+                        if let Some(w) = ed.websites.get_mut(i) {
+                            w.0 = t
+                        }
+                    }),
+                )
+            })
+            .collect();
         let tags = field(cx, "Tags", "work, family", &e.tags, false, Box::new(|ed, t| ed.tags = t));
         let notes = text_field(cx, |f| f.name("Notes").multiline(false));
         notes.update(cx, |f, cx| f.set_text(e.notes.clone(), cx));
@@ -498,7 +501,8 @@ pub fn view(me: &Entity<Passwords>, e: &Editor, form: &EditForm, vaults: &[Vault
         }
         if concealed(f.kind) {
             let to = me.clone();
-            secret_buttons.push(Button::new(if f.reveal { "Hide" } else { "Show" }).id(format!("edit-show-{i}")).min_width(56.0).on_click(move |_, cx| to.update(cx, |a, cx| a.toggle_edit_reveal(i, cx))));
+            secret_buttons
+                .push(Button::new(if f.reveal { "Hide" } else { "Show" }).id(format!("edit-show-{i}")).min_width(56.0).on_click(move |_, cx| to.update(cx, |a, cx| a.toggle_edit_reveal(i, cx))));
         }
         let buttons = secret_buttons.len() as f32 * (56.0 + m::TIGHT);
         let below = buttons > 0.0 && width - label_w - minus - 2.0 * m::TIGHT - buttons < 96.0;
@@ -548,7 +552,11 @@ pub fn view(me: &Entity<Passwords>, e: &Editor, form: &EditForm, vaults: &[Vault
         col = col.child(div().h(px(m::TIGHT))).child(heading("Websites"));
         for (i, field) in form.websites.iter().enumerate() {
             let to = me.clone();
-            col = col.child(row().child(div().flex_1().min_w_0().child(TextControl::new(field.clone()))).child(Button::new("−").id(format!("edit-site-remove-{i}")).min_width(minus).on_click(move |_, cx| to.update(cx, |a, cx| a.remove_edit_website(i, cx)))));
+            col = col.child(
+                row()
+                    .child(div().flex_1().min_w_0().child(TextControl::new(field.clone())))
+                    .child(Button::new("−").id(format!("edit-site-remove-{i}")).min_width(minus).on_click(move |_, cx| to.update(cx, |a, cx| a.remove_edit_website(i, cx)))),
+            );
         }
         let to = me.clone();
         col = col.child(div().flex().child(Button::new("Add Website").on_click(move |_, cx| to.update(cx, |a, cx| a.add_edit_website(cx)))));

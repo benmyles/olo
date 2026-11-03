@@ -287,11 +287,7 @@ pub fn restart(d: &Daemon) -> io::Result<()> {
     let environ = std::fs::read(format!("/proc/{}/environ", d.pid))?;
     let cwd = std::fs::read_link(format!("/proc/{}/cwd", d.pid)).ok().filter(|p| p.is_dir());
     let mut c = std::process::Command::new(program);
-    c.args(["app-server", "daemon", "restart"])
-        .env_clear()
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped());
+    c.args(["app-server", "daemon", "restart"]).env_clear().stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::piped());
     let mut has_home = false;
     for var in environ.split(|b| *b == 0) {
         let Some(eq) = var.iter().position(|b| *b == b'=') else { continue };

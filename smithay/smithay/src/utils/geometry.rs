@@ -2044,7 +2044,12 @@ mod tests {
         let area = |v: &[Rectangle<i32, Logical>]| v.iter().map(|r| r.size.w * r.size.h).sum::<i32>();
         assert_eq!(area(&left), 20 * 10 - 10 * 5 + 10 * 10 - 5 * 5);
         // A set less itself is nothing, whatever the order.
-        let set = vec![r(0, 0, 100, 40), r(0, 40, 100, 40), r(30, 10, 20, 50), r(0, 80, 100, 20)];
+        let set = vec![
+            r(0, 0, 100, 40),
+            r(0, 40, 100, 40),
+            r(30, 10, 20, 50),
+            r(0, 80, 100, 20),
+        ];
         assert!(Rectangle::subtract_rects_many_in_place(set.clone(), set.iter().rev().copied()).is_empty());
         assert!(Rectangle::subtract_rects_many_in_place(set.clone(), set.iter().copied()).is_empty());
     }

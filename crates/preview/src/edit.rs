@@ -23,8 +23,16 @@ pub enum Op {
     FlipHorizontal,
     FlipVertical,
     /// In the picture's pixels as it was before this step.
-    Crop { x: u32, y: u32, w: u32, h: u32 },
-    Resize { w: u32, h: u32 },
+    Crop {
+        x: u32,
+        y: u32,
+        w: u32,
+        h: u32,
+    },
+    Resize {
+        w: u32,
+        h: u32,
+    },
 }
 
 impl Op {
@@ -78,7 +86,12 @@ pub fn editable(path: &Path) -> bool {
 #[derive(Debug)]
 pub enum EditEvent {
     /// The picture after the steps so far, ready to show.
-    Shown { image: Image, full: [f32; 2], note: String, steps: usize },
+    Shown {
+        image: Image,
+        full: [f32; 2],
+        note: String,
+        steps: usize,
+    },
     Saved(PathBuf),
     Failed(String),
 }

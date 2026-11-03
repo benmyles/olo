@@ -15,8 +15,8 @@ use olo_kit_base::metrics as m;
 use olo_ui::{
     Menu,
     gpui::{
-        self, Bounds, Context, Entity, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseMoveEvent, ParentElement as _, Pixels, Point, Render, SharedString, Styled as _, Subscription,
-        Task, WeakEntity, Window, canvas, div, point, px, size,
+        self, Bounds, Context, Entity, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseMoveEvent, ParentElement as _, Pixels, Point, Render, SharedString,
+        Styled as _, Subscription, Task, WeakEntity, Window, canvas, div, point, px, size,
     },
     icons, menu,
     style::{self, Align},
@@ -123,7 +123,8 @@ impl Render for InfoWin {
                     let kx = area.left() + px(INFO_KEY_WIDTH);
                     style::label(window, cx, kx, cy, Align::Right, *k, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
                     let vx = kx + px(m::LABEL_GAP);
-                    let at = style::label_fit(window, cx, vx, cy, Align::Left, v.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::c(p.panel_text), (area.right() - vx).max(px(0.0)));
+                    let at =
+                        style::label_fit(window, cx, vx, cy, Align::Left, v.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::c(p.panel_text), (area.right() - vx).max(px(0.0)));
                     olo_ui::agent::record(window, cx, olo_ui::agent::Node::label(format!("{k} {v}"), at));
                     y += px(m::LABEL_ROW + m::TIGHT);
                 }
@@ -433,18 +434,24 @@ impl Render for FindWin {
                     .flex_row()
                     .gap(px(m::SPACING))
                     .items_center()
-                    .child(MenuField::new("find-mode", modes, self.mode).label("Match:").on_change(move |i, _, cx| mode_me.update(cx, |f, cx| {
-                        f.mode = i;
-                        cx.notify();
-                    })))
-                    .child(MenuField::new("find-root", vec!["Home".into(), "Entire disk".into()], self.root).label("In:").on_change(move |i, _, cx| root_me.update(cx, |f, cx| {
-                        f.root = i;
-                        cx.notify();
-                    })))
-                    .child(CheckBox::new("Hidden and ignored files", self.everything).on_toggle(move |on, _, cx| hidden_me.update(cx, |f, cx| {
-                        f.everything = on;
-                        cx.notify();
-                    }))),
+                    .child(MenuField::new("find-mode", modes, self.mode).label("Match:").on_change(move |i, _, cx| {
+                        mode_me.update(cx, |f, cx| {
+                            f.mode = i;
+                            cx.notify();
+                        })
+                    }))
+                    .child(MenuField::new("find-root", vec!["Home".into(), "Entire disk".into()], self.root).label("In:").on_change(move |i, _, cx| {
+                        root_me.update(cx, |f, cx| {
+                            f.root = i;
+                            cx.notify();
+                        })
+                    }))
+                    .child(CheckBox::new("Hidden and ignored files", self.everything).on_toggle(move |on, _, cx| {
+                        hidden_me.update(cx, |f, cx| {
+                            f.everything = on;
+                            cx.notify();
+                        })
+                    })),
             )
             .child(div().flex_1().min_h_0().flex().flex_col().child(list))
             .child(div().h(px(m::CONTROL_HEIGHT)).flex().items_center().child(StringView::new(status).dim(true)))
@@ -501,7 +508,11 @@ impl Render for StatusWin {
                     .flex_row()
                     .gap(px(m::SPACING))
                     .child(div().flex_1().flex().flex_col().gap(px(m::TIGHT)).child(StatusBar::new(fraction).label(title).trailing(amount)).child(StringView::new(detail).dim(true)))
-                    .child(div().pt(px(m::LABEL_ROW + m::TIGHT - (m::CONTROL_HEIGHT - 14.0) / 2.0)).child(Button::new("Stop").min_width(64.0).on_click(move |_, cx| stop.update(cx, |t, _| t.stop_job(id))))),
+                    .child(
+                        div()
+                            .pt(px(m::LABEL_ROW + m::TIGHT - (m::CONTROL_HEIGHT - 14.0) / 2.0))
+                            .child(Button::new("Stop").min_width(64.0).on_click(move |_, cx| stop.update(cx, |t, _| t.stop_job(id)))),
+                    ),
             );
         }
         col

@@ -141,19 +141,8 @@ struct Service {
 }
 
 /// What we can do, for GetCapabilities.
-pub const CAPABILITIES: &[&str] = &[
-    "actions",
-    "body",
-    "body-hyperlinks",
-    "body-markup",
-    "icon-static",
-    "inline-reply",
-    "persistence",
-    "sound",
-    "x-canonical-private-synchronous",
-    "x-olo-progress",
-    "x-olo-look",
-];
+pub const CAPABILITIES: &[&str] =
+    &["actions", "body", "body-hyperlinks", "body-markup", "icon-static", "inline-reply", "persistence", "sound", "x-canonical-private-synchronous", "x-olo-progress", "x-olo-look"];
 
 #[zbus::interface(name = "org.freedesktop.Notifications")]
 impl Service {
@@ -162,17 +151,7 @@ impl Service {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn notify(
-        &self,
-        app_name: String,
-        replaces_id: u32,
-        app_icon: String,
-        summary: String,
-        body: String,
-        actions: Vec<String>,
-        hints: HashMap<String, OwnedValue>,
-        expire_timeout: i32,
-    ) -> u32 {
+    fn notify(&self, app_name: String, replaces_id: u32, app_icon: String, summary: String, body: String, actions: Vec<String>, hints: HashMap<String, OwnedValue>, expire_timeout: i32) -> u32 {
         let tag = ["x-canonical-private-synchronous", "synchronous", "x-dunst-stack-tag"]
             .iter()
             .find_map(|k| hints.get(*k).and_then(|v| String::try_from(v.try_clone().ok()?).ok()))
@@ -278,17 +257,7 @@ impl Controls {
 
 /// A Notify call as the UI wants it.
 #[allow(clippy::too_many_arguments)]
-pub fn note(
-    id: u32,
-    replaces: bool,
-    app_name: String,
-    app_icon: String,
-    summary: String,
-    body: String,
-    actions: Vec<String>,
-    hints: &HashMap<String, OwnedValue>,
-    expire_timeout: i32,
-) -> Note {
+pub fn note(id: u32, replaces: bool, app_name: String, app_icon: String, summary: String, body: String, actions: Vec<String>, hints: &HashMap<String, OwnedValue>, expire_timeout: i32) -> Note {
     let hint = |k: &str| hints.get(k);
     let text = |k: &str| hint(k).and_then(|v| String::try_from(v.try_clone().ok()?).ok()).filter(|s| !s.is_empty());
     let flag = |k: &str| hint(k).and_then(|v| bool::try_from(v).ok().or_else(|| u8::try_from(v).ok().map(|u| u != 0))).unwrap_or(false);
@@ -318,9 +287,7 @@ pub fn note(
         Some(e) if app_name.trim().is_empty() => crate::gtk::app_name(e),
         _ => app_name,
     };
-    let progress = hint("value")
-        .and_then(|v| i32::try_from(v).ok().or_else(|| u32::try_from(v).ok().map(|u| u.min(100) as i32)))
-        .map(|v| v.clamp(0, 100) as f32 / 100.0);
+    let progress = hint("value").and_then(|v| i32::try_from(v).ok().or_else(|| u32::try_from(v).ok().map(|u| u.min(100) as i32))).map(|v| v.clamp(0, 100) as f32 / 100.0);
     let category = text("category");
     let kind = match text("x-olo-type").as_deref() {
         Some("important") => Kind::Important,
@@ -450,12 +417,7 @@ impl Bus {
     /// Fails if another notification service has the name.
     /// Ids start at `first` (after the history's, so they stay unique
     /// across a restart).
-    pub fn serve(
-        address: Option<&str>,
-        first: u32,
-        snapshot: std::sync::Arc<olo_sync::Mutex<String>>,
-        to_ui: impl Fn(In) + Send + Sync + 'static,
-    ) -> zbus::Result<Bus> {
+    pub fn serve(address: Option<&str>, first: u32, snapshot: std::sync::Arc<olo_sync::Mutex<String>>, to_ui: impl Fn(In) + Send + Sync + 'static) -> zbus::Result<Bus> {
         let builder = match address {
             Some(a) => zbus::blocking::connection::Builder::address(a)?,
             None => zbus::blocking::connection::Builder::session()?,

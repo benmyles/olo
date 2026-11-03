@@ -68,15 +68,7 @@ impl Pacer {
 
 impl Default for Pacer {
     fn default() -> Self {
-        Pacer {
-            momentum: Momentum::default(),
-            reports: VecDeque::new(),
-            sent: (0.0, 0.0),
-            lifted: false,
-            gliding: false,
-            interval: USUAL,
-            sending_glide: false,
-        }
+        Pacer { momentum: Momentum::default(), reports: VecDeque::new(), sent: (0.0, 0.0), lifted: false, gliding: false, interval: USUAL, sending_glide: false }
     }
 }
 

@@ -12,11 +12,8 @@ use std::{
     time::Duration,
 };
 
-use hayro::{
-    PixmapSettings, RenderCache, RenderSettings, hayro_interpret::InterpreterSettings, hayro_syntax::Pdf,
-    vello_cpu::color::palette::css::WHITE,
-};
 use crate::Bitmap;
+use hayro::{PixmapSettings, RenderCache, RenderSettings, hayro_interpret::InterpreterSettings, hayro_syntax::Pdf, vello_cpu::color::palette::css::WHITE};
 
 use super::load::{Body, Send, Update};
 
@@ -52,11 +49,7 @@ pub fn load(path: &Path, cancel: &Arc<AtomicBool>, send: Send) {
         let page = &pages[i];
         let (_, h) = page.render_dimensions();
         let k = (PAGE_PX / h.max(1.0)).clamp(0.25, 6.0);
-        let pix = hayro::render(page, &cache, &settings, &RenderSettings::default(), &PixmapSettings {
-            x_scale: k,
-            y_scale: k,
-            bg_color: WHITE,
-        });
+        let pix = hayro::render(page, &cache, &settings, &RenderSettings::default(), &PixmapSettings { x_scale: k, y_scale: k, bg_color: WHITE });
         let size = [pix.width() as usize, pix.height() as usize];
         Arc::new(Bitmap::from_rgba_premultiplied(size, pix.data_as_u8_slice().to_vec()))
     };

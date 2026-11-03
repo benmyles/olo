@@ -9,10 +9,7 @@ mod linux;
 mod mac;
 
 #[cfg(any(
-    all(
-        any(target_os = "linux", target_os = "freebsd"),
-        feature = "wayland"
-    ),
+    all(any(target_os = "linux", target_os = "freebsd"), feature = "wayland"),
     all(target_os = "macos", feature = "macos-blade")
 ))]
 mod blade;
@@ -27,10 +24,7 @@ mod windows;
     feature = "screen-capture",
     any(
         target_os = "windows",
-        all(
-            any(target_os = "linux", target_os = "freebsd"),
-            feature = "wayland",
-        )
+        all(any(target_os = "linux", target_os = "freebsd"), feature = "wayland",)
     )
 ))]
 pub(crate) mod scap_screen_capture;
@@ -143,7 +137,9 @@ pub fn guess_compositor() -> &'static str {
     // (Olo: or a connection handed over as WAYLAND_SOCKET, as app_server
     // starts the lock screen.)
     #[cfg(feature = "wayland")]
-    let wayland_display = std::env::var_os("WAYLAND_DISPLAY").filter(|d| !d.is_empty()).or_else(|| std::env::var_os("WAYLAND_SOCKET"));
+    let wayland_display = std::env::var_os("WAYLAND_DISPLAY")
+        .filter(|d| !d.is_empty())
+        .or_else(|| std::env::var_os("WAYLAND_SOCKET"));
     #[cfg(not(feature = "wayland"))]
     let wayland_display: Option<std::ffi::OsString> = None;
 
@@ -642,7 +638,12 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// Olo: drags `drag` out of the window, under the pointer (only while
     /// a button is held), to wherever it's dropped; `done` gets the
     /// action it was dropped as, or None.
-    fn start_drag(&self, _drag: OutgoingDrag, _done: futures::channel::oneshot::Sender<Option<DragAction>>) {}
+    fn start_drag(
+        &self,
+        _drag: OutgoingDrag,
+        _done: futures::channel::oneshot::Sender<Option<DragAction>>,
+    ) {
+    }
     /// Olo: the window's surface's protocol id (Wayland's `wl_surface`),
     /// which app_server names it by.
     fn surface_id(&self) -> Option<u32> {
@@ -740,7 +741,13 @@ pub struct ExternalBuffer {
 
 impl std::fmt::Debug for ExternalBuffer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ExternalBuffer").field("id", &self.id).field("width", &self.width).field("height", &self.height).field("fourcc", &self.fourcc).field("modifier", &self.modifier).finish()
+        f.debug_struct("ExternalBuffer")
+            .field("id", &self.id)
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("fourcc", &self.fourcc)
+            .field("modifier", &self.modifier)
+            .finish()
     }
 }
 
@@ -829,7 +836,11 @@ impl Dropped {
         if self.mime != "text/uri-list" {
             return Vec::new();
         }
-        String::from_utf8_lossy(&self.data).lines().filter(|l| !l.starts_with('#')).filter_map(|l| file_uri_path(l.trim())).collect()
+        String::from_utf8_lossy(&self.data)
+            .lines()
+            .filter(|l| !l.starts_with('#'))
+            .filter_map(|l| file_uri_path(l.trim()))
+            .collect()
     }
 }
 
@@ -840,7 +851,8 @@ pub fn right_control_held() -> bool {
     RIGHT_CONTROL.load(std::sync::atomic::Ordering::Relaxed)
 }
 
-pub(crate) static RIGHT_CONTROL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub(crate) static RIGHT_CONTROL: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 /// Olo: the path a `file://` URI names (its host, if any, left out; its
 /// %-escapes undone).
@@ -852,7 +864,10 @@ pub fn file_uri_path(uri: &str) -> Option<std::path::PathBuf> {
     while i < b.len() {
         let hex = |c: u8| (c as char).to_digit(16);
         if b[i] == b'%'
-            && let (Some(h), Some(l)) = (b.get(i + 1).and_then(|&c| hex(c)), b.get(i + 2).and_then(|&c| hex(c)))
+            && let (Some(h), Some(l)) = (
+                b.get(i + 1).and_then(|&c| hex(c)),
+                b.get(i + 2).and_then(|&c| hex(c)),
+            )
         {
             out.push((h * 16 + l) as u8);
             i += 3;
@@ -911,7 +926,10 @@ pub(crate) trait PlatformTextSystem: Send + Sync {
     /// (colour ones: emoji), without holding up a frame; their bounds.
     /// Colour glyphs drawn are kept for every window until
     /// [`forget_kept`](Self::forget_kept).
-    fn draw_glyphs_ahead(&self, _params: &[RenderGlyphParams]) -> Vec<(RenderGlyphParams, Bounds<DevicePixels>)> {
+    fn draw_glyphs_ahead(
+        &self,
+        _params: &[RenderGlyphParams],
+    ) -> Vec<(RenderGlyphParams, Bounds<DevicePixels>)> {
         Vec::new()
     }
     /// Olo: lets go of the colour glyphs kept.
@@ -2078,13 +2096,25 @@ impl ClipboardItem {
 
     /// Olo: `bytes` offered as `mime` (one form; see [`Self::from_entries`]).
     pub fn new_data(mime: impl Into<String>, bytes: impl Into<std::sync::Arc<[u8]>>) -> Self {
-        Self { entries: vec![ClipboardEntry::Data(ClipboardData { mime: mime.into(), bytes: bytes.into() })] }
+        Self {
+            entries: vec![ClipboardEntry::Data(ClipboardData {
+                mime: mime.into(),
+                bytes: bytes.into(),
+            })],
+        }
     }
 
     /// Olo: also as `mime` (a hint beside text: a password marked for
     /// clipboard managers to leave alone).
-    pub fn and_data(mut self, mime: impl Into<String>, bytes: impl Into<std::sync::Arc<[u8]>>) -> Self {
-        self.entries.push(ClipboardEntry::Data(ClipboardData { mime: mime.into(), bytes: bytes.into() }));
+    pub fn and_data(
+        mut self,
+        mime: impl Into<String>,
+        bytes: impl Into<std::sync::Arc<[u8]>>,
+    ) -> Self {
+        self.entries.push(ClipboardEntry::Data(ClipboardData {
+            mime: mime.into(),
+            bytes: bytes.into(),
+        }));
         self
     }
 
@@ -2114,8 +2144,12 @@ impl ClipboardItem {
     pub(crate) fn bytes_for(&self, mime: &str) -> Option<Vec<u8>> {
         for entry in &self.entries {
             match entry {
-                ClipboardEntry::Data(data) if data.mime == mime => return Some(data.bytes.to_vec()),
-                ClipboardEntry::Image(image) if image.format.mime_type() == mime => return Some(image.bytes.clone()),
+                ClipboardEntry::Data(data) if data.mime == mime => {
+                    return Some(data.bytes.to_vec());
+                }
+                ClipboardEntry::Image(image) if image.format.mime_type() == mime => {
+                    return Some(image.bytes.clone());
+                }
                 _ => {}
             }
         }

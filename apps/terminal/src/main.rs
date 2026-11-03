@@ -277,11 +277,7 @@ impl Tab {
     }
 
     fn current_title(&self) -> String {
-        self.agent_title
-            .clone()
-            .or_else(|| self.session.title.clone().filter(|s| !s.trim().is_empty()))
-            .or_else(|| self.session.foreground())
-            .unwrap_or_else(|| "Terminal".into())
+        self.agent_title.clone().or_else(|| self.session.title.clone().filter(|s| !s.trim().is_empty())).or_else(|| self.session.foreground()).unwrap_or_else(|| "Terminal".into())
     }
 
     /// Tell the program whether it has the keyboard, if it asked to know.
@@ -329,7 +325,21 @@ impl TermWin {
     /// A window of `tabs` (each saying its group in `groups`).
     fn new(tabs: Vec<Tab>, active: usize, snap_to: Option<(usize, usize)>, groups: Vec<Group>) -> TermWin {
         let active = active.min(tabs.len().saturating_sub(1));
-        let mut t = TermWin { active, tabs, preedit: None, spinning: false, dragging: None, snap_to, shown_title: String::new(), focused: true, groups, tiled: false, tile_groups: Vec::new(), tile_heights: Default::default(), tile_widths: Default::default() };
+        let mut t = TermWin {
+            active,
+            tabs,
+            preedit: None,
+            spinning: false,
+            dragging: None,
+            snap_to,
+            shown_title: String::new(),
+            focused: true,
+            groups,
+            tiled: false,
+            tile_groups: Vec::new(),
+            tile_heights: Default::default(),
+            tile_widths: Default::default(),
+        };
         t.tidy();
         t
     }
@@ -498,24 +508,45 @@ impl TermWin {
 pub(crate) enum Win {
     Term(Box<TermWin>),
     /// "Close this tab (or window)?" for one still running something.
-    ConfirmClose { target: WindowId, shell: Option<u64>, message: String },
+    ConfirmClose {
+        target: WindowId,
+        shell: Option<u64>,
+        message: String,
+    },
     /// The Find window for a terminal window.
-    Find { target: WindowId, field: Entity<TextField> },
+    Find {
+        target: WindowId,
+        field: Entity<TextField>,
+    },
     /// Terminal ▸ Terminal Daemon…
     Daemon(Box<daemon::DaemonWin>),
     /// "Start olo-termd over?" for the Terminal Daemon window.
-    ConfirmStartOver { target: WindowId },
+    ConfirmStartOver {
+        target: WindowId,
+    },
     /// Name (or rename) a group of a window's (`group`), or make one of
     /// its tab `tab`, and choose its colour.
-    NameGroup { target: WindowId, group: Option<usize>, tab: u64, name: Entity<TextField>, color: usize },
+    NameGroup {
+        target: WindowId,
+        group: Option<usize>,
+        tab: u64,
+        name: Entity<TextField>,
+        color: usize,
+    },
     /// sudo asks for its password (sudo.rs).
     Sudo(Box<sudo::Request>),
     /// New Worktree… or Rename Worktree… (repos.rs).
     Worktree(Box<repos::Dialog>),
     /// "Remove the worktree?"
-    ConfirmRemove { main: PathBuf, path: PathBuf, message: String },
+    ConfirmRemove {
+        main: PathBuf,
+        path: PathBuf,
+        message: String,
+    },
     /// What went wrong, with OK.
-    Failed { message: String },
+    Failed {
+        message: String,
+    },
 }
 
 pub(crate) struct Terminal {
@@ -562,7 +593,6 @@ pub(crate) struct Terminal {
     sudo_approved: HashMap<u64, (Box<sudo::Request>, Option<WindowId>)>,
 }
 
-
 /// Preferences ▸ Terminal's coding agent settings, as they change: told
 /// about their tab's group (agent_context.rs), keeping their tab's title
 /// current (agent_title.rs), and told to use Agent Screens
@@ -607,11 +637,7 @@ fn remembered() -> Option<Saved> {
 /// Room beside and above the grid: the menu bar, and the tab strip (down
 /// the side or along the top), which shows with one tab too.
 pub(crate) fn chrome(settings: &Settings) -> (u32, u32) {
-    if settings.side_tabs {
-        (settings.side_width as u32, menu::BAR_HEIGHT as u32)
-    } else {
-        (0, (menu::BAR_HEIGHT + STRIP) as u32)
-    }
+    if settings.side_tabs { (settings.side_width as u32, menu::BAR_HEIGHT as u32) } else { (0, (menu::BAR_HEIGHT + STRIP) as u32) }
 }
 
 /// Estimated content size for `cols`×`rows` before fonts are loaded
@@ -621,10 +647,7 @@ fn estimate(settings: &Settings, cols: usize, rows: usize) -> (u32, u32) {
     let cell_w = (s * 0.6 * 2.0).ceil() / 2.0;
     let cell_h = (s * 1.32 * 2.0).ceil() / 2.0;
     let (w, h) = chrome(settings);
-    (
-        (cols as f32 * cell_w + 2.0 * view::PAD.0).ceil() as u32 + w,
-        (rows as f32 * cell_h + 2.0 * view::PAD.1).ceil() as u32 + h,
-    )
+    ((cols as f32 * cell_w + 2.0 * view::PAD.0).ceil() as u32 + w, (rows as f32 * cell_h + 2.0 * view::PAD.1).ceil() as u32 + h)
 }
 
 /// What an upgraded Terminal gets from its previous self, and what the
@@ -762,15 +785,7 @@ impl Terminal {
     /// we know), one tab each.
     /// A window of `starts`, at the grid of `like` (a shell olo-termd
     /// has; else the usual one).
-    fn reopen(
-        &mut self,
-        cx: &mut Cx,
-        starts: Vec<Start>,
-        like: Option<&wire::ShellInfo>,
-        size: Option<(u32, u32)>,
-        active: usize,
-        groups: Grouping,
-    ) -> WindowId {
+    fn reopen(&mut self, cx: &mut Cx, starts: Vec<Start>, like: Option<&wire::ShellInfo>, size: Option<(u32, u32)>, active: usize, groups: Grouping) -> WindowId {
         let active = active.min(starts.len().saturating_sub(1));
         let (cols, rows) = like.map_or((self.settings.cols, self.settings.rows), |s| (s.grid.cols.max(1) as usize, s.grid.rows.max(1) as usize));
         let mut options = self.window_options(cols, rows);
@@ -870,9 +885,7 @@ impl Terminal {
         let here = |w: &WindowId| matches!(self.windows.get(w), Some(Win::Term(_))) && cx.on_this_workspace(*w);
         // A folder in a repository: at the end of its group, if one is here.
         let real = cwd.as_ref().and_then(|d| d.canonicalize().ok());
-        let in_repo = |main: &PathBuf| {
-            real.as_ref().is_some_and(|d| d.starts_with(main) || self.worktrees.get(main).is_some_and(|l| l.iter().any(|w| d.starts_with(&w.path))))
-        };
+        let in_repo = |main: &PathBuf| real.as_ref().is_some_and(|d| d.starts_with(main) || self.worktrees.get(main).is_some_and(|l| l.iter().any(|w| d.starts_with(&w.path))));
         let repo_group = self.windows.iter().filter(|(w, _)| here(w)).find_map(|(&id, w)| match w {
             Win::Term(t) => t.groups.iter().position(|g| g.repo.as_ref().is_some_and(in_repo)).map(|g| (id, g)),
             _ => None,
@@ -919,9 +932,7 @@ impl Terminal {
                         }
                         Start::Attach(id)
                     }
-                    None if restore && !shells.iter().any(|s| s.id == id) => {
-                        Start::Restore { cwd: w.cwds.get(i).cloned().flatten(), from: id }
-                    }
+                    None if restore && !shells.iter().any(|s| s.id == id) => Start::Restore { cwd: w.cwds.get(i).cloned().flatten(), from: id },
                     None => continue,
                 };
                 if Some(id) == shown {
@@ -1018,8 +1029,7 @@ impl Terminal {
             }
         }
         cx.close_window(win);
-        let finds: Vec<WindowId> =
-            self.windows.iter().filter(|(_, w)| matches!(w, Win::Find { target, .. } if *target == win)).map(|(&id, _)| id).collect();
+        let finds: Vec<WindowId> = self.windows.iter().filter(|(_, w)| matches!(w, Win::Find { target, .. } if *target == win)).map(|(&id, _)| id).collect();
         for id in finds {
             self.windows.remove(&id);
             cx.close_window(id);
@@ -1092,23 +1102,11 @@ impl Terminal {
                 let message = match busy.as_slice() {
                     [] => return self.close(cx, window),
                     [one] => format!("“{one}” is still running in this window. Close it anyway?"),
-                    [first, rest @ ..] => format!(
-                        "“{first}” and {} other program{} are still running in this window. Close it anyway?",
-                        rest.len(),
-                        if rest.len() == 1 { "" } else { "s" }
-                    ),
+                    [first, rest @ ..] => format!("“{first}” and {} other program{} are still running in this window. Close it anyway?", rest.len(), if rest.len() == 1 { "" } else { "s" }),
                 };
                 self.confirm_close(cx, window, None, message, why);
             }
-            Some(
-                Win::ConfirmClose { .. }
-                | Win::Find { .. }
-                | Win::Daemon(_)
-                | Win::ConfirmStartOver { .. }
-                | Win::NameGroup { .. }
-                | Win::ConfirmRemove { .. }
-                | Win::Failed { .. },
-            ) => {
+            Some(Win::ConfirmClose { .. } | Win::Find { .. } | Win::Daemon(_) | Win::ConfirmStartOver { .. } | Win::NameGroup { .. } | Win::ConfirmRemove { .. } | Win::Failed { .. }) => {
                 self.windows.remove(&window);
                 cx.close_window(window);
             }
@@ -1782,11 +1780,7 @@ impl Terminal {
         for (c, r) in [(80, 24), (80, 25), (80, 40), (120, 25), (120, 40), (132, 25), (132, 50)] {
             window_size = window_size.item(format!("{c} × {r}"), format!("grid-{c}x{r}")).checked(size == (c, r));
         }
-        let mut text = Menu::new("Text Size")
-            .item("Bigger", "bigger").shift_key("=")
-            .item("Smaller", "smaller").shift_key("-")
-            .item("Default", "default-size").shift_key("0")
-            .separator();
+        let mut text = Menu::new("Text Size").item("Bigger", "bigger").shift_key("=").item("Smaller", "smaller").shift_key("-").item("Default", "default-size").shift_key("0").separator();
         for s in TEXT_SIZES {
             text = text.item(format!("{s}"), format!("size-{s}")).checked(self.settings.text_size == s);
         }
@@ -1850,9 +1844,11 @@ impl Terminal {
             .submenu(open_group)
             .submenu(forget_group);
         let mut tabs = Menu::new("Tabs")
-            .item("Previous Tab", "prev-tab").shift_key("[")
+            .item("Previous Tab", "prev-tab")
+            .shift_key("[")
             .enabled(several)
-            .item("Next Tab", "next-tab").shift_key("]")
+            .item("Next Tab", "next-tab")
+            .shift_key("]")
             .enabled(several)
             .separator()
             .item("Move Tab to New Window", "detach")
@@ -1861,7 +1857,8 @@ impl Terminal {
             .separator()
             .submenu(group)
             .submenu(self.repository_menu(window))
-            .item("Tile All Tabs", "tile-tabs").shift_key("d")
+            .item("Tile All Tabs", "tile-tabs")
+            .shift_key("d")
             .enabled(several)
             .checked(t.tiled && several)
             .separator();
@@ -1881,42 +1878,51 @@ impl Terminal {
         // app_keys: Ctrl+Shift with any other key goes to the shell.)
         Some(vec![
             Menu::new("Terminal")
-                .item("New Terminal", "new").shift_key("n")
-                .item("New Tab", "new-tab").shift_key("t")
+                .item("New Terminal", "new")
+                .shift_key("n")
+                .item("New Tab", "new-tab")
+                .shift_key("t")
                 .separator()
                 .item(olo_kit_base::tracker::LABEL, olo_kit_base::tracker::COMMAND)
                 .separator()
                 .item("Terminal Daemon…", "daemon")
                 .separator()
-                .item(if several { "Close Tab" } else { "Close" }, "close").shift_key("w")
+                .item(if several { "Close Tab" } else { "Close" }, "close")
+                .shift_key("w")
                 .item("Close Window", "close-window")
                 .enabled(several)
-                .item("Quit", "quit").shift_key("q"),
+                .item("Quit", "quit")
+                .shift_key("q"),
             Menu::new("Edit")
-                .item("Copy", "copy").shift_key("c")
+                .item("Copy", "copy")
+                .shift_key("c")
                 .enabled(has_selection)
-                .item("Paste", "paste").shift_key("v")
+                .item("Paste", "paste")
+                .shift_key("v")
                 .separator()
-                .item("Select All", "select-all").shift_key("a")
+                .item("Select All", "select-all")
+                .shift_key("a")
                 .separator()
-                .item("Find…", "find").shift_key("f")
-                .item("Find Again", "find-again").shift_key("g")
+                .item("Find…", "find")
+                .shift_key("f")
+                .item("Find Again", "find-again")
+                .shift_key("g")
                 .enabled(!self.search.text.is_empty())
-                .item("Find Selection", "find-selection").shift_key("e")
+                .item("Find Selection", "find-selection")
+                .shift_key("e")
                 .enabled(has_selection)
                 .separator()
-                .item("Clear Scrollback", "clear").shift_key("k"),
+                .item("Clear Scrollback", "clear")
+                .shift_key("k"),
             tabs,
-            Menu::new("Settings").submenu(window_size).submenu(text).submenu(scheme).submenu(
-                Menu::new("Tabs")
-                    .item("Along the Top", "tabs-top")
-                    .checked(!self.settings.side_tabs)
-                    .item("Down the Side", "tabs-side")
-                    .checked(self.settings.side_tabs),
-            )
-            .separator()
-            .item("Ask for sudo Passwords in a Window", "sudo-window")
-            .checked(self.settings.sudo_window),
+            Menu::new("Settings")
+                .submenu(window_size)
+                .submenu(text)
+                .submenu(scheme)
+                .submenu(Menu::new("Tabs").item("Along the Top", "tabs-top").checked(!self.settings.side_tabs).item("Down the Side", "tabs-side").checked(self.settings.side_tabs))
+                .separator()
+                .item("Ask for sudo Passwords in a Window", "sudo-window")
+                .checked(self.settings.sudo_window),
         ])
     }
 
@@ -2525,11 +2531,7 @@ fn main() {
 
 /// `s` as one shell word: as it is when that is safe, else single-quoted.
 fn shell_quote(s: &str) -> String {
-    if !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b"/-._+,:@%=".contains(&b)) {
-        s.to_owned()
-    } else {
-        format!("'{}'", s.replace('\'', "'\\''"))
-    }
+    if !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b"/-._+,:@%=".contains(&b)) { s.to_owned() } else { format!("'{}'", s.replace('\'', "'\\''")) }
 }
 
 #[cfg(test)]

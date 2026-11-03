@@ -509,4 +509,3 @@ mod tests {
         assert_eq!(s.workspace_colors[1], [4, 5, 6]);
     }
 }
-

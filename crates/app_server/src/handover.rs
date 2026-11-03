@@ -38,12 +38,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let Some((state_path, secret_path)) = paths() else { return };
         let (caffeinated, caffeinated_until, caffeinated_lid) = self.power.caffeine_handover();
         let approve = self.auto_approve_handover();
-        let h = Handover {
-            caffeinated,
-            caffeinated_until,
-            caffeinated_lid,
-            approve_until: approve.as_ref().and_then(|(t, _)| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs()),
-        };
+        let h = Handover { caffeinated, caffeinated_until, caffeinated_lid, approve_until: approve.as_ref().and_then(|(t, _)| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs()) };
         if !h.caffeinated && h.approve_until.is_none() {
             let _ = std::fs::remove_file(&state_path);
             let _ = std::fs::remove_file(&secret_path);

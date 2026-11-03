@@ -17,7 +17,9 @@ use std::{path::PathBuf, sync::Arc};
 use olo_ui::{
     WindowOptions,
     gpui::{
-        self, App, AppContext as _, Bounds, Context, Corners, CursorStyle, Entity, FocusHandle, Font, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, LayerKeyboard, LayerShellLayer, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, Render, RenderImage, Styled as _, Window, canvas, div, point, px, rgb, size,
+        self, App, AppContext as _, Bounds, Context, Corners, CursorStyle, Entity, FocusHandle, Font, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent,
+        LayerKeyboard, LayerShellLayer, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, Render, RenderImage, Styled as _, Window, canvas, div, point, px,
+        rgb, size,
     },
     style, theme,
 };

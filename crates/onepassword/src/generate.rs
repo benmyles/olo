@@ -50,11 +50,7 @@ fn pick(set: &str) -> char {
 }
 
 fn check(range: std::ops::RangeInclusive<u32>, value: u32, what: &str) -> Result<usize, Error> {
-    if range.contains(&value) {
-        Ok(value as usize)
-    } else {
-        Err(Error::InvalidArgument(format!("{what} must be from {} to {}", range.start(), range.end())))
-    }
+    if range.contains(&value) { Ok(value as usize) } else { Err(Error::InvalidArgument(format!("{what} must be from {} to {}", range.start(), range.end()))) }
 }
 
 /// Makes a password to `recipe`.
@@ -119,8 +115,8 @@ pub fn password(recipe: PasswordRecipe) -> Result<String, Error> {
 }
 
 const ONSETS: &[&str] = &[
-    "b", "c", "d", "f", "g", "h", "j", "k", "l", "m", "n", "p", "r", "s", "t", "v", "w", "z", "br", "ch", "cl", "dr",
-    "fl", "fr", "gl", "gr", "pl", "pr", "sh", "sk", "sl", "sm", "sn", "sp", "st", "th", "tr", "tw",
+    "b", "c", "d", "f", "g", "h", "j", "k", "l", "m", "n", "p", "r", "s", "t", "v", "w", "z", "br", "ch", "cl", "dr", "fl", "fr", "gl", "gr", "pl", "pr", "sh", "sk", "sl", "sm", "sn", "sp", "st",
+    "th", "tr", "tw",
 ];
 const VOWELS: &[&str] = &["a", "e", "i", "o", "u", "ai", "ea", "ee", "oa", "oo", "ou"];
 const CODAS: &[&str] = &["", "", "b", "d", "g", "k", "l", "m", "n", "p", "r", "s", "t", "x", "nd", "nt", "st"];
@@ -202,8 +198,26 @@ pub fn strength_bits(password: &str) -> f64 {
 
 /// Passwords people use most, which a guesser tries first.
 const COMMON: &[&str] = &[
-    "password", "passw0rd", "qwerty", "letmein", "welcome", "admin", "iloveyou", "monkey", "dragon", "sunshine",
-    "princess", "football", "baseball", "master", "trustno1", "abc123", "123456", "12345678", "111111", "qwertyuiop",
+    "password",
+    "passw0rd",
+    "qwerty",
+    "letmein",
+    "welcome",
+    "admin",
+    "iloveyou",
+    "monkey",
+    "dragon",
+    "sunshine",
+    "princess",
+    "football",
+    "baseball",
+    "master",
+    "trustno1",
+    "abc123",
+    "123456",
+    "12345678",
+    "111111",
+    "qwertyuiop",
 ];
 
 #[cfg(test)]
@@ -236,26 +250,14 @@ mod tests {
     fn pins_and_memorable() {
         let pin = password(PasswordRecipe::Pin { length: 6 }).unwrap();
         assert!(pin.len() == 6 && pin.chars().all(|c| c.is_ascii_digit()));
-        let m = password(PasswordRecipe::Memorable {
-            separator: SeparatorType::Hyphens,
-            capitalize: true,
-            word_list: WordListType::FullWords,
-            word_count: 4,
-        })
-        .unwrap();
+        let m = password(PasswordRecipe::Memorable { separator: SeparatorType::Hyphens, capitalize: true, word_list: WordListType::FullWords, word_count: 4 }).unwrap();
         let parts: Vec<&str> = m.split('-').collect();
         assert_eq!(parts.len(), 4);
         for part in parts {
             assert!(part.chars().next().unwrap().is_ascii_uppercase());
             assert!(words().contains(&part.to_lowercase().as_str()));
         }
-        let m = password(PasswordRecipe::Memorable {
-            separator: SeparatorType::Digits,
-            capitalize: false,
-            word_list: WordListType::ThreeLetters,
-            word_count: 3,
-        })
-        .unwrap();
+        let m = password(PasswordRecipe::Memorable { separator: SeparatorType::Digits, capitalize: false, word_list: WordListType::ThreeLetters, word_count: 3 }).unwrap();
         assert_eq!(m.len(), 11);
     }
 
@@ -270,12 +272,7 @@ mod tests {
 
     #[test]
     fn entropy_and_strength() {
-        let four_words = PasswordRecipe::Memorable {
-            separator: SeparatorType::Hyphens,
-            capitalize: false,
-            word_list: WordListType::FullWords,
-            word_count: 4,
-        };
+        let four_words = PasswordRecipe::Memorable { separator: SeparatorType::Hyphens, capitalize: false, word_list: WordListType::FullWords, word_count: 4 };
         assert!((entropy_bits(four_words) - 4.0 * 7772f64.log2()).abs() < 1e-9);
         assert!(strength_bits("password1") <= 16.0);
         assert!(strength_bits("aaaaaaaaaaaa") < strength_bits("q7#Kd9!mZp2x"));

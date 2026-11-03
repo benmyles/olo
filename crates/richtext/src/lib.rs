@@ -189,11 +189,7 @@ impl Table {
     pub fn shares(&self) -> Vec<f32> {
         let n = self.columns().max(1);
         let sum: f32 = self.widths.iter().sum();
-        if self.widths.len() == n && self.widths.iter().all(|w| *w > 0.0) {
-            self.widths.iter().map(|w| w / sum).collect()
-        } else {
-            vec![1.0 / n as f32; n]
-        }
+        if self.widths.len() == n && self.widths.iter().all(|w| *w > 0.0) { self.widths.iter().map(|w| w / sum).collect() } else { vec![1.0 / n as f32; n] }
     }
 
     /// Where each column ends across `total` (whole units, the last at
@@ -482,7 +478,12 @@ mod tests {
                     left: 18.0,
                     first: 36.0,
                     right: 9.0,
-                    tabs: vec![Tab { x: 144.0, align: TabAlign::Right }, Tab { x: 216.0, align: TabAlign::Decimal }, Tab { x: 288.0, align: TabAlign::Center }, Tab { x: 360.0, align: TabAlign::Left }],
+                    tabs: vec![
+                        Tab { x: 144.0, align: TabAlign::Right },
+                        Tab { x: 216.0, align: TabAlign::Decimal },
+                        Tab { x: 288.0, align: TabAlign::Center },
+                        Tab { x: 360.0, align: TabAlign::Left },
+                    ],
                     ..p(Kind::Body, vec![plain.with_text("Ruled\t1\t2.5\tmid\tend")])
                 },
                 Paragraph {
@@ -513,10 +514,7 @@ mod tests {
     #[test]
     fn tidy_joins_and_splits() {
         let mut d = Document {
-            paragraphs: vec![Paragraph {
-                spans: vec![Span::default().with_text("a"), Span::default().with_text("b\nc"), Span { bold: true, ..Span::default().with_text("") }],
-                ..Default::default()
-            }],
+            paragraphs: vec![Paragraph { spans: vec![Span::default().with_text("a"), Span::default().with_text("b\nc"), Span { bold: true, ..Span::default().with_text("") }], ..Default::default() }],
             ..Default::default()
         };
         d.tidy();

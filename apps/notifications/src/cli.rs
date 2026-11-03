@@ -37,18 +37,12 @@ pub fn run(address: Option<&str>, args: &[String]) -> ExitCode {
         (Some("--clear"), None) => server::call(address, "ClearHistory", &()).map(|_| ()),
         (Some("--dismiss"), Some(_)) if id().is_some() => server::call(address, "Dismiss", &(id().unwrap())).map(|_| ()),
         (Some("--read"), Some("all")) => server::call(address, "MarkAllRead", &()).map(|_| ()),
-        (Some(flag @ ("--pin" | "--unpin")), Some(_)) if id().is_some() => {
-            server::call(address, "SetPinned", &(id().unwrap(), flag == "--pin")).map(|_| ())
-        }
+        (Some(flag @ ("--pin" | "--unpin")), Some(_)) if id().is_some() => server::call(address, "SetPinned", &(id().unwrap(), flag == "--pin")).map(|_| ()),
         (Some("--snooze"), Some(_)) if id().is_some() && arg(2).and_then(|m| m.parse::<u32>().ok()).is_some_and(|m| m > 0) => {
             server::call(address, "Snooze", &(id().unwrap(), arg(2).unwrap().parse::<u32>().unwrap())).map(|_| ())
         }
-        (Some(flag @ ("--read" | "--unread")), Some(_)) if id().is_some() => {
-            server::call(address, "SetRead", &(id().unwrap(), flag == "--read")).map(|_| ())
-        }
-        (Some("--invoke"), Some(_)) if id().is_some() => {
-            server::call(address, "Invoke", &(id().unwrap(), arg(2).unwrap_or("default"))).map(|_| ())
-        }
+        (Some(flag @ ("--read" | "--unread")), Some(_)) if id().is_some() => server::call(address, "SetRead", &(id().unwrap(), flag == "--read")).map(|_| ()),
+        (Some("--invoke"), Some(_)) if id().is_some() => server::call(address, "Invoke", &(id().unwrap(), arg(2).unwrap_or("default"))).map(|_| ()),
         (Some("--dnd"), Some(v)) => {
             let (on, minutes) = match v {
                 "on" => (true, 0),

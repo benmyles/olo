@@ -321,15 +321,28 @@ pub enum Change {
 pub enum Request {
     /// Everything it knows (answered with the state).
     Status,
-    Set { address: Option<String>, change: Change },
-    Connect { address: Option<String> },
-    Disconnect { address: Option<String> },
+    Set {
+        address: Option<String>,
+        change: Change,
+    },
+    Connect {
+        address: Option<String>,
+    },
+    Disconnect {
+        address: Option<String>,
+    },
     /// Music quality, or the headset profile (call quality, with the
     /// microphone).
-    Quality { address: Option<String>, high: bool },
+    Quality {
+        address: Option<String>,
+        high: bool,
+    },
     /// Start or stop their own microphone stream (wideband, the sound
     /// staying at music quality).
-    Microphone { address: Option<String>, on: bool },
+    Microphone {
+        address: Option<String>,
+        on: bool,
+    },
 }
 
 /// The service's answer.

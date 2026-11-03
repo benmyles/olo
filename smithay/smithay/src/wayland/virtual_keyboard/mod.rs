@@ -65,8 +65,8 @@
 
 use olo_sync::Mutex;
 use std::os::unix::io::OwnedFd;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tracing::warn;
 use wayland_protocols_misc::zwp_virtual_keyboard_v1::server::{

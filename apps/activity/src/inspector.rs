@@ -163,10 +163,11 @@ impl Inspector {
         let nice_me = me.clone();
         // Its choice on the values' line.
         let divider = label_w - m::TEXT_INSET;
-        let field = MenuField::new(SharedString::from(format!("inspect-nice-{pid}")), options, chosen).label("Priority").quiet_label().divider(divider).width(divider + 200.0).on_change(move |i, _, cx| {
-            let nice = PRIORITIES[i].0;
-            Inspector::act_on(&nice_me, Action::Nice { pid, nice }, cx);
-        });
+        let field =
+            MenuField::new(SharedString::from(format!("inspect-nice-{pid}")), options, chosen).label("Priority").quiet_label().divider(divider).width(divider + 200.0).on_change(move |i, _, cx| {
+                let nice = PRIORITIES[i].0;
+                Inspector::act_on(&nice_me, Action::Nice { pid, nice }, cx);
+            });
         let mut row = div().flex().flex_row().items_center().h(px(m::CONTROL_HEIGHT)).mt(px(m::TIGHT)).flex_shrink_0().child(field).child(div().flex_1());
         if parent > 1 {
             let up = me.clone();
@@ -176,7 +177,14 @@ impl Inspector {
     }
 
     fn threads(&self, d: &Details, cx: &mut App) -> AnyElement {
-        let columns = vec![Column::new("ID", 70.0).right(), Column::new("Name", 190.0), Column::new("State", 80.0), Column::new("% CPU", 60.0).right(), Column::new("Nice", 50.0).right(), Column::new("Core", 50.0).right()];
+        let columns = vec![
+            Column::new("ID", 70.0).right(),
+            Column::new("Name", 190.0),
+            Column::new("State", 80.0),
+            Column::new("% CPU", 60.0).right(),
+            Column::new("Nice", 50.0).right(),
+            Column::new("Core", 50.0).right(),
+        ];
         let mut rows: Vec<&crate::details::Thread> = d.threads.iter().collect();
         let (col, asc) = self.lists[0].read(cx).state.sort.unwrap_or((3, false));
         let cpu = |t: &crate::details::Thread| self.thread_cpu.get(&t.tid).copied().unwrap_or(0.0);
@@ -193,9 +201,8 @@ impl Inspector {
             if asc { o } else { o.reverse() }
         });
         self.lists[0].update(cx, |l, _| l.state.sort = Some((col, asc)));
-        let cells: Rc<Vec<[String; 6]>> = Rc::new(
-            rows.iter().map(|t| [t.tid.to_string(), t.name.clone(), state_name(t.state).to_owned(), format!("{:.1}", cpu(t)), t.nice.to_string(), (t.core + 1).to_string()]).collect(),
-        );
+        let cells: Rc<Vec<[String; 6]>> =
+            Rc::new(rows.iter().map(|t| [t.tid.to_string(), t.name.clone(), state_name(t.state).to_owned(), format!("{:.1}", cpu(t)), t.nice.to_string(), (t.core + 1).to_string()]).collect());
         list(ColumnListView::new(format!("inspect-threads-{}", self.pid), &self.lists[0], columns, cells.len(), text_cells(cells)))
     }
 
@@ -243,7 +250,8 @@ impl Inspector {
         ];
         let mut out = div().flex().flex_col().size_full();
         if let Some(mem) = &d.memory {
-            let mut rows: Vec<(SharedString, SharedString)> = names.iter().filter_map(|(k, label)| mem.iter().find(|(n, _)| n == k).map(|(_, v)| (SharedString::from(*label), SharedString::from(format_size(*v))))).collect();
+            let mut rows: Vec<(SharedString, SharedString)> =
+                names.iter().filter_map(|(k, label)| mem.iter().find(|(n, _)| n == k).map(|(_, v)| (SharedString::from(*label), SharedString::from(format_size(*v))))).collect();
             let right = rows.split_off(rows.len().div_ceil(2));
             let (dim, text) = (style::disabled_text(&p), c(p.panel_text));
             out = out.child(
@@ -268,14 +276,12 @@ impl Inspector {
         let columns = vec![Column::new("Name", 180.0), Column::new("Value", 400.0)];
         let cells: Rc<Vec<[String; 2]>> = Rc::new(env.iter().map(|(k, v)| [k.clone(), v.clone()]).collect());
         let (menu_me, menu_cells) = (me.clone(), cells.clone());
-        list(
-            ColumnListView::new(format!("inspect-env-{}", self.pid), &self.lists[3], columns, cells.len(), text_cells(cells)).empty_text("No environment.").on_context(move |row, at, window, cx| {
-                let Some([k, v]) = menu_cells.get(row) else { return };
-                let menu = Menu::new("").item("Copy Value", format!("copy-text:{v}")).item("Copy Name and Value", format!("copy-text:{k}={v}"));
-                let to = menu_me.clone();
-                menu::context_menu(window, cx, menu, at, move |cmd, window, cx| Inspector::run(&to, cmd, window, cx));
-            }),
-        )
+        list(ColumnListView::new(format!("inspect-env-{}", self.pid), &self.lists[3], columns, cells.len(), text_cells(cells)).empty_text("No environment.").on_context(move |row, at, window, cx| {
+            let Some([k, v]) = menu_cells.get(row) else { return };
+            let menu = Menu::new("").item("Copy Value", format!("copy-text:{v}")).item("Copy Name and Value", format!("copy-text:{k}={v}"));
+            let to = menu_me.clone();
+            menu::context_menu(window, cx, menu, at, move |cmd, window, cx| Inspector::run(&to, cmd, window, cx));
+        }))
     }
 
     fn resources(&self, me: &Me, app: &Activity, d: &Details, cx: &App) -> AnyElement {
@@ -290,7 +296,17 @@ impl Inspector {
         let may = canvas(
             |_, _, _| {},
             move |b, _, window, cx| {
-                let r = style::label(window, cx, b.right() - px(m::LABEL_GAP), b.top() + px(m::MARK_ROW / 2.0), style::Align::Right, "May run on:", style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), text);
+                let r = style::label(
+                    window,
+                    cx,
+                    b.right() - px(m::LABEL_GAP),
+                    b.top() + px(m::MARK_ROW / 2.0),
+                    style::Align::Right,
+                    "May run on:",
+                    style::PLAIN_SIZE,
+                    style::ui_font(FontWeight::NORMAL),
+                    text,
+                );
                 agent::record(window, cx, agent::Node::label("May run on:", r));
             },
         )
@@ -375,15 +391,7 @@ impl Inspector {
                 Inspector::act_on(&to, Action::Limit { pid, resource: res.clone(), soft, hard }, cx);
             });
         });
-        div()
-            .flex()
-            .flex_col()
-            .size_full()
-            .child(div().flex().flex_row().flex_shrink_0().child(may).child(boxes))
-            .child(buttons)
-            .child(oom)
-            .child(list(limits_list))
-            .into_any_element()
+        div().flex().flex_col().size_full().child(div().flex().flex_row().flex_shrink_0().child(may).child(boxes)).child(buttons).child(oom).child(list(limits_list)).into_any_element()
     }
 }
 
@@ -550,7 +558,12 @@ impl Render for Inspector {
             Some(h) => {
                 let top = h.iter().map(|(_, v)| *v).fold(100.0, f64::max);
                 let series = vec![Series::new("CPU", c(p.hue(Hue::Blue)), h.clone()).fill(true)];
-                Graph::new(SharedString::from(format!("inspect-{pid}")), series, app.now()).span(app.settings.span as f64).max(nice_ceiling(top)).unit(|v| format!("{v:.1}%")).smooth(app.settings.smooth).into_any_element()
+                Graph::new(SharedString::from(format!("inspect-{pid}")), series, app.now())
+                    .span(app.settings.span as f64)
+                    .max(nice_ceiling(top))
+                    .unit(|v| format!("{v:.1}%"))
+                    .smooth(app.settings.smooth)
+                    .into_any_element()
             }
             None => div().into_any_element(),
         };

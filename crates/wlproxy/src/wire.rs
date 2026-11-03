@@ -385,11 +385,7 @@ mod tests {
         let file = std::fs::File::open("/dev/null").unwrap();
         let sig = [ArgumentType::Uint, ArgumentType::Str(AllowNull::Yes), ArgumentType::Fd, ArgumentType::Array, ArgumentType::Str(AllowNull::Yes), ArgumentType::NewId];
         for i in 0..40 {
-            a.send(Msg::new(
-                3,
-                1,
-                vec![Arg::Uint(i), Arg::Str(Some(b"hello".to_vec())), Arg::Fd(file.try_clone().unwrap().into()), Arg::Array(vec![1, 2, 3]), Arg::Str(None), Arg::NewId(7)],
-            ));
+            a.send(Msg::new(3, 1, vec![Arg::Uint(i), Arg::Str(Some(b"hello".to_vec())), Arg::Fd(file.try_clone().unwrap().into()), Arg::Array(vec![1, 2, 3]), Arg::Str(None), Arg::NewId(7)]));
         }
         a.flush().unwrap();
         assert_eq!(a.backlog(), 0);

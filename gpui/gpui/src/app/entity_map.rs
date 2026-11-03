@@ -113,7 +113,11 @@ impl EntityMap {
     /// keep it, so a read or update of the entity meanwhile names both
     /// sides).
     #[track_caller]
-    pub fn lease_at<T>(&mut self, pointer: &Entity<T>, at: &'static std::panic::Location<'static>) -> Lease<T> {
+    pub fn lease_at<T>(
+        &mut self,
+        pointer: &Entity<T>,
+        at: &'static std::panic::Location<'static>,
+    ) -> Lease<T> {
         self.assert_valid_context(pointer);
         let mut accessed_entities = self.accessed_entities.borrow_mut();
         accessed_entities.insert(pointer.entity_id);
@@ -147,7 +151,11 @@ impl EntityMap {
         let mut accessed_entities = self.accessed_entities.borrow_mut();
         accessed_entities.insert(entity.entity_id);
 
-        match self.entities.get(entity.entity_id).and_then(|entity| entity.downcast_ref()) {
+        match self
+            .entities
+            .get(entity.entity_id)
+            .and_then(|entity| entity.downcast_ref())
+        {
             Some(entity) => entity,
             None => double_lease_panic::<T>("read", entity.entity_id),
         }
@@ -202,7 +210,9 @@ thread_local! {
 #[track_caller]
 fn double_lease_panic<T>(operation: &str, id: EntityId) -> ! {
     #[cfg(debug_assertions)]
-    let since = LEASED_AT.with_borrow(|l| l.get(&id).map(|at| format!(" (its update began at {at})"))).unwrap_or_default();
+    let since = LEASED_AT
+        .with_borrow(|l| l.get(&id).map(|at| format!(" (its update began at {at})")))
+        .unwrap_or_default();
     #[cfg(not(debug_assertions))]
     let since = {
         let _ = id;
@@ -907,9 +917,13 @@ mod test {
         let handle = entity_map.insert(slot, TestEntity { i: 1 });
         let lease = entity_map.lease(&handle);
         let line = line!() - 1;
-        let read = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| entity_map.read(&handle).i));
+        let read =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| entity_map.read(&handle).i));
         let message = read.unwrap_err().downcast::<String>().unwrap();
-        assert!(message.contains(&format!("its update began at {}:{line}:", file!())), "{message}");
+        assert!(
+            message.contains(&format!("its update began at {}:{line}:", file!())),
+            "{message}"
+        );
         entity_map.end_lease(lease);
         assert_eq!(entity_map.read(&handle).i, 1);
     }
@@ -927,7 +941,11 @@ mod test {
             let _ = weak.update(&mut cx, |_, cx| cx.entity().read(cx).i);
         }));
         let message = read.unwrap_err().downcast::<String>().unwrap();
-        assert!(message.contains("cannot read") && message.contains(&format!("its update began at {}:{line}:", file!())), "{message}");
+        assert!(
+            message.contains("cannot read")
+                && message.contains(&format!("its update began at {}:{line}:", file!())),
+            "{message}"
+        );
     }
 
     #[test]

@@ -32,8 +32,8 @@ use crate::{
 };
 
 use encoding_rs::WINDOWS_1252;
-use portable_atomic::AtomicF64;
 use olo_sync::{Mutex, MutexGuard};
+use portable_atomic::AtomicF64;
 use std::{
     borrow::Cow,
     collections::HashSet,

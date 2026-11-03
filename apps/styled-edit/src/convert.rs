@@ -682,10 +682,7 @@ fn base64(data: &[u8]) -> String {
 /// The document as a web page: its paragraph kinds, lists, alignment and
 /// every style (fonts, sizes, colours too).
 pub fn to_html(text: &str, runs: &[Run], paras: &[Para], title: &str, align: Align) -> String {
-    let mut out = format!(
-        "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>{}</title>\n</head>\n<body>\n",
-        escape_html(title)
-    );
+    let mut out = format!("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>{}</title>\n</head>\n<body>\n", escape_html(title));
     // The lists open (numbered or not), innermost last; a quote open; code open.
     let mut lists: Vec<bool> = Vec::new();
     let mut quote = false;
@@ -967,11 +964,7 @@ mod tests {
         let file = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/icons/16/printer.png").to_owned();
         let pic = crate::doc::Picture { path: file.clone(), width: 48.0, height: 48.0, alt: "A printer".into() };
         let text = "Above\n\u{FFFC}\nBelow".to_owned();
-        let runs = vec![
-            Run { len: 6, style: Style::default() },
-            Run { len: 3, style: Style { picture: Some(pic), ..Style::default() } },
-            Run { len: 6, style: Style::default() },
-        ];
+        let runs = vec![Run { len: 6, style: Style::default() }, Run { len: 3, style: Style { picture: Some(pic), ..Style::default() } }, Run { len: 6, style: Style::default() }];
         let paras = vec![Para::default(), Para { align: Some(Align::Center), ..Para::default() }, Para::default()];
         (text, runs, paras, file)
     }

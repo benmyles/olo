@@ -14,17 +14,7 @@ use std::{
 
 /// The keys app_server gives meaning to (keymap.rs), bound to themselves
 /// in keyd's main layer.
-const KEYS: &[&str] = &[
-    "leftmeta",
-    "rightmeta",
-    "capslock",
-    "leftcontrol",
-    "rightcontrol",
-    "leftalt",
-    "rightalt",
-    "leftshift",
-    "rightshift",
-];
+const KEYS: &[&str] = &["leftmeta", "rightmeta", "capslock", "leftcontrol", "rightcontrol", "leftalt", "rightalt", "leftshift", "rightshift"];
 
 /// keyd's `struct ipc_message` (keyd.h).
 const BIND: u32 = 2;

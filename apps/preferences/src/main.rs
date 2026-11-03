@@ -8,8 +8,6 @@
 //! thread keeps our copy current and a writer thread sends changes,
 //! newest first, so dragging a slider never blocks the UI.
 
-#[cfg(test)]
-mod lint;
 mod about;
 mod ai;
 mod airpods;
@@ -22,8 +20,11 @@ mod display;
 mod form;
 mod integrations;
 mod keyboard;
+#[cfg(test)]
+mod lint;
 mod network;
 mod notifications;
+mod palm_trainer;
 mod panel;
 mod performance;
 mod power;
@@ -36,10 +37,9 @@ mod telegram;
 mod terminal;
 mod themes;
 mod touchid;
-mod palm_trainer;
-mod typing_tutor;
 mod touchpad;
 mod tracker;
+mod typing_tutor;
 mod windows;
 mod workspaces;
 
@@ -374,8 +374,22 @@ impl Render for Launcher {
                             }
                             let icon = Bounds { origin: point(b.center().x - px(16.0), b.top() + px(4.0)), size: size(px(32.0), px(32.0)) };
                             icons::paint(window, icon, panel.icon());
-                            style::label(window, cx, b.center().x, icon.bottom() + px(12.0), style::Align::Center, panel.title(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::c(p.panel_text));
-                            olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Button", name: Some(panel.title().into()), bounds: b, enabled: true, clickable: true, ..Default::default() });
+                            style::label(
+                                window,
+                                cx,
+                                b.center().x,
+                                icon.bottom() + px(12.0),
+                                style::Align::Center,
+                                panel.title(),
+                                style::PLAIN_SIZE,
+                                style::ui_font(FontWeight::NORMAL),
+                                style::c(p.panel_text),
+                            );
+                            olo_ui::agent::record(
+                                window,
+                                cx,
+                                olo_ui::agent::Node { role: "Button", name: Some(panel.title().into()), bounds: b, enabled: true, clickable: true, ..Default::default() },
+                            );
                         },
                     )
                     .size_full(),

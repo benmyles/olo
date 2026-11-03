@@ -15,8 +15,8 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use serde::{Deserialize, Serialize};
 use olo_protocol::{Chord, Client, ImageFormat, Reply, Request, Settings, SyntheticEvent, WindowInfo};
+use serde::{Deserialize, Serialize};
 
 /// evdev button codes.
 pub const LEFT: u32 = 0x110;
@@ -155,11 +155,7 @@ impl Screen {
     /// finds programs); its pid.
     pub fn run(&self, argv: &[String]) -> Result<u32, String> {
         let program = argv.first().ok_or("no program to run")?;
-        let path = if program.contains('/') {
-            PathBuf::from(program)
-        } else {
-            olo_xdg::find_program(program).ok_or_else(|| format!("{program} isn't installed"))?
-        };
+        let path = if program.contains('/') { PathBuf::from(program) } else { olo_xdg::find_program(program).ok_or_else(|| format!("{program} isn't installed"))? };
         let mut cmd = Command::new(path);
         cmd.args(&argv[1..]).env_remove("DISPLAY").stdin(Stdio::null());
         for (k, v) in self.env() {
@@ -230,10 +226,7 @@ impl Default for Options {
 }
 
 fn config_path() -> PathBuf {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
-        .unwrap_or_else(|| PathBuf::from("/tmp"));
+    let base = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config"))).unwrap_or_else(|| PathBuf::from("/tmp"));
     base.join("olo").join("app_server.json")
 }
 
@@ -514,12 +507,7 @@ pub fn chord(c: &Chord) -> Vec<SyntheticEvent> {
 
 /// The key (and whether Shift) that types `c` on a US keyboard.
 pub fn key_for(c: char) -> Option<(u32, bool)> {
-    const ROWS: [(&str, &str, u32); 4] = [
-        ("`1234567890-=", "~!@#$%^&*()_+", 41),
-        ("qwertyuiop[]\\", "QWERTYUIOP{}|", 16),
-        ("asdfghjkl;'", "ASDFGHJKL:\"", 30),
-        ("zxcvbnm,./", "ZXCVBNM<>?", 44),
-    ];
+    const ROWS: [(&str, &str, u32); 4] = [("`1234567890-=", "~!@#$%^&*()_+", 41), ("qwertyuiop[]\\", "QWERTYUIOP{}|", 16), ("asdfghjkl;'", "ASDFGHJKL:\"", 30), ("zxcvbnm,./", "ZXCVBNM<>?", 44)];
     match c {
         ' ' => return Some((57, false)),
         '\n' => return Some((28, false)),
@@ -528,7 +516,15 @@ pub fn key_for(c: char) -> Option<(u32, bool)> {
     }
     for (plain, shifted, first) in ROWS {
         // The number row starts with ` (41), then 1 (2) onward.
-        let code = |i: usize| if first == 41 { if i == 0 { 41 } else { 1 + i as u32 } } else if first == 16 && i == 12 { 43 } else { first + i as u32 };
+        let code = |i: usize| {
+            if first == 41 {
+                if i == 0 { 41 } else { 1 + i as u32 }
+            } else if first == 16 && i == 12 {
+                43
+            } else {
+                first + i as u32
+            }
+        };
         if let Some(i) = plain.chars().position(|p| p == c) {
             return Some((code(i), false));
         }
@@ -634,7 +630,10 @@ mod tests {
         assert_eq!(scroll(0.0, 30.0, false).len(), 2);
         // A notch at a time, both ways at once.
         let w = wheel(1, -3);
-        assert_eq!(w.iter().map(|(e, _)| e[0].clone()).collect::<Vec<_>>(), vec![SyntheticEvent::Wheel { dx: 1, dy: -1 }, SyntheticEvent::Wheel { dx: 0, dy: -1 }, SyntheticEvent::Wheel { dx: 0, dy: -1 }]);
+        assert_eq!(
+            w.iter().map(|(e, _)| e[0].clone()).collect::<Vec<_>>(),
+            vec![SyntheticEvent::Wheel { dx: 1, dy: -1 }, SyntheticEvent::Wheel { dx: 0, dy: -1 }, SyntheticEvent::Wheel { dx: 0, dy: -1 }]
+        );
         // Press, the moves, ending where asked, then let go.
         let d = drag((0.0, 0.0), (100.0, 50.0), 4, Duration::from_millis(200));
         assert_eq!(d.len(), 6);

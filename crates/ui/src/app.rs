@@ -3,7 +3,10 @@
 use std::any::Any;
 
 use futures::{StreamExt, channel::mpsc};
-use gpui::{AnyView, App, AppContext as _, Application, Bounds, Context, Entity, FocusHandle, Global, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render, SharedString, Styled as _, TitlebarOptions, Window, WindowBounds, WindowHandle, canvas, div, px, size};
+use gpui::{
+    AnyView, App, AppContext as _, Application, Bounds, Context, Entity, FocusHandle, Global, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render, SharedString,
+    Styled as _, TitlebarOptions, Window, WindowBounds, WindowHandle, canvas, div, px, size,
+};
 use olo_kit_base::Proxy;
 
 use crate::{agent, style, theme};
@@ -53,7 +56,22 @@ pub struct WindowOptions {
 
 impl WindowOptions {
     pub fn new(title: impl Into<SharedString>, width: f32, height: f32) -> Self {
-        WindowOptions { title: title.into(), size: (width, height), min_size: None, max_size: None, panel: true, floating: false, layer: None, dialog: None, fixed: false, lock_output: None, child: false, foreign_parent: None, under_pointer: false, fullscreen: false }
+        WindowOptions {
+            title: title.into(),
+            size: (width, height),
+            min_size: None,
+            max_size: None,
+            panel: true,
+            floating: false,
+            layer: None,
+            dialog: None,
+            fixed: false,
+            lock_output: None,
+            child: false,
+            foreign_parent: None,
+            under_pointer: false,
+            fullscreen: false,
+        }
     }
 
     /// A BAlert window `width` × `height`: fixed, modal over the app's
@@ -73,15 +91,7 @@ impl WindowOptions {
     /// is to the compositor, anchored to the edges given (top, bottom,
     /// left, right), on `layer`; refine it with [`Self::layer_options`].
     pub fn layer(mut self, namespace: &str, layer: gpui::LayerShellLayer, anchor: (bool, bool, bool, bool)) -> Self {
-        self.layer = Some(gpui::LayerShellOptions {
-            layer,
-            anchor,
-            exclusive_zone: 0,
-            margin: (0, 0, 0, 0),
-            keyboard: gpui::LayerKeyboard::None,
-            namespace: namespace.to_owned(),
-            output: None,
-        });
+        self.layer = Some(gpui::LayerShellOptions { layer, anchor, exclusive_zone: 0, margin: (0, 0, 0, 0), keyboard: gpui::LayerKeyboard::None, namespace: namespace.to_owned(), output: None });
         self
     }
 

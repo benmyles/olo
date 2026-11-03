@@ -8,7 +8,8 @@
 use std::ops::Range;
 
 use gpui::{
-    App, AppContext as _, ClipboardItem, Context, Entity, FocusHandle, Focusable, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Render, ScrollHandle, SharedString, StyledText, Styled as _, TextRun, Window, canvas, div, px,
+    App, AppContext as _, ClipboardItem, Context, Entity, FocusHandle, Focusable, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, ParentElement as _, Render, ScrollHandle, SharedString, Styled as _, StyledText, TextRun, Window, canvas, div, px,
 };
 use olo_kit_base::metrics as m;
 
@@ -42,7 +43,19 @@ fn copy(text: String, cx: &mut App) {
 /// A text view (`id` for its scroll view).
 pub fn text_view(cx: &mut App, id: impl Into<SharedString>, build: impl FnOnce(TextView) -> TextView) -> Entity<TextView> {
     let id = id.into();
-    cx.new(|cx| build(TextView { id, focus: cx.focus_handle().tab_stop(true), scroll: ScrollHandle::new(), text: SharedString::default(), runs: None, mono: false, empty: SharedString::default(), selected: 0..0, anchor: None }))
+    cx.new(|cx| {
+        build(TextView {
+            id,
+            focus: cx.focus_handle().tab_stop(true),
+            scroll: ScrollHandle::new(),
+            text: SharedString::default(),
+            runs: None,
+            mono: false,
+            empty: SharedString::default(),
+            selected: 0..0,
+            anchor: None,
+        })
+    })
 }
 
 impl Focusable for TextView {
@@ -95,7 +108,6 @@ impl TextView {
         cx.notify();
     }
 
-
     /// The word around byte `at`.
     fn word_at(&self, at: usize) -> Range<usize> {
         let t: &str = &self.text;
@@ -109,13 +121,22 @@ impl TextView {
     /// Its runs, the selection behind (see-through, as a field's).
     fn shown_runs(&self, window: &Window, cx: &App) -> Vec<TextRun> {
         let p = theme::palette(cx);
-        let mut runs = self.runs.clone().unwrap_or_else(|| vec![TextRun { len: self.text.len(), font: self.font(), color: style::c(p.document_text), background_color: None, underline: None, strikethrough: None, size: None }]);
+        let mut runs = self
+            .runs
+            .clone()
+            .unwrap_or_else(|| vec![TextRun { len: self.text.len(), font: self.font(), color: style::c(p.document_text), background_color: None, underline: None, strikethrough: None, size: None }]);
         if self.selected.is_empty() {
             return runs;
         }
         let dark = p.mode == olo_theme::ThemeMode::Dark;
         let focused = self.focus.is_focused(window);
-        let sel = style::c(p.control_highlight).opacity(if !focused { 0.3 } else if dark { 0.75 } else { 0.55 });
+        let sel = style::c(p.control_highlight).opacity(if !focused {
+            0.3
+        } else if dark {
+            0.75
+        } else {
+            0.55
+        });
         // Split the runs where the selection starts and ends.
         let mut out = Vec::with_capacity(runs.len() + 2);
         let mut at = 0;
@@ -203,7 +224,18 @@ impl Render for TextView {
                     // In the middle of where text goes (beside the bar).
                     let b = gpui::Bounds::from_corners(b.origin, gpui::point(b.right() - px(crate::widgets::SCROLL_BAR), b.bottom()));
                     let dim = style::c(olo_theme::mix(p.document_text, p.document_background, 0.5));
-                    style::label_fit(window, cx, b.center().x, b.center().y, style::Align::Center, empty.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), dim, b.size.width - px(2.0 * m::SPACING));
+                    style::label_fit(
+                        window,
+                        cx,
+                        b.center().x,
+                        b.center().y,
+                        style::Align::Center,
+                        empty.clone(),
+                        style::PLAIN_SIZE,
+                        style::ui_font(FontWeight::NORMAL),
+                        dim,
+                        b.size.width - px(2.0 * m::SPACING),
+                    );
                 }
             },
         )

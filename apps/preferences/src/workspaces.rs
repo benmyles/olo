@@ -157,12 +157,17 @@ pub fn backgrounds_ui(ui: &mut Ui, st: &mut BackgroundsState) {
         ui.add(picker);
         ui.space(m::SPACING);
         // Your own picture, by name.
-        let field = ui.field("wallpaper-own", own.as_deref().unwrap_or(""), |f| f.hint("A picture of your own"), |s, v| {
-            let t = v.trim();
-            if !t.is_empty() {
-                s.wallpaper = Some(t.to_owned());
-            }
-        });
+        let field = ui.field(
+            "wallpaper-own",
+            own.as_deref().unwrap_or(""),
+            |f| f.hint("A picture of your own"),
+            |s, v| {
+                let t = v.trim();
+                if !t.is_empty() {
+                    s.wallpaper = Some(t.to_owned());
+                }
+            },
+        );
         ui.add(
             div()
                 .flex()

@@ -26,7 +26,8 @@ use olo_ui::{
     file_panel::{self, FilePanel, PanelResult},
     files::{format_size, kind_for},
     gpui::{
-        self, App, AppContext as _, Bounds, ClipboardItem, Context, Entity, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, Render, SharedString, Styled as _, Window, WindowHandle, canvas, div, point, px, size,
+        self, App, AppContext as _, Bounds, ClipboardItem, Context, Entity, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent,
+        MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, Render, SharedString, Styled as _, Window, WindowHandle, canvas, div, point, px, size,
     },
     icons,
     instance::{self, Launch},
@@ -46,7 +47,10 @@ enum Msg {
     Volumes(Vec<Volume>),
     /// Moved to the Trash or deleted: what went, and what couldn't (name,
     /// why).
-    Removed { gone: Vec<NodeId>, failed: Vec<(String, String)> },
+    Removed {
+        gone: Vec<NodeId>,
+        failed: Vec<(String, String)>,
+    },
 }
 
 /// What comes back after an upgrade or reload.
@@ -640,7 +644,18 @@ impl DiskUsage {
                     |_, _, _| {},
                     move |b, _, window, cx| {
                         let p = theme::palette(cx);
-                        style::label_fit(window, cx, b.left() + px(4.0), b.center().y, style::Align::Left, where_text.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), style::c(p.panel_text), b.size.width - px(4.0));
+                        style::label_fit(
+                            window,
+                            cx,
+                            b.left() + px(4.0),
+                            b.center().y,
+                            style::Align::Left,
+                            where_text.clone(),
+                            style::PLAIN_SIZE,
+                            style::ui_font(FontWeight::BOLD),
+                            style::c(p.panel_text),
+                            b.size.width - px(4.0),
+                        );
                     },
                 )
                 .flex_1()
@@ -661,7 +676,8 @@ impl DiskUsage {
         // The list.
         let rows = self.rows(cx);
         let list_w = f32::from(window.viewport_size().width) - 2.0 * m::WINDOW_INSET;
-        let body_h = f32::from(window.viewport_size().height) - olo_ui::menu::BAR_HEIGHT - 2.0 * m::WINDOW_INSET - m::CONTROL_HEIGHT - 3.0 * m::SPACING - (2.0 * style::PLAIN_SIZE + 6.0) - COLLECTOR_HEIGHT;
+        let body_h =
+            f32::from(window.viewport_size().height) - olo_ui::menu::BAR_HEIGHT - 2.0 * m::WINDOW_INSET - m::CONTROL_HEIGHT - 3.0 * m::SPACING - (2.0 * style::PLAIN_SIZE + 6.0) - COLLECTOR_HEIGHT;
         // On whole device pixels, so the list beside it is too (a box a
         // quarter pixel in leaves layout rounding ties that put the list's
         // scroll bar a pixel off its rows).
@@ -777,7 +793,10 @@ impl DiskUsage {
             let unreadable = progress.unreadable.load(Ordering::Relaxed);
             let n = &t.nodes[self.folder as usize];
             let note = if unreadable > 0 { format!(" — {} couldn't be read", plural(unreadable, "folder", "folders")) } else { String::new() };
-            (format!("{} in {}{note}", format_size(n.size), plural(n.files, "file", "files")), "Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.".into())
+            (
+                format!("{} in {}{note}", format_size(n.size), plural(n.files, "file", "files")),
+                "Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.".into(),
+            )
         };
         let status = canvas(
             |_, _, _| {},
@@ -785,7 +804,18 @@ impl DiskUsage {
                 let p = theme::palette(cx);
                 let font = style::ui_font(FontWeight::NORMAL);
                 let dim = style::c(mix(p.panel_text, p.panel_background, 0.4));
-                style::label_fit(window, cx, b.left(), b.top() + px(style::PLAIN_SIZE / 2.0 + 1.0), style::Align::Left, line1.clone(), style::PLAIN_SIZE, font.clone(), style::c(p.panel_text), b.size.width);
+                style::label_fit(
+                    window,
+                    cx,
+                    b.left(),
+                    b.top() + px(style::PLAIN_SIZE / 2.0 + 1.0),
+                    style::Align::Left,
+                    line1.clone(),
+                    style::PLAIN_SIZE,
+                    font.clone(),
+                    style::c(p.panel_text),
+                    b.size.width,
+                );
                 style::label_fit(window, cx, b.left(), b.bottom() - px(style::PLAIN_SIZE / 2.0 + 1.0), style::Align::Left, line2.clone(), style::PLAIN_SIZE, font, dim, b.size.width);
             },
         )
@@ -832,16 +862,53 @@ impl DiskUsage {
                     let n = &t.nodes[folder as usize];
                     let title = if folder == ROOT && t.root == home() { "Home".to_owned() } else { n.name.to_string() };
                     let w = px(g.hub * 1.7);
-                    style::label_fit(window, cx, g.center.x, g.center.y - px(8.0), style::Align::Center, title.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), style::c(p.document_text), w);
-                    style::label(window, cx, g.center.x, g.center.y + px(8.0), style::Align::Center, format_size(n.size), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::c(p.document_text));
+                    style::label_fit(
+                        window,
+                        cx,
+                        g.center.x,
+                        g.center.y - px(8.0),
+                        style::Align::Center,
+                        title.clone(),
+                        style::PLAIN_SIZE,
+                        style::ui_font(FontWeight::BOLD),
+                        style::c(p.document_text),
+                        w,
+                    );
+                    style::label(
+                        window,
+                        cx,
+                        g.center.x,
+                        g.center.y + px(8.0),
+                        style::Align::Center,
+                        format_size(n.size),
+                        style::PLAIN_SIZE,
+                        style::ui_font(FontWeight::NORMAL),
+                        style::c(p.document_text),
+                    );
                     let hub = Bounds { origin: point(g.center.x - px(g.hub / 2.0), g.center.y - px(g.hub / 2.0)), size: size(px(g.hub), px(g.hub)) };
-                    olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Button", name: Some(format!("{title} {}", format_size(n.size)).into()), bounds: hub, enabled: true, clickable: true, ..Default::default() });
+                    olo_ui::agent::record(
+                        window,
+                        cx,
+                        olo_ui::agent::Node { role: "Button", name: Some(format!("{title} {}", format_size(n.size)).into()), bounds: hub, enabled: true, clickable: true, ..Default::default() },
+                    );
                     // Agents (and hints) can pick the first ring's slices by
                     // name.
                     for s in slices.iter().filter(|s| s.ring == 1 && s.end - s.start > 0.15) {
                         let mid = chart::to_pos(&g, 1, (s.start + s.end) / 2.0);
                         let at = Bounds { origin: point(mid.x - px(4.0), mid.y - px(4.0)), size: size(px(8.0), px(8.0)) };
-                        olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Button", name: Some(SharedString::from(t.nodes[s.node as usize].name.to_string())), bounds: at, enabled: true, clickable: true, selected: Some(selected == Some(s.node)), ..Default::default() });
+                        olo_ui::agent::record(
+                            window,
+                            cx,
+                            olo_ui::agent::Node {
+                                role: "Button",
+                                name: Some(SharedString::from(t.nodes[s.node as usize].name.to_string())),
+                                bounds: at,
+                                enabled: true,
+                                clickable: true,
+                                selected: Some(selected == Some(s.node)),
+                                ..Default::default()
+                            },
+                        );
                     }
                 });
 
@@ -974,7 +1041,17 @@ impl DiskUsage {
                 style::fill_rect(window, style::inset(window, b, 2.0), style::c(fill));
                 style::sunken(window, b, &p, target);
                 // In line with the chips' icons.
-                style::label(window, cx, inner.left() + px(3.0), inner.top() + px(6.0), style::Align::Left, heading.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), style::c(p.document_text));
+                style::label(
+                    window,
+                    cx,
+                    inner.left() + px(3.0),
+                    inner.top() + px(6.0),
+                    style::Align::Left,
+                    heading.clone(),
+                    style::PLAIN_SIZE,
+                    style::ui_font(FontWeight::BOLD),
+                    style::c(p.document_text),
+                );
                 let font = style::ui_font(FontWeight::NORMAL);
                 for (id, chip, text, dir, close) in &chips {
                     let Some(id) = id else {
@@ -984,15 +1061,41 @@ impl DiskUsage {
                     let chip_r = style::snap(window, *chip);
                     window.paint_quad(gpui::fill(chip_r, style::c(mix(p.panel_background, p.document_background, 0.4))).corner_radii(px(3.0)));
                     window.paint_quad(gpui::outline(chip_r, style::c(mix(p.panel_text, p.panel_background, 0.6)), gpui::BorderStyle::Solid).corner_radii(px(3.0)));
-                    icons::paint(window, style::snap(window, Bounds { origin: point(chip.left() + px(3.0), chip.center().y - px(8.0)), size: size_of(16.0, 16.0) }), icon_for(text.split("  ").next().unwrap_or_default(), *dir));
+                    icons::paint(
+                        window,
+                        style::snap(window, Bounds { origin: point(chip.left() + px(3.0), chip.center().y - px(8.0)), size: size_of(16.0, 16.0) }),
+                        icon_for(text.split("  ").next().unwrap_or_default(), *dir),
+                    );
                     if let Some((close, hit)) = close {
-                        style::label_fit(window, cx, chip.left() + px(22.0), chip.center().y, style::Align::Left, text.clone(), style::DETAIL_SIZE, font.clone(), style::c(p.document_text), close.left() - chip.left() - px(24.0));
+                        style::label_fit(
+                            window,
+                            cx,
+                            chip.left() + px(22.0),
+                            chip.center().y,
+                            style::Align::Left,
+                            text.clone(),
+                            style::DETAIL_SIZE,
+                            font.clone(),
+                            style::c(p.document_text),
+                            close.left() - chip.left() - px(24.0),
+                        );
                         let xc = if hit.is_hovered(window) { p.panel_text } else { mix(p.panel_text, p.panel_background, 0.4) };
                         let (a, z) = (point(close.left() + px(3.0), close.top() + px(3.0)), point(close.right() - px(3.0), close.bottom() - px(3.0)));
                         window.paint_segment(a, z, px(1.5), true, style::c(xc));
                         window.paint_segment(point(z.x, a.y), point(a.x, z.y), px(1.5), true, style::c(xc));
                         let name = text.split("  ").next().unwrap_or_default().to_owned();
-                        olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Button", name: Some(format!("Remove {name} from the Collector").into()), bounds: *close, enabled: true, clickable: true, ..Default::default() });
+                        olo_ui::agent::record(
+                            window,
+                            cx,
+                            olo_ui::agent::Node {
+                                role: "Button",
+                                name: Some(format!("Remove {name} from the Collector").into()),
+                                bounds: *close,
+                                enabled: true,
+                                clickable: true,
+                                ..Default::default()
+                            },
+                        );
                         let (hit, id, m) = (hit.clone(), *id, chip_me.clone());
                         window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
                             if phase.bubble() && e.button == MouseButton::Left && hit.is_hovered(window) {

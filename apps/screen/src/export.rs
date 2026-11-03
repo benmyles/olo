@@ -78,7 +78,14 @@ pub fn export(name: &str, out: &Path, progress: &mut dyn FnMut(f32) -> bool) -> 
     let (_, probe) = record::frame_at(&segments, first).ok_or("no frames were kept")?;
     // H.264 wants even sizes.
     let (w, h) = (probe.width & !1, probe.height & !1);
-    let total: u64 = plan.iter().map(|p| match p { Piece::Screen { from, to } => (to - from) / STEP_MS, Piece::Card { .. } => CARD_MS / STEP_MS }).sum::<u64>().max(1);
+    let total: u64 = plan
+        .iter()
+        .map(|p| match p {
+            Piece::Screen { from, to } => (to - from) / STEP_MS,
+            Piece::Card { .. } => CARD_MS / STEP_MS,
+        })
+        .sum::<u64>()
+        .max(1);
     let config = EncoderConfig::new().max_frame_rate(FrameRate::from_hz(FPS as f32));
     let mut encoder = Encoder::with_api_config(OpenH264API::from_source(), config).map_err(|e| e.to_string())?;
     let mut mp4 = Mp4::new(w as u32, h as u32);
@@ -264,12 +271,17 @@ impl Mp4 {
         let u16b = |v: u16| v.to_be_bytes().to_vec();
         let matrix: Vec<u8> = [0x10000u32, 0, 0, 0, 0x10000, 0, 0, 0, 0x4000_0000].iter().flat_map(|v| v.to_be_bytes()).collect();
         let mvhd = full(b"mvhd", 0, &[u32b(0), u32b(0), u32b(timescale), u32b(duration), u32b(0x10000), u16b(0x100), vec![0; 10], matrix.clone(), vec![0; 24], u32b(2)].concat());
-        let tkhd = full(b"tkhd", 3, &[u32b(0), u32b(0), u32b(1), u32b(0), u32b(duration), vec![0; 8], u16b(0), u16b(0), u16b(0), u16b(0), matrix, u32b(self.width << 16), u32b(self.height << 16)].concat());
+        let tkhd =
+            full(b"tkhd", 3, &[u32b(0), u32b(0), u32b(1), u32b(0), u32b(duration), vec![0; 8], u16b(0), u16b(0), u16b(0), u16b(0), matrix, u32b(self.width << 16), u32b(self.height << 16)].concat());
         let mdhd = full(b"mdhd", 0, &[u32b(0), u32b(0), u32b(timescale), u32b(duration), u16b(0x55c4), u16b(0)].concat());
         let hdlr = full(b"hdlr", 0, &[u32b(0), b"vide".to_vec(), vec![0; 12], b"Olo screen\0".to_vec()].concat());
         let avcc = bx(b"avcC", &[vec![1, sps[1], sps[2], sps[3], 0xff, 0xe1], u16b(sps.len() as u16), sps.clone(), vec![1], u16b(pps.len() as u16), pps.clone()].concat());
         // (No compressor name: 32 zero bytes.)
-        let avc1 = bx(b"avc1", &[vec![0; 6], u16b(1), vec![0; 16], u16b(self.width as u16), u16b(self.height as u16), u32b(0x0048_0000), u32b(0x0048_0000), u32b(0), u16b(1), vec![0; 32], u16b(0x18), u16b(0xffff), avcc].concat());
+        let avc1 = bx(
+            b"avc1",
+            &[vec![0; 6], u16b(1), vec![0; 16], u16b(self.width as u16), u16b(self.height as u16), u32b(0x0048_0000), u32b(0x0048_0000), u32b(0), u16b(1), vec![0; 32], u16b(0x18), u16b(0xffff), avcc]
+                .concat(),
+        );
         let stsd = full(b"stsd", 0, &[u32b(1), avc1].concat());
         let stts = full(b"stts", 0, &[u32b(1), u32b(n), u32b(1000)].concat());
         let stss = full(b"stss", 0, &[u32b(self.keys.len() as u32), self.keys.iter().flat_map(|k| k.to_be_bytes()).collect()].concat());

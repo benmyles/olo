@@ -8,7 +8,8 @@
 use std::rc::Rc;
 
 use gpui::{
-    App, Bounds, Entity, FocusHandle, FontWeight, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, RenderOnce, SharedString, Styled as _, Window, canvas, div, point, px,
+    App, Bounds, Entity, FocusHandle, FontWeight, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    ParentElement as _, Pixels, RenderOnce, SharedString, Styled as _, Window, canvas, div, point, px,
 };
 use olo_kit_base::metrics as m;
 
@@ -97,7 +98,8 @@ impl Slider {
 
 impl RenderOnce for Slider {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let state: Entity<SliderState> = window.use_keyed_state(SharedString::from(format!("olo-slider-{}", self.id)), cx, |_, cx| SliderState { focus: cx.focus_handle().tab_stop(true), dragging: false });
+        let state: Entity<SliderState> =
+            window.use_keyed_state(SharedString::from(format!("olo-slider-{}", self.id)), cx, |_, cx| SliderState { focus: cx.focus_handle().tab_stop(true), dragging: false });
         let focus = state.read(cx).focus.clone();
         let top = if self.label.is_some() || self.value_text.is_some() { m::LABEL_ROW + m::TIGHT } else { 0.0 };
         let bottom = if self.limits.is_some() { m::LABEL_ROW } else { 0.0 };
@@ -168,7 +170,11 @@ impl RenderOnce for Slider {
                     style::label(window, cx, b.left(), y, style::Align::Left, min.clone(), style::SMALL_SIZE, font.clone(), ink);
                     style::label(window, cx, b.right(), y, style::Align::Right, max.clone(), style::SMALL_SIZE, font.clone(), ink);
                 }
-                agent::record(window, cx, agent::Node { role: "Slider", name: label.clone(), value: Some(format!("{value}").into()), bounds: b, enabled, clickable: enabled, focused, ..Default::default() });
+                agent::record(
+                    window,
+                    cx,
+                    agent::Node { role: "Slider", name: label.clone(), value: Some(format!("{value}").into()), bounds: b, enabled, clickable: enabled, focused, ..Default::default() },
+                );
                 if !enabled {
                     return;
                 }

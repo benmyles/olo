@@ -17,16 +17,8 @@ fn fonts() -> &'static Mutex<Fonts> {
     static FONTS: OnceLock<Mutex<Fonts>> = OnceLock::new();
     FONTS.get_or_init(|| {
         let system = font_system();
-        let ui_family = olo_theme::fonts::UI
-            .iter()
-            .find(|name| {
-                system
-                    .db()
-                    .faces()
-                    .any(|f| f.families.iter().any(|(fam, _)| fam == *name))
-            })
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "sans-serif".into());
+        let ui_family =
+            olo_theme::fonts::UI.iter().find(|name| system.db().faces().any(|f| f.families.iter().any(|(fam, _)| fam == *name))).map(|s| s.to_string()).unwrap_or_else(|| "sans-serif".into());
         tracing::info!(font = ui_family, "tab font");
         Mutex::new(Fonts { system, cache: SwashCache::new(), ui_family })
     })
@@ -63,9 +55,7 @@ fn shaped(fonts: &mut Fonts, text: &str, size: f32, bold: bool) -> Buffer {
     let mut b = buffer.borrow_with(system);
     b.set_size(None, None);
     let family = ui_family.clone();
-    let attrs = Attrs::new()
-        .family(Family::Name(&family))
-        .weight(if bold { Weight::BOLD } else { Weight::NORMAL });
+    let attrs = Attrs::new().family(Family::Name(&family)).weight(if bold { Weight::BOLD } else { Weight::NORMAL });
     b.set_text(text, &attrs, Shaping::Advanced, None);
     b.shape_until_scroll(true);
     buffer

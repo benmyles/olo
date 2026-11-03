@@ -83,10 +83,7 @@ fn own_display(node: &std::path::Path) -> Option<(EGLDisplay, Option<Dmabuf>)> {
     };
     let file = std::fs::OpenOptions::new().read(true).write(true).open(node).ok()?;
     let gbm = GbmDevice::new(file).ok()?;
-    let spare = gbm
-        .create_buffer_object::<()>(64, 64, Fourcc::Argb8888, GbmBufferFlags::RENDERING)
-        .ok()
-        .and_then(|bo| GbmBuffer::from_bo(bo, true).export().ok());
+    let spare = gbm.create_buffer_object::<()>(64, 64, Fourcc::Argb8888, GbmBufferFlags::RENDERING).ok().and_then(|bo| GbmBuffer::from_bo(bo, true).export().ok());
     // SAFETY: the gbm device outlives the display (moved into it).
     match unsafe { EGLDisplay::new(gbm) } {
         Ok(display) => Some((display, spare)),

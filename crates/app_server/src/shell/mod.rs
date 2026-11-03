@@ -1,15 +1,11 @@
 use std::cell::RefCell;
 
-
 #[cfg(feature = "udev")]
 use smithay::wayland::drm_syncobj::DrmSyncobjCachedState;
 
 use smithay::{
     backend::renderer::utils::{RendererSurfaceStateUserData, on_commit_buffer_handler},
-    desktop::{
-        LayerSurface, PopupKind, PopupManager, Space, WindowSurfaceType, layer_map_for_output,
-        space::SpaceElement,
-    },
+    desktop::{LayerSurface, PopupKind, PopupManager, Space, WindowSurfaceType, layer_map_for_output, space::SpaceElement},
     input::pointer::{CursorImageStatus, CursorImageSurfaceData},
     output::Output,
     reexports::{
@@ -24,16 +20,12 @@ use smithay::{
     wayland::{
         buffer::BufferHandler,
         compositor::{
-            BufferAssignment, CompositorClientState, CompositorHandler, CompositorState, SurfaceAttributes,
-            TraversalAction, add_blocker, add_pre_commit_hook, get_parent, is_sync_subsurface, with_states,
-            with_surface_tree_upward,
+            BufferAssignment, CompositorClientState, CompositorHandler, CompositorState, SurfaceAttributes, TraversalAction, add_blocker, add_pre_commit_hook, get_parent, is_sync_subsurface,
+            with_states, with_surface_tree_upward,
         },
         dmabuf::get_dmabuf,
         shell::{
-            wlr_layer::{
-                KeyboardInteractivity, LAYER_SURFACE_ROLE, Layer, LayerSurface as WlrLayerSurface, LayerSurfaceCachedState,
-                LayerSurfaceData, WlrLayerShellHandler, WlrLayerShellState,
-            },
+            wlr_layer::{KeyboardInteractivity, LAYER_SURFACE_ROLE, Layer, LayerSurface as WlrLayerSurface, LayerSurfaceCachedState, LayerSurfaceData, WlrLayerShellHandler, WlrLayerShellState},
             xdg::{SurfaceCachedState, XdgToplevelSurfaceData},
         },
     },
@@ -46,10 +38,10 @@ use crate::{
 
 mod autofit;
 pub mod autotile;
-mod element;
-mod grabs;
 pub mod deco;
+mod element;
 pub mod glow;
+mod grabs;
 pub mod groups;
 pub mod modes;
 pub mod pip;
@@ -75,10 +67,7 @@ pub fn layer_menus(output: &Output, on: &[Layer]) -> Vec<(WlSurface, Point<i32, 
     on.iter()
         .flat_map(|&layer| map.layers_on(layer).rev())
         .filter_map(|l| map.layer_geometry(l).map(|g| (l, g.loc)))
-        .flat_map(|(l, at)| {
-            PopupManager::popups_for_surface(l.wl_surface())
-                .map(move |(p, offset)| (p.wl_surface().clone(), at + offset - p.geometry().loc))
-        })
+        .flat_map(|(l, at)| PopupManager::popups_for_surface(l.wl_surface()).map(move |(p, offset)| (p.wl_surface().clone(), at + offset - p.geometry().loc)))
         .collect()
 }
 
@@ -130,23 +119,11 @@ impl<BackendData: Backend> CompositorHandler for AnvilState<BackendData> {
             let mut acquire_point = None;
             let maybe_dmabuf = with_states(surface, |surface_data| {
                 #[cfg(feature = "udev")]
-                acquire_point.clone_from(
-                    &surface_data
-                        .cached_state
-                        .get::<DrmSyncobjCachedState>()
-                        .pending()
-                        .acquire_point,
-                );
-                surface_data
-                    .cached_state
-                    .get::<SurfaceAttributes>()
-                    .pending()
-                    .buffer
-                    .as_ref()
-                    .and_then(|assignment| match assignment {
-                        BufferAssignment::NewBuffer(buffer) => get_dmabuf(buffer).cloned().ok(),
-                        _ => None,
-                    })
+                acquire_point.clone_from(&surface_data.cached_state.get::<DrmSyncobjCachedState>().pending().acquire_point);
+                surface_data.cached_state.get::<SurfaceAttributes>().pending().buffer.as_ref().and_then(|assignment| match assignment {
+                    BufferAssignment::NewBuffer(buffer) => get_dmabuf(buffer).cloned().ok(),
+                    _ => None,
+                })
             });
             if let Some(dmabuf) = maybe_dmabuf {
                 // Not shown before it is checked (`dmabuf_check`).
@@ -158,29 +135,31 @@ impl<BackendData: Backend> CompositorHandler for AnvilState<BackendData> {
                 }
                 #[cfg(feature = "udev")]
                 if let Some(acquire_point) = acquire_point
-                    && let Ok((blocker, source)) = acquire_point.generate_blocker() {
-                        let client = surface.client().unwrap();
-                        let res = state.handle.insert_source(source, move |_, _, data| {
-                            let dh = data.display_handle.clone();
-                            data.client_compositor_state(&client).blocker_cleared(data, &dh);
-                            Ok(())
-                        });
-                        if res.is_ok() {
-                            add_blocker(surface, blocker);
-                            return;
-                        }
+                    && let Ok((blocker, source)) = acquire_point.generate_blocker()
+                {
+                    let client = surface.client().unwrap();
+                    let res = state.handle.insert_source(source, move |_, _, data| {
+                        let dh = data.display_handle.clone();
+                        data.client_compositor_state(&client).blocker_cleared(data, &dh);
+                        Ok(())
+                    });
+                    if res.is_ok() {
+                        add_blocker(surface, blocker);
+                        return;
                     }
+                }
                 if let Ok((blocker, source)) = dmabuf.generate_blocker(Interest::READ)
-                    && let Some(client) = surface.client() {
-                        let res = state.handle.insert_source(source, move |_, _, data| {
-                            let dh = data.display_handle.clone();
-                            data.client_compositor_state(&client).blocker_cleared(data, &dh);
-                            Ok(())
-                        });
-                        if res.is_ok() {
-                            add_blocker(surface, blocker);
-                        }
+                    && let Some(client) = surface.client()
+                {
+                    let res = state.handle.insert_source(source, move |_, _, data| {
+                        let dh = data.display_handle.clone();
+                        data.client_compositor_state(&client).blocker_cleared(data, &dh);
+                        Ok(())
+                    });
+                    if res.is_ok() {
+                        add_blocker(surface, blocker);
                     }
+                }
             }
         });
     }
@@ -214,14 +193,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                         self.backend_data.wake(None);
                     }
                     self.place_on_content(surface);
-                    let buffer_offset = with_states(surface, |states| {
-                        states
-                            .cached_state
-                            .get::<SurfaceAttributes>()
-                            .current()
-                            .buffer_delta
-                            .take()
-                    });
+                    let buffer_offset = with_states(surface, |states| states.cached_state.get::<SurfaceAttributes>().current().buffer_delta.take());
 
                     if let Some(buffer_offset) = buffer_offset {
                         let current_loc = self.space.element_location(&window).unwrap();
@@ -237,20 +209,12 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         }
         self.popups.commit(surface);
 
-        if matches!(&self.cursor_status, CursorImageStatus::Surface(cursor_surface) if cursor_surface == surface)
-        {
+        if matches!(&self.cursor_status, CursorImageStatus::Surface(cursor_surface) if cursor_surface == surface) {
             with_states(surface, |states| {
                 let cursor_image_attributes = states.data_map.get::<CursorImageSurfaceData>();
 
-                if let Some(mut cursor_image_attributes) =
-                    cursor_image_attributes.map(|attrs| attrs.lock().unwrap())
-                {
-                    let buffer_delta = states
-                        .cached_state
-                        .get::<SurfaceAttributes>()
-                        .current()
-                        .buffer_delta
-                        .take();
+                if let Some(mut cursor_image_attributes) = cursor_image_attributes.map(|attrs| attrs.lock().unwrap()) {
+                    let buffer_delta = states.cached_state.get::<SurfaceAttributes>().current().buffer_delta.take();
                     if let Some(buffer_delta) = buffer_delta {
                         tracing::trace!(hotspot = ?cursor_image_attributes.hotspot, ?buffer_delta, "decrementing cursor hotspot");
                         cursor_image_attributes.hotspot -= buffer_delta;
@@ -262,13 +226,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         if matches!(&self.dnd_icon, Some(icon) if &icon.surface == surface) {
             let dnd_icon = self.dnd_icon.as_mut().unwrap();
             with_states(&dnd_icon.surface, |states| {
-                let buffer_delta = states
-                    .cached_state
-                    .get::<SurfaceAttributes>()
-                    .current()
-                    .buffer_delta
-                    .take()
-                    .unwrap_or_default();
+                let buffer_delta = states.cached_state.get::<SurfaceAttributes>().current().buffer_delta.take().unwrap_or_default();
                 tracing::trace!(offset = ?dnd_icon.offset, ?buffer_delta, "moving dnd offset");
                 dnd_icon.offset += buffer_delta;
             });
@@ -307,13 +265,7 @@ impl<BackendData: Backend> WlrLayerShellHandler for AnvilState<BackendData> {
         &mut self.layer_shell_state
     }
 
-    fn new_layer_surface(
-        &mut self,
-        surface: WlrLayerSurface,
-        wl_output: Option<wl_output::WlOutput>,
-        _layer: Layer,
-        namespace: String,
-    ) {
+    fn new_layer_surface(&mut self, surface: WlrLayerSurface, wl_output: Option<wl_output::WlOutput>, _layer: Layer, namespace: String) {
         let asked = wl_output.as_ref().and_then(Output::from_resource);
         // The palette opens on the display in use (the focused window's,
         // else the pointer's), as shortcuts act there, not on the main one.
@@ -351,10 +303,7 @@ impl<BackendData: Backend> WlrLayerShellHandler for AnvilState<BackendData> {
         // display comes back (Deskbar's, moving the tiling area over).
         if let Some((mut map, layer)) = self.space.outputs().chain(self.mirrors.iter()).find_map(|o| {
             let map = layer_map_for_output(o);
-            let layer = map
-                .layers()
-                .find(|&layer| layer.layer_surface() == &surface)
-                .cloned();
+            let layer = map.layers().find(|&layer| layer.layer_surface() == &surface).cloned();
             layer.map(|layer| (map, layer))
         }) {
             map.unmap_layer(&layer);
@@ -396,10 +345,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     pub fn window_for_surface(&self, surface: &WlSurface) -> Option<WindowElement> {
-        self.space
-            .elements()
-            .find(|window| window.wl_surface().map(|s| &*s == surface).unwrap_or(false))
-            .cloned()
+        self.space.elements().find(|window| window.wl_surface().map(|s| &*s == surface).unwrap_or(false)).cloned()
     }
 }
 
@@ -468,17 +414,11 @@ fn keep_on_screen(space: &mut Space<WindowElement>, surface: &WlSurface, window:
     }
     let overlap = |o: &Output| space.output_geometry(o).and_then(|g| g.intersection(geo)).map_or(0, |r| r.size.w as i64 * r.size.h as i64);
     let middle = (geo.loc + geo.size.downscale(2).to_point()).to_f64();
-    let Some(zone) = space
-        .output_under(middle)
-        .next()
-        .or_else(|| space.outputs().filter(|o| overlap(o) > 0).max_by_key(|o| overlap(o)))
-        .or_else(|| space.outputs().next())
-        .and_then(|o| {
-            let g = space.output_geometry(o)?;
-            let z = layer_map_for_output(o).non_exclusive_zone();
-            Some(Rectangle::new(g.loc + z.loc, z.size))
-        })
-    else {
+    let Some(zone) = space.output_under(middle).next().or_else(|| space.outputs().filter(|o| overlap(o) > 0).max_by_key(|o| overlap(o))).or_else(|| space.outputs().next()).and_then(|o| {
+        let g = space.output_geometry(o)?;
+        let z = layer_map_for_output(o).non_exclusive_zone();
+        Some(Rectangle::new(g.loc + z.loc, z.size))
+    }) else {
         return;
     };
     if window.meta().put_back.replace(false) && zone.contains(geo.loc) {
@@ -523,49 +463,26 @@ fn ensure_initial_configure(surface: &WlSurface, space: &Space<WindowElement>, p
         (),
         |_, _, _| TraversalAction::DoChildren(()),
         |_, states, _| {
-            states
-                .data_map
-                .insert_if_missing(|| RefCell::new(SurfaceData::default()));
+            states.data_map.insert_if_missing(|| RefCell::new(SurfaceData::default()));
         },
         |_, _, _| true,
     );
 
-    if let Some(window) = space
-        .elements()
-        .find(|window| window.wl_surface().map(|s| &*s == surface).unwrap_or(false))
-        .cloned()
-    {
+    if let Some(window) = space.elements().find(|window| window.wl_surface().map(|s| &*s == surface).unwrap_or(false)).cloned() {
         // send the initial configure if relevant
         if let Some(toplevel) = window.0.toplevel() {
-            let initial_configure_sent = with_states(surface, |states| {
-                states
-                    .data_map
-                    .get::<XdgToplevelSurfaceData>()
-                    .unwrap()
-                    .lock()
-                    .unwrap()
-                    .initial_configure_sent
-            });
+            let initial_configure_sent = with_states(surface, |states| states.data_map.get::<XdgToplevelSurfaceData>().unwrap().lock().unwrap().initial_configure_sent);
             if !initial_configure_sent {
                 toplevel.send_configure();
             }
-            let resizing = with_states(surface, |states| {
-                states
-                    .data_map
-                    .get::<RefCell<SurfaceData>>()
-                    .is_some_and(|d| matches!(d.borrow().resize_state, ResizeState::Resizing(_)))
-            });
+            let resizing = with_states(surface, |states| states.data_map.get::<RefCell<SurfaceData>>().is_some_and(|d| matches!(d.borrow().resize_state, ResizeState::Resizing(_))));
             if resizing {
                 grabs::resize_caught_up(toplevel);
             }
         }
 
         with_states(surface, |states| {
-            let mut data = states
-                .data_map
-                .get::<RefCell<SurfaceData>>()
-                .unwrap()
-                .borrow_mut();
+            let mut data = states.data_map.get::<RefCell<SurfaceData>>().unwrap().borrow_mut();
 
             // Finish resizing.
             if let ResizeState::WaitingForCommit(_) = data.resize_state {
@@ -596,18 +513,9 @@ fn ensure_initial_configure(surface: &WlSurface, space: &Space<WindowElement>, p
 
     if let Some(output) = space.outputs().find(|o| {
         let map = layer_map_for_output(o);
-        map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL)
-            .is_some()
+        map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL).is_some()
     }) {
-        let initial_configure_sent = with_states(surface, |states| {
-            states
-                .data_map
-                .get::<LayerSurfaceData>()
-                .unwrap()
-                .lock()
-                .unwrap()
-                .initial_configure_sent
-        });
+        let initial_configure_sent = with_states(surface, |states| states.data_map.get::<LayerSurfaceData>().unwrap().lock().unwrap().initial_configure_sent);
 
         let mut map = layer_map_for_output(output);
 
@@ -616,29 +524,18 @@ fn ensure_initial_configure(surface: &WlSurface, space: &Space<WindowElement>, p
         map.arrange();
         // send the initial configure if relevant
         if !initial_configure_sent {
-            let layer = map
-                .layer_for_surface(surface, WindowSurfaceType::TOPLEVEL)
-                .unwrap();
+            let layer = map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL).unwrap();
 
             layer.layer_surface().send_configure();
         }
     };
 }
 
-fn place_new_window(
-    space: &mut Space<WindowElement>,
-    pointer_location: Point<f64, Logical>,
-    window: &WindowElement,
-    activate: bool,
-) {
+fn place_new_window(space: &mut Space<WindowElement>, pointer_location: Point<f64, Logical>, window: &WindowElement, activate: bool) {
     // place the window at a random location on same output as pointer
     // or if there is not output in a [0;800]x[0;800] square
 
-    let output = space
-        .output_under(pointer_location)
-        .next()
-        .or_else(|| space.outputs().next())
-        .cloned();
+    let output = space.output_under(pointer_location).next().or_else(|| space.outputs().next()).cloned();
     let output_geometry = output
         .and_then(|o| {
             let geo = space.output_geometry(&o)?;
@@ -659,11 +556,7 @@ fn place_new_window(
     // BeOS-style cascade: the first diagonal slot no other window sits on.
     const STEP: i32 = 24;
     const ORIGIN: Point<i32, Logical> = Point::new(48, 40);
-    let taken: Vec<Point<i32, Logical>> = space
-        .elements()
-        .filter(|w| *w != window)
-        .filter_map(|w| space.element_location(w))
-        .collect();
+    let taken: Vec<Point<i32, Logical>> = space.elements().filter(|w| *w != window).filter_map(|w| space.element_location(w)).collect();
     let slots = ((output_geometry.size.h / 3) / STEP).max(1);
     let n = (0..slots)
         .find(|i| {
@@ -743,11 +636,7 @@ fn close_gaps(rects: &mut [Rectangle<i32, Logical>]) {
             let dy = (a.loc.y - (b.loc.y + b.size.h)).max(b.loc.y - (a.loc.y + a.size.h)).max(0);
             dx + dy
         };
-        let Some((i, j)) = (0..rects.len())
-            .filter(|i| !group.contains(i))
-            .flat_map(|i| group.iter().map(move |&j| (i, j)))
-            .min_by_key(|&(i, j)| gap(&rects[i], &rects[j]))
-        else {
+        let Some((i, j)) = (0..rects.len()).filter(|i| !group.contains(i)).flat_map(|i| group.iter().map(move |&j| (i, j))).min_by_key(|&(i, j)| gap(&rects[i], &rects[j])) else {
             return;
         };
         let (a, b) = (rects[i], rects[j]);
@@ -796,17 +685,10 @@ pub struct AutoOutput;
 #[derive(Default)]
 struct Arranged(std::cell::Cell<Option<Rectangle<i32, Logical>>>);
 
-pub fn fixup_positions(
-    space: &mut Space<WindowElement>,
-    display: &olo_protocol::DisplaySettings,
-    pointer_location: Point<f64, Logical>,
-) {
+pub fn fixup_positions(space: &mut Space<WindowElement>, display: &olo_protocol::DisplaySettings, pointer_location: Point<f64, Logical>) {
     // fixup outputs
     let outputs: Vec<Output> = space.outputs().cloned().collect();
-    let sizes: Vec<(String, Size<i32, Logical>)> = outputs
-        .iter()
-        .map(|o| (o.name(), space.output_geometry(o).map(|geo| geo.size).unwrap_or_else(|| Size::from((0, 0)))))
-        .collect();
+    let sizes: Vec<(String, Size<i32, Logical>)> = outputs.iter().map(|o| (o.name(), space.output_geometry(o).map(|geo| geo.size).unwrap_or_else(|| Size::from((0, 0))))).collect();
     let keys: std::collections::HashMap<String, String> = outputs.iter().map(|o| (o.name(), crate::desktop::display_key(o))).collect();
     let positions = arrange(&sizes, |name| display.config(keys.get(name).map_or(name, |k| k.as_str()), name).and_then(|c| c.position));
     // Each window's screen (under the middle of its frame, as the screens
@@ -879,11 +761,7 @@ pub fn fixup_positions(
     }
     // Windows left on no display go to the main one (state.rehome_windows
     // then fits them there).
-    let main = space
-        .outputs()
-        .find(|o| display.is_main(&crate::desktop::display_key(o), &o.name()))
-        .and_then(|o| space.output_geometry(o))
-        .map(|g| (g.loc + g.size.downscale(2).to_point()).to_f64());
+    let main = space.outputs().find(|o| display.is_main(&crate::desktop::display_key(o), &o.name())).and_then(|o| space.output_geometry(o)).map(|g| (g.loc + g.size.downscale(2).to_point()).to_f64());
     for window in orphaned_windows.into_iter() {
         place_new_window(space, main.unwrap_or(pointer_location), &window, false);
     }

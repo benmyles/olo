@@ -20,13 +20,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-use olo_tg::{Backend, Chat, ChatId, ChatKind, Cmd, Contact, Doing, Event, Media, Me, Message, MsgId, Outgoing, Pending, Pic, Status};
+use olo_tg::{Backend, Chat, ChatId, ChatKind, Cmd, Contact, Doing, Event, Me, Media, Message, MsgId, Outgoing, Pending, Pic, Status};
 use olo_ui::{
     Frame, Menu, MenuBar, WindowOptions,
     file_panel::{self, FilePanel, PanelResult},
     gpui::{
-        AnyElement, AnyView, App, AppContext as _, Bounds, ClipboardItem, Context, CursorStyle, Div, Entity, EntityId, ExternalPaths, FocusHandle, FontWeight, Hitbox, HitboxBehavior, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, Render, ScrollHandle, SharedString,
-        Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled as _, Task, WeakEntity, Window, WindowHandle, canvas, div, point, px, size, white,
+        AnyElement, AnyView, App, AppContext as _, Bounds, ClipboardItem, Context, CursorStyle, Div, Entity, EntityId, ExternalPaths, FocusHandle, FontWeight, Hitbox, HitboxBehavior,
+        InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, Render, ScrollHandle, SharedString, Stateful,
+        StatefulInteractiveElement as _, StyleRefinement, Styled as _, Task, WeakEntity, Window, WindowHandle, canvas, div, point, px, size, white,
     },
     instance::{self, Launch},
     metrics as m,
@@ -608,7 +609,9 @@ impl Tg {
 
     /// A message's picture, file or voice: open or play it.
     fn open_media(&mut self, chat: ChatId, id: MsgId) {
-        let Some(m) = self.store.threads.get(&(chat, None)).and_then(|t| t.msgs.get(&id)).or_else(|| self.conv.as_ref().and_then(|c| self.store.threads.get(&(chat, c.topic))?.msgs.get(&id))) else { return };
+        let Some(m) = self.store.threads.get(&(chat, None)).and_then(|t| t.msgs.get(&id)).or_else(|| self.conv.as_ref().and_then(|c| self.store.threads.get(&(chat, c.topic))?.msgs.get(&id))) else {
+            return;
+        };
         let pic = Pic::File(chat, id);
         let play = matches!(m.media, Some(Media::Voice { .. } | Media::Audio { .. }));
         match &m.media {
@@ -665,11 +668,16 @@ impl Tg {
                     _ => format!("Telegram {id}"),
                 };
                 let dir = olo_xdg::user_dir("DOWNLOAD").unwrap_or_else(home);
-                self.open_panel("Save As", FilePanel::save(dir, name), move |tg, paths, _| {
-                    if let Some(to) = paths.into_iter().next() {
-                        tg.backend.send(Cmd::SaveFile { chat, id, to });
-                    }
-                }, cx);
+                self.open_panel(
+                    "Save As",
+                    FilePanel::save(dir, name),
+                    move |tg, paths, _| {
+                        if let Some(to) = paths.into_iter().next() {
+                            tg.backend.send(Cmd::SaveFile { chat, id, to });
+                        }
+                    },
+                    cx,
+                );
             }
             "delete" => {
                 let mine = m.out;
@@ -717,10 +725,7 @@ impl Tg {
             "chats:delete" => {
                 let n = chats.len();
                 let leaves = chats.iter().any(|c| matches!(c.kind, ChatKind::Group | ChatKind::Forum | ChatKind::Channel));
-                let message = format!(
-                    "Delete {n} chats? Their messages go from this account{}. This can’t be undone.",
-                    if leaves { ", and you leave the groups and channels among them" } else { "" }
-                );
+                let message = format!("Delete {n} chats? Their messages go from this account{}. This can’t be undone.", if leaves { ", and you leave the groups and channels among them" } else { "" });
                 let cmds = chats.iter().map(|c| Cmd::DeleteChat { chat: c.id }).collect();
                 self.ask("Delete Chats", message, "Delete", cmds, cx);
                 return;
@@ -825,14 +830,19 @@ impl Tg {
             return;
         }
         let dir = olo_xdg::user_dir("PICTURES").unwrap_or_else(home);
-        self.open_panel("Attach Files", FilePanel::open(dir).multiple(), |tg, paths, _| {
-            if let Some(c) = &mut tg.conv
-                && !paths.is_empty()
-            {
-                c.files.extend(paths);
-                c.focus_field = true;
-            }
-        }, cx);
+        self.open_panel(
+            "Attach Files",
+            FilePanel::open(dir).multiple(),
+            |tg, paths, _| {
+                if let Some(c) = &mut tg.conv
+                    && !paths.is_empty()
+                {
+                    c.files.extend(paths);
+                    c.focus_field = true;
+                }
+            },
+            cx,
+        );
     }
 
     fn open_forward(&mut self, from: ChatId, ids: Vec<MsgId>, cx: &mut Context<Self>) {
@@ -1007,7 +1017,14 @@ impl Tg {
         let ready = matches!(self.status, Status::Online | Status::Updating | Status::Connecting | Status::Offline(_) | Status::Waiting(_));
         let chat = self.conv.as_ref().and_then(|c| self.store.chats.get(&c.chat));
         let file = Menu::new("File").item("Contacts", "contacts").key("k").enabled(ready).separator().item("Close", "close").key("w").item("Quit", "quit").key("q");
-        let edit = Menu::new("Edit").item("Find Chat", "find").key("f").enabled(ready).item("Select All Chats", "select-all-chats").enabled(ready).item("Deselect All Chats", "deselect-chats").enabled(!self.chosen.is_empty());
+        let edit = Menu::new("Edit")
+            .item("Find Chat", "find")
+            .key("f")
+            .enabled(ready)
+            .item("Select All Chats", "select-all-chats")
+            .enabled(ready)
+            .item("Deselect All Chats", "deselect-chats")
+            .enabled(!self.chosen.is_empty());
         let mut chat_menu = Menu::new("Chat").item("Attach Files…", "attach").key("o").enabled(chat.is_some()).item("Chat Info", "info").key("i").enabled(chat.is_some()).separator();
         if self.chosen.len() > 1 {
             chat_menu = self.chats_menu(chat_menu);
@@ -1022,7 +1039,17 @@ impl Tg {
         for (i, f) in self.store.folders.iter().enumerate().take(8) {
             view = view.item(f.title.clone(), format!("folder:{}", i + 1)).key(&(i + 1).to_string()).checked(self.view.folder == Some(f.id));
         }
-        view = view.item("Archived Chats", "archive").key("9").checked(self.view.archive).item("Unknown Senders", "unknown").checked(self.view.unknown).separator().item("Previous Chat", "prev").key("up").item("Next Chat", "next").key("down");
+        view = view
+            .item("Archived Chats", "archive")
+            .key("9")
+            .checked(self.view.archive)
+            .item("Unknown Senders", "unknown")
+            .checked(self.view.unknown)
+            .separator()
+            .item("Previous Chat", "prev")
+            .key("up")
+            .item("Next Chat", "next")
+            .key("down");
         let account = Menu::new("Account")
             .item(self.me.as_ref().map_or_else(|| "Not Signed In".into(), |m| m.name.clone()), "me")
             .enabled(false)
@@ -1204,11 +1231,11 @@ impl Render for Tg {
                     ("Not signed in to Telegram", "Sign in to your Telegram account in Preferences ▸ Integrations, with a code sent to your phone or by scanning a QR code.")
                 };
                 let panel = c(p.panel_background);
-                layer = layer.child(
-                    div().absolute().left(full.origin.x).top(full.origin.y).w(full.size.width).h(full.size.height).bg(panel).child(EmptyState::new(title).icon("telegram").detail(detail).action("Open Integrations…", |_, _| {
+                layer = layer.child(div().absolute().left(full.origin.x).top(full.origin.y).w(full.size.width).h(full.size.height).bg(panel).child(
+                    EmptyState::new(title).icon("telegram").detail(detail).action("Open Integrations…", |_, _| {
                         let _ = olo_xdg::spawn_detached("olo-preferences integrations");
-                    })),
-                );
+                    }),
+                ));
             }
             _ => {
                 // The list, a grip, the conversation; on the 2-point grid,
@@ -1275,7 +1302,16 @@ impl Render for Tg {
                         _ => "Choose a chat from the list to start messaging.".to_owned(),
                     };
                     let ground = bubble::Look::of(&p).ground;
-                    layer = layer.child(div().absolute().left(right.origin.x).top(right.origin.y).w(right.size.width).h(right.size.height).bg(ground).child(EmptyState::new("No chat selected").icon("telegram").detail(detail)));
+                    layer = layer.child(
+                        div()
+                            .absolute()
+                            .left(right.origin.x)
+                            .top(right.origin.y)
+                            .w(right.size.width)
+                            .h(right.size.height)
+                            .bg(ground)
+                            .child(EmptyState::new("No chat selected").icon("telegram").detail(detail)),
+                    );
                 }
                 // The divider between them, dragged to size the list.
                 let grip = Bounds { origin: point(px(lw - 2.0), full.origin.y), size: size(px(5.0), full.size.height) };
@@ -1293,7 +1329,15 @@ impl Render for Tg {
                             t.update(cx, |tg, _| tg.grip = Some((f32::from(e.position.x), lw)));
                             cx.stop_propagation();
                         })
-                        .child(canvas(|_, _, _| {}, move |b, _, window, cx| olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Splitter", name: Some("Chat List Width".into()), bounds: b, enabled: true, ..Default::default() })).size_full()),
+                        .child(
+                            canvas(
+                                |_, _, _| {},
+                                move |b, _, window, cx| {
+                                    olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Splitter", name: Some("Chat List Width".into()), bounds: b, enabled: true, ..Default::default() })
+                                },
+                            )
+                            .size_full(),
+                        ),
                 );
                 // A problem to tell, across the conversation's top.
                 if let Some((text, until)) = self.banner.clone() {
@@ -1305,12 +1349,26 @@ impl Render for Tg {
                         let b = Bounds { origin: point(right.origin.x + px(12.0), right.origin.y + px(conv::HEADER + 8.0)), size: size(right.size.width - px(24.0), px(30.0)) };
                         let failure = c(p.failure).opacity(0.92);
                         layer = layer.child(
-                            canvas(|_, _, _| {}, move |_, _, window, cx| {
-                                let b = style::snap(window, b);
-                                window.paint_quad(olo_ui::gpui::fill(b, failure).corner_radii(px(8.0)));
-                                style::label_fit(window, cx, b.origin.x + px(12.0), b.center().y, Align::Left, text.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), white(), b.size.width - px(24.0));
-                                olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Alert", name: Some(text.clone().into()), bounds: b, ..Default::default() });
-                            })
+                            canvas(
+                                |_, _, _| {},
+                                move |_, _, window, cx| {
+                                    let b = style::snap(window, b);
+                                    window.paint_quad(olo_ui::gpui::fill(b, failure).corner_radii(px(8.0)));
+                                    style::label_fit(
+                                        window,
+                                        cx,
+                                        b.origin.x + px(12.0),
+                                        b.center().y,
+                                        Align::Left,
+                                        text.clone(),
+                                        style::PLAIN_SIZE,
+                                        style::ui_font(FontWeight::NORMAL),
+                                        white(),
+                                        b.size.width - px(24.0),
+                                    );
+                                    olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Alert", name: Some(text.clone().into()), bounds: b, ..Default::default() });
+                                },
+                            )
                             .absolute()
                             .inset_0(),
                         );
@@ -1484,7 +1542,16 @@ impl Picker {
                     if !tg.store.chats.contains_key(&id)
                         && let Some(c) = tg.contacts.as_ref().and_then(|(_, l)| l.iter().find(|c| c.id == id)).cloned()
                     {
-                        tg.store.put_chat(Chat { id: c.id, kind: ChatKind::User, title: c.name.clone(), username: c.username.clone(), photo: c.photo, contact: true, seen: c.seen.clone(), ..Chat::default() });
+                        tg.store.put_chat(Chat {
+                            id: c.id,
+                            kind: ChatKind::User,
+                            title: c.name.clone(),
+                            username: c.username.clone(),
+                            photo: c.photo,
+                            contact: true,
+                            seen: c.seen.clone(),
+                            ..Chat::default()
+                        });
                         tg.store.sort();
                     }
                     tg.open_chat(id, None, cx);
@@ -1508,7 +1575,16 @@ impl Render for Picker {
         let (shown, loading) = {
             let tg = self.tg.read(cx);
             if forward {
-                (tg.store.order.iter().filter_map(|id| tg.store.chats.get(id)).filter(|c| q.is_empty() || c.title.to_lowercase().contains(&q)).map(|c| (c.id, c.title.clone(), String::new(), c.photo.is_some())).collect::<Vec<_>>(), false)
+                (
+                    tg.store
+                        .order
+                        .iter()
+                        .filter_map(|id| tg.store.chats.get(id))
+                        .filter(|c| q.is_empty() || c.title.to_lowercase().contains(&q))
+                        .map(|c| (c.id, c.title.clone(), String::new(), c.photo.is_some()))
+                        .collect::<Vec<_>>(),
+                    false,
+                )
             } else {
                 let list = tg.contacts.as_ref().map(|(_, l)| l.as_slice()).unwrap_or_default();
                 (
@@ -1590,11 +1666,8 @@ impl Render for Picker {
                     }
                 })
             });
-        let list: AnyElement = if loading {
-            EmptyState::new("Loading contacts…").icon("people").into_any_element()
-        } else {
-            ScrollView::new("pick-list", &self.scroll).child(content).into_any_element()
-        };
+        let list: AnyElement =
+            if loading { EmptyState::new("Loading contacts…").icon("people").into_any_element() } else { ScrollView::new("pick-list", &self.scroll).child(content).into_any_element() };
         let mut col = div().size_full().p(px(m::WINDOW_INSET)).flex().flex_col().gap(px(m::TIGHT + m::SPACING)).child(self.search.clone()).child(div().flex_1().min_h_0().child(list));
         if forward {
             let cancel = me.clone();
@@ -1639,10 +1712,32 @@ impl Render for Info {
                 let at = Bounds { origin: point(b.center().x - px(48.0), b.origin.y + px(22.0)), size: size(px(96.0), px(96.0)) };
                 bubble::avatar(window, cx, at, id, &title, pic.as_ref(), p.mode == olo_ui::palette::ThemeMode::Dark);
                 let ink = c(p.panel_text);
-                let t = style::label_fit(window, cx, b.center().x, at.bottom() + px(20.0), Align::Center, title.clone(), 16.0, style::ui_font(FontWeight::BOLD), ink, b.size.width - px(2.0 * m::WINDOW_INSET));
+                let t = style::label_fit(
+                    window,
+                    cx,
+                    b.center().x,
+                    at.bottom() + px(20.0),
+                    Align::Center,
+                    title.clone(),
+                    16.0,
+                    style::ui_font(FontWeight::BOLD),
+                    ink,
+                    b.size.width - px(2.0 * m::WINDOW_INSET),
+                );
                 olo_ui::agent::record(window, cx, olo_ui::agent::Node::label(title.clone(), t));
                 if !sub.is_empty() {
-                    let s = style::label_fit(window, cx, b.center().x, at.bottom() + px(40.0), Align::Center, sub.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p), b.size.width - px(2.0 * m::WINDOW_INSET));
+                    let s = style::label_fit(
+                        window,
+                        cx,
+                        b.center().x,
+                        at.bottom() + px(40.0),
+                        Align::Center,
+                        sub.clone(),
+                        style::PLAIN_SIZE,
+                        style::ui_font(FontWeight::NORMAL),
+                        style::disabled_text(&p),
+                        b.size.width - px(2.0 * m::WINDOW_INSET),
+                    );
                     olo_ui::agent::record(window, cx, olo_ui::agent::Node::label(sub.clone(), s));
                 }
             },
@@ -1659,9 +1754,14 @@ impl Render for Info {
         if let Some(u) = &ch.username {
             body = body.child(BBox::new("Username").child(StringView::new(format!("@{u}"))));
         }
-        body = body.child(div()).child(toggle("Mute notifications", ch.muted, "chat:mute")).child(toggle("Pin in chat list", ch.pinned, "chat:pin")).child(toggle("Archived", ch.archived, "chat:archive"));
+        body = body.child(div()).child(toggle("Mute notifications", ch.muted, "chat:mute")).child(toggle("Pin in chat list", ch.pinned, "chat:pin")).child(toggle(
+            "Archived",
+            ch.archived,
+            "chat:archive",
+        ));
         if let Some(u) = ch.username.clone() {
-            body = body.child(div()).child(div().flex().flex_row().child(Button::new("Copy Link").on_click(move |_, cx| cx.write_to_clipboard(ClipboardItem::new_string(format!("https://t.me/{u}"))))));
+            body =
+                body.child(div()).child(div().flex().flex_row().child(Button::new("Copy Link").on_click(move |_, cx| cx.write_to_clipboard(ClipboardItem::new_string(format!("https://t.me/{u}"))))));
         }
         // Escape or ⌘W puts it away.
         let tg = self.tg.clone();
@@ -1800,7 +1900,16 @@ fn main() {
         if let Some(w) = win {
             let _ = w.update(cx, |_, window, _| {
                 let (normal, bold, mono) = (bubble::font(FontWeight::NORMAL), bubble::font(FontWeight::BOLD), style::mono_font(FontWeight::NORMAL));
-                for (font, size) in [(&normal, bubble::TEXT), (&bold, bubble::TEXT), (&bubble::italic(), bubble::TEXT), (&mono, bubble::TEXT), (&bold, bubble::TEXT - 0.5), (&normal, bubble::META), (&normal, bubble::META + 0.5), (&bold, style::SMALL_SIZE)] {
+                for (font, size) in [
+                    (&normal, bubble::TEXT),
+                    (&bold, bubble::TEXT),
+                    (&bubble::italic(), bubble::TEXT),
+                    (&mono, bubble::TEXT),
+                    (&bold, bubble::TEXT - 0.5),
+                    (&normal, bubble::META),
+                    (&normal, bubble::META + 0.5),
+                    (&bold, style::SMALL_SIZE),
+                ] {
                     window.warm_glyphs(font, px(size));
                 }
             });

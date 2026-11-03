@@ -38,4 +38,3 @@ impl std::fmt::Display for Finding {
         write!(f, "{level} {}: {} (at {:.0},{:.0} {:.0}×{:.0})", self.kind, self.text, self.x, self.y, self.width, self.height)
     }
 }
-

@@ -239,10 +239,7 @@ struct AgentObject {
 
 impl AgentObject {
     fn name(device: &OwnedObjectPath) -> String {
-        status()
-            .ok()
-            .and_then(|s| s.devices.into_iter().find(|d| d.path == device.as_str()))
-            .map_or_else(|| "The device".to_owned(), |d| d.name)
+        status().ok().and_then(|s| s.devices.into_iter().find(|d| d.path == device.as_str())).map_or_else(|| "The device".to_owned(), |d| d.name)
     }
 
     /// Show something that needs no answer (a code to type on the device).
@@ -358,10 +355,9 @@ pub fn watch(changed: impl Fn() + Send + 'static) -> Result<()> {
             let h = m.header();
             let tell = match h.member().map(|m| m.as_str()) {
                 Some("InterfacesAdded" | "InterfacesRemoved") => true,
-                Some("PropertiesChanged") => m
-                    .body()
-                    .deserialize::<(String, HashMap<String, OwnedValue>, Vec<String>)>()
-                    .is_ok_and(|(iface, props, gone)| (iface == DEVICE || iface == ADAPTER || iface == BATTERY) && props.keys().chain(gone.iter()).any(|k| TOLD.contains(&k.as_str()) || iface == BATTERY)),
+                Some("PropertiesChanged") => m.body().deserialize::<(String, HashMap<String, OwnedValue>, Vec<String>)>().is_ok_and(|(iface, props, gone)| {
+                    (iface == DEVICE || iface == ADAPTER || iface == BATTERY) && props.keys().chain(gone.iter()).any(|k| TOLD.contains(&k.as_str()) || iface == BATTERY)
+                }),
                 _ => false,
             };
             if tell && tx.send(()).is_err() {
@@ -426,10 +422,7 @@ pub fn watch_apple(kind: u8, heard: impl Fn(Advert) + Send + 'static) -> Result<
     use zbus::{MatchRule, message::Type};
     let adapter = status()?.adapter.ok_or_else(|| zbus::Error::Failure("no Bluetooth adapter".into()))?.path;
     let root = "/org/olo/monitor";
-    let conn = zbus::blocking::connection::Builder::system()?
-        .serve_at(root, zbus::fdo::ObjectManager)?
-        .serve_at(format!("{root}/apple"), AppleMonitor { kind })?
-        .build()?;
+    let conn = zbus::blocking::connection::Builder::system()?.serve_at(root, zbus::fdo::ObjectManager)?.serve_at(format!("{root}/apple"), AppleMonitor { kind })?.build()?;
     let manager = conn.call_method(Some(DEST), adapter.as_str(), Some("org.bluez.AdvertisementMonitorManager1"), "RegisterMonitor", &(zvariant::ObjectPath::try_from(root)?,));
     if let Err(e) = manager {
         let unknown = matches!(&e, zbus::Error::MethodError(name, ..) if name.as_str().ends_with("UnknownMethod") || name.as_str().ends_with("UnknownInterface"));

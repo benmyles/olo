@@ -17,7 +17,8 @@
 use std::rc::Rc;
 
 use gpui::{
-    AnyElement, App, Bounds, Entity, FontWeight, HitboxBehavior, Hsla, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement, Pixels, RenderOnce, SharedString, Styled as _, Window, canvas, div, point, px, size,
+    AnyElement, App, Bounds, Entity, FontWeight, HitboxBehavior, Hsla, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement, Pixels, RenderOnce, SharedString, Styled as _, Window,
+    canvas, div, point, px, size,
 };
 use olo_kit_base::metrics as m;
 use smallvec::SmallVec;
@@ -181,7 +182,18 @@ impl RenderOnce for Card {
                     style::label_on_baseline(window, cx, inner.right(), baseline, style::Align::Right, f.clone(), FIGURE_SIZE, bold.clone(), fink);
                 }
                 if let Some(cap) = &caption {
-                    let r = style::label_fit(window, cx, inner.left(), inner.top() + px(TITLE_ROW + CAPTION_ROW / 2.0), style::Align::Left, cap.clone(), style::SMALL_SIZE, plain.clone(), dim, inner.size.width);
+                    let r = style::label_fit(
+                        window,
+                        cx,
+                        inner.left(),
+                        inner.top() + px(TITLE_ROW + CAPTION_ROW / 2.0),
+                        style::Align::Left,
+                        cap.clone(),
+                        style::SMALL_SIZE,
+                        plain.clone(),
+                        dim,
+                        inner.size.width,
+                    );
                     agent::record(window, cx, agent::Node::label(cap.clone(), r));
                 }
             },
@@ -191,16 +203,7 @@ impl RenderOnce for Card {
         .flex_shrink_0();
         // (It grows to fill its place: cards side by side are as tall
         // as the tallest.)
-        div()
-            .relative()
-            .flex()
-            .flex_col()
-            .flex_grow()
-            .min_h(px(Card::height(0.0, has_caption)))
-            .p(px(m::CARD_INSET))
-            .child(paper)
-            .child(head)
-            .children(children)
+        div().relative().flex().flex_col().flex_grow().min_h(px(Card::height(0.0, has_caption))).p(px(m::CARD_INSET)).child(paper).child(head).children(children)
     }
 }
 

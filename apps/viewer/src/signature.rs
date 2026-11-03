@@ -6,7 +6,10 @@ use std::path::PathBuf;
 
 use olo_ui::{
     agent,
-    gpui::{self, Context, CursorStyle, FocusHandle, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Point, Render, Styled as _, Window, canvas, div, point, px, rgb},
+    gpui::{
+        self, Context, CursorStyle, FocusHandle, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Point,
+        Render, Styled as _, Window, canvas, div, point, px, rgb,
+    },
     metrics as m,
     style::{self, Align},
     theme,
@@ -70,11 +73,7 @@ pub fn from_strokes(strokes: &[Vec<[f32; 2]>]) -> Option<Signature> {
     // straight line from collapsing to zero size.
     let (w, h) = ((x1 - x0).max(4.0) + 4.0, (y1 - y0).max(4.0) + 4.0);
     let (x0, y0) = (x0 - 2.0, y0 - 2.0);
-    let strokes = strokes
-        .iter()
-        .filter(|s| !s.is_empty())
-        .map(|s| s.iter().map(|p| [(p[0] - x0) / w, 1.0 - (p[1] - y0) / h]).collect())
-        .collect();
+    let strokes = strokes.iter().filter(|s| !s.is_empty()).map(|s| s.iter().map(|p| [(p[0] - x0) / w, 1.0 - (p[1] - y0) / h]).collect()).collect();
     let created = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
     Some(Signature { strokes, aspect: w / h, created })
 }
@@ -138,7 +137,8 @@ impl Render for Pad {
                 style::label(window, cx, b.left() + px(12.0), base_y - px(8.0), Align::Left, "×", style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), rgb(0x969696).into());
                 if strokes.is_empty() {
                     let hint = "Sign on the line with the trackpad or mouse";
-                    let at = style::label(window, cx, b.center().x, b.bottom() - b.size.height * 0.14, Align::Center, hint, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), rgb(0x8c8c8c).into());
+                    let at =
+                        style::label(window, cx, b.center().x, b.bottom() - b.size.height * 0.14, Align::Center, hint, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), rgb(0x8c8c8c).into());
                     agent::record(window, cx, agent::Node::label(hint, at));
                 }
                 let ink: gpui::Hsla = rgb(PAD_INK).into();

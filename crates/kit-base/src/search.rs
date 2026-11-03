@@ -58,10 +58,7 @@ impl Needle {
             if from > last {
                 return None;
             }
-            return memchr::memchr2_iter(first, first.to_ascii_uppercase(), &h[from..=last])
-                .map(|i| i + from)
-                .find(|&i| h[i + 1..i + n.len()].eq_ignore_ascii_case(&n[1..]))
-                .map(|i| i..i + n.len());
+            return memchr::memchr2_iter(first, first.to_ascii_uppercase(), &h[from..=last]).map(|i| i + from).find(|&i| h[i + 1..i + n.len()].eq_ignore_ascii_case(&n[1..])).map(|i| i..i + n.len());
         }
         // Lower-cased a character at a time, so the range is `hay`'s.
         let want: Vec<char> = self.lower.chars().collect();
@@ -144,9 +141,10 @@ pub fn tokens(text: &str, keys: &[&str]) -> Vec<Token> {
             i += 1;
         }
         let word_end = text[i..].find(|c: char| c.is_whitespace()).map_or(text.len(), |e| i + e);
-        let key = text[i..word_end].find(':').map(|k| (&text[i..i + k], i..i + k)).filter(|(k, _)| {
-            !k.is_empty() && k.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_') && keys.iter().any(|known| known.eq_ignore_ascii_case(k))
-        });
+        let key = text[i..word_end]
+            .find(':')
+            .map(|k| (&text[i..i + k], i..i + k))
+            .filter(|(k, _)| !k.is_empty() && k.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_') && keys.iter().any(|known| known.eq_ignore_ascii_case(k)));
         let mut values = Vec::new();
         if let Some((k, kr)) = &key {
             i = kr.end + 1;
@@ -188,11 +186,7 @@ fn value(text: &str, i: usize, in_filter: bool) -> (String, Range<usize>, usize)
 /// `v` as it is typed in a query: quoted if it has a space, a comma or a
 /// quote.
 pub fn quote(v: &str) -> String {
-    if v.is_empty() || v.contains(|c: char| c.is_whitespace() || c == ',' || c == '"') {
-        format!("\"{}\"", v.replace('"', ""))
-    } else {
-        v.to_owned()
-    }
+    if v.is_empty() || v.contains(|c: char| c.is_whitespace() || c == ',' || c == '"') { format!("\"{}\"", v.replace('"', "")) } else { v.to_owned() }
 }
 
 /// `text` with filter `key` set to `values` (none: taken out): the
@@ -432,12 +426,7 @@ pub fn suggest(text: &str, caret: usize, facets: &[Facet]) -> Vec<Suggestion> {
         let (typed, vr) = t.values.last().cloned().unwrap_or_default();
         let n = Needle::new(&typed);
         let others: Vec<&str> = t.values[..t.values.len().saturating_sub(1)].iter().map(|(v, _)| v.as_str()).collect();
-        let mut vals: Vec<&FacetValue> = f
-            .values
-            .iter()
-            .filter(|v| !others.iter().any(|o| o.eq_ignore_ascii_case(&v.value)))
-            .filter(|v| n.in_text(&v.value) || n.in_text(&v.label))
-            .collect();
+        let mut vals: Vec<&FacetValue> = f.values.iter().filter(|v| !others.iter().any(|o| o.eq_ignore_ascii_case(&v.value))).filter(|v| n.in_text(&v.value) || n.in_text(&v.label)).collect();
         vals.sort_by_key(|v| !(n.starts(&v.value) || n.starts(&v.label)));
         // (A quoted value's quotes go too.)
         let replace = if vr.start > 0 && text.as_bytes()[vr.start - 1] == b'"' { vr.start - 1..t.range.end } else { vr.start..t.range.end };
@@ -459,8 +448,7 @@ pub fn suggest(text: &str, caret: usize, facets: &[Facet]) -> Vec<Suggestion> {
         out.push(Suggestion { replace: t.range.clone(), insert: format!("{minus}{}:", f.key), label: format!("{}:", f.key), detail: f.label.clone() });
     }
     if typed.chars().count() >= 2 {
-        let mut vals: Vec<(&Facet, &FacetValue)> =
-            facets.iter().flat_map(|f| f.values.iter().map(move |v| (f, v))).filter(|(_, v)| n.in_text(&v.value) || n.in_text(&v.label)).collect();
+        let mut vals: Vec<(&Facet, &FacetValue)> = facets.iter().flat_map(|f| f.values.iter().map(move |v| (f, v))).filter(|(_, v)| n.in_text(&v.value) || n.in_text(&v.label)).collect();
         vals.sort_by_key(|(_, v)| !(n.starts(&v.value) || n.starts(&v.label)));
         for (f, v) in vals {
             out.push(Suggestion {

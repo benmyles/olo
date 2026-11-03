@@ -183,12 +183,18 @@ impl Clipboard {
 
     /// Olo: what's on the clipboard if it's ours (as `read` gives it then).
     pub fn own(&self) -> Option<ClipboardItem> {
-        self.current_offer.as_ref().filter(|o| o.has_mime_type(&self.self_mime)).and(self.contents.clone())
+        self.current_offer
+            .as_ref()
+            .filter(|o| o.has_mime_type(&self.self_mime))
+            .and(self.contents.clone())
     }
 
     /// Olo: whether the clipboard is still ours, holding `item`.
     pub fn holds(&self, item: &ClipboardItem) -> bool {
-        self.current_offer.as_ref().is_some_and(|o| o.has_mime_type(&self.self_mime)) && self.contents.as_ref() == Some(item)
+        self.current_offer
+            .as_ref()
+            .is_some_and(|o| o.has_mime_type(&self.self_mime))
+            && self.contents.as_ref() == Some(item)
     }
 
     /// Olo: ours no longer (taken off).
@@ -205,7 +211,11 @@ impl Clipboard {
 
     pub fn send(&self, mime_type: String, fd: OwnedFd) {
         // Olo: the form asked for (an image, files), else the text.
-        if let Some(bytes) = self.contents.as_ref().and_then(|contents| contents.bytes_for(&mime_type)) {
+        if let Some(bytes) = self
+            .contents
+            .as_ref()
+            .and_then(|contents| contents.bytes_for(&mime_type))
+        {
             self.send_internal(fd, bytes);
         }
     }
@@ -223,11 +233,22 @@ impl Clipboard {
     /// Olo: the types what's on the clipboard is offered as (ours: what
     /// we put on it).
     pub fn types(&self) -> Vec<String> {
-        let Some(offer) = self.current_offer.as_ref() else { return Vec::new() };
+        let Some(offer) = self.current_offer.as_ref() else {
+            return Vec::new();
+        };
         if offer.has_mime_type(&self.self_mime) {
-            return self.contents.as_ref().map(|c| c.mime_types(&TEXT_MIME_TYPES)).unwrap_or_default();
+            return self
+                .contents
+                .as_ref()
+                .map(|c| c.mime_types(&TEXT_MIME_TYPES))
+                .unwrap_or_default();
         }
-        offer.mime_types().iter().filter(|t| !t.starts_with("pid/")).cloned().collect()
+        offer
+            .mime_types()
+            .iter()
+            .filter(|t| !t.starts_with("pid/"))
+            .cloned()
+            .collect()
     }
 
     /// Olo: asks for the clipboard as `mime`: ours at once, else a read
@@ -237,17 +258,25 @@ impl Clipboard {
     pub fn receive(&self, mime: &str) -> Option<crate::ClipboardReceipt> {
         let offer = self.current_offer.as_ref()?;
         if offer.has_mime_type(&self.self_mime) {
-            return self.contents.as_ref().and_then(|c| c.bytes_for(mime)).map(crate::ClipboardReceipt::Ready);
+            return self
+                .contents
+                .as_ref()
+                .and_then(|c| c.bytes_for(mime))
+                .map(crate::ClipboardReceipt::Ready);
         }
         if !offer.has_mime_type(mime) {
             return None;
         }
         let pipe = Pipe::new().ok()?;
-        offer.inner.receive_data(mime.to_string(), unsafe { BorrowedFd::borrow_raw(pipe.write.as_raw_fd()) });
+        offer.inner.receive_data(mime.to_string(), unsafe {
+            BorrowedFd::borrow_raw(pipe.write.as_raw_fd())
+        });
         drop(pipe.write);
         self.connection.flush().ok()?;
         let read = pipe.read;
-        Some(crate::ClipboardReceipt::Read(Box::new(move || read_within(read, std::time::Duration::from_secs(5)))))
+        Some(crate::ClipboardReceipt::Read(Box::new(move || {
+            read_within(read, std::time::Duration::from_secs(5))
+        })))
     }
 
     pub fn read(&mut self) -> Option<ClipboardItem> {
@@ -323,14 +352,21 @@ impl Clipboard {
 
 /// Olo: all of what's written to `fd` until it's closed, unless that takes
 /// longer than `limit`.
-fn read_within(mut fd: filedescriptor::FileDescriptor, limit: std::time::Duration) -> Option<Vec<u8>> {
+fn read_within(
+    mut fd: filedescriptor::FileDescriptor,
+    limit: std::time::Duration,
+) -> Option<Vec<u8>> {
     use std::io::Read as _;
     let deadline = std::time::Instant::now() + limit;
     let mut out = Vec::new();
     let mut buf = vec![0u8; 64 * 1024];
     loop {
         let left = deadline.checked_duration_since(std::time::Instant::now())?;
-        let mut poll = [filedescriptor::pollfd { fd: fd.as_raw_fd(), events: filedescriptor::POLLIN, revents: 0 }];
+        let mut poll = [filedescriptor::pollfd {
+            fd: fd.as_raw_fd(),
+            events: filedescriptor::POLLIN,
+            revents: 0,
+        }];
         if filedescriptor::poll(&mut poll, Some(left)).ok()? == 0 {
             return None;
         }

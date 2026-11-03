@@ -119,9 +119,16 @@ fn brush(r: &mut Report) {
         let previous = saved().previous_shell.filter(|p| p != brush && p.exists()).unwrap_or_else(|| PathBuf::from("/bin/bash"));
         return applied_brush(r, user, previous);
     }
-    let detail = "brush (github.com/reubeno/brush) is a shell compatible with bash, written in Rust as Olo is. New shells, Terminal's too, use it; bash scripts run as before, and it's undone with a button.";
+    let detail =
+        "brush (github.com/reubeno/brush) is a shell compatible with bash, written in Rust as Olo is. New shells, Terminal's too, use it; bash scripts run as before, and it's undone with a button.";
     let Some(ours) = ours else {
-        r.findings.push(Finding { id: BRUSH_ID.into(), severity: Severity::Advice, title: "Use brush as your shell".into(), detail: format!("{detail} (Olo's build of brush comes with its next upgrade.)"), fix: None });
+        r.findings.push(Finding {
+            id: BRUSH_ID.into(),
+            severity: Severity::Advice,
+            title: "Use brush as your shell".into(),
+            detail: format!("{detail} (Olo's build of brush comes with its next upgrade.)"),
+            fix: None,
+        });
         return;
     };
     let (title, label) = if shell == brush { ("Update brush", "Update brush") } else { ("Use brush as your shell", "Use brush") };

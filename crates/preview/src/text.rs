@@ -11,8 +11,8 @@ use std::{
     },
 };
 
-use syntect::parsing::{ParseState, Scope, ScopeStack, SyntaxReference, SyntaxSet};
 pub use olo_theme::Syntax as Tok;
+use syntect::parsing::{ParseState, Scope, ScopeStack, SyntaxReference, SyntaxSet};
 
 use super::load::{Body, Send, Update};
 
@@ -160,10 +160,7 @@ fn find_syntax<'a>(ss: &'a SyntaxSet, path: &Path, first: &str) -> Option<&'a Sy
         ".gitconfig" | ".gitmodules" | ".editorconfig" => ss.find_syntax_by_extension("ini"),
         _ => None,
     };
-    by_name
-        .or_else(|| ss.find_syntax_by_extension(&ext))
-        .or_else(|| alias.and_then(|a| ss.find_syntax_by_extension(a)))
-        .or_else(|| ss.find_syntax_by_first_line(first))
+    by_name.or_else(|| ss.find_syntax_by_extension(&ext)).or_else(|| alias.and_then(|a| ss.find_syntax_by_extension(a))).or_else(|| ss.find_syntax_by_first_line(first))
 }
 
 /// The token class of the innermost scope that has one.
@@ -237,11 +234,7 @@ mod tests {
         let lines: Vec<String> = src.lines().map(String::from).collect();
         let spans = highlight(lang, &lines);
         assert_eq!(spans.len(), lines.len(), "{lang} not coloured");
-        spans
-            .iter()
-            .zip(&lines)
-            .map(|(s, l)| s.iter().filter(|x| x.2 != Tok::Plain).map(|x| (x.2, l[x.0 as usize..x.1 as usize].trim().to_owned())).collect())
-            .collect()
+        spans.iter().zip(&lines).map(|(s, l)| s.iter().filter(|x| x.2 != Tok::Plain).map(|x| (x.2, l[x.0 as usize..x.1 as usize].trim().to_owned())).collect()).collect()
     }
 
     #[test]

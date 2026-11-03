@@ -43,13 +43,9 @@ use crate::desktop::Desktop;
 /// What went wrong.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error(
-        "can't reach the 1Password app. Make sure it is running and Settings > Developer > Integrate with other apps is on"
-    )]
+    #[error("can't reach the 1Password app. Make sure it is running and Settings > Developer > Integrate with other apps is on")]
     DesktopAppUnavailable,
-    #[error(
-        "the 1Password app dropped the connection. Make sure it is running and Settings > Developer > Integrate with other apps is on"
-    )]
+    #[error("the 1Password app dropped the connection. Make sure it is running and Settings > Developer > Integrate with other apps is on")]
     ConnectionDropped,
     /// The app's session for this client ended (locked, or the
     /// authorisation lapsed); calls retry once on a fresh client.
@@ -182,10 +178,7 @@ impl ClientBuilder {
     /// person first: this can take a while).
     pub fn build(self) -> Result<Client> {
         let Some(account) = self.config.account_name.clone() else {
-            return Err(Error::InvalidArgument(
-                "no account: use desktop_app_integration (service account tokens need 1Password's hosted core)"
-                    .into(),
-            ));
+            return Err(Error::InvalidArgument("no account: use desktop_app_integration (service account tokens need 1Password's hosted core)".into()));
         };
         let desktop = Desktop { account, socket: self.socket };
         let id = init_client(&desktop, &self.config)?;
@@ -383,23 +376,13 @@ impl ItemShares<'_> {
         self.0.invoke("ItemsSharesGetAccountPolicy", json!({ "vault_id": vault_id, "item_id": item_id }))
     }
 
-    pub fn validate_recipients(
-        &self,
-        policy: &ItemShareAccountPolicy,
-        recipients: &[String],
-    ) -> Result<Vec<ValidRecipient>> {
-        self.0.invoke(
-            "ItemsSharesValidateRecipients",
-            json!({ "policy": to_value(policy)?, "recipients": recipients }),
-        )
+    pub fn validate_recipients(&self, policy: &ItemShareAccountPolicy, recipients: &[String]) -> Result<Vec<ValidRecipient>> {
+        self.0.invoke("ItemsSharesValidateRecipients", json!({ "policy": to_value(policy)?, "recipients": recipients }))
     }
 
     /// Returns the share link.
     pub fn create(&self, item: &Item, policy: &ItemShareAccountPolicy, params: &ItemShareParams) -> Result<String> {
-        self.0.invoke(
-            "ItemsSharesCreate",
-            json!({ "item": to_value(item)?, "policy": to_value(policy)?, "params": to_value(params)? }),
-        )
+        self.0.invoke("ItemsSharesCreate", json!({ "item": to_value(item)?, "policy": to_value(policy)?, "params": to_value(params)? }))
     }
 }
 
@@ -414,25 +397,16 @@ impl ItemFiles<'_> {
     pub fn read(&self, vault_id: &str, item_id: &str, attributes: &FileAttributes) -> Result<Vec<u8>> {
         #[derive(serde::Deserialize)]
         struct Bytes(#[serde(with = "types::base64_bytes")] Vec<u8>);
-        let bytes: Bytes = self.0.invoke(
-            "ItemsFilesRead",
-            json!({ "vault_id": vault_id, "item_id": item_id, "attr": to_value(attributes)? }),
-        )?;
+        let bytes: Bytes = self.0.invoke("ItemsFilesRead", json!({ "vault_id": vault_id, "item_id": item_id, "attr": to_value(attributes)? }))?;
         Ok(bytes.0)
     }
 
     pub fn delete(&self, item: &Item, section_id: &str, field_id: &str) -> Result<Item> {
-        self.0.invoke(
-            "ItemsFilesDelete",
-            json!({ "item": to_value(item)?, "section_id": section_id, "field_id": field_id }),
-        )
+        self.0.invoke("ItemsFilesDelete", json!({ "item": to_value(item)?, "section_id": section_id, "field_id": field_id }))
     }
 
     pub fn replace_document(&self, item: &Item, document: &DocumentCreateParams) -> Result<Item> {
-        self.0.invoke(
-            "ItemsFilesReplaceDocument",
-            json!({ "item": to_value(item)?, "doc_params": to_value(document)? }),
-        )
+        self.0.invoke("ItemsFilesReplaceDocument", json!({ "item": to_value(item)?, "doc_params": to_value(document)? }))
     }
 }
 
@@ -465,10 +439,7 @@ impl Vaults<'_> {
     }
 
     pub fn grant_group_permissions(&self, vault_id: &str, access: &[GroupAccess]) -> Result<()> {
-        self.0.invoke_unit(
-            "VaultsGrantGroupPermissions",
-            json!({ "vault_id": vault_id, "group_permissions_list": to_value(&access)? }),
-        )
+        self.0.invoke_unit("VaultsGrantGroupPermissions", json!({ "vault_id": vault_id, "group_permissions_list": to_value(&access)? }))
     }
 
     pub fn update_group_permissions(&self, access: &[GroupVaultAccess]) -> Result<()> {
@@ -500,10 +471,5 @@ impl Environments<'_> {
 
 /// Batch results by id, for callers that want a map.
 pub fn individual_items(response: ItemsGetAllResponse) -> HashMap<String, Item> {
-    response
-        .individual_responses
-        .into_iter()
-        .filter_map(|r| r.content)
-        .map(|item| (item.id.clone(), item))
-        .collect()
+    response.individual_responses.into_iter().filter_map(|r| r.content).map(|item| (item.id.clone(), item)).collect()
 }

@@ -186,8 +186,7 @@ fn key(store_exists: bool, keyfile: Option<&Path>) -> Result<Zeroizing<[u8; 32]>
             Ok(None) if store_exists => return Err(missing()),
             Ok(None) => {
                 let k = Zeroizing::new(random::<32>().to_vec());
-                olo_system::secrets::store("Olo Passwords", &KEY_ATTRS, &k)
-                    .map_err(|e| fail(format!("Couldn’t keep the key in the login keyring: {e}")))?;
+                olo_system::secrets::store("Olo Passwords", &KEY_ATTRS, &k).map_err(|e| fail(format!("Couldn’t keep the key in the login keyring: {e}")))?;
                 k
             }
             Err(e) => return Err(fail(format!("Couldn’t reach the login keyring: {e}"))),
@@ -215,9 +214,7 @@ fn seal(key: &[u8; 32], plain: &[u8]) -> Vec<u8> {
     let nonce = random::<24>();
     let mut header = MAGIC.to_vec();
     header.push(FORMAT);
-    let sealed = XChaCha20Poly1305::new(key.into())
-        .encrypt(&XNonce::from(nonce), Payload { msg: plain, aad: &header })
-        .expect("sealing");
+    let sealed = XChaCha20Poly1305::new(key.into()).encrypt(&XNonce::from(nonce), Payload { msg: plain, aad: &header }).expect("sealing");
     let mut out = header;
     out.extend_from_slice(&nonce);
     out.extend(sealed);
@@ -308,8 +305,7 @@ impl Vault {
     pub fn vaults(&self) -> Vec<VaultOverview> {
         let mut vaults = self.data.vaults.clone();
         for v in &mut vaults {
-            v.active_item_count =
-                self.data.entries.iter().filter(|e| e.item.vault_id == v.id && e.state == ItemState::Active).count() as u32;
+            v.active_item_count = self.data.entries.iter().filter(|e| e.item.vault_id == v.id && e.state == ItemState::Active).count() as u32;
         }
         vaults
     }
@@ -524,11 +520,7 @@ impl Vault {
     /// Where items with no vault in 1Password go: Personal (or Private,
     /// or Employee), else the first.
     pub fn default_vault(vaults: &[VaultOverview]) -> Option<&VaultOverview> {
-        vaults
-            .iter()
-            .find(|v| v.vault_type == VaultType::Personal)
-            .or_else(|| vaults.iter().find(|v| matches!(v.title.as_str(), "Personal" | "Private" | "Employee")))
-            .or(vaults.first())
+        vaults.iter().find(|v| v.vault_type == VaultType::Personal).or_else(|| vaults.iter().find(|v| matches!(v.title.as_str(), "Personal" | "Private" | "Employee"))).or(vaults.first())
     }
 
     fn apply_vaults(&mut self, account: String, remote: Vec<VaultOverview>, home: bool) {
@@ -676,8 +668,7 @@ mod tests {
         let mut sent = v.get("", &mine.id).unwrap();
         sent.id = "remoteid".into();
         sent.version = 1;
-        let renamed =
-            v.apply(vec![Change::Pushed { local_id: mine.id.clone(), rev, item: Box::new(sent.clone()), state: ItemState::Active }]).unwrap();
+        let renamed = v.apply(vec![Change::Pushed { local_id: mine.id.clone(), rev, item: Box::new(sent.clone()), state: ItemState::Active }]).unwrap();
         assert_eq!(renamed, vec![(mine.id.clone(), "remoteid".to_string())]);
         assert_eq!(v.pending(), 0);
         // Changed here and there: theirs wins in place, ours is a copy.

@@ -111,10 +111,10 @@ mod transaction;
 mod tree;
 
 use olo_sync::Mutex;
+use std::any::Any;
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::any::Any;
 
 pub use self::cache::{Cacheable, CachedState, MultiCache};
 pub use self::handlers::{RegionUserData, SubsurfaceCachedState, SubsurfaceUserData, SurfaceUserData};

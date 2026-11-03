@@ -102,7 +102,16 @@ pub fn filters(list: &[PortalFilter], current: Option<&PortalFilter>) -> (Vec<Po
 }
 
 impl FileChooser {
-    async fn ask(&self, handle: OwnedObjectPath, app: String, parent: String, title: String, purpose: Purpose, options: &HashMap<String, OwnedValue>, server: &zbus::ObjectServer) -> Option<(Chosen, Vec<PortalFilter>)> {
+    async fn ask(
+        &self,
+        handle: OwnedObjectPath,
+        app: String,
+        parent: String,
+        title: String,
+        purpose: Purpose,
+        options: &HashMap<String, OwnedValue>,
+        server: &zbus::ObjectServer,
+    ) -> Option<(Chosen, Vec<PortalFilter>)> {
         let given: Vec<PortalFilter> = options.get("filters").and_then(|v| <Vec<PortalFilter>>::try_from(v.try_clone().ok()?).ok()).unwrap_or_default();
         let current: Option<PortalFilter> = options.get("current_filter").and_then(|v| <PortalFilter>::try_from(v.try_clone().ok()?).ok());
         let (list, current) = filters(&given, current.as_ref());

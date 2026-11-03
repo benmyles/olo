@@ -14,12 +14,27 @@ use crate::model::{Chat, ChatId, MsgId};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Change {
-    Archive { chat: ChatId, on: bool },
-    Pin { chat: ChatId, on: bool },
-    Mute { chat: ChatId, on: bool },
+    Archive {
+        chat: ChatId,
+        on: bool,
+    },
+    Pin {
+        chat: ChatId,
+        on: bool,
+    },
+    Mute {
+        chat: ChatId,
+        on: bool,
+    },
     /// Read up to `up_to`.
-    Read { chat: ChatId, up_to: MsgId },
-    MarkUnread { chat: ChatId, on: bool },
+    Read {
+        chat: ChatId,
+        up_to: MsgId,
+    },
+    MarkUnread {
+        chat: ChatId,
+        on: bool,
+    },
 }
 
 impl Change {

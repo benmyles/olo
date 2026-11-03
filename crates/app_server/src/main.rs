@@ -11,8 +11,7 @@ static POSSIBLE_BACKENDS: &[&str] = &[
 
 #[cfg(feature = "profile-with-tracy-mem")]
 #[global_allocator]
-static GLOBAL: profiling::tracy_client::ProfiledAllocator<std::alloc::System> =
-    profiling::tracy_client::ProfiledAllocator::new(std::alloc::System, 10);
+static GLOBAL: profiling::tracy_client::ProfiledAllocator<std::alloc::System> = profiling::tracy_client::ProfiledAllocator::new(std::alloc::System, 10);
 
 /// Smithay's xdg-popup commit hook still runs for a surface whose popup
 /// the client has destroyed (GTK commits it once more, as it may), finds
@@ -20,10 +19,7 @@ static GLOBAL: profiling::tracy_client::ProfiledAllocator<std::alloc::System> =
 /// "surface missing from known popups" as an error. Nothing is wrong, so
 /// that one callsite stays out of the log; the others still show.
 fn bogus_error(m: &tracing::Metadata<'_>) -> bool {
-    *m.level() == tracing::Level::ERROR
-        && m.target() == "smithay::wayland::shell::xdg"
-        && m.file().is_some_and(|f| f.ends_with("shell/xdg/mod.rs"))
-        && m.line() == Some(2065)
+    *m.level() == tracing::Level::ERROR && m.target() == "smithay::wayland::shell::xdg" && m.file().is_some_and(|f| f.ends_with("shell/xdg/mod.rs")) && m.line() == Some(2065)
 }
 
 // Allow in this function because of existing usage

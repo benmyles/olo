@@ -8,7 +8,10 @@ use std::{
 };
 
 use olo_kit_base::list::ListState;
-use olo_ui::{Proxy, gpui::{App, EntityId}};
+use olo_ui::{
+    Proxy,
+    gpui::{App, EntityId},
+};
 
 use crate::{Msg, ViewMode, folder::FolderWin, fs, fs::Entry, watch};
 
@@ -231,10 +234,7 @@ impl FolderWin {
                 None => self.path.clone(),
                 Some(k) => self.panes[k].path.clone(),
             };
-            let mine: Vec<&watch::Change> = changes
-                .iter()
-                .filter(|c| matches!(c, watch::Change::Item { dir: d, .. } | watch::Change::Rescan(d) if *d == dir))
-                .collect();
+            let mine: Vec<&watch::Change> = changes.iter().filter(|c| matches!(c, watch::Change::Item { dir: d, .. } | watch::Change::Rescan(d) if *d == dir)).collect();
             if mine.is_empty() {
                 continue;
             }

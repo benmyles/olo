@@ -72,17 +72,7 @@ impl RenderOnce for AlertFrame {
             .relative()
             .size_full()
             .child(backdrop)
-            .child(
-                div()
-                    .absolute()
-                    .left(px(ALERT_TEXT_X))
-                    .right(px(m::WINDOW_INSET))
-                    .top(px(m::WINDOW_INSET))
-                    .bottom(px(m::WINDOW_INSET))
-                    .flex()
-                    .flex_col()
-                    .children(self.children),
-            )
+            .child(div().absolute().left(px(ALERT_TEXT_X)).right(px(m::WINDOW_INSET)).top(px(m::WINDOW_INSET)).bottom(px(m::WINDOW_INSET)).flex().flex_col().children(self.children))
     }
 }
 
@@ -207,10 +197,7 @@ pub fn paragraph(text: impl Into<SharedString>) -> gpui::Div {
 pub fn paragraph_height(cx: &App, text: &str, width: f32) -> f32 {
     let font = style::ui_font(FontWeight::NORMAL);
     let mut wrapper = cx.text_system().line_wrapper(font, px(style::PLAIN_SIZE));
-    let lines: usize = text
-        .split('\n')
-        .map(|line| 1 + wrapper.wrap_line(&[gpui::LineFragment::text(line)], px(width)).count())
-        .sum();
+    let lines: usize = text.split('\n').map(|line| 1 + wrapper.wrap_line(&[gpui::LineFragment::text(line)], px(width)).count()).sum();
     (lines as f32 * style::PLAIN_SIZE * style::LINE_HEIGHT).ceil()
 }
 
@@ -313,4 +300,3 @@ pub fn open_alert(cx: &mut App, title: &str, icon: &str, message: &str, buttons:
         a
     })
 }
-

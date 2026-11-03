@@ -87,13 +87,7 @@ type Stream = Box<dyn Read + Send>;
 
 /// A compressed stream is a tarball if it unpacks to one; otherwise it is
 /// one compressed file.
-fn tar_or_single(
-    codec: &str,
-    stream: Stream,
-    name: &str,
-    suffix: &str,
-    cancel: &Arc<AtomicBool>,
-) -> Result<(&'static str, Vec<Item>), String> {
+fn tar_or_single(codec: &str, stream: Stream, name: &str, suffix: &str, cancel: &Arc<AtomicBool>) -> Result<(&'static str, Vec<Item>), String> {
     let is_tar = name.contains(".tar") || name.ends_with(".tgz") || name.ends_with(".tbz2") || name.ends_with(".txz");
     if is_tar {
         let kind = match codec {
@@ -158,11 +152,7 @@ fn zip_items(reader: std::io::BufReader<std::fs::File>) -> Result<Vec<Item>, Str
 
 fn seven_items(path: &Path) -> Result<Vec<Item>, String> {
     let ar = sevenz_rust2::Archive::open(path).map_err(|e| format!("This archive can't be read ({e})."))?;
-    Ok(ar
-        .files
-        .iter()
-        .map(|f| Item { name: f.name().trim_end_matches('/').to_owned(), is_dir: f.is_directory(), size: f.size() })
-        .collect())
+    Ok(ar.files.iter().map(|f| Item { name: f.name().trim_end_matches('/').to_owned(), is_dir: f.is_directory(), size: f.size() }).collect())
 }
 
 #[cfg(test)]

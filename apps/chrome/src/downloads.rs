@@ -8,7 +8,10 @@
 //! shows it by), and a
 //! finished one is an Olo notification: Open, Open in Tracker.
 
-use std::{collections::HashMap, path::{Path, PathBuf}};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use olo_kit_base::notify::{Note, NoteEvent, NoteId, NoteKind, Notifier};
 use serde::Deserialize;

@@ -75,10 +75,7 @@ fn lex(s: &str) -> Result<Vec<Tok>, String> {
     Ok(out)
 }
 
-const FUNCTIONS: &[&str] = &[
-    "sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh", "ln", "log", "exp", "sqrt", "cbrt", "ceil",
-    "floor", "abs", "round",
-];
+const FUNCTIONS: &[&str] = &["sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh", "ln", "log", "exp", "sqrt", "cbrt", "ceil", "floor", "abs", "round"];
 
 struct Parser<'a> {
     toks: &'a [Tok],

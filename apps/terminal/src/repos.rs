@@ -250,13 +250,7 @@ impl Terminal {
         }
         let pr = pr_of(&self.prs, tab);
         let linked = tab.repo.as_ref().is_some_and(|r| r.linked);
-        menu = menu
-            .separator()
-            .item("Rename Worktree…", format!("worktree-rename:{shell}"))
-            .enabled(linked)
-            .item("Remove Worktree…", format!("worktree-remove:{shell}"))
-            .enabled(linked)
-            .separator();
+        menu = menu.separator().item("Rename Worktree…", format!("worktree-rename:{shell}")).enabled(linked).item("Remove Worktree…", format!("worktree-remove:{shell}")).enabled(linked).separator();
         match pr {
             Some(pr) => menu.item(format!("Open Pull Request #{}", pr.number), format!("pr-open:{shell}")),
             None if needs_github(tab) => menu.item("Connect GitHub for Pull Requests…", "github-connect"),
@@ -489,12 +483,8 @@ impl Terminal {
     pub(crate) fn worktree_ask(&mut self, cx: &mut Cx, a: Ask) {
         let name = a.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         let inside = self.tabs_in(&a.path);
-        let running: Vec<String> = inside
-            .iter()
-            .filter_map(|&(win, shell)| self.term(win)?.tabs.iter().find(|x| x.session.id == shell))
-            .filter(|x| x.session.busy())
-            .filter_map(|x| x.session.foreground())
-            .collect();
+        let running: Vec<String> =
+            inside.iter().filter_map(|&(win, shell)| self.term(win)?.tabs.iter().find(|x| x.session.id == shell)).filter(|x| x.session.busy()).filter_map(|x| x.session.foreground()).collect();
         let tabs = inside.len();
         let changes = match a.changes {
             0 => String::new(),

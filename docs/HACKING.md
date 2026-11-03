@@ -2739,10 +2739,19 @@ review findings too. Release builds (`cargo build --release
 --workspace` first). Preferences' panels run one by one
 (`prefs:touchpad`).
 
+**Formatting**: the whole workspace is rustfmt's, each file by the
+`rustfmt.toml` nearest it: Olo's own at the root (lines up to 200 wide,
+`use_small_heuristics = "Max"`: a builder chain or a match arm on one
+line), upstream's in gpui/ (rustfmt's defaults; Blade's crates edition
+2021) and smithay/ (110 wide), so merges from them stay small.
+`cargo fmt` (not `--all`: that formats path dependencies too, vendor/'s,
+which stay as their authors wrote them) formats everything;
+`cargo fmt --check` says whether it is.
+
 **With every commit and push** (`tools/hooks`, installed by
-`tools/setup.sh`): the pre-commit hook formats the Rust staged
-(rustfmt, by the nearest `rustfmt.toml`: Olo's wide style, upstream's in
-gpui/ and smithay/) and, when UI code is staged, runs `cargo ui-lint`;
+`tools/setup.sh`, or `tools/hooks/install`): the pre-commit hook formats
+the Rust staged (rustfmt, as above; vendor/ left alone) and stages it
+again, and, when UI code is staged, runs `cargo ui-lint`;
 the pre-push hook runs `tools/dev/ui-lint` on the apps the push changed
 (all of them when the kit or GPUI did). A finding stops it
 (`OLO_SKIP_UI_LINT=1` to push regardless, saying why). A layout problem

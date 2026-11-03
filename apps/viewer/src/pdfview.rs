@@ -12,7 +12,9 @@ use std::{
 use olo_ui::{
     Menu, agent,
     gpui::{
-        self, App, Bounds, Context, CursorStyle, Entity, Focusable as _, Font, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Point, Render, RenderImage, ScrollDelta, ScrollHandle, ScrollWheelEvent, Size, Styled as _, Subscription, Window, actions, canvas, div, point, px, size,
+        self, App, Bounds, Context, CursorStyle, Entity, Focusable as _, Font, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyBinding, MouseButton, MouseDownEvent,
+        MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Point, Render, RenderImage, ScrollDelta, ScrollHandle, ScrollWheelEvent, Size, Styled as _, Subscription, Window,
+        actions, canvas, div, point, px, size,
     },
     style::{self, Align},
     theme,
@@ -76,10 +78,21 @@ enum Editing {
 #[derive(Clone, Copy, Debug)]
 enum Drag {
     /// Moving a mark: where it was, where the pointer grabbed (user space).
-    Move { mark: usize, start: PdfRect, grab: [f32; 2], moved: bool },
+    Move {
+        mark: usize,
+        start: PdfRect,
+        grab: [f32; 2],
+        moved: bool,
+    },
     /// Resizing from corner `corner` (0 = bottom-left, then counter-clockwise).
-    Resize { mark: usize, corner: usize, start: PdfRect },
-    Draw { page: usize },
+    Resize {
+        mark: usize,
+        corner: usize,
+        start: PdfRect,
+    },
+    Draw {
+        page: usize,
+    },
 }
 
 /// A page as rendered: at what scale, its size in pixels, its tiles and
@@ -558,11 +571,7 @@ impl PdfView {
 
     pub fn zoom_step(&mut self, up: bool, cx: &mut Context<Self>) {
         const STEPS: [f32; 13] = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0, 8.0];
-        let z = if up {
-            STEPS.iter().copied().find(|s| *s > self.zoom + 0.01).unwrap_or(MAX_ZOOM)
-        } else {
-            STEPS.iter().rev().copied().find(|s| *s < self.zoom - 0.01).unwrap_or(MIN_ZOOM)
-        };
+        let z = if up { STEPS.iter().copied().find(|s| *s > self.zoom + 0.01).unwrap_or(MAX_ZOOM) } else { STEPS.iter().rev().copied().find(|s| *s < self.zoom - 0.01).unwrap_or(MIN_ZOOM) };
         self.set_zoom(z, None, cx);
     }
 
@@ -1147,7 +1156,13 @@ impl Render for PdfView {
         }
         if let Some((top, bottom)) = self.reveal.take() {
             let (y0, h) = (self.offset.y, self.view.height);
-            let y = if top < y0 { top } else if bottom > y0 + h { bottom - h } else { y0 };
+            let y = if top < y0 {
+                top
+            } else if bottom > y0 + h {
+                bottom - h
+            } else {
+                y0
+            };
             self.scroll.set_offset(point(px(-self.offset.x), px(-y.max(0.0))));
         }
         let content = self.content_size(&layout);
@@ -1203,7 +1218,8 @@ impl Render for PdfView {
                     cx.stop_propagation();
                 })
                 .child(frame);
-            let inner = div().absolute().left(px(pad)).right(px(pad)).top(px(if multiline { pad } else { 0.0 })).bottom(px(if multiline { pad } else { 0.0 })).flex().items_center().child(editor.clone());
+            let inner =
+                div().absolute().left(px(pad)).right(px(pad)).top(px(if multiline { pad } else { 0.0 })).bottom(px(if multiline { pad } else { 0.0 })).flex().items_center().child(editor.clone());
             holder = holder.child(if multiline { inner.items_start() } else { inner });
             body = body.child(holder);
         }
@@ -1357,7 +1373,11 @@ fn draw_mark(window: &mut Window, cx: &mut App, mark: &Mark, r: Bounds<Pixels>, 
                 let top = r.top() + px((pdfdoc::TEXT_PAD + k as f32 * size * 1.15) * zoom);
                 pdf_text(window, cx, r.left() + px(pdfdoc::TEXT_PAD * zoom), top + px(size * zoom * 0.905), Align::Left, line, size * zoom, font, color);
             }
-            agent::record(window, cx, agent::Node { role: "TextInput", name: Some("Text Box".into()), value: Some(text.clone().into()), bounds: r, enabled: true, clickable: true, ..Default::default() });
+            agent::record(
+                window,
+                cx,
+                agent::Node { role: "TextInput", name: Some("Text Box".into()), value: Some(text.clone().into()), bounds: r, enabled: true, clickable: true, ..Default::default() },
+            );
         }
         MarkKind::Ink { strokes, width, signature } => {
             let sw = px(width * zoom);

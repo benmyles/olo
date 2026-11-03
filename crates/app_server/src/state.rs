@@ -13,19 +13,13 @@ use tracing::{info, warn};
 use smithay::{
     backend::{
         input::TabletToolDescriptor,
-        renderer::element::{
-            RenderElementStates, default_primary_scanout_output_compare, utils::select_dmabuf_feedback,
-        },
+        renderer::element::{RenderElementStates, default_primary_scanout_output_compare, utils::select_dmabuf_feedback},
     },
     delegate_dispatch2,
     desktop::{
         PopupKind, PopupManager, Space,
         space::SpaceElement,
-        utils::{
-            OutputPresentationFeedback, surface_presentation_feedback_flags_from_states,
-            surface_primary_scanout_output, update_surface_primary_scanout_output,
-            with_surfaces_surface_tree,
-        },
+        utils::{OutputPresentationFeedback, surface_presentation_feedback_flags_from_states, surface_primary_scanout_output, update_surface_primary_scanout_output, with_surfaces_surface_tree},
     },
     input::{
         Seat, SeatHandler, SeatState,
@@ -54,33 +48,22 @@ use smithay::{
         dmabuf::DmabufFeedback,
         fifo::{FifoBarrierCachedState, FifoManagerState},
         fixes::FixesState,
-        fractional_scale::{FractionalScaleHandler, FractionalScaleManagerState, with_fractional_scale},
         foreign_toplevel_list::{ForeignToplevelHandle, ForeignToplevelListHandler, ForeignToplevelListState},
-        image_capture_source::{
-            ImageCaptureSource, ImageCaptureSourceHandler, ImageCaptureSourceState,
-            OutputCaptureSourceHandler, OutputCaptureSourceState, ToplevelCaptureSourceHandler,
-            ToplevelCaptureSourceState,
-        },
-        image_copy_capture::{
-            BufferConstraints, Frame, ImageCopyCaptureHandler, ImageCopyCaptureState, Session, SessionRef,
-        },
-        input_method::{InputMethodHandler, InputMethodManagerState, PopupSurface},
+        fractional_scale::{FractionalScaleHandler, FractionalScaleManagerState, with_fractional_scale},
         idle_inhibit::{IdleInhibitHandler, IdleInhibitManagerState},
-        keyboard_shortcuts_inhibit::{
-            KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitState, KeyboardShortcutsInhibitor,
+        image_capture_source::{
+            ImageCaptureSource, ImageCaptureSourceHandler, ImageCaptureSourceState, OutputCaptureSourceHandler, OutputCaptureSourceState, ToplevelCaptureSourceHandler, ToplevelCaptureSourceState,
         },
+        image_copy_capture::{BufferConstraints, Frame, ImageCopyCaptureHandler, ImageCopyCaptureState, Session, SessionRef},
+        input_method::{InputMethodHandler, InputMethodManagerState, PopupSurface},
+        keyboard_shortcuts_inhibit::{KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitState, KeyboardShortcutsInhibitor},
         output::{OutputHandler, OutputManagerState},
-        pointer_constraints::{
-            ConstraintRemove, PointerConstraint, PointerConstraintsHandler, PointerConstraintsState,
-            with_pointer_constraint,
-        },
+        pointer_constraints::{ConstraintRemove, PointerConstraint, PointerConstraintsHandler, PointerConstraintsState, with_pointer_constraint},
         pointer_gestures::PointerGesturesState,
         presentation::PresentationState,
         relative_pointer::RelativePointerManagerState,
         seat::WaylandFocus,
-        security_context::{
-            SecurityContext, SecurityContextHandler, SecurityContextListenerSource, SecurityContextState,
-        },
+        security_context::{SecurityContext, SecurityContextHandler, SecurityContextListenerSource, SecurityContextState},
         selection::{
             SelectionHandler,
             data_device::{DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler, set_data_device_focus},
@@ -101,13 +84,10 @@ use smithay::{
         text_input::{TextInputActivation, TextInputManagerState},
         viewporter::ViewporterState,
         virtual_keyboard::VirtualKeyboardManagerState,
-        xdg_activation::{
-            XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData,
-        },
+        xdg_activation::{XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData},
         xdg_foreign::{XdgForeignHandler, XdgForeignState},
     },
 };
-
 
 #[derive(Debug, Default)]
 pub struct ClientState {
@@ -263,7 +243,6 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub pointer: PointerHandle<AnvilState<BackendData>>,
     pub cursor_position_hint: Option<(WlSurface, Point<f64, Logical>)>,
 
-
     #[cfg(feature = "debug")]
     pub renderdoc: Option<renderdoc::RenderDoc<renderdoc::V141>>,
 
@@ -347,14 +326,7 @@ impl<BackendData: Backend> DataDeviceHandler for AnvilState<BackendData> {
 }
 
 impl<BackendData: Backend> WaylandDndGrabHandler for AnvilState<BackendData> {
-    fn dnd_requested<S: Source>(
-        &mut self,
-        source: S,
-        icon: Option<WlSurface>,
-        seat: Seat<Self>,
-        serial: Serial,
-        type_: GrabType,
-    ) {
+    fn dnd_requested<S: Source>(&mut self, source: S, icon: Option<WlSurface>, seat: Seat<Self>, serial: Serial, type_: GrabType) {
         // The icon was committed (with its hotspot as a buffer offset)
         // before the drag began, while it wasn't known to be the icon:
         // take that offset now, or the pointer holds it by its corner.
@@ -369,34 +341,19 @@ impl<BackendData: Backend> WaylandDndGrabHandler for AnvilState<BackendData> {
             GrabType::Pointer => {
                 let pointer = seat.get_pointer().unwrap();
                 let start_data = pointer.grab_start_data().unwrap();
-                pointer.set_grab(
-                    self,
-                    DnDGrab::new_pointer(&self.display_handle, start_data, source, seat),
-                    serial,
-                    Focus::Keep,
-                );
+                pointer.set_grab(self, DnDGrab::new_pointer(&self.display_handle, start_data, source, seat), serial, Focus::Keep);
             }
             GrabType::Touch => {
                 let touch = seat.get_touch().unwrap();
                 let start_data = touch.grab_start_data().unwrap();
-                touch.set_grab(
-                    self,
-                    DnDGrab::new_touch(&self.display_handle, start_data, source, seat),
-                    serial,
-                );
+                touch.set_grab(self, DnDGrab::new_touch(&self.display_handle, start_data, source, seat), serial);
             }
         }
     }
 }
 
 impl<BackendData: Backend> DndGrabHandler for AnvilState<BackendData> {
-    fn dropped(
-        &mut self,
-        _target: Option<DndTarget<'_, Self>>,
-        _validated: bool,
-        _seat: Seat<Self>,
-        _location: Point<f64, Logical>,
-    ) {
+    fn dropped(&mut self, _target: Option<DndTarget<'_, Self>>, _validated: bool, _seat: Seat<Self>, _location: Point<f64, Logical>) {
         self.dnd_icon = None;
     }
 }
@@ -405,8 +362,6 @@ impl<BackendData: Backend> OutputHandler for AnvilState<BackendData> {}
 
 impl<BackendData: Backend> SelectionHandler for AnvilState<BackendData> {
     type SelectionUserData = ();
-
-
 }
 
 impl<BackendData: Backend> PrimarySelectionHandler for AnvilState<BackendData> {
@@ -492,10 +447,7 @@ impl<BackendData: Backend> InputMethodHandler for AnvilState<BackendData> {
     }
 
     fn parent_geometry(&self, parent: &WlSurface) -> Rectangle<i32, smithay::utils::Logical> {
-        self.space
-            .elements()
-            .find_map(|window| (window.wl_surface().as_deref() == Some(parent)).then(|| window.geometry()))
-            .unwrap_or_default()
+        self.space.elements().find_map(|window| (window.wl_surface().as_deref() == Some(parent)).then(|| window.geometry())).unwrap_or_default()
     }
 }
 
@@ -562,12 +514,7 @@ impl<BackendData: Backend> PointerConstraintsHandler for AnvilState<BackendData>
         }
     }
 
-    fn remove_constraint(
-        &mut self,
-        _surface: &WlSurface,
-        pointer: &PointerHandle<Self>,
-        constraint_remove: ConstraintRemove,
-    ) {
+    fn remove_constraint(&mut self, _surface: &WlSurface, pointer: &PointerHandle<Self>, constraint_remove: ConstraintRemove) {
         // Clear cursor_position_hint to prevent a oneshot PointerLocked constraint
         // from causing this function to be called again during PointerLeave and
         // unexpectedly changing the cursor position.
@@ -579,15 +526,7 @@ impl<BackendData: Backend> PointerConstraintsHandler for AnvilState<BackendData>
             ConstraintRemove::Destroyed(pointer_constraint) => match pointer_constraint {
                 PointerConstraint::Confined(_confined_pointer) => {}
                 PointerConstraint::Locked(locked_pointer) => {
-                    let origin = self
-                        .space
-                        .elements()
-                        .find_map(|window| {
-                            (window.wl_surface().as_deref() == Some(&hint_surface)).then(|| window.geometry())
-                        })
-                        .unwrap_or_default()
-                        .loc
-                        .to_f64();
+                    let origin = self.space.elements().find_map(|window| (window.wl_surface().as_deref() == Some(&hint_surface)).then(|| window.geometry())).unwrap_or_default().loc.to_f64();
 
                     let surface_location = origin + hint_location;
                     if let Some(region) = locked_pointer.region()
@@ -603,15 +542,8 @@ impl<BackendData: Backend> PointerConstraintsHandler for AnvilState<BackendData>
         }
     }
 
-    fn cursor_position_hint(
-        &mut self,
-        surface: &WlSurface,
-        pointer: &PointerHandle<Self>,
-        location: Point<f64, Logical>,
-    ) {
-        if with_pointer_constraint(surface, pointer, |constraint| {
-            constraint.is_some_and(|c| c.is_active())
-        }) {
+    fn cursor_position_hint(&mut self, surface: &WlSurface, pointer: &PointerHandle<Self>, location: Point<f64, Logical>) {
+        if with_pointer_constraint(surface, pointer, |constraint| constraint.is_some_and(|c| c.is_active())) {
             self.cursor_position_hint = Some((surface.clone(), location));
         }
     }
@@ -629,10 +561,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let Some(pid) = surface.client().and_then(|c| client_pid(&c, &self.display_handle)) else {
             return false;
         };
-        std::fs::read_link(format!("/proc/{pid}/exe"))
-            .ok()
-            .and_then(|p| p.file_name()?.to_str().map(|n| n.starts_with("olo-") || n.starts_with("tabula-")))
-            .unwrap_or(false)
+        std::fs::read_link(format!("/proc/{pid}/exe")).ok().and_then(|p| p.file_name()?.to_str().map(|n| n.starts_with("olo-") || n.starts_with("tabula-"))).unwrap_or(false)
     }
 }
 
@@ -678,12 +607,7 @@ impl<BackendData: Backend> XdgActivationHandler for AnvilState<BackendData> {
         true
     }
 
-    fn request_activation(
-        &mut self,
-        _token: XdgActivationToken,
-        token_data: XdgActivationTokenData,
-        surface: WlSurface,
-    ) {
+    fn request_activation(&mut self, _token: XdgActivationToken, token_data: XdgActivationTokenData, surface: WlSurface) {
         // A window comes forward only when the user just did something in
         // the app that asks (the token carries a recent input serial from
         // the focused client), or when one of our own programs asks: Olo
@@ -693,8 +617,7 @@ impl<BackendData: Backend> XdgActivationHandler for AnvilState<BackendData> {
         // steal focus and cover what the user is doing, alerts included.
         let fresh = token_data.serial.as_ref().is_some_and(|(serial, _)| {
             self.seat.get_keyboard().is_some_and(|k| {
-                    k.last_enter().is_some_and(|enter| serial.is_no_older_than(&enter))
-                    && k.current_focus().and_then(|f| f.wl_surface().map(|s| s.client())).flatten() == surface.client()
+                k.last_enter().is_some_and(|enter| serial.is_no_older_than(&enter)) && k.current_focus().and_then(|f| f.wl_surface().map(|s| s.client())).flatten() == surface.client()
             })
         });
         // One of our programs handing its user's click on to another app
@@ -714,28 +637,15 @@ impl<BackendData: Backend> XdgActivationHandler for AnvilState<BackendData> {
             self.launch_grant = Some((c.clone(), std::time::Instant::now()));
         }
         if !fresh && !handed && !launched && !self.is_our_program(&surface) {
-            let app = smithay::wayland::compositor::with_states(&surface, |s| {
-                s.data_map.get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>().and_then(|d| d.lock().ok()?.app_id.clone())
-            });
+            let app = smithay::wayland::compositor::with_states(&surface, |s| s.data_map.get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>().and_then(|d| d.lock().ok()?.app_id.clone()));
             tracing::info!(?app, token_app = ?token_data.app_id, "activation request ignored (no recent input)");
             return;
         }
         if token_data.timestamp.elapsed().as_secs() < 10 {
             // Just grant the wish
-            let w = self
-                .space
-                .elements()
-                .find(|window| window.wl_surface().map(|s| *s == surface).unwrap_or(false))
-                .cloned();
+            let w = self.space.elements().find(|window| window.wl_surface().map(|s| *s == surface).unwrap_or(false)).cloned();
             // Parked windows (minimized, other workspace) too.
-            let w = w.or_else(|| {
-                self.parked
-                    .0
-                    .borrow()
-                    .iter()
-                    .find(|window| window.wl_surface().is_some_and(|s| *s == surface))
-                    .cloned()
-            });
+            let w = w.or_else(|| self.parked.0.borrow().iter().find(|window| window.wl_surface().is_some_and(|s| *s == surface)).cloned());
             // (Picture in picture is over everything already, and the
             // keyboard stays where it is.)
             if let Some(window) = w.filter(|w| !w.meta().pip.get()) {
@@ -786,9 +696,7 @@ pub struct KdeServerSide(pub std::sync::atomic::AtomicBool);
 
 /// Whether `surface` asked (over KDE's protocol) for our tab and frame.
 pub fn kde_server_side(surface: &WlSurface) -> bool {
-    smithay::wayland::compositor::with_states(surface, |states| {
-        states.data_map.get::<KdeServerSide>().is_some_and(|k| k.0.load(std::sync::atomic::Ordering::Relaxed))
-    })
+    smithay::wayland::compositor::with_states(surface, |states| states.data_map.get::<KdeServerSide>().is_some_and(|k| k.0.load(std::sync::atomic::Ordering::Relaxed)))
 }
 
 impl<BackendData: Backend> smithay::wayland::shell::kde::decoration::KdeDecorationHandler for AnvilState<BackendData> {
@@ -796,11 +704,7 @@ impl<BackendData: Backend> smithay::wayland::shell::kde::decoration::KdeDecorati
         &self.kde_decoration_state
     }
 
-    fn new_decoration(
-        &mut self,
-        surface: &WlSurface,
-        decoration: &smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration::OrgKdeKwinServerDecoration,
-    ) {
+    fn new_decoration(&mut self, surface: &WlSurface, decoration: &smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration::OrgKdeKwinServerDecoration) {
         use smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration::Mode;
         decoration.mode(Mode::Server);
         self.set_kde_mode(surface, true);
@@ -810,9 +714,7 @@ impl<BackendData: Backend> smithay::wayland::shell::kde::decoration::KdeDecorati
         &mut self,
         surface: &WlSurface,
         decoration: &smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration::OrgKdeKwinServerDecoration,
-        mode: smithay::reexports::wayland_server::WEnum<
-            smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration::Mode,
-        >,
+        mode: smithay::reexports::wayland_server::WEnum<smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration::Mode>,
     ) {
         use smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration::Mode;
         // A window that draws its own titlebar (a GTK headerbar) asks for
@@ -822,11 +724,7 @@ impl<BackendData: Backend> smithay::wayland::shell::kde::decoration::KdeDecorati
         self.set_kde_mode(surface, server);
     }
 
-    fn release(
-        &mut self,
-        _decoration: &smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration::OrgKdeKwinServerDecoration,
-        surface: &WlSurface,
-    ) {
+    fn release(&mut self, _decoration: &smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration::OrgKdeKwinServerDecoration, surface: &WlSurface) {
         self.set_kde_mode(surface, false);
     }
 }
@@ -847,10 +745,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 }
 
 impl<BackendData: Backend> FractionalScaleHandler for AnvilState<BackendData> {
-    fn new_fractional_scale(
-        &mut self,
-        surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-    ) {
+    fn new_fractional_scale(&mut self, surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) {
         // Here we can set the initial fractional scale
         //
         // First we look if the surface already has a primary scan-out output, if not
@@ -883,24 +778,10 @@ impl<BackendData: Backend> FractionalScaleHandler for AnvilState<BackendData> {
                 self.space.output_under(at.to_f64()).next().cloned()
             })
         });
-        let layer = self
-            .space
-            .outputs()
-            .find(|o| {
-                smithay::desktop::layer_map_for_output(o)
-                    .layer_for_surface(&root, smithay::desktop::WindowSurfaceType::TOPLEVEL)
-                    .is_some()
-            })
-            .cloned();
+        let layer = self.space.outputs().find(|o| smithay::desktop::layer_map_for_output(o).layer_for_surface(&root, smithay::desktop::WindowSurfaceType::TOPLEVEL).is_some()).cloned();
         with_states(&surface, |states| {
             let primary_scanout_output = surface_primary_scanout_output(&surface, states)
-                .or_else(|| {
-                    if root != surface {
-                        with_states(&root, |states| surface_primary_scanout_output(&root, states))
-                    } else {
-                        None
-                    }
-                })
+                .or_else(|| if root != surface { with_states(&root, |states| surface_primary_scanout_output(&root, states)) } else { None })
                 .or(placed)
                 .or(layer)
                 .or_else(|| self.space.outputs().next().cloned());
@@ -917,21 +798,14 @@ impl<BackendData: Backend + 'static> SecurityContextHandler for AnvilState<Backe
     fn context_created(&mut self, source: SecurityContextListenerSource, security_context: SecurityContext) {
         self.handle
             .insert_source(source, move |client_stream, _, data| {
-                let client_state = ClientState {
-                    security_context: Some(security_context.clone()),
-                    ..ClientState::default()
-                };
-                if let Err(err) = data
-                    .display_handle
-                    .insert_client(client_stream, Arc::new(client_state))
-                {
+                let client_state = ClientState { security_context: Some(security_context.clone()), ..ClientState::default() };
+                if let Err(err) = data.display_handle.insert_client(client_stream, Arc::new(client_state)) {
                     warn!("Error adding wayland client: {}", err);
                 };
             })
             .expect("Failed to init wayland socket source");
     }
 }
-
 
 impl<BackendData: Backend> XdgForeignHandler for AnvilState<BackendData> {
     fn xdg_foreign_state(&mut self) -> &mut XdgForeignState {
@@ -1038,12 +912,7 @@ impl<BackendData: Backend> ImageCopyCaptureHandler for AnvilState<BackendData> {
 delegate_dispatch2!(@<BackendData: Backend + 'static> AnvilState<BackendData>);
 
 impl<BackendData: Backend + 'static> AnvilState<BackendData> {
-    pub fn init(
-        display: Display<AnvilState<BackendData>>,
-        handle: LoopHandle<'static, AnvilState<BackendData>>,
-        backend_data: BackendData,
-        listen_on_socket: bool,
-    ) -> AnvilState<BackendData> {
+    pub fn init(display: Display<AnvilState<BackendData>>, handle: LoopHandle<'static, AnvilState<BackendData>>, backend_data: BackendData, listen_on_socket: bool) -> AnvilState<BackendData> {
         let dh = display.handle();
 
         let clock = Clock::new();
@@ -1058,9 +927,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                     loop {
                         match listener.accept() {
                             Ok((stream, _)) => {
-                                if let Err(err) =
-                                    data.display_handle.insert_client(stream, Arc::new(ClientState::default()))
-                                {
+                                if let Err(err) = data.display_handle.insert_client(stream, Arc::new(ClientState::default())) {
                                     warn!("Error adding wayland client: {}", err);
                                 }
                             }
@@ -1081,8 +948,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             // Our own socket (not smithay's ListeningSocketSource, which
             // removes its files by name on exit, even once they're
             // another session's).
-            let crate::sockfile::Wayland { name: socket_name, listener, _lock, _files } =
-                crate::sockfile::bind_wayland().expect("Failed to create a wayland socket");
+            let crate::sockfile::Wayland { name: socket_name, listener, _lock, _files } = crate::sockfile::bind_wayland().expect("Failed to create a wayland socket");
             listener.set_nonblocking(true).expect("nonblocking socket");
             let files = (_lock, _files);
             handle
@@ -1091,9 +957,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                     loop {
                         match listener.accept() {
                             Ok((stream, _)) => {
-                                if let Err(err) =
-                                    data.display_handle.insert_client(stream, Arc::new(ClientState::default()))
-                                {
+                                if let Err(err) = data.display_handle.insert_client(stream, Arc::new(ClientState::default())) {
                                     warn!("Error adding wayland client: {}", err);
                                 }
                             }
@@ -1113,20 +977,17 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             None
         };
         handle
-            .insert_source(
-                Generic::new(display, Interest::READ, Mode::Level),
-                |_, display, data| {
-                    profiling::scope!("dispatch_clients");
-                    let start = std::time::Instant::now();
-                    // Safety: we don't drop the display
-                    unsafe {
-                        display.get_mut().dispatch_clients(data).unwrap();
-                    }
-                    data.timings.handled_naming_parts("clients' requests", start);
-                    data.timings.phase("clients' requests", start);
-                    Ok(PostAction::Continue)
-                },
-            )
+            .insert_source(Generic::new(display, Interest::READ, Mode::Level), |_, display, data| {
+                profiling::scope!("dispatch_clients");
+                let start = std::time::Instant::now();
+                // Safety: we don't drop the display
+                unsafe {
+                    display.get_mut().dispatch_clients(data).unwrap();
+                }
+                data.timings.handled_naming_parts("clients' requests", start);
+                data.timings.phase("clients' requests", start);
+                Ok(PostAction::Continue)
+            })
             .expect("Failed to init wayland server source");
 
         // init globals
@@ -1135,13 +996,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         let layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
         let primary_selection_state = PrimarySelectionState::new::<Self>(&dh);
-        let data_control_state =
-            DataControlState::new::<Self, _>(&dh, Some(&primary_selection_state), |_| true);
-        let ext_data_control_state = smithay::wayland::selection::ext_data_control::DataControlState::new::<Self, _>(
-            &dh,
-            Some(&primary_selection_state),
-            |_| true,
-        );
+        let data_control_state = DataControlState::new::<Self, _>(&dh, Some(&primary_selection_state), |_| true);
+        let ext_data_control_state = smithay::wayland::selection::ext_data_control::DataControlState::new::<Self, _>(&dh, Some(&primary_selection_state), |_| true);
         let mut seat_state = SeatState::new();
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
         let viewporter_state = ViewporterState::new::<Self>(&dh);
@@ -1173,11 +1029,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         TabletManagerState::new::<Self>(&dh);
         // Clients name their cursors; we draw Haiku's.
         smithay::wayland::cursor_shape::CursorShapeManagerState::new::<Self>(&dh);
-        SecurityContextState::new::<Self, _>(&dh, |client| {
-            client
-                .get_data::<ClientState>()
-                .is_none_or(|client_state| client_state.security_context.is_none())
-        });
+        SecurityContextState::new::<Self, _>(&dh, |client| client.get_data::<ClientState>().is_none_or(|client_state| client_state.security_context.is_none()));
         FixesState::new::<Self>(&dh);
 
         // Image capture protocols (screencopy)
@@ -1192,8 +1044,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         let mut seat = seat_state.new_wl_seat(&dh, seat_name.clone());
 
         let pointer = seat.add_pointer();
-        seat.add_keyboard(XkbConfig::default(), 200, 25)
-            .expect("Failed to initialize the keyboard");
+        seat.add_keyboard(XkbConfig::default(), 200, 25).expect("Failed to initialize the keyboard");
 
         let keyboard_shortcuts_inhibit_state = KeyboardShortcutsInhibitState::new::<Self>(&dh);
         let idle_notifier_state = smithay::wayland::idle_notify::IdleNotifierState::new(&dh, handle.clone());
@@ -1209,8 +1060,6 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         smithay::wayland::xdg_toplevel_tag::XdgToplevelTagManager::new::<Self>(&dh);
         IdleInhibitManagerState::new::<Self>(&dh);
         let lock = crate::lock::Lock::new::<BackendData>(&dh);
-
-
 
         let mut state = AnvilState {
             backend_data,
@@ -1350,13 +1199,10 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         state.apply_input_settings();
         state.update_appearance(true);
         // Re-check the Auto theme / night-light schedule every 30 s.
-        let _ = state.handle.insert_source(
-            smithay::reexports::calloop::timer::Timer::from_duration(std::time::Duration::from_secs(30)),
-            |_, _, state| {
-                state.update_appearance(false);
-                smithay::reexports::calloop::timer::TimeoutAction::ToDuration(std::time::Duration::from_secs(30))
-            },
-        );
+        let _ = state.handle.insert_source(smithay::reexports::calloop::timer::Timer::from_duration(std::time::Duration::from_secs(30)), |_, _, state| {
+            state.update_appearance(false);
+            smithay::reexports::calloop::timer::TimeoutAction::ToDuration(std::time::Duration::from_secs(30))
+        });
         let _ = state.handle.insert_source(smithay::reexports::calloop::timer::Timer::from_duration(crate::power::TICK), |_, _, state| {
             state.power_tick();
             smithay::reexports::calloop::timer::TimeoutAction::ToDuration(crate::power::TICK)
@@ -1385,7 +1231,6 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         state.restore_handover();
         state
     }
-
 }
 
 impl<BackendData: Backend + 'static> AnvilState<BackendData> {
@@ -1399,11 +1244,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         let mut clients: HashMap<ClientId, Client> = HashMap::new();
         self.space.elements().for_each(|window| {
             window.with_surfaces(|surface, states| {
-                if let Some(mut commit_timer_state) = states
-                    .data_map
-                    .get::<CommitTimerBarrierStateUserData>()
-                    .map(|commit_timer| commit_timer.lock().unwrap())
-                {
+                if let Some(mut commit_timer_state) = states.data_map.get::<CommitTimerBarrierStateUserData>().map(|commit_timer| commit_timer.lock().unwrap()) {
                     commit_timer_state.signal_until(frame_target);
                     let client = surface.client().unwrap();
                     clients.insert(client.id(), client);
@@ -1414,11 +1255,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         let map = smithay::desktop::layer_map_for_output(output);
         for layer_surface in map.layers() {
             layer_surface.with_surfaces(|surface, states| {
-                if let Some(mut commit_timer_state) = states
-                    .data_map
-                    .get::<CommitTimerBarrierStateUserData>()
-                    .map(|commit_timer| commit_timer.lock().unwrap())
-                {
+                if let Some(mut commit_timer_state) = states.data_map.get::<CommitTimerBarrierStateUserData>().map(|commit_timer| commit_timer.lock().unwrap()) {
                     commit_timer_state.signal_until(frame_target);
                     let client = surface.client().unwrap();
                     clients.insert(client.id(), client);
@@ -1431,11 +1268,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
 
         if let CursorImageStatus::Surface(ref surface) = self.cursor_status {
             with_surfaces_surface_tree(surface, |surface, states| {
-                if let Some(mut commit_timer_state) = states
-                    .data_map
-                    .get::<CommitTimerBarrierStateUserData>()
-                    .map(|commit_timer| commit_timer.lock().unwrap())
-                {
+                if let Some(mut commit_timer_state) = states.data_map.get::<CommitTimerBarrierStateUserData>().map(|commit_timer| commit_timer.lock().unwrap()) {
                     commit_timer_state.signal_until(frame_target);
                     let client = surface.client().unwrap();
                     clients.insert(client.id(), client);
@@ -1445,11 +1278,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
 
         if let Some(surface) = self.dnd_icon.as_ref().map(|icon| &icon.surface) {
             with_surfaces_surface_tree(surface, |surface, states| {
-                if let Some(mut commit_timer_state) = states
-                    .data_map
-                    .get::<CommitTimerBarrierStateUserData>()
-                    .map(|commit_timer| commit_timer.lock().unwrap())
-                {
+                if let Some(mut commit_timer_state) = states.data_map.get::<CommitTimerBarrierStateUserData>().map(|commit_timer| commit_timer.lock().unwrap()) {
                     commit_timer_state.signal_until(frame_target);
                     let client = surface.client().unwrap();
                     clients.insert(client.id(), client);
@@ -1494,12 +1323,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         self.overview_frames(output, time);
     }
 
-    pub fn post_repaint(
-        &mut self,
-        output: &Output,
-        dmabuf_feedback: Option<SurfaceDmabufFeedback>,
-        render_element_states: &RenderElementStates,
-    ) {
+    pub fn post_repaint(&mut self, output: &Output, dmabuf_feedback: Option<SurfaceDmabufFeedback>, render_element_states: &RenderElementStates) {
         #[allow(clippy::mutable_key_type)]
         let mut clients: HashMap<ClientId, Client> = HashMap::new();
 
@@ -1513,17 +1337,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                     });
                 }
 
-                if primary_scanout_output
-                    .as_ref()
-                    .map(|o| o == output)
-                    .unwrap_or(true)
-                {
-                    let fifo_barrier = states
-                        .cached_state
-                        .get::<FifoBarrierCachedState>()
-                        .current()
-                        .barrier
-                        .take();
+                if primary_scanout_output.as_ref().map(|o| o == output).unwrap_or(true) {
+                    let fifo_barrier = states.cached_state.get::<FifoBarrierCachedState>().current().barrier.take();
 
                     if let Some(fifo_barrier) = fifo_barrier {
                         fifo_barrier.signal();
@@ -1536,12 +1351,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             if self.space.outputs_for_element(window).contains(output) {
                 if let Some(dmabuf_feedback) = dmabuf_feedback.as_ref() {
                     window.send_dmabuf_feedback(output, surface_primary_scanout_output, |surface, _| {
-                        select_dmabuf_feedback(
-                            surface,
-                            render_element_states,
-                            &dmabuf_feedback.render_feedback,
-                            &dmabuf_feedback.scanout_feedback,
-                        )
+                        select_dmabuf_feedback(surface, render_element_states, &dmabuf_feedback.render_feedback, &dmabuf_feedback.scanout_feedback)
                     });
                 }
             }
@@ -1557,17 +1367,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                     });
                 }
 
-                if primary_scanout_output
-                    .as_ref()
-                    .map(|o| o == output)
-                    .unwrap_or(true)
-                {
-                    let fifo_barrier = states
-                        .cached_state
-                        .get::<FifoBarrierCachedState>()
-                        .current()
-                        .barrier
-                        .take();
+                if primary_scanout_output.as_ref().map(|o| o == output).unwrap_or(true) {
+                    let fifo_barrier = states.cached_state.get::<FifoBarrierCachedState>().current().barrier.take();
 
                     if let Some(fifo_barrier) = fifo_barrier {
                         fifo_barrier.signal();
@@ -1579,12 +1380,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
 
             if let Some(dmabuf_feedback) = dmabuf_feedback.as_ref() {
                 layer_surface.send_dmabuf_feedback(output, surface_primary_scanout_output, |surface, _| {
-                    select_dmabuf_feedback(
-                        surface,
-                        render_element_states,
-                        &dmabuf_feedback.render_feedback,
-                        &dmabuf_feedback.scanout_feedback,
-                    )
+                    select_dmabuf_feedback(surface, render_element_states, &dmabuf_feedback.render_feedback, &dmabuf_feedback.scanout_feedback)
                 });
             }
         }
@@ -1602,17 +1398,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                     });
                 }
 
-                if primary_scanout_output
-                    .as_ref()
-                    .map(|o| o == output)
-                    .unwrap_or(true)
-                {
-                    let fifo_barrier = states
-                        .cached_state
-                        .get::<FifoBarrierCachedState>()
-                        .current()
-                        .barrier
-                        .take();
+                if primary_scanout_output.as_ref().map(|o| o == output).unwrap_or(true) {
+                    let fifo_barrier = states.cached_state.get::<FifoBarrierCachedState>().current().barrier.take();
 
                     if let Some(fifo_barrier) = fifo_barrier {
                         fifo_barrier.signal();
@@ -1633,17 +1420,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                     });
                 }
 
-                if primary_scanout_output
-                    .as_ref()
-                    .map(|o| o == output)
-                    .unwrap_or(true)
-                {
-                    let fifo_barrier = states
-                        .cached_state
-                        .get::<FifoBarrierCachedState>()
-                        .current()
-                        .barrier
-                        .take();
+                if primary_scanout_output.as_ref().map(|o| o == output).unwrap_or(true) {
+                    let fifo_barrier = states.cached_state.get::<FifoBarrierCachedState>().current().barrier.take();
 
                     if let Some(fifo_barrier) = fifo_barrier {
                         fifo_barrier.signal();
@@ -1661,23 +1439,10 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
     }
 }
 
-pub fn update_primary_scanout_output(
-    space: &Space<WindowElement>,
-    output: &Output,
-    dnd_icon: &Option<DndIcon>,
-    cursor_status: &CursorImageStatus,
-    render_element_states: &RenderElementStates,
-) {
+pub fn update_primary_scanout_output(space: &Space<WindowElement>, output: &Output, dnd_icon: &Option<DndIcon>, cursor_status: &CursorImageStatus, render_element_states: &RenderElementStates) {
     space.elements().for_each(|window| {
         window.with_surfaces(|surface, states| {
-            update_surface_primary_scanout_output(
-                surface,
-                output,
-                states,
-                None,
-                render_element_states,
-                default_primary_scanout_output_compare,
-            );
+            update_surface_primary_scanout_output(surface, output, states, None, render_element_states, default_primary_scanout_output_compare);
         });
     });
     // A layer surface belongs to one display, and only that display's pass
@@ -1694,27 +1459,13 @@ pub fn update_primary_scanout_output(
 
     if let CursorImageStatus::Surface(surface) = cursor_status {
         with_surfaces_surface_tree(surface, |surface, states| {
-            update_surface_primary_scanout_output(
-                surface,
-                output,
-                states,
-                None,
-                render_element_states,
-                default_primary_scanout_output_compare,
-            );
+            update_surface_primary_scanout_output(surface, output, states, None, render_element_states, default_primary_scanout_output_compare);
         });
     }
 
     if let Some(surface) = dnd_icon.as_ref().map(|icon| &icon.surface) {
         with_surfaces_surface_tree(surface, |surface, states| {
-            update_surface_primary_scanout_output(
-                surface,
-                output,
-                states,
-                None,
-                render_element_states,
-                default_primary_scanout_output_compare,
-            );
+            update_surface_primary_scanout_output(surface, output, states, None, render_element_states, default_primary_scanout_output_compare);
         });
     }
 }
@@ -1726,33 +1477,21 @@ pub struct SurfaceDmabufFeedback {
 }
 
 #[profiling::function]
-pub fn take_presentation_feedback(
-    output: &Output,
-    space: &Space<WindowElement>,
-    render_element_states: &RenderElementStates,
-) -> OutputPresentationFeedback {
+pub fn take_presentation_feedback(output: &Output, space: &Space<WindowElement>, render_element_states: &RenderElementStates) -> OutputPresentationFeedback {
     let mut output_presentation_feedback = OutputPresentationFeedback::new(output);
 
     space.elements().for_each(|window| {
         if space.outputs_for_element(window).contains(output) {
-            window.take_presentation_feedback(
-                &mut output_presentation_feedback,
-                surface_primary_scanout_output,
-                |surface, _| {
-                    surface_presentation_feedback_flags_from_states(surface, None, render_element_states)
-                },
-            );
+            window.take_presentation_feedback(&mut output_presentation_feedback, surface_primary_scanout_output, |surface, _| {
+                surface_presentation_feedback_flags_from_states(surface, None, render_element_states)
+            });
         }
     });
     let map = smithay::desktop::layer_map_for_output(output);
     for layer_surface in map.layers() {
-        layer_surface.take_presentation_feedback(
-            &mut output_presentation_feedback,
-            surface_primary_scanout_output,
-            |surface, _| {
-                surface_presentation_feedback_flags_from_states(surface, None, render_element_states)
-            },
-        );
+        layer_surface.take_presentation_feedback(&mut output_presentation_feedback, surface_primary_scanout_output, |surface, _| {
+            surface_presentation_feedback_flags_from_states(surface, None, render_element_states)
+        });
     }
 
     output_presentation_feedback

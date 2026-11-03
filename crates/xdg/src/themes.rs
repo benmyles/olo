@@ -91,12 +91,7 @@ mod tests {
     }
 
     fn manifest() -> Vec<String> {
-        std::fs::read_to_string(repo_data().join("icons/manifest.txt"))
-            .unwrap()
-            .lines()
-            .filter(|l| !l.is_empty() && !l.starts_with('#'))
-            .map(|l| l.split('|').next().unwrap().to_owned())
-            .collect()
+        std::fs::read_to_string(repo_data().join("icons/manifest.txt")).unwrap().lines().filter(|l| !l.is_empty() && !l.starts_with('#')).map(|l| l.split('|').next().unwrap().to_owned()).collect()
     }
 
     #[test]
@@ -107,11 +102,8 @@ mod tests {
         let names = manifest();
         for t in THEMES.iter().filter(|t| t.id != CLASSIC) {
             let dir = data.join("themes").join(t.id);
-            let missing: Vec<String> = crate::OWN_SIZES
-                .iter()
-                .flat_map(|px| names.iter().map(move |n| format!("{px}/{n}")))
-                .filter(|p| !dir.join("icons").join(format!("{p}.png")).is_file())
-                .collect();
+            let missing: Vec<String> =
+                crate::OWN_SIZES.iter().flat_map(|px| names.iter().map(move |n| format!("{px}/{n}"))).filter(|p| !dir.join("icons").join(format!("{p}.png")).is_file()).collect();
             assert!(missing.is_empty(), "{} lacks {missing:?}", t.id);
             let img = crate::decode_png(&dir.join("brand/olo-wordmark.png")).unwrap_or_else(|| panic!("{}'s wordmark", t.id));
             assert!(img.width > img.height && img.height >= 128);

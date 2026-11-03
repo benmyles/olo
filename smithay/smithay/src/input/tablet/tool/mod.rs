@@ -1,7 +1,7 @@
 //! Tablet Tool related types for smithay's input abstraction
 
-use olo_sync::Mutex;
 use core::fmt;
+use olo_sync::Mutex;
 use std::sync::Arc;
 use std::{hash::Hash, sync::Weak};
 

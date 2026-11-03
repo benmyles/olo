@@ -10,11 +10,7 @@
 //! Each size is a screen (HEADLESS-1, HEADLESS-2, …), offering that size
 //! and a few smaller modes so Preferences ▸ Display can be tested.
 
-use std::{
-    fs::OpenOptions,
-    sync::atomic::Ordering,
-    time::Duration,
-};
+use std::{fs::OpenOptions, sync::atomic::Ordering, time::Duration};
 
 use smithay::{
     backend::{
@@ -134,10 +130,7 @@ impl Backend for HeadlessData {
     /// `Reply::InputDevices` has them: `OLO_HEADLESS_INPUT_DEVICES`. Read
     /// when asked.)
     fn input_devices(&self) -> Vec<olo_protocol::touchpad::InputDeviceInfo> {
-        std::env::var_os("OLO_HEADLESS_INPUT_DEVICES")
-            .and_then(|p| std::fs::read_to_string(p).ok())
-            .and_then(|t| serde_json::from_str(&t).ok())
-            .unwrap_or_default()
+        std::env::var_os("OLO_HEADLESS_INPUT_DEVICES").and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
     }
     fn reset_buffers(&mut self, _output: &Output) {}
     fn wake(&mut self, outputs: Option<&[Output]>) {
@@ -205,12 +198,7 @@ fn render_node() -> Option<std::path::PathBuf> {
     if let Ok(p) = std::env::var("OLO_RENDER_NODE") {
         return Some(p.into());
     }
-    let mut nodes: Vec<_> = std::fs::read_dir("/dev/dri")
-        .ok()?
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("renderD")))
-        .collect();
+    let mut nodes: Vec<_> = std::fs::read_dir("/dev/dri").ok()?.flatten().map(|e| e.path()).filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("renderD"))).collect();
     nodes.sort();
     nodes.into_iter().next()
 }
@@ -283,16 +271,7 @@ pub fn run_headless(size_arg: Option<&str>) {
         // millimetres and its stripes' order, for every screen
         // (`OLO_HEADLESS_PANEL=530x300,rgb`, a 24" 1080p LCD's).
         let (mm, subpixel) = headless_panel();
-        let output = Output::new(
-            format!("HEADLESS-{}", i + 1),
-            PhysicalProperties {
-                size: mm.into(),
-                subpixel,
-                make: make.into(),
-                model: model.into(),
-                serial_number: i.to_string(),
-            },
-        );
+        let output = Output::new(format!("HEADLESS-{}", i + 1), PhysicalProperties { size: mm.into(), subpixel, make: make.into(), model: model.into(), serial_number: i.to_string() });
         output.user_data().insert_if_missing(|| crate::desktop::DrmSubpixel(subpixel));
         // (Late, as DRM's come, for tests: `OLO_HEADLESS_LATE_MS`.)
         if late.is_none() {
@@ -314,9 +293,7 @@ pub fn run_headless(size_arg: Option<&str>) {
     // (without, GL clients fall back to software rendering).
     let formats = renderer.dmabuf_formats();
     let mut dmabuf_state = DmabufState::new();
-    let feedback = smithay::backend::drm::DrmNode::from_path(&node)
-        .ok()
-        .and_then(|n| smithay::wayland::dmabuf::DmabufFeedbackBuilder::new(n.dev_id(), formats.clone()).build().ok());
+    let feedback = smithay::backend::drm::DrmNode::from_path(&node).ok().and_then(|n| smithay::wayland::dmabuf::DmabufFeedbackBuilder::new(n.dev_id(), formats.clone()).build().ok());
     let dmabuf_global = match &feedback {
         Some(f) => dmabuf_state.create_global_with_default_feedback::<AnvilState<HeadlessData>>(&display_handle, f),
         None => dmabuf_state.create_global::<AnvilState<HeadlessData>>(&display_handle, formats),
@@ -347,19 +324,9 @@ pub fn run_headless(size_arg: Option<&str>) {
         .expect("dmabuf checks");
 
     // Screen captures draw into dmabufs of what this GPU renders.
-    let capture_dma = smithay::backend::drm::DrmNode::from_path(&node)
-        .ok()
-        .and_then(|n| crate::capture::dma_constraints(n, renderer.egl_context().dmabuf_render_formats()));
+    let capture_dma = smithay::backend::drm::DrmNode::from_path(&node).ok().and_then(|n| crate::capture::dma_constraints(n, renderer.egl_context().dmabuf_render_formats()));
     let outputs: Vec<Output> = screens.iter().map(|s| s.output.clone()).collect();
-    let data = HeadlessData {
-        renderer,
-        screens,
-        dmabuf_state: (dmabuf_state, dmabuf_global),
-        dmabuf_checks,
-        handle: event_loop.handle(),
-        frame_timer: None,
-        in_frames: false,
-    };
+    let data = HeadlessData { renderer, screens, dmabuf_state: (dmabuf_state, dmabuf_global), dmabuf_checks, handle: event_loop.handle(), frame_timer: None, in_frames: false };
     let mut state = AnvilState::init(display, event_loop.handle(), data, true);
     state.captures.dma = capture_dma;
     let shm_formats = state.backend_data.renderer.shm_formats();
@@ -385,7 +352,6 @@ pub fn run_headless(size_arg: Option<&str>) {
             }
         }
     }
-
 
     // Each screen draws at its mode's rate, on time (`frames_due`).
     schedule_frames(&mut state.backend_data, std::time::Instant::now());
@@ -485,28 +451,15 @@ pub fn run_headless(size_arg: Option<&str>) {
 
 /// Keyboard hints and Twitcher, if they are up, as elements for `output`
 /// (or, while locked, the lock screen).
-fn twitcher_overlay(
-    state: &mut AnvilState<HeadlessData>,
-    output: &Output,
-) -> Vec<crate::render::CustomRenderElements<GlesRenderer>> {
+fn twitcher_overlay(state: &mut AnvilState<HeadlessData>, output: &Output) -> Vec<crate::render::CustomRenderElements<GlesRenderer>> {
     if state.lock.locked() {
         return crate::lock::elements(&state.lock, &mut state.backend_data.renderer, output);
     }
     let geo = state.space.output_geometry(output).unwrap_or_default();
     let scale = output.current_scale().fractional_scale();
-    let mut out: Vec<_> = state
-        .hints
-        .elements(&mut state.backend_data.renderer, geo, scale)
-        .into_iter()
-        .map(crate::render::CustomRenderElements::Overlay)
-        .collect();
+    let mut out: Vec<_> = state.hints.elements(&mut state.backend_data.renderer, geo, scale).into_iter().map(crate::render::CustomRenderElements::Overlay).collect();
     let Some(shown) = state.twitcher_entries() else { return out };
-    out.extend(
-        state
-            .twitcher
-            .element(&mut state.backend_data.renderer, &shown, &output.name(), geo.size, scale)
-            .map(crate::render::CustomRenderElements::Overlay),
-    );
+    out.extend(state.twitcher.element(&mut state.backend_data.renderer, &shown, &output.name(), geo.size, scale).map(crate::render::CustomRenderElements::Overlay));
     out
 }
 
@@ -659,12 +612,7 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) -> bool {
             update_primary_scanout_output(&state.space, output, &state.dnd_icon, &state.cursor_status, &states);
             if damaged {
                 let mut feedback = take_presentation_feedback(output, &state.space, &states);
-                feedback.presented(
-                    frame_target,
-                    Refresh::fixed(frame),
-                    0,
-                    wp_presentation_feedback::Kind::empty(),
-                );
+                feedback.presented(frame_target, Refresh::fixed(frame), 0, wp_presentation_feedback::Kind::empty());
             }
             let t = std::time::Instant::now();
             state.post_repaint(output, None, &states);
@@ -690,7 +638,10 @@ mod gpu_timing {
         backend::{
             allocator::{Fourcc, gbm::GbmDevice},
             egl::{EGLContext, EGLDisplay},
-            renderer::{Bind, Color32F, Frame, ImportMem, Offscreen, Renderer, gles::{GlesRenderer, GlesTexture}},
+            renderer::{
+                Bind, Color32F, Frame, ImportMem, Offscreen, Renderer,
+                gles::{GlesRenderer, GlesTexture},
+            },
         },
         utils::{Buffer, Rectangle, Size, Transform},
     };
@@ -774,11 +725,7 @@ fn headless_panel() -> ((i32, i32), Subpixel) {
         return ((0, 0), Subpixel::Unknown);
     };
     let mut parts = v.split(',');
-    let mm = parts
-        .next()
-        .and_then(|s| s.split_once('x'))
-        .and_then(|(w, h)| Some((w.trim().parse().ok()?, h.trim().parse().ok()?)))
-        .unwrap_or((0, 0));
+    let mm = parts.next().and_then(|s| s.split_once('x')).and_then(|(w, h)| Some((w.trim().parse().ok()?, h.trim().parse().ok()?))).unwrap_or((0, 0));
     let subpixel = match parts.next().map(str::trim) {
         Some("rgb") => Subpixel::HorizontalRgb,
         Some("bgr") => Subpixel::HorizontalBgr,

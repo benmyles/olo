@@ -24,10 +24,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::{
-    Item, ItemCategory, ItemCreateParams, ItemField, ItemFieldDetails, ItemFieldType, ItemOverview, ItemState,
-    OtpFieldDetails, VaultOverview, VaultType, desktop, reference, totp::Totp,
-};
+use crate::{Item, ItemCategory, ItemCreateParams, ItemField, ItemFieldDetails, ItemFieldType, ItemOverview, ItemState, OtpFieldDetails, VaultOverview, VaultType, desktop, reference, totp::Totp};
 
 /// One vault's contents.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -55,12 +52,7 @@ fn fake_uuid() -> String {
 
 /// The stand-in as `accounts::local` lists it.
 pub fn local_account(account: &FakeAccount) -> crate::accounts::Account {
-    crate::accounts::Account {
-        uuid: account.uuid.clone(),
-        name: account.account.clone(),
-        email: "test@example.com".into(),
-        address: "olo-test.1password.com".into(),
-    }
+    crate::accounts::Account { uuid: account.uuid.clone(), name: account.account.clone(), email: "test@example.com".into(), address: "olo-test.1password.com".into() }
 }
 
 /// Everything the stand-in holds.
@@ -100,21 +92,8 @@ impl Fake {
         let addr = SocketAddr::from_abstract_name(socket.as_bytes())?;
         let listener = UnixListener::bind_addr(&addr)?;
         listener.set_nonblocking(true)?;
-        let fake = Fake {
-            socket: socket.into(),
-            account: Arc::new(Mutex::new(account)),
-            expire_next: Arc::default(),
-            requests: Arc::default(),
-            stop: Arc::default(),
-            save,
-        };
-        let state = State {
-            account: fake.account.clone(),
-            expire_next: fake.expire_next.clone(),
-            requests: fake.requests.clone(),
-            next_client: Arc::new(AtomicU64::new(1)),
-            save: fake.save.clone(),
-        };
+        let fake = Fake { socket: socket.into(), account: Arc::new(Mutex::new(account)), expire_next: Arc::default(), requests: Arc::default(), stop: Arc::default(), save };
+        let state = State { account: fake.account.clone(), expire_next: fake.expire_next.clone(), requests: fake.requests.clone(), next_client: Arc::new(AtomicU64::new(1)), save: fake.save.clone() };
         let stop = fake.stop.clone();
         thread::Builder::new().name("onepassword-fake".into()).spawn(move || {
             while !stop.load(Ordering::Acquire) {
@@ -301,32 +280,20 @@ fn find_by<'a, T>(list: &'a [T], key: &str, id: impl Fn(&T) -> &str, title: impl
 
 fn resolve(account: &FakeAccount, reference: &str) -> Result<Value, Value> {
     let r = reference::validate(reference).map_err(|e| error("Internal", e.to_string()))?;
-    let vault = find_by(&account.vaults, &r.vault, |v| &v.vault.id, |v| &v.vault.title)
-        .ok_or_else(|| error("Internal", "vault not found"))?;
-    let item = find_by(&vault.items, &r.item, |i| &i.id, |i| &i.title)
-        .filter(|i| !vault.archived.contains(&i.id))
-        .ok_or_else(|| error("Internal", "item not found"))?;
+    let vault = find_by(&account.vaults, &r.vault, |v| &v.vault.id, |v| &v.vault.title).ok_or_else(|| error("Internal", "vault not found"))?;
+    let item = find_by(&vault.items, &r.item, |i| &i.id, |i| &i.title).filter(|i| !vault.archived.contains(&i.id)).ok_or_else(|| error("Internal", "item not found"))?;
     let section = match &r.section {
-        Some(s) => Some(
-            find_by(&item.sections, s, |x| &x.id, |x| &x.title).ok_or_else(|| error("Internal", "no matching sections"))?.id.clone(),
-        ),
+        Some(s) => Some(find_by(&item.sections, s, |x| &x.id, |x| &x.title).ok_or_else(|| error("Internal", "no matching sections"))?.id.clone()),
         None => None,
     };
-    let fields: Vec<&ItemField> = item
-        .fields
-        .iter()
-        .filter(|f| section.is_none() || f.section_id == section)
-        .filter(|f| f.id == r.field || f.title.eq_ignore_ascii_case(&r.field))
-        .collect();
+    let fields: Vec<&ItemField> = item.fields.iter().filter(|f| section.is_none() || f.section_id == section).filter(|f| f.id == r.field || f.title.eq_ignore_ascii_case(&r.field)).collect();
     let field = match fields[..] {
         [field] => field,
         [] => return Err(error("Internal", "field not found")),
         _ => return Err(error("Internal", "too many matching fields")),
     };
     let secret = match r.attribute {
-        Some(reference::Attribute::Otp) => {
-            Totp::parse(&field.value).map_err(|e| error("Internal", e.to_string()))?.now().0
-        }
+        Some(reference::Attribute::Otp) => Totp::parse(&field.value).map_err(|e| error("Internal", e.to_string()))?.now().0,
         Some(reference::Attribute::Type) => field.field_type.as_str().to_string(),
         Some(reference::Attribute::Id) => field.id.clone(),
         Some(reference::Attribute::Label) => field.title.clone(),
@@ -339,27 +306,15 @@ fn resolve(account: &FakeAccount, reference: &str) -> Result<Value, Value> {
 fn invoke_method(account: &mut FakeAccount, method: &str, params: &Value) -> Result<(Value, bool), Value> {
     Ok(match method {
         "VaultsList" => (value(&account.vaults.iter().map(|v| v.vault.clone()).collect::<Vec<_>>())?, false),
-        "VaultsGetOverview" => {
-            (value(&vault_mut(account, arg(params, "vault_id")?)?.vault)?, false)
-        }
+        "VaultsGetOverview" => (value(&vault_mut(account, arg(params, "vault_id")?)?.vault)?, false),
         "ItemsList" => {
             let vault = vault_mut(account, arg(params, "vault_id")?)?;
             if vault.no_access {
                 return Err(error("Internal", "you do not have the right permissions to perform this action: performing an item operation"));
             }
             let filters: Vec<crate::ItemListFilter> = parse(&params["filters"])?;
-            let (active, archived) = filters
-                .iter()
-                .map(|crate::ItemListFilter::ByState(s)| (s.active, s.archived))
-                .next()
-                .unwrap_or((true, false));
-            let list: Vec<ItemOverview> = vault
-                .items
-                .iter()
-                .map(|i| (i, vault.archived.contains(&i.id)))
-                .filter(|(_, a)| if *a { archived } else { active })
-                .map(|(i, a)| overview(i, a))
-                .collect();
+            let (active, archived) = filters.iter().map(|crate::ItemListFilter::ByState(s)| (s.active, s.archived)).next().unwrap_or((true, false));
+            let list: Vec<ItemOverview> = vault.items.iter().map(|i| (i, vault.archived.contains(&i.id))).filter(|(_, a)| if *a { archived } else { active }).map(|(i, a)| overview(i, a)).collect();
             (value(&list)?, false)
         }
         "ItemsGet" => {
@@ -494,20 +449,13 @@ pub fn sample(account: &str) -> FakeAccount {
     ];
     let login = |title: &str, url: &str, user: &str, password: &str| {
         let mut p = ItemCreateParams::new(ItemCategory::Login, "", title);
-        p.fields = vec![
-            ItemField::new("username", "username", ItemFieldType::Text, user),
-            ItemField::new("password", "password", ItemFieldType::Concealed, password),
-        ];
-        p.websites =
-            vec![crate::Website { url: url.into(), label: "website".into(), autofill_behavior: crate::AutofillBehavior::AnywhereOnWebsite }];
+        p.fields = vec![ItemField::new("username", "username", ItemFieldType::Text, user), ItemField::new("password", "password", ItemFieldType::Concealed, password)];
+        p.websites = vec![crate::Website { url: url.into(), label: "website".into(), autofill_behavior: crate::AutofillBehavior::AnywhereOnWebsite }];
         p
     };
     let mut github = login("GitHub", "https://github.com", "jane.doe", "tusk-Ample-dimly-9-Rover");
     github.sections = vec![crate::ItemSection { id: "otp".into(), title: "Security".into() }];
-    github.fields.push(
-        ItemField::new("onetimepassword", "one-time password", ItemFieldType::Totp, "otpauth://totp/GitHub:jane.doe?secret=JBSWY3DPEHPK3PXP&issuer=GitHub")
-            .in_section("otp"),
-    );
+    github.fields.push(ItemField::new("onetimepassword", "one-time password", ItemFieldType::Totp, "otpauth://totp/GitHub:jane.doe?secret=JBSWY3DPEHPK3PXP&issuer=GitHub").in_section("otp"));
     github.tags = vec!["work".into()];
     let mut card = ItemCreateParams::new(ItemCategory::CreditCard, "", "Travel Visa");
     card.fields = vec![
@@ -547,18 +495,8 @@ pub fn sample(account: &str) -> FakeAccount {
     // codes in Chrome).
     let mut local = login("Olo Test Site", "http://localhost", "jane", "hunter2-but-longer");
     local.sections = vec![crate::ItemSection { id: "otp".into(), title: "Security".into() }];
-    local.fields.push(
-        ItemField::new("onetimepassword", "one-time password", ItemFieldType::Totp, "otpauth://totp/Olo:jane?secret=KRSXG5CTMVRXEZLUKN2XAZLB&issuer=Olo")
-            .in_section("otp"),
-    );
-    let personal = [
-        github,
-        login("Example Mail", "https://mail.example.com", "jane@example.com", "Correct-Horse-7-Battery"),
-        local,
-        card,
-        note,
-        identity,
-    ];
+    local.fields.push(ItemField::new("onetimepassword", "one-time password", ItemFieldType::Totp, "otpauth://totp/Olo:jane?secret=KRSXG5CTMVRXEZLUKN2XAZLB&issuer=Olo").in_section("otp"));
+    let personal = [github, login("Example Mail", "https://mail.example.com", "jane@example.com", "Correct-Horse-7-Battery"), local, card, note, identity];
     for p in personal {
         create(&mut vaults[0], p);
     }

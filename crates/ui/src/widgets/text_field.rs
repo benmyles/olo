@@ -11,7 +11,9 @@
 use std::{ops::Range, time::Duration};
 
 use gpui::{
-    App, Bounds, ClipboardItem, Context, CursorStyle, Element, ElementId, ElementInputHandler, Entity, EntityInputHandler, EventEmitter, FocusHandle, Focusable, GlobalElementId, Hsla, InspectorElementId, IntoElement, KeyBinding, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Render, ShapedLine, SharedString, Style, Styled as _, Task, TextRun, UTF16Selection, UnderlineStyle, Window, actions, div, point, px, relative, size,
+    App, Bounds, ClipboardItem, Context, CursorStyle, Element, ElementId, ElementInputHandler, Entity, EntityInputHandler, EventEmitter, FocusHandle, Focusable, GlobalElementId, Hsla,
+    InspectorElementId, IntoElement, KeyBinding, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Render, ShapedLine, SharedString, Style, Styled as _,
+    Task, TextRun, UTF16Selection, UnderlineStyle, Window, actions, div, point, px, relative, size,
 };
 use gpui::{AppContext as _, InteractiveElement as _};
 use unicode_segmentation::UnicodeSegmentation as _;
@@ -961,11 +963,7 @@ impl EntityInputHandler for TextField {
         let range = range.as_ref().map(|r| self.range_from_utf16(r)).or(self.marked.clone()).unwrap_or(self.selected.clone());
         self.text.replace_range(range.clone(), text);
         self.marked = (!text.is_empty()).then(|| range.start..range.start + text.len());
-        self.selected = selected
-            .as_ref()
-            .map(|r| self.range_from_utf16(r))
-            .map(|r| r.start + range.start..r.end + range.start)
-            .unwrap_or_else(|| range.start + text.len()..range.start + text.len());
+        self.selected = selected.as_ref().map(|r| self.range_from_utf16(r)).map(|r| r.start + range.start..r.end + range.start).unwrap_or_else(|| range.start + text.len()..range.start + text.len());
         cx.notify();
     }
 
@@ -1169,7 +1167,13 @@ impl Element for FieldElement {
                 let sel = Bounds::from_corners(point(x0, top), point(x1, top + height));
                 // The kit's selection: the highlight, see-through.
                 let dark = palette.mode == olo_theme::ThemeMode::Dark;
-                let ink = style::c(palette.control_highlight).opacity(if !focused { 0.3 } else if dark { 0.75 } else { 0.55 });
+                let ink = style::c(palette.control_highlight).opacity(if !focused {
+                    0.3
+                } else if dark {
+                    0.75
+                } else {
+                    0.55
+                });
                 style::fill_rect(window, sel, ink);
             }
             let _ = line.paint(point(left, top), height, window, cx);
@@ -1190,7 +1194,11 @@ impl Element for FieldElement {
                 crate::cut::note(window, text.clone(), bounds);
             }
         });
-        agent::record(window, cx, agent::Node { role: "TextInput", name: (!name.is_empty()).then_some(name), value: Some(text), bounds, enabled: true, clickable: true, focused, ..Default::default() });
+        agent::record(
+            window,
+            cx,
+            agent::Node { role: "TextInput", name: (!name.is_empty()).then_some(name), value: Some(text), bounds, enabled: true, clickable: true, focused, ..Default::default() },
+        );
         self.field.update(cx, |f, _| {
             f.line = Some(line);
             f.drawn = Some(drawn);
@@ -1282,7 +1290,13 @@ fn paint_multiline(entity: &Entity<TextField>, bounds: Bounds<Pixels>, window: &
     let origin = point(bounds.origin.x, bounds.origin.y - scroll);
     window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| {
         let dark = palette.mode == olo_theme::ThemeMode::Dark;
-        let ink = style::c(palette.control_highlight).opacity(if !focused { 0.3 } else if dark { 0.75 } else { 0.55 });
+        let ink = style::c(palette.control_highlight).opacity(if !focused {
+            0.3
+        } else if dark {
+            0.75
+        } else {
+            0.55
+        });
         for b in bands {
             style::fill_rect(window, Bounds { origin: point(origin.x + b.origin.x, origin.y + b.origin.y), size: b.size }, ink);
         }
@@ -1294,7 +1308,12 @@ fn paint_multiline(entity: &Entity<TextField>, bounds: Bounds<Pixels>, window: &
             style::label(window, cx, origin.x, origin.y + lh / 2.0, style::Align::Left, hint.clone(), size_px, font.clone(), ink);
         }
         if focused && selected.is_empty() && caret_on {
-            let line = window.text_system().shape_line(SharedString::from(" "), px(size_px), &[TextRun { len: 1, font: font.clone(), color, background_color: None, underline: None, strikethrough: None, size: None }], None);
+            let line = window.text_system().shape_line(
+                SharedString::from(" "),
+                px(size_px),
+                &[TextRun { len: 1, font: font.clone(), color, background_color: None, underline: None, strikethrough: None, size: None }],
+                None,
+            );
             let h = line.ascent + line.descent;
             // (Spaces after a row's last word hang past its edge; the
             // caret among them stays at the edge.)

@@ -62,7 +62,8 @@ pub mod element;
 /// frame flushed to the GPU and its fence made). app_server sets it to
 /// its `render::add_part`, for its timings and its record of dropped
 /// frames.
-pub static PHASE_HOOK: std::sync::OnceLock<fn(&'static str, std::time::Duration)> = std::sync::OnceLock::new();
+pub static PHASE_HOOK: std::sync::OnceLock<fn(&'static str, std::time::Duration)> =
+    std::sync::OnceLock::new();
 
 pub(crate) fn phase(name: &'static str, start: std::time::Instant) {
     if let Some(f) = PHASE_HOOK.get() {

@@ -32,8 +32,8 @@ use olo_sync::Mutex;
 use olo_ui::{
     agent,
     gpui::{
-        AnyElement, App, AppContext as _, Bounds, Context, Entity, FocusHandle, FontWeight, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, PathBuilder, Pixels, Render, Styled as _, Window, canvas,
-        div, point, px, size,
+        AnyElement, App, AppContext as _, Bounds, Context, Entity, FocusHandle, FontWeight, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, PathBuilder, Pixels, Render,
+        Styled as _, Window, canvas, div, point, px, size,
     },
     metrics as m, style, theme,
     widgets::{KeyHint, StatusBar, StringView},
@@ -58,7 +58,6 @@ pub enum Step {
 
 const EXERCISES: [Step; 6] = [Step::RestPalms, Step::EdgePalm, Step::TypeWithPalms, Step::PointAndScroll, Step::Taps, Step::PointWithPalm];
 
-
 impl Step {
     /// Its title, and what to do.
     fn words(self) -> (&'static str, &'static str) {
@@ -68,11 +67,12 @@ impl Step {
                 "Olo tells a palm from a finger by its size. Training makes a palm model of your own hands, which also catches what size misses: a palm at the edge, palms resting as you type. Six short exercises on the touchpad, about three minutes, then a try. Rest your hands as you really do; nothing needs a click: the keyboard moves you along.",
             ),
             Step::RestPalms => ("Rest your palms", "Rest the heels of both hands on the touchpad, as they fall when you type. Hold them still for a moment, then lift them. Do it five times."),
-            Step::EdgePalm => (
-                "One palm over the edge",
-                "With one hand only, rest its heel half over the touchpad's left edge for a moment, then lift it: five times. Then five times over the right edge.",
-            ),
-            Step::TypeWithPalms => ("Type with your palms down", "Type the line below with your palms resting on the touchpad, as you do on a laptop. Lift your hands now and then, and rest them again."),
+            Step::EdgePalm => {
+                ("One palm over the edge", "With one hand only, rest its heel half over the touchpad's left edge for a moment, then lift it: five times. Then five times over the right edge.")
+            }
+            Step::TypeWithPalms => {
+                ("Type with your palms down", "Type the line below with your palms resting on the touchpad, as you do on a laptop. Lift your hands now and then, and rest them again.")
+            }
             Step::PointAndScroll => ("Point and scroll", "Palms off the touchpad: move the pointer around with one finger, and scroll up and down with two."),
             Step::Taps => ("Tap", "Palms off the touchpad: tap quickly with one finger, here and there. Two-finger taps count too."),
             Step::PointWithPalm => (
@@ -249,16 +249,7 @@ fn watch(live: Arc<Mutex<Live>>, model: Arc<Mutex<PalmModel>>, stop: Arc<AtomicB
                 let resting = |o: &Open| time_us.saturating_sub(o.down_us) >= PALM_REST_MS as u64 * 1000 && o.travel < STILL;
                 let palm_down = open.values().any(resting);
                 for (c, (_, f, age)) in contacts.iter().zip(&frames) {
-                    let o = open.entry(c.id).or_insert_with(|| Open {
-                        frames: Vec::new(),
-                        size: 0,
-                        down_us: time_us,
-                        start: (c.x, c.y),
-                        travel: 0.0,
-                        typing: false,
-                        with_palm: palm_down,
-                        call: None,
-                    });
+                    let o = open.entry(c.id).or_insert_with(|| Open { frames: Vec::new(), size: 0, down_us: time_us, start: (c.x, c.y), travel: 0.0, typing: false, with_palm: palm_down, call: None });
                     if (olo_palm::MIN_AGE_MS..=olo_palm::DECIDE_MS).contains(age) {
                         o.frames.push(*f);
                         // (As the filter does: a palm once a report in its
@@ -868,7 +859,8 @@ impl TrainerWindow {
     /// each `w` × `h`.
     fn panels(&self, film: Option<Step>, calling: bool, (w, h): (f32, f32)) -> AnyElement {
         let (started, live) = (self.started, self.live.clone());
-        let marks: Vec<(f32, f32, bool, f32)> = self.marks.iter().filter(|s| s.at.elapsed().as_secs_f32() < MARK_SECONDS).map(|s| (s.place.0, s.place.1, s.good, s.at.elapsed().as_secs_f32())).collect();
+        let marks: Vec<(f32, f32, bool, f32)> =
+            self.marks.iter().filter(|s| s.at.elapsed().as_secs_f32() < MARK_SECONDS).map(|s| (s.place.0, s.place.1, s.good, s.at.elapsed().as_secs_f32())).collect();
         let fading = !marks.is_empty();
         let pad = canvas(
             |_, _, _| {},
@@ -877,10 +869,24 @@ impl TrainerWindow {
                 let l = live.lock().unwrap();
                 let r = draw_pad(window, b, &l, calling, &marks, &p);
                 if l.axes.is_none() {
-                    style::label(window, cx, r.center().x, r.center().y, style::Align::Center, "Waiting for the touchpad…", style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
+                    style::label(
+                        window,
+                        cx,
+                        r.center().x,
+                        r.center().y,
+                        style::Align::Center,
+                        "Waiting for the touchpad…",
+                        style::PLAIN_SIZE,
+                        style::ui_font(FontWeight::NORMAL),
+                        style::disabled_text(&p),
+                    );
                 }
                 let n = l.contacts.len();
-                agent::record(window, cx, agent::Node { role: "Image", name: Some("Your touchpad".into()), value: Some(format!("{n} touches").into()), bounds: r, enabled: true, ..Default::default() });
+                agent::record(
+                    window,
+                    cx,
+                    agent::Node { role: "Image", name: Some("Your touchpad".into()), value: Some(format!("{n} touches").into()), bounds: r, enabled: true, ..Default::default() },
+                );
                 if fading {
                     window.request_animation_frame();
                 }
@@ -1003,7 +1009,11 @@ impl TrainerWindow {
                     r.contacts
                 ),
             ),
-            Some(Outcome::TooFew) | None => (false, "Not enough touches to learn from", "It needs at least three palms and three fingers among the touches it learns from. Train again and do each exercise as its film shows.".to_owned()),
+            Some(Outcome::TooFew) | None => (
+                false,
+                "Not enough touches to learn from",
+                "It needs at least three palms and three fingers among the touches it learns from. Train again and do each exercise as its film shows.".to_owned(),
+            ),
         };
         let mark = canvas(|_, _, _| {}, move |b, _, window, cx| verdict_mark(window, b, good, 28.0, &theme::palette(cx))).w(px(32.0)).h(px(32.0)).flex_shrink_0();
         let mut col = div().flex().flex_col().gap(px(m::SPACING * 2.0)).w_full();
@@ -1064,7 +1074,11 @@ fn results(r: &Report) -> AnyElement {
     div()
         .flex()
         .flex_col()
-        .child(StringView::new(format!("Tested on the {} touches kept back from training ({} palms, {} fingers):", r.contacts, r.palms, r.fingers)).size(style::LEAD_SIZE).height(style::line_row(style::LEAD_SIZE) + m::SPACING))
+        .child(
+            StringView::new(format!("Tested on the {} touches kept back from training ({} palms, {} fingers):", r.contacts, r.palms, r.fingers))
+                .size(style::LEAD_SIZE)
+                .height(style::line_row(style::LEAD_SIZE) + m::SPACING),
+        )
         .child(heads)
         .child(row("The new model", pct(r.palms_caught), pct(r.fingers_lost), true))
         .child(row("Olo's own model", pct(r.baseline_palms_caught), pct(r.baseline_fingers_lost), false))
@@ -1144,16 +1158,7 @@ impl Render for TrainerWindow {
             _ => {}
         }
         col = col.child(self.keys());
-        div()
-            .size_full()
-            .track_focus(&self.focus)
-            .on_key_down(cx.listener(Self::key_down))
-            .flex()
-            .flex_col()
-            .items_center()
-            .justify_center()
-            .p(px(MARGIN))
-            .child(col)
+        div().size_full().track_focus(&self.focus).on_key_down(cx.listener(Self::key_down)).flex().flex_col().items_center().justify_center().p(px(MARGIN)).child(col)
     }
 }
 

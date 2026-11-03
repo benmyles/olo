@@ -25,7 +25,10 @@ pub struct BladeContext {
 pub(super) struct PipelineCache {
     /// GPUI's shader, compiled (WGSL through naga: ~3 ms), once.
     shader: Option<Arc<gpu::Shader>>,
-    pub(super) sets: Vec<((gpu::SurfaceInfo, u32), Arc<super::blade_renderer::BladePipelines>)>,
+    pub(super) sets: Vec<(
+        (gpu::SurfaceInfo, u32),
+        Arc<super::blade_renderer::BladePipelines>,
+    )>,
     /// LCD subpixel glyphs' (the second-source blend), by format.
     pub(super) subpixel: Vec<(gpu::TextureFormat, Arc<gpu::RenderPipeline>)>,
 }
@@ -34,7 +37,11 @@ impl PipelineCache {
     /// GPUI's shader, compiled the first time.
     pub(super) fn shader(&mut self, gpu: &gpu::Context) -> Arc<gpu::Shader> {
         self.shader
-            .get_or_insert_with(|| Arc::new(gpu.create_shader(gpu::ShaderDesc { source: include_str!("shaders.wgsl") })))
+            .get_or_insert_with(|| {
+                Arc::new(gpu.create_shader(gpu::ShaderDesc {
+                    source: include_str!("shaders.wgsl"),
+                }))
+            })
             .clone()
     }
 }
@@ -46,7 +53,11 @@ impl BladeContext {
     pub fn ahead() -> std::thread::JoinHandle<anyhow::Result<BladeContext>> {
         std::thread::spawn(|| {
             let context = BladeContext::new()?;
-            context.pipelines.lock().unwrap_or_else(|e| e.into_inner()).shader(&context.gpu);
+            context
+                .pipelines
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .shader(&context.gpu);
             Ok(context)
         })
     }
@@ -78,7 +89,11 @@ impl BladeContext {
             .map_err(|e| anyhow::anyhow!("{e:?}"))?,
         );
         let atlas = Arc::new(super::BladeAtlas::new(&gpu));
-        Ok(Self { gpu, pipelines: Arc::default(), atlas })
+        Ok(Self {
+            gpu,
+            pipelines: Arc::default(),
+            atlas,
+        })
     }
 }
 

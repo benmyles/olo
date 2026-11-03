@@ -19,7 +19,11 @@ use std::{
 use olo_tg::{ChatId, ChatKind, Media, Message, MsgId, Pic};
 use olo_ui::{
     Menu,
-    gpui::{AnyElement, App, Bounds, ClickEvent, Context, CursorStyle, Entity, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, PathBuilder, Pixels, Point, RenderImage, ScrollHandle, StatefulInteractiveElement as _, Styled as _, Window, black, canvas, div, hsla, point, px, size, transparent_black, white},
+    gpui::{
+        AnyElement, App, Bounds, ClickEvent, Context, CursorStyle, Entity, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent,
+        MouseMoveEvent, ParentElement as _, PathBuilder, Pixels, Point, RenderImage, ScrollHandle, StatefulInteractiveElement as _, Styled as _, Window, black, canvas, div, hsla, point, px, size,
+        transparent_black, white,
+    },
     metrics as m,
     style::{self, Align, c},
     theme,
@@ -289,7 +293,18 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
             let room = info.origin.x - x - px(8.0);
             let t = style::label_fit(window, cx, x, head.origin.y + px(18.0), Align::Left, chat.title.clone(), style::PLAIN_SIZE + 1.0, style::ui_font(FontWeight::BOLD), ink, room);
             olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Heading", name: Some(chat.title.clone().into()), bounds: t, enabled: true, ..Default::default() });
-            let s = style::label_fit(window, cx, x, head.origin.y + px(35.0), Align::Left, status.clone(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), if live { look.accent } else { style::disabled_text(&p) }, room);
+            let s = style::label_fit(
+                window,
+                cx,
+                x,
+                head.origin.y + px(35.0),
+                Align::Left,
+                status.clone(),
+                style::DETAIL_SIZE,
+                style::ui_font(FontWeight::NORMAL),
+                if live { look.accent } else { style::disabled_text(&p) },
+                room,
+            );
             olo_ui::agent::record(window, cx, olo_ui::agent::Node::label(status, s));
             if info_hot {
                 disc(window, info.center(), 14.0, ink.opacity(0.08));
@@ -310,7 +325,8 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
     if let Some(topics) = tg.store.topics.get(&chat_id).filter(|t| !t.is_empty()) {
         let row = r(x0, top, w, TOPICS);
         let mut x = x0 + m::SPACING;
-        let all = std::iter::once((None, "All".to_owned(), 0u32, 0x6FB9F0u32)).chain(topics.iter().map(|t| (Some(t.id), t.emoji.clone().map_or_else(|| t.title.clone(), |e| format!("{e} {}", t.title)), t.unread, t.color)));
+        let all = std::iter::once((None, "All".to_owned(), 0u32, 0x6FB9F0u32))
+            .chain(topics.iter().map(|t| (Some(t.id), t.emoji.clone().map_or_else(|| t.title.clone(), |e| format!("{e} {}", t.title)), t.unread, t.color)));
         let size_ = style::SMALL_SIZE + 0.5;
         let normal = style::ui_font(FontWeight::NORMAL);
         let bold = style::ui_font(FontWeight::BOLD);
@@ -337,7 +353,13 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
             for (id, title, unread, color, b, tw, hot) in chips {
                 let chosen = topic == id;
                 let b = style::snap(window, b);
-                let face = if chosen { c(p.list_selected_background) } else if hot { ink.opacity(0.08) } else { transparent_black() };
+                let face = if chosen {
+                    c(p.list_selected_background)
+                } else if hot {
+                    ink.opacity(0.08)
+                } else {
+                    transparent_black()
+                };
                 window.paint_quad(olo_ui::gpui::fill(b, face).corner_radii(px(11.0)));
                 // The dot on the name's capitals, the count on its baseline.
                 let base = style::baseline_at(window, b.center().y, size_);
@@ -347,7 +369,11 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
                 if unread > 0 {
                     style::pill_on_baseline(window, cx, b.origin.x + px(20.0 + tw), base, &unread.to_string(), size_, style::ui_font(FontWeight::BOLD), accent, white());
                 }
-                olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Tab", name: Some(title.into()), bounds: b, enabled: true, clickable: true, selected: Some(chosen), ..Default::default() });
+                olo_ui::agent::record(
+                    window,
+                    cx,
+                    olo_ui::agent::Node { role: "Tab", name: Some(title.into()), bounds: b, enabled: true, clickable: true, selected: Some(chosen), ..Default::default() },
+                );
             }
             style::hline_above(window, row.origin.x, row.right(), row.bottom(), c(p.shadow).opacity(0.35));
         }));
@@ -378,7 +404,15 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
         conv.plan = None;
     }
     let thread = store.threads.get(&(chat_id, topic));
-    let key = PlanKey { version: thread.map_or(0, |t| t.version), unread_from: conv.unread_from, h24: *h24, today: when::day_number(when::now()), revealed: conv.revealed.len(), many: chat.kind.many(), width: col.round() as u32 };
+    let key = PlanKey {
+        version: thread.map_or(0, |t| t.version),
+        unread_from: conv.unread_from,
+        h24: *h24,
+        today: when::day_number(when::now()),
+        revealed: conv.revealed.len(),
+        many: chat.kind.many(),
+        width: col.round() as u32,
+    };
     if conv.plan.as_ref().is_none_or(|p| p.key != key || p.partial) {
         conv.plan = Some(plan(thread, topic, conv.unread_from, &conv.revealed, &mut conv.layouts, &look, col, *h24, key, window));
     }
@@ -662,12 +696,30 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
 /// line, laid out (newest first, within [`LAY_BUDGET`]; the rest
 /// guessed) and placed.
 #[allow(clippy::too_many_arguments)]
-fn plan(thread: Option<&crate::store::Thread>, topic: Option<MsgId>, unread_from: Option<MsgId>, revealed: &HashSet<MsgId>, layouts: &mut Layouts, look: &Look, col: f32, h24: bool, key: PlanKey, window: &mut Window) -> Plan {
+fn plan(
+    thread: Option<&crate::store::Thread>,
+    topic: Option<MsgId>,
+    unread_from: Option<MsgId>,
+    revealed: &HashSet<MsgId>,
+    layouts: &mut Layouts,
+    look: &Look,
+    col: f32,
+    h24: bool,
+    key: PlanKey,
+    window: &mut Window,
+) -> Plan {
     let mut entries: Vec<(What, Option<&Message>)> = Vec::new();
     if let Some(t) = thread {
         let all: Vec<&Message> = t.all().filter(|m| topic.is_none() || m.topic == topic || m.id == topic.unwrap_or(0)).collect();
         let mut last_day = None;
-        let same = |a: &Message, b: &Message| a.service.is_none() && b.service.is_none() && a.out == b.out && a.from.as_ref().map(|f| f.id) == b.from.as_ref().map(|f| f.id) && (b.date - a.date).abs() < 300 && when::day_number(a.date) == when::day_number(b.date);
+        let same = |a: &Message, b: &Message| {
+            a.service.is_none()
+                && b.service.is_none()
+                && a.out == b.out
+                && a.from.as_ref().map(|f| f.id) == b.from.as_ref().map(|f| f.id)
+                && (b.date - a.date).abs() < 300
+                && when::day_number(a.date) == when::day_number(b.date)
+        };
         for (i, m) in all.iter().enumerate() {
             let day = when::day_number(m.date);
             if last_day != Some(day) {
@@ -715,16 +767,26 @@ fn plan(thread: Option<&crate::store::Thread>, topic: Option<MsgId>, unread_from
             (What::Msg { place, .. }, Some((What::Msg { .. }, _))) if !place.last => GAP,
             _ => RUN_GAP,
         };
-        items.push(Planned { what: match what {
-            What::Day(t) => What::Day(t.clone()),
-            What::Unread => What::Unread,
-            &What::Msg { key, id, place, theirs } => What::Msg { key, id, place, theirs },
-        }, y, h: *h });
+        items.push(Planned {
+            what: match what {
+                What::Day(t) => What::Day(t.clone()),
+                What::Unread => What::Unread,
+                &What::Msg { key, id, place, theirs } => What::Msg { key, id, place, theirs },
+            },
+            y,
+            h: *h,
+        });
         y += h + gap;
     }
     // Layouts of messages gone (deleted, sent under another id) go too.
     if !partial && layouts.laid.len() > items.len() + 64 {
-        let keep: HashSet<i64> = items.iter().filter_map(|it| match it.what { What::Msg { key, .. } => Some(key), _ => None }).collect();
+        let keep: HashSet<i64> = items
+            .iter()
+            .filter_map(|it| match it.what {
+                What::Msg { key, .. } => Some(key),
+                _ => None,
+            })
+            .collect();
         layouts.laid.retain(|k, _| keep.contains(k));
     }
     Plan { key, items, content: y + MARGIN - RUN_GAP, oldest: thread.and_then(|t| t.oldest()), partial }
@@ -853,7 +915,9 @@ pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut
             style::hline(window, rect.origin.x, rect.right(), rect.origin.y, c(p.shadow).opacity(0.5));
             if let Some((bar, x, q)) = quote {
                 let accent = look.accent;
-                window.paint_quad(olo_ui::gpui::fill(style::snap(window, Bounds { origin: point(bar.origin.x + px(28.0), bar.origin.y + px(2.0)), size: size(px(2.5), px(30.0)) }), accent).corner_radii(px(1.0)));
+                window.paint_quad(
+                    olo_ui::gpui::fill(style::snap(window, Bounds { origin: point(bar.origin.x + px(28.0), bar.origin.y + px(2.0)), size: size(px(2.5), px(30.0)) }), accent).corner_radii(px(1.0)),
+                );
                 // A curved arrow (reply) or a pencil (edit).
                 let ic = point(bar.origin.x + px(12.0), bar.center().y);
                 let at = |dx: f32, dy: f32| point(ic.x + px(dx), ic.y + px(dy));
@@ -867,7 +931,18 @@ pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut
                 }
                 let head = if editing { "Edit Message".to_owned() } else { format!("Reply to {}", q.from.as_ref().map_or("message", |f| f.name.as_str())) };
                 style::label(window, cx, bar.origin.x + px(38.0), bar.origin.y + px(10.0), Align::Left, head, style::SMALL_SIZE + 0.5, style::ui_font(FontWeight::BOLD), accent);
-                style::label_fit(window, cx, bar.origin.x + px(38.0), bar.origin.y + px(25.0), Align::Left, q.summary().replace('\n', " "), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), c(p.panel_text), bar.size.width - px(80.0));
+                style::label_fit(
+                    window,
+                    cx,
+                    bar.origin.x + px(38.0),
+                    bar.origin.y + px(25.0),
+                    Align::Left,
+                    q.summary().replace('\n', " "),
+                    style::DETAIL_SIZE,
+                    style::ui_font(FontWeight::NORMAL),
+                    c(p.panel_text),
+                    bar.size.width - px(80.0),
+                );
                 close_mark(window, x.center(), if x_hot { c(p.panel_text) } else { style::disabled_text(&p) });
                 olo_ui::agent::record(window, cx, olo_ui::agent::Node::button("Cancel Reply", x));
             }
@@ -881,12 +956,23 @@ pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut
             paperclip(window, attach.center(), if attach_hot { look.accent } else { style::disabled_text(&p) });
             olo_ui::agent::record(window, cx, olo_ui::agent::Node::button("Attach Files", attach));
             let well = style::snap(window, well);
-            window.paint_quad(olo_ui::gpui::quad(well, px(18.0), c(p.document_background), style::hairline(window), c(olo_ui::palette::mix(p.panel_background, p.panel_text, 0.22)), olo_ui::gpui::BorderStyle::Solid));
+            window.paint_quad(olo_ui::gpui::quad(
+                well,
+                px(18.0),
+                c(p.document_background),
+                style::hairline(window),
+                c(olo_ui::palette::mix(p.panel_background, p.panel_text, 0.22)),
+                olo_ui::gpui::BorderStyle::Solid,
+            ));
             let face = if can_send { look.accent } else { look.accent.opacity(0.35) };
             let face = if send_hot && can_send { bubble::blend(face, black(), 0.1) } else { face };
             disc(window, send.center(), 17.0, face);
             plane(window, send.center(), white());
-            olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Button", name: Some(if editing { "Save" } else { "Send" }.into()), bounds: send, enabled: can_send, clickable: can_send, ..Default::default() });
+            olo_ui::agent::record(
+                window,
+                cx,
+                olo_ui::agent::Node { role: "Button", name: Some(if editing { "Save" } else { "Send" }.into()), bounds: send, enabled: can_send, clickable: can_send, ..Default::default() },
+            );
         }));
     }
     if let Some((_, x, _)) = &quote {

@@ -19,7 +19,16 @@ const CELL: f32 = 256.0;
 const FAR: i32 = 512;
 
 /// What a cell's coordinate comes from.
-pub(crate) trait GridUnit: Copy + Clone + Debug + Default + PartialEq + PartialOrd + std::ops::Add<Output = Self> + std::ops::Sub<Output = Self> {
+pub(crate) trait GridUnit:
+    Copy
+    + Clone
+    + Debug
+    + Default
+    + PartialEq
+    + PartialOrd
+    + std::ops::Add<Output = Self>
+    + std::ops::Sub<Output = Self>
+{
     fn grid(self) -> f32;
 }
 
@@ -73,7 +82,12 @@ where
     fn span(bounds: &Bounds<U>) -> (i32, i32, i32, i32) {
         let at = |v: f32| ((v / CELL).floor() as i32).clamp(-FAR, FAR);
         let end = bounds.bottom_right();
-        (at(bounds.origin.x.grid()), at(end.x.grid()), at(bounds.origin.y.grid()), at(end.y.grid()))
+        (
+            at(bounds.origin.x.grid()),
+            at(end.x.grid()),
+            at(bounds.origin.y.grid()),
+            at(end.y.grid()),
+        )
     }
 
     /// `new_bounds`' order: one more than the highest of what it overlaps.
@@ -82,7 +96,9 @@ where
         let mut max = 0;
         for y in y0..=y1 {
             for x in x0..=x1 {
-                let Some(cell) = self.cells.get(&(x, y)) else { continue };
+                let Some(cell) = self.cells.get(&(x, y)) else {
+                    continue;
+                };
                 if cell.max <= max {
                     continue;
                 }
@@ -113,7 +129,10 @@ where
     U: GridUnit,
 {
     fn default() -> Self {
-        BoundsTree { things: Vec::new(), cells: FxHashMap::default() }
+        BoundsTree {
+            things: Vec::new(),
+            cells: FxHashMap::default(),
+        }
     }
 }
 
@@ -187,7 +206,13 @@ mod tests {
     #[test]
     #[ignore]
     fn bounds_tree_cards() {
-        let r = |x: f32, y: f32, w: f32, h: f32| Bounds { origin: Point { x, y }, size: Size { width: w, height: h } };
+        let r = |x: f32, y: f32, w: f32, h: f32| Bounds {
+            origin: Point { x, y },
+            size: Size {
+                width: w,
+                height: h,
+            },
+        };
         let mut rects = vec![r(0.0, 0.0, 3456.0, 2234.0), r(0.0, 30.0, 3456.0, 2204.0)];
         for col in 0..6 {
             let x = 10.0 + col as f32 * 570.0;
@@ -208,7 +233,12 @@ mod tests {
             let mut tree = BoundsTree::<f32>::default();
             orders = rects.iter().map(|b| tree.insert(*b)).collect::<Vec<_>>();
         }
-        println!("{} rects: {:.3} ms a frame, orders up to {}", rects.len(), t.elapsed().as_secs_f64() * 100.0, orders.iter().max().unwrap());
+        println!(
+            "{} rects: {:.3} ms a frame, orders up to {}",
+            rects.len(),
+            t.elapsed().as_secs_f64() * 100.0,
+            orders.iter().max().unwrap()
+        );
     }
 
     #[test]

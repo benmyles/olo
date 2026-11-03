@@ -33,10 +33,7 @@ pub struct PointerElement {
 
 impl Default for PointerElement {
     fn default() -> Self {
-        Self {
-            buffer: Default::default(),
-            status: CursorImageStatus::default_named(),
-        }
+        Self { buffer: Default::default(), status: CursorImageStatus::default_named() }
     }
 }
 
@@ -73,13 +70,7 @@ where
     R: Renderer<TextureId = T> + ImportAll + ImportMem,
 {
     type RenderElement = PointerRenderElement<R>;
-    fn render_elements<E>(
-        &self,
-        renderer: &mut R,
-        location: Point<i32, Physical>,
-        scale: Scale<f64>,
-        alpha: f32,
-    ) -> Vec<E>
+    fn render_elements<E>(&self, renderer: &mut R, location: Point<i32, Physical>, scale: Scale<f64>, alpha: f32) -> Vec<E>
     where
         E: From<PointerRenderElement<R>>,
     {
@@ -92,16 +83,8 @@ where
                     let size = crate::cursor::SIZE as i32;
                     vec![
                         PointerRenderElement::<R>::from(
-                            MemoryRenderBufferRenderElement::from_buffer(
-                                renderer,
-                                location.to_f64(),
-                                buffer,
-                                None,
-                                Some(src),
-                                Some((size, size).into()),
-                                Kind::Cursor,
-                            )
-                            .expect("Lost system pointer buffer"),
+                            MemoryRenderBufferRenderElement::from_buffer(renderer, location.to_f64(), buffer, None, Some(src), Some((size, size).into()), Kind::Cursor)
+                                .expect("Lost system pointer buffer"),
                         )
                         .into(),
                     ]
@@ -117,14 +100,7 @@ where
                 // window and Olo's own cursor took the plane (2026-11-01).
                 // Olo's cursors, the ones that move all day, keep it.
                 let elements: Vec<PointerRenderElement<R>> =
-                    smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
-                        renderer,
-                        surface,
-                        location,
-                        scale,
-                        alpha,
-                        Kind::Unspecified,
-                    );
+                    smithay::backend::renderer::element::surface::render_elements_from_surface_tree(renderer, surface, location, scale, alpha, Kind::Unspecified);
                 elements.into_iter().map(E::from).collect()
             }
         }
@@ -146,12 +122,7 @@ pub struct FpsElement<T: Texture> {
 #[cfg(feature = "debug")]
 impl<T: Texture> FpsElement<T> {
     pub fn new(texture: T) -> Self {
-        FpsElement {
-            id: Id::new(),
-            texture,
-            value: 0,
-            commit_counter: CommitCounter::default(),
-        }
+        FpsElement { id: Id::new(), texture, value: 0, commit_counter: CommitCounter::default() }
     }
 
     pub fn update_fps(&mut self, fps: u32) {
@@ -224,11 +195,7 @@ where
         for digit in value_str.chars().map(|d| d.to_digit(10).unwrap()) {
             let digit_location = dst.loc.to_f64() + offset;
             let digit_size = Size::<i32, Logical>::from((22, 35)).to_f64().to_physical(scale);
-            let dst = Rectangle::new(
-                digit_location.to_i32_round(),
-                ((digit_size.to_point() + digit_location).to_i32_round() - digit_location.to_i32_round())
-                    .to_size(),
-            );
+            let dst = Rectangle::new(digit_location.to_i32_round(), ((digit_size.to_point() + digit_location).to_i32_round() - digit_location.to_i32_round()).to_size());
             let damage = damage
                 .iter()
                 .cloned()
@@ -252,15 +219,7 @@ where
                 _ => unreachable!(),
             };
 
-            frame.render_texture_from_to(
-                &self.texture,
-                texture_src.to_f64(),
-                dst,
-                &damage,
-                &[],
-                Transform::Normal,
-                1.0,
-            )?;
+            frame.render_texture_from_to(&self.texture, texture_src.to_f64(), dst, &damage, &[], Transform::Normal, 1.0)?;
             offset += Point::from((24.0, 0.0)).to_physical(scale);
         }
 

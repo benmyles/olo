@@ -39,11 +39,11 @@ mod email;
 mod files;
 mod inhibit;
 mod picker;
+mod pictures;
 mod portal;
 mod print;
 mod shortcuts;
 mod shot;
-mod pictures;
 mod stream;
 mod ui;
 mod wallpaper;
@@ -275,7 +275,9 @@ impl Portal {
 }
 
 fn usage() -> std::process::ExitCode {
-    eprintln!("usage: olo-portal --service | --bus ADDRESS | capture-test OUT.png [OUTPUT] | stream-test [OUTPUT|-] [SECONDS] | share-test OUT.png [--bus ADDRESS] [--hold SECS] [--types 1|2|3] [--dmabuf|--linear] | read-test NODE OUT.png [--hold SECS] [--dmabuf|--linear] | --stop SESSION");
+    eprintln!(
+        "usage: olo-portal --service | --bus ADDRESS | capture-test OUT.png [OUTPUT] | stream-test [OUTPUT|-] [SECONDS] | share-test OUT.png [--bus ADDRESS] [--hold SECS] [--types 1|2|3] [--dmabuf|--linear] | read-test NODE OUT.png [--hold SECS] [--dmabuf|--linear] | --stop SESSION"
+    );
     std::process::ExitCode::FAILURE
 }
 

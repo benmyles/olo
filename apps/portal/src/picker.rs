@@ -241,7 +241,8 @@ impl Picker {
     /// often as it changes (a screen at most twice a second, a window
     /// every two seconds).
     fn watch(&self, to_ui: async_channel::Sender<Thumb>) {
-        let items: Vec<(String, Source, bool)> = self.screens.iter().map(|s| (s.key.clone(), s.source.clone(), true)).chain(self.windows.iter().map(|w| (w.key.clone(), w.source.clone(), false))).collect();
+        let items: Vec<(String, Source, bool)> =
+            self.screens.iter().map(|s| (s.key.clone(), s.source.clone(), true)).chain(self.windows.iter().map(|w| (w.key.clone(), w.source.clone(), false))).collect();
         let (pixels, stop) = (self.pixels.clone(), self.stop.clone());
         let _ = std::thread::Builder::new().name("picker-thumbnails".into()).spawn(move || {
             let mut captures: Vec<(String, bool, Option<Capture>, Instant)> = items
@@ -403,11 +404,7 @@ impl Render for Picker {
             body = if fits {
                 body.child(grid)
             } else {
-                body.child(
-                    div().h(px(windows_height(self.windows.len()) + 4.0)).child(
-                        ScrollView::new("windows", &self.scroll).border(false).auto_hide(true).child(div().p(px(2.0)).child(grid)),
-                    ),
-                )
+                body.child(div().h(px(windows_height(self.windows.len()) + 4.0)).child(ScrollView::new("windows", &self.scroll).border(false).auto_hide(true).child(div().p(px(2.0)).child(grid))))
             };
         }
         let cancel = Button::new("Cancel").on_click({
@@ -439,7 +436,10 @@ impl Render for Picker {
 /// The last frame of `cap`, shrunk to fit `(w, h)` device pixels, in
 /// its own proportions, as GPUI draws it (BGRA: the frame's own order).
 fn shrink(cap: &Capture, (w, h): (u32, u32), frame: &mut Vec<u8>) -> Option<Arc<RenderImage>> {
-    use fast_image_resize::{PixelType, ResizeAlg, ResizeOptions, Resizer, images::{Image, ImageRef}};
+    use fast_image_resize::{
+        PixelType, ResizeAlg, ResizeOptions, Resizer,
+        images::{Image, ImageRef},
+    };
     let (sw, sh) = cap.frame_size()?;
     frame.resize((sw * sh * 4) as usize, 0);
     cap.copy_into(frame, sw as usize * 4).ok()?;
@@ -502,4 +502,3 @@ mod tests {
         assert!(with > h && many > with && many == six);
     }
 }
-

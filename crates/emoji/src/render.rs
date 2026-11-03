@@ -1,6 +1,5 @@
 //! Drawing colour glyphs (the `render` feature).
 
-
 use skrifa::{
     FontRef, GlyphId, MetadataProvider,
     color::{Brush, ColorGlyphCollection, ColorPainter, ColorStop, CompositeMode, Extend, Transform as FontTransform},
@@ -9,8 +8,7 @@ use skrifa::{
     raw::types::BoundingBox,
 };
 use tiny_skia::{
-    BlendMode, Color, FillRule, GradientStop, LinearGradient, Mask, Paint, Path, PathBuilder, Pixmap, PixmapPaint, Point,
-    RadialGradient, Rect, Shader, SpreadMode, SweepGradient, Transform,
+    BlendMode, Color, FillRule, GradientStop, LinearGradient, Mask, Paint, Path, PathBuilder, Pixmap, PixmapPaint, Point, RadialGradient, Rect, Shader, SpreadMode, SweepGradient, Transform,
 };
 
 /// A colour font, loaded once and kept for the life of the process.
@@ -102,11 +100,7 @@ impl ColorFont {
         let scale = height as f32 / span;
         let advance = font.glyph_metrics(Size::unscaled(), LocationRef::default()).advance_width(GlyphId::new(glyph)).unwrap_or(span);
         let width = (advance * scale).round().max(1.0) as u32;
-        let palette: Vec<Color> = font
-            .color_palettes()
-            .get(0)
-            .map(|p| p.colors().iter().map(|c| Color::from_rgba8(c.red, c.green, c.blue, c.alpha)).collect())
-            .unwrap_or_default();
+        let palette: Vec<Color> = font.color_palettes().get(0).map(|p| p.colors().iter().map(|c| Color::from_rgba8(c.red, c.green, c.blue, c.alpha)).collect()).unwrap_or_default();
         let mut painter = Painter {
             font: font.clone(),
             palette,
@@ -283,11 +277,8 @@ fn clamp_radii(c0: (f32, f32), r0: f32, c1: (f32, f32), r1: f32, stops: &[ColorS
     let at = (lerp(c0.0, c1.0, t), lerp(c0.1, c1.1, t));
     let (keep_from, (a, b)): (bool, (Circle, Circle)) = if r0 < 0.0 { (true, ((at, 0.0), (c1, r1))) } else { (false, ((c0, r0), (at, 0.0))) };
     // Stops are resolved later; keep palette stops and remap offsets.
-    out = if keep_from {
-        out.into_iter().filter(|&(o, _)| o >= t).map(|(o, c)| ((o - t) / (1.0 - t), c)).collect()
-    } else {
-        out.into_iter().filter(|&(o, _)| o <= t).map(|(o, c)| (o / t, c)).collect()
-    };
+    out =
+        if keep_from { out.into_iter().filter(|&(o, _)| o >= t).map(|(o, c)| ((o - t) / (1.0 - t), c)).collect() } else { out.into_iter().filter(|&(o, _)| o <= t).map(|(o, c)| (o / t, c)).collect() };
     if out.is_empty() {
         out.push((0.0, StopColor::Mixed(Color::TRANSPARENT)));
     }
@@ -423,11 +414,7 @@ mod tests {
 
     #[test]
     fn radii_clamped_at_zero() {
-        let stops = [
-            ColorStop { offset: 0.0, palette_index: 0, alpha: 1.0 },
-            ColorStop { offset: 0.5, palette_index: 1, alpha: 1.0 },
-            ColorStop { offset: 1.0, palette_index: 2, alpha: 1.0 },
-        ];
+        let stops = [ColorStop { offset: 0.0, palette_index: 0, alpha: 1.0 }, ColorStop { offset: 0.5, palette_index: 1, alpha: 1.0 }, ColorStop { offset: 1.0, palette_index: 2, alpha: 1.0 }];
         let (c0, r0, _, r1, s) = clamp_radii((0.0, 0.0), -10.0, (10.0, 0.0), 10.0, &stops);
         assert_eq!((c0, r0, r1), ((5.0, 0.0), 0.0, 10.0));
         let offsets: Vec<f32> = s.iter().map(|s| s.0).collect();
@@ -437,16 +424,8 @@ mod tests {
     #[test]
     fn single_and_sequences() {
         let Some(font) = noto() else { return };
-        for (name, text) in [
-            ("grin", "😀"),
-            ("thumbs", "👍🏽"),
-            ("technologist", "👩‍💻"),
-            ("flag", "🇳🇴"),
-            ("keycap", "1️⃣"),
-            ("heart", "❤️"),
-            ("rainbow", "🌈"),
-            ("fire", "🔥"),
-        ] {
+        for (name, text) in [("grin", "😀"), ("thumbs", "👍🏽"), ("technologist", "👩‍💻"), ("flag", "🇳🇴"), ("keycap", "1️⃣"), ("heart", "❤️"), ("rainbow", "🌈"), ("fire", "🔥")]
+        {
             let g = font.glyph(text).unwrap_or_else(|| panic!("{name}: one colour glyph"));
             let img = font.render(g, 64, [0, 0, 0, 255]).expect("rendered");
             assert!(img.width > 40 && img.width < 120, "{name}: {}", img.width);

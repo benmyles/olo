@@ -9,8 +9,8 @@ use std::time::{Duration, Instant};
 use olo_protocol::{Mode, OutputConfig, OutputInfo, PowerStatus};
 use olo_ui::{
     gpui::{
-        Bounds, DispatchPhase, FontWeight, IntoElement as _, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, ScrollHandle, SharedString, Styled as _, canvas, div,
-        point, px, rgb, size,
+        Bounds, DispatchPhase, FontWeight, IntoElement as _, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, ScrollHandle, SharedString, Styled as _,
+        canvas, div, point, px, rgb, size,
     },
     metrics as m,
     style::{self, c},
@@ -59,13 +59,7 @@ fn overlaps(a: LRect, b: LRect) -> bool {
 pub fn snap((x, y, w, h): LRect, others: &[LRect]) -> Option<(i32, i32)> {
     const SHARE: f64 = 64.0;
     let align = 0.06 * w.max(h);
-    let near = |v: f64, targets: [f64; 3]| {
-        targets
-            .into_iter()
-            .filter(|t| (v - t).abs() < align)
-            .min_by(|a, b| (v - a).abs().total_cmp(&(v - b).abs()))
-            .unwrap_or(v)
-    };
+    let near = |v: f64, targets: [f64; 3]| targets.into_iter().filter(|t| (v - t).abs() < align).min_by(|a, b| (v - a).abs().total_cmp(&(v - b).abs())).unwrap_or(v);
     let mut best: Option<((f64, f64), f64)> = None;
     for &(ox, oy, ow, oh) in others {
         let yy = near(y.clamp(oy - h + SHARE, oy + oh - SHARE), [oy, oy + oh - h, oy + (oh - h) / 2.0]);
@@ -239,7 +233,11 @@ fn map(ui: &mut Ui, all: &[OutputInfo], server: &Server, st: &State) {
             let bar = Bounds { origin: point(r.left() + line, r.top() + line), size: size(r.size.width - line * 2.0, px(4.0)) };
             style::fill_rect(window, bar, c(p.panel_background));
             style::label(window, cx, r.center().x, r.center().y, style::Align::Center, names[i].clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), c(p.desktop_text));
-            olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Button", name: Some(names[i].clone().into()), bounds: r, enabled: true, clickable: true, selected: Some(chosen), ..Default::default() });
+            olo_ui::agent::record(
+                window,
+                cx,
+                olo_ui::agent::Node { role: "Button", name: Some(names[i].clone().into()), bounds: r, enabled: true, clickable: true, selected: Some(chosen), ..Default::default() },
+            );
         }
         let draggable = placed.len() > 1;
         let (down, moved, up) = (view.clone(), view.clone(), view.clone());
@@ -405,15 +403,7 @@ fn display_box(ui: &mut Ui, o: &OutputInfo, outputs: &[OutputInfo], power: Optio
         } else {
             CheckBox::new("Make this the main display", false).on_toggle(make_main).into_any_element()
         };
-        ui.add(
-            div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .pl(px(label_w))
-                .child(div().flex_1().child(left))
-                .child(Button::new("Identify").on_click(move |_, _| server.identify_outputs())),
-        );
+        ui.add(div().flex().flex_row().items_center().pl(px(label_w)).child(div().flex_1().child(left)).child(Button::new("Identify").on_click(move |_, _| server.identify_outputs())));
     }
 
     // Each display whose brightness app_server can set (the built-in
@@ -449,13 +439,7 @@ fn panel_box(ui: &mut Ui, o: &OutputInfo, label_w: f32, server: &Server) {
     ui.bbox("Panel", |ui| {
         // A label in the fields' label column, its value under their text.
         let row = |ui: &mut Ui, label: &str, value: &str| {
-            ui.add(
-                div()
-                    .flex()
-                    .flex_row()
-                    .child(div().w(px(label_w + m::TEXT_INSET)).flex_shrink_0().child(StringView::new(label.to_owned())))
-                    .child(StringView::new(value.to_owned())),
-            );
+            ui.add(div().flex().flex_row().child(div().w(px(label_w + m::TEXT_INSET)).flex_shrink_0().child(StringView::new(label.to_owned()))).child(StringView::new(value.to_owned())));
         };
         let maker = [o.make.as_str(), o.model.as_str()].iter().filter(|s| !s.is_empty() && **s != "Unknown").copied().collect::<Vec<_>>().join(" ");
         row(ui, "Make:", if maker.is_empty() { "Not told" } else { &maker });

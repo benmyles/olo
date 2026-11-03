@@ -18,8 +18,8 @@ use std::{
     time::Duration,
 };
 
-use serde_json::Value;
 use olo_keychain::{CallError, CliQuery, Request, Response};
+use serde_json::Value;
 
 /// What `op --version` says (the 1Password CLI release we behave like).
 const VERSION: &str = "2.32.0";
@@ -58,10 +58,8 @@ struct Args {
 }
 
 /// Flags that take no value.
-const SWITCHES: &[&str] = &[
-    "reveal", "otp", "force", "f", "no-newline", "n", "no-masking", "raw", "help", "h", "version", "v", "debug",
-    "no-color", "iso-timestamps", "cache", "include-archive", "all", "favorite", "long",
-];
+const SWITCHES: &[&str] =
+    &["reveal", "otp", "force", "f", "no-newline", "n", "no-masking", "raw", "help", "h", "version", "v", "debug", "no-color", "iso-timestamps", "cache", "include-archive", "all", "favorite", "long"];
 
 impl Args {
     fn parse(argv: Vec<String>) -> Args {
@@ -137,10 +135,7 @@ fn run(argv: Vec<String>) -> Result<ExitCode> {
         ["read", reference] => read(&a, reference),
         ["inject"] => inject(&a),
         ["run"] => op_run(&a),
-        _ => Err(Fail(format!(
-            "Olo’s op doesn’t do “{}” (it reads: read, inject, run, item get/list, vault list/get, whoami, account list, signin). Make changes in Passwords.",
-            words.join(" ")
-        ))),
+        _ => Err(Fail(format!("Olo’s op doesn’t do “{}” (it reads: read, inject, run, item get/list, vault list/get, whoami, account list, signin). Make changes in Passwords.", words.join(" ")))),
     }
 }
 
@@ -252,10 +247,9 @@ fn account(a: &Args) -> Result<Value> {
     let list = accounts()?;
     let want = a.get(&["account"]).map(str::to_string).or_else(|| std::env::var("OP_ACCOUNT").ok());
     let found = match &want {
-        Some(w) => list.iter().find(|x| {
-            ["url", "email", "account_uuid", "user_uuid"].iter().any(|k| s(x, k).eq_ignore_ascii_case(w))
-                || s(x, "url").split('.').next().is_some_and(|sub| sub.eq_ignore_ascii_case(w))
-        }),
+        Some(w) => list
+            .iter()
+            .find(|x| ["url", "email", "account_uuid", "user_uuid"].iter().any(|k| s(x, k).eq_ignore_ascii_case(w)) || s(x, "url").split('.').next().is_some_and(|sub| sub.eq_ignore_ascii_case(w))),
         None => list.first(),
     };
     found.cloned().ok_or_else(|| Fail(format!("account \"{}\" isn’t one Passwords knows", want.unwrap_or_default())))
@@ -299,13 +293,8 @@ fn vault_list(a: &Args) -> Result<ExitCode> {
 
 fn vault_get(a: &Args, key: &str) -> Result<ExitCode> {
     let v = ask(CliQuery::Vaults)?;
-    let vault = v
-        .as_array()
-        .into_iter()
-        .flatten()
-        .find(|x| s(x, "id") == key || s(x, "name").eq_ignore_ascii_case(key))
-        .cloned()
-        .ok_or_else(|| Fail(format!("\"{key}\" isn't a vault in this account")))?;
+    let vault =
+        v.as_array().into_iter().flatten().find(|x| s(x, "id") == key || s(x, "name").eq_ignore_ascii_case(key)).cloned().ok_or_else(|| Fail(format!("\"{key}\" isn't a vault in this account")))?;
     if a.json() {
         return print_json(&vault);
     }
@@ -317,26 +306,20 @@ fn vault_get(a: &Args, key: &str) -> Result<ExitCode> {
 
 fn item_list(a: &Args) -> Result<ExitCode> {
     let v = ask(CliQuery::Items { vault: a.get(&["vault"]).map(str::to_string) })?;
-    let split = |names: &[&str]| -> Vec<String> {
-        a.all(names).iter().flat_map(|x| x.split(',')).map(|x| x.trim().to_ascii_uppercase().replace(' ', "_")).filter(|x| !x.is_empty()).collect()
-    };
+    let split = |names: &[&str]| -> Vec<String> { a.all(names).iter().flat_map(|x| x.split(',')).map(|x| x.trim().to_ascii_uppercase().replace(' ', "_")).filter(|x| !x.is_empty()).collect() };
     let (categories, tags) = (split(&["categories"]), split(&["tags"]));
     let items: Vec<Value> = v
         .as_array()
         .into_iter()
         .flatten()
         .filter(|x| categories.is_empty() || categories.contains(&s(x, "category")))
-        .filter(|x| {
-            tags.is_empty()
-                || x["tags"].as_array().is_some_and(|t| t.iter().any(|t| tags.contains(&t.as_str().unwrap_or("").to_ascii_uppercase().replace(' ', "_"))))
-        })
+        .filter(|x| tags.is_empty() || x["tags"].as_array().is_some_and(|t| t.iter().any(|t| tags.contains(&t.as_str().unwrap_or("").to_ascii_uppercase().replace(' ', "_")))))
         .cloned()
         .collect();
     if a.json() {
         return print_json(&Value::Array(items));
     }
-    let rows: Vec<Vec<String>> =
-        items.iter().map(|x| vec![s(x, "id"), s(x, "title"), s(&x["vault"], "name"), ago(&s(x, "updated_at"))]).collect();
+    let rows: Vec<Vec<String>> = items.iter().map(|x| vec![s(x, "id"), s(x, "title"), s(&x["vault"], "name"), ago(&s(x, "updated_at"))]).collect();
     table(&["ID", "TITLE", "VAULT", "EDITED"], &rows);
     Ok(ExitCode::SUCCESS)
 }
@@ -384,10 +367,7 @@ fn item_get(a: &Args, key: &str) -> Result<ExitCode> {
                 many => Value::Array(many.iter().map(|f| (*f).clone()).collect()),
             });
         }
-        let values: Vec<String> = fields
-            .iter()
-            .map(|f| if concealed(f) && !reveal { format!("[use 'op item get {} --reveal' to reveal]", s(&item, "id")) } else { s(f, "value") })
-            .collect();
+        let values: Vec<String> = fields.iter().map(|f| if concealed(f) && !reveal { format!("[use 'op item get {} --reveal' to reveal]", s(&item, "id")) } else { s(f, "value") }).collect();
         println!("{}", values.join(","));
         return Ok(ExitCode::SUCCESS);
     }
@@ -610,11 +590,7 @@ mod tests {
 
     #[test]
     fn arguments() {
-        let a = Args::parse(
-            ["item", "get", "My Item", "--vault=Dev", "--fields", "label=password,username", "--reveal", "--format", "json", "-o", "x"]
-                .map(String::from)
-                .to_vec(),
-        );
+        let a = Args::parse(["item", "get", "My Item", "--vault=Dev", "--fields", "label=password,username", "--reveal", "--format", "json", "-o", "x"].map(String::from).to_vec());
         assert_eq!(a.words, ["item", "get", "My Item"]);
         assert_eq!(a.get(&["vault"]), Some("Dev"));
         assert_eq!(a.get(&["fields"]), Some("label=password,username"));

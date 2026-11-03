@@ -26,8 +26,8 @@ use olo_protocol::{CardSize, HistoryView, NoteStyle};
 use olo_ui::{
     Menu, MenuBar, agent,
     gpui::{
-        self, App, Bounds, Context, Corners, Entity, FocusHandle, Focusable as _, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Point, Render,
-        ScrollHandle, StatefulInteractiveElement as _, Styled as _, Subscription, Window, canvas, div, point, px, size,
+        self, App, Bounds, Context, Corners, Entity, FocusHandle, Focusable as _, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
+        ParentElement as _, Pixels, Point, Render, ScrollHandle, StatefulInteractiveElement as _, Styled as _, Subscription, Window, canvas, div, point, px, size,
     },
     style::{self, Align},
     theme,
@@ -93,9 +93,18 @@ enum Item {
     /// The unread ones' heading, and how many.
     Unread(usize),
     Day(String),
-    Group { app: String, count: usize, members: Vec<usize>, open: bool },
+    Group {
+        app: String,
+        count: usize,
+        members: Vec<usize>,
+        open: bool,
+    },
     /// The entry at `i`; `older` are the rest of its conversation.
-    Note { i: usize, older: Vec<usize>, grouped: bool },
+    Note {
+        i: usize,
+        older: Vec<usize>,
+        grouped: bool,
+    },
 }
 
 /// An entry's menu (a right click on it).
@@ -428,7 +437,21 @@ impl HistoryWindow {
                 });
             }
         });
-        HistoryWindow { app, search, scroll: ScrollHandle::new(), focus, rows: HashMap::new(), cards: HashMap::new(), palette: None, hits: Rc::default(), hover: None, places: Vec::new(), laid: None, stale: true, _subs: vec![observe, typing] }
+        HistoryWindow {
+            app,
+            search,
+            scroll: ScrollHandle::new(),
+            focus,
+            rows: HashMap::new(),
+            cards: HashMap::new(),
+            palette: None,
+            hits: Rc::default(),
+            hover: None,
+            places: Vec::new(),
+            laid: None,
+            stale: true,
+            _subs: vec![observe, typing],
+        }
     }
 
     fn menus(&self, cx: &App) -> Vec<Menu> {
@@ -523,13 +546,17 @@ impl HistoryWindow {
         let title = look::title(window, title_text, failed(e), style::PLAIN_SIZE, style::ui_font(weight), style::c(fg), title_w, if selected { 3 } else { 1 });
         let body = (!e.text.is_empty()).then(|| {
             // Unselected, the body is one line: its breaks as spaces.
-            let spans: Vec<Span> = e.body.iter().map(|s| Span { text: if selected { s.text.clone() } else { s.text.replace('\n', " ") }, bold: s.bold, italic: s.italic, underline: false, link: None }).collect();
+            let spans: Vec<Span> =
+                e.body.iter().map(|s| Span { text: if selected { s.text.clone() } else { s.text.replace('\n', " ") }, bold: s.bold, italic: s.italic, underline: false, link: None }).collect();
             let ink = look::Ink { text: style::c(fg), soft, dim: soft, link: soft, balloon: soft, balloon_edge: soft, accent: None };
             look::body(window, &spans, &ink, body_w, if selected { 12 } else { 1 })
         });
         // The rest of a conversation, under the newest, when selected.
         let older: Vec<(String, look::Text)> = if selected {
-            older.iter().map(|&o| (crate::when(entries[o].time), look::text(window, &entries[o].text.replace('\n', " "), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), soft, body_w - 44.0, 1))).collect()
+            older
+                .iter()
+                .map(|&o| (crate::when(entries[o].time), look::text(window, &entries[o].text.replace('\n', " "), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), soft, body_w - 44.0, 1)))
+                .collect()
         } else {
             Vec::new()
         };
@@ -544,7 +571,12 @@ impl HistoryWindow {
             };
             // Dismiss last: the notification, or the whole conversation.
             actions.push((String::new(), "Dismiss".to_owned()));
-            actions.into_iter().map(|(k, l)| (k, l.clone(), (f32::from(style::text_width(window, l, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))) + 2.0 * m::CONTROL_PAD).max(m::BUTTON_MIN_WIDTH * 0.75).ceil())).collect()
+            actions
+                .into_iter()
+                .map(|(k, l)| {
+                    (k, l.clone(), (f32::from(style::text_width(window, l, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))) + 2.0 * m::CONTROL_PAD).max(m::BUTTON_MIN_WIDTH * 0.75).ceil())
+                })
+                .collect()
         };
         let mut h = ROW_PAD + title.height + body.as_ref().map_or(0.0, |b| 1.0 + b.height);
         let older_h = style::SMALL_SIZE + 5.0;
@@ -575,7 +607,13 @@ impl HistoryWindow {
         let room = look::Room {
             width: width - 2.0 * m::CARD_INSET,
             title_rows: if span > 1 { 2 } else { 3 },
-            body_rows: if small { 1 } else if span > 1 { WIDE_ROWS } else { CARD_ROWS },
+            body_rows: if small {
+                1
+            } else if span > 1 {
+                WIDE_ROWS
+            } else {
+                CARD_ROWS
+            },
             title_reserve: 0.0,
             picture: 28.0,
             image_max: if span > 1 { 180.0 } else { 120.0 },
@@ -880,31 +918,46 @@ impl Render for HistoryWindow {
                             h.finish()
                         };
                         window.paint_memo(memo, r, cx, |window, cx| {
-                        window.with_element_opacity(Some(opacity), |window| {
-                            style::card(window, r, &p, hovered, is_sel);
-                            let ink = style::card_ink(&p);
-                            let icon = Bounds::new(point(head.left(), head.center().y - px(CARD_MARK / 2.0)), size(px(CARD_MARK), px(CARD_MARK)));
-                            paint_icon(window, cx, icon, e, false);
-                            let small = style::ui_font(FontWeight::NORMAL);
-                            let time_w = f32::from(style::text_width(window, time.clone(), style::DETAIL_SIZE, small.clone()));
-                            let name_x = icon.right() + px(5.0);
-                            let name_room = head.right() - px(time_w + CARD_DOT + 8.0) - name_x;
-                            let n = style::label_fit(window, cx, name_x, head.center().y, Align::Left, app_name(e).to_owned(), style::DETAIL_SIZE, style::ui_font(FontWeight::BOLD), ink.dim, name_room);
-                            let baseline = style::baseline_at(window, head.center().y, style::DETAIL_SIZE);
-                            let _ = n;
-                            if !forgettable {
-                                style::label_on_baseline(window, cx, head.right(), baseline, Align::Right, time.clone(), style::DETAIL_SIZE, small.clone(), ink.dim);
-                                if e.unread {
-                                    unread_dot(window, point(head.right() - px(time_w + CARD_DOT / 2.0 + 1.0), head.center().y), &p);
+                            window.with_element_opacity(Some(opacity), |window| {
+                                style::card(window, r, &p, hovered, is_sel);
+                                let ink = style::card_ink(&p);
+                                let icon = Bounds::new(point(head.left(), head.center().y - px(CARD_MARK / 2.0)), size(px(CARD_MARK), px(CARD_MARK)));
+                                paint_icon(window, cx, icon, e, false);
+                                let small = style::ui_font(FontWeight::NORMAL);
+                                let time_w = f32::from(style::text_width(window, time.clone(), style::DETAIL_SIZE, small.clone()));
+                                let name_x = icon.right() + px(5.0);
+                                let name_room = head.right() - px(time_w + CARD_DOT + 8.0) - name_x;
+                                let n = style::label_fit(
+                                    window,
+                                    cx,
+                                    name_x,
+                                    head.center().y,
+                                    Align::Left,
+                                    app_name(e).to_owned(),
+                                    style::DETAIL_SIZE,
+                                    style::ui_font(FontWeight::BOLD),
+                                    ink.dim,
+                                    name_room,
+                                );
+                                let baseline = style::baseline_at(window, head.center().y, style::DETAIL_SIZE);
+                                let _ = n;
+                                if !forgettable {
+                                    style::label_on_baseline(window, cx, head.right(), baseline, Align::Right, time.clone(), style::DETAIL_SIZE, small.clone(), ink.dim);
+                                    if e.unread {
+                                        unread_dot(window, point(head.right() - px(time_w + CARD_DOT / 2.0 + 1.0), head.center().y), &p);
+                                    }
+                                } else {
+                                    style::close_box(window, close, if lit { ink.text } else { ink.dim });
+                                    agent::record(window, cx, agent::Node::button("Forget", close));
                                 }
-                            } else {
-                                style::close_box(window, close, if lit { ink.text } else { ink.dim });
-                                agent::record(window, cx, agent::Node::button("Forget", close));
-                            }
-                            look::paint(window, cx, &entry_face(e), &laid.face, &laid.ink, point(inner.left(), head.bottom() + px(CARD_HEAD_GAP)), f32::from(inner.size.width));
-                        });
-                        let title = if e.summary.is_empty() { app_name(e) } else { &e.summary };
-                        agent::record(window, cx, agent::Node { role: "ListItem", name: Some(title.to_owned().into()), bounds: r, enabled: true, clickable: true, selected: Some(is_sel), ..Default::default() });
+                                look::paint(window, cx, &entry_face(e), &laid.face, &laid.ink, point(inner.left(), head.bottom() + px(CARD_HEAD_GAP)), f32::from(inner.size.width));
+                            });
+                            let title = if e.summary.is_empty() { app_name(e) } else { &e.summary };
+                            agent::record(
+                                window,
+                                cx,
+                                agent::Node { role: "ListItem", name: Some(title.to_owned().into()), bounds: r, enabled: true, clickable: true, selected: Some(is_sel), ..Default::default() },
+                            );
                         });
                         let _ = (k, rows_total);
                     }
@@ -928,7 +981,17 @@ impl Render for HistoryWindow {
                                 continue;
                             }
                             let baseline = style::baseline_at(window, r.center().y, style::SMALL_SIZE);
-                            style::label_on_baseline(window, cx, t.right() + px(5.0), baseline, Align::Left, count.to_string(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
+                            style::label_on_baseline(
+                                window,
+                                cx,
+                                t.right() + px(5.0),
+                                baseline,
+                                Align::Left,
+                                count.to_string(),
+                                style::DETAIL_SIZE,
+                                style::ui_font(FontWeight::NORMAL),
+                                style::disabled_text(&p),
+                            );
                             // Read them all, here where they are.
                             let all = "Mark All Read";
                             let tw = f32::from(style::text_width(window, all.to_owned(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL)));
@@ -945,7 +1008,17 @@ impl Render for HistoryWindow {
                                 continue;
                             }
                             heading_fill(window, &p, r);
-                            let t = style::label(window, cx, r.left() + px(ICON_X), r.center().y, Align::Left, label.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::BOLD), style::disabled_text(&p));
+                            let t = style::label(
+                                window,
+                                cx,
+                                r.left() + px(ICON_X),
+                                r.center().y,
+                                Align::Left,
+                                label.clone(),
+                                style::SMALL_SIZE,
+                                style::ui_font(FontWeight::BOLD),
+                                style::disabled_text(&p),
+                            );
                             agent::record(window, cx, agent::Node::label(label.clone(), t));
                         }
                         Item::Group { app, count, members, open } => {
@@ -959,11 +1032,21 @@ impl Render for HistoryWindow {
                             let dim = style::disabled_text(&p);
                             let lit = hover.as_ref().is_some_and(|h| matches!(h, Hit::Fold(a) | Hit::Dismiss(a, _) if a == app));
                             style::latch(window, Bounds::centered_at(point(r.left() + px(7.0), r.center().y), size(px(10.0), px(10.0))), *open, if lit { text } else { dim });
-                            paint_icon(window, cx, Bounds::centered_at(point(r.left() + px(ICON_X + SMALL_ICON / 2.0), r.center().y), size(px(SMALL_ICON), px(SMALL_ICON))), &entries2[members[0]], false);
+                            paint_icon(
+                                window,
+                                cx,
+                                Bounds::centered_at(point(r.left() + px(ICON_X + SMALL_ICON / 2.0), r.center().y), size(px(SMALL_ICON), px(SMALL_ICON))),
+                                &entries2[members[0]],
+                                false,
+                            );
                             let n = style::label(window, cx, r.left() + px(TEXT_X), r.center().y, Align::Left, name.to_owned(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), text);
                             let baseline = style::baseline_at(window, r.center().y, style::PLAIN_SIZE);
                             style::label_on_baseline(window, cx, n.right() + px(6.0), baseline, Align::Left, count.to_string(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), dim);
-                            agent::record(window, cx, agent::Node { role: "Button", name: Some(format!("{name} ({count})").into()), bounds: r, enabled: true, clickable: true, selected: Some(*open), ..Default::default() });
+                            agent::record(
+                                window,
+                                cx,
+                                agent::Node { role: "Button", name: Some(format!("{name} ({count})").into()), bounds: r, enabled: true, clickable: true, selected: Some(*open), ..Default::default() },
+                            );
                             if lit {
                                 let small = style::ui_font(FontWeight::NORMAL);
                                 let tw = f32::from(style::text_width(window, "Dismiss".to_owned(), style::DETAIL_SIZE, small.clone()));
@@ -1057,7 +1140,11 @@ impl Render for HistoryWindow {
                             if !is_sel {
                                 style::hline_above(window, r.left() + px(x0 + TEXT_X), r.right(), r.bottom(), style::tint(p.document_background, 1.07));
                             }
-                            agent::record(window, cx, agent::Node { role: "ListItem", name: Some(title_text.to_owned().into()), bounds: r, enabled: true, clickable: true, selected: Some(is_sel), ..Default::default() });
+                            agent::record(
+                                window,
+                                cx,
+                                agent::Node { role: "ListItem", name: Some(title_text.to_owned().into()), bounds: r, enabled: true, clickable: true, selected: Some(is_sel), ..Default::default() },
+                            );
                             let _ = (row, rows_total);
                         }
                     }
@@ -1082,7 +1169,10 @@ impl Render for HistoryWindow {
                         break;
                     }
                     let (me, key, i) = (me.clone(), key.clone(), *i);
-                    let b = Button::new(label.clone()).small().min_width(*bw).on_click(move |window, cx| me.update(cx, |h, cx| h.app.update(cx, |n, cx| n.open_entry(cx, Some(window), i, Some(key.clone())))));
+                    let b = Button::new(label.clone())
+                        .small()
+                        .min_width(*bw)
+                        .on_click(move |window, cx| me.update(cx, |h, cx| h.app.update(cx, |n, cx| n.open_entry(cx, Some(window), i, Some(key.clone())))));
                     content = content.child(div().absolute().left(px(bx - bw)).top(px(by)).occlude().child(b));
                     bx -= bw + m::TIGHT;
                 }
@@ -1205,7 +1295,13 @@ impl Render for HistoryWindow {
 
         // The status line.
         let (snoozed, all, unread_now) = (list.snoozed, list.all, list.unread);
-        let mut status = if searching { format!("{} of {all}", list.shown) } else if all == 1 { "1 notification".into() } else { format!("{all} notifications") };
+        let mut status = if searching {
+            format!("{} of {all}", list.shown)
+        } else if all == 1 {
+            "1 notification".into()
+        } else {
+            format!("{all} notifications")
+        };
         if unread_now > 0 && !searching {
             status += &format!(", {unread_now} unread");
         }
@@ -1219,7 +1315,8 @@ impl Render for HistoryWindow {
             |_, _, _| {},
             move |b, _, window, cx| {
                 let p = theme::palette(cx);
-                let at = style::label(window, cx, b.left() + px(m::SPACING), b.center().y, Align::Left, status.clone(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
+                let at =
+                    style::label(window, cx, b.left() + px(m::SPACING), b.center().y, Align::Left, status.clone(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
                 agent::record(window, cx, agent::Node::label(status.clone(), at));
             },
         )
@@ -1341,7 +1438,13 @@ impl HistoryWindow {
             if let Some((top, bottom)) = span {
                 let view_h = f32::from(self.scroll.bounds().size.height);
                 let at = -f32::from(self.scroll.offset().y);
-                let to = if top < at { top } else if bottom > at + view_h { bottom - view_h } else { at };
+                let to = if top < at {
+                    top
+                } else if bottom > at + view_h {
+                    bottom - view_h
+                } else {
+                    at
+                };
                 if to != at {
                     self.scroll.set_offset(point(px(0.0), px(-to.max(0.0))));
                 }
@@ -1403,7 +1506,11 @@ impl Notifications {
         // From the end, so the indices stay good.
         at.sort_unstable();
         at.dedup();
-        let next = (at.len() == 1).then(|| order.iter().position(|&i| i == at[0])).flatten().and_then(|s| order.get(s + 1).or(s.checked_sub(1).and_then(|s| order.get(s)))).map(|&i| self.history.entries[i].id);
+        let next = (at.len() == 1)
+            .then(|| order.iter().position(|&i| i == at[0]))
+            .flatten()
+            .and_then(|s| order.get(s + 1).or(s.checked_sub(1).and_then(|s| order.get(s))))
+            .map(|&i| self.history.entries[i].id);
         for &i in at.iter().rev() {
             let Some(e) = self.history.entries.get(i).cloned() else { continue };
             self.history.remove(i);

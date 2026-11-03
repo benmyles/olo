@@ -3,11 +3,11 @@
 //! the session's watch, and the window and command line both share
 //! (`run`, by `Kind`).
 
+mod app;
 pub mod checks;
 pub mod fix;
 pub mod helper;
 pub mod notify;
 pub mod suggest;
-mod app;
 
 pub use app::{Kind, run};

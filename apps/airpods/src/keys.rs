@@ -28,10 +28,7 @@ type Stored = BTreeMap<String, BTreeMap<String, String>>;
 #[allow(dead_code, reason = "read by the LE monitor, coming next")]
 pub fn all() -> BTreeMap<String, Keys> {
     let stored: Stored = std::fs::read_to_string(path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
-    stored
-        .into_iter()
-        .map(|(addr, k)| (addr, Keys { irk: k.get("irk").and_then(|s| unhex(s)), encryption: k.get("encryption").and_then(|s| unhex(s)) }))
-        .collect()
+    stored.into_iter().map(|(addr, k)| (addr, Keys { irk: k.get("irk").and_then(|s| unhex(s)), encryption: k.get("encryption").and_then(|s| unhex(s)) })).collect()
 }
 
 /// Keep a pair's keys (if they're new).

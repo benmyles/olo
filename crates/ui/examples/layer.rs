@@ -5,7 +5,7 @@
 use olo_ui::{
     Menu, WindowOptions,
     gpui::{AppContext as _, Context, Corner, IntoElement, LayerShellLayer, ParentElement as _, Render, Styled as _, Window, div, px},
-    metrics as m, menu,
+    menu, metrics as m,
     widgets::{Button, StringView},
 };
 

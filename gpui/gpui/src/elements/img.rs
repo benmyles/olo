@@ -50,7 +50,12 @@ pub enum ImageSource {
 
 /// A URI ("scheme://…"), not a path to an embedded asset.
 fn is_uri(uri: &str) -> bool {
-    uri.split_once("://").is_some_and(|(scheme, _)| !scheme.is_empty() && scheme.chars().all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c)))
+    uri.split_once("://").is_some_and(|(scheme, _)| {
+        !scheme.is_empty()
+            && scheme
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c))
+    })
 }
 
 impl From<SharedUri> for ImageSource {

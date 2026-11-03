@@ -256,10 +256,7 @@ fn buffers(w: u32, h: u32, planes: Option<u32>) -> Option<Vec<u8>> {
     }
     let kind = if planes.is_some() { sys::SPA_DATA_DmaBuf } else { sys::SPA_DATA_MemFd };
     // (A choice of flags, as PipeWire reads it.)
-    properties.push(Property::new(
-        sys::SPA_PARAM_BUFFERS_dataType,
-        Value::Choice(ChoiceValue::Int(Choice(ChoiceFlags::empty(), ChoiceEnum::Flags { default: 1 << kind, flags: vec![1 << kind] }))),
-    ));
+    properties.push(Property::new(sys::SPA_PARAM_BUFFERS_dataType, Value::Choice(ChoiceValue::Int(Choice(ChoiceFlags::empty(), ChoiceEnum::Flags { default: 1 << kind, flags: vec![1 << kind] })))));
     let object = Object { type_: pw::spa::utils::SpaTypes::ObjectParamBuffers.as_raw(), id: pw::spa::param::ParamType::Buffers.as_raw(), properties };
     serialize(&Value::Object(object))
 }
@@ -588,9 +585,7 @@ fn stream(source: Source, cursor: bool, stop: Arc<AtomicBool>, tx: &mpsc::Sender
         .map_err(|e| e.to_string())?;
     let offered = formats(size.0, size.1, shared.borrow().modifiers.as_deref());
     let mut params: Vec<&pw::spa::pod::Pod> = offered.iter().filter_map(|b| pw::spa::pod::Pod::from_bytes(b)).collect();
-    stream
-        .connect(spa::utils::Direction::Output, None, pw::stream::StreamFlags::DRIVER | pw::stream::StreamFlags::ALLOC_BUFFERS, &mut params)
-        .map_err(|e| e.to_string())?;
+    stream.connect(spa::utils::Direction::Output, None, pw::stream::StreamFlags::DRIVER | pw::stream::StreamFlags::ALLOC_BUFFERS, &mut params).map_err(|e| e.to_string())?;
     // (Addresses: the loop's callbacks must be 'static, and the stream
     // outlives the loop that runs them.)
     let stream_at = &*stream as *const pw::stream::Stream as usize;

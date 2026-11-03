@@ -66,12 +66,22 @@ pub enum Block {
     QuoteEnd,
     /// Code: its lines, each line's token classes (byte ranges; none when
     /// its language is unknown), indented `depth` list levels.
-    Code { lines: Vec<String>, tokens: Vec<Vec<(u32, u32, Syntax)>>, depth: u8 },
+    Code {
+        lines: Vec<String>,
+        tokens: Vec<Vec<(u32, u32, Syntax)>>,
+        depth: u8,
+    },
     /// Rows of cells, the first the header; each column's alignment.
-    Table { align: Vec<Align>, rows: Vec<Row> },
+    Table {
+        align: Vec<Align>,
+        rows: Vec<Row>,
+    },
     /// A picture on its own (Markdown's, from beside the document), at
     /// most `MAX_PICTURE` wide.
-    Picture { image: Image, alt: String },
+    Picture {
+        image: Image,
+        alt: String,
+    },
     Rule,
 }
 
@@ -302,11 +312,7 @@ fn entities(s: &str) -> String {
 pub fn parse_markdown_in(text: &str, dir: Option<&Path>) -> Vec<Block> {
     use pulldown_cmark::{BlockQuoteKind, CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
     let mut md = Md { dir, ..Default::default() };
-    let options = Options::ENABLE_TABLES
-        | Options::ENABLE_STRIKETHROUGH
-        | Options::ENABLE_TASKLISTS
-        | Options::ENABLE_SMART_PUNCTUATION
-        | Options::ENABLE_GFM;
+    let options = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS | Options::ENABLE_SMART_PUNCTUATION | Options::ENABLE_GFM;
     for ev in Parser::new_ext(text, options) {
         match ev {
             Event::Start(Tag::Heading { .. }) => md.flush(),
@@ -548,10 +554,7 @@ pub fn office(path: &Path, ext: &str) -> Result<Update, String> {
 pub fn rich(doc: olo_richtext::Document) -> Vec<Block> {
     use olo_richtext as rt;
     let spans = |spans: &[rt::Span]| -> Vec<Span> {
-        spans
-            .iter()
-            .map(|s| Span { text: s.text.clone(), bold: s.bold, italic: s.italic, code: s.monospace, strike: s.strike, link: s.link.is_some(), url: s.link.clone() })
-            .collect()
+        spans.iter().map(|s| Span { text: s.text.clone(), bold: s.bold, italic: s.italic, code: s.monospace, strike: s.strike, link: s.link.is_some(), url: s.link.clone() }).collect()
     };
     let mut blocks = Vec::new();
     let mut quoted = false;
@@ -744,12 +747,7 @@ fn odf(xml: &str, slides: bool) -> Vec<Block> {
 
 pub fn table(path: &Path, ext: &str) -> Result<Update, String> {
     if ext == "csv" || ext == "tsv" {
-        let mut rdr = csv::ReaderBuilder::new()
-            .has_headers(false)
-            .flexible(true)
-            .delimiter(if ext == "tsv" { b'\t' } else { sniff_delimiter(path) })
-            .from_path(path)
-            .map_err(|e| e.to_string())?;
+        let mut rdr = csv::ReaderBuilder::new().has_headers(false).flexible(true).delimiter(if ext == "tsv" { b'\t' } else { sniff_delimiter(path) }).from_path(path).map_err(|e| e.to_string())?;
         let mut rows = Vec::new();
         let mut total = 0;
         for r in rdr.records() {
@@ -878,7 +876,11 @@ mod tests {
                 para(rt::Kind::Code, "let a = 1;"),
                 para(rt::Kind::Code, "let b = 2;"),
                 rt::Paragraph {
-                    table: Some(rt::Table { header: true, rows: vec![vec![vec![para(rt::Kind::Body, "A")], vec![para(rt::Kind::Body, "B")]], vec![vec![para(rt::Kind::Body, "1")], vec![para(rt::Kind::Body, "2")]]], ..Default::default() }),
+                    table: Some(rt::Table {
+                        header: true,
+                        rows: vec![vec![vec![para(rt::Kind::Body, "A")], vec![para(rt::Kind::Body, "B")]], vec![vec![para(rt::Kind::Body, "1")], vec![para(rt::Kind::Body, "2")]]],
+                        ..Default::default()
+                    }),
                     ..Default::default()
                 },
             ],

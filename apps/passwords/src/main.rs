@@ -31,8 +31,8 @@ use olo_protocol::PasswordsSecurity;
 use olo_ui::{
     Frame, Menu, MenuBar, Proxy, WindowOptions,
     gpui::{
-        AnyElement, App, AppContext as _, Context, Entity, FocusHandle, InteractiveElement as _, IntoElement, KeyDownEvent, MouseDownEvent, OutgoingDrag, ParentElement as _, Render, ScrollHandle, SharedString,
-        StyleRefinement, Styled as _, Subscription, Task, Window, WindowHandle, div, point, px,
+        AnyElement, App, AppContext as _, Context, Entity, FocusHandle, InteractiveElement as _, IntoElement, KeyDownEvent, MouseDownEvent, OutgoingDrag, ParentElement as _, Render, ScrollHandle,
+        SharedString, StyleRefinement, Styled as _, Subscription, Task, Window, WindowHandle, div, point, px,
     },
     instance::{self, Launch},
     menu, metrics as m,
@@ -405,14 +405,7 @@ impl Passwords {
         let s = self.index.get(&i.id);
         let sites = || i.websites.iter().any(|w| n.in_text(&w.url));
         match key {
-            None => {
-                n.in_text(&i.title)
-                    || n.in_text(self.username_of(i))
-                    || sites()
-                    || i.tags.iter().any(|t| n.in_text(t))
-                    || n.in_text(i.category.label())
-                    || s.is_some_and(|s| n.in_text(&s.text))
-            }
+            None => n.in_text(&i.title) || n.in_text(self.username_of(i)) || sites() || i.tags.iter().any(|t| n.in_text(t)) || n.in_text(i.category.label()) || s.is_some_and(|s| n.in_text(&s.text)),
             // (A value still being typed matches by its start.)
             Some("type") => n.starts(&slug(i.category.label())) || n.in_text(i.category.label()),
             Some("vault") => self.vaults.iter().find(|v| v.id == i.vault_id).is_some_and(|v| n.starts(&slug(&v.title)) || n.in_text(&v.title)),
@@ -421,15 +414,8 @@ impl Passwords {
             Some("user") => n.in_text(self.username_of(i)),
             Some("has") => {
                 let Some(s) = s else { return false };
-                let flags = [
-                    ("otp", s.otp),
-                    ("passkey", s.passkey.is_some()),
-                    ("password", s.password),
-                    ("website", !i.websites.is_empty()),
-                    ("files", s.files),
-                    ("reused", s.reused),
-                    ("weak", s.weak),
-                ];
+                let flags =
+                    [("otp", s.otp), ("passkey", s.passkey.is_some()), ("password", s.password), ("website", !i.websites.is_empty()), ("files", s.files), ("reused", s.reused), ("weak", s.weak)];
                 flags.iter().any(|(name, on)| *on && n.starts(name))
             }
             Some(_) => false,
@@ -708,8 +694,7 @@ impl Passwords {
     /// The setup's Sync: the accounts ticked and any named by hand.
     pub fn sync_chosen(&mut self, cx: &mut Context<Self>) {
         let listed = view::listed_accounts(self);
-        let mut chosen: Vec<Linked> =
-            listed.iter().filter(|a| self.chosen.iter().any(|c| view::same(a, c))).map(|a| Linked { id: view::linked_id(self, a), label: a.name.clone() }).collect();
+        let mut chosen: Vec<Linked> = listed.iter().filter(|a| self.chosen.iter().any(|c| view::same(a, c))).map(|a| Linked { id: view::linked_id(self, a), label: a.name.clone() }).collect();
         let typed = self.account_field.read(cx).text().trim().to_string();
         if (listed.is_empty() || self.other_account) && !typed.is_empty() && !chosen.iter().any(|c| c.id == typed) {
             chosen.push(Linked { id: typed.clone(), label: typed });
@@ -873,9 +858,9 @@ impl Passwords {
                     .filter(|i| i.state == ItemState::Active)
                     .filter(|i| {
                         !words.is_empty()
-                            && words.iter().all(|w| {
-                                i.title.to_lowercase().contains(w) || i.websites.iter().any(|s| s.url.to_lowercase().contains(w)) || i.tags.iter().any(|t| t.to_lowercase().contains(w))
-                            })
+                            && words
+                                .iter()
+                                .all(|w| i.title.to_lowercase().contains(w) || i.websites.iter().any(|s| s.url.to_lowercase().contains(w)) || i.tags.iter().any(|t| t.to_lowercase().contains(w)))
                     })
                     .map(|i| olo_keychain::Found { vault: i.vault_id.clone(), id: i.id.clone(), title: i.title.clone(), subtitle: self.subtitle(i) })
                     .collect();
@@ -939,9 +924,7 @@ impl Passwords {
                     .items
                     .iter()
                     .filter(|i| i.state == ItemState::Active)
-                    .filter(|i| {
-                        i.websites.iter().any(|w| passkey::near(&w.url, rp_id)) || self.index.get(&i.id).and_then(|s| s.passkey.as_ref()).is_some_and(|p| p.rp_id.eq_ignore_ascii_case(rp_id))
-                    })
+                    .filter(|i| i.websites.iter().any(|w| passkey::near(&w.url, rp_id)) || self.index.get(&i.id).and_then(|s| s.passkey.as_ref()).is_some_and(|p| p.rp_id.eq_ignore_ascii_case(rp_id)))
                     .collect();
                 let joins = near.iter().find(|i| self.username_of(i).eq_ignore_ascii_case(user_name) && !user_name.is_empty());
                 let who = if user_name.is_empty() { String::new() } else { format!(" for “{user_name}”") };
@@ -953,8 +936,7 @@ impl Passwords {
                 return self.ask_passkey(incoming, message, Vec::new(), candidates, cx);
             }
         };
-        let candidates: Vec<(String, String)> =
-            self.items.iter().filter(|i| i.state == ItemState::Active && i.websites.iter().any(&fits)).map(|i| (i.vault_id.clone(), i.id.clone())).collect();
+        let candidates: Vec<(String, String)> = self.items.iter().filter(|i| i.state == ItemState::Active && i.websites.iter().any(&fits)).map(|i| (i.vault_id.clone(), i.id.clone())).collect();
         let Some(vault) = self.new_item_vault() else {
             return incoming.reply(Response::Error { message: "There’s no vault to save in.".into() });
         };
@@ -975,13 +957,7 @@ impl Passwords {
             .filter_map(|i| {
                 let p = self.index.get(&i.id)?.passkey.as_ref()?;
                 let fits = p.rp_id.eq_ignore_ascii_case(rp_id) && (allow.is_empty() || allow.contains(&p.credential_id));
-                fits.then(|| olo_keychain::Passkey {
-                    vault: i.vault_id.clone(),
-                    id: i.id.clone(),
-                    title: i.title.clone(),
-                    user_name: p.user_name.clone(),
-                    credential_id: p.credential_id.clone(),
-                })
+                fits.then(|| olo_keychain::Passkey { vault: i.vault_id.clone(), id: i.id.clone(), title: i.title.clone(), user_name: p.user_name.clone(), credential_id: p.credential_id.clone() })
             })
             .collect();
         found.sort_by_cached_key(|p| (p.user_name.to_lowercase(), p.title.to_lowercase()));
@@ -1786,11 +1762,7 @@ impl Passwords {
             self.sync_now();
         }
         let idle = now.saturating_duration_since(self.last_use);
-        if !self.lock.locked
-            && self.security.lock_minutes > 0
-            && idle >= Duration::from_secs(self.security.lock_minutes as u64 * 60)
-            && self.editor.as_ref().is_none_or(|e| !e.changed())
-        {
+        if !self.lock.locked && self.security.lock_minutes > 0 && idle >= Duration::from_secs(self.security.lock_minutes as u64 * 60) && self.editor.as_ref().is_none_or(|e| !e.changed()) {
             self.do_lock(cx);
         }
         if self.status.as_ref().is_some_and(|(_, at)| now >= *at + STATUS_FOR) {
@@ -2144,16 +2116,7 @@ impl PasskeyAsk {
         let width = alert::alert_width(cx, &buttons);
         let radios = if choices.is_empty() { 0.0 } else { m::SPACING + choices.len() as f32 * (m::CONTROL_HEIGHT + m::TIGHT) };
         let height = alert::alert_height(cx, &message, width) + radios;
-        let view = cx.new(|cx| PasskeyAsk {
-            app,
-            incoming: Some(Box::new(incoming)),
-            message: message.into(),
-            choices,
-            chosen: 0,
-            candidates,
-            focus: cx.focus_handle(),
-            _watch: Task::ready(()),
-        });
+        let view = cx.new(|cx| PasskeyAsk { app, incoming: Some(Box::new(incoming)), message: message.into(), choices, chosen: 0, candidates, focus: cx.focus_handle(), _watch: Task::ready(()) });
         let shown = view.clone();
         let handle = olo_ui::open_window(cx, WindowOptions::alert("Passwords", width, height), move |window, cx| {
             window.activate_window();
@@ -2443,14 +2406,7 @@ fn main() {
         olo_ui::on_upgrade(cx, move |cx| {
             let a = saving.read(cx);
             a.save_settings();
-            serde_json::to_string(&Saved {
-                source: a.source.clone(),
-                selected: a.selected.clone(),
-                search: a.search.clone(),
-                unlocked: !a.lock.locked,
-                idle_secs: a.last_use.elapsed().as_secs(),
-            })
-            .ok()
+            serde_json::to_string(&Saved { source: a.source.clone(), selected: a.selected.clone(), search: a.search.clone(), unlocked: !a.lock.locked, idle_secs: a.last_use.elapsed().as_secs() }).ok()
         });
     });
 }

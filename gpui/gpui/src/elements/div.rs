@@ -1613,7 +1613,12 @@ impl Interactivity {
                             .get_or_insert_with(Rc::default)
                             .clone(),
                     );
-                    self.elastic = Some(element_state.elastic.get_or_insert_with(Rc::default).clone());
+                    self.elastic = Some(
+                        element_state
+                            .elastic
+                            .get_or_insert_with(Rc::default)
+                            .clone(),
+                    );
                 }
 
                 let style = self.compute_style_internal(None, element_state.as_mut(), window, cx);
@@ -2464,7 +2469,12 @@ impl Interactivity {
                     // Olo: fingers and a glide stretch past an end and
                     // spring back; a wheel stops at it.
                     let stretched = match &elastic {
-                        Some(elastic) => elastic.borrow_mut().scroll(&mut *scroll_offset, point(delta_x, delta_y), event.kind, event.touch_phase),
+                        Some(elastic) => elastic.borrow_mut().scroll(
+                            &mut *scroll_offset,
+                            point(delta_x, delta_y),
+                            event.kind,
+                            event.touch_phase,
+                        ),
                         None => {
                             scroll_offset.y += delta_y;
                             scroll_offset.x += delta_x;

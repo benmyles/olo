@@ -12,7 +12,11 @@ use crate::WindowOptions;
 /// Locks the session: `build` makes the view covering each output
 /// (named); `on_event` hears `Locked` (once) and `Finished` (the lock was
 /// refused or ended: quit).
-pub fn lock_session<V: Render + 'static>(cx: &mut App, build: impl Fn(&str, &mut Window, &mut App) -> Entity<V> + 'static, on_event: impl Fn(SessionLockEvent, &mut App) + 'static) -> gpui::Result<()> {
+pub fn lock_session<V: Render + 'static>(
+    cx: &mut App,
+    build: impl Fn(&str, &mut Window, &mut App) -> Entity<V> + 'static,
+    on_event: impl Fn(SessionLockEvent, &mut App) + 'static,
+) -> gpui::Result<()> {
     let (tx, mut rx) = mpsc::unbounded::<SessionLockEvent>();
     gpui::lock_session(move |e| {
         let _ = tx.unbounded_send(e);

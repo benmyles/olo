@@ -1,0 +1,8 @@
+# Olo's own code: wide lines, as it's written (a builder chain or a
+# match arm on one line reads as one thing). gpui/ and smithay/ keep
+# upstream's style through rustfmt.toml files of their own, so their
+# diffs against upstream stay small; vendor/ isn't formatted at all.
+# tools/hooks/pre-commit formats what's staged with these.
+edition = "2024"
+max_width = 200
+use_small_heuristics = "Max"

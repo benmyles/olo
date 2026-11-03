@@ -97,8 +97,7 @@ pub fn dim(output: &str, area: Rectangle<i32, Physical>) -> Option<(HashSet<u64>
         (s.bright.clone(), level)
     };
     let mut drawn = DRAWN.lock().unwrap_or_else(|e| e.into_inner());
-    let (id, commit, last) =
-        drawn.get_or_insert_with(HashMap::new).entry(output.to_owned()).or_insert_with(|| (Id::new(), CommitCounter::default(), -1.0));
+    let (id, commit, last) = drawn.get_or_insert_with(HashMap::new).entry(output.to_owned()).or_insert_with(|| (Id::new(), CommitCounter::default(), -1.0));
     if *last != level {
         commit.increment();
         *last = level;

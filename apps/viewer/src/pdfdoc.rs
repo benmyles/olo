@@ -67,9 +67,16 @@ pub struct Field {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MarkKind {
-    Text { text: String, size: f32 },
+    Text {
+        text: String,
+        size: f32,
+    },
     /// Strokes with points normalised to the mark's rect (0..1, y up).
-    Ink { strokes: Vec<Vec<[f32; 2]>>, width: f32, signature: bool },
+    Ink {
+        strokes: Vec<Vec<[f32; 2]>>,
+        width: f32,
+        signature: bool,
+    },
 }
 
 /// An annotation Viewer manages: added in this session, or written by
@@ -291,16 +298,7 @@ pub fn read_model(doc: &Document) -> Model {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn walk_field(
-    doc: &Document,
-    id: ObjectId,
-    parent: &Inherited,
-    annot_page: &HashMap<ObjectId, usize>,
-    pages: &[ObjectId],
-    seen: &mut HashSet<ObjectId>,
-    out: &mut Vec<Field>,
-    depth: usize,
-) {
+fn walk_field(doc: &Document, id: ObjectId, parent: &Inherited, annot_page: &HashMap<ObjectId, usize>, pages: &[ObjectId], seen: &mut HashSet<ObjectId>, out: &mut Vec<Field>, depth: usize) {
     if depth > 32 || !seen.insert(id) {
         return;
     }
@@ -325,12 +323,8 @@ fn walk_field(
         inh.q = Some(q);
     }
     // Kids with /T are child fields; kids without are this field's widgets.
-    let kids: Vec<ObjectId> = get(doc, d, b"Kids")
-        .and_then(|o| o.as_array().ok())
-        .map(|a| a.iter().filter_map(|o| o.as_reference().ok()).collect())
-        .unwrap_or_default();
-    let child_fields: Vec<ObjectId> =
-        kids.iter().copied().filter(|k| doc.get_dictionary(*k).is_ok_and(|kd| kd.has(b"T"))).collect();
+    let kids: Vec<ObjectId> = get(doc, d, b"Kids").and_then(|o| o.as_array().ok()).map(|a| a.iter().filter_map(|o| o.as_reference().ok()).collect()).unwrap_or_default();
+    let child_fields: Vec<ObjectId> = kids.iter().copied().filter(|k| doc.get_dictionary(*k).is_ok_and(|kd| kd.has(b"T"))).collect();
     if !child_fields.is_empty() {
         for k in child_fields {
             walk_field(doc, k, &inh, annot_page, pages, seen, out, depth + 1);
@@ -374,14 +368,10 @@ fn walk_field(
         _ => return, // signature fields and unknown types are left alone
     };
     let value = match (&kind, &inh.v) {
-        (FieldKind::Check | FieldKind::Radio, Some(Object::Name(n))) if n != b"Off" => {
-            Value::State(Some(String::from_utf8_lossy(n).into_owned()))
-        }
+        (FieldKind::Check | FieldKind::Radio, Some(Object::Name(n))) if n != b"Off" => Value::State(Some(String::from_utf8_lossy(n).into_owned())),
         (FieldKind::Check | FieldKind::Radio, _) => Value::State(None),
         (_, Some(Object::String(b, _))) => Value::Text(decode_text(b)),
-        (_, Some(Object::Array(a))) => {
-            Value::Text(a.first().and_then(|o| deref(doc, o).as_str().ok()).map(decode_text).unwrap_or_default())
-        }
+        (_, Some(Object::Array(a))) => Value::Text(a.first().and_then(|o| deref(doc, o).as_str().ok()).map(decode_text).unwrap_or_default()),
         (_, Some(Object::Name(n))) => Value::Text(String::from_utf8_lossy(n).into_owned()),
         _ => Value::Text(String::new()),
     };
@@ -419,18 +409,7 @@ fn walk_field(
             w.on.get_or_insert_with(|| "Yes".into());
         }
     }
-    out.push(Field {
-        id,
-        name: inh.name.clone(),
-        tip: get_text(doc, d, b"TU"),
-        kind,
-        value,
-        read_only: ff & 1 != 0,
-        font_size,
-        color,
-        align: inh.q.unwrap_or(0).clamp(0, 2) as u8,
-        widgets,
-    });
+    out.push(Field { id, name: inh.name.clone(), tip: get_text(doc, d, b"TU"), kind, value, read_only: ff & 1 != 0, font_size, color, align: inh.q.unwrap_or(0).clamp(0, 2) as u8, widgets });
 }
 
 /// One of our annotations, if `d` is one.
@@ -646,9 +625,7 @@ pub fn field_font_size(field: &Field, rect: PdfRect, text: &str) -> f32 {
 pub fn display_text(field: &Field) -> String {
     match (&field.kind, &field.value) {
         (FieldKind::Text { password: true, .. }, Value::Text(t)) => "*".repeat(t.chars().count()),
-        (FieldKind::Choice { options, .. }, Value::Text(t)) => {
-            options.iter().find(|(e, _)| e == t).map_or_else(|| t.clone(), |(_, d)| d.clone())
-        }
+        (FieldKind::Choice { options, .. }, Value::Text(t)) => options.iter().find(|(e, _)| e == t).map_or_else(|| t.clone(), |(_, d)| d.clone()),
         (_, Value::Text(t)) => t.clone(),
         _ => String::new(),
     }
@@ -755,14 +732,7 @@ fn check_appearance(w: &Widget, color: [f32; 3], on: bool) -> Stream {
         let s = width.min(height);
         let (ox, oy) = ((width - s) / 2.0, (height - s) / 2.0);
         let p = |x: f32, y: f32| format!("{} {}", fmt(ox + x * s), fmt(oy + y * s));
-        ops += &format!(
-            "q {} {} w 1 J 1 j {} m {} l {} l S Q\n",
-            color_op(color, true),
-            fmt((s * 0.12).max(1.0)),
-            p(0.2, 0.52),
-            p(0.42, 0.28),
-            p(0.8, 0.76)
-        );
+        ops += &format!("q {} {} w 1 J 1 j {} m {} l {} l S Q\n", color_op(color, true), fmt((s * 0.12).max(1.0)), p(0.2, 0.52), p(0.42, 0.28), p(0.8, 0.76));
     }
     form_xobject(width, height, ops, false)
 }
@@ -783,11 +753,32 @@ fn circle(cx: f32, cy: f32, r: f32) -> String {
     let k = 0.5523 * r;
     format!(
         "{} {} m {} {} {} {} {} {} c {} {} {} {} {} {} c {} {} {} {} {} {} c {} {} {} {} {} {} c",
-        fmt(cx + r), fmt(cy),
-        fmt(cx + r), fmt(cy + k), fmt(cx + k), fmt(cy + r), fmt(cx), fmt(cy + r),
-        fmt(cx - k), fmt(cy + r), fmt(cx - r), fmt(cy + k), fmt(cx - r), fmt(cy),
-        fmt(cx - r), fmt(cy - k), fmt(cx - k), fmt(cy - r), fmt(cx), fmt(cy - r),
-        fmt(cx + k), fmt(cy - r), fmt(cx + r), fmt(cy - k), fmt(cx + r), fmt(cy),
+        fmt(cx + r),
+        fmt(cy),
+        fmt(cx + r),
+        fmt(cy + k),
+        fmt(cx + k),
+        fmt(cy + r),
+        fmt(cx),
+        fmt(cy + r),
+        fmt(cx - k),
+        fmt(cy + r),
+        fmt(cx - r),
+        fmt(cy + k),
+        fmt(cx - r),
+        fmt(cy),
+        fmt(cx - r),
+        fmt(cy - k),
+        fmt(cx - k),
+        fmt(cy - r),
+        fmt(cx),
+        fmt(cy - r),
+        fmt(cx + k),
+        fmt(cy - r),
+        fmt(cx + r),
+        fmt(cy - k),
+        fmt(cx + r),
+        fmt(cy),
     )
 }
 
@@ -946,14 +937,10 @@ fn apply<'a>(base: &'a Document, original: &Model, model: &Model) -> Edit<'a> {
                 (FieldKind::Check | FieldKind::Radio, Value::State(state)) => {
                     let on = w.on.clone().unwrap_or_else(|| "Yes".into());
                     let is_on = state.as_deref() == Some(on.as_str());
-                    let has_ap = e
-                        .get(w.id)
-                        .and_then(|o| o.as_dict().ok())
-                        .and_then(|d| d.get(b"AP").ok())
-                        .is_some_and(|ap| match base.dereference(ap) {
-                            Ok((_, Object::Dictionary(ap))) => ap.has(b"N"),
-                            _ => false,
-                        });
+                    let has_ap = e.get(w.id).and_then(|o| o.as_dict().ok()).and_then(|d| d.get(b"AP").ok()).is_some_and(|ap| match base.dereference(ap) {
+                        Ok((_, Object::Dictionary(ap))) => ap.has(b"N"),
+                        _ => false,
+                    });
                     if !has_ap {
                         let radio = matches!(f.kind, FieldKind::Radio);
                         let mk = |is_on| if radio { radio_appearance(w, f.color, is_on) } else { check_appearance(w, f.color, is_on) };
@@ -1029,16 +1016,7 @@ fn apply<'a>(base: &'a Document, original: &Model, model: &Model) -> Edit<'a> {
                 let kind = if *signature { "sig" } else { "ink" };
                 d.set("NM", text_object(&format!("{OUR_NM}{kind}-{stamp}-{n}")));
                 let (w, h) = (m.rect[2] - m.rect[0], m.rect[3] - m.rect[1]);
-                let list = strokes
-                    .iter()
-                    .map(|s| {
-                        Object::Array(
-                            s.iter()
-                                .flat_map(|p| [Object::Real(m.rect[0] + p[0] * w), Object::Real(m.rect[1] + p[1] * h)])
-                                .collect(),
-                        )
-                    })
-                    .collect::<Vec<_>>();
+                let list = strokes.iter().map(|s| Object::Array(s.iter().flat_map(|p| [Object::Real(m.rect[0] + p[0] * w), Object::Real(m.rect[1] + p[1] * h)]).collect())).collect::<Vec<_>>();
                 d.set("InkList", list);
                 let mut bs = Dictionary::new();
                 bs.set("W", Object::Real(*width));
@@ -1103,12 +1081,7 @@ pub fn render_bytes(bytes: &[u8], base: &Document, model: &Model) -> Result<Vec<
     }
     let mut e = Edit::new(base);
     let pages: Vec<ObjectId> = base.get_pages().into_values().collect();
-    let on: HashSet<usize> = model
-        .fields
-        .iter()
-        .flat_map(|f| f.widgets.iter().map(|w| w.page))
-        .chain(model.marks.iter().map(|m| m.page))
-        .collect();
+    let on: HashSet<usize> = model.fields.iter().flat_map(|f| f.widgets.iter().map(|w| w.page)).chain(model.marks.iter().map(|m| m.page)).collect();
     for i in on {
         if let Some(&pid) = pages.get(i)
             && let Some(a) = e.annots_mut(pid)
@@ -1176,14 +1149,10 @@ fn flatten_page(doc: &mut Document, pid: ObjectId) {
         let stream_id = match n {
             Some(Object::Reference(r)) => match doc.get_object(*r) {
                 Ok(Object::Stream(_)) => Some(*r),
-                Ok(Object::Dictionary(states)) => get_name(doc, d, b"AS")
-                    .and_then(|s| states.get(s.as_bytes()).ok())
-                    .and_then(|o| o.as_reference().ok()),
+                Ok(Object::Dictionary(states)) => get_name(doc, d, b"AS").and_then(|s| states.get(s.as_bytes()).ok()).and_then(|o| o.as_reference().ok()),
                 _ => None,
             },
-            Some(Object::Dictionary(states)) => get_name(doc, d, b"AS")
-                .and_then(|s| states.get(s.as_bytes()).ok())
-                .and_then(|o| o.as_reference().ok()),
+            Some(Object::Dictionary(states)) => get_name(doc, d, b"AS").and_then(|s| states.get(s.as_bytes()).ok()).and_then(|o| o.as_reference().ok()),
             _ => None,
         };
         let Some(sid) = stream_id else { continue };
@@ -1195,8 +1164,7 @@ fn flatten_page(doc: &mut Document, pid: ObjectId) {
             .filter(|v: &Vec<f32>| v.len() == 6)
             .unwrap_or_else(|| vec![1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
         // The bbox through /Matrix, then mapped onto the annotation rect.
-        let corners = [[bbox[0], bbox[1]], [bbox[2], bbox[1]], [bbox[0], bbox[3]], [bbox[2], bbox[3]]]
-            .map(|[x, y]| [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]);
+        let corners = [[bbox[0], bbox[1]], [bbox[2], bbox[1]], [bbox[0], bbox[3]], [bbox[2], bbox[3]]].map(|[x, y]| [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]);
         let (bx0, by0) = (corners.iter().map(|p| p[0]).fold(f32::MAX, f32::min), corners.iter().map(|p| p[1]).fold(f32::MAX, f32::min));
         let (bx1, by1) = (corners.iter().map(|p| p[0]).fold(f32::MIN, f32::max), corners.iter().map(|p| p[1]).fold(f32::MIN, f32::max));
         if bx1 - bx0 <= 0.0 || by1 - by0 <= 0.0 {
@@ -1204,13 +1172,7 @@ fn flatten_page(doc: &mut Document, pid: ObjectId) {
         }
         let (sx, sy) = ((rect[2] - rect[0]) / (bx1 - bx0), (rect[3] - rect[1]) / (by1 - by0));
         let name = format!("TbFlat{k}");
-        ops += &format!(
-            "q {} 0 0 {} {} {} cm /{name} Do Q\n",
-            fmt(sx),
-            fmt(sy),
-            fmt(rect[0] - bx0 * sx),
-            fmt(rect[1] - by0 * sy)
-        );
+        ops += &format!("q {} 0 0 {} {} {} cm /{name} Do Q\n", fmt(sx), fmt(sy), fmt(rect[0] - bx0 * sx), fmt(rect[1] - by0 * sy));
         xobjects.push((name, sid));
     }
     for (_, sid) in &xobjects {
@@ -1388,13 +1350,7 @@ mod tests {
             color: [0.0, 0.0, 0.5],
             kind: MarkKind::Ink { strokes: vec![vec![[0.0, 0.0], [0.5, 1.0], [1.0, 0.2]]], width: 1.5, signature: true },
         });
-        m.marks.push(Mark {
-            id: None,
-            page: 0,
-            rect: [72.0, 500.0, 272.0, 520.0],
-            color: [0.0; 3],
-            kind: MarkKind::Text { text: "Approved (see note)".into(), size: 12.0 },
-        });
+        m.marks.push(Mark { id: None, page: 0, rect: [72.0, 500.0, 272.0, 520.0], color: [0.0; 3], kind: MarkKind::Text { text: "Approved (see note)".into(), size: 12.0 } });
         let saved = save(&bytes, &doc, &original, &m).unwrap();
         // An incremental update: the original bytes are untouched.
         assert!(saved.starts_with(&bytes));
@@ -1444,13 +1400,7 @@ mod tests {
         let doc = load(&bytes);
         let original = read_model(&doc);
         let mut m = original.clone();
-        m.marks.push(Mark {
-            id: None,
-            page: 0,
-            rect: [300.0, 100.0, 420.0, 140.0],
-            color: [0.0; 3],
-            kind: MarkKind::Ink { strokes: vec![vec![[0.0, 0.0], [1.0, 1.0]]], width: 1.0, signature: true },
-        });
+        m.marks.push(Mark { id: None, page: 0, rect: [300.0, 100.0, 420.0, 140.0], color: [0.0; 3], kind: MarkKind::Ink { strokes: vec![vec![[0.0, 0.0], [1.0, 1.0]]], width: 1.0, signature: true } });
         let mut doc2 = load(&save(&bytes, &doc, &original, &m).unwrap());
         let id = read_model(&doc2).marks[0].id.unwrap();
         let d = doc2.get_dictionary_mut(id).unwrap();
@@ -1528,17 +1478,11 @@ mod tests {
         label(&mut content, 576.0, "Availability:");
         let mut combo = widget([170.0, 570.0, 330.0, 590.0], "Availability", "Ch");
         combo.set("Ff", 1 << 17);
-        combo.set(
-            "Opt",
-            ["Weekdays", "Weekends", "Evenings", "Any time"].iter().map(|o| Object::string_literal(*o)).collect::<Vec<_>>(),
-        );
+        combo.set("Opt", ["Weekdays", "Weekends", "Evenings", "Any time"].iter().map(|o| Object::string_literal(*o)).collect::<Vec<_>>());
         add(&mut doc, combo, &mut fields, &mut annots);
         label(&mut content, 546.0, "Area:");
         let mut list = widget([170.0, 480.0, 330.0, 560.0], "Area", "Ch");
-        list.set(
-            "Opt",
-            ["Kitchen", "Front desk", "Garden", "Driving"].iter().map(|o| Object::string_literal(*o)).collect::<Vec<_>>(),
-        );
+        list.set("Opt", ["Kitchen", "Front desk", "Garden", "Driving"].iter().map(|o| Object::string_literal(*o)).collect::<Vec<_>>());
         list.set("V", Object::string_literal("Garden"));
         add(&mut doc, list, &mut fields, &mut annots);
         label(&mut content, 456.0, "T-shirt size:");
@@ -1631,11 +1575,7 @@ mod tests {
         let bytes = std::fs::read(std::env::var("PDF").unwrap()).unwrap();
         let pdf = hayro::hayro_syntax::Pdf::new(bytes).unwrap();
         let pages = pdf.pages();
-        let pix = hayro::render(&pages[0], &RenderCache::new(), &InterpreterSettings::default(), &RenderSettings::default(), &PixmapSettings {
-            x_scale: 2.0,
-            y_scale: 2.0,
-            bg_color: WHITE,
-        });
+        let pix = hayro::render(&pages[0], &RenderCache::new(), &InterpreterSettings::default(), &RenderSettings::default(), &PixmapSettings { x_scale: 2.0, y_scale: 2.0, bg_color: WHITE });
         image::save_buffer(std::env::var("OUT").unwrap(), pix.data_as_u8_slice(), pix.width() as u32, pix.height() as u32, image::ColorType::Rgba8).unwrap();
     }
 

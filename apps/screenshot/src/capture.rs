@@ -7,8 +7,8 @@ use std::{
     time::Duration,
 };
 
-use serde::{Deserialize, Serialize};
 use olo_protocol::{Client, Reply, Request, WindowInfo};
+use serde::{Deserialize, Serialize};
 
 /// What to take; Screenshot's settings are these plus where to save.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -164,11 +164,7 @@ fn windows(client: &mut Client) -> Result<Vec<WindowInfo>, String> {
 pub fn take(settings: &Settings, hide: bool) -> Result<Shot, String> {
     let mut client = Client::connect().map_err(|e| e.to_string())?;
     let me = std::process::id() as i32;
-    let mine: Vec<u64> = if hide {
-        windows(&mut client)?.iter().filter(|w| w.pid == Some(me) && !w.minimized).map(|w| w.id).collect()
-    } else {
-        Vec::new()
-    };
+    let mine: Vec<u64> = if hide { windows(&mut client)?.iter().filter(|w| w.pid == Some(me) && !w.minimized).map(|w| w.id).collect() } else { Vec::new() };
     for &id in &mine {
         request(&mut client, &Request::Minimize { id })?;
     }
@@ -187,17 +183,7 @@ pub fn take(settings: &Settings, hide: bool) -> Result<Shot, String> {
             None
         };
         let png = scratch_path();
-        request(
-            &mut client,
-            &Request::Screenshot {
-                path: png.display().to_string(),
-                output: None,
-                window,
-                border: settings.border,
-                pointer: settings.pointer,
-                format: Default::default(),
-            },
-        )?;
+        request(&mut client, &Request::Screenshot { path: png.display().to_string(), output: None, window, border: settings.border, pointer: settings.pointer, format: Default::default() })?;
         let image = image::open(&png).map_err(|e| e.to_string())?.into_rgba8();
         Ok(Shot { png, image: Arc::new(image) })
     })();
@@ -219,10 +205,7 @@ pub fn take_output(output: Option<String>) -> Result<image::RgbaImage, String> {
 
 /// `screenshotN`, the first N not taken in `folder` in any format.
 pub fn next_name(folder: &Path) -> String {
-    (1..)
-        .map(|n| format!("screenshot{n}"))
-        .find(|stem| !Format::ALL.iter().any(|f| folder.join(format!("{stem}.{}", f.extension())).exists()))
-        .unwrap_or_else(|| "screenshot".into())
+    (1..).map(|n| format!("screenshot{n}")).find(|stem| !Format::ALL.iter().any(|f| folder.join(format!("{stem}.{}", f.extension())).exists())).unwrap_or_else(|| "screenshot".into())
 }
 
 /// The name with `format`'s extension (replacing any image extension).

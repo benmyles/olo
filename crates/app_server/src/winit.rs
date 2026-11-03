@@ -36,9 +36,7 @@ use smithay::{
     utils::{IsAlive, Scale, Transform},
     wayland::{
         compositor,
-        dmabuf::{
-            DmabufFeedback, DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier,
-        },
+        dmabuf::{DmabufFeedback, DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         presentation::Refresh,
     },
 };
@@ -64,13 +62,7 @@ impl DmabufHandler for AnvilState<WinitData> {
     }
 
     fn dmabuf_imported(&mut self, _global: &DmabufGlobal, dmabuf: Dmabuf, notifier: ImportNotifier) {
-        if self
-            .backend_data
-            .backend
-            .renderer()
-            .import_dmabuf(&dmabuf, None)
-            .is_ok()
-        {
+        if self.backend_data.backend.renderer().import_dmabuf(&dmabuf, None).is_ok() {
             let _ = notifier.successful::<AnvilState<WinitData>>();
         } else {
             notifier.failed();
@@ -106,52 +98,28 @@ pub fn run_winit() {
     };
     let size = backend.window_size();
 
-    let mode = Mode {
-        size,
-        refresh: 60_000,
-    };
-    let output = Output::new(
-        OUTPUT_NAME.to_string(),
-        PhysicalProperties {
-            size: (0, 0).into(),
-            subpixel: Subpixel::Unknown,
-            make: "Smithay".into(),
-            model: "Winit".into(),
-            serial_number: "Unknown".into(),
-        },
-    );
+    let mode = Mode { size, refresh: 60_000 };
+    let output =
+        Output::new(OUTPUT_NAME.to_string(), PhysicalProperties { size: (0, 0).into(), subpixel: Subpixel::Unknown, make: "Smithay".into(), model: "Winit".into(), serial_number: "Unknown".into() });
     let _global = output.create_global::<AnvilState<WinitData>>(&display.handle());
     output.change_current_state(Some(mode), Some(Transform::Flipped180), None, Some((0, 0).into()));
     output.set_preferred(mode);
 
     #[cfg(feature = "debug")]
     #[allow(deprecated)]
-    let fps_image =
-        image::io::Reader::with_format(std::io::Cursor::new(FPS_NUMBERS_PNG), image::ImageFormat::Png)
-            .decode()
-            .unwrap();
+    let fps_image = image::io::Reader::with_format(std::io::Cursor::new(FPS_NUMBERS_PNG), image::ImageFormat::Png).decode().unwrap();
     #[cfg(feature = "debug")]
-    let fps_texture = backend
-        .renderer()
-        .import_memory(
-            &fps_image.to_rgba8(),
-            Fourcc::Abgr8888,
-            (fps_image.width() as i32, fps_image.height() as i32).into(),
-            false,
-        )
-        .expect("Unable to upload FPS texture");
+    let fps_texture =
+        backend.renderer().import_memory(&fps_image.to_rgba8(), Fourcc::Abgr8888, (fps_image.width() as i32, fps_image.height() as i32).into(), false).expect("Unable to upload FPS texture");
     #[cfg(feature = "debug")]
     let mut fps_element = FpsElement::new(fps_texture);
 
-    let render_node = EGLDevice::device_for_display(backend.renderer().egl_context().display())
-        .and_then(|device| device.try_get_render_node());
+    let render_node = EGLDevice::device_for_display(backend.renderer().egl_context().display()).and_then(|device| device.try_get_render_node());
 
     let dmabuf_default_feedback = match render_node {
         Ok(Some(node)) => {
             let dmabuf_formats = backend.renderer().dmabuf_formats();
-            let dmabuf_default_feedback = DmabufFeedbackBuilder::new(node.dev_id(), dmabuf_formats)
-                .build()
-                .unwrap();
+            let dmabuf_default_feedback = DmabufFeedbackBuilder::new(node.dev_id(), dmabuf_formats).build().unwrap();
             Some(dmabuf_default_feedback)
         }
         Ok(None) => {
@@ -168,16 +136,12 @@ pub fn run_winit() {
     // Note: egl on Mesa requires either v4 or wl_drm (initialized with bind_wl_display)
     let dmabuf_state = if let Some(default_feedback) = dmabuf_default_feedback {
         let mut dmabuf_state = DmabufState::new();
-        let dmabuf_global = dmabuf_state.create_global_with_default_feedback::<AnvilState<WinitData>>(
-            &display.handle(),
-            &default_feedback,
-        );
+        let dmabuf_global = dmabuf_state.create_global_with_default_feedback::<AnvilState<WinitData>>(&display.handle(), &default_feedback);
         (dmabuf_state, dmabuf_global, Some(default_feedback))
     } else {
         let dmabuf_formats = backend.renderer().dmabuf_formats();
         let mut dmabuf_state = DmabufState::new();
-        let dmabuf_global =
-            dmabuf_state.create_global::<AnvilState<WinitData>>(&display.handle(), dmabuf_formats);
+        let dmabuf_global = dmabuf_state.create_global::<AnvilState<WinitData>>(&display.handle(), dmabuf_formats);
         (dmabuf_state, dmabuf_global, None)
     };
 
@@ -199,12 +163,9 @@ pub fn run_winit() {
         }
     };
     let mut state = AnvilState::init(display, event_loop.handle(), data, true);
-    state
-        .shm_state
-        .update_formats(state.backend_data.backend.renderer().shm_formats());
+    state.shm_state.update_formats(state.backend_data.backend.renderer().shm_formats());
     state.apply_output_settings(&output);
     state.space.map_output(&output, (0, 0));
-
 
     info!("Initialization completed, starting the main loop.");
 
@@ -216,10 +177,7 @@ pub fn run_winit() {
                 // We only have one output
                 let output = state.space.outputs().next().unwrap().clone();
                 state.space.map_output(&output, (0, 0));
-                let mode = Mode {
-                    size,
-                    refresh: 60_000,
-                };
+                let mode = Mode { size, refresh: 60_000 };
                 output.change_current_state(Some(mode), None, None, None);
                 output.set_preferred(mode);
                 crate::shell::fixup_positions(&mut state.space, &state.settings.display, state.pointer.current_location());
@@ -236,11 +194,7 @@ pub fn run_winit() {
         // drawing logic
         {
             let now = state.clock.now();
-            let frame_target = now
-                + output
-                    .current_mode()
-                    .map(|mode| Duration::from_secs_f64(1_000f64 / mode.refresh as f64))
-                    .unwrap_or_default();
+            let frame_target = now + output.current_mode().map(|mode| Duration::from_secs_f64(1_000f64 / mode.refresh as f64)).unwrap_or_default();
             state.pre_repaint(&output, frame_target);
 
             let desktop_color = state.desktop_color(&output);
@@ -276,15 +230,7 @@ pub fn run_winit() {
 
             let scale = Scale::from(output.current_scale().fractional_scale());
             let cursor_hotspot = if let CursorImageStatus::Surface(ref surface) = state.cursor_status {
-                compositor::with_states(surface, |states| {
-                    states
-                        .data_map
-                        .get::<Mutex<CursorImageAttributes>>()
-                        .unwrap()
-                        .lock()
-                        .unwrap()
-                        .hotspot
-                })
+                compositor::with_states(surface, |states| states.data_map.get::<Mutex<CursorImageAttributes>>().unwrap().lock().unwrap().hotspot)
             } else {
                 (0, 0).into()
             };
@@ -293,22 +239,12 @@ pub fn run_winit() {
             #[cfg(feature = "debug")]
             let mut renderdoc = state.renderdoc.as_mut();
 
-            let age = if *full_redraw > 0 {
-                0
-            } else {
-                backend.buffer_age().unwrap_or(0)
-            };
+            let age = if *full_redraw > 0 { 0 } else { backend.buffer_age().unwrap_or(0) };
             #[cfg(feature = "debug")]
             let window_handle = backend
                 .window()
                 .window_handle()
-                .map(|handle| {
-                    if let RawWindowHandle::Wayland(handle) = handle.as_raw() {
-                        handle.surface.as_ptr()
-                    } else {
-                        std::ptr::null_mut()
-                    }
-                })
+                .map(|handle| if let RawWindowHandle::Wayland(handle) = handle.as_raw() { handle.surface.as_ptr() } else { std::ptr::null_mut() })
                 .unwrap_or_else(|_| std::ptr::null_mut());
             let render_res = backend.bind().and_then(|(renderer, mut fb)| {
                 #[cfg(feature = "debug")]
@@ -318,30 +254,13 @@ pub fn run_winit() {
 
                 let mut elements = Vec::<CustomRenderElements<GlesRenderer>>::new();
 
-                elements.extend(
-                    pointer_element.render_elements(
-                        renderer,
-                        (cursor_pos - cursor_hotspot.to_f64())
-                            .to_physical(scale)
-                            .to_i32_round(),
-                        scale,
-                        1.0,
-                    ),
-                );
+                elements.extend(pointer_element.render_elements(renderer, (cursor_pos - cursor_hotspot.to_f64()).to_physical(scale).to_i32_round(), scale, 1.0));
 
                 // draw the dnd icon if any
                 if let Some(icon) = dnd_icon {
-                    let dnd_icon_pos = (cursor_pos + icon.offset.to_f64())
-                        .to_physical(scale)
-                        .to_i32_round();
+                    let dnd_icon_pos = (cursor_pos + icon.offset.to_f64()).to_physical(scale).to_i32_round();
                     if icon.surface.alive() {
-                        elements.extend(AsRenderElements::<GlesRenderer>::render_elements(
-                            &smithay::desktop::space::SurfaceTree::from_surface(&icon.surface),
-                            renderer,
-                            dnd_icon_pos,
-                            scale,
-                            1.0,
-                        ));
+                        elements.extend(AsRenderElements::<GlesRenderer>::render_elements(&smithay::desktop::space::SurfaceTree::from_surface(&icon.surface), renderer, dnd_icon_pos, scale, 1.0));
                     }
                 }
 
@@ -351,20 +270,7 @@ pub fn run_winit() {
                 if locked {
                     elements.extend(crate::lock::elements(lock, renderer, &output));
                 }
-                render_output(
-                    &output,
-                    space,
-                    elements,
-                    renderer,
-                    &mut fb,
-                    damage_tracker,
-                    age,
-                    overview,
-                    desktop_color,
-                    locked,
-                    None,
-                )
-                .map_err(|err| match err {
+                render_output(&output, space, elements, renderer, &mut fb, damage_tracker, age, overview, desktop_color, locked, None).map_err(|err| match err {
                     OutputDamageTrackerError::Rendering(err) => err.into(),
                     _ => unreachable!(),
                 })
@@ -374,9 +280,10 @@ pub fn run_winit() {
                 Ok(render_output_result) => {
                     let has_rendered = render_output_result.damage.is_some();
                     if let Some(damage) = render_output_result.damage
-                        && let Err(err) = backend.submit(Some(damage)) {
-                            warn!("Failed to submit buffer: {}", err);
-                        }
+                        && let Err(err) = backend.submit(Some(damage))
+                    {
+                        warn!("Failed to submit buffer: {}", err);
+                    }
 
                     #[cfg(feature = "debug")]
                     if let Some(renderdoc) = renderdoc.as_mut() {
@@ -385,13 +292,7 @@ pub fn run_winit() {
                             backend
                                 .window()
                                 .window_handle()
-                                .map(|handle| {
-                                    if let RawWindowHandle::Wayland(handle) = handle.as_raw() {
-                                        handle.surface.as_ptr()
-                                    } else {
-                                        std::ptr::null_mut()
-                                    }
-                                })
+                                .map(|handle| if let RawWindowHandle::Wayland(handle) = handle.as_raw() { handle.surface.as_ptr() } else { std::ptr::null_mut() })
                                 .unwrap_or_else(|_| std::ptr::null_mut()),
                         );
                     }
@@ -400,25 +301,13 @@ pub fn run_winit() {
 
                     let states = render_output_result.states;
 
-                    update_primary_scanout_output(
-                        &state.space,
-                        &output,
-                        &state.dnd_icon,
-                        &state.cursor_status,
-                        &states,
-                    );
+                    update_primary_scanout_output(&state.space, &output, &state.dnd_icon, &state.cursor_status, &states);
 
                     if has_rendered {
-                        let mut output_presentation_feedback =
-                            take_presentation_feedback(&output, &state.space, &states);
+                        let mut output_presentation_feedback = take_presentation_feedback(&output, &state.space, &states);
                         output_presentation_feedback.presented(
                             frame_target,
-                            output
-                                .current_mode()
-                                .map(|mode| {
-                                    Refresh::fixed(Duration::from_secs_f64(1_000f64 / mode.refresh as f64))
-                                })
-                                .unwrap_or(Refresh::Unknown),
+                            output.current_mode().map(|mode| Refresh::fixed(Duration::from_secs_f64(1_000f64 / mode.refresh as f64))).unwrap_or(Refresh::Unknown),
                             0,
                             wp_presentation_feedback::Kind::Vsync,
                         )
@@ -435,13 +324,7 @@ pub fn run_winit() {
                             backend
                                 .window()
                                 .window_handle()
-                                .map(|handle| {
-                                    if let RawWindowHandle::Wayland(handle) = handle.as_raw() {
-                                        handle.surface.as_ptr()
-                                    } else {
-                                        std::ptr::null_mut()
-                                    }
-                                })
+                                .map(|handle| if let RawWindowHandle::Wayland(handle) = handle.as_raw() { handle.surface.as_ptr() } else { std::ptr::null_mut() })
                                 .unwrap_or_else(|_| std::ptr::null_mut()),
                         );
                     }

@@ -39,8 +39,8 @@
 //! and desired target-gpu are up to be implemented by the compositor. The module only
 //! reduces the amount of necessary setup operations.
 //!
-use olo_sync::Mutex;
 use aliasable::boxed::AliasableBox;
+use olo_sync::Mutex;
 use std::{any::Any, collections::HashMap, fmt, sync::Arc};
 
 use super::{

@@ -87,10 +87,7 @@ pub fn clear_old_themes(data: &Path, theme: &str, colors: &str) {
     for entry in dir.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         let ours = name == "Olo" || name.starts_with(toolkit::GTK_THEME_PREFIX);
-        if ours
-            && !keep.contains(&name)
-            && std::fs::read_to_string(entry.path().join("index.theme")).is_ok_and(|t| t.contains(toolkit::GTK_INDEX_COMMENT))
-        {
+        if ours && !keep.contains(&name) && std::fs::read_to_string(entry.path().join("index.theme")).is_ok_and(|t| t.contains(toolkit::GTK_INDEX_COMMENT)) {
             let _ = std::fs::remove_dir_all(entry.path());
         }
     }

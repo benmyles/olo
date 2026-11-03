@@ -451,14 +451,7 @@ impl KeyboardProfile {
             Platform::Windows => (CommandKey::Control, false, true),
             Platform::Beos => (CommandKey::Alt, false, false),
         };
-        KeyboardProfile {
-            name: platform.name().into(),
-            platform,
-            command_key,
-            caps_lock_control,
-            palette_on_tap,
-            shortcuts: ShortcutSettings::new(),
-        }
+        KeyboardProfile { name: platform.name().into(), platform, command_key, caps_lock_control, palette_on_tap, shortcuts: ShortcutSettings::new() }
     }
 
     /// Its platform's, just as it comes (whatever its name).
@@ -804,14 +797,7 @@ pub struct TilingSettings {
 
 impl Default for TilingSettings {
     fn default() -> Self {
-        TilingSettings {
-            gap: 8,
-            margin: 8,
-            ungrouped_apps: Vec::new(),
-            default_mode: WindowingMode::Standard,
-            modes: Vec::new(),
-            auto: Vec::new(),
-        }
+        TilingSettings { gap: 8, margin: 8, ungrouped_apps: Vec::new(), default_mode: WindowingMode::Standard, modes: Vec::new(), auto: Vec::new() }
     }
 }
 

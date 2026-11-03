@@ -447,13 +447,25 @@ impl Ctx {
             if let tl::enums::User::User(u) = u {
                 let id = u.id;
                 let name = [u.first_name.as_deref(), u.last_name.as_deref()].into_iter().flatten().collect::<Vec<_>>().join(" ");
-                let name = if u.deleted { "Deleted Account".to_owned() } else if name.is_empty() { "Unknown".into() } else { name };
+                let name = if u.deleted {
+                    "Deleted Account".to_owned()
+                } else if name.is_empty() {
+                    "Unknown".into()
+                } else {
+                    name
+                };
                 let seen = u.status.as_ref().and_then(seen_of);
                 let photo = match &u.photo {
                     Some(tl::enums::UserProfilePhoto::Photo(p)) => Some(p.photo_id),
                     _ => None,
                 };
-                let kind = if u.is_self { ChatKind::Saved } else if u.bot { ChatKind::Bot } else { ChatKind::User };
+                let kind = if u.is_self {
+                    ChatKind::Saved
+                } else if u.bot {
+                    ChatKind::Bot
+                } else {
+                    ChatKind::User
+                };
                 let w = Who { name, username: u.username.clone(), photo, kind, contact: u.contact, verified: u.verified, seen, members: None };
                 let mut who = self.who.lock().unwrap();
                 // A "min" user carries less than we may know already.
@@ -490,11 +502,19 @@ impl Ctx {
                         tl::enums::ChatPhoto::Photo(p) => Some(p.photo_id),
                         _ => None,
                     };
-                    let kind = if c.forum { ChatKind::Forum } else if c.megagroup || c.gigagroup { ChatKind::Group } else { ChatKind::Channel };
+                    let kind = if c.forum {
+                        ChatKind::Forum
+                    } else if c.megagroup || c.gigagroup {
+                        ChatKind::Group
+                    } else {
+                        ChatKind::Channel
+                    };
                     let members = c.participants_count.map(|n| n.max(0) as u32);
                     (-1_000_000_000_000 - c.id, Who { name: c.title.clone(), username: c.username.clone(), photo, kind, verified: c.verified, members, ..Who::default() })
                 }
-                tl::enums::Chat::ChannelForbidden(c) => (-1_000_000_000_000 - c.id, Who { name: c.title.clone(), kind: if c.megagroup { ChatKind::Group } else { ChatKind::Channel }, ..Who::default() }),
+                tl::enums::Chat::ChannelForbidden(c) => {
+                    (-1_000_000_000_000 - c.id, Who { name: c.title.clone(), kind: if c.megagroup { ChatKind::Group } else { ChatKind::Channel }, ..Who::default() })
+                }
                 _ => continue,
             };
             let mut who = self.who.lock().unwrap();
@@ -540,7 +560,13 @@ impl Ctx {
             tl::enums::Message::Empty(_) => None,
             tl::enums::Message::Message(m) => {
                 let chat = id_of(&m.peer_id);
-                let from_id = m.from_id.as_ref().map(id_of).or(if m.out { Some(me) } else if chat > 0 { Some(chat) } else { None });
+                let from_id = m.from_id.as_ref().map(id_of).or(if m.out {
+                    Some(me)
+                } else if chat > 0 {
+                    Some(chat)
+                } else {
+                    None
+                });
                 let from = from_id.map(|id| {
                     let w = self.who.lock().unwrap().get(&id).cloned();
                     Sender { id, name: if id == me { "You".into() } else { w.as_ref().map_or_else(|| "Unknown".into(), |w| w.name.clone()) }, photo: w.and_then(|w| w.photo) }
@@ -549,17 +575,15 @@ impl Ctx {
                     Some(tl::enums::MessageReplyHeader::Header(h)) => {
                         let topic = if h.forum_topic { h.reply_to_top_id.or(h.reply_to_msg_id) } else { None };
                         // In a forum, a reply only to the topic's first message is no reply.
-                        let reply = h.reply_to_msg_id.filter(|&r| !(h.forum_topic && h.reply_to_top_id.is_none() && Some(r) == topic)).map(|id| ReplyTo {
-                            id,
-                            from: None,
-                            text: h.quote_text.clone(),
-                        });
+                        let reply = h.reply_to_msg_id.filter(|&r| !(h.forum_topic && h.reply_to_top_id.is_none() && Some(r) == topic)).map(|id| ReplyTo { id, from: None, text: h.quote_text.clone() });
                         (reply, topic)
                     }
                     _ => (None, None),
                 };
                 let forwarded = m.fwd_from.as_ref().map(|f| match f {
-                    tl::enums::MessageFwdHeader::Header(h) => h.from_name.clone().or_else(|| h.from_id.as_ref().and_then(|p| self.name_of(id_of(p)))).or(h.post_author.clone()).unwrap_or_else(|| "Unknown".into()),
+                    tl::enums::MessageFwdHeader::Header(h) => {
+                        h.from_name.clone().or_else(|| h.from_id.as_ref().and_then(|p| self.name_of(id_of(p)))).or(h.post_author.clone()).unwrap_or_else(|| "Unknown".into())
+                    }
                 });
                 let media = m.media.as_ref().and_then(|md| {
                     self.media.lock().unwrap().insert((chat, m.id), md.clone());
@@ -849,10 +873,7 @@ impl Ctx {
             (None, _) => (0, 0),
         };
         let r = match topic {
-            Some(t) => self
-                .client
-                .invoke(&tl::functions::messages::GetReplies { peer: input, msg_id: t, offset_id, offset_date: 0, add_offset, limit: PAGE, max_id: 0, min_id: 0, hash: 0 })
-                .await,
+            Some(t) => self.client.invoke(&tl::functions::messages::GetReplies { peer: input, msg_id: t, offset_id, offset_date: 0, add_offset, limit: PAGE, max_id: 0, min_id: 0, hash: 0 }).await,
             None => self.client.invoke(&tl::functions::messages::GetHistory { peer: input, offset_id, offset_date: 0, add_offset, limit: PAGE, max_id: 0, min_id: 0, hash: 0 }).await,
         }
         .map_err(|e| explain(&e))?;
@@ -942,7 +963,19 @@ impl Ctx {
             None => {
                 let w = self.who.lock().unwrap().get(&m.chat).cloned().unwrap_or_default();
                 let unknown = crate::model::stranger(m.chat, w.kind, w.contact, w.verified, m.out);
-                Chat { id: m.chat, kind: w.kind, title: w.name, username: w.username, photo: w.photo, contact: w.contact, verified: w.verified, unknown, members: w.members, seen: w.seen, ..Chat::default() }
+                Chat {
+                    id: m.chat,
+                    kind: w.kind,
+                    title: w.name,
+                    username: w.username,
+                    photo: w.photo,
+                    contact: w.contact,
+                    verified: w.verified,
+                    unknown,
+                    members: w.members,
+                    seen: w.seen,
+                    ..Chat::default()
+                }
             }
         };
         // Writing back makes them known.
@@ -1527,7 +1560,8 @@ impl Ctx {
                                 file_reference: doc.file_reference.clone(),
                                 thumb_size: String::new(),
                             });
-                            let ext = name.as_deref().and_then(|n| n.rsplit_once('.')).map(|(_, e)| e.to_owned()).or_else(|| ext_for(&doc.mime_type).map(str::to_owned)).unwrap_or_else(|| "bin".into());
+                            let ext =
+                                name.as_deref().and_then(|n| n.rsplit_once('.')).map(|(_, e)| e.to_owned()).or_else(|| ext_for(&doc.mime_type).map(str::to_owned)).unwrap_or_else(|| "bin".into());
                             let file = match name {
                                 Some(n) => format!("{chat}-{id}-{}", safe_name(&n)),
                                 None => format!("{chat}-{id}.{ext}"),
@@ -1760,7 +1794,18 @@ impl Ctx {
                     .map(|id| {
                         self.known_chat(id).unwrap_or_else(|| {
                             let w = self.who.lock().unwrap().get(&id).cloned().unwrap_or_default();
-                            Chat { id, kind: w.kind, title: w.name, username: w.username, photo: w.photo, contact: w.contact, verified: w.verified, members: w.members, seen: w.seen, ..Chat::default() }
+                            Chat {
+                                id,
+                                kind: w.kind,
+                                title: w.name,
+                                username: w.username,
+                                photo: w.photo,
+                                contact: w.contact,
+                                verified: w.verified,
+                                members: w.members,
+                                seen: w.seen,
+                                ..Chat::default()
+                            }
                         })
                     })
                     .collect();
@@ -1807,10 +1852,7 @@ impl Ctx {
                 }
             }
             Cmd::Resolve { username } => {
-                let r = self
-                    .client
-                    .invoke(&tl::functions::contacts::ResolveUsername { username: username.trim_start_matches('@').to_owned(), referer: None })
-                    .await;
+                let r = self.client.invoke(&tl::functions::contacts::ResolveUsername { username: username.trim_start_matches('@').to_owned(), referer: None }).await;
                 let chat = match r {
                     Ok(tl::enums::contacts::ResolvedPeer::Peer(p)) => {
                         self.remember_users(&p.users).await;
@@ -1818,7 +1860,18 @@ impl Ctx {
                         let id = id_of(&p.peer);
                         Some(self.known_chat(id).unwrap_or_else(|| {
                             let w = self.who.lock().unwrap().get(&id).cloned().unwrap_or_default();
-                            Chat { id, kind: w.kind, title: w.name, username: w.username, photo: w.photo, contact: w.contact, verified: w.verified, members: w.members, seen: w.seen, ..Chat::default() }
+                            Chat {
+                                id,
+                                kind: w.kind,
+                                title: w.name,
+                                username: w.username,
+                                photo: w.photo,
+                                contact: w.contact,
+                                verified: w.verified,
+                                members: w.members,
+                                seen: w.seen,
+                                ..Chat::default()
+                            }
                         }))
                     }
                     Err(_) => None,
@@ -2003,11 +2056,15 @@ fn media_of(m: &tl::enums::MessageMedia) -> Option<Media> {
             for a in &doc.attributes {
                 match a {
                     tl::enums::DocumentAttribute::Sticker(s) => {
-                        let (w, h) = doc.attributes.iter().find_map(|a| match a {
-                            tl::enums::DocumentAttribute::ImageSize(i) => Some((i.w, i.h)),
-                            tl::enums::DocumentAttribute::Video(v) => Some((v.w, v.h)),
-                            _ => None,
-                        }).unwrap_or((512, 512));
+                        let (w, h) = doc
+                            .attributes
+                            .iter()
+                            .find_map(|a| match a {
+                                tl::enums::DocumentAttribute::ImageSize(i) => Some((i.w, i.h)),
+                                tl::enums::DocumentAttribute::Video(v) => Some((v.w, v.h)),
+                                _ => None,
+                            })
+                            .unwrap_or((512, 512));
                         out = Some(Media::Sticker { emoji: s.alt.clone(), animated: doc.mime_type != "image/webp", w: w.max(0) as u32, h: h.max(0) as u32 });
                         break;
                     }

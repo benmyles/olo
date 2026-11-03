@@ -7,18 +7,20 @@ use std::{cell::Cell, rc::Rc};
 
 use chrono::{DateTime, Local, Utc};
 use olo_ui::{
-    Menu,
+    Menu, agent,
     gpui::{
-        AnyElement, App, Bounds, Context, Corner, CursorStyle, Div, Entity, FontStyle, FontWeight, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent,
-        MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Render, ScrollHandle, SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled as _, Subscription, TextRun, Window,
-        canvas, div, point, px, relative, size,
+        AnyElement, App, Bounds, Context, Corner, CursorStyle, Div, Entity, FontStyle, FontWeight, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton,
+        MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Render, ScrollHandle, SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled as _, Subscription,
+        TextRun, Window, canvas, div, point, px, relative, size,
     },
-    agent, icons, menu, metrics as m,
-    part,
+    icons, menu, metrics as m, part,
     search::{self, FilterBar, Query},
     style::{self, c},
     theme,
-    widgets::{Button, CheckBox, Column, ColumnListView, ScrollView, StringView, TextControl, button_row, sidebar::{self, Row}, Sidebar},
+    widgets::{
+        Button, CheckBox, Column, ColumnListView, ScrollView, Sidebar, StringView, TextControl, button_row,
+        sidebar::{self, Row},
+    },
 };
 use onepassword::{ItemCategory, ItemField, ItemFieldType, ItemOverview, ItemState};
 
@@ -66,7 +68,6 @@ pub fn icon(c: ItemCategory) -> &'static str {
         ItemCategory::Unsupported => "document",
     }
 }
-
 
 const SOURCES_WIDTH: f32 = 184.0;
 const LIST_WIDTH: f32 = 290.0;
@@ -150,7 +151,18 @@ fn panel(icon_name: &'static str, heading: &str, message: String, extra: impl In
         move |b, _, window, cx| {
             let p = theme::palette(cx);
             icons::paint(window, style::snap_centred(window, point(b.center().x, b.top() + px(32.0)), 64.0, 64.0), icon_name);
-            let t = style::label_fit(window, cx, b.center().x, b.top() + px(64.0 + 2.0 * m::SPACING + 11.0), style::Align::Center, heading.clone(), 16.0, style::ui_font(FontWeight::BOLD), c(p.panel_text), b.size.width);
+            let t = style::label_fit(
+                window,
+                cx,
+                b.center().x,
+                b.top() + px(64.0 + 2.0 * m::SPACING + 11.0),
+                style::Align::Center,
+                heading.clone(),
+                16.0,
+                style::ui_font(FontWeight::BOLD),
+                c(p.panel_text),
+                b.size.width,
+            );
             agent::record(window, cx, agent::Node { role: "Heading", name: Some(heading.clone()), bounds: t, enabled: true, ..Default::default() });
         },
     )
@@ -285,7 +297,6 @@ fn sync_ago(at: chrono::DateTime<chrono::Utc>) -> String {
         _ => format!("at {}", at.with_timezone(&chrono::Local).format("%H:%M")),
     }
 }
-
 
 fn locked(app: &mut Passwords, window: &mut Window, cx: &mut Context<Passwords>) -> AnyElement {
     let me = cx.entity();
@@ -519,8 +530,6 @@ fn plural(c: ItemCategory) -> String {
     }
 }
 
-
-
 /// The filters over the list and the list: each item's icon, title and
 /// what tells it apart (the search's finds marked).
 pub fn items(app: &mut Passwords, window: &mut Window, cx: &mut Context<Passwords>) -> AnyElement {
@@ -536,7 +545,8 @@ pub fn items(app: &mut Passwords, window: &mut Window, cx: &mut Context<Password
     let indent = line + m::SPACING - m::TEXT_INSET;
     let top = line + m::TIGHT + (sidebar::ROW - m::CONTROL_HEIGHT) / 2.0;
     let bar_me = me.clone();
-    let filters = FilterBar::new("passwords", app.search.clone(), facets.clone()).no_clear().max_width(LIST_WIDTH - indent).on_change(move |text, _, cx| bar_me.update(cx, |a, cx| a.set_search(text, true, cx)));
+    let filters =
+        FilterBar::new("passwords", app.search.clone(), facets.clone()).no_clear().max_width(LIST_WIDTH - indent).on_change(move |text, _, cx| bar_me.update(cx, |a, cx| a.set_search(text, true, cx)));
 
     // The list, its selection the app's.
     let selected = visible.iter().position(|i| Some(&i.id) == app.selected.as_ref());
@@ -554,7 +564,13 @@ pub fn items(app: &mut Passwords, window: &mut Window, cx: &mut Context<Password
     let query = Rc::new(Query::parse(&app.search, &search::keys(&facets)));
     let subtitles: Rc<Vec<String>> = Rc::new(visible.iter().map(|i| app.subtitle(i)).collect());
     let mark = search::mark_color(&p);
-    let empty = if app.loading { "Loading…" } else if !app.search.is_empty() { "Nothing matches." } else { "No items." };
+    let empty = if app.loading {
+        "Loading…"
+    } else if !app.search.is_empty() {
+        "Nothing matches."
+    } else {
+        "No items."
+    };
     let (cells, picked, menu_rows) = (visible.clone(), visible.clone(), visible.clone());
     let (select_me, open_me, menu_me) = (me.clone(), me.clone(), me);
     let list_model = app.items_list.clone();
@@ -649,7 +665,11 @@ pub fn detail(app: &mut Passwords, window: &mut Window, cx: &mut Context<Passwor
             Some(e) => (format!("Couldn’t open this item: {e}"), c(p.failure)),
             None => ("Loading…".to_string(), dim(&p)),
         };
-        let content = div().flex().flex_col().child(header(&overview.title, overview.category, &vault, None)).child(div().px(px(m::WINDOW_INSET)).pt(px(m::SPACING)).child(StringView::new(text).wrap(true).color(color)));
+        let content = div()
+            .flex()
+            .flex_col()
+            .child(header(&overview.title, overview.category, &vault, None))
+            .child(div().px(px(m::WINDOW_INSET)).pt(px(m::SPACING)).child(StringView::new(text).wrap(true).color(color)));
         return well(window, p.document_background, content).into_any_element();
     };
     let archived = overview.state == ItemState::Archived;
@@ -720,7 +740,18 @@ pub fn detail(app: &mut Passwords, window: &mut Window, cx: &mut Context<Passwor
                 |_, _, _| {},
                 move |b, _, window, cx| {
                     let p = theme::palette(cx);
-                    let r = style::label_fit(window, cx, b.left() + px(m::WINDOW_INSET), b.center().y, style::Align::Left, tags.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), c(p.document_text), b.size.width - px(2.0 * m::WINDOW_INSET));
+                    let r = style::label_fit(
+                        window,
+                        cx,
+                        b.left() + px(m::WINDOW_INSET),
+                        b.center().y,
+                        style::Align::Left,
+                        tags.clone(),
+                        style::PLAIN_SIZE,
+                        style::ui_font(FontWeight::NORMAL),
+                        c(p.document_text),
+                        b.size.width - px(2.0 * m::WINDOW_INSET),
+                    );
                     agent::record(window, cx, agent::Node::label(tags.clone(), r));
                 },
             )
@@ -767,8 +798,6 @@ fn date(t: DateTime<Utc>) -> String {
     t.with_timezone(&Local).format("%-d %b %Y, %H:%M").to_string()
 }
 
-
-
 /// An item's header: its icon, title, kind and vault, and its Edit
 /// button, whose label the title shares a baseline with.
 fn header(title: &str, category: ItemCategory, vault: &str, edit: Option<Button>) -> AnyElement {
@@ -811,7 +840,8 @@ fn header(title: &str, category: ItemCategory, vault: &str, edit: Option<Button>
                 let p = theme::palette(cx);
                 let font = style::ui_font(FontWeight::BOLD);
                 let baseline = style::baseline_at(window, b.center().y, style::PLAIN_SIZE);
-                let t = style::label_on_baseline_fit(window, cx, b.left(), baseline, style::Align::Left, title.clone(), TITLE_SIZE, font, c(p.document_text), (b.size.width - px(m::SPACING)).max(px(0.0)));
+                let t =
+                    style::label_on_baseline_fit(window, cx, b.left(), baseline, style::Align::Left, title.clone(), TITLE_SIZE, font, c(p.document_text), (b.size.width - px(m::SPACING)).max(px(0.0)));
                 agent::record(window, cx, agent::Node { role: "Heading", name: Some(title.clone()), bounds: t, enabled: true, ..Default::default() });
             },
         )
@@ -829,7 +859,17 @@ fn section_heading(title: String) -> AnyElement {
         |_, _, _| {},
         move |b, _, window, cx| {
             let p = theme::palette(cx);
-            let r = style::label(window, cx, b.left() + px(m::WINDOW_INSET), b.bottom() - px(9.0), style::Align::Left, title.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), c(p.document_text));
+            let r = style::label(
+                window,
+                cx,
+                b.left() + px(m::WINDOW_INSET),
+                b.bottom() - px(9.0),
+                style::Align::Left,
+                title.clone(),
+                style::PLAIN_SIZE,
+                style::ui_font(FontWeight::BOLD),
+                c(p.document_text),
+            );
             agent::record(window, cx, agent::Node { role: "Heading", name: Some(title.clone()), bounds: r, enabled: true, ..Default::default() });
         },
     )
@@ -1029,15 +1069,7 @@ impl ReviewView {
 
 /// A window's message, list and buttons, as an alert's are laid out.
 fn sheet(message: String, list: impl IntoElement, buttons: impl IntoElement) -> Div {
-    div()
-        .size_full()
-        .flex()
-        .flex_col()
-        .gap(px(m::SPACING))
-        .p(px(m::WINDOW_INSET))
-        .child(StringView::new(message).wrap(true))
-        .child(div().flex_1().min_h_0().child(list))
-        .child(buttons)
+    div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).child(StringView::new(message).wrap(true)).child(div().flex_1().min_h_0().child(list)).child(buttons)
 }
 
 impl Render for ReviewView {
@@ -1186,7 +1218,18 @@ impl Render for ProblemsView {
                         |_, _, _| {},
                         move |b, _, window, cx| {
                             let p = theme::palette(cx);
-                            let t = style::label_fit(window, cx, b.left() + px(m::SPACING), b.center().y + px(2.0), style::Align::Left, name.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), c(p.list_item_text), b.size.width - px(2.0 * m::SPACING));
+                            let t = style::label_fit(
+                                window,
+                                cx,
+                                b.left() + px(m::SPACING),
+                                b.center().y + px(2.0),
+                                style::Align::Left,
+                                name.clone(),
+                                style::PLAIN_SIZE,
+                                style::ui_font(FontWeight::BOLD),
+                                c(p.list_item_text),
+                                b.size.width - px(2.0 * m::SPACING),
+                            );
                             agent::record(window, cx, agent::Node { role: "Heading", name: Some(name.clone()), bounds: t, enabled: true, ..Default::default() });
                             style::hline_above(window, b.left(), b.right(), b.bottom(), dim(&p).opacity(0.4));
                         },
@@ -1240,7 +1283,18 @@ fn problem_row(problem: &crate::sync::Problem, p: &olo_theme::Palette) -> AnyEle
                 |_, _, _| {},
                 move |b, _, window, cx| {
                     let p = theme::palette(cx);
-                    let t = style::label_fit(window, cx, b.left(), b.center().y, style::Align::Left, item.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), c(p.list_item_text), b.size.width);
+                    let t = style::label_fit(
+                        window,
+                        cx,
+                        b.left(),
+                        b.center().y,
+                        style::Align::Left,
+                        item.clone(),
+                        style::PLAIN_SIZE,
+                        style::ui_font(FontWeight::NORMAL),
+                        c(p.list_item_text),
+                        b.size.width,
+                    );
                     agent::record(window, cx, agent::Node::label(item.clone(), t));
                 },
             )
@@ -1251,10 +1305,15 @@ fn problem_row(problem: &crate::sync::Problem, p: &olo_theme::Palette) -> AnyEle
     }
     let reason = StringView::new(problem.reason.clone()).wrap(true).color(reason_color);
     text = text.child(if titled { div().text_size(px(style::SMALL_SIZE)).child(reason) } else { div().child(reason) });
-    let mark = canvas(|_, _, _| {}, move |b, _, window, _| { icons::paint(window, style::snap(window, Bounds { origin: b.origin, size: size(px(16.0), px(16.0)) }), icon_name); })
-        .w(px(16.0))
-        .h(px(16.0))
-        .flex_shrink_0();
+    let mark = canvas(
+        |_, _, _| {},
+        move |b, _, window, _| {
+            icons::paint(window, style::snap(window, Bounds { origin: b.origin, size: size(px(16.0), px(16.0)) }), icon_name);
+        },
+    )
+    .w(px(16.0))
+    .h(px(16.0))
+    .flex_shrink_0();
     div()
         .w_full()
         .flex()

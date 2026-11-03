@@ -11,11 +11,13 @@
 //! ([`Cell`]). Agents read each row (`Row`, named by its cells' text,
 //! selected or not) and each column (`ColumnHeader`, sorted or not).
 
-use std::sync::Arc;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use gpui::{
-    App, AppContext as _, Bounds, ContentMask, CursorStyle, Entity, FocusHandle, Focusable, Font, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyBinding, KeyDownEvent, ListHorizontalSizingBehavior, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Point, RenderOnce, ScrollStrategy, SharedString, Styled as _, UniformListScrollHandle, Window, actions, canvas, div, point, px, size, uniform_list,
+    App, AppContext as _, Bounds, ContentMask, CursorStyle, Entity, FocusHandle, Focusable, Font, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyBinding,
+    KeyDownEvent, ListHorizontalSizingBehavior, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Point, RenderOnce, ScrollStrategy, SharedString,
+    Styled as _, UniformListScrollHandle, Window, actions, canvas, div, point, px, size, uniform_list,
 };
 use olo_kit_base::{
     list::{ListState, Mods, SelectionBand, TypeSelect},
@@ -320,7 +322,19 @@ type KeyFn = Rc<dyn Fn(usize, &App) -> u64>;
 impl ColumnListView {
     /// `rows` rows of `columns`, each cell drawn by `cell`.
     pub fn new(id: impl Into<SharedString>, model: &Entity<ListModel>, columns: impl Into<Rc<[Column]>>, rows: usize, cell: impl Fn(&mut Cell, &mut Window, &mut App) + 'static) -> ColumnListView {
-        ColumnListView { id: id.into(), model: model.clone(), columns: columns.into(), rows, row_height: m::LIST_ROW, cell: Rc::new(cell), names: None, empty: None, header: true, handlers: Handlers::default(), row_key: None }
+        ColumnListView {
+            id: id.into(),
+            model: model.clone(),
+            columns: columns.into(),
+            rows,
+            row_height: m::LIST_ROW,
+            cell: Rc::new(cell),
+            names: None,
+            empty: None,
+            header: true,
+            handlers: Handlers::default(),
+            row_key: None,
+        }
     }
 
     /// What row `row` shows, as a number that changes when it does (its
@@ -507,7 +521,11 @@ impl RenderOnce for ColumnListView {
                                     });
                                 }
                                 let name = texts.iter().map(|t| t.as_ref()).collect::<Vec<_>>().join("  ");
-                                agent::record(window, cx, agent::Node { role: "Row", name: Some(name.into()), bounds: r, enabled: true, clickable: true, selected: Some(selected), ..Default::default() });
+                                agent::record(
+                                    window,
+                                    cx,
+                                    agent::Node { role: "Row", name: Some(name.into()), bounds: r, enabled: true, clickable: true, selected: Some(selected), ..Default::default() },
+                                );
                             };
                             match &row_key {
                                 Some(key) => {
@@ -765,7 +783,11 @@ impl RenderOnce for ColumnListView {
                         let seen = r.intersect(&shown);
                         let seen = Bounds { origin: seen.origin, size: size(seen.size.width.max(px(0.0)), seen.size.height.max(px(0.0))) };
                         let clickable = seen.size.width > px(0.0);
-                        agent::record(window, cx, agent::Node { role: "ColumnHeader", name: Some(col.title.clone()), bounds: seen, enabled: true, clickable, selected: Some(sorted.is_some()), ..Default::default() });
+                        agent::record(
+                            window,
+                            cx,
+                            agent::Node { role: "ColumnHeader", name: Some(col.title.clone()), bounds: seen, enabled: true, clickable, selected: Some(sorted.is_some()), ..Default::default() },
+                        );
                     }
                 });
                 // Above the scroll bar: a blank header cell.
@@ -911,8 +933,10 @@ impl RenderOnce for ColumnListView {
             }
         };
         let last = Some(rows.saturating_sub(1));
-        let (down, up, page_down, page_up, home, end) = (key(1, 0, None, false), key(-1, 0, None, false), key(0, 1, None, false), key(0, -1, None, false), key(0, 0, Some(0), false), key(0, 0, last, false));
-        let (s_down, s_up, s_page_down, s_page_up, s_home, s_end) = (key(1, 0, None, true), key(-1, 0, None, true), key(0, 1, None, true), key(0, -1, None, true), key(0, 0, Some(0), true), key(0, 0, last, true));
+        let (down, up, page_down, page_up, home, end) =
+            (key(1, 0, None, false), key(-1, 0, None, false), key(0, 1, None, false), key(0, -1, None, false), key(0, 0, Some(0), false), key(0, 0, last, false));
+        let (s_down, s_up, s_page_down, s_page_up, s_home, s_end) =
+            (key(1, 0, None, true), key(-1, 0, None, true), key(0, 1, None, true), key(0, -1, None, true), key(0, 0, Some(0), true), key(0, 0, last, true));
         root = root
             .on_action(move |_: &Down, w, cx| down(w, cx))
             .on_action(move |_: &Up, w, cx| up(w, cx))

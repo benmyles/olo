@@ -84,17 +84,7 @@ fn identify(comm: &str, exe: &str, args: &[String]) -> Option<Agent> {
 /// prompt, dialogs and status line are).
 pub fn classify(screen: &str) -> State {
     let s = screen.to_lowercase();
-    const ASKING: [&str; 9] = [
-        "do you want to",
-        "would you like to",
-        "allow command?",
-        "enter to select",
-        "enter to confirm",
-        "esc to cancel",
-        "❯ 1. yes",
-        "› 1. yes",
-        "(y/n)",
-    ];
+    const ASKING: [&str; 9] = ["do you want to", "would you like to", "allow command?", "enter to select", "enter to confirm", "esc to cancel", "❯ 1. yes", "› 1. yes", "(y/n)"];
     if ASKING.iter().any(|a| s.contains(a)) {
         State::Blocked
     } else if s.contains("esc to interrupt") {

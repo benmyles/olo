@@ -37,7 +37,10 @@ pub enum Piece<'a> {
     /// out not to be an image, passed through as text.
     Held(Vec<u8>),
     Kitty(Vec<u8>),
-    Sixel { params: Vec<u8>, data: Vec<u8> },
+    Sixel {
+        params: Vec<u8>,
+        data: Vec<u8>,
+    },
     Iterm(Vec<u8>),
 }
 

@@ -66,9 +66,7 @@ impl Netlink {
         let mut to: libc::sockaddr_nl = unsafe { std::mem::zeroed() };
         to.nl_family = libc::AF_NETLINK as u16;
         // SAFETY: the buffer and address are ours, their lengths given.
-        let sent = unsafe {
-            libc::sendto(self.0, msg.as_ptr().cast(), msg.len(), 0, (&to as *const libc::sockaddr_nl).cast(), std::mem::size_of::<libc::sockaddr_nl>() as u32)
-        };
+        let sent = unsafe { libc::sendto(self.0, msg.as_ptr().cast(), msg.len(), 0, (&to as *const libc::sockaddr_nl).cast(), std::mem::size_of::<libc::sockaddr_nl>() as u32) };
         if sent < 0 {
             return Err(io::Error::last_os_error());
         }

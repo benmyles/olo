@@ -289,8 +289,7 @@ fn saved() -> Result<Vec<(String, OwnedObjectPath)>> {
     let paths: Vec<OwnedObjectPath> = bus::call(c, DEST, SETTINGS_PATH, SETTINGS, "ListConnections", &())?;
     let mut out = Vec::new();
     for p in paths {
-        let Ok(settings) = bus::call::<_, HashMap<String, HashMap<String, OwnedValue>>>(c, DEST, p.as_str(), CONNECTION, "GetSettings", &())
-        else {
+        let Ok(settings) = bus::call::<_, HashMap<String, HashMap<String, OwnedValue>>>(c, DEST, p.as_str(), CONNECTION, "GetSettings", &()) else {
             continue;
         };
         if let Some(ssid) = settings.get("802-11-wireless").and_then(|w| w.get("ssid")).and_then(|v| Vec::<u8>::try_from(v.clone()).ok()) {
@@ -326,7 +325,16 @@ pub fn status() -> Result<Status> {
             let enterprise = (wpa | rsn) & 0x200 != 0;
             let is_active = active.as_str() == p;
             let key_mgmt = key_mgmt(wpa, rsn);
-            let n = Network { known: known.contains(&ssid), ssid, strength, secure: (flags & 1 != 0 || wpa != 0 || rsn != 0) && key_mgmt != "owe", enterprise, key_mgmt, ap: p.to_owned(), active: is_active };
+            let n = Network {
+                known: known.contains(&ssid),
+                ssid,
+                strength,
+                secure: (flags & 1 != 0 || wpa != 0 || rsn != 0) && key_mgmt != "owe",
+                enterprise,
+                key_mgmt,
+                ap: p.to_owned(),
+                active: is_active,
+            };
             match networks.iter_mut().find(|x| x.ssid == n.ssid) {
                 Some(x) => {
                     if n.active || (!x.active && n.strength > x.strength) {
@@ -392,10 +400,7 @@ pub fn join(device: &str, network: &Network, password: Option<&str>) -> Result<(
     if network.key_mgmt == "owe" {
         settings.insert("802-11-wireless-security", HashMap::from([("key-mgmt", Value::from("owe"))]));
     } else if network.secure {
-        settings.insert(
-            "802-11-wireless-security",
-            HashMap::from([("key-mgmt", Value::from(network.key_mgmt)), ("psk", Value::from(password.unwrap_or_default()))]),
-        );
+        settings.insert("802-11-wireless-security", HashMap::from([("key-mgmt", Value::from(network.key_mgmt)), ("psk", Value::from(password.unwrap_or_default()))]));
     }
     let _: (OwnedObjectPath, OwnedObjectPath) = bus::call(c, DEST, NM_PATH, NM, "AddAndActivateConnection", &(settings, dev, ap))?;
     Ok(())

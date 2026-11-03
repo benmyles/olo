@@ -306,11 +306,7 @@ pub fn print_document(printer: &str, document: &[u8], format: &str, job: &Job) -
         let message = groups.first().and_then(|g| text(g, "status-message")).unwrap_or_default();
         return Err(format!("The printer didn't take it. {message}").trim().to_owned());
     }
-    Ok(groups
-        .iter()
-        .skip(1)
-        .find_map(|g| g.iter().find(|(n, _)| n == "job-id").and_then(|(_, v)| if let Some(Value::Int(i)) = v.first() { Some(*i as u32) } else { None }))
-        .unwrap_or(0))
+    Ok(groups.iter().skip(1).find_map(|g| g.iter().find(|(n, _)| n == "job-id").and_then(|(_, v)| if let Some(Value::Int(i)) = v.first() { Some(*i as u32) } else { None })).unwrap_or(0))
 }
 
 #[cfg(test)]

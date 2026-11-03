@@ -130,12 +130,7 @@ fn entity(s: &str) -> (Option<char>, usize) {
         "quot" => Some('"'),
         "apos" => Some('\''),
         "nbsp" => Some('\u{a0}'),
-        _ => e
-            .strip_prefix("#x")
-            .or_else(|| e.strip_prefix("#X"))
-            .and_then(|h| u32::from_str_radix(h, 16).ok())
-            .or_else(|| e.strip_prefix('#').and_then(|d| d.parse().ok()))
-            .and_then(char::from_u32),
+        _ => e.strip_prefix("#x").or_else(|| e.strip_prefix("#X")).and_then(|h| u32::from_str_radix(h, 16).ok()).or_else(|| e.strip_prefix('#').and_then(|d| d.parse().ok())).and_then(char::from_u32),
     };
     match ch {
         Some(c) => (Some(c), end + 1),

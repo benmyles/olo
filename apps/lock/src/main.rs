@@ -10,7 +10,10 @@ use std::time::{Duration, Instant};
 
 use olo_system::{auth, fingerprint};
 use olo_ui::{
-    gpui::{App, AppContext as _, Bounds, Context, Entity, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Render, SessionLockEvent, Styled as _, Window, canvas, div, point, px, size},
+    gpui::{
+        App, AppContext as _, Bounds, Context, Entity, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Render, SessionLockEvent, Styled as _, Window, canvas, div, point, px,
+        size,
+    },
     icons, metrics as m, style, theme,
     widgets::{TextControl, TextField, TextFieldEvent, text_field},
 };
@@ -63,14 +66,8 @@ fn clock_text() -> (String, String) {
     };
     let time = format!("{hour12}:{:02}", tm.min);
     const DAYS: [&str; 7] = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    const MONTHS: [&str; 12] =
-        ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    let date = format!(
-        "{}, {} {}",
-        DAYS[tm.wday.clamp(0, 6) as usize],
-        MONTHS[tm.mon.clamp(0, 11) as usize],
-        tm.mday
-    );
+    const MONTHS: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    let date = format!("{}, {} {}", DAYS[tm.wday.clamp(0, 6) as usize], MONTHS[tm.mon.clamp(0, 11) as usize], tm.mday);
     (time, date)
 }
 
@@ -105,19 +102,7 @@ mod libc_tm {
     }
 
     pub fn localtime(t: i64, out: &mut Tm) {
-        let mut c = CTm {
-            tm_sec: 0,
-            tm_min: 0,
-            tm_hour: 0,
-            tm_mday: 1,
-            tm_mon: 0,
-            tm_year: 70,
-            tm_wday: 4,
-            tm_yday: 0,
-            tm_isdst: 0,
-            tm_gmtoff: 0,
-            tm_zone: std::ptr::null(),
-        };
+        let mut c = CTm { tm_sec: 0, tm_min: 0, tm_hour: 0, tm_mday: 1, tm_mon: 0, tm_year: 70, tm_wday: 4, tm_yday: 0, tm_isdst: 0, tm_gmtoff: 0, tm_zone: std::ptr::null() };
         // SAFETY: both pointers are valid for the call; localtime_r is reentrant.
         if unsafe { localtime_r(&t, &mut c) }.is_null() {
             return;
@@ -312,9 +297,7 @@ fn panel(lock: &Lock, window: &mut Window) -> impl IntoElement {
     .inset_0();
     let field = div().absolute().left(px(inset)).right(px(inset)).top(px(inset + 64.0 + inset)).h(px(m::CONTROL_HEIGHT)).child(TextControl::new(lock.field.clone()));
     // Centred, a little below the middle.
-    div().absolute().inset_0().flex().items_center().justify_center().child(
-        div().relative().left(px(dx)).top(px(40.0)).w(px(PANEL.0)).h(px(PANEL.1)).child(face).child(field).id("panel"),
-    )
+    div().absolute().inset_0().flex().items_center().justify_center().child(div().relative().left(px(dx)).top(px(40.0)).w(px(PANEL.0)).h(px(PANEL.1)).child(face).child(field).id("panel"))
 }
 
 fn main() {

@@ -11,7 +11,8 @@
 use std::rc::Rc;
 
 use gpui::{
-    App, Bounds, CursorStyle, DispatchPhase, Element, ElementId, FocusHandle, GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, IntoElement, KeyDownEvent, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, SharedString, Style, Window, px,
+    App, Bounds, CursorStyle, DispatchPhase, Element, ElementId, FocusHandle, GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, IntoElement, KeyDownEvent, LayoutId, MouseButton,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, SharedString, Style, Window, px,
 };
 
 use crate::agent;
@@ -55,7 +56,20 @@ pub struct Control {
 
 /// A control `width` by `height`, drawn by `paint`.
 pub fn control(id: impl Into<ElementId>, width: f32, height: f32, paint: impl FnOnce(Bounds<Pixels>, ControlState, &mut Window, &mut App) + 'static) -> Control {
-    Control { id: id.into(), width: px(width), height: px(height), enabled: true, paint: Some(Box::new(paint)), on_click: None, node: None, value: None, pointing: false, focusable: false, default: false, shrinks: false }
+    Control {
+        id: id.into(),
+        width: px(width),
+        height: px(height),
+        enabled: true,
+        paint: Some(Box::new(paint)),
+        on_click: None,
+        node: None,
+        value: None,
+        pointing: false,
+        focusable: false,
+        default: false,
+        shrinks: false,
+    }
 }
 
 impl Control {
@@ -172,7 +186,16 @@ impl Element for Control {
         (window.insert_hitbox(bounds, HitboxBehavior::Normal), focus)
     }
 
-    fn paint(&mut self, id: Option<&GlobalElementId>, _: Option<&InspectorElementId>, bounds: Bounds<Pixels>, _: &mut (), (hitbox, focus): &mut (Hitbox, Option<FocusHandle>), window: &mut Window, cx: &mut App) {
+    fn paint(
+        &mut self,
+        id: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        _: &mut (),
+        (hitbox, focus): &mut (Hitbox, Option<FocusHandle>),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
         let enabled = self.enabled;
         let hovered = hitbox.is_hovered(window);
         let focused = focus.as_ref().is_some_and(|f| f.is_focused(window));

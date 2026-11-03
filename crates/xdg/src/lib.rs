@@ -9,8 +9,8 @@ use std::{
 };
 
 pub mod apps;
-pub mod legacy;
 pub mod desktop_entry;
+pub mod legacy;
 pub mod mime;
 pub mod open;
 pub mod scope;
@@ -188,12 +188,8 @@ pub fn decode_png(path: &Path) -> Option<Image> {
     let (w, h) = (info.width as usize, info.height as usize);
     let rgba: Vec<u8> = match (info.color_type, info.bit_depth) {
         (png::ColorType::Rgba, png::BitDepth::Eight) => buf[..w * h * 4].to_vec(),
-        (png::ColorType::Rgb, png::BitDepth::Eight) => {
-            buf[..w * h * 3].as_chunks::<3>().0.iter().flat_map(|p| [p[0], p[1], p[2], 255]).collect()
-        }
-        (png::ColorType::GrayscaleAlpha, png::BitDepth::Eight) => {
-            buf[..w * h * 2].as_chunks::<2>().0.iter().flat_map(|p| [p[0], p[0], p[0], p[1]]).collect()
-        }
+        (png::ColorType::Rgb, png::BitDepth::Eight) => buf[..w * h * 3].as_chunks::<3>().0.iter().flat_map(|p| [p[0], p[1], p[2], 255]).collect(),
+        (png::ColorType::GrayscaleAlpha, png::BitDepth::Eight) => buf[..w * h * 2].as_chunks::<2>().0.iter().flat_map(|p| [p[0], p[0], p[0], p[1]]).collect(),
         (png::ColorType::Grayscale, png::BitDepth::Eight) => buf[..w * h].iter().flat_map(|&g| [g, g, g, 255]).collect(),
         _ => return None,
     };
@@ -241,10 +237,7 @@ pub fn icon_for_app(app_id: &str) -> Option<String> {
 pub fn find_program(name: &str) -> Option<PathBuf> {
     let beside = std::env::current_exe().ok().and_then(|e| Some(e.parent()?.join(name)));
     let path = std::env::var_os("PATH").unwrap_or_default();
-    beside
-        .into_iter()
-        .chain(std::env::split_paths(&path).map(|d| d.join(name)))
-        .find(|p| p.is_file())
+    beside.into_iter().chain(std::env::split_paths(&path).map(|d| d.join(name))).find(|p| p.is_file())
 }
 
 /// Olo's pointer as an XCursor theme, for programs that draw their own
@@ -332,32 +325,20 @@ fn spawn_detached_pid(cmd: &str) -> std::io::Result<u32> {
 /// preferences in `NAME.json` there.
 pub fn config_dir() -> PathBuf {
     let home = || PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
-    std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .unwrap_or_else(|| home().join(".config"))
-        .join("olo")
+    std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| home().join(".config")).join("olo")
 }
 
 /// Olo's cache directory (`$XDG_CACHE_HOME/olo`).
 pub fn cache_dir() -> PathBuf {
     let home = || PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
-    std::env::var_os("XDG_CACHE_HOME")
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .unwrap_or_else(|| home().join(".cache"))
-        .join("olo")
+    std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| home().join(".cache")).join("olo")
 }
 
 /// Olo's state directory (`$XDG_STATE_HOME/olo`): what programs
 /// keep between runs that is neither a setting nor a cache (histories).
 pub fn state_dir() -> PathBuf {
     let home = || PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
-    std::env::var_os("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .unwrap_or_else(|| home().join(".local/state"))
-        .join("olo")
+    std::env::var_os("XDG_STATE_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| home().join(".local/state")).join("olo")
 }
 
 /// A nameless file on disk to gather bytes in rather than memory (not in

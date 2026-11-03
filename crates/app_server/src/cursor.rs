@@ -8,13 +8,13 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
+pub use olo_hvif::cursor::{Cursor, SIZE, Shape};
 use smithay::{
     backend::{allocator::Fourcc, renderer::element::memory::MemoryRenderBuffer},
     input::pointer::{CursorIcon, CursorImageAttributes, CursorImageStatus},
     utils::{Logical, Point, Transform},
     wayland::compositor,
 };
-pub use olo_hvif::cursor::{Cursor, SIZE, Shape};
 
 /// The Haiku cursor for a CSS / cursor-shape-v1 name.
 pub fn shape_for(icon: CursorIcon) -> Shape {
@@ -71,9 +71,9 @@ pub fn pictured(status: &CursorImageStatus) -> Option<Shape> {
 /// Where the pointer's hot pixel is in its image, for either kind.
 pub fn hotspot(status: &CursorImageStatus) -> Point<i32, Logical> {
     match status {
-        CursorImageStatus::Surface(surface) => compositor::with_states(surface, |states| {
-            states.data_map.get::<olo_sync::Mutex<CursorImageAttributes>>().map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).hotspot).unwrap_or_default()
-        }),
+        CursorImageStatus::Surface(surface) => {
+            compositor::with_states(surface, |states| states.data_map.get::<olo_sync::Mutex<CursorImageAttributes>>().map(|a| a.lock().unwrap_or_else(|e| e.into_inner()).hotspot).unwrap_or_default())
+        }
         CursorImageStatus::Named(icon) => {
             let (x, y) = shape_for(*icon).hotspot();
             (x as i32, y as i32).into()

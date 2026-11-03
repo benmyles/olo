@@ -11,14 +11,7 @@ pub fn update_activation_environment(vars: &[(&str, &str)]) -> Result<()> {
     let map: HashMap<&str, &str> = vars.iter().copied().collect();
     bus::call::<_, ()>(conn, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "UpdateActivationEnvironment", &(map,))?;
     let assignments: Vec<String> = vars.iter().map(|(k, v)| format!("{k}={v}")).collect();
-    bus::call::<_, ()>(
-        conn,
-        "org.freedesktop.systemd1",
-        "/org/freedesktop/systemd1",
-        "org.freedesktop.systemd1.Manager",
-        "SetEnvironment",
-        &(assignments,),
-    )
+    bus::call::<_, ()>(conn, "org.freedesktop.systemd1", "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager", "SetEnvironment", &(assignments,))
 }
 
 /// Have the systemd user manager re-read its unit files (after writing one).
@@ -30,27 +23,12 @@ pub fn reload_units() -> Result<()> {
 /// the job to finish.
 pub fn start_unit(name: &str, start: bool) -> Result<()> {
     let method = if start { "StartUnit" } else { "StopUnit" };
-    bus::call::<_, zvariant::OwnedObjectPath>(
-        bus::session()?,
-        "org.freedesktop.systemd1",
-        "/org/freedesktop/systemd1",
-        "org.freedesktop.systemd1.Manager",
-        method,
-        &(name, "replace"),
-    )
-    .map(|_| ())
+    bus::call::<_, zvariant::OwnedObjectPath>(bus::session()?, "org.freedesktop.systemd1", "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager", method, &(name, "replace")).map(|_| ())
 }
 
 /// Restart a systemd user unit if it is running (to read new settings),
 /// without waiting for the job to finish.
 pub fn try_restart_unit(name: &str) -> Result<()> {
-    bus::call::<_, zvariant::OwnedObjectPath>(
-        bus::session()?,
-        "org.freedesktop.systemd1",
-        "/org/freedesktop/systemd1",
-        "org.freedesktop.systemd1.Manager",
-        "TryRestartUnit",
-        &(name, "replace"),
-    )
-    .map(|_| ())
+    bus::call::<_, zvariant::OwnedObjectPath>(bus::session()?, "org.freedesktop.systemd1", "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager", "TryRestartUnit", &(name, "replace"))
+        .map(|_| ())
 }

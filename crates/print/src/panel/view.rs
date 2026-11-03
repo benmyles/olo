@@ -4,8 +4,11 @@
 //! for on a worker; until they come the choice is a PDF, then the
 //! default printer unless the person has chosen.
 
-use olo_ui::gpui::{App, AppContext as _, Context, Entity, FocusHandle, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render, SharedString, Styled as _, Window, WindowHandle, canvas, div, px};
 use olo_kit_base::metrics as m;
+use olo_ui::gpui::{
+    App, AppContext as _, Context, Entity, FocusHandle, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render, SharedString, Styled as _, Window, WindowHandle,
+    canvas, div, px,
+};
 use olo_ui::{
     Frame, WindowOptions,
     style::{self, Align},

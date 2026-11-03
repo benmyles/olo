@@ -60,12 +60,7 @@ struct Answers<'a> {
 }
 
 /// PAM frees the responses with free(), so they must come from malloc.
-unsafe extern "C" fn converse(
-    n: c_int,
-    msgs: *mut *const PamMessage,
-    resp: *mut *mut PamResponse,
-    data: *mut c_void,
-) -> c_int {
+unsafe extern "C" fn converse(n: c_int, msgs: *mut *const PamMessage, resp: *mut *mut PamResponse, data: *mut c_void) -> c_int {
     if n <= 0 || msgs.is_null() || resp.is_null() || data.is_null() {
         return PAM_CONV_ERR;
     }
@@ -99,8 +94,7 @@ struct Pam {
 }
 
 type StartFn = unsafe extern "C" fn(*const c_char, *const c_char, *const PamConv, *mut *mut c_void) -> c_int;
-type StartConfdirFn =
-    unsafe extern "C" fn(*const c_char, *const c_char, *const PamConv, *const c_char, *mut *mut c_void) -> c_int;
+type StartConfdirFn = unsafe extern "C" fn(*const c_char, *const c_char, *const PamConv, *const c_char, *mut *mut c_void) -> c_int;
 type HandleFn = unsafe extern "C" fn(*mut c_void, c_int) -> c_int;
 type StrErrorFn = unsafe extern "C" fn(*mut c_void, c_int) -> *const c_char;
 
@@ -108,15 +102,13 @@ impl Pam {
     fn load() -> Result<Pam, AuthError> {
         // SAFETY: loading the system's libpam runs no foreign initialisers
         // beyond its own.
-        let lib = unsafe { libloading::Library::new("libpam.so.0") }
-            .map_err(|e| AuthError::Unavailable(format!("libpam: {e}")))?;
+        let lib = unsafe { libloading::Library::new("libpam.so.0") }.map_err(|e| AuthError::Unavailable(format!("libpam: {e}")))?;
         Ok(Pam { lib })
     }
 
     fn sym<T: Copy>(&self, name: &[u8]) -> Result<T, AuthError> {
         // SAFETY: each name is looked up with its documented C signature.
-        unsafe { self.lib.get::<T>(name).map(|s| *s) }
-            .map_err(|e| AuthError::Unavailable(format!("libpam: {e}")))
+        unsafe { self.lib.get::<T>(name).map(|s| *s) }.map_err(|e| AuthError::Unavailable(format!("libpam: {e}")))
     }
 }
 
@@ -151,8 +143,7 @@ fn check(service: &str, confdir: Option<&Path>, user: &str, password: &str) -> R
     let strerror: StrErrorFn = pam.sym(b"pam_strerror\0")?;
 
     let bad = |_| AuthError::Denied("Invalid characters".into());
-    let (c_user, c_pass, c_service) =
-        (CString::new(user).map_err(bad)?, CString::new(password).map_err(bad)?, CString::new(service).map_err(bad)?);
+    let (c_user, c_pass, c_service) = (CString::new(user).map_err(bad)?, CString::new(password).map_err(bad)?, CString::new(service).map_err(bad)?);
     let answers = Answers { user: &c_user, password: &c_pass };
     let conv = PamConv { conv: converse, appdata_ptr: &answers as *const Answers as *mut c_void };
     let mut handle: *mut c_void = std::ptr::null_mut();
@@ -163,13 +154,7 @@ fn check(service: &str, confdir: Option<&Path>, user: &str, password: &str) -> R
             None => pam.sym::<StartFn>(b"pam_start\0")?(c_service.as_ptr(), c_user.as_ptr(), &conv, &mut handle),
             Some(dir) => {
                 let dir = CString::new(dir.as_os_str().as_encoded_bytes()).map_err(bad)?;
-                pam.sym::<StartConfdirFn>(b"pam_start_confdir\0")?(
-                    c_service.as_ptr(),
-                    c_user.as_ptr(),
-                    &conv,
-                    dir.as_ptr(),
-                    &mut handle,
-                )
+                pam.sym::<StartConfdirFn>(b"pam_start_confdir\0")?(c_service.as_ptr(), c_user.as_ptr(), &conv, dir.as_ptr(), &mut handle)
             }
         };
         if r != PAM_SUCCESS || handle.is_null() {
@@ -245,11 +230,7 @@ mod tests {
         let script = dir.join("check.sh");
         std::fs::write(&script, "#!/bin/sh\nread -r p\n[ \"$p\" = \"open sesame\" ]\n").unwrap();
         std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
-        std::fs::write(
-            dir.join("exec"),
-            format!("auth required pam_exec.so expose_authtok quiet {}\naccount required pam_permit.so\n", script.display()),
-        )
-        .unwrap();
+        std::fs::write(dir.join("exec"), format!("auth required pam_exec.so expose_authtok quiet {}\naccount required pam_permit.so\n", script.display())).unwrap();
         let user = current_user().unwrap();
         assert_eq!(check("allow", Some(&dir), &user, "pw"), Ok(()));
         assert!(matches!(check("deny", Some(&dir), &user, "pw"), Err(AuthError::Denied(_))));

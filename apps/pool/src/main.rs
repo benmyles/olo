@@ -19,7 +19,6 @@
 //! olo-pool installed waits for what is under way, holding new
 //! connections for it (`olo_token_pool::drain`).
 
-
 mod clients_window;
 mod ui;
 
@@ -29,8 +28,7 @@ use std::{
 };
 
 use olo_token_pool::{
-    clients,
-    codex_daemon,
+    clients, codex_daemon,
     gateway::{self, Shared},
     model::{Provider, now},
     running,

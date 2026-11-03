@@ -12,8 +12,8 @@
 
 use std::{io::Write, path::PathBuf, time::Duration};
 
-use serde_json::{Value, json};
 use olo_protocol::{AiFeature, AiSettings};
+use serde_json::{Value, json};
 
 /// The API version every call asks for.
 const API_VERSION: &str = "2026-10-21";
@@ -209,7 +209,9 @@ pub fn openai_body(feature: &AiFeature, ask: &Ask) -> Value {
         .content
         .iter()
         .map(|b| match b["type"].as_str() {
-            Some("image") => json!({"type": "input_image", "image_url": format!("data:{};base64,{}", b["source"]["media_type"].as_str().unwrap_or("image/png"), b["source"]["data"].as_str().unwrap_or(""))}),
+            Some("image") => {
+                json!({"type": "input_image", "image_url": format!("data:{};base64,{}", b["source"]["media_type"].as_str().unwrap_or("image/png"), b["source"]["data"].as_str().unwrap_or(""))})
+            }
             _ => json!({"type": "input_text", "text": b["text"]}),
         })
         .collect();
@@ -387,7 +389,11 @@ mod tests {
                 }
                 let _ = reader.read_exact(&mut vec![0; length]);
                 let n = count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                let reply = if n < busy { "HTTP/1.1 429 Too Many Requests\r\nretry-after: 0\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}" } else { "HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}" };
+                let reply = if n < busy {
+                    "HTTP/1.1 429 Too Many Requests\r\nretry-after: 0\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}"
+                } else {
+                    "HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}"
+                };
                 let _ = stream.write_all(reply.as_bytes());
             }
         });

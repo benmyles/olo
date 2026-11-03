@@ -144,10 +144,7 @@ impl Source {
         if tracks.is_empty() {
             return Err("There is no sound in this file.".into());
         }
-        let (track, decoder) = tracks
-            .iter()
-            .find_map(|t| crate::opus::codecs().make(&t.codec_params, &DecoderOptions::default()).ok().map(|d| (*t, d)))
-            .ok_or("This audio codec can't be played.")?;
+        let (track, decoder) = tracks.iter().find_map(|t| crate::opus::codecs().make(&t.codec_params, &DecoderOptions::default()).ok().map(|d| (*t, d))).ok_or("This audio codec can't be played.")?;
         // The decoder's parameters: it may fill in what the container left out.
         let params = decoder.codec_params().clone();
         // Opus always decodes at 48 kHz; its header's rate is the original's.
@@ -277,13 +274,7 @@ fn run(input: &Input, playing: bool, st: &State, tx: mpsc::Sender<Ev>, rx: mpsc:
         cvolume: Some(protocol::ChannelVolume::norm(src.channels as u8)),
         sink_name: Some(protocol::DEFAULT_SINK.to_owned()),
         // A short buffer, so pause and seek answer quickly.
-        buffer_attr: protocol::stream::BufferAttr {
-            max_length: u32::MAX,
-            target_length: (bps / 5) as u32,
-            pre_buffering: u32::MAX,
-            minimum_request_length: u32::MAX,
-            fragment_size: u32::MAX,
-        },
+        buffer_attr: protocol::stream::BufferAttr { max_length: u32::MAX, target_length: (bps / 5) as u32, pre_buffering: u32::MAX, minimum_request_length: u32::MAX, fragment_size: u32::MAX },
         flags: protocol::stream::StreamFlags { start_corked: !playing, ..Default::default() },
         ..Default::default()
     };
@@ -356,8 +347,7 @@ fn run(input: &Input, playing: bool, st: &State, tx: mpsc::Sender<Ev>, rx: mpsc:
     st.playing.store(playing, Ordering::Relaxed);
 
     let cork = |sock: &mut UnixStream, cork: bool| {
-        protocol::write_command_message(sock, SEQ_OTHER, &protocol::Command::CorkPlaybackStream(protocol::CorkStreamParams { channel, cork }), version)
-            .map_err(err)
+        protocol::write_command_message(sock, SEQ_OTHER, &protocol::Command::CorkPlaybackStream(protocol::CorkStreamParams { channel, cork }), version).map_err(err)
     };
     for ev in rx {
         match ev {
@@ -382,13 +372,8 @@ fn run(input: &Input, playing: bool, st: &State, tx: mpsc::Sender<Ev>, rx: mpsc:
             Ev::Server(_, cmd) if matches!(*cmd, protocol::Command::Request(protocol::Request { channel: c, .. }) if c == channel) => {
                 let protocol::Command::Request(protocol::Request { length, .. }) = *cmd else { continue };
                 send_chunk(&mut src, &mut sock, length as usize, &mut written, &mut draining)?;
-                protocol::write_command_message(
-                    &mut sock,
-                    SEQ_TIMING,
-                    &protocol::Command::GetPlaybackLatency(protocol::LatencyParams { channel, now: std::time::SystemTime::now() }),
-                    version,
-                )
-                .map_err(err)?;
+                protocol::write_command_message(&mut sock, SEQ_TIMING, &protocol::Command::GetPlaybackLatency(protocol::LatencyParams { channel, now: std::time::SystemTime::now() }), version)
+                    .map_err(err)?;
             }
             Ev::Server(seq, cmd) if matches!(*cmd, protocol::Command::Reply) && seq == SEQ_DRAIN && draining => {
                 st.finished.store(true, Ordering::Relaxed);
@@ -408,7 +393,6 @@ fn run(input: &Input, playing: bool, st: &State, tx: mpsc::Sender<Ev>, rx: mpsc:
     }
     Ok(())
 }
-
 
 /// Sound that arrives as it happens (a call's other end): the owner
 /// pushes 16-bit samples as they come, and the server takes them with a
@@ -456,13 +440,7 @@ impl LiveSink {
         protocol::write_command_message(&mut sock, SEQ_CREATE, &protocol::Command::CreatePlaybackStream(params), version).map_err(err)?;
         let mut reader = BufReader::new(sock.try_clone().map_err(|e| e.to_string())?);
         let (_, info) = protocol::read_reply_message::<protocol::CreatePlaybackStreamReply>(&mut reader, version).map_err(err)?;
-        let shared = Arc::new(LiveShared {
-            queue: Mutex::new(std::collections::VecDeque::new()),
-            volume: AtomicU32::new(1000),
-            stop: AtomicBool::new(false),
-            rate,
-            channels,
-        });
+        let shared = Arc::new(LiveShared { queue: Mutex::new(std::collections::VecDeque::new()), volume: AtomicU32::new(1000), stop: AtomicBool::new(false), rate, channels });
         let (sh, mut w) = (shared.clone(), sock.try_clone().map_err(|e| e.to_string())?);
         let channel = info.channel;
         std::thread::Builder::new()
@@ -602,8 +580,7 @@ impl Recorder {
                         odd = rest.first().copied();
                         heard(&samples);
                     } else if desc.channel == u32::MAX
-                        && let Ok((_, protocol::Command::Error(e))) =
-                            protocol::Command::read_tag_prefixed(&mut std::io::Cursor::new(&payload[..]), version)
+                        && let Ok((_, protocol::Command::Error(e))) = protocol::Command::read_tag_prefixed(&mut std::io::Cursor::new(&payload[..]), version)
                     {
                         tracing::warn!("recorder: {e:?}");
                         break;

@@ -8,18 +8,15 @@
 //! a newly installed Chrome version and a moved `olo-chrome` are
 //! picked up.
 
-use std::{
-    io::Write,
-    path::Path,
-};
+use std::{io::Write, path::Path};
 
+use olo_theme::{Palette, Rgba};
 use p256::{
     ecdsa::{Signature, SigningKey, signature::Signer},
     pkcs8::{DecodePrivateKey, EncodePrivateKey, EncodePublicKey},
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use olo_theme::{Palette, Rgba};
 
 /// The native messaging host's name.
 pub const HOST: &str = "com.olodesktop.passwords";

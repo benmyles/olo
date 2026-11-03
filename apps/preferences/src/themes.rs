@@ -15,7 +15,10 @@ use olo_ui::{
     brand,
     gpui::{Bounds, Hsla, InteractiveElement as _, MouseButton, ParentElement as _, Pixels, SharedString, Styled as _, Window, canvas, div, point, px, size},
     icons, metrics as m,
-    palette::{Palette, ThemeMode, looks::{self, ColorSet}},
+    palette::{
+        Palette, ThemeMode,
+        looks::{self, ColorSet},
+    },
     style::{self, c},
     theme,
     widgets::{RadioButton, StringView},

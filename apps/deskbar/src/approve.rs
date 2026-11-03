@@ -7,8 +7,7 @@ use olo_protocol::{ClientError, ClockSettings, Request};
 use olo_ui::{
     Frame, Menu, WindowOptions,
     gpui::{App, AppContext as _, Context, Entity, FocusHandle, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Render, Styled as _, Window, WindowHandle, div, px},
-    metrics as m,
-    style,
+    metrics as m, style,
     widgets::{self, AlertFrame, Button, Conversation, ConversationField, MenuField, TextField, TextFieldEvent, alert, button_row, paragraph, paragraph_height, text_field},
 };
 use zeroize::Zeroize;
@@ -17,13 +16,8 @@ use crate::status;
 
 /// The lengths offered: in the menu, in the window, and in minutes
 /// (app_server takes 5 to a day).
-pub const LENGTHS: [(&str, &str, u32); 5] = [
-    ("For 5 Minutes", "5 minutes", 5),
-    ("For 15 Minutes", "15 minutes", 15),
-    ("For 1 Hour", "1 hour", 60),
-    ("For 4 Hours", "4 hours", 240),
-    ("For a Day", "a day", 24 * 60),
-];
+pub const LENGTHS: [(&str, &str, u32); 5] =
+    [("For 5 Minutes", "5 minutes", 5), ("For 15 Minutes", "15 minutes", 15), ("For 1 Hour", "1 hour", 60), ("For 4 Hours", "4 hours", 240), ("For a Day", "a day", 24 * 60)];
 /// What clicking the key turns it on for.
 pub const USUAL: u32 = 15;
 
@@ -212,18 +206,11 @@ impl Render for Ask {
             .on_action(cx.listener(|a, _: &alert::Cancel, _, cx| a.close(cx)))
             .on_action(cx.listener(|a, _: &alert::Default, _, cx| a.submit(cx)))
             .child(
-                AlertFrame::new(ICON)
-                    .child(widgets::alert_title(TITLE))
-                    .child(div().h(px(m::TIGHT)))
-                    .child(paragraph(MESSAGE))
-                    .child(div().h(px(m::SPACING)))
-                    .child(form)
-                    .child(div().flex_1())
-                    .child(
-                        button_row()
-                            .child(Button::new("Cancel").on_click(move |_, cx| cancel.update(cx, |a, cx| a.close(cx))))
-                            .child(Button::new("Turn On").default(true).enabled(can).on_click(move |_, cx| submit.update(cx, |a, cx| a.submit(cx)))),
-                    ),
+                AlertFrame::new(ICON).child(widgets::alert_title(TITLE)).child(div().h(px(m::TIGHT))).child(paragraph(MESSAGE)).child(div().h(px(m::SPACING))).child(form).child(div().flex_1()).child(
+                    button_row()
+                        .child(Button::new("Cancel").on_click(move |_, cx| cancel.update(cx, |a, cx| a.close(cx))))
+                        .child(Button::new("Turn On").default(true).enabled(can).on_click(move |_, cx| submit.update(cx, |a, cx| a.submit(cx)))),
+                ),
             )
     }
 }

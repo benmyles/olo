@@ -6,7 +6,6 @@ pub use cursor_icon::CursorIcon;
 
 use crate::utils::{Logical, Point};
 
-
 /// The role representing a surface set as the pointer cursor
 #[derive(Debug, Default, Copy, Clone)]
 pub struct CursorImageAttributes {

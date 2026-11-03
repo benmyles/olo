@@ -90,11 +90,7 @@ fn labels() -> HashMap<PathBuf, String> {
 
 /// The boot volume's name, as Tracker shows it.
 fn system_name() -> String {
-    std::fs::read_to_string("/etc/hostname")
-        .ok()
-        .map(|s| s.trim().to_owned())
-        .filter(|s| !s.is_empty() && s != "localhost")
-        .unwrap_or_else(|| "System".into())
+    std::fs::read_to_string("/etc/hostname").ok().map(|s| s.trim().to_owned()).filter(|s| !s.is_empty() && s != "localhost").unwrap_or_else(|| "System".into())
 }
 
 /// Each disk file system once, at its shortest mount point, the system

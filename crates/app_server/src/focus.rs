@@ -17,8 +17,7 @@ use smithay::{
     input::{
         dnd::{DndFocus, OfferData, Source},
         pointer::{
-            GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent, GesturePinchEndEvent,
-            GesturePinchUpdateEvent, GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent,
+            GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent, GesturePinchEndEvent, GesturePinchUpdateEvent, GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent,
         },
         tablet::tool::TabletToolTarget,
         touch::{FrameMarker, TouchTarget},
@@ -107,9 +106,7 @@ impl PointerFocusTarget {
         }
     }
 
-    fn inner_tablet_tool_target<BackendData: Backend>(
-        &self,
-    ) -> &dyn TabletToolTarget<AnvilState<BackendData>> {
+    fn inner_tablet_tool_target<BackendData: Backend>(&self) -> &dyn TabletToolTarget<AnvilState<BackendData>> {
         match self {
             Self::WlSurface(w) => w,
             Self::SSD(w) => w,
@@ -118,44 +115,19 @@ impl PointerFocusTarget {
 }
 
 impl<BackendData: Backend> PointerTarget<AnvilState<BackendData>> for PointerFocusTarget {
-    fn enter(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        event: &MotionEvent,
-    ) {
+    fn enter(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &MotionEvent) {
         self.inner_pointer_target().enter(seat, data, event)
     }
-    fn motion(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        event: &MotionEvent,
-    ) {
+    fn motion(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &MotionEvent) {
         self.inner_pointer_target().motion(seat, data, event)
     }
-    fn relative_motion(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        event: &RelativeMotionEvent,
-    ) {
+    fn relative_motion(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &RelativeMotionEvent) {
         self.inner_pointer_target().relative_motion(seat, data, event)
     }
-    fn button(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        event: &ButtonEvent,
-    ) {
+    fn button(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &ButtonEvent) {
         self.inner_pointer_target().button(seat, data, event)
     }
-    fn axis(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        frame: AxisFrame,
-    ) {
+    fn axis(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, frame: AxisFrame) {
         // Scrolled as far as in Olo's own apps, whatever draws it; a
         // glide, to Olo's apps, as one (`pace.rs`).
         let frame = match self {
@@ -188,194 +160,80 @@ impl<BackendData: Backend> PointerTarget<AnvilState<BackendData>> for PointerFoc
     fn frame(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>) {
         self.inner_pointer_target().frame(seat, data)
     }
-    fn leave(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        serial: Serial,
-        time: InputTime,
-    ) {
+    fn leave(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, serial: Serial, time: InputTime) {
         self.inner_pointer_target().leave(seat, data, serial, time)
     }
-    fn gesture_swipe_begin(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        event: &GestureSwipeBeginEvent,
-    ) {
+    fn gesture_swipe_begin(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &GestureSwipeBeginEvent) {
         self.inner_pointer_target().gesture_swipe_begin(seat, data, event)
     }
-    fn gesture_swipe_update(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        event: &GestureSwipeUpdateEvent,
-    ) {
-        self.inner_pointer_target()
-            .gesture_swipe_update(seat, data, event)
+    fn gesture_swipe_update(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &GestureSwipeUpdateEvent) {
+        self.inner_pointer_target().gesture_swipe_update(seat, data, event)
     }
-    fn gesture_swipe_end(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        event: &GestureSwipeEndEvent,
-    ) {
+    fn gesture_swipe_end(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &GestureSwipeEndEvent) {
         self.inner_pointer_target().gesture_swipe_end(seat, data, event)
     }
-    fn gesture_pinch_begin(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        event: &GesturePinchBeginEvent,
-    ) {
+    fn gesture_pinch_begin(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &GesturePinchBeginEvent) {
         self.inner_pointer_target().gesture_pinch_begin(seat, data, event)
     }
-    fn gesture_pinch_update(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        event: &GesturePinchUpdateEvent,
-    ) {
-        self.inner_pointer_target()
-            .gesture_pinch_update(seat, data, event)
+    fn gesture_pinch_update(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &GesturePinchUpdateEvent) {
+        self.inner_pointer_target().gesture_pinch_update(seat, data, event)
     }
-    fn gesture_pinch_end(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        event: &GesturePinchEndEvent,
-    ) {
+    fn gesture_pinch_end(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &GesturePinchEndEvent) {
         self.inner_pointer_target().gesture_pinch_end(seat, data, event)
     }
-    fn gesture_hold_begin(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        event: &GestureHoldBeginEvent,
-    ) {
+    fn gesture_hold_begin(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &GestureHoldBeginEvent) {
         self.inner_pointer_target().gesture_hold_begin(seat, data, event)
     }
-    fn gesture_hold_end(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        event: &GestureHoldEndEvent,
-    ) {
+    fn gesture_hold_end(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &GestureHoldEndEvent) {
         self.inner_pointer_target().gesture_hold_end(seat, data, event)
     }
 }
 
 impl<BackendData: Backend> KeyboardTarget<AnvilState<BackendData>> for KeyboardFocusTarget {
-    fn enter(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        keys: Vec<KeysymHandle<'_>>,
-        serial: Serial,
-    ) {
+    fn enter(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, keys: Vec<KeysymHandle<'_>>, serial: Serial) {
         self.inner_keyboard_target().enter(seat, data, keys, serial)
     }
-    fn leave(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        serial: Serial,
-    ) {
+    fn leave(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, serial: Serial) {
         self.inner_keyboard_target().leave(seat, data, serial)
     }
-    fn key(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        key: KeysymHandle<'_>,
-        state: KeyState,
-        serial: Serial,
-        time: InputTime,
-    ) {
-        self.inner_keyboard_target()
-            .key(seat, data, key, state, serial, time)
+    fn key(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, key: KeysymHandle<'_>, state: KeyState, serial: Serial, time: InputTime) {
+        self.inner_keyboard_target().key(seat, data, key, state, serial, time)
     }
-    fn modifiers(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        modifiers: ModifiersState,
-        serial: Serial,
-    ) {
-        self.inner_keyboard_target()
-            .modifiers(seat, data, modifiers, serial)
+    fn modifiers(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, modifiers: ModifiersState, serial: Serial) {
+        self.inner_keyboard_target().modifiers(seat, data, modifiers, serial)
     }
 }
 
 impl<BackendData: Backend> TouchTarget<AnvilState<BackendData>> for PointerFocusTarget {
-    fn down(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        event: &smithay::input::touch::DownEvent,
-    ) {
+    fn down(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &smithay::input::touch::DownEvent) {
         self.inner_touch_target().down(seat, data, event)
     }
 
-    fn up(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        event: &smithay::input::touch::UpEvent,
-    ) {
+    fn up(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &smithay::input::touch::UpEvent) {
         self.inner_touch_target().up(seat, data, event)
     }
 
-    fn motion(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        event: &smithay::input::touch::MotionEvent,
-    ) {
+    fn motion(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &smithay::input::touch::MotionEvent) {
         self.inner_touch_target().motion(seat, data, event)
     }
 
-    fn frame(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        marker: FrameMarker,
-    ) {
+    fn frame(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, marker: FrameMarker) {
         self.inner_touch_target().frame(seat, data, marker)
     }
 
-    fn cancel(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        marker: FrameMarker,
-    ) {
+    fn cancel(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, marker: FrameMarker) {
         self.inner_touch_target().cancel(seat, data, marker)
     }
 
-    fn shape(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        event: &smithay::input::touch::ShapeEvent,
-    ) {
+    fn shape(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &smithay::input::touch::ShapeEvent) {
         self.inner_touch_target().shape(seat, data, event)
     }
 
-    fn orientation(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        event: &smithay::input::touch::OrientationEvent,
-    ) {
+    fn orientation(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, event: &smithay::input::touch::OrientationEvent) {
         self.inner_touch_target().orientation(seat, data, event)
     }
 
-    fn last_frame(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-    ) -> Option<FrameMarker> {
+    fn last_frame(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>) -> Option<FrameMarker> {
         self.inner_touch_target().last_frame(seat, data)
     }
 }
@@ -389,18 +247,11 @@ impl<BackendData: Backend> TabletToolTarget<AnvilState<BackendData>> for Pointer
         tablet: &smithay::input::tablet::Tablet,
         serial: Serial,
     ) {
-        self.inner_tablet_tool_target()
-            .proximity_in(seat, data, tool_descriptor, tablet, serial);
+        self.inner_tablet_tool_target().proximity_in(seat, data, tool_descriptor, tablet, serial);
     }
 
-    fn proximity_out(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        tool_descriptor: &smithay::backend::input::TabletToolDescriptor,
-    ) {
-        self.inner_tablet_tool_target()
-            .proximity_out(seat, data, tool_descriptor);
+    fn proximity_out(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, tool_descriptor: &smithay::backend::input::TabletToolDescriptor) {
+        self.inner_tablet_tool_target().proximity_out(seat, data, tool_descriptor);
     }
 
     fn down(
@@ -410,8 +261,7 @@ impl<BackendData: Backend> TabletToolTarget<AnvilState<BackendData>> for Pointer
         tool_descriptor: &smithay::backend::input::TabletToolDescriptor,
         event: &smithay::input::tablet::tool::DownEvent,
     ) {
-        self.inner_tablet_tool_target()
-            .down(seat, data, tool_descriptor, event);
+        self.inner_tablet_tool_target().down(seat, data, tool_descriptor, event);
     }
 
     fn up(
@@ -421,8 +271,7 @@ impl<BackendData: Backend> TabletToolTarget<AnvilState<BackendData>> for Pointer
         tool_descriptor: &smithay::backend::input::TabletToolDescriptor,
         event: &smithay::input::tablet::tool::UpEvent,
     ) {
-        self.inner_tablet_tool_target()
-            .up(seat, data, tool_descriptor, event);
+        self.inner_tablet_tool_target().up(seat, data, tool_descriptor, event);
     }
 
     fn motion(
@@ -432,8 +281,7 @@ impl<BackendData: Backend> TabletToolTarget<AnvilState<BackendData>> for Pointer
         tool_descriptor: &smithay::backend::input::TabletToolDescriptor,
         event: &smithay::input::tablet::tool::MotionEvent,
     ) {
-        self.inner_tablet_tool_target()
-            .motion(seat, data, tool_descriptor, event);
+        self.inner_tablet_tool_target().motion(seat, data, tool_descriptor, event);
     }
 
     fn button(
@@ -443,8 +291,7 @@ impl<BackendData: Backend> TabletToolTarget<AnvilState<BackendData>> for Pointer
         tool_descriptor: &smithay::backend::input::TabletToolDescriptor,
         event: &smithay::input::tablet::tool::ButtonEvent,
     ) {
-        self.inner_tablet_tool_target()
-            .button(seat, data, tool_descriptor, event);
+        self.inner_tablet_tool_target().button(seat, data, tool_descriptor, event);
     }
 
     fn axis(
@@ -454,19 +301,11 @@ impl<BackendData: Backend> TabletToolTarget<AnvilState<BackendData>> for Pointer
         tool_descriptor: &smithay::backend::input::TabletToolDescriptor,
         frame: smithay::input::tablet::tool::AxisFrame,
     ) {
-        self.inner_tablet_tool_target()
-            .axis(seat, data, tool_descriptor, frame);
+        self.inner_tablet_tool_target().axis(seat, data, tool_descriptor, frame);
     }
 
-    fn frame(
-        &self,
-        seat: &Seat<AnvilState<BackendData>>,
-        data: &mut AnvilState<BackendData>,
-        tool_descriptor: &smithay::backend::input::TabletToolDescriptor,
-        time: InputTime,
-    ) {
-        self.inner_tablet_tool_target()
-            .frame(seat, data, tool_descriptor, time);
+    fn frame(&self, seat: &Seat<AnvilState<BackendData>>, data: &mut AnvilState<BackendData>, tool_descriptor: &smithay::backend::input::TabletToolDescriptor, time: InputTime) {
+        self.inner_tablet_tool_target().frame(seat, data, tool_descriptor, time);
     }
 }
 
@@ -482,10 +321,7 @@ impl WaylandFocus for PointerFocusTarget {
     fn same_client_as(&self, object_id: &ObjectId) -> bool {
         match self {
             PointerFocusTarget::WlSurface(w) => w.same_client_as(object_id),
-            PointerFocusTarget::SSD(w) => w
-                .wl_surface()
-                .map(|surface| surface.same_client_as(object_id))
-                .unwrap_or(false),
+            PointerFocusTarget::SSD(w) => w.wl_surface().map(|surface| surface.same_client_as(object_id)).unwrap_or(false),
         }
     }
 }
@@ -543,46 +379,26 @@ impl<BackendData: Backend> DndFocus<AnvilState<BackendData>> for PointerFocusTar
         serial: &Serial,
     ) -> Option<AnvilOfferData<S>> {
         match self {
-            PointerFocusTarget::WlSurface(surface) => {
-                DndFocus::enter(surface, data, dh, source, seat, location, serial)
-                    .map(AnvilOfferData::Wayland)
-            }
+            PointerFocusTarget::WlSurface(surface) => DndFocus::enter(surface, data, dh, source, seat, location, serial).map(AnvilOfferData::Wayland),
             _ => None,
         }
     }
 
-    fn motion<S: Source>(
-        &self,
-        data: &mut AnvilState<BackendData>,
-        offer: Option<&mut AnvilOfferData<S>>,
-        seat: &Seat<AnvilState<BackendData>>,
-        location: Point<f64, Logical>,
-        time: InputTime,
-    ) {
+    fn motion<S: Source>(&self, data: &mut AnvilState<BackendData>, offer: Option<&mut AnvilOfferData<S>>, seat: &Seat<AnvilState<BackendData>>, location: Point<f64, Logical>, time: InputTime) {
         if let PointerFocusTarget::WlSurface(surface) = self {
             let offer = offer.map(|AnvilOfferData::Wayland(offer)| offer);
             DndFocus::motion(surface, data, offer, seat, location, time)
         }
     }
 
-    fn leave<S: Source>(
-        &self,
-        data: &mut AnvilState<BackendData>,
-        offer: Option<&mut AnvilOfferData<S>>,
-        seat: &Seat<AnvilState<BackendData>>,
-    ) {
+    fn leave<S: Source>(&self, data: &mut AnvilState<BackendData>, offer: Option<&mut AnvilOfferData<S>>, seat: &Seat<AnvilState<BackendData>>) {
         if let PointerFocusTarget::WlSurface(surface) = self {
             let offer = offer.map(|AnvilOfferData::Wayland(offer)| offer);
             DndFocus::leave(surface, data, offer, seat)
         }
     }
 
-    fn drop<S: Source>(
-        &self,
-        data: &mut AnvilState<BackendData>,
-        offer: Option<&mut AnvilOfferData<S>>,
-        seat: &Seat<AnvilState<BackendData>>,
-    ) {
+    fn drop<S: Source>(&self, data: &mut AnvilState<BackendData>, offer: Option<&mut AnvilOfferData<S>>, seat: &Seat<AnvilState<BackendData>>) {
         if let PointerFocusTarget::WlSurface(surface) = self {
             let offer = offer.map(|AnvilOfferData::Wayland(offer)| offer);
             DndFocus::drop(surface, data, offer, seat)
@@ -610,8 +426,6 @@ impl From<PopupKind> for PointerFocusTarget {
         PointerFocusTarget::from(value.wl_surface())
     }
 }
-
-
 
 impl From<WindowElement> for KeyboardFocusTarget {
     #[inline]

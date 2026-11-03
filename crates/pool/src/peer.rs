@@ -46,7 +46,8 @@ pub fn program(peer: SocketAddr, local: SocketAddr) -> Option<Program> {
     let exe = std::fs::read_link(format!("/proc/{pid}/exe")).ok()?;
     // (A binary replaced while it runs, as Claude Code updates itself.)
     let exe = exe.to_str().and_then(|e| e.strip_suffix(" (deleted)")).map(PathBuf::from).unwrap_or(exe);
-    let args = std::fs::read(format!("/proc/{pid}/cmdline")).ok().map(|b| b.split(|&c| c == 0).filter(|a| !a.is_empty()).map(|a| String::from_utf8_lossy(a).into_owned()).collect()).unwrap_or_default();
+    let args =
+        std::fs::read(format!("/proc/{pid}/cmdline")).ok().map(|b| b.split(|&c| c == 0).filter(|a| !a.is_empty()).map(|a| String::from_utf8_lossy(a).into_owned()).collect()).unwrap_or_default();
     Some(Program { pid, exe, args })
 }
 
@@ -78,7 +79,11 @@ fn holder(inode: u64) -> Option<u32> {
     let recent = RECENT.lock().unwrap().clone();
     let found = recent.iter().copied().find(|&p| holds(p)).or_else(|| {
         let uid = std::fs::metadata("/proc/self").ok()?.uid();
-        std::fs::read_dir("/proc").ok()?.flatten().filter_map(|e| e.file_name().to_str()?.parse::<u32>().ok().filter(|_| e.metadata().is_ok_and(|m| m.uid() == uid))).find(|&p| !recent.contains(&p) && holds(p))
+        std::fs::read_dir("/proc")
+            .ok()?
+            .flatten()
+            .filter_map(|e| e.file_name().to_str()?.parse::<u32>().ok().filter(|_| e.metadata().is_ok_and(|m| m.uid() == uid)))
+            .find(|&p| !recent.contains(&p) && holds(p))
     })?;
     let mut recent = RECENT.lock().unwrap();
     recent.retain(|&p| p != found);
@@ -103,7 +108,11 @@ mod tests {
         let codex = program("/home/u/.codex/packages/standalone/releases/0.166.0-aarch64-unknown-linux-musl/bin/codex", &["codex", "exec"]);
         assert!(codex.is_client(Provider::Codex) && !codex.is_client(Provider::Claude));
         // What they run is not them.
-        for other in [program("/usr/bin/python3.14", &["python3", "call_claude.py"]), program("/usr/bin/curl", &["curl", "https://api.anthropic.com/v1/messages"]), program("/usr/bin/node", &["node", "script.js"])] {
+        for other in [
+            program("/usr/bin/python3.14", &["python3", "call_claude.py"]),
+            program("/usr/bin/curl", &["curl", "https://api.anthropic.com/v1/messages"]),
+            program("/usr/bin/node", &["node", "script.js"]),
+        ] {
             assert!(!other.is_client(Provider::Claude) && !other.is_client(Provider::Codex), "{other:?}");
         }
     }

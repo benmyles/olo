@@ -9,7 +9,9 @@
 use std::{cell::RefCell, rc::Rc, time::Instant};
 
 use gpui::{
-    AnyElement, App, Bounds, CursorStyle, Element, ElementId, InteractiveElement as _, GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, PathBuilder, Pixels, Point, RenderOnce, ScrollHandle, SharedString, StatefulInteractiveElement as _, Style, Styled as _, Window, canvas, div, point, px, relative, size,
+    AnyElement, App, Bounds, CursorStyle, Element, ElementId, GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, InteractiveElement as _, IntoElement, LayoutId, MouseButton, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, ParentElement, PathBuilder, Pixels, Point, RenderOnce, ScrollHandle, SharedString, StatefulInteractiveElement as _, Style, Styled as _, Window, canvas, div, point,
+    px, relative, size,
 };
 use olo_kit_base::metrics as m;
 use smallvec::SmallVec;
@@ -110,11 +112,7 @@ impl ScrollBar {
     /// Where it is (0 to `max`), how far it can go and how much shows.
     fn offsets(&self) -> (f32, f32, f32) {
         let (o, m, b) = (self.handle.offset(), self.handle.max_offset(), self.handle.bounds());
-        if self.vertical {
-            (-f32::from(o.y), f32::from(m.height), f32::from(b.size.height))
-        } else {
-            (-f32::from(o.x), f32::from(m.width), f32::from(b.size.width))
-        }
+        if self.vertical { (-f32::from(o.y), f32::from(m.height), f32::from(b.size.height)) } else { (-f32::from(o.x), f32::from(m.width), f32::from(b.size.width)) }
     }
 
     fn set(&self, offset: f32, window: &mut Window) {
@@ -251,7 +249,11 @@ impl Element for ScrollBar {
         }
         let (offset, _, _) = self.offsets();
         let at = if g.max > 0.0 { (offset / g.max).clamp(0.0, 1.0) } else { 0.0 };
-        agent::record(window, cx, agent::Node { role: "ScrollBar", name: Some("Scroll Bar".into()), value: Some(SharedString::from(format!("{at:.2}"))), bounds: g.track, enabled, ..Default::default() });
+        agent::record(
+            window,
+            cx,
+            agent::Node { role: "ScrollBar", name: Some("Scroll Bar".into()), value: Some(SharedString::from(format!("{at:.2}"))), bounds: g.track, enabled, ..Default::default() },
+        );
         for (b, name) in [(g.back, d0.name()), (g.forward, d1.name())] {
             agent::record(window, cx, agent::Node { role: "Button", name: Some(name.into()), bounds: b, enabled, clickable: enabled, ..Default::default() });
         }
@@ -418,7 +420,19 @@ pub struct ScrollView {
 
 impl ScrollView {
     pub fn new(id: impl Into<ElementId>, handle: &ScrollHandle) -> ScrollView {
-        ScrollView { id: id.into(), handle: handle.clone(), vertical: true, horizontal: false, auto_hide: false, border: true, focused: false, background: None, desk: false, own: false, children: SmallVec::new() }
+        ScrollView {
+            id: id.into(),
+            handle: handle.clone(),
+            vertical: true,
+            horizontal: false,
+            auto_hide: false,
+            border: true,
+            focused: false,
+            background: None,
+            desk: false,
+            own: false,
+            children: SmallVec::new(),
+        }
     }
 
     /// Shows the vertical bar only while the content overflows (as the

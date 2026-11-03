@@ -56,7 +56,8 @@ pub fn post_inc<T: From<u8> + AddAssign<T> + Copy>(value: &mut T) -> T {
 /// Times `f` when `ZED_MEASUREMENTS` is set, printing the label.
 pub fn measure<R>(label: &str, f: impl FnOnce() -> R) -> R {
     static MEASUREMENTS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    let on = MEASUREMENTS.get_or_init(|| std::env::var("ZED_MEASUREMENTS").is_ok_and(|m| m == "1" || m == "true"));
+    let on = MEASUREMENTS
+        .get_or_init(|| std::env::var("ZED_MEASUREMENTS").is_ok_and(|m| m == "1" || m == "true"));
     if *on {
         let start = std::time::Instant::now();
         let result = f();
@@ -129,7 +130,12 @@ fn log_error_with_caller<E: std::fmt::Debug>(caller: Location<'_>, error: E, lev
             .target("gpui")
             // (Olo: where, in the message: Olo's log keeps only the
             // message, and "window not found" alone said nothing of who.)
-            .args(format_args!("{:?} ({}:{})", error, caller.file(), caller.line()))
+            .args(format_args!(
+                "{:?} ({}:{})",
+                error,
+                caller.file(),
+                caller.line()
+            ))
             .file(Some(caller.file()))
             .line(Some(caller.line()))
             .level(level)

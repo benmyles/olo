@@ -14,9 +14,7 @@ use std::{
 
 use olo_kit_base::metrics as m;
 use olo_ui::{
-    gpui::{
-        Context, Entity, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render, SharedString, Styled as _, Subscription, WeakEntity, Window, div, px,
-    },
+    gpui::{Context, Entity, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render, SharedString, Styled as _, Subscription, WeakEntity, Window, div, px},
     widgets::{
         Button, StringView, TextControl, TextField, TextFieldEvent,
         list::{Column, ColumnListView, ListModel},

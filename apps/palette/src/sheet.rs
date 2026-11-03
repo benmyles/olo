@@ -7,16 +7,19 @@
 //! card in columns. Esc, a click outside or the keys again put it away.
 
 use olo_kit_base::masonry;
+use olo_protocol::{Chord, Client, KeyboardProfile, Platform, Reply, Request, shortcuts};
 use olo_ui::{
     Frame, Proxy, agent, commands,
-    gpui::{App, AppContext as _, Bounds, Context, FocusHandle, FontWeight, HitboxBehavior, InteractiveElement as _, IntoElement, KeyDownEvent, MouseDownEvent, ParentElement as _, Render, ScrollHandle, Styled as _, Window, WindowHandle, canvas, div, point, px, size},
+    gpui::{
+        App, AppContext as _, Bounds, Context, FocusHandle, FontWeight, HitboxBehavior, InteractiveElement as _, IntoElement, KeyDownEvent, MouseDownEvent, ParentElement as _, Render, ScrollHandle,
+        Styled as _, Window, WindowHandle, canvas, div, point, px, size,
+    },
     metrics as m,
     style::{self, c},
     theme,
     widgets::{SCROLL_BAR, ScrollView},
 };
 use olo_xdg::apps::our_app;
-use olo_protocol::{Chord, Client, KeyboardProfile, Platform, Reply, Request, shortcuts};
 
 /// One card: a heading and its shortcuts (title, keys as the platform
 /// writes them).
@@ -221,11 +224,7 @@ impl Render for Sheet {
         .w(px(width - 4.0 - bar))
         .h(px(content_h - GAP));
         let body = div().absolute().left(panel.left() + px(2.0)).top(panel.top() + px(TITLE)).w(px(width - 4.0)).h(px(body_h));
-        let body = if scrolls {
-            body.child(ScrollView::new("shortcuts-sheet", &self.scroll).background(theme::palette(cx).panel_background).child(cards))
-        } else {
-            body.child(cards)
-        };
+        let body = if scrolls { body.child(ScrollView::new("shortcuts-sheet", &self.scroll).background(theme::palette(cx).panel_background).child(cards)) } else { body.child(cards) };
         div().size_full().relative().track_focus(&self.focus).child(backdrop).child(body).on_key_down(move |e: &KeyDownEvent, window, _| {
             if e.keystroke.key == "escape" {
                 window.remove_window();
@@ -248,10 +247,7 @@ mod tests {
             enabled: true,
             checked: false,
         };
-        let menus = commands::Menus {
-            app_id: "olo.tracker".into(),
-            entries: vec![entry("File", "Open", Some("⌘O")), entry("File", "Get Info…", Some("⌘I")), entry("Edit", "Select All", None)],
-        };
+        let menus = commands::Menus { app_id: "olo.tracker".into(), entries: vec![entry("File", "Open", Some("⌘O")), entry("File", "Get Info…", Some("⌘I")), entry("Edit", "Select All", None)] };
         let mac = KeyboardProfile::default();
         let g = groups(&mac, Some(&menus));
         assert_eq!(g[0], Group { title: "Tracker: File".into(), rows: vec![("Open".into(), "⌘O".into()), ("Get Info".into(), "⌘I".into())] });

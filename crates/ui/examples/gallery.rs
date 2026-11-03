@@ -6,7 +6,9 @@ use olo_ui::{
     WindowOptions,
     gpui::{AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, ScrollHandle, SharedString, Styled as _, Window, div, px},
     metrics as m,
-    widgets::{BBox, Button, CheckBox, Column, ColumnListView, Graph, ListModel, MenuField, RadioButton, ScrollView, Series, Slider, StatusBar, StringView, TextControl, TextField, open_alert, text_field},
+    widgets::{
+        BBox, Button, CheckBox, Column, ColumnListView, Graph, ListModel, MenuField, RadioButton, ScrollView, Series, Slider, StatusBar, StringView, TextControl, TextField, open_alert, text_field,
+    },
 };
 use std::{collections::VecDeque, rc::Rc};
 
@@ -29,7 +31,24 @@ struct Gallery {
 /// Some files for the list.
 fn entries() -> Vec<(SharedString, u64, SharedString)> {
     let kinds = ["Text", "Folder", "Picture", "Application", "Archive"];
-    let names = ["apps", "Cargo.toml", "crates", "docs", "gpui", "README.md", "screenshot.png", "olo-terminal", "notes.txt", "backup.tar.zst", "tools", "vendor", "wallpaper.jpg", "a file whose name is too long to fit its column", "LICENSE", "target"];
+    let names = [
+        "apps",
+        "Cargo.toml",
+        "crates",
+        "docs",
+        "gpui",
+        "README.md",
+        "screenshot.png",
+        "olo-terminal",
+        "notes.txt",
+        "backup.tar.zst",
+        "tools",
+        "vendor",
+        "wallpaper.jpg",
+        "a file whose name is too long to fit its column",
+        "LICENSE",
+        "target",
+    ];
     names.iter().enumerate().map(|(i, n)| ((*n).into(), (i as u64 * 7919 + 13).pow(2) % 9_000_000, kinds[i % kinds.len()].into())).collect()
 }
 
@@ -102,12 +121,19 @@ impl Render for Gallery {
                         let view = cx.entity();
                         move |_, cx| {
                             let view = view.clone();
-                            open_alert(cx, "Gallery", "warning", "Something needs an answer. This alert's message is long enough to wrap onto a second line.", &["Cancel", "Other", "OK"], move |choice, cx| {
-                                view.update(cx, |g, cx| {
-                                    g.answer = format!("{choice:?}");
-                                    cx.notify();
-                                })
-                            });
+                            open_alert(
+                                cx,
+                                "Gallery",
+                                "warning",
+                                "Something needs an answer. This alert's message is long enough to wrap onto a second line.",
+                                &["Cancel", "Other", "OK"],
+                                move |choice, cx| {
+                                    view.update(cx, |g, cx| {
+                                        g.answer = format!("{choice:?}");
+                                        cx.notify();
+                                    })
+                                },
+                            );
                         }
                     }))
                     .child(Button::new("Copy Name"))
@@ -135,10 +161,8 @@ impl Render for Gallery {
 fn graph(cx: &mut Context<Gallery>) -> Graph {
     let p = olo_ui::theme::palette(cx);
     let wave = |f: f64, k: f64| Rc::new((0..=120).map(|i| (i as f64 * 0.5, k * (1.2 + (i as f64 * f).sin() + 0.3 * (i as f64 * f * 3.1).cos()))).collect::<VecDeque<_>>());
-    let series = [
-        Series::new("In", olo_ui::style::c(p.hue(olo_ui::palette::Hue::Blue)), wave(0.11, 40.0)).fill(true),
-        Series::new("Out", olo_ui::style::c(p.hue(olo_ui::palette::Hue::Red)), wave(0.07, 25.0)),
-    ];
+    let series =
+        [Series::new("In", olo_ui::style::c(p.hue(olo_ui::palette::Hue::Blue)), wave(0.11, 40.0)).fill(true), Series::new("Out", olo_ui::style::c(p.hue(olo_ui::palette::Hue::Red)), wave(0.07, 25.0))];
     Graph::new("gallery-graph", series, 60.0).span(60.0).grid(15.0)
 }
 

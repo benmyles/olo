@@ -72,7 +72,12 @@ pub struct TextSystem {
 /// characters, or the glyphs of some texts (colour ones: emoji).
 enum Warm {
     Face((FontId, u32, u32, TextRendering)),
-    Text { font_id: FontId, size: Pixels, scale: f32, texts: Arc<[SharedString]> },
+    Text {
+        font_id: FontId,
+        size: Pixels,
+        scale: f32,
+        texts: Arc<[SharedString]>,
+    },
 }
 
 impl TextSystem {
@@ -118,11 +123,18 @@ impl TextSystem {
         for run in runs {
             let font_id = self.resolve_font(&run.font);
             match font_runs.last_mut() {
-                Some(last) if last.font_id == font_id && last.size == run.size => last.len += run.len,
-                _ => font_runs.push(FontRun { len: run.len, font_id, size: run.size }),
+                Some(last) if last.font_id == font_id && last.size == run.size => {
+                    last.len += run.len
+                }
+                _ => font_runs.push(FontRun {
+                    len: run.len,
+                    font_id,
+                    size: run.size,
+                }),
             }
         }
-        self.platform_text_system.layout_line(text, font_size, &font_runs)
+        self.platform_text_system
+            .layout_line(text, font_size, &font_runs)
     }
 
     /// Olo: reads the system's fonts on this thread (a worker), so that
@@ -391,7 +403,12 @@ impl TextSystem {
     ) {
         // (Glyphs at each subpixel offset counted apart.)
         const RUNNING_TEXT: u32 = 32;
-        let key = (font_id, font_size.0.to_bits(), scale_factor.to_bits(), rendering);
+        let key = (
+            font_id,
+            font_size.0.to_bits(),
+            scale_factor.to_bits(),
+            rendering,
+        );
         let mut first_drawn = self.first_drawn.lock();
         let drawn = first_drawn.entry(key).or_default();
         *drawn += 1;
@@ -416,7 +433,12 @@ impl TextSystem {
         scale_factor: f32,
         rendering: TextRendering,
     ) {
-        let key = (font_id, font_size.0.to_bits(), scale_factor.to_bits(), rendering);
+        let key = (
+            font_id,
+            font_size.0.to_bits(),
+            scale_factor.to_bits(),
+            rendering,
+        );
         if !self.warmed.lock().insert(key) {
             return;
         }
@@ -428,8 +450,19 @@ impl TextSystem {
     /// thread, in the order given: drawing one the first time costs a
     /// frame ~60 µs, and they're kept for every window after (a picker's
     /// grid of them, opened again and again).
-    pub(crate) fn warm_text(self: &Arc<Self>, font_id: FontId, font_size: Pixels, scale_factor: f32, texts: Arc<[SharedString]>) {
-        self.to_warmer(Warm::Text { font_id, size: font_size, scale: scale_factor, texts });
+    pub(crate) fn warm_text(
+        self: &Arc<Self>,
+        font_id: FontId,
+        font_size: Pixels,
+        scale_factor: f32,
+        texts: Arc<[SharedString]>,
+    ) {
+        self.to_warmer(Warm::Text {
+            font_id,
+            size: font_size,
+            scale: scale_factor,
+            texts,
+        });
     }
 
     /// Olo: lets go of the colour glyphs kept for every window (an app
@@ -452,66 +485,88 @@ impl TextSystem {
         *worker = Some(tx);
         drop(worker);
         let this = Arc::downgrade(self);
-        let _ = std::thread::Builder::new().name("glyph-warm".into()).spawn(move || {
-            loop {
-                let job = match rx.recv_timeout(std::time::Duration::from_secs(10)) {
-                    Ok(job) => job,
-                    Err(_) => {
-                        // Idle: gone (started again for the next face),
-                        // unless one came as it gave up waiting (sent
-                        // with the lock held).
-                        let Some(this) = this.upgrade() else { return };
-                        let mut worker = this.warmer.lock();
-                        match rx.try_recv() {
-                            Ok(job) => job,
-                            Err(_) => {
-                                worker.take();
-                                return;
-                            }
-                        }
-                    }
-                };
-                let Some(this) = this.upgrade() else { return };
-                match job {
-                    Warm::Face((font_id, size, scale, rendering)) => {
-                        let chars: Vec<char> = (' '..='~').chain("…–—‘’“”•·°".chars()).collect();
-                        let drawn = this.platform_text_system.draw_ahead(font_id, Pixels(f32::from_bits(size)), f32::from_bits(scale), rendering, &chars);
-                        let mut bounds = this.raster_bounds.write();
-                        for (params, b) in drawn {
-                            bounds.entry(params).or_insert(b);
-                        }
-                    }
-                    Warm::Text { font_id, size, scale, texts } => {
-                        // A few at a time, so the first are ready soonest
-                        // and a frame shaping text waits on at most one.
-                        for chunk in texts.chunks(16) {
-                            let mut params = Vec::new();
-                            for text in chunk {
-                                let layout = this.platform_text_system.layout_line(text, size, &[FontRun { len: text.len(), font_id, size: None }]);
-                                for run in &layout.runs {
-                                    for g in run.glyphs.iter().filter(|g| g.is_emoji) {
-                                        params.push(RenderGlyphParams {
-                                            font_id: run.font_id,
-                                            glyph_id: g.id,
-                                            font_size: size,
-                                            subpixel_variant: Default::default(),
-                                            scale_factor: scale,
-                                            is_emoji: true,
-                                            rendering: TextRendering::default(),
-                                        });
-                                    }
+        let _ = std::thread::Builder::new()
+            .name("glyph-warm".into())
+            .spawn(move || {
+                loop {
+                    let job = match rx.recv_timeout(std::time::Duration::from_secs(10)) {
+                        Ok(job) => job,
+                        Err(_) => {
+                            // Idle: gone (started again for the next face),
+                            // unless one came as it gave up waiting (sent
+                            // with the lock held).
+                            let Some(this) = this.upgrade() else { return };
+                            let mut worker = this.warmer.lock();
+                            match rx.try_recv() {
+                                Ok(job) => job,
+                                Err(_) => {
+                                    worker.take();
+                                    return;
                                 }
                             }
-                            let drawn = this.platform_text_system.draw_glyphs_ahead(&params);
+                        }
+                    };
+                    let Some(this) = this.upgrade() else { return };
+                    match job {
+                        Warm::Face((font_id, size, scale, rendering)) => {
+                            let chars: Vec<char> =
+                                (' '..='~').chain("…–—‘’“”•·°".chars()).collect();
+                            let drawn = this.platform_text_system.draw_ahead(
+                                font_id,
+                                Pixels(f32::from_bits(size)),
+                                f32::from_bits(scale),
+                                rendering,
+                                &chars,
+                            );
                             let mut bounds = this.raster_bounds.write();
                             for (params, b) in drawn {
                                 bounds.entry(params).or_insert(b);
                             }
                         }
+                        Warm::Text {
+                            font_id,
+                            size,
+                            scale,
+                            texts,
+                        } => {
+                            // A few at a time, so the first are ready soonest
+                            // and a frame shaping text waits on at most one.
+                            for chunk in texts.chunks(16) {
+                                let mut params = Vec::new();
+                                for text in chunk {
+                                    let layout = this.platform_text_system.layout_line(
+                                        text,
+                                        size,
+                                        &[FontRun {
+                                            len: text.len(),
+                                            font_id,
+                                            size: None,
+                                        }],
+                                    );
+                                    for run in &layout.runs {
+                                        for g in run.glyphs.iter().filter(|g| g.is_emoji) {
+                                            params.push(RenderGlyphParams {
+                                                font_id: run.font_id,
+                                                glyph_id: g.id,
+                                                font_size: size,
+                                                subpixel_variant: Default::default(),
+                                                scale_factor: scale,
+                                                is_emoji: true,
+                                                rendering: TextRendering::default(),
+                                            });
+                                        }
+                                    }
+                                }
+                                let drawn = this.platform_text_system.draw_glyphs_ahead(&params);
+                                let mut bounds = this.raster_bounds.write();
+                                for (params, b) in drawn {
+                                    bounds.entry(params).or_insert(b);
+                                }
+                            }
+                        }
                     }
                 }
-            }
-        });
+            });
     }
 }
 
@@ -521,10 +576,28 @@ impl TextSystem {
     /// device pixel, grey-scale; hinted under 2×, as on screen): for a
     /// picture made off screen (a drag's). Its size, the mask, and its
     /// baseline from the top. Colour glyphs (emoji) are left out.
-    pub fn line_mask(&self, text: &str, font: &Font, font_size: Pixels, scale: f32) -> Option<(Size<DevicePixels>, Vec<u8>, i32)> {
+    pub fn line_mask(
+        &self,
+        text: &str,
+        font: &Font,
+        font_size: Pixels,
+        scale: f32,
+    ) -> Option<(Size<DevicePixels>, Vec<u8>, i32)> {
         let font_id = self.resolve_font(font);
-        let layout = self.platform_text_system.layout_line(text, font_size, &[FontRun { len: text.len(), font_id, size: None }]);
-        let rendering = if scale < 2.0 { TextRendering::Hinted } else { TextRendering::Unhinted };
+        let layout = self.platform_text_system.layout_line(
+            text,
+            font_size,
+            &[FontRun {
+                len: text.len(),
+                font_id,
+                size: None,
+            }],
+        );
+        let rendering = if scale < 2.0 {
+            TextRendering::Hinted
+        } else {
+            TextRendering::Unhinted
+        };
         let ascent = (f32::from(layout.ascent) * scale).ceil() as i32;
         let height = ascent + (f32::from(layout.descent) * scale).ceil() as i32;
         let width = (f32::from(layout.width) * scale).ceil() as i32 + 2;
@@ -539,21 +612,31 @@ impl TextSystem {
                     font_id: run.font_id,
                     glyph_id: glyph.id,
                     font_size,
-                    subpixel_variant: Point { x: (x.fract() * SUBPIXEL_VARIANTS_X as f32).floor() as u8, y: 0 },
+                    subpixel_variant: Point {
+                        x: (x.fract() * SUBPIXEL_VARIANTS_X as f32).floor() as u8,
+                        y: 0,
+                    },
                     scale_factor: scale,
                     is_emoji: false,
                     rendering,
                 };
-                let Ok(bounds) = self.raster_bounds(&params) else { continue };
+                let Ok(bounds) = self.raster_bounds(&params) else {
+                    continue;
+                };
                 if bounds.size.width.0 <= 0 || bounds.size.height.0 <= 0 {
                     continue;
                 }
-                let Ok((size, bytes)) = self.rasterize_glyph(&params) else { continue };
+                let Ok((size, bytes)) = self.rasterize_glyph(&params) else {
+                    continue;
+                };
                 let (gw, gh) = (size.width.0, size.height.0);
                 if bytes.len() < (gw * gh) as usize {
                     continue;
                 }
-                let (ox, oy) = (x.floor() as i32 + bounds.origin.x.0, ascent + bounds.origin.y.0);
+                let (ox, oy) = (
+                    x.floor() as i32 + bounds.origin.x.0,
+                    ascent + bounds.origin.y.0,
+                );
                 for gy in 0..gh {
                     for gx in 0..gw {
                         let (tx, ty) = (ox + gx, oy + gy);
@@ -566,7 +649,11 @@ impl TextSystem {
                 }
             }
         }
-        Some((crate::size(DevicePixels(width), DevicePixels(height)), mask, ascent))
+        Some((
+            crate::size(DevicePixels(width), DevicePixels(height)),
+            mask,
+            ascent,
+        ))
     }
 }
 
@@ -580,18 +667,39 @@ pub struct WindowTextSystem {
 
 impl WindowTextSystem {
     /// Olo: [`TextSystem::drawn_first`].
-    pub(crate) fn drawn_first(&self, font_id: FontId, font_size: Pixels, scale_factor: f32, rendering: TextRendering) {
-        self.text_system.drawn_first(font_id, font_size, scale_factor, rendering);
+    pub(crate) fn drawn_first(
+        &self,
+        font_id: FontId,
+        font_size: Pixels,
+        scale_factor: f32,
+        rendering: TextRendering,
+    ) {
+        self.text_system
+            .drawn_first(font_id, font_size, scale_factor, rendering);
     }
 
     /// Olo: [`TextSystem::warm_text`].
-    pub(crate) fn warm_text(&self, font_id: FontId, font_size: Pixels, scale_factor: f32, texts: Arc<[SharedString]>) {
-        self.text_system.warm_text(font_id, font_size, scale_factor, texts);
+    pub(crate) fn warm_text(
+        &self,
+        font_id: FontId,
+        font_size: Pixels,
+        scale_factor: f32,
+        texts: Arc<[SharedString]>,
+    ) {
+        self.text_system
+            .warm_text(font_id, font_size, scale_factor, texts);
     }
 
     /// Olo: [`TextSystem::warm`].
-    pub(crate) fn warm(&self, font_id: FontId, font_size: Pixels, scale_factor: f32, rendering: TextRendering) {
-        self.text_system.warm(font_id, font_size, scale_factor, rendering);
+    pub(crate) fn warm(
+        &self,
+        font_id: FontId,
+        font_size: Pixels,
+        scale_factor: f32,
+        rendering: TextRendering,
+    ) {
+        self.text_system
+            .warm(font_id, font_size, scale_factor, rendering);
     }
 
     pub(crate) fn new(text_system: Arc<TextSystem>) -> Self {
@@ -1252,13 +1360,38 @@ mod olo_shaping_speed {
         let ts = TextSystem::standalone();
         for family in ["Noto Sans", "Noto Sans Mono"] {
             let font = crate::font(family);
-            let run = |len: usize| vec![TextRun { len, font: font.clone(), color: crate::black(), background_color: None, underline: None, strikethrough: None, size: None }];
-            for row in ["Nov 02 03:11:11 kernel[42]: usb 3-1: new high-speed USB device", "AVATAR Wave To, office  ffi  T.  Yo'Ld \"\"(x)", "  leading and trailing  "] {
+            let run = |len: usize| {
+                vec![TextRun {
+                    len,
+                    font: font.clone(),
+                    color: crate::black(),
+                    background_color: None,
+                    underline: None,
+                    strikethrough: None,
+                    size: None,
+                }]
+            };
+            for row in [
+                "Nov 02 03:11:11 kernel[42]: usb 3-1: new high-speed USB device",
+                "AVATAR Wave To, office  ffi  T.  Yo'Ld \"\"(x)",
+                "  leading and trailing  ",
+            ] {
                 let words = ts.layout_line_now(row, px(12.0), &run(row.len()));
                 let whole_text = format!("{row}é");
                 let whole = ts.layout_line_now(&whole_text, px(12.0), &run(whole_text.len()));
-                let a: Vec<_> = words.runs.iter().flat_map(|r| r.glyphs.iter()).map(|g| (g.id, g.index, (g.position.x.0 * 100.0).round())).collect();
-                let b: Vec<_> = whole.runs.iter().flat_map(|r| r.glyphs.iter()).filter(|g| g.index < row.len()).map(|g| (g.id, g.index, (g.position.x.0 * 100.0).round())).collect();
+                let a: Vec<_> = words
+                    .runs
+                    .iter()
+                    .flat_map(|r| r.glyphs.iter())
+                    .map(|g| (g.id, g.index, (g.position.x.0 * 100.0).round()))
+                    .collect();
+                let b: Vec<_> = whole
+                    .runs
+                    .iter()
+                    .flat_map(|r| r.glyphs.iter())
+                    .filter(|g| g.index < row.len())
+                    .map(|g| (g.id, g.index, (g.position.x.0 * 100.0).round()))
+                    .collect();
                 assert_eq!(a, b, "{family}: {row}");
             }
         }
@@ -1277,18 +1410,37 @@ mod olo_shaping_speed {
             .collect();
         let glyphs: usize = rows.iter().map(|r| r.len()).sum();
         // (The first time loads the face.)
-        let run = |r: &String| vec![TextRun { len: r.len(), font: font.clone(), color: crate::black(), background_color: None, underline: None, strikethrough: None, size: None }];
+        let run = |r: &String| {
+            vec![TextRun {
+                len: r.len(),
+                font: font.clone(),
+                color: crate::black(),
+                background_color: None,
+                underline: None,
+                strikethrough: None,
+                size: None,
+            }]
+        };
         let _ = ts.layout_line_now(&rows[0], px(12.0), &run(&rows[0]));
         let t = std::time::Instant::now();
         for r in &rows {
             let _ = ts.layout_line_now(r, px(12.0), &run(r));
         }
         let took = t.elapsed();
-        println!("{} rows, {glyphs} characters: {:.2} ms, {:.0} ns a character", rows.len(), took.as_secs_f64() * 1000.0, took.as_nanos() as f64 / glyphs as f64);
+        println!(
+            "{} rows, {glyphs} characters: {:.2} ms, {:.0} ns a character",
+            rows.len(),
+            took.as_secs_f64() * 1000.0,
+            took.as_nanos() as f64 / glyphs as f64
+        );
         let one = rows.join(" ");
         let t = std::time::Instant::now();
         let _ = ts.layout_line_now(&one, px(12.0), &run(&one));
         let took = t.elapsed();
-        println!("one line of them: {:.2} ms, {:.0} ns a character", took.as_secs_f64() * 1000.0, took.as_nanos() as f64 / one.len() as f64);
+        println!(
+            "one line of them: {:.2} ms, {:.0} ns a character",
+            took.as_secs_f64() * 1000.0,
+            took.as_nanos() as f64 / one.len() as f64
+        );
     }
 }

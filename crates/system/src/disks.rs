@@ -388,15 +388,7 @@ impl Status {
 
     /// The volume at `path` (or one unlocked inside it) and its disk.
     pub fn volume(&self, path: &str) -> Option<(&Disk, &Volume)> {
-        self.disks.iter().find_map(|d| {
-            d.volumes.iter().find_map(|v| {
-                if v.path == path {
-                    Some((d, v))
-                } else {
-                    v.cleartext.as_deref().filter(|c| c.path == path).map(|c| (d, c))
-                }
-            })
-        })
+        self.disks.iter().find_map(|d| d.volumes.iter().find_map(|v| if v.path == path { Some((d, v)) } else { v.cleartext.as_deref().filter(|c| c.path == path).map(|c| (d, c)) }))
     }
 
     /// Jobs working on `path`.
@@ -538,11 +530,7 @@ fn parse(objects: &Objects) -> (Vec<Disk>, Vec<Job>) {
         }
         let table = ifaces.get(TABLE).map(|t| string(t, "Type"));
         let mut volumes: Vec<Volume> = if table.is_some() {
-            objects
-                .iter()
-                .filter(|(_, i)| i.get(PARTITION).and_then(|p| path_of(p, "Table")).as_deref() == Some(path.as_str()))
-                .map(|(o, i)| volume_of(o.as_str(), i, objects))
-                .collect()
+            objects.iter().filter(|(_, i)| i.get(PARTITION).and_then(|p| path_of(p, "Table")).as_deref() == Some(path.as_str())).map(|(o, i)| volume_of(o.as_str(), i, objects)).collect()
         } else if !string(b, "IdUsage").is_empty() || !string(b, "IdType").is_empty() {
             vec![volume_of(path.as_str(), ifaces, objects)]
         } else {
@@ -680,14 +668,8 @@ impl Format {
 /// The file systems to offer, as (kind, name), best first, of those
 /// UDisks can make here.
 pub fn formats(supported: &[String]) -> Vec<(&'static str, &'static str)> {
-    const ALL: [(&str, &str); 6] = [
-        ("exfat", "exFAT (works everywhere)"),
-        ("ext4", "Linux (ext4)"),
-        ("btrfs", "Linux (Btrfs)"),
-        ("xfs", "Linux (XFS)"),
-        ("vfat", "FAT (older devices)"),
-        ("ntfs", "NTFS (Windows)"),
-    ];
+    const ALL: [(&str, &str); 6] =
+        [("exfat", "exFAT (works everywhere)"), ("ext4", "Linux (ext4)"), ("btrfs", "Linux (Btrfs)"), ("xfs", "Linux (XFS)"), ("vfat", "FAT (older devices)"), ("ntfs", "NTFS (Windows)")];
     ALL.into_iter().filter(|(k, _)| supported.iter().any(|s| s == k)).collect()
 }
 
@@ -728,14 +710,7 @@ pub fn create_partition(disk: &str, table: &str, offset: u64, size: u64, name: &
     let kind = if f.kind.is_empty() { "empty" } else { f.kind.as_str() };
     let part_type = partition_type(table, kind, f.passphrase.is_some());
     let name = if table == "gpt" { name } else { "" };
-    let o: OwnedObjectPath = bus::call(
-        conn()?,
-        DEST,
-        disk,
-        TABLE,
-        "CreatePartitionAndFormat",
-        &(offset, size, part_type, name, Options::new(), kind, f.options()),
-    )?;
+    let o: OwnedObjectPath = bus::call(conn()?, DEST, disk, TABLE, "CreatePartitionAndFormat", &(offset, size, part_type, name, Options::new(), kind, f.options()))?;
     Ok(o.as_str().to_owned())
 }
 
@@ -850,9 +825,7 @@ pub fn write_image(block: &str, image: &std::path::Path, stop: &AtomicBool, prog
     use std::io::{Read, Write};
     let mut src = std::fs::File::open(image).map_err(|e| format!("Couldn't read the image: {e}"))?;
     let total = src.metadata().map(|m| m.len()).unwrap_or(0);
-    let fd: zvariant::OwnedFd = conn()
-        .and_then(|c| bus::call(c, DEST, block, BLOCK, "OpenForRestore", &(Options::new(),)))
-        .map_err(|e| error_text(&e))?;
+    let fd: zvariant::OwnedFd = conn().and_then(|c| bus::call(c, DEST, block, BLOCK, "OpenForRestore", &(Options::new(),))).map_err(|e| error_text(&e))?;
     let mut dst = std::fs::File::from(OwnedFd::from(fd));
     let mut buf = vec![0u8; 4 * MIB as usize];
     let (start, mut done, mut told) = (Instant::now(), 0u64, Instant::now());
@@ -899,8 +872,7 @@ pub struct Benchmark {
 pub fn benchmark(block: &str, size: u64, count: usize, stop: &AtomicBool, progress: &mut dyn FnMut(usize, f64)) -> std::result::Result<Benchmark, String> {
     let mut o = Options::new();
     o.insert("writable", Value::from(false));
-    let fd: zvariant::OwnedFd =
-        conn().and_then(|c| bus::call(c, DEST, block, BLOCK, "OpenForBenchmark", &(o,))).map_err(|e| error_text(&e))?;
+    let fd: zvariant::OwnedFd = conn().and_then(|c| bus::call(c, DEST, block, BLOCK, "OpenForBenchmark", &(o,))).map_err(|e| error_text(&e))?;
     let fd = OwnedFd::from(fd);
     const SAMPLE: usize = 8 << 20;
     // O_DIRECT (UDisks opens it so) wants aligned memory.
@@ -979,15 +951,7 @@ mod tests {
     #[test]
     fn segments_find_free_space() {
         let disk = Disk { size: 100 * MIB, table: Some("gpt".into()), volumes: vec![v(MIB, 10 * MIB), v(20 * MIB, 30 * MIB)], ..Default::default() };
-        assert_eq!(
-            disk.segments(),
-            vec![
-                Segment::Volume(0),
-                Segment::Free { offset: 11 * MIB, size: 9 * MIB },
-                Segment::Volume(1),
-                Segment::Free { offset: 50 * MIB, size: 49 * MIB },
-            ]
-        );
+        assert_eq!(disk.segments(), vec![Segment::Volume(0), Segment::Free { offset: 11 * MIB, size: 9 * MIB }, Segment::Volume(1), Segment::Free { offset: 50 * MIB, size: 49 * MIB },]);
         let empty = Disk { size: 100 * MIB, table: Some("dos".into()), ..Default::default() };
         assert_eq!(empty.segments(), vec![Segment::Free { offset: MIB, size: 99 * MIB }]);
         // Alignment gaps don't count.

@@ -1,8 +1,8 @@
 //! ext-session-lock lock.
 
 use olo_sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::wayland::compositor::SurfaceAttributes;
 use crate::wayland::compositor::{self, BufferAssignment};

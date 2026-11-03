@@ -51,8 +51,7 @@ fn main() {
     // Every outside program's Wayland traffic goes through here: with the
     // shell, above apps (olo_protocol::performance::tier; -5).
     let _ = olo_system::priority::raise_self(-5);
-    let (Some(fd), Some(upstream)) = (std::env::var("OLO_WAYLAND_FD").ok().and_then(|f| f.parse::<i32>().ok()), std::env::var_os("OLO_WAYLAND_UPSTREAM"))
-    else {
+    let (Some(fd), Some(upstream)) = (std::env::var("OLO_WAYLAND_FD").ok().and_then(|f| f.parse::<i32>().ok()), std::env::var_os("OLO_WAYLAND_UPSTREAM")) else {
         eprintln!("olo-wlproxy is started by olo-session (OLO_WAYLAND_FD, OLO_WAYLAND_UPSTREAM)");
         std::process::exit(2);
     };
@@ -87,11 +86,7 @@ fn main() {
         for c in &clients {
             fds.push(libc::pollfd { fd: c.down.fd(), events: libc::POLLIN | if c.down.backlog() > 0 { libc::POLLOUT } else { 0 }, revents: 0 });
             let up = c.up.as_ref().map(|u| (u.fd(), u.backlog() > 0));
-            fds.push(libc::pollfd {
-                fd: up.map_or(-1, |u| u.0),
-                events: libc::POLLIN | if up.is_some_and(|u| u.1) { libc::POLLOUT } else { 0 },
-                revents: 0,
-            });
+            fds.push(libc::pollfd { fd: up.map_or(-1, |u| u.0), events: libc::POLLIN | if up.is_some_and(|u| u.1) { libc::POLLOUT } else { 0 }, revents: 0 });
         }
         let waiting = clients.iter().any(|c| c.phase == Phase::Down);
         let timeout = if waiting { RETRY.as_millis() as i32 } else { -1 };

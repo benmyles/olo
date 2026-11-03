@@ -49,9 +49,7 @@ pub fn load() -> Option<Checker> {
         .flat_map(|(d, r)| r.flatten().filter_map(move |e| Some((d.clone(), e.file_name().to_str()?.strip_suffix(".dic")?.to_owned()))))
         .collect();
     let pick = |f: &dyn Fn(&str) -> bool| found.iter().find(|(_, n)| f(n)).cloned();
-    let (dir, name) = pick(&|n| n == want)
-        .or_else(|| pick(&|n| n == base || n.starts_with(&format!("{base}_"))))
-        .or_else(|| pick(&|n| n == "en_US"))?;
+    let (dir, name) = pick(&|n| n == want).or_else(|| pick(&|n| n == base || n.starts_with(&format!("{base}_")))).or_else(|| pick(&|n| n == "en_US"))?;
     let aff = std::fs::read_to_string(dir.join(format!("{name}.aff"))).ok()?;
     let dic = std::fs::read_to_string(dir.join(format!("{name}.dic"))).ok()?;
     let dict = match spellbook::Dictionary::new(&aff, &dic) {
@@ -73,9 +71,7 @@ fn words_file() -> PathBuf {
 impl Checker {
     /// Whether `word` is spelt right (or learnt, or ignored).
     pub fn check(&self, word: &str) -> bool {
-        self.dict.check(word)
-            || self.learnt.read().is_ok_and(|l| l.contains(word))
-            || self.ignored.read().is_ok_and(|l| l.contains(word))
+        self.dict.check(word) || self.learnt.read().is_ok_and(|l| l.contains(word)) || self.ignored.read().is_ok_and(|l| l.contains(word))
     }
 
     /// The misspelled words of `text` (bytes).

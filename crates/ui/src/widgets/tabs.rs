@@ -14,7 +14,8 @@
 use std::rc::Rc;
 
 use gpui::{
-    AnyElement, App, Bounds, FontWeight, HitboxBehavior, IntoElement, MouseButton, MouseDownEvent, ParentElement, PathBuilder, Pixels, RenderOnce, SharedString, Styled as _, Window, canvas, div, point, px, size,
+    AnyElement, App, Bounds, FontWeight, HitboxBehavior, IntoElement, MouseButton, MouseDownEvent, ParentElement, PathBuilder, Pixels, RenderOnce, SharedString, Styled as _, Window, canvas, div,
+    point, px, size,
 };
 use olo_kit_base::metrics as m;
 use smallvec::SmallVec;
@@ -88,7 +89,10 @@ impl RenderOnce for TabView {
                 // The panel: raised, a softer second line inside the dark one.
                 style::bevel(window, panel, style::c(p.shine), style::shade(&p, bg, 1.35));
                 // (What's in it must fit inside its inset.)
-                crate::review::pane(window, Bounds::from_corners(point(outer.left() + px(m::WINDOW_INSET), outer.top() + px(TAB_HEIGHT)), point(outer.right() - px(m::WINDOW_INSET), outer.bottom() - px(m::WINDOW_INSET))));
+                crate::review::pane(
+                    window,
+                    Bounds::from_corners(point(outer.left() + px(m::WINDOW_INSET), outer.top() + px(TAB_HEIGHT)), point(outer.right() - px(m::WINDOW_INSET), outer.bottom() - px(m::WINDOW_INSET))),
+                );
                 let in_panel = style::inset(window, panel, 1.0);
                 style::vline_left_of(window, in_panel.right(), in_panel.top(), in_panel.bottom(), style::shade(&p, bg, 1.12));
                 style::hline_above(window, in_panel.left(), in_panel.right(), in_panel.bottom(), style::shade(&p, bg, 1.12));
@@ -168,11 +172,15 @@ impl RenderOnce for TabView {
                 // The window's tab keys, unless a tab view drawn before
                 // this one has them.
                 if let Some(f) = select.clone() {
-                    crate::app::set_tab_keys(window, cx, Rc::new(move |step: i32, window: &mut Window, cx: &mut App| {
-                        if n > 1 {
-                            f((selected as i32 + step).rem_euclid(n as i32) as usize, window, cx);
-                        }
-                    }));
+                    crate::app::set_tab_keys(
+                        window,
+                        cx,
+                        Rc::new(move |step: i32, window: &mut Window, cx: &mut App| {
+                            if n > 1 {
+                                f((selected as i32 + step).rem_euclid(n as i32) as usize, window, cx);
+                            }
+                        }),
+                    );
                 }
             },
         )

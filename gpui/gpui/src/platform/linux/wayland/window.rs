@@ -11,13 +11,16 @@ use calloop::LoopHandle;
 use collections::HashMap;
 use futures::channel::oneshot::Receiver;
 
+use anyhow::Context as _;
 use raw_window_handle as rwh;
 use wayland_backend::client::ObjectId;
 use wayland_client::WEnum;
-use anyhow::Context as _;
 use wayland_client::{
     Proxy,
     protocol::{wl_buffer, wl_output, wl_subsurface, wl_surface},
+};
+use wayland_protocols::ext::session_lock::v1::client::{
+    ext_session_lock_surface_v1, ext_session_lock_v1,
 };
 use wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_buffer_params_v1;
 use wayland_protocols::wp::viewporter::client::wp_viewport;
@@ -31,11 +34,10 @@ use wayland_protocols::{
 };
 use wayland_protocols_plasma::blur::client::org_kde_kwin_blur;
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
-use wayland_protocols::ext::session_lock::v1::client::{ext_session_lock_surface_v1, ext_session_lock_v1};
 
 use crate::{
-    AnyWindowHandle, Bounds, Decorations, DevicePixels, Globals, GpuSpecs, Modifiers, Output, Pixels,
-    PlatformDisplay, PlatformInput, Point, PromptButton, PromptLevel, RequestFrameOptions,
+    AnyWindowHandle, Bounds, Decorations, DevicePixels, Globals, GpuSpecs, Modifiers, Output,
+    Pixels, PlatformDisplay, PlatformInput, Point, PromptButton, PromptLevel, RequestFrameOptions,
     ResizeEdge, Size, Tiling, WaylandClientStatePtr, WindowAppearance, WindowBackgroundAppearance,
     WindowBounds, WindowControlArea, WindowControls, WindowDecorations, WindowParams, px, size,
 };
@@ -107,7 +109,9 @@ pub struct WaylandWindowState {
     appearance: WindowAppearance,
     blur: Option<org_kde_kwin_blur::OrgKdeKwinBlur>,
     /// Olo: the screen kept awake while it shows.
-    inhibitor: Option<wayland_protocols::wp::idle_inhibit::zv1::client::zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1>,
+    inhibitor: Option<
+        wayland_protocols::wp::idle_inhibit::zv1::client::zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1,
+    >,
     /// Olo: its scale's object and, for a dialog, the dialog's, destroyed
     /// with it (left alive, they name a surface or toplevel that's gone,
     /// whose id goes to something else: olo-wlproxy making them again
@@ -116,11 +120,15 @@ pub struct WaylandWindowState {
     dialog: Option<wayland_protocols::xdg::dialog::v1::client::xdg_dialog_v1::XdgDialogV1>,
     /// Olo: the other program's window it's over (xdg-foreign), let go
     /// with it.
-    imported: Option<wayland_protocols::xdg::foreign::zv2::client::zxdg_imported_v2::ZxdgImportedV2>,
+    imported:
+        Option<wayland_protocols::xdg::foreign::zv2::client::zxdg_imported_v2::ZxdgImportedV2>,
     /// Olo: this window exported, for another program's to open over (a
     /// file panel's look), with its handle once the compositor gives it;
     /// kept until it closes (`Window::export_handle`).
-    exported: Option<(wayland_protocols::xdg::foreign::zv2::client::zxdg_exported_v2::ZxdgExportedV2, Option<String>)>,
+    exported: Option<(
+        wayland_protocols::xdg::foreign::zv2::client::zxdg_exported_v2::ZxdgExportedV2,
+        Option<String>,
+    )>,
     /// A window's role (None for a popup, which has `popup`).
     toplevel: Option<xdg_toplevel::XdgToplevel>,
     popup: Option<xdg_popup::XdgPopup>,
@@ -198,24 +206,48 @@ impl External {
     /// Attach `shown` (made into a buffer the first time) and commit.
     fn attach(&mut self, globals: &Globals) {
         let Some(b) = self.shown.as_ref() else { return };
-        let made = self.imported.iter().find(|(id, w, h, _)| (*id, *w, *h) == (b.id, b.width, b.height)).map(|(.., buffer)| buffer.clone());
+        let made = self
+            .imported
+            .iter()
+            .find(|(id, w, h, _)| (*id, *w, *h) == (b.id, b.width, b.height))
+            .map(|(.., buffer)| buffer.clone());
         let buffer = match made {
             Some(buffer) => buffer,
             None => {
-                let Some(dmabuf) = &globals.linux_dmabuf else { return };
+                let Some(dmabuf) = &globals.linux_dmabuf else {
+                    return;
+                };
                 let params = dmabuf.create_params(&globals.qh, ());
                 for (i, plane) in b.planes.iter().enumerate() {
                     use std::os::fd::AsFd as _;
-                    params.add(plane.fd.as_fd(), i as u32, plane.offset, plane.stride, (b.modifier >> 32) as u32, b.modifier as u32);
+                    params.add(
+                        plane.fd.as_fd(),
+                        i as u32,
+                        plane.offset,
+                        plane.stride,
+                        (b.modifier >> 32) as u32,
+                        b.modifier as u32,
+                    );
                 }
-                let release = crate::platform::linux::wayland::ExternalRelease { id: b.id, released: b.released.clone() };
-                let buffer = params.create_immed(b.width as i32, b.height as i32, b.fourcc, zwp_linux_buffer_params_v1::Flags::empty(), &globals.qh, release);
+                let release = crate::platform::linux::wayland::ExternalRelease {
+                    id: b.id,
+                    released: b.released.clone(),
+                };
+                let buffer = params.create_immed(
+                    b.width as i32,
+                    b.height as i32,
+                    b.fourcc,
+                    zwp_linux_buffer_params_v1::Flags::empty(),
+                    &globals.qh,
+                    release,
+                );
                 params.destroy();
                 if self.imported.len() >= EXTERNAL_KEEP {
                     let (.., old) = self.imported.remove(0);
                     old.destroy();
                 }
-                self.imported.push((b.id, b.width, b.height, buffer.clone()));
+                self.imported
+                    .push((b.id, b.width, b.height, buffer.clone()));
                 buffer
             }
         };
@@ -324,7 +356,11 @@ impl WaylandWindowState {
             return true;
         }
         let g = &self.globals;
-        let (Some(subcompositor), Some(viewporter), Some(_)) = (&g.subcompositor, &g.viewporter, &g.linux_dmabuf) else { return false };
+        let (Some(subcompositor), Some(viewporter), Some(_)) =
+            (&g.subcompositor, &g.viewporter, &g.linux_dmabuf)
+        else {
+            return false;
+        };
         let surface = g.compositor.create_surface(&g.qh, ());
         let sub = subcompositor.get_subsurface(&surface, &self.surface, &g.qh, ());
         sub.set_desync();
@@ -332,7 +368,18 @@ impl WaylandWindowState {
         let region = g.compositor.create_region(&g.qh, ());
         surface.set_input_region(Some(&region));
         region.destroy();
-        self.externals.insert(key, External { surface, sub, viewport, place: None, imported: Vec::new(), shown: None, attached: false });
+        self.externals.insert(
+            key,
+            External {
+                surface,
+                sub,
+                viewport,
+                place: None,
+                imported: Vec::new(),
+                shown: None,
+                attached: false,
+            },
+        );
         true
     }
 
@@ -368,7 +415,8 @@ impl WaylandWindowState {
             // again costs ~3 ms, and with another alpha its pipelines too,
             // ~10 ms more, each window opened.
             let device = options.bounds.size.to_device_pixels(scale.unwrap_or(1.0));
-            let opaque = options.decorations == WindowDecorations::Server && options.background == WindowBackgroundAppearance::Opaque;
+            let opaque = options.decorations == WindowDecorations::Server
+                && options.background == WindowBackgroundAppearance::Opaque;
             let config = BladeSurfaceConfig {
                 size: gpu::Extent {
                     width: device.width.0 as u32,
@@ -443,12 +491,16 @@ impl WaylandWindowState {
         // LCD coverage needs what's under the text to be what shows (a
         // window's frame is app_server's, once it has said so).
         let opaque = self.background_appearance == WindowBackgroundAppearance::Opaque
-            && (self.decorations == WindowDecorations::Server || (self.display.is_none() && self.decoration.is_some()));
+            && (self.decorations == WindowDecorations::Server
+                || (self.display.is_none() && self.decoration.is_some()));
         let lcd_possible = opaque && self.renderer.supports_subpixel_text();
         if let Some((_, output)) = self.display.as_ref() {
             return output.text_rendering(lcd_possible);
         }
-        let mut each = self.may_open_on.iter().map(|(_, output)| output.text_rendering(lcd_possible));
+        let mut each = self
+            .may_open_on
+            .iter()
+            .map(|(_, output)| output.text_rendering(lcd_possible));
         match each.next() {
             Some(first) if each.all(|r| r == first) => first,
             _ => crate::TextRendering::default(),
@@ -514,7 +566,10 @@ impl Drop for WaylandWindow {
         // until the next event). The close callback that task runs stays.
         if let Ok(mut callbacks) = self.0.callbacks.try_borrow_mut() {
             let close = callbacks.close.take();
-            *callbacks = Callbacks { close, ..Callbacks::default() };
+            *callbacks = Callbacks {
+                close,
+                ..Callbacks::default()
+            };
         }
         let mut state = self.0.state.borrow_mut();
         let surface_id = state.surface.id();
@@ -615,15 +670,36 @@ impl WaylandWindow {
         // locked; the compositor sizes it.
         if let Some((lock, output)) = session_lock {
             let lock_surface = lock.get_lock_surface(&surface, &output, &globals.qh, surface.id());
-            let made = Self::finish(handle, globals, gpu_context, client, params, appearance, loop_handle, signal, surface, None, None, None, None, (scale, displays))?;
+            let made = Self::finish(
+                handle,
+                globals,
+                gpu_context,
+                client,
+                params,
+                appearance,
+                loop_handle,
+                signal,
+                surface,
+                None,
+                None,
+                None,
+                None,
+                (scale, displays),
+            )?;
             made.0.0.state.borrow_mut().lock_surface = Some(lock_surface);
             return Ok(made);
         }
         // Olo: a layer surface (Deskbar, the desktop, notifications, an
         // overlay) has no xdg surface.
         if params.kind == WindowKind::LayerShell {
-            let options = params.layer_shell.clone().context("a layer surface without its options")?;
-            let shell = globals.layer_shell.as_ref().context("the compositor has no layer shell")?;
+            let options = params
+                .layer_shell
+                .clone()
+                .context("a layer surface without its options")?;
+            let shell = globals
+                .layer_shell
+                .as_ref()
+                .context("the compositor has no layer shell")?;
             let layer = shell.get_layer_surface(
                 &surface,
                 layer_output.as_ref(),
@@ -639,7 +715,22 @@ impl WaylandWindow {
             );
             place_layer(&layer, &options, params.bounds.size);
             layer.set_keyboard_interactivity(layer_keyboard(&layer, options.keyboard));
-            return Self::finish(handle, globals, gpu_context, client, params, appearance, loop_handle, signal, surface, None, Some(layer), None, None, (scale, displays));
+            return Self::finish(
+                handle,
+                globals,
+                gpu_context,
+                client,
+                params,
+                appearance,
+                loop_handle,
+                signal,
+                surface,
+                None,
+                Some(layer),
+                None,
+                None,
+                (scale, displays),
+            );
         }
         let xdg_surface = globals
             .wm_base
@@ -651,14 +742,25 @@ impl WaylandWindow {
             _ => None,
         };
         let (toplevel, popup) = match (params.kind, popup_parent) {
-            (kind @ (WindowKind::Popup { .. } | WindowKind::Tip { .. }), Some((parent_surface, serial))) => {
+            (
+                kind @ (WindowKind::Popup { .. } | WindowKind::Tip { .. }),
+                Some((parent_surface, serial)),
+            ) => {
                 // Olo: a tip, below what it tells about (a gap away), or
                 // above; taking no input, grabbing nothing.
                 const TIP_GAP: f32 = 4.0;
                 let (anchor, corner, offset, tip) = match kind {
-                    WindowKind::Popup { anchor, corner, offset, .. } => (anchor, corner, offset, false),
+                    WindowKind::Popup {
+                        anchor,
+                        corner,
+                        offset,
+                        ..
+                    } => (anchor, corner, offset, false),
                     WindowKind::Tip { anchor, .. } => {
-                        let a = Bounds { origin: crate::point(anchor.origin.x, anchor.origin.y - px(TIP_GAP)), size: size(anchor.size.width, anchor.size.height + px(2.0 * TIP_GAP)) };
+                        let a = Bounds {
+                            origin: crate::point(anchor.origin.x, anchor.origin.y - px(TIP_GAP)),
+                            size: size(anchor.size.width, anchor.size.height + px(2.0 * TIP_GAP)),
+                        };
                         (a, crate::Corner::BottomLeft, Point::default(), true)
                     }
                     _ => unreachable!(),
@@ -667,10 +769,7 @@ impl WaylandWindow {
                 // to keep it on screen.
                 let positioner = globals.wm_base.create_positioner(&globals.qh, ());
                 let size = params.bounds.size;
-                positioner.set_size(
-                    (size.width.0 as i32).max(1),
-                    (size.height.0 as i32).max(1),
-                );
+                positioner.set_size((size.width.0 as i32).max(1), (size.height.0 as i32).max(1));
                 positioner.set_anchor_rect(
                     anchor.origin.x.0 as i32,
                     anchor.origin.y.0 as i32,
@@ -703,7 +802,8 @@ impl WaylandWindow {
                     // Over a layer surface (Deskbar's menus): made
                     // without a parent, then given to it.
                     PopupParent::Layer(parent) => {
-                        let popup = xdg_surface.get_popup(None, &positioner, &globals.qh, surface.id());
+                        let popup =
+                            xdg_surface.get_popup(None, &positioner, &globals.qh, surface.id());
                         parent.get_popup(&popup);
                         popup
                     }
@@ -723,7 +823,10 @@ impl WaylandWindow {
                 // Olo: over another program's window (by the handle it
                 // exported: a portal's dialog over the app asking), or
                 // over ours.
-                if let (Some(handle), Some(importer)) = (params.foreign_parent.as_deref().filter(|h| !h.is_empty()), &globals.xdg_importer) {
+                if let (Some(handle), Some(importer)) = (
+                    params.foreign_parent.as_deref().filter(|h| !h.is_empty()),
+                    &globals.xdg_importer,
+                ) {
                     let i = importer.import_toplevel(handle.to_owned(), &globals.qh, ());
                     i.set_parent_of(&surface);
                     imported = Some(i);
@@ -738,7 +841,10 @@ impl WaylandWindow {
                 }
                 // Olo: a window of fixed size (an alert) is never resized.
                 if !params.is_resizable {
-                    let (w, h) = (params.bounds.size.width.0 as i32, params.bounds.size.height.0 as i32);
+                    let (w, h) = (
+                        params.bounds.size.width.0 as i32,
+                        params.bounds.size.height.0 as i32,
+                    );
                     toplevel.set_min_size(w, h);
                     toplevel.set_max_size(w, h);
                 }
@@ -758,7 +864,22 @@ impl WaylandWindow {
         };
 
         let grabbing = popup.is_some() && matches!(params.kind, WindowKind::Popup { .. });
-        let made = Self::finish(handle, globals, gpu_context, client, params, appearance, loop_handle, signal, surface, Some(xdg_surface), None, toplevel, popup, (scale, displays))?;
+        let made = Self::finish(
+            handle,
+            globals,
+            gpu_context,
+            client,
+            params,
+            appearance,
+            loop_handle,
+            signal,
+            surface,
+            Some(xdg_surface),
+            None,
+            toplevel,
+            popup,
+            (scale, displays),
+        )?;
         let mut state = made.0.0.state.borrow_mut();
         state.dialog = dialog_object;
         state.imported = imported;
@@ -801,9 +922,12 @@ impl WaylandWindow {
 
         // Attempt to set up window decorations based on the requested configuration
         let decoration = toplevel.as_ref().and_then(|toplevel| {
-            globals.decoration_manager.as_ref().map(|decoration_manager| {
-                decoration_manager.get_toplevel_decoration(toplevel, &globals.qh, surface.id())
-            })
+            globals
+                .decoration_manager
+                .as_ref()
+                .map(|decoration_manager| {
+                    decoration_manager.get_toplevel_decoration(toplevel, &globals.qh, surface.id())
+                })
         });
 
         let viewport = globals
@@ -842,11 +966,21 @@ impl WaylandWindow {
             scale,
         )?;
         // (wl_output's scales are whole: a 1.5× display's is 2.)
-        let at_scale = |(_, output): &(ObjectId, Output)| scale.is_none_or(|scale| output.scale == scale.ceil() as i32);
-        state.may_open_on = if displays.iter().any(at_scale) { displays.into_iter().filter(at_scale).collect() } else { displays };
+        let at_scale = |(_, output): &(ObjectId, Output)| {
+            scale.is_none_or(|scale| output.scale == scale.ceil() as i32)
+        };
+        state.may_open_on = if displays.iter().any(at_scale) {
+            displays.into_iter().filter(at_scale).collect()
+        } else {
+            displays
+        };
         let text_rendering = state.text_rendering();
         if let Some(fractional_scale_manager) = state.globals.fractional_scale_manager.as_ref() {
-            state.fractional_scale = Some(fractional_scale_manager.get_fractional_scale(&surface, &state.globals.qh, surface.id()));
+            state.fractional_scale = Some(fractional_scale_manager.get_fractional_scale(
+                &surface,
+                &state.globals.qh,
+                surface.id(),
+            ));
         }
         let this = Self(WaylandWindowStatePtr {
             state: Rc::new(RefCell::new(state)),
@@ -906,14 +1040,18 @@ impl WaylandWindowStatePtr {
     /// Olo: whether this is a popup open over `parent`'s surface.
     pub fn is_popup_over(&self, parent: &xdg_surface::XdgSurface) -> bool {
         // (The window going holds its own state: not over itself.)
-        let Ok(state) = self.state.try_borrow() else { return false };
+        let Ok(state) = self.state.try_borrow() else {
+            return false;
+        };
         state.popup.is_some() && state.popup_of.as_ref() == Some(parent)
     }
 
     /// Olo: its popup role taken down now (and those over it first), its
     /// window going later: a popup it opened over is going.
     pub fn withdraw_popup(&self, client: &WaylandClientStatePtr) {
-        let Ok(state) = self.state.try_borrow() else { return };
+        let Ok(state) = self.state.try_borrow() else {
+            return;
+        };
         let (xdg, popup) = (state.xdg_surface.clone(), state.popup.clone());
         drop(state);
         if let Some(xdg) = &xdg {
@@ -937,7 +1075,9 @@ impl WaylandWindowStatePtr {
 
     /// Olo: a menu showing (a grabbing popup not yet taken down).
     pub fn is_grabbing_popup(&self) -> bool {
-        self.state.try_borrow().is_ok_and(|s| s.grabbing && s.popup.as_ref().is_some_and(|p| p.is_alive()))
+        self.state
+            .try_borrow()
+            .is_ok_and(|s| s.grabbing && s.popup.as_ref().is_some_and(|p| p.is_alive()))
     }
 
     /// What a popup opens over, on this window.
@@ -952,9 +1092,18 @@ impl WaylandWindowStatePtr {
 
     /// Olo: a lock surface's size (its output's), to acknowledge and draw.
     pub fn handle_lock_surface_event(&self, event: ext_session_lock_surface_v1::Event) {
-        if let ext_session_lock_surface_v1::Event::Configure { serial, width, height } = event {
+        if let ext_session_lock_surface_v1::Event::Configure {
+            serial,
+            width,
+            height,
+        } = event
+        {
             let to = size(px(width as f32), px(height as f32));
-            if width > 0 && height > 0 && (to != self.state.borrow().bounds.size || !self.state.borrow().acknowledged_first_configure) {
+            if width > 0
+                && height > 0
+                && (to != self.state.borrow().bounds.size
+                    || !self.state.borrow().acknowledged_first_configure)
+            {
                 self.resize(to);
             }
             let mut state = self.state.borrow_mut();
@@ -978,11 +1127,23 @@ impl WaylandWindowStatePtr {
     /// it was closed (its output went): it closes.
     pub fn handle_layer_surface_event(&self, event: zwlr_layer_surface_v1::Event) -> bool {
         match event {
-            zwlr_layer_surface_v1::Event::Configure { serial, width, height } => {
+            zwlr_layer_surface_v1::Event::Configure {
+                serial,
+                width,
+                height,
+            } => {
                 let now = self.state.borrow().bounds.size;
                 let to = size(
-                    if width > 0 { px(width as f32) } else { now.width },
-                    if height > 0 { px(height as f32) } else { now.height },
+                    if width > 0 {
+                        px(width as f32)
+                    } else {
+                        now.width
+                    },
+                    if height > 0 {
+                        px(height as f32)
+                    } else {
+                        now.height
+                    },
                 );
                 if to != now || !self.state.borrow().acknowledged_first_configure {
                     self.resize(to);
@@ -1104,11 +1265,21 @@ impl WaylandWindowStatePtr {
         let mut wheel = self.frames.wheel.borrow_mut();
         match wheel.as_mut() {
             Some(w) => {
-                w.left = Point { x: w.left.x + delta.x, y: w.left.y + delta.y };
+                w.left = Point {
+                    x: w.left.x + delta.x,
+                    y: w.left.y + delta.y,
+                };
                 w.position = position;
                 w.modifiers = modifiers;
             }
-            None => *wheel = Some(WheelEase { left: delta, position, modifiers, last: None }),
+            None => {
+                *wheel = Some(WheelEase {
+                    left: delta,
+                    position,
+                    modifiers,
+                    last: None,
+                })
+            }
         }
         drop(wheel);
         self.schedule_frame();
@@ -1122,21 +1293,32 @@ impl WaylandWindowStatePtr {
         let w = slot.as_mut()?;
         let now = std::time::Instant::now();
         let interval = self.frame_interval();
-        let dt = w.last.map_or(interval, |t| (now - t).as_secs_f64().min(4.0 * interval));
+        let dt = w
+            .last
+            .map_or(interval, |t| (now - t).as_secs_f64().min(4.0 * interval));
         w.last = Some(now);
         let k = (1.0 - (-dt / WHEEL_EASE).exp()) as f32;
-        let mut step = Point { x: w.left.x * k, y: w.left.y * k };
+        let mut step = Point {
+            x: w.left.x * k,
+            y: w.left.y * k,
+        };
         // Less than half a device pixel would be left: no more frames
         // for moves that don't show.
         let half_pixel = 0.5 / self.state.borrow().scale;
         if (w.left.x - step.x).hypot(w.left.y - step.y) < half_pixel {
             step = w.left;
         }
-        w.left = Point { x: w.left.x - step.x, y: w.left.y - step.y };
+        w.left = Point {
+            x: w.left.x - step.x,
+            y: w.left.y - step.y,
+        };
         log::trace!(target: "olo_frames", "wheel: step {:.2} after {:.1} ms, {:.2} left", step.y, dt * 1000.0, w.left.y);
         let event = crate::ScrollWheelEvent {
             position: w.position,
-            delta: crate::ScrollDelta::Pixels(Point { x: px(step.x), y: px(step.y) }),
+            delta: crate::ScrollDelta::Pixels(Point {
+                x: px(step.x),
+                y: px(step.y),
+            }),
             modifiers: w.modifiers,
             touch_phase: crate::TouchPhase::Moved,
             kind: crate::ScrollKind::Wheel,
@@ -1150,8 +1332,17 @@ impl WaylandWindowStatePtr {
     /// How long a frame shows on the window's display (60 Hz until it
     /// says).
     fn frame_interval(&self) -> f64 {
-        let mhz = self.state.borrow().display.as_ref().map_or(0, |(_, o)| o.refresh_mhz);
-        if mhz >= 10_000 { 1000.0 / f64::from(mhz) } else { 1.0 / 60.0 }
+        let mhz = self
+            .state
+            .borrow()
+            .display
+            .as_ref()
+            .map_or(0, |(_, o)| o.refresh_mhz);
+        if mhz >= 10_000 {
+            1000.0 / f64::from(mhz)
+        } else {
+            1.0 / 60.0
+        }
     }
 
     /// Something changed: draw it now if idle, else with the next frame.
@@ -1255,10 +1446,11 @@ impl WaylandWindowStatePtr {
                         // only if the compositor leaves it to the window:
                         // app_server sends the one it is to have, a tab's
                         // group's or its tile's.)
-                        configure.size = match compute_outer_size(state.inset(), configure.size, state.tiling) {
-                            None if got_unmaximized => Some(state.window_bounds.size),
-                            size => size,
-                        };
+                        configure.size =
+                            match compute_outer_size(state.inset(), configure.size, state.tiling) {
+                                None if got_unmaximized => Some(state.window_bounds.size),
+                                size => size,
+                            };
                         if let Some(size) = configure.size {
                             state.window_bounds = Bounds {
                                 origin: Point::default(),
@@ -1273,7 +1465,9 @@ impl WaylandWindowStatePtr {
                 }
             }
             let mut state = self.state.borrow_mut();
-            let Some(xdg_surface) = state.xdg_surface.clone() else { return };
+            let Some(xdg_surface) = state.xdg_surface.clone() else {
+                return;
+            };
             xdg_surface.ack_configure(serial);
 
             let window_geometry = inset_by_tiling(
@@ -1509,7 +1703,9 @@ impl WaylandWindowStatePtr {
                 // wl_compositor before version 6, as app_server's, entering
                 // a 1.5x display set 2 over 1.5, and app_server shrank the
                 // 2x buffers to fit, every line smeared over two pixels).
-                if state.globals.fractional_scale_manager.is_none() && state.surface.version() < wl_surface::EVT_PREFERRED_BUFFER_SCALE_SINCE {
+                if state.globals.fractional_scale_manager.is_none()
+                    && state.surface.version() < wl_surface::EVT_PREFERRED_BUFFER_SCALE_SINCE
+                {
                     state.surface.set_buffer_scale(scale);
                     drop(state);
                     self.rescale(scale as f32);
@@ -1528,7 +1724,9 @@ impl WaylandWindowStatePtr {
                 // wl_compositor before version 6, as app_server's, entering
                 // a 1.5x display set 2 over 1.5, and app_server shrank the
                 // 2x buffers to fit, every line smeared over two pixels).
-                if state.globals.fractional_scale_manager.is_none() && state.surface.version() < wl_surface::EVT_PREFERRED_BUFFER_SCALE_SINCE {
+                if state.globals.fractional_scale_manager.is_none()
+                    && state.surface.version() < wl_surface::EVT_PREFERRED_BUFFER_SCALE_SINCE
+                {
                     state.surface.set_buffer_scale(scale);
                     drop(state);
                     self.rescale(scale as f32);
@@ -1608,7 +1806,9 @@ impl WaylandWindowStatePtr {
             // (Resized by hand, within its room; else just as big.)
             if state.resizing && state.viewport.is_some() && scale.is_none() {
                 let room = resize_room(&state, device_bounds.size);
-                state.renderer.update_drawable_size_within(device_bounds.size, room);
+                state
+                    .renderer
+                    .update_drawable_size_within(device_bounds.size, room);
             } else {
                 state.renderer.update_drawable_size(device_bounds.size);
             }
@@ -1636,12 +1836,15 @@ impl WaylandWindowStatePtr {
     /// worth for a window grown to its screen's size and back).
     fn snug_later(&self) {
         let this = self.downgrade();
-        let _ = self.frames.handle.insert_source(calloop::timer::Timer::from_duration(SNUG_AFTER), move |_, _, _| {
-            if let Some(this) = this.upgrade() {
-                this.snug();
-            }
-            calloop::timer::TimeoutAction::Drop
-        });
+        let _ = self.frames.handle.insert_source(
+            calloop::timer::Timer::from_duration(SNUG_AFTER),
+            move |_, _, _| {
+                if let Some(this) = this.upgrade() {
+                    this.snug();
+                }
+                calloop::timer::TimeoutAction::Drop
+            },
+        );
     }
 
     fn snug(&self) {
@@ -1798,7 +2001,10 @@ impl PlatformWindow for WaylandWindow {
         // black along the window's bottom (Terminal's tiles at 1.5×).
         let state = self.borrow();
         let d = state.bounds.size.to_device_pixels(state.scale);
-        size(px(d.width.0 as f32 / state.scale), px(d.height.0 as f32 / state.scale))
+        size(
+            px(d.width.0 as f32 / state.scale),
+            px(d.height.0 as f32 / state.scale),
+        )
     }
 
     fn resize(&mut self, size: Size<Pixels>) {
@@ -1847,7 +2053,11 @@ impl PlatformWindow for WaylandWindow {
             Rc::new(WaylandDisplay {
                 id: id.clone(),
                 name: display.name.clone(),
-                bounds: if display.logical.is_some() { display.bounds_in_points() } else { display.bounds.to_pixels(state.scale) },
+                bounds: if display.logical.is_some() {
+                    display.bounds_in_points()
+                } else {
+                    display.bounds.to_pixels(state.scale)
+                },
             }) as Rc<dyn PlatformDisplay>
         })
     }
@@ -1939,7 +2149,11 @@ impl PlatformWindow for WaylandWindow {
 
     fn activation_token(&self, done: Box<dyn FnOnce(Option<String>)>) {
         let state = self.borrow();
-        let (client, surface, app_id) = (state.client.clone(), state.surface.clone(), state.app_id.clone());
+        let (client, surface, app_id) = (
+            state.client.clone(),
+            state.surface.clone(),
+            state.app_id.clone(),
+        );
         drop(state);
         client.request_activation_token(&surface, app_id, done);
     }
@@ -1951,14 +2165,19 @@ impl PlatformWindow for WaylandWindow {
             drop(state);
             return done(Some(handle));
         }
-        let exporter = state.globals.xdg_exporter.clone().filter(|_| state.toplevel.is_some());
+        let exporter = state
+            .globals
+            .xdg_exporter
+            .clone()
+            .filter(|_| state.toplevel.is_some());
         let Some(exporter) = exporter else {
             drop(state);
             return done(None);
         };
         let surface = state.surface.id();
         if state.exported.is_none() {
-            let exported = exporter.export_toplevel(&state.surface, &state.globals.qh, surface.clone());
+            let exported =
+                exporter.export_toplevel(&state.surface, &state.globals.qh, surface.clone());
             state.exported = Some((exported, None));
         }
         let client = state.client.clone();
@@ -1987,8 +2206,14 @@ impl PlatformWindow for WaylandWindow {
                 return;
             }
             let place = Bounds::new(
-                crate::point(bounds.origin.x.0.round() as i32, bounds.origin.y.0.round() as i32),
-                crate::size(bounds.size.width.0.round().max(1.0) as i32, bounds.size.height.0.round().max(1.0) as i32),
+                crate::point(
+                    bounds.origin.x.0.round() as i32,
+                    bounds.origin.y.0.round() as i32,
+                ),
+                crate::size(
+                    bounds.size.width.0.round().max(1.0) as i32,
+                    bounds.size.height.0.round().max(1.0) as i32,
+                ),
             );
             let e = state.externals.get_mut(key).unwrap();
             if e.place == Some(place) {
@@ -1998,7 +2223,8 @@ impl PlatformWindow for WaylandWindow {
             // committed, so the two change together.
             e.sub.set_sync();
             e.sub.set_position(place.origin.x, place.origin.y);
-            e.viewport.set_destination(place.size.width, place.size.height);
+            e.viewport
+                .set_destination(place.size.width, place.size.height);
             e.place = Some(place);
             if e.attached || e.shown.is_none() {
                 e.surface.commit();
@@ -2049,7 +2275,11 @@ impl PlatformWindow for WaylandWindow {
         match (on, state.inhibitor.take()) {
             (true, Some(i)) => state.inhibitor = Some(i),
             (true, None) => {
-                let made = state.globals.idle_inhibit_manager.as_ref().map(|m| m.create_inhibitor(&state.surface, &state.globals.qh, ()));
+                let made = state
+                    .globals
+                    .idle_inhibit_manager
+                    .as_ref()
+                    .map(|m| m.create_inhibitor(&state.surface, &state.globals.qh, ()));
                 state.inhibitor = made;
             }
             (false, Some(i)) => i.destroy(),
@@ -2238,7 +2468,11 @@ impl PlatformWindow for WaylandWindow {
         }
     }
 
-    fn start_drag(&self, drag: crate::OutgoingDrag, done: futures::channel::oneshot::Sender<Option<crate::DragAction>>) {
+    fn start_drag(
+        &self,
+        drag: crate::OutgoingDrag,
+        done: futures::channel::oneshot::Sender<Option<crate::DragAction>>,
+    ) {
         let (client, surface) = {
             let state = self.borrow();
             (state.client.clone(), state.surface.clone())
@@ -2432,18 +2666,35 @@ pub enum PopupParent {
 /// Asks for a layer surface's place: its anchors, exclusive zone,
 /// margins, and its size (`size`, but none along an axis anchored at both
 /// ends: the output's).
-fn place_layer(layer: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, options: &crate::LayerShellOptions, size: Size<Pixels>) {
+fn place_layer(
+    layer: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
+    options: &crate::LayerShellOptions,
+    size: Size<Pixels>,
+) {
     use zwlr_layer_surface_v1::Anchor;
     let (top, bottom, left, right) = options.anchor;
     let mut anchor = Anchor::empty();
-    for (on, edge) in [(top, Anchor::Top), (bottom, Anchor::Bottom), (left, Anchor::Left), (right, Anchor::Right)] {
+    for (on, edge) in [
+        (top, Anchor::Top),
+        (bottom, Anchor::Bottom),
+        (left, Anchor::Left),
+        (right, Anchor::Right),
+    ] {
         if on {
             anchor |= edge;
         }
     }
     layer.set_anchor(anchor);
-    let w = if left && right { 0 } else { size.width.0.round() as u32 };
-    let h = if top && bottom { 0 } else { size.height.0.round() as u32 };
+    let w = if left && right {
+        0
+    } else {
+        size.width.0.round() as u32
+    };
+    let h = if top && bottom {
+        0
+    } else {
+        size.height.0.round() as u32
+    };
     layer.set_size(w, h);
     layer.set_exclusive_zone(options.exclusive_zone);
     let (mt, mr, mb, ml) = options.margin;
@@ -2499,12 +2750,17 @@ impl wayland_client::Dispatch<wp_fractional_scale_v1::WpFractionalScaleV1, ()> f
 }
 
 /// Olo: a layer surface's keyboard as the protocol has it.
-fn layer_keyboard(layer: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, keyboard: crate::LayerKeyboard) -> zwlr_layer_surface_v1::KeyboardInteractivity {
+fn layer_keyboard(
+    layer: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
+    keyboard: crate::LayerKeyboard,
+) -> zwlr_layer_surface_v1::KeyboardInteractivity {
     match keyboard {
         crate::LayerKeyboard::None => zwlr_layer_surface_v1::KeyboardInteractivity::None,
         crate::LayerKeyboard::Exclusive => zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive,
         // (Version 4 on; before, a click gives it nothing.)
-        crate::LayerKeyboard::OnDemand if layer.version() >= 4 => zwlr_layer_surface_v1::KeyboardInteractivity::OnDemand,
+        crate::LayerKeyboard::OnDemand if layer.version() >= 4 => {
+            zwlr_layer_surface_v1::KeyboardInteractivity::OnDemand
+        }
         crate::LayerKeyboard::OnDemand => zwlr_layer_surface_v1::KeyboardInteractivity::None,
     }
 }
@@ -2517,10 +2773,16 @@ const SNUG_AFTER: std::time::Duration = std::time::Duration::from_millis(1500);
 /// (or a quarter more than now), so the rest of the resize costs nothing.
 fn resize_room(state: &WaylandWindowState, size: Size<DevicePixels>) -> Size<DevicePixels> {
     match state.display.as_ref().map(|(_, o)| o.bounds.size) {
-        Some(screen) if screen.width.0 > 0 && screen.height.0 > 0 => Size { width: DevicePixels(screen.width.0.max(size.width.0)), height: DevicePixels(screen.height.0.max(size.height.0)) },
+        Some(screen) if screen.width.0 > 0 && screen.height.0 > 0 => Size {
+            width: DevicePixels(screen.width.0.max(size.width.0)),
+            height: DevicePixels(screen.height.0.max(size.height.0)),
+        },
         _ => {
             let up = |n: i32| ((n as f64 * 1.25 / 64.0).ceil() as i32 * 64).max(n);
-            Size { width: DevicePixels(up(size.width.0)), height: DevicePixels(up(size.height.0)) }
+            Size {
+                width: DevicePixels(up(size.width.0)),
+                height: DevicePixels(up(size.height.0)),
+            }
         }
     }
 }

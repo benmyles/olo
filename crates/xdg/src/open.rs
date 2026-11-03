@@ -11,7 +11,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{desktop_entry::{self, DesktopEntry}, find_program, mime};
+use crate::{
+    desktop_entry::{self, DesktopEntry},
+    find_program, mime,
+};
 
 /// What to open.
 #[derive(Debug, Clone)]
@@ -70,9 +73,7 @@ pub enum Handler {
 impl Handler {
     pub fn name(&self) -> String {
         match self {
-            Handler::Ours(bin) => crate::apps::our_app(bin.trim_start_matches("olo-"))
-                .map(|(n, _)| n.to_string())
-                .unwrap_or_else(|| bin.trim_start_matches("olo-").to_owned()),
+            Handler::Ours(bin) => crate::apps::our_app(bin.trim_start_matches("olo-")).map(|(n, _)| n.to_string()).unwrap_or_else(|| bin.trim_start_matches("olo-").to_owned()),
             Handler::Entry(e) => e.name.clone(),
         }
     }
@@ -102,9 +103,7 @@ fn ours_for(mime: &str) -> &'static [&'static str] {
     let candidates: &[&'static str] = match (major, mime) {
         (_, "inode/directory") => &["olo-tracker"],
         (_, "text/html" | "application/xhtml+xml") => &["olo-chrome", "olo-styled-edit"],
-        ("text", _) | (_, "application/x-shellscript" | "application/json" | "application/xml" | "application/toml" | "application/rtf") => {
-            &["olo-styled-edit", "olo-viewer"]
-        }
+        ("text", _) | (_, "application/x-shellscript" | "application/json" | "application/xml" | "application/toml" | "application/rtf") => &["olo-styled-edit", "olo-viewer"],
         ("image" | "audio" | "video" | "font", _) => &["olo-viewer"],
         (
             _,
@@ -157,7 +156,8 @@ pub fn for_others(bin_dir: &Path) -> (Vec<(String, String)>, String) {
         }
     }
     let mut entries = Vec::new();
-    let mut defaults = String::from("# Written by olo-session: other programs open files in Olo's apps, as\n# Olo does (web pages and links stay with your default browser).\n[Default Applications]\n");
+    let mut defaults =
+        String::from("# Written by olo-session: other programs open files in Olo's apps, as\n# Olo does (web pages and links stay with your default browser).\n[Default Applications]\n");
     for ((bin, kind), (_, list)) in OPENERS.iter().zip(&types) {
         let (Some(app_id), false) = (crate::apps::app_id_of(bin), list.is_empty()) else { continue };
         let (name, icon) = crate::apps::our_app(&app_id).unwrap_or((bin, "application"));
@@ -268,20 +268,13 @@ fn is_web(mime: &str) -> bool {
 }
 
 fn config_home() -> PathBuf {
-    std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config"))
+    std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config"))
 }
 
 /// mimeapps.list files, most important first.
 fn mimeapps_files() -> Vec<PathBuf> {
     let mut v = Vec::new();
-    let desktops: Vec<String> = std::env::var("XDG_CURRENT_DESKTOP")
-        .unwrap_or_default()
-        .split(':')
-        .filter(|d| !d.is_empty())
-        .map(str::to_lowercase)
-        .collect();
+    let desktops: Vec<String> = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default().split(':').filter(|d| !d.is_empty()).map(str::to_lowercase).collect();
     let mut config_dirs = vec![config_home()];
     let sys = std::env::var("XDG_CONFIG_DIRS").unwrap_or_else(|_| "/etc/xdg".into());
     config_dirs.extend(sys.split(':').filter(|s| !s.is_empty()).map(PathBuf::from));
@@ -557,11 +550,8 @@ pub fn handlers_for(mime: &str) -> Vec<Handler> {
     let mut types = vec![mime.to_owned()];
     types.extend(parents(mime));
     let all = desktop_entry::all_cached();
-    let mut claimed: Vec<(usize, &DesktopEntry)> = all
-        .iter()
-        .filter(|e| !e.no_display && e.exec.is_some() && !e.id.starts_with("olo."))
-        .filter_map(|e| types.iter().position(|t| e.mime_types.contains(t)).map(|k| (k, e)))
-        .collect();
+    let mut claimed: Vec<(usize, &DesktopEntry)> =
+        all.iter().filter(|e| !e.no_display && e.exec.is_some() && !e.id.starts_with("olo.")).filter_map(|e| types.iter().position(|t| e.mime_types.contains(t)).map(|k| (k, e))).collect();
     claimed.sort_by_key(|(k, e)| (*k, e.name.to_lowercase()));
     for (_, e) in claimed {
         add(Handler::Entry(Box::new(e.clone())), &mut out);
@@ -804,10 +794,7 @@ pub fn spawn_app(argv: &[OsString], app_id: &str) -> io::Result<()> {
 fn spawn_pid(argv: &[OsString]) -> io::Result<u32> {
     let (program, args) = argv.split_first().ok_or_else(|| io::Error::other("empty command"))?;
     let mut c = std::process::Command::new(program);
-    c.args(args)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
+    c.args(args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
     // SAFETY: setsid is async-signal-safe.
     unsafe {
         c.pre_exec(|| {

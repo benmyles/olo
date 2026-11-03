@@ -24,7 +24,8 @@ use olo_ui::{
     Frame, Menu, MenuBar, WindowOptions, agent,
     files::{self, Kind},
     gpui::{
-        self, AnyElement, App, AppContext as _, Context, Entity, EntityId, ExternalPaths, FocusHandle, Focusable as _, FontWeight, HitboxBehavior, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Render, Styled as _, Subscription, WeakEntity, Window, WindowHandle, canvas, div, point, px, size,
+        self, AnyElement, App, AppContext as _, Context, Entity, EntityId, ExternalPaths, FocusHandle, Focusable as _, FontWeight, HitboxBehavior, InteractiveElement as _, IntoElement, KeyDownEvent,
+        MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Render, Styled as _, Subscription, WeakEntity, Window, WindowHandle, canvas, div, point, px, size,
     },
     instance::{self, Launch},
     metrics as m,
@@ -1147,19 +1148,7 @@ impl Doc {
         )
         .absolute()
         .size_full();
-        div()
-            .relative()
-            .h(px(m::TOOLBAR_HEIGHT))
-            .w_full()
-            .px(px(m::SPACING))
-            .flex()
-            .items_center()
-            .gap(px(m::SPACING))
-            .child(ground)
-            .child(left)
-            .child(info)
-            .child(right)
-            .into_any_element()
+        div().relative().h(px(m::TOOLBAR_HEIGHT)).w_full().px(px(m::SPACING)).flex().items_center().gap(px(m::SPACING)).child(ground).child(left).child(info).child(right).into_any_element()
     }
 
     /// The picture's crop frame, over the preview, and its Crop and
@@ -1222,23 +1211,16 @@ impl Doc {
         let has_sel = crop.sel.is_some();
         let (crop_doc, cancel_doc) = (cx.entity(), cx.entity());
         let bw = m::BUTTON_MIN_WIDTH;
-        let buttons = div()
-            .absolute()
-            .bottom(px(m::SPACING))
-            .left_0()
-            .right_0()
-            .flex()
-            .justify_center()
-            .child(
-                div()
-                    .flex()
-                    .gap(px(m::SPACING))
-                    .p(px(6.0))
-                    .rounded(px(6.0))
-                    .bg(style::c(theme::palette(cx).scrim))
-                    .child(Button::new("Cancel").min_width(bw).on_click(move |window, cx| cancel_doc.update(cx, |d, cx| d.picture_command("crop-cancel", window, cx))))
-                    .child(Button::new("Crop").default(true).min_width(bw).enabled(has_sel).on_click(move |window, cx| crop_doc.update(cx, |d, cx| d.picture_command("crop", window, cx)))),
-            );
+        let buttons = div().absolute().bottom(px(m::SPACING)).left_0().right_0().flex().justify_center().child(
+            div()
+                .flex()
+                .gap(px(m::SPACING))
+                .p(px(6.0))
+                .rounded(px(6.0))
+                .bg(style::c(theme::palette(cx).scrim))
+                .child(Button::new("Cancel").min_width(bw).on_click(move |window, cx| cancel_doc.update(cx, |d, cx| d.picture_command("crop-cancel", window, cx))))
+                .child(Button::new("Crop").default(true).min_width(bw).enabled(has_sel).on_click(move |window, cx| crop_doc.update(cx, |d, cx| d.picture_command("crop", window, cx)))),
+        );
         // Over the preview, not after it.
         Some(div().absolute().inset_0().child(paint).child(pointer).child(buttons).into_any_element())
     }
@@ -1267,7 +1249,18 @@ impl Render for Doc {
                     move |b, _, window, cx| {
                         let p = theme::palette(cx);
                         window.paint_quad(gpui::fill(b, style::c(p.panel_background)));
-                        let at = style::label_fit(window, cx, b.center().x, b.center().y, Align::Center, e.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p), b.size.width - px(2.0 * m::WINDOW_INSET));
+                        let at = style::label_fit(
+                            window,
+                            cx,
+                            b.center().x,
+                            b.center().y,
+                            Align::Center,
+                            e.clone(),
+                            style::PLAIN_SIZE,
+                            style::ui_font(FontWeight::NORMAL),
+                            style::disabled_text(&p),
+                            b.size.width - px(2.0 * m::WINDOW_INSET),
+                        );
                         agent::record(window, cx, agent::Node::label(e.clone(), at));
                     },
                 )
@@ -1348,7 +1341,8 @@ impl Resize {
         window.focus(&focus);
         // Keep the other side in proportion as one is typed.
         let sw = cx.subscribe(&w, |r: &mut Resize, w, e: &TextFieldEvent, cx| {
-            if matches!(e, TextFieldEvent::Typed(_)) && r.keep
+            if matches!(e, TextFieldEvent::Typed(_))
+                && r.keep
                 && let Ok(v) = w.read(cx).text().trim().parse::<u32>()
             {
                 let ratio = r.size.1 as f64 / r.size.0.max(1) as f64;
@@ -1358,7 +1352,8 @@ impl Resize {
             cx.notify();
         });
         let sh = cx.subscribe(&h, |r: &mut Resize, h, e: &TextFieldEvent, cx| {
-            if matches!(e, TextFieldEvent::Typed(_)) && r.keep
+            if matches!(e, TextFieldEvent::Typed(_))
+                && r.keep
                 && let Ok(v) = h.read(cx).text().trim().parse::<u32>()
             {
                 let ratio = r.size.1 as f64 / r.size.0.max(1) as f64;

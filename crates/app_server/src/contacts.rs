@@ -145,7 +145,9 @@ impl Watch {
         if ids.iter().all(|id| *id < 0) {
             return Some(Vec::new());
         }
-        let [x, y, major, minor, pressure, orientation, width] = [ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_TOUCH_MAJOR, ABS_MT_TOUCH_MINOR, ABS_MT_PRESSURE, ABS_MT_ORIENTATION, ABS_MT_WIDTH_MAJOR].map(|c| self.slots(fd, c).unwrap_or_else(|| vec![0; self.slots]));
+        let [x, y, major, minor, pressure, orientation, width] =
+            [ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_TOUCH_MAJOR, ABS_MT_TOUCH_MINOR, ABS_MT_PRESSURE, ABS_MT_ORIENTATION, ABS_MT_WIDTH_MAJOR]
+                .map(|c| self.slots(fd, c).unwrap_or_else(|| vec![0; self.slots]));
         Some(
             (0..self.slots)
                 .filter(|&i| ids[i] >= 0)

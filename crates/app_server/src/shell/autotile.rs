@@ -55,6 +55,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use olo_protocol::Tile;
 use smithay::{
     desktop::WindowSurface,
     output::Output,
@@ -65,7 +66,6 @@ use smithay::{
     },
     utils::{IsAlive, Logical, Point, Rectangle},
 };
-use olo_protocol::Tile;
 use tracing::info;
 
 use super::{
@@ -283,10 +283,20 @@ pub enum SavedNode {
     /// A tile: the saved places of its window (or group).
     Slots(Vec<u64>),
     /// A closed window's place, with nothing saved to name it by.
-    Like { app_id: String, title: String },
+    Like {
+        app_id: String,
+        title: String,
+    },
     /// Room nobody has: kept (`holds`), or going to what is beside it.
-    Room { holds: bool },
-    Split { columns: bool, ratio: f32, a: Box<SavedNode>, b: Box<SavedNode> },
+    Room {
+        holds: bool,
+    },
+    Split {
+        columns: bool,
+        ratio: f32,
+        a: Box<SavedNode>,
+        b: Box<SavedNode>,
+    },
 }
 
 impl SavedNode {
@@ -301,12 +311,9 @@ impl SavedNode {
             },
             Node::Kept(Kept { who: Who::Returning(s), .. }) => SavedNode::Slots(s.clone()),
             Node::Kept(Kept { who: Who::Nobody, holds, .. }) => SavedNode::Room { holds: *holds },
-            Node::Split { cut, ratio, a, b } => SavedNode::Split {
-                columns: *cut == Cut::Columns,
-                ratio: *ratio,
-                a: Box::new(SavedNode::of(a, slots, like)),
-                b: Box::new(SavedNode::of(b, slots, like)),
-            },
+            Node::Split { cut, ratio, a, b } => {
+                SavedNode::Split { columns: *cut == Cut::Columns, ratio: *ratio, a: Box::new(SavedNode::of(a, slots, like)), b: Box::new(SavedNode::of(b, slots, like)) }
+            }
         }
     }
 
@@ -316,13 +323,9 @@ impl SavedNode {
         match self {
             SavedNode::Slots(s) if s.is_empty() => Node::gap(),
             SavedNode::Slots(s) => Node::Kept(Kept { who: Who::Returning(s.clone()), holds: true, until: Some(until) }),
-            SavedNode::Like { app_id, title } => {
-                Node::Kept(Kept { who: Who::Like { app_id: app_id.clone(), title: title.clone() }, holds: true, until: Some(until) })
-            }
+            SavedNode::Like { app_id, title } => Node::Kept(Kept { who: Who::Like { app_id: app_id.clone(), title: title.clone() }, holds: true, until: Some(until) }),
             SavedNode::Room { holds } => Node::Kept(Kept { who: Who::Nobody, holds: *holds, until: None }),
-            SavedNode::Split { columns, ratio, a, b } => {
-                Node::split(if *columns { Cut::Columns } else { Cut::Rows }, ratio.clamp(0.0, 1.0), a.node(until), b.node(until))
-            }
+            SavedNode::Split { columns, ratio, a, b } => Node::split(if *columns { Cut::Columns } else { Cut::Rows }, ratio.clamp(0.0, 1.0), a.node(until), b.node(until)),
         }
     }
 }
@@ -435,9 +438,7 @@ fn closing(n: &Node) -> bool {
 /// agree (its windows' places kept for them since don't change it).
 pub fn with_ratios_of(node: &Node, laid: &Node) -> Node {
     match (node, laid) {
-        (Node::Split { cut, a, b, .. }, Node::Split { cut: c, ratio, a: la, b: lb }) if cut == c => {
-            Node::split(*cut, *ratio, with_ratios_of(a, la), with_ratios_of(b, lb))
-        }
+        (Node::Split { cut, a, b, .. }, Node::Split { cut: c, ratio, a: la, b: lb }) if cut == c => Node::split(*cut, *ratio, with_ratios_of(a, la), with_ratios_of(b, lb)),
         (n, _) => n.clone(),
     }
 }
@@ -908,9 +909,7 @@ fn bounded(max: i32) -> bool {
 }
 
 fn floating_kind(app_id: &str, title: &str) -> bool {
-    app_id.starts_with("xdg-desktop-portal")
-        || app_id.ends_with(".portal")
-        || super::pip::pip_title(title)
+    app_id.starts_with("xdg-desktop-portal") || app_id.ends_with(".portal") || super::pip::pip_title(title)
 }
 
 /// `r` grown to `min`, and moved only as far as it must to be in `area`.
@@ -973,8 +972,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     // (A dialog is one "relative to its parent", and one with
                     // a parent floats already: GTK 4 gives every toplevel an
                     // xdg_dialog_v1, which makes its main windows "dialogs".)
-                    d.dialog_hint == ToplevelDialogHint::Modal
-                        || floating_kind(d.app_id.as_deref().unwrap_or(""), d.title.as_deref().unwrap_or(""))
+                    d.dialog_hint == ToplevelDialogHint::Modal || floating_kind(d.app_id.as_deref().unwrap_or(""), d.title.as_deref().unwrap_or(""))
                 });
             (floats, size.min_size, size.max_size)
         });
@@ -1264,9 +1262,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 let with = match (heir, alive, known) {
                     (Some(h), ..) => Node::Window(h),
                     (None, Some(_), _) => Node::Kept(Kept { who: Who::Window(id), holds: false, until: None }),
-                    (None, None, Some(k)) => {
-                        Node::Kept(Kept { who: Who::Like { app_id: k.app_id, title: k.title }, holds: false, until: Some(now + CLOSED_KEEP) })
-                    }
+                    (None, None, Some(k)) => Node::Kept(Kept { who: Who::Like { app_id: k.app_id, title: k.title }, holds: false, until: Some(now + CLOSED_KEEP) }),
                     (None, None, None) => Node::gap(),
                 };
                 t.replace(&|n| *n == Node::Window(id), with);
@@ -1277,11 +1273,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let alive = |id: u64| self.window_by_id(id).is_some();
         tree = tree.and_then(|t| {
             t.without(&|n| match n {
-                Node::Kept(k) => {
-                    k.until.is_some_and(|u| now >= u)
-                        || (k.who == Who::Nobody && !k.holds)
-                        || matches!(k.who, Who::Window(id) if !alive(id) || elsewhere.contains(&id))
-                }
+                Node::Kept(k) => k.until.is_some_and(|u| now >= u) || (k.who == Who::Nobody && !k.holds) || matches!(k.who, Who::Window(id) if !alive(id) || elsewhere.contains(&id)),
                 _ => false,
             })
         });
@@ -1678,10 +1670,7 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     /// The middle of each tile of `tree`, in fractions of the area.
     fn auto_centres(&self, tree: &Node) -> HashMap<u64, (f32, f32)> {
-        layout(tree, &|_| (0.0, 0.0))
-            .into_iter()
-            .filter_map(|(n, p)| if let Node::Window(i) = n { Some((*i, (p.0 + p.2 / 2.0, p.1 + p.3 / 2.0))) } else { None })
-            .collect()
+        layout(tree, &|_| (0.0, 0.0)).into_iter().filter_map(|(n, p)| if let Node::Window(i) = n { Some((*i, (p.0 + p.2 / 2.0, p.1 + p.3 / 2.0))) } else { None }).collect()
     }
 
     /// A tiling command for a tile: its part, the rest tiled around it.
@@ -2093,11 +2082,13 @@ mod tests {
         // Within the right half: just there too, and the splits that
         // didn't move stay as they are.
         let mut t = Node::split(Cut::Columns, 0.5, w(1), Node::split(Cut::Columns, 0.5, w(2), w(3)));
-        take_ratios(&mut t, &|i| Some(match i {
-            1 => (0.0, 0.0, 0.5, 1.0),
-            2 => (0.5, 0.0, 0.08, 1.0),
-            _ => (0.58, 0.0, 0.42, 1.0),
-        }));
+        take_ratios(&mut t, &|i| {
+            Some(match i {
+                1 => (0.0, 0.0, 0.5, 1.0),
+                2 => (0.5, 0.0, 0.08, 1.0),
+                _ => (0.58, 0.0, 0.42, 1.0),
+            })
+        });
         let p = parts(&t);
         assert!(near(p[1].1, (0.5, 0.0, 0.08, 1.0)), "{p:?}");
         assert!(near(p[0].1, (0.0, 0.0, 0.5, 1.0)));

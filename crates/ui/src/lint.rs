@@ -104,7 +104,12 @@ impl Lint {
                 // find them) and checked, then the first again.
                 let tabs = |vcx: &mut VisualTestContext| -> Vec<(String, gpui::Point<gpui::Pixels>, bool)> {
                     let tree = vcx.cx.update(|cx| crate::agent::tree(handle.into(), cx));
-                    tree.map(|t| t.nodes).unwrap_or_default().into_iter().filter(|n| n.role == "Tab").map(|n| (n.name.unwrap_or_default(), gpui::point(gpui::px(n.x + n.width / 2.0), gpui::px(n.y + n.height / 2.0)), n.selected == Some(true))).collect()
+                    tree.map(|t| t.nodes)
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|n| n.role == "Tab")
+                        .map(|n| (n.name.unwrap_or_default(), gpui::point(gpui::px(n.x + n.width / 2.0), gpui::px(n.y + n.height / 2.0)), n.selected == Some(true)))
+                        .collect()
                 };
                 let first = tabs(&mut vcx);
                 for (name, at, selected) in &first {
@@ -165,7 +170,11 @@ impl Lint {
         vcx.run_until_parked();
         let tree = |vcx: &mut VisualTestContext| vcx.cx.update(|cx| crate::agent::tree(handle.into(), cx)).map(|t| t.nodes).unwrap_or_default();
         let first = tree(&mut vcx);
-        let tabs: Vec<(String, gpui::Point<gpui::Pixels>, bool)> = first.iter().filter(|n| n.role == "Tab").map(|n| (n.name.clone().unwrap_or_default(), gpui::point(gpui::px(n.x + n.width / 2.0), gpui::px(n.y + n.height / 2.0)), n.selected == Some(true))).collect();
+        let tabs: Vec<(String, gpui::Point<gpui::Pixels>, bool)> = first
+            .iter()
+            .filter(|n| n.role == "Tab")
+            .map(|n| (n.name.clone().unwrap_or_default(), gpui::point(gpui::px(n.x + n.width / 2.0), gpui::px(n.y + n.height / 2.0)), n.selected == Some(true)))
+            .collect();
         let mut out = vec![(tabs.iter().find(|t| t.2).map(|t| t.0.clone()), first)];
         for (name, at, selected) in &tabs {
             if *selected {

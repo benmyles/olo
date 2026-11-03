@@ -16,11 +16,10 @@ use std::sync::{
 };
 
 use olo_ui::{
-    gpui::{AppContext as _, Bounds, Context, FontWeight, IntoElement, ParentElement as _, Pixels, Render, RenderImage, SharedString, Styled as _, Task, Window, canvas, div, point, px},
-    metrics as m,
-    style, theme,
-    widgets::image_view::{self, Rgba},
     agent,
+    gpui::{AppContext as _, Bounds, Context, FontWeight, IntoElement, ParentElement as _, Pixels, Render, RenderImage, SharedString, Styled as _, Task, Window, canvas, div, point, px},
+    metrics as m, style, theme,
+    widgets::image_view::{self, Rgba},
 };
 
 /// A screen's pixels: RGBA, opaque (so as good as premultiplied).
@@ -65,7 +64,19 @@ pub struct PictureWell {
 impl PictureWell {
     pub fn new(name: impl Into<SharedString>) -> PictureWell {
         static KEYS: AtomicU64 = AtomicU64::new(1);
-        PictureWell { shot: None, generation: 0, shape: None, text: None, exact: None, making: None, dropped: Vec::new(), shown: None, name: name.into(), live: None, key: KEYS.fetch_add(1, Ordering::Relaxed) }
+        PictureWell {
+            shot: None,
+            generation: 0,
+            shape: None,
+            text: None,
+            exact: None,
+            making: None,
+            dropped: Vec::new(),
+            shown: None,
+            name: name.into(),
+            live: None,
+            key: KEYS.fetch_add(1, Ordering::Relaxed),
+        }
     }
 
     /// Show frames live, of `size` (`Window::set_external_buffer` under
@@ -167,7 +178,18 @@ impl PictureWell {
             self.shown = None;
             let text = self.text.clone().unwrap_or_default();
             if !text.is_empty() {
-                let r = style::label_fit(window, cx, inner.center().x, inner.center().y, style::Align::Center, text.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p), inner.size.width - px(2.0 * m::SPACING));
+                let r = style::label_fit(
+                    window,
+                    cx,
+                    inner.center().x,
+                    inner.center().y,
+                    style::Align::Center,
+                    text.clone(),
+                    style::PLAIN_SIZE,
+                    style::ui_font(FontWeight::NORMAL),
+                    style::disabled_text(&p),
+                    inner.size.width - px(2.0 * m::SPACING),
+                );
                 agent::record(window, cx, agent::Node::label(text, r));
             }
             return;
@@ -201,7 +223,11 @@ impl PictureWell {
             });
             self.making = Some((want, making));
         }
-        agent::record(window, cx, agent::Node { role: "Image", name: Some(self.name.clone()), value: Some(format!("{} × {}", shot.size[0], shot.size[1]).into()), bounds: pic, enabled: true, ..Default::default() });
+        agent::record(
+            window,
+            cx,
+            agent::Node { role: "Image", name: Some(self.name.clone()), value: Some(format!("{} × {}", shot.size[0], shot.size[1]).into()), bounds: pic, enabled: true, ..Default::default() },
+        );
     }
 }
 

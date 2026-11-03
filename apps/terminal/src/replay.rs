@@ -12,7 +12,10 @@ use alacritty_terminal::{
     event::EventListener,
     grid::{Dimensions, Grid},
     index::{Column, Line},
-    term::{Term, TermMode, cell::{Cell, Flags}},
+    term::{
+        Term, TermMode,
+        cell::{Cell, Flags},
+    },
     vte::ansi::{Color, CursorShape, NamedColor},
 };
 use base64::Engine;
@@ -70,15 +73,7 @@ impl Images<'_> {
 
 fn sgr(fg: Color, bg: Color, flags: Flags) -> String {
     let mut p: Vec<String> = vec!["0".into()];
-    for (f, code) in [
-        (Flags::BOLD, "1"),
-        (Flags::DIM, "2"),
-        (Flags::ITALIC, "3"),
-        (Flags::UNDERLINE, "4"),
-        (Flags::INVERSE, "7"),
-        (Flags::HIDDEN, "8"),
-        (Flags::STRIKEOUT, "9"),
-    ] {
+    for (f, code) in [(Flags::BOLD, "1"), (Flags::DIM, "2"), (Flags::ITALIC, "3"), (Flags::UNDERLINE, "4"), (Flags::INVERSE, "7"), (Flags::HIDDEN, "8"), (Flags::STRIKEOUT, "9")] {
         if flags.contains(f) {
             p.push(code.into());
         }
@@ -213,17 +208,11 @@ fn modes(out: &mut String, mode: TermMode) {
     if mode.contains(TermMode::LINE_FEED_NEW_LINE) {
         out.push_str("\x1b[20h");
     }
-    let kitty = [
-        TermMode::DISAMBIGUATE_ESC_CODES,
-        TermMode::REPORT_EVENT_TYPES,
-        TermMode::REPORT_ALTERNATE_KEYS,
-        TermMode::REPORT_ALL_KEYS_AS_ESC,
-        TermMode::REPORT_ASSOCIATED_TEXT,
-    ]
-    .iter()
-    .enumerate()
-    .filter(|(_, m)| mode.contains(**m))
-    .fold(0, |bits, (i, _)| bits | 1 << i);
+    let kitty = [TermMode::DISAMBIGUATE_ESC_CODES, TermMode::REPORT_EVENT_TYPES, TermMode::REPORT_ALTERNATE_KEYS, TermMode::REPORT_ALL_KEYS_AS_ESC, TermMode::REPORT_ASSOCIATED_TEXT]
+        .iter()
+        .enumerate()
+        .filter(|(_, m)| mode.contains(**m))
+        .fold(0, |bits, (i, _)| bits | 1 << i);
     if kitty != 0 {
         out.push_str(&format!("\x1b[>{kitty}u"));
     }
@@ -305,7 +294,7 @@ pub fn archive<T: EventListener>(term: &mut Term<T>, store: &Store) -> Vec<u8> {
 mod tests {
     use std::collections::HashSet;
 
-use alacritty_terminal::{event::VoidListener, term::Config};
+    use alacritty_terminal::{event::VoidListener, term::Config};
 
     use alacritty_terminal::vte::ansi::Processor;
 
@@ -324,9 +313,7 @@ use alacritty_terminal::{event::VoidListener, term::Config};
 
     fn text(grid: &Grid<Cell>) -> Vec<String> {
         let top = -(grid.history_size() as i32);
-        (top..grid.screen_lines() as i32)
-            .map(|l| (0..grid.columns()).map(|c| grid[Line(l)][Column(c)].c).collect::<String>().trim_end().to_owned())
-            .collect()
+        (top..grid.screen_lines() as i32).map(|l| (0..grid.columns()).map(|c| grid[Line(l)][Column(c)].c).collect::<String>().trim_end().to_owned()).collect()
     }
 
     fn same(a: &Term<VoidListener>, b: &Term<VoidListener>) {

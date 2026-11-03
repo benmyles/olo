@@ -258,10 +258,8 @@ pub fn lay_out(shaper: &dyn Shaper, text: &str, spans: &[Span], p: &Params) -> L
 /// sets it in one).
 pub fn shape(shaper: &dyn Shaper, text: &str, spans: &[Span]) -> Laid {
     let first_size = spans.first().map_or(style::PLAIN_SIZE, |s| s.size);
-    let mut inks: Vec<Ink> = spans
-        .iter()
-        .map(|s| Ink { color: s.color, underline: s.underline, strike: s.strike, size: s.size, metrics: shaper.metrics(&s.font, s.size), picture: s.picture })
-        .collect();
+    let mut inks: Vec<Ink> =
+        spans.iter().map(|s| Ink { color: s.color, underline: s.underline, strike: s.strike, size: s.size, metrics: shaper.metrics(&s.font, s.size), picture: s.picture }).collect();
     if inks.is_empty() {
         let font = style::ui_font(gpui::FontWeight::NORMAL);
         inks.push(Ink { color: None, underline: false, strike: false, size: first_size, metrics: shaper.metrics(&font, first_size), picture: None });
@@ -734,5 +732,3 @@ mod tests {
         assert!(l.rows.iter().all(|r| r.left.abs() < 0.01));
     }
 }
-
-

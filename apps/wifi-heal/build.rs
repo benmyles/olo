@@ -49,9 +49,9 @@ fn reachable(lock: &str, root: &str) -> BTreeSet<String> {
         .skip(1)
         .map(|block| {
             let field = |k: &str| block.lines().find_map(|l| l.strip_prefix(k)).map(|v| v.trim().trim_matches('"').to_owned()).unwrap_or_default();
-            let deps = block.split_once("dependencies = [").map_or(Vec::new(), |(_, rest)| {
-                rest.split(']').next().unwrap_or("").split(',').map(|d| d.trim().trim_matches('"').to_owned()).filter(|d| !d.is_empty()).collect()
-            });
+            let deps = block
+                .split_once("dependencies = [")
+                .map_or(Vec::new(), |(_, rest)| rest.split(']').next().unwrap_or("").split(',').map(|d| d.trim().trim_matches('"').to_owned()).filter(|d| !d.is_empty()).collect());
             (field("name = "), field("version = "), deps)
         })
         .collect();

@@ -108,9 +108,7 @@ type Key = (Option<char>, &'static str, f32);
 
 /// A Mac keyboard's rows, each 14.5 keys wide.
 fn rows() -> [Vec<Key>; 5] {
-    let keys = |s: &'static str| -> Vec<Key> {
-        s.char_indices().map(|(i, c)| (Some(c), &s[i..i + c.len_utf8()], 1.0)).collect()
-    };
+    let keys = |s: &'static str| -> Vec<Key> { s.char_indices().map(|(i, c)| (Some(c), &s[i..i + c.len_utf8()], 1.0)).collect() };
     let mut r0 = keys("`1234567890-=");
     r0.push((None, "delete", 1.5));
     let mut r1 = vec![(None, "tab", 1.5)];
@@ -189,7 +187,17 @@ pub fn lesson(tutor: &Tutor) -> impl IntoElement {
                 style::label(window, cx, x, y, style::Align::Left, after.clone(), size_pt, font.clone(), c(pale));
             }
             // Speed and accuracy, small at the lower right.
-            style::label(window, cx, inner.right() - px(12.0), inner.bottom() - px(12.0), style::Align::Right, speed.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), c(mix(ink, sheet, 0.35)));
+            style::label(
+                window,
+                cx,
+                inner.right() - px(12.0),
+                inner.bottom() - px(12.0),
+                style::Align::Right,
+                speed.clone(),
+                style::SMALL_SIZE,
+                style::ui_font(FontWeight::NORMAL),
+                c(mix(ink, sheet, 0.35)),
+            );
             agent::record(window, cx, agent::Node { role: "Label", name: Some("Type this".into()), value: Some(text.into()), bounds: b, enabled: true, ..Default::default() });
         },
     )

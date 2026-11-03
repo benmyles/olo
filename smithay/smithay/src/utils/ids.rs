@@ -1,10 +1,7 @@
 macro_rules! id_gen {
     ($mod_name:ident) => {
         mod $mod_name {
-            use std::{
-                collections::HashSet,
-                sync::LazyLock,
-            };
+            use std::{collections::HashSet, sync::LazyLock};
 
             static ID_DATA: LazyLock<olo_sync::Mutex<(HashSet<usize>, usize)>> =
                 LazyLock::new(|| olo_sync::Mutex::new((HashSet::new(), 0)));

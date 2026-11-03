@@ -3,9 +3,9 @@
 // GL calls are all unsafe, so not very helpful in this module.
 #![allow(unsafe_op_in_unsafe_fn)]
 
-use olo_sync::{Mutex, RwLock, RwLockWriteGuard};
 use core::slice;
 use glam::{Affine2, Mat3, Vec2};
+use olo_sync::{Mutex, RwLock, RwLockWriteGuard};
 use std::{
     collections::HashMap,
     ffi::{CStr, CString},
@@ -2592,7 +2592,9 @@ impl GlesFrame<'_, '_> {
 
         // (Olo) One read fence for everything drawn this frame.
         if !self.drawn.is_empty() {
-            let fence = Arc::new(unsafe { SharedFence::new(&self.renderer.gl, self.renderer.gles_cleanup().sender.clone()) });
+            let fence = Arc::new(unsafe {
+                SharedFence::new(&self.renderer.gl, self.renderer.gles_cleanup().sender.clone())
+            });
             for tex in self.drawn.drain(..) {
                 tex.0.sync.read().unwrap().set_read(fence.clone());
             }

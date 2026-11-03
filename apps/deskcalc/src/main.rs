@@ -17,7 +17,8 @@ use expr::Angle;
 use olo_ui::{
     Menu, WindowOptions, agent,
     gpui::{
-        self, App, AppContext as _, Bounds, Context, Entity, Focusable, FontWeight, InteractiveElement as _, IntoElement, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Render, Styled as _, Subscription, Window, actions, canvas, div, point, px, size,
+        self, App, AppContext as _, Bounds, Context, Entity, Focusable, FontWeight, InteractiveElement as _, IntoElement, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+        ParentElement as _, Pixels, Render, Styled as _, Subscription, Window, actions, canvas, div, point, px, size,
     },
     instance::{self, Launch},
     style::{self, Align},
@@ -36,18 +37,8 @@ enum Keypad {
 }
 
 /// R5's keypad; Haiku's scientific rows go above it.
-const BASIC: [[&str; 5]; 4] = [
-    ["7", "8", "9", "(", ")"],
-    ["4", "5", "6", "×", "÷"],
-    ["1", "2", "3", "+", "−"],
-    ["0", ".", "BS", "=", "C"],
-];
-const SCIENTIFIC: [[&str; 5]; 4] = [
-    ["ln", "sin", "cos", "tan", "π"],
-    ["log", "asin", "acos", "atan", "sqrt"],
-    ["exp", "sinh", "cosh", "tanh", "cbrt"],
-    ["!", "ceil", "floor", "E", "^"],
-];
+const BASIC: [[&str; 5]; 4] = [["7", "8", "9", "(", ")"], ["4", "5", "6", "×", "÷"], ["1", "2", "3", "+", "−"], ["0", ".", "BS", "=", "C"]];
+const SCIENTIFIC: [[&str; 5]; 4] = [["ln", "sin", "cos", "tan", "π"], ["log", "asin", "acos", "atan", "sqrt"], ["exp", "sinh", "cosh", "tanh", "cbrt"], ["!", "ceil", "floor", "E", "^"]];
 
 const WIDTH: f32 = 266.0;
 // (The kit's rhythm: the window's inset round it all, keys `TIGHT` apart.)
@@ -133,18 +124,7 @@ impl DeskCalc {
         window.focus(&field.focus_handle(cx));
         // What was left showing last time counts as a result.
         let shows_result = !settings.expression.is_empty();
-        DeskCalc {
-            settings,
-            field,
-            error: None,
-            shows_result,
-            recall: None,
-            flash: None,
-            hovered: None,
-            pressed: None,
-            keys: Rc::default(),
-            _field_events: events,
-        }
+        DeskCalc { settings, field, error: None, shows_result, recall: None, flash: None, hovered: None, pressed: None, keys: Rc::default(), _field_events: events }
     }
 
     fn store(&self) {

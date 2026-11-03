@@ -1,7 +1,6 @@
 use olo_sync::Mutex;
 use std::cell::RefCell;
 
-
 use wayland_server::DisplayHandle;
 use wayland_server::backend::ClientId;
 

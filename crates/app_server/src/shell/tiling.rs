@@ -22,13 +22,13 @@
 use std::cell::{Cell, RefCell};
 use std::time::{Duration, Instant};
 
+use olo_protocol::Tile;
 use smithay::{
     desktop::{WindowSurface, space::SpaceElement},
     output::Output,
     reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
     utils::{IsAlive, Logical, Point, Rectangle, Size},
 };
-use olo_protocol::Tile;
 use tracing::{debug, info};
 
 use super::{
@@ -485,9 +485,7 @@ const GRAB: i32 = 32;
 pub fn in_reach(frame: Rectangle<i32, Logical>, area: Rectangle<i32, Logical>) -> bool {
     let (w, h) = REACH;
     let top = Rectangle::new(frame.loc, Size::from((frame.size.w, h.min(frame.size.h))));
-    frame.loc.y >= area.loc.y
-        && frame.loc.y + h <= area.loc.y + area.size.h
-        && top.intersection(area).is_some_and(|r| r.size.w >= w.min(frame.size.w))
+    frame.loc.y >= area.loc.y && frame.loc.y + h <= area.loc.y + area.size.h && top.intersection(area).is_some_and(|r| r.size.w >= w.min(frame.size.w))
 }
 
 /// A window moved by `delta` along with its display: the frames it
@@ -1006,10 +1004,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             WindowSurface::Wayland(t) => {
                 if t.has_pending_changes() {
                     super::grabs::send_when_caught_up(t);
-                } else if self.tile_drag.is_none()
-                    && !super::grabs::awaiting_ack(t)
-                    && (geo.size == target.size || !can_be(window, target.size) || asked.elapsed() > FOLLOW_LIMIT)
-                {
+                } else if self.tile_drag.is_none() && !super::grabs::awaiting_ack(t) && (geo.size == target.size || !can_be(window, target.size) || asked.elapsed() > FOLLOW_LIMIT) {
                     self.tile_followers.remove(i);
                 }
             }
@@ -1140,11 +1135,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             };
             let place = |r: Rectangle<i32, Logical>| {
                 let size = Size::from((r.size.w.min(dest.size.w), r.size.h.min(dest.size.h)));
-                let loc = dest.loc
-                    + Point::from((
-                        rel(r.loc.x, src.loc.x, src.size.w, dest.size.w, size.w),
-                        rel(r.loc.y, src.loc.y, src.size.h, dest.size.h, size.h),
-                    ));
+                let loc = dest.loc + Point::from((rel(r.loc.x, src.loc.x, src.size.w, dest.size.w, size.w), rel(r.loc.y, src.loc.y, src.size.h, dest.size.h, size.h)));
                 Rectangle::new(loc, size)
             };
             // Back where it came from, as it arrived (or in the group it
@@ -1238,8 +1229,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// into reach on the one it is (mostly) on, or the nearest
     /// (`into_reach`): where a window put somewhere by number goes.
     pub fn reachable(&self, frame: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
-        let areas: Vec<(Rectangle<i32, Logical>, Rectangle<i32, Logical>)> =
-            self.space.outputs().filter_map(|o| Some((self.space.output_geometry(o)?, self.usable_area(o)?))).collect();
+        let areas: Vec<(Rectangle<i32, Logical>, Rectangle<i32, Logical>)> = self.space.outputs().filter_map(|o| Some((self.space.output_geometry(o)?, self.usable_area(o)?))).collect();
         if areas.iter().any(|(_, area)| in_reach(frame, *area)) {
             return frame;
         }
@@ -1333,10 +1323,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if size == frame.size && in_reach(frame, area) {
             return;
         }
-        let loc = Point::from((
-            frame.loc.x.clamp(area.loc.x, area.loc.x + area.size.w - size.w),
-            frame.loc.y.clamp(area.loc.y, area.loc.y + area.size.h - size.h),
-        ));
+        let loc = Point::from((frame.loc.x.clamp(area.loc.x, area.loc.x + area.size.w - size.w), frame.loc.y.clamp(area.loc.y, area.loc.y + area.size.h - size.h)));
         if size != frame.size {
             self.set_frame(window, Rectangle::new(loc, size), false);
         } else if loc != frame.loc {
@@ -1394,13 +1381,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             // Where its display is now, if that moved since.
             let delta = self.display_moved(p.frame, &among);
             let shift = |r: Rectangle<i32, Logical>| Rectangle::new(r.loc + delta, r.size);
-            let p = &Placed {
-                frame: shift(p.frame),
-                pre: p.pre.map(shift),
-                zoomed_from: p.zoomed_from.map(shift),
-                along: p.along.map(|z| ZoomedAlong { from: shift(z.from), ..z }),
-                ..p.clone()
-            };
+            let p = &Placed { frame: shift(p.frame), pre: p.pre.map(shift), zoomed_from: p.zoomed_from.map(shift), along: p.along.map(|z| ZoomedAlong { from: shift(z.from), ..z }), ..p.clone() };
             if p.zoomed {
                 self.zoom_window(&p.window);
             } else {
@@ -1706,11 +1687,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// off one; else brought into reach ([`Self::reachable`]).
     pub(crate) fn put_back_at(&self, frame: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
         let top = Rectangle::new(frame.loc, Size::from((frame.size.w, olo_theme::deco::TAB_HEIGHT.min(frame.size.h))));
-        let held = self
-            .space
-            .outputs()
-            .filter_map(|o| self.space.output_geometry(o))
-            .any(|g| top.intersection(g).is_some_and(|r| r.size.w >= GRAB.min(frame.size.w) && r.size.h >= top.size.h));
+        let held = self.space.outputs().filter_map(|o| self.space.output_geometry(o)).any(|g| top.intersection(g).is_some_and(|r| r.size.w >= GRAB.min(frame.size.w) && r.size.h >= top.size.h));
         if held { frame } else { self.reachable(frame) }
     }
 

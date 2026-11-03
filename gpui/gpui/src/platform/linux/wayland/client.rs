@@ -9,6 +9,7 @@ use std::{
 };
 
 use ashpd::WindowIdentifier;
+use ashpd::url::Url;
 use calloop::{
     EventLoop, LoopHandle,
     timer::{TimeoutAction, Timer},
@@ -16,7 +17,6 @@ use calloop::{
 use calloop_wayland_source::WaylandSource;
 use collections::HashMap;
 use filedescriptor::Pipe;
-use ashpd::url::Url;
 use smallvec::SmallVec;
 use util::ResultExt;
 use wayland_backend::client::ObjectId;
@@ -37,12 +37,20 @@ use wayland_client::{
         wl_shm_pool, wl_subcompositor, wl_subsurface, wl_surface,
     },
 };
-use wayland_protocols::wp::linux_dmabuf::zv1::client::{zwp_linux_buffer_params_v1, zwp_linux_dmabuf_v1};
+use wayland_protocols::ext::session_lock::v1::client::{
+    ext_session_lock_manager_v1, ext_session_lock_surface_v1, ext_session_lock_v1,
+};
 use wayland_protocols::wp::cursor_shape::v1::client::{
     wp_cursor_shape_device_v1, wp_cursor_shape_manager_v1,
 };
 use wayland_protocols::wp::fractional_scale::v1::client::{
     wp_fractional_scale_manager_v1, wp_fractional_scale_v1,
+};
+use wayland_protocols::wp::idle_inhibit::zv1::client::{
+    zwp_idle_inhibit_manager_v1, zwp_idle_inhibitor_v1,
+};
+use wayland_protocols::wp::linux_dmabuf::zv1::client::{
+    zwp_linux_buffer_params_v1, zwp_linux_dmabuf_v1,
 };
 use wayland_protocols::wp::primary_selection::zv1::client::zwp_primary_selection_offer_v1::{
     self, ZwpPrimarySelectionOfferV1,
@@ -62,15 +70,17 @@ use wayland_protocols::xdg::activation::v1::client::{xdg_activation_token_v1, xd
 use wayland_protocols::xdg::decoration::zv1::client::{
     zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1,
 };
-use wayland_protocols::xdg::shell::client::{xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base};
-use wayland_protocols::xdg::toplevel_tag::v1::client::xdg_toplevel_tag_manager_v1;
 use wayland_protocols::xdg::dialog::v1::client::{xdg_dialog_v1, xdg_wm_dialog_v1};
-use wayland_protocols::xdg::foreign::zv2::client::{zxdg_exported_v2, zxdg_exporter_v2, zxdg_imported_v2, zxdg_importer_v2};
-use wayland_protocols::ext::session_lock::v1::client::{ext_session_lock_manager_v1, ext_session_lock_surface_v1, ext_session_lock_v1};
-use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
-use wayland_protocols_plasma::blur::client::{org_kde_kwin_blur, org_kde_kwin_blur_manager};
-use wayland_protocols::wp::idle_inhibit::zv1::client::{zwp_idle_inhibit_manager_v1, zwp_idle_inhibitor_v1};
+use wayland_protocols::xdg::foreign::zv2::client::{
+    zxdg_exported_v2, zxdg_exporter_v2, zxdg_imported_v2, zxdg_importer_v2,
+};
+use wayland_protocols::xdg::shell::client::{
+    xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base,
+};
+use wayland_protocols::xdg::toplevel_tag::v1::client::xdg_toplevel_tag_manager_v1;
 use wayland_protocols::xdg::xdg_output::zv1::client::{zxdg_output_manager_v1, zxdg_output_v1};
+use wayland_protocols_plasma::blur::client::{org_kde_kwin_blur, org_kde_kwin_blur_manager};
+use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 use xkbcommon::xkb::ffi::XKB_KEYMAP_FORMAT_TEXT_V1;
 use xkbcommon::xkb::{self, KEYMAP_COMPILE_NO_FLAGS, Keycode};
 
@@ -232,7 +242,10 @@ impl InProgressOutput {
                 subpixel: self.subpixel,
                 transform: self.transform,
                 refresh_mhz: self.refresh_mhz,
-                logical: self.logical_position.zip(self.logical_size).map(|((x, y), (w, h))| [x, y, w, h]),
+                logical: self
+                    .logical_position
+                    .zip(self.logical_size)
+                    .map(|((x, y), (w, h))| [x, y, w, h]),
             })
         } else {
             None
@@ -264,7 +277,10 @@ impl Output {
     /// Where it is and how big, in points.
     pub fn bounds_in_points(&self) -> Bounds<Pixels> {
         match self.logical {
-            Some([x, y, w, h]) => Bounds::new(point(px(x as f32), px(y as f32)), size(px(w as f32), px(h as f32))),
+            Some([x, y, w, h]) => Bounds::new(
+                point(px(x as f32), px(y as f32)),
+                size(px(w as f32), px(h as f32)),
+            ),
             None => self.bounds.to_pixels(self.scale as f32),
         }
     }
@@ -429,7 +445,11 @@ struct DragOut {
     /// What it lets a drop do.
     allowed: DndAction,
     action: Option<crate::DragAction>,
-    icon: Option<(wl_surface::WlSurface, wl_buffer::WlBuffer, wl_shm_pool::WlShmPool)>,
+    icon: Option<(
+        wl_surface::WlSurface,
+        wl_buffer::WlBuffer,
+        wl_shm_pool::WlShmPool,
+    )>,
     done: Option<futures::channel::oneshot::Sender<Option<crate::DragAction>>>,
 }
 
@@ -450,8 +470,18 @@ pub struct DragState {
 
 /// Olo: a surface showing a drag's picture, from shared memory: the
 /// surface, its buffer and the pool (kept until the drag is over).
-fn drag_icon(globals: &Globals, image: &crate::DragImage) -> Option<(wl_surface::WlSurface, wl_buffer::WlBuffer, wl_shm_pool::WlShmPool)> {
-    use std::{io::Write as _, os::fd::{AsFd as _, FromRawFd as _, OwnedFd}};
+fn drag_icon(
+    globals: &Globals,
+    image: &crate::DragImage,
+) -> Option<(
+    wl_surface::WlSurface,
+    wl_buffer::WlBuffer,
+    wl_shm_pool::WlShmPool,
+)> {
+    use std::{
+        io::Write as _,
+        os::fd::{AsFd as _, FromRawFd as _, OwnedFd},
+    };
     let (w, h) = (image.width as usize, image.height as usize);
     if w == 0 || h == 0 || image.rgba.len() < w * h * 4 {
         return None;
@@ -465,16 +495,32 @@ fn drag_icon(globals: &Globals, image: &crate::DragImage) -> Option<(wl_surface:
         OwnedFd::from_raw_fd(fd)
     };
     // Premultiplied BGRA in memory, as ARGB8888 is.
-    let bgra: Vec<u8> = image.rgba[..w * h * 4].as_chunks::<4>().0.iter().flat_map(|p| [p[2], p[1], p[0], p[3]]).collect();
+    let bgra: Vec<u8> = image.rgba[..w * h * 4]
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .flat_map(|p| [p[2], p[1], p[0], p[3]])
+        .collect();
     let mut file = std::fs::File::from(fd);
     file.write_all(&bgra).ok()?;
     let size = (w * h * 4) as i32;
     let pool = globals.shm.create_pool(file.as_fd(), size, &globals.qh, ());
-    let buffer = pool.create_buffer(0, w as i32, h as i32, w as i32 * 4, wl_shm::Format::Argb8888, &globals.qh, ());
+    let buffer = pool.create_buffer(
+        0,
+        w as i32,
+        h as i32,
+        w as i32 * 4,
+        wl_shm::Format::Argb8888,
+        &globals.qh,
+        (),
+    );
     let surface = globals.compositor.create_surface(&globals.qh, ());
     surface.set_buffer_scale(image.scale.max(1) as i32);
     // The pointer's place on it: the picture is drawn up and left of it.
-    let (dx, dy) = (-(f32::from(image.hotspot.x).round() as i32), -(f32::from(image.hotspot.y).round() as i32));
+    let (dx, dy) = (
+        -(f32::from(image.hotspot.x).round() as i32),
+        -(f32::from(image.hotspot.y).round() as i32),
+    );
     if surface.version() >= 5 {
         surface.attach(Some(&buffer), 0, 0);
         surface.offset(dx, dy);
@@ -518,9 +564,16 @@ impl WaylandClientStatePtr {
     /// Olo: the popups open over `parent` (a menu's submenus) taken down
     /// first, before it is: only the topmost popup may be destroyed.
     pub fn withdraw_popups_over(&self, parent: &xdg_surface::XdgSurface) {
-        let Some(client) = self.0.upgrade() else { return };
+        let Some(client) = self.0.upgrade() else {
+            return;
+        };
         let over: Vec<WaylandWindowStatePtr> = match client.try_borrow() {
-            Ok(state) => state.windows.values().filter(|w| w.is_popup_over(parent)).cloned().collect(),
+            Ok(state) => state
+                .windows
+                .values()
+                .filter(|w| w.is_popup_over(parent))
+                .cloned()
+                .collect(),
             Err(_) => return,
         };
         for w in over {
@@ -537,13 +590,22 @@ impl WaylandClientStatePtr {
     /// windows. Each goes now from the screen, its window as the loop
     /// next turns.
     pub fn withdraw_stray_menus(&self, parent: &xdg_surface::XdgSurface) {
-        let Some(client) = self.0.upgrade() else { return };
+        let Some(client) = self.0.upgrade() else {
+            return;
+        };
         let (windows, executor) = match client.try_borrow() {
-            Ok(state) => (state.windows.values().cloned().collect::<Vec<_>>(), state.common.foreground_executor.clone()),
+            Ok(state) => (
+                state.windows.values().cloned().collect::<Vec<_>>(),
+                state.common.foreground_executor.clone(),
+            ),
             Err(_) => return,
         };
         let mut chain = vec![parent.clone()];
-        while let Some(up) = windows.iter().find(|w| w.xdg_surface().as_ref() == chain.last()).and_then(|w| w.popup_of()) {
+        while let Some(up) = windows
+            .iter()
+            .find(|w| w.xdg_surface().as_ref() == chain.last())
+            .and_then(|w| w.popup_of())
+        {
             if chain.contains(&up) {
                 break;
             }
@@ -566,10 +628,20 @@ impl WaylandClientStatePtr {
     }
 
     /// Olo: drags `drag` out of `origin` (see `PlatformWindow::start_drag`).
-    pub fn start_drag(&self, origin: &wl_surface::WlSurface, drag: crate::OutgoingDrag, done: futures::channel::oneshot::Sender<Option<crate::DragAction>>) {
+    pub fn start_drag(
+        &self,
+        origin: &wl_surface::WlSurface,
+        drag: crate::OutgoingDrag,
+        done: futures::channel::oneshot::Sender<Option<crate::DragAction>>,
+    ) {
         let client = self.get_client();
         let mut state = client.borrow_mut();
-        let (Some(manager), Some(device)) = (state.globals.data_device_manager.clone(), state.data_device.clone()) else { return };
+        let (Some(manager), Some(device)) = (
+            state.globals.data_device_manager.clone(),
+            state.data_device.clone(),
+        ) else {
+            return;
+        };
         if state.drag_out.is_some() || drag.types.is_empty() {
             return;
         }
@@ -589,12 +661,31 @@ impl WaylandClientStatePtr {
             actions |= DndAction::Ask;
         }
         if source.version() >= 3 {
-            source.set_actions(if actions.is_empty() { DndAction::Copy } else { actions });
+            source.set_actions(if actions.is_empty() {
+                DndAction::Copy
+            } else {
+                actions
+            });
         }
-        let icon = drag.icon.as_ref().and_then(|image| drag_icon(&state.globals, image));
+        let icon = drag
+            .icon
+            .as_ref()
+            .and_then(|image| drag_icon(&state.globals, image));
         let serial = state.serial_tracker.get(SerialKind::MousePress);
-        device.start_drag(Some(&source), origin, icon.as_ref().map(|(surface, ..)| surface), serial);
-        state.drag_out = Some(DragOut { source, types: drag.types, allowed: actions, action: None, icon, done: Some(done) });
+        device.start_drag(
+            Some(&source),
+            origin,
+            icon.as_ref().map(|(surface, ..)| surface),
+            serial,
+        );
+        state.drag_out = Some(DragOut {
+            source,
+            types: drag.types,
+            allowed: actions,
+            action: None,
+            icon,
+            done: Some(done),
+        });
     }
 
     /// Olo: where window `surface` takes what's dragged over it (None:
@@ -602,8 +693,14 @@ impl WaylandClientStatePtr {
     pub fn set_drop_accept(&self, surface: &ObjectId, accept: Option<crate::DropAccept>) {
         let client = self.get_client();
         let mut state = client.borrow_mut();
-        let ours = state.drag.window.as_ref().is_some_and(|w| w.surface().id() == *surface);
-        let Some(offer) = state.drag.data_offer.clone().filter(|_| ours) else { return };
+        let ours = state
+            .drag
+            .window
+            .as_ref()
+            .is_some_and(|w| w.surface().id() == *surface);
+        let Some(offer) = state.drag.data_offer.clone().filter(|_| ours) else {
+            return;
+        };
         let serial = state.drag.serial;
         match &accept {
             Some(a) => {
@@ -801,9 +898,11 @@ impl WaylandClient {
         let (conn, globals, mut event_queue) = {
             let mut tries = 0;
             loop {
-                let made = connect().map_err(|e| e.to_string()).and_then(|c| match registry_queue_init::<WaylandClientStatePtr>(&c) {
-                    Ok((globals, queue)) => Ok((c, globals, queue)),
-                    Err(e) => Err(e.to_string()),
+                let made = connect().map_err(|e| e.to_string()).and_then(|c| {
+                    match registry_queue_init::<WaylandClientStatePtr>(&c) {
+                        Ok((globals, queue)) => Ok((c, globals, queue)),
+                        Err(e) => Err(e.to_string()),
+                    }
                 });
                 match made {
                     Ok(made) => break made,
@@ -867,7 +966,6 @@ impl WaylandClient {
                 }
             })
             .unwrap();
-
 
         let seat = seat.unwrap();
         let globals = Globals::new(
@@ -1072,7 +1170,13 @@ impl LinuxClient for WaylandClient {
     ) -> anyhow::Result<Box<dyn PlatformWindow>> {
         // Olo: a menu opens only over the menus along its own chain.
         if let crate::WindowKind::Popup { parent, .. } = params.kind {
-            let over = self.0.borrow().windows.values().find(|w| w.handle() == parent).and_then(|w| w.xdg_surface());
+            let over = self
+                .0
+                .borrow()
+                .windows
+                .values()
+                .find(|w| w.handle() == parent)
+                .and_then(|w| w.xdg_surface());
             if let Some(over) = over {
                 WaylandClientStatePtr(Rc::downgrade(&self.0)).withdraw_stray_menus(&over);
             }
@@ -1088,12 +1192,14 @@ impl LinuxClient for WaylandClient {
         // Olo: a popup opens over its parent window's surface, grabbing
         // the press that opened it.
         let popup_parent = match params.kind {
-            crate::WindowKind::Popup { parent, .. } | crate::WindowKind::Tip { parent, .. } => state
-                .windows
-                .values()
-                .find(|w| w.handle() == parent)
-                .and_then(|w| w.popup_parent())
-                .map(|p| (p, state.serial_tracker.get(SerialKind::MousePress))),
+            crate::WindowKind::Popup { parent, .. } | crate::WindowKind::Tip { parent, .. } => {
+                state
+                    .windows
+                    .values()
+                    .find(|w| w.handle() == parent)
+                    .and_then(|w| w.popup_parent())
+                    .map(|p| (p, state.serial_tracker.get(SerialKind::MousePress)))
+            }
             _ => None,
         };
         // Olo: a lock surface covers an output (by name, or the first)
@@ -1103,7 +1209,9 @@ impl LinuxClient for WaylandClient {
             let output = state
                 .outputs
                 .iter()
-                .find(|(_, o)| params.session_lock_output.is_none() || o.name == params.session_lock_output)
+                .find(|(_, o)| {
+                    params.session_lock_output.is_none() || o.name == params.session_lock_output
+                })
                 .and_then(|(id, _)| state.wl_outputs.get(id).cloned())
                 .context("no such output")?;
             Some((lock, output))
@@ -1115,7 +1223,12 @@ impl LinuxClient for WaylandClient {
             .layer_shell
             .as_ref()
             .and_then(|l| l.output.as_ref())
-            .and_then(|name| state.outputs.iter().find(|(_, o)| o.name.as_ref() == Some(name)))
+            .and_then(|name| {
+                state
+                    .outputs
+                    .iter()
+                    .find(|(_, o)| o.name.as_ref() == Some(name))
+            })
             .and_then(|(id, _)| state.wl_outputs.get(id).cloned());
         // Olo: a display asked for by name that this connection doesn't
         // know yet (after app_server's restart they come one by one) is
@@ -1134,18 +1247,56 @@ impl LinuxClient for WaylandClient {
         // frame for them.
         let over = match params.kind {
             crate::WindowKind::Popup { parent, .. } | crate::WindowKind::Tip { parent, .. } => {
-                state.windows.values().find(|w| w.handle() == parent).map(|w| w.scale_and_display())
+                state
+                    .windows
+                    .values()
+                    .find(|w| w.handle() == parent)
+                    .map(|w| w.scale_and_display())
             }
             _ => None,
         };
-        let opens_on = match (over, layer_output.as_ref().or(session_lock.as_ref().map(|(_, o)| o))) {
+        let opens_on = match (
+            over,
+            layer_output
+                .as_ref()
+                .or(session_lock.as_ref().map(|(_, o)| o)),
+        ) {
             (Some((scale, Some(display))), _) => (Some(scale), vec![display]),
-            (Some((scale, None)), _) => (Some(scale), state.outputs.iter().map(|(id, o)| (id.clone(), o.clone())).collect()),
-            (None, Some(output)) => (None, state.outputs.get(&output.id()).map(|o| (output.id(), o.clone())).into_iter().collect()),
-            (None, None) => (None, state.outputs.iter().map(|(id, o)| (id.clone(), o.clone())).collect()),
+            (Some((scale, None)), _) => (
+                Some(scale),
+                state
+                    .outputs
+                    .iter()
+                    .map(|(id, o)| (id.clone(), o.clone()))
+                    .collect(),
+            ),
+            (None, Some(output)) => (
+                None,
+                state
+                    .outputs
+                    .get(&output.id())
+                    .map(|o| (output.id(), o.clone()))
+                    .into_iter()
+                    .collect(),
+            ),
+            (None, None) => (
+                None,
+                state
+                    .outputs
+                    .iter()
+                    .map(|(id, o)| (id.clone(), o.clone()))
+                    .collect(),
+            ),
         };
         if state.gpu_context.is_none() {
-            let ahead = state.gpu_context_ahead.take().and_then(|t| t.join().ok()).and_then(|made| made.map_err(|e| log::warn!("the GPU context made ahead failed ({e}); again")).ok());
+            let ahead = state
+                .gpu_context_ahead
+                .take()
+                .and_then(|t| t.join().ok())
+                .and_then(|made| {
+                    made.map_err(|e| log::warn!("the GPU context made ahead failed ({e}); again"))
+                        .ok()
+                });
             state.gpu_context = Some(match ahead {
                 Some(context) => context,
                 None => BladeContext::new()?,
@@ -1325,8 +1476,11 @@ impl LinuxClient for WaylandClient {
 
     fn withdraw_clipboard(&self, item: &crate::ClipboardItem) {
         let mut state = self.0.borrow_mut();
-        let Some(data_device) = state.data_device.clone() else { return };
-        let ours = state.clipboard.holds(item) || (state.lingering && state.clipboard.contents_are(item));
+        let Some(data_device) = state.data_device.clone() else {
+            return;
+        };
+        let ours =
+            state.clipboard.holds(item) || (state.lingering && state.clipboard.contents_are(item));
         if ours {
             let serial = state.serial_tracker.get(SerialKind::KeyPress);
             data_device.set_selection(None, serial);
@@ -1356,7 +1510,11 @@ impl LinuxClient for WaylandClient {
         if g.subcompositor.is_none() || g.viewporter.is_none() || g.linux_dmabuf.is_none() {
             return Vec::new();
         }
-        state.dmabuf_modifiers.get(&fourcc).cloned().unwrap_or_default()
+        state
+            .dmabuf_modifiers
+            .get(&fourcc)
+            .cloned()
+            .unwrap_or_default()
     }
 
     fn read_from_primary(&self) -> Option<crate::ClipboardItem> {
@@ -1485,13 +1643,26 @@ delegate_noop!(WaylandClientStatePtr: ignore zxdg_output_manager_v1::ZxdgOutputM
 /// Olo: a display's place and size in points (applied at its
 /// wl_output's `done`).
 impl Dispatch<zxdg_output_v1::ZxdgOutputV1, ObjectId> for WaylandClientStatePtr {
-    fn event(this: &mut Self, _: &zxdg_output_v1::ZxdgOutputV1, event: zxdg_output_v1::Event, output: &ObjectId, _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        this: &mut Self,
+        _: &zxdg_output_v1::ZxdgOutputV1,
+        event: zxdg_output_v1::Event,
+        output: &ObjectId,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         let client = this.get_client();
         let mut state = client.borrow_mut();
-        let Some(in_progress) = state.in_progress_outputs.get_mut(output) else { return };
+        let Some(in_progress) = state.in_progress_outputs.get_mut(output) else {
+            return;
+        };
         match event {
-            zxdg_output_v1::Event::LogicalPosition { x, y } => in_progress.logical_position = Some((x, y)),
-            zxdg_output_v1::Event::LogicalSize { width, height } => in_progress.logical_size = Some((width, height)),
+            zxdg_output_v1::Event::LogicalPosition { x, y } => {
+                in_progress.logical_position = Some((x, y))
+            }
+            zxdg_output_v1::Event::LogicalSize { width, height } => {
+                in_progress.logical_size = Some((width, height))
+            }
             _ => {}
         }
     }
@@ -1516,7 +1687,12 @@ impl Dispatch<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1, ()> for WaylandClientStateP
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let zwp_linux_dmabuf_v1::Event::Modifier { format, modifier_hi, modifier_lo } = event {
+        if let zwp_linux_dmabuf_v1::Event::Modifier {
+            format,
+            modifier_hi,
+            modifier_lo,
+        } = event
+        {
             let client = this.get_client();
             let mut state = client.borrow_mut();
             let modifier = (u64::from(modifier_hi) << 32) | u64::from(modifier_lo);
@@ -1640,8 +1816,16 @@ impl Dispatch<wl_output::WlOutput, ()> for WaylandClientStatePtr {
                 in_progress_output.transform = transform.into_result().ok();
             }
             // Olo: every mode it offers comes; the one it's in is marked.
-            wl_output::Event::Mode { flags, width, height, refresh } => {
-                if flags.into_result().is_ok_and(|f| f.contains(wl_output::Mode::Current)) {
+            wl_output::Event::Mode {
+                flags,
+                width,
+                height,
+                refresh,
+            } => {
+                if flags
+                    .into_result()
+                    .is_ok_and(|f| f.contains(wl_output::Mode::Current))
+                {
                     in_progress_output.size = Some(size(DevicePixels(width), DevicePixels(height)));
                     in_progress_output.refresh_mhz = refresh;
                 }
@@ -1653,7 +1837,13 @@ impl Dispatch<wl_output::WlOutput, ()> for WaylandClientStatePtr {
                     state.wl_outputs.insert(output.id(), output.clone());
                     // Olo: a new output must be covered while locked.
                     if state.session_lock.is_some() {
-                        state.common.foreground_executor.spawn(async move { session_lock_event(crate::SessionLockEvent::Outputs) }).detach();
+                        state
+                            .common
+                            .foreground_executor
+                            .spawn(
+                                async move { session_lock_event(crate::SessionLockEvent::Outputs) },
+                            )
+                            .detach();
                     }
                     let windows: Vec<_> = state.windows.values().cloned().collect();
                     drop(state);
@@ -1661,7 +1851,8 @@ impl Dispatch<wl_output::WlOutput, ()> for WaylandClientStatePtr {
                         window.output_changed(output.id(), &complete);
                     }
                     // Olo: whoever waits for a display (a bar for it).
-                    let displays_changed = client.borrow_mut().common.callbacks.displays_changed.take();
+                    let displays_changed =
+                        client.borrow_mut().common.callbacks.displays_changed.take();
                     if let Some(mut f) = displays_changed {
                         f();
                         client.borrow_mut().common.callbacks.displays_changed = Some(f);
@@ -1765,7 +1956,9 @@ impl Dispatch<ext_session_lock_v1::ExtSessionLockV1, ()> for WaylandClientStateP
     }
 }
 
-impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, ObjectId> for WaylandClientStatePtr {
+impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, ObjectId>
+    for WaylandClientStatePtr
+{
     fn event(
         this: &mut Self,
         _: &ext_session_lock_surface_v1::ExtSessionLockSurfaceV1,
@@ -1810,9 +2003,15 @@ fn session_lock_event(event: crate::SessionLockEvent) {
 /// when outputs change while it is (cover the new ones), and when the
 /// compositor ends or refuses it.
 pub fn lock_session(handler: impl FnMut(crate::SessionLockEvent) + 'static) -> anyhow::Result<()> {
-    let client = CLIENT.with(|c| c.borrow().upgrade()).context("no Wayland connection")?;
+    let client = CLIENT
+        .with(|c| c.borrow().upgrade())
+        .context("no Wayland connection")?;
     let mut state = client.borrow_mut();
-    let manager = state.globals.session_lock_manager.clone().context("the compositor can't lock the session")?;
+    let manager = state
+        .globals
+        .session_lock_manager
+        .clone()
+        .context("the compositor can't lock the session")?;
     LOCK_HANDLER.with(|h| *h.borrow_mut() = Some(Box::new(handler)));
     if state.session_lock.is_none() {
         state.session_lock = Some(manager.lock(&state.globals.qh, ()));
@@ -1823,7 +2022,9 @@ pub fn lock_session(handler: impl FnMut(crate::SessionLockEvent) + 'static) -> a
 /// Olo: ends the session lock (the lock screen was answered), sent to
 /// the compositor at once.
 pub fn unlock_session() {
-    let Some(client) = CLIENT.with(|c| c.borrow().upgrade()) else { return };
+    let Some(client) = CLIENT.with(|c| c.borrow().upgrade()) else {
+        return;
+    };
     let mut state = client.borrow_mut();
     if let Some(lock) = state.session_lock.take() {
         lock.unlock_and_destroy();
@@ -1837,8 +2038,17 @@ delegate_noop!(WaylandClientStatePtr: ignore zxdg_exporter_v2::ZxdgExporterV2);
 /// Olo: a window exported (`Window::export_handle`): its handle, to the
 /// window and whoever waits for it.
 impl Dispatch<zxdg_exported_v2::ZxdgExportedV2, ObjectId> for WaylandClientStatePtr {
-    fn event(this: &mut Self, _: &zxdg_exported_v2::ZxdgExportedV2, event: zxdg_exported_v2::Event, surface_id: &ObjectId, _: &Connection, _: &QueueHandle<Self>) {
-        let zxdg_exported_v2::Event::Handle { handle } = event else { return };
+    fn event(
+        this: &mut Self,
+        _: &zxdg_exported_v2::ZxdgExportedV2,
+        event: zxdg_exported_v2::Event,
+        surface_id: &ObjectId,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        let zxdg_exported_v2::Event::Handle { handle } = event else {
+            return;
+        };
         let client = this.get_client();
         let mut state = client.borrow_mut();
         if let Some(window) = get_window(&mut state, surface_id) {
@@ -1847,7 +2057,11 @@ impl Dispatch<zxdg_exported_v2::ZxdgExportedV2, ObjectId> for WaylandClientState
         for done in state.export_requests.remove(surface_id).unwrap_or_default() {
             let handle = handle.clone();
             // (Called once the state is free: it may open windows.)
-            state.common.foreground_executor.spawn(async move { done(Some(handle)) }).detach();
+            state
+                .common
+                .foreground_executor
+                .spawn(async move { done(Some(handle)) })
+                .detach();
         }
     }
 }
@@ -2092,7 +2306,10 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandClientStatePtr {
                 let keysym = keymap_state.key_get_one_sym(keycode);
                 // (KEY_RIGHTCTRL: app_server's ⌘.)
                 if key == 97 {
-                    crate::platform::RIGHT_CONTROL.store(key_state == wl_keyboard::KeyState::Pressed, std::sync::atomic::Ordering::Relaxed);
+                    crate::platform::RIGHT_CONTROL.store(
+                        key_state == wl_keyboard::KeyState::Pressed,
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
                 }
 
                 match key_state {
@@ -2584,8 +2801,11 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientStatePtr {
                     let continuous = state.continuous_scroll_delta.take();
                     let discrete = state.discrete_scroll_delta.take();
                     let stopped = std::mem::take(&mut state.scroll_stopped);
-                    let wheel = matches!(state.axis_source, AxisSource::Wheel | AxisSource::WheelTilt);
-                    let (Some(window), Some(position)) = (state.mouse_focused_window.clone(), state.mouse_location) else {
+                    let wheel =
+                        matches!(state.axis_source, AxisSource::Wheel | AxisSource::WheelTilt);
+                    let (Some(window), Some(position)) =
+                        (state.mouse_focused_window.clone(), state.mouse_location)
+                    else {
                         return;
                     };
                     let modifiers = state.modifiers;
@@ -2593,7 +2813,11 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientStatePtr {
                         // Olo: a wheel's notches eased in over the frames
                         // to come, as the egui kit's (48 points a notch).
                         drop(state);
-                        window.add_wheel(point(discrete.x * WHEEL_NOTCH, discrete.y * WHEEL_NOTCH), position, modifiers);
+                        window.add_wheel(
+                            point(discrete.x * WHEEL_NOTCH, discrete.y * WHEEL_NOTCH),
+                            position,
+                            modifiers,
+                        );
                         return;
                     }
                     // Fingers on the touchpad, then (app_server's glide,
@@ -2605,24 +2829,54 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientStatePtr {
                         AxisSource::Continuous => crate::ScrollKind::Glide,
                         _ => crate::ScrollKind::Wheel,
                     };
-                    if let Some(continuous) = continuous.filter(|d| d.x != px(0.0) || d.y != px(0.0)) {
+                    if let Some(continuous) =
+                        continuous.filter(|d| d.x != px(0.0) || d.y != px(0.0))
+                    {
                         // Olo: the glide taking over from the fingers with
                         // no stop between: the fingers' scroll ends (they
                         // lifted), the glide's starts.
                         if state.scrolling && state.scroll_kind != kind {
-                            out.push(ScrollWheelEvent { position, delta: ScrollDelta::Pixels(point(px(0.0), px(0.0))), modifiers, touch_phase: TouchPhase::Ended, kind: state.scroll_kind });
+                            out.push(ScrollWheelEvent {
+                                position,
+                                delta: ScrollDelta::Pixels(point(px(0.0), px(0.0))),
+                                modifiers,
+                                touch_phase: TouchPhase::Ended,
+                                kind: state.scroll_kind,
+                            });
                             state.scrolling = false;
                         }
                         state.scroll_kind = kind;
-                        let phase = if state.scrolling { TouchPhase::Moved } else { TouchPhase::Started };
+                        let phase = if state.scrolling {
+                            TouchPhase::Moved
+                        } else {
+                            TouchPhase::Started
+                        };
                         state.scrolling = true;
-                        out.push(ScrollWheelEvent { position, delta: ScrollDelta::Pixels(continuous), modifiers, touch_phase: phase, kind });
+                        out.push(ScrollWheelEvent {
+                            position,
+                            delta: ScrollDelta::Pixels(continuous),
+                            modifiers,
+                            touch_phase: phase,
+                            kind,
+                        });
                     } else if let Some(discrete) = discrete {
                         let lines = point(discrete.x * SCROLL_LINES, discrete.y * SCROLL_LINES);
-                        out.push(ScrollWheelEvent { position, delta: ScrollDelta::Lines(lines), modifiers, touch_phase: TouchPhase::Moved, kind: crate::ScrollKind::Wheel });
+                        out.push(ScrollWheelEvent {
+                            position,
+                            delta: ScrollDelta::Lines(lines),
+                            modifiers,
+                            touch_phase: TouchPhase::Moved,
+                            kind: crate::ScrollKind::Wheel,
+                        });
                     }
                     if stopped && std::mem::take(&mut state.scrolling) {
-                        out.push(ScrollWheelEvent { position, delta: ScrollDelta::Pixels(point(px(0.0), px(0.0))), modifiers, touch_phase: TouchPhase::Ended, kind });
+                        out.push(ScrollWheelEvent {
+                            position,
+                            delta: ScrollDelta::Pixels(point(px(0.0), px(0.0))),
+                            modifiers,
+                            touch_phase: TouchPhase::Ended,
+                            kind,
+                        });
                     }
                     drop(state);
                     for e in out {
@@ -2738,11 +2992,20 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for WaylandClientStatePtr {
                 let from_us = state.drag_out.is_some();
                 let types: Vec<String> = match &state.drag_out {
                     Some(out) => out.types.iter().map(|(t, _)| t.clone()).collect(),
-                    None => state.data_offers.iter().find(|o| o.inner.id() == data_offer.id()).map(|o| o.mime_types().to_vec()).unwrap_or_default(),
+                    None => state
+                        .data_offers
+                        .iter()
+                        .find(|o| o.inner.id() == data_offer.id())
+                        .map(|o| o.mime_types().to_vec())
+                        .unwrap_or_default(),
                 };
                 let source_actions = match &state.drag_out {
                     Some(out) => out.allowed,
-                    None => state.offer_actions.get(&data_offer.id()).copied().unwrap_or(DndAction::Copy),
+                    None => state
+                        .offer_actions
+                        .get(&data_offer.id())
+                        .copied()
+                        .unwrap_or(DndAction::Copy),
                 };
                 state.drag.data_offer = Some(data_offer.clone());
                 state.drag.window = Some(drag_window.clone());
@@ -2769,10 +3032,16 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for WaylandClientStatePtr {
                         data_offer.set_actions(DndAction::empty(), DndAction::empty());
                     }
                     if let Some(out) = &state.drag_out {
-                        offer.paths = out.types.iter().find(|(t, _)| t == FILE_LIST_MIME_TYPE).map(|(_, d)| uri_paths(d)).unwrap_or_default();
+                        offer.paths = out
+                            .types
+                            .iter()
+                            .find(|(t, _)| t == FILE_LIST_MIME_TYPE)
+                            .map(|(_, d)| uri_paths(d))
+                            .unwrap_or_default();
                     }
                     drop(state);
-                    drag_window.handle_input(PlatformInput::FileDrop(FileDropEvent::Offered(offer)));
+                    drag_window
+                        .handle_input(PlatformInput::FileDrop(FileDropEvent::Offered(offer)));
                     return;
                 }
                 if !types.iter().any(|t| t == FILE_LIST_MIME_TYPE) {
@@ -2780,7 +3049,8 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for WaylandClientStatePtr {
                     // other programs), offered to a window that decides.
                     data_offer.accept(serial, None);
                     drop(state);
-                    drag_window.handle_input(PlatformInput::FileDrop(FileDropEvent::Offered(offer)));
+                    drag_window
+                        .handle_input(PlatformInput::FileDrop(FileDropEvent::Offered(offer)));
                     return;
                 }
 
@@ -2823,12 +3093,15 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for WaylandClientStatePtr {
                         {
                             let client = this.get_client();
                             let state = client.borrow();
-                            if state.drag.data_offer.as_ref().map(|o| o.id()) != Some(data_offer.id()) {
+                            if state.drag.data_offer.as_ref().map(|o| o.id())
+                                != Some(data_offer.id())
+                            {
                                 return;
                             }
                         }
                         offer.paths = paths.iter().cloned().collect();
-                        drag_window.handle_input(PlatformInput::FileDrop(FileDropEvent::Offered(offer)));
+                        drag_window
+                            .handle_input(PlatformInput::FileDrop(FileDropEvent::Offered(offer)));
                         if paths.is_empty() {
                             return;
                         }
@@ -2869,28 +3142,54 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for WaylandClientStatePtr {
                 let Some(drag_window) = state.drag.window.clone() else {
                     return;
                 };
-                let Some(data_offer) = state.drag.data_offer.take() else { return };
+                let Some(data_offer) = state.drag.data_offer.take() else {
+                    return;
+                };
                 state.offer_actions.remove(&data_offer.id());
                 state.drag.window = None;
                 // Olo: a window that takes drops itself: what it took,
                 // read (our own drag's from what we gave), then handed it.
                 match state.drag.accept.take() {
                     Some(Some(accept)) => {
-                        let (types, from_us, position) = (std::mem::take(&mut state.drag.types), state.drag.from_us, state.drag.position);
+                        let (types, from_us, position) = (
+                            std::mem::take(&mut state.drag.types),
+                            state.drag.from_us,
+                            state.drag.position,
+                        );
                         let mime = accept.mime.clone();
-                        let dropped = move |data: Vec<u8>| crate::Dropped { target: accept.target.clone(), mime: accept.mime.clone(), data, action: accept.action, position, types: types.clone(), from_us };
+                        let dropped = move |data: Vec<u8>| crate::Dropped {
+                            target: accept.target.clone(),
+                            mime: accept.mime.clone(),
+                            data,
+                            action: accept.action,
+                            position,
+                            types: types.clone(),
+                            from_us,
+                        };
                         if from_us {
-                            let data = state.drag_out.as_ref().and_then(|out| out.types.iter().find(|(t, _)| *t == mime)).map(|(_, d)| d.to_vec()).unwrap_or_default();
+                            let data = state
+                                .drag_out
+                                .as_ref()
+                                .and_then(|out| out.types.iter().find(|(t, _)| *t == mime))
+                                .map(|(_, d)| d.to_vec())
+                                .unwrap_or_default();
                             data_offer.destroy();
                             drop(state);
-                            drag_window.handle_input(PlatformInput::FileDrop(FileDropEvent::Dropped(dropped(data))));
+                            drag_window.handle_input(PlatformInput::FileDrop(
+                                FileDropEvent::Dropped(dropped(data)),
+                            ));
                             return;
                         }
                         let pipe = Pipe::new().unwrap();
-                        data_offer.receive(mime, unsafe { BorrowedFd::borrow_raw(pipe.write.as_raw_fd()) });
+                        data_offer.receive(mime, unsafe {
+                            BorrowedFd::borrow_raw(pipe.write.as_raw_fd())
+                        });
                         let fd = pipe.read;
                         drop(pipe.write);
-                        let read = state.common.background_executor.spawn(async move { unsafe { read_fd(fd) } });
+                        let read = state
+                            .common
+                            .background_executor
+                            .spawn(async move { unsafe { read_fd(fd) } });
                         state
                             .common
                             .foreground_executor
@@ -2900,7 +3199,9 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for WaylandClientStatePtr {
                                     data_offer.finish();
                                 }
                                 data_offer.destroy();
-                                drag_window.handle_input(PlatformInput::FileDrop(FileDropEvent::Dropped(dropped(data))));
+                                drag_window.handle_input(PlatformInput::FileDrop(
+                                    FileDropEvent::Dropped(dropped(data)),
+                                ));
                             })
                             .detach();
                         return;
@@ -2989,10 +3290,18 @@ impl Dispatch<wl_data_source::WlDataSource, ()> for WaylandClientStatePtr {
         let mut state = client.borrow_mut();
 
         // Olo: our drag out.
-        if state.drag_out.as_ref().is_some_and(|d| &d.source == data_source) {
+        if state
+            .drag_out
+            .as_ref()
+            .is_some_and(|d| &d.source == data_source)
+        {
             match event {
                 wl_data_source::Event::Send { mime_type, fd } => {
-                    let bytes = state.drag_out.as_ref().and_then(|d| d.types.iter().find(|(t, _)| *t == mime_type)).map(|(_, b)| b.to_vec());
+                    let bytes = state
+                        .drag_out
+                        .as_ref()
+                        .and_then(|d| d.types.iter().find(|(t, _)| *t == mime_type))
+                        .map(|(_, b)| b.to_vec());
                     if let Some(bytes) = bytes {
                         state.clipboard.send_bytes(fd, bytes);
                     }
@@ -3143,15 +3452,28 @@ impl WaylandClientStatePtr {
     /// Olo: `done` gets the handle of the window on `surface` once it's
     /// exported (`Window::export_handle`); dropped if it closes first.
     pub fn wait_for_export(&self, surface: ObjectId, done: Box<dyn FnOnce(Option<String>)>) {
-        self.get_client().borrow_mut().export_requests.entry(surface).or_default().push(done);
+        self.get_client()
+            .borrow_mut()
+            .export_requests
+            .entry(surface)
+            .or_default()
+            .push(done);
     }
 
     /// Olo: a window closed: nothing waits for its handle any more.
     pub fn forget_export(&self, surface: &ObjectId) {
-        self.get_client().borrow_mut().export_requests.remove(surface);
+        self.get_client()
+            .borrow_mut()
+            .export_requests
+            .remove(surface);
     }
 
-    pub fn request_activation_token(&self, surface: &wl_surface::WlSurface, app_id: Option<String>, done: Box<dyn FnOnce(Option<String>)>) {
+    pub fn request_activation_token(
+        &self,
+        surface: &wl_surface::WlSurface,
+        app_id: Option<String>,
+        done: Box<dyn FnOnce(Option<String>)>,
+    ) {
         let client = self.get_client();
         let mut state = client.borrow_mut();
         let Some(activation) = state.globals.activation.clone() else {
@@ -3174,13 +3496,24 @@ impl WaylandClientStatePtr {
 
 /// Olo: a token asked for with `request_activation_token`.
 impl Dispatch<xdg_activation_token_v1::XdgActivationTokenV1, u64> for WaylandClientStatePtr {
-    fn event(this: &mut Self, token: &xdg_activation_token_v1::XdgActivationTokenV1, event: xdg_activation_token_v1::Event, id: &u64, _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        this: &mut Self,
+        token: &xdg_activation_token_v1::XdgActivationTokenV1,
+        event: xdg_activation_token_v1::Event,
+        id: &u64,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         if let xdg_activation_token_v1::Event::Done { token: made } = event {
             let client = this.get_client();
             let mut state = client.borrow_mut();
             if let Some(done) = state.token_requests.remove(id) {
                 // (Called once the state is free: it may open windows.)
-                state.common.foreground_executor.spawn(async move { done(Some(made)) }).detach();
+                state
+                    .common
+                    .foreground_executor
+                    .spawn(async move { done(Some(made)) })
+                    .detach();
             }
         }
         token.destroy();
@@ -3191,9 +3524,16 @@ impl Dispatch<xdg_activation_token_v1::XdgActivationTokenV1, u64> for WaylandCli
 /// without waiting.
 fn hung_up(connection: &Connection) -> bool {
     use std::os::fd::{AsFd as _, AsRawFd as _};
-    let mut fd = libc::pollfd { fd: connection.as_fd().as_raw_fd(), events: 0, revents: 0 };
+    let mut fd = libc::pollfd {
+        fd: connection.as_fd().as_raw_fd(),
+        events: 0,
+        revents: 0,
+    };
     // SAFETY: one pollfd, no wait.
-    unsafe { libc::poll(&mut fd, 1, 0) == 1 && fd.revents & (libc::POLLHUP | libc::POLLERR | libc::POLLNVAL) != 0 }
+    unsafe {
+        libc::poll(&mut fd, 1, 0) == 1
+            && fd.revents & (libc::POLLHUP | libc::POLLERR | libc::POLLNVAL) != 0
+    }
 }
 
 /// (Olo) The compositor's connection. In an Olo session `WAYLAND_DISPLAY`
@@ -3205,7 +3545,10 @@ fn hung_up(connection: &Connection) -> bool {
 /// over a replay and was left with dead windows (2026-11-01).
 fn connect() -> Result<Connection, wayland_client::ConnectError> {
     if std::env::var_os("OLO_SESSION").is_some()
-        && let (Some(dir), Ok(display)) = (std::env::var_os("XDG_RUNTIME_DIR"), std::env::var("WAYLAND_DISPLAY"))
+        && let (Some(dir), Ok(display)) = (
+            std::env::var_os("XDG_RUNTIME_DIR"),
+            std::env::var("WAYLAND_DISPLAY"),
+        )
         && !display.starts_with('/')
     {
         let direct = std::path::Path::new(&dir).join(format!("olo-{display}-direct"));
@@ -3227,7 +3570,11 @@ fn compositor_lost_check(state: &Rc<RefCell<WaylandClientState>>) {
     let (dead, gpu) = {
         let st = state.borrow();
         let gpu = crate::gpu_device_lost();
-        (!st.lost && (gpu || st.connection.protocol_error().is_some() || hung_up(&st.connection)), gpu)
+        (
+            !st.lost
+                && (gpu || st.connection.protocol_error().is_some() || hung_up(&st.connection)),
+            gpu,
+        )
     };
     if !dead {
         return;
@@ -3250,5 +3597,9 @@ fn compositor_lost_check(state: &Rc<RefCell<WaylandClientState>>) {
 
 /// Olo: the paths in a `text/uri-list`.
 fn uri_paths(data: &[u8]) -> Vec<std::path::PathBuf> {
-    String::from_utf8_lossy(data).lines().filter(|l| !l.starts_with('#')).filter_map(|l| crate::file_uri_path(l.trim())).collect()
+    String::from_utf8_lossy(data)
+        .lines()
+        .filter(|l| !l.starts_with('#'))
+        .filter_map(|l| crate::file_uri_path(l.trim()))
+        .collect()
 }

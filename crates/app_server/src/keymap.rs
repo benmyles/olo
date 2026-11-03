@@ -1148,17 +1148,7 @@ mod tests {
         assert_eq!(r.down(DOWN), [Key(END, true)]);
         assert_eq!(r.up(DOWN), [Key(END, false)]);
         // ⌘⌫ selects to the line start and deletes.
-        assert_eq!(
-            r.down(BACKSPACE),
-            [
-                Key(RIGHTCTRL, false),
-                Key(LEFTSHIFT, true),
-                Key(HOME, true),
-                Key(HOME, false),
-                Key(LEFTSHIFT, false),
-                Key(BACKSPACE, true)
-            ]
-        );
+        assert_eq!(r.down(BACKSPACE), [Key(RIGHTCTRL, false), Key(LEFTSHIFT, true), Key(HOME, true), Key(HOME, false), Key(LEFTSHIFT, false), Key(BACKSPACE, true)]);
         assert_eq!(r.up(BACKSPACE), [Key(BACKSPACE, false), Key(RIGHTCTRL, true)]);
         // Released ⌘ before the arrow: Ctrl stays up.
         r.down(RIGHT);
@@ -1462,10 +1452,7 @@ mod tests {
         r.down(LEFTMETA);
         r.down(LEFTSHIFT);
         r.down(TAB);
-        assert_eq!(
-            r.k.reset(),
-            [Key(LEFTSHIFT, false), Key(RIGHTCTRL, false), Out::Action(Action::SwitchDone)]
-        );
+        assert_eq!(r.k.reset(), [Key(LEFTSHIFT, false), Key(RIGHTCTRL, false), Out::Action(Action::SwitchDone)]);
         assert_eq!(r.up(TAB), [Key(TAB, false)]);
     }
 }

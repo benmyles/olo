@@ -164,7 +164,8 @@ impl Scene {
             return;
         }
         self.segments.extend_from_slice(&segments);
-        self.paint_operations.push(PaintOperation::Segments(segments));
+        self.paint_operations
+            .push(PaintOperation::Segments(segments));
     }
 
     /// Olo: many glyphs' sprites at once (`Window::paint_glyphs`, a
@@ -187,7 +188,8 @@ impl Scene {
             return;
         }
         self.record_runs(start);
-        self.paint_operations.push(PaintOperation::Sprites(start..end));
+        self.paint_operations
+            .push(PaintOperation::Sprites(start..end));
     }
 
     /// Notes the sprites added to `mono_staging` from `start` as runs of
@@ -204,11 +206,19 @@ impl Scene {
             let next = key(&self.mono_staging[i]);
             if next != k {
                 sorted &= next > k;
-                self.mono_runs.push(SpriteRun { order: k.0, texture: k.1, range: from as u32..i as u32 });
+                self.mono_runs.push(SpriteRun {
+                    order: k.0,
+                    texture: k.1,
+                    range: from as u32..i as u32,
+                });
                 (k, from) = (next, i);
             }
         }
-        self.mono_runs.push(SpriteRun { order: k.0, texture: k.1, range: from as u32..self.mono_staging.len() as u32 });
+        self.mono_runs.push(SpriteRun {
+            order: k.0,
+            texture: k.1,
+            range: from as u32..self.mono_staging.len() as u32,
+        });
         if !sorted {
             // Glyphs of several textures in one line, interleaved: those
             // of each together, as one batch.
@@ -223,7 +233,9 @@ impl Scene {
             match operation {
                 PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
                 PaintOperation::Segments(segments) => self.insert_segments(segments.clone()),
-                PaintOperation::Sprites(range) => self.insert_sprites(prev_scene.mono_staging[range.clone()].iter().cloned()),
+                PaintOperation::Sprites(range) => {
+                    self.insert_sprites(prev_scene.mono_staging[range.clone()].iter().cloned())
+                }
                 PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
                 PaintOperation::EndLayer => self.pop_layer(),
             }
@@ -255,10 +267,16 @@ impl Scene {
                     Primitive::Sector(x) => by_mask(&x.content_mask),
                     Primitive::MonochromeSprite(x) => by_mask(&x.content_mask),
                     Primitive::PolychromeSprite(x) => by_mask(&x.content_mask),
-                    Primitive::Path(_) | Primitive::ImageTriangle(_) | Primitive::Surface(_) => return Movable { x: false, y: false },
+                    Primitive::Path(_) | Primitive::ImageTriangle(_) | Primitive::Surface(_) => {
+                        return Movable { x: false, y: false };
+                    }
                 },
-                PaintOperation::Segments(segments) => segments.iter().for_each(|x| by_mask(&x.content_mask)),
-                PaintOperation::Sprites(sprites) => self.mono_staging[sprites.clone()].iter().for_each(|x| by_mask(&x.content_mask)),
+                PaintOperation::Segments(segments) => {
+                    segments.iter().for_each(|x| by_mask(&x.content_mask))
+                }
+                PaintOperation::Sprites(sprites) => self.mono_staging[sprites.clone()]
+                    .iter()
+                    .for_each(|x| by_mask(&x.content_mask)),
                 PaintOperation::StartLayer(_) | PaintOperation::EndLayer => {}
             }
         }
@@ -270,8 +288,17 @@ impl Scene {
     /// painted being [`Scene::movable`].
     /// Whether `mask` cut anything moved (then, it isn't to be moved
     /// again before it's painted afresh: what was cut is gone from it).
-    pub(crate) fn replay_moved(&mut self, range: Range<usize>, prev_scene: &Scene, by: Point<ScaledPixels>, mask: &ContentMask<ScaledPixels>) -> bool {
-        let mv = |b: Bounds<ScaledPixels>| Bounds { origin: b.origin + by, size: b.size };
+    pub(crate) fn replay_moved(
+        &mut self,
+        range: Range<usize>,
+        prev_scene: &Scene,
+        by: Point<ScaledPixels>,
+        mask: &ContentMask<ScaledPixels>,
+    ) -> bool {
+        let mv = |b: Bounds<ScaledPixels>| Bounds {
+            origin: b.origin + by,
+            size: b.size,
+        };
         let culled = self.culled;
         let cut = std::cell::Cell::new(false);
         // (A clip of its own moves with it, cut by what it's painted in.)
@@ -289,9 +316,15 @@ impl Scene {
                 PaintOperation::Primitive(primitive) => {
                     let mut p = primitive.clone();
                     match &mut p {
-                        Primitive::Shadow(x) => (x.bounds, _) = (mv(x.bounds), clip(&mut x.content_mask)),
-                        Primitive::Quad(x) => (x.bounds, _) = (mv(x.bounds), clip(&mut x.content_mask)),
-                        Primitive::Underline(x) => (x.bounds, _) = (mv(x.bounds), clip(&mut x.content_mask)),
+                        Primitive::Shadow(x) => {
+                            (x.bounds, _) = (mv(x.bounds), clip(&mut x.content_mask))
+                        }
+                        Primitive::Quad(x) => {
+                            (x.bounds, _) = (mv(x.bounds), clip(&mut x.content_mask))
+                        }
+                        Primitive::Underline(x) => {
+                            (x.bounds, _) = (mv(x.bounds), clip(&mut x.content_mask))
+                        }
                         Primitive::Segment(x) => {
                             x.bounds = mv(x.bounds);
                             (x.from, x.to, x.bottom) = (x.from + by, x.to + by, x.bottom + by.y);
@@ -301,9 +334,15 @@ impl Scene {
                             (x.bounds, x.center) = (mv(x.bounds), x.center + by);
                             clip(&mut x.content_mask);
                         }
-                        Primitive::MonochromeSprite(x) => (x.bounds, _) = (mv(x.bounds), clip(&mut x.content_mask)),
-                        Primitive::PolychromeSprite(x) => (x.bounds, _) = (mv(x.bounds), clip(&mut x.content_mask)),
-                        Primitive::Path(_) | Primitive::ImageTriangle(_) | Primitive::Surface(_) => {}
+                        Primitive::MonochromeSprite(x) => {
+                            (x.bounds, _) = (mv(x.bounds), clip(&mut x.content_mask))
+                        }
+                        Primitive::PolychromeSprite(x) => {
+                            (x.bounds, _) = (mv(x.bounds), clip(&mut x.content_mask))
+                        }
+                        Primitive::Path(_)
+                        | Primitive::ImageTriangle(_)
+                        | Primitive::Surface(_) => {}
                     }
                     self.insert_primitive(p);
                 }
@@ -319,12 +358,14 @@ impl Scene {
                         })
                         .collect(),
                 ),
-                PaintOperation::Sprites(sprites) => self.insert_sprites(prev_scene.mono_staging[sprites.clone()].iter().map(|x| {
-                    let mut x = x.clone();
-                    x.bounds = mv(x.bounds);
-                    clip(&mut x.content_mask);
-                    x
-                })),
+                PaintOperation::Sprites(sprites) => {
+                    self.insert_sprites(prev_scene.mono_staging[sprites.clone()].iter().map(|x| {
+                        let mut x = x.clone();
+                        x.bounds = mv(x.bounds);
+                        clip(&mut x.content_mask);
+                        x
+                    }))
+                }
                 PaintOperation::StartLayer(bounds) => self.push_layer(mv(*bounds)),
                 PaintOperation::EndLayer => self.pop_layer(),
             }
@@ -350,7 +391,9 @@ impl Scene {
         self.monochrome_sprites.clear();
         self.monochrome_sprites.reserve(self.mono_staging.len());
         for run in &self.mono_runs {
-            self.monochrome_sprites.extend_from_slice(&self.mono_staging[run.range.start as usize..run.range.end as usize]);
+            self.monochrome_sprites.extend_from_slice(
+                &self.mono_staging[run.range.start as usize..run.range.end as usize],
+            );
         }
         self.polychrome_sprites
             .sort_by_key(|sprite| (sprite.order, texture_key(&sprite.tile)));
@@ -390,21 +433,49 @@ impl Scene {
             }
             let c = shown(q);
             if plain(q) {
-                return Some(Bounds { origin: point(ScaledPixels(c.origin.x.0 + 0.01), ScaledPixels(c.origin.y.0 + 0.01)), size: size(ScaledPixels(c.size.width.0 - 0.02), ScaledPixels(c.size.height.0 - 0.02)) });
+                return Some(Bounds {
+                    origin: point(
+                        ScaledPixels(c.origin.x.0 + 0.01),
+                        ScaledPixels(c.origin.y.0 + 0.01),
+                    ),
+                    size: size(
+                        ScaledPixels(c.size.width.0 - 0.02),
+                        ScaledPixels(c.size.height.0 - 0.02),
+                    ),
+                });
             }
             let bordered = q.border_widths != Edges::default();
             if bordered && (q.border_color.a < 1.0 || q.border_style != BorderStyle::Solid) {
                 return None;
             }
             let r = q.corner_radii;
-            let dy = r.top_left.0.max(r.top_right.0).max(r.bottom_left.0).max(r.bottom_right.0) + 1.0;
+            let dy = r
+                .top_left
+                .0
+                .max(r.top_right.0)
+                .max(r.bottom_left.0)
+                .max(r.bottom_right.0)
+                + 1.0;
             let b = q.bounds;
-            let band = Bounds { origin: point(ScaledPixels(b.origin.x.0 + 1.0), ScaledPixels(b.origin.y.0 + dy)), size: size(ScaledPixels(b.size.width.0 - 2.0), ScaledPixels(b.size.height.0 - 2.0 * dy)) };
+            let band = Bounds {
+                origin: point(
+                    ScaledPixels(b.origin.x.0 + 1.0),
+                    ScaledPixels(b.origin.y.0 + dy),
+                ),
+                size: size(
+                    ScaledPixels(b.size.width.0 - 2.0),
+                    ScaledPixels(b.size.height.0 - 2.0 * dy),
+                ),
+            };
             Some(band.intersect(&q.content_mask.bounds))
         };
         // Each quad's, found once. (The pieces a quad is cut into below
         // cover nothing: what's under them is done.)
-        let mut covers: Vec<Option<Bounds<ScaledPixels>>> = self.quads.iter().map(|q| cover(q).filter(|c| c.size.width.0 > 0.0 && c.size.height.0 > 0.0)).collect();
+        let mut covers: Vec<Option<Bounds<ScaledPixels>>> = self
+            .quads
+            .iter()
+            .map(|q| cover(q).filter(|c| c.size.width.0 > 0.0 && c.size.height.0 > 0.0))
+            .collect();
         let mut over = Vec::new();
         let mut i = 0;
         while i < self.quads.len() {
@@ -438,7 +509,10 @@ impl Scene {
             }
             // (Less the slivers the hair leaves where a cover's edge is one
             // of the quad's: it draws those pixels itself.)
-            let left: Vec<_> = uncovered(a, &over).into_iter().filter(|r| r.size.width.0 >= 0.05 && r.size.height.0 >= 0.05).collect();
+            let left: Vec<_> = uncovered(a, &over)
+                .into_iter()
+                .filter(|r| r.size.width.0 >= 0.05 && r.size.height.0 >= 0.05)
+                .collect();
             if left.is_empty() {
                 self.quads.remove(i);
                 covers.remove(i);
@@ -447,7 +521,14 @@ impl Scene {
             let kept: f32 = left.iter().map(area).sum();
             if flat && kept < 0.75 * area(&a) && left.len() <= MOST_PIECES {
                 let q = self.quads[i].clone();
-                let pieces: Vec<Quad> = left.into_iter().filter(|r| area(r) > 0.0).map(|r| Quad { bounds: r, ..q.clone() }).collect();
+                let pieces: Vec<Quad> = left
+                    .into_iter()
+                    .filter(|r| area(r) > 0.0)
+                    .map(|r| Quad {
+                        bounds: r,
+                        ..q.clone()
+                    })
+                    .collect();
                 let n = pieces.len();
                 self.quads.splice(i..i + 1, pieces);
                 covers.splice(i..i + 1, std::iter::repeat_n(None, n));
@@ -763,7 +844,9 @@ impl<'a> Iterator for BatchIterator<'a> {
                     segments_end += 1;
                 }
                 self.segments_start = segments_end;
-                Some(PrimitiveBatch::Segments(&self.segments[segments_start..segments_end]))
+                Some(PrimitiveBatch::Segments(
+                    &self.segments[segments_start..segments_end],
+                ))
             }
             PrimitiveKind::Sector => {
                 let sectors_start = self.sectors_start;
@@ -777,7 +860,9 @@ impl<'a> Iterator for BatchIterator<'a> {
                     sectors_end += 1;
                 }
                 self.sectors_start = sectors_end;
-                Some(PrimitiveBatch::Sectors(&self.sectors[sectors_start..sectors_end]))
+                Some(PrimitiveBatch::Sectors(
+                    &self.sectors[sectors_start..sectors_end],
+                ))
             }
             PrimitiveKind::MonochromeSprite => {
                 let texture_id = self.monochrome_sprites_iter.peek().unwrap().tile.texture_id;
@@ -1368,15 +1453,30 @@ impl PathVertex<Pixels> {
 /// stretches between them, a stretch the bands below have too going on
 /// down (a grid of cards on a paper leaves its gutters, a few pieces a
 /// row).
-fn uncovered(r: Bounds<ScaledPixels>, covers: &[Bounds<ScaledPixels>]) -> Vec<Bounds<ScaledPixels>> {
-    let (rl, rt, rr, rb) = (r.origin.x.0, r.origin.y.0, r.origin.x.0 + r.size.width.0, r.origin.y.0 + r.size.height.0);
+fn uncovered(
+    r: Bounds<ScaledPixels>,
+    covers: &[Bounds<ScaledPixels>],
+) -> Vec<Bounds<ScaledPixels>> {
+    let (rl, rt, rr, rb) = (
+        r.origin.x.0,
+        r.origin.y.0,
+        r.origin.x.0 + r.size.width.0,
+        r.origin.y.0 + r.size.height.0,
+    );
     // Each cover as it is over `r`: left, top, right, bottom. (Not one
     // too small to be worth its bands: a toolbar's button.)
     let least = (rr - rl) * (rb - rt) / 1000.0;
     let area = |c: &[f32; 4]| (c[2] - c[0]) * (c[3] - c[1]);
     let mut cs: Vec<[f32; 4]> = covers
         .iter()
-        .map(|c| [c.origin.x.0.max(rl), c.origin.y.0.max(rt), (c.origin.x.0 + c.size.width.0).min(rr), (c.origin.y.0 + c.size.height.0).min(rb)])
+        .map(|c| {
+            [
+                c.origin.x.0.max(rl),
+                c.origin.y.0.max(rt),
+                (c.origin.x.0 + c.size.width.0).min(rr),
+                (c.origin.y.0 + c.size.height.0).min(rb),
+            ]
+        })
         .filter(|c| c[0] < c[2] && c[1] < c[3] && area(c) >= least)
         .collect();
     // Less those inside a bigger one (the cards on a window's paper),
@@ -1385,22 +1485,38 @@ fn uncovered(r: Bounds<ScaledPixels>, covers: &[Bounds<ScaledPixels>]) -> Vec<Bo
     let mut kept = 0;
     for k in 0..cs.len() {
         let c = cs[k];
-        if !cs[..kept].iter().any(|o| o[0] <= c[0] && o[1] <= c[1] && c[2] <= o[2] && c[3] <= o[3]) {
+        if !cs[..kept]
+            .iter()
+            .any(|o| o[0] <= c[0] && o[1] <= c[1] && c[2] <= o[2] && c[3] <= o[3])
+        {
             cs[kept] = c;
             kept += 1;
         }
     }
     cs.truncate(kept);
     cs.sort_by(|a, b| a[1].total_cmp(&b[1]));
-    let mut ys: Vec<f32> = cs.iter().flat_map(|c| [c[1], c[3]]).chain([rt, rb]).collect();
+    let mut ys: Vec<f32> = cs
+        .iter()
+        .flat_map(|c| [c[1], c[3]])
+        .chain([rt, rb])
+        .collect();
     ys.sort_by(f32::total_cmp);
     ys.dedup();
-    let rect = |l: f32, t: f32, r: f32, b: f32| Bounds { origin: point(ScaledPixels(l), ScaledPixels(t)), size: size(ScaledPixels(r - l), ScaledPixels(b - t)) };
+    let rect = |l: f32, t: f32, r: f32, b: f32| Bounds {
+        origin: point(ScaledPixels(l), ScaledPixels(t)),
+        size: size(ScaledPixels(r - l), ScaledPixels(b - t)),
+    };
     let mut out = Vec::new();
     // The stretches open in the bands so far, left to right: left,
     // right, since where.
-    let (mut open, mut going): (Vec<(f32, f32, f32)>, Vec<(f32, f32, f32)>) = (Vec::new(), Vec::new());
-    let (mut next, mut active, mut spans, mut free): (usize, Vec<[f32; 4]>, Vec<(f32, f32)>, Vec<(f32, f32)>) = (0, Vec::new(), Vec::new(), Vec::new());
+    let (mut open, mut going): (Vec<(f32, f32, f32)>, Vec<(f32, f32, f32)>) =
+        (Vec::new(), Vec::new());
+    let (mut next, mut active, mut spans, mut free): (
+        usize,
+        Vec<[f32; 4]>,
+        Vec<(f32, f32)>,
+        Vec<(f32, f32)>,
+    ) = (0, Vec::new(), Vec::new(), Vec::new());
     for band in ys.windows(2) {
         let (y0, y1) = (band[0], band[1]);
         active.retain(|c| c[3] > y0);
@@ -1464,37 +1580,62 @@ mod cull_tests {
     use crate::{hsla, solid_background};
 
     fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<ScaledPixels> {
-        Bounds { origin: point(ScaledPixels(x), ScaledPixels(y)), size: size(ScaledPixels(w), ScaledPixels(h)) }
+        Bounds {
+            origin: point(ScaledPixels(x), ScaledPixels(y)),
+            size: size(ScaledPixels(w), ScaledPixels(h)),
+        }
     }
 
     fn quad(order: u32, b: Bounds<ScaledPixels>, alpha: f32) -> Quad {
-        Quad { order, bounds: b, content_mask: ContentMask { bounds: rect(0.0, 0.0, 4000.0, 4000.0) }, background: solid_background(hsla(0.5, 0.5, 0.5, alpha)), ..Default::default() }
+        Quad {
+            order,
+            bounds: b,
+            content_mask: ContentMask {
+                bounds: rect(0.0, 0.0, 4000.0, 4000.0),
+            },
+            background: solid_background(hsla(0.5, 0.5, 0.5, alpha)),
+            ..Default::default()
+        }
     }
 
     #[test]
     fn a_ground_under_others_is_cut_to_what_shows() {
         let mut s = Scene::default();
         // The window's ground, a bar across its top, a view's ground under.
-        s.quads = vec![quad(0, rect(0.0, 0.0, 1000.0, 800.0), 1.0), quad(1, rect(0.0, 0.0, 1000.0, 50.0), 1.0), quad(2, rect(0.0, 50.0, 1000.0, 700.0), 1.0)];
+        s.quads = vec![
+            quad(0, rect(0.0, 0.0, 1000.0, 800.0), 1.0),
+            quad(1, rect(0.0, 0.0, 1000.0, 50.0), 1.0),
+            quad(2, rect(0.0, 50.0, 1000.0, 700.0), 1.0),
+        ];
         s.cull_hidden_quads();
         // The ground is left only below the view (50 + 700 to 800).
         let grounds: Vec<_> = s.quads.iter().filter(|q| q.order == 0).collect();
         assert_eq!(grounds.len(), 1);
         let b = grounds[0].bounds;
-        assert!((b.origin.y.0 - 750.0).abs() < 0.02 && (b.origin.y.0 + b.size.height.0 - 800.0).abs() < 0.02, "{b:?}");
+        assert!(
+            (b.origin.y.0 - 750.0).abs() < 0.02
+                && (b.origin.y.0 + b.size.height.0 - 800.0).abs() < 0.02,
+            "{b:?}"
+        );
         assert_eq!(s.quads.len(), 3);
     }
 
     #[test]
     fn hidden_wholly_goes_and_see_through_covers_nothing() {
         let mut s = Scene::default();
-        s.quads = vec![quad(0, rect(0.0, 0.0, 500.0, 500.0), 1.0), quad(1, rect(0.0, 0.0, 600.0, 600.0), 1.0)];
+        s.quads = vec![
+            quad(0, rect(0.0, 0.0, 500.0, 500.0), 1.0),
+            quad(1, rect(0.0, 0.0, 600.0, 600.0), 1.0),
+        ];
         s.cull_hidden_quads();
         assert_eq!(s.quads.len(), 1);
         assert_eq!(s.quads[0].order, 1);
         // Over it half see-through: it stays whole.
         let mut s = Scene::default();
-        s.quads = vec![quad(0, rect(0.0, 0.0, 500.0, 500.0), 1.0), quad(1, rect(0.0, 0.0, 600.0, 600.0), 0.5)];
+        s.quads = vec![
+            quad(0, rect(0.0, 0.0, 500.0, 500.0), 1.0),
+            quad(1, rect(0.0, 0.0, 600.0, 600.0), 0.5),
+        ];
         s.cull_hidden_quads();
         assert_eq!(s.quads.len(), 2);
         assert_eq!(s.quads[0].bounds, rect(0.0, 0.0, 500.0, 500.0));
@@ -1510,26 +1651,53 @@ mod cull_tests {
         // cuts the ground, before the paper's turn.)
         quads.push(quad(2, rect(0.0, 0.0, 3153.0, 39.0), 1.0));
         for k in 0..12 {
-            quads.push(quad(2, rect(10.0 + k as f32 * 200.0, 50.0, 150.0, 32.0), 1.0));
+            quads.push(quad(
+                2,
+                rect(10.0 + k as f32 * 200.0, 50.0, 150.0, 32.0),
+                1.0,
+            ));
         }
         quads.push(quad(2, rect(2.0, 101.0, 3128.0, 2033.0), 1.0));
         for i in 0..40 {
-            let mut card = quad(3, rect(20.0 + (i % 5) as f32 * 600.0, 120.0 + (i / 5) as f32 * 250.0, 560.0, 230.0), 1.0);
+            let mut card = quad(
+                3,
+                rect(
+                    20.0 + (i % 5) as f32 * 600.0,
+                    120.0 + (i / 5) as f32 * 250.0,
+                    560.0,
+                    230.0,
+                ),
+                1.0,
+            );
             card.corner_radii = Corners::all(ScaledPixels(7.5));
             quads.push(card);
         }
         s.quads = quads;
         s.cull_hidden_quads();
         let screen = 3153.0 * 2163.0;
-        let left = |order: u32| -> f32 { s.quads.iter().filter(|q| q.order == order).map(|q| q.bounds.size.width.0 * q.bounds.size.height.0).sum() };
-        assert!(left(1) < screen * 0.1, "the ground left: {:.2} screens", left(1) / screen);
+        let left = |order: u32| -> f32 {
+            s.quads
+                .iter()
+                .filter(|q| q.order == order)
+                .map(|q| q.bounds.size.width.0 * q.bounds.size.height.0)
+                .sum()
+        };
+        assert!(
+            left(1) < screen * 0.1,
+            "the ground left: {:.2} screens",
+            left(1) / screen
+        );
         // The paper only between the cards and by their corners (the
         // bands between their corners are 0.75 of it), in a few pieces a
         // row of cards.
         let paper = 3128.0 * 2033.0;
         let bars = 12.0 * 150.0 * 32.0 + 3153.0 * 39.0;
         let pieces = s.quads.iter().filter(|q| q.order == 2).count() - 13;
-        assert!(((left(2) - bars) / paper - 0.25).abs() < 0.01, "the paper left: {:.3} of it", (left(2) - bars) / paper);
+        assert!(
+            ((left(2) - bars) / paper - 0.25).abs() < 0.01,
+            "the paper left: {:.3} of it",
+            (left(2) - bars) / paper
+        );
         assert!(pieces <= 8 * 8 + 2, "{pieces} pieces");
     }
 
@@ -1539,21 +1707,49 @@ mod cull_tests {
     fn uncovered_is_the_rest_exactly() {
         let mut seed = 12345u64;
         let mut rand = |n: f32| {
-            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             (seed >> 33) as f32 / (1u64 << 31) as f32 * n
         };
         for _ in 0..200 {
-            let r = rect(rand(50.0).floor(), rand(50.0).floor(), 200.0 + rand(400.0).floor(), 200.0 + rand(400.0).floor());
-            let covers: Vec<_> = (0..(rand(30.0) as usize)).map(|_| rect(rand(700.0).floor(), rand(700.0).floor(), 20.0 + rand(250.0).floor(), 20.0 + rand(250.0).floor())).collect();
+            let r = rect(
+                rand(50.0).floor(),
+                rand(50.0).floor(),
+                200.0 + rand(400.0).floor(),
+                200.0 + rand(400.0).floor(),
+            );
+            let covers: Vec<_> = (0..(rand(30.0) as usize))
+                .map(|_| {
+                    rect(
+                        rand(700.0).floor(),
+                        rand(700.0).floor(),
+                        20.0 + rand(250.0).floor(),
+                        20.0 + rand(250.0).floor(),
+                    )
+                })
+                .collect();
             let least = r.size.width.0 * r.size.height.0 / 1000.0;
             let left = uncovered(r, &covers);
             for gx in 0..60 {
                 for gy in 0..60 {
-                    let p = point(ScaledPixels(r.origin.x.0 + (gx as f32 + 0.37) * r.size.width.0 / 60.0), ScaledPixels(r.origin.y.0 + (gy as f32 + 0.41) * r.size.height.0 / 60.0));
+                    let p = point(
+                        ScaledPixels(r.origin.x.0 + (gx as f32 + 0.37) * r.size.width.0 / 60.0),
+                        ScaledPixels(r.origin.y.0 + (gy as f32 + 0.41) * r.size.height.0 / 60.0),
+                    );
                     // (A cover too small to count may leave what's under it.)
-                    let under = covers.iter().filter(|c| c.intersect(&r).size.width.0 * c.intersect(&r).size.height.0 >= least).any(|c| c.contains(&p));
+                    let under = covers
+                        .iter()
+                        .filter(|c| {
+                            c.intersect(&r).size.width.0 * c.intersect(&r).size.height.0 >= least
+                        })
+                        .any(|c| c.contains(&p));
                     let pieces = left.iter().filter(|b| b.contains(&p)).count();
-                    assert_eq!(pieces, if under { 0 } else { 1 }, "{p:?} in {r:?} under {covers:?}: {left:?}");
+                    assert_eq!(
+                        pieces,
+                        if under { 0 } else { 1 },
+                        "{p:?} in {r:?} under {covers:?}: {left:?}"
+                    );
                 }
             }
         }
@@ -1567,9 +1763,17 @@ mod cull_tests {
         s.quads = vec![quad(0, rect(0.0, 0.0, 500.0, 500.0), 1.0), over];
         s.cull_hidden_quads();
         // Left: above its corners' band, and a pixel at its side.
-        let under: Vec<_> = s.quads.iter().filter(|q| q.order == 0).map(|q| q.bounds).collect();
+        let under: Vec<_> = s
+            .quads
+            .iter()
+            .filter(|q| q.order == 0)
+            .map(|q| q.bounds)
+            .collect();
         let area: f32 = under.iter().map(|b| b.size.width.0 * b.size.height.0).sum();
-        assert!((area - (500.0 * 5.0 + 1.0 * 495.0)).abs() < 1.0, "{under:?}");
+        assert!(
+            (area - (500.0 * 5.0 + 1.0 * 495.0)).abs() < 1.0,
+            "{under:?}"
+        );
         // A see-through border, or a dashed one, hides nothing.
         for (alpha, style) in [(0.5, BorderStyle::Solid), (1.0, BorderStyle::Dashed)] {
             let mut s = Scene::default();
@@ -1592,18 +1796,32 @@ mod tests {
     use crate::{AtlasTextureId, AtlasTextureKind, DevicePixels, TileId, TransformationMatrix};
 
     fn sprite(x: f32, texture: u32, id: u32) -> MonochromeSprite {
-        let b = Bounds { origin: point(ScaledPixels(x), ScaledPixels(0.0)), size: size(ScaledPixels(8.0), ScaledPixels(8.0)) };
+        let b = Bounds {
+            origin: point(ScaledPixels(x), ScaledPixels(0.0)),
+            size: size(ScaledPixels(8.0), ScaledPixels(8.0)),
+        };
         MonochromeSprite {
             order: 0,
             coverage: 0,
             bounds: b,
-            content_mask: ContentMask { bounds: Bounds { origin: point(ScaledPixels(-1e4), ScaledPixels(-1e4)), size: size(ScaledPixels(2e4), ScaledPixels(2e4)) } },
+            content_mask: ContentMask {
+                bounds: Bounds {
+                    origin: point(ScaledPixels(-1e4), ScaledPixels(-1e4)),
+                    size: size(ScaledPixels(2e4), ScaledPixels(2e4)),
+                },
+            },
             color: Hsla::default(),
             tile: AtlasTile {
-                texture_id: AtlasTextureId { index: texture, kind: AtlasTextureKind::Monochrome },
+                texture_id: AtlasTextureId {
+                    index: texture,
+                    kind: AtlasTextureKind::Monochrome,
+                },
                 tile_id: TileId(id),
                 padding: 0,
-                bounds: Bounds { origin: point(DevicePixels(0), DevicePixels(0)), size: size(DevicePixels(8), DevicePixels(8)) },
+                bounds: Bounds {
+                    origin: point(DevicePixels(0), DevicePixels(0)),
+                    size: size(DevicePixels(8), DevicePixels(8)),
+                },
             },
             transformation: TransformationMatrix::unit(),
         }
@@ -1623,11 +1841,20 @@ mod tests {
         };
         for line in 0..6 {
             let x = (line % 3) as f32 * 30.0;
-            let bounds = Bounds { origin: point(ScaledPixels(x), ScaledPixels(0.0)), size: size(ScaledPixels(40.0), ScaledPixels(8.0)) };
+            let bounds = Bounds {
+                origin: point(ScaledPixels(x), ScaledPixels(0.0)),
+                size: size(ScaledPixels(40.0), ScaledPixels(8.0)),
+            };
             scene.push_layer(bounds);
-            let glyphs: Vec<_> = (0..5).map(|g| next(x + g as f32, if line == 4 { g % 2 } else { 0 })).collect();
+            let glyphs: Vec<_> = (0..5)
+                .map(|g| next(x + g as f32, if line == 4 { g % 2 } else { 0 }))
+                .collect();
             scene.insert_sprites(glyphs.clone());
-            painted.extend(glyphs.into_iter().map(|g| (g, *scene.layer_stack.last().unwrap())));
+            painted.extend(
+                glyphs
+                    .into_iter()
+                    .map(|g| (g, *scene.layer_stack.last().unwrap())),
+            );
             scene.pop_layer();
             let alone = next(x + 3.0, 1);
             scene.insert_primitive(alone.clone());
@@ -1637,14 +1864,26 @@ mod tests {
         scene.finish();
         // (Each as it went in, with the order the scene gave it, sorted
         // by order and texture the way finish sorted every sprite.)
-        let mut expected: Vec<_> = painted.into_iter().map(|(s, order)| (order, texture_key(&s.tile), s.tile.tile_id)).collect();
+        let mut expected: Vec<_> = painted
+            .into_iter()
+            .map(|(s, order)| (order, texture_key(&s.tile), s.tile.tile_id))
+            .collect();
         expected.sort_by_key(|(order, texture, _)| (*order, *texture));
-        let got: Vec<_> = scene.monochrome_sprites.iter().map(|s| (s.order, texture_key(&s.tile), s.tile.tile_id)).collect();
+        let got: Vec<_> = scene
+            .monochrome_sprites
+            .iter()
+            .map(|s| (s.order, texture_key(&s.tile), s.tile.tile_id))
+            .collect();
         assert_eq!(got, expected);
     }
 
     fn mask(x: f32, y: f32, w: f32, h: f32) -> ContentMask<ScaledPixels> {
-        ContentMask { bounds: Bounds { origin: point(ScaledPixels(x), ScaledPixels(y)), size: size(ScaledPixels(w), ScaledPixels(h)) } }
+        ContentMask {
+            bounds: Bounds {
+                origin: point(ScaledPixels(x), ScaledPixels(y)),
+                size: size(ScaledPixels(w), ScaledPixels(h)),
+            },
+        }
     }
 
     /// Olo: a list's row, its cells clipped each to its own, moves with
@@ -1665,15 +1904,48 @@ mod tests {
         assert_eq!(scene.movable(0..n, &list), Movable { x: false, y: true });
         // Moved up 95 pixels: still inside, nothing cut.
         let mut next = Scene::default();
-        assert!(!next.replay_moved(0..n, &scene, point(ScaledPixels(0.0), ScaledPixels(-95.0)), &list));
-        let moved: Vec<_> = next.mono_staging.iter().map(|g| (g.bounds.origin.y.0, g.content_mask.clone())).collect();
-        assert_eq!(moved, vec![(7.0, mask(0.0, 5.0, 100.0, 20.0)), (7.0, mask(100.0, 5.0, 300.0, 20.0))]);
+        assert!(!next.replay_moved(
+            0..n,
+            &scene,
+            point(ScaledPixels(0.0), ScaledPixels(-95.0)),
+            &list
+        ));
+        let moved: Vec<_> = next
+            .mono_staging
+            .iter()
+            .map(|g| (g.bounds.origin.y.0, g.content_mask.clone()))
+            .collect();
+        assert_eq!(
+            moved,
+            vec![
+                (7.0, mask(0.0, 5.0, 100.0, 20.0)),
+                (7.0, mask(100.0, 5.0, 300.0, 20.0))
+            ]
+        );
         // Moved up 105: its top 5 cut by the list's clip (and so not to be
         // moved again till it's painted afresh).
         let mut next = Scene::default();
-        assert!(next.replay_moved(0..n, &scene, point(ScaledPixels(0.0), ScaledPixels(-105.0)), &list), "cut where it landed");
-        let moved: Vec<_> = next.mono_staging.iter().map(|g| (g.bounds.origin.y.0, g.content_mask.clone())).collect();
-        assert_eq!(moved, vec![(-3.0, mask(0.0, 0.0, 100.0, 15.0)), (-3.0, mask(100.0, 0.0, 300.0, 15.0))]);
+        assert!(
+            next.replay_moved(
+                0..n,
+                &scene,
+                point(ScaledPixels(0.0), ScaledPixels(-105.0)),
+                &list
+            ),
+            "cut where it landed"
+        );
+        let moved: Vec<_> = next
+            .mono_staging
+            .iter()
+            .map(|g| (g.bounds.origin.y.0, g.content_mask.clone()))
+            .collect();
+        assert_eq!(
+            moved,
+            vec![
+                (-3.0, mask(0.0, 0.0, 100.0, 15.0)),
+                (-3.0, mask(100.0, 0.0, 300.0, 15.0))
+            ]
+        );
         // A row the list's clip cut (at its top) is drawn again instead.
         let mut cut = Scene::default();
         let mut glyph = sprite(4.0, 0, 1);

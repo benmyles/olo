@@ -152,7 +152,6 @@ impl Application {
         self
     }
 
-
     /// Start the application. The provided callback will be called once the
     /// app is fully launched.
     pub fn run<F>(self, on_finish_launching: F)
@@ -690,7 +689,9 @@ impl App {
             move || {
                 if let Some(app) = app.upgrade() {
                     let cx = &mut app.borrow_mut();
-                    cx.compositor_lost_observers.clone().retain(&(), move |callback| (callback)(cx));
+                    cx.compositor_lost_observers
+                        .clone()
+                        .retain(&(), move |callback| (callback)(cx));
                 }
             }
         }));
@@ -701,7 +702,9 @@ impl App {
             move || {
                 if let Some(app) = app.upgrade() {
                     let cx = &mut app.borrow_mut();
-                    cx.displays_observers.clone().retain(&(), move |callback| (callback)(cx));
+                    cx.displays_observers
+                        .clone()
+                        .retain(&(), move |callback| (callback)(cx));
                 }
             }
         }));
@@ -1170,12 +1173,24 @@ impl App {
     /// it never holds the UI up). None if it has none of them.
     pub fn paste_as(&self, wanted: &[&str]) -> Task<Option<(String, Vec<u8>)>> {
         let types = self.platform.clipboard_types();
-        let found = wanted.iter().find_map(|w| types.iter().find(|t| if w.ends_with('/') { t.starts_with(w) } else { t == w }));
-        let Some(mime) = found.cloned() else { return Task::ready(None) };
+        let found = wanted.iter().find_map(|w| {
+            types.iter().find(|t| {
+                if w.ends_with('/') {
+                    t.starts_with(w)
+                } else {
+                    t == w
+                }
+            })
+        });
+        let Some(mime) = found.cloned() else {
+            return Task::ready(None);
+        };
         match self.platform.receive_clipboard(&mime) {
             None => Task::ready(None),
             Some(crate::ClipboardReceipt::Ready(bytes)) => Task::ready(Some((mime, bytes))),
-            Some(crate::ClipboardReceipt::Read(read)) => self.background_executor().spawn(async move { read().map(|bytes| (mime, bytes)) }),
+            Some(crate::ClipboardReceipt::Read(read)) => self
+                .background_executor()
+                .spawn(async move { read().map(|bytes| (mime, bytes)) }),
         }
     }
 
@@ -1192,20 +1207,28 @@ impl App {
         let offered = |mime: &str| types.iter().any(|t| t == mime);
         let (mime, image) = if let Some(text) = TEXT_TYPES.into_iter().find(|t| offered(t)) {
             (text.to_owned(), None)
-        } else if let Some(format) = <crate::ImageFormat as strum::IntoEnumIterator>::iter().find(|f| offered(f.mime_type())) {
+        } else if let Some(format) =
+            <crate::ImageFormat as strum::IntoEnumIterator>::iter().find(|f| offered(f.mime_type()))
+        {
             (format.mime_type().to_owned(), Some(format))
         } else {
             return Task::ready(None);
         };
         let make = move |bytes: Vec<u8>| match image {
             // (As `read_from_clipboard`: Windows' line ends made Unix's.)
-            None => String::from_utf8(bytes).ok().map(|t| ClipboardItem::new_string(t.replace("\r\n", "\n"))),
-            Some(format) => Some(ClipboardItem::new_image(&crate::Image::from_bytes(format, bytes))),
+            None => String::from_utf8(bytes)
+                .ok()
+                .map(|t| ClipboardItem::new_string(t.replace("\r\n", "\n"))),
+            Some(format) => Some(ClipboardItem::new_image(&crate::Image::from_bytes(
+                format, bytes,
+            ))),
         };
         match self.platform.receive_clipboard(&mime) {
             None => Task::ready(None),
             Some(crate::ClipboardReceipt::Ready(bytes)) => Task::ready(make(bytes)),
-            Some(crate::ClipboardReceipt::Read(read)) => self.background_executor().spawn(async move { read().and_then(make) }),
+            Some(crate::ClipboardReceipt::Read(read)) => self
+                .background_executor()
+                .spawn(async move { read().and_then(make) }),
         }
     }
 
@@ -1214,7 +1237,11 @@ impl App {
     pub fn clipboard_has_text(&self) -> bool {
         match self.platform.own_clipboard() {
             Some(own) => own.text().is_some(),
-            None => self.platform.clipboard_types().iter().any(|t| TEXT_TYPES.contains(&t.as_str())),
+            None => self
+                .platform
+                .clipboard_types()
+                .iter()
+                .any(|t| TEXT_TYPES.contains(&t.as_str())),
         }
     }
 
@@ -2532,7 +2559,6 @@ pub struct KeystrokeEvent {
     /// The context stack at the time
     pub context_stack: Vec<KeyContext>,
 }
-
 
 /// A mutable reference to an entity owned by GPUI
 pub struct GpuiBorrow<'a, T> {

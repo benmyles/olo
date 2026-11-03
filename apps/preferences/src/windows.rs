@@ -82,11 +82,7 @@ fn miniature(window: &mut Window, well: Bounds<Pixels>, p: &Palette, s: &Setting
         let (lo, hi) = ((gap / 2.0).floor(), gap - (gap / 2.0).floor());
         let half_w = (aw / 2.0).round();
         let half_h = (ah / 2.0).round();
-        let windows = [
-            (ax, ay, half_w - lo, ah, false),
-            (ax + half_w + hi, ay, aw - half_w - hi, half_h - lo, false),
-            (ax + half_w + hi, ay + half_h + hi, aw - half_w - hi, ah - half_h - hi, true),
-        ];
+        let windows = [(ax, ay, half_w - lo, ah, false), (ax + half_w + hi, ay, aw - half_w - hi, half_h - lo, false), (ax + half_w + hi, ay + half_h + hi, aw - half_w - hi, ah - half_h - hi, true)];
         // Tabs to scale would be slivers; they keep a size that reads.
         let tab_h = (TAB_H * k).max(MIN_TAB_H) / k;
         for (x, y, w, h, front) in windows {

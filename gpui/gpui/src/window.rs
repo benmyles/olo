@@ -1,9 +1,9 @@
 #[cfg(any(feature = "inspector", debug_assertions))]
 use crate::Inspector;
 use crate::{
-    Action, AnyDrag, AnyElement, AnyImageCache, AnyTooltip, AnyView, App, AppContext, Arena, Asset, AtlasTile,
-    AsyncWindowContext, AvailableSpace, Background, BorderStyle, Bounds, BoxShadow, Capslock,
-    Context, Corners, CursorStyle, Decorations, DevicePixels, DispatchActionListener,
+    Action, AnyDrag, AnyElement, AnyImageCache, AnyTooltip, AnyView, App, AppContext, Arena, Asset,
+    AsyncWindowContext, AtlasTile, AvailableSpace, Background, BorderStyle, Bounds, BoxShadow,
+    Capslock, Context, Corners, CursorStyle, Decorations, DevicePixels, DispatchActionListener,
     DispatchNodeId, DispatchTree, DisplayId, Edges, Effect, Entity, EntityId, EventEmitter,
     FileDropEvent, FontId, Global, GlobalElementId, GlyphId, GpuSpecs, Hsla, InputHandler, IsZero,
     KeyBinding, KeyContext, KeyDownEvent, KeyEvent, Keystroke, KeystrokeEvent, LayoutId,
@@ -11,12 +11,13 @@ use crate::{
     MouseMoveEvent, MouseUpEvent, Path, Pixels, PlatformAtlas, PlatformDisplay, PlatformInput,
     PlatformInputHandler, PlatformWindow, Point, PolychromeSprite, PromptButton, PromptLevel, Quad,
     Render, RenderGlyphParams, RenderImage, RenderImageParams, RenderSvgParams, Replay, ResizeEdge,
-    SMOOTH_SVG_SCALE_FACTOR, SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Shadow, TextRendering,
-    SharedString, Size, StrikethroughStyle, Style, SubscriberSet, Subscription, SystemWindowTab,
-    SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task, TextStyle, TextStyleRefinement,
-    Sector, Segment, TransformationMatrix, Underline, UnderlineStyle, WindowAppearance, WindowBackgroundAppearance,
-    WindowBounds, WindowControls, WindowDecorations, WindowOptions, WindowParams, WindowTextSystem,
-    point, prelude::*, px, rems, size, transparent_black,
+    SMOOTH_SVG_SCALE_FACTOR, SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Sector,
+    Segment, Shadow, SharedString, Size, StrikethroughStyle, Style, SubscriberSet, Subscription,
+    SystemWindowTab, SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task, TextRendering,
+    TextStyle, TextStyleRefinement, TransformationMatrix, Underline, UnderlineStyle,
+    WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControls, WindowDecorations,
+    WindowOptions, WindowParams, WindowTextSystem, point, prelude::*, px, rems, size,
+    transparent_black,
 };
 use anyhow::{Context as _, Result, anyhow};
 use collections::{FxHashMap, FxHashSet};
@@ -49,8 +50,8 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use util::post_inc;
 use util::measure;
+use util::post_inc;
 use uuid::Uuid;
 
 mod prompts;
@@ -85,7 +86,13 @@ impl FrameStats {
     /// How many frames' marks are kept between takes.
     pub const MARKS: usize = 1200;
 
-    fn record(&mut self, started: Instant, drawn: Duration, whole: Duration, scrolls: Vec<[f32; 4]>) {
+    fn record(
+        &mut self,
+        started: Instant,
+        drawn: Duration,
+        whole: Duration,
+        scrolls: Vec<[f32; 4]>,
+    ) {
         let us = whole.as_micros() as u64;
         self.frames += 1;
         self.total_us += us;
@@ -812,13 +819,39 @@ impl PaintIndex {
         let at = |v: usize, f: usize, t: usize| v - f + t;
         PaintIndex {
             scene_index: at(self.scene_index, from.scene_index, to.scene_index),
-            mouse_listeners_index: at(self.mouse_listeners_index, from.mouse_listeners_index, to.mouse_listeners_index),
-            input_handlers_index: at(self.input_handlers_index, from.input_handlers_index, to.input_handlers_index),
-            cursor_styles_index: at(self.cursor_styles_index, from.cursor_styles_index, to.cursor_styles_index),
-            accessed_element_states_index: at(self.accessed_element_states_index, from.accessed_element_states_index, to.accessed_element_states_index),
-            tab_handle_index: at(self.tab_handle_index, from.tab_handle_index, to.tab_handle_index),
-            line_layout_index: self.line_layout_index.shifted(&from.line_layout_index, &to.line_layout_index),
-            paint_records_index: at(self.paint_records_index, from.paint_records_index, to.paint_records_index),
+            mouse_listeners_index: at(
+                self.mouse_listeners_index,
+                from.mouse_listeners_index,
+                to.mouse_listeners_index,
+            ),
+            input_handlers_index: at(
+                self.input_handlers_index,
+                from.input_handlers_index,
+                to.input_handlers_index,
+            ),
+            cursor_styles_index: at(
+                self.cursor_styles_index,
+                from.cursor_styles_index,
+                to.cursor_styles_index,
+            ),
+            accessed_element_states_index: at(
+                self.accessed_element_states_index,
+                from.accessed_element_states_index,
+                to.accessed_element_states_index,
+            ),
+            tab_handle_index: at(
+                self.tab_handle_index,
+                from.tab_handle_index,
+                to.tab_handle_index,
+            ),
+            line_layout_index: self
+                .line_layout_index
+                .shifted(&from.line_layout_index, &to.line_layout_index),
+            paint_records_index: at(
+                self.paint_records_index,
+                from.paint_records_index,
+                to.paint_records_index,
+            ),
             memos_index: at(self.memos_index, from.memos_index, to.memos_index),
         }
     }
@@ -1027,7 +1060,8 @@ pub struct Window {
     /// their locks) cost more than the rest of painting it. Cleared each
     /// frame, so the atlas changing between frames can't leave a tile
     /// that's gone.
-    glyph_memo: FxHashMap<(u32, u32, u32, u8, u8), Option<(Bounds<DevicePixels>, crate::AtlasTile)>>,
+    glyph_memo:
+        FxHashMap<(u32, u32, u32, u8, u8), Option<(Bounds<DevicePixels>, crate::AtlasTile)>>,
     /// Olo: what's dragged over the window now, where this frame's parts
     /// take it, where the platform was last told, and who takes drops.
     drop_offer: Option<crate::DropOffer>,
@@ -2052,7 +2086,10 @@ impl Window {
     /// (call it while the pointer's button is held, as a drag begins):
     /// what it was dropped as comes when it's over (None: cancelled, or
     /// it couldn't start).
-    pub fn start_drag(&self, drag: crate::OutgoingDrag) -> futures::channel::oneshot::Receiver<Option<crate::DragAction>> {
+    pub fn start_drag(
+        &self,
+        drag: crate::OutgoingDrag,
+    ) -> futures::channel::oneshot::Receiver<Option<crate::DragAction>> {
         let (done, over) = futures::channel::oneshot::channel();
         self.platform_window.start_drag(drag, done);
         over
@@ -2262,8 +2299,12 @@ impl Window {
         // Olo: where a window that takes drops took what's dragged over
         // it, told the platform as it changes (one that doesn't, keeps
         // the platform's own: files, copied).
-        if self.drop_handler.is_some() && self.drop_offer.is_some() && self.drop_accept_sent.as_ref() != Some(&self.drop_accept) {
-            self.platform_window.set_drop_accept(self.drop_accept.clone());
+        if self.drop_handler.is_some()
+            && self.drop_offer.is_some()
+            && self.drop_accept_sent.as_ref() != Some(&self.drop_accept)
+        {
+            self.platform_window
+                .set_drop_accept(self.drop_accept.clone());
             self.drop_accept_sent = Some(self.drop_accept.clone());
         }
         self.dirty_views.clear();
@@ -2361,7 +2402,17 @@ impl Window {
                 .rendered_frame
                 .paint_records
                 .iter()
-                .filter_map(|(r, moved)| r.downcast_ref::<ExternalPlace>().map(|p| (p.key, Bounds { origin: p.bounds.origin + *moved, size: p.bounds.size })))
+                .filter_map(|(r, moved)| {
+                    r.downcast_ref::<ExternalPlace>().map(|p| {
+                        (
+                            p.key,
+                            Bounds {
+                                origin: p.bounds.origin + *moved,
+                                size: p.bounds.size,
+                            },
+                        )
+                    })
+                })
                 .collect();
             if *self.externals_placed.borrow() != places {
                 self.platform_window.place_externals(&places);
@@ -2661,7 +2712,9 @@ impl Window {
     /// view's paint as its scene is. Read the last frame's with
     /// [`Window::paint_records`].
     pub fn push_paint_record(&mut self, record: Rc<dyn Any>) {
-        self.next_frame.paint_records.push((record, Point::default()));
+        self.next_frame
+            .paint_records
+            .push((record, Point::default()));
     }
 
     /// Olo: what was noted as the last frame painted
@@ -2691,7 +2744,13 @@ impl Window {
     /// the way it moved: a list row's cells). A canvas of many parts (Notifications' cards)
     /// draws again only the parts that changed: a hover redrew a whole
     /// screen of cards, 36,000 glyphs.
-    pub fn paint_memo(&mut self, key: u64, bounds: Bounds<Pixels>, cx: &mut App, paint: impl FnOnce(&mut Window, &mut App)) {
+    pub fn paint_memo(
+        &mut self,
+        key: u64,
+        bounds: Bounds<Pixels>,
+        cx: &mut App,
+        paint: impl FnOnce(&mut Window, &mut App),
+    ) {
         self.invalidator.debug_assert_paint();
         let mask = self.content_mask();
         let opacity = self.element_opacity;
@@ -2706,10 +2765,14 @@ impl Window {
         {
             let scale = self.scale_factor();
             let by = (bounds.origin - memo.bounds.origin).scale(scale);
-            let whole = Point { x: ScaledPixels(by.x.0.round()), y: ScaledPixels(by.y.0.round()) };
+            let whole = Point {
+                x: ScaledPixels(by.x.0.round()),
+                y: ScaledPixels(by.y.0.round()),
+            };
             let on_grid = (by.x.0 - whole.x.0).abs() < 0.01 && (by.y.0 - whole.y.0).abs() < 0.01;
             let (range, movable) = (memo.range.clone(), memo.movable);
-            let can = movable.is_some_and(|m| (whole.x.0 == 0.0 || m.x) && (whole.y.0 == 0.0 || m.y));
+            let can =
+                movable.is_some_and(|m| (whole.x.0 == 0.0 || m.x) && (whole.y.0 == 0.0 || m.y));
             // (Off the grid, by however little, it's painted afresh: a
             // fraction of a pixel left out of a move grows frame by frame.)
             if on_grid && (whole == Point::default() || can) {
@@ -2723,7 +2786,17 @@ impl Window {
                     movable = Some(crate::scene::Movable { x: false, y: false });
                 }
                 let end = self.paint_index();
-                self.next_frame.keep_memo(key, PaintMemo { bounds, mask, opacity, scale, range: start..end, movable });
+                self.next_frame.keep_memo(
+                    key,
+                    PaintMemo {
+                        bounds,
+                        mask,
+                        opacity,
+                        scale,
+                        range: start..end,
+                        movable,
+                    },
+                );
                 return;
             }
         }
@@ -2746,8 +2819,23 @@ impl Window {
             && start.input_handlers_index == end.input_handlers_index
             && start.cursor_styles_index == end.cursor_styles_index
             && start.tab_handle_index == end.tab_handle_index)
-            .then(|| self.next_frame.scene.movable(start.scene_index..end.scene_index, &mask.scale(self.scale_factor())));
-        self.next_frame.keep_memo(key, PaintMemo { bounds, mask, opacity, scale, range: start..end, movable });
+            .then(|| {
+                self.next_frame.scene.movable(
+                    start.scene_index..end.scene_index,
+                    &mask.scale(self.scale_factor()),
+                )
+            });
+        self.next_frame.keep_memo(
+            key,
+            PaintMemo {
+                bounds,
+                mask,
+                opacity,
+                scale,
+                range: start..end,
+                movable,
+            },
+        );
     }
 
     /// Olo: something wasn't painted, clipped away whole (`Scene::culled`).
@@ -2765,20 +2853,33 @@ impl Window {
     /// [`Window::reuse_paint`] of a [`Scene::movable`] range, moved by
     /// `by` (`points` in logical pixels): its scene, what it noted for
     /// agents, and its lines kept.
-    fn reuse_paint_moved(&mut self, range: Range<PaintIndex>, by: Point<ScaledPixels>, points: Point<Pixels>) -> bool {
+    fn reuse_paint_moved(
+        &mut self,
+        range: Range<PaintIndex>,
+        by: Point<ScaledPixels>,
+        points: Point<Pixels>,
+    ) -> bool {
         self.next_frame.paint_records.extend(
-            self.rendered_frame.paint_records[range.start.paint_records_index..range.end.paint_records_index]
+            self.rendered_frame.paint_records
+                [range.start.paint_records_index..range.end.paint_records_index]
                 .iter()
                 .map(|(record, moved)| (record.clone(), *moved + points)),
         );
         self.next_frame.accessed_element_states.extend(
-            self.rendered_frame.accessed_element_states[range.start.accessed_element_states_index..range.end.accessed_element_states_index]
+            self.rendered_frame.accessed_element_states[range.start.accessed_element_states_index
+                ..range.end.accessed_element_states_index]
                 .iter()
                 .map(|(id, type_id)| (GlobalElementId(id.0.clone()), *type_id)),
         );
-        self.text_system.reuse_layouts(range.start.line_layout_index..range.end.line_layout_index);
+        self.text_system
+            .reuse_layouts(range.start.line_layout_index..range.end.line_layout_index);
         let mask = self.content_mask().scale(self.scale_factor());
-        self.next_frame.scene.replay_moved(range.start.scene_index..range.end.scene_index, &self.rendered_frame.scene, by, &mask)
+        self.next_frame.scene.replay_moved(
+            range.start.scene_index..range.end.scene_index,
+            &self.rendered_frame.scene,
+            by,
+            &mask,
+        )
     }
 
     pub(crate) fn reuse_paint(&mut self, range: Range<PaintIndex>) {
@@ -2786,12 +2887,19 @@ impl Window {
         // cached view replayed whole keeps its list's rows for the next
         // time it's drawn.)
         let to = self.paint_index();
-        for (key, memo) in &self.rendered_frame.memos[range.start.memos_index..range.end.memos_index] {
-            let memo = PaintMemo { range: memo.range.start.shifted(&range.start, &to)..memo.range.end.shifted(&range.start, &to), ..memo.clone() };
+        for (key, memo) in
+            &self.rendered_frame.memos[range.start.memos_index..range.end.memos_index]
+        {
+            let memo = PaintMemo {
+                range: memo.range.start.shifted(&range.start, &to)
+                    ..memo.range.end.shifted(&range.start, &to),
+                ..memo.clone()
+            };
             self.next_frame.keep_memo(*key, memo);
         }
         self.next_frame.paint_records.extend(
-            self.rendered_frame.paint_records[range.start.paint_records_index..range.end.paint_records_index]
+            self.rendered_frame.paint_records
+                [range.start.paint_records_index..range.end.paint_records_index]
                 .iter()
                 .cloned(),
         );
@@ -3402,7 +3510,14 @@ impl Window {
     /// strokes): where a path would be tessellated, one instance.
     ///
     /// This method should only be called as part of the paint phase of element drawing.
-    pub fn paint_segment(&mut self, from: Point<Pixels>, to: Point<Pixels>, width: Pixels, round: bool, color: Hsla) {
+    pub fn paint_segment(
+        &mut self,
+        from: Point<Pixels>,
+        to: Point<Pixels>,
+        width: Pixels,
+        round: bool,
+        color: Hsla,
+    ) {
         self.invalidator.debug_assert_paint();
         let scale = self.scale_factor();
         let (a, b) = (from.scale(scale), to.scale(scale));
@@ -3429,7 +3544,13 @@ impl Window {
     /// square (`round`: rounded, so the pieces of a polyline join), in
     /// one colour: [`Window::paint_segment`] for many, the clip, opacity
     /// and scale looked up once (a curve of a thousand pieces).
-    pub fn paint_segments(&mut self, pieces: &[(Point<Pixels>, Point<Pixels>)], width: Pixels, round: bool, color: Hsla) {
+    pub fn paint_segments(
+        &mut self,
+        pieces: &[(Point<Pixels>, Point<Pixels>)],
+        width: Pixels,
+        round: bool,
+        color: Hsla,
+    ) {
         self.invalidator.debug_assert_paint();
         let scale = self.scale_factor();
         let half = width.scale(scale) / 2.0;
@@ -3443,7 +3564,10 @@ impl Window {
                 Segment {
                     order: 0,
                     round: round as u32,
-                    bounds: Bounds::from_corners(point(a.x.min(b.x) - reach, a.y.min(b.y) - reach), point(a.x.max(b.x) + reach, a.y.max(b.y) + reach)),
+                    bounds: Bounds::from_corners(
+                        point(a.x.min(b.x) - reach, a.y.min(b.y) - reach),
+                        point(a.x.max(b.x) + reach, a.y.max(b.y) + reach),
+                    ),
                     content_mask: content_mask.clone(),
                     color,
                     from: a,
@@ -3464,7 +3588,13 @@ impl Window {
     /// share each pixel once (no seam, nothing drawn twice) — where a path
     /// would be tessellated, or filled multisampled through textures as
     /// large as the window.
-    pub fn paint_area(&mut self, from: Point<Pixels>, to: Point<Pixels>, bottom: Pixels, color: Hsla) {
+    pub fn paint_area(
+        &mut self,
+        from: Point<Pixels>,
+        to: Point<Pixels>,
+        bottom: Pixels,
+        color: Hsla,
+    ) {
         self.invalidator.debug_assert_paint();
         let scale = self.scale_factor();
         let (a, b, bottom) = (from.scale(scale), to.scale(scale), bottom.scale(scale));
@@ -3496,20 +3626,34 @@ impl Window {
     /// round marks, a circle's outline as a ring a line wide).
     ///
     /// This method should only be called as part of the paint phase of element drawing.
-    pub fn paint_sector(&mut self, center: Point<Pixels>, inner: Pixels, outer: Pixels, start: f32, sweep: f32, color: Hsla) {
+    pub fn paint_sector(
+        &mut self,
+        center: Point<Pixels>,
+        inner: Pixels,
+        outer: Pixels,
+        start: f32,
+        sweep: f32,
+        color: Hsla,
+    ) {
         self.invalidator.debug_assert_paint();
         if !(sweep > 0.0) || !(outer > inner) {
             return;
         }
         let scale = self.scale_factor();
         let c = center.scale(scale);
-        let (r0, r1) = (inner.scale(scale).max(ScaledPixels(0.0)), outer.scale(scale));
+        let (r0, r1) = (
+            inner.scale(scale).max(ScaledPixels(0.0)),
+            outer.scale(scale),
+        );
         // What it covers: its corners (the middle, with no hole), and the
         // ring's extremes at the quarter turns it passes, a pixel more for
         // the edges.
         let tau = std::f32::consts::TAU;
         let at = |r: ScaledPixels, a: f32| point(c.x + r * a.sin(), c.y - r * a.cos());
-        let (mut min, mut max) = (point(ScaledPixels(f32::MAX), ScaledPixels(f32::MAX)), point(ScaledPixels(f32::MIN), ScaledPixels(f32::MIN)));
+        let (mut min, mut max) = (
+            point(ScaledPixels(f32::MAX), ScaledPixels(f32::MAX)),
+            point(ScaledPixels(f32::MIN), ScaledPixels(f32::MIN)),
+        );
         let mut take = |p: Point<ScaledPixels>| {
             min = point(min.x.min(p.x), min.y.min(p.y));
             max = point(max.x.max(p.x), max.y.max(p.y));
@@ -3531,7 +3675,10 @@ impl Window {
             }
         }
         let pad = ScaledPixels(1.0);
-        let bounds = Bounds::from_corners(point(min.x - pad, min.y - pad), point(max.x + pad, max.y + pad));
+        let bounds = Bounds::from_corners(
+            point(min.x - pad, min.y - pad),
+            point(max.x + pad, max.y + pad),
+        );
         let opacity = self.element_opacity();
         let content_mask = self.content_mask().scale(scale);
         self.next_frame.scene.insert_primitive(Sector {
@@ -3640,7 +3787,13 @@ impl Window {
             x: (glyph_origin.x.0.fract() * SUBPIXEL_VARIANTS_X as f32).floor() as u8,
             y: (glyph_origin.y.0.fract() * SUBPIXEL_VARIANTS_Y as f32).floor() as u8,
         };
-        let key = (font_id.0 as u32, glyph_id.0, font_size.0.to_bits(), subpixel_variant.x, subpixel_variant.y);
+        let key = (
+            font_id.0 as u32,
+            glyph_id.0,
+            font_size.0.to_bits(),
+            subpixel_variant.x,
+            subpixel_variant.y,
+        );
         let found = match self.glyph_memo.get(&key) {
             Some(found) => found.clone(),
             None => {
@@ -3662,7 +3815,12 @@ impl Window {
                         .get_or_insert_with(&params.clone().into(), &mut || {
                             // Olo: counted, so a face drawn as running text has
                             // the rest of its glyphs drawn ahead, off this thread.
-                            self.text_system().drawn_first(params.font_id, params.font_size, params.scale_factor, params.rendering);
+                            self.text_system().drawn_first(
+                                params.font_id,
+                                params.font_size,
+                                params.scale_factor,
+                                params.rendering,
+                            );
                             let (size, bytes) = self.text_system().rasterize_glyph(&params)?;
                             Ok(Some((size, Cow::Owned(bytes))))
                         })?
@@ -3695,14 +3853,25 @@ impl Window {
     /// Olo: paints many glyphs at once, each at its baseline origin in
     /// its face, size and colour: as [`Window::paint_glyph`] each, but
     /// one paint operation for them all (a page of text).
-    pub fn paint_glyphs(&mut self, glyphs: impl IntoIterator<Item = (Point<Pixels>, FontId, GlyphId, Pixels, Hsla)>) {
+    pub fn paint_glyphs(
+        &mut self,
+        glyphs: impl IntoIterator<Item = (Point<Pixels>, FontId, GlyphId, Pixels, Hsla)>,
+    ) {
         self.invalidator.debug_assert_paint();
         let element_opacity = self.element_opacity();
         let content_mask = self.content_mask().scale(self.scale_factor());
         let mut sprites = Vec::new();
         for (origin, font_id, glyph_id, font_size, color) in glyphs {
             if let Some((bounds, tile)) = self.glyph_sprite(origin, font_id, glyph_id, font_size) {
-                sprites.push(MonochromeSprite { order: 0, coverage: 0, bounds, content_mask: content_mask.clone(), color: color.opacity(element_opacity), tile, transformation: TransformationMatrix::unit() });
+                sprites.push(MonochromeSprite {
+                    order: 0,
+                    coverage: 0,
+                    bounds,
+                    content_mask: content_mask.clone(),
+                    color: color.opacity(element_opacity),
+                    tile,
+                    transformation: TransformationMatrix::unit(),
+                });
             }
         }
         self.next_frame.scene.insert_sprites(sprites);
@@ -3720,13 +3889,25 @@ impl Window {
     /// each frame the drag is over the part (from its paint); a frame
     /// without it refuses the drag. The last call wins. Only a window
     /// with a drop handler ([`Window::on_dropped`]) takes drops this way.
-    pub fn accept_drop(&mut self, target: impl Into<String>, mime: impl Into<String>, action: crate::DragAction) {
-        self.drop_accept = Some(crate::DropAccept { target: target.into(), mime: mime.into(), action });
+    pub fn accept_drop(
+        &mut self,
+        target: impl Into<String>,
+        mime: impl Into<String>,
+        action: crate::DragAction,
+    ) {
+        self.drop_accept = Some(crate::DropAccept {
+            target: target.into(),
+            mime: mime.into(),
+            action,
+        });
     }
 
     /// Olo: what's dropped where the window took it comes to `handler`,
     /// its data read.
-    pub fn on_dropped(&mut self, handler: impl FnMut(crate::Dropped, &mut Window, &mut App) + 'static) {
+    pub fn on_dropped(
+        &mut self,
+        handler: impl FnMut(crate::Dropped, &mut Window, &mut App) + 'static,
+    ) {
         self.drop_handler = Some(Rc::new(RefCell::new(handler)));
     }
 
@@ -3749,8 +3930,14 @@ impl Window {
         let scale_factor = self.scale_factor();
         let device = origin.scale(scale_factor);
         // Its whole device pixel and where within it (in 64ths).
-        let mut base = Point { x: device.x.0.floor(), y: device.y.0.floor() };
-        let mut phase = (((device.x.0 - base.x) * 64.0).round() as i32, ((device.y.0 - base.y) * 64.0).round() as i32);
+        let mut base = Point {
+            x: device.x.0.floor(),
+            y: device.y.0.floor(),
+        };
+        let mut phase = (
+            ((device.x.0 - base.x) * 64.0).round() as i32,
+            ((device.y.0 - base.y) * 64.0).round() as i32,
+        );
         if phase.0 == 64 {
             base.x += 1.0;
             phase.0 = 0;
@@ -3759,16 +3946,29 @@ impl Window {
             base.y += 1.0;
             phase.1 = 0;
         }
-        let key = GlyphRunKey { scale: scale_factor.to_bits(), rendering: self.platform_window.text_rendering(), stamp, phase };
+        let key = GlyphRunKey {
+            scale: scale_factor.to_bits(),
+            rendering: self.platform_window.text_rendering(),
+            stamp,
+            phase,
+        };
         if run.key != Some(key) {
             let cold = frame_phases().then(std::time::Instant::now);
             run.key = Some(key);
             run.sprites.clear();
             let mut found = Vec::new();
-            glyphs(&mut |at, font_id, glyph_id, font_size, color| found.push((origin + at, font_id, glyph_id, font_size, color)));
+            glyphs(&mut |at, font_id, glyph_id, font_size, color| {
+                found.push((origin + at, font_id, glyph_id, font_size, color))
+            });
             for (at, font_id, glyph_id, font_size, color) in found {
                 if let Some((bounds, tile)) = self.glyph_sprite(at, font_id, glyph_id, font_size) {
-                    let rel = Bounds { origin: Point { x: ScaledPixels(bounds.origin.x.0 - base.x), y: ScaledPixels(bounds.origin.y.0 - base.y) }, size: bounds.size };
+                    let rel = Bounds {
+                        origin: Point {
+                            x: ScaledPixels(bounds.origin.x.0 - base.x),
+                            y: ScaledPixels(bounds.origin.y.0 - base.y),
+                        },
+                        size: bounds.size,
+                    };
                     run.sprites.push((rel, tile, color));
                 }
             }
@@ -3778,37 +3978,71 @@ impl Window {
         }
         let element_opacity = self.element_opacity();
         let content_mask = self.content_mask().scale(scale_factor);
-        let sprites = run.sprites.iter().map(|(rel, tile, color)| MonochromeSprite {
-            order: 0,
-            coverage: 0,
-            bounds: Bounds { origin: Point { x: ScaledPixels(rel.origin.x.0 + base.x), y: ScaledPixels(rel.origin.y.0 + base.y) }, size: rel.size },
-            content_mask: content_mask.clone(),
-            color: color.opacity(element_opacity),
-            tile: tile.clone(),
-            transformation: TransformationMatrix::unit(),
-        });
+        let sprites = run
+            .sprites
+            .iter()
+            .map(|(rel, tile, color)| MonochromeSprite {
+                order: 0,
+                coverage: 0,
+                bounds: Bounds {
+                    origin: Point {
+                        x: ScaledPixels(rel.origin.x.0 + base.x),
+                        y: ScaledPixels(rel.origin.y.0 + base.y),
+                    },
+                    size: rel.size,
+                },
+                content_mask: content_mask.clone(),
+                color: color.opacity(element_opacity),
+                tile: tile.clone(),
+                transformation: TransformationMatrix::unit(),
+            });
         self.next_frame.scene.insert_sprites(sprites);
     }
 
     /// A glyph at `origin` (its baseline): where its sprite goes, in
     /// device pixels, and its tile (looked up once a frame a glyph).
-    fn glyph_sprite(&mut self, origin: Point<Pixels>, font_id: FontId, glyph_id: GlyphId, font_size: Pixels) -> Option<(Bounds<ScaledPixels>, AtlasTile)> {
+    fn glyph_sprite(
+        &mut self,
+        origin: Point<Pixels>,
+        font_id: FontId,
+        glyph_id: GlyphId,
+        font_size: Pixels,
+    ) -> Option<(Bounds<ScaledPixels>, AtlasTile)> {
         let scale_factor = self.scale_factor();
         let glyph_origin = origin.scale(scale_factor);
         let subpixel_variant = Point {
             x: (glyph_origin.x.0.fract() * SUBPIXEL_VARIANTS_X as f32).floor() as u8,
             y: (glyph_origin.y.0.fract() * SUBPIXEL_VARIANTS_Y as f32).floor() as u8,
         };
-        let key = (font_id.0 as u32, glyph_id.0, font_size.0.to_bits(), subpixel_variant.x, subpixel_variant.y);
+        let key = (
+            font_id.0 as u32,
+            glyph_id.0,
+            font_size.0.to_bits(),
+            subpixel_variant.x,
+            subpixel_variant.y,
+        );
         let found = match self.glyph_memo.get(&key) {
             Some(found) => found.clone(),
             None => {
-                let params = RenderGlyphParams { font_id, glyph_id, font_size, subpixel_variant, scale_factor, is_emoji: false, rendering: self.platform_window.text_rendering() };
+                let params = RenderGlyphParams {
+                    font_id,
+                    glyph_id,
+                    font_size,
+                    subpixel_variant,
+                    scale_factor,
+                    is_emoji: false,
+                    rendering: self.platform_window.text_rendering(),
+                };
                 let found = match self.text_system().raster_bounds(&params) {
                     Ok(b) if !b.is_zero() => self
                         .sprite_atlas
                         .get_or_insert_with(&params.clone().into(), &mut || {
-                            self.text_system().drawn_first(params.font_id, params.font_size, params.scale_factor, params.rendering);
+                            self.text_system().drawn_first(
+                                params.font_id,
+                                params.font_size,
+                                params.scale_factor,
+                                params.rendering,
+                            );
                             let t = frame_phases().then(std::time::Instant::now);
                             let (size, bytes) = self.text_system().rasterize_glyph(&params)?;
                             if let Some(t) = t {
@@ -3826,7 +4060,13 @@ impl Window {
             }
         };
         let (raster_bounds, tile) = found?;
-        Some((Bounds { origin: glyph_origin.map(|px| px.floor()) + raster_bounds.origin.map(Into::into), size: tile.bounds.size.map(Into::into) }, tile))
+        Some((
+            Bounds {
+                origin: glyph_origin.map(|px| px.floor()) + raster_bounds.origin.map(Into::into),
+                size: tile.bounds.size.map(Into::into),
+            },
+            tile,
+        ))
     }
 
     /// Paints an emoji glyph into the scene for the next frame at the current z-index.
@@ -3971,7 +4211,11 @@ impl Window {
     /// Olo: [`Window::paint_image`], its texels shown as they are when
     /// magnified (nearest), not blended with their neighbours: a small
     /// picture (an icon) looked at closely keeps its pixels.
-    pub fn paint_image_nearest(&mut self, bounds: Bounds<Pixels>, data: Arc<RenderImage>) -> Result<()> {
+    pub fn paint_image_nearest(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        data: Arc<RenderImage>,
+    ) -> Result<()> {
         self.paint_image_sampled(bounds, Corners::default(), data, 0, false, true)
     }
 
@@ -3980,32 +4224,55 @@ impl Window {
     /// tinted (white leaves it as it is): a picture bent in perspective
     /// (the Flip screen saver), a lens's magnified disc. On the GPU, one
     /// instance a triangle, sampled from the image's atlas tile.
-    pub fn paint_image_triangles(&mut self, data: Arc<RenderImage>, triangles: &[[(Point<Pixels>, Point<f32>); 3]], tint: Hsla) -> Result<()> {
+    pub fn paint_image_triangles(
+        &mut self,
+        data: Arc<RenderImage>,
+        triangles: &[[(Point<Pixels>, Point<f32>); 3]],
+        tint: Hsla,
+    ) -> Result<()> {
         self.invalidator.debug_assert_paint();
         let scale_factor = self.scale_factor();
-        let params = RenderImageParams { image_id: data.id, frame_index: 0 };
+        let params = RenderImageParams {
+            image_id: data.id,
+            frame_index: 0,
+        };
         let tile = self
             .sprite_atlas
             .get_or_insert_with(&params.into(), &mut || {
-                Ok(Some((data.size(0), Cow::Borrowed(data.as_bytes(0).expect("an image has a first frame")))))
+                Ok(Some((
+                    data.size(0),
+                    Cow::Borrowed(data.as_bytes(0).expect("an image has a first frame")),
+                )))
             })?
             .expect("Callback above only returns Some");
         let content_mask = self.content_mask().scale(scale_factor);
         let opacity = self.element_opacity();
         for t in triangles {
-            let corners = [t[0].0.scale(scale_factor), t[1].0.scale(scale_factor), t[2].0.scale(scale_factor)];
-            let min = point(corners[0].x.min(corners[1].x).min(corners[2].x), corners[0].y.min(corners[1].y).min(corners[2].y));
-            let max = point(corners[0].x.max(corners[1].x).max(corners[2].x), corners[0].y.max(corners[1].y).max(corners[2].y));
-            self.next_frame.scene.insert_primitive(crate::ImageTriangle {
-                order: 0,
-                opacity,
-                bounds: Bounds::from_corners(min, max),
-                content_mask: content_mask.clone(),
-                tile: tile.clone(),
-                corners,
-                uvs: [t[0].1, t[1].1, t[2].1],
-                tint,
-            });
+            let corners = [
+                t[0].0.scale(scale_factor),
+                t[1].0.scale(scale_factor),
+                t[2].0.scale(scale_factor),
+            ];
+            let min = point(
+                corners[0].x.min(corners[1].x).min(corners[2].x),
+                corners[0].y.min(corners[1].y).min(corners[2].y),
+            );
+            let max = point(
+                corners[0].x.max(corners[1].x).max(corners[2].x),
+                corners[0].y.max(corners[1].y).max(corners[2].y),
+            );
+            self.next_frame
+                .scene
+                .insert_primitive(crate::ImageTriangle {
+                    order: 0,
+                    opacity,
+                    bounds: Bounds::from_corners(min, max),
+                    content_mask: content_mask.clone(),
+                    tile: tile.clone(),
+                    corners,
+                    uvs: [t[0].1, t[1].1, t[2].1],
+                    tint,
+                });
         }
         Ok(())
     }
@@ -5058,7 +5325,9 @@ impl Window {
     /// be placed finer): draw round it at [`Window::external_bounds`].
     pub fn place_external(&mut self, key: u64, bounds: Bounds<Pixels>) {
         self.had_externals.set(true);
-        self.next_frame.paint_records.push((Rc::new(ExternalPlace { key, bounds }), Point::default()));
+        self.next_frame
+            .paint_records
+            .push((Rc::new(ExternalPlace { key, bounds }), Point::default()));
     }
 
     /// Olo: where an external picture placed at `bounds` shows, to the
@@ -5067,7 +5336,10 @@ impl Window {
     pub fn external_bounds(&self, bounds: Bounds<Pixels>) -> Bounds<Pixels> {
         let s = self.scale_factor();
         let (x, y) = (bounds.origin.x.0.round(), bounds.origin.y.0.round());
-        let (w, h) = (bounds.size.width.0.round().max(1.0), bounds.size.height.0.round().max(1.0));
+        let (w, h) = (
+            bounds.size.width.0.round().max(1.0),
+            bounds.size.height.0.round().max(1.0),
+        );
         let d = |v: f32| px((v * s).round() / s);
         Bounds::from_corners(point(d(x), d(y)), point(d(x + w), d(y + h)))
     }
@@ -5132,7 +5404,8 @@ impl Window {
         for (font_id, font_size, texts, scale) in &mut self.warm_texts {
             if *scale != now.0 {
                 *scale = now.0;
-                self.text_system.warm_text(*font_id, *font_size, now.0, texts.clone());
+                self.text_system
+                    .warm_text(*font_id, *font_size, now.0, texts.clone());
             }
         }
     }
@@ -5144,11 +5417,17 @@ impl Window {
     /// every window of the app after (up to 32 MB of them;
     /// [`crate::TextSystem::forget_kept_glyphs`] lets go): a picker of
     /// emoji opened again and again, each time a new window.
-    pub fn warm_text(&mut self, font: &crate::Font, font_size: Pixels, texts: impl Into<Arc<[SharedString]>>) {
+    pub fn warm_text(
+        &mut self,
+        font: &crate::Font,
+        font_size: Pixels,
+        texts: impl Into<Arc<[SharedString]>>,
+    ) {
         let font_id = self.text_system().resolve_font(font);
         let texts = texts.into();
         let scale = self.scale_factor();
-        self.text_system.warm_text(font_id, font_size, scale, texts.clone());
+        self.text_system
+            .warm_text(font_id, font_size, scale, texts.clone());
         self.warm_texts.push((font_id, font_size, texts, scale));
     }
 
@@ -6180,9 +6459,18 @@ pub(crate) struct FrameWork {
 }
 
 pub(crate) static FRAME_WORK: FrameWork = FrameWork {
-    shaped: [std::sync::atomic::AtomicU64::new(0), std::sync::atomic::AtomicU64::new(0)],
-    rasterized: [std::sync::atomic::AtomicU64::new(0), std::sync::atomic::AtomicU64::new(0)],
-    runs: [std::sync::atomic::AtomicU64::new(0), std::sync::atomic::AtomicU64::new(0)],
+    shaped: [
+        std::sync::atomic::AtomicU64::new(0),
+        std::sync::atomic::AtomicU64::new(0),
+    ],
+    rasterized: [
+        std::sync::atomic::AtomicU64::new(0),
+        std::sync::atomic::AtomicU64::new(0),
+    ],
+    runs: [
+        std::sync::atomic::AtomicU64::new(0),
+        std::sync::atomic::AtomicU64::new(0),
+    ],
 };
 
 impl FrameWork {
@@ -6195,7 +6483,9 @@ impl FrameWork {
     /// (how many, ms) of each, since last taken.
     fn take(&self) -> [(u64, f64); 3] {
         use std::sync::atomic::Ordering::Relaxed;
-        let t = |w: &[std::sync::atomic::AtomicU64; 2]| (w[0].swap(0, Relaxed), w[1].swap(0, Relaxed) as f64 / 1e6);
+        let t = |w: &[std::sync::atomic::AtomicU64; 2]| {
+            (w[0].swap(0, Relaxed), w[1].swap(0, Relaxed) as f64 / 1e6)
+        };
         [t(&self.shaped), t(&self.rasterized), t(&self.runs)]
     }
 }
@@ -6228,7 +6518,9 @@ struct GlyphRunKey {
 #[cfg(test)]
 mod memo_tests {
     use crate::{
-        AnyView, AppContext as _, Bounds, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _, StyleRefinement, TestAppContext, Window, canvas, div, fill, point, px, rgb, size,
+        AnyView, AppContext as _, Bounds, Context, Entity, IntoElement, ParentElement as _, Render,
+        StyleRefinement, Styled as _, TestAppContext, Window, canvas, div, fill, point, px, rgb,
+        size,
     };
     use std::{cell::Cell, rc::Rc};
 
@@ -6245,7 +6537,10 @@ mod memo_tests {
                 |_, _, _| {},
                 move |b, _, window, cx| {
                     for i in 0..3u64 {
-                        let row = Bounds { origin: point(b.left(), b.top() + px(10.0 * i as f32)), size: size(px(50.0), px(10.0)) };
+                        let row = Bounds {
+                            origin: point(b.left(), b.top() + px(10.0 * i as f32)),
+                            size: size(px(50.0), px(10.0)),
+                        };
                         let painted = painted.clone();
                         window.paint_memo(i, row, cx, |window, _| {
                             painted.set(painted.get() + 1);
@@ -6269,7 +6564,9 @@ mod memo_tests {
             div()
                 .size_full()
                 .child(div().w(px(self.width)).h(px(5.0)).bg(rgb(0x993333)))
-                .child(div().size_full().child(AnyView::from(self.rows.clone()).cached(StyleRefinement::default().size_full())))
+                .child(div().size_full().child(
+                    AnyView::from(self.rows.clone()).cached(StyleRefinement::default().size_full()),
+                ))
         }
     }
 
@@ -6279,8 +6576,13 @@ mod memo_tests {
     #[crate::test]
     fn memos_survive_a_cached_view_replayed(cx: &mut TestAppContext) {
         let painted = Rc::new(Cell::new(0));
-        let rows = cx.new(|_| Rows { painted: painted.clone() });
-        let (outer, cx) = cx.add_window_view(|_, _| Outer { rows: rows.clone(), width: 10.0 });
+        let rows = cx.new(|_| Rows {
+            painted: painted.clone(),
+        });
+        let (outer, cx) = cx.add_window_view(|_, _| Outer {
+            rows: rows.clone(),
+            width: 10.0,
+        });
         assert_eq!(painted.get(), 3);
         // Only what's around it drawn again: the view replayed whole.
         outer.update(cx, |o, cx| {

@@ -193,7 +193,9 @@ impl super::Context {
         } {
             Ok(c) => c,
             Err(e) => {
-                log::warn!("the surface can't be reconfigured ({e:?}): its window or compositor is gone");
+                log::warn!(
+                    "the surface can't be reconfigured ({e:?}): its window or compositor is gone"
+                );
                 return;
             }
         };
@@ -260,15 +262,23 @@ impl super::Context {
 
         // Olo: these too fail once the surface is lost (between the
         // capabilities above and here: Telegram's panic, 2026-11-02).
-        let present_modes = match unsafe { khr_surface.get_physical_device_surface_present_modes(self.physical_device, surface.raw) } {
+        let present_modes = match unsafe {
+            khr_surface.get_physical_device_surface_present_modes(self.physical_device, surface.raw)
+        } {
             Ok(m) => m,
             Err(e) => {
-                log::warn!("the surface can't be reconfigured ({e:?}): its window or compositor is gone");
+                log::warn!(
+                    "the surface can't be reconfigured ({e:?}): its window or compositor is gone"
+                );
                 return;
             }
         };
         // (FIFO is always there.)
-        let present_mode = mode_preferences.iter().copied().find(|mode| present_modes.contains(mode)).unwrap_or(vk::PresentModeKHR::FIFO);
+        let present_mode = mode_preferences
+            .iter()
+            .copied()
+            .find(|mode| present_modes.contains(mode))
+            .unwrap_or(vk::PresentModeKHR::FIFO);
         log::info!("Using surface present mode {:?}", present_mode);
 
         let queue_families = [self.queue_family_index];
@@ -300,7 +310,9 @@ impl super::Context {
                 },
             )
         } else {
-            supported_formats = match unsafe { khr_surface.get_physical_device_surface_formats(self.physical_device, surface.raw) } {
+            supported_formats = match unsafe {
+                khr_surface.get_physical_device_surface_formats(self.physical_device, surface.raw)
+            } {
                 Ok(f) => f,
                 Err(e) => {
                     log::warn!("the surface can't be reconfigured ({e:?}): its window or compositor is gone");

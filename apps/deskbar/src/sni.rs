@@ -124,18 +124,37 @@ pub enum Do {
 }
 
 enum Event {
-    Registered { bus: String, path: String },
+    Registered {
+        bus: String,
+        path: String,
+    },
     /// A bus name (an app) went away.
     Gone(String),
     /// An item (or its menu) changed: the signal's sender and path.
-    Changed { sender: String, path: String, menu: bool },
+    Changed {
+        sender: String,
+        path: String,
+        menu: bool,
+    },
     /// An item's properties, read.
-    Read { key: String, owner: String, item: Box<Item>, menu_path: Option<String> },
+    Read {
+        key: String,
+        owner: String,
+        item: Box<Item>,
+        menu_path: Option<String>,
+    },
     /// An item's menu, read.
-    Menu { key: String, entries: Vec<Entry> },
+    Menu {
+        key: String,
+        entries: Vec<Entry>,
+    },
     Do(String, Do),
     /// A launcher badge's update: who sent it, its app's URI, what changed.
-    Badge { sender: String, app: String, props: HashMap<String, OwnedValue> },
+    Badge {
+        sender: String,
+        app: String,
+        props: HashMap<String, OwnedValue>,
+    },
 }
 
 /// Deskbar's side: tell the worker what was done to an item.
@@ -577,9 +596,8 @@ fn strip_markup(s: &str) -> String {
 fn read(conn: &Connection, tx: &mpsc::Sender<Event>, bus: String, path: String) {
     let (conn, tx) = (conn.clone(), tx.clone());
     let _ = std::thread::Builder::new().name("tray-read".into()).spawn(move || {
-        let props = conn
-            .call_method(Some(bus.as_str()), path.as_str(), Some("org.freedesktop.DBus.Properties"), "GetAll", &(ITEM,))
-            .and_then(|m| m.body().deserialize::<HashMap<String, OwnedValue>>());
+        let props =
+            conn.call_method(Some(bus.as_str()), path.as_str(), Some("org.freedesktop.DBus.Properties"), "GetAll", &(ITEM,)).and_then(|m| m.body().deserialize::<HashMap<String, OwnedValue>>());
         let props = match props {
             Ok(p) => p,
             Err(e) => return tracing::debug!("tray: can't read {bus}{path}: {e}"),
@@ -612,9 +630,7 @@ fn read_menu(conn: &Connection, tx: &mpsc::Sender<Event>, key: String, bus: Stri
     let (conn, tx) = (conn.clone(), tx.clone());
     let _ = std::thread::Builder::new().name("tray-menu".into()).spawn(move || {
         type Node = (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>);
-        let layout = conn
-            .call_method(Some(bus.as_str()), menu.as_str(), Some(MENU), "GetLayout", &(0i32, -1i32, Vec::<String>::new()))
-            .and_then(|m| m.body().deserialize::<(u32, Node)>());
+        let layout = conn.call_method(Some(bus.as_str()), menu.as_str(), Some(MENU), "GetLayout", &(0i32, -1i32, Vec::<String>::new())).and_then(|m| m.body().deserialize::<(u32, Node)>());
         match layout {
             Ok((_, (_, _, children))) => {
                 let entries = children.iter().filter_map(|c| entry(c)).collect();
@@ -793,7 +809,15 @@ mod tests {
     fn menus_become_olo_menus() {
         let e = |id, label: &str| Entry { id, label: label.into(), enabled: true, ..Default::default() };
         let sep = Entry { separator: true, ..Default::default() };
-        let entries = vec![sep.clone(), e(1, "Show Slack"), sep.clone(), sep.clone(), Entry { check: Some(true), ..e(2, "Launch at login") }, Entry { children: vec![e(4, "Away")], ..e(3, "Status") }, sep.clone()];
+        let entries = vec![
+            sep.clone(),
+            e(1, "Show Slack"),
+            sep.clone(),
+            sep.clone(),
+            Entry { check: Some(true), ..e(2, "Launch at login") },
+            Entry { children: vec![e(4, "Away")], ..e(3, "Status") },
+            sep.clone(),
+        ];
         let m = menu("Slack", &entries);
         assert_eq!(m.items.len(), 4);
         assert!(matches!(&m.items[0], olo_ui::MenuItem::Action(a) if a.command == "sni:1"));

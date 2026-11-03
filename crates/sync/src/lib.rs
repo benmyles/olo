@@ -25,9 +25,10 @@ mod tests {
     use super::*;
 
     /// Two locks taken in both orders: the second order panics in a
-    /// debug build, before anything waits.
+    /// debug build, before anything waits. (Release builds don't check:
+    /// `cargo test --release` would fail it.)
     #[test]
-    #[cfg(not(olo_lockbud))]
+    #[cfg(all(not(olo_lockbud), debug_assertions))]
     #[should_panic(expected = "cycle")]
     fn an_order_and_its_reverse_panic() {
         let (a, b) = (Mutex::new(0), Mutex::new(0));

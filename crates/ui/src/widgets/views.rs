@@ -202,7 +202,17 @@ impl RenderOnce for BBox {
                 let gaps = [label_w.map(|w| (frame.left() + px(pad - 4.0), frame.left() + px(pad + w + 4.0))), action_w.map(|w| (frame.right() - px(pad + w + 4.0), frame.right() - px(pad - 4.0)))];
                 etched(window, frame, &p, &gaps);
                 if let Some(l) = &label {
-                    style::label(window, cx, b.left() + px(pad), b.top() + px(label_h / 2.0), style::Align::Left, l.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), style::c(p.panel_text));
+                    style::label(
+                        window,
+                        cx,
+                        b.left() + px(pad),
+                        b.top() + px(label_h / 2.0),
+                        style::Align::Left,
+                        l.clone(),
+                        style::PLAIN_SIZE,
+                        style::ui_font(FontWeight::BOLD),
+                        style::c(p.panel_text),
+                    );
                     // What the controls in it are about, for agents (and
                     // the settings the palette finds: Preferences' index).
                     crate::agent::record(window, cx, crate::agent::Node { role: "Group", name: Some(l.clone()), bounds: b, enabled: true, ..Default::default() });
@@ -219,15 +229,7 @@ impl RenderOnce for BBox {
             let id = SharedString::from(format!("{}-{l}", self.label.as_ref().map_or("box", |s| s.as_ref())));
             div().absolute().top_0().right(px(pad)).child(super::LinkButton::new(l).id(id).on_click(move |window, cx| f(window, cx)))
         });
-        b.flex()
-            .flex_col()
-            .gap(px(m::STACK))
-            .pt(px(content_top))
-            .px(px(pad))
-            .pb(px(pad))
-            .child(frame)
-            .children(action)
-            .children(self.children)
+        b.flex().flex_col().gap(px(m::STACK)).pt(px(content_top)).px(px(pad)).pb(px(pad)).child(frame).children(action).children(self.children)
     }
 }
 
@@ -301,9 +303,12 @@ impl gpui::RenderOnce for EmptyState {
         let mut col = div().flex().flex_col().items_center().max_w(px(320.0)).gap(px(m::TIGHT)).text_color(dim);
         if let Some(name) = icon {
             col = col.child(
-                gpui::canvas(|_, _, _| {}, move |b, _, window, _| {
-                    crate::icons::paint(window, b, &name);
-                })
+                gpui::canvas(
+                    |_, _, _| {},
+                    move |b, _, window, _| {
+                        crate::icons::paint(window, b, &name);
+                    },
+                )
                 .w(px(32.0))
                 .h(px(32.0))
                 .mb(px(m::SPACING - m::TIGHT)),

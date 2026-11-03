@@ -45,15 +45,7 @@ pub enum Request {
     Passkeys { url: String, rp_id: String, allow: Vec<String> },
     /// Make a passkey for `rp_id`, once the person agrees; one whose id is
     /// in `exclude` already there means they have one.
-    PasskeyCreate {
-        url: String,
-        rp_id: String,
-        rp_name: String,
-        user_id: String,
-        user_name: String,
-        display_name: String,
-        exclude: Vec<String>,
-    },
+    PasskeyCreate { url: String, rp_id: String, rp_name: String, user_id: String, user_name: String, display_name: String, exclude: Vec<String> },
     /// Sign in to `rp_id` with a passkey (one in `allow`, if it isn't
     /// empty): the person picks which and agrees, unless `chosen` (an
     /// item) was picked already, in Chrome's context menu.
@@ -79,11 +71,18 @@ pub enum CliQuery {
     /// Ask the person now (`op signin`), if this session isn't allowed.
     Signin,
     Vaults,
-    Items { vault: Option<String> },
+    Items {
+        vault: Option<String>,
+    },
     /// One item with its fields' values.
-    Item { vault: Option<String>, item: String },
+    Item {
+        vault: Option<String>,
+        item: String,
+    },
     /// `op://` references' values, in order.
-    Resolve { references: Vec<String> },
+    Resolve {
+        references: Vec<String>,
+    },
 }
 
 impl Request {
@@ -93,13 +92,9 @@ impl Request {
             Request::Logins { .. } | Request::Search { .. } | Request::Passkeys { .. } => Duration::from_secs(15),
             Request::Check { .. } => Duration::from_secs(60),
             // These wait for you to unlock Passwords.
-            Request::Fill { .. }
-            | Request::Save { .. }
-            | Request::Unlock
-            | Request::Show { .. }
-            | Request::PasskeyCreate { .. }
-            | Request::PasskeySign { .. }
-            | Request::Cli { .. } => Duration::from_secs(300),
+            Request::Fill { .. } | Request::Save { .. } | Request::Unlock | Request::Show { .. } | Request::PasskeyCreate { .. } | Request::PasskeySign { .. } | Request::Cli { .. } => {
+                Duration::from_secs(300)
+            }
         }
     }
 }
@@ -235,11 +230,7 @@ impl std::fmt::Display for CallError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CallError::NotRunning => f.write_str("Passwords isn’t running"),
-            CallError::Io(e)
-                if e.kind() == std::io::ErrorKind::WouldBlock || e.kind() == std::io::ErrorKind::TimedOut =>
-            {
-                f.write_str("Passwords didn’t answer in time")
-            }
+            CallError::Io(e) if e.kind() == std::io::ErrorKind::WouldBlock || e.kind() == std::io::ErrorKind::TimedOut => f.write_str("Passwords didn’t answer in time"),
             CallError::Io(e) => write!(f, "Couldn’t talk to Passwords: {e}"),
             CallError::Protocol(e) => write!(f, "Passwords answered oddly: {e}"),
         }
@@ -372,9 +363,7 @@ pub fn serve(deliver: impl Fn(Incoming) + Send + Sync + 'static) -> std::io::Res
                 line.zeroize();
                 match parsed {
                     Ok(request) => deliver(Incoming { request, from, pid, stream }),
-                    Err(e) => {
-                        Incoming { request: Request::Unlock, from, pid, stream }.reply(Response::Error { message: e.to_string() })
-                    }
+                    Err(e) => Incoming { request: Request::Unlock, from, pid, stream }.reply(Response::Error { message: e.to_string() }),
                 }
             });
         }
@@ -388,9 +377,7 @@ fn trusted(stream: &UnixStream) -> Result<(String, i32), String> {
     let mut cred = libc::ucred { pid: 0, uid: 0, gid: 0 };
     let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
     // SAFETY: cred and len are valid for getsockopt to write.
-    let r = unsafe {
-        libc::getsockopt(stream.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, (&raw mut cred).cast(), &mut len)
-    };
+    let r = unsafe { libc::getsockopt(stream.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, (&raw mut cred).cast(), &mut len) };
     if r != 0 {
         return Err(std::io::Error::last_os_error().to_string());
     }
@@ -548,20 +535,12 @@ mod tests {
 
     #[test]
     fn round_trip() {
-        let r = Request::Save {
-            url: "https://a.example".into(),
-            title: "A".into(),
-            username: "me".into(),
-            password: "pw".into(),
-            replace: Some(("v".into(), "i".into())),
-        };
+        let r = Request::Save { url: "https://a.example".into(), title: "A".into(), username: "me".into(), password: "pw".into(), replace: Some(("v".into(), "i".into())) };
         let text = serde_json::to_string(&r).unwrap();
         assert!(text.contains("\"type\":\"save\""));
         let back: Request = serde_json::from_str(&text).unwrap();
         assert!(matches!(back, Request::Save { replace: Some(_), .. }));
-        let r: Response =
-            serde_json::from_str(r#"{"type":"logins","logins":[{"vault":"v","id":"i","title":"T","username":"u"}]}"#)
-                .unwrap();
+        let r: Response = serde_json::from_str(r#"{"type":"logins","logins":[{"vault":"v","id":"i","title":"T","username":"u"}]}"#).unwrap();
         assert!(matches!(r, Response::Logins { ref logins } if logins.len() == 1));
     }
 
@@ -573,9 +552,7 @@ mod tests {
         unsafe { std::env::set_var("OLO_KEYCHAIN_SOCKET", dir.join("k.sock")) };
         serve(|incoming| {
             let response = match &incoming.request {
-                Request::Logins { url } => Response::Logins {
-                    logins: vec![Login { vault: "v".into(), id: "i".into(), title: url.clone(), username: "u".into(), otp: false }],
-                },
+                Request::Logins { url } => Response::Logins { logins: vec![Login { vault: "v".into(), id: "i".into(), title: url.clone(), username: "u".into(), otp: false }] },
                 _ => Response::Locked,
             };
             incoming.reply(response);

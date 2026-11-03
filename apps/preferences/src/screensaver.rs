@@ -9,8 +9,8 @@ use olo_protocol::{Corner, Settings};
 use olo_screensavers::{Frame, MODULES, Module, Opt, Options, gpui_canvas::GpuiCanvas};
 use olo_ui::{
     gpui::{
-        Bounds, Context, DispatchPhase, FontWeight, InteractiveElement as _, StatefulInteractiveElement as _, MouseButton, MouseDownEvent, ParentElement as _, PathBuilder, Pixels, ScrollHandle, SharedString, Styled as _, Window,
-        canvas, div, point, px, rgb, size,
+        Bounds, Context, DispatchPhase, FontWeight, InteractiveElement as _, MouseButton, MouseDownEvent, ParentElement as _, PathBuilder, Pixels, ScrollHandle, SharedString,
+        StatefulInteractiveElement as _, Styled as _, Window, canvas, div, point, px, rgb, size,
     },
     metrics as m,
     style::{self, c},
@@ -198,7 +198,15 @@ fn corner_monitor(ui: &mut Ui, corner: Option<Corner>, label: &str, desktop: [u8
                 }
                 let f = |v: Pixels, lo: Pixels, w: Pixels| f32::from(v - lo) / f32::from(w);
                 let (fx, fy) = (f(e.position.x, screen.left(), screen.size.width), f(e.position.y, screen.top(), screen.size.height));
-                let side = |f: f32| if f < 0.34 { Some(false) } else if f > 0.66 { Some(true) } else { None };
+                let side = |f: f32| {
+                    if f < 0.34 {
+                        Some(false)
+                    } else if f > 0.66 {
+                        Some(true)
+                    } else {
+                        None
+                    }
+                };
                 let k = match (side(fx), side(fy)) {
                     (Some(false), Some(false)) => Some(Corner::TopLeft),
                     (Some(true), Some(false)) => Some(Corner::TopRight),
@@ -255,7 +263,10 @@ fn modules(ui: &mut Ui, server: &Server, st: &mut State) {
                 let now = Instant::now();
                 let dt = (now - *last).as_secs_f32();
                 *last = now;
-                let rect = olo_screensavers::Rect::from_min_max(olo_screensavers::pos2(f32::from(screen.left()), f32::from(screen.top())), olo_screensavers::pos2(f32::from(screen.right()), f32::from(screen.bottom())));
+                let rect = olo_screensavers::Rect::from_min_max(
+                    olo_screensavers::pos2(f32::from(screen.left()), f32::from(screen.top())),
+                    olo_screensavers::pos2(f32::from(screen.right()), f32::from(screen.bottom())),
+                );
                 let canvas = GpuiCanvas::new(window, cx, rect, None);
                 module.draw(&Frame { canvas: &canvas, rect, dt });
                 canvas.finish();
@@ -277,20 +288,38 @@ fn modules(ui: &mut Ui, server: &Server, st: &mut State) {
             .id(SharedString::from(format!("module-{name}")))
             .h(px(m::LIST_ROW))
             .w_full()
-            .child(canvas(|_, _, _| {}, move |r, _, window, cx| {
-                let p = theme::palette(cx);
-                if chosen {
-                    style::fill_rect(window, r, c(p.list_selected_background));
-                }
-                let color = if chosen { c(p.list_selected_item_text) } else { c(p.document_text) };
-                style::label(window, cx, r.left() + px(m::CELL_INSET), r.center().y, style::Align::Left, name, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color);
-                olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "ListItem", name: Some(name.into()), bounds: r, enabled: true, clickable: true, selected: Some(chosen), ..Default::default() });
-            }).size_full())
+            .child(
+                canvas(
+                    |_, _, _| {},
+                    move |r, _, window, cx| {
+                        let p = theme::palette(cx);
+                        if chosen {
+                            style::fill_rect(window, r, c(p.list_selected_background));
+                        }
+                        let color = if chosen { c(p.list_selected_item_text) } else { c(p.document_text) };
+                        style::label(window, cx, r.left() + px(m::CELL_INSET), r.center().y, style::Align::Left, name, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color);
+                        olo_ui::agent::record(
+                            window,
+                            cx,
+                            olo_ui::agent::Node { role: "ListItem", name: Some(name.into()), bounds: r, enabled: true, clickable: true, selected: Some(chosen), ..Default::default() },
+                        );
+                    },
+                )
+                .size_full(),
+            )
             .on_click(move |_, window, cx| pick(window, cx))
     });
     let list = div().flex_1().min_h_0().child(ScrollView::new("modules", &st.scroll).background(p.document_background).child(div().flex().flex_col().children(rows.collect::<Vec<_>>())));
     let server = server.clone();
-    let left = div().w(px(LIST_W)).flex_shrink_0().flex().flex_col().gap(px(m::SPACING)).child(monitor).child(list).child(Button::new("Test").min_width(m::BUTTON_MIN_WIDTH).on_click(move |_, _| server.start_screen_saver()));
+    let left = div()
+        .w(px(LIST_W))
+        .flex_shrink_0()
+        .flex()
+        .flex_col()
+        .gap(px(m::SPACING))
+        .child(monitor)
+        .child(list)
+        .child(Button::new("Test").min_width(m::BUTTON_MIN_WIDTH).on_click(move |_, _| server.start_screen_saver()));
     ui.add(left);
 
     // Its settings.

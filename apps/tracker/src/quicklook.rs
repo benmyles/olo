@@ -6,17 +6,17 @@
 //! once, as Quick Look does on the Mac; anything more is Viewer's job.
 
 use olo_kit_base::metrics as m;
+pub use olo_preview::edit::EditEvent;
 use olo_preview::{
     Body, Item,
     edit::{self, Editor, Op},
     ui::{PreviewEvent, PreviewView},
 };
-pub use olo_preview::edit::EditEvent;
 use olo_ui::{
     WindowOptions,
     gpui::{
-        self, App, AppContext as _, Bounds, Context, Entity, EntityId, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseMoveEvent, ParentElement as _, PathBuilder, Pixels, Point, Render, Styled as _,
-        StatefulInteractiveElement as _, Subscription, WeakEntity, Window, canvas, div, point, px, size,
+        self, App, AppContext as _, Bounds, Context, Entity, EntityId, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseMoveEvent, ParentElement as _, PathBuilder,
+        Pixels, Point, Render, StatefulInteractiveElement as _, Styled as _, Subscription, WeakEntity, Window, canvas, div, point, px, size,
     },
     icons,
     style::{self, Align},
@@ -110,7 +110,24 @@ impl QuickLook {
         });
         let opener = fs::opener_name(&entry);
         let editable = !entry.is_dir && edit::editable(&entry.path);
-        QuickLook { app, source, entry, preview, opener, editor: None, editable, failed: None, what: String::new(), win: None, shown: false, awake: false, press: None, focus: cx.focus_handle(), focused: false, _sub: sub }
+        QuickLook {
+            app,
+            source,
+            entry,
+            preview,
+            opener,
+            editor: None,
+            editable,
+            failed: None,
+            what: String::new(),
+            win: None,
+            shown: false,
+            awake: false,
+            press: None,
+            focus: cx.focus_handle(),
+            focused: false,
+            _sub: sub,
+        }
     }
 
     /// Show another item in the same window (what's shown stays until it
@@ -260,7 +277,18 @@ impl Render for QuickLook {
                 let r = style::snap_centred(window, point(b.left() + px(8.0), b.center().y), 16.0, 16.0);
                 icons::paint(window, r, icon);
                 let x = r.right() + px(2.0 * m::TIGHT);
-                let at = style::label_fit(window, cx, x, b.center().y, Align::Left, note.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p), (b.right() - x).max(px(0.0)));
+                let at = style::label_fit(
+                    window,
+                    cx,
+                    x,
+                    b.center().y,
+                    Align::Left,
+                    note.clone(),
+                    style::PLAIN_SIZE,
+                    style::ui_font(FontWeight::NORMAL),
+                    style::disabled_text(&p),
+                    (b.right() - x).max(px(0.0)),
+                );
                 olo_ui::agent::record(window, cx, olo_ui::agent::Node::label(note.clone(), at));
                 // The icon is the item: drag it out, as a document's proxy
                 // icon.
@@ -281,13 +309,7 @@ impl Render for QuickLook {
         )
         .size_full();
         let grab_me = me.clone();
-        let grab = div()
-            .absolute()
-            .left_0()
-            .top_0()
-            .bottom_0()
-            .w(px(20.0))
-            .on_mouse_down(MouseButton::Left, move |ev, _, cx| grab_me.update(cx, |q, _| q.press = Some(ev.position)));
+        let grab = div().absolute().left_0().top_0().bottom_0().w(px(20.0)).on_mouse_down(MouseButton::Left, move |ev, _, cx| grab_me.update(cx, |q, _| q.press = Some(ev.position)));
         let mut buttons = div().flex().flex_row().items_center().gap(px(m::TIGHT));
         if rotate {
             for (right, tip, glyph_right) in [(false, "Rotate Left (⌘L)", false), (true, "Rotate Right (⌘R)", true)] {
@@ -336,33 +358,21 @@ impl Render for QuickLook {
         )
         .absolute()
         .inset_0();
-        let footer = div()
-            .h(px(FOOTER))
-            .w_full()
-            .relative()
-            .child(edge)
-            .child(
-                div()
-                    .absolute()
-                    .left(px(m::SPACING))
-                    .right(px(m::SPACING))
-                    .top(px(m::TIGHT + 2.0))
-                    .bottom(px(m::TIGHT))
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(m::SPACING))
-                    .child(div().flex_1().h_full().relative().child(info).child(grab))
-                    .child(buttons),
-            );
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .track_focus(&self.focus)
-            .on_key_down(cx.listener(Self::key_down))
-            .child(div().flex_1().min_h_0().relative().child(self.preview.clone()))
-            .child(footer)
+        let footer = div().h(px(FOOTER)).w_full().relative().child(edge).child(
+            div()
+                .absolute()
+                .left(px(m::SPACING))
+                .right(px(m::SPACING))
+                .top(px(m::TIGHT + 2.0))
+                .bottom(px(m::TIGHT))
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(m::SPACING))
+                .child(div().flex_1().h_full().relative().child(info).child(grab))
+                .child(buttons),
+        );
+        div().size_full().flex().flex_col().track_focus(&self.focus).on_key_down(cx.listener(Self::key_down)).child(div().flex_1().min_h_0().relative().child(self.preview.clone())).child(footer)
     }
 }
 

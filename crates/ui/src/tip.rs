@@ -12,7 +12,8 @@
 use std::time::{Duration, Instant};
 
 use gpui::{
-    AnyWindowHandle, App, AppContext as _, Bounds, Context, FontWeight, IntoElement, ParentElement as _, Pixels, Render, SharedString, Styled as _, Task, Window, WindowBounds, WindowHandle, WindowKind, div, point, px, size,
+    AnyWindowHandle, App, AppContext as _, Bounds, Context, FontWeight, IntoElement, ParentElement as _, Pixels, Render, SharedString, Styled as _, Task, Window, WindowBounds, WindowHandle,
+    WindowKind, div, point, px, size,
 };
 use olo_kit_base::metrics as m;
 

@@ -77,40 +77,20 @@ fn read(path: &str) -> String {
 }
 
 fn gather() -> Facts {
-    let machine = [read("/sys/firmware/devicetree/base/model"), read("/sys/class/dmi/id/product_name")]
-        .into_iter()
-        .find(|s| !s.is_empty())
-        .unwrap_or_else(|| "Unknown".into());
+    let machine = [read("/sys/firmware/devicetree/base/model"), read("/sys/class/dmi/id/product_name")].into_iter().find(|s| !s.is_empty()).unwrap_or_else(|| "Unknown".into());
     let cpus = std::thread::available_parallelism().map_or(1, |n| n.get());
     let cpuinfo = read("/proc/cpuinfo");
-    let model = cpuinfo
-        .lines()
-        .find_map(|l| l.strip_prefix("model name").and_then(|r| r.split_once(':')).map(|(_, v)| v.trim().to_owned()));
-    let chip = [read("/sys/firmware/devicetree/base/compatible")
-        .split('\0')
-        .find(|s| s.starts_with("apple,t"))
-        .map(apple_chip)]
-    .into_iter()
-    .flatten()
-    .flatten()
-    .next();
+    let model = cpuinfo.lines().find_map(|l| l.strip_prefix("model name").and_then(|r| r.split_once(':')).map(|(_, v)| v.trim().to_owned()));
+    let chip = [read("/sys/firmware/devicetree/base/compatible").split('\0').find(|s| s.starts_with("apple,t")).map(apple_chip)].into_iter().flatten().flatten().next();
     let processor = match chip.or(model) {
         Some(name) => format!("{name}, {cpus} cores"),
         None => format!("{cpus} × {}", std::env::consts::ARCH),
     };
     let meminfo = read("/proc/meminfo");
-    let total_kb: u64 = meminfo
-        .lines()
-        .find_map(|l| l.strip_prefix("MemTotal:"))
-        .and_then(|v| v.split_whitespace().next()?.parse().ok())
-        .unwrap_or(0);
+    let total_kb: u64 = meminfo.lines().find_map(|l| l.strip_prefix("MemTotal:")).and_then(|v| v.split_whitespace().next()?.parse().ok()).unwrap_or(0);
     let memory = format!("{} GB", installed_gb(total_kb));
     let kernel = format!("Linux {}", read("/proc/sys/kernel/osrelease"));
-    let uptime = read("/proc/uptime")
-        .split_whitespace()
-        .next()
-        .and_then(|s| s.parse::<f64>().ok())
-        .map(|s| (Duration::from_secs_f64(s), Instant::now()));
+    let uptime = read("/proc/uptime").split_whitespace().next().and_then(|s| s.parse::<f64>().ok()).map(|s| (Duration::from_secs_f64(s), Instant::now()));
     Facts { machine, processor, memory, kernel, uptime }
 }
 
@@ -150,11 +130,7 @@ fn session_pid() -> Option<i32> {
 /// its windows where they were.
 fn restart(pid: i32) -> Result<(), String> {
     // SAFETY: sending a signal.
-    if unsafe { libc::kill(pid, libc::SIGHUP) } == 0 {
-        Ok(())
-    } else {
-        Err(std::io::Error::last_os_error().to_string())
-    }
+    if unsafe { libc::kill(pid, libc::SIGHUP) } == 0 { Ok(()) } else { Err(std::io::Error::last_os_error().to_string()) }
 }
 
 pub fn uptime_text(d: Duration) -> String {
@@ -180,17 +156,23 @@ pub fn uptime_text(d: Duration) -> String {
 pub fn ui(ui: &mut Ui, st: &mut State) {
     let dark = theme::palette(ui.cx).mode == olo_ui::palette::ThemeMode::Dark;
     let word_w = brand::wordmark_width(30.0, dark);
-    let icon = canvas(|_, _, _| {}, |b, _, window, _| {
-        icons::paint(window, b, "olo");
-    })
+    let icon = canvas(
+        |_, _, _| {},
+        |b, _, window, _| {
+            icons::paint(window, b, "olo");
+        },
+    )
     .w(px(64.0))
     .h(px(64.0))
     .flex_shrink_0();
     let title = match word_w {
-        Some(w) => canvas(|_, _, _| {}, move |b, _, window, _| {
-            let at = Bounds { origin: point(b.left(), b.top()), size: size(px(w), px(30.0)) };
-            brand::wordmark_centred(window, at, dark);
-        })
+        Some(w) => canvas(
+            |_, _, _| {},
+            move |b, _, window, _| {
+                let at = Bounds { origin: point(b.left(), b.top()), size: size(px(w), px(30.0)) };
+                brand::wordmark_centred(window, at, dark);
+            },
+        )
         .w(px(w))
         .h(px(30.0))
         .into_any_element(),

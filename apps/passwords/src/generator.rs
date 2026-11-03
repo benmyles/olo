@@ -2,8 +2,9 @@
 //! Copy, and Use when it was opened from a password field.
 
 use olo_ui::{
+    agent,
     gpui::{Context, Entity, FocusHandle, FontWeight, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render, SharedString, Styled as _, Window, canvas, div, px},
-    agent, metrics as m, style, theme,
+    metrics as m, style, theme,
     widgets::{Button, CheckBox, MenuField, Slider, StatusBar, button_row},
 };
 use onepassword::{PasswordRecipe, SeparatorType, WordListType, generate};
@@ -168,9 +169,13 @@ impl Render for GeneratorView {
 
         let kinds: Vec<SharedString> = KINDS.iter().map(|k| SharedString::from(*k)).collect();
         let kind_me = me.clone();
-        let mut form = div().flex().flex_col().gap(px(m::SPACING)).child(well).child(strength).child(
-            MenuField::new("gen-kind", kinds, r.kind).label("Type:").divider(DIVIDER).on_change(move |i, _, cx| kind_me.update(cx, |g, cx| g.change(|r| r.kind = i, cx))),
-        );
+        let mut form = div()
+            .flex()
+            .flex_col()
+            .gap(px(m::SPACING))
+            .child(well)
+            .child(strength)
+            .child(MenuField::new("gen-kind", kinds, r.kind).label("Type:").divider(DIVIDER).on_change(move |i, _, cx| kind_me.update(cx, |g, cx| g.change(|r| r.kind = i, cx))));
         let slider = |id: &'static str, label: &'static str, value: u32, range: std::ops::RangeInclusive<f32>, set: fn(&mut Recipe, u32)| {
             let me = me.clone();
             Slider::new(id, value as f32, range).label(label).value_text(value.to_string()).step(1.0).on_change(move |v, _, cx| {

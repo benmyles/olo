@@ -16,13 +16,13 @@
 
 use std::path::PathBuf;
 
+use olo_protocol::{Client, KeyboardProfile, Reply, Request, app_keys, shortcuts};
 use olo_ui::{
     Frame, Proxy,
     gpui::{App, AppContext as _, Context, IntoElement, LayerKeyboard, MouseDownEvent, Pixels, Point, Render, Styled as _, Window, WindowHandle, canvas, point, px},
     menu::{self, Menu, MenuPopup},
     tracker,
 };
-use olo_protocol::{Client, KeyboardProfile, Reply, Request, app_keys, shortcuts};
 
 /// What `--window-menu` asked for.
 #[derive(Debug, Clone, PartialEq)]
@@ -36,11 +36,7 @@ impl Ask {
     pub fn parse(args: &[String]) -> Option<Ask> {
         let i = args.iter().position(|a| a == "--window-menu")?;
         let num = |n: usize| args.get(i + n).and_then(|a| a.parse::<f32>().ok());
-        Some(Ask {
-            window: args.get(i + 1)?.parse().ok()?,
-            at: (num(2)?, num(3)?),
-            output: args.get(i + 4).filter(|o| !o.starts_with("--")).cloned(),
-        })
+        Some(Ask { window: args.get(i + 1)?.parse().ok()?, at: (num(2)?, num(3)?), output: args.get(i + 4).filter(|o| !o.starts_with("--")).cloned() })
     }
 }
 
@@ -106,11 +102,8 @@ pub fn learn(ask: Ask, proxy: Proxy) {
         };
         let displays = outputs.iter().filter(|o| o.mirror_of.is_none()).count().max(1);
         let display = w.output.as_deref().and_then(|o| olo_protocol::display_number(&outputs, o));
-        let others = outputs
-            .iter()
-            .filter(|o| o.mirror_of.is_none() && Some(&o.name) != w.output.as_ref())
-            .filter_map(|o| Some((o.name.clone(), olo_protocol::display_number(&outputs, &o.name)?)))
-            .collect();
+        let others =
+            outputs.iter().filter(|o| o.mirror_of.is_none() && Some(&o.name) != w.output.as_ref()).filter_map(|o| Some((o.name.clone(), olo_protocol::display_number(&outputs, &o.name)?))).collect();
         let keys = match c.request(&Request::GetSettings) {
             Ok(Reply::Settings { settings }) => settings.keyboard.profile,
             _ => Default::default(),
@@ -377,7 +370,8 @@ impl Render for Layer {
 /// Covers the window's output with the clear layer and pops its menu.
 pub fn open(facts: Facts, cx: &mut App) -> Option<WindowHandle<Frame>> {
     let output = facts.ask.output.clone().filter(|o| cx.displays().iter().any(|d| d.name().as_deref() == Some(o.as_str())));
-    let layer = cx.new(|_| Layer { window: facts.ask.window, app: facts.app.clone(), path: facts.path.clone(), at: point(px(facts.ask.at.0), px(facts.ask.at.1)), menu: Some(build(&facts)), popup: None });
+    let layer =
+        cx.new(|_| Layer { window: facts.ask.window, app: facts.app.clone(), path: facts.path.clone(), at: point(px(facts.ask.at.0), px(facts.ask.at.1)), menu: Some(build(&facts)), popup: None });
     // The menu is a popup of the layer and takes the keyboard itself
     // (app_server gives every key to a layer that holds it exclusively).
     let options = crate::overlay("Window Menu", "window-menu", output).layer_options(|l| l.keyboard = LayerKeyboard::OnDemand);
@@ -398,7 +392,22 @@ mod tests {
         let mut changed = KeyboardProfile::default();
         changed.shortcuts.insert("zoom".into(), vec!["Ctrl+Cmd+Z".into()]);
         changed.shortcuts.insert("center".into(), vec![]);
-        let facts = Facts { ask, title: "Notes".into(), workspace: 1, workspaces: 3, displays: 2, rolled: false, grouped: true, auto: false, floating: false, keys: changed, path: None, display: Some(1), others: vec![("HDMI-A-1".into(), 0)], app: Owner { app_id: "org.gnome.gedit".into(), name: "Gedit".into(), ..Default::default() } };
+        let facts = Facts {
+            ask,
+            title: "Notes".into(),
+            workspace: 1,
+            workspaces: 3,
+            displays: 2,
+            rolled: false,
+            grouped: true,
+            auto: false,
+            floating: false,
+            keys: changed,
+            path: None,
+            display: Some(1),
+            others: vec![("HDMI-A-1".into(), 0)],
+            app: Owner { app_id: "org.gnome.gedit".into(), name: "Gedit".into(), ..Default::default() },
+        };
         fn commands(m: &Menu, out: &mut Vec<String>) {
             for item in &m.items {
                 match item {
@@ -451,7 +460,8 @@ mod tests {
         let mut windows = facts.clone();
         windows.keys.platform = olo_protocol::shortcuts::Platform::Windows;
         let on_windows = build(&windows);
-        let said: Vec<(String, Option<String>)> = on_windows.items.iter().rev().take(2).filter_map(|i| if let menu::MenuItem::Action(a) = i { Some((a.label.clone(), a.keys.clone())) } else { None }).collect();
+        let said: Vec<(String, Option<String>)> =
+            on_windows.items.iter().rev().take(2).filter_map(|i| if let menu::MenuItem::Action(a) = i { Some((a.label.clone(), a.keys.clone())) } else { None }).collect();
         assert_eq!(said, [("Quit Gedit".to_owned(), Some("Ctrl+Q".to_owned())), ("Close".to_owned(), Some("Ctrl+W".to_owned()))]);
         // A kit app's are its own, from that window's menus: Terminal's
         // Close Tab with a tab of several, chosen in the app.
@@ -467,7 +477,8 @@ mod tests {
             ..facts.clone()
         };
         let kit_menu = build(&kit);
-        let last: Vec<(String, String, Option<String>)> = kit_menu.items.iter().rev().take(2).filter_map(|i| if let menu::MenuItem::Action(a) = i { Some((a.label.clone(), a.command.clone(), a.keys.clone())) } else { None }).collect();
+        let last: Vec<(String, String, Option<String>)> =
+            kit_menu.items.iter().rev().take(2).filter_map(|i| if let menu::MenuItem::Action(a) = i { Some((a.label.clone(), a.command.clone(), a.keys.clone())) } else { None }).collect();
         assert_eq!(last, [("Quit Terminal".to_owned(), "app-quit".to_owned(), Some("⌘Q".to_owned())), ("Close Tab".to_owned(), "app-close".to_owned(), Some("⌘W".to_owned()))]);
         let Some(menu::MenuItem::Submenu(spaces)) = menu.items.iter().find(|i| matches!(i, menu::MenuItem::Submenu(s) if s.title == "Move to Workspace")) else { panic!() };
         let menu::MenuItem::Action(first) = &spaces.items[0] else { panic!() };

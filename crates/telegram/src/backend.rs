@@ -15,41 +15,104 @@ pub enum Cmd {
     Chats,
     /// A chat's latest messages (or a topic's), and its topics if it's a
     /// forum.
-    Open { chat: ChatId, topic: Option<MsgId> },
+    Open {
+        chat: ChatId,
+        topic: Option<MsgId>,
+    },
     /// The page of messages before `before`.
-    Older { chat: ChatId, topic: Option<MsgId>, before: MsgId },
+    Older {
+        chat: ChatId,
+        topic: Option<MsgId>,
+        before: MsgId,
+    },
     Send(Outgoing),
-    Edit { chat: ChatId, id: MsgId, text: String, entities: Vec<Entity> },
-    Delete { chat: ChatId, ids: Vec<MsgId>, everyone: bool },
-    Forward { from: ChatId, ids: Vec<MsgId>, to: ChatId },
+    Edit {
+        chat: ChatId,
+        id: MsgId,
+        text: String,
+        entities: Vec<Entity>,
+    },
+    Delete {
+        chat: ChatId,
+        ids: Vec<MsgId>,
+        everyone: bool,
+    },
+    Forward {
+        from: ChatId,
+        ids: Vec<MsgId>,
+        to: ChatId,
+    },
     /// Our reaction to a message (None takes it away).
-    React { chat: ChatId, id: MsgId, emoji: Option<String> },
+    React {
+        chat: ChatId,
+        id: MsgId,
+        emoji: Option<String>,
+    },
     /// We've read everything up to `up_to`.
-    Read { chat: ChatId, up_to: MsgId },
+    Read {
+        chat: ChatId,
+        up_to: MsgId,
+    },
     /// Mark the chat unread, or not.
-    MarkUnread { chat: ChatId, on: bool },
+    MarkUnread {
+        chat: ChatId,
+        on: bool,
+    },
     /// We're typing in it (sent at most every few seconds).
-    Typing { chat: ChatId, topic: Option<MsgId>, doing: Doing },
-    Draft { chat: ChatId, text: String },
-    PinChat { chat: ChatId, on: bool },
-    Archive { chat: ChatId, on: bool },
+    Typing {
+        chat: ChatId,
+        topic: Option<MsgId>,
+        doing: Doing,
+    },
+    Draft {
+        chat: ChatId,
+        text: String,
+    },
+    PinChat {
+        chat: ChatId,
+        on: bool,
+    },
+    Archive {
+        chat: ChatId,
+        on: bool,
+    },
     /// The chat goes from the list, as Telegram's own apps delete one: a
     /// person's history deleted (for us), a group or channel left.
-    DeleteChat { chat: ChatId },
-    Mute { chat: ChatId, on: bool },
-    PinMessage { chat: ChatId, id: MsgId, on: bool },
+    DeleteChat {
+        chat: ChatId,
+    },
+    Mute {
+        chat: ChatId,
+        on: bool,
+    },
+    PinMessage {
+        chat: ChatId,
+        id: MsgId,
+        on: bool,
+    },
     /// A picture: a chat's or person's (`Pic::Avatar`), or a message's
     /// thumbnail; or a message's whole file (`Pic::File`), into the cache.
     Fetch(Pic),
     /// Save a message's file as `to` (downloading it if need be).
-    SaveFile { chat: ChatId, id: MsgId, to: PathBuf },
+    SaveFile {
+        chat: ChatId,
+        id: MsgId,
+        to: PathBuf,
+    },
     /// Chats, people and messages matching `query`.
-    Search { query: String },
+    Search {
+        query: String,
+    },
     /// A message's place in its chat, to jump to it.
-    Around { chat: ChatId, id: MsgId },
+    Around {
+        chat: ChatId,
+        id: MsgId,
+    },
     Contacts,
     /// Open a chat with a person or a public chat by username.
-    Resolve { username: String },
+    Resolve {
+        username: String,
+    },
     SignOut,
 }
 
@@ -106,42 +169,102 @@ pub enum Event {
     Me(Me),
     /// A page of the chat list; `done` once it's all here (`cached` while
     /// it's what was kept from last time).
-    Chats { chats: Vec<Chat>, done: bool, cached: bool },
+    Chats {
+        chats: Vec<Chat>,
+        done: bool,
+        cached: bool,
+    },
     /// One chat changed (a message came, it was read, renamed, …).
     Chat(Chat),
     ChatGone(ChatId),
     Folders(Vec<Folder>),
     /// A page of messages, newest last; `more`: older ones are left.
     /// `before` is the page asked for (None: the latest).
-    Messages { chat: ChatId, topic: Option<MsgId>, msgs: Vec<Message>, more: bool, before: Option<MsgId> },
+    Messages {
+        chat: ChatId,
+        topic: Option<MsgId>,
+        msgs: Vec<Message>,
+        more: bool,
+        before: Option<MsgId>,
+    },
     /// A page round a message (`Cmd::Around`).
-    Around { chat: ChatId, id: MsgId, msgs: Vec<Message>, more: bool },
+    Around {
+        chat: ChatId,
+        id: MsgId,
+        msgs: Vec<Message>,
+        more: bool,
+    },
     /// A new message (theirs, or ours sent from elsewhere).
     New(Message),
     /// Ours, now in Telegram.
-    Sent { local: u64, msg: Message },
-    SendFailed { local: u64, chat: ChatId, why: String },
+    Sent {
+        local: u64,
+        msg: Message,
+    },
+    SendFailed {
+        local: u64,
+        chat: ChatId,
+        why: String,
+    },
     Edited(Message),
-    Deleted { chat: Option<ChatId>, ids: Vec<MsgId> },
+    Deleted {
+        chat: Option<ChatId>,
+        ids: Vec<MsgId>,
+    },
     /// Read up to `up_to`: ours by them (`outbox`) or theirs by us.
-    Read { chat: ChatId, outbox: bool, up_to: MsgId },
-    Doing { chat: ChatId, topic: Option<MsgId>, who: String, doing: Doing },
-    Topics { chat: ChatId, topics: Vec<Topic> },
+    Read {
+        chat: ChatId,
+        outbox: bool,
+        up_to: MsgId,
+    },
+    Doing {
+        chat: ChatId,
+        topic: Option<MsgId>,
+        who: String,
+        doing: Doing,
+    },
+    Topics {
+        chat: ChatId,
+        topics: Vec<Topic>,
+    },
     /// A picture or file is in the cache, at `path`.
-    Fetched { pic: Pic, path: PathBuf },
+    Fetched {
+        pic: Pic,
+        path: PathBuf,
+    },
     /// How far a download or upload is (0–1).
-    Progress { pic: Option<Pic>, local: Option<u64>, done: f32 },
-    FetchFailed { pic: Pic, why: String },
-    Saved { to: PathBuf },
-    Results { query: String, chats: Vec<Chat>, msgs: Vec<Message> },
+    Progress {
+        pic: Option<Pic>,
+        local: Option<u64>,
+        done: f32,
+    },
+    FetchFailed {
+        pic: Pic,
+        why: String,
+    },
+    Saved {
+        to: PathBuf,
+    },
+    Results {
+        query: String,
+        chats: Vec<Chat>,
+        msgs: Vec<Message>,
+    },
     Contacts(Vec<Contact>),
     /// `Resolve`'s answer.
-    Resolved { username: String, chat: Option<Chat> },
+    Resolved {
+        username: String,
+        chat: Option<Chat>,
+    },
     /// The person's changes (archived, read, muted, pinned) not yet in
     /// Telegram: `pending` of the `total` made since all were last sent;
     /// `waiting`: Telegram asked us to wait that many seconds. They're
     /// kept on disk until sent, across quitting.
-    Sync { pending: usize, total: usize, waiting: Option<u32> },
+    Sync {
+        pending: usize,
+        total: usize,
+        waiting: Option<u32>,
+    },
     /// Something went wrong that the person should hear about.
     Error(String),
 }

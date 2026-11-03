@@ -23,8 +23,8 @@ use olo_sync::Mutex;
 use olo_system::time::{self as systime, TimeStatus};
 use olo_ui::{
     gpui::{
-        AppContext as _, Bounds, Context, DispatchPhase, Entity, FontWeight, Hsla, MouseButton, MouseDownEvent, ParentElement as _, PathBuilder, Pixels, Point, SharedString, Styled as _, Window, canvas, div, point,
-        px, size,
+        AppContext as _, Bounds, Context, DispatchPhase, Entity, FontWeight, Hsla, MouseButton, MouseDownEvent, ParentElement as _, PathBuilder, Pixels, Point, SharedString, Styled as _, Window,
+        canvas, div, point, px, size,
     },
     metrics as m,
     style::{self, c},
@@ -106,11 +106,7 @@ fn link(proxy: olo_ui::Proxy) -> &'static Link {
                     s.busy = false;
                     s.error = r.err().map(|e| {
                         tracing::warn!("timedated: {e}");
-                        if systime::needs_auth(&e) {
-                            format!("The {what} wasn't changed: an administrator's password is needed.")
-                        } else {
-                            format!("The {what} couldn't be changed.")
-                        }
+                        if systime::needs_auth(&e) { format!("The {what} wasn't changed: an administrator's password is needed.") } else { format!("The {what} couldn't be changed.") }
                     });
                     drop(s);
                     wake();
@@ -237,7 +233,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         cx.notify();
     });
     let tabs: Vec<SharedString> = ["Date & Time", "Time Zone", "Clock"].into_iter().map(SharedString::from).collect();
-    ui.add(div().flex_1().min_h_0().child(TabView::new("datetime-tabs", tabs, st.tab).on_select(pick).child(div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items))));
+    ui.add(
+        div().flex_1().min_h_0().child(TabView::new("datetime-tabs", tabs, st.tab).on_select(pick).child(div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items))),
+    );
 }
 
 // ---- Date & Time ---------------------------------------------------------------
@@ -285,14 +283,7 @@ fn date_time(ui: &mut Ui, clock: &ClockSettings, st: &mut State, status: Option<
     let live = !manual;
     let face = canvas(|_, _, _| {}, move |b, _, window, cx| paint_face(window, b, &theme::palette(cx), shown_time, live)).w(px(FACE)).h(px(FACE));
     let field = TextControl::new(st.time.clone()).label("Time:").width(FACE);
-    ui.add(
-        div()
-            .flex()
-            .flex_row()
-            .gap(px(m::SPACING * 3.0))
-            .child(cal)
-            .child(div().flex().flex_col().child(face).child(div().h(px(CALENDAR_H - FACE - m::CONTROL_HEIGHT))).child(field)),
-    );
+    ui.add(div().flex().flex_row().gap(px(m::SPACING * 3.0)).child(cal).child(div().flex().flex_col().child(face).child(div().h(px(CALENDAR_H - FACE - m::CONTROL_HEIGHT))).child(field)));
 
     let can_ntp = status.is_some_and(|s| s.can_ntp);
     let tx = st.link.tx.clone();
@@ -328,7 +319,8 @@ fn date_time(ui: &mut Ui, clock: &ClockSettings, st: &mut State, status: Option<
             }
             cx.notify();
         });
-        let mut row = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(Button::new("Set").default(true).enabled(when.is_some()).on_click(set)).child(Button::new("Cancel").on_click(cancel));
+        let mut row =
+            div().flex().flex_row().items_center().gap(px(m::SPACING)).child(Button::new("Set").default(true).enabled(when.is_some()).on_click(set)).child(Button::new("Cancel").on_click(cancel));
         if when.is_none() {
             row = row.child(StringView::new("Type a time like 13:05 or 1:05 PM.").dim(true));
         }
@@ -403,7 +395,19 @@ fn calendar(
         style::label(window, cx, cell.center().x, cell.center().y, style::Align::Center, day.to_string(), style::PLAIN_SIZE, font, color);
         cells.push((cell, this));
     }
-    olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Calendar", name: Some(format!("{} {}", MONTHS[month.month() as usize - 1], month.year()).into()), value: Some(date.to_string().into()), bounds: rect, enabled, clickable: enabled, ..Default::default() });
+    olo_ui::agent::record(
+        window,
+        cx,
+        olo_ui::agent::Node {
+            role: "Calendar",
+            name: Some(format!("{} {}", MONTHS[month.month() as usize - 1], month.year()).into()),
+            value: Some(date.to_string().into()),
+            bounds: rect,
+            enabled,
+            clickable: enabled,
+            ..Default::default()
+        },
+    );
     if !enabled {
         return;
     }
@@ -470,8 +474,7 @@ fn paint_face(window: &mut Window, b: Bounds<Pixels>, p: &olo_ui::palette::Palet
     disc(window, centre, 3.0, ink);
 }
 
-const MONTHS: [&str; 12] =
-    ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const MONTHS: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 fn time_text(t: Time, clock: &ClockSettings) -> String {
     let c = ClockSettings { show_seconds: true, show_day: false, ..clock.clone() };

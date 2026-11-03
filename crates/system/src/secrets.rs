@@ -49,18 +49,15 @@ fn run_prompt(conn: &Connection, prompt: &ObjectPath) -> Result<bool> {
 
 /// Whether a keyring serves the bus, or can be started on it.
 fn available(conn: &Connection) -> bool {
-    let ask = |method: &str, body: &dyn Fn() -> zbus::Result<bool>| body().unwrap_or_else(|e| {
-        tracing::debug!("secrets: {method}: {e}");
-        false
-    });
-    let owned = || -> zbus::Result<bool> {
-        conn.call_method(Some("org.freedesktop.DBus"), "/org/freedesktop/DBus", Some("org.freedesktop.DBus"), "NameHasOwner", &(DEST,))?.body().deserialize()
+    let ask = |method: &str, body: &dyn Fn() -> zbus::Result<bool>| {
+        body().unwrap_or_else(|e| {
+            tracing::debug!("secrets: {method}: {e}");
+            false
+        })
     };
+    let owned = || -> zbus::Result<bool> { conn.call_method(Some("org.freedesktop.DBus"), "/org/freedesktop/DBus", Some("org.freedesktop.DBus"), "NameHasOwner", &(DEST,))?.body().deserialize() };
     let activatable = || -> zbus::Result<bool> {
-        let names: Vec<String> = conn
-            .call_method(Some("org.freedesktop.DBus"), "/org/freedesktop/DBus", Some("org.freedesktop.DBus"), "ListActivatableNames", &())?
-            .body()
-            .deserialize()?;
+        let names: Vec<String> = conn.call_method(Some("org.freedesktop.DBus"), "/org/freedesktop/DBus", Some("org.freedesktop.DBus"), "ListActivatableNames", &())?.body().deserialize()?;
         Ok(names.iter().any(|n| n == DEST))
     };
     ask("NameHasOwner", &owned) || ask("ListActivatableNames", &activatable)

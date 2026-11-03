@@ -1,7 +1,5 @@
-
-
-use olo_sync::Mutex;
 use crate::{utils::Rectangle, utils::Serial, wayland::Dispatch2};
+use olo_sync::Mutex;
 
 use wayland_protocols::xdg::shell::server::{xdg_positioner, xdg_positioner::XdgPositioner};
 

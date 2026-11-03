@@ -70,13 +70,7 @@ impl Decoder for Opus {
         });
         let mut params = params.clone();
         params.channels = Some(layout);
-        Ok(Opus {
-            params,
-            inner,
-            channels,
-            pcm: vec![0.0; MAX_FRAME * channels],
-            buf: AudioBuffer::new(MAX_FRAME as u64, SignalSpec::new(48_000, layout)),
-        })
+        Ok(Opus { params, inner, channels, pcm: vec![0.0; MAX_FRAME * channels], buf: AudioBuffer::new(MAX_FRAME as u64, SignalSpec::new(48_000, layout)) })
     }
 
     fn supported_codecs() -> &'static [CodecDescriptor] {
@@ -149,10 +143,7 @@ mod tests {
         let mss = MediaSourceStream::new(Box::new(file), Default::default());
         let mut hint = Hint::new();
         hint.with_extension("opus");
-        let mut format = symphonia::default::get_probe()
-            .format(&hint, mss, &FormatOptions { enable_gapless: true, ..Default::default() }, &MetadataOptions::default())
-            .unwrap()
-            .format;
+        let mut format = symphonia::default::get_probe().format(&hint, mss, &FormatOptions { enable_gapless: true, ..Default::default() }, &MetadataOptions::default()).unwrap().format;
         let track = format.default_track().unwrap().clone();
         let mut dec = codecs().make(&track.codec_params, &DecoderOptions::default()).unwrap();
         let (mut frames, mut energy) = (0usize, 0f64);

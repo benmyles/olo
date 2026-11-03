@@ -121,12 +121,7 @@ pub fn trees(pid: u32) -> Option<Vec<WindowTree>> {
     // serves its root at the same path), rather than the registry's list
     // of them: the same programs, without asking one more process.
     let bus = |method: &str, arg: &str| c.call_method(Some("org.freedesktop.DBus"), "/org/freedesktop/DBus", Some("org.freedesktop.DBus"), method, &(arg,)).ok();
-    let names: Vec<String> = c
-        .call_method(Some("org.freedesktop.DBus"), "/org/freedesktop/DBus", Some("org.freedesktop.DBus"), "ListNames", &())
-        .ok()?
-        .body()
-        .deserialize()
-        .ok()?;
+    let names: Vec<String> = c.call_method(Some("org.freedesktop.DBus"), "/org/freedesktop/DBus", Some("org.freedesktop.DBus"), "ListNames", &()).ok()?.body().deserialize().ok()?;
     let root = OwnedObjectPath::try_from("/org/a11y/atspi/accessible/root").ok()?;
     let apps: Vec<Ref> = names
         .into_iter()

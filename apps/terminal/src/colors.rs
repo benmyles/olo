@@ -25,14 +25,7 @@ fn rgb([r, g, b, _]: olo_theme::Rgba) -> Rgb {
 
 impl From<&olo_theme::Terminal> for Scheme {
     fn from(t: &olo_theme::Terminal) -> Scheme {
-        Scheme {
-            name: t.name.clone(),
-            foreground: rgb(t.foreground),
-            background: rgb(t.background),
-            cursor: rgb(t.cursor),
-            selection: rgb(t.selection),
-            ansi: t.ansi.map(rgb),
-        }
+        Scheme { name: t.name.clone(), foreground: rgb(t.foreground), background: rgb(t.background), cursor: rgb(t.cursor), selection: rgb(t.selection), ansi: t.ansi.map(rgb) }
     }
 }
 

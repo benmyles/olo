@@ -30,7 +30,10 @@ use olo_system::{
 };
 use olo_ui::{
     Frame, WindowOptions,
-    gpui::{AnyWindowHandle, App, AppContext as _, Context, Entity, FocusHandle, Global, InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _, Window, WindowHandle, WindowId, div, px},
+    gpui::{
+        AnyWindowHandle, App, AppContext as _, Context, Entity, FocusHandle, Global, InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, StatefulInteractiveElement as _,
+        Styled as _, Window, WindowHandle, WindowId, div, px,
+    },
     instance::{self, Launch},
     metrics as m,
     widgets::{self, AlertFrame, Button, Conversation, ConversationField, MenuField, TextField, TextFieldEvent, alert, button_row, paragraph, paragraph_height, text_field},

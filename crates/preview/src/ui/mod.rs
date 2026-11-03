@@ -20,10 +20,12 @@ use std::{
 use futures::StreamExt as _;
 use olo_kit_base::{files, metrics as m};
 use olo_ui::{
-    agent, icons,
+    agent,
     gpui::{
-        self, AnyElement, App, AppContext as _, Bounds, Context, Entity, EventEmitter, FontWeight, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, PathBuilder, Pixels, Render, RenderImage, ScrollHandle, SharedString, Styled as _, Task, TextRun, Window, canvas, div, point, px, size,
+        self, AnyElement, App, AppContext as _, Bounds, Context, Entity, EventEmitter, FontWeight, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent,
+        ParentElement as _, PathBuilder, Pixels, Render, RenderImage, ScrollHandle, SharedString, Styled as _, Task, TextRun, Window, canvas, div, point, px, size,
     },
+    icons,
     style::{self, Align},
     theme,
     widgets::{Cell, Column, ColumnListView, ImageView, ListModel, ScrollView, image_view, image_view::Rgba},
@@ -119,7 +121,7 @@ impl PreviewView {
             failed: None,
             cancel: Arc::new(AtomicBool::new(false)),
             started: Instant::now(),
-            want: load::Want { max_image: if zoomable { load::MAX_ZOOMABLE } else { load::MAX_IMAGE }, },
+            want: load::Want { max_image: if zoomable { load::MAX_ZOOMABLE } else { load::MAX_IMAGE } },
             image,
             player: None,
             video: None,
@@ -146,13 +148,17 @@ impl PreviewView {
     fn spawn(&mut self, cx: &mut Context<Self>) {
         let (item, cancel, generation, want) = (self.item.clone(), self.cancel.clone(), self.generation, self.want);
         let (tx, mut rx) = futures::channel::mpsc::unbounded::<Update>();
-        std::thread::Builder::new()
-            .name("quicklook".into())
-            .spawn(move || load::load(&item, want, &cancel, &mut |u| drop(tx.unbounded_send(u))))
-            .ok();
+        std::thread::Builder::new().name("quicklook".into()).spawn(move || load::load(&item, want, &cancel, &mut |u| drop(tx.unbounded_send(u)))).ok();
         self.loading = Some(cx.spawn(async move |view, cx| {
             while let Some(u) = rx.next().await {
-                if view.update(cx, |v, cx| if v.generation == generation { v.apply(u, cx) }).is_err() {
+                if view
+                    .update(cx, |v, cx| {
+                        if v.generation == generation {
+                            v.apply(u, cx)
+                        }
+                    })
+                    .is_err()
+                {
                     return;
                 }
             }
@@ -209,11 +215,9 @@ impl PreviewView {
                 }
                 self.video = match &b {
                     // (Frames as GPUI takes them: BGRA.)
-                    Body::Media(md) if md.playable && md.video => Some(video::Video::start_with(
-                        &input::Input::file(&self.item.path),
-                        md.duration.unwrap_or(0.0),
-                        video::Options { playing: true, picture: true, sound: true, bgra: true },
-                    )),
+                    Body::Media(md) if md.playable && md.video => {
+                        Some(video::Video::start_with(&input::Input::file(&self.item.path), md.duration.unwrap_or(0.0), video::Options { playing: true, picture: true, sound: true, bgra: true }))
+                    }
                     _ => None,
                 };
                 // A video's poster shows until its first frame comes.
@@ -224,7 +228,9 @@ impl PreviewView {
                     let generation = self.generation;
                     cx.spawn(async move |view, cx| {
                         let made = cx
-                            .background_spawn(async move { image::RgbaImage::from_raw(pic.size[0] as u32, pic.size[1] as u32, pic.to_bgra_unmultiplied()).map(|img| Arc::new(RenderImage::new([image::Frame::new(img)]))) })
+                            .background_spawn(async move {
+                                image::RgbaImage::from_raw(pic.size[0] as u32, pic.size[1] as u32, pic.to_bgra_unmultiplied()).map(|img| Arc::new(RenderImage::new([image::Frame::new(img)])))
+                            })
                             .await;
                         let _ = view.update(cx, |v, cx| {
                             if v.generation == generation && v.frame.is_none() {
@@ -429,13 +435,9 @@ impl PreviewView {
 
 fn note_of(b: &Body) -> String {
     match b {
-        Body::Image { note, .. }
-        | Body::Pages { note, .. }
-        | Body::Rich { note, .. }
-        | Body::Table { note, .. }
-        | Body::Listing { note, .. }
-        | Body::Font { note, .. }
-        | Body::Card { note } => note.clone(),
+        Body::Image { note, .. } | Body::Pages { note, .. } | Body::Rich { note, .. } | Body::Table { note, .. } | Body::Listing { note, .. } | Body::Font { note, .. } | Body::Card { note } => {
+            note.clone()
+        }
         Body::Text(t) => t.note.clone(),
         Body::Media(m) => m.note.clone(),
     }
@@ -451,14 +453,21 @@ fn card(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, item: &Item, error
     let ib = style::snap_centred(window, point(r.center().x, px(top + icon / 2.0)), icon, icon);
     icons::paint(window, ib, &item.icon);
     let mut y = px(top + icon + m::SPACING + m::LABEL_ROW / 2.0);
-    let name = style::label_fit(window, cx, r.center().x, y, Align::Center, item.name.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), style::c(p.panel_text), r.size.width - px(2.0 * m::WINDOW_INSET));
+    let name = style::label_fit(
+        window,
+        cx,
+        r.center().x,
+        y,
+        Align::Center,
+        item.name.clone(),
+        style::PLAIN_SIZE,
+        style::ui_font(FontWeight::BOLD),
+        style::c(p.panel_text),
+        r.size.width - px(2.0 * m::WINDOW_INSET),
+    );
     agent::record(window, cx, agent::Node::label(item.name.clone(), name));
     y += px(m::LABEL_ROW);
-    let facts = if item.is_dir {
-        files::format_time(item.modified)
-    } else {
-        format!("{} — {}", files::format_size(item.size), files::format_time(item.modified))
-    };
+    let facts = if item.is_dir { files::format_time(item.modified) } else { format!("{} — {}", files::format_size(item.size), files::format_time(item.modified)) };
     let dim = style::disabled_text(&p);
     let at = style::label(window, cx, r.center().x, y, Align::Center, facts.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), dim);
     agent::record(window, cx, agent::Node::label(facts, at));
@@ -499,22 +508,18 @@ impl Render for PreviewView {
         };
         let dropped = std::mem::take(&mut self.dropped);
         let _ = me;
-        div()
-            .size_full()
-            .relative()
-            .child(content)
-            .child(
-                canvas(
-                    |_, _, _| {},
-                    move |_, _, window, _| {
-                        for img in dropped {
-                            let _ = window.drop_image(img);
-                        }
-                    },
-                )
-                .absolute()
-                .size_0(),
+        div().size_full().relative().child(content).child(
+            canvas(
+                |_, _, _| {},
+                move |_, _, window, _| {
+                    for img in dropped {
+                        let _ = window.drop_image(img);
+                    }
+                },
             )
+            .absolute()
+            .size_0(),
+        )
     }
 }
 
@@ -652,24 +657,19 @@ impl PreviewView {
             },
         )
         .size_full();
-        let tab_bar = div()
-            .id("ql-sheets")
-            .h(px(26.0))
-            .w_full()
-            .child(tabs)
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |v, e: &MouseDownEvent, _, cx| {
-                    let picked = hits.borrow().iter().position(|b| b.contains(&e.position));
-                    if let Some(k) = picked
-                        && v.sheet != k
-                    {
-                        v.sheet = k;
-                        v.table.update(cx, |t, _| t.reset());
-                        cx.notify();
-                    }
-                }),
-            );
+        let tab_bar = div().id("ql-sheets").h(px(26.0)).w_full().child(tabs).on_mouse_down(
+            MouseButton::Left,
+            cx.listener(move |v, e: &MouseDownEvent, _, cx| {
+                let picked = hits.borrow().iter().position(|b| b.contains(&e.position));
+                if let Some(k) = picked
+                    && v.sheet != k
+                {
+                    v.sheet = k;
+                    v.table.update(cx, |t, _| t.reset());
+                    cx.notify();
+                }
+            }),
+        );
         div().size_full().flex().flex_col().child(tab_bar).child(div().flex_1().min_h_0().child(table)).into_any_element()
     }
 }
@@ -807,7 +807,11 @@ fn paint_transport(window: &mut Window, cx: &mut App, x: Pixels, right: Pixels, 
     window.paint_quad(gpui::fill(bar, style::c(p.document_background)));
     let frac = (pos / dur).clamp(0.0, 1.0) as f32;
     window.paint_quad(gpui::fill(Bounds::new(bar.origin, size(bar.size.width * frac, bar.size.height)), style::c(p.keyboard_navigation)));
-    agent::record(window, cx, agent::Node { role: "Slider", name: Some("Position".into()), value: Some(media::format_duration(pos).into()), bounds: bar, enabled: true, clickable: true, ..Default::default() });
+    agent::record(
+        window,
+        cx,
+        agent::Node { role: "Slider", name: Some("Position".into()), value: Some(media::format_duration(pos).into()), bounds: bar, enabled: true, clickable: true, ..Default::default() },
+    );
     TransportAt { button: br, bar }
 }
 

@@ -48,18 +48,13 @@ fn num(dir: &Path, name: &str) -> Option<u64> {
 }
 
 fn supplies() -> Vec<PathBuf> {
-    std::fs::read_dir("/sys/class/power_supply")
-        .map(|d| d.flatten().map(|e| e.path()).collect())
-        .unwrap_or_default()
+    std::fs::read_dir("/sys/class/power_supply").map(|d| d.flatten().map(|e| e.path()).collect()).unwrap_or_default()
 }
 
 /// The system battery (not a mouse's or a USB device's), if there is one.
 pub fn battery() -> Option<Battery> {
-    let dir = supplies().into_iter().find(|p| {
-        read(&p.join("type")).as_deref() == Some("Battery")
-            && read(&p.join("scope")).is_none_or(|s| s == "System")
-            && num(p, "present").is_none_or(|n| n == 1)
-    })?;
+    let dir =
+        supplies().into_iter().find(|p| read(&p.join("type")).as_deref() == Some("Battery") && read(&p.join("scope")).is_none_or(|s| s == "System") && num(p, "present").is_none_or(|n| n == 1))?;
     from_dir(&dir)
 }
 
@@ -118,9 +113,8 @@ pub fn watch(changed: impl Fn(Option<Battery>) + Send + 'static) {
         zbus::blocking::MessageIterator::for_match_rule(rule, c, Some(64)).ok()
     });
     // Is UPower there to say?
-    let upower = crate::bus::system().is_ok_and(|c| {
-        crate::bus::call::<_, bool>(c, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameHasOwner", &(UPOWER,)).unwrap_or(false)
-    });
+    let upower =
+        crate::bus::system().is_ok_and(|c| crate::bus::call::<_, bool>(c, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameHasOwner", &(UPOWER,)).unwrap_or(false));
     match signals {
         Some(signals) if upower => {
             let _ = std::thread::Builder::new().name("battery-signals".into()).spawn(move || {

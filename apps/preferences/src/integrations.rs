@@ -28,9 +28,15 @@ enum GitHub {
     Checking,
     /// No token anywhere.
     None,
-    Connected { login: String, source: Source },
+    Connected {
+        login: String,
+        source: Source,
+    },
     /// GitHub didn't take the token (or couldn't be reached).
-    Failed { source: Option<Source>, why: String },
+    Failed {
+        source: Option<Source>,
+        why: String,
+    },
 }
 
 pub struct State {
@@ -81,26 +87,29 @@ pub fn buttons(items: Vec<AnyElement>) -> impl IntoElement {
 
 /// A service's icon beside what it does and how it is connected.
 pub fn service(icon: &'static str, about: &str, status: String) -> impl IntoElement {
-    let art = canvas(|_, _, _| {}, move |b, _, window, _| {
-        icons::paint(window, b, icon);
-    })
+    let art = canvas(
+        |_, _, _| {},
+        move |b, _, window, _| {
+            icons::paint(window, b, icon);
+        },
+    )
     .w(px(INTEGRATION_ICON))
     .h(px(INTEGRATION_ICON))
     .flex_shrink_0();
-    div().flex().flex_row().gap(px(m::SPACING)).child(art).child(div().flex_1().min_w_0().flex().flex_col().child(StringView::new(about.to_owned()).dim(true).wrap(true)).child(StringView::new(status).wrap(true)))
+    div()
+        .flex()
+        .flex_row()
+        .gap(px(m::SPACING))
+        .child(art)
+        .child(div().flex_1().min_w_0().flex().flex_col().child(StringView::new(about.to_owned()).dim(true).wrap(true)).child(StringView::new(status).wrap(true)))
 }
 
 /// Who `token` signs in as, by asking GitHub.
 fn login_of(token: &str) -> Result<String, String> {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let tls = ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build();
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .tls_config(tls)
-        .user_agent("Olo Preferences")
-        .timeout_global(Some(std::time::Duration::from_secs(15)))
-        .http_status_as_error(false)
-        .build()
-        .into();
+    let agent: ureq::Agent =
+        ureq::Agent::config_builder().tls_config(tls).user_agent("Olo Preferences").timeout_global(Some(std::time::Duration::from_secs(15))).http_status_as_error(false).build().into();
     let resp = agent
         .get("https://api.github.com/user")
         .header("Accept", "application/vnd.github+json")
@@ -199,7 +208,12 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let mut items: Vec<AnyElement> = vec![service("github", "Terminal shows each tab’s pull request on GitHub and whether its checks pass.", status).into_any_element()];
     if st.adding {
         items.push(TextControl::new(st.token.clone()).label("Token:").into_any_element());
-        items.push(StringView::new("A classic token with the repo scope, or a fine-grained one that can read pull requests and checks. Olo keeps it in your login keyring.").dim(true).wrap(true).into_any_element());
+        items.push(
+            StringView::new("A classic token with the repo scope, or a fine-grained one that can read pull requests and checks. Olo keeps it in your login keyring.")
+                .dim(true)
+                .wrap(true)
+                .into_any_element(),
+        );
     }
     let row: Vec<AnyElement> = if st.adding {
         let ready = !st.token.read(ui.cx).text().trim().is_empty();

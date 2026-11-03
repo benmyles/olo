@@ -1,5 +1,5 @@
-use olo_sync::{Mutex, RwLock};
 use drm::control::{Device as ControlDevice, Mode, PageFlipFlags, connector, crtc, encoder, framebuffer};
+use olo_sync::{Mutex, RwLock};
 
 use std::collections::HashSet;
 use std::sync::{

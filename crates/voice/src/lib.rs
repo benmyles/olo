@@ -36,8 +36,6 @@ pub use olo_protocol::voice::{Mode, Noise, Settings};
 
 static MODEL: &[u8] = include_bytes!("../../../vendor/deep_filter/models/DeepFilterNet3_onnx.tar.gz");
 
-
-
 /// The chain, for one microphone.
 pub struct Voice {
     settings: Settings,
@@ -76,9 +74,7 @@ impl Voice {
             // filter above 20 dB, leaving the low band to the ERB mask,
             // which isn't trained for it: with look-ahead, that chops the
             // voice wherever it is clean.
-            let runtime = df::tract::RuntimeParams::default_with_ch(1)
-                .with_atten_lim(settings.noise.limit_db())
-                .with_thresholds(-10.0, 35.0, 35.0);
+            let runtime = df::tract::RuntimeParams::default_with_ch(1).with_atten_lim(settings.noise.limit_db()).with_thresholds(-10.0, 35.0, 35.0);
             let d = df::tract::DfTract::new(params, &runtime).map_err(|e| e.to_string())?;
             let la = d.lookahead;
             (Some(d), la)

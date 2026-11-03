@@ -109,7 +109,8 @@ pub fn view(replay: &Entity<Replay>, running: bool, width: f32, scroll: &ScrollH
     let activity_card = Card::new(format!("stats-activity-{name}"), "Actions a Minute").figure(format!("{busiest} at most")).caption("The last hour of use").child(div().h(px(GRAPH_H)).child(graph));
 
     // Programs.
-    let programs: Vec<(SharedString, SharedString)> = st.programs.iter().map(|(p, n)| (SharedString::from(p.clone()), SharedString::from(if *n == 1 { "once".to_owned() } else { format!("{n} times") }))).collect();
+    let programs: Vec<(SharedString, SharedString)> =
+        st.programs.iter().map(|(p, n)| (SharedString::from(p.clone()), SharedString::from(if *n == 1 { "once".to_owned() } else { format!("{n} times") }))).collect();
     let mut programs_card = Card::new(format!("stats-programs-{name}"), "Programs").figure(st.programs.len().to_string()).caption("Run on it with “olo-screen run”");
     programs_card = if programs.is_empty() {
         let ink = style::card_ink(&p);

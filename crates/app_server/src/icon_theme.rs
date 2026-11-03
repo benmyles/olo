@@ -100,8 +100,7 @@ const ICONS: &[(&str, &str, &str)] = &[
     ("system-lock-screen", "actions", "lock-screen"),
 ];
 
-const CONTEXTS: [(&str, &str); 6] =
-    [("places", "Places"), ("mimetypes", "MimeTypes"), ("devices", "Devices"), ("apps", "Applications"), ("status", "Status"), ("actions", "Actions")];
+const CONTEXTS: [(&str, &str); 6] = [("places", "Places"), ("mimetypes", "MimeTypes"), ("devices", "Devices"), ("apps", "Applications"), ("status", "Status"), ("actions", "Actions")];
 
 /// The theme's `index.theme` for look `look`: every size and context, and
 /// what it was written from (the look, Olo's data folder, the cursors'

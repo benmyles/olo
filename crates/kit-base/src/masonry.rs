@@ -69,10 +69,7 @@ pub fn arrange(cols: usize, column: f32, gap: f32, items: &[(usize, f32)]) -> (V
         }
         let (span, h) = (items[i].0.clamp(1, cols), items[i].1);
         // The lowest place it fits, leftmost if several.
-        let (c, y) = (0..=cols - span)
-            .map(|c| (c, tops[c..c + span].iter().copied().fold(f32::MIN, f32::max)))
-            .min_by(|a, b| a.1.total_cmp(&b.1))
-            .unwrap_or((0, gap));
+        let (c, y) = (0..=cols - span).map(|c| (c, tops[c..c + span].iter().copied().fold(f32::MIN, f32::max))).min_by(|a, b| a.1.total_cmp(&b.1)).unwrap_or((0, gap));
         // Under a wide one, fill the holes first.
         if span > 1 {
             for (k, top) in tops.iter_mut().enumerate().skip(c).take(span) {

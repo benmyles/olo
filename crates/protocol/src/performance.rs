@@ -72,9 +72,53 @@ impl Default for Thresholds {
 /// Work that's background by its name: builds and compilers, indexers,
 /// package managers.
 pub const BACKGROUND: &[&str] = &[
-    "rustc", "cargo", "cc1", "cc1plus", "cc", "c++", "gcc", "g++", "clang", "clang++", "ld", "ld.lld", "lld", "mold", "ld.bfd", "ld.gold", "as", "make", "ninja", "cmake", "go", "javac", "gradle",
-    "kotlinc", "tsc", "esbuild", "swc", "bazel", "buck2", "sccache", "kache", "rust-analyzer", "clippy-driver", "rustdoc", "zig", "ghc", "tracker-miner-fs-3", "baloo_file", "updatedb",
-    "rpm-ostree", "dnf", "flatpak", "pip", "npm", "pnpm", "yarn", "bun",
+    "rustc",
+    "cargo",
+    "cc1",
+    "cc1plus",
+    "cc",
+    "c++",
+    "gcc",
+    "g++",
+    "clang",
+    "clang++",
+    "ld",
+    "ld.lld",
+    "lld",
+    "mold",
+    "ld.bfd",
+    "ld.gold",
+    "as",
+    "make",
+    "ninja",
+    "cmake",
+    "go",
+    "javac",
+    "gradle",
+    "kotlinc",
+    "tsc",
+    "esbuild",
+    "swc",
+    "bazel",
+    "buck2",
+    "sccache",
+    "kache",
+    "rust-analyzer",
+    "clippy-driver",
+    "rustdoc",
+    "zig",
+    "ghc",
+    "tracker-miner-fs-3",
+    "baloo_file",
+    "updatedb",
+    "rpm-ostree",
+    "dnf",
+    "flatpak",
+    "pip",
+    "npm",
+    "pnpm",
+    "yarn",
+    "bun",
 ];
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -298,11 +342,7 @@ impl SupervisorState {
     /// What it published, if its process is still there (else off).
     pub fn load() -> SupervisorState {
         let s = Self::read();
-        if s.pid == 0 || std::path::Path::new("/proc").join(s.pid.to_string()).exists() {
-            s
-        } else {
-            SupervisorState { log: s.log, ..Default::default() }
-        }
+        if s.pid == 0 || std::path::Path::new("/proc").join(s.pid.to_string()).exists() { s } else { SupervisorState { log: s.log, ..Default::default() } }
     }
 
     /// The file as it is, whoever wrote it (the supervisor itself,

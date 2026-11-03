@@ -18,7 +18,8 @@
 use std::{collections::HashMap, rc::Rc};
 
 use gpui::{
-    AnyWindowHandle, App, Bounds, Corners, CursorStyle, Entity, FontWeight, Hitbox, HitboxBehavior, Hsla, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, RenderOnce, SharedString, Styled as _, Window, WindowId, canvas, point, px, size,
+    AnyWindowHandle, App, Bounds, Corners, CursorStyle, Entity, FontWeight, Hitbox, HitboxBehavior, Hsla, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point,
+    RenderOnce, SharedString, Styled as _, Window, WindowId, canvas, point, px, size,
 };
 use olo_kit_base::metrics as m;
 
@@ -63,9 +64,16 @@ pub enum StripAction {
     Menu(usize, Point<Pixels>),
     /// A tab dragged along the row to another place: `to` among the
     /// others, and the group it's in there.
-    Move { from: usize, to: usize, group: Option<usize> },
+    Move {
+        from: usize,
+        to: usize,
+        group: Option<usize>,
+    },
     /// A group's chip dragged: its tabs go to `to` among the others.
-    MoveGroup { group: usize, to: usize },
+    MoveGroup {
+        group: usize,
+        to: usize,
+    },
     /// A click on a group's chip, at the pointer (with
     /// [`TabStrip::group_selection`], a right-click: its menu).
     Group(usize, Point<Pixels>),
@@ -74,12 +82,21 @@ pub enum StripAction {
     /// A tab dragged out of the strip (`at`, the pointer, in the window's
     /// coordinates, maybe outside it), the button still held: a window of
     /// its own, which the app opens under the pointer and moves with it.
-    TearOff { tab: usize, at: Point<Pixels> },
+    TearOff {
+        tab: usize,
+        at: Point<Pixels>,
+    },
     /// Likewise a group, by its chip.
-    TearOffGroup { group: usize, at: Point<Pixels> },
+    TearOffGroup {
+        group: usize,
+        at: Point<Pixels>,
+    },
     /// A [`TabStrip::side`] strip's edge dragged: its width now, and
     /// whether it was let go (time to keep it).
-    Resize { width: f32, done: bool },
+    Resize {
+        width: f32,
+        done: bool,
+    },
 }
 
 /// How far out of a strip a tab or group is dragged to tear it off.
@@ -493,7 +510,16 @@ struct FaceInks {
 /// button (while selected or under the pointer; a badge in its place
 /// otherwise), centred on `cy`.
 #[allow(clippy::too_many_arguments)]
-fn tab_face(window: &mut Window, cx: &mut App, tab: &StripTab, selected: bool, (pointed, on_close): (bool, bool), (r, cy, close): (Bounds<Pixels>, Pixels, Bounds<Pixels>), icon: bool, inks: FaceInks) {
+fn tab_face(
+    window: &mut Window,
+    cx: &mut App,
+    tab: &StripTab,
+    selected: bool,
+    (pointed, on_close): (bool, bool),
+    (r, cy, close): (Bounds<Pixels>, Pixels, Bounds<Pixels>),
+    icon: bool,
+    inks: FaceInks,
+) {
     // (Under the pointer, as the selected one's: it's what a click
     // brings forward.)
     let text = if selected || pointed { inks.ink } else { inks.dim };
@@ -619,7 +645,9 @@ impl RenderOnce for TabStrip {
                     };
                     style::fill_rect(window, style::snap(window, r), mark);
                 };
-                let end_of = |others: &[usize], to: usize| others.get(to).map_or_else(|| others.last().map_or(l.end, |&i| if s.side { l.slots[i].bottom() } else { l.slots[i].right() }), |&i| l.before(i, s.side));
+                let end_of = |others: &[usize], to: usize| {
+                    others.get(to).map_or_else(|| others.last().map_or(l.end, |&i| if s.side { l.slots[i].bottom() } else { l.slots[i].right() }), |&i| l.before(i, s.side))
+                };
                 if let Some(to) = over.and_then(|at| placed.place(at)) {
                     draw_mark(window, if to < n { l.before(to, s.side) } else { l.end });
                 }
@@ -645,12 +673,20 @@ impl RenderOnce for TabStrip {
                 // Agents: each tab, its close box, the chips, New Tab.
                 for (i, tab) in s.tabs.iter().enumerate() {
                     let group = l.groups_of[i].and_then(|g| s.groups.get(g));
-                    agent::record(window, cx, agent::Node { role: "Tab", name: Some(tab_name(tab, group)), bounds: l.slots[i], enabled: true, clickable: true, selected: Some(i == s.active), ..Default::default() });
+                    agent::record(
+                        window,
+                        cx,
+                        agent::Node { role: "Tab", name: Some(tab_name(tab, group)), bounds: l.slots[i], enabled: true, clickable: true, selected: Some(i == s.active), ..Default::default() },
+                    );
                     agent::record(window, cx, agent::Node::button(format!("Close {}", tab.label), l.closes[i]));
                 }
                 for &(g, _, r) in &l.chips {
                     let chosen = s.chosen.as_ref().map(|c| c.get(g).copied().unwrap_or(false));
-                    agent::record(window, cx, agent::Node { role: "Button", name: Some(format!("Group {}", s.groups[g].name).into()), bounds: r, enabled: true, clickable: true, selected: chosen, ..Default::default() });
+                    agent::record(
+                        window,
+                        cx,
+                        agent::Node { role: "Button", name: Some(format!("Group {}", s.groups[g].name).into()), bounds: r, enabled: true, clickable: true, selected: chosen, ..Default::default() },
+                    );
                 }
                 if let Some(r) = l.new {
                     agent::record(window, cx, agent::Node::button("New Tab", r));
@@ -995,7 +1031,8 @@ fn paint_side(window: &mut Window, cx: &mut App, s: &TabStrip, full: Bounds<Pixe
     style::fill_rect(window, full, look.band);
     let n = s.tabs.len();
     let face = |r: Bounds<Pixels>| Bounds::from_corners(point(r.left() + px(m::TIGHT), r.top()), point(r.right() - px(m::TIGHT), r.bottom()));
-    let plate = |window: &Window, r: Bounds<Pixels>| style::snap(window, Bounds::from_corners(point(r.left() + px(m::TIGHT), r.top() + px(1.0)), point(r.right() - px(m::TIGHT), r.bottom() - px(1.0))));
+    let plate =
+        |window: &Window, r: Bounds<Pixels>| style::snap(window, Bounds::from_corners(point(r.left() + px(m::TIGHT), r.top() + px(1.0)), point(r.right() - px(m::TIGHT), r.bottom() - px(1.0))));
     let mid = |window: &Window, r: Bounds<Pixels>| style::snap_coord(window, r.center().y.round());
     for &(g, first, head) in &l.chips {
         let last = last_of(l, g, first);

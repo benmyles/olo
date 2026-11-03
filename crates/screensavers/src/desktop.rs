@@ -14,16 +14,7 @@ pub const FLIP: Info = Info {
     about: "Flip",
     options: &[Opt::Slider { key: "pause", label: "Pause (seconds)", min: 0.0, max: 10.0, default: 2.0 }],
     uses_desktop: true,
-    make: |o, seed| {
-        Box::new(Flip {
-            rng: Rng::new(seed),
-            angle: 0.0,
-            pause: get_f32(o, "pause", 2.0),
-            wait: 1.0,
-            vertical: false,
-            clock: Clock::new(),
-        })
-    },
+    make: |o, seed| Box::new(Flip { rng: Rng::new(seed), angle: 0.0, pause: get_f32(o, "pause", 2.0), wait: 1.0, vertical: false, clock: Clock::new() }),
 };
 
 /// The screen turns over like a card, now on one axis, now the other,
@@ -67,22 +58,14 @@ impl Module for Flip {
         let light = 0.35 + 0.65 * cos.abs();
         let project = |u: f32, v: f32| -> Pos2 {
             // u, v in -0.5..0.5 across the card.
-            let (x, y, z) = if self.vertical {
-                (u * w * cos, v * h, u * w * sin)
-            } else {
-                (u * w, v * h * cos, v * h * sin)
-            };
+            let (x, y, z) = if self.vertical { (u * w * cos, v * h, u * w * sin) } else { (u * w, v * h * cos, v * h * sin) };
             let p = d / (d + z);
             c + vec2(x * p, y * p)
         };
         let mut triangles = Vec::with_capacity(STRIPS * 2);
         for i in 0..STRIPS {
             let (a, b) = (i as f32 / STRIPS as f32, (i + 1) as f32 / STRIPS as f32);
-            let quad = if self.vertical {
-                [(a, 0.0), (b, 0.0), (b, 1.0), (a, 1.0)]
-            } else {
-                [(0.0, a), (1.0, a), (1.0, b), (0.0, b)]
-            };
+            let quad = if self.vertical { [(a, 0.0), (b, 0.0), (b, 1.0), (a, 1.0)] } else { [(0.0, a), (1.0, a), (1.0, b), (0.0, b)] };
             let corner = |(u, v): (f32, f32)| (project(u - 0.5, v - 0.5), pos2(u, v));
             let [p0, p1, p2, p3] = quad.map(corner);
             triangles.push([p0, p1, p2]);
@@ -103,21 +86,12 @@ impl Module for Flip {
 pub const LENS: Info = Info {
     name: "Lens",
     about: "Lens",
-    options: &[
-        Opt::Slider { key: "size", label: "Size", min: 0.1, max: 0.4, default: 0.2 },
-        Opt::Slider { key: "power", label: "Magnification", min: 1.5, max: 4.0, default: 2.0 },
-    ],
+    options: &[Opt::Slider { key: "size", label: "Size", min: 0.1, max: 0.4, default: 0.2 }, Opt::Slider { key: "power", label: "Magnification", min: 1.5, max: 4.0, default: 2.0 }],
     uses_desktop: true,
     make: |o, seed| {
         let mut rng = Rng::new(seed);
         let v = (rng.range(0.0025, 0.004), rng.range(0.002, 0.0035));
-        Box::new(Lens {
-            at: (rng.range(0.3, 0.7), rng.range(0.3, 0.7)),
-            v,
-            size: get_f32(o, "size", 0.2),
-            power: get_f32(o, "power", 2.0),
-            clock: Clock::new(),
-        })
+        Box::new(Lens { at: (rng.range(0.3, 0.7), rng.range(0.3, 0.7)), v, size: get_f32(o, "size", 0.2), power: get_f32(o, "power", 2.0), clock: Clock::new() })
     },
 };
 

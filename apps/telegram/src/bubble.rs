@@ -12,7 +12,10 @@ use std::sync::Arc;
 
 use olo_tg::{EntityKind, Media, Message, Pending};
 use olo_ui::{
-    gpui::{App, BorderStyle, Bounds, Corners, Font, FontStyle, FontWeight, Hsla, PathBuilder, Pixels, Point, RenderImage, ShapedLine, SharedString, StrikethroughStyle, TextAlign, TextRun, UnderlineStyle, Window, WrappedLine, hsla, point, px, quad, rgb, size, transparent_black, white},
+    gpui::{
+        App, BorderStyle, Bounds, Corners, Font, FontStyle, FontWeight, Hsla, PathBuilder, Pixels, Point, RenderImage, ShapedLine, SharedString, StrikethroughStyle, TextAlign, TextRun,
+        UnderlineStyle, Window, WrappedLine, hsla, point, px, quad, rgb, size, transparent_black, white,
+    },
     style::{self, Align},
 };
 
@@ -642,7 +645,9 @@ pub fn lay(window: &mut Window, m: &Message, place: Place, look: &Look, col: f32
         }
         Some(other) if !matches!(other, Media::Sticker { .. }) => {
             let (label, detail) = match other {
-                Media::Location { title, address, lat, lon } => (format!("📍 {}", title.clone().unwrap_or_else(|| "Location".into())), address.clone().unwrap_or_else(|| format!("{lat:.5}, {lon:.5}"))),
+                Media::Location { title, address, lat, lon } => {
+                    (format!("📍 {}", title.clone().unwrap_or_else(|| "Location".into())), address.clone().unwrap_or_else(|| format!("{lat:.5}, {lon:.5}")))
+                }
                 Media::Contact { name, phone } => (format!("👤 {name}"), phone.clone()),
                 Media::Dice { emoji, value } => (emoji.clone(), format!("rolled {value}")),
                 other => (other.label(), String::new()),
@@ -847,9 +852,7 @@ pub fn hit_at(o: Point<Pixels>, m: &Message, laid: &Laid, q: Point<Pixels>) -> O
     for (r, _, _, emoji, _) in &laid.reactions {
         areas.push((r.at(o), Hit::Reaction(emoji.clone())));
     }
-    if whole
-        && let Some((g, p)) = &laid.text
-    {
+    if whole && let Some((g, p)) = &laid.text {
         let at = pt(o, *p);
         if let Some(byte) = g.index_at(point(q.x - at.x, q.y - at.y))
             && let Some(e) = m.entities.iter().find(|e| e.start <= byte && byte < e.end)
@@ -1011,7 +1014,13 @@ pub fn paint(window: &mut Window, cx: &mut App, o: Point<Pixels>, m: &Message, l
     }
     g.paint(window, cx, mp);
     if m.out {
-        let tick_ink = if laid.meta_over { white() } else if pp.read { look.link } else { look.dim };
+        let tick_ink = if laid.meta_over {
+            white()
+        } else if pp.read {
+            look.link
+        } else {
+            look.dim
+        };
         ticks(window, cx, point(mp.x + px(g.w + 3.0), mp.y + px(g.h / 2.0)), pp.read, m.pending, tick_ink);
     }
     paint_reactions(window, cx, o, laid, look);

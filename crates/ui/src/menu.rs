@@ -16,7 +16,9 @@
 use std::{cell::RefCell, rc::Rc};
 
 use gpui::{
-    AnyWindowHandle, App, AppContext as _, Bounds, ContentMask, Context, Corner, FocusHandle, Focusable, FontWeight, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Render, RenderOnce, ScrollWheelEvent, SharedString, Styled as _, Task, Window, WindowBounds, WindowHandle, WindowKind, canvas, div, point, px, size,
+    AnyWindowHandle, App, AppContext as _, Bounds, ContentMask, Context, Corner, FocusHandle, Focusable, FontWeight, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton,
+    MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Render, RenderOnce, ScrollWheelEvent, SharedString, Styled as _, Task, Window, WindowBounds, WindowHandle, WindowKind,
+    canvas, div, point, px, size,
 };
 
 use crate::{
@@ -288,7 +290,9 @@ impl Menu {
             path.push(menu.title.clone());
             for item in &menu.items {
                 match item {
-                    MenuItem::Action(a) => out.push(olo_kit_base::commands::Entry { path: path.clone(), label: a.label.clone(), command: a.command.clone(), keys: a.keys.clone(), enabled: a.enabled, checked: a.checked }),
+                    MenuItem::Action(a) => {
+                        out.push(olo_kit_base::commands::Entry { path: path.clone(), label: a.label.clone(), command: a.command.clone(), keys: a.keys.clone(), enabled: a.enabled, checked: a.checked })
+                    }
                     MenuItem::Submenu(m) => walk(m, path, out),
                     MenuItem::Separator => {}
                 }
@@ -380,7 +384,15 @@ pub fn popup(window: &mut Window, cx: &mut App, menu: Menu, anchor: Bounds<Pixel
 /// [`popup`], and `on_close` once it has gone, chosen from or not (after
 /// `on_choose`): what opened it shows it open until then (Deskbar's
 /// rows).
-pub fn popup_then(window: &mut Window, cx: &mut App, menu: Menu, anchor: Bounds<Pixels>, corner: Corner, on_choose: impl Fn(&str, &mut Window, &mut App) + 'static, on_close: impl Fn(&mut App) + 'static) -> Option<WindowHandle<MenuPopup>> {
+pub fn popup_then(
+    window: &mut Window,
+    cx: &mut App,
+    menu: Menu,
+    anchor: Bounds<Pixels>,
+    corner: Corner,
+    on_choose: impl Fn(&str, &mut Window, &mut App) + 'static,
+    on_close: impl Fn(&mut App) + 'static,
+) -> Option<WindowHandle<MenuPopup>> {
     open_first(window, cx, menu, Place { anchor, corner, ..Place::default() }, Rc::new(on_choose), Some(Rc::new(on_close)))
 }
 
@@ -492,12 +504,27 @@ pub fn context_menu(window: &mut Window, cx: &mut App, menu: Menu, position: gpu
 /// [`context_menu`], and `on_close` once it has gone, chosen from or not
 /// (after `on_choose`): for a menu that is all its window is for (a
 /// window's menu over a clear layer).
-pub fn context_menu_then(window: &mut Window, cx: &mut App, menu: Menu, position: gpui::Point<Pixels>, on_choose: impl Fn(&str, &mut Window, &mut App) + 'static, on_close: impl Fn(&mut App) + 'static) -> Option<WindowHandle<MenuPopup>> {
+pub fn context_menu_then(
+    window: &mut Window,
+    cx: &mut App,
+    menu: Menu,
+    position: gpui::Point<Pixels>,
+    on_choose: impl Fn(&str, &mut Window, &mut App) + 'static,
+    on_close: impl Fn(&mut App) + 'static,
+) -> Option<WindowHandle<MenuPopup>> {
     let anchor = Bounds { origin: position, size: size(px(1.0), px(1.0)) };
     open_first(window, cx, menu, Place { anchor, ..Place::default() }, Rc::new(on_choose), Some(Rc::new(on_close)))
 }
 
-fn open(window: &mut Window, cx: &mut App, menu: Menu, place: Place, on_choose: OnChoose, parent_menu: Option<WindowHandle<MenuPopup>>, on_close: Option<Rc<dyn Fn(&mut App)>>) -> Option<WindowHandle<MenuPopup>> {
+fn open(
+    window: &mut Window,
+    cx: &mut App,
+    menu: Menu,
+    place: Place,
+    on_choose: OnChoose,
+    parent_menu: Option<WindowHandle<MenuPopup>>,
+    on_close: Option<Rc<dyn Fn(&mut App)>>,
+) -> Option<WindowHandle<MenuPopup>> {
     // (A menu field's items stay as counted: one of them lies over it.)
     let menu = if place.selected.is_none() { menu.tidied() } else { menu };
     let (w, full_h) = popup_size(window, &menu);
@@ -534,7 +561,22 @@ fn open(window: &mut Window, cx: &mut App, menu: Menu, place: Place, on_choose: 
             ..Default::default()
         },
         move |window, cx| {
-            let view = cx.new(|cx| MenuPopup { menu, selected, focus: cx.focus_handle(), on_choose, origin, owner, sub: None, rows: Rc::default(), pressed_inside: false, scroll, content, view_h: h - 2.0 * POPUP_PAD, scrolling: None, pointer: None });
+            let view = cx.new(|cx| MenuPopup {
+                menu,
+                selected,
+                focus: cx.focus_handle(),
+                on_choose,
+                origin,
+                owner,
+                sub: None,
+                rows: Rc::default(),
+                pressed_inside: false,
+                scroll,
+                content,
+                view_h: h - 2.0 * POPUP_PAD,
+                scrolling: None,
+                pointer: None,
+            });
             window.focus(&view.focus_handle(cx));
             if let Some(f) = on_close {
                 cx.observe_release(&view, move |_, cx| f(cx)).detach();
@@ -862,7 +904,11 @@ impl Render for MenuPopup {
                         if let Ok(path) = path.build() {
                             window.paint_path(path, style::c(p.menu_item_text));
                         }
-                        agent::record(window, cx, agent::Node::button(if dir < 0.0 { "Scroll Up" } else { "Scroll Down" }, Bounds::from_corners(point(left, top), point(right, top + px(ARROW_HEIGHT)))));
+                        agent::record(
+                            window,
+                            cx,
+                            agent::Node::button(if dir < 0.0 { "Scroll Up" } else { "Scroll Down" }, Bounds::from_corners(point(left, top), point(right, top + px(ARROW_HEIGHT)))),
+                        );
                     }
                 }
                 let mask = ContentMask { bounds: Bounds::from_corners(point(b.left(), items_top), point(b.right(), items_bottom)) };
@@ -870,73 +916,99 @@ impl Render for MenuPopup {
                 placed.clear();
                 let font = style::ui_font(FontWeight::NORMAL);
                 window.with_content_mask(Some(mask), |window| {
-                for (i, item) in menu.items.iter().enumerate() {
-                    let h = px(if matches!(item, MenuItem::Separator) { SEPARATOR_HEIGHT } else { ITEM_HEIGHT });
-                    let row = Bounds::from_corners(point(left, y), point(right, y + h));
-                    placed.push(row);
-                    y += h;
-                    let lit = selectable[i] && (selected == Some(i) || open == Some(i));
-                    let face = Bounds::from_corners(point(lined.left(), row.top()), point(lined.right(), row.bottom()));
-                    let text = |enabled: bool| {
-                        if !enabled {
-                            style::disabled_text(&p)
-                        } else if lit {
-                            style::c(p.menu_selected_item_text)
-                        } else {
-                            style::c(p.menu_item_text)
-                        }
-                    };
-                    let cy = row.center().y;
-                    match item {
-                        MenuItem::Separator => {
-                            let gy = px(f32::from(cy).floor());
-                            style::hline_above(window, row.left() + px(1.0), row.right() - px(1.0), gy, style::shade(&p, p.menu_background, 1.16));
-                            style::hline(window, row.left() + px(1.0), row.right() - px(1.0), gy, style::c(p.shine));
-                        }
-                        MenuItem::Action(a) => {
-                            if lit {
-                                style::fill_rect(window, face, style::c(p.menu_selected_background));
+                    for (i, item) in menu.items.iter().enumerate() {
+                        let h = px(if matches!(item, MenuItem::Separator) { SEPARATOR_HEIGHT } else { ITEM_HEIGHT });
+                        let row = Bounds::from_corners(point(left, y), point(right, y + h));
+                        placed.push(row);
+                        y += h;
+                        let lit = selectable[i] && (selected == Some(i) || open == Some(i));
+                        let face = Bounds::from_corners(point(lined.left(), row.top()), point(lined.right(), row.bottom()));
+                        let text = |enabled: bool| {
+                            if !enabled {
+                                style::disabled_text(&p)
+                            } else if lit {
+                                style::c(p.menu_selected_item_text)
+                            } else {
+                                style::c(p.menu_item_text)
                             }
-                            let ink = if a.minimized && a.enabled && !lit { style::c(olo_theme::mix(p.menu_item_text, p.menu_background, 0.38)) } else { text(a.enabled) };
-                            let m = Bounds { origin: point(row.left() + px(10.0 - 4.5), cy - px(4.5)), size: size(px(9.0), px(9.0)) };
-                            if a.checked {
-                                check_mark(window, m, ink);
-                            } else if a.minimized {
-                                diamond(window, m, ink);
+                        };
+                        let cy = row.center().y;
+                        match item {
+                            MenuItem::Separator => {
+                                let gy = px(f32::from(cy).floor());
+                                style::hline_above(window, row.left() + px(1.0), row.right() - px(1.0), gy, style::shade(&p, p.menu_background, 1.16));
+                                style::hline(window, row.left() + px(1.0), row.right() - px(1.0), gy, style::c(p.shine));
                             }
-                            if let (Some(left), Some(icon)) = (icon_left, &a.icon) {
-                                item_icon(window, row, left, icon, a.enabled);
+                            MenuItem::Action(a) => {
+                                if lit {
+                                    style::fill_rect(window, face, style::c(p.menu_selected_background));
+                                }
+                                let ink = if a.minimized && a.enabled && !lit { style::c(olo_theme::mix(p.menu_item_text, p.menu_background, 0.38)) } else { text(a.enabled) };
+                                let m = Bounds { origin: point(row.left() + px(10.0 - 4.5), cy - px(4.5)), size: size(px(9.0), px(9.0)) };
+                                if a.checked {
+                                    check_mark(window, m, ink);
+                                } else if a.minimized {
+                                    diamond(window, m, ink);
+                                }
+                                if let (Some(left), Some(icon)) = (icon_left, &a.icon) {
+                                    item_icon(window, row, left, icon, a.enabled);
+                                }
+                                let r = style::label(window, cx, row.left() + px(label_left), cy, style::Align::Left, a.label.clone(), style::PLAIN_SIZE, font.clone(), ink);
+                                if let Some(keys) = &a.keys {
+                                    style::key_combo(window, cx, point(row.right() - px(ITEM_RIGHT), cy), keys, ink);
+                                }
+                                let _ = r;
+                                agent::record(
+                                    window,
+                                    cx,
+                                    agent::Node {
+                                        role: "MenuItem",
+                                        name: Some(SharedString::from(a.label.clone())),
+                                        bounds: row,
+                                        enabled: a.enabled,
+                                        clickable: a.enabled,
+                                        checked: a.checked.then_some(true),
+                                        selected: Some(lit),
+                                        minimized: a.minimized,
+                                        ..Default::default()
+                                    },
+                                );
                             }
-                            let r = style::label(window, cx, row.left() + px(label_left), cy, style::Align::Left, a.label.clone(), style::PLAIN_SIZE, font.clone(), ink);
-                            if let Some(keys) = &a.keys {
-                                style::key_combo(window, cx, point(row.right() - px(ITEM_RIGHT), cy), keys, ink);
+                            MenuItem::Submenu(m) => {
+                                if lit {
+                                    style::fill_rect(window, face, style::c(p.menu_selected_background));
+                                }
+                                let ink = text(selectable[i]);
+                                if let (Some(left), Some(icon)) = (icon_left, &m.icon) {
+                                    item_icon(window, row, left, icon, selectable[i]);
+                                }
+                                style::label(window, cx, row.left() + px(label_left), cy, style::Align::Left, m.title.clone(), style::PLAIN_SIZE, font.clone(), ink);
+                                // A triangle pointing right.
+                                let tx = row.right() - px(ITEM_RIGHT);
+                                let mut path = PathBuilder::fill();
+                                path.move_to(point(tx - px(3.0), cy - px(4.0)));
+                                path.line_to(point(tx + px(1.0), cy));
+                                path.line_to(point(tx - px(3.0), cy + px(4.0)));
+                                path.close();
+                                if let Ok(path) = path.build() {
+                                    window.paint_path(path, ink);
+                                }
+                                agent::record(
+                                    window,
+                                    cx,
+                                    agent::Node {
+                                        role: "MenuItem",
+                                        name: Some(SharedString::from(m.title.clone())),
+                                        bounds: row,
+                                        enabled: selectable[i],
+                                        clickable: selectable[i],
+                                        selected: Some(lit),
+                                        ..Default::default()
+                                    },
+                                );
                             }
-                            let _ = r;
-                            agent::record(window, cx, agent::Node { role: "MenuItem", name: Some(SharedString::from(a.label.clone())), bounds: row, enabled: a.enabled, clickable: a.enabled, checked: a.checked.then_some(true), selected: Some(lit), minimized: a.minimized, ..Default::default() });
-                        }
-                        MenuItem::Submenu(m) => {
-                            if lit {
-                                style::fill_rect(window, face, style::c(p.menu_selected_background));
-                            }
-                            let ink = text(selectable[i]);
-                            if let (Some(left), Some(icon)) = (icon_left, &m.icon) {
-                                item_icon(window, row, left, icon, selectable[i]);
-                            }
-                            style::label(window, cx, row.left() + px(label_left), cy, style::Align::Left, m.title.clone(), style::PLAIN_SIZE, font.clone(), ink);
-                            // A triangle pointing right.
-                            let tx = row.right() - px(ITEM_RIGHT);
-                            let mut path = PathBuilder::fill();
-                            path.move_to(point(tx - px(3.0), cy - px(4.0)));
-                            path.line_to(point(tx + px(1.0), cy));
-                            path.line_to(point(tx - px(3.0), cy + px(4.0)));
-                            path.close();
-                            if let Ok(path) = path.build() {
-                                window.paint_path(path, ink);
-                            }
-                            agent::record(window, cx, agent::Node { role: "MenuItem", name: Some(SharedString::from(m.title.clone())), bounds: row, enabled: selectable[i], clickable: selectable[i], selected: Some(lit), ..Default::default() });
                         }
                     }
-                }
                 });
             },
         )
@@ -1165,7 +1237,11 @@ impl RenderOnce for MenuBar {
                         style::c(p.menu_item_text)
                     };
                     style::label(window, cx, r.left() + px(BAR_PAD), r.center().y, style::Align::Left, title.clone(), style::PLAIN_SIZE, font.clone(), ink);
-                    agent::record(window, cx, agent::Node { role: "MenuBarItem", name: Some(title.clone()), bounds: *r, enabled: true, clickable: true, selected: Some(open == Some(i)), ..Default::default() });
+                    agent::record(
+                        window,
+                        cx,
+                        agent::Node { role: "MenuBarItem", name: Some(title.clone()), bounds: *r, enabled: true, clickable: true, selected: Some(open == Some(i)), ..Default::default() },
+                    );
                 }
 
                 let hits: Vec<(Bounds<Pixels>, gpui::Hitbox)> = items.iter().map(|(_, r, h)| (*r, h.clone())).collect();

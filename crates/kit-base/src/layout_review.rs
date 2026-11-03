@@ -425,7 +425,15 @@ fn overflow(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
         push(out, finding(Level::Error, "overflow", format!("{name} runs {d:.1} pt past the bottom of what it's in (y {:.0}): make that (or the window) taller", b.max.y), b));
     }
     for (name, b, d) in overflows_right(p, ppp) {
-        push(out, finding(Level::Error, "overflow", format!("{name} runs {d:.1} pt past the right of what it's in (x {:.0}), into its inset: make that (or the window) wider, or say it in fewer words", b.max.x), b));
+        push(
+            out,
+            finding(
+                Level::Error,
+                "overflow",
+                format!("{name} runs {d:.1} pt past the right of what it's in (x {:.0}), into its inset: make that (or the window) wider, or say it in fewer words", b.max.x),
+                b,
+            ),
+        );
     }
 }
 
@@ -436,7 +444,15 @@ fn texts_over(p: &Parts, screen: Rect, out: &mut Vec<Finding>) {
             continue;
         }
         let (kind, said) = if !screen.expand(SAME).contains_rect(t.rect) { ("text-outside", "runs past the window") } else { ("text-cut", "is cut off by what it's in") };
-        push(out, finding(Level::Error, kind, format!("{:?} {said} (laid out {:.0} wide, {:.0} shows): give it room, or cut it short with an ellipsis (`style::fit`)", t.label, t.rect.width(), t.rect.intersect(t.clip).width()), t.rect));
+        push(
+            out,
+            finding(
+                Level::Error,
+                kind,
+                format!("{:?} {said} (laid out {:.0} wide, {:.0} shows): give it room, or cut it short with an ellipsis (`style::fit`)", t.label, t.rect.width(), t.rect.intersect(t.clip).width()),
+                t.rect,
+            ),
+        );
     }
     for (i, a) in p.texts.iter().enumerate() {
         for b in &p.texts[i + 1..] {
@@ -550,7 +566,10 @@ fn crowded_lines(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
                 continue;
             }
             if overlap >= 0.5 * shorter && gap > touching && gap < LINE_ROOM {
-                let text = format!("two lines {gap:.1} pt apart (at {:.0},{:.0} and {:.0},{:.0}): an edge almost on another's; give it room (`metrics::BOX_INSET`, `WINDOW_INSET`)", a.min.x, a.min.y, b.min.x, b.min.y);
+                let text = format!(
+                    "two lines {gap:.1} pt apart (at {:.0},{:.0} and {:.0},{:.0}): an edge almost on another's; give it room (`metrics::BOX_INSET`, `WINDOW_INSET`)",
+                    a.min.x, a.min.y, b.min.x, b.min.y
+                );
                 push(out, finding(Level::Error, "crowded-lines", text, a.union(*b)));
             }
         }
@@ -575,9 +594,25 @@ fn control_edges(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
             let dl = (ra.min.x - rb.min.x).abs();
             let dr = (ra.max.x - rb.max.x).abs();
             if dl > SAME && dl <= NEAR_EDGE && dr > right_room {
-                push(out, finding(Level::Error, "control-edges", format!("{} (x {:.1}) and {} under it (x {:.1}) almost line up on the left: line them up", a.said(), ra.min.x, b.said(), rb.min.x), ra.union(rb)));
+                push(
+                    out,
+                    finding(
+                        Level::Error,
+                        "control-edges",
+                        format!("{} (x {:.1}) and {} under it (x {:.1}) almost line up on the left: line them up", a.said(), ra.min.x, b.said(), rb.min.x),
+                        ra.union(rb),
+                    ),
+                );
             } else if dr > right_room && dr <= NEAR_EDGE && dl > SAME && ra.width() >= 40.0 && rb.width() >= 40.0 && sized(a) && sized(b) {
-                push(out, finding(Level::Error, "control-edges", format!("{} (right {:.1}) and {} under it (right {:.1}) almost line up on the right: line them up", a.said(), ra.max.x, b.said(), rb.max.x), ra.union(rb)));
+                push(
+                    out,
+                    finding(
+                        Level::Error,
+                        "control-edges",
+                        format!("{} (right {:.1}) and {} under it (right {:.1}) almost line up on the right: line them up", a.said(), ra.max.x, b.said(), rb.max.x),
+                        ra.union(rb),
+                    ),
+                );
             }
         }
     }
@@ -609,7 +644,15 @@ fn uneven_gaps(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
         for w in gaps.windows(2) {
             let d = (w[0] - w[1]).abs();
             if d > rounding && d <= NEAR_EDGE {
-                push(out, finding(Level::Error, "uneven-gaps", format!("controls in a row at y {:.0} are {:.1} and {:.1} pt apart: space them evenly", row[0].min.y, w[0], w[1]), row[0].union(*row.last().unwrap())));
+                push(
+                    out,
+                    finding(
+                        Level::Error,
+                        "uneven-gaps",
+                        format!("controls in a row at y {:.0} are {:.1} and {:.1} pt apart: space them evenly", row[0].min.y, w[0], w[1]),
+                        row[0].union(*row.last().unwrap()),
+                    ),
+                );
                 break;
             }
         }
@@ -651,7 +694,8 @@ fn blurry_icons(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
         let off = |a: f32, b: usize| (a.round() - b as f32).abs();
         let (dw, dh) = (off(w, tw), off(h, th));
         if icon.whole && dw.max(dh) > 0.0 && dw.max(dh) <= 2.0 {
-            let text = format!("an icon drawn {w:.0}×{h:.0} device px from a {tw}×{th} texture at {ppp}×: resampled a pixel off its size, it blurs (draw it at its texture's size, as icons::paint does)");
+            let text =
+                format!("an icon drawn {w:.0}×{h:.0} device px from a {tw}×{th} texture at {ppp}×: resampled a pixel off its size, it blurs (draw it at its texture's size, as icons::paint does)");
             push(out, finding(Level::Error, "blurry-icon", text, r));
         }
     }
@@ -718,14 +762,15 @@ fn off_pixels(p: &Parts, screen: Rect, ppp: f32, out: &mut Vec<Finding>) {
         let (rows, cols) = (wide || !tall, tall || !wide);
         let edges = [("top", r.min.y, rows, screen.min.y), ("bottom", r.max.y, rows, screen.max.y), ("left", r.min.x, cols, screen.min.x), ("right", r.max.x, cols, screen.max.x)];
         // At the window's own edge there is nothing past it to be off from.
-        let off: Vec<String> = edges
-            .iter()
-            .zip(f.cut)
-            .filter(|((_, v, judged, window), cut)| *judged && !cut && (v - window).abs() > 0.01 && !whole(v * ppp))
-            .map(|((side, v, ..), _)| format!("{side} {v}"))
-            .collect();
+        let off: Vec<String> =
+            edges.iter().zip(f.cut).filter(|((_, v, judged, window), cut)| *judged && !cut && (v - window).abs() > 0.01 && !whole(v * ppp)).map(|((side, v, ..), _)| format!("{side} {v}")).collect();
         if !off.is_empty() {
-            let text = format!("a fill {:.1}×{:.1} has edges between device pixels at {ppp}× ({}): it comes out a pixel off what it lines up with (keep sizes on the 2-point grid, style::snap what is worked out)", r.width(), r.height(), off.join(", "));
+            let text = format!(
+                "a fill {:.1}×{:.1} has edges between device pixels at {ppp}× ({}): it comes out a pixel off what it lines up with (keep sizes on the 2-point grid, style::snap what is worked out)",
+                r.width(),
+                r.height(),
+                off.join(", ")
+            );
             push(out, finding(Level::Error, "off-pixel", text, r));
         }
     }
@@ -760,18 +805,21 @@ fn seams(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
             for (k, (gap, device)) in gaps.into_iter().enumerate() {
                 // The crack's middle, in points: covered by something else?
                 let mid_along = if horizontal { (l.min.x.max(f.min.x) + l.max.x.min(f.max.x)) / 2.0 } else { (l.min.y.max(f.min.y) + l.max.y.min(f.max.y)) / 2.0 };
-                let (a, b) = if horizontal { if k == 0 { (l.max.y, f.min.y) } else { (f.max.y, l.min.y) } } else if k == 0 { (l.max.x, f.min.x) } else { (f.max.x, l.min.x) };
+                let (a, b) = if horizontal {
+                    if k == 0 { (l.max.y, f.min.y) } else { (f.max.y, l.min.y) }
+                } else if k == 0 {
+                    (l.max.x, f.min.x)
+                } else {
+                    (f.max.x, l.min.x)
+                };
                 // The device pixel just past the line's edge, its centre.
                 let first = if k == 0 { (px(a) + 0.5) / ppp } else { (px(b) - 0.5) / ppp };
                 let probe = if horizontal { Pos2::new(mid_along, first) } else { Pos2::new(first, mid_along) };
                 let covered = p.covers.iter().any(|c| *c != l && *c != f && c.contains(probe));
                 if gap > 0.01 && gap < 1.0 && device >= 1.0 && !covered {
                     let at = |r: Rect| format!("{:.2},{:.2}–{:.2},{:.2}", r.min.x, r.min.y, r.max.x, r.max.y);
-                    let text = format!(
-                        "a line ({}) and what it borders ({}) are {device:.0} device px apart at {ppp}× (meant to touch): inset from a rect on device pixels (style::inset)",
-                        at(l),
-                        at(f)
-                    );
+                    let text =
+                        format!("a line ({}) and what it borders ({}) are {device:.0} device px apart at {ppp}× (meant to touch): inset from a rect on device pixels (style::inset)", at(l), at(f));
                     push(out, finding(Level::Error, "seam", text, l.union(f)));
                 }
             }
@@ -816,8 +864,7 @@ fn near_heights(p: &Parts, screen: Rect, out: &mut Vec<Finding>) {
 /// Text and icons in neighbouring columns: almost level.
 fn near_level(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
     // (rect, baseline, middle, name, is text, is a lone symbol)
-    let mut items: Vec<(Rect, f32, f32, String, bool, bool)> =
-        p.texts.iter().map(|t| (t.rect, t.baseline, t.middle, quote(t), true, lone_symbol(t))).collect();
+    let mut items: Vec<(Rect, f32, f32, String, bool, bool)> = p.texts.iter().map(|t| (t.rect, t.baseline, t.middle, quote(t), true, lone_symbol(t))).collect();
     items.extend(p.icons.iter().map(|i| i.rect).map(|r| (r, r.center().y, r.center().y, "an icon".to_owned(), false, false)));
     let grid = |r: &Rect| grid_of(p, r);
     for (ra, la, ma, na, ta, sa) in &items {
@@ -859,8 +906,7 @@ fn lone_symbol(t: &Text) -> bool {
 /// Left edges down a column: almost lined up.
 fn near_edges(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
     // (A label of a character or three is centred in a cell: a date, a key.)
-    let mut items: Vec<(Rect, f32, String)> =
-        p.texts.iter().filter(|t| t.label.chars().count() > 3 && !centred(p, t)).map(|t| (t.rect, t.left, quote(t))).collect();
+    let mut items: Vec<(Rect, f32, String)> = p.texts.iter().filter(|t| t.label.chars().count() > 3 && !centred(p, t)).map(|t| (t.rect, t.left, quote(t))).collect();
     items.extend(p.icons.iter().map(|i| i.rect).map(|r| (r, r.min.x, "an icon".to_owned())));
     for (ra, xa, na) in &items {
         for (rb, xb, nb) in &items {
@@ -891,12 +937,7 @@ fn grid_of(p: &Parts, r: &Rect) -> Option<usize> {
 /// The band (a fill or gradient no more than a few times as tall) `r`
 /// sits in, if any.
 fn band_of(p: &Parts, r: Rect) -> Option<Rect> {
-    p.whole_covers
-        .iter()
-        .chain(&p.bands)
-        .copied()
-        .filter(|f| f.height() > 2.0 && f.height() <= 3.2 * r.height() && f.expand(SAME).contains_rect(r))
-        .min_by(|a, b| a.area().total_cmp(&b.area()))
+    p.whole_covers.iter().chain(&p.bands).copied().filter(|f| f.height() > 2.0 && f.height() <= 3.2 * r.height() && f.expand(SAME).contains_rect(r)).min_by(|a, b| a.area().total_cmp(&b.area()))
 }
 
 /// What of `t` is seen to be centred: its capitals, across its width.
@@ -975,4 +1016,3 @@ fn uneven_rows(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
         }
     }
 }
-

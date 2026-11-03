@@ -115,59 +115,39 @@ pub fn spawn(q: Query, cancel: Arc<AtomicBool>, progress: Arc<Progress>, send: i
     });
 }
 
-fn walk(
-    root: &Path,
-    mode: Mode,
-    everything: bool,
-    m: &RegexMatcher,
-    cancel: &AtomicBool,
-    progress: &Progress,
-    tx: mpsc::Sender<Hit>,
-) {
+fn walk(root: &Path, mode: Mode, everything: bool, m: &RegexMatcher, cancel: &AtomicBool, progress: &Progress, tx: mpsc::Sender<Hit>) {
     let skip = skipped_mounts();
-    WalkBuilder::new(root)
-        .standard_filters(!everything)
-        .filter_entry(move |e| !skip.iter().any(|m| m == e.path()))
-        .follow_links(false)
-        .build_parallel()
-        .run(|| {
-            let tx = tx.clone();
-            let mut searcher = SearcherBuilder::new()
-                .binary_detection(BinaryDetection::quit(0))
-                .line_number(true)
-                .build();
-            Box::new(move |result| {
-                if cancel.load(Ordering::Relaxed) {
-                    return WalkState::Quit;
-                }
-                let Ok(dent) = result else { return WalkState::Continue };
-                if dent.depth() == 0 {
-                    return WalkState::Continue;
-                }
-                let path = dent.path();
-                progress.scanned.fetch_add(1, Ordering::Relaxed);
-                if dent.file_type().is_some_and(|t| t.is_dir())
-                    && let Ok(mut f) = progress.folder.try_lock()
-                {
-                    *f = path.to_owned();
-                }
-                let name = dent.file_name().to_string_lossy();
-                let by_name = mode != Mode::Contents && m.is_match(name.as_bytes()).unwrap_or(false);
-                let is_file = dent.file_type().is_some_and(|t| t.is_file());
-                let line = if !by_name && mode != Mode::Names && is_file {
-                    first_match(&mut searcher, m, path)
-                } else {
-                    None
-                };
-                if (by_name || line.is_some())
-                    && let Some(entry) = fs::entry(path)
-                    && tx.send(Hit { entry, line }).is_err()
-                {
-                    return WalkState::Quit;
-                }
-                WalkState::Continue
-            })
-        });
+    WalkBuilder::new(root).standard_filters(!everything).filter_entry(move |e| !skip.iter().any(|m| m == e.path())).follow_links(false).build_parallel().run(|| {
+        let tx = tx.clone();
+        let mut searcher = SearcherBuilder::new().binary_detection(BinaryDetection::quit(0)).line_number(true).build();
+        Box::new(move |result| {
+            if cancel.load(Ordering::Relaxed) {
+                return WalkState::Quit;
+            }
+            let Ok(dent) = result else { return WalkState::Continue };
+            if dent.depth() == 0 {
+                return WalkState::Continue;
+            }
+            let path = dent.path();
+            progress.scanned.fetch_add(1, Ordering::Relaxed);
+            if dent.file_type().is_some_and(|t| t.is_dir())
+                && let Ok(mut f) = progress.folder.try_lock()
+            {
+                *f = path.to_owned();
+            }
+            let name = dent.file_name().to_string_lossy();
+            let by_name = mode != Mode::Contents && m.is_match(name.as_bytes()).unwrap_or(false);
+            let is_file = dent.file_type().is_some_and(|t| t.is_file());
+            let line = if !by_name && mode != Mode::Names && is_file { first_match(&mut searcher, m, path) } else { None };
+            if (by_name || line.is_some())
+                && let Some(entry) = fs::entry(path)
+                && tx.send(Hit { entry, line }).is_err()
+            {
+                return WalkState::Quit;
+            }
+            WalkState::Continue
+        })
+    });
 }
 
 /// Mount points not worth searching: kernel pseudo-filesystems (/proc,
@@ -175,9 +155,33 @@ fn walk(
 /// hang. Real disks mounted anywhere (/home, /var, /run/media/…) are kept.
 fn skipped_mounts() -> Vec<PathBuf> {
     const VIRTUAL: &[&str] = &[
-        "proc", "sysfs", "devtmpfs", "devpts", "cgroup", "cgroup2", "securityfs", "debugfs", "tracefs",
-        "fusectl", "configfs", "bpf", "pstore", "efivarfs", "mqueue", "hugetlbfs", "autofs", "binfmt_misc",
-        "rpc_pipefs", "nfs", "nfs4", "cifs", "smb3", "9p", "fuse.sshfs", "fuse.gvfsd-fuse", "fuse.portal",
+        "proc",
+        "sysfs",
+        "devtmpfs",
+        "devpts",
+        "cgroup",
+        "cgroup2",
+        "securityfs",
+        "debugfs",
+        "tracefs",
+        "fusectl",
+        "configfs",
+        "bpf",
+        "pstore",
+        "efivarfs",
+        "mqueue",
+        "hugetlbfs",
+        "autofs",
+        "binfmt_misc",
+        "rpc_pipefs",
+        "nfs",
+        "nfs4",
+        "cifs",
+        "smb3",
+        "9p",
+        "fuse.sshfs",
+        "fuse.gvfsd-fuse",
+        "fuse.portal",
     ];
     let Ok(mounts) = std::fs::read_to_string("/proc/self/mounts") else { return Vec::new() };
     mounts
@@ -212,11 +216,7 @@ impl Sink for First<'_> {
     fn matched(&mut self, _: &Searcher, mat: &SinkMatch<'_>) -> Result<bool, Self::Error> {
         let text = String::from_utf8_lossy(mat.bytes());
         let text = text.trim();
-        let snippet: String = if text.chars().count() > SNIPPET {
-            text.chars().take(SNIPPET).chain(['…']).collect()
-        } else {
-            text.to_owned()
-        };
+        let snippet: String = if text.chars().count() > SNIPPET { text.chars().take(SNIPPET).chain(['…']).collect() } else { text.to_owned() };
         *self.0 = Some((mat.line_number().unwrap_or(0), snippet));
         Ok(false)
     }
@@ -228,14 +228,9 @@ mod tests {
 
     fn run(root: &Path, text: &str, mode: Mode, everything: bool) -> Vec<Hit> {
         let (tx, rx) = mpsc::channel();
-        spawn(
-            Query { root: root.into(), text: text.into(), mode, everything },
-            Arc::new(AtomicBool::new(false)),
-            Arc::default(),
-            move |hits, done| {
-                let _ = tx.send((hits, done));
-            },
-        );
+        spawn(Query { root: root.into(), text: text.into(), mode, everything }, Arc::new(AtomicBool::new(false)), Arc::default(), move |hits, done| {
+            let _ = tx.send((hits, done));
+        });
         let mut all = Vec::new();
         for (hits, done) in rx {
             all.extend(hits);

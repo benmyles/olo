@@ -13,12 +13,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use serde_json::{Value, json};
 use olo_kit_base::{
     commands,
     notify::{Note, NoteEvent, NoteKind, Notifier},
 };
 use olo_protocol::{Client, Frame, Placement, Reply, Request, WindowInfo};
+use serde_json::{Value, json};
 
 /// The screenshot sent is no bigger than this on its long side.
 const SHOT_EDGE: u32 = 1568;

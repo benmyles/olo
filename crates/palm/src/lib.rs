@@ -486,10 +486,20 @@ mod tests {
         for k in 0..count {
             let palm = k % 2 == 0;
             let mut tracker = Tracker::default();
-            let (mut x, mut y) = if palm { (axes.x_max - 1500 + (rng.next() * 1000.0) as i32, axes.y_min + 800 + (rng.next() * 3000.0) as i32) } else { ((rng.next() * 8000.0) as i32 - 4000, 2000 + (rng.next() * 5000.0) as i32) };
+            let (mut x, mut y) = if palm {
+                (axes.x_max - 1500 + (rng.next() * 1000.0) as i32, axes.y_min + 800 + (rng.next() * 3000.0) as i32)
+            } else {
+                ((rng.next() * 8000.0) as i32 - 4000, 2000 + (rng.next() * 5000.0) as i32)
+            };
             let (vx, vy) = if palm { (0, 0) } else { ((rng.normal() * 120.0) as i32, (rng.normal() * 120.0) as i32) };
             let hard = rng.next() < 0.15;
-            let size = if palm { if hard { 700 + (rng.next() * 400.0) as i32 } else { 1700 + (rng.next() * 2000.0) as i32 } } else if hard { 900 + (rng.next() * 150.0) as i32 } else { 300 + (rng.next() * 500.0) as i32 };
+            let size = if palm {
+                if hard { 700 + (rng.next() * 400.0) as i32 } else { 1700 + (rng.next() * 2000.0) as i32 }
+            } else if hard {
+                900 + (rng.next() * 150.0) as i32
+            } else {
+                300 + (rng.next() * 500.0) as i32
+            };
             let pressure = if palm { if hard { 3 + (rng.next() * 10.0) as i32 } else { 50 + (rng.next() * 400.0) as i32 } } else { 10 + (rng.next() * 50.0) as i32 };
             let mut frames = Vec::new();
             for f in 0..30u64 {

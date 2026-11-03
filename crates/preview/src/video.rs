@@ -45,7 +45,10 @@ struct Frame {
 pub enum Picture {
     Rgba(Image),
     /// Straight BGRA bytes, `size` pixels (what pages take).
-    Bgra { size: [usize; 2], data: Arc<Vec<u8>> },
+    Bgra {
+        size: [usize; 2],
+        data: Arc<Vec<u8>>,
+    },
 }
 
 impl Picture {
@@ -221,17 +224,22 @@ impl Video {
         let shared = Arc::new((Mutex::new(Shared { eof: !opts.picture, bgra: opts.bgra, ..Default::default() }), Condvar::new()));
         let (i, s) = (input.clone(), shared.clone());
         let playing = opts.playing;
-        let worker = opts.picture.then(|| std::thread::Builder::new()
-            .name("video".into())
-            .spawn(move || {
-                if let Err(e) = decode(&i, &s) {
-                    tracing::warn!("video {}: {e}", i.name);
-                    let mut sh = s.0.lock().unwrap();
-                    sh.error = Some(e);
-                    sh.eof = true;
-                }
+        let worker = opts
+            .picture
+            .then(|| {
+                std::thread::Builder::new()
+                    .name("video".into())
+                    .spawn(move || {
+                        if let Err(e) = decode(&i, &s) {
+                            tracing::warn!("video {}: {e}", i.name);
+                            let mut sh = s.0.lock().unwrap();
+                            sh.error = Some(e);
+                            sh.eof = true;
+                        }
+                    })
+                    .ok()
             })
-            .ok()).flatten();
+            .flatten();
         Video {
             shared,
             clock: Mutex::new(Clock { at: 0.0, since: playing.then(Instant::now), heard_ms: 0, finished: false, show_next: opts.picture }),
@@ -741,18 +749,7 @@ impl Mp4 {
                 break;
             }
         }
-        Ok(Mp4 {
-            track,
-            codec,
-            timescale,
-            shift,
-            sets,
-            nal_len,
-            times,
-            syncs: stbl.stss.as_ref().map(|s| s.entries.clone()),
-            next: 1,
-            reader,
-        })
+        Ok(Mp4 { track, codec, timescale, shift, sets, nal_len, times, syncs: stbl.stss.as_ref().map(|s| s.entries.clone()), next: 1, reader })
     }
 }
 
@@ -840,16 +837,7 @@ impl Mkv {
                 sets.extend_from_slice(&p);
             }
         }
-        Ok(Mkv {
-            track: t.track_number().get(),
-            codec,
-            scale: file.info().timestamp_scale().get() as f64 / 1e9,
-            sets,
-            nal_len,
-            frame: matroska_demuxer::Frame::default(),
-            fresh: true,
-            file,
-        })
+        Ok(Mkv { track: t.track_number().get(), codec, scale: file.info().timestamp_scale().get() as f64 / 1e9, sets, nal_len, frame: matroska_demuxer::Frame::default(), fresh: true, file })
     }
 }
 
@@ -1059,9 +1047,7 @@ mod tests {
         assert_eq!(Pic::H264(Arc::new(Planar::from(&yuv))).bytes(), w * h * 3 / 2);
         let ours = planar.image();
         assert_eq!(ours.size, [w, h]);
-        let worst = ours.rgba.as_chunks::<4>().0.iter().zip(theirs.as_chunks::<4>().0.iter()).map(|(a, b)| {
-            (0..3).map(|i| (a[i] as i32 - b[i] as i32).abs()).max().unwrap()
-        }).max().unwrap();
+        let worst = ours.rgba.as_chunks::<4>().0.iter().zip(theirs.as_chunks::<4>().0.iter()).map(|(a, b)| (0..3).map(|i| (a[i] as i32 - b[i] as i32).abs()).max().unwrap()).max().unwrap();
         assert!(worst <= 2, "differs from OpenH264's conversion by {worst}");
         // Big pictures get fewer frames ahead, never under two.
         assert_eq!((QUEUE_BYTES / (2920 * 2000 * 3 / 2)).clamp(2, AHEAD), 2);
@@ -1102,4 +1088,3 @@ mod tests {
         }
     }
 }
-

@@ -56,7 +56,15 @@ fn test_voice() -> (voice::State, voice::Settings) {
 
 /// Test data: speakers, a headset and a microphone named as they come.
 fn test_devices() -> Devices {
-    let device = |name: &str, description: &str, level, is_default| audio::Device { name: name.into(), description: description.into(), volume: audio::Volume { level, muted: false }, channels: 2, is_default, bluetooth: None, private: false };
+    let device = |name: &str, description: &str, level, is_default| audio::Device {
+        name: name.into(),
+        description: description.into(),
+        volume: audio::Volume { level, muted: false },
+        channels: 2,
+        is_default,
+        bluetooth: None,
+        private: false,
+    };
     Devices {
         outputs: vec![
             device("speakers", "MacBook Pro Speakers (Built-in Audio Analog Stereo)", 0.55, false),
@@ -221,16 +229,10 @@ fn voice_section(ui: &mut Ui, st: &mut State, devices: &Devices) {
         );
         let s2 = save.clone();
         ui.add(
-            CheckBox::new("Cancel echo from the speakers", settings.echo_cancellation)
-                .enabled(settings.enabled)
-                .on_toggle(move |on, _, _| s2(voice::Settings { echo_cancellation: on, ..settings })),
+            CheckBox::new("Cancel echo from the speakers", settings.echo_cancellation).enabled(settings.enabled).on_toggle(move |on, _, _| s2(voice::Settings { echo_cancellation: on, ..settings })),
         );
         let s2 = save.clone();
-        ui.add(
-            CheckBox::new("Even out the voice's level", settings.normalize)
-                .enabled(settings.enabled)
-                .on_toggle(move |on, _, _| s2(voice::Settings { normalize: on, ..settings })),
-        );
+        ui.add(CheckBox::new("Even out the voice's level", settings.normalize).enabled(settings.enabled).on_toggle(move |on, _, _| s2(voice::Settings { normalize: on, ..settings })));
         ui.note(voice_note(&state, &settings, devices));
     });
 }
@@ -273,7 +275,8 @@ fn airpods_output(ui: &mut Ui, dev: &audio::Device) {
     use olo_protocol::airpods::{Change, ListeningMode, Request};
     let Some(a) = airpods_of(ui, dev) else { return };
     let bt = dev.bluetooth.clone().unwrap_or_default();
-    let quality = if bt.high_quality() { format!("{} · {} · music quality", a.model, bt.codec_name()) } else { format!("{} · {} · call quality while the microphone is used", a.model, bt.codec_name()) };
+    let quality =
+        if bt.high_quality() { format!("{} · {} · music quality", a.model, bt.codec_name()) } else { format!("{} · {} · call quality while the microphone is used", a.model, bt.codec_name()) };
     ui.note(quality);
     let address = Some(a.address.clone());
     let mut row = div().flex().flex_row().items_center().gap(px(olo_ui::metrics::SPACING));
@@ -304,11 +307,7 @@ fn airpods_input(ui: &mut Ui) {
     if state.connected().is_none() {
         return;
     }
-    let choices = [
-        (MicrophoneChoice::Computer, "This Computer's Microphones"),
-        (MicrophoneChoice::AirPods, "AirPods (High Quality)"),
-        (MicrophoneChoice::AirPodsHeadset, "AirPods (Call Quality)"),
-    ];
+    let choices = [(MicrophoneChoice::Computer, "This Computer's Microphones"), (MicrophoneChoice::AirPods, "AirPods (High Quality)"), (MicrophoneChoice::AirPodsHeadset, "AirPods (Call Quality)")];
     let at = choices.iter().position(|(c, _)| *c == settings.microphone).unwrap_or(0);
     let names: Vec<SharedString> = choices.iter().map(|(_, n)| SharedString::from(*n)).collect();
     let note = match settings.microphone {

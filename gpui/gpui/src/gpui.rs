@@ -89,6 +89,8 @@ use key_dispatch::*;
 pub use keymap::*;
 pub use path_builder::*;
 pub use platform::*;
+/// Olo: locking the session (the lock screen).
+pub use platform::{lock_session, unlock_session};
 pub use refineable::*;
 pub use scene::*;
 pub use shared_string::*;
@@ -103,8 +105,6 @@ pub use taffy::{AvailableSpace, LayoutId};
 #[cfg(any(test, feature = "test-support"))]
 pub use test::*;
 pub use text_system::*;
-/// Olo: locking the session (the lock screen).
-pub use platform::{lock_session, unlock_session};
 #[cfg(any(test, feature = "test-support"))]
 pub use util::smol_timeout;
 pub use util::{FutureExt, Timeout, arc_cow::ArcCow};

@@ -137,10 +137,7 @@ pub fn app_name(app_id: &str) -> String {
 pub fn note(number: u32, replaces: bool, app_id: &str, gtk_id: &str, n: &HashMap<String, OwnedValue>) -> (Note, Origin) {
     let text = |k: &str| n.get(k).and_then(|v| String::try_from(v.try_clone().ok()?).ok()).filter(|s| !s.is_empty());
     let action = |name: String, target: Option<&OwnedValue>| {
-        name.strip_prefix("app.").map(|a| Action {
-            name: a.to_owned(),
-            target: target.and_then(|t| OwnedValue::try_from(unwrap(t).try_clone().ok()?).ok()),
-        })
+        name.strip_prefix("app.").map(|a| Action { name: a.to_owned(), target: target.and_then(|t| OwnedValue::try_from(unwrap(t).try_clone().ok()?).ok()) })
     };
     let app_name = app_name(app_id);
     let body = match (text("markup-body"), text("body")) {
@@ -283,7 +280,10 @@ mod tests {
         n.insert("priority".to_owned(), v("high"));
         n.insert("icon".to_owned(), v(Value::Value(Box::new(Value::from(("themed", Value::Value(Box::new(Value::from(vec!["mail-unread", "mail"])))))))));
         n.insert("default-action".to_owned(), v("app.open"));
-        n.insert("buttons".to_owned(), v(Value::from(vec![button, other].into_iter().map(|b| b.into_iter().map(|(k, x)| (k, Value::from(x))).collect::<HashMap<String, Value>>()).collect::<Vec<_>>())));
+        n.insert(
+            "buttons".to_owned(),
+            v(Value::from(vec![button, other].into_iter().map(|b| b.into_iter().map(|(k, x)| (k, Value::from(x))).collect::<HashMap<String, Value>>()).collect::<Vec<_>>())),
+        );
         let (note, origin) = note(5, false, "org.example.Chat", "msg-1", &n);
         assert_eq!(note.summary, "Ada");
         assert_eq!(markup::plain(&note.body), "Lunch? <b>not markup</b>", "body is plain text");

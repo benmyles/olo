@@ -412,12 +412,7 @@ mod tests {
     #[test]
     fn places_held_and_kept_come_along() {
         let kept = Node::Kept(Kept { who: Who::Window(9), holds: false, until: None });
-        let t = Node::split(
-            Cut::Columns,
-            0.5,
-            w(1),
-            Node::split(Cut::Columns, 0.5, Node::split(Cut::Rows, 0.5, w(2), kept.clone()), Node::split(Cut::Columns, 0.5, w(3), Node::hole())),
-        );
+        let t = Node::split(Cut::Columns, 0.5, w(1), Node::split(Cut::Columns, 0.5, Node::split(Cut::Rows, 0.5, w(2), kept.clone()), Node::split(Cut::Columns, 0.5, w(3), Node::hole())));
         let m = [(1, (0.5, 0.5)), (2, (0.5, 0.5)), (3, (0.5, 0.5))];
         let f = refit(&t, &mins(&m), 1.0).expect("refitted");
         assert!(fits(&f, &mins(&m)), "{f}");

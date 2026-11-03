@@ -44,11 +44,23 @@ pub enum Request {
 }
 
 pub enum Event {
-    Opened { geoms: Vec<PageGeom>, model: Model, editable: bool },
+    Opened {
+        geoms: Vec<PageGeom>,
+        model: Model,
+        editable: bool,
+    },
     /// Page `page` rendered at `scale` pixels a point: `size` pixels, in
     /// tiles.
-    Page { page: usize, scale: f32, size: (u32, u32), tiles: Vec<Tile> },
-    Saved { to: PathBuf, adopted: Option<Model> },
+    Page {
+        page: usize,
+        scale: f32,
+        size: (u32, u32),
+        tiles: Vec<Tile>,
+    },
+    Saved {
+        to: PathBuf,
+        adopted: Option<Model>,
+    },
     SaveFailed(String),
     Failed(String),
 }
@@ -153,11 +165,7 @@ pub fn start(path: PathBuf, send: impl Fn(Event) + Send + 'static) -> mpsc::Send
                         let Some(p) = pages.get(page) else { continue };
                         let (w, h) = p.render_dimensions();
                         let k = scale.min(MAX_PX / w.max(h).max(1.0)).max(0.05);
-                        let pix = hayro::render(p, &cache, &settings, &RenderSettings::default(), &PixmapSettings {
-                            x_scale: k,
-                            y_scale: k,
-                            bg_color: WHITE,
-                        });
+                        let pix = hayro::render(p, &cache, &settings, &RenderSettings::default(), &PixmapSettings { x_scale: k, y_scale: k, bg_color: WHITE });
                         let (pw, ph) = (pix.width() as u32, pix.height() as u32);
                         let tiles = tiles(pix.data_as_u8_slice(), pw, ph);
                         send(Event::Page { page, scale, size: (pw, ph), tiles });
@@ -167,11 +175,7 @@ pub fn start(path: PathBuf, send: impl Fn(Event) + Send + 'static) -> mpsc::Send
                             send(Event::SaveFailed("This PDF can't be edited.".into()));
                             continue;
                         };
-                        let out = if flatten {
-                            pdfdoc::flatten(&d.bytes, doc, &d.model, &model)
-                        } else {
-                            pdfdoc::save(&d.bytes, doc, &d.model, &model)
-                        };
+                        let out = if flatten { pdfdoc::flatten(&d.bytes, doc, &d.model, &model) } else { pdfdoc::save(&d.bytes, doc, &d.model, &model) };
                         let out = match out {
                             Ok(o) => o,
                             Err(e) => {

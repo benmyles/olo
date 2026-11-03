@@ -9,8 +9,8 @@ use olo_ui::{
     Menu, agent,
     files::format_size,
     gpui::{
-        AnyElement, App, Bounds, Context, Entity, FontWeight, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, SharedString,
-        Styled as _, Window, canvas, div, point, px, transparent_black,
+        AnyElement, App, Bounds, Context, Entity, FontWeight, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels,
+        SharedString, Styled as _, Window, canvas, div, point, px, transparent_black,
     },
     menu, metrics as m,
     style::{self, c},
@@ -145,7 +145,8 @@ fn mini(app: &Activity, key: &str, label: String, max: Option<f64>, cx: &App) ->
             let ink = style::card_ink(&p);
             let font = style::ui_font(FontWeight::NORMAL);
             let vr = style::label(window, cx, b.right(), b.top() + px(8.0), style::Align::Right, v.clone(), style::SMALL_SIZE, font.clone(), ink.text);
-            let l = style::label_fit(window, cx, b.left(), b.top() + px(8.0), style::Align::Left, label.clone(), style::SMALL_SIZE, font, ink.dim, (vr.left() - px(m::SPACING) - b.left()).max(px(0.0)));
+            let l =
+                style::label_fit(window, cx, b.left(), b.top() + px(8.0), style::Align::Left, label.clone(), style::SMALL_SIZE, font, ink.dim, (vr.left() - px(m::SPACING) - b.left()).max(px(0.0)));
             agent::record(window, cx, agent::Node { value: Some(v.clone().into()), ..agent::Node::label(label.clone(), l) });
         },
     )
@@ -321,14 +322,9 @@ fn overview(app: &Activity, me: &Me, area: f32, cx: &App) -> Vec<AnyElement> {
                 vec!["Busy", "System", "I/O wait"],
                 Some(100.0),
             ),
-            Section::Memory => (
-                "Memory",
-                value(app, "memory"),
-                format!("of {} · {} swap used", format_size(mem_total), value(app, "swap")),
-                vec!["memory", "cached"],
-                vec!["Used", "Cached"],
-                Some(mem_total as f64),
-            ),
+            Section::Memory => {
+                ("Memory", value(app, "memory"), format!("of {} · {} swap used", format_size(mem_total), value(app, "swap")), vec!["memory", "cached"], vec!["Used", "Cached"], Some(mem_total as f64))
+            }
             Section::Network => (
                 "Network",
                 Unit::Rate.format(app.latest("net-rx").unwrap_or(0.0) + app.latest("net-tx").unwrap_or(0.0)),
@@ -340,22 +336,12 @@ fn overview(app: &Activity, me: &Me, area: f32, cx: &App) -> Vec<AnyElement> {
             Section::Disks => (
                 "Disks",
                 Unit::Rate.format(app.latest("disk-read").unwrap_or(0.0) + app.latest("disk-write").unwrap_or(0.0)),
-                sys.volumes
-                    .first()
-                    .and_then(|v| Some(format!("{} free on {}", format_size(v.free?), v.mount.split(", ").next().unwrap_or(&v.mount))))
-                    .unwrap_or_default(),
+                sys.volumes.first().and_then(|v| Some(format!("{} free on {}", format_size(v.free?), v.mount.split(", ").next().unwrap_or(&v.mount)))).unwrap_or_default(),
                 vec!["disk-read", "disk-write"],
                 vec!["Read", "Written"],
                 None,
             ),
-            Section::Gpu => (
-                "GPU",
-                value(app, "gpu-busy"),
-                sys.gpu.as_ref().map(|g| format!("{} · {}", g.name, g.driver)).unwrap_or_default(),
-                vec!["gpu-busy"],
-                vec!["Busy"],
-                Some(100.0),
-            ),
+            Section::Gpu => ("GPU", value(app, "gpu-busy"), sys.gpu.as_ref().map(|g| format!("{} · {}", g.name, g.driver)).unwrap_or_default(), vec!["gpu-busy"], vec!["Busy"], Some(100.0)),
             _ => match &sys.battery {
                 Some(b) => ("Battery", value(app, "battery"), format!("{} · {}", b.status, Unit::Watts.format(b.watts.abs())), vec!["battery"], vec!["Charge"], Some(100.0)),
                 None => {
@@ -381,8 +367,7 @@ fn overview(app: &Activity, me: &Me, area: f32, cx: &App) -> Vec<AnyElement> {
             card = card.child(graph(app, Some(me), &keys, max, graph_h, cx));
         } else if *s == Section::Sensors {
             // No battery: the hottest few sensors' graph.
-            let mut temps: Vec<(usize, f64)> =
-                app.sources.iter().enumerate().filter(|(_, s)| s.unit == Unit::Celsius).filter_map(|(i, _)| Some((i, app.history[i].back()?.1))).collect();
+            let mut temps: Vec<(usize, f64)> = app.sources.iter().enumerate().filter(|(_, s)| s.unit == Unit::Celsius).filter_map(|(i, _)| Some((i, app.history[i].back()?.1))).collect();
             temps.sort_by(|a, b| b.1.total_cmp(&a.1));
             let keys: Vec<&str> = temps.iter().take(3).map(|(i, _)| app.sources[*i].key.as_str()).collect();
             card = card.child(graph(app, None, &keys, None, graph_h, cx));
@@ -425,12 +410,11 @@ fn busiest(app: &Activity, me: &Me) -> AnyElement {
             )
         }
     };
-    let lists = div()
-        .flex()
-        .flex_row()
-        .gap(px(2.0 * m::SPACING))
-        .child(div().flex_1().min_w_0().child(process_rows(me, "CPU", cpu)))
-        .child(div().flex_1().min_w_0().child(process_rows(me, other_title, other)));
+    let lists = div().flex().flex_row().gap(px(2.0 * m::SPACING)).child(div().flex_1().min_w_0().child(process_rows(me, "CPU", cpu))).child(div().flex_1().min_w_0().child(process_rows(
+        me,
+        other_title,
+        other,
+    )));
     let card = Card::new("busiest", title).caption(caption).child(lists);
     if moment.is_none() {
         return card.into_any_element();
@@ -553,7 +537,18 @@ fn cpu(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
                 |_, _, _| {},
                 move |b, _, window, cx| {
                     let p = theme::palette(cx);
-                    let r = style::label_fit(window, cx, b.left(), b.center().y, style::Align::Left, label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::card_ink(&p).text, b.size.width);
+                    let r = style::label_fit(
+                        window,
+                        cx,
+                        b.left(),
+                        b.center().y,
+                        style::Align::Left,
+                        label.clone(),
+                        style::PLAIN_SIZE,
+                        style::ui_font(FontWeight::NORMAL),
+                        style::card_ink(&p).text,
+                        b.size.width,
+                    );
                     agent::record(window, cx, agent::Node::label(label.clone(), r));
                 },
             )
@@ -604,13 +599,7 @@ fn cpu(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
         ("Interrupts".into(), value(app, "interrupts")),
         ("Page faults".into(), value(app, "faults")),
     ];
-    out.push(
-        Card::new("load", "Load")
-            .child(facts_two(rows))
-            .child(div().h(px(m::SPACING)))
-            .child(graph(app, None, &["load"], None, GRAPH, cx))
-            .into_any_element(),
-    );
+    out.push(Card::new("load", "Load").child(facts_two(rows)).child(div().h(px(m::SPACING))).child(graph(app, None, &["load"], None, GRAPH, cx)).into_any_element());
     out
 }
 
@@ -722,7 +711,13 @@ fn disks(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
             Some(None) => vec![("Health".into(), "Needs full access".into())],
             None => Vec::new(),
         };
-        let kind = if d.rotational { "hard disk" } else if d.removable { "removable" } else { "solid-state" };
+        let kind = if d.rotational {
+            "hard disk"
+        } else if d.removable {
+            "removable"
+        } else {
+            "solid-state"
+        };
         let caption = format!("{} · {} {kind}", if d.model.is_empty() { "Disk" } else { &d.model }, format_size(d.size));
         let figure_text = Unit::Rate.format(app.latest(&keys[0]).unwrap_or(0.0) + app.latest(&keys[1]).unwrap_or(0.0));
         let mut card = Card::new(format!("disk-{}", d.name), d.name.clone())
@@ -762,7 +757,18 @@ fn disks(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
                     let ink = style::card_ink(&p);
                     let (plain, bold) = (style::ui_font(FontWeight::NORMAL), style::ui_font(FontWeight::BOLD));
                     let d = style::label(window, cx, r.right(), r.top() + px(9.0), style::Align::Right, detail.clone(), style::PLAIN_SIZE, plain.clone(), ink.text);
-                    let t = style::label_fit(window, cx, r.left(), r.top() + px(9.0), style::Align::Left, title.clone(), style::PLAIN_SIZE, bold, ink.text, (d.left() - px(m::SPACING) - r.left()).max(px(0.0)));
+                    let t = style::label_fit(
+                        window,
+                        cx,
+                        r.left(),
+                        r.top() + px(9.0),
+                        style::Align::Left,
+                        title.clone(),
+                        style::PLAIN_SIZE,
+                        bold,
+                        ink.text,
+                        (d.left() - px(m::SPACING) - r.left()).max(px(0.0)),
+                    );
                     let s = style::label_fit(window, cx, r.left(), r.top() + px(24.0), style::Align::Left, sub.clone(), style::SMALL_SIZE, plain, ink.dim, r.size.width * 0.5);
                     agent::record(window, cx, agent::Node { value: Some(detail.clone()), ..agent::Node::label(title.clone(), t) });
                     agent::record(window, cx, agent::Node::label(sub.clone(), s));
@@ -832,21 +838,14 @@ fn network(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
         .collect();
     let caption = if app.access == Access::Full { "TCP's bytes, each second" } else { "TCP's bytes, each second (other users' need full access)" };
     let mut card = Card::new("net-programs", "Programs Using the Network").caption(caption);
-    card = if rows.is_empty() {
-        card.child(StringView::new("None just now").height(FACT_ROW).color(style::card_ink(&p).dim))
-    } else {
-        card.child(process_rows(me, "Received and sent", rows))
-    };
+    card = if rows.is_empty() { card.child(StringView::new("None just now").height(FACT_ROW).color(style::card_ink(&p).dim)) } else { card.child(process_rows(me, "Received and sent", rows)) };
     out.push(card.into_any_element());
     // Connections: who talks to whom.
     let full = app.access == Access::Full;
     let caption = if full { "Every program's" } else { "Programs of other users show no name without full access" };
     let needle = olo_ui::search::Needle::new(app.connections_search.read(cx).text().trim());
-    let mut rows: Vec<&crate::sample::Connection> = app
-        .connections
-        .iter()
-        .filter(|cn| needle.is_empty() || [cn.local.as_str(), &cn.remote, &cn.state, &cn.process, cn.proto.as_str()].iter().any(|f| needle.in_text(f)))
-        .collect();
+    let mut rows: Vec<&crate::sample::Connection> =
+        app.connections.iter().filter(|cn| needle.is_empty() || [cn.local.as_str(), &cn.remote, &cn.state, &cn.process, cn.proto.as_str()].iter().any(|f| needle.in_text(f))).collect();
     let (col, asc) = app.connections_list.read(cx).state.sort.or(app.settings.connections_sort).unwrap_or((4, true));
     rows.sort_by(|a, b| {
         let o = match col {
@@ -927,7 +926,9 @@ fn gpu(app: &Activity, me: &Me, area: f32, inner: f32, cx: &App) -> Vec<AnyEleme
     );
     let mut pair = Vec::new();
     if app.source("gpu-power").is_some() {
-        pair.push(Card::new("gpu-power", "Power").figure(value(app, "gpu-power")).caption("What the GPU draws").child(graph(app, None, &["gpu-power"], None, GRAPH * 0.8 + 16.0, cx)).into_any_element());
+        pair.push(
+            Card::new("gpu-power", "Power").figure(value(app, "gpu-power")).caption("What the GPU draws").child(graph(app, None, &["gpu-power"], None, GRAPH * 0.8 + 16.0, cx)).into_any_element(),
+        );
     }
     if app.source("gpu-memory").is_some() {
         let caption = if g_info.memory_limit > 0 { format!("of {} it may use", format_size(g_info.memory_limit)) } else { String::new() };
@@ -1155,9 +1156,8 @@ fn system(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
     // Tuning: the kernel's knobs.
     let list_h = (sys.tunables.len() as f32 * m::LIST_ROW + HEADER_HEIGHT + 6.0).min(360.0);
     let caption = if app.access == Access::Full { "Double-click one to change it" } else { "Double-click one to change it (with full access)" };
-    let cells: Rc<Vec<[String; 3]>> = Rc::new(
-        sys.tunables.iter().map(|(k, v)| [k.clone(), v.clone(), crate::sample::TUNABLES.iter().find(|(n, _)| n == k).map_or("", |(_, d)| *d).to_owned()]).collect(),
-    );
+    let cells: Rc<Vec<[String; 3]>> =
+        Rc::new(sys.tunables.iter().map(|(k, v)| [k.clone(), v.clone(), crate::sample::TUNABLES.iter().find(|(n, _)| n == k).map_or("", |(_, d)| *d).to_owned()]).collect());
     let columns = vec![Column::new("Setting", 230.0), Column::new("Value", 100.0), Column::new("What it does", 320.0)];
     let (list_cells, open_cells, menu_cells) = (cells.clone(), cells.clone(), cells.clone());
     let (opened, menued) = (me.clone(), me.clone());
@@ -1373,7 +1373,12 @@ fn supervisor(app: &Activity, me: &Me, cx: &App) -> Vec<AnyElement> {
         let ago = std::time::SystemTime::now().duration_since(since).map(|d| d.as_secs_f64()).unwrap_or(0.0);
         let caption = format!("{}pid {} · found {} ago", if f.urgent { "Urgent · " } else { "" }, f.pid, duration(ago));
         let alarm = c(if f.urgent { p.failure } else { p.warning });
-        let mut card = Card::new(format!("finding-{}-{}", f.pid, f.kind as u8), title).figure(format!("{:.0}% sure", f.confidence * 100.0)).figure_ink(alarm).caption(caption).child(para(f.summary.clone(), ink.text)).child(div().h(px(m::TIGHT)));
+        let mut card = Card::new(format!("finding-{}-{}", f.pid, f.kind as u8), title)
+            .figure(format!("{:.0}% sure", f.confidence * 100.0))
+            .figure_ink(alarm)
+            .caption(caption)
+            .child(para(f.summary.clone(), ink.text))
+            .child(div().h(px(m::TIGHT)));
         for e in &f.evidence {
             card = card.child(para(format!("•  {e}"), ink.dim));
         }

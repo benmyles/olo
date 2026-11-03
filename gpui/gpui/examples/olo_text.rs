@@ -12,23 +12,41 @@ const LINE: &str = "Hamburgefonstiv 0123456789 — The quick brown fox jumps.";
 
 impl Render for Sample {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        let block = |bg: u32, fg: u32| {
-            let mut d = div()
-                .flex()
-                .flex_col()
-                .gap_1()
-                .p_3()
-                .bg(rgb(bg))
-                .text_color(rgb(fg))
-                .font_family("Noto Sans");
-            for size in [10.5, 12.0, 13.0, 16.0, 24.0] {
-                d = d.child(div().text_size(px(size)).child(format!("{size} {LINE}")));
-            }
-            d.child(div().text_size(px(12.0)).font_weight(FontWeight::BOLD).child("Bold 12: File Edit View Window Help"))
-                .child(div().text_size(px(12.0)).italic().child("Italic 12: an italic line of text"))
-                .child(div().text_size(px(12.0)).font_family("Noto Sans Mono").child("Mono 12: fn main() { println!(\"{}\", 42); } ═══"))
-                .child(div().text_size(px(12.0)).child("Symbols: ⌘ ⌥ ⇧ ⌃ ▸ ✓ → ← ⏎ ⌫  CJK: 日本語 中文 한국어  Emoji: 😀 👍🏽 🎉 ☺️"))
-        };
+        let block =
+            |bg: u32, fg: u32| {
+                let mut d = div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .p_3()
+                    .bg(rgb(bg))
+                    .text_color(rgb(fg))
+                    .font_family("Noto Sans");
+                for size in [10.5, 12.0, 13.0, 16.0, 24.0] {
+                    d = d.child(div().text_size(px(size)).child(format!("{size} {LINE}")));
+                }
+                d.child(
+                    div()
+                        .text_size(px(12.0))
+                        .font_weight(FontWeight::BOLD)
+                        .child("Bold 12: File Edit View Window Help"),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.0))
+                        .italic()
+                        .child("Italic 12: an italic line of text"),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.0))
+                        .font_family("Noto Sans Mono")
+                        .child("Mono 12: fn main() { println!(\"{}\", 42); } ═══"),
+                )
+                .child(div().text_size(px(12.0)).child(
+                    "Symbols: ⌘ ⌥ ⇧ ⌃ ▸ ✓ → ← ⏎ ⌫  CJK: 日本語 中文 한국어  Emoji: 😀 👍🏽 🎉 ☺️",
+                ))
+            };
         div()
             .flex()
             .flex_col()

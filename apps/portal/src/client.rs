@@ -109,7 +109,8 @@ pub fn read_test(node: u32, out: &str, modifiers: Option<Vec<u64>>, hold: u64) -
 
 /// The first render node's allocator, to read dmabufs back with.
 fn render_node() -> Result<gbm::Device<std::fs::File>, String> {
-    let mut nodes: Vec<_> = std::fs::read_dir("/dev/dri").map_err(|e| e.to_string())?.flatten().map(|e| e.path()).filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("renderD"))).collect();
+    let mut nodes: Vec<_> =
+        std::fs::read_dir("/dev/dri").map_err(|e| e.to_string())?.flatten().map(|e| e.path()).filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("renderD"))).collect();
     nodes.sort();
     let file = std::fs::OpenOptions::new().read(true).write(true).open(nodes.first().ok_or("no render node")?).map_err(|e| e.to_string())?;
     gbm::Device::new(file).map_err(|e| e.to_string())
@@ -121,7 +122,17 @@ fn read_dmabuf(gbm: &gbm::Device<std::fs::File>, d: &pw::spa::buffer::Data, (w, 
     let fd = unsafe { std::os::fd::BorrowedFd::borrow_raw(d.fd()) };
     let (stride, offset) = (d.chunk().stride(), d.chunk().offset() as i32);
     let bo = gbm
-        .import_buffer_object_from_dma_buf_with_modifiers::<()>(1, [Some(fd), None, None, None], w, h, gbm::Format::Xrgb8888, gbm::BufferObjectFlags::empty(), [stride, 0, 0, 0], [offset, 0, 0, 0], gbm::Modifier::from(modifier))
+        .import_buffer_object_from_dma_buf_with_modifiers::<()>(
+            1,
+            [Some(fd), None, None, None],
+            w,
+            h,
+            gbm::Format::Xrgb8888,
+            gbm::BufferObjectFlags::empty(),
+            [stride, 0, 0, 0],
+            [offset, 0, 0, 0],
+            gbm::Modifier::from(modifier),
+        )
         .map_err(|e| format!("can't import the dmabuf: {e}"))?;
     let row = w as usize * 4;
     let mut out = vec![0u8; row * h as usize];
@@ -237,7 +248,15 @@ fn read_frames(
             pod::property!(P::MediaType, Id, pw::spa::param::format::MediaType::Video),
             pod::property!(P::MediaSubtype, Id, pw::spa::param::format::MediaSubtype::Raw),
             pod::property!(P::VideoFormat, Id, pw::spa::param::video::VideoFormat::BGRx),
-            pod::property!(P::VideoSize, Choice, Range, Rectangle, utils::Rectangle { width: 1920, height: 1080 }, utils::Rectangle { width: 1, height: 1 }, utils::Rectangle { width: 16384, height: 16384 }),
+            pod::property!(
+                P::VideoSize,
+                Choice,
+                Range,
+                Rectangle,
+                utils::Rectangle { width: 1920, height: 1080 },
+                utils::Rectangle { width: 1, height: 1 },
+                utils::Rectangle { width: 16384, height: 16384 }
+            ),
             pod::property!(P::VideoFramerate, Choice, Range, Fraction, utils::Fraction { num: 30, denom: 1 }, utils::Fraction { num: 0, denom: 1 }, utils::Fraction { num: 240, denom: 1 }),
         );
         format.properties.push(Property {
@@ -253,14 +272,20 @@ fn read_frames(
         pod::property!(P::MediaType, Id, pw::spa::param::format::MediaType::Video),
         pod::property!(P::MediaSubtype, Id, pw::spa::param::format::MediaSubtype::Raw),
         pod::property!(P::VideoFormat, Choice, Enum, Id, pw::spa::param::video::VideoFormat::BGRx, pw::spa::param::video::VideoFormat::BGRx, pw::spa::param::video::VideoFormat::BGRA),
-        pod::property!(P::VideoSize, Choice, Range, Rectangle, utils::Rectangle { width: 1920, height: 1080 }, utils::Rectangle { width: 1, height: 1 }, utils::Rectangle { width: 16384, height: 16384 }),
+        pod::property!(
+            P::VideoSize,
+            Choice,
+            Range,
+            Rectangle,
+            utils::Rectangle { width: 1920, height: 1080 },
+            utils::Rectangle { width: 1, height: 1 },
+            utils::Rectangle { width: 16384, height: 16384 }
+        ),
         pod::property!(P::VideoFramerate, Choice, Range, Fraction, utils::Fraction { num: 30, denom: 1 }, utils::Fraction { num: 0, denom: 1 }, utils::Fraction { num: 240, denom: 1 }),
     );
     offered.push(pod::serialize::PodSerializer::serialize(std::io::Cursor::new(Vec::new()), &pod::Value::Object(format)).map_err(|e| format!("{e:?}"))?.0.into_inner());
     let mut params: Vec<&pod::Pod> = offered.iter().filter_map(|b| pod::Pod::from_bytes(b)).collect();
-    stream
-        .connect(pw::spa::utils::Direction::Input, Some(node), pw::stream::StreamFlags::AUTOCONNECT | pw::stream::StreamFlags::MAP_BUFFERS, &mut params)
-        .map_err(|e| e.to_string())?;
+    stream.connect(pw::spa::utils::Direction::Input, Some(node), pw::stream::StreamFlags::AUTOCONNECT | pw::stream::StreamFlags::MAP_BUFFERS, &mut params).map_err(|e| e.to_string())?;
     // Each second: how many came; the end once held long enough (or
     // closed), or given up on after 20 s with nothing.
     let started = std::time::Instant::now();

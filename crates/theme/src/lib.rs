@@ -55,8 +55,7 @@ pub enum Hue {
 }
 
 impl Hue {
-    pub const ALL: [Hue; 10] =
-        [Hue::Red, Hue::Orange, Hue::Yellow, Hue::Green, Hue::Teal, Hue::Blue, Hue::Purple, Hue::Pink, Hue::Brown, Hue::Gray];
+    pub const ALL: [Hue; 10] = [Hue::Red, Hue::Orange, Hue::Yellow, Hue::Green, Hue::Teal, Hue::Blue, Hue::Purple, Hue::Pink, Hue::Brown, Hue::Gray];
 
     /// Its name in menus ("Red").
     pub fn name(self) -> &'static str {
@@ -288,18 +287,42 @@ pub const HUES_DARK: Hues = Hues {
 /// Olo's ANSI colours for terminals on light grounds: every one of the
 /// 16 reads clearly on a paper white (no neon green on black).
 pub const ANSI_LIGHT: [Rgba; 16] = [
-    hex(0x3b3f45), hex(0xc4314b), hex(0x2f8a3e), hex(0x9a6a00),
-    hex(0x2f6fdb), hex(0x9d3fb5), hex(0x0f8494), hex(0x9a9ca2),
-    hex(0x6a6e75), hex(0xe0475f), hex(0x3aa34d), hex(0xb98400),
-    hex(0x4b8af0), hex(0xb85bd0), hex(0x13939f), hex(0xd4d5d8),
+    hex(0x3b3f45),
+    hex(0xc4314b),
+    hex(0x2f8a3e),
+    hex(0x9a6a00),
+    hex(0x2f6fdb),
+    hex(0x9d3fb5),
+    hex(0x0f8494),
+    hex(0x9a9ca2),
+    hex(0x6a6e75),
+    hex(0xe0475f),
+    hex(0x3aa34d),
+    hex(0xb98400),
+    hex(0x4b8af0),
+    hex(0xb85bd0),
+    hex(0x13939f),
+    hex(0xd4d5d8),
 ];
 
 /// Olo's ANSI colours on dark grounds.
 pub const ANSI_DARK: [Rgba; 16] = [
-    hex(0x2c3037), hex(0xec6a78), hex(0x8fcf7d), hex(0xe8c17a),
-    hex(0x6aaef5), hex(0xc98ae6), hex(0x5cc4cf), hex(0xb4b8bf),
-    hex(0x5f6570), hex(0xff8592), hex(0xa9e395), hex(0xf7d595),
-    hex(0x8cc2ff), hex(0xdca5f2), hex(0x7ad6df), hex(0xeceef1),
+    hex(0x2c3037),
+    hex(0xec6a78),
+    hex(0x8fcf7d),
+    hex(0xe8c17a),
+    hex(0x6aaef5),
+    hex(0xc98ae6),
+    hex(0x5cc4cf),
+    hex(0xb4b8bf),
+    hex(0x5f6570),
+    hex(0xff8592),
+    hex(0xa9e395),
+    hex(0xf7d595),
+    hex(0x8cc2ff),
+    hex(0xdca5f2),
+    hex(0x7ad6df),
+    hex(0xeceef1),
 ];
 
 impl Palette {
@@ -368,22 +391,8 @@ impl Palette {
             tab_unfocused_shadow: rgb(168, 168, 168),
             tab_text_focused: rgb(0, 0, 0),
             tab_text_unfocused: rgb(80, 80, 80),
-            frame_focused: [
-                rgb(108, 108, 108),
-                rgb(255, 255, 255),
-                rgb(216, 216, 216),
-                rgb(216, 216, 216),
-                rgb(152, 152, 152),
-                rgb(108, 108, 108),
-            ],
-            frame_unfocused: [
-                rgb(136, 136, 136),
-                rgb(250, 250, 250),
-                rgb(224, 224, 224),
-                rgb(224, 224, 224),
-                rgb(168, 168, 168),
-                rgb(136, 136, 136),
-            ],
+            frame_focused: [rgb(108, 108, 108), rgb(255, 255, 255), rgb(216, 216, 216), rgb(216, 216, 216), rgb(152, 152, 152), rgb(108, 108, 108)],
+            frame_unfocused: [rgb(136, 136, 136), rgb(250, 250, 250), rgb(224, 224, 224), rgb(224, 224, 224), rgb(168, 168, 168), rgb(136, 136, 136)],
             hues: HUES_LIGHT,
             terminal: Terminal {
                 id: "beos-light".into(),
@@ -447,22 +456,8 @@ impl Palette {
             tab_unfocused_shadow: rgb(36, 36, 36),
             tab_text_focused: rgb(0, 0, 0),
             tab_text_unfocused: rgb(190, 190, 190),
-            frame_focused: [
-                rgb(10, 10, 10),
-                rgb(96, 96, 96),
-                rgb(58, 58, 58),
-                rgb(58, 58, 58),
-                rgb(30, 30, 30),
-                rgb(10, 10, 10),
-            ],
-            frame_unfocused: [
-                rgb(16, 16, 16),
-                rgb(80, 80, 80),
-                rgb(50, 50, 50),
-                rgb(50, 50, 50),
-                rgb(32, 32, 32),
-                rgb(16, 16, 16),
-            ],
+            frame_focused: [rgb(10, 10, 10), rgb(96, 96, 96), rgb(58, 58, 58), rgb(58, 58, 58), rgb(30, 30, 30), rgb(10, 10, 10)],
+            frame_unfocused: [rgb(16, 16, 16), rgb(80, 80, 80), rgb(50, 50, 50), rgb(50, 50, 50), rgb(32, 32, 32), rgb(16, 16, 16)],
             hues: HUES_DARK,
             terminal: Terminal {
                 id: "beos-dark".into(),
@@ -620,11 +615,7 @@ pub fn mix(a: Rgba, b: Rgba, t: f32) -> Rgba {
 /// `tint > 1` darkens, `< 1` lightens, as in Haiku's `tint_color()`
 /// (B_DARKEN_1_TINT = 1.147, B_LIGHTEN_1_TINT = 0.590, ...).
 pub fn tint(c: Rgba, tint: f32) -> Rgba {
-    if tint >= 1.0 {
-        mix(c, [0, 0, 0, c[3]], (tint - 1.0).min(1.0))
-    } else {
-        mix(c, [255, 255, 255, c[3]], 1.0 - tint)
-    }
+    if tint >= 1.0 { mix(c, [0, 0, 0, c[3]], (tint - 1.0).min(1.0)) } else { mix(c, [255, 255, 255, c[3]], 1.0 - tint) }
 }
 
 pub const B_LIGHTEN_MAX_TINT: f32 = 0.0;

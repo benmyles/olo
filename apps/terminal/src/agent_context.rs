@@ -225,13 +225,7 @@ pub fn tab_of<'a>(s: &'a Snapshot, ancestors: &[i32], cwd: Option<&Path>) -> Opt
     let cwd = cwd?;
     let here = |t: &&TabInfo| t.cwd.as_deref() == Some(cwd);
     let near = |t: &&TabInfo| t.cwd.as_deref().is_some_and(|c| cwd.starts_with(c) || c.starts_with(cwd));
-    s.tabs
-        .iter()
-        .filter(here)
-        .find(|t| t.agent.is_some())
-        .or_else(|| s.tabs.iter().find(here))
-        .or_else(|| s.tabs.iter().filter(near).find(|t| t.agent.is_some()))
-        .or_else(|| s.tabs.iter().find(near))
+    s.tabs.iter().filter(here).find(|t| t.agent.is_some()).or_else(|| s.tabs.iter().find(here)).or_else(|| s.tabs.iter().filter(near).find(|t| t.agent.is_some())).or_else(|| s.tabs.iter().find(near))
 }
 
 /// Where a tab is: its repository's worktree (its path, the repository's
@@ -269,14 +263,8 @@ fn block(s: &Snapshot, tab: &TabInfo, place: &dyn Fn(&Path) -> Place) -> Option<
     if places.len() < 2 {
         return None;
     }
-    let lines: Vec<String> = places
-        .iter()
-        .map(|p| if own.as_ref().is_some_and(|o| o.path == p.path) { format!("- {} ← this session's", p.describe) } else { format!("- {}", p.describe) })
-        .collect();
-    Some(format!(
-        "You are running in a tab of an Olo Terminal tab group named \"{group}\". The tabs in that group are in these places (yours included):\n{}",
-        lines.join("\n")
-    ))
+    let lines: Vec<String> = places.iter().map(|p| if own.as_ref().is_some_and(|o| o.path == p.path) { format!("- {} ← this session's", p.describe) } else { format!("- {}", p.describe) }).collect();
+    Some(format!("You are running in a tab of an Olo Terminal tab group named \"{group}\". The tabs in that group are in these places (yours included):\n{}", lines.join("\n")))
 }
 
 /// What was last told to session `id` (to tell it again only when the
@@ -303,10 +291,7 @@ pub fn run() -> std::process::ExitCode {
     // wanted (Agent Screens' words aren't the tab's).
     let mut snapshot = read();
     let deadline = std::time::Instant::now() + Duration::from_millis(2500);
-    while event == "SessionStart"
-        && snapshot.as_ref().is_some_and(|s| (s.groups || s.titles) && tab_of(s, &ancestors, cwd.as_deref()).is_none())
-        && std::time::Instant::now() < deadline
-    {
+    while event == "SessionStart" && snapshot.as_ref().is_some_and(|s| (s.groups || s.titles) && tab_of(s, &ancestors, cwd.as_deref()).is_none()) && std::time::Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(250));
         snapshot = read();
     }
@@ -405,10 +390,7 @@ mod tests {
 
     #[test]
     fn puts_its_hook_in_and_takes_it_out() {
-        let mut v: Value = serde_json::from_str(
-            r#"{"model":"opus","hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"their-hook"}]}]},"env":{"A":"1"}}"#,
-        )
-        .unwrap();
+        let mut v: Value = serde_json::from_str(r#"{"model":"opus","hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"their-hook"}]}]},"env":{"A":"1"}}"#).unwrap();
         let original = v.clone();
         assert!(set_hook(&mut v, "/x/olo-terminal --agent-context", true));
         assert_eq!(v["hooks"]["SessionStart"].as_array().unwrap().len(), 2);

@@ -12,9 +12,9 @@ use std::{
     },
 };
 
+use crate::Bitmap;
 use lofty::prelude::*;
 use openh264::formats::YUVSource;
-use crate::Bitmap;
 
 use super::load::{Body, Image, Update, color_image};
 
@@ -39,16 +39,7 @@ pub fn format_duration(secs: f64) -> String {
 
 pub fn audio(path: &Path) -> Result<Update, String> {
     let name = path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
-    let mut m = Media {
-        picture: None,
-        title: name,
-        subtitle: String::new(),
-        rows: Vec::new(),
-        duration: None,
-        playable: true,
-        video: false,
-        note: "Audio".into(),
-    };
+    let mut m = Media { picture: None, title: name, subtitle: String::new(), rows: Vec::new(), duration: None, playable: true, video: false, note: "Audio".into() };
     if let Ok(f) = lofty::read_from_path(path) {
         let p = f.properties();
         let d = p.duration().as_secs_f64();
@@ -105,16 +96,7 @@ pub fn audio(path: &Path) -> Result<Update, String> {
 
 pub fn video(path: &Path, cancel: &Arc<AtomicBool>) -> Result<Update, String> {
     let name = path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
-    let mut m = Media {
-        picture: None,
-        title: name,
-        subtitle: String::new(),
-        rows: Vec::new(),
-        duration: None,
-        playable: false,
-        video: true,
-        note: "Video".into(),
-    };
+    let mut m = Media { picture: None, title: name, subtitle: String::new(), rows: Vec::new(), duration: None, playable: false, video: true, note: "Video".into() };
     let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     let res = if matches!(ext.as_str(), "mkv" | "webm") { mkv(path, &mut m, cancel) } else { mp4(path, &mut m, cancel) };
     if let Err(e) = res {
@@ -268,10 +250,13 @@ fn mkv(path: &Path, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), Strin
     };
     let codec = codec_name(&id);
     m.rows.push(("Size".into(), format!("{w} × {h}")));
-    m.rows.push(("Format".into(), match audio {
-        Some(a) => format!("{codec}; {a} audio"),
-        None => codec.to_string(),
-    }));
+    m.rows.push((
+        "Format".into(),
+        match audio {
+            Some(a) => format!("{codec}; {a} audio"),
+            None => codec.to_string(),
+        },
+    ));
     m.note = format!("{codec} video, {w} × {h}");
     if id == "V_AV1" {
         m.playable = true;

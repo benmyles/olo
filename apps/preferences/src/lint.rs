@@ -44,8 +44,28 @@ fn outputs() -> Vec<OutputInfo> {
         }),
     };
     vec![
-        display("eDP-1", "Apple Computer Inc", "MacBook Pro Liquid Retina XDR Display (16-inch, 2023)", (345, 223), vec![mode(3456, 2234, 120_000), mode(3024, 1964, 120_000), mode(1728, 1117, 60_000)], 2.0, (0, 0), true, Some(0)),
-        display("DP-2", "Dell Inc.", "DELL UltraSharp U4025QW 40\" Curved Thunderbolt Hub Monitor", (946, 399), vec![mode(5120, 2160, 120_000), mode(3840, 2160, 60_000)], 1.5, (3456, 0), false, Some(1)),
+        display(
+            "eDP-1",
+            "Apple Computer Inc",
+            "MacBook Pro Liquid Retina XDR Display (16-inch, 2023)",
+            (345, 223),
+            vec![mode(3456, 2234, 120_000), mode(3024, 1964, 120_000), mode(1728, 1117, 60_000)],
+            2.0,
+            (0, 0),
+            true,
+            Some(0),
+        ),
+        display(
+            "DP-2",
+            "Dell Inc.",
+            "DELL UltraSharp U4025QW 40\" Curved Thunderbolt Hub Monitor",
+            (946, 399),
+            vec![mode(5120, 2160, 120_000), mode(3840, 2160, 60_000)],
+            1.5,
+            (3456, 0),
+            false,
+            Some(1),
+        ),
     ]
 }
 
@@ -148,7 +168,8 @@ fn ui_lint_settings_index() {
                 }
                 // The innermost box round it, by a name that is the same
                 // on every computer (not the made-up device's or the user's).
-                let group = nodes.iter().filter(|o| o.role == "Group" && inside(n, o)).min_by(|a, b| (a.width * a.height).total_cmp(&(b.width * b.height))).and_then(|o| o.name.clone()).unwrap_or_default();
+                let group =
+                    nodes.iter().filter(|o| o.role == "Group" && inside(n, o)).min_by(|a, b| (a.width * a.height).total_cmp(&(b.width * b.height))).and_then(|o| o.name.clone()).unwrap_or_default();
                 // (Default Apps' own kinds are the person's, as a list's
                 // rows are: a made-up one's.)
                 if group == "Your Kinds" {
@@ -178,4 +199,3 @@ fn ui_lint_settings_index() {
         assert!(now == out, "crates/xdg/src/settings.rs isn't the panels' settings as drawn now: OLO_WRITE_SETTINGS=1 cargo ui-lint writes it again");
     }
 }
-

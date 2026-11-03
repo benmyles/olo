@@ -16,7 +16,9 @@ if [ ${#rust[@]} -gt 0 ]; then
     # (Partly staged files are formatted whole: say so rather than mix
     # unstaged work into the commit.)
     partial=$(git diff --name-only -- "${rust[@]}" || true)
-    rustfmt --edition 2024 "${rust[@]}"
+    # (Each file's edition from the rustfmt.toml nearest it, as `cargo
+    # fmt` takes it from its crate: Blade's are 2021.)
+    rustfmt "${rust[@]}"
     if [ -n "$partial" ]; then
         echo "pre-commit: formatted, but these have unstaged changes too; check and stage them: $partial" >&2
         exit 1

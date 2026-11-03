@@ -16,13 +16,7 @@ use std::{collections::HashMap, time::Duration};
 use smithay::{
     backend::{
         allocator::{Buffer as _, Fourcc, dmabuf::Dmabuf},
-        renderer::{
-            Bind, Color32F, ExportMem, Offscreen, Renderer, Texture, TextureMapping as _,
-            damage::OutputDamageTracker,
-            element::RenderElement,
-            gles::GlesTexture,
-            sync::SyncPoint,
-        },
+        renderer::{Bind, Color32F, ExportMem, Offscreen, Renderer, Texture, TextureMapping as _, damage::OutputDamageTracker, element::RenderElement, gles::GlesTexture, sync::SyncPoint},
     },
     output::{Output, WeakOutput},
     reexports::wayland_server::protocol::wl_shm,
@@ -178,11 +172,8 @@ pub fn constraints_of(size: Size<i32, Physical>, dma: Option<DmabufConstraints>)
 /// The formats app_server can draw captures into, from what its renderer
 /// renders: BGRx and BGRA, with their modifiers.
 pub fn dma_constraints(node: smithay::backend::drm::DrmNode, formats: &smithay::backend::allocator::format::FormatSet) -> Option<DmabufConstraints> {
-    let formats: Vec<_> = [Fourcc::Xrgb8888, Fourcc::Argb8888]
-        .into_iter()
-        .map(|code| (code, formats.iter().filter(|f| f.code == code).map(|f| f.modifier).collect::<Vec<_>>()))
-        .filter(|(_, m)| !m.is_empty())
-        .collect();
+    let formats: Vec<_> =
+        [Fourcc::Xrgb8888, Fourcc::Argb8888].into_iter().map(|code| (code, formats.iter().filter(|f| f.code == code).map(|f| f.modifier).collect::<Vec<_>>())).filter(|(_, m)| !m.is_empty()).collect();
     (!formats.is_empty()).then_some(DmabufConstraints { node, formats })
 }
 
@@ -249,14 +240,8 @@ impl Captures {
     /// `on_output` says is mostly on it) whose picture changed since their
     /// session's last. `picture(renderer, target, cursor)` is what one
     /// shows (with the pointer if `cursor`); None: it's gone.
-    pub fn take<R, E>(
-        &mut self,
-        renderer: &mut R,
-        output: &Output,
-        presented: Duration,
-        on_output: impl Fn(u64) -> bool,
-        mut picture: impl FnMut(&mut R, Target, bool) -> Option<Picture<E>>,
-    ) where
+    pub fn take<R, E>(&mut self, renderer: &mut R, output: &Output, presented: Duration, on_output: impl Fn(u64) -> bool, mut picture: impl FnMut(&mut R, Target, bool) -> Option<Picture<E>>)
+    where
         R: Renderer + Bind<Dmabuf> + Offscreen<GlesTexture> + ExportMem,
         R::Error: std::fmt::Debug,
         R::TextureId: Texture,

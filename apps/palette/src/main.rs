@@ -24,7 +24,9 @@ use olo_protocol::WindowInfo;
 use olo_ui::{
     Frame, WindowOptions,
     gpui::{
-        App, AppContext as _, Bounds, ClipboardItem, Context, Entity, Focusable as _, FontWeight, HitboxBehavior, InteractiveElement as _, IntoElement, KeyDownEvent, LayerKeyboard, LayerShellLayer, ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Render, ScrollWheelEvent, Styled as _, Subscription, Window, WindowHandle, canvas, div, point, px, size,
+        App, AppContext as _, Bounds, ClipboardItem, Context, Entity, Focusable as _, FontWeight, HitboxBehavior, InteractiveElement as _, IntoElement, KeyDownEvent, LayerKeyboard, LayerShellLayer,
+        ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Render, ScrollWheelEvent, Styled as _, Subscription, Window, WindowHandle, canvas, div, point,
+        px, size,
     },
     icons,
     instance::{self, Launch},
@@ -98,7 +100,14 @@ impl Recents {
     fn boost(&self, key: &str) -> i32 {
         let Some(&(count, when)) = self.chosen.get(key) else { return 0 };
         let days = Self::now().saturating_sub(when) / 86_400;
-        (count.min(20) as i32 * 6) + if days < 1 { 40 } else if days < 7 { 20 } else { 0 }
+        (count.min(20) as i32 * 6)
+            + if days < 1 {
+                40
+            } else if days < 7 {
+                20
+            } else {
+                0
+            }
     }
 }
 
@@ -527,13 +536,7 @@ impl Render for Palette {
         // icons.)
         let text_left = glass.right() + px(10.0);
         let line = px((QUERY_SIZE * style::LINE_HEIGHT).ceil());
-        let query = div()
-            .absolute()
-            .left(text_left)
-            .top(field.center().y - line / 2.0)
-            .w(field.right() - px(8.0) - text_left)
-            .h(line)
-            .child(self.query.clone());
+        let query = div().absolute().left(text_left).top(field.center().y - line / 2.0).w(field.right() - px(8.0) - text_left).h(line).child(self.query.clone());
 
         // The results.
         let rows: Vec<(usize, Item)> = (self.top..self.results.len()).take(ROWS).map(|i| (i, self.results[i].clone())).collect();
@@ -590,7 +593,20 @@ impl Render for Palette {
                     }
                     // For agents: the title, and what else the row says.
                     let said: Vec<&str> = [item.subtitle.as_str(), item.keys.as_deref().unwrap_or(""), label].into_iter().filter(|s| !s.is_empty()).collect();
-                    olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Row", name: Some(item.title.clone().into()), value: Some(said.join(" · ").into()), bounds: r, enabled: item.enabled, clickable: item.enabled, selected: Some(is_selected), ..Default::default() });
+                    olo_ui::agent::record(
+                        window,
+                        cx,
+                        olo_ui::agent::Node {
+                            role: "Row",
+                            name: Some(item.title.clone().into()),
+                            value: Some(said.join(" · ").into()),
+                            bounds: r,
+                            enabled: item.enabled,
+                            clickable: item.enabled,
+                            selected: Some(is_selected),
+                            ..Default::default()
+                        },
+                    );
                 }
                 // The pointer moving over a row selects it; a click
                 // chooses (with ⌘, shows a file in Tracker); the wheel

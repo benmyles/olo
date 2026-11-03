@@ -97,7 +97,11 @@ impl TestPlatform {
 
     /// Olo: a test platform laying text out with `text_system` (Olo's,
     /// for a view's layout checked as it will be drawn).
-    pub(crate) fn with_text_system(executor: BackgroundExecutor, foreground_executor: ForegroundExecutor, text_system: Arc<dyn PlatformTextSystem>) -> Rc<Self> {
+    pub(crate) fn with_text_system(
+        executor: BackgroundExecutor,
+        foreground_executor: ForegroundExecutor,
+        text_system: Arc<dyn PlatformTextSystem>,
+    ) -> Rc<Self> {
         #[cfg(target_os = "windows")]
         let bitmap_factory = unsafe {
             windows::Win32::System::Ole::OleInitialize(None)

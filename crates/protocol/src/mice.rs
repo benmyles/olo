@@ -103,9 +103,13 @@ impl Quirk {
     /// What it means, and what Olo does about it.
     pub fn describe(self) -> String {
         match self {
-            Quirk::KeysOnMotionNode => "Its movement and its programmable buttons share one input node, so a key remapper such as keyd grabs it as a keyboard, and settings made here no longer reach it.".into(),
+            Quirk::KeysOnMotionNode => {
+                "Its movement and its programmable buttons share one input node, so a key remapper such as keyd grabs it as a keyboard, and settings made here no longer reach it.".into()
+            }
             Quirk::Receiver => "It talks through a USB receiver, which loses the first movement after a pause if it is let sleep. Olo's input rule keeps receivers awake.".into(),
-            Quirk::Reports { hz } => format!("It reports up to {} times a second, faster than a display draws: Olo resamples the pointer onto each display's frame clock, so it moves evenly.", thousands(hz)),
+            Quirk::Reports { hz } => {
+                format!("It reports up to {} times a second, faster than a display draws: Olo resamples the pointer onto each display's frame clock, so it moves evenly.", thousands(hz))
+            }
             Quirk::FreeSpinWheel => "Its wheel can spin freely: a flick scrolls a long way; the button below the wheel switches it to notched steps.".into(),
             Quirk::ThumbWheel => "The wheel under the thumb scrolls sideways.".into(),
             Quirk::TouchSurface => "It has no wheel: its top is a touch surface that scrolls.".into(),
@@ -279,7 +283,11 @@ const MAKERS: &[(u32, &str)] = &[
 pub fn identify(name: &str, vendor: u32, product: u32) -> Option<&'static Model> {
     MODELS.iter().find(|m| m.vendor == vendor && m.products.contains(&product)).or_else(|| {
         // The longest name that fits ("MX Master 3S" before "MX Master 3").
-        MODELS.iter().filter(|m| m.vendor == vendor || vendor == 0).filter(|m| m.names.iter().any(|n| name.contains(n))).max_by_key(|m| m.names.iter().filter(|n| name.contains(*n)).map(|n| n.len()).max())
+        MODELS
+            .iter()
+            .filter(|m| m.vendor == vendor || vendor == 0)
+            .filter(|m| m.names.iter().any(|n| name.contains(n)))
+            .max_by_key(|m| m.names.iter().filter(|n| name.contains(*n)).map(|n| n.len()).max())
     })
 }
 

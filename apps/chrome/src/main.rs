@@ -6,13 +6,13 @@
 //! already running on the profile, the link is handed to it directly
 //! (singleton.rs), with no second Chrome started.
 
-mod profile;
-mod singleton;
 mod downloads;
 mod extension;
 mod host;
 mod install;
 mod prefs;
+mod profile;
+mod singleton;
 
 use std::{
     os::unix::process::CommandExt,
@@ -76,10 +76,7 @@ impl Installer {
         self.cancel = Arc::new(AtomicBool::new(false));
         self.state = State::Working(Progress::Looking);
         let (proxy, cancel) = (olo_ui::proxy(cx), self.cancel.clone());
-        std::thread::Builder::new()
-            .name("install".into())
-            .spawn(move || install::install(&cancel, &|p| proxy.send(p)))
-            .expect("thread");
+        std::thread::Builder::new().name("install".into()).spawn(move || install::install(&cancel, &|p| proxy.send(p))).expect("thread");
         cx.notify();
     }
 
@@ -135,18 +132,12 @@ impl Render for Installer {
         let frame = AlertFrame::new("installer");
         let content = match &self.state {
             State::Offer => frame.child(paragraph(OFFER)).child(div().flex_1()).child(alert_buttons(["Cancel", "Download"], me.clone())),
-            State::Failed(why) => frame
-                .child(paragraph(format!("Google Chrome couldn't be installed.\n\n{why}")))
-                .child(div().flex_1())
-                .child(alert_buttons(["Cancel", "Try Again"], me.clone())),
+            State::Failed(why) => frame.child(paragraph(format!("Google Chrome couldn't be installed.\n\n{why}"))).child(div().flex_1()).child(alert_buttons(["Cancel", "Try Again"], me.clone())),
             State::Working(progress) => {
                 let (title, fraction, amount, version) = match progress {
-                    Progress::Downloading { version, got, total } => (
-                        "Downloading Google Chrome…",
-                        if *total > 0 { *got as f32 / *total as f32 } else { 0.0 },
-                        format!("{} of {}", size_text(*got), size_text(*total)),
-                        Some(version.clone()),
-                    ),
+                    Progress::Downloading { version, got, total } => {
+                        ("Downloading Google Chrome…", if *total > 0 { *got as f32 / *total as f32 } else { 0.0 }, format!("{} of {}", size_text(*got), size_text(*total)), Some(version.clone()))
+                    }
                     Progress::Unpacking { version } => ("Installing Google Chrome…", 1.0, String::new(), Some(version.clone())),
                     _ => ("Looking for the newest Google Chrome…", 0.0, String::new(), None),
                 };
@@ -156,10 +147,7 @@ impl Render for Installer {
                 if let Some(v) = version {
                     col = col.child(StringView::new(format!("Version {v}, from Google's repository")).dim(true));
                 }
-                frame
-                    .child(col)
-                    .child(div().flex_1())
-                    .child(button_row().child(Button::new("Cancel").enabled(!unpacking).on_click(move |_, _| cancel.store(true, Ordering::Relaxed))))
+                frame.child(col).child(div().flex_1()).child(button_row().child(Button::new("Cancel").enabled(!unpacking).on_click(move |_, _| cancel.store(true, Ordering::Relaxed))))
             }
         };
         // Return takes the default, Escape cancels, as an alert's.
@@ -255,12 +243,7 @@ fn main() {
         if install::update_due()
             && let Ok(exe) = std::env::current_exe()
         {
-            let _ = std::process::Command::new(exe)
-                .arg("--olo-update")
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .process_group(0)
-                .spawn();
+            let _ = std::process::Command::new(exe).arg("--olo-update").stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).process_group(0).spawn();
         }
         let token = activation_token();
         let dir = prefs::user_data_dir(&args);

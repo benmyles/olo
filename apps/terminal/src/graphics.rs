@@ -291,12 +291,7 @@ fn medium_bytes(p: &Params, payload: Vec<u8>) -> Result<Vec<u8>, &'static str> {
                 use std::io::Seek;
                 f.seek(std::io::SeekFrom::Start(p.offset as u64)).map_err(|_| "EINVAL:bad offset")?;
             }
-            if p.size > 0 {
-                f.take(p.size as u64).read_to_end(&mut data)
-            } else {
-                f.read_to_end(&mut data)
-            }
-            .map_err(|_| "EBADF:could not read file")?;
+            if p.size > 0 { f.take(p.size as u64).read_to_end(&mut data) } else { f.read_to_end(&mut data) }.map_err(|_| "EBADF:could not read file")?;
             // Temporary files and shared memory are ours to remove.
             if p.medium == 't' && path.contains("tty-graphics-protocol") || p.medium == 's' {
                 let _ = std::fs::remove_file(&path);
@@ -324,11 +319,7 @@ fn kitty_image(p: &Params, data: Vec<u8>) -> Result<(u32, u32, Vec<u8>), &'stati
             if w == 0 || h == 0 || data.len() < need || (w as usize * h as usize) > MAX_PIXELS {
                 return Err("ENODATA:insufficient image data");
             }
-            let rgba = if bpp == 4 {
-                data[..need].to_vec()
-            } else {
-                data[..need].chunks(3).flat_map(|c| [c[0], c[1], c[2], 255]).collect()
-            };
+            let rgba = if bpp == 4 { data[..need].to_vec() } else { data[..need].chunks(3).flat_map(|c| [c[0], c[1], c[2], 255]).collect() };
             Ok((w, h, rgba))
         }
         _ => Err("EINVAL:unknown format"),
@@ -396,10 +387,7 @@ pub fn kitty<T: EventListener>(term: &mut Term<T>, ctx: &mut Context, body: &[u8
         'p' => {
             let found = {
                 let s = ctx.store.lock().unwrap();
-                p.id
-                    .and_then(|i| s.kitty_ids.get(&i))
-                    .or_else(|| p.number.and_then(|n| s.kitty_numbers.get(&n)))
-                    .and_then(|id| s.images.get(id).map(|img| (*id, img.width, img.height)))
+                p.id.and_then(|i| s.kitty_ids.get(&i)).or_else(|| p.number.and_then(|n| s.kitty_numbers.get(&n))).and_then(|id| s.images.get(id).map(|img| (*id, img.width, img.height)))
             };
             match found {
                 Some((id, w, h)) => {
@@ -446,12 +434,7 @@ pub fn kitty<T: EventListener>(term: &mut Term<T>, ctx: &mut Context, body: &[u8
 }
 
 fn put<T: EventListener>(term: &mut Term<T>, ctx: &Context, p: &Params, id: u32, w: u32, h: u32) {
-    let src = [
-        p.x.min(w),
-        p.y.min(h),
-        if p.w > 0 { p.w.min(w - p.x.min(w)) } else { w - p.x.min(w) },
-        if p.h > 0 { p.h.min(h - p.y.min(h)) } else { h - p.y.min(h) },
-    ];
+    let src = [p.x.min(w), p.y.min(h), if p.w > 0 { p.w.min(w - p.x.min(w)) } else { w - p.x.min(w) }, if p.h > 0 { p.h.min(h - p.y.min(h)) } else { h - p.y.min(h) }];
     let natural = cells_for(src[2], src[3], ctx.cell);
     let (cols, rows) = match (p.cols, p.rows) {
         (0, 0) => natural,
@@ -524,10 +507,22 @@ pub fn iterm<T: EventListener>(term: &mut Term<T>, ctx: &mut Context, body: &[u8
 
 /// The VT340's default colour registers.
 const SIXEL_PALETTE: [[u8; 3]; 16] = [
-    [0, 0, 0], [51, 51, 204], [204, 36, 36], [51, 204, 51],
-    [204, 51, 204], [51, 204, 204], [204, 204, 51], [120, 120, 120],
-    [69, 69, 69], [87, 87, 153], [153, 69, 69], [87, 153, 87],
-    [153, 87, 153], [87, 153, 153], [153, 153, 87], [204, 204, 204],
+    [0, 0, 0],
+    [51, 51, 204],
+    [204, 36, 36],
+    [51, 204, 51],
+    [204, 51, 204],
+    [51, 204, 204],
+    [204, 204, 51],
+    [120, 120, 120],
+    [69, 69, 69],
+    [87, 87, 153],
+    [153, 69, 69],
+    [87, 153, 87],
+    [153, 87, 153],
+    [87, 153, 153],
+    [153, 153, 87],
+    [204, 204, 204],
 ];
 
 /// Decode Sixel data (after the `q`). `transparent` is P2 = 1.
@@ -575,11 +570,7 @@ pub fn decode_sixel(data: &[u8], transparent: bool, background: [u8; 3]) -> Opti
                 color = a[0].min(255);
                 if a.len() >= 5 {
                     let (u, p1, p2, p3) = (a[1], a[2], a[3], a[4]);
-                    palette[color] = if u == 2 {
-                        [(p1 * 255 / 100) as u8, (p2 * 255 / 100) as u8, (p3 * 255 / 100) as u8]
-                    } else {
-                        hls(p1 as f32, p2 as f32 / 100.0, p3 as f32 / 100.0)
-                    };
+                    palette[color] = if u == 2 { [(p1 * 255 / 100) as u8, (p2 * 255 / 100) as u8, (p3 * 255 / 100) as u8] } else { hls(p1 as f32, p2 as f32 / 100.0, p3 as f32 / 100.0) };
                 }
                 continue;
             }

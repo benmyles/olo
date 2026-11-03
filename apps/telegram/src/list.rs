@@ -10,7 +10,11 @@ use std::sync::Arc;
 use olo_tg::{Chat, ChatId, ChatKind, Message, MsgId, Pic};
 use olo_ui::{
     Menu,
-    gpui::{AnyElement, App, Bounds, ClickEvent, Context, Corner, CursorStyle, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, PathBuilder, Pixels, Point, RenderImage, SharedString, StatefulInteractiveElement as _, Styled as _, TextRun, Window, canvas, div, point, px, rgb, size, transparent_black, white},
+    gpui::{
+        AnyElement, App, Bounds, ClickEvent, Context, Corner, CursorStyle, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent,
+        ParentElement as _, PathBuilder, Pixels, Point, RenderImage, SharedString, StatefulInteractiveElement as _, Styled as _, TextRun, Window, canvas, div, point, px, rgb, size, transparent_black,
+        white,
+    },
     metrics as m,
     palette::{self as theme_palette, Palette},
     style::{self, Align, c},
@@ -144,9 +148,26 @@ enum Draw {
     /// The archive's row or unknown senders': its title, icon, a few of
     /// its chats' names and the unread among them (unknown senders: none
     /// counted).
-    Pile { title: &'static str, icon: &'static str, names: String, unread: u32 },
-    Chat { c: Box<Chat>, pic: Option<Arc<RenderImage>>, selected: bool, typing: Option<String> },
-    Msg { title: String, chat: ChatId, saved: bool, pic: Option<Arc<RenderImage>>, summary: String, date: i64 },
+    Pile {
+        title: &'static str,
+        icon: &'static str,
+        names: String,
+        unread: u32,
+    },
+    Chat {
+        c: Box<Chat>,
+        pic: Option<Arc<RenderImage>>,
+        selected: bool,
+        typing: Option<String>,
+    },
+    Msg {
+        title: String,
+        chat: ChatId,
+        saved: bool,
+        pic: Option<Arc<RenderImage>>,
+        summary: String,
+        date: i64,
+    },
 }
 
 /// The list, filling `rect` (window coordinates).
@@ -300,7 +321,11 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
                         window.paint_segment(point(cc.x - px(3.0), cc.y - px(1.5)), point(cc.x, cc.y + px(1.5)), px(1.3), true, ink);
                         window.paint_segment(point(cc.x, cc.y + px(1.5)), point(cc.x + px(3.0), cc.y - px(1.5)), px(1.3), true, ink);
                     }
-                    olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "Tab", name: Some(title.into()), bounds: chip, enabled: true, clickable: true, selected: Some(chosen), ..Default::default() });
+                    olo_ui::agent::record(
+                        window,
+                        cx,
+                        olo_ui::agent::Node { role: "Tab", name: Some(title.into()), bounds: chip, enabled: true, clickable: true, selected: Some(chosen), ..Default::default() },
+                    );
                 }
             }));
         }
@@ -516,7 +541,15 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, window: &mut Window, cx: &mut C
         .h(body.size.height)
         .child(ScrollView::new("chat-list", &tg.list_scroll).border(false).background(list_bg).auto_hide(true).child(content));
     if total == 0 && !searching && tg.store.complete {
-        let msg = if tg.view.archive { "No archived chats." } else if tg.view.unknown { "No unknown senders." } else if tg.view.folder.is_some() { "No chats in this folder." } else { "No chats yet." };
+        let msg = if tg.view.archive {
+            "No archived chats."
+        } else if tg.view.unknown {
+            "No unknown senders."
+        } else if tg.view.folder.is_some() {
+            "No chats in this folder."
+        } else {
+            "No chats yet."
+        };
         hits.push(
             canvas(
                 |_, _, _| {},
@@ -708,7 +741,15 @@ fn chat_row(window: &mut Window, cx: &mut App, r: Bounds<Pixels>, ch: &Chat, img
     let mut pxr = right;
     let pill_size = 10.0;
     // (Unknown senders' aren't counted unread: they wait, unannounced.)
-    let count = if ch.unknown { None } else if ch.unread > 0 { Some(ch.unread.to_string()) } else if ch.marked { Some(String::new()) } else { None };
+    let count = if ch.unknown {
+        None
+    } else if ch.unread > 0 {
+        Some(ch.unread.to_string())
+    } else if ch.marked {
+        Some(String::new())
+    } else {
+        None
+    };
     if let Some(n) = &count {
         let fill = if ch.muted { c(theme_palette::mix(p.list_item_text, p.list_background, 0.55)) } else { accent };
         let fill = if selected { white() } else { fill };

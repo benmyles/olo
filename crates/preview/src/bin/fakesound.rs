@@ -187,17 +187,7 @@ fn command(id: u32, c: &mut Client, seq: u32, cmd: Command, next_channel: &Mutex
         Command::GetPlaybackLatency(p) => {
             let (playing, write_offset, read_offset) = c.streams.get(&p.channel).map_or((false, 0, 0), |s| (!s.corked, s.written, s.read));
             let now = SystemTime::now();
-            let reply = protocol::PlaybackLatency {
-                sink_usec: 0,
-                source_usec: 0,
-                playing,
-                local_time: p.now,
-                remote_time: now,
-                write_offset,
-                read_offset,
-                underrun_for: 0,
-                playing_for: 0,
-            };
+            let reply = protocol::PlaybackLatency { sink_usec: 0, source_usec: 0, playing, local_time: p.now, remote_time: now, write_offset, read_offset, underrun_for: 0, playing_for: 0 };
             protocol::write_reply_message(&mut c.writer, seq, &reply, v)
         }
         Command::CreateRecordStream(p) => {
@@ -271,22 +261,11 @@ fn command(id: u32, c: &mut Client, seq: u32, cmd: Command, next_channel: &Mutex
         }
         Command::GetServerInfo => {
             let default = airpods().map(|(_, n, _)| std::ffi::CString::new(n).unwrap()).unwrap_or(c"fake".into());
-            let reply = protocol::ServerInfo {
-                server_name: Some(c"fakesound".into()),
-                default_sink_name: Some(default),
-                default_source_name: Some(c"fake-mic".into()),
-                ..Default::default()
-            };
+            let reply = protocol::ServerInfo { server_name: Some(c"fakesound".into()), default_sink_name: Some(default), default_source_name: Some(c"fake-mic".into()), ..Default::default() };
             protocol::write_reply_message(&mut c.writer, seq, &reply, v)
         }
         Command::GetSinkInfoList => {
-            let sink = protocol::SinkInfo {
-                index: 0,
-                name: c"fake".into(),
-                description: Some(c"Fake Speakers".into()),
-                cvolume: protocol::ChannelVolume::norm(2),
-                ..Default::default()
-            };
+            let sink = protocol::SinkInfo { index: 0, name: c"fake".into(), description: Some(c"Fake Speakers".into()), cvolume: protocol::ChannelVolume::norm(2), ..Default::default() };
             let mut sinks = vec![sink];
             if let Some((addr, name, desc)) = airpods() {
                 let mut props = protocol::Props::new();
@@ -305,13 +284,7 @@ fn command(id: u32, c: &mut Client, seq: u32, cmd: Command, next_channel: &Mutex
             protocol::write_reply_message(&mut c.writer, seq, &sinks, v)
         }
         Command::GetSourceInfoList => {
-            let mic = protocol::SourceInfo {
-                index: 0,
-                name: c"fake-mic".into(),
-                description: Some(c"Fake Microphone".into()),
-                cvolume: protocol::ChannelVolume::norm(1),
-                ..Default::default()
-            };
+            let mic = protocol::SourceInfo { index: 0, name: c"fake-mic".into(), description: Some(c"Fake Microphone".into()), cvolume: protocol::ChannelVolume::norm(1), ..Default::default() };
             protocol::write_reply_message(&mut c.writer, seq, &vec![mic], v)
         }
         Command::DeleteRecordStream(ch) | Command::DeletePlaybackStream(ch) => {
@@ -389,9 +362,7 @@ fn tick(c: &mut Client) {
         let _ = match o {
             Out::Ack(seq) => protocol::write_ack_message(&mut c.writer, seq),
             Out::Block(channel, block) => protocol::write_memblock(&mut c.writer, channel, &block, 0),
-            Out::Request(channel, length) => {
-                protocol::write_command_message(&mut c.writer, u32::MAX, &Command::Request(protocol::Request { channel, length }), v)
-            }
+            Out::Request(channel, length) => protocol::write_command_message(&mut c.writer, u32::MAX, &Command::Request(protocol::Request { channel, length }), v),
         };
     }
 }

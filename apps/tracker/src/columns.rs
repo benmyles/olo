@@ -8,8 +8,8 @@ use std::{cell::RefCell, collections::HashMap, path::PathBuf, rc::Rc};
 use olo_kit_base::list::{ListState, SelectionBand};
 use olo_ui::{
     gpui::{
-        self, Bounds, Context, Entity, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Point, ScrollHandle,
-        StatefulInteractiveElement as _, Styled as _, Window, canvas, div, point, px, size,
+        self, Bounds, Context, Entity, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _,
+        PathBuilder, Pixels, Point, ScrollHandle, StatefulInteractiveElement as _, Styled as _, Window, canvas, div, point, px, size,
     },
     icons, metrics as m,
     palette::mix,
@@ -451,18 +451,7 @@ impl FolderWin {
             .size_full()
             .flex()
             .flex_col()
-            .child(
-                div()
-                    .id("columns")
-                    .flex_1()
-                    .min_h_0()
-                    .relative()
-                    .bg(style::c(p.document_background))
-                    .overflow_x_scroll()
-                    .track_scroll(&self.cols.scroll)
-                    .child(measure)
-                    .child(row.child(rest)),
-            )
+            .child(div().id("columns").flex_1().min_h_0().relative().bg(style::c(p.document_background)).overflow_x_scroll().track_scroll(&self.cols.scroll).child(measure).child(row.child(rest)))
             .child(div().w_full().h(px(SCROLL_BAR)).relative().child(ScrollBar::horizontal("columns-bar", self.cols.scroll.clone())))
     }
 
@@ -481,7 +470,10 @@ impl FolderWin {
         let field_el = match (editing_here, origin, &self.editing) {
             (Some(row), Some(origin), Some(r)) => {
                 let e = self.column(k).1[row].clone();
-                let cell = Bounds { origin: point(origin.x + px(m::CELL_INSET - m::TIGHT), origin.y + px(m::TIGHT + row as f32 * m::LIST_ROW)), size: size(px(COLUMN_WIDTH - 2.0 - m::CELL_INSET), px(m::LIST_ROW)) };
+                let cell = Bounds {
+                    origin: point(origin.x + px(m::CELL_INSET - m::TIGHT), origin.y + px(m::TIGHT + row as f32 * m::LIST_ROW)),
+                    size: size(px(COLUMN_WIDTH - 2.0 - m::CELL_INSET), px(m::LIST_ROW)),
+                };
                 let l = items::layout_item(window, cell, e.label(), items::Look::Mini, true, e.is_link);
                 Some(r.element(window, cx, &l, origin))
             }
@@ -531,7 +523,19 @@ impl FolderWin {
                         if *selected {
                             style::fill_rect(window, r, sel_bg);
                         }
-                        olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "ListItem", name: Some(e.name.clone().into()), bounds: r.intersect(&clip), enabled: true, clickable: true, selected: Some(*selected), ..Default::default() });
+                        olo_ui::agent::record(
+                            window,
+                            cx,
+                            olo_ui::agent::Node {
+                                role: "ListItem",
+                                name: Some(e.name.clone().into()),
+                                bounds: r.intersect(&clip),
+                                enabled: true,
+                                clickable: true,
+                                selected: Some(*selected),
+                                ..Default::default()
+                            },
+                        );
                         let icon = Bounds { origin: point(r.left() + px(m::CELL_INSET), r.center().y - px(items::MINI / 2.0)), size: size(px(items::MINI), px(items::MINI)) };
                         icons::paint(window, icon, items::icon_of(e));
                         let x = icon.right() + px(m::MARK_GAP);
@@ -602,27 +606,22 @@ impl FolderWin {
         )
         .absolute()
         .inset_0();
-        div()
-            .w(px(COLUMN_WIDTH))
-            .h_full()
-            .relative()
-            .child(sep)
-            .child(
-                div().absolute().top_0().bottom_0().left_0().w(px(COLUMN_WIDTH - 2.0)).child(
-                    ScrollView::new(olo_ui::gpui::SharedString::from(format!("col:{}", path.display())), &handle).border(false).auto_hide(true).child(
-                        div()
-                            .id(("col-content", k))
-                            .relative()
-                            .w_full()
-                            .h(px(height))
-                            .min_h_full()
-                            .on_mouse_down(MouseButton::Left, move |e, window, cx| down.update(cx, |f, cx| f.column_press(k, e, window, cx)))
-                            .on_mouse_down(MouseButton::Right, move |e, window, cx| right.update(cx, |f, cx| f.column_press(k, e, window, cx)))
-                            .child(content)
-                            .children(field_el),
-                    ),
+        div().w(px(COLUMN_WIDTH)).h_full().relative().child(sep).child(
+            div().absolute().top_0().bottom_0().left_0().w(px(COLUMN_WIDTH - 2.0)).child(
+                ScrollView::new(olo_ui::gpui::SharedString::from(format!("col:{}", path.display())), &handle).border(false).auto_hide(true).child(
+                    div()
+                        .id(("col-content", k))
+                        .relative()
+                        .w_full()
+                        .h(px(height))
+                        .min_h_full()
+                        .on_mouse_down(MouseButton::Left, move |e, window, cx| down.update(cx, |f, cx| f.column_press(k, e, window, cx)))
+                        .on_mouse_down(MouseButton::Right, move |e, window, cx| right.update(cx, |f, cx| f.column_press(k, e, window, cx)))
+                        .child(content)
+                        .children(field_el),
                 ),
-            )
+            ),
+        )
     }
 }
 

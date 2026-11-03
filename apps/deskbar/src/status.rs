@@ -234,16 +234,12 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
             // it, several a second: only a screen's own file counts.
             let in_screens: Vec<&PathBuf> = changed.iter().filter(|p| p.parent() == Some(screens.as_path())).collect();
             let screens_changed = in_screens.iter().any(|p| screen_file(p)) || (in_screens.is_empty() && changed.contains(&screens));
-            let (state, n, up) = (
-                (all || changed.contains(&notes)).then(NotificationState::load),
-                (all || screens_changed).then(agent_screens),
-                (all || changed.contains(&upgrades)).then(upgrade),
-            );
+            let (state, n, up) = ((all || changed.contains(&notes)).then(NotificationState::load), (all || screens_changed).then(agent_screens), (all || changed.contains(&upgrades)).then(upgrade));
             let shares = (all || changed.contains(&sharing)).then(|| olo_protocol::SharingState::load().shares);
             let airpods = (all || changed.contains(&pods)).then(|| olo_protocol::airpods::AirPodsState::load().connected().cloned());
             let voice_settings = (all || changed.contains(&voice)).then(olo_protocol::voice::Settings::load);
-            let supervisor = (installed && (all || changed.contains(&perf) || changed.contains(&supervising)))
-                .then(|| Supervisor { on: PerformanceSettings::load().enabled, state: SupervisorState::load() });
+            let supervisor =
+                (installed && (all || changed.contains(&perf) || changed.contains(&supervising))).then(|| Supervisor { on: PerformanceSettings::load().enabled, state: SupervisorState::load() });
             publish(&shared, |s| {
                 if let Some(a) = airpods {
                     s.airpods = a;
@@ -528,7 +524,15 @@ pub fn draw_volume(window: &mut Window, r: Bounds<Pixels>, p: &Palette, level: f
         window.paint_segment(pt(x + 9.5, cy + 3.0), pt(x + 14.5, cy - 3.0), px(1.4), false, red);
         return;
     }
-    let waves = if level <= 0.01 { 0 } else if level < 0.34 { 1 } else if level < 0.67 { 2 } else { 3 };
+    let waves = if level <= 0.01 {
+        0
+    } else if level < 0.34 {
+        1
+    } else if level < 0.67 {
+        2
+    } else {
+        3
+    };
     // Round 3 o'clock, 0.8 radians each way.
     let half_turn = std::f32::consts::FRAC_PI_2;
     for i in 1..=3 {

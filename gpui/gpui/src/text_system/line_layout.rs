@@ -462,7 +462,11 @@ impl Aged {
             }
         }
         if self.glyphs > AGED_GLYPHS {
-            let mut by_age: Vec<(u64, Arc<CacheKey>)> = self.lines.iter().map(|(k, (_, f))| (*f, k.clone())).collect();
+            let mut by_age: Vec<(u64, Arc<CacheKey>)> = self
+                .lines
+                .iter()
+                .map(|(k, (_, f))| (*f, k.clone()))
+                .collect();
             by_age.sort_by_key(|(f, _)| *f);
             for (_, key) in by_age {
                 if self.glyphs <= AGED_GLYPHS * 3 / 4 {
@@ -496,7 +500,8 @@ impl LineLayoutIndex {
     pub(crate) fn shifted(&self, from: &LineLayoutIndex, to: &LineLayoutIndex) -> LineLayoutIndex {
         LineLayoutIndex {
             lines_index: self.lines_index - from.lines_index + to.lines_index,
-            wrapped_lines_index: self.wrapped_lines_index - from.wrapped_lines_index + to.wrapped_lines_index,
+            wrapped_lines_index: self.wrapped_lines_index - from.wrapped_lines_index
+                + to.wrapped_lines_index,
         }
     }
 }
@@ -655,7 +660,12 @@ impl LineLayoutCache {
         }
 
         let mut current_frame = RwLockUpgradableReadGuard::upgrade(current_frame);
-        let kept = self.previous_frame.lock().lines.remove_entry(key).or_else(|| self.aged.lock().take(key));
+        let kept = self
+            .previous_frame
+            .lock()
+            .lines
+            .remove_entry(key)
+            .or_else(|| self.aged.lock().take(key));
         if let Some((key, layout)) = kept {
             current_frame.lines.insert(key.clone(), layout.clone());
             current_frame.used_lines.push(key);

@@ -23,7 +23,8 @@ use olo_ui::{
     Frame, WindowOptions, clipboard,
     file_panel::{self, FilePanel, PanelResult},
     gpui::{
-        self, App, AppContext as _, Bounds, ClipboardEntry, ClipboardItem, Context, Corners, Entity, Image, ImageFormat, IntoElement, InteractiveElement as _, ParentElement as _, Pixels, Render, RenderImage, SharedString, Styled as _, Window, WindowHandle, canvas, div, point, px, size,
+        self, App, AppContext as _, Bounds, ClipboardEntry, ClipboardItem, Context, Corners, Entity, Image, ImageFormat, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Render,
+        RenderImage, SharedString, Styled as _, Window, WindowHandle, canvas, div, point, px, size,
     },
     instance::{self, Launch},
     metrics as m, style, theme,
@@ -96,11 +97,7 @@ struct Saved {
 }
 
 fn folder_label(path: &Path) -> String {
-    if path == capture::home() {
-        "Home".into()
-    } else {
-        path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned())
-    }
+    if path == capture::home() { "Home".into() } else { path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned()) }
 }
 
 /// `image` made `w` × `h` (device pixels) on a worker, area-averaged, as
@@ -188,7 +185,22 @@ impl Screenshot {
             }
         })
         .detach();
-        Screenshot { window: None, settings, shot: None, taken: 0, preview: None, asked: None, name, delay, proposed: String::new(), busy: None, note: String::new(), folders, holding: false, focus: cx.focus_handle() }
+        Screenshot {
+            window: None,
+            settings,
+            shot: None,
+            taken: 0,
+            preview: None,
+            asked: None,
+            name,
+            delay,
+            proposed: String::new(),
+            busy: None,
+            note: String::new(),
+            folders,
+            holding: false,
+            focus: cx.focus_handle(),
+        }
     }
 
     fn name_text(&self, cx: &App) -> String {
@@ -500,7 +512,14 @@ impl Render for Screenshot {
             .child(at(fx, rows[0].0, fw).child(check("Capture active window", self.settings.window, true, |s, v| s.window = v)))
             .child(at(fx, rows[1].0, fw).child(check("Include window border", self.settings.border, self.settings.window, |s, v| s.border = v)))
             .child(at(fx, rows[2].0, fw).child(check("Include mouse pointer", self.settings.pointer, true, |s, v| s.pointer = v)))
-            .child(at(fx, rows[3].0, fw).flex().items_center().gap(px(m::LABEL_GAP)).child(TextControl::new(self.delay.clone()).label("Delay:").divider(DIVIDER).width(DIVIDER + 44.0)).child(StringView::new("seconds")))
+            .child(
+                at(fx, rows[3].0, fw)
+                    .flex()
+                    .items_center()
+                    .gap(px(m::LABEL_GAP))
+                    .child(TextControl::new(self.delay.clone()).label("Delay:").divider(DIVIDER).width(DIVIDER + 44.0))
+                    .child(StringView::new("seconds")),
+            )
             .child(at(fx, rows[4].0, fw).child(separator()))
             .child(at(fx, rows[5].0, fw).child(TextControl::new(self.name.clone()).label("Name:").divider(DIVIDER).width(fw)))
             .child(at(fx, rows[6].0, fw).child(MenuField::new("format", labels, fi).label("Save as:").divider(DIVIDER).width(fw).on_change(move |i, _, cx| {

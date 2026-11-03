@@ -33,21 +33,12 @@ pub struct SecretReference {
 
 impl SecretReference {
     pub fn new(vault: &str, item: &str, section: Option<&str>, field: &str) -> Self {
-        SecretReference {
-            vault: vault.into(),
-            item: item.into(),
-            section: section.map(Into::into),
-            field: field.into(),
-            attribute: None,
-            openssh: false,
-        }
+        SecretReference { vault: vault.into(), item: item.into(), section: section.map(Into::into), field: field.into(), attribute: None, openssh: false }
     }
 
     /// Whether `name` can appear in a reference as it is (else use an ID).
     pub fn is_valid_name(name: &str) -> bool {
-        !name.is_empty()
-            && name.trim() == name
-            && name.chars().all(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | ' '))
+        !name.is_empty() && name.trim() == name && name.chars().all(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | ' '))
     }
 }
 
@@ -100,10 +91,7 @@ pub fn validate(reference: &str) -> Result<SecretReference, Error> {
             return Err(invalid(reference, &format!("the {what} is missing")));
         }
         if !SecretReference::is_valid_name(part) {
-            return Err(invalid(
-                reference,
-                &format!("the {what} '{part}' has characters that need its ID instead (letters, digits, - _ . and spaces only)"),
-            ));
+            return Err(invalid(reference, &format!("the {what} '{part}' has characters that need its ID instead (letters, digits, - _ . and spaces only)")));
         }
     }
     let mut parsed = SecretReference::new(vault, item, section, field);

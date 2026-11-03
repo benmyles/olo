@@ -285,13 +285,7 @@ impl Overview {
     /// `scale`), front first: the letters, the chosen window's title and
     /// ring, the windows, the panes and their names, then the dim over
     /// the desktop.
-    pub fn elements<R>(
-        &self,
-        renderer: &mut R,
-        output: &Output,
-        origin: Point<i32, Logical>,
-        screen: Size<i32, Logical>,
-    ) -> Vec<OutputRenderElements<R, WindowRenderElement<R>>>
+    pub fn elements<R>(&self, renderer: &mut R, output: &Output, origin: Point<i32, Logical>, screen: Size<i32, Logical>) -> Vec<OutputRenderElements<R, WindowRenderElement<R>>>
     where
         R: Renderer + ImportAll + ImportMem,
         R::TextureId: Clone + Send + 'static,
@@ -325,8 +319,7 @@ impl Overview {
             }
             let buffer = &list[*n];
             *n += 1;
-            crate::render::exact(renderer, rect, buffer, (1, 1), Some(alpha), Kind::Unspecified)
-                .map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e)))
+            crate::render::exact(renderer, rect, buffer, (1, 1), Some(alpha), Kind::Unspecified).map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e)))
         };
         let mut front = Vec::new();
         let mut windows = Vec::new();
@@ -352,27 +345,14 @@ impl Overview {
             windows.extend(
                 // Drawn with its frame's corner at the cell's, then scaled
                 // about it (as smithay's `constrain_space_element`).
-                constrain_as_render_elements(
-                    &cell.window,
-                    renderer,
-                    constrain.loc - reference.loc,
-                    alpha,
-                    constrain,
-                    reference,
-                    ConstrainScaleBehavior::Fit,
-                    ConstrainAlign::CENTER,
-                    scale,
-                )
-                .map(OutputRenderElements::Preview),
+                constrain_as_render_elements(&cell.window, renderer, constrain.loc - reference.loc, alpha, constrain, reference, ConstrainScaleBehavior::Fit, ConstrainAlign::CENTER, scale)
+                    .map(OutputRenderElements::Preview),
             );
             // Its letter, at its top left.
             if let Some(c) = cell.letter {
                 let (buffer, (w, h)) = drawn.badges.entry(c).or_insert_with(|| picture(&crate::hints::badge_pixmap(&palette, c, scale), true));
                 let at = phys(rect.loc.x + LETTER_IN, rect.loc.y + LETTER_IN);
-                front.extend(
-                    crate::render::picture(renderer, at, buffer, (*w, *h), Some(fade), Kind::Unspecified)
-                        .map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))),
-                );
+                front.extend(crate::render::picture(renderer, at, buffer, (*w, *h), Some(fade), Kind::Unspecified).map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))));
             }
             // The one chosen: ringed, its title on a plate at its foot.
             if settled && chosen == Some(cell.window.id()) {
@@ -385,15 +365,9 @@ impl Overview {
                 if let Some((_, (buffer, (w, h)))) = &drawn.title {
                     let x = rect.loc.x + rect.size.w / 2.0 - *w as f64 / scale / 2.0;
                     let y = rect.loc.y + rect.size.h - PLATE_IN - *h as f64 / scale;
-                    front.extend(
-                        crate::render::picture(renderer, phys(x, y), buffer, (*w, *h), Some(fade), Kind::Unspecified)
-                            .map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))),
-                    );
+                    front.extend(crate::render::picture(renderer, phys(x, y), buffer, (*w, *h), Some(fade), Kind::Unspecified).map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))));
                 }
-                let out = Rectangle::new(
-                    (rect.loc.x - RING_OUT, rect.loc.y - RING_OUT).into(),
-                    (rect.size.w + 2.0 * RING_OUT, rect.size.h + 2.0 * RING_OUT).into(),
-                );
+                let out = Rectangle::new((rect.loc.x - RING_OUT, rect.loc.y - RING_OUT).into(), (rect.size.w + 2.0 * RING_OUT, rect.size.h + 2.0 * RING_OUT).into());
                 let r = device(out);
                 let k = ((RING * scale).round() as i32).max(1);
                 for edge in [
@@ -409,21 +383,11 @@ impl Overview {
         // The panes: named above, a light fill, a line round (the
         // workspace showing in the focus colour).
         for pane in self.panes.iter().filter(|p| p.output == name) {
-            let (buffer, (w, h)) = drawn
-                .names
-                .entry((pane.name.clone(), pane.current))
-                .or_insert_with(|| picture(&name_pixmap(&palette, &pane.name, pane.current, scale), false));
+            let (buffer, (w, h)) = drawn.names.entry((pane.name.clone(), pane.current)).or_insert_with(|| picture(&name_pixmap(&palette, &pane.name, pane.current, scale), false));
             let at = phys(pane.rect.loc.x, pane.rect.loc.y - (LABEL + *h as f64 / scale) / 2.0);
-            back.extend(
-                crate::render::picture(renderer, at, buffer, (*w, *h), Some(fade), Kind::Unspecified)
-                    .map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))),
-            );
+            back.extend(crate::render::picture(renderer, at, buffer, (*w, *h), Some(fade), Kind::Unspecified).map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))));
             let r = device(pane.rect);
-            let (c, k, a) = if pane.current {
-                (palette.keyboard_navigation, ((RING * scale).round() as i32).max(1), 1.0)
-            } else {
-                (palette.desktop_text, line, PANE_LINE)
-            };
+            let (c, k, a) = if pane.current { (palette.keyboard_navigation, ((RING * scale).round() as i32).max(1), 1.0) } else { (palette.desktop_text, line, PANE_LINE) };
             for edge in [
                 Rectangle::new(r.loc, (r.size.w, k).into()),
                 Rectangle::new((r.loc.x, r.loc.y + r.size.h - k).into(), (r.size.w, k).into()),
@@ -514,10 +478,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             let current = self.showing(output);
             let number = olo_protocol::display_number(&infos, &output.name());
             let area = area.to_f64();
-            let area = Rectangle::new(
-                (area.loc.x + MARGIN, area.loc.y + MARGIN).into(),
-                ((area.size.w - 2.0 * MARGIN).max(1.0), (area.size.h - 2.0 * MARGIN).max(1.0)).into(),
-            );
+            let area = Rectangle::new((area.loc.x + MARGIN, area.loc.y + MARGIN).into(), ((area.size.w - 2.0 * MARGIN).max(1.0), (area.size.h - 2.0 * MARGIN).max(1.0)).into());
             // Its windows: (window, workspace, frame, where it shows).
             let mine: Vec<(WindowElement, u32, Rect, Option<Rect>)> = windows
                 .iter()
@@ -543,10 +504,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 let frames: Vec<Rect> = in_it.iter().map(|m| m.2).collect();
                 let most = rect.size.w / geo.size.w.max(1) as f64;
                 // Kept off the pane's edge, by as much as from each other.
-                let inside = Rectangle::new(
-                    (rect.loc.x + SPACING, rect.loc.y + SPACING).into(),
-                    ((rect.size.w - 2.0 * SPACING).max(1.0), (rect.size.h - 2.0 * SPACING).max(1.0)).into(),
-                );
+                let inside = Rectangle::new((rect.loc.x + SPACING, rect.loc.y + SPACING).into(), ((rect.size.w - 2.0 * SPACING).max(1.0), (rect.size.h - 2.0 * SPACING).max(1.0)).into());
                 // In reading order, so the letters run as the eye does (a
                 // row's windows share their middle).
                 let mut placed: Vec<_> = in_it.iter().zip(spread(inside, &frames, most)).collect();
@@ -591,11 +549,8 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.restore(&w);
         }
         // The windows showing now glide back to their places.
-        let shown: Vec<(u64, Option<Rect>)> = self
-            .overview
-            .as_ref()
-            .map(|o| o.cells.iter().map(|c| (c.window.id(), self.space.element_bbox(&c.window).map(|b| b.to_f64()))).collect())
-            .unwrap_or_default();
+        let shown: Vec<(u64, Option<Rect>)> =
+            self.overview.as_ref().map(|o| o.cells.iter().map(|c| (c.window.id(), self.space.element_bbox(&c.window).map(|b| b.to_f64()))).collect()).unwrap_or_default();
         let stacking: Vec<WindowElement> = self.space.elements().cloned().collect();
         if let Some(o) = self.overview.as_mut() {
             for (cell, (_, from)) in o.cells.iter_mut().zip(shown) {
@@ -716,9 +671,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 o.hovered = None;
             }
             k => {
-                let chosen = crate::hints::letter(k)
-                    .and_then(|c| o.cells.iter().find(|cell| cell.letter == Some(c)))
-                    .map(|c| c.window.clone());
+                let chosen = crate::hints::letter(k).and_then(|c| o.cells.iter().find(|cell| cell.letter == Some(c))).map(|c| c.window.clone());
                 if chosen.is_some() {
                     self.close_overview(chosen);
                 }
@@ -748,11 +701,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let Some(o) = self.overview.as_ref().filter(|o| !o.leaving()) else { return olo_protocol::OverviewInfo::default() };
         olo_protocol::OverviewInfo {
             shown: true,
-            panes: o
-                .panes
-                .iter()
-                .map(|p| olo_protocol::OverviewPane { output: p.output.clone(), workspace: p.workspace, current: p.current, frame: frame(p.rect) })
-                .collect(),
+            panes: o.panes.iter().map(|p| olo_protocol::OverviewPane { output: p.output.clone(), workspace: p.workspace, current: p.current, frame: frame(p.rect) }).collect(),
             windows: o
                 .cells
                 .iter()

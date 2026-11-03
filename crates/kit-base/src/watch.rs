@@ -268,10 +268,7 @@ fn service() -> Option<&'static Service> {
         }
         let (woken, wake) = unsafe { (OwnedFd::from_raw_fd(pipe[0]), OwnedFd::from_raw_fd(pipe[1])) };
         let ino = fd.as_raw_fd();
-        let s: &'static Service = Box::leak(Box::new(Service {
-            state: Mutex::new(State { fd, next: 0, watchers: HashMap::new(), by_wd: HashMap::new(), by_dir: HashMap::new() }),
-            wake,
-        }));
+        let s: &'static Service = Box::leak(Box::new(Service { state: Mutex::new(State { fd, next: 0, watchers: HashMap::new(), by_wd: HashMap::new(), by_dir: HashMap::new() }), wake }));
         std::thread::Builder::new().name("kit-watch".into()).spawn(move || run(s, ino, woken)).ok()?;
         Some(s)
     })

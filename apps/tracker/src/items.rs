@@ -14,9 +14,7 @@ use std::{
 
 use olo_ui::{
     agent,
-    gpui::{
-        self, App, Bounds, DragAction, DropOffer, Entity, EntityId, Font, FontStyle, FontWeight, Global, Hsla, LineFragment, Pixels, Point, SharedString, Window, point, px, size,
-    },
+    gpui::{self, App, Bounds, DragAction, DropOffer, Entity, EntityId, Font, FontStyle, FontWeight, Global, Hsla, LineFragment, Pixels, Point, SharedString, Window, point, px, size},
     icons, metrics as m,
     palette::Palette,
     style::{self, Align},

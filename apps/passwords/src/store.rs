@@ -15,9 +15,9 @@ use std::{
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD as B64};
 use chrono::{DateTime, Utc};
-use onepassword::{AutofillBehavior, Error, Item, ItemCategory, ItemCreateParams, ItemField, ItemFieldType, ItemOverview, VaultOverview, Website};
 use olo_keychain::{Incoming, Request, Response};
 use olo_ui::Proxy;
+use onepassword::{AutofillBehavior, Error, Item, ItemCategory, ItemCreateParams, ItemField, ItemFieldType, ItemOverview, VaultOverview, Website};
 
 use crate::{
     passkey,
@@ -30,28 +30,49 @@ pub enum Job {
     Open,
     /// Let go of the store's secrets (locking); after a running sync.
     Close,
-    Get { vault: String, item: String },
+    Get {
+        vault: String,
+        item: String,
+    },
     Create(Box<ItemCreateParams>),
     Put(Box<Item>),
-    Archive { vault: String, item: String },
-    Delete { vault: String, item: String },
+    Archive {
+        vault: String,
+        item: String,
+    },
+    Delete {
+        vault: String,
+        item: String,
+    },
     /// Answer another app (Chrome's extension): `candidates` are the logins
     /// saved for its page (for a passkey to sign with: the one chosen);
     /// `vault` is where a new one goes.
-    Keychain { incoming: Box<Incoming>, candidates: Vec<(String, String)>, vault: String },
+    Keychain {
+        incoming: Box<Incoming>,
+        candidates: Vec<(String, String)>,
+        vault: String,
+    },
     /// Answer `op` (an allowed session's question).
-    Cli { incoming: Box<Incoming> },
+    Cli {
+        incoming: Box<Incoming>,
+    },
     /// Work out what syncing with these 1Password accounts (id, name;
     /// the first takes items made here) would change, as one review
     /// (unless a sync is running).
-    Sync { accounts: Vec<(String, String)> },
+    Sync {
+        accounts: Vec<(String, String)>,
+    },
     /// Stop syncing with an account: its items go from here (never
     /// anything in 1Password).
-    RemoveAccount { account: String },
+    RemoveAccount {
+        account: String,
+    },
     /// The plan worked out (sent by its thread).
     Planned(Result<Plan, String>),
     /// Make the changes of the plan the person reviewed.
-    Approve { plan: u64 },
+    Approve {
+        plan: u64,
+    },
     /// The person said no: drop the plan.
     Decline,
     /// A sync finished (sent by its thread).
@@ -65,39 +86,76 @@ pub enum Job {
 pub enum SyncState {
     Running,
     /// Changes waiting for the person's approval.
-    Review { changes: usize, pending: usize },
+    Review {
+        changes: usize,
+        pending: usize,
+    },
     /// The person didn't approve the last plan.
-    Declined { pending: usize },
-    Done { at: DateTime<Utc>, received: usize, sent: usize, problems: Vec<crate::sync::Problem>, pending: usize },
-    Failed { message: String, pending: usize },
+    Declined {
+        pending: usize,
+    },
+    Done {
+        at: DateTime<Utc>,
+        received: usize,
+        sent: usize,
+        problems: Vec<crate::sync::Problem>,
+        pending: usize,
+    },
+    Failed {
+        message: String,
+        pending: usize,
+    },
 }
 
 pub enum Reply {
     Connected,
     Failed(String),
     /// The vaults, and which account each synced one is in.
-    Vaults { vaults: Vec<VaultOverview>, accounts: HashMap<String, String> },
-    Items { vault: String, items: Vec<ItemOverview> },
+    Vaults {
+        vaults: Vec<VaultOverview>,
+        accounts: HashMap<String, String>,
+    },
+    Items {
+        vault: String,
+        items: Vec<ItemOverview>,
+    },
     /// A refresh finished.
     Loaded,
     /// What searching and filtering need of every item (no secrets).
     Index(HashMap<String, Searchable>),
     Item(Box<Item>),
     /// Created or changed (`created`: it is new).
-    Saved { item: Box<Item>, created: bool },
-    Archived { item: String },
-    Deleted { item: String },
+    Saved {
+        item: Box<Item>,
+        created: bool,
+    },
+    Archived {
+        item: String,
+    },
+    Deleted {
+        item: String,
+    },
     /// An item has a new id (1Password gave it one).
-    Renamed { old: String, new: String },
+    Renamed {
+        old: String,
+        new: String,
+    },
     Sync(SyncState),
     /// A plan to review (`plan` is its id for [`Job::Approve`]).
-    Review { plan: u64, rows: Vec<Row>, problems: Vec<crate::sync::Problem> },
+    Review {
+        plan: u64,
+        rows: Vec<Row>,
+        problems: Vec<crate::sync::Problem>,
+    },
     /// The store was erased.
     Reset,
     /// An operation failed (the store is still good).
     Error(String),
     /// A fetch failed: the item may be gone.
-    Missing { item: String, error: String },
+    Missing {
+        item: String,
+        error: String,
+    },
 }
 
 pub struct FromStore {
@@ -128,10 +186,7 @@ impl Store {
     pub fn new(proxy: Proxy) -> Store {
         let (tx, rx) = mpsc::channel::<(u64, Job)>();
         let back = tx.clone();
-        thread::Builder::new()
-            .name("passwords-store".into())
-            .spawn(move || worker(rx, back, proxy))
-            .expect("thread");
+        thread::Builder::new().name("passwords-store".into()).spawn(move || worker(rx, back, proxy)).expect("thread");
         Store { tx, generation: 0 }
     }
 
@@ -187,12 +242,7 @@ pub struct PasskeyInfo {
 
 /// Whether `pw` is weak: short, or only one kind of character.
 fn weak(pw: &str) -> bool {
-    let kinds = [
-        pw.chars().any(|c| c.is_lowercase()),
-        pw.chars().any(|c| c.is_uppercase()),
-        pw.chars().any(|c| c.is_ascii_digit()),
-        pw.chars().any(|c| !c.is_alphanumeric()),
-    ];
+    let kinds = [pw.chars().any(|c| c.is_lowercase()), pw.chars().any(|c| c.is_uppercase()), pw.chars().any(|c| c.is_ascii_digit()), pw.chars().any(|c| !c.is_alphanumeric())];
     pw.chars().count() < 12 || kinds.iter().filter(|&&k| k).count() < 2
 }
 
@@ -228,11 +278,7 @@ fn index(v: &Vault) -> HashMap<String, Searchable> {
                 files: !item.files.is_empty() || item.document.is_some(),
                 reused: pw.is_some_and(|p| uses.get(p).copied().unwrap_or(0) > 1),
                 weak: pw.is_some_and(weak),
-                passkey: passkey::stored(item).map(|p| PasskeyInfo {
-                    rp_id: p.rp_id.clone(),
-                    user_name: p.user_name.clone(),
-                    credential_id: p.credential_id.clone(),
-                }),
+                passkey: passkey::stored(item).map(|p| PasskeyInfo { rp_id: p.rp_id.clone(), user_name: p.user_name.clone(), credential_id: p.credential_id.clone() }),
             };
             (item.id.clone(), s)
         })
@@ -354,13 +400,7 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
                                     reply(Reply::Renamed { old, new });
                                 }
                                 refresh(v, &reply);
-                                reply(Reply::Sync(SyncState::Done {
-                                    at: Utc::now(),
-                                    received: report.received,
-                                    sent: report.sent,
-                                    problems,
-                                    pending: v.pending(),
-                                }));
+                                reply(Reply::Sync(SyncState::Done { at: Utc::now(), received: report.received, sent: report.sent, problems, pending: v.pending() }));
                             }
                             Err(e) => reply(Reply::Sync(SyncState::Failed { message: e.to_string(), pending: v.pending() })),
                         }
@@ -508,12 +548,8 @@ fn error(e: &Error) -> Response {
 /// the first text and concealed ones (not a passkey's key, which
 /// 1Password keeps in a section of that name).
 fn login_fields(item: &Item) -> (Option<&ItemField>, Option<&ItemField>) {
-    let user = item.field("username").or_else(|| {
-        item.fields.iter().find(|f| matches!(f.field_type, ItemFieldType::Text | ItemFieldType::Email) && f.section_id.is_none())
-    });
-    let password = item.field("password").or_else(|| {
-        item.fields.iter().find(|f| f.field_type == ItemFieldType::Concealed && f.section_id.as_deref() != Some(passkey::SECTION))
-    });
+    let user = item.field("username").or_else(|| item.fields.iter().find(|f| matches!(f.field_type, ItemFieldType::Text | ItemFieldType::Email) && f.section_id.is_none()));
+    let password = item.field("password").or_else(|| item.fields.iter().find(|f| f.field_type == ItemFieldType::Concealed && f.section_id.as_deref() != Some(passkey::SECTION)));
     (user, password)
 }
 
@@ -530,11 +566,7 @@ fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], v
             }
             let (user, password) = login_fields(&item);
             let otp = item.fields.iter().find(|f| f.field_type == ItemFieldType::Totp).and_then(|f| crate::otp_code(&f.value));
-            Response::Credentials {
-                username: user.map(|f| f.value.clone()).unwrap_or_default(),
-                password: password.map(|f| f.value.clone()).unwrap_or_default(),
-                otp,
-            }
+            Response::Credentials { username: user.map(|f| f.value.clone()).unwrap_or_default(), password: password.map(|f| f.value.clone()).unwrap_or_default(), otp }
         }
         Request::Check { username, password, .. } => {
             let mut changed = None;
@@ -577,16 +609,9 @@ fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], v
                 };
             }
             let mut params = ItemCreateParams::new(ItemCategory::Login, vault, title.clone());
-            params.fields = vec![
-                ItemField::new("username", "username", ItemFieldType::Text, username),
-                ItemField::new("password", "password", ItemFieldType::Concealed, password),
-            ];
+            params.fields = vec![ItemField::new("username", "username", ItemFieldType::Text, username), ItemField::new("password", "password", ItemFieldType::Concealed, password)];
             let site = url::Url::parse(url).map(|u| u.origin().ascii_serialization()).unwrap_or_else(|_| url.clone());
-            params.websites = vec![Website {
-                url: site,
-                label: "website".into(),
-                autofill_behavior: AutofillBehavior::AnywhereOnWebsite,
-            }];
+            params.websites = vec![Website { url: site, label: "website".into(), autofill_behavior: AutofillBehavior::AnywhereOnWebsite }];
             match c.create(&params) {
                 Ok(item) => {
                     let title = item.title.clone();
@@ -599,9 +624,7 @@ fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], v
         Request::Logins { url } => {
             let mut logins: Vec<olo_keychain::Login> = candidates
                 .iter()
-                .filter_map(|(vault, id)| {
-                    c.get(vault, id).map_err(|e| tracing::warn!("login {id} for a page: couldn't read it: {e}")).ok()
-                })
+                .filter_map(|(vault, id)| c.get(vault, id).map_err(|e| tracing::warn!("login {id} for a page: couldn't read it: {e}")).ok())
                 .map(|item| olo_keychain::Login {
                     vault: item.vault_id.clone(),
                     id: item.id.clone(),
@@ -635,9 +658,7 @@ fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], v
             // The same account's passkey is replaced; else it joins the
             // account's login, or gets a login of its own.
             let same_user = items.iter().filter(theirs).find(|i| passkey::stored(i).is_some_and(|s| &s.user_handle == user_id));
-            let login = items.iter().find(|i| {
-                passkey::stored(i).is_none() && login_fields(i).0.is_some_and(|u| !u.value.is_empty() && u.value.eq_ignore_ascii_case(user_name))
-            });
+            let login = items.iter().find(|i| passkey::stored(i).is_none() && login_fields(i).0.is_some_and(|u| !u.value.is_empty() && u.value.eq_ignore_ascii_case(user_name)));
             let new = passkey::New::generate();
             let saved = match same_user.or(login) {
                 Some(item) => {
@@ -705,9 +726,7 @@ fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], v
         // Answered by the app itself.
         Request::Unlock => Response::Unlocked,
         // Answered on the UI thread.
-        Request::Search { .. } | Request::Show { .. } | Request::Cli { .. } | Request::Passkeys { .. } => {
-            Response::Error { message: "unexpected".into() }
-        }
+        Request::Search { .. } | Request::Show { .. } | Request::Cli { .. } | Request::Passkeys { .. } => Response::Error { message: "unexpected".into() },
     }
 }
 
@@ -725,8 +744,8 @@ pub fn fits(w: &Website, url: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use onepassword::{AutofillBehavior, ItemCategory, ItemCreateParams, ItemField, ItemFieldType, Website};
     use olo_keychain::{Request, Response};
+    use onepassword::{AutofillBehavior, ItemCategory, ItemCreateParams, ItemField, ItemFieldType, Website};
 
     use crate::vault::Vault;
 

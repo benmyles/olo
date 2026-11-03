@@ -64,13 +64,24 @@ fn test_status() -> Status {
         modalias: None,
     };
     Status {
-        adapter: Some(bt::Adapter { path: "/org/bluez/hci0".into(), name: "studio-laptop".into(), address: "02:00:00:00:A1:03".into(), powered: true, discoverable: false, discovering: true }),
+        adapter: Some(bt::Adapter {
+            path: "/org/bluez/hci0".into(),
+            name: "studio-laptop".into(),
+            address: "02:00:00:00:A1:03".into(),
+            powered: true,
+            discoverable: false,
+            discovering: true,
+        }),
         devices: vec![
             device("Sony WH-1000XM5 Wireless Noise Canceling Headphones", "audio-headset", true, true, Some(80)),
             device("Logitech MX Master 3S for Mac", "input-mouse", true, false, Some(45)),
             device("Keychron Q1 Pro QMK/VIA Wireless Custom Mechanical Keyboard", "input-keyboard", false, false, None),
             // The AirPods panel's test pair (their model and levels).
-            bt::Device { address: "02:00:00:00:A1:01".into(), modalias: Some("bluetooth:v004Cp2024d215C".into()), ..device("Travel AirPods Pro (2nd generation) for the Office", "audio-headphones", true, true, None) },
+            bt::Device {
+                address: "02:00:00:00:A1:01".into(),
+                modalias: Some("bluetooth:v004Cp2024d215C".into()),
+                ..device("Travel AirPods Pro (2nd generation) for the Office", "audio-headphones", true, true, None)
+            },
         ],
     }
 }
@@ -133,8 +144,7 @@ fn link(proxy: olo_ui::Proxy) -> &'static Link {
                             let r = bt::start_discovery(&adapter);
                             searching = Some((adapter, Instant::now()));
                             // Already searching is fine.
-                            r.or_else(|e| if e.to_string().contains("InProgress") { Ok(()) } else { Err(e) })
-                                .map_err(|e| (e, "Couldn't search for devices."))
+                            r.or_else(|e| if e.to_string().contains("InProgress") { Ok(()) } else { Err(e) }).map_err(|e| (e, "Couldn't search for devices."))
                         }
                     };
                     sh.lock().unwrap().error = r.err().map(|(e, what)| {
@@ -401,12 +411,12 @@ fn question(ui: &mut Ui, st: &mut State) {
             }));
         } else {
             let (no, yes) = (field.clone(), field.clone());
-            row = row
-                .child(Button::new(if typed { "Cancel" } else { "Reject" }).on_click(move |_, cx| answer(link, &no, None, cx)))
-                .child(Button::new(if typed { "Pair" } else { "Accept" }).default(true).enabled(!typed || !code.is_empty()).on_click(move |_, cx| {
+            row = row.child(Button::new(if typed { "Cancel" } else { "Reject" }).on_click(move |_, cx| answer(link, &no, None, cx))).child(
+                Button::new(if typed { "Pair" } else { "Accept" }).default(true).enabled(!typed || !code.is_empty()).on_click(move |_, cx| {
                     let code = yes.read(cx).text().to_owned();
                     answer(link, &yes, Some(code), cx);
-                }));
+                }),
+            );
         }
         ui.add(row);
     });

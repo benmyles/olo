@@ -133,15 +133,27 @@ impl TestAppContext {
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     pub fn with_olo_text() -> Self {
         let dispatcher = TestDispatcher::new(StdRng::seed_from_u64(0));
-        Self::build_with(dispatcher, None, Some(Arc::new(crate::OloTextSystem::new())))
+        Self::build_with(
+            dispatcher,
+            None,
+            Some(Arc::new(crate::OloTextSystem::new())),
+        )
     }
 
-    fn build_with(dispatcher: TestDispatcher, fn_name: Option<&'static str>, text: Option<Arc<dyn crate::PlatformTextSystem>>) -> Self {
+    fn build_with(
+        dispatcher: TestDispatcher,
+        fn_name: Option<&'static str>,
+        text: Option<Arc<dyn crate::PlatformTextSystem>>,
+    ) -> Self {
         let arc_dispatcher = Arc::new(dispatcher.clone());
         let background_executor = BackgroundExecutor::new(arc_dispatcher.clone());
         let foreground_executor = ForegroundExecutor::new(arc_dispatcher);
         let platform = match text {
-            Some(text) => TestPlatform::with_text_system(background_executor.clone(), foreground_executor.clone(), text),
+            Some(text) => TestPlatform::with_text_system(
+                background_executor.clone(),
+                foreground_executor.clone(),
+                text,
+            ),
             None => TestPlatform::new(background_executor.clone(), foreground_executor.clone()),
         };
         let asset_source = Arc::new(());

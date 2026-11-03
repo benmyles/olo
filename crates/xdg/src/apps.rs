@@ -84,19 +84,14 @@ pub fn app_name(app_id: &str, entry: Option<&crate::desktop_entry::DesktopEntry>
 /// App ids of our own apps map straight to names and icons.
 pub fn our_app(app_id: &str) -> Option<(&'static str, &'static str)> {
     let short = app_id.strip_prefix("olo.").unwrap_or(app_id);
-    OUR_APPS
-        .iter()
-        .find(|(bin, _, _)| bin.strip_prefix("olo-") == Some(short))
-        .map(|(_, name, icon)| (*name, *icon))
-        .or(match short {
-            "preferences" => Some(("Preferences", "preferences")),
-            "notifications" => Some(("Notifications", "notifications")),
-            // Its windows are the password alerts polkit and the keyring ask for.
-            "polkit-agent" => Some(("Authentication", "authentication")),
-            // Its windows are the alerts about stuck processes and memory.
-            "supervisor" => Some(("Performance", "performance")),
-            "kit-demo" => Some(("Kit Demo", "application")),
-            _ => None,
-        })
+    OUR_APPS.iter().find(|(bin, _, _)| bin.strip_prefix("olo-") == Some(short)).map(|(_, name, icon)| (*name, *icon)).or(match short {
+        "preferences" => Some(("Preferences", "preferences")),
+        "notifications" => Some(("Notifications", "notifications")),
+        // Its windows are the password alerts polkit and the keyring ask for.
+        "polkit-agent" => Some(("Authentication", "authentication")),
+        // Its windows are the alerts about stuck processes and memory.
+        "supervisor" => Some(("Performance", "performance")),
+        "kit-demo" => Some(("Kit Demo", "application")),
+        _ => None,
+    })
 }
-

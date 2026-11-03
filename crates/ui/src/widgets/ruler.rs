@@ -19,7 +19,8 @@
 //! "Tab 1.5 in, Right") at its place.
 
 use gpui::{
-    App, Bounds, Context, CursorStyle, DispatchPhase, EventEmitter, FontWeight, HitboxBehavior, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PathBuilder, Pixels, Point, Render, Styled as _, Window, canvas, point, px,
+    App, Bounds, Context, CursorStyle, DispatchPhase, EventEmitter, FontWeight, HitboxBehavior, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PathBuilder, Pixels, Point,
+    Render, Styled as _, Window, canvas, point, px,
 };
 
 use crate::{
@@ -180,13 +181,15 @@ impl Ruler {
     pub fn guide(&self) -> Option<f32> {
         let d = self.drag.as_ref().filter(|d| !d.off)?;
         let i = d.now.indents;
-        Some(self.origin
-            + match d.held {
-                Held::First => i.left + i.first,
-                Held::Left | Held::Both => i.left,
-                Held::Right => self.width - i.right,
-                Held::Tab(k) => d.now.tabs.get(k).map_or(0.0, |t| t.x),
-            })
+        Some(
+            self.origin
+                + match d.held {
+                    Held::First => i.left + i.first,
+                    Held::Left | Held::Both => i.left,
+                    Held::Right => self.width - i.right,
+                    Held::Tab(k) => d.now.tabs.get(k).map_or(0.0, |t| t.x),
+                },
+        )
     }
 
     fn step(&self) -> f32 {
@@ -403,7 +406,13 @@ impl Ruler {
                 style::label(window, cx, px(x), px(mid), style::Align::Center, (k / parts).to_string(), 9.0, style::ui_font(FontWeight::NORMAL), ink);
                 continue;
             }
-            let h = if k % (parts / 2) == 0 { 5.0 } else if parts == 8 && k % 2 == 0 { 3.0 } else { 2.0 };
+            let h = if k % (parts / 2) == 0 {
+                5.0
+            } else if parts == 8 && k % 2 == 0 {
+                3.0
+            } else {
+                2.0
+            };
             style::fill_rect(window, Bounds::from_corners(point(px(x), px(snap(base - h))), point(px(x + line), px(base))), faint);
         }
 
@@ -463,8 +472,16 @@ impl Ruler {
         // For agents: each marker, as a slider at its place.
         let mid_y = (st + sb) / 2.0;
         let mut describe = |window: &mut Window, name: String, value: f32, x: f32, upper: bool| {
-            let r = if upper { Bounds::from_corners(point(px(x - half), px(top)), point(px(x + half), px(mid_y))) } else { Bounds::from_corners(point(px(x - half), px(mid_y)), point(px(x + half), px(bottom))) };
-            agent::record(window, cx, agent::Node { role: "Slider", name: Some(name.into()), value: Some(length(value, self.metric).into()), bounds: r, enabled: true, clickable: true, ..Default::default() });
+            let r = if upper {
+                Bounds::from_corners(point(px(x - half), px(top)), point(px(x + half), px(mid_y)))
+            } else {
+                Bounds::from_corners(point(px(x - half), px(mid_y)), point(px(x + half), px(bottom)))
+            };
+            agent::record(
+                window,
+                cx,
+                agent::Node { role: "Slider", name: Some(name.into()), value: Some(length(value, self.metric).into()), bounds: r, enabled: true, clickable: true, ..Default::default() },
+            );
         };
         describe(window, "First Line Indent".into(), ind.left + ind.first, first_x, true);
         describe(window, "Left Indent".into(), ind.left, left_x, false);

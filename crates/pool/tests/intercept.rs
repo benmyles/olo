@@ -13,8 +13,6 @@ use axum::{
     response::Response,
     routing::{get, post},
 };
-use serde_json::json;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use olo_token_pool::{
     authority::Authority,
     gateway::Shared,
@@ -23,6 +21,8 @@ use olo_token_pool::{
     store::Saved,
     upstream::Upstreams,
 };
+use serde_json::json;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 /// What the fake saw: (path, its sign-in, every header).
 type Seen = Arc<Mutex<Vec<(String, String, HeaderMap)>>>;
@@ -51,7 +51,16 @@ fn fake(seen: Seen) -> Router {
     };
     let (m, p, r, u) = (note("/v1/messages"), note("/api/oauth/profile"), note("/backend-api/codex/responses"), note("/backend-api/wham/usage"));
     Router::new()
-        .route("/v1/messages", post(move |h: HeaderMap| { let f = m(h); async move { f.await; sse("hello") } }))
+        .route(
+            "/v1/messages",
+            post(move |h: HeaderMap| {
+                let f = m(h);
+                async move {
+                    f.await;
+                    sse("hello")
+                }
+            }),
+        )
         .route(
             "/api/oauth/profile",
             get(move |h: HeaderMap| {
@@ -62,8 +71,26 @@ fn fake(seen: Seen) -> Router {
                 }
             }),
         )
-        .route("/backend-api/codex/responses", post(move |h: HeaderMap| { let f = r(h); async move { f.await; sse("codex says hi") } }))
-        .route("/backend-api/wham/usage", get(move |h: HeaderMap| { let f = u(h); async move { f.await; axum::Json(json!({"plan_type": "pro"})) } }))
+        .route(
+            "/backend-api/codex/responses",
+            post(move |h: HeaderMap| {
+                let f = r(h);
+                async move {
+                    f.await;
+                    sse("codex says hi")
+                }
+            }),
+        )
+        .route(
+            "/backend-api/wham/usage",
+            get(move |h: HeaderMap| {
+                let f = u(h);
+                async move {
+                    f.await;
+                    axum::Json(json!({"plan_type": "pro"}))
+                }
+            }),
+        )
 }
 
 async fn serve(app: Router) -> SocketAddr {
@@ -123,7 +150,15 @@ async fn opens_the_providers_hosts_and_tunnels_the_rest() {
     // Codex's host likewise, its body compressed as Codex sends it there
     // (and its model still seen).
     let body = zstd::encode_all(json!({"model": "gpt-5-codex", "stream": true}).to_string().as_bytes(), 3).unwrap();
-    let r = client.post("https://chatgpt.com/backend-api/codex/responses").header("authorization", "Bearer theirs").header("content-type", "application/json").header("content-encoding", "zstd").body(body.clone()).send().await.unwrap();
+    let r = client
+        .post("https://chatgpt.com/backend-api/codex/responses")
+        .header("authorization", "Bearer theirs")
+        .header("content-type", "application/json")
+        .header("content-encoding", "zstd")
+        .body(body.clone())
+        .send()
+        .await
+        .unwrap();
     assert_eq!(r.headers()["x-olo-pool-account"], "codex-a");
     assert!(r.text().await.unwrap().contains("codex says hi"));
     for _ in 0..50 {
@@ -247,8 +282,8 @@ async fn switches_protocols_where_it_passes_through_not_where_it_pools() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_client_that_doesnt_wait_for_the_connect_answer() {
-    use std::io::{Read, Write};
     use rustls::pki_types::{CertificateDer, pem::PemObject};
+    use std::io::{Read, Write};
     let up = serve(fake(Default::default())).await;
     let mut saved = Saved::default();
     saved.accounts.push(account("claude-a", Provider::Claude));
@@ -260,7 +295,11 @@ async fn a_client_that_doesnt_wait_for_the_connect_answer() {
 
     let mut roots = rustls::RootCertStore::empty();
     roots.add(CertificateDer::from_pem_slice(authority.cert_pem.as_bytes()).unwrap()).unwrap();
-    let config = rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::aws_lc_rs::default_provider())).with_safe_default_protocol_versions().unwrap().with_root_certificates(roots).with_no_client_auth();
+    let config = rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::aws_lc_rs::default_provider()))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
     let mut tls = rustls::ClientConnection::new(Arc::new(config), "api.anthropic.com".try_into().unwrap()).unwrap();
     // The CONNECT and the TLS hello in one write.
     let mut out = b"CONNECT api.anthropic.com:443 HTTP/1.1\r\nHost: api.anthropic.com:443\r\n\r\n".to_vec();

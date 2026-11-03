@@ -54,11 +54,8 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         let (app_id, title, max) = with_states(surface, |st| {
             let max = st.cached_state.get::<SurfaceCachedState>().current().max_size;
-            let (app_id, title) = st
-                .data_map
-                .get::<XdgToplevelSurfaceData>()
-                .and_then(|d| d.lock().ok().map(|d| (d.app_id.clone().unwrap_or_default(), d.title.clone().unwrap_or_default())))
-                .unwrap_or_default();
+            let (app_id, title) =
+                st.data_map.get::<XdgToplevelSurfaceData>().and_then(|d| d.lock().ok().map(|d| (d.app_id.clone().unwrap_or_default(), d.title.clone().unwrap_or_default()))).unwrap_or_default();
             (app_id, title, max)
         });
         if !is_pip(&app_id, &title, max, t.parent().is_some()) {

@@ -8,7 +8,8 @@
 use std::{ops::Range, rc::Rc};
 
 use gpui::{
-    App, AppContext as _, Bounds, Context, Corner, Entity, EventEmitter, Font, FontWeight, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels, Render, RenderOnce, SharedString, Styled as _, TextRun, Window, canvas, deferred, div, point, px, size,
+    App, AppContext as _, Bounds, Context, Corner, Entity, EventEmitter, Font, FontWeight, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
+    ParentElement as _, Pixels, Render, RenderOnce, SharedString, Styled as _, TextRun, Window, canvas, deferred, div, point, px, size,
 };
 use olo_kit_base::metrics as m;
 pub use olo_kit_base::search::*;
@@ -135,7 +136,13 @@ impl SearchField {
     /// for counts alone it isn't drawn again.)
     pub fn set_facets(&mut self, facets: Rc<Vec<Facet>>, cx: &mut Context<Self>) {
         let alike = |a: &Facet, b: &Facet| {
-            a.key == b.key && a.label == b.label && a.any == b.any && a.multiple == b.multiple && a.bar == b.bar && a.values.len() == b.values.len() && a.values.iter().zip(&b.values).all(|(x, y)| x.value == y.value && x.label == y.label)
+            a.key == b.key
+                && a.label == b.label
+                && a.any == b.any
+                && a.multiple == b.multiple
+                && a.bar == b.bar
+                && a.values.len() == b.values.len()
+                && a.values.iter().zip(&b.values).all(|(x, y)| x.value == y.value && x.label == y.label)
         };
         if facets.len() == self.facets.len() && facets.iter().zip(self.facets.iter()).all(|(a, b)| alike(a, b)) {
             self.facets = facets;
@@ -386,11 +393,26 @@ impl Render for SearchField {
                             style::fill_rect(window, rr, c(p.menu_selected_background));
                         }
                         let ink = if lit { c(p.menu_selected_item_text) } else { c(p.menu_item_text) };
-                        let detail = style::label_fit(window, cx, rr.right() - px(m::TEXT_INSET), rr.center().y, style::Align::Right, s.detail.clone(), style::PLAIN_SIZE, font.clone(), if lit { ink } else { dim }, rr.size.width / 2.0);
+                        let detail = style::label_fit(
+                            window,
+                            cx,
+                            rr.right() - px(m::TEXT_INSET),
+                            rr.center().y,
+                            style::Align::Right,
+                            s.detail.clone(),
+                            style::PLAIN_SIZE,
+                            font.clone(),
+                            if lit { ink } else { dim },
+                            rr.size.width / 2.0,
+                        );
                         let room = (detail.left() - px(m::SPACING)) - (rr.left() + px(m::TEXT_INSET));
                         style::label_fit(window, cx, rr.left() + px(m::TEXT_INSET), rr.center().y, style::Align::Left, s.label.clone(), style::PLAIN_SIZE, font.clone(), ink, room);
                         let name = format!("{} {}", s.label, s.detail);
-                        agent::record(window, cx, agent::Node { role: "MenuItem", name: Some(name.trim().to_owned().into()), bounds: rr, enabled: true, clickable: true, selected: Some(lit), ..Default::default() });
+                        agent::record(
+                            window,
+                            cx,
+                            agent::Node { role: "MenuItem", name: Some(name.trim().to_owned().into()), bounds: rr, enabled: true, clickable: true, selected: Some(lit), ..Default::default() },
+                        );
                     }
                     let at = move |y: Pixels| {
                         let k = (f32::from(y - frame.top()) - m::TIGHT) / m::LIST_ROW;
@@ -564,7 +586,18 @@ impl RenderOnce for FilterBar {
                 let font = style::ui_font(if filters { FontWeight::BOLD } else { FontWeight::NORMAL });
                 // (Its middle on the device grid, as a row beside it puts its own.)
                 let cy = style::snap_coord(window, pill.center().y);
-                style::label_fit(window, cx, pill.left() + px(m::TEXT_INSET), cy, style::Align::Left, shown.clone(), style::PLAIN_SIZE, font, ink, pill.size.width - px(m::TEXT_INSET + 15.0 + m::TIGHT));
+                style::label_fit(
+                    window,
+                    cx,
+                    pill.left() + px(m::TEXT_INSET),
+                    cy,
+                    style::Align::Left,
+                    shown.clone(),
+                    style::PLAIN_SIZE,
+                    font,
+                    ink,
+                    pill.size.width - px(m::TEXT_INSET + 15.0 + m::TIGHT),
+                );
                 let ax = pill.right() - px(11.0);
                 let ay = px(f32::from(pill.center().y).round());
                 let mut path = gpui::PathBuilder::fill();

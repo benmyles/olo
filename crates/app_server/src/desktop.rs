@@ -8,17 +8,17 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
+use olo_protocol::{Event, NightLightMode, OutputConfig, OutputInfo, Settings, ThemePreference, WindowInfo};
+use olo_theme::ThemeMode;
 use smithay::{
-    desktop::layer_map_for_output,
     backend::renderer::Color32F,
+    desktop::layer_map_for_output,
     desktop::space::SpaceElement,
     output::{Output, Scale},
     reexports::wayland_server::Resource,
     utils::{IsAlive, Logical, Point, Rectangle, Size},
     wayland::seat::WaylandFocus,
 };
-use olo_protocol::{Event, NightLightMode, OutputConfig, OutputInfo, Settings, ThemePreference, WindowInfo};
-use olo_theme::ThemeMode;
 use tracing::{info, warn};
 
 use crate::{
@@ -268,10 +268,7 @@ pub fn config_path() -> PathBuf {
     if let Some(path) = std::env::var_os("OLO_APP_SERVER_SETTINGS") {
         return PathBuf::from(path);
     }
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
-        .unwrap_or_else(|| PathBuf::from("/tmp"));
+    let base = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config"))).unwrap_or_else(|| PathBuf::from("/tmp"));
     base.join("olo").join("app_server.json")
 }
 
@@ -309,10 +306,7 @@ pub(crate) fn save_settings(settings: &Settings) {
         let _ = std::fs::create_dir_all(dir);
     }
     let tmp = path.with_extension("json.tmp");
-    let ok = serde_json::to_vec_pretty(settings)
-        .ok()
-        .and_then(|data| std::fs::write(&tmp, data).ok())
-        .and_then(|_| std::fs::rename(&tmp, &path).ok());
+    let ok = serde_json::to_vec_pretty(settings).ok().and_then(|data| std::fs::write(&tmp, data).ok()).and_then(|_| std::fs::rename(&tmp, &path).ok());
     if ok.is_none() {
         warn!(path = %path.display(), "could not save settings");
     }
@@ -414,18 +408,7 @@ pub fn panel(
             (t, Source::Guess, why)
         }
     };
-    panels::Panel {
-        ppi,
-        internal,
-        technology,
-        technology_from,
-        subpixel,
-        subpixel_from,
-        refresh_hz: refresh_mhz as f32 / 1000.0,
-        text: Some(text),
-        text_from,
-        text_why,
-    }
+    panels::Panel { ppi, internal, technology, technology_from, subpixel, subpixel_from, refresh_hz: refresh_mhz as f32 / 1000.0, text: Some(text), text_from, text_why }
 }
 
 /// Minutes since local midnight.
@@ -493,19 +476,14 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     pub fn window_infos(&self) -> Vec<WindowInfo> {
-        let focused = self
-            .seat
-            .get_keyboard()
-            .and_then(|k| k.current_focus())
-            .and_then(|f| f.wl_surface().map(|s| s.into_owned()));
+        let focused = self.seat.get_keyboard().and_then(|k| k.current_focus()).and_then(|f| f.wl_surface().map(|s| s.into_owned()));
         let mut infos: Vec<WindowInfo> = self
             .all_windows()
             .into_iter()
             .map(|w| {
                 let client = w.wl_surface().and_then(|s| self.display_handle.get_client(s.id()).ok());
                 let pid = client.as_ref().and_then(|c| crate::state::client_pid(c, &self.display_handle));
-                let kept = olo_xdg::apps::our_app(&w.app_id()).is_some()
-                    || client.and_then(|c| c.get_data::<crate::state::ClientState>().map(|s| s.proxied)).unwrap_or(false);
+                let kept = olo_xdg::apps::our_app(&w.app_id()).is_some() || client.and_then(|c| c.get_data::<crate::state::ClientState>().map(|s| s.proxied)).unwrap_or(false);
                 let meta = w.meta();
                 let place = self.groups.place(&w);
                 WindowInfo {
@@ -690,10 +668,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// the IPC tells it.
     pub fn display_workspaces(&self) -> Vec<olo_protocol::DisplayWorkspace> {
         let active = self.active_output();
-        self.space
-            .outputs()
-            .map(|o| olo_protocol::DisplayWorkspace { output: o.name(), current: self.showing(o), active: active.as_ref() == Some(o) })
-            .collect()
+        self.space.outputs().map(|o| olo_protocol::DisplayWorkspace { output: o.name(), current: self.showing(o), active: active.as_ref() == Some(o) }).collect()
     }
 
     /// The number display `output` goes by ("D1"), with more than one.
@@ -747,8 +722,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         // switched to, count: they are put back one by one.)
         let (key, display) = (self.group_key(window), self.display_of(window));
         let mate = |o: &WindowElement| o != window && key.is_some() && self.group_key(o) == key && self.display_of(o) == display;
-        let alone = !self.space.elements().any(mate)
-            && !self.parked.0.borrow().iter().any(|o| mate(o) && self.shows(o) && !o.meta().minimized.get());
+        let alone = !self.space.elements().any(mate) && !self.parked.0.borrow().iter().any(|o| mate(o) && self.shows(o) && !o.meta().minimized.get());
         if let Some(j) = window.meta().joined.get()
             && alone
             && j.untouched(self.space.element_geometry(window), Self::arrangement_of(window))
@@ -906,11 +880,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let showing: Vec<WindowElement> = if all { Vec::new() } else { self.workspace_windows() };
         let (mut rows, mut on) = (Vec::new(), HashMap::new());
         for ws in 0..count {
-            let windows: Vec<WindowElement> = if all {
-                self.windows_on_workspace(ws)
-            } else {
-                showing.iter().filter(|w| self.workspace_of(w) == ws).cloned().collect()
-            };
+            let windows: Vec<WindowElement> = if all { self.windows_on_workspace(ws) } else { showing.iter().filter(|w| self.workspace_of(w) == ws).cloned().collect() };
             let mut windows: Vec<(usize, WindowElement)> = windows.into_iter().map(|w| (column(&w), w)).collect();
             windows.sort_by_key(|(c, w)| (*c, self.recency(w.id())));
             let mut seen = Vec::new();
@@ -945,8 +915,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     pub fn twitch_step(&mut self, apps: bool, all: bool, back: bool) {
         if self.twitch.as_ref().is_none_or(|t| (t.apps, t.all) != (apps, all)) {
             let (rows, displays, on) = self.twitch_rows(apps, all);
-            let mut order: Vec<(usize, usize)> =
-                rows.iter().enumerate().flat_map(|(r, row)| (0..row.1.len()).map(move |i| (r, i))).collect();
+            let mut order: Vec<(usize, usize)> = rows.iter().enumerate().flat_map(|(r, row)| (0..row.1.len()).map(move |i| (r, i))).collect();
             if order.len() < 2 {
                 return;
             }
@@ -960,9 +929,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 .iter()
                 .position(|&(r, i)| {
                     let id = rows[r].1[i];
-                    self.window_by_id(id).is_some_and(|w| {
-                        self.shows(&w) && focused.as_ref().is_some_and(|(fid, fapp)| id == *fid || (apps && w.app_id() == *fapp))
-                    })
+                    self.window_by_id(id).is_some_and(|w| self.shows(&w) && focused.as_ref().is_some_and(|(fid, fapp)| id == *fid || (apps && w.app_id() == *fapp)))
                 })
                 .unwrap_or(order.len() - 1);
             let (row, index) = order[start];
@@ -1051,8 +1018,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         // An app comes forward with all its windows here, in their order,
         // as BeOS's roster activates an app; the chosen one in front.
         let app = (self.twitch.as_ref().is_some_and(|t| t.apps)).then(|| w.app_id());
-        let mates: Vec<WindowElement> =
-            self.space.elements().filter(|x| app.as_ref().is_some_and(|a| x.app_id() == *a)).cloned().collect();
+        let mates: Vec<WindowElement> = self.space.elements().filter(|x| app.as_ref().is_some_and(|a| x.app_id() == *a)).cloned().collect();
         for m in &mates {
             self.space.raise_element(m, false);
         }
@@ -1068,14 +1034,10 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// of them (dialogs, Quick Look).
     fn spotlit(&self, chosen: &WindowElement, app: bool) -> std::collections::HashSet<u64> {
         let windows: Vec<&WindowElement> = self.space.elements().collect();
-        let mut bright: std::collections::HashSet<u64> =
-            windows.iter().filter(|w| w.id() == chosen.id() || (app && w.app_id() == chosen.app_id())).map(|w| w.id()).collect();
+        let mut bright: std::collections::HashSet<u64> = windows.iter().filter(|w| w.id() == chosen.id() || (app && w.app_id() == chosen.app_id())).map(|w| w.id()).collect();
         loop {
             let parents: Vec<_> = windows.iter().filter(|w| bright.contains(&w.id())).filter_map(|w| w.wl_surface()).collect();
-            let children = windows.iter().filter(|w| {
-                !bright.contains(&w.id())
-                    && w.0.toplevel().and_then(|t| t.parent()).is_some_and(|p| parents.iter().any(|s| **s == p))
-            });
+            let children = windows.iter().filter(|w| !bright.contains(&w.id()) && w.0.toplevel().and_then(|t| t.parent()).is_some_and(|p| parents.iter().any(|s| **s == p)));
             let more: Vec<u64> = children.map(|w| w.id()).collect();
             if more.is_empty() {
                 return bright;
@@ -1092,11 +1054,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             let entries: Vec<_> = ids
                 .iter()
                 .filter_map(|id| self.window_by_id(*id))
-                .map(|w| crate::twitcher::Entry {
-                    app_id: w.app_id(),
-                    title: (!t.apps).then(|| w.title()),
-                    display: t.on.get(&w.id()).copied().unwrap_or(0),
-                })
+                .map(|w| crate::twitcher::Entry { app_id: w.app_id(), title: (!t.apps).then(|| w.title()), display: t.on.get(&w.id()).copied().unwrap_or(0) })
                 .collect();
             if entries.len() != ids.len() {
                 return None;
@@ -1222,14 +1180,8 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.park(w);
         }
         self.showing.insert(display_key(output), index);
-        let coming: Vec<WindowElement> = self
-            .parked
-            .0
-            .borrow()
-            .iter()
-            .filter(|w| w.meta().workspace.get() == Some(index) && !w.meta().minimized.get() && self.display_of(w).as_ref() == Some(output))
-            .cloned()
-            .collect();
+        let coming: Vec<WindowElement> =
+            self.parked.0.borrow().iter().filter(|w| w.meta().workspace.get() == Some(index) && !w.meta().minimized.get() && self.display_of(w).as_ref() == Some(output)).cloned().collect();
         for w in &coming {
             self.unpark(w);
         }
@@ -1312,8 +1264,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         if from == to && index == to_index {
             return;
         }
-        let windows: Vec<WindowElement> =
-            self.all_windows().into_iter().filter(|w| self.display_of(w).as_ref() == Some(from) && self.workspace_of(w) == index).collect();
+        let windows: Vec<WindowElement> = self.all_windows().into_iter().filter(|w| self.display_of(w).as_ref() == Some(from) && self.workspace_of(w) == index).collect();
         if windows.is_empty() {
             return;
         }
@@ -1508,11 +1459,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     rotation,
                     config.as_ref(),
                 );
-                let to_mode = |m: smithay::output::Mode| olo_protocol::Mode {
-                    width: m.size.w,
-                    height: m.size.h,
-                    refresh: m.refresh,
-                };
+                let to_mode = |m: smithay::output::Mode| olo_protocol::Mode { width: m.size.w, height: m.size.h, refresh: m.refresh };
                 let source = crate::render::mirror_source(o);
                 let _mirror = source.is_some();
                 let placed = source.as_ref().unwrap_or(o);
@@ -1584,7 +1531,6 @@ impl<B: Backend + 'static> AnvilState<B> {
             || self.space.elements().any(|w| (0.0..1.0).contains(&w.meta().glow_strength()) && w.meta().glow.get().is_some())
     }
 
-
     /// Apply the configured scale and rotation to an output.
     pub fn apply_output_settings(&self, output: &Output) {
         let (key, name) = (display_key(output), output.name());
@@ -1601,8 +1547,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         use smithay::desktop::utils::surface_primary_scanout_output;
         use smithay::wayland::fractional_scale::with_fractional_scale;
         let scale = output.current_scale().fractional_scale();
-        let tell = |surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-                    states: &smithay::wayland::compositor::SurfaceData| {
+        let tell = |surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface, states: &smithay::wayland::compositor::SurfaceData| {
             if surface_primary_scanout_output(surface, states).is_none_or(|o| o == *output) {
                 with_fractional_scale(states, |f| f.set_preferred_scale(scale));
             }
@@ -1618,11 +1563,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// The main display: the chosen one while it is connected, else the first.
     pub fn main_output(&self) -> Option<Output> {
         let display = &self.settings.display;
-        self.space
-            .outputs()
-            .find(|o| display.is_main(&display_key(o), &o.name()))
-            .or_else(|| self.space.outputs().next())
-            .cloned()
+        self.space.outputs().find(|o| display.is_main(&display_key(o), &o.name())).or_else(|| self.space.outputs().next()).cloned()
     }
 
     /// Take screens set to mirror another out of the desktop (they draw
@@ -1632,9 +1573,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     pub fn apply_mirroring(&mut self) {
         let all: Vec<Output> = self.space.outputs().chain(self.mirrors.iter()).cloned().collect();
         let display = &self.settings.display;
-        let wanted = |o: &Output| {
-            display.config(&display_key(o), &o.name()).and_then(|c| c.mirror.clone()).filter(|k| !k.is_empty())
-        };
+        let wanted = |o: &Output| display.config(&display_key(o), &o.name()).and_then(|c| c.mirror.clone()).filter(|k| !k.is_empty());
         let mut sources: Vec<(Output, Option<Output>)> = Vec::new();
         for o in &all {
             let source = wanted(o).and_then(|key| all.iter().find(|s| *s != o && (display_key(s) == key || s.name() == key) && wanted(s).is_none()).cloned());
@@ -1696,11 +1635,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     }
                 }
             }
-            let moving: Vec<smithay::desktop::LayerSurface> = layer_map_for_output(output)
-                .layers()
-                .filter(|l| l.user_data().get::<crate::shell::AutoOutput>().is_some())
-                .cloned()
-                .collect();
+            let moving: Vec<smithay::desktop::LayerSurface> = layer_map_for_output(output).layers().filter(|l| l.user_data().get::<crate::shell::AutoOutput>().is_some()).cloned().collect();
             if moving.is_empty() {
                 continue;
             }
@@ -1736,10 +1671,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             .filter(|o| o.name() != name && (dw, dh) != (0, 0))
             .filter_map(|o| {
                 let g = self.space.output_geometry(o)?;
-                let shift = (
-                    if g.loc.x == old.loc.x + old.size.w { dw } else { 0 },
-                    if g.loc.y == old.loc.y + old.size.h { dh } else { 0 },
-                );
+                let shift = (if g.loc.x == old.loc.x + old.size.w { dw } else { 0 }, if g.loc.y == old.loc.y + old.size.h { dh } else { 0 });
                 (shift != (0, 0)).then(|| (o.clone(), (g.loc.x + shift.0, g.loc.y + shift.1)))
             })
             .collect();
@@ -1748,11 +1680,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         // Pin everything that is placed, so the row fallback can't
         // reshuffle (a display moved, not resized, too: the others stay).
-        let placed: Vec<(Output, (i32, i32))> = self
-            .space
-            .outputs()
-            .filter_map(|o| Some((o.clone(), self.space.output_geometry(o)?.loc.into())))
-            .collect();
+        let placed: Vec<(Output, (i32, i32))> = self.space.outputs().filter_map(|o| Some((o.clone(), self.space.output_geometry(o)?.loc.into()))).collect();
         for (o, at) in placed {
             let entry = self.settings.display.config_mut(&display_key(&o), &o.name());
             entry.position.get_or_insert(at);
@@ -1760,13 +1688,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     pub fn configure_output(&mut self, name: &str, config: OutputConfig) -> Result<(), String> {
-        let output = self
-            .space
-            .outputs()
-            .chain(self.mirrors.iter())
-            .find(|o| o.name() == name)
-            .cloned()
-            .ok_or_else(|| format!("no output named {name}"))?;
+        let output = self.space.outputs().chain(self.mirrors.iter()).find(|o| o.name() == name).cloned().ok_or_else(|| format!("no output named {name}"))?;
         let before = self.space.output_geometry(&output);
         if let Some(mode) = &config.mode {
             // Resolution goes through the backend (DRM, or headless for tests).
@@ -1873,8 +1795,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         // Group Windows on again for an app: its windows taken out by hand
         // go back in too.
-        let regrouped: Vec<String> =
-            self.settings.tiling.ungrouped_apps.iter().filter(|a| !settings.tiling.ungrouped_apps.contains(a)).cloned().collect();
+        let regrouped: Vec<String> = self.settings.tiling.ungrouped_apps.iter().filter(|a| !settings.tiling.ungrouped_apps.contains(a)).cloned().collect();
         self.settings = settings;
         if !regrouped.is_empty() {
             self.regroup_apps(&regrouped);
@@ -1961,12 +1882,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         if let Some(keyboard) = self.seat.get_keyboard() {
             // A new keymap starts with every lock off.
             let was = keyboard.modifier_state().num_lock;
-            let xkb = smithay::input::keyboard::XkbConfig {
-                layout: &k.layout,
-                variant: &k.variant,
-                options: if k.options.is_empty() { None } else { Some(k.options.clone()) },
-                ..Default::default()
-            };
+            let xkb = smithay::input::keyboard::XkbConfig { layout: &k.layout, variant: &k.variant, options: if k.options.is_empty() { None } else { Some(k.options.clone()) }, ..Default::default() };
             if let Err(e) = keyboard.set_xkb_config(self, xkb) {
                 warn!(?e, "bad keyboard layout");
             }

@@ -2132,7 +2132,14 @@ where
                 if let Some(c) = state.config.as_ref() {
                     static SAID: std::sync::OnceLock<olo_sync::Mutex<std::collections::HashSet<String>>> =
                         std::sync::OnceLock::new();
-                    let key = format!("{:?} {:?}/{:?} {}x{}", plane, c.properties.format.code, c.properties.format.modifier, c.properties.dst.size.w, c.properties.dst.size.h);
+                    let key = format!(
+                        "{:?} {:?}/{:?} {}x{}",
+                        plane,
+                        c.properties.format.code,
+                        c.properties.format.modifier,
+                        c.properties.dst.size.w,
+                        c.properties.dst.size.h
+                    );
                     if SAID.get_or_init(Default::default).lock().unwrap().insert(key) {
                         info!(
                             plane = ?plane,
@@ -3175,11 +3182,16 @@ where
         // frame, and no test fails every frame there.
         let whole = Rectangle::new(cursor_plane_location, cursor_plane_size);
         if !Rectangle::from_size(output_geometry.size).contains_rect(whole) {
-            trace!("element {:?} isn't wholly on the display, skipping cursor plane", element.id());
+            trace!(
+                "element {:?} isn't wholly on the display, skipping cursor plane",
+                element.id()
+            );
             return None;
         }
         let cursor_plane_dst = whole;
-        let cursor_plane_src = Rectangle::<i32, BufferCoords>::from_size(Size::from((cursor_plane_size.w, cursor_plane_size.h))).to_f64();
+        let cursor_plane_src =
+            Rectangle::<i32, BufferCoords>::from_size(Size::from((cursor_plane_size.w, cursor_plane_size.h)))
+                .to_f64();
 
         let previous_state = self
             .pending_frame
@@ -3210,7 +3222,12 @@ where
                 .unwrap_or(true)
             || previous_state
                 .plane_state(plane_info.handle)
-                .and_then(|state| state.config.as_ref().map(|config| config.properties.src.size.w as i32 > cursor_plane_size.w || config.properties.src.size.h as i32 > cursor_plane_size.h))
+                .and_then(|state| {
+                    state.config.as_ref().map(|config| {
+                        config.properties.src.size.w as i32 > cursor_plane_size.w
+                            || config.properties.src.size.h as i32 > cursor_plane_size.h
+                    })
+                })
                 .unwrap_or(true);
 
         // check if the cursor plane location (or, at an edge, its part on
@@ -3218,10 +3235,9 @@ where
         let reposition = previous_state
             .plane_state(plane_info.handle)
             .and_then(|state| {
-                state
-                    .config
-                    .as_ref()
-                    .map(|config| config.properties.dst != cursor_plane_dst || config.properties.src != cursor_plane_src)
+                state.config.as_ref().map(|config| {
+                    config.properties.dst != cursor_plane_dst || config.properties.src != cursor_plane_src
+                })
             })
             .unwrap_or(true);
 
@@ -4073,7 +4089,11 @@ where
                 .unwrap_or(false);
 
         // (Olo) What was asked, for the log when the driver says no.
-        let asked = (config.properties.format, config.properties.src, config.properties.dst);
+        let asked = (
+            config.properties.format,
+            config.properties.src,
+            config.properties.dst,
+        );
         let plane_state = PlaneState {
             skip,
             needs_test: true,
@@ -4094,7 +4114,13 @@ where
             frame_state.set_state(plane.handle, plane_state);
             true
         } else {
-            match frame_state.test_state(&self.surface, self.supports_fencing, plane.handle, plane_state, false) {
+            match frame_state.test_state(
+                &self.surface,
+                self.supports_fencing,
+                plane.handle,
+                plane_state,
+                false,
+            ) {
                 Ok(()) => true,
                 Err(err) => {
                     // (Olo) Said once a plane, format and size, so the
@@ -4509,5 +4535,5 @@ fn drm_compositor_is_send() {
 // state tested with the driver), "render_output" (what is left drawn with
 // the renderer; its own parts "draws" and "finish" from the damage
 // tracker), each told to `crate::backend::renderer::PHASE_HOOK`.
-use crate::backend::renderer::phase;
 pub use crate::backend::renderer::PHASE_HOOK;
+use crate::backend::renderer::phase;

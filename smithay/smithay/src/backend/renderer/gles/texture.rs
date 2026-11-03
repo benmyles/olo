@@ -78,7 +78,10 @@ pub(super) struct SharedFence {
 impl SharedFence {
     /// A fence on everything issued so far.
     pub(super) unsafe fn new(gl: &Gles2, cleanup: Sender<CleanupResource>) -> Self {
-        SharedFence { sync: unsafe { gl.FenceSync(ffi::SYNC_GPU_COMMANDS_COMPLETE, 0) }, cleanup }
+        SharedFence {
+            sync: unsafe { gl.FenceSync(ffi::SYNC_GPU_COMMANDS_COMPLETE, 0) },
+            cleanup,
+        }
     }
 }
 

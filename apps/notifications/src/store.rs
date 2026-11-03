@@ -173,8 +173,7 @@ impl History {
     /// pinned is still on screen. Pictures nothing names any more go, off
     /// the UI thread.
     pub fn load(path: Option<PathBuf>) -> History {
-        let mut entries: Vec<Entry> =
-            path.as_ref().and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        let mut entries: Vec<Entry> = path.as_ref().and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
         for e in &mut entries {
             e.live = false;
             e.shown &= e.pinned;
