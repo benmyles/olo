@@ -1566,7 +1566,11 @@ event reaches it.
   `menu::popup(window, cx, menu, anchor, corner, on_choose)`. Drawn as
   BeOS drew them; ↑ ↓ → ← Enter Space Escape; a submenu opens
   beside its item; items are `MenuItem`s to agents. `Menu::entries`
-  flattens one for the palette (`agent::set_menus`). Keys are drawn as
+  flattens one for the palette (`agent::set_menus`). `Menu::sorted()`
+  puts a list's items in alphabetical order by what they say (natural
+  order, case aside), each run between separators on its own, its
+  submenus' too, all the way down (Deskbar's Applications, Other
+  Applications and Preferences). Keys are drawn as
   the kit's key combos (`style::key_combo`: each symbol on its own, ⌘
   and ⇧ tightened and lifted onto the capitals' line). `.minimized(on)`
   marks an item a minimized window (a hollow diamond where the check

@@ -566,11 +566,13 @@ impl Deskbar {
         for (bin, name, icon) in OUR_APPS.iter().filter(|(bin, _, _)| self.installed.ours.contains(bin)) {
             apps = apps.item(*name, format!("run:{bin}")).icon(*icon);
         }
+        let apps = apps.sorted();
         let have_prefs = self.installed.preferences;
         let mut prefs = Menu::new("Preferences");
         for (arg, name, icon) in PREFERENCE_PANELS {
             prefs = prefs.item(*name, format!("pref:{arg}")).enabled(have_prefs).icon(*icon);
         }
+        let prefs = prefs.sorted();
         // Everything else installed, by freedesktop category.
         let groups: &[(&str, &str, &[&str])] = &[
             ("Accessories", "accessories", &["Utility", "Accessories"]),
@@ -598,13 +600,15 @@ impl Deskbar {
                 other = other.submenu(m).icon(*icon);
             }
         }
+        // Each kind, and what's in it, in alphabetical order; Other last.
+        other = other.sorted();
         let rest: Vec<_> = all.iter().enumerate().filter(|(i, _)| !used[*i]).map(|(_, e)| e).collect();
         if !rest.is_empty() {
             let mut m = Menu::new("Other");
             for e in rest {
                 m = m.item(&e.name, format!("desktop:{}", e.id)).icon(entry_icon(e));
             }
-            other = other.submenu(m).icon("folder");
+            other = other.submenu(m.sorted()).icon("folder");
         }
 
         Menu::new("Olo")

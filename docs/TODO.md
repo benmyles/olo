@@ -59,19 +59,6 @@ of Finished; a new one goes where its priority puts it.
       kit.
   - A test in window_menu.rs's `keys_of`.
 
-- **Deskbar's Olo menu sorted** (Ben, 2026-11-02): "in the olo
-  deskbar menu the applications / other applications / preferences items
-  (and sub items) should all be sorted lexicographically". Today
-  Applications and Preferences follow the order of `OUR_APPS` and
-  `PREFERENCE_PANELS`. Other Applications follows a fixed category order
-  (Accessories … System, then Other), and its entries come in the order
-  they were found (apps/deskbar/src/main.rs, `olo_menu_with_icons`).
-  - Sort every level by its shown name: case-insensitive and in
-    natural order, with ties broken by the exact name.
-  - Keep "Other" last in Other Applications.
-  - Put the sort in the kit, so every menu built from a list can use
-    it.
-
 - **Terminal tells coding agents to use Agent Screens** (Ben,
   2026-11-02): "check if terminal already injects context to claude
   code and codex to tell them about using olo's agent screens and how to
@@ -797,6 +784,24 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**Deskbar's Olo menu sorted**~~ (Ben, 2026-11-02): "in the olo
+  deskbar menu the applications / other applications / preferences items
+  (and sub items) should all be sorted lexicographically". Today
+  Applications and Preferences follow the order of `OUR_APPS` and
+  `PREFERENCE_PANELS`. Other Applications follows a fixed category order
+  (Accessories … System, then Other), and its entries come in the order
+  they were found (apps/deskbar/src/main.rs, `olo_menu_with_icons`).
+  - Sort every level by its shown name: case-insensitive and in
+    natural order, with ties broken by the exact name.
+  - Keep "Other" last in Other Applications.
+  - Put the sort in the kit, so every menu built from a list can use
+    it.
+  *Done* (2026-11-02): `Menu::sorted()` in the kit, used for all three.
+  Checked in a headless shell session: Applications from Activity
+  Monitor to Viewer, Preferences from AI to Workspaces, and Other
+  Applications' kinds and what's in each. Other stays last. The menu is
+  built only when it opens, so the sort costs nothing per frame.
 
 - ~~**Agent Screens: Take Control is laggy**~~ (Ben, 2026-10-31): "when
   using take control in agent screens it is very laggy -- this needs to

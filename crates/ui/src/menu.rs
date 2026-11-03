@@ -162,6 +162,29 @@ impl Menu {
         self
     }
 
+    /// Its items in alphabetical order by what they say (natural order,
+    /// case aside: "Item 2" before "item 10"), each run between
+    /// separators on its own, and its submenus' the same, all the way
+    /// down (a list of apps, of panels).
+    pub fn sorted(mut self) -> Menu {
+        fn label(item: &MenuItem) -> &str {
+            match item {
+                MenuItem::Action(a) => &a.label,
+                MenuItem::Submenu(m) => &m.title,
+                MenuItem::Separator => "",
+            }
+        }
+        for item in &mut self.items {
+            if let MenuItem::Submenu(m) = item {
+                *m = std::mem::replace(m, Menu::new("")).sorted();
+            }
+        }
+        for run in self.items.split_mut(|i| matches!(i, MenuItem::Separator)) {
+            run.sort_by(|a, b| olo_kit_base::files::natural_cmp(label(a), label(b)));
+        }
+        self
+    }
+
     /// Marks the last item a minimized window (see [`Action::minimized`]).
     pub fn minimized(mut self, on: bool) -> Menu {
         if let Some(MenuItem::Action(a)) = self.items.last_mut() {
@@ -1192,6 +1215,31 @@ impl RenderOnce for MenuBar {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sorted_by_what_they_say_within_separators_and_down() {
+        let m = Menu::new("Olo")
+            .item("terminal", "t")
+            .submenu(Menu::new("Games").item("Zork", "z").item("chess", "c"))
+            .item("Item 10", "10")
+            .item("Item 2", "2")
+            .separator()
+            .item("b", "b")
+            .item("A", "a")
+            .sorted();
+        let said: Vec<&str> = m
+            .items
+            .iter()
+            .map(|i| match i {
+                MenuItem::Action(a) => a.label.as_str(),
+                MenuItem::Submenu(s) => s.title.as_str(),
+                MenuItem::Separator => "|",
+            })
+            .collect();
+        assert_eq!(said, ["Games", "Item 2", "Item 10", "terminal", "|", "A", "b"]);
+        let MenuItem::Submenu(games) = &m.items[0] else { panic!() };
+        assert!(matches!(&games.items[..], [MenuItem::Action(a), MenuItem::Action(b)] if a.label == "chess" && b.label == "Zork"));
+    }
 
     #[test]
     fn separators_tidied() {
