@@ -1814,7 +1814,12 @@ event reaches it.
   view; `ListItem`s and `Heading`s to agents). `Row::heading("")` is a
   short gap setting what follows apart, said to no one; `.bare()` drops
   its ground and edge, over what's behind it (a list's sunken well:
-  Passwords' sources).
+  Passwords' sources). Several chosen together, the app keeping which:
+  `.also(rows)` draws those selected with the chosen one, `.on_pick(f)`
+  takes ⌘- (or Ctrl-) and ⇧-clicks (the row and the modifiers),
+  `.on_menu(f)` a secondary click (the row and where), and
+  `.on_select_all(f)` ⌘A while it has the keyboard; a plain click with
+  others chosen chooses that one alone (Agent Screens).
 - `widgets::TabView::new(id, labels, selected).on_select(f)` with the
   chosen tab's content as its child (BTabView: slanted folder tabs over
   a raised panel, the content inside `WINDOW_INSET`; `Tab`s to agents).
@@ -6792,7 +6797,18 @@ and New Screen under them. A screen can be given a name of its own
 it, Return keeps it, Escape puts the old back; `olo-screen rename NAME
 [TITLE]`): kept with its history (`history::title`, a `title` file
 beside its actions, gone with it), shown in the list and the header,
-and in `olo-screen list` as `title`. The chosen screen's header names it and says
+and in `olo-screen list` as `title`. Screens are chosen together with
+⌘-click (adding or taking one away), ⇧-click (the run from the last),
+⌘A in the list or Edit ▸ Select All Screens; a secondary click opens
+the menu for all of them (for the one clicked alone if it isn't one),
+as the Screen menu has it too, each item saying how many it acts on:
+Rename…, Archive, Unarchive, Stop… and Delete… (asked once for all).
+Archived screens (stopped ones, `history::archived`, an `archived` mark
+beside the history; one started again isn't) leave the list until View
+▸ Show Archived lists them under Archived; Delete moves each history,
+its recordings, stats and title, to the Trash (`history::trash`,
+`olo_xdg::trash::move_to_trash`, with its .trashinfo to put it back).
+The chosen screen's header names it and says
 how it is (running and its size, up for how long, its actions, the
 last how long ago), with Export Video… and Stop Screen… (Clear
 History… for a stopped one). Stats (`stats.rs`) are the kit's dashboard

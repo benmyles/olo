@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Agent Screens: several chosen, archived, deleted
+
+*18:53* — ⌘- and ⇧-clicks or ⌘A choose screens together; their menu archives, unarchives, stops or deletes them all (asked once); View ▸ Show Archived lists the archived in their own section; Delete moves histories to the Trash.
+
+![Agent Screens: several chosen, archived, deleted](2026-11-02/185350-agent-screens-several-chosen-archived-deleted.png)
+
 ### Agent Screens: a screen renamed
 
 *18:45* — Screen ▸ Rename… or a click on its title: the name the person gives shows in the list and the header, kept with its history (olo-screen rename NAME TITLE; list says it).

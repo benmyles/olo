@@ -74,6 +74,9 @@ pub enum Msg {
     Stopped(Result<(), String>),
     Cleared(Result<(), String>),
     Renamed(Result<(), String>),
+    /// Screens archived, unarchived, stopped or deleted together: what
+    /// went wrong, if anything.
+    Changed(Vec<String>),
 }
 
 /// The chosen screen's tabs.
@@ -100,6 +103,8 @@ struct Saved {
     selected: Option<String>,
     #[serde(default)]
     tab: Tab,
+    #[serde(default)]
+    show_archived: bool,
 }
 
 /// A screen in the list.
@@ -109,6 +114,8 @@ pub struct Row {
     last_used: Option<u64>,
     /// The name the person gave it (Rename…), shown for its own.
     title: Option<String>,
+    /// Archived (stopped, listed only with View ▸ Show Archived).
+    archived: bool,
 }
 
 impl Row {
@@ -129,7 +136,10 @@ fn rows(running: &[Screen]) -> Vec<Row> {
         .map(|name| {
             let last_used = crate::history::read(&name).iter().map(|a| a.at + a.ms).max();
             let title = crate::history::title(&name);
-            Row { name, last_used, title }
+            // (A screen started again under its name isn't archived.)
+            let on = running.iter().any(|s| s.name == name);
+            let archived = crate::history::archived(&name) && (!on || crate::history::set_archived(&name, false).is_err());
+            Row { name, last_used, title, archived }
         })
         .collect();
     rows.sort_by_key(|r| (std::cmp::Reverse(r.last_used), r.name.clone()));
@@ -426,6 +436,12 @@ pub struct Viewer {
     proxy: Proxy,
     /// The chosen screen's name being changed: its field in the header.
     renaming: Option<(Entity<TextField>, Subscription)>,
+    /// Screens chosen with the one shown (⌘- and ⇧-clicks, Select All),
+    /// for what's done to several at once; and where a ⇧ run starts.
+    also: Vec<String>,
+    anchor: Option<String>,
+    /// The archived screens listed too, in a section of their own.
+    show_archived: bool,
     /// Where the header's title was drawn (a click there renames).
     title_at: std::rc::Rc<std::cell::Cell<olo_ui::gpui::Bounds<olo_ui::gpui::Pixels>>>,
 }
@@ -459,6 +475,9 @@ impl Viewer {
             proxy,
             renaming: None,
             title_at: Default::default(),
+            also: Vec::new(),
+            anchor: None,
+            show_archived: saved.show_archived,
         };
         v.watch(cx);
         v
@@ -491,7 +510,7 @@ impl Viewer {
 
     /// What to keep over an upgrade.
     pub fn saved(&self) -> String {
-        serde_json::to_string(&Saved { selected: self.selected.clone(), tab: self.tab }).unwrap_or_default()
+        serde_json::to_string(&Saved { selected: self.selected.clone(), tab: self.tab, show_archived: self.show_archived }).unwrap_or_default()
     }
 
     fn screen(&self) -> Option<&Screen> {
@@ -580,21 +599,36 @@ impl Viewer {
         cx.notify();
     }
 
+    /// Ask, once for all, before the running screens chosen are stopped.
     fn ask_stop(&mut self, cx: &mut Context<Self>) {
-        let Some(name) = self.screen().map(|s| s.name.clone()) else { return };
-        let message = format!("Stop the screen “{name}”? The agent’s programs on it are closed, and anything it hasn’t saved is lost. Its history is kept.");
+        let names: Vec<String> = self.chosen().into_iter().filter(|n| self.screens.iter().any(|s| &s.name == n)).collect();
+        let shown = |n: &String| self.rows.iter().find(|r| &r.name == n).map_or(n.as_str(), Row::shown).to_owned();
+        let (message, button) = match names.as_slice() {
+            [] => return,
+            [one] => (
+                format!("Stop the screen “{}”? The agent’s programs on it are closed, and anything it hasn’t saved is lost. Its history is kept.", shown(one)),
+                "Stop Screen".to_owned(),
+            ),
+            many => (
+                format!("Stop {} screens? The agents’ programs on them are closed, and anything they haven’t saved is lost. Their histories are kept.", many.len()),
+                format!("Stop {} Screens", many.len()),
+            ),
+        };
         let me = cx.entity();
         cx.defer(move |cx| {
-            open_alert(cx, "Stop Screen", "warning", &message, &["Cancel", "Stop Screen"], move |choice, cx| {
+            open_alert(cx, "Stop Screen", "warning", &message, &["Cancel", &button], move |choice, cx| {
                 if choice != Some(1) {
                     return;
                 }
                 me.update(cx, |v, cx| {
-                    if v.selected.as_ref() == Some(&name) {
+                    if v.selected.as_ref().is_some_and(|s| names.contains(s)) {
                         v.stop_controlling();
                     }
-                    let (proxy, name) = (v.proxy.clone(), name.clone());
-                    std::thread::spawn(move || proxy.send(Msg::Stopped(screens::stop(&name))));
+                    let (proxy, names) = (v.proxy.clone(), names.clone());
+                    std::thread::spawn(move || {
+                        let failed: Vec<String> = names.iter().filter_map(|n| screens::stop(n).err()).collect();
+                        proxy.send(Msg::Stopped(if failed.is_empty() { Ok(()) } else { Err(failed.join("\n")) }));
+                    });
                     cx.notify();
                 });
             });
@@ -691,12 +725,15 @@ impl Viewer {
             }
             Msg::Rows(rows) => {
                 self.rows = rows;
-                if self.selected.as_ref().is_none_or(|n| !self.rows.iter().any(|r| &r.name == n)) {
-                    let first = self.rows.first().map(|r| r.name.clone());
-                    self.stop_controlling();
-                    self.selected = None;
-                    self.select(first, cx);
+                self.keep_choice_listed(cx);
+            }
+            Msg::Changed(failed) => {
+                // (Shown at once; the list read again, to show what is.)
+                if !failed.is_empty() {
+                    self.alert(&failed.join("\n"), cx);
                 }
+                let (proxy, running) = (self.proxy.clone(), self.screens.clone());
+                std::thread::spawn(move || proxy.send(Msg::Rows(rows(&running))));
             }
             Msg::Frame { name, shot } => {
                 if self.selected.as_ref() == Some(&name) && self.watching.as_ref().is_some_and(|w| w.name == name) {
@@ -760,15 +797,9 @@ impl Viewer {
         let replay = self.replay.as_ref().map(|(r, _)| r.read(cx));
         let history = tab == Tab::History && replay.is_some_and(|r| r.loaded() && !r.actions().is_empty());
         let playing = replay.is_some_and(Replay::playing);
+        let screen = self.chosen_items(Menu::new("Screen").item("New Screen", "new").key("n").enabled(!self.busy).separator());
         vec![
-            Menu::new("Screen")
-                .item("New Screen", "new")
-                .key("n")
-                .enabled(!self.busy)
-                .item("Rename…", "rename")
-                .enabled(chosen)
-                .item("Stop Screen…", "stop")
-                .enabled(running)
+            screen
                 .item("Clear History…", "clear")
                 .enabled(chosen && !running)
                 .separator()
@@ -778,6 +809,11 @@ impl Viewer {
                 .separator()
                 .item("Quit", "quit")
                 .key("q"),
+            Menu::new("Edit")
+                .item("Select All Screens", "select-all")
+                .enabled(!self.rows.is_empty())
+                .item("Deselect All Screens", "deselect")
+                .enabled(!self.also.is_empty()),
             Menu::new("View")
                 .item("Live", "tab-live")
                 .key("1")
@@ -794,7 +830,10 @@ impl Viewer {
                 .separator()
                 .item("Find", "find")
                 .key("f")
-                .enabled(chosen),
+                .enabled(chosen)
+                .separator()
+                .item("Show Archived", "show-archived")
+                .checked(self.show_archived),
             Menu::new("Playback")
                 .item(if playing { "Pause" } else { "Play" }, "play")
                 .enabled(history)
@@ -813,6 +852,15 @@ impl Viewer {
         match command {
             "new" => self.new_screen(cx),
             "rename" => self.start_rename(window, cx),
+            "archive" => self.archive(true, cx),
+            "unarchive" => self.archive(false, cx),
+            "delete" => self.ask_delete(cx),
+            "select-all" => self.select_all(cx),
+            "deselect" => self.also.clear(),
+            "show-archived" => {
+                self.show_archived = !self.show_archived;
+                self.keep_choice_listed(cx);
+            }
             "stop" => self.ask_stop(cx),
             "clear" => self.ask_clear(cx),
             "export" => self.ask_export(cx),
@@ -849,6 +897,151 @@ impl Viewer {
             }
             "quit" => self.quit(cx),
             _ => {}
+        }
+        cx.notify();
+    }
+
+    /// The list's sections, as the sidebar shows them: running, stopped,
+    /// and (with View ▸ Show Archived) archived.
+    fn groups(&self) -> Vec<(&'static str, Vec<&Row>)> {
+        let running = |n: &str| self.screens.iter().any(|s| s.name == n);
+        let mut groups = vec![
+            ("Running", self.rows.iter().filter(|r| running(&r.name)).collect()),
+            ("Stopped", self.rows.iter().filter(|r| !running(&r.name) && !r.archived).collect()),
+        ];
+        if self.show_archived {
+            groups.push(("Archived", self.rows.iter().filter(|r| !running(&r.name) && r.archived).collect()));
+        }
+        groups
+    }
+
+    /// The screens listed, in the list's order.
+    fn listed_names(&self) -> Vec<String> {
+        self.groups().into_iter().flat_map(|(_, rs)| rs.into_iter().map(|r| r.name.clone())).collect()
+    }
+
+    /// The screens chosen: the one shown and those chosen with it, in the
+    /// list's order.
+    fn chosen(&self) -> Vec<String> {
+        self.listed_names().into_iter().filter(|n| self.selected.as_ref() == Some(n) || self.also.contains(n)).collect()
+    }
+
+    /// A ⌘-click (`run`: a ⇧-click) on `name`: it chosen too, or not; or
+    /// every screen from where the last began to it.
+    fn pick(&mut self, name: String, run: bool, cx: &mut Context<Self>) {
+        if run {
+            let order = self.listed_names();
+            let from = self.anchor.clone().or_else(|| self.selected.clone()).and_then(|f| order.iter().position(|n| *n == f));
+            if let Some(to) = order.iter().position(|n| *n == name) {
+                let from = from.unwrap_or(to);
+                self.also = order[from.min(to)..=from.max(to)].iter().filter(|n| self.selected.as_ref() != Some(*n)).cloned().collect();
+            }
+        } else if self.selected.as_ref() != Some(&name) {
+            match self.also.iter().position(|n| *n == name) {
+                Some(i) => {
+                    self.also.remove(i);
+                }
+                None => self.also.push(name.clone()),
+            }
+            self.anchor = Some(name);
+        }
+        cx.notify();
+    }
+
+    /// Every screen listed chosen (⌘A in the list, Edit ▸ Select All
+    /// Screens).
+    fn select_all(&mut self, cx: &mut Context<Self>) {
+        self.also = self.listed_names().into_iter().filter(|n| self.selected.as_ref() != Some(n)).collect();
+        cx.notify();
+    }
+
+    /// A screen's menu (a secondary click): for every screen chosen if it
+    /// is one of them, else for it alone (then chosen).
+    fn row_menu(&mut self, name: String, at: olo_ui::gpui::Point<olo_ui::gpui::Pixels>, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.chosen().contains(&name) {
+            self.also.clear();
+            self.anchor = Some(name.clone());
+            self.select(Some(name), cx);
+        }
+        let menu = self.chosen_items(Menu::new(""));
+        let me = cx.entity();
+        olo_ui::menu::context_menu(window, cx, menu, at, move |cmd, window, cx| me.update(cx, |v, cx| v.command(cmd, window, cx)));
+        cx.notify();
+    }
+
+    /// What can be done to the screens chosen, as menu items: each says
+    /// how many it will act on.
+    fn chosen_items(&self, menu: Menu) -> Menu {
+        let chosen = self.chosen();
+        let running = |n: &String| self.screens.iter().any(|s| &s.name == n);
+        let archived = |n: &String| self.rows.iter().any(|r| &r.name == n && r.archived);
+        let count = |f: &dyn Fn(&String) -> bool| chosen.iter().filter(|n| f(n)).count();
+        let (stop, archive, unarchive, delete) = (count(&running), count(&|n| !running(n) && !archived(n)), count(&archived), count(&|n| !running(n)));
+        let say = |verb: &str, k: usize, dots: &str| if k > 1 { format!("{verb} {k} Screens{dots}") } else { format!("{verb} Screen{dots}") };
+        menu.item("Rename…", "rename")
+            .enabled(chosen.len() == 1)
+            .separator()
+            .item(say("Archive", archive, ""), "archive")
+            .enabled(archive > 0)
+            .item(say("Unarchive", unarchive, ""), "unarchive")
+            .enabled(unarchive > 0)
+            .item(say("Stop", stop, "…"), "stop")
+            .enabled(stop > 0)
+            .separator()
+            .item(say("Delete", delete, "…"), "delete")
+            .enabled(delete > 0)
+    }
+
+    /// The stopped screens chosen archived (`on`) or brought back.
+    fn archive(&mut self, on: bool, cx: &mut Context<Self>) {
+        let running: Vec<String> = self.screens.iter().map(|s| s.name.clone()).collect();
+        let names: Vec<String> = self.chosen().into_iter().filter(|n| !running.contains(n) && self.rows.iter().any(|r| &r.name == n && r.archived != on)).collect();
+        for r in self.rows.iter_mut().filter(|r| names.contains(&r.name)) {
+            r.archived = on;
+        }
+        let proxy = self.proxy.clone();
+        std::thread::spawn(move || proxy.send(Msg::Changed(names.iter().filter_map(|n| crate::history::set_archived(n, on).err()).collect())));
+        self.keep_choice_listed(cx);
+    }
+
+    /// Ask, once for all, before the stopped screens chosen go to the
+    /// Trash with their histories, recordings and stats.
+    fn ask_delete(&mut self, cx: &mut Context<Self>) {
+        let running: Vec<String> = self.screens.iter().map(|s| s.name.clone()).collect();
+        let names: Vec<String> = self.chosen().into_iter().filter(|n| !running.contains(n)).collect();
+        let shown = |n: &String| self.rows.iter().find(|r| &r.name == n).map_or(n.as_str(), Row::shown).to_owned();
+        let (message, button) = match names.as_slice() {
+            [] => return,
+            [one] => (format!("Delete the screen “{}”? Its history, recordings and stats go to the Trash.", shown(one)), "Delete Screen".to_owned()),
+            many => (format!("Delete {} screens? Their histories, recordings and stats go to the Trash.", many.len()), format!("Delete {} Screens", many.len())),
+        };
+        let me = cx.entity();
+        cx.defer(move |cx| {
+            open_alert(cx, "Delete", "warning", &message, &["Cancel", &button], move |choice, cx| {
+                if choice != Some(1) {
+                    return;
+                }
+                me.update(cx, |v, cx| {
+                    v.rows.retain(|r| !names.contains(&r.name));
+                    v.also.retain(|n| !names.contains(n));
+                    let (proxy, names) = (v.proxy.clone(), names.clone());
+                    std::thread::spawn(move || proxy.send(Msg::Changed(names.iter().filter_map(|n| crate::history::trash(n).err()).collect())));
+                    v.keep_choice_listed(cx);
+                });
+            });
+        });
+    }
+
+    /// What's chosen kept to what's listed (a screen archived out of
+    /// sight, deleted): the first listed shown if the one shown went.
+    fn keep_choice_listed(&mut self, cx: &mut Context<Self>) {
+        let listed = self.listed_names();
+        self.also.retain(|n| listed.contains(n));
+        if self.selected.as_ref().is_none_or(|n| !listed.contains(n)) {
+            let first = listed.first().cloned();
+            self.stop_controlling();
+            self.selected = None;
+            self.select(first, cx);
         }
         cx.notify();
     }
@@ -938,8 +1131,7 @@ impl Viewer {
             Some((n, t)) if *n == r.name => Some(*t),
             _ => r.last_used,
         };
-        let running = |n: &str| self.screens.iter().any(|s| s.name == n);
-        let groups: [(&str, Vec<&Row>); 2] = [("Running", self.rows.iter().filter(|r| running(&r.name)).collect()), ("Stopped", self.rows.iter().filter(|r| !running(&r.name)).collect())];
+        let groups = self.groups();
         let mut items = Vec::new();
         let mut names: Vec<Option<String>> = Vec::new();
         for (heading, rs) in &groups {
@@ -959,14 +1151,38 @@ impl Viewer {
         }
         let first = names.iter().position(Option::is_some).unwrap_or(0);
         let chosen = names.iter().position(|n| n.as_deref() == self.selected.as_deref()).unwrap_or(first);
+        let also: Vec<usize> = names.iter().enumerate().filter(|(_, n)| n.as_ref().is_some_and(|n| self.also.contains(n))).map(|(i, _)| i).collect();
         let me = cx.entity();
-        let pick = me.clone();
-        let list = Sidebar::new("screens", items, chosen).on_choose(move |i, _, cx| {
-            if let Some(Some(name)) = names.get(i) {
-                let name = name.clone();
-                pick.update(cx, |v, cx| v.select(Some(name), cx));
-            }
-        });
+        let names = std::rc::Rc::new(names);
+        let (choose, pick, menu, all) = (me.clone(), me.clone(), me.clone(), me.clone());
+        let (n1, n2, n3) = (names.clone(), names.clone(), names.clone());
+        let list = Sidebar::new("screens", items, chosen)
+            .also(also)
+            .on_choose(move |i, _, cx| {
+                if let Some(Some(name)) = n1.get(i) {
+                    let name = name.clone();
+                    choose.update(cx, |v, cx| {
+                        // (One clicked alone: it alone is chosen.)
+                        v.also.clear();
+                        v.anchor = Some(name.clone());
+                        v.select(Some(name), cx);
+                        cx.notify();
+                    });
+                }
+            })
+            .on_pick(move |i, mods, _, cx| {
+                if let Some(Some(name)) = n2.get(i) {
+                    let name = name.clone();
+                    pick.update(cx, |v, cx| v.pick(name, mods.shift, cx));
+                }
+            })
+            .on_menu(move |i, at, window, cx| {
+                if let Some(Some(name)) = n3.get(i) {
+                    let name = name.clone();
+                    menu.update(cx, |v, cx| v.row_menu(name, at, window, cx));
+                }
+            })
+            .on_select_all(move |_, cx| all.update(cx, |v, cx| v.select_all(cx)));
         // The sidebar's ground down the column, and the line over New
         // Screen, from the column's own box (its two parts are laid out
         // a device pixel apart at some scales).
@@ -1016,6 +1232,8 @@ impl Viewer {
             if let Some(t) = started {
                 parts.push(format!("up {}", stats::span(now.saturating_sub(t))));
             }
+        } else if self.rows.iter().any(|r| r.name == name && r.archived) {
+            parts.push("Archived".to_owned());
         } else {
             parts.push("Stopped".to_owned());
         }

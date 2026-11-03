@@ -2920,5 +2920,11 @@
   "title": "Agent Screens: a screen renamed",
   "caption": "Screen \u25b8 Rename\u2026 or a click on its title: the name the person gives shows in the list and the header, kept with its history (olo-screen rename NAME TITLE; list says it).",
   "image": "2026-11-02/184527-agent-screens-a-screen-renamed.png"
+ },
+ {
+  "time": "2026-11-02T18:53:50",
+  "title": "Agent Screens: several chosen, archived, deleted",
+  "caption": "\u2318- and \u21e7-clicks or \u2318A choose screens together; their menu archives, unarchives, stops or deletes them all (asked once); View \u25b8 Show Archived lists the archived in their own section; Delete moves histories to the Trash.",
+  "image": "2026-11-02/185350-agent-screens-several-chosen-archived-deleted.png"
  }
 ]

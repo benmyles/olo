@@ -94,6 +94,36 @@ fn title_path(name: &str) -> PathBuf {
     dir(name).join("title")
 }
 
+/// Screen `name` was archived (stopped, out of the list until View ▸
+/// Show Archived): a mark beside its history.
+pub fn archived(name: &str) -> bool {
+    dir(name).join("archived").exists()
+}
+
+/// Archive screen `name`, or take it out of the archive.
+pub fn set_archived(name: &str, on: bool) -> Result<(), String> {
+    let path = dir(name).join("archived");
+    let failed = |e: std::io::Error| format!("couldn't {} {name}: {e}", if on { "archive" } else { "unarchive" });
+    if on {
+        std::fs::create_dir_all(dir(name)).map_err(failed)?;
+        std::fs::write(&path, b"").map_err(failed)
+    } else {
+        match std::fs::remove_file(&path) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(failed(e)),
+            _ => Ok(()),
+        }
+    }
+}
+
+/// Screen `name`'s history, its recordings, stats and title, to the Trash
+/// (where it can be put back from), as Delete does.
+pub fn trash(name: &str) -> Result<(), String> {
+    match olo_xdg::trash::move_to_trash(&dir(name)) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(format!("couldn't move {name}'s history to the Trash: {e}")),
+        _ => Ok(()),
+    }
+}
+
 /// The name the person gave screen `name` (Rename…), if any: kept with
 /// its history, and gone with it.
 pub fn title(name: &str) -> Option<String> {

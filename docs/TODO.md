@@ -450,20 +450,6 @@ of Finished; a new one goes where its priority puts it.
   popups closing in any order, quitting taking windows down, window
   parts (`part::Part`), secrets on the clipboard (`copy::secret`).
 
-- **Agent Screens: archive and delete, one or many** (Ben, 2026-10-31):
-  "i should be able to archive stopped agent screens so that they no
-  longer show in the list but there should be a menu option to show
-  archived to bring them back into the list but in the list the archived
-  ones should have their own section. there should also be an option to
-  delete. and for both archive/delete i should be able to multi-select
-  agents in the sidebar list and right click to take bulk actions like
-  archive/delete etc". So: Archive (stopped screens) hides a screen from
-  the list; View ▸ Show Archived brings them back in their own section
-  (with Unarchive); Delete removes a screen and its history, recordings
-  and stats (to the Trash where they're files, asked once for many); the
-  sidebar takes ⇧/⌘-click and ⌘A selection, and its context menu acts on
-  every selected screen (Archive, Unarchive, Delete, Stop).
-
 - **Passwords for Agent Screens** (Ben, 2026-10-31): "in the Agent
   Screens app i can choose items from passwords that i want to make
   available by default to all new and existing agent screen sessions and
@@ -875,6 +861,22 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**Agent Screens: archive and delete, one or many**~~ (done
+  2026-11-02: the kit Sidebar chooses several, `also`/`on_pick`/
+  `on_menu`/`on_select_all`) (Ben, 2026-10-31):
+  "i should be able to archive stopped agent screens so that they no
+  longer show in the list but there should be a menu option to show
+  archived to bring them back into the list but in the list the archived
+  ones should have their own section. there should also be an option to
+  delete. and for both archive/delete i should be able to multi-select
+  agents in the sidebar list and right click to take bulk actions like
+  archive/delete etc". So: Archive (stopped screens) hides a screen from
+  the list; View ▸ Show Archived brings them back in their own section
+  (with Unarchive); Delete removes a screen and its history, recordings
+  and stats (to the Trash where they're files, asked once for many); the
+  sidebar takes ⇧/⌘-click and ⌘A selection, and its context menu acts on
+  every selected screen (Archive, Unarchive, Delete, Stop).
 
 - ~~**Agent Screens: rename a screen**~~ (done 2026-11-02: Screen ▸
   Rename… or a click on the header's title; `olo-screen rename`; kept

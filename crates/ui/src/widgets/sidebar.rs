@@ -6,6 +6,12 @@
 //! row as a selectable `ListItem` named by it, its value as the row's
 //! value, and each heading as a `Heading`.
 //!
+//! Several chosen together, where the app takes it: rows chosen with the
+//! chosen one ([`Sidebar::also`]) are drawn selected too; ⌘- and ⇧-clicks
+//! go to [`Sidebar::on_pick`] (the app adds a row, or the run to it), ⌘A
+//! while it has the keyboard to [`Sidebar::on_select_all`], and a
+//! secondary click to [`Sidebar::on_menu`] (the row and where).
+//!
 //! ```ignore
 //! let rows = vec![Row::heading("Monitor"), Row::new("cpu", "CPU").value("12%"), Row::new("memory", "Memory")];
 //! Sidebar::new("sections", rows, chosen).on_choose(move |i, _, cx| …)
@@ -79,6 +85,9 @@ pub fn edge(p: &olo_theme::Palette) -> gpui::Hsla {
 }
 
 type ChooseFn = Rc<dyn Fn(usize, &mut Window, &mut App)>;
+type PickFn = Rc<dyn Fn(usize, gpui::Modifiers, &mut Window, &mut App)>;
+type MenuFn = Rc<dyn Fn(usize, gpui::Point<gpui::Pixels>, &mut Window, &mut App)>;
+type AllFn = Rc<dyn Fn(&mut Window, &mut App)>;
 
 /// A sidebar filling its box: see the module.
 #[derive(IntoElement)]
@@ -86,7 +95,12 @@ pub struct Sidebar {
     id: SharedString,
     rows: Rc<[Row]>,
     chosen: usize,
+    /// Rows chosen along with `chosen`.
+    also: Rc<[usize]>,
     on_choose: Option<ChooseFn>,
+    on_pick: Option<PickFn>,
+    on_menu: Option<MenuFn>,
+    on_select_all: Option<AllFn>,
     bare: bool,
 }
 
@@ -102,7 +116,7 @@ struct SidebarState {
 impl Sidebar {
     /// `chosen` is a row's index (never a heading's).
     pub fn new(id: impl Into<SharedString>, rows: impl Into<Rc<[Row]>>, chosen: usize) -> Sidebar {
-        Sidebar { id: id.into(), rows: rows.into(), chosen, on_choose: None, bare: false }
+        Sidebar { id: id.into(), rows: rows.into(), chosen, also: Rc::from([]), on_choose: None, on_pick: None, on_menu: None, on_select_all: None, bare: false }
     }
 
     /// Without its ground and edge: over what's behind it (a list's well:
@@ -112,9 +126,36 @@ impl Sidebar {
         self
     }
 
-    /// A row is chosen (clicked, or ↑ ↓): its index.
+    /// A row is chosen (clicked, or ↑ ↓): its index. (Clicked while
+    /// others are chosen with it, it's chosen alone: told again.)
     pub fn on_choose(mut self, f: impl Fn(usize, &mut Window, &mut App) + 'static) -> Self {
         self.on_choose = Some(Rc::new(f));
+        self
+    }
+
+    /// Rows chosen along with the chosen one, drawn selected too.
+    pub fn also(mut self, rows: impl Into<Rc<[usize]>>) -> Self {
+        self.also = rows.into();
+        self
+    }
+
+    /// A row ⌘- or ⇧-clicked: its index and the modifiers (the app adds
+    /// it to what's chosen, or the run to it). Without this, such a click
+    /// chooses as any does.
+    pub fn on_pick(mut self, f: impl Fn(usize, gpui::Modifiers, &mut Window, &mut App) + 'static) -> Self {
+        self.on_pick = Some(Rc::new(f));
+        self
+    }
+
+    /// A row secondary-clicked: its index and where (for its menu).
+    pub fn on_menu(mut self, f: impl Fn(usize, gpui::Point<gpui::Pixels>, &mut Window, &mut App) + 'static) -> Self {
+        self.on_menu = Some(Rc::new(f));
+        self
+    }
+
+    /// ⌘A while it has the keyboard.
+    pub fn on_select_all(mut self, f: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.on_select_all = Some(Rc::new(f));
         self
     }
 }
@@ -145,7 +186,7 @@ impl RenderOnce for Sidebar {
             let s = state.read(cx);
             (s.focus.clone(), s.scroll.clone())
         };
-        let Sidebar { id, rows, chosen, on_choose, bare } = self;
+        let Sidebar { id, rows, chosen, also, on_choose, on_pick, on_menu, on_select_all, bare } = self;
         let total = height(&rows);
         // The chosen row brought into view when it changes.
         if state.read(cx).revealed != Some(chosen) {
@@ -162,6 +203,7 @@ impl RenderOnce for Sidebar {
         let paint_state = state.clone();
         let (hit_rows, paint_rows) = (rows.clone(), rows.clone());
         let choose = on_choose.clone();
+        let paint_also = also.clone();
         let list = canvas(
             move |b, window, _| {
                 let mut y = b.top() + px(m::TIGHT);
@@ -201,7 +243,7 @@ impl RenderOnce for Sidebar {
                         agent::record(window, cx, agent::Node { role: "Heading", name: Some(row.label.clone()), bounds: t, enabled: true, ..Default::default() });
                         continue;
                     }
-                    let selected = i == chosen;
+                    let selected = i == chosen || paint_also.contains(&i);
                     if selected {
                         let sel = if focused { style::c(p.list_selected_background) } else { style::c(olo_theme::mix(p.list_selected_background, p.panel_background, 0.35)) };
                         style::fill_rect(window, r, sel);
@@ -229,15 +271,29 @@ impl RenderOnce for Sidebar {
                         window.refresh();
                     }
                 });
-                let (st, choose) = (paint_state.clone(), choose.clone());
+                let (st, choose, pick, menu, several) = (paint_state.clone(), choose.clone(), on_pick.clone(), on_menu.clone(), !paint_also.is_empty());
                 window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
-                    if !phase.bubble() || e.button != MouseButton::Left {
+                    if !phase.bubble() {
                         return;
                     }
                     let Some(i) = hitboxes.iter().position(|h| h.as_ref().is_some_and(|h| h.is_hovered(window))) else { return };
                     let focus = st.read(cx).focus.clone();
                     window.focus(&focus);
-                    if i != chosen
+                    if e.button == MouseButton::Right {
+                        if let Some(f) = &menu {
+                            f(i, e.position, window, cx);
+                        }
+                        return;
+                    }
+                    if e.button != MouseButton::Left {
+                        return;
+                    }
+                    let m = e.modifiers;
+                    if (m.platform || m.control || m.shift)
+                        && let Some(f) = &pick
+                    {
+                        f(i, m, window, cx);
+                    } else if (i != chosen || several)
                         && let Some(f) = &choose
                     {
                         f(i, window, cx);
@@ -264,6 +320,14 @@ impl RenderOnce for Sidebar {
             .relative()
             .size_full()
             .on_key_down(move |e: &KeyDownEvent, window, cx| {
+                if e.keystroke.key == "a"
+                    && (e.keystroke.modifiers.platform || e.keystroke.modifiers.control)
+                    && let Some(f) = &on_select_all
+                {
+                    cx.stop_propagation();
+                    f(window, cx);
+                    return;
+                }
                 let step = match e.keystroke.key.as_str() {
                     "up" if !e.keystroke.modifiers.modified() => -1,
                     "down" if !e.keystroke.modifiers.modified() => 1,
