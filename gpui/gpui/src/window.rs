@@ -955,6 +955,9 @@ pub struct Window {
     /// ([`Window::warm_glyphs`]), and the scale and text rendering they
     /// were last drawn for (drawn again for another).
     warm: Vec<(FontId, Pixels)>,
+    /// Olo: texts whose colour glyphs are drawn ahead ([`Window::warm_text`]),
+    /// and the scale they were drawn for.
+    warm_texts: Vec<(FontId, Pixels, Arc<[SharedString]>, f32)>,
     warmed_for: Option<(f32, crate::TextRendering)>,
     rem_size: Pixels,
     /// The stack of override values for the window's rem size.
@@ -1438,6 +1441,7 @@ impl Window {
             outlines: Default::default(),
             text_system,
             warm: Vec::new(),
+            warm_texts: Vec::new(),
             warmed_for: None,
             rem_size: px(16.),
             rem_size_override_stack: SmallVec::new(),
@@ -2210,7 +2214,7 @@ impl Window {
         self.frame_scrolls.clear();
         self.glyph_memo.clear();
         self.drop_accept = None;
-        if !self.warm.is_empty() {
+        if !self.warm.is_empty() || !self.warm_texts.is_empty() {
             self.warm_for_display();
         }
         self.invalidate_entities();
@@ -5049,6 +5053,28 @@ impl Window {
         for &(font_id, font_size) in &self.warm {
             self.text_system.warm(font_id, font_size, now.0, now.1);
         }
+        // (At another scale: their glyphs drawn again for it.)
+        for (font_id, font_size, texts, scale) in &mut self.warm_texts {
+            if *scale != now.0 {
+                *scale = now.0;
+                self.text_system.warm_text(*font_id, *font_size, now.0, texts.clone());
+            }
+        }
+    }
+
+    /// Olo: draws the colour glyphs (emoji) of `texts` in `font` at
+    /// `font_size` ahead of need, off the UI thread, in the order given,
+    /// so the frames that show them only copy them; and again for each
+    /// display with another scale the window moves to. They're kept for
+    /// every window of the app after (up to 32 MB of them;
+    /// [`crate::TextSystem::forget_kept_glyphs`] lets go): a picker of
+    /// emoji opened again and again, each time a new window.
+    pub fn warm_text(&mut self, font: &crate::Font, font_size: Pixels, texts: impl Into<Arc<[SharedString]>>) {
+        let font_id = self.text_system().resolve_font(font);
+        let texts = texts.into();
+        let scale = self.scale_factor();
+        self.text_system.warm_text(font_id, font_size, scale, texts.clone());
+        self.warm_texts.push((font_id, font_size, texts, scale));
     }
 
     /// Bring the window forward with an activation token from another

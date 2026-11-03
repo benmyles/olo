@@ -375,6 +375,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 | Request::CaptureDrops { .. }
                 // (Input wakes the displays it changes: `synthetic_input`.)
                 | Request::Synthetic { .. }
+                | Request::InsertText { .. }
         );
         if !asks {
             self.backend_data.wake(None);
@@ -714,6 +715,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
                 Reply::Ok
             }
+            Request::InsertText { text } => return self.insert_text(text, conn),
             Request::StartScreenSaver => {
                 self.start_screen_saver(true);
                 Reply::Ok

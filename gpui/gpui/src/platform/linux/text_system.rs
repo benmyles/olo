@@ -80,8 +80,11 @@ struct State {
     /// The face found for a character none of a chain has, if any.
     last_resort: HashMap<char, Option<usize>>,
     hinting: HashMap<(usize, u32), HintingInstance>,
-    /// Glyphs drawn for their bounds, until GPUI asks for their pixels.
+    /// Glyphs drawn for their bounds, until GPUI asks for their pixels;
+    /// colour ones (emoji: slow to draw, ~60 µs) kept for every window
+    /// after, up to `KEEP` bytes of them (`kept`).
     drawn: HashMap<RenderGlyphParams, (Bounds<DevicePixels>, Vec<u8>)>,
+    kept: usize,
     buffer: Option<harfrust::UnicodeBuffer>,
     /// Each face's shape plans, by the text's direction, script and
     /// language: harfrust's `shape` made one for every run it shaped, most
@@ -145,6 +148,7 @@ impl OloTextSystem {
             last_resort: HashMap::default(),
             hinting: HashMap::default(),
             drawn: HashMap::default(),
+            kept: 0,
             buffer: Some(harfrust::UnicodeBuffer::new()),
             plans: HashMap::default(),
             words: HashMap::default(),
@@ -271,7 +275,7 @@ impl PlatformTextSystem for OloTextSystem {
         let Some((bounds, pixels)) = state.draw(params) else {
             return Ok(Bounds::default());
         };
-        state.drawn.insert(params.clone(), (bounds, pixels));
+        state.keep(params.clone(), (bounds, pixels));
         Ok(bounds)
     }
 
@@ -284,11 +288,61 @@ impl PlatformTextSystem for OloTextSystem {
             anyhow::bail!("glyph bounds are empty");
         }
         let mut state = self.0.write();
-        let drawn = match state.drawn.remove(params) {
+        // A colour glyph stays for the next window; another goes to the
+        // atlas that asked.
+        let drawn = if params.is_emoji { state.drawn.get(params).cloned() } else { state.drawn.remove(params) };
+        let drawn = match drawn {
             Some(drawn) => drawn,
-            None => state.draw(params).ok_or_else(|| anyhow!("no glyph"))?,
+            None => {
+                let drawn = state.draw(params).ok_or_else(|| anyhow!("no glyph"))?;
+                if params.is_emoji {
+                    state.keep(params.clone(), drawn.clone());
+                }
+                drawn
+            }
         };
         Ok((drawn.0.size, drawn.1))
+    }
+
+    /// Olo: draws `params` ahead of need, each the first time, without
+    /// holding the text system while it draws (colour glyphs as outline
+    /// ones are in `draw_ahead`).
+    fn draw_glyphs_ahead(&self, params: &[RenderGlyphParams]) -> Vec<(RenderGlyphParams, Bounds<DevicePixels>)> {
+        let mut out = Vec::new();
+        for p in params {
+            let job = {
+                let state = self.0.read();
+                if state.drawn.contains_key(p) {
+                    continue;
+                }
+                let Some(instance) = state.instances.get(p.font_id.0) else { continue };
+                let source = &state.sources[instance.source];
+                if !source.color {
+                    continue;
+                }
+                (source.data.clone(), source.index, instance.location.clone())
+            };
+            let (data, index, location) = job;
+            let ppem = p.font_size.0 * p.scale_factor;
+            if let Some(drawn) = draw_color_data(data, index, &location, p.glyph_id, ppem) {
+                out.push((p.clone(), drawn.0));
+                self.0.write().keep(p.clone(), drawn);
+            }
+        }
+        out
+    }
+
+    fn forget_kept(&self) {
+        {
+            let mut state = self.0.write();
+            state.drawn.retain(|p, _| !p.is_emoji);
+            state.kept = 0;
+            state.drawn.shrink_to_fit();
+        }
+        // Thousands of small blocks freed: back to the system, not kept
+        // by the allocator for later.
+        // SAFETY: glibc's malloc_trim takes no pointers.
+        unsafe { libc::malloc_trim(0) };
     }
 
     fn layout_line(&self, text: &str, font_size: Pixels, runs: &[FontRun]) -> LineLayout {
@@ -783,6 +837,40 @@ impl State {
 
     /// Draws a glyph: its bounds (in device pixels from its origin on
     /// the baseline) and its pixels (coverage; BGRA for colour glyphs).
+    /// Keeps a glyph drawn: an outline one until a frame takes it, a
+    /// colour one for good, the oldest let go past `KEEP` bytes of them.
+    fn keep(&mut self, params: RenderGlyphParams, drawn: (Bounds<DevicePixels>, Vec<u8>)) {
+        let emoji = params.is_emoji;
+        let now_scale = params.scale_factor;
+        let bytes = drawn.1.len();
+        if let Some(old) = self.drawn.insert(params, drawn)
+            && emoji
+        {
+            // (Drawn again: counted once.)
+            self.kept -= old.1.len().min(self.kept);
+        }
+        if !emoji {
+            return;
+        }
+        self.kept += bytes;
+        if self.kept > KEEP {
+            // Rare (thousands of emoji, or a window gone to a display of
+            // another scale): about half go, those drawn for other scales
+            // first, then any.
+            let mut freed = 0;
+            for other_scales_only in [true, false] {
+                self.drawn.retain(|p, d| {
+                    if !p.is_emoji || freed > KEEP / 2 || (other_scales_only && p.scale_factor == now_scale) {
+                        return true;
+                    }
+                    freed += d.1.len();
+                    false
+                });
+            }
+            self.kept -= freed.min(self.kept);
+        }
+    }
+
     fn draw(&mut self, params: &RenderGlyphParams) -> Option<(Bounds<DevicePixels>, Vec<u8>)> {
         let ppem = params.font_size.0 * params.scale_factor;
         if !(ppem > 0.0 && ppem.is_finite()) {
@@ -791,7 +879,7 @@ impl State {
         let instance = &self.instances[params.font_id.0];
         let source = &self.sources[instance.source];
         if source.color {
-            return draw_color(source, instance, params.glyph_id, ppem);
+            return draw_color_data(source.data.clone(), source.index, &instance.location, params.glyph_id, ppem);
         }
         let font = source.font()?;
         let outlines = font.outline_glyphs();
@@ -935,19 +1023,24 @@ fn darkening(points: f32) -> f32 {
 }
 
 /// A colour glyph (an emoji), unhinted, cropped to what it paints.
-fn draw_color(
-    source: &Source,
-    instance: &Instance,
+/// The bytes of colour glyphs kept for every window (`State::keep`).
+const KEEP: usize = 32 << 20;
+
+/// Draws a colour glyph of the face in `data` (face `index`) at `ppem`,
+/// on a canvas its clip box's size where the font gives one.
+fn draw_color_data(
+    data: Data,
+    index: u32,
+    location: &Location,
     glyph: GlyphId,
     ppem: f32,
 ) -> Option<(Bounds<DevicePixels>, Vec<u8>)> {
     use vello_cpu::peniko;
     let canvas = (3.0 * ppem).ceil().clamp(1.0, 1024.0) as u16;
     let (ox, oy) = (ppem, 2.0 * ppem);
-    let blob: Arc<dyn AsRef<[u8]> + Send + Sync> = source.data.clone();
-    let font = peniko::FontData::new(peniko::Blob::new(blob), source.index);
-    let coords: Vec<i16> = instance
-        .location
+    let blob: Arc<dyn AsRef<[u8]> + Send + Sync> = data;
+    let font = peniko::FontData::new(peniko::Blob::new(blob), index);
+    let coords: Vec<i16> = location
         .coords()
         .iter()
         .map(|c| c.to_bits())
@@ -1022,10 +1115,11 @@ fn follows(ch: char) -> bool {
         | 0x1F3FB..=0x1F3FF | 0xE0020..=0xE007F | 0xE0100..=0xE01EF)
 }
 
-/// Drawn as a colour emoji: pictographs, or a character asked to be one
-/// (U+FE0F after it).
+/// Drawn as a colour emoji: pictographs, the symbols shown as emoji by
+/// default (✋ ⚡ ✨), and a character asked to be one (U+FE0F, a skin
+/// tone, a keycap after it), as the rest of Olo has it.
 fn emoji(ch: char, next: Option<char>) -> bool {
-    matches!(ch as u32, 0x1F000..=0x1FAFF) || next == Some('\u{FE0F}')
+    olo_emoji::starts_emoji(ch, next)
 }
 
 /// The coverage of `path`, moved by `offset`, on a `width` × `height`

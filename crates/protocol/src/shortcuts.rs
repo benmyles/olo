@@ -282,6 +282,9 @@ pub enum Shortcut {
     Overview,
     /// The command palette (apps/palette).
     Palette,
+    /// The emoji picker (apps/emoji-picker): the emoji chosen goes into
+    /// the field that had the keyboard.
+    EmojiPicker,
     Find,
     Lock,
     Caffeinate,
@@ -599,6 +602,7 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::Overview, "overview", SWITCHING, "Overview of every window", &["Ctrl+Up"], &["Cmd+Tab"], &["Cmd+Space"]),
     s(Shortcut::Palette, "palette", DESKTOP, "Command palette", &["Cmd+Space"], &["Cmd+S"], &["Alt+Space"]),
     s(Shortcut::Find, "find", DESKTOP, "Find", &["Alt+Cmd+Space"], &["Cmd+F"], &["Ctrl+Alt+F"]),
+    s(Shortcut::EmojiPicker, "emoji-picker", DESKTOP, "Emoji & symbols", &["Ctrl+Cmd+Space"], &["Cmd+Period"], &["Ctrl+Cmd+Space"]),
     s(Shortcut::ShortcutHelp, "shortcut-help", DESKTOP, "Keyboard shortcuts", &["Shift+Cmd+Slash"], &["Shift+Cmd+Slash"], &["Alt+Shift+Slash"]),
     s(Shortcut::ActivityMonitor, "activity-monitor", DESKTOP, "Activity Monitor", &["Alt+Cmd+Escape"], &["Ctrl+Shift+Escape"], &["Ctrl+Alt+Delete"]),
     s(Shortcut::Lock, "lock", DESKTOP, "Lock the screen", &["Ctrl+Cmd+Q"], &["Cmd+L"], &["Ctrl+Alt+L"]),

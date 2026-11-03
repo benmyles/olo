@@ -925,7 +925,16 @@ system's, drawn with the text; `olo-emoji` (`crates/emoji`) finds and
 paints clusters itself where that's wanted (Telegram's messages of
 emoji alone, shown big): it shapes with harfrust and paints COLRv0/v1
 with tiny-skia (Noto Color Emoji is COLRv1); render test images with
-`EMOJI_OUT=/var/tmp/dir cargo test -p olo-emoji`.
+`EMOJI_OUT=/var/tmp/dir cargo test -p olo-emoji`. Which characters
+start an emoji (`starts_emoji`: pictographs, the symbols shown as emoji
+by default such as ✋ ⚡ ✨, and any asked to be one with U+FE0F, a
+keycap or, for ☝ ⛹ ✌ ✍, a skin tone) is the same everywhere: GPUI's
+text system takes it from `olo-emoji` without its drawing (`default-
+features = false`; the `render` feature is skrifa, harfrust and
+tiny-skia). GPUI keeps the colour glyphs it draws for every window of
+the app (they cost ~60 µs each to draw; up to 32 MB of them, those for
+other scales let go first; `TextSystem::forget_kept_glyphs` lets go),
+where an outline glyph goes to the atlas that asked.
 
 Toolbars are `metrics::TOOLBAR_HEIGHT` tall (a row of controls, `TIGHT`
 above and below), with their line under them (`style::hline_above` at
@@ -1628,6 +1637,13 @@ event reaches it.
   for what a window will show soon that it hasn't yet (Telegram: the
   conversation's faces, at start). It follows the window to another
   scale or text rendering.
+- `Window::warm_text(font, size, texts)` (Olo's GPUI) has the colour
+  glyphs (emoji) of `texts` drawn ahead the same way, in the order
+  given (shaped, then drawn on the warming thread without holding the
+  text system, 16 texts at a time), kept for every window of the app
+  after, and drawn again for a display of another scale the window goes
+  to: the emoji picker's ~1,900 at open, so a search's first frame
+  copies them (its slowest typing frame at 2×: 8.1 → 1.0–1.5 ms).
 - `Window::activate_window_with_token(token)` (Olo's GPUI) raises a
   window with an activation token another program gave (a notification
   clicked: `NoteEvent::Action`'s), which lets it take the focus.
@@ -2509,7 +2525,9 @@ document, a folder of 3,000 files, photos, 200 notifications, a
 terminal's worth of output), and at 1×, 1.5× and 2× runs each app
 (the kit's gallery, Tracker twice, StyledEdit, Terminal, Viewer,
 Notifications, Activity Monitor, DeskCalc, DiskUsage, Logs,
-Preferences, the palette, Passwords, Screenshot, Telegram with a pretend
+Preferences, the palette, the emoji picker (shown, typed in, walked,
+wheeled, hidden and shown again: a resident picker's usual open),
+Passwords, Screenshot, Telegram with a pretend
 account of 3,000 chats) through what people
 do: launched and zoomed to fill the screen, left to load, idle for a
 second (it should draw nothing), the pointer swept over it, each scroll
@@ -3893,7 +3911,8 @@ Preferences ▸ AI (`olo-preferences ai`) holds `Settings::ai`
 (`AiSettings`). Each feature is an `AiFeature { enabled, model, effort }`,
 the model one of `AI_MODELS` and the effort one of `AI_EFFORTS`; the
 panel's `feature()` draws its switch and choosers, so the next feature
-is a struct field and a BBox. `AI_MODELS` is OpenAI's current Codex
+is a struct field and a BBox: Smart Tiling, and Emoji (the emoji
+picker's ⌘↩, low effort by default: it's asked while the person waits). `AI_MODELS` is OpenAI's current Codex
 models (Astra 6, the default; Sol 6.1, Terra 6.1, Luna 6), reached
 through the Token Pool's gateway (`http://127.0.0.1:{OLO_POOL_PORT or
 17891}/codex`) and its Codex accounts. A model no longer listed (a
@@ -6553,6 +6572,81 @@ put it away.
   makes none, so a menu's window otherwise showed the menu gone only at
   the next change on screen.
 
+## The emoji picker (apps/emoji-picker, app_server insert.rs)
+
+`olo-emoji-picker` puts an emoji into the field that had the keyboard,
+in any app. ⌃⌘Space (Windows' keys: ⊞.; BeOS': ⌃⌘Space;
+`Shortcut::EmojiPicker`, "emoji-picker") starts `olo-emoji-picker
+--toggle`, which hands the toggle to the running copy (resident, as the
+palette is); the same overlay (a full-output layer, the keyboard its
+own). The panel: a search field; a tab a group (and Frequently Used,
+once something's picked), a cell wide each, the one showing at the
+grid's top lit; the grid (ten 40-pt cells a row, headings between
+groups, as many rows as fit up to six, scrolled by the pixel); a status
+line with the selected emoji big, its name and shortcode (or the
+model's reason), and the six skin tones as raised hands, the chosen one
+sunken and kept. Arrows walk the grid (up and down a column), Page
+Up/Down by its height, Tab and ⇧Tab go from group to group, Return or a
+click puts the selected one in, Escape or a click outside puts the
+picker away. Agents read every cell as a Button named for its emoji
+(its glyph as the value, selected or not), the tabs as Tabs, the tones
+as RadioButtons, the headings and the status line as text.
+
+The emoji are `emojis`' (Unicode 18: name, group, shortcodes, skin
+tones), with CLDR's English keywords from `emoji` (Unicode 13.1, so
+newer ones have their names only), less those the colour font doesn't
+draw as one glyph (`data::font_check`: Noto Color Emoji found with
+fontdb as GPUI finds it, each base emoji shaped with
+`olo_emoji::ColorFont::glyph`), loaded on a thread at start. Search
+(`data::search`, as you type, 0.1–0.3 ms a key): every word typed must
+match one of the emoji's words: the same (100, its name's own words 10
+more), its start (60, less what's left), inside it (30, four letters or
+more), or its letters in order within a word starting with the same
+letter and at most two longer (12: "thmbs"); the name typed whole 60
+more; four less for each name word past the query's and a little for a
+longer name ("red heart" before "heart with arrow"), and up to 10 more
+for the most used emoji (`COMMON`, Unicode's frequency list), what was
+picked lately more again. Picked emoji are counted in
+`~/.config/olo/emoji.json` with the tone.
+
+⌘↩ (Ctrl+Enter on a PC: the command key reaches apps as Ctrl) asks the
+model chosen in Preferences ▸ AI ▸ Emoji (`AiSettings::emoji`: on,
+Astra 6, low effort) for five emoji for what's typed (`ai::suggest`,
+crates/ai as Smart Tiling uses it, on a thread): the status line says
+"Asking Astra 6… N s" (ticking only while asked), then they show first,
+"Suggested for “…”", each with its reason; Unicode's emoji only, each
+once (`ai::read`); a new search or Escape drops a question still out.
+Test it with a fake model: `$T run NAME OLO_AI_BASE_URL=http://127.0.0.1:PORT
+olo-emoji-picker`, the fake answering `POST /v1/responses` with
+`{"status":"completed","output":[{"type":"message","content":[{"type":
+"output_text","text":"{\"emoji\":[{\"emoji\":\"👏\",\"why\":…}]}"}]}]}`.
+
+Its emoji are drawn ahead when it opens (`Window::warm_text`: what was
+picked lately first, then the groups), kept for the next opening, and
+let go ten minutes after it's put away (`FORGET`, with
+`forget_kept_glyphs`): at 2× they're ~18 MB (shown 106 MB, hidden
+88 MB after; the palette holds 121 MB). Released, at 1×, 1.5× and 2×,
+its frames take at most 1.5 ms opening, typing, walked, scrolled and
+opened again (bench's `emoji`).
+
+**Putting text in** (`Request::InsertText { text }`, app_server
+insert.rs): any text, not only what a keyboard types, into the focused
+field, as an input method would. A field that speaks text-input-v3
+(GPUI, GTK, Chrome, Qt) takes it whole (`commit_string`, then `done`):
+app_server offers to be the input method (smithay's
+`set_compositor_input_method`, which sends `enter`), the field turns on
+(`TextInputActivation::activated`, then `text_input_on`), the text goes
+in, and the offer is withdrawn. A window whose field doesn't turn on
+within 150 ms (`TURN_ON`: a terminal, a toolkit without it) gets the
+text as keys on a keymap made for it (`inject_text_keysyms`: each
+character its own keycode, the seat's keymap back after). It waits up
+to a second (`HANDBACK`) while the keyboard is still the asking
+process's (the picker's panel going away), never goes into the lock
+screen, and the reply comes once the text is in (or with why not), so
+whatever the asker does next comes after it. Tested: é😀👍🏽 into
+StyledEdit, Chrome 156 and GTK's text editor (as keys, with
+`GTK_IM_MODULE=gtk-im-context-simple`).
+
 ## Other toolkits' programs (app_server toolkits.rs, state.rs; olo_theme::toolkit)
 
 Programs not built on the kit take Olo's look as far as their toolkit
@@ -6723,7 +6817,9 @@ with `AT_SPI_BUS_ADDRESS` set to it, and a screen entry in a private
 and choosing from it, `commands::menus`/`invoke`), `click`, `move`,
 `down`/`up`, `drag`, `scroll`, `wheel`, `key` (chords as people write
 them: `Cmd+S`, `Enter`, `Esc`; parsed by `olo_protocol::Chord` with
-aliases) and `type` (US keyboard), all as `Request::Synthetic`, in the
+aliases) and `type` (what a US keyboard types as keys, anything else
+— é, emoji, CJK — put in whole with `Request::InsertText`, in order),
+all as `Request::Synthetic`, in the
 screen's logical pixels. `stop` ends the session, and with it the
 programs on it. `olo-screen --help` lists it all. Each action on a screen
 (`history::ACTIONS`: `start`, `stop`, `run` and every input, find and

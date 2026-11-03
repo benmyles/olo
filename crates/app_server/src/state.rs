@@ -37,8 +37,9 @@ use smithay::{
     output::Output,
     reexports::{
         calloop::{Interest, LoopHandle, Mode, PostAction, generic::Generic},
-        wayland_protocols::xdg::decoration::{
-            self as xdg_decoration, zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode,
+        wayland_protocols::{
+            wp::text_input::zv3::server::zwp_text_input_v3::{ContentHint, ContentPurpose},
+            xdg::decoration::{self as xdg_decoration, zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode},
         },
         wayland_server::{
             Client, Display, DisplayHandle, Resource,
@@ -223,6 +224,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub keymap: crate::keymap::Keymap,
     /// A tab's cut title, whole, under the pointer (`tabtip`).
     pub tab_tip: crate::tabtip::TabTip,
+    /// Text on its way into the focused field (`insert`).
+    pub inserting: crate::insert::Inserting,
     /// Idle, caffeinated mode, brightness (see `power`).
     pub power: crate::power::Power,
     pub saver: crate::saver::Saver,
@@ -449,6 +452,11 @@ impl<BackendData: Backend> SeatHandler for AnvilState<BackendData> {
         let focus = wl_surface.and_then(|s| dh.get_client(s.id()).ok());
         set_data_device_focus(dh, seat, focus.clone());
         set_primary_focus(dh, seat, focus);
+        // Text waiting for the keyboard to leave whoever asked (`insert`):
+        // once smithay has moved it.
+        if self.insert_waiting() {
+            self.handle.insert_idle(|state| state.insert_try());
+        }
     }
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
         self.cursor_status = image;
@@ -609,7 +617,11 @@ impl<BackendData: Backend> PointerConstraintsHandler for AnvilState<BackendData>
     }
 }
 
-impl<BackendData: Backend> TextInputActivation for AnvilState<BackendData> {}
+impl<BackendData: Backend> TextInputActivation for AnvilState<BackendData> {
+    fn activated(&mut self, _content_type: Option<(ContentHint, ContentPurpose)>) {
+        self.text_input_on();
+    }
+}
 
 impl<BackendData: Backend> AnvilState<BackendData> {
     /// Whether `surface` belongs to one of Olo's own programs.
@@ -1249,6 +1261,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             suppressed_keys: Vec::new(),
             keymap: Default::default(),
             tab_tip: Default::default(),
+            inserting: Default::default(),
             power: crate::power::Power::new(BackendData::IS_SESSION),
             saver: Default::default(),
             lock,

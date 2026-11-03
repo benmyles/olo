@@ -62,10 +62,17 @@ pub struct TextSystem {
     /// Olo: how many glyphs of each face, size, scale and rendering frames
     /// have drawn the first time ([`TextSystem::drawn_first`]).
     first_drawn: Mutex<FxHashMap<(FontId, u32, u32, TextRendering), u32>>,
-    warmer: Mutex<Option<std::sync::mpsc::Sender<(FontId, u32, u32, TextRendering)>>>,
+    warmer: Mutex<Option<std::sync::mpsc::Sender<Warm>>>,
     wrapper_pool: Mutex<FxHashMap<FontIdWithSize, Vec<LineWrapper>>>,
     font_runs_pool: Mutex<Vec<Vec<FontRun>>>,
     fallback_font_stack: SmallVec<[Font; 2]>,
+}
+
+/// Olo: what the glyph-warming thread draws ahead: a face's printable
+/// characters, or the glyphs of some texts (colour ones: emoji).
+enum Warm {
+    Face((FontId, u32, u32, TextRendering)),
+    Text { font_id: FontId, size: Pixels, scale: f32, texts: Arc<[SharedString]> },
 }
 
 impl TextSystem {
@@ -413,14 +420,35 @@ impl TextSystem {
         if !self.warmed.lock().insert(key) {
             return;
         }
+        self.to_warmer(Warm::Face(key));
+    }
+
+    /// Olo: draws the colour glyphs (emoji) of `texts` in `font_id` at
+    /// `font_size`, for `scale_factor`, ahead of need on the same
+    /// thread, in the order given: drawing one the first time costs a
+    /// frame ~60 µs, and they're kept for every window after (a picker's
+    /// grid of them, opened again and again).
+    pub(crate) fn warm_text(self: &Arc<Self>, font_id: FontId, font_size: Pixels, scale_factor: f32, texts: Arc<[SharedString]>) {
+        self.to_warmer(Warm::Text { font_id, size: font_size, scale: scale_factor, texts });
+    }
+
+    /// Olo: lets go of the colour glyphs kept for every window (an app
+    /// that drew many, done with them for a while).
+    pub fn forget_kept_glyphs(&self) {
+        self.platform_text_system.forget_kept();
+    }
+
+    fn to_warmer(self: &Arc<Self>, job: Warm) {
         let mut worker = self.warmer.lock();
-        if let Some(tx) = worker.as_ref()
-            && tx.send(key).is_ok()
-        {
-            return;
-        }
-        let (tx, rx) = std::sync::mpsc::channel::<(FontId, u32, u32, TextRendering)>();
-        let _ = tx.send(key);
+        let job = match worker.as_ref() {
+            Some(tx) => match tx.send(job) {
+                Ok(()) => return,
+                Err(std::sync::mpsc::SendError(job)) => job,
+            },
+            None => job,
+        };
+        let (tx, rx) = std::sync::mpsc::channel::<Warm>();
+        let _ = tx.send(job);
         *worker = Some(tx);
         drop(worker);
         let this = Arc::downgrade(self);
@@ -444,12 +472,43 @@ impl TextSystem {
                     }
                 };
                 let Some(this) = this.upgrade() else { return };
-                let (font_id, size, scale, rendering) = job;
-                let chars: Vec<char> = (' '..='~').chain("…–—‘’“”•·°".chars()).collect();
-                let drawn = this.platform_text_system.draw_ahead(font_id, Pixels(f32::from_bits(size)), f32::from_bits(scale), rendering, &chars);
-                let mut bounds = this.raster_bounds.write();
-                for (params, b) in drawn {
-                    bounds.entry(params).or_insert(b);
+                match job {
+                    Warm::Face((font_id, size, scale, rendering)) => {
+                        let chars: Vec<char> = (' '..='~').chain("…–—‘’“”•·°".chars()).collect();
+                        let drawn = this.platform_text_system.draw_ahead(font_id, Pixels(f32::from_bits(size)), f32::from_bits(scale), rendering, &chars);
+                        let mut bounds = this.raster_bounds.write();
+                        for (params, b) in drawn {
+                            bounds.entry(params).or_insert(b);
+                        }
+                    }
+                    Warm::Text { font_id, size, scale, texts } => {
+                        // A few at a time, so the first are ready soonest
+                        // and a frame shaping text waits on at most one.
+                        for chunk in texts.chunks(16) {
+                            let mut params = Vec::new();
+                            for text in chunk {
+                                let layout = this.platform_text_system.layout_line(text, size, &[FontRun { len: text.len(), font_id, size: None }]);
+                                for run in &layout.runs {
+                                    for g in run.glyphs.iter().filter(|g| g.is_emoji) {
+                                        params.push(RenderGlyphParams {
+                                            font_id: run.font_id,
+                                            glyph_id: g.id,
+                                            font_size: size,
+                                            subpixel_variant: Default::default(),
+                                            scale_factor: scale,
+                                            is_emoji: true,
+                                            rendering: TextRendering::default(),
+                                        });
+                                    }
+                                }
+                            }
+                            let drawn = this.platform_text_system.draw_glyphs_ahead(&params);
+                            let mut bounds = this.raster_bounds.write();
+                            for (params, b) in drawn {
+                                bounds.entry(params).or_insert(b);
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -523,6 +582,11 @@ impl WindowTextSystem {
     /// Olo: [`TextSystem::drawn_first`].
     pub(crate) fn drawn_first(&self, font_id: FontId, font_size: Pixels, scale_factor: f32, rendering: TextRendering) {
         self.text_system.drawn_first(font_id, font_size, scale_factor, rendering);
+    }
+
+    /// Olo: [`TextSystem::warm_text`].
+    pub(crate) fn warm_text(&self, font_id: FontId, font_size: Pixels, scale_factor: f32, texts: Arc<[SharedString]>) {
+        self.text_system.warm_text(font_id, font_size, scale_factor, texts);
     }
 
     /// Olo: [`TextSystem::warm`].

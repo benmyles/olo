@@ -1,0 +1,25 @@
+[package]
+name = "olo-emoji-picker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "olo-emoji-picker"
+path = "src/main.rs"
+
+[dependencies]
+olo-ui.workspace = true
+olo-kit-base.workspace = true
+olo-xdg.workspace = true
+olo-protocol.workspace = true
+olo-ai.workspace = true
+olo-emoji.workspace = true
+# Every emoji (Unicode 18), its name, group, shortcodes and skin tones;
+# and CLDR's English keywords for those it knows (Unicode 13.1).
+emojis = "0.9"
+emoji = { version = "0.2.1", default-features = false, features = ["en"] }
+fontdb = "0.23"
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true

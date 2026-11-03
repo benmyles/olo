@@ -97,6 +97,22 @@ impl Screen {
         self.request(&Request::Synthetic { events }).map(drop)
     }
 
+    /// Type `text`: what a US keyboard types as keys, anything else (é,
+    /// emoji, CJK) put in whole as an input method would
+    /// (`Request::InsertText`), in order.
+    pub fn type_text(&self, text: &str) -> Result<(), String> {
+        for (keys, run) in runs(text) {
+            if keys {
+                self.input(type_text(run)?)?;
+            } else {
+                if let Reply::Error { message } = self.request(&Request::InsertText { text: run.to_owned() })? {
+                    return Err(format!("{run:?} couldn't be put in: {message}"));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Send each batch of events in turn, waiting after each as long as
     /// it says: as a hand would, so what reacts to movement over time (a
     /// drag, a touchpad's lift) sees it as from a person.
@@ -503,6 +519,25 @@ pub fn key_for(c: char) -> Option<(u32, bool)> {
     None
 }
 
+/// `text` in runs: what a US keyboard types (true), and what it doesn't.
+pub fn runs(text: &str) -> Vec<(bool, &str)> {
+    let mut out: Vec<(bool, &str)> = Vec::new();
+    let mut start = 0;
+    let mut kind = None;
+    for (i, c) in text.char_indices() {
+        let keys = key_for(c).is_some();
+        if kind.is_some_and(|k| k != keys) {
+            out.push((kind.unwrap_or(true), &text[start..i]));
+            start = i;
+        }
+        kind = Some(keys);
+    }
+    if let Some(k) = kind {
+        out.push((k, &text[start..]));
+    }
+    out
+}
+
 /// Type `text` (what a US keyboard can type).
 pub fn type_text(text: &str) -> Result<Vec<SyntheticEvent>, String> {
     let mut events = Vec::new();
@@ -551,6 +586,8 @@ mod tests {
         assert_eq!(key_for('"'), Some((40, true)));
         assert_eq!(key_for('é'), None);
         assert!(type_text("Hi!").unwrap().len() == 10);
+        assert_eq!(runs("café 👍🏽 ok\n"), vec![(true, "caf"), (false, "é"), (true, " "), (false, "👍🏽"), (true, " ok\n")]);
+        assert!(runs("").is_empty());
     }
 
     #[test]

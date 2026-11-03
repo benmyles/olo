@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Preferences ▸ AI: Emoji
+
+*20:02* — The emoji picker's AI suggestions get their own switch, model and effort (low by default: they're asked while you wait), as Smart Tiling has; the panel grows to fit them.
+
+![Preferences ▸ AI: Emoji](2026-11-02/200209-preferences-ai-emoji.png)
+
+### Emoji picker: five from AI for a description
+
+*19:56* — ⌃⌘Space opens the emoji picker over everything: search as you type, a tab a group, skin tones kept; ⌘↩ asks the model chosen in Preferences ▸ AI for five emoji for what was typed, each with its reason. Return puts the selected one into the field that had the keyboard, in any app (app_server's InsertText). (A fake model answered here; tests never call a real one.)
+
+![Emoji picker: five from AI for a description](2026-11-02/195651-emoji-picker-five-from-ai-for-a-description.png)
+
 ### Agent Screens: several chosen, archived, deleted
 
 *18:53* — ⌘- and ⇧-clicks or ⌘A choose screens together; their menu archives, unarchives, stops or deletes them all (asked once); View ▸ Show Archived lists the archived in their own section; Delete moves histories to the Trash.

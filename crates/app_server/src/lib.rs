@@ -32,6 +32,7 @@ pub mod approve;
 pub mod desktop;
 pub mod dmabuf_check;
 pub mod identify;
+pub mod insert;
 pub mod ipc;
 pub mod keymap;
 pub mod layout;

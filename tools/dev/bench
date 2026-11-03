@@ -27,7 +27,9 @@ notifications, a terminal's worth of output), one 3456×2234 screen (a
   tabs clicked, its menus opened and walked, a field typed in, the
   window resized live, the theme flipped; then closed.
   Deskbar: swept and its menu walked. The command palette: shown, typed
-  in, its results walked. The overview (⌃Space): four windows on two
+  in, its results walked. The emoji picker: shown, typed in, its grid
+  walked and scrolled, hidden, shown again (a resident picker's usual
+  open). The overview (⌃Space): four windows on two
   workspaces, opened, its windows walked with the arrows, left. The
   screen savers: each module run.
 
@@ -55,6 +57,7 @@ HOME = os.path.join(SCRATCH, "home")
 NAME = "bench"
 RELEASE = os.path.join(ROOT, "target", "release")
 DOWN, UP, ESC, CTRL, KEY_A, BKSP = 108, 103, 1, 29, 30, 14
+LEFT, RIGHT = 105, 106
 BTN = 0x110
 KEYS = {c: k for k, c in enumerate("1234567890-=", 2)}
 KEYS.update({c: 16 + i for i, c in enumerate("qwertyuiop[]")})
@@ -70,7 +73,7 @@ def stale_builds():
     """The release binaries older than a source they are built from (from
     cargo's dep-info, `target/release/EXE.d`): what is measured would not
     be what is in the tree."""
-    exes = {"olo-app-server", "olo-session", "olo-deskbar", "olo-palette", os.path.join("examples", "gallery")}
+    exes = {"olo-app-server", "olo-session", "olo-deskbar", "olo-palette", "olo-emoji-picker", os.path.join("examples", "gallery")}
     exes.update(a.cmd[0] for a in APPS if not os.path.isabs(a.cmd[0]))
     stale = []
     for exe in sorted(exes):
@@ -227,7 +230,8 @@ class Session:
         for d in os.listdir("/proc"):
             if d.isdigit():
                 try:
-                    if open(f"/proc/{d}/comm").read().strip() == comm and self.ours(int(d)):
+                    # (The kernel keeps 15 characters of a name.)
+                    if open(f"/proc/{d}/comm").read().strip() == comm[:15] and self.ours(int(d)):
                         return int(d)
                 except OSError:
                     pass
@@ -727,6 +731,54 @@ def run_palette(b):
     b.measure("palette", "hide", [pid], lambda st: (s.key(ESC), time.sleep(0.4)), transition=True)
 
 
+def run_emoji(b):
+    """The emoji picker: a layer over the screen, as the palette is;
+    shown, typed in, its grid walked and scrolled, hidden, and shown
+    again (each open is a new surface: its emoji drawn again unless
+    kept)."""
+    s = b.s
+    t0 = time.monotonic()
+    tsession("run", NAME, "olo-emoji-picker", "--toggle")
+    pid = None
+    while not pid and time.monotonic() - t0 < 10:
+        pid = s.pid_of("olo-emoji-picker")
+        time.sleep(0.02)
+    if not pid:
+        st = Step("emoji", "launch")
+        st.failures.append("no process in 10 s")
+        b.results.append(st)
+        b.report(st)
+        return
+    b.measure("emoji", "launch and show", [pid], lambda st: time.sleep(1.5), transition=True)
+
+    def typing(st):
+        s.type("heart")
+        time.sleep(0.3)
+        for _ in "heart":
+            s.key(BKSP)
+        time.sleep(0.3)
+    b.measure("emoji", "typing", [pid], typing)
+
+    def walk(st):
+        for code in [RIGHT] * 4 + [DOWN] * 8 + [UP] * 4 + [LEFT] * 2:
+            s.key(code)
+            time.sleep(0.05)
+    b.measure("emoji", "grid walked", [pid], walk)
+
+    def wheel(st):
+        for dy in [3] * 6 + [-3] * 6:
+            s.synth([{"type": "wheel", "dy": dy}])
+            time.sleep(0.05)
+    b.measure("emoji", "grid wheeled", [pid], wheel)
+    b.measure("emoji", "hide", [pid], lambda st: (s.key(ESC), time.sleep(0.4)), transition=True)
+
+    def again(st):
+        tsession("run", NAME, "olo-emoji-picker", "--toggle")
+        time.sleep(1.0)
+    b.measure("emoji", "show again", [pid], again)
+    b.measure("emoji", "hide again", [pid], lambda st: (s.key(ESC), time.sleep(0.4)), transition=True)
+
+
 def run_overview(b):
     """The overview: app_server's own frames as it opens (windows gliding,
     the other workspace's fading in), is walked and leaves, with four
@@ -793,7 +845,7 @@ def main():
     a = sys.argv[1:]
     opt = lambda k, d=None: a[a.index(k) + 1] if k in a else d
     if "--list" in a:
-        print(" ".join(x.key for x in APPS) + " deskbar palette overview savers")
+        print(" ".join(x.key for x in APPS) + " deskbar palette emoji overview savers")
         return
     if "-h" in a or "--help" in a:
         print(__doc__)
@@ -832,6 +884,8 @@ def main():
                 run_app(b, app, scale)
             if not only or "palette" in only:
                 run_palette(b)
+            if not only or "emoji" in only:
+                run_emoji(b)
             if not only or "overview" in only:
                 run_overview(b)
             if not only or "savers" in only:

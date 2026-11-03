@@ -192,7 +192,7 @@ impl Panel {
     /// at 1×, 1.5× and 2×).
     pub fn size(self) -> (u32, u32) {
         match self {
-            Panel::Ai => (440, 430),
+            Panel::Ai => (440, 550),
             Panel::AirPods => (520, 752),
             Panel::Appearance => (420, 418),
             Panel::Backgrounds => (640, 530),

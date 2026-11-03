@@ -228,6 +228,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         match shortcut {
             // Resident: a second start hands --toggle to the running one.
             S::Palette => self.spawn_program("olo-palette", &["--toggle"]),
+            S::EmojiPicker => self.spawn_program("olo-emoji-picker", &["--toggle"]),
             S::Find => {
                 // Bring back an open Find window rather than stacking more.
                 let open = self.all_windows().into_iter().find(|w| w.app_id() == "olo.tracker" && w.title() == "Find");

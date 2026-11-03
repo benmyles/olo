@@ -845,6 +845,15 @@ pub(crate) trait PlatformTextSystem: Send + Sync {
     ) -> Vec<(RenderGlyphParams, Bounds<DevicePixels>)> {
         Vec::new()
     }
+    /// Olo: draws the glyphs of `params` not yet drawn ahead of need
+    /// (colour ones: emoji), without holding up a frame; their bounds.
+    /// Colour glyphs drawn are kept for every window until
+    /// [`forget_kept`](Self::forget_kept).
+    fn draw_glyphs_ahead(&self, _params: &[RenderGlyphParams]) -> Vec<(RenderGlyphParams, Bounds<DevicePixels>)> {
+        Vec::new()
+    }
+    /// Olo: lets go of the colour glyphs kept.
+    fn forget_kept(&self) {}
     fn glyph_raster_bounds(&self, params: &RenderGlyphParams) -> Result<Bounds<DevicePixels>>;
     fn rasterize_glyph(
         &self,

@@ -247,6 +247,14 @@ of Finished; a new one goes where its priority puts it.
   first scroll skips a frame at 1× and 1.5× (its frames 1.5–3.3 ms: the
   pacing, not the cost).
 
+- **A resident overlay keeps ~60 MB after its window closes** (found
+  measuring the emoji picker, 2026-11-02): never shown it holds 25 MB,
+  shown 106 MB, hidden again 88 MB (less its kept emoji); the palette
+  holds 121 MB in Ben's session. What stays is the window's renderer
+  (GPU device, pipelines, atlas) or the allocator's: find which, and
+  let a hidden resident app's go (or keep one renderer for every window
+  it opens) so the palette and picker cost little between uses.
+
 - **Glyphs drawn in a frame are slow the first time** (found
   measuring Telegram, 2026-11-01): a chat opened with 230 glyphs new
   to the process spent 6–9 ms of its frame (release) on first-time
@@ -261,8 +269,13 @@ of Finished; a new one goes where its priority puts it.
   window's first frame drawn once, at its display's scale and text
   rendering (it was drawn at 1, then again: 6–8 ms, and its glyphs
   for nothing). Telegram's chat switches: slowest frame 9.6–10.2 ms
-  → 6.6–7.6 ms, 0.7 MB more memory. Left: colour emoji are drawn
-  the first time at 0.06–0.4 ms each.
+  → 6.6–7.6 ms, 0.7 MB more memory. *Done* (2026-11-02, the emoji
+  picker): colour glyphs are kept for every window of an app once drawn
+  (up to 32 MB, other scales' let go first), and `Window::warm_text`
+  draws a text's ahead off the UI thread (the picker's 1,900: its
+  slowest frame at 2× 8.1 → 1.5 ms). Left: Telegram's chats could warm
+  a conversation's emoji as its text is (`warm_glyphs`) before showing
+  it.
   Deskbar's battery and Wi-Fi now follow UPower's and
   NetworkManager's signals (idle: 0 wakeups a second, from 7–9).
 
@@ -478,26 +491,6 @@ of Finished; a new one goes where its priority puts it.
   screen onto one of the person's display-workspaces. The program keeps
   running as it moves (its connection handed between the two
   app_servers, or the app reopened there with its saved state).
-
-- **Emoji picker** (Ben, 2026-10-31): "an olo native emoji picker app
-  that inserts the selected emoji into wherever the text cursor is in the
-  active window. have it support fuzzy keyword search but also give it an
-  option to ask ai to choose the emojis based on a description e.g. "pat
-  on the back for going above and beyond". it should use the same ai
-  integration paths we have for the ai smart tiling with a selectable
-  model. make sure the picker is easy to use and the fuzzy search should
-  be autocomplete real time style and the ai search should be based on
-  maybe using super+enter to submit the text or something and then it
-  should come back with 5 different suggestions shown and you can either
-  select one to insert or type something else and search again". So: a
-  shortcut-summoned panel (as the palette) that types the chosen emoji
-  into the window that had the focus (as the clipboard can't: a text
-  input or synthetic keys through app_server, any app, ours or not); a
-  grid by category with recents and skin tones; fuzzy search over
-  CLDR names and keywords as you type; ⌘↩ asks the AI (crates/ai, as
-  smart tiling does, the model chosen in Preferences ▸ AI) for five
-  suggestions from a description, shown as a row to pick from or search
-  again; keyboard first, agent-readable.
 
 - **StyledEdit: icon toolbars, as Gobe Productive's** (Ben, 2026-10-31,
   for later): "stylededit should have icon toolbars (side and top)
@@ -858,6 +851,26 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**Emoji picker**~~ (Ben, 2026-10-31: "an olo native emoji picker
+  app that inserts the selected emoji into wherever the text cursor is
+  in the active window… fuzzy keyword search… ask ai to choose the
+  emojis based on a description… super+enter… 5 different
+  suggestions"). `olo-emoji-picker`: ⌃⌘Space (Windows' ⊞.) over
+  everything, resident; search as you type over names, CLDR keywords
+  and shortcodes (letters left out forgiven, the plainest and most used
+  first); a tab a group and Frequently Used; skin tones kept; ⌘↩ asks
+  the model chosen in Preferences ▸ AI ▸ Emoji (new: on, Astra 6, low)
+  for five, each with its reason. Return puts it into the field that
+  had the keyboard in any app: app_server's new `Request::InsertText`
+  (text-input-v3's `commit_string`, app_server the input method just
+  long enough, else keys on a keymap made for the text; tried in
+  StyledEdit, Chrome 156 and GTK). `olo-screen type` puts in what a US
+  keyboard can't type the same way. Agent-readable throughout. On the
+  way: GPUI now shows ✋ ⚡ ✨ ✅ and other default-emoji symbols in
+  colour, and skin-toned ✌🏽 (`olo_emoji::starts_emoji`, shared); the
+  kit keeps colour glyphs and draws them ahead (`warm_text`); bench has
+  an `emoji` step (every frame ≤ 1.5 ms at 1×–2×).
 
 - ~~**Telegram: unarchived chats go back to Archived on every reopen,
   and read chats come back unread**~~ (Ben, 2026-11-02: "every time i

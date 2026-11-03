@@ -439,7 +439,7 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
         })(),
         "type" => (|| {
             let s = screen()?;
-            s.input(screens::type_text(&rest.get(1..).filter(|t| !t.is_empty()).ok_or("type needs text")?.join(" "))?)?;
+            s.type_text(&rest.get(1..).filter(|t| !t.is_empty()).ok_or("type needs text")?.join(" "))?;
             let after = find::after(&s);
             warn_if_not_text(&after);
             print_json(&json!({ "after": after }));
@@ -466,8 +466,8 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             }
             let mut events = screens::chord(&screens::parse_chord("Ctrl+A")?);
             events.extend(screens::chord(&screens::parse_chord("Delete")?));
-            events.extend(screens::type_text(&text)?);
             s.input(events)?;
+            s.type_text(&text)?;
             let after = find::after(&s);
             warn_if_not_text(&after);
             print_json(&json!({ "field": f, "after": after }));

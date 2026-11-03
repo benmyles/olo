@@ -1,6 +1,6 @@
 //! AI: Olo's AI features, each on or off, with its model (OpenAI's,
-//! through the Token Pool's Codex accounts) and effort. Smart Tiling is
-//! the first.
+//! through the Token Pool's Codex accounts) and effort: Smart Tiling,
+//! and the emoji picker's suggestions.
 
 use olo_protocol::{AI_EFFORTS, AI_MODELS, AiFeature, Settings, shortcuts};
 use olo_ui::gpui::SharedString;
@@ -19,6 +19,15 @@ pub fn ui(ui: &mut Ui) {
     };
     ui.bbox("Smart Tiling", |ui| {
         feature(ui, "smart-tiling", &s.ai.smart_tiling, "Arrange windows with a model", |s| &mut s.ai.smart_tiling);
+        ui.note(how);
+    });
+    let keys = shortcuts::by_id("emoji-picker").map(|i| shortcuts::keys_for(i, &s.keyboard.profile)).unwrap_or_default();
+    let how = match keys.first() {
+        Some(k) => format!("In the emoji picker ({}), describe what you want to say and press ⌘↩ for five emoji that say it.", k.label(s.keyboard.profile.platform)),
+        None => "In the emoji picker, describe what you want to say and press ⌘↩ for five emoji that say it.".into(),
+    };
+    ui.bbox("Emoji", |ui| {
+        feature(ui, "emoji", &s.ai.emoji, "Suggest emoji for a description", |s| &mut s.ai.emoji);
         ui.note(how);
     });
     ui.bbox("Agent Screens", |ui| {

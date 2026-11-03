@@ -123,6 +123,8 @@ vello_cpu = { version = "0.2", default-features = false, features = ["std", "u8_
 ab_glyph_rasterizer = "0.1.10"
 memmap2 = "0.9"
 olo-theme = { path = "../../crates/theme" }
+# Which characters are emoji, as the rest of Olo has it.
+olo-emoji = { path = "../../crates/emoji", default-features = false }
 olo-protocol = { path = "../../crates/protocol" }
 olo-xdg = { path = "../../crates/xdg" }
 bytemuck = { version = "1", optional = true }

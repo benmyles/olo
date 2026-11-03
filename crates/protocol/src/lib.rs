@@ -318,6 +318,11 @@ pub enum Request {
     },
     /// Inject input as if from a device (for automated UI tests).
     Synthetic { events: Vec<SyntheticEvent> },
+    /// Put `text` into the focused field as an input method would (the
+    /// emoji picker; any text, not only what a keyboard types). It waits,
+    /// a second at most, while the asking program has the keyboard; a
+    /// window with no text-input-v3 field gets it as keys.
+    InsertText { text: String },
     /// Displays with nothing new rest (look again only when woken, or now
     /// and then) or look every frame: `on`, `off`, or (None) as app_server
     /// has it for its kind of display. Until app_server restarts.
@@ -1018,6 +1023,8 @@ pub struct AiSettings {
     pub use_pool: bool,
     /// Smart Tiling: the model arranges the windows on the screen.
     pub smart_tiling: AiFeature,
+    /// The emoji picker's ⌘↩: five emoji for a description.
+    pub emoji: AiFeature,
     /// Agent Screens: how much of each screen's history (its actions and
     /// the frames it drew) is kept, in megabytes, and for how many days
     /// (0: for ever).
@@ -1027,7 +1034,14 @@ pub struct AiSettings {
 
 impl Default for AiSettings {
     fn default() -> Self {
-        AiSettings { use_pool: true, smart_tiling: AiFeature { enabled: true, model: AI_MODELS[0].0.into(), effort: "medium".into() }, screen_history_mb: 512, screen_history_days: 30 }
+        AiSettings {
+            use_pool: true,
+            smart_tiling: AiFeature { enabled: true, model: AI_MODELS[0].0.into(), effort: "medium".into() },
+            // Asked while the person waits: quick.
+            emoji: AiFeature { enabled: true, model: AI_MODELS[0].0.into(), effort: "low".into() },
+            screen_history_mb: 512,
+            screen_history_days: 30,
+        }
     }
 }
 
