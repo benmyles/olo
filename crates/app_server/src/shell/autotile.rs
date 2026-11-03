@@ -1633,11 +1633,14 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     /// Float `w` over the tiles (`Some(true)`), tile it (`Some(false)`), or
     /// leave it to app_server (`None`). Floated out of a tile, it has its
-    /// own frame again, in front.
+    /// own frame again, in front. Its group's windows with it: a group is
+    /// one tile or floats as its front window does, and whichever is in
+    /// front (after a restart, another may be) must say the same.
     pub fn set_floating(&mut self, w: &WindowElement, floating: Option<bool>) {
-        w.user_data().insert_if_missing(Float::default);
         let was = self.floats(w);
-        w.user_data().get::<Float>().unwrap().0.set(floating);
+        for m in self.groups.mates(w).iter().chain(std::iter::once(w)) {
+            Self::restore_float_override(m, floating);
+        }
         if self.floats(w) && !was && self.auto_tiled(w) {
             let own = w.user_data().get::<PreZoom>().and_then(|p| *p.0.borrow());
             self.restore_frame(w);

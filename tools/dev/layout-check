@@ -203,6 +203,12 @@ def main():
             problems.append(f"display {k} showed workspace {v}, now {now['showing'].get(k)}")
     for k, v in was["windows"].items():
         n = now["windows"].get(k)
+        # The only window of its app, its title changed (a Terminal's,
+        # re-executed): the same window.
+        if n is None:
+            same_app = lambda ws: [x for x in ws if x[0] == k[0]]
+            if len(same_app(was["windows"])) == 1 and len(same_app(now["windows"])) == 1:
+                n = now["windows"][same_app(now["windows"])[0]]
         if n is None:
             problems.append(f"{k[0]} “{k[1]}”: gone")
             continue

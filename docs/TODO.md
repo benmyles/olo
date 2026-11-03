@@ -151,28 +151,6 @@ of Finished; a new one goes where its priority puts it.
   modeset as now. It needs trying on the real displays (an upgrade
   the person agrees to try), so it isn't shipped blind.
 
-- **Displays: kept where they are, numbered for good** (Ben, 2026-10-31):
-  "we absolutely must get these upgrades (and connecting/disconnecting
-  monitors) keeping things where they already were on the right
-  display-workspaces (unless the display is no longer available in which
-  case move it to the primary display on the matching workspace) … also
-  make sure that we are using some kind of permanent identifier for each
-  display behind the scenes so that what display is 0/1/2 etc doesn't
-  change and remains consistent across connect/disconnect, restart etc.
-  … and it has to work with auto tiling properly so that they come back
-  with the same positions and any custom resizes etc". Upgrades: done
-  (7a7c5fd: displays known by their monitors before use, windows back on
-  their own displays; `tools/dev/layout-check`). Numbers: done (each
-  monitor's number, D0, D1, …, given once and kept in the settings by its
-  key, `DisplaySettings::numbers`). Unplug and plug: done (2026-11-02:
-  `display_leaving`, `windows_back_home`, `AutoTiler::leave` /
-  `come_back`; `plug_display` for test screens, `layout-check
-  --unplug`). Still to do: `layout-check --auto` (the reload) fails, on
-  HEAD before the unplug work too: a floating group on an auto-tiled
-  display comes back tiled (one of its windows loses its float), and
-  the check takes a Terminal whose title lost its "olo — " prefix on
-  re-executing for gone.
-
 - **Every frame on time, every display** (Ben, 2026-11-01: "dropping
   frames is never acceptable: olo must be buttery smooth on all
   displays all the time"; the pointer "definitely way slow/stuttery",
@@ -894,6 +872,30 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**Displays: kept where they are, numbered for good**~~ (done
+  2026-11-02) (Ben, 2026-10-31):
+  "we absolutely must get these upgrades (and connecting/disconnecting
+  monitors) keeping things where they already were on the right
+  display-workspaces (unless the display is no longer available in which
+  case move it to the primary display on the matching workspace) … also
+  make sure that we are using some kind of permanent identifier for each
+  display behind the scenes so that what display is 0/1/2 etc doesn't
+  change and remains consistent across connect/disconnect, restart etc.
+  … and it has to work with auto tiling properly so that they come back
+  with the same positions and any custom resizes etc". Upgrades: done
+  (7a7c5fd: displays known by their monitors before use, windows back on
+  their own displays; `tools/dev/layout-check`). Numbers: done (each
+  monitor's number, D0, D1, …, given once and kept in the settings by its
+  key, `DisplaySettings::numbers`). Unplug and plug: done (2026-11-02:
+  `display_leaving`, `windows_back_home`, `AutoTiler::leave` /
+  `come_back`; `plug_display` for test screens, `layout-check
+  --unplug`). And `layout-check --auto` (the reload)
+  passes again (it failed before the unplug work too): a group's float
+  is every window's in it, so whichever comes back in front floats it,
+  and a window placed onto an auto-tiled display from another floats
+  there; the check matches the only window of an app whose title
+  changed (a Terminal's, re-executed).
 
 - ~~**Telegram crashed: Vulkan ERROR_SURFACE_LOST_KHR**~~ (done
   2026-11-02: blade-graphics, GPUI's renderer and Wayland client) (seen

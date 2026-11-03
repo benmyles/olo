@@ -507,6 +507,14 @@ impl<B: Backend + 'static> AnvilState<B> {
                     self.forget_tile(&w);
                     self.forget_own_frame(&w);
                     self.set_frame(&w, to, false);
+                    // Put on an auto-tiled display from another: it floats
+                    // there too (its group with it), where it was put.
+                    if self.window_output(&w).is_some_and(|o| self.auto_on(&o, self.showing(&o))) && !self.floats(&w) {
+                        for m in self.groups.mates(&w).iter().chain(std::iter::once(&w)) {
+                            Self::restore_float_override(m, Some(true));
+                        }
+                        self.auto.dirty = true;
+                    }
                     // Its group goes with it, though it hasn't drawn at
                     // the group's size since coming to the front.
                     self.groups.lead(&w);

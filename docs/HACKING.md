@@ -3613,7 +3613,12 @@ grouped. Floating windows stay in front of the tiles
 window menu's Float Over the Tiles (only where auto-tiling is on),
 ⌃⌥⌘F (`float-window`), or `{"type":"set_floating","id":ID,"floating":true}`
 (`null` leaves it to app_server again); `WindowInfo` says `tiled`,
-`floating` and `float` (the hand's choice). A window that leaves for a
+`floating` and `float` (the hand's choice). The choice is its group's:
+a group is one tile, or floats, as its front window does, so every
+window in it is given it (`set_floating`), and whichever comes back in
+front after a restart says the same (a floating group came back tiled).
+A window placed (`place`) onto an auto-tiled display from another
+floats there where it was put, its group with it. A window that leaves for a
 while (hidden, to another workspace) leaves a `Kept` place that takes no
 room and is its again when it comes back; a closed one leaves one for
 20 s (`CLOSED_KEEP`), which a window of the same app takes, so an app
