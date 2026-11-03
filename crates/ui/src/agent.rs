@@ -126,6 +126,10 @@ pub(crate) fn tree(handle: AnyWindowHandle, cx: &mut App) -> Option<WindowTree> 
     let painted = agents.windows.get(&handle.window_id())?;
     let (w, h) = (f32::from(size.width), f32::from(size.height));
     let mut nodes = vec![UiNode { id: 1, role: "Window".into(), name: Some(painted.title.clone()), width: w, height: h, enabled: true, ..Default::default() }];
+    // Text cut short to fit is read whole: a node named by what shows of
+    // it ("Quarterly rep…") has its whole name, and one no node names is
+    // a label of its own.
+    let mut cuts: Vec<(Bounds<Pixels>, SharedString, bool)> = crate::cut::cuts_in(&records).into_iter().map(|(b, full)| (b, full, false)).collect();
     for (i, (n, moved)) in records.iter().filter_map(|(r, moved)| Some((r.downcast_ref::<Node>()?, *moved))).enumerate() {
         let text = |s: &Option<SharedString>| s.as_ref().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
         // What shows of it: its bounds (moved, a row replayed where it's
@@ -135,11 +139,12 @@ pub(crate) fn tree(handle: AnyWindowHandle, cx: &mut App) -> Option<WindowTree> 
         let shown = n.clip.map_or(at, |c| at.intersect(&c));
         let offscreen = n.bounds.size.width > px(0.0) && n.bounds.size.height > px(0.0) && (shown.size.width <= px(0.0) || shown.size.height <= px(0.0));
         let b = if offscreen { at } else { shown };
+        let name = whole_name(text(&n.name), at, &mut cuts);
         nodes.push(UiNode {
             id: i as u64 + 2,
             parent: Some(1),
             role: n.role.into(),
-            name: text(&n.name),
+            name,
             value: text(&n.value),
             x: f32::from(b.origin.x),
             y: f32::from(b.origin.y),
@@ -155,7 +160,40 @@ pub(crate) fn tree(handle: AnyWindowHandle, cx: &mut App) -> Option<WindowTree> 
             ..Default::default()
         });
     }
+    for (b, full, _) in cuts.into_iter().filter(|(.., named)| !named) {
+        let id = nodes.len() as u64 + 1;
+        nodes.push(UiNode {
+            id,
+            parent: Some(1),
+            role: "Label".into(),
+            name: Some(full.trim().to_string()),
+            x: f32::from(b.origin.x),
+            y: f32::from(b.origin.y),
+            width: f32::from(b.size.width),
+            height: f32::from(b.size.height),
+            enabled: true,
+            ..Default::default()
+        });
+    }
     Some(WindowTree { title: painted.title.clone(), width: w as u32, height: h as u32, active, nodes, layer: painted.layer.clone(), ..Default::default() })
+}
+
+/// A node's name, whole where it's a text cut short (`cuts`, each marked
+/// once some node names it): "Quarterly rep…" over a cut of "Quarterly
+/// report.pdf" is "Quarterly report.pdf".
+fn whole_name(name: Option<String>, at: Bounds<Pixels>, cuts: &mut [(Bounds<Pixels>, SharedString, bool)]) -> Option<String> {
+    let mut name = name;
+    for (_, full, named) in cuts.iter_mut().filter(|(b, ..)| b.intersects(&at)) {
+        match &name {
+            Some(s) if s == full.trim() => *named = true,
+            Some(s) if s.strip_suffix('…').is_some_and(|head| full.starts_with(head.trim_end())) => {
+                name = Some(full.trim().to_string());
+                *named = true;
+            }
+            _ => {}
+        }
+    }
+    name
 }
 
 fn frames(handle: AnyWindowHandle, cx: &mut App) -> Option<FrameTimes> {
@@ -305,4 +343,27 @@ pub(crate) fn init(cx: &mut App, app_id: &str) {
         }
     })
     .detach();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{point, size};
+
+    /// A node named by what shows of a cut text reads whole; one named
+    /// whole already marks the cut named; a cut no node names is left
+    /// for a label of its own.
+    #[test]
+    fn cut_text_read_whole() {
+        let b = |x: f32, w: f32| Bounds { origin: point(px(x), px(0.0)), size: size(px(w), px(20.0)) };
+        let mut cuts = vec![(b(0.0, 100.0), SharedString::from("Quarterly report 2026.pdf"), false), (b(200.0, 100.0), SharedString::from("Unclaimed and long"), false)];
+        assert_eq!(whole_name(Some("Quarterly rep…".into()), b(0.0, 100.0), &mut cuts).as_deref(), Some("Quarterly report 2026.pdf"));
+        assert!(cuts[0].2 && !cuts[1].2);
+        // Elsewhere, or another text: as it was.
+        assert_eq!(whole_name(Some("Quarterly rep…".into()), b(400.0, 50.0), &mut cuts).as_deref(), Some("Quarterly rep…"));
+        assert_eq!(whole_name(Some("Other…".into()), b(200.0, 100.0), &mut cuts).as_deref(), Some("Other…"));
+        assert!(!cuts[1].2);
+        assert_eq!(whole_name(Some("Unclaimed and long".into()), b(210.0, 10.0), &mut cuts).as_deref(), Some("Unclaimed and long"));
+        assert!(cuts[1].2);
+    }
 }

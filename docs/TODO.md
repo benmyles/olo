@@ -206,10 +206,9 @@ of Finished; a new one goes where its priority puts it.
   and read-back) are kept by Mesa ~3 s for reuse and then freed in the
   renderer's next bind (Screenshot's live resize, 18–21 ms; its scroll
   at 1×): keep them (a few, long-lived) rather than make one per shot.
-  And clients make a new swapchain (four window-sized buffers) for
-  every size of a live resize, each made, checked, bound and freed:
-  GPUI should keep a bigger swapchain and draw a part of it
-  (wp_viewporter's source) while a resize lasts.
+  (Clients making a new swapchain for every size of a live resize:
+  done, GPUI draws in part of a bigger one while a resize lasts,
+  `BladeRenderer::update_drawable_size_within`.)
 
 - **app_server: a 16 ms frame during Terminal's live resize at 2×**
   (the bench, 2 runs in 5: "16.2 ms drawing 7.7 Mpx; 1.0 ms on a CPU,
@@ -385,8 +384,8 @@ of Finished; a new one goes where its priority puts it.
   list, Passwords' titles; ⌘ shows it at once; and app_server's window
   tabs, `tabtip`. *Left*: app_server's other text (Twitcher, the
   overview's labels), text fields scrolled sideways, Telegram's
-  attachment chips and bubbles, text in GPUI's own text elements, and
-  agents reading a cut text's whole as its name) (Ben, 2026-10-31):
+  attachment chips and bubbles, text in GPUI's own text elements; agents read cut text whole since
+  2026-11-02, `agent::whole_name`) (Ben, 2026-10-31):
   "when hovering over anything in olo or any olo app where the text has
   been truncated or occluded or otherwise is not being displayed in full
   then there should be a tooltip that appears showing the full text".

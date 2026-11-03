@@ -20,6 +20,13 @@ struct Cut {
     bounds: Bounds<Pixels>,
 }
 
+/// The texts cut short among a window's paint records, each whole and
+/// where it shows (moved as its record was): for the agent tree, which
+/// names what's cut by its whole.
+pub(crate) fn cuts_in(records: &[(std::rc::Rc<dyn std::any::Any>, Point<Pixels>)]) -> Vec<(Bounds<Pixels>, SharedString)> {
+    records.iter().filter_map(|(r, moved)| r.downcast_ref::<Cut>().map(|c| (Bounds { origin: c.bounds.origin + *moved, size: c.bounds.size }, c.full.clone()))).collect()
+}
+
 /// `full` was shown cut short in `bounds` (in the window, as painted).
 /// What shows of it is where the pointer finds it.
 pub fn note(window: &mut Window, full: SharedString, bounds: Bounds<Pixels>) {

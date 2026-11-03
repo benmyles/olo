@@ -814,7 +814,10 @@ isn't). An app that cuts text itself says so with `cut::note(window,
 full, bounds)` (Tracker's icon names). The notes are paint records, so
 a cached view's replay keeps them; the pointer's moves look through
 them once after each frame drawn, then through the few rectangles cut
-(0.3–1.9 µs a move in Tracker and Activity Monitor).
+(0.3–1.9 µs a move in Tracker and Activity Monitor). Agents read cut
+text whole: in a window's tree a node named by what shows of it
+("Quarterly rep…") has its whole name, and a cut text no node names is
+a `Label` of its own (`agent::whole_name`, when the tree is asked for).
 
 ### Showing a control (`olo_ui::spotlight`)
 
