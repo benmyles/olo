@@ -378,7 +378,11 @@ of Finished; a new one goes where its priority puts it.
   comes near that edge or a scroll starts, fading out a moment after;
   draggable, clickable, agent-readable as a ScrollBar; Terminal's
   scrollback shown with it; documented in HACKING with where to use it
-  rather than the BeOS bar.
+  rather than the BeOS bar. Ben, the same day: "the terminal scrollbars
+  should actually be scrollable like i should be able to click on the
+  widget in it and drag it up and down to scroll": its thumb held and
+  dragged scrolls the scrollback with the pointer (a click in its track
+  pages there), in every pane of a split tab.
 
 - **The command palette: typing "n" first closes it; every shortcut in
   it; files only on Ctrl** (Ben, 2026-11-03): "when i'm in the command
