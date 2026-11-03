@@ -5070,6 +5070,34 @@ reset and what came of it (`--notify` is the look alone). Tests build a
 machine in a folder (`Roots { fs, bin, uid, scope, units }`) and check
 the findings and their steps exactly.
 
+## Olo Suggestions (apps/doctor, `olo-suggestions`)
+
+What Olo suggests for the best of it, none of it needed (Olo works the
+same without): each with what it does and why, a button that applies it,
+Apply All (⇧⌘A), and, once applied, a button that undoes it. It is Olo
+Doctor's body (`apps/doctor` is a library with two programs: `app.rs`'s
+window and command line by `Kind`), so a suggestion is a `Finding` whose
+`Fix` is applied by the same steps and root helper, what's applied is a
+`Fine` with an `Undo` beside it (`Report::undo`, found by
+`Report::action` as a fix is), and `olo-suggestions --report` and
+`--apply [all | ID…]` do from a terminal or an agent what the window
+does (`all` never undoes). `suggest.rs` has them; `OLO_SUGGESTIONS_DEMO=
+applied` shows them all applied, made up, to look at headless.
+
+- **brush as the login shell**: brush (github.com/reubeno/brush), the
+  bash-compatible shell in Rust, is built with Olo (`apps/brush`,
+  `olo-brush`: `brush_shell::entry::run`, installed and upgraded with
+  Olo's programs). Applied as root: Olo's build copied to
+  /usr/local/bin/brush, listed in /etc/shells (`Step::AddShell`), tried
+  (`Step::TryShell`: it runs `-c 'exit 0'`), and made the login shell
+  through AccountsService (`Step::SetLoginShell`,
+  `olo_system::accounts::set_shell`); the shell it was is kept first
+  (`~/.config/olo/suggestions.json`) for the undo, else bash. A copy
+  older than Olo's build is suggested again (Update brush). Terminal
+  starts the account's shell as it is now (`pty::shell`: the password
+  database first, `$SHELL` from login after), so its next window is
+  brush at once.
+
 ## The Wi-Fi healer (apps/wifi-heal)
 
 The Broadcom chips in Apple machines (brcmfmac; BCM4388 here) can get

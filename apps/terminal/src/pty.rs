@@ -30,19 +30,24 @@ pub fn set_cloexec(fd: RawFd, on: bool) {
     }
 }
 
-/// The user's login shell.
+/// The user's login shell as the account has it now (one changed since
+/// login, Olo Suggestions' brush, is the next window's at once), else
+/// `$SHELL` (what it was at login).
 fn shell(env: &[(String, String)]) -> String {
-    if let Some((_, s)) = env.iter().find(|(k, _)| k == "SHELL")
-        && !s.is_empty()
-    {
-        return s.clone();
-    }
     // SAFETY: getpwuid returns a pointer into static storage or null.
     unsafe {
         let pw = libc::getpwuid(libc::getuid());
         if !pw.is_null() && !(*pw).pw_shell.is_null() {
-            return std::ffi::CStr::from_ptr((*pw).pw_shell).to_string_lossy().into_owned();
+            let s = std::ffi::CStr::from_ptr((*pw).pw_shell).to_string_lossy().into_owned();
+            if !s.is_empty() {
+                return s;
+            }
         }
+    }
+    if let Some((_, s)) = env.iter().find(|(k, _)| k == "SHELL")
+        && !s.is_empty()
+    {
+        return s.clone();
     }
     "/bin/sh".into()
 }

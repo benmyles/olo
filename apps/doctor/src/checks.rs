@@ -120,10 +120,21 @@ pub struct Fine {
     pub detail: String,
 }
 
+/// Something applied that can be undone (Olo Suggestions): the id its
+/// button goes by, the line it's on (a `Fine`'s title), and how.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Undo {
+    pub id: String,
+    pub title: String,
+    pub fix: Fix,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Report {
     pub findings: Vec<Finding>,
     pub fine: Vec<Fine>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub undo: Vec<Undo>,
 }
 
 impl Report {
@@ -137,6 +148,11 @@ impl Report {
 
     pub fn find(&self, id: &str) -> Option<&Finding> {
         self.findings.iter().find(|f| f.id == id)
+    }
+
+    /// What the button `id` does: a finding's fix, or an undo.
+    pub fn action(&self, id: &str) -> Option<&Fix> {
+        self.find(id).and_then(|f| f.fix.as_ref()).or_else(|| self.undo.iter().find(|u| u.id == id).map(|u| &u.fix))
     }
 }
 

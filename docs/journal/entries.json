@@ -2872,5 +2872,17 @@
   "title": "Telegram: chats chosen together",
   "caption": "\u2318-click, \u21e7-click or Edit \u25b8 Select All Chats chooses several; their menu archives, unarchives, marks read, mutes or deletes them all (asking first).",
   "image": "2026-11-02/163702-telegram-chats-chosen-together.png"
+ },
+ {
+  "time": "2026-11-02T16:52:48",
+  "title": "Olo Suggestions",
+  "caption": "A new app: what Olo suggests, none of it needed, each applied with a button or all with Apply All. The first: brush, the bash-compatible shell in Rust, as the login shell.",
+  "image": "2026-11-02/165248-olo-suggestions.png"
+ },
+ {
+  "time": "2026-11-02T16:52:49",
+  "title": "Olo Suggestions: applied, and undone",
+  "caption": "What's applied is listed with a button that undoes it (here: Use bash Again).",
+  "image": "2026-11-02/165249-olo-suggestions-applied-and-undone.png"
  }
 ]

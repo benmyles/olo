@@ -59,30 +59,6 @@ of Finished; a new one goes where its priority puts it.
   keyboard, the panel's selection, its `on_done` or the portal's
   reply) and fix it; test both through the portal, as Slack asks.
 
-- **Olo Suggestions** (Ben, 2026-11-02): "similar to olo doctor, add an
-  "Olo Suggestions" app and in there it should have things that Olo
-  suggests doing to have the best experience in Olo. they're things
-  that are optional / nice to haves, and Olo should still work fine
-  without them. each one should have a button to apply it and an apply
-  all button. the first suggestion i want is to change the user shell
-  to https://github.com/reubeno/brush (bash rewritten in rust with more
-  features) and if the user applies it then we should install it and
-  update the user's shell to use it as default shell". So: an app
-  built as Doctor is (`apps/doctor`: its checks, its window, its
-  privileged helper and the approval it asks), listing suggestions
-  that aren't problems (Doctor keeps those): each with what it does
-  and why, its state (applied or not, checked off the UI thread), an
-  Apply button, and Apply All; applying shows live progress, can be
-  cancelled, and is safe to run again; agents read and apply them as
-  people do. First suggestion, **brush as the login shell**: build and
-  install brush (`cargo install` of the `brush-shell` crate, as the
-  setup app installs Rust things, into `~/.cargo/bin` or a system
-  path a login shell can be), add it to `/etc/shells`, and make it the
-  person's login shell (`/etc/passwd` through the helper, with the
-  admin approval), Terminal's new shells following; undoing it puts
-  the shell back as it was. Doctor's "Fix in Olo Doctor…" style link
-  from Preferences where it fits.
-
 - **Menus taller than the screen scroll** (found 2026-11-02 in
   Preferences ▸ Default Apps, whose app pop-up listed every app): a
   kit menu longer than the display runs off its edge, and what's past
@@ -941,6 +917,34 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**Olo Suggestions**~~ (done 2026-11-02: `olo-suggestions`, Olo
+  Doctor's body with a `Kind`; brush built with Olo as `olo-brush` and
+  applied as the login shell through AccountsService, undone with a
+  button; Terminal follows the account's shell at once. Not applied on
+  Ben's machine by the tests: his to press) (Ben, 2026-11-02): "similar to olo doctor, add an
+  "Olo Suggestions" app and in there it should have things that Olo
+  suggests doing to have the best experience in Olo. they're things
+  that are optional / nice to haves, and Olo should still work fine
+  without them. each one should have a button to apply it and an apply
+  all button. the first suggestion i want is to change the user shell
+  to https://github.com/reubeno/brush (bash rewritten in rust with more
+  features) and if the user applies it then we should install it and
+  update the user's shell to use it as default shell". So: an app
+  built as Doctor is (`apps/doctor`: its checks, its window, its
+  privileged helper and the approval it asks), listing suggestions
+  that aren't problems (Doctor keeps those): each with what it does
+  and why, its state (applied or not, checked off the UI thread), an
+  Apply button, and Apply All; applying shows live progress, can be
+  cancelled, and is safe to run again; agents read and apply them as
+  people do. First suggestion, **brush as the login shell**: build and
+  install brush (`cargo install` of the `brush-shell` crate, as the
+  setup app installs Rust things, into `~/.cargo/bin` or a system
+  path a login shell can be), add it to `/etc/shells`, and make it the
+  person's login shell (`/etc/passwd` through the helper, with the
+  admin approval), Terminal's new shells following; undoing it puts
+  the shell back as it was. Doctor's "Fix in Olo Doctor…" style link
+  from Preferences where it fits.
 
 - ~~**Telegram: archived right, unknown senders apart, bulk actions,
   smaller avatars**~~ (done 2026-11-02, as far as the demo shows: the

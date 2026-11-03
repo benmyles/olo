@@ -34,6 +34,13 @@ pub enum Step {
     /// Act on a system (not user) systemd unit.
     Unit { name: String, action: UnitAction },
     Signal { pid: i32, signal: i32 },
+    /// List a program in /etc/shells (a login shell must be there).
+    AddShell { path: PathBuf },
+    /// Run a shell once (`-c 'exit 0'`): it starts, before it's anyone's
+    /// login shell.
+    TryShell { path: PathBuf },
+    /// Make `shell` `user`'s login shell (AccountsService's SetShell).
+    SetLoginShell { user: String, shell: PathBuf },
 }
 
 impl Step {
@@ -57,6 +64,9 @@ impl Step {
                 format!("{verb} {name}")
             }
             Step::Signal { pid, .. } => format!("Stopping process {pid}"),
+            Step::AddShell { path } => format!("Listing {} in /etc/shells", path.display()),
+            Step::TryShell { path } => format!("Trying {}", path.display()),
+            Step::SetLoginShell { user, shell } => format!("Making {} {user}'s login shell", shell.display()),
         }
     }
 
@@ -81,8 +91,48 @@ impl Step {
                     Err(failed(std::io::Error::last_os_error()))
                 }
             }
+            Step::AddShell { path } => add_shell(path).map_err(failed),
+            Step::TryShell { path } => try_shell(path),
+            Step::SetLoginShell { user, shell } => set_login_shell(user, shell).map_err(|e| format!("{}: {e}", self.describe())),
         }
     }
+}
+
+/// `path` listed in /etc/shells (it is already: nothing written).
+fn add_shell(path: &Path) -> std::io::Result<()> {
+    add_shell_to(Path::new("/etc/shells"), path)
+}
+
+/// `path` listed in the shells file `shells`.
+fn add_shell_to(shells: &Path, path: &Path) -> std::io::Result<()> {
+    let text = std::fs::read_to_string(shells).unwrap_or_default();
+    let line = path.to_string_lossy();
+    if text.lines().any(|l| l.trim() == line) {
+        return Ok(());
+    }
+    let mut text = text;
+    if !text.is_empty() && !text.ends_with('\n') {
+        text.push('\n');
+    }
+    text.push_str(&line);
+    text.push('\n');
+    write_file(shells, &text, 0o644)
+}
+
+/// The shell at `path` runs a command and exits cleanly.
+fn try_shell(path: &Path) -> Result<(), String> {
+    // (Olo's own build of it: the one program a step runs.)
+    match std::process::Command::new(path).args(["-c", "exit 0"]).stdin(std::process::Stdio::null()).status() {
+        Ok(s) if s.success() => Ok(()),
+        Ok(s) => Err(format!("{} didn't run a command ({s})", path.display())),
+        Err(e) => Err(format!("{} didn't start: {e}", path.display())),
+    }
+}
+
+/// `user`'s login shell made `shell`, through AccountsService (which
+/// asks polkit; root, as the helper is, may).
+fn set_login_shell(user: &str, shell: &Path) -> Result<(), String> {
+    olo_system::accounts::set_shell(user, &shell.to_string_lossy()).map_err(|e| e.to_string())
 }
 
 fn write_file(path: &Path, content: &str, mode: u32) -> std::io::Result<()> {

@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Olo Suggestions: applied, and undone
+
+*16:52* — What's applied is listed with a button that undoes it (here: Use bash Again).
+
+![Olo Suggestions: applied, and undone](2026-11-02/165249-olo-suggestions-applied-and-undone.png)
+
+### Olo Suggestions
+
+*16:52* — A new app: what Olo suggests, none of it needed, each applied with a button or all with Apply All. The first: brush, the bash-compatible shell in Rust, as the login shell.
+
+![Olo Suggestions](2026-11-02/165248-olo-suggestions.png)
+
 ### Telegram: chats chosen together
 
 *16:37* — ⌘-click, ⇧-click or Edit ▸ Select All Chats chooses several; their menu archives, unarchives, marks read, mutes or deletes them all (asking first).

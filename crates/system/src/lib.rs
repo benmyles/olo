@@ -5,6 +5,7 @@
 //! PipeWire speaks too). Everything here blocks, so call it from a worker
 //! thread, never the UI thread.
 
+pub mod accounts;
 pub mod airpods;
 pub mod audio;
 pub mod auth;
