@@ -9,6 +9,7 @@
 use olo_sync::Mutex;
 use std::time::Duration;
 
+use olo_theme::Palette;
 use smithay::{
     backend::{
         allocator::Fourcc,
@@ -44,9 +45,9 @@ const DELAY: Duration = Duration::from_millis(500);
 const FONT: f32 = 12.0;
 const PLATE_H: f64 = 20.0;
 const PAD: f64 = 6.0;
-const GAP: f64 = 4.0;
+pub(crate) const GAP: f64 = 4.0;
 /// Kept this far from the display's edges.
-const MARGIN: f64 = 8.0;
+pub(crate) const MARGIN: f64 = 8.0;
 
 /// The title the pointer is on, and the timer for its tip.
 #[derive(Debug, Default)]
@@ -83,9 +84,9 @@ where
 }
 
 /// `title` on a tooltip's plate at scale `s`, at most `max_w` device
-/// pixels wide (cut short with "…" past that).
-fn plate(title: &str, max_w: i32, s: f64) -> Option<Pixmap> {
-    let p = theme::palette();
+/// pixels wide (cut short with "…" past that): app_server's tips (this,
+/// the overview's chosen window, Twitcher's label) all draw on it.
+pub(crate) fn plate(p: &Palette, title: &str, max_w: i32, s: f64) -> Option<Pixmap> {
     let size = FONT * s as f32;
     let pad = (PAD * s).round() as i32;
     let h = (PLATE_H * s).round() as i32;
@@ -183,7 +184,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let Some(output) = self.space.output_under(rect.loc.to_f64()).next().cloned() else { return };
         let Some(geo) = self.space.output_geometry(&output) else { return };
         let s = output.current_scale().fractional_scale();
-        let Some(pm) = plate(&title, ((geo.size.w as f64 - 2.0 * MARGIN) * s) as i32, s) else { return };
+        let Some(pm) = plate(&theme::palette(), &title, ((geo.size.w as f64 - 2.0 * MARGIN) * s) as i32, s) else { return };
         let (w, h) = (pm.width() as i32, pm.height() as i32);
         // Under the title, its text where the title's starts; kept on the
         // display (above the tab if there's no room under it).

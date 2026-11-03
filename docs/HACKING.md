@@ -3180,6 +3180,13 @@ the display's frame over all but the pointer, slid to stay on the
 display; a press puts it away until the pointer leaves). The motion
 comes inside smithay's pointer handle, which holds its lock: nothing
 there asks the pointer (where the tip goes is worked out as it shows).
+app_server's other cut text uses the same plate (`tabtip::plate`):
+Twitcher's chosen label, cut to the panel, shows whole on it under the
+panel at once (⌘ is held), drawn with each look and kept with it
+(`Overlay::elements`, `cut_label`); the overview's chosen window has
+its title whole on it at its foot, as wide as the title needs, past the
+window's sides and slid to stay on the display, cut only past the
+display's width.
 
 Appearance ▸ Show icons in the Deskbar menu is
 `Appearance::menu_icons` (on): Deskbar builds its Olo menu with an

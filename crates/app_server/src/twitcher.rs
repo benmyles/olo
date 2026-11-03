@@ -249,24 +249,30 @@ struct Key {
     looked_up: u64,
     scale_milli: i64,
     generation: u64,
+    /// The display's width (logical): how wide the label's tip may be.
+    width: i32,
 }
 
 /// How many looks of the panel are kept drawn while it is up, for each
 /// display it is drawn differently on.
 const LOOKS: usize = 8;
 
+/// A picture, ready for the GPU, and its size.
+type Picture = (MemoryRenderBuffer, Size<i32, Physical>);
+
 /// The panel as drawn for its last few looks (each selection), the
-/// current one first: cycling back to one shows the texture already on
-/// the GPU rather than uploading another, which can hold up a frame by
-/// milliseconds while the GPU is busy. Forgotten when the panel goes.
+/// current one first, with the chosen label's tip if the panel cuts it:
+/// cycling back to one shows the texture already on the GPU rather than
+/// uploading another, which can hold up a frame by milliseconds while
+/// the GPU is busy. Forgotten when the panel goes.
 #[derive(Default)]
 pub struct Overlay {
-    cached: Vec<(Key, MemoryRenderBuffer, Size<i32, Physical>)>,
+    cached: Vec<(Key, Picture, Option<Picture>)>,
 }
 
 impl std::fmt::Debug for Overlay {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Overlay").field("cached", &self.cached.iter().map(|(k, _, s)| (k, s)).collect::<Vec<_>>()).finish()
+        f.debug_struct("Overlay").field("cached", &self.cached.iter().map(|(k, (_, s), _)| (k, s)).collect::<Vec<_>>()).finish()
     }
 }
 
@@ -277,31 +283,47 @@ impl Overlay {
     }
 
     /// The Twitcher panel centred in output `output` of `output_size`
-    /// (logical) at `scale`, or None if there is nothing to show.
-    pub fn element<R>(&mut self, renderer: &mut R, shown: &Shown, output: &str, output_size: Size<i32, smithay::utils::Logical>, scale: f64) -> Option<Exact<MemoryRenderBufferRenderElement<R>>>
+    /// (logical) at `scale`, and under it the chosen label whole on a
+    /// tooltip's plate if the panel cuts it short (at once: ⌘ is held, as
+    /// it shows Olo's other tips at once); nothing if there is nothing to
+    /// show.
+    pub fn elements<R>(&mut self, renderer: &mut R, shown: &Shown, output: &str, output_size: Size<i32, smithay::utils::Logical>, scale: f64) -> Vec<Exact<MemoryRenderBufferRenderElement<R>>>
     where
         R: Renderer + ImportMem,
         R::TextureId: Send + Clone + 'static,
     {
         if shown.cells() < 2 {
-            return None;
+            return Vec::new();
         }
         let here = shown.displays.iter().position(|d| d.output == output);
-        let key = Key { shown: shown.clone(), here, looked_up: LOOKED_UP.load(std::sync::atomic::Ordering::Relaxed), scale_milli: (scale * 1000.0).round() as i64, generation: theme::generation() };
+        let key = Key {
+            shown: shown.clone(),
+            here,
+            looked_up: LOOKED_UP.load(std::sync::atomic::Ordering::Relaxed),
+            scale_milli: (scale * 1000.0).round() as i64,
+            generation: theme::generation(),
+            width: output_size.w,
+        };
         if let Some(i) = self.cached.iter().position(|(k, _, _)| *k == key) {
             let looked = self.cached.remove(i);
             self.cached.insert(0, looked);
         } else {
-            let pixmap = draw(&theme::palette(), shown, here, scale);
-            let size: Size<i32, Buffer> = (pixmap.width() as i32, pixmap.height() as i32).into();
-            let buffer = MemoryRenderBuffer::from_slice(pixmap.data(), Fourcc::Abgr8888, size, 1, Transform::Normal, Some(vec![Rectangle::from_size(size)]));
-            self.cached.insert(0, (key, buffer, (size.w, size.h).into()));
+            let p = theme::palette();
+            let panel = gpu(&draw(&p, shown, here, scale));
+            let tip =
+                cut_label(shown, scale).and_then(|label| crate::tabtip::plate(&p, &label, ((output_size.w as f64 - 2.0 * crate::tabtip::MARGIN) * scale).floor() as i32, scale)).map(|pm| gpu(&pm));
+            self.cached.insert(0, (key, panel, tip));
             self.cached.truncate(LOOKS * shown.displays.len().max(1));
         }
-        let (_, buffer, phys) = self.cached.first()?;
+        let Some((_, (buffer, phys), tip)) = self.cached.first() else { return Vec::new() };
         let out = output_size.to_f64().to_physical(scale);
         let loc: Point<f64, Physical> = (((out.w - phys.w as f64) / 2.0).round(), ((out.h - phys.h as f64) / 2.0).round()).into();
-        crate::render::picture(renderer, loc, buffer, (phys.w, phys.h), None, Kind::Unspecified)
+        let mut shown: Vec<_> = crate::render::picture(renderer, loc, buffer, (phys.w, phys.h), None, Kind::Unspecified).into_iter().collect();
+        if let Some((buffer, size)) = tip {
+            let at: Point<f64, Physical> = (((out.w - size.w as f64) / 2.0).round(), loc.y + phys.h as f64 + (crate::tabtip::GAP * scale).round()).into();
+            shown.extend(crate::render::picture(renderer, at, buffer, (size.w, size.h), None, Kind::Unspecified));
+        }
+        shown
     }
 }
 
@@ -378,6 +400,27 @@ pub fn cell_at(shown: &Shown, output_size: (i32, i32), at: (f64, f64)) -> Option
     cell_places(shown, &lay).into_iter().find_map(|(cell, (cx, cy))| ((cx as f64..(cx + CELL) as f64).contains(&x) && (cy as f64..(cy + CELL) as f64).contains(&y)).then_some(cell))
 }
 
+/// `pm` ready for the GPU, opaque throughout.
+fn gpu(pm: &Pixmap) -> Picture {
+    let size: Size<i32, Buffer> = (pm.width() as i32, pm.height() as i32).into();
+    let buffer = MemoryRenderBuffer::from_slice(pm.data(), Fourcc::Abgr8888, size, 1, Transform::Normal, Some(vec![Rectangle::from_size(size)]));
+    (buffer, (size.w, size.h).into())
+}
+
+/// What the chosen cell is called: its window's title (⌘\`) or its app's
+/// name.
+fn label(shown: &Shown) -> Option<String> {
+    let e = shown.selected()?;
+    Some(e.title.clone().or_else(|| info(&e.app_id).map(|i| i.name)).unwrap_or_else(|| fallback_name(&e.app_id)))
+}
+
+/// The chosen cell's label, whole, if the panel at `s` cuts it short.
+fn cut_label(shown: &Shown, s: f64) -> Option<String> {
+    let label = label(shown)?;
+    let room = (layout(shown).size.0 - 2 * PAD) as f64 * s;
+    (text::measure(&label, FONT * s as f32, true) > room.round() as f32).then_some(label)
+}
+
 /// Twitcher at `s` device pixels per logical one, on display `here` of
 /// `shown.displays`.
 fn draw(p: &Palette, shown: &Shown, here: Option<usize>, s: f64) -> Pixmap {
@@ -433,8 +476,7 @@ fn draw(p: &Palette, shown: &Shown, here: Option<usize>, s: f64) -> Pixmap {
     }
 
     // The chosen app's name (or window's title) beneath.
-    if let Some(e) = shown.selected() {
-        let label = e.title.clone().or_else(|| info(&e.app_id).map(|i| i.name)).unwrap_or_else(|| fallback_name(&e.app_id));
+    if let Some(label) = label(shown) {
         let label = text::ellipsize(&label, size, true, (px(lw - 2 * PAD)) as f32);
         let tw = text::measure(&label, size, true);
         let y = text::top_for_centre(px(lh - PAD - LABEL) as f32 + px(LABEL) as f32 / 2.0, size, true);
@@ -589,6 +631,17 @@ mod tests {
         assert_eq!(cell_at(&shown, out, (origin.0 + 1.0, origin.1 + 1.0)), None);
         assert_eq!(cell_at(&shown, out, (5.0, 5.0)), None);
         assert_eq!(cell_places(&shown, &lay).len(), 3);
+    }
+
+    #[test]
+    fn a_cut_label_shows_whole_under_the_panel() {
+        let e = |title: &str| Entry { app_id: "olo.terminal".into(), title: Some(title.into()), display: 0 };
+        let shown = |title| Shown { rows: vec![Row { workspace: 0, entries: vec![e(title), e("b")] }], displays: Vec::new(), row: 0, index: 0, letters: false };
+        let long = "cargo build --release --workspace — ~/src/olo/crates/app_server";
+        for s in [1.0, 1.25, 1.5, 1.75, 2.0] {
+            assert_eq!(cut_label(&shown("Terminal"), s), None);
+            assert_eq!(cut_label(&shown(long), s).as_deref(), Some(long));
+        }
     }
 
     #[test]

@@ -2127,7 +2127,7 @@ impl AnvilState<UdevData> {
         } else {
             let scale = output.current_scale().fractional_scale();
             let mut overlays: Vec<CustomRenderElements<_>> = self.hints.elements(&mut renderer, output_geo, scale).into_iter().map(CustomRenderElements::Overlay).collect();
-            overlays.extend(twitcher.and_then(|shown| self.twitcher.element(&mut renderer, &shown, &output.name(), output_size, scale)).map(CustomRenderElements::Overlay));
+            overlays.extend(twitcher.into_iter().flat_map(|shown| self.twitcher.elements(&mut renderer, &shown, &output.name(), output_size, scale)).map(CustomRenderElements::Overlay));
             overlays
         };
 

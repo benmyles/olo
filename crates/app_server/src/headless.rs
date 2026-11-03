@@ -459,7 +459,7 @@ fn twitcher_overlay(state: &mut AnvilState<HeadlessData>, output: &Output) -> Ve
     let scale = output.current_scale().fractional_scale();
     let mut out: Vec<_> = state.hints.elements(&mut state.backend_data.renderer, geo, scale).into_iter().map(crate::render::CustomRenderElements::Overlay).collect();
     let Some(shown) = state.twitcher_entries() else { return out };
-    out.extend(state.twitcher.element(&mut state.backend_data.renderer, &shown, &output.name(), geo.size, scale).map(crate::render::CustomRenderElements::Overlay));
+    out.extend(state.twitcher.elements(&mut state.backend_data.renderer, &shown, &output.name(), geo.size, scale).into_iter().map(crate::render::CustomRenderElements::Overlay));
     out
 }
 

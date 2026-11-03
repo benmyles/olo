@@ -42,7 +42,7 @@ use tiny_skia::Pixmap;
 
 use crate::{
     render::{CustomRenderElements, OutputRenderElements},
-    shell::{WindowElement, WindowRenderElement, fill},
+    shell::{WindowElement, WindowRenderElement},
     state::{AnvilState, Backend},
     text, theme,
 };
@@ -57,10 +57,8 @@ const GAP: f64 = 24.0;
 const LABEL: f64 = 24.0;
 const SPACING: f64 = 16.0;
 const FONT: f32 = 12.0;
-/// A window's title plate: its height and the room either side of the
-/// text, and how far in from the window's foot it sits.
-const PLATE_H: f64 = 20.0;
-const PLATE_PAD: f64 = 6.0;
+/// How far in from a window's foot its title's plate (`tabtip::plate`)
+/// sits.
 const PLATE_IN: f64 = 8.0;
 /// How far in from a window's corner its letter sits.
 const LETTER_IN: f64 = 6.0;
@@ -354,16 +352,20 @@ impl Overview {
                 let at = phys(rect.loc.x + LETTER_IN, rect.loc.y + LETTER_IN);
                 front.extend(crate::render::picture(renderer, at, buffer, (*w, *h), Some(fade), Kind::Unspecified).map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))));
             }
-            // The one chosen: ringed, its title on a plate at its foot.
+            // The one chosen: ringed, its title whole on a plate at its
+            // foot: as wide as it needs, past the window's sides and kept
+            // on the display, cut short only past the display's width.
             if settled && chosen == Some(cell.window.id()) {
-                let max_w = (rect.size.w * scale - 2.0 * PLATE_IN * scale).floor() as i32;
+                let max_w = ((screen.w as f64 - 2.0 * crate::tabtip::MARGIN) * scale).floor() as i32;
                 let want = (cell.window.id(), cell.window.title(), max_w);
                 if drawn.title.as_ref().is_none_or(|(k, _)| *k != want) {
-                    let pm = title_pixmap(&palette, &want.1, max_w, scale);
+                    let pm = crate::tabtip::plate(&palette, &want.1, max_w, scale);
                     drawn.title = pm.map(|pm| (want.clone(), picture(&pm, true)));
                 }
                 if let Some((_, (buffer, (w, h)))) = &drawn.title {
-                    let x = rect.loc.x + rect.size.w / 2.0 - *w as f64 / scale / 2.0;
+                    let pw = *w as f64 / scale;
+                    let (left, right) = (origin.x as f64 + crate::tabtip::MARGIN, (origin.x + screen.w) as f64 - crate::tabtip::MARGIN - pw);
+                    let x = (rect.loc.x + rect.size.w / 2.0 - pw / 2.0).clamp(left, right.max(left));
                     let y = rect.loc.y + rect.size.h - PLATE_IN - *h as f64 / scale;
                     front.extend(crate::render::picture(renderer, phys(x, y), buffer, (*w, *h), Some(fade), Kind::Unspecified).map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))));
                 }
@@ -425,27 +427,6 @@ fn name_pixmap(p: &olo_theme::Palette, name: &str, bold: bool, s: f64) -> Pixmap
     text::draw(&mut pm, name, u as f32, y + u as f32, size, bold, p.desktop_text_shadow);
     text::draw(&mut pm, name, 0.0, y, size, bold, p.desktop_text);
     pm
-}
-
-/// A window's title on a tooltip's plate, at most `max_w` device pixels
-/// wide (none if not even an ellipsis fits).
-fn title_pixmap(p: &olo_theme::Palette, title: &str, max_w: i32, s: f64) -> Option<Pixmap> {
-    let size = FONT * s as f32;
-    let pad = (PLATE_PAD * s).round() as i32;
-    let h = (PLATE_H * s).round() as i32;
-    let u = (s.floor() as i32).max(1);
-    let shown = text::ellipsize(title, size, false, (max_w - 2 * pad) as f32);
-    let tw = text::measure(&shown, size, false).ceil() as i32;
-    let w = tw + 2 * pad;
-    if shown.is_empty() || w > max_w {
-        return None;
-    }
-    let mut pm = Pixmap::new(w as u32, h as u32)?;
-    fill(&mut pm, 0, 0, w, h, p.control_border);
-    fill(&mut pm, u, u, w - 2 * u, h - 2 * u, p.tooltip_background);
-    let y = text::top_for_centre(h as f32 / 2.0, size, false).round();
-    text::draw(&mut pm, &shown, pad as f32, y, size, false, p.tooltip_text);
-    Some(pm)
 }
 
 impl<B: Backend + 'static> AnvilState<B> {

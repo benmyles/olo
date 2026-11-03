@@ -305,8 +305,9 @@ of Finished; a new one goes where its priority puts it.
   list, Passwords' titles; ⌘ shows it at once; and app_server's window
   tabs, `tabtip`; a text field whose text runs past it, whole in a tip
   when it hasn't the keyboard, 2026-11-02, with the field scrolling
-  sideways to its caret while edited, which it never did. *Left*:
-  app_server's other text (Twitcher, the overview's labels), Telegram's
+  sideways to its caret while edited, which it never did; Twitcher's
+  label whole on a plate under the panel and the overview's chosen
+  title whole, 2026-11-03, `tabtip::plate`. *Left*: Telegram's
   attachment chips and bubbles, text in GPUI's own text elements; agents read cut text whole since
   2026-11-02, `agent::whole_name`) (Ben, 2026-10-31):
   "when hovering over anything in olo or any olo app where the text has
