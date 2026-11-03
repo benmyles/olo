@@ -63,15 +63,6 @@ of Finished; a new one goes where its priority puts it.
   work alike): "scroll 2" at 1.5× failed once in four runs: "frames
   moved 0.73–1.27× as far as the fingers" (HEAD had 0.87–1.13 once).
   Find why a drag at 1.5× skips a device pixel now and then.
-- **Palm size and the palm model, said plainly** (Ben, 2026-11-02): "is
-  the palm size setting etc still applicable when using the model?
-  should they be disabled and unused if the model is enabled, like
-  either/or? it's confusing right now so either make it clear that they
-  are not mutually exclusive or make it so one or the other is chosen".
-  They work together (a contact is a palm if it's as large as the size
-  or the model says so: the size is a floor the model can't take away),
-  so the Touch tab says so: the model first, with which one is in use,
-  then "Always a palm when as large as", with a note on how they mix.
 - **The touchpad's latency on Ben's machine, and what next** (from the
   palm model in Activity, 2026-11-03): Activity ▸ Displays ▸ Touchpad
   now shows how long the pad's reports take to reach app_server (the
@@ -800,6 +791,19 @@ Open; making fast things faster waits here.
 
 ## Finished (most recently finished first)
 
+- ~~**Palm size and the palm model, said plainly**~~ (Ben, 2026-11-02): "is
+  the palm size setting etc still applicable when using the model?
+  should they be disabled and unused if the model is enabled, like
+  either/or? it's confusing right now so either make it clear that they
+  are not mutually exclusive or make it so one or the other is chosen".
+  They work together (a contact is a palm if it's as large as the size
+  or the model says so: the size is a floor the model can't take away),
+  so the Touch tab says so: the model first, with which one is in use,
+  then "Always a palm when as large as", with a note on how they mix.
+  *Done* (2026-11-02, a2669801): the Touch tab's slider says "Always a
+  palm when as large as", under the model, with "Whatever the model
+  says: it adds palms, never takes these away" (or "Without a palm
+  model, size alone tells a palm").
 - ~~**UX linters for every Olo app, run with the build**~~ (Ben,
   2026-11-02): "also when you do the fixes for the trainer ux can you see
   if you can add some ux linters that check spacing and layout and
