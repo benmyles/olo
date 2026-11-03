@@ -6624,8 +6624,10 @@ olo-emoji-picker`, the fake answering `POST /v1/responses` with
 Its emoji are drawn ahead when it opens (`Window::warm_text`: what was
 picked lately first, then the groups), kept for the next opening, and
 let go ten minutes after it's put away (`FORGET`, with
-`forget_kept_glyphs`): at 2× they're ~18 MB (shown 106 MB, hidden
-88 MB after; the palette holds 121 MB). Released, at 1×, 1.5× and 2×,
+`forget_kept_glyphs`): at 2× they're 17 MB of its private memory
+(`Private_Dirty`: 5.6 MB never shown, 38 MB hidden after, the same
+however often it opens; the emoji font it checks against is mapped,
+not read). Released, at 1×, 1.5× and 2×,
 its frames take at most 1.5 ms opening, typing, walked, scrolled and
 opened again (bench's `emoji`).
 

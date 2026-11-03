@@ -247,14 +247,6 @@ of Finished; a new one goes where its priority puts it.
   first scroll skips a frame at 1× and 1.5× (its frames 1.5–3.3 ms: the
   pacing, not the cost).
 
-- **A resident overlay keeps ~60 MB after its window closes** (found
-  measuring the emoji picker, 2026-11-02): never shown it holds 25 MB,
-  shown 106 MB, hidden again 88 MB (less its kept emoji); the palette
-  holds 121 MB in Ben's session. What stays is the window's renderer
-  (GPU device, pipelines, atlas) or the allocator's: find which, and
-  let a hidden resident app's go (or keep one renderer for every window
-  it opens) so the palette and picker cost little between uses.
-
 - **Glyphs drawn in a frame are slow the first time** (found
   measuring Telegram, 2026-11-01): a chat opened with 230 glyphs new
   to the process spent 6–9 ms of its frame (release) on first-time
@@ -851,6 +843,17 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**A resident overlay keeps ~60 MB after its window closes**~~
+  (2026-11-02): it doesn't. The 60 MB was resident pages, most of them
+  shared and the system's to drop (Vulkan's driver code, mapped fonts).
+  In private memory (`Private_Dirty`, smaps_rollup) the palette is
+  2.8 MB never shown and 13.6–13.7 MB after 1 to 15 openings (no leak;
+  Ben's 118 MB is its file and password indexes of a real home); the
+  emoji picker 5.6 MB never shown and 38 MB hidden after, steady over 12
+  openings, 17 MB of it its emoji kept for the next opening (let go
+  after ten minutes); its copy of the emoji font (read whole to check
+  which emoji it draws) is a mapping now, 50 → 38 MB.
 
 - ~~**Emoji picker**~~ (Ben, 2026-10-31: "an olo native emoji picker
   app that inserts the selected emoji into wherever the text cursor is

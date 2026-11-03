@@ -159,12 +159,15 @@ pub fn font_check() -> Option<impl Fn(&str) -> bool> {
     let query = fontdb::Query { families: &[fontdb::Family::Name("Noto Color Emoji")], ..Default::default() };
     let id = db.query(&query)?;
     let (source, index) = db.face_source(id)?;
-    let data = match source {
-        fontdb::Source::File(path) => std::fs::read(path).ok()?,
-        fontdb::Source::SharedFile(path, _) => std::fs::read(path).ok()?,
-        fontdb::Source::Binary(b) => b.as_ref().as_ref().to_vec(),
+    let path = match source {
+        fontdb::Source::File(path) | fontdb::Source::SharedFile(path, _) => path,
+        fontdb::Source::Binary(_) => return None,
     };
-    let font = olo_emoji::ColorFont::new(data, index)?;
+    // Mapped, not read: the font's 5 MB stay the file's (shared, and
+    // let go by the system as it likes), not the picker's own.
+    // SAFETY: a system font, mapped read-only, as GPUI maps its faces.
+    let map = unsafe { memmap2::Mmap::map(&std::fs::File::open(path).ok()?) }.ok()?;
+    let font = olo_emoji::ColorFont::from_static(&Box::leak(Box::new(map))[..], index)?;
     Some(move |cluster: &str| font.glyph(cluster).is_some())
 }
 
