@@ -40,6 +40,41 @@ of Finished; a new one goes where its priority puts it.
   - Measured against the size rule on held-out captures (palms missed,
     fingers lost), and its cost per frame, with the numbers in the
     commit.
+  - *Research* (2026-11-02): there is no open touchpad palm model to
+    take.
+    - arXiv, searched up to 2026, has nothing on touchpad palm
+      rejection: its "palm" papers are palmprint biometrics.
+    - Hugging Face has no such model or dataset.
+    - Closest:
+      - Chromium's `NeuralStylusPalmDetectionFilter`, in Android's
+        `libpalmrejection` (BSD): a small network for Chromebook
+        touchscreens. It scores a stroke from its first 3–12 samples
+        (size in mm, pressure, edges, speed) and its nearest
+        neighbours; 173–325 inputs; output thresholds 0.9–4.5.
+      - ChromeOS's touchpad gestures library: heuristics only (palm
+        pressure 200, width 21.2 mm, edge zones, a "fat finger"
+        reclassified by low peak pressure).
+      - Synaptics' neural palm rejection (CES 2025): proprietary.
+      - A 2021 Brno thesis ("Laptop Touchpad Palm Detection with
+        AI/ML"): reports good accuracy, but published no code or data.
+      - PalmTouch (2018): a CNN on phones' raw capacitive images, which
+        the MacBook pad doesn't give (contacts only: position, major,
+        minor, orientation, pressure).
+    - So: our own small model, Chromium's kind of features taken to the
+      pad, trained on captures of Ben's MacBook.
+  - *Needs Ben*: labelled captures, recorded read-only with no grab
+    (`touch_filter`'s `replay_capture` reads them,
+    `OLO_TOUCH_CAPTURE`). Two minutes each:
+    - `sudo timeout 120 cat /dev/input/event5 > palms.evdev`: typing,
+      palms resting as they do, the pad not used on purpose (every
+      contact a palm, thumb or knuckle);
+    - `… > fingers.evdev`: the pad used as usual (pointing, scrolling,
+      clicks, gestures), palms kept off it (every contact meant);
+    - `… > mixed.evdev`: real work, both at once, to try it on.
+    - Then: features per contact, a model trained and checked on
+      held-out parts, run in `touchpad.lua` (tens of multiply-adds a
+      contact: Lua costs microseconds, where a GPU dispatch would cost
+      far more), the Preferences option, and the numbers.
 
 - **x86 machines, starting with Ben's ThinkPad P1 Gen 9** (Ben; it
   arrives within days; **next once the GPUI migration is done**, before
