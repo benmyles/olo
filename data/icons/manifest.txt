@@ -109,3 +109,28 @@ airpod-left|a single glossy white wireless earbud with a short straight stem poi
 airpod-right|a single glossy white wireless earbud with a short straight stem pointing down and a soft grey silicone tip facing right, seen in three-quarter view standing on the desk
 default-apps|a white paper document with a folded corner and grey text lines, with a small Be-blue application cube standing in front of it at the lower right
 suggestions|a small wooden suggestion box with a slot in its lid and a folded white note card with a small Be-blue star on it pushed halfway into the slot
+new-document|a single sheet of white paper with the top right corner folded over and faint grey lines of text, with a small glossy BeOS-yellow four-pointed sparkle in front of it at the lower right
+save-document|a single sheet of white paper with the top right corner folded over and faint grey lines of text, with a chunky signal-green arrow pointing down into it from above at the lower right
+undo|a chunky Be-blue arrow bent in a half circle, curling up and back to the left, standing upright on the desk
+redo|a chunky Be-blue arrow bent in a half circle, curling up and over to the right, standing upright on the desk
+cut|a pair of open steel scissors with red plastic handles lying on the desk
+copy|two sheets of white paper with folded top right corners and faint grey text lines, one lying over the other offset to the lower right
+paste|a tan wooden clipboard with a silver clip at its top and a white sheet of paper with grey text lines held on it
+spelling|a single sheet of white paper with faint grey lines of text and a bold signal-green check mark in front of it at the lower right
+format-bold|a very thick, heavy, chunky black sans-serif capital letter B standing upright on the desk as a solid object, filling the frame
+format-italic|a black serif capital letter I slanted steeply to the right, italic, standing on the desk as a solid object, filling the frame
+format-underline|a thick black sans-serif capital letter U standing upright on the desk as a solid object, with a thick Be-blue bar lying under it as wide as the letter, filling the frame
+format-strikeout|a thick black sans-serif capital letter S standing upright on the desk as a solid object, with a thick alert-red bar struck straight across its middle, wider than the letter, filling the frame
+align-left|a single sheet of white paper standing upright, its face turned mostly toward the viewer, with three thick charcoal bars of text of clearly different lengths, every bar starting at its left edge and the right ends ragged
+align-center|a single sheet of white paper standing upright, its face turned mostly toward the viewer, with three thick charcoal bars of text of clearly different lengths, each bar centred on the sheet so both ends are ragged
+align-right|a single sheet of white paper standing upright, its face turned mostly toward the viewer, with three thick charcoal bars of text of clearly different lengths, every bar ending at its right edge and the left ends ragged
+align-justify|a single sheet of white paper standing upright, its face turned mostly toward the viewer, with three thick charcoal bars of text all exactly the same length, running from its left edge to its right edge
+list-bullets|a small square white paper card lying on the desk with three short charcoal lines of text, each with a round Be-blue dot before it at the left
+list-numbers|a small square white paper card lying on the desk with three short charcoal lines of text, each with a small Be-blue numeral before it at the left, 1, 2 and 3 from the top
+indent-more|a small square white paper card lying on the desk with four charcoal lines of text, the middle two set in from the left, and a small signal-green arrow pointing right at their left
+indent-less|a small square white paper card lying on the desk with four charcoal lines of text, all at the left edge, and a small signal-green arrow pointing left at their left
+insert-table|a small square white paper card lying on the desk ruled as a grid of three by three cells with charcoal lines, its top row of cells shaded Be blue
+header-footer|a single sheet of white paper standing upright with faint grey text lines in its middle and a Be-blue band across its top and another across its bottom
+page-view|two sheets of white paper with faint grey lines of text side by side on the desk, like the open pages of a document laid out
+ruler|a straight wooden ruler lying on the desk, tan with black tick marks and small numerals along its edge
+wrap-lines|a small square white paper card lying on the desk with three charcoal lines of text and a chunky Be-blue arrow curving from the right end of the top line back to the start of the next line
