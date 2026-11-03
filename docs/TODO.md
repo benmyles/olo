@@ -7,45 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **The olo-screens skill teaches agents to use the passwords shared
-  with their screen** (Ben, 2026-11-03, a priority): "the olo-screens
-  skill isn't properly teaching agents how to access the passwords
-  shared on their screen. explain to them how they should use the olo
-  passwords integration in olo chrome by right clicking in the field and
-  choosing olo -> passwords in the menu, or by opening the passwords app
-  in the gui. also teach them how they can use the op cli command to get
-  the creds onto the clipboard and paste in themselves that way (and
-  explain that op is a shim for 1password that goes through passwords
-  app)." So the skill says, read from the code that does each:
-  - What's shared with a screen (chosen on the person's own display, in
-    Agent Screens' Passwords tab), and that only that is there.
-  - Filling a login in Olo's Chrome: right-click the field, Olo ▸
-    Passwords, choose the item.
-  - Opening Passwords on the screen and copying from it.
-  - `op`: Olo's 1Password-compatible command, a shim that goes through
-    Passwords (and so sees only what's shared with the screen): getting
-    a username, password or one-time code onto the screen's clipboard,
-    then pasting it where it goes.
-  - Ben, the same day: "the agents also still seem to want to open the
-    system chrome not the olo chrome variant. make sure we're super
-    clear about using the olo chrome and not any other chrome that may
-    be installed". So the skill names Olo's Chrome (`olo-chrome`, the
-    one Deskbar starts) as the browser to use, says plainly never to
-    start another Chrome or Chromium installed on the machine (and
-    why: no Olo integration, no shared passwords, not the screen's
-    profile), and shows the exact way to start it on a screen.
-  - Ben, later the same day: "what's actually happening is agents are
-    getting a fresh chrome profile in an agent screen and that's asking
-    them to accept tos and showing first run window. when using
-    olo-chrome if there is no profile set then we should have it use one
-    that has the tos etc. accepted so that it's ready to go for the
-    agents". So `olo-chrome` started without a profile of its own (an
-    agent screen's first run) starts in one that's ready: first run,
-    terms and welcome pages already behind it (Chrome's first-run
-    sentinel, its master preferences / initial prefs, the policies that
-    skip them), checked by starting it on a fresh screen and seeing a
-    browser window, not a first-run one.
-
 - **Agent Screens: an agent waits while the person has the screen**
   (Ben, 2026-11-03): "if the user is controlling the agent screen all
   kinds of weird stuff happens when the agent tries to do things. when
@@ -977,6 +938,57 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**The olo-screens skill teaches agents to use the passwords shared
+  with their screen**~~ (Ben, 2026-11-03, a priority): "the olo-screens
+  skill isn't properly teaching agents how to access the passwords
+  shared on their screen. explain to them how they should use the olo
+  passwords integration in olo chrome by right clicking in the field and
+  choosing olo -> passwords in the menu, or by opening the passwords app
+  in the gui. also teach them how they can use the op cli command to get
+  the creds onto the clipboard and paste in themselves that way (and
+  explain that op is a shim for 1password that goes through passwords
+  app)." So the skill says, read from the code that does each:
+  - What's shared with a screen (chosen on the person's own display, in
+    Agent Screens' Passwords tab), and that only that is there.
+  - Filling a login in Olo's Chrome: right-click the field, Olo ▸
+    Passwords, choose the item.
+  - Opening Passwords on the screen and copying from it.
+  - `op`: Olo's 1Password-compatible command, a shim that goes through
+    Passwords (and so sees only what's shared with the screen): getting
+    a username, password or one-time code onto the screen's clipboard,
+    then pasting it where it goes.
+  - Ben, the same day: "the agents also still seem to want to open the
+    system chrome not the olo chrome variant. make sure we're super
+    clear about using the olo chrome and not any other chrome that may
+    be installed". So the skill names Olo's Chrome (`olo-chrome`, the
+    one Deskbar starts) as the browser to use, says plainly never to
+    start another Chrome or Chromium installed on the machine (and
+    why: no Olo integration, no shared passwords, not the screen's
+    profile), and shows the exact way to start it on a screen.
+  - Ben, later the same day: "what's actually happening is agents are
+    getting a fresh chrome profile in an agent screen and that's asking
+    them to accept tos and showing first run window. when using
+    olo-chrome if there is no profile set then we should have it use one
+    that has the tos etc. accepted so that it's ready to go for the
+    agents". So `olo-chrome` started without a profile of its own (an
+    agent screen's first run) starts in one that's ready: first run,
+    terms and welcome pages already behind it (Chrome's first-run
+    sentinel, its master preferences / initial prefs, the policies that
+    skip them), checked by starting it on a fresh screen and seeing a
+    browser window, not a first-run one.
+  *Done* 2026-11-03: the skill's "A web browser: Olo's Chrome, only"
+  (never another Chrome, never from the agent's own shell) and
+  "Passwords on your screen" (what's shared; never `type` a secret,
+  as the history keeps it; Chrome's Olo ▸ Autofill / Passwords menu;
+  Passwords' Copy; `op` with the screen's environment and `pbcopy`,
+  then ⌘V). And the cause of the terms window: a new screen's Chrome
+  profile had never run, so Chrome showed Google's terms; on a screen
+  olo-chrome now writes Chrome's `First Run` mark, sets the New Tab page
+  at startup and skips the default-browser check (tried on an empty
+  profile in a headless session: straight to a browser window, the
+  second start too). The installer's first start sets the profile up
+  too now (Olo's defaults and Passwords' extension were missed).
 
 - ~~**StyledEdit: icon toolbars, as Gobe Productive's**~~ (Ben, 2026-10-31,
   for later): "stylededit should have icon toolbars (side and top)

@@ -7,12 +7,20 @@
 //! Only once a profile, so a choice made afterwards in Chrome's settings
 //! stays: a `.olo-defaults` file in the profile marks it done. Only
 //! while Chrome isn't running (it writes its preferences back on exit).
+//!
+//! On an agent screen a profile starts ready to use: Chrome's first run
+//! behind it (its terms of service window and welcome pages, which an
+//! agent can't answer for and which stood in its way on each new
+//! screen), opening on a new tab without offering to restore tabs. The
+//! person's own first Chrome still shows them Google's terms.
 
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
 const MARK: &str = ".olo-defaults";
+/// Chrome's mark in a profile folder that its first run is over.
+const FIRST_RUN: &str = "First Run";
 
 /// Chrome's user data directory: `--user-data-dir`, else
 /// `$CHROME_CONFIG_HOME` or `$XDG_CONFIG_HOME`/`~/.config`, then
@@ -45,8 +53,9 @@ fn profiles(dir: &Path) -> Vec<PathBuf> {
     names.into_iter().filter(|n| !n.contains('/') && n != "..").map(|n| dir.join(n)).collect()
 }
 
-/// `prefs` with Olo's defaults where nothing is set.
-fn with_defaults(mut prefs: Value) -> Value {
+/// `prefs` with Olo's defaults where nothing is set (an agent screen's,
+/// `ready`, too).
+fn with_defaults(mut prefs: Value, ready: bool) -> Value {
     if !prefs.is_object() {
         prefs = json!({});
     }
@@ -66,6 +75,11 @@ fn with_defaults(mut prefs: Value) -> Value {
     // doesn't offer to keep them too.
     set(&mut prefs, &["credentials_enable_service"], json!(false));
     set(&mut prefs, &["profile", "password_manager_enabled"], json!(false));
+    // (The New Tab page, Chrome's own default, said outright: a profile
+    // that hasn't chosen offers "Continue where you left off".)
+    if ready {
+        set(&mut prefs, &["session", "restore_on_startup"], json!(5));
+    }
     // A theme from the Chrome Web Store keeps its colours.
     if prefs.pointer("/extensions/theme/id").and_then(Value::as_str).is_none_or(str::is_empty) {
         set(&mut prefs, &["extensions", "theme", "system_theme"], json!(1));
@@ -73,22 +87,29 @@ fn with_defaults(mut prefs: Value) -> Value {
     prefs
 }
 
-/// Give `dir`'s profiles Olo's defaults, each once.
-pub fn apply(dir: &Path) {
+/// Give `dir`'s profiles Olo's defaults, each once; on an agent screen
+/// (`ready`), with Chrome's first run behind them.
+pub fn apply(dir: &Path, ready: bool) {
     if running(dir) {
         return;
+    }
+    if ready
+        && !dir.join(FIRST_RUN).exists()
+        && let Err(e) = std::fs::create_dir_all(dir).and_then(|()| std::fs::write(dir.join(FIRST_RUN), b""))
+    {
+        eprintln!("olo-chrome: couldn't set up {}: {e}", dir.display());
     }
     for profile in profiles(dir) {
         if profile.join(MARK).exists() {
             continue;
         }
-        if let Err(e) = apply_to(&profile) {
+        if let Err(e) = apply_to(&profile, ready) {
             eprintln!("olo-chrome: couldn't set up {}: {e}", profile.display());
         }
     }
 }
 
-fn apply_to(profile: &Path) -> std::io::Result<()> {
+fn apply_to(profile: &Path, ready: bool) -> std::io::Result<()> {
     let file = profile.join("Preferences");
     let prefs = match std::fs::read(&file) {
         Ok(bytes) => serde_json::from_slice(&bytes).map_err(std::io::Error::other)?,
@@ -97,7 +118,7 @@ fn apply_to(profile: &Path) -> std::io::Result<()> {
     };
     std::fs::create_dir_all(profile)?;
     let tmp = profile.join("Preferences.olo-tmp");
-    std::fs::write(&tmp, serde_json::to_vec(&with_defaults(prefs)).map_err(std::io::Error::other)?)?;
+    std::fs::write(&tmp, serde_json::to_vec(&with_defaults(prefs, ready)).map_err(std::io::Error::other)?)?;
     std::fs::rename(&tmp, &file)?;
     std::fs::write(profile.join(MARK), "Olo set this profile's title bar, theme and password saving once; Chrome's settings change them.\n")
 }
@@ -108,11 +129,11 @@ mod tests {
 
     #[test]
     fn defaults_fill_only_gaps() {
-        let p = with_defaults(json!({"browser": {"custom_chrome_frame": true}, "x": 1}));
+        let p = with_defaults(json!({"browser": {"custom_chrome_frame": true}, "x": 1}), false);
         assert_eq!(p["browser"]["custom_chrome_frame"], json!(true));
         assert_eq!(p["extensions"]["theme"]["system_theme"], json!(1));
         assert_eq!(p["x"], json!(1));
-        let themed = with_defaults(json!({"extensions": {"theme": {"id": "abc"}}}));
+        let themed = with_defaults(json!({"extensions": {"theme": {"id": "abc"}}}), false);
         assert!(themed["extensions"]["theme"].get("system_theme").is_none());
         assert_eq!(themed["browser"]["custom_chrome_frame"], json!(false));
     }
@@ -121,14 +142,31 @@ mod tests {
     fn profiles_are_set_up_once() {
         let dir = std::env::temp_dir().join(format!("olo-chrome-prefs-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        apply(&dir);
+        apply(&dir, false);
         let file = dir.join("Default/Preferences");
         let p: Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
         assert_eq!(p["browser"]["custom_chrome_frame"], json!(false));
+        // The person's own first run is still Chrome's.
+        assert!(!dir.join(FIRST_RUN).exists() && p.get("session").is_none());
         // A later choice in Chrome stays.
         std::fs::write(&file, r#"{"browser":{"custom_chrome_frame":true}}"#).unwrap();
-        apply(&dir);
+        apply(&dir, false);
         assert!(std::fs::read_to_string(&file).unwrap().contains("true"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_screens_profile_starts_ready() {
+        let dir = std::env::temp_dir().join(format!("olo-chrome-ready-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        apply(&dir, true);
+        assert!(dir.join(FIRST_RUN).exists(), "past Chrome's first run (its terms window)");
+        let p: Value = serde_json::from_slice(&std::fs::read(dir.join("Default/Preferences")).unwrap()).unwrap();
+        assert_eq!(p["session"]["restore_on_startup"], json!(5));
+        // One set up before (marked done) gets past first run too.
+        let _ = std::fs::remove_file(dir.join(FIRST_RUN));
+        apply(&dir, true);
+        assert!(dir.join(FIRST_RUN).exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

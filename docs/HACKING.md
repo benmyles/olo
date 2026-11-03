@@ -7417,7 +7417,16 @@ olo-passwords fixture -- --ignored` writes a store with a few items
 With Chrome installed it execs Chrome's own launcher
 (`~/.local/share/olo/chrome/current/google-chrome`) with its arguments,
 adding `--ozone-platform=wayland` under Wayland (Chrome otherwise goes by
-`XDG_SESSION_TYPE` and falls back to X11). Without it, it offers to
+`XDG_SESSION_TYPE` and falls back to X11). Each profile it starts gets
+Olo's defaults once (`prefs.rs`: Olo's title bar, the GTK theme, no
+password saving of Chrome's own) and Passwords' extension, the first
+start after installing too. On an agent screen (`OLO_SCREEN`) a profile
+starts ready for an agent: Chrome's `First Run` mark written in its
+folder, so no terms of service window, first-run or welcome pages (a new
+screen's profile showed Google's terms, which agents couldn't get
+past), `session.restore_on_startup` set to the New Tab page (no
+"Continue where you left off" bar) and `--no-default-browser-check`;
+the person's own first Chrome still shows them Google's terms. Without it, it offers to
 download it in a window on the GPUI kit (an `AlertFrame` with the
 installer icon: the offer, the download's `StatusBar` with Cancel, or
 why it failed with Try Again; Return and Escape as an alert's; 54 MB

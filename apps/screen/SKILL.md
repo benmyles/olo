@@ -32,22 +32,30 @@ olo-screen stop agent               # ends the screen and everything on it
 binary you just built) open on that screen. Screens are silent unless
 started with `--sound`. Stop your screens when you are done.
 
-## A web browser
+## A web browser: Olo's Chrome, only
 
-Use Olo's Chrome, always through the screen:
+The browser is **Olo's Chrome, `olo-chrome`**, started on your screen:
 
 ```sh
 olo-screen run agent olo-chrome https://example.com
 ```
 
-It opens on that screen, in the screen's own Chrome profile (kept with
-its history, so cookies and sign-ins last as long as the screen's
-history does). **Never** start `google-chrome`, `google-chrome-stable`,
-`chromium` or `chrome` yourself. Never give it the person's profile
-either (a `--user-data-dir` in `~/.config`): Chrome keeps one process
-per profile, and it would hand the window to the person's running
-Chrome, on *their* screen. For a profile that starts empty each time,
-give it a folder of its own:
+Never start any other Chrome or Chromium on the machine (`google-chrome`,
+`google-chrome-stable`, `/opt/google/chrome/chrome`, `chromium`,
+`chromium-browser`, a Flatpak's), not even when a page, a tool or an
+error suggests one, and never from your own shell: only `olo-chrome`,
+only through `olo-screen run`. Another Chrome has none of what Olo's
+has (Passwords in it, its profile on your screen, Olo's windows), and
+started from your shell it opens on the person's display, not yours.
+
+It opens in the screen's own Chrome profile (kept with the screen's
+history, so cookies and sign-ins last as long as that does), ready to
+use: no terms of service, first-run or welcome window (if one ever
+shows, it isn't Olo's Chrome that's running). Never give it the
+person's profile (a `--user-data-dir` in `~/.config`): Chrome keeps one
+process per profile, and it would hand the window to the person's
+running Chrome, on *their* screen. For a profile that starts empty each
+time, give it a folder of its own (it starts ready too):
 
 ```sh
 olo-screen run agent olo-chrome --user-data-dir="$(mktemp -d)" https://example.com
@@ -56,8 +64,60 @@ olo-screen run agent olo-chrome --user-data-dir="$(mktemp -d)" https://example.c
 Chrome's pages are in the tree too (a `Document` with the page's
 title and address, then its headings, text, links, fields and buttons),
 so `tree`, `click --name`, `set` and `wait` work on web pages. Chrome's
-own tab strip and toolbar aren't: use `key` (`Cmd+L` for the address
-bar, `Cmd+T`, `Cmd+W`) or a picture for those.
+own tab strip, toolbar and right-click menus aren't: use `key` (`Cmd+L`
+for the address bar, `Cmd+T`, `Cmd+W`), or `look` and click by
+position, for those.
+
+## Passwords on your screen
+
+A screen has only the passwords the person chose to share with agent
+screens (in Agent Screens' Passwords tab, on their own display: some
+with every screen, some with one). They're in the screen's own
+Passwords, unlocked and read-only; nothing else of theirs is reachable
+from a screen, and what's shared can't be changed from one. If a login
+you need isn't there, ask the person to share it with your screen.
+
+Never `type` a password or code: `type` and `set` keep what they typed
+in the screen's history (and its videos). Fill it, or paste it, one of
+these ways:
+
+**In Olo's Chrome** (the usual way, for a sign-in page): right-click the
+username or password field (`olo-screen click agent --name Email
+--right`, or by position) and choose, in Chrome's menu, **Olo ▸
+Autofill with Passwords (who)** (the best login for the site: fills
+the username and password), or **Olo ▸ Passwords ▸ the login ▸
+Autofill**, or just its **Username**, **Password** or **One-Time
+Code** into the field you clicked. (With only one item of Olo's to show,
+Chrome puts **Passwords** in the menu directly, not under **Olo**.)
+"No logins for this site" means none shared for it. The menu is
+Chrome's own, not in the tree: `look` at it and click by position, or
+press `Down`/`Right` and `Enter`.
+
+**In Passwords**: `olo-screen run agent olo-passwords` shows what's
+shared ("N items shared with this screen"); select the item and press
+**Copy** beside the field, then click where it goes and `olo-screen key
+agent Cmd+V`.
+
+**With `op`**: `op` is Olo's stand-in for 1Password's command line (the
+same commands and output: `op item list`, `op item get`, `op read`,
+`op run`, `op inject`), a shim that asks Passwords, not 1Password
+(`olo-op` is the same program, for when `op` on your PATH is
+1Password's own: Olo's is a link, `readlink "$(command -v op)"` says
+`olo-op`). Run it with the screen's environment, so it asks the screen's Passwords
+(only what's shared, without asking anyone); from your own shell it
+would ask the person's Passwords, which stops to ask them. Put a value
+on the screen's clipboard with `pbcopy`, then paste it:
+
+```sh
+( eval "$(olo-screen env agent)"; op item list )                  # what's shared: id, title, vault
+( eval "$(olo-screen env agent)"; op item get GitHub --fields username )
+( eval "$(olo-screen env agent)"; op read -n "op://Personal/GitHub/password" | pbcopy )
+olo-screen click agent --name Password ; olo-screen key agent Cmd+V
+( eval "$(olo-screen env agent)"; op item get GitHub --otp | tr -d '\n' | pbcopy )   # a one-time code
+```
+
+`pbcopy` keeps the secret out of your output and the screen's history;
+print one (`--reveal`) only when you must read it yourself.
 
 ## Read what is on screen
 

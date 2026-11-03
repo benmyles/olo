@@ -183,12 +183,21 @@ fn size_text(bytes: u64) -> String {
 /// to itself it goes by `XDG_SESSION_TYPE`, which a session needn't set,
 /// and falls back to X11).
 fn chrome_args(args: &[String]) -> Vec<String> {
-    let mut out = Vec::with_capacity(args.len() + 1);
+    let mut out = Vec::with_capacity(args.len() + 2);
     if std::env::var_os("WAYLAND_DISPLAY").is_some() && !args.iter().any(|a| a.starts_with("--ozone-platform")) {
         out.push("--ozone-platform=wayland".to_owned());
     }
+    // (An agent's Chrome isn't asked to be the default browser.)
+    if on_screen() && !args.iter().any(|a| a == "--no-default-browser-check") {
+        out.push("--no-default-browser-check".to_owned());
+    }
     out.extend(args.iter().cloned());
     out
+}
+
+/// Started on an agent screen (its profile starts ready: prefs.rs).
+fn on_screen() -> bool {
+    std::env::var_os("OLO_SCREEN").is_some_and(|s| !s.is_empty())
 }
 
 /// A token to bring Chrome's window forward with: a link opened from a
@@ -208,8 +217,23 @@ fn chrome_command(chrome: &Path, args: &[String], token: Option<&str>) -> std::p
     cmd
 }
 
-/// Start Chrome on its own (it outlives us).
+/// Profile folder `dir` made ready for `chrome`: Olo's defaults (an
+/// agent screen's too) and Passwords in it (the extension and its host).
+fn set_up_profile(chrome: &Path, dir: &Path) {
+    prefs::apply(dir, on_screen());
+    if let (Ok(exe), Some(install)) = (std::env::current_exe(), chrome.parent().and_then(|d| d.canonicalize().ok()))
+        && let Err(e) = extension::set_up(&install::root(), &install, dir, &exe)
+    {
+        eprintln!("olo-chrome: couldn't set up Passwords in Chrome: {e}");
+    }
+}
+
+/// Start Chrome on its own (it outlives us), its profile set up first
+/// (the first start after it's installed).
 fn start_chrome(chrome: &Path, args: &[String]) {
+    if let Some(dir) = prefs::user_data_dir(args) {
+        set_up_profile(chrome, &dir);
+    }
     let mut cmd = chrome_command(chrome, args, activation_token().as_deref());
     cmd.process_group(0);
     if let Err(e) = cmd.spawn() {
@@ -255,13 +279,7 @@ fn main() {
             }
         }
         if let Some(dir) = dir {
-            prefs::apply(&dir);
-            // Passwords in Chrome: the extension and its host.
-            if let (Ok(exe), Some(install)) = (std::env::current_exe(), chrome.parent().and_then(|d| d.canonicalize().ok()))
-                && let Err(e) = extension::set_up(&install::root(), &install, &dir, &exe)
-            {
-                eprintln!("olo-chrome: couldn't set up Passwords in Chrome: {e}");
-            }
+            set_up_profile(&chrome, &dir);
         }
         let e = chrome_command(&chrome, &args, token.as_deref()).exec();
         eprintln!("olo-chrome: couldn't start {}: {e}", chrome.display());
