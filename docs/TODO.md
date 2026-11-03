@@ -102,7 +102,22 @@ of Finished; a new one goes where its priority puts it.
     - app_server's live contacts (`EventKind::TouchContacts`, and
       `SyntheticEvent::Contacts` headless);
     - the settings for it.
-    *Next*: the trainer in Preferences.
+    *Next*: the trainer in Preferences ▸ Touchpad & Mouse, a "Train for
+    Your Palm" box on the Touch tab (apps/preferences/src/touchpad.rs,
+    `touch()`; the panel is 460×586, `panel.rs`), built from:
+    - the pad drawn with `gpui::PathBuilder::fill()`/`stroke()` and
+      `window.paint_path` (as `style::latch`), contacts as ellipses from
+      `Event::TouchContacts` on a watcher thread like `touchpad::watch`;
+    - animations by `window.request_animation_frame()` in a canvas, as
+      `spotlight.rs` does, stilled when nothing moves;
+    - progress with `widgets::StatusBar::new(fraction)`;
+    - training on `cx.background_spawn`, the model written through
+      `ui.edit`/`prefs.update(.., p.edit(..))` into
+      `s.touchpad.filter.palm_model`, `use_palm_model`;
+    - the trainer's state in `touchpad::State` (reached by `state_of`),
+      redrawn with `Msg::Redraw`;
+    - tested headless with `SyntheticEvent::Contacts` through
+      `tsession ipc`.
   - (The manual captures below are the fallback, and for measuring.)
   - *Needs Ben* (superseded by the trainer): labelled captures, recorded read-only with no grab
     (`touch_filter`'s `replay_capture` reads them,
