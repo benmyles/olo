@@ -82,7 +82,12 @@ fn nested(src: &str) -> Vec<String> {
             let open = at + outer.len();
             let body = argument(src, open);
             for inner in TAKES_LOCK {
-                for (i, _) in body.match_indices(&format!(".{inner}(")).chain(body.match_indices(&format!("::{inner}("))) {
+                // A method, a path or a bare call (`with_states(&root, …)`
+                // imported: the one Firefox in Focus mode stopped
+                // app_server on), not the end of a longer name.
+                let call = format!("{inner}(");
+                let calls = body.match_indices(&call).filter(|(i, _)| !body[..*i].ends_with(|c: char| c.is_alphanumeric() || c == '_'));
+                for (i, _) in calls {
                     let line = src[..open + 1 + i].lines().count();
                     found.push(format!("{line}: {outer} → {inner}"));
                 }
@@ -104,6 +109,16 @@ fn nothing_relocks_a_surface() {
         }
     }
     assert!(bad.is_empty(), "surface lock taken again inside its own closure (deadlock):\n{}", bad.join("\n"));
+}
+
+#[test]
+fn catches_a_bare_call() {
+    // (new_fractional_scale, until 2026-11-03: a subsurface's lock held
+    // while its root's was taken.)
+    let src = "with_states(&surface, |states| {\n    let o = out(states).or_else(|| with_states(&root, |s| out(s)));\n});";
+    assert_eq!(nested(src), ["2: with_states → with_states"]);
+    // Names that only end in one aren't calls of it.
+    assert!(nested("with_states(&s, |st| { my_geometry(st) })").is_empty());
 }
 
 #[test]

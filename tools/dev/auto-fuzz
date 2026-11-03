@@ -81,7 +81,7 @@ class AutoFuzz(wm.Fuzz):
             out.append(i)
         return out
 
-    def check_tiles(self, what, wins):
+    def check_auto_tiles(self, what, wins):
         _, area = self.area()
         if not area:
             return
@@ -109,7 +109,7 @@ class AutoFuzz(wm.Fuzz):
         """Settle, and check everything."""
         wins = self.settle(timeout)
         self.check_sane(wins)
-        self.check_tiles(what, wins)
+        self.check_auto_tiles(what, wins)
         self.check_still(what, wins)
         return wins
 

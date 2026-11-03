@@ -205,7 +205,12 @@ fn on_screen() -> bool {
 /// Chrome opens it in a window that may be on another workspace with
 /// nothing to show it.
 fn activation_token() -> Option<String> {
-    olo_protocol::launch_activation_token(std::time::Duration::from_millis(500))
+    // A fresh one, though the opener may have put its own in our
+    // environment: that one is handed to a Chrome started here anyway, but
+    // a Chrome running already got none (a link from an app that passes
+    // its own token opened in a tab of a window that stayed behind), and
+    // one inherited may be long spent. Else the opener's.
+    olo_protocol::issue_activation_token(std::time::Duration::from_millis(500)).or_else(|| std::env::var("XDG_ACTIVATION_TOKEN").ok().filter(|t| !t.is_empty()))
 }
 
 fn chrome_command(chrome: &Path, args: &[String], token: Option<&str>) -> std::process::Command {

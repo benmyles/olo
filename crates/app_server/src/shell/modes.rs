@@ -114,13 +114,30 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// back to their own frames (for Auto-Tiling, to the tiles it gives
     /// them), and none is covered.
     fn leave_focus(&mut self, outputs: &[Output], mode: WindowingMode) {
-        let windows: Vec<WindowElement> = self.space.elements().cloned().collect();
-        for w in windows {
+        // (Only these displays' windows: another display may still be in
+        // Focus, and its zooms are its to undo.)
+        let windows: Vec<WindowElement> = self.space.elements().filter(|w| self.window_output(w).is_some_and(|o| outputs.contains(&o))).cloned().collect();
+        // A group zooms as one (`share_arrangement`): Focus zoomed its
+        // front window then, and its others with it; whichever is in front
+        // now, they all go back, or the one in front would lead the rest
+        // back into its zoom.
+        let mut zoomed: Vec<WindowElement> = Vec::new();
+        for w in &windows {
             let m = w.meta();
             m.focus_on.set(None);
             m.focus_display.set(None);
             m.covered.set(false);
-            if !m.focus_zoomed.replace(false) || !self.window_output(&w).is_some_and(|o| outputs.contains(&o)) || !self.is_zoomed(&w) {
+            if m.focus_zoomed.replace(false) {
+                for o in std::iter::once(w.clone()).chain(self.groups.mates(w)) {
+                    if !zoomed.contains(&o) && windows.contains(&o) {
+                        zoomed.push(o);
+                    }
+                }
+            }
+        }
+        for w in zoomed {
+            w.meta().focus_zoomed.set(false);
+            if !self.is_zoomed(&w) {
                 continue;
             }
             if mode == WindowingMode::AutoTiling {
@@ -158,7 +175,9 @@ impl<B: Backend + 'static> AnvilState<B> {
                         self.focus_zoom(w, &focus[i].clone());
                     }
                 }
-                None if m.focus_zoomed.replace(false) => {
+                // (Not one still being placed: `focus_claim` zoomed it, and
+                // it shows zoomed once it is.)
+                None if m.placed.get() && m.focus_zoomed.replace(false) => {
                     // Gone to a display not in Focus, or floated.
                     if self.is_zoomed(w) {
                         self.unzoom_window(w);

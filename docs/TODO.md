@@ -7,24 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Focus mode: a link opened in a browser on the same desktop doesn't
-  bring its window forward** (Ben, 2026-11-03, a bug): "when in focus
-  mode if i click on e.g. a url and my browser that it should open in is
-  on the same desktop with a window already open then it correctly opens
-  it in a tab but it doesn't change focus to the window. weirdly, it does
-  work properly and change focus if the browser is on another display
-  (and maybe another workspace i didn't check). when you fix this also
-  make sure we have extensive tests and fuzz tests around focus mode
-  (and the other window arrangement modes) because we've hit quite a few
-  bugs with their different behaviors and want to make sure they won't
-  keep coming back". So: find why an activation (xdg-activation with
-  the opener's token) on the same display and workspace is refused or
-  lost in focus mode, fix it; then tests for every arrangement mode
-  (standard, focus, auto-tiling, …) of activation, focus and stacking
-  on the same and other workspaces and displays, and a fuzz test that
-  drives random sequences (open, close, activate with and without
-  tokens, move, switch workspaces and modes) against the modes' rules.
-
 - **Auto-tiling: resizing a window is choppy and windows overlap until
   let go** (Ben, 2026-11-03, a bug): "when in autotile mode and
   resizing a window it is super choppy while resizing and the windows
@@ -36,6 +18,17 @@ of Finished; a new one goes where its priority puts it.
   shown together when the clients have drawn it (no window drawn over
   another, no gap), at the display's rate; measured with `timings` and
   the bench (a live resize in auto-tiling at 120 Hz, no dropped frames).
+
+- **⌘` moves a window from another workspace to this one** (found by
+  wm-fuzz, 2026-11-03, seed 5 step 124 on a `2560x1600,1920x1080`
+  session; the build from before the Focus fixes fails it the same way):
+  after a run of tiling, arranging, a display's scale changed and an
+  Undo, ⌘` ×3 left window 6, an app's window on workspace 4, on
+  workspace 1. Twitcher shows a window from another workspace while it
+  is chosen (`twitch_show`) and must put it back when another is
+  chosen or Twitcher closes on another; find the path that keeps it
+  (an Undo of an arrangement in between, or the display's scale), fix
+  it, and keep wm-fuzz's seed passing.
 
 - **The palm trainer, full screen and driven from the keyboard** (Ben,
   2026-11-02, with a screenshot of its last step, "Try it", at 2× in
@@ -932,6 +925,47 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Focus mode: a link opened in a browser on the same desktop doesn't
+  bring its window forward**~~ (Ben, 2026-11-03, a bug): "when in focus
+  mode if i click on e.g. a url and my browser that it should open in is
+  on the same desktop with a window already open then it correctly opens
+  it in a tab but it doesn't change focus to the window. weirdly, it does
+  work properly and change focus if the browser is on another display
+  (and maybe another workspace i didn't check). when you fix this also
+  make sure we have extensive tests and fuzz tests around focus mode
+  (and the other window arrangement modes) because we've hit quite a few
+  bugs with their different behaviors and want to make sure they won't
+  keep coming back". So: find why an activation (xdg-activation with
+  the opener's token) on the same display and workspace is refused or
+  lost in focus mode, fix it; then tests for every arrangement mode
+  (standard, focus, auto-tiling, …) of activation, focus and stacking
+  on the same and other workspaces and displays, and a fuzz test that
+  drives random sequences (open, close, activate with and without
+  tokens, move, switch workspaces and modes) against the modes' rules.
+  *Done* 2026-11-03: two causes. olo-chrome handed a running Chrome the
+  token in its environment, the opener's (Terminal's, long spent), as
+  `launch_activation_token` returns none when one is there: it now asks
+  app_server for a fresh one first (`issue_activation_token`), and
+  app_server takes a token whose input is its maker's, the app with the
+  keyboard, though another app's window comes forward. A Firefox window
+  opening in Focus also aborted a debug app_server (`new_fractional_scale`
+  took two surfaces' locks at once; `surface_locks.rs` now catches bare
+  calls too). Tests: `tools/dev/mode-fuzz`, random steps across Standard,
+  Auto-Tiling and Focus on two displays checked against each mode's
+  rules, and `--matrix [--chrome]`, every mode × a window behind, hidden,
+  on the other display and another workspace × Deskbar's activation, a
+  relaunch, and a relaunch with the opener's token (72 cases, Chrome's
+  included; with olo-chrome's old token every Chrome opener case fails).
+  What they found, fixed: leaving Focus left a group zoomed (whichever
+  of it was in front led the rest back; now the whole group goes back),
+  and reset another display's Focus state; a new window Focus zoomed was
+  unzoomed for a moment before it was placed (a flicker); new windows
+  opened under the pointer while apps are told the active display is the
+  keyboard's (Tracker opened a second window for a folder it showed);
+  and a window whose group came apart around it jumped back to an old
+  frame after a workspace switch. `WindowInfo::stack` gives agents the
+  stacking order.
 
 - ~~**Agent Screens: copy and paste between the person's display and a
   screen they're controlling**~~ (Ben, 2026-11-03): "when i am controlling

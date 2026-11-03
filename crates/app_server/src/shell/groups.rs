@@ -627,6 +627,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             if d.tab_width.take().is_some() {
                 d.tab_offset = 0;
             }
+            // Come apart around it while it shows (the others closed, or
+            // gone elsewhere): the frame it took is its own now, not one
+            // to leave for the one it had when it arrived, next time it
+            // comes back on its own (`unpark`). (Not one hidden or gone to
+            // another workspace: that is leaving it.)
+            drop(d);
+            if self.space.element_location(w).is_some() {
+                w.meta().joined.set(None);
+            }
         }
         // Tiled, it had the group's size; on its own, its tile's.
         if !resizing {

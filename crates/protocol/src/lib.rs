@@ -935,6 +935,11 @@ pub struct WindowInfo {
     /// is on screen; a window is settled once no window is settling.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub settling: bool,
+    /// Its place in the stack of the windows on screen, every display's,
+    /// 0 the front one (so a window is in front on its display when none
+    /// there has a smaller one). Likewise only while it is on screen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stack: Option<u32>,
     /// Glowing as a new window (Preferences ▸ Appearance).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub glowing: bool,
@@ -1995,6 +2000,14 @@ pub fn launch_activation_token(timeout: std::time::Duration) -> Option<String> {
     if std::env::var_os("XDG_ACTIVATION_TOKEN").is_some() {
         return None;
     }
+    issue_activation_token(timeout)
+}
+
+/// A token from app_server that brings forward whatever window uses it
+/// ([`Request::ActivationToken`]), whatever is in our environment (a
+/// token there may be our opener's own, long spent): None if app_server
+/// doesn't answer within `timeout`.
+pub fn issue_activation_token(timeout: std::time::Duration) -> Option<String> {
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let token = Client::connect().and_then(|mut c| c.request(&Request::ActivationToken));

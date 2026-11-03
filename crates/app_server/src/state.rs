@@ -615,9 +615,15 @@ impl<BackendData: Backend> XdgActivationHandler for AnvilState<BackendData> {
         // the running instance, which has no fresh serial of its own.
         // Anything else (a terminal's bell, an app presenting itself) would
         // steal focus and cover what the user is doing, alerts included.
+        // (The input is the token's maker's: an app with the keyboard
+        // opening a link in another app makes the token with its click and
+        // hands it on, so the app that has it may be the maker, not the
+        // one whose window comes forward.)
+        let maker = token_data.client_id.clone().or_else(|| token_data.surface.as_ref().and_then(|s| s.client()).map(|c| c.id()));
         let fresh = token_data.serial.as_ref().is_some_and(|(serial, _)| {
             self.seat.get_keyboard().is_some_and(|k| {
-                k.last_enter().is_some_and(|enter| serial.is_no_older_than(&enter)) && k.current_focus().and_then(|f| f.wl_surface().map(|s| s.client())).flatten() == surface.client()
+                let focused = k.current_focus().and_then(|f| f.wl_surface().and_then(|s| s.client())).map(|c| c.id());
+                k.last_enter().is_some_and(|enter| serial.is_no_older_than(&enter)) && focused.is_some() && (focused == surface.client().map(|c| c.id()) || focused == maker)
             })
         });
         // One of our programs handing its user's click on to another app
@@ -779,12 +785,13 @@ impl<BackendData: Backend> FractionalScaleHandler for AnvilState<BackendData> {
             })
         });
         let layer = self.space.outputs().find(|o| smithay::desktop::layer_map_for_output(o).layer_for_surface(&root, smithay::desktop::WindowSurfaceType::TOPLEVEL).is_some()).cloned();
+        // (The root's before the surface's lock is taken: locking it inside
+        // would take a parent's lock under its child's, the other way round
+        // from a walk down the tree, which the lock checker stopped
+        // app_server on as Firefox opened in Focus mode.)
+        let root_output = if root != surface { with_states(&root, |states| surface_primary_scanout_output(&root, states)) } else { None };
         with_states(&surface, |states| {
-            let primary_scanout_output = surface_primary_scanout_output(&surface, states)
-                .or_else(|| if root != surface { with_states(&root, |states| surface_primary_scanout_output(&root, states)) } else { None })
-                .or(placed)
-                .or(layer)
-                .or_else(|| self.space.outputs().next().cloned());
+            let primary_scanout_output = surface_primary_scanout_output(&surface, states).or(root_output).or(placed).or(layer).or_else(|| self.space.outputs().next().cloned());
             if let Some(output) = primary_scanout_output {
                 with_fractional_scale(states, |fractional_scale| {
                     fractional_scale.set_preferred_scale(output.current_scale().fractional_scale());

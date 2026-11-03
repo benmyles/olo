@@ -99,8 +99,13 @@ like pixel alignment is.
    `with_cached_state`, call nothing that takes it again
    (`WindowElement::decorated`/`inner_size`/`outer_size`/`content_offset`/
    `title`/`app_id`/`geometry`, sending a configure, mapping the element).
-   Work such values out before the call. `tests/surface_locks.rs` checks
-   the source for this; `tools/dev/wm-sweep` exercises every window
+   Work such values out before the call, and never nest these calls,
+   not even on two surfaces (a subsurface and its root: Smithay's
+   lock-order checker aborts in debug builds, inside a Wayland handler
+   that can't unwind, as `new_fractional_scale` did for a Firefox
+   window in Focus). `tests/surface_locks.rs` checks the source for
+   this, method calls and bare calls (`with_states(…)` inside another)
+   alike; `tools/dev/wm-sweep` exercises every window
    operation on several screens and fails on the first hang. Nor does
    anything else in Olo: every lock is `olo_sync`'s (crates/sync:
    `Mutex`, `RwLock`, `Condvar`, never `std::sync`'s, Smithay's own
@@ -638,10 +643,14 @@ fn main() {
 * Activation: `window.activation_token(done)` asks for an xdg-activation
   token from the latest input in the window, to hand to another program
   so its window may come forward; app_server honours a request only with
-  fresh input from the asking app, a click handed on by one of our
-  programs, or a token it issued itself (`olo_protocol::
-  launch_activation_token` asks for one, `Request::ActivationToken`, for
-  launchers run without a click, as olo-chrome does).
+  fresh input from the asking app (or from the token's maker, when it has
+  the keyboard: an app opening a link in another hands its click on), a
+  click handed on by one of our programs, or a token it issued itself
+  (`olo_protocol::launch_activation_token` asks for one,
+  `Request::ActivationToken`, for launchers run without a click, unless
+  one is in the environment; `issue_activation_token` asks whatever is
+  there, as olo-chrome does: the opener's token in its environment may
+  be long spent, and a Chrome running already is handed the new one).
 * Scrolling: GPUI's `ScrollWheelEvent::kind` says whether a wheel's
   notches (eased in by the Wayland client, 48 points a notch), fingers
   on a touchpad or their glide (app_server's `continuous` scrolls) moved
@@ -2299,8 +2308,9 @@ for a 3-second `sleep`.
   a layout saved before each display had its own has one for them all,
   `Placement::showing`, kept under `layout::EVERY`). Everything else is a new window and
   opens on the display in use (`new_window_near`: beside the app's
-  focused window, else under the pointer), including a running app
-  opening a window again.
+  focused window, else on the active display, the one apps are told is
+  in use: under the pointer if it's there, else in the middle), including
+  a running app opening a window again.
 * Olo's apps notice the lost connection (olo-ui's
   `upgrade::lost_compositor`), save their state (`olo_ui::on_upgrade`),
   re-execute themselves (same pid and arguments) and read it back with
@@ -2614,6 +2624,36 @@ be inside the tiling area with no two overlapping, and stay put for a
 moment after (nothing still on its way to land somewhere else). Each
 step's line has the time, to find it in the session's log. Run it after
 changing anything in `autotile.rs`, `tiling.rs` or the resize grabs.
+
+`tools/dev/mode-fuzz NAME [--seed N] [--steps N] [--only OPS] [--keep-going]`
+drives the windowing modes (built on wm-fuzz, on a `--session --shell`
+tsession with two displays): each display's mode changed at random among
+Standard, Auto-Tiling and Focus, with windows activated as Deskbar does,
+brought forward by launching their app again (Tracker on a folder it
+shows), ⌘Tab, hidden and shown, sent to the other display, workspace
+trips, and windows opening and closing. After every step it checks each
+mode's rules: on a display in Focus exactly one unit (a window that
+would be a tile, with its group) shows, its front zoomed, the rest
+covered, and the window with the keyboard is the one showing; elsewhere
+nothing is covered; a window brought forward has the keyboard, shows and
+leads its group; and a Focus round trip (Standard, Focus with
+activations, Standard) puts every window back in its own frame.
+`mode-fuzz NAME --matrix [--chrome] [--only WORDS]` is its deterministic
+half: in every mode a Tracker window behind the Terminal with the
+keyboard, hidden, on the other display and on another workspace is
+brought forward each way (Deskbar's, no token; launched again, with the
+token it asks app_server for; launched again with a token in its
+environment that isn't for it, as a link's opener leaves one), and must
+have the keyboard, show, be in front on its display
+(`WindowInfo::stack`) and move nothing else; it prints the table.
+`--chrome` adds Olo's Chrome (not one of Olo's programs, so it comes
+forward only for a token app_server takes: the case a link opened from
+Terminal is), on a profile of its own with no network, from a copy of
+the installed Chrome in the session's home; its first window takes most
+of a minute. Run both after changing `modes.rs`, groups, activation
+(`request_activation`) or how a launcher gets its token: put back the
+token olo-chrome passed before its fix and the matrix fails every
+Chrome case with the opener's token.
 
 `tools/dev/upgrade-check NAME [--times N] [--reload-only] [--no-touch]`
 checks that windows come back from an upgrade exactly (display,
@@ -3842,8 +3882,14 @@ of those that would be tiles (not floating, placed, not rolled up). Activating a
 Twitcher, the overview, a click on a tab) raises it, so it is the one
 that shows. Every one of them is zoomed (`zoom_window`, so leaving Focus
 puts each back where it was; `focus_tick`), a new one opens zoomed
-(`focus_claim`, at its first commit), and one moved or sized by hand
-zooms again where it is let go. An app's windows are always one group
+(`focus_claim`, at its first commit, and stays so while it is placed:
+`focus_tick` leaves a window that isn't placed yet alone), and one moved
+or sized by hand zooms again where it is let go. A group zooms as one
+(its front window's arrangement is its others', `share_arrangement`):
+leaving Focus (`leave_focus`, for that display's windows only: another
+may still be in Focus) puts back every window of a group Focus zoomed,
+whichever of them is in front by then, or the one in front would lead
+the rest back into its zoom. An app's windows are always one group
 there (`group_key`), so its others are tabs along the top. The rest are
 covered (`WindowMeta::covered`, `mark_covered`, from the stacking order
 just before drawing): not drawn and not under the pointer, but still in
@@ -3857,7 +3903,10 @@ an app of only panels (DeskCalc) always shows, and so does an alert that
 names no window (`is_parentless_alert`: Passwords' passkey question
 while Chrome is in front, an app's "Save changes?" asked from Deskbar),
 which asks the person something whichever window shows. `WindowInfo::covered`
-says which are covered, for agents.
+says which are covered, for agents, and `WindowInfo::stack` (in
+`list_windows`, for windows on screen) where each is in the stacking
+order, 0 the front: a window is in front on its display when none there
+has a smaller one.
 
 Auto-tiling (`shell/autotile.rs`; its module doc is the design) is the
 Auto-Tiling mode; `{"type":"set_auto_tiling","on":true}` and
@@ -4050,7 +4099,11 @@ menu's lasts until the pointer next moves, and a held button is one. A window
 that joined a group on arriving keeps the frame it came with
 (`WindowMeta::joined`): sent on to a workspace where it is on its own,
 untouched, it has that frame again, so a window taken to another
-workspace and back comes back as it was. Only the
+workspace and back comes back as it was. A group that comes apart
+around it while it shows (the others closed or gone) leaves it the
+group's frame as its own: it isn't put back in the one it came with
+the next time it comes back (mode-fuzz found one jump after a Focus
+round trip and a workspace switch). Only the
 front window is drawn whole and takes input over its frame: the ones
 behind it show just their tabs (`mark_behind`, before every frame,
 `Decoration::behind`), so they never show around it while it is sized

@@ -524,6 +524,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     tab_frame: None,
                     popups: Vec::new(),
                     settling: false,
+                    stack: None,
                     glowing: w.meta().glow_strength() > 0.0,
                     surface: w.wl_surface().map(|s| s.id().protocol_id()),
                 }
@@ -538,9 +539,12 @@ impl<B: Backend + 'static> AnvilState<B> {
     pub fn window_infos_with_frames(&self) -> Vec<WindowInfo> {
         let mut infos = self.window_infos();
         let frame = |r: smithay::utils::Rectangle<i32, smithay::utils::Logical>| olo_protocol::Frame { x: r.loc.x, y: r.loc.y, width: r.size.w, height: r.size.h };
+        let on_screen: Vec<&WindowElement> = self.space.elements().rev().collect();
         for info in &mut infos {
-            let Some(w) = self.space.elements().find(|w| w.id() == info.id) else { continue };
+            let Some(stack) = on_screen.iter().position(|w| w.id() == info.id) else { continue };
+            let w = on_screen[stack];
             let Some(at) = self.space.element_location(w) else { continue };
+            info.stack = Some(stack as u32);
             let geo = smithay::desktop::space::SpaceElement::geometry(w);
             info.frame = Some(frame(smithay::utils::Rectangle::new(at, geo.size)));
             let least = crate::shell::groups::least_frame(w);
@@ -776,16 +780,23 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// point): its focused window's, if it has the focus (a window opened
     /// from the keyboard, e.g. Quick Look, belongs with the one it came
     /// from, not with a pointer that may be on another display), else the
-    /// pointer's.
+    /// active display's (`active_output`), as apps are told it
+    /// (`tell_workspaces`): under the pointer if it is there, else in its
+    /// middle. (Not the pointer's display for that: with the keyboard in a
+    /// window on another one, Tracker, asked from there for a folder it
+    /// shows here, would open another window for it, here.)
     pub fn new_window_near(&self, client: Option<smithay::reexports::wayland_server::backend::ClientId>) -> Point<f64, Logical> {
         let pointer = self.pointer.current_location();
-        let Some(client) = client else { return pointer };
-        let Some(w) = self.focused_window() else { return pointer };
-        if w.wl_surface().and_then(|s| s.client()).map(|c| c.id()) != Some(client) {
-            return pointer;
+        if let (Some(client), Some(w)) = (client, self.focused_window())
+            && w.wl_surface().and_then(|s| s.client()).map(|c| c.id()) == Some(client)
+            && let Some(geo) = self.space.element_geometry(&w)
+        {
+            return (geo.loc + geo.size.downscale(2).to_point()).to_f64();
         }
-        let Some(geo) = self.space.element_geometry(&w) else { return pointer };
-        (geo.loc + geo.size.downscale(2).to_point()).to_f64()
+        match self.active_output().and_then(|o| self.space.output_geometry(&o)) {
+            Some(g) if !g.to_f64().contains(pointer) => (g.loc + g.size.downscale(2).to_point()).to_f64(),
+            _ => pointer,
+        }
     }
 
     /// The window with keyboard focus.
