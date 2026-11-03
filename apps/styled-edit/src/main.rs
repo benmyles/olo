@@ -1407,7 +1407,7 @@ impl StyledEdit {
     fn bring_tool(&mut self, doc: EntityId, kind: Option<bool>, cx: &mut Context<Self>) -> bool {
         let Some(k) = self.tools.iter().position(|(d, t, _)| *d == doc && *t == kind) else { return false };
         let win = self.tools[k].2;
-        if win.update(cx, |_, window, _| window.activate_window()).is_ok() {
+        if olo_ui::raise(Some(win), cx) {
             return true;
         }
         self.tools.remove(k);
@@ -1843,7 +1843,7 @@ impl StyledEdit {
 /// Brings document `doc`'s window forward.
 fn activate(doc: &Entity<DocView>, cx: &mut App) {
     if let Some(win) = doc.read(cx).win {
-        let _ = win.update(cx, |_, window, _| window.activate_window());
+        olo_ui::raise(Some(win), cx);
     }
 }
 

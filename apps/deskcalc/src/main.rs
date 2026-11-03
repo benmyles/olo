@@ -516,7 +516,7 @@ fn main() {
             if message.is::<Launch>()
                 && let Some(handle) = handle
             {
-                let _ = handle.update(cx, |_, window, _| window.activate_window());
+                olo_ui::raise(Some(handle), cx);
             }
         });
         // The palette's and agents' way to the menu's commands.

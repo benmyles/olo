@@ -795,7 +795,7 @@ impl Tg {
     /// A file panel; `done` gets what was chosen (nothing if cancelled).
     fn open_panel(&mut self, title: &'static str, panel: FilePanel, done: impl FnOnce(&mut Tg, Vec<PathBuf>, &mut Context<Tg>) + 'static, cx: &mut Context<Self>) {
         if let Some(w) = self.panel {
-            let _ = w.update(cx, |_, window, _| window.activate_window());
+            olo_ui::raise(Some(w), cx);
             return;
         }
         let me = cx.entity();
@@ -850,7 +850,7 @@ impl Tg {
 
     fn open_contacts(&mut self, cx: &mut Context<Self>) {
         if let Some((w, _)) = &self.contacts {
-            let _ = w.update(cx, |_, window, _| window.activate_window());
+            olo_ui::raise(Some(*w), cx);
             return;
         }
         self.backend.send(Cmd::Contacts);
@@ -1173,7 +1173,7 @@ impl Tg {
                     self.reconnect(cx);
                 } else if let Some(w) = self.win {
                     cx.defer(move |cx| {
-                        let _ = w.update(cx, |_, window, _| window.activate_window());
+                        olo_ui::raise(Some(w), cx);
                     });
                 }
                 return;
@@ -1544,7 +1544,7 @@ impl Picker {
                     tg.open_chat(id, None, cx);
                     if let Some(w) = tg.win {
                         cx.defer(move |cx| {
-                            let _ = w.update(cx, |_, window, _| window.activate_window());
+                            olo_ui::raise(Some(w), cx);
                         });
                     }
                 });

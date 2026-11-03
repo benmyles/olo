@@ -568,7 +568,7 @@ impl Logs {
             "journal" => self.read(None, cx),
             "open-file" => {
                 if let Some(w) = self.panel {
-                    let _ = w.update(cx, |_, window, _| window.activate_window());
+                    olo_ui::raise(Some(w), cx);
                     return;
                 }
                 let dir = self.source.as_ref().and_then(|p| p.parent()).map_or_else(|| std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from), PathBuf::from);
@@ -666,7 +666,7 @@ impl Logs {
                 }
                 if let Some(w) = self.win {
                     cx.defer(move |cx| {
-                        let _ = w.update(cx, |_, window, _| window.activate_window());
+                        olo_ui::raise(Some(w), cx);
                     });
                 }
                 return;

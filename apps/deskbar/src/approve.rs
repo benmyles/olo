@@ -105,7 +105,7 @@ impl Ask {
             self.length = i;
         }
         if let Some(w) = self.window {
-            let _ = w.update(cx, |_, window, _| window.activate_window());
+            olo_ui::raise(Some(w), cx);
         }
         cx.notify();
     }

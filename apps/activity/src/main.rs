@@ -441,25 +441,22 @@ impl Activity {
 
     /// The main window: opened, or brought forward.
     fn open(&mut self, cx: &mut Context<Self>) {
-        if let Some(w) = self.main {
-            cx.defer(move |cx| {
-                let _ = w.update(cx, |_, window, _| window.activate_window());
-            });
-            return;
-        }
-        let me = cx.entity();
-        cx.defer(move |cx| {
-            let view = me.clone();
-            let w = olo_ui::open_window(cx, WindowOptions::new("Activity Monitor", 900.0, 620.0).min_size(560.0, 400.0), move |window, cx| {
+        let view = cx.entity();
+        let options = WindowOptions::new("Activity Monitor", 900.0, 620.0).min_size(560.0, 400.0);
+        olo_ui::open_or_raise(
+            self.main,
+            cx,
+            options,
+            move |window, cx| {
                 let closing = view.clone();
                 window.on_window_should_close(cx, move |_, cx| {
                     closing.update(cx, |a, cx| a.quit(cx));
                     true
                 });
                 view
-            });
-            me.update(cx, |a, _| a.main = w);
-        });
+            },
+            |a, w| a.main = w,
+        );
     }
 
     /// Seconds since the app started: samples' times.
@@ -766,7 +763,7 @@ impl Activity {
             }
             let w = *w;
             cx.defer(move |cx| {
-                let _ = w.update(cx, |_, window, _| window.activate_window());
+                olo_ui::raise(Some(w), cx);
             });
             return;
         }

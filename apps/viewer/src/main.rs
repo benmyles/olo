@@ -172,7 +172,7 @@ impl Viewer {
         if let Some(doc) = self.docs.iter().find(|d| d.read(cx).path == path)
             && let Some(win) = doc.read(cx).win
         {
-            let _ = win.update(cx, |_, window, _| window.activate_window());
+            olo_ui::raise(Some(win), cx);
             return;
         }
         let title = file_name(&path);
@@ -966,7 +966,7 @@ impl Doc {
                     }
                     if let Some(win) = d.win {
                         cx.defer(move |cx| {
-                            let _ = win.update(cx, |_, window, _| window.activate_window());
+                            olo_ui::raise(Some(win), cx);
                         });
                     }
                 });

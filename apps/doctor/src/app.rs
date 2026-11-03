@@ -294,7 +294,7 @@ impl Doctor {
             // Opened again: look again, and come forward.
             if let Some(w) = self.window {
                 cx.defer(move |cx| {
-                    let _ = w.update(cx, |_, window, _| window.activate_window());
+                    olo_ui::raise(Some(w), cx);
                 });
             }
             return self.scan(cx);

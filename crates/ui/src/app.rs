@@ -336,6 +336,32 @@ pub fn app_id(cx: &App) -> String {
     cx.try_global::<AppId>().map(|a| a.0.clone()).unwrap_or_default()
 }
 
+/// Brings `window` forward if it's still open: whether it was (a
+/// window an app keeps one of, asked for again or launched again).
+pub fn raise(window: Option<impl Into<gpui::AnyWindowHandle>>, cx: &mut App) -> bool {
+    window.is_some_and(|w| w.into().update(cx, |_, window, _| window.activate_window()).is_ok())
+}
+
+/// A window the app keeps one of (its main window, History, a review):
+/// `kept` brought forward, or, if it isn't open, one opened with
+/// `options` showing what `build` makes; `keep` is handed the one
+/// showing. Done once the update this is called from is over: what the
+/// window shows may read the app, and a window can't be brought forward
+/// while it's being updated (it would look closed, and open twice).
+pub fn open_or_raise<T: 'static, V: Render + 'static>(
+    kept: Option<WindowHandle<Frame>>,
+    cx: &mut gpui::Context<T>,
+    options: WindowOptions,
+    build: impl FnOnce(&mut Window, &mut App) -> Entity<V> + 'static,
+    keep: impl FnOnce(&mut T, Option<WindowHandle<Frame>>) + 'static,
+) {
+    let me = cx.entity();
+    cx.defer(move |cx| {
+        let window = if raise(kept, cx) { kept } else { open_window(cx, options, build) };
+        me.update(cx, |t, _| keep(t, window));
+    });
+}
+
 /// Opens a window showing the view `build` makes.
 pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, build: impl FnOnce(&mut Window, &mut App) -> Entity<V>) -> Option<WindowHandle<Frame>> {
     // (A surface no bigger than nothing has no buffer to show: app_server

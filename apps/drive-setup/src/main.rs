@@ -747,17 +747,8 @@ struct DriveSetup {
 
 impl DriveSetup {
     fn open(&mut self, cx: &mut Context<Self>) {
-        if let Some(w) = self.window
-            && w.update(cx, |_, window, _| window.activate_window()).is_ok()
-        {
-            return;
-        }
-        let me = cx.entity();
-        cx.defer(move |cx| {
-            let view = me.clone();
-            let w = olo_ui::open_window(cx, WindowOptions::new("DriveSetup", 800.0, 480.0).min_size(480.0, 340.0), move |_, _| view);
-            me.update(cx, |d, _| d.window = w);
-        });
+        let view = cx.entity();
+        olo_ui::open_or_raise(self.window, cx, WindowOptions::new("DriveSetup", 800.0, 480.0).min_size(480.0, 340.0), move |_, _| view, |d, w| d.window = w);
     }
 
     /// Read everything again on a worker (once more after, if asked

@@ -121,7 +121,7 @@ impl Ask {
         self.sync(cx);
         self.focus_first(cx);
         if let Some(w) = self.window {
-            let _ = w.update(cx, |_, window, _| window.activate_window());
+            olo_ui::raise(Some(w), cx);
         }
         cx.notify();
     }

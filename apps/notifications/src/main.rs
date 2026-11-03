@@ -538,34 +538,29 @@ impl Notifications {
 
     /// The History window, opened (or brought forward).
     pub fn open_history(&mut self, cx: &mut Context<Self>) {
-        if let Some(w) = self.history_win {
-            cx.defer(move |cx| {
-                let _ = w.update(cx, |_, window, _| window.activate_window());
-            });
-            return;
-        }
         if self.history_opening {
             return;
         }
         self.history_opening = true;
         let me = cx.entity();
-        cx.defer(move |cx| {
-            let view = me.clone();
-            let win = olo_ui::open_window(cx, WindowOptions::new("Notifications", 400.0, 560.0).min_size(360.0, 240.0), move |window, cx| cx.new(|cx| history::HistoryWindow::new(view, window, cx)));
-            if let Some(w) = win {
+        let options = WindowOptions::new("Notifications", 400.0, 560.0).min_size(360.0, 240.0);
+        olo_ui::open_or_raise(
+            self.history_win,
+            cx,
+            options,
+            move |window, cx| {
                 let closing = me.clone();
-                let _ = w.update(cx, |_, window, cx| {
-                    window.on_window_should_close(cx, move |_, cx| {
-                        closing.update(cx, |n, cx| n.history_closed(cx));
-                        true
-                    });
+                window.on_window_should_close(cx, move |_, cx| {
+                    closing.update(cx, |n, cx| n.history_closed(cx));
+                    true
                 });
-            }
-            me.update(cx, |n, _| {
+                cx.new(|cx| history::HistoryWindow::new(me, window, cx))
+            },
+            |n, w| {
                 n.history_opening = false;
-                n.history_win = win;
-            });
-        });
+                n.history_win = w;
+            },
+        );
     }
 
     /// The History window closed: what was read while it was open moves.

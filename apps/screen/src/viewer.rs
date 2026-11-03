@@ -593,7 +593,7 @@ impl Viewer {
         }
         if let Some(w) = self.win {
             cx.defer(move |cx| {
-                let _ = w.update(cx, |_, window, _| window.activate_window());
+                olo_ui::raise(Some(w), cx);
             });
         }
     }

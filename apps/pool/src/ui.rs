@@ -106,26 +106,16 @@ impl PoolApp {
 
     /// Opens the window (or brings it to the front).
     pub fn open(&mut self, cx: &mut Context<Self>) {
-        if let Some(w) = self.win
-            && w.update(cx, |_, window, _| window.activate_window()).is_ok()
-        {
-            return;
-        }
         let app = cx.entity();
-        // (Once this update is over: the window's view reads the app.)
-        cx.defer(move |cx| {
-            let options = WindowOptions::new("Token Pool", 460.0, 560.0).min_size(380.0, 320.0);
-            let view = app.clone();
-            let handle = olo_ui::open_window(cx, options, move |_, cx| cx.new(|cx| PoolWindow::new(view, cx)));
-            app.update(cx, |a, _| a.win = handle);
-        });
+        let options = WindowOptions::new("Token Pool", 460.0, 560.0).min_size(380.0, 320.0);
+        olo_ui::open_or_raise(self.win, cx, options, move |_, cx| cx.new(|cx| PoolWindow::new(app, cx)), |a, w| a.win = w);
         self.read_clients();
     }
 
     /// Opens the Clients window (or brings it to the front).
     pub fn open_clients(&mut self, cx: &mut Context<Self>) {
         if let Some((w, _)) = &self.clients_win
-            && w.update(cx, |_, window, _| window.activate_window()).is_ok()
+            && olo_ui::raise(Some(*w), cx)
         {
             return;
         }

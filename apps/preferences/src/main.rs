@@ -130,7 +130,7 @@ impl Prefs {
         };
         // One window per panel: bring an open one forward.
         if let Some(w) = self.windows.iter().find(|w| w.panel == Some(panel)) {
-            let _ = w.handle.update(cx, |_, window, _| window.activate_window());
+            olo_ui::raise(Some(w.handle), cx);
             return;
         }
         let (w, h) = panel.size();
@@ -161,7 +161,7 @@ impl Prefs {
 
     fn open_launcher(&mut self, cx: &mut Context<Self>) {
         if let Some(w) = self.windows.iter().find(|w| w.panel.is_none()) {
-            let _ = w.handle.update(cx, |_, window, _| window.activate_window());
+            olo_ui::raise(Some(w.handle), cx);
             return;
         }
         let rows = Panel::ALL.len().div_ceil(LAUNCHER_COLUMNS) as f32;

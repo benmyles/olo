@@ -505,7 +505,7 @@ impl DiskUsage {
         let message = match message.downcast::<Launch>() {
             Ok(launch) => {
                 if let Some(w) = self.window {
-                    let _ = w.update(cx, |_, window, _| window.activate_window());
+                    olo_ui::raise(Some(w), cx);
                 }
                 if let Some(path) = launch.args.iter().find(|a| !a.starts_with('-')) {
                     let path = launch.cwd.unwrap_or_default().join(path);

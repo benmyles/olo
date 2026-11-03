@@ -59,7 +59,7 @@ struct Installer {
 impl Installer {
     fn open(&mut self, cx: &mut Context<Self>) {
         if let Some(w) = self.window
-            && w.update(cx, |_, window, _| window.activate_window()).is_ok()
+            && olo_ui::raise(Some(w), cx)
         {
             return;
         }

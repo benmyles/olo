@@ -870,6 +870,15 @@ as the app quits (`on_app_quit`) and before an upgrade re-execs it
 (`store::flush`), so a setting changed just before the last window
 closes isn't lost.
 
+A window an app keeps one of (its main window, History, a review) is
+shown with `open_or_raise(kept, cx, options, build, keep)`: brought
+forward if it's open, else opened, `keep` handed the one showing; done
+once the calling update is over, since a window can't be brought
+forward while it's being updated (it would look closed, and open
+twice). `raise(handle, cx)` alone brings one forward if it's still
+open, as an app launched again does (a second launch hands itself to
+the first, `instance`, which raises its window).
+
 What a view has to do at some time goes through `due` (olo-ui), so
 nothing runs while nothing is due: `Due` is one timer for the next
 thing, set to when that is (`at(when, cx, then)`: the timer there is

@@ -244,7 +244,7 @@ impl Tracker {
 
     fn activate(&self, key: EntityId, cx: &mut App) {
         if let Some(s) = self.shown(key) {
-            let _ = s.handle.update(cx, |_, window, _| window.activate_window());
+            olo_ui::raise(Some(s.handle), cx);
         }
     }
 

@@ -590,15 +590,13 @@ impl Passwords {
     /// Show the waiting changes.
     pub fn open_review(&mut self, cx: &mut Context<Self>) {
         let Some(review) = &self.review else { return };
-        if let Some(w) = review.window
-            && w.update(cx, |_, window, _| window.activate_window()).is_ok()
-        {
-            return;
-        }
-        let me = cx.entity();
-        cx.defer(move |cx| {
-            let view = me.clone();
-            let handle = olo_ui::open_window(cx, WindowOptions::new("Review Sync", 560.0, 440.0).min_size(420.0, 300.0).floating(), move |window, cx| {
+        let view = cx.entity();
+        let options = WindowOptions::new("Review Sync", 560.0, 440.0).min_size(420.0, 300.0).floating();
+        olo_ui::open_or_raise(
+            review.window,
+            cx,
+            options,
+            move |window, cx| {
                 let closing = view.clone();
                 window.on_window_should_close(cx, move |_, cx| {
                     // Closed from its tab: as Cancel.
@@ -612,13 +610,13 @@ impl Passwords {
                     true
                 });
                 cx.new(|cx| view::ReviewView::new(view.clone(), cx))
-            });
-            me.update(cx, |a, _| {
+            },
+            |a, w| {
                 if let Some(r) = &mut a.review {
-                    r.window = handle;
+                    r.window = w;
                 }
-            });
-        });
+            },
+        );
     }
 
     /// The review is over (applied, declined, or overtaken).
@@ -1385,7 +1383,7 @@ impl Passwords {
         if let Some(p) = &mut self.problems {
             p.list = list;
             if let Some(w) = p.window
-                && w.update(cx, |_, window, _| window.activate_window()).is_ok()
+                && olo_ui::raise(Some(w), cx)
             {
                 cx.notify();
                 return;
@@ -1465,7 +1463,7 @@ impl Passwords {
                 g.generator.target = target;
                 cx.notify();
             });
-            let _ = w.update(cx, |_, window, _| window.activate_window());
+            olo_ui::raise(Some(*w), cx);
             return;
         }
         let me = cx.entity();
@@ -1490,7 +1488,7 @@ impl Passwords {
     fn open_main(&mut self, cx: &mut Context<Self>) {
         // (Gone if it was closed while we hold the clipboard.)
         if let Some(w) = self.main
-            && w.update(cx, |_, window, _| window.activate_window()).is_ok()
+            && olo_ui::raise(Some(w), cx)
         {
             return;
         }
