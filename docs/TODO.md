@@ -41,10 +41,26 @@ of Finished; a new one goes where its priority puts it.
 
 - **Telegram: unarchived chats go back to Archived on every reopen**
   (Ben, 2026-11-02): "every time i reopen telegram all my unarchived
-  conversations move back to archived every time". Unarchiving must
+  conversations move back to archived every time". (*part done*
+  2026-11-02: the cache was written only after a whole list loaded, and
+  a load stopped at the first failed page (a FLOOD_WAIT over 60 s, or a
+  second one: every launch and upgrade fetches every page), leaving the
+  rest, archive flags and ghosts, as the old cache had them, every time.
+  Now a failed page is asked again, one load at a time, the cache
+  follows each change, and an archive change shows where Telegram
+  really put the chat, saying so if it didn't move; loads and moves are
+  logged. *Left*: Ben to check after the upgrade; if it happens again,
+  `olo-logs --print --program olo-telegram` says whether Telegram kept
+  the chat archived or a load failed.) Unarchiving must
   reach Telegram (the chat's folder changed there, not only in the
   list), and what the app shows on starting again must come from what
   Telegram says (its archive, folder 1) over anything the cache kept.
+
+- **Telegram crashed: Vulkan ERROR_SURFACE_LOST_KHR** (seen in the
+  logs 2026-11-02 17:02, after app_server went away and came back):
+  `blade-graphics/src/vulkan/surface.rs:244` unwraps the swapchain's
+  acquire. A lost surface must be made again (the window's surface
+  recreated), never a panic: every kit app shares it.
 
 - **AirPods and voice processing, tried on the real things** (Ben,
   2026-11-02; what's left of "AirPods, natively" and "Voice processing

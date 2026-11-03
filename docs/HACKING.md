@@ -7735,7 +7735,22 @@ A Telegram client of Olo's own: MTProto in process through grammers
   pointer by arithmetic (60 pt each, the picture 40 across). The list
   comes as the main list (folder 0) then the archive (folder 1), each
   chat's place as Telegram has it; once it's whole, chats it no longer
-  gave go (`Store::whole`: left, deleted, cached from before).
+  gave go (`Store::whole`: left, deleted, cached from before). A page
+  that fails is asked again (`dialogs_retrying`: after the FLOOD_WAIT
+  Telegram asks for, shown as Waiting, else 2, 4, 8… s; six tries), one
+  load at a time, so a list never stops halfway with the rest as the
+  cache had it. The cache (`chats.json`, read first for an instant list)
+  follows the list as it changes, not only after a whole load: a second
+  after the person's own change (a chat archived, pinned, muted,
+  deleted) or a whole list, else within 30 s (messages coming in; about
+  1.3 ms for 1,500 chats, on a blocking thread). Archiving or
+  unarchiving takes the folder from Telegram's answer
+  (`updateFolderPeers`), else asks for the chat's dialog
+  (`getPeerDialogs`), and shows where Telegram has it, saying so if
+  that isn't where it was asked to go. Each load ("telegram: the chat
+  list: N in the main list, M archived, in P pages"), each page asked
+  again and each move are logged (`olo-logs --print --program
+  olo-telegram`).
   **Unknown Senders** (`Chat::unknown`, `model::stranger`): a person who
   isn't a contact (nor verified, nor Telegram's service notifications)
   and whom we've never written to (nothing of ours read there, the

@@ -55,6 +55,17 @@ struct Ctx {
     me: AtomicI64,
     who: Mutex<HashMap<ChatId, Who>>,
     chats: Mutex<HashMap<ChatId, Chat>>,
+    /// One load of the chat list at a time (a pin made elsewhere asks for
+    /// another while the first is under way).
+    loading: tokio::sync::Mutex<()>,
+    /// The chat list changed: it's written to disk (`cache_due` wakes the
+    /// writer), a second after the person's own change or a whole list
+    /// (`cache_soon`), else within half a minute (a message come in), and
+    /// only once `chats` holds all of it (the cache read in, or a whole
+    /// list loaded: `cache_ready`).
+    cache_due: tokio::sync::Notify,
+    cache_soon: tokio::sync::Notify,
+    cache_ready: std::sync::atomic::AtomicBool,
     /// Each message's media as Telegram described it (to download it).
     media: Mutex<HashMap<(ChatId, MsgId), tl::enums::MessageMedia>>,
     fetching: Mutex<HashSet<Pic>>,
@@ -66,6 +77,24 @@ fn now() -> i64 {
 
 fn id_of(peer: &tl::enums::Peer) -> ChatId {
     PeerId::from(peer).bot_api_dialog_id_unchecked()
+}
+
+/// The folder `chat` is in, as Telegram's answer to moving it says (its
+/// `updateFolderPeers`), if it says.
+fn folder_in(r: &tl::enums::Updates, chat: ChatId) -> Option<i32> {
+    let updates = match r {
+        tl::enums::Updates::Updates(u) => &u.updates,
+        tl::enums::Updates::Combined(u) => &u.updates,
+        tl::enums::Updates::UpdateShort(u) => std::slice::from_ref(&u.update),
+        _ => return None,
+    };
+    updates.iter().find_map(|u| match u {
+        tl::enums::Update::FolderPeers(f) => f.folder_peers.iter().find_map(|p| {
+            let tl::enums::FolderPeer::Peer(p) = p;
+            (id_of(&p.peer) == chat).then_some(p.folder_id)
+        }),
+        _ => None,
+    })
 }
 
 fn params() -> ConnectionParams {
@@ -155,9 +184,35 @@ async fn run(mut from: UnboundedReceiver<Cmd>, sink: Sink) {
         me: AtomicI64::new(store.me().map_or(0, |m| m.id)),
         who: Mutex::new(HashMap::new()),
         chats: Mutex::new(HashMap::new()),
+        loading: tokio::sync::Mutex::new(()),
+        cache_due: tokio::sync::Notify::new(),
+        cache_soon: tokio::sync::Notify::new(),
+        cache_ready: std::sync::atomic::AtomicBool::new(false),
         media: Mutex::new(HashMap::new()),
         fetching: Mutex::new(HashSet::new()),
     });
+    // The chat list on disk follows it (a chat archived or not, a page
+    // loaded), so starting again shows what was last known, even when the
+    // last load never finished: it was written only after a whole list,
+    // and a chat unarchived went back to the archive the cache had it in.
+    {
+        let ctx = ctx.clone();
+        tokio::spawn(async move {
+            loop {
+                ctx.cache_due.notified().await;
+                tokio::select! {
+                    _ = ctx.cache_soon.notified() => {}
+                    _ = tokio::time::sleep(Duration::from_secs(30)) => {}
+                }
+                // (The rest of the same change.)
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                if ctx.cache_ready.load(Ordering::Relaxed) {
+                    let chats: Vec<Chat> = ctx.chats.lock().unwrap().values().cloned().collect();
+                    blocking(move || Ctx::cache_chats(chats)).await;
+                }
+            }
+        });
+    }
     // Who we are, retried until Telegram answers.
     let mut wait = 1;
     loop {
@@ -235,6 +290,8 @@ async fn run(mut from: UnboundedReceiver<Cmd>, sink: Sink) {
             if let Err(e) = ctx.handle(cmd).await {
                 (ctx.sink)(Event::Error(e));
             }
+            // What the person changed is on disk in a moment.
+            ctx.cache_soon.notify_one();
         });
     }
     let _ = blocking(move || store.save(false)).await;
@@ -752,6 +809,7 @@ impl Ctx {
 
     fn put_chat(&self, c: Chat) {
         self.chats.lock().unwrap().insert(c.id, c.clone());
+        self.cache_due.notify_one();
         self.emit(Event::Chat(c));
     }
 
@@ -930,27 +988,42 @@ impl Ctx {
 
     /// The whole chat list (the main list, then the archive), in pages.
     async fn load_chats(&self, cached_first: bool) -> Result<(), String> {
+        let _one = self.loading.lock().await;
         if cached_first && let Some(c) = blocking(Self::cached_chats).await {
+            {
+                let mut known = self.chats.lock().unwrap();
+                for chat in &c {
+                    known.entry(chat.id).or_insert_with(|| chat.clone());
+                }
+            }
+            self.cache_ready.store(true, Ordering::Relaxed);
             self.emit(Event::Chats { chats: c, done: false, cached: true });
         }
         if let Ok(f) = self.folders().await {
             self.emit(Event::Folders(f));
         }
-        let mut all = Vec::new();
+        let mut live = HashSet::new();
+        let (mut main, mut archived, mut pages) = (0, 0, 0);
         // The main list (folder 0), then the archive (1): each chat's
         // place as Telegram has it. (No folder asks for every chat at
         // once, archived ones in among the rest.)
         for folder in [Some(0), Some(1)] {
             let mut offset = (0, 0, tl::enums::InputPeer::Empty);
             loop {
-                let (page, next) = self.dialogs(folder, offset).await.map_err(|e| explain(&e))?;
+                let (page, next) = self.dialogs_retrying(folder, offset).await.map_err(|e| {
+                    tracing::warn!("telegram: the chat list stopped after {pages} pages: {e}");
+                    explain(&e)
+                })?;
+                pages += 1;
                 {
                     let mut known = self.chats.lock().unwrap();
                     for c in &page {
+                        live.insert(c.id);
+                        *(if c.archived { &mut archived } else { &mut main }) += 1;
                         known.insert(c.id, c.clone());
                     }
                 }
-                all.extend(page.iter().cloned());
+                self.cache_due.notify_one();
                 let done = next.is_none() && folder == Some(1);
                 self.emit(Event::Chats { chats: page, done, cached: false });
                 match next {
@@ -959,10 +1032,60 @@ impl Ctx {
                 }
             }
         }
-        // Pictures of the first chats, ahead of being asked.
-        blocking(move || Self::cache_chats(all)).await;
+        // What Telegram no longer gives (left, deleted, an id it no longer
+        // goes by) goes, as from the list (`Store::whole`).
+        self.chats.lock().unwrap().retain(|id, _| live.contains(id));
+        self.cache_ready.store(true, Ordering::Relaxed);
+        self.cache_due.notify_one();
+        self.cache_soon.notify_one();
+        tracing::info!("telegram: the chat list: {main} in the main list, {archived} archived, in {pages} pages");
         self.emit(Event::Status(Status::Online));
         Ok(())
+    }
+
+    /// A page of the chat list, asked again when it fails rather than
+    /// leaving the rest of the list as the cache had it: after the wait
+    /// Telegram asks for (FLOOD_WAIT, however long: shown as Waiting), else
+    /// 2, 4, 8… seconds; six tries at most.
+    async fn dialogs_retrying(&self, folder: Option<i32>, offset: (i32, i32, tl::enums::InputPeer)) -> Result<(Vec<Chat>, Option<(i32, i32, tl::enums::InputPeer)>), InvocationError> {
+        let mut tries = 0u32;
+        loop {
+            match self.dialogs(folder, offset.clone()).await {
+                Ok(r) => return Ok(r),
+                Err(e) if tries < 5 => {
+                    tries += 1;
+                    let flood = match &e {
+                        InvocationError::Rpc(r) if r.code == 420 => r.value,
+                        _ => None,
+                    };
+                    let wait = flood.map_or(1u64 << tries, u64::from);
+                    tracing::warn!("telegram: a page of the chat list (folder {folder:?}) failed ({e}): again in {wait} s");
+                    if let Some(s) = flood {
+                        self.emit(Event::Status(Status::Waiting(s)));
+                    }
+                    tokio::time::sleep(Duration::from_secs(wait)).await;
+                    if flood.is_some() {
+                        self.emit(Event::Status(Status::Updating));
+                    }
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    /// The folder Telegram has a chat in now (0 the main list, 1 the
+    /// archive), asked.
+    async fn folder_now(&self, peer: &PeerRef) -> Option<i32> {
+        let r = self
+            .client
+            .invoke(&tl::functions::messages::GetPeerDialogs { peers: vec![tl::enums::InputDialogPeer::Peer(tl::types::InputDialogPeer { peer: Self::input_peer(peer) })] })
+            .await
+            .ok()?;
+        let tl::enums::messages::PeerDialogs::Dialogs(d) = r;
+        d.dialogs.into_iter().find_map(|d| match d {
+            tl::enums::Dialog::Dialog(d) => Some(d.folder_id.unwrap_or(0)),
+            _ => None,
+        })
     }
 
     async fn send(&self, out: Outgoing) -> Result<(), String> {
@@ -1278,10 +1401,23 @@ impl Ctx {
             }
             Cmd::Archive { chat, on } => {
                 let peer = self.peer(chat).await?;
-                let fp = tl::enums::InputFolderPeer::Peer(tl::types::InputFolderPeer { peer: Self::input_peer(&peer), folder_id: if on { 1 } else { 0 } });
-                self.client.invoke(&tl::functions::folders::EditPeerFolders { folder_peers: vec![fp] }).await.map_err(|e| explain(&e))?;
+                let folder = i32::from(on);
+                let fp = tl::enums::InputFolderPeer::Peer(tl::types::InputFolderPeer { peer: Self::input_peer(&peer), folder_id: folder });
+                let r = self.client.invoke(&tl::functions::folders::EditPeerFolders { folder_peers: vec![fp] }).await.map_err(|e| explain(&e))?;
+                // Where Telegram has it now: as its answer says, else asked,
+                // so the list shows that, not what was asked for.
+                let said = folder_in(&r, chat);
+                let now = match said {
+                    Some(f) => Some(f),
+                    None => self.folder_now(&peer).await,
+                };
+                tracing::info!("telegram: chat {chat} asked into folder {folder}: Telegram has it in {now:?}{}", if said.is_some() { "" } else { " (asked again)" });
+                let now = now.unwrap_or(folder);
+                if now != folder {
+                    self.emit(Event::Error(if on { "Telegram didn’t archive the chat." } else { "Telegram kept the chat archived." }.into()));
+                }
                 if let Some(mut c) = self.known_chat(chat) {
-                    c.archived = on;
+                    c.archived = now == 1;
                     c.pinned = false;
                     self.put_chat(c);
                 }
@@ -1290,6 +1426,7 @@ impl Ctx {
                 let peer = self.peer(chat).await?;
                 self.client.delete_dialog(peer).await.map_err(|e| explain(&e))?;
                 self.chats.lock().unwrap().remove(&chat);
+                self.cache_due.notify_one();
                 self.emit(Event::ChatGone(chat));
             }
             Cmd::Mute { chat, on } => {
@@ -1696,6 +1833,22 @@ fn pack_waveform(samples: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Moving a chat: Telegram's answer names the folder it's in now, for
+    /// that chat only; an answer without it says nothing (and the chat is
+    /// asked about again).
+    #[test]
+    fn folder_from_the_answer() {
+        let user = |id| tl::enums::Peer::User(tl::types::PeerUser { user_id: id });
+        let moved = |id, folder_id| tl::enums::FolderPeer::Peer(tl::types::FolderPeer { peer: user(id), folder_id });
+        let answer = |updates| tl::enums::Updates::Updates(tl::types::Updates { updates, users: Vec::new(), chats: Vec::new(), date: 0, seq: 0 });
+        let r = answer(vec![tl::enums::Update::FolderPeers(tl::types::UpdateFolderPeers { folder_peers: vec![moved(5, 1), moved(7, 0)], pts: 1, pts_count: 1 })]);
+        assert_eq!(folder_in(&r, id_of(&user(7))), Some(0));
+        assert_eq!(folder_in(&r, id_of(&user(5))), Some(1));
+        assert_eq!(folder_in(&r, id_of(&user(9))), None);
+        assert_eq!(folder_in(&answer(Vec::new()), id_of(&user(7))), None);
+        assert_eq!(folder_in(&tl::enums::Updates::TooLong, id_of(&user(7))), None);
+    }
 
     #[test]
     fn waveforms_round_trip() {
