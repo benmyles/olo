@@ -21,7 +21,7 @@ use std::collections::HashMap;
 pub use olo_protocol::touchpad::{PadAxes, PalmModel, TouchContact};
 
 /// How many features a contact has.
-pub const FEATURES: usize = 17;
+pub const FEATURES: usize = 18;
 /// The hidden layer's size.
 pub const HIDDEN: usize = 32;
 /// A contact is judged in its first this many milliseconds; after, it
@@ -46,9 +46,18 @@ struct Track {
 }
 
 /// Each contact's history, from which its features are made.
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct Tracker {
     tracks: HashMap<i32, Track>,
+    /// Microseconds since a key was last pressed, as the caller knows
+    /// (u64::MAX: never): palms rest while typing.
+    pub since_key_us: u64,
+}
+
+impl Default for Tracker {
+    fn default() -> Self {
+        Tracker { tracks: HashMap::new(), since_key_us: u64::MAX }
+    }
 }
 
 impl Tracker {
@@ -108,6 +117,8 @@ impl Tracker {
                 nearest,
                 orientation,
                 width,
+                // Seconds since a key was pressed (typing: palms rest).
+                (self.since_key_us as f32 / 1e6).min(1.0),
             ];
             out.push((c.id, f, age_ms));
         }
@@ -124,8 +135,8 @@ impl Tracker {
 /// (typing); heavy and large; small and moving (a finger: against).
 pub fn baseline() -> PalmModel {
     // Typical values and spreads, so units see each feature on one scale.
-    let mean = vec![0.12, 0.09, 0.01, 0.08, 0.5, 0.5, 0.22, 0.15, 0.06, 0.14, 0.012, 0.12, 0.75, 0.4, 0.6, 0.0, 0.5];
-    let std = vec![0.12, 0.09, 0.02, 0.08, 0.3, 0.3, 0.14, 0.2, 0.1, 0.13, 0.02, 0.22, 0.2, 0.15, 0.3, 0.5, 0.3];
+    let mean = vec![0.12, 0.09, 0.01, 0.08, 0.5, 0.5, 0.22, 0.15, 0.06, 0.14, 0.012, 0.12, 0.75, 0.4, 0.6, 0.0, 0.5, 0.7];
+    let std = vec![0.12, 0.09, 0.02, 0.08, 0.3, 0.3, 0.14, 0.2, 0.1, 0.13, 0.02, 0.22, 0.2, 0.15, 0.3, 0.5, 0.3, 0.35];
     let mut w1 = vec![0.0f32; HIDDEN * FEATURES];
     let mut b1 = vec![0.0f32; HIDDEN];
     let mut set = |j: usize, b: f32, w: &[(usize, f32)]| {
@@ -183,15 +194,17 @@ pub fn baseline() -> PalmModel {
     set(22, -1.0, &[(14, 0.9), (11, 1.2), (0, 0.4)]);
     // 23: a finger: close to one other, both small (two fingers).
     set(23, 0.2, &[(14, -0.9), (11, 0.6), (0, -0.5)]);
-    // 24–31: spare, each looking lightly at a pair of features (the
+    // 24: while typing (a key just pressed), large-ish and still.
+    set(24, -0.6, &[(17, -1.0), (0, 0.5), (8, -0.4)]);
+    // 25–31: spare, each looking lightly at a pair of features (the
     // angle and approaching size among them), so training has room to
     // learn what the ones above don't say.
-    for j in 24..HIDDEN {
+    for j in 25..HIDDEN {
         let (a, b) = ((j * 5) % FEATURES, (j * 7 + 3) % FEATURES);
         set(j, 0.0, &[(a, 0.15), (b, -0.15)]);
     }
     let mut w2 = vec![0.0f32; HIDDEN];
-    w2[..24].copy_from_slice(&[1.1, 0.9, 1.0, 0.7, 0.8, -1.0, -0.9, 0.6, 0.5, 0.6, 1.2, 0.8, 0.6, 0.7, 0.6, 0.7, -0.8, -0.7, -0.8, -0.7, -0.7, -0.9, 0.7, -0.7]);
+    w2[..25].copy_from_slice(&[1.1, 0.9, 1.0, 0.7, 0.8, -1.0, -0.9, 0.6, 0.5, 0.6, 1.2, 0.8, 0.6, 0.7, 0.6, 0.7, -0.8, -0.7, -0.8, -0.7, -0.7, -0.9, 0.7, -0.7, 0.8]);
     PalmModel { mean, std, w1, b1, w2, b2: -1.0, threshold: 0.0, decide_ms: DECIDE_MS, ..Default::default() }
 }
 
@@ -486,7 +499,7 @@ mod tests {
         let r = judge(&m, &contacts.iter().collect::<Vec<_>>(), 1600);
         assert!(r.palms_caught > r.size_rule_palms_caught && r.palms_caught > 0.85, "{r:?}");
         assert!(r.fingers_lost < 0.1, "{r:?}");
-        assert!(lua(&m).contains("hidden = 32") && lua(&m).contains("features = 17"));
+        assert!(lua(&m).contains("hidden = 32") && lua(&m).contains("features = 18"));
     }
 
     #[test]

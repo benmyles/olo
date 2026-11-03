@@ -602,7 +602,19 @@ pub enum Event {
     /// What's on a touchpad now, as the pad reports it (each contact's
     /// place, size and pressure), after each of its reports while
     /// anyone asks: the palm trainer's live view and its samples.
-    TouchContacts { pad: touchpad::PadAxes, time_us: u64, contacts: Vec<touchpad::TouchContact> },
+    TouchContacts {
+        pad: touchpad::PadAxes,
+        time_us: u64,
+        contacts: Vec<touchpad::TouchContact>,
+        /// Microseconds since a key was last pressed (palms rest while
+        /// typing); u64::MAX if none was.
+        #[serde(default = "no_key")]
+        since_key_us: u64,
+    },
+}
+
+fn no_key() -> u64 {
+    u64::MAX
 }
 
 impl Event {

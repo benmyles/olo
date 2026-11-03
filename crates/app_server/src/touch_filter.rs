@@ -152,7 +152,7 @@ mod tests {
             lua.load(format!(
                 "evdev = {{ ABS_MT_SLOT = {SLOT}, ABS_MT_TOUCH_MAJOR = {MAJOR}, ABS_MT_TOUCH_MINOR = {MINOR}, \
                  ABS_MT_TRACKING_ID = {ID}, ABS_MT_PRESSURE = {PRESSURE}, ABS_PRESSURE = 0x30018, BTN_LEFT = {BTN_LEFT}, \
-                 ABS_MT_POSITION_X = {POS_X}, ABS_MT_POSITION_Y = {POS_Y}, ABS_MT_ORIENTATION = 0x30034, ABS_MT_WIDTH_MAJOR = 0x30032 }}
+                 ABS_MT_POSITION_X = {POS_X}, ABS_MT_POSITION_Y = {POS_Y}, ABS_MT_ORIENTATION = 0x30034, ABS_MT_WIDTH_MAJOR = 0x30032, KEY_ESC = 0x10001, KEY_A = 0x1001e, KEY_SPACE = 0x10039, BTN_MISC = 0x10100 }}
                  hooks = {{}}
                  resolution = {{ [{PRESSURE}] = 1, [0x30018] = 1 }}
                  libinput = {{ register = function() end, log_info = function() end,

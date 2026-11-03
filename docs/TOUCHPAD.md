@@ -204,9 +204,12 @@ gpu accelerated (or simd accelerated if it's faster) model").
   long), how it has grown since it landed, the distance to the nearest
   other contact (a palm sits far from the typing fingers; scrolling
   fingers sit close), its angle (`ABS_MT_ORIENTATION`, which this pad
-  reports) and its approaching size against its size
-  (`ABS_MT_WIDTH_MAJOR`).
-- One hidden layer of 32 units: 609 weights. Ben (2026-11-02): "make
+  reports), its approaching size against its size
+  (`ABS_MT_WIDTH_MAJOR`), and the seconds since a key was last pressed
+  (palms rest while typing: app_server notes each key press,
+  `contacts::note_key`, and says it with the contacts; the plugin
+  watches the keyboards' frames itself).
+- One hidden layer of 32 units: 641 weights. Ben (2026-11-02): "make
   the model even bigger and write them out as best you can for an
   optimal baseline model and then we can frame the training as optional
   to personalize it": 22 units written by hand, each one sign of a palm
@@ -246,7 +249,7 @@ few of the person's samples refine it rather than start over.
 a palm before libinput sees it, in the same features and arithmetic
 (`palm_model_scores_as_rust_does`: Lua and Rust agree to 1e-4).
 - Scoring costs about 13 µs a frame at this size (`frame_cost`, three
-  contacts: 19.9 µs off, 33.5 µs on at 17 features and 32 units;
+  contacts: 19.9 µs off, 33.7 µs on at 18 features and 32 units;
   20.8 µs before any model; the 10-unit first try was 22.3 µs), about
   0.17% of a core at the pad's 125 Hz. A GPU dispatch would cost more
   than the whole network.

@@ -25,10 +25,11 @@ of Finished; a new one goes where its priority puts it.
     frame. Ben: "you can do a great job just with hand-written but if
     you can find captures data online or anything we've tracked already
     feel free to use it": no captures online (see the research), and
-    none tracked yet. *Left*: time since the last key press (app_server
-    keeps none: the plugin could note keyboard frames itself), the
-    pad's `MT_TOOL_PALM` where a driver gives it, and the real-capture
-    tuning below.
+    none tracked yet. Then: the seconds since a key was last pressed (app_server
+    notes key presses; the plugin watches the keyboards' frames), with
+    a unit for "while typing": 18 features, 641 weights, 33.7 µs a
+    frame on. *Left*: the pad's `MT_TOOL_PALM` where a driver gives
+    it, and the real-capture tuning below.
   - A bigger network only if the real data wants it (64 units, or two
     layers), chosen by held-out error, never by feel; every unit still
     explained in the source.

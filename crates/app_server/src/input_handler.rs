@@ -127,6 +127,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// A key from a device (or a test): map it (⌘, Caps Lock, …), act on
     /// app_server's own chords and send the rest to the focused client.
     fn physical_key(&mut self, key: u32, pressed: bool, time: InputTime) -> KeyAction {
+        if pressed {
+            crate::contacts::note_key();
+        }
         if self.media_key(key, pressed) {
             return KeyAction::None;
         }
@@ -1394,7 +1397,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 let _ = (pointer, time);
                 if self.ipc.wanted(olo_protocol::EventKind::TouchContacts) {
                     let pad = olo_protocol::touchpad::PadAxes::macbook();
-                    self.ipc.broadcast(olo_protocol::Event::TouchContacts { pad, time_us: crate::contacts::now_us(), contacts });
+                    self.ipc.broadcast(olo_protocol::Event::TouchContacts { pad, time_us: crate::contacts::now_us(), contacts, since_key_us: crate::contacts::since_key_us() });
                 }
             }
             S::Scroll { dx, dy } => {

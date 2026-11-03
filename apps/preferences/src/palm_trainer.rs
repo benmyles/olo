@@ -171,7 +171,8 @@ impl Trainer {
                     if stop.load(Ordering::Relaxed) {
                         return;
                     }
-                    let Ok(Event::TouchContacts { pad, time_us, contacts }) = e else { break };
+                    let Ok(Event::TouchContacts { pad, time_us, contacts, since_key_us }) = e else { break };
+                    tracker.since_key_us = since_key_us;
                     let step = labelling.load(Ordering::Relaxed);
                     let label = EXERCISES.get(step).map(|s| s.plan().3);
                     let frames = tracker.frame(&pad, time_us, &contacts);

@@ -155,6 +155,22 @@ impl Watch {
     }
 }
 
+/// When a key was last pressed (`now_us`), for the palm model's "while
+/// typing" (0: never).
+static LAST_KEY_US: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+pub fn note_key() {
+    LAST_KEY_US.store(now_us(), std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Microseconds since a key was last pressed (u64::MAX: never).
+pub fn since_key_us() -> u64 {
+    match LAST_KEY_US.load(std::sync::atomic::Ordering::Relaxed) {
+        0 => u64::MAX,
+        at => now_us().saturating_sub(at),
+    }
+}
+
 /// Microseconds on the monotonic clock (as evdev's and libinput's).
 pub fn now_us() -> u64 {
     let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };

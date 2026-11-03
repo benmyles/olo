@@ -30,6 +30,10 @@
 
 local CONFIG = {} -- @CONFIG@ (replaced by app_server)
 
+-- When a key was last pressed on any keyboard (microseconds; palms rest
+-- while typing), for the palm model.
+local last_key = nil
+
 libinput:register({1})
 
 local function wanted(device)
@@ -93,6 +97,7 @@ local function features(state, c, time, others, nearest)
         nearest,
         a.orientation_max > 0 and math.max(-1, math.min(1, c.orientation / a.orientation_max)) or 0,
         math.min(c.width / math.max(c.major, 1), 2) / 2,
+        last_key and math.min((time - last_key) / 1e6, 1) or 1,
     }, age_ms
 end
 
@@ -374,10 +379,21 @@ local function filter(state, frame, time)
 end
 
 libinput:connect("new-evdev-device", function(device)
+    local usages = device:usages()
+    -- A keyboard: its key presses noted, nothing changed.
+    if usages[evdev.KEY_A] or usages[evdev.KEY_SPACE] then
+        device:connect("evdev-frame", function(_, frame, time)
+            for _, e in ipairs(frame) do
+                if e.value == 1 and e.usage >= evdev.KEY_ESC and e.usage < evdev.BTN_MISC then
+                    last_key = time
+                end
+            end
+            return nil
+        end)
+    end
     if not wanted(device) then
         return
     end
-    local usages = device:usages()
     if not (usages[evdev.ABS_MT_PRESSURE] and usages[evdev.ABS_MT_TOUCH_MAJOR] and usages[evdev.ABS_MT_TOUCH_MINOR]) then
         return
     end
