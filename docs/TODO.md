@@ -373,6 +373,18 @@ of Finished; a new one goes where its priority puts it.
   dragged scrolls the scrollback with the pointer (a click in its track
   pages there), in every pane of a split tab.
 
+- **Terminal: a tab hidden from tile mode** (Ben, 2026-11-03): "ability
+  to hide a specific tab in tile mode in terminal by right clicking on it
+  and choosing hide when tiled (or show/unhide when tiled if it is
+  hidden) and then it should have a different style in the tab bar to
+  indicate it's hidden and shouldn't show up in the tile modes". So: a
+  tab's context menu has Hide When Tiled (Show When Tiled once hidden);
+  a hidden tab stays in the tab bar, drawn differently (dimmed, its
+  label and icon faded, in light, dark and night at every scale), and
+  every tile mode leaves it out (its tile's room going to the rest)
+  until shown again; kept per tab through a reload; agents read it as
+  hidden when tiled and can toggle it.
+
 - **The command palette: typing "n" first closes it; every shortcut in
   it; files only on Ctrl** (Ben, 2026-11-03): "when i'm in the command
   pallette, if i start by typing "n" it closes the pallette. fix that
