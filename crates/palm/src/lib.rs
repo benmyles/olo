@@ -21,7 +21,7 @@ use std::collections::HashMap;
 pub use olo_protocol::touchpad::{PadAxes, PalmModel, TouchContact};
 
 /// How many features a contact has.
-pub const FEATURES: usize = 14;
+pub const FEATURES: usize = 17;
 /// The hidden layer's size.
 pub const HIDDEN: usize = 32;
 /// A contact is judged in its first this many milliseconds; after, it
@@ -65,6 +65,10 @@ impl Tracker {
         for c in contacts {
             let x = (c.x - axes.x_min) as f32 / w;
             let y = (c.y - axes.y_min) as f32 / h;
+            // The nearest other contact, in pad widths (1: none).
+            let nearest = contacts.iter().filter(|o| o.id != c.id).map(|o| (((o.x - c.x) as f32 / w).powi(2) + ((o.y - c.y) as f32 / w).powi(2)).sqrt()).fold(1.0f32, f32::min);
+            let orientation = if axes.orientation_max > 0 { (c.orientation as f32 / axes.orientation_max as f32).clamp(-1.0, 1.0) } else { 0.0 };
+            let width = (c.width as f32 / c.major.max(1) as f32).min(2.0) / 2.0;
             let size = c.major.max(c.minor) as f32 / size_max;
             let small = c.major.min(c.minor) as f32 / size_max;
             let pressure = c.pressure as f32 / pressure_max;
@@ -98,6 +102,12 @@ impl Tracker {
                 // it has grown since it landed (a palm settles).
                 small / (size + 0.01),
                 (size / (t.first_size + 0.01)).min(3.0) / 3.0,
+                // The nearest other contact (a palm sits far from the
+                // typing fingers; scrolling fingers sit close), its
+                // angle, and its approaching size against its size.
+                nearest,
+                orientation,
+                width,
             ];
             out.push((c.id, f, age_ms));
         }
@@ -114,8 +124,8 @@ impl Tracker {
 /// (typing); heavy and large; small and moving (a finger: against).
 pub fn baseline() -> PalmModel {
     // Typical values and spreads, so units see each feature on one scale.
-    let mean = vec![0.12, 0.09, 0.01, 0.08, 0.5, 0.5, 0.22, 0.15, 0.06, 0.14, 0.012, 0.12, 0.75, 0.4];
-    let std = vec![0.12, 0.09, 0.02, 0.08, 0.3, 0.3, 0.14, 0.2, 0.1, 0.13, 0.02, 0.22, 0.2, 0.15];
+    let mean = vec![0.12, 0.09, 0.01, 0.08, 0.5, 0.5, 0.22, 0.15, 0.06, 0.14, 0.012, 0.12, 0.75, 0.4, 0.6, 0.0, 0.5];
+    let std = vec![0.12, 0.09, 0.02, 0.08, 0.3, 0.3, 0.14, 0.2, 0.1, 0.13, 0.02, 0.22, 0.2, 0.15, 0.3, 0.5, 0.3];
     let mut w1 = vec![0.0f32; HIDDEN * FEATURES];
     let mut b1 = vec![0.0f32; HIDDEN];
     let mut set = |j: usize, b: f32, w: &[(usize, f32)]| {
@@ -168,14 +178,20 @@ pub fn baseline() -> PalmModel {
     set(20, 0.0, &[(3, 1.0), (0, -0.4), (9, -0.3)]);
     // 21: a finger: small at its largest, however old.
     set(21, 0.3, &[(9, -1.0), (7, 0.3)]);
-    // 22–31: spare, each looking lightly at a pair of features, so
-    // training has room to learn what the ones above don't say.
-    for j in 22..HIDDEN {
+    // 22: far from the others while others are down, large (a heel
+    // resting away from the typing fingers).
+    set(22, -1.0, &[(14, 0.9), (11, 1.2), (0, 0.4)]);
+    // 23: a finger: close to one other, both small (two fingers).
+    set(23, 0.2, &[(14, -0.9), (11, 0.6), (0, -0.5)]);
+    // 24–31: spare, each looking lightly at a pair of features (the
+    // angle and approaching size among them), so training has room to
+    // learn what the ones above don't say.
+    for j in 24..HIDDEN {
         let (a, b) = ((j * 5) % FEATURES, (j * 7 + 3) % FEATURES);
         set(j, 0.0, &[(a, 0.15), (b, -0.15)]);
     }
     let mut w2 = vec![0.0f32; HIDDEN];
-    w2[..22].copy_from_slice(&[1.1, 0.9, 1.0, 0.7, 0.8, -1.0, -0.9, 0.6, 0.5, 0.6, 1.2, 0.8, 0.6, 0.7, 0.6, 0.7, -0.8, -0.7, -0.8, -0.7, -0.7, -0.9]);
+    w2[..24].copy_from_slice(&[1.1, 0.9, 1.0, 0.7, 0.8, -1.0, -0.9, 0.6, 0.5, 0.6, 1.2, 0.8, 0.6, 0.7, 0.6, 0.7, -0.8, -0.7, -0.8, -0.7, -0.7, -0.9, 0.7, -0.7]);
     PalmModel { mean, std, w1, b1, w2, b2: -1.0, threshold: 0.0, decide_ms: DECIDE_MS, ..Default::default() }
 }
 
@@ -422,7 +438,7 @@ mod tests {
             for f in 0..30u64 {
                 x += vx;
                 y += vy;
-                let c = TouchContact { id: k as i32, x, y, major: size, minor: (size as f32 * 0.8) as i32, pressure };
+                let c = TouchContact { id: k as i32, x, y, major: size, minor: (size as f32 * 0.8) as i32, pressure, ..Default::default() };
                 let t = 1_000_000 + f * 8000;
                 for (_, feats, age) in tracker.frame(&axes, t, &[c]) {
                     if age <= DECIDE_MS {
@@ -458,7 +474,7 @@ mod tests {
         let r = judge(&m, &contacts.iter().collect::<Vec<_>>(), 1600);
         assert!(r.palms_caught > r.size_rule_palms_caught && r.palms_caught > 0.85, "{r:?}");
         assert!(r.fingers_lost < 0.1, "{r:?}");
-        assert!(lua(&m).contains("hidden = 32") && lua(&m).contains("features = 14"));
+        assert!(lua(&m).contains("hidden = 32") && lua(&m).contains("features = 17"));
     }
 
     #[test]
@@ -471,7 +487,7 @@ mod tests {
     fn features_follow_a_contact() {
         let axes = PadAxes::macbook();
         let mut t = Tracker::default();
-        let c = |x: i32, p: i32| TouchContact { id: 3, x, y: 4500, major: 500, minor: 400, pressure: p };
+        let c = |x: i32, p: i32| TouchContact { id: 3, x, y: 4500, major: 500, minor: 400, pressure: p, ..Default::default() };
         let a = t.frame(&axes, 0, &[c(0, 20)]);
         let b = t.frame(&axes, 100_000, &[c(1540, 40)]);
         assert_eq!(a[0].2, 0);

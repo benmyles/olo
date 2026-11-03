@@ -197,12 +197,16 @@ gpu accelerated (or simd accelerated if it's faster) model").
 - PalmTouch needs raw capacitive images, which this pad doesn't give.
 
 **The model** (crates/palm, `olo-palm`, all Rust):
-- Fourteen features a contact, made by `Tracker` from each report: its
+- Seventeen features a contact, made by `Tracker` from each report: its
   size and smaller size, pressure, pressure for its size, place,
   distance from the nearest edge, age, smoothed speed, the most size and
   pressure it has had, how many others are down, its shape (round or
-  long) and how it has grown since it landed.
-- One hidden layer of 32 units: 513 weights. Ben (2026-11-02): "make
+  long), how it has grown since it landed, the distance to the nearest
+  other contact (a palm sits far from the typing fingers; scrolling
+  fingers sit close), its angle (`ABS_MT_ORIENTATION`, which this pad
+  reports) and its approaching size against its size
+  (`ABS_MT_WIDTH_MAJOR`).
+- One hidden layer of 32 units: 609 weights. Ben (2026-11-02): "make
   the model even bigger and write them out as best you can for an
   optimal baseline model and then we can frame the training as optional
   to personalize it": 22 units written by hand, each one sign of a palm

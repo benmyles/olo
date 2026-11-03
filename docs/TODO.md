@@ -18,12 +18,17 @@ of Finished; a new one goes where its priority puts it.
     contact) saved to `~/.local/state/olo/palm/` as JSON when a run
     finishes, so they can be studied; plus the three two-minute
     manual captures from the finished item.
-  - More features where they tell: distance to the nearest other
-    contact (a palm sits far from the typing fingers; two scrolling
-    fingers sit close), `ABS_MT_ORIENTATION` if the pad reports it, the
-    contact's size growth over its first 50 ms, time since the last
-    key press (app_server knows: palms rest while typing), and the
-    pad's own `MT_TOOL_PALM` where a driver gives it.
+  - *Done* (2026-11-02): the nearest other contact, the angle
+    (`ABS_MT_ORIENTATION`: the pad reports it) and the approaching size
+    (`ABS_MT_WIDTH_MAJOR`) are features now, with two hand-written units
+    on the nearest-contact one; 17 features, 609 weights, ~10 µs a
+    frame. Ben: "you can do a great job just with hand-written but if
+    you can find captures data online or anything we've tracked already
+    feel free to use it": no captures online (see the research), and
+    none tracked yet. *Left*: time since the last key press (app_server
+    keeps none: the plugin could note keyboard frames itself), the
+    pad's `MT_TOOL_PALM` where a driver gives it, and the real-capture
+    tuning below.
   - A bigger network only if the real data wants it (64 units, or two
     layers), chosen by held-out error, never by feel; every unit still
     explained in the source.

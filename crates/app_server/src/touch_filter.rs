@@ -152,7 +152,7 @@ mod tests {
             lua.load(format!(
                 "evdev = {{ ABS_MT_SLOT = {SLOT}, ABS_MT_TOUCH_MAJOR = {MAJOR}, ABS_MT_TOUCH_MINOR = {MINOR}, \
                  ABS_MT_TRACKING_ID = {ID}, ABS_MT_PRESSURE = {PRESSURE}, ABS_PRESSURE = 0x30018, BTN_LEFT = {BTN_LEFT}, \
-                 ABS_MT_POSITION_X = {POS_X}, ABS_MT_POSITION_Y = {POS_Y} }}
+                 ABS_MT_POSITION_X = {POS_X}, ABS_MT_POSITION_Y = {POS_Y}, ABS_MT_ORIENTATION = 0x30034, ABS_MT_WIDTH_MAJOR = 0x30032 }}
                  hooks = {{}}
                  resolution = {{ [{PRESSURE}] = 1, [0x30018] = 1 }}
                  libinput = {{ register = function() end, log_info = function() end,
@@ -160,7 +160,7 @@ mod tests {
                  pad = {{ name = function() return 'Apple MTP multi-touch' end,
                           usages = function() return {{ [{PRESSURE}] = true, [{MAJOR}] = true, [{MINOR}] = true }} end,
                           absinfos = function() return {{ [{PRESSURE}] = {{ resolution = resolution[{PRESSURE}], minimum = 0, maximum = 6000 }}, [0x30018] = {{ resolution = resolution[0x30018] }},
-                                                         [{POS_X}] = {{ minimum = -7700, maximum = 7700 }}, [{POS_Y}] = {{ minimum = -200, maximum = 9200 }}, [{MAJOR}] = {{ minimum = 0, maximum = 5000 }} }} end,
+                                                         [{POS_X}] = {{ minimum = -7700, maximum = 7700 }}, [{POS_Y}] = {{ minimum = -200, maximum = 9200 }}, [{MAJOR}] = {{ minimum = 0, maximum = 5000 }}, [0x30034] = {{ minimum = -16384, maximum = 16384 }} }} end,
                           set_absinfo = function(_, u, a) if a.resolution then resolution[u] = a.resolution end end,
                           connect = function(_, _, f) hooks.frame = f end }}"
             ))
@@ -259,7 +259,7 @@ mod tests {
             ..Default::default()
         };
         // A contact moving, growing and pressing harder, a report every 8 ms.
-        let path: Vec<TouchContact> = (0..12).map(|k| TouchContact { id: 5, x: -3000 + k * 140, y: 1200 + k * 90, major: 600 + k * 35, minor: 450 + k * 20, pressure: 20 + k * 4 }).collect();
+        let path: Vec<TouchContact> = (0..12).map(|k| TouchContact { id: 5, x: -3000 + k * 140, y: 1200 + k * 90, major: 600 + k * 35, minor: 450 + k * 20, pressure: 20 + k * 4, ..Default::default() }).collect();
         let axes = PadAxes::macbook();
         let mut tracker = Tracker::default();
         let mut best = f32::MIN;

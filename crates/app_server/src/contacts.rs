@@ -72,6 +72,8 @@ impl smithay::reexports::input::LibinputInterface for Interface {
 const ABS_MT_SLOT: u32 = 0x2f;
 const ABS_MT_TOUCH_MAJOR: u32 = 0x30;
 const ABS_MT_TOUCH_MINOR: u32 = 0x31;
+const ABS_MT_WIDTH_MAJOR: u32 = 0x32;
+const ABS_MT_ORIENTATION: u32 = 0x34;
 const ABS_MT_POSITION_X: u32 = 0x35;
 const ABS_MT_POSITION_Y: u32 = 0x36;
 const ABS_MT_TRACKING_ID: u32 = 0x39;
@@ -113,7 +115,8 @@ impl Watch {
         let (_, size_max, _) = abs(fd, ABS_MT_TOUCH_MAJOR)?;
         let (_, pressure_max, _) = abs(fd, ABS_MT_PRESSURE).unwrap_or((0, 0, 0));
         let (_, slot_max, _) = abs(fd, ABS_MT_SLOT)?;
-        let axes = PadAxes { name: name(fd).unwrap_or_default(), x_min, x_max, y_min, y_max, x_res, y_res, size_max, pressure_max };
+        let orientation_max = abs(fd, ABS_MT_ORIENTATION).map_or(0, |(_, max, _)| max);
+        let axes = PadAxes { name: name(fd).unwrap_or_default(), x_min, x_max, y_min, y_max, x_res, y_res, size_max, pressure_max, orientation_max };
         Some(Watch { axes, slots: (slot_max + 1).clamp(1, 32) as usize, last: None })
     }
 
@@ -142,11 +145,11 @@ impl Watch {
         if ids.iter().all(|id| *id < 0) {
             return Some(Vec::new());
         }
-        let [x, y, major, minor, pressure] = [ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_TOUCH_MAJOR, ABS_MT_TOUCH_MINOR, ABS_MT_PRESSURE].map(|c| self.slots(fd, c).unwrap_or_else(|| vec![0; self.slots]));
+        let [x, y, major, minor, pressure, orientation, width] = [ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_TOUCH_MAJOR, ABS_MT_TOUCH_MINOR, ABS_MT_PRESSURE, ABS_MT_ORIENTATION, ABS_MT_WIDTH_MAJOR].map(|c| self.slots(fd, c).unwrap_or_else(|| vec![0; self.slots]));
         Some(
             (0..self.slots)
                 .filter(|&i| ids[i] >= 0)
-                .map(|i| TouchContact { id: ids[i], x: x[i], y: y[i], major: major[i], minor: minor[i], pressure: pressure[i] })
+                .map(|i| TouchContact { id: ids[i], x: x[i], y: y[i], major: major[i], minor: minor[i], pressure: pressure[i], orientation: orientation[i], width: width[i] })
                 .collect(),
         )
     }

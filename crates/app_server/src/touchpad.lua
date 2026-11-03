@@ -44,7 +44,7 @@ end
 local function contact(state, n)
     local c = state.slots[n]
     if not c then
-        c = { id = -1, pressure = 0, major = 0, minor = 0, x = 0, y = 0, on = false, palm = false, low_since = nil }
+        c = { id = -1, pressure = 0, major = 0, minor = 0, x = 0, y = 0, orientation = 0, width = 0, on = false, palm = false, low_since = nil }
         state.slots[n] = c
     end
     return c
@@ -52,7 +52,7 @@ end
 
 -- The palm model's features of contact `c` at `time` (microseconds),
 -- `others` the other contacts down: as `olo_palm::Tracker::frame`.
-local function features(state, c, time, others)
+local function features(state, c, time, others, nearest)
     local a = state.axes
     local w = math.max(a.x_max - a.x_min, 1)
     local h = math.max(a.y_max - a.y_min, 1)
@@ -90,6 +90,9 @@ local function features(state, c, time, others)
         math.min(others, 4) / 4,
         small / (size + 0.01),
         math.min(size / (t.first_size + 0.01), 3) / 3,
+        nearest,
+        a.orientation_max > 0 and math.max(-1, math.min(1, c.orientation / a.orientation_max)) or 0,
+        math.min(c.width / math.max(c.major, 1), 2) / 2,
     }, age_ms
 end
 
@@ -157,6 +160,10 @@ local function filter(state, frame, time)
             contact(state, slot).x = v
         elseif u == evdev.ABS_MT_POSITION_Y then
             contact(state, slot).y = v
+        elseif u == evdev.ABS_MT_ORIENTATION then
+            contact(state, slot).orientation = v
+        elseif u == evdev.ABS_MT_WIDTH_MAJOR then
+            contact(state, slot).width = v
         elseif u == evdev.BTN_LEFT and CONFIG.click then
             -- The driver's click: passed on below, unless a palm made it.
             state.driver = v == 1
@@ -181,7 +188,15 @@ local function filter(state, frame, time)
             end
             -- (Judged in its first `decide_ms`; after, nothing to do.)
             if model and state.axes and not c.palm and not c.decided then
-                local f, age_ms = features(state, c, time, down - 1)
+                -- The nearest other contact, in pad widths (1: none).
+                local nearest = 1
+                local w = math.max(state.axes.x_max - state.axes.x_min, 1)
+                for _, o in pairs(state.slots) do
+                    if o.id >= 0 and o ~= c then
+                        nearest = math.min(nearest, math.sqrt(((o.x - c.x) / w) ^ 2 + ((o.y - c.y) / w) ^ 2))
+                    end
+                end
+                local f, age_ms = features(state, c, time, down - 1, nearest)
                 if age_ms > model.decide_ms then
                     c.decided = true
                 elseif palm_score(model, f) > model.threshold then
@@ -376,7 +391,8 @@ libinput:connect("new-evdev-device", function(device)
     local abs = device:absinfos()
     local ax, ay, am, ap = abs[evdev.ABS_MT_POSITION_X], abs[evdev.ABS_MT_POSITION_Y], abs[evdev.ABS_MT_TOUCH_MAJOR], abs[evdev.ABS_MT_PRESSURE]
     if ax and ay and am and ap then
-        state.axes = { x_min = ax.minimum, x_max = ax.maximum, y_min = ay.minimum, y_max = ay.maximum, size_max = am.maximum, pressure_max = ap.maximum }
+        local ao = abs[evdev.ABS_MT_ORIENTATION]
+        state.axes = { x_min = ax.minimum, x_max = ax.maximum, y_min = ay.minimum, y_max = ay.maximum, size_max = am.maximum, pressure_max = ap.maximum, orientation_max = ao and ao.maximum or 0 }
     end
     device:connect("evdev-frame", function(_, frame, time)
         return filter(state, frame, time)

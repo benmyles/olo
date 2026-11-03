@@ -165,6 +165,7 @@ pub struct PalmModel {
 
 /// One contact on a touchpad as the pad reports it (its own units).
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct TouchContact {
     /// Its tracking id: the same while it stays on the pad.
     pub id: i32,
@@ -173,10 +174,15 @@ pub struct TouchContact {
     pub major: i32,
     pub minor: i32,
     pub pressure: i32,
+    /// Its angle (`ABS_MT_ORIENTATION`, 0 if the pad doesn't say) and
+    /// its approaching size (`ABS_MT_WIDTH_MAJOR`, 0 likewise).
+    pub orientation: i32,
+    pub width: i32,
 }
 
 /// A touchpad's axes, for drawing its contacts and making features.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct PadAxes {
     pub name: String,
     pub x_min: i32,
@@ -189,13 +195,15 @@ pub struct PadAxes {
     /// The largest touch size and pressure it reports.
     pub size_max: i32,
     pub pressure_max: i32,
+    /// The largest orientation it reports (0: none).
+    pub orientation_max: i32,
 }
 
 impl PadAxes {
     /// A MacBook pad's (Apple MTP, a 16" M2 Max), for tests and headless
     /// sessions.
     pub fn macbook() -> PadAxes {
-        PadAxes { name: "Apple MTP multi-touch".into(), x_min: -7700, x_max: 7700, y_min: -200, y_max: 9200, x_res: 98, y_res: 98, size_max: 5000, pressure_max: 6000 }
+        PadAxes { name: "Apple MTP multi-touch".into(), x_min: -7700, x_max: 7700, y_min: -200, y_max: 9200, x_res: 98, y_res: 98, size_max: 5000, pressure_max: 6000, orientation_max: 16384 }
     }
 }
 
