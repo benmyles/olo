@@ -311,10 +311,10 @@ of Finished; a new one goes where its priority puts it.
   2026-11-01: "anything these windows/apps are doing that's reusable
   should be made reusable so that we aren't reinventing the wheel
   everywhere"). A pass over the GPUI apps, each pattern moved into
-  olo-ui (documented in HACKING) and every app switched to it: a
-  window's content scrolling when it doesn't fit (in `Frame`, so no
-  panel needs its own: only Preferences does it now, sized by each
-  panel); list + search + filter bar wiring. Done so far (2026-11-01):
+  olo-ui (documented in HACKING) and every app switched to it: list +
+  search + filter bar wiring (each app's matching and facets are its
+  own; what's shared is a subscription, so not yet worth a kit piece).
+  Done so far (2026-11-01):
   popups closing in any order, quitting taking windows down, window
   parts (`part::Part`), secrets on the clipboard (`copy::secret`);
   2026-11-03, an app's own files read and written whole (`store`:
@@ -331,7 +331,9 @@ of Finished; a new one goes where its priority puts it.
   second launch through `instance`; the rest are services, single by
   their bus name) and upgrade state (`on_upgrade`, `restored_state` in
   every app with windows to bring back; the lock screen, the polkit and
-  portal dialogs, the screen saver and the supervisor have none).
+  portal dialogs, the screen saver and the supervisor have none);
+  a window's content scrolling when the window is shorter than it
+  (`WindowOptions::content_height`, in `Frame`: Preferences' panels).
 
 - **Passwords for Agent Screens** (Ben, 2026-10-31): "in the Agent
   Screens app i can choose items from passwords that i want to make

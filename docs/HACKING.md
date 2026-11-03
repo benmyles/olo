@@ -879,6 +879,12 @@ twice). `raise(handle, cx)` alone brings one forward if it's still
 open, as an app launched again does (a second launch hands itself to
 the first, `instance`, which raises its window).
 
+A window whose content needs a height a short screen may not have says
+so: `WindowOptions::content_height(h)`; in a window less tall than that,
+its `Frame` lays the content out at `h` all the same and scrolls it, the
+bar beside it (a Preferences panel on a small display: Preferences sizes
+the window to the screen, wider by a scroll bar, and the Frame scrolls).
+
 A window that should open at the size it was last left at says so:
 `WindowOptions::keep_size("main")` (a name among the app's windows;
 `size` is its first). Its size is noted as it changes, in memory (a

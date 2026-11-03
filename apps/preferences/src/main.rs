@@ -140,7 +140,7 @@ impl Prefs {
         let (w, h) = if (h as f32) > fit { (w as f32 + olo_ui::widgets::SCROLL_BAR, fit) } else { (w as f32, h as f32) };
         let prefs = cx.entity();
         let opened = self.settings.clone().unwrap_or_default();
-        let options = WindowOptions { fixed: true, ..WindowOptions::new(panel.title(), w, h).min_size(w, h) };
+        let options = WindowOptions { fixed: true, ..WindowOptions::new(panel.title(), w, h).min_size(w, h).content_height(panel.size().1 as f32) };
         // (Once this update is over: the window draws as it opens, and its
         // panel reads the settings.)
         cx.defer(move |cx| {
@@ -292,16 +292,13 @@ pub struct PanelView {
     pub opened: Settings,
     pub state: panel::State,
     pub fields: Fields,
-    /// Where the panel is scrolled to, when its window is shorter than it
-    /// (a small screen).
-    pub scroll: olo_ui::gpui::ScrollHandle,
 }
 
 impl PanelView {
     fn new(prefs: Entity<Prefs>, panel: Panel, opened: Settings, window: &mut Window, cx: &mut Context<Self>) -> Self {
         cx.observe(&prefs, |_, _, cx| cx.notify()).detach();
         let state = panel::State::new(panel, window, cx);
-        PanelView { prefs, panel, opened, state, fields: Fields::default(), scroll: olo_ui::gpui::ScrollHandle::new() }
+        PanelView { prefs, panel, opened, state, fields: Fields::default() }
     }
 }
 

@@ -5,7 +5,7 @@ use olo_protocol::Settings;
 use olo_ui::{
     gpui::{AnyElement, Context, IntoElement, ParentElement as _, Styled as _, Window, div, px},
     metrics as m, style, theme,
-    widgets::{Button, ScrollView, StringView},
+    widgets::{Button, StringView},
 };
 
 use crate::{
@@ -376,16 +376,9 @@ impl State {
 /// the bottom for those that change settings (each enabled only when it
 /// would change something).
 pub fn render(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView>) -> AnyElement {
-    let root = layout(v, window, cx);
-    // On a screen shorter than the panel its window is too (see `fits`):
-    // the panel is laid out at its own size all the same and scrolls,
-    // the bar beside it.
-    let (w, h) = v.panel.size();
-    if f32::from(window.viewport_size().height) + 0.5 >= h as f32 {
-        return root.into_any_element();
-    }
-    let sized = div().w(px(w as f32)).h(px(h as f32)).flex().flex_col().child(root);
-    ScrollView::new("panel-scroll", &v.scroll).border(false).child(sized).into_any_element()
+    // (On a screen shorter than the panel its window is too, see `fits`,
+    // and the window's Frame scrolls it: `content_height`.)
+    layout(v, window, cx).into_any_element()
 }
 
 fn layout(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView>) -> olo_ui::gpui::Div {

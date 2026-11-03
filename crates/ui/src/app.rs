@@ -55,6 +55,10 @@ pub struct WindowOptions {
     /// Opens at the size the window of this name was last left at, `size`
     /// the first time (`kept`): an app's main window, a document's.
     pub keep_size: Option<SharedString>,
+    /// What it shows needs this height: in a window less tall (on a short
+    /// screen) it's laid out at it all the same and scrolls (the window's
+    /// `Frame` does it; a panel needn't).
+    pub content_height: Option<f32>,
 }
 
 impl WindowOptions {
@@ -75,6 +79,7 @@ impl WindowOptions {
             under_pointer: false,
             fullscreen: false,
             keep_size: None,
+            content_height: None,
         }
     }
 
@@ -138,6 +143,12 @@ impl WindowOptions {
         self
     }
 
+    /// What it shows needs `height`: shorter, the window scrolls it.
+    pub fn content_height(mut self, height: f32) -> Self {
+        self.content_height = Some(height);
+        self
+    }
+
     /// Opens at the size the app's window called `name` was last left at
     /// (`size` until there is one), kept as the person changes it.
     pub fn keep_size(mut self, name: impl Into<SharedString>) -> Self {
@@ -172,6 +183,10 @@ pub struct Frame {
     focus: FocusHandle,
     /// Its size noted as it changes (`WindowOptions::keep_size`).
     _kept: Option<gpui::Subscription>,
+    /// The height what it shows needs, and where it's scrolled to in a
+    /// window less tall (`WindowOptions::content_height`).
+    content_height: Option<f32>,
+    scroll: gpui::ScrollHandle,
 }
 
 impl Frame {
@@ -314,7 +329,17 @@ impl Render for Frame {
         .size_full();
         // Last: the frame is drawn (for a review asked for).
         let done = canvas(|_, _, _| {}, move |_, _, window, _| crate::review::finish(window, &title)).absolute().size_0();
-        root.child(self.content.clone()).child(lit).child(done)
+        // Taller than the window (a short screen): laid out at its own
+        // height all the same, and scrolled.
+        let height = window.viewport_size().height;
+        let content = match self.content_height {
+            Some(h) if f32::from(height) + 0.5 < h => {
+                let sized = div().w_full().h(px(h)).flex().flex_col().child(self.content.clone());
+                crate::widgets::ScrollView::new("frame-scroll", &self.scroll).border(false).child(sized).into_any_element()
+            }
+            _ => self.content.clone().into_any_element(),
+        };
+        root.child(content).child(lit).child(done)
     }
 }
 
@@ -390,6 +415,7 @@ pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, bu
     let (w, h) = (w.max(1.0), h.max(1.0));
     let bounds = Bounds::centered(None, size(px(w), px(h)), cx);
     let keep = options.keep_size.clone();
+    let content_height = options.content_height;
     let title = options.title.clone();
     let panel = options.panel;
     let namespace = options.layer.as_ref().map(|l| l.namespace.clone());
@@ -432,7 +458,7 @@ pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, bu
             let content = build(window, cx).into();
             let frame = cx.new(|cx| {
                 let _kept = keep.map(|name| cx.observe_window_bounds(window, move |_, window, cx| crate::kept::note(cx, &name, window)));
-                Frame { title, content, panel, focus: cx.focus_handle(), _kept }
+                Frame { title, content, panel, focus: cx.focus_handle(), _kept, content_height, scroll: gpui::ScrollHandle::new() }
             });
             if window.focused(cx).is_none() {
                 let focus = frame.read(cx).focus.clone();
