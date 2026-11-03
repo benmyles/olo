@@ -436,12 +436,12 @@ pub fn drag(from: (f64, f64), to: (f64, f64), steps: u32, duration: Duration) ->
 pub fn scroll(dx: f64, dy: f64, lift: bool) -> Vec<(Vec<SyntheticEvent>, Duration)> {
     const STEP: Duration = Duration::from_millis(8);
     let n = (dx.abs().max(dy.abs()) / 20.0).ceil().max(1.0) as u32;
-    let mut out: Vec<_> = (0..n).map(|_| (vec![SyntheticEvent::Scroll { dx: dx / n as f64, dy: dy / n as f64 }], STEP)).collect();
+    let mut out: Vec<_> = (0..n).map(|_| (vec![SyntheticEvent::Scroll { dx: dx / n as f64, dy: dy / n as f64, at_us: None }], STEP)).collect();
     if lift {
         if let Some(last) = out.last_mut() {
             last.1 = Duration::from_millis(80);
         }
-        out.push((vec![SyntheticEvent::Scroll { dx: 0.0, dy: 0.0 }], Duration::ZERO));
+        out.push((vec![SyntheticEvent::Scroll { dx: 0.0, dy: 0.0, at_us: None }], Duration::ZERO));
     }
     out
 }
@@ -624,9 +624,9 @@ mod tests {
         // A scroll in finger-sized steps, resting before the lift.
         let s = scroll(0.0, -300.0, true);
         assert_eq!(s.len(), 16);
-        assert!(s[..15].iter().all(|(e, _)| e == &vec![SyntheticEvent::Scroll { dx: 0.0, dy: -20.0 }]));
+        assert!(s[..15].iter().all(|(e, _)| e == &vec![SyntheticEvent::Scroll { dx: 0.0, dy: -20.0, at_us: None }]));
         assert_eq!(s[14].1, Duration::from_millis(80));
-        assert_eq!(s[15].0, vec![SyntheticEvent::Scroll { dx: 0.0, dy: 0.0 }]);
+        assert_eq!(s[15].0, vec![SyntheticEvent::Scroll { dx: 0.0, dy: 0.0, at_us: None }]);
         assert_eq!(scroll(0.0, 30.0, false).len(), 2);
         // A notch at a time, both ways at once.
         let w = wheel(1, -3);

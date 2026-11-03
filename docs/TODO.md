@@ -58,11 +58,6 @@ of Finished; a new one goes where its priority puts it.
   1, 1.5 and 2×, light and dark; night is app_server's warm tint, not
   a palette): clean. Left: Ben's go on his pad with the new build.
 
-- **Logs: a drag in its second list is uneven at 1.5× now and then**
-  (found by `tools/dev/bench`, 2026-11-03, before and after the spacing
-  work alike): "scroll 2" at 1.5× failed once in four runs: "frames
-  moved 0.73–1.27× as far as the fingers" (HEAD had 0.87–1.13 once).
-  Find why a drag at 1.5× skips a device pixel now and then.
 - **The touchpad's latency on Ben's machine, and what next** (from the
   palm model in Activity, 2026-11-03): Activity ▸ Displays ▸ Touchpad
   now shows how long the pad's reports take to reach app_server (the
@@ -791,6 +786,18 @@ Open; making fast things faster waits here.
 
 ## Finished (most recently finished first)
 
+- ~~**Logs: a drag in its second list is uneven at 1.5× now and then**~~
+  (found by `tools/dev/bench`, 2026-11-03): "frames moved 0.73–1.27× as
+  far as the fingers", once in four runs. *Done* (2026-11-03): with the
+  cores busy it was every run (16 of 16, as bad as 0.53–1.53×, 23
+  frames more than 25% off), the frames themselves regular: app_server's
+  pacer placed each finger report by when it read it, so a report read
+  a few ms late (its loop busy, or the test's driver late to send) was a
+  short step then a long one. Reports are placed by their own time now
+  (the pad's kernel time; a synthetic one's `at_us`, which the bench and
+  scroll-check send): 1 run of 16 uneven, 2 frames off. Quiet runs and
+  the glide as before (bench: Logs, Tracker, StyledEdit at 1.5 and 2×,
+  every drag 0.94–1.01, every glide +0.00).
 - ~~**Palm size and the palm model, said plainly**~~ (Ben, 2026-11-02): "is
   the palm size setting etc still applicable when using the model?
   should they be disabled and unused if the model is enabled, like

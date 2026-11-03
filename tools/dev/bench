@@ -452,15 +452,16 @@ def scroll_at(s, st, at, pid):
         if kind == "drag":
             for i in range(1, 55):
                 scroll_check.sleep_until(t0 + i * period)
-                s.synth([{"type": "scroll", "dx": 0.0, "dy": sign * 900 * period}])
+                s.synth([{"type": "scroll", "dx": 0.0, "dy": sign * 900 * period, "at_us": scroll_check.stamp(t0 + i * period)}])
             scroll_check.sleep_until(t0 + 54 * period + 0.15)
-            s.synth([{"type": "scroll", "dx": 0.0, "dy": 0.0}])
+            s.synth([{"type": "scroll", "dx": 0.0, "dy": 0.0, "at_us": scroll_check.stamp(t0 + 54 * period + 0.15)}])
             time.sleep(0.3)
         elif kind == "flick":
             for i in range(1, 14):
                 scroll_check.sleep_until(t0 + i * period)
-                s.synth([{"type": "scroll", "dx": 0.0, "dy": sign * 2400 * period}])
-            s.synth([{"type": "scroll", "dx": 0.0, "dy": 0.0}])
+                s.synth([{"type": "scroll", "dx": 0.0, "dy": sign * 2400 * period, "at_us": scroll_check.stamp(t0 + i * period)}])
+            scroll_check.sleep_until(t0 + 13 * period + 0.004)
+            s.synth([{"type": "scroll", "dx": 0.0, "dy": 0.0, "at_us": scroll_check.stamp(t0 + 13 * period + 0.004)}])
             time.sleep(2.5)
         else:
             for i in range(3):

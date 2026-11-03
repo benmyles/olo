@@ -778,8 +778,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 }
             }
             if evt.source() == AxisSource::Finger {
-                // Sent on the frame clock (`pace.rs`), the stop too.
-                let now = std::time::Instant::now();
+                // Sent on the frame clock (`pace.rs`), the stop too, by
+                // when the pad reported it.
+                let now = crate::pace::reported(evt.time().micros());
                 let (h, v) = (evt.amount(Axis::Horizontal), evt.amount(Axis::Vertical));
                 if h.unwrap_or(0.0) == 0.0 && v.unwrap_or(0.0) == 0.0 {
                     self.pacer.lifted(now);
@@ -1192,10 +1193,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     self.ipc.broadcast(olo_protocol::Event::TouchContacts { pad, time_us: crate::contacts::now_us(), contacts, since_key_us: crate::contacts::since_key_us() });
                 }
             }
-            S::Scroll { dx, dy } => {
+            S::Scroll { dx, dy, at_us } => {
                 // As from the touchpad: 0, 0 is the fingers lifting.
                 let _ = (pointer, time);
-                let now = std::time::Instant::now();
+                let now = at_us.map_or_else(std::time::Instant::now, crate::pace::reported);
                 if dx == 0.0 && dy == 0.0 {
                     self.pacer.lifted(now);
                 } else {

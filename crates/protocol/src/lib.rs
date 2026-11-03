@@ -419,7 +419,14 @@ pub enum SyntheticEvent {
     /// evdev key code (e.g. 30 = A, 29 = left Ctrl).
     Key { key: u32, pressed: bool },
     /// Scroll by logical pixels, as on a touchpad (0, 0: the fingers lift).
-    Scroll { dx: f64, dy: f64 },
+    /// `at_us`: when the fingers were there, on the monotonic clock (as a
+    /// pad's kernel time); without it, when app_server reads it.
+    Scroll {
+        dx: f64,
+        dy: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        at_us: Option<u64>,
+    },
     /// Turn a mouse wheel by whole notches (positive: down / right).
     Wheel {
         #[serde(default)]

@@ -1535,7 +1535,7 @@ impl Viewer {
                     }
                     let (x, y) = to_screen(e.position);
                     let scroll = match e.delta {
-                        ScrollDelta::Pixels(d) => SyntheticEvent::Scroll { dx: -f64::from(f32::from(d.x)), dy: -f64::from(f32::from(d.y)) },
+                        ScrollDelta::Pixels(d) => SyntheticEvent::Scroll { dx: -f64::from(f32::from(d.x)), dy: -f64::from(f32::from(d.y)), at_us: None },
                         ScrollDelta::Lines(d) => SyntheticEvent::Wheel { dx: -notch(d.x), dy: -notch(d.y) },
                     };
                     f.update(cx, |v, _| v.send(vec![SyntheticEvent::Move { x, y }, scroll]));

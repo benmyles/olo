@@ -59,6 +59,13 @@ def now_us():
     return int(time.clock_gettime(time.CLOCK_MONOTONIC) * 1e6)
 
 
+def stamp(t):
+    """`t` (time.monotonic()) as a report's time, microseconds on the
+    monotonic clock, as a touchpad's kernel time: app_server paces by it,
+    so this script being late to send one isn't measured as the app."""
+    return int(t * 1e6)
+
+
 def sleep_until(t):
     while True:
         left = t - time.monotonic()
@@ -110,18 +117,18 @@ class Check:
             n = int(0.8 * rate)
             for i in range(1, n + 1):
                 sleep_until(t0 + i * period)
-                self.synth([{"type": "scroll", "dx": 0.0, "dy": sign * speed * period}])
+                self.synth([{"type": "scroll", "dx": 0.0, "dy": sign * speed * period, "at_us": stamp(t0 + i * period)}])
             sleep_until(t0 + n * period + 0.15)
-            self.synth([{"type": "scroll", "dx": 0.0, "dy": 0.0}])
+            self.synth([{"type": "scroll", "dx": 0.0, "dy": 0.0, "at_us": stamp(t0 + n * period + 0.15)}])
             expect = speed
             time.sleep(0.4)
         elif kind == "flick":
             n = max(int(0.15 * rate), 3)
             for i in range(1, n + 1):
                 sleep_until(t0 + i * period)
-                self.synth([{"type": "scroll", "dx": 0.0, "dy": sign * 2400 * period}])
+                self.synth([{"type": "scroll", "dx": 0.0, "dy": sign * 2400 * period, "at_us": stamp(t0 + i * period)}])
             sleep_until(t0 + n * period + 0.004)
-            self.synth([{"type": "scroll", "dx": 0.0, "dy": 0.0}])
+            self.synth([{"type": "scroll", "dx": 0.0, "dy": 0.0, "at_us": stamp(t0 + n * period + 0.004)}])
             time.sleep(3.5)
         elif kind == "wheel":
             for i in range(3):

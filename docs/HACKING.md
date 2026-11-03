@@ -4532,7 +4532,15 @@ the fingers moved evenly. So finger scrolls are held back and, once a
 frame of the screen under the pointer (`pre_repaint`, before clients are
 told to draw), app_server sends where the fingers were a report's time
 ago (the interval it measures, 4–16 ms, plus 1.5 ms), interpolated
-between the reports either side, as Android resamples touches. The glide
+between the reports either side, as Android resamples touches. Each
+report is placed by its own time, the kernel's on the pad's report
+(`pace::reported`; one from another clock, or more than 50 ms old, is
+taken as now), not by when app_server read it: read a few ms late (its
+loop busy drawing), it was a short step then a long one (Logs at 1.5×
+with the cores busy: 0.53–1.53× the fingers' speed, now 0.87–1.13). A
+synthetic scroll's `at_us` is its time the same way: tools/dev/bench and
+scroll-check stamp each report with when it was meant to be, so their
+own lateness isn't measured as the app's. The glide
 goes out the same way, from where the fingers left off, so every frame
 gets exactly one scroll of one frame's worth and the hand-over into the
 glide is seamless. The lift's stop goes once the fingers' scroll is all

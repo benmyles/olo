@@ -29,6 +29,20 @@ const LONGEST: Duration = Duration::from_millis(16);
 /// that comes a little late is still in before its time is drawn.
 const SLACK: Duration = Duration::from_micros(1500);
 
+/// When a report says the fingers were where it says (`at_us`, the
+/// kernel's time on a pad's report, on the monotonic clock), as an
+/// Instant: the pacer follows the fingers by when they moved, not by
+/// when app_server got to the report (its loop busy drawing, a report a
+/// few ms late was a short step then a long one). A time from another
+/// clock, ahead or long ago, is taken as now.
+pub fn reported(at_us: u64) -> Instant {
+    let now = Instant::now();
+    match crate::contacts::now_us().checked_sub(at_us) {
+        Some(age) if age <= 50_000 => now.checked_sub(Duration::from_micros(age)).unwrap_or(now),
+        _ => now,
+    }
+}
+
 /// What to send a client, in order.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Out {
@@ -203,6 +217,16 @@ impl Pacer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_report_is_when_the_pad_said() {
+        let now_us = crate::contacts::now_us();
+        let age = Instant::now() - reported(now_us - 3_000);
+        assert!(age >= Duration::from_micros(2_900) && age < Duration::from_millis(20), "{age:?}");
+        // (A time from another clock, ahead or long ago, is now.)
+        assert!(Instant::now() - reported(now_us + 1_000_000) < Duration::from_millis(5));
+        assert!(Instant::now() - reported(now_us.saturating_sub(10_000_000)) < Duration::from_millis(5));
+    }
 
     fn moved(out: &[Out]) -> f64 {
         out.iter().map(|o| if let Out::Move { dy, .. } = o { *dy } else { 0.0 }).sum()
