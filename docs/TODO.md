@@ -247,30 +247,6 @@ of Finished; a new one goes where its priority puts it.
   first scroll skips a frame at 1× and 1.5× (its frames 1.5–3.3 ms: the
   pacing, not the cost).
 
-- **Glyphs drawn in a frame are slow the first time** (found
-  measuring Telegram, 2026-11-01): a chat opened with 230 glyphs new
-  to the process spent 6–9 ms of its frame (release) on first-time
-  work, ~3 ms of it drawing glyphs (12 µs each: outline, hinting,
-  emboldening, filling) and up to 0.4 ms a colour emoji. *Done so
-  far*: glyphs are filled to their exact coverage by an area
-  rasterizer kept between glyphs (5.9 µs a glyph against vello_cpu's
-  7.6–9.7, and true to the outline: vello's was up to 57 levels of
-  grey off on curves). *Done*: glyphs drawn ahead, off the UI
-  thread, for faces drawn as running text and those an app asks for
-  (`Window::warm_glyphs`), so a frame only copies them; and a
-  window's first frame drawn once, at its display's scale and text
-  rendering (it was drawn at 1, then again: 6–8 ms, and its glyphs
-  for nothing). Telegram's chat switches: slowest frame 9.6–10.2 ms
-  → 6.6–7.6 ms, 0.7 MB more memory. *Done* (2026-11-02, the emoji
-  picker): colour glyphs are kept for every window of an app once drawn
-  (up to 32 MB, other scales' let go first), and `Window::warm_text`
-  draws a text's ahead off the UI thread (the picker's 1,900: its
-  slowest frame at 2× 8.1 → 1.5 ms). Left: Telegram's chats could warm
-  a conversation's emoji as its text is (`warm_glyphs`) before showing
-  it.
-  Deskbar's battery and Wi-Fi now follow UPower's and
-  NetworkManager's signals (idle: 0 wakeups a second, from 7–9).
-
 - **A window opens 15–18 ms sooner** (found porting the Viewer,
   2026-11-01: its first frame came 23 ms after egui's). *Done*: its
   renderer is made once, at its device size and the transparency it
@@ -843,6 +819,31 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**Glyphs drawn in a frame are slow the first time**~~ (found
+  measuring Telegram, 2026-11-01): a chat opened with 230 glyphs new
+  to the process spent 6–9 ms of its frame (release) on first-time
+  work, ~3 ms of it drawing glyphs (12 µs each: outline, hinting,
+  emboldening, filling) and up to 0.4 ms a colour emoji. *Done so
+  far*: glyphs are filled to their exact coverage by an area
+  rasterizer kept between glyphs (5.9 µs a glyph against vello_cpu's
+  7.6–9.7, and true to the outline: vello's was up to 57 levels of
+  grey off on curves). *Done*: glyphs drawn ahead, off the UI
+  thread, for faces drawn as running text and those an app asks for
+  (`Window::warm_glyphs`), so a frame only copies them; and a
+  window's first frame drawn once, at its display's scale and text
+  rendering (it was drawn at 1, then again: 6–8 ms, and its glyphs
+  for nothing). Telegram's chat switches: slowest frame 9.6–10.2 ms
+  → 6.6–7.6 ms, 0.7 MB more memory. *Done* (2026-11-02, the emoji
+  picker): colour glyphs are kept for every window of an app once drawn
+  (up to 32 MB, other scales' let go first), and `Window::warm_text`
+  draws a text's ahead off the UI thread (the picker's 1,900: its
+  slowest frame at 2× 8.1 → 1.5 ms). With colour glyphs kept, a chat's
+  emoji cost 0.05–0.07 ms each the first time the app draws them, once:
+  Telegram on the bench (its pretend 3,000 chats; scrolled, typed in,
+  resized, menus) has no frame over 2.02 ms at 1× or 2×.
+  Deskbar's battery and Wi-Fi now follow UPower's and
+  NetworkManager's signals (idle: 0 wakeups a second, from 7–9).
 
 - ~~**A resident overlay keeps ~60 MB after its window closes**~~
   (2026-11-02): it doesn't. The 60 MB was resident pages, most of them
