@@ -7097,6 +7097,8 @@ name = "olo-palm"
 version = "0.1.0"
 dependencies = [
  "olo-protocol",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

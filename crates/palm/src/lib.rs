@@ -212,7 +212,7 @@ pub fn score(m: &PalmModel, f: &[f32; FEATURES]) -> f32 {
 
 /// One contact's samples: its features at each report in its first
 /// [`DECIDE_MS`], and whether it was a palm.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Labelled {
     pub frames: Vec<[f32; FEATURES]>,
     pub palm: bool,
@@ -397,6 +397,18 @@ pub fn judge(m: &PalmModel, contacts: &[&Labelled], palm_size: u32) -> Report {
         size_rule_palms_caught: share(palms.iter().filter(|c| by_size(c)).count(), palms.len()),
         size_rule_fingers_lost: share(fingers.iter().filter(|c| by_size(c)).count(), fingers.len()),
     }
+}
+
+/// Keep `contacts` (a training run's samples) in `dir`, as JSON named by
+/// the time, for the baseline to be tuned on real hands later
+/// (docs/TOUCHPAD.md): the path written, or why not.
+pub fn keep_samples(dir: &std::path::Path, contacts: &[Labelled]) -> Result<std::path::PathBuf, String> {
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let path = dir.join(format!("run-{secs}.json"));
+    let bytes = serde_json::to_vec(contacts).map_err(|e| e.to_string())?;
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    Ok(path)
 }
 
 /// The model as the touch filter's configuration has it (a Lua table).

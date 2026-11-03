@@ -52,6 +52,15 @@ pub(crate) fn train(v: &mut PanelView, cx: &mut Context<PanelView>) {
     let Some(st) = state_of(v) else { return };
     let samples = st.trainer.take_samples();
     let progress = st.trainer.progress.clone();
+    // Kept on disk too (~/.local/state/olo/palm), for the baseline to be
+    // tuned on real hands later.
+    {
+        let kept = samples.clone();
+        std::thread::spawn(move || match olo_palm::keep_samples(&olo_xdg::state_dir().join("olo").join("palm"), &kept) {
+            Ok(p) => tracing::info!("palm trainer: samples kept in {}", p.display()),
+            Err(e) => tracing::warn!("palm trainer: samples not kept: {e}"),
+        });
+    }
     *progress.lock().unwrap() = 0.0;
     let proxy = olo_ui::proxy(cx);
     let task = cx.background_spawn(async move {
