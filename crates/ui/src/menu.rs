@@ -101,6 +101,9 @@ pub struct Action {
     /// with any gives them all a column, between the check marks and the
     /// labels.
     pub icon: Option<String>,
+    /// A colour it stands for, drawn as a swatch in the icons' column (a
+    /// Color menu's choices).
+    pub swatch: Option<Hsla>,
     /// It stands for a minimized window, in a list of windows: a hollow
     /// diamond where the check mark goes and a lighter label, as a Mac's
     /// Window menu shows one. It can still be chosen (to bring it back).
@@ -125,7 +128,7 @@ impl Menu {
     /// Whether any item has an icon, so the popup has an icon column.
     pub fn has_icons(&self) -> bool {
         self.items.iter().any(|item| match item {
-            MenuItem::Action(a) => a.icon.is_some(),
+            MenuItem::Action(a) => a.icon.is_some() || a.swatch.is_some(),
             MenuItem::Submenu(m) => m.icon.is_some(),
             MenuItem::Separator => false,
         })
@@ -183,6 +186,14 @@ impl Menu {
         }
         for run in self.items.split_mut(|i| matches!(i, MenuItem::Separator)) {
             run.sort_by(|a, b| olo_kit_base::files::natural_cmp(label(a), label(b)));
+        }
+        self
+    }
+
+    /// The last item's colour, shown as a swatch (see [`Action::swatch`]).
+    pub fn swatch(mut self, color: Hsla) -> Menu {
+        if let Some(MenuItem::Action(a)) = self.items.last_mut() {
+            a.swatch = Some(color);
         }
         self
     }
@@ -952,6 +963,9 @@ impl Render for MenuPopup {
                                 }
                                 if let (Some(left), Some(icon)) = (icon_left, &a.icon) {
                                     item_icon(window, row, left, icon, a.enabled);
+                                } else if let (Some(left), Some(color)) = (icon_left, a.swatch) {
+                                    let r = style::snap_centred(window, point(row.left() + px(left + ICON_SIZE / 2.0), row.center().y), ICON_SIZE - 2.0, ICON_SIZE - 2.0);
+                                    window.with_element_opacity((!a.enabled).then_some(110.0 / 255.0), |window| crate::widgets::color::paint_swatch(window, r, color, &p));
                                 }
                                 let r = style::label(window, cx, row.left() + px(label_left), cy, style::Align::Left, a.label.clone(), style::PLAIN_SIZE, font.clone(), ink);
                                 if let Some(keys) = &a.keys {

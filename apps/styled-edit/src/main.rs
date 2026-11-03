@@ -31,7 +31,7 @@ use olo_ui::{
     instance::{self, Launch},
     metrics as m, style, theme,
     widgets::{
-        Button, CheckBox, SCROLL_BAR, TextControl, TextField, TextFieldEvent, Unsaved, ask_to_save, button_row, heading, open_alert,
+        Button, CheckBox, SCROLL_BAR, TextControl, TextField, TextFieldEvent, ToolBar, ToolBarView, Unsaved, ask_to_save, button_row, heading, open_alert,
         ruler::{self, Ruler, RulerEvent},
         text_field,
     },
@@ -100,6 +100,9 @@ struct DocView {
     /// length stay quick).
     editor: Editor,
     ruler_view: Entity<Ruler>,
+    /// The tool bars, along the top and down the side, each drawn only as
+    /// what it shows changes.
+    bar_views: (Entity<ToolBarView>, Entity<ToolBarView>),
     loading: bool,
     saving: bool,
     after_save: After,
@@ -122,6 +125,8 @@ struct DocView {
     ruler: bool,
     /// The text is set on pages (Document ▸ Page View).
     page_view: bool,
+    /// The tool bars show (Document ▸ Show Toolbars).
+    tool_bars: bool,
     pictures: Rc<RefCell<pictures::Pictures>>,
     common: Rc<RefCell<Common>>,
     /// A picture pasted (its bytes), to put in once kept.
@@ -309,6 +314,7 @@ impl DocView {
             doc: Doc::new(String::new(), None),
             editor: Editor::new(cx),
             ruler_view,
+            bar_views: (cx.new(|_| ToolBarView::default()), cx.new(|_| ToolBarView::default())),
             loading: false,
             saving: false,
             after_save: After::Nothing,
@@ -321,6 +327,7 @@ impl DocView {
             words: None,
             ruler: true,
             page_view: false,
+            tool_bars: true,
             pictures,
             common,
             pasted: None,
@@ -569,6 +576,7 @@ impl DocView {
                 self.doc.generation += 1;
             }
             "ruler" => self.ruler = !self.ruler,
+            "tool-bars" => self.tool_bars = !self.tool_bars,
             "page-view" => {
                 self.page_view = !self.page_view;
                 // (Set on pages, lines wrap.)
@@ -599,8 +607,126 @@ impl DocView {
     }
 }
 
-/// The menus a document's window has.
-fn doc_menus(app: &Common, d: &DocView) -> Vec<Menu> {
+/// Font ▸ Size, checking the size where the selection starts.
+fn size_menu(cur: &Style) -> Menu {
+    let mut size = Menu::new("Size");
+    for s in doc::SIZES {
+        size = size.item(format!("{s}"), format!("size:{s}")).checked(cur.size == s);
+    }
+    size
+}
+
+/// Font ▸ Color, each with its swatch (Black the document's text colour,
+/// `ink`, as it shows).
+fn color_menu(cur: &Style, ink: gpui::Hsla) -> Menu {
+    let mut color = Menu::new("Color");
+    for (k, (name, rgb)) in COLORS.iter().enumerate() {
+        color = color.item(*name, format!("color:{k}")).checked(cur.color == *rgb).swatch(rgb.map_or(ink, rgb_color));
+    }
+    color
+}
+
+fn rgb_color([r, g, b]: [u8; 3]) -> gpui::Hsla {
+    gpui::Rgba { r: r as f32 / 255.0, g: g as f32 / 255.0, b: b as f32 / 255.0, a: 1.0 }.into()
+}
+
+/// `menu` with the font families after it: the system font, those the
+/// document uses, then all of them in alphabetical groups (menus don't
+/// scroll), the one where the selection starts checked.
+fn families(mut font: Menu, app: &Common, d: &DocView, cur: &Style) -> Menu {
+    font = font.item("System Font", "family:").checked(cur.family.is_empty());
+    let mut used: Vec<&str> = d.doc.runs().iter().map(|r| r.style.family.as_str()).filter(|f| !f.is_empty() && *f != doc::MONOSPACE).collect();
+    used.sort_unstable();
+    used.dedup();
+    for f in &used {
+        font = font.item(*f, format!("family:{f}")).checked(cur.family == *f);
+    }
+    let families = &app.fonts.families;
+    if !families.is_empty() {
+        font = font.separator();
+        let chunks: Vec<&[String]> = families.chunks(FAMILY_GROUP).collect();
+        for (chunk, title) in chunks.iter().zip(guide_words(&chunks)) {
+            let mut group = Menu::new(title);
+            for f in chunk.iter() {
+                group = group.item(f.as_str(), format!("family:{f}")).checked(cur.family == *f);
+            }
+            font = font.submenu(group);
+        }
+    }
+    font
+}
+
+/// The tool bars: along the top, the file's and editing's commands and
+/// the text's style (wrapping to a second row in a narrow window); down
+/// the side, what goes in and how the document shows. Every tool is one
+/// of `menus`' commands.
+fn tool_bars(me: &Entity<DocView>, d: &DocView, menus: &[Menu], ink: gpui::Hsla, on_command: impl Fn(&str, &mut Window, &mut App) + Clone + 'static) -> (ToolBar, ToolBar) {
+    let editable = !d.read_only && !d.loading;
+    let cur = d.doc.style_at(d.bytes().start);
+    // (The pickers' menus are made as they open, from the document then.)
+    let style_now = |me: &Entity<DocView>, cx: &App| {
+        let d = me.read(cx);
+        d.doc.style_at(d.bytes().start)
+    };
+    let (fonts, common, sizes, colors) = (me.clone(), d.common.clone(), me.clone(), me.clone());
+    let family = if cur.family.is_empty() { "System Font".to_owned() } else { cur.family.clone() };
+    let color = COLORS.iter().find(|(_, rgb)| *rgb == cur.color).map_or("Other", |(name, _)| name);
+    let top = ToolBar::new("tools", "Tools", on_command.clone())
+        .command("new", "new-document")
+        .command("open", "folder-open")
+        .command("save", "save-document")
+        .command("print", "printer")
+        .separator()
+        .command("undo", "undo")
+        .command("redo", "redo")
+        .separator()
+        .command("cut", "cut")
+        .command("copy", "copy")
+        .command("paste", "paste")
+        .separator()
+        .command("find", "query")
+        .toggle("spelling", "spelling")
+        .separator()
+        .toggle("bold", "format-bold")
+        .toggle("italic", "format-italic")
+        .toggle("underline", "format-underline")
+        .toggle("strikeout", "format-strikeout")
+        .separator()
+        .picker("Font", family, 132.0, move |cx| families(Menu::new("Font"), &common.borrow(), fonts.read(cx), &style_now(&fonts, cx)))
+        .enabled(editable)
+        .picker("Size", format!("{}", cur.size), 52.0, move |cx| size_menu(&style_now(&sizes, cx)))
+        .enabled(editable)
+        .colors("Color", color, Some(cur.color.map_or(ink, rgb_color)), move |cx| color_menu(&style_now(&colors, cx), ink))
+        .enabled(editable)
+        .separator()
+        .toggle("align-left", "align-left")
+        .toggle("align-center", "align-center")
+        .toggle("align-right", "align-right")
+        .toggle("align-justify", "align-justify")
+        .separator()
+        .toggle("list-bullet", "list-bullets")
+        .toggle("list-number", "list-numbers")
+        .separator()
+        .command("indent-less", "indent-less")
+        .command("indent-more", "indent-more")
+        .rows(2)
+        .menus(menus);
+    let side = ToolBar::new("insert", "Insert", on_command)
+        .vertical()
+        .command("insert-picture", "image")
+        .command("table:insert", "insert-table")
+        .command("margins", "header-footer")
+        .separator()
+        .toggle("page-view", "page-view")
+        .toggle("ruler", "ruler")
+        .toggle("wrap", "wrap-lines")
+        .menus(menus);
+    (top, side)
+}
+
+/// The menus a document's window has (`ink`: the document's text colour,
+/// for Font ▸ Color's Black).
+fn doc_menus(app: &Common, d: &DocView, ink: gpui::Hsla) -> Vec<Menu> {
     let has_sel = !d.bytes().is_empty();
     let editable = !d.read_only && !d.loading;
     let file = Menu::new("File")
@@ -689,17 +815,9 @@ fn doc_menus(app: &Common, d: &DocView) -> Vec<Menu> {
 
     // The style where the selection starts (or what typing will use).
     let cur = d.doc.style_at(d.bytes().start);
-    let mut size = Menu::new("Size");
-    for s in doc::SIZES {
-        size = size.item(format!("{s}"), format!("size:{s}")).checked(cur.size == s);
-    }
-    let mut color = Menu::new("Color");
-    for (k, (name, rgb)) in COLORS.iter().enumerate() {
-        color = color.item(*name, format!("color:{k}")).checked(cur.color == *rgb);
-    }
-    let mut font = Menu::new("Font")
-        .submenu(size)
-        .submenu(color)
+    let font = Menu::new("Font")
+        .submenu(size_menu(&cur))
+        .submenu(color_menu(&cur, ink))
         .separator()
         .item("Bold", "bold")
         .key("b")
@@ -712,29 +830,8 @@ fn doc_menus(app: &Common, d: &DocView) -> Vec<Menu> {
         .checked(cur.underline)
         .item("Strikeout", "strikeout")
         .checked(cur.strikeout)
-        .separator()
-        .item("System Font", "family:")
-        .checked(cur.family.is_empty());
-    // Families the document uses come first, then all of them in
-    // alphabetical groups (menus don't scroll).
-    let mut used: Vec<&str> = d.doc.runs().iter().map(|r| r.style.family.as_str()).filter(|f| !f.is_empty() && *f != doc::MONOSPACE).collect();
-    used.sort_unstable();
-    used.dedup();
-    for f in &used {
-        font = font.item(*f, format!("family:{f}")).checked(cur.family == *f);
-    }
-    let families = &app.fonts.families;
-    if !families.is_empty() {
-        font = font.separator();
-        let chunks: Vec<&[String]> = families.chunks(FAMILY_GROUP).collect();
-        for (chunk, title) in chunks.iter().zip(guide_words(&chunks)) {
-            let mut group = Menu::new(title);
-            for f in chunk.iter() {
-                group = group.item(f.as_str(), format!("family:{f}")).checked(cur.family == *f);
-            }
-            font = font.submenu(group);
-        }
-    }
+        .separator();
+    let font = families(font, app, d, &cur);
     // The paragraph the selection starts in.
     let para = d.doc.paras()[d.doc.para_index(d.bytes().start)].clone();
     let align = para.align.unwrap_or(d.doc.align);
@@ -803,6 +900,8 @@ fn doc_menus(app: &Common, d: &DocView) -> Vec<Menu> {
         .enabled(d.doc.wrap)
         .item("Page View", "page-view")
         .checked(d.page_view)
+        .item("Show Toolbars", "tool-bars")
+        .checked(d.tool_bars)
         .separator()
         .item("Header & Footer…", "margins");
     // Styles and layout are saved with the file, so a read-only one
@@ -829,15 +928,17 @@ impl Render for DocView {
         }
         let p = theme::palette(cx);
         let me = cx.entity();
-        let menus = doc_menus(&self.common.borrow(), self);
+        let ink = style::c(p.document_text);
+        let menus = doc_menus(&self.common.borrow(), self, ink);
         let spelling = self.common.borrow().spelling;
-        let weak = self.app.clone();
-        let doc = me.clone();
-        let bar = MenuBar::new(menus, move |cmd, window, cx| {
+        let (weak, doc) = (self.app.clone(), me.clone());
+        let on_command = move |cmd: &str, window: &mut Window, cx: &mut App| {
             if let Some(app) = weak.upgrade() {
                 app.update(cx, |a, cx| a.doc_command(&doc, cmd, window, cx));
             }
-        });
+        };
+        let bars = self.tool_bars.then(|| tool_bars(&me, self, &menus, ink, on_command.clone()));
+        let bar = MenuBar::new(menus, on_command);
         let editable = !self.read_only && !self.loading;
         let options = editor::Options {
             editable,
@@ -915,6 +1016,18 @@ impl Render for DocView {
         )
         .w_full()
         .h(px(STATUS_H));
+        // The side bar as tall as what's between the top one and the
+        // status line.
+        let (top, side) = match bars {
+            Some((top, side)) => {
+                let view = window.viewport_size();
+                let below = olo_ui::menu::BAR_HEIGHT + top.extent(window, f32::from(view.width)) + STATUS_H;
+                let side = side.length(f32::from(view.height) - below);
+                let (top_view, side_view) = self.bar_views.clone();
+                (Some(top.cached(&top_view, window, cx)), Some(side.cached(&side_view, window, cx)))
+            }
+            None => (None, None),
+        };
         let (dropper, weak) = (me.clone(), self.app.clone());
         div()
             .size_full()
@@ -927,8 +1040,18 @@ impl Render for DocView {
                 }
             })
             .child(bar)
-            .children(show_ruler.then(|| div().w_full().h(style::snap_coord(window, px(ruler::HEIGHT))).child(self.ruler_view.clone())))
-            .child(div().flex_1().min_h_0().relative().child(body).child(overlay))
+            .children(top)
+            .child(
+                div().flex_1().min_h_0().flex().children(side).child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .children(show_ruler.then(|| div().w_full().h(style::snap_coord(window, px(ruler::HEIGHT))).child(self.ruler_view.clone())))
+                        .child(div().flex_1().min_h_0().relative().child(body).child(overlay)),
+                ),
+            )
             .child(status_line)
     }
 }
@@ -1001,6 +1124,8 @@ struct StyledEdit {
     pdf_setup: Option<(olo_print::Paper, Option<(u32, u32)>)>,
     /// New windows show the ruler (as the last one shown or hidden).
     ruler: bool,
+    /// New windows show the tool bars (as the last one shown or hidden).
+    tool_bars: bool,
     /// The documents' pictures.
     pictures: Rc<RefCell<pictures::Pictures>>,
     /// File panels and alerts open with no document (to quit when they go).
@@ -1031,6 +1156,8 @@ struct SavedDoc {
     page: Option<doc::Page>,
     #[serde(default)]
     page_view: bool,
+    #[serde(default = "shown")]
+    tool_bars: bool,
 }
 
 fn shown() -> bool {
@@ -1071,10 +1198,11 @@ impl StyledEdit {
 
     /// A window for a document (`setup` gives it its text).
     fn add_window(&mut self, path: Option<PathBuf>, untitled: usize, setup: impl FnOnce(&mut DocView), cx: &mut Context<Self>) -> Entity<DocView> {
-        let (app, pictures, common, ruler) = (cx.weak_entity(), self.pictures.clone(), self.common.clone(), self.ruler);
+        let (app, pictures, common, ruler, tool_bars) = (cx.weak_entity(), self.pictures.clone(), self.common.clone(), self.ruler, self.tool_bars);
         let doc = cx.new(|cx| {
             let mut d = DocView::new(app, path, untitled, pictures, common, cx);
             d.ruler = ruler;
+            d.tool_bars = tool_bars;
             setup(&mut d);
             d
         });
@@ -1573,6 +1701,10 @@ impl StyledEdit {
                 doc.update(cx, |d, cx| d.command(command, window, cx));
                 self.ruler = doc.read(cx).ruler;
             }
+            "tool-bars" => {
+                doc.update(cx, |d, cx| d.command(command, window, cx));
+                self.tool_bars = doc.read(cx).tool_bars;
+            }
             _ => doc.update(cx, |d, cx| d.command(command, window, cx)),
         }
     }
@@ -1791,6 +1923,7 @@ impl StyledEdit {
                     view: d.editor.view(),
                     ruler: d.ruler,
                     page_view: d.page_view,
+                    tool_bars: d.tool_bars,
                     page: d.doc.page.clone(),
                 }
             })
@@ -1810,6 +1943,7 @@ impl StyledEdit {
                         move |d| {
                             d.ruler = s.ruler;
                             d.page_view = s.page_view;
+                            d.tool_bars = s.tool_bars;
                             let mut doc = Doc::with_paras(text, Some(runs), Some(s.paras).filter(|p| !p.is_empty()));
                             doc.align = s.align;
                             doc.wrap = s.wrap;
@@ -1832,6 +1966,7 @@ impl StyledEdit {
                         |d| {
                             d.ruler = s.ruler;
                             d.page_view = s.page_view;
+                            d.tool_bars = s.tool_bars;
                             d.loading = true;
                             d.restore = Some((s.selection.0..s.selection.1, s.view));
                         },
@@ -2099,6 +2234,7 @@ fn main() {
             watch: None,
             pdf_setup: None,
             ruler: true,
+            tool_bars: true,
             pictures: Rc::new(RefCell::new(pictures)),
             panels: 0,
             tools: Vec::new(),

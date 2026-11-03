@@ -1626,7 +1626,9 @@ impl Editor {
 
     /// Paints what [`Editor::prepare`] laid out.
     #[allow(clippy::too_many_arguments)]
-    fn paint(&mut self, doc: &mut dyn Document, window: &mut Window, cx: &mut App, hitbox: &Hitbox) {
+    /// Paints it in its host's view (`host`, drawn again when the words
+    /// to underline come).
+    fn paint(&mut self, doc: &mut dyn Document, window: &mut Window, cx: &mut App, hitbox: &Hitbox, host: gpui::EntityId) {
         let p = theme::palette(cx);
         let s = window.scale_factor();
         let view = self.shown.view;
@@ -1839,14 +1841,16 @@ impl Editor {
         if let Some(c) = checker
             && !to_check.is_empty()
         {
-            let (done, generation, handle) = (self.spell_done.clone(), self.spell_gen, window.window_handle());
+            let (done, generation) = (self.spell_done.clone(), self.spell_gen);
             let checked = cx.background_executor().spawn(async move { to_check.into_iter().map(|(key, text)| (key, generation, Arc::new(c.misspelled(&text)))).collect::<Vec<_>>() });
             cx.spawn(async move |cx| {
                 let found = checked.await;
                 if let Ok(mut d) = done.lock() {
                     d.extend(found);
                 }
-                let _ = handle.update(cx, |_, window, _| window.refresh());
+                // (Its own view drawn again, not the window: what's
+                // cached beside it, a tool bar, stays as it was.)
+                let _ = cx.update(|cx| cx.notify(host));
             })
             .detach();
         }
@@ -2232,6 +2236,7 @@ impl<V: EditorHost> Element for EditorElement<V> {
 
     fn paint(&mut self, _: Option<&GlobalElementId>, _: Option<&InspectorElementId>, bounds: Bounds<Pixels>, _: &mut (), hitbox: &mut Hitbox, window: &mut Window, cx: &mut App) {
         let (host, key) = (self.host.clone(), self.key);
+        let host_id = host.entity_id();
         let mut focus = None;
         let mut editable = false;
         window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| {
@@ -2246,7 +2251,7 @@ impl<V: EditorHost> Element for EditorElement<V> {
                         ed.blink = None;
                         ed.caret_on = true;
                     }
-                    ed.paint(doc, window, cx, &hb);
+                    ed.paint(doc, window, cx, &hb, host_id);
                     focus = Some(ed.focus.clone());
                     editable = ed.shown.o.editable;
                 });

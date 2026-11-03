@@ -564,17 +564,6 @@ of Finished; a new one goes where its priority puts it.
   running as it moves (its connection handed between the two
   app_servers, or the app reopened there with its saved state).
 
-- **StyledEdit: icon toolbars, as Gobe Productive's** (Ben, 2026-10-31,
-  for later): "stylededit should have icon toolbars (side and top)
-  reminiscent of gobe productive from beos. build out the kit to support
-  the ui components etc in a reusable way and make sure everything is
-  pixel perfect, looks great, gets properly themed etc". So: a kit
-  toolbar (icon buttons, toggles, pop-up pickers for fonts, sizes and
-  colours, separators, groups; along the top and down the side, as
-  Gobe's tool and format bars), its icons drawn to ICONS.md at every
-  scale, themed in light, dark and night, keyboard- and agent-reachable,
-  documented in HACKING; StyledEdit's commands on it.
-
 - **Notifications, robust and everywhere** (Ben): after Haiku's
   notification_server and `BNotification`, better where we can. ~~Done~~:
   grouped by app, the four kinds (information, important, error,
@@ -977,6 +966,24 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**StyledEdit: icon toolbars, as Gobe Productive's**~~ (Ben, 2026-10-31,
+  for later): "stylededit should have icon toolbars (side and top)
+  reminiscent of gobe productive from beos. build out the kit to support
+  the ui components etc in a reusable way and make sure everything is
+  pixel perfect, looks great, gets properly themed etc". So: a kit
+  toolbar (icon buttons, toggles, pop-up pickers for fonts, sizes and
+  colours, separators, groups; along the top and down the side, as
+  Gobe's tool and format bars), its icons drawn to ICONS.md at every
+  scale, themed in light, dark and night, keyboard- and agent-reachable,
+  documented in HACKING; StyledEdit's commands on it.
+  *Done* 2026-11-03: the kit's `widgets::ToolBar` (commands, toggles,
+  font, size and colour pickers, separators, wrapping to rows and a »
+  menu, top and side, every tool its menu item's state; cached, drawn
+  again only as what it shows changes), 25 new icons in Classic and
+  every theme, StyledEdit's top and side bars (Document ▸ Show
+  Toolbars), reviewed clean at 1, 1.25, 1.5, 1.75 and 2× in light and
+  dark.
 
 - ~~**Passwords for Agent Screens**~~ (Ben, 2026-10-31): "in the Agent
   Screens app i can choose items from passwords that i want to make

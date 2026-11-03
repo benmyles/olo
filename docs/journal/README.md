@@ -3,6 +3,14 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-03
+
+### StyledEdit's tool bars
+
+*10:35* — The kit's new ToolBar: StyledEdit's file, editing and format tools along the top (wrapping to two rows in a narrow window, a » menu for what still doesn't fit), insert and view tools down the side. Every tool is a menu command and shows its state (Bold and Center pushed for the selected title); the pickers show the font, size and colour where the selection starts. 25 new icons, in every theme.
+
+![StyledEdit's tool bars](2026-11-03/103549-stylededit-s-tool-bars.png)
+
 ## 2026-11-02
 
 ### Train for Your Palm, in a dialog of its own

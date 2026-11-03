@@ -232,18 +232,15 @@ impl ColorWell {
 impl RenderOnce for ColorWell {
     fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
         let color = self.color;
-        canvas(
-            |_, _, _| {},
-            move |b, _, window, cx| {
-                let p = theme::palette(cx);
-                style::fill_rect(window, style::inset(window, b, 2.0), color);
-                style::sunken(window, b, &p, false);
-            },
-        )
-        .w(px(self.size))
-        .h(px(self.size))
-        .flex_shrink_0()
+        canvas(|_, _, _| {}, move |b, _, window, cx| paint_swatch(window, b, color, &theme::palette(cx))).w(px(self.size)).h(px(self.size)).flex_shrink_0()
     }
+}
+
+/// `color` in a sunken well filling `b`: [`ColorWell`]'s look, and a
+/// colour's in a menu (`Menu::swatch`) or a tool bar's colour picker.
+pub fn paint_swatch(window: &mut Window, b: Bounds<Pixels>, color: Hsla, p: &olo_theme::Palette) {
+    style::fill_rect(window, style::inset(window, b, 2.0), color);
+    style::sunken(window, b, p, false);
 }
 
 /// The control's height (three rows of fields), for a well beside it.

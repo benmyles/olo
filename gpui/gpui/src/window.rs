@@ -2850,6 +2850,18 @@ impl Window {
         self.next_frame.scene.culled += 1;
     }
 
+    /// Olo: cached view `view` is drawn again in the frame being drawn:
+    /// what it shows was just given it by a view drawn before it (its
+    /// parent's render handing it a tool bar's state), which a `notify`
+    /// now would leave for the next frame. Outside a draw, it's `notify`.
+    pub fn redraw_view(&mut self, view: EntityId, cx: &mut App) {
+        if self.invalidator.not_drawing() {
+            cx.notify(view);
+        } else {
+            self.dirty_views.insert(view);
+        }
+    }
+
     /// Olo: what's being painted isn't what will show (an icon or picture
     /// still loading, drawn when it comes): a [`Window::paint_memo`]
     /// painting it doesn't keep it.

@@ -87,32 +87,17 @@ impl RenderOnce for MenuField {
             let label_color = if quiet || !s.enabled { style::disabled_text(&p) } else { color };
             let named = label.as_ref().map(|l| style::label(window, cx, r.left(), r.center().y, style::Align::Left, l.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), label_color));
             let field = field_bounds(r, label_w);
-            // A raised field with a drop-down mark.
-            let base = p.menu_background;
-            let inner = style::inset(window, field, 1.0);
-            style::vgradient(window, inner, style::tint(base, 0.82), style::shade(&p, base, 1.05));
-            style::frame_rect(window, field, style::shade(&p, p.panel_background, 1.55));
-            style::bevel(window, inner, style::c(p.shine), style::shade(&p, base, 1.2));
+            let inside = paint_field(window, field, color, &p);
             // (Cut short with "…" when the field is narrower than its
             // choice: it's no wider than what it's in.)
-            let room = field.right() - px(15.0 + m::TIGHT) - (field.left() + px(m::TEXT_INSET));
-            let value = window.with_content_mask(Some(gpui::ContentMask { bounds: Bounds::from_corners(field.origin, point(field.right() - px(15.0 + m::TIGHT), field.bottom())) }), |window| {
-                style::label_fit(window, cx, field.left() + px(m::TEXT_INSET), field.center().y, style::Align::Left, shown.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color, room)
+            let room = inside.right() - (inside.left() + px(m::TEXT_INSET));
+            let value = window.with_content_mask(Some(gpui::ContentMask { bounds: inside }), |window| {
+                style::label_fit(window, cx, inside.left() + px(m::TEXT_INSET), field.center().y, style::Align::Left, shown.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color, room)
             });
             // With the keyboard: its label underlined (the choice, when
             // it has none).
             if s.focused {
                 super::buttons::focus_underline(window, named.unwrap_or(value), &p);
-            }
-            let ax = field.right() - px(11.0);
-            let ay = px(f32::from(field.center().y).round());
-            let mut path = PathBuilder::fill();
-            path.move_to(point(ax - px(4.0), ay - px(2.0)));
-            path.line_to(point(ax + px(4.0), ay - px(2.0)));
-            path.line_to(point(ax, ay + px(2.5)));
-            path.close();
-            if let Ok(path) = path.build() {
-                window.paint_path(path, color);
             }
         })
         .enabled(self.enabled)
@@ -137,6 +122,28 @@ impl RenderOnce for MenuField {
             });
         })
     }
+}
+
+/// A pop-up field's look, filling `field`: raised, with the drop-down
+/// mark at its right in `ink`. Returns where its choice goes (left of the
+/// mark). A menu field's, and a tool bar's pickers'.
+pub(crate) fn paint_field(window: &mut Window, field: Bounds<Pixels>, ink: gpui::Hsla, p: &olo_theme::Palette) -> Bounds<Pixels> {
+    let base = p.menu_background;
+    let inner = style::inset(window, field, 1.0);
+    style::vgradient(window, inner, style::tint(base, 0.82), style::shade(p, base, 1.05));
+    style::frame_rect(window, field, style::shade(p, p.panel_background, 1.55));
+    style::bevel(window, inner, style::c(p.shine), style::shade(p, base, 1.2));
+    let ax = field.right() - px(11.0);
+    let ay = px(f32::from(field.center().y).round());
+    let mut path = PathBuilder::fill();
+    path.move_to(point(ax - px(4.0), ay - px(2.0)));
+    path.line_to(point(ax + px(4.0), ay - px(2.0)));
+    path.line_to(point(ax, ay + px(2.5)));
+    path.close();
+    if let Ok(path) = path.build() {
+        window.paint_path(path, ink);
+    }
+    Bounds::from_corners(field.origin, point(field.right() - px(15.0 + m::TIGHT), field.bottom()))
 }
 
 fn field_bounds(r: Bounds<Pixels>, label_w: f32) -> Bounds<Pixels> {

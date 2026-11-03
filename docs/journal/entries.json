@@ -2974,5 +2974,11 @@
   "title": "Train for Your Palm, in a dialog of its own",
   "caption": "The palm trainer moved out of the Touch tab (where it ran off the panel) into a 560\u00d7440 dialog opened from a button. The film is a laptop's deck, keys and the pad between the palm rests, with the hands resting and lifting; beside it the pad live, its own shape, each touch drawn as the model calls it: here one hand's palm half over the left edge, which the size rule misses (the red ring) and the model catches. A sixth exercise gathers exactly that case.",
   "image": "2026-11-02/231348-train-for-your-palm-in-a-dialog-of-its-own.png"
+ },
+ {
+  "time": "2026-11-03T10:35:49",
+  "title": "StyledEdit's tool bars",
+  "caption": "The kit's new ToolBar: StyledEdit's file, editing and format tools along the top (wrapping to two rows in a narrow window, a \u00bb menu for what still doesn't fit), insert and view tools down the side. Every tool is a menu command and shows its state (Bold and Center pushed for the selected title); the pickers show the font, size and colour where the selection starts. 25 new icons, in every theme.",
+  "image": "2026-11-03/103549-stylededit-s-tool-bars.png"
  }
 ]

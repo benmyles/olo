@@ -21,6 +21,7 @@ pub mod text_control;
 pub mod text_field;
 pub mod text_view;
 pub mod thumbs;
+pub mod toolbar;
 pub mod tooltip;
 pub mod views;
 
@@ -46,6 +47,7 @@ pub use text_control::TextControl;
 pub use text_field::{TextField, TextFieldEvent, text_field};
 pub use text_view::{TextView, text_view};
 pub use thumbs::{Thumbnail, ThumbnailPicker};
+pub use toolbar::{TOOL, ToolBar, ToolBarView};
 pub use tooltip::tooltip;
 pub use views::{BBox, EmptyState, Separator, StringView, heading, separator};
 

@@ -1157,6 +1157,10 @@ apostrophes inside, leaving alone tokens that are addresses, paths,
 numbers or identifiers and words in capitals; `spell::word_at(text,
 at)` the one at the caret. Misspelled words get a red wave under them
 (the palette's `failure`), all but the word at the caret while typing.
+The editor checks a paragraph that changed on a worker and, when the
+words come, draws its host's view again (`App::notify`), not the window:
+a window refresh draws every cached view afresh too (StyledEdit's tool
+bars, on every key's second frame).
 
 ### Look and feel rules
 
@@ -1414,6 +1418,41 @@ event reaches it.
   is its action). A canvas
   absolutely placed in a padded element needs `.inset_0()`, not
   `.size_full()`: without insets it starts after the padding.
+- `widgets::ToolBar` (`toolbar.rs`): the window's menu commands as
+  icons, along its top or down its side (`vertical`), as Gobe
+  Productive's tool and format bars and Haiku's BToolBar. Built
+  `ToolBar::new(id, name, on_command)`, then its tools: `command(cmd,
+  icon)`, `toggle(cmd, icon)` (down while its menu item is checked),
+  `picker(name, value, width, make_menu)` and `colors(name, value,
+  swatch, make_menu)` (pop-ups showing what's chosen, their menu made as
+  they open, `enabled` for the last one), `separator()`, `space()`; then
+  `menus(&menus)`, the menus the window's bar shows. Every tool is one
+  of those commands: its tip ("Bold (⌘B)"), what agents read (a Button,
+  a ToggleButton with whether it's on, a ComboBox with its value, in a
+  Toolbar named `name`), whether it can be used and whether it's on all
+  come from its menu item, so bar and menus never disagree, and the
+  keyboard reaches each through the menus and the palette (tools aren't
+  tab stops: Tab is the document's). A command no menu has is a debug
+  assertion. Flat until the pointer is over a tool (raised), sunken
+  while held or on; icons 16 points (ICONS.md: they must read on the
+  light, dark and night panels: the format letters are light metal for
+  that). `TIGHT` round and between its rows, so one row is
+  `TOOLBAR_HEIGHT`; tools in a group 2 points apart (the review's own
+  grid, as a tray's icons). Too narrow, it wraps at separators up to
+  `rows(n)` and puts what still doesn't fit in a » menu at its end (as
+  the menus have them, a picker as a submenu, groups apart): nothing is
+  cut off. `extent(window, length)` is its height (width down a side) on
+  whole device pixels, for laying out beside it. `cached(&view, window,
+  cx)` draws it in a `ToolBarView` of its own (`AnyView::cached`),
+  drawn again only when what it shows changes (a hash of its tools'
+  states, picker values and length), its last frame replayed otherwise:
+  typing in StyledEdit doesn't lay its forty tools out again (they cost
+  ~280 µs a key drawn each frame, ~55 µs cached). It's told in its
+  parent's render, so it's marked with `Window::redraw_view` (Olo's
+  GPUI: a cached view drawn again in the frame being drawn, which a
+  `notify` then would leave for the next). `Menu::swatch(color)` gives a
+  menu item a colour swatch in the icons' column (`color::paint_swatch`,
+  `ColorWell`'s look).
 - Custom drawing in a `canvas` paints with GPUI: `window.paint_quad`
   (rectangles, rounded, bordered; circles as fully rounded quads),
   `style::label` (text), `icons::paint`, `PathBuilder` (filled or stroked
@@ -5206,6 +5245,19 @@ fields; read back from any of them (complex Word fields too), and
 checked in LibreOffice. Word's and OpenDocument's files also say tabs
 past a paragraph's own stops go every half inch (`w:defaultTabStop`,
 `style:tab-stop-distance`), as StyledEdit and RTF have them.
+
+The tool bars (Document ▸ Show Toolbars; each window keeps its own
+through a reload, new ones take the last choice) are the kit's
+`ToolBar`, cached: along the top New, Open, Save, Print | Undo, Redo |
+Cut, Copy, Paste | Find, Check Spelling | Bold, Italic, Underline,
+Strikeout | the font, size and colour pickers | the four alignments |
+bulleted and numbered lists | indent less and more, in two rows when the
+window is narrower than one (the default window fits two); down the left
+side Insert Picture, Insert Table, Header & Footer | Page View, Show
+Ruler, Wrap Lines. Each tool is the menu command of the same name
+(`tool_bars`); the pickers' menus are Font ▸ Size and Color and the
+families of the Font menu (`size_menu`, `color_menu`, `families`, shared
+with the menus), made from the document as they open.
 
 Spelling is checked as you type (Edit ▸ Check Spelling While Typing,
 on); right-clicking a misspelled word offers its suggestions, Ignore

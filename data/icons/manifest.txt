@@ -117,10 +117,10 @@ cut|a pair of open steel scissors with red plastic handles lying on the desk
 copy|two sheets of white paper with folded top right corners and faint grey text lines, one lying over the other offset to the lower right
 paste|a tan wooden clipboard with a silver clip at its top and a white sheet of paper with grey text lines held on it
 spelling|a single sheet of white paper with faint grey lines of text and a bold signal-green check mark in front of it at the lower right
-format-bold|a very thick, heavy, chunky black sans-serif capital letter B standing upright on the desk as a solid object, filling the frame
-format-italic|a black serif capital letter I slanted steeply to the right, italic, standing on the desk as a solid object, filling the frame
-format-underline|a thick black sans-serif capital letter U standing upright on the desk as a solid object, with a thick Be-blue bar lying under it as wide as the letter, filling the frame
-format-strikeout|a thick black sans-serif capital letter S standing upright on the desk as a solid object, with a thick alert-red bar struck straight across its middle, wider than the letter, filling the frame
+format-bold|a very thick, heavy, chunky sans-serif capital letter B made of polished light silver-grey metal, standing upright on the desk as a solid object, filling the frame
+format-italic|a serif capital letter I made of polished light silver-grey metal, slanted steeply to the right, italic, standing on the desk as a solid object, filling the frame
+format-underline|a thick sans-serif capital letter U made of polished light silver-grey metal, standing upright on the desk as a solid object, with a thick Be-blue bar lying under it as wide as the letter, filling the frame
+format-strikeout|a thick sans-serif capital letter S made of polished light silver-grey metal, standing upright on the desk as a solid object, with a thick alert-red bar struck straight across its middle, wider than the letter, filling the frame
 align-left|a single sheet of white paper standing upright, its face turned mostly toward the viewer, with three thick charcoal bars of text of clearly different lengths, every bar starting at its left edge and the right ends ragged
 align-center|a single sheet of white paper standing upright, its face turned mostly toward the viewer, with three thick charcoal bars of text of clearly different lengths, each bar centred on the sheet so both ends are ragged
 align-right|a single sheet of white paper standing upright, its face turned mostly toward the viewer, with three thick charcoal bars of text of clearly different lengths, every bar ending at its right edge and the left ends ragged
