@@ -249,13 +249,7 @@ fn codex_server(doc: &mut DocumentMut, exe: &str, on: bool) -> bool {
 /// Write `bytes` in place of `path` (a new file put there: one being read
 /// never sees half of it), keeping its permissions.
 fn replace(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    use std::os::unix::fs::PermissionsExt;
-    let mode = std::fs::metadata(path).map(|m| m.permissions().mode()).unwrap_or(0o600);
-    let tmp = path.with_extension("olo-tmp");
-    std::fs::write(&tmp, bytes)
-        .and_then(|()| std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(mode)))
-        .and_then(|()| std::fs::rename(&tmp, path))
-        .map_err(|e| format!("{}: {e}", path.display()))
+    olo_ui::store::write(path, bytes).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 fn read_json(path: &Path, on: bool) -> Result<Option<Value>, String> {

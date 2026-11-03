@@ -115,7 +115,7 @@ struct DeskCalc {
 
 impl DeskCalc {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> DeskCalc {
-        let settings: Settings = std::fs::read_to_string(settings_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        let settings: Settings = olo_ui::store::load(&settings_path()).unwrap_or_default();
         let size = (DISPLAY_H * 0.5).round();
         let field = text_field(cx, |f| f.font_size(size).align(olo_ui::widgets::text_field::Align::Right).name("Expression"));
         field.update(cx, |f, cx| f.set_text(settings.expression.clone(), cx));
@@ -128,14 +128,7 @@ impl DeskCalc {
     }
 
     fn store(&self) {
-        let text = serde_json::to_string_pretty(&self.settings).unwrap_or_default();
-        std::thread::spawn(move || {
-            let path = settings_path();
-            if let Some(dir) = path.parent() {
-                let _ = std::fs::create_dir_all(dir);
-            }
-            let _ = std::fs::write(path, text);
-        });
+        olo_ui::store::save(settings_path(), &self.settings);
     }
 
     /// Shows `text` in the display, the caret at its end.
@@ -497,7 +490,7 @@ fn main() {
             KeyBinding::new("down", Forward, Some("DeskCalc")),
             KeyBinding::new("escape", Clear, Some("DeskCalc")),
         ]);
-        let settings: Settings = std::fs::read_to_string(settings_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        let settings: Settings = olo_ui::store::load(&settings_path()).unwrap_or_default();
         let (w, h) = settings.keypad.size();
         let (min_w, min_h) = Keypad::Compact.size();
         let calc: Rc<RefCell<Option<Entity<DeskCalc>>>> = Rc::default();

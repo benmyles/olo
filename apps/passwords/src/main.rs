@@ -771,16 +771,7 @@ impl Passwords {
     }
 
     fn save_settings(&self) {
-        let path = settings_path();
-        if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        if let Ok(text) = serde_json::to_string_pretty(&self.settings) {
-            let tmp = path.with_extension("json.tmp");
-            if std::fs::write(&tmp, text).is_ok() {
-                let _ = std::fs::rename(tmp, path);
-            }
-        }
+        olo_ui::store::save(settings_path(), &self.settings);
     }
 
     /// Another app asks (Chrome's extension for a page's logins, the

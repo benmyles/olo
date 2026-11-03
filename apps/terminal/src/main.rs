@@ -203,18 +203,8 @@ impl Settings {
     }
 
     fn save(&self) {
-        let path = settings_path();
-        let text = serde_json::to_string_pretty(self).unwrap_or_default();
         // Off the UI thread: the disk can be slow.
-        std::thread::spawn(move || {
-            if let Some(d) = path.parent() {
-                let _ = std::fs::create_dir_all(d);
-            }
-            let tmp = path.with_extension("json.new");
-            if std::fs::write(&tmp, text).is_ok() {
-                let _ = std::fs::rename(&tmp, &path);
-            }
-        });
+        olo_ui::store::save(settings_path(), self);
     }
 }
 

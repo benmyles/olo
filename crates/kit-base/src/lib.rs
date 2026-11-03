@@ -21,6 +21,7 @@ pub mod review;
 pub mod search;
 pub mod settings;
 pub mod spell;
+pub mod store;
 pub mod tracker;
 pub mod watch;
 

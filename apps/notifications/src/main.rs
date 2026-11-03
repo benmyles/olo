@@ -205,11 +205,7 @@ impl Notifications {
             show_count: self.settings.deskbar_count,
         };
         if self.told.as_ref() != Some(&state) {
-            let path = NotificationState::path();
-            let tmp = path.with_extension("json.new");
-            if std::fs::write(&tmp, serde_json::to_string(&state).unwrap_or_default()).is_ok() {
-                let _ = std::fs::rename(&tmp, &path);
-            }
+            olo_ui::store::save_bytes(NotificationState::path(), serde_json::to_vec(&state).unwrap_or_default());
             self.told = Some(state.clone());
         }
         // Each with how faded it is.

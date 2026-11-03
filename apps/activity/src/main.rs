@@ -197,19 +197,6 @@ fn settings_path() -> std::path::PathBuf {
     olo_ui::config_dir().join("activity.json")
 }
 
-/// Written whole or not at all: to a file beside it, then put in its
-/// place.
-fn write_settings(text: &str) {
-    let path = settings_path();
-    if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
-    let new = path.with_extension("json.new");
-    if std::fs::write(&new, text).is_ok() {
-        let _ = std::fs::rename(&new, &path);
-    }
-}
-
 pub enum Msg {
     /// From the sampler here (false) or the helper's (true).
     Sources(Vec<Source>, bool),
@@ -444,13 +431,12 @@ pub struct Activity {
 impl Activity {
     /// The settings kept, on a worker.
     fn store(&self) {
-        let text = serde_json::to_string_pretty(&self.settings).unwrap_or_default();
-        std::thread::spawn(move || write_settings(&text));
+        olo_ui::store::save(settings_path(), &self.settings);
     }
 
     /// The settings kept now (before the process ends or is replaced).
     fn store_now(&self) {
-        write_settings(&serde_json::to_string_pretty(&self.settings).unwrap_or_default());
+        let _ = olo_ui::store::write(&settings_path(), &serde_json::to_vec_pretty(&self.settings).unwrap_or_default());
     }
 
     /// The main window: opened, or brought forward.
@@ -1287,7 +1273,7 @@ fn main() {
     olo_ui::run(APP_ID, move |cx| {
         let proxy = olo_ui::proxy(cx);
         instance::listen(APP_ID, proxy.clone());
-        let settings: Settings = std::fs::read_to_string(settings_path()).ok().and_then(|t| serde_json::from_str::<Settings>(&t).ok()).map(Settings::migrate).unwrap_or_default();
+        let settings: Settings = olo_ui::store::load::<Settings>(&settings_path()).map(Settings::migrate).unwrap_or_default();
         let control = sample::Control::new(settings.interval_ms);
         let (p1, p2) = (proxy.clone(), proxy.clone());
         sample::start(control.clone(), move |s| p1.send(Msg::Sources(s, false)), move |s| p2.send(Msg::Sample(Box::new(s), false)));

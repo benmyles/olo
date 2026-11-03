@@ -306,7 +306,7 @@ How Olo keeps it (do the same):
 | `crates/protocol` | JSON-lines IPC between app_server and our apps (`Client`, `Request`, `Reply`, `Event`, `Settings`). |
 | `crates/theme` | `Palette` (light/dark), BeOS tint helpers, decorator metrics, font lists. |
 | `crates/ui` | `olo-ui`, the Interface Kit on Olo's GPUI: windows, layer surfaces and popups, menus and the menu bar, BeOS widgets, icons, the agent tree and socket, upgrades. **All apps are built on it** ("The GPUI kit" below). |
-| `crates/kit-base` | `olo-kit-base`: what the kit has that doesn't draw, re-exported by olo-ui under the same names: `instance` (one process per app), `settings`, `notify`, `files`, `places`, `watch`, `tracker`, `metrics` (the spacing system), `Proxy`, `search` (the query language, facets and suggestions), `masonry` (cards in columns), and `commands`, the socket agents and the command palette read apps through (its protocol, server and client), with `review`'s findings and `layout_review`'s checks, `list` (a list's selection and type-select), `spell` and `keys` (the keyboard profile's keys). No GPUI. |
+| `crates/kit-base` | `olo-kit-base`: what the kit has that doesn't draw, re-exported by olo-ui under the same names: `instance` (one process per app), `settings`, `notify`, `files`, `places`, `watch`, `tracker`, `metrics` (the spacing system), `Proxy`, `search` (the query language, facets and suggestions), `masonry` (cards in columns), and `store` (an app's own files, written whole), `commands`, the socket agents and the command palette read apps through (its protocol, server and client), with `review`'s findings and `layout_review`'s checks, `list` (a list's selection and type-select), `spell` and `keys` (the keyboard profile's keys). No GPUI. |
 | `gpui/` | Olo's GPUI, which the kit is built on: GPUI 0.2.2 and blade-graphics 0.7.1, Olo's own from now on (Wayland only, idle windows draw nothing); `gpui/README.md` says what changed. |
 | `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit: data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`, in the current theme: `themes`), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; the person's own choice first (`open::set_default`, kept in `~/.config/olo/default-apps.list` in mimeapps.list's form and copied into `olo-mimeapps.list` for other programs; `handler_cached` notices it changed, in any process), then Olo's apps, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`; Open With's few apps for a kind, `open::handlers_for`: as the person set them (`set_offered`, Preferences ▸ Default Apps ▸ Open With), else the one it opens in, Olo's own for it, then those whose entries claim it or a broader kind, by name, eight at most; worked out off the UI thread by `open::warm` (a folder's kinds, as Tracker lists it) and read by menus from `offer_cached`; `open::kind_of` names a kind by the file's name alone; `open::every_app` is every app whose command takes files (`DesktopEntry::takes_files`), Olo's first, and `Handler::icon` its icon; the person's own kinds of file are `mime::own_kinds` (`set_own_kinds`; `mime::type_for_extensions` keeps the type its extensions all share, else makes one of Olo's own, `application/x-olo-kind-EXT`, which `mime::from_name` gives first); desktop entries are kept until an applications folder changes, `desktop_entry::all_cached`; and the same for other programs: `open::for_others` gives the hidden `olo.viewer`, `olo.styled-edit` and `olo.tracker` desktop entries, each listing every type shared-mime-info knows that Olo opens with it, and an `olo-mimeapps.list` making them the defaults, which GIO, `gio open`/xdg-open and xdg-desktop-portal's OpenURI read before `mimeapps.list` while `XDG_CURRENT_DESKTOP` names Olo; olo-session writes them into `~/.local/share/applications` at start, makes that folder's `mimeinfo.cache` again when they change (`open::mime_cache`, as update-desktop-database would: GIO only finds an app for a type through it) and removes ones it wrote that are no longer wanted, `X-Olo-Written=true`; and, once Olo's Chrome is installed, `open::offer_browser` writes `~/.local/share/applications/olo-mimeapps.list` naming it for web pages and links, read after every `mimeapps.list` in the config directories so a browser the person chose wins, but ahead of the system's lists), `find_program`, `spawn_detached` (`spawn_detached_app` and `open::spawn_app` for a desktop entry's program, in a scope of its own: `scope`; Olo's own programs keep the launcher's stderr, the session's journal, so what Deskbar, Tracker or the palette starts logs like the rest; others' goes nowhere). |
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
@@ -851,6 +851,24 @@ show the person what it's talking about.
 
 The widgets are listed under "The GPUI kit" below; this is how they
 behave, so that something an app draws itself behaves the same.
+
+An app's own files (its settings in the config folder, what it
+remembers in the state folder) go through `store` (`olo_kit_base::store`,
+olo-ui's `store`): `load(path)` is the JSON there as a `T`, or None (no
+file, or not a `T`: the app's defaults); `save(path, &value)` writes it,
+laid out to read, off the caller's thread, one file after another in
+the order saved, so of quick saves to a file only the last is written;
+`save_bytes` for JSON an app lays out itself (Notifications' long
+history, compact); `write(path, bytes)` on the calling thread (a helper
+that's about to exit, a file kept "now" before an upgrade). Every write
+goes beside the file (`.NAME.saving`, which backups leave out) and is
+renamed over it, so neither a reader nor a crash halfway through sees
+half a file; a new file is the person's alone (0600), one there already
+keeps its permissions (AirPods' keys stay private, Claude Code's
+settings stay as they were). The kit writes what's still to be written
+as the app quits (`on_app_quit`) and before an upgrade re-execs it
+(`store::flush`), so a setting changed just before the last window
+closes isn't lost.
 
 Text fields behave the same everywhere: a click places the caret, a
 double click selects a word, a triple click the line, and a right press

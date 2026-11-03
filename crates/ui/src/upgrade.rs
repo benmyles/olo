@@ -169,6 +169,8 @@ impl Binary {
             cmd.env(GPU_LOST_ENV, now.as_secs().to_string());
         }
         tracing::info!(path = %self.path.display(), "re-executing");
+        // What the app saved is on disk before it's replaced.
+        olo_kit_base::store::flush();
         let e = cmd.exec();
         tracing::warn!(?e, "could not start the upgraded binary; carrying on");
     }

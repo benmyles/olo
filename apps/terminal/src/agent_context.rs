@@ -118,12 +118,7 @@ pub fn read_all() -> Option<Snapshot> {
 /// Keep `s` for the hook (a new file put in place of the old, for this
 /// user only).
 pub fn write(s: &Snapshot) -> std::io::Result<()> {
-    use std::os::unix::fs::OpenOptionsExt;
-    let path = snapshot_path();
-    let tmp = path.with_extension("json.tmp");
-    let mut f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&tmp)?;
-    std::io::Write::write_all(&mut f, &serde_json::to_vec(s).map_err(std::io::Error::other)?)?;
-    std::fs::rename(tmp, path)
+    olo_ui::store::write(&snapshot_path(), &serde_json::to_vec(s).map_err(std::io::Error::other)?)
 }
 
 /// Off: no file for the hook to find.
@@ -191,8 +186,7 @@ pub fn set_hooks(on: bool, exe: &Path) -> Result<(), String> {
         }
         let mut bytes = serde_json::to_vec_pretty(&v).map_err(|e| e.to_string())?;
         bytes.push(b'\n');
-        let tmp = path.with_extension("json.olo-tmp");
-        std::fs::write(&tmp, &bytes).and_then(|()| std::fs::rename(&tmp, &path)).map_err(|e| format!("{}: {e}", path.display()))?;
+        olo_ui::store::write(&path, &bytes).map_err(|e| format!("{}: {e}", path.display()))?;
         tracing::info!(file = %path.display(), on, "coding agents' hook for tab groups");
     }
     Ok(())

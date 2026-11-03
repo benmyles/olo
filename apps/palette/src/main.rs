@@ -60,7 +60,7 @@ impl Recents {
         olo_xdg::config_dir().join("palette.json")
     }
     fn load() -> Recents {
-        let read = |p: PathBuf| std::fs::read_to_string(p).ok().and_then(|s| serde_json::from_str::<Recents>(&s).ok());
+        let read = |p: PathBuf| olo_ui::store::load::<Recents>(&p);
         // Before the rename (Tabula) it was kept a folder deeper, and named
         // our programs by their old names.
         read(Self::path())
@@ -72,13 +72,7 @@ impl Recents {
             .unwrap_or_default()
     }
     fn save(&self) {
-        let path = Self::path();
-        if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        if let Ok(s) = serde_json::to_string(self) {
-            let _ = std::fs::write(path, s);
-        }
+        olo_ui::store::save(Self::path(), self);
     }
     fn now() -> u64 {
         std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())

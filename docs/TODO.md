@@ -311,14 +311,16 @@ of Finished; a new one goes where its priority puts it.
   everywhere"). A pass over the GPUI apps, each pattern moved into
   olo-ui (documented in HACKING) and every app switched to it: a
   window's content scrolling when it doesn't fit (in `Frame`, so no
-  panel needs its own); an app's settings JSON read and written
-  atomically; "open this window, or bring it forward"; closing with
+  panel needs its own); "open this window, or bring it forward"; closing with
   unsaved changes (ask, then close or carry on); a status line whose
   message clears itself; single-instance launches; one timer for the
   next thing due; list + search + filter bar wiring; upgrade state
   saved and restored; window size kept. Done so far (2026-11-01):
   popups closing in any order, quitting taking windows down, window
-  parts (`part::Part`), secrets on the clipboard (`copy::secret`).
+  parts (`part::Part`), secrets on the clipboard (`copy::secret`);
+  2026-11-03, an app's own files read and written whole (`store`:
+  load, save off the thread in order, flushed on quit and upgrade),
+  fourteen apps switched (six wrote straight over the file).
 
 - **Passwords for Agent Screens** (Ben, 2026-10-31): "in the Agent
   Screens app i can choose items from passwords that i want to make

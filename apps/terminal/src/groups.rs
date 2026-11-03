@@ -50,22 +50,12 @@ fn path() -> PathBuf {
 }
 
 pub fn load() -> Vec<Saved> {
-    std::fs::read_to_string(path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    olo_ui::store::load(&path()).unwrap_or_default()
 }
 
 /// Write the saved groups (off the UI thread).
 pub fn store(list: &[Saved]) {
-    let path = path();
-    let text = serde_json::to_string_pretty(list).unwrap_or_default();
-    std::thread::spawn(move || {
-        if let Some(d) = path.parent() {
-            let _ = std::fs::create_dir_all(d);
-        }
-        let tmp = path.with_extension("json.new");
-        if std::fs::write(&tmp, text).is_ok() {
-            let _ = std::fs::rename(&tmp, &path);
-        }
-    });
+    olo_ui::store::save(path(), list);
 }
 
 /// A name for a new group: "Group 2" if "Group 1" is taken, and so on.

@@ -456,6 +456,12 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
             let _ = tx.unbounded_send(m);
         });
         cx.set_global(Messages { handler: None, proxy, quitting: false });
+        // What the app saved (`store::save`) is on disk before it goes.
+        cx.on_app_quit(|_| {
+            olo_kit_base::store::flush();
+            async {}
+        })
+        .detach();
         cx.spawn(async move |cx| {
             while let Some(message) = rx.next().await {
                 let _ = cx.update(|cx| {

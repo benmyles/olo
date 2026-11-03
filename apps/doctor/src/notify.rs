@@ -56,15 +56,11 @@ fn news<'a>(findings: &'a [Finding], told: &Told) -> (Vec<&'a Finding>, Told) {
 }
 
 fn read_told() -> Told {
-    std::fs::read_to_string(told_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    olo_kit_base::store::load(&told_path()).unwrap_or_default()
 }
 
 fn write_told(told: &Told) {
-    let path = told_path();
-    if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
-    let _ = std::fs::write(&path, serde_json::to_string(told).unwrap_or_default());
+    let _ = olo_kit_base::store::write(&told_path(), &serde_json::to_vec(told).unwrap_or_default());
 }
 
 fn open_doctor() {

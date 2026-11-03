@@ -241,14 +241,7 @@ fn line_text(l: &Line, midnight: u64) -> String {
 
 impl Logs {
     fn store(&self) {
-        let text = serde_json::to_string_pretty(&self.settings).unwrap_or_default();
-        std::thread::spawn(move || {
-            let path = settings_path();
-            if let Some(dir) = path.parent() {
-                let _ = std::fs::create_dir_all(dir);
-            }
-            let _ = std::fs::write(path, text);
-        });
+        olo_ui::store::save(settings_path(), &self.settings);
     }
 
     fn title(&self) -> String {
@@ -1029,7 +1022,7 @@ fn main() {
     }
     olo_ui::run(APP_ID, move |cx| {
         instance::listen(APP_ID, olo_ui::proxy(cx));
-        let mut settings: Settings = std::fs::read_to_string(settings_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        let mut settings: Settings = olo_ui::store::load(&settings_path()).unwrap_or_default();
         // From before the search was one text.
         if let Some(old) = settings.query.take() {
             settings.search = old.text();

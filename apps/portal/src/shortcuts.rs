@@ -92,19 +92,12 @@ fn allowed_path() -> Option<std::path::PathBuf> {
 }
 
 fn load_allowed() -> Allowed {
-    allowed_path().and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    allowed_path().and_then(|p| olo_ui::store::load(&p)).unwrap_or_default()
 }
 
 fn save_allowed(a: &Allowed) {
-    let Some(p) = allowed_path() else { return };
-    if let Some(dir) = p.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
-    if let Ok(text) = serde_json::to_string_pretty(a) {
-        let tmp = p.with_extension("tmp");
-        if std::fs::write(&tmp, text).is_ok() {
-            let _ = std::fs::rename(&tmp, &p);
-        }
+    if let Some(p) = allowed_path() {
+        olo_ui::store::save(p, a);
     }
 }
 

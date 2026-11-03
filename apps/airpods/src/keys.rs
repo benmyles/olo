@@ -4,7 +4,7 @@
 //! nearby). Only for this person: `~/.local/state/olo/airpods-keys.json`,
 //! readable by them alone.
 
-use std::{collections::BTreeMap, io::Write, os::unix::fs::OpenOptionsExt, path::PathBuf};
+use std::{collections::BTreeMap, path::PathBuf};
 
 use olo_system::airpods::proto::Keys;
 
@@ -45,15 +45,8 @@ pub fn remember(addr: &str, keys: &Keys) {
         return;
     }
     stored.insert(addr.to_owned(), k);
-    let write = || -> std::io::Result<()> {
-        let p = path();
-        std::fs::create_dir_all(p.parent().expect("a folder"))?;
-        let tmp = p.with_extension("json.new");
-        let mut f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&tmp)?;
-        f.write_all(serde_json::to_string_pretty(&stored).unwrap_or_default().as_bytes())?;
-        std::fs::rename(tmp, p)
-    };
-    match write() {
+    // (The person's alone, as every file the kit makes is.)
+    match olo_kit_base::store::write(&path(), &serde_json::to_vec_pretty(&stored).unwrap_or_default()) {
         Ok(()) => tracing::info!("airpods {addr}: kept their broadcast keys"),
         Err(e) => tracing::warn!("airpods: keeping their keys: {e}"),
     }
@@ -79,21 +72,15 @@ fn kept_path() -> PathBuf {
 type Kept = BTreeMap<String, Vec<olo_protocol::airpods::ListeningMode>>;
 
 pub fn press_and_hold(addr: &str) -> Option<Vec<olo_protocol::airpods::ListeningMode>> {
-    let kept: Kept = std::fs::read_to_string(kept_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    let kept: Kept = olo_kit_base::store::load(&kept_path()).unwrap_or_default();
     kept.get(addr).cloned()
 }
 
 pub fn remember_press_and_hold(addr: &str, modes: &[olo_protocol::airpods::ListeningMode]) {
     let path = kept_path();
-    let mut kept: Kept = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    let mut kept: Kept = olo_kit_base::store::load(&path).unwrap_or_default();
     kept.insert(addr.to_owned(), modes.to_vec());
-    let write = || -> std::io::Result<()> {
-        std::fs::create_dir_all(path.parent().expect("a folder"))?;
-        let tmp = path.with_extension("json.new");
-        std::fs::write(&tmp, serde_json::to_string_pretty(&kept).unwrap_or_default())?;
-        std::fs::rename(tmp, &path)
-    };
-    if let Err(e) = write() {
+    if let Err(e) = olo_kit_base::store::write(&path, &serde_json::to_vec_pretty(&kept).unwrap_or_default()) {
         tracing::warn!("airpods: keeping press and hold: {e}");
     }
 }

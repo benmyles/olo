@@ -94,19 +94,12 @@ fn places_path() -> PathBuf {
 
 impl Places {
     fn load() -> Places {
-        std::fs::read(places_path()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+        olo_ui::store::load(&places_path()).unwrap_or_default()
     }
 
     /// Written on a worker (nothing waits for the disk).
     fn save(&self) {
-        let Ok(json) = serde_json::to_vec_pretty(self) else { return };
-        std::thread::spawn(move || {
-            let _ = std::fs::create_dir_all(olo_ui::config_dir());
-            let tmp = places_path().with_extension("json.tmp");
-            if std::fs::write(&tmp, json).is_ok() {
-                let _ = std::fs::rename(tmp, places_path());
-            }
-        });
+        olo_ui::store::save(places_path(), self);
     }
 }
 

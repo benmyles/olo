@@ -218,19 +218,12 @@ impl History {
         }
     }
 
-    /// Write it out (atomically), off the UI thread.
+    /// Write it out (whole), off the UI thread.
     pub fn save(&self) {
         let Some(path) = self.path.clone() else { return };
-        let Ok(text) = serde_json::to_string(&self.entries) else { return };
-        std::thread::spawn(move || {
-            if let Some(dir) = path.parent() {
-                let _ = std::fs::create_dir_all(dir);
-            }
-            let tmp = path.with_extension("json.new");
-            if std::fs::write(&tmp, text).is_ok() {
-                let _ = std::fs::rename(tmp, path);
-            }
-        });
+        // (Compact: it's long.)
+        let Ok(bytes) = serde_json::to_vec(&self.entries) else { return };
+        olo_ui::store::save_bytes(path, bytes);
     }
 
     /// Add `e`, or update the entry with its id still open (a replacement).

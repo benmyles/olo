@@ -38,19 +38,12 @@ fn settings_path() -> PathBuf {
 
 impl Settings {
     pub fn load() -> Settings {
-        std::fs::read_to_string(settings_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+        olo_ui::store::load(&settings_path()).unwrap_or_default()
     }
 
     /// Off the UI thread.
     pub fn store(&self) {
-        let text = serde_json::to_string_pretty(self).unwrap_or_default();
-        std::thread::spawn(move || {
-            let path = settings_path();
-            if let Some(dir) = path.parent() {
-                let _ = std::fs::create_dir_all(dir);
-            }
-            let _ = std::fs::write(path, text);
-        });
+        olo_ui::store::save(settings_path(), self);
     }
 
     /// Where pictures go: the chosen folder, else Pictures, else home.
