@@ -311,7 +311,7 @@ of Finished; a new one goes where its priority puts it.
   everywhere"). A pass over the GPUI apps, each pattern moved into
   olo-ui (documented in HACKING) and every app switched to it: a
   window's content scrolling when it doesn't fit (in `Frame`, so no
-  panel needs its own); closing with unsaved changes (ask, then close or carry on); single-instance
+  panel needs its own); single-instance
   launches; list + search + filter bar wiring; upgrade state saved and
   restored; window size kept. Done so far (2026-11-01):
   popups closing in any order, quitting taking windows down, window
@@ -322,7 +322,8 @@ of Finished; a new one goes where its priority puts it.
   timer for the next thing due and a message that clears itself
   (`due::{Due, Notice}`: Passwords, Telegram, the only two); a
   window opened or brought forward (`open_or_raise`, `raise`: nineteen
-  apps).
+  apps); closing with changes not saved asked the same way everywhere
+  (`widgets::ask_to_save`: StyledEdit, Viewer).
 
 - **Passwords for Agent Screens** (Ben, 2026-10-31): "in the Agent
   Screens app i can choose items from passwords that i want to make

@@ -879,6 +879,15 @@ twice). `raise(handle, cx)` alone brings one forward if it's still
 open, as an app launched again does (a second launch hands itself to
 the first, `instance`, which raises its window).
 
+Closing (or reverting, or moving on from) something with changes not
+saved asks the same question everywhere: `widgets::ask_to_save(cx, app,
+name, "closing", then)`, "Save changes to “name” before closing?" with
+Cancel, Don't Save and Save (the default), as BeOS's StyledEdit asked;
+`then` hears `Some(Unsaved::Save)`, `Some(Unsaved::DontSave)`, or None
+(Cancel, Escape, the alert closed: carry on). StyledEdit and Viewer ask
+it; Passwords' item editor asks to discard instead (its Save is the
+item's own, in the editor).
+
 What a view has to do at some time goes through `due` (olo-ui), so
 nothing runs while nothing is due: `Due` is one timer for the next
 thing, set to when that is (`at(when, cx, then)`: the timer there is

@@ -300,3 +300,32 @@ pub fn open_alert(cx: &mut App, title: &str, icon: &str, message: &str, buttons:
         a
     })
 }
+
+/// What's to become of changes not saved yet, as [`ask_to_save`] was
+/// answered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unsaved {
+    Save,
+    DontSave,
+}
+
+/// Asks whether to save the changes to `name` before `doing` ("closing",
+/// "reverting", "moving on"): the same question with the same buttons in
+/// every app, Cancel, Don't Save and Save (the default), as BeOS's
+/// StyledEdit asked it. `then` hears Save or Don't Save, or None for
+/// Cancel, Escape or the alert closed (carry on as if nothing was
+/// asked). The alert's window, for an app that brings it forward when
+/// asked again.
+pub fn ask_to_save(cx: &mut App, app: &str, name: &str, doing: &str, then: impl Fn(Option<Unsaved>, &mut App) + 'static) -> Option<gpui::WindowHandle<crate::Frame>> {
+    let message = format!("Save changes to “{name}” before {doing}?");
+    open_alert(cx, app, "warning", &message, &["Cancel", "Don't Save", "Save"], move |choice, cx| {
+        then(
+            match choice {
+                Some(1) => Some(Unsaved::DontSave),
+                Some(2) => Some(Unsaved::Save),
+                _ => None,
+            },
+            cx,
+        )
+    })
+}

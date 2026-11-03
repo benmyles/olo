@@ -31,7 +31,7 @@ use olo_ui::{
     instance::{self, Launch},
     metrics as m, style, theme,
     widgets::{
-        Button, CheckBox, SCROLL_BAR, TextControl, TextField, TextFieldEvent, button_row, heading, open_alert,
+        Button, CheckBox, SCROLL_BAR, TextControl, TextField, TextFieldEvent, Unsaved, ask_to_save, button_row, heading, open_alert,
         ruler::{self, Ruler, RulerEvent},
         text_field,
     },
@@ -1365,15 +1365,19 @@ impl StyledEdit {
         if d.asking {
             return activate(doc, cx);
         }
-        let message = format!("Save changes to the document “{}”?", d.title());
+        let title = d.title();
+        let doing = match after {
+            After::Revert => "reverting",
+            _ => "closing",
+        };
         doc.update(cx, |d, _| d.asking = true);
         let (me, doc) = (cx.entity(), doc.clone());
-        let _ = open_alert(cx, "StyledEdit", "warning", &message, &["Cancel", "Don't save", "Save"], move |choice, cx| {
+        let _ = ask_to_save(cx, "StyledEdit", &title, doing, move |choice, cx| {
             doc.update(cx, |d, _| d.asking = false);
             me.update(cx, |a, cx| match choice {
-                Some(1) => a.finish(&doc, after, cx),
-                Some(2) => a.save(&doc, None, after, cx),
-                _ => {}
+                Some(Unsaved::DontSave) => a.finish(&doc, after, cx),
+                Some(Unsaved::Save) => a.save(&doc, None, after, cx),
+                None => {}
             })
         });
     }

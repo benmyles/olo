@@ -31,7 +31,7 @@ use olo_ui::{
     metrics as m,
     style::{self, Align},
     theme,
-    widgets::{Button, CheckBox, TextField, TextFieldEvent, open_alert, text_field},
+    widgets::{Button, CheckBox, TextField, TextFieldEvent, Unsaved, ask_to_save, open_alert, text_field},
 };
 use serde::{Deserialize, Serialize};
 
@@ -650,16 +650,16 @@ impl Doc {
             return self.finish(after, cx);
         }
         let _ = window;
-        let message = format!("Save changes to “{}” before {}?", file_name(&self.path), if after == After::Close { "closing" } else { "moving on" });
+        let (name, doing) = (file_name(&self.path), if after == After::Close { "closing" } else { "moving on" });
         let doc = cx.entity();
         cx.defer(move |cx| {
-            let _ = open_alert(cx, "Viewer", "warning", &message, &["Cancel", "Don't Save", "Save"], move |choice, cx| {
+            let _ = ask_to_save(cx, "Viewer", &name, doing, move |choice, cx| {
                 let after = after.clone();
                 doc.update(cx, |d, cx| match choice {
                     // Don't Save: closing or loading another file drops the edits.
-                    Some(1) => d.finish(after, cx),
-                    Some(2) => d.save(after, cx),
-                    _ => {}
+                    Some(Unsaved::DontSave) => d.finish(after, cx),
+                    Some(Unsaved::Save) => d.save(after, cx),
+                    None => {}
                 })
             });
         });

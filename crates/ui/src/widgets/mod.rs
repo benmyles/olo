@@ -24,7 +24,10 @@ pub mod thumbs;
 pub mod tooltip;
 pub mod views;
 
-pub use alert::{ALERT_ICON, ALERT_TEXT_X, ALERT_WIDTH, AlertFrame, Conversation, ConversationField, alert_height, alert_title, alert_width, button_row, open_alert, paragraph, paragraph_height};
+pub use alert::{
+    ALERT_ICON, ALERT_TEXT_X, ALERT_WIDTH, AlertFrame, Conversation, ConversationField, Unsaved, alert_height, alert_title, alert_width, ask_to_save, button_row, open_alert, paragraph,
+    paragraph_height,
+};
 pub use buttons::{Button, CheckBox, LinkButton, RadioButton, button_width, check_box_look, link_button_width};
 pub use charts::{CellGrid, Graph, GraphLayer, GraphShelf, GridCell, LegendItem, Series, legend, legend_height, nice_ceiling};
 pub use color::{ColorControl, ColorWell, color_control_height};
