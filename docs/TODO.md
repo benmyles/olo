@@ -39,25 +39,12 @@ of Finished; a new one goes where its priority puts it.
   Waiting on the machine: NVIDIA for apps and external displays, HDR and
   wide colour, VRR, the haptic touchpad, IR face sign-in.
 
-- **The file panel after Quick Look: tiled, and Open does nothing**
-  (*part done* 2026-11-02: the look floats over the panel, never a tile;
-  *left*: Open doing nothing after a look didn't happen headless, the
-  portal answering with the file each time, the old zoomed look too
-  (`olo-portal --bus`, FileChooser.OpenFile asked as xdg-desktop-portal
-  does), so it needs Slack's own window as the panel's parent: try it
-  again on the real thing after the upgrade) (Ben, 2026-11-02): "when i'm in slack and attach a file i correctly
-  get the olo tracker as the file picker. however, when i hit space for
-  quick look then the preview gets tiled (i think quick look should
-  also be floating). and worse, then i hit the open button in the
-  tracker picker but nothing goes into slack. if i attach without
-  previewing first then it does add correctly." The picker is the
-  kit's file panel (`olo_ui::file_panel`, through `olo-portal`'s
-  FileChooser); Space spawns `olo-viewer --look`. So: (1) the look is
-  a floating window over the panel (a dialog, never a tile or a tab,
-  as the item above), put away by Space or Escape; (2) find why Open
-  after a look answers nothing (the look's window taking the
-  keyboard, the panel's selection, its `on_done` or the portal's
-  reply) and fix it; test both through the portal, as Slack asks.
+- **Telegram: unarchived chats go back to Archived on every reopen**
+  (Ben, 2026-11-02): "every time i reopen telegram all my unarchived
+  conversations move back to archived every time". Unarchiving must
+  reach Telegram (the chat's folder changed there, not only in the
+  list), and what the app shows on starting again must come from what
+  Telegram says (its archive, folder 1) over anything the cache kept.
 
 - **AirPods and voice processing, tried on the real things** (Ben,
   2026-11-02; what's left of "AirPods, natively" and "Voice processing
@@ -894,6 +881,26 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**The file panel after Quick Look: tiled, and Open does nothing**~~
+  (done 2026-11-02: the look floats over the panel, centred on it; Open
+  answers after a look) (Ben, 2026-11-02): "when i'm in slack and attach
+  a file i correctly get the olo tracker as the file picker. however,
+  when i hit space for quick look then the preview gets tiled (i think
+  quick look should also be floating). and worse, then i hit the open
+  button in the tracker picker but nothing goes into slack. if i attach
+  without previewing first then it does add correctly." The look is a
+  dialog, never a tile or a tab, and opens centred over the panel: the
+  panel exports its window (xdg-foreign, `Window::export_handle`, new in
+  Olo's GPUI) and passes the handle to `olo-viewer --look --over=`;
+  app_server keeps a dialog that sizes itself after opening centred
+  over its parent until it's moved (`keep_centred`). Open after a look
+  was tried as Slack asks, through the real xdg-desktop-portal with
+  Chrome's upload (Electron's code) over a private bus, in Standard,
+  Focus and Auto-Tiling, with the look up and put away by Space or
+  Escape: the file reached the page every time. Ben's report came from
+  the build where the look took a tile; if Slack still drops it, it's
+  something of Slack's own to look at.
 
 - ~~**Notification banners draw over Deskbar's menus**~~ (done
   2026-11-02: app_server render.rs, `shell::layer_menus`) (seen

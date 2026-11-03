@@ -714,7 +714,27 @@ impl<B: Backend + 'static> AnvilState<B> {
             y = y.min(out.loc.y + out.size.h - g.size.h).max(out.loc.y);
         }
         let loc = self.space.element_location(&window).unwrap_or_default();
+        window.meta().centred.set(Some((Point::from((x, y)), g.size)));
         self.space.map_element(window, loc + Point::from((x - g.loc.x, y - g.loc.y)), true);
+    }
+
+    /// A window centred over its parent that changed its own size since
+    /// (a look sized to its picture once loaded, from 720 × 560): centred
+    /// again, until it has been moved or is being resized by the person.
+    pub fn keep_centred(&mut self, surface: &WlSurface, window: &WindowElement) {
+        let Some((at, size)) = window.meta().centred.get() else { return };
+        let Some(g) = self.space.element_geometry(window) else { return };
+        if g.size == size {
+            return;
+        }
+        let resizing = smithay::wayland::compositor::with_states(surface, |s| {
+            s.data_map.get::<std::cell::RefCell<crate::shell::SurfaceData>>().is_some_and(|d| !matches!(d.borrow().resize_state, crate::shell::ResizeState::NotResizing))
+        });
+        if g.loc != at || resizing {
+            window.meta().centred.set(None);
+            return;
+        }
+        self.place_over_parent(surface);
     }
 }
 

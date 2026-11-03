@@ -64,7 +64,7 @@ use wayland_protocols::xdg::decoration::zv1::client::{
 use wayland_protocols::xdg::shell::client::{xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base};
 use wayland_protocols::xdg::toplevel_tag::v1::client::xdg_toplevel_tag_manager_v1;
 use wayland_protocols::xdg::dialog::v1::client::{xdg_dialog_v1, xdg_wm_dialog_v1};
-use wayland_protocols::xdg::foreign::zv2::client::{zxdg_imported_v2, zxdg_importer_v2};
+use wayland_protocols::xdg::foreign::zv2::client::{zxdg_exported_v2, zxdg_exporter_v2, zxdg_imported_v2, zxdg_importer_v2};
 use wayland_protocols::ext::session_lock::v1::client::{ext_session_lock_manager_v1, ext_session_lock_surface_v1, ext_session_lock_v1};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 use wayland_protocols_plasma::blur::client::{org_kde_kwin_blur, org_kde_kwin_blur_manager};
@@ -135,6 +135,9 @@ pub struct Globals {
     /// Olo: other programs' windows, to open ours over (a portal's
     /// dialogs).
     pub xdg_importer: Option<zxdg_importer_v2::ZxdgImporterV2>,
+    /// Olo: ours, for another program's windows to open over (a file
+    /// panel's look, `Window::export_handle`).
+    pub xdg_exporter: Option<zxdg_exporter_v2::ZxdgExporterV2>,
     /// Olo: surfaces of the desktop's own (Deskbar, notifications).
     pub layer_shell: Option<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
     pub blur_manager: Option<org_kde_kwin_blur_manager::OrgKdeKwinBlurManager>,
@@ -182,6 +185,7 @@ impl Globals {
             layer_shell: globals.bind(&qh, 1..=4, ()).ok(),
             wm_dialog: globals.bind(&qh, 1..=1, ()).ok(),
             xdg_importer: globals.bind(&qh, 1..=1, ()).ok(),
+            xdg_exporter: globals.bind(&qh, 1..=1, ()).ok(),
             session_lock_manager: globals.bind(&qh, 1..=1, ()).ok(),
             blur_manager: globals.bind(&qh, 1..=1, ()).ok(),
             text_input_manager: globals.bind(&qh, 1..=1, ()).ok(),
@@ -388,6 +392,9 @@ pub(crate) struct WaylandClientState {
     /// Olo: tokens asked for with `Window::activation_token`, by request.
     token_requests: HashMap<u64, Box<dyn FnOnce(Option<String>)>>,
     next_token_request: u64,
+    /// Olo: those waiting for a window's exported handle
+    /// (`Window::export_handle`), by its surface.
+    export_requests: HashMap<ObjectId, Vec<Box<dyn FnOnce(Option<String>)>>>,
     event_loop: Option<EventLoop<'static, WaylandClientStatePtr>>,
     common: LinuxCommon,
     /// Olo: the clipboard's source while what's on it is ours.
@@ -953,6 +960,7 @@ impl WaylandClient {
             pending_activation: None,
             token_requests: HashMap::default(),
             next_token_request: 0,
+            export_requests: HashMap::default(),
             event_loop: Some(event_loop),
             selection_source: None,
             lingering: false,
@@ -1744,6 +1752,25 @@ pub fn unlock_session() {
 }
 delegate_noop!(WaylandClientStatePtr: ignore xdg_dialog_v1::XdgDialogV1);
 delegate_noop!(WaylandClientStatePtr: ignore zxdg_importer_v2::ZxdgImporterV2);
+delegate_noop!(WaylandClientStatePtr: ignore zxdg_exporter_v2::ZxdgExporterV2);
+
+/// Olo: a window exported (`Window::export_handle`): its handle, to the
+/// window and whoever waits for it.
+impl Dispatch<zxdg_exported_v2::ZxdgExportedV2, ObjectId> for WaylandClientStatePtr {
+    fn event(this: &mut Self, _: &zxdg_exported_v2::ZxdgExportedV2, event: zxdg_exported_v2::Event, surface_id: &ObjectId, _: &Connection, _: &QueueHandle<Self>) {
+        let zxdg_exported_v2::Event::Handle { handle } = event else { return };
+        let client = this.get_client();
+        let mut state = client.borrow_mut();
+        if let Some(window) = get_window(&mut state, surface_id) {
+            window.exported_as(handle.clone());
+        }
+        for done in state.export_requests.remove(surface_id).unwrap_or_default() {
+            let handle = handle.clone();
+            // (Called once the state is free: it may open windows.)
+            state.common.foreground_executor.spawn(async move { done(Some(handle)) }).detach();
+        }
+    }
+}
 delegate_noop!(WaylandClientStatePtr: ignore zxdg_imported_v2::ZxdgImportedV2);
 
 impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ObjectId> for WaylandClientStatePtr {
@@ -3033,6 +3060,17 @@ impl Dispatch<zwp_primary_selection_source_v1::ZwpPrimarySelectionSourceV1, ()>
 impl WaylandClientStatePtr {
     /// Olo: asks for an activation token for `surface` with the last
     /// press's serial; `done` gets it (on the main thread, later).
+    /// Olo: `done` gets the handle of the window on `surface` once it's
+    /// exported (`Window::export_handle`); dropped if it closes first.
+    pub fn wait_for_export(&self, surface: ObjectId, done: Box<dyn FnOnce(Option<String>)>) {
+        self.get_client().borrow_mut().export_requests.entry(surface).or_default().push(done);
+    }
+
+    /// Olo: a window closed: nothing waits for its handle any more.
+    pub fn forget_export(&self, surface: &ObjectId) {
+        self.get_client().borrow_mut().export_requests.remove(surface);
+    }
+
     pub fn request_activation_token(&self, surface: &wl_surface::WlSurface, app_id: Option<String>, done: Box<dyn FnOnce(Option<String>)>) {
         let client = self.get_client();
         let mut state = client.borrow_mut();

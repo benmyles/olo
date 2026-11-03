@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-02
 
+### Quick Look centred over the file panel
+
+*17:45* — The panel exports its window (xdg-foreign, Window::export_handle) and the Viewer opens the look over it (--over=); app_server keeps a dialog that sizes itself after opening centred over its parent until it's moved.
+
+![Quick Look centred over the file panel](2026-11-02/174556-quick-look-centred-over-the-file-panel.png)
+
+### Quick Look from a file panel (before)
+
+*17:45* — Before: the look, a process of its own with no parent, opened in a cascade slot at the asking app's corner, half over the panel.
+
+![Quick Look from a file panel (before)](2026-11-02/174555-quick-look-from-a-file-panel-before.png)
+
 ### Deskbar's menus over banners
 
 *17:26* — Layer surfaces' menus are drawn and hit-tested over the whole Top layer, so Deskbar's menus are over any banner (shell::layer_menus).

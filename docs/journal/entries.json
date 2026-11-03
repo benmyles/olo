@@ -2902,5 +2902,17 @@
   "title": "Deskbar's menus over banners",
   "caption": "Layer surfaces' menus are drawn and hit-tested over the whole Top layer, so Deskbar's menus are over any banner (shell::layer_menus).",
   "image": "2026-11-02/172612-deskbar-s-menus-over-banners.png"
+ },
+ {
+  "time": "2026-11-02T17:45:55",
+  "title": "Quick Look from a file panel (before)",
+  "caption": "Before: the look, a process of its own with no parent, opened in a cascade slot at the asking app's corner, half over the panel.",
+  "image": "2026-11-02/174555-quick-look-from-a-file-panel-before.png"
+ },
+ {
+  "time": "2026-11-02T17:45:56",
+  "title": "Quick Look centred over the file panel",
+  "caption": "The panel exports its window (xdg-foreign, Window::export_handle) and the Viewer opens the look over it (--over=); app_server keeps a dialog that sizes itself after opening centred over its parent until it's moved.",
+  "image": "2026-11-02/174556-quick-look-centred-over-the-file-panel.png"
  }
 ]

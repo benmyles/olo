@@ -116,6 +116,10 @@ pub struct WaylandWindowState {
     /// Olo: the other program's window it's over (xdg-foreign), let go
     /// with it.
     imported: Option<wayland_protocols::xdg::foreign::zv2::client::zxdg_imported_v2::ZxdgImportedV2>,
+    /// Olo: this window exported, for another program's to open over (a
+    /// file panel's look), with its handle once the compositor gives it;
+    /// kept until it closes (`Window::export_handle`).
+    exported: Option<(wayland_protocols::xdg::foreign::zv2::client::zxdg_exported_v2::ZxdgExportedV2, Option<String>)>,
     /// A window's role (None for a popup, which has `popup`).
     toplevel: Option<xdg_toplevel::XdgToplevel>,
     popup: Option<xdg_popup::XdgPopup>,
@@ -286,6 +290,7 @@ impl WaylandWindowState {
             fractional_scale: None,
             dialog: None,
             imported: None,
+            exported: None,
             toplevel,
             popup,
             popup_of: None,
@@ -419,6 +424,9 @@ impl Drop for WaylandWindow {
         if let Some(imported) = state.imported.take() {
             imported.destroy();
         }
+        if let Some((exported, _)) = state.exported.take() {
+            exported.destroy();
+        }
         if let Some(scale) = state.fractional_scale.take() {
             scale.destroy();
         }
@@ -461,6 +469,7 @@ impl Drop for WaylandWindow {
             .executor
             .spawn(async move {
                 state_ptr.close();
+                client.forget_export(&surface_id);
                 client.drop_window(&surface_id)
             })
             .detach();
@@ -759,6 +768,13 @@ impl WaylandWindow {
 }
 
 impl WaylandWindowStatePtr {
+    /// Olo: the compositor gave the handle it's exported as.
+    pub fn exported_as(&self, handle: String) {
+        if let Some((_, h)) = self.state.borrow_mut().exported.as_mut() {
+            *h = Some(handle);
+        }
+    }
+
     pub fn handle(&self) -> AnyWindowHandle {
         self.state.borrow().handle
     }
@@ -1817,6 +1833,28 @@ impl PlatformWindow for WaylandWindow {
         let (client, surface, app_id) = (state.client.clone(), state.surface.clone(), state.app_id.clone());
         drop(state);
         client.request_activation_token(&surface, app_id, done);
+    }
+
+    fn export_handle(&self, done: Box<dyn FnOnce(Option<String>)>) {
+        let mut state = self.borrow_mut();
+        if let Some((_, Some(handle))) = &state.exported {
+            let handle = handle.clone();
+            drop(state);
+            return done(Some(handle));
+        }
+        let exporter = state.globals.xdg_exporter.clone().filter(|_| state.toplevel.is_some());
+        let Some(exporter) = exporter else {
+            drop(state);
+            return done(None);
+        };
+        let surface = state.surface.id();
+        if state.exported.is_none() {
+            let exported = exporter.export_toplevel(&state.surface, &state.globals.qh, surface.clone());
+            state.exported = Some((exported, None));
+        }
+        let client = state.client.clone();
+        drop(state);
+        client.wait_for_export(surface, done);
     }
 
     fn set_layer_keyboard(&self, keyboard: crate::LayerKeyboard) {

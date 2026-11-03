@@ -5002,6 +5002,14 @@ impl Window {
         self.platform_window.set_keep_awake(on);
     }
 
+    /// Olo: a handle another program's window can name to open over this
+    /// one (xdg-foreign, `WindowOptions::foreign_parent` there: a file
+    /// panel's look in the Viewer); `done` gets None if the compositor
+    /// can't export windows. The window stays exported until it closes.
+    pub fn export_handle(&self, done: impl FnOnce(Option<String>) + 'static) {
+        self.platform_window.export_handle(Box::new(done));
+    }
+
     /// Olo: an activation token made with this window and the last press
     /// in it, for another program to take the focus with (a
     /// notification's app, as its action is invoked); `done` gets None

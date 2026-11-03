@@ -540,6 +540,11 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn activation_token(&self, done: Box<dyn FnOnce(Option<String>)>) {
         done(None)
     }
+    /// Olo: a handle another program's window can name to open over this
+    /// one (xdg-foreign); None if the compositor can't export windows.
+    fn export_handle(&self, done: Box<dyn FnOnce(Option<String>)>) {
+        done(None)
+    }
     /// Olo: whether a layer surface takes the keyboard (as its
     /// `LayerShellOptions::keyboard`), changed after it opened.
     fn set_layer_keyboard(&self, _keyboard: LayerKeyboard) {}

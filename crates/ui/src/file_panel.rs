@@ -12,8 +12,8 @@
 //! goes to the standard folders, favourites and recent folders
 //! (`places`, shared with Tracker's Go menu), and adds or takes away the
 //! folder shown as a favourite. Space takes a look at the selected file
-//! in the Viewer (`olo-viewer --look`: Space again, or Escape there, puts
-//! it away).
+//! in the Viewer (`olo-viewer --look`, over the panel by the handle it
+//! exported, `--over=`: Space again, or Escape there, puts it away).
 
 use std::{
     path::{Path, PathBuf},
@@ -228,6 +228,9 @@ struct PanelView {
     changed: mpsc::UnboundedSender<()>,
     /// The Viewer showing a file for Space, while it is up.
     look: Option<std::process::Child>,
+    /// The handle the panel's window is exported as, for the look to
+    /// open over it (`Window::export_handle`).
+    over: Rc<std::cell::RefCell<Option<String>>>,
     on_done: Option<OnDone>,
     /// Its window, closed once it has answered.
     window: gpui::AnyWindowHandle,
@@ -316,6 +319,9 @@ impl PanelView {
             }
         });
         let dir = panel.dir.clone();
+        let over = Rc::<std::cell::RefCell<Option<String>>>::default();
+        let exported = over.clone();
+        window.export_handle(move |handle| *exported.borrow_mut() = handle);
         let mut v = PanelView {
             panel,
             all: Vec::new(),
@@ -329,6 +335,7 @@ impl PanelView {
             watch: None,
             changed,
             look: None,
+            over,
             on_done: Some(on_done),
             window: window.window_handle(),
             _tasks: vec![follow],
@@ -448,7 +455,11 @@ impl PanelView {
         }
         let Some(path) = self.list.read(cx).state.single().and_then(|i| self.items.get(i)).filter(|it| !it.is_dir).map(|it| self.panel.dir.join(&it.name)) else { return };
         match olo_xdg::find_program("olo-viewer") {
-            Some(viewer) => self.look = std::process::Command::new(viewer).arg("--look").arg(path).spawn().ok(),
+            Some(viewer) => {
+                // Over the panel (else it opens wherever a new window would).
+                let over = self.over.borrow().as_ref().map(|h| format!("--over={h}"));
+                self.look = std::process::Command::new(viewer).arg("--look").args(over).arg(path).spawn().ok();
+            }
             None => tracing::warn!("file panel: no olo-viewer to look with"),
         }
     }

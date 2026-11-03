@@ -578,7 +578,14 @@ fn main() {
   takes `.foreign_parent(handle)`, the `wayland:HANDLE` that program
   exported (xdg-foreign; a portal is given it as the parent window): the
   kit imports it and sets it as the window's parent, and app_server opens
-  it over that window as it does over one of the app's own.
+  it over that window as it does over one of the app's own. The other
+  way, `window.export_handle(done)` (Olo's GPUI) exports a window of
+  ours and gives its handle (None without xdg-foreign), for a program we
+  start to open over it: the file panel's look (`olo-viewer --look
+  --over=HANDLE`). A window opened over its parent that then sizes
+  itself (the look, fitted to its picture once loaded) is centred over
+  it again, until it's moved or the person resizes it (app_server
+  `keep_centred`, `WindowMeta::centred`).
 * **A terminal's keys** (Terminal): a window that consumes the keyboard
   itself takes key events before the menus (its `key_down`), lets the
   menus' own shortcuts through (`menu::shortcut_command`) and shows
@@ -885,8 +892,10 @@ adding the folders they go to); Home; a Name/Kind/Size/Modified list as
 Tracker's, folders first and names in reading order, following the
 folder as it changes; a "Save as:" field, and a question before
 replacing. Space takes a look at the selected file in the Viewer
-(`olo-viewer --look FILE`: a process of its own, put away by Space or
-Escape there, by Space again in the panel, and with the panel). An
+(`olo-viewer --look --over=HANDLE FILE`: a process of its own, centred
+over the panel by the handle the panel's window is exported as, put
+away by Space or Escape there, by Space again in the panel, and with
+the panel). An
 item's menu (a secondary click) has Quick Look, Open With ▸
 (`olo_ui::open_with`, the folder's kinds warmed as it's listed) and
 Show in Tracker (`olo_kit_base::tracker::open`). A
@@ -1720,6 +1729,10 @@ event reaches it.
   from the last click in the window, for another program to raise its
   window with (Notifications hands it to the app whose card was
   clicked); `done(None)` when the compositor has none to give.
+  `Window::export_handle(done)` (xdg-foreign): the handle another
+  program's window can name as its parent (`foreign_parent`) to open
+  over this one, exported on first asking and kept until the window
+  closes; `done(None)` without xdg-foreign.
   `Window::set_layer_keyboard(LayerKeyboard)` changes a layer surface's
   keyboard as it shows (`OnDemand` while a banner has a reply field,
   `None` otherwise).
@@ -4702,7 +4715,8 @@ panels. The document has the keyboard from the moment its window opens
   on-state as its value), `ComboBox` or `ListBox`; while one is typed in,
   as its editor.
 - `--look FILE` (a file panel's Space): a process of its own, put away
-  by Space or Escape.
+  by Space or Escape; `--over=HANDLE` opens it over that window (the
+  panel's, exported: xdg-foreign).
 - The picture dragged where it doesn't pan carries its file out; files
   dropped on a window open.
 - A playing video keeps the screen awake (`Window::set_keep_awake`); it

@@ -227,6 +227,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                         let current_loc = self.space.element_location(&window).unwrap();
                         self.space.relocate_element(&window, current_loc + buffer_offset);
                     }
+                    self.keep_centred(surface, &window);
                     let held = self.held_size(&window);
                     keep_on_screen(&mut self.space, surface, &window, held);
                     self.tile_follower_drew(&window);

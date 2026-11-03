@@ -91,6 +91,9 @@ struct Viewer {
     /// Started with `--look` (a file panel's Space): a look at a file,
     /// its own process, put away with Space or Escape, as Quick Look.
     look: bool,
+    /// The window the look opens over (`--over=HANDLE`, the file panel's,
+    /// exported: xdg-foreign).
+    over: Option<String>,
     /// File panels open, and with no document (to quit when they go).
     panels: usize,
 }
@@ -196,6 +199,9 @@ impl Viewer {
         // never a tile or a tab.
         if self.look {
             options = options.dialog();
+            if let Some(handle) = &self.over {
+                options = options.foreign_parent(handle.clone());
+            }
         }
         let win = olo_ui::open_window(cx, options, move |window, cx| {
             // The document has the keyboard (else the window's frame
@@ -1449,6 +1455,7 @@ fn main() {
     // (A look is its own process, which the panel that asked for it can
     // put away.)
     let look = args.iter().any(|a| a == "--look");
+    let over = args.iter().find_map(|a| a.strip_prefix("--over=")).map(str::to_owned);
     if !look && instance::forward(APP_ID, &args) {
         return;
     }
@@ -1458,7 +1465,7 @@ fn main() {
             instance::listen(APP_ID, olo_ui::proxy(cx));
         }
         pdfview::bind_keys(cx);
-        let viewer = cx.new(|_| Viewer { docs: Vec::new(), signatures: signature::load(), generation: 0, watch: None, look, panels: 0 });
+        let viewer = cx.new(|_| Viewer { docs: Vec::new(), signatures: signature::load(), generation: 0, watch: None, look, over, panels: 0 });
         let messages = viewer.clone();
         olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |v, cx| v.message(message, cx)));
         // The files open, kept for an upgrade (a look isn't kept).

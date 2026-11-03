@@ -14,7 +14,7 @@ use smithay::{
     desktop::space::SpaceElement,
     output::{Output, Scale},
     reexports::wayland_server::Resource,
-    utils::{IsAlive, Logical, Point, Rectangle},
+    utils::{IsAlive, Logical, Point, Rectangle, Size},
     wayland::seat::WaylandFocus,
 };
 use olo_protocol::{Event, NightLightMode, OutputConfig, OutputInfo, Settings, ThemePreference, WindowInfo};
@@ -89,6 +89,10 @@ pub struct WindowMeta {
     /// A move it asked for before it showed (a tab torn off a strip,
     /// moved from its first frame): started once it is in its place.
     pub pending_move: Cell<Option<smithay::utils::Serial>>,
+    /// Where and at what size it was centred over its parent
+    /// (`place_over_parent`), until it's moved: sizing itself after it
+    /// opened (a look fitting its picture), it's centred again.
+    pub centred: Cell<Option<(Point<i32, Logical>, Size<i32, Logical>)>>,
     /// Being moved over another of its app's windows (`window_drop`):
     /// drawn see-through, so the place it would go into shows under it.
     pub ghost: Cell<bool>,
@@ -180,6 +184,7 @@ impl WindowElement {
             slot: Cell::new(0),
             was: Cell::new(0),
             pending_move: Cell::new(None),
+            centred: Cell::new(None),
             ghost: Cell::new(false),
             restored_part: Cell::new(None),
             left_among: Default::default(),
