@@ -21,9 +21,9 @@ use std::collections::HashMap;
 pub use olo_protocol::touchpad::{PadAxes, PalmModel, TouchContact};
 
 /// How many features a contact has.
-pub const FEATURES: usize = 12;
+pub const FEATURES: usize = 14;
 /// The hidden layer's size.
-pub const HIDDEN: usize = 10;
+pub const HIDDEN: usize = 24;
 /// A contact is judged in its first this many milliseconds; after, it
 /// stays what it was (a finger found to be a palm mid-gesture would stop
 /// the gesture).
@@ -42,6 +42,7 @@ struct Track {
     speed: f32,
     peak_size: f32,
     peak_pressure: f32,
+    first_size: f32,
 }
 
 /// Each contact's history, from which its features are made.
@@ -67,7 +68,7 @@ impl Tracker {
             let size = c.major.max(c.minor) as f32 / size_max;
             let small = c.major.min(c.minor) as f32 / size_max;
             let pressure = c.pressure as f32 / pressure_max;
-            let t = self.tracks.entry(c.id).or_insert(Track { down_us: time_us, x, y, at_us: time_us, speed: 0.0, peak_size: 0.0, peak_pressure: 0.0 });
+            let t = self.tracks.entry(c.id).or_insert(Track { down_us: time_us, x, y, at_us: time_us, speed: 0.0, peak_size: 0.0, peak_pressure: 0.0, first_size: size });
             let dt = time_us.saturating_sub(t.at_us) as f32 / 1e6;
             if dt > 0.0 {
                 // Pad widths a second, smoothed.
@@ -93,6 +94,10 @@ impl Tracker {
                 t.peak_size,
                 t.peak_pressure,
                 others,
+                // Its shape (round, or long like a palm's heel), and how
+                // it has grown since it landed (a palm settles).
+                small / (size + 0.01),
+                (size / (t.first_size + 0.01)).min(3.0) / 3.0,
             ];
             out.push((c.id, f, age_ms));
         }
@@ -109,8 +114,8 @@ impl Tracker {
 /// (typing); heavy and large; small and moving (a finger: against).
 pub fn baseline() -> PalmModel {
     // Typical values and spreads, so units see each feature on one scale.
-    let mean = vec![0.12, 0.09, 0.01, 0.08, 0.5, 0.5, 0.22, 0.15, 0.06, 0.14, 0.012, 0.12];
-    let std = vec![0.12, 0.09, 0.02, 0.08, 0.3, 0.3, 0.14, 0.2, 0.1, 0.13, 0.02, 0.22];
+    let mean = vec![0.12, 0.09, 0.01, 0.08, 0.5, 0.5, 0.22, 0.15, 0.06, 0.14, 0.012, 0.12, 0.75, 0.4];
+    let std = vec![0.12, 0.09, 0.02, 0.08, 0.3, 0.3, 0.14, 0.2, 0.1, 0.13, 0.02, 0.22, 0.2, 0.15];
     let mut w1 = vec![0.0f32; HIDDEN * FEATURES];
     let mut b1 = vec![0.0f32; HIDDEN];
     let mut set = |j: usize, b: f32, w: &[(usize, f32)]| {
@@ -133,11 +138,20 @@ pub fn baseline() -> PalmModel {
     set(5, 0.4, &[(0, -0.8), (8, 0.8)]);
     // 6: small for its pressure (a fingertip pressing): against.
     set(6, 0.0, &[(3, 0.9), (0, -0.5)]);
-    // 7–9: spare, so training has room to learn what these don't say.
-    set(7, 0.0, &[(4, 0.1), (5, 0.1)]);
-    set(8, 0.0, &[(7, 0.1), (11, 0.1)]);
-    set(9, 0.0, &[(1, 0.1), (9, 0.1)]);
-    let w2 = vec![1.1, 0.9, 1.0, 0.7, 0.8, -1.0, -0.9, 0.0, 0.0, 0.0];
+    // 7: long rather than round, and large (a palm's heel).
+    set(7, -0.6, &[(12, -0.8), (0, 0.6)]);
+    // 8: grown since it landed (a palm settling), and large.
+    set(8, -0.5, &[(13, 0.9), (0, 0.3)]);
+    // 9: at the bottom corners, large (where palms rest).
+    set(9, -0.8, &[(5, 0.6), (6, -0.6), (0, 0.5)]);
+    // 10–23: spare, each looking lightly at a pair of features, so
+    // training has room to learn what the ones above don't say.
+    for j in 10..HIDDEN {
+        let (a, b) = ((j * 5) % FEATURES, (j * 7 + 3) % FEATURES);
+        set(j, 0.0, &[(a, 0.15), (b, -0.15)]);
+    }
+    let mut w2 = vec![0.0f32; HIDDEN];
+    w2[..10].copy_from_slice(&[1.1, 0.9, 1.0, 0.7, 0.8, -1.0, -0.9, 0.6, 0.5, 0.6]);
     PalmModel { mean, std, w1, b1, w2, b2: -1.0, threshold: 0.0, decide_ms: DECIDE_MS, ..Default::default() }
 }
 
@@ -420,7 +434,7 @@ mod tests {
         let r = judge(&m, &contacts.iter().collect::<Vec<_>>(), 1600);
         assert!(r.palms_caught > r.size_rule_palms_caught && r.palms_caught > 0.85, "{r:?}");
         assert!(r.fingers_lost < 0.1, "{r:?}");
-        assert!(lua(&m).contains("hidden = 10"));
+        assert!(lua(&m).contains("hidden = 24") && lua(&m).contains("features = 14"));
     }
 
     #[test]

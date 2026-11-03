@@ -197,11 +197,14 @@ gpu accelerated (or simd accelerated if it's faster) model").
 - PalmTouch needs raw capacitive images, which this pad doesn't give.
 
 **The model** (crates/palm, `olo-palm`, all Rust):
-- Twelve features a contact, made by `Tracker` from each report: its
+- Fourteen features a contact, made by `Tracker` from each report: its
   size and smaller size, pressure, pressure for its size, place,
   distance from the nearest edge, age, smoothed speed, the most size and
-  pressure it has had, and how many others are down.
-- One hidden layer of ten units: 141 weights.
+  pressure it has had, how many others are down, its shape (round or
+  long) and how it has grown since it landed.
+- One hidden layer of 24 units: 385 weights (Ben asked for a bigger
+  one, 2026-11-02: ten hand-written units, fourteen spare for
+  training).
 - Trained on the machine by full-batch Adam on the class-weighted log
   loss, in a fraction of a second.
 - A contact is a palm once its score passes the threshold within its
@@ -231,8 +234,9 @@ few of the person's samples refine it rather than start over.
 **Where it runs:** in `touchpad.lua` itself, since the filter has to hide
 a palm before libinput sees it, in the same features and arithmetic
 (`palm_model_scores_as_rust_does`: Lua and Rust agree to 1e-4).
-- Scoring costs about 2 µs a frame (`frame_cost`, three contacts: 20.1 µs
-  off, 22.3 µs on; 20.8 µs before), about 0.03% of a core at the pad's
+- Scoring costs about 8 µs a frame at this size (`frame_cost`, three
+  contacts: 19.9 µs off, 28.1 µs on; 20.8 µs before any model; the
+  10-unit first try was 22.3 µs), about 0.1% of a core at the pad's
   125 Hz. A GPU dispatch would cost more than the whole network.
 - A contact is scored only in its first 250 ms.
 - With no model, or with it off, the filter is as it was.

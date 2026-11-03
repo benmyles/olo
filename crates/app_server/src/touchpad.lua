@@ -63,7 +63,7 @@ local function features(state, c, time, others)
     local pressure = c.pressure / math.max(a.pressure_max, 1)
     local t = c.track
     if not t then
-        t = { down = time, x = x, y = y, at = time, speed = 0, peak_size = 0, peak_pressure = 0 }
+        t = { down = time, x = x, y = y, at = time, speed = 0, peak_size = 0, peak_pressure = 0, first_size = size }
         c.track = t
     end
     local dt = (time - t.at) / 1e6
@@ -88,6 +88,8 @@ local function features(state, c, time, others)
         t.peak_size,
         t.peak_pressure,
         math.min(others, 4) / 4,
+        small / (size + 0.01),
+        math.min(size / (t.first_size + 0.01), 3) / 3,
     }, age_ms
 end
 
