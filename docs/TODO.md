@@ -168,31 +168,6 @@ of Finished; a new one goes where its priority puts it.
   at ~11% with a call on is the tick (now once per 8 ms) and looks;
   per-display render threads (its own TODO).
 
-- **app_server: its frames wait on the GPU behind clients' work**
-  (found 2026-11-02, the full bench: 33 of 376 steps failed, most of
-  them app_server frames of 9–51 ms as a menu opened or a window
-  resized). Smithay's damage tracker now names a slow step: every one
-  is `frame.finish()`. The headless backend made its GL context at
-  normal priority, the DRM backend at high: made high too (the bench's
-  worst, Passwords' menus, 51 → under 8.3; Viewer's 21 → 15.7).
-  *Found* (same day, the kernel's syscall trace and kprobes): not the
-  GPU. `finish()` sat in `glFenceSync`, waiting (`futex`) on Mesa's
-  lock of its device's buffers, held by the dmabuf check worker through
-  `DRM_IOCTL_ASAHI_VM_BIND`, which spent 7–35 ms in
-  `drm_gpuvm_bo_deferred_cleanup` freeing the window buffers let go of
-  since the last bind (1–4 ms each: pages and IOMMU mappings). *Done*:
-  the worker checks on a device of its own and holds each buffer till
-  the renderer has let it go, freeing it there as no check waits
-  (`dmabuf_check`). Viewer's first menu 33–37 → 0.7–1.0 ms; the full
-  bench 31 → 21 failed of 382, app_server's failures ~18 → 4.
-  *Left*: app_server's own big buffers (a screenshot's 31 MB texture
-  and read-back) are kept by Mesa ~3 s for reuse and then freed in the
-  renderer's next bind (Screenshot's live resize, 18–21 ms; its scroll
-  at 1×): keep them (a few, long-lived) rather than make one per shot.
-  (Clients making a new swapchain for every size of a live resize:
-  done, GPUI draws in part of a bigger one while a resize lasts,
-  `BladeRenderer::update_drawable_size_within`.)
-
 - **app_server: a 16 ms frame during Terminal's live resize at 2×**
   (the bench, 2 runs in 5: "16.2 ms drawing 7.7 Mpx; 1.0 ms on a CPU,
   3 waits"): app_server waits, not computes. Not seen resizing
@@ -819,6 +794,35 @@ of Finished; a new one goes where its priority puts it.
   crates allow) as H.264 and AV1 are.
 
 ## Finished (most recently finished first)
+
+- ~~**app_server: its frames wait on the GPU behind clients' work**~~
+  (found 2026-11-02, the full bench: 33 of 376 steps failed, most of
+  them app_server frames of 9–51 ms as a menu opened or a window
+  resized). Smithay's damage tracker now names a slow step: every one
+  is `frame.finish()`. The headless backend made its GL context at
+  normal priority, the DRM backend at high: made high too (the bench's
+  worst, Passwords' menus, 51 → under 8.3; Viewer's 21 → 15.7).
+  *Found* (same day, the kernel's syscall trace and kprobes): not the
+  GPU. `finish()` sat in `glFenceSync`, waiting (`futex`) on Mesa's
+  lock of its device's buffers, held by the dmabuf check worker through
+  `DRM_IOCTL_ASAHI_VM_BIND`, which spent 7–35 ms in
+  `drm_gpuvm_bo_deferred_cleanup` freeing the window buffers let go of
+  since the last bind (1–4 ms each: pages and IOMMU mappings). *Done*:
+  the worker checks on a device of its own and holds each buffer till
+  the renderer has let it go, freeing it there as no check waits
+  (`dmabuf_check`). Viewer's first menu 33–37 → 0.7–1.0 ms; the full
+  bench 31 → 21 failed of 382, app_server's failures ~18 → 4.
+  *Left*: app_server's own big buffers (a screenshot's 31 MB texture
+  and read-back) are kept by Mesa ~3 s for reuse and then freed in the
+  renderer's next bind (Screenshot's live resize, 18–21 ms; its scroll
+  at 1×): keep them (a few, long-lived) rather than make one per shot.
+  (Clients making a new swapchain for every size of a live resize:
+  done, GPUI draws in part of a bigger one while a resize lasts,
+  `BladeRenderer::update_drawable_size_within`.)
+  *Gone* (2026-11-02): the bench's Screenshot app, live resize and
+  typing at 1× and 2×: app_server's slowest frame 0.29–0.87 ms (from
+  18–21), its own big buffers no longer felt; the full bench since had
+  every app_server frame within budget.
 
 - ~~**Glyphs drawn in a frame are slow the first time**~~ (found
   measuring Telegram, 2026-11-01): a chat opened with 230 glyphs new
