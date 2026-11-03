@@ -100,6 +100,47 @@ impl Tracker {
     }
 }
 
+/// Olo's own model, its weights written by hand from what was measured
+/// on a MacBook pad (docs/TOUCHPAD.md): the starting point the person's
+/// training refines (`train` starts from it), and what the filter runs
+/// until they have trained. Each hidden unit is one sign of a palm:
+/// large now; large at its largest; light for its size near an edge (the
+/// resting right-edge palm the size rule misses); still with others down
+/// (typing); heavy and large; small and moving (a finger: against).
+pub fn baseline() -> PalmModel {
+    // Typical values and spreads, so units see each feature on one scale.
+    let mean = vec![0.12, 0.09, 0.01, 0.08, 0.5, 0.5, 0.22, 0.15, 0.06, 0.14, 0.012, 0.12];
+    let std = vec![0.12, 0.09, 0.02, 0.08, 0.3, 0.3, 0.14, 0.2, 0.1, 0.13, 0.02, 0.22];
+    let mut w1 = vec![0.0f32; HIDDEN * FEATURES];
+    let mut b1 = vec![0.0f32; HIDDEN];
+    let mut set = |j: usize, b: f32, w: &[(usize, f32)]| {
+        b1[j] = b;
+        for &(i, v) in w {
+            w1[j * FEATURES + i] = v;
+        }
+    };
+    // 0: large now (size ≥ ~0.3 of the axis: 1500 units).
+    set(0, -1.2, &[(0, 1.0), (1, 0.4)]);
+    // 1: large at its largest.
+    set(1, -1.2, &[(9, 1.0)]);
+    // 2: light for its size, near an edge, hardly moving.
+    set(2, 0.2, &[(3, -0.8), (6, -0.8), (8, -0.5), (0, 0.4)]);
+    // 3: still, with others down (palms resting while typing).
+    set(3, -0.3, &[(8, -0.7), (11, 0.8), (0, 0.3)]);
+    // 4: heavy and large.
+    set(4, -0.8, &[(2, 0.7), (10, 0.5), (0, 0.5)]);
+    // 5: a finger: small and moving (against).
+    set(5, 0.4, &[(0, -0.8), (8, 0.8)]);
+    // 6: small for its pressure (a fingertip pressing): against.
+    set(6, 0.0, &[(3, 0.9), (0, -0.5)]);
+    // 7–9: spare, so training has room to learn what these don't say.
+    set(7, 0.0, &[(4, 0.1), (5, 0.1)]);
+    set(8, 0.0, &[(7, 0.1), (11, 0.1)]);
+    set(9, 0.0, &[(1, 0.1), (9, 0.1)]);
+    let w2 = vec![1.1, 0.9, 1.0, 0.7, 0.8, -1.0, -0.9, 0.0, 0.0, 0.0];
+    PalmModel { mean, std, w1, b1, w2, b2: -1.0, threshold: 0.0, decide_ms: DECIDE_MS, ..Default::default() }
+}
+
 /// The model's score for a contact's features: above its threshold, a
 /// palm.
 pub fn score(m: &PalmModel, f: &[f32; FEATURES]) -> f32 {
@@ -138,10 +179,11 @@ pub struct Report {
     pub size_rule_fingers_lost: f32,
 }
 
-/// A small, seeded random number generator (the same model from the
-/// same samples).
+/// A small, seeded random number generator (the tests' made-up contacts).
+#[cfg(test)]
 struct Rng(u64);
 
+#[cfg(test)]
 impl Rng {
     fn next(&mut self) -> f32 {
         self.0 ^= self.0 << 13;
@@ -192,15 +234,17 @@ pub fn train(contacts: &[Labelled], palm_size: u32, mut progress: impl FnMut(f32
     let finger_frames = (z.len() as f32 - palm_frames).max(1.0);
     let weight = |y: f32| if y > 0.5 { 0.5 / palm_frames } else { 0.5 / finger_frames };
 
-    // He initialisation, then full-batch Adam on the weighted log loss.
-    let mut rng = Rng(0x9e37_79b9_7f4a_7c15);
-    let mut w1: Vec<f32> = (0..HIDDEN * FEATURES).map(|_| rng.normal() * (2.0 / FEATURES as f32).sqrt()).collect();
-    let mut b1 = vec![0.0f32; HIDDEN];
-    let mut w2: Vec<f32> = (0..HIDDEN).map(|_| rng.normal() * (2.0 / HIDDEN as f32).sqrt()).collect();
-    let mut b2 = 0.0f32;
+    // From Olo's own model (its weights in the baseline's scale, taken
+    // to this data's), refined by full-batch Adam on the weighted log
+    // loss: fine tuning, so a few of the person's samples go a long way.
+    let base = baseline();
+    let mut w1: Vec<f32> = (0..HIDDEN * FEATURES).map(|k| base.w1[k] * std[k % FEATURES] / base.std[k % FEATURES]).collect();
+    let mut b1: Vec<f32> = (0..HIDDEN).map(|j| base.b1[j] + (0..FEATURES).map(|i| base.w1[j * FEATURES + i] * (mean[i] - base.mean[i]) / base.std[i]).sum::<f32>()).collect();
+    let mut w2 = base.w2.clone();
+    let mut b2 = base.b2;
     let params = HIDDEN * FEATURES + HIDDEN + HIDDEN + 1;
     let (mut m, mut v) = (vec![0.0f32; params], vec![0.0f32; params]);
-    let (lr, beta1, beta2, l2) = (0.02f32, 0.9f32, 0.999f32, 1e-4f32);
+    let (lr, beta1, beta2, l2) = (0.01f32, 0.9f32, 0.999f32, 1e-4f32);
     const EPOCHS: usize = 400;
     let mut hidden = [0.0f32; HIDDEN];
     for epoch in 1..=EPOCHS {
@@ -367,6 +411,16 @@ mod tests {
         let fresh = made(99, 200);
         let r = judge(&model, &fresh.iter().collect::<Vec<_>>(), 1600);
         assert!(r.palms_caught > 0.85 && r.fingers_lost < 0.05, "{r:?}");
+    }
+
+    #[test]
+    fn the_baseline_beats_the_size_rule_untrained() {
+        let m = baseline();
+        let contacts = made(3, 300);
+        let r = judge(&m, &contacts.iter().collect::<Vec<_>>(), 1600);
+        assert!(r.palms_caught > r.size_rule_palms_caught && r.palms_caught > 0.85, "{r:?}");
+        assert!(r.fingers_lost < 0.1, "{r:?}");
+        assert!(lua(&m).contains("hidden = 10"));
     }
 
     #[test]

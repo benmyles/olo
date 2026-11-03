@@ -105,13 +105,12 @@ of Finished; a new one goes where its priority puts it.
     Ben, also: "you should also write a baseline model by directly
     writing out the weights that provides a good starting point so that
     the user training is really fine tuning that base model you made".
-    So: `olo_palm::baseline()`, a 12-10-1 network with weights written
-    by hand from docs/TOUCHPAD.md's measurements (size, pressure for
-    size, edge distance, stillness, peak size), checked on the synthetic
-    contacts to beat the size rule; the filter uses it when there's no
-    trained model and `use_palm_model` is on; `train()` starts from its
-    weights (a small learning rate: fine tuning) instead of random ones,
-    and the trainer says it's refining Olo's own.
+    *Done* (2026-11-02): `olo_palm::baseline()`, weights by hand from
+    docs/TOUCHPAD.md's measurements; untrained it beats the size rule on
+    the synthetic contacts (>85% of palms, <10% of fingers lost); the
+    filter runs it with `use_palm_model` on and nothing trained;
+    `train()` fine-tunes from it (lr 0.01). *Left*: the trainer says it's
+    refining Olo's own.
     *Next*: the trainer in Preferences ▸ Touchpad & Mouse, a "Train for
     Your Palm" box on the Touch tab (apps/preferences/src/touchpad.rs,
     `touch()`; the panel is 460×586, `panel.rs`), built from:

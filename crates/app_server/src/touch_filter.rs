@@ -45,9 +45,11 @@ pub fn render(t: &TouchpadSettings) -> Option<String> {
         return None;
     }
     let devices: Vec<String> = DEVICES.iter().map(|d| format!("{d:?}")).collect();
-    // The person's palm model, when it's to be used (Train for Your Palm).
+    // The palm model, when it's to be used: the person's (Train for Your
+    // Palm), else Olo's own baseline.
     let model = match (&f.palm_model, f.use_palm_model) {
         (Some(m), true) if m.w1.len() == olo_palm::HIDDEN * olo_palm::FEATURES => format!(", palm_model = {}", olo_palm::lua(m)),
+        (_, true) => format!(", palm_model = {}", olo_palm::lua(&olo_palm::baseline())),
         _ => String::new(),
     };
     let config = format!(

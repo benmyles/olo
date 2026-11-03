@@ -214,6 +214,20 @@ gpu accelerated (or simd accelerated if it's faster) model").
   size rule misses, with under 5% of fingers lost on contacts it never
   saw (`learns_palms_without_losing_fingers`).
 
+**Olo's own baseline** (`olo_palm::baseline`, Ben: "a baseline model by
+directly writing out the weights … so that the user training is really
+fine tuning"): the same network with weights written by hand from the
+measurements above, each hidden unit one sign of a palm (large now,
+large at its largest, light for its size near an edge, still with others
+down, heavy and large) or of a finger (small and moving, small for its
+pressure), with three spare units for training to fill. Untrained it
+catches over 85% of the synthetic palms (the size rule's light edge
+palms included) and loses under 10% of fingers
+(`the_baseline_beats_the_size_rule_untrained`). The filter runs it when
+the option is on and nothing is trained yet; `train()` starts from its
+weights (taken to the samples' scale) with a small learning rate, so a
+few of the person's samples refine it rather than start over.
+
 **Where it runs:** in `touchpad.lua` itself, since the filter has to hide
 a palm before libinput sees it, in the same features and arithmetic
 (`palm_model_scores_as_rust_does`: Lua and Rust agree to 1e-4).
