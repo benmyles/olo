@@ -26,6 +26,14 @@ of Finished; a new one goes where its priority puts it.
     Passwords (and so sees only what's shared with the screen): getting
     a username, password or one-time code onto the screen's clipboard,
     then pasting it where it goes.
+  - Ben, the same day: "the agents also still seem to want to open the
+    system chrome not the olo chrome variant. make sure we're super
+    clear about using the olo chrome and not any other chrome that may
+    be installed". So the skill names Olo's Chrome (`olo-chrome`, the
+    one Deskbar starts) as the browser to use, says plainly never to
+    start another Chrome or Chromium installed on the machine (and
+    why: no Olo integration, no shared passwords, not the screen's
+    profile), and shows the exact way to start it on a screen.
 
 - **Focus mode: a link opened in a browser on the same desktop doesn't
   bring its window forward** (Ben, 2026-11-03, a bug): "when in focus
