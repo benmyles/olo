@@ -83,6 +83,10 @@ of Finished; a new one goes where its priority puts it.
     - A test step: the pad's contacts drawn as fingers or palms, as
       the model and the size rule each call them.
     - The option to use it, and to train again.
+  - Ben: "for any training you need to use rust (you can use libtorch
+    through c/c++ if there's no better rust native solution) don't add
+    python". Training, features and inference are Rust (a Rust-native
+    crate, or our own: the model is tiny); no Python anywhere.
   - (The manual captures below are the fallback, and for measuring.)
   - *Needs Ben* (superseded by the trainer): labelled captures, recorded read-only with no grab
     (`touch_filter`'s `replay_capture` reads them,
