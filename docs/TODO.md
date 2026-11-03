@@ -311,9 +311,8 @@ of Finished; a new one goes where its priority puts it.
   everywhere"). A pass over the GPUI apps, each pattern moved into
   olo-ui (documented in HACKING) and every app switched to it: a
   window's content scrolling when it doesn't fit (in `Frame`, so no
-  panel needs its own); single-instance
-  launches; list + search + filter bar wiring; upgrade state saved and
-  restored. Done so far (2026-11-01):
+  panel needs its own: only Preferences does it now, sized by each
+  panel); list + search + filter bar wiring. Done so far (2026-11-01):
   popups closing in any order, quitting taking windows down, window
   parts (`part::Part`), secrets on the clipboard (`copy::secret`);
   2026-11-03, an app's own files read and written whole (`store`:
@@ -325,7 +324,12 @@ of Finished; a new one goes where its priority puts it.
   apps); closing with changes not saved asked the same way everywhere
   (`widgets::ask_to_save`: StyledEdit, Viewer); windows opening at
   the size they were left at (`WindowOptions::keep_size`, eleven
-  apps; Passwords had its own).
+  apps; Passwords had its own). Found already the kit's everywhere
+  (2026-11-03): single-instance launches (every windowed app forwards a
+  second launch through `instance`; the rest are services, single by
+  their bus name) and upgrade state (`on_upgrade`, `restored_state` in
+  every app with windows to bring back; the lock screen, the polkit and
+  portal dialogs, the screen saver and the supervisor have none).
 
 - **Passwords for Agent Screens** (Ben, 2026-10-31): "in the Agent
   Screens app i can choose items from passwords that i want to make
