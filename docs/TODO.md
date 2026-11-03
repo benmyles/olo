@@ -693,7 +693,11 @@ of Finished; a new one goes where its priority puts it.
 Tabled (Ben, 2026-11-02): "performance seems pretty solid now in olo so
 you can table the rest of the performance related items under a "maybe
 one day" section in the todos and skip them". Not worked on unless he
-asks again.
+asks again. But (Ben, same day): "still address any performance items
+that are real and cause any noticeable impact to the user but we don't
+have to keep optimizing just for the sake of optimizing": a slowness a
+person notices (a stutter, a lag, a hang) is still fixed at once, in
+Open; making fast things faster waits here.
 
 - **Every frame on time, every display** (Ben, 2026-11-01: "dropping
   frames is never acceptable: olo must be buttery smooth on all
