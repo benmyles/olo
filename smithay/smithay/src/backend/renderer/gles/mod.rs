@@ -552,7 +552,7 @@ impl GlesRenderer {
         };
         if uniforms.is_some() && self.color_program.is_none() {
             let src = shaders::FRAGMENT_SHADER.replace("//_DEFINES_", "#define COLOR\n//_DEFINES_");
-            let sender = self.tex_program.0.destruction_callback_sender.clone();
+            let sender = self.gles_cleanup().sender.clone();
             self.color_program =
                 Some(unsafe { texture_program(&self.gl, &src, &color::uniform_names(), sender)? });
         }
