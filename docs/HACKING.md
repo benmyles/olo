@@ -5112,7 +5112,17 @@ trainer's kept runs; crates/palm, `olo-palm`; docs/TOUCHPAD.md "Palms
 told apart by a model"). Its live samples come
 from app_server's `contacts.rs`, which reads the pad's slots with
 `EVIOCGMTSLOTS` on a copy of libinput's descriptor while anyone
-subscribes to `EventKind::TouchContacts` (only by name).
+subscribes to `EventKind::TouchContacts` (only by name), for every
+touchpad libinput opens (`INPUT_PROP_POINTER` without
+`INPUT_PROP_DIRECT`, with contacts' places), not only those the filter
+filters. A pad that reports no contact size (a ThinkPad P1 Gen 9's
+Goodix GXTP5420: position, pressure and the firmware's tool type)
+gives each contact's pressure as its size (`PadAxes::size_from_pressure`:
+on a capacitive pad it's mostly the contact's area), and each contact
+says what the firmware takes it for (`TouchContact::tool`: 2, a palm).
+The filter itself is still Apple's pads' (its touch and click
+thresholds are theirs); on others libinput's own palm detection, which
+follows the firmware's palm flag, stands.
 `SyntheticEvent::Contacts` stands in for the pad headless. Preferences'
 "Train for Your Palm" (apps/preferences/src/palm_trainer.rs) personalizes
 the model: see docs/TOUCHPAD.md "The trainer".

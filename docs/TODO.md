@@ -131,10 +131,13 @@ of Finished; a new one goes where its priority puts it.
     MTP"), and `contacts::Watch::new` needs ABS_MT_TOUCH_MAJOR; the
     Goodix GXTP5420 reports position, pressure, tracking id and
     ABS_MT_TOOL_TYPE (its firmware marks palms, MT_TOOL_PALM) but no
-    contact size, so the trainer never hears a touch. To do: watch every
-    touchpad libinput opens, contacts without a size (pressure and the
-    tool type instead), and the palm model and the trainer for such
-    pads (the firmware's palm flag as a feature).
+    contact size, so the trainer never hears a touch. Done: every
+    touchpad libinput opens is watched, a size-less pad's contacts sized
+    by their pressure, with the firmware's tool type (palm) on each; the
+    trainer hears them. Left, on the pad by hand: the touch filter
+    (`touchpad.lua`, Apple's thresholds, needs a size axis) on such a
+    pad, so a model trained there is used there, the firmware's palm
+    flag beside it.
   - Left, not started: the TrackPoint's settings, the IR camera (face sign-in),
     the proximity sensor, battery charge thresholds, Thunderbolt 5.
 

@@ -190,6 +190,10 @@ pub struct TouchContact {
     /// its approaching size (`ABS_MT_WIDTH_MAJOR`, 0 likewise).
     pub orientation: i32,
     pub width: i32,
+    /// What the pad's firmware says it is (`ABS_MT_TOOL_TYPE`): 0 a
+    /// finger, 2 a palm (a Goodix pad marks palms itself), 1 a pen.
+    #[serde(default)]
+    pub tool: i32,
 }
 
 /// A touchpad's axes, for drawing its contacts and making features.
@@ -209,13 +213,29 @@ pub struct PadAxes {
     pub pressure_max: i32,
     /// The largest orientation it reports (0: none).
     pub orientation_max: i32,
+    /// It reports no contact size (a Goodix pad's): each contact's size
+    /// is its pressure, which on a capacitive pad is mostly its area
+    /// (`size_max` is then the pressure's).
+    pub size_from_pressure: bool,
 }
 
 impl PadAxes {
     /// A MacBook pad's (Apple MTP, a 16" M2 Max), for tests and headless
     /// sessions.
     pub fn macbook() -> PadAxes {
-        PadAxes { name: "Apple MTP multi-touch".into(), x_min: -7700, x_max: 7700, y_min: -200, y_max: 9200, x_res: 98, y_res: 98, size_max: 5000, pressure_max: 6000, orientation_max: 16384 }
+        PadAxes {
+            name: "Apple MTP multi-touch".into(),
+            x_min: -7700,
+            x_max: 7700,
+            y_min: -200,
+            y_max: 9200,
+            x_res: 98,
+            y_res: 98,
+            size_max: 5000,
+            pressure_max: 6000,
+            orientation_max: 16384,
+            size_from_pressure: false,
+        }
     }
 }
 

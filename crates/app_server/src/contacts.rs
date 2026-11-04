@@ -1,7 +1,10 @@
 //! A touchpad's contacts as the pad reports them (each one's place, size
 //! and pressure), for whoever asks (`EventKind::TouchContacts`:
 //! Preferences' palm trainer, which shows them live and learns from
-//! them).
+//! them). Every touchpad libinput opens, not only those the touch filter
+//! filters: a pad that reports no contact size (a ThinkPad's Goodix)
+//! gives its pressure as the size, and what its firmware says each
+//! contact is (a palm, it may say).
 //!
 //! libinput doesn't give them out (only pointer motion and gestures), and
 //! a resting palm, which the touch filter hides, gives nothing at all.
@@ -52,7 +55,7 @@ impl smithay::reexports::input::LibinputInterface for Interface {
     fn open_restricted(&mut self, path: &Path, flags: i32) -> Result<OwnedFd, i32> {
         use rustix::fs::OFlags;
         let fd = self.session.open(path, OFlags::from_bits_truncate(flags as u32)).map_err(|e| e.as_errno().unwrap_or(1))?;
-        if name(&fd).is_some_and(|n| crate::touch_filter::DEVICES.iter().any(|d| n.contains(d)))
+        if (name(&fd).is_some_and(|n| crate::touch_filter::DEVICES.iter().any(|d| n.contains(d))) || is_touchpad(&fd))
             && let Ok(copy) = fd.try_clone()
         {
             self.open.insert(fd.as_raw_fd(), path.to_owned());
@@ -76,6 +79,7 @@ const ABS_MT_WIDTH_MAJOR: u32 = 0x32;
 const ABS_MT_ORIENTATION: u32 = 0x34;
 const ABS_MT_POSITION_X: u32 = 0x35;
 const ABS_MT_POSITION_Y: u32 = 0x36;
+const ABS_MT_TOOL_TYPE: u32 = 0x37;
 const ABS_MT_TRACKING_ID: u32 = 0x39;
 const ABS_MT_PRESSURE: u32 = 0x3a;
 
@@ -90,6 +94,17 @@ fn name(fd: &OwnedFd) -> Option<String> {
     // SAFETY: the kernel writes at most `buf.len()` bytes.
     let n = unsafe { libc::ioctl(fd.as_raw_fd(), eviocg(0x06, buf.len()), buf.as_mut_ptr()) };
     (n > 0).then(|| String::from_utf8_lossy(&buf[..(n as usize).saturating_sub(1)]).into_owned())
+}
+
+/// Whether the device is a touchpad: a pointer, not on a screen
+/// (`INPUT_PROP_POINTER`, not `INPUT_PROP_DIRECT`: `EVIOCGPROP`), with
+/// contacts' places.
+fn is_touchpad(fd: &OwnedFd) -> bool {
+    let mut props = [0u8; 8];
+    // SAFETY: the kernel writes at most `props.len()` bytes.
+    let n = unsafe { libc::ioctl(fd.as_raw_fd(), eviocg(0x09, props.len()), props.as_mut_ptr()) };
+    let (pointer, direct) = (props[0] & 1 != 0, props[0] & 2 != 0);
+    n > 0 && pointer && !direct && abs(fd, ABS_MT_POSITION_X).is_some()
 }
 
 /// An axis's minimum, maximum and resolution (`EVIOCGABS`).
@@ -112,11 +127,16 @@ impl Watch {
     pub fn new(fd: &OwnedFd) -> Option<Watch> {
         let (x_min, x_max, x_res) = abs(fd, ABS_MT_POSITION_X)?;
         let (y_min, y_max, y_res) = abs(fd, ABS_MT_POSITION_Y)?;
-        let (_, size_max, _) = abs(fd, ABS_MT_TOUCH_MAJOR)?;
         let (_, pressure_max, _) = abs(fd, ABS_MT_PRESSURE).unwrap_or((0, 0, 0));
+        // (No size: its pressure is, mostly its area on a capacitive pad.)
+        let (size_max, size_from_pressure) = match abs(fd, ABS_MT_TOUCH_MAJOR) {
+            Some((_, max, _)) => (max, false),
+            None if pressure_max > 0 => (pressure_max, true),
+            None => return None,
+        };
         let (_, slot_max, _) = abs(fd, ABS_MT_SLOT)?;
         let orientation_max = abs(fd, ABS_MT_ORIENTATION).map_or(0, |(_, max, _)| max);
-        let axes = PadAxes { name: name(fd).unwrap_or_default(), x_min, x_max, y_min, y_max, x_res, y_res, size_max, pressure_max, orientation_max };
+        let axes = PadAxes { name: name(fd).unwrap_or_default(), x_min, x_max, y_min, y_max, x_res, y_res, size_max, pressure_max, orientation_max, size_from_pressure };
         Some(Watch { axes, slots: (slot_max + 1).clamp(1, 32) as usize, last: None })
     }
 
@@ -145,13 +165,24 @@ impl Watch {
         if ids.iter().all(|id| *id < 0) {
             return Some(Vec::new());
         }
-        let [x, y, major, minor, pressure, orientation, width] =
-            [ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_TOUCH_MAJOR, ABS_MT_TOUCH_MINOR, ABS_MT_PRESSURE, ABS_MT_ORIENTATION, ABS_MT_WIDTH_MAJOR]
+        let [x, y, major, minor, pressure, orientation, width, tool] =
+            [ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_TOUCH_MAJOR, ABS_MT_TOUCH_MINOR, ABS_MT_PRESSURE, ABS_MT_ORIENTATION, ABS_MT_WIDTH_MAJOR, ABS_MT_TOOL_TYPE]
                 .map(|c| self.slots(fd, c).unwrap_or_else(|| vec![0; self.slots]));
+        let sized = !self.axes.size_from_pressure;
         Some(
             (0..self.slots)
                 .filter(|&i| ids[i] >= 0)
-                .map(|i| TouchContact { id: ids[i], x: x[i], y: y[i], major: major[i], minor: minor[i], pressure: pressure[i], orientation: orientation[i], width: width[i] })
+                .map(|i| TouchContact {
+                    id: ids[i],
+                    x: x[i],
+                    y: y[i],
+                    major: if sized { major[i] } else { pressure[i] },
+                    minor: if sized { minor[i] } else { pressure[i] },
+                    pressure: pressure[i],
+                    orientation: orientation[i],
+                    width: width[i],
+                    tool: tool[i],
+                })
                 .collect(),
         )
     }
