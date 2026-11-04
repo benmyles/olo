@@ -642,6 +642,12 @@ pub fn stay_resident(cx: &mut App) {
 /// Runs the app: its theme, its socket for agents, and `build`, which
 /// opens its windows. It ends when its last window closes.
 pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
+    // Olo's apps render with the GPU the compositor's primary is (the one
+    // the computer started on, which GPUI takes first): a device chosen
+    // for GPUI (`ZED_DEVICE_ID`), as briefly Olo did and its programs'
+    // children inherit, would have each frame copied between GPUs.
+    // SAFETY: the app's first act, before any thread is started.
+    unsafe { std::env::remove_var("ZED_DEVICE_ID") };
     // The state an upgrade handed over, its file gone whether or not the
     // app asks for it.
     olo_kit_base::restore::claim();
