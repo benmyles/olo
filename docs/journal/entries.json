@@ -3022,5 +3022,11 @@
   "title": "Command palette: every text key, and Ctrl for files",
   "caption": "Text editing's keys are commands of their own (Move to the end of the line, \u2318\u2192), done in the window the palette opened over; files and folders come with a tap of Ctrl, as the key hint at the field's right says.",
   "image": "2026-11-03/222010-command-palette-every-text-key-and-ctrl-for-file.png"
+ },
+ {
+  "time": "2026-11-03T22:46:20",
+  "title": "Terminal: a slim scroll bar, there when wanted",
+  "caption": "The kit's SlimScrollBar over the scrollback's right edge: shown when the pointer comes near or the view scrolls, wider under the pointer, fading a moment after; its thumb drags and its track pages.",
+  "image": "2026-11-03/224620-terminal-a-slim-scroll-bar-there-when-wanted.png"
  }
 ]

@@ -349,21 +349,6 @@ of Finished; a new one goes where its priority puts it.
   theme of every Olo look, light and dark, at 1× and 2×, as shots in
   the journal.
 
-- **Terminal: a scroll bar, slim, there when wanted** (Ben,
-  2026-11-03): "show an actual scrollbar in terminal but introduce a new
-  reusable scrollbar type that is like a slim/low-profile scrollbar and
-  that only appears when the pointer is near it or the user has started
-  scrolling already". So: a kit scroll bar of its own kind (thin, no
-  arrows, drawn over the content's edge), hidden until the pointer
-  comes near that edge or a scroll starts, fading out a moment after;
-  draggable, clickable, agent-readable as a ScrollBar; Terminal's
-  scrollback shown with it; documented in HACKING with where to use it
-  rather than the BeOS bar. Ben, the same day: "the terminal scrollbars
-  should actually be scrollable like i should be able to click on the
-  widget in it and drag it up and down to scroll": its thumb held and
-  dragged scrolls the scrollback with the pointer (a click in its track
-  pages there), in every pane of a split tab.
-
 - **Terminal: a tiny model of its own completes brush's commands**
   (Ben, 2026-11-03): "in prefs -> terminal have an option for using a
   tiny ai model for brush shell command autocompletion that is
@@ -888,6 +873,33 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Terminal: a scroll bar, slim, there when wanted**~~ (Ben,
+  2026-11-03): "show an actual scrollbar in terminal but introduce a new
+  reusable scrollbar type that is like a slim/low-profile scrollbar and
+  that only appears when the pointer is near it or the user has started
+  scrolling already". So: a kit scroll bar of its own kind (thin, no
+  arrows, drawn over the content's edge), hidden until the pointer
+  comes near that edge or a scroll starts, fading out a moment after;
+  draggable, clickable, agent-readable as a ScrollBar; Terminal's
+  scrollback shown with it; documented in HACKING with where to use it
+  rather than the BeOS bar. Ben, the same day: "the terminal scrollbars
+  should actually be scrollable like i should be able to click on the
+  widget in it and drag it up and down to scroll": its thumb held and
+  dragged scrolls the scrollback with the pointer (a click in its track
+  pages there), in every pane of a split tab. *Done* (2026-11-03): the kit's `SlimScrollBar` (any
+  unit: top, shown, total, and `on_scroll`): a thin rounded thumb over
+  the right edge, shown when the pointer comes within 28 points of it or
+  the view scrolls (not when output is added, nor on a resize), wider
+  with a faint track under the pointer, fading 0.9 s after; the thumb
+  drags the scrollback with the pointer, a click in its track pages,
+  hidden it takes no clicks; agents read a `ScrollBar`. Every pane of a
+  tiled window has its own. Measured on release (scroll-check, A/B with
+  the build before): drags and wheel notches the same (no hitches,
+  slowest draw 0.4–0.6 ms either way); a flick 16 frames more, the bar's
+  fade after the glide; idle, faded or with the pointer resting near it,
+  0% of a core, no wakeups, no frames. Reviewed clean with it showing at
+  1, 1.25, 1.5, 1.75 and 2×, light and dark.
 
 - ~~**The command palette: typing "n" first closes it; every shortcut in
   it; files only on Ctrl**~~ (Ben, 2026-11-03): "when i'm in the command

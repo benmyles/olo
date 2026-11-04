@@ -1527,6 +1527,20 @@ event reaches it.
   view, measured) with the bar hidden too, so the bar comes as soon as
   it overflows (not scrolling, a hidden bar's content ran past the view
   over what's below and never showed the bar).
+- `widgets::SlimScrollBar::new(id, top, shown, total).on_scroll(|to,
+  window, cx|)`: the slim one, there when wanted, for content a BeOS
+  bar's column would cost (Terminal's scrollback; use the BeOS bar
+  elsewhere). Laid over the box it's given: a thin rounded thumb at its
+  right edge (`THUMB` 6, `THUMB_WIDE` 8 under the pointer, with a faint
+  track), no arrows. It shows when the pointer comes within `SLIM_NEAR`
+  (28) of the edge or the view scrolls (moved against both ends: not
+  output added at the end it keeps to, nor a resize), stays while the
+  pointer is near or the thumb held, and fades `LINGER` (0.9 s) after,
+  over `FADE` (0.22 s): one timer, then the fade's frames, nothing while
+  it rests. Hidden it takes no clicks. The thumb drags the view with
+  the pointer, a click in the track pages (0.9 of what shows) towards
+  it; `on_scroll` hears the top asked for, in the units it was given
+  (lines, points). Agents read a `ScrollBar`, its value 0 to 1.
 - `style::pill`/`pill_on_baseline`/`pill_width`/`pill_height` (a count
   or tag in a pill, its text on a label's baseline beside it),
   `baseline_at` and `label_on_baseline` (things of different sizes on
@@ -6322,7 +6336,11 @@ back. alacritty's display offset is its whole rows; the rest, and the
 stretch, slide the rows drawn down or up (on device pixels), the row
 above drawn too when part of it shows (`Pane::shift`, which the mouse's
 cells allow for). Output arriving, or typing (which scrolls to the end),
-moves the display offset itself: the position follows it. It says where
+moves the display offset itself: the position follows it. Each pane
+wears the kit's `SlimScrollBar` over its screen's right edge (its top
+the history less the display offset, in lines; dragged or paged, the
+offset is set and the smooth position follows, `Smooth::sync`), in place
+of the thumb it drew while scrolled back. It says where
 it is each frame (`Window::note_scroll`), so the bench measures it
 (scroll-check: steps as far as the fingers, an even glide). A program
 that takes the mouse gets it as wheel reports, and one on the alternate

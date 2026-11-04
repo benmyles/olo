@@ -738,18 +738,8 @@ pub fn paint(window: &mut Window, cx: &mut App, rect: Bounds<Pixels>, p: Paint, 
             }
         }
     }
-    // Scrollback position, shown only while scrolled back.
-    if offset > 0 {
-        let history = term.history_size().max(1) as f32;
-        let (top, height) = (f32::from(rect.top()) + PAD.1, f32::from(rect.size.height) - 2.0 * PAD.1);
-        let visible = rows as f32 / (history + rows as f32);
-        let h = (height * visible).max(16.0);
-        let t = 1.0 - offset as f32 / history;
-        let y = top + (height - h) * t;
-        let fg = scheme.resolve(Color::Named(NamedColor::Foreground), colors);
-        let thumb = Bounds { origin: point(rect.right() - px(6.0), px(y)), size: size(px(4.0), px(h)) };
-        window.paint_quad(gpui::fill(thumb, hsla(mix(fg, bg_default, 0.35))).corner_radii(px(2.0)));
-    }
+    // (Where it is in the scrollback: the kit's slim scroll bar over the
+    // screen, ui.rs.)
 }
 
 /// Characters in one style on adjacent cells, laid out together.

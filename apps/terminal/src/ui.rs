@@ -908,6 +908,29 @@ impl Terminal {
             .absolute()
             .inset_0();
             root = root.child(el);
+            // Its scrollback: a slim bar over the screen's right edge, there
+            // when the pointer comes near or it scrolls; its thumb drags the
+            // view, a click in its track pages (Ben, 2026-11-03).
+            let (top, shown, total) = {
+                use alacritty_terminal::grid::Dimensions as _;
+                let term = tab.session.term.lock();
+                let history = term.grid().history_size() as f32;
+                let rows = term.screen_lines() as f32;
+                (history - term.grid().display_offset() as f32, rows, history + rows)
+            };
+            let term = tab.session.term.clone();
+            let bar = widgets::SlimScrollBar::new(("terminal-scroll", shell as usize), top, shown, total).on_scroll(move |to, window, _| {
+                use alacritty_terminal::grid::{Dimensions as _, Scroll};
+                let mut t = term.lock();
+                let history = t.grid().history_size();
+                let (want, now) = (history.saturating_sub(to.round().max(0.0) as usize), t.grid().display_offset());
+                if want != now {
+                    t.scroll_display(Scroll::Delta(want as i32 - now as i32));
+                    drop(t);
+                    window.refresh();
+                }
+            });
+            root = root.child(div().absolute().left(screen.left()).top(screen.top()).w(screen.size.width).h(screen.size.height).child(bar));
         }
         // Between rows, the divider and the head of the row under it drag
         // the rows' heights (the pointer shows it on the divider); clicked,

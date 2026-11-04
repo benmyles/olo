@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-03
 
+### Terminal: a slim scroll bar, there when wanted
+
+*22:46* — The kit's SlimScrollBar over the scrollback's right edge: shown when the pointer comes near or the view scrolls, wider under the pointer, fading a moment after; its thumb drags and its track pages.
+
+![Terminal: a slim scroll bar, there when wanted](2026-11-03/224620-terminal-a-slim-scroll-bar-there-when-wanted.png)
+
 ### Command palette: every text key, and Ctrl for files
 
 *22:20* — Text editing's keys are commands of their own (Move to the end of the line, ⌘→), done in the window the palette opened over; files and folders come with a tap of Ctrl, as the key hint at the field's right says.
