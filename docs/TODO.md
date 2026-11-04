@@ -7,16 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Columns moved by dragging, remembered per table** (Ben, 2026-11-04:
-  "columns in a table like in the activity monitor should be orderable by
-  dragging their positions (and this should be at the ui kit level) and
-  the order should be remembered in that app for the table"). In the
-  kit's ColumnListView: drag a column's heading sideways to move it (the
-  others make room as it goes, as BColumnListView's did), the order kept
-  by the app under the table's id (with its widths), sorting and cells by
-  the column's own index whatever its place; agents can read and set the
-  order too.
-
 - **Voice processing's input model: SIMD throughout, lowest latency**
   (Ben, 2026-11-04: "ensure that the voice processing model for input is
   fully SIMD accelerated and ultra-optimized for low latency (not gpu)").
@@ -974,6 +964,17 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Columns moved by dragging, remembered per table**~~ (Ben,
+  2026-11-04: "columns in a table like in the activity monitor should be
+  orderable by dragging their positions (and this should be at the ui
+  kit level) and the order should be remembered in that app for the
+  table"). The kit's ColumnListView: a title dragged sideways moves its
+  column, the others making room as it goes; cells, sorting and widths
+  by each column's own index; the order and widths kept for the app by
+  the table's id and the columns' titles (Activity's GPU columns, added
+  after its first sample, take their places). Tried in Activity: User
+  moved after Memory and Name narrowed, both back after a restart.
 
 - ~~**Preferences ▸ GPUs: each GPU and every knob it has**~~ (Ben,
   2026-11-04: "if there are any knobs etc. that can be tweaked for the

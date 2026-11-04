@@ -1564,7 +1564,16 @@ event reaches it.
   anchor, cursor and sort). Only the rows in view are built
   (`uniform_list`); `cell(&mut Cell, window, cx)` draws each
   (`cell.text(..)`/`text_with(..)`, cut short with "…"). A header
-  click sorts (`on_sort`), the dividers drag; a click, ⇧ and ⌘ clicks,
+  click sorts (`on_sort`), the dividers drag; a title dragged sideways
+  moves its column (past a neighbour once the pointer passes its
+  middle, so the others make room as it goes, as BColumnListView's
+  did), and the cells, the sort and `cell.column` keep each column's own
+  index wherever it shows. The order and widths are kept for the app by
+  the list's `id` and the columns' titles (`state/olo/tables/<app>.json`,
+  written with the windows' sizes: a column added since goes where it
+  was given), so the person's arrangement comes back; an agent reads
+  the `ColumnHeader`s left to right and moves one by dragging it, an app
+  with `ListModel::column_order`/`set_column_order`. A click, ⇧ and ⌘ clicks,
   a band, the arrows, Page Up and Down, Home and End (⇧ grows), ⌘A,
   and typing a name (`type_select`) select (`on_select`); a press on a
   selected row keeps the selection until the release (for dragging);

@@ -1,6 +1,9 @@
 //! BColumnListView: a sunken list
 //! with a header of columns (a click sorts, again reverses; the dividers
-//! drag to resize), only the rows in view built (`uniform_list`), the
+//! drag to resize; a title dragged sideways moves its column, the others
+//! making room as it goes, as BColumnListView's did; the order and widths
+//! kept for the app by the list's id), only the rows in view built
+//! (`uniform_list`), the
 //! selection every file manager has ([`ListState`]: a click, ⇧ for a
 //! range, ⌘ to add or take away, a band dragged over rows, the arrows,
 //! Page Up and Down, Home and End, ⇧ with them to grow it, ⌘A all,
@@ -84,8 +87,10 @@ enum Drag {
     /// pointer is; `defer`: a press on a selected row leaves the
     /// selection (to drag it) and takes the row alone at the release.
     Press { from: Point<Pixels>, at: Point<Pixels>, row: Option<usize>, base: SelectionBand, band: bool, now: Point<Pixels>, defer: bool },
-    /// A column's title held: it sorts at the release over it.
-    Title(usize),
+    /// A column's title held (by its own index, wherever it shows): it
+    /// sorts at the release over it, or, dragged sideways (`moved`), it
+    /// moves the column.
+    Title { column: usize, x: Pixels, moved: bool },
     /// A divider dragged: which column's, from where, at what width.
     Divider { column: usize, x: Pixels, width: f32 },
 }
@@ -95,8 +100,14 @@ pub struct ListModel {
     pub state: ListState,
     scroll: UniformListScrollHandle,
     focus: FocusHandle,
-    /// The widths the person dragged the columns to.
-    widths: Vec<f32>,
+    /// The widths the person dragged columns to, by their titles (a
+    /// table whose columns come and go, as Activity's GPUs', keeps them).
+    widths: std::collections::HashMap<SharedString, f32>,
+    /// The columns left to right, by their titles, as the person moved
+    /// them (empty: as given; a column not in it where it was given).
+    order: Vec<SharedString>,
+    /// The order and widths kept for the list's id were read.
+    arranged: bool,
     typing: TypeSelect,
     drag: Option<Drag>,
     /// Where the rows showed, last drawn (without the header and bars).
@@ -112,7 +123,9 @@ impl ListModel {
             state: ListState { multiple, ..Default::default() },
             scroll: UniformListScrollHandle::new(),
             focus: cx.focus_handle().tab_stop(true),
-            widths: Vec::new(),
+            widths: Default::default(),
+            order: Vec::new(),
+            arranged: false,
             typing: TypeSelect::default(),
             drag: None,
             body: Bounds::default(),
@@ -132,6 +145,19 @@ impl ListModel {
     pub fn at_end(&self) -> bool {
         let h = self.scroll.0.borrow().base_handle.clone();
         f32::from(h.offset().y) <= -f32::from(h.max_offset().height) + 1.0
+    }
+
+    /// `columns` left to right, by their own indices: as the person
+    /// moved them, else as given. What an agent reads as the order of
+    /// the `ColumnHeader`s.
+    pub fn column_order(&self, columns: &[Column]) -> Vec<usize> {
+        order(self, columns)
+    }
+
+    /// Show `columns` in `order` (their own indices, left to right): an
+    /// app's arrangement.
+    pub fn set_column_order(&mut self, columns: &[Column], order: &[usize]) {
+        self.order = order.iter().filter_map(|&c| columns.get(c)).map(|c| c.title.clone()).collect();
     }
 
     /// Gives the list the keyboard.
@@ -414,9 +440,73 @@ impl ColumnListView {
     }
 }
 
-/// The columns' widths: as dragged, else as given.
+/// The columns' widths, by their own indices: as dragged, else as given.
 fn widths(model: &ListModel, columns: &[Column]) -> Vec<f32> {
-    if model.widths.len() == columns.len() { model.widths.clone() } else { columns.iter().map(|c| c.width).collect() }
+    columns.iter().map(|c| model.widths.get(&c.title).copied().unwrap_or(c.width)).collect()
+}
+
+/// The columns left to right, by their own indices: as moved, those
+/// not moved (new since) where they were given.
+fn order(model: &ListModel, columns: &[Column]) -> Vec<usize> {
+    if model.order.is_empty() {
+        return (0..columns.len()).collect();
+    }
+    let mut used = vec![false; columns.len()];
+    let mut out: Vec<usize> = model
+        .order
+        .iter()
+        .filter_map(|t| {
+            let c = columns.iter().enumerate().position(|(i, c)| !used[i] && &c.title == t)?;
+            used[c] = true;
+            Some(c)
+        })
+        .collect();
+    // (A column new since goes after the one given before it.)
+    for c in 0..columns.len() {
+        if !used[c] {
+            let at = if c == 0 { 0 } else { out.iter().position(|&o| o == c - 1).map_or(out.len(), |p| p + 1) };
+            out.insert(at, c);
+            used[c] = true;
+        }
+    }
+    out
+}
+
+/// The columns' widths left to right.
+fn shown_widths(model: &ListModel, columns: &[Column]) -> Vec<f32> {
+    let w = widths(model, columns);
+    order(model, columns).into_iter().map(|c| w[c]).collect()
+}
+
+/// The order and widths kept for list `id` (by the columns' titles), put
+/// in `model` as it's first drawn.
+fn arrange(model: &mut ListModel, id: &str, columns: &[Column], cx: &mut App) {
+    model.arranged = true;
+    let Some(kept) = crate::kept::table(cx, id) else { return };
+    model.order = kept.order.into_iter().map(SharedString::from).collect();
+    model.widths = kept
+        .widths
+        .into_iter()
+        .map(|(t, w)| {
+            let least = columns.iter().find(|c| c.title.as_ref() == t).map_or(0.0, |c| c.min_width);
+            (SharedString::from(t), w.max(least))
+        })
+        .collect();
+}
+
+/// List `id`'s columns as arranged now, kept (by their titles).
+fn note_arranged(model: &ListModel, id: &str, columns: &[Column], cx: &mut App) {
+    // (Titles kept but not shown now, as a GPU's column without the GPU,
+    // keep their places: after the column before them.)
+    let mut order: Vec<String> = order(model, columns).into_iter().map(|c| columns[c].title.to_string()).collect();
+    for (i, t) in model.order.iter().enumerate() {
+        if !order.iter().any(|o| o == t.as_ref()) {
+            let at = i.checked_sub(1).and_then(|p| order.iter().position(|o| o == model.order[p].as_ref())).map_or(order.len(), |p| p + 1);
+            order.insert(at, t.to_string());
+        }
+    }
+    let widths = model.widths.iter().map(|(t, w)| (t.to_string(), *w)).collect();
+    crate::kept::note_table(cx, id, crate::kept::TableLayout { order, widths });
 }
 
 /// Each column's left and right, from `left`: the last fills to `right`
@@ -465,6 +555,11 @@ fn band_step(b: Bounds<Pixels>, y: Pixels, row_h: f32) -> f32 {
 impl RenderOnce for ColumnListView {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let model = self.model.clone();
+        // (The person's arrangement of its columns, as they left it.)
+        if self.header && !model.read(cx).arranged {
+            let (id, columns) = (self.id.clone(), self.columns.clone());
+            model.update(cx, |m, cx| arrange(m, &id, &columns, cx));
+        }
         let (focus, scroll, sideways) = {
             let m = model.read(cx);
             (m.focus.clone(), m.scroll.clone(), m.sideways)
@@ -472,7 +567,7 @@ impl RenderOnce for ColumnListView {
         let base_handle = scroll.0.borrow().base_handle.clone();
         let (rows, row_h, columns, handlers) = (self.rows, self.row_height, self.columns.clone(), self.handlers.clone());
         let total: f32 = widths(model.read(cx), &columns).iter().sum();
-        let first_width = widths(model.read(cx), &columns).first().copied().unwrap_or(0.0);
+        let first_width = shown_widths(model.read(cx), &columns).first().copied().unwrap_or(0.0);
         // Inside the sunken frame's two lines, on device pixels; the
         // header's bottom and the bars' edges too (layout rounds a box's
         // offset from its parent but its size from where it ends, so a
@@ -495,14 +590,15 @@ impl RenderOnce for ColumnListView {
         };
         let list = uniform_list(SharedString::from(format!("{}-rows", self.id)), rows, move |range, window, cx| {
             let state = list_model.read(cx);
-            let widths = widths(state, &list_columns);
+            let widths = shown_widths(state, &list_columns);
+            let order = order(state, &list_columns);
             let focused = state.focus.is_focused(window);
             let sideways = state.sideways;
             let selected: Vec<bool> = range.clone().map(|r| state.state.selected.contains(&r)).collect();
             range
                 .zip(selected)
                 .map(|(row, selected)| {
-                    let (cell, columns, widths, row_key) = (cell.clone(), list_columns.clone(), widths.clone(), row_key.clone());
+                    let (cell, columns, widths, order, row_key) = (cell.clone(), list_columns.clone(), widths.clone(), order.clone(), row_key.clone());
                     let row_el = canvas(
                         |_, _, _| {},
                         move |r, _, window, cx| {
@@ -514,7 +610,10 @@ impl RenderOnce for ColumnListView {
                                 }
                                 let text_color = style::c(if selected { p.list_selected_item_text } else { p.list_item_text });
                                 let mut texts = Vec::new();
-                                for (i, (x0, x1)) in spans(&widths, r.left(), r.right(), sideways).into_iter().enumerate() {
+                                for (at, (x0, x1)) in spans(&widths, r.left(), r.right(), sideways).into_iter().enumerate() {
+                                    // (Each cell by its column's own index,
+                                    // wherever the column shows.)
+                                    let i = order[at];
                                     let b = Bounds::from_corners(point(x0, r.top()), point(x1, r.bottom()));
                                     window.with_content_mask(Some(ContentMask { bounds: b }), |window| {
                                         cell(&mut Cell { bounds: b, row, column: i, selected, text_color, align: columns[i].align, texts: &mut texts }, window, cx);
@@ -534,7 +633,7 @@ impl RenderOnce for ColumnListView {
                                         let mut h = std::collections::hash_map::DefaultHasher::new();
                                         let widths: Vec<u32> = widths.iter().map(|w| w.to_bits()).collect();
                                         // (Focus shows only in a selected row.)
-                                        (list_id, key(row, cx), selected, selected && focused, sideways, widths, Arc::as_ptr(&p) as usize, window.scale_factor().to_bits()).hash(&mut h);
+                                        (list_id, key(row, cx), selected, selected && focused, sideways, widths, &order, Arc::as_ptr(&p) as usize, window.scale_factor().to_bits()).hash(&mut h);
                                         h.finish()
                                     };
                                     window.paint_memo(key, r, cx, paint);
@@ -731,9 +830,11 @@ impl RenderOnce for ColumnListView {
         .absolute()
         .inset_0();
 
-        // The header: each column's title, sorted or not; dividers to drag.
+        // The header: each column's title, sorted or not; dividers to drag;
+        // titles to drag sideways.
         let (header_model, header_columns, header_handlers) = (model.clone(), columns.clone(), handlers.clone());
         let (laid_model, laid_columns) = (model.clone(), columns.clone());
+        let list_name = self.id.clone();
         let header = canvas(
             move |b, window, cx| {
                 let m = laid_model.read(cx);
@@ -742,20 +843,23 @@ impl RenderOnce for ColumnListView {
                 // keeps to its cells' edge at any scale.
                 let right = if m.body.size.width > px(0.0) { m.body.right() } else { b.right() - px(SCROLL_BAR) };
                 let shown = Bounds::from_corners(b.origin, point(right, b.bottom()));
-                let spans = spans(&widths(m, &laid_columns), b.left() + m.offset().x, shown.right(), m.sideways);
+                let spans = spans(&shown_widths(m, &laid_columns), b.left() + m.offset().x, shown.right(), m.sideways);
+                let order = order(m, &laid_columns);
                 let last = spans.len().saturating_sub(1);
+                // (Each divider resizes the column left of it, by its own
+                // index.)
                 let dividers: Vec<(usize, Hitbox)> = spans
                     .iter()
                     .enumerate()
                     .filter(|&(i, &(_, x1))| i != last && x1 >= shown.left() && x1 <= shown.right())
-                    .map(|(i, &(_, x1))| (i, window.insert_hitbox(Bounds { origin: point(x1 - px(3.0), b.top()), size: size(px(6.0), b.size.height) }, HitboxBehavior::Normal)))
+                    .map(|(i, &(_, x1))| (order[i], window.insert_hitbox(Bounds { origin: point(x1 - px(3.0), b.top()), size: size(px(6.0), b.size.height) }, HitboxBehavior::Normal)))
                     .collect();
-                (window.insert_hitbox(shown, HitboxBehavior::Normal), dividers, spans, shown)
+                (window.insert_hitbox(shown, HitboxBehavior::Normal), dividers, spans, shown, order)
             },
-            move |b, (hitbox, dividers, spans, shown), window, cx| {
+            move |b, (hitbox, dividers, spans, shown, order), window, cx| {
                 let p = theme::palette(cx);
                 let m = header_model.read(cx);
-                let (sort, pressed) = (m.state.sort, if let Some(Drag::Title(c)) = m.drag { Some(c) } else { None });
+                let (sort, pressed) = (m.state.sort, if let Some(Drag::Title { column, .. }) = m.drag { Some(column) } else { None });
                 let bg = p.panel_background;
                 style::vgradient(window, b, style::tint(bg, 0.8), style::shade(&p, bg, 1.04));
                 style::hline_above(window, b.left(), b.right(), b.bottom(), style::shade(&p, bg, 1.45));
@@ -763,7 +867,9 @@ impl RenderOnce for ColumnListView {
                 // sight, as theirs.)
                 crate::review::scroll_area(window, shown);
                 window.with_content_mask(Some(ContentMask { bounds: shown }), |window| {
-                    for (i, (col, &(x0, x1))) in header_columns.iter().zip(&spans).enumerate() {
+                    for (at, &(x0, x1)) in spans.iter().enumerate() {
+                        let i = order[at];
+                        let col = &header_columns[i];
                         let r = Bounds::from_corners(point(x0, b.top()), point(x1, b.bottom() - px(1.0)));
                         if pressed == Some(i) {
                             style::fill_rect(window, r, style::shade(&p, bg, 1.1));
@@ -796,7 +902,7 @@ impl RenderOnce for ColumnListView {
                     window.set_cursor_style(CursorStyle::ResizeColumn, d);
                 }
 
-                let (m, cols, hb, spans_down) = (header_model.clone(), header_columns.clone(), hitbox, spans.clone());
+                let (m, cols, hb, spans_down, order_down) = (header_model.clone(), header_columns.clone(), hitbox, spans.clone(), order.clone());
                 window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
                     if !phase.bubble() || e.button != MouseButton::Left || !hb.is_hovered(window) {
                         return;
@@ -804,7 +910,7 @@ impl RenderOnce for ColumnListView {
                     let drag = match dividers.iter().find(|(_, d)| d.is_hovered(window)) {
                         Some(&(column, _)) => Drag::Divider { column, x: e.position.x, width: widths(m.read(cx), &cols)[column] },
                         None => match spans_down.iter().position(|&(x0, x1)| e.position.x >= x0 && e.position.x < x1) {
-                            Some(c) => Drag::Title(c),
+                            Some(at) => Drag::Title { column: order_down[at], x: e.position.x, moved: false },
                             None => return,
                         },
                     };
@@ -816,31 +922,67 @@ impl RenderOnce for ColumnListView {
                     if !phase.capture() {
                         return;
                     }
-                    let Some(Drag::Divider { column, x, width }) = m.read(cx).drag.clone() else { return };
-                    let w = (width + f32::from(e.position.x - x)).max(cols[column].min_width);
-                    m.update(cx, |m, _| {
-                        if m.widths.len() != cols.len() {
-                            m.widths = cols.iter().map(|c| c.width).collect();
+                    match m.read(cx).drag.clone() {
+                        Some(Drag::Divider { column, x, width }) => {
+                            let w = (width + f32::from(e.position.x - x)).max(cols[column].min_width);
+                            m.update(cx, |m, _| {
+                                m.widths.insert(cols[column].title.clone(), w);
+                            });
+                            window.refresh();
                         }
-                        m.widths[column] = w;
-                    });
-                    window.refresh();
+                        // A title dragged sideways: its column moves past a
+                        // neighbour once the pointer is past the
+                        // neighbour's middle (so it doesn't swing back
+                        // between columns of other widths).
+                        Some(Drag::Title { column, x, moved }) => {
+                            if !moved && (e.position.x - x).abs() <= px(4.0) {
+                                return;
+                            }
+                            m.update(cx, |m, _| {
+                                let mut ord = self::order(m, &cols);
+                                let spans = self::spans(&shown_widths(m, &cols), b.left() + m.offset().x, shown.right(), m.sideways);
+                                let mid = |(x0, x1): (Pixels, Pixels)| (x0 + x1) / 2.0;
+                                if let Some(at) = ord.iter().position(|&c| c == column) {
+                                    if at + 1 < ord.len() && e.position.x > mid(spans[at + 1]) {
+                                        ord.swap(at, at + 1);
+                                    } else if at > 0 && e.position.x < mid(spans[at - 1]) {
+                                        ord.swap(at, at - 1);
+                                    }
+                                }
+                                m.order = ord.iter().map(|&c| cols[c].title.clone()).collect();
+                                m.drag = Some(Drag::Title { column, x, moved: true });
+                            });
+                            window.refresh();
+                        }
+                        _ => {}
+                    }
                 });
-                let (m, h) = (header_model.clone(), header_handlers.clone());
+                let (m, h, cols, name) = (header_model.clone(), header_handlers.clone(), header_columns.clone(), list_name.clone());
                 window.on_mouse_event(move |e: &MouseUpEvent, phase, window, cx| {
                     if !phase.capture() || e.button != MouseButton::Left {
                         return;
                     }
                     match m.read(cx).drag.clone() {
-                        Some(Drag::Title(c)) => {
+                        Some(Drag::Title { moved: true, .. }) => {
+                            m.update(cx, |m, cx| {
+                                m.drag = None;
+                                note_arranged(m, &name, &cols, cx);
+                            });
+                            window.refresh();
+                        }
+                        Some(Drag::Title { column, moved: false, .. }) => {
                             m.update(cx, |m, _| m.drag = None);
                             // Released over the title still: sorted by it
                             // (again: the other way).
-                            let (x0, x1) = spans[c];
-                            if e.position.x >= x0 && e.position.x < x1 && b.contains(&e.position) {
+                            let over = order.iter().position(|&c| c == column).map(|at| spans[at]);
+                            if let Some((x0, x1)) = over
+                                && e.position.x >= x0
+                                && e.position.x < x1
+                                && b.contains(&e.position)
+                            {
                                 m.update(cx, |m, _| {
-                                    let sorted = m.state.sort.filter(|(col, _)| *col == c);
-                                    m.state.sort = Some((c, sorted.is_none_or(|(_, ascending)| !ascending)));
+                                    let sorted = m.state.sort.filter(|(col, _)| *col == column);
+                                    m.state.sort = Some((column, sorted.is_none_or(|(_, ascending)| !ascending)));
                                 });
                                 if let Some(f) = &h.sort {
                                     f(window, cx);
@@ -849,7 +991,10 @@ impl RenderOnce for ColumnListView {
                             window.refresh();
                         }
                         Some(Drag::Divider { .. }) => {
-                            m.update(cx, |m, _| m.drag = None);
+                            m.update(cx, |m, cx| {
+                                m.drag = None;
+                                note_arranged(m, &name, &cols, cx);
+                            });
                             window.refresh();
                         }
                         _ => {}
