@@ -219,6 +219,11 @@ pub enum Request {
         /// PNG, or raw pixels for a live view (see [`ImageFormat`]).
         #[serde(default)]
         format: ImageFormat,
+        /// Headless only: what the screen itself holds, as the display
+        /// would be sent it (in its colours: P3's numbers, PQ in HDR),
+        /// not the sRGB picture a screenshot is.
+        #[serde(default)]
+        as_shown: bool,
     },
     /// Headless only, for finding flicker: save what `output` (or the
     /// first screen) shows after each of app_server's next `frames` turns

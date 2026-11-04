@@ -404,6 +404,16 @@ pub fn run_headless(size_arg: Option<&str>) {
         state.timings.handled(|| "tick".into(), start);
         for output in &outputs {
             for shot in state.ipc.shots_for(output) {
+                // The screen's own buffer, as a display would be sent it.
+                if shot.as_shown && shot.window.is_none() {
+                    let data = &mut state.backend_data;
+                    let img = match data.screens.iter_mut().find(|s| s.output == *output) {
+                        Some(screen) => read_target(&mut data.renderer, &mut screen.target),
+                        None => Err("no such screen".into()),
+                    };
+                    crate::screenshot::save_taken(&mut state.ipc, shot, img);
+                    continue;
+                }
                 let color = state.desktop_color(output);
                 let mut overlays = twitcher_overlay(&mut state, output);
                 let locked = state.lock.locked();
@@ -809,4 +819,22 @@ fn headless_panel() -> ((i32, i32), Subpixel) {
         _ => Subpixel::Unknown,
     };
     (mm, subpixel)
+}
+
+/// A screen's buffer as it holds it (8 bits a channel, top row first).
+fn read_target(renderer: &mut GlesRenderer, target: &mut GlesTexture) -> Result<image::RgbaImage, String> {
+    use smithay::backend::renderer::{ExportMem, Texture, TextureMapping};
+    let size = target.size();
+    let fb = renderer.bind(target).map_err(|e| e.to_string())?;
+    let mapping = renderer.copy_framebuffer(&fb, smithay::utils::Rectangle::from_size(size), Fourcc::Abgr8888).map_err(|e| e.to_string())?;
+    drop(fb);
+    let flipped = mapping.flipped();
+    let bytes = renderer.map_texture(&mapping).map_err(|e| e.to_string())?.to_vec();
+    let mut img = image::RgbaImage::from_raw(size.w as u32, size.h as u32, bytes).ok_or("the screen's size")?;
+    // (GL's rows come bottom up from a texture drawn into as the screen
+    // is: the mapping says unflipped.)
+    if !flipped {
+        img = image::imageops::flip_vertical(&img);
+    }
+    Ok(img)
 }

@@ -35,12 +35,14 @@ pub struct Shot {
     pub border: bool,
     pub pointer: bool,
     pub format: ImageFormat,
+    /// Headless: the screen's own buffer, not a picture drawn for it.
+    pub as_shown: bool,
 }
 
 impl Shot {
     /// The whole of whichever output draws next.
     pub fn screen(path: PathBuf) -> Shot {
-        Shot { path, conn: None, output: None, window: None, border: true, pointer: false, format: ImageFormat::Png }
+        Shot { path, conn: None, output: None, window: None, border: true, pointer: false, format: ImageFormat::Png, as_shown: false }
     }
 }
 
@@ -141,6 +143,12 @@ where
 type Captured = (image::RgbaImage, Option<(Point<f64, smithay::utils::Physical>, f64, crate::cursor::Shape)>);
 
 /// Draw the pointer in, encode and write on a thread; answer when done.
+/// A picture already taken (headless's screen as it is), saved and
+/// answered as a screenshot is.
+pub fn save_taken(ipc: &mut IpcState, shot: Shot, img: Result<image::RgbaImage, String>) {
+    save(ipc, shot, img.map(|i| (i, None)));
+}
+
 fn save(ipc: &mut IpcState, shot: Shot, captured: Result<Captured, String>) {
     let (mut img, cursor) = match captured {
         Ok(c) => c,

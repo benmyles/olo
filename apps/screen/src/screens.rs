@@ -180,7 +180,7 @@ impl Screen {
     /// A picture of the whole screen (or one window) at `path`, once it
     /// is written.
     pub fn picture(&self, path: &Path, window: Option<u64>, pointer: bool, format: ImageFormat) -> Result<(), String> {
-        let request = Request::Screenshot { path: path.display().to_string(), output: None, window, border: true, pointer, format };
+        let request = Request::Screenshot { path: path.display().to_string(), output: None, window, border: true, pointer, format, as_shown: false };
         self.request(&request).map(drop)
     }
 

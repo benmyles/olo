@@ -693,8 +693,8 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.start_screen_saver(true);
                 Reply::Ok
             }
-            Request::Screenshot { path, output, window, border, pointer, format } => {
-                let shot = crate::screenshot::Shot { path: PathBuf::from(path), conn: Some(conn.clone()), output, window, border, pointer, format };
+            Request::Screenshot { path, output, window, border, pointer, format, as_shown } => {
+                let shot = crate::screenshot::Shot { path: PathBuf::from(path), conn: Some(conn.clone()), output, window, border, pointer, format, as_shown };
                 match self.request_screenshot(shot) {
                     Ok(()) => return None,
                     Err(message) => Reply::Error { message },

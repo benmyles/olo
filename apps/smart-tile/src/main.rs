@@ -164,7 +164,7 @@ fn linger() {
 fn screenshot(client: &mut Client, output: &str) -> Result<Vec<u8>, String> {
     let dir = std::env::var_os("XDG_RUNTIME_DIR").map_or_else(std::env::temp_dir, std::path::PathBuf::from);
     let path = dir.join(format!("olo-smart-tile-{}.png", std::process::id()));
-    let req = Request::Screenshot { path: path.display().to_string(), output: Some(output.into()), window: None, border: true, pointer: false, format: Default::default() };
+    let req = Request::Screenshot { path: path.display().to_string(), output: Some(output.into()), window: None, border: true, pointer: false, format: Default::default(), as_shown: false };
     request(client, &req)?;
     let image = image::open(&path).map_err(|e| e.to_string());
     let _ = std::fs::remove_file(&path);

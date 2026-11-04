@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+"""HDR and wide colour, end to end: what a display would be sent.
+
+  hdr-check
+
+Starts a headless session of its own ("hdrc") whose screen pretends to be
+a Display P3 HDR panel (OLO_HEADLESS_COLOR=p3-hdr: 1600 cd/m² peak),
+shows two windows of app_server's `color_probe` example (one tagged PQ in
+BT.2020 with wp_color_management_v1, its buffer PQ's code for 100 cd/m²;
+one untagged, the same numbers taken for sRGB's), and reads the screen's
+own buffer back (`{"type":"screenshot","as_shown":true}`): the display's
+signal, not the sRGB picture screenshots are. Then checks, within a code:
+
+  SDR (Accurate, P3):  the untagged grey as it is (130); the PQ window
+                        at 100 cd/m² against SDR's 203 (186); sRGB's
+                        wallpaper blue as P3's numbers (bluer numbers in
+                        less saturated ones).
+  HDR (PQ, BT.2020):   the untagged grey at 46 cd/m² (110), the PQ
+                        window at its own 100 cd/m² (130), SDR's white
+                        at 203 cd/m² (148) and nothing above it.
+
+Build first: `cargo build --release -p app_server --bin olo-app-server
+--example color_probe`. Exits 1 on a mismatch.
+"""
+
+import json
+import os
+import subprocess
+import sys
+import time
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+TSESSION = [sys.executable, os.path.join(ROOT, "tools/dev/tsession")]
+PROBE = os.path.join(ROOT, "target/release/examples/color_probe")
+NAME = "hdrc"
+OUT = "/var/tmp/olo-hdr-check"
+
+
+def ts(*args, env=None):
+    e = dict(os.environ, TSESSION_PROFILE="release", **(env or {}))
+    return subprocess.run(TSESSION + list(args), capture_output=True, text=True, env=e)
+
+
+def ipc(request):
+    out = ts("ipc", NAME, json.dumps(request)).stdout.strip()
+    return json.loads(out) if out else {}
+
+
+def shot(name, shown):
+    path = os.path.join(OUT, name + ".png")
+    ipc({"type": "screenshot", "path": path, "as_shown": shown})
+    from PIL import Image
+
+    return Image.open(path).convert("RGB")
+
+
+def pixels(img):
+    return img.get_flattened_data() if hasattr(img, "get_flattened_data") else img.getdata()
+
+
+def most(img, n=4):
+    from collections import Counter
+
+    return [c for c, _ in Counter(pixels(img)).most_common(n)]
+
+
+def main():
+    if not os.path.exists(PROBE):
+        sys.exit("build the probe first: cargo build --release -p app_server --example color_probe")
+    os.makedirs(OUT, exist_ok=True)
+    ts("stop", NAME)
+    ts("start", NAME, "1280x800", env={"OLO_HEADLESS_COLOR": "p3-hdr"})
+    failures = []
+    try:
+        ts("run", NAME, PROBE)
+        time.sleep(1.0)
+        ts("run", NAME, PROBE, "--untagged")
+        time.sleep(2.0)
+
+        def near(got, want, what):
+            ok = all(abs(a - b) <= 1 for a, b in zip(got, want))
+            print(f"  {'ok ' if ok else 'BAD'} {what}: {got} (want {want})")
+            if not ok:
+                failures.append(what)
+
+        def present(img, colour, what):
+            colours = set(most(img, 8))
+            ok = any(all(abs(a - b) <= 1 for a, b in zip(c, colour)) for c in colours)
+            print(f"  {'ok ' if ok else 'BAD'} {what}: {colour} {'shown' if ok else 'missing from ' + str(sorted(colours))}")
+            if not ok:
+                failures.append(what)
+
+        print("SDR, accurate on a P3 display:")
+        sdr = shot("sdr", True)
+        present(sdr, (130, 130, 130), "the untagged grey, as it is")
+        present(sdr, (186, 186, 186), "the PQ window at 100 of SDR's 203 cd/m²")
+        srgb = shot("srgb", False)
+        blue_srgb = next((c for c in most(srgb, 8) if c[2] > c[0] + 60), None)
+        blue_p3 = next((c for c in most(sdr, 8) if c[2] > c[0] + 40 and c not in [(130, 130, 130)]), None)
+        if blue_srgb and blue_p3:
+            ok = blue_p3[0] > blue_srgb[0] and blue_p3[2] < blue_srgb[2]
+            print(f"  {'ok ' if ok else 'BAD'} sRGB's blue as P3's numbers: {blue_srgb} → {blue_p3}")
+            if not ok:
+                failures.append("blue as P3's numbers")
+
+        ipc({"type": "configure_output", "name": "HEADLESS-1", "config": {"hdr": True}})
+        time.sleep(1.0)
+        print("HDR (PQ in BT.2020):")
+        hdr = shot("hdr", True)
+        present(hdr, (110, 110, 110), "the untagged grey at 46 cd/m²")
+        present(hdr, (130, 130, 130), "the PQ window at its own 100 cd/m²")
+        # (Everything here is SDR, or 100 cd/m²: nothing above SDR's
+        # white, which the tabs' and wallpaper's brightest reach.)
+        top = max(max(c) for c in set(pixels(hdr)))
+        near((top,), (148,), "the most light: SDR's white at 203 cd/m²")
+    finally:
+        ts("stop", NAME)
+    if failures:
+        print(f"{len(failures)} mismatched: {', '.join(failures)}")
+        sys.exit(1)
+    print("all as computed")
+
+
+if __name__ == "__main__":
+    main()

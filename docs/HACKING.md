@@ -2858,6 +2858,13 @@ gpu_cost`); frames draw only what changed. `color::tests::
 the_gpu_converts_as_the_cpu_does` reads the GPU's conversions back
 against the CPU's. A headless screen pretends to be wide or HDR with
 `OLO_HEADLESS_COLOR=p3` or `p3-hdr`.
+`tools/dev/hdr-check` tries it all end to end on such a screen: a window
+tagged PQ and one untagged (`color_probe`), the screen's own buffer read
+back (`{"type":"screenshot","as_shown":true}`, headless: what a display
+would be sent, not the sRGB picture a screenshot is) and checked against
+what's computed: greys kept and sRGB's blue as P3's numbers in Accurate
+SDR; in HDR, sRGB's grey at its light against SDR's 203 cd/m², PQ's 100
+cd/m² as it is, nothing above SDR's white.
 
 Programs say what colours their windows hold with `wp_color_management_v1`
 (`color_management.rs`, version 1): parametric image descriptions only
