@@ -1144,6 +1144,22 @@ of Finished; a new one goes where its priority puts it.
   `--tab`, Deskbar) must pass the folder too. Test with bash, zsh and
   brush on an Agent Screen.
 
+- **Other programs' file handling through Olo, fixed** (Ben,
+  2026-11-04): "the gtk/qt integration doesn't seem to be working
+  properly e.g. even in olo chrome i can't click on the folder for a
+  download and have it open tracker. also, when i'm trying to upload a
+  file in slack it does show tracker but then if i press space on a
+  file to quick look it works but then if i press down or up it doesn't
+  properly show the other ones". Two bugs: Chrome's Show in folder (its
+  downloads' folder icon) goes to `org.freedesktop.FileManager1`'s
+  ShowItems, which Tracker serves (tracker's filemanager.rs; HACKING's
+  "Open in Tracker"): find why nothing opens (the name not taken, the
+  call not reaching it, Chrome asking through the portal's OpenURI or
+  xdg-open instead) and test it from Chrome on an Agent Screen; and in
+  the file panel the portal shows (apps/portal, `olo_ui::file_panel`),
+  Quick Look open on a file must follow ↑ and ↓ (and ← →) to the
+  file selected next, as it does in Tracker's own windows.
+
 - **olo-slack: Slack, Olo-fied, as olo-chrome is Chrome** (Ben,
   2026-11-04): "build olo-slack that is like olo-chrome but an olo-fied
   version of slack where it integrates deeply with everything olo".
