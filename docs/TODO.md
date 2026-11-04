@@ -169,6 +169,22 @@ of Finished; a new one goes where its priority puts it.
   (`*kbd_backlight`) and laptop panel brightness are already generic.
   Waiting on the machine: NVIDIA for apps and external displays, HDR and
   wide colour, VRR, the haptic touchpad, IR face sign-in.
+  *Status* (2026-11-03, Ben: "update tools/setup to make sure it will
+  recognize the system and do all that", for Fedora 45 on x86):
+  - It says what it's on: the release (warning before 44), the
+    processor, memory, free space, each GPU, and the login screen (GDM
+    or SDDM). It names that screen when it's done, with how to choose
+    Olo Desktop there.
+  - It installs what a fresh Workstation lacks: Git LFS and its files
+    (the voice model is built in from LFS, so a clone without it built
+    a pointer); PipeWire's and SPA's headers; Mesa's DRI and Vulkan
+    drivers and the Vulkan loader; Pillow for the dev tools.
+  - Its Rust minimum is now the newest `rust-version` a crate asks for
+    (1.95, filmcraft's; it said 1.88).
+  - Every package and `pkgconfig(…)` it names resolves in Fedora 45's
+    x86_64 repository (dnf repoquery against it). Fedora 45 has
+    libdisplay-info 0.3.0, as built against here, and Rust 1.98.
+  - Not run on x86 yet: that's the ThinkPad.
 
 - **Backup tried on the ThinkPad** (what's left of Ben's backup audit,
   2026-11-03; waiting on the machine): an export from this Mac (sealed,

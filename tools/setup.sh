@@ -1,20 +1,25 @@
 #!/bin/bash
-# Set up Olo on a Fedora machine (x86_64 or aarch64; Workstation, or an
-# atomic desktop such as Silverblue or Aurora), from a fresh clone:
+# Set up Olo on a Fedora machine (Fedora 44 or 45, x86_64 or aarch64;
+# Workstation, or an atomic desktop such as Silverblue or Aurora), from a
+# fresh clone:
 #
 #   git clone https://github.com/benmyles/olo && cd olo && tools/setup.sh
 #
-# Run it as yourself; it asks for sudo when it needs root. It checks and
-# installs what Olo needs (packages, a recent Rust), builds it, puts it
-# on the login screen's session menu and installs its udev rules
-# (tools/install-session.sh), then says what's left. Safe to run again:
-# each step only does what isn't done yet. `--check` only reports.
+# Run it as yourself; it asks for sudo when it needs root. It says what
+# machine it's on (Fedora's version, the processor, memory, graphics and
+# login screen), installs what Olo needs (the compilers and libraries it
+# builds with, a recent Rust through rustup, Git LFS and the files it
+# keeps, the drivers and services a session uses, the dev tools' Python
+# imaging), builds it, puts it on the login screen's session menu (GDM's
+# or SDDM's) and installs its udev rules (tools/install-session.sh), then
+# says what's left. Safe to run again: each step only does what isn't
+# done yet. `--check` only reports.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 CHECK=0
 [ "${1:-}" = "--check" ] && CHECK=1
 
-STEPS=6
+STEPS=7
 step=0
 bold=$(tput bold 2>/dev/null || true)
 plain=$(tput sgr0 2>/dev/null || true)
@@ -25,14 +30,21 @@ fail() { echo "  ✗ $*" >&2; exit 1; }
 
 # What Olo needs, each as a check and the package that provides it
 # (dnf takes capabilities such as pkgconfig(gbm), so a remix's own builds
-# of a library count). Building: compilers, bindgen's libclang and the
-# libraries Olo links. Running: what a session talks to, and the fonts
-# its look is made of.
+# of a library count). Building: compilers, bindgen's libclang, the
+# libraries Olo links (PipeWire's and SPA's headers for sound and screen
+# capture) and Git LFS (the voice model built in, the themes' icons and
+# the wallpapers are kept with it). Running: Mesa's drivers (app_server
+# draws with EGL through GBM, the apps with Vulkan), what a session talks
+# to, and the fonts its look is made of. Developing: Pillow for the
+# system Python (tools/dev/tsession's screenshots, tools/journal.py).
 NEEDS=(
     "cmd:cc gcc" "cmd:c++ gcc-c++" "cmd:clang clang" "lib:libclang.so clang-libs" "cmd:pkg-config pkgconf-pkg-config"
-    "cmd:make make" "cmd:perl perl" "cmd:python3 python3" "cmd:m4 m4" "cmd:git git"
+    "cmd:make make" "cmd:perl perl" "cmd:python3 python3" "cmd:m4 m4" "cmd:git git" "cmd:git-lfs git-lfs"
     "pc:wayland-server" "pc:xkbcommon" "pc:libinput" "pc:libudev" "pc:gbm" "pc:egl" "pc:libdrm" "pc:libseat"
     "pc:pixman-1" "pc:libdisplay-info" "pc:freetype2" "pc:harfbuzz" "pc:fontconfig" "pc:zlib" "pc:liblzma" "pc:bzip2"
+    "pc:libpipewire-0.3" "pc:libspa-0.2"
+    "glob:/usr/lib64/dri/*.so mesa-dri-drivers" "lib:libvulkan.so.1 vulkan-loader"
+    "glob:/usr/share/vulkan/icd.d/*.json mesa-vulkan-drivers" "py:PIL python3-pillow"
     "file:/usr/libexec/fprintd fprintd" "cmd:pipewire pipewire"
     "cmd:wireplumber wireplumber" "file:/usr/libexec/xdg-desktop-portal xdg-desktop-portal"
     "file:/usr/libexec/xdg-desktop-portal-gtk xdg-desktop-portal-gtk" "cmd:gnome-keyring-daemon gnome-keyring"
@@ -50,11 +62,15 @@ have_it() {
         file:*) [ -e "$what" ] ;;
         lib:*) compgen -G "/usr/lib64/$what*" > /dev/null || compgen -G "/usr/lib/$what*" > /dev/null ;;
         pc:*) command -v pkg-config > /dev/null 2>&1 && pkg-config --exists "$what" ;;
+        glob:*) compgen -G "$what" > /dev/null ;;
+        py:*) /usr/bin/python3 -c "import $what" > /dev/null 2>&1 ;;
         font:*) fc-list "${what//_/ }" family 2>/dev/null | grep -q . ;;
     esac
 }
-# The oldest Rust that builds Olo (let chains, edition 2024).
-RUST_MIN=1.88
+# The oldest Rust that builds Olo: the newest `rust-version` any of its
+# crates asks for (filmcraft's, 1.95; `cargo metadata` lists them), past
+# edition 2024's let chains (1.88). Fedora 45's own is 1.98.
+RUST_MIN=1.95
 
 say "This machine"
 [ "$(id -u)" = 0 ] && fail "run this as yourself, not root (it uses sudo when it must)"
@@ -62,6 +78,25 @@ say "This machine"
 case " ${ID:-} ${ID_LIKE:-} " in
     *" fedora "*) ok "${PRETTY_NAME:-Fedora} on $(uname -m)" ;;
     *) fail "Olo is set up for Fedora; this is ${PRETTY_NAME:-unknown}" ;;
+esac
+case $(uname -m) in
+    x86_64 | aarch64) ;;
+    *) fail "Olo builds for x86_64 and aarch64; this is $(uname -m)" ;;
+esac
+# (A remix numbers its releases as Fedora does.)
+release=${VERSION_ID%%.*}
+if [[ $release =~ ^[0-9]+$ ]] && [ "$release" -lt 44 ]; then
+    todo "Fedora $release is older than Olo is set up for (44 and 45): its libraries may be too old to build it"
+fi
+cpu=$(grep -m1 '^model name' /proc/cpuinfo 2> /dev/null | cut -d: -f2- | sed 's/^ *//' || true)
+memory=$(awk '/^MemTotal:/ { printf "%.0f", $2 / 1048576 }' /proc/meminfo)
+ok "$(nproc) cores${cpu:+ ($cpu)}, $memory GB of memory, $(df -h --output=avail . | tail -1 | tr -d ' ') free for the build"
+# The login screen Olo's entry goes on.
+greeter=$(basename "$(readlink -f /etc/systemd/system/display-manager.service 2> /dev/null)" .service)
+case $greeter in
+    gdm | sddm) ok "login screen: ${greeter^^}" ;;
+    "" | display-manager) todo "no login screen is enabled: Olo is started from GDM's or SDDM's session menu" ;;
+    *) todo "login screen: $greeter (Olo's entry is for GDM and SDDM, which read /usr/local/share/wayland-sessions)" ;;
 esac
 ATOMIC=0
 if [ -e /run/ostree-booted ]; then
@@ -104,6 +139,31 @@ else
     echo "  installing ${#missing[@]} packages: ${missing[*]}"
     sudo dnf install -y "${missing[@]}"
     ok "installed"
+fi
+
+say "Git LFS's files"
+# A clone made without Git LFS has its pointers where the voice model,
+# the themes' icons and the wallpapers go; the build would take them in.
+lfs_pointer() { head -c 40 "$1" 2> /dev/null | grep -q '^version https://git-lfs'; }
+MODEL=vendor/deep_filter/models/DeepFilterNet3_onnx.tar.gz
+lfs_missing() {
+    if command -v git-lfs > /dev/null 2>&1; then
+        # (Counted, not `grep -q`: with pipefail, grep leaving early
+        # kills git-lfs with SIGPIPE, and the pipe says nothing's missing.)
+        [ "$(git lfs ls-files 2> /dev/null | grep -c '^[0-9a-f]* - ' || true)" != 0 ]
+    else
+        lfs_pointer "$MODEL"
+    fi
+}
+if [ -s "$MODEL" ] && ! lfs_pointer "$MODEL" && ! lfs_missing; then
+    ok "all here ($(git lfs ls-files 2> /dev/null | wc -l) files)"
+elif [ $CHECK = 1 ]; then
+    todo "not fetched yet (git lfs install --local && git lfs pull)"
+else
+    git lfs install --local > /dev/null
+    git lfs pull
+    lfs_pointer "$MODEL" && fail "Git LFS's files didn't come: try git lfs pull"
+    ok "fetched ($(git lfs ls-files | wc -l) files)"
 fi
 
 say "Rust"
@@ -165,7 +225,8 @@ fi
 
 say "Login screen"
 if [ -f /usr/local/share/wayland-sessions/olo.desktop ]; then
-    ok "Olo is on the session menu ($(grep -m1 '^Exec=' /usr/local/share/wayland-sessions/olo.desktop | cut -d= -f2))"
+    case $greeter in gdm | sddm) on="${greeter^^}'s" ;; *) on="the" ;; esac
+    ok "Olo is on $on session menu ($(grep -m1 '^Exec=' /usr/local/share/wayland-sessions/olo.desktop | cut -d= -f2))"
 else
     todo "not on the session menu yet"
 fi
@@ -185,6 +246,10 @@ echo
 if [ $CHECK = 1 ]; then
     echo "Checked only; run without --check to set up."
 else
-    echo "${bold}Done.${plain} Log out, choose Olo on the login screen, and sign in."
+    case $greeter in
+        gdm) echo "${bold}Done.${plain} Log out; on the login screen pick yourself, choose Olo Desktop with the gear at the bottom right, and sign in." ;;
+        sddm) echo "${bold}Done.${plain} Log out; on the login screen choose Olo Desktop from the session menu at the bottom left, and sign in." ;;
+        *) echo "${bold}Done.${plain} Log out, choose Olo Desktop on the login screen, and sign in." ;;
+    esac
     echo "Later builds: Deskbar's green arrow installs them (or tools/install-session.sh)."
 fi

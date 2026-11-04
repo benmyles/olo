@@ -2402,9 +2402,19 @@ for a 3-second `sleep`.
 * Never replace an installed binary by writing over it (install to a temporary
   name and rename, as `tools/install-session.sh` does).
 
-On a fresh Fedora machine (x86_64 or aarch64, Workstation or atomic),
-`tools/setup.sh` installs what's missing, builds and installs; `--check`
-only reports. `tools/dev/x86-check` type-checks the workspace for x86_64
+On a fresh Fedora machine (Fedora 44 or 45, x86_64 or aarch64,
+Workstation or atomic), `tools/setup.sh` says what it's on (the release,
+processor, memory, free space, graphics and login screen), installs what's
+missing (its `NEEDS`: compilers and libclang, the libraries linked,
+PipeWire's headers, Git LFS, Mesa's DRI and Vulkan drivers and the
+Vulkan loader, the session's services, the fonts, Pillow for the dev
+tools; each checked first, so a remix's own builds count), fetches Git
+LFS's files (the voice model is built in), installs Rust through rustup
+if there's none new enough (`RUST_MIN`, the newest `rust-version` a crate
+asks for), builds and installs (`tools/install-session.sh`: GDM's and
+SDDM's session menus), and turns on the sweep, the hooks and kache's
+daemon; `--check` only reports. Every package it names was checked
+against Fedora 45's x86_64 repository (2026-11-03). `tools/dev/x86-check` type-checks the workspace for x86_64
 from an aarch64 machine (x86 headers unpacked under ~/.cache; nothing
 installed).
 

@@ -25,16 +25,17 @@ without getting in your way.
 
 ## Install
 
-On Fedora (Workstation or an atomic desktop such as Silverblue or Aurora;
-x86_64 or aarch64):
+On Fedora 44 or 45 (Workstation or an atomic desktop such as Silverblue or
+Aurora; x86_64 or aarch64):
 
 ```sh
 git clone https://github.com/benmyles/olo && cd olo && tools/setup.sh
 ```
 
 Run it as yourself; it asks for sudo when it needs root. It installs what's
-missing, builds Olo into `~/.local/bin` and adds **Olo Desktop** to the
-login screen. Run it again any time: each step only does what isn't done
+missing (compilers, libraries, Rust, Git LFS, drivers), builds Olo into
+`~/.local/bin` and adds **Olo Desktop** to the login screen (GDM or
+SDDM). Run it again any time: each step only does what isn't done
 yet (`--check` only reports). After a `git pull` and a build, Deskbar
 shows a green arrow; click it to upgrade the running desktop in place.
 

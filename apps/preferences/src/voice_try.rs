@@ -86,7 +86,6 @@ struct Shared {
 }
 
 pub struct TryWindow {
-    prefs: Entity<crate::Prefs>,
     settings: Settings,
     microphone: Option<String>,
     shared: Arc<Mutex<Shared>>,
@@ -151,7 +150,6 @@ impl TryWindow {
         let live = cx.new(|_| LivePane { win: me.clone(), shown: (vec![-120.0; BANDS], vec![-120.0; BANDS]), was_playing: false });
         let controls = cx.new(|_| Controls { win: me });
         TryWindow {
-            prefs,
             settings,
             microphone,
             shared: Default::default(),
@@ -461,7 +459,6 @@ impl Render for Controls {
             (s.error.clone(), rows)
         };
         let (processed, list_model, settings, playing) = (w.processed, w.list.clone(), w.settings, w.playing());
-        let tried: Vec<Settings> = w.shared.lock().unwrap().tried.iter().map(|t| t.settings).collect();
         let mut col = div().flex().flex_col().gap(px(m::SPACING)).size_full();
         // Each setting tried.
         let columns = vec![
