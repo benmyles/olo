@@ -252,6 +252,14 @@ of Finished; a new one goes where its priority puts it.
   GPU and its backend), each one played back at the same place to hear
   them side by side, and the one that sounds best made the setting in
   one click.
+  *Status* (2026-11-03): the chain measures each stage when asked (its
+  time a frame, the energy in and out: `Voice::measure`, `Measured`),
+  puts a recording through any settings at its own pace, lined up with
+  the original (`olo_voice::trial`), and says what runs it
+  (`accelerated_by`: NEON, AVX2 and FMA, AVX-512, SSE). Left: recording
+  and playing back (olo-system, switching between versions at the same
+  place), the spectrum view (the kit), and the window from Sound ▸
+  Voice Processing listing each setting tried.
 
 - **Chrome scrolls slower than Olo's apps** (Ben, 2026-11-02): "in
   chrome scrolling does not seem to be the same speed as olo native
