@@ -7,6 +7,18 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
+- **Viewer crashed when brought back from Deskbar after a video**
+  (Ben, 2026-11-04): "i was watching a video in viewer, then left it
+  open while i did some other stuff, then when i tried to click it in
+  the deskbar to come back it crashed". A video played in Viewer, the
+  window left open (in the background, perhaps hidden or minimized, the
+  video ended or paused) while other things were done, then its Deskbar
+  entry clicked: Viewer crashed instead of coming forward. Find the
+  crash (its panic or core in the journal, Logs), reproduce it headless
+  (a video played, the window left behind other windows and minimized,
+  time passing, then activated as Deskbar does), fix it at the cause,
+  and keep a test that does that.
+
 - **auto-fuzz: two tiles overlap as a Terminal opens** (found
   2026-11-04, there before that day's changes too): `tools/dev/auto-fuzz
   NAME --steps 80 --seed 7` on a `--session --shell` session at 3024×1890,
