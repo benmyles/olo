@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-04
 
+### Backup chooses what goes in
+
+*13:51* — Preferences ▸ Backup: a check box for each part of a backup (each app's settings with the passwords and sign-ins that go with them, and the Wi-Fi networks), exporting and importing: a backup of everything can bring back the Token Pool alone. The rest stays as it is.
+
+![Backup chooses what goes in](2026-11-04/135106-backup-chooses-what-goes-in.png)
+
 ### Olo Rescue
 
 *13:31* — Ctrl+Shift+Super+Delete, from anywhere: every window put away, the displays, keyboard and pointer on safe settings, and a screen of its own with a terminal (its own, in process), the processes to end, Preferences' panels (what's changed applies as Rescue ends), the displays' settings reset, Start Over, Log Out, Restart and Leave Rescue.

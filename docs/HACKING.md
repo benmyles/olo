@@ -3435,9 +3435,25 @@ opened, its own `panel::State` and text fields).
   Argon2id, 64 MiB and three passes, then XChaCha20-Poly1305 a
   megabyte at a time, each piece numbered and the last marked, so none
   can be dropped, moved or cut off unnoticed). Open, it holds no secret.
-  Import reads the manifest and shows what it holds by app in the
-  Import box's list (`Manifest::groups`, and the secrets by what they
-  are), asks for the password if it's sealed, and opens it before
+  What goes in, and what comes back, is chosen a part at a time
+  (`Choice`, the parts left out; Ben: "maybe i have an export with
+  everything but i just want to include token pooler settings/accounts
+  for my import"): each app's files (`app_of`) with the keyring's
+  secrets that go with them (`part_of_secret`: the Token Pool's key
+  with its accounts, Telegram's sign-in with Telegram, GitHub's token a
+  part of its own) and the Wi-Fi networks (`WIFI_PART`). The Export box
+  lists this computer's (`parts_here`, read on a thread as the panel
+  opens and after each export and import), each a check box with what
+  it holds, those only a sealed backup holds disabled while it isn't
+  sealed; the Import box lists the chosen backup's (`Manifest::parts`).
+  Both lists build only the rows they show (`shown_rows`: a control
+  scrolled out of sight would still say it's there to agents, and the
+  palette's settings index would take it for one of the panel's), each
+  row a `ListItem` to agents. `export_only` and `import_only` take the
+  choice; what's left out of an import stays as it is here, and what's
+  here is still all saved first.
+  Import reads the manifest and shows what it holds by part in the
+  Import box's list (`Manifest::parts`), asks for the password if it's sealed, and opens it before
   replacing anything (a wrong one changes nothing); it then saves what
   is there to `state_dir()/backups` (the last five; sealed with a key
   kept in the login keyring, `Seal::Keyring`, secrets and all, so an
@@ -3478,7 +3494,8 @@ opened, its own `panel::State` and text fields).
   worker thread with progress and Cancel (import can only be cancelled
   while it saves what is there). `olo-preferences --export FILE
   [--sealed]`, `--inspect FILE` and `--import FILE` do the same without
-  a window (a password read from stdin); opening a `.olo-backup`
+  a window (a password read from stdin; `--only "Token Pool,Passwords"`
+  for some of the parts `--inspect` lists, in any case); opening a `.olo-backup`
   (`mime::SETTINGS_BACKUP`, kit `Kind::SettingsBackup`) shows it in the
   panel, ready to import (`backup::open_later`: the panel's window may
   be made after). Tested with a real keyring on a private bus

@@ -7,17 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Preferences ▸ Backup: choose what goes in, exporting and importing**
-  (Ben, 2026-11-04; next): "in prefs -> backups made it
-  so that i can choose each type of thing i want included in an export
-  and when importing. e.g. maybe i have an export with everything but i
-  just want to include token pooler settings/accounts for my import".
-  Each kind of thing a backup holds (the desktop's settings, each app's,
-  Token Pool's accounts and settings, passwords, …) a check box, all on
-  at first: exporting writes only those checked; importing reads what
-  the file has, offers only those (with what each holds), and restores
-  only those checked, leaving the rest as they are.
-
 - **Grouped and tiled windows come back in their order** (Ben,
   2026-11-04): "grouped windows and tiled tabs/windows should remember
   their order so that after e.g. an upgrade they come back in the same
@@ -1215,6 +1204,24 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Preferences ▸ Backup: choose what goes in, exporting and importing**~~
+  (Ben, 2026-11-04; next): "in prefs -> backups made it
+  so that i can choose each type of thing i want included in an export
+  and when importing. e.g. maybe i have an export with everything but i
+  just want to include token pooler settings/accounts for my import".
+  Each kind of thing a backup holds (the desktop's settings, each app's,
+  Token Pool's accounts and settings, passwords, …) a check box, all on
+  at first: exporting writes only those checked; importing reads what
+  the file has, offers only those (with what each holds), and restores
+  only those checked, leaving the rest as they are. *Done*: a check box for each part (each app's
+  files with the keyring's secrets that go with them, and the Wi-Fi
+  networks) in Export (this computer's, read on a thread; those only a
+  sealed backup holds disabled while it isn't) and Import (the
+  backup's); `export_only`/`import_only` with a `Choice`, the rest left
+  as it is here (what's here still all saved first); `--only "Token
+  Pool,Passwords"` for agents. Tested (`only_the_parts_chosen`,
+  `this_computers_parts`), and by clicks on a test session.
 
 - ~~**Olo Rescue: Ctrl+Shift+Super+Delete, always**~~ (Ben, 2026-11-04):
   "an Olo Rescue app where, at any time ever in olo if you hold down

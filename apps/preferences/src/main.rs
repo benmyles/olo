@@ -357,20 +357,46 @@ impl Render for Launcher {
     }
 }
 
+/// A backup's options after its file: `--sealed`, and `--only "A,B"`
+/// (parts by name, as `--inspect` lists them); None if anything else.
+fn backup_options(rest: &[String]) -> Option<(bool, Option<Vec<String>>)> {
+    let (mut sealed, mut only) = (false, None);
+    let mut it = rest.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--sealed" => sealed = true,
+            "--only" => only = Some(it.next()?.split(',').map(|p| p.trim().to_owned()).filter(|p| !p.is_empty()).collect()),
+            _ => return None,
+        }
+    }
+    Some((sealed, only))
+}
+
 /// `--export FILE [--sealed]`, `--inspect FILE` or `--import FILE`: a
 /// backup without a window, for agents and scripts; the exit code, or
 /// None for other flags. A sealed export (passwords and sign-ins with
 /// it), and an import of one, read the backup's password from stdin.
-fn backup_cli(flag: &str, file: &std::path::Path, sealed: bool) -> Option<i32> {
+/// `--only "Token Pool,Passwords"`: of an export or import, those parts
+/// alone (the rest left out, or left as they are here).
+fn backup_cli(flag: &str, file: &std::path::Path, sealed: bool, only: Option<Vec<String>>) -> Option<i32> {
     use std::sync::atomic::AtomicBool;
     let no = AtomicBool::new(false);
     let show = |m: &backup::Manifest| {
         println!("made {}, {} {}, {}", m.created, m.files.len(), if m.files.len() == 1 { "file" } else { "files" }, backup::size_text(m.bytes()));
-        for (app, files, bytes) in m.groups() {
-            println!("  {app}: {files} {}, {}", if files == 1 { "file" } else { "files" }, backup::size_text(bytes));
+        for (part, files, bytes) in m.parts() {
+            match files {
+                0 => println!("  {part}: sealed"),
+                _ => println!("  {part}: {files} {}, {}", if files == 1 { "file" } else { "files" }, backup::size_text(bytes)),
+            }
         }
         if m.sealed.is_some() {
             println!("sealed, with {}", if m.secrets.is_empty() { "no passwords or sign-ins".to_string() } else { m.secrets.join(", ") });
+        }
+    };
+    let choose = |parts: Vec<(String, usize, u64)>| -> Result<backup::Choice, String> {
+        match &only {
+            Some(wanted) => backup::Choice::only(wanted, &parts.into_iter().map(|p| p.0).collect::<Vec<_>>()),
+            None => Ok(backup::Choice::all()),
         }
     };
     let passphrase = || -> Result<zeroize::Zeroizing<String>, String> {
@@ -384,13 +410,16 @@ fn backup_cli(flag: &str, file: &std::path::Path, sealed: bool) -> Option<i32> {
     };
     let r = match flag {
         "--export" => (|| {
+            let choice = choose(backup::parts_here(&backup::roots()))?;
             let how = if sealed { backup::Seal::Passphrase(passphrase()?) } else { backup::Seal::Open };
-            backup::export(&backup::roots(), file, &how, &backup::Here::this(), &|_, _| {}, &no).map(|m| show(&m))
+            backup::export_only(&backup::roots(), file, &how, &backup::Here::this(), &choice, &|_, _| {}, &no).map(|m| show(&m))
         })(),
-        "--inspect" if !sealed => backup::inspect(file).map(|m| show(&m)),
+        "--inspect" if !sealed && only.is_none() => backup::inspect(file).map(|m| show(&m)),
         "--import" if !sealed => (|| {
-            let words = if backup::inspect(file)?.needs_passphrase() { Some(passphrase()?) } else { None };
-            backup::import(&backup::roots(), file, words.as_deref().map(|w| w.as_str()), &backup::Here::this(), &|_, _| {}, &no).map(|i| {
+            let manifest = backup::inspect(file)?;
+            let choice = choose(manifest.parts())?;
+            let words = if manifest.needs_passphrase() { Some(passphrase()?) } else { None };
+            backup::import_only(&backup::roots(), file, words.as_deref().map(|w| w.as_str()), &backup::Here::this(), &choice, &|_, _| {}, &no).map(|i| {
                 show(&i.manifest);
                 println!("imported {} {}, {} {}", i.files, if i.files == 1 { "file" } else { "files" }, i.secrets, if i.secrets == 1 { "password or sign-in" } else { "passwords and sign-ins" });
                 for note in &i.notes {
@@ -421,8 +450,8 @@ fn backup_cli(flag: &str, file: &std::path::Path, sealed: bool) -> Option<i32> {
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if let [flag, file, rest @ ..] = &args[..]
-        && rest.iter().all(|a| a == "--sealed")
-        && let Some(code) = backup_cli(flag, std::path::Path::new(file), !rest.is_empty())
+        && let Some((sealed, only)) = backup_options(rest)
+        && let Some(code) = backup_cli(flag, std::path::Path::new(file), sealed, only)
     {
         std::process::exit(code);
     }

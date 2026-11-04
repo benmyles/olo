@@ -24,9 +24,16 @@
 //! (`ARRIVED`); what doesn't come along is said (`Imported::notes`).
 //! Export and import run on a worker thread with progress.
 //!
+//! What goes in, and what comes back, is chosen a kind at a time
+//! (`Choice`, of the `parts`): each app's files (`app_of`) with the
+//! keyring's secrets that go with them (`part_of_secret`), and the saved
+//! Wi-Fi networks; all of them unless some are left out. A backup of
+//! everything can bring back only the Token Pool, say.
+//!
 //! Agents: `olo-preferences --export FILE [--sealed]`, `--inspect FILE`
 //! and `--import FILE` do the same without a window (the summary on
-//! stdout; a passphrase read from stdin).
+//! stdout; a passphrase read from stdin), `--only "Token Pool,Passwords"`
+//! for some of it.
 
 use std::{
     io::{Read, Write},
@@ -300,6 +307,21 @@ impl Manifest {
         groups
     }
 
+    /// What it holds, part by part (`Choice`): (part, files, bytes), by
+    /// name; a sealed backup's secrets and Wi-Fi networks with the part
+    /// they go with (one of their own: no files).
+    pub fn parts(&self) -> Vec<(String, usize, u64)> {
+        let mut parts = self.groups();
+        for what in &self.secrets {
+            let part = part_of_secret(what);
+            if !parts.iter().any(|p| p.0 == part) {
+                parts.push((part, 0, 0));
+            }
+        }
+        parts.sort_by_key(|p| p.0.to_lowercase());
+        parts
+    }
+
     pub fn bytes(&self) -> u64 {
         self.files.iter().map(|f| f.size).sum()
     }
@@ -317,6 +339,90 @@ impl Manifest {
     /// Made on another computer (or by another person) than `here`.
     pub fn from_elsewhere(&self, here: &Origin) -> bool {
         self.from.as_ref().is_some_and(|f| f.computer != here.computer)
+    }
+}
+
+/// The saved Wi-Fi networks, as a part of a backup (`Choice`).
+pub const WIFI_PART: &str = "Wi-Fi Networks";
+
+/// The part of a backup a secret of the keyring's goes with (by what
+/// it is, `Kept::what`): Telegram's sign-in with Telegram, the rest
+/// with what they open (the Token Pool's key with its accounts), or one
+/// of their own (GitHub).
+fn part_of_secret(what: &str) -> String {
+    match what {
+        "Telegram sign-in" => "Telegram".into(),
+        "Wi-Fi networks" => WIFI_PART.into(),
+        w => w.into(),
+    }
+}
+
+/// Which parts of a backup go in, or come back: every one but those
+/// left out (so a part new since is in).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Choice {
+    pub left_out: std::collections::BTreeSet<String>,
+}
+
+impl Choice {
+    /// Everything.
+    pub fn all() -> Choice {
+        Choice::default()
+    }
+
+    pub fn has(&self, part: &str) -> bool {
+        !self.left_out.contains(part)
+    }
+
+    /// Only `wanted` (as the parts are named, in any case) of `parts`;
+    /// an error names those that aren't parts, and the parts.
+    pub fn only(wanted: &[String], parts: &[String]) -> Result<Choice, String> {
+        let found = |w: &String| parts.iter().find(|p| p.eq_ignore_ascii_case(w.trim()));
+        let unknown: Vec<&String> = wanted.iter().filter(|w| found(w).is_none()).collect();
+        if !unknown.is_empty() {
+            return Err(format!("not parts of it: {}; its parts are {}", unknown.iter().map(|u| format!("“{u}”")).collect::<Vec<_>>().join(", "), parts.join(", ")));
+        }
+        let keep: Vec<&String> = wanted.iter().filter_map(found).collect();
+        Ok(Choice { left_out: parts.iter().filter(|p| !keep.contains(p)).cloned().collect() })
+    }
+
+    pub fn set(&mut self, part: &str, on: bool) {
+        if on {
+            self.left_out.remove(part);
+        } else {
+            self.left_out.insert(part.to_owned());
+        }
+    }
+}
+
+/// This computer's parts, as an export holds them: (part, files, bytes),
+/// by name; the secrets' parts without files of their own (GitHub) and
+/// the Wi-Fi networks go only in a sealed backup. Walks the settings'
+/// folders: on a worker.
+pub fn parts_here(roots: &[(&'static str, PathBuf)]) -> Vec<(String, usize, u64)> {
+    let mut parts: Vec<(String, usize, u64)> = Vec::new();
+    for (name, path) in collect(roots) {
+        let size = std::fs::metadata(&path).map_or(0, |m| m.len());
+        add_to(&mut parts, app_of(&name), size);
+    }
+    for k in secrets::KEPT {
+        let part = part_of_secret(k.what);
+        if !parts.iter().any(|p| p.0 == part) {
+            parts.push((part, 0, 0));
+        }
+    }
+    parts.push((WIFI_PART.into(), 0, 0));
+    parts.sort_by_key(|p| p.0.to_lowercase());
+    parts
+}
+
+fn add_to(parts: &mut Vec<(String, usize, u64)>, part: String, bytes: u64) {
+    match parts.iter_mut().find(|g| g.0 == part) {
+        Some(g) => {
+            g.1 += 1;
+            g.2 += bytes;
+        }
+        None => parts.push((part, 1, bytes)),
     }
 }
 
@@ -470,10 +576,15 @@ pub type Progress<'a> = &'a dyn Fn(u64, u64);
 /// says; a sealed one takes the keyring's secrets along. `here` is this
 /// computer (`Origin::here`).
 pub fn export(roots: &[(&'static str, PathBuf)], dest: &Path, how: &Seal, here: &Here, progress: Progress, cancel: &AtomicBool) -> Result<Manifest, String> {
+    export_only(roots, dest, how, here, &Choice::all(), progress, cancel)
+}
+
+/// [`export`], of the parts `choice` has.
+pub fn export_only(roots: &[(&'static str, PathBuf)], dest: &Path, how: &Seal, here: &Here, choice: &Choice, progress: Progress, cancel: &AtomicBool) -> Result<Manifest, String> {
     let keyring = here.keyring;
     let mut files = Vec::new();
     let mut data = Vec::new();
-    for (name, path) in collect(roots) {
+    for (name, path) in collect(roots).into_iter().filter(|(name, _)| choice.has(&app_of(name))) {
         // Read now, so the manifest and the archive agree.
         match std::fs::read(&path) {
             Ok(bytes) => {
@@ -502,7 +613,7 @@ pub fn export(roots: &[(&'static str, PathBuf)], dest: &Path, how: &Seal, here: 
     let mut kept = Vec::new();
     // (No keyring: sealed even so, with no secrets of its in it.)
     if key.is_some() && keyring.available() {
-        for k in secrets::KEPT {
+        for k in secrets::KEPT.iter().filter(|k| choice.has(&part_of_secret(k.what))) {
             match keyring.lookup(k.attributes) {
                 Ok(Some(value)) => {
                     kept.push((k, Secret { label: k.label.into(), attributes: k.attributes.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect(), secret: b64().encode(&value) }))
@@ -523,7 +634,7 @@ pub fn export(roots: &[(&'static str, PathBuf)], dest: &Path, how: &Seal, here: 
     // only adds networks, so undoing it needs none). No NetworkManager:
     // none.
     let wifi = match how {
-        Seal::Passphrase(_) => here.networks.saved().ok().map(|(networks, left)| Wifi { networks, left }).filter(|w| !w.networks.is_empty() || !w.left.is_empty()),
+        Seal::Passphrase(_) if choice.has(WIFI_PART) => here.networks.saved().ok().map(|(networks, left)| Wifi { networks, left }).filter(|w| !w.networks.is_empty() || !w.left.is_empty()),
         _ => None,
     };
     if wifi.as_ref().is_some_and(|w| !w.networks.is_empty()) {
@@ -761,10 +872,19 @@ fn contents(src: &Path, manifest: &Manifest, passphrase: Option<&str>, keyring: 
     Ok(kept)
 }
 
-/// Replace the files under `roots` with the backup's, and the keyring's
-/// secrets with its, saving what is there first. `here` is this
-/// computer: one made elsewhere is moved in (`rehome`, `Carry`).
+/// [`import_only`] of everything (the tests'; the panel and `--import`
+/// choose).
+#[cfg(test)]
 pub fn import(roots: &[(&'static str, PathBuf)], src: &Path, passphrase: Option<&str>, here: &Here, progress: Progress, cancel: &AtomicBool) -> Result<Imported, String> {
+    import_only(roots, src, passphrase, here, &Choice::all(), progress, cancel)
+}
+
+/// Replace the files under `roots` with the backup's parts that
+/// `choice` has, and the keyring's secrets with theirs, saving what is
+/// there first (all of it); the other parts stay as they are here.
+/// `here` is this computer: one made elsewhere is moved in (`rehome`,
+/// `Carry`).
+pub fn import_only(roots: &[(&'static str, PathBuf)], src: &Path, passphrase: Option<&str>, here: &Here, choice: &Choice, progress: Progress, cancel: &AtomicBool) -> Result<Imported, String> {
     let keyring = here.keyring;
     let manifest = inspect(src)?;
     let elsewhere = manifest.from_elsewhere(&here.origin);
@@ -772,9 +892,13 @@ pub fn import(roots: &[(&'static str, PathBuf)], src: &Path, passphrase: Option<
     // Opened first, so a wrong password replaces nothing.
     let mut files: Vec<(PathBuf, u32, Zeroizing<Vec<u8>>)> = Vec::new();
     let Sealed { secrets: mut kept, wifi } = contents(src, &manifest, passphrase, keyring, |name, mode, bytes| {
-        files.push((name.to_path_buf(), mode, bytes));
+        if choice.has(&app_of(&name.to_string_lossy())) {
+            files.push((name.to_path_buf(), mode, bytes));
+        }
         Ok(())
     })?;
+    kept.retain(|s| choice.has(&part_of_secret(s.kept().map_or(s.label.as_str(), |k| k.what))));
+    let wifi = wifi.filter(|_| choice.has(WIFI_PART));
     let mut notes = Vec::new();
     // No keyring here to keep them in: as if the backup had none (and so
     // the vaults they open stay as they are, on another computer).
@@ -913,6 +1037,15 @@ pub fn import(roots: &[(&'static str, PathBuf)], src: &Path, passphrase: Option<
     Ok(Imported { manifest, files: written, secrets: stored, before: before.map(|(p, _)| p), settings, notes })
 }
 
+/// A, B and C (unquoted).
+fn list_plain(names: &[String]) -> String {
+    match names.split_last() {
+        Some((last, [])) => last.clone(),
+        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+        None => String::new(),
+    }
+}
+
 /// "A, B and C".
 fn list(names: &[String]) -> String {
     let quoted: Vec<String> = names.iter().map(|n| format!("“{n}”")).collect();
@@ -988,6 +1121,14 @@ enum Phase {
 
 /// How many rows the Import box's list shows.
 const WELL_ROWS: f32 = 7.0;
+/// How many rows the Export box's list of what goes in shows.
+const PARTS_ROWS: f32 = 5.0;
+/// A part's row: a check box and room to the next (`TIGHT`; a list
+/// row apart, check boxes crowd).
+const PART_ROW: f32 = m::MARK_ROW + m::TIGHT;
+
+/// This computer's parts, as an export holds them (`parts_here`).
+type Parts = Vec<(String, usize, u64)>;
 
 pub struct State {
     phase: Phase,
@@ -1011,6 +1152,14 @@ pub struct State {
     unlock: Entity<TextField>,
     proxy: olo_ui::Proxy,
     scroll: ScrollHandle,
+    /// What an export holds, part by part (read on a thread as the panel
+    /// opens, and after each export and import), and those left out.
+    parts: Option<Parts>,
+    parts_rx: Option<Receiver<Parts>>,
+    export_choice: Choice,
+    export_scroll: ScrollHandle,
+    /// The parts of the backup chosen that come back.
+    import_choice: Choice,
 }
 
 /// A backup opened from Tracker, for the panel to show (`open_later`):
@@ -1052,9 +1201,34 @@ impl State {
             unlock: field(cx),
             proxy: olo_ui::proxy(cx),
             scroll: ScrollHandle::new(),
+            parts: None,
+            parts_rx: None,
+            export_choice: Choice::all(),
+            export_scroll: ScrollHandle::new(),
+            import_choice: Choice::all(),
         };
+        st.read_parts();
         st.take_opened();
         st
+    }
+
+    /// This computer's parts, read again on a thread (it walks the
+    /// settings' folders).
+    fn read_parts(&mut self) {
+        let (tx, rx) = channel();
+        let proxy = self.proxy.clone();
+        let spawned = std::thread::Builder::new().name("backup parts".into()).spawn(move || {
+            let _ = tx.send(parts_here(&roots()));
+            proxy.send(Msg::Redraw);
+        });
+        if spawned.is_ok() {
+            self.parts_rx = Some(rx);
+        }
+    }
+
+    /// An export of what's chosen holds something.
+    fn export_has_some(&self) -> bool {
+        self.parts.as_ref().is_some_and(|parts| parts.iter().any(|(p, files, _)| self.export_choice.has(p) && (*files > 0 || self.sealed)))
     }
 
     fn work(&mut self, export: bool, cancellable: bool, job: impl FnOnce(&dyn Fn(Report), &AtomicBool) + Send + 'static) {
@@ -1095,8 +1269,9 @@ impl State {
         for f in [&self.password, &self.again] {
             f.update(cx, |f, cx| f.set_text("", cx));
         }
+        let choice = self.export_choice.clone();
         self.work(true, true, move |send, cancel| {
-            let r = export(&roots(), &dest, &how, &Here::this(), &|d, t| send(Report::Progress(d, t)), cancel);
+            let r = export_only(&roots(), &dest, &how, &Here::this(), &choice, &|d, t| send(Report::Progress(d, t)), cancel);
             send(Report::Exported(dest, r));
         });
     }
@@ -1118,9 +1293,10 @@ impl State {
         let Some((src, _)) = self.chosen.clone() else { return };
         let words = Zeroizing::new(self.unlock.read(cx).text().to_owned());
         self.unlock.update(cx, |f, cx| f.set_text("", cx));
+        let choice = self.import_choice.clone();
         self.work(false, true, move |send, cancel| {
             let words = Some(words.as_str()).filter(|w| !w.is_empty());
-            let r = import(&roots(), &src, words, &Here::this(), &|d, t| send(Report::Progress(d, t)), cancel);
+            let r = import_only(&roots(), &src, words, &Here::this(), &choice, &|d, t| send(Report::Progress(d, t)), cancel);
             send(Report::Imported(r.map(Box::new)));
         });
     }
@@ -1129,6 +1305,10 @@ impl State {
     /// import, when there were some.
     fn poll(&mut self) -> Option<Settings> {
         let mut settings = None;
+        if let Some(parts) = self.parts_rx.as_ref().and_then(|rx| rx.try_recv().ok()) {
+            self.parts = Some(parts);
+            self.parts_rx = None;
+        }
         while let Some(r) = self.rx.as_ref().and_then(|rx| rx.try_recv().ok()) {
             match r {
                 Report::Progress(d, t) => {
@@ -1138,6 +1318,7 @@ impl State {
                 }
                 Report::Exported(dest, r) => {
                     self.phase = Phase::Idle;
+                    self.read_parts();
                     self.exported = Some(match r {
                         Ok(m) if m.sealed.is_some() => (true, format!("Saved “{}”, sealed.", name_of(&dest))),
                         Ok(_) => (true, format!("Saved “{}”.", name_of(&dest))),
@@ -1147,12 +1328,17 @@ impl State {
                 Report::Inspected(src, r) => {
                     self.phase = Phase::Idle;
                     match r {
-                        Ok(m) => self.chosen = Some((src, m)),
+                        Ok(m) => {
+                            // (Everything it holds, until some is left out.)
+                            self.import_choice = Choice::all();
+                            self.chosen = Some((src, m));
+                        }
                         Err(e) => self.imported = Some((false, format!("“{}” can't be imported. {e}", name_of(&src)))),
                     }
                 }
                 Report::Imported(r) => {
                     self.phase = Phase::Idle;
+                    self.read_parts();
                     match r {
                         Ok(i) => {
                             settings = i.settings;
@@ -1164,7 +1350,12 @@ impl State {
                                 None => String::new(),
                             };
                             let secrets = if i.secrets > 0 { format!(" and {} {}", i.secrets, if i.secrets == 1 { "password or sign-in" } else { "passwords and sign-ins" }) } else { String::new() };
-                            self.imported = Some((true, format!("Imported {} files{secrets}. Apps that are open take some settings when they next start.{undo}", i.files)));
+                            // (Which parts, when some were left out.)
+                            let parts: Vec<String> = i.manifest.parts().into_iter().map(|p| p.0).collect();
+                            let chosen: Vec<String> = parts.iter().filter(|p| self.import_choice.has(p)).cloned().collect();
+                            let of = if chosen.len() < parts.len() { format!(" of {}", list_plain(&chosen)) } else { String::new() };
+                            let files = if i.files == 1 { "1 file".to_string() } else { format!("{} files", i.files) };
+                            self.imported = Some((true, format!("Imported {files}{of}{secrets}. Apps that are open take some settings when they next start.{undo}")));
                         }
                         // (Still chosen: a wrong password can be typed again.)
                         Err(e) => self.imported = Some((false, format!("Not imported: {e}"))),
@@ -1243,6 +1434,68 @@ fn progress(done: u64, total: u64, cancel: &Arc<AtomicBool>, cancellable: bool) 
     row
 }
 
+/// A part of a backup in a list: its check box, and what it holds on the
+/// right (small, dim).
+fn part_row(id: String, part: String, detail: String, on: bool, enabled: bool, toggle: impl Fn(bool, &mut olo_ui::gpui::Window, &mut olo_ui::gpui::App) + 'static) -> olo_ui::gpui::AnyElement {
+    let detail = canvas(
+        |_, _, _| {},
+        move |r, _, window, cx| {
+            let p = theme::palette(cx);
+            style::label(window, cx, r.right(), r.center().y, style::Align::Right, detail.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
+        },
+    )
+    .w(px(140.0))
+    .h_full()
+    .flex_shrink_0();
+    // An item of a list to agents (and so, being what's in it on this
+    // computer, not one of the panel's settings to the palette's index).
+    let name = part.clone();
+    let item = canvas(
+        |_, _, _| {},
+        move |b, _, window, cx| {
+            // (As much of it as shows: scrolled out of the list, none.)
+            let shown = b.intersect(&window.content_mask().bounds);
+            if shown.size.height > px(0.0) {
+                olo_ui::agent::record(window, cx, olo_ui::agent::Node { role: "ListItem", name: Some(name.clone().into()), bounds: shown, enabled: true, ..Default::default() });
+            }
+        },
+    )
+    .absolute()
+    .inset_0();
+    div()
+        .relative()
+        .child(item)
+        .flex()
+        .flex_row()
+        .items_center()
+        .h(px(PART_ROW))
+        .pl(px(m::TEXT_INSET))
+        .pr(px(m::SPACING))
+        .child(div().flex_1().min_w_0().child(CheckBox::new(part, on).id(id).enabled(enabled).on_toggle(toggle)))
+        .child(detail)
+        .into_any_element()
+}
+
+/// The rows of `PART_ROW` a list scrolled by `scroll` shows (its height,
+/// or `rows` of them before it's laid out): only those are built, the
+/// others are room (a control scrolled out of sight would still say
+/// it's there, where it isn't, to agents).
+fn shown_rows(scroll: &ScrollHandle, rows: f32) -> std::ops::Range<usize> {
+    let top = (-f32::from(scroll.offset().y)).max(0.0);
+    let height = match f32::from(scroll.bounds().size.height) {
+        h if h > 0.0 => h,
+        _ => rows * PART_ROW + 4.0,
+    };
+    // (Rows from 2 points down; those reaching inside the 2 points of
+    // padding at each end.)
+    (top / PART_ROW).floor() as usize..((top + height - 4.0) / PART_ROW).ceil().max(0.0) as usize
+}
+
+/// "3 files, 12 KB", or what a part with none is.
+fn part_detail(files: usize, bytes: u64, none: &str) -> String {
+    if files == 0 { none.to_owned() } else { format!("{} {}, {}", files, if files == 1 { "file" } else { "files" }, size_text(bytes)) }
+}
+
 pub fn ui(ui: &mut Ui, st: &mut State) {
     if let Some(s) = st.poll() {
         // app_server keeps its own copy: hand it the backup's.
@@ -1261,7 +1514,37 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let ink = |ok: bool| if ok { c(p.panel_text) } else { c(p.failure) };
 
     ui.bbox("Export", |ui| {
-        ui.note("Saves every Olo setting and what apps keep between runs in one file, to bring back here or to another computer.");
+        ui.note("Saves Olo's settings and what apps keep between runs in one file, to bring back here or to another computer. What goes in:");
+        // A check box for each part (passwords, sign-ins and Wi-Fi
+        // networks only in a sealed one).
+        let mut rows: Vec<olo_ui::gpui::AnyElement> = Vec::new();
+        let shown = shown_rows(&st.export_scroll, PARTS_ROWS);
+        for (i, (part, files, bytes)) in st.parts.clone().unwrap_or_default().into_iter().enumerate() {
+            if !shown.contains(&i) {
+                rows.push(div().h(px(PART_ROW)).into_any_element());
+                continue;
+            }
+            let toggle = ui.on_view({
+                let part = part.clone();
+                move |v, on: bool, _, cx| {
+                    if let Some(st) = state_of(v) {
+                        st.export_choice.set(&part, on);
+                    }
+                    cx.notify();
+                }
+            });
+            let usable = files > 0 || sealed;
+            let detail = part_detail(files, bytes, if sealed { "sealed" } else { "sealed only" });
+            rows.push(part_row(format!("export-part-{part}"), part.clone(), detail, usable && st.export_choice.has(&part), idle && usable, toggle));
+        }
+        if st.parts.is_none() {
+            rows.push(div().pl(px(m::TEXT_INSET)).py(px(m::STACK / 2.0)).child(StringView::new("Looking…").color(style::disabled_text(&p))).into_any_element());
+        }
+        ui.add(
+            div()
+                .h(px(PARTS_ROWS * PART_ROW + 4.0))
+                .child(ScrollView::new("backup-parts", &st.export_scroll).background(p.document_background).auto_hide(true).child(div().flex().flex_col().py(px(2.0)).children(rows))),
+        );
         let toggle = ui.on_view(|v, on: bool, _, cx| {
             if let Some(st) = state_of(v) {
                 st.sealed = on;
@@ -1283,12 +1566,12 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 None => div().into_any_element(),
             },
         };
-        let export = Button::new("Export…").enabled(idle && ready).on_click(export_it);
+        let export = Button::new("Export…").enabled(idle && ready && st.export_has_some()).on_click(export_it);
         ui.add(div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().child(status)).child(export));
     });
 
     ui.bbox("Import", |ui| {
-        ui.note("Puts the settings from a backup in place of these. What you have now is saved first.");
+        ui.note("Puts what you choose from a backup in place of what's here; the rest stays as it is. What you have now is saved first.");
         // What the backup chosen holds; else what the last import did.
         let mut rows: Vec<olo_ui::gpui::AnyElement> = Vec::new();
         // (Paragraphs a `STACK` apart, as notes are from what follows, and
@@ -1296,36 +1579,23 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         let text = |t: String, color| div().pl(px(m::TEXT_INSET)).pr(px(m::SPACING)).py(px(m::STACK / 2.0)).child(StringView::new(t).wrap(true).color(color)).into_any_element();
         if let Some((src, manifest)) = &st.chosen {
             let from = if manifest.from_elsewhere(&Origin::here()) { ", on another computer" } else { "" };
-            rows.push(text(format!("“{}”, made {}{from}, holds:", name_of(src), manifest.created_text()), c(p.document_text)));
-            let mut groups = manifest.groups();
-            for what in &manifest.secrets {
-                groups.push((what.clone(), 0, 0));
-            }
-            for (app, files, bytes) in groups {
-                let what = if files == 0 { "sealed".to_string() } else { format!("{} {}, {}", files, if files == 1 { "file" } else { "files" }, size_text(bytes)) };
-                rows.push(
-                    canvas(
-                        |_, _, _| {},
-                        move |r, _, window, cx| {
-                            let p = theme::palette(cx);
-                            style::label(window, cx, r.left() + px(6.0), r.center().y, style::Align::Left, app.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), c(p.document_text));
-                            style::label(
-                                window,
-                                cx,
-                                r.right() - px(6.0),
-                                r.center().y,
-                                style::Align::Right,
-                                what.clone(),
-                                style::SMALL_SIZE,
-                                style::ui_font(FontWeight::NORMAL),
-                                style::disabled_text(&p),
-                            );
-                        },
-                    )
-                    .w_full()
-                    .h(px(m::LIST_ROW))
-                    .into_any_element(),
-                );
+            ui.add(StringView::new(format!("“{}”, made {}{from}. What's checked comes back:", name_of(src), manifest.created_text())).wrap(true));
+            let shown = shown_rows(&st.scroll, WELL_ROWS * m::LIST_ROW / PART_ROW);
+            for (i, (part, files, bytes)) in manifest.parts().into_iter().enumerate() {
+                if !shown.contains(&i) {
+                    rows.push(div().h(px(PART_ROW)).into_any_element());
+                    continue;
+                }
+                let toggle = ui.on_view({
+                    let part = part.clone();
+                    move |v, on: bool, _, cx| {
+                        if let Some(st) = state_of(v) {
+                            st.import_choice.set(&part, on);
+                        }
+                        cx.notify();
+                    }
+                });
+                rows.push(part_row(format!("import-part-{part}"), part.clone(), part_detail(files, bytes, "sealed"), st.import_choice.has(&part), idle, toggle));
             }
         }
         if let Some((ok, said)) = &st.imported {
@@ -1344,7 +1614,8 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         );
         let locked = st.chosen.as_ref().is_some_and(|(_, m)| m.needs_passphrase());
         ui.enabled_if(idle && locked, |ui| ui.add(TextControl::new(st.unlock.clone()).label("Password:").divider(divider)));
-        let can = idle && st.chosen.is_some() && (!locked || !st.unlock.read(ui.cx).text().is_empty());
+        let some = st.chosen.as_ref().is_some_and(|(_, m)| m.parts().iter().any(|(part, ..)| st.import_choice.has(part)));
+        let can = idle && some && (!locked || !st.unlock.read(ui.cx).text().is_empty());
         let status = match &st.phase {
             Phase::Working { export: false, done, total, cancel, cancellable } => progress(*done, *total, cancel, *cancellable).into_any_element(),
             _ => match st.before.clone() {
@@ -1730,6 +2001,82 @@ mod tests {
         assert!(i.notes.iter().any(|n| n.contains("no NetworkManager")), "{:?}", i.notes);
         let _ = std::fs::remove_dir_all(&base);
         let _ = std::fs::remove_dir_all(other[0].1.parent().unwrap());
+    }
+
+    /// A backup of everything brings back only what's chosen (Ben: "maybe
+    /// i have an export with everything but i just want to include token
+    /// pooler settings/accounts for my import"), the rest left as it is;
+    /// and an export holds only what's chosen.
+    #[test]
+    fn only_the_parts_chosen() {
+        let (base, mac) = dirs("parts-mac");
+        let (_, other) = dirs("parts-other");
+        let no = AtomicBool::new(false);
+        std::fs::create_dir_all(&mac[0].1).unwrap();
+        std::fs::write(mac[0].1.join("terminal.json"), b"{\"font\":14}").unwrap();
+        std::fs::write(mac[0].1.join("pool.json"), b"{\"order\":1}").unwrap();
+        write_atomic(&mac[0].1.join("pool.vault"), b"pool sealed with key P", 0o600).unwrap();
+        write_atomic(&mac[0].1.join("passwords.vault"), b"vault A", 0o600).unwrap();
+        let a = Memory::default();
+        a.put(secrets::POOL_KEY, b"key P");
+        a.put(secrets::PASSWORDS_KEY, b"key A");
+        a.put(secrets::GITHUB, b"ghp_token");
+        let theirs = Nets(Mutex::new(vec![wifi("Home", Some("hunter22"))]), Vec::new());
+        let from = here("/home/ben", "mac");
+        let file = base.join("all.olo-backup");
+        let m = export(&mac, &file, &words("pw"), &Here { keyring: &a, networks: &theirs, origin: from.clone() }, &|_, _| {}, &no).unwrap();
+        let parts: Vec<String> = m.parts().into_iter().map(|p| p.0).collect();
+        assert_eq!(parts, ["GitHub", "Passwords", "Terminal", "Token Pool", WIFI_PART]);
+        assert!(Choice::only(&["Nope".into()], &parts).unwrap_err().contains("“Nope”"));
+
+        // Onto another computer: the Token Pool alone.
+        std::fs::create_dir_all(&other[0].1).unwrap();
+        std::fs::write(other[0].1.join("terminal.json"), b"{\"font\":11}").unwrap();
+        write_atomic(&other[0].1.join("passwords.vault"), b"vault B", 0o600).unwrap();
+        let b = Memory::default();
+        b.put(secrets::PASSWORDS_KEY, b"key B");
+        let ours = Nets::default();
+        let only = Choice::only(&["token pool".into()], &parts).unwrap();
+        let there = Here { keyring: &b, networks: &ours, origin: here("/home/b", "thinkpad") };
+        let i = import_only(&other, &file, Some("pw"), &there, &only, &|_, _| {}, &no).unwrap();
+        assert_eq!((i.files, i.secrets), (2, 1));
+        assert_eq!(std::fs::read(other[0].1.join("pool.vault")).unwrap(), b"pool sealed with key P");
+        assert_eq!(std::fs::read(other[0].1.join("pool.json")).unwrap(), b"{\"order\":1}");
+        assert_eq!(b.get(secrets::POOL_KEY).unwrap(), b"key P");
+        assert!(other[0].1.join("pool-arrived.json").exists(), "its accounts come in paused");
+        // The rest as it was here.
+        assert_eq!(std::fs::read(other[0].1.join("terminal.json")).unwrap(), b"{\"font\":11}");
+        assert_eq!(std::fs::read(other[0].1.join("passwords.vault")).unwrap(), b"vault B");
+        assert_eq!(b.get(secrets::PASSWORDS_KEY).unwrap(), b"key B");
+        assert_eq!(b.get(secrets::GITHUB), None);
+        assert!(ours.0.lock().unwrap().is_empty(), "no Wi-Fi network");
+        // What was here, all of it, saved first.
+        let before: Vec<String> = inspect(i.before.as_ref().unwrap()).unwrap().parts().into_iter().map(|p| p.0).collect();
+        assert!(before.contains(&"Terminal".to_string()) && before.contains(&"Passwords".to_string()), "{before:?}");
+
+        // An export of Terminal alone: nothing else, no secret, no network.
+        let t =
+            export_only(&mac, &base.join("t.olo-backup"), &words("pw"), &Here { keyring: &a, networks: &theirs, origin: from }, &Choice::only(&["Terminal".into()], &parts).unwrap(), &|_, _| {}, &no)
+                .unwrap();
+        assert_eq!(t.parts().into_iter().map(|p| p.0).collect::<Vec<_>>(), ["Terminal"]);
+        let raw = std::fs::read(base.join("t.olo-backup")).unwrap();
+        assert!(t.secrets.is_empty() && !raw.is_empty());
+        let _ = std::fs::remove_dir_all(&base);
+        let _ = std::fs::remove_dir_all(other[0].1.parent().unwrap());
+    }
+
+    #[test]
+    fn this_computers_parts() {
+        let (base, roots) = dirs("parts-here");
+        std::fs::create_dir_all(&roots[0].1).unwrap();
+        std::fs::write(roots[0].1.join("terminal.json"), b"{}").unwrap();
+        std::fs::write(roots[0].1.join("pool.json"), b"{}").unwrap();
+        let parts = parts_here(&roots);
+        let names: Vec<&str> = parts.iter().map(|p| p.0.as_str()).collect();
+        // Its apps' files, and what goes only in a sealed backup.
+        assert_eq!(names, ["GitHub", "Passwords", "Telegram", "Terminal", "Token Pool", WIFI_PART]);
+        assert_eq!(parts.iter().find(|p| p.0 == "Terminal").map(|p| (p.1, p.2)), Some((1, 2)));
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
