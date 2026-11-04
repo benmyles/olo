@@ -7,12 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Activity: a 10–11 ms frame opening its panels** (found 2026-11-04,
-  bench at 2× on the ThinkPad P1 Gen 9: "14 panels", 1 of ~208 frames
-  over 8.3 ms, all of it the UI's; there before the column-dragging
-  change as after). Find which panel's first frame it is (its graphs'
-  first layout, a table's first rows?) and bring it under budget.
-
 - **Voice processing's input model: SIMD throughout, lowest latency**
   (Ben, 2026-11-04: "ensure that the voice processing model for input is
   fully SIMD accelerated and ultra-optimized for low latency (not gpu)").
@@ -970,6 +964,19 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Activity: a 10–11 ms frame opening its panels**~~ (found
+  2026-11-04 in the bench at 2×, 1 of ~208 frames in 2 of 4 runs).
+  Looked into, nothing of Activity's: walking all 14 panels at the
+  bench's size twice, no frame over 4 ms; 90 s on Overview, 1525 frames,
+  p50 0.59 ms, p99 1.18; the three over 4 ms were the first after a
+  zoom (49 lines shaped) and two doing no more work than their
+  neighbours, slow in layout once and paint once; the swapchain's
+  acquire and the wait for the last frame never over 2 ms; no
+  preemption. With the CPUs' lowest clock raised from 400 MHz to 2 GHz,
+  60 s: 1 over 4 ms (3 before), none over 8.3 (1 before). So a laptop
+  idling deep, waking a core for a frame: the "Every frame on time"
+  item's, not Activity's code.
 
 - ~~**Columns moved by dragging, remembered per table**~~ (Ben,
   2026-11-04: "columns in a table like in the activity monitor should be
