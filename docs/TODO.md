@@ -7,6 +7,20 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
+- **Olo Passwords in every Chrome profile, exactly once** (Ben,
+  2026-11-03): "there seems to be a bug where only my first olo chrome
+  profile has the olo passwords extension (and it has it twice which is
+  a bug too). i need all the chrome profiles to have it exactly once."
+  So: find how olo-chrome installs the extension (apps/chrome
+  `install.rs`: the .crx, its key and id, the external-extensions or
+  policy files, per profile or per user data dir) and why the second
+  copy came (the old `tabula-passwords.crx` beside `olo-passwords.crx`
+  in ~/.local/share/olo/chrome, two ids?); then every profile, those
+  made later included, gets the one extension once (one id, the old one
+  removed where it's there), checked in a sandbox Chrome profile set
+  (`--user-data-dir` in /var/tmp, two profiles and a third made after),
+  never Ben's own profiles.
+
 - **The palm trainer, full screen and driven from the keyboard** (Ben,
   2026-11-02, with a screenshot of its last step, "Try it", at 2× in
   dark mode): "so the training modal/flow needs work: for one i can't
