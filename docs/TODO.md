@@ -404,6 +404,18 @@ of Finished; a new one goes where its priority puts it.
   - Activity Monitor: a new AI section showing how the model does
     (completions offered and accepted, latency, fine-tunes and what
     each cost).
+  - *Done so far* (2026-11-03): the model, its kernels (scalar, NEON,
+    AVX2/SSE2, the GPU through blade), the hand-written baseline, the
+    first and minute-by-minute fine-tunes, the daemon (`olo-complete`)
+    and brush's hints from it, with acceptance counted (HACKING,
+    "brush's suggestions"). Tested in a sandbox through a pty: hint
+    shown and taken, restarted when gone, exits with its socket.
+    *Left*: the Preferences ▸ Terminal option (on/off, SIMD or GPU,
+    unavailable without brush, the Olo Suggestions button, the first
+    fine-tune's progress and result shown; until then it's turned on in
+    `~/.config/olo/complete.json`); Activity Monitor's AI section (from
+    `stats`); the AVX2 kernels run on the ThinkPad (they only
+    type-check here); a journal entry with the Preferences option.
 
 - **Keyboards we know, starting with Apple's Magic Keyboard with Touch
   ID (A2520), and its Touch ID as a first-class one** (Ben, 2026-11-03):

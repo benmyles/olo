@@ -1,0 +1,11 @@
+[package]
+name = "olo-complete"
+description = "Command suggestions for brush from a tiny model of the person's own shell history: its features, the model and its SIMD kernels, training, and the protocol brush and Olo's apps talk to olo-complete with"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+libc = "0.2"
+serde.workspace = true
+serde_json.workspace = true

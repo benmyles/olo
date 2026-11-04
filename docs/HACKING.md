@@ -5788,6 +5788,49 @@ applied` shows them all applied, made up, to look at headless.
   database first, `$SHELL` from login after), so its next window is
   brush at once.
 
+- **brush's suggestions from Olo's model (olo-complete)**: with
+  `~/.config/olo/complete.json` `enabled` (Preferences ▸ Terminal, to
+  come), the grey hint after what's typed in brush is the model's.
+  - `crates/complete` (`olo-complete`), the model and its arithmetic:
+    `history` reads `.bash_history`/`.brush_history` (with `#<secs>`
+    times) and Olo's record (`~/.local/state/olo/complete/
+    history.jsonl`: each command with its folder, time and shell);
+    `index` keeps per command its counts, folders, hours, weekdays,
+    exit statuses, what follows what (one and two back) and each shell's
+    last commands, offers the candidates that start with the line
+    (at most 32) and gives each 16 features (`FEATURE_NAMES`). `kernels`
+    is the model: 16 → 16 (ReLU) → a score, 289 numbers, a candidate's
+    softmax over the line's candidates; scalar reference, NEON, AVX2+FMA
+    (SSE2 without), each tested against the reference. `Weights::
+    baseline` is written by hand (the features weighed as they're meant).
+    `train` replays the history as typing (examples at a few points in
+    each command, from what was known before it), fine-tunes with Adam
+    pulled toward its start, holds out the newest tenth and keeps the
+    result only if it ranks them as well (top-1, MRR).
+  - `apps/complete` (`olo-complete`, the daemon): one a person, on
+    `$XDG_RUNTIME_DIR/olo-complete.sock`, JSON lines, one request a
+    connection (`protocol::Request`: suggest, ran, ended, accepted,
+    stats, learn, reload). It answers on the processor's SIMD or the
+    GPU (`gpu.rs`, `model.wgsl`: compute through blade, a thread a row
+    to score, a workgroup an example for the gradient; the processor
+    takes over if the GPU fails, and says why in `stats`). `learn` is
+    the first fine-tune, from the hand-written weights over everything;
+    a minute after the first new command a quick one from the current
+    weights over the newest, on its own thread, taking the compute a
+    batch at a time. Asleep otherwise (a condvar, and poll on the socket
+    and an inotify watch of its folder: it exits when its socket is
+    removed, as at logout, and when `reload` finds it off).
+  - brush: `vendor/brush-interactive` adds `hooks` (`set_hooks`: the
+    hinter, and each line entered with the folder and last status).
+    `apps/brush` asks the daemon for a hint with 8 ms to answer, else
+    shows brush's own; tells it each line entered, how the last ended
+    and whether the hint was taken (whole, `complete_hint`, or a word);
+    starts it, once a minute at most, when nothing answers.
+  - Measured (M2 Max, 640 commands): a suggestion 1 µs on NEON (21 µs
+    round trip), 258 µs p50 and 2.2 ms worst on the GPU; the first
+    fine-tune 9 ms on NEON (828 steps), 451 ms on the GPU; idle 0% of a
+    core, 0 wakeups a second.
+
 ## The Wi-Fi healer (apps/wifi-heal)
 
 The Broadcom chips in Apple machines (brcmfmac; BCM4388 here) can get

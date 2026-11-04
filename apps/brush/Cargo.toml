@@ -3,7 +3,7 @@ name = "olo-brush"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "brush (github.com/reubeno/brush), the bash-compatible shell written in Rust, built with Olo so Olo Suggestions can offer it as the login shell"
+description = "brush (github.com/reubeno/brush), the bash-compatible shell written in Rust, built with Olo so Olo Suggestions can offer it as the login shell, its hints from olo-complete's model when that's on"
 
 [[bin]]
 name = "olo-brush"
@@ -11,3 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 brush-shell = "0.4"
+brush-interactive = { version = "0.4", features = ["reedline"] }
+reedline = "0.47"
+nu-ansi-term = "0.50"
+olo-complete.workspace = true

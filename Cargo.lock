@@ -1289,8 +1289,6 @@ dependencies = [
 [[package]]
 name = "brush-interactive"
 version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8147f101092e1cc8bc51a0be24535555910af1ef72e2f0b7b4c99eef4c88082b"
 dependencies = [
  "bon",
  "brush-core",
@@ -6831,7 +6829,11 @@ dependencies = [
 name = "olo-brush"
 version = "0.1.0"
 dependencies = [
+ "brush-interactive",
  "brush-shell",
+ "nu-ansi-term",
+ "olo-complete",
+ "reedline",
 ]
 
 [[package]]
@@ -6873,6 +6875,28 @@ dependencies = [
  "zeroize",
  "zip",
  "zstd",
+]
+
+[[package]]
+name = "olo-complete"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "olo-complete-daemon"
+version = "0.1.0"
+dependencies = [
+ "blade-graphics",
+ "blade-macros",
+ "bytemuck",
+ "libc",
+ "olo-complete",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
