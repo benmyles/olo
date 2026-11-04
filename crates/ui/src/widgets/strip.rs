@@ -155,8 +155,10 @@ pub const STRIP_BADGE: f32 = 12.0;
 /// How strongly a [`StripTab::faded`] tab's icon and title are drawn.
 pub const STRIP_FADED: f32 = 0.45;
 /// How tall a band beside a side strip is (Terminal's pane heads); the
-/// strip's first row is centred on it.
-pub const STRIP_SIDE_HEAD: f32 = STRIP_ROW;
+/// strip's first row is centred on it. As tall as a strip along the top,
+/// so a group's chip heading the first row is where it is there, well
+/// under the menu bar's titles.
+pub const STRIP_SIDE_HEAD: f32 = STRIP_HEIGHT;
 /// How tall a group's heading is in a side strip: as Deskbar's
 /// workspace headings.
 pub const STRIP_SIDE_HEADING: f32 = 20.0;
@@ -504,6 +506,30 @@ impl TabStrip {
     }
 }
 
+/// Where a side strip's tab faces start in their rows: their icons at
+/// the window's inset, under the menu bar's first title.
+const SIDE_FACE: f32 = m::WINDOW_INSET - m::SPACING;
+
+/// A side strip's group chip in its heading `head`: its name at the
+/// window's inset (under the tabs' icons and the menu bar's first title),
+/// centred on the heading. (As wide as its name needs: nothing follows it
+/// across, so no grid to keep, and every chip starts at one place.)
+fn side_chip(window: &mut Window, head: Bounds<Pixels>, name: &SharedString) -> Bounds<Pixels> {
+    let text = f32::from(style::text_width(window, name.clone(), CHIP_SIZE, style::ui_font(FontWeight::BOLD)));
+    let w = (text + 2.0 * CHIP_PAD).max(CHIP_HEIGHT).min(f32::from(head.size.width) - m::WINDOW_INSET);
+    let left = head.left() + px(m::WINDOW_INSET - CHIP_PAD);
+    let cy = style::snap_coord(window, head.center().y.round());
+    style::snap(window, Bounds { origin: point(left, cy - px(CHIP_HEIGHT / 2.0)), size: size(px(w), px(CHIP_HEIGHT)) })
+}
+
+/// A side strip's New Tab in its row `r`, as it shows: its + and its
+/// name (the whole row takes a click).
+fn side_new_tab(window: &mut Window, r: Bounds<Pixels>) -> Bounds<Pixels> {
+    let text = style::text_width(window, "New Tab", style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL));
+    let left = r.left() + px(SIDE_FACE + m::SPACING);
+    Bounds::from_corners(point(left, r.top()), point((left + px(16.0 + m::MARK_GAP) + text).min(r.right()), r.bottom()))
+}
+
 /// The colours a tab's face is drawn in.
 #[derive(Clone, Copy)]
 struct FaceInks {
@@ -694,6 +720,8 @@ impl RenderOnce for TabStrip {
                     agent::record(window, cx, agent::Node::button(format!("Close {}", tab.label), l.closes[i]));
                 }
                 for &(g, _, r) in &l.chips {
+                    // (Down the side, the chip as it shows: its heading takes a click.)
+                    let r = if s.side { side_chip(window, r, &s.groups[g].name) } else { r };
                     let chosen = s.chosen.as_ref().map(|c| c.get(g).copied().unwrap_or(false));
                     agent::record(
                         window,
@@ -702,6 +730,7 @@ impl RenderOnce for TabStrip {
                     );
                 }
                 if let Some(r) = l.new {
+                    let r = if s.side { side_new_tab(window, r) } else { r };
                     agent::record(window, cx, agent::Node::button("New Tab", r));
                 }
                 if let Some(r) = l.edge {
@@ -1043,7 +1072,8 @@ fn paint_side(window: &mut Window, cx: &mut App, s: &TabStrip, full: Bounds<Pixe
     let line = style::hairline(window);
     style::fill_rect(window, full, look.band);
     let n = s.tabs.len();
-    let face = |r: Bounds<Pixels>| Bounds::from_corners(point(r.left() + px(m::TIGHT), r.top()), point(r.right() - px(m::TIGHT), r.bottom()));
+    // (Its icons, and New Tab's +, under the menu bar's first title.)
+    let face = |r: Bounds<Pixels>| Bounds::from_corners(point(r.left() + px(SIDE_FACE), r.top()), point(r.right() - px(m::TIGHT), r.bottom()));
     let plate =
         |window: &Window, r: Bounds<Pixels>| style::snap(window, Bounds::from_corners(point(r.left() + px(m::TIGHT), r.top() + px(1.0)), point(r.right() - px(m::TIGHT), r.bottom() - px(1.0))));
     let mid = |window: &Window, r: Bounds<Pixels>| style::snap_coord(window, r.center().y.round());
@@ -1065,9 +1095,7 @@ fn paint_side(window: &mut Window, cx: &mut App, s: &TabStrip, full: Bounds<Pixe
         let StripGroup { name, color } = s.groups[g].clone();
         let chosen = s.chosen.as_ref().map(|c| c.get(g).copied().unwrap_or(false));
         let hovered = under == Some(Part::Chip(g)) || drag == Some(Drag::Group(g));
-        let f = face(head);
-        let w = chip_width(window, &name).min(f32::from(f.size.width) - m::SPACING);
-        let c = style::snap(window, Bounds { origin: point(f.left() + px(m::TIGHT), mid(window, head) - px(CHIP_HEIGHT / 2.0)), size: size(px(w), px(CHIP_HEIGHT)) });
+        let c = side_chip(window, head, &name);
         chip(window, cx, c, &name, color, chosen != Some(false), hovered);
     }
     let inks = look.inks();

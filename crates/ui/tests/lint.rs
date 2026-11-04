@@ -1,7 +1,8 @@
 //! The kit's own widgets through the layout lint (`cargo ui-lint`): a
 //! form laid out as the kit lays one out is clean in every look at every
 //! scale (a box with an action in its top line too), and controls put
-//! over each other are found.
+//! over each other are found; a tab strip under a menu bar, along the top
+//! and down the side, with groups and a faded tab, is clean too.
 
 use olo_ui::{
     WindowOptions,
@@ -144,4 +145,63 @@ fn ui_lint_due_wakes_once_at_its_time() {
         let left = w.due.when().unwrap().saturating_duration_since(Instant::now());
         assert!(left <= Duration::from_secs(3) && left > Duration::from_secs(2), "{left:?}");
     });
+}
+
+/// A window's menu bar over a tab strip (Terminal's), along the top or
+/// down the side: two groups, a tab in none, one tab faded, New Tab.
+struct Strip {
+    side: bool,
+}
+
+impl Render for Strip {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        use olo_ui::{
+            gpui::{App, Bounds, Hsla, Pixels},
+            menu::{BAR_HEIGHT, Menu, MenuBar},
+            widgets::{STRIP_HEIGHT, STRIP_SIDE_WIDTH, StripGroup, StripTab, TabStrip},
+        };
+        let icon: olo_ui::widgets::strip::PaintFn = std::rc::Rc::new(|window: &mut Window, _: &mut App, r: Bounds<Pixels>| {
+            olo_ui::icons::paint(window, r, "terminal");
+        });
+        let tab = |label: &str, group: Option<usize>, faded: bool| StripTab {
+            label: label.to_owned().into(),
+            icon: Some(icon.clone()),
+            group,
+            faded: faded.then(|| "hidden when tiled".into()),
+            ..Default::default()
+        };
+        let tabs = vec![tab("ben@aurora:~/src/olo", Some(0), false), tab("ben@aurora:~/notes", Some(0), true), tab("ben@aurora:~/web", Some(1), false), tab("ben@aurora:~", None, false)];
+        let color = |h: f32| Hsla { h, s: 0.7, l: 0.55, a: 1.0 };
+        let groups = vec![StripGroup { name: "olo".into(), color: color(0.0) }, StripGroup { name: "notes".into(), color: color(0.08) }];
+        let mut strip = TabStrip::new("lint-strip", tabs, 2).groups(groups).group_selection(vec![true, false]);
+        if self.side {
+            strip = strip.side();
+        }
+        let menus = ["Terminal", "Edit", "Tabs", "Settings"].map(|t| Menu::new(t).item("Close", "close")).to_vec();
+        let _ = cx;
+        let place = if self.side {
+            // (Down to an inset over the bottom: the lint's window isn't
+            // Terminal's, whose strip runs to its foot.)
+            div().absolute().left_0().top(px(BAR_HEIGHT)).bottom(px(m::WINDOW_INSET)).w(px(STRIP_SIDE_WIDTH))
+        } else {
+            div().absolute().left_0().right_0().top(px(BAR_HEIGHT)).h(px(STRIP_HEIGHT))
+        };
+        div().size_full().relative().child(place.child(strip)).child(div().absolute().top_0().left_0().right_0().child(MenuBar::new(menus, |_, _, _| {})))
+    }
+}
+
+/// Terminal's tab strip, along the top and down the side, as agents and
+/// the review read it: clean at every scale in every look (the side
+/// strip's close boxes once crowded its chips and New Tab, its first
+/// chip the menu bar's titles, and its icons and chips' names sat off
+/// the menu bar's first title).
+#[test]
+fn ui_lint_a_tab_strip_is_clean() {
+    for side in [false, true] {
+        let mut lint = Lint::new();
+        // (Along the top, as tall as the bar, the strip and an inset.)
+        let height = if side { 260.0 } else { olo_ui::menu::BAR_HEIGHT + olo_ui::widgets::STRIP_HEIGHT + m::WINDOW_INSET };
+        let found = lint.window(&WindowOptions::new("Strip", 900.0, height), move |_, cx| cx.new(|_| Strip { side }));
+        assert_clean(if side { "the side strip" } else { "the strip along the top" }, &found);
+    }
 }

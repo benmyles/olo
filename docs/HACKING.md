@@ -1666,7 +1666,12 @@ event reaches it.
   `.side()` puts it down the content's left: rows, the selected one
   raised the same way, a group's chip heading its rows in a capsule,
   New Tab a row after the last, the right edge dragged to resize
-  (`Resize`). A tab dragged rides on a raised plate under the pointer,
+  (`Resize`). Its icons and its chips' names are at `WINDOW_INSET`,
+  under the menu bar's first title (`SIDE_FACE`, `side_chip`), and its
+  first row is centred on `STRIP_SIDE_HEAD` (32, as a strip along the top: the pane heads beside
+  it), so a chip heading it is where it is along the top.
+  Agents read a side chip and New Tab as what shows (the pill; the +
+  and its name), though their whole rows take a click. A tab dragged rides on a raised plate under the pointer,
   its slot left empty, a mark where it would land; out of the strip
   (`TEAR`) it's torn off (`TearOff`, `TearOffGroup` for a chip). A
   window of the app moved over the strip marks where its tabs would go

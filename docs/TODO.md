@@ -348,16 +348,6 @@ of Finished; a new one goes where its priority puts it.
   dragged scrolls the scrollback with the pointer (a click in its track
   pages there), in every pane of a split tab.
 
-- **Terminal: the side strip crowds its close boxes** (found by the
-  review, 2026-11-03): with Tabs Down the Side, `tsession review` gives
-  errors at 1.5× (and the other scales to check): each tab's close box
-  (as agents read it) is 4 points from the group heading above it and
-  from New Tab under the last, and the first group's chip 4.3 points
-  under the menu bar's titles; and near-edges (the menu bar's first
-  title and the first icon, an icon and a chip's name). So: lay the
-  side strip out so the review is clean at 1, 1.25, 1.5, 1.75 and 2×,
-  light and dark, without its look changing more than it must.
-
 - **The command palette: typing "n" first closes it; every shortcut in
   it; files only on Ctrl** (Ben, 2026-11-03): "when i'm in the command
   pallette, if i start by typing "n" it closes the pallette. fix that
@@ -903,6 +893,27 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Terminal: the side strip crowds its close boxes**~~ (found by the
+  review, 2026-11-03): with Tabs Down the Side, `tsession review` gives
+  errors at 1.5× (and the other scales to check): each tab's close box
+  (as agents read it) is 4 points from the group heading above it and
+  from New Tab under the last, and the first group's chip 4.3 points
+  under the menu bar's titles; and near-edges (the menu bar's first
+  title and the first icon, an icon and a chip's name). So: lay the
+  side strip out so the review is clean at 1, 1.25, 1.5, 1.75 and 2×,
+  light and dark, without its look changing more than it must. *Done* (2026-11-03): agents read a side chip and
+  New Tab as what shows (the pill; the + and its name), not their whole
+  rows; the tabs' icons, the chips' names and New Tab's + sit at the
+  window's inset under the menu bar's first title (`SIDE_FACE`,
+  `side_chip`, each chip as wide as its name so all start at one
+  place); and the band beside the strip (`STRIP_SIDE_HEAD`, Terminal's
+  pane heads) is as tall as a strip along the top, 32, so the first
+  chip is where it is there, clear of the menu bar (28 drew a
+  near-height finding against the 26-tall bar). Reviewed clean at 1,
+  1.25, 1.5, 1.75 and 2×, light and dark; the kit's lint has the strip
+  along the top and down the side (`ui_lint_a_tab_strip_is_clean`),
+  which fails on the old layout with these findings.
 
 - ~~**Terminal: a tab hidden from tile mode**~~ (Ben, 2026-11-03): "ability
   to hide a specific tab in tile mode in terminal by right clicking on it

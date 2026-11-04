@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-03
 
+### Terminal: the side strip lined up
+
+*21:51* — Down the side, the tabs' icons, the groups' names and New Tab's + sit under the menu bar's first title, the first chip clears the menu bar as it does along the top, and the pane heads beside it are as tall as the top strip.
+
+![Terminal: the side strip lined up](2026-11-03/215104-terminal-the-side-strip-lined-up.png)
+
 ### Terminal: Hide When Tiled
 
 *21:35* — A tab's menu hides it from Tile All Tabs: it stays in the strip with its icon and title faded, and the tiles share the window without it.
