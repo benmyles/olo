@@ -649,13 +649,15 @@ fn graphics(ui: &mut Ui, outputs: &[OutputInfo], st: &mut State) {
     ui.bbox("Graphics", |ui| {
         for g in &gpus {
             // The displays connected to it now, by name; else its ports.
+            // (Label and value laid out alike, as paragraphs: their first
+            // lines level however the value wraps.)
             let shown: Vec<String> = outputs.iter().filter(|o| g.connectors.contains(&o.name)).map(|o| shown_name(o, outputs)).collect();
             let what = if shown.is_empty() { format!("nothing now (its ports: {})", if g.connectors.is_empty() { "none".into() } else { g.connectors.join(", ") }) } else { shown.join(", ") };
             ui.add(
                 div()
                     .flex()
                     .flex_row()
-                    .child(div().w(px(label_w + m::TEXT_INSET)).flex_shrink_0().child(StringView::new(format!("{}:", if g.boot { "Built in" } else { "Second" }))))
+                    .child(div().w(px(label_w + m::TEXT_INSET)).flex_shrink_0().child(StringView::new(format!("{}:", if g.boot { "Built in" } else { "Second" })).wrap(true)))
                     .child(div().flex_1().min_w_0().child(StringView::new(format!("{} ({} driver) draws {what}", g.name, g.driver)).wrap(true))),
             );
         }
