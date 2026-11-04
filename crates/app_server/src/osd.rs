@@ -42,6 +42,10 @@ pub enum Indicator {
     Microphone {
         muted: bool,
     },
+    /// The airplane key: every radio off, or back on.
+    Airplane {
+        on: bool,
+    },
     /// On or off, with a line saying for how long.
     Caffeinated {
         on: bool,
@@ -88,6 +92,8 @@ impl Indicator {
             Indicator::Volume { .. } => "Volume",
             Indicator::Microphone { muted: true } => "Microphone muted",
             Indicator::Microphone { muted: false } => "Microphone on",
+            Indicator::Airplane { on: true } => "Airplane mode on",
+            Indicator::Airplane { on: false } => "Airplane mode off",
             Indicator::Caffeinated { on: true, .. } => "Caffeinated",
             Indicator::Caffeinated { on: false, .. } => "Sleep allowed",
             Indicator::Mode(m) => m.title(),
@@ -98,7 +104,7 @@ impl Indicator {
         match self {
             Indicator::Brightness(l) | Indicator::KeyboardBacklight(l) => Some(*l),
             Indicator::Volume { level, muted } => Some(if *muted { 0.0 } else { *level }),
-            Indicator::Caffeinated { .. } | Indicator::Mode(_) | Indicator::Microphone { .. } => None,
+            Indicator::Caffeinated { .. } | Indicator::Mode(_) | Indicator::Microphone { .. } | Indicator::Airplane { .. } => None,
         }
     }
 }
@@ -291,6 +297,56 @@ fn draw_icon(pm: &mut Pixmap, ind: &Indicator, (x, y, size): (f32, f32, f32), rg
                 pm.stroke_path(&marks, &paint, &stroke(2.2), id, None);
             }
         }
+        Indicator::Airplane { on } => {
+            // An airplane seen from above, nose up; crossed out while
+            // the radios are back on.
+            let pts = [
+                (16.0, 2.5),
+                (17.8, 5.0),
+                (17.8, 12.0),
+                (29.0, 19.0),
+                (29.0, 22.0),
+                (17.8, 18.5),
+                (17.8, 25.0),
+                (21.5, 28.0),
+                (21.5, 30.0),
+                (16.0, 28.5),
+                (10.5, 30.0),
+                (10.5, 28.0),
+                (14.2, 25.0),
+                (14.2, 18.5),
+                (3.0, 22.0),
+                (3.0, 19.0),
+                (14.2, 12.0),
+                (14.2, 5.0),
+            ];
+            let mut pb = PathBuilder::new();
+            let (sx, sy) = at(pts[0].0, pts[0].1);
+            pb.move_to(sx, sy);
+            for &(px, py) in &pts[1..] {
+                let (a, b) = at(px, py);
+                pb.line_to(a, b);
+            }
+            pb.close();
+            if let Some(plane) = pb.finish() {
+                pm.fill_path(&plane, &paint, FillRule::Winding, id, None);
+            }
+            if !*on {
+                // The slash, with the panel's colour beside it so it reads
+                // over the wings.
+                let mut pb = PathBuilder::new();
+                let ((p, q), (r, s)) = (at(5.0, 4.0), at(27.0, 28.0));
+                pb.move_to(p, q);
+                pb.line_to(r, s);
+                if let Some(slash) = pb.finish() {
+                    let mut gap = paint.clone();
+                    let bg = theme::palette().panel_background;
+                    gap.set_color_rgba8(bg[0], bg[1], bg[2], bg[3]);
+                    pm.stroke_path(&slash, &gap, &stroke(5.0), id, None);
+                    pm.stroke_path(&slash, &paint, &stroke(2.2), id, None);
+                }
+            }
+        }
         Indicator::Mode(mode) => {
             use olo_protocol::WindowingMode as M;
             // Auto-Tiling: a screen in tiles, as dwindle splits it (a
@@ -432,6 +488,8 @@ mod tests {
             Indicator::Volume { level: 0.4, muted: true },
             Indicator::Microphone { muted: false },
             Indicator::Microphone { muted: true },
+            Indicator::Airplane { on: true },
+            Indicator::Airplane { on: false },
             Indicator::Caffeinated { on: true, detail: "For 1 hour, until 15:30".into() },
             Indicator::Caffeinated { on: false, detail: "Sleeps when idle".into() },
             Indicator::Mode(olo_protocol::WindowingMode::Standard),

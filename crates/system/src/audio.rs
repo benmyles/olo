@@ -434,16 +434,31 @@ pub fn toggle_mute() -> Result<()> {
 }
 
 /// Mute the microphone in use, or unmute it (a laptop's microphone key):
-/// whether it is muted now.
+/// whether it is muted now. When that is Olo's voice processing
+/// (`olo_voice`), the microphone it records from is muted with it: the
+/// sound stops at the hardware, and a laptop's microphone light (the
+/// kernel's `audio-micmute` trigger, following the card's capture
+/// switch) says so.
 pub fn toggle_input_mute() -> Result<bool> {
     let mut c = Conn::connect()?;
     let q = protocol::GetSourceInfo { index: None, name: Some(CString::new("@DEFAULT_SOURCE@").unwrap()) };
     let source: protocol::SourceInfo = c.request(&Command::GetSourceInfo(q))?;
     let mute = !source.muted;
-    let params = SetDeviceMuteParams { device_index: Some(source.index), device_name: None, mute };
-    Conn::connect()?.ack(&Command::SetSourceMute(params))?;
+    let mut sources = vec![source.index];
+    if source.name.to_bytes().starts_with(b"olo_voice") {
+        let outputs: protocol::SourceOutputInfoList = c.request(&Command::GetSourceOutputInfoList)?;
+        sources.extend(outputs.iter().filter(|o| prop(&o.props, "node.name").as_deref() == Some(VOICE_MICROPHONE)).map(|o| o.source_index));
+    }
+    sources.dedup();
+    for index in sources {
+        let params = SetDeviceMuteParams { device_index: Some(index), device_name: None, mute };
+        Conn::connect()?.ack(&Command::SetSourceMute(params))?;
+    }
     Ok(mute)
 }
+
+/// The stream Olo's voice processing records the microphone with.
+const VOICE_MICROPHONE: &str = "olo_voice.microphone";
 
 /// Call `changed` with the volume now and whenever it (or the default
 /// output) changes; None while there is no sound server. Never returns:
@@ -564,6 +579,24 @@ pub fn watch_playing(mut changed: impl FnMut(Option<bool>)) -> ! {
         }
         report(None);
         std::thread::sleep(Duration::from_secs(3));
+    }
+}
+
+#[cfg(test)]
+mod mic_mute_tests {
+    /// The microphone key on this machine (`cargo test -p olo-system
+    /// mic_key -- --ignored --nocapture`): muted, its light, unmuted.
+    #[test]
+    #[ignore]
+    fn mic_key() {
+        let led = || std::fs::read_to_string("/sys/class/leds/platform::micmute/brightness").unwrap_or_default().trim().to_owned();
+        eprintln!("before: light {}", led());
+        let muted = super::toggle_input_mute().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        eprintln!("muted {muted}: light {}", led());
+        let muted = super::toggle_input_mute().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        eprintln!("muted {muted}: light {}", led());
     }
 }
 

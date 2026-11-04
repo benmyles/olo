@@ -30,6 +30,7 @@ pub mod power;
 pub mod power_profile;
 pub mod priority;
 pub mod recording;
+pub mod rfkill;
 pub mod secrets;
 pub mod systemd;
 pub mod time;

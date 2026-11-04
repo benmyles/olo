@@ -44,6 +44,14 @@ pub mod keys {
     pub const KBD_UP: u32 = 230;
     /// A laptop's microphone key (a ThinkPad's F4).
     pub const MIC_MUTE: u32 = 248;
+    /// The display key (a ThinkPad's F7): Preferences ▸ Display.
+    pub const SWITCH_VIDEO_MODE: u32 = 227;
+    /// The airplane key (a ThinkPad's F8, through Intel's HID events):
+    /// every radio off, or back on.
+    pub const RFKILL: u32 = 247;
+    /// The notification centre key (a ThinkPad's F9): the notifications'
+    /// history.
+    pub const NOTIFICATION_CENTER: u32 = 444;
 }
 
 enum Job {
@@ -60,6 +68,8 @@ enum Job {
     ToggleMute,
     /// The microphone key: mute the microphone in use, or unmute it.
     ToggleMicMute,
+    /// The airplane key: every radio off, or back on.
+    ToggleAirplane,
     /// Look for brightness controls for these connectors.
     FindDisplays(Vec<String>),
     /// An external display's brightness (by connector).
@@ -107,6 +117,8 @@ pub struct Power {
     pub volume_feedback: Option<calloop::channel::Channel<crate::osd::Indicator>>,
     /// The microphone key's muting, pretended (headless: no sound server).
     pub mic_muted: bool,
+    /// Airplane mode as simulated without a session (tests).
+    pub airplane: bool,
     jobs: Option<Sender<Job>>,
     /// Displays found with a USB brightness control, and their levels
     /// (from the worker; taken by state set-up).
@@ -163,6 +175,7 @@ impl Power {
             volume,
             volume_feedback,
             mic_muted: false,
+            airplane: false,
             jobs,
             displays_found,
             externals: Vec::new(),
@@ -352,6 +365,7 @@ fn run(job: Job, w: &mut Worker) {
             .map_err(|e| e.to_string()),
         Job::ToggleMute => audio::toggle_mute().map_err(|e| e.to_string()),
         Job::ToggleMicMute => audio::toggle_input_mute().map(|muted| _ = feedback.send(crate::osd::Indicator::Microphone { muted })).map_err(|e| e.to_string()),
+        Job::ToggleAirplane => olo_system::rfkill::toggle_airplane().map(|on| _ = feedback.send(crate::osd::Indicator::Airplane { on })).map_err(|e| e.to_string()),
         Job::FindDisplays(connectors) => {
             find_displays(displays, warned, found, connectors);
             Ok(())
@@ -633,6 +647,9 @@ impl<B: Backend> AnvilState<B> {
             keys::VOLUME_DOWN => |s| s.volume_key(Job::Volume(-STEP)),
             keys::MUTE => |s| s.volume_key(Job::ToggleMute),
             keys::MIC_MUTE => |s| s.volume_key(Job::ToggleMicMute),
+            keys::RFKILL => |s| s.volume_key(Job::ToggleAirplane),
+            keys::SWITCH_VIDEO_MODE => |s| s.spawn_program("olo-preferences", &["display"]),
+            keys::NOTIFICATION_CENTER => |s| s.spawn_program("olo-notifications", &["--history"]),
             keys::KBD_UP => |s| s.step_keyboard(STEP),
             keys::KBD_DOWN => |s| s.step_keyboard(-STEP),
             keys::KBD_TOGGLE => |s| {
@@ -700,6 +717,11 @@ impl<B: Backend> AnvilState<B> {
             self.power.mic_muted = !self.power.mic_muted;
             info!(muted = self.power.mic_muted, "microphone key (simulated)");
             self.show_indicator(crate::osd::Indicator::Microphone { muted: self.power.mic_muted });
+        } else if matches!(job, Job::ToggleAirplane) {
+            // Not the session: the radios are left alone; pretend.
+            self.power.airplane = !self.power.airplane;
+            info!(on = self.power.airplane, "airplane key (simulated)");
+            self.show_indicator(crate::osd::Indicator::Airplane { on: self.power.airplane });
         } else if let Some((level, muted)) = self.power.volume {
             // Not the session: the sound server is left alone; pretend.
             let v = match job {

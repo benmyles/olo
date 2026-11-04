@@ -100,7 +100,11 @@ of Finished; a new one goes where its priority puts it.
   - Sound: None as the output (the Sonos isn't forced on), kept across
     logins.
   - The microphone key (F4) mutes the microphone in use, shown on
-    screen. Left: its LED (`platform::micmute`, root-owned), F7–F12.
+    screen, and the hardware microphone under Olo's voice processing,
+    so its light comes on (tried: on with the mute, off with the
+    unmute). F7 opens Preferences ▸ Display, F8 is airplane mode (every
+    radio, `/dev/rfkill`, shown on screen), F9 the notifications'
+    history; F10–F12 (phone, star) go to the app in front.
   - Alt and the Windows key swapped per keyboard (Ben: "the alt key on
     the thinkpad is where the cmd key is on a mac", then "that needs to
     be a per keyboard option ... i have an external mac keyboard where

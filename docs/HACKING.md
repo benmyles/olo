@@ -4625,8 +4625,18 @@ when the app lets go or leaves the bus) count as activity. `Request::PowerStatus
 microphone keys are taken by app_server (the microphone key, a
 ThinkPad's F4, KEY_MICMUTE: the microphone in use muted or unmuted,
 `audio::toggle_input_mute`, a microphone on screen, slashed while
-muted); the brightness keys act on the display under the
-pointer when its brightness can be set, else the built-in one.
+muted; when that's Olo's voice processing, the microphone it records
+from too, so the sound stops at the hardware and the key's light, the
+kernel's `audio-micmute` trigger on the card's capture switch, comes
+on), as are a laptop's display, airplane and notification keys (a
+ThinkPad's F7 KEY_SWITCHVIDEOMODE opens Preferences ▸ Display; F8
+KEY_RFKILL turns every radio off or back on, `olo_system::rfkill`,
+`/dev/rfkill` being the session's, an airplane on screen; F9
+KEY_NOTIFICATION_CENTER opens the notifications' history, as Deskbar's
+bell does; the phone keys, F10 and F11, and the star, F12, go to the
+app in front and can be shortcuts); the brightness keys act on the
+display under the pointer when its brightness can be set, else the
+built-in one.
 
 Each display's brightness is `OutputInfo::brightness` (None: can't be set)
 and `Request::SetOutputBrightness { name, level }`. Besides the built-in
