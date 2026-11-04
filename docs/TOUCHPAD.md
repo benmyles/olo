@@ -206,7 +206,7 @@ the size rule and the model.
 - PalmTouch needs raw capacitive images, which this pad doesn't give.
 
 **The model** (crates/palm, `olo-palm`, all Rust):
-- Seventeen features a contact, made by `Tracker` from each report: its
+- Eighteen features a contact, made by `Tracker` from each report: its
   size and smaller size, pressure, pressure for its size, place,
   distance from the nearest edge, age, smoothed speed, the most size and
   pressure it has had, how many others are down, its shape (round or
@@ -221,133 +221,173 @@ the size rule and the model.
 - One hidden layer of 32 units: 641 weights. Ben (2026-11-02): "make
   the model even bigger and write them out as best you can for an
   optimal baseline model and then we can frame the training as optional
-  to personalize it": 22 units written by hand, each one sign of a palm
-  (large; at its largest; light for its size at an edge; still with
-  others down; heavy; long; grown; at the bottom corners; very large;
-  large and still; light and just landed; long at an edge; many down;
-  pressed) or of a finger (small and moving; small, round and young;
-  small in the middle; fast; two small together; a fingertip pressing;
-  small at its largest), ten spare for training.
-- Trained on the machine by full-batch Adam on the class-weighted log
-  loss, in a fraction of a second.
+  to personalize it": 27 units written by hand (`baseline`), each one
+  sign of a palm (large; at its largest; light for its size at an edge;
+  still with others down; heavy; long; grown; at the bottom corners;
+  very large; large and still; light and just landed; long at an edge;
+  many down; pressed; over a side edge; resting low on the pad, still,
+  long and light: a hand's heel below the finger pointing, on a tall
+  pad, not at the edge and short of palm size) or of a finger (small and
+  moving; small, round and young; small in the middle; fast; two small
+  together; a fingertip pressing; small at its largest), five spare for
+  training.
+- **Judged from when it touches the glass** (2026-11-03): a contact is
+  followed from its first report with some pressure, not from when the
+  pad first saw it. A palm settling hovers first: in Ben's second run 15
+  of 35 palms still hovered 40 ms after they appeared, some for the
+  whole 250 ms window, while no finger hovered past 56 ms, so a hand
+  coming down slowly (resting low on the pad while pointing, say) was
+  never judged touching at all, and then stayed a finger. A pad that
+  reports no pressure is touching from its first report.
 - A contact is a palm once its score passes the threshold between 40 ms
-  and 250 ms old. Not before 40 ms (`MIN_AGE_MS`, five reports): in a
-  contact's first report nothing has moved, so a finger landing at the
-  edge looks like a heel over it, and the baseline took 85% of edge
-  scrolling fingers for palms until it waited for their speed (Ben,
-  2026-11-02: one hand's palm half over the left or right edge must
-  work out of the box; `the_baseline_catches_a_palm_over_the_edge`:
-  every such palm caught, under 10% of edge fingers lost). A heel hidden
-  40 ms late moves nothing and can't tap. Not after 250 ms: a finger
-  turning palm mid-gesture would stop the gesture.
+  and 250 ms on the glass. Not before 40 ms (`MIN_AGE_MS`, five
+  reports): in a contact's first report nothing has moved, so a finger
+  landing at the edge looks like a heel over it (the baseline took 85%
+  of edge scrolling fingers for palms until it waited for their speed).
+  A heel hidden 40 ms late moves nothing and can't tap. Not after
+  250 ms: a finger turning palm mid-gesture would stop the gesture.
+- Trained on the machine by full-batch Adam on the class-weighted log
+  loss, in a fraction of a second, held near where it started (the
+  penalty is on how far each weight has gone from its start, not on the
+  weight): a few hundred touches can't say what a contact unlike any of
+  them is, so there the units keep what they were written to mean. On
+  its own, fine tuning drifted until a still fingertip mid-pad scored
+  9.6 against a threshold of 3 (`fingertips::a_resting_fingertip_is_a_finger`);
+  from a pull of 3e-3 it's well under, and the touches kept back do best
+  there.
+- Inputs are held within what the model was trained on (`lo`, `hi`,
+  each feature's least and most), so of a touch where it never saw one
+  it says what it says at the nearest it did, not whatever its weights
+  make far past it.
 - The threshold is chosen so that at most 1% of the fingers kept back
   from training (every fifth contact) are taken for palms: a palm let
   through costs less than a finger lost.
-- On made-up MacBook-like contacts it catches the light edge palms the
-  size rule misses, with under 5% of fingers lost on contacts it never
-  saw (`learns_palms_without_losing_fingers`).
 
-**Olo's own baseline** (`olo_palm::baseline`, Ben: "a baseline model by
-directly writing out the weights … so that the user training is really
-fine tuning"): the same network with weights written by hand from the
-measurements above, each hidden unit one sign of a palm (large now,
-large at its largest, light for its size near an edge, still with others
-down, heavy and large) or of a finger (small and moving, small for its
-pressure), with spare units for training to fill. Untrained it catches
-over 85% of the synthetic palms (the size rule's light edge palms
-included) and loses no fingers (`the_baseline_beats_the_size_rule_untrained`).
-The filter runs only a trained model (Ben: "it does not work well
-without training"); `train()` starts from the baseline's weights (taken
-to the samples' scale) with a small learning rate, so a few of the
-person's samples refine it rather than start over, and keeps the result
-only if it beats the baseline on the touches kept back.
+**Olo's own model, made from real hands** (`olo_palm::default_model`,
+`src/default_model.rs`; Ben, 2026-11-03: "make this one that you're
+improving from my data the new default/untrained model"). It's the
+hand-written baseline trained on every run the trainer has kept
+(`make_default_model`, `cargo test --release -p olo-palm
+make_default_model -- --ignored --nocapture`, which writes the file), so
+it runs before anyone trains (the Touch tab's check is on by default),
+training starts from it, and the person's model is kept only if it
+does at least as well. Runs kept before the window started at the touch
+(a bare list) are made over as the tracker follows contacts now
+(`Run::on_the_glass`: the hovering frames dropped, age, growth and peaks
+counted from the first touching one), and the runs are made to show
+what they don't (`with_what_they_dont_show`): no exercise had asked for
+a click, so in Ben's runs fingers never pressed past ~70 while resting
+palms pressed 100–460, and a model of them took pressing fingers for
+palms, which a click is (every click is a finger pressing past the
+driver's 120; a palm can't click); and nothing touched the bottom fifth
+of the pad. So each finger is made again pressing on to a click (its
+pressure ramping there over 150 ms, its size a quarter larger as it
+flattens), and every contact again low on the pad (a fingertip is one
+anywhere, a thumb waits at the bottom to click, a palm rests there).
 
-On real hands (2026-11-03, `captures::on_real_hands`: Ben's two
-training runs, kept by the trainer; cost = palms missed + 4 × fingers
-lost):
+From Ben's two runs (197 contacts, 437 made from them), on the touches
+kept back (30 palms, 96 fingers): 93.3% of palms caught, no finger lost
+(the hand-written baseline 86.7% and 1.0%, the size rule 86.7% and 0%).
+Each run judged by one made the same way from the other only (another
+sitting's hands, the honest test): run 1 86.0% and 8.3% (its odd
+fingers: two at the very top edge, three light ones on the right edge
+much like run 2's edge palms, one larger than palm size), run 2 91.2%
+and 0%. The runs' own touches made into clicks and low ones: no click,
+no low finger and no low thumb taken; 90.9% of palms moved low caught
+(the baseline 84.4%). On made-up low heels against thumbs at the bottom
+(`made_low`), 76% of heels caught and no thumb; trained on some, all of
+them. Two runs of one person's hands are little to go on: each run kept
+from now on makes the next default better (run `make_default_model`
+again).
 
-| | run 1 (dialog trainer: 47 palms, 83 fingers) | run 2 (full-screen trainer: 35, 48) |
+On real hands (2026-11-03, `captures::on_real_hands`, runs made over as
+above; cost = palms missed + 4 × fingers lost; Olo's own was made from
+these, so the cross-run numbers above are the fair ones):
+
+| | run 1 (dialog trainer: 43 palms, 72 fingers) | run 2 (full-screen trainer: 34, 48) |
 |---|---|---|
-| size rule (1600) | 66.0% caught, 1.2% lost (0.389) | 94.3%, 0% (0.057) |
-| the baseline as written | 95.7%, **53.0%** lost (2.163) | 100%, 0% (0) |
-| the baseline now | 70.2%, 0% (0.298) | 91.4%, 0% (0.086) |
-| the baseline now, or the size | 72.3%, 1.2% (0.325) | 97.1%, 0% (0.029) |
-| trained on the other run | 87.2%, 18.1% (0.851) | 100%, 0% (0) |
+| size rule (1600) | 69.8% caught, 1.4% lost (0.358) | 94.1%, 0% (0.059) |
+| Olo's own | 90.7%, 0% (0.093) | 97.1%, 0% (0.029) |
+| Olo's own, or the size (as the filter runs) | 90.7%, 1.4% (0.149) | 100%, 0% (0) |
 
-As written it took half of a run's still fingertips for palms: several
-features' typical values were guesses that every real contact missed
-(pressure for its size 0.028, not 0.08; shape 0.50, not 0.75: all
-"long"; growth since landing 0.86, not 0.40: every fingertip grows from
-its first report), its context units (grown, still near an edge, long
-at an edge) hardly weighed size, and its threshold was 0. Now those
-scales are the real ones, those units need some size, and the threshold
-is 2 (the lowest that, with the size rule beside it, loses no finger
-the size rule doesn't); with the size rule, as the filter runs, it beats
-size alone on both runs, and as training's start it gives the better
-model of the two tried (run 2 from run 1: 100%, from the old weights
-94.3%). Two runs of one person's hands are little to go on: more
-sittings, and other people's, are what would make it the best.
+Before (the hand-written baseline, by the runs as kept then): 72.3% and
+1.2%, 97.1% and 0% with the size rule. As first written it took half of
+a run's still fingertips for palms: several features' typical values
+were guesses every real contact missed, its context units hardly
+weighed size, and its threshold was 0.
 
 **Where it runs:** in `touchpad.lua` itself, since the filter has to hide
 a palm before libinput sees it, in the same features and arithmetic
-(`palm_model_scores_as_rust_does`: Lua and Rust agree to 1e-4).
-- Scoring costs about 13 µs a frame at this size (`frame_cost`, three
-  contacts: 19.9 µs off, 33.7 µs on at 18 features and 32 units;
-  20.8 µs before any model; the 10-unit first try was 22.3 µs), about
-  0.17% of a core at the pad's 125 Hz. A GPU dispatch would cost more
-  than the whole network.
-- A contact is scored only in its first 250 ms.
-- With no trained model, or with it off, the filter is as it was.
+(`palm_model_scores_as_rust_does`: Lua and Rust agree to 1e-4, a
+contact hovering before it touches and bounds that bite included).
+- Scoring costs about 15 µs a frame at this size (`frame_cost`, three
+  contacts: 18.7 µs off, 33.9 µs on before the window started at the
+  touch and inputs were held; after, 20.3 µs off (that path didn't
+  change: the rest is noise), 35.3 µs on, 33.2–34.0 µs with Olo's own
+  and its bounds), about 0.2% of a core at the pad's 125 Hz. A GPU
+  dispatch would cost more than the whole network.
+- A contact is scored only in its first 250 ms on the glass.
+- With the model off, the filter is as it was.
 - On app_server's main thread (`CORE_NICE`, a fast core), which the
   supervisor keeps there every pass. How long the pad's reports take to
   reach app_server, the filter and model included, is live in Activity
   Monitor ▸ Displays ▸ Touchpad (HACKING, "The touchpad's reports").
 
 **The trainer** (apps/preferences/src/palm_trainer.rs, "Train for Your
-Palm…" on Preferences ▸ Touchpad & Mouse ▸ Touch). Only a model trained
-on the person's hands is used: Olo's own (`baseline`) is where training
-starts, not one to use as it is (Ben, 2026-11-02: "it does not work
-well without training"), so the Touch tab's check is there once a model
-is, and training turns it on.
+Palm…" on Preferences ▸ Touchpad & Mouse ▸ Touch).
 - **Full screen, from the keyboard** (Ben: "i can't click the buttons
   because i am using the mouse to do stuff"): `WindowOptions::fullscreen`,
   nothing clickable; Space goes on once a step has what it needs,
   Backspace starts the step over, Esc quits (twice once touches are
   gathered: they'd be dropped), R trains again from the summary and the
-  try. The keys show at the bottom as `KeyHint`s (a cap and what it does,
-  dim while it does nothing); agents read them and press them.
-- **Six exercises**, each a film of hands on a laptop's deck beside the
-  pad live: rest both palms (10), one palm half over the left edge (5)
-  then the right (5), type with the palms down (8 palm touches while
-  typing), point and scroll (12 moving fingers), tap (12), point with a
-  palm down (3 palm rests, 10 fingers with a palm down). The typing one
-  is a 1990s typing tutor (`typing_tutor.rs`, Ben: "show the user
-  something to type … make it a real throwback"): a lesson on ruled
-  paper, the next letter marked (red after a wrong key), a keyboard with
-  each finger's keys in its colour, the next key lit and its finger
-  ringed, speed and accuracy; Return goes on there, so a typed space
-  never skips the step.
-- **Every touch judged as it lifts** (`judge`, pure and tested): counted
+  try. The keys show at the bottom as `KeyHint`s; agents read them and
+  press them.
+- **Twelve exercises, each asking one thing** (Ben, 2026-11-03: "a few
+  of them are confusing right now where it tries to ask me to do like
+  two things at once"; `each_step_asks_one_thing`): rest both palms
+  (10), one palm half over the left edge (5), the right edge (5), type
+  with the palms down (8), move the pointer (10), scroll with two
+  fingers (10), tap (10), click (6), point with a palm at the edge (3
+  rests), point with your hand resting low (5 rests), click with your
+  thumb at the bottom (5), your shirt against the bottom edge (5; it
+  can be skipped, as a shirt may never reach the glass). Each has a
+  film of hands on a laptop's deck beside the pad live. The typing one
+  is a 1990s typing tutor (`typing_tutor.rs`); Return goes on there, so
+  a typed space never skips the step.
+- **A line under the title says what to do now**, from the hands on the
+  pad (`TrainerWindow::now`): "Rest the heel of one hand half over the
+  left edge." → "Hold it there…" → "Good. Now lift it."; the two that
+  point while a hand rests go rest → hold → "Now point or tap with a
+  finger above it: 3 more." → "Good. Now lift your hand.", so one hand
+  resting and the other's touches are one guided cycle, the fingers
+  learned as fingers with a palm down and the rest counted once it has
+  had three. Low means landed in the pad's lowest 35%.
+- **Every touch judged as it lifts** (`judge`, pure and tested): learned
   if it's what the step asks for ("A palm, resting. Good."), dropped with
-  why if not ("That was a fingertip: rest the heel of your hand, below
-  the thumb.", "That was in the middle: …", "Too quick: …"), so nothing
-  is learned under the wrong name. A ring on the pad where each touch
-  lifted, green or red, fades in 1.5 s; each goal's count is a row of
-  dots.
+  why if not ("That was a fingertip: …", "That didn't press: press
+  until the touchpad clicks.", "That rested too high: …"), so nothing is
+  learned under the wrong name. A ring on the pad where each touch
+  lifted, green or red, fades in 1.5 s; the step's count is a row of
+  dots. The line on the last touch sits in a quiet box; once the step
+  has what it needs, a green banner takes its place ("This step is
+  done", what's next, the key: the kit's `Banner`), as the summary's
+  outcome is.
 - **Training** on `background_spawn` with progress. The model is kept
   only if it does at least as well as Olo's own on the touches kept back
   (`Report::better_than_baseline`, a finger taken for a palm counting
   four palms missed). The summary says which, and whether app_server
   really has it: it asks (`Request::GetSettings`) rather than trusting
-  Preferences' own copy, since an app_server older than the field drops
-  it (what happened to Ben's first run). It shows touches gathered and
-  how the new model, Olo's own and size alone did on those kept back.
-  "Try it" (only for a model kept) draws each touch as the new model
-  calls it, with counts.
-- The Touch tab says which model is in use, when it was trained, on how
-  many touches and how it did, with "Train Again…" and "Forget My Model";
-  the size rule is "Always a palm when as large as", with a note that
-  the model only adds palms to it.
+  Preferences' own copy. It shows touches gathered and how the new
+  model, Olo's own and size alone did on those kept back. "Try it"
+  (only for a model kept) draws each touch as the new model calls it,
+  with counts. The run's touches are kept in `~/.local/state/olo/palm`
+  (`Run`, `from_touch: true`) for the next default.
+- The Touch tab says which model is in use: yours (when it was trained,
+  on how many touches, how it did) or Olo's own (made from how many
+  touches, how it did), with "Train for Your Palm…" / "Train Again…"
+  and "Forget My Model" (back to Olo's own); the size rule is "Always a
+  palm when as large as", with a note that the model only adds palms to
+  it. Activity Monitor ▸ Displays ▸ Touchpad says which runs.
 - Checked headless with `SyntheticEvent::Contacts`. The model is in
   `Settings`, so Preferences ▸ Backup's export and import carry it.
 

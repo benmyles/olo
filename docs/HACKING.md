@@ -4818,9 +4818,12 @@ context when the filter's settings change.
 `cargo test -p app_server touch_filter` runs the plugin in mlua against
 scripted frames; `examples/touch_filter_probe.rs` runs it on a real
 device (root, read-only).
-The filter can also use a **palm model** trained on the person's hands
-(`TouchFilter::palm_model`, `use_palm_model`; crates/palm, `olo-palm`;
-docs/TOUCHPAD.md "Palms told apart by a model"). Its live samples come
+The filter also runs a **palm model** (`use_palm_model`, on by default;
+`touch_filter::model_in_use`): the person's, trained on their hands
+(`TouchFilter::palm_model`), or else Olo's own, made from real hands
+(`olo_palm::default_model`, written by `make_default_model` from the
+trainer's kept runs; crates/palm, `olo-palm`; docs/TOUCHPAD.md "Palms
+told apart by a model"). Its live samples come
 from app_server's `contacts.rs`, which reads the pad's slots with
 `EVIOCGMTSLOTS` on a copy of libinput's descriptor while anyone
 subscribes to `EventKind::TouchContacts` (only by name).

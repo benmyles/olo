@@ -43,14 +43,7 @@ pub fn render(t: &TouchpadSettings) -> Option<String> {
         return None;
     }
     let devices: Vec<String> = DEVICES.iter().map(|d| format!("{d:?}")).collect();
-    // The palm model, when it's to be used: only one trained on the
-    // person's hands (Train for Your Palm). Olo's own is where training
-    // starts, not one to use untrained (Ben, 2026-11-02: "it does not
-    // work well without training").
-    let model = match (&f.palm_model, f.use_palm_model) {
-        (Some(m), true) if m.w1.len() == olo_palm::HIDDEN * olo_palm::FEATURES => format!(", palm_model = {}", olo_palm::lua(m)),
-        _ => String::new(),
-    };
+    let model = model_in_use(f).map(|m| format!(", palm_model = {}", olo_palm::lua(&m))).unwrap_or_default();
     let config = format!(
         "local CONFIG = {{ devices = {{ {} }}, touch_on = {}, touch_off = {}, lift_ms = {}, palm_size = {}, click = {}, press = {}, release = {}{model} }}",
         devices.join(", "),
@@ -63,6 +56,21 @@ pub fn render(t: &TouchpadSettings) -> Option<String> {
         f.click_release.min(f.click_press),
     );
     Some(TEMPLATE.replacen("local CONFIG = {} -- @CONFIG@ (replaced by app_server)", &config, 1))
+}
+
+/// The palm model the filter runs, when it's on: the person's, trained
+/// on their hands (Train for Your Palm), or Olo's own, made from real
+/// hands (`olo_palm::default_model`; Ben, 2026-11-03: "make this one
+/// that you're improving from my data the new default/untrained model").
+/// A model of another shape (from an older Olo) gives way to Olo's own.
+pub fn model_in_use(f: &olo_protocol::touchpad::TouchFilter) -> Option<olo_protocol::touchpad::PalmModel> {
+    if !f.use_palm_model {
+        return None;
+    }
+    match &f.palm_model {
+        Some(m) if m.w1.len() == olo_palm::HIDDEN * olo_palm::FEATURES && m.mean.len() == olo_palm::FEATURES => Some(m.clone()),
+        _ => Some(olo_palm::default_model()),
+    }
 }
 
 /// Where app_server keeps the plugins it writes (the session's own).
@@ -110,13 +118,20 @@ mod tests {
     fn renders_the_settings() {
         let mut t = TouchpadSettings::default();
         let lua = render(&t).unwrap();
-        assert!(lua.contains("local CONFIG = { devices = { \"Apple MTP\" }, touch_on = 1, touch_off = 1, lift_ms = 60, palm_size = 1600, click = true, press = 120, release = 75 }"));
-        // Turned on, untrained: no model (Olo's own isn't used as it is)...
-        t.filter.use_palm_model = true;
-        assert!(render(&t).unwrap().contains("release = 75 }"));
-        // ...trained, the person's.
+        // On by default, untrained: Olo's own model...
+        let own = olo_palm::lua(&olo_palm::default_model());
+        assert!(lua.contains(&format!(
+            "local CONFIG = {{ devices = {{ \"Apple MTP\" }}, touch_on = 1, touch_off = 1, lift_ms = 60, palm_size = 1600, click = true, press = 120, release = 75, palm_model = {own} }}"
+        )));
+        // ...trained, the person's...
         t.filter.palm_model = Some(olo_palm::baseline());
-        assert!(render(&t).unwrap().contains("release = 75, palm_model = { mean = {"));
+        let theirs = render(&t).unwrap();
+        assert!(theirs.contains(&format!("release = 75, palm_model = {} }}", olo_palm::lua(&olo_palm::baseline()))));
+        // ...one of another shape, Olo's own; off, none.
+        t.filter.palm_model = Some(olo_protocol::touchpad::PalmModel { w1: vec![0.0; 7], ..olo_palm::baseline() });
+        assert!(render(&t).unwrap().contains(&own));
+        t.filter.use_palm_model = false;
+        assert!(render(&t).unwrap().contains("release = 75 }"));
         assert!(!lua.contains("@CONFIG@"));
         t.filter.enabled = false;
         assert_eq!(render(&t), None);
@@ -221,9 +236,12 @@ mod tests {
             decide_ms: 250,
             ..Default::default()
         };
-        for on in [false, true] {
+        // (Off; a model without bounds, as measured before; Olo's own, with
+        // its bounds, never calling a palm so every contact is judged.)
+        let own = PalmModel { threshold: 1e9, ..olo_palm::default_model() };
+        for (name, on, model) in [("off", false, model.clone()), ("on", true, model.clone()), ("Olo's own, bounded", true, own)] {
             let mut t = TouchpadSettings::default();
-            t.filter.palm_model = Some(model.clone());
+            t.filter.palm_model = Some(model);
             t.filter.use_palm_model = on;
             let mut pad = Pad::new(&t);
             let start = std::time::Instant::now();
@@ -242,7 +260,7 @@ mod tests {
                 pad.frame(8, &events);
             }
             let us = start.elapsed().as_secs_f64() * 1e6 / FRAMES as f64;
-            println!("palm model {}: {us:.2} µs a frame (3 contacts)", if on { "on" } else { "off" });
+            println!("palm model {name}: {us:.2} µs a frame (3 contacts)");
         }
     }
 
@@ -261,9 +279,13 @@ mod tests {
             seed ^= seed << 17;
             (seed >> 40) as f32 / (1u64 << 24) as f32 - 0.5
         };
+        let mean: Vec<f32> = (0..FEATURES).map(|_| r() * 0.2).collect();
         let model = PalmModel {
-            mean: (0..FEATURES).map(|_| r() * 0.2).collect(),
             std: (0..FEATURES).map(|_| 0.2 + r().abs()).collect(),
+            // (Bounds that bite: the contact goes past some of them.)
+            lo: mean.iter().map(|m| m - 0.05).collect(),
+            hi: mean.iter().map(|m| m + 0.05).collect(),
+            mean,
             w1: (0..HIDDEN * FEATURES).map(|_| r()).collect(),
             b1: (0..HIDDEN).map(|_| r()).collect(),
             w2: (0..HIDDEN).map(|_| r()).collect(),
@@ -271,14 +293,19 @@ mod tests {
             decide_ms: 60,
             ..Default::default()
         };
-        // A contact moving, growing and pressing harder, a report every 8 ms.
-        let path: Vec<TouchContact> =
-            (0..12).map(|k| TouchContact { id: 5, x: -3000 + k * 140, y: 1200 + k * 90, major: 600 + k * 35, minor: 450 + k * 20, pressure: 20 + k * 4, ..Default::default() }).collect();
+        // A contact hovering first (no pressure: not followed yet), then
+        // moving, growing and pressing harder, a report every 8 ms.
+        let path: Vec<TouchContact> = (0..15)
+            .map(|k| TouchContact { id: 5, x: -3000 + k * 140, y: 1200 + k * 90, major: 600 + k * 35, minor: 450 + k * 20, pressure: if k < 3 { 0 } else { 20 + k * 4 }, ..Default::default() })
+            .collect();
         let axes = PadAxes::macbook();
         let mut tracker = Tracker::default();
         let mut best = f32::MIN;
         for (k, c) in path.iter().enumerate() {
-            let (_, f, age) = tracker.frame(&axes, 8000 * (k as u64 + 1), &[*c])[0];
+            let Some(&(_, f, age)) = tracker.frame(&axes, 8000 * (k as u64 + 1), &[*c]).first() else {
+                assert!(k < 3, "followed from its first touch");
+                continue;
+            };
             if age <= model.decide_ms {
                 best = best.max(olo_palm::score(&model, &f));
             }

@@ -211,7 +211,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "touchpad", tab: "Gestures", group: "Clicking and Dragging", name: "Acceleration", role: "ComboBox" },
     Setting { panel: "touchpad", tab: "Touch", group: "Palms and Hovering Fingers", name: "Ignore hovering fingers and palms", role: "CheckBox" },
     Setting { panel: "touchpad", tab: "Touch", group: "Palms and Hovering Fingers", name: "A touch starts at pressure", role: "Slider" },
-    Setting { panel: "touchpad", tab: "Touch", group: "Palms and Hovering Fingers", name: "Tell palms apart with your palm model", role: "CheckBox" },
+    Setting { panel: "touchpad", tab: "Touch", group: "Palms and Hovering Fingers", name: "Tell palms apart with a palm model", role: "CheckBox" },
     Setting { panel: "touchpad", tab: "Touch", group: "Palms and Hovering Fingers", name: "Train for Your Palm…", role: "Button" },
     Setting { panel: "touchpad", tab: "Touch", group: "Palms and Hovering Fingers", name: "Forget My Model", role: "Button" },
     Setting { panel: "touchpad", tab: "Touch", group: "Palms and Hovering Fingers", name: "Always a palm when as large as", role: "Slider" },

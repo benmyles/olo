@@ -1029,11 +1029,13 @@ fn displays(app: &Activity, me: &Me, cx: &App) -> Vec<AnyElement> {
     let t = &app.touch_health;
     if t.filter || t.reports_minute > 0 {
         let us = |us: u64| if us < 1000 { format!("{us} µs") } else { format!("{:.1} ms", us as f64 / 1000.0) };
-        let palms = if t.model {
+        let palms = if t.model && t.trained == 0 {
+            format!("Olo's own palm model, made from {} touches of real hands (Preferences ▸ Touchpad & Mouse ▸ Touch trains one of yours)", t.contacts)
+        } else if t.model {
             let when = jiff::Timestamp::from_second(t.trained as i64).ok().map(|w| w.to_zoned(jiff::tz::TimeZone::system()).strftime("%-d %B %Y").to_string()).unwrap_or_default();
             format!("Your palm model, trained {when} on {} touches", t.contacts)
         } else if t.filter {
-            "By their size alone: no palm model trained (Preferences ▸ Touchpad & Mouse ▸ Touch)".into()
+            "By their size alone: the palm model is off (Preferences ▸ Touchpad & Mouse ▸ Touch)".into()
         } else {
             "libinput's own: Olo's touch filter is off".into()
         };

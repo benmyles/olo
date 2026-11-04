@@ -244,17 +244,17 @@ fn touch(ui: &mut Ui, t: &TouchpadSettings, pad: Option<&InputDeviceInfo>) {
                     // palm if either says so. The model first (it catches what
                     // size alone misses), then the size every contact as large as
                     // is a palm regardless.
-                    // Only a model trained on the person's hands is used: the
-                    // check is there once one is (the trainer turns it on).
+                    // Olo's own model until the person trains theirs (on by
+                    // default: it's made from real hands).
                     let trained = f.palm_model.is_some();
-                    ui.enabled_if(trained, |ui| ui.check("Tell palms apart with your palm model", f.use_palm_model && trained, |s, v| tuned(s, |t| t.filter.use_palm_model = v)));
+                    ui.check("Tell palms apart with a palm model", f.use_palm_model, |s, v| tuned(s, |t| t.filter.use_palm_model = v));
                     ui.note(model_status(f.palm_model.as_ref(), f.use_palm_model));
-                    let (prefs, palm_size) = (ui.prefs(), f.palm_size);
+                    let (prefs, palm_size, press) = (ui.prefs(), f.palm_size, f.click_press);
                     ui.row(|ui| {
                         // The trainer: full screen, driven from the keyboard.
                         ui.button(if trained { "Train Again…" } else { "Train for Your Palm…" }, move |_, cx| {
                             if let Some(p) = prefs.upgrade() {
-                                crate::palm_trainer::open(p, palm_size, cx);
+                                crate::palm_trainer::open(p, palm_size, press, cx);
                             }
                         });
                         ui.enabled_if(trained, |ui| {
@@ -262,7 +262,6 @@ fn touch(ui: &mut Ui, t: &TouchpadSettings, pad: Option<&InputDeviceInfo>) {
                                 "Forget My Model",
                                 ui.edit_click(|s| {
                                     s.touchpad.filter.palm_model = None;
-                                    s.touchpad.filter.use_palm_model = false;
                                 }),
                             )
                         });
@@ -275,7 +274,7 @@ fn touch(ui: &mut Ui, t: &TouchpadSettings, pad: Option<&InputDeviceInfo>) {
                         |s| s.step(50.0).label("Always a palm when as large as").value_text(format!("{palm:.0}")).limits("Smaller", "Larger"),
                         |s, v| tuned(s, |t| t.filter.palm_size = v as u32),
                     );
-                    ui.note(if f.use_palm_model && trained { "Whatever the model says: it adds palms, never takes these away." } else { "Without a palm model, size alone tells a palm." });
+                    ui.note(if f.use_palm_model { "Whatever the model says: it adds palms, never takes these away." } else { "Without a palm model, size alone tells a palm." });
                     ui.check("A resting palm can't click (its pressure doesn't count)", f.palm_proof_click, |s, v| tuned(s, |t| t.filter.palm_proof_click = v));
                 });
             });
@@ -503,8 +502,16 @@ fn one_mouse(ui: &mut Ui, d: &InputDeviceInfo) {
 /// was trained.
 fn model_status(trained: Option<&olo_protocol::touchpad::PalmModel>, on: bool) -> String {
     match trained {
-        None => "Palms are told apart by their size alone. A palm model learns your hands (resting, at the edge, while typing): Train for Your Palm to make one; it's used once trained.".into(),
-        Some(_) if !on => "Off: palms are told apart by their size alone.".into(),
+        _ if !on => "Off: palms are told apart by their size alone.".into(),
+        None => {
+            let own = olo_palm::default_model();
+            format!(
+                "In use: Olo's own, made from {} touches of real hands; on touches kept back it caught {:.0}% of palms and took {:.0}% of fingers for palms. Train for Your Palm fits it to yours.",
+                own.contacts,
+                own.palms_caught * 100.0,
+                own.fingers_lost * 100.0
+            )
+        }
         Some(m) => {
             let when = jiff::Timestamp::from_second(m.trained as i64).ok().map(|t| t.to_zoned(jiff::tz::TimeZone::system()).strftime("%-d %B %Y").to_string()).unwrap_or_default();
             format!(

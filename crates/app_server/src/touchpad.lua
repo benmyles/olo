@@ -55,9 +55,14 @@ local function contact(state, n)
 end
 
 -- The palm model's features of contact `c` at `time` (microseconds),
--- `others` the other contacts down: as `olo_palm::Tracker::frame`.
+-- `others` the other contacts down: as `olo_palm::Tracker::frame`, which
+-- follows a contact from its first report on the glass (nil before: it
+-- hovers).
 local function features(state, c, time, others, nearest)
     local a = state.axes
+    if not c.track and a.pressure_max > 0 and c.pressure <= 0 then
+        return nil, 0
+    end
     local w = math.max(a.x_max - a.x_min, 1)
     local h = math.max(a.y_max - a.y_min, 1)
     local x = (c.x - a.x_min) / w
@@ -103,6 +108,12 @@ end
 
 -- The palm model's score for features `f`: as `olo_palm::score`.
 local function palm_score(m, f)
+    -- (Held within what it was trained on, when it says.)
+    if #m.lo == m.features then
+        for i = 1, m.features do
+            f[i] = math.min(math.max(f[i], m.lo[i]), m.hi[i])
+        end
+    end
     local out = m.b2
     for j = 1, m.hidden do
         local a = m.b1[j]
@@ -202,7 +213,9 @@ local function filter(state, frame, time)
                     end
                 end
                 local f, age_ms = features(state, c, time, down - 1, nearest)
-                if age_ms > model.decide_ms then
+                if not f then
+                    -- (Hovering: judged once it touches.)
+                elseif age_ms > model.decide_ms then
                     c.decided = true
                 elseif age_ms >= (model.min_age_ms or 0) and palm_score(model, f) > model.threshold then
                     c.palm = true

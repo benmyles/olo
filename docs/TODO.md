@@ -7,28 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **The palm model misses a palm resting low on the pad** (Ben,
-  2026-11-03): "the palm tracking model and training works pretty well
-  but it often misses detecting my palm when it's resting near the
-  bottom of the trackpad. can we enhance the model for supporting that
-  and add a training step to collect samples for it?" So:
-  - Find why on Ben's runs (`captures::on_real_hands`, the trainer's
-    samples): a palm at the bottom edge is cut off by it, so it looks
-    small (its size under the size rule) and its centre sits near the
-    edge; what the features see there (position, size, its growth,
-    the edge).
-  - Teach the model the bottom edge: features for how near the bottom
-    (and side) edges a contact is and how much of it the edge may hide,
-    with hand-written units for "a contact touching the bottom edge that
-    stays still and isn't a click"; the Lua filter follows, with the
-    agreement test; measured per frame as before.
-  - A trainer step for it: rest the heel of your hand on the pad's
-    bottom edge (typing posture, and while moving the pointer with a
-    finger above it), judged and counted like the other steps, its
-    samples labelled palm; QA'd as `ui_lint` states like the rest.
-  - Judged on held-out touches: low palms caught, fingers and clicks
-    near the bottom (a thumb resting to click) still let through.
-
 - **The palm trainer, full screen and driven from the keyboard** (Ben,
   2026-11-02, with a screenshot of its last step, "Try it", at 2× in
   dark mode): "so the training modal/flow needs work: for one i can't
@@ -78,7 +56,10 @@ of Finished; a new one goes where its priority puts it.
   *Status* (2026-11-03): every step in every state is a `ui_lint` test
   (`ui_lint_the_palm_trainer`: 36 states, at 1280 × 800 and 1512 × 982,
   1, 1.5 and 2×, light and dark; night is app_server's warm tint, not
-  a palette): clean. Left: Ben's go on his pad with the new build.
+  a palette): clean. Then reworked (Finished: "A palm resting low…"):
+  twelve exercises, each asking one thing, a "now" line, a banner when
+  a step is done. Left: Ben's go on his pad with the new build (his old
+  model stays in use until he trains again).
 
 - **The touchpad's latency on Ben's machine, and what next** (from the
   palm model in Activity, 2026-11-03): Activity ▸ Displays ▸ Touchpad
@@ -137,6 +118,16 @@ of Finished; a new one goes where its priority puts it.
   (a doubled "olo"): ~/.local/state/olo/palm from now (Ben's two are in
   the old place). Left: more runs (more sittings, other people) before
   any bigger network.
+  *Status* (2026-11-03): Olo's own model is now the baseline trained on
+  the real runs (`default_model`, `make_default_model`; the runs'
+  fingers made into clicks and every touch made low, which they never
+  showed), and it runs untrained: 93.3% of palms kept back caught, no
+  finger lost; each run by one made from the other only 86.0%/8.3% and
+  91.2%/0% (docs/TOUCHPAD.md). Next: run `make_default_model` again with
+  each run Ben keeps (the next one has low palms, thumbs and his shirt);
+  and the person's training learning from every run of theirs kept, not
+  only today's (one run on its own overfits that sitting: run 1 judged
+  by a model of run 2 loses 8.3% of its fingers).
 
 - **x86 machines, starting with Ben's ThinkPad P1 Gen 9** (Ben; it
   arrives within days; **next once the GPUI migration is done**, before
@@ -970,6 +961,49 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**A palm resting low on the pad, a shirt against it, and the trainer
+  asking one thing at a time**~~ (Ben, 2026-11-03): "the palm tracking
+  model and training works pretty well but it often misses detecting my
+  palm when it's resting near the bottom of the trackpad. can we enhance
+  the model for supporting that and add a training step to collect
+  samples for it?"; "sometimes it's also resting against my shirt and
+  that interfers can you detect that too"; "make this one that you're
+  improving from my data the new default/untrained model too"; "clean
+  up the training ux/steps a bit a few of them are confusing right now
+  where it tries to ask me to do like two things at once … when the
+  step is finished it's not really clear just a small icon it needs to
+  be obvious and also some of the spacing/alignment is off". *Done*:
+  - Why low palms were missed: his runs had no touch in the pad's lowest
+    fifth, and a contact was judged in its first 250 ms from when the pad
+    first saw it, hovering included; palms settling hover (15 of 35 in
+    run 2 still hovering at 40 ms, some for all 250; no finger past
+    56 ms), so a hand coming down slowly was never judged touching. Now
+    from the first touch, in the tracker and the Lua filter alike.
+  - The model: a hand-written unit for a heel resting low; inputs held
+    within what it was trained on; training held near its start (on its
+    own it drifted until a still fingertip was a palm). Olo's own model
+    is that trained on Ben's runs, with clicks and low touches made from
+    them, and runs untrained (on by default; the Touch tab and Activity
+    say which model runs).
+  - The trainer: twelve exercises, one thing each (the edges, pointing
+    and scrolling apart; click, thumb click at the bottom, a hand resting
+    low while a finger points above it, the shirt against the bottom edge,
+    which can be skipped); a line under the title saying what to do now
+    (rest, hold, point, lift); a green banner when a step is done (the
+    kit's `Banner`), in a box the status line already filled so nothing
+    moves; the summary's outcome in one too; the intro's list under the
+    panels. Its runs are kept as `Run { from_touch }` for the next
+    default.
+  - Found on the way: a full-screen window kept its size when its
+    screen's scale changed (app_server's `fixup_positions` now tells it
+    the new one), and `KeyHint`'s cap sat a device pixel off its label
+    at 1.25×, 1.75× and 2× (now one baseline): the trainer reviews clean
+    at 1, 1.25, 1.5, 1.75 and 2×, light and dark.
+  Measured: the filter, 3 contacts a frame, 33.9 → 35.3 µs with the
+  same model (20.3 vs 18.7 µs off, an unchanged path: noise), 33.2–34.0
+  µs with Olo's own. Left (Open, "The best baseline palm model"): Ben
+  training on the new build, and the default made again from that run.
 
 - ~~**Olo Passwords in every Chrome profile, exactly once**~~ (Ben,
   2026-11-03): "only my first olo chrome profile has the olo passwords

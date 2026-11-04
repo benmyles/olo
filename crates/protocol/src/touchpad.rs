@@ -145,6 +145,13 @@ pub struct PalmModel {
     /// are `(x - mean) / std`.
     pub mean: Vec<f32>,
     pub std: Vec<f32>,
+    /// Each feature's least and most in what it was trained on: inputs
+    /// are held within them first, so the model says of a touch where it
+    /// never saw one (low on the pad, say) what it says at the nearest
+    /// it did see, not whatever its weights make far past it. Empty: not
+    /// held.
+    pub lo: Vec<f32>,
+    pub hi: Vec<f32>,
     /// The hidden layer's weights (a row of features for each unit) and
     /// biases.
     pub w1: Vec<f32>,
@@ -230,10 +237,12 @@ impl Default for TouchFilter {
             click_press: 120,
             click_release: 75,
             palm_model: None,
-            // Off until the person turns it on (Ben, 2026-11-02: "the
-            // built in model should NOT be enabled by default it does not
-            // work well without training"); training turns it on.
-            use_palm_model: false,
+            // On: until the person trains, Olo's own model, made from real
+            // hands (Ben, 2026-11-03: "make this one that you're improving
+            // from my data the new default/untrained model"; on 2026-11-02
+            // the hand-written one, untuned, was off: "it does not work
+            // well without training").
+            use_palm_model: true,
         }
     }
 }
