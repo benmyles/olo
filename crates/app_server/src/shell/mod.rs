@@ -801,6 +801,18 @@ pub fn fixup_positions(space: &mut Space<WindowElement>, display: &olo_protocol:
     for window in orphaned_windows.into_iter() {
         place_new_window(space, main.unwrap_or(pointer_location), &window, false);
     }
+    // A window filling a screen goes on filling it: a new scale, mode or
+    // rotation changes the screen's size in points, and the window kept
+    // the old one (the palm trainer, at 2×, filled two thirds of the
+    // screen once it was set to 1.5×).
+    for o in space.outputs() {
+        let (Some(g), Some(w)) = (space.output_geometry(o), o.user_data().get::<FullscreenSurface>().and_then(|f| f.get())) else { continue };
+        let smithay::desktop::WindowSurface::Wayland(t) = w.0.underlying_surface();
+        if t.with_pending_state(|s| s.states.contains(xdg_toplevel::State::Fullscreen) && s.size != Some(g.size)) {
+            t.with_pending_state(|s| s.size = Some(g.size));
+            t.send_pending_configure();
+        }
+    }
 }
 
 #[cfg(test)]

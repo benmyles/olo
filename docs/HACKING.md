@@ -3635,7 +3635,9 @@ display it asks for, else the one it is on (`display_of`: most of it),
 else the one the pointer is on; that display draws it alone
 (`FullscreenSurface`), and the others leave it out
 (`WindowMeta::fullscreen`) rather than draw its display-sized buffer
-where it was, over their edge. With Preferences ▸ Appearance ▸ "Glow new
+where it was, over their edge. When that display's size in points
+changes (a new scale, mode or rotation: `fixup_positions`), the window
+is told the new size, so it goes on filling it. With Preferences ▸ Appearance ▸ "Glow new
 windows for N seconds" (`Appearance::glow_new_windows`, off by default;
 `glow_seconds`, 5) a new one (not one coming back) also glows a moment:
 a soft halo in the look's `keyboard_navigation` blue, 12 points out from
