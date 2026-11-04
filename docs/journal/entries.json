@@ -3076,5 +3076,11 @@
   "title": "Preferences \u25b8 GPUs",
   "caption": "A new panel: each GPU, what it drives, and its tuning. Presets (Cooler and Quieter, Balanced, Fastest) or the knobs by hand: Intel's lowest and highest clock and power-saving profile; NVIDIA's highest clock, power limit where it can be given one (not on a laptop) and persistence. Applied through polkit, kept for the computer and set again at every start. A sleeping NVIDIA GPU isn't asked (that would wake it): what it said last is shown.",
   "image": "2026-11-04/040036-preferences-gpus.png"
+ },
+ {
+  "time": "2026-11-04T11:01:36",
+  "title": "Display: Colour, with HDR",
+  "caption": "Preferences \u25b8 Display has a Colour tab beside the panel's facts: what the display shows (its gamut and light, from its EDID), whether sRGB's colours are shown accurately (converted into a wide display's gamut, the default) or vivid, and HDR on a display that takes it, with everything else's brightness and a band that reverts HDR unless kept. On a headless screen pretending to be a P3 HDR panel.",
+  "image": "2026-11-04/110136-display-colour-with-hdr.png"
  }
 ]

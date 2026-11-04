@@ -101,7 +101,7 @@ const SUPPORTED_FORMATS_8BIT_ONLY: &[Fourcc] = &[Fourcc::Abgr8888, Fourcc::Argb8
 
 type UdevRenderer<'a> = MultiRenderer<'a, 'a, GbmGlesBackend<GlesRenderer, DrmDeviceFd>, GbmGlesBackend<GlesRenderer, DrmDeviceFd>>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct UdevOutputId {
     device_id: DrmNode,
     crtc: crtc::Handle,
@@ -628,6 +628,19 @@ impl Backend for UdevData {
         })
     }
 
+    fn color_changed(&mut self, output: &Output) -> Result<(), String> {
+        let Some(id) = output.user_data().get::<UdevOutputId>().cloned() else { return Ok(()) };
+        let Some(backend) = self.backends.get_mut(&id.device_id) else { return Ok(()) };
+        let Some(surface) = backend.surfaces.get_mut(&id.crtc) else { return Ok(()) };
+        // Every pixel again, in the new colours.
+        // (HDR's blending buffer too: what's in it was composed for the
+        // colours before.)
+        surface.drm_output.reset_buffers();
+        surface.hdr = None;
+        surface.color_pending = true;
+        set_connector_color(backend, id.crtc)
+    }
+
     fn set_vrr(&mut self, output: &Output, on: bool) -> Result<(), String> {
         let id = output.user_data().get::<UdevOutputId>().ok_or("not a DRM output")?;
         let surface = self.backends.get(&id.device_id).and_then(|d| d.surfaces.get(&id.crtc)).ok_or("its CRTC is gone")?;
@@ -654,6 +667,106 @@ impl Backend for UdevData {
         output.change_current_state(Some(mode), None, None, None);
         info!(output = output.name(), ?mode, "mode changed");
         Ok(())
+    }
+}
+
+/// A connector's EDID, from its DRM property.
+fn edid_blob(drm: &impl smithay::reexports::drm::control::Device, connector: connector::Handle) -> Option<Vec<u8>> {
+    let props = drm.get_properties(connector).ok()?;
+    let (ids, values) = props.as_props_and_values();
+    let blob = ids.iter().zip(values).find_map(|(id, v)| (drm.get_property(*id).ok()?.name().to_bytes() == b"EDID").then_some(*v))?;
+    (blob != 0).then(|| drm.get_property_blob(blob).ok()).flatten().filter(|b| b.len() >= 128)
+}
+
+/// A connector's property by name: its handle, its value now, and (for
+/// an enum) its values by name.
+fn connector_prop(
+    drm: &impl smithay::reexports::drm::control::Device,
+    connector: connector::Handle,
+    name: &[u8],
+) -> Option<(smithay::reexports::drm::control::property::Handle, u64, Vec<(String, u64)>)> {
+    use smithay::reexports::drm::control::property::ValueType;
+    let props = drm.get_properties(connector).ok()?;
+    let (ids, values) = props.as_props_and_values();
+    ids.iter().zip(values).find_map(|(id, v)| {
+        let info = drm.get_property(*id).ok()?;
+        (info.name().to_bytes() == name).then(|| {
+            let names = match info.value_type() {
+                ValueType::Enum(e) => e.values().1.iter().map(|v| (v.name().to_string_lossy().into_owned(), v.value())).collect(),
+                _ => Vec::new(),
+            };
+            (*id, *v, names)
+        })
+    })
+}
+
+/// Whether a connector takes HDR's metadata and BT.2020's colorimetry.
+fn connector_takes_hdr(drm: &impl smithay::reexports::drm::control::Device, connector: connector::Handle) -> bool {
+    connector_prop(drm, connector, b"HDR_OUTPUT_METADATA").is_some() && connector_prop(drm, connector, b"Colorspace").is_some_and(|(_, _, names)| names.iter().any(|(n, _)| n == "BT2020_RGB"))
+}
+
+/// Set a screen's connector for how its display is drawn (`color`): in
+/// HDR, PQ metadata (the display's own primaries and luminance) and
+/// BT.2020 colorimetry; else neither. A modeset of its own commit, as
+/// the kernel has it (the screen goes dark a moment, as HDR turns on or
+/// off anywhere); refused while a flip is in flight, it's tried again at
+/// vblank (`color_pending`). Nothing is committed when the connector
+/// already is so.
+fn set_connector_color(backend: &mut BackendData, crtc: crtc::Handle) -> Result<(), String> {
+    use smithay::reexports::drm::control::{atomic::AtomicModeReq, property};
+    let device = backend.drm_output_manager.device();
+    let fd = device.device_fd().clone();
+    let Some(surface) = backend.surfaces.get_mut(&crtc) else { return Ok(()) };
+    surface.color_pending = false;
+    let Some(conn) = surface.drm_output.with_compositor(|c| c.surface().current_connectors().into_iter().next()) else { return Ok(()) };
+    let output = surface.output.clone();
+    let hdr = matches!(crate::color::drawing(&output), crate::color::Drawing::Hdr { .. });
+    let (Some((meta_prop, meta_now, _)), Some((space_prop, space_now, spaces))) = (connector_prop(&fd, conn, b"HDR_OUTPUT_METADATA"), connector_prop(&fd, conn, b"Colorspace")) else {
+        return if hdr { Err("this display's connector takes no HDR metadata".into()) } else { Ok(()) };
+    };
+    let value = |name: &str| spaces.iter().find(|(n, _)| n == name).map(|(_, v)| *v);
+    let space = if hdr { value("BT2020_RGB").ok_or("this display's connector has no BT.2020")? } else { value("Default").unwrap_or(0) };
+    if !hdr && meta_now == 0 && space_now == space {
+        return Ok(());
+    }
+    let meta = if hdr {
+        let display = crate::color::of(&output).map(|c| c.display.clone()).unwrap_or_default();
+        let bytes = crate::color::hdr_metadata(&display);
+        // (The same metadata already there: nothing to do.)
+        if meta_now != 0 && space_now == space && fd.get_property_blob(meta_now).is_ok_and(|b| b == bytes) {
+            return Ok(());
+        }
+        match fd.create_property_blob(&bytes) {
+            Ok(property::Value::Blob(b)) => b,
+            Ok(_) => return Err("no HDR metadata blob".into()),
+            Err(e) => return Err(format!("HDR metadata blob: {e}")),
+        }
+    } else {
+        0
+    };
+    let mut req = AtomicModeReq::new();
+    req.add_property(conn, meta_prop, property::Value::Blob(meta));
+    req.add_property(conn, space_prop, property::Value::UnsignedRange(space));
+    match fd.atomic_commit(smithay::reexports::drm::control::AtomicCommitFlags::ALLOW_MODESET, req) {
+        Ok(()) => {
+            let old = std::mem::replace(&mut surface.hdr_blob, meta);
+            if old != 0 && old != meta {
+                let _ = fd.destroy_property_blob(old);
+            }
+            info!(output = output.name(), hdr, "HDR signal");
+            Ok(())
+        }
+        Err(e) => {
+            if meta != 0 {
+                let _ = fd.destroy_property_blob(meta);
+            }
+            if e.kind() == std::io::ErrorKind::ResourceBusy {
+                surface.color_pending = true;
+                Ok(())
+            } else {
+                Err(format!("the display refused its HDR signal: {e}"))
+            }
+        }
     }
 }
 
@@ -1344,6 +1457,13 @@ struct SurfaceData {
     /// The display refused a frame's commit (planes it wouldn't take):
     /// from then on everything is drawn into the frame, the pointer too.
     planes_refused: bool,
+    /// HDR's blending buffer while it shows HDR (`color`).
+    hdr: Option<crate::color::HdrFrame>,
+    /// Its connector's HDR signal still to be set (a commit refused while
+    /// a flip was in flight: again at vblank).
+    color_pending: bool,
+    /// The HDR metadata blob its connector holds (0: none).
+    hdr_blob: u64,
 }
 
 /// Look at `crtc`'s display when `timer` fires, for `target` (now, if
@@ -1472,8 +1592,13 @@ impl AnvilState<UdevData> {
             .insert_source(notifier, move |event, metadata, data: &mut AnvilState<_>| match event {
                 DrmEvent::VBlank(crtc) => {
                     profiling::scope!("vblank", &format!("{crtc:?}"));
-                    if let Some(backend) = data.backend_data.backends.get(&node) {
+                    if let Some(backend) = data.backend_data.backends.get_mut(&node) {
                         retry_ctm(backend, crtc);
+                        if backend.surfaces.get(&crtc).is_some_and(|s| s.color_pending)
+                            && let Err(e) = set_connector_color(backend, crtc)
+                        {
+                            warn!(%e, "HDR signal");
+                        }
                     }
                     data.frame_finish(node, crtc, metadata);
                 }
@@ -1645,6 +1770,9 @@ impl AnvilState<UdevData> {
         // The kernel's copy of the EDID when the DRM route gives nothing
         // (Apple Silicon's DCP).
         let edid = olo_system::edid::for_connector(&output_name);
+        // Its colours and light, and whether it takes HDR (`color`).
+        let display_color = edid_blob(drm_device, connector.handle()).or_else(|| olo_system::edid::bytes_for_connector(&output_name)).map(|b| olo_system::edid::color(&b)).unwrap_or_default();
+        let takes_hdr = connector_takes_hdr(drm_device, connector.handle());
 
         // A monitor not telling yet who it is (Apple's DCP has its EDID a
         // second after a new app_server takes the displays over, as on an
@@ -1711,6 +1839,9 @@ impl AnvilState<UdevData> {
             let panel = crate::desktop::panel(&output_name, &make, &model, (phys_w as i32, phys_h as i32), Some(wl_mode.size.w), wl_mode.refresh, told, 1.0, 0, config.as_ref());
             let output =
                 Output::new(output_name, PhysicalProperties { size: (phys_w as i32, phys_h as i32).into(), subpixel: crate::desktop::from_panel_subpixel(panel.subpixel), make, model, serial_number });
+            let hdr_capable = crate::color::hdr_capable(&display_color, internal, takes_hdr);
+            info!(output = output.name(), gamut = ?display_color.gamut(), peak = ?display_color.peak_nits, hdr_capable, "colours");
+            crate::color::init(&output, display_color, hdr_capable);
             output.user_data().insert_if_missing(|| crate::desktop::DrmSubpixel(told));
             let global = output.create_global::<AnvilState<UdevData>>(&self.display_handle);
 
@@ -1843,6 +1974,9 @@ impl AnvilState<UdevData> {
                 last_look: None,
                 pacing: Default::default(),
                 planes_refused: false,
+                hdr: None,
+                color_pending: false,
+                hdr_blob: 0,
             };
 
             let shown = surface.output.clone();
@@ -1852,6 +1986,14 @@ impl AnvilState<UdevData> {
                 && let Err(e) = self.backend_data.set_vrr(&shown, true)
             {
                 warn!(output = shown.name(), %e, "variable refresh rate");
+            }
+            // Its colours as set, and its connector's HDR signal as they
+            // say (one left on by an app_server before is cleared).
+            if let Err(e) = self.apply_color(&shown) {
+                warn!(output = shown.name(), %e, "colours");
+            }
+            if let Err(e) = self.backend_data.color_changed(&shown) {
+                warn!(output = shown.name(), %e, "colours");
             }
 
             // kick-off rendering, then warm it if night light is on
@@ -2595,23 +2737,79 @@ fn render_surface<'a>(
     let t = Instant::now();
 
     let frame_mode = if surface.disable_direct_scanout || surface.planes_refused { FrameFlags::empty() } else { FrameFlags::DEFAULT };
-    let (rendered, states, cursor_on_plane) = surface
-        .drm_output
-        .render_frame(renderer, &elements, clear_color, frame_mode)
-        .map(|render_frame_result| {
-            #[cfg(feature = "renderer_sync")]
-            if let PrimaryPlaneElement::Swapchain(element) = render_frame_result.primary_element {
-                element.sync.wait();
+    let failed = |err| match err {
+        smithay::backend::drm::compositor::RenderFrameError::PrepareFrame(err) => SwapBuffersError::from(err),
+        smithay::backend::drm::compositor::RenderFrameError::RenderFrame(OutputDamageTrackerError::Rendering(err)) => SwapBuffersError::from(err),
+        _ => unreachable!(),
+    };
+    // How its colours are drawn (`color`): plain; converted into a wide
+    // display's gamut (clients' buffers not straight to a plane then, as
+    // they'd show unconverted; the pointer, grey and black, still may);
+    // or composed for HDR and encoded into its signal.
+    // (The screen's own: a mirror draws its source's picture in its own
+    // colours.)
+    let drawing = crate::color::drawing(&surface.output);
+    if !matches!(drawing, crate::color::Drawing::Hdr { .. }) {
+        surface.hdr = None;
+    }
+    let (rendered, states, cursor_on_plane) = match drawing {
+        crate::color::Drawing::Plain | crate::color::Drawing::Sdr(_) => {
+            let (target, mode) = match drawing {
+                crate::color::Drawing::Sdr(t) => (Some(t), frame_mode & FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT),
+                _ => (None, frame_mode),
+            };
+            AsMut::<GlesRenderer>::as_mut(renderer).set_color_target(target);
+            let r = surface.drm_output.render_frame(renderer, &elements, clear_color, mode);
+            AsMut::<GlesRenderer>::as_mut(renderer).set_color_target(None);
+            r.map(|render_frame_result| {
+                #[cfg(feature = "renderer_sync")]
+                if let PrimaryPlaneElement::Swapchain(element) = render_frame_result.primary_element {
+                    element.sync.wait();
+                }
+                crate::render::frame_done(!render_frame_result.is_empty);
+                crate::render::part("drm render_frame", t);
+                (!render_frame_result.is_empty, render_frame_result.states, render_frame_result.cursor_element.is_some())
+            })
+            .map_err(failed)?
+        }
+        crate::color::Drawing::Hdr { blend, signal } => {
+            let mode = surface.output.current_mode().map(|m| m.size).unwrap_or_default();
+            let size = surface.output.current_transform().transform_size(mode);
+            if surface.hdr.as_ref().is_none_or(|h| h.size() != size) {
+                let texture: smithay::backend::renderer::gles::GlesTexture =
+                    smithay::backend::renderer::Offscreen::<smithay::backend::renderer::gles::GlesTexture>::create_buffer(renderer, Fourcc::Abgr16161616f, (size.w, size.h).into())
+                        .map_err(|e| SwapBuffersError::TemporaryFailure(Box::new(e)))?;
+                surface.hdr = Some(crate::color::HdrFrame::new(texture, size, scale.x));
+                surface.drm_output.reset_buffers();
             }
-            crate::render::frame_done(!render_frame_result.is_empty);
+            let hdr = surface.hdr.as_mut().expect("made above");
+            // Composed into the blending buffer (what changed)...
+            AsMut::<GlesRenderer>::as_mut(renderer).set_color_target(Some(blend));
+            let composed = match smithay::backend::renderer::Bind::bind(renderer, &mut hdr.texture) {
+                Ok(mut fb) => {
+                    hdr.tracker.render_output(renderer, &mut fb, 1, &elements, clear_color).map(|r| (r.damage.cloned(), r.states)).map_err(|e| SwapBuffersError::TemporaryFailure(Box::new(e)))
+                }
+                Err(e) => Err(SwapBuffersError::TemporaryFailure(Box::new(e))),
+            };
+            let (damage, states) = match composed {
+                Ok(c) => c,
+                Err(e) => {
+                    AsMut::<GlesRenderer>::as_mut(renderer).set_color_target(None);
+                    return Err(e);
+                }
+            };
+            hdr.drawn(damage.as_ref());
+            // ...and that encoded into the display's signal.
+            AsMut::<GlesRenderer>::as_mut(renderer).set_color_target(Some(signal));
+            let element = [hdr.element()];
+            let r = surface.drm_output.render_frame(renderer, &element, smithay::backend::renderer::Color32F::BLACK, FrameFlags::empty());
+            AsMut::<GlesRenderer>::as_mut(renderer).set_color_target(None);
+            let r = r.map_err(failed)?;
+            crate::render::frame_done(!r.is_empty);
             crate::render::part("drm render_frame", t);
-            (!render_frame_result.is_empty, render_frame_result.states, render_frame_result.cursor_element.is_some())
-        })
-        .map_err(|err| match err {
-            smithay::backend::drm::compositor::RenderFrameError::PrepareFrame(err) => SwapBuffersError::from(err),
-            smithay::backend::drm::compositor::RenderFrameError::RenderFrame(OutputDamageTrackerError::Rendering(err)) => SwapBuffersError::from(err),
-            _ => unreachable!(),
-        })?;
+            (!r.is_empty, states, false)
+        }
+    };
 
     // Only from a frame that was drawn. One with nothing new (an idle
     // screen, every frame) reports nothing as presented, and every window
@@ -2630,6 +2828,22 @@ fn render_surface<'a>(
     }
 
     Ok((rendered, states, cursor_on_plane))
+}
+
+// HDR's blending buffer drawn into a display's signal, by the GLES
+// frame under the multi-GPU one.
+impl<'a> smithay::backend::renderer::element::RenderElement<UdevRenderer<'a>> for crate::color::HdrElement {
+    fn draw(
+        &self,
+        frame: &mut <UdevRenderer<'a> as smithay::backend::renderer::RendererSuper>::Frame<'_, '_>,
+        src: smithay::utils::Rectangle<f64, smithay::utils::Buffer>,
+        dst: smithay::utils::Rectangle<i32, smithay::utils::Physical>,
+        damage: &[smithay::utils::Rectangle<i32, smithay::utils::Physical>],
+        opaque_regions: &[smithay::utils::Rectangle<i32, smithay::utils::Physical>],
+        _cache: Option<&smithay::utils::user_data::UserDataMap>,
+    ) -> Result<(), <UdevRenderer<'a> as smithay::backend::renderer::RendererSuper>::Error> {
+        self.draw_gles(frame.as_mut(), src, dst, damage, opaque_regions).map_err(smithay::backend::renderer::multigpu::Error::Render)
+    }
 }
 
 #[cfg(test)]

@@ -1124,6 +1124,19 @@ pub struct OutputInfo {
     /// on (`OutputConfig::vrr`).
     #[serde(default)]
     pub vrr: Option<bool>,
+    /// What it can show (its EDID). None: it doesn't say.
+    #[serde(default)]
+    pub color: Option<color::DisplayColor>,
+    /// How sRGB's colours are shown on it; None when it's no wider than
+    /// sRGB (nothing to choose).
+    #[serde(default)]
+    pub color_mode: Option<color::ColorMode>,
+    /// HDR: None when it can't, else whether it's on.
+    #[serde(default)]
+    pub hdr: Option<bool>,
+    /// SDR's white in HDR, cd/m².
+    #[serde(default)]
+    pub sdr_nits: f32,
 }
 
 /// The number display `output` (a connector) goes by, from the main
@@ -1208,6 +1221,15 @@ pub struct OutputConfig {
     /// Gen 9's panel, 40–120 Hz). None: off.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vrr: Option<bool>,
+    /// How a wide-gamut display shows sRGB's colours. None: accurately.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color_mode: Option<color::ColorMode>,
+    /// High dynamic range, for a display that has it. None: off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hdr: Option<bool>,
+    /// SDR's white in HDR, cd/m² (`color::SDR_NITS` unless set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sdr_nits: Option<f32>,
 }
 
 impl OutputConfig {
@@ -1224,6 +1246,9 @@ impl OutputConfig {
             technology: self.technology.or(other.technology),
             text: self.text.or(other.text),
             vrr: self.vrr.or(other.vrr),
+            color_mode: self.color_mode.or(other.color_mode),
+            hdr: self.hdr.or(other.hdr),
+            sdr_nits: self.sdr_nits.or(other.sdr_nits),
         }
     }
 }
@@ -2265,6 +2290,10 @@ mod tests {
             number: None,
             panel: None,
             vrr: None,
+            color: None,
+            color_mode: None,
+            hdr: None,
+            sdr_nits: color::SDR_NITS,
         };
         let one = [out("eDP-1", 0, None), out("HDMI-A-1", 0, Some("eDP-1"))];
         assert_eq!(display_number(&one, "eDP-1"), None);

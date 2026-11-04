@@ -44,6 +44,17 @@ fn outputs() -> Vec<OutputInfo> {
         }),
         // (The built-in one varies its refresh rate, off.)
         vrr: (number == Some(0)).then_some(false),
+        // (The built-in one wide and HDR, on: the Colour tab's tallest.)
+        color: (number == Some(0)).then(|| olo_protocol::color::DisplayColor {
+            primaries: Some(olo_color::Primaries::DISPLAY_P3),
+            peak_nits: Some(1600.0),
+            full_nits: Some(1000.0),
+            pq: true,
+            ..Default::default()
+        }),
+        color_mode: (number == Some(0)).then_some(olo_protocol::color::ColorMode::Accurate),
+        hdr: (number == Some(0)).then_some(true),
+        sdr_nits: 203.0,
     };
     vec![
         display(
@@ -114,6 +125,26 @@ fn ui_lint_every_panel() {
         }
     }
     assert_clean("Preferences' panels", &found);
+}
+
+/// Display's Colour tab (beside the Panel tab the panel lint sees): a
+/// wide HDR display with HDR on, its tallest.
+#[test]
+fn ui_lint_display_colour() {
+    let mut lint = Lint::new();
+    let (w, h) = Panel::Display.size();
+    let options = WindowOptions::new(Panel::Display.title(), w as f32, h as f32).fits_content();
+    let found = lint.window(&options, move |window, cx| {
+        let prefs = cx.new(|_| prefs());
+        let view = cx.new(|cx| PanelView::new(prefs, Panel::Display, Settings::default(), window, cx));
+        view.update(cx, |v, _| {
+            if let crate::panel::State::Display(st) = &mut v.state {
+                crate::display::colour_tab(st);
+            }
+        });
+        view
+    });
+    assert_clean("Display's Colour tab", &found);
 }
 
 /// Terminal ▸ Command Suggestions in each of its states (Terminal's
@@ -211,10 +242,13 @@ fn ui_lint_settings_index() {
         let (w, h) = panel.size();
         // (As Preferences opens it: following what it shows.)
         let options = WindowOptions::new(panel.title(), w as f32, h as f32).fits_content();
-        for (tab, nodes) in lint.trees(&options, move |window, cx| {
+        let trees = lint.trees(&options, move |window, cx| {
             let prefs = cx.new(|_| prefs());
             cx.new(|cx| PanelView::new(prefs, panel, Settings::default(), window, cx))
-        }) {
+        });
+        let tabs = trees.len();
+        let mut found: Vec<(String, String, String, String)> = Vec::new();
+        for (tab, nodes) in trees {
             let inside = |n: &olo_ui::commands::UiNode, o: &olo_ui::commands::UiNode| {
                 let (cx, cy) = (n.x + n.width / 2.0, n.y + n.height / 2.0);
                 o.x <= cx && cx <= o.x + o.width && o.y <= cy && cy <= o.y + o.height
@@ -246,10 +280,20 @@ fn ui_lint_settings_index() {
                 // (Each keyboard's check box, by the made-up keyboards'
                 // names: one, as every computer has it.)
                 let name = if group == "Swap Alt and the Windows Key" { "This Keyboard".to_owned() } else { name };
-                let row = (panel.arg().to_owned(), tab.clone().unwrap_or_default(), group, name, n.role.clone());
-                if !rows.contains(&row) {
-                    rows.push(row);
+                let row = (tab.clone().unwrap_or_default(), group, name, n.role.clone());
+                if !found.contains(&row) {
+                    found.push(row);
                 }
+            }
+        }
+        // A control in every tab is in none (beside tabs, as Display's
+        // settings beside its Panel and Colour).
+        let everywhere = |r: &(String, String, String, String)| tabs > 1 && found.iter().filter(|o| (&o.1, &o.2, &o.3) == (&r.1, &r.2, &r.3)).count() == tabs;
+        for r in &found {
+            let tab = if everywhere(r) { String::new() } else { r.0.clone() };
+            let row = (panel.arg().to_owned(), tab, r.1.clone(), r.2.clone(), r.3.clone());
+            if !rows.contains(&row) {
+                rows.push(row);
             }
         }
     }

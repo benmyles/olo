@@ -2814,6 +2814,50 @@ one by one, the Studio Display was two displays, 5120 × 2880 and a
 2560 × 2880 copy of its right half. When the whole one leaves, the
 others are displays of their own again. A tiled monitor offering no
 whole picture is still a display per tile.
+
+**Colour: wide gamut and HDR.** Each display's colours come from its
+EDID (`olo_system::edid::color`: the base block's chromaticities,
+CTA-861's colorimetry and HDR static metadata, DisplayID 2's display
+parameters, where a laptop's panel keeps its native primaries and
+luminance) as protocol's `DisplayColor`, kept with its `Output`
+(app_server's `color.rs`). How it's drawn (Preferences ▸ Display ▸
+Colour, kept per monitor in its `OutputConfig`):
+
+- *Plain*: an sRGB display, or a wide one set to Vivid. Nothing
+  converted, clients' buffers straight to planes as ever.
+- *Accurate* (a wide display's default): sRGB's colours converted into
+  the display's gamut as they're drawn, so sRGB's red is sRGB's red on a
+  P3 panel. Olo's Smithay renderer does it (`gles::color`): a frame
+  draws into a `ColorTarget`, a texture holds a `ColorSource` (sRGB
+  unless it says), and when they differ the default texture program's
+  `COLOR` variant decodes (gamma 2.2: what sRGB displays do), converts
+  between primaries in light (white adapted by Bradford, so greys stay
+  grey), clips and encodes; solid colours are converted on the CPU.
+  Clients' buffers don't go straight to planes then (they'd show
+  unconverted); the pointer still may.
+- *HDR*, on a display that takes it (its EDID says PQ, or a built-in
+  panel gives an HDR luminance and its connector takes the metadata:
+  the ThinkPad P1 Gen 9's OLED, HDR through Intel's eDP HDR interface,
+  not its EDID): the frame is composed into a float buffer in BT.2020 at
+  gamma 2.2 relative to SDR's white (so blending and text look exactly
+  as in SDR, and highlights go above 1), then what changed is encoded
+  into PQ (`color::HdrFrame`, `HdrElement`); the connector gets HDR
+  metadata (the display's own primaries and luminance) and BT.2020
+  colorimetry in a modeset commit of its own (`set_connector_color`,
+  again at vblank if a flip was in flight). SDR's white is
+  "Everything else's brightness" (203 cd/m², BT.2408's, unless set);
+  Preferences' band reverts HDR unless kept, as it does a resolution.
+
+The display hardware's own colour stages (the CRTC's degamma, CTM and
+gamma LUTs; Intel's per-plane pipelines, `COLOR_PIPELINE`) aren't used:
+their lookup tables are uniformly spaced, 129 and 1024 entries, and
+darks lose 10 of the first levels re-encoding light (PQ, worse). The
+shader's cost, a whole 3200 × 2000 frame on the ThinkPad's GPU: 0.618 ms
+plain, 0.705 into P3, 1.53 for HDR's two passes (`color::tests::
+gpu_cost`); frames draw only what changed. `color::tests::
+the_gpu_converts_as_the_cpu_does` reads the GPU's conversions back
+against the CPU's. A headless screen pretends to be wide or HDR with
+`OLO_HEADLESS_COLOR=p3` or `p3-hdr`.
 `tools/dev/layout-check NAME [--auto] [--unplug]` checks this quickly:
 it arranges a session's screens in an order unlike the one they're
 found in, puts windows on each and on another workspace (auto-tiled with

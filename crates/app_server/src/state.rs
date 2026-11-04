@@ -1602,6 +1602,11 @@ pub trait Backend {
     fn set_mode(&mut self, _output: &Output, _mode: smithay::output::Mode) -> Result<(), String> {
         Err("This display's resolution can't be changed.".into())
     }
+    /// `output`'s colours changed (`color::apply`): its HDR signal set
+    /// or cleared, and every pixel drawn again.
+    fn color_changed(&mut self, _output: &Output) -> Result<(), String> {
+        Ok(())
+    }
     /// A test session's screen on connector `name`, to unplug or plug in
     /// again (`Request::PlugDisplay`); real displays are only unplugged
     /// by hand.

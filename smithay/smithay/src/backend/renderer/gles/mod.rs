@@ -1590,7 +1590,10 @@ impl ExportMem for GlesRenderer {
         }
 
         let size = texture_mapping.size();
-        let len = size.w * size.h * 4;
+        // (Its pixels' size: 4 bytes, but 8 for half floats, which Olo
+        // reads HDR's frames back in.)
+        let bpp = gl_bpp(texture_mapping.format, texture_mapping.layout).map_or(4, |b| b as i32 / 8);
+        let len = size.w * size.h * bpp;
 
         let mapping_ptr = texture_mapping.mapping.load(Ordering::SeqCst);
         let ptr = if mapping_ptr.is_null() {

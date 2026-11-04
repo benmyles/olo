@@ -68,6 +68,8 @@ struct Screen {
     /// Its variable refresh rate, simulated (every screen has one, so
     /// Preferences' switch can be tried and reviewed).
     vrr: bool,
+    /// HDR's blending buffer, while it shows HDR (`color`).
+    hdr: Option<crate::color::HdrFrame>,
 }
 
 /// How long a frame of `output` lasts, at its mode's rate (60 or 120 Hz).
@@ -188,6 +190,15 @@ impl Backend for HeadlessData {
         self.screens.iter().find(|s| s.output == *output).map(|s| s.vrr)
     }
 
+    fn color_changed(&mut self, output: &Output) -> Result<(), String> {
+        let screen = self.screens.iter_mut().find(|s| s.output == *output).ok_or("no such screen")?;
+        // Every pixel again, in the new colours.
+        screen.damage_tracker = OutputDamageTracker::from_output(output);
+        screen.hdr = None;
+        info!(output = output.name(), drawing = ?crate::color::drawing(output), "colours (simulated)");
+        Ok(())
+    }
+
     fn set_vrr(&mut self, output: &Output, on: bool) -> Result<(), String> {
         let screen = self.screens.iter_mut().find(|s| s.output == *output).ok_or("no such screen")?;
         screen.vrr = on;
@@ -209,7 +220,7 @@ impl Backend for HeadlessData {
     }
 }
 
-fn render_node() -> Option<std::path::PathBuf> {
+pub(crate) fn render_node() -> Option<std::path::PathBuf> {
     if let Ok(p) = std::env::var("OLO_RENDER_NODE") {
         return Some(p.into());
     }
@@ -288,6 +299,11 @@ pub fn run_headless(size_arg: Option<&str>) {
         let (mm, subpixel) = headless_panel();
         let output = Output::new(format!("HEADLESS-{}", i + 1), PhysicalProperties { size: mm.into(), subpixel, make: make.into(), model: model.into(), serial_number: i.to_string() });
         output.user_data().insert_if_missing(|| crate::desktop::DrmSubpixel(subpixel));
+        // Its colours: what `OLO_HEADLESS_COLOR` pretends ("p3",
+        // "p3-hdr"), for trying wide colour and HDR; else sRGB.
+        if let Some((display, hdr)) = crate::color::simulated() {
+            crate::color::init(&output, display, hdr);
+        }
         // (Late, as DRM's come, for tests: `OLO_HEADLESS_LATE_MS`.)
         if late.is_none() {
             let global = output.create_global::<AnvilState<HeadlessData>>(&display_handle);
@@ -301,7 +317,7 @@ pub fn run_headless(size_arg: Option<&str>) {
         let buffer_size: Size<i32, Buffer> = size.into();
         let target: GlesTexture = renderer.create_buffer(Fourcc::Abgr8888, buffer_size).expect("offscreen buffer");
         let damage_tracker = OutputDamageTracker::from_output(&output);
-        screens.push(Screen { output, target, damage_tracker, due: std::time::Instant::now(), drawn: None, idle_frames: 0, asleep: false, looked: None, vrr: false });
+        screens.push(Screen { output, target, damage_tracker, due: std::time::Instant::now(), drawn: None, idle_frames: 0, asleep: false, looked: None, vrr: false, hdr: None });
     }
 
     // Feedback naming the render node: Mesa's EGL finds the GPU through it
@@ -498,6 +514,9 @@ fn add_output(state: &mut AnvilState<HeadlessData>, output: &Output) {
         }
     }
     state.apply_output_settings(output);
+    if let Err(e) = state.apply_color(output) {
+        warn!(output = output.name(), "colours: {e}");
+    }
     state.space.map_output(output, (0, 0));
     crate::shell::fixup_positions(&mut state.space, &state.settings.display, state.pointer.current_location());
     state.apply_mirroring();
@@ -601,24 +620,64 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) -> bool {
             tracing::info!("slow frame on {name}: {:.1} ms binding the target", bind.elapsed().as_secs_f64() * 1e3);
         }
         data.dmabuf_checks.frame_done();
-        render_output(
-            output,
-            &state.space,
-            overlay,
-            &mut data.renderer,
-            &mut fb,
-            &mut screen.damage_tracker,
-            // The single offscreen buffer always holds the last frame.
-            1,
-            state.overview.as_ref(),
-            desktop_color,
-            locked,
-            fit,
-        )
+        match crate::color::drawing(output) {
+            crate::color::Drawing::Plain => render_output(
+                output,
+                &state.space,
+                overlay,
+                &mut data.renderer,
+                &mut fb,
+                &mut screen.damage_tracker,
+                // The single offscreen buffer always holds the last frame.
+                1,
+                state.overview.as_ref(),
+                desktop_color,
+                locked,
+                fit,
+            )
+            .map(|r| (r.damage.is_some(), r.sync, r.states)),
+            crate::color::Drawing::Sdr(target) => {
+                data.renderer.set_color_target(Some(target));
+                let r = render_output(output, &state.space, overlay, &mut data.renderer, &mut fb, &mut screen.damage_tracker, 1, state.overview.as_ref(), desktop_color, locked, fit)
+                    .map(|r| (r.damage.is_some(), r.sync, r.states));
+                data.renderer.set_color_target(None);
+                r
+            }
+            crate::color::Drawing::Hdr { blend, signal } => {
+                drop(fb);
+                // Composed into the blending buffer, then what changed
+                // encoded into the screen's signal.
+                let size = smithay::backend::renderer::Texture::size(&screen.target);
+                let size: Size<i32, smithay::utils::Physical> = (size.w, size.h).into();
+                if screen.hdr.as_ref().is_none_or(|h| h.size() != size) {
+                    let Ok(t) = data.renderer.create_buffer(Fourcc::Abgr16161616f, (size.w, size.h).into()) else {
+                        warn!("no float buffer for HDR");
+                        return false;
+                    };
+                    screen.hdr = Some(crate::color::HdrFrame::new(t, size, output.current_scale().fractional_scale()));
+                }
+                let hdr = screen.hdr.as_mut().expect("made above");
+                data.renderer.set_color_target(Some(blend));
+                let composed = match data.renderer.bind(&mut hdr.texture) {
+                    Ok(mut fb) => render_output(output, &state.space, overlay, &mut data.renderer, &mut fb, &mut hdr.tracker, 1, state.overview.as_ref(), desktop_color, locked, fit)
+                        .map(|r| (r.damage.cloned(), r.states)),
+                    Err(e) => Err(smithay::backend::renderer::damage::Error::Rendering(e)),
+                };
+                data.renderer.set_color_target(Some(signal));
+                let out = composed.and_then(|(damage, states)| {
+                    hdr.drawn(damage.as_ref());
+                    let element = hdr.element();
+                    let mut fb = data.renderer.bind(&mut screen.target).map_err(smithay::backend::renderer::damage::Error::Rendering)?;
+                    let r = screen.damage_tracker.render_output(&mut data.renderer, &mut fb, 1, &[element], smithay::backend::renderer::Color32F::BLACK)?;
+                    Ok((damage.is_some(), r.sync, states))
+                });
+                data.renderer.set_color_target(None);
+                out
+            }
+        }
     };
     let new = match result {
-        Ok(r) => {
-            let (damaged, sync, states) = (r.damage.is_some(), r.sync, r.states);
+        Ok((damaged, sync, states)) => {
             // Something new to see, not just the keep-warm pixel.
             let seen = damaged && watched && crate::render::content_changed();
             state.backend_data.screens[index].drawn = Some(sync);

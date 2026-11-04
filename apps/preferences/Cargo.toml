@@ -15,6 +15,7 @@ olo-palm.workspace = true
 olo-voice.workspace = true
 olo-theme.workspace = true
 olo-protocol.workspace = true
+olo-color.workspace = true
 olo-screensavers = { workspace = true, features = ["gpui"] }
 olo-system.workspace = true
 olo-sync.workspace = true

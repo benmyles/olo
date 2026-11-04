@@ -92,8 +92,18 @@ of Finished; a new one goes where its priority puts it.
   - The panel: Samsung's ATNA panels are OLED (`OLED_PANELS`), so no
     stripes. VRR: Preferences ▸ Display ▸ "Variable refresh rate" for a
     display that has it, off by default (tried headless, simulated).
-    Left: HDR, P3 and the panel's calibration (VRR: Ben turned it on
-    and off, 2026-11-04, the mode following).
+    VRR: Ben turned it on and off, 2026-11-04, the mode following.
+    HDR and wide colour (2026-11-04, HACKING's "Colour: wide gamut and
+    HDR"): the panel's own primaries and luminance read from its
+    DisplayID (a little wider than P3; 650 cd/m² full screen, 1600
+    peak), sRGB shown accurately in its gamut by default, HDR (PQ,
+    BT.2020) through Intel's eDP HDR interface (its DPCD says PQ decode,
+    BT.2020 and tone mapping), Preferences ▸ Display ▸ Colour. Tried
+    headless (a pretend P3 HDR screen) and the GPU's conversions read
+    back on this machine. Left: HDR tried on the panel (its modeset,
+    and whether the brightness keys still work in HDR: the kernel sets
+    brightness over AUX in nits either way); clients' own colours
+    (`wp_color_management_v1`: HDR video, wide-gamut photos).
   - Displays plugged in (2026-11-04): the Studio Display (Thunderbolt 5)
     was two displays, 5120 × 2880 and a copy of its right half: a tiled
     monitor, now shown whole through the connector offering the whole

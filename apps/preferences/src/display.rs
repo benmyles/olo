@@ -11,7 +11,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use olo_protocol::{Client, GpuInfo, Mode, OutputConfig, OutputInfo, PowerStatus, Reply, Request};
+use olo_protocol::{Client, GpuInfo, Mode, OutputConfig, OutputInfo, PowerStatus, Reply, Request, color::ColorMode};
 use olo_ui::{
     gpui::{
         Bounds, DispatchPhase, FontWeight, IntoElement as _, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, SharedString, Styled as _, canvas, div,
@@ -20,7 +20,7 @@ use olo_ui::{
     metrics as m,
     style::{self, c},
     theme,
-    widgets::{Button, CheckBox, EmptyState, MenuField, Slider, StringView},
+    widgets::{Button, CheckBox, EmptyState, MenuField, Slider, StringView, TabView},
 };
 
 use crate::{PanelView, form::Ui, panel, server::Server};
@@ -31,16 +31,36 @@ pub struct State {
     /// The screen whose brightness is being dragged, and the level
     /// (app_server's echo lags a little).
     brightness: Option<(String, f32, Instant)>,
+    /// The screen whose SDR brightness in HDR is being dragged, as the
+    /// brightness is.
+    sdr_nits: Option<(String, f32, Instant)>,
+    /// The tab beside the display's settings: its panel, or its colours.
+    side_tab: usize,
     /// The screen being dragged in the map: where the press was and
     /// where the pointer is.
     drag: Option<(String, Point<Pixels>, Point<Pixels>)>,
-    /// A resolution change waiting to be kept: the screen, its previous
-    /// mode, and when it changed.
-    confirm: Option<(String, Mode, Instant)>,
+    /// A change waiting to be kept: the screen, how to undo it (its
+    /// previous mode, or HDR off), and when it changed.
+    confirm: Option<(String, Undo, Instant)>,
     /// The GPUs (app_server's `Request::Gpus`), once asked: None until
     /// it answers.
     gpus: Arc<Mutex<Option<Vec<GpuInfo>>>>,
     asked_gpus: bool,
+}
+
+/// The Colour tab shown beside the display's settings (the lint's).
+#[cfg(test)]
+pub(crate) fn colour_tab(st: &mut State) {
+    st.side_tab = 1;
+}
+
+/// How a change waiting to be kept is undone.
+#[derive(Clone)]
+enum Undo {
+    /// Back to the mode that worked.
+    Mode(Mode),
+    /// HDR off again (a display that went dark, or wrong, as it came on).
+    Hdr,
 }
 
 /// Ask app_server for the GPUs, on a thread (the window not shown until
@@ -212,7 +232,29 @@ fn panel(ui: &mut Ui, outputs: &[OutputInfo], power: Option<&PowerStatus>, serve
     // how Olo draws for it (side by side, so a laptop's short screen has
     // room for both).
     let settings = ui.collect(|ui| ui.bbox(&title, |ui| display_box(ui, &o, outputs, power, server, st, label_w)));
-    let facts = ui.collect(|ui| panel_box(ui, &o, label_w, server));
+    // The panel, and beside it in a tab its colours (when it says what
+    // they are): the column as tall as one of them.
+    let has_color = o.color.as_ref().is_some_and(|c| c.primaries().is_some());
+    let facts = if has_color {
+        let tab = st.side_tab.min(1);
+        let items = ui.collect(|ui| if tab == 0 { panel_box(ui, &o, label_w, server) } else { color_box(ui, &o, label_w, server, st) });
+        let pick = ui.on_view(|v, i: usize, _, cx| {
+            if let Some(st) = state_of(v) {
+                st.side_tab = i;
+            }
+            cx.notify();
+        });
+        let tabs: Vec<SharedString> = ["Panel", "Colour"].into_iter().map(SharedString::from).collect();
+        vec![
+            TabView::new(format!("display-side-{}", o.name), tabs, tab)
+                .grows()
+                .on_select(pick)
+                .child(div().flex_1().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items))
+                .into_any_element(),
+        ]
+    } else {
+        ui.collect(|ui| ui.bbox("Panel", |ui| panel_box(ui, &o, label_w, server)))
+    };
     let column = |items: Vec<olo_ui::gpui::AnyElement>| div().flex_1().min_w_0().flex().flex_col().children(items);
     ui.add(div().flex().flex_row().items_start().gap(px(m::SPACING)).child(column(settings)).child(column(facts)));
     keep_band(ui, outputs, server, st);
@@ -362,8 +404,8 @@ fn display_box(ui: &mut Ui, o: &OutputInfo, outputs: &[OutputInfo], power: Optio
                 return;
             }
             if let Some(st) = state_of(v) {
-                if st.confirm.as_ref().is_none_or(|(n, _, _)| *n != name) {
-                    st.confirm = Some((name.clone(), current.clone(), Instant::now()));
+                if st.confirm.as_ref().is_none_or(|(n, u, _)| *n != name || !matches!(u, Undo::Mode(_))) {
+                    st.confirm = Some((name.clone(), Undo::Mode(current.clone()), Instant::now()));
                 } else if let Some(c) = st.confirm.as_mut() {
                     c.2 = Instant::now();
                 }
@@ -484,7 +526,8 @@ fn display_box(ui: &mut Ui, o: &OutputInfo, outputs: &[OutputInfo], power: Optio
 }
 
 /// The display's panel: what it is, how Olo draws for it and why, and
-/// the person's corrections (`olo_protocol::panels`).
+/// the person's corrections (`olo_protocol::panels`). (Its rows: in a
+/// box of their own, or a tab beside Colour's.)
 fn panel_box(ui: &mut Ui, o: &OutputInfo, label_w: f32, server: &Server) {
     use olo_protocol::panels::{Source, Subpixel, Technology, TextMode};
     let Some(panel) = o.panel.clone() else { return };
@@ -493,7 +536,7 @@ fn panel_box(ui: &mut Ui, o: &OutputInfo, label_w: f32, server: &Server) {
         Source::Guess => "Olo's guess",
         Source::Setting => "your choice",
     };
-    ui.bbox("Panel", |ui| {
+    (|ui: &mut Ui| {
         // A label in the fields' label column, its value under their text,
         // a control's height (so beside the display's settings, the rows
         // go in step).
@@ -562,7 +605,81 @@ fn panel_box(ui: &mut Ui, o: &OutputInfo, label_w: f32, server: &Server) {
         });
         // Why, under the fields' text.
         ui.add(div().pl(px(label_w + m::TEXT_INSET)).child(StringView::new(panel.text_why.clone()).dim(true).wrap(true)));
-    });
+    })(ui);
+}
+
+/// The display's colours: what it can show, how sRGB's colours are shown
+/// on a wide one, and HDR on one that has it (app_server's `color`). (Its
+/// rows, for the tab beside the panel's.)
+fn color_box(ui: &mut Ui, o: &OutputInfo, label_w: f32, server: &Server, st: &mut State) {
+    let Some(color) = o.color.clone() else { return };
+    let Some(primaries) = color.primaries() else { return };
+    (|ui: &mut Ui| {
+        let row = |ui: &mut Ui, label: &str, value: String| {
+            ui.add(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .min_h(px(m::CONTROL_HEIGHT))
+                    .child(div().w(px(label_w + m::TEXT_INSET)).flex_shrink_0().child(StringView::new(label.to_owned())))
+                    .child(div().flex_1().min_w_0().child(StringView::new(value).wrap(true))),
+            );
+        };
+        let gamut = match color.gamut() {
+            Some((name, c)) if c < 0.995 => format!("{name} ({:.0}%)", c * 100.0),
+            Some((name, _)) => name.to_string(),
+            None => format!("Narrower than sRGB ({:.0}% of it)", primaries.coverage(&olo_color::Primaries::SRGB) * 100.0),
+        };
+        row(ui, "Colours:", gamut);
+        if let Some(peak) = color.peak_nits {
+            let light = match color.full_nits.filter(|f| (f - peak).abs() > 1.0) {
+                Some(full) => format!("{peak:.0} cd/m² at most, {full:.0} over the whole screen"),
+                None => format!("{peak:.0} cd/m²"),
+            };
+            row(ui, "Light:", light);
+        }
+        // A wide display: sRGB's colours as meant, or stretched.
+        if let Some(mode) = o.color_mode {
+            let (name, to) = (o.name.clone(), server.clone());
+            let i = usize::from(mode == ColorMode::Vivid);
+            menu(ui, format!("colors-{}", o.name), vec!["Accurately".into(), "Vivid".into()], i, "Show sRGB:", label_w, move |i| {
+                let color_mode = Some(if i == 1 { ColorMode::Vivid } else { ColorMode::Accurate });
+                to.configure_output(&name, OutputConfig { color_mode, ..Default::default() });
+            });
+            let why = match mode {
+                ColorMode::Accurate => "What's made for sRGB (nearly everything) looks as it was made; wider colours are for what has them.",
+                ColorMode::Vivid => "sRGB's colours stretched over the panel's: brighter and more saturated than anything was made.",
+            };
+            ui.add(div().pl(px(label_w + m::TEXT_INSET)).child(StringView::new(why).dim(true).wrap(true)));
+        }
+        // HDR, kept only once seen to work (the band above reverts it).
+        if let Some(hdr) = o.hdr {
+            let (name, to) = (o.name.clone(), server.clone());
+            let on = ui.on_view(move |v, on: bool, _, cx| {
+                if on && let Some(st) = state_of(v) {
+                    st.confirm = Some((name.clone(), Undo::Hdr, Instant::now()));
+                }
+                to.configure_output(&name, OutputConfig { hdr: Some(on), ..Default::default() });
+                cx.notify();
+            });
+            ui.add(div().pl(px(label_w)).child(CheckBox::new("High dynamic range (HDR)", hdr).id(format!("hdr-{}", o.name)).on_toggle(on)));
+            if hdr {
+                let (name, to) = (o.name.clone(), server.clone());
+                let nits = st.sdr_nits.as_ref().filter(|(n, _, at)| *n == o.name && at.elapsed() < Duration::from_millis(600)).map_or(o.sdr_nits, |(_, v, _)| *v);
+                let set = ui.on_view(move |view, v: f32, _, cx| {
+                    if let Some(st) = state_of(view) {
+                        st.sdr_nits = Some((name.clone(), v, Instant::now()));
+                    }
+                    to.configure_output(&name, OutputConfig { sdr_nits: Some(v), ..Default::default() });
+                    cx.notify();
+                });
+                ui.add(Slider::new(format!("sdr-{}", o.name), nits, 80.0..=480.0).step(1.0).label("Everything else's brightness").value_text(format!("{nits:.0} cd/m²")).on_change(set));
+                let peak = color.peak_nits.unwrap_or(1000.0);
+                ui.add(div().pl(px(m::TEXT_INSET)).child(StringView::new(format!("HDR video and pictures shine up to {peak:.0} cd/m²; everything else is shown this bright.")).dim(true).wrap(true)));
+            }
+        }
+    })(ui);
 }
 
 /// Move `name` by `delta` points in the map (`k` points per logical
@@ -591,16 +708,23 @@ fn rearrange(outputs: &[OutputInfo], name: &str, delta: (f32, f32), k: f32, serv
     server.configure_output(name, OutputConfig { position: Some(at), ..Default::default() });
 }
 
-/// "Keep this resolution?" with a countdown; reverts by itself.
+/// "Keep this resolution?" (or HDR) with a countdown; reverts by itself.
 fn keep_band(ui: &mut Ui, outputs: &[OutputInfo], server: &Server, st: &mut State) {
-    let Some((name, previous, at)) = st.confirm.clone() else { return };
+    let Some((name, undo, at)) = st.confirm.clone() else { return };
     if !outputs.iter().any(|o| o.name == name) {
         st.confirm = None;
         return;
     }
+    let question = match undo {
+        Undo::Mode(_) => "Keep this resolution?",
+        Undo::Hdr => "Keep HDR on?",
+    };
     let revert = {
-        let (name, previous, server) = (name.clone(), previous.clone(), server.clone());
-        move || server.configure_output(&name, OutputConfig { mode: Some(previous.clone()), ..Default::default() })
+        let (name, server) = (name.clone(), server.clone());
+        move || match &undo {
+            Undo::Mode(previous) => server.configure_output(&name, OutputConfig { mode: Some(previous.clone()), ..Default::default() }),
+            Undo::Hdr => server.configure_output(&name, OutputConfig { hdr: Some(false), ..Default::default() }),
+        }
     };
     let left = KEEP_SECS.saturating_sub(at.elapsed().as_secs());
     if left == 0 {
@@ -635,7 +759,7 @@ fn keep_band(ui: &mut Ui, outputs: &[OutputInfo], server: &Server, st: &mut Stat
             .items_center()
             .gap(px(m::SPACING))
             .pt(px(m::SPACING))
-            .child(div().flex_1().child(StringView::new(format!("Keep this resolution? Reverting in {left} s."))))
+            .child(div().flex_1().child(StringView::new(format!("{question} Reverting in {left} s."))))
             .child(Button::new("Revert").on_click(back))
             .child(Button::new("Keep").default(true).on_click(keep)),
     );

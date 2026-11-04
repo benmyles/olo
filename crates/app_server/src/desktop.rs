@@ -1507,6 +1507,10 @@ impl<B: Backend + 'static> AnvilState<B> {
                     number: None,
                     panel: Some(panel),
                     vrr: self.backend_data.vrr(o),
+                    color: crate::color::of(o).map(|c| c.display.clone()),
+                    color_mode: crate::color::of(o).filter(|c| c.display.wide()).map(|_| crate::color::applied(o).mode),
+                    hdr: crate::color::of(o).filter(|c| c.hdr_capable).map(|_| crate::color::applied(o).hdr),
+                    sdr_nits: crate::color::applied(o).sdr_nits,
                 }
             })
             .collect();
@@ -1759,6 +1763,22 @@ impl<B: Backend + 'static> AnvilState<B> {
             entry.vrr = on.then_some(true);
             self.backend_data.set_vrr(&output, on)?;
         }
+        // Its colours: Accurate and SDR's 203 cd/m² aren't kept (the
+        // defaults); HDR only while on.
+        let colors = config.color_mode.is_some() || config.hdr.is_some() || config.sdr_nits.is_some();
+        if let Some(m) = config.color_mode {
+            entry.color_mode = (m != olo_protocol::color::ColorMode::Accurate).then_some(m);
+        }
+        if let Some(on) = config.hdr {
+            entry.hdr = on.then_some(true);
+        }
+        if let Some(n) = config.sdr_nits {
+            let n = n.clamp(crate::color::MIN_SDR_NITS, crate::color::MAX_SDR_NITS);
+            entry.sdr_nits = ((n - olo_protocol::color::SDR_NITS).abs() > 0.5).then_some(n);
+        }
+        if colors {
+            self.apply_color(&output)?;
+        }
         self.apply_output_settings(&output);
         if self.mirrors.contains(&output) || entry_mirrors(&self.settings.display, &output) {
             self.apply_mirroring();
@@ -1778,6 +1798,19 @@ impl<B: Backend + 'static> AnvilState<B> {
         save_settings(&self.settings);
         self.lock_outputs_changed();
         self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
+        Ok(())
+    }
+
+    /// `output`'s colours as its settings have them (Accurate or Vivid,
+    /// HDR, SDR's white), drawn so from the next frame.
+    pub fn apply_color(&mut self, output: &Output) -> Result<(), String> {
+        let key = display_key(output);
+        let config = self.settings.display.config(&key, &output.name()).unwrap_or_default();
+        let applied = crate::color::Applied { mode: config.color_mode.unwrap_or_default(), hdr: config.hdr.unwrap_or(false), sdr_nits: config.sdr_nits.unwrap_or(olo_protocol::color::SDR_NITS) };
+        if crate::color::apply(output, applied) {
+            tracing::info!(output = output.name(), drawing = ?crate::color::drawing(output), "colours");
+            self.backend_data.color_changed(output)?;
+        }
         Ok(())
     }
 
