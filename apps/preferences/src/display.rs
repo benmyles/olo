@@ -3,10 +3,15 @@
 //! chosen screen's resolution, refresh rate and scale. Changes apply at
 //! once through app_server's ConfigureOutput; a new resolution reverts by
 //! itself unless kept within `KEEP_SECS`, in case the screen went dark.
+//! With more than one GPU, the one Olo draws with (Graphics:
+//! `DisplaySettings::gpu`, taking effect as app_server starts again).
 
-use std::time::{Duration, Instant};
+use std::{
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 
-use olo_protocol::{Mode, OutputConfig, OutputInfo, PowerStatus};
+use olo_protocol::{Client, GpuInfo, Mode, OutputConfig, OutputInfo, PowerStatus, Reply, Request};
 use olo_ui::{
     gpui::{
         Bounds, DispatchPhase, FontWeight, IntoElement as _, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, SharedString, Styled as _, canvas, div,
@@ -32,6 +37,54 @@ pub struct State {
     /// A resolution change waiting to be kept: the screen, its previous
     /// mode, and when it changed.
     confirm: Option<(String, Mode, Instant)>,
+    /// The GPUs (app_server's `Request::Gpus`), once asked: None until
+    /// it answers.
+    gpus: Arc<Mutex<Option<Vec<GpuInfo>>>>,
+    asked_gpus: bool,
+}
+
+/// Ask app_server for the GPUs, on a thread; after a restart (`until`:
+/// the GPU chosen), again until it composes with that one (or 20 s).
+fn ask_gpus(st: &State, proxy: olo_ui::Proxy, until: Option<String>) {
+    // Tests (the layout lint): a hybrid laptop's two.
+    if cfg!(test) {
+        let gpu = |pci: &str, name: &str, driver: &str, boot: bool, connectors: &[&str]| GpuInfo {
+            pci: pci.into(),
+            name: name.into(),
+            driver: driver.into(),
+            boot,
+            rendering: boot,
+            connectors: connectors.iter().map(|c| c.to_string()).collect(),
+        };
+        *st.gpus.lock().unwrap() = Some(vec![
+            gpu("0000:00:02.0", "Intel Graphics", "xe", true, &["eDP-1", "DP-1", "DP-2", "DP-3", "HDMI-A-1"]),
+            gpu("0000:01:00.0", "NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU", "nvidia", false, &["HDMI-A-2"]),
+        ]);
+        return;
+    }
+    let into = st.gpus.clone();
+    std::thread::spawn(move || {
+        let end = Instant::now() + Duration::from_secs(20);
+        loop {
+            let gpus = Client::connect().ok().and_then(|mut c| match c.request(&Request::Gpus) {
+                Ok(Reply::Gpus { gpus }) => Some(gpus),
+                _ => None,
+            });
+            let done = match (&gpus, &until) {
+                (Some(g), Some(want)) => g.iter().any(|g| g.rendering && g.pci == *want),
+                (Some(_), None) => true,
+                (None, _) => false,
+            };
+            if gpus.is_some() {
+                *into.lock().unwrap() = gpus;
+                proxy.send(crate::Msg::Redraw);
+            }
+            if done || Instant::now() > end {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
+    });
 }
 
 /// The panel's state in its view.
@@ -174,6 +227,7 @@ fn panel(ui: &mut Ui, outputs: &[OutputInfo], power: Option<&PowerStatus>, serve
     let column = |items: Vec<olo_ui::gpui::AnyElement>| div().flex_1().min_w_0().flex().flex_col().children(items);
     ui.add(div().flex().flex_row().items_start().gap(px(m::SPACING)).child(column(settings)).child(column(facts)));
     keep_band(ui, outputs, server, st);
+    graphics(ui, server, st);
 }
 
 /// Arrangement: every output to scale, in its logical position; a click
@@ -588,6 +642,60 @@ fn keep_band(ui: &mut Ui, outputs: &[OutputInfo], server: &Server, st: &mut Stat
             .child(Button::new("Revert").on_click(back))
             .child(Button::new("Keep").default(true).on_click(keep)),
     );
+}
+
+/// With more than one GPU: the one Olo draws with (app_server composes
+/// with it, Olo's apps render with it), and what each drives.
+fn graphics(ui: &mut Ui, server: &Server, st: &mut State) {
+    if !st.asked_gpus {
+        st.asked_gpus = true;
+        ask_gpus(st, olo_ui::proxy(ui.cx), None);
+    }
+    let Some(gpus) = st.gpus.lock().unwrap().clone() else { return };
+    if gpus.len() < 2 {
+        return;
+    }
+    let chosen = ui.s.display.gpu.clone();
+    let boot = gpus.iter().find(|g| g.boot).or(gpus.first()).cloned().unwrap_or_default();
+    // The one wanted: chosen and there, else the one the computer started on.
+    let wanted = chosen.as_ref().and_then(|c| gpus.iter().find(|g| &g.pci == c)).cloned().unwrap_or_else(|| boot.clone());
+    let now = gpus.iter().find(|g| g.rendering).cloned();
+    let mut names: Vec<SharedString> = vec![format!("Automatic: {}", boot.name).into()];
+    names.extend(gpus.iter().map(|g| SharedString::from(g.name.clone())));
+    let i = chosen.as_ref().and_then(|c| gpus.iter().position(|g| &g.pci == c)).map_or(0, |i| i + 1);
+    let label_w = 90.0;
+    ui.bbox("Graphics", |ui| {
+        let pcis: Vec<Option<String>> = std::iter::once(None).chain(gpus.iter().map(|g| Some(g.pci.clone()))).collect();
+        ui.menu("display-gpu", names, i, |f| f.label("Draw with:").divider(label_w), move |s, i| s.display.gpu = pcis.get(i).cloned().flatten());
+        // What each drives.
+        for g in &gpus {
+            let ports = if g.connectors.is_empty() { "no displays".to_owned() } else { g.connectors.join(", ") };
+            ui.add(div().pl(px(label_w + m::TEXT_INSET)).child(StringView::new(format!("{}: {} driver; drives {ports}", g.name, g.driver)).dim(true).wrap(true)));
+        }
+        let pending = now.as_ref().is_some_and(|n| n.pci != wanted.pci);
+        if pending {
+            let (server, want, gpus) = (server.clone(), wanted.pci.clone(), st.gpus.clone());
+            let proxy = olo_ui::proxy(ui.cx);
+            let restart = move |_: &mut olo_ui::gpui::Window, _: &mut olo_ui::gpui::App| {
+                server.reload_server();
+                ask_gpus(&State { gpus: gpus.clone(), ..Default::default() }, proxy.clone(), Some(want.clone()));
+            };
+            ui.add(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(m::SPACING))
+                    .pl(px(label_w + m::TEXT_INSET))
+                    .child(div().flex_1().min_w_0().child(
+                        StringView::new(format!("Olo draws with {} until the display server starts again; its apps move as they do.", now.as_ref().map_or("another", |n| n.name.as_str()))).wrap(true),
+                    ))
+                    .child(Button::new("Restart Display Server").on_click(restart)),
+            );
+        } else if !wanted.boot {
+            ui.add(div().pl(px(label_w + m::TEXT_INSET)).child(StringView::new("It's kept awake while Olo draws with it (Olo Doctor sees to it), and the other sleeps.").dim(true).wrap(true)));
+        }
+    });
 }
 
 #[cfg(test)]

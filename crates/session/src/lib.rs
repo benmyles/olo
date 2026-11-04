@@ -213,6 +213,10 @@ struct Session {
     /// Proxies that gave the socket to a newer one and serve the programs
     /// they had until those close (those this version started then exit).
     retired: Vec<i32>,
+    /// The GPU chosen (Preferences ▸ Display) when app_server last
+    /// started: a reload that finds another asks Olo's apps to start
+    /// again, on it.
+    gpu: Option<String>,
     /// The proxy kept crashing: app_server takes the socket itself.
     no_proxy: bool,
 }
@@ -274,6 +278,7 @@ impl Session {
             proxy_binary: None,
             retired: Vec::new(),
             no_proxy: std::env::var_os("OLO_NO_WAYLAND_PROXY").is_some(),
+            gpu: olo_protocol::display_gpu(),
         };
         s.own_files();
         s.start_server();
@@ -351,6 +356,7 @@ impl Session {
             proxy_binary,
             retired,
             no_proxy: std::env::var_os("OLO_NO_WAYLAND_PROXY").is_some(),
+            gpu: olo_protocol::display_gpu(),
         };
         s.own_files();
         s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display));
@@ -726,6 +732,36 @@ impl Session {
             }
         }
         self.start_server();
+        // Another GPU chosen: app_server composes with it now, and Olo's
+        // apps render with it once they start again (in place, windows
+        // as they were: what an upgrade asks of them).
+        let gpu = olo_protocol::display_gpu();
+        if gpu != self.gpu {
+            log(format!("the GPU chosen is now {}: asking Olo's apps to start again on it", gpu.as_deref().unwrap_or("the one the computer started on")));
+            self.gpu = gpu;
+            self.restart_apps();
+        }
+    }
+
+    /// Ask every Olo program of this user (but the session, app_server and
+    /// the proxies) to start again in place (SIGURG, as an upgrade does).
+    fn restart_apps(&self) {
+        let Some(dir) = exe().parent().map(Path::to_path_buf) else { return };
+        // SAFETY: getuid cannot fail.
+        let uid = unsafe { libc::getuid() };
+        let me = std::process::id() as i32;
+        for e in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
+            let Some(pid) = e.file_name().to_str().and_then(|n| n.parse::<i32>().ok()) else { continue };
+            if pid == me || pid == self.server.pid || std::fs::metadata(e.path()).map(|m| std::os::unix::fs::MetadataExt::uid(&m)).ok() != Some(uid) {
+                continue;
+            }
+            let Ok(exe) = std::fs::read_link(e.path().join("exe")) else { continue };
+            let name = exe.file_name().map(|n| n.to_string_lossy().trim_end_matches(" (deleted)").to_owned()).unwrap_or_default();
+            if exe.parent() == Some(dir.as_path()) && name.starts_with("olo-") && !matches!(name.as_str(), "olo-session" | "olo-app-server" | "olo-wlproxy") {
+                // SAFETY: SIGURG (ignored unless handled) to our own program.
+                unsafe { libc::kill(pid, libc::SIGURG) };
+            }
+        }
     }
 
     /// Become the upgraded olo-session, keeping children and sockets

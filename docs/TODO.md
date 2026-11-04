@@ -17,6 +17,28 @@ of Finished; a new one goes where its priority puts it.
   with (kept awake while it is: no runtime suspend); the others only
   for the displays wired to them, or asleep.
 
+- **Preferences ▸ GPUs: each GPU and every knob it has** (Ben,
+  2026-11-04: "if there are any knobs etc. that can be tweaked for the
+  nvidia gpu, e.g. to make it run cooler/slower or hotter/faster or any
+  other things then please add a new GPUs preferences app with each GPU
+  and a full set of knobs/tuning options in there"). NVIDIA's through
+  NVML (power limit within its range, locked GPU and memory clocks,
+  persistence, what it's doing now), Intel's xe through sysfs (minimum
+  and maximum clock, its power profile), AMD's (power profile, clocks);
+  root through a privileged helper (Doctor's way), kept and set again at
+  login; presets (Cooler and Quieter, Balanced, Fastest) beside the
+  knobs; agents read and set them.
+
+- **Columns moved by dragging, remembered per table** (Ben, 2026-11-04:
+  "columns in a table like in the activity monitor should be orderable by
+  dragging their positions (and this should be at the ui kit level) and
+  the order should be remembered in that app for the table"). In the
+  kit's ColumnListView: drag a column's heading sideways to move it (the
+  others make room as it goes, as BColumnListView's did), the order kept
+  by the app under the table's id (with its widths), sorting and cells by
+  the column's own index whatever its place; agents can read and set the
+  order too.
+
 - **Voice processing's input model: SIMD throughout, lowest latency**
   (Ben, 2026-11-04: "ensure that the voice processing model for input is
   fully SIMD accelerated and ultra-optimized for low latency (not gpu)").

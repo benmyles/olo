@@ -557,6 +557,10 @@ impl Backend for UdevData {
         self.pointers.iter().map(device_info).collect()
     }
 
+    fn render_node(&self) -> Option<std::path::PathBuf> {
+        self.primary_gpu.dev_path_with_type(NodeType::Render).or_else(|| self.primary_gpu.dev_path())
+    }
+
     fn keyboards(&self) -> Vec<String> {
         // (KEY_A: a keyboard to type on.)
         let mut names: Vec<String> = self.keyboards.iter().filter(|d| d.keyboard_has_key(30) == Ok(true)).map(|d| d.name().to_string()).collect();
@@ -813,6 +817,14 @@ pub fn probe_gpus() {
 fn choose_primary_gpu(seat: &str) -> Option<DrmNode> {
     if let Ok(var) = std::env::var("ANVIL_DRM_DEVICE") {
         return DrmNode::from_path(var).ok();
+    }
+    // The one chosen in Preferences ▸ Display, if it's there.
+    if let Some(pci) = olo_protocol::display_gpu()
+        && let Some(gpu) = olo_system::gpus::by_pci(&pci)
+        && let Some(node) = gpu.render.as_ref().or(gpu.card.as_ref()).and_then(|p| DrmNode::from_path(p).ok())
+    {
+        info!(gpu = gpu.name, "composing with the GPU chosen in Preferences");
+        return Some(node);
     }
     let render = |path: &Path| DrmNode::from_path(path).ok()?.node_with_type(NodeType::Render)?.ok();
     if let Some(node) = primary_gpu(seat).ok().flatten().and_then(|p| render(&p)) {

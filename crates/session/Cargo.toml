@@ -23,6 +23,7 @@ test = false
 [dependencies]
 olo-xdg.workspace = true
 olo-system.workspace = true
+olo-protocol.workspace = true
 libc = "0.2"
 serde.workspace = true
 serde_json.workspace = true

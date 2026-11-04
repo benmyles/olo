@@ -7439,6 +7439,7 @@ name = "olo-session"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "olo-protocol",
  "olo-system",
  "olo-xdg",
  "serde",

@@ -583,6 +583,38 @@ impl<B: Backend + 'static> AnvilState<B> {
             }
             Request::InputDevices => Reply::InputDevices { devices: self.backend_data.input_devices() },
             Request::Keyboards => Reply::Keyboards { names: self.backend_data.keyboards() },
+            Request::Gpus => {
+                let now = self.backend_data.render_node();
+                let gpus = olo_system::gpus::list()
+                    .into_iter()
+                    .map(|g| olo_protocol::GpuInfo {
+                        rendering: now.is_some() && (g.render == now || g.card == now),
+                        pci: g.pci,
+                        name: g.name,
+                        driver: g.driver,
+                        boot: g.boot,
+                        connectors: g.connectors,
+                    })
+                    .collect();
+                Reply::Gpus { gpus }
+            }
+            Request::ReloadServer => {
+                // olo-session (this process's parent) starts it again, as
+                // on a reload; the answer goes first.
+                // SAFETY: getppid can't fail.
+                let parent = unsafe { libc::getppid() };
+                let ours = std::fs::read_to_string(format!("/proc/{parent}/comm")).is_ok_and(|c| c.trim() == "olo-session");
+                if ours {
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(200));
+                        // SAFETY: a signal to our own parent, the session.
+                        unsafe { libc::kill(parent, libc::SIGHUP) };
+                    });
+                    Reply::Ok
+                } else {
+                    Reply::Error { message: "app_server isn't running under olo-session".into() }
+                }
+            }
             Request::PowerStatus => Reply::Power { status: self.power_status() },
             Request::Lock => {
                 self.lock_screen();

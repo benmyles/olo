@@ -1559,6 +1559,10 @@ pub trait Backend {
     fn keyboards(&self) -> Vec<String> {
         Vec::new()
     }
+    /// The GPU it composes with, by its render node (a session's only).
+    fn render_node(&self) -> Option<std::path::PathBuf> {
+        None
+    }
     fn reset_buffers(&mut self, output: &Output);
     /// What `outputs` (all, for None) show may have changed: a display
     /// resting after frames with nothing new (`render::IDLE_FRAMES`)
