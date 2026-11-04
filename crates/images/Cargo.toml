@@ -14,3 +14,8 @@ rust_h265 = "0.4"
 rav1d = { version = "1.1", default-features = false, features = ["bitdepth_8", "bitdepth_16"] }
 avif-parse = "2"
 heifer = "0.2"
+# Embedded colour profiles into sRGB (pure Rust; the image crate's own).
+moxcms = "0.8"
+
+[dev-dependencies]
+olo-color.workspace = true

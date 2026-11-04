@@ -45,6 +45,18 @@ pub fn ramps(len: usize, gains: [f64; 3]) -> [Vec<u16>; 3] {
     gains.map(|g| (0..len).map(|i| (i as f64 / last * g * 65535.0).round() as u16).collect())
 }
 
+/// The same warmth for a display showing HDR, whose signal is PQ: each
+/// channel's light scaled as SDR's ramp scales it (a gain `g` on gamma
+/// 2.2's signal is `g`^2.2 on its light), then encoded again. (Scaling
+/// PQ's codes themselves would dim the blue far more.)
+pub fn ramps_pq(len: usize, gains: [f64; 3]) -> [Vec<u16>; 3] {
+    let last = len.saturating_sub(1).max(1) as f64;
+    gains.map(|g| {
+        let light = g.clamp(0.0, 1.0).powf(2.2);
+        (0..len).map(|i| (olo_color::pq_encode(olo_color::pq_decode(i as f64 / last) * light) * 65535.0).round() as u16).collect()
+    })
+}
+
 /// Where a fade is.
 #[derive(Debug, Clone, Copy)]
 pub struct Fade {
@@ -146,5 +158,16 @@ mod tests {
         let (mid, done) = f.at(start + FADE / 2);
         assert!(!done && (mid[1] - 0.75).abs() < 1e-9);
         assert_eq!(f.at(start + FADE * 2), ([1.0, 0.5, 0.0], true));
+    }
+
+    #[test]
+    fn warmth_in_hdr_is_light_scaled() {
+        let [r, _, b] = super::ramps_pq(1024, [1.0, 0.9, 0.6]);
+        // Red untouched; blue's light at 0.6^2.2 of what it was.
+        assert!(r.iter().enumerate().all(|(i, v)| (f64::from(*v) - i as f64 / 1023.0 * 65535.0).abs() <= 1.0));
+        let at = 600;
+        let before = olo_color::pq_decode(at as f64 / 1023.0);
+        let after = olo_color::pq_decode(f64::from(b[at]) / 65535.0);
+        assert!((after / before - 0.6f64.powf(2.2)).abs() < 0.01, "{}", after / before);
     }
 }

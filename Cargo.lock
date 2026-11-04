@@ -7061,6 +7061,8 @@ dependencies = [
  "heifer",
  "image",
  "jxl-oxide",
+ "moxcms",
+ "olo-color",
  "rav1d",
  "rust_h265",
 ]

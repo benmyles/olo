@@ -2873,6 +2873,15 @@ primaries and light as the target, in HDR; else its primaries at gamma
 `preferred_changed`). `cargo run --release -p app_server --example
 color_probe` (in a test session) prints what's offered and shows a window
 tagged PQ: PQ's 100 cd/m² shows as sRGB's 185 where untagged it's 130.
+
+Pictures carry their colours too: `olo_images::open` converts one from
+the ICC profile its file embeds into sRGB (`to_srgb`, moxcms, perceptual),
+so an iPhone's Display P3 photo shows its colours, not P3's numbers taken
+for sRGB's (washed out); 34 ms for 12 megapixels, on the thread that
+decodes it. Olo's own apps draw in sRGB, so colours wider than sRGB's
+are mapped into it there. Night light in HDR scales each channel's light
+and encodes PQ again (`night::ramps_pq`), the gamma ramp's input being
+PQ's code (evenly spaced to the eye: the LUT holds it well).
 `tools/dev/layout-check NAME [--auto] [--unplug]` checks this quickly:
 it arranges a session's screens in an order unlike the one they're
 found in, puts windows on each and on another workspace (auto-tiled with

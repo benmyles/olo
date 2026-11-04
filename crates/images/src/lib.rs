@@ -572,7 +572,37 @@ fn heic(data: &[u8]) -> Result<DynamicImage, String> {
     if img.width as u64 * img.height as u64 > MAX_PIXELS {
         return Err("too large".into());
     }
-    image::RgbaImage::from_raw(img.width, img.height, img.to_rgba8()).map(DynamicImage::ImageRgba8).ok_or_else(|| "bad image size".into())
+    let rgba = image::RgbaImage::from_raw(img.width, img.height, img.to_rgba8()).map(DynamicImage::ImageRgba8).ok_or_else(|| "bad image size".to_owned())?;
+    // (An iPhone's photos: Display P3, its profile embedded.)
+    let icc = heifer::read_metadata(data).ok().and_then(|m| m.icc_profile);
+    Ok(to_srgb(rgba, icc.as_deref()))
+}
+
+/// `img` from the colour profile its file embeds into sRGB, what Olo's
+/// apps draw in (and what app_server shows accurately on any display):
+/// a Display P3 photo's colours as they are, not washed out as they were
+/// when its numbers were taken for sRGB's. Colours sRGB hasn't are mapped
+/// in perceptually. Left as it is without a profile, with an sRGB one, or
+/// one that isn't RGB or can't be read.
+pub fn to_srgb(img: DynamicImage, icc: Option<&[u8]>) -> DynamicImage {
+    use moxcms::{ColorProfile, DataColorSpace, Layout, RenderingIntent, TransformOptions};
+    let Some(src) = icc.and_then(|b| ColorProfile::new_from_slice(b).ok()) else { return img };
+    let srgb = ColorProfile::new_srgb();
+    if src.color_space != DataColorSpace::Rgb {
+        return img;
+    }
+    let near = |a: moxcms::Xyzd, b: moxcms::Xyzd| (a.x - b.x).abs() < 2e-3 && (a.y - b.y).abs() < 2e-3 && (a.z - b.z).abs() < 2e-3;
+    if near(src.red_colorant, srgb.red_colorant) && near(src.green_colorant, srgb.green_colorant) && near(src.blue_colorant, srgb.blue_colorant) {
+        return img;
+    }
+    let options = TransformOptions { rendering_intent: RenderingIntent::Perceptual, ..TransformOptions::default() };
+    let Ok(t) = src.create_transform_8bit(Layout::Rgba, &srgb, Layout::Rgba, options) else { return img };
+    let mut rgba = img.into_rgba8();
+    let mut out = vec![0u8; rgba.len()];
+    if t.transform(&rgba, &mut out).is_ok() {
+        rgba.copy_from_slice(&out);
+    }
+    DynamicImage::ImageRgba8(rgba)
 }
 
 /// Decode `path`, returning the picture and its format's name ("PNG").
@@ -600,11 +630,12 @@ pub fn open(path: &Path) -> Result<(DynamicImage, String), String> {
     reader.limits(limits);
     let mut decoder = reader.into_decoder().map_err(|e| e.to_string())?;
     let orientation = decoder.orientation().ok();
+    let icc = decoder.icc_profile().ok().flatten();
     let mut img = DynamicImage::from_decoder(decoder).map_err(|e| e.to_string())?;
     if let Some(o) = orientation {
         img.apply_orientation(o);
     }
-    Ok((img, format))
+    Ok((to_srgb(img, icc.as_deref()), format))
 }
 
 #[cfg(test)]
@@ -632,6 +663,55 @@ mod tests {
             let worst = fast.iter().zip(&exact).map(|(a, b)| a.abs_diff(*b)).max().unwrap();
             assert!(worst <= 1, "{bpc} bit, full {full}, matrix {matrix}: off by {worst}");
         }
+    }
+
+    /// A Display P3 PNG (its profile embedded) opens in sRGB's numbers;
+    /// one without a profile is left as it is.
+    #[test]
+    fn p3_photos_open_in_srgb() {
+        use image::{ImageEncoder, codecs::png::PngEncoder};
+        let dir = std::path::Path::new("/var/tmp").join(format!("olo-images-p3-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p3 = [200u8, 100, 50, 255];
+        let write = |name: &str, icc: Option<Vec<u8>>| {
+            let path = dir.join(name);
+            let mut bytes = Vec::new();
+            let mut e = PngEncoder::new(&mut bytes);
+            if let Some(icc) = icc {
+                e.set_icc_profile(icc).unwrap();
+            }
+            e.write_image(&p3, 1, 1, image::ExtendedColorType::Rgba8).unwrap();
+            std::fs::write(&path, bytes).unwrap();
+            path
+        };
+        let icc = moxcms::ColorProfile::new_display_p3().encode().unwrap();
+        let tagged = open(&write("p3.png", Some(icc))).unwrap().0.into_rgba8();
+        let plain = open(&write("plain.png", None)).unwrap().0.into_rgba8();
+        assert_eq!(plain.get_pixel(0, 0).0, p3);
+        // As olo-color works it out: P3's numbers into sRGB's (both sRGB's
+        // curve), the orange a little redder in sRGB's numbers.
+        let m = olo_color::Primaries::DISPLAY_P3.to(&olo_color::Primaries::SRGB);
+        let lin = [0, 1, 2].map(|i| olo_color::Transfer::Srgb.decode(f64::from(p3[i]) / 255.0));
+        let want = m.apply(lin).map(|v| (olo_color::Transfer::Srgb.encode(v.clamp(0.0, 1.0)) * 255.0).round() as i32);
+        let got = tagged.get_pixel(0, 0).0;
+        for c in 0..3 {
+            assert!((i32::from(got[c]) - want[c]).abs() <= 2, "got {got:?}, want {want:?}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// What converting a 12-megapixel photo costs
+    /// (`cargo test --release -p olo-images p3_cost -- --ignored --nocapture`).
+    #[test]
+    #[ignore]
+    fn p3_cost() {
+        let (w, h) = (4032u32, 3024u32);
+        let img = DynamicImage::ImageRgba8(image::RgbaImage::from_fn(w, h, |x, y| image::Rgba([(x % 256) as u8, (y % 256) as u8, ((x + y) % 256) as u8, 255])));
+        let icc = moxcms::ColorProfile::new_display_p3().encode().unwrap();
+        let t = std::time::Instant::now();
+        let out = to_srgb(img, Some(&icc));
+        eprintln!("{w} × {h} from Display P3 into sRGB: {:.1} ms", t.elapsed().as_secs_f64() * 1e3);
+        assert_eq!(out.width(), w);
     }
 
     #[test]

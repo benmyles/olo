@@ -638,7 +638,10 @@ impl Backend for UdevData {
         surface.drm_output.reset_buffers();
         surface.hdr = None;
         surface.color_pending = true;
-        set_connector_color(backend, id.crtc)
+        let set = set_connector_color(backend, id.crtc);
+        // Night light's ramp for the signal it now takes (PQ or not).
+        set_gamma(backend, id.crtc, self.white_point);
+        set
     }
 
     fn set_vrr(&mut self, output: &Output, on: bool) -> Result<(), String> {
@@ -780,7 +783,9 @@ fn set_gamma(backend: &BackendData, crtc: crtc::Handle, gains: [f64; 3]) {
     if len < 2 {
         return set_ctm(backend, crtc, gains, AtomicCommitFlags::NONBLOCK);
     }
-    let [r, g, b] = crate::night::ramps(len, gains);
+    // (A display showing HDR takes PQ: its warmth scaled in light.)
+    let hdr = backend.surfaces.get(&crtc).is_some_and(|s| matches!(crate::color::drawing(&s.output), crate::color::Drawing::Hdr { .. }));
+    let [r, g, b] = if hdr { crate::night::ramps_pq(len, gains) } else { crate::night::ramps(len, gains) };
     if let Err(e) = fd.set_gamma(crtc, &r, &g, &b) {
         warn!(?e, "this display can't take a gamma ramp; night light is off");
     }
