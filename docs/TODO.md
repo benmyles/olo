@@ -12,7 +12,15 @@ of Finished; a new one goes where its priority puts it.
   the sound output menu there's no airpods entry (in sound prefs)".
   Paired and connected, they're an input in Preferences ▸ Sound but not
   an output: their A2DP (or HFP) sink missing from what the output menu
-  lists.
+  lists. *Looked at* (2026-11-04, AirPods not connected then): Sound
+  lists every sink the sound server has (`audio::devices`, only Olo's
+  None taken out), and the input that showed is Olo's own
+  (`airpods_mic.ADDRESS`, made by olo-airpods over Apple's protocol,
+  there whatever BlueZ's audio profile does). So the likely cause is
+  their card with no audio profile up (A2DP failing, AAC say, or the
+  profile left `off`): to see with them connected (`pactl list cards`,
+  WirePlumber's log), then fixed at the cause, and Sound saying so
+  (their output named, with why it isn't there) rather than nothing.
 
 - **Terminal: a tab in a worktree isn't seen as the repository's**
   (Ben, 2026-11-04, with a screenshot): "for some reason terminal isn't
