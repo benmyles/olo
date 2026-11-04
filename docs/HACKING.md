@@ -999,10 +999,15 @@ adding the folders they go to); Home; a Name/Kind/Size/Modified list as
 Tracker's, folders first and names in reading order, following the
 folder as it changes; a "Save as:" field, and a question before
 replacing. Space takes a look at the selected file in the Viewer
-(`olo-viewer --look --over=HANDLE FILE`: a process of its own, centred
-over the panel by the handle the panel's window is exported as, put
-away by Space or Escape there, by Space again in the panel, and with
-the panel). An
+(`olo-viewer --look --follow --over=HANDLE FILE`: a process of its own,
+centred over the panel by the handle the panel's window is exported as,
+put away by Space or Escape there, by Space again in the panel, and with
+the panel). It follows the panel's list, as Quick Look does: its arrows
+(caught before what it shows scrolls with them) ask the panel for the
+file before or after (`step -1`/`step 1` on its stdout, read on a
+thread and handed to the panel on a channel), the panel moves its
+selection there (past folders) and tells it the path to show (a line on
+its stdin), as it does when its selection moves by itself. An
 item's menu (a secondary click) has Quick Look, Open With ▸
 (`olo_ui::open_with`, the folder's kinds warmed as it's listed) and
 Show in Tracker (`olo_kit_base::tracker::open`). A

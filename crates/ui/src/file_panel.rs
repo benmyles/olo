@@ -13,7 +13,11 @@
 //! (`places`, shared with Tracker's Go menu), and adds or takes away the
 //! folder shown as a favourite. Space takes a look at the selected file
 //! in the Viewer (`olo-viewer --look`, over the panel by the handle it
-//! exported, `--over=`: Space again, or Escape there, puts it away).
+//! exported, `--over=`: Space again, or Escape there, puts it away). The
+//! look follows the panel's list, as Quick Look does: its arrows ask the
+//! panel for the file before or after (`step -1`/`step 1` on its stdout),
+//! and the panel, its selection moved there, tells it what to show (the
+//! path on its stdin), as it does when its selection moves by itself.
 
 use std::{
     path::{Path, PathBuf},
@@ -226,8 +230,12 @@ struct PanelView {
     /// The folder shown, followed as it changes.
     watch: Option<olo_kit_base::watch::Watch>,
     changed: mpsc::UnboundedSender<()>,
-    /// The Viewer showing a file for Space, while it is up.
+    /// The Viewer showing a file for Space, while it is up, and what to
+    /// tell it to show next (its stdin).
     look: Option<std::process::Child>,
+    look_in: Option<std::process::ChildStdin>,
+    /// What the look shows now.
+    looking_at: Option<PathBuf>,
     /// The handle the panel's window is exported as, for the look to
     /// open over it (`Window::export_handle`).
     over: Rc<std::cell::RefCell<Option<String>>>,
@@ -335,6 +343,8 @@ impl PanelView {
             watch: None,
             changed,
             look: None,
+            look_in: None,
+            looking_at: None,
             over,
             on_done: Some(on_done),
             window: window.window_handle(),
@@ -453,19 +463,89 @@ impl PanelView {
         if self.put_look_away() {
             return;
         }
-        let Some(path) = self.list.read(cx).state.single().and_then(|i| self.items.get(i)).filter(|it| !it.is_dir).map(|it| self.panel.dir.join(&it.name)) else { return };
-        match olo_xdg::find_program("olo-viewer") {
-            Some(viewer) => {
-                // Over the panel (else it opens wherever a new window would).
-                let over = self.over.borrow().as_ref().map(|h| format!("--over={h}"));
-                self.look = std::process::Command::new(viewer).arg("--look").args(over).arg(path).spawn().ok();
+        let Some(path) = self.selected_file(cx) else { return };
+        let Some(viewer) = olo_xdg::find_program("olo-viewer") else {
+            tracing::warn!("file panel: no olo-viewer to look with");
+            return;
+        };
+        // Over the panel (else it opens wherever a new window would).
+        let over = self.over.borrow().as_ref().map(|h| format!("--over={h}"));
+        use std::process::Stdio;
+        let Ok(mut child) = std::process::Command::new(viewer).arg("--look").arg("--follow").args(over).arg(&path).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn() else { return };
+        self.look_in = child.stdin.take();
+        self.looking_at = Some(path);
+        // Its arrows' asks, on a thread (the panel waits on a channel, never
+        // polls), each a step through the panel's list.
+        if let Some(out) = child.stdout.take() {
+            let (tx, mut rx) = mpsc::unbounded::<isize>();
+            let read = std::thread::Builder::new().name("file panel look".into()).spawn(move || {
+                use std::io::BufRead as _;
+                for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+                    if let Some(by) = line.strip_prefix("step ").and_then(|n| n.trim().parse().ok())
+                        && tx.unbounded_send(by).is_err()
+                    {
+                        return;
+                    }
+                }
+            });
+            if read.is_ok() {
+                let task = cx.spawn(async move |me, cx| {
+                    while let Some(by) = rx.next().await {
+                        if me.update(cx, |v, cx| v.look_step(by, cx)).is_err() {
+                            return;
+                        }
+                    }
+                });
+                self._tasks.push(task);
             }
-            None => tracing::warn!("file panel: no olo-viewer to look with"),
+        }
+        self.look = Some(child);
+    }
+
+    /// The file selected (one, not a folder), where it is.
+    fn selected_file(&self, cx: &App) -> Option<PathBuf> {
+        self.list.read(cx).state.single().and_then(|i| self.items.get(i)).filter(|it| !it.is_dir).map(|it| self.panel.dir.join(&it.name))
+    }
+
+    /// The look's arrow: the selection to the file `by` files on (folders
+    /// passed over), and the look shown it.
+    fn look_step(&mut self, by: isize, cx: &mut Context<Self>) {
+        let Some(at) = self.list.read(cx).state.single() else { return };
+        let mut i = at as isize;
+        loop {
+            i += by.signum();
+            match usize::try_from(i).ok().and_then(|i| self.items.get(i)) {
+                None => return,
+                Some(it) if it.is_dir => continue,
+                Some(_) => break,
+            }
+        }
+        let i = i as usize;
+        self.list.update(cx, |l, _| {
+            l.state.select(i);
+            l.reveal(i);
+        });
+        self.look_follows(cx);
+        cx.notify();
+    }
+
+    /// The look, if it's up, shown what's selected now.
+    fn look_follows(&mut self, cx: &mut Context<Self>) {
+        let Some(path) = self.selected_file(cx) else { return };
+        if self.looking_at.as_ref() == Some(&path) {
+            return;
+        }
+        let Some(stdin) = self.look_in.as_mut() else { return };
+        use std::io::Write as _;
+        if writeln!(stdin, "{}", path.display()).and_then(|_| stdin.flush()).is_ok() {
+            self.looking_at = Some(path);
         }
     }
 
     /// The Viewer put away, if it was up (and still is).
     fn put_look_away(&mut self) -> bool {
+        self.look_in = None;
+        self.looking_at = None;
         let Some(mut child) = self.look.take() else { return false };
         let up = matches!(child.try_wait(), Ok(None));
         if up {
@@ -749,6 +829,8 @@ impl Render for PanelView {
         .on_context(move |_, at, window, cx| context.update(cx, |v, cx| v.context_menu(at, window, cx)))
         .on_select(move |_, cx| {
             chooser.update(cx, |v, cx| {
+                // A look up follows the selection.
+                v.look_follows(cx);
                 // Save: a file chosen gives its name.
                 if v.panel.mode == Mode::Save
                     && let Some(it) = v.list.read(cx).state.single().and_then(|i| v.items.get(i)).filter(|it| !it.is_dir).cloned()

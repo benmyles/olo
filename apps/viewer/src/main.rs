@@ -50,6 +50,8 @@ enum Msg {
     Edit(EntityId, EditEvent),
     /// Open files, or the folders they are in, changed on disk.
     OnDisk(Vec<PathBuf>),
+    /// A look following a file panel (`--follow`): the file to show now.
+    LookAt(PathBuf),
 }
 
 enum Content {
@@ -95,6 +97,11 @@ struct Viewer {
     /// The window the look opens over (`--over=HANDLE`, the file panel's,
     /// exported: xdg-foreign).
     over: Option<String>,
+    /// The look follows the panel that asked for it (`--follow`): the
+    /// arrows ask it for the file before or after (`step -1`, `step 1` on
+    /// stdout), and it says what to show (a path a line on stdin), so the
+    /// look steps through the panel's list as the panel's selection does.
+    follow: bool,
     /// File panels open, and with no document (to quit when they go).
     panels: usize,
 }
@@ -361,6 +368,14 @@ impl Viewer {
         };
         let Ok(msg) = message.downcast::<Msg>() else { return };
         match *msg {
+            // The look's one window, on the file the panel has selected now.
+            Msg::LookAt(path) => {
+                if let Some(doc) = self.docs.first().cloned()
+                    && let Some(win) = doc.read(cx).win
+                {
+                    let _ = win.update(cx, |_, window, cx| doc.update(cx, |d, cx| d.leave(After::Open(path), window, cx)));
+                }
+            }
             Msg::OnDisk(paths) => {
                 for doc in self.docs.clone() {
                     doc.update(cx, |d, cx| d.on_disk_changed(&paths, cx));
@@ -1049,6 +1064,22 @@ impl Doc {
         cx.notify();
     }
 
+    /// Following a panel (`--follow`): the arrows step through the
+    /// panel's list (it moves its selection, and says what to show), as
+    /// Quick Look's do.
+    fn follow_keys(&mut self, e: &KeyDownEvent, cx: &mut Context<Self>) {
+        let key = e.keystroke.key.as_str();
+        let follow = self.viewer.upgrade().is_some_and(|v| v.read(cx).follow);
+        if !follow || e.keystroke.modifiers.modified() || !matches!(key, "up" | "down" | "left" | "right") {
+            return;
+        }
+        use std::io::Write as _;
+        let by = if matches!(key, "up" | "left") { -1 } else { 1 };
+        let mut out = std::io::stdout().lock();
+        let _ = writeln!(out, "step {by}").and_then(|_| out.flush());
+        cx.stop_propagation();
+    }
+
     fn keys(&mut self, e: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let key = e.keystroke.key.as_str();
         let plain = !e.keystroke.modifiers.modified();
@@ -1059,6 +1090,7 @@ impl Doc {
             cx.stop_propagation();
             return;
         }
+
         let cropping = self.edit.as_ref().is_some_and(|e| e.crop.is_some());
         if cropping && plain {
             let has_sel = self.edit.as_ref().and_then(|e| e.crop.as_ref()).is_some_and(|c| c.sel.is_some());
@@ -1322,6 +1354,9 @@ impl Render for Doc {
             .flex_col()
             .track_focus(&self.focus)
             .on_key_down(cx.listener(|d, e: &KeyDownEvent, window, cx| d.keys(e, window, cx)))
+            // A look following its panel: its arrows are the panel's, before
+            // what it shows (a text, a PDF) takes them to scroll.
+            .capture_key_down(cx.listener(|d, e: &KeyDownEvent, _, cx| d.follow_keys(e, cx)))
             .on_drop(move |paths: &ExternalPaths, _, cx| {
                 let viewer = me.read(cx).viewer.clone();
                 let paths: Vec<PathBuf> = paths.paths().to_vec();
@@ -1468,6 +1503,7 @@ fn main() {
     // (A look is its own process, which the panel that asked for it can
     // put away.)
     let look = args.iter().any(|a| a == "--look");
+    let follow = look && args.iter().any(|a| a == "--follow");
     let over = args.iter().find_map(|a| a.strip_prefix("--over=")).map(str::to_owned);
     if !look && instance::forward(APP_ID, &args) {
         return;
@@ -1478,7 +1514,23 @@ fn main() {
             instance::listen(APP_ID, olo_ui::proxy(cx));
         }
         pdfview::bind_keys(cx);
-        let viewer = cx.new(|_| Viewer { docs: Vec::new(), signatures: signature::load(), generation: 0, watch: None, look, over, panels: 0 });
+        let viewer = cx.new(|_| Viewer { docs: Vec::new(), signatures: signature::load(), generation: 0, watch: None, look, over, follow, panels: 0 });
+        // What the panel says to show, a line at a time, on a thread.
+        if follow {
+            let proxy = olo_ui::proxy(cx);
+            let read = std::thread::Builder::new().name("look follows".into()).spawn(move || {
+                use std::io::BufRead as _;
+                for line in std::io::stdin().lock().lines().map_while(Result::ok) {
+                    let path = PathBuf::from(line.trim_end());
+                    if path.is_file() {
+                        proxy.send(Msg::LookAt(path));
+                    }
+                }
+            });
+            if let Err(e) = read {
+                tracing::warn!("a look can't follow its panel: {e}");
+            }
+        }
         let messages = viewer.clone();
         olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |v, cx| v.message(message, cx)));
         // The files open, kept for an upgrade (a look isn't kept).
