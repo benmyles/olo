@@ -1063,6 +1063,19 @@ of Finished; a new one goes where its priority puts it.
   caller): worktrunk's worktree path set to the same place. Each
   suggestion notified once, ever (kept by its id).
 
+- **Agent Screens: Stop keeps a screen; Archive and Delete** (Ben,
+  2026-11-04): "stopping an agent screen makes it dissappear completely.
+  it should just change to be in a stopped state and able to be started
+  again. and then there should be an option to archive it and archived
+  ones should be in the menu too in their own section. and then an
+  option to delete fully as well." Stop ends a screen's session but
+  keeps it (its home, its history, its name) as Stopped, listed with
+  Start; Archive moves a stopped one to an Archived section of the
+  menu (Start brings it back); Delete removes it and everything it
+  kept, asked first. The same for agents: `olo-screen stop` (keeps),
+  `archive`, `delete`, and `list` saying which is which (apps/screen,
+  HACKING's "Agent Screens").
+
 - **Tracker: ⌘N opens a new Tracker window** (Ben, 2026-11-04): "in
   tracker, pressing super+n should open a new tracker window". ⌘N is
   New Folder now (apps/tracker/src/folder.rs, `background_menu`): it
