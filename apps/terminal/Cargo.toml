@@ -18,6 +18,12 @@ path = "src/termd.rs"
 name = "olo-sudo"
 path = "src/olo_sudo.rs"
 
+# xdg-open and $BROWSER in Terminal's shells: opens with Olo's default
+# apps and returns at once (src/olo_open.rs).
+[[bin]]
+name = "olo-open"
+path = "src/olo_open.rs"
+
 [dependencies]
 olo-ui.workspace = true
 olo-kit-base.workspace = true

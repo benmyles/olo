@@ -6945,6 +6945,15 @@ it picks its own again without being restarted. The io scanner notes
 the mode on its way past (no pass of its own over the output), and
 olo-termd keeps it in a shell's replay.
 
+**xdg-open in Terminal's shells** (`src/olo_open.rs`, `olo-open`):
+Terminal links `xdg-open` to olo-open in the same bin directory as
+`sudo` (below) and sets `BROWSER` to it, so a link or file a command
+opens (`gh auth login`, `git web--browse`) goes to the app Olo opens it
+with (Preferences ▸ Default Apps, `olo_xdg::open`), started on its own,
+and the command carries on at once: the system's xdg-open ran Firefox as
+the command's child, and `gh auth login` waited for it to quit before
+finishing. Exit statuses as xdg-open's (2: no such file, 4: failed).
+
 **sudo in a window** (`src/sudo.rs`, `src/olo_sudo.rs`, `src/sudo_wire.rs`).
 A coding agent's commands have no terminal to type a password into
 (Claude Code runs each in a session of its own, reading /dev/null), so

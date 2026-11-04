@@ -70,6 +70,22 @@ pub fn shell_env(env: &mut Vec<(String, String)>) {
             return;
         }
     }
+    // xdg-open (and $BROWSER) is olo-open, beside us: a link opens in the
+    // default browser on its own, and the command that opened it carries
+    // on (gh auth login waited for Firefox to quit).
+    let opener = ours.with_file_name("olo-open");
+    if opener.exists() {
+        let link = dir.join("xdg-open");
+        if std::fs::read_link(&link).ok().as_deref() != Some(opener.as_path()) {
+            let tmp = dir.join(".xdg-open.new");
+            let _ = std::fs::remove_file(&tmp);
+            if std::os::unix::fs::symlink(&opener, &tmp).and_then(|_| std::fs::rename(&tmp, &link)).is_err() {
+                tracing::warn!("can't put olo-open on the shells' PATH as xdg-open");
+            }
+        }
+        env.retain(|(k, _)| k != "BROWSER");
+        env.push(("BROWSER".into(), link.to_string_lossy().into_owned()));
+    }
     let dir = dir.to_string_lossy().into_owned();
     let old = env.iter().find(|(k, _)| k == "PATH").map(|(_, v)| v.clone()).unwrap_or_default();
     let path = std::iter::once(dir.as_str()).chain(old.split(':').filter(|d| !d.is_empty() && *d != dir)).collect::<Vec<_>>().join(":");
