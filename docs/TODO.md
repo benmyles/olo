@@ -324,6 +324,10 @@ of Finished; a new one goes where its priority puts it.
     Setup checks the entry is where the login screen reads it, and
     stops saying so when installing fails. Doctor looks in both places.
     Left: Ben's run on the ThinkPad.
+  - brush's command model (olo-complete) computes with AVX2 and FMA on
+    x86_64 (SSE2 without): type-checked here, its test
+    (`simd_does_the_reference_arithmetic`, against the plain reference)
+    first runs there: `cargo test --release -p olo-complete`.
 
 - **Backup tried on the ThinkPad** (what's left of Ben's backup audit,
   2026-11-03; waiting on the machine): an export from this Mac (sealed,
@@ -487,50 +491,6 @@ of Finished; a new one goes where its priority puts it.
   less/man, tmux, fzf, lazygit, Claude Code and Codex in every terminal
   theme of every Olo look, light and dark, at 1× and 2×, as shots in
   the journal.
-
-- **Terminal: a tiny model of its own completes brush's commands**
-  (Ben, 2026-11-03): "in prefs -> terminal have an option for using a
-  tiny ai model for brush shell command autocompletion that is
-  accelerated either via simd or gpu. it should be based on the
-  existing bash history and take into account what dir the user is in,
-  what commands have come before in the session, time of day and day of
-  week, and any other pertinent things (maybe other running user
-  apps?). it should fine-tune extremely efficiently and quickly, like
-  maybe updating every minute or so. and the baseline should be
-  hand-written weights by you and then as part of enabling it in the
-  prefs it should do the first fine-tune from the brush shell history.
-  the option should be disabled if brush shell is not active, with a
-  link/button to open olo suggestions to install it first. and it
-  should be integrated into activity monitor under a new AI section
-  that shows the model performance, accepted completions and so on. and
-  then when enabled obv it needs to be added to the users brush shell
-  as the autocompletion/suggestions method. both the training and
-  inference needs to be in rust with hand written ultra optimized gpu
-  and/or simd code (probably best to support both and let the user
-  choose which acceleration method they want it to use) and it must be
-  extremely low latency inference, like <10ms. the idea is that this is
-  a tiny tiny model kinda like the palm detector model (but can be
-  bigger and slower than that one of course). no python is allowed as
-  usual." So:
-  - Preferences ▸ Terminal: an option to complete commands with the
-    model, and which acceleration it uses (SIMD or the GPU, the person's
-    choice). Unavailable while brush isn't the person's shell, with a
-    button that opens Olo Suggestions to set brush up first.
-  - The model: tiny, in Rust, training and inference both, with
-    hand-written SIMD and GPU kernels (as the palm model's). What it
-    sees: the line typed so far, the bash/brush history, the current
-    folder, the session's commands before it, the time of day and day
-    of week, and whatever else helps (the person's running apps,
-    perhaps). Inference well under 10 ms.
-  - Its weights: a baseline written by hand, then a first fine-tune
-    from the brush history as the option is turned on, then a quick
-    fine-tune about every minute from what's been typed since, off the
-    UI thread, costing nothing while nothing new was typed.
-  - brush: the model is its completion and suggestion source once
-    turned on (and only then).
-  - Activity Monitor: a new AI section showing how the model does
-    (completions offered and accepted, latency, fine-tunes and what
-    each cost).
 
 - **Keyboards we know, starting with Apple's Magic Keyboard with Touch
   ID (A2520), and its Touch ID as a first-class one** (Ben, 2026-11-03):
@@ -1012,6 +972,74 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Terminal: a tiny model of its own completes brush's commands**~~
+  (Ben, 2026-11-03): "in prefs -> terminal have an option for using a
+  tiny ai model for brush shell command autocompletion that is
+  accelerated either via simd or gpu. it should be based on the
+  existing bash history and take into account what dir the user is in,
+  what commands have come before in the session, time of day and day of
+  week, and any other pertinent things (maybe other running user
+  apps?). it should fine-tune extremely efficiently and quickly, like
+  maybe updating every minute or so. and the baseline should be
+  hand-written weights by you and then as part of enabling it in the
+  prefs it should do the first fine-tune from the brush shell history.
+  the option should be disabled if brush shell is not active, with a
+  link/button to open olo suggestions to install it first. and it
+  should be integrated into activity monitor under a new AI section
+  that shows the model performance, accepted completions and so on. and
+  then when enabled obv it needs to be added to the users brush shell
+  as the autocompletion/suggestions method. both the training and
+  inference needs to be in rust with hand written ultra optimized gpu
+  and/or simd code (probably best to support both and let the user
+  choose which acceleration method they want it to use) and it must be
+  extremely low latency inference, like <10ms. the idea is that this is
+  a tiny tiny model kinda like the palm detector model (but can be
+  bigger and slower than that one of course). no python is allowed as
+  usual." So:
+  - Preferences ▸ Terminal: an option to complete commands with the
+    model, and which acceleration it uses (SIMD or the GPU, the person's
+    choice). Unavailable while brush isn't the person's shell, with a
+    button that opens Olo Suggestions to set brush up first.
+  - The model: tiny, in Rust, training and inference both, with
+    hand-written SIMD and GPU kernels (as the palm model's). What it
+    sees: the line typed so far, the bash/brush history, the current
+    folder, the session's commands before it, the time of day and day
+    of week, and whatever else helps (the person's running apps,
+    perhaps). Inference well under 10 ms.
+  - Its weights: a baseline written by hand, then a first fine-tune
+    from the brush history as the option is turned on, then a quick
+    fine-tune about every minute from what's been typed since, off the
+    UI thread, costing nothing while nothing new was typed.
+  - brush: the model is its completion and suggestion source once
+    turned on (and only then).
+  - Activity Monitor: a new AI section showing how the model does
+    (completions offered and accepted, latency, fine-tunes and what
+    each cost).
+  - Ben, the next day: "also just drop the GPU option since simd is so
+    much faster -- we will just use simd for it".
+  *Done* (2026-11-04): `crates/complete` and the daemon `olo-complete`
+  (HACKING, "brush's suggestions"). Each candidate that starts with
+  what's typed gets 16 features (how often and how lately run, in this
+  folder, at this hour and kind of day, after the last one or two
+  commands, in this shell, how it usually ends), scored by 16 → 16 → 1
+  in hand-written NEON or AVX2/SSE2 (the GPU kernel worked, through
+  blade, but took 258 µs a suggestion against 1 µs, so it went, and with
+  it the choice). Hand-written baseline weights; the first fine-tune as
+  it's turned on (5 to 11 ms for 640 commands), then one a minute after
+  new commands (about 2 ms), the best pass kept and only if it ranks
+  the newest commands as well; asleep, costing nothing, otherwise.
+  brush (a hook added to brush-interactive, vendored) shows the model's
+  hint, waiting 8 ms at most, and says what was taken. Preferences ▸
+  Terminal ▸ Command Suggestions: on and off on a worker, the first
+  fine-tune's result in words, unavailable without brush as the login
+  shell, a brush from before the model told apart by a mark in its
+  binary, Open Olo Suggestions… for either. Activity Monitor ▸ AI:
+  offered and taken, latency with a graph, the fine-tunes and how they
+  did, asked only while it shows. Tested headless at 1×, 1.5× and 2×,
+  light and dark (reviews clean, `ui_lint_command_suggestions` over the
+  box's six states), brush through a pty in a sandbox. Its x86 run is
+  the ThinkPad's (the x86 item).
 
 - ~~**Terminal: a scroll bar, slim, there when wanted**~~ (Ben,
   2026-11-03): "show an actual scrollbar in terminal but introduce a new

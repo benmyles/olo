@@ -15,6 +15,7 @@ olo-ui.workspace = true
 olo-kit-base.workspace = true
 olo-xdg.workspace = true
 olo-protocol.workspace = true
+olo-complete.workspace = true
 olo-theme.workspace = true
 serde.workspace = true
 serde_json.workspace = true

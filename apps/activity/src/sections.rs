@@ -259,6 +259,12 @@ pub fn sidebar_value(app: &Activity, s: Section) -> String {
             1 => "1 gap".to_owned(),
             n => format!("{n} gaps"),
         },
+        // Of the suggestions shown, how many were taken.
+        Section::Ai => match &app.model {
+            Some(s) if s.offered > 0 => percent(s.accepted as f64 / s.offered as f64),
+            _ if !app.model_on => "Off".to_owned(),
+            _ => String::new(),
+        },
         _ => String::new(),
     }
 }
@@ -295,6 +301,7 @@ pub fn view(app: &mut Activity, s: Section, width: f32, cx: &mut Context<Activit
         Section::Gpu => gpu(app, &me, area, inner, cx),
         Section::Displays => displays(app, &me, inner, cx),
         Section::Inputs => inputs(app, inner, cx),
+        Section::Ai => ai(app, inner, cx),
         Section::Sensors => sensors(app, inner, cx),
         Section::System => system(app, &me, inner, cx),
         Section::Supervisor => supervisor(app, &me, cx),
@@ -1069,6 +1076,121 @@ fn displays(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
             ))
             .into_any_element(),
     );
+    out
+}
+
+// ---- AI -------------------------------------------------------------
+
+/// "98.8%", "100%".
+fn percent(v: f64) -> String {
+    let p = v * 100.0;
+    if !(0.05..99.95).contains(&p) { format!("{p:.0}%") } else { format!("{p:.1}%") }
+}
+
+fn us_text(us: u32) -> String {
+    match us {
+        0 => "under 1 µs".into(),
+        1..1000 => format!("{us} µs"),
+        _ => format!("{:.1} ms", us as f64 / 1000.0),
+    }
+}
+
+/// Preferences ▸ Terminal, its checkbox lit.
+fn terminal_preferences() -> Button {
+    Button::new("Terminal Preferences…").on_click(|_, _| {
+        let args = ["olo-preferences", "terminal", "--show", olo_complete::protocol::OPTION].map(std::ffi::OsString::from);
+        let _ = olo_xdg::open::spawn_app(&args, "olo.preferences");
+    })
+}
+
+/// The models on this computer: brush's command suggestions, what they
+/// offered and what was taken, how quickly, and how they learn.
+fn ai(app: &Activity, inner: f32, cx: &App) -> Vec<AnyElement> {
+    let p = theme::palette(cx);
+    let ink = style::card_ink(&p);
+    let Some(s) = app.model.as_deref() else {
+        let (caption, about) = if app.model_on {
+            ("Not running", "On, but olo-complete isn’t running: brush starts it as you next type in it.")
+        } else {
+            (
+                "Off",
+                "brush’s grey hint after what you type can come from a tiny model of your own commands, here on this computer: what’s typed, the folder, the commands before it in that shell, the hour and the day. It’s turned on in Preferences ▸ Terminal.",
+            )
+        };
+        let card = Card::new("ai-commands", "Command Suggestions")
+            .figure(if app.model_on { "On" } else { "Off" })
+            .caption(caption)
+            .child(para(about, ink.dim))
+            .child(div().h(px(m::SPACING)))
+            .child(buttons(vec![terminal_preferences()]));
+        return vec![card.into_any_element()];
+    };
+    let share = |n: u64| if s.offered > 0 { format!(" ({})", percent(n as f64 / s.offered as f64)) } else { String::new() };
+    let rows: Vec<(String, String)> = vec![
+        ("Offered".into(), format!("{} suggestions since it started", style::thousands(s.offered as usize))),
+        ("Taken".into(), format!("{} whole{}, and {} a word at a time", style::thousands(s.accepted as usize), share(s.accepted), style::thousands(s.accepted_words as usize))),
+        ("Knows".into(), format!("{} different commands, of {} run", style::thousands(s.known), style::thousands(s.seen as usize))),
+        ("Computes with".into(), format!("The {}", s.backend)),
+    ];
+    let figure = if s.offered > 0 { format!("{} taken", percent(s.accepted as f64 / s.offered as f64)) } else { "nothing yet".into() };
+    let mut out = vec![
+        Card::new("ai-commands", "Command Suggestions")
+            .figure(figure)
+            .caption("brush’s grey hints, from a tiny model of your own commands")
+            .child(facts(rows))
+            .child(div().h(px(m::SPACING)))
+            .child(buttons(vec![terminal_preferences()]))
+            .into_any_element(),
+    ];
+    // How quickly: olo-complete's own time for each (brush waits 8 ms at
+    // most, then shows its own hint).
+    let none = s.latency_count == 0;
+    let rows: Vec<(String, String)> = if none {
+        vec![("Suggestions".into(), "None asked for yet: type in brush".into())]
+    } else {
+        vec![
+            ("Typically".into(), us_text(s.latency_p50_us)),
+            ("95th percentile".into(), us_text(s.latency_p95_us)),
+            ("Slowest".into(), format!("{} (of the last {})", us_text(s.latency_worst_us), style::thousands(s.latency_count))),
+        ]
+    };
+    let slow = s.latency_p95_us > 8_000;
+    let mut card = Card::new("ai-latency", "Latency").figure(if none { "—".into() } else { us_text(s.latency_p50_us) }).caption(if slow {
+        "Slower than brush waits: some hints are brush’s own"
+    } else {
+        "Each suggestion, from the question to the answer sent"
+    });
+    if slow {
+        card = card.figure_ink(c(p.failure));
+    }
+    let graph = history_graph(app, "ai-latency", &[("ai.p50", "Typically", olo_theme::Hue::Green), ("ai.p95", "95th percentile", olo_theme::Hue::Orange)], ms_value, None, inner, cx);
+    out.push(card.child(facts(rows)).children(graph).into_any_element());
+    // How it learns.
+    let mut rows: Vec<(String, String)> = vec![(
+        "Weights".into(),
+        match (s.tuned, s.fine_tunes) {
+            (false, _) => "The hand-written ones: not fine-tuned yet".into(),
+            (true, 0) => "Yours, as last learned".into(),
+            (true, 1) => "Yours: fine-tuned once since it started".into(),
+            (true, n) => format!("Yours: fine-tuned {} times since it started", style::thousands(n as usize)),
+        },
+    )];
+    let mut figure = "—".to_owned();
+    if let Some(t) = &s.last_tune {
+        let when = jiff::Timestamp::from_second(s.last_tune_at).ok().map(|w| w.to_zoned(jiff::tz::TimeZone::system()).strftime("%-d %B at %H:%M").to_string()).unwrap_or_default();
+        let ms = t.micros as f64 / 1000.0;
+        rows.push(("Last".into(), format!("{when}: {} examples, {} steps, {ms:.1} ms on the {}", style::thousands(t.examples), style::thousands(t.steps), t.backend)));
+        // (What's in use: the new weights if kept, else those before.)
+        let in_use = if t.kept { t.after.top1 } else { t.before.top1 } as f64;
+        rows.push(("Right first".into(), format!("{} of your newest commands, kept back to test it ({} hand-written)", percent(in_use), percent(t.baseline.top1 as f64))));
+        rows.push((
+            "Kept".into(),
+            if t.kept { format!("Yes ({} before)", percent(t.before.top1 as f64)) } else { format!("No: it did no better ({}), so the weights before stay", percent(t.after.top1 as f64)) },
+        ));
+        figure = format!("{} right first", percent(in_use));
+    }
+    rows.push(("Waiting".into(), if s.pending > 0 { format!("{} new examples, learned within the minute", style::thousands(s.pending)) } else { "Nothing new to learn".into() }));
+    out.push(Card::new("ai-learning", "Learning").figure(figure).caption("Fine-tuned on your newest commands a minute after you type them").child(facts(rows)).into_any_element());
     out
 }
 

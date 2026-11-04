@@ -18,6 +18,7 @@ olo-protocol.workspace = true
 olo-screensavers = { workspace = true, features = ["gpui"] }
 olo-system.workspace = true
 olo-sync.workspace = true
+olo-complete.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

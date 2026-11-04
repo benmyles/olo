@@ -22,7 +22,8 @@ use crate::{
 };
 
 /// Where brush is installed as a login shell.
-pub const BRUSH: &str = "/usr/local/bin/brush";
+pub use olo_system::accounts::BRUSH;
+use olo_system::accounts::login_shell;
 const BRUSH_ID: &str = "brush-shell";
 
 /// What's suggested now, and what's applied. (`OLO_SUGGESTIONS_DEMO=
@@ -83,24 +84,6 @@ fn save(s: &Saved) {
         if std::fs::write(&tmp, json).is_ok() {
             let _ = std::fs::rename(tmp, path);
         }
-    }
-}
-
-/// This user's name and login shell (the password database's).
-fn login_shell() -> Option<(String, PathBuf)> {
-    use std::ffi::CStr;
-    // SAFETY: getuid has no preconditions; getpwuid_r writes into the
-    // buffer it's given, and what it returns points into it.
-    unsafe {
-        let mut pw: libc::passwd = std::mem::zeroed();
-        let mut buf = vec![0u8; 4096];
-        let mut out: *mut libc::passwd = std::ptr::null_mut();
-        if libc::getpwuid_r(libc::getuid(), &mut pw, buf.as_mut_ptr().cast(), buf.len(), &mut out) != 0 || out.is_null() {
-            return None;
-        }
-        let name = CStr::from_ptr(pw.pw_name).to_string_lossy().into_owned();
-        let shell = PathBuf::from(CStr::from_ptr(pw.pw_shell).to_string_lossy().into_owned());
-        Some((name, shell))
     }
 }
 

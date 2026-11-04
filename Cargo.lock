@@ -1289,8 +1289,6 @@ dependencies = [
 [[package]]
 name = "brush-interactive"
 version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8147f101092e1cc8bc51a0be24535555910af1ef72e2f0b7b4c99eef4c88082b"
 dependencies = [
  "bon",
  "brush-core",
@@ -6787,6 +6785,7 @@ version = "0.1.0"
 dependencies = [
  "jiff",
  "libc",
+ "olo-complete",
  "olo-kit-base",
  "olo-protocol",
  "olo-sync",
@@ -6831,7 +6830,11 @@ dependencies = [
 name = "olo-brush"
 version = "0.1.0"
 dependencies = [
+ "brush-interactive",
  "brush-shell",
+ "nu-ansi-term",
+ "olo-complete",
+ "reedline",
 ]
 
 [[package]]
@@ -6873,6 +6876,26 @@ dependencies = [
  "zeroize",
  "zip",
  "zstd",
+]
+
+[[package]]
+name = "olo-complete"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "memchr",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "olo-complete-daemon"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "olo-complete",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -7235,6 +7258,7 @@ dependencies = [
  "getrandom 0.3.4",
  "jiff",
  "libc",
+ "olo-complete",
  "olo-palm",
  "olo-protocol",
  "olo-screensavers",

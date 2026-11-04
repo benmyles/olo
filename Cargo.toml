@@ -28,6 +28,7 @@ olo-hvif = { path = "crates/hvif" }
 olo-emoji = { path = "crates/emoji" }
 olo-capture = { path = "crates/capture" }
 olo-palm = { path = "crates/palm" }
+olo-complete = { path = "crates/complete" }
 olo-images = { path = "crates/images" }
 olo-token-pool = { path = "crates/pool" }
 olo-ai = { path = "crates/ai" }
@@ -55,6 +56,7 @@ path = "smithay/smithay-drm-extras"
 blade-graphics = { path = "gpui/blade-graphics" }
 matroska-demuxer = { path = "vendor/matroska-demuxer" }
 blocking = { path = "vendor/blocking" }
+brush-interactive = { path = "vendor/brush-interactive" }
 
 [profile.release]
 debug = "line-tables-only"
