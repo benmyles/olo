@@ -85,6 +85,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "default-apps", tab: "Your Own Kinds", group: "Add a Kind", name: "Add Kind", role: "Button" },
     Setting { panel: "display", tab: "", group: "Display", name: "Resolution", role: "ComboBox" },
     Setting { panel: "display", tab: "", group: "Display", name: "Refresh rate", role: "ComboBox" },
+    Setting { panel: "display", tab: "", group: "Display", name: "Variable refresh rate", role: "CheckBox" },
     Setting { panel: "display", tab: "", group: "Display", name: "Scale", role: "ComboBox" },
     Setting { panel: "display", tab: "", group: "Display", name: "Rotation", role: "ComboBox" },
     Setting { panel: "display", tab: "", group: "Display", name: "Use as", role: "ComboBox" },

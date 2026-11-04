@@ -42,6 +42,8 @@ fn outputs() -> Vec<OutputInfo> {
             text_why: "Shown at 2× or more: text is drawn exactly as designed, as on Retina displays.".into(),
             ..Default::default()
         }),
+        // (The built-in one varies its refresh rate, off.)
+        vrr: (number == Some(0)).then_some(false),
     };
     vec![
         display(

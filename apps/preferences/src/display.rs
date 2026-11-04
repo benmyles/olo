@@ -398,6 +398,14 @@ fn display_box(ui: &mut Ui, o: &OutputInfo, outputs: &[OutputInfo], power: Optio
         });
         ui.add(MenuField::new(format!("hz-{}", o.name), rate_names, ri).label("Refresh rate:").divider(label_w).enabled(several).on_change(on));
     }
+    // A display that can vary its refresh rate (VRR): each frame shown as
+    // it comes, within its range.
+    if let Some(vrr) = o.vrr {
+        let (name, to) = (o.name.clone(), server.clone());
+        let check =
+            CheckBox::new("Variable refresh rate", vrr).id(format!("vrr-{}", o.name)).on_toggle(move |on, _, _| to.configure_output(&name, OutputConfig { vrr: Some(on), ..Default::default() }));
+        ui.add(div().pl(px(label_w)).child(check));
+    }
 
     // A mirror shows its source as it is: no scale or rotation of its own.
     let si = SCALES.iter().position(|&s| (s - o.scale).abs() < 0.01).unwrap_or(4);

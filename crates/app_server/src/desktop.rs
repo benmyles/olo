@@ -1506,6 +1506,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     brightness: if crate::power::is_internal(&o.name()) { self.power.brightness } else { self.power.display_brightness(&o.name()) },
                     number: None,
                     panel: Some(panel),
+                    vrr: self.backend_data.vrr(o),
                 }
             })
             .collect();
@@ -1753,6 +1754,10 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         if let Some(t) = config.text {
             entry.text = (t != olo_protocol::panels::TextMode::Auto).then_some(t);
+        }
+        if let Some(on) = config.vrr {
+            entry.vrr = on.then_some(true);
+            self.backend_data.set_vrr(&output, on)?;
         }
         self.apply_output_settings(&output);
         if self.mirrors.contains(&output) || entry_mirrors(&self.settings.display, &output) {

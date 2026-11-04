@@ -1590,6 +1590,15 @@ pub trait Backend {
     /// Scale the screens' gamma ramps by these red, green, blue gains
     /// (night light; `[1.0; 3]` is neutral).
     fn set_white_point(&mut self, _gains: [f64; 3]) {}
+    /// Whether `output` can vary its refresh rate (VRR), and whether it
+    /// does: None if it can't.
+    fn vrr(&self, _output: &Output) -> Option<bool> {
+        None
+    }
+    /// Turn `output`'s variable refresh rate on or off.
+    fn set_vrr(&mut self, _output: &Output, _on: bool) -> Result<(), String> {
+        Err("this display can't vary its refresh rate".into())
+    }
     fn set_mode(&mut self, _output: &Output, _mode: smithay::output::Mode) -> Result<(), String> {
         Err("This display's resolution can't be changed.".into())
     }

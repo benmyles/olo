@@ -615,6 +615,30 @@ impl Backend for UdevData {
         names
     }
 
+    fn vrr(&self, output: &Output) -> Option<bool> {
+        use smithay::backend::drm::VrrSupport;
+        let id = output.user_data().get::<UdevOutputId>()?;
+        let surface = self.backends.get(&id.device_id)?.surfaces.get(&id.crtc)?;
+        surface.drm_output.with_compositor(|c| {
+            let conn = c.current_connectors().into_iter().next()?;
+            match c.vrr_supported(conn) {
+                Ok(VrrSupport::Supported | VrrSupport::RequiresModeset) => Some(c.vrr_enabled()),
+                _ => None,
+            }
+        })
+    }
+
+    fn set_vrr(&mut self, output: &Output, on: bool) -> Result<(), String> {
+        let id = output.user_data().get::<UdevOutputId>().ok_or("not a DRM output")?;
+        let surface = self.backends.get(&id.device_id).and_then(|d| d.surfaces.get(&id.crtc)).ok_or("its CRTC is gone")?;
+        // (Without a modeset where the driver can, else with the next
+        // frame's.)
+        surface.drm_output.with_compositor(|c| c.use_vrr(on)).map_err(|e| e.to_string())?;
+        info!(output = output.name(), on, "variable refresh rate");
+        self.wake(Some(std::slice::from_ref(output)));
+        Ok(())
+    }
+
     fn set_mode(&mut self, output: &Output, mode: WlMode) -> Result<(), String> {
         let id = output.user_data().get::<UdevOutputId>().ok_or("not a DRM output")?;
         let primary = self.primary_gpu;
@@ -1814,7 +1838,14 @@ impl AnvilState<UdevData> {
                 planes_refused: false,
             };
 
+            let shown = surface.output.clone();
             device.surfaces.insert(crtc, surface);
+            // (Its variable refresh rate, if the person turned it on.)
+            if self.settings.display.config(&crate::desktop::display_key(&shown), &shown.name()).and_then(|c| c.vrr) == Some(true)
+                && let Err(e) = self.backend_data.set_vrr(&shown, true)
+            {
+                warn!(output = shown.name(), %e, "variable refresh rate");
+            }
 
             // kick-off rendering, then warm it if night light is on
             self.handle.insert_idle(move |state| {

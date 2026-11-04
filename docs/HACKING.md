@@ -5000,6 +5000,19 @@ primary GPU (the one the computer started on) and copied, at 8-bit
 they come. Display's Graphics box (two or more GPUs, `Request::Gpus`:
 `olo_system::gpus`) says what each drives.
 
+### Variable refresh rate (VRR)
+
+A display that can vary its refresh rate (the kernel's `vrr_capable`
+and the CRTC's `VRR_ENABLED`: a ThinkPad P1 Gen 9's panel, 40–120 Hz)
+says so in `OutputInfo::vrr` (None: it can't; `Backend::vrr`, from
+Smithay's `vrr_supported`), and Preferences ▸ Display shows "Variable
+refresh rate" under its refresh rate. It's the person's: off unless
+turned on (`OutputConfig::vrr`, kept per display and set again as the
+display appears), through `Request::ConfigureOutput`; app_server asks
+Smithay (`use_vrr`), which changes it without a modeset where the
+driver can and with the next frame's otherwise. Headless screens
+simulate one, so the switch can be tried and reviewed.
+
 ### The discrete GPU stays asleep
 
 NVIDIA's GPU on a hybrid laptop sleeps (D3cold) while nothing uses it,

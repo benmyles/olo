@@ -65,6 +65,9 @@ struct Screen {
     asleep: bool,
     /// When it last looked, so a wake comes no sooner than a frame after.
     looked: Option<std::time::Instant>,
+    /// Its variable refresh rate, simulated (every screen has one, so
+    /// Preferences' switch can be tried and reviewed).
+    vrr: bool,
 }
 
 /// How long a frame of `output` lasts, at its mode's rate (60 or 120 Hz).
@@ -179,6 +182,17 @@ impl Backend for HeadlessData {
         self.screens.iter().find(|s| s.output.name() == name).map(|s| s.output.clone()).ok_or_else(|| format!("no screen {name}"))
     }
 
+    fn vrr(&self, output: &Output) -> Option<bool> {
+        self.screens.iter().find(|s| s.output == *output).map(|s| s.vrr)
+    }
+
+    fn set_vrr(&mut self, output: &Output, on: bool) -> Result<(), String> {
+        let screen = self.screens.iter_mut().find(|s| s.output == *output).ok_or("no such screen")?;
+        screen.vrr = on;
+        info!(output = output.name(), on, "variable refresh rate (simulated)");
+        Ok(())
+    }
+
     fn set_mode(&mut self, output: &Output, mode: Mode) -> Result<(), String> {
         if !output.modes().contains(&mode) {
             return Err("the screen doesn't offer that mode".into());
@@ -285,7 +299,7 @@ pub fn run_headless(size_arg: Option<&str>) {
         let buffer_size: Size<i32, Buffer> = size.into();
         let target: GlesTexture = renderer.create_buffer(Fourcc::Abgr8888, buffer_size).expect("offscreen buffer");
         let damage_tracker = OutputDamageTracker::from_output(&output);
-        screens.push(Screen { output, target, damage_tracker, due: std::time::Instant::now(), drawn: None, idle_frames: 0, asleep: false, looked: None });
+        screens.push(Screen { output, target, damage_tracker, due: std::time::Instant::now(), drawn: None, idle_frames: 0, asleep: false, looked: None, vrr: false });
     }
 
     // Feedback naming the render node: Mesa's EGL finds the GPU through it

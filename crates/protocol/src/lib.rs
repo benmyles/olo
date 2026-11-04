@@ -1119,6 +1119,10 @@ pub struct OutputInfo {
     /// ([`panels`]).
     #[serde(default)]
     pub panel: Option<panels::Panel>,
+    /// Its variable refresh rate: None if it has none, else whether it's
+    /// on (`OutputConfig::vrr`).
+    #[serde(default)]
+    pub vrr: Option<bool>,
 }
 
 /// The number display `output` (a connector) goes by, from the main
@@ -1198,6 +1202,11 @@ pub struct OutputConfig {
     pub technology: Option<panels::Technology>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<panels::TextMode>,
+    /// Variable refresh rate (VRR, Adaptive-Sync), for a display that has
+    /// it: frames shown as they come within its range (a ThinkPad P1
+    /// Gen 9's panel, 40–120 Hz). None: off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vrr: Option<bool>,
 }
 
 impl OutputConfig {
@@ -1213,6 +1222,7 @@ impl OutputConfig {
             subpixel: self.subpixel.or(other.subpixel),
             technology: self.technology.or(other.technology),
             text: self.text.or(other.text),
+            vrr: self.vrr.or(other.vrr),
         }
     }
 }

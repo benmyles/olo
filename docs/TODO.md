@@ -80,7 +80,10 @@ of Finished; a new one goes where its priority puts it.
     its list). Left: try it on the panel; pinch for apps without touch;
     the pen's pressure in Olo's apps.
   - The panel: Samsung's ATNA panels are OLED (`OLED_PANELS`), so no
-    stripes. Left: HDR, P3 and the panel's calibration; VRR 40–120 Hz.
+    stripes. VRR: Preferences ▸ Display ▸ "Variable refresh rate" for a
+    display that has it, off by default (tried headless, simulated).
+    Left: VRR tried on the panel (it may modeset as it turns on); HDR,
+    P3 and the panel's calibration.
   - Windows fit what they show: `WindowOptions::fits_content` in the
     kit (every alert and dialog, Preferences' panels, Drive Setup's forms,
     the network sheet), `TabView::grows`, whole-panel scroll views gone,
