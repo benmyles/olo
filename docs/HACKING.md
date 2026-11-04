@@ -4638,6 +4638,20 @@ app in front and can be shortcuts); the brightness keys act on the
 display under the pointer when its brightness can be set, else the
 built-in one.
 
+A **human presence sensor** (a ThinkPad P1 Gen 9's, in its camera
+module: the HID sensor hub's IIO device "prox", `proximity0` someone
+there, `attention` looking; `olo_system::presence`) locks the screen
+when the person walks away (`PowerSettings::lock_when_away_seconds`)
+and wakes the displays, asleep for idleness, when they come back
+(`wake_on_return`), from Preferences ▸ Power ▸ Presence, shown only on
+a computer with one. Both off by default; app_server watches the sensor
+only while one is on (`presence_settings`): a thread waits on its buffer
+(`/dev/iio:deviceN`, which carries a sample only as either changes),
+`_raw` read once at the start (each read asks the sensor). Walking away
+arms a one-shot timer, not a poll. `data/udev/73-olo-presence.rules`
+(Olo Doctor's "rule:presence", and `tools/install-session.sh`) gives
+the session the device and turns its buffer on, at 1 Hz.
+
 Each display's brightness is `OutputInfo::brightness` (None: can't be set)
 and `Request::SetOutputBrightness { name, level }`. Besides the built-in
 backlight, monitors that take it over USB (Apple Studio Display and Pro

@@ -1251,6 +1251,14 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                 }
             });
         }
+        if let Some(presence) = state.power.presence_rx.take() {
+            let _ = state.handle.insert_source(presence, |event, _, state| {
+                if let smithay::reexports::calloop::channel::Event::Msg(now) = event {
+                    state.presence_changed(now);
+                }
+            });
+        }
+        state.presence_settings();
         state.keymap.set_bindings(olo_protocol::shortcuts::bindings(&state.settings.keyboard.profile));
         if let Some(found) = state.power.displays_found.take() {
             let _ = state.handle.insert_source(found, |event, _, state| {

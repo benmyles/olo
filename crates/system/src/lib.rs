@@ -28,6 +28,7 @@ pub mod packages;
 pub mod polkit;
 pub mod power;
 pub mod power_profile;
+pub mod presence;
 pub mod priority;
 pub mod recording;
 pub mod rfkill;

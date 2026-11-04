@@ -42,6 +42,9 @@ const HEALED_DRIVERS: &[&str] = &["brcmfmac"];
 const INPUT_RULE_PATH: &str = "etc/udev/rules.d/71-olo-input.rules";
 const DISPLAY_RULE_PATH: &str = "etc/udev/rules.d/70-olo-displays.rules";
 const IDLE_GPU_RULE_PATH: &str = "etc/udev/rules.d/72-olo-idle-gpu.rules";
+/// The presence sensor's buffer for the session (`presence_rule`).
+pub const PRESENCE_RULE: &str = include_str!("../../../data/udev/73-olo-presence.rules");
+const PRESENCE_RULE_PATH: &str = "etc/udev/rules.d/73-olo-presence.rules";
 /// Where the login screen's entry goes (tools/install-session.sh): where
 /// GDM and SDDM always look, or on an atomic system (its /usr read-only)
 /// /usr/local/share's, which GDM reads only when its XDG_DATA_DIRS names
@@ -425,6 +428,7 @@ pub fn scan(roots: &Roots) -> Report {
     builtin_sound(roots, &gpus, &mut r);
     thunderbolt(roots, &mut r);
     login_keyring(roots, &mut r);
+    presence_rule(roots, &mut r);
     stale(roots, &procs, &mut r);
     login_entry(roots, &mut r);
     r
@@ -1062,6 +1066,34 @@ fn login_keyring(roots: &Roots, r: &mut Report) {
             "gnome-keyring keeps the secrets apps keep (Passwords' key, Chrome's, Wi-Fi passwords), and logging in opens it only through its PAM module, which isn't installed ({KEYRING_PAM}). So it stays locked and asks for its password, or was never made. The fix installs it; the keyring then opens at your next login, if its password is your login password."
         ),
         fix: Some(Fix { label: "Install the Keyring's Login Module".into(), root: true, steps: vec![Step::InstallPackages { names: vec![KEYRING_PAM.into()] }] }),
+    });
+}
+
+/// A human presence sensor (a ThinkPad's "prox"), and Olo's rule that
+/// gives the session its buffer (Preferences ▸ Power ▸ Presence).
+fn presence_rule(roots: &Roots, r: &mut Report) {
+    let iio = roots.fs.join("sys/bus/iio/devices");
+    let Some(sensor) = std::fs::read_dir(&iio).into_iter().flatten().flatten().map(|e| e.path()).find(|p| read(&p.join("name")).is_some_and(|n| n.trim() == "prox")) else { return };
+    let installed = std::fs::read_to_string(roots.fs.join(PRESENCE_RULE_PATH)).ok();
+    if installed.as_deref() == Some(PRESENCE_RULE) {
+        r.fine.push(Fine { title: "The presence sensor can be read".into(), detail: "Olo's rule gives the session its buffer (73-olo-presence.rules).".into() });
+        return;
+    }
+    let name = sensor.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    r.findings.push(Finding {
+        id: "rule:presence".into(),
+        severity: Severity::Advice,
+        title: if installed.is_some() { "Olo's presence sensor rule is out of date".into() } else { "The presence sensor can't be read".into() },
+        detail: "This computer can tell when someone is in front of it (its human presence sensor), so Olo can lock the screen when you walk away and wake it when you come back (Preferences ▸ Power). The fix installs /etc/udev/rules.d/73-olo-presence.rules, which gives the session the sensor.".into(),
+        fix: Some(Fix {
+            label: "Install the Rule".into(),
+            root: true,
+            steps: vec![
+                Step::WriteFile { path: PathBuf::from("/").join(PRESENCE_RULE_PATH), content: PRESENCE_RULE.into(), mode: 0o644 },
+                // (A "change" applies it to the sensor already there.)
+                Step::WriteSysfs { path: PathBuf::from("/sys/bus/iio/devices").join(&name).join("uevent"), value: "change".into() },
+            ],
+        }),
     });
 }
 

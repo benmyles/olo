@@ -1,0 +1,8 @@
+# Olo: the computer's human presence sensor (a ThinkPad's, in its camera
+# module: the HID sensor hub's "prox"), read by the session to lock the
+# screen when the person walks away and wake it when they come back
+# (Preferences ▸ Power ▸ Presence). Its buffer carries a sample as
+# presence or attention changes, once a second at most; reading `_raw`
+# would ask the sensor each time. Installed by Olo Doctor and
+# tools/install-session.sh.
+ACTION=="add|change", SUBSYSTEM=="iio", ATTR{name}=="prox", TAG+="uaccess", ATTR{in_proximity0_sampling_frequency}="1", ATTR{scan_elements/in_proximity0_en}="1", ATTR{scan_elements/in_attention_en}="1", ATTR{buffer/enable}="1"

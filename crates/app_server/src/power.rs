@@ -119,6 +119,15 @@ pub struct Power {
     pub mic_muted: bool,
     /// Airplane mode as simulated without a session (tests).
     pub airplane: bool,
+    /// The presence sensor: the channel its watcher tells the loop on
+    /// (the session's), the watcher's stop while it watches (only while
+    /// a setting wants it), what it said last, and since when the person
+    /// is away.
+    pub presence_tx: Option<calloop::channel::Sender<olo_system::presence::Presence>>,
+    pub presence_rx: Option<calloop::channel::Channel<olo_system::presence::Presence>>,
+    presence_stop: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    pub present: Option<olo_system::presence::Presence>,
+    away_since: Option<Instant>,
     jobs: Option<Sender<Job>>,
     /// Displays found with a USB brightness control, and their levels
     /// (from the worker; taken by state set-up).
@@ -140,6 +149,12 @@ impl std::fmt::Debug for Power {
 
 impl Power {
     pub fn new(is_session: bool) -> Power {
+        let (presence_tx, presence_rx) = if is_session {
+            let (tx, rx) = calloop::channel::channel();
+            (Some(tx), Some(rx))
+        } else {
+            (None, None)
+        };
         let (keyboard, keyboard_level) = if is_session {
             let k = olo_system::backlight::keyboard();
             let level = k.as_ref().and_then(|k| k.level());
@@ -176,6 +191,11 @@ impl Power {
             volume_feedback,
             mic_muted: false,
             airplane: false,
+            presence_tx,
+            presence_rx,
+            presence_stop: None,
+            present: None,
+            away_since: None,
             jobs,
             displays_found,
             externals: Vec::new(),
@@ -384,6 +404,69 @@ fn run(job: Job, w: &mut Worker) {
 }
 
 impl<B: Backend> AnvilState<B> {
+    /// Watch the presence sensor while a setting wants it (locking when
+    /// the person walks away, waking when they come back), not otherwise:
+    /// the watcher waits on the sensor's buffer, which says only changes.
+    pub fn presence_settings(&mut self) {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        };
+        let s = &self.settings.power;
+        let want = s.lock_when_away_seconds > 0 || s.wake_on_return;
+        let p = &mut self.power;
+        match (want, p.presence_stop.is_some()) {
+            (true, false) => {
+                let Some(tx) = p.presence_tx.clone() else { return };
+                let stop = Arc::new(AtomicBool::new(false));
+                let stopped = stop.clone();
+                if olo_system::presence::watch(move |now| !stopped.load(Ordering::Relaxed) && tx.send(now).is_ok()).is_some() {
+                    info!("watching the presence sensor");
+                    p.presence_stop = Some(stop);
+                } else {
+                    info!("no presence sensor to watch (or Olo's rule isn't installed)");
+                }
+            }
+            (false, true) => {
+                if let Some(stop) = p.presence_stop.take() {
+                    stop.store(true, Ordering::Relaxed);
+                }
+                (p.present, p.away_since) = (None, None);
+            }
+            _ => {}
+        }
+    }
+
+    /// The presence sensor said something new.
+    pub fn presence_changed(&mut self, now: olo_system::presence::Presence) {
+        let s = self.settings.power.clone();
+        self.power.present = Some(now);
+        if now.present {
+            self.power.away_since = None;
+            // (Back: the displays wake, to the lock screen if locked.)
+            if s.wake_on_return && self.power.display_asleep {
+                info!("the person came back: displays awake");
+                self.power_activity();
+            }
+            return;
+        }
+        if self.power.away_since.is_some() {
+            return;
+        }
+        self.power.away_since = Some(Instant::now());
+        if s.lock_when_away_seconds > 0 {
+            let after = Duration::from_secs(s.lock_when_away_seconds as u64);
+            let _ = self.handle.insert_source(calloop::timer::Timer::from_duration(after), move |_, _, state| {
+                // Still away since then: locked.
+                if state.power.away_since.is_some_and(|t| t.elapsed() >= after) && state.settings.power.lock_when_away_seconds > 0 && !state.lock.locked() {
+                    info!("the person walked away: locked");
+                    state.lock_screen();
+                }
+                calloop::timer::TimeoutAction::Drop
+            });
+        }
+    }
+
     pub fn power_status(&self) -> olo_protocol::PowerStatus {
         olo_protocol::PowerStatus { screen_saver: self.saver.running(), locked: self.lock.locked(), auto_approve_until: self.auto_approve_until(), ..self.power.status() }
     }

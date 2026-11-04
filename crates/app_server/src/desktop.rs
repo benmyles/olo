@@ -1861,6 +1861,8 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.apply_pointer_settings();
         }
         self.update_appearance(true);
+        // (The presence sensor watched only while a setting wants it.)
+        self.presence_settings();
         save_settings(&self.settings);
     }
 

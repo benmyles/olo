@@ -155,11 +155,12 @@ of Finished; a new one goes where its priority puts it.
     sensor hub): one instance fails to probe, but `iio:device0` "prox"
     works: `in_proximity0_raw` (someone there), `in_attention_input`
     (looking at the screen). iio-sensor-proxy exits at boot without it.
-    To do: a udev rule giving the session `/dev/iio:device0` with its
-    buffer on (no polling sysfs: reading `_raw` asks the sensor each
-    time), `olo_system::presence` reading it, and Preferences ▸ Power:
-    lock when you walk away, wake when you come back, dim when you look
-    away.
+    Done: Preferences ▸ Power ▸ Presence, lock when you walk away and
+    wake when you come back (off by default; watched only while on, on
+    its buffer: `olo_system::presence`), and the udev rule that gives
+    the session the sensor (Olo Doctor installs it). Left: try it in
+    front of the machine (Ben: install the rule from Doctor, turn it
+    on); dim when looking away.
   - Left, not started: the IR camera (face sign-in).
 
 - **The palm trainer, full screen and driven from the keyboard** (Ben,

@@ -1484,11 +1484,17 @@ pub struct PowerSettings {
     /// Lock the screen when the displays turn off for idleness. (Sleep
     /// always locks.)
     pub lock_on_display_off: bool,
+    /// With a presence sensor: lock the screen this many seconds after
+    /// the person walks away (0: never).
+    pub lock_when_away_seconds: u32,
+    /// With a presence sensor: wake the displays (asleep for idleness)
+    /// when the person comes back.
+    pub wake_on_return: bool,
 }
 
 impl Default for PowerSettings {
     fn default() -> Self {
-        PowerSettings { display_off_minutes: 10, sleep_minutes: 30, sleep_on_battery_only: false, lock_on_display_off: true }
+        PowerSettings { display_off_minutes: 10, sleep_minutes: 30, sleep_on_battery_only: false, lock_on_display_off: true, lock_when_away_seconds: 0, wake_on_return: false }
     }
 }
 

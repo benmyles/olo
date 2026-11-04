@@ -123,9 +123,12 @@ done
 # Brightness of USB-controlled monitors (Studio Display and the like).
 as_root install -D -m 644 data/udev/70-olo-displays.rules /etc/udev/rules.d/70-olo-displays.rules
 as_root install -D -m 644 data/udev/71-olo-input.rules /etc/udev/rules.d/71-olo-input.rules
+# A human presence sensor's buffer for the session (Preferences ▸ Power).
+as_root install -D -m 644 data/udev/73-olo-presence.rules /etc/udev/rules.d/73-olo-presence.rules
 as_root rm -f /etc/udev/rules.d/70-tabula-displays.rules
 as_root udevadm control --reload 2>/dev/null || true
 as_root udevadm trigger --subsystem-match=hidraw --action=change 2>/dev/null || true
 # (The input rule applies to receivers already plugged in.)
 as_root udevadm trigger --subsystem-match=usb --action=change 2>/dev/null || true
+as_root udevadm trigger --subsystem-match=iio --action=change 2>/dev/null || true
 echo "Installed to $PREFIX; Olo Desktop is on the login screen's session menu ($SESSIONS/olo.desktop)."

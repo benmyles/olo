@@ -163,6 +163,8 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "power", tab: "", group: "When Idle", name: "Only on battery power", role: "CheckBox" },
     Setting { panel: "power", tab: "", group: "When Idle", name: "Lock the screen when the display turns off", role: "CheckBox" },
     Setting { panel: "power", tab: "", group: "Caffeinated", name: "Stay awake: no display sleep, sleep, screen saver or lock", role: "CheckBox" },
+    Setting { panel: "power", tab: "", group: "Presence", name: "Lock when you walk away", role: "ComboBox" },
+    Setting { panel: "power", tab: "", group: "Presence", name: "Wake the display when you come back", role: "CheckBox" },
     Setting { panel: "screensaver", tab: "Fade", group: "", name: "Enable Screen Saver", role: "CheckBox" },
     Setting { panel: "screensaver", tab: "Fade", group: "", name: "Run module", role: "Slider" },
     Setting { panel: "screensaver", tab: "Fade", group: "", name: "Turn off screen", role: "CheckBox" },

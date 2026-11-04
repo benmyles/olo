@@ -38,6 +38,9 @@ pub struct State {
     /// The battery's charge limit (UPower's), when it has one: read on a
     /// thread as the panel opens and after each change.
     limit: Arc<Mutex<Option<battery::ChargeLimit>>>,
+    /// A presence sensor: whether the session can read it (Olo's rule
+    /// in); None without one.
+    presence: Option<bool>,
 }
 
 type Modes_ = Arc<Mutex<Option<Option<Modes>>>>;
@@ -58,7 +61,9 @@ impl State {
         }
         let limit: Arc<Mutex<Option<battery::ChargeLimit>>> = Default::default();
         read_limit(&limit, olo_ui::proxy(cx));
-        State { battery: poll(olo_ui::proxy(cx)), modes, limit }
+        // (Tests: a ThinkPad's, readable.)
+        let presence = if cfg!(test) { Some(true) } else { olo_system::presence::sensor().map(|s| olo_system::presence::readable(&s)) };
+        State { battery: poll(olo_ui::proxy(cx)), modes, limit, presence }
     }
 }
 
@@ -231,7 +236,11 @@ pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut St
         power_mode(ui, modes, &st.modes);
         battery_box(ui, battery, st);
     });
-    let right = ui.collect(|ui| idle_boxes(ui, power, server));
+    let presence = st.presence;
+    let right = ui.collect(|ui| {
+        idle_boxes(ui, power, server);
+        presence_box(ui, presence);
+    });
     let column = |items: Vec<olo_ui::gpui::AnyElement>| div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).children(items);
     ui.add(div().flex().flex_row().items_start().gap(px(m::SPACING)).child(column(left)).child(column(right)));
 }
@@ -298,6 +307,38 @@ fn idle_boxes(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server) {
             n => format!("{n} applications are keeping the display awake."),
         };
         ui.note(note);
+    });
+}
+
+/// Seconds after the person walks away before the screen locks.
+const AWAY: &[u32] = &[0, 10, 30, 60, 120, 300];
+
+fn away_text(seconds: u32) -> String {
+    match seconds {
+        0 => "Never".into(),
+        s if s < 60 => format!("After {s} seconds"),
+        60 => "After a minute".into(),
+        s => format!("After {} minutes", s / 60),
+    }
+}
+
+/// A presence sensor (a ThinkPad's): lock when the person walks away,
+/// wake when they come back. Only on a computer that has one.
+fn presence_box(ui: &mut Ui, sensor: Option<bool>) {
+    let Some(readable) = sensor else { return };
+    let p = ui.s.power.clone();
+    ui.bbox("Presence", |ui| {
+        const LOCK: &str = "Lock when you walk away:";
+        let divider = divider_for(ui.window, &[LOCK]);
+        let mut choices: Vec<u32> = AWAY.to_vec();
+        if !choices.contains(&p.lock_when_away_seconds) {
+            choices.push(p.lock_when_away_seconds);
+        }
+        let names: Vec<SharedString> = choices.iter().map(|&s| away_text(s).into()).collect();
+        let selected = choices.iter().position(|&s| s == p.lock_when_away_seconds).unwrap_or(0);
+        ui.menu("lock-away", names, selected, |f| f.label(SharedString::from(LOCK)).divider(divider), move |s, i| s.power.lock_when_away_seconds = choices.get(i).copied().unwrap_or(0));
+        ui.check("Wake the display when you come back", p.wake_on_return, |s, v| s.power.wake_on_return = v);
+        ui.note(if readable { "This computer's sensor sees when someone is in front of it." } else { "Olo can't read the sensor yet: Olo Doctor installs what it needs." });
     });
 }
 
