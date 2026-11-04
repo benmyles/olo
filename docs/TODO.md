@@ -1132,6 +1132,18 @@ of Finished; a new one goes where its priority puts it.
   on an Agent Screen (a press on the name, moved 3, 4, 10 points, in
   each view and at each scale).
 
+- **Terminal: a new tab opens in the folder of the tab it came from**
+  (Ben, 2026-11-04): "when opening a new tab from an existing one in
+  olo terminal the new tab should open in the same cwd as the current
+  one". File ▸ New Tab already asks for it (`Session::cwd`, the shell's
+  `/proc/PID/cwd`, apps/terminal/src/main.rs "new-tab"), so find where
+  it goes wrong: brush (Ben's login shell) may keep its working folder
+  without changing its process's (then `/proc` says where it started:
+  take OSC 7's folder, which shells report as they change it, first),
+  and every other way to a new tab (the tab strip, a tab's menu, ⌘T,
+  `--tab`, Deskbar) must pass the folder too. Test with bash, zsh and
+  brush on an Agent Screen.
+
 - **olo-slack: Slack, Olo-fied, as olo-chrome is Chrome** (Ben,
   2026-11-04): "build olo-slack that is like olo-chrome but an olo-fied
   version of slack where it integrates deeply with everything olo".
