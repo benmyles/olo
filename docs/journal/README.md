@@ -3,7 +3,21 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-04
+
+### Activity Monitor ▸ AI: how the command model does
+
+*00:00* — A new section, asked of olo-complete once a second only while it shows: suggestions offered and taken (whole or a word at a time), what it knows, latency from the question to the answer sent (typically, 95th percentile, slowest) with a graph, and its learning: fine-tunes, the last one's examples, steps and time, how often its first suggestion is right on the newest commands against the hand-written weights, and whether it was kept. Off, it says so, with Terminal Preferences… to turn it on.
+
+![Activity Monitor ▸ AI: how the command model does](2026-11-04/000036-activity-monitor-ai-how-the-command-model-does.png)
+
 ## 2026-11-03
+
+### Terminal ▸ Command Suggestions: brush's hints from a model of your own
+
+*23:59* — Preferences ▸ Terminal turns on olo-complete, a tiny model of your own commands (the line, the folder, the commands before in that shell, the hour and the day) that gives brush its grey hint. Turning it on starts it and runs its first fine-tune from the history, then says how it did on your newest commands; it learns again a minute after you type. Unavailable while brush isn't the login shell, and a brush from before the model is told apart by a mark in its binary, each with a button to Olo Suggestions. The pane is 520×692 for its tallest state.
+
+![Terminal ▸ Command Suggestions: brush's hints from a model of your own](2026-11-03/235938-terminal-command-suggestions-brush-s-hints-from-.png)
 
 ### Terminal: a slim scroll bar, there when wanted
 

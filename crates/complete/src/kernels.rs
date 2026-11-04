@@ -1,10 +1,9 @@
 //! The model: [`F`] features of a candidate in, a score out, through
 //! [`H`] hidden units (ReLU). Its weights, written by hand to start
 //! ([`Weights::baseline`]) and fine-tuned on the person's history, and
-//! its arithmetic three ways: plain Rust (the reference), and SIMD
-//! written by hand for the processor (NEON on aarch64; AVX2 with FMA on
-//! x86_64, found at run time, else SSE2). The GPU's is olo-complete's
-//! (its WGSL, the same arithmetic).
+//! its arithmetic: plain Rust (the reference), and SIMD written by hand
+//! for the processor (NEON on aarch64; AVX2 with FMA on x86_64, found at
+//! run time, else SSE2).
 //!
 //! The hidden layer is laid out input-major (`w1[i * H + j]`: input `i`
 //! to hidden unit `j`), so a row's [`H`] hidden units are one vector:

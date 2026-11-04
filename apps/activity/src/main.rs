@@ -72,13 +72,16 @@ pub enum Section {
     Displays,
     /// The pointer, the touchpad and what's done with each kind of input.
     Inputs,
+    /// The models on this computer: brush's command suggestions
+    /// (olo-complete's account of itself).
+    Ai,
     Sensors,
     System,
     Graphs,
 }
 
 impl Section {
-    const ALL: [Section; 13] = [
+    const ALL: [Section; 14] = [
         Section::Overview,
         Section::Processes,
         Section::Supervisor,
@@ -89,6 +92,7 @@ impl Section {
         Section::Gpu,
         Section::Displays,
         Section::Inputs,
+        Section::Ai,
         Section::Sensors,
         Section::System,
         Section::Graphs,
@@ -109,6 +113,7 @@ impl Section {
             Section::Gpu => "GPU",
             Section::Displays => "Displays",
             Section::Inputs => "Inputs",
+            Section::Ai => "AI",
             Section::Sensors => "Sensors",
             Section::System => "System",
             Section::Graphs => "Graphs",
@@ -127,6 +132,7 @@ impl Section {
             Section::Gpu => "gpu",
             Section::Displays => "display",
             Section::Inputs => "touchpad",
+            Section::Ai => "ai",
             Section::Sensors => "sensors",
             Section::System => "system",
             Section::Graphs => "disk-usage",
@@ -213,6 +219,40 @@ pub enum Msg {
     /// How each display keeps up, whether drops are captured, and the
     /// pointer's reports (`Request::Frames`, from `frames_poller`).
     Frames(Vec<olo_protocol::DisplayFrames>, bool, olo_protocol::PointerHealth, olo_protocol::TouchHealth, olo_protocol::InputActivity),
+    /// Whether brush's suggestions are on, and olo-complete's account
+    /// (None: not running), from `model_poller`.
+    Model(bool, Option<Box<olo_complete::protocol::Stats>>),
+}
+
+/// Asks olo-complete how its model does, every second while the AI
+/// section shows and at once when it comes to show; nothing otherwise
+/// (`want`: whether it shows). It answers in microseconds; one not
+/// running is asked nothing (the socket refuses at once).
+fn model_poller(send: impl Fn(Msg) + Send + 'static, rx: mpsc::Receiver<bool>) {
+    use olo_complete::protocol::{self, Reply, Request, Settings};
+    let mut want = false;
+    loop {
+        let ask = if want { rx.recv_timeout(std::time::Duration::from_secs(1)) } else { rx.recv().map_err(|_| mpsc::RecvTimeoutError::Disconnected) };
+        match ask {
+            Ok(w) => want = w,
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => return,
+        }
+        if !want {
+            continue;
+        }
+        // (Headless: a model a while in use, to look at.)
+        if std::env::var_os("OLO_ACTIVITY_DEMO_AI").is_some() {
+            send(Msg::Model(true, Some(Box::new(protocol::demo_stats()))));
+            continue;
+        }
+        let on = Settings::load().enabled;
+        let stats = match on.then(|| protocol::ask(&Request::Stats, std::time::Duration::from_millis(200))).flatten() {
+            Some(Reply::Stats(s)) => Some(Box::new(s)),
+            _ => None,
+        };
+        send(Msg::Model(on, stats));
+    }
 }
 
 /// The touchpad to look at under OLO_ACTIVITY_DEMO_FRAMES: a MacBook's,
@@ -435,9 +475,15 @@ pub struct Activity {
     /// Clicks, scrolls, gestures and keys in the last minute.
     pub inputs: olo_protocol::InputActivity,
     /// The frames' figures over time, by key ("pointer.hz",
-    /// "display.NAME.fps", …), as each `Request::Frames` answer comes.
+    /// "display.NAME.fps", …), as each `Request::Frames` answer comes;
+    /// the model's too ("ai.p50", …).
     pub frame_history: HashMap<String, std::rc::Rc<VecDeque<(f64, f64)>>>,
     frames: mpsc::Sender<FramesAsk>,
+    /// brush's suggestions: on or not, and olo-complete's account (the
+    /// AI section), as `model_poller` last heard.
+    pub model_on: bool,
+    pub model: Option<Box<olo_complete::protocol::Stats>>,
+    model_ask: mpsc::Sender<bool>,
     proxy: Proxy,
     /// The sections' scrolling, kept while each shows.
     pub scroll: olo_ui::gpui::ScrollHandle,
@@ -603,6 +649,7 @@ impl Activity {
         self.control.want_connections.store(section == Section::Network, Ordering::Relaxed);
         self.control.want_gpu_clients.store(section == Section::Gpu, Ordering::Relaxed);
         let _ = self.frames.send(FramesAsk::Want(matches!(section, Section::Displays | Section::Inputs)));
+        let _ = self.model_ask.send(section == Section::Ai);
         if let (Some(h), Access::Full) = (&self.helper, self.access) {
             h.send(&ToHelper::Wants(self.control.wants()));
         }
@@ -1119,6 +1166,24 @@ impl Activity {
                 self.touch_health = touch;
                 self.inputs = inputs;
             }
+            Msg::Model(on, stats) => {
+                if let Some(s) = stats.as_ref().filter(|s| s.latency_count > 0) {
+                    let t = self.t();
+                    for (key, v) in [("ai.p50", s.latency_p50_us), ("ai.p95", s.latency_p95_us), ("ai.worst", s.latency_worst_us)] {
+                        let q = std::rc::Rc::make_mut(self.frame_history.entry(key.into()).or_default());
+                        q.push_back((t, v as f64 / 1000.0));
+                        while q.front().is_some_and(|(at, _)| t - at > FRAME_HISTORY_SECONDS) {
+                            q.pop_front();
+                        }
+                    }
+                }
+                // (Nothing new: nothing to draw.)
+                if self.model_on == on && self.model == stats {
+                    return;
+                }
+                self.model_on = on;
+                self.model = stats;
+            }
         }
         cx.notify();
     }
@@ -1320,6 +1385,10 @@ fn main() {
         let (frames_tx, frames_rx) = mpsc::channel::<FramesAsk>();
         let p3 = proxy.clone();
         std::thread::Builder::new().name("activity-frames".into()).spawn(move || frames_poller(move |m| p3.send(m), frames_rx)).expect("spawn");
+        // How the command model does, asked while the AI section shows.
+        let (model_ask, model_rx) = mpsc::channel::<bool>();
+        let p4 = proxy.clone();
+        std::thread::Builder::new().name("activity-model".into()).spawn(move || model_poller(move |m| p4.send(m), model_rx)).expect("spawn");
         // Inspectors' details, read off the UI thread.
         let (inspect_tx, inspect_rx) = mpsc::channel::<i32>();
         let details_proxy = proxy.clone();
@@ -1407,6 +1476,9 @@ fn main() {
                 inputs: Default::default(),
                 frame_history: HashMap::new(),
                 frames: frames_tx,
+                model_on: false,
+                model: None,
+                model_ask,
                 proxy: proxy.clone(),
                 scroll: Default::default(),
                 shelf: GraphShelf::default(),

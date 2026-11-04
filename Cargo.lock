@@ -6785,6 +6785,7 @@ version = "0.1.0"
 dependencies = [
  "jiff",
  "libc",
+ "olo-complete",
  "olo-kit-base",
  "olo-protocol",
  "olo-sync",
@@ -6882,6 +6883,7 @@ name = "olo-complete"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "memchr",
  "serde",
  "serde_json",
 ]
@@ -6890,9 +6892,6 @@ dependencies = [
 name = "olo-complete-daemon"
 version = "0.1.0"
 dependencies = [
- "blade-graphics",
- "blade-macros",
- "bytemuck",
  "libc",
  "olo-complete",
  "serde",
@@ -7259,6 +7258,7 @@ dependencies = [
  "getrandom 0.3.4",
  "jiff",
  "libc",
+ "olo-complete",
  "olo-palm",
  "olo-protocol",
  "olo-screensavers",

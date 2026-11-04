@@ -2,7 +2,8 @@
 //! repository's worktrees, whether coding agents are told about the
 //! repositories in their tab's group, whether they keep their tab's
 //! title current, and whether they're told to use Agent Screens.
-//! Terminal follows them live.
+//! Terminal follows them live. And brush's suggestions from Olo's model
+//! (complete.rs).
 
 use olo_ui::{gpui::Font, metrics as m};
 
@@ -29,4 +30,5 @@ pub fn ui(ui: &mut Ui) {
         ui.check("Tell coding agents to use Olo’s Agent Screens", t.agent_screens, |s, v| s.terminal.agent_screens = v);
         ui.note("Claude Code and Codex are told, as they start, to test and use desktop apps and web pages on screens of their own that you can watch and take over, never on yours, and how: Olo’s Chrome included, so they never start one on your screen.");
     });
+    crate::complete::ui(ui);
 }

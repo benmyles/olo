@@ -171,6 +171,8 @@ impl Hinter for ModelHinter {
 }
 
 fn main() {
+    // (Kept in the binary, for Preferences to find.)
+    std::hint::black_box(protocol::HINTER_MARK);
     brush_interactive::hooks::set_hooks(Box::new(Olo { shared: Arc::default() }));
     brush_shell::entry::run();
 }

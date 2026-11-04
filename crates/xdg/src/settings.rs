@@ -177,6 +177,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "terminal", tab: "", group: "Coding Agents", name: "Tell coding agents about the repositories in their tab group", role: "CheckBox" },
     Setting { panel: "terminal", tab: "", group: "Coding Agents", name: "Let coding agents keep their tab’s title current", role: "CheckBox" },
     Setting { panel: "terminal", tab: "", group: "Coding Agents", name: "Tell coding agents to use Olo’s Agent Screens", role: "CheckBox" },
+    Setting { panel: "terminal", tab: "", group: "Command Suggestions", name: "Suggest commands from a model of your own", role: "CheckBox" },
     Setting { panel: "themes", tab: "", group: "", name: "BeBox", role: "RadioButton" },
     Setting { panel: "themes", tab: "", group: "", name: "Soft Be", role: "RadioButton" },
     Setting { panel: "themes", tab: "", group: "", name: "Toybox", role: "RadioButton" },

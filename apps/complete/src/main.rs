@@ -9,13 +9,11 @@
 //! tells it; made from the history files the first time), the index and
 //! the examples made from it, and the weights (`model.json`: the
 //! hand-written ones until the first fine-tune). A suggestion is
-//! answered at once, computed on the processor's SIMD or the GPU, as
-//! chosen. What's typed makes examples; a minute after the first new
-//! one, a quick fine-tune on a thread of its own (the GPU or processor
-//! taken a batch at a time, so suggestions never wait long); with
-//! nothing new it sleeps, costing nothing.
-
-mod gpu;
+//! answered at once, computed with the processor's SIMD (about a
+//! microsecond). What's typed makes examples; a minute after the first
+//! new one, a quick fine-tune on a thread of its own (the model taken
+//! only to read its weights and put the new ones in, so suggestions
+//! never wait on it); with nothing new it sleeps, costing nothing.
 
 use std::{
     io::{BufRead, BufReader, Write},
@@ -29,7 +27,7 @@ use olo_complete::{
     history::{self, Entry},
     index::{Context, Index},
     kernels::{Cpu, Weights},
-    protocol::{self, Accel, Reply, Request, Settings, Stats},
+    protocol::{self, Reply, Request, Settings, Stats},
     train::{self, Backend, CpuBackend, Example, Plan, Tuned},
 };
 use serde::{Deserialize, Serialize};
@@ -79,10 +77,7 @@ struct Daemon {
     model: Mutex<Model>,
     /// Woken when there's something new to learn.
     learn: Condvar,
-    /// What suggestions and fine-tunes compute with.
-    compute: Mutex<Box<dyn Backend + Send>>,
     settings: Mutex<Settings>,
-    fallback: Mutex<Option<String>>,
     counters: Mutex<Counters>,
 }
 
@@ -126,34 +121,6 @@ fn save_weights(w: &Weights, last: Option<&Tuned>) {
     }
 }
 
-/// What computes, as chosen: the GPU (the processor if it can't start,
-/// and why), or the processor's SIMD.
-fn backend(accel: Accel) -> (Box<dyn Backend + Send>, Option<String>) {
-    match accel {
-        Accel::Simd => (Box::new(CpuBackend(Cpu::Simd)), None),
-        Accel::Gpu => match gpu::Gpu::new() {
-            Ok(g) => (Box::new(g), None),
-            Err(why) => (Box::new(CpuBackend(Cpu::Simd)), Some(why)),
-        },
-    }
-}
-
-/// The compute shared, taken a call at a time: a fine-tune borrows it for
-/// a batch, so a suggestion waits a batch at most.
-struct Borrowed<'a>(&'a Mutex<Box<dyn Backend + Send>>);
-
-impl Backend for Borrowed<'_> {
-    fn name(&self) -> String {
-        self.0.lock().unwrap().name()
-    }
-    fn scores(&mut self, w: &Weights, x: &[f32]) -> Vec<f32> {
-        self.0.lock().unwrap().scores(w, x)
-    }
-    fn loss_and_grad(&mut self, w: &Weights, examples: &[&Example]) -> (f32, Weights) {
-        self.0.lock().unwrap().loss_and_grad(w, examples)
-    }
-}
-
 impl Daemon {
     fn start(settings: Settings) -> Daemon {
         let entries = load_record();
@@ -164,7 +131,6 @@ impl Daemon {
         let saved: Option<Saved> = std::fs::read(model_path()).ok().and_then(|b| serde_json::from_slice(&b).ok());
         let saved = saved.filter(|s| s.weights.sound());
         let tuned = saved.is_some();
-        let (compute, fallback) = backend(settings.accel);
         let mut counters = Counters::default();
         if let Some(s) = &saved {
             counters.last_tune = s.last.clone();
@@ -173,9 +139,7 @@ impl Daemon {
         Daemon {
             model: Mutex::new(Model { ix, weights: saved.map_or_else(Weights::baseline, |s| s.weights), tuned, examples, pending: 0, since: None }),
             learn: Condvar::new(),
-            compute: Mutex::new(compute),
             settings: Mutex::new(settings),
-            fallback: Mutex::new(fallback),
             counters: Mutex::new(counters),
         }
     }
@@ -184,19 +148,23 @@ impl Daemon {
         let t0 = Instant::now();
         let m = self.model.lock().unwrap();
         let cx = Context { line, cwd, session, at: history::now() };
-        let candidates = olo_complete::suggest(&m.ix, &mut **self.compute.lock().unwrap(), &m.weights, &cx, 5);
+        let candidates = olo_complete::suggest(&m.ix, &mut CpuBackend(Cpu::Simd), &m.weights, &cx, 5);
         drop(m);
         let rest = candidates.first().and_then(|c| c.strip_prefix(line)).unwrap_or("").to_owned();
-        let micros = t0.elapsed().as_micros() as u64;
-        let mut c = self.counters.lock().unwrap();
         if !rest.is_empty() {
-            c.offered += 1;
+            self.counters.lock().unwrap().offered += 1;
         }
-        c.latencies.push(micros.min(u32::MAX as u64) as u32);
+        Reply::Suggestion { rest, candidates, micros: t0.elapsed().as_micros() as u64 }
+    }
+
+    /// How long a suggestion took, from its question read to its answer
+    /// sent (what Activity Monitor shows).
+    fn took(&self, t: Duration) {
+        let mut c = self.counters.lock().unwrap();
+        c.latencies.push(t.as_micros().min(u32::MAX as u128) as u32);
         if c.latencies.len() > LATENCIES {
             c.latencies.remove(0);
         }
-        Reply::Suggestion { rest, candidates, micros }
     }
 
     /// A command entered: recorded, its examples made (from what was
@@ -239,7 +207,7 @@ impl Daemon {
             (if first { Weights::baseline() } else { m.weights.clone() }, train_set, held)
         };
         let plan = if first { Plan::FIRST } else { Plan::QUICK };
-        let (w, report) = train::fine_tune(&mut Borrowed(&self.compute), &start, &train_set, &held, plan);
+        let (w, report) = train::fine_tune(&mut CpuBackend(Cpu::Simd), &start, &train_set, &held, plan);
         {
             let mut m = self.model.lock().unwrap();
             if report.kept || first {
@@ -279,24 +247,16 @@ impl Daemon {
         let mut sorted = c.latencies.clone();
         sorted.sort_unstable();
         let pct = |p: f32| sorted.get(((sorted.len() as f32 - 1.0) * p).round() as usize).copied().unwrap_or(0);
-        // (Each taken and let go before the next: a guard held to the end of
-        // the struct below would be taken twice.)
-        let (backend, trouble) = {
-            let compute = self.compute.lock().unwrap();
-            (compute.name(), compute.trouble())
-        };
-        let fallback = self.fallback.lock().unwrap().clone().or(trouble);
         Stats {
             enabled: settings.enabled,
-            backend,
-            wanted: settings.accel,
-            fallback,
+            backend: CpuBackend(Cpu::Simd).name(),
             offered: c.offered,
             accepted: c.accepted,
             accepted_words: c.accepted_words,
             latency_p50_us: pct(0.5),
             latency_p95_us: pct(0.95),
             latency_worst_us: sorted.last().copied().unwrap_or(0),
+            latency_count: c.latencies.len(),
             latencies_us: c.latencies.iter().rev().take(120).rev().copied().collect(),
             known: m.ix.len(),
             seen: m.ix.seen(),
@@ -308,16 +268,10 @@ impl Daemon {
         }
     }
 
-    /// The settings read again: off, it goes (the reply first); another
-    /// computer, it's made.
+    /// The settings read again: off, it goes (the reply first).
     fn reload(&self) -> bool {
         let new = Settings::load();
-        let old = std::mem::replace(&mut *self.settings.lock().unwrap(), new);
-        if new.accel != old.accel {
-            let (b, fallback) = backend(new.accel);
-            *self.compute.lock().unwrap() = b;
-            *self.fallback.lock().unwrap() = fallback;
-        }
+        *self.settings.lock().unwrap() = new;
         new.enabled
     }
 }
@@ -330,6 +284,7 @@ fn serve(d: &Arc<Daemon>, stream: UnixStream) -> bool {
     if BufReader::new(&stream).read_line(&mut line).is_err() {
         return true;
     }
+    let t0 = Instant::now();
     let Ok(req) = serde_json::from_str::<Request>(&line) else {
         reply(&stream, &Reply::Error { message: "not a request".into() });
         return true;
@@ -369,6 +324,9 @@ fn serve(d: &Arc<Daemon>, stream: UnixStream) -> bool {
         }
     };
     reply(&stream, &r);
+    if matches!(r, Reply::Suggestion { .. }) {
+        d.took(t0.elapsed());
+    }
     keep_going
 }
 

@@ -109,6 +109,26 @@ fn ui_lint_every_panel() {
     assert_clean("Preferences' panels", &found);
 }
 
+/// Terminal ▸ Command Suggestions in each of its states (Terminal's
+/// size is the tallest's).
+#[test]
+fn ui_lint_command_suggestions() {
+    let mut lint = Lint::new();
+    let mut found = Vec::new();
+    for (v, name) in crate::complete::lint_states().into_iter().enumerate() {
+        let (w, h) = Panel::Terminal.size();
+        let options = WindowOptions::new(Panel::Terminal.title(), w as f32, h as f32);
+        for f in lint.window(&options, move |window, cx| {
+            crate::complete::LINT.with(|l| l.set(v));
+            let prefs = cx.new(|_| prefs());
+            cx.new(|cx| PanelView::new(prefs, Panel::Terminal, Settings::default(), window, cx))
+        }) {
+            found.push(olo_ui::lint::Found { text: format!("Terminal, {name}: {}", f.text), ..f });
+        }
+    }
+    assert_clean("Terminal's command suggestions", &found);
+}
+
 /// Train for Your Palm, full screen: each step in each of its states (a
 /// touch judged, the longest miss, done, Esc pressed once; the summary's
 /// outcomes) on the screen it's laid out for and on a MacBook's at 2×.

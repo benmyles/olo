@@ -3028,5 +3028,17 @@
   "title": "Terminal: a slim scroll bar, there when wanted",
   "caption": "The kit's SlimScrollBar over the scrollback's right edge: shown when the pointer comes near or the view scrolls, wider under the pointer, fading a moment after; its thumb drags and its track pages.",
   "image": "2026-11-03/224620-terminal-a-slim-scroll-bar-there-when-wanted.png"
+ },
+ {
+  "time": "2026-11-03T23:59:38",
+  "title": "Terminal \u25b8 Command Suggestions: brush's hints from a model of your own",
+  "caption": "Preferences \u25b8 Terminal turns on olo-complete, a tiny model of your own commands (the line, the folder, the commands before in that shell, the hour and the day) that gives brush its grey hint. Turning it on starts it and runs its first fine-tune from the history, then says how it did on your newest commands; it learns again a minute after you type. Unavailable while brush isn't the login shell, and a brush from before the model is told apart by a mark in its binary, each with a button to Olo Suggestions. The pane is 520\u00d7692 for its tallest state.",
+  "image": "2026-11-03/235938-terminal-command-suggestions-brush-s-hints-from-.png"
+ },
+ {
+  "time": "2026-11-04T00:00:36",
+  "title": "Activity Monitor \u25b8 AI: how the command model does",
+  "caption": "A new section, asked of olo-complete once a second only while it shows: suggestions offered and taken (whole or a word at a time), what it knows, latency from the question to the answer sent (typically, 95th percentile, slowest) with a graph, and its learning: fine-tunes, the last one's examples, steps and time, how often its first suggestion is right on the newest commands against the hand-written weights, and whether it was kept. Off, it says so, with Terminal Preferences\u2026 to turn it on.",
+  "image": "2026-11-04/000036-activity-monitor-ai-how-the-command-model-does.png"
  }
 ]

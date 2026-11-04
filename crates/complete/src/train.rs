@@ -9,8 +9,8 @@
 //! first suggestion was the command (`top1`), against the hand-written
 //! weights'.
 //!
-//! The arithmetic is a [`Backend`]'s: the processor's (plain or SIMD,
-//! here) or the GPU's (olo-complete's).
+//! The arithmetic is a [`Backend`]'s: the processor's, plain (the
+//! reference) or SIMD.
 
 use serde::{Deserialize, Serialize};
 
@@ -78,10 +78,6 @@ pub fn replay(entries: &[Entry]) -> (Vec<Example>, Index) {
 /// loss and gradient over examples.
 pub trait Backend {
     fn name(&self) -> String;
-    /// Why it isn't computing as asked (a GPU that stopped), if so.
-    fn trouble(&self) -> Option<String> {
-        None
-    }
     fn scores(&mut self, w: &Weights, x: &[f32]) -> Vec<f32>;
     /// The mean loss over `examples` and its gradient.
     fn loss_and_grad(&mut self, w: &Weights, examples: &[&Example]) -> (f32, Weights);
@@ -184,7 +180,7 @@ impl Plan {
 }
 
 /// What a fine-tune did.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Tuned {
     pub before: Score,
     pub after: Score,
@@ -206,8 +202,14 @@ pub fn fine_tune(b: &mut dyn Backend, start: &Weights, train: &[Example], held: 
     let t0 = std::time::Instant::now();
     let before = evaluate(b, start, held);
     let baseline = evaluate(b, &Weights::baseline(), held);
+    // The newest tenth of what it learns from checks each pass (the best
+    // pass is kept, the start among them, so it never ends worse there);
+    // `held`, newer still, judges the result.
+    let check_from = if train.len() >= 20 { train.len() - train.len() / 10 } else { train.len() };
+    let (train, check) = train.split_at(check_from);
     let anchor = start.flat();
     let mut p = anchor.clone();
+    let mut best = (if check.is_empty() { f32::MIN } else { evaluate(b, start, check).mrr }, anchor.clone());
     let (mut m, mut v) = (vec![0.0f32; PARAMS], vec![0.0f32; PARAMS]);
     let (b1, b2, eps) = (0.9f32, 0.999f32, 1e-8f32);
     let mut order: Vec<usize> = (0..train.len()).collect();
@@ -236,11 +238,15 @@ pub fn fine_tune(b: &mut dyn Backend, start: &Weights, train: &[Example], held: 
                 p[k] -= plan.rate * (m[k] / c1) / ((v[k] / c2).sqrt() + eps);
             }
         }
+        let now = if check.is_empty() { 0.0 } else { evaluate(b, &Weights::from_flat(&p), check).mrr };
+        if check.is_empty() || now > best.0 {
+            best = (now, p.clone());
+        }
     }
-    let tuned = Weights::from_flat(&p);
+    let tuned = Weights::from_flat(&best.1);
     let after = evaluate(b, &tuned, held);
     let kept = tuned.sound() && (held.is_empty() || after.mrr >= before.mrr);
-    let report = Tuned { before, after, baseline, examples: train.len(), steps, loss, micros: t0.elapsed().as_micros() as u64, backend: b.name(), kept };
+    let report = Tuned { before, after, baseline, examples: train.len() + check.len(), steps, loss, micros: t0.elapsed().as_micros() as u64, backend: b.name(), kept };
     (if kept { tuned } else { start.clone() }, report)
 }
 
