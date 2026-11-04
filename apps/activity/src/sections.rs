@@ -356,7 +356,12 @@ fn overview(app: &Activity, me: &Me, area: f32, cx: &App) -> Vec<AnyElement> {
                 vec!["Read", "Written"],
                 None,
             ),
-            Section::Gpu => ("GPU", value(app, "gpu-busy"), sys.gpu.as_ref().map(|g| format!("{} · {}", g.name, g.driver)).unwrap_or_default(), vec!["gpu-busy"], vec!["Busy"], Some(100.0)),
+            Section::Gpu => {
+                // (The one the computer started on; the others in the GPU section.)
+                let more = sys.gpus.len().saturating_sub(1);
+                let first = sys.gpus.first().map(|g| format!("{} · {}", g.name, g.driver)).unwrap_or_default();
+                ("GPU", value(app, "gpu-busy"), if more > 0 { format!("{first} · and {more} more") } else { first }, vec!["gpu-busy"], vec!["Busy"], Some(100.0))
+            }
             _ => match &sys.battery {
                 Some(b) => ("Battery", value(app, "battery"), format!("{} · {}", b.status, Unit::Watts.format(b.watts.abs())), vec!["battery"], vec!["Charge"], Some(100.0)),
                 None => {
@@ -926,51 +931,90 @@ fn gpu(app: &Activity, me: &Me, area: f32, inner: f32, cx: &App) -> Vec<AnyEleme
     let p = theme::palette(cx);
     let sys = &app.system;
     let mut out = Vec::new();
-    let g_info = sys.gpu.clone().unwrap_or_default();
-    let keys = ["gpu-busy"];
-    let mut items = legend_items(app, &p, &keys, &["Busy"]);
-    items.extend(legend_items(app, &p, &["gpu-jobs"], &["Jobs"]));
-    out.push(
-        Card::new("gpu", "GPU")
-            .figure(value(app, "gpu-busy"))
-            .caption(format!("{} · {} driver", g_info.name, g_info.driver))
-            .child(graph(app, Some(me), &keys, Some(100.0), GRAPH + 40.0, cx))
-            .child(div().h(px(m::TIGHT)))
-            .child(legend_el(items, inner, cx))
-            .into_any_element(),
-    );
-    let mut pair = Vec::new();
-    if app.source("gpu-power").is_some() {
-        pair.push(
-            Card::new("gpu-power", "Power").figure(value(app, "gpu-power")).caption("What the GPU draws").child(graph(app, None, &["gpu-power"], None, GRAPH * 0.8 + 16.0, cx)).into_any_element(),
+    let clients = sys.gpu_clients.clone().unwrap_or_default();
+    // Each GPU in turn, the one the computer started on first: how busy,
+    // what it draws and holds, and who uses it.
+    for (i, g) in sys.gpus.iter().enumerate() {
+        let k = |what: &str| format!("{}-{what}", g.prefix);
+        let (busy, media, jobs, power, memory, freq, temp) = (k("busy"), k("media"), k("jobs"), k("power"), k("memory"), k("freq"), k("temp"));
+        let mut keys: Vec<&str> = vec![&busy];
+        let mut names = vec!["Busy"];
+        if app.source(&media).is_some() {
+            keys.push(&media);
+            names = vec!["Render", "Media"];
+        }
+        let mut items = legend_items(app, &p, &keys, &names);
+        items.extend(legend_items(app, &p, &[&jobs], &["Jobs"]));
+        let state = if g.asleep { " · asleep: nothing is using it" } else { "" };
+        out.push(
+            Card::new(SharedString::from(format!("gpu-{i}")), SharedString::from(g.name.clone()))
+                .figure(value(app, &busy))
+                .caption(format!("{} driver{state}", g.driver))
+                .child(graph(app, if i == 0 { Some(me) } else { None }, &keys, Some(100.0), GRAPH + 40.0, cx))
+                .child(div().h(px(m::TIGHT)))
+                .child(legend_el(items, inner, cx))
+                .into_any_element(),
+        );
+        let mut pair = Vec::new();
+        if app.source(&power).is_some() {
+            pair.push(
+                Card::new(SharedString::from(power.clone()), "Power")
+                    .figure(value(app, &power))
+                    .caption("What it draws")
+                    .child(graph(app, None, &[&power], None, GRAPH * 0.8 + 16.0, cx))
+                    .into_any_element(),
+            );
+        }
+        if app.source(&memory).is_some() {
+            let caption = if g.memory_limit > 0 { format!("of {} it may use", format_size(g.memory_limit)) } else { String::new() };
+            let mut card = Card::new(SharedString::from(memory.clone()), "Memory").figure(value(app, &memory)).caption(caption);
+            if g.memory_limit > 0 {
+                card = card.child(meter_el(vec![(c(p.hue(olo_theme::Hue::Red)), g.memory_used as f64)], g.memory_limit as f64, 8.0)).child(div().h(px(m::SPACING)));
+            }
+            pair.push(card.child(graph(app, None, &[&memory], None, GRAPH * 0.8, cx)).into_any_element());
+        }
+        if app.source(&freq).is_some() {
+            pair.push(
+                Card::new(SharedString::from(freq.clone()), "Clock")
+                    .figure(value(app, &freq))
+                    .caption("How fast it runs now")
+                    .child(graph(app, None, &[&freq], None, GRAPH * 0.8 + 16.0, cx))
+                    .into_any_element(),
+            );
+        }
+        if app.source(&temp).is_some() {
+            pair.push(
+                Card::new(SharedString::from(temp.clone()), "Temperature")
+                    .figure(value(app, &temp))
+                    .caption("Its own sensor")
+                    .child(graph(app, None, &[&temp], None, GRAPH * 0.8 + 16.0, cx))
+                    .into_any_element(),
+            );
+        }
+        if !pair.is_empty() {
+            out.push(flow(pair, area, 300.0, 2));
+        }
+        // Who uses it.
+        let rows: Vec<Busy> = clients
+            .iter()
+            .filter(|cl| cl.gpu == i)
+            .map(|cl| {
+                let busy = cl.busy.map(|b| format!(" · {b:.0}%")).unwrap_or_default();
+                (cl.pid, format!("{} ({})", cl.name, cl.pid), format!("{}{busy}", format_size(cl.memory)))
+            })
+            .collect();
+        let caption = match (g.asleep, app.access == Access::Full) {
+            (true, _) => "Nothing: it's asleep",
+            (false, true) => "Its memory each holds",
+            (false, false) => "Its memory each holds (other users' need full access)",
+        };
+        out.push(
+            Card::new(SharedString::from(format!("gpu-programs-{i}")), SharedString::from(format!("Programs Using the {}", g.name)))
+                .caption(caption)
+                .child(process_rows(me, "Memory on the GPU", rows))
+                .into_any_element(),
         );
     }
-    if app.source("gpu-memory").is_some() {
-        let caption = if g_info.memory_limit > 0 { format!("of {} it may use", format_size(g_info.memory_limit)) } else { String::new() };
-        let mut card = Card::new("gpu-memory", "Memory").figure(value(app, "gpu-memory")).caption(caption);
-        if g_info.memory_limit > 0 {
-            card = card.child(meter_el(vec![(c(p.hue(olo_theme::Hue::Red)), g_info.memory_used as f64)], g_info.memory_limit as f64, 8.0)).child(div().h(px(m::SPACING)));
-        }
-        pair.push(card.child(graph(app, None, &["gpu-memory"], None, GRAPH * 0.8, cx)).into_any_element());
-    }
-    if !pair.is_empty() {
-        out.push(flow(pair, area, 300.0, 2));
-    }
-    // Who uses it.
-    let clients = sys.gpu_clients.clone().unwrap_or_default();
-    let rows: Vec<Busy> = clients
-        .iter()
-        .map(|cl| {
-            let busy = cl.busy.map(|b| format!(" · {b:.0}%")).unwrap_or_default();
-            (cl.pid, format!("{} ({})", cl.name, cl.pid), format!("{}{busy}", format_size(cl.memory)))
-        })
-        .collect();
-    out.push(
-        Card::new("gpu-programs", "Programs Using the GPU")
-            .caption(if app.access == Access::Full { "Its memory each holds" } else { "Its memory each holds (other users' need full access)" })
-            .child(process_rows(me, "Memory on the GPU", rows))
-            .into_any_element(),
-    );
     out
 }
 

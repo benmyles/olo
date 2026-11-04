@@ -2,8 +2,8 @@
 //! thread at the update interval (never on the UI thread): CPU (total,
 //! by kind of time, per core, each core's frequency and governor), memory
 //! and swap (with zram and every /proc/meminfo field), pressure stall
-//! information, each disk's and network interface's traffic, the GPU
-//! (Asahi's `agx_stats`, amdgpu's busy percentage), the battery, every
+//! information, each disk's and network interface's traffic, every GPU
+//! (gpus.rs: Asahi's, amdgpu's, Intel's xe, NVIDIA's), the battery, every
 //! temperature, power and fan sensor (the Mac's SMC included), the
 //! kernel's tunables, and processes (with their parents, priorities and
 //! I/O) and network connections while someone looks at them.
@@ -109,6 +109,10 @@ pub struct Proc {
     pub sent: Option<f64>,
     #[serde(default)]
     pub received: Option<f64>,
+    /// Each GPU's (in `System::gpus`' order): None, not using it; Some(%)
+    /// of it busy for this process (0 where the driver doesn't say).
+    #[serde(default)]
+    pub gpus: Vec<Option<f64>>,
     /// Its command line, arguments spaced.
     pub command: String,
 }
@@ -188,11 +192,17 @@ pub struct Battery {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Gpu {
+    /// Its series' names start so: "gpu" (the first), "gpu1", …
+    #[serde(default)]
+    pub prefix: String,
     pub driver: String,
     pub name: String,
     pub memory_used: u64,
     pub memory_limit: u64,
     pub jobs: u64,
+    /// Asleep (runtime-suspended): nothing is using it, and it isn't asked.
+    #[serde(default)]
+    pub asleep: bool,
 }
 
 /// A cpufreq policy: cores that change frequency together (a cluster:
@@ -237,11 +247,15 @@ pub struct Volume {
     pub read_only: bool,
 }
 
-/// A program using the GPU, from its DRM file descriptors' fdinfo.
+/// A program using a GPU, from its DRM file descriptors' fdinfo (and
+/// NVIDIA's library for NVIDIA's).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GpuClient {
     pub pid: i32,
     pub name: String,
+    /// Which GPU (in `System::gpus`' order).
+    #[serde(default)]
+    pub gpu: usize,
     /// Memory it has on the GPU (resident), in bytes.
     pub memory: u64,
     /// GPU time used each second, as a share of one engine, where the
@@ -269,7 +283,9 @@ pub struct System {
     pub disks: Vec<Disk>,
     pub interfaces: Vec<Interface>,
     pub battery: Option<Battery>,
-    pub gpu: Option<Gpu>,
+    /// Every GPU, the one the computer started on first.
+    #[serde(default)]
+    pub gpus: Vec<Gpu>,
     /// The kernel's tunables Olo shows (sysctl name, value).
     pub tunables: Vec<(String, String)>,
     pub open_files: (u64, u64),
@@ -408,7 +424,7 @@ struct Probe {
     freq: Vec<PathBuf>,
     disks: Vec<String>,
     interfaces: Vec<String>,
-    gpu: Option<PathBuf>,
+    gpus: Vec<crate::gpus::Probe>,
 }
 
 /// Network interfaces worth showing: not loopback or virtual bridges.
@@ -504,16 +520,34 @@ fn probe() -> Probe {
         add(&format!("net:{n}:rx"), &format!("{n} receive"), Unit::Rate, SPREAD[(2 * i + 5) % SPREAD.len()], None, Group::Network);
         add(&format!("net:{n}:tx"), &format!("{n} send"), Unit::Rate, SPREAD[(2 * i + 6) % SPREAD.len()], None, Group::Network);
     }
-    // The GPU: Asahi's statistics, else amdgpu's busy percentage.
-    let gpu = std::fs::read_dir("/sys/class/drm").into_iter().flatten().flatten().map(|e| e.path().join("device")).find(|d| d.join("agx_stats").exists() || d.join("gpu_busy_percent").exists());
-    if let Some(g) = &gpu {
-        add("gpu-busy", "GPU busy", Unit::Percent, Hue::Purple, Some(100.0), Group::Gpu);
-        if g.join("agx_stats").exists() {
-            add("gpu-jobs", "GPU jobs", Unit::PerSecond, Hue::Teal, None, Group::Gpu);
-            add("gpu-power", "GPU power", Unit::Watts, Hue::Orange, None, Group::Gpu);
+    // Every GPU (gpus.rs), the one the computer started on first: its
+    // series named by its prefix ("gpu-busy", "gpu1-busy"), each kind's.
+    let gpus = crate::gpus::find();
+    let several = gpus.len() > 1;
+    for g in &gpus {
+        use crate::gpus::Kind;
+        let (x, label) = (&g.prefix, |what: &str| if several { format!("{} {what}", g.name) } else { format!("GPU {what}") });
+        add(&format!("{x}-busy"), &label("busy"), Unit::Percent, Hue::Purple, Some(100.0), Group::Gpu);
+        match &g.kind {
+            Kind::Agx => {
+                add(&format!("{x}-jobs"), &label("jobs"), Unit::PerSecond, Hue::Teal, None, Group::Gpu);
+                add(&format!("{x}-power"), &label("power"), Unit::Watts, Hue::Orange, None, Group::Gpu);
+            }
+            Kind::Xe { gts } => {
+                if gts.len() > 1 {
+                    add(&format!("{x}-media"), &label("media busy"), Unit::Percent, Hue::Teal, Some(100.0), Group::Gpu);
+                }
+                add(&format!("{x}-freq"), &label("clock"), Unit::Megahertz, Hue::Blue, None, Group::Gpu);
+            }
+            Kind::Nvidia { .. } => {
+                add(&format!("{x}-power"), &label("power"), Unit::Watts, Hue::Orange, None, Group::Gpu);
+                add(&format!("{x}-temp"), &label("temperature"), Unit::Celsius, Hue::Red, None, Group::Gpu);
+                add(&format!("{x}-freq"), &label("clock"), Unit::Megahertz, Hue::Blue, None, Group::Gpu);
+            }
+            Kind::Amd => {}
         }
-        if g.join("gpu_memory").exists() || g.join("mem_info_vram_used").exists() {
-            add("gpu-memory", "GPU memory", Unit::Bytes, Hue::Red, None, Group::Gpu);
+        if matches!(g.kind, Kind::Agx | Kind::Nvidia { .. }) || g.device.join("mem_info_vram_used").exists() {
+            add(&format!("{x}-memory"), &label("memory"), Unit::Bytes, Hue::Red, None, Group::Gpu);
         }
     }
 
@@ -552,7 +586,7 @@ fn probe() -> Probe {
             sensors.push(Sensor { path: input, scale });
         }
     }
-    Probe { sources, cpus, sensors, battery, freq, disks, interfaces: ifaces, gpu }
+    Probe { sources, cpus, sensors, battery, freq, disks, interfaces: ifaces, gpus }
 }
 
 /// A sensor's name for people: the driver's label, or what the chip is.
@@ -593,13 +627,17 @@ struct Counters {
     disks: HashMap<String, [u64; 5]>,
     /// Per interface: bytes in, out.
     ifaces: HashMap<String, (u64, u64)>,
-    gpu_busy_ns: u64,
-    gpu_jobs: u64,
+    /// Per GPU (by prefix): Asahi's busy nanoseconds and jobs.
+    gpu_busy_ns: HashMap<String, u64>,
+    gpu_jobs: HashMap<String, u64>,
+    /// Per xe GT: its idle milliseconds so far.
+    gt_idle: HashMap<PathBuf, u64>,
     /// Per process: (utime + stime) ticks, and bytes read and written.
     ticks: HashMap<i32, u64>,
     io: HashMap<i32, (u64, u64)>,
-    /// Per GPU client: engine nanoseconds.
-    gpu_busy: HashMap<u64, u64>,
+    /// Per GPU client (by device and client id): engine nanoseconds, or
+    /// engine cycles and the cycles there were (xe).
+    gpu_busy: HashMap<(u64, u64), (u64, u64)>,
     /// Per TCP socket (by inode): bytes sent and received, for processes'
     /// network rates; None until a first look.
     sockets: Option<HashMap<u64, (u64, u64)>>,
@@ -746,6 +784,7 @@ fn processes(before: Before, elapsed: f64, users: &HashMap<u32, String>, page: u
             sent: None,
             received: None,
             command,
+            gpus: Vec::new(),
         });
     }
     known.by_pid.retain(|pid, _| ticks.contains_key(pid));
@@ -810,29 +849,42 @@ fn statvfs(path: &str) -> Option<(u64, u64)> {
     Some((st.f_blocks as u64 * frag, st.f_bavail as u64 * frag))
 }
 
-/// Who has the GPU open: each DRM client's memory and, where the driver
-/// says, engine time (`drm-engine-*`, nanoseconds). Clients shared by a
-/// program's several descriptors count once.
-fn gpu_clients(pids: &[(i32, String)], busy_before: &HashMap<u64, u64>, elapsed: f64) -> (Vec<GpuClient>, HashMap<u64, u64>) {
+/// Who has each GPU open: each DRM client's memory and, where the driver
+/// says, engine time (`drm-engine-*`, nanoseconds; xe's `drm-cycles-*`
+/// of `drm-total-cycles-*`), by the render or card node it opened (which
+/// GPU); NVIDIA's from its library while it's awake. A program's
+/// descriptors sharing a client count once.
+fn gpu_clients(gpus: &[crate::gpus::Probe], pids: &[(i32, String)], before: &HashMap<(u64, u64), (u64, u64)>, elapsed: f64) -> (Vec<GpuClient>, HashMap<(u64, u64), (u64, u64)>) {
+    use std::os::unix::fs::MetadataExt as _;
+    // Each GPU's device numbers (its card and render nodes).
+    let mut nodes: HashMap<u64, usize> = HashMap::new();
+    for (i, g) in gpus.iter().enumerate() {
+        for e in std::fs::read_dir(g.device.join("drm")).into_iter().flatten().flatten() {
+            if let Ok(m) = std::fs::metadata(format!("/dev/dri/{}", e.file_name().to_string_lossy())) {
+                nodes.insert(m.rdev(), i);
+            }
+        }
+    }
     let mut out: Vec<GpuClient> = Vec::new();
     let mut busy = HashMap::new();
     for (pid, name) in pids {
         let Ok(rd) = std::fs::read_dir(format!("/proc/{pid}/fd")) else { continue };
         let mut seen = std::collections::HashSet::new();
-        let mut client = GpuClient { pid: *pid, name: name.clone(), ..Default::default() };
-        let mut any = false;
+        let mut clients: HashMap<usize, GpuClient> = HashMap::new();
         for fd in rd.flatten() {
             let Ok(target) = std::fs::read_link(fd.path()) else { continue };
             if !target.starts_with("/dev/dri/") {
                 continue;
             }
+            let Some(&gpu) = std::fs::metadata(&target).ok().and_then(|m| nodes.get(&m.rdev())) else { continue };
             let info = read(format!("/proc/{pid}/fdinfo/{}", fd.file_name().to_string_lossy()));
             let field = |k: &str| info.lines().find_map(|l| l.strip_prefix(k)).map(str::trim);
             let Some(id) = field("drm-client-id:").and_then(|v| v.parse::<u64>().ok()) else { continue };
-            if !seen.insert(id) {
+            if !seen.insert((gpu, id)) {
                 continue;
             }
-            any = true;
+            let client = clients.entry(gpu).or_insert_with(|| GpuClient { pid: *pid, name: name.clone(), gpu, ..Default::default() });
+            let (mut ns, mut cycles, mut total) = (None, 0u64, 0u64);
             for l in info.lines() {
                 let Some((k, v)) = l.split_once(':') else { continue };
                 let mut words = v.split_whitespace();
@@ -846,17 +898,58 @@ fn gpu_clients(pids: &[(i32, String)], busy_before: &HashMap<u64, u64>, elapsed:
                 if k.starts_with("drm-resident-") {
                     client.memory += n * scale;
                 } else if k.starts_with("drm-engine-") && !k.starts_with("drm-engine-capacity") {
-                    *busy.entry(id).or_insert(0) += n;
+                    *ns.get_or_insert(0u64) += n;
+                } else if k.starts_with("drm-total-cycles-") {
+                    total = total.max(n);
+                } else if k.starts_with("drm-cycles-") {
+                    cycles += n;
                 }
             }
-            if let Some(&now) = busy.get(&id) {
-                let was = busy_before.get(&id).copied();
-                let share = was.map(|w| now.saturating_sub(w) as f64 / (elapsed * 1e9) * 100.0).unwrap_or(0.0);
-                client.busy = Some(client.busy.unwrap_or(0.0) + share);
-            }
+            let key = (gpu as u64, id);
+            let now = match ns {
+                Some(ns) => (ns, 0),
+                None if total > 0 => (cycles, total),
+                None => continue,
+            };
+            busy.insert(key, now);
+            let share = match before.get(&key) {
+                // Nanoseconds of engine time a second.
+                Some(&(was, 0)) if now.1 == 0 => now.0.saturating_sub(was) as f64 / (elapsed * 1e9) * 100.0,
+                // Cycles busy of the cycles there were.
+                Some(&(was, was_total)) if now.1 > was_total => now.0.saturating_sub(was) as f64 / (now.1 - was_total) as f64 * 100.0,
+                _ => 0.0,
+            };
+            client.busy = Some(client.busy.unwrap_or(0.0) + share);
         }
-        if any {
-            out.push(client);
+        out.extend(clients.into_values());
+    }
+    // NVIDIA's (its driver's descriptors say no engine time): its library's
+    // users, while it's awake.
+    for (i, g) in gpus.iter().enumerate() {
+        let crate::gpus::Kind::Nvidia { bus } = &g.kind else { continue };
+        // (Asleep, or idle when last asked: its users aren't asked for,
+        // which would keep it awake.)
+        if crate::gpus::asleep(&g.device) || !crate::gpus::nvidia_busy(bus) {
+            continue;
+        }
+        let Some(d) = crate::gpus::nvml().and_then(|n| n.device_by_pci_bus_id(bus.as_str()).ok()) else { continue };
+        let since = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |t| t.as_micros() as u64).saturating_sub((elapsed * 1e6) as u64);
+        let util: HashMap<u32, u32> = d.process_utilization_stats(since).map(|v| v.into_iter().map(|u| (u.pid, u.sm_util)).collect()).unwrap_or_default();
+        let procs = d.running_graphics_processes().unwrap_or_default().into_iter().chain(d.running_compute_processes().unwrap_or_default());
+        for pr in procs {
+            let pid = pr.pid as i32;
+            let memory = match pr.used_gpu_memory {
+                nvml_wrapper::enums::device::UsedGpuMemory::Used(b) => b,
+                _ => 0,
+            };
+            let name = pids.iter().find(|(p, _)| *p == pid).map(|(_, n)| n.clone()).unwrap_or_default();
+            match out.iter_mut().find(|c| c.pid == pid && c.gpu == i) {
+                Some(c) => {
+                    c.memory = c.memory.max(memory);
+                    c.busy = Some(util.get(&pr.pid).copied().unwrap_or(0) as f64);
+                }
+                None => out.push(GpuClient { pid, name, gpu: i, memory, busy: Some(util.get(&pr.pid).copied().unwrap_or(0) as f64) }),
+            }
         }
     }
     out.sort_by_key(|c| std::cmp::Reverse(c.memory));
@@ -1257,20 +1350,31 @@ fn system(probe: &Probe, mi: &str, static_disks: &[Disk], disk_rates: &HashMap<S
             model: read(b.join("model_name")).trim().into(),
         });
     }
-    if let Some(g) = &probe.gpu {
-        let driver = std::fs::read_link(g.join("driver")).ok().and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())).unwrap_or_default();
-        let compatible = read(g.join("uevent")).lines().find_map(|l| l.strip_prefix("OF_COMPATIBLE_0=").map(str::to_owned)).unwrap_or_default();
-        let mem = read(g.join("gpu_memory"));
-        let field = |k: &str| mem.lines().find_map(|l| l.strip_prefix(k)).map_or(0, num);
-        let (used, limit) =
-            if mem.is_empty() { (num(&read(g.join("mem_info_vram_used"))), num(&read(g.join("mem_info_vram_total")))) } else { (field("user_resident ") + field("kernel_resident "), field("limit ")) };
-        let stats = read(g.join("agx_stats"));
-        let name = match apple_chip(&s.model) {
-            Some(chip) if compatible.starts_with("apple,agx") => format!("Apple {chip} GPU"),
-            _ if compatible.is_empty() => driver.clone(),
-            _ => compatible,
+    for g in &probe.gpus {
+        use crate::gpus::Kind;
+        let asleep = crate::gpus::asleep(&g.device);
+        let (mut used, mut limit, mut jobs) = (0, 0, 0);
+        match &g.kind {
+            Kind::Agx => {
+                let mem = read(g.device.join("gpu_memory"));
+                let field = |k: &str| mem.lines().find_map(|l| l.strip_prefix(k)).map_or(0, num);
+                (used, limit) = (field("user_resident ") + field("kernel_resident "), field("limit "));
+                jobs = read(g.device.join("agx_stats")).lines().find_map(|l| l.strip_prefix("jobs ")).map_or(0, num);
+            }
+            Kind::Amd => (used, limit) = (num(&read(g.device.join("mem_info_vram_used"))), num(&read(g.device.join("mem_info_vram_total")))),
+            Kind::Nvidia { bus } => {
+                if let Some(n) = crate::gpus::nvidia_now(&g.device, bus) {
+                    (used, limit) = (n.memory_used, n.memory_total);
+                }
+            }
+            Kind::Xe { .. } => {}
+        }
+        // (Asahi's GPU by the Mac's chip.)
+        let name = match (&g.kind, apple_chip(&s.model)) {
+            (Kind::Agx, Some(chip)) => format!("Apple {chip} GPU"),
+            _ => g.name.clone(),
         };
-        s.gpu = Some(Gpu { name, driver, memory_used: used, memory_limit: limit, jobs: stats.lines().find_map(|l| l.strip_prefix("jobs ")).map_or(0, num) });
+        s.gpus.push(Gpu { prefix: g.prefix.clone(), name, driver: g.driver.clone(), memory_used: used, memory_limit: limit, jobs, asleep });
     }
     s.tunables = TUNABLES.iter().map(|(k, _)| ((*k).to_owned(), read(sysctl_path(k)).trim().to_owned())).filter(|(_, v)| !v.is_empty()).collect();
     let nr: Vec<u64> = read("/proc/sys/fs/file-nr").split_whitespace().map(num).collect();
@@ -1454,26 +1558,56 @@ pub fn start(control: Control, send_sources: impl FnOnce(Vec<Source>) + Send + '
                     values.push(rate(rx, was.map(|w| w.0)));
                     values.push(rate(tx, was.map(|w| w.1)));
                 }
-                if let Some(g) = &probe.gpu {
-                    let stats = read(g.join("agx_stats"));
-                    if stats.is_empty() {
-                        values.push(num(&read(g.join("gpu_busy_percent"))) as f64);
-                    } else {
-                        let field = |k: &str| stats.lines().find_map(|l| l.strip_prefix(k)).map_or(0, num);
-                        c.gpu_busy_ns = field("busy_ns ");
-                        c.gpu_jobs = field("jobs ");
-                        values.push(match (p, elapsed) {
-                            (Some(p), Some(e)) => (c.gpu_busy_ns.saturating_sub(p.gpu_busy_ns) as f64 / (e * 1e9) * 100.0).min(100.0),
-                            _ => f64::NAN,
-                        });
-                        values.push(rate(c.gpu_jobs, p.map(|p| p.gpu_jobs)));
-                        values.push(field("power_mw ") as f64 / 1000.0);
-                    }
-                    if g.join("gpu_memory").exists() || g.join("mem_info_vram_used").exists() {
-                        let mem = read(g.join("gpu_memory"));
-                        let field = |k: &str| mem.lines().find_map(|l| l.strip_prefix(k)).map_or(0, num);
-                        let used = if mem.is_empty() { num(&read(g.join("mem_info_vram_used"))) } else { field("user_resident ") + field("kernel_resident ") };
-                        values.push(used as f64);
+                for g in &probe.gpus {
+                    use crate::gpus::Kind;
+                    let x = &g.prefix;
+                    match &g.kind {
+                        Kind::Agx => {
+                            let stats = read(g.device.join("agx_stats"));
+                            let field = |k: &str| stats.lines().find_map(|l| l.strip_prefix(k)).map_or(0, num);
+                            let (busy, jobs) = (field("busy_ns "), field("jobs "));
+                            c.gpu_busy_ns.insert(x.clone(), busy);
+                            c.gpu_jobs.insert(x.clone(), jobs);
+                            values.push(match (p.and_then(|p| p.gpu_busy_ns.get(x)), elapsed) {
+                                (Some(was), Some(e)) => (busy.saturating_sub(*was) as f64 / (e * 1e9) * 100.0).min(100.0),
+                                _ => f64::NAN,
+                            });
+                            values.push(rate(jobs, p.and_then(|p| p.gpu_jobs.get(x).copied())));
+                            values.push(field("power_mw ") as f64 / 1000.0);
+                            let mem = read(g.device.join("gpu_memory"));
+                            let field = |k: &str| mem.lines().find_map(|l| l.strip_prefix(k)).map_or(0, num);
+                            values.push((field("user_resident ") + field("kernel_resident ")) as f64);
+                        }
+                        Kind::Amd => {
+                            values.push(num(&read(g.device.join("gpu_busy_percent"))) as f64);
+                            if g.device.join("mem_info_vram_used").exists() {
+                                values.push(num(&read(g.device.join("mem_info_vram_used"))) as f64);
+                            }
+                        }
+                        Kind::Xe { gts } => {
+                            // Busy: what of the time since it wasn't idle (a
+                            // GT asleep counts as idle).
+                            let mut busy = |gt: &PathBuf| {
+                                let idle = crate::gpus::xe_idle_ms(gt);
+                                c.gt_idle.insert(gt.clone(), idle);
+                                match (p.and_then(|p| p.gt_idle.get(gt)), elapsed) {
+                                    (Some(was), Some(e)) => (100.0 - idle.saturating_sub(*was) as f64 / (e * 1000.0) * 100.0).clamp(0.0, 100.0),
+                                    _ => f64::NAN,
+                                }
+                            };
+                            let render = gts.iter().find(|gt| crate::gpus::xe_gt_name(gt) == "render").or(gts.first());
+                            values.push(render.map_or(f64::NAN, &mut busy));
+                            if gts.len() > 1 {
+                                let media = gts.iter().find(|gt| crate::gpus::xe_gt_name(gt) == "media").or(gts.get(1));
+                                values.push(media.map_or(f64::NAN, &mut busy));
+                            }
+                            values.push(render.map_or(f64::NAN, |gt| crate::gpus::xe_mhz(gt)));
+                        }
+                        Kind::Nvidia { bus } => match crate::gpus::nvidia_now(&g.device, bus) {
+                            Some(n) => values.extend([n.busy, n.watts, n.celsius, n.mhz, n.memory_used as f64]),
+                            // Asleep: nothing runs on it, and it draws next to nothing.
+                            None => values.extend([0.0, 0.0, f64::NAN, 0.0, 0.0]),
+                        },
                     }
                 }
                 for s in &probe.sensors {
@@ -1556,12 +1690,27 @@ pub fn start(control: Control, send_sources: impl FnOnce(Vec<Source>) + Send + '
                         .collect();
                 }
                 if control.want_gpu_clients.load(Ordering::Relaxed)
-                    && let Some(list) = &processes
+                    && !probe.gpus.is_empty()
+                    && let Some(pids) = processes.as_ref().map(|list| list.iter().filter(|p| p.memory > 0).map(|p| (p.pid, p.name.clone())).collect::<Vec<(i32, String)>>())
                 {
-                    let pids: Vec<(i32, String)> = list.iter().filter(|p| p.memory > 0).map(|p| (p.pid, p.name.clone())).collect();
                     let before = p.map(|p| p.gpu_busy.clone()).unwrap_or_default();
-                    let (clients, busy) = gpu_clients(&pids, &before, elapsed.unwrap_or(1.0));
+                    let (clients, busy) = gpu_clients(&probe.gpus, &pids, &before, elapsed.unwrap_or(1.0));
                     c.gpu_busy = busy;
+                    // Each process's use of each GPU, for its columns.
+                    if let Some(list) = processes.as_mut() {
+                        let n = probe.gpus.len();
+                        for pr in list.iter_mut() {
+                            pr.gpus = vec![None; n];
+                        }
+                        let at: HashMap<i32, usize> = list.iter().enumerate().map(|(i, pr)| (pr.pid, i)).collect();
+                        for cl in &clients {
+                            if let Some(&i) = at.get(&cl.pid)
+                                && let Some(slot) = list[i].gpus.get_mut(cl.gpu)
+                            {
+                                *slot = Some(slot.unwrap_or(0.0) + cl.busy.unwrap_or(0.0));
+                            }
+                        }
+                    }
                     system.gpu_clients = Some(clients);
                 }
                 send(Sample { at: now.duration_since(begun).as_secs_f64(), values, system, processes, connections });
@@ -1675,7 +1824,7 @@ mod tests {
         assert!(second.values[0].is_finite());
         assert!(second.processes.is_some() && second.connections.is_some());
         assert!(second.system.cores >= 1 && !second.system.kernel.is_empty());
-        assert!(second.system.gpu_clients.is_some() || second.system.gpu.is_none());
+        assert!(second.system.gpu_clients.is_some() || second.system.gpus.is_empty());
         assert!(!second.system.volumes.is_empty());
         // It goes over the helper's pipe and back.
         let text = serde_json::to_string(&second).unwrap();

@@ -15,6 +15,7 @@
 
 mod actions;
 mod details;
+mod gpus;
 mod helper;
 mod inspector;
 mod netdiag;
@@ -647,7 +648,8 @@ impl Activity {
         // connections and the GPU's users only while they show.
         self.control.want_processes.store(true, Ordering::Relaxed);
         self.control.want_connections.store(section == Section::Network, Ordering::Relaxed);
-        self.control.want_gpu_clients.store(section == Section::Gpu, Ordering::Relaxed);
+        // (Processes show each GPU's use too.)
+        self.control.want_gpu_clients.store(matches!(section, Section::Gpu | Section::Processes), Ordering::Relaxed);
         let _ = self.frames.send(FramesAsk::Want(matches!(section, Section::Displays | Section::Inputs)));
         let _ = self.model_ask.send(section == Section::Ai);
         if let (Some(h), Access::Full) = (&self.helper, self.access) {

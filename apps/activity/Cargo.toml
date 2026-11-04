@@ -20,4 +20,6 @@ olo-theme.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 libc = "0.2"
+# NVIDIA GPUs' figures: NVIDIA's own library, loaded in process (gpus.rs).
+nvml-wrapper = "0.13"
 tracing.workspace = true

@@ -116,7 +116,12 @@ fn compare(col: usize, a: &Proc, b: &Proc) -> std::cmp::Ordering {
         10 => a.nice.cmp(&b.nice),
         11 => state_name(a.state).cmp(state_name(b.state)),
         12 => a.cpu_time.total_cmp(&b.cpu_time),
-        _ => a.started.total_cmp(&b.started),
+        13 => a.started.total_cmp(&b.started),
+        // Each GPU's column: those using it above those not.
+        n => {
+            let g = |pr: &Proc| pr.gpus.get(n - GPU_COLUMNS).copied().flatten().unwrap_or(-1.0);
+            g(a).total_cmp(&g(b))
+        }
     };
     o.then(a.pid.cmp(&b.pid))
 }
@@ -304,9 +309,21 @@ fn cell_text(app: &Activity, r: RowRef, column: usize) -> (String, Option<(u16, 
         10 => pr.nice.to_string(),
         11 => state_name(pr.state).to_owned(),
         12 => cpu_time(pr.cpu_time),
-        _ => started(app, pr.started),
+        13 => started(app, pr.started),
+        // A GPU's: how much of it this process keeps busy; blank if it
+        // doesn't use it.
+        n => pr.gpus.get(n - GPU_COLUMNS).copied().flatten().map_or_else(String::new, |v| format!("{v:.1}")),
     };
     (text, None)
+}
+
+/// Where the GPUs' columns begin.
+const GPU_COLUMNS: usize = 14;
+
+/// A GPU's name for its column: its maker and "GPU" ("Intel GPU").
+fn short_gpu_name(name: &str) -> String {
+    let maker = name.split_whitespace().next().unwrap_or("GPU");
+    if maker.eq_ignore_ascii_case("gpu") { "GPU".into() } else { format!("{maker} GPU") }
 }
 
 /// An open triangle points down, a closed one right.
@@ -363,6 +380,22 @@ pub fn list(app: &mut Activity, _: &mut Window, cx: &mut Context<Activity>) -> A
         Column::new("CPU Time", 76.0).right(),
         Column::new("Started", 120.0),
     ];
+    // A column for each GPU (% of it this process keeps busy), after the
+    // rest (so a sort kept from before is the same column), named by the
+    // GPU: "Intel GPU", "NVIDIA GPU".
+    let mut columns = columns;
+    let gpu_names: Vec<String> = app.system.gpus.iter().map(|g| short_gpu_name(&g.name)).collect();
+    for (i, name) in gpu_names.iter().enumerate() {
+        let taken = gpu_names[..i].contains(name);
+        let title = if gpu_names.len() == 1 {
+            "% GPU".to_owned()
+        } else if taken {
+            format!("% {name} {i}")
+        } else {
+            format!("% {name}")
+        };
+        columns.push(Column::new(SharedString::from(title), 96.0).right());
+    }
     let triangles = app.triangles.clone();
     let (cell_me, cell_rows, cell_triangles) = (me.clone(), rows.clone(), triangles.clone());
     let (key_me, key_rows, columns_n) = (me.clone(), rows.clone(), columns.len());

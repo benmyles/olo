@@ -7,6 +7,26 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
+- **The GPU the displays use, chosen in Preferences ▸ Display** (Ben,
+  2026-11-04: "in displays preferences olo to detect all the GPUs and let
+  me choose which GPU i want to be used for the displays", and "when the
+  nvidia gpu is selected as the display gpu in display prefs then it
+  *should* be kept awake and used to render everything for olo"). Every
+  GPU listed (maker, model, driver, the displays wired to it); the one
+  chosen is the one app_server composes with and every Olo app renders
+  with (kept awake while it is: no runtime suspend); the others only
+  for the displays wired to them, or asleep.
+
+- **Voice processing's input model: SIMD throughout, lowest latency**
+  (Ben, 2026-11-04: "ensure that the voice processing model for input is
+  fully SIMD accelerated and ultra-optimized for low latency (not gpu)").
+  The microphone's model (crates/voice, olo-voice; DeepFilterNet's,
+  vendor/deep_filter) on the CPU only: every hot loop vectorised (AVX2 /
+  AVX-512 on x86, NEON on ARM, chosen at run time), no allocation per
+  frame, the smallest frame and look-ahead that keep quality, measured
+  (latency per frame and end to end, CPU) before and after on the
+  ThinkPad and the MacBook.
+
 - **The ThinkPad P1 Gen 9, on the machine: everything in it first-class**
   (Ben, 2026-11-03, now running Olo on it: "olo doesn't recognize my
   builtin display. please fix." then "please do a full audit on all my
