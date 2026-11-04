@@ -93,7 +93,6 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "display", tab: "", group: "Panel", name: "Technology", role: "ComboBox" },
     Setting { panel: "display", tab: "", group: "Panel", name: "Stripes", role: "ComboBox" },
     Setting { panel: "display", tab: "", group: "Panel", name: "Text", role: "ComboBox" },
-    Setting { panel: "display", tab: "", group: "", name: "Draw with", role: "ComboBox" },
     Setting { panel: "integrations", tab: "", group: "GitHub", name: "Connect with a Token…", role: "Button" },
     Setting { panel: "integrations", tab: "", group: "GitHub", name: "Check Again", role: "Button" },
     Setting { panel: "integrations", tab: "", group: "Telegram", name: "Open my.telegram.org", role: "Button" },

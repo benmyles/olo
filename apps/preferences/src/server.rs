@@ -22,7 +22,6 @@ enum Out {
     StartScreenSaver,
     Identify,
     RecordShortcut(bool),
-    ReloadServer,
 }
 
 /// (A clone sends through the same writer.)
@@ -105,11 +104,6 @@ impl Server {
         let _ = self.tx.send(Out::Identify);
     }
 
-    /// Start app_server again (a new GPU chosen takes effect so).
-    pub fn reload_server(&self) {
-        let _ = self.tx.send(Out::ReloadServer);
-    }
-
     /// After any settings already queued, so it runs what is chosen.
     pub fn start_screen_saver(&self) {
         let _ = self.tx.send(Out::StartScreenSaver);
@@ -135,7 +129,6 @@ fn send(client: &mut Option<Client>, out: Out) {
         Out::StartScreenSaver => Request::StartScreenSaver,
         Out::Identify => Request::IdentifyOutputs,
         Out::RecordShortcut(on) => Request::RecordShortcut { on },
-        Out::ReloadServer => Request::ReloadServer,
     };
     for _ in 0..2 {
         if client.is_none() {

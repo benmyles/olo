@@ -4924,21 +4924,22 @@ asking"). Never test with the real PAM: debug builds take
 Terminal's sudo `OLO_SUDO_REAL`, and `OLO_NO_FINGERPRINT=1` leaves
 fprintd alone.
 
-## The GPU Olo draws with (Preferences ▸ Display ▸ Graphics)
+## Each display on its own GPU (app_server udev.rs; Preferences ▸ Display ▸ Graphics)
 
-With more than one GPU, Display lists each (`Request::Gpus`:
-`olo_system::gpus`, named from the PCI ID database, with its driver and
-the connectors wired to it) and which app_server composes with, and
-chooses one (`DisplaySettings::gpu`, its PCI address; Automatic: the
-one the computer started on). app_server composes with it as it starts
-(`choose_primary_gpu`; `ANVIL_DRM_DEVICE` still wins), so the choice
-takes effect with Restart Display Server (`Request::ReloadServer`:
-app_server signals olo-session, its parent, to reload). Olo's apps
-render with it: the kit sets GPUI's `ZED_DEVICE_ID` from the choice as
-an app starts (`render_with_chosen_gpu`), and a reload that finds a new
-choice has olo-session ask every Olo app to start again in place
-(`restart_apps`, SIGURG as an upgrade does, windows restored). A second
-GPU chosen is kept awake by Olo Doctor's rule; the others sleep.
+Each display is composed by the GPU it is wired to (`render_surface`:
+the surface's own render node), so no frame crosses between GPUs: on a
+hybrid laptop the built-in panel and the USB-C ports are Intel's and
+the HDMI port NVIDIA's, which wakes only while a display is plugged in
+there. Composing the panel on NVIDIA's had every frame copied to
+Intel's through the CPU (NVIDIA can't render into the linear buffers
+Intel can import: `--probe-gpus` says which formats each GPU can render
+and import linear), 11 ms a frame: 30 Hz (Ben: "we should just use
+whatever the native one is they need to use"). Only a display device
+that can't render (a USB adapter) has its frames composed on the
+primary GPU (the one the computer started on) and copied, at 8-bit
+(`composed_elsewhere`). Windows' buffers from another GPU are imported as
+they come. Display's Graphics box (two or more GPUs, `Request::Gpus`:
+`olo_system::gpus`) says what each drives.
 
 ## The touch screen (app_server input_handler.rs)
 
@@ -5859,11 +5860,6 @@ scan made for the sudo user). What it looks for:
   `data/udev/72-olo-idle-gpu.rules` (runtime power management for such
   cards, at every start) and sets it now. On the ThinkPad P1 Gen 9 the
   RTX PRO 2000 went from D0 to D3cold.
-- **The graphics card Olo draws with allowed to sleep**: the one chosen
-  in Preferences ▸ Display (`DisplaySettings::gpu`) when it isn't the
-  one the computer started on: Keep It Awake writes the rule with a line
-  holding that card "on" (`idle_gpu_rule`), the other still asleep when
-  unused.
 - **A graphics card with no working driver** (NVIDIA's, no driver
   bound; nouveau loaded and gone says it tried): NVIDIA's driver
   (`akmod-nvidia`, built for each kernel) installed from the system's

@@ -7,15 +7,13 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **The GPU the displays use, chosen in Preferences ▸ Display** (Ben,
-  2026-11-04: "in displays preferences olo to detect all the GPUs and let
-  me choose which GPU i want to be used for the displays", and "when the
-  nvidia gpu is selected as the display gpu in display prefs then it
-  *should* be kept awake and used to render everything for olo"). Every
-  GPU listed (maker, model, driver, the displays wired to it); the one
-  chosen is the one app_server composes with and every Olo app renders
-  with (kept awake while it is: no runtime suspend); the others only
-  for the displays wired to them, or asleep.
+- ~~**The GPU the displays use, chosen in Preferences ▸ Display**~~
+  (Ben, 2026-11-04). Tried: composing on NVIDIA's had every frame of the
+  built-in panel (wired to Intel's) copied through the CPU, 30 Hz; then
+  Ben: "make it so that the nvidia drives external displays not the
+  internal", "that shouldn't even be an option", "we should just use
+  whatever the native one is". Done so: each display composed by the GPU
+  wired to it, no choice; Display's Graphics box says what each draws.
 
 - **Preferences ▸ GPUs: each GPU and every knob it has** (Ben,
   2026-11-04: "if there are any knobs etc. that can be tweaked for the

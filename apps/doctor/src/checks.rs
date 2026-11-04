@@ -184,9 +184,6 @@ pub struct Roots {
     /// The names of the packages with an update waiting (None: no
     /// PackageKit).
     pub updates: Box<dyn Fn() -> Option<Vec<String>> + Send + Sync>,
-    /// The GPU chosen in Preferences ▸ Display for Olo to draw with (its
-    /// PCI address).
-    pub display_gpu: Box<dyn Fn() -> Option<String> + Send + Sync>,
 }
 
 /// PackageKit's answers, for [`Roots::real`].
@@ -217,17 +214,7 @@ impl Roots {
         let scope = scope_of(&std::fs::read_to_string("/proc/self/cgroup").unwrap_or_default());
         // AirPods paired, as BlueZ says (the service needn't be running).
         let airpods = olo_system::bluetooth::status().map(|s| s.devices.iter().any(|d| d.paired && d.modalias.as_deref().is_some_and(olo_system::airpods::is_airpods))).unwrap_or(false);
-        Roots {
-            fs: PathBuf::from("/"),
-            bin,
-            uid,
-            scope,
-            units: Box::new(crate::fix::unit_state),
-            airpods,
-            packages: Box::new(real_packages),
-            updates: Box::new(real_updates),
-            display_gpu: Box::new(olo_protocol::display_gpu),
-        }
+        Roots { fs: PathBuf::from("/"), bin, uid, scope, units: Box::new(crate::fix::unit_state), airpods, packages: Box::new(real_packages), updates: Box::new(real_updates) }
     }
 }
 
@@ -925,67 +912,37 @@ fn pci_devices(fs: &Path) -> Vec<Pci> {
 /// A second graphics card (NVIDIA's, AMD's) kept powered while nothing
 /// uses it: runtime power management left off ("on"), as it is unless a
 /// driver or a rule turns it on. With no driver bound (nouveau failing on
-/// a new card) nothing ever does. And the other way: the one chosen in
-/// Preferences ▸ Display for Olo to draw with is kept awake ("on"), or
-/// every frame after a pause waits for it to wake.
+/// a new card) nothing ever does. (It wakes for a display wired to it,
+/// which it composes for: app_server draws each display with its own GPU.)
 fn idle_gpu(roots: &Roots, pcis: &[Pci], r: &mut Report) {
     let second: Vec<&Pci> = pcis.iter().filter(|p| p.display() && !p.boot_vga && matches!(p.vendor, 0x10de | 0x1002)).collect();
     if second.is_empty() {
         return;
     }
-    let chosen = (roots.display_gpu)().filter(|c| second.iter().any(|p| &p.address == c));
-    let rule = idle_gpu_rule(chosen.as_deref());
     let installed = std::fs::read_to_string(roots.fs.join(IDLE_GPU_RULE_PATH)).ok();
-    let want = |p: &Pci| if chosen.as_deref() == Some(p.address.as_str()) { "on" } else { "auto" };
-    let wrong: Vec<&&Pci> = second.iter().filter(|p| p.power_control.as_deref() != Some(want(p))).collect();
+    let awake: Vec<&&Pci> = second.iter().filter(|p| p.power_control.as_deref() == Some("on")).collect();
     let maker = second[0].maker();
-    if wrong.is_empty() && installed.as_deref() == Some(rule.as_str()) {
-        let title = if chosen.is_some() { format!("The {maker} graphics card Olo draws with stays awake") } else { format!("The {maker} graphics card sleeps when unused") };
-        r.fine.push(Fine { title, detail: "Its runtime power management is as it should be (72-olo-idle-gpu.rules).".into() });
+    if awake.is_empty() && installed.as_deref() == Some(IDLE_GPU_RULE) {
+        r.fine.push(Fine { title: format!("The {maker} graphics card sleeps when unused"), detail: "Runtime power management is on for it (72-olo-idle-gpu.rules).".into() });
         return;
     }
-    let mut steps = vec![Step::WriteFile { path: PathBuf::from("/").join(IDLE_GPU_RULE_PATH), content: rule, mode: 0o644 }];
+    let mut steps = vec![Step::WriteFile { path: PathBuf::from("/").join(IDLE_GPU_RULE_PATH), content: IDLE_GPU_RULE.into(), mode: 0o644 }];
     for p in &second {
         let control = p.dir.join("power/control");
-        steps.push(Step::WriteSysfs { path: PathBuf::from("/").join(control.strip_prefix(&roots.fs).unwrap_or(&control)), value: want(p).into() });
+        steps.push(Step::WriteSysfs { path: PathBuf::from("/").join(control.strip_prefix(&roots.fs).unwrap_or(&control)), value: "auto".into() });
     }
-    // Olo draws with it, and it may sleep: a problem whatever the rule.
-    if let Some(c) = chosen.as_deref()
-        && wrong.iter().any(|p| p.address == c)
-    {
-        r.findings.push(Finding {
-            id: "gpu:awake".into(),
-            severity: Severity::Problem,
-            title: format!("The {maker} graphics card Olo draws with is allowed to sleep"),
-            detail: "It's chosen in Preferences ▸ Display for Olo to draw with, but its runtime power management is on, so a frame after a pause waits for it to wake. The fix keeps it awake, now and at every start (/etc/udev/rules.d/72-olo-idle-gpu.rules); the other graphics card sleeps when unused.".into(),
-            fix: Some(Fix { label: "Keep It Awake".into(), root: true, steps }),
-        });
-        return;
-    }
-    let awake: Vec<&&Pci> = wrong.iter().filter(|p| p.power_control.as_deref() == Some("on")).copied().collect();
     let unused = awake.iter().any(|p| p.driver.is_none());
     r.findings.push(Finding {
         id: "gpu:idle".into(),
         severity: if awake.is_empty() { Severity::Advice } else { Severity::Problem },
         title: if awake.is_empty() { format!("The {maker} graphics card's sleep isn't kept at boot") } else { format!("The {maker} graphics card never sleeps") },
         detail: format!(
-            "{} so it draws power the whole time, warming the computer and running the battery down. Olo draws with the {} graphics. The fix lets it sleep while nothing uses it, now and at every start (/etc/udev/rules.d/72-olo-idle-gpu.rules); an app that wants it wakes it.",
+            "{} so it draws power the whole time, warming the computer and running the battery down. Olo draws with the {} graphics. The fix lets it sleep while nothing uses it, now and at every start (/etc/udev/rules.d/72-olo-idle-gpu.rules); an app that wants it, or a display plugged into a port it drives, wakes it.",
             if unused { "No driver has it, and its runtime power management is off," } else if awake.is_empty() { "It sleeps now, but nothing keeps that after a restart," } else { "Its runtime power management is off," },
             pcis.iter().find(|p| p.display() && p.boot_vga).map_or("built-in", |p| p.maker()),
         ),
         fix: Some(Fix { label: "Let It Sleep".into(), root: true, steps }),
     });
-}
-
-/// Olo's rule for second graphics cards: asleep when unused, but for the
-/// one Olo draws with (`chosen`, its PCI address), kept awake.
-fn idle_gpu_rule(chosen: Option<&str>) -> String {
-    match chosen {
-        None => IDLE_GPU_RULE.to_owned(),
-        Some(pci) => format!(
-            "{IDLE_GPU_RULE}# The graphics card Olo draws with (Preferences ▸ Display): kept awake.\nACTION==\"add|bind\", SUBSYSTEM==\"pci\", KERNEL==\"{pci}\", TEST==\"power/control\", ATTR{{power/control}}=\"on\"\n"
-        ),
-    }
 }
 
 /// A graphics card no driver has, when one tried (nouveau loaded and
@@ -1260,8 +1217,7 @@ mod tests {
         });
         // SAFETY: getuid has no preconditions.
         let uid = unsafe { libc::getuid() };
-        let roots =
-            Roots { fs: fs.clone(), bin, uid, scope: Some("session-2.scope".into()), units, airpods: true, packages: Box::new(|_| None), updates: Box::new(|| None), display_gpu: Box::new(|| None) };
+        let roots = Roots { fs: fs.clone(), bin, uid, scope: Some("session-2.scope".into()), units, airpods: true, packages: Box::new(|_| None), updates: Box::new(|| None) };
         (fs, roots)
     }
 
@@ -1450,13 +1406,6 @@ mod tests {
         let r = scan(&roots);
         assert!(r.find("gpu:idle").is_none() && r.find("sound:builtin").is_none());
         assert!(r.fine.iter().any(|f| f.title == "The NVIDIA graphics card sleeps when unused"));
-        // Chosen for Olo to draw with: kept awake, the rule saying so.
-        let roots = Roots { display_gpu: Box::new(|| Some("0000:01:00.0".into())), ..roots };
-        let r = scan(&roots);
-        let awake = r.find("gpu:awake").expect("the card Olo draws with may sleep");
-        let steps = &awake.fix.as_ref().unwrap().steps;
-        assert!(matches!(&steps[0], Step::WriteFile { content, .. } if content.contains("KERNEL==\"0000:01:00.0\"") && content.contains("ATTR{power/control}=\"on\"")), "{steps:?}");
-        assert_eq!(steps[1], Step::WriteSysfs { path: "/sys/bus/pci/devices/0000:01:00.0/power/control".into(), value: "on".into() });
         let _ = std::fs::remove_dir_all(&fs);
     }
 

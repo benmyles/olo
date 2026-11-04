@@ -799,10 +799,21 @@ pub fn probe_gpus() {
         }
         match GbmDevice::new(fd) {
             Ok(gbm) => match unsafe { EGLDisplay::new(gbm) } {
-                Ok(display) => match EGLDevice::device_for_display(&display) {
-                    Ok(d) => println!("  EGL: software {}, render node {:?}", d.is_software(), d.try_get_render_node()),
-                    Err(e) => println!("  EGL device: {e}"),
-                },
+                Ok(display) => {
+                    match EGLDevice::device_for_display(&display) {
+                        Ok(d) => println!("  EGL: software {}, render node {:?}", d.is_software(), d.try_get_render_node()),
+                        Err(e) => println!("  EGL device: {e}"),
+                    }
+                    // What another GPU could share with it (a frame
+                    // composed there, shown here): linear buffers it can
+                    // render into, and import.
+                    for code in [Fourcc::Argb8888, Fourcc::Abgr8888, Fourcc::Xrgb8888, Fourcc::Argb2101010, Fourcc::Abgr2101010] {
+                        let linear = |set: &smithay::backend::allocator::format::FormatSet| set.iter().any(|f| f.code == code && f.modifier == Modifier::Linear);
+                        let render = linear(display.dmabuf_render_formats());
+                        let import = linear(display.dmabuf_texture_formats());
+                        println!("  {code:?} linear: render {render}, import {import}; modifiers to render: {}", display.dmabuf_render_formats().iter().filter(|f| f.code == code).count());
+                    }
+                }
                 Err(e) => println!("  EGL: {e}"),
             },
             Err(e) => println!("  GBM: {e}"),
@@ -817,14 +828,6 @@ pub fn probe_gpus() {
 fn choose_primary_gpu(seat: &str) -> Option<DrmNode> {
     if let Ok(var) = std::env::var("ANVIL_DRM_DEVICE") {
         return DrmNode::from_path(var).ok();
-    }
-    // The one chosen in Preferences ▸ Display, if it's there.
-    if let Some(pci) = olo_protocol::display_gpu()
-        && let Some(gpu) = olo_system::gpus::by_pci(&pci)
-        && let Some(node) = gpu.render.as_ref().or(gpu.card.as_ref()).and_then(|p| DrmNode::from_path(p).ok())
-    {
-        info!(gpu = gpu.name, "composing with the GPU chosen in Preferences");
-        return Some(node);
     }
     let render = |path: &Path| DrmNode::from_path(path).ok()?.node_with_type(NodeType::Render)?.ok();
     if let Some(node) = primary_gpu(seat).ok().flatten().and_then(|p| render(&p)) {
@@ -1410,7 +1413,16 @@ impl AnvilState<UdevData> {
 
         let framebuffer_exporter = GbmFramebufferExporter::new(gbm.clone(), render_node.into());
 
-        let color_formats = if std::env::var("ANVIL_DISABLE_10BIT").is_ok() { SUPPORTED_FORMATS_8BIT_ONLY } else { SUPPORTED_FORMATS };
+        // A display this GPU drives but another composes for (a hybrid
+        // laptop's panel, wired to Intel's, with NVIDIA's chosen): 8-bit,
+        // which both can share as a plain linear buffer (NVIDIA renders the
+        // frame into it, Intel imports it), where 10-bit had no layout in
+        // common and every frame went through the CPU (11 ms: 30 Hz).
+        let composed_elsewhere = render_node.is_some_and(|n| n != self.backend_data.primary_gpu);
+        if composed_elsewhere {
+            info!(device = ?node, "composed on another GPU: 8-bit frames, shared linear");
+        }
+        let color_formats = if std::env::var("ANVIL_DISABLE_10BIT").is_ok() || composed_elsewhere { SUPPORTED_FORMATS_8BIT_ONLY } else { SUPPORTED_FORMATS };
         let mut renderer = self.backend_data.gpus.single_renderer(&render_node.unwrap_or(self.backend_data.primary_gpu)).unwrap();
         let render_formats =
             renderer.as_mut().egl_context().dmabuf_render_formats().iter().filter(|format| render_node.is_some() || format.modifier == Modifier::Linear).copied().collect::<FormatSet>();
@@ -2010,7 +2022,10 @@ impl AnvilState<UdevData> {
             // vblank; 60/40 when its frames are cheap.)
             let repaint_delay = surface.pacing.delay(frame_duration);
 
-            let timer = if surface.render_node.map(|render_node| render_node != self.backend_data.primary_gpu).unwrap_or(true) {
+            // (A display composed by its own GPU copies nothing: paced as
+            // any. One without a GPU of its own gets the primary's frame
+            // copied.)
+            let timer = if surface.render_node.is_none() {
                 // However, if we need to do a copy, that might not be enough.
                 // (And without actual comparison to previous frames we cannot really know.)
                 // So lets ignore that in those cases to avoid thrashing performance.
@@ -2110,13 +2125,16 @@ impl AnvilState<UdevData> {
 
         let start = Instant::now();
 
+        // Each display is composed by the GPU wired to it (a hybrid laptop:
+        // the built-in panel and USB-C ports by Intel's, the HDMI port by
+        // NVIDIA's): no frame crosses between GPUs. Only a device that
+        // can't render (a USB display adapter) has its frames composed on
+        // the primary GPU and copied over. Windows' buffers from another
+        // GPU are imported as they come (`single_renderer` has the others).
         let primary_gpu = self.backend_data.primary_gpu;
-        let render_node = surface.render_node.unwrap_or(primary_gpu);
-        let mut renderer = if primary_gpu == render_node {
-            self.backend_data.gpus.single_renderer(&render_node)
-        } else {
-            let format = surface.drm_output.format();
-            self.backend_data.gpus.renderer(&primary_gpu, &render_node, format)
+        let mut renderer = match surface.render_node {
+            Some(own) => self.backend_data.gpus.single_renderer(&own),
+            None => self.backend_data.gpus.single_renderer(&primary_gpu),
         }
         .unwrap();
 

@@ -188,3 +188,54 @@ mod tests {
         std::fs::remove_dir_all(dir).unwrap();
     }
 }
+
+/// Charging limited to spare the battery (UPower's charge threshold: it
+/// stops at `end` % and starts again below `start` %), where the battery
+/// supports it (a ThinkPad's does).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChargeLimit {
+    pub enabled: bool,
+    pub start: u32,
+    pub end: u32,
+    /// UPower's object for the battery.
+    path: String,
+}
+
+/// The system battery UPower can limit, if there is one.
+pub fn charge_limit() -> Option<ChargeLimit> {
+    let conn = crate::bus::system().ok()?;
+    let devices: Vec<zvariant::OwnedObjectPath> = crate::bus::call(conn, UPOWER, "/org/freedesktop/UPower", UPOWER, "EnumerateDevices", &()).ok()?;
+    const DEVICE: &str = "org.freedesktop.UPower.Device";
+    devices.into_iter().find_map(|p| {
+        let path = p.as_str();
+        // (2: a battery; and the computer's own, not a mouse's.)
+        let kind: u32 = crate::bus::property(conn, UPOWER, path, DEVICE, "Type").ok()?;
+        let supply: bool = crate::bus::property(conn, UPOWER, path, DEVICE, "PowerSupply").ok()?;
+        let supported: bool = crate::bus::property(conn, UPOWER, path, DEVICE, "ChargeThresholdSupported").unwrap_or(false);
+        if kind != 2 || !supply || !supported {
+            return None;
+        }
+        Some(ChargeLimit {
+            enabled: crate::bus::property(conn, UPOWER, path, DEVICE, "ChargeThresholdEnabled").unwrap_or(false),
+            start: crate::bus::property(conn, UPOWER, path, DEVICE, "ChargeStartThreshold").unwrap_or(0),
+            end: crate::bus::property(conn, UPOWER, path, DEVICE, "ChargeEndThreshold").unwrap_or(100),
+            path: path.to_owned(),
+        })
+    })
+}
+
+/// Turn the battery's charge limit on or off (polkit allows it to the
+/// person at the computer).
+pub fn set_charge_limit(limit: &ChargeLimit, on: bool) -> crate::Result<()> {
+    crate::bus::call::<_, ()>(crate::bus::system()?, UPOWER, &limit.path, "org.freedesktop.UPower.Device", "EnableChargeThreshold", &(on,))
+}
+
+#[cfg(test)]
+mod limit_tests {
+    /// This computer's (`cargo test -- --ignored`).
+    #[test]
+    #[ignore]
+    fn live_charge_limit() {
+        eprintln!("{:?}", super::charge_limit());
+    }
+}

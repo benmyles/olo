@@ -436,23 +436,6 @@ impl Render for Frame {
     }
 }
 
-/// Render with the GPU chosen in Preferences ▸ Display (app_server
-/// composes with it), by its PCI device id: GPUI takes the first that
-/// will do unless told (`ZED_DEVICE_ID`). Read as the app starts, before
-/// GPUI makes its device; one already set (by hand) stands.
-fn render_with_chosen_gpu() {
-    if std::env::var_os("ZED_DEVICE_ID").is_some() {
-        return;
-    }
-    let Some(pci) = olo_protocol::display_gpu() else { return };
-    let Ok(id) = std::fs::read_to_string(format!("/sys/bus/pci/devices/{pci}/device")) else { return };
-    let id = id.trim().trim_start_matches("0x");
-    if id.len() == 4 {
-        // SAFETY: the app's first act, before any thread is started.
-        unsafe { std::env::set_var("ZED_DEVICE_ID", format!("0x{id}")) };
-    }
-}
-
 /// What `run` sets up that a window needs, for a window drawn in GPUI's
 /// test app (`crate::lint`): no app_server, no agents' socket.
 #[cfg(feature = "lint")]
@@ -659,7 +642,6 @@ pub fn stay_resident(cx: &mut App) {
 /// Runs the app: its theme, its socket for agents, and `build`, which
 /// opens its windows. It ends when its last window closes.
 pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
-    render_with_chosen_gpu();
     // The state an upgrade handed over, its file gone whether or not the
     // app asks for it.
     olo_kit_base::restore::claim();

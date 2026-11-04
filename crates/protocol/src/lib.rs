@@ -171,11 +171,9 @@ pub enum Request {
     InputDevices,
     /// The keyboards plugged in, by name (real ones: with letter keys).
     Keyboards,
-    /// Every GPU, and which app_server composes with ([`Reply::Gpus`]).
+    /// Every GPU and the displays wired to it ([`Reply::Gpus`]): each
+    /// display is composed by its own GPU.
     Gpus,
-    /// Start app_server again (olo-session does it, as on a reload): a new
-    /// GPU chosen takes effect so. Windows come back as they were.
-    ReloadServer,
     GetSettings,
     /// Every theme and its colour sets, and the palette in use: what
     /// Preferences ▸ Themes offers. Choose with `SetSettings`
@@ -1511,47 +1509,20 @@ pub struct DisplaySettings {
     /// under a connector by older versions still apply, and move to the
     /// monitor's key when next changed.
     pub outputs: std::collections::BTreeMap<String, OutputConfig>,
-    /// The GPU app_server composes with and Olo's apps render with, by
-    /// its PCI address ("0000:01:00.0"); None (or one not there): the one
-    /// the computer started on. Changed, it takes effect as app_server
-    /// starts again (`Request::ReloadServer`), and Olo's apps move to it
-    /// as they start again (the session asks them to).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub gpu: Option<String>,
-}
-
-/// The GPU the settings choose (`DisplaySettings::gpu`), read straight
-/// from app_server's settings file: for programs that start before they
-/// could ask (olo-session, an app choosing the GPU it renders with).
-pub fn display_gpu() -> Option<String> {
-    #[derive(Deserialize, Default)]
-    #[serde(default)]
-    struct Only {
-        display: OnlyDisplay,
-    }
-    #[derive(Deserialize, Default)]
-    #[serde(default)]
-    struct OnlyDisplay {
-        gpu: Option<String>,
-    }
-    let path = match std::env::var_os("OLO_APP_SERVER_SETTINGS") {
-        Some(p) => std::path::PathBuf::from(p),
-        None => olo_xdg::config_dir().join("app_server.json"),
-    };
-    serde_json::from_slice::<Only>(&std::fs::read(path).ok()?).ok()?.display.gpu
 }
 
 /// A GPU, as `Request::Gpus` tells of it.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct GpuInfo {
-    /// Its PCI address ("0000:01:00.0"): what `DisplaySettings::gpu` keeps.
+    /// Its PCI address ("0000:01:00.0").
     pub pci: String,
     /// "Intel Graphics", "NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU".
     pub name: String,
     pub driver: String,
     /// The one the computer started on.
     pub boot: bool,
-    /// The one app_server composes with now.
+    /// app_server's primary GPU (windows' buffers, the GPU for displays
+    /// without one of their own): the one the computer started on.
     pub rendering: bool,
     /// The display connectors wired to it.
     pub connectors: Vec<String>,
@@ -1575,7 +1546,7 @@ pub fn is_connector_key(key: &str) -> bool {
 
 impl Default for DisplaySettings {
     fn default() -> Self {
-        DisplaySettings { scale: 2.0, main: None, outputs: Default::default(), gpu: None }
+        DisplaySettings { scale: 2.0, main: None, outputs: Default::default() }
     }
 }
 

@@ -598,23 +598,6 @@ impl<B: Backend + 'static> AnvilState<B> {
                     .collect();
                 Reply::Gpus { gpus }
             }
-            Request::ReloadServer => {
-                // olo-session (this process's parent) starts it again, as
-                // on a reload; the answer goes first.
-                // SAFETY: getppid can't fail.
-                let parent = unsafe { libc::getppid() };
-                let ours = std::fs::read_to_string(format!("/proc/{parent}/comm")).is_ok_and(|c| c.trim() == "olo-session");
-                if ours {
-                    std::thread::spawn(move || {
-                        std::thread::sleep(std::time::Duration::from_millis(200));
-                        // SAFETY: a signal to our own parent, the session.
-                        unsafe { libc::kill(parent, libc::SIGHUP) };
-                    });
-                    Reply::Ok
-                } else {
-                    Reply::Error { message: "app_server isn't running under olo-session".into() }
-                }
-            }
             Request::PowerStatus => Reply::Power { status: self.power_status() },
             Request::Lock => {
                 self.lock_screen();
