@@ -1083,6 +1083,21 @@ of Finished; a new one goes where its priority puts it.
   caller): worktrunk's worktree path set to the same place. Each
   suggestion notified once, ever (kept by its id).
 
+- **olo-slack: Slack, Olo-fied, as olo-chrome is Chrome** (Ben,
+  2026-11-04): "build olo-slack that is like olo-chrome but an olo-fied
+  version of slack where it integrates deeply with everything olo".
+  As apps/chrome does for Chrome (HACKING's "Google Chrome"): Slack's
+  web app in Olo's Chrome as an app window of its own (`olo.slack`,
+  its own profile, Wayland only), with an extension and native host
+  that join it to Olo: its unread count and mentions on its Deskbar
+  entry, its messages as Olo notifications (Notifications' own banners
+  and history, Do Not Disturb), its status following Olo's (away when
+  the screen locks, in a meeting, Do Not Disturb), its links opened
+  with Olo's default apps, files dropped from Tracker, pictures in the
+  Viewer, the palette's commands (jump to a channel or person, search),
+  its windows and messages readable and drivable by agents (the kit's
+  tree, Agent Screens), and passwords and passkeys from Olo Passwords.
+
 ## Maybe one day
 
 Tabled (Ben, 2026-11-02): "performance seems pretty solid now in olo so
