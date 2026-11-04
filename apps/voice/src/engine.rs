@@ -26,12 +26,22 @@ use pw::{properties::properties, spa};
 pub struct Config {
     /// The microphone's node name.
     pub microphone: String,
+    /// What the microphone is called ("AirPods"): the source is named
+    /// after it (`description`), so it's told apart from the microphone
+    /// itself wherever devices are listed.
+    pub label: String,
     /// The speakers' node name, when echo is to be cancelled.
     pub speakers: Option<String>,
     pub settings: Settings,
 }
 
 impl Config {
+    /// The source's name: "AirPods (Voice Processing)".
+    pub fn description(&self) -> String {
+        let label = if self.label.trim().is_empty() { "Microphone" } else { self.label.trim() };
+        format!("{label} (Voice Processing)")
+    }
+
     /// The buffering around the processing: the graph's quantum asked for,
     /// and what the source keeps ahead (samples).
     fn buffering(&self) -> (&'static str, usize) {
@@ -279,7 +289,7 @@ fn run(config: Config, rx: pw::channel::Receiver<Message>, stats: Arc<Stats>, ch
             *pw::keys::MEDIA_CATEGORY => "Capture",
             *pw::keys::MEDIA_ROLE => "Communication",
             *pw::keys::NODE_NAME => NODE,
-            *pw::keys::NODE_DESCRIPTION => "Microphone (Voice Processing)",
+            *pw::keys::NODE_DESCRIPTION => config.description(),
             *pw::keys::AUDIO_CHANNELS => "1",
             *pw::keys::NODE_LATENCY => config.buffering().0,
             "device.icon-name" => "audio-input-microphone",
@@ -382,6 +392,15 @@ fn run(config: Config, rx: pw::channel::Receiver<Message>, stats: Arc<Stats>, ch
                     }
                     Err(e) => tracing::warn!("voice: {e}"),
                 }
+                // Named after the microphone it listens to now.
+                if cur.0.description() != config.description()
+                    && let Some(s) = source.upgrade()
+                {
+                    let props = properties! { *pw::keys::NODE_DESCRIPTION => config.description() };
+                    // SAFETY: the stream is alive (upgraded), on its own
+                    // loop's thread; PipeWire copies the dictionary.
+                    unsafe { pw::sys::pw_stream_update_properties(s.as_raw_ptr(), props.dict().as_raw()) };
+                }
                 cur.0 = *config;
             }
         }
@@ -389,4 +408,19 @@ fn run(config: Config, rx: pw::channel::Receiver<Message>, stats: Arc<Stats>, ch
     tracing::info!("voice: source {NODE}, listening to {}", config.microphone);
     mainloop.run();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The processed source is named after the microphone it listens to,
+    /// so it's never mistaken for it.
+    #[test]
+    fn named_after_its_microphone() {
+        let c = |label: &str| Config { microphone: "m".into(), label: label.into(), speakers: None, settings: Settings::default() };
+        assert_eq!(c("AirPods").description(), "AirPods (Voice Processing)");
+        assert_eq!(c("MacBook Pro Microphone").description(), "MacBook Pro Microphone (Voice Processing)");
+        assert_eq!(c(" ").description(), "Microphone (Voice Processing)");
+    }
 }

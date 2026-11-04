@@ -5789,10 +5789,14 @@ buzz for noise.
 ## The voice service (apps/voice, `olo-voice --service`)
 
 Every microphone through voice processing (`crates/voice`, above). The
-service puts a source of its own, "Microphone (Voice Processing)"
-(`olo_protocol::voice::NODE`, `olo_voice`), in front of the microphone
+service puts a source of its own, named after the microphone it listens
+to ("AirPods (Voice Processing)", `Config::description`, renamed live
+as the microphone changes: `pw_stream_update_properties`, which every
+list of devices, PipeWire's and its PulseAudio server's, follows;
+`olo_protocol::voice::NODE`, `olo_voice`), in front of the microphone
 the person chose and makes it the default input, so anything that
-records gets the processed voice:
+records gets the processed voice, and the processed device and the raw
+one are always told apart:
 
 - **Which microphone**: whatever becomes the default input that isn't
   its own (Preferences, Deskbar, AirPods' choice, any program) is the

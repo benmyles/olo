@@ -162,7 +162,12 @@ fn service() -> ExitCode {
 
         if settings.enabled && microphone.is_some() {
             let speakers = d.default_device(Kind::Output).filter(|o| !o.private).map(|o| o.name.clone());
-            let want = engine::Config { microphone: microphone.clone().unwrap_or_default(), speakers: speakers.filter(|_| settings.echo_cancellation), settings };
+            let want = engine::Config {
+                microphone: microphone.clone().unwrap_or_default(),
+                label: state.microphone_label.clone().unwrap_or_default(),
+                speakers: speakers.filter(|_| settings.echo_cancellation),
+                settings,
+            };
             match &engine {
                 None => {
                     let tx = std::sync::Mutex::new(tx.clone());
