@@ -7,17 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Date & Time's worker asks timedated every 2 s** (found 2026-11-04):
-  `apps/preferences/src/datetime.rs`'s `link` thread reads timedated's
-  status on a 2-second timeout for as long as Preferences runs, which
-  keeps timedated (activated on demand, gone when idle) running and
-  wakes the app with nothing changed. Idle is to cost nothing: watch
-  timedated's `PropertiesChanged` (zone, NTP on or off) and the kernel's
-  clock (a `timerfd` with `TFD_TIMER_CANCEL_ON_SET` says when the time is
-  set) instead, asking only while the panel is open; synchronisation
-  (`NTPSynchronized`, not signalled) asked only while the panel shows it
-  unsynchronised, until it is.
-
 - **Preferences ▸ GPUs: each GPU and every knob it has** (Ben,
   2026-11-04: "if there are any knobs etc. that can be tweaked for the
   nvidia gpu, e.g. to make it run cooler/slower or hotter/faster or any
@@ -997,6 +986,15 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Date & Time's worker asks timedated every 2 s**~~ (found
+  2026-11-04): it read timedated's status every 2 seconds for as long as
+  Preferences ran, keeping timedated running. Now it listens for
+  timedated's `PropertiesChanged` (`olo_system::time::watch`) and asks
+  only then, after a change it made, and every 10 s while network time
+  is on and the clock isn't synchronised yet (not signalled). Preferences
+  with Date & Time open: 12 wakeups/s before, 5 now (the clock's
+  second; the worker none).
 
 - ~~**Nothing routine wakes the NVIDIA GPU; local models run on the
   CPU's SIMD**~~ (Ben, 2026-11-04: "make sure that nothing in olo is

@@ -38,7 +38,13 @@ enum Request {
     Time(i64),
     Zone(String),
     Ntp(bool),
+    /// timedated said something changed: read it again.
+    Refresh,
 }
+
+/// How often the clock is asked whether it's synchronised, while network
+/// time is on and it isn't yet (timedated doesn't say when it is).
+const SYNC_ASK_EVERY: Duration = Duration::from_secs(10);
 
 #[derive(Default)]
 struct Shared {
@@ -74,6 +80,12 @@ fn link(proxy: olo_ui::Proxy) -> &'static Link {
             return Link { shared, tx: channel().0 };
         }
         let (tx, rx) = channel::<Request>();
+        // timedated's changes (another program's too) read again as
+        // they're said; nothing asked otherwise.
+        let told = tx.clone();
+        systime::watch(move || {
+            let _ = told.send(Request::Refresh);
+        });
         let sh = shared.clone();
         std::thread::Builder::new()
             .name("timedate".into())
@@ -103,17 +115,33 @@ fn link(proxy: olo_ui::Proxy) -> &'static Link {
                         sh.lock().unwrap().zones = zones.clone().unwrap_or_default();
                         wake();
                     }
-                    let req = match rx.recv_timeout(Duration::from_secs(2)) {
-                        Ok(r) => r,
-                        Err(RecvTimeoutError::Timeout) => continue,
-                        Err(RecvTimeoutError::Disconnected) => break,
+                    // Network time on and the clock not synchronised yet:
+                    // asked again now and then until it is (that isn't
+                    // signalled). Else nothing until something changes.
+                    let syncing = matches!(&status, Some(Ok(st)) if st.ntp && !st.ntp_synchronized);
+                    let req = if syncing {
+                        match rx.recv_timeout(SYNC_ASK_EVERY) {
+                            Ok(r) => r,
+                            Err(RecvTimeoutError::Timeout) => continue,
+                            Err(RecvTimeoutError::Disconnected) => break,
+                        }
+                    } else {
+                        match rx.recv() {
+                            Ok(r) => r,
+                            Err(_) => break,
+                        }
                     };
+                    if matches!(req, Request::Refresh) {
+                        continue;
+                    }
                     sh.lock().unwrap().busy = true;
                     wake();
                     let (r, what) = match &req {
                         Request::Time(us) => (systime::set_time(*us), "date and time"),
                         Request::Zone(z) => (systime::set_timezone(z), "time zone"),
                         Request::Ntp(on) => (systime::set_ntp(*on), "network time setting"),
+                        // (Read again above, before anything's busy.)
+                        Request::Refresh => continue,
                     };
                     let mut s = sh.lock().unwrap();
                     s.busy = false;

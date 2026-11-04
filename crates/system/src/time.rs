@@ -52,6 +52,27 @@ pub fn set_ntp(on: bool) -> Result<()> {
     bus::call::<_, ()>(bus::system()?, DEST, PATH, IFACE, "SetNTP", &(on, true))
 }
 
+/// Call `changed` whenever timedated says its settings changed (the
+/// zone, network time on or off, the hardware clock's), on a thread of
+/// its own, for as long as the program runs: waiting costs nothing.
+/// Whether the clock is synchronised isn't said: ask [`status`] for it.
+pub fn watch(changed: impl Fn() + Send + 'static) {
+    let _ = std::thread::Builder::new().name("timedate-watch".into()).spawn(move || {
+        let Ok(conn) = bus::system() else { return };
+        // (By path, not sender: timedated starts when asked and leaves
+        // when idle, so its unique name changes.)
+        let Some(signals) = (|| {
+            let rule = zbus::MatchRule::builder().msg_type(zbus::message::Type::Signal).path(PATH).ok()?.interface("org.freedesktop.DBus.Properties").ok()?.member("PropertiesChanged").ok()?.build();
+            zbus::blocking::MessageIterator::for_match_rule(rule, conn, Some(16)).ok()
+        })() else {
+            return;
+        };
+        for _ in signals.flatten() {
+            changed();
+        }
+    });
+}
+
 /// Whether `e` is polkit refusing for want of a password (no
 /// authentication agent answered, or the user cancelled).
 pub fn needs_auth(e: &crate::Error) -> bool {
