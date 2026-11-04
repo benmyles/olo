@@ -356,9 +356,17 @@ of Finished; a new one goes where its priority puts it.
     stops saying so when installing fails. Doctor looks in both places.
     Left: Ben's run on the ThinkPad.
   - brush's command model (olo-complete) computes with AVX2 and FMA on
-    x86_64 (SSE2 without): type-checked here, its test
-    (`simd_does_the_reference_arithmetic`, against the plain reference)
-    first runs there: `cargo test --release -p olo-complete`.
+    x86_64 (SSE2 without): its test (`simd_does_the_reference_arithmetic`,
+    against the plain reference) passes on the ThinkPad (2026-11-04).
+  - *On the ThinkPad* (2026-11-04): Olo runs there daily. Since: each
+    display composed by its own GPU (Intel the panel, NVIDIA its HDMI
+    port, which sleeps otherwise: apps, Chrome and app_server leave it
+    asleep), Preferences ▸ GPUs, NVIDIA's driver through Doctor, the
+    touch screen as pointer and scroll, the OLED known, power modes and
+    the charge limit, the SoundWire sound once kernel 7.2.15 came, the
+    ThinkPad's keys (F4 and its light, F7–F9), the TrackPoint, the
+    presence sensor, Thunderbolt in Doctor. Left: in the ThinkPad item
+    above (HDR, VRR, face sign-in, the haptic touchpad's palm filter).
 
 - **Backup tried on the ThinkPad** (what's left of Ben's backup audit,
   2026-11-03; waiting on the machine): an export from this Mac (sealed,
