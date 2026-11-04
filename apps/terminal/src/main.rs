@@ -844,8 +844,10 @@ impl Terminal {
     /// before: `SavedWindow::key`), else by its first shell.
     #[allow(clippy::too_many_arguments)]
     fn add(&mut self, cx: &mut Cx, mut options: WindowOptions, size: Size, snap_to: Option<(usize, usize)>, starts: Vec<Start>, active: usize, (groups, of): Grouping, key: Option<u64>) -> WindowId {
-        // (Its shells first, so it opens with its key.)
-        let tabs: Vec<Tab> = starts
+        let key = key.filter(|&k| k != 0).unwrap_or_else(new_window_key);
+        options.restore_key = Some(restore_key(key));
+        let id = cx.open_window(options);
+        let tabs = starts
             .into_iter()
             .enumerate()
             .map(|(i, s)| {
@@ -855,11 +857,7 @@ impl Terminal {
             })
             .collect();
         let mut win = TermWin::new(tabs, active, snap_to, groups);
-        if let Some(k) = key.filter(|&k| k != 0) {
-            win.key = k;
-        }
-        options.restore_key = Some(restore_key(win.key));
-        let id = cx.open_window(options);
+        win.key = key;
         self.windows.insert(id, Win::Term(Box::new(win)));
         id
     }
