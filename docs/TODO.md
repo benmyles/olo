@@ -1080,6 +1080,15 @@ of Finished; a new one goes where its priority puts it.
   the file panel the portal shows (apps/portal, `olo_ui::file_panel`),
   Quick Look open on a file must follow ↑ and ↓ (and ← →) to the
   file selected next, as it does in Tracker's own windows.
+  *Quick Look: done* (9bf9eb3b: the look follows the panel's list both
+  ways, `--follow`, HACKING's file panel). *Show in folder, looked at*:
+  Tracker owns `org.freedesktop.FileManager1` in the session and its
+  ShowItems opens the folder with the file selected (tested on a test
+  session's bus); GIO's default for folders is Tracker too; the user
+  services have WAYLAND_DISPLAY. What Chrome 157 calls is still to see:
+  `busctl --user monitor org.freedesktop.FileManager1` (and
+  `org.freedesktop.portal.Desktop`) running while its download's folder
+  is clicked (a test session's Chrome stops at its terms on first run).
 
 - **olo-slack: Slack, Olo-fied, as olo-chrome is Chrome** (Ben,
   2026-11-04): "build olo-slack that is like olo-chrome but an olo-fied
