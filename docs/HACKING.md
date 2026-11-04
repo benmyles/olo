@@ -4086,7 +4086,14 @@ A window that comes back (from another workspace, from being hidden) is
 left exactly where it was unless the displays changed while it was away
 (`welcome_back`: then it is rehomed, having first moved as far as its
 own display did, `display_moved`); a tiled or zoomed one is only
-refitted to its room, in case the Deskbar moved. Whatever a window
+refitted to its room, in case the Deskbar moved. It comes back on the
+display it was parked on, whatever its frame says (`unpark`: brought
+into that display's area if its frame would show it on another, or on
+none): an Undo putting a window back where it was before the displays
+changed, which they did again, once left it off every display, and when
+its workspace next showed it appeared on the other display, which
+doesn't show that workspace, and stayed there (wm-fuzz seed 5,
+Twitcher's ⌘`). Whatever a window
 remembers (its own frame for Restore, what unzooming puts back) moves
 with its display too (`shift_remembered`, from `fixup_positions`), as
 does what Undo Window Arrangement puts back (`arranged_among`), and is

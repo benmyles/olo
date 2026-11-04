@@ -718,8 +718,23 @@ impl<B: Backend + 'static> AnvilState<B> {
             loc += delta;
             crate::shell::tiling::shift_remembered(window, delta);
         }
+        let home = self.display_of(window);
         self.space.map_element(window.clone(), loc, false);
         self.welcome_back(window, changed);
+        // Back on the display it was parked on, whatever its frame says: a
+        // frame left out of reach of it meanwhile (an Undo putting it back
+        // where it was before the displays changed, and they changed again)
+        // showed it on another display, whose workspace it isn't on, and
+        // it stayed there when its own switched back (wm-fuzz, Twitcher).
+        if let Some(d) = home
+            && self.window_output(window).as_ref() != Some(&d)
+            && let (Some(area), Some(geo), Some(at)) = (self.usable_area(&d), self.space.element_geometry(window), self.space.element_location(window))
+        {
+            let x = geo.loc.x.clamp(area.loc.x, (area.loc.x + area.size.w - geo.size.w).max(area.loc.x));
+            let y = geo.loc.y.clamp(area.loc.y, (area.loc.y + area.size.h - geo.size.h).max(area.loc.y));
+            self.space.relocate_element(window, at + (Point::from((x, y)) - geo.loc));
+            info!(window = window.id(), display = d.name(), "back on its own display");
+        }
         // Out of the group it joined when it last arrived, untouched: its
         // own frame again (unless it joins one here too).
         // (Others of its group coming back here too, a workspace being

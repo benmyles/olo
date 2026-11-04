@@ -26,17 +26,6 @@ of Finished; a new one goes where its priority puts it.
   never leaving a tile under its least, and the look found; the seed
   passing at 1×, 1.5×, 1.75× and 2×.
 
-- **⌘` moves a window from another workspace to this one** (found by
-  wm-fuzz, 2026-11-03, seed 5 step 124 on a `2560x1600,1920x1080`
-  session; the build from before the Focus fixes fails it the same way):
-  after a run of tiling, arranging, a display's scale changed and an
-  Undo, ⌘` ×3 left window 6, an app's window on workspace 4, on
-  workspace 1. Twitcher shows a window from another workspace while it
-  is chosen (`twitch_show`) and must put it back when another is
-  chosen or Twitcher closes on another; find the path that keeps it
-  (an Undo of an arrangement in between, or the display's scale), fix
-  it, and keep wm-fuzz's seed passing.
-
 - **The palm trainer, full screen and driven from the keyboard** (Ben,
   2026-11-02, with a screenshot of its last step, "Try it", at 2× in
   dark mode): "so the training modal/flow needs work: for one i can't
@@ -962,6 +951,27 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**⌘` moves a window from another workspace to this one**~~ (found by
+  wm-fuzz, 2026-11-03, seed 5 step 124 on a `2560x1600,1920x1080`
+  session; the build from before the Focus fixes fails it the same way):
+  after a run of tiling, arranging, a display's scale changed and an
+  Undo, ⌘` ×3 left window 6, an app's window on workspace 4, on
+  workspace 1. Twitcher shows a window from another workspace while it
+  is chosen (`twitch_show`) and must put it back when another is
+  chosen or Twitcher closes on another; find the path that keeps it
+  (an Undo of an arrangement in between, or the display's scale), fix
+  it, and keep wm-fuzz's seed passing.
+  *Done* 2026-11-03: not Twitcher's doing. A tab torn out of its group,
+  then an Undo of an arrangement remembered before the displays were
+  rearranged, put the window at a frame on no display at all (only its
+  tab on one, then none as the displays changed again); parked with its
+  workspace, it was parked on the main display (`window_output`'s
+  fallback), and when ⌘` showed that workspace it was mapped at its
+  frame, on the other display, which didn't switch back with it. A
+  window now comes back on the display it was parked on (`unpark`:
+  brought into its area if its frame says another). wm-fuzz seed 5
+  passes its 200 steps (seeds 9 and 13 too).
 
 - ~~**Auto-tiling: an in-place reload puts the windows in each other's
   tiles**~~ (found 2026-11-03, testing the drag rounds): three tiles
