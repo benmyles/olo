@@ -292,7 +292,34 @@ fn write_bytes(path: &Path, content: &[u8], mode: u32) -> std::io::Result<()> {
     let tmp = path.with_file_name(format!(".{name}.olo-new"));
     std::fs::write(&tmp, content)?;
     std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(mode))?;
+    // The SELinux label of the file it replaces, kept: a new file takes
+    // its folder's (/etc/default/grub became etc_t, not bootloader_etc_t).
+    if let Some(label) = selinux_label(path) {
+        set_selinux_label(&tmp, &label);
+    }
     std::fs::rename(&tmp, path)
+}
+
+const SELINUX: &std::ffi::CStr = c"security.selinux";
+
+/// A file's SELinux label (its xattr), if it has one.
+fn selinux_label(path: &Path) -> Option<Vec<u8>> {
+    use std::os::unix::ffi::OsStrExt as _;
+    let c = std::ffi::CString::new(path.as_os_str().as_bytes()).ok()?;
+    let mut buf = vec![0u8; 256];
+    // SAFETY: c and buf are valid for the call; the length is buf's.
+    let n = unsafe { libc::getxattr(c.as_ptr(), SELINUX.as_ptr(), buf.as_mut_ptr().cast(), buf.len()) };
+    (n > 0).then(|| {
+        buf.truncate(n as usize);
+        buf
+    })
+}
+
+fn set_selinux_label(path: &Path, label: &[u8]) {
+    use std::os::unix::ffi::OsStrExt as _;
+    let Ok(c) = std::ffi::CString::new(path.as_os_str().as_bytes()) else { return };
+    // SAFETY: c and label are valid for the call.
+    let _ = unsafe { libc::setxattr(c.as_ptr(), SELINUX.as_ptr(), label.as_ptr().cast(), label.len(), 0) };
 }
 
 pub use olo_system::systemd::UnitState;
