@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-03
 
+### Terminal: tile mode's group headers selected while their groups show
+
+*21:26* — With every group tiled (the default), each group's header is drawn selected; a click takes that group out of the tiles and another brings it back.
+
+![Terminal: tile mode's group headers selected while their groups show](2026-11-03/212639-terminal-tile-mode-s-group-headers-selected-whil.png)
+
 ### Sound ▸ Voice Processing ▸ Try It
 
 *20:46* — A few seconds of your voice, recorded and put through each setting worth comparing: what each adds (delay, its time a 10 ms frame, what noise suppression and levelling did) and what ran it; played as the original or the chosen setting's sound, switching at the same place, with a live spectrum of both (the kit's new Spectrum).

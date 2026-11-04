@@ -796,7 +796,7 @@ impl Terminal {
         if t.tiled && t.tabs.len() > 1 {
             // Tile All Tabs: a group's chip chooses which are tiled; each
             // pane has its own head.
-            strip = strip.group_selection(t.groups.iter().map(|g| t.tile_groups.contains(&g.name)).collect());
+            strip = strip.group_selection((0..t.groups.len()).map(|g| t.tile_group_shown(g)).collect());
         }
         if side {
             strip = strip.side();

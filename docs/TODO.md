@@ -360,17 +360,6 @@ of Finished; a new one goes where its priority puts it.
   until shown again; kept per tab through a reload; agents read it as
   hidden when tiled and can toggle it.
 
-- **Terminal: tile mode's group headers look unselected while every
-  group shows** (Ben, 2026-11-03, a bug): "in terminal tile mode when all
-  tab groups are being shown (the default) the group headers aren't
-  getting the "selected" style, they look unselected. they should be all
-  selected by default and then i can deselect/reselect as i want". So:
-  with every group shown (tile mode's default, nothing chosen yet), each
-  group's header is drawn selected, as a chosen one is; clicking one
-  deselects it (its group leaves the tiles) and clicking again selects
-  it, from there as now; agents read each header's selected state as it
-  is drawn; checked in light, dark and night at every scale.
-
 - **The command palette: typing "n" first closes it; every shortcut in
   it; files only on Ctrl** (Ben, 2026-11-03): "when i'm in the command
   pallette, if i start by typing "n" it closes the pallette. fix that
@@ -916,6 +905,25 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Terminal: tile mode's group headers look unselected while every
+  group shows**~~ (Ben, 2026-11-03, a bug): "in terminal tile mode when all
+  tab groups are being shown (the default) the group headers aren't
+  getting the "selected" style, they look unselected. they should be all
+  selected by default and then i can deselect/reselect as i want". So:
+  with every group shown (tile mode's default, nothing chosen yet), each
+  group's header is drawn selected, as a chosen one is; clicking one
+  deselects it (its group leaves the tiles) and clicking again selects
+  it, from there as now; agents read each header's selected state as it
+  is drawn; checked in light, dark and night at every scale. *Done* (2026-11-03): a header is drawn
+  selected while its group shows (`tile_group_shown`: every group when
+  nothing is chosen yet), and a click takes that one group out of the
+  tiles or brings it back (`tile_groups_toggled`, which never leaves
+  none and goes back to "every group" once all are chosen; a test of
+  both); agents read the same selected state. The Group window's
+  suggested name now comes selected, so typing replaces it. Checked
+  headless with two groups, and reviewed clean at 1, 1.25, 1.5, 1.75
+  and 2×, light and dark.
 
 - ~~**Activity Monitor: an Inputs section, and the Displays panel
   polished**~~ (Ben, 2026-11-03): "add an Inputs section in activity

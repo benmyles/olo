@@ -407,19 +407,21 @@ impl TermWin {
         self.tile_heights.values().any(|w| (w - 1.0).abs() > 0.01) || self.tile_widths.values().flatten().any(|w| (w - 1.0).abs() > 0.01)
     }
 
-    /// Choose group `g` in Tile All Tabs, or not; all chosen is none.
-    /// The tab typed into stays one that shows.
+    /// Whether group `g` is tiled now: every group is while none is
+    /// chosen (Tile All Tabs' first state), else the chosen ones.
+    fn tile_group_shown(&self, g: usize) -> bool {
+        self.tile_groups.is_empty() || self.groups.get(g).is_some_and(|x| self.tile_groups.contains(&x.name))
+    }
+
+    /// Take group `g` out of Tile All Tabs, or put it back (its header is
+    /// drawn selected while it's tiled: all of them at first, Ben,
+    /// 2026-11-03: "they should be all selected by default and then i can
+    /// deselect/reselect as i want"); the last one tiled stays; all
+    /// chosen is none. The tab typed into stays one that shows.
     fn toggle_tile_group(&mut self, g: usize) {
         let Some(name) = self.groups.get(g).map(|x| x.name.clone()) else { return };
-        if let Some(i) = self.tile_groups.iter().position(|n| *n == name) {
-            self.tile_groups.remove(i);
-        } else {
-            self.tile_groups.push(name);
-        }
-        self.tile_groups.retain(|n| self.groups.iter().any(|x| x.name == *n));
-        if self.tile_groups.len() >= self.groups.len() {
-            self.tile_groups.clear();
-        }
+        let all: Vec<String> = self.groups.iter().map(|x| x.name.clone()).collect();
+        self.tile_groups = tile_groups_toggled(&self.tile_groups, &all, &name);
         let shown: Vec<usize> = self.tile_rows().concat();
         if !shown.contains(&self.active)
             && let Some(&first) = shown.first()
@@ -1514,6 +1516,8 @@ impl Terminal {
         let name = Terminal::field(cx, &name, |f| f);
         let id = cx.open_window(WindowOptions::new("Group", NAME_W as u32, NAME_H as u32).min_size(NAME_W as u32, NAME_H as u32).max_size(NAME_W as u32, NAME_H as u32));
         ui::submit_on_enter(cx, &name, id, |t, cx, id| t.name_group_done(cx, id, true));
+        // The name it would have, selected: typing gives it another.
+        name.update(cx, |f, cx| f.select_all_text(cx));
         let f = name.clone();
         cx.with_window(id, move |_, window, cx| f.read(cx).focus(window));
         self.windows.insert(id, Win::NameGroup { target, group, tab, name, color });
@@ -2522,6 +2526,46 @@ fn main() {
 /// `s` as one shell word: as it is when that is safe, else single-quoted.
 fn shell_quote(s: &str) -> String {
     if !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b"/-._+,:@%=".contains(&b)) { s.to_owned() } else { format!("'{}'", s.replace('\'', "'\\''")) }
+}
+
+/// Tile All Tabs' chosen groups (`chosen`, of `all`; none: every one)
+/// once `name`'s header is clicked: tiled, it leaves (the last one tiled
+/// stays); not, it's back; all chosen is none.
+fn tile_groups_toggled(chosen: &[String], all: &[String], name: &str) -> Vec<String> {
+    let mut out: Vec<String> = if chosen.is_empty() { all.to_vec() } else { chosen.iter().filter(|n| all.contains(n)).cloned().collect() };
+    match out.iter().position(|n| n == name) {
+        Some(_) if out.len() == 1 => {}
+        Some(i) => {
+            out.remove(i);
+        }
+        None => out.push(name.to_owned()),
+    }
+    if out.len() >= all.len() {
+        out.clear();
+    }
+    out
+}
+
+#[cfg(test)]
+mod tile_group_tests {
+    use super::tile_groups_toggled as t;
+
+    #[test]
+    fn every_group_starts_shown_and_each_click_takes_it_out_or_back() {
+        let all: Vec<String> = ["a", "b", "c"].map(String::from).to_vec();
+        let shown = |chosen: &[String]| all.iter().filter(|n| chosen.is_empty() || chosen.contains(n)).cloned().collect::<Vec<_>>();
+        // At first every group shows (none chosen); a click takes one out.
+        let one = t(&[], &all, "b");
+        assert_eq!(shown(&one), ["a", "c"]);
+        // Again: it's back, and every group shows (none chosen).
+        assert!(t(&one, &all, "b").is_empty());
+        // Down to one: that one stays.
+        let c = t(&one, &all, "a");
+        assert_eq!(shown(&c), ["c"]);
+        assert_eq!(t(&c, &all, "c"), c);
+        // A group gone since is let go.
+        assert_eq!(shown(&t(&["c".into(), "gone".into()], &all, "a")), ["a", "c"]);
+    }
 }
 
 #[cfg(test)]

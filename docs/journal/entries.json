@@ -2998,5 +2998,11 @@
   "title": "Sound \u25b8 Voice Processing \u25b8 Try It",
   "caption": "A few seconds of your voice, recorded and put through each setting worth comparing: what each adds (delay, its time a 10 ms frame, what noise suppression and levelling did) and what ran it; played as the original or the chosen setting's sound, switching at the same place, with a live spectrum of both (the kit's new Spectrum).",
   "image": "2026-11-03/204614-sound-voice-processing-try-it.png"
+ },
+ {
+  "time": "2026-11-03T21:26:39",
+  "title": "Terminal: tile mode's group headers selected while their groups show",
+  "caption": "With every group tiled (the default), each group's header is drawn selected; a click takes that group out of the tiles and another brings it back.",
+  "image": "2026-11-03/212639-terminal-tile-mode-s-group-headers-selected-whil.png"
  }
 ]
