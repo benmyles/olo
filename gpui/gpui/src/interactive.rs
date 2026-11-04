@@ -399,6 +399,33 @@ impl InputEvent for ScrollWheelEvent {
 }
 impl MouseEvent for ScrollWheelEvent {}
 
+/// Olo: two fingers pinching (a touchpad's, or a touch screen's on a
+/// window that takes no touch, as app_server makes them): how far apart
+/// they are against how they began (`scale`), and since the last event
+/// (`step`: a factor to zoom by).
+#[derive(Clone, Debug, Default)]
+pub struct PinchEvent {
+    /// Where the pointer is on the window.
+    pub position: Point<Pixels>,
+    /// How far apart the fingers are against how they began (1: as they
+    /// began).
+    pub scale: f32,
+    /// Its change since the last event: a factor to zoom by.
+    pub step: f32,
+    /// Began, going on, or ended.
+    pub phase: TouchPhase,
+    /// The modifiers held.
+    pub modifiers: Modifiers,
+}
+
+impl Sealed for PinchEvent {}
+impl InputEvent for PinchEvent {
+    fn to_platform_input(self) -> PlatformInput {
+        PlatformInput::Pinch(self)
+    }
+}
+impl MouseEvent for PinchEvent {}
+
 impl Deref for ScrollWheelEvent {
     type Target = Modifiers;
 
@@ -584,6 +611,8 @@ pub enum PlatformInput {
     MouseExited(MouseExitEvent),
     /// The scroll wheel was used.
     ScrollWheel(ScrollWheelEvent),
+    /// Olo: two fingers pinched.
+    Pinch(PinchEvent),
     /// Files were dragged and dropped onto the window.
     FileDrop(FileDropEvent),
 }
@@ -599,6 +628,7 @@ impl PlatformInput {
             PlatformInput::MouseMove(event) => Some(event),
             PlatformInput::MouseExited(event) => Some(event),
             PlatformInput::ScrollWheel(event) => Some(event),
+            PlatformInput::Pinch(event) => Some(event),
             PlatformInput::FileDrop(event) => Some(event),
         }
     }
@@ -613,6 +643,7 @@ impl PlatformInput {
             PlatformInput::MouseMove(_) => None,
             PlatformInput::MouseExited(_) => None,
             PlatformInput::ScrollWheel(_) => None,
+            PlatformInput::Pinch(_) => None,
             PlatformInput::FileDrop(_) => None,
         }
     }

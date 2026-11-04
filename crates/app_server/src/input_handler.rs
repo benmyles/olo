@@ -975,6 +975,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     tp.pressed = false;
                 }
                 tp.scroll = Some([(tp.slot, tp.at), (slot, touch_location)]);
+                tp.started = [tp.at, touch_location];
+                tp.two = TwoFingers::Undecided;
                 self.touch_pointer = Some(tp);
             }
             return;
@@ -984,7 +986,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         // button pressed only once it moves (a drag) or at the lift (a
         // tap), so a second finger first scrolls instead.
         if !self.takes_touch(&under) {
-            self.touch_pointer = Some(TouchPointer { slot, down_at: touch_location, at: touch_location, pressed: false, scroll: None, lifting: false });
+            self.touch_pointer =
+                Some(TouchPointer { slot, down_at: touch_location, at: touch_location, pressed: false, scroll: None, lifting: false, started: [touch_location; 2], two: TwoFingers::Undecided });
             self.touch_pointer_to(touch_location, time);
             return;
         }
@@ -1001,13 +1004,22 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if let Some(mut tp) = self.touch_pointer {
             if let Some(fingers) = tp.scroll {
                 if fingers.iter().any(|(s, _)| *s == id) {
-                    // One of the two lifts: the scroll stops, and the other
-                    // does nothing until it lifts too.
+                    // One of the two lifts: the scroll or the pinch ends,
+                    // and the other does nothing until it lifts too.
                     if !tp.lifting {
-                        let frame = AxisFrame::new(time).source(AxisSource::Finger).stop(Axis::Horizontal).stop(Axis::Vertical);
                         let pointer = self.pointer.clone();
-                        pointer.axis(self, frame);
-                        pointer.frame(self);
+                        match tp.two {
+                            TwoFingers::Scroll => {
+                                let frame = AxisFrame::new(time).source(AxisSource::Finger).stop(Axis::Horizontal).stop(Axis::Vertical);
+                                pointer.axis(self, frame);
+                                pointer.frame(self);
+                            }
+                            TwoFingers::Pinch { .. } => {
+                                let serial = SCOUNTER.next_serial();
+                                pointer.gesture_pinch_end(self, &GesturePinchEndEvent { serial, time, cancelled: false });
+                            }
+                            TwoFingers::Undecided => {}
+                        }
                         tp.lifting = true;
                         tp.scroll = Some(fingers.map(|f| if f.0 == id { (-1, f.1) } else { f }));
                         self.touch_pointer = Some(tp);
@@ -1043,12 +1055,38 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                         return;
                     }
                     let Some(i) = fingers.iter().position(|(s, _)| *s == id) else { return };
-                    let middle = |f: &[(i32, Point<f64, Logical>); 2]| (f[0].1 + f[1].1).downscale(2.0);
-                    let before = middle(&fingers);
+                    let middle = |a: Point<f64, Logical>, b: Point<f64, Logical>| (a + b).downscale(2.0);
+                    let apart = |a: Point<f64, Logical>, b: Point<f64, Logical>| (a.x - b.x).hypot(a.y - b.y);
+                    let before = middle(fingers[0].1, fingers[1].1);
                     fingers[i].1 = touch_location;
-                    let moved = middle(&fingers) - before;
+                    let now = middle(fingers[0].1, fingers[1].1);
+                    let moved = now - before;
                     tp.scroll = Some(fingers);
+                    // What the two do, once they've moved: closer or
+                    // further apart is a pinch (the window's, as a
+                    // touchpad's), together a scroll.
+                    if tp.two == TwoFingers::Undecided {
+                        let start = middle(tp.started[0], tp.started[1]);
+                        let travel = (now.x - start.x).hypot(now.y - start.y);
+                        let spread = (apart(fingers[0].1, fingers[1].1) - apart(tp.started[0], tp.started[1])).abs();
+                        if travel.max(spread) < TOUCH_DECIDE {
+                            self.touch_pointer = Some(tp);
+                            return;
+                        }
+                        tp.two = if spread > travel { TwoFingers::Pinch { apart: apart(tp.started[0], tp.started[1]).max(1.0) } } else { TwoFingers::Scroll };
+                        if matches!(tp.two, TwoFingers::Pinch { .. }) {
+                            let serial = SCOUNTER.next_serial();
+                            let pointer = self.pointer.clone();
+                            pointer.gesture_pinch_begin(self, &GesturePinchBeginEvent { serial, time, fingers: 2 });
+                        }
+                    }
                     self.touch_pointer = Some(tp);
+                    if let TwoFingers::Pinch { apart: from } = tp.two {
+                        let scale = apart(fingers[0].1, fingers[1].1) / from;
+                        let pointer = self.pointer.clone();
+                        pointer.gesture_pinch_update(self, &GesturePinchUpdateEvent { time, delta: (moved.x, moved.y).into(), scale, rotation: 0.0 });
+                        return;
+                    }
                     // The content follows the fingers (a touch screen's
                     // scroll is direct: inverted, as natural scrolling).
                     let mut frame = AxisFrame::new(time).source(AxisSource::Finger);
@@ -1930,6 +1968,20 @@ impl<BackendData: Backend> VirtualKeyboardHandler for AnvilState<BackendData> {
 /// (its button pressed where it came down), not a tap.
 const TOUCH_DRAG: f64 = 6.0;
 
+/// How far (points) two fingers move before what they do is decided.
+const TOUCH_DECIDE: f64 = 8.0;
+
+/// What two fingers on what takes no touch do.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TwoFingers {
+    Undecided,
+    Scroll,
+    /// Their distance apart as it began.
+    Pinch {
+        apart: f64,
+    },
+}
+
 /// The touch screen's fingers being the pointer (`AnvilState::touch_pointer`).
 #[derive(Debug, Clone, Copy)]
 pub struct TouchPointer {
@@ -1944,4 +1996,7 @@ pub struct TouchPointer {
     pub scroll: Option<[(i32, Point<f64, Logical>); 2]>,
     /// One of the two lifted: nothing until the other does.
     pub lifting: bool,
+    /// Where the two were as the second came, and what they do.
+    pub started: [Point<f64, Logical>; 2],
+    pub two: TwoFingers,
 }

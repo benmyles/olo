@@ -77,8 +77,11 @@ of Finished; a new one goes where its priority puts it.
     clicks, a move drags, two fingers scroll apps without touch, and the
     pointer hides while a finger is it (tried headless: a window dragged
     by its tab, a tap opening Activity's Processes, two fingers scrolling
-    its list). Left: try it on the panel; pinch for apps without touch;
-    the pen's pressure in Olo's apps.
+    its list). Pinch too: GPUI has `PinchEvent`/`on_pinch` now (it had
+    no pinches, so neither the screen's nor a touchpad's reached an Olo
+    app), and Viewer zooms on it (tried headless: a picture zoomed about
+    the fingers). Left: try it on the panel; the pen's pressure in
+    Olo's apps.
   - The panel: Samsung's ATNA panels are OLED (`OLED_PANELS`), so no
     stripes. VRR: Preferences ▸ Display ▸ "Variable refresh rate" for a
     display that has it, off by default (tried headless, simulated).

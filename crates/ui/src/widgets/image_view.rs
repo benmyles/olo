@@ -15,8 +15,8 @@
 use std::{collections::HashMap, rc::Rc, sync::Arc};
 
 use gpui::{
-    App, AppContext as _, Bounds, Context, CursorStyle, Entity, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point,
-    Render, RenderImage, ScrollDelta, ScrollWheelEvent, Size, Styled as _, Task, Window, canvas, div, point, px, size,
+    App, AppContext as _, Bounds, Context, CursorStyle, Entity, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, PinchEvent,
+    Pixels, Point, Render, RenderImage, ScrollDelta, ScrollWheelEvent, Size, Styled as _, Task, TouchPhase, Window, canvas, div, point, px, size,
 };
 use olo_kit_base::metrics as m;
 
@@ -249,6 +249,19 @@ impl ImageView {
             return;
         }
         self.keep_in();
+        cx.notify();
+    }
+
+    /// Two fingers pinching (a touchpad's, a touch screen's): zoomed by
+    /// as much, about the fingers.
+    fn pinch(&mut self, e: &PinchEvent, cx: &mut Context<Self>) {
+        if !self.zoomable || self.picture.is_none() || !matches!(e.phase, TouchPhase::Moved) || !e.step.is_finite() || e.step <= 0.0 {
+            return;
+        }
+        let k = self.scale();
+        self.rescale(k * e.step, e.position);
+        self.keep_in();
+        cx.stop_propagation();
         cx.notify();
     }
 
@@ -559,6 +572,7 @@ impl Render for ImageView {
             .cursor(cursor)
             .child(canvas(|_, _, _| {}, move |b, _, window, cx| paint.update(cx, |v, cx| v.paint(b, window, cx))).size_full())
             .on_scroll_wheel(cx.listener(|v, e: &ScrollWheelEvent, _, cx| v.wheel(e, cx)))
+            .on_pinch(cx.listener(|v, e: &PinchEvent, _, cx| v.pinch(e, cx)))
             .on_mouse_down(MouseButton::Left, cx.listener(|v, e: &MouseDownEvent, _, cx| v.press(e, cx)))
             .on_mouse_move(cx.listener(|v, e: &MouseMoveEvent, window, cx| v.moved(e, window, cx)))
             .on_mouse_up(

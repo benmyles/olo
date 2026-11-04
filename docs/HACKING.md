@@ -1557,6 +1557,14 @@ event reaches it.
   takes its own off, so what it copied can still be pasted; launched
   meanwhile, it opens a window again and
   carries on.
+- Pinches: GPUI's `PinchEvent` (Olo's: the Wayland client binds
+  `zwp_pointer_gestures_v1` and turns its pinches into it: where, the
+  scale since it began, `step` since the last event, the phase), and
+  `on_pinch` on any element as `on_scroll_wheel`. A touchpad's pinch
+  (with Preferences ▸ Touchpad's "Pinch to zoom") and a touch screen's
+  two fingers on an Olo app both come so. `ImageView` (Viewer's
+  pictures, Quick Look) and Viewer's PDF view zoom by `step` about the
+  fingers.
 - `widgets::ColumnListView::new(id, &model, columns, rows, cell)`:
   BColumnListView, its state in a `ListModel` entity the app keeps
   (`ListModel::new(cx, multiple)`; `state` is the shared
@@ -5083,7 +5091,10 @@ that moves past 6 points drags (its button pressed where it came down),
 so windows move, menus open and buttons click as with a mouse; a second
 finger before the first has pressed makes the two scroll what's under
 them (their middle's movement as a finger scroll, inverted: the content
-follows the fingers; a lift stops it). The pointer hides while a finger
+follows the fingers; a lift stops it), or, once they've moved 8 points
+and their distance apart changed more than their middle moved, pinch
+(the pointer's pinch gesture, `zwp_pointer_gestures_v1`, as a
+touchpad's). The pointer hides while a finger
 is it, and shows again as a mouse or touchpad moves
 (`touch_hides_pointer`).
 The pen is a tablet tool (`zwp_tablet_v2`). Agents and tests touch with

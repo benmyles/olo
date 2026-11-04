@@ -821,6 +821,21 @@ impl PdfView {
         cx.notify();
     }
 
+    /// Two fingers pinching (a touchpad's, a touch screen's): zoomed by
+    /// as much about the fingers, as ⌘ and the wheel.
+    fn pinch(&mut self, e: &gpui::PinchEvent, cx: &mut Context<Self>) {
+        if !matches!(e.phase, gpui::TouchPhase::Moved) || !e.step.is_finite() || e.step <= 0.0 {
+            return;
+        }
+        let at = point(f32::from(e.position.x - self.origin.x) - self.offset.x, f32::from(e.position.y - self.origin.y) - self.offset.y);
+        self.anchor = Some((point(self.offset.x + at.x, self.offset.y + at.y), at, self.zoom));
+        self.zoom = (self.zoom * e.step).clamp(MIN_ZOOM, MAX_ZOOM);
+        self.fit = None;
+        self.end_editing(cx);
+        cx.stop_propagation();
+        cx.notify();
+    }
+
     fn resize_mark(&mut self, i: usize, corner: usize, start: PdfRect, u: [f32; 2]) {
         let mark = &mut self.model.marks[i];
         let mut r = start;
@@ -1188,7 +1203,8 @@ impl Render for PdfView {
             )
             .on_mouse_move(cx.listener(|v, e: &MouseMoveEvent, _, cx| v.moved(e, cx)))
             .on_mouse_up(MouseButton::Left, cx.listener(|v, _: &MouseUpEvent, _, cx| v.released(cx)))
-            .on_scroll_wheel(cx.listener(|v, e: &ScrollWheelEvent, _, cx| v.wheel(e, cx)));
+            .on_scroll_wheel(cx.listener(|v, e: &ScrollWheelEvent, _, cx| v.wheel(e, cx)))
+            .on_pinch(cx.listener(|v, e: &gpui::PinchEvent, _, cx| v.pinch(e, cx)));
         // The field or text box being typed in, over it.
         if let (Some((editor, _)), Some((r, multiline))) = (&self.editor, self.editor_rect()) {
             let p = theme::palette(cx);

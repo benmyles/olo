@@ -52,6 +52,9 @@ use wayland_protocols::wp::idle_inhibit::zv1::client::{
 use wayland_protocols::wp::linux_dmabuf::zv1::client::{
     zwp_linux_buffer_params_v1, zwp_linux_dmabuf_v1,
 };
+use wayland_protocols::wp::pointer_gestures::zv1::client::{
+    zwp_pointer_gesture_pinch_v1, zwp_pointer_gestures_v1,
+};
 use wayland_protocols::wp::primary_selection::zv1::client::zwp_primary_selection_offer_v1::{
     self, ZwpPrimarySelectionOfferV1,
 };
@@ -155,6 +158,9 @@ pub struct Globals {
     pub text_input_manager: Option<zwp_text_input_manager_v3::ZwpTextInputManagerV3>,
     /// Olo: keeping the screen awake while a window shows (a video).
     pub idle_inhibit_manager: Option<zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1>,
+    /// Olo: pinches (a touchpad's, a touch screen's as app_server makes
+    /// them).
+    pub pointer_gestures: Option<zwp_pointer_gestures_v1::ZwpPointerGesturesV1>,
     /// Olo: each display's size in points (a fractional scale's too).
     pub xdg_output_manager: Option<zxdg_output_manager_v1::ZxdgOutputManagerV1>,
     /// Olo: other programs' pictures shown over a window, in GPU memory
@@ -205,6 +211,7 @@ impl Globals {
             blur_manager: globals.bind(&qh, 1..=1, ()).ok(),
             text_input_manager: globals.bind(&qh, 1..=1, ()).ok(),
             idle_inhibit_manager: globals.bind(&qh, 1..=1, ()).ok(),
+            pointer_gestures: globals.bind(&qh, 1..=3, ()).ok(),
             xdg_output_manager: globals.bind(&qh, 3..=3, ()).ok(),
             subcompositor: globals.bind(&qh, 1..=1, ()).ok(),
             // (Version 3: its formats come as events, each with its
@@ -367,6 +374,9 @@ pub(crate) struct WaylandClientState {
     dmabuf_modifiers: HashMap<u32, Vec<u64>>,
     wl_seat: wl_seat::WlSeat, // TODO: Multi seat support
     wl_pointer: Option<wl_pointer::WlPointer>,
+    /// Olo: the pointer's pinches, and the last scale one said.
+    pinch: Option<zwp_pointer_gesture_pinch_v1::ZwpPointerGesturePinchV1>,
+    pinch_scale: f32,
     wl_keyboard: Option<wl_keyboard::WlKeyboard>,
     cursor_shape_device: Option<wp_cursor_shape_device_v1::WpCursorShapeDeviceV1>,
     data_device: Option<wl_data_device::WlDataDevice>,
@@ -1008,6 +1018,8 @@ impl WaylandClient {
             connection: conn.clone(),
             wl_seat: seat,
             wl_pointer: None,
+            pinch: None,
+            pinch_scale: 1.0,
             wl_keyboard: None,
             cursor_shape_device: None,
             data_device,
@@ -1627,6 +1639,57 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for WaylandClientStat
 }
 
 delegate_noop!(WaylandClientStatePtr: ignore xdg_activation_v1::XdgActivationV1);
+delegate_noop!(WaylandClientStatePtr: ignore zwp_pointer_gestures_v1::ZwpPointerGesturesV1);
+
+/// Olo: a pinch, to the window the pointer is on ([`crate::PinchEvent`]).
+impl Dispatch<zwp_pointer_gesture_pinch_v1::ZwpPointerGesturePinchV1, ()>
+    for WaylandClientStatePtr
+{
+    fn event(
+        this: &mut Self,
+        _: &zwp_pointer_gesture_pinch_v1::ZwpPointerGesturePinchV1,
+        event: zwp_pointer_gesture_pinch_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use zwp_pointer_gesture_pinch_v1::Event;
+        let client = this.get_client();
+        let mut state = client.borrow_mut();
+        let (Some(window), Some(position)) =
+            (state.mouse_focused_window.clone(), state.mouse_location)
+        else {
+            return;
+        };
+        let modifiers = state.modifiers;
+        let (scale, step, phase) = match event {
+            Event::Begin { .. } => {
+                state.pinch_scale = 1.0;
+                (1.0, 1.0, TouchPhase::Started)
+            }
+            Event::Update { scale, .. } => {
+                let scale = scale as f32;
+                let step = if state.pinch_scale > 0.0 {
+                    scale / state.pinch_scale
+                } else {
+                    1.0
+                };
+                state.pinch_scale = scale;
+                (scale, step, TouchPhase::Moved)
+            }
+            Event::End { .. } => (state.pinch_scale, 1.0, TouchPhase::Ended),
+            _ => return,
+        };
+        drop(state);
+        window.handle_input(PlatformInput::Pinch(crate::PinchEvent {
+            position,
+            scale,
+            step,
+            phase,
+            modifiers,
+        }));
+    }
+}
 delegate_noop!(WaylandClientStatePtr: ignore wl_compositor::WlCompositor);
 delegate_noop!(WaylandClientStatePtr: ignore wp_cursor_shape_device_v1::WpCursorShapeDeviceV1);
 delegate_noop!(WaylandClientStatePtr: ignore wp_cursor_shape_manager_v1::WpCursorShapeManagerV1);
@@ -2174,6 +2237,15 @@ impl Dispatch<wl_seat::WlSeat, ()> for WaylandClientStatePtr {
                     .cursor_shape_manager
                     .as_ref()
                     .map(|cursor_shape_manager| cursor_shape_manager.get_pointer(&pointer, qh, ()));
+
+                if let Some(pinch) = state.pinch.take() {
+                    pinch.destroy();
+                }
+                state.pinch = state
+                    .globals
+                    .pointer_gestures
+                    .as_ref()
+                    .map(|g| g.get_pinch_gesture(&pointer, qh, ()));
 
                 if let Some(wl_pointer) = &state.wl_pointer {
                     wl_pointer.release();

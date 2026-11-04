@@ -119,6 +119,8 @@ impl AnvilState<HeadlessData> {
 }
 
 impl Backend for HeadlessData {
+    // (A synthetic touch screen's two fingers pinch: `input_handler`.)
+    const HAS_GESTURES: bool = true;
     fn dmabuf_gate(&self, dmabuf: &Dmabuf) -> Option<crate::dmabuf_check::Gate> {
         self.dmabuf_checks.gate(dmabuf)
     }
