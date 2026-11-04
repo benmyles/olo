@@ -7,6 +7,14 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
+- **auto-fuzz: two tiles overlap as a Terminal opens** (found
+  2026-11-04, there before that day's changes too): `tools/dev/auto-fuzz
+  NAME --steps 80 --seed 7` on a `--session --shell` session at 3024×1890,
+  1.75×, fails at step 37: "opening olo-terminal: tiles 4
+  (olo.styled-edit) (8, 8, 764, 528) and 10 (olo.terminal) (610, 8, 380,
+  528) overlap". Find why the new tile is laid over its neighbour's, fix
+  it, and run the fuzzer long (several seeds, `--reloads`) until clean.
+
 - **AirPods missing from Sound's outputs** (Ben, 2026-11-04): "i
   paired my airpods and they show up properly in the input menu but in
   the sound output menu there's no airpods entry (in sound prefs)".
@@ -21,13 +29,6 @@ of Finished; a new one goes where its priority puts it.
   profile left `off`): to see with them connected (`pactl list cards`,
   WirePlumber's log), then fixed at the cause, and Sound saying so
   (their output named, with why it isn't there) rather than nothing.
-
-- **Auto-tile: a click on a zoomed window's tab unzooms it** (Ben,
-  2026-11-04): "on a workspace in auto tile mode i zoomed the passwords
-  app. it worked correctly, but then when i click the passwords yellow
-  title bar (not on either of the buttons just the bar itself) it looses
-  zoom. it should only loose the zoom if i click the zoom button again."
-  A plain click on the tab (no drag) must leave the zoom as it is.
 
 - **The ThinkPad P1 Gen 9, on the machine: everything in it first-class**
   (Ben, 2026-11-03, now running Olo on it: "olo doesn't recognize my
@@ -1193,6 +1194,19 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Auto-tile: a click on a zoomed window's tab unzooms it**~~ (Ben,
+  2026-11-04): "on a workspace in auto tile mode i zoomed the passwords
+  app. it worked correctly, but then when i click the passwords yellow
+  title bar (not on either of the buttons just the bar itself) it looses
+  zoom. it should only loose the zoom if i click the zoom button again."
+  A plain click on the tab (no drag) must leave the zoom as it is. *Done*: a press on a tab started a
+  move that unzoomed the window at once (Smithay's example's way) and
+  its release was taken as a drop; now a move starts only once the
+  pointer has gone 3 points (a finger 6: `MOVE_AFTER`,
+  `TOUCH_MOVE_AFTER`), and only then is a zoomed window unzoomed. A
+  click changes nothing; a drag still unzooms it and drops it in a
+  tile. Tested on a test session (zoom, click, drag).
 
 - ~~**Backup: Select All and None, exporting and importing**~~ (Ben,
   2026-11-04): "the prefs -> backup app needs options to select all /

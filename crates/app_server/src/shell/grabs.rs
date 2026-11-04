@@ -20,6 +20,15 @@ use crate::{
     state::{AnvilState, Backend},
 };
 
+/// How far the pointer goes from a press on a window's tab before the
+/// window moves, in points (the kit's lists' drag distance): a press and
+/// release short of it is a click, which moves nothing, unzooms nothing
+/// and takes no auto-tiled window out of its tile (Ben, 2026-11-04: a
+/// click on a zoomed window's tab unzoomed it).
+pub const MOVE_AFTER: f64 = 3.0;
+/// The same for a finger (the touch screen's drag distance).
+pub const TOUCH_MOVE_AFTER: f64 = 6.0;
+
 pub struct PointerMoveSurfaceGrab<BackendData: Backend + 'static> {
     pub start_data: PointerGrabStartData<AnvilState<BackendData>>,
     pub window: WindowElement,
@@ -27,6 +36,13 @@ pub struct PointerMoveSurfaceGrab<BackendData: Backend + 'static> {
     /// Another window of its app it is over, and where (`window_drop`):
     /// its app is told, and told where it is let go.
     pub over: Option<(WindowElement, Point<f64, Logical>)>,
+    /// The pointer has gone `MOVE_AFTER` from the press: it's a move.
+    pub started: bool,
+}
+
+/// `delta` is past `distance` (a move, not a click).
+fn past(delta: Point<f64, Logical>, distance: f64) -> bool {
+    delta.x.hypot(delta.y) >= distance
 }
 
 impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerMoveSurfaceGrab<BackendData> {
@@ -41,6 +57,16 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerMoveS
         handle.motion(data, None, event);
 
         let delta = event.location - self.start_data.location;
+        if !self.started {
+            if !past(delta, MOVE_AFTER) {
+                return;
+            }
+            self.started = true;
+            // Zoomed, it unzooms as it's taken away, under the pointer.
+            if data.unzoom_to_move(&self.window) {
+                self.initial_window_location = self.start_data.location.to_i32_round();
+            }
+        }
         let new_location = self.initial_window_location.to_f64() + delta;
         // (An auto-tiled window keeps its tile till let go.)
         if new_location.to_i32_round() != self.initial_window_location && !data.auto_moving(&self.window) {
@@ -121,6 +147,10 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerMoveS
     }
 
     fn unset(&mut self, data: &mut AnvilState<BackendData>) {
+        // A click: nothing moved.
+        if !self.started {
+            return;
+        }
         if let Some((onto, at)) = self.over.take() {
             crate::window_drop::tell(&self.window, Some((&onto, at)), true);
         }
@@ -135,6 +165,8 @@ pub struct TouchMoveSurfaceGrab<BackendData: Backend + 'static> {
     pub start_data: TouchGrabStartData<AnvilState<BackendData>>,
     pub window: WindowElement,
     pub initial_window_location: Point<i32, Logical>,
+    /// The finger has gone `TOUCH_MOVE_AFTER` from where it touched.
+    pub started: bool,
 }
 
 impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchMoveSurfaceGrab<BackendData> {
@@ -168,6 +200,15 @@ impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchMoveSurfa
         }
 
         let delta = event.location - self.start_data.location;
+        if !self.started {
+            if !past(delta, TOUCH_MOVE_AFTER) {
+                return;
+            }
+            self.started = true;
+            if data.unzoom_to_move(&self.window) {
+                self.initial_window_location = self.start_data.location.to_i32_round();
+            }
+        }
         let new_location = self.initial_window_location.to_f64() + delta;
         // (An auto-tiled window keeps its tile till let go.)
         if new_location.to_i32_round() != self.initial_window_location && !data.auto_moving(&self.window) {
@@ -196,6 +237,10 @@ impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchMoveSurfa
     }
 
     fn unset(&mut self, data: &mut AnvilState<BackendData>) {
+        // A tap: nothing moved.
+        if !self.started {
+            return;
+        }
         // Where the pointer (or finger) let go of it.
         let moved = data.space.element_location(&self.window).map(|at| at - self.initial_window_location).unwrap_or_default();
         data.auto_dropped(&self.window, self.start_data.location + moved.to_f64());

@@ -549,6 +549,25 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         pointer.set_grab(self, grab, serial, Focus::Clear);
     }
 
+    /// `window` unzoomed as it's taken to be moved (once a press on its
+    /// tab has moved past the drag distance): true if it was zoomed, and
+    /// is now under the pointer at its own size.
+    pub fn unzoom_to_move(&mut self, window: &WindowElement) -> bool {
+        let Some(surface) = window.0.toplevel() else { return false };
+        let changed = surface.with_pending_state(|state| {
+            if state.states.unset(xdg_toplevel::State::Maximized) {
+                state.size = None;
+                true
+            } else {
+                false
+            }
+        });
+        if changed {
+            surface.send_configure();
+        }
+        changed
+    }
+
     pub fn move_request_xdg(&mut self, surface: &ToplevelSurface, seat: &Seat<Self>, serial: Serial) {
         if let Some(touch) = seat.get_touch()
             && touch.has_grab(serial)
@@ -566,38 +585,14 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 return;
             }
 
-            let mut initial_window_location = self.space.element_location(&window).unwrap();
-
-            // If surface is maximized then unmaximize it
-            let changed = surface.with_pending_state(|state| {
-                if state.states.unset(xdg_toplevel::State::Maximized) {
-                    state.size = None;
-                    true
-                } else {
-                    false
-                }
-            });
-            if changed {
-                surface.send_configure();
-
-                // NOTE: In real compositor mouse location should be mapped to a new window size
-                // For example, you could:
-                // 1) transform mouse pointer position from compositor space to window space (location relative)
-                // 2) divide the x coordinate by width of the window to get the percentage
-                //   - 0.0 would be on the far left of the window
-                //   - 0.5 would be in middle of the window
-                //   - 1.0 would be on the far right of the window
-                // 3) multiply the percentage by new window width
-                // 4) by doing that, drag will look a lot more natural
-                //
-                // but for anvil needs setting location to pointer location is fine
-                initial_window_location = start_data.location.to_i32_round();
-            }
+            // (Zoomed, it unzooms once the finger has moved it: a tap
+            // leaves it as it is, `TouchMoveSurfaceGrab::started`.)
+            let initial_window_location = self.space.element_location(&window).unwrap();
 
             // Taken in hand: no longer on its way to a tile it was asked into.
             self.unfollow(&window);
             window.meta().moved_on_purpose.set(true);
-            let grab = TouchMoveSurfaceGrab { start_data, window, initial_window_location };
+            let grab = TouchMoveSurfaceGrab { start_data, window, initial_window_location, started: false };
 
             touch.set_grab(self, grab, serial);
             return;
@@ -629,34 +624,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             return;
         }
 
+        // (Zoomed, it unzooms once the pointer has moved it: a click
+        // leaves it as it is, `PointerMoveSurfaceGrab::started`.)
         let mut initial_window_location = self.space.element_location(&window).unwrap();
-
-        // If surface is maximized then unmaximize it
-        let changed = surface.with_pending_state(|state| {
-            if state.states.unset(xdg_toplevel::State::Maximized) {
-                state.size = None;
-                true
-            } else {
-                false
-            }
-        });
-        if changed {
-            surface.send_configure();
-
-            // NOTE: In real compositor mouse location should be mapped to a new window size
-            // For example, you could:
-            // 1) transform mouse pointer position from compositor space to window space (location relative)
-            // 2) divide the x coordinate by width of the window to get the percentage
-            //   - 0.0 would be on the far left of the window
-            //   - 0.5 would be in middle of the window
-            //   - 1.0 would be on the far right of the window
-            // 3) multiply the percentage by new window width
-            // 4) by doing that, drag will look a lot more natural
-            //
-            // but for anvil needs setting location to pointer location is fine
-            let pos = pointer.current_location();
-            initial_window_location = (pos.x as i32, pos.y as i32).into();
-        }
 
         // Moved with a press on another of its app's windows (a tab torn
         // off its strip, now a window under the pointer): from here, not
@@ -675,7 +645,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         // Taken in hand: no longer on its way to a tile it was asked into.
         self.unfollow(&window);
         window.meta().moved_on_purpose.set(true);
-        let grab = PointerMoveSurfaceGrab { start_data, window, initial_window_location, over: None };
+        let grab = PointerMoveSurfaceGrab { start_data, window, initial_window_location, over: None, started: false };
 
         pointer.set_grab(self, grab, serial, Focus::Clear);
     }
