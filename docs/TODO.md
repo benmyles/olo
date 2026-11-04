@@ -1084,23 +1084,6 @@ of Finished; a new one goes where its priority puts it.
   lightweight then just do it after each new sample is collected." On
   the CPU's SIMD (never the NVIDIA GPU), measured per keystroke.
 
-- **Olo Suggestions: install just, uv and mise** (Ben, 2026-11-04):
-  "add installing just (for justfiles) to olo suggestions", then "add
-  installing uv to olo suggestions", then "add installing mise to olo
-  suggestions".
-
-- **Olo Suggestions: worktrunk, and a notification for each new
-  suggestion** (Ben, 2026-11-04): "add to olo suggestions the
-  installation of https://worktrunk.dev/ and auto-configuration to have
-  it put worktrees in the same place as olo terminal. also have olo
-  suggestions show a notification when a new suggestion is available,
-  but don't want it to repeatedly come up just show the notification
-  once for any given suggestion." Olo Suggestions is apps/doctor's
-  `olo-suggestions` (HACKING's "Olo Suggestions"); Terminal makes
-  worktrees in apps/terminal/src/git.rs (`add`, its path chosen by the
-  caller): worktrunk's worktree path set to the same place. Each
-  suggestion notified once, ever (kept by its id).
-
 - **Agent Screens: Stop keeps a screen; Archive and Delete** (Ben,
   2026-11-04): "stopping an agent screen makes it dissappear completely.
   it should just change to be in a stopped state and able to be started
@@ -1178,6 +1161,18 @@ of Finished; a new one goes where its priority puts it.
   skill (olo-screens): how to plan, pace and record a polished demo
   (rehearse, then record; the pointer's path, pauses, zooms; checking
   the result).
+  - **Encoding on the best GPU, chosen in its settings** (Ben,
+    2026-11-04): "the screen recording app should also take advantage
+    of a discrete graphics card for encoding when available (and make it
+    a togglable setting to use cpu or gpu or specific gpu if more than
+    one and default it to whatever the most powerful detected gpu is)".
+    Its settings list the CPU and each GPU with a hardware encoder
+    (NVIDIA's NVENC, Intel's and AMD's through Vulkan Video or VA-API),
+    by name and what each can encode (H.264, HEVC, AV1, up to which size
+    and rate), the most powerful found chosen by default (a discrete card
+    over the built-in one); the frames handed to it as dmabufs, without
+    a copy through the CPU where the driver allows. A GPU that fails
+    mid-recording falls back to the next, saying so.
 
 ## Maybe one day
 
@@ -1239,6 +1234,31 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Olo Suggestions: install just, uv and mise**~~ (done 2026-11-04:
+  just and uv from Fedora's repositories through PackageKit, mise from
+  its latest GitHub release into ~/.local/bin, its published SHA-256
+  checked, all native (`releases.rs`); each said installed, and where,
+  once it is; the download's share shown as it goes) (Ben, 2026-11-04):
+  "add installing just (for justfiles) to olo suggestions", then "add
+  installing uv to olo suggestions", then "add installing mise to olo
+  suggestions".
+
+- ~~**Olo Suggestions: worktrunk, and a notification for each new
+  suggestion**~~ (done 2026-11-04: worktrunk's `wt` from its GitHub
+  release; its `worktree-path` set to Terminal's place,
+  `<place>/{{ repo }}/{{ branch | sanitize }}`, the rest of its config
+  kept, undone to what it was; checked with a real `wt switch -c` in a
+  sandbox. Each new suggestion told once ever, by id and title, in a
+  notification from Olo Suggestions whose click opens it. On the way:
+  a banner's actions no longer run past its edge (stacked when they
+  don't fit side by side), and `--apply` with an unknown id does
+  nothing) (Ben, 2026-11-04): "add to olo suggestions the installation
+  of https://worktrunk.dev/ and auto-configuration to have it put
+  worktrees in the same place as olo terminal. also have olo
+  suggestions show a notification when a new suggestion is available,
+  but don't want it to repeatedly come up just show the notification
+  once for any given suggestion."
 
 - ~~**Escape ends a drag, anywhere**~~ (Ben, 2026-11-04): "when dragging
   something in olo if the user presses escape it should drop the drag".
