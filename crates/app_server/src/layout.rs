@@ -118,6 +118,25 @@ pub struct Placement {
     pub stacking: Option<(Vec<u64>, Vec<u64>)>,
     #[serde(skip)]
     pub id: u64,
+    /// The key its app gave the window to be known by when it comes back
+    /// (`restore_key`): found by that first, whatever its title says by
+    /// then or however many have the same.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+}
+
+/// The key a window's app gave it to be known by across its restarts and
+/// upgrades: the xdg-toplevel-tag word `restore:KEY` (the kit's
+/// `WindowOptions::restore_key`; Terminal's, a number it keeps per
+/// window). A title can't tell windows apart: many may have the same, and
+/// a window's may come only after it's shown (Terminal's, its shell's).
+pub fn restore_key(w: &WindowElement) -> Option<String> {
+    use smithay::wayland::{compositor, xdg_toplevel_tag::XdgToplevelTagSurfaceData};
+    let surface = w.wl_surface()?;
+    compositor::with_states(&surface, |s| {
+        let tag = s.data_map.get::<XdgToplevelTagSurfaceData>()?.tag()?;
+        tag.split_whitespace().find_map(|t| t.strip_prefix("restore:")).map(str::to_owned)
+    })
 }
 
 fn is_zero(n: &u64) -> bool {
@@ -248,6 +267,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             client: meta.owner.borrow().as_ref().map(|(_, c)| c.clone()),
             screen,
             screen_key,
+            key: restore_key(w),
             floating: Self::float_override(w),
             slot: 0,
             stacking: None,
@@ -424,13 +444,25 @@ impl<B: Backend + 'static> AnvilState<B> {
         let restarted = |e: &Placement| {
             !transient && age(e) < RESTART_KEEP.as_secs() && e.pid > 0 && owner.as_ref().is_some_and(|(pid, _)| e.pid != *pid) && !std::path::Path::new(&format!("/proc/{}", e.pid)).exists()
         };
+        // By the key its app gave it, if it gave one: that window's place,
+        // and no other's.
+        let key = restore_key(window);
+        let theirs = |e: &Placement| e.key.is_none() || e.key == key;
+        let i = key.as_ref().and_then(|_| {
+            (0..self.layout.len()).rev().find(|&i| {
+                let e = &self.layout[i];
+                e.app_id == app_id && e.key == key && (same(e) || restarted(e))
+            })
+        });
         // The newest first: the place it had last.
-        let i = (0..self.layout.len()).rev().find(|&i| {
-            let e = &self.layout[i];
-            e.app_id == app_id && (e.title == title && (same(e) || restarted(e)))
+        let i = i.or_else(|| {
+            (0..self.layout.len()).rev().find(|&i| {
+                let e = &self.layout[i];
+                e.app_id == app_id && theirs(e) && (e.title == title && (same(e) || restarted(e)))
+            })
         });
         // Titles can change (a terminal's follows its directory).
-        let i = i.or_else(|| (0..self.layout.len()).rev().find(|&i| same(&self.layout[i]) && self.layout[i].app_id == app_id))?;
+        let i = i.or_else(|| (0..self.layout.len()).rev().find(|&i| same(&self.layout[i]) && self.layout[i].app_id == app_id && theirs(&self.layout[i])))?;
         Some(self.layout.remove(i))
     }
 
@@ -486,7 +518,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         let at = self.saved_location(&p);
         self.space.map_element(window.clone(), at, p.focused);
-        info!(window = window.id(), app_id = window.app_id(), slot = p.slot, x = at.x, y = at.y, display = ?p.screen_key.as_ref().or(p.screen.as_ref().map(|s| &s.0)), "put back where it was");
+        info!(window = window.id(), app_id = window.app_id(), slot = p.slot, key = ?p.key, tab_order = p.tab_order, x = at.x, y = at.y, display = ?p.screen_key.as_ref().or(p.screen.as_ref().map(|s| &s.0)), "put back where it was");
         self.restored.push((window.clone(), p.clone()));
         meta.put_back.set(true);
         meta.slot.set(p.slot);

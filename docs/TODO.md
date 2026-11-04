@@ -7,13 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Grouped and tiled windows come back in their order** (Ben,
-  2026-11-04): "grouped windows and tiled tabs/windows should remember
-  their order so that after e.g. an upgrade they come back in the same
-  order". A group's tabs and an auto-tiled workspace's windows, restored
-  after a reload or upgrade (`layout`, `autotile`), in the order they
-  were in.
-
 - **AirPods missing from Sound's outputs** (Ben, 2026-11-04): "i
   paired my airpods and they show up properly in the input menu but in
   the sound output menu there's no airpods entry (in sound prefs)".
@@ -1217,6 +1210,22 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Grouped and tiled windows come back in their order**~~ (Ben,
+  2026-11-04): "grouped windows and tiled tabs/windows should remember
+  their order so that after e.g. an upgrade they come back in the same
+  order". A group's tabs and an auto-tiled workspace's windows, restored
+  after a reload or upgrade (`layout`, `autotile`), in the order they
+  were in. *Done*: reproduced (a Terminal
+  group reordered, auto-tiled beside StyledEdit, then app_server and
+  the apps upgraded together: the moved tab came back third and the
+  tiles were rearranged). Two causes, both fixed: the session nudged the
+  apps to re-execute as it restarted app_server, so they re-executed
+  twice over and Terminal saved its windows half gone (now app_server
+  restarts first and what's still old is nudged 6 s after); and a
+  window found its place by title, which many share (now by a key its
+  app gives it, `WindowOptions::restore_key`, Terminal's a number per
+  window kept in its state). `tools/dev/order-check` passes.
 
 - ~~**Preferences ▸ Backup: choose what goes in, exporting and importing**~~
   (Ben, 2026-11-04; next): "in prefs -> backups made it

@@ -47,6 +47,11 @@ pub struct WindowOptions {
     /// `under-pointer`): a tab torn off a strip, to move with it
     /// ([`begin_move`]).
     pub under_pointer: bool,
+    /// What app_server knows this window by when the app comes back (a
+    /// restart, an upgrade): its place, workspace, tab's place in its
+    /// group and tile are this window's, not another's of the same title
+    /// (the xdg-toplevel-tag word `restore:KEY`; [`Self::restore_key`]).
+    pub restore_key: Option<String>,
     /// Opens full screen, on the display the person is at (asked before
     /// its first frame, so it's never drawn at `size` first): something
     /// that takes the whole of their attention, done with the keyboard
@@ -81,6 +86,7 @@ impl WindowOptions {
             child: false,
             foreign_parent: None,
             under_pointer: false,
+            restore_key: None,
             fullscreen: false,
             keep_size: None,
             content_height: None,
@@ -142,6 +148,15 @@ impl WindowOptions {
     /// Without the panel colour behind it (an overlay draws all of it).
     pub fn no_panel(mut self) -> Self {
         self.panel = false;
+        self
+    }
+
+    /// Known by `key` when the app comes back (see [`Self::restore_key`]
+    /// the field): the same window's key each time, unique among the
+    /// app's windows (a document's path, a number the app keeps with the
+    /// window). Spaces are taken out.
+    pub fn restore_key(mut self, key: impl Into<String>) -> Self {
+        self.restore_key = Some(key.into());
         self
     }
 
@@ -690,7 +705,9 @@ pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, bu
             window_min_size: options.min_size.map(|(w, h)| size(px(w), px(h))),
             window_max_size: options.max_size.map(|(w, h)| size(px(w), px(h))),
             toplevel_tag: {
-                let tags: Vec<&str> = [(options.floating, "floating"), (options.under_pointer, "under-pointer")].into_iter().filter_map(|(on, tag)| on.then_some(tag)).collect();
+                let restore = options.restore_key.as_ref().map(|k| format!("restore:{}", k.split_whitespace().collect::<String>()));
+                let mut tags: Vec<&str> = [(options.floating, "floating"), (options.under_pointer, "under-pointer")].into_iter().filter_map(|(on, tag)| on.then_some(tag)).collect();
+                tags.extend(restore.as_deref());
                 (!tags.is_empty()).then(|| tags.join(" "))
             },
             kind: if options.lock_output.is_some() {

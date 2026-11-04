@@ -50,11 +50,14 @@ pub struct WindowOptions {
     pub under_pointer: bool,
     /// An alert for `message` (sized for it, fixed, modal).
     alert: Option<String>,
+    /// What app_server knows the window by when Terminal comes back (the
+    /// kit's `restore_key`).
+    pub restore_key: Option<String>,
 }
 
 impl WindowOptions {
     pub fn new(title: impl Into<String>, w: u32, h: u32) -> WindowOptions {
-        WindowOptions { title: title.into(), size: (w, h), min_size: None, max_size: None, under_pointer: false, alert: None }
+        WindowOptions { title: title.into(), size: (w, h), min_size: None, max_size: None, under_pointer: false, alert: None, restore_key: None }
     }
 
     /// An alert saying `message`: as tall as it needs, fixed, over the
@@ -141,6 +144,7 @@ impl WinOps for Context<'_, Terminal> {
             options.fixed = true;
         }
         options.under_pointer = o.under_pointer;
+        options.restore_key = o.restore_key.clone();
         let me = self.weak_entity();
         let made: Rc<std::cell::RefCell<Option<Entity<Shell>>>> = Rc::default();
         let keep = made.clone();

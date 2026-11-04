@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""Windows come back from an upgrade as they were: a group's tabs in
+their order, auto-tiled windows in their tiles.
+
+  order-check
+
+Release builds (`cargo build --release -p app_server -p olo-session -p
+olo-terminal -p olo-styled-edit`). In a headless session of its own (a
+new name each run, so no shells are left from another): an auto-tiled
+workspace with StyledEdit and three Terminal windows grouped, the last
+tab moved to the front; then an upgrade as the session does one when
+app_server is in it (`Session::upgrade`): the apps' binaries replaced,
+app_server restarted, and what is still on an old binary asked to
+re-execute (SIGURG) only after `NUDGE_AFTER_RELOAD`. Checks each
+window's tab place and tile before and after. Exits 1 on a mismatch.
+"""
+
+import json
+import os
+import random
+import shutil
+import subprocess
+import sys
+import time
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+TSESSION = ["/usr/bin/python3", os.path.join(ROOT, "tools/dev/tsession")]
+NAME = f"orderc{random.randrange(10000)}"
+BINS = ["olo-terminal", "olo-styled-edit"]
+
+
+def ts(*args):
+    env = dict(os.environ, TSESSION_PROFILE="release")
+    for k in ("WAYLAND_DISPLAY", "OLO_SOCKET", "OLO_SESSION", "OLO_SESSION_PID"):
+        env.pop(k, None)
+    return subprocess.run(TSESSION + list(args), capture_output=True, text=True, env=env)
+
+
+def ipc(req):
+    out = ts("ipc", NAME, json.dumps(req)).stdout.strip()
+    try:
+        return json.loads(out) if out else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def windows():
+    """Each window: its app, the end of its title, its tab's place and tile."""
+    ws = ipc({"type": "list_windows"}).get("windows", [])
+    return sorted((w["app_id"], w["title"][-4:], w.get("tab"), [round(x, 2) for x in (w.get("part") or [])]) for w in ws)
+
+
+def ours(display):
+    """This session's StyledEdit and Terminal processes."""
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            exe = os.readlink(f"/proc/{pid}/exe")
+            env = open(f"/proc/{pid}/environ", "rb").read().split(b"\0")
+        except OSError:
+            continue
+        if any(exe.endswith(b) or exe.endswith(b + " (deleted)") for b in BINS) and f"WAYLAND_DISPLAY={display}".encode() in env:
+            yield int(pid), exe
+
+
+def main():
+    failures = []
+    try:
+        ts("start", NAME, "2560x1600", "--session")
+        ipc({"type": "set_windowing_mode", "mode": "auto_tiling"})
+        ts("run", NAME, "olo-styled-edit")
+        time.sleep(1.5)
+        for d in ("/usr", "/etc", "/var"):
+            ts("run", NAME, "olo-terminal", "--new-window", "-w", d)
+            time.sleep(1.5)
+        time.sleep(2)
+        var = next(w["id"] for w in ipc({"type": "list_windows"})["windows"] if w["title"].endswith("/var"))
+        ipc({"type": "move_tab", "id": var, "index": 0})
+        time.sleep(0.5)
+        before = windows()
+        display = next(l.split("WAYLAND_DISPLAY=")[1].split()[0].strip(";'\"") for l in ts("env", NAME).stdout.splitlines() if "WAYLAND_DISPLAY=" in l)
+        # The upgrade: new binaries (the same, as new files), app_server
+        # restarted, and what's still old asked after.
+        for b in BINS:
+            path = os.path.join(ROOT, "target/release", b)
+            subprocess.run(["cp", "--reflink=always", path, path + ".new"], check=True)
+            os.replace(path + ".new", path)
+        ts("reload", NAME)
+        time.sleep(6)
+        stragglers = [pid for pid, exe in ours(display) if exe.endswith(" (deleted)")]
+        for pid in stragglers:
+            os.kill(pid, 23)  # SIGURG
+        time.sleep(6)
+        after = windows()
+        print(f"  before: {before}\n  after:  {after}")
+        ok = before == after
+        print(f"  {'ok ' if ok else 'BAD'} every window back in its tab's place and its tile ({len(stragglers)} asked again)")
+        if not ok:
+            failures.append("order")
+    finally:
+        ts("stop", NAME)
+        shutil.rmtree(os.path.join("/tmp/olo-dev", NAME), ignore_errors=True)
+    if failures:
+        sys.exit(1)
+    print("windows come back as they were")
+
+
+if __name__ == "__main__":
+    main()

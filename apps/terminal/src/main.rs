@@ -286,6 +286,12 @@ impl Tab {
 }
 
 pub(crate) struct TermWin {
+    /// What app_server knows the window by when Terminal comes back (an
+    /// upgrade, a restart): a number of its own (`new_window_key`), kept
+    /// with it (`SavedWindow::key`) whatever its tabs are since, so its
+    /// place, its tab's in its group and its tile come back to it and not
+    /// to another of the same title.
+    key: u64,
     tabs: Vec<Tab>,
     active: usize,
     /// Text an input method is composing, at the cursor.
@@ -320,6 +326,7 @@ impl TermWin {
     fn new(tabs: Vec<Tab>, active: usize, snap_to: Option<(usize, usize)>, groups: Vec<Group>) -> TermWin {
         let active = active.min(tabs.len().saturating_sub(1));
         let mut t = TermWin {
+            key: new_window_key(),
             active,
             tabs,
             preedit: None,
@@ -680,6 +687,9 @@ struct Saved {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct SavedWindow {
+    /// What app_server knows it by (`TermWin::key`; 0 from before).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    key: u64,
     /// The shell showing (all there was before tabs).
     shell: u64,
     /// Every tab's shell, in order.
@@ -801,14 +811,14 @@ impl Terminal {
     fn open(&mut self, cx: &mut Cx, cwd: Option<PathBuf>, command: Option<Vec<String>>) {
         let (cols, rows) = (self.settings.cols, self.settings.rows);
         let options = self.window_options(cols, rows);
-        self.add(cx, options, Size { cols, rows }, Some((cols, rows)), vec![Start::Spawn { command, cwd }], 0, Default::default());
+        self.add(cx, options, Size { cols, rows }, Some((cols, rows)), vec![Start::Spawn { command, cwd }], 0, Default::default(), None);
     }
 
     /// A window on shells olo-termd already has (sized as it was, if
     /// we know), one tab each.
     /// A window of `starts`, at the grid of `like` (a shell olo-termd
     /// has; else the usual one).
-    fn reopen(&mut self, cx: &mut Cx, starts: Vec<Start>, like: Option<&wire::ShellInfo>, size: Option<(u32, u32)>, active: usize, groups: Grouping) -> WindowId {
+    fn reopen(&mut self, cx: &mut Cx, starts: Vec<Start>, like: Option<&wire::ShellInfo>, size: Option<(u32, u32)>, active: usize, groups: Grouping, key: Option<u64>) -> WindowId {
         let active = active.min(starts.len().saturating_sub(1));
         let (cols, rows) = like.map_or((self.settings.cols, self.settings.rows), |s| (s.grid.cols.max(1) as usize, s.grid.rows.max(1) as usize));
         let mut options = self.window_options(cols, rows);
@@ -819,7 +829,7 @@ impl Terminal {
             options.title = t.clone();
         }
         let snap = size.is_none().then_some((cols, rows));
-        self.add(cx, options, Size { cols, rows }, snap, starts, active, groups)
+        self.add(cx, options, Size { cols, rows }, snap, starts, active, groups, key)
     }
 
     fn start(&self, cx: &Cx, size: Size, start: Start) -> Tab {
@@ -830,10 +840,12 @@ impl Terminal {
         Tab::new(session)
     }
 
+    /// A window of `starts`, known to app_server by `key` (one it had
+    /// before: `SavedWindow::key`), else by its first shell.
     #[allow(clippy::too_many_arguments)]
-    fn add(&mut self, cx: &mut Cx, options: WindowOptions, size: Size, snap_to: Option<(usize, usize)>, starts: Vec<Start>, active: usize, (groups, of): Grouping) -> WindowId {
-        let id = cx.open_window(options);
-        let tabs = starts
+    fn add(&mut self, cx: &mut Cx, mut options: WindowOptions, size: Size, snap_to: Option<(usize, usize)>, starts: Vec<Start>, active: usize, (groups, of): Grouping, key: Option<u64>) -> WindowId {
+        // (Its shells first, so it opens with its key.)
+        let tabs: Vec<Tab> = starts
             .into_iter()
             .enumerate()
             .map(|(i, s)| {
@@ -842,7 +854,13 @@ impl Terminal {
                 tab
             })
             .collect();
-        self.windows.insert(id, Win::Term(Box::new(TermWin::new(tabs, active, snap_to, groups))));
+        let mut win = TermWin::new(tabs, active, snap_to, groups);
+        if let Some(k) = key.filter(|&k| k != 0) {
+            win.key = k;
+        }
+        options.restore_key = Some(restore_key(win.key));
+        let id = cx.open_window(options);
+        self.windows.insert(id, Win::Term(Box::new(win)));
         id
     }
 
@@ -969,7 +987,7 @@ impl Terminal {
                 continue;
             }
             any = true;
-            let id = self.reopen(cx, starts, grid, Some(w.size), active, (w.all_groups(), grouping));
+            let id = self.reopen(cx, starts, grid, Some(w.size), active, (w.all_groups(), grouping), Some(w.key));
             if let Some(Win::Term(t)) = self.windows.get_mut(&id) {
                 t.tiled = w.tiled;
                 t.tile_groups = w.tile_groups.clone();
@@ -987,7 +1005,7 @@ impl Terminal {
         }
         let rest: Vec<&wire::ShellInfo> = free.iter().filter(|s| !used.contains(&s.id)).copied().collect();
         for shell in &rest {
-            self.reopen(cx, vec![Start::Attach(shell.id)], Some(shell), None, 0, Default::default());
+            self.reopen(cx, vec![Start::Attach(shell.id)], Some(shell), None, 0, Default::default(), None);
         }
         any || !rest.is_empty()
     }
@@ -1006,7 +1024,7 @@ impl Terminal {
             let mut options = self.window_options(w.cols, w.rows);
             options.size = w.size;
             let size = Size { cols: w.cols.max(1), rows: w.rows.max(1) };
-            self.add(cx, options, size, None, vec![Start::Adopt { pty, pid: w.pid, title: w.title, replay: w.contents }], 0, Default::default());
+            self.add(cx, options, size, None, vec![Start::Adopt { pty, pid: w.pid, title: w.title, replay: w.contents }], 0, Default::default(), None);
             any = true;
         }
         any
@@ -1209,8 +1227,10 @@ impl Terminal {
         let mut options = self.window_options(cols, rows);
         options.under_pointer = torn;
         options.title = format!("{} — {}", group.name, tabs[active].title);
+        let win = TermWin::new(tabs, active, Some((cols, rows)), vec![group]);
+        options.restore_key = Some(restore_key(win.key));
         let id = cx.open_window(options);
-        self.windows.insert(id, Win::Term(Box::new(TermWin::new(tabs, active, Some((cols, rows)), vec![group]))));
+        self.windows.insert(id, Win::Term(Box::new(win)));
         Some(id)
     }
 
@@ -1393,8 +1413,10 @@ impl Terminal {
         tab.rang = false;
         // Out of its group: it may join its repository's in its new window.
         tab.group = None;
+        let win = TermWin::new(vec![tab], 0, Some((cols, rows)), Vec::new());
+        options.restore_key = Some(restore_key(win.key));
         let id = cx.open_window(options);
-        self.windows.insert(id, Win::Term(Box::new(TermWin::new(vec![tab], 0, Some((cols, rows)), Vec::new()))));
+        self.windows.insert(id, Win::Term(Box::new(win)));
         self.auto_group(cx, id);
         Some(id)
     }
@@ -1514,7 +1536,7 @@ impl Terminal {
         }) else {
             let (cols, rows) = (self.settings.cols, self.settings.rows);
             let options = self.window_options(cols, rows);
-            self.add(cx, options, Size { cols, rows }, Some((cols, rows)), starts, saved.active, (vec![saved.group], vec![(Some(0), false, false); n]));
+            self.add(cx, options, Size { cols, rows }, Some((cols, rows)), starts, saved.active, (vec![saved.group], vec![(Some(0), false, false); n]), None);
             return;
         };
         let tabs: Vec<Tab> = starts.into_iter().map(|s| self.start(cx, Size { cols, rows }, s)).collect();
@@ -1780,7 +1802,7 @@ impl Terminal {
                     cx.redraw(id);
                 }
                 None => {
-                    self.reopen(cx, vec![Start::Attach(shell.id)], Some(&shell), None, 0, Default::default());
+                    self.reopen(cx, vec![Start::Attach(shell.id)], Some(&shell), None, 0, Default::default(), None);
                 }
             },
         }
@@ -2266,6 +2288,7 @@ impl Terminal {
                     let shell = t.tab().session.id;
                     let active = tabs.iter().position(|&s| s == shell).unwrap_or(0);
                     (!tabs.is_empty()).then(|| SavedWindow {
+                        key: t.key,
                         shell: tabs[active],
                         tabs,
                         active,
@@ -2568,6 +2591,27 @@ fn main() {
             proxy.send(repos::WorktreesAt(s.terminal.worktrees));
         });
     });
+}
+
+/// A window's own number, for app_server (`TermWin::key`): unique in
+/// this Terminal and any other (seeded as olo-termd's shell ids are, by
+/// the process and the time).
+fn new_window_key() -> u64 {
+    static NEXT: std::sync::OnceLock<std::sync::atomic::AtomicU64> = std::sync::OnceLock::new();
+    let next = NEXT.get_or_init(|| {
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos() as u64;
+        std::sync::atomic::AtomicU64::new(((std::process::id() as u64) << 32 ^ nanos) | 1)
+    });
+    next.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+/// A window's key to app_server (`TermWin::key`).
+fn restore_key(key: u64) -> String {
+    format!("window-{key}")
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 /// `s` as one shell word: as it is when that is safe, else single-quoted.

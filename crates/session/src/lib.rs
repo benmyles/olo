@@ -75,6 +75,11 @@ const REAL_SHELL: &[&[&str]] = &[
 /// Give up restarting something that crashes this often.
 const CRASH_LIMIT: usize = 5;
 const CRASH_WINDOW: Duration = Duration::from_secs(60);
+/// After app_server restarts for an upgrade, how long its apps have to
+/// come back as their new versions before those still on an old one are
+/// asked to re-execute.
+const NUDGE_AFTER_RELOAD: Duration = Duration::from_secs(6);
+
 /// app_server crashing this often in a minute starts again in Olo Rescue
 /// (safe display, keyboard and pointer settings: a setting may be what
 /// it can't start with), where the person can see, and fix it.
@@ -199,6 +204,9 @@ struct Session {
     /// Programs an upgrade may have left on the old version: looked at
     /// 20 s after (asked again) and 90 s after (stopped).
     stale_check: Option<(Instant, u8)>,
+    /// When to ask the programs still on an old version to re-execute,
+    /// after app_server restarted for an upgrade (`NUDGE_AFTER_RELOAD`).
+    nudge_at: Option<Instant>,
     /// Our own binary when we started, to notice upgrades.
     binary: Option<(u64, SystemTime)>,
     stopping: bool,
@@ -271,6 +279,7 @@ impl Session {
             rescue_next: false,
             shell: Vec::new(),
             stale_check: None,
+            nudge_at: None,
             binary: own_binary(),
             stopping: false,
             real: false,
@@ -349,6 +358,7 @@ impl Session {
             rescue_next: false,
             shell: r.shell,
             stale_check: r.stale.map(|(at, stage)| (Instant::now() - Duration::from_secs(now_secs().saturating_sub(at)), stage)),
+            nudge_at: None,
             binary: own_binary(),
             stopping: false,
             real,
@@ -567,6 +577,12 @@ impl Session {
             if !self.stopping {
                 self.watchdog.check(self.server.pid);
                 self.check_stale();
+                if self.nudge_at.is_some_and(|t| Instant::now() >= t) {
+                    self.nudge_at = None;
+                    if let Some(w) = &self.upgrades {
+                        w.nudge(&[std::process::id() as i32, self.server.pid]);
+                    }
+                }
             }
             // An upgrade asked for while a build ran, now it has finished.
             if self.upgrades.as_mut().is_some_and(|w| w.check()) {
@@ -593,13 +609,25 @@ impl Session {
         if done.is_empty() {
             return;
         }
-        w.nudge(&[std::process::id() as i32, self.server.pid]);
+        let restarts = done.iter().any(|p| p == "olo-app-server");
+        if restarts {
+            // Our apps re-execute as it restarts (the kit does, as it
+            // reconnects), into their new versions: what is still on an
+            // old one is asked after. Asked at once, an app re-executed
+            // twice over (for the nudge, and as the compositor went),
+            // saved its windows half gone, and they came back in another
+            // order and other tiles (Ben, 2026-11-04: "grouped windows and
+            // tiled tabs/windows should remember their order").
+            self.nudge_at = Some(Instant::now() + NUDGE_AFTER_RELOAD);
+        } else {
+            w.nudge(&[std::process::id() as i32, self.server.pid]);
+        }
         self.stale_check = Some((Instant::now(), 0));
         // A service left stopped (it kept crashing) may be fixed by this
         // build: started again (Deskbar, 2026-11-04, after a crash on
         // start that the next build fixed, stayed gone).
         self.restart_stopped();
-        if done.iter().any(|p| p == "olo-app-server") {
+        if restarts {
             self.reload();
         } else if own_binary().is_some() && own_binary() != self.binary {
             self.exec_self(false, false);

@@ -1830,6 +1830,12 @@ event reaches it.
   belongs to the app's window that has the keyboard (its xdg parent:
   a chat's Info over its chat), opening over it rather than as a tab
   beside it; `dialog()` is that and never a tab.
+  `restore_key(key)`: what app_server knows the window by when its app
+  comes back (a restart, an upgrade), the xdg-toplevel-tag word
+  `restore:KEY`: its place, workspace, tab's place in its group and
+  tile are this window's and no other's of its title. A key the same
+  for the same window each time, unique among the app's (a document's
+  path, a number kept in the app's saved state: Terminal's).
 - Cached views (`AnyView::from(entity).cached(style)`): GPUI replays a
   view's last paint when nothing it drew changed (it wasn't notified,
   its bounds are the same). What agents read is kept with the frame
@@ -2488,10 +2494,16 @@ back where they were. A program with no kit loop takes it with
 (`olo-chrome chrome-extension://…`) exits once no request is being
 answered, for the extension to start the new one. Whatever is still
 old 90 s after is stopped (`check_stale`). A new olo-session re-executes itself without a
-reload. When app_server is new too, the nudge comes just before the
-reload, so apps re-execute while app_server restarts: that race is why
-a window not shown yet keeps the place it claimed, and why the kit
-survives a lost surface (above). Test it with
+reload. When app_server is new too, it restarts first and the nudge
+comes `NUDGE_AFTER_RELOAD` (6 s) after, to what is still old: kit apps
+re-execute as their compositor goes anyway, into their new versions.
+Nudged together with the reload (as before 2026-11-04), an app
+re-executed twice over and saved its windows half gone: Terminal's came
+back in another order, in other tiles. `tools/dev/order-check` does an
+upgrade so (a reordered Terminal group and StyledEdit, auto-tiled) and
+compares each window's tab place and tile. A window not shown yet still
+keeps the place it claimed, and the kit survives a lost surface
+(above), for a program restarting while app_server does. Test it with
 `TSESSION_SESSION_EXE=<install>/bin/olo-session
 OLO_UPGRADE_FROM=<tree> tsession start NAME --session --shell` and
 `touch` a program in the tree. Make the install and the tree under
@@ -3911,7 +3923,17 @@ they come back as they were. Not an alert or a dialog of an app that
 was started again (a new process: the old one is gone): it is placed
 afresh, in the middle of the screen or over its parent, not where the
 last one was, which may have been on a screen of another size
-(`take_placement`); the same process reconnecting gets its back. A window asking to fill the screen (`fullscreen_request`) fills the
+(`take_placement`); the same process reconnecting gets its back. A
+window coming back finds its place by the key its app gave it first
+(`layout::restore_key`: the xdg-toplevel-tag word `restore:KEY`, the
+kit's `WindowOptions::restore_key`, saved as `Placement::key`), then by
+its title, newest first, then (a terminal's title follows its
+directory) the app's newest; never a place another key has. Titles
+alone mixed up a group's tabs and an auto-tiled workspace's tiles: many
+windows share one, and a Terminal window's comes only after it shows.
+Terminal keys each window by a number of its own (`TermWin::key`,
+`new_window_key`, kept in its saved state, whatever its tabs since);
+give a key to any window that can have a twin in its app. A window asking to fill the screen (`fullscreen_request`) fills the
 display it asks for, else the one it is on (`display_of`: most of it),
 else the one the pointer is on; that display draws it alone
 (`FullscreenSurface`), and the others leave it out
