@@ -7,6 +7,19 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
+- **Terminal: a tab in a worktree isn't seen as the repository's**
+  (Ben, 2026-11-04, with a screenshot): "for some reason terminal isn't
+  picking up my worktree and github pr associated with them like it
+  recognized the main work-repo repo but then didn't recognize the
+  notes worktree". The first tab (in ~/src/work-repo) is
+  in the work-repo group with its PR badge; the second, `cd`'d into
+  ~/src/notes, sits outside it with no branch or PR. That
+  folder is a linked worktree (its `.git` file: `gitdir:
+  /home/ben/src/work-repo/.git/worktrees/notes`, branch
+  `knowledge`), made at 11:37 that day, outside Terminal (git or
+  worktrunk). apps/terminal/src/git.rs's watcher should take it as
+  work-repo's, on its branch, with that branch's PR.
+
 - **Auto-tile: a click on a zoomed window's tab unzooms it** (Ben,
   2026-11-04): "on a workspace in auto tile mode i zoomed the passwords
   app. it worked correctly, but then when i click the passwords yellow
@@ -1004,6 +1017,9 @@ of Finished; a new one goes where its priority puts it.
   selects and so on. if the fine tuning / training is super fast and
   lightweight then just do it after each new sample is collected." On
   the CPU's SIMD (never the NVIDIA GPU), measured per keystroke.
+
+- **Olo Suggestions: install just** (Ben, 2026-11-04): "add installing
+  just (for justfiles) to olo suggestions".
 
 - **Olo Suggestions: worktrunk, and a notification for each new
   suggestion** (Ben, 2026-11-04): "add to olo suggestions the
