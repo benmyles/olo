@@ -24,6 +24,8 @@ pub trait Hooks: Send + Sync {
     fn hinter(&self, info: InfoFn) -> Option<Box<dyn reedline::Hinter>>;
     /// A line was entered, before it runs.
     fn entered(&self, line: &str, info: &ShellInfo);
+    /// The prompt is about to be shown: what ran before is done.
+    fn prompt(&self, _info: &ShellInfo) {}
 }
 
 static HOOKS: OnceLock<Box<dyn Hooks>> = OnceLock::new();

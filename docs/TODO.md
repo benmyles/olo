@@ -22,19 +22,6 @@ of Finished; a new one goes where its priority puts it.
   WirePlumber's log), then fixed at the cause, and Sound saying so
   (their output named, with why it isn't there) rather than nothing.
 
-- **Terminal: a tab in a worktree isn't seen as the repository's**
-  (Ben, 2026-11-04, with a screenshot): "for some reason terminal isn't
-  picking up my worktree and github pr associated with them like it
-  recognized the main work-repo repo but then didn't recognize the
-  notes worktree". The first tab (in ~/src/work-repo) is
-  in the work-repo group with its PR badge; the second, `cd`'d into
-  ~/src/notes, sits outside it with no branch or PR. That
-  folder is a linked worktree (its `.git` file: `gitdir:
-  /home/ben/src/work-repo/.git/worktrees/notes`, branch
-  `knowledge`), made at 11:37 that day, outside Terminal (git or
-  worktrunk). apps/terminal/src/git.rs's watcher should take it as
-  work-repo's, on its branch, with that branch's PR.
-
 - **Auto-tile: a click on a zoomed window's tab unzooms it** (Ben,
   2026-11-04): "on a workspace in auto tile mode i zoomed the passwords
   app. it worked correctly, but then when i click the passwords yellow
@@ -1115,18 +1102,6 @@ of Finished; a new one goes where its priority puts it.
   on an Agent Screen (a press on the name, moved 3, 4, 10 points, in
   each view and at each scale).
 
-- **Terminal: a new tab opens in the folder of the tab it came from**
-  (Ben, 2026-11-04): "when opening a new tab from an existing one in
-  olo terminal the new tab should open in the same cwd as the current
-  one". File ▸ New Tab already asks for it (`Session::cwd`, the shell's
-  `/proc/PID/cwd`, apps/terminal/src/main.rs "new-tab"), so find where
-  it goes wrong: brush (Ben's login shell) may keep its working folder
-  without changing its process's (then `/proc` says where it started:
-  take OSC 7's folder, which shells report as they change it, first),
-  and every other way to a new tab (the tab strip, a tab's menu, ⌘T,
-  `--tab`, Deskbar) must pass the folder too. Test with bash, zsh and
-  brush on an Agent Screen.
-
 - **Other programs' file handling through Olo, fixed** (Ben,
   2026-11-04): "the gtk/qt integration doesn't seem to be working
   properly e.g. even in olo chrome i can't click on the folder for a
@@ -1218,6 +1193,41 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Terminal: a new tab opens in the folder of the tab it came from**~~
+  (Ben, 2026-11-04): "when opening a new tab from an existing one in
+  olo terminal the new tab should open in the same cwd as the current
+  one". File ▸ New Tab already asks for it (`Session::cwd`, the shell's
+  `/proc/PID/cwd`, apps/terminal/src/main.rs "new-tab"), so find where
+  it goes wrong: brush (Ben's login shell) may keep its working folder
+  without changing its process's (then `/proc` says where it started:
+  take OSC 7's folder, which shells report as they change it, first),
+  and every other way to a new tab (the tab strip, a tab's menu, ⌘T,
+  `--tab`, Deskbar) must pass the folder too. Test with bash, zsh and
+  brush on an Agent Screen. *Done*:
+  the same cause as the worktree tab (brush never moved its process on
+  `cd`, and New Tab reads the folder from `/proc`): olo-brush now does.
+  Every way to a new tab already passes the tab's folder.
+
+- ~~**Terminal: a tab in a worktree isn't seen as the repository's**~~
+  (Ben, 2026-11-04, with a screenshot): "for some reason terminal isn't
+  picking up my worktree and github pr associated with them like it
+  recognized the main work-repo repo but then didn't recognize the
+  notes worktree". The first tab (in ~/src/work-repo) is
+  in the work-repo group with its PR badge; the second, `cd`'d into
+  ~/src/notes, sits outside it with no branch or PR. That
+  folder is a linked worktree (its `.git` file: `gitdir:
+  /home/ben/src/work-repo/.git/worktrees/notes`, branch
+  `knowledge`), made at 11:37 that day, outside Terminal (git or
+  worktrunk). apps/terminal/src/git.rs's watcher should take it as
+  work-repo's, on its branch, with that branch's PR. *Done*: the
+  worktree was fine (git and Terminal's `git::look` read it); the tab's
+  folder wasn't. Terminal reads it from the shell's `/proc/PID/cwd`, and
+  brush (the login shell) never moved its process on `cd`. olo-brush
+  now does, at each prompt (a `prompt` hook in vendor/brush-interactive;
+  tested through a PTY: `cd` into the worktree, `/proc` says so). The
+  brush installed as the login shell is a copy: Olo Suggestions' Update
+  brush brings this one.
 
 - ~~**Grouped and tiled windows come back in their order**~~ (Ben,
   2026-11-04): "grouped windows and tiled tabs/windows should remember

@@ -22,10 +22,13 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
 - **brush-interactive 0.4.0** (MIT): brush's line editor gives no way in
   for its hints or for the lines entered. The patch adds `src/hooks.rs`
   (`set_hooks`: a program's own hinter, given the shell's folder and last
-  status, and each line as it's entered) and uses them in
-  `src/reedline/input_backend.rs`; for Olo's model's suggestions in
-  `apps/brush` (HACKING, "brush's suggestions"). Drop it if upstream
-  takes hooks like these.
+  status, each line as it's entered, and each prompt as it shows) and
+  uses them in `src/reedline/input_backend.rs`; for Olo's model's
+  suggestions in `apps/brush` (HACKING, "brush's suggestions"), and for
+  olo-brush's process to go where the shell is at each prompt (brush
+  keeps its folder for what it runs, not as its own process's, so
+  `/proc/PID/cwd` said where it started). Drop it if upstream takes
+  hooks like these (and changes its own folder on `cd`).
 - **bebook/**: the Be Book as Markdown, for reference (see its README).
 
 # Vendored libraries

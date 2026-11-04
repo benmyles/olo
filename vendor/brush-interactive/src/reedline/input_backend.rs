@@ -135,6 +135,10 @@ impl InputBackend for ReedlineInputBackend {
         prompt: InteractivePrompt,
     ) -> Result<ReadResult, ShellError> {
         if let Some(reedline) = &mut self.reedline {
+            // Olo: where the shell is now, as its prompt shows.
+            if let Some(h) = crate::hooks::hooks() {
+                h.prompt(&shell_info(shell));
+            }
             match reedline.read_line(&prompt) {
                 Ok(reedline::Signal::Success(s)) => {
                     if edit_mode::is_reedline_host_command(s.as_str()) {

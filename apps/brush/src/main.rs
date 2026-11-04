@@ -87,6 +87,18 @@ impl Hooks for Olo {
         }
         protocol::tell(&Request::Ran { command: line.to_owned(), cwd, session });
     }
+
+    /// brush keeps its working directory for what it runs, not as its
+    /// own process's: `/proc/PID/cwd` stayed where it started, and
+    /// Terminal (a tab's folder, its repository and worktree, where a new
+    /// tab opens) and anything else reading it saw that (Ben, 2026-11-04:
+    /// a tab `cd`'d into a worktree wasn't seen as in it). The process
+    /// goes where the shell is at each prompt, as other shells do on `cd`.
+    fn prompt(&self, info: &ShellInfo) {
+        if std::env::current_dir().ok().as_deref() != Some(info.working_dir.as_path()) {
+            let _ = std::env::set_current_dir(&info.working_dir);
+        }
+    }
 }
 
 /// The hint: olo-complete's when it's on and answers, else brush's own.

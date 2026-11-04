@@ -6253,6 +6253,13 @@ applied` shows them all applied, made up, to look at headless.
   database first, `$SHELL` from login after), so its next window is
   brush at once.
 
+- **olo-brush's process goes where the shell is**: brush keeps its
+  working folder for what it runs, not as its own process's, so its
+  `/proc/PID/cwd` stayed where it started, and Terminal (which reads a
+  tab's folder there: its repository, worktree and PR, where a new tab
+  opens) saw a tab `cd`'d into a worktree as still in its first folder.
+  olo-brush's `prompt` hook (vendor/brush-interactive's, called as each
+  prompt shows) moves the process there, as other shells move on `cd`.
 - **brush's suggestions from Olo's model (olo-complete)**: with
   Preferences ▸ Terminal ▸ Command Suggestions on
   (`~/.config/olo/complete.json` `enabled`, read by brush and the daemon
