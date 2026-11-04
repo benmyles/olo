@@ -1065,14 +1065,6 @@ of Finished; a new one goes where its priority puts it.
   `archive`, `delete`, and `list` saying which is which (apps/screen,
   HACKING's "Agent Screens").
 
-- **Tracker: ⌘N opens a new Tracker window** (Ben, 2026-11-04): "in
-  tracker, pressing super+n should open a new tracker window". ⌘N is
-  New Folder now (apps/tracker/src/folder.rs, `background_menu`): it
-  becomes File ▸ New Window (a window on the folder it's pressed in, or
-  Home from the desktop, as Finder's), and New Folder moves to ⇧⌘N, as
-  Finder has them; the shortcut help, the palette and HACKING's Tracker
-  section told.
-
 - **Tracker: Back and Forward, from the keyboard and the mouse** (Ben,
   2026-11-04): "in tracker, it should support forward and back via
   keyboard shortcut or mouse". A folder window keeps the folders it
@@ -1194,6 +1186,19 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Tracker: ⌘N opens a new Tracker window**~~ (Ben, 2026-11-04): "in
+  tracker, pressing super+n should open a new tracker window". ⌘N is
+  New Folder now (apps/tracker/src/folder.rs, `background_menu`): it
+  becomes File ▸ New Window (a window on the folder it's pressed in, or
+  Home from the desktop, as Finder's), and New Folder moves to ⇧⌘N, as
+  Finder has them; the shortcut help, the palette and HACKING's Tracker
+  section told. *Done*: File ▸ New Window
+  (⌘N, Ctrl+N on the Windows profile, none on BeOS's, where Alt+N is
+  New Folder as in its Tracker): another window on the folder it's
+  pressed in, Home from the desktop; `--new-window` always opens one
+  too, as HACKING asks (it brought an open Home forward). New Folder is
+  ⇧⌘N (`app_keys`' `tracker.new` and `tracker.new-folder`).
 
 - ~~**Auto-tile: a click on a zoomed window's tab unzooms it**~~ (Ben,
   2026-11-04): "on a workspace in auto tile mode i zoomed the passwords

@@ -288,7 +288,7 @@ impl FolderWin {
         let in_trash = self.current_dir().starts_with(fs::trash_files());
         Menu::new("")
             .item("New Folder", "new-folder")
-            .key("n")
+            .shift_key("n")
             .enabled(!in_trash)
             .item("Paste", "paste")
             .key("v")
@@ -320,12 +320,16 @@ impl FolderWin {
         let current = self.current().1;
         let has_sel = !current.selected.is_empty();
         let in_trash = self.current_dir().starts_with(fs::trash_files());
+        // ⌘N a new window, ⇧⌘N a new folder, as Finder has them (Ben,
+        // 2026-11-04: "pressing super+n should open a new tracker window").
         let mut file = Menu::new("File")
+            .item("New Window", "new")
+            .key("n")
+            .item("New Folder", "new-folder")
+            .shift_key("n")
+            .enabled(!in_trash)
             .item("Find…", "find")
             .key("f")
-            .item("New Folder", "new-folder")
-            .key("n")
-            .enabled(!in_trash)
             .separator()
             .item("Open", "open")
             .key("o")

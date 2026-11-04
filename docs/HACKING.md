@@ -7983,7 +7983,10 @@ private bus as DBUS_SESSION_BUS_ADDRESS).
 On Olo's GPUI. The `Tracker` entity (main.rs) keeps the windows (each
 known by its view's entity id) and does what opens windows or touches
 files: opening folders (a folder's window on this workspace is brought
-forward, else one opens here: `olo_ui::workspaces`), Get Info, Find,
+forward, else one opens here: `olo_ui::workspaces`; File ▸ New Window,
+⌘N, the `new` command, always opens another, on the folder it's pressed
+in, Home from the desktop or for `--new-window`; New Folder is ⇧⌘N, as
+Finder has them, both by `app_keys`' Tracker entries), Get Info, Find,
 the file operations (ops.rs, on workers; Tracker Status after 400 ms),
 drops, pastes, Quick Look, the watcher's changes and an upgrade's saved
 state (the egui Tracker's, unchanged). Each window's view does the

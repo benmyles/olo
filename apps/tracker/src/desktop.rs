@@ -424,6 +424,7 @@ impl Desktop {
                 m.item("Get Info", "info").key("i").separator().item("Move to Trash", "trash").key("t").enabled(!self.movable().is_empty())
             }
             None => Menu::new("")
+                .item("New Window", "new")
                 .item("New Folder", "new-folder")
                 .item("Open in Terminal", "terminal")
                 .separator()
@@ -580,6 +581,10 @@ impl Desktop {
             "info"
         } else if pressed(k, "rename") || (plain && k.key == "f2") {
             "rename"
+        } else if pressed(k, "new") {
+            "new"
+        } else if pressed(k, "new-folder") {
+            "new-folder"
         } else {
             return;
         };

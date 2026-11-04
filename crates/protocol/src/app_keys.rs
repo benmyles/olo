@@ -97,6 +97,9 @@ pub const APP_KEYS: &[AppKey] = &[
     k("app.smaller", None, "smaller", "Smaller text", &["Cmd+Minus"], &["Ctrl+Minus"], &["Alt+Minus"]),
     k("app.default-size", None, "default-size", "Text at its own size", &["Cmd+0"], &["Ctrl+0"], &["Alt+0"]),
     // Tracker: Finder's on a Mac, Explorer's on Windows, Tracker's on BeOS.
+    // (A new window: ⌘N as Finder's, Ctrl+N as Explorer's; BeOS's Tracker
+    // had none, Alt+N its New Folder.)
+    k("tracker.new", TRACKER, "new", "New Window", &["Cmd+N"], &["Ctrl+N"], &[]),
     k("tracker.new-folder", TRACKER, "new-folder", "New Folder", &["Shift+Cmd+N"], &["Ctrl+Shift+N"], &["Alt+N"]),
     k("tracker.parent", TRACKER, "parent", "Open Parent", &["Cmd+Up"], &["Alt+Up"], &["Alt+Up"]),
     k("tracker.info", TRACKER, "info", "Get Info", &["Cmd+I"], &["Alt+Return"], &["Alt+I"]),

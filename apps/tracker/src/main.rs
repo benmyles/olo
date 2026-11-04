@@ -528,8 +528,11 @@ impl Tracker {
                     opened = true;
                 }
                 "--desktop" => {}
-                // Another window: home, as when launched bare.
-                "--new-window" => {}
+                // Another window, always (not one brought forward): home.
+                "--new-window" => {
+                    self.new_folder_window(fs::home(), self.default_view, (560, 380), |_| {}, cx);
+                    opened = true;
+                }
                 p => {
                     let path = PathBuf::from(p);
                     if path.is_dir() {
@@ -597,6 +600,10 @@ impl Tracker {
                 }
                 "empty-trash" => self.confirm_empty_trash(cx),
                 "terminal" => fs::open_in_terminal(&fs::home().join("Desktop")),
+                // From the desktop: a window on Home.
+                "new" => {
+                    self.new_folder_window(fs::home(), self.default_view, (560, 380), |_| {}, cx);
+                }
                 "backgrounds" => {
                     let _ = olo_xdg::spawn_detached("olo-preferences backgrounds");
                 }
@@ -645,6 +652,12 @@ impl Tracker {
                 Err(e) => self.error(format!("Couldn't create a folder: {e}"), cx),
             },
             "terminal" => fs::open_in_terminal(&dir),
+            // File ▸ New Window (⌘N): another window on this folder, as
+            // it shows it, beside this one (always a new one).
+            "new" => {
+                let view = fe.read(cx).view;
+                self.new_folder_window(dir.clone(), view, (560, 380), |_| {}, cx);
+            }
             "new-window" => {
                 if let Some(app) = entries.first().and_then(fs::running_app) {
                     fs::new_window(app);
