@@ -331,7 +331,7 @@ How Olo keeps it (do the same):
 | `data/icons` | Icon set, pre-scaled to device sizes (`data/icons/<px>/<name>.png`). |
 | `data/themes` | The other looks of the icons and wordmark (`data/themes/<id>/icons/<px>/<name>.png`, `brand/`), chosen in Preferences ▸ Themes; see "Themes" in [ICONS.md](ICONS.md). |
 | `data/session` | `olo.desktop` for the login screen (installed by `tools/install-session.sh`). |
-| `tools/` | `install-session.sh` (release build → `~/.local`, session entry → `/usr/local/share/wayland-sessions`), `dev/tsession` (headless UI testing), `genicon.py`/`genicons.sh`/`mkicons.py`/`iconsheet.py` (icons, see [ICONS.md](ICONS.md)). |
+| `tools/` | `install-session.sh` (release build → `~/.local`, session entry → `/usr/share/wayland-sessions`, an atomic system's `/usr/local/share/wayland-sessions`), `dev/tsession` (headless UI testing), `genicon.py`/`genicons.sh`/`mkicons.py`/`iconsheet.py` (icons, see [ICONS.md](ICONS.md)). |
 
 Build: `cargo build -p olo-<app>` (plus `cargo build --bin olo-app-server` once, for headless testing; as root set `CARGO_HOME=/home/ben/.cargo` to share the registry) (repo is owned by `ben`; when running as
 root use `sudo -u ben bash -lc 'cd … && cargo build …'` in the main checkout).
@@ -2436,8 +2436,15 @@ Install for the login screen with `tools/install-session.sh` (as
 yourself; it asks for sudo once). It builds release binaries into
 `~/.local/bin` (so upgrades need no root), icons into
 `~/.local/share/olo`, and the session entry into
-`/usr/local/share/wayland-sessions/olo.desktop` (Exec is the installed
-path; no TryExec, as the greeter can't look inside a private home).
+`/usr/share/wayland-sessions/olo.desktop` (Exec is the installed
+path; no TryExec, as the greeter can't look inside a private home):
+where GDM and SDDM always look, as GDM reads
+`/usr/local/share/wayland-sessions` only when its `XDG_DATA_DIRS` names
+it (on Fedora a Flatpak's environment generator does; a machine without
+one listed no Olo). On an atomic system, whose `/usr` can't be written,
+it goes in `/usr/local/share/wayland-sessions`; an entry in the other
+place is removed. `OLO_SKIP_UI_LINT=1` leaves out the live layout lint
+before installing (`tools/setup.sh` does; the hooks run it).
 
 **Upgrades from the build tree** (`crates/session/src/upgrade.rs`): the
 installer records the tree's `target/release` in
@@ -5728,8 +5735,9 @@ scan made for the sudo user). What it looks for:
   80-olo-uclamp.conf); a kernel without `CONFIG_UCLAMP_TASK` is advice.
 - **Olo programs on an old version** (their `exe` is a replaced file in
   ~/.local/bin; never the session, app_server or the proxies): quit.
-- **The login screen's entry** (/usr/local/share/wayland-sessions)
-  missing or pointing at nothing.
+- **The login screen's entry** (/usr/share/wayland-sessions, or
+  /usr/local/share's on an atomic system) missing or pointing at
+  nothing.
 - **Olo's Wi-Fi healer** (below) missing, out of date or stopped, on a
   machine whose Wi-Fi chip needs it (brcmfmac): installed as a root-owned
   copy, with its unit and NetworkManager's setting for the chip.

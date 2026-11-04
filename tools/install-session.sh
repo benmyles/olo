@@ -8,8 +8,15 @@
 # $PREFIX/share/olo, and records this tree's target/release in
 # $PREFIX/share/olo/build-dir: a running session watches it and offers
 # newer builds in Deskbar's tray (or run `olo-session upgrade`). The
-# login screen's entry goes into /usr/local/share/wayland-sessions (GDM
-# and SDDM look there), which needs root.
+# login screen's entry goes into /usr/share/wayland-sessions, where GDM
+# and SDDM always look (GDM reads /usr/local/share's only when its
+# XDG_DATA_DIRS names it); on an atomic system, whose /usr can't be
+# written, /usr/local/share/wayland-sessions. That needs root.
+#
+# Before installing, the layout lints (`cargo ui-lint`, then every app's
+# windows live: tools/dev/ui-lint); OLO_SKIP_UI_LINT=1 leaves the live
+# one out (tools/setup.sh does, on a machine being set up: the hooks run
+# it on every commit and push).
 #
 # Re-running it upgrades in place; `olo-session reload` (or the tray)
 # picks the new programs up without logging out.
@@ -22,7 +29,11 @@ USER_NAME=$(id -un)
 [ "$(id -u)" = 0 ] && [ -n "${SUDO_USER:-}" ] && USER_NAME=$SUDO_USER
 USER_HOME=$(getent passwd "$USER_NAME" | cut -d: -f6)
 PREFIX=${PREFIX:-$USER_HOME/.local}
-SESSIONS=${SESSIONS:-/usr/local/share/wayland-sessions}
+if [ -e /run/ostree-booted ]; then
+    SESSIONS=${SESSIONS:-/usr/local/share/wayland-sessions}
+else
+    SESSIONS=${SESSIONS:-/usr/share/wayland-sessions}
+fi
 
 # Under sudo, with the user's own toolchain first (~/.cargo/bin: rustup's
 # cargo and any rustc wrapper its config names), not sudo's secure_path,
@@ -41,7 +52,7 @@ as_root() {
 as_user cargo ui-lint
 as_user cargo build --release --workspace
 # ...and every app's windows, live (tools/dev/ui-lint).
-as_user /usr/bin/python3 tools/dev/ui-lint
+[ "${OLO_SKIP_UI_LINT:-}" = 1 ] || as_user /usr/bin/python3 tools/dev/ui-lint
 # An install from before the rename (Tabula): its folders become Olo's,
 # with links by the old names (as every Olo program does at start, but
 # before this makes the new ones), so nothing is lost.
@@ -101,8 +112,14 @@ ENTRY=$(mktemp)
 sed -e "s|^Exec=.*|Exec=$BIN/olo-session|" -e '/^TryExec=/d' data/session/olo.desktop > "$ENTRY"
 as_root install -D -m 644 "$ENTRY" "$SESSIONS/olo.desktop"
 rm -f "$ENTRY"
-# The entry from before the rename (the new one replaces it).
+# The entry from before the rename (the new one replaces it), and one in
+# the other place (the menu would list it twice).
 as_root rm -f "$SESSIONS/tabula.desktop"
+for other in /usr/local/share/wayland-sessions /usr/share/wayland-sessions; do
+    if [ "$other" != "$SESSIONS" ] && [ -e "$other/olo.desktop" ]; then
+        as_root rm -f "$other/olo.desktop"
+    fi
+done
 # Brightness of USB-controlled monitors (Studio Display and the like).
 as_root install -D -m 644 data/udev/70-olo-displays.rules /etc/udev/rules.d/70-olo-displays.rules
 as_root install -D -m 644 data/udev/71-olo-input.rules /etc/udev/rules.d/71-olo-input.rules
@@ -111,4 +128,4 @@ as_root udevadm control --reload 2>/dev/null || true
 as_root udevadm trigger --subsystem-match=hidraw --action=change 2>/dev/null || true
 # (The input rule applies to receivers already plugged in.)
 as_root udevadm trigger --subsystem-match=usb --action=change 2>/dev/null || true
-echo "Installed to $PREFIX; Olo Desktop is on the login screen's session menu."
+echo "Installed to $PREFIX; Olo Desktop is on the login screen's session menu ($SESSIONS/olo.desktop)."

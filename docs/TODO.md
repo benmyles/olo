@@ -185,6 +185,18 @@ of Finished; a new one goes where its priority puts it.
     x86_64 repository (dnf repoquery against it). Fedora 45 has
     libdisplay-info 0.3.0, as built against here, and Rust 1.98.
   - Not run on x86 yet: that's the ThinkPad.
+  - Ben, setting the ThinkPad up the same day: "the tools setup doesn't
+    seem to be adding the login entry for gdm". The entry went into
+    /usr/local/share/wayland-sessions, which GDM reads only when its
+    XDG_DATA_DIRS names it; Fedora 45's GDM 51 daemon doesn't name
+    XDG_DATA_DIRS, though it has /usr/share/wayland-sessions built in.
+    Now it goes into /usr/share/wayland-sessions (atomic systems keep
+    /usr/local's), and an entry in the other place is removed. The live
+    layout lint, which could stop the install before the entry on a new
+    machine, is left to the hooks during setup (`OLO_SKIP_UI_LINT=1`).
+    Setup checks the entry is where the login screen reads it, and
+    stops saying so when installing fails. Doctor looks in both places.
+    Left: Ben's run on the ThinkPad.
 
 - **Backup tried on the ThinkPad** (what's left of Ben's backup audit,
   2026-11-03; waiting on the machine): an export from this Mac (sealed,

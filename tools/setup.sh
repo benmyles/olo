@@ -96,7 +96,7 @@ greeter=$(basename "$(readlink -f /etc/systemd/system/display-manager.service 2>
 case $greeter in
     gdm | sddm) ok "login screen: ${greeter^^}" ;;
     "" | display-manager) todo "no login screen is enabled: Olo is started from GDM's or SDDM's session menu" ;;
-    *) todo "login screen: $greeter (Olo's entry is for GDM and SDDM, which read /usr/local/share/wayland-sessions)" ;;
+    *) todo "login screen: $greeter (Olo's entry is for GDM and SDDM, in /usr/share/wayland-sessions)" ;;
 esac
 ATOMIC=0
 if [ -e /run/ostree-booted ]; then
@@ -188,7 +188,11 @@ say "Building and installing"
 if [ $CHECK = 1 ]; then
     if [ -x "$HOME/.local/bin/olo-session" ]; then ok "installed in ~/.local/bin"; else todo "not built and installed yet"; fi
 else
-    tools/install-session.sh
+    # (The live layout lint is left to the hooks, which run it on every
+    # commit and push: on a machine being set up it's the login screen's
+    # entry that matters, which comes last.)
+    OLO_SKIP_UI_LINT=1 tools/install-session.sh ||
+        fail "building or installing stopped (see above), so Olo isn't on the login screen yet: fix that and run tools/setup.sh again"
     ok "built, and installed in ~/.local/bin"
 fi
 # Builds leave the last build's artifacts behind under target/ (hundreds
@@ -224,11 +228,26 @@ if command -v kache > /dev/null 2>&1; then
 fi
 
 say "Login screen"
-if [ -f /usr/local/share/wayland-sessions/olo.desktop ]; then
-    case $greeter in gdm | sddm) on="${greeter^^}'s" ;; *) on="the" ;; esac
-    ok "Olo is on $on session menu ($(grep -m1 '^Exec=' /usr/local/share/wayland-sessions/olo.desktop | cut -d= -f2))"
+# Where the entry is (tools/install-session.sh: /usr/share's, where GDM
+# and SDDM always look; an atomic system's in /usr/local/share), and
+# whether the login screen reads that place: GDM reads /usr/local/share's
+# only when its XDG_DATA_DIRS names it (systemd's environment, as a
+# Flatpak's generator makes it).
+entry=""
+for dir in /usr/share/wayland-sessions /usr/local/share/wayland-sessions; do
+    [ -f "$dir/olo.desktop" ] && entry=$dir/olo.desktop && break
+done
+case $greeter in gdm | sddm) on="${greeter^^}'s" ;; *) on="the" ;; esac
+data_dirs=$(systemctl show-environment 2> /dev/null | sed -n 's/^XDG_DATA_DIRS=//p')
+data_dirs=${data_dirs:-/usr/local/share:/usr/share}
+if [ -z "$entry" ]; then
+    todo "not on the session menu yet (no olo.desktop in /usr/share/wayland-sessions or /usr/local/share/wayland-sessions)"
+elif exec_of=$(grep -m1 '^Exec=' "$entry" | cut -d= -f2) && [ ! -x "$exec_of" ]; then
+    todo "$entry starts $exec_of, which isn't there: run tools/install-session.sh"
+elif [ "$greeter" = gdm ] && [ "${entry#/usr/local/}" != "$entry" ] && [[ ":$data_dirs:" != *":/usr/local/share:"* && ":$data_dirs:" != *":/usr/local/share/:"* ]]; then
+    todo "$entry is where GDM doesn't look here (its XDG_DATA_DIRS: $data_dirs): run tools/install-session.sh, which puts it in /usr/share/wayland-sessions"
 else
-    todo "not on the session menu yet"
+    ok "Olo is on $on session menu ($entry, starting $exec_of)"
 fi
 if [ -f /etc/udev/rules.d/70-olo-displays.rules ]; then
     ok "display brightness rules installed"

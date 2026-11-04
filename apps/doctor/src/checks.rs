@@ -40,7 +40,12 @@ const HEALED_DRIVERS: &[&str] = &["brcmfmac"];
 
 const INPUT_RULE_PATH: &str = "etc/udev/rules.d/71-olo-input.rules";
 const DISPLAY_RULE_PATH: &str = "etc/udev/rules.d/70-olo-displays.rules";
-const SESSION_ENTRY_PATH: &str = "usr/local/share/wayland-sessions/olo.desktop";
+/// Where the login screen's entry goes (tools/install-session.sh): where
+/// GDM and SDDM always look, or on an atomic system (its /usr read-only)
+/// /usr/local/share's, which GDM reads only when its XDG_DATA_DIRS names
+/// it.
+const SESSION_ENTRY_PATH: &str = "usr/share/wayland-sessions/olo.desktop";
+const SESSION_ENTRY_LOCAL_PATH: &str = "usr/local/share/wayland-sessions/olo.desktop";
 /// The most any thread may ask the scheduler to take it as busy
 /// (uclamp.min, of 1024), and Olo's setting of it kept at boot.
 const UTIL_CLAMP_PATH: &str = "proc/sys/kernel/sched_util_clamp_min";
@@ -839,7 +844,11 @@ fn stale(roots: &Roots, procs: &[Proc], r: &mut Report) {
 }
 
 fn login_entry(roots: &Roots, r: &mut Report) {
-    let path = roots.fs.join(SESSION_ENTRY_PATH);
+    let atomic = roots.fs.join("run/ostree-booted").exists();
+    let home = if atomic { SESSION_ENTRY_LOCAL_PATH } else { SESSION_ENTRY_PATH };
+    // (Found in either place; written in its own.)
+    let found = [SESSION_ENTRY_PATH, SESSION_ENTRY_LOCAL_PATH].into_iter().find(|p| roots.fs.join(p).exists()).unwrap_or(home);
+    let path = roots.fs.join(found);
     let session = roots.bin.join("olo-session");
     let wanted: String =
         SESSION_ENTRY.lines().filter(|l| !l.starts_with("TryExec=")).map(|l| if l.starts_with("Exec=") { format!("Exec={}", session.display()) } else { l.to_owned() }).collect::<Vec<_>>().join("\n")
@@ -848,7 +857,7 @@ fn login_entry(roots: &Roots, r: &mut Report) {
     let exec = installed.as_deref().and_then(|t| t.lines().find_map(|l| l.strip_prefix("Exec=")).map(str::to_owned));
     let runs = exec.as_deref().is_some_and(|e| Path::new(e).exists() || !e.contains('/'));
     if installed.is_some() && runs {
-        r.fine.push(Fine { title: "Olo is on the login screen".into(), detail: format!("/{SESSION_ENTRY_PATH} runs {}.", exec.unwrap_or_default()) });
+        r.fine.push(Fine { title: "Olo is on the login screen".into(), detail: format!("/{found} runs {}.", exec.unwrap_or_default()) });
         return;
     }
     if !session.exists() {
@@ -859,8 +868,8 @@ fn login_entry(roots: &Roots, r: &mut Report) {
         id: "login".into(),
         severity: Severity::Advice,
         title: if installed.is_some() { "The login screen's Olo entry runs a program that isn't there".into() } else { "Olo isn't on the login screen".into() },
-        detail: format!("{} should start {}. The fix writes it.", path.display(), session.display()),
-        fix: Some(Fix { label: "Write the Entry".into(), root: true, steps: vec![Step::WriteFile { path: PathBuf::from("/").join(SESSION_ENTRY_PATH), content: wanted, mode: 0o644 }] }),
+        detail: format!("/{home} should start {}. The fix writes it.", session.display()),
+        fix: Some(Fix { label: "Write the Entry".into(), root: true, steps: vec![Step::WriteFile { path: PathBuf::from("/").join(home), content: wanted, mode: 0o644 }] }),
     });
 }
 
@@ -1000,6 +1009,9 @@ mod tests {
         assert!(
             matches!(&login.fix.as_ref().unwrap().steps[0], Step::WriteFile { content, .. } if content.contains(&format!("Exec={}/olo-session\n", roots.bin.display())) && !content.contains("TryExec"))
         );
+        // Written where GDM always looks (the old one, in /usr/local, read
+        // only when GDM's XDG_DATA_DIRS names it).
+        assert!(matches!(&login.fix.as_ref().unwrap().steps[0], Step::WriteFile { path, .. } if path == Path::new("/usr/share/wayland-sessions/olo.desktop")));
         assert!(r.fine.is_empty(), "{:?}", r.fine);
         let _ = std::fs::remove_dir_all(&fs);
     }
