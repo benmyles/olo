@@ -95,6 +95,14 @@ pub fn evdev(key: &str) -> u32 {
 /// Whether `k` presses `s` (the command key is Ctrl to an app). ⇧= types
 /// + (and a terminal's ⌘ always brings Shift), so one on = takes + too,
 /// as ⌘+ zooms in on a Mac.
+/// ⌘ is held with a Mac's keys (app_server sends it as the right Ctrl):
+/// in text, ⌘← and ⌘→ are the line's start and end and ⌘⌫ deletes to its
+/// start, where the same Ctrl from the left (or BeOS's command key) goes
+/// by words. Asked as an action comes, the key that brought it still down.
+pub fn mac_command() -> bool {
+    olo_kit_base::keys::platform() == olo_protocol::Platform::Mac && olo_kit_base::keys::command_key() && gpui::right_control_held()
+}
+
 pub fn pressed(s: &Shortcut, k: &Keystroke) -> bool {
     let Some(name) = gpui_key(s.key) else { return false };
     let key = k.key.to_ascii_lowercase();

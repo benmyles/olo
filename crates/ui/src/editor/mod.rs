@@ -1533,6 +1533,14 @@ impl Editor {
                 self.edit(doc, r, "");
                 return true;
             }
+            Cmd::DeleteToLineStart if o.editable => {
+                let r = if sel.is_empty() { self.row_end(doc, sh, false).0..self.caret } else { sel };
+                if r.is_empty() {
+                    return false;
+                }
+                self.edit(doc, r, "");
+                return true;
+            }
             Cmd::SelectAll => {
                 self.anchor = 0;
                 self.caret = text_len;
@@ -1911,6 +1919,8 @@ enum Cmd {
     /// By words.
     Backspace(bool),
     Delete(bool),
+    /// ⌘⌫: back to the line's start.
+    DeleteToLineStart,
     SelectAll,
     Copy,
     Cut,
@@ -2102,14 +2112,19 @@ pub fn view<V: EditorHost>(host: &Entity<V>, key: usize, editor: &Editor, option
             )*
         };
     }
+    // (With a Mac's keys, ⌘ arrows are the line's start and end and ⌘⌫
+    // deletes to its start: `keys::mac_command`.)
+    let mac = crate::keys::mac_command;
     on!(
-        Left => Cmd::Left(false, false), Right => Cmd::Right(false, false), WordLeft => Cmd::Left(false, true), WordRight => Cmd::Right(false, true),
-        SelectLeft => Cmd::Left(true, false), SelectRight => Cmd::Right(true, false), SelectWordLeft => Cmd::Left(true, true), SelectWordRight => Cmd::Right(true, true),
+        Left => Cmd::Left(false, false), Right => Cmd::Right(false, false),
+        WordLeft => if mac() { Cmd::Home(false) } else { Cmd::Left(false, true) }, WordRight => if mac() { Cmd::End(false) } else { Cmd::Right(false, true) },
+        SelectLeft => Cmd::Left(true, false), SelectRight => Cmd::Right(true, false),
+        SelectWordLeft => if mac() { Cmd::Home(true) } else { Cmd::Left(true, true) }, SelectWordRight => if mac() { Cmd::End(true) } else { Cmd::Right(true, true) },
         Up => Cmd::Up(false), Down => Cmd::Down(false), SelectUp => Cmd::Up(true), SelectDown => Cmd::Down(true),
         Home => Cmd::Home(false), End => Cmd::End(false), SelectHome => Cmd::Home(true), SelectEnd => Cmd::End(true),
         DocStart => Cmd::DocStart(false), DocEnd => Cmd::DocEnd(false), SelectDocStart => Cmd::DocStart(true), SelectDocEnd => Cmd::DocEnd(true),
         PageUp => Cmd::PageUp(false), PageDown => Cmd::PageDown(false), SelectPageUp => Cmd::PageUp(true), SelectPageDown => Cmd::PageDown(true),
-        Backspace => Cmd::Backspace(false), DeleteWordLeft => Cmd::Backspace(true), Delete => Cmd::Delete(false), DeleteWordRight => Cmd::Delete(true),
+        Backspace => Cmd::Backspace(false), DeleteWordLeft => if mac() { Cmd::DeleteToLineStart } else { Cmd::Backspace(true) }, Delete => Cmd::Delete(false), DeleteWordRight => Cmd::Delete(true),
         SelectAll => Cmd::SelectAll, Copy => Cmd::Copy, Cut => Cmd::Cut, Paste => Cmd::Paste, Enter => Cmd::Enter, Tab => Cmd::Tab(false), BackTab => Cmd::Tab(true),
     );
     d.child(sv.child(EditorElement { host: host.clone(), key, options })).into_any_element()

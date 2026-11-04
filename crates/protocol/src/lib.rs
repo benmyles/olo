@@ -376,6 +376,15 @@ pub enum Request {
     InsertText {
         text: String,
     },
+    /// Press `keys` together and let them go (evdev codes, as a keyboard
+    /// sends them: through the keyboard profile, so ⌘ is the person's
+    /// command key), into whatever has the keyboard once the asking
+    /// program hasn't (the command palette, on its way out, doing a text
+    /// shortcut in the window it was opened over). It waits a second at
+    /// most; the reply comes once they're pressed.
+    PressKeys {
+        keys: Vec<u32>,
+    },
     /// Displays with nothing new rest (look again only when woken, or now
     /// and then) or look every frame: `on`, `off`, or (None) as app_server
     /// has it for its kind of display. Until app_server restarts.

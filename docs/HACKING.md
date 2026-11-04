@@ -3825,8 +3825,14 @@ profile's bindings first; Twitcher's keep the switcher up while their
 modifiers are held. A Mac's ⌘ arrows and ⌘⌫ are the line's and the
 document's keys for programs that aren't Olo's; Olo's apps get them as
 they are, so Tracker's ⌘↑ and ⌘⌫ are Open Parent and Move to Trash, and
-the kit makes them the line's keys in a focused text field
-(`mac_text_keys`).
+the kit makes them the line's keys in a focused text field and the
+editor (`keys::mac_command`: a Mac profile with its command key, the
+right Ctrl held as the action comes; then a word's move is the line's
+start or end, ⇧ selecting to it, and ⌘⌫ deletes to the line's start,
+`Cmd::DeleteToLineStart` in the editor; ⌘↑ and ⌘↓ are the document's
+in the editor, and left to the window's menu in a field). (The egui
+kit's `mac_text_keys` did this; it went with egui on 2026-11-02, and
+until 2026-11-03 ⌘← moved a word in Olo's own text.)
 
 The kit (`keyboard.rs`) follows the profile from app_server's settings
 (`keyboard::profile`, `platform`, `command_key`). Every menu bar and
@@ -7126,7 +7132,22 @@ put it away.
 * **Before opening**, a worker asks app_server for the windows and the
   settings, so the window in front is known before the overlay takes the
   keyboard (app_server's focus is then the overlay). Shortcuts are done
-  to that window through `Request::RunShortcut { id, window }`.
+  to that window through `Request::RunShortcut { id, window }`; text
+  editing's keys (`sheet::text_keys`: each line of the sheet's Text
+  card, a command for each key, "Move to the end of the line" ⌘→, and
+  with ⇧ "Select to …") through `Request::PressKeys` (`Chord::physical`,
+  pressed once the overlay has let the keyboard go, through the profile
+  as the person's own; nothing else is asked first, as an `Activate`
+  then moved the keyboard after them and they were lost).
+* **Commands or files**: at first everything but files and folders;
+  a tap of Ctrl on its own (not ⌘, which comes as the right Ctrl)
+  switches to files and folders only, and back (`files_mode`,
+  `modifiers`), the placeholder saying what it finds and a `KeyHint`
+  at the field's right ("Ctrl Files", "Ctrl Commands") what the tap
+  finds instead; a path copied or typed is offered either way. The
+  field is a little taller than its line on the device grid (it sets
+  its text by the capitals' middle, so a field just a line tall cut the
+  letters' tops at 1.25×).
 * **Sources** (`sources.rs`): applications (ours, then desktop entries),
   "Go to ~/src/olo" for a path copied (offered first, before anything
   is typed) or typed whole (`sources::go_to`: absolute, `~/…`, a
@@ -7286,6 +7307,14 @@ screen, and the reply comes once the text is in (or with why not), so
 whatever the asker does next comes after it. Tested: é😀👍🏽 into
 StyledEdit, Chrome 156 and GTK's text editor (as keys, with
 `GTK_IM_MODULE=gtk-im-context-simple`).
+
+**Pressing keys for someone** (`Request::PressKeys { keys }`, insert.rs
+`press_keys`): evdev codes pressed together and let go through the
+keyboard profile (`press_physical`, as a keyboard's go: ⌘→ is the
+person's ⌘→, which app_server's keymap makes End for a program that
+isn't Olo's), once the keyboard has left the asking process, a second at
+most, never on the lock screen; the reply once they're pressed. The
+command palette's text keys use it.
 
 ## Other toolkits' programs (app_server toolkits.rs, state.rs; olo_theme::toolkit)
 

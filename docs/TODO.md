@@ -348,36 +348,6 @@ of Finished; a new one goes where its priority puts it.
   dragged scrolls the scrollback with the pointer (a click in its track
   pages there), in every pane of a split tab.
 
-- **The command palette: typing "n" first closes it; every shortcut in
-  it; files only on Ctrl** (Ben, 2026-11-03): "when i'm in the command
-  pallette, if i start by typing "n" it closes the pallette. fix that
-  bug. also, please have every keyboard shortcut available in the
-  command pallette, even stuff like move to next word or move to end of
-  line. it's a great way to learn the shortcuts and to get there if you
-  can't remember. also, let's have the command pallette not show
-  file/folder matches by default, and you have to press ctrl to have it
-  show them -- so ctrl should cycle between showing the command/shortcut
-  hits (default) and the file/folder hits. and have the help text or
-  placeholder text say that too". So:
-  - The bug: an "n" typed first closes the palette (find what takes it:
-    a shortcut, a hint, a key the palette lets through), with a test
-    that types each letter first.
-  - Every keyboard shortcut there is in it, the text ones too (word and
-    line movement, selection, deletion: the keyboard profile's, the
-    editor's and the text field's), each with its keys, chosen to do it
-    in the window it was opened over.
-  - Commands and shortcuts by default; Ctrl switches to files and
-    folders and back, and its hint (or placeholder) says so.
-  *Status* (2026-11-03): the bug was a crash, not a key: Ben's logs
-  have the palette panicking four times at 10:11 in the sort of its
-  results ("user-provided comparison function does not correctly
-  implement a total order"), windows comparing equal to each other but
-  by title to the rest, which an "n" (tying many commands and windows)
-  showed. Now a key (`best_first`), with a test that panics the old way;
-  and app_server's overview and the table preview sort floats with
-  `total_cmp` (a NaN broke theirs the same way). Left: every shortcut
-  in it, and Ctrl for files.
-
 - **Terminal: a tiny model of its own completes brush's commands**
   (Ben, 2026-11-03): "in prefs -> terminal have an option for using a
   tiny ai model for brush shell command autocompletion that is
@@ -902,6 +872,53 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**The command palette: typing "n" first closes it; every shortcut in
+  it; files only on Ctrl**~~ (Ben, 2026-11-03): "when i'm in the command
+  pallette, if i start by typing "n" it closes the pallette. fix that
+  bug. also, please have every keyboard shortcut available in the
+  command pallette, even stuff like move to next word or move to end of
+  line. it's a great way to learn the shortcuts and to get there if you
+  can't remember. also, let's have the command pallette not show
+  file/folder matches by default, and you have to press ctrl to have it
+  show them -- so ctrl should cycle between showing the command/shortcut
+  hits (default) and the file/folder hits. and have the help text or
+  placeholder text say that too". So:
+  - The bug: an "n" typed first closes the palette (find what takes it:
+    a shortcut, a hint, a key the palette lets through), with a test
+    that types each letter first.
+  - Every keyboard shortcut there is in it, the text ones too (word and
+    line movement, selection, deletion: the keyboard profile's, the
+    editor's and the text field's), each with its keys, chosen to do it
+    in the window it was opened over.
+  - Commands and shortcuts by default; Ctrl switches to files and
+    folders and back, and its hint (or placeholder) says so.
+  *Status* (2026-11-03): the bug was a crash, not a key: Ben's logs
+  have the palette panicking four times at 10:11 in the sort of its
+  results ("user-provided comparison function does not correctly
+  implement a total order"), windows comparing equal to each other but
+  by title to the rest, which an "n" (tying many commands and windows)
+  showed. Now a key (`best_first`), with a test that panics the old way;
+  and app_server's overview and the table preview sort floats with
+  `total_cmp` (a NaN broke theirs the same way). Left: every shortcut
+  in it, and Ctrl for files.
+  *Done* (2026-11-03): the crash fixed (the status above). Every
+  keyboard shortcut: app_server's and the front app's menus' were in it;
+  now text editing's too (`sheet::text_keys`, one table for the sheet and
+  the palette: the line's and document's start and end, a word back or
+  on, each with ⇧ to select, delete to the line's start, delete a word),
+  each pressed in the window it was opened over as the person's own keys
+  (app_server's new `Request::PressKeys`). Found on the way: ⌘← and ⌘→
+  moved a word in Olo's own text fields and StyledEdit, and ⌘⌫ deleted a
+  word, since the egui kit's `mac_text_keys` went; now the kit's
+  `keys::mac_command` makes them the line's again. Commands by default,
+  a tap of Ctrl for files and folders and back, a key hint at the field's
+  right saying so and the placeholder what it finds. Checked headless:
+  ⌘→ chosen in the palette lands in StyledEdit, ⌘←/⌘→/⌥⌫ in the
+  palette's field, Ctrl both ways; reviewed with no errors at 1, 1.25,
+  1.5, 1.75 and 2×, light and dark (a 1.25× cut of the field's text,
+  there before, fixed). Ranking a keystroke: 136–159 µs among 600 things
+  with or without the 14 text keys (noise).
 
 - ~~**Terminal: the side strip crowds its close boxes**~~ (found by the
   review, 2026-11-03): with Tabs Down the Side, `tsession review` gives

@@ -1125,6 +1125,18 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         }
     }
 
+    /// Physical keys pressed together and let go, as a keyboard would
+    /// (`insert::press_keys`): through the profile, its shortcuts too.
+    pub(crate) fn press_physical(&mut self, keys: &[u32]) {
+        let time = InputTime::now();
+        for &k in keys {
+            let _ = self.physical_key(k, true, time);
+        }
+        for &k in keys.iter().rev() {
+            let _ = self.physical_key(k, false, time);
+        }
+    }
+
     pub fn synthetic_input(&mut self, event: olo_protocol::SyntheticEvent) {
         use olo_protocol::SyntheticEvent as S;
         // As real input wakes the displays (`process_input_event`).

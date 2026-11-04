@@ -206,6 +206,7 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub tab_tip: crate::tabtip::TabTip,
     /// Text on its way into the focused field (`insert`).
     pub inserting: crate::insert::Inserting,
+    pub pressing: crate::insert::Pressing,
     /// Idle, caffeinated mode, brightness (see `power`).
     pub power: crate::power::Power,
     pub saver: crate::saver::Saver,
@@ -424,6 +425,9 @@ impl<BackendData: Backend> SeatHandler for AnvilState<BackendData> {
         // once smithay has moved it.
         if self.insert_waiting() {
             self.handle.insert_idle(|state| state.insert_try());
+        }
+        if self.press_waiting() {
+            self.handle.insert_idle(|state| state.press_try());
         }
     }
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
@@ -1131,6 +1135,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             keymap: Default::default(),
             tab_tip: Default::default(),
             inserting: Default::default(),
+            pressing: Default::default(),
             power: crate::power::Power::new(BackendData::IS_SESSION),
             saver: Default::default(),
             lock,

@@ -72,6 +72,10 @@ pub enum Action {
     /// An app_server shortcut by id, done to the window that was in front.
     Shortcut(String),
     Activate(u64),
+    /// Keys pressed together in the window the palette was opened over
+    /// (evdev codes, through the profile: `Request::PressKeys`), as text
+    /// editing's are.
+    Keys(Vec<u32>),
     /// A command from the menus of the app with this process id.
     Menu {
         pid: u32,
@@ -101,7 +105,7 @@ impl Action {
             Action::Open(p) => format!("open:{}", p.display()),
             Action::Password { vault, id } => format!("password:{vault}/{id}"),
             Action::Theme(dark) => format!("theme:{dark}"),
-            // Windows and menus come and go; sums and searches are one-offs.
+            Action::Keys(keys) => format!("keys:{}", keys.iter().map(u32::to_string).collect::<Vec<_>>().join("+")),
             // Windows and menus come and go; sums, searches and paths gone
             // to are one-offs.
             Action::Activate(_) | Action::Menu { .. } | Action::Copy(_) | Action::Search(_) | Action::Reveal(_) => return None,
@@ -302,6 +306,7 @@ pub fn context() -> (Option<WindowInfo>, Vec<Item>) {
         item.enabled = front.is_some() || info.group != shortcuts::WINDOWS;
         items.push(item);
     }
+    items.extend(text_items(profile.platform, front.is_some()));
     // The one in front last: switching to it does nothing.
     for w in windows.iter().filter(|w| !w.focused).chain(windows.iter().filter(|w| w.focused)) {
         let (app, icon) = match our_app(&w.app_id) {
@@ -495,6 +500,31 @@ pub fn find_passwords(query: &str) -> Vec<Item> {
     }
 }
 
+/// Text editing's keys (`sheet::text_keys`), each a shortcut done in the
+/// window the palette was opened over, and with Shift what selects as it
+/// moves: so every key is there to find, and learn (Ben, 2026-11-03:
+/// "have every keyboard shortcut available in the command pallette, even
+/// stuff like move to next word or move to end of line").
+pub fn text_items(platform: olo_protocol::Platform, front: bool) -> Vec<Item> {
+    let mut items = Vec::new();
+    let mut add = |title: String, chord: shortcuts::Chord| {
+        let mut item = Item::new(Kind::Shortcut, title, Action::Keys(chord.physical())).subtitle("Text").icon("text").keywords("text editing cursor caret");
+        item.keys = Some(chord.label(platform));
+        item.enabled = front;
+        items.push(item);
+    };
+    for (_, keys) in crate::sheet::text_keys(platform) {
+        for &(title, keys) in keys.iter() {
+            let Ok(chord) = keys.parse::<shortcuts::Chord>() else { continue };
+            add(title.to_owned(), chord);
+            if let Some(rest) = title.strip_prefix("Move ") {
+                add(format!("Select {rest}"), shortcuts::Chord { shift: true, ..chord });
+            }
+        }
+    }
+    items
+}
+
 /// The items matching `words`, best first (at most 60), with their scores:
 /// how well each matches, what kind it is, how lately it was chosen
 /// (`boost` of its recents key) and whether it can be done now.
@@ -561,6 +591,11 @@ pub fn perform(action: Action, front: Option<u64>) {
             }
             Action::Activate(id) => {
                 ipc(Request::Activate { id });
+                Ok(())
+            }
+            Action::Keys(keys) => {
+                // (Pressed once the palette has let the keyboard go.)
+                ipc(Request::PressKeys { keys });
                 Ok(())
             }
             Action::Menu { pid, command } => {
@@ -798,6 +833,47 @@ mod tests {
         let mut scored = vec![(1, &b), (5, &a)];
         best_first(&mut scored);
         assert_eq!(scored[0].1.title, "z");
+    }
+
+    /// Text editing's keys are in it, each pressed as the person would,
+    /// with Shift the selecting ones.
+    #[test]
+    fn text_keys_are_shortcuts_pressed_as_keys() {
+        let items = text_items(olo_protocol::Platform::Mac, true);
+        let find = |t: &str| items.iter().find(|i| i.title == t).unwrap_or_else(|| panic!("{t}: {:?}", items.iter().map(|i| &i.title).collect::<Vec<_>>()));
+        let end = find("Move to the end of the line");
+        assert_eq!((end.keys.as_deref(), &end.action), (Some("⌘→"), &Action::Keys(vec![125, 106])));
+        let select = find("Select to the end of the line");
+        assert_eq!(select.action, Action::Keys(vec![125, 42, 106]));
+        assert_eq!(find("Move a word on").action, Action::Keys(vec![56, 106]));
+        assert_eq!(find("Delete the word before").action, Action::Keys(vec![56, 14]));
+        // Found by what they do.
+        let words = crate::rank::words("end of line");
+        assert_eq!(ranked(&words, items.iter(), |_| 0).first().map(|(_, i)| i.title.as_str()), Some("Move to the end of the line"));
+        // With no window to do them in, there but not to choose.
+        assert!(text_items(olo_protocol::Platform::Windows, false).iter().all(|i| !i.enabled));
+    }
+
+    /// What ranking costs a keystroke, with and without text editing's
+    /// keys among 600 things (release: `cargo test --release -p
+    /// olo-palette ranking_cost -- --ignored --nocapture`).
+    #[test]
+    #[ignore]
+    fn ranking_cost() {
+        let others: Vec<Item> = (0..600).map(|i| Item::new(Kind::Command, format!("Command number {i} of the menus"), Action::Shortcut(i.to_string())).subtitle("App ▸ Menu")).collect();
+        let text = text_items(olo_protocol::Platform::Mac, true);
+        let words = crate::rank::words("end");
+        let time = |items: &[&Item]| {
+            let n = 2000;
+            let t = std::time::Instant::now();
+            for _ in 0..n {
+                std::hint::black_box(ranked(&words, items.iter().copied(), |_| 0));
+            }
+            t.elapsed() / n
+        };
+        let without: Vec<&Item> = others.iter().collect();
+        let with: Vec<&Item> = others.iter().chain(&text).collect();
+        eprintln!("ranking \"end\": {:?} for 600 things, {:?} with {} text keys too", time(&without), time(&with), text.len());
     }
 
     #[test]

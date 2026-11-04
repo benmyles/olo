@@ -533,7 +533,8 @@ impl TextField {
 
     fn delete_word_left(&mut self, _: &DeleteWordLeft, _: &mut Window, cx: &mut Context<Self>) {
         if self.selected.is_empty() {
-            let from = self.previous_word(self.caret());
+            // (⌘⌫: to the line's start.)
+            let from = if crate::keys::mac_command() { self.line_edge(false) } else { self.previous_word(self.caret()) };
             self.select_to(from, cx);
         }
         self.replace(self.selected.clone(), "", cx);
@@ -557,12 +558,22 @@ impl TextField {
         self.move_to(to, cx);
     }
 
+    /// A word back or on, or with ⌘ (`keys::mac_command`) the line's
+    /// start or end.
+    fn word_edge(&self, end: bool) -> usize {
+        match (crate::keys::mac_command(), end) {
+            (true, end) => self.line_edge(end),
+            (false, false) => self.previous_word(self.caret()),
+            (false, true) => self.next_word(self.caret()),
+        }
+    }
+
     fn word_left(&mut self, _: &WordLeft, _: &mut Window, cx: &mut Context<Self>) {
-        self.move_to(self.previous_word(self.caret()), cx);
+        self.move_to(self.word_edge(false), cx);
     }
 
     fn word_right(&mut self, _: &WordRight, _: &mut Window, cx: &mut Context<Self>) {
-        self.move_to(self.next_word(self.caret()), cx);
+        self.move_to(self.word_edge(true), cx);
     }
 
     fn select_left(&mut self, _: &SelectLeft, _: &mut Window, cx: &mut Context<Self>) {
@@ -574,11 +585,11 @@ impl TextField {
     }
 
     fn select_word_left(&mut self, _: &SelectWordLeft, _: &mut Window, cx: &mut Context<Self>) {
-        self.select_to(self.previous_word(self.caret()), cx);
+        self.select_to(self.word_edge(false), cx);
     }
 
     fn select_word_right(&mut self, _: &SelectWordRight, _: &mut Window, cx: &mut Context<Self>) {
-        self.select_to(self.next_word(self.caret()), cx);
+        self.select_to(self.word_edge(true), cx);
     }
 
     fn select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {

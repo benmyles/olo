@@ -33,7 +33,7 @@ use olo_ui::{
     metrics as m,
     style::{self, c},
     theme, tracker,
-    widgets::{TextField, TextFieldEvent, text_field},
+    widgets::{KeyHint, TextField, TextFieldEvent, text_field},
 };
 use serde::{Deserialize, Serialize};
 use sources::{Action, Found, Item, Kind, Workers};
@@ -119,6 +119,13 @@ struct Palette {
     top: usize,
     /// ⌘ held: a file's row says Open in Tracker.
     command: bool,
+    /// Files and folders shown rather than commands, shortcuts and the
+    /// rest (a tap of Ctrl goes from one to the other: Ben, 2026-11-03,
+    /// "not show file/folder matches by default, and you have to press
+    /// ctrl to have it show them").
+    files_mode: bool,
+    /// Ctrl went down on its own and nothing else yet: let go, it's a tap.
+    ctrl_tap: bool,
     fixed: Vec<Item>,
     context: Vec<Item>,
     menus: Vec<Item>,
@@ -194,6 +201,9 @@ impl Palette {
         self.selected = 0;
         self.top = 0;
         self.command = false;
+        self.files_mode = false;
+        self.ctrl_tap = false;
+        self.query.update(cx, |f, cx| f.set_hint(hint(false), cx));
         self.refresh();
         let me = cx.entity();
         let query = self.query.clone();
@@ -271,10 +281,16 @@ impl Palette {
             {
                 scored.push((i32::MAX / 2 - 1, item.clone()));
             }
-            let all = self.fixed.iter().chain(&self.context).chain(&self.menus).chain(&self.passwords).chain(&self.files).chain(&self.copied);
-            scored.extend(sources::ranked(&words, all, |k| self.recents.boost(k)));
-            let q = query.trim().to_owned();
-            scored.push((i32::MIN, Item::new(Kind::Web, format!("Search the web for “{q}”"), Action::Search(q)).icon("browser").subtitle("Web browser")));
+            // Files and folders, or (at first) everything else; the path
+            // in the clipboard either way.
+            if self.files_mode {
+                scored.extend(sources::ranked(&words, self.files.iter().chain(&self.copied), |k| self.recents.boost(k)));
+            } else {
+                let all = self.fixed.iter().chain(&self.context).chain(&self.menus).chain(&self.passwords).chain(&self.copied);
+                scored.extend(sources::ranked(&words, all, |k| self.recents.boost(k)));
+                let q = query.trim().to_owned();
+                scored.push((i32::MIN, Item::new(Kind::Web, format!("Search the web for “{q}”"), Action::Search(q)).icon("browser").subtitle("Web browser")));
+            }
         }
         self.results = scored.into_iter().map(|(_, i)| i).collect();
         self.selected = self.selected.min(self.results.len().saturating_sub(1));
@@ -313,6 +329,39 @@ impl Palette {
         }
         self.refresh();
         cx.notify();
+    }
+
+    /// Files and folders, or back to the rest (a tap of Ctrl).
+    fn switch_files(&mut self, cx: &mut Context<Self>) {
+        self.files_mode = !self.files_mode;
+        let files = self.files_mode;
+        self.query.update(cx, |f, cx| f.set_hint(hint(files), cx));
+        self.selected = 0;
+        self.top = 0;
+        self.refresh();
+        cx.notify();
+    }
+
+    /// The modifiers changed: ⌘ held (Open in Tracker), and a tap of
+    /// Ctrl on its own (not ⌘, which comes as the right Ctrl with a
+    /// command key) switches to files and back.
+    fn modifiers(&mut self, e: &ModifiersChangedEvent, cx: &mut Context<Self>) {
+        let held = e.modifiers.platform || e.modifiers.control;
+        if self.command != held {
+            self.command = held;
+            cx.notify();
+        }
+        let m = e.modifiers;
+        let ctrl = m.control && !(olo_kit_base::keys::command_key() && olo_ui::gpui::right_control_held());
+        let alone = ctrl && !m.shift && !m.alt && !m.platform;
+        if alone && !self.ctrl_tap {
+            self.ctrl_tap = true;
+        } else if !m.control && self.ctrl_tap {
+            self.ctrl_tap = false;
+            self.switch_files(cx);
+        } else if !alone {
+            self.ctrl_tap = false;
+        }
     }
 
     fn choose(&mut self, index: usize, cx: &mut Context<Self>) {
@@ -397,6 +446,8 @@ impl Palette {
     /// the text (Return comes as the field's).
     fn key(&mut self, e: &KeyDownEvent, cx: &mut Context<Self>) -> bool {
         let k = &e.keystroke;
+        // (Ctrl with a key isn't a tap.)
+        self.ctrl_tap = false;
         if olo_kit_base::keys::shortcut("alternate").is_some_and(|s| olo_ui::keys::pressed(&s, k)) {
             let i = self.selected;
             self.reveal(i, cx);
@@ -527,10 +578,29 @@ impl Render for Palette {
 
         // The query, its capitals on the field's middle as the glass is.
         // (Where the results' titles start: the glass is as wide as their
-        // icons.)
-        let text_left = glass.right() + px(10.0);
+        // icons. On the device grid: from between two pixels, at 1.25×,
+        // the field's edge cut the first letter's side.)
+        let text_left = style::snap_coord(window, glass.right() + px(10.0));
         let line = px((QUERY_SIZE * style::LINE_HEIGHT).ceil());
-        let query = div().absolute().left(text_left).top(field.center().y - line / 2.0).w(field.right() - px(8.0) - text_left).h(line).child(self.query.clone());
+        // After it, what a tap of Ctrl shows instead, there as it's typed.
+        let other = if self.files_mode { "Commands" } else { "Files" };
+        // (A little taller than its line, about the same middle: the field
+        // sets its text by the capitals' middle, so the line's box rises
+        // past the top of a field just its height, and its clip cut the
+        // letters' tops at 1.25×.)
+        let room = line + px(2.0 * 2.0);
+        let query = div()
+            .absolute()
+            .left(text_left)
+            .top(style::snap_coord(window, field.center().y - room / 2.0))
+            .w(field.right() - px(m::TEXT_INSET + m::TIGHT) - text_left)
+            .h(room)
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(m::SPACING))
+            .child(div().flex_1().h(room).child(self.query.clone()))
+            .child(KeyHint::new("Ctrl", other));
 
         // The results.
         let rows: Vec<(usize, Item)> = (self.top..self.results.len()).take(ROWS).map(|i| (i, self.results[i].clone())).collect();
@@ -667,15 +737,15 @@ impl Render for Palette {
                 }
             })
             .on_modifiers_changed(move |e: &ModifiersChangedEvent, _, cx| {
-                let held = e.modifiers.platform || e.modifiers.control;
-                mods.update(cx, |p, cx| {
-                    if p.command != held {
-                        p.command = held;
-                        cx.notify();
-                    }
-                });
+                mods.update(cx, |p, cx| p.modifiers(e, cx));
             })
     }
+}
+
+/// The query's placeholder: what it finds (the key hint after it says
+/// what a tap of Ctrl finds instead).
+fn hint(files: bool) -> &'static str {
+    if files { "Search files and folders" } else { "Search apps, commands and shortcuts" }
 }
 
 fn main() {
@@ -699,7 +769,7 @@ fn main() {
                 std::mem::forget(w);
             }
         });
-        let query = text_field(cx, |f| f.name("Search").font_size(QUERY_SIZE).hint("Search apps, commands, files and more"));
+        let query = text_field(cx, |f| f.name("Search").font_size(QUERY_SIZE).hint(hint(false)));
         let workers = sources::workers(olo_ui::proxy(cx));
         let palette = cx.new(|cx| {
             cx.subscribe(&query, |p: &mut Palette, _, e: &TextFieldEvent, cx| match e {
@@ -719,6 +789,8 @@ fn main() {
                 selected: 0,
                 top: 0,
                 command: false,
+                files_mode: false,
+                ctrl_tap: false,
                 fixed: Vec::new(),
                 context: Vec::new(),
                 menus: Vec::new(),

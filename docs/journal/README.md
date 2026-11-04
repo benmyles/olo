@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-03
 
+### Command palette: every text key, and Ctrl for files
+
+*22:20* — Text editing's keys are commands of their own (Move to the end of the line, ⌘→), done in the window the palette opened over; files and folders come with a tap of Ctrl, as the key hint at the field's right says.
+
+![Command palette: every text key, and Ctrl for files](2026-11-03/222010-command-palette-every-text-key-and-ctrl-for-file.png)
+
 ### Terminal: the side strip lined up
 
 *21:51* — Down the side, the tabs' icons, the groups' names and New Tab's + sit under the menu bar's first title, the first chip clears the menu bar as it does along the top, and the pane heads beside it are as tall as the top strip.

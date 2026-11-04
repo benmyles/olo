@@ -88,33 +88,41 @@ pub fn groups(profile: &KeyboardProfile, menus: Option<&commands::Menus>) -> Vec
 
 /// Moving about text, as the platform does it (the kit's fields, and
 /// app_server's keys for programs that aren't Olo's).
-fn text_editing(platform: Platform) -> Group {
-    let rows: &[(&str, &[&str])] = match platform {
+/// Text editing's keys as the person presses them with `platform`'s
+/// profile (app_server's keymap turns them into what each program takes):
+/// each a line of the sheet ("Start or end of the line") and what each of
+/// its keys does, a command of its own in the palette ("Move to the end
+/// of the line"; with Shift, "Select to …", which the sheet says once).
+pub fn text_keys(platform: Platform) -> &'static [(&'static str, &'static [(&'static str, &'static str)])] {
+    match platform {
         Platform::Mac => &[
-            ("Start or end of the line", &["Cmd+Left", "Cmd+Right"]),
-            ("Start or end of the document", &["Cmd+Up", "Cmd+Down"]),
-            ("A word back or on", &["Alt+Left", "Alt+Right"]),
-            ("Delete to the line's start", &["Cmd+Backspace"]),
-            ("Delete a word", &["Alt+Backspace"]),
+            ("Start or end of the line", &[("Move to the start of the line", "Cmd+Left"), ("Move to the end of the line", "Cmd+Right")]),
+            ("Start or end of the document", &[("Move to the start of the document", "Cmd+Up"), ("Move to the end of the document", "Cmd+Down")]),
+            ("A word back or on", &[("Move a word back", "Alt+Left"), ("Move a word on", "Alt+Right")]),
+            ("Delete to the line's start", &[("Delete to the start of the line", "Cmd+Backspace")]),
+            ("Delete a word", &[("Delete the word before", "Alt+Backspace")]),
         ],
         Platform::Windows => &[
-            ("Start or end of the line", &["Home", "End"]),
-            ("Start or end of the document", &["Ctrl+Home", "Ctrl+End"]),
-            ("A word back or on", &["Ctrl+Left", "Ctrl+Right"]),
-            ("Delete a word", &["Ctrl+Backspace"]),
+            ("Start or end of the line", &[("Move to the start of the line", "Home"), ("Move to the end of the line", "End")]),
+            ("Start or end of the document", &[("Move to the start of the document", "Ctrl+Home"), ("Move to the end of the document", "Ctrl+End")]),
+            ("A word back or on", &[("Move a word back", "Ctrl+Left"), ("Move a word on", "Ctrl+Right")]),
+            ("Delete a word", &[("Delete the word before", "Ctrl+Backspace")]),
         ],
         Platform::Beos => &[
-            ("Start or end of the line", &["Home", "End"]),
-            ("Start or end of the document", &["Alt+Home", "Alt+End"]),
-            ("A word back or on", &["Alt+Left", "Alt+Right"]),
-            ("Delete a word", &["Alt+Backspace"]),
+            ("Start or end of the line", &[("Move to the start of the line", "Home"), ("Move to the end of the line", "End")]),
+            ("Start or end of the document", &[("Move to the start of the document", "Alt+Home"), ("Move to the end of the document", "Alt+End")]),
+            ("A word back or on", &[("Move a word back", "Alt+Left"), ("Move a word on", "Alt+Right")]),
+            ("Delete a word", &[("Delete the word before", "Alt+Backspace")]),
         ],
-    };
-    let rows = rows
+    }
+}
+
+fn text_editing(platform: Platform) -> Group {
+    let rows = text_keys(platform)
         .iter()
-        .map(|(title, keys)| {
-            let keys = keys.iter().filter_map(|k| k.parse::<Chord>().ok()).map(|c| c.label(platform)).collect::<Vec<_>>().join("  ");
-            ((*title).to_owned(), keys)
+        .map(|(line, keys)| {
+            let keys = keys.iter().filter_map(|(_, k)| k.parse::<Chord>().ok()).map(|c| c.label(platform)).collect::<Vec<_>>().join("  ");
+            ((*line).to_owned(), keys)
         })
         .chain(std::iter::once(("Select as you go: with any of these".to_owned(), if platform == Platform::Mac { "⇧" } else { "Shift" }.to_owned())))
         .collect();

@@ -10,6 +10,10 @@
 //! keyboard to go back to someone else. The reply comes once the text is
 //! in, so whatever the asker does next (an agent pressing Return) comes
 //! after it.
+//!
+//! Keys pressed for someone (`Request::PressKeys`: the command palette's
+//! text shortcuts, ⌘← in the window it was opened over) wait the same
+//! way, then go through the keyboard profile as the person's own would.
 
 use std::{rc::Rc, time::Duration};
 
@@ -51,6 +55,22 @@ pub struct Inserting {
     /// field to turn on (`text_input_on`).
     offered: bool,
     timer: Option<RegistrationToken>,
+}
+
+/// Keys waiting for the keyboard to leave whoever asked
+/// (`Request::PressKeys`).
+#[derive(Default)]
+pub struct Pressing {
+    keys: Vec<u32>,
+    conn: Option<Rc<Conn>>,
+    from: Option<i32>,
+    timer: Option<RegistrationToken>,
+}
+
+impl std::fmt::Debug for Pressing {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Pressing").field("keys", &self.keys).field("from", &self.from).finish()
+    }
 }
 
 impl std::fmt::Debug for Inserting {
@@ -192,6 +212,68 @@ impl<B: Backend> AnvilState<B> {
         self.insert_stop_offering();
         let was = std::mem::take(&mut self.inserting);
         if let (Some(conn), Some(_)) = (was.conn, was.text) {
+            conn.send(&match result {
+                Ok(()) => Reply::Ok,
+                Err(message) => Reply::Error { message },
+            });
+        }
+    }
+
+    /// Press `keys` together, for `conn`, once the keyboard has left it:
+    /// the reply then (None: it comes later).
+    pub fn press_keys(&mut self, keys: Vec<u32>, conn: &Rc<Conn>) -> Option<Reply> {
+        if self.lock.locked() {
+            return Some(Reply::Error { message: "The screen is locked.".into() });
+        }
+        if keys.is_empty() {
+            return Some(Reply::Ok);
+        }
+        self.press_done(Err("Other keys came to press first.".into()));
+        self.pressing = Pressing { keys, conn: Some(conn.clone()), from: conn.peer_pid(), timer: None };
+        self.pressing.timer = self
+            .handle
+            .insert_source(Timer::from_duration(HANDBACK), |_, _, state| {
+                state.pressing.timer = None;
+                info!("keys to press dropped: the keyboard stayed with whoever asked");
+                state.press_done(Err("Nothing else took the keyboard.".into()));
+                TimeoutAction::Drop
+            })
+            .ok();
+        self.press_try();
+        None
+    }
+
+    /// Whether keys wait for the keyboard to go somewhere.
+    pub fn press_waiting(&self) -> bool {
+        !self.pressing.keys.is_empty()
+    }
+
+    /// The keyboard went somewhere: the keys waiting are pressed there,
+    /// unless it's still the asker's (never on the lock screen).
+    pub fn press_try(&mut self) {
+        if self.pressing.keys.is_empty() {
+            return;
+        }
+        let Some(focus) = self.seat.get_keyboard().and_then(|k| k.current_focus()) else { return };
+        if matches!(focus, KeyboardFocusTarget::Surface(_)) {
+            return;
+        }
+        let theirs = focus.wl_surface().and_then(|s| s.client()).and_then(|c| client_pid(&c, &self.display_handle));
+        if theirs.is_some() && theirs == self.pressing.from {
+            return;
+        }
+        let keys = std::mem::take(&mut self.pressing.keys);
+        self.press_physical(&keys);
+        info!(?keys, "keys pressed for whoever asked");
+        self.press_done(Ok(()));
+    }
+
+    fn press_done(&mut self, result: Result<(), String>) {
+        if let Some(t) = self.pressing.timer.take() {
+            self.handle.remove(t);
+        }
+        let was = std::mem::take(&mut self.pressing);
+        if let Some(conn) = was.conn {
             conn.send(&match result {
                 Ok(()) => Reply::Ok,
                 Err(message) => Reply::Error { message },

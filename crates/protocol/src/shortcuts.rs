@@ -125,6 +125,15 @@ impl Chord {
         Chord { ctrl: false, alt: false, shift: false, cmd: false, key }
     }
 
+    /// The keys pressed for it, as evdev codes (its modifiers are physical
+    /// keys: ⌘ the Super key, Option Alt), modifiers first: for
+    /// `Request::PressKeys`, which takes them through the profile as the
+    /// person's own.
+    pub fn physical(&self) -> Vec<u32> {
+        let mods = [(self.ctrl, 29), (self.alt, 56), (self.cmd, 125), (self.shift, 42)];
+        mods.iter().filter(|(on, _)| *on).map(|&(_, code)| code).chain(std::iter::once(self.key)).collect()
+    }
+
     /// Whether `key` can be part of a shortcut.
     pub fn known_key(key: u32) -> bool {
         KEYS.iter().any(|(k, ..)| *k == key)
@@ -862,6 +871,15 @@ impl TilingSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_chord_is_pressed_as_its_keys() {
+        let c: Chord = "Shift+Cmd+Left".parse().unwrap();
+        assert_eq!(c.physical(), [125, 42, 105]);
+        let c: Chord = "Ctrl+Alt+Backspace".parse().unwrap();
+        assert_eq!(c.physical(), [29, 56, 14]);
+        assert_eq!("End".parse::<Chord>().unwrap().physical(), [107]);
+    }
 
     #[test]
     fn chords_round_trip() {
