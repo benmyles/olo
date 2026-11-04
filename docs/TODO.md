@@ -14,10 +14,17 @@ of Finished; a new one goes where its priority puts it.
   looks (of ~200) with tiles out of step, mostly at the very start of a
   fast drag or as it's let go, in trees of four or more tiles with
   groups (e.g. step 146: two tiles 227 px ahead of the two across the
-  edge for one look). Find which windows aren't in the round then (not
-  linked, a group's front changing, a tile laid out at the release
-  outside it), put them in, and keep the seed passing at 1×, 1.5×, 1.75×
-  and 2×.
+  edge for one look). Found so far (step 85, traced): the drag stops a
+  tile at its least size as `tiling.rs` counts it (`min_frame`, the
+  group's: 180 px of content), then the tree laid out as it's let go
+  holds it 16 px bigger and its row's other split 40 px over (a group's
+  least width the drag never touched), so the release snaps the tiles
+  there; it's in the last round, but a look can catch a tile at its new
+  frame while the dragged one is still at its old (a group's tab behind,
+  set to the group's frame at once?). So: the drag's limits and the
+  tree's least sizes made the same (one function for both), a drag
+  never leaving a tile under its least, and the look found; the seed
+  passing at 1×, 1.5×, 1.75× and 2×.
 
 - **⌘` moves a window from another workspace to this one** (found by
   wm-fuzz, 2026-11-03, seed 5 step 124 on a `2560x1600,1920x1080`
