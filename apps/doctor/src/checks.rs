@@ -1307,11 +1307,34 @@ fn login_entry(roots: &Roots, r: &mut Report) {
 mod tests {
     use super::*;
 
+    /// A test's folder in /var/tmp, removed when it's dropped (the test
+    /// over, passed or not).
+    struct Scratch(PathBuf);
+
+    impl std::ops::Deref for Scratch {
+        type Target = PathBuf;
+        fn deref(&self) -> &PathBuf {
+            &self.0
+        }
+    }
+
+    impl AsRef<Path> for Scratch {
+        fn as_ref(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     /// A machine in a folder: a keyd running from /usr/local, a mouse
     /// receiver allowed to sleep, a Studio Display, no rules, a stale
     /// Deskbar.
-    fn machine(name: &str) -> (PathBuf, Roots) {
-        let fs = PathBuf::from(format!("/var/tmp/olo-doctor-test-{}-{name}", std::process::id()));
+    fn machine(name: &str) -> (Scratch, Roots) {
+        let fs = Scratch(PathBuf::from(format!("/var/tmp/olo-doctor-test-{}-{name}", std::process::id())));
         let _ = std::fs::remove_dir_all(&fs);
         let w = |p: &str, c: &str| {
             let path = fs.join(p);
