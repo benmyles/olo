@@ -17,7 +17,44 @@ of Finished; a new one goes where its priority puts it.
   crash (its panic or core in the journal, Logs), reproduce it headless
   (a video played, the window left behind other windows and minimized,
   time passing, then activated as Deskbar does), fix it at the cause,
-  and keep a test that does that.
+  and keep a test that does that. *Looked at* (2026-11-04, minutes
+  after): Viewer (window 22, opened 15:29) was gone, and it left
+  nothing: no panic in the journal, no core (`coredumpctl`), no kernel
+  line (segfault, OOM). So either it exited on purpose (on Deskbar's
+  launch, say, handed to the running copy) or it died in a way nothing
+  records: the next item is what would have told us.
+
+- **Every Olo program leaves what's needed to debug its crash**
+  (Ben, 2026-11-04): "make sure we capture debugging information
+  anytime an olo app crashes -- they should all dump the debugging data
+  we need consistently and universally and it should have zero perf
+  overhead". Viewer's crash above left nothing to go on. One mechanism
+  for every program (the kit's apps, app_server, the helpers and
+  services), put in by what they all start with (`olo_ui::run`,
+  `olo_kit_base`), nothing for an app to remember: a panic hook and a
+  fatal-signal handler (SIGSEGV, SIGABRT, SIGBUS, SIGILL, SIGFPE, on
+  its own stack, async-signal-safe, then the default action so a core
+  is still made) writing a crash report to
+  `~/.local/state/olo/crashes/`: program, build, thread, the panic's
+  message and backtrace (symbolized: release builds keep line tables,
+  or split debug info beside them), the signal and its address, how
+  long it had run, and what it was doing (a few last log lines).
+  Shown in Logs, told once by Olo Doctor ("Viewer crashed", with
+  Report to copy), kept to a few per program. Zero cost until a
+  crash: nothing polled or recorded per frame, measured (startup time,
+  idle wakeups, binary size before and after). Then exits that aren't
+  crashes (a program quitting on its own when it shouldn't) say why
+  in the journal too.
+
+- **app_server crashes as it exits** (found 2026-11-04 in the core
+  dumps of headless test sessions, `coredumpctl list`): a SIGSEGV in
+  the `dmabuf check` thread freeing what it keeps
+  (`drop_glue<dmabuf_check::Kept>` → `dri_destroy` → a corrupt heap),
+  others in NVIDIA's EGL and in `__eglFini` while that thread still
+  holds a lock. The thread outlives the renderer it borrows from as the
+  process ends. An in-place reload is such an exit: stop and join the
+  thread (its images dropped while EGL is still up) before the
+  renderer goes, and check a stopped session leaves no core.
 
 - **auto-fuzz: two tiles overlap as a Terminal opens** (found
   2026-11-04, there before that day's changes too): `tools/dev/auto-fuzz
