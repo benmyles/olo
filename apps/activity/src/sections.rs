@@ -1,6 +1,7 @@
 //! The sections that are cards of graphs and facts: Overview, the
-//! Supervisor's work, CPU, Memory, Disks, Network, GPU, Sensors, System
-//! and the Graphs of your choosing. (Processes is processes.rs.)
+//! Supervisor's work, CPU, Memory, Disks, Network, GPU, Displays, Inputs,
+//! Sensors, System and the Graphs of your choosing. (Processes is
+//! processes.rs.)
 
 use std::rc::Rc;
 
@@ -252,6 +253,12 @@ pub fn sidebar_value(app: &Activity, s: Section) -> String {
             0 => String::new(),
             n => format!("{n} dropped"),
         },
+        // The pointer's reports going missing, if they are.
+        Section::Inputs => match app.pointer_health.gaps_minute {
+            0 => String::new(),
+            1 => "1 gap".to_owned(),
+            n => format!("{n} gaps"),
+        },
         _ => String::new(),
     }
 }
@@ -286,7 +293,8 @@ pub fn view(app: &mut Activity, s: Section, width: f32, cx: &mut Context<Activit
         Section::Disks => disks(app, &me, inner, cx),
         Section::Network => network(app, &me, inner, cx),
         Section::Gpu => gpu(app, &me, area, inner, cx),
-        Section::Displays => displays(app, &me, cx),
+        Section::Displays => displays(app, &me, inner, cx),
+        Section::Inputs => inputs(app, inner, cx),
         Section::Sensors => sensors(app, inner, cx),
         Section::System => system(app, &me, inner, cx),
         Section::Supervisor => supervisor(app, &me, cx),
@@ -964,7 +972,41 @@ fn gpu(app: &Activity, me: &Me, area: f32, inner: f32, cx: &App) -> Vec<AnyEleme
 /// Each display: its frames a second, the ones dropped, what its frames
 /// cost app_server and how it paces them (app_server frames.rs), and the
 /// switch that has every drop logged with what went into it.
-fn displays(app: &Activity, me: &Me, cx: &App) -> Vec<AnyElement> {
+/// A graph of figures kept from app_server's answers
+/// (`Activity::frame_history`): each `(key, name, hue)` a line, the first
+/// filled, read by `unit`, `GRAPH` tall over the span chosen, with a
+/// legend of each line's latest under it.
+fn history_graph(app: &Activity, id: &str, lines: &[(&str, &str, olo_theme::Hue)], unit: fn(f64) -> String, max: Option<f64>, inner: f32, cx: &App) -> Vec<AnyElement> {
+    let p = theme::palette(cx);
+    let series: Vec<Series> = lines
+        .iter()
+        .enumerate()
+        .filter_map(|(i, (key, name, hue))| Some(Series::new(SharedString::from(name.to_string()), c(p.hue(*hue)), app.frame_history.get(*key)?.clone()).fill(i == 0)))
+        .collect();
+    let items: Vec<LegendItem> = lines
+        .iter()
+        .map(|(key, name, hue)| {
+            let latest = app.frame_history.get(*key).and_then(|q| q.back()).map(|(_, v)| unit(*v)).unwrap_or_else(|| "—".into());
+            LegendItem { color: c(p.hue(*hue)), name: SharedString::from(name.to_string()), value: latest.into() }
+        })
+        .collect();
+    let mut g =
+        Graph::new(SharedString::from(format!("activity-{id}")), series, app.t()).span(app.settings.span as f64).grid(grid_for(app.settings.span)).unit(unit).smooth(app.settings.smooth).plain();
+    if let Some(m) = max {
+        g = g.max(m);
+    }
+    vec![div().h(px(GRAPH)).flex_shrink_0().child(g.on_layer(&app.shelf)).into_any_element(), legend_el(items, inner, cx)]
+}
+
+fn ms_value(v: f64) -> String {
+    if v < 1.0 { format!("{:.0} µs", v * 1000.0) } else { format!("{v:.1} ms") }
+}
+
+fn whole(v: f64) -> String {
+    style::thousands(v.max(0.0).round() as usize)
+}
+
+fn displays(app: &Activity, me: &Me, inner: f32, cx: &App) -> Vec<AnyElement> {
     let p = theme::palette(cx);
     let ink = style::card_ink(&p);
     let ms = |us: u64| format!("{:.1} ms", us as f64 / 1000.0);
@@ -999,8 +1041,45 @@ fn displays(app: &Activity, me: &Me, cx: &App) -> Vec<AnyElement> {
         if d.late_minute > 0 {
             card = card.figure_ink(c(p.hue(olo_theme::Hue::Red)));
         }
-        out.push(card.child(facts(rows)).into_any_element());
+        let (fps, late, p95) = (format!("display.{}.fps", d.output), format!("display.{}.late", d.output), format!("display.{}.p95", d.output));
+        let graph = history_graph(
+            app,
+            &format!("display-{}", d.output),
+            &[(&fps, "Frames a second", olo_theme::Hue::Blue), (&late, "Dropped in the last minute", olo_theme::Hue::Red)],
+            whole,
+            None,
+            inner,
+            cx,
+        );
+        let drawing = history_graph(app, &format!("display-draw-{}", d.output), &[(&p95, "Drawing a frame, 95th percentile", olo_theme::Hue::Teal)], ms_value, None, inner, cx);
+        out.push(card.child(facts(rows)).children(graph).children(drawing).into_any_element());
     }
+    let toggle = me.clone();
+    out.push(
+        Card::new("displays-capture", "When a Frame Drops")
+            .caption("For finding out why")
+            .child(
+                CheckBox::new("Capture debug information whenever a frame drops", app.frames_capture)
+                    .on_toggle(move |on, _, cx| toggle.update(cx, |a, cx| a.set_frames_capture(on, cx))),
+            )
+            .child(div().h(px(m::TIGHT)))
+            .child(para(
+                "Every dropped frame is then logged with what went into it: how long it took to draw and the parts of that, how far past its vblank it showed, and what else held app_server up meanwhile. Open Logs and filter for \"frames\". It stays on until app_server restarts.",
+                ink.dim,
+            ))
+            .into_any_element(),
+    );
+    out
+}
+
+// ---- Inputs -----------------------------------------------------------
+
+/// The pointer's and the touchpad's reports as app_server gets them, and
+/// what's done with each kind of input, over time.
+fn inputs(app: &Activity, inner: f32, cx: &App) -> Vec<AnyElement> {
+    let p = theme::palette(cx);
+    let ink = style::card_ink(&p);
+    let mut out = Vec::new();
     // The pointer's reports, as app_server gets them: the mouse and its
     // link, which no frame can make up for.
     {
@@ -1017,11 +1096,12 @@ fn displays(app: &Activity, me: &Me, cx: &App) -> Vec<AnyElement> {
         } else {
             "The mouse's reports arrive as they should"
         };
-        let mut card = Card::new("displays-pointer", "Pointer").figure(figure).caption(caption);
+        let mut card = Card::new("inputs-pointer", "Pointer").figure(figure).caption(caption);
         if h.gaps_minute > 0 {
             card = card.figure_ink(c(p.hue(olo_theme::Hue::Red)));
         }
-        out.push(card.child(facts(rows)).into_any_element());
+        let graph = history_graph(app, "pointer", &[("pointer.hz", "Reports a second", olo_theme::Hue::Blue)], whole, None, inner, cx);
+        out.push(card.child(facts(rows)).children(graph).into_any_element());
     }
     // The touchpad's reports, through Olo's touch filter and the palm
     // model: judged as each frame comes, on app_server's main thread,
@@ -1076,27 +1156,52 @@ fn displays(app: &Activity, me: &Me, cx: &App) -> Vec<AnyElement> {
         } else {
             "Touch the pad to see how quickly its reports arrive"
         };
-        let mut card = Card::new("displays-touch", "Touchpad").figure(figure).caption(caption);
+        let mut card = Card::new("inputs-touch", "Touchpad").figure(figure).caption(caption);
         if slow {
             card = card.figure_ink(c(p.hue(olo_theme::Hue::Red)));
         }
-        out.push(card.child(facts(rows)).into_any_element());
+        let graph = history_graph(
+            app,
+            "touch",
+            &[("touch.p50", "Reaching app_server, typically", olo_theme::Hue::Green), ("touch.p99", "At the 99th percentile", olo_theme::Hue::Orange)],
+            ms_value,
+            None,
+            inner,
+            cx,
+        );
+        out.push(card.child(facts(rows)).children(graph).into_any_element());
     }
-    let toggle = me.clone();
-    out.push(
-        Card::new("displays-capture", "When a Frame Drops")
-            .caption("For finding out why")
-            .child(
-                CheckBox::new("Capture debug information whenever a frame drops", app.frames_capture)
-                    .on_toggle(move |on, _, cx| toggle.update(cx, |a, cx| a.set_frames_capture(on, cx))),
-            )
-            .child(div().h(px(m::TIGHT)))
-            .child(para(
-                "Every dropped frame is then logged with what went into it: how long it took to draw and the parts of that, how far past its vblank it showed, and what else held app_server up meanwhile. Open Logs and filter for \"frames\". It stays on until app_server restarts.",
-                ink.dim,
-            ))
-            .into_any_element(),
-    );
+    // What's done with each kind of input, a minute back (how many,
+    // never which key).
+    {
+        let a = &app.inputs;
+        let rows: Vec<(String, String)> = vec![
+            ("Clicks".into(), format!("{} in the last minute", style::thousands(a.clicks_minute as usize))),
+            ("Scrolling".into(), format!("{} steps in the last minute (a wheel's notches, a touchpad's moves)", style::thousands(a.scrolls_minute as usize))),
+            ("Gestures".into(), format!("{} begun in the last minute (swipes, pinches, holds)", style::thousands(a.gestures_minute as usize))),
+            ("Keys".into(), format!("{} pressed in the last minute", style::thousands(a.keys_minute as usize))),
+        ];
+        let busy = a.clicks_minute + a.scrolls_minute + a.gestures_minute + a.keys_minute;
+        let card = Card::new("inputs-activity", "What You Did")
+            .figure(if busy > 0 { format!("{} a minute", style::thousands(busy as usize)) } else { "nothing".into() })
+            .caption("Each kind of input in the last minute: how many, never which keys");
+        let graph = history_graph(
+            app,
+            "inputs",
+            &[
+                ("inputs.keys", "Keys", olo_theme::Hue::Purple),
+                ("inputs.scrolls", "Scrolling", olo_theme::Hue::Blue),
+                ("inputs.clicks", "Clicks", olo_theme::Hue::Orange),
+                ("inputs.gestures", "Gestures", olo_theme::Hue::Green),
+            ],
+            whole,
+            None,
+            inner,
+            cx,
+        );
+        out.push(card.child(facts(rows)).children(graph).into_any_element());
+    }
+    let _ = ink;
     out
 }
 

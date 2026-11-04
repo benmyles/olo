@@ -331,7 +331,7 @@ contact hovering before it touches and bounds that bite included).
 - On app_server's main thread (`CORE_NICE`, a fast core), which the
   supervisor keeps there every pass. How long the pad's reports take to
   reach app_server, the filter and model included, is live in Activity
-  Monitor ▸ Displays ▸ Touchpad (HACKING, "The touchpad's reports").
+  Monitor ▸ Inputs ▸ Touchpad (HACKING, "The touchpad's reports").
 
 **The trainer** (apps/preferences/src/palm_trainer.rs, "Train for Your
 Palm…" on Preferences ▸ Touchpad & Mouse ▸ Touch).
@@ -387,7 +387,7 @@ Palm…" on Preferences ▸ Touchpad & Mouse ▸ Touch).
   touches, how it did), with "Train for Your Palm…" / "Train Again…"
   and "Forget My Model" (back to Olo's own); the size rule is "Always a
   palm when as large as", with a note that the model only adds palms to
-  it. Activity Monitor ▸ Displays ▸ Touchpad says which runs.
+  it. Activity Monitor ▸ Inputs ▸ Touchpad says which runs.
 - Checked headless with `SyntheticEvent::Contacts`. The model is in
   `Settings`, so Preferences ▸ Backup's export and import carry it.
 

@@ -244,6 +244,9 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub cursor_status: CursorImageStatus,
     /// The pointer's last reports, to draw it where it will be at the
     /// frame's vblank (`cursor::Track`).
+    /// Clicks, scrolls, gestures and keys a minute back (Activity
+    /// Monitor ▸ Inputs).
+    pub input_counts: crate::input_counts::InputCounts,
     pub pointer_track: crate::cursor::Track,
     /// When `tick` last did its work (at most every `TICK`).
     pub last_tick: Option<std::time::Instant>,
@@ -1148,6 +1151,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             wallpaper: Default::default(),
             cursor_status: CursorImageStatus::default_named(),
             pointer_track: Default::default(),
+            input_counts: Default::default(),
             last_tick: None,
             seat_name,
             seat,

@@ -62,7 +62,7 @@ of Finished; a new one goes where its priority puts it.
   model stays in use until he trains again).
 
 - **The touchpad's latency on Ben's machine, and what next** (from the
-  palm model in Activity, 2026-11-03): Activity ▸ Displays ▸ Touchpad
+  palm model in Activity, 2026-11-03): Activity ▸ Inputs ▸ Touchpad
   now shows how long the pad's reports take to reach app_server (the
   filter and palm model included) and the main thread's scheduling;
   only a real pad says it, headless sessions have none. If its 99th
@@ -332,18 +332,6 @@ of Finished; a new one goes where its priority puts it.
   less/man, tmux, fzf, lazygit, Claude Code and Codex in every terminal
   theme of every Olo look, light and dark, at 1× and 2×, as shots in
   the journal.
-
-- **Activity Monitor: an Inputs section, and the Displays panel
-  polished** (Ben, 2026-11-03): "add an Inputs section in activity
-  monitor, move the pointer + touchpad in there, add a bunch more
-  stats/metrics about them with graphs and such. also polish up with
-  stats/metrics/graphs the Displays panel". So: a sidebar section of its
-  own for input devices, with the pointer's card (`PointerHealth`) and
-  the touchpad's (`TouchHealth`) moved out of Displays; more about each
-  (reports a second, gaps and latency over time as graphs, the palm
-  filter's catches, clicks, scroll and gesture rates, the keyboard's
-  too); and Displays given the same: frame times and drops over time as
-  graphs per display, refresh rate, what's on overlay planes.
 
 - **Terminal: a scroll bar, slim, there when wanted** (Ben,
   2026-11-03): "show an actual scrollbar in terminal but introduce a new
@@ -928,6 +916,23 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Activity Monitor: an Inputs section, and the Displays panel
+  polished**~~ (Ben, 2026-11-03): "add an Inputs section in activity
+  monitor, move the pointer + touchpad in there, add a bunch more
+  stats/metrics about them with graphs and such. also polish up with
+  stats/metrics/graphs the Displays panel". *Done* (2026-11-03): Inputs
+  has the pointer's and the touchpad's cards, moved from Displays, each
+  with a graph over the span chosen (reports a second; the touchpad's
+  latency typically and at the 99th), and What You Did: clicks,
+  scrolling steps, gestures begun and keys pressed in the last minute
+  (app_server's `input_counts`, how many and never which key), with a
+  graph of each; its sidebar badge counts the pointer's gaps. Each
+  display's card has graphs of its frames a second and drops, and of
+  drawing's 95th percentile; what's on planes was there already
+  (Scan-out). Reviewed clean at 1, 1.25, 1.5, 1.75 and 2×, light and
+  dark. Not yet: the palm filter's catches (they'd need app_server to
+  run the model on the pad's slots: the touchpad latency item).
 
 - ~~**Sound ▸ Voice Processing: try it on your own voice**~~ (Ben,
   2026-11-02 and 2026-11-03): record a short sample, see "in real time

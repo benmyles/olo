@@ -70,13 +70,15 @@ pub enum Section {
     Gpu,
     /// Each display's frames: how app_server keeps up (`Request::Frames`).
     Displays,
+    /// The pointer, the touchpad and what's done with each kind of input.
+    Inputs,
     Sensors,
     System,
     Graphs,
 }
 
 impl Section {
-    const ALL: [Section; 12] = [
+    const ALL: [Section; 13] = [
         Section::Overview,
         Section::Processes,
         Section::Supervisor,
@@ -86,6 +88,7 @@ impl Section {
         Section::Network,
         Section::Gpu,
         Section::Displays,
+        Section::Inputs,
         Section::Sensors,
         Section::System,
         Section::Graphs,
@@ -105,6 +108,7 @@ impl Section {
             Section::Network => "Network",
             Section::Gpu => "GPU",
             Section::Displays => "Displays",
+            Section::Inputs => "Inputs",
             Section::Sensors => "Sensors",
             Section::System => "System",
             Section::Graphs => "Graphs",
@@ -122,6 +126,7 @@ impl Section {
             Section::Network => "network",
             Section::Gpu => "gpu",
             Section::Displays => "display",
+            Section::Inputs => "touchpad",
             Section::Sensors => "sensors",
             Section::System => "system",
             Section::Graphs => "disk-usage",
@@ -207,7 +212,7 @@ pub enum Msg {
     Supervisor(Box<olo_protocol::performance::SupervisorState>),
     /// How each display keeps up, whether drops are captured, and the
     /// pointer's reports (`Request::Frames`, from `frames_poller`).
-    Frames(Vec<olo_protocol::DisplayFrames>, bool, olo_protocol::PointerHealth, olo_protocol::TouchHealth),
+    Frames(Vec<olo_protocol::DisplayFrames>, bool, olo_protocol::PointerHealth, olo_protocol::TouchHealth, olo_protocol::InputActivity),
 }
 
 /// The touchpad to look at under OLO_ACTIVITY_DEMO_FRAMES: a MacBook's,
@@ -329,7 +334,13 @@ fn frames_poller(send: impl Fn(Msg) + Send + 'static, rx: mpsc::Receiver<FramesA
         }
         // (Headless test sessions have no displays: made-up ones to look at.)
         if std::env::var_os("OLO_ACTIVITY_DEMO_FRAMES").is_some() {
-            send(Msg::Frames(demo_frames(), capture, olo_protocol::PointerHealth { reports_second: 998, gaps_minute: 3, longest_gap_us: 31_000, interval_us: 1_000 }, demo_touch()));
+            send(Msg::Frames(
+                demo_frames(),
+                capture,
+                olo_protocol::PointerHealth { reports_second: 998, gaps_minute: 3, longest_gap_us: 31_000, interval_us: 1_000 },
+                demo_touch(),
+                olo_protocol::InputActivity { clicks_minute: 42, scrolls_minute: 1_280, gestures_minute: 7, keys_minute: 310 },
+            ));
             continue;
         }
         if client.is_none() {
@@ -337,7 +348,7 @@ fn frames_poller(send: impl Fn(Msg) + Send + 'static, rx: mpsc::Receiver<FramesA
         }
         let Some(c) = client.as_mut() else { continue };
         match c.request(&Request::Frames) {
-            Ok(Reply::Frames { displays, capture, pointer, touch }) => send(Msg::Frames(displays, capture, pointer, touch)),
+            Ok(Reply::Frames { displays, capture, pointer, touch, inputs }) => send(Msg::Frames(displays, capture, pointer, touch, inputs)),
             _ => client = None,
         }
     }
@@ -352,6 +363,9 @@ pub enum Access {
     Asking,
     Full,
 }
+
+/// How long the frames' figures are kept (the longest a graph shows).
+pub const FRAME_HISTORY_SECONDS: f64 = 1800.0;
 
 /// The busiest processes at a moment, for looking back from a graph.
 pub struct Moment {
@@ -418,6 +432,11 @@ pub struct Activity {
     pub pointer_health: olo_protocol::PointerHealth,
     /// The touchpad's reports and the palm model (the Touchpad card).
     pub touch_health: olo_protocol::TouchHealth,
+    /// Clicks, scrolls, gestures and keys in the last minute.
+    pub inputs: olo_protocol::InputActivity,
+    /// The frames' figures over time, by key ("pointer.hz",
+    /// "display.NAME.fps", …), as each `Request::Frames` answer comes.
+    pub frame_history: HashMap<String, std::rc::Rc<VecDeque<(f64, f64)>>>,
     frames: mpsc::Sender<FramesAsk>,
     proxy: Proxy,
     /// The sections' scrolling, kept while each shows.
@@ -583,7 +602,7 @@ impl Activity {
         self.control.want_processes.store(true, Ordering::Relaxed);
         self.control.want_connections.store(section == Section::Network, Ordering::Relaxed);
         self.control.want_gpu_clients.store(section == Section::Gpu, Ordering::Relaxed);
-        let _ = self.frames.send(FramesAsk::Want(section == Section::Displays));
+        let _ = self.frames.send(FramesAsk::Want(matches!(section, Section::Displays | Section::Inputs)));
         if let (Some(h), Access::Full) = (&self.helper, self.access) {
             h.send(&ToHelper::Wants(self.control.wants()));
         }
@@ -974,7 +993,7 @@ impl Activity {
             .filter(|s| match s {
                 Section::Gpu => self.source("gpu-busy").is_some(),
                 // (Under app_server: a window of its own to ask.)
-                Section::Displays => olo_protocol::socket_path().is_some(),
+                Section::Displays | Section::Inputs => olo_protocol::socket_path().is_some(),
                 Section::Sensors => self.sources.iter().any(|s| s.group == sample::Group::Sensors) || self.source("battery").is_some(),
                 _ => true,
             })
@@ -1071,11 +1090,34 @@ impl Activity {
             }
             Msg::Helper(m) => return self.heard(m, cx),
             Msg::Supervisor(s) => self.supervisor = *s,
-            Msg::Frames(displays, capture, pointer, touch) => {
+            Msg::Frames(displays, capture, pointer, touch, inputs) => {
+                // Each figure kept over time, for the sections' graphs.
+                let t = self.t();
+                let mut keep = |key: String, v: f64| {
+                    let q = std::rc::Rc::make_mut(self.frame_history.entry(key).or_default());
+                    q.push_back((t, v));
+                    while q.front().is_some_and(|(at, _)| t - at > FRAME_HISTORY_SECONDS) {
+                        q.pop_front();
+                    }
+                };
+                keep("pointer.hz".into(), pointer.reports_second as f64);
+                keep("touch.reports".into(), touch.reports_second as f64);
+                keep("touch.p50".into(), touch.latency_p50_us as f64 / 1000.0);
+                keep("touch.p99".into(), touch.latency_p99_us as f64 / 1000.0);
+                keep("inputs.clicks".into(), inputs.clicks_minute as f64);
+                keep("inputs.scrolls".into(), inputs.scrolls_minute as f64);
+                keep("inputs.gestures".into(), inputs.gestures_minute as f64);
+                keep("inputs.keys".into(), inputs.keys_minute as f64);
+                for d in &displays {
+                    keep(format!("display.{}.fps", d.output), d.fps);
+                    keep(format!("display.{}.late", d.output), d.late_minute as f64);
+                    keep(format!("display.{}.p95", d.output), d.render_p95_us as f64 / 1000.0);
+                }
                 self.displays = displays;
                 self.frames_capture = capture;
                 self.pointer_health = pointer;
                 self.touch_health = touch;
+                self.inputs = inputs;
             }
         }
         cx.notify();
@@ -1362,6 +1404,8 @@ fn main() {
                 frames_capture: false,
                 pointer_health: Default::default(),
                 touch_health: Default::default(),
+                inputs: Default::default(),
+                frame_history: HashMap::new(),
                 frames: frames_tx,
                 proxy: proxy.clone(),
                 scroll: Default::default(),

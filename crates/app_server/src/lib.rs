@@ -15,6 +15,7 @@ pub mod grabs;
 pub mod headless;
 pub mod hints;
 pub mod icon_theme;
+pub mod input_counts;
 pub mod input_handler;
 #[cfg(feature = "libei")]
 pub mod libei;

@@ -4617,7 +4617,7 @@ Hit-testing, focus and what clients get use the real position.
 `OLO_POINTER_AHEAD=0` draws the real position.
 
 The pointer's reports themselves are watched (`Track::health`,
-`PointerHealth` in `{"type":"frames"}`, Activity Monitor ▸ Displays'
+`PointerHealth` in `{"type":"frames"}`, Activity Monitor ▸ Inputs'
 Pointer card): reports a second, the device's interval (1 ms for a
 1 kHz mouse), gaps over 5 ms within a run of motion in the last minute
 and the longest. A gap is the mouse's, not a frame's: a receiver asleep
@@ -4732,8 +4732,17 @@ tried": not a candidate).
 each display's record (`DisplayFrames`): frames a second, dropped in the
 last minute and in all, the draw's percentiles, the budget and delay,
 whether the pointer is on its own plane, resting. Activity Monitor's
-Displays section shows it, a card a display, asked every second while
-the section shows and never otherwise. Its check box, "Capture debug
+Displays section shows it, a card a display with graphs of its frames
+a second, drops and the 95th percentile of drawing over the span
+chosen, asked every second while the section (or Inputs) shows and
+never otherwise; the answers are kept for the graphs
+(`Activity::frame_history`, half an hour). Its Inputs section has the
+pointer's and the touchpad's cards (each with a graph: reports a
+second, the touchpad's latency typically and at the 99th) and What
+You Did: clicks, scrolling steps, gestures begun and keys pressed in
+the last minute (`InputActivity`, app_server's `input_counts`: a time
+noted per event as it's handled, real or synthetic, how many and never
+which key), with a graph of each. Its check box, "Capture debug
 information whenever a frame drops" (`{"type":"capture_drops","on":true}`),
 has app_server log every drop as a `frames` record: how late, how long
 the draw took and its parts (gathering, `drm render_frame`, …), the

@@ -1130,6 +1130,16 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         // As real input wakes the displays (`process_input_event`).
         let before = self.pointer.current_location();
         let pointing = matches!(event, S::Move { .. } | S::Scroll { .. });
+        // (Counted as real input is, for Activity Monitor ▸ Inputs.)
+        let counted = match &event {
+            S::Button { pressed: true, .. } => Some(crate::input_counts::Input::Click),
+            S::Key { pressed: true, .. } => Some(crate::input_counts::Input::Key),
+            S::Scroll { .. } | S::Wheel { .. } => Some(crate::input_counts::Input::Scroll),
+            _ => None,
+        };
+        if let Some(what) = counted {
+            self.input_counts.note(what, std::time::Instant::now());
+        }
         self.synthetic_input_inner(event);
         if pointing {
             self.wake_under_pointer(before);
@@ -1227,6 +1237,19 @@ impl AnvilState<UdevData> {
             self.backend_data.wake(None);
         }
         let start = std::time::Instant::now();
+        {
+            use crate::input_counts::Input;
+            let counted = match &event {
+                InputEvent::Keyboard { event } if event.state() == KeyState::Pressed => Some(Input::Key),
+                InputEvent::PointerButton { event } if event.state() == smithay::backend::input::ButtonState::Pressed => Some(Input::Click),
+                InputEvent::PointerAxis { .. } => Some(Input::Scroll),
+                InputEvent::GestureSwipeBegin { .. } | InputEvent::GesturePinchBegin { .. } | InputEvent::GestureHoldBegin { .. } => Some(Input::Gesture),
+                _ => None,
+            };
+            if let Some(what) = counted {
+                self.input_counts.note(what, start);
+            }
+        }
         let kind = match &event {
             InputEvent::Keyboard { .. } => "key",
             InputEvent::PointerMotion { .. } | InputEvent::PointerMotionAbsolute { .. } => "pointer motion",

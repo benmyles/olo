@@ -532,6 +532,8 @@ pub enum Reply {
         pointer: PointerHealth,
         #[serde(default)]
         touch: TouchHealth,
+        #[serde(default)]
+        inputs: InputActivity,
     },
     PointerTrace {
         frames: Vec<PointerFrame>,
@@ -611,6 +613,18 @@ pub struct DisplayFrames {
     pub scanout: String,
     /// Resting: nothing new, looking only now and then.
     pub resting: bool,
+}
+
+/// What the person did with each kind of input in the last minute
+/// ([`Reply::Frames`]): clicks, scrolls, gestures begun and keys pressed
+/// (how many, never which).
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct InputActivity {
+    pub clicks_minute: u32,
+    pub scrolls_minute: u32,
+    pub gestures_minute: u32,
+    pub keys_minute: u32,
 }
 
 /// The pointer's reports as app_server gets them ([`Reply::Frames`]):
