@@ -53,6 +53,7 @@ pub mod spotlight;
 pub mod tabtip;
 pub mod text;
 pub mod theme;
+pub mod tiles;
 pub mod timings;
 pub mod toolkits;
 pub mod touch_filter;

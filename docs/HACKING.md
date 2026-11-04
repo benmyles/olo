@@ -2805,6 +2805,15 @@ found, and the windows scattered) isn't set up until it can, for up to
 without (the wait over) is looked at for its EDID for a minute, and
 when it comes, `display_identified` makes its settings, place and
 workspace its monitor's, its windows going with it.
+A monitor that takes its picture in tiles (a 5K or 6K display over two
+DisplayPort streams: Apple's Studio Display, LG's UltraFine 5K) is a
+connector per tile, each with the kernel's `TILE` property; most offer
+the whole picture through one of them too. That one is the display and
+the others are left off (`tiles.rs`, `BackendData::covered`): set up
+one by one, the Studio Display was two displays, 5120 × 2880 and a
+2560 × 2880 copy of its right half. When the whole one leaves, the
+others are displays of their own again. A tiled monitor offering no
+whole picture is still a display per tile.
 `tools/dev/layout-check NAME [--auto] [--unplug]` checks this quickly:
 it arranges a session's screens in an order unlike the one they're
 found in, puts windows on each and on another workspace (auto-tiled with

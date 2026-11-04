@@ -1394,6 +1394,9 @@ struct BackendData {
     /// Displays set up by their connector after that wait, still looked
     /// at for their EDID (`look_for_edid`): connector, its screen, since.
     unidentified: Vec<(connector::Handle, crtc::Handle, String, Instant)>,
+    /// Tiles of a monitor shown whole through another of its connectors,
+    /// left off (`tiles`): connector, the screen it was given.
+    covered: Vec<(connector::Handle, crtc::Handle)>,
 }
 
 /// How long a display is waited for to tell who it is (its EDID) before
@@ -1537,6 +1540,7 @@ impl AnvilState<UdevData> {
                 drm_output_manager,
                 drm_scanner: DrmScanner::new(),
                 non_desktop_connectors: Vec::new(),
+                covered: Vec::new(),
                 render_node,
                 surfaces: HashMap::new(),
                 leasing_global: DrmLeaseState::new::<AnvilState<UdevData>>(&self.display_handle, &node)
@@ -1603,6 +1607,9 @@ impl AnvilState<UdevData> {
     }
 
     fn connector_connected(&mut self, node: DrmNode, connector: connector::Info, crtc: crtc::Handle) {
+        if !self.tile_to_show(node, &connector, crtc) {
+            return;
+        }
         let device = if let Some(device) = self.backend_data.backends.get_mut(&node) {
             device
         } else {
@@ -1857,6 +1864,56 @@ impl AnvilState<UdevData> {
         }
     }
 
+    /// Whether `connector` is to be a display: not when it's a tile of a
+    /// monitor shown whole through another of its connectors (`tiles`).
+    /// When it's the one showing it whole, the monitor's other tiles set
+    /// up before it are taken down.
+    fn tile_to_show(&mut self, node: DrmNode, connector: &connector::Info, crtc: crtc::Handle) -> bool {
+        let Some(device) = self.backend_data.backends.get_mut(&node) else { return true };
+        let drm = device.drm_output_manager.device();
+        let Some(tile) = crate::tiles::of(drm, connector.handle()) else { return true };
+        let group: Vec<(connector::Handle, crate::tiles::Tile, bool)> = device
+            .drm_scanner
+            .connectors()
+            .values()
+            .filter(|i| i.state() == connector::State::Connected)
+            .filter_map(|i| {
+                let t = crate::tiles::of(drm, i.handle())?;
+                (t.group == tile.group).then(|| (i.handle(), t, crate::tiles::offers_whole(i, &t)))
+            })
+            .collect();
+        let name = format!("{}-{}", connector.interface().as_str(), connector.interface_id());
+        let Some(whole) = crate::tiles::whole_through(&group) else {
+            info!(connector = name, ?tile, "a tile of a display that offers no whole picture: a display of its own");
+            return true;
+        };
+        if whole != connector.handle() {
+            info!(connector = name, ?tile, "a tile of a display shown whole through another connector: left off");
+            if !device.covered.iter().any(|(c, _)| *c == connector.handle()) {
+                device.covered.push((connector.handle(), crtc));
+            }
+            return false;
+        }
+        let up: Vec<(connector::Info, crtc::Handle)> = group
+            .iter()
+            .filter(|(c, ..)| *c != connector.handle())
+            .filter_map(|(c, ..)| {
+                let crtc = device.drm_scanner.crtc_for_connector(c)?;
+                device.surfaces.contains_key(&crtc).then(|| (device.drm_scanner.connectors().get(c).cloned(), crtc))
+            })
+            .filter_map(|(info, crtc)| Some((info?, crtc)))
+            .collect();
+        for (info, other) in up {
+            info!(connector = format!("{}-{}", info.interface().as_str(), info.interface_id()), whole = name, "a tile of a display now shown whole: left off");
+            let handle = info.handle();
+            self.connector_disconnected(node, info, other);
+            if let Some(device) = self.backend_data.backends.get_mut(&node) {
+                device.covered.push((handle, other));
+            }
+        }
+        true
+    }
+
     fn connector_disconnected(&mut self, node: DrmNode, connector: connector::Info, crtc: crtc::Handle) {
         // Its windows to the main display first, while it's still there
         // to leave, remembered for when it's plugged in again
@@ -1872,6 +1929,7 @@ impl AnvilState<UdevData> {
             return;
         };
 
+        device.covered.retain(|(c, _)| *c != connector.handle());
         if let Some(pos) = device.non_desktop_connectors.iter().position(|(handle, _)| *handle == connector.handle()) {
             let _ = device.non_desktop_connectors.remove(pos);
             if let Some(leasing_state) = device.leasing_global.as_mut() {
@@ -1894,8 +1952,21 @@ impl AnvilState<UdevData> {
             &DrmOutputRenderElements::default(),
         );
         // Deskbar and the desktop move to what is now the main display.
-        if let Some(gone) = gone {
+        if let Some(gone) = gone.clone() {
             self.move_auto_layers(&[gone]);
+        }
+        // Tiles left off while their monitor was shown whole through this
+        // connector: displays of their own now, if still plugged in.
+        if gone.is_some()
+            && let Some(device) = self.backend_data.backends.get_mut(&node)
+            && !device.covered.is_empty()
+        {
+            let covered = std::mem::take(&mut device.covered);
+            let back: Vec<(connector::Info, crtc::Handle)> =
+                covered.into_iter().filter_map(|(c, crtc)| device.drm_scanner.connectors().get(&c).filter(|i| i.state() == connector::State::Connected).map(|i| (i.clone(), crtc))).collect();
+            for (info, crtc) in back {
+                self.connector_connected(node, info, crtc);
+            }
         }
     }
 
