@@ -8,7 +8,19 @@ Sound comes from olo-fakesound (a speaker, AirPods and a microphone), so
 Preferences ▸ Sound shows its devices, not its empty state.
 Errors fail it; review findings (look closely) are listed with --review.
 
-  tools/dev/ui-lint [--review] [--keep] [--scales 1,1.5,2] [APP...]
+  tools/dev/ui-lint [--review] [--keep] [--no-cache] [--jobs N] [--scales 1,1.5,2] [--screen WxH] [APP...]
+
+Every app at once, each in a headless session of its own (a copy of the
+made-up home, its own sound server), --jobs at a time (three quarters of
+the processors by default); the look and scale are changed and the app
+asked again until it has drawn them, never waited for longer.
+
+Results are kept (~/.cache/olo-dev/ui-lint.json): an app whose build and
+whose lint are as when it last came out clean isn't run again (its
+binary's, app_server's and the fake sound server's size, time and inode,
+which cargo changes whenever it links them again; this script's,
+tsession's and fixture-home's text; the screen, scales and --review). An
+app that had errors always runs. --no-cache runs every one.
 
 APP picks some (by name, as listed with --list, or its directory in apps/
 as "disk-usage", or "prefs:PANEL"; case and spaces don't count). It
@@ -16,7 +28,7 @@ runs release builds: `cargo build --release --workspace` first. Run by
 the pre-push hook when UI code changed (tools/hooks), and by
 tools/install-session.sh. See "The layout lint" in docs/HACKING.md.
 """
-import json, os, socket, subprocess, sys, time
+import hashlib, json, os, socket, subprocess, sys, threading, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TSESSION = os.path.join(ROOT, "tools/dev/tsession")
@@ -143,16 +155,188 @@ def tabs(name, pid):
     return out
 
 
+CACHE = os.path.join(os.path.expanduser("~"), ".cache/olo-dev/ui-lint.json")
+
+
+def stamp(path):
+    """A build's identity without reading it: cargo writes a new file (a
+    new inode and time) whenever it links it again."""
+    try:
+        st = os.stat(path)
+        return f"{st.st_size}:{st.st_mtime_ns}:{st.st_ino}"
+    except OSError:
+        return "missing"
+
+
+def signature(exe, screen, scales, show_review):
+    """What an app's lint depends on: its build, app_server's, the fake
+    sound server's, the lint's own scripts and how it's run."""
+    h = hashlib.sha256()
+    for f in ("tools/dev/ui-lint", "tools/dev/tsession", "tools/dev/fixture-home"):
+        try:
+            h.update(open(os.path.join(ROOT, f), "rb").read())
+        except OSError:
+            pass
+    for b in (exe, "olo-app-server", "olo-fakesound"):
+        h.update(stamp(os.path.join(ROOT, "target/release", b)).encode())
+    h.update(f"{screen}|{scales}|{show_review}".encode())
+    return h.hexdigest()
+
+
+def load_cache():
+    try:
+        return json.load(open(CACHE))
+    except (OSError, ValueError):
+        return {}
+
+
+def save_cache(cache):
+    os.makedirs(os.path.dirname(CACHE), exist_ok=True)
+    tmp = CACHE + ".new"
+    json.dump(cache, open(tmp, "w"), indent=1)
+    os.replace(tmp, CACHE)
+
+
+def gone(exe, home, within=5.0):
+    """Wait for this run's `exe` to have quit (asked with SIGTERM): one
+    still closing takes the next app's arguments (single-instance apps:
+    Preferences), and its window never comes. Killed past `within`."""
+    end = time.time() + within
+    while time.time() < end:
+        if not pids_of(exe, home):
+            return
+        time.sleep(0.1)
+    for p in pids_of(exe, home):
+        try:
+            os.kill(p, 9)
+        except OSError:
+            pass
+    time.sleep(0.2)
+
+
+def set_look(name, theme, scale):
+    """The session's look and scale, at once (as `tsession theme` and
+    `scale` do, without their waits)."""
+    st = ipc(name, {"type": "get_settings"})["settings"]
+    st["appearance"]["theme"] = theme
+    st["display"]["scale"] = scale
+    for o in st["display"].get("outputs", {}).values():
+        o.pop("scale", None)
+    ipc(name, {"type": "set_settings", "settings": st})
+
+
+def drawn(pid, layers, scale=None, dark=None, within=6.0):
+    """The app's review once its windows are drawn (at `scale`, in the look
+    `dark` says, when given): asked again until they are, never waited
+    for longer than it takes. None if they never are."""
+    end = time.time() + within
+    last = None
+    while time.time() < end:
+        wins = [w for w in (ask_app(pid, {"review": True}, timeout=8) or []) if layers or not w.get("layer")]
+        if wins:
+            last = wins
+            if all((scale is None or abs(w.get("scale", 0) - scale) < 0.01) and (dark is None or w.get("dark", dark) == dark) for w in wins):
+                return [(w.get("layer") or w["title"], f) for w in wins for f in w["findings"]]
+        time.sleep(0.05)
+    return None if last is None else [(w.get("layer") or w["title"], f) for w in last for f in w["findings"]]
+
+
+def click(name, x, y):
+    """A click at (x, y), as `tsession click` makes it (two motions: the
+    first after a popup's grab only ends it)."""
+    ipc(name, {"type": "synthetic", "events": [{"type": "move", "x": x - 1, "y": y}]})
+    ipc(name, {"type": "synthetic", "events": [{"type": "move", "x": x, "y": y}]})
+    ipc(name, {"type": "synthetic", "events": [{"type": "button", "button": 0x110, "pressed": True}, {"type": "button", "button": 0x110, "pressed": False}]})
+
+
+def chosen(pid, tab, within=3.0):
+    """Wait for `tab` to be the one shown."""
+    end = time.time() + within
+    while time.time() < end:
+        for tree in ask_app(pid, {"tree": True}) or []:
+            if any(n.get("role") == "Tab" and n.get("name") == tab and n.get("selected") for n in tree.get("nodes", [])):
+                return True
+        time.sleep(0.05)
+    return False
+
+
+def lint_one(spec, slot, master, screen, scales, show_review, work):
+    """One app, in a headless session of its own (a copy of the made-up
+    home, its own sound server): what it found, as (errors, reviews, lines
+    to print)."""
+    app, _, env, layers = spec
+    home = os.path.join(work, f"home{slot}")
+    name = f"uilint{os.getpid() % 100000}s{slot}"
+    subprocess.run(["cp", "-a", "--reflink=auto", master, home], check=True)
+    # (The made-up home's paths in the app's arguments, this copy's.)
+    argv = [a.replace(master, home) for a in spec[1]]
+    env = {k: v.replace(master, home) for k, v in env.items()}
+    pulse = os.path.join(work, f"pulse{slot}.sock")
+    fakesound = subprocess.Popen([os.path.join(ROOT, "target/release/olo-fakesound"), pulse], env=dict(os.environ, FAKESOUND_AIRPODS="AA:BB:CC:DD:EE:FF"),
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    lines = []
+    try:
+        sh("start", name, screen, "--light", "--scale", "2", "--home", home, check=True)
+        sh("run", name, f"HOME={home}", f"PULSE_SERVER=unix:{pulse}", "OLO_NO_FINGERPRINT=1", "OLO_ACTIVITY_HELPER=off", "OLO_DOCTOR_HELPER=off", *[f"{k}={v}" for k, v in env.items()], *argv)
+        exe = argv[0]
+        pid = None
+        end = time.time() + 20
+        while time.time() < end:
+            ps = pids_of(exe, home)
+            if ps and (layers or windows_of(name, ps[0])):
+                pid = ps[0]
+                break
+            time.sleep(0.1)
+        if pid is None or drawn(pid, layers) is None:
+            alive = pids_of(exe, home)
+            log = os.path.join(BASE, name, f"{os.path.basename(exe)}.log")
+            try:
+                said = [l.rstrip() for l in open(log, errors="replace") if "resvg" not in l][-6:]
+            except OSError:
+                said = []
+            lines.append(f"{app}: no window came up ({'running: ' + ', '.join(map(str, alive)) if alive else 'not running'})")
+            lines += [f"    {l[:200]}" for l in said]
+            return 1, 0, lines
+        # Each finding once, with the looks it came up in.
+        seen = {}
+        for theme in ("light", "dark"):
+            for scale in scales:
+                set_look(name, theme, scale)
+                looks = [(None, drawn(pid, layers, scale, theme == "dark") or [])]
+                for title, tab, x, y in tabs(name, pid):
+                    click(name, x, y)
+                    chosen(pid, tab)
+                    looks.append((tab, drawn(pid, layers, scale, theme == "dark") or []))
+                for tab, found in looks:
+                    for window, f in found:
+                        key = (f["level"], window, tab, f["kind"], f["text"])
+                        seen.setdefault(key, []).append(f"{theme} {scale:g}×")
+        app_errors = [k for k in seen if k[0].lower() == "error"]
+        app_reviews = [k for k in seen if k[0].lower() != "error"]
+        lines.append(f"{app}: {len(app_errors)} errors" + (f", {len(app_reviews)} to look at" if show_review else ""))
+        for key in app_errors + (app_reviews if show_review else []):
+            level, window, tab, kind, text = key
+            lines.append(f"  - {level.lower()} {kind} in {window}{' ▸ ' + tab if tab else ''}: {text} ({', '.join(seen[key])})")
+        return len(app_errors), len(app_reviews), lines
+    finally:
+        sh("stop", name)
+        fakesound.terminate()
+        # (Its session folder too: /tmp is memory.)
+        subprocess.run(["rm", "-rf", home, os.path.join(BASE, name)])
+
+
 def main():
     a = sys.argv[1:]
     show_review = "--review" in a
     keep = "--keep" in a
+    use_cache = "--no-cache" not in a
     scales = [float(s) for s in (a[a.index("--scales") + 1].split(",") if "--scales" in a else ["1", "1.5", "2"])]
     screen = a[a.index("--screen") + 1] if "--screen" in a else "3024x1964"
-    picked = [x for i, x in enumerate(a) if not x.startswith("--") and (i == 0 or a[i - 1] not in ("--scales", "--screen"))]
+    jobs = int(a[a.index("--jobs") + 1]) if "--jobs" in a else max(2, (os.cpu_count() or 4) * 3 // 4)
+    picked = [x for i, x in enumerate(a) if not x.startswith("--") and (i == 0 or a[i - 1] not in ("--scales", "--screen", "--jobs"))]
     work = f"/var/tmp/olo-ui-lint-{os.getpid()}"
-    home = os.path.join(work, "home")
-    specs = apps(home)
+    master = os.path.join(work, "home")
+    specs = apps(master)
     if "--list" in a:
         print("\n".join(s[0] for s in specs))
         return 0
@@ -164,71 +348,49 @@ def main():
         if not specs:
             print("ui-lint: none of those has a window to lint")
             return 0
+    # Those whose build and lint are as when they came out clean: not again.
+    cache = load_cache() if use_cache else {}
+    sigs = {s[0]: signature(s[1][0], screen, ",".join(f"{x:g}" for x in scales), show_review) for s in specs}
+    fresh = [s for s in specs if cache.get(s[0], {}).get("sig") == sigs[s[0]] and cache[s[0]].get("errors") == 0]
+    for s in fresh:
+        print(f"{s[0]}: 0 errors (unchanged since it was clean)", flush=True)
+    specs = [s for s in specs if s not in fresh]
+    if not specs:
+        print("ui-lint: 0 errors (every app unchanged since it was clean)")
+        return 0
     # (Made only now: --list and an empty pick leave nothing behind.
-    # fixture-home's pictures need the system's Python, which has PIL.)
+    # fixture-home's pictures need the system's Python, which has PIL. Made
+    # once; each app's session gets a copy, reflinked.)
     os.makedirs(work, exist_ok=True)
     env = dict(os.environ, PATH="/usr/bin:" + os.environ.get("PATH", ""))
-    made = subprocess.run([os.path.join(ROOT, "tools/dev/fixture-home"), home], capture_output=True, text=True, env=env)
+    made = subprocess.run([os.path.join(ROOT, "tools/dev/fixture-home"), master], capture_output=True, text=True, env=env)
     if made.returncode:
         subprocess.run(["rm", "-rf", work])
         sys.exit(f"tools/dev/fixture-home failed: {made.stderr}")
-    # (A sound server with devices, for every app: target/release's.)
-    pulse = os.path.join(work, "pulse.sock")
-    fakesound = subprocess.Popen([os.path.join(ROOT, "target/release/olo-fakesound"), pulse], env=dict(os.environ, FAKESOUND_AIRPODS="AA:BB:CC:DD:EE:FF"),
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    name = f"uilint{os.getpid() % 100000}"
-    # (A MacBook's screen: 1512 × 982 points at 2×, as Ben's.)
-    sh("start", name, screen, "--light", "--scale", "2", "--home", home, check=True)
+    # Every app at once, `jobs` at a time, each in a session of its own
+    # (a MacBook's screen by default: 1512 × 982 points at 2×).
+    import concurrent.futures
     errors, reviews = 0, 0
+    lock = threading.Lock()
+    slots = list(range(len(specs)))
     try:
-        for app, argv, env, layers in specs:
-            sh("run", name, f"HOME={home}", f"PULSE_SERVER=unix:{pulse}", "OLO_NO_FINGERPRINT=1", "OLO_ACTIVITY_HELPER=off", "OLO_DOCTOR_HELPER=off", *[f"{k}={v}" for k, v in env.items()], *argv)
-            exe = argv[0]
-            pid = None
-            for _ in range(60):
-                time.sleep(0.25)
-                ps = pids_of(exe, home)
-                if ps and (layers or windows_of(name, ps[0])):
-                    pid = ps[0]
-                    break
-            if pid is None:
-                print(f"{app}: no window came up", flush=True)
-                errors += 1
-                for p in pids_of(exe, home):
-                    os.kill(p, 15)
-                continue
-            time.sleep(1.0)
-            # Each finding once, with the looks it came up in.
-            seen = {}
-            for theme in ("light", "dark"):
-                sh("theme", name, theme)
-                for scale in scales:
-                    sh("scale", name, f"{scale:g}")
-                    time.sleep(0.3)
-                    looks = [(None, review(pid, layers))]
-                    for title, tab, x, y in tabs(name, pid):
-                        sh("click", name, f"{x:.1f}", f"{y:.1f}")
-                        time.sleep(0.4)
-                        looks.append((tab, review(pid, layers)))
-                    for tab, found in looks:
-                        for window, f in found:
-                            key = (f["level"], window, tab, f["kind"], f["text"])
-                            seen.setdefault(key, []).append(f"{theme} {scale:g}×")
-            app_errors = [k for k in seen if k[0].lower() == "error"]
-            app_reviews = [k for k in seen if k[0].lower() != "error"]
-            errors += len(app_errors)
-            reviews += len(app_reviews)
-            print(f"{app}: {len(app_errors)} errors" + (f", {len(app_reviews)} to look at" if show_review else ""), flush=True)
-            for key in app_errors + (app_reviews if show_review else []):
-                level, window, tab, kind, text = key
-                print(f"  - {level.lower()} {kind} in {window}{' ▸ ' + tab if tab else ''}: {text} ({', '.join(seen[key])})", flush=True)
-            for p in pids_of(exe, home):
-                os.kill(p, 15)
-            time.sleep(0.5)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(jobs, len(specs))) as pool:
+            futures = {pool.submit(lint_one, spec, slot, master, screen, scales, show_review, work): spec for spec, slot in zip(specs, slots)}
+            for done in concurrent.futures.as_completed(futures):
+                spec = futures[done]
+                try:
+                    e, r, lines = done.result()
+                except Exception as x:
+                    e, r, lines = 1, 0, [f"{spec[0]}: the lint failed: {x}"]
+                with lock:
+                    errors += e
+                    reviews += r
+                    for line in lines:
+                        print(line, flush=True)
+                    cache[spec[0]] = {"sig": sigs[spec[0]], "errors": e}
+                    save_cache(cache)
     finally:
-        fakesound.terminate()
         if not keep:
-            sh("stop", name)
             subprocess.run(["rm", "-rf", work])
     print(f"ui-lint: {errors} errors" + (f", {reviews} to look at" if show_review else ""))
     return 1 if errors else 0

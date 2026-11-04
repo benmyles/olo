@@ -3014,8 +3014,17 @@ tabs clicked: for indexes made from what windows show (Preferences'
 settings).
 
 **Every app, live** (`tools/dev/ui-lint [APP…] [--review] [--scales …]
-[--screen WxH]`): each Olo app with a window opened in a headless
-session of its own (a MacBook's screen, 3024 × 1964 at 2×, or `--screen`'s:
+[--screen WxH] [--jobs N] [--no-cache]`): every app at once, each in a
+headless session of its own with a copy of the made-up home and its own
+sound server, three quarters of the processors' worth at a time (20 s
+for all of them on the ThinkPad, from 5 min 43 s one by one); the look
+and scale are set in one request and the app asked again until it has
+drawn them (`WindowReview::scale` and `dark`), never slept for. An app
+whose build and lint are as when it last came out clean isn't run
+again (`~/.cache/olo-dev/ui-lint.json`: its binary's, app_server's and
+the fake sound server's size, time and inode, the lint's scripts, the
+screen, scales and --review); one with errors always is. Each Olo app
+with a window opened in a headless session of its own (a MacBook's screen, 3024 × 1964 at 2×, or `--screen`'s:
 run it at the screen you're on too, and at 2560 × 1600, 1280 × 800
 points), a made-up home from `fixture-home`, its own D-Bus,
 demo data where the app has it), every window and every tab of its tab

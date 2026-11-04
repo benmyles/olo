@@ -400,7 +400,7 @@ impl Render for Frame {
         .absolute()
         .size_full();
         // Last: the frame is drawn (for a review asked for).
-        let done = canvas(|_, _, _| {}, move |_, _, window, _| crate::review::finish(window, &title)).absolute().size_0();
+        let done = canvas(|_, _, _| {}, move |_, _, window, cx| crate::review::finish(window, &title, theme::palette(cx).mode != olo_theme::ThemeMode::Light)).absolute().size_0();
         // Following what it shows: laid out at what it needs (its size
         // as designed at least), measured, and scrolled past the screen's
         // room.
@@ -672,6 +672,7 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
         // What the app saved (`store::save`), and the sizes its windows
         // were left at, are on disk before it goes.
         cx.on_app_quit(|cx| {
+            olo_kit_base::instance::close();
             crate::kept::write(cx);
             olo_kit_base::store::flush();
             async {}
@@ -708,6 +709,8 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
             crate::menu::forget_closed(cx);
             if cx.windows().is_empty() && !cx.has_global::<Resident>() {
                 cx.global_mut::<Messages>().quitting = true;
+                // (Launches from now on start a copy of their own at once.)
+                olo_kit_base::instance::close();
                 cx.quit();
             }
         })

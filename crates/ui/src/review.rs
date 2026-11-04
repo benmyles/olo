@@ -191,7 +191,7 @@ pub(crate) fn start(cx: &mut App, reply: mpsc::Sender<Vec<WindowReview>>) {
 
 /// The window drew its frame (the last thing [`crate::Frame`] paints):
 /// its parts go to the checks.
-pub(crate) fn finish(window: &Window, title: &str) {
+pub(crate) fn finish(window: &Window, title: &str, dark: bool) {
     let id = window.window_handle().window_id();
     let all = PENDING.with(|p| {
         let mut p = p.borrow_mut();
@@ -204,7 +204,7 @@ pub(crate) fn finish(window: &Window, title: &str) {
         let findings = checks::review(&parts, w, h, scale);
         #[cfg(feature = "lint")]
         OVERFLOW.with(|o| o.borrow_mut().insert(id, (checks::overflow_depth(&parts, scale), checks::bottom_slack(&parts, w, h))));
-        pending.done.push(WindowReview { title: title.to_owned(), width: w as u32, height: h as u32, scale, layer: None, findings });
+        pending.done.push(WindowReview { title: title.to_owned(), width: w as u32, height: h as u32, scale, dark, layer: None, findings });
         pending.windows.is_empty().then_some(pending.id)
     });
     if let Some(review) = all {

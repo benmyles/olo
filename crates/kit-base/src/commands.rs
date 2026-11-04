@@ -222,6 +222,10 @@ pub struct WindowReview {
     pub width: u32,
     pub height: u32,
     pub scale: f32,
+    /// Drawn in a dark look (dark or night): a lint that changed the look
+    /// waits for this rather than for a while.
+    #[serde(default)]
+    pub dark: bool,
     /// A layer surface's namespace ("deskbar"); None for a window.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layer: Option<String>,

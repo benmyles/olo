@@ -77,9 +77,12 @@ fn send(path: PathBuf, args: &[String]) -> bool {
     let _ = s.set_read_timeout(Some(TAKEN_WITHIN));
     let mut reader = BufReader::new(s);
     let mut hello = String::new();
+    // No greeting: a copy quitting (its socket still accepting as it
+    // goes), so this process opens its own. (Copies from before the
+    // greeting read the launch and closed: they're long gone, and taking
+    // the close for "taken" left launches with no window at all.)
     if reader.read_line(&mut hello).is_err() || hello.trim() != HELLO {
-        // (A copy from before: it read the launch and closed.)
-        return true;
+        return false;
     }
     let mut answer = String::new();
     reader.read_line(&mut answer).is_ok() && answer.trim() == "ok"
@@ -96,9 +99,30 @@ pub fn listen(app_id: &str, proxy: Proxy) {
     listen_at(socket_path(app_id), proxy);
 }
 
+/// The socket this process listens on, and its inode: [`close`] removes
+/// it only while it's still this process's.
+static LISTENING: std::sync::Mutex<Option<(PathBuf, u64)>> = std::sync::Mutex::new(None);
+
+/// Stop taking launches: the app is quitting. Its socket goes at once, so
+/// a launch from now on starts a copy of its own straight away rather
+/// than waiting for this one to answer (Preferences took seconds to open
+/// just after its last window closed).
+pub fn close() {
+    use std::os::unix::fs::MetadataExt as _;
+    let Some((path, ino)) = LISTENING.lock().unwrap_or_else(|e| e.into_inner()).take() else { return };
+    // (A copy started since has its own socket there: left alone.)
+    if std::fs::metadata(&path).is_ok_and(|m| m.ino() == ino) {
+        let _ = std::fs::remove_file(&path);
+    }
+}
+
 fn listen_at(path: PathBuf, proxy: Proxy) {
+    use std::os::unix::fs::MetadataExt as _;
     let _ = std::fs::remove_file(&path);
     let Ok(listener) = UnixListener::bind(&path) else { return };
+    if let Ok(m) = std::fs::metadata(&path) {
+        *LISTENING.lock().unwrap_or_else(|e| e.into_inner()) = Some((path.clone(), m.ino()));
+    }
     std::thread::spawn(move || {
         for mut s in listener.incoming().flatten() {
             let _ = s.write_all(format!("{HELLO}\n").as_bytes());
@@ -150,6 +174,18 @@ mod tests {
         let t = Instant::now();
         assert!(!send(dropped.clone(), &["a".into()]));
         assert!(t.elapsed() < Duration::from_secs(1), "{:?}", t.elapsed());
+
+        // A socket that takes the connection and closes it, saying
+        // nothing (a copy quitting): not taken.
+        let mute = at("mute");
+        let listener = UnixListener::bind(&mute).unwrap();
+        std::thread::spawn(move || {
+            for s in listener.incoming().flatten() {
+                drop(s);
+            }
+        });
+        assert!(!send(mute.clone(), &["a".into()]));
+        let _ = std::fs::remove_file(mute);
 
         assert!(!send(at("nobody"), &[]));
         let _ = std::fs::remove_file(taken);
