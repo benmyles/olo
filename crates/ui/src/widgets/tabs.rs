@@ -36,11 +36,21 @@ pub struct TabView {
     selected: usize,
     on_select: Option<SelectFn>,
     children: SmallVec<[AnyElement; 2]>,
+    grows: bool,
 }
 
 impl TabView {
     pub fn new(id: impl Into<SharedString>, tabs: impl Into<Rc<[SharedString]>>, selected: usize) -> TabView {
-        TabView { id: id.into(), tabs: tabs.into(), selected, on_select: None, children: SmallVec::new() }
+        TabView { id: id.into(), tabs: tabs.into(), selected, on_select: None, children: SmallVec::new(), grows: false }
+    }
+
+    /// As tall as what the chosen tab shows needs, at least (else it is as
+    /// tall as it's given, and what it shows fits in that): for a window
+    /// that grows to what it shows (Preferences' panels). Lists in it
+    /// still shrink to the room there is.
+    pub fn grows(mut self) -> Self {
+        self.grows = true;
+        self
     }
 
     /// A tab is chosen (clicked, or the tab keys): its index.
@@ -73,7 +83,7 @@ fn places(window: &mut Window, outer: Bounds<Pixels>, tabs: &[SharedString]) -> 
 
 impl RenderOnce for TabView {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-        let TabView { id, tabs, selected, on_select, children } = self;
+        let TabView { id, tabs, selected, on_select, children, grows } = self;
         let n = tabs.len();
         let painted = tabs.clone();
         let select = on_select.clone();
@@ -187,6 +197,17 @@ impl RenderOnce for TabView {
         .absolute()
         .inset_0();
         let _ = id;
+        if grows {
+            // (In the flow, so it is as tall as what's in it.)
+            return div()
+                .relative()
+                .w_full()
+                .min_h_full()
+                .flex()
+                .flex_col()
+                .child(face)
+                .child(div().flex_1().flex().flex_col().mt(px(TAB_HEIGHT + m::WINDOW_INSET)).mx(px(m::WINDOW_INSET)).mb(px(m::WINDOW_INSET)).children(children));
+        }
         div()
             .relative()
             .size_full()

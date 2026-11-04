@@ -78,6 +78,7 @@ fn test_devices() -> Devices {
             },
         ],
         inputs: vec![device("mic", "MacBook Pro Microphone Array (Built-in Audio Analog Stereo)", 0.8, true)],
+        no_output: false,
     }
 }
 
@@ -144,6 +145,7 @@ fn link(proxy: olo_ui::Proxy) -> &'static Link {
 
 fn apply(change: Change) {
     let r = match &change {
+        Change::Default(Kind::Output, name) if name == audio::NO_OUTPUT => audio::set_no_output(),
         Change::Default(kind, name) => audio::set_default(*kind, name),
         Change::Volume(kind, name, level, channels) => audio::set_device_volume(*kind, name, *level, *channels),
         Change::Mute(kind, name, mute) => audio::set_device_muted(*kind, name, *mute),
@@ -352,22 +354,34 @@ fn section(ui: &mut Ui, st: &mut State, devices: &Devices, kind: Kind) {
     let tx = st.link.tx.clone();
     let dragging = st.dragging.clone();
     ui.bbox(title, |ui| {
-        if list.is_empty() {
+        if list.is_empty() && kind == Kind::Input {
             ui.note(none);
             return;
         }
-        let names: Vec<SharedString> = list.iter().map(|d| SharedString::from(d.description.clone())).collect();
+        // Sound goes to a device, or (output) to None: never forced onto
+        // the only one there is (a speaker in another room).
+        let none_first = kind == Kind::Output;
+        let mut names: Vec<SharedString> = list.iter().map(|d| SharedString::from(d.description.clone())).collect();
+        let mut names_of: Vec<String> = list.iter().map(|d| d.name.clone()).collect();
+        if none_first {
+            names.insert(0, "None".into());
+            names_of.insert(0, audio::NO_OUTPUT.to_owned());
+        }
         if kind == Kind::Input {
             airpods_input(ui);
         }
-        let current = list.iter().position(|d| d.is_default).unwrap_or(0);
-        let (names_of, tx2) = (list.iter().map(|d| d.name.clone()).collect::<Vec<_>>(), tx.clone());
+        let current = if none_first && (devices.no_output || list.is_empty()) { 0 } else { list.iter().position(|d| d.is_default).unwrap_or(0) + usize::from(none_first) };
+        let tx2 = tx.clone();
         ui.add(MenuField::new(format!("sound-device-{title}"), names, current).label(menu_label).divider(130.0).on_change(move |i, _, _| {
             if i != current {
                 let _ = tx2.send(Change::Default(kind, names_of[i].clone()));
             }
         }));
-        let dev = list[current].clone();
+        if none_first && current == 0 {
+            ui.note(if list.is_empty() { none } else { "Sound plays nowhere until you choose a device." });
+            return;
+        }
+        let dev = list[current - usize::from(none_first)].clone();
         let level = match &dragging {
             Some((k, n, l, _)) if *k == kind && *n == dev.name => *l,
             _ => dev.volume.level,

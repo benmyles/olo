@@ -1,15 +1,23 @@
-//! Power: the battery, when an idle machine turns its display off and
-//! sleeps, and caffeinated mode (stay awake until turned off; also the cup
-//! in the Deskbar). The battery is read on a thread every few seconds.
+//! Power: the power mode (Power Saver, Balanced, Performance, through the
+//! power profiles daemon: `olo_system::power_profile`; also in Deskbar's
+//! battery menu, and found from Performance), the battery, when an idle
+//! machine turns its display off and sleeps, and caffeinated mode (stay
+//! awake until turned off; also the cup in the Deskbar). The battery is
+//! read on a thread every few seconds; the modes follow the daemon's
+//! signals.
 
 use std::{sync::Arc, time::Duration};
 
 use olo_protocol::{PowerStatus, Settings};
 use olo_sync::Mutex;
-use olo_system::battery::{self, Battery, State as Charge};
+use olo_system::{
+    battery::{self, Battery, State as Charge},
+    power_profile::{self, Mode, Modes},
+};
 use olo_ui::{
-    gpui::{Context, SharedString},
-    widgets::CheckBox,
+    gpui::{Context, ParentElement as _, SharedString, Styled as _, div, px},
+    metrics as m,
+    widgets::{CheckBox, RadioButton, StringView},
 };
 
 use crate::{
@@ -24,11 +32,28 @@ type Shared = Arc<Mutex<Option<Option<Battery>>>>;
 /// The battery, read on a thread of its own while the panel is open.
 pub struct State {
     battery: Shared,
+    /// The power modes: None while being read, then the daemon's (None:
+    /// there is none).
+    modes: Modes_,
 }
+
+type Modes_ = Arc<Mutex<Option<Option<Modes>>>>;
 
 impl State {
     pub fn new(cx: &mut Context<PanelView>) -> State {
-        State { battery: poll(olo_ui::proxy(cx)) }
+        // The power modes, as the daemon says, kept up to date by its
+        // signals (a ThinkPad's Fn+L/M/H too). Tests: made up.
+        let modes: Modes_ = Default::default();
+        if cfg!(test) {
+            *modes.lock().unwrap() = Some(Some(Modes { active: Mode::Balanced, available: Mode::ALL.to_vec(), degraded: None, drivers: vec!["intel_pstate".into(), "platform_profile".into()] }));
+        } else {
+            let (into, proxy) = (modes.clone(), olo_ui::proxy(cx));
+            power_profile::watch(move |m| {
+                *into.lock().unwrap() = Some(m);
+                proxy.send(Msg::Redraw);
+            });
+        }
+        State { battery: poll(olo_ui::proxy(cx)), modes }
     }
 }
 
@@ -138,8 +163,49 @@ pub fn minutes_menu(ui: &mut Ui, id: &str, label: &str, divider: f32, choices: &
     );
 }
 
+/// Power Saver, Balanced or Performance: the system's power profiles
+/// daemon makes each what the machine has (the processors' energy
+/// preference and governor, the firmware's platform profile).
+fn power_mode(ui: &mut Ui, modes: Option<Option<Modes>>, shared: &Modes_) {
+    ui.bbox("Power Mode", |ui| {
+        let Some(modes) = modes else {
+            ui.note("Reading…");
+            return;
+        };
+        let Some(modes) = modes else {
+            ui.note("No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.");
+            return;
+        };
+        for mode in Mode::ALL.into_iter().filter(|m| modes.available.contains(m)) {
+            let shared = shared.clone();
+            let pick = ui.on_view(move |_, _: (), _, cx| {
+                // (Shown at once; the daemon's signal confirms it.)
+                if let Some(Some(m)) = shared.lock().unwrap().as_mut() {
+                    m.active = mode;
+                }
+                std::thread::spawn(move || {
+                    if let Err(e) = power_profile::set(mode) {
+                        tracing::warn!(?mode, "power mode: {e}");
+                    }
+                });
+                cx.notify();
+            });
+            ui.add(RadioButton::new(mode.label(), modes.active == mode).id(format!("power-{}", mode.id())).on_select(move |window, cx| pick((), window, cx)));
+            // (Under the label, past the mark.)
+            ui.add(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).child(StringView::new(mode.about()).dim(true).wrap(true)));
+        }
+        if let Some(why) = modes.degraded_text() {
+            ui.note(why);
+        }
+        let what = if modes.drivers.is_empty() { "the system's power profiles daemon".to_string() } else { format!("the power profiles daemon, through {}", modes.drivers.join(" and ")) };
+        ui.note(format!("Set for the whole computer by {what}."));
+    });
+}
+
 pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut State) {
     let battery = st.battery.lock().unwrap().clone();
+    let modes = st.modes.lock().unwrap().clone();
+    power_mode(ui, modes, &st.modes);
     ui.bbox("Battery", |ui| match battery {
         None => ui.note("Reading…"),
         Some(None) => ui.note("This computer has no battery."),

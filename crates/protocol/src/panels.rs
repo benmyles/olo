@@ -122,11 +122,16 @@ pub fn ppi(width_px: i32, width_mm: i32) -> Option<f32> {
     (width_px > 0 && width_mm > 0).then(|| width_px as f32 * 25.4 / width_mm as f32)
 }
 
-/// What a display is made of, from its maker and model: OLED by name, the
-/// MacBook's XDR panel, else LCD (most monitors and laptops).
+/// What a display is made of, from its maker and model: OLED by name
+/// (or by a laptop panel maker's OLED part numbers), the MacBook's XDR
+/// panel, else LCD (most monitors and laptops).
 pub fn guess_technology(make: &str, model: &str, internal: bool, ppi: Option<f32>) -> Technology {
     let name = format!("{make} {model}").to_ascii_lowercase();
     if name.contains("oled") || OLED_MODELS.iter().any(|m| name.contains(m)) {
+        return Technology::Oled;
+    }
+    let (make, model) = (make.to_ascii_lowercase(), model.trim().to_ascii_lowercase());
+    if OLED_PANELS.iter().any(|(maker, prefix)| make.contains(maker) && model.starts_with(prefix)) {
         return Technology::Oled;
     }
     // Apple's MacBook Pro panels (14" and 16", 254 ppi) are mini-LED.
@@ -139,6 +144,12 @@ pub fn guess_technology(make: &str, model: &str, internal: bool, ppi: Option<f32
 /// Monitors with OLED panels whose names don't say so.
 const OLED_MODELS: &[&str] =
     &["aw3423", "aw2725", "aw3225", "pg27aqdm", "pg32ucdm", "pg34wcdm", "lg ultragear 27gr95", "27gs95", "32gs95", "45gr95", "mpg 271qr", "mag 271qpx", "mpg 321urx", "odyssey oled", "g85sb", "g95sc"];
+
+/// Laptop panels whose part numbers say OLED: (the maker as the EDID
+/// names it, the part number's start). Samsung Display's ATNA panels
+/// (ThinkPad P1 and X1, Dell XPS, Galaxy Books, ASUS Zenbooks); EDIDs
+/// name the maker by its PNP id ("SDC") when the kernel doesn't know it.
+const OLED_PANELS: &[(&str, &str)] = &[("samsung display", "atna"), ("sdc", "atna")];
 
 /// The stripes' order when the display doesn't say: an LCD's are RGB
 /// across (nearly all are), an OLED's can't be used.
@@ -207,6 +218,16 @@ mod tests {
         assert_eq!(text_mode(dell, 1.0, Subpixel::Rgb, 180).0, TextMode::Subpixel(Subpixel::Bgr));
         // On its side, they run down.
         assert_eq!(text_mode(dell, 1.0, Subpixel::Rgb, 90).0, TextMode::Hinted);
+    }
+
+    #[test]
+    fn thinkpad_oled() {
+        // ThinkPad P1 Gen 9's 16" 3200 × 2000 panel, as the kernel names it.
+        let p = ppi(3200, 340);
+        assert_eq!(guess_technology("Samsung Display Corp.", "ATNA60KA02-0 ", true, p), Technology::Oled);
+        assert_eq!(guess_technology("SDC", "ATNA40YK07-0", true, p), Technology::Oled);
+        // Not every Samsung panel is.
+        assert_eq!(guess_technology("Samsung Display Corp.", "LTN140QL02", true, p), Technology::Lcd);
     }
 
     #[test]

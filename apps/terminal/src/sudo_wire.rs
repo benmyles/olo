@@ -15,8 +15,16 @@ pub const SOCKET_ENV: &str = "OLO_TERMINAL_SUDO";
 pub enum Ask {
     /// sudo needs a password to run `args` (what followed `sudo`) from
     /// `cwd`. `tty`: it has a terminal, so a person could type it there.
-    /// Answered with `Reply::Go` or `Reply::Pass`.
-    Begin { args: Vec<String>, cwd: Option<PathBuf>, tty: bool },
+    /// `quiet`: `sudo -n`, never to ask anyone: go ahead only if
+    /// approved without asking, else `Reply::Pass` (and sudo fails, as
+    /// `-n` does). Answered with `Reply::Go` or `Reply::Pass`.
+    Begin {
+        args: Vec<String>,
+        cwd: Option<PathBuf>,
+        tty: bool,
+        #[serde(default)]
+        quiet: bool,
+    },
     /// What PAM said ("Place your finger on the fingerprint reader").
     Info(String),
     /// What went wrong ("Sorry, try again.").

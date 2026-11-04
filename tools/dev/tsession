@@ -18,6 +18,8 @@
   tsession zoom NAME OUT.png X Y W H [N]       crop (logical px) and magnify N× (default 4)
   tsession click NAME X Y [right]              synthetic click (logical px)
   tsession tap NAME X Y                        press and release at once, as a touchpad tap
+  tsession touch NAME X Y                      a finger on the touch screen, down and up
+  tsession touchdrag NAME X1 Y1 X2 Y2          a finger dragged on the touch screen
   tsession move NAME X Y | down NAME X Y [right] | up NAME [right]
   tsession drag NAME X1 Y1 X2 Y2
   tsession key NAME CODE [CODE...]             evdev codes pressed together (29=Ctrl, 42=Shift)
@@ -74,8 +76,16 @@ BUSD = os.environ.get("TSESSION_BUSD") or next(
 
 def private_bus(d):
     """Start the session's own session bus; its address."""
+    global BUSD
     if not BUSD:
-        sys.exit("tsession: no busd for the session's own D-Bus (set TSESSION_BUSD); not starting on the real session bus")
+        # A new machine: build it (tools/dev/busd-lenient, as the repo's
+        # owner, into ~/.cache/olo-dev), once.
+        print("tsession: building busd for the sessions' own D-Bus (once)…", file=sys.stderr)
+        made = subprocess.run(as_owner([os.path.join(os.path.dirname(os.path.abspath(__file__)), "busd-lenient")]), capture_output=True, text=True)
+        out = made.stdout.strip().splitlines()
+        BUSD = out[-1] if made.returncode == 0 and out and os.path.exists(out[-1]) else None
+    if not BUSD:
+        sys.exit("tsession: no busd for the session's own D-Bus, and tools/dev/busd-lenient couldn't build it (set TSESSION_BUSD); not starting on the real session bus")
     path = os.path.join(d, "bus")
     if os.path.exists(path):
         os.remove(path)
@@ -468,6 +478,23 @@ def main():
     elif cmd == "tap":
         move(name, float(a[0]), float(a[1]))
         synth(name, [{"type": "button", "button": 0x110, "pressed": True}, {"type": "button", "button": 0x110, "pressed": False}])
+        time.sleep(0.15)
+    elif cmd == "touch":
+        # A finger on the touch screen, down and up (a touch on an app
+        # without touch, an Olo app, is a click).
+        x, y = float(a[0]), float(a[1])
+        synth(name, [{"type": "touch", "phase": "down", "x": x, "y": y}])
+        time.sleep(0.04)
+        synth(name, [{"type": "touch", "phase": "up"}])
+        time.sleep(0.15)
+    elif cmd == "touchdrag":
+        x1, y1, x2, y2 = map(float, a[:4])
+        synth(name, [{"type": "touch", "phase": "down", "x": x1, "y": y1}])
+        for i in range(1, 11):
+            time.sleep(0.02)
+            synth(name, [{"type": "touch", "phase": "motion", "x": x1 + (x2 - x1) * i / 10, "y": y1 + (y2 - y1) * i / 10}])
+        time.sleep(0.05)
+        synth(name, [{"type": "touch", "phase": "up"}])
         time.sleep(0.15)
     elif cmd == "wheel":
         synth(name, [{"type": "wheel", "dx": int(a[1]) if len(a) > 1 else 0, "dy": int(a[0])}])

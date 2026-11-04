@@ -286,8 +286,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     ui.add(
         div()
             .flex_1()
-            .min_h_0()
-            .child(TabView::new("default-apps-tabs", tabs, st.tab).on_select(pick).child(div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items))),
+            .flex()
+            .flex_col()
+            .child(TabView::new("default-apps-tabs", tabs, st.tab).grows().on_select(pick).child(div().flex_1().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items))),
     );
 }
 

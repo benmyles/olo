@@ -118,8 +118,39 @@ impl Conn {
             .collect();
         // A sink's monitor isn't a microphone.
         let inputs = sources.iter().filter(|s| s.monitor_of_sink_index.is_none()).map(|s| device(&s.name, &s.description, &s.cvolume, s.muted, &default_in, &s.props)).collect();
-        Ok(Devices { outputs, inputs })
+        Ok(Devices { outputs, inputs, no_output: false })
     }
+}
+
+/// Sound goes nowhere: Olo's silent output ([`NO_OUTPUT`]) made (once a
+/// login: the sound server forgets it) and made the default. The sound
+/// server's own default (WirePlumber keeps it) comes back to it whenever
+/// it is made again.
+pub fn set_no_output() -> Result<()> {
+    ensure_no_output()?;
+    set_default(Kind::Output, NO_OUTPUT)
+}
+
+/// Remember whether None is the output, for the next login.
+fn remember_no_output(on: bool) {
+    let choice = olo_protocol::sound::SoundChoice { no_output: on };
+    if olo_protocol::sound::SoundChoice::load() != choice {
+        let _ = choice.save();
+    }
+}
+
+/// Olo's silent output, made if it isn't there (at login, when None was
+/// the choice: `olo_protocol::SoundChoice`).
+pub fn ensure_no_output() -> Result<()> {
+    if Conn::connect()?.devices()?.outputs.iter().any(|d| d.name == NO_OUTPUT) {
+        return Ok(());
+    }
+    let mut c = Conn::connect()?;
+    let args = format!("sink_name={NO_OUTPUT} sink_properties=device.description=None");
+    c.ack(&Command::LoadModule(protocol::LoadModuleParams {
+        name: CString::new("module-null-sink").expect("no NUL"),
+        arguments: Some(CString::new(args).map_err(|e| ProtocolError::Invalid(e.to_string()))?),
+    }))
 }
 
 /// A property's text.
@@ -261,12 +292,24 @@ pub fn set_card_profile(card: &str, profile: &str) -> Result<()> {
 pub struct Devices {
     pub outputs: Vec<Device>,
     pub inputs: Vec<Device>,
+    /// Sound goes nowhere: "None" chosen as the output ([`set_no_output`]).
+    pub no_output: bool,
 }
+
+/// The output that is none: a silent sink of Olo's (PipeWire's null sink),
+/// made the default when the person chooses None, so sound goes nowhere
+/// rather than to the only device there is (a speaker in another room).
+/// Never listed as a device ([`Devices::presented`]).
+pub const NO_OUTPUT: &str = "olo.no-output";
 
 impl Devices {
     /// See [`devices`].
     pub fn presented(mut self) -> Devices {
         use olo_protocol::voice;
+        // None, chosen: not a device, but the choice.
+        if let Some(i) = self.outputs.iter().position(|d| d.name == NO_OUTPUT) {
+            self.no_output = self.outputs.remove(i).is_default;
+        }
         if let Some(i) = self.inputs.iter().position(|d| d.name == voice::NODE) {
             let processed = self.inputs.remove(i);
             if processed.is_default {
@@ -304,6 +347,9 @@ pub fn devices_raw() -> Result<Devices> {
 
 /// Make `name` where new sound goes (or comes from).
 pub fn set_default(kind: Kind, name: &str) -> Result<()> {
+    if kind == Kind::Output {
+        remember_no_output(name == NO_OUTPUT);
+    }
     let name = CString::new(name).map_err(|e| ProtocolError::Invalid(e.to_string()))?;
     let mut c = Conn::connect()?;
     c.ack(&match kind {
@@ -385,6 +431,18 @@ pub fn set_muted(mute: bool) -> Result<()> {
 pub fn toggle_mute() -> Result<()> {
     let muted = volume()?.muted;
     set_muted(!muted)
+}
+
+/// Mute the microphone in use, or unmute it (a laptop's microphone key):
+/// whether it is muted now.
+pub fn toggle_input_mute() -> Result<bool> {
+    let mut c = Conn::connect()?;
+    let q = protocol::GetSourceInfo { index: None, name: Some(CString::new("@DEFAULT_SOURCE@").unwrap()) };
+    let source: protocol::SourceInfo = c.request(&Command::GetSourceInfo(q))?;
+    let mute = !source.muted;
+    let params = SetDeviceMuteParams { device_index: Some(source.index), device_name: None, mute };
+    Conn::connect()?.ack(&Command::SetSourceMute(params))?;
+    Ok(mute)
 }
 
 /// Call `changed` with the volume now and whenever it (or the default
@@ -506,5 +564,27 @@ pub fn watch_playing(mut changed: impl FnMut(Option<bool>)) -> ! {
         }
         report(None);
         std::thread::sleep(Duration::from_secs(3));
+    }
+}
+
+#[cfg(test)]
+mod no_output_tests {
+    /// None on this machine's sound server (`cargo test -- --ignored`):
+    /// sound goes nowhere, and None isn't listed as a device.
+    #[test]
+    #[ignore]
+    fn live_no_output() {
+        super::set_no_output().unwrap();
+        // (WirePlumber makes it the default a moment later.)
+        let mut d = super::devices().unwrap();
+        for _ in 0..40 {
+            if d.no_output {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            d = super::devices().unwrap();
+        }
+        eprintln!("no_output={} outputs={:?}", d.no_output, d.outputs.iter().map(|o| (&o.description, o.is_default)).collect::<Vec<_>>());
+        assert!(d.no_output && !d.outputs.iter().any(|o| o.name == super::NO_OUTPUT));
     }
 }

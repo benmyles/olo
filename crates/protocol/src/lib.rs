@@ -15,12 +15,14 @@ use serde::{Deserialize, Serialize};
 
 pub mod airpods;
 pub mod app_keys;
+pub mod doctor;
 pub mod mice;
 pub mod notifications;
 pub mod panels;
 pub mod performance;
 pub mod sharing;
 pub mod shortcuts;
+pub mod sound;
 pub mod touchpad;
 pub mod voice;
 pub use notifications::{AppNotifications, CardSize, HistoryView, NoteApp, NoteLook, NoteStyle, NotificationSettings, NotificationState};
@@ -167,6 +169,8 @@ pub enum Request {
     /// The pointing devices plugged in: touchpads (with the kind of pad and
     /// the profile that suits it) and mice.
     InputDevices,
+    /// The keyboards plugged in, by name (real ones: with letter keys).
+    Keyboards,
     GetSettings,
     /// Every theme and its colour sets, and the palette in use: what
     /// Preferences ▸ Themes offers. Choose with `SetSettings`
@@ -447,6 +451,28 @@ pub enum SyntheticEvent {
     /// axes): sent on as [`Event::TouchContacts`] (headless sessions,
     /// testing the palm trainer).
     Contacts { contacts: Vec<touchpad::TouchContact> },
+    /// A finger on a touch screen, at global logical coordinates: down,
+    /// moved or lifted (`slot` tells fingers apart). As a real touch is:
+    /// touch for an app that takes it, else the pointer with the left
+    /// button held.
+    Touch {
+        #[serde(default)]
+        slot: u32,
+        phase: TouchPhase,
+        #[serde(default)]
+        x: f64,
+        #[serde(default)]
+        y: f64,
+    },
+}
+
+/// What a finger on a touch screen did ([`SyntheticEvent::Touch`]).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TouchPhase {
+    Down,
+    Motion,
+    Up,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -478,6 +504,9 @@ pub enum Reply {
     },
     InputDevices {
         devices: Vec<touchpad::InputDeviceInfo>,
+    },
+    Keyboards {
+        names: Vec<String>,
     },
     Settings {
         settings: Settings,
@@ -1761,6 +1790,12 @@ pub struct KeyboardSettings {
     /// Profiles saved under their own names, and a platform's once changed
     /// ("Mac (Customized)"), to pick again.
     pub profiles: Vec<KeyboardProfile>,
+    /// The keyboards (by name, as `Request::Keyboards` lists them) whose
+    /// Alt and Super (Windows) keys change places, left and right: on a
+    /// PC keyboard Alt is where a Mac's ⌘ is, so with the Mac profile the
+    /// key beside the space bar is ⌘ again (Ben's ThinkPad), while an
+    /// Apple keyboard on the same computer is left as it is.
+    pub swap_alt_super: Vec<String>,
     /// Num Lock is on when Olo starts (and is set so when this
     /// changes); the Num Lock key still toggles it.
     pub num_lock: bool,
@@ -1913,6 +1948,7 @@ impl Default for KeyboardSettings {
             repeat_rate_hz: 35,
             profile: KeyboardProfile::default(),
             profiles: Vec::new(),
+            swap_alt_super: Vec::new(),
             num_lock: true,
             command_key: None,
             caps_lock_control: None,

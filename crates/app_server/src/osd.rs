@@ -38,6 +38,10 @@ pub enum Indicator {
         level: f32,
         muted: bool,
     },
+    /// The microphone key: the microphone in use muted, or not.
+    Microphone {
+        muted: bool,
+    },
     /// On or off, with a line saying for how long.
     Caffeinated {
         on: bool,
@@ -82,6 +86,8 @@ impl Indicator {
             Indicator::KeyboardBacklight(_) => "Keyboard Backlight",
             Indicator::Volume { muted: true, .. } => "Volume (muted)",
             Indicator::Volume { .. } => "Volume",
+            Indicator::Microphone { muted: true } => "Microphone muted",
+            Indicator::Microphone { muted: false } => "Microphone on",
             Indicator::Caffeinated { on: true, .. } => "Caffeinated",
             Indicator::Caffeinated { on: false, .. } => "Sleep allowed",
             Indicator::Mode(m) => m.title(),
@@ -92,7 +98,7 @@ impl Indicator {
         match self {
             Indicator::Brightness(l) | Indicator::KeyboardBacklight(l) => Some(*l),
             Indicator::Volume { level, muted } => Some(if *muted { 0.0 } else { *level }),
-            Indicator::Caffeinated { .. } | Indicator::Mode(_) => None,
+            Indicator::Caffeinated { .. } | Indicator::Mode(_) | Indicator::Microphone { .. } => None,
         }
     }
 }
@@ -250,6 +256,41 @@ fn draw_icon(pm: &mut Pixmap, ind: &Indicator, (x, y, size): (f32, f32, f32), rg
                 pm.stroke_path(&marks, &paint, &stroke(2.2), id, None);
             }
         }
+        Indicator::Microphone { muted } => {
+            // A microphone: its capsule, the cradle round it, the stand;
+            // a slash across while muted.
+            let (cx, top) = at(16.0, 3.0);
+            let (l, r, b, rad) = (cx - 5.0 * k, cx + 5.0 * k, top + 16.0 * k, 5.0 * k);
+            let mut pb = PathBuilder::new();
+            pb.move_to(l, top + rad);
+            pb.quad_to(l, top, cx, top);
+            pb.quad_to(r, top, r, top + rad);
+            pb.line_to(r, b - rad);
+            pb.quad_to(r, b, cx, b);
+            pb.quad_to(l, b, l, b - rad);
+            pb.close();
+            if let Some(capsule) = pb.finish() {
+                pm.fill_path(&capsule, &paint, FillRule::Winding, id, None);
+            }
+            let mut pb = PathBuilder::new();
+            let ((a, b), (c, d)) = (at(8.5, 13.0), at(23.5, 13.0));
+            pb.move_to(a, b);
+            pb.cubic_to(a, b + 8.0 * k, c, d + 8.0 * k, c, d);
+            let ((g, h), (i, j)) = (at(16.0, 23.0), at(16.0, 28.5));
+            pb.move_to(g, h);
+            pb.line_to(i, j);
+            let ((l, m), (n, o)) = (at(11.0, 28.5), at(21.0, 28.5));
+            pb.move_to(l, m);
+            pb.line_to(n, o);
+            if *muted {
+                let ((p, q), (r, s)) = (at(5.0, 4.0), at(27.0, 28.0));
+                pb.move_to(p, q);
+                pb.line_to(r, s);
+            }
+            if let Some(marks) = pb.finish() {
+                pm.stroke_path(&marks, &paint, &stroke(2.2), id, None);
+            }
+        }
         Indicator::Mode(mode) => {
             use olo_protocol::WindowingMode as M;
             // Auto-Tiling: a screen in tiles, as dwindle splits it (a
@@ -389,6 +430,8 @@ mod tests {
             Indicator::KeyboardBacklight(0.5),
             Indicator::Volume { level: 0.4, muted: false },
             Indicator::Volume { level: 0.4, muted: true },
+            Indicator::Microphone { muted: false },
+            Indicator::Microphone { muted: true },
             Indicator::Caffeinated { on: true, detail: "For 1 hour, until 15:30".into() },
             Indicator::Caffeinated { on: false, detail: "Sleeps when idle".into() },
             Indicator::Mode(olo_protocol::WindowingMode::Standard),

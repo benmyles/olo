@@ -145,7 +145,10 @@ pub fn store(label: &str, attributes: &[(&str, &str)], secret: &[u8]) -> Result<
     let svc = service(conn)?;
     let session = open_session(&svc)?;
     let alias: OwnedObjectPath = svc.call("ReadAlias", &("default",))?;
-    let collection = if alias.as_str() == "/" { format!("{ROOT}/aliases/default") } else { alias.as_str().to_string() };
+    // No login keyring yet (a new computer whose login didn't make one):
+    // made, as GNOME makes it, the keyring asking for its password (with
+    // Olo's prompter).
+    let collection = if alias.as_str() == "/" { create_login(conn, &svc)? } else { alias.as_str().to_string() };
     let col = Proxy::new(conn, DEST, collection.as_str(), COLLECTION)?;
     let attrs: HashMap<&str, &str> = attributes.iter().copied().collect();
     let mut props: HashMap<&str, Value> = HashMap::new();
@@ -157,6 +160,26 @@ pub fn store(label: &str, attributes: &[(&str, &str)], secret: &[u8]) -> Result<
         return Err(zbus::Error::Failure("the keyring stayed locked".into()));
     }
     Ok(())
+}
+
+/// The login keyring made (`CreateCollection`, as the default): its
+/// path, once its password is given.
+fn create_login(conn: &Connection, svc: &Proxy<'_>) -> Result<String> {
+    let mut props: HashMap<&str, Value> = HashMap::new();
+    props.insert("org.freedesktop.Secret.Collection.Label", Value::from("Login"));
+    let (made, prompt): (OwnedObjectPath, OwnedObjectPath) = svc.call("CreateCollection", &(props, "default"))?;
+    if made.as_str() != "/" {
+        return Ok(made.as_str().to_string());
+    }
+    if !run_prompt(conn, &prompt)? {
+        return Err(zbus::Error::Failure("no login keyring was made".into()));
+    }
+    // (The prompt's result names it; the alias says it too.)
+    let alias: OwnedObjectPath = svc.call("ReadAlias", &("default",))?;
+    if alias.as_str() == "/" {
+        return Err(zbus::Error::Failure("no login keyring was made".into()));
+    }
+    Ok(alias.as_str().to_string())
 }
 
 /// Delete every secret stored with these attributes; how many went.

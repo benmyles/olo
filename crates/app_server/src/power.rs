@@ -42,6 +42,8 @@ pub mod keys {
     pub const KBD_TOGGLE: u32 = 228;
     pub const KBD_DOWN: u32 = 229;
     pub const KBD_UP: u32 = 230;
+    /// A laptop's microphone key (a ThinkPad's F4).
+    pub const MIC_MUTE: u32 = 248;
 }
 
 enum Job {
@@ -56,6 +58,8 @@ enum Job {
     Suspend,
     Volume(f32),
     ToggleMute,
+    /// The microphone key: mute the microphone in use, or unmute it.
+    ToggleMicMute,
     /// Look for brightness controls for these connectors.
     FindDisplays(Vec<String>),
     /// An external display's brightness (by connector).
@@ -100,7 +104,9 @@ pub struct Power {
     volume: Option<(f32, bool)>,
     /// The volume after a key, from the worker (session only); taken by
     /// state set-up.
-    pub volume_feedback: Option<calloop::channel::Channel<(f32, bool)>>,
+    pub volume_feedback: Option<calloop::channel::Channel<crate::osd::Indicator>>,
+    /// The microphone key's muting, pretended (headless: no sound server).
+    pub mic_muted: bool,
     jobs: Option<Sender<Job>>,
     /// Displays found with a USB brightness control, and their levels
     /// (from the worker; taken by state set-up).
@@ -156,6 +162,7 @@ impl Power {
             keyboard_was: 0.5,
             volume,
             volume_feedback,
+            mic_muted: false,
             jobs,
             displays_found,
             externals: Vec::new(),
@@ -223,7 +230,7 @@ impl Power {
 /// What the worker keeps between jobs.
 struct Worker {
     inhibitor: Option<olo_system::power::Inhibitor>,
-    feedback: calloop::channel::Sender<(f32, bool)>,
+    feedback: calloop::channel::Sender<crate::osd::Indicator>,
     found: calloop::channel::Sender<Vec<(String, f32)>>,
     /// External displays whose brightness we set, by connector.
     displays: std::collections::HashMap<String, Control>,
@@ -231,7 +238,7 @@ struct Worker {
     warned: std::collections::HashSet<std::path::PathBuf>,
 }
 
-fn worker(rx: Receiver<Job>, feedback: calloop::channel::Sender<(f32, bool)>, found: calloop::channel::Sender<Vec<(String, f32)>>) {
+fn worker(rx: Receiver<Job>, feedback: calloop::channel::Sender<crate::osd::Indicator>, found: calloop::channel::Sender<Vec<(String, f32)>>) {
     let mut w = Worker { inhibitor: None, feedback, found, displays: Default::default(), warned: Default::default() };
     while let Ok(mut job) = rx.recv() {
         // Only the newest brightness matters (a held key repeats).
@@ -344,6 +351,7 @@ fn run(job: Job, w: &mut Worker) {
             })
             .map_err(|e| e.to_string()),
         Job::ToggleMute => audio::toggle_mute().map_err(|e| e.to_string()),
+        Job::ToggleMicMute => audio::toggle_input_mute().map(|muted| _ = feedback.send(crate::osd::Indicator::Microphone { muted })).map_err(|e| e.to_string()),
         Job::FindDisplays(connectors) => {
             find_displays(displays, warned, found, connectors);
             Ok(())
@@ -357,7 +365,7 @@ fn run(job: Job, w: &mut Worker) {
         warn!("power: {e}");
     }
     if volume_key && let Ok(v) = audio::volume() {
-        let _ = feedback.send((v.level, v.muted));
+        let _ = feedback.send(crate::osd::Indicator::Volume { level: v.level, muted: v.muted });
     }
 }
 
@@ -624,6 +632,7 @@ impl<B: Backend> AnvilState<B> {
             keys::VOLUME_UP => |s| s.volume_key(Job::Volume(STEP)),
             keys::VOLUME_DOWN => |s| s.volume_key(Job::Volume(-STEP)),
             keys::MUTE => |s| s.volume_key(Job::ToggleMute),
+            keys::MIC_MUTE => |s| s.volume_key(Job::ToggleMicMute),
             keys::KBD_UP => |s| s.step_keyboard(STEP),
             keys::KBD_DOWN => |s| s.step_keyboard(-STEP),
             keys::KBD_TOGGLE => |s| {
@@ -686,6 +695,11 @@ impl<B: Backend> AnvilState<B> {
     fn volume_key(&mut self, job: Job) {
         if self.power.jobs.is_some() {
             self.power.send(job);
+        } else if matches!(job, Job::ToggleMicMute) {
+            // Not the session: pretend.
+            self.power.mic_muted = !self.power.mic_muted;
+            info!(muted = self.power.mic_muted, "microphone key (simulated)");
+            self.show_indicator(crate::osd::Indicator::Microphone { muted: self.power.mic_muted });
         } else if let Some((level, muted)) = self.power.volume {
             // Not the session: the sound server is left alone; pretend.
             let v = match job {

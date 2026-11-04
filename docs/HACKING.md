@@ -2627,7 +2627,8 @@ Every session gets its own D-Bus session bus (busd, at
 runtime directory is the real one, so without it programs fall back to
 `$XDG_RUNTIME_DIR/bus`, the user's real session bus, and a test's
 notifications pop up on their screen. tsession won't start without busd
-(`TSESSION_BUSD`, or the build under `~/.cache/olo-dev`). To see a
+(`TSESSION_BUSD`, or the build under `~/.cache/olo-dev`, which it makes
+with `tools/dev/busd-lenient` the first time on a new machine). To see a
 test's notifications, run its own centre:
 `$T run NAME olo-notifications --bus unix:path=/tmp/olo-dev/NAME/bus`.
 
@@ -2952,12 +2953,48 @@ Run it:
   scale (`$T scale NAME 1`, `1.5`, `2`) and theme and review each.
 - headlessly, as a test: the layout lint (below).
 
+### Windows fit what they show (`WindowOptions::fits_content`)
+
+A window whose content sets its size (a form, a Preferences panel, a
+dialog, an alert) follows it, on every screen. `fits_content()` (every
+`alert()` and `dialog()` has it; Preferences' panels, Drive Setup's
+forms and the network sheet ask for it) lays the content out in a flex
+item based at the window's designed height (`size`), its minimum what
+the content needs, measures it (`Frame::follow`) and resizes the window
+to it: a `fixed` window as tall as its content, `size` at least,
+growing and shrinking with it (a tab with more rows, a display's
+brightness, a longer message); one the person or the app sizes (a file
+panel, Quick Look sized to its picture) never shorter than its content
+needs. Never taller than the shortest display less 64 points
+(`screen_room`, from the displays GPUI knows, in points, as turned; a
+display coming or going looks again): past that the Frame lays the
+content out at its own height and scrolls it, the window widened by the
+scroll bar. Layer surfaces, lock screens and full screen windows are
+the screen's or the app's to size.
+
+So: never wrap a whole window's content in a scroll view of its own
+(the lint can't see past it: Display hid an 804-point panel in a
+658-point window, its scroll bar against the boxes and its last rows cut
+off, at 200 % on a 3200 × 2000 laptop); never compute a window's height
+by hand (`window.resize` with summed rows); a list shrinks and scrolls
+(`flex_1().min_h_0()` round a `ScrollView`), nothing else does. Tab
+views in such a window take `TabView::grows()`, so the tab view is as
+tall as the chosen tab's content. What doesn't fit 1280 × 800 points
+(the smallest screen Olo lays out for, a 13" laptop at 2×) is laid out
+again: side by side (Display's settings beside its panel's facts,
+Performance's thresholds two by two), in tabs (Performance: Supervisor,
+Watchdog), not scrolled.
+
 ### The layout lint (`olo_ui::lint`, `cargo ui-lint`)
 
 A window's view drawn as it will be shown, without a session: GPUI's
 test platform with Olo's text system and fonts
 (`TestAppContext::with_olo_text`), the window opened as an app opens it
-(`open_window`, the kit's `Frame` around the view), at its size, in
+(`open_window`, the kit's `Frame` around the view), at its size, on a
+1280 × 800-point display (GPUI's test display: the smallest screen Olo
+lays out for, so a window that follows what it shows is checked against
+it), a window that resized itself given that size and drawn again
+(`settle`, as a compositor would) and judged at the size it ends at, in
 light and dark, at 1×, 1.5× and 2× (`VisualTestContext::set_scale_factor`,
 the scale changed on the open window, as a display's change does). Each
 time it is reviewed (the errors above), every tab of its tab views too,
@@ -2976,9 +3013,11 @@ instead (`agent::tree`, 1× light), as it opens and with each of its
 tabs clicked: for indexes made from what windows show (Preferences'
 settings).
 
-**Every app, live** (`tools/dev/ui-lint [APP…] [--review] [--scales …]`):
-each Olo app with a window opened in a headless session of its own (a
-MacBook's screen, a made-up home from `fixture-home`, its own D-Bus,
+**Every app, live** (`tools/dev/ui-lint [APP…] [--review] [--scales …]
+[--screen WxH]`): each Olo app with a window opened in a headless
+session of its own (a MacBook's screen, 3024 × 1964 at 2×, or `--screen`'s:
+run it at the screen you're on too, and at 2560 × 1600, 1280 × 800
+points), a made-up home from `fixture-home`, its own D-Bus,
 demo data where the app has it), every window and every tab of its tab
 views reviewed at 1, 1.5 and 2×, light and dark, through its socket:
 the same checks on the real app. Errors fail it; `--review` lists the
@@ -3103,12 +3142,14 @@ opened, its own `panel::State` and text fields).
   probed (an action, or a choice the defaults can't name: keyboard
   profiles). `cargo ui-lint` draws every resettable panel again with
   every box's Reset showing.
-* Small screens: a panel's window is never taller than the shortest
-  display less 64 points (`fits`; Preferences waits for app_server's
-  displays, 400 ms at most, before opening one). A panel taller than
-  that is laid out at its own size all the same, in a scroll view the
-  window is widened for (`panel::render`); one that fits is drawn as it
-  always was.
+* Every panel's window follows what it shows (`fits_content`, "Windows
+  fit what they show"): as tall as its rows, its `size` at least, and
+  every panel with tabs has `TabView::grows()`. The lint draws them on
+  a 1280 × 800-point screen beside the fixture's two (`lint::outputs`);
+  every panel fits it unscrolled. Display has its settings and its
+  panel's facts side by side (940 wide); Performance has two tabs
+  (Supervisor, Watchdog: the thresholds two by two), and a button to
+  Power, where the power mode is.
 * New panel: add it to `Panel` (arg, title, icon, size, reset), write the
   module, add it to `PREFERENCE_PANELS`, journal it light and dark.
 * **Default Apps** (`default_apps.rs`, BeOS's FileTypes), three tabs.
@@ -3792,6 +3833,20 @@ window's frame, workspace, letter and whether it is chosen. The bench
 (`tools/dev/bench`) times its frames opening, walked and leaving.
 
 ## Keyboard profiles (olo_protocol::shortcuts and app_keys, app_server keymap.rs, olo_kit_base::keys)
+
+**Each keyboard's own** (Preferences ▸ Keyboard ▸ Keyboards): Alt and
+the Super (Windows) key swapped, left and right, on the keyboards named
+in `KeyboardSettings::swap_alt_super` (a PC keyboard, whose Alt is where
+a Mac's ⌘ is, so with the Mac profile the key beside the space bar is ⌘;
+an Apple keyboard on the same computer left as it is). app_server swaps
+them as a key comes from such a device (`keyboard_key_to_action`, by
+libinput's name for it; `keymap::swap_alt_super`), before the keymap;
+synthetic keys never. `Request::Keyboards` lists the keyboards plugged
+in (those with letter keys: not the power button's, the lid's or the
+ThinkPad's extra buttons' pseudo-keyboards), and `InputDevicesChanged`
+says when they come and go; a laptop's own ("AT Translated Set 2
+keyboard") is shown as Built-in Keyboard, and one set up and unplugged
+stays listed, to undo.
 
 Every shortcut, app_server's and the apps', and how keys behave, are one
 keyboard profile (`KeyboardProfile`, in `KeyboardSettings::profile`),
@@ -4498,6 +4553,20 @@ fake model:
 
 ## Power (crates/app_server/src/power.rs)
 
+**Power modes** (`olo_system::power_profile`, Preferences ▸ Power,
+Deskbar's battery menu): Performance, Balanced, Power Saver, through the
+power profiles daemon's D-Bus API (`org.freedesktop.UPower.PowerProfiles`:
+power-profiles-daemon, or Fedora's tuned-ppd; `net.hadess.PowerProfiles`
+for older daemons), which makes each what the machine has: the
+processors' energy/performance preference and governor (intel_pstate,
+amd-pstate), the firmware's platform profile (a ThinkPad's power limits
+and fans), tuned's settings. `power_profile::watch` follows the daemon's
+signals (a ThinkPad's Fn+L/M/H change the platform profile, and the
+daemon follows), so the panel and the menu show the mode in use and
+why Performance is held back (on a lap, running hot). Setting it is
+polkit's `switch-profile`, allowed to the person at the computer.
+Performance has a button to Power, where people may look for it.
+
 app_server owns idleness: any input (or a synthetic event) is activity; a
 5 s tick turns the displays off (`settings.power.display_off_minutes`) and
 then asks logind to suspend (`sleep_minutes`). Caffeinated mode
@@ -4508,8 +4577,11 @@ for each app's wake lock, through the Inhibit portal or
 `org.freedesktop.ScreenSaver`, `apps/portal/src/inhibit.rs`, released
 when the app lets go or leaves the bus) count as activity. `Request::PowerStatus` and
 `Event::PowerChanged` report it all, with the built-in display's brightness
-(`Request::SetBrightness`, perceptual 0–1). Brightness and volume keys are
-taken by app_server; the brightness keys act on the display under the
+(`Request::SetBrightness`, perceptual 0–1). Brightness, volume and
+microphone keys are taken by app_server (the microphone key, a
+ThinkPad's F4, KEY_MICMUTE: the microphone in use muted or unmuted,
+`audio::toggle_input_mute`, a microphone on screen, slashed while
+muted); the brightness keys act on the display under the
 pointer when its brightness can be set, else the built-in one.
 
 Each display's brightness is `OutputInfo::brightness` (None: can't be set)
@@ -4842,6 +4914,19 @@ asking"). Never test with the real PAM: debug builds take
 `OLO_PAM_CONFDIR`/`OLO_PAM_SERVICE` (a stand-in `pam_exec` check),
 Terminal's sudo `OLO_SUDO_REAL`, and `OLO_NO_FINGERPRINT=1` leaves
 fprintd alone.
+
+## The touch screen (app_server input_handler.rs)
+
+A touch screen (a laptop's, as the ThinkPad P1 Gen 9's Wacom panel) is
+mapped to the built-in display (eDP, else the first). Where a finger
+comes down on a client that has `wl_touch` (Chrome, GTK), it gets
+touch; anywhere else (every GPUI app, so every Olo app, and app_server's
+own frames, tabs and menus) the finger is the pointer, the left button
+held while it's down (`takes_touch`, `touch_pointer`: one finger at a
+time), so windows move, menus open and buttons click as with a mouse.
+The pen is a tablet tool (`zwp_tablet_v2`). Agents and tests touch with
+`SyntheticEvent::Touch { slot, phase, x, y }` (`tsession touch NAME X Y`,
+`tsession touchdrag NAME X1 Y1 X2 Y2`), which goes the same way.
 
 ## The touchpad (app_server udev.rs, momentum.rs, touch_filter.rs)
 
@@ -5741,6 +5826,33 @@ scan made for the sudo user). What it looks for:
 - **Olo's Wi-Fi healer** (below) missing, out of date or stopped, on a
   machine whose Wi-Fi chip needs it (brcmfmac): installed as a root-owned
   copy, with its unit and NetworkManager's setting for the chip.
+- **A second graphics card kept awake** (NVIDIA's, AMD's, not the one
+  the computer started on; `power/control` "on", as it stays with no
+  driver: nouveau failing on a new card): Let It Sleep installs
+  `data/udev/72-olo-idle-gpu.rules` (runtime power management for such
+  cards, at every start) and sets it now. On the ThinkPad P1 Gen 9 the
+  RTX PRO 2000 went from D0 to D3cold.
+- **A graphics card with no working driver** (NVIDIA's, no driver
+  bound; nouveau loaded and gone says it tried): NVIDIA's driver
+  (`akmod-nvidia`, built for each kernel) installed from the system's
+  repositories when one has it (Fedora's NVIDIA repository, RPM
+  Fusion's), else what to turn on; with Secure Boot, its key to enrol.
+- **Built-in sound with no driver** (Intel's SOF bound, no sound card
+  made of it: a new laptop's SoundWire codecs, named from
+  `/sys/bus/soundwire/devices`): a newer kernel and firmware installed
+  when PackageKit has updates for them (`DRIVER_PACKAGES`: the kernel,
+  linux-firmware, alsa-sof, Cirrus and Intel audio firmware, GPU and
+  Wi-Fi firmware), else said plainly that there isn't one yet.
+
+Drivers and firmware come through PackageKit (`olo_system::packages`,
+its D-Bus API: resolve, refresh, install, update, install a package
+file; each a transaction waited on off the UI thread, its progress
+followed): `Step::InstallPackages` and `Step::UpdatePackages`, run as
+root by the helper, telling how they go (`Step::run_with`,
+`FromHelper::Progress`) under the finding in the window ("Installing
+akmod-nvidia: Downloading 42%") and on the command line. `Roots`'
+`packages` and `updates` answer for the system's packages (tests: made
+up).
 
 Root is reached as Activity Monitor's is: the program run again through
 pkexec (`olo-doctor --helper`, JSON lines of `ToHelper::Run { id, steps }`
@@ -5752,11 +5864,19 @@ the app opened again looks again.
 
 `olo-doctor --report` prints the report as JSON (agents, scripts).
 `olo-doctor --watch` is one of the real session's services
-(`REAL_SHELL`): after 20 s it looks, and a problem not told of before
+(`REAL_SHELL`, with no window: it is never a running app in Deskbar):
+after 20 s it looks, and every 15 minutes after (Ben: "run periodically
+like on startup and then maybe every 15 mins"; a look is a few hundred
+milliseconds of a background thread), and a problem not told of before
 (remembered in `~/.local/state/olo/doctor.json`; one fixed and back is
 told again) is told in a notification whose click opens Olo Doctor;
 then it follows the Wi-Fi healer's report by inotify and tells of each
-reset and what came of it (`--notify` is the look alone). Tests build a
+reset and what came of it (`--notify` is the look alone). Every look
+(the watcher's, the window's, the command line's: `checks::look`) writes
+what it found that gets in the way or has a fix
+(`olo_protocol::doctor::DoctorFound`, `$XDG_RUNTIME_DIR/olo-doctor-found.json`);
+Deskbar follows it by inotify and shows Olo Doctor's bag in the tray
+while there is something, a click opening it. Tests build a
 machine in a folder (`Roots { fs, bin, uid, scope, units }`) and check
 the findings and their steps exactly.
 
@@ -5910,6 +6030,14 @@ one are always told apart:
   KEY=VALUE…` (`enabled`, `echo`, `normalize`: on/off; `mode`:
   calls/recording; `noise`: off/moderate/strong/full). Deskbar's menu
   uses it too.
+- **None as the output** (Preferences ▸ Sound, first in Play sound
+  through; first in Deskbar's speaker menu): sound goes nowhere rather
+  than to the only device there is (a network speaker in another room).
+  It's a silent sink of Olo's (`olo_system::audio::NO_OUTPUT`, PipeWire's
+  null sink, loaded over the PulseAudio protocol: `set_no_output`) made
+  the default, never listed as a device (`Devices::no_output`).
+  `olo_protocol::sound::SoundChoice` remembers it, and Deskbar makes it
+  again at login (the sound server forgets it).
 - **UI**: Preferences ▸ Sound's Voice Processing box (and what it's
   doing in a line); Deskbar's speaker menu: "Clean Up Microphone Sound"
   and a Voice Processing submenu.
@@ -6772,7 +6900,10 @@ cached: the terminal's, or with no terminal its parent's (olo-sudo stays
 the parent). Settings ▸ Ask for sudo Passwords in a Window
 (`sudo_window`, on) covers sudo typed at a prompt; with it off those ask
 on the terminal as ever, but a command with no terminal still gets the
-window. Whatever olo-sudo can't help with (`-n`, `-S`, `-A`, `-k`, `-K`,
+window. `-n` (never ask: how agents run sudo so as never to wait) is let
+in while Deskbar approves without asking (`Ask::Begin { quiet }`:
+Terminal gives sudo the password, no window either way, and says no
+when not approving, as `-n` does). Whatever else olo-sudo can't help with (`-S`, `-A`, `-k`, `-K`,
 `-h`, `-V`, no Terminal) goes straight to sudo. Safety: the password goes
 only to a sudo that is root's and set-user-ID, the first on `PATH`
 (then /usr/bin, /bin) that isn't olo-sudo itself; Terminal answers only a peer of the same uid whose
@@ -8130,7 +8261,16 @@ going are closed, so the app always has one. Approve Without Asking's
 window (approve.rs) is the kit's alert frame with a `MenuField` and a
 `ConversationField`. Release build, against the egui one: first frame
 58–73 ms (egui 69–87), 57 MB resident (141), 30 pointer moves across it
-32 frames, 0.8 ms each (egui drew 150). The tray's battery and Wi-Fi
+32 frames, 0.8 ms each (egui drew 150). The tray's items are counted
+before they're placed (one more than counted is drawn nowhere and
+logged, never a crash: Olo Doctor's bag, uncounted, took Deskbar down
+on its first start after an upgrade, 2026-11-04). The battery: a click
+opens Preferences ▸ Power, a right-click the power mode (Performance,
+Balanced, Power Saver, checked as the daemon says) and Power
+Preferences…. Olo Doctor's bag shows while its last look found
+something to fix (`olo_protocol::doctor::DoctorFound`, followed by
+inotify); a click opens Olo Doctor. The speaker's menu has None first
+among the outputs (below). The tray's battery and Wi-Fi
 follow UPower's display device and NetworkManager's signals
 (`olo_system::battery::watch`, `network::watch_wifi`, each on a thread
 that sleeps until one comes; Wi-Fi on a bus connection of its own that

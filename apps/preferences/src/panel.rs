@@ -205,13 +205,15 @@ impl Panel {
             Panel::Bluetooth => (440, 340),
             Panel::DateTime => (460, 370),
             Panel::DefaultApps => (520, 662),
-            // With its panel: what it is, how Olo draws for it and why.
-            Panel::Display => (500, 658),
+            // With its panel beside it: what it is, how Olo draws for it
+            // and why. As tall as the display's rows (`Fit`).
+            Panel::Display => (940, 520),
             Panel::Integrations => (460, 600),
             Panel::Keyboard => (520, 736),
             Panel::Network => (460, 318),
             Panel::Notifications => (440, 700),
-            Panel::Performance => (480, 680),
+            // Its Watchdog tab's thresholds two by two, each a pair of sliders.
+            Panel::Performance => (900, 560),
             Panel::Power => (460, 424),
             Panel::ScreenSaver => (500, 400),
             Panel::Security => (420, 416),
@@ -378,8 +380,7 @@ impl State {
 /// the bottom for those that change settings (each enabled only when it
 /// would change something).
 pub fn render(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView>) -> AnyElement {
-    // (On a screen shorter than the panel its window is too, see `fits`,
-    // and the window's Frame scrolls it: `content_height`.)
+    // (Its window follows what it shows: `WindowOptions::fits_content`.)
     layout(v, window, cx).into_any_element()
 }
 
@@ -430,14 +431,16 @@ fn layout(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView>) -
         _ => {}
     }
     let items = ui.take();
-    // (Never shorter than what's in it: too much pushes Defaults and
-    // Revert off the bottom, where the layout lint sees it, rather than
-    // under them. A list in it shrinks and scrolls.)
+    // (Never shorter than what's in it: the window grows to it, and
+    // too much for the screen pushes Defaults and Revert down, where the
+    // window scrolls and the layout lint sees it. A list in it shrinks and
+    // scrolls.)
     let body = div().flex_1().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).children(items);
     let root = root.child(body);
     if !panel.resettable() {
         return root;
     }
+
     let defaults = Settings::default();
     let differs = |from: &Settings| {
         let mut probe = s.clone();

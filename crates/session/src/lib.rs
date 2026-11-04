@@ -356,6 +356,9 @@ impl Session {
         s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display));
         // A new proxy (this upgrade's) takes new programs from now on.
         s.renew_proxy_if_upgraded();
+        // A service left stopped after crashing again and again may be
+        // fixed by this upgrade: started again.
+        s.restart_stopped();
         if real {
             // This version's skills, for agents run from now on.
             skills::start();
@@ -580,6 +583,10 @@ impl Session {
         }
         w.nudge(&[std::process::id() as i32, self.server.pid]);
         self.stale_check = Some((Instant::now(), 0));
+        // A service left stopped (it kept crashing) may be fixed by this
+        // build: started again (Deskbar, 2026-11-04, after a crash on
+        // start that the next build fixed, stayed gone).
+        self.restart_stopped();
         if done.iter().any(|p| p == "olo-app-server") {
             self.reload();
         } else if own_binary().is_some() && own_binary() != self.binary {
@@ -818,6 +825,16 @@ impl Session {
                     c.pid = 0;
                 }
             }
+        }
+    }
+
+    /// Start again the services left stopped for crashing, their crashes
+    /// forgotten.
+    fn restart_stopped(&mut self) {
+        for c in self.shell.iter_mut().filter(|c| c.pid == 0) {
+            log(format!("starting {} again", c.argv[0]));
+            c.crashes.clear();
+            c.pid = spawn(&c.argv, &[]).unwrap_or(0);
         }
     }
 

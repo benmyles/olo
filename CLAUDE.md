@@ -37,6 +37,18 @@ rules are universal and non-negotiable:
   device pixel (`icons::paint`, `style::snap_centred`, app_server's
   `render::exact`). Anything measured in pixels is keyed by the scale.
   See "Fractional scaling" in HACKING.md.
+- **Windows fit what they show, on every screen.** A window whose content
+  sets its size (a form, a panel, a dialog, an alert) follows it: as tall
+  as its content needs, never taller than the smallest screen (1280 × 800
+  points) less room for its tab, where its Frame scrolls it
+  (`WindowOptions::fits_content`; every `alert()` and `dialog()` has
+  it). Never wrap a whole window's content in a scroll view of its own,
+  and never compute a window's height by hand: a list in it shrinks and
+  scrolls, nothing else does. What doesn't fit 1280 × 800 is laid out
+  again (side by side, in tabs), not scrolled. The layout lint checks
+  every window against that screen; run the live lint at your screen's
+  size too (`tools/dev/ui-lint --screen WxH`). See "Windows fit what
+  they show" in HACKING.md.
 - **Measure, don't guess.** Run `tsession review` on each kit app at
   every scale, and fix what it finds. A finding at only one scale is a
   real bug until shown otherwise. The review doesn't see app_server's own

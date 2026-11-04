@@ -278,6 +278,18 @@ pub(crate) fn ctrl_key(key: u32, opts: Options) -> bool {
     matches!(key, LEFTCTRL | RIGHTCTRL) || (opts.caps_lock_control && key == CAPSLOCK)
 }
 
+/// A key of a keyboard whose Alt and Super change places
+/// (`KeyboardSettings::swap_alt_super`), as the other.
+pub fn swap_alt_super(key: u32) -> u32 {
+    match key {
+        LEFTALT => LEFTMETA,
+        LEFTMETA => LEFTALT,
+        RIGHTALT => RIGHTMETA,
+        RIGHTMETA => RIGHTALT,
+        k => k,
+    }
+}
+
 impl Keymap {
     /// Feed one physical key, for `focus`.
     pub fn feed(&mut self, key: u32, pressed: bool, now: Instant, opts: Options, focus: Focus) -> Vec<Out> {
@@ -1354,6 +1366,26 @@ mod tests {
         r.up(BACKSPACE);
         // Recording ends with the one key.
         assert_eq!(r.down(C), [Key(C, true)]);
+    }
+
+    /// On a PC keyboard with the Mac profile, Alt swapped with the Windows
+    /// key: the key beside the space bar is ⌘ (apps see Ctrl), the
+    /// Windows key Option (Alt).
+    #[test]
+    fn alt_and_super_swapped() {
+        let mut k = Keymap::default();
+        let opts = Options { palette_on_tap: false, ..OPTS };
+        let t = Instant::now();
+        let s = swap_alt_super;
+        // Alt+C: ⌘C, Copy (Ctrl+C to apps).
+        assert!(k.feed(s(LEFTALT), true, t, opts, Focus::Olo).contains(&Key(CMD_CTRL, true)));
+        assert_eq!(k.feed(s(C), true, t, opts, Focus::Olo), [Key(C, true)]);
+        k.feed(s(C), false, t, opts, Focus::Olo);
+        assert!(k.feed(s(LEFTALT), false, t, opts, Focus::Olo).contains(&Key(CMD_CTRL, false)));
+        // The Windows key: Alt.
+        assert_eq!(k.feed(s(LEFTMETA), true, t, opts, Focus::Olo), [Key(LEFTALT, true)]);
+        assert_eq!(k.feed(s(LEFTMETA), false, t, opts, Focus::Olo), [Key(LEFTALT, false)]);
+        assert_eq!((s(RIGHTALT), s(RIGHTMETA)), (RIGHTMETA, RIGHTALT));
     }
 
     #[test]

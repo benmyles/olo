@@ -148,7 +148,8 @@ def main():
     show_review = "--review" in a
     keep = "--keep" in a
     scales = [float(s) for s in (a[a.index("--scales") + 1].split(",") if "--scales" in a else ["1", "1.5", "2"])]
-    picked = [x for i, x in enumerate(a) if not x.startswith("--") and (i == 0 or a[i - 1] != "--scales")]
+    screen = a[a.index("--screen") + 1] if "--screen" in a else "3024x1964"
+    picked = [x for i, x in enumerate(a) if not x.startswith("--") and (i == 0 or a[i - 1] not in ("--scales", "--screen"))]
     work = f"/var/tmp/olo-ui-lint-{os.getpid()}"
     home = os.path.join(work, "home")
     specs = apps(home)
@@ -177,7 +178,7 @@ def main():
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     name = f"uilint{os.getpid() % 100000}"
     # (A MacBook's screen: 1512 × 982 points at 2×, as Ben's.)
-    sh("start", name, "3024x1964", "--light", "--scale", "2", "--home", home, check=True)
+    sh("start", name, screen, "--light", "--scale", "2", "--home", home, check=True)
     errors, reviews = 0, 0
     try:
         for app, argv, env, layers in specs:

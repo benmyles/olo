@@ -3,6 +3,32 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-04
+
+### Deskbar: Olo Doctor's bag in the tray
+
+*00:09* — Shown while Olo Doctor's last look (at login and every 15 minutes) found something to fix; a click opens it.
+
+![Deskbar: Olo Doctor's bag in the tray](2026-11-04/000934-deskbar-olo-doctor-s-bag-in-the-tray.png)
+
+### Performance in two tabs, the thresholds two by two
+
+*00:09* — It was 1,220 points tall in a scroll view of its own; now Supervisor and Watchdog tabs, fitting a 1280 × 800 screen unscrolled.
+
+![Performance in two tabs, the thresholds two by two](2026-11-04/000933-performance-in-two-tabs-the-thresholds-two-by-tw.png)
+
+### Power: the power mode
+
+*00:09* — Performance, Balanced or Power Saver, through the power profiles daemon (tuned-ppd here): the processors' energy preference, the ThinkPad's platform profile. Also in Deskbar's battery menu; Performance has a button here.
+
+![Power: the power mode](2026-11-04/000933-power-the-power-mode.png)
+
+### Display: settings beside the panel, the window as tall as both
+
+*00:08* — At 200 % on the ThinkPad's 3200 × 2000 panel, Display was a 658-point window scrolling an 804-point panel, its scroll bar against the boxes. Now the display's settings and its panel's facts are side by side, in a window that follows what it shows (fits_content), on every screen down to 1280 × 800.
+
+![Display: settings beside the panel, the window as tall as both](2026-11-04/000848-display-settings-beside-the-panel-the-window-as-.png)
+
 ## 2026-11-03
 
 ### Terminal: a slim scroll bar, there when wanted

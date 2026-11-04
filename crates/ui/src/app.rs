@@ -59,6 +59,10 @@ pub struct WindowOptions {
     /// screen) it's laid out at it all the same and scrolls (the window's
     /// `Frame` does it; a panel needn't).
     pub content_height: Option<f32>,
+    /// As tall as what it shows needs (`size`'s height at least), never
+    /// taller than the screen has room for, where it scrolls: see
+    /// [`Self::fits_content`].
+    pub fit_content: bool,
 }
 
 impl WindowOptions {
@@ -80,19 +84,41 @@ impl WindowOptions {
             fullscreen: false,
             keep_size: None,
             content_height: None,
+            fit_content: false,
         }
+    }
+
+    /// The window follows what it shows (HACKING, "Windows fit what they
+    /// show"): a `fixed` one as tall as its content needs, `size`'s height
+    /// at least, growing and shrinking with it (a tab with more rows, a
+    /// display's brightness, a longer message); one the person sizes is
+    /// never shorter than its content needs (grown when it needs more).
+    /// Never taller than the shortest screen less room for its tab
+    /// ([`screen_room`]): past that, its Frame scrolls what it shows, the
+    /// window widened by the scroll bar. Every alert and dialog has it;
+    /// give it to every other window whose content sets its size (forms,
+    /// panels); a document's window is the person's to size. The content
+    /// is laid out at its own height: a list in it shrinks (in a
+    /// `flex_1().min_h_0()` box) and scrolls, never the whole of it.
+    pub fn fits_content(mut self) -> Self {
+        self.fit_content = true;
+        self
     }
 
     /// A BAlert window `width` × `height`: fixed, modal over the app's
     /// window that has the keyboard (if any), never tiled or a tab.
+    /// Follows what it shows (`fits_content`): `height` is its least.
     pub fn alert(title: impl Into<SharedString>, width: f32, height: f32) -> Self {
-        WindowOptions { floating: true, dialog: Some(gpui::Dialog::Modal), fixed: true, ..WindowOptions::new(title, width, height) }
+        WindowOptions { floating: true, dialog: Some(gpui::Dialog::Modal), fixed: true, fit_content: true, ..WindowOptions::new(title, width, height) }
     }
 
-    /// A dialog (a panel, a sheet): floats, never a tab.
+    /// A dialog (a panel, a sheet): floats, never a tab. Never smaller
+    /// than what it shows needs, nor taller than the screen
+    /// (`fits_content`).
     pub fn dialog(mut self) -> Self {
         self.floating = true;
         self.dialog = Some(gpui::Dialog::Plain);
+        self.fit_content = true;
         self
     }
 
@@ -187,6 +213,52 @@ pub struct Frame {
     /// window less tall (`WindowOptions::content_height`).
     content_height: Option<f32>,
     scroll: gpui::ScrollHandle,
+    /// The window follows what it shows (`WindowOptions::fits_content`).
+    fit: Option<Fit>,
+}
+
+/// A window that follows what it shows: its size as designed, what its
+/// content needed as last laid out, and the size last asked for.
+struct Fit {
+    design: (f32, f32),
+    /// Its size is its content's, not the person's.
+    fixed: bool,
+    need: std::rc::Rc<std::cell::Cell<Option<f32>>>,
+    asked: Option<(f32, f32)>,
+    _displays: gpui::Subscription,
+}
+
+/// Room left above a window's tab and around it on a screen.
+const SCREEN_EDGES: f32 = 64.0;
+
+/// The tallest a window may be: the shortest display's height in points,
+/// less room for the window's tab and edges (never under 240).
+pub fn screen_room(cx: &App) -> f32 {
+    cx.displays().iter().map(|d| f32::from(d.bounds().size.height)).fold(f32::INFINITY, f32::min).max(240.0 + SCREEN_EDGES) - SCREEN_EDGES
+}
+
+impl Frame {
+    /// A window that follows what it shows: the size it should be now
+    /// (its content as last laid out, held to the screen's room) and
+    /// whether its content scrolls there; the window asked for it once.
+    fn follow(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<f32> {
+        let fit = self.fit.as_mut()?;
+        let now = window.viewport_size();
+        // (One the person sizes keeps their size when it's enough.)
+        let least = if fit.fixed { fit.design.1 } else { f32::from(now.height) };
+        let need = fit.need.get()?.ceil().max(least);
+        let room = screen_room(cx);
+        let scrolls = need > room + 0.5;
+        let width = if fit.fixed { fit.design.0 } else { f32::from(now.width) };
+        let (w, h) = if scrolls { (width + if fit.fixed { crate::widgets::SCROLL_BAR } else { 0.0 }, room.floor()) } else { (width, need) };
+        if fit.asked != Some((w, h)) {
+            fit.asked = Some((w, h));
+            if (f32::from(now.width) - w).abs() > 0.5 || (f32::from(now.height) - h).abs() > 0.5 {
+                window.defer(cx, move |window, _| window.resize(gpui::size(px(w), px(h))));
+            }
+        }
+        scrolls.then_some(need)
+    }
 }
 
 impl Frame {
@@ -329,6 +401,27 @@ impl Render for Frame {
         .size_full();
         // Last: the frame is drawn (for a review asked for).
         let done = canvas(|_, _, _| {}, move |_, _, window, _| crate::review::finish(window, &title)).absolute().size_0();
+        // Following what it shows: laid out at what it needs (its size
+        // as designed at least), measured, and scrolled past the screen's
+        // room.
+        if self.fit.is_some() {
+            let scrolls = self.follow(window, cx);
+            let fit = self.fit.as_ref().expect("fitting");
+            let need = fit.need.clone();
+            let measure = canvas(move |b, _, _| need.set(Some(f32::from(b.size.height))), |_, _, _, _| {}).absolute().size_full();
+            // (A flex item based at the designed height, its minimum what
+            // its content needs: so as tall as the larger. One the person
+            // or the app sizes: as the window, or what its content needs if
+            // more.)
+            let basis = if fit.fixed { fit.design.1 } else { 0.0 };
+            let laid = div().relative().w_full().flex_basis(px(basis)).flex_shrink_0().flex().flex_col().child(self.content.clone()).child(measure);
+            let laid = if fit.fixed { laid } else { laid.flex_grow() };
+            let content = match scrolls {
+                Some(_) => crate::widgets::ScrollView::new("frame-scroll", &self.scroll).border(false).child(div().w_full().flex().flex_col().child(laid)).into_any_element(),
+                None => laid.into_any_element(),
+            };
+            return root.flex().flex_col().child(content).child(lit).child(done);
+        }
         // Taller than the window (a short screen): laid out at its own
         // height all the same, and scrolled.
         let height = window.viewport_size().height;
@@ -358,6 +451,21 @@ pub(crate) fn init_for_lint(cx: &mut App) {
 struct AppId(String);
 
 impl Global for AppId {}
+
+/// A window's content needs `height` (None: just the window's): taller
+/// than the window, the Frame lays it out at that height and scrolls it
+/// (`WindowOptions::content_height`, changed as what it shows changes).
+/// Call it outside the window's drawing (deferred).
+pub fn set_content_height(window: &mut Window, cx: &mut App, height: Option<f32>) {
+    if let Some(Some(frame)) = window.root::<Frame>() {
+        frame.update(cx, |f, cx| {
+            if f.content_height != height {
+                f.content_height = height;
+                cx.notify();
+            }
+        });
+    }
+}
 
 /// Moves `window` with the pointer, as if dragged by its tab, while the
 /// button pressed in another of the app's windows is still held: a tab
@@ -413,9 +521,16 @@ pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, bu
         (w, h) = (if max_w > 0.0 { w.min(max_w) } else { w }, if max_h > 0.0 { h.min(max_h) } else { h });
     }
     let (w, h) = (w.max(1.0), h.max(1.0));
+    // (One that follows what it shows opens no taller than the screen.)
+    let h = if options.fit_content && options.layer.is_none() && !options.fullscreen { h.min(screen_room(cx)) } else { h };
+    let design = (w, options.size.1);
     let bounds = Bounds::centered(None, size(px(w), px(h)), cx);
     let keep = options.keep_size.clone();
     let content_height = options.content_height;
+    // (Not a layer's, a lock screen's or a full screen one's: the screen
+    // or the app sizes those.)
+    let fit_content = options.fit_content && options.layer.is_none() && options.lock_output.is_none() && !options.fullscreen;
+    let fixed = options.fixed;
     let title = options.title.clone();
     let panel = options.panel;
     let namespace = options.layer.as_ref().map(|l| l.namespace.clone());
@@ -458,7 +573,28 @@ pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, bu
             let content = build(window, cx).into();
             let frame = cx.new(|cx| {
                 let _kept = keep.map(|name| cx.observe_window_bounds(window, move |_, window, cx| crate::kept::note(cx, &name, window)));
-                Frame { title, content, panel, focus: cx.focus_handle(), _kept, content_height, scroll: gpui::ScrollHandle::new() }
+                // (A display come or gone changes the room there is.)
+                // (Deferred: displays are told of inside a Wayland
+                // roundtrip, as `on_displays_changed`.)
+                let me = cx.weak_entity();
+                let fit = fit_content.then(|| Fit {
+                    design,
+                    fixed,
+                    need: Default::default(),
+                    asked: None,
+                    _displays: cx.on_displays_changed(move |cx| {
+                        let me = me.clone();
+                        cx.defer(move |cx| {
+                            let _ = me.update(cx, |f: &mut Frame, cx| {
+                                if let Some(fit) = &mut f.fit {
+                                    fit.asked = None;
+                                }
+                                cx.notify();
+                            });
+                        });
+                    }),
+                });
+                Frame { title, content, panel, focus: cx.focus_handle(), _kept, content_height, scroll: gpui::ScrollHandle::new(), fit }
             });
             if window.focused(cx).is_none() {
                 let focus = frame.read(cx).focus.clone();

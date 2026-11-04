@@ -29,6 +29,11 @@ pub enum ToHelper {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum FromHelper {
     Ready,
+    /// How the fix `id` is going (a package download's progress).
+    Progress {
+        id: u64,
+        text: String,
+    },
     /// The steps' outcomes, in order; the first failure stops the rest.
     Done {
         id: u64,
@@ -54,9 +59,17 @@ pub fn way() -> Way {
 
 /// Run `steps` in order, stopping at the first failure.
 pub fn run_steps(steps: &[Step]) -> Vec<Result<(), String>> {
+    run_steps_with(steps, &mut |_| {})
+}
+
+/// Run `steps` in order, stopping at the first failure, telling how each
+/// goes (`progress`: the step, then what it says as it goes).
+pub fn run_steps_with(steps: &[Step], progress: &mut dyn FnMut(String)) -> Vec<Result<(), String>> {
     let mut results = Vec::with_capacity(steps.len());
     for s in steps {
-        let r = s.run();
+        let what = s.describe();
+        progress(what.clone());
+        let r = s.run_with(&mut |p| progress(format!("{what}: {p}")));
         let failed = r.is_err();
         results.push(r);
         if failed {
@@ -73,10 +86,12 @@ pub fn serve() -> ! {
 }
 
 /// Answer what comes in on `input` until it closes (or `out` does).
-fn serve_on(input: impl BufRead, mut out: impl Write) {
-    let mut say = |m: &FromHelper| {
+fn serve_on(input: impl BufRead, out: impl Write) {
+    let out = std::cell::RefCell::new(out);
+    let say = |m: &FromHelper| {
         let Ok(mut line) = serde_json::to_string(m) else { return true };
         line.push('\n');
+        let mut out = out.borrow_mut();
         out.write_all(line.as_bytes()).and_then(|_| out.flush()).is_ok()
     };
     if !say(&FromHelper::Ready) {
@@ -86,7 +101,7 @@ fn serve_on(input: impl BufRead, mut out: impl Write) {
         let Ok(line) = line else { break };
         let Ok(msg) = serde_json::from_str::<ToHelper>(&line) else { continue };
         let answer = match msg {
-            ToHelper::Run { id, steps } => FromHelper::Done { id, results: run_steps(&steps) },
+            ToHelper::Run { id, steps } => FromHelper::Done { id, results: run_steps_with(&steps, &mut |text| _ = say(&FromHelper::Progress { id, text })) },
         };
         // The app went: nothing to do but go too.
         if !say(&answer) {
@@ -175,7 +190,16 @@ mod tests {
         serve_on(input.as_bytes(), &mut out);
         let said: Vec<FromHelper> = String::from_utf8(out).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
         assert!(matches!(said[0], FromHelper::Ready));
-        match &said[1] {
+        // Each step said as it begins, then the outcomes.
+        let begun: Vec<&str> = said[1..said.len() - 1]
+            .iter()
+            .map(|m| match m {
+                FromHelper::Progress { id: 7, text } => text.as_str(),
+                other => panic!("{other:?}"),
+            })
+            .collect();
+        assert_eq!(begun, [format!("Writing {}", file.display()), format!("Setting {} to x", dir.join("missing/b").display())]);
+        match said.last().unwrap() {
             FromHelper::Done { id: 7, results } => {
                 assert_eq!(results.len(), 2, "stopped at the failure: {results:?}");
                 assert!(results[0].is_ok());
@@ -183,7 +207,6 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
-        assert_eq!(said.len(), 2);
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "hi", "the removal after the failure didn't run");
         let _ = std::fs::remove_dir_all(dir);
     }

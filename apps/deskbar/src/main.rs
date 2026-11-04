@@ -796,6 +796,20 @@ impl Deskbar {
         m.separator().item("Group Windows", "group-windows").checked(!self.tiling.ungrouped_apps.contains(&app)).enabled(!app.is_empty())
     }
 
+    /// The battery's menu (right click): the power mode, and Power's
+    /// preferences.
+    fn battery_menu(&self) -> Menu {
+        use olo_system::power_profile::Mode;
+        let mut m = Menu::new("Power");
+        if let Some(modes) = &self.status.power_modes {
+            for mode in Mode::ALL.into_iter().filter(|x| modes.available.contains(x)) {
+                m = m.item(mode.label(), format!("power-mode:{}", mode.id())).checked(modes.active == mode);
+            }
+            m = m.separator();
+        }
+        m.item("Power Preferences…", "pref:power")
+    }
+
     /// Caffeinated mode: indefinitely or for a while, with the lid too.
     fn caffeine_menu(&self) -> Menu {
         let on = self.caffeinated;
@@ -881,6 +895,20 @@ impl Deskbar {
             Some(("run", bin)) => spawn(bin),
             Some(("pref", panel)) => spawn(&format!("olo-preferences {panel}")),
             Some(("caff", arg)) => self.caffeine_command(arg),
+            // A power mode: set by the daemon (off the UI thread); its
+            // signal says so back.
+            Some(("power-mode", id)) => {
+                if let Some(mode) = olo_system::power_profile::Mode::from_id(id) {
+                    if let Some(m) = &mut self.status.power_modes {
+                        m.active = mode;
+                    }
+                    std::thread::spawn(move || {
+                        if let Err(e) = olo_system::power_profile::set(mode) {
+                            tracing::warn!(?mode, "power mode: {e}");
+                        }
+                    });
+                }
+            }
             // Stop Sharing: olo-portal ends the session (and tells the app).
             Some(("share", "all")) => {
                 for s in &self.status.sharing {
@@ -1318,8 +1346,10 @@ fn sound_menu(devices: Option<&olo_system::audio::Devices>, pods: Option<&olo_pr
     let mut m = Menu::new("Sound");
     if let Some(d) = devices {
         m = m.item("Output", "").enabled(false);
+        // None: sound goes nowhere (never forced onto the only device).
+        m = m.item("None", format!("sound:out:{}", olo_system::audio::NO_OUTPUT)).checked(d.no_output);
         for o in &d.outputs {
-            m = m.item(o.description.clone(), format!("sound:out:{}", o.name)).checked(o.is_default);
+            m = m.item(o.description.clone(), format!("sound:out:{}", o.name)).checked(o.is_default && !d.no_output);
         }
         m = m.separator().item("Input", "").enabled(false);
         for i in &d.inputs {
@@ -1771,6 +1801,8 @@ impl Deskbar {
                 st.airpods.is_some(),
                 st.agent_screens > 0,
                 st.supervisor.is_some(),
+                // (Olo Doctor's bag, while it has found something.)
+                !st.doctor.issues.is_empty(),
                 st.battery.is_some(),
                 st.wifi.is_some(),
                 st.volume.is_some(),
@@ -1841,7 +1873,13 @@ impl Deskbar {
         // open), its tip, and what the pointer does on it.
         let mut tray_item =
             |d: &mut Drawing, id: &str, tip_text: String, draw: Box<dyn FnOnce(&mut Window, &mut App, Bounds<Pixels>)>| -> (Bounds<Pixels>, olo_ui::gpui::Stateful<olo_ui::gpui::Div>) {
-                let r = slot.next().expect("a slot for each tray item");
+                // (Each item is counted above: one not counted is a bug,
+                // said, and drawn nowhere; never the shell going down.)
+                let r = slot.next().unwrap_or_else(|| {
+                    debug_assert!(false, "tray item {id} has no slot");
+                    tracing::error!(id, "tray item not counted: drawn nowhere");
+                    Bounds::default()
+                });
                 let key = format!("tray:{id}");
                 let lit = pointer.open(&key);
                 let said = tip_text.clone();
@@ -2041,15 +2079,39 @@ impl Deskbar {
                 .into_any_element(),
             );
         }
-        if let Some(b) = st.battery {
-            let tip_text = format!("{}%{}", b.percent, if b.charging { " — charging" } else { "" });
-            let (_, h) = tray_item(&mut d, "battery", tip_text, Box::new(move |window, cx, r| status::draw_battery(window, r, &theme::palette(cx), b.percent, b.charging)));
+        // Olo Doctor's bag, while it has found something to fix (it looks
+        // at login and every 15 minutes): a click opens it.
+        if !st.doctor.issues.is_empty() {
+            let n = st.doctor.issues.len();
+            let first = &st.doctor.issues[0];
+            let tip_text = if n == 1 { format!("Olo Doctor: {first}. Click to see it.") } else { format!("Olo Doctor found {n} things to fix: {first}, and more. Click to see them.") };
+            let (_, h) = tray_item(&mut d, "doctor", tip_text, Box::new(move |window, _, r| _ = icons::paint(window, r, "doctor")));
             let m = model.clone();
             d.hits.push(
                 h.on_any_button(move |e, _, cx| {
-                    if button(e) == MouseButton::Left {
-                        m.update(cx, |d, cx| d.run_command("pref:power", cx));
+                    if matches!(button(e), MouseButton::Left | MouseButton::Right) {
+                        m.update(cx, |d, cx| d.run_command("run:olo-doctor", cx));
                     }
+                })
+                .into_any_element(),
+            );
+        }
+        // The battery: click for Power's preferences; right-click for the
+        // power mode.
+        if let Some(b) = st.battery {
+            let mode = st.power_modes.as_ref().map(|m| format!(", {}", m.active.label())).unwrap_or_default();
+            let tip_text = format!("{}%{}{mode}. Right-click for the power mode.", b.percent, if b.charging { " — charging" } else { "" });
+            let (r, h) = tray_item(&mut d, "battery", tip_text, Box::new(move |window, cx, r| status::draw_battery(window, r, &theme::palette(cx), b.percent, b.charging)));
+            let (m, v) = (model.clone(), view.clone());
+            d.hits.push(
+                h.on_any_button(move |e, window, cx| match button(e) {
+                    MouseButton::Left => m.update(cx, |d, cx| d.run_command("pref:power", cx)),
+                    MouseButton::Right => {
+                        let menu = m.read(cx).battery_menu();
+                        let mm = m.clone();
+                        open_menu(window, cx, &v, "tray:battery", r, menu, move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
+                    }
+                    _ => {}
                 })
                 .into_any_element(),
             );

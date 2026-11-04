@@ -25,6 +25,7 @@ use crate::fix::{Step, UnitAction, UnitState};
 /// them without the repository).
 pub const INPUT_RULE: &str = include_str!("../../../data/udev/71-olo-input.rules");
 pub const DISPLAY_RULE: &str = include_str!("../../../data/udev/70-olo-displays.rules");
+pub const IDLE_GPU_RULE: &str = include_str!("../../../data/udev/72-olo-idle-gpu.rules");
 /// The login screen's entry (its Exec made absolute on install).
 const SESSION_ENTRY: &str = include_str!("../../../data/session/olo.desktop");
 
@@ -40,6 +41,7 @@ const HEALED_DRIVERS: &[&str] = &["brcmfmac"];
 
 const INPUT_RULE_PATH: &str = "etc/udev/rules.d/71-olo-input.rules";
 const DISPLAY_RULE_PATH: &str = "etc/udev/rules.d/70-olo-displays.rules";
+const IDLE_GPU_RULE_PATH: &str = "etc/udev/rules.d/72-olo-idle-gpu.rules";
 /// Where the login screen's entry goes (tools/install-session.sh): where
 /// GDM and SDDM always look, or on an atomic system (its /usr read-only)
 /// /usr/local/share's, which GDM reads only when its XDG_DATA_DIRS names
@@ -176,6 +178,21 @@ pub struct Roots {
     pub units: Box<dyn Fn(&str) -> Result<UnitState, String> + Send + Sync>,
     /// AirPods are paired here (the AirPods service's state).
     pub airpods: bool,
+    /// The system's packages (PackageKit's word): which of these names
+    /// there are, newest, and whether installed. None: no PackageKit.
+    pub packages: Box<dyn Fn(&[&str]) -> Option<Vec<(String, bool)>> + Send + Sync>,
+    /// The names of the packages with an update waiting (None: no
+    /// PackageKit).
+    pub updates: Box<dyn Fn() -> Option<Vec<String>> + Send + Sync>,
+}
+
+/// PackageKit's answers, for [`Roots::real`].
+fn real_packages(names: &[&str]) -> Option<Vec<(String, bool)>> {
+    olo_system::packages::resolve(names).ok().map(|ps| ps.into_iter().map(|p| (p.name().to_owned(), p.installed)).collect())
+}
+
+fn real_updates() -> Option<Vec<String>> {
+    olo_system::packages::updates().ok().map(|ps| ps.into_iter().map(|p| p.name().to_owned()).collect())
 }
 
 impl Roots {
@@ -197,7 +214,7 @@ impl Roots {
         let scope = scope_of(&std::fs::read_to_string("/proc/self/cgroup").unwrap_or_default());
         // AirPods paired, as BlueZ says (the service needn't be running).
         let airpods = olo_system::bluetooth::status().map(|s| s.devices.iter().any(|d| d.paired && d.modalias.as_deref().is_some_and(olo_system::airpods::is_airpods))).unwrap_or(false);
-        Roots { fs: PathBuf::from("/"), bin, uid, scope, units: Box::new(crate::fix::unit_state), airpods }
+        Roots { fs: PathBuf::from("/"), bin, uid, scope, units: Box::new(crate::fix::unit_state), airpods, packages: Box::new(real_packages), updates: Box::new(real_updates) }
     }
 }
 
@@ -372,6 +389,22 @@ fn plural(n: usize, one: &str, many: &str) -> String {
 }
 
 /// Look at everything.
+/// Look this computer over, and say what was found for Deskbar's tray
+/// (`olo_protocol::doctor::DoctorFound`).
+pub fn look() -> Report {
+    let report = scan(&Roots::real());
+    let issues: Vec<&Finding> = report.findings.iter().filter(|f| f.severity == Severity::Problem || f.fix.is_some()).collect();
+    let found = olo_protocol::doctor::DoctorFound {
+        issues: issues.iter().map(|f| f.title.clone()).collect(),
+        problems: issues.iter().filter(|f| f.severity == Severity::Problem).count(),
+        at: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()),
+    };
+    if let Err(e) = found.save() {
+        tracing::warn!("doctor: what was found not saved: {e}");
+    }
+    report
+}
+
 pub fn scan(roots: &Roots) -> Report {
     let mut r = Report::default();
     let procs = processes(&roots.fs);
@@ -386,6 +419,10 @@ pub fn scan(roots: &Roots) -> Report {
     voice_realtime(roots, &procs, &mut r);
     airpods_listening(roots, &procs, &mut r);
     util_clamp(roots, &mut r);
+    let gpus = pci_devices(&roots.fs);
+    idle_gpu(roots, &gpus, &mut r);
+    gpu_driver(roots, &gpus, &mut r);
+    builtin_sound(roots, &gpus, &mut r);
     stale(roots, &procs, &mut r);
     login_entry(roots, &mut r);
     r
@@ -820,6 +857,241 @@ fn util_clamp(roots: &Roots, r: &mut Report) {
     }
 }
 
+/// A PCI device, as sysfs has it.
+struct Pci {
+    /// Its address ("0000:01:00.0") and folder.
+    address: String,
+    dir: PathBuf,
+    class: u32,
+    vendor: u16,
+    /// Its driver's name, if one has it.
+    driver: Option<String>,
+    /// The card the computer started on.
+    boot_vga: bool,
+    power_control: Option<String>,
+}
+
+impl Pci {
+    fn display(&self) -> bool {
+        self.class >> 16 == 0x03
+    }
+
+    fn maker(&self) -> &'static str {
+        match self.vendor {
+            0x10de => "NVIDIA",
+            0x1002 => "AMD",
+            0x8086 => "Intel",
+            _ => "other",
+        }
+    }
+}
+
+fn pci_devices(fs: &Path) -> Vec<Pci> {
+    let hex = |p: &Path| read(p).and_then(|s| u32::from_str_radix(s.trim().trim_start_matches("0x"), 16).ok());
+    let mut out: Vec<Pci> = std::fs::read_dir(fs.join("sys/bus/pci/devices"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| {
+            let dir = e.path();
+            Some(Pci {
+                address: e.file_name().to_string_lossy().into_owned(),
+                class: hex(&dir.join("class"))?,
+                vendor: hex(&dir.join("vendor"))? as u16,
+                driver: std::fs::read_link(dir.join("driver")).ok().and_then(|d| d.file_name().map(|n| n.to_string_lossy().into_owned())),
+                boot_vga: read(&dir.join("boot_vga")).is_some_and(|s| s.trim() == "1"),
+                power_control: read(&dir.join("power/control")).map(|s| s.trim().to_owned()),
+                dir,
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| a.address.cmp(&b.address));
+    out
+}
+
+/// A second graphics card (NVIDIA's, AMD's) kept powered while nothing
+/// uses it: runtime power management left off ("on"), as it is unless a
+/// driver or a rule turns it on. With no driver bound (nouveau failing on
+/// a new card) nothing ever does.
+fn idle_gpu(roots: &Roots, pcis: &[Pci], r: &mut Report) {
+    let second: Vec<&Pci> = pcis.iter().filter(|p| p.display() && !p.boot_vga && matches!(p.vendor, 0x10de | 0x1002)).collect();
+    if second.is_empty() {
+        return;
+    }
+    let installed = std::fs::read_to_string(roots.fs.join(IDLE_GPU_RULE_PATH)).ok();
+    let awake: Vec<&&Pci> = second.iter().filter(|p| p.power_control.as_deref() == Some("on")).collect();
+    let maker = second[0].maker();
+    if awake.is_empty() && installed.as_deref() == Some(IDLE_GPU_RULE) {
+        r.fine.push(Fine { title: format!("The {maker} graphics card sleeps when unused"), detail: "Runtime power management is on for it (72-olo-idle-gpu.rules).".into() });
+        return;
+    }
+    let mut steps = vec![Step::WriteFile { path: PathBuf::from("/").join(IDLE_GPU_RULE_PATH), content: IDLE_GPU_RULE.into(), mode: 0o644 }];
+    for p in &second {
+        let control = p.dir.join("power/control");
+        steps.push(Step::WriteSysfs { path: PathBuf::from("/").join(control.strip_prefix(&roots.fs).unwrap_or(&control)), value: "auto".into() });
+    }
+    let unused = awake.iter().any(|p| p.driver.is_none());
+    r.findings.push(Finding {
+        id: "gpu:idle".into(),
+        severity: if awake.is_empty() { Severity::Advice } else { Severity::Problem },
+        title: if awake.is_empty() { format!("The {maker} graphics card's sleep isn't kept at boot") } else { format!("The {maker} graphics card never sleeps") },
+        detail: format!(
+            "{} so it draws power the whole time, warming the computer and running the battery down. Olo draws with the {} graphics. The fix lets it sleep while nothing uses it, now and at every start (/etc/udev/rules.d/72-olo-idle-gpu.rules); an app that wants it wakes it.",
+            if unused { "No driver has it, and its runtime power management is off," } else if awake.is_empty() { "It sleeps now, but nothing keeps that after a restart," } else { "Its runtime power management is off," },
+            pcis.iter().find(|p| p.display() && p.boot_vga).map_or("built-in", |p| p.maker()),
+        ),
+        fix: Some(Fix { label: "Let It Sleep".into(), root: true, steps }),
+    });
+}
+
+/// A graphics card no driver has, when one tried (nouveau loaded and
+/// gone): a card newer than the kernel's driver knows.
+fn gpu_driver(roots: &Roots, pcis: &[Pci], r: &mut Report) {
+    let nvidia: Vec<&Pci> = pcis.iter().filter(|p| p.display() && p.driver.is_none() && p.vendor == 0x10de).collect();
+    if nvidia.is_empty() {
+        return;
+    }
+    // NVIDIA's driver, built for the running kernel (akmod: again for
+    // each new one), from the system's repositories (Fedora's NVIDIA
+    // repository, RPM Fusion's).
+    let found = (roots.packages)(&[NVIDIA_DRIVER]);
+    let package = found.as_ref().and_then(|ps| ps.iter().find(|(n, _)| n == NVIDIA_DRIVER));
+    let secure_boot = read_bytes(&roots.fs.join(SECURE_BOOT_VAR)).is_some_and(|b| b.last() == Some(&1));
+    for p in nvidia {
+        let tried = roots.fs.join("sys/module/nouveau").exists();
+        let why = if tried { "Linux's own driver for it (nouveau) couldn't start it: the card is newer than the driver knows." } else { "No driver is installed for it." };
+        let drawn = pcis.iter().find(|x| x.display() && x.boot_vga).map_or("built-in", |x| x.maker());
+        let uses = format!(
+            "Olo and its apps run on the {drawn} graphics, so nothing is missing day to day; an app asking for the NVIDIA card (a game, CUDA) won't find it, nor will a display plugged into a port it drives."
+        );
+        let (detail, fix) = match package {
+            // Installed, not working yet: built at the next start.
+            Some((_, true)) => (format!("{why} NVIDIA's driver is installed: restart, and it's built for this kernel and started (the first start takes a few minutes longer)."), None),
+            Some((_, false)) => (
+                format!(
+                    "{why} {uses} The fix installs NVIDIA's driver ({NVIDIA_DRIVER}, from the system's NVIDIA repository), built for this kernel; restart when it's done{}.",
+                    if secure_boot { ", and enrol its signing key when the computer asks (Secure Boot)" } else { "" }
+                ),
+                Some(Fix { label: "Install NVIDIA's Driver".into(), root: true, steps: vec![Step::InstallPackages { names: vec![NVIDIA_DRIVER.into()] }] }),
+            ),
+            None => (
+                format!(
+                    "{why} {uses} NVIDIA's driver isn't in any repository this computer uses: on Fedora, turn on the third-party NVIDIA repository (or add RPM Fusion's), and Olo Doctor can install it."
+                ),
+                None,
+            ),
+        };
+        r.findings.push(Finding { id: format!("gpu:driver:{}", p.address), severity: Severity::Advice, title: "The NVIDIA graphics card has no working driver".into(), detail, fix });
+    }
+}
+
+/// NVIDIA's driver, as Fedora's repositories name it.
+const NVIDIA_DRIVER: &str = "akmod-nvidia";
+/// The firmware's Secure Boot variable (its last byte 1: on).
+const SECURE_BOOT_VAR: &str = "sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c";
+
+fn read_bytes(path: &Path) -> Option<Vec<u8>> {
+    std::fs::read(path).ok()
+}
+
+/// The packages that bring drivers and firmware: a new kernel (its sound
+/// and graphics drivers, its quirks for new laptops), and the firmware
+/// they load.
+const DRIVER_PACKAGES: &[&str] = &[
+    "kernel",
+    "kernel-core",
+    "kernel-modules",
+    "kernel-modules-core",
+    "kernel-modules-extra",
+    "linux-firmware",
+    "linux-firmware-whence",
+    "alsa-sof-firmware",
+    "cirrus-audio-firmware",
+    "intel-audio-firmware",
+    "intel-gpu-firmware",
+    "intel-vsc-firmware",
+    "nvidia-gpu-firmware",
+    "amd-gpu-firmware",
+    "iwlwifi-mld-firmware",
+    "iwlwifi-mvm-firmware",
+    "iwlbluetooth-firmware",
+];
+
+/// SoundWire parts by maker and part number (`sdw:LINK:UNIQUE:MFG:PART`).
+fn soundwire_part(mfg: &str, part: &str) -> Option<&'static str> {
+    Some(match (mfg, part) {
+        ("01fa", "4243") => "Cirrus Logic CS42L43",
+        ("01fa", "3556") => "Cirrus Logic CS35L56",
+        ("01fa", "3557") => "Cirrus Logic CS35L57",
+        ("01fa", "3563") => "Cirrus Logic CS35L63",
+        ("025d", "0711") => "Realtek RT711",
+        ("025d", "0712") => "Realtek RT712",
+        ("025d", "0722") => "Realtek RT722",
+        ("025d", "1316") => "Realtek RT1316",
+        ("025d", "1318") => "Realtek RT1318",
+        _ => return None,
+    })
+}
+
+/// The built-in sound chips found, but no sound card made of them: the
+/// kernel's driver (Intel's SOF) doesn't know how this computer wires
+/// them (a new laptop's SoundWire codecs).
+fn builtin_sound(roots: &Roots, pcis: &[Pci], r: &mut Report) {
+    // The computer's own audio controller (not a graphics card's HDMI).
+    let Some(dsp) = pcis.iter().find(|p| p.class >> 8 == 0x0401 || (p.class >> 8 == 0x0403 && p.driver.as_deref().is_some_and(|d| d.starts_with("sof-audio")))) else { return };
+    if !dsp.driver.as_deref().is_some_and(|d| d.starts_with("sof-audio")) {
+        return;
+    }
+    // A sound card made from it?
+    let has_card = std::fs::read_dir(roots.fs.join("sys/class/sound")).into_iter().flatten().flatten().any(|e| {
+        e.file_name().to_string_lossy().starts_with("card")
+            && std::fs::canonicalize(e.path().join("device")).is_ok_and(|d| d.to_string_lossy().contains(&dsp.address) || d.to_string_lossy().contains("sof"))
+    });
+    if has_card {
+        return;
+    }
+    let mut parts: Vec<&str> = std::fs::read_dir(roots.fs.join("sys/bus/soundwire/devices"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            let f: Vec<&str> = name.split(':').collect();
+            (f.len() >= 5).then(|| soundwire_part(f[3], f[4])).flatten()
+        })
+        .collect();
+    let amps = parts.iter().filter(|p| p.contains("CS35") || p.contains("RT13")).count();
+    parts.sort();
+    parts.dedup();
+    let chips =
+        if parts.is_empty() { "its sound chips".to_string() } else { format!("its sound chips ({}{})", parts.join(", "), if amps > 1 { format!("; {amps} amplifiers") } else { String::new() }) };
+    // A newer kernel and firmware waiting: they may know it.
+    let waiting: Vec<String> = (roots.updates)().unwrap_or_default().into_iter().filter(|n| DRIVER_PACKAGES.contains(&n.as_str())).collect();
+    let kernel = waiting.iter().any(|n| n.starts_with("kernel"));
+    let (then, fix) = if waiting.is_empty() {
+        ("It needs a newer kernel (and linux-firmware with this computer's speaker tuning) than there is yet: Olo Doctor offers it as soon as one comes.".to_string(), None)
+    } else {
+        (
+            format!(
+                "A newer {} waiting, which may know it: the fix installs {}{}.",
+                if kernel { "kernel and firmware are" } else { "firmware is" },
+                if waiting.len() > 3 { format!("{} and {} more", waiting[..3].join(", "), waiting.len() - 3) } else { waiting.join(", ") },
+                if kernel { "; restart afterwards to use the new kernel" } else { "" }
+            ),
+            Some(Fix { label: "Install Driver Updates".into(), root: true, steps: vec![Step::UpdatePackages { names: waiting.clone() }] }),
+        )
+    };
+    r.findings.push(Finding {
+        id: "sound:builtin".into(),
+        severity: Severity::Problem,
+        title: "The built-in speakers and microphones have no driver".into(),
+        detail: format!(
+            "Linux finds {chips} but doesn't know how this computer wires them, so it makes no sound card of them: no speakers, microphones or headphone jack. Sound plays through Bluetooth, USB and HDMI meanwhile. {then}"
+        ),
+        fix,
+    });
+}
+
 fn stale(roots: &Roots, procs: &[Proc], r: &mut Report) {
     let me = std::process::id() as i32;
     let bin = roots.bin.to_string_lossy();
@@ -944,7 +1216,7 @@ mod tests {
         });
         // SAFETY: getuid has no preconditions.
         let uid = unsafe { libc::getuid() };
-        let roots = Roots { fs: fs.clone(), bin, uid, scope: Some("session-2.scope".into()), units, airpods: true };
+        let roots = Roots { fs: fs.clone(), bin, uid, scope: Some("session-2.scope".into()), units, airpods: true, packages: Box::new(|_| None), updates: Box::new(|| None) };
         (fs, roots)
     }
 
@@ -1061,6 +1333,78 @@ mod tests {
                 "Olo is on the login screen",
             ]
         );
+        let _ = std::fs::remove_dir_all(&fs);
+    }
+
+    /// A ThinkPad P1 Gen 9: Intel graphics it started on, an NVIDIA card
+    /// nouveau couldn't start, kept awake, and SoundWire sound chips with
+    /// no card made of them.
+    #[test]
+    fn thinkpad_graphics_and_sound() {
+        let (fs, roots) = machine("thinkpad");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        let pci = "sys/bus/pci/devices";
+        w(&format!("{pci}/0000:00:02.0/class"), "0x030000\n");
+        w(&format!("{pci}/0000:00:02.0/vendor"), "0x8086\n");
+        w(&format!("{pci}/0000:00:02.0/boot_vga"), "1\n");
+        w(&format!("{pci}/0000:01:00.0/class"), "0x030000\n");
+        w(&format!("{pci}/0000:01:00.0/vendor"), "0x10de\n");
+        w(&format!("{pci}/0000:01:00.0/boot_vga"), "0\n");
+        w(&format!("{pci}/0000:01:00.0/power/control"), "on\n");
+        std::fs::create_dir_all(fs.join("sys/module/nouveau")).unwrap();
+        w(&format!("{pci}/0000:00:1f.3/class"), "0x040100\n");
+        w(&format!("{pci}/0000:00:1f.3/vendor"), "0x8086\n");
+        std::fs::create_dir_all(fs.join("sys/bus/pci/drivers/sof-audio-pci-intel-ptl")).unwrap();
+        std::os::unix::fs::symlink(fs.join("sys/bus/pci/drivers/sof-audio-pci-intel-ptl"), fs.join(format!("{pci}/0000:00:1f.3/driver"))).unwrap();
+        for d in ["sdw:0:2:01fa:4243:01", "sdw:0:2:01fa:3557:01:0", "sdw:0:2:01fa:3557:01:4"] {
+            std::fs::create_dir_all(fs.join("sys/bus/soundwire/devices").join(d)).unwrap();
+        }
+        let r = scan(&roots);
+        let idle = r.find("gpu:idle").expect("the card kept awake");
+        assert_eq!(idle.title, "The NVIDIA graphics card never sleeps");
+        assert!(idle.detail.starts_with("No driver has it"), "{}", idle.detail);
+        assert!(idle.detail.contains("Olo draws with the Intel graphics"), "{}", idle.detail);
+        let fix = idle.fix.as_ref().unwrap();
+        assert!(fix.root);
+        assert_eq!(
+            fix.steps,
+            vec![
+                Step::WriteFile { path: "/etc/udev/rules.d/72-olo-idle-gpu.rules".into(), content: IDLE_GPU_RULE.into(), mode: 0o644 },
+                Step::WriteSysfs { path: "/sys/bus/pci/devices/0000:01:00.0/power/control".into(), value: "auto".into() },
+            ]
+        );
+        // No PackageKit: what to do, said.
+        let driver = r.find("gpu:driver:0000:01:00.0").expect("no driver");
+        assert!(driver.detail.contains("nouveau") && driver.fix.is_none());
+        let sound = r.find("sound:builtin").expect("no sound card");
+        assert!(sound.detail.contains("Cirrus Logic CS35L57, Cirrus Logic CS42L43; 2 amplifiers"), "{}", sound.detail);
+        assert!(sound.fix.is_none());
+        // With PackageKit: NVIDIA's driver to install, a kernel and
+        // firmware to update.
+        let roots = Roots {
+            packages: Box::new(|names| Some(names.iter().filter(|n| **n == "akmod-nvidia").map(|n| (n.to_string(), false)).collect())),
+            updates: Box::new(|| Some(vec!["kernel".into(), "firefox".into(), "cirrus-audio-firmware".into()])),
+            ..roots
+        };
+        let r = scan(&roots);
+        let fix = r.find("gpu:driver:0000:01:00.0").unwrap().fix.clone().expect("an install");
+        assert_eq!((fix.label.as_str(), fix.steps), ("Install NVIDIA's Driver", vec![Step::InstallPackages { names: vec!["akmod-nvidia".into()] }]));
+        let sound = r.find("sound:builtin").unwrap();
+        assert!(sound.detail.contains("installs kernel, cirrus-audio-firmware; restart afterwards"), "{}", sound.detail);
+        assert_eq!(sound.fix.as_ref().unwrap().steps, vec![Step::UpdatePackages { names: vec!["kernel".into(), "cirrus-audio-firmware".into()] }]);
+        // Fixed: the rule there and the card allowed to sleep.
+        w("etc/udev/rules.d/72-olo-idle-gpu.rules", IDLE_GPU_RULE);
+        w(&format!("{pci}/0000:01:00.0/power/control"), "auto\n");
+        // And a sound card made of the chips.
+        std::fs::create_dir_all(fs.join("sys/class/sound/card1")).unwrap();
+        std::os::unix::fs::symlink(fs.join(format!("{pci}/0000:00:1f.3")), fs.join("sys/class/sound/card1/device")).unwrap();
+        let r = scan(&roots);
+        assert!(r.find("gpu:idle").is_none() && r.find("sound:builtin").is_none());
+        assert!(r.fine.iter().any(|f| f.title == "The NVIDIA graphics card sleeps when unused"));
         let _ = std::fs::remove_dir_all(&fs);
     }
 

@@ -81,13 +81,15 @@ pub fn shell_env(env: &mut Vec<(String, String)>) {
 /// What the listener hears, for the app.
 pub enum Event {
     /// A sudo wants a password: from process `pid`, answered on `stream`;
-    /// `approval` while requests are approved without asking.
+    /// `approval` while requests are approved without asking (always,
+    /// when `quiet`: `sudo -n`, which no window may answer).
     Begin {
         conn: u64,
         pid: i32,
         stream: UnixStream,
         args: Vec<String>,
         tty: bool,
+        quiet: bool,
         approval: Option<Approval>,
     },
     Said(u64, Ask),
@@ -140,9 +142,15 @@ fn peer(s: &UnixStream) -> Option<i32> {
 fn serve(proxy: Proxy, conn: u64, pid: i32, s: UnixStream) {
     let Ok(stream) = s.try_clone() else { return };
     let mut lines = BufReader::new(s).lines();
-    let Some(Ok(Ask::Begin { args, tty, .. })) = lines.next().map(|l| l.map(|l| serde_json::from_str(&l))).and_then(Result::ok) else { return };
-    let approval = if tty && !WINDOW_FOR_TYPED.load(Ordering::Relaxed) { None } else { approval() };
-    proxy.send(Event::Begin { conn, pid, stream, args, tty, approval });
+    let Some(Ok(Ask::Begin { args, tty, quiet, .. })) = lines.next().map(|l| l.map(|l| serde_json::from_str(&l))).and_then(Result::ok) else { return };
+    let approval = if tty && !WINDOW_FOR_TYPED.load(Ordering::Relaxed) && !quiet { None } else { approval() };
+    // `sudo -n` asks no one: in only while approved without asking.
+    if quiet && approval.is_none() {
+        let mut out = stream;
+        let _ = out.write_all(&crate::sudo_wire::line(&Reply::Pass));
+        return;
+    }
+    proxy.send(Event::Begin { conn, pid, stream, args, tty, quiet, approval });
     let p = proxy.clone();
     std::thread::spawn(move || {
         if touch_first() {
@@ -234,8 +242,11 @@ pub struct Request {
     /// Where the person types the answer (once its window is open).
     field: Option<Entity<TextField>>,
     /// Approved without asking: the password is given at sudo's prompt
-    /// (once: should it be asked again, a window asks the person).
+    /// (once: should it be asked again, a window asks the person, unless
+    /// `quiet`).
     pub approval: Option<Approval>,
+    /// `sudo -n`: never asks the person.
+    pub quiet: bool,
     answered: bool,
 }
 
@@ -256,7 +267,7 @@ pub enum Choice {
 impl Request {
     pub fn new(conn: u64, stream: UnixStream, args: &[String], who: Option<Agent>, tab: Option<String>) -> Request {
         let command = std::iter::once("sudo".to_owned()).chain(args.iter().map(|a| crate::shell_quote(a))).collect::<Vec<_>>().join(" ");
-        Request { conn, stream, who, tab, command, conv: Conversation::default(), field: None, approval: None, answered: false }
+        Request { conn, stream, who, tab, command, conv: Conversation::default(), field: None, approval: None, quiet: false, answered: false }
     }
 
     /// Who asked for what, for the log and the notification.

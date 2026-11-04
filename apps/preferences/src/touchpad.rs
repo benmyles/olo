@@ -16,9 +16,9 @@ use olo_protocol::{
 };
 use olo_sync::Mutex;
 use olo_ui::{
-    gpui::{Context, ParentElement as _, ScrollHandle, SharedString, Styled as _, div, px},
+    gpui::{Context, ParentElement as _, SharedString, Styled as _, div, px},
     metrics as m, style, theme,
-    widgets::{Button, ScrollView, StringView, TabView},
+    widgets::{Button, StringView, TabView},
 };
 
 use crate::{Msg, PanelView, form::Ui, panel};
@@ -29,12 +29,11 @@ type Shared = Arc<Mutex<Option<Vec<InputDeviceInfo>>>>;
 pub struct State {
     tab: usize,
     devices: Shared,
-    scroll: ScrollHandle,
 }
 
 impl State {
     pub fn new(cx: &mut Context<PanelView>) -> State {
-        State { tab: 0, devices: watch(olo_ui::proxy(cx)), scroll: ScrollHandle::new() }
+        State { tab: 0, devices: watch(olo_ui::proxy(cx)) }
     }
 }
 
@@ -135,8 +134,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         1 => touch(ui, &t, pad.as_ref()),
         2 => gestures(ui, &t),
         _ => {
-            let items = ui.collect(|ui| mice_boxes(ui, devices.as_deref()));
-            ui.add(div().flex_1().min_h_0().child(ScrollView::new("mouse-tab", &st.scroll).border(false).auto_hide(true).child(div().flex().flex_col().gap(px(m::SPACING)).children(items))));
+            // (As many mice as there are: the window grows to them,
+            // `panel::Fit`.)
+            mice_boxes(ui, devices.as_deref());
         }
     });
     let pick = ui.on_view(|v, i: usize, _, cx| {
@@ -147,7 +147,11 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     });
     let tabs: Vec<SharedString> = ["Touchpad", "Touch", "Gestures", "Mouse"].into_iter().map(SharedString::from).collect();
     ui.add(
-        div().flex_1().min_h_0().child(TabView::new("touchpad-tabs", tabs, st.tab).on_select(pick).child(div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items))),
+        div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .child(TabView::new("touchpad-tabs", tabs, st.tab).grows().on_select(pick).child(div().flex_1().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items))),
     );
 }
 

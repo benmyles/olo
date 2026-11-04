@@ -1625,15 +1625,16 @@ impl Terminal {
 
     fn sudo_event(&mut self, cx: &mut Cx, e: sudo::Event) {
         match e {
-            sudo::Event::Begin { conn, pid, stream, args, tty, approval } => {
+            sudo::Event::Begin { conn, pid, stream, args, tty, quiet, approval } => {
                 let (tab, who) = self.requester(pid);
                 let title = tab.and_then(|(id, i)| match self.windows.get(&id) {
                     Some(Win::Term(t)) => Some(t.tabs[i].current_title()),
                     _ => None,
                 });
                 let mut r = sudo::Request::new(conn, stream, &args, who, title);
+                r.quiet = quiet;
                 // Typed at a shell, with the window turned off: there.
-                if tty && !self.settings.sudo_window {
+                if tty && !self.settings.sudo_window && !quiet {
                     return r.reply(&sudo_wire::Reply::Pass);
                 }
                 r.reply(&sudo_wire::Reply::Go);
@@ -1662,6 +1663,10 @@ impl Terminal {
                         let mut note = Note::new(title).body(what);
                         note.silent = true;
                         self.notifier.show(None, note);
+                    }
+                    sudo::Approved::AskPerson if r.quiet => {
+                        tracing::warn!(what = r.summary(), "sudo -n approved without asking: the password didn't do");
+                        r.reply(&sudo_wire::Reply::Cancel);
                     }
                     sudo::Approved::AskPerson => {
                         tracing::warn!(what = r.summary(), "sudo approved without asking: the password didn't do; asking");

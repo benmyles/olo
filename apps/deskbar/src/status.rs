@@ -65,6 +65,12 @@ pub struct Status {
     pub airpods: Option<olo_protocol::airpods::AirPods>,
     /// Voice processing's settings (olo-voice's), for the speaker's menu.
     pub voice: olo_protocol::voice::Settings,
+    /// The power modes (the power profiles daemon's), for the battery's
+    /// menu.
+    pub power_modes: Option<olo_system::power_profile::Modes>,
+    /// What Olo Doctor last found: its bag in the tray while there is
+    /// something to fix.
+    pub doctor: olo_protocol::doctor::DoctorFound,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -170,7 +176,8 @@ fn run_audio(req: AudioRequest) {
 /// Make `name` where sound goes or comes from (off the UI thread).
 pub fn set_default_device(kind: audio::Kind, name: String) {
     std::thread::spawn(move || {
-        if let Err(e) = audio::set_default(kind, &name) {
+        let set = if kind == audio::Kind::Output && name == audio::NO_OUTPUT { audio::set_no_output() } else { audio::set_default(kind, &name) };
+        if let Err(e) = set {
             tracing::warn!("sound server: {e}");
         }
     });
@@ -208,10 +215,23 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     // The battery and Wi-Fi as UPower and NetworkManager say they
     // change (nothing polled).
     let on_battery = shared.clone();
+    // None as the sound output, as chosen before: the sound server forgot
+    // its silent output when the last session ended, so it's made again.
+    if olo_protocol::sound::SoundChoice::load().no_output {
+        std::thread::spawn(|| {
+            if let Err(e) = audio::set_no_output() {
+                tracing::warn!("sound server: no output: {e}");
+            }
+        });
+    }
     olo_system::battery::watch(move |b| {
         let battery = b.map(|b| Battery { percent: b.percent, charging: b.charging() });
         publish(&on_battery, |s| s.battery = battery);
     });
+    // The power mode, as the daemon's signals say (a ThinkPad's Fn keys,
+    // Preferences ▸ Power).
+    let on_modes = shared.clone();
+    olo_system::power_profile::watch(move |m| publish(&on_modes, |s| s.power_modes = m));
     let on_wifi = shared.clone();
     if let Err(e) = olo_system::network::watch_wifi(move |w| {
         let wifi = w.map(|w| Wifi { ssid: w.ssid, signal: w.strength });
@@ -224,10 +244,11 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     let (perf, supervising) = (PerformanceSettings::path(), SupervisorState::path());
     let pods = olo_protocol::airpods::AirPodsState::path();
     let voice = olo_protocol::voice::Settings::path();
+    let doctor = olo_protocol::doctor::DoctorFound::path();
     let installed = olo_xdg::find_program("olo-supervisor").is_some();
     let read = {
         let (notes, screens, upgrades, sharing, shared) = (notes.clone(), screens.clone(), upgrades.clone(), sharing.clone(), shared.clone());
-        let (perf, supervising, pods, voice) = (perf.clone(), supervising.clone(), pods.clone(), voice.clone());
+        let (perf, supervising, pods, voice, doctor) = (perf.clone(), supervising.clone(), pods.clone(), voice.clone(), doctor.clone());
         move |changed: &[PathBuf]| {
             let all = changed.is_empty();
             // The screens' folder also has viewers' frames going through
@@ -238,6 +259,7 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
             let shares = (all || changed.contains(&sharing)).then(|| olo_protocol::SharingState::load().shares);
             let airpods = (all || changed.contains(&pods)).then(|| olo_protocol::airpods::AirPodsState::load().connected().cloned());
             let voice_settings = (all || changed.contains(&voice)).then(olo_protocol::voice::Settings::load);
+            let found = (all || changed.contains(&doctor)).then(olo_protocol::doctor::DoctorFound::load);
             let supervisor =
                 (installed && (all || changed.contains(&perf) || changed.contains(&supervising))).then(|| Supervisor { on: PerformanceSettings::load().enabled, state: SupervisorState::load() });
             publish(&shared, |s| {
@@ -246,6 +268,9 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
                 }
                 if let Some(v) = voice_settings {
                     s.voice = v;
+                }
+                if let Some(f) = found {
+                    s.doctor = f;
                 }
                 if supervisor.is_some() {
                     s.supervisor = supervisor;
@@ -269,7 +294,7 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     read(&[]);
     let read = Arc::new(read);
     let on_change = read.clone();
-    if let Some(w) = olo_ui::watch::watch([notes, screens, upgrades, sharing, perf, supervising, pods, voice], move |changed| on_change(changed)) {
+    if let Some(w) = olo_ui::watch::watch([notes, screens, upgrades, sharing, perf, supervising, pods, voice, doctor], move |changed| on_change(changed)) {
         // Deskbar's for as long as it runs.
         std::mem::forget(w);
     }

@@ -1,20 +1,25 @@
 //! Keyboard: layout, the keyboard profile (Mac, Windows or BeOS keys:
 //! the command key, Caps Lock as Ctrl, a tap of the Super key for the
 //! palette, and every shortcut, in the Shortcuts tab, shortcuts.rs), key
-//! repeat, hints, the backlight. A platform's profile changed becomes
+//! repeat, hints, the backlight; and each keyboard's own (Keyboards: Alt
+//! and the Windows key swapped on a PC keyboard, for a Mac's ⌘ where Alt
+//! is, not on an Apple one). A platform's profile changed becomes
 //! "Mac (Customized)" by itself; Save As keeps one under a name of its
 //! own, to pick again.
 
-use std::time::{Duration, Instant};
+use std::{
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 
-use olo_protocol::{CommandKey, KeyboardProfile, Platform, PowerStatus, Settings};
+use olo_protocol::{Client, CommandKey, Event, EventKind, KeyboardProfile, Platform, PowerStatus, Reply, Request, Settings};
 use olo_ui::{
     gpui::{Context, Entity, ParentElement as _, SharedString, Styled as _, div, px},
     metrics as m,
     widgets::{Button, MenuField, Slider, TabView, TextControl, TextField},
 };
 
-use crate::{PanelView, form::Ui, panel, server::Server};
+use crate::{Msg, PanelView, form::Ui, panel, server::Server};
 
 pub struct State {
     test: Entity<TextField>,
@@ -22,12 +27,15 @@ pub struct State {
     backlight: Option<(f32, Instant)>,
     tab: usize,
     pub shortcuts: crate::shortcuts::State,
+    /// The keyboards plugged in (app_server's `Request::Keyboards`, again
+    /// as they come and go): None until it says.
+    keyboards: Arc<Mutex<Option<Vec<String>>>>,
 }
 
 impl State {
     pub fn new(cx: &mut Context<PanelView>) -> State {
         let test = olo_ui::widgets::text_field(cx, |f| f.hint("Type here to try the settings"));
-        State { test, backlight: None, tab: 0, shortcuts: crate::shortcuts::State::new(cx) }
+        State { test, backlight: None, tab: 0, shortcuts: crate::shortcuts::State::new(cx), keyboards: watch_keyboards(olo_ui::proxy(cx)) }
     }
 }
 
@@ -62,10 +70,100 @@ const LAYOUTS: &[(&str, &str)] = &[
     ("jp", "Japanese"),
 ];
 
+/// The keyboards plugged in, kept up to date on a thread (subscribed to
+/// app_server's device events before asking, as Touchpad's devices are).
+fn watch_keyboards(proxy: olo_ui::Proxy) -> Arc<Mutex<Option<Vec<String>>>> {
+    let shared: Arc<Mutex<Option<Vec<String>>>> = Default::default();
+    // Tests (the layout lint): a laptop's and an Apple one, named as they come.
+    if cfg!(test) {
+        *shared.lock().unwrap() = Some(vec![BUILT_IN.into(), "Apple Inc. Magic Keyboard with Touch ID and Numeric Keypad".into()]);
+        return shared;
+    }
+    let out = Arc::downgrade(&shared);
+    std::thread::Builder::new()
+        .name("keyboards".into())
+        .spawn(move || {
+            loop {
+                let events = Client::connect().ok().and_then(|c| c.into_events_of(&[EventKind::InputDevices]).ok());
+                let mut ask = || {
+                    let names = Client::connect().ok().and_then(|mut c| match c.request(&Request::Keyboards) {
+                        Ok(Reply::Keyboards { names }) => Some(names),
+                        _ => None,
+                    });
+                    let Some(shared) = out.upgrade() else { return false };
+                    let mut slot = shared.lock().unwrap();
+                    if names.is_some() && *slot != names {
+                        *slot = names;
+                        proxy.send(Msg::Redraw);
+                    }
+                    true
+                };
+                if !ask() {
+                    return;
+                }
+                for e in events.into_iter().flatten() {
+                    let Ok(Event::InputDevicesChanged { .. }) = e else { break };
+                    if !ask() {
+                        return;
+                    }
+                }
+                if out.strong_count() == 0 {
+                    return;
+                }
+                // app_server went (a restart): connect again once it's back.
+                std::thread::sleep(Duration::from_secs(1));
+            }
+        })
+        .expect("thread");
+    shared
+}
+
+/// A laptop's own keyboard, as the kernel names it (PS/2, through the
+/// keyboard controller).
+const BUILT_IN: &str = "AT Translated Set 2 keyboard";
+
+/// What to call a keyboard.
+fn keyboard_name(name: &str) -> String {
+    if name == BUILT_IN { "Built-in Keyboard".into() } else { name.to_owned() }
+}
+
+/// Each keyboard's own settings: Alt and the Windows key swapped, or not
+/// (a check box for each, by name).
+fn keyboards(ui: &mut Ui, st: &State) {
+    let plugged = st.keyboards.lock().unwrap().clone();
+    let Some(plugged) = plugged else {
+        ui.note("Reading…");
+        return;
+    };
+    let swapped = ui.s.keyboard.swap_alt_super.clone();
+    // Those plugged in, then those set up and away (to undo).
+    let mut all: Vec<(String, bool)> = plugged.iter().map(|n| (n.clone(), true)).collect();
+    all.extend(swapped.iter().filter(|n| !plugged.contains(n)).map(|n| (n.clone(), false)));
+    if all.is_empty() {
+        ui.note("No keyboards are plugged in.");
+        return;
+    }
+    ui.bbox("Swap Alt and the Windows Key", |ui| {
+        for (name, here) in all {
+            let label = if here { keyboard_name(&name) } else { format!("{} (not connected)", keyboard_name(&name)) };
+            let key = name.clone();
+            ui.check(label, swapped.contains(&name), move |s, v| {
+                let list = &mut s.keyboard.swap_alt_super;
+                list.retain(|n| *n != key);
+                if v {
+                    list.push(key.clone());
+                }
+            });
+        }
+    });
+    ui.note("On a PC keyboard, Alt is where a Mac's ⌘ is: swapped, the key beside the space bar is ⌘ (with the Mac profile) and the Windows key is Option. Each keyboard keeps its own setting, so an Apple keyboard plugged in stays as it is.");
+}
+
 pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut State) {
     let items = ui.collect(|ui| match st.tab {
         0 => keyboard(ui, power, server, st),
-        _ => crate::shortcuts::ui(ui, server, &mut st.shortcuts),
+        1 => crate::shortcuts::ui(ui, server, &mut st.shortcuts),
+        _ => keyboards(ui, st),
     });
     let pick = ui.on_view(|v, i: usize, _, cx| {
         if let Some(st) = state_of(v) {
@@ -73,9 +171,13 @@ pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut St
         }
         cx.notify();
     });
-    let tabs: Vec<SharedString> = ["Keyboard", "Shortcuts"].into_iter().map(SharedString::from).collect();
+    let tabs: Vec<SharedString> = ["Keyboard", "Shortcuts", "Keyboards"].into_iter().map(SharedString::from).collect();
     ui.add(
-        div().flex_1().min_h_0().child(TabView::new("keyboard-tabs", tabs, st.tab).on_select(pick).child(div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items))),
+        div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .child(TabView::new("keyboard-tabs", tabs, st.tab).grows().on_select(pick).child(div().flex_1().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items))),
     );
 }
 

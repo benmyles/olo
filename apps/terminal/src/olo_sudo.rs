@@ -9,8 +9,9 @@
 //! has it, then the password), passing on what sudo says and the answer.
 //! Then the command runs on the credential sudo just cached: the
 //! terminal's, or with no terminal, its parent process's (so we stay the
-//! parent). Whatever we can't help with (no Terminal, `-n`, `-S`, `-A`,
-//! `-k`, …) goes straight to sudo. The password only ever goes to a sudo
+//! parent). Whatever we can't help with (no Terminal, `-S`, `-A`, `-k`,
+//! …) goes straight to sudo; `-n` (never ask) is let in only while
+//! Deskbar approves without asking, with no window either way. The password only ever goes to a sudo
 //! that is root's and set-user-ID.
 
 mod sudo_wire;
@@ -45,13 +46,14 @@ fn main() -> ExitCode {
         eprintln!("sudo: command not found");
         return ExitCode::from(127);
     };
-    let Some(socket) = std::env::var_os(SOCKET_ENV).filter(|_| !passes_through(&args)) else { return exec(&sudo, &args) };
+    let through = passes_through(&args);
+    let Some(socket) = std::env::var_os(SOCKET_ENV).filter(|_| through != Through::Yes) else { return exec(&sudo, &args) };
     // Nothing to ask: a credential still cached, or none needed.
     if validates_quietly(&sudo) {
         return run(&sudo, &args);
     }
     let Ok(stream) = UnixStream::connect(&socket) else { return exec(&sudo, &args) };
-    match ask(&sudo, stream, &args) {
+    match ask(&sudo, stream, &args, through == Through::NeverAsk) {
         Outcome::Yes => run(&sudo, &args),
         Outcome::Pass => exec(&sudo, &args),
         Outcome::No(code) => ExitCode::from(code),
@@ -74,32 +76,47 @@ fn real_sudo() -> Option<PathBuf> {
         .find(|p| std::fs::metadata(p).is_ok_and(|md| md.is_file() && md.uid() == 0 && md.mode() & libc::S_ISUID != 0) && p.canonicalize().ok() != me)
 }
 
-/// sudo reads its password some other way with these options, or asks
-/// for none (scanning the options before the command).
-fn passes_through(args: &[OsString]) -> bool {
+/// What sudo's options (those before the command) leave to us.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Through {
+    /// Nothing: we may ask in a window.
+    No,
+    /// `-n`: never ask anyone. Only approval without asking lets it in.
+    NeverAsk,
+    /// sudo reads its password some other way, or asks for none.
+    Yes,
+}
+
+fn passes_through(args: &[OsString]) -> Through {
     if args.len() == 1 && args[0] == "-h" {
-        return true;
+        return Through::Yes;
     }
-    let mut value_next = false;
+    let (mut value_next, mut never_ask) = (false, false);
+    let found = |never_ask: bool| if never_ask { Through::NeverAsk } else { Through::No };
     for a in args {
         if std::mem::take(&mut value_next) {
             continue;
         }
-        let Some(a) = a.to_str() else { return false };
+        let Some(a) = a.to_str() else { return found(never_ask) };
         if a == "--" || !a.starts_with('-') || a == "-" {
-            return false;
+            return found(never_ask);
         }
         if let Some(long) = a.strip_prefix("--") {
             let name = long.split('=').next().unwrap_or_default();
-            if matches!(name, "non-interactive" | "stdin" | "askpass" | "reset-timestamp" | "remove-timestamp" | "help" | "version") {
-                return true;
+            if name == "non-interactive" {
+                never_ask = true;
+                continue;
+            }
+            if matches!(name, "stdin" | "askpass" | "reset-timestamp" | "remove-timestamp" | "help" | "version") {
+                return Through::Yes;
             }
             value_next = !long.contains('=') && matches!(name, "close-from" | "chdir" | "group" | "host" | "prompt" | "chroot" | "role" | "type" | "command-timeout" | "other-user" | "user");
             continue;
         }
         for (i, ch) in a[1..].char_indices() {
             match ch {
-                'n' | 'S' | 'A' | 'k' | 'K' | 'V' => return true,
+                'n' => never_ask = true,
+                'S' | 'A' | 'k' | 'K' | 'V' => return Through::Yes,
                 // The rest of the word, else the next, is its value.
                 'C' | 'D' | 'g' | 'h' | 'p' | 'R' | 'r' | 't' | 'T' | 'U' | 'u' => {
                     value_next = i + 2 == a.len();
@@ -109,7 +126,7 @@ fn passes_through(args: &[OsString]) -> bool {
             }
         }
     }
-    false
+    found(never_ask)
 }
 
 fn has_tty() -> bool {
@@ -232,14 +249,15 @@ fn read_reply(r: &mut impl BufRead) -> Option<Reply> {
     }
 }
 
-/// Ask in a window: Terminal shows it while `sudo -v` checks.
-fn ask(sudo: &Path, stream: UnixStream, args: &[OsString]) -> Outcome {
+/// Ask in a window: Terminal shows it while `sudo -v` checks. `quiet`
+/// (`-n`): only if approved without asking, never in a window.
+fn ask(sudo: &Path, stream: UnixStream, args: &[OsString], quiet: bool) -> Outcome {
     let Ok(mut out) = stream.try_clone() else { return Outcome::Pass };
     let mut say = move |a: Ask| {
         let _ = out.write_all(&sudo_wire::line(&a));
     };
     let mut replies = BufReader::new(stream);
-    let begin = Ask::Begin { args: args.iter().map(|a| a.to_string_lossy().into_owned()).collect(), cwd: std::env::current_dir().ok(), tty: has_tty() };
+    let begin = Ask::Begin { args: args.iter().map(|a| a.to_string_lossy().into_owned()).collect(), cwd: std::env::current_dir().ok(), tty: has_tty(), quiet };
     say(begin);
     if read_reply(&mut replies) != Some(Reply::Go) {
         return Outcome::Pass;
@@ -343,18 +361,32 @@ mod tests {
     use super::*;
 
     fn through(args: &[&str]) -> bool {
-        passes_through(&args.iter().map(OsString::from).collect::<Vec<_>>())
+        passes_through(&args.iter().map(OsString::from).collect::<Vec<_>>()) == Through::Yes
+    }
+
+    fn never_ask(args: &[&str]) -> bool {
+        passes_through(&args.iter().map(OsString::from).collect::<Vec<_>>()) == Through::NeverAsk
+    }
+
+    #[test]
+    fn non_interactive_waits_on_approval() {
+        assert!(never_ask(&["-n", "true"]));
+        assert!(never_ask(&["--non-interactive", "ls"]));
+        assert!(never_ask(&["-u", "root", "-n", "ls"]));
+        assert!(never_ask(&["-n", "-u", "root", "ls"]));
+        // With -S as well, sudo reads the password itself.
+        assert!(through(&["-nS", "ls"]));
+        assert!(through(&["-n", "-k"]));
+        assert!(!never_ask(&["ls", "-n"]));
+        assert!(!never_ask(&["--", "-n"]));
     }
 
     #[test]
     fn options_sudo_answers_itself() {
-        assert!(through(&["-n", "true"]));
         assert!(through(&["-S", "ls"]));
         assert!(through(&["-nS", "ls"]));
-        assert!(through(&["--non-interactive", "ls"]));
         assert!(through(&["-k"]));
         assert!(through(&["-h"]));
-        assert!(through(&["-u", "root", "-n", "ls"]));
         assert!(!through(&["ls", "-n"]));
         assert!(!through(&["dnf", "install", "-y", "foo"]));
         assert!(!through(&["-u", "postgres", "psql"]));

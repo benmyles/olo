@@ -582,6 +582,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
             }
             Request::InputDevices => Reply::InputDevices { devices: self.backend_data.input_devices() },
+            Request::Keyboards => Reply::Keyboards { names: self.backend_data.keyboards() },
             Request::PowerStatus => Reply::Power { status: self.power_status() },
             Request::Lock => {
                 self.lock_screen();

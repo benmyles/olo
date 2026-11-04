@@ -286,6 +286,10 @@ fn on_input_event(data: &mut AnvilState<UdevData>, mut event: InputEvent<Libinpu
                 device.led_update(led_state.into());
             }
             data.backend_data.keyboards.push(device.clone());
+            // (Preferences ▸ Keyboard follows the keyboards too.)
+            if !device.has_capability(DeviceCapability::Pointer) {
+                data.ipc.broadcast(olo_protocol::Event::InputDevicesChanged { devices: data.backend_data.input_devices() });
+            }
         }
         if device.has_capability(DeviceCapability::Pointer) {
             if let Some(settings) = &data.backend_data.input_settings {
@@ -295,7 +299,11 @@ fn on_input_event(data: &mut AnvilState<UdevData>, mut event: InputEvent<Libinpu
             data.ipc.broadcast(olo_protocol::Event::InputDevicesChanged { devices: data.backend_data.input_devices() });
         }
     } else if let InputEvent::DeviceRemoved { ref device } = event {
+        let keyboards = data.backend_data.keyboards.len();
         data.backend_data.keyboards.retain(|item| item != device);
+        if data.backend_data.keyboards.len() != keyboards && !device.has_capability(DeviceCapability::Pointer) {
+            data.ipc.broadcast(olo_protocol::Event::InputDevicesChanged { devices: data.backend_data.input_devices() });
+        }
         let pointers = data.backend_data.pointers.len();
         data.backend_data.pointers.retain(|item| item != device);
         if data.backend_data.pointers.len() != pointers {
@@ -547,6 +555,14 @@ impl Backend for UdevData {
 
     fn input_devices(&self) -> Vec<olo_protocol::touchpad::InputDeviceInfo> {
         self.pointers.iter().map(device_info).collect()
+    }
+
+    fn keyboards(&self) -> Vec<String> {
+        // (KEY_A: a keyboard to type on.)
+        let mut names: Vec<String> = self.keyboards.iter().filter(|d| d.keyboard_has_key(30) == Ok(true)).map(|d| d.name().to_string()).collect();
+        names.sort();
+        names.dedup();
+        names
     }
 
     fn set_mode(&mut self, output: &Output, mode: WlMode) -> Result<(), String> {

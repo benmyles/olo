@@ -296,7 +296,13 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         cx.notify();
     });
     let tabs: Vec<SharedString> = ["Wi-Fi", "Details"].into_iter().map(SharedString::from).collect();
-    ui.add(div().flex_1().min_h_0().child(TabView::new("network-tabs", tabs, st.tab).on_select(pick).child(div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items))));
+    ui.add(
+        div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .child(TabView::new("network-tabs", tabs, st.tab).grows().on_select(pick).child(div().flex_1().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items))),
+    );
 }
 
 // ---- Wi-Fi ---------------------------------------------------------------------
@@ -464,7 +470,8 @@ const SHEET_DIVIDER: f32 = 132.0;
 /// The sheet for joining `net` (one per network: an open one comes forward).
 fn open_sheet(link: &'static Link, device: String, net: Network, cx: &mut App) {
     let title = format!("Join “{}”", net.ssid);
-    let options = WindowOptions::new(title, SHEET_WIDTH, sheet_height(nm::Eap::ALL[0], 0)).min_size(SHEET_WIDTH, 200.0).dialog();
+    // (As tall as its rows: they come and go with the method chosen.)
+    let options = WindowOptions { fixed: true, ..WindowOptions::new(title, SHEET_WIDTH, 200.0).dialog() };
     let _ = olo_ui::open_window(cx, options, move |window, cx| {
         window.activate_window();
         cx.new(|cx| {
@@ -500,17 +507,6 @@ fn open_sheet(link: &'static Link, device: String, net: Network, cx: &mut App) {
             }
         })
     });
-}
-
-/// The window height its rows need (they change with the method).
-fn sheet_height(eap: nm::Eap, ca: usize) -> f32 {
-    let rows = match (eap, ca) {
-        (nm::Eap::Tls, 1) => 10,
-        (nm::Eap::Tls, _) => 9,
-        (_, 1) => 9,
-        _ => 8,
-    };
-    (rows as f32 * (m::CONTROL_HEIGHT + m::SPACING) + m::SPACING * 2.0 + m::CONTROL_HEIGHT + 2.0 * m::WINDOW_INSET).round()
 }
 
 impl EnterpriseForm {
@@ -583,11 +579,6 @@ impl Render for EnterpriseForm {
             return div();
         }
         let eap = nm::Eap::ALL[self.eap.min(2)];
-        // As tall as its rows.
-        let want = sheet_height(eap, self.ca);
-        if (f32::from(window.viewport_size().height) - want).abs() > 0.5 {
-            window.resize(size(px(SHEET_WIDTH), px(want)));
-        }
         let me = cx.weak_entity();
         let set = move |f: fn(&mut EnterpriseForm, usize)| {
             let me = me.clone();

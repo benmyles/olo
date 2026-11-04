@@ -1,0 +1,7 @@
+# Olo: a second graphics card (NVIDIA's, AMD's) sleeps while nothing uses
+# it (PCI runtime power management), with its driver or without one: on
+# a hybrid laptop the card Olo doesn't draw with otherwise stays powered
+# the whole time. The card the computer started on is left as it is.
+# Installed by Olo Doctor and tools/install-session.sh.
+ACTION=="add|bind", SUBSYSTEM=="pci", ATTR{vendor}=="0x10de", ATTR{class}=="0x03*", ATTR{boot_vga}!="1", TEST=="power/control", ATTR{power/control}="auto"
+ACTION=="add|bind", SUBSYSTEM=="pci", ATTR{vendor}=="0x1002", ATTR{class}=="0x03*", ATTR{boot_vga}!="1", TEST=="power/control", ATTR{power/control}="auto"

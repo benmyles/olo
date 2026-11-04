@@ -77,8 +77,8 @@ pub fn ui(ui: &mut Ui, server: &Server, st: &mut State) {
         cx.notify();
     });
     let tabs: Vec<SharedString> = ["Fade", "Modules"].into_iter().map(SharedString::from).collect();
-    let content = if st.tab == 0 { div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)) } else { div().size_full().flex().flex_row().gap(px(m::SPACING * 2.0)).p(px(m::SPACING)) };
-    ui.add(div().flex_1().min_h_0().child(TabView::new("screensaver-tabs", tabs, st.tab).on_select(pick).child(content.children(items))));
+    let content = if st.tab == 0 { div().flex_1().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)) } else { div().flex_1().flex().flex_row().gap(px(m::SPACING * 2.0)).p(px(m::SPACING)) };
+    ui.add(div().flex_1().flex().flex_col().child(TabView::new("screensaver-tabs", tabs, st.tab).grows().on_select(pick).child(content.children(items))));
 }
 
 fn fade(ui: &mut Ui) {

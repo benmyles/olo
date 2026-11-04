@@ -7,6 +7,133 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
+- **The ThinkPad P1 Gen 9, on the machine: everything in it first-class**
+  (Ben, 2026-11-03, now running Olo on it: "olo doesn't recognize my
+  builtin display. please fix." then "please do a full audit on all my
+  hardware and add first-class olo support for it all", with each
+  finding as a high-priority item here). The audit (lspci, lsusb,
+  /proc/bus/input, sysfs, the kernel log, app_server's own report):
+  - **The touch screen** (Wacom HID 53DD, Finger and Pen, on eDP-1):
+    app_server maps touches to the built-in display, but GPUI has no
+    `wl_touch`, so a touch on any Olo app, or on app_server's own
+    frames and tabs, does nothing. Touch should work everywhere: as the
+    pointer for clients without touch (and the frames), as touch for
+    those with it (Chrome, GTK), with the pen as a tablet tool.
+  - **The panel is an OLED** (Samsung Display ATNA60KA02, 3200 × 2000,
+    239 ppi, 60/120 Hz): Display said "LCD (Olo's guess)" and RGB
+    stripes. Then its HDR 600, P3 and VRR (40–120 Hz) to support.
+  - **Preferences' windows didn't fit at 200 %** (Ben's screenshot of
+    Display: a 658-point window scrolling a 804-point panel, its scroll
+    bar against the boxes, the bottom cut off), and **the layout lint
+    passed it**: a panel's own scroll view hid what ran past it, and
+    the lint ran on a MacBook's screen with made-up devices. Ben:
+    "make sure the linter is reliable regardless of the screen size",
+    "do that for all of the prefs they should all adapt as needed", and
+    "make sure all olo apps -- not just preferences -- follow this
+    adaptive pattern too and make it a rule in the agent
+    docs/instructions".
+  - **Power modes** (Ben: "in prefs -> performance we need the ability
+    to set the mode to e.g. Performance or Power Saving and that should
+    change the default cpu governers and anything else relevant", then
+    "just move it to the Power prefs app and then just have a button to
+    open / go to power from in performance", and "by right clicking the
+    battery icon in the tray"). tuned-ppd serves the power profiles API
+    here (intel_pstate's energy preference, the ThinkPad's ACPI
+    platform profile, tuned's settings).
+  - **The built-in speakers and microphones don't exist**: SOF finds
+    the cs42l43 codec and two CS35L57 amplifiers on SoundWire link 2,
+    then "No SoundWire machine driver found for the ACPI-reported
+    configuration" and "CODEC DAI cs35l56-ot25 not registered": no
+    sound card but the NVIDIA HDMI one. A kernel gap (kernel
+    7.2.11-300.fc45); Olo Doctor should say so plainly, with what to do.
+  - **The NVIDIA GPU (RTX PRO 2000 Blackwell, GB206)**: nouveau's GSP
+    fails ("gsp: init failed, -22"), so no driver has it, and with
+    `power/control` "on" it stays powered (D0) the whole time, draining
+    the battery. Doctor: let it sleep (runtime power management) with a
+    button; say what's needed to use it (NVIDIA's open driver).
+  - **The ThinkPad's keys**: the microphone mute key (F4, KEY_MICMUTE,
+    with its LED, `platform::micmute`) does nothing in Olo; and the
+    rest of the Fn row (F7 display switch, F8 airplane mode, F9–F12) to
+    look at, with Fn+L/M/H (the firmware's power modes, which the power
+    mode follows).
+  - **The palm trainer doesn't work with this touchpad** (Ben: "the
+    palm trainer doesn't work with the touchpad on this"): a Goodix
+    GXTP5420 (27C6:0F90) over I2C, 133 × 86 mm, with pressure.
+  - Also on it: the TrackPoint (shown as "PS/2 Logitech Mouse"),
+    the IR camera (face sign-in), the proximity sensor (hid_sensor_prox
+    fails to probe), the fingerprint reader (Synaptics 06cb:00f9:
+    fprintd has it), the keyboard backlight and ThinkLight LEDs
+    (`tpacpi::kbd_backlight`), battery charge thresholds
+    (`charge_control_*_threshold`, `charge_behaviour`), Thunderbolt 5.
+  - **sudo -n** with Approve Without Asking on: refused, as olo-sudo
+    passed `-n` straight to sudo. Agents use `-n` so as never to wait.
+  - **The dev tools on a new machine**: `tsession` needs busd, which
+    nothing built (`tools/dev/busd-lenient` by hand).
+  *Status* (2026-11-04), done, built and installed on the ThinkPad
+  (Ben: "just do the upgrade for me this time"):
+  - Touch screen: a finger is the pointer where touch isn't taken (Olo's
+    apps, app_server's frames), touch where it is; `SyntheticEvent::Touch`
+    and `tsession touch`/`touchdrag` for agents and tests. Left: try it
+    on the panel (headless only so far); gestures (two-finger scroll,
+    pinch) for apps without touch; hide the pointer while touching; the
+    pen's pressure in Olo's apps.
+  - The panel: Samsung's ATNA panels are OLED (`OLED_PANELS`), so no
+    stripes. Left: HDR, P3 and the panel's calibration; VRR 40–120 Hz.
+  - Windows fit what they show: `WindowOptions::fits_content` in the
+    kit (every alert and dialog, Preferences' panels, Drive Setup's forms,
+    the network sheet), `TabView::grows`, whole-panel scroll views gone,
+    Display side by side, Performance in two tabs; the lint on a
+    1280 × 800 screen, following windows that resize themselves;
+    `ui-lint --screen`; the rule in CLAUDE.md and HACKING. Left: the
+    live lint's findings on every app at 1280 × 800 (being run).
+  - Power modes: Preferences ▸ Power (and a button there from
+    Performance), Deskbar's battery menu; through tuned-ppd's power
+    profiles API, following Fn+L/M/H.
+  - Olo Doctor: the NVIDIA card kept awake (fixed here: D0 → D3cold),
+    NVIDIA's driver to install (akmod-nvidia, PackageKit), built-in
+    sound with no driver (kernel 7.2.15 and firmware updates offered),
+    with progress; a look at login and every 15 minutes; its bag in
+    Deskbar's tray while there's something to fix. Left: Ben to press
+    Install Driver Updates and see whether 7.2.15 brings the speakers;
+    else a kernel bug report for the P1 Gen 9 (17aa:235c, cs42l43 +
+    2× CS35L57 on SoundWire link 2).
+  - Sound: None as the output (the Sonos isn't forced on), kept across
+    logins.
+  - The microphone key (F4) mutes the microphone in use, shown on
+    screen. Left: its LED (`platform::micmute`, root-owned), F7–F12.
+  - Alt and the Windows key swapped per keyboard (Ben: "the alt key on
+    the thinkpad is where the cmd key is on a mac", then "that needs to
+    be a per keyboard option ... i have an external mac keyboard where
+    it shouldn't swap"): Preferences ▸ Keyboard ▸ Keyboards. Left: try
+    it on the ThinkPad's keyboard and the Mac one.
+  - `sudo -n` goes through while approving without asking.
+  - Passwords couldn't open ("Couldn't keep the key in the login
+    keyring: … /org/freedesktop/secrets/collection/login"): this
+    computer's login made no login keyring (gnome-keyring started with
+    no default collection). `secrets::store` now makes it, as GNOME
+    does, its password asked for. Left: a login keyring made and
+    unlocked at login (PAM), and a Doctor check for it.
+  - The palette opened on files: ⌘ Space's ⌘ (Ctrl to apps), let go
+    after the palette opened, counted as a tap of Ctrl. A tap now counts
+    only once Ctrl has been up since it opened; files are searched only
+    while they're shown.
+  - tsession builds busd itself on a new machine.
+  - Deskbar crashed on its first start after the upgrade (Doctor's tray
+    item uncounted): fixed, an uncounted item can't crash it again, and
+    olo-session now starts a service it gave up on again when an
+    upgrade comes.
+  - The palm trainer on this touchpad: found why. app_server reads a
+    pad's raw contacts only for Apple's (`touch_filter::DEVICES`, "Apple
+    MTP"), and `contacts::Watch::new` needs ABS_MT_TOUCH_MAJOR; the
+    Goodix GXTP5420 reports position, pressure, tracking id and
+    ABS_MT_TOOL_TYPE (its firmware marks palms, MT_TOOL_PALM) but no
+    contact size, so the trainer never hears a touch. To do: watch every
+    touchpad libinput opens, contacts without a size (pressure and the
+    tool type instead), and the palm model and the trainer for such
+    pads (the firmware's palm flag as a feature).
+  - Left, not started: the TrackPoint's settings, the IR camera (face sign-in),
+    the proximity sensor, battery charge thresholds, Thunderbolt 5.
+
 - **The palm trainer, full screen and driven from the keyboard** (Ben,
   2026-11-02, with a screenshot of its last step, "Try it", at 2× in
   dark mode): "so the training modal/flow needs work: for one i can't

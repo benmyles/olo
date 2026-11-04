@@ -3028,5 +3028,29 @@
   "title": "Terminal: a slim scroll bar, there when wanted",
   "caption": "The kit's SlimScrollBar over the scrollback's right edge: shown when the pointer comes near or the view scrolls, wider under the pointer, fading a moment after; its thumb drags and its track pages.",
   "image": "2026-11-03/224620-terminal-a-slim-scroll-bar-there-when-wanted.png"
+ },
+ {
+  "time": "2026-11-04T00:08:48",
+  "title": "Display: settings beside the panel, the window as tall as both",
+  "caption": "At 200 % on the ThinkPad's 3200 \u00d7 2000 panel, Display was a 658-point window scrolling an 804-point panel, its scroll bar against the boxes. Now the display's settings and its panel's facts are side by side, in a window that follows what it shows (fits_content), on every screen down to 1280 \u00d7 800.",
+  "image": "2026-11-04/000848-display-settings-beside-the-panel-the-window-as-.png"
+ },
+ {
+  "time": "2026-11-04T00:09:33",
+  "title": "Power: the power mode",
+  "caption": "Performance, Balanced or Power Saver, through the power profiles daemon (tuned-ppd here): the processors' energy preference, the ThinkPad's platform profile. Also in Deskbar's battery menu; Performance has a button here.",
+  "image": "2026-11-04/000933-power-the-power-mode.png"
+ },
+ {
+  "time": "2026-11-04T00:09:33",
+  "title": "Performance in two tabs, the thresholds two by two",
+  "caption": "It was 1,220 points tall in a scroll view of its own; now Supervisor and Watchdog tabs, fitting a 1280 \u00d7 800 screen unscrolled.",
+  "image": "2026-11-04/000933-performance-in-two-tabs-the-thresholds-two-by-tw.png"
+ },
+ {
+  "time": "2026-11-04T00:09:34",
+  "title": "Deskbar: Olo Doctor's bag in the tray",
+  "caption": "Shown while Olo Doctor's last look (at login and every 15 minutes) found something to fix; a click opens it.",
+  "image": "2026-11-04/000934-deskbar-olo-doctor-s-bag-in-the-tray.png"
  }
 ]

@@ -92,6 +92,7 @@ impl Lint {
             let mut vcx = VisualTestContext::from_window(handle.into(), &self.cx);
             for &scale in SCALES {
                 vcx.set_scale_factor(scale);
+                settle(&mut vcx);
                 for (kind, text) in check(&mut vcx, handle.into()) {
                     found.push(Found { look, scale, kind, text });
                 }
@@ -118,6 +119,7 @@ impl Lint {
                     }
                     vcx.simulate_click(*at, gpui::Modifiers::default());
                     vcx.run_until_parked();
+                    settle(&mut vcx);
                     for (kind, text) in check(&mut vcx, handle.into()) {
                         found.push(Found { look, scale, kind, text: format!("{name} tab: {text}") });
                     }
@@ -125,7 +127,9 @@ impl Lint {
                     let (o, s) = crate::review::take_overflow(handle.window_id());
                     (over, slack) = (over.max(o), slack.min(s));
                 }
-                let height = options.size.1;
+                // (As tall as the window is now: one that sizes itself to
+                // what it shows has.)
+                let height = vcx.update(|window, _| f32::from(window.viewport_size().height));
                 let room = height - lowest;
                 if over > 0.5 {
                     let fits = (((height + over) / 2.0).ceil() * 2.0) as u32;
@@ -189,6 +193,20 @@ impl Lint {
         vcx.update(|window, _| window.remove_window());
         vcx.run_until_parked();
         out
+    }
+}
+
+/// A window that resized itself (to what it shows: `Window::resize`) is
+/// given that size, as a compositor gives it, and drawn again, until it
+/// rests.
+fn settle(vcx: &mut VisualTestContext) {
+    for _ in 0..4 {
+        let (asked, now) = vcx.update(|window, _| (window.bounds().size, window.viewport_size()));
+        if (asked.width - now.width).abs() < gpui::px(0.5) && (asked.height - now.height).abs() < gpui::px(0.5) {
+            return;
+        }
+        vcx.simulate_resize(asked);
+        vcx.run_until_parked();
     }
 }
 

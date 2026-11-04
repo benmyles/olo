@@ -66,6 +66,10 @@ fn outputs() -> Vec<OutputInfo> {
             false,
             Some(1),
         ),
+        // The smallest screen Olo is laid out for: 1280 × 800 points
+        // (a 13" laptop at 2×). Every panel's window fits it (`fits`:
+        // 736 tall), else it scrolls, which the lint finds.
+        display("HDMI-A-1", "Ancor Communications Inc", "ASUS VS228", (476, 268), vec![mode(1280, 800, 60_000)], 1.0, (-1280, 0), false, Some(-1)),
     ]
 }
 
@@ -76,8 +80,6 @@ fn prefs() -> Prefs {
         power: Some(PowerStatus { brightness: Some(0.62), keyboard_backlight: Some(0.4), ..Default::default() }),
         server: Server::detached(),
         windows: Vec::new(),
-        outputs_known: true,
-        waiting: Vec::new(),
     }
 }
 
@@ -91,7 +93,8 @@ fn ui_lint_every_panel() {
     for (&panel, every_reset) in panels.clone().map(|p| (p, false)).chain(panels.filter(|p| p.resettable()).map(|p| (p, true))) {
         crate::form::EVERY_RESET.with(|c| c.set(every_reset));
         let (w, h) = panel.size();
-        let options = WindowOptions::new(panel.title(), w as f32, h as f32);
+        // (As Preferences opens it: following what it shows.)
+        let options = WindowOptions::new(panel.title(), w as f32, h as f32).fits_content();
         // Room kept for what the lint doesn't draw.
         match panel {
             Panel::Integrations => lint.keeps_room(240.0, "Telegram's sign-in: a QR code to scan, and the code and password steps"),
@@ -182,7 +185,8 @@ fn ui_lint_settings_index() {
     let mut rows: Vec<(String, String, String, String, String)> = Vec::new();
     for &panel in Panel::ALL.iter().filter(|p| **p != Panel::About) {
         let (w, h) = panel.size();
-        let options = WindowOptions::new(panel.title(), w as f32, h as f32);
+        // (As Preferences opens it: following what it shows.)
+        let options = WindowOptions::new(panel.title(), w as f32, h as f32).fits_content();
         for (tab, nodes) in lint.trees(&options, move |window, cx| {
             let prefs = cx.new(|_| prefs());
             cx.new(|cx| PanelView::new(prefs, panel, Settings::default(), window, cx))
@@ -215,6 +219,9 @@ fn ui_lint_settings_index() {
                     continue;
                 }
                 let group = generic_group(&group);
+                // (Each keyboard's check box, by the made-up keyboards'
+                // names: one, as every computer has it.)
+                let name = if group == "Swap Alt and the Windows Key" { "This Keyboard".to_owned() } else { name };
                 let row = (panel.arg().to_owned(), tab.clone().unwrap_or_default(), group, name, n.role.clone());
                 if !rows.contains(&row) {
                     rows.push(row);

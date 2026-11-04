@@ -35,6 +35,10 @@ use smithay::{
 
 use smithay::backend::input::AbsolutePositionEvent;
 
+/// The left button (linux/input-event-codes.h), a finger on the touch
+/// screen being the pointer presses.
+const BTN_LEFT: u32 = 0x110;
+
 #[cfg(feature = "winit")]
 use smithay::output::Output;
 use tracing::{debug, error, info, warn};
@@ -105,6 +109,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     fn keyboard_key_to_action<B: InputBackend>(&mut self, evt: B::KeyboardKeyEvent) -> KeyAction {
         let key = evt.key_code().raw().saturating_sub(8);
+        // A keyboard whose Alt and Super change places (its own setting:
+        // a PC keyboard's, not an Apple one's on the same computer).
+        let swap = &self.settings.keyboard.swap_alt_super;
+        let key = if !swap.is_empty() && matches!(key, 56 | 100 | 125 | 126) && swap.contains(&evt.device().name()) { crate::keymap::swap_alt_super(key) } else { key };
         let pressed = evt.state() == KeyState::Pressed;
         self.physical_key(key, pressed, Event::time(&evt))
     }
@@ -500,11 +508,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     fn on_pointer_button<B: InputBackend>(&mut self, evt: B::PointerButtonEvent) {
+        self.pointer_button(evt.button_code(), wl_pointer::ButtonState::from(evt.state()), evt.time());
+    }
+
+    /// A pointer button pressed or let go: a mouse's, a touchpad's, or a
+    /// finger on the touch screen being the pointer.
+    fn pointer_button(&mut self, button: u32, state: wl_pointer::ButtonState, time: InputTime) {
         self.stop_glide();
         let serial = SCOUNTER.next_serial();
-        let button = evt.button_code();
 
-        let state = wl_pointer::ButtonState::from(evt.state());
         if self.overview_button(button, state == wl_pointer::ButtonState::Pressed) || self.twitch_button(button, state == wl_pointer::ButtonState::Pressed) {
             return;
         }
@@ -519,7 +531,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             self.update_keyboard_focus(self.pointer.current_location(), serial);
         };
         let pointer = self.pointer.clone();
-        pointer.button(self, &ButtonEvent { button, state: state.try_into().unwrap(), serial, time: evt.time() });
+        pointer.button(self, &ButtonEvent { button, state: state.try_into().unwrap(), serial, time });
         pointer.frame(self);
     }
 
@@ -908,40 +920,92 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         Some(transform.transform_point_in(evt.position_transformed(size), &size.to_f64()) + output_geometry.loc.to_f64())
     }
 
-    fn on_touch_down<B: InputBackend>(&mut self, evt: B::TouchDownEvent) {
-        let Some(handle) = self.seat.get_touch() else {
-            return;
-        };
+    /// Whether what a finger came down on takes touch: a client's
+    /// surface whose client has `wl_touch` (Chrome, GTK). Not app_server's
+    /// own frames and tabs, nor an app without it (every GPUI app, so
+    /// every Olo app): there the finger is the pointer.
+    fn takes_touch(&self, under: &Option<(PointerFocusTarget, Point<f64, Logical>)>) -> bool {
+        use smithay::reexports::wayland_server::Resource as _;
+        let (Some(touch), Some((PointerFocusTarget::WlSurface(surface), _))) = (self.seat.get_touch(), under) else { return false };
+        surface.client().is_some_and(|client| touch.client_touch(&client).next().is_some())
+    }
 
+    /// The touch screen's finger as the pointer, moved to `at`, as a
+    /// mouse's would be (window moves and resizes, menus, the overview).
+    fn touch_pointer_to(&mut self, at: Point<f64, Logical>, time: InputTime) {
+        // (On the touch screen's display: no clamping needed.)
+        let under = self.surface_under(at);
+        let pointer = self.pointer.clone();
+        pointer.motion(self, under, &MotionEvent { location: at, serial: SCOUNTER.next_serial(), time });
+        pointer.frame(self);
+        self.overview_pointer();
+        self.twitch_pointer();
+    }
+
+    fn on_touch_down<B: InputBackend>(&mut self, evt: B::TouchDownEvent) {
         let Some(touch_location) = self.touch_location_transformed(&evt) else {
             return;
         };
-
-        let serial = SCOUNTER.next_serial();
-        self.update_keyboard_focus(touch_location, serial);
-
-        let under = self.surface_under(touch_location);
-        handle.down(self, under, &DownEvent { slot: evt.slot(), location: touch_location, serial, time: evt.time() });
+        self.touch_down(evt.slot(), touch_location, evt.time());
     }
 
     fn on_touch_up<B: InputBackend>(&mut self, evt: B::TouchUpEvent) {
+        self.touch_up(evt.slot(), evt.time());
+    }
+
+    fn on_touch_motion<B: InputBackend>(&mut self, evt: B::TouchMotionEvent) {
+        let Some(touch_location) = self.touch_location_transformed(&evt) else {
+            return;
+        };
+        self.touch_motion(evt.slot(), touch_location, evt.time());
+    }
+
+    /// A finger down on the touch screen at `touch_location` (a real one,
+    /// or `SyntheticEvent::Touch`).
+    fn touch_down(&mut self, slot: input::TouchSlot, touch_location: Point<f64, Logical>, time: InputTime) {
+        let under = self.surface_under(touch_location);
+        // A finger on what takes no touch is the pointer, the left button
+        // pressed where it came down (one finger at a time: another while
+        // it is down is left out).
+        if !self.takes_touch(&under) {
+            if self.touch_pointer.is_none() {
+                self.touch_pointer = Some(i32::from(slot));
+                self.touch_pointer_to(touch_location, time);
+                self.pointer_button(BTN_LEFT, wl_pointer::ButtonState::Pressed, time);
+            }
+            return;
+        }
         let Some(handle) = self.seat.get_touch() else {
             return;
         };
         let serial = SCOUNTER.next_serial();
-        handle.up(self, &UpEvent { slot: evt.slot(), serial, time: evt.time() })
+        self.update_keyboard_focus(touch_location, serial);
+        handle.down(self, under, &DownEvent { slot, location: touch_location, serial, time });
     }
 
-    fn on_touch_motion<B: InputBackend>(&mut self, evt: B::TouchMotionEvent) {
+    fn touch_up(&mut self, slot: input::TouchSlot, time: InputTime) {
+        if self.touch_pointer == Some(i32::from(slot)) {
+            self.touch_pointer = None;
+            self.pointer_button(BTN_LEFT, wl_pointer::ButtonState::Released, time);
+            return;
+        }
         let Some(handle) = self.seat.get_touch() else {
             return;
         };
-        let Some(touch_location) = self.touch_location_transformed(&evt) else {
+        let serial = SCOUNTER.next_serial();
+        handle.up(self, &UpEvent { slot, serial, time })
+    }
+
+    fn touch_motion(&mut self, slot: input::TouchSlot, touch_location: Point<f64, Logical>, time: InputTime) {
+        if self.touch_pointer == Some(i32::from(slot)) {
+            self.touch_pointer_to(touch_location, time);
+            return;
+        }
+        let Some(handle) = self.seat.get_touch() else {
             return;
         };
-
         let under = self.surface_under(touch_location);
-        handle.motion(self, under, &smithay::input::touch::MotionEvent { slot: evt.slot(), location: touch_location, time: evt.time() });
+        handle.motion(self, under, &smithay::input::touch::MotionEvent { slot, location: touch_location, time });
     }
 
     fn on_touch_frame<B: InputBackend>(&mut self, _evt: B::TouchFrameEvent) {
@@ -952,6 +1016,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     fn on_touch_cancel<B: InputBackend>(&mut self, _evt: B::TouchCancelEvent) {
+        // (The finger being the pointer lets go.)
+        if self.touch_pointer.take().is_some() {
+            self.pointer_button(BTN_LEFT, wl_pointer::ButtonState::Released, InputTime::now());
+        }
         let Some(handle) = self.seat.get_touch() else {
             return;
         };
@@ -1141,10 +1209,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         use olo_protocol::SyntheticEvent as S;
         // As real input wakes the displays (`process_input_event`).
         let before = self.pointer.current_location();
-        let pointing = matches!(event, S::Move { .. } | S::Scroll { .. });
+        let pointing = matches!(event, S::Move { .. } | S::Scroll { .. } | S::Touch { .. });
         // (Counted as real input is, for Activity Monitor ▸ Inputs.)
         let counted = match &event {
-            S::Button { pressed: true, .. } => Some(crate::input_counts::Input::Click),
+            S::Button { pressed: true, .. } | S::Touch { phase: olo_protocol::TouchPhase::Down, .. } => Some(crate::input_counts::Input::Click),
             S::Key { pressed: true, .. } => Some(crate::input_counts::Input::Key),
             S::Scroll { .. } | S::Wheel { .. } => Some(crate::input_counts::Input::Scroll),
             _ => None,
@@ -1205,6 +1273,32 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 }
                 pointer.axis(self, frame);
                 pointer.frame(self);
+            }
+            S::Touch { slot, phase, x, y } => {
+                // As a finger on a touch screen (agents, tests).
+                let _ = pointer;
+                let slot = input::TouchSlot::from(Some(slot));
+                let at: Point<f64, Logical> = (x, y).into();
+                match phase {
+                    olo_protocol::TouchPhase::Down => {
+                        self.touch_down(slot, at, time);
+                        if let Some(t) = self.seat.get_touch() {
+                            t.frame(self);
+                        }
+                    }
+                    olo_protocol::TouchPhase::Motion => {
+                        self.touch_motion(slot, at, time);
+                        if let Some(t) = self.seat.get_touch() {
+                            t.frame(self);
+                        }
+                    }
+                    olo_protocol::TouchPhase::Up => {
+                        self.touch_up(slot, time);
+                        if let Some(t) = self.seat.get_touch() {
+                            t.frame(self);
+                        }
+                    }
+                }
             }
             S::Contacts { contacts } => {
                 // As a MacBook pad's report would say (testing the palm

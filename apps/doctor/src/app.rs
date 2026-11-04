@@ -20,7 +20,7 @@ use std::sync::OnceLock;
 use std::collections::BTreeMap;
 
 use crate::{
-    checks::{self, Fix, Report, Roots, Severity},
+    checks::{self, Fix, Report, Severity},
     fix::Step,
     helper::{self, FromHelper, Helper, ToHelper},
     notify, suggest,
@@ -80,7 +80,7 @@ impl Kind {
     /// What it finds now.
     fn scan(self) -> Report {
         match self {
-            Kind::Doctor => checks::scan(&Roots::real()),
+            Kind::Doctor => checks::look(),
             Kind::Suggestions => suggest::scan(),
         }
     }
@@ -145,6 +145,9 @@ struct Doctor {
     queued: Vec<(u64, String, Vec<Step>)>,
     /// Root fixes the helper is running: run id → finding id.
     running: BTreeMap<u64, String>,
+    /// How each fix running goes, as the helper last said (a package
+    /// download's progress): finding id → its words.
+    progress: BTreeMap<String, String>,
     next_run: u64,
     scroll: ScrollHandle,
 }
@@ -270,8 +273,14 @@ impl Doctor {
                 self.helper_ready = true;
                 self.send_queued();
             }
+            Some(FromHelper::Progress { id, text }) => {
+                if let Some(finding) = self.running.get(&id) {
+                    self.progress.insert(finding.clone(), text);
+                }
+            }
             Some(FromHelper::Done { id, results }) => {
                 if let Some(finding) = self.running.remove(&id) {
+                    self.progress.remove(&finding);
                     self.finished(finding, results, cx);
                 }
             }
@@ -417,7 +426,8 @@ impl Render for Doctor {
             for f in &r.findings {
                 let outcome = self.outcomes.get(&f.id);
                 let status = match outcome {
-                    Some(Outcome::Fixing) => StringView::new(kind().doing()).dim(true),
+                    // (What it's doing now, while it says: a download.)
+                    Some(Outcome::Fixing) => StringView::new(self.progress.get(&f.id).cloned().unwrap_or_else(|| kind().doing().to_owned())).wrap(true).dim(true),
                     Some(Outcome::Fixed) => StringView::new(kind().done()).color(style::c(p.success)),
                     Some(Outcome::Failed(e)) => StringView::new(e.clone()).wrap(true).color(style::c(p.failure)),
                     None if f.severity == Severity::Problem => StringView::new("Gets in Olo's way").color(style::c(p.failure)),
@@ -527,6 +537,7 @@ pub fn run(which: Kind) {
             helper_ready: false,
             queued: Vec::new(),
             running: BTreeMap::new(),
+            progress: BTreeMap::new(),
             next_run: 0,
             scroll: ScrollHandle::new(),
         });
@@ -585,7 +596,7 @@ fn fix_from_the_command_line(ids: &[String]) -> i32 {
         println!("{title}: {}", fix.label);
         kind().before(id);
         let results = if !fix.root || root {
-            helper::run_steps(&fix.steps)
+            helper::run_steps_with(&fix.steps, &mut |text| println!("  {text}"))
         } else {
             if helper.is_none() {
                 let way = if std::env::var_os("OLO_DOCTOR_HELPER").is_some() { helper::way() } else { helper::Way::Pkexec };
@@ -610,6 +621,7 @@ fn fix_from_the_command_line(ids: &[String]) -> i32 {
             loop {
                 match rx.recv() {
                     Ok(Some(FromHelper::Done { id, results })) if id == n as u64 => break results,
+                    Ok(Some(FromHelper::Progress { text, .. })) => println!("  {text}"),
                     Ok(Some(_)) => continue,
                     _ => break vec![Err("the root helper stopped".into())],
                 }

@@ -1171,6 +1171,9 @@ impl Element for FieldElement {
         if field.enabled {
             window.handle_input(&field.focus.clone(), ElementInputHandler::new(bounds, self.field.clone()), cx);
         }
+        // (A line longer than the field scrolls across it: what the field
+        // cuts is scrolled out of sight, not cut off.)
+        crate::review::scroll_area(window, bounds);
         window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| {
             if !selected.is_empty() {
                 let x0 = left + line.x_for_index(selected.start);

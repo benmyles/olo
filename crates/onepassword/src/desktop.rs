@@ -58,6 +58,20 @@ pub struct Desktop {
     pub socket: String,
 }
 
+/// Whether the 1Password desktop app is running (a process of this user's
+/// whose program is 1Password's, `/opt/1Password/1password` or the
+/// Flatpak's): told apart from its not letting apps in (its socket is
+/// there only with Settings ▸ Developer ▸ Integrate with other apps on).
+pub fn app_running() -> bool {
+    use std::os::unix::fs::MetadataExt as _;
+    let Ok(me) = std::fs::metadata("/proc/self").map(|m| m.uid()) else { return false };
+    std::fs::read_dir("/proc").into_iter().flatten().flatten().any(|e| {
+        let dir = e.path();
+        let ours = std::fs::metadata(&dir).is_ok_and(|m| m.uid() == me);
+        ours && std::fs::read(dir.join("comm")).is_ok_and(|c| c.trim_ascii() == b"1password")
+    })
+}
+
 impl Desktop {
     pub fn new(account: impl Into<String>) -> Self {
         Desktop { account: account.into(), socket: SOCKET.into() }

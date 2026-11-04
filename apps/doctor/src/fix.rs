@@ -67,6 +67,15 @@ pub enum Step {
         user: String,
         shell: PathBuf,
     },
+    /// Install packages by name, from the system's trusted repositories
+    /// (through PackageKit: `olo_system::packages`), with what they need.
+    InstallPackages {
+        names: Vec<String>,
+    },
+    /// Update these packages (those of them with an update waiting).
+    UpdatePackages {
+        names: Vec<String>,
+    },
 }
 
 impl Step {
@@ -93,6 +102,33 @@ impl Step {
             Step::AddShell { path } => format!("Listing {} in /etc/shells", path.display()),
             Step::TryShell { path } => format!("Trying {}", path.display()),
             Step::SetLoginShell { user, shell } => format!("Making {} {user}'s login shell", shell.display()),
+            Step::InstallPackages { names } => format!("Installing {}", names.join(", ")),
+            Step::UpdatePackages { names } => format!("Updating {}", short_list(names)),
+        }
+    }
+
+    /// Do it, telling how it goes (a package download's progress) as it
+    /// goes.
+    pub fn run_with(&self, progress: &mut dyn FnMut(String)) -> Result<(), String> {
+        let mut said = |p: olo_system::packages::Progress| {
+            use olo_system::packages::Progress as P;
+            match p {
+                P::Percent(n) => progress(format!("{n}%")),
+                P::Status(s) => progress(s.to_owned()),
+                P::Package(name) => progress(name),
+            }
+        };
+        match self {
+            Step::InstallPackages { names } => {
+                let names: Vec<&str> = names.iter().map(String::as_str).collect();
+                olo_system::packages::install(&names, &mut said).map_err(|e| format!("{}: {e}", self.describe()))
+            }
+            Step::UpdatePackages { names } => {
+                let waiting = olo_system::packages::updates().map_err(|e| format!("{}: {e}", self.describe()))?;
+                let ids: Vec<String> = waiting.into_iter().filter(|p| names.iter().any(|n| n == p.name())).map(|p| p.id).collect();
+                olo_system::packages::update(ids, &mut said).map_err(|e| format!("{}: {e}", self.describe()))
+            }
+            _ => self.run(),
         }
     }
 
@@ -116,7 +152,16 @@ impl Step {
             Step::AddShell { path } => add_shell(path).map_err(failed),
             Step::TryShell { path } => try_shell(path),
             Step::SetLoginShell { user, shell } => set_login_shell(user, shell).map_err(|e| format!("{}: {e}", self.describe())),
+            Step::InstallPackages { .. } | Step::UpdatePackages { .. } => self.run_with(&mut |_| {}),
         }
+    }
+}
+
+/// A few names, and how many more ("kernel, linux-firmware and 4 more").
+fn short_list(names: &[String]) -> String {
+    match names.len() {
+        0..=3 => names.join(", "),
+        n => format!("{} and {} more", names[..3].join(", "), n - 3),
     }
 }
 

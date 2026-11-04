@@ -126,6 +126,11 @@ struct Palette {
     files_mode: bool,
     /// Ctrl went down on its own and nothing else yet: let go, it's a tap.
     ctrl_tap: bool,
+    /// Ctrl has been seen up since the palette opened: until then a Ctrl
+    /// held is the shortcut that opened it (⌘ Space, ⌘ reaching apps as
+    /// Ctrl, its press before the window had the keyboard), and letting
+    /// it go is no tap (it opened on files: Ben, 2026-11-04).
+    ctrl_free: bool,
     fixed: Vec<Item>,
     context: Vec<Item>,
     menus: Vec<Item>,
@@ -203,6 +208,7 @@ impl Palette {
         self.command = false;
         self.files_mode = false;
         self.ctrl_tap = false;
+        self.ctrl_free = false;
         self.query.update(cx, |f, cx| f.set_hint(hint(false), cx));
         self.refresh();
         let me = cx.entity();
@@ -281,8 +287,9 @@ impl Palette {
             {
                 scored.push((i32::MAX / 2 - 1, item.clone()));
             }
-            // Files and folders, or (at first) everything else; the path
-            // in the clipboard either way.
+            // Files and folders, or (at first) everything else, no file
+            // among them (Ben: "i only want to see commands unless i press
+            // ctrl then only files"); the path in the clipboard either way.
             if self.files_mode {
                 scored.extend(sources::ranked(&words, self.files.iter().chain(&self.copied), |k| self.recents.boost(k)));
             } else {
@@ -308,8 +315,11 @@ impl Palette {
         self.asked += 1;
         self.selected = 0;
         self.top = 0;
-        let words = rank::words(&self.query_text);
-        let _ = self.workers.files.send((self.asked, words));
+        // Files are searched only while they're what's shown (a tap of
+        // Ctrl); commands are found here, as typed.
+        if self.files_mode {
+            let _ = self.workers.files.send((self.asked, rank::words(&self.query_text)));
+        }
         let _ = self.workers.passwords.send((self.asked, self.query_text.clone()));
         // A path written whole: looked for off the UI thread, offered if
         // it's there.
@@ -335,6 +345,12 @@ impl Palette {
     fn switch_files(&mut self, cx: &mut Context<Self>) {
         self.files_mode = !self.files_mode;
         let files = self.files_mode;
+        // To files: what's typed, looked for now (not while commands were
+        // shown); their answer keeps to this query's number.
+        if files {
+            self.files.clear();
+            let _ = self.workers.files.send((self.asked, rank::words(&self.query_text)));
+        }
         self.query.update(cx, |f, cx| f.set_hint(hint(files), cx));
         self.selected = 0;
         self.top = 0;
@@ -352,6 +368,14 @@ impl Palette {
             cx.notify();
         }
         let m = e.modifiers;
+        if !m.control {
+            self.ctrl_free = true;
+        }
+        // (Still the opening shortcut's Ctrl: no tap of it.)
+        if !self.ctrl_free {
+            self.ctrl_tap = false;
+            return;
+        }
         let ctrl = m.control && !(olo_kit_base::keys::command_key() && olo_ui::gpui::right_control_held());
         let alone = ctrl && !m.shift && !m.alt && !m.platform;
         if alone && !self.ctrl_tap {
@@ -791,6 +815,7 @@ fn main() {
                 command: false,
                 files_mode: false,
                 ctrl_tap: false,
+                ctrl_free: false,
                 fixed: Vec::new(),
                 context: Vec::new(),
                 menus: Vec::new(),

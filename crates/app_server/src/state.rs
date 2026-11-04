@@ -142,6 +142,11 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// The pinch going on reaches the window under the pointer (as
     /// Preferences ▸ Touchpad said when it began).
     pub pinching: bool,
+    /// The touch screen's finger being the pointer (its slot), with the
+    /// left button held: where it went down takes no touch (an app with
+    /// no `wl_touch`, as every GPUI app, or app_server's own frames and
+    /// tabs). `input_handler::on_touch_down`.
+    pub touch_pointer: Option<i32>,
     /// Which way the fingers' scroll goes (natural or not), for clients.
     pub scroll_direction: (smithay::backend::input::AxisRelativeDirection, smithay::backend::input::AxisRelativeDirection),
     /// A finger scroll's stop held back from a Chromium window, and when
@@ -1097,6 +1102,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             keyboard_before_popup: None,
             pacer: Default::default(),
             pinching: false,
+            touch_pointer: None,
             scroll_direction: (smithay::backend::input::AxisRelativeDirection::Identical, smithay::backend::input::AxisRelativeDirection::Identical),
             held_stop: None,
             last_paced_move: None,
@@ -1240,8 +1246,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         });
         if let Some(feedback) = state.power.volume_feedback.take() {
             let _ = state.handle.insert_source(feedback, |event, _, state| {
-                if let smithay::reexports::calloop::channel::Event::Msg((level, muted)) = event {
-                    state.show_indicator(crate::osd::Indicator::Volume { level, muted });
+                if let smithay::reexports::calloop::channel::Event::Msg(shown) = event {
+                    state.show_indicator(shown);
                 }
             });
         }
@@ -1546,6 +1552,11 @@ pub trait Backend {
     fn apply_input_settings(&mut self, _settings: &olo_protocol::Settings) {}
     /// The pointing devices plugged in (Preferences ▸ Touchpad & Mouse).
     fn input_devices(&self) -> Vec<olo_protocol::touchpad::InputDeviceInfo> {
+        Vec::new()
+    }
+    /// The keyboards plugged in, by name (with letter keys: not the power
+    /// button's or the lid's pseudo-keyboards).
+    fn keyboards(&self) -> Vec<String> {
         Vec::new()
     }
     fn reset_buffers(&mut self, output: &Output);

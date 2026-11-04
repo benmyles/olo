@@ -526,13 +526,9 @@ impl Render for Form {
                 ("warning", message, fields, 2.0 * m::CONTROL_HEIGHT + m::TIGHT, "Erase")
             }
         };
-        // The window grows or shrinks to what it shows (fields come and
-        // go).
-        let text_h = paragraph_height(cx, &message, col_w);
-        let want = (m::WINDOW_INSET + text_h + m::SPACING + fields_h + m::SPACING + m::CONTROL_HEIGHT + m::WINDOW_INSET).ceil();
-        if (f32::from(window.viewport_size().height) - want).abs() > 1.0 {
-            window.resize(size(px(FORM_W), px(want)));
-        }
+        // (The window grows or shrinks to what it shows, fields coming
+        // and going: `fits_content`.)
+        let _ = fields_h;
         let ready = self.ready(cx);
         let (cancel, ok) = (me.clone(), me.clone());
         let buttons = button_row()
@@ -875,7 +871,7 @@ impl DriveSetup {
             let form = cx.new(|cx| Form { app: me.downgrade(), kind, focus: cx.focus_handle(), first, done: false, returns: Vec::new() });
             me.update(cx, |d, _| d.forms.insert(id, form.downgrade()));
             let view = form.clone();
-            let options = WindowOptions::new(title, FORM_W, 200.0).min_size(FORM_W, 120.0).dialog();
+            let options = WindowOptions { fixed: true, ..WindowOptions::new(title, FORM_W, 120.0).dialog() };
             olo_ui::open_window(cx, options, move |_, _| view);
         });
         id

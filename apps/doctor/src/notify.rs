@@ -12,10 +12,15 @@ use std::{collections::BTreeSet, path::PathBuf, sync::mpsc, time::Duration};
 use olo_kit_base::notify::{Note, NoteEvent, Notifier};
 use serde::{Deserialize, Serialize};
 
-use crate::checks::{self, Finding, Roots, Severity};
+use crate::checks::{self, Finding, Severity};
 
 /// Long enough for the displays, Deskbar and login items to be up.
 const SETTLE: Duration = Duration::from_secs(20);
+/// How often it looks again after (Ben: "run periodically like on startup
+/// and then maybe every 15 mins"): a look reads sysfs and asks systemd
+/// and PackageKit (its cached lists), a few hundred milliseconds of a
+/// background thread four times an hour.
+const EVERY: Duration = Duration::from_secs(15 * 60);
 
 #[derive(Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -70,7 +75,7 @@ fn open_doctor() {
 
 /// Look the computer over, and tell of problems not told before.
 fn look(notes: &Notifier) -> bool {
-    let report = checks::scan(&Roots::real());
+    let report = checks::look();
     let mut told = read_told();
     let (new, remember) = news(&report.findings, &told);
     told.ids = remember.ids;
@@ -123,8 +128,11 @@ pub fn watch() -> ! {
     tell_heals(&notes);
     let watching = notes.clone();
     let _watch = olo_kit_base::watch::watch([PathBuf::from(HEAL_REPORT)], move |_| tell_heals(&watching));
+    // Then again every quarter of an hour: a problem that came since is
+    // told, and Deskbar's tray follows what's found.
     loop {
-        std::thread::park();
+        std::thread::sleep(EVERY);
+        look(&notes);
     }
 }
 

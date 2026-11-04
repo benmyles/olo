@@ -176,7 +176,12 @@ pub fn socket() -> String {
 /// What to tell the person.
 pub fn describe(e: &Error) -> String {
     match e {
-        Error::DesktopAppUnavailable => "1Password isn’t running, or isn’t letting apps in. Open 1Password, then turn on Settings ▸ Developer ▸ Integrate with other apps.".into(),
+        // (Running, its socket isn't there: the setting is off, as on a
+        // new computer.)
+        Error::DesktopAppUnavailable if onepassword::desktop::app_running() => {
+            "1Password is open but isn’t letting other apps in. In 1Password, turn on Settings ▸ Developer ▸ Integrate with other apps, then try again.".into()
+        }
+        Error::DesktopAppUnavailable => "1Password isn’t running. Open it (and turn on Settings ▸ Developer ▸ Integrate with other apps), then try again.".into(),
         Error::ConnectionDropped => "1Password closed the connection. If it asked whether to allow Passwords, choose Allow, then try again.".into(),
         other => other.to_string(),
     }

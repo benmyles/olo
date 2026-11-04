@@ -9,13 +9,13 @@ use std::time::{Duration, Instant};
 use olo_protocol::{Mode, OutputConfig, OutputInfo, PowerStatus};
 use olo_ui::{
     gpui::{
-        Bounds, DispatchPhase, FontWeight, IntoElement as _, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, ScrollHandle, SharedString, Styled as _,
-        canvas, div, point, px, rgb, size,
+        Bounds, DispatchPhase, FontWeight, IntoElement as _, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, SharedString, Styled as _, canvas, div,
+        point, px, rgb, size,
     },
     metrics as m,
     style::{self, c},
     theme,
-    widgets::{Button, CheckBox, EmptyState, MenuField, ScrollView, Slider, StringView},
+    widgets::{Button, CheckBox, EmptyState, MenuField, Slider, StringView},
 };
 
 use crate::{PanelView, form::Ui, panel, server::Server};
@@ -32,7 +32,6 @@ pub struct State {
     /// A resolution change waiting to be kept: the screen, its previous
     /// mode, and when it changed.
     confirm: Option<(String, Mode, Instant)>,
-    scroll: ScrollHandle,
 }
 
 /// The panel's state in its view.
@@ -121,12 +120,10 @@ fn display_name(o: &OutputInfo) -> String {
     o.display_name()
 }
 
-/// The panel, scrolling when a display's rows (its brightness, its
-/// panel's notes) don't all fit.
+/// The panel: its window grows to a display's rows (its brightness, its
+/// panel's notes), scrolling only past the screen's room (`panel::Fit`).
 pub fn ui(ui: &mut Ui, outputs: &[OutputInfo], power: Option<&PowerStatus>, server: &Server, st: &mut State) {
-    let items = ui.collect(|ui| panel(ui, outputs, power, server, st));
-    let content = div().flex().flex_col().gap(px(m::SPACING)).children(items);
-    ui.add(div().flex_1().min_h_0().child(ScrollView::new("display-panel", &st.scroll).border(false).auto_hide(true).child(content)));
+    panel(ui, outputs, power, server, st);
 }
 
 /// A pop-up menu that does something other than change the settings.
@@ -169,8 +166,13 @@ fn panel(ui: &mut Ui, outputs: &[OutputInfo], power: Option<&PowerStatus>, serve
     };
     let label_w = 90.0;
     let title = shown_name(&o, outputs);
-    ui.bbox(&title, |ui| display_box(ui, &o, outputs, power, server, st, label_w));
-    panel_box(ui, &o, label_w, server);
+    // The display's settings, and beside them its panel: what it is and
+    // how Olo draws for it (side by side, so a laptop's short screen has
+    // room for both).
+    let settings = ui.collect(|ui| ui.bbox(&title, |ui| display_box(ui, &o, outputs, power, server, st, label_w)));
+    let facts = ui.collect(|ui| panel_box(ui, &o, label_w, server));
+    let column = |items: Vec<olo_ui::gpui::AnyElement>| div().flex_1().min_w_0().flex().flex_col().children(items);
+    ui.add(div().flex().flex_row().items_start().gap(px(m::SPACING)).child(column(settings)).child(column(facts)));
     keep_band(ui, outputs, server, st);
 }
 
@@ -204,7 +206,9 @@ fn map(ui: &mut Ui, all: &[OutputInfo], server: &Server, st: &State) {
         let rect_of = |o: &OutputInfo| {
             let (w, h) = logical(o);
             let b = Bounds { origin: point(off.x + px((o.position.0 as f64 - x0) as f32 * k), off.y + px((o.position.1 as f64 - y0) as f32 * k)), size: size(px(w as f32 * k), px(h as f32 * k)) };
-            b.dilate(px(-1.0))
+            // (Displays side by side kept `TIGHT` apart: told apart at a
+            // glance.)
+            b.dilate(px(-m::TIGHT / 2.0))
         };
         // The dragged screen is drawn last, over the others.
         let mut order: Vec<usize> = (0..placed.len()).collect();
@@ -232,7 +236,9 @@ fn map(ui: &mut Ui, all: &[OutputInfo], server: &Server, st: &State) {
             let line = style::hairline(window) * if chosen { 2.0 } else { 1.0 };
             let bar = Bounds { origin: point(r.left() + line, r.top() + line), size: size(r.size.width - line * 2.0, px(4.0)) };
             style::fill_rect(window, bar, c(p.panel_background));
-            style::label(window, cx, r.center().x, r.center().y, style::Align::Center, names[i].clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), c(p.desktop_text));
+            // (Cut short to its screen, which may be small beside a big one.)
+            let room = (r.size.width - px(2.0 * m::TIGHT)).max(px(0.0));
+            style::label_fit(window, cx, r.center().x, r.center().y, style::Align::Center, names[i].clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), c(p.desktop_text), room);
             olo_ui::agent::record(
                 window,
                 cx,
@@ -437,9 +443,19 @@ fn panel_box(ui: &mut Ui, o: &OutputInfo, label_w: f32, server: &Server) {
         Source::Setting => "your choice",
     };
     ui.bbox("Panel", |ui| {
-        // A label in the fields' label column, its value under their text.
+        // A label in the fields' label column, its value under their text,
+        // a control's height (so beside the display's settings, the rows
+        // go in step).
         let row = |ui: &mut Ui, label: &str, value: &str| {
-            ui.add(div().flex().flex_row().child(div().w(px(label_w + m::TEXT_INSET)).flex_shrink_0().child(StringView::new(label.to_owned()))).child(StringView::new(value.to_owned())));
+            ui.add(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .min_h(px(m::CONTROL_HEIGHT))
+                    .child(div().w(px(label_w + m::TEXT_INSET)).flex_shrink_0().child(StringView::new(label.to_owned())))
+                    .child(div().flex_1().min_w_0().child(StringView::new(value.to_owned()).wrap(true))),
+            );
         };
         let maker = [o.make.as_str(), o.model.as_str()].iter().filter(|s| !s.is_empty() && **s != "Unknown").copied().collect::<Vec<_>>().join(" ");
         row(ui, "Make:", if maker.is_empty() { "Not told" } else { &maker });
