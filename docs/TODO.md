@@ -7,12 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Backup: Select All and None, exporting and importing** (Ben,
-  2026-11-04): "the prefs -> backup app needs options to select all /
-  unselect all for import and export". Each of the Export and Import
-  lists of parts gets All and None (the box's LinkButton actions, or a
-  row of them above the list), enabled as they'd change something.
-
 - **AirPods missing from Sound's outputs** (Ben, 2026-11-04): "i
   paired my airpods and they show up properly in the input menu but in
   the sound output menu there's no airpods entry (in sound prefs)".
@@ -1199,6 +1193,15 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Backup: Select All and None, exporting and importing**~~ (Ben,
+  2026-11-04): "the prefs -> backup app needs options to select all /
+  unselect all for import and export". Each of the Export and Import
+  lists of parts gets All and None (the box's LinkButton actions, or a
+  row of them above the list), enabled as they'd change something. *Done*: Select All and Select None
+  above each list, each enabled while it would change something; the
+  Export and Import boxes side by side, so the panel still fits a
+  1280×800 screen (ui-lint clean at 1×, 1.5× and 2×).
 
 - ~~**Terminal: a new tab opens in the folder of the tab it came from**~~
   (Ben, 2026-11-04): "when opening a new tab from an existing one in

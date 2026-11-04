@@ -3458,6 +3458,9 @@ opened, its own `panel::State` and text fields).
   opens and after each export and import), each a check box with what
   it holds, those only a sealed backup holds disabled while it isn't
   sealed; the Import box lists the chosen backup's (`Manifest::parts`).
+  Each list has Select All and Select None over it (`all_or_none`), and
+  the two boxes stand side by side (one over the other, the panel was
+  taller than a 1280×800 screen).
   Both lists build only the rows they show (`shown_rows`: a control
   scrolled out of sight would still say it's there to agents, and the
   palette's settings index would take it for one of the panel's), each

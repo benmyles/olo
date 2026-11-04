@@ -52,6 +52,8 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "backgrounds", tab: "", group: "Wallpaper", name: "Workbench", role: "RadioButton" },
     Setting { panel: "backgrounds", tab: "", group: "Wallpaper", name: "Your Own", role: "RadioButton" },
     Setting { panel: "backgrounds", tab: "", group: "Wallpaper", name: "Choose…", role: "Button" },
+    Setting { panel: "backup", tab: "", group: "Export", name: "Select All", role: "Button" },
+    Setting { panel: "backup", tab: "", group: "Export", name: "Select None", role: "Button" },
     Setting { panel: "backup", tab: "", group: "Export", name: "Include passwords and sign-ins, sealed with a password", role: "CheckBox" },
     Setting { panel: "backup", tab: "", group: "Export", name: "Export…", role: "Button" },
     Setting { panel: "backup", tab: "", group: "Import", name: "Choose…", role: "Button" },

@@ -1491,6 +1491,34 @@ fn shown_rows(scroll: &ScrollHandle, rows: f32) -> std::ops::Range<usize> {
     (top / PART_ROW).floor() as usize..((top + height - 4.0) / PART_ROW).ceil().max(0.0) as usize
 }
 
+/// Select All and Select None over a list of parts (`id` tells the two
+/// lists' apart): all of `parts` in, or none; each enabled while it would
+/// change something.
+fn all_or_none(ui: &Ui, id: &str, parts: Vec<String>, choice: &Choice, enabled: bool, set: fn(&mut State) -> &mut Choice) -> olo_ui::gpui::AnyElement {
+    let some_out = parts.iter().any(|p| !choice.has(p));
+    let some_in = parts.iter().any(|p| choice.has(p));
+    let all = ui.on_click_view(move |v, _, cx| {
+        if let Some(st) = state_of(v) {
+            *set(st) = Choice::all();
+        }
+        cx.notify();
+    });
+    let none = ui.on_click_view(move |v, _, cx| {
+        if let Some(st) = state_of(v) {
+            set(st).left_out = parts.iter().cloned().collect();
+        }
+        cx.notify();
+    });
+    div()
+        .flex()
+        .flex_row()
+        .justify_end()
+        .gap(px(m::SPACING))
+        .child(olo_ui::widgets::LinkButton::new("Select All").id(format!("{id}-all")).enabled(enabled && some_out).on_click(all))
+        .child(olo_ui::widgets::LinkButton::new("Select None").id(format!("{id}-none")).enabled(enabled && some_in).on_click(none))
+        .into_any_element()
+}
+
 /// "3 files, 12 KB", or what a part with none is.
 fn part_detail(files: usize, bytes: u64, none: &str) -> String {
     if files == 0 { none.to_owned() } else { format!("{} {}, {}", files, if files == 1 { "file" } else { "files" }, size_text(bytes)) }
@@ -1513,139 +1541,153 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let ready = !sealed || (!password.is_empty() && password == again);
     let ink = |ok: bool| if ok { c(p.panel_text) } else { c(p.failure) };
 
-    ui.bbox("Export", |ui| {
-        ui.note("Saves Olo's settings and what apps keep between runs in one file, to bring back here or to another computer. What goes in:");
-        // A check box for each part (passwords, sign-ins and Wi-Fi
-        // networks only in a sealed one).
-        let mut rows: Vec<olo_ui::gpui::AnyElement> = Vec::new();
-        let shown = shown_rows(&st.export_scroll, PARTS_ROWS);
-        for (i, (part, files, bytes)) in st.parts.clone().unwrap_or_default().into_iter().enumerate() {
-            if !shown.contains(&i) {
-                rows.push(div().h(px(PART_ROW)).into_any_element());
-                continue;
-            }
-            let toggle = ui.on_view({
-                let part = part.clone();
-                move |v, on: bool, _, cx| {
+    // Side by side: one over the other, the panel was taller than a
+    // 1280×800 screen once the lists had Select All and None.
+    ui.columns(
+        |ui| {
+            ui.bbox("Export", |ui| {
+                ui.note("Saves Olo's settings and what apps keep between runs in one file, to bring back here or to another computer. What goes in:");
+                // A check box for each part (passwords, sign-ins and Wi-Fi
+                // networks only in a sealed one).
+                let mut rows: Vec<olo_ui::gpui::AnyElement> = Vec::new();
+                let shown = shown_rows(&st.export_scroll, PARTS_ROWS);
+                for (i, (part, files, bytes)) in st.parts.clone().unwrap_or_default().into_iter().enumerate() {
+                    if !shown.contains(&i) {
+                        rows.push(div().h(px(PART_ROW)).into_any_element());
+                        continue;
+                    }
+                    let toggle = ui.on_view({
+                        let part = part.clone();
+                        move |v, on: bool, _, cx| {
+                            if let Some(st) = state_of(v) {
+                                st.export_choice.set(&part, on);
+                            }
+                            cx.notify();
+                        }
+                    });
+                    let usable = files > 0 || sealed;
+                    let detail = part_detail(files, bytes, if sealed { "sealed" } else { "sealed only" });
+                    rows.push(part_row(format!("export-part-{part}"), part.clone(), detail, usable && st.export_choice.has(&part), idle && usable, toggle));
+                }
+                if st.parts.is_none() {
+                    rows.push(div().pl(px(m::TEXT_INSET)).py(px(m::STACK / 2.0)).child(StringView::new("Looking…").color(style::disabled_text(&p))).into_any_element());
+                }
+                // (Those a backup that isn't sealed can't hold aren't counted.)
+                let usable: Vec<String> = st.parts.iter().flatten().filter(|(_, files, _)| *files > 0 || sealed).map(|(p, ..)| p.clone()).collect();
+                let links = all_or_none(ui, "export-parts", usable, &st.export_choice, idle && st.parts.is_some(), |st| &mut st.export_choice);
+                ui.add(links);
+                ui.add(
+                    div()
+                        .h(px(PARTS_ROWS * PART_ROW + 4.0))
+                        .child(ScrollView::new("backup-parts", &st.export_scroll).background(p.document_background).auto_hide(true).child(div().flex().flex_col().py(px(2.0)).children(rows))),
+                );
+                let toggle = ui.on_view(|v, on: bool, _, cx| {
                     if let Some(st) = state_of(v) {
-                        st.export_choice.set(&part, on);
+                        st.sealed = on;
                     }
                     cx.notify();
-                }
-            });
-            let usable = files > 0 || sealed;
-            let detail = part_detail(files, bytes, if sealed { "sealed" } else { "sealed only" });
-            rows.push(part_row(format!("export-part-{part}"), part.clone(), detail, usable && st.export_choice.has(&part), idle && usable, toggle));
-        }
-        if st.parts.is_none() {
-            rows.push(div().pl(px(m::TEXT_INSET)).py(px(m::STACK / 2.0)).child(StringView::new("Looking…").color(style::disabled_text(&p))).into_any_element());
-        }
-        ui.add(
-            div()
-                .h(px(PARTS_ROWS * PART_ROW + 4.0))
-                .child(ScrollView::new("backup-parts", &st.export_scroll).background(p.document_background).auto_hide(true).child(div().flex().flex_col().py(px(2.0)).children(rows))),
-        );
-        let toggle = ui.on_view(|v, on: bool, _, cx| {
-            if let Some(st) = state_of(v) {
-                st.sealed = on;
-            }
-            cx.notify();
-        });
-        ui.add(CheckBox::new("Include passwords and sign-ins, sealed with a password", sealed).enabled(idle).on_toggle(toggle));
-        ui.enabled_if(idle && sealed, |ui| {
-            ui.add(TextControl::new(st.password.clone()).label("Password:").divider(divider));
-            ui.add(TextControl::new(st.again.clone()).label("Again:").divider(divider));
-        });
-        // How it's going, or went, beside the button (the box keeps its
-        // height).
-        let status = match &st.phase {
-            Phase::Working { export: true, done, total, cancel, cancellable } => progress(*done, *total, cancel, *cancellable).into_any_element(),
-            _ if sealed && !again.is_empty() && password != again => line("The two passwords aren't the same.".into(), c(p.failure)).into_any_element(),
-            _ => match &st.exported {
-                Some((ok, text)) => line(text.clone(), ink(*ok)).into_any_element(),
-                None => div().into_any_element(),
-            },
-        };
-        let export = Button::new("Export…").enabled(idle && ready && st.export_has_some()).on_click(export_it);
-        ui.add(div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().child(status)).child(export));
-    });
-
-    ui.bbox("Import", |ui| {
-        ui.note("Puts what you choose from a backup in place of what's here; the rest stays as it is. What you have now is saved first.");
-        // What the backup chosen holds; else what the last import did.
-        let mut rows: Vec<olo_ui::gpui::AnyElement> = Vec::new();
-        // (Paragraphs a `STACK` apart, as notes are from what follows, and
-        // clear of the scroll bar.)
-        let text = |t: String, color| div().pl(px(m::TEXT_INSET)).pr(px(m::SPACING)).py(px(m::STACK / 2.0)).child(StringView::new(t).wrap(true).color(color)).into_any_element();
-        if let Some((src, manifest)) = &st.chosen {
-            let from = if manifest.from_elsewhere(&Origin::here()) { ", on another computer" } else { "" };
-            ui.add(StringView::new(format!("“{}”, made {}{from}. What's checked comes back:", name_of(src), manifest.created_text())).wrap(true));
-            let shown = shown_rows(&st.scroll, WELL_ROWS * m::LIST_ROW / PART_ROW);
-            for (i, (part, files, bytes)) in manifest.parts().into_iter().enumerate() {
-                if !shown.contains(&i) {
-                    rows.push(div().h(px(PART_ROW)).into_any_element());
-                    continue;
-                }
-                let toggle = ui.on_view({
-                    let part = part.clone();
-                    move |v, on: bool, _, cx| {
-                        if let Some(st) = state_of(v) {
-                            st.import_choice.set(&part, on);
-                        }
-                        cx.notify();
-                    }
                 });
-                rows.push(part_row(format!("import-part-{part}"), part.clone(), part_detail(files, bytes, "sealed"), st.import_choice.has(&part), idle, toggle));
-            }
-        }
-        if let Some((ok, said)) = &st.imported {
-            rows.push(text(said.clone(), if *ok { c(p.document_text) } else { c(p.failure) }));
-            for note in &st.notes {
-                rows.push(text(format!("• {note}"), c(p.document_text)));
-            }
-        }
-        if rows.is_empty() {
-            rows.push(text("Choose a backup to see what it holds before importing it.".into(), style::disabled_text(&p)));
-        }
-        ui.add(
-            div()
-                .h(px(WELL_ROWS * m::LIST_ROW + 4.0))
-                .child(ScrollView::new("backup-well", &st.scroll).background(p.document_background).auto_hide(true).child(div().flex().flex_col().py(px(2.0)).children(rows))),
-        );
-        let locked = st.chosen.as_ref().is_some_and(|(_, m)| m.needs_passphrase());
-        ui.enabled_if(idle && locked, |ui| ui.add(TextControl::new(st.unlock.clone()).label("Password:").divider(divider)));
-        let some = st.chosen.as_ref().is_some_and(|(_, m)| m.parts().iter().any(|(part, ..)| st.import_choice.has(part)));
-        let can = idle && some && (!locked || !st.unlock.read(ui.cx).text().is_empty());
-        let status = match &st.phase {
-            Phase::Working { export: false, done, total, cancel, cancellable } => progress(*done, *total, cancel, *cancellable).into_any_element(),
-            _ => match st.before.clone() {
-                Some(before) if st.chosen.is_none() => Button::new(olo_ui::tracker::LABEL)
-                    .on_click(move |_, _| {
-                        if let Err(e) = olo_ui::tracker::open(&before) {
-                            tracing::warn!("couldn't open Tracker: {e}");
+                ui.add(CheckBox::new("Include passwords and sign-ins, sealed with a password", sealed).enabled(idle).on_toggle(toggle));
+                ui.enabled_if(idle && sealed, |ui| {
+                    ui.add(TextControl::new(st.password.clone()).label("Password:").divider(divider));
+                    ui.add(TextControl::new(st.again.clone()).label("Again:").divider(divider));
+                });
+                // How it's going, or went, beside the button (the box keeps its
+                // height).
+                let status = match &st.phase {
+                    Phase::Working { export: true, done, total, cancel, cancellable } => progress(*done, *total, cancel, *cancellable).into_any_element(),
+                    _ if sealed && !again.is_empty() && password != again => line("The two passwords aren't the same.".into(), c(p.failure)).into_any_element(),
+                    _ => match &st.exported {
+                        Some((ok, text)) => line(text.clone(), ink(*ok)).into_any_element(),
+                        None => div().into_any_element(),
+                    },
+                };
+                let export = Button::new("Export…").enabled(idle && ready && st.export_has_some()).on_click(export_it);
+                ui.add(div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().child(status)).child(export));
+            });
+        },
+        |ui| {
+            ui.bbox("Import", |ui| {
+                ui.note("Puts what you choose from a backup in place of what's here; the rest stays as it is. What you have now is saved first.");
+                // What the backup chosen holds; else what the last import did.
+                let mut rows: Vec<olo_ui::gpui::AnyElement> = Vec::new();
+                // (Paragraphs a `STACK` apart, as notes are from what follows, and
+                // clear of the scroll bar.)
+                let text = |t: String, color| div().pl(px(m::TEXT_INSET)).pr(px(m::SPACING)).py(px(m::STACK / 2.0)).child(StringView::new(t).wrap(true).color(color)).into_any_element();
+                if let Some((src, manifest)) = &st.chosen {
+                    let from = if manifest.from_elsewhere(&Origin::here()) { ", on another computer" } else { "" };
+                    ui.add(StringView::new(format!("“{}”, made {}{from}. What's checked comes back:", name_of(src), manifest.created_text())).wrap(true));
+                    let parts: Vec<String> = manifest.parts().into_iter().map(|p| p.0).collect();
+                    let links = all_or_none(ui, "import-parts", parts, &st.import_choice, idle, |st| &mut st.import_choice);
+                    ui.add(links);
+                    let shown = shown_rows(&st.scroll, WELL_ROWS * m::LIST_ROW / PART_ROW);
+                    for (i, (part, files, bytes)) in manifest.parts().into_iter().enumerate() {
+                        if !shown.contains(&i) {
+                            rows.push(div().h(px(PART_ROW)).into_any_element());
+                            continue;
                         }
-                    })
-                    .into_any_element(),
-                _ => div().into_any_element(),
-            },
-        };
-        let go = ui.on_click_view(move |v, _, cx| {
-            if let Some(st) = state_of(v) {
-                st.import(cx);
-            }
-            cx.notify();
-        });
-        ui.add(
-            div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(m::SPACING))
-                .child(div().flex_1().child(status))
-                .child(Button::new("Choose…").enabled(idle).on_click(choose_it))
-                .child(Button::new("Import").default(st.chosen.is_some()).enabled(can).on_click(go)),
-        );
-    });
+                        let toggle = ui.on_view({
+                            let part = part.clone();
+                            move |v, on: bool, _, cx| {
+                                if let Some(st) = state_of(v) {
+                                    st.import_choice.set(&part, on);
+                                }
+                                cx.notify();
+                            }
+                        });
+                        rows.push(part_row(format!("import-part-{part}"), part.clone(), part_detail(files, bytes, "sealed"), st.import_choice.has(&part), idle, toggle));
+                    }
+                }
+                if let Some((ok, said)) = &st.imported {
+                    rows.push(text(said.clone(), if *ok { c(p.document_text) } else { c(p.failure) }));
+                    for note in &st.notes {
+                        rows.push(text(format!("• {note}"), c(p.document_text)));
+                    }
+                }
+                if rows.is_empty() {
+                    rows.push(text("Choose a backup to see what it holds before importing it.".into(), style::disabled_text(&p)));
+                }
+                ui.add(
+                    div()
+                        .h(px(WELL_ROWS * m::LIST_ROW + 4.0))
+                        .child(ScrollView::new("backup-well", &st.scroll).background(p.document_background).auto_hide(true).child(div().flex().flex_col().py(px(2.0)).children(rows))),
+                );
+                let locked = st.chosen.as_ref().is_some_and(|(_, m)| m.needs_passphrase());
+                ui.enabled_if(idle && locked, |ui| ui.add(TextControl::new(st.unlock.clone()).label("Password:").divider(divider)));
+                let some = st.chosen.as_ref().is_some_and(|(_, m)| m.parts().iter().any(|(part, ..)| st.import_choice.has(part)));
+                let can = idle && some && (!locked || !st.unlock.read(ui.cx).text().is_empty());
+                let status = match &st.phase {
+                    Phase::Working { export: false, done, total, cancel, cancellable } => progress(*done, *total, cancel, *cancellable).into_any_element(),
+                    _ => match st.before.clone() {
+                        Some(before) if st.chosen.is_none() => Button::new(olo_ui::tracker::LABEL)
+                            .on_click(move |_, _| {
+                                if let Err(e) = olo_ui::tracker::open(&before) {
+                                    tracing::warn!("couldn't open Tracker: {e}");
+                                }
+                            })
+                            .into_any_element(),
+                        _ => div().into_any_element(),
+                    },
+                };
+                let go = ui.on_click_view(move |v, _, cx| {
+                    if let Some(st) = state_of(v) {
+                        st.import(cx);
+                    }
+                    cx.notify();
+                });
+                ui.add(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(m::SPACING))
+                        .child(div().flex_1().child(status))
+                        .child(Button::new("Choose…").enabled(idle).on_click(choose_it))
+                        .child(Button::new("Import").default(st.chosen.is_some()).enabled(can).on_click(go)),
+                );
+            });
+        },
+    );
 }
 
 #[cfg(test)]

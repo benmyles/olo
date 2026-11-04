@@ -206,9 +206,9 @@ impl Panel {
             Panel::AirPods => (960, 622),
             Panel::Appearance => (420, 482),
             Panel::Backgrounds => (640, 604),
-            // Its Import box's list shows what a backup holds before it's
-            // imported, and what an import left behind.
-            Panel::Backup => (460, 544),
+            // Export and Import side by side, each with its list of what
+            // goes in (or comes back) and what an import left behind.
+            Panel::Backup => (920, 400),
             Panel::Bluetooth => (440, 340),
             Panel::DateTime => (460, 370),
             Panel::DefaultApps => (520, 662),
