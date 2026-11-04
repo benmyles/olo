@@ -1091,6 +1091,16 @@ of Finished; a new one goes where its priority puts it.
   Finder has them; the shortcut help, the palette and HACKING's Tracker
   section told.
 
+- **Tracker: Back and Forward, from the keyboard and the mouse** (Ben,
+  2026-11-04): "in tracker, it should support forward and back via
+  keyboard shortcut or mouse". A folder window keeps the folders it
+  showed (each with its selection and scroll), and Go ▸ Back (⌘[) and
+  Forward (⌘]) move through them, as Finder's; the mouse's back and
+  forward buttons (GPUI's `MouseButton::Navigate`) and a touchpad's
+  two-finger swipe sideways do the same. Open Parent (⌘↑) stays as it
+  is, and adds to the history. Agents read and press them as menu
+  items; HACKING's Tracker section told.
+
 - **olo-slack: Slack, Olo-fied, as olo-chrome is Chrome** (Ben,
   2026-11-04): "build olo-slack that is like olo-chrome but an olo-fied
   version of slack where it integrates deeply with everything olo".
