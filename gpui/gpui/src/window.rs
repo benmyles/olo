@@ -2169,6 +2169,16 @@ impl Window {
         self.platform_window.set_title(title);
     }
 
+    /// Olo: draw this window in `space` (Display P3, while it shows a
+    /// photo wider than sRGB, say): its sRGB colours converted as drawn,
+    /// images in that space as they are. Whether it does: the compositor
+    /// must take the window's colours (wp_color_management_v1).
+    pub fn set_gamut(&mut self, space: crate::Gamut) -> bool {
+        let drawn = self.platform_window.set_gamut(space);
+        self.refresh();
+        drawn
+    }
+
     /// Sets the application identifier.
     pub fn set_app_id(&mut self, app_id: &str) {
         self.platform_window.set_app_id(app_id);
@@ -4369,7 +4379,13 @@ impl Window {
 
         self.next_frame.scene.insert_primitive(PolychromeSprite {
             order: 0,
-            nearest: u32::from(nearest),
+            // (Bit 1: the image is Display P3's numbers.)
+            nearest: u32::from(nearest)
+                | if data.color_space == crate::Gamut::DisplayP3 {
+                    2
+                } else {
+                    0
+                },
             grayscale,
             bounds: bounds
                 .map_origin(|origin| origin.floor())

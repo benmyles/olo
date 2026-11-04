@@ -95,6 +95,8 @@ struct Swapchain {
     format: crate::TextureFormat,
     alpha: crate::AlphaMode,
     target_size: [u16; 2],
+    /// Olo: the colour space it was made in.
+    color_space: crate::ColorSpace,
 }
 
 pub struct Surface {

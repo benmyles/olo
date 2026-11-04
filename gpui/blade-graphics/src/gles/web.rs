@@ -20,6 +20,11 @@ pub struct PlatformFrame {
 pub type PlatformError = ();
 
 impl super::Surface {
+    /// Olo: the colour space it draws in (Display P3 is Vulkan's only).
+    pub fn color_space(&self) -> crate::ColorSpace {
+        crate::ColorSpace::Srgb
+    }
+
     pub fn info(&self) -> crate::SurfaceInfo {
         self.platform.info
     }

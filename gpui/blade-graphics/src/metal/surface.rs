@@ -15,6 +15,11 @@ impl super::Surface {
         self.render_layer.clone()
     }
 
+    /// Olo: the colour space it draws in (Display P3 is Vulkan's only).
+    pub fn color_space(&self) -> crate::ColorSpace {
+        crate::ColorSpace::Srgb
+    }
+
     pub fn info(&self) -> crate::SurfaceInfo {
         self.info
     }
@@ -112,7 +117,9 @@ impl super::Context {
         surface.info = crate::SurfaceInfo {
             format: match config.color_space {
                 crate::ColorSpace::Linear => crate::TextureFormat::Bgra8UnormSrgb,
-                crate::ColorSpace::Srgb => crate::TextureFormat::Bgra8Unorm,
+                crate::ColorSpace::Srgb | crate::ColorSpace::DisplayP3 => {
+                    crate::TextureFormat::Bgra8Unorm
+                }
             },
             alpha: if config.transparent {
                 crate::AlphaMode::PostMultiplied

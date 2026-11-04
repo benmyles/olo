@@ -140,10 +140,13 @@ pub fn color_image(rgba: image::RgbaImage) -> Image {
 }
 
 fn image(path: &Path, max: u32) -> Result<Update, String> {
-    let (img, kind) = olo_images::open(path).map_err(|e| format!("This image can't be read ({e})."))?;
+    // (A photo wider than sRGB kept in Display P3: shown whole in a window
+    // drawing in P3, Viewer's; converted as drawn in any other.)
+    let (img, kind, p3) = olo_images::open_wide(path).map_err(|e| format!("This image can't be read ({e})."))?;
     let (w, h) = (img.width(), img.height());
     let img = if w.max(h) > max { img.resize(max, max, image::imageops::FilterType::Triangle) } else { img };
-    let image = color_image(img.to_rgba8());
+    let size = [img.width() as usize, img.height() as usize];
+    let image = Arc::new(Bitmap::from_rgba_unmultiplied(size, img.to_rgba8().as_raw()).in_p3(p3));
     Ok(Update::Body(Body::Image { image, full: [w as f32, h as f32], note: format!("{kind} image, {w} × {h}") }))
 }
 

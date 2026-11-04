@@ -304,7 +304,10 @@ impl<B: Backend + 'static> Dispatch2<WpColorManagementSurfaceV1, AnvilState<B>> 
                     return;
                 }
                 match image_description.data::<CmDescription>().and_then(|d| d.0) {
-                    Some(d) => pending(d.source()),
+                    Some(d) => {
+                        tracing::info!(surface = ?surface.id(), primaries = ?d.named, tf = d.tf, converted = d.source().is_some(), "a window says what colours it holds");
+                        pending(d.source());
+                    }
                     None => resource.post_error(wp_color_management_surface_v1::Error::ImageDescription, "that image description isn't ready"),
                 }
             }

@@ -9,6 +9,12 @@ impl super::Surface {
         }
     }
 
+    /// Olo: the colour space its swapchain was made in (what was asked,
+    /// or sRGB where the surface didn't offer Display P3).
+    pub fn color_space(&self) -> crate::ColorSpace {
+        self.swapchain.color_space
+    }
+
     unsafe fn deinit_swapchain(&mut self, raw_device: &ash::Device) {
         let _ = raw_device.device_wait_idle();
         self.device
@@ -164,6 +170,7 @@ impl super::Context {
                 format: crate::TextureFormat::Rgba8Unorm,
                 alpha: crate::AlphaMode::Ignored,
                 target_size: [0; 2],
+                color_space: crate::ColorSpace::Srgb,
             },
             full_screen_exclusive: fullscreen_exclusive_ext.full_screen_exclusive_supported != 0,
         })
@@ -284,7 +291,10 @@ impl super::Context {
         let queue_families = [self.queue_family_index];
 
         let mut supported_formats = Vec::new();
-        let (format, surface_format) = if surface.swapchain.target_size[0] > 0 {
+        // (Olo: a new colour space is a new format, chosen again.)
+        let same_space = surface.swapchain.color_space == config.color_space
+            || config.color_space == crate::ColorSpace::Linear;
+        let (format, surface_format) = if surface.swapchain.target_size[0] > 0 && same_space {
             let format = surface.swapchain.format;
             log::info!("Retaining current format: {:?}", format);
             let vk_color_space = match (format, config.color_space) {
@@ -296,6 +306,18 @@ impl super::Context {
                 }
                 (crate::TextureFormat::Bgra8UnormSrgb, crate::ColorSpace::Linear) => {
                     vk::ColorSpaceKHR::default()
+                }
+                // Olo: Display P3 (ten bits, as chosen), where the
+                // surface offers it, else sRGB.
+                (crate::TextureFormat::Rgb10a2Unorm, crate::ColorSpace::DisplayP3) => {
+                    vk::ColorSpaceKHR::DISPLAY_P3_NONLINEAR_EXT
+                }
+                (crate::TextureFormat::Bgra8Unorm, crate::ColorSpace::DisplayP3) => {
+                    if offers_p3(self, surface.raw) {
+                        vk::ColorSpaceKHR::DISPLAY_P3_NONLINEAR_EXT
+                    } else {
+                        vk::ColorSpaceKHR::SRGB_NONLINEAR
+                    }
                 }
                 _ => panic!(
                     "Unexpected format {:?} under color space {:?}",
@@ -345,7 +367,44 @@ impl super::Context {
                         color_space: vk::ColorSpaceKHR::SRGB_NONLINEAR,
                     },
                 ),
+                crate::ColorSpace::DisplayP3 => {
+                    // Ten bits a channel where offered: sRGB's colours
+                    // drawn as P3's numbers and read back come out exact.
+                    let p3_10 = vk::SurfaceFormatKHR {
+                        format: vk::Format::A2B10G10R10_UNORM_PACK32,
+                        color_space: vk::ColorSpaceKHR::DISPLAY_P3_NONLINEAR_EXT,
+                    };
+                    let p3 = vk::SurfaceFormatKHR {
+                        format: vk::Format::B8G8R8A8_UNORM,
+                        color_space: vk::ColorSpaceKHR::DISPLAY_P3_NONLINEAR_EXT,
+                    };
+                    let srgb = vk::SurfaceFormatKHR {
+                        color_space: vk::ColorSpaceKHR::SRGB_NONLINEAR,
+                        ..p3
+                    };
+                    if supported_formats.contains(&p3_10) {
+                        (crate::TextureFormat::Rgb10a2Unorm, p3_10)
+                    } else {
+                        (
+                            crate::TextureFormat::Bgra8Unorm,
+                            if supported_formats.contains(&p3) {
+                                p3
+                            } else {
+                                srgb
+                            },
+                        )
+                    }
+                }
             }
+        };
+        let got_color_space = match surface_format.color_space {
+            vk::ColorSpaceKHR::DISPLAY_P3_NONLINEAR_EXT => crate::ColorSpace::DisplayP3,
+            vk::ColorSpaceKHR::SRGB_NONLINEAR
+                if config.color_space != crate::ColorSpace::Linear =>
+            {
+                crate::ColorSpace::Srgb
+            }
+            _ => config.color_space,
         };
         if !supported_formats.is_empty() && !supported_formats.contains(&surface_format) {
             log::error!("Surface formats are incompatible: {:?}", supported_formats);
@@ -464,6 +523,22 @@ impl super::Context {
             format,
             alpha,
             target_size,
+            color_space: got_color_space,
         };
     }
+}
+
+/// Olo: whether `raw` offers Display P3 (B8G8R8A8_UNORM in
+/// `DISPLAY_P3_NONLINEAR_EXT`): the compositor takes windows' colours.
+fn offers_p3(context: &super::Context, raw: vk::SurfaceKHR) -> bool {
+    let Some(khr_surface) = context.instance.surface.as_ref() else {
+        return false;
+    };
+    unsafe { khr_surface.get_physical_device_surface_formats(context.physical_device, raw) }
+        .is_ok_and(|f| {
+            f.iter().any(|f| {
+                f.format == vk::Format::B8G8R8A8_UNORM
+                    && f.color_space == vk::ColorSpaceKHR::DISPLAY_P3_NONLINEAR_EXT
+            })
+        })
 }

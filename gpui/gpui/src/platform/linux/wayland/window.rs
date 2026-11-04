@@ -2183,6 +2183,14 @@ impl PlatformWindow for WaylandWindow {
         state.app_id = Some(app_id.to_owned());
     }
 
+    fn set_gamut(&mut self, space: crate::Gamut) -> bool {
+        // (The swapchain's colour space: Mesa's WSI tells the compositor,
+        // through its own wp_color_management_v1 object for the surface.)
+        self.borrow_mut()
+            .renderer
+            .set_display_p3(space == crate::Gamut::DisplayP3)
+    }
+
     fn activation_token(&self, done: Box<dyn FnOnce(Option<String>)>) {
         let state = self.borrow();
         let (client, surface, app_id) = (

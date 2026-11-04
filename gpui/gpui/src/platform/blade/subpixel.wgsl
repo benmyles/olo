@@ -19,7 +19,7 @@ fn fs_subpixel_sprite(input: MonoSpriteVarying) -> SubpixelOut {
         out.blend = vec4<f32>(0.0);
         return out;
     }
-    let rgb = input.color.rgb;
+    let rgb = to_window(input.color.rgb);
     let coverage = vec3<f32>(
         apply_contrast_and_gamma_correction(sample.r, rgb, grayscale_enhanced_contrast, gamma_ratios),
         apply_contrast_and_gamma_correction(sample.g, rgb, grayscale_enhanced_contrast, gamma_ratios),

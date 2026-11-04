@@ -360,10 +360,39 @@ fn quad_sdf_impl(corner_center_to_point: vec2<f32>, corner_radius: f32) -> f32 {
 
 // Abstract away the final color transformation based on the
 // target alpha compositing mode.
-fn blend_color(color: vec4<f32>, alpha_factor: f32) -> vec4<f32> {
+// Olo: a window drawing in Display P3 (`globals.pad` bit 0,
+// `Window::set_gamut`): sRGB's colours drawn as P3's numbers (both at
+// gamma 2.2, as app_server reads them), a Display P3 image's as they are.
+// Without it, everything as it was (a Display P3 image converted to sRGB).
+const SRGB_TO_P3 = mat3x3<f32>(vec3<f32>(0.822462, 0.033194, 0.017083), vec3<f32>(0.177538, 0.966806, 0.072397), vec3<f32>(0.0, 0.0, 0.910520));
+const P3_TO_SRGB = mat3x3<f32>(vec3<f32>(1.224940, -0.042057, -0.019638), vec3<f32>(-0.224940, 1.042057, -0.078636), vec3<f32>(0.0, 0.0, 1.098274));
+
+fn window_p3() -> bool {
+    return (globals.pad & 1u) != 0u;
+}
+
+fn convert_gamma22(c: vec3<f32>, m: mat3x3<f32>) -> vec3<f32> {
+    let light = m * pow(max(c, vec3<f32>(0.0)), vec3<f32>(2.2));
+    return pow(clamp(light, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(1.0 / 2.2));
+}
+
+// An sRGB colour as the window draws it.
+fn to_window(c: vec3<f32>) -> vec3<f32> {
+    if (window_p3()) {
+        return convert_gamma22(c, SRGB_TO_P3);
+    }
+    return c;
+}
+
+// A colour already in the window's numbers, blended as `blend_color` does.
+fn blend_raw(color: vec4<f32>, alpha_factor: f32) -> vec4<f32> {
     let alpha = color.a * alpha_factor;
     let multiplier = select(1.0, alpha, globals.premultiplied_alpha != 0u);
     return vec4<f32>(color.rgb * multiplier, alpha);
+}
+
+fn blend_color(color: vec4<f32>, alpha_factor: f32) -> vec4<f32> {
+    return blend_raw(vec4<f32>(to_window(color.rgb), color.a), alpha_factor);
 }
 
 
@@ -1083,6 +1112,10 @@ fn vs_path(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) insta
 @fragment
 fn fs_path(input: PathVarying) -> @location(0) vec4<f32> {
     let sample = textureSample(t_sprite, s_sprite, input.texture_coords);
+    // (Rasterized premultiplied in sRGB; Olo: into the window's colours.)
+    if (window_p3() && sample.a > 0.0) {
+        return vec4<f32>(to_window(sample.rgb / sample.a) * sample.a, sample.a);
+    }
     return sample;
 }
 
@@ -1418,7 +1451,7 @@ fn fs_poly_sprite(input: PolySpriteVarying) -> @location(0) vec4<f32> {
 
     var color = sample;
     // Olo: a texel as it is, not blended with its neighbours.
-    if (sprite.nearest != 0u) {
+    if ((sprite.nearest & 1u) != 0u) {
         let dims = vec2<f32>(textureDimensions(t_sprite, 0));
         color = textureLoad(t_sprite, vec2<i32>(floor(input.tile_position * dims)), 0);
     }
@@ -1426,7 +1459,16 @@ fn fs_poly_sprite(input: PolySpriteVarying) -> @location(0) vec4<f32> {
         let grayscale = dot(color.rgb, GRAYSCALE_FACTORS);
         color = vec4<f32>(vec3<f32>(grayscale), sample.a);
     }
-    return blend_color(color, sprite.opacity * saturate(0.5 - distance));
+    let alpha = sprite.opacity * saturate(0.5 - distance);
+    // Olo: a Display P3 image (bit 1): its numbers as they are in a
+    // window drawing in P3, else converted into sRGB's.
+    if ((sprite.nearest & 2u) != 0u) {
+        if (window_p3()) {
+            return blend_raw(color, alpha);
+        }
+        return blend_raw(vec4<f32>(convert_gamma22(color.rgb, P3_TO_SRGB), color.a), alpha);
+    }
+    return blend_color(color, alpha);
 }
 
 // --- image triangles (Olo) --- //
@@ -1533,5 +1575,6 @@ fn fs_surface(input: SurfaceVarying) -> @location(0) vec4<f32> {
         textureSampleLevel(t_cb_cr, s_surface, input.texture_position, 0.0).rg,
         1.0);
 
-    return ycbcr_to_RGB * y_cb_cr;
+    let rgb = ycbcr_to_RGB * y_cb_cr;
+    return vec4<f32>(to_window(rgb.rgb), rgb.a);
 }

@@ -410,6 +410,8 @@ impl Doc {
         self.title = file_name(&path);
         self.set_title(cx);
         let (proxy, id) = (olo_ui::proxy(cx), self.me(cx));
+        // (sRGB again till a wide photo shows.)
+        self.set_gamut(olo_ui::gpui::Gamut::Srgb, cx);
         if is_pdf(&path) {
             let sending = proxy.clone();
             let tx = pdfwork::start(path.clone(), move |ev| sending.send(Msg::Pdf(id, ev)));
@@ -427,6 +429,16 @@ impl Doc {
             proxy.send(Msg::Siblings(id, path, s));
         });
         cx.notify();
+    }
+
+    /// Draw the window in `gamut` (Display P3 while it shows a photo
+    /// wider than sRGB, else sRGB).
+    fn set_gamut(&mut self, gamut: olo_ui::gpui::Gamut, cx: &mut Context<Self>) {
+        if let Some(win) = self.win {
+            cx.defer(move |cx| {
+                let _ = win.update(cx, |_, window, _| window.set_gamut(gamut));
+            });
+        }
     }
 
     /// The window's title, and the file it shows (its tab's Open in
@@ -451,6 +463,12 @@ impl Doc {
             Some(item) => {
                 let preview = cx.new(|cx| PreviewView::new(item, generation, true, cx));
                 let sub = cx.subscribe(&preview, |d: &mut Doc, prev, e: &PreviewEvent, cx| {
+                    // A photo wider than sRGB shown whole: the window draws
+                    // in Display P3 while it shows one (`Gamut`).
+                    if *e == PreviewEvent::Shown {
+                        let gamut = prev.read(cx).image_view().read(cx).gamut();
+                        d.set_gamut(gamut, cx);
+                    }
                     if *e == PreviewEvent::Shown && !d.sized {
                         d.sized = true;
                         d.resize_to(prev, cx);

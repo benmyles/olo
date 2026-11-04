@@ -38,6 +38,19 @@ pub(crate) struct RenderImageParams {
     pub(crate) frame_index: usize,
 }
 
+/// Olo: the colours a window draws in, or an image's numbers are in.
+/// sRGB unless said; a window in Display P3 (`Window::set_gamut`)
+/// shows a Display P3 image's colours wider than sRGB's (on a display
+/// that has them), its own sRGB colours converted as drawn.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum Gamut {
+    /// sRGB, what everything is drawn in.
+    #[default]
+    Srgb,
+    /// Display P3 (an iPhone's photos, Apple's and wide laptops' panels).
+    DisplayP3,
+}
+
 /// A cached and processed image, in BGRA format
 pub struct RenderImage {
     /// The ID associated with this image
@@ -45,6 +58,8 @@ pub struct RenderImage {
     /// The scale factor of this image on render.
     pub(crate) scale_factor: f32,
     data: SmallVec<[Frame; 1]>,
+    /// Olo: what its numbers are in (sRGB unless said).
+    pub(crate) color_space: Gamut,
 }
 
 impl PartialEq for RenderImage {
@@ -64,7 +79,20 @@ impl RenderImage {
             id: ImageId(NEXT_ID.fetch_add(1, SeqCst)),
             scale_factor: 1.0,
             data: data.into(),
+            color_space: Gamut::Srgb,
         }
+    }
+
+    /// Olo: its numbers are in `space` (a Display P3 photo kept so): drawn
+    /// as they are in a window drawing in it, converted in one that isn't.
+    pub fn with_gamut(mut self, space: Gamut) -> Self {
+        self.color_space = space;
+        self
+    }
+
+    /// Olo: what its numbers are in.
+    pub fn gamut(&self) -> Gamut {
+        self.color_space
     }
 
     /// Convert this image into a byte slice.

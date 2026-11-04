@@ -410,7 +410,9 @@ impl super::Context {
 
         let format = match config.color_space {
             crate::ColorSpace::Linear => crate::TextureFormat::Rgba8UnormSrgb,
-            crate::ColorSpace::Srgb => crate::TextureFormat::Rgba8Unorm,
+            crate::ColorSpace::Srgb | crate::ColorSpace::DisplayP3 => {
+                crate::TextureFormat::Rgba8Unorm
+            }
         };
 
         surface.platform.swapchain = Some(Swapchain {
@@ -521,6 +523,11 @@ impl PlatformContext {
 }
 
 impl super::Surface {
+    /// Olo: the colour space it draws in (Display P3 is Vulkan's only).
+    pub fn color_space(&self) -> crate::ColorSpace {
+        crate::ColorSpace::Srgb
+    }
+
     pub fn info(&self) -> crate::SurfaceInfo {
         self.platform.swapchain.as_ref().unwrap().info
     }

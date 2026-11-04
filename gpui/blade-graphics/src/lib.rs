@@ -1171,6 +1171,11 @@ pub enum ColorSpace {
     #[default]
     Linear,
     Srgb,
+    /// Olo: Display P3's primaries, sRGB's curve (Vulkan's
+    /// `DISPLAY_P3_NONLINEAR_EXT`): the compositor told so (Mesa's WSI tags
+    /// the window), where the surface offers it; else sRGB
+    /// (`Surface::color_space` says which).
+    DisplayP3,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

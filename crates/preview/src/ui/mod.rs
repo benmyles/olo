@@ -41,6 +41,10 @@ impl Rgba for Bitmap {
     fn rgba(&self) -> &[u8] {
         &self.rgba
     }
+
+    fn gamut(&self) -> olo_ui::gpui::Gamut {
+        if self.p3 { olo_ui::gpui::Gamut::DisplayP3 } else { olo_ui::gpui::Gamut::Srgb }
+    }
 }
 
 /// A text row's height, and the room either side of the line numbers.

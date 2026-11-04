@@ -28,6 +28,12 @@ pub trait Rgba: Send + Sync + 'static {
     /// Its size in pixels.
     fn size(&self) -> [usize; 2];
     fn rgba(&self) -> &[u8];
+    /// What its numbers are in (sRGB unless said): a Display P3 picture
+    /// shows whole in a window drawing in P3 (`Window::set_gamut`), and
+    /// converted into sRGB in any other.
+    fn gamut(&self) -> gpui::Gamut {
+        gpui::Gamut::Srgb
+    }
 }
 
 pub const MIN_ZOOM: f32 = 0.05;
@@ -116,6 +122,12 @@ pub fn image_view(cx: &mut App, zoomable: bool) -> Entity<ImageView> {
 }
 
 impl ImageView {
+    /// What the picture's numbers are in (sRGB without one): a window
+    /// showing a Display P3 picture may draw in P3 (`Window::set_gamut`).
+    pub fn gamut(&self) -> gpui::Gamut {
+        self.picture.as_ref().map_or(gpui::Gamut::Srgb, |p| p.gamut())
+    }
+
     /// Show `picture`, whose own size is `full` pixels (bigger than it if
     /// it was decoded smaller). A picture of the same size (an edit that
     /// flips it) stays where it was; another is fitted.
@@ -530,7 +542,7 @@ pub fn resampled(src: &dyn Rgba, (w, h): (u32, u32)) -> Option<Arc<RenderImage>>
         to.into_vec()
     };
     to_bgra(&mut out);
-    Some(Arc::new(RenderImage::new([image::Frame::new(image::RgbaImage::from_raw(w, h, out)?)])))
+    Some(Arc::new(RenderImage::new([image::Frame::new(image::RgbaImage::from_raw(w, h, out)?)]).with_gamut(src.gamut())))
 }
 
 /// A picture from pixels already in GPUI's order, premultiplied BGRA
@@ -554,7 +566,7 @@ fn tile(src: &dyn Rgba, (tx, ty): (usize, usize)) -> Option<Arc<RenderImage>> {
         out.extend_from_slice(&rgba[row..row + tw * 4]);
     }
     to_bgra(&mut out);
-    Some(Arc::new(RenderImage::new([image::Frame::new(image::RgbaImage::from_raw(tw as u32, th as u32, out)?)])))
+    Some(Arc::new(RenderImage::new([image::Frame::new(image::RgbaImage::from_raw(tw as u32, th as u32, out)?)]).with_gamut(src.gamut())))
 }
 
 impl Render for ImageView {

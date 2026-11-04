@@ -7,6 +7,9 @@
 pub struct Bitmap {
     pub size: [usize; 2],
     pub rgba: Vec<u8>,
+    /// Its numbers are Display P3's (a photo wider than sRGB, kept so for
+    /// a window drawing in P3), else sRGB's.
+    pub p3: bool,
 }
 
 /// `v × a / 255`, rounded.
@@ -19,7 +22,13 @@ impl Bitmap {
     /// From premultiplied RGBA.
     pub fn from_rgba_premultiplied(size: [usize; 2], rgba: Vec<u8>) -> Bitmap {
         debug_assert_eq!(rgba.len(), size[0] * size[1] * 4);
-        Bitmap { size, rgba }
+        Bitmap { size, rgba, p3: false }
+    }
+
+    /// The same, its numbers said to be Display P3's.
+    pub fn in_p3(mut self, p3: bool) -> Bitmap {
+        self.p3 = p3;
+        self
     }
 
     /// From straight (not premultiplied) RGBA.

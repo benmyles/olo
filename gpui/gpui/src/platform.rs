@@ -658,6 +658,11 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
         Tiling::default()
     }
     fn set_app_id(&mut self, _app_id: &str) {}
+    /// Olo: draw in `space` from the next frame, telling the compositor;
+    /// whether it does (a compositor without colour management: sRGB).
+    fn set_gamut(&mut self, _space: crate::Gamut) -> bool {
+        false
+    }
     fn map_window(&mut self) -> anyhow::Result<()> {
         Ok(())
     }

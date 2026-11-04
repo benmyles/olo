@@ -572,10 +572,7 @@ fn heic(data: &[u8]) -> Result<DynamicImage, String> {
     if img.width as u64 * img.height as u64 > MAX_PIXELS {
         return Err("too large".into());
     }
-    let rgba = image::RgbaImage::from_raw(img.width, img.height, img.to_rgba8()).map(DynamicImage::ImageRgba8).ok_or_else(|| "bad image size".to_owned())?;
-    // (An iPhone's photos: Display P3, its profile embedded.)
-    let icc = heifer::read_metadata(data).ok().and_then(|m| m.icc_profile);
-    Ok(to_srgb(rgba, icc.as_deref()))
+    image::RgbaImage::from_raw(img.width, img.height, img.to_rgba8()).map(DynamicImage::ImageRgba8).ok_or_else(|| "bad image size".to_owned())
 }
 
 /// `img` from the colour profile its file embeds into sRGB, what Olo's
@@ -585,42 +582,75 @@ fn heic(data: &[u8]) -> Result<DynamicImage, String> {
 /// in perceptually. Left as it is without a profile, with an sRGB one, or
 /// one that isn't RGB or can't be read.
 pub fn to_srgb(img: DynamicImage, icc: Option<&[u8]>) -> DynamicImage {
+    convert(img, icc, false).0
+}
+
+/// `img` into sRGB, or (`keep_wide`) into Display P3 when its profile
+/// isn't sRGB's (P3 covers what photos have: a window drawing in P3 shows
+/// them whole). Whether it's in Display P3 now.
+fn convert(img: DynamicImage, icc: Option<&[u8]>, keep_wide: bool) -> (DynamicImage, bool) {
     use moxcms::{ColorProfile, DataColorSpace, Layout, RenderingIntent, TransformOptions};
-    let Some(src) = icc.and_then(|b| ColorProfile::new_from_slice(b).ok()) else { return img };
+    let Some(src) = icc.and_then(|b| ColorProfile::new_from_slice(b).ok()) else { return (img, false) };
     let srgb = ColorProfile::new_srgb();
     if src.color_space != DataColorSpace::Rgb {
-        return img;
+        return (img, false);
     }
     let near = |a: moxcms::Xyzd, b: moxcms::Xyzd| (a.x - b.x).abs() < 2e-3 && (a.y - b.y).abs() < 2e-3 && (a.z - b.z).abs() < 2e-3;
     if near(src.red_colorant, srgb.red_colorant) && near(src.green_colorant, srgb.green_colorant) && near(src.blue_colorant, srgb.blue_colorant) {
-        return img;
+        return (img, false);
+    }
+    let dst = if keep_wide { ColorProfile::new_display_p3() } else { srgb };
+    let p3 = ColorProfile::new_display_p3();
+    // (Already Display P3, kept so: nothing to do.)
+    if keep_wide && near(src.red_colorant, p3.red_colorant) && near(src.green_colorant, p3.green_colorant) && near(src.blue_colorant, p3.blue_colorant) {
+        return (img, true);
     }
     let options = TransformOptions { rendering_intent: RenderingIntent::Perceptual, ..TransformOptions::default() };
-    let Ok(t) = src.create_transform_8bit(Layout::Rgba, &srgb, Layout::Rgba, options) else { return img };
+    let Ok(t) = src.create_transform_8bit(Layout::Rgba, &dst, Layout::Rgba, options) else { return (img, false) };
     let mut rgba = img.into_rgba8();
     let mut out = vec![0u8; rgba.len()];
     if t.transform(&rgba, &mut out).is_ok() {
         rgba.copy_from_slice(&out);
     }
-    DynamicImage::ImageRgba8(rgba)
+    (DynamicImage::ImageRgba8(rgba), keep_wide)
 }
 
-/// Decode `path`, returning the picture and its format's name ("PNG").
+/// Decode `path` as [`open`] does, but a picture wider than sRGB (its
+/// profile says) kept in Display P3 for a window drawing in it (Viewer):
+/// the picture, its format's name, and whether it's in Display P3.
+pub fn open_wide(path: &Path) -> Result<(DynamicImage, String, bool), String> {
+    let (img, format, icc) = decode(path)?;
+    let (img, p3) = convert(img, icc.as_deref(), true);
+    Ok((img, format, p3))
+}
+
+/// Decode `path`, returning the picture (in sRGB: one with a colour
+/// profile converted from it, [`to_srgb`]) and its format's name ("PNG").
 pub fn open(path: &Path) -> Result<(DynamicImage, String), String> {
+    let (img, format, icc) = decode(path)?;
+    Ok((to_srgb(img, icc.as_deref()), format))
+}
+
+/// The picture as its file has it, its format's name, and the colour
+/// profile it embeds.
+fn decode(path: &Path) -> Result<(DynamicImage, String, Option<Vec<u8>>), String> {
     let mut head = [0u8; 12];
     let n = std::fs::File::open(path).and_then(|mut f| f.read(&mut head)).map_err(|e| e.to_string())?;
     if is_jxl(&head[..n]) {
         let file = std::io::BufReader::new(std::fs::File::open(path).map_err(|e| e.to_string())?);
-        let decoder = jxl_oxide::integration::JxlDecoder::new(file).map_err(|e| e.to_string())?;
+        let mut decoder = jxl_oxide::integration::JxlDecoder::new(file).map_err(|e| e.to_string())?;
+        let icc = image::ImageDecoder::icc_profile(&mut decoder).ok().flatten();
         let img = DynamicImage::from_decoder(decoder).map_err(|e| e.to_string())?;
-        return Ok((img, "JPEG XL".into()));
+        return Ok((img, "JPEG XL".into(), icc));
     }
     if let Some(kind) = heif_brand(&head[..n]) {
         let data = std::fs::read(path).map_err(|e| e.to_string())?;
+        // (An iPhone's photos: Display P3, its profile embedded.)
+        let icc = heifer::read_metadata(&data).ok().and_then(|m| m.icc_profile);
         return match kind {
-            Heif::Avif => avif(&data).map(|i| (i, "AVIF".into())),
+            Heif::Avif => avif(&data).map(|i| (i, "AVIF".into(), icc)),
             // Some HEIF files hold AV1 under a generic brand.
-            Heif::Hevc => heic(&data).map(|i| (i, "HEIC".into())).or_else(|e| avif(&data).map(|i| (i, "AVIF".into())).map_err(|_| e)),
+            Heif::Hevc => heic(&data).map(|i| (i, "HEIC".into(), icc.clone())).or_else(|e| avif(&data).map(|i| (i, "AVIF".into(), icc)).map_err(|_| e)),
         };
     }
     let mut reader = ImageReader::open(path).map_err(|e| e.to_string())?.with_guessed_format().map_err(|e| e.to_string())?;
@@ -635,7 +665,7 @@ pub fn open(path: &Path) -> Result<(DynamicImage, String), String> {
     if let Some(o) = orientation {
         img.apply_orientation(o);
     }
-    Ok((to_srgb(img, icc.as_deref()), format))
+    Ok((img, format, icc))
 }
 
 #[cfg(test)]
@@ -697,6 +727,11 @@ mod tests {
         for c in 0..3 {
             assert!((i32::from(got[c]) - want[c]).abs() <= 2, "got {got:?}, want {want:?}");
         }
+        // Kept wide: P3's numbers as they were, said to be P3.
+        let (wide, _, p3_kept) = open_wide(&dir.join("p3.png")).unwrap();
+        assert!(p3_kept);
+        let got = wide.into_rgba8().get_pixel(0, 0).0;
+        assert!(got.iter().zip(p3.iter()).all(|(a, b)| a.abs_diff(*b) <= 1), "{got:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

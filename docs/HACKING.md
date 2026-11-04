@@ -2878,8 +2878,19 @@ Pictures carry their colours too: `olo_images::open` converts one from
 the ICC profile its file embeds into sRGB (`to_srgb`, moxcms, perceptual),
 so an iPhone's Display P3 photo shows its colours, not P3's numbers taken
 for sRGB's (washed out); 34 ms for 12 megapixels, on the thread that
-decodes it. Olo's own apps draw in sRGB, so colours wider than sRGB's
-are mapped into it there. Night light in HDR scales each channel's light
+decodes it. Olo's apps draw in sRGB, but a window can draw in Display
+P3 (GPUI's `Window::set_gamut`): its swapchain made again in Vulkan's
+`DISPLAY_P3_NONLINEAR_EXT` (ten bits a channel where offered; Mesa's WSI
+tells app_server, which converts the window into the display's colours),
+its sRGB colours converted into P3's numbers by the shaders (gamma 2.2
+both ways: read back, a P3 window's grey is an sRGB window's, exactly),
+and an image marked P3 (`RenderImage::with_gamut`, a kit `Rgba`'s
+`gamut()`) drawn as it is; in an sRGB window a P3 image is converted.
+Viewer draws in P3 while it shows a photo wider than sRGB
+(`olo_images::open_wide` keeps it in P3), so an iPhone photo's reds and
+greens show whole on a P3 panel. A window not asking costs nothing (one
+uniform). GPUI never makes colour management objects itself: Mesa's
+WSI makes the one a surface may have. Night light in HDR scales each channel's light
 and encodes PQ again (`night::ramps_pq`), the gamma ramp's input being
 PQ's code (evenly spaced to the eye: the LUT holds it well).
 `tools/dev/layout-check NAME [--auto] [--unplug]` checks this quickly:

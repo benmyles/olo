@@ -450,6 +450,9 @@ pub struct BladeRenderer {
     /// some (only where the GPU blends with a second source).
     subpixel_sprites: Option<Arc<gpu::RenderPipeline>>,
     rendering_parameters: RenderingParameters,
+    /// Olo: the window draws in Display P3 (`Window::set_gamut`):
+    /// the shaders convert sRGB's colours into P3's numbers.
+    display_p3: bool,
     /// Olo: the window drawn into, to make its surface again when it's
     /// lost (`remake_surface`), and when that was last tried.
     window: Option<RawHandles>,
@@ -504,6 +507,48 @@ fn shared_pipelines(
 }
 
 impl BladeRenderer {
+    /// Olo: draw in Display P3 (`on`) or sRGB from the next frame, the
+    /// swapchain made again in that colour space (Mesa's WSI tells the
+    /// compositor); whether it is (a surface not offering P3: sRGB).
+    pub fn set_display_p3(&mut self, on: bool) -> bool {
+        let space = if on {
+            gpu::ColorSpace::DisplayP3
+        } else {
+            gpu::ColorSpace::Srgb
+        };
+        if space != self.surface_config.color_space {
+            self.wait_for_gpu();
+            self.surface_config.color_space = space;
+            let format = self.surface.info().format;
+            self.gpu
+                .reconfigure_surface(&mut self.surface, self.surface_config);
+            // (P3's swapchain is ten bits a channel where offered: the
+            // pipelines made again for it, as for a change of alpha.)
+            if self.surface.info().format != format {
+                self.pipelines = shared_pipelines(
+                    &self.gpu,
+                    &self.pipeline_cache,
+                    self.surface.info(),
+                    self.rendering_parameters.path_sample_count,
+                );
+                self.subpixel_sprites = None;
+                self.destroy_path_targets();
+            }
+        }
+        self.display_p3 = self.surface.color_space() == gpu::ColorSpace::DisplayP3;
+        if on {
+            log::info!(
+                "asked to draw in Display P3: {}",
+                if self.display_p3 {
+                    "drawing in it"
+                } else {
+                    "the surface doesn't offer it, sRGB"
+                }
+            );
+        }
+        self.display_p3
+    }
+
     pub fn new<I: raw_window_handle::HasWindowHandle + raw_window_handle::HasDisplayHandle>(
         context: &BladeContext,
         window: &I,
@@ -579,6 +624,7 @@ impl BladeRenderer {
             path_targets: None,
             subpixel_sprites: None,
             rendering_parameters,
+            display_p3: false,
             window: handles,
             remade: None,
         })
@@ -1039,7 +1085,7 @@ impl BladeRenderer {
                 gpu::AlphaMode::Ignored | gpu::AlphaMode::PostMultiplied => 0,
                 gpu::AlphaMode::PreMultiplied => 1,
             },
-            pad: 0,
+            pad: u32::from(self.display_p3),
         };
 
         let mut pass = self.command_encoder.render(
