@@ -15,6 +15,15 @@ of Finished; a new one goes where its priority puts it.
   whatever the native one is". Done so: each display composed by the GPU
   wired to it, no choice; Display's Graphics box says what each draws.
 
+- **A window that fits what it shows opens at its size, at once** (Ben,
+  2026-11-04: "when the adaptive/auto-sizing windows open they tend to
+  first open too small then update to be the right size -- that should
+  all happen basically instantly and before the user sees the window").
+  `fits_content` measures the content as drawn and resizes the next
+  frame, so the first frame shows at the designed size: the window is to
+  stay unshown until its first layout has set its size (GPUI's Wayland
+  window holds its first buffer until the Frame says it's sized).
+
 - **Preferences ▸ GPUs: each GPU and every knob it has** (Ben,
   2026-11-04: "if there are any knobs etc. that can be tweaked for the
   nvidia gpu, e.g. to make it run cooler/slower or hotter/faster or any
