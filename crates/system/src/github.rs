@@ -10,7 +10,8 @@ use std::path::PathBuf;
 use crate::{Result, secrets};
 
 /// The keyring attributes of the token Olo keeps.
-const OLO: &[(&str, &str)] = &[("application", "olo"), ("service", "github.com")];
+// (Kept with every other secret of Olo's, which Backup takes along.)
+const OLO: &[(&str, &str)] = secrets::GITHUB.attributes;
 
 /// Where a token came from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -57,7 +58,7 @@ pub fn token() -> Option<(String, Source)> {
 
 /// Keep `token` for Olo's GitHub features (in the login keyring).
 pub fn save(token: &str) -> Result<()> {
-    secrets::store("GitHub (Olo)", OLO, token.trim().as_bytes())
+    secrets::store(secrets::GITHUB.label, OLO, token.trim().as_bytes())
 }
 
 /// Forget the token Olo keeps (another source may still give one).

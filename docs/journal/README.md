@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-03
 
+### Backup takes passwords to another computer
+
+*18:09* — Preferences ▸ Backup seals passwords and sign-ins into the backup with a password, and moves it in on another computer: paths under the new home, the Token Pool paused, Telegram signed in again; what an import left behind is listed.
+
+![Backup takes passwords to another computer](2026-11-03/180937-backup-takes-passwords-to-another-computer.png)
+
 ### StyledEdit's tool bars
 
 *10:35* — The kit's new ToolBar: StyledEdit's file, editing and format tools along the top (wrapping to two rows in a narrow window, a » menu for what still doesn't fit), insert and view tools down the side. Every tool is a menu command and shows its state (Bold and Center pushed for the selected title); the pickers show the font, size and colour where the selection starts. 25 new icons, in every theme.

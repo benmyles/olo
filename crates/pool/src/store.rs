@@ -22,7 +22,8 @@ use crate::model::{Account, Credential};
 
 const MAGIC: &[u8; 4] = b"TABP";
 const FORMAT: u8 = 1;
-const KEY_ATTRS: [(&str, &str); 2] = [("application", "tabula-pool"), ("purpose", "pool-key")];
+// (Kept with every other secret of Olo's, which Backup takes along.)
+const KEY_ATTRS: &[(&str, &str)] = olo_system::secrets::POOL_KEY.attributes;
 
 /// Everything kept: the accounts and, by account id, their sign-ins.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -34,6 +35,11 @@ pub struct Saved {
 pub fn path() -> PathBuf {
     olo_xdg::config_dir().join("pool.vault")
 }
+
+/// Beside the store, put there by a backup imported on another computer
+/// (Preferences' `backup.rs` names it too): its accounts are paused as
+/// it's next opened.
+pub const ARRIVED: &str = "pool-arrived.json";
 
 fn keyfile() -> Option<PathBuf> {
     std::env::var_os("OLO_POOL_KEYFILE").map(PathBuf::from)
@@ -74,12 +80,12 @@ fn key(sealed_exists: bool) -> Result<Zeroizing<[u8; 32]>, String> {
             Err(_) if sealed_exists => return Err(missing()),
             Err(e) => return Err(format!("Couldn’t read the key: {e}")),
         },
-        None => match olo_system::secrets::lookup(&KEY_ATTRS) {
+        None => match olo_system::secrets::lookup(KEY_ATTRS) {
             Ok(Some(b)) => Zeroizing::new(b),
             Ok(None) if sealed_exists => return Err(missing()),
             Ok(None) => {
                 let k = Zeroizing::new(random::<32>().to_vec());
-                olo_system::secrets::store("Olo Token Pool", &KEY_ATTRS, &k).map_err(|e| format!("Couldn’t keep the key in the login keyring: {e}"))?;
+                olo_system::secrets::store(olo_system::secrets::POOL_KEY.label, KEY_ATTRS, &k).map_err(|e| format!("Couldn’t keep the key in the login keyring: {e}"))?;
                 k
             }
             Err(e) => return Err(format!("Couldn’t reach the login keyring: {e}")),
@@ -142,14 +148,28 @@ impl Store {
     pub fn open_at(path: PathBuf) -> Result<(Store, Saved), String> {
         let exists = path.exists();
         let key = key(exists)?;
-        let saved = if exists {
+        let mut saved = if exists {
             let bytes = std::fs::read(&path).map_err(|e| format!("Couldn’t read the pool: {e}"))?;
             let plain = open(&key, &bytes)?;
             serde_json::from_slice(&plain).map_err(|_| "The pool’s file is damaged.".to_owned())?
         } else {
             Saved::default()
         };
-        Ok((Store { path, key }, saved))
+        let store = Store { path, key };
+        // Brought from another computer by a backup (Preferences ▸ Backup
+        // leaves this beside it): its accounts are paused here till the
+        // person turns them on. Their sign-ins renew themselves, and two
+        // computers renewing one would sign each other out.
+        let arrived = store.path.with_file_name(ARRIVED);
+        if arrived.exists() {
+            for a in &mut saved.accounts {
+                a.enabled = false;
+            }
+            store.save(&saved)?;
+            let _ = std::fs::remove_file(&arrived);
+            tracing::info!(accounts = saved.accounts.len(), "pool: from another computer, its accounts paused");
+        }
+        Ok((store, saved))
     }
 
     /// Seal and write `saved` (blocks on the disk: call it off the UI and
@@ -188,6 +208,17 @@ mod tests {
         let n = bad.len();
         bad[n - 1] ^= 1;
         std::fs::write(&path, bad).unwrap();
-        assert!(Store::open_at(path).is_err());
+        assert!(Store::open_at(path.clone()).is_err());
+
+        // From another computer: its accounts come in paused, once.
+        store.save(&s).unwrap();
+        std::fs::write(dir.path().join(ARRIVED), b"{}").unwrap();
+        let (_, here) = Store::open_at(path.clone()).unwrap();
+        assert!(!here.accounts[0].enabled);
+        assert!(!dir.path().join(ARRIVED).exists());
+        let (store, mut again) = Store::open_at(path.clone()).unwrap();
+        again.accounts[0].enabled = true;
+        store.save(&again).unwrap();
+        assert!(Store::open_at(path).unwrap().1.accounts[0].enabled, "turned on again, it stays on");
     }
 }

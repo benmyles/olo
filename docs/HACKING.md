@@ -3151,20 +3151,56 @@ opened, its own `panel::State` and text fields).
   or unread and not pinned in the history) from the same app with the
   same title and text (`store::same_as`), telling the app it expired.
 * Backup (`backup.rs`) exports every Olo setting and piece of saved
-  state (`config_dir()` and `state_dir()`, as `config/…` and `state/…`)
+  state (`config_dir()` and `state_dir()`, as `config/…` and `state/…`;
+  not the automatic backups nor Agent Screens' own homes, `LEFT_OUT`)
   into one `.olo-backup` file: a zstd tar with `manifest.json` first
-  (format, version, when, each file and its size). Import reads the
-  manifest and shows it by app (`Manifest::groups`) with Import / Cancel;
-  importing first saves what is there to `state_dir()/backups` (the last
-  five; left out of backups), then replaces each file atomically, keeping
-  its mode; names outside the two roots are refused, and files the backup
-  lacks are left alone. app_server keeps its settings in memory, so the
-  backup's `app_server.json` is sent to it as `SetSettings`. Both run on
-  a worker thread with a StatusBar and Cancel (import can only be
-  cancelled while it saves what is there). `olo-preferences --export
-  FILE`, `--inspect FILE` and `--import FILE` do the same without a
-  window; opening a `.olo-backup` (`mime::SETTINGS_BACKUP`, kit
-  `Kind::SettingsBackup`) shows it in the panel, ready to import.
+  (format 2: version, when, each file and its size, where it was made,
+  `Origin`: the home folder, a digest of the machine's id and the
+  user's, the processor). Sealed with a password (the default, "Include
+  passwords and sign-ins"), it also holds the secrets Olo keeps in the
+  login keyring, every one of `olo_system::secrets::KEPT` (the keys to
+  Passwords' and the Token Pool's vaults, the GitHub token, Telegram's
+  API ID and sign-in: each owner finds its secret by its entry there,
+  so one added goes there or a backup leaves it behind), and its files
+  and those go in a tar of their own, sealed (`Seal::Passphrase`:
+  Argon2id, 64 MiB and three passes, then XChaCha20-Poly1305 a
+  megabyte at a time, each piece numbered and the last marked, so none
+  can be dropped, moved or cut off unnoticed). Open, it holds no secret.
+  Import reads the manifest and shows what it holds by app in the
+  Import box's list (`Manifest::groups`, and the secrets by what they
+  are), asks for the password if it's sealed, and opens it before
+  replacing anything (a wrong one changes nothing); it then saves what
+  is there to `state_dir()/backups` (the last five; sealed with a key
+  kept in the login keyring, `Seal::Keyring`, secrets and all, so an
+  import can be undone by importing that, here only), replaces each file
+  atomically, keeping its mode (names outside the two roots are
+  refused; files the backup lacks are left alone), and puts its secrets
+  in the keyring. Made on another computer (`Manifest::from_elsewhere`),
+  a backup is moved in: paths under the old home folder are moved to
+  this one's (`rehome`: where it's a path's start and a whole name),
+  displays known by their port rather than their monitor are left out
+  of app_server's settings (`without_connectors`,
+  `olo_protocol::is_connector_key`: on another computer "eDP-1" is
+  another panel), Telegram's sign-in stays behind (each computer signs
+  in as itself: `Carry::SameComputer`), the Token Pool's accounts come
+  in paused (`pool-arrived.json`, which the pool reads as it opens its
+  store: each sign-in renews itself, and two computers renewing one sign
+  each other out), and a vault whose key the backup lacks stays as it is
+  here. What didn't come along, or came differently, is said
+  (`Imported::notes`: also Bluetooth pairings, Wi-Fi networks and Touch
+  ID fingerprints, the computer's own, and a Mac keyboard profile). No
+  login keyring: no secret is read or put back, and the vaults stay.
+  app_server keeps its settings in memory, so the backup's
+  `app_server.json` is sent to it as `SetSettings`. Both run on a
+  worker thread with progress and Cancel (import can only be cancelled
+  while it saves what is there). `olo-preferences --export FILE
+  [--sealed]`, `--inspect FILE` and `--import FILE` do the same without
+  a window (a password read from stdin); opening a `.olo-backup`
+  (`mime::SETTINGS_BACKUP`, kit `Kind::SettingsBackup`) shows it in the
+  panel, ready to import (`backup::open_later`: the panel's window may
+  be made after). Tested with a real keyring on a private bus
+  (`tools/dev/private-keyring`, and Passwords' ignored
+  `through_a_backup` test making and opening a vault on each side).
 * Date & Time (`datetime.rs`) talks to systemd-timedated through
   `olo_system::time` on its own worker thread (status every 2 s; set
   time, zone and network time with polkit's interactive auth, so a

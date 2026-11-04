@@ -1461,6 +1461,14 @@ pub fn display_key(connector: &str, make: &str, model: &str, serial: &str) -> St
     if known(make) && known(model) && known(serial) { format!("{} {} {}", make.trim(), model.trim(), serial.trim()) } else { connector.to_owned() }
 }
 
+/// A [`display_key`] that names a connector ("eDP-1"), not a monitor
+/// (those are made, model and serial, spaced): what's on that port of
+/// that computer, which means nothing on another (a backup brought there
+/// leaves them out).
+pub fn is_connector_key(key: &str) -> bool {
+    !key.trim().contains(' ')
+}
+
 impl Default for DisplaySettings {
     fn default() -> Self {
         DisplaySettings { scale: 2.0, main: None, outputs: Default::default() }

@@ -22,6 +22,45 @@ const ROOT: &str = "/org/freedesktop/secrets";
 /// (session, parameters, value, content type), as the Secret Service has it.
 type Secret = (OwnedObjectPath, Vec<u8>, Vec<u8>, String);
 
+/// A secret Olo keeps in the login keyring: every owner finds it by these
+/// attributes, and Backup takes each along (`KEPT`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Kept {
+    /// Its label in the keyring.
+    pub label: &'static str,
+    pub attributes: &'static [(&'static str, &'static str)],
+    /// What it is, as a backup's summary names it.
+    pub what: &'static str,
+    /// Whether it may go to another computer, or only back to this one.
+    pub carry: Carry,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Carry {
+    /// Anywhere: it means the same on any computer.
+    Anywhere,
+    /// Only back to the computer it came from: a sign-in of this
+    /// computer's own, which two computers can't share (Telegram's
+    /// session: each device signs in as itself).
+    SameComputer,
+}
+
+/// The key to Passwords' vault (`passwords.vault`).
+pub const PASSWORDS_KEY: Kept = Kept { label: "Olo Passwords", attributes: &[("application", "tabula-passwords"), ("purpose", "vault-key")], what: "Passwords", carry: Carry::Anywhere };
+/// The key to the Token Pool's store (`pool.vault`).
+pub const POOL_KEY: Kept = Kept { label: "Olo Token Pool", attributes: &[("application", "tabula-pool"), ("purpose", "pool-key")], what: "Token Pool", carry: Carry::Anywhere };
+/// The GitHub token Integrations keeps (`github`).
+pub const GITHUB: Kept = Kept { label: "GitHub (Olo)", attributes: &[("application", "olo"), ("service", "github.com")], what: "GitHub", carry: Carry::Anywhere };
+/// The API ID and hash registered for Telegram.
+pub const TELEGRAM_API: Kept = Kept { label: "Telegram API ID (Olo)", attributes: &[("application", "olo"), ("service", "telegram"), ("kind", "api")], what: "Telegram", carry: Carry::Anywhere };
+/// Telegram's session: its authorization keys, this computer signed in.
+pub const TELEGRAM_SESSION: Kept =
+    Kept { label: "Telegram session (Olo)", attributes: &[("application", "olo"), ("service", "telegram"), ("kind", "session")], what: "Telegram sign-in", carry: Carry::SameComputer };
+
+/// Every secret Olo keeps in the keyring. One added anywhere goes here,
+/// or a backup leaves it behind.
+pub const KEPT: &[Kept] = &[PASSWORDS_KEY, POOL_KEY, GITHUB, TELEGRAM_API, TELEGRAM_SESSION];
+
 fn service(conn: &Connection) -> Result<Proxy<'_>> {
     Proxy::new(conn, DEST, ROOT, SERVICE)
 }
@@ -61,6 +100,12 @@ fn available(conn: &Connection) -> bool {
         Ok(names.iter().any(|n| n == DEST))
     };
     ask("NameHasOwner", &owned) || ask("ListActivatableNames", &activatable)
+}
+
+/// Whether there is a login keyring to keep secrets in (one serving the
+/// session bus, or that can be started on it).
+pub fn present() -> bool {
+    bus::session().is_ok_and(available)
 }
 
 /// The secret stored with exactly these attributes, if there is one (none

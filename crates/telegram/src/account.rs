@@ -34,8 +34,9 @@ pub struct Api {
     pub hash: String,
 }
 
-const API: &[(&str, &str)] = &[("application", "olo"), ("service", "telegram"), ("kind", "api")];
-const SESSION: &[(&str, &str)] = &[("application", "olo"), ("service", "telegram"), ("kind", "session")];
+// (Kept with every other secret of Olo's, which Backup takes along.)
+const API: &[(&str, &str)] = olo_system::secrets::TELEGRAM_API.attributes;
+const SESSION: &[(&str, &str)] = olo_system::secrets::TELEGRAM_SESSION.attributes;
 
 fn secrets_dir() -> Option<PathBuf> {
     std::env::var_os("OLO_TELEGRAM_SECRETS").map(PathBuf::from)
@@ -78,7 +79,7 @@ pub fn api() -> Result<Option<Api>, String> {
 }
 
 pub fn save_api(api: &Api) -> Result<(), String> {
-    store("Telegram API ID (Olo)", API, &serde_json::to_vec(api).unwrap_or_default())
+    store(olo_system::secrets::TELEGRAM_API.label, API, &serde_json::to_vec(api).unwrap_or_default())
 }
 
 /// Forget the API ID and hash.
@@ -209,7 +210,7 @@ impl Store {
             let data = self.data().map_err(|e| e.to_string())?;
             let secret = Secret { home_dc: data.home_dc, dc_options: data.dc_options.values().cloned().collect(), me: self.me() };
             drop(data);
-            store("Telegram session (Olo)", SESSION, &serde_json::to_vec(&secret).unwrap_or_default())?;
+            store(olo_system::secrets::TELEGRAM_SESSION.label, SESSION, &serde_json::to_vec(&secret).unwrap_or_default())?;
         }
         if always || self.cache_dirty.swap(false, Ordering::Relaxed) {
             let data = self.data().map_err(|e| e.to_string())?;

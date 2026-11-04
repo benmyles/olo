@@ -7,23 +7,17 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Backup: everything, and onto another machine** (Ben, 2026-11-03,
-  soon: he sets up his ThinkPad by exporting from this Mac and
-  importing there): "do an audit of the import/export backup feature
-  and make sure everything from all the preferences / relevant olo apps
-  is covered and included -- including passwords -- and that none of
-  it assumes it's imported on the exact same machine (e.g. the same
-  macbook and user)". So: list what every Preferences pane and Olo app
-  keeps (settings, layouts, Passwords' vault, accounts, Integrations,
-  keyboard and touchpad settings, Terminal's profiles, Deskbar,
-  Tracker, the palm model, …) against what the export takes, and add
-  what's missing; nothing in it tied to this machine (paths under this
-  user's home, display and input device names, Apple-only hardware,
-  aarch64), what can't carry over (a device's own pairing, a key sealed
-  to this machine's TPM or keyring) left out or put in again on import,
-  and said so; tested by exporting from one sandbox and importing into
-  another with a different user, home and displays (and an x86 one when
-  the ThinkPad is here), every pane and app then checked.
+- **Backup: Wi-Fi networks too, and tried on the ThinkPad** (what's
+  left of Ben's backup audit, 2026-11-03): saved Wi-Fi networks and
+  their passwords live in NetworkManager, not in Olo's files: a sealed
+  backup should take them along (`GetSettings` and `GetSecrets` for
+  each saved Wi-Fi connection, through polkit and Olo's agent) and an
+  import add them (`AddConnection`), tested against a NetworkManager of
+  the test's own (none on this machine touched). Then the real thing:
+  an export from this Mac, imported on the ThinkPad (x86, another user
+  name if it has one, other displays), every pane and app looked at,
+  Passwords opened, the pool's accounts turned on once the Mac's are
+  off.
 
 - **A tile too small for its window's least size, off its part**
   (found 2026-11-03 by `wm-fuzz --tiles`, seeds 5 and 9, the build
@@ -982,6 +976,46 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Backup: everything, and onto another machine**~~ (Ben, 2026-11-03,
+  soon: he sets up his ThinkPad by exporting from this Mac and
+  importing there): "do an audit of the import/export backup feature
+  and make sure everything from all the preferences / relevant olo apps
+  is covered and included -- including passwords -- and that none of
+  it assumes it's imported on the exact same machine (e.g. the same
+  macbook and user)". So: list what every Preferences pane and Olo app
+  keeps (settings, layouts, Passwords' vault, accounts, Integrations,
+  keyboard and touchpad settings, Terminal's profiles, Deskbar,
+  Tracker, the palm model, …) against what the export takes, and add
+  what's missing; nothing in it tied to this machine (paths under this
+  user's home, display and input device names, Apple-only hardware,
+  aarch64), what can't carry over (a device's own pairing, a key sealed
+  to this machine's TPM or keyring) left out or put in again on import,
+  and said so; tested by exporting from one sandbox and importing into
+  another with a different user, home and displays (and an x86 one when
+  the ThinkPad is here), every pane and app then checked.
+  *Done* 2026-11-03, the audit: the backup took both of Olo's
+  directories but none of the keyring's secrets, so on another computer
+  Passwords and the Token Pool couldn't be opened (their keys are in the
+  login keyring), nor GitHub or Telegram signed in; it took Agent
+  Screens' homes (1.7 GB of the 1.7 GB here); paths under the home
+  folder stayed the old home's; and app_server's settings for displays
+  known by their port ("eDP-1": the Mac's panel) would have gone to the
+  ThinkPad's. Now: every secret Olo keeps is in one list
+  (`olo_system::secrets::KEPT`), and a backup sealed with a password
+  (Argon2id, XChaCha20-Poly1305) takes them along; import puts them in
+  the new keyring, moves home paths to the new home, leaves out
+  port-keyed displays, keeps Telegram's sign-in on its own computer,
+  pauses the pool's accounts (two computers renewing one sign-in sign
+  each other out) and says what didn't come along. What was there is
+  saved first, sealed with a key in the keyring, secrets and all. Left
+  as they are (fine elsewhere): the touch filter (Apple's pads only),
+  keyboard profiles (the person's; the Mac one noted). Tested: unit
+  tests (another computer and home, a wrong password, a changed byte,
+  no keyring, undo), end to end with real gnome-keyrings on private
+  buses (a Passwords vault made at home A opens at home B), and the
+  panel at every scale, light and dark. Left: Wi-Fi networks, and the
+  ThinkPad itself (above).
 
 - ~~**Drag rounds: the last looks out of step in deeper trees**~~ (found
   2026-11-03 by auto-fuzz's mid-drag check): `tsession start af

@@ -27,6 +27,13 @@ rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] 
 ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "platform-verifier"] }
 tar = "0.4"
 zstd = "0.14"
+# Backup: sealing a backup with a passphrase, or a key in the keyring.
+argon2 = "0.5"
+chacha20poly1305 = "0.11"
+getrandom = "0.3"
+base64 = "0.22"
+sha2 = "0.11"
+zeroize = "1"
 olo-tg.workspace = true
 # Integrations ▸ Telegram: signing in with a QR code.
 qrcode = { version = "0.14", default-features = false }

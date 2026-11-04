@@ -237,16 +237,17 @@ impl Prefs {
         }
         // A backup opened from Tracker: what it holds, ready to import
         // (once the panel's window, opened after this update, is there).
+        // (Waiting for the panel made for it, or taken by the one there.)
         if let Some(file) = files.last() {
+            backup::open_later(std::path::PathBuf::from(file.as_str()));
             self.open("backup", cx);
-            let path = std::path::PathBuf::from(file.as_str());
             let me = cx.entity();
             cx.defer(move |cx| {
                 let view = me.read(cx).windows.iter().find(|w| w.panel == Some(Panel::Backup)).and_then(|w| w.view.clone());
                 if let Some(view) = view {
                     view.update(cx, |v, cx| {
                         if let panel::State::Backup(b) = &mut v.state {
-                            b.inspect(path);
+                            b.take_opened();
                         }
                         cx.notify();
                     });
@@ -401,9 +402,11 @@ impl Render for Launcher {
     }
 }
 
-/// `--export FILE`, `--inspect FILE` or `--import FILE`: a backup without
-/// a window, for agents and scripts; the exit code, or None for other flags.
-fn backup_cli(flag: &str, file: &std::path::Path) -> Option<i32> {
+/// `--export FILE [--sealed]`, `--inspect FILE` or `--import FILE`: a
+/// backup without a window, for agents and scripts; the exit code, or
+/// None for other flags. A sealed export (passwords and sign-ins with
+/// it), and an import of one, read the backup's password from stdin.
+fn backup_cli(flag: &str, file: &std::path::Path, sealed: bool) -> Option<i32> {
     use std::sync::atomic::AtomicBool;
     let no = AtomicBool::new(false);
     let show = |m: &backup::Manifest| {
@@ -411,23 +414,44 @@ fn backup_cli(flag: &str, file: &std::path::Path) -> Option<i32> {
         for (app, files, bytes) in m.groups() {
             println!("  {app}: {files} {}, {}", if files == 1 { "file" } else { "files" }, backup::size_text(bytes));
         }
+        if m.sealed.is_some() {
+            println!("sealed, with {}", if m.secrets.is_empty() { "no passwords or sign-ins".to_string() } else { m.secrets.join(", ") });
+        }
+    };
+    let passphrase = || -> Result<zeroize::Zeroizing<String>, String> {
+        let mut line = zeroize::Zeroizing::new(String::new());
+        std::io::stdin().read_line(&mut line).map_err(|e| e.to_string())?;
+        let words = zeroize::Zeroizing::new(line.trim_end_matches(['\n', '\r']).to_string());
+        if words.is_empty() {
+            return Err("the backup's password is read from stdin, and there was none".into());
+        }
+        Ok(words)
     };
     let r = match flag {
-        "--export" => backup::export(&backup::roots(), file, &|_, _| {}, &no).map(|m| show(&m)),
-        "--inspect" => backup::inspect(file).map(|m| show(&m)),
-        "--import" => backup::import(&backup::roots(), file, &|_, _| {}, &no).map(|i| {
-            show(&i.manifest);
-            println!("imported {} files", i.files);
-            if let Some(p) = &i.before {
-                println!("the settings as they were: {}", p.display());
-            }
-            // app_server keeps its own copy: hand it the backup's.
-            if let Some(settings) = i.settings
-                && let Ok(mut c) = olo_protocol::Client::connect()
-            {
-                let _ = c.request(&olo_protocol::Request::SetSettings { settings });
-            }
-        }),
+        "--export" => (|| {
+            let how = if sealed { backup::Seal::Passphrase(passphrase()?) } else { backup::Seal::Open };
+            backup::export(&backup::roots(), file, &how, &backup::Login, &backup::Origin::here(), &|_, _| {}, &no).map(|m| show(&m))
+        })(),
+        "--inspect" if !sealed => backup::inspect(file).map(|m| show(&m)),
+        "--import" if !sealed => (|| {
+            let words = if backup::inspect(file)?.needs_passphrase() { Some(passphrase()?) } else { None };
+            backup::import(&backup::roots(), file, words.as_deref().map(|w| w.as_str()), &backup::Login, &backup::Origin::here(), &|_, _| {}, &no).map(|i| {
+                show(&i.manifest);
+                println!("imported {} {}, {} {}", i.files, if i.files == 1 { "file" } else { "files" }, i.secrets, if i.secrets == 1 { "password or sign-in" } else { "passwords and sign-ins" });
+                for note in &i.notes {
+                    println!("note: {note}");
+                }
+                if let Some(p) = &i.before {
+                    println!("the settings as they were: {}", p.display());
+                }
+                // app_server keeps its own copy: hand it the backup's.
+                if let Some(settings) = i.settings
+                    && let Ok(mut c) = olo_protocol::Client::connect()
+                {
+                    let _ = c.request(&olo_protocol::Request::SetSettings { settings });
+                }
+            })
+        })(),
         _ => return None,
     };
     Some(match r {
@@ -441,8 +465,9 @@ fn backup_cli(flag: &str, file: &std::path::Path) -> Option<i32> {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if let [flag, file] = &args[..]
-        && let Some(code) = backup_cli(flag, std::path::Path::new(file))
+    if let [flag, file, rest @ ..] = &args[..]
+        && rest.iter().all(|a| a == "--sealed")
+        && let Some(code) = backup_cli(flag, std::path::Path::new(file), !rest.is_empty())
     {
         std::process::exit(code);
     }

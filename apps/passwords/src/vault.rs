@@ -42,7 +42,8 @@ use zeroize::{Zeroize, Zeroizing};
 
 const MAGIC: &[u8; 4] = b"TABV";
 const FORMAT: u8 = 1;
-const KEY_ATTRS: [(&str, &str); 2] = [("application", "tabula-passwords"), ("purpose", "vault-key")];
+// (Kept with every other secret of Olo's, which Backup takes along.)
+const KEY_ATTRS: &[(&str, &str)] = olo_system::secrets::PASSWORDS_KEY.attributes;
 /// Vaults that live only here (before any account syncs) have ids
 /// starting with this.
 pub const LOCAL: &str = "local-";
@@ -224,12 +225,12 @@ fn key(store_exists: bool, keyfile: Option<&Path>) -> Result<Zeroizing<[u8; 32]>
             }
             Err(e) => return Err(fail(format!("Couldn’t read the key: {e}"))),
         },
-        None => match olo_system::secrets::lookup(&KEY_ATTRS) {
+        None => match olo_system::secrets::lookup(KEY_ATTRS) {
             Ok(Some(b)) => Zeroizing::new(b),
             Ok(None) if store_exists => return Err(missing()),
             Ok(None) => {
                 let k = Zeroizing::new(random::<32>().to_vec());
-                olo_system::secrets::store("Olo Passwords", &KEY_ATTRS, &k).map_err(|e| fail(format!("Couldn’t keep the key in the login keyring: {e}")))?;
+                olo_system::secrets::store(olo_system::secrets::PASSWORDS_KEY.label, KEY_ATTRS, &k).map_err(|e| fail(format!("Couldn’t keep the key in the login keyring: {e}")))?;
                 k
             }
             Err(e) => return Err(fail(format!("Couldn’t reach the login keyring: {e}"))),
@@ -725,6 +726,34 @@ mod tests {
     use onepassword::{ItemCategory, ItemField, ItemFieldType};
 
     use super::*;
+
+    /// A store, and its key, as a backup brings them to another home:
+    /// `OLO_BACKUP_TEST=make` makes one with a login in it (its key in the
+    /// login keyring), `=check` opens it and finds the login. Only on a
+    /// private test bus (tools/dev/private-keyring), never the person's
+    /// keyring; the config directory as `XDG_CONFIG_HOME` has it.
+    #[test]
+    #[ignore]
+    fn through_a_backup() {
+        let bus = std::env::var("DBUS_SESSION_BUS_ADDRESS").unwrap_or_default();
+        assert!(bus.contains("/tmp/olo-dev/"), "not a private test bus: {bus}");
+        assert!(std::env::var("XDG_CONFIG_HOME").is_ok_and(|c| c.starts_with("/var/tmp/")), "not a scratch config directory");
+        match std::env::var("OLO_BACKUP_TEST").as_deref() {
+            Ok("make") => {
+                let mut v = Vault::open().unwrap();
+                login(&mut v, "Backup test");
+                v.save().unwrap();
+            }
+            Ok("check") => {
+                let v = Vault::open().unwrap();
+                let vault = v.data.vaults[0].id.clone();
+                let item = v.items(&vault).into_iter().find(|i| i.title == "Backup test").expect("the login came along");
+                let full = v.get(&vault, &item.id).unwrap();
+                assert!(full.fields.iter().any(|f| f.value == "hunter2"));
+            }
+            other => panic!("OLO_BACKUP_TEST=make or check, not {other:?}"),
+        }
+    }
 
     /// A fresh store in a directory of its own, its key in a file there.
     fn fresh(name: &str) -> (Vault, PathBuf) {
