@@ -1,0 +1,9 @@
+[package]
+name = "olo-color"
+description = "Colour science for Olo: primaries, white points, transfer functions, conversions between colour spaces, gamut coverage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true

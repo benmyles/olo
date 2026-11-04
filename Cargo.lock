@@ -6905,6 +6905,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-color"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "olo-complete"
 version = "0.1.0"
 dependencies = [
