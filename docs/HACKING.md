@@ -7700,7 +7700,17 @@ a CRX3 signed with a P-256 key of this user's own
 comes from it), and writes `<chrome>/extensions/<id>.json` naming it:
 Chrome on Linux installs such an extension at start without asking, and
 takes a higher `version` as an update, so **raise `version` in
-`manifest.json` whenever the extension changes**. The worker reloads on
+`manifest.json` whenever the extension changes**. The listing is the
+install's, so one extension serves every profile and user data folder
+that Chrome runs (each gets it once): only an olo-chrome whose own
+`~/.local/share/olo/chrome` holds the Chrome it runs writes it, and it
+takes out any other Olo Passwords listing (a `*.json` naming an
+`olo-passwords.crx` or `tabula-passwords.crx` signed with another key)
+from every version folder, which Chrome uninstalls as it next starts.
+One with a home of its own running another home's Chrome (a test's,
+through a `current` link) lists nothing there and registers its host for
+the install's extension, read from that install's key: listing its own
+copy put a second Olo Passwords in each of the person's profiles. The worker reloads on
 `onUpdateAvailable` (Chrome would otherwise wait for it to go idle,
 which the open native port prevents) and puts `content.js` into the tabs
 already open on install or update. Beside the profile goes

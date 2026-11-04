@@ -181,18 +181,40 @@ fn put(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     std::fs::rename(tmp, path)
 }
 
-/// Offer the extension to the Chrome in `chrome_dir` (its install folder)
-/// and register `exe` as its host for the profiles in `user_data`. `root`
-/// keeps the key and the packed extension. The extension's id.
+/// The packed extensions Olo has made, before and after the rename.
+const CRX_NAMES: &[&str] = &["olo-passwords.crx", "tabula-passwords.crx"];
+
+/// Offer the extension to the Chrome in `chrome_dir` (a version folder of
+/// an install) and register `exe` as its host for the profiles in
+/// `user_data`. `root` is where this home keeps Chrome: the extension's
+/// key, the packed extension and the listing in `chrome_dir` belong to
+/// the install's own (its folder's parent), one copy for every profile
+/// and user data folder that Chrome runs. A Chrome from another home's
+/// install (the person's, run by a test's or an agent screen's
+/// olo-chrome with homes of their own) is left as it is: listing a copy
+/// signed with this home's key there put a second Olo Passwords in every
+/// profile of the person's. Its host is registered for the install's own
+/// extension. The extension's id.
 pub fn set_up(root: &Path, chrome_dir: &Path, user_data: &Path, exe: &Path) -> std::io::Result<String> {
-    let key = key(root)?;
+    let same = |a: &Path, b: &Path| a.canonicalize().ok().is_some_and(|a| b.canonicalize().ok().is_some_and(|b| a == b));
+    let install = chrome_dir.parent().unwrap_or(root);
+    let own = same(install, root);
+    let key = if own {
+        key(root)?
+    } else {
+        let der = std::fs::read(install.join("extension-key.der")).map_err(|e| std::io::Error::other(format!("the Chrome in {} isn't set up for Passwords yet ({e})", install.display())))?;
+        SigningKey::from_pkcs8_der(&der).map_err(|e| std::io::Error::other(e.to_string()))?
+    };
     let spki = key.verifying_key().to_public_key_der().map_err(std::io::Error::other)?;
     let id = id_of(spki.as_bytes());
-    let version = version();
-    let crx_path = root.join("olo-passwords.crx");
-    put(&crx_path, &crx(&key, &zip()))?;
-    let external = json!({ "external_crx": crx_path, "external_version": version });
-    put(&chrome_dir.join("extensions").join(format!("{id}.json")), &serde_json::to_vec_pretty(&external)?)?;
+    if own {
+        let version = version();
+        let crx_path = root.join("olo-passwords.crx");
+        put(&crx_path, &crx(&key, &zip()))?;
+        let external = json!({ "external_crx": crx_path, "external_version": version });
+        put(&chrome_dir.join("extensions").join(format!("{id}.json")), &serde_json::to_vec_pretty(&external)?)?;
+        sweep(root, &id);
+    }
     let manifest = json!({
         "name": HOST,
         "description": "Olo Passwords",
@@ -207,8 +229,38 @@ pub fn set_up(root: &Path, chrome_dir: &Path, user_data: &Path, exe: &Path) -> s
     Ok(id)
 }
 
+/// Every listing of another copy of Olo Passwords in the install's
+/// version folders (one signed with another key: a test's, a screen's,
+/// from before this was mended) taken out: Chrome uninstalls a listed
+/// extension that's no longer listed as it next starts.
+fn sweep(root: &Path, id: &str) {
+    let Ok(versions) = std::fs::read_dir(root) else { return };
+    for v in versions.flatten() {
+        if v.file_type().is_ok_and(|t| t.is_symlink()) {
+            continue;
+        }
+        let Ok(listed) = std::fs::read_dir(v.path().join("extensions")) else { continue };
+        for f in listed.flatten() {
+            let name = f.file_name().to_string_lossy().into_owned();
+            if name == format!("{id}.json") || !name.ends_with(".json") {
+                continue;
+            }
+            let ours = std::fs::read(f.path())
+                .ok()
+                .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+                .and_then(|j| j["external_crx"].as_str().map(|c| CRX_NAMES.iter().any(|n| c.ends_with(&format!("/{n}")))))
+                .unwrap_or(false);
+            if ours {
+                let _ = std::fs::remove_file(f.path());
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
 
     #[test]
@@ -242,9 +294,12 @@ mod tests {
 
     #[test]
     fn set_up_writes_everything_once() {
-        let dir = std::env::temp_dir().join(format!("olo-chrome-ext-{}", std::process::id()));
+        // (On disk, not in /tmp, which is memory.)
+        let dir = PathBuf::from("/var/tmp").join(format!("olo-chrome-ext-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let (root, chrome, data) = (dir.join("root"), dir.join("chrome"), dir.join("data"));
+        let (root, data) = (dir.join("root"), dir.join("data"));
+        let chrome = root.join("157.0.8103.38");
+        std::fs::create_dir_all(&chrome).unwrap();
         let id = set_up(&root, &chrome, &data, Path::new("/usr/bin/olo-chrome")).unwrap();
         assert_eq!(id, set_up(&root, &chrome, &data, Path::new("/usr/bin/olo-chrome")).unwrap(), "the same key");
         let ext: serde_json::Value = serde_json::from_slice(&std::fs::read(chrome.join(format!("extensions/{id}.json"))).unwrap()).unwrap();
@@ -256,6 +311,44 @@ mod tests {
         assert_eq!((old["name"].as_str(), &old["path"]), (Some("org.tabula.passwords"), &host["path"]));
         use std::os::unix::fs::PermissionsExt;
         assert_eq!(std::fs::metadata(root.join("extension-key.der")).unwrap().permissions().mode() & 0o777, 0o600);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// One Olo Passwords for every profile of an install: another home's
+    /// olo-chrome running this Chrome lists nothing of its own in it and
+    /// registers its host for the install's extension; the install's own
+    /// takes out other copies' listings, in every version folder.
+    #[test]
+    fn one_copy_for_every_profile() {
+        let dir = PathBuf::from("/var/tmp").join(format!("olo-chrome-one-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (root, old, new) = (dir.join("root"), dir.join("root/156.0.8078.79"), dir.join("root/157.0.8103.38"));
+        std::fs::create_dir_all(old.join("extensions")).unwrap();
+        std::fs::create_dir_all(&new).unwrap();
+        std::os::unix::fs::symlink("157.0.8103.38", root.join("current")).unwrap();
+        // A test's copy, listed before this was mended; and someone else's
+        // extension, which stays.
+        std::fs::write(old.join("extensions/nmdffaeonmnhpmjbnokegkoaogipjcip.json"), br#"{"external_crx":"/var/tmp/x/data/olo/chrome/olo-passwords.crx","external_version":"1.7.0"}"#).unwrap();
+        std::fs::write(old.join("extensions/aaaabbbbccccddddeeeeffffgggghhhh.json"), br#"{"external_crx":"/opt/other.crx","external_version":"2"}"#).unwrap();
+        let id = set_up(&root, &root.join("current"), &dir.join("data"), Path::new("/usr/bin/olo-chrome")).unwrap();
+        assert!(!old.join("extensions/nmdffaeonmnhpmjbnokegkoaogipjcip.json").exists());
+        assert!(old.join("extensions/aaaabbbbccccddddeeeeffffgggghhhh.json").exists());
+        assert!(new.join(format!("extensions/{id}.json")).exists());
+        let listed = || std::fs::read_dir(new.join("extensions")).unwrap().count();
+        assert_eq!(listed(), 1);
+
+        // A sandbox's olo-chrome (a home of its own) running this Chrome.
+        let sandbox = dir.join("sandbox/olo/chrome");
+        let theirs = set_up(&sandbox, &new, &dir.join("sandbox-data"), Path::new("/usr/bin/olo-chrome")).unwrap();
+        assert_eq!(theirs, id, "the install's extension");
+        assert_eq!(listed(), 1, "nothing of its own listed");
+        assert!(!sandbox.join("extension-key.der").exists() && !sandbox.join("olo-passwords.crx").exists());
+        let host: serde_json::Value = serde_json::from_slice(&std::fs::read(dir.join("sandbox-data/NativeMessagingHosts/com.olodesktop.passwords.json")).unwrap()).unwrap();
+        assert_eq!(host["allowed_origins"][0], format!("chrome-extension://{id}/"));
+        // An install no one has set up: nothing to register yet.
+        let bare = dir.join("bare/158.0");
+        std::fs::create_dir_all(&bare).unwrap();
+        assert!(set_up(&sandbox, &bare, &dir.join("sandbox-data"), Path::new("/usr/bin/olo-chrome")).is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

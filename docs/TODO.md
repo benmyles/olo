@@ -7,19 +7,27 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Olo Passwords in every Chrome profile, exactly once** (Ben,
-  2026-11-03): "there seems to be a bug where only my first olo chrome
-  profile has the olo passwords extension (and it has it twice which is
-  a bug too). i need all the chrome profiles to have it exactly once."
-  So: find how olo-chrome installs the extension (apps/chrome
-  `install.rs`: the .crx, its key and id, the external-extensions or
-  policy files, per profile or per user data dir) and why the second
-  copy came (the old `tabula-passwords.crx` beside `olo-passwords.crx`
-  in ~/.local/share/olo/chrome, two ids?); then every profile, those
-  made later included, gets the one extension once (one id, the old one
-  removed where it's there), checked in a sandbox Chrome profile set
-  (`--user-data-dir` in /var/tmp, two profiles and a third made after),
-  never Ben's own profiles.
+- **The palm model misses a palm resting low on the pad** (Ben,
+  2026-11-03): "the palm tracking model and training works pretty well
+  but it often misses detecting my palm when it's resting near the
+  bottom of the trackpad. can we enhance the model for supporting that
+  and add a training step to collect samples for it?" So:
+  - Find why on Ben's runs (`captures::on_real_hands`, the trainer's
+    samples): a palm at the bottom edge is cut off by it, so it looks
+    small (its size under the size rule) and its centre sits near the
+    edge; what the features see there (position, size, its growth,
+    the edge).
+  - Teach the model the bottom edge: features for how near the bottom
+    (and side) edges a contact is and how much of it the edge may hide,
+    with hand-written units for "a contact touching the bottom edge that
+    stays still and isn't a click"; the Lua filter follows, with the
+    agreement test; measured per frame as before.
+  - A trainer step for it: rest the heel of your hand on the pad's
+    bottom edge (typing posture, and while moving the pointer with a
+    finger above it), judged and counted like the other steps, its
+    samples labelled palm; QA'd as `ui_lint` states like the rest.
+  - Judged on held-out touches: low palms caught, fingers and clicks
+    near the bottom (a thumb resting to click) still let through.
 
 - **The palm trainer, full screen and driven from the keyboard** (Ben,
   2026-11-02, with a screenshot of its last step, "Try it", at 2× in
@@ -962,6 +970,23 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Olo Passwords in every Chrome profile, exactly once**~~ (Ben,
+  2026-11-03): "only my first olo chrome profile has the olo passwords
+  extension (and it has it twice which is a bug too). i need all the
+  chrome profiles to have it exactly once." *Done* (2026-11-03): the
+  listing in Chrome's install (`extensions/<id>.json`) gives every
+  profile the extension, those made later too; the other profiles
+  hadn't got it yet only because that Chrome had been running since
+  before they were made (Ben: "i just had to restart chrome is all").
+  The second copy came from a test: an olo-chrome with a sandbox home
+  running Ben's Chrome (through a `current` link) listed a copy signed
+  with the sandbox's key in Ben's install. Now only the home whose
+  `olo/chrome` holds the install lists the extension there, and it
+  takes out other copies' listings in every version folder (Chrome
+  uninstalls them as it starts); any other olo-chrome registers its
+  host for the install's extension and lists nothing.
+  (`extension::set_up`, test `one_copy_for_every_profile`.)
 
 - ~~**Voice Processing's device named for the one it processes**~~ (Ben,
   2026-11-03): "when the voice processing is enabled if there is a new
