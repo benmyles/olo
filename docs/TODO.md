@@ -1065,16 +1065,6 @@ of Finished; a new one goes where its priority puts it.
   `archive`, `delete`, and `list` saying which is which (apps/screen,
   HACKING's "Agent Screens").
 
-- **Tracker: Back and Forward, from the keyboard and the mouse** (Ben,
-  2026-11-04): "in tracker, it should support forward and back via
-  keyboard shortcut or mouse". A folder window keeps the folders it
-  showed (each with its selection and scroll), and Go ▸ Back (⌘[) and
-  Forward (⌘]) move through them, as Finder's; the mouse's back and
-  forward buttons (GPUI's `MouseButton::Navigate`) and a touchpad's
-  two-finger swipe sideways do the same. Open Parent (⌘↑) stays as it
-  is, and adds to the history. Agents read and press them as menu
-  items; HACKING's Tracker section told.
-
 - **Escape ends a drag, anywhere** (Ben, 2026-11-04): "when dragging
   something in olo if the user presses escape it should drop the drag".
   Escape while anything is being dragged, a file, text, a tab, a window
@@ -1186,6 +1176,22 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Tracker: Back and Forward, from the keyboard and the mouse**~~ (Ben,
+  2026-11-04): "in tracker, it should support forward and back via
+  keyboard shortcut or mouse". A folder window keeps the folders it
+  showed (each with its selection and scroll), and Go ▸ Back (⌘[) and
+  Forward (⌘]) move through them, as Finder's; the mouse's back and
+  forward buttons (GPUI's `MouseButton::Navigate`) and a touchpad's
+  two-finger swipe sideways do the same. Open Parent (⌘↑) stays as it
+  is, and adds to the history. Agents read and press them as menu
+  items; HACKING's Tracker section told. *Done*: Go ▸
+  Back and Forward (⌘[ ⌘], Alt+← → on the Windows profile) and the
+  mouse's back and forward buttons, through the folders a window showed,
+  in that window (Tracker stays spatial: opening a folder still opens
+  its own window, whose Back goes to the folder it was opened from).
+  Coming back out of a folder selects it. The swipe was left out: two
+  fingers sideways scroll Tracker's lists.
 
 - ~~**Tracker: ⌘N opens a new Tracker window**~~ (Ben, 2026-11-04): "in
   tracker, pressing super+n should open a new tracker window". ⌘N is

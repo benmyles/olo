@@ -7986,7 +7986,12 @@ files: opening folders (a folder's window on this workspace is brought
 forward, else one opens here: `olo_ui::workspaces`; File ▸ New Window,
 ⌘N, the `new` command, always opens another, on the folder it's pressed
 in, Home from the desktop or for `--new-window`; New Folder is ⇧⌘N, as
-Finder has them, both by `app_keys`' Tracker entries), Get Info, Find,
+Finder has them, both by `app_keys`' Tracker entries; Go ▸ Back and
+Forward, ⌘[ and ⌘] on the Mac profile, Alt+← and → on Windows', and the
+mouse's back and forward buttons go through the folders a window showed
+in that window, as Haiku's Tracker navigates in one: `FolderWin::history`,
+the folder it was opened from first (`came_from`, `open_from`), the one
+it comes back out of selected), Get Info, Find,
 the file operations (ops.rs, on workers; Tracker Status after 400 ms),
 drops, pastes, Quick Look, the watcher's changes and an upgrade's saved
 state (the egui Tracker's, unchanged). Each window's view does the

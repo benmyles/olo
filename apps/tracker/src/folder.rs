@@ -53,6 +53,11 @@ pub enum Action {
 
 pub struct FolderWin {
     pub path: PathBuf,
+    /// The folders it showed, the one it was opened from first, and which
+    /// it shows now (Go ▸ Back and Forward, the mouse's back and forward
+    /// buttons: in this window, as Haiku's Tracker navigates in one).
+    pub history: Vec<PathBuf>,
+    pub at: usize,
     pub entries: Vec<Entry>,
     pub view: ViewMode,
     pub list: ListState,
@@ -176,6 +181,8 @@ impl FolderWin {
         cx.observe(&list_model, |_, _, cx| cx.notify()).detach();
         let sort = crate::sorts::of(cx, &path);
         let mut w = FolderWin {
+            history: vec![path.clone()],
+            at: 0,
             path,
             entries: Vec::new(),
             view,
@@ -223,6 +230,57 @@ impl FolderWin {
 
     pub fn key(&self) -> EntityId {
         self.loader.win
+    }
+
+    /// Opened from `from`'s window: Back goes there.
+    pub fn came_from(&mut self, from: PathBuf) {
+        if self.history.len() == 1 && from != self.path {
+            self.history.insert(0, from);
+            self.at = 1;
+        }
+    }
+
+    pub fn can_go(&self, by: isize) -> bool {
+        self.at.checked_add_signed(by).is_some_and(|i| i < self.history.len())
+    }
+
+    /// Back (`by` −1) or Forward (+1) through the folders it showed: in
+    /// this window, the folder it comes back out of selected.
+    pub fn go(&mut self, by: isize, cx: &mut Context<Self>) {
+        let Some(to) = self.at.checked_add_signed(by).filter(|&i| i < self.history.len()) else { return };
+        let (from, path) = (self.path.clone(), self.history[to].clone());
+        self.at = to;
+        self.show_folder(path.clone(), cx);
+        // Back out of a folder inside it: that folder selected.
+        if let Ok(rest) = from.strip_prefix(&path)
+            && let Some(first) = rest.components().next()
+        {
+            self.pending_select.push((path.clone(), vec![path.join(first)]));
+        }
+    }
+
+    /// Show `path` in this window: listed afresh, sorted as it's sorted,
+    /// nothing selected, the window titled for it.
+    fn show_folder(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        let places = path.clone();
+        std::thread::spawn(move || olo_kit_base::places::visited(&places));
+        self.sort = crate::sorts::of(cx, &path);
+        self.path = path;
+        self.entries.clear();
+        self.list = ListState { multiple: true, ..Default::default() };
+        self.list_model.update(cx, |m, _| m.state.selected.clear());
+        self.error = None;
+        self.editing = None;
+        self.pending_edit = None;
+        self.panes.clear();
+        self.active = 0;
+        self.col_focus = None;
+        self.pending_select.clear();
+        self.show.clear();
+        self.scroll.set_offset(Point::default());
+        self.path_said = false;
+        self.request(None);
+        cx.notify();
     }
 
     /// Hands `a` to the Tracker, after this update (it may change this
@@ -421,7 +479,16 @@ impl FolderWin {
         } else {
             favorites.item(format!("Add “{name}” to Favorites"), "favorite-on")
         };
-        let mut go = Menu::new("Go").item("Go to File or Folder…", "go-to").shift_key("g").separator();
+        let mut go = Menu::new("Go")
+            // (Their keys the profile's: `app_keys`' tracker.back and .forward.)
+            .item("Back", "back")
+            .enabled(self.can_go(-1))
+            .item("Forward", "forward")
+            .enabled(self.can_go(1))
+            .separator()
+            .item("Go to File or Folder…", "go-to")
+            .shift_key("g")
+            .separator();
         for (label, dir) in olo_kit_base::places::standard() {
             let cmd = if dir == fs::home() { "go-home".to_owned() } else { format!("go-place:{}", dir.display()) };
             go = go.item(label, cmd);
@@ -1105,6 +1172,7 @@ impl Render for FolderWin {
         if !self.path_said {
             self.path_said = true;
             olo_ui::agent::set_path(window, cx, Some(self.path.clone()));
+            window.set_window_title(&fs::display_name(&self.path));
         }
         // The keyboard: an edited name's field, else the view.
         if let Some(r) = &mut self.editing {
@@ -1161,12 +1229,16 @@ impl Render for FolderWin {
             (None, ViewMode::Columns) => self.columns_view(window, cx).into_any_element(),
             (None, _) => self.icon_view(window, cx).into_any_element(),
         };
+        use olo_ui::gpui::{MouseButton, NavigationDirection};
         div()
             .size_full()
             .flex()
             .flex_col()
             .track_focus(&self.focus)
             .on_key_down(cx.listener(Self::key_down))
+            // The mouse's back and forward buttons.
+            .on_mouse_down(MouseButton::Navigate(NavigationDirection::Back), cx.listener(|f, _, _, cx| f.go(-1, cx)))
+            .on_mouse_down(MouseButton::Navigate(NavigationDirection::Forward), cx.listener(|f, _, _, cx| f.go(1, cx)))
             .child(bar)
             .child(div().flex_1().min_h_0().relative().flex().flex_col().child(body))
             .child(self.count_bar(cx))

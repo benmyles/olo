@@ -325,6 +325,23 @@ impl Tracker {
         }
     }
 
+    /// `e` opened from window `key`: a folder's window, whose Back goes
+    /// back to `key`'s folder.
+    fn open_from(&mut self, key: EntityId, e: &Entry, cx: &mut Context<Self>) {
+        if !e.is_dir {
+            return self.open_entry(e, cx);
+        }
+        let from = self.folder(key).map(|f| f.read(cx).path.clone());
+        if let (Some(k), Some(from)) = (self.open_folder(&e.path, cx), from)
+            && let Some(f) = self.folder(k)
+        {
+            f.update(cx, |f, cx| {
+                f.came_from(from);
+                cx.notify();
+            });
+        }
+    }
+
     fn open_entry(&mut self, e: &Entry, cx: &mut Context<Self>) {
         if e.is_dir {
             self.open_folder(&e.path, cx);
@@ -553,7 +570,7 @@ impl Tracker {
 
     pub fn folder_action(&mut self, key: EntityId, a: Action, cx: &mut Context<Self>) {
         match a {
-            Action::Open(e) => self.open_entry(&e, cx),
+            Action::Open(e) => self.open_from(key, &e, cx),
             Action::Command(c) => self.folder_command(key, &c, cx),
             Action::Rename(p, name) => {
                 if let Some(new) = self.rename(&p, &name, cx)
@@ -639,7 +656,7 @@ impl Tracker {
             "quick-look" => self.toggle_quick_look(key, cx),
             "open" => {
                 for e in &entries {
-                    self.open_entry(e, cx);
+                    self.open_from(key, e, cx);
                 }
             }
             // The folder it's in, with this one selected (to go on from).
@@ -652,6 +669,8 @@ impl Tracker {
                 Err(e) => self.error(format!("Couldn't create a folder: {e}"), cx),
             },
             "terminal" => fs::open_in_terminal(&dir),
+            "back" => update(cx, &mut |f, cx| f.go(-1, cx)),
+            "forward" => update(cx, &mut |f, cx| f.go(1, cx)),
             // File ▸ New Window (⌘N): another window on this folder, as
             // it shows it, beside this one (always a new one).
             "new" => {
