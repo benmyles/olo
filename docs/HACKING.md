@@ -2876,6 +2876,12 @@ would be sent, not the sRGB picture a screenshot is) and checked against
 what's computed: greys kept and sRGB's blue as P3's numbers in Accurate
 SDR; in HDR, sRGB's grey at its light against SDR's 203 cd/m², PQ's 100
 cd/m² as it is, nothing above SDR's white.
+On the machine, `tools/dev/panel-hdr-check` checks a built-in panel's
+HDR as the panel itself has it (its registers over the AUX channel,
+through sudo; in the person's session, with their agreement): the
+kernel started with `enable_dpcd_backlight=3`, HDR on through
+app_server, the panel then decoding PQ in BT.2020 (DPCD 0x344), its
+brightness in nits following the backlight, HDR off again.
 
 Programs say what colours their windows hold with `wp_color_management_v1`
 (`color_management.rs`, version 1): parametric image descriptions only

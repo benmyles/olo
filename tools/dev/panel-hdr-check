@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+"""HDR on a built-in eDP panel, checked on the machine (the ThinkPad P1
+Gen 9's OLED): what the panel itself says, not just the kernel.
+
+  panel-hdr-check [--keep]
+
+In the person's own session, with their agreement (the screen goes dark
+a moment as HDR turns on and off). Reads the panel's registers over its
+DisplayPort AUX channel (`/dev/drm_dp_aux*`, through sudo):
+
+  0x340-0x343  Intel's HDR interface: its version and what it can do
+               (0x341 bit 0: PQ decoding, bit 1: BT.2020, bit 4:
+               brightness in nits)
+  0x344        what's on (bit 0: PQ decoding, bit 1: BT.2020 gamut,
+               bit 4: brightness over AUX)
+  0x354-0x355  the brightness in nits the driver set
+
+Steps: the kernel started with {xe,i915}.enable_dpcd_backlight=3 (else
+Intel's driver never switches the panel: Olo Doctor offers it); HDR on
+through app_server (`configure_output`); 0x344 then has PQ decoding and
+BT.2020 on; the backlight stepped down and back, and the panel's nits
+follow; HDR off again (unless --keep), 0x344 back without them and the
+panel's brightness not 0. Exits 1 on a mismatch, HDR always off at the
+end without --keep.
+"""
+
+import glob
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+
+
+def aux_dev():
+    for d in sorted(glob.glob("/sys/class/drm_dp_aux_dev/drm_dp_aux*")):
+        if "DDI A" in open(os.path.join(d, "name")).read():
+            return "/dev/" + os.path.basename(d)
+    return None
+
+
+def dpcd(dev, at, n):
+    out = subprocess.run(["sudo", "-n", "dd", f"if={dev}", "bs=1", f"skip={at}", f"count={n}", "status=none"], capture_output=True)
+    return out.stdout
+
+
+def ipc(req):
+    path = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000"), f"olo-{os.environ.get('WAYLAND_DISPLAY', 'wayland-1')}.sock")
+    s = socket.socket(socket.AF_UNIX)
+    s.connect(path)
+    s.sendall((json.dumps(req) + "\n").encode())
+    line = s.makefile().readline()
+    s.close()
+    return json.loads(line) if line else None
+
+
+def backlight():
+    d = sorted(glob.glob("/sys/class/backlight/*"))[0]
+    return d, int(open(os.path.join(d, "brightness")).read())
+
+
+def set_backlight(d, v):
+    subprocess.run(["sudo", "-n", "tee", os.path.join(d, "brightness")], input=str(v).encode(), stdout=subprocess.DEVNULL)
+
+
+def main():
+    keep = "--keep" in sys.argv
+    bad = []
+
+    def check(ok, what):
+        print(f"  {'ok ' if ok else 'BAD'} {what}")
+        if not ok:
+            bad.append(what)
+
+    cmdline = open("/proc/cmdline").read().split()
+    check(any(a in cmdline for a in ("xe.enable_dpcd_backlight=3", "i915.enable_dpcd_backlight=3")), "the kernel started with enable_dpcd_backlight=3")
+    dev = aux_dev()
+    if not dev:
+        sys.exit("no eDP AUX device")
+    caps = dpcd(dev, 0x340, 4)
+    print(f"  Intel HDR interface: version {caps[0]}, caps {caps[1]:#04x}, {caps[2]:#04x}")
+    check(caps[0] != 0 and caps[1] & 0x01, "the panel decodes PQ (0x341 bit 0)")
+    outputs = (ipc({"type": "outputs"}) or {}).get("outputs", [])
+    edp = next((o for o in outputs if o["name"].startswith("eDP")), None)
+    check(edp is not None and edp.get("hdr") is not None, "app_server offers HDR on the panel")
+    if bad:
+        print(f"{len(bad)} mismatched: {', '.join(bad)}")
+        sys.exit(1)
+    d, before = backlight()
+    try:
+        ipc({"type": "configure_output", "name": edp["name"], "config": {"hdr": True}})
+        time.sleep(3)
+        ctrl = dpcd(dev, 0x344, 1)[0]
+        print(f"  HDR on: 0x344 = {ctrl:#04x}")
+        check(ctrl & 0x01 and ctrl & 0x02, "the panel decodes PQ in BT.2020 (0x344 bits 0, 1)")
+        nits = lambda: int.from_bytes(dpcd(dev, 0x354, 2), "little")
+        n0 = nits()
+        set_backlight(d, max(1, before // 2))
+        time.sleep(0.5)
+        n1 = nits()
+        set_backlight(d, before)
+        time.sleep(0.5)
+        print(f"  brightness in nits: {n0} → {n1} (backlight halved) → {nits()}")
+        check(n1 != n0, "the panel's brightness follows the backlight in HDR")
+    finally:
+        if not keep:
+            ipc({"type": "configure_output", "name": edp["name"], "config": {"hdr": False}})
+            time.sleep(3)
+            ctrl = dpcd(dev, 0x344, 1)[0]
+            print(f"  HDR off: 0x344 = {ctrl:#04x}, nits {int.from_bytes(dpcd(dev, 0x354, 2), 'little')}")
+            check(not ctrl & 0x01, "PQ decoding off again")
+            set_backlight(d, before)
+    if bad:
+        print(f"{len(bad)} mismatched: {', '.join(bad)}")
+        sys.exit(1)
+    print("the panel switches into HDR and back")
+
+
+if __name__ == "__main__":
+    main()
