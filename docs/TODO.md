@@ -7,6 +7,13 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
+- **AirPods missing from Sound's outputs** (Ben, 2026-11-04): "i
+  paired my airpods and they show up properly in the input menu but in
+  the sound output menu there's no airpods entry (in sound prefs)".
+  Paired and connected, they're an input in Preferences ▸ Sound but not
+  an output: their A2DP (or HFP) sink missing from what the output menu
+  lists.
+
 - **Terminal: a tab in a worktree isn't seen as the repository's**
   (Ben, 2026-11-04, with a screenshot): "for some reason terminal isn't
   picking up my worktree and github pr associated with them like it
