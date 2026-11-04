@@ -224,8 +224,126 @@ struct Fit {
     /// Its size is its content's, not the person's.
     fixed: bool,
     need: std::rc::Rc<std::cell::Cell<Option<f32>>>,
-    asked: Option<(f32, f32)>,
+    /// The size last asked for (so each is asked once).
+    asked: std::rc::Rc<std::cell::Cell<Option<(f32, f32)>>>,
+    /// A resize asked for and not made yet: the size it was then (no
+    /// frame is shown until it's another).
+    resizing: std::rc::Rc<std::cell::Cell<Option<gpui::Size<gpui::Pixels>>>>,
+    /// What it waits for before it's first shown ([`hold_first_show`]).
+    first: std::sync::Arc<FirstShow>,
     _displays: gpui::Subscription,
+}
+
+/// How long a window that fits what it shows waits, at most, for what it
+/// asked for as it opened before it's first shown ([`hold_first_show`]):
+/// an answer slower than this shows it as it is, and it grows when the
+/// answer comes.
+pub const FIRST_SHOW_WAIT: std::time::Duration = std::time::Duration::from_millis(150);
+
+/// A window's first showing, held ([`hold_first_show`]).
+pub struct FirstShow {
+    opened: std::time::Instant,
+    /// The holds not let go yet.
+    waiting: std::sync::atomic::AtomicUsize,
+    /// It was shown (or stopped waiting): no more holds.
+    over: std::sync::atomic::AtomicBool,
+    /// Told as each hold is let go (from any thread).
+    let_go: futures::channel::mpsc::UnboundedSender<()>,
+    heard: std::sync::Mutex<Option<futures::channel::mpsc::UnboundedReceiver<()>>>,
+}
+
+impl FirstShow {
+    fn new() -> std::sync::Arc<Self> {
+        let (let_go, heard) = futures::channel::mpsc::unbounded();
+        std::sync::Arc::new(FirstShow { opened: std::time::Instant::now(), waiting: Default::default(), over: Default::default(), let_go, heard: std::sync::Mutex::new(Some(heard)) })
+    }
+
+    /// Whether the frame being drawn is held back (something asked for
+    /// is still to come, and there's time to wait for it).
+    fn holding(&self) -> bool {
+        use std::sync::atomic::Ordering::SeqCst;
+        if self.over.load(SeqCst) {
+            return false;
+        }
+        if self.waiting.load(SeqCst) > 0 && self.opened.elapsed() < FIRST_SHOW_WAIT {
+            return true;
+        }
+        self.over.store(true, SeqCst);
+        false
+    }
+}
+
+/// A hold on a window's first showing ([`hold_first_show`]): let go by
+/// dropping it, on any thread.
+pub struct FirstShowHold(std::sync::Arc<FirstShow>);
+
+impl Drop for FirstShowHold {
+    fn drop(&mut self) {
+        self.0.waiting.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+        let _ = self.0.let_go.unbounded_send(());
+    }
+}
+
+thread_local! {
+    /// The windows not shown yet that fit what they show: their holds.
+    static FIRST_SHOWS: std::cell::RefCell<std::collections::HashMap<gpui::WindowId, std::sync::Arc<FirstShow>>> = Default::default();
+}
+
+/// Hold a window that fits what it shows (`WindowOptions::fits_content`)
+/// from being first shown until what it asked for as it opened has come
+/// (a worker's answer that adds to what it shows: drop the hold when it's
+/// in), for [`FIRST_SHOW_WAIT`] at most: so it opens at the size of what
+/// it shows, not at a size it grows from a moment later. Nothing waits
+/// for it: the window's frames before are drawn and not shown. None once
+/// it has been shown, and for other windows.
+pub fn hold_first_show(window: &Window) -> Option<FirstShowHold> {
+    let first = FIRST_SHOWS.with(|f| f.borrow().get(&window.window_handle().window_id()).cloned())?;
+    if first.over.load(std::sync::atomic::Ordering::SeqCst) {
+        return None;
+    }
+    first.waiting.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    Some(FirstShowHold(first))
+}
+
+/// Draw a held window again as its holds are let go, until none is left
+/// or its wait is over.
+fn wait_for_holds(first: std::sync::Arc<FirstShow>, window: &mut Window, cx: &mut App) {
+    // (One waits at a time; it hands the listening back as it ends, for
+    // a hold taken after.)
+    let Some(mut heard) = first.heard.lock().ok().and_then(|mut h| h.take()) else { return };
+    window
+        .spawn(cx, async move |cx| {
+            use futures::{FutureExt, StreamExt};
+            let left = FIRST_SHOW_WAIT.saturating_sub(first.opened.elapsed());
+            let mut timer = cx.background_executor().timer(left).fuse();
+            loop {
+                futures::select! {
+                    _ = heard.next() => {
+                        if first.waiting.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+                            break;
+                        }
+                    }
+                    _ = timer => break,
+                }
+            }
+            if let Ok(mut h) = first.heard.lock() {
+                *h = Some(heard);
+            }
+            let _ = cx.update(|window, _| window.refresh());
+        })
+        .detach();
+}
+
+/// The size a window that follows what it shows should be (`viewport` now,
+/// its content needing `need`), and whether its content scrolls there.
+fn fitted(design: (f32, f32), fixed: bool, viewport: gpui::Size<gpui::Pixels>, need: f32, room: f32) -> ((f32, f32), bool) {
+    // (One the person sizes keeps their size when it's enough.)
+    let least = if fixed { design.1 } else { f32::from(viewport.height) };
+    let need = need.ceil().max(least);
+    let scrolls = need > room + 0.5;
+    let width = if fixed { design.0 } else { f32::from(viewport.width) };
+    let size = if scrolls { (width + if fixed { crate::widgets::SCROLL_BAR } else { 0.0 }, room.floor()) } else { (width, need) };
+    (size, scrolls)
 }
 
 /// Room left above a window's tab and around it on a screen.
@@ -238,26 +356,18 @@ pub fn screen_room(cx: &App) -> f32 {
 }
 
 impl Frame {
-    /// A window that follows what it shows: the size it should be now
-    /// (its content as last laid out, held to the screen's room) and
-    /// whether its content scrolls there; the window asked for it once.
+    /// A window that follows what it shows, whose content as last
+    /// measured needs more than the screen has room for: the height to
+    /// lay it out at, scrolled. (Its size is set as it's measured, as
+    /// each frame is painted: the measure in `render`.)
     fn follow(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<f32> {
-        let fit = self.fit.as_mut()?;
+        let fit = self.fit.as_ref()?;
+        let need = fit.need.get()?;
         let now = window.viewport_size();
+        let (_, scrolls) = fitted(fit.design, fit.fixed, now, need, screen_room(cx));
         // (One the person sizes keeps their size when it's enough.)
         let least = if fit.fixed { fit.design.1 } else { f32::from(now.height) };
-        let need = fit.need.get()?.ceil().max(least);
-        let room = screen_room(cx);
-        let scrolls = need > room + 0.5;
-        let width = if fit.fixed { fit.design.0 } else { f32::from(now.width) };
-        let (w, h) = if scrolls { (width + if fit.fixed { crate::widgets::SCROLL_BAR } else { 0.0 }, room.floor()) } else { (width, need) };
-        if fit.asked != Some((w, h)) {
-            fit.asked = Some((w, h));
-            if (f32::from(now.width) - w).abs() > 0.5 || (f32::from(now.height) - h).abs() > 0.5 {
-                window.defer(cx, move |window, _| window.resize(gpui::size(px(w), px(h))));
-            }
-        }
-        scrolls.then_some(need)
+        scrolls.then(|| need.ceil().max(least))
     }
 }
 
@@ -407,8 +517,46 @@ impl Render for Frame {
         if self.fit.is_some() {
             let scrolls = self.follow(window, cx);
             let fit = self.fit.as_ref().expect("fitting");
-            let need = fit.need.clone();
-            let measure = canvas(move |b, _, _| need.set(Some(f32::from(b.size.height))), |_, _, _, _| {}).absolute().size_full();
+            // Measured as the frame is drawn: a window to be another size
+            // isn't shown this frame (`skip_present`), and is resized and
+            // drawn again at once, so it's never seen at the wrong size (it
+            // opened at its designed size, then grew: Ben, 2026-11-04).
+            // (Not shown at all while what it asked for as it opened is
+            // still to come: `hold_first_show`.)
+            let (need, asked, resizing, design, fixed, first) = (fit.need.clone(), fit.asked.clone(), fit.resizing.clone(), fit.design, fit.fixed, fit.first.clone());
+            let measure = canvas(
+                move |b, _, _| need.set(Some(f32::from(b.size.height))),
+                move |b, _, window, cx| {
+                    if !first.over.load(std::sync::atomic::Ordering::SeqCst) {
+                        if first.holding() {
+                            window.skip_present();
+                            wait_for_holds(first.clone(), window, cx);
+                            return;
+                        }
+                        // (Shown from now: no more holds.)
+                        FIRST_SHOWS.with(|f| f.borrow_mut().remove(&window.window_handle().window_id()));
+                    }
+                    let ((w, h), _) = fitted(design, fixed, window.viewport_size(), f32::from(b.size.height), screen_room(cx));
+                    let now = window.viewport_size();
+                    let off = (f32::from(now.width) - w).abs() > 0.5 || (f32::from(now.height) - h).abs() > 0.5;
+                    // (The resize asked for is made when its size is
+                    // another: that frame is drawn at it, or at what the
+                    // compositor gave instead.)
+                    if resizing.get().is_some_and(|then| then != now) {
+                        resizing.set(None);
+                    }
+                    if off && asked.get() != Some((w, h)) {
+                        asked.set(Some((w, h)));
+                        resizing.set(Some(now));
+                        window.defer(cx, move |window, _| window.resize(gpui::size(px(w), px(h))));
+                    }
+                    if resizing.get().is_some() {
+                        window.skip_present();
+                    }
+                },
+            )
+            .absolute()
+            .size_full();
             // (A flex item based at the designed height, its minimum what
             // its content needs: so as tall as the larger. One the person
             // or the app sizes: as the window, or what its content needs if
@@ -570,6 +718,13 @@ pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, bu
             if let Some(n) = &namespace {
                 agent::set_layer(window, cx, n);
             }
+            // (Its first showing can be held from now: its content may
+            // ask as it's made.)
+            let first = FirstShow::new();
+            if fit_content {
+                let id = window.window_handle().window_id();
+                FIRST_SHOWS.with(|f| f.borrow_mut().insert(id, first.clone()));
+            }
             let content = build(window, cx).into();
             let frame = cx.new(|cx| {
                 let _kept = keep.map(|name| cx.observe_window_bounds(window, move |_, window, cx| crate::kept::note(cx, &name, window)));
@@ -581,13 +736,15 @@ pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, bu
                     design,
                     fixed,
                     need: Default::default(),
-                    asked: None,
+                    asked: Default::default(),
+                    resizing: Default::default(),
+                    first,
                     _displays: cx.on_displays_changed(move |cx| {
                         let me = me.clone();
                         cx.defer(move |cx| {
                             let _ = me.update(cx, |f: &mut Frame, cx| {
-                                if let Some(fit) = &mut f.fit {
-                                    fit.asked = None;
+                                if let Some(fit) = &f.fit {
+                                    fit.asked.set(None);
                                 }
                                 cx.notify();
                             });

@@ -69,7 +69,17 @@ KEYS.update({c: 44 + i for i, c in enumerate("zxcvbnm,./")})
 KEYS[" "] = 57
 SHIFTED = {"+": "=", "*": "8", "(": "9", ")": "0"}
 
-scroll_check = importlib.machinery.SourceFileLoader("scroll_check", os.path.join(ROOT, "tools", "dev", "scroll-check")).load_module()
+def _load(name, path):
+    # (A script without .py: its loader named, as `load_module`, gone
+    # from Python 3.15, did.)
+    import importlib.util
+    loader = importlib.machinery.SourceFileLoader(name, path)
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader(name, loader))
+    loader.exec_module(module)
+    return module
+
+
+scroll_check = _load("scroll_check", os.path.join(ROOT, "tools", "dev", "scroll-check"))
 
 
 def stale_builds():

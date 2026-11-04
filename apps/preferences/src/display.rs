@@ -43,8 +43,9 @@ pub struct State {
     asked_gpus: bool,
 }
 
-/// Ask app_server for the GPUs, on a thread.
-fn ask_gpus(st: &State, proxy: olo_ui::Proxy) {
+/// Ask app_server for the GPUs, on a thread (the window not shown until
+/// they're in, briefly: `hold`).
+fn ask_gpus(st: &State, proxy: olo_ui::Proxy, hold: Option<olo_ui::FirstShowHold>) {
     // Tests (the layout lint): a hybrid laptop's two.
     if cfg!(test) {
         let gpu = |pci: &str, name: &str, driver: &str, boot: bool, connectors: &[&str]| GpuInfo {
@@ -71,6 +72,7 @@ fn ask_gpus(st: &State, proxy: olo_ui::Proxy) {
             *into.lock().unwrap() = gpus;
             proxy.send(crate::Msg::Redraw);
         }
+        drop(hold);
     });
 }
 
@@ -636,7 +638,8 @@ fn keep_band(ui: &mut Ui, outputs: &[OutputInfo], server: &Server, st: &mut Stat
 fn graphics(ui: &mut Ui, outputs: &[OutputInfo], st: &mut State) {
     if !st.asked_gpus {
         st.asked_gpus = true;
-        ask_gpus(st, olo_ui::proxy(ui.cx));
+        let hold = olo_ui::hold_first_show(ui.window);
+        ask_gpus(st, olo_ui::proxy(ui.cx), hold);
     }
     let Some(gpus) = st.gpus.lock().unwrap().clone() else { return };
     if gpus.len() < 2 {

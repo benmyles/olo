@@ -7,28 +7,37 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- ~~**The GPU the displays use, chosen in Preferences ▸ Display**~~
-  (Ben, 2026-11-04). Tried: composing on NVIDIA's had every frame of the
-  built-in panel (wired to Intel's) copied through the CPU, 30 Hz; then
-  Ben: "make it so that the nvidia drives external displays not the
-  internal", "that shouldn't even be an option", "we should just use
-  whatever the native one is". Done so: each display composed by the GPU
-  wired to it, no choice; Display's Graphics box says what each draws.
+- **Nothing routine wakes the NVIDIA GPU; local models run on the CPU's
+  SIMD** (Ben, 2026-11-04: "make sure that nothing in olo is going to
+  try to use the nvidia gpu for routine things like window display etc.
+  that would cause a sleep lag, and for any local models we have for e.g.
+  voice processing, touchpad, brush completion -- make sure they use SIMD
+  instead of nvidia"; "it's fine if it uses it for windows/drawing if
+  it's the composing gpu on an external hdmi but otherwise it
+  shouldn't"). Waking it costs a sleep lag (hundreds of ms out of
+  D3cold) and battery. So: apps' renderers (Blade/Vulkan in GPUI) pick
+  the GPU composing their display, never a discrete one by default
+  (Vulkan's device order puts NVIDIA's first: check every
+  `Instance`/adapter choice, `ZED_DEVICE_ID` already ignored); app_server
+  opens NVIDIA's node only to compose a display wired to it (and lets it
+  sleep when that display goes); Activity asks NVML only while it's
+  awake (done); the voice input model, the palm model, olo-complete's
+  model and any other in-process model run on the CPU with SIMD (no
+  CUDA/Vulkan compute), measured. A check that proves it: with only the
+  built-in panel, NVIDIA's `power/runtime_status` stays `suspended`
+  through a session's start, every app's launch, the bench and an hour
+  idle (Doctor's idle-GPU check says so too).
 
-- ~~**The tray's battery shows the power plugged in**~~ (Ben, 2026-11-04:
-  "the battery icon in the deskbar tray should change when the power is
-  plugged in"): it showed the bolt only while charging or full; plugged
-  in and held at a charge limit ("Not charging") looked unplugged. Now
-  `Battery::plugged_in`.
-
-- **A window that fits what it shows opens at its size, at once** (Ben,
-  2026-11-04: "when the adaptive/auto-sizing windows open they tend to
-  first open too small then update to be the right size -- that should
-  all happen basically instantly and before the user sees the window").
-  `fits_content` measures the content as drawn and resizes the next
-  frame, so the first frame shows at the designed size: the window is to
-  stay unshown until its first layout has set its size (GPUI's Wayland
-  window holds its first buffer until the Frame says it's sized).
+- **Date & Time's worker asks timedated every 2 s** (found 2026-11-04):
+  `apps/preferences/src/datetime.rs`'s `link` thread reads timedated's
+  status on a 2-second timeout for as long as Preferences runs, which
+  keeps timedated (activated on demand, gone when idle) running and
+  wakes the app with nothing changed. Idle is to cost nothing: watch
+  timedated's `PropertiesChanged` (zone, NTP on or off) and the kernel's
+  clock (a `timerfd` with `TFD_TIMER_CANCEL_ON_SET` says when the time is
+  set) instead, asking only while the panel is open; synchronisation
+  (`NTPSynchronized`, not signalled) asked only while the panel shows it
+  unsynchronised, until it is.
 
 - **Preferences ▸ GPUs: each GPU and every knob it has** (Ben,
   2026-11-04: "if there are any knobs etc. that can be tweaked for the
@@ -391,24 +400,6 @@ of Finished; a new one goes where its priority puts it.
   at, Passwords opened, the Wi-Fi networks there (NetworkManager asks
   polkit for their passwords and to save them: Olo's agent's prompts
   seen), the pool's accounts turned on once the Mac's are off.
-
-- **Choose the GPU Olo draws with** (Ben, 2026-11-03): "when there are
-  multiple GPUs available, in prefs -> display (or wherever it's most
-  appropriate) provide an option to choose the GPU that should be used
-  for olo (e.g. integrated intel or discrete nvidia). the available
-  GPUs should be properly detected and shown with their full make/model
-  info and capabilities, and switching between them should be seamless
-  and not require an olo restart or anything." So: every GPU found
-  (DRM render nodes, by PCI id and the driver's name, Vulkan's device
-  properties: make and model, memory, what it can do: Vulkan version,
-  video decode and encode, which displays are wired to it), shown where
-  it fits best (Displays, beside the displays each drives, or a
-  Graphics pane); app_server's renderer moved to the one chosen while
-  it runs (its textures made again there, the displays wired to the
-  other GPU still shown through it), and apps told so they move too
-  (a new main device in `linux-dmabuf` feedback, as GPUI's blade
-  surfaces take it); no restart, no frame dropped; the choice kept.
-  Tried on the ThinkPad (Intel and NVIDIA) once it's here.
 
 - **AirPods and voice processing, tried on the real things** (Ben,
   2026-11-02; what's left of "AirPods, natively" and "Voice processing
@@ -1027,6 +1018,45 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**A window that fits what it shows opens at its size, at once**~~
+  (Ben, 2026-11-04: "when the adaptive/auto-sizing windows open they
+  tend to first open too small then update to be the right size -- that
+  should all happen basically instantly and before the user sees the
+  window"). The Frame measures its content as each frame is painted; a
+  frame drawn at a size about to change isn't shown
+  (`Window::skip_present`: nothing committed, the resize draws the
+  next), and GPUI's Wayland window keeps its geometry and a fixed
+  window's least and most sizes in step with the resize (the first
+  configure had put the old size back). What a window asks for as it
+  opens holds its first showing until it's in, 150 ms at most
+  (`olo_ui::hold_first_show`: Preferences' settings and displays,
+  Display's GPUs, Date & Time's status). Every Preferences panel now
+  first shows at its final size; launch to first frame unchanged
+  (bench: 152/212 ms at 1×/2×, 152/213 before).
+
+- ~~**Choose the GPU Olo draws with**~~ (Ben, 2026-11-03: "provide an
+  option to choose the GPU that should be used for olo"). Superseded by
+  Ben's own word on 2026-11-04 ("that shouldn't even be an option", "we
+  should just use whatever the native one is"): each display is composed
+  by the GPU wired to it, nothing to choose; Preferences ▸ Display's
+  Graphics box shows every GPU found (make and model from the PCI
+  database, its driver, the displays wired to it). Its knobs: the open
+  "Preferences ▸ GPUs" item.
+
+- ~~**The GPU the displays use, chosen in Preferences ▸ Display**~~
+  (Ben, 2026-11-04). Tried: composing on NVIDIA's had every frame of the
+  built-in panel (wired to Intel's) copied through the CPU, 30 Hz; then
+  Ben: "make it so that the nvidia drives external displays not the
+  internal", "that shouldn't even be an option", "we should just use
+  whatever the native one is". Done so: each display composed by the GPU
+  wired to it, no choice; Display's Graphics box says what each draws.
+
+- ~~**The tray's battery shows the power plugged in**~~ (Ben, 2026-11-04:
+  "the battery icon in the deskbar tray should change when the power is
+  plugged in"): it showed the bolt only while charging or full; plugged
+  in and held at a charge limit ("Not charging") looked unplugged. Now
+  `Battery::plugged_in`.
 
 - ~~**Terminal: a tiny model of its own completes brush's commands**~~
   (Ben, 2026-11-03): "in prefs -> terminal have an option for using a

@@ -77,6 +77,8 @@ fn prefs() -> Prefs {
     Prefs {
         settings: Some(Settings::default()),
         outputs: outputs(),
+        outputs_in: true,
+        holds: Vec::new(),
         power: Some(PowerStatus { brightness: Some(0.62), keyboard_backlight: Some(0.4), ..Default::default() }),
         server: Server::detached(),
         windows: Vec::new(),

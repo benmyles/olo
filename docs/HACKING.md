@@ -2972,6 +2972,25 @@ content out at its own height and scrolls it, the window widened by the
 scroll bar. Layer surfaces, lock screens and full screen windows are
 the screen's or the app's to size.
 
+It opens at that size: nobody sees it at its designed size first and
+then grow. The Frame measures the content as each frame is painted; a
+frame drawn at a size about to change isn't shown
+(`Window::skip_present`, GPUI: nothing is committed, and the resize
+draws the next frame, at its size), and no frame is shown until the
+size asked for is made (GPUI's Wayland window sets its geometry, and a
+fixed window's least and most sizes, as its size changes). What the
+window asks for as it opens, from a worker, would still grow it a
+moment later: hold its first showing until that's in with
+`olo_ui::hold_first_show(window)`, a hold that's `Send` (give it to the
+worker) and let go by dropping it, after the answer is where the view
+reads it. The window is shown when every hold is let go, or after
+`FIRST_SHOW_WAIT` (150 ms) whatever comes, so a slow answer never keeps
+it hidden (it grows when the answer comes, as before). Preferences
+holds every panel for its settings and app_server's displays, Display
+for the GPUs, Date & Time for timedated's status. Don't hold for
+anything slow or endless (a list streamed in, a scan): show those as
+they come.
+
 So: never wrap a whole window's content in a scroll view of its own
 (the lint can't see past it: Display hid an 804-point panel in a
 658-point window, its scroll bar against the boxes and its last rows cut

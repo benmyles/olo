@@ -388,10 +388,17 @@ pub fn render(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView
 
 fn layout(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView>) -> olo_ui::gpui::Div {
     let panel = v.panel;
-    let (settings, outputs, power, server) = {
+    let (settings, outputs, outputs_in, power, server) = {
         let p = v.prefs.read(cx);
-        (p.settings.clone(), p.outputs.clone(), p.power.clone(), p.server.clone())
+        (p.settings.clone(), p.outputs.clone(), p.outputs_in, p.power.clone(), p.server.clone())
     };
+    // (Not shown until what it shows from app_server is in, briefly: else
+    // it opens waiting, or without its displays, and grows.)
+    if ((settings.is_none() && panel.needs_server()) || (panel == Panel::Display && !outputs_in))
+        && let Some(hold) = olo_ui::hold_first_show(window)
+    {
+        v.prefs.update(cx, |p, _| p.holds.push(hold));
+    }
     let root = div().size_full().flex().flex_col();
     // Not connected (yet): panels that need app_server wait.
     if settings.is_none() && panel.needs_server() {

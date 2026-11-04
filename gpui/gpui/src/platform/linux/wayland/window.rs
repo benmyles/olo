@@ -137,6 +137,9 @@ pub struct WaylandWindowState {
     /// Olo: a popup that grabbed the pointer and keyboard (a menu; not a
     /// tip).
     grabbing: bool,
+    /// Olo: a window of fixed size (not resizable by the person): its
+    /// least and most sizes are its size, kept so as its app resizes it.
+    fixed_size: bool,
     viewport: Option<wp_viewport::WpViewport>,
     outputs: HashMap<ObjectId, Output>,
     display: Option<(ObjectId, Output)>,
@@ -305,6 +308,9 @@ struct FrameLoop {
     queued: Cell<bool>,
     /// A configure was acknowledged: commit even if nothing is drawn.
     needs_commit: Cell<bool>,
+    /// Olo: a frame was ever drawn (the surface has a buffer: until then
+    /// it isn't shown, and a commit gets no frame callback).
+    drawn: Cell<bool>,
     /// When the frame last committed (a callback that never comes, as
     /// for a hidden window, holds changes back for a second at most).
     committed_at: Cell<std::time::Instant>,
@@ -453,6 +459,7 @@ impl WaylandWindowState {
             popup,
             popup_of: None,
             grabbing: false,
+            fixed_size: !options.is_resizable,
             viewport,
             globals,
             outputs: HashMap::default(),
@@ -1006,6 +1013,7 @@ impl WaylandWindow {
                 callback: Cell::new(FrameCallback::None),
                 queued: Cell::new(false),
                 needs_commit: Cell::new(false),
+                drawn: Cell::new(false),
                 committed_at: Cell::new(std::time::Instant::now()),
                 force: Cell::new(false),
                 text_rendering: Cell::new(text_rendering),
@@ -1277,8 +1285,13 @@ impl WaylandWindowStatePtr {
         }
         if drew || frames.needs_commit.get() {
             frames.needs_commit.set(false);
-            frames.callback.set(FrameCallback::Committed);
-            frames.committed_at.set(std::time::Instant::now());
+            // (A surface not shown yet (its first frame skipped, to be
+            // drawn at another size) gets no callback for a commit
+            // without a buffer: the next frame isn't held for one.)
+            if drew || frames.drawn.get() {
+                frames.callback.set(FrameCallback::Committed);
+                frames.committed_at.set(std::time::Instant::now());
+            }
         }
         // Another frame asked for while drawing this one: with the next
         // callback (paced by the display) if this one committed, else now.
@@ -1499,21 +1512,7 @@ impl WaylandWindowStatePtr {
                 return;
             };
             xdg_surface.ack_configure(serial);
-
-            let window_geometry = inset_by_tiling(
-                state.bounds.map_origin(|_| px(0.0)),
-                state.inset(),
-                state.tiling,
-            )
-            .map(|v| v.0 as i32)
-            .map_size(|v| if v <= 0 { 1 } else { v });
-
-            xdg_surface.set_window_geometry(
-                window_geometry.origin.x,
-                window_geometry.origin.y,
-                window_geometry.size.width,
-                window_geometry.size.height,
-            );
+            set_geometry(&state);
 
             let request_frame_callback = !state.acknowledged_first_configure;
             state.acknowledged_first_configure = true;
@@ -1828,6 +1827,7 @@ impl WaylandWindowStatePtr {
             }
             if let Some(size) = size {
                 state.bounds.size = size;
+                set_geometry(&state);
             }
             if let Some(scale) = scale {
                 state.scale = scale;
@@ -2040,15 +2040,15 @@ impl PlatformWindow for WaylandWindow {
     fn resize(&mut self, size: Size<Pixels>) {
         let state = self.borrow();
         let state_ptr = self.0.clone();
-        let dp_size = size.to_device_pixels(self.scale_factor());
-
-        if let Some(xdg_surface) = &state.xdg_surface {
-            xdg_surface.set_window_geometry(
-                state.bounds.origin.x.0 as i32,
-                state.bounds.origin.y.0 as i32,
-                dp_size.width.0,
-                dp_size.height.0,
-            );
+        // (Its geometry is told as its size changes: `set_geometry`.)
+        // Olo: a window of fixed size its app resized (one that fits
+        // what it shows) is fixed at its new size.
+        if state.fixed_size
+            && let Some(toplevel) = &state.toplevel
+        {
+            let (w, h) = (size.width.0 as i32, size.height.0 as i32);
+            toplevel.set_min_size(w, h);
+            toplevel.set_max_size(w, h);
         }
         // Olo: a layer surface asks for its new size.
         if let (Some(layer), Some(options)) = (&state.layer_surface, &state.layer_shell) {
@@ -2059,7 +2059,13 @@ impl PlatformWindow for WaylandWindow {
         state
             .globals
             .executor
-            .spawn(async move { state_ptr.resize(size) })
+            .spawn(async move {
+                state_ptr.resize(size);
+                // (A frame skipped for this resize (`Window::skip_present`)
+                // is drawn now, at the new size; one that didn't change it
+                // is shown as it was, so it's never left unshown.)
+                state_ptr.schedule_frame();
+            })
             .detach();
     }
 
@@ -2459,6 +2465,7 @@ impl PlatformWindow for WaylandWindow {
             state.viewport_source = Some(drawn);
         }
         state.renderer.draw(scene);
+        self.0.frames.drawn.set(true);
         // Olo: the frame committed, external pictures placed with it show
         // each new picture as it comes again.
         for key in std::mem::take(&mut state.externals_synced) {
@@ -2668,6 +2675,25 @@ fn compute_outer_size(
 
         new_size
     })
+}
+
+/// Olo: the window's geometry (its size, less what's drawn outside it),
+/// told the compositor with the next commit: as each configure is
+/// acknowledged, and as its size changes (its app resized it, perhaps
+/// before its first configure was answered, which would otherwise have
+/// put back the size it had).
+fn set_geometry(state: &WaylandWindowState) {
+    let Some(xdg_surface) = &state.xdg_surface else {
+        return;
+    };
+    let g = inset_by_tiling(
+        state.bounds.map_origin(|_| px(0.0)),
+        state.inset(),
+        state.tiling,
+    )
+    .map(|v| v.0 as i32)
+    .map_size(|v| if v <= 0 { 1 } else { v });
+    xdg_surface.set_window_geometry(g.origin.x, g.origin.y, g.size.width, g.size.height);
 }
 
 fn inset_by_tiling(mut bounds: Bounds<Pixels>, inset: Pixels, tiling: Tiling) -> Bounds<Pixels> {

@@ -74,6 +74,11 @@ pub enum Msg {
 pub struct Prefs {
     pub settings: Option<Settings>,
     pub outputs: Vec<OutputInfo>,
+    /// app_server told its displays (perhaps none).
+    pub outputs_in: bool,
+    /// Windows not shown until the settings and displays are in, briefly
+    /// (`olo_ui::hold_first_show`).
+    pub holds: Vec<olo_ui::FirstShowHold>,
     /// app_server's power state (caffeinated, brightness), once known.
     pub power: Option<PowerStatus>,
     pub server: server::Server,
@@ -246,9 +251,13 @@ impl Prefs {
             }
             Msg::Outputs(o) => {
                 self.outputs = o;
+                self.outputs_in = true;
             }
             Msg::Power(p) => self.power = Some(p),
             Msg::Redraw => {}
+        }
+        if self.settings.is_some() && self.outputs_in {
+            self.holds.clear();
         }
         cx.notify();
     }
@@ -422,7 +431,7 @@ fn main() {
     olo_ui::run(APP_ID, move |cx| {
         instance::listen(APP_ID, olo_ui::proxy(cx));
         let server = server::Server::start(olo_ui::proxy(cx));
-        let prefs = cx.new(|_| Prefs { settings: None, outputs: Vec::new(), power: None, server, windows: Vec::new() });
+        let prefs = cx.new(|_| Prefs { settings: None, outputs: Vec::new(), outputs_in: false, holds: Vec::new(), power: None, server, windows: Vec::new() });
         let restored = olo_ui::restored_state().and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok()).filter(|o| !o.is_empty());
         prefs.update(cx, |p, cx| match restored {
             Some(open) => {

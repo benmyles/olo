@@ -40,8 +40,8 @@ pub mod widgets;
 pub mod workspaces;
 
 pub use app::{
-    FocusNext, FocusPrev, Frame, WindowOptions, app_id, begin_move, message_handler, on_displays_changed, open_or_raise, open_window, proxy, raise, run, screen_room, set_content_height,
-    stay_resident, tab_step,
+    FIRST_SHOW_WAIT, FirstShowHold, FocusNext, FocusPrev, Frame, WindowOptions, app_id, begin_move, hold_first_show, message_handler, on_displays_changed, open_or_raise, open_window, proxy, raise,
+    run, screen_room, set_content_height, stay_resident, tab_step,
 };
 pub use gpui;
 pub use lock::{lock_session, unlock_session};

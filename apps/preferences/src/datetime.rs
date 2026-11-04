@@ -48,6 +48,8 @@ struct Shared {
     /// A change is on its way (polkit may be asking for a password).
     busy: bool,
     error: Option<String>,
+    /// Windows not shown until the status is in (let go as it comes).
+    holds: Vec<olo_ui::FirstShowHold>,
 }
 
 struct Link {
@@ -77,17 +79,28 @@ fn link(proxy: olo_ui::Proxy) -> &'static Link {
             .name("timedate".into())
             .spawn(move || {
                 let wake = || proxy.send(Msg::Redraw);
-                match systime::timezones() {
-                    Ok(z) => sh.lock().unwrap().zones = Arc::new(z),
-                    Err(e) => tracing::warn!("timedated: {e}"),
-                }
+                // (What the panel shows first, then the zones to choose
+                // from, a longer list.)
+                let mut zones = None;
                 loop {
                     let status = Some(systime::status().map_err(|e| e.to_string()));
-                    let changed = {
+                    let (changed, holds) = {
                         let mut s = sh.lock().unwrap();
-                        std::mem::replace(&mut s.status, status.clone()) != status
+                        (std::mem::replace(&mut s.status, status.clone()) != status, std::mem::take(&mut s.holds))
                     };
                     if changed {
+                        wake();
+                    }
+                    drop(holds);
+                    if zones.is_none() {
+                        zones = Some(match systime::timezones() {
+                            Ok(z) => Arc::new(z),
+                            Err(e) => {
+                                tracing::warn!("timedated: {e}");
+                                Arc::default()
+                            }
+                        });
+                        sh.lock().unwrap().zones = zones.clone().unwrap_or_default();
                         wake();
                     }
                     let req = match rx.recv_timeout(Duration::from_secs(2)) {
@@ -177,7 +190,14 @@ fn state_of(v: &mut PanelView) -> Option<&mut State> {
 
 pub fn ui(ui: &mut Ui, st: &mut State) {
     let (status, zones, busy, error) = {
-        let sh = st.link.shared.lock().unwrap();
+        let mut sh = st.link.shared.lock().unwrap();
+        // (Not shown until the status is in, briefly: it's most of what
+        // the panel shows.)
+        if sh.status.is_none()
+            && let Some(hold) = olo_ui::hold_first_show(ui.window)
+        {
+            sh.holds.push(hold);
+        }
         (sh.status.clone(), sh.zones.clone(), sh.busy, sh.error.clone())
     };
     // Tick with the clock: drawn again at the next second.

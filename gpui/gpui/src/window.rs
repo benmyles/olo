@@ -1037,6 +1037,8 @@ pub struct Window {
     active: Rc<Cell<bool>>,
     hovered: Rc<Cell<bool>>,
     pub(crate) needs_present: Rc<Cell<bool>>,
+    /// Olo: this frame isn't to be shown (`skip_present`).
+    skip_present: Cell<bool>,
     /// Olo: where the window's external pictures were placed, as last
     /// told the platform (`place_external`), and whether it ever had
     /// one (a window that hasn't looks for none).
@@ -1278,11 +1280,24 @@ impl Window {
                 let drew = if invalidator.is_dirty() || request_frame_options.force_render {
                     measure("frame duration", || {
                         handle
-                            .update(&mut cx, |_, window, cx| {
+                            .update(&mut cx, |_, window, cx| -> bool {
                                 let started = Instant::now();
                                 let arena_clear_needed = window.draw(cx);
                                 let drawn = started.elapsed();
-                                window.present();
+                                // Olo: a frame drawn at a size about to
+                                // change (a window that fits what it
+                                // shows, measured in this very frame)
+                                // isn't shown: the next, at its size, is.
+                                // (Nothing is committed, so it says it
+                                // drew nothing: no frame callback is
+                                // waited for. The resize asks for the
+                                // next frame.)
+                                let skipped = window.skip_present.get();
+                                if skipped {
+                                    window.needs_present.set(true);
+                                } else {
+                                    window.present();
+                                }
                                 // drop the arena elements after present to reduce latency
                                 arena_clear_needed.clear();
                                 let scrolls = std::mem::take(&mut window.frame_scrolls);
@@ -1309,15 +1324,23 @@ impl Window {
                                         work[2].1,
                                     );
                                 }
+                                !skipped
                             })
-                            .ok();
-                    });
-                    true
+                            .unwrap_or(false)
+                    })
                 } else if needs_present {
+                    // (Unless the frame drawn last isn't to be shown:
+                    // one drawn as the window opened, before a frame was
+                    // asked for.)
                     handle
-                        .update(&mut cx, |_, window, _| window.present())
-                        .ok();
-                    true
+                        .update(&mut cx, |_, window, _| {
+                            let skipped = window.skip_present.get();
+                            if !skipped {
+                                window.present();
+                            }
+                            !skipped
+                        })
+                        .unwrap_or(false)
                 } else {
                     false
                 };
@@ -1523,6 +1546,7 @@ impl Window {
             active,
             hovered,
             needs_present,
+            skip_present: Cell::new(false),
             externals_placed: RefCell::default(),
             had_externals: Cell::new(false),
             last_input_timestamp,
@@ -1670,6 +1694,16 @@ impl Window {
     /// Obtain a handle to the window that belongs to this context.
     pub fn window_handle(&self) -> AnyWindowHandle {
         self.handle
+    }
+
+    /// Olo: don't show the frame being drawn (call it from paint): its
+    /// window is about to take another size (resize it, deferred), or
+    /// isn't to be shown yet. Nothing is committed: whatever changes
+    /// next (the resize) draws the next frame, which is shown. A window
+    /// not shown yet stays unshown until then (Wayland shows a surface
+    /// with its first buffer).
+    pub fn skip_present(&self) {
+        self.skip_present.set(true);
     }
 
     /// Mark the window as dirty, scheduling it to be redrawn on the next frame.
@@ -2278,6 +2312,8 @@ impl Window {
     /// the contents of the new [`Scene`], use [`Self::present`].
     #[profiling::function]
     pub fn draw(&mut self, cx: &mut App) -> ArenaClearNeeded {
+        // (Olo: whether this frame is shown is this frame's to say.)
+        self.skip_present.set(false);
         self.frame_scrolls.clear();
         self.glyph_memo.clear();
         self.drop_accept = None;
