@@ -410,7 +410,7 @@ fn backup_cli(flag: &str, file: &std::path::Path, sealed: bool) -> Option<i32> {
     use std::sync::atomic::AtomicBool;
     let no = AtomicBool::new(false);
     let show = |m: &backup::Manifest| {
-        println!("made {}, {} files, {}", m.created, m.files.len(), backup::size_text(m.bytes()));
+        println!("made {}, {} {}, {}", m.created, m.files.len(), if m.files.len() == 1 { "file" } else { "files" }, backup::size_text(m.bytes()));
         for (app, files, bytes) in m.groups() {
             println!("  {app}: {files} {}, {}", if files == 1 { "file" } else { "files" }, backup::size_text(bytes));
         }
@@ -430,12 +430,12 @@ fn backup_cli(flag: &str, file: &std::path::Path, sealed: bool) -> Option<i32> {
     let r = match flag {
         "--export" => (|| {
             let how = if sealed { backup::Seal::Passphrase(passphrase()?) } else { backup::Seal::Open };
-            backup::export(&backup::roots(), file, &how, &backup::Login, &backup::Origin::here(), &|_, _| {}, &no).map(|m| show(&m))
+            backup::export(&backup::roots(), file, &how, &backup::Here::this(), &|_, _| {}, &no).map(|m| show(&m))
         })(),
         "--inspect" if !sealed => backup::inspect(file).map(|m| show(&m)),
         "--import" if !sealed => (|| {
             let words = if backup::inspect(file)?.needs_passphrase() { Some(passphrase()?) } else { None };
-            backup::import(&backup::roots(), file, words.as_deref().map(|w| w.as_str()), &backup::Login, &backup::Origin::here(), &|_, _| {}, &no).map(|i| {
+            backup::import(&backup::roots(), file, words.as_deref().map(|w| w.as_str()), &backup::Here::this(), &|_, _| {}, &no).map(|i| {
                 show(&i.manifest);
                 println!("imported {} {}, {} {}", i.files, if i.files == 1 { "file" } else { "files" }, i.secrets, if i.secrets == 1 { "password or sign-in" } else { "passwords and sign-ins" });
                 for note in &i.notes {

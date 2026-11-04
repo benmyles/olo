@@ -7,18 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Backup: Wi-Fi networks too, and tried on the ThinkPad** (what's
-  left of Ben's backup audit, 2026-11-03): saved Wi-Fi networks and
-  their passwords live in NetworkManager, not in Olo's files: a sealed
-  backup should take them along (`GetSettings` and `GetSecrets` for
-  each saved Wi-Fi connection, through polkit and Olo's agent) and an
-  import add them (`AddConnection`), tested against a NetworkManager of
-  the test's own (none on this machine touched). Then the real thing:
-  an export from this Mac, imported on the ThinkPad (x86, another user
-  name if it has one, other displays), every pane and app looked at,
-  Passwords opened, the pool's accounts turned on once the Mac's are
-  off.
-
 - **A tile too small for its window's least size, off its part**
   (found 2026-11-03 by `wm-fuzz --tiles`, seeds 5 and 9, the build
   before the drag-round fixes too): `tsession start fz
@@ -173,6 +161,14 @@ of Finished; a new one goes where its priority puts it.
   (`*kbd_backlight`) and laptop panel brightness are already generic.
   Waiting on the machine: NVIDIA for apps and external displays, HDR and
   wide colour, VRR, the haptic touchpad, IR face sign-in.
+
+- **Backup tried on the ThinkPad** (what's left of Ben's backup audit,
+  2026-11-03; waiting on the machine): an export from this Mac (sealed,
+  with passwords and sign-ins), imported on the ThinkPad (x86, another
+  user name if it has one, other displays): every pane and app looked
+  at, Passwords opened, the Wi-Fi networks there (NetworkManager asks
+  polkit for their passwords and to save them: Olo's agent's prompts
+  seen), the pool's accounts turned on once the Mac's are off.
 
 - **Choose the GPU Olo draws with** (Ben, 2026-11-03): "when there are
   multiple GPUs available, in prefs -> display (or wherever it's most
@@ -976,6 +972,18 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Backup: Wi-Fi networks too**~~ (the rest of Ben's backup audit,
+  2026-11-03): saved Wi-Fi networks and their passwords live in
+  NetworkManager, not in Olo's files.
+  *Done* 2026-11-03: a sealed backup takes them along
+  (`olo_system::network::saved_wifi`: `GetSettings`, `GetSecrets`;
+  enterprise ones stay behind and are named), and an import saves those
+  the computer hasn't (`add_wifi`), keeping its own. Tested by unit
+  tests and end to end over D-Bus against `nm-fake`, a stand-in
+  NetworkManager on private buses (`OLO_NM_BUS`): exported from one
+  with three networks, imported into another with one of its own, the
+  WPA one's password there. Left: the ThinkPad itself (open above).
 
 - ~~**Backup: everything, and onto another machine**~~ (Ben, 2026-11-03,
   soon: he sets up his ThinkPad by exporting from this Mac and

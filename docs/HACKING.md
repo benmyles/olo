@@ -3187,8 +3187,22 @@ opened, its own `panel::State` and text fields).
   store: each sign-in renews itself, and two computers renewing one sign
   each other out), and a vault whose key the backup lacks stays as it is
   here. What didn't come along, or came differently, is said
-  (`Imported::notes`: also Bluetooth pairings, Wi-Fi networks and Touch
-  ID fingerprints, the computer's own, and a Mac keyboard profile). No
+  (`Imported::notes`: also Bluetooth pairings and Touch ID
+  fingerprints, the computer's own, and a Mac keyboard profile).
+  A sealed backup also takes the saved Wi-Fi networks along, with their
+  passwords (`olo_system::network::saved_wifi`: NetworkManager's
+  `GetSettings` and `GetSecrets`, which ask polkit, so Olo's agent may
+  ask once; enterprise ones stay behind, set up with the computer's own
+  certificates, and are named), in `wifi.json` beside the secrets;
+  import saves those this computer hasn't (`add_wifi`, a network to
+  join, not joined) and keeps its own. The backup made before an import
+  reads none (an import only adds networks). Backup reaches the keyring
+  and NetworkManager through `Here` (`Keyring`, `Networks`), which its
+  tests make of their own; `nm-fake` (in olo-system: a stand-in
+  NetworkManager on any bus, saved networks from `--network
+  SSID:PASSWORD` and `--enterprise SSID`, what it holds written to
+  `--dump FILE`) and `OLO_NM_BUS=ADDRESS` test the D-Bus side without
+  touching this computer's networks. No
   login keyring: no secret is read or put back, and the vaults stay.
   app_server keeps its settings in memory, so the backup's
   `app_server.json` is sent to it as `SetSettings`. Both run on a

@@ -20,6 +20,22 @@ const SETTINGS_PATH: &str = "/org/freedesktop/NetworkManager/Settings";
 const SETTINGS: &str = "org.freedesktop.NetworkManager.Settings";
 const CONNECTION: &str = "org.freedesktop.NetworkManager.Settings.Connection";
 
+/// The bus NetworkManager is on: the system bus, or `OLO_NM_BUS` (a
+/// D-Bus address: a stand-in's, `nm-fake`, for tests).
+fn conn() -> Result<&'static zbus::blocking::Connection> {
+    static TEST: std::sync::OnceLock<zbus::blocking::Connection> = std::sync::OnceLock::new();
+    match std::env::var("OLO_NM_BUS") {
+        Ok(address) if !address.is_empty() => {
+            if let Some(c) = TEST.get() {
+                return Ok(c);
+            }
+            let c = zbus::blocking::connection::Builder::address(address.as_str())?.build()?;
+            Ok(TEST.get_or_init(|| c))
+        }
+        _ => bus::system(),
+    }
+}
+
 /// NM_DEVICE_TYPE_*.
 const TYPE_ETHERNET: u32 = 1;
 const TYPE_WIFI: u32 = 2;
@@ -34,7 +50,7 @@ pub struct Wifi {
 
 /// The first Wi-Fi adapter's state, or None if there is no Wi-Fi adapter.
 pub fn wifi() -> Result<Option<Wifi>> {
-    let conn = bus::system()?;
+    let conn = conn()?;
     for dev in devices_paths()? {
         let kind: u32 = bus::property(conn, DEST, dev.as_str(), DEVICE, "DeviceType")?;
         if kind != TYPE_WIFI {
@@ -54,7 +70,7 @@ pub fn wifi() -> Result<Option<Wifi>> {
 /// [`wifi`], and the objects whose changes change it: NetworkManager,
 /// the adapter, its access point.
 fn wifi_and_paths() -> Result<(Option<Wifi>, Vec<String>)> {
-    let conn = bus::system()?;
+    let conn = conn()?;
     let mut paths = vec![NM_PATH.to_owned()];
     for dev in devices_paths()? {
         let kind: u32 = bus::property(conn, DEST, dev.as_str(), DEVICE, "DeviceType")?;
@@ -143,7 +159,7 @@ pub fn watch_wifi(changed: impl Fn(Option<Wifi>) + Send + 'static) -> Result<()>
 }
 
 fn devices_paths() -> Result<Vec<OwnedObjectPath>> {
-    bus::property(bus::system()?, DEST, NM_PATH, NM, "Devices")
+    bus::property(conn()?, DEST, NM_PATH, NM, "Devices")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -236,11 +252,11 @@ pub struct Status {
 }
 
 fn str_prop(dev: &str, iface: &str, name: &str) -> String {
-    bus::system().ok().and_then(|c| bus::property::<String>(c, DEST, dev, iface, name).ok()).unwrap_or_default()
+    conn().ok().and_then(|c| bus::property::<String>(c, DEST, dev, iface, name).ok()).unwrap_or_default()
 }
 
 fn device(path: &OwnedObjectPath) -> Result<Device> {
-    let c = bus::system()?;
+    let c = conn()?;
     let p = path.as_str();
     let kind = match bus::property::<u32>(c, DEST, p, DEVICE, "DeviceType")? {
         TYPE_WIFI => Kind::Wifi,
@@ -285,7 +301,7 @@ fn device(path: &OwnedObjectPath) -> Result<Device> {
 
 /// The SSIDs of saved Wi-Fi connections, with their settings paths.
 fn saved() -> Result<Vec<(String, OwnedObjectPath)>> {
-    let c = bus::system()?;
+    let c = conn()?;
     let paths: Vec<OwnedObjectPath> = bus::call(c, DEST, SETTINGS_PATH, SETTINGS, "ListConnections", &())?;
     let mut out = Vec::new();
     for p in paths {
@@ -301,7 +317,7 @@ fn saved() -> Result<Vec<(String, OwnedObjectPath)>> {
 
 /// Everything the Network panel shows.
 pub fn status() -> Result<Status> {
-    let c = bus::system()?;
+    let c = conn()?;
     let wireless_enabled = bus::property(c, DEST, NM_PATH, NM, "WirelessEnabled")?;
     let wireless_hardware = bus::property(c, DEST, NM_PATH, NM, "WirelessHardwareEnabled")?;
     let devices: Vec<Device> = devices_paths()?.iter().filter_map(|p| device(p).ok()).filter(|d| d.kind != Kind::Other).collect();
@@ -352,17 +368,17 @@ pub fn status() -> Result<Status> {
 /// Have NetworkManager read its configuration files again (after one
 /// is written; as root, or whoever polkit lets).
 pub fn reload() -> Result<()> {
-    bus::call::<_, ()>(bus::system()?, DEST, NM_PATH, NM, "Reload", &(0u32,))
+    bus::call::<_, ()>(conn()?, DEST, NM_PATH, NM, "Reload", &(0u32,))
 }
 
 pub fn set_wireless_enabled(on: bool) -> Result<()> {
-    bus::set_property(bus::system()?, DEST, NM_PATH, NM, "WirelessEnabled", on)
+    bus::set_property(conn()?, DEST, NM_PATH, NM, "WirelessEnabled", on)
 }
 
 /// Ask a Wi-Fi device to look for networks (NM limits how often).
 pub fn scan(device: &str) -> Result<()> {
     let opts: HashMap<&str, Value> = HashMap::new();
-    bus::call::<_, ()>(bus::system()?, DEST, device, WIRELESS, "RequestScan", &(opts,))
+    bus::call::<_, ()>(conn()?, DEST, device, WIRELESS, "RequestScan", &(opts,))
 }
 
 /// How a password joins an access point with these WPA and RSN flags
@@ -387,7 +403,7 @@ pub fn key_mgmt(wpa: u32, rsn: u32) -> &'static str {
 /// Join `network` on `device`: its saved connection if there is one,
 /// else a new one (with `password` for a secured network).
 pub fn join(device: &str, network: &Network, password: Option<&str>) -> Result<()> {
-    let c = bus::system()?;
+    let c = conn()?;
     let dev = zvariant::ObjectPath::try_from(device)?;
     let ap = zvariant::ObjectPath::try_from(network.ap.as_str())?;
     if let Some((_, path)) = saved()?.into_iter().find(|(s, _)| *s == network.ssid)
@@ -536,7 +552,7 @@ pub fn enterprise_settings(e: &Enterprise) -> HashMap<&'static str, HashMap<&'st
 
 /// Join an 802.1X `network` on `device` as a new connection.
 pub fn join_enterprise(device: &str, network: &Network, e: &Enterprise) -> Result<()> {
-    let c = bus::system()?;
+    let c = conn()?;
     let dev = zvariant::ObjectPath::try_from(device)?;
     let ap = zvariant::ObjectPath::try_from(network.ap.as_str())?;
     let settings = enterprise_settings(e);
@@ -545,13 +561,110 @@ pub fn join_enterprise(device: &str, network: &Network, e: &Enterprise) -> Resul
 }
 
 pub fn disconnect(device: &str) -> Result<()> {
-    bus::call::<_, ()>(bus::system()?, DEST, device, DEVICE, "Disconnect", &())
+    bus::call::<_, ()>(conn()?, DEST, device, DEVICE, "Disconnect", &())
+}
+
+/// A saved Wi-Fi network as a backup carries it to another computer: its
+/// name, how it's secured, and its password.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SavedWifi {
+    /// The connection's name ("Home").
+    pub id: String,
+    /// The network's name as it's sent (bytes: not always UTF-8).
+    pub ssid: Vec<u8>,
+    pub hidden: bool,
+    pub autoconnect: bool,
+    /// "wpa-psk", "sae", "owe"; empty for an open network.
+    pub key_mgmt: String,
+    /// WPA's (or SAE's) password, if NetworkManager gave it.
+    pub psk: Option<String>,
+}
+
+impl SavedWifi {
+    pub fn name(&self) -> String {
+        String::from_utf8_lossy(&self.ssid).into_owned()
+    }
+}
+
+fn get<'a>(s: &'a HashMap<String, HashMap<String, OwnedValue>>, group: &str, key: &str) -> Option<&'a OwnedValue> {
+    s.get(group).and_then(|g| g.get(key))
+}
+
+/// Every saved Wi-Fi network that can go to another computer, with its
+/// password (NetworkManager asks polkit: a prompt, through Olo's agent,
+/// if it wants one), and the names of those that can't: enterprise ones
+/// (this computer's certificates and files) and WEP ones. Hotspots this
+/// computer makes aren't networks to join, and are left out.
+pub fn saved_wifi() -> Result<(Vec<SavedWifi>, Vec<String>)> {
+    let c = conn()?;
+    let paths: Vec<OwnedObjectPath> = bus::call(c, DEST, SETTINGS_PATH, SETTINGS, "ListConnections", &())?;
+    let (mut out, mut left) = (Vec::new(), Vec::new());
+    for p in paths {
+        let Ok(settings) = bus::call::<_, HashMap<String, HashMap<String, OwnedValue>>>(c, DEST, p.as_str(), CONNECTION, "GetSettings", &()) else { continue };
+        let Some(ssid) = get(&settings, "802-11-wireless", "ssid").and_then(|v| Vec::<u8>::try_from(v.clone()).ok()) else { continue };
+        let text = |g: &str, k: &str| get(&settings, g, k).and_then(|v| String::try_from(v.clone()).ok()).unwrap_or_default();
+        let flag = |g: &str, k: &str, or: bool| get(&settings, g, k).and_then(|v| bool::try_from(v.clone()).ok()).unwrap_or(or);
+        let mode = text("802-11-wireless", "mode");
+        if !mode.is_empty() && mode != "infrastructure" {
+            continue;
+        }
+        let id = text("connection", "id");
+        let key_mgmt = text("802-11-wireless-security", "key-mgmt");
+        let name = String::from_utf8_lossy(&ssid).into_owned();
+        if settings.contains_key("802-1x") || key_mgmt == "wpa-eap" || key_mgmt == "ieee8021x" || (key_mgmt == "none" && settings.contains_key("802-11-wireless-security")) {
+            left.push(name);
+            continue;
+        }
+        let psk = if matches!(key_mgmt.as_str(), "wpa-psk" | "sae") {
+            match bus::call::<_, HashMap<String, HashMap<String, OwnedValue>>>(c, DEST, p.as_str(), CONNECTION, "GetSecrets", &("802-11-wireless-security",)) {
+                Ok(secrets) => get(&secrets, "802-11-wireless-security", "psk").and_then(|v| String::try_from(v.clone()).ok()).filter(|p| !p.is_empty()),
+                Err(e) => {
+                    tracing::info!(network = name, "network: its password couldn't be read: {e}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        out.push(SavedWifi { id: if id.is_empty() { name } else { id }, ssid, hidden: flag("802-11-wireless", "hidden", false), autoconnect: flag("connection", "autoconnect", true), key_mgmt, psk });
+    }
+    Ok((out, left))
+}
+
+/// Whether a Wi-Fi network named `ssid` is saved here.
+pub fn has_wifi(ssid: &[u8]) -> Result<bool> {
+    Ok(saved()?.iter().any(|(s, _)| s.as_bytes() == ssid))
+}
+
+/// Save `w` here, as a network to join (not joined now).
+pub fn add_wifi(w: &SavedWifi) -> Result<()> {
+    let uuid = {
+        let mut b = [0u8; 16];
+        getrandom::fill(&mut b).map_err(|e| zbus::Error::Failure(e.to_string()))?;
+        b[6] = (b[6] & 0x0f) | 0x40;
+        b[8] = (b[8] & 0x3f) | 0x80;
+        let h: String = b.iter().map(|x| format!("{x:02x}")).collect();
+        format!("{}-{}-{}-{}-{}", &h[..8], &h[8..12], &h[12..16], &h[16..20], &h[20..])
+    };
+    let mut settings: HashMap<&str, HashMap<&str, Value>> = HashMap::new();
+    settings
+        .insert("connection", HashMap::from([("id", Value::from(w.id.as_str())), ("type", Value::from("802-11-wireless")), ("uuid", Value::from(uuid)), ("autoconnect", Value::from(w.autoconnect))]));
+    settings.insert("802-11-wireless", HashMap::from([("ssid", Value::from(w.ssid.clone())), ("mode", Value::from("infrastructure")), ("hidden", Value::from(w.hidden))]));
+    if !w.key_mgmt.is_empty() {
+        let mut security = HashMap::from([("key-mgmt", Value::from(w.key_mgmt.as_str()))]);
+        if let Some(psk) = &w.psk {
+            security.insert("psk", Value::from(psk.as_str()));
+        }
+        settings.insert("802-11-wireless-security", security);
+    }
+    let _: OwnedObjectPath = bus::call(conn()?, DEST, SETTINGS_PATH, SETTINGS, "AddConnection", &(settings,))?;
+    Ok(())
 }
 
 /// Delete every saved connection for `ssid`.
 pub fn forget(ssid: &str) -> Result<()> {
     for (_, path) in saved()?.into_iter().filter(|(s, _)| s == ssid) {
-        bus::call::<_, ()>(bus::system()?, DEST, path.as_str(), CONNECTION, "Delete", &())?;
+        bus::call::<_, ()>(conn()?, DEST, path.as_str(), CONNECTION, "Delete", &())?;
     }
     Ok(())
 }

@@ -7465,6 +7465,7 @@ dependencies = [
  "olo-sync",
  "pulseaudio",
  "serde",
+ "serde_json",
  "sha2 0.11.1",
  "tracing",
  "zbus",

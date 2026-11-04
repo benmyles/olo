@@ -45,7 +45,10 @@ use chacha20poly1305::{
     aead::{Aead, KeyInit, Payload},
 };
 use olo_protocol::Settings;
-use olo_system::secrets::{self, Carry};
+use olo_system::{
+    network::{self, SavedWifi},
+    secrets::{self, Carry},
+};
 use olo_ui::{
     file_panel::{self, FilePanel, PanelResult},
     gpui::{Context, Entity, FontWeight, IntoElement as _, ParentElement as _, ScrollHandle, Styled as _, canvas, div, px},
@@ -69,8 +72,10 @@ const MANIFEST: &str = "manifest.json";
 /// A sealed backup's payload, after its manifest: a zstd tar of its files
 /// and `SECRETS`, sealed.
 const SEALED: &str = "sealed";
-/// In a sealed payload: the keyring's secrets (`Secret`s).
+/// In a sealed payload: the keyring's secrets (`Secret`s), and the
+/// saved Wi-Fi networks (`Wifi`).
 const SECRETS: &str = "secrets.json";
+const WIFI: &str = "wifi.json";
 /// Automatic backups made before an import that are kept.
 const KEEP: usize = 5;
 /// Never in a backup, nor put back from one: the automatic backups, and
@@ -173,6 +178,61 @@ const SEAL_FORMAT: u8 = 1;
 /// The keyring item a "keyring" sealed backup's key is in.
 fn backup_key_attrs(id: &str) -> [(&str, &str); 3] {
     [("application", "olo"), ("purpose", "backup-key"), ("backup", id)]
+}
+
+/// This computer, as Backup sees it: its keyring, its saved networks,
+/// and where it is (tests make their own).
+pub struct Here<'a> {
+    pub keyring: &'a dyn Keyring,
+    pub networks: &'a dyn Networks,
+    pub origin: Origin,
+}
+
+impl Here<'static> {
+    /// The computer this runs on.
+    pub fn this() -> Here<'static> {
+        Here { keyring: &Login, networks: &NetworkManager, origin: Origin::here() }
+    }
+}
+
+/// The saved Wi-Fi networks, as Backup uses them (NetworkManager's; tests
+/// use their own).
+pub trait Networks: Sync {
+    /// Those that can go to another computer, with their passwords, and
+    /// the names of those that can't (enterprise ones). An error: there's
+    /// no NetworkManager.
+    fn saved(&self) -> Result<(Vec<SavedWifi>, Vec<String>), String>;
+    fn has(&self, ssid: &[u8]) -> Result<bool, String>;
+    fn add(&self, network: &SavedWifi) -> Result<(), String>;
+}
+
+/// NetworkManager's (`olo_system::network`).
+pub struct NetworkManager;
+
+impl Networks for NetworkManager {
+    fn saved(&self) -> Result<(Vec<SavedWifi>, Vec<String>), String> {
+        network::saved_wifi().map_err(|e| e.to_string())
+    }
+    fn has(&self, ssid: &[u8]) -> Result<bool, String> {
+        network::has_wifi(ssid).map_err(|e| e.to_string())
+    }
+    fn add(&self, network: &SavedWifi) -> Result<(), String> {
+        network::add_wifi(network).map_err(|e| e.to_string())
+    }
+}
+
+/// A sealed backup's saved Wi-Fi networks, and those left behind.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+struct Wifi {
+    networks: Vec<SavedWifi>,
+    left: Vec<String>,
+}
+
+/// What a sealed backup holds besides its files.
+#[derive(Default)]
+struct Sealed {
+    secrets: Vec<Secret>,
+    wifi: Option<Wifi>,
 }
 
 /// The login keyring, as Backup uses it (tests use their own).
@@ -409,7 +469,8 @@ pub type Progress<'a> = &'a dyn Fn(u64, u64);
 /// Write a backup of `roots` to `dest` (atomically), sealed as `how`
 /// says; a sealed one takes the keyring's secrets along. `here` is this
 /// computer (`Origin::here`).
-pub fn export(roots: &[(&'static str, PathBuf)], dest: &Path, how: &Seal, keyring: &dyn Keyring, here: &Origin, progress: Progress, cancel: &AtomicBool) -> Result<Manifest, String> {
+pub fn export(roots: &[(&'static str, PathBuf)], dest: &Path, how: &Seal, here: &Here, progress: Progress, cancel: &AtomicBool) -> Result<Manifest, String> {
+    let keyring = here.keyring;
     let mut files = Vec::new();
     let mut data = Vec::new();
     for (name, path) in collect(roots) {
@@ -457,7 +518,18 @@ pub fn export(roots: &[(&'static str, PathBuf)], dest: &Path, how: &Seal, keyrin
             whats.push(k.what.into());
         }
     }
-    let manifest = Manifest { format: FORMAT.into(), version: VERSION, created: now(), files, from: Some(here.clone()), sealed: sealing, secrets: whats };
+    // The saved Wi-Fi networks, with their passwords: in a backup sealed
+    // with a password (one made before an import leaves them: an import
+    // only adds networks, so undoing it needs none). No NetworkManager:
+    // none.
+    let wifi = match how {
+        Seal::Passphrase(_) => here.networks.saved().ok().map(|(networks, left)| Wifi { networks, left }).filter(|w| !w.networks.is_empty() || !w.left.is_empty()),
+        _ => None,
+    };
+    if wifi.as_ref().is_some_and(|w| !w.networks.is_empty()) {
+        whats.push("Wi-Fi networks".into());
+    }
+    let manifest = Manifest { format: FORMAT.into(), version: VERSION, created: now(), files, from: Some(here.origin.clone()), sealed: sealing, secrets: whats };
     let total = manifest.bytes();
     let partial = dest.with_file_name(format!(".{}.partial", dest.file_name().unwrap_or_default().to_string_lossy()));
     let write = || -> Result<(), String> {
@@ -486,6 +558,9 @@ pub fn export(roots: &[(&'static str, PathBuf)], dest: &Path, how: &Seal, keyrin
                 each(&mut |name, bytes, mode| append(&mut inner, name, bytes, mode))?;
                 let secrets = Zeroizing::new(serde_json::to_vec(&kept.iter().map(|(_, s)| s).collect::<Vec<_>>()).map_err(|e| e.to_string())?);
                 append(&mut inner, SECRETS, &secrets, 0o600)?;
+                if let Some(w) = &wifi {
+                    append(&mut inner, WIFI, &Zeroizing::new(serde_json::to_vec(w).map_err(|e| e.to_string())?), 0o600)?;
+                }
                 let plain = Zeroizing::new(inner.into_inner().map_err(|e| e.to_string())?.finish().map_err(|e| e.to_string())?);
                 append(&mut tar, SEALED, &seal(key, &plain), 0o600)?;
             }
@@ -635,13 +710,7 @@ pub struct Imported {
 
 /// The backup's files (name, mode, bytes) and secrets, opened: sealed
 /// ones with `passphrase` (or the keyring's key, for those sealed so).
-fn contents(
-    src: &Path,
-    manifest: &Manifest,
-    passphrase: Option<&str>,
-    keyring: &dyn Keyring,
-    mut each: impl FnMut(&Path, u32, Zeroizing<Vec<u8>>) -> Result<(), String>,
-) -> Result<Vec<Secret>, String> {
+fn contents(src: &Path, manifest: &Manifest, passphrase: Option<&str>, keyring: &dyn Keyring, mut each: impl FnMut(&Path, u32, Zeroizing<Vec<u8>>) -> Result<(), String>) -> Result<Sealed, String> {
     let mut archive = open(src)?;
     let mut sealed = None;
     for entry in archive.entries().map_err(|e| e.to_string())? {
@@ -659,7 +728,7 @@ fn contents(
             None => each(&name, mode, bytes)?,
         }
     }
-    let Some(how) = &manifest.sealed else { return Ok(Vec::new()) };
+    let Some(how) = &manifest.sealed else { return Ok(Sealed::default()) };
     let sealed = sealed.ok_or_else(|| "The backup is damaged.".to_string())?;
     let key = match how.with.as_str() {
         "passphrase" => {
@@ -674,7 +743,7 @@ fn contents(
     };
     let plain = unseal(&key, &sealed)?;
     let mut inner = tar::Archive::new(zstd::Decoder::new(plain.as_slice()).map_err(|_| "The backup is damaged.".to_string())?);
-    let mut kept = Vec::new();
+    let mut kept = Sealed::default();
     for entry in inner.entries().map_err(|e| e.to_string())? {
         let mut entry = entry.map_err(|e| e.to_string())?;
         let name = entry.path().map_err(|e| e.to_string())?.into_owned();
@@ -682,7 +751,9 @@ fn contents(
         let mut bytes = Zeroizing::new(Vec::new());
         entry.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
         if name == Path::new(SECRETS) {
-            kept = serde_json::from_slice(&bytes).map_err(|_| "The backup is damaged.".to_string())?;
+            kept.secrets = serde_json::from_slice(&bytes).map_err(|_| "The backup is damaged.".to_string())?;
+        } else if name == Path::new(WIFI) {
+            kept.wifi = Some(serde_json::from_slice(&bytes).map_err(|_| "The backup is damaged.".to_string())?);
         } else if entry.header().entry_type() == tar::EntryType::Regular {
             each(&name, mode, bytes)?;
         }
@@ -693,13 +764,14 @@ fn contents(
 /// Replace the files under `roots` with the backup's, and the keyring's
 /// secrets with its, saving what is there first. `here` is this
 /// computer: one made elsewhere is moved in (`rehome`, `Carry`).
-pub fn import(roots: &[(&'static str, PathBuf)], src: &Path, passphrase: Option<&str>, keyring: &dyn Keyring, here: &Origin, progress: Progress, cancel: &AtomicBool) -> Result<Imported, String> {
+pub fn import(roots: &[(&'static str, PathBuf)], src: &Path, passphrase: Option<&str>, here: &Here, progress: Progress, cancel: &AtomicBool) -> Result<Imported, String> {
+    let keyring = here.keyring;
     let manifest = inspect(src)?;
-    let elsewhere = manifest.from_elsewhere(here);
-    let old_home = manifest.from.as_ref().map(|f| f.home.clone()).filter(|h| !h.is_empty() && *h != here.home);
+    let elsewhere = manifest.from_elsewhere(&here.origin);
+    let old_home = manifest.from.as_ref().map(|f| f.home.clone()).filter(|h| !h.is_empty() && *h != here.origin.home);
     // Opened first, so a wrong password replaces nothing.
     let mut files: Vec<(PathBuf, u32, Zeroizing<Vec<u8>>)> = Vec::new();
-    let mut kept = contents(src, &manifest, passphrase, keyring, |name, mode, bytes| {
+    let Sealed { secrets: mut kept, wifi } = contents(src, &manifest, passphrase, keyring, |name, mode, bytes| {
         files.push((name.to_path_buf(), mode, bytes));
         Ok(())
     })?;
@@ -718,12 +790,12 @@ pub fn import(roots: &[(&'static str, PathBuf)], src: &Path, passphrase: Option<
             std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
             let stamp = jiff::Zoned::now().strftime("%Y-%m-%d %H.%M.%S").to_string();
             let path = dir.join(format!("Before import {stamp}.{EXTENSION}"));
-            let sealed = export(roots, &path, &Seal::Keyring, keyring, here, &|_, _| {}, cancel).map(|_| true);
+            let sealed = export(roots, &path, &Seal::Keyring, here, &|_, _| {}, cancel).map(|_| true);
             match sealed {
                 Ok(s) => Some((path, s)),
                 Err(e) if !cancel.load(Ordering::Relaxed) => {
                     tracing::info!("backup: the settings before couldn't be sealed ({e}); saved open, without the keyring's secrets");
-                    export(roots, &path, &Seal::Open, keyring, here, &|_, _| {}, cancel)?;
+                    export(roots, &path, &Seal::Open, here, &|_, _| {}, cancel)?;
                     Some((path, false))
                 }
                 Err(e) => return Err(e),
@@ -757,7 +829,7 @@ pub fn import(roots: &[(&'static str, PathBuf)], src: &Path, passphrase: Option<
             continue;
         };
         // Paths under the old home folder, under this one's.
-        let moved = old_home.as_deref().and_then(|old| rehome(std::str::from_utf8(&bytes).ok()?, old, &here.home)).map(|t| Zeroizing::new(t.into_bytes()));
+        let moved = old_home.as_deref().and_then(|old| rehome(std::str::from_utf8(&bytes).ok()?, old, &here.origin.home)).map(|t| Zeroizing::new(t.into_bytes()));
         let mut bytes = moved.unwrap_or(bytes);
         if name == Path::new("config/app_server.json") {
             if elsewhere && let Some(own) = without_connectors(&bytes) {
@@ -797,6 +869,31 @@ pub fn import(roots: &[(&'static str, PathBuf)], src: &Path, passphrase: Option<
             Err(e) => notes.push(format!("{what}: the login keyring didn't take it ({e}). Import the backup again once it does.")),
         }
     }
+    // The saved Wi-Fi networks this computer hasn't saved (one it has
+    // keeps its own settings).
+    if let Some(w) = &wifi {
+        let mut added = Vec::new();
+        for n in &w.networks {
+            match here.networks.has(&n.ssid) {
+                Ok(true) => {}
+                Ok(false) => match here.networks.add(n) {
+                    Ok(()) => added.push(n.name()),
+                    Err(e) => notes.push(format!("Wi-Fi: “{}” couldn't be saved here ({e}).", n.name())),
+                },
+                Err(_) => {
+                    notes.push("Wi-Fi: there's no NetworkManager here to save the networks in.".into());
+                    break;
+                }
+            }
+        }
+        if !added.is_empty() {
+            notes.push(format!("Wi-Fi: {} saved here, {}.", if added.len() == 1 { "a network".to_string() } else { format!("{} networks", added.len()) }, list(&added)));
+        }
+        if !w.left.is_empty() {
+            let (what, them) = if w.left.len() == 1 { ("an enterprise network", "it") } else { ("enterprise networks", "them") };
+            notes.push(format!("Wi-Fi: {} didn't come along ({what}, set up with the other computer's certificates): join {them} again here.", list(&w.left)));
+        }
+    }
     if elsewhere {
         if written > 0 && !skip.contains(&"config/pool.vault") && target(roots, Path::new("config/pool.vault")).is_some_and(|p| p.exists()) && has_secret(&secrets::POOL_KEY) {
             if let Some(marker) = target(roots, Path::new(ARRIVED)) {
@@ -804,12 +901,26 @@ pub fn import(roots: &[(&'static str, PathBuf)], src: &Path, passphrase: Option<
             }
             notes.push("Token Pool: its accounts came in paused. Turn them on here once the other computer's pool no longer uses them: each sign-in renews itself, and two computers renewing one sign each other out.".into());
         }
-        notes.push("Bluetooth devices, Wi-Fi networks and Touch ID fingerprints belong to each computer: pair, join and enrol them again here.".into());
+        notes.push(if wifi.is_some() {
+            "Bluetooth devices and Touch ID fingerprints belong to each computer: pair and enrol them again here.".into()
+        } else {
+            "Bluetooth devices, Wi-Fi networks and Touch ID fingerprints belong to each computer: pair, join and enrol them again here.".into()
+        });
         if settings.as_ref().is_some_and(|s| s.keyboard.profile.platform == olo_protocol::shortcuts::Platform::Mac) {
             notes.push("Keyboard: the Mac profile came along, ⌘ on the Super key (the Windows key on most PC keyboards). Preferences ▸ Keyboard picks another for this keyboard.".into());
         }
     }
     Ok(Imported { manifest, files: written, secrets: stored, before: before.map(|(p, _)| p), settings, notes })
+}
+
+/// "A, B and C".
+fn list(names: &[String]) -> String {
+    let quoted: Vec<String> = names.iter().map(|n| format!("“{n}”")).collect();
+    match quoted.split_last() {
+        Some((last, [])) => last.clone(),
+        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+        None => String::new(),
+    }
 }
 
 fn write_atomic(dest: &Path, bytes: &[u8], mode: u32) -> std::io::Result<()> {
@@ -985,7 +1096,7 @@ impl State {
             f.update(cx, |f, cx| f.set_text("", cx));
         }
         self.work(true, true, move |send, cancel| {
-            let r = export(&roots(), &dest, &how, &Login, &Origin::here(), &|d, t| send(Report::Progress(d, t)), cancel);
+            let r = export(&roots(), &dest, &how, &Here::this(), &|d, t| send(Report::Progress(d, t)), cancel);
             send(Report::Exported(dest, r));
         });
     }
@@ -1009,7 +1120,7 @@ impl State {
         self.unlock.update(cx, |f, cx| f.set_text("", cx));
         self.work(false, true, move |send, cancel| {
             let words = Some(words.as_str()).filter(|w| !w.is_empty());
-            let r = import(&roots(), &src, words, &Login, &Origin::here(), &|d, t| send(Report::Progress(d, t)), cancel);
+            let r = import(&roots(), &src, words, &Here::this(), &|d, t| send(Report::Progress(d, t)), cancel);
             send(Report::Imported(r.map(Box::new)));
         });
     }
@@ -1191,7 +1302,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 groups.push((what.clone(), 0, 0));
             }
             for (app, files, bytes) in groups {
-                let what = if files == 0 { "password or sign-in".to_string() } else { format!("{} {}, {}", files, if files == 1 { "file" } else { "files" }, size_text(bytes)) };
+                let what = if files == 0 { "sealed".to_string() } else { format!("{} {}, {}", files, if files == 1 { "file" } else { "files" }, size_text(bytes)) };
                 rows.push(
                     canvas(
                         |_, _, _| {},
@@ -1332,6 +1443,54 @@ mod tests {
         (base.clone(), vec![("config", base.join("config")), ("state", base.join("state"))])
     }
 
+    /// No NetworkManager.
+    struct NoNets;
+
+    impl Networks for NoNets {
+        fn saved(&self) -> Result<(Vec<SavedWifi>, Vec<String>), String> {
+            Err("no NetworkManager".into())
+        }
+        fn has(&self, _: &[u8]) -> Result<bool, String> {
+            Err("no NetworkManager".into())
+        }
+        fn add(&self, _: &SavedWifi) -> Result<(), String> {
+            Err("no NetworkManager".into())
+        }
+    }
+
+    /// Saved networks of the test's own.
+    #[derive(Default)]
+    struct Nets(Mutex<Vec<SavedWifi>>, Vec<String>);
+
+    impl Networks for Nets {
+        fn saved(&self) -> Result<(Vec<SavedWifi>, Vec<String>), String> {
+            Ok((self.0.lock().unwrap().clone(), self.1.clone()))
+        }
+        fn has(&self, ssid: &[u8]) -> Result<bool, String> {
+            Ok(self.0.lock().unwrap().iter().any(|n| n.ssid == ssid))
+        }
+        fn add(&self, network: &SavedWifi) -> Result<(), String> {
+            self.0.lock().unwrap().push(network.clone());
+            Ok(())
+        }
+    }
+
+    fn wifi(name: &str, psk: Option<&str>) -> SavedWifi {
+        SavedWifi {
+            id: name.into(),
+            ssid: name.as_bytes().to_vec(),
+            hidden: false,
+            autoconnect: true,
+            key_mgmt: if psk.is_some() { "wpa-psk".into() } else { String::new() },
+            psk: psk.map(Into::into),
+        }
+    }
+
+    /// This computer for a test: its keyring, no networks, `origin`.
+    fn on<'a>(keyring: &'a dyn Keyring, origin: &Origin) -> Here<'a> {
+        Here { keyring, networks: &NoNets, origin: origin.clone() }
+    }
+
     fn here(home: &str, computer: &str) -> Origin {
         Origin { home: home.into(), computer: computer.into(), arch: "aarch64".into() }
     }
@@ -1357,7 +1516,7 @@ mod tests {
         let no = AtomicBool::new(false);
         let keyring = Memory::default();
         let me = here("/home/ben", "mac");
-        let m = export(&roots, &file, &Seal::Open, &keyring, &me, &|_, _| {}, &no).unwrap();
+        let m = export(&roots, &file, &Seal::Open, &on(&keyring, &me), &|_, _| {}, &no).unwrap();
         let names: Vec<&str> = m.files.iter().map(|f| f.path.as_str()).collect();
         assert_eq!(names, ["config/olo/palette.json", "config/passwords.vault", "config/terminal.json", "state/notifications/history.json"], "Agent Screens' homes are left out");
         assert_eq!(inspect(&file).unwrap(), m);
@@ -1369,7 +1528,7 @@ mod tests {
         std::fs::write(cfg.join("terminal.json"), b"{\"font\":20}").unwrap();
         std::fs::remove_file(cfg.join("passwords.vault")).unwrap();
         std::fs::write(cfg.join("new.json"), b"{}").unwrap();
-        let i = import(&roots, &file, None, &keyring, &me, &|_, _| {}, &no).unwrap();
+        let i = import(&roots, &file, None, &on(&keyring, &me), &|_, _| {}, &no).unwrap();
         assert_eq!(i.files, 4);
         assert!(i.notes.is_empty(), "{:?}", i.notes);
         assert_eq!(std::fs::read(cfg.join("terminal.json")).unwrap(), b"{\"font\":12}");
@@ -1406,7 +1565,7 @@ mod tests {
         a.put(secrets::TELEGRAM_API, b"{\"id\":1}");
         a.put(secrets::TELEGRAM_SESSION, b"auth keys");
         let file = base.join("mac.olo-backup");
-        let m = export(&mac, &file, &words("correct horse"), &a, &here(old, "mac"), &|_, _| {}, &no).unwrap();
+        let m = export(&mac, &file, &words("correct horse"), &on(&a, &here(old, "mac")), &|_, _| {}, &no).unwrap();
         assert_eq!(m.secrets, ["Passwords", "Token Pool", "GitHub", "Telegram", "Telegram sign-in"]);
         let raw = std::fs::read(&file).unwrap();
         for secret in [&b"key A"[..], b"ghp_token", b"auth keys", b"vault sealed"] {
@@ -1422,13 +1581,13 @@ mod tests {
         let there = here(new, "thinkpad");
         assert!(m.from_elsewhere(&there));
         // A wrong password replaces nothing.
-        let e = import(&thinkpad, &file, Some("wrong"), &b, &there, &|_, _| {}, &no).unwrap_err();
+        let e = import(&thinkpad, &file, Some("wrong"), &on(&b, &there), &|_, _| {}, &no).unwrap_err();
         assert!(e.contains("password"), "{e}");
         assert_eq!(std::fs::read(thinkpad[0].1.join("passwords.vault")).unwrap(), b"empty vault, key B");
         assert_eq!(b.get(secrets::PASSWORDS_KEY).unwrap(), b"key B");
-        assert!(import(&thinkpad, &file, None, &b, &there, &|_, _| {}, &no).is_err(), "sealed: a password is needed");
+        assert!(import(&thinkpad, &file, None, &on(&b, &there), &|_, _| {}, &no).is_err(), "sealed: a password is needed");
 
-        let i = import(&thinkpad, &file, Some("correct horse"), &b, &there, &|_, _| {}, &no).unwrap();
+        let i = import(&thinkpad, &file, Some("correct horse"), &on(&b, &there), &|_, _| {}, &no).unwrap();
         assert_eq!(std::fs::read(thinkpad[0].1.join("passwords.vault")).unwrap(), b"vault sealed with key A");
         assert_eq!(b.get(secrets::PASSWORDS_KEY).unwrap(), b"key A");
         assert_eq!(b.get(secrets::GITHUB).unwrap(), b"ghp_token");
@@ -1443,12 +1602,12 @@ mod tests {
 
         // Undone: the ThinkPad's own vault, and its key, back.
         let undo = i.before.unwrap();
-        let back = import(&thinkpad, &undo, None, &b, &there, &|_, _| {}, &no).unwrap();
+        let back = import(&thinkpad, &undo, None, &on(&b, &there), &|_, _| {}, &no).unwrap();
         assert_eq!(std::fs::read(thinkpad[0].1.join("passwords.vault")).unwrap(), b"empty vault, key B");
         assert_eq!(b.get(secrets::PASSWORDS_KEY).unwrap(), b"key B");
         assert!(back.notes.is_empty(), "{:?}", back.notes);
         // Its key opens it on this computer alone.
-        assert!(import(&mac, &undo, None, &a, &here(old, "mac"), &|_, _| {}, &no).is_err());
+        assert!(import(&mac, &undo, None, &on(&a, &here(old, "mac")), &|_, _| {}, &no).is_err());
         let _ = std::fs::remove_dir_all(&base);
         let _ = std::fs::remove_dir_all(thinkpad[0].1.parent().unwrap());
     }
@@ -1466,10 +1625,10 @@ mod tests {
         k.put(secrets::POOL_KEY, b"key P");
         let me = here("/home/ben", "mac");
         let file = base.join("b.olo-backup");
-        export(&roots, &file, &words("pw"), &k, &me, &|_, _| {}, &no).unwrap();
+        export(&roots, &file, &words("pw"), &on(&k, &me), &|_, _| {}, &no).unwrap();
         // The keyring lost them (a fresh login keyring, say).
         let fresh = Memory::default();
-        let i = import(&roots, &file, Some("pw"), &fresh, &me, &|_, _| {}, &no).unwrap();
+        let i = import(&roots, &file, Some("pw"), &on(&fresh, &me), &|_, _| {}, &no).unwrap();
         assert!(i.notes.is_empty(), "{:?}", i.notes);
         assert_eq!(fresh.get(secrets::TELEGRAM_SESSION).unwrap(), b"auth keys");
         assert_eq!(fresh.get(secrets::POOL_KEY).unwrap(), b"key P");
@@ -1488,10 +1647,10 @@ mod tests {
         write_atomic(&mac[0].1.join("passwords.vault"), b"vault A", 0o600).unwrap();
         std::fs::write(mac[0].1.join("terminal.json"), b"{}").unwrap();
         let file = base.join("b.olo-backup");
-        export(&mac, &file, &Seal::Open, &Memory::default(), &here("/home/ben", "mac"), &|_, _| {}, &no).unwrap();
+        export(&mac, &file, &Seal::Open, &on(&Memory::default(), &here("/home/ben", "mac")), &|_, _| {}, &no).unwrap();
         std::fs::create_dir_all(&other[0].1).unwrap();
         write_atomic(&other[0].1.join("passwords.vault"), b"vault B", 0o600).unwrap();
-        let i = import(&other, &file, None, &Memory::default(), &here("/home/x", "other"), &|_, _| {}, &no).unwrap();
+        let i = import(&other, &file, None, &on(&Memory::default(), &here("/home/x", "other")), &|_, _| {}, &no).unwrap();
         assert_eq!(std::fs::read(other[0].1.join("passwords.vault")).unwrap(), b"vault B");
         assert!(other[0].1.join("terminal.json").exists());
         assert!(i.notes.iter().any(|n| n.starts_with("Passwords: left as it is")), "{:?}", i.notes);
@@ -1509,8 +1668,8 @@ mod tests {
         std::fs::write(roots[0].1.join("terminal.json"), b"{}").unwrap();
         let file = base.join("b.olo-backup");
         let me = here("/home/ben", "mac");
-        export(&roots, &file, &Seal::Open, &None_, &me, &|_, _| {}, &no).unwrap();
-        let i = import(&roots, &file, None, &None_, &me, &|_, _| {}, &no).unwrap();
+        export(&roots, &file, &Seal::Open, &on(&None_, &me), &|_, _| {}, &no).unwrap();
+        let i = import(&roots, &file, None, &on(&None_, &me), &|_, _| {}, &no).unwrap();
         assert!(inspect(i.before.as_ref().unwrap()).unwrap().sealed.is_none());
         // A sealed one from another computer: its files, not its
         // secrets, and so not the vault they'd open.
@@ -1518,13 +1677,59 @@ mod tests {
         k.put(secrets::PASSWORDS_KEY, b"key A");
         write_atomic(&roots[0].1.join("passwords.vault"), b"vault A", 0o600).unwrap();
         let sealed = base.join("s.olo-backup");
-        export(&roots, &sealed, &words("pw"), &k, &me, &|_, _| {}, &no).unwrap();
+        export(&roots, &sealed, &words("pw"), &on(&k, &me), &|_, _| {}, &no).unwrap();
         write_atomic(&roots[0].1.join("passwords.vault"), b"vault here", 0o600).unwrap();
-        let i = import(&roots, &sealed, Some("pw"), &None_, &here("/home/x", "other"), &|_, _| {}, &no).unwrap();
+        let i = import(&roots, &sealed, Some("pw"), &on(&None_, &here("/home/x", "other")), &|_, _| {}, &no).unwrap();
         assert_eq!(std::fs::read(roots[0].1.join("passwords.vault")).unwrap(), b"vault here");
         assert!(i.notes.iter().any(|n| n.contains("no login keyring")), "{:?}", i.notes);
-        assert!(export(&roots, &base.join("k.olo-backup"), &Seal::Keyring, &None_, &me, &|_, _| {}, &no).is_err());
+        assert!(export(&roots, &base.join("k.olo-backup"), &Seal::Keyring, &on(&None_, &me), &|_, _| {}, &no).is_err());
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A sealed backup takes the saved Wi-Fi networks along, passwords and
+    /// all: another computer saves those it hasn't, keeps its own, and
+    /// hears which (enterprise ones) stayed behind. An open one, and the
+    /// backup made before an import, read none (no password asked of
+    /// NetworkManager for them).
+    #[test]
+    fn wifi_networks_come_along() {
+        let (base, mac) = dirs("wifi-mac");
+        let (_, other) = dirs("wifi-other");
+        let no = AtomicBool::new(false);
+        std::fs::create_dir_all(&mac[0].1).unwrap();
+        std::fs::write(mac[0].1.join("terminal.json"), b"{}").unwrap();
+        let theirs = Nets(Mutex::new(vec![wifi("Home", Some("hunter22")), wifi("Cafe", None), wifi("Office", Some("old"))]), vec!["eduroam".into()]);
+        let k = Memory::default();
+        let from = here("/home/ben", "mac");
+        let file = base.join("b.olo-backup");
+        let m = export(&mac, &file, &words("pw"), &Here { keyring: &k, networks: &theirs, origin: from.clone() }, &|_, _| {}, &no).unwrap();
+        assert!(m.secrets.iter().any(|s| s == "Wi-Fi networks"));
+        let raw = std::fs::read(&file).unwrap();
+        for secret in [&b"hunter22"[..], b"eduroam"] {
+            assert!(!raw.windows(secret.len()).any(|w| w == secret), "sealed: {}", String::from_utf8_lossy(secret));
+        }
+        let open = export(&mac, &base.join("o.olo-backup"), &Seal::Open, &Here { keyring: &k, networks: &theirs, origin: from.clone() }, &|_, _| {}, &no).unwrap();
+        assert!(open.secrets.is_empty());
+
+        std::fs::create_dir_all(&other[0].1).unwrap();
+        std::fs::write(other[0].1.join("deskcalc.json"), b"{}").unwrap();
+        let ours = Nets(Mutex::new(vec![wifi("Office", Some("new"))]), Vec::new());
+        let k2 = Memory::default();
+        let i = import(&other, &file, Some("pw"), &Here { keyring: &k2, networks: &ours, origin: here("/home/b", "thinkpad") }, &|_, _| {}, &no).unwrap();
+        let now = ours.0.lock().unwrap().clone();
+        assert_eq!(now.iter().map(|n| n.name()).collect::<Vec<_>>(), ["Office", "Home", "Cafe"]);
+        assert_eq!(now[0].psk.as_deref(), Some("new"), "its own kept");
+        assert_eq!(now[1].psk.as_deref(), Some("hunter22"));
+        assert!(i.notes.iter().any(|n| n == "Wi-Fi: 2 networks saved here, “Home” and “Cafe”."), "{:?}", i.notes);
+        assert!(i.notes.iter().any(|n| n.contains("“eduroam” didn't come along (an enterprise network")), "{:?}", i.notes);
+        assert!(i.notes.iter().any(|n| n.starts_with("Bluetooth devices and Touch ID")), "{:?}", i.notes);
+        // (The backup made first asked for no network's password.)
+        assert!(inspect(i.before.as_ref().unwrap()).unwrap().secrets.iter().all(|s| s != "Wi-Fi networks"));
+        // No NetworkManager there: said so.
+        let i = import(&other, &file, Some("pw"), &on(&k2, &here("/home/b", "thinkpad")), &|_, _| {}, &no).unwrap();
+        assert!(i.notes.iter().any(|n| n.contains("no NetworkManager")), "{:?}", i.notes);
+        let _ = std::fs::remove_dir_all(&base);
+        let _ = std::fs::remove_dir_all(other[0].1.parent().unwrap());
     }
 
     #[test]
