@@ -4,10 +4,10 @@
 //! raised cap with its name; what it does follows, dim while it does
 //! nothing. Agents read it as a label, "Space: Next", and press the key.
 
-use gpui::{App, FontWeight, IntoElement, ParentElement as _, RenderOnce, SharedString, Styled as _, Window, canvas, div, px};
+use gpui::{App, Bounds, FontWeight, IntoElement, RenderOnce, SharedString, Styled as _, Window, canvas, point, px, size};
 use olo_kit_base::metrics as m;
 
-use crate::{agent, style, theme, widgets::StringView};
+use crate::{agent, style, theme};
 
 #[derive(IntoElement)]
 pub struct KeyHint {
@@ -35,27 +35,34 @@ const CAP: f32 = m::MARK_ROW;
 
 impl RenderOnce for KeyHint {
     fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
-        let font = style::ui_font(FontWeight::BOLD);
+        let (bold, plain) = (style::ui_font(FontWeight::BOLD), style::ui_font(FontWeight::NORMAL));
         // At least square; a word gets the inset a field's text has.
-        let w = (f32::from(style::text_width(window, self.key.clone(), style::SMALL_SIZE, font.clone())) + 2.0 * m::TEXT_INSET).ceil().max(CAP);
+        let w = (f32::from(style::text_width(window, self.key.clone(), style::SMALL_SIZE, bold.clone())) + 2.0 * m::TEXT_INSET).ceil().max(CAP);
         let w = (w / 2.0).ceil() * 2.0;
+        let action_w = f32::from(style::text_width(window, self.action.clone(), style::PLAIN_SIZE, plain.clone())).ceil();
         let (key, action, enabled) = (self.key, self.action, self.enabled);
         let said = format!("{key}: {action}");
-        let cap = canvas(
+        // The cap and what it does in one, on one baseline: drawn apart,
+        // each snapped on its own, they sat a device pixel apart at 1.25×
+        // and 1.75× (the layout review's "almost level").
+        canvas(
             |_, _, _| {},
             move |b, _, window, cx| {
                 let p = theme::palette(cx);
-                let r = style::snap(window, b);
-                style::fill_rect(window, r, style::c(p.control_background));
-                style::raised(window, r, &p);
+                let cap = style::snap(window, Bounds::new(point(b.left(), b.center().y - px(CAP / 2.0)), size(px(w), px(CAP))));
+                style::fill_rect(window, cap, style::c(p.control_background));
+                style::raised(window, cap, &p);
+                let baseline = style::baseline_at(window, b.center().y, style::PLAIN_SIZE);
                 let ink = if enabled { style::c(p.control_text) } else { style::disabled_text(&p) };
-                style::label(window, cx, r.center().x, r.center().y, style::Align::Center, key.clone(), style::SMALL_SIZE, font.clone(), ink);
-                agent::record(window, cx, agent::Node::label(said.clone(), b));
+                style::label_on_baseline(window, cx, cap.center().x, baseline, style::Align::Center, key.clone(), style::SMALL_SIZE, bold.clone(), ink);
+                agent::record(window, cx, agent::Node::label(said.clone(), cap));
+                let ink = if enabled { style::c(p.panel_text) } else { style::disabled_text(&p) };
+                let r = style::label_on_baseline(window, cx, b.left() + px(w + m::MARK_GAP), baseline, style::Align::Left, action.clone(), style::PLAIN_SIZE, plain.clone(), ink);
+                agent::record(window, cx, agent::Node::label(action.clone(), r));
             },
         )
-        .w(px(w))
-        .h(px(CAP))
-        .flex_shrink_0();
-        div().flex().flex_row().items_center().gap(px(m::MARK_GAP)).h(px(m::CONTROL_HEIGHT)).child(cap).child(StringView::new(action).dim(!enabled))
+        .w(px(w + m::MARK_GAP + action_w))
+        .h(px(m::CONTROL_HEIGHT))
+        .flex_shrink_0()
     }
 }

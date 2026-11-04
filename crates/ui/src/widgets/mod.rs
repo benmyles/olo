@@ -1,6 +1,7 @@
 //! Olo's widgets on GPUI (BeOS controls): see each module.
 
 pub mod alert;
+pub mod banner;
 pub mod buttons;
 pub mod charts;
 pub mod color;
@@ -29,6 +30,7 @@ pub use alert::{
     ALERT_ICON, ALERT_TEXT_X, ALERT_WIDTH, AlertFrame, Conversation, ConversationField, Unsaved, alert_height, alert_title, alert_width, ask_to_save, button_row, open_alert, paragraph,
     paragraph_height,
 };
+pub use banner::{Banner, Tone, banner_back, banner_height, verdict_mark};
 pub use buttons::{Button, CheckBox, LinkButton, RadioButton, button_width, check_box_look, link_button_width};
 pub use charts::{CellGrid, Graph, GraphLayer, GraphShelf, GridCell, LegendItem, Series, legend, legend_height, nice_ceiling};
 pub use color::{ColorControl, ColorWell, color_control_height};

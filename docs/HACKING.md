@@ -1614,7 +1614,16 @@ event reaches it.
   `StringView::size(points)` (a title's or lead's size, its row grown to
   fit), `widgets::KeyHint::new("Space", "Next")` (a key's cap and what
   it does, `enabled(false)` dim: for views driven from the keyboard,
-  where nothing needs the pointer; agents read "Space: Next"),
+  where nothing needs the pointer; agents read "Space: Next"; the cap's
+  text and what it does are drawn on one baseline, so they stay level at
+  every scale), `widgets::Banner::new(Tone::Success, title, line)`
+  (news to be seen at once, not read in a status line: a box across its
+  column tinted green or red, a large round check or cross
+  (`widgets::verdict_mark`), a bold title, a line, `.trailing(…)` what to
+  do next; `banner_height()` tall, and `banner_back(window, b, None, p)`
+  draws a quiet box of the same shape for what stands in its place
+  until it comes, so nothing moves when it does: the palm trainer's
+  finished step and its summary),
   `widgets::heading(text)` (bold, a label row tall) and
   `widgets::separator()` (a groove across).
 - `widgets::TabStrip::new(id, tabs, active)`: a row of document tabs
