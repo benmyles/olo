@@ -231,12 +231,20 @@ def drawn(pid, layers, scale=None, dark=None, within=6.0):
     for longer than it takes. None if they never are."""
     end = time.time() + within
     last = None
+    settled = None
     while time.time() < end:
         wins = [w for w in (ask_app(pid, {"review": True}, timeout=8) or []) if layers or not w.get("layer")]
         if wins:
             last = wins
+            # (Twice the same: a window that follows what it shows resizes
+            # a frame after the scale changes, and is asked again.)
+            sizes = sorted((w.get("layer") or w["title"], w["width"], w["height"]) for w in wins)
             if all((scale is None or abs(w.get("scale", 0) - scale) < 0.01) and (dark is None or w.get("dark", dark) == dark) for w in wins):
-                return [(w.get("layer") or w["title"], f) for w in wins for f in w["findings"]]
+                if sizes == settled:
+                    return [(w.get("layer") or w["title"], f) for w in wins for f in w["findings"]]
+                settled = sizes
+            else:
+                settled = None
         time.sleep(0.05)
     return None if last is None else [(w.get("layer") or w["title"], f) for w in last for f in w["findings"]]
 
