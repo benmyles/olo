@@ -6811,6 +6811,7 @@ dependencies = [
  "nvml-wrapper",
  "olo-complete",
  "olo-kit-base",
+ "olo-palm",
  "olo-protocol",
  "olo-sync",
  "olo-system",

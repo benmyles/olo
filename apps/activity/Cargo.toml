@@ -15,6 +15,8 @@ olo-ui.workspace = true
 olo-kit-base.workspace = true
 olo-xdg.workspace = true
 olo-system.workspace = true
+# The palm model, judging the touchpad's touches live (palms.rs).
+olo-palm.workspace = true
 olo-protocol.workspace = true
 olo-complete.workspace = true
 olo-theme.workspace = true

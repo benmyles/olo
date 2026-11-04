@@ -240,11 +240,15 @@ of Finished; a new one goes where its priority puts it.
   1222 reports in the last minute, 27 µs typically, 210 µs at the 99th
   percentile, the longest 96 ms. So no thread of its own: the 99th is a
   twentieth of the line. Left: what held the main thread 96 ms that once
-  (`timings` while it happens), and the live counts. Those can't come
-  from the plugin (libinput gives it only a log, to app_server's
-  stderr), so app_server would run the same model (`olo_palm`, which
-  the Lua agrees with) on the pad's slots while Activity Monitor's
-  Touchpad section is open, costing nothing otherwise.
+  (`timings` while it happens). The live counts are done (2026-11-04):
+  while Activity's Inputs section shows, it follows the pad's contacts
+  (`TouchContacts`, which app_server reads only while someone asks) and
+  judges them as the filter does, the same model and size rule
+  (`apps/activity/src/palms.rs`): "Judged: N touches in the last minute,
+  P taken for palms (S by their size)" and the model's time a report;
+  nothing runs once the section is left (tried headless with synthetic
+  contacts: a fingertip and a palm, 2 judged, 1 palm by its size, 1 µs
+  a report).
 
 - **The best baseline palm model there is** (Ben, 2026-11-02): "try to
   optimize the baseline as much as you can -- and if it would be better

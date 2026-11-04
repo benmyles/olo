@@ -19,6 +19,7 @@ mod gpus;
 mod helper;
 mod inspector;
 mod netdiag;
+mod palms;
 mod processes;
 mod sample;
 mod sections;
@@ -223,6 +224,9 @@ pub enum Msg {
     /// Whether brush's suggestions are on, and olo-complete's account
     /// (None: not running), from `model_poller`.
     Model(bool, Option<Box<olo_complete::protocol::Stats>>),
+    /// What the palm model made of the touchpad's touches in the last
+    /// minute (`palms`, while the Inputs section shows).
+    Palms(palms::PalmStats),
 }
 
 /// Asks olo-complete how its model does, every second while the AI
@@ -473,6 +477,9 @@ pub struct Activity {
     pub pointer_health: olo_protocol::PointerHealth,
     /// The touchpad's reports and the palm model (the Touchpad card).
     pub touch_health: olo_protocol::TouchHealth,
+    /// The palm model's judging, live (`palms`), and its watch.
+    pub palm_stats: Option<palms::PalmStats>,
+    palm_watch: palms::Watch,
     /// Clicks, scrolls, gestures and keys in the last minute.
     pub inputs: olo_protocol::InputActivity,
     /// The frames' figures over time, by key ("pointer.hz",
@@ -651,6 +658,9 @@ impl Activity {
         // (Processes show each GPU's use too.)
         self.control.want_gpu_clients.store(matches!(section, Section::Gpu | Section::Processes), Ordering::Relaxed);
         let _ = self.frames.send(FramesAsk::Want(matches!(section, Section::Displays | Section::Inputs)));
+        // (The pad's touches judged as the filter does, only while shown.)
+        let proxy = self.proxy.clone();
+        self.palm_watch.want(section == Section::Inputs, move |s| proxy.send(Msg::Palms(s)));
         let _ = self.model_ask.send(section == Section::Ai);
         if let (Some(h), Access::Full) = (&self.helper, self.access) {
             h.send(&ToHelper::Wants(self.control.wants()));
@@ -1139,6 +1149,10 @@ impl Activity {
             }
             Msg::Helper(m) => return self.heard(m, cx),
             Msg::Supervisor(s) => self.supervisor = *s,
+            Msg::Palms(stats) => {
+                self.palm_stats = Some(stats);
+                cx.notify();
+            }
             Msg::Frames(displays, capture, pointer, touch, inputs) => {
                 // Each figure kept over time, for the sections' graphs.
                 let t = self.t();
@@ -1475,6 +1489,8 @@ fn main() {
                 frames_capture: false,
                 pointer_health: Default::default(),
                 touch_health: Default::default(),
+                palm_stats: None,
+                palm_watch: Default::default(),
                 inputs: Default::default(),
                 frame_history: HashMap::new(),
                 frames: frames_tx,

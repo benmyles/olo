@@ -1311,6 +1311,20 @@ fn inputs(app: &Activity, inner: f32, cx: &App) -> Vec<AnyElement> {
         if t.model {
             rows.push(("Tested".into(), format!("{:.0}% of palms caught, {:.1}% of fingers taken for palms, on touches kept back", t.palms_caught * 100.0, t.fingers_lost * 100.0)));
         }
+        // What the model makes of the touches now (judged here as the
+        // filter judges them, while this section shows).
+        if let Some(s) = &app.palm_stats {
+            let judged = if s.touches == 0 {
+                "No touches in the last minute".to_owned()
+            } else {
+                let size = if s.by_size > 0 { format!(" ({} by their size)", s.by_size) } else { String::new() };
+                format!("{} touches in the last minute, {} taken for palms{size}", s.touches, s.palms)
+            };
+            rows.push(("Judged".into(), judged));
+            if s.model && s.us_p50 > 0 {
+                rows.push(("The model".into(), format!("{} µs a report typically, the longest {} µs", s.us_p50, s.us_max)));
+            }
+        }
         rows.push(("Runs on".into(), format!("app_server's main thread: nice {}{}, {core}", t.nice, if t.realtime { ", realtime" } else { "" })));
         // (Half a frame at 120 Hz: a touch waiting that long shows.)
         let slow = t.reports_minute > 0 && t.latency_p99_us > 4_000;
