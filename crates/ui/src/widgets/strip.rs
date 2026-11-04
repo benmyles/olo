@@ -44,6 +44,11 @@ pub struct StripTab {
     /// The group it's in (into [`TabStrip::groups`]). A group's tabs are
     /// side by side.
     pub group: Option<usize>,
+    /// Left out of something the window shows (Terminal's tab hidden
+    /// when tiled), and what: its icon and title drawn faded (at
+    /// [`STRIP_FADED`]), the rest as any tab's; agents read the reason
+    /// in its name ("hidden when tiled").
+    pub faded: Option<SharedString>,
 }
 
 /// A group of a [`TabStrip`]'s tabs: the name on its chip, and its colour.
@@ -147,6 +152,8 @@ const NEW_SIZE: f32 = 22.0;
 pub const STRIP_SIDE_TAB: f32 = 24.0;
 /// How big a tab's badge is: as the text is.
 pub const STRIP_BADGE: f32 = 12.0;
+/// How strongly a [`StripTab::faded`] tab's icon and title are drawn.
+pub const STRIP_FADED: f32 = 0.45;
 /// How tall a band beside a side strip is (Terminal's pane heads); the
 /// strip's first row is centred on it.
 pub const STRIP_SIDE_HEAD: f32 = STRIP_ROW;
@@ -376,6 +383,9 @@ fn tab_name(tab: &StripTab, group: Option<&StripGroup>) -> SharedString {
     if let Some(s) = &tab.status {
         name = format!("{name}, {s}");
     }
+    if let Some(f) = &tab.faded {
+        name = format!("{name}, {f}");
+    }
     if let Some(g) = group {
         name = format!("{name}, in {}", g.name);
     }
@@ -537,20 +547,23 @@ fn tab_face(
         window.paint_segment(k.origin, k.bottom_right(), px(1.25), true, color);
         window.paint_segment(point(k.right(), k.top()), point(k.left(), k.bottom()), px(1.25), true, color);
     }
-    // The first tab's icon is under the menu bar's first title.
-    let mut left = r.left() + px(m::SPACING);
-    if let Some(paint) = tab.icon.as_ref().filter(|_| icon) {
-        let b = style::snap(window, Bounds { origin: point(left, cy - px(8.0)), size: size(px(16.0), px(16.0)) });
-        paint(window, cx, b);
-        left = b.right() + px(m::MARK_GAP);
-    }
     let end = close.left() - px(m::TIGHT);
     if let Some(paint) = badge.filter(|_| !pointed) {
         let b = style::snap_centred(window, close.center(), STRIP_BADGE, STRIP_BADGE);
         paint(window, cx, b);
     }
-    let font = style::ui_font(if selected { FontWeight::MEDIUM } else { FontWeight::NORMAL });
-    style::label_fit(window, cx, left, cy, style::Align::Left, tab.label.clone(), style::PLAIN_SIZE, font, text, end - left);
+    // Its icon and title, faded if it's left out of something.
+    window.with_element_opacity(tab.faded.as_ref().map(|_| STRIP_FADED), |window| {
+        // The first tab's icon is under the menu bar's first title.
+        let mut left = r.left() + px(m::SPACING);
+        if let Some(paint) = tab.icon.as_ref().filter(|_| icon) {
+            let b = style::snap(window, Bounds { origin: point(left, cy - px(8.0)), size: size(px(16.0), px(16.0)) });
+            paint(window, cx, b);
+            left = b.right() + px(m::MARK_GAP);
+        }
+        let font = style::ui_font(if selected { FontWeight::MEDIUM } else { FontWeight::NORMAL });
+        style::label_fit(window, cx, left, cy, style::Align::Left, tab.label.clone(), style::PLAIN_SIZE, font, text, end - left);
+    });
 }
 
 /// A group's chip in `r`: its name on a pill of its colour (`filled`, as

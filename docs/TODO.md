@@ -348,17 +348,15 @@ of Finished; a new one goes where its priority puts it.
   dragged scrolls the scrollback with the pointer (a click in its track
   pages there), in every pane of a split tab.
 
-- **Terminal: a tab hidden from tile mode** (Ben, 2026-11-03): "ability
-  to hide a specific tab in tile mode in terminal by right clicking on it
-  and choosing hide when tiled (or show/unhide when tiled if it is
-  hidden) and then it should have a different style in the tab bar to
-  indicate it's hidden and shouldn't show up in the tile modes". So: a
-  tab's context menu has Hide When Tiled (Show When Tiled once hidden);
-  a hidden tab stays in the tab bar, drawn differently (dimmed, its
-  label and icon faded, in light, dark and night at every scale), and
-  every tile mode leaves it out (its tile's room going to the rest)
-  until shown again; kept per tab through a reload; agents read it as
-  hidden when tiled and can toggle it.
+- **Terminal: the side strip crowds its close boxes** (found by the
+  review, 2026-11-03): with Tabs Down the Side, `tsession review` gives
+  errors at 1.5× (and the other scales to check): each tab's close box
+  (as agents read it) is 4 points from the group heading above it and
+  from New Tab under the last, and the first group's chip 4.3 points
+  under the menu bar's titles; and near-edges (the menu bar's first
+  title and the first icon, an icon and a chip's name). So: lay the
+  side strip out so the review is clean at 1, 1.25, 1.5, 1.75 and 2×,
+  light and dark, without its look changing more than it must.
 
 - **The command palette: typing "n" first closes it; every shortcut in
   it; files only on Ctrl** (Ben, 2026-11-03): "when i'm in the command
@@ -905,6 +903,30 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Terminal: a tab hidden from tile mode**~~ (Ben, 2026-11-03): "ability
+  to hide a specific tab in tile mode in terminal by right clicking on it
+  and choosing hide when tiled (or show/unhide when tiled if it is
+  hidden) and then it should have a different style in the tab bar to
+  indicate it's hidden and shouldn't show up in the tile modes". So: a
+  tab's context menu has Hide When Tiled (Show When Tiled once hidden);
+  a hidden tab stays in the tab bar, drawn differently (dimmed, its
+  label and icon faded, in light, dark and night at every scale), and
+  every tile mode leaves it out (its tile's room going to the rest)
+  until shown again; kept per tab through a reload; agents read it as
+  hidden when tiled and can toggle it. *Done* (2026-11-03): a tab's menu has Hide When
+  Tiled (Show When Tiled once hidden), and the Tabs menu the same for
+  the tab showing. A hidden tab stays in the strip with its icon and
+  title faded (the kit's `StripTab::faded`, at `STRIP_FADED`, along the
+  top and down the side), every tiling leaves it out (`tile_rows_of`,
+  tested) and its room goes to the rest; picked in the strip it shows
+  on its own until a tiled tab is picked. A lone tile now has the whole
+  window, without the empty head band it had. Kept per tab in
+  windows.json, through restarts and shells restored after a reboot.
+  Agents read "hidden when tiled" in the tab's name and toggle it from
+  the Tabs menu. Reviewed clean along the top at 1, 1.25, 1.5, 1.75
+  and 2×, light and dark; the side strip's own crowding findings came
+  from before (the next item).
 
 - ~~**Terminal: tile mode's group headers look unselected while every
   group shows**~~ (Ben, 2026-11-03, a bug): "in terminal tile mode when all

@@ -1638,7 +1638,7 @@ event reaches it.
   `widgets::separator()` (a groove across).
 - `widgets::TabStrip::new(id, tabs, active)`: a row of document tabs
   under a menu bar (Terminal's shells), `STRIP_HEIGHT` (32) tall, each
-  a `StripTab { label, icon, status, badge, group }`. Everything sits
+  a `StripTab { label, icon, status, badge, group, faded }`. Everything sits
   inside the band, a line under it: the tabs are their icons and titles
   on the band, the selected one on a raised plate (`PLATE`, 24, rounded
   7, centred) lit from above as BeOS's controls are (a touch lighter at
@@ -1655,8 +1655,14 @@ event reaches it.
   `chip`/`chip_width`/`CHIP_HEIGHT`, which Terminal's pane heads use
   too) and its tabs, rounded `TAB_RADIUS + HALO` so its corners are
   concentric with the plates 2 points inside it; no lines. With
-  `.group_selection(chosen)` a chip outlined is a group not chosen; a
-  click gives `ToggleGroup(g)`, the right button `Group(g, pos)`.
+  `.group_selection(chosen)` a chip filled is a group chosen (or shown:
+  Terminal fills every chip while every group is tiled) and an outlined
+  one not; a click gives `ToggleGroup(g)`, the right button
+  `Group(g, pos)`. A tab with `faded: Some(why)` is left out of
+  something the window shows (Terminal's Hide When Tiled): its icon and
+  title drawn at `STRIP_FADED` (0.45), its plate, close box and badge as
+  any tab's, and agents read `why` in its name ("…, hidden when
+  tiled").
   `.side()` puts it down the content's left: rows, the selected one
   raised the same way, a group's chip heading its rows in a capsule,
   New Tab a row after the last, the right edge dragged to resize
@@ -6315,7 +6321,7 @@ polling.
 before it quits), in
 `$XDG_STATE_HOME/olo/terminal/windows.json`: each window's tabs in
 order, which one shows, its size, group, Tile All Tabs (and its chosen groups), and each tab's
-folder. A Terminal that starts afresh (not an upgrade, which has
+folder and whether it's hidden when tiled. A Terminal that starts afresh (not an upgrade, which has
 `save_state`) opens those windows again: a shell olo-termd still has is
 attached where it was, and one that has gone (the session ended, or the
 machine was off) gets a new shell in its place (`Start::Restore`,
@@ -6413,9 +6419,17 @@ a grid (`tile` picks the columns that keep panes nearest a terminal's
 shape, the last row spread across); each pane's shell sized to its pane.
 In it a group's chip in the strip chooses groups (`TabStrip::
 group_selection`, lit as Deskbar lights the workspace showing; agents
-read it as `selected`): clicking one tiles only the chosen groups, one
-alone in a full grid, several a row each; clicking it again unchooses
-it, and choosing every group is the same as none (every tab). The
+read it as `selected`): at first every group is tiled and every chip
+lit (`tile_group_shown`); clicking one takes that group out (its chip
+outlined) and clicking it again brings it back (`tile_groups_toggled`:
+the last group tiled stays, and every group chosen is the same as
+none). A tab's menu has Hide When Tiled (Show When Tiled once hidden;
+the Tabs menu has it for the tab showing): its tab stays in the strip,
+faded (`StripTab::faded`), and every tiling leaves it out
+(`tile_rows_of`), its room going to the rest; picked in the strip, it
+shows on its own till a tiled tab is picked (`TermWin::tiling`: tiles
+only while the tab typed into is one of two or more; a lone tile has the
+window, without a head). It's kept with the window (`hidden_tiled`). The
 right button gives the group's menu, as a click does outside Tile All
 Tabs. The chosen groups go by name (`tile_groups`, kept with the
 window across restarts), and the tab typed into stays one that shows.

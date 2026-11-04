@@ -658,10 +658,11 @@ impl Terminal {
             (Bounds { origin: full.origin, size: size(full.size.width, h) }, Bounds::from_corners(point(full.left(), full.top() + h), full.bottom_right()))
         };
         let scale = window.scale_factor();
-        let several = t.tiled && t.tabs.len() > 1;
         // A row for each group; tabs no groups put in rows, a grid's rows
         // (each kept by its group's key and its place: "build/1").
-        let mut laid: Vec<(String, Vec<usize>)> = t.tile_rows().into_iter().map(|r| (t.row_key(&r), r)).collect();
+        let tiles = t.tile_rows();
+        let several = t.tabs.len() > 1 && t.tiling_in(&tiles);
+        let mut laid: Vec<(String, Vec<usize>)> = tiles.into_iter().map(|r| (t.row_key(&r), r)).collect();
         if let [(key, one)] = laid.as_slice()
             && one.len() > 1
         {
@@ -733,7 +734,7 @@ impl Terminal {
             }
         }
         // The window's size for its grid, once the cells are known.
-        if let Some((cols, rows)) = t.snap_to.take().filter(|_| !(t.tiled && t.tabs.len() > 1)) {
+        if let Some((cols, rows)) = t.snap_to.take().filter(|_| !t.tiling()) {
             let (w, h) = metrics.content_size(cols, rows);
             let (cw, ch) = crate::chrome(&self.settings);
             let want = (w as u32 + cw, h as u32 + ch);
@@ -789,6 +790,7 @@ impl Terminal {
                     status: status.map(Into::into),
                     badge: pr.map(repos::pr_badge),
                     group: tab.group,
+                    faded: tab.hidden_tiled.then(|| "hidden when tiled".into()),
                 }
             })
             .collect();
@@ -1107,7 +1109,8 @@ impl Terminal {
         let command = modifiers.control && (gpui::right_control_held() || !olo_kit_base::keys::command_key());
         let mods = Mods::of(&modifiers, command);
         let mut out = view::Output { paste: false, context_menu: None, open: None };
-        let several = t.tiled && t.tabs.len() > 1;
+        // (Only a press asks: a pointer moving costs nothing more.)
+        let several = matches!(e, PaneEvent::Down(_)) && t.tiling();
         let tab = &mut t.tabs[i];
         let cwd = {
             let shared = tab.session.shared.clone();
@@ -1369,6 +1372,7 @@ impl Terminal {
                     .item("Close Tab", format!("tab-close:{shell}"))
                     .shift_key("w")
                     .separator()
+                    .item(if t.tabs[i].hidden_tiled { "Show When Tiled" } else { "Hide When Tiled" }, format!("tab-tile-hide:{shell}"))
                     .item(label, place);
                 self.popup(id, menu, pos, window, cx);
             }

@@ -237,6 +237,9 @@ pub(crate) struct Tab {
     /// The person took it out of a group: it doesn't join its
     /// repository's group on its own again (repos.rs).
     own_grouping: bool,
+    /// Left out of Tile All Tabs (its menu's Hide When Tiled), its tab
+    /// faded in the strip.
+    hidden_tiled: bool,
 }
 
 impl Tab {
@@ -255,6 +258,7 @@ impl Tab {
             repo: None,
             group: None,
             own_grouping: false,
+            hidden_tiled: false,
         }
     }
 
@@ -379,20 +383,12 @@ impl TermWin {
 
     /// Tile All Tabs' rows: each group's tabs (in the strip's order), and
     /// the tabs in none together where the first of them is; only the
-    /// chosen groups' if some are (not all).
+    /// chosen groups' if some are (not all); never a tab hidden when
+    /// tiled.
     fn tile_rows(&self) -> Vec<Vec<usize>> {
-        let mut rows: Vec<(Option<usize>, Vec<usize>)> = Vec::new();
-        for (i, tab) in self.tabs.iter().enumerate() {
-            match rows.iter_mut().find(|(g, _)| *g == tab.group) {
-                Some((_, row)) => row.push(i),
-                None => rows.push((tab.group, vec![i])),
-            }
-        }
         let chosen: Vec<usize> = (0..self.groups.len()).filter(|&g| self.tile_groups.contains(&self.groups[g].name)).collect();
-        if !chosen.is_empty() && chosen.len() < self.groups.len() {
-            rows.retain(|(g, _)| g.is_some_and(|g| chosen.contains(&g)));
-        }
-        rows.into_iter().map(|(_, row)| row).collect()
+        let tabs: Vec<(Option<usize>, bool)> = self.tabs.iter().map(|t| (t.group, t.hidden_tiled)).collect();
+        tile_rows_of(&tabs, &chosen, self.groups.len())
     }
 
     /// A Tile All Tabs row's name for its share of the height: its
@@ -422,12 +418,43 @@ impl TermWin {
         let Some(name) = self.groups.get(g).map(|x| x.name.clone()) else { return };
         let all: Vec<String> = self.groups.iter().map(|x| x.name.clone()).collect();
         self.tile_groups = tile_groups_toggled(&self.tile_groups, &all, &name);
+        self.type_into_a_tile();
+    }
+
+    /// Whether its tabs are tiled now: Tile All Tabs is on, there are
+    /// tiles to share the window (a lone one has it all, without a head)
+    /// and the tab typed into is one of them (one they leave out, picked
+    /// in the strip, shows on its own till a tiled one is picked).
+    fn tiling(&self) -> bool {
+        self.tiled && self.tabs.len() > 1 && self.tiling_in(&self.tile_rows())
+    }
+
+    /// [`TermWin::tiling`] with its rows already laid out.
+    fn tiling_in(&self, rows: &[Vec<usize>]) -> bool {
+        self.tiled && rows.iter().map(Vec::len).sum::<usize>() > 1 && rows.iter().flatten().any(|&i| i == self.active)
+    }
+
+    /// While tiled, the tab typed into one of the tiles (the first, if
+    /// it was left out).
+    fn type_into_a_tile(&mut self) {
+        if !self.tiled {
+            return;
+        }
         let shown: Vec<usize> = self.tile_rows().concat();
         if !shown.contains(&self.active)
             && let Some(&first) = shown.first()
         {
             self.select(first);
         }
+    }
+
+    /// Tab `i` left out of Tile All Tabs, or back in it (Ben, 2026-11-03:
+    /// "hide a specific tab in tile mode ... by right clicking on it and
+    /// choosing hide when tiled").
+    fn toggle_hidden_tiled(&mut self, i: usize) {
+        let Some(tab) = self.tabs.get_mut(i) else { return };
+        tab.hidden_tiled = !tab.hidden_tiled;
+        self.type_into_a_tile();
     }
 
     /// Each tab's title, and the window's (the one showing, after its
@@ -693,6 +720,9 @@ struct SavedWindow {
     /// Each tab's coding agent's title (`Tab::agent_title`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     agent_titles: Vec<Option<String>>,
+    /// Which tabs are hidden when tiled (`Tab::hidden_tiled`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    hidden_tiled: Vec<bool>,
 }
 
 impl SavedWindow {
@@ -708,9 +738,10 @@ impl SavedWindow {
     }
 }
 
-/// A new window's groups, and each tab's (into them) and whether the
-/// person took it out of one (`Tab::own_grouping`).
-type Grouping = (Vec<Group>, Vec<(Option<usize>, bool)>);
+/// A new window's groups, and each tab's (into them), whether the
+/// person took it out of one (`Tab::own_grouping`) and whether it's
+/// hidden when tiled (`Tab::hidden_tiled`).
+type Grouping = (Vec<Group>, Vec<(Option<usize>, bool, bool)>);
 
 /// What a Terminal from before olo-termd handed on: the shells
 /// themselves, which go to olo-termd now.
@@ -807,7 +838,7 @@ impl Terminal {
             .enumerate()
             .map(|(i, s)| {
                 let mut tab = self.start(cx, size, s);
-                (tab.group, tab.own_grouping) = of.get(i).copied().unwrap_or_default();
+                (tab.group, tab.own_grouping, tab.hidden_tiled) = of.get(i).copied().unwrap_or_default();
                 tab
             })
             .collect();
@@ -931,7 +962,8 @@ impl Terminal {
                     active = starts.len();
                 }
                 starts.push(start);
-                grouping.push(w.tab_group(i));
+                let (group, own) = w.tab_group(i);
+                grouping.push((group, own, w.hidden_tiled.get(i).copied().unwrap_or(false)));
             }
             if starts.is_empty() {
                 continue;
@@ -1330,6 +1362,12 @@ impl Terminal {
                     cx.redraw(win);
                 }
             }
+            "tab-tile-hide" => {
+                if let Some(i) = number(arg).and_then(|shell| t.position(shell)) {
+                    t.toggle_hidden_tiled(i);
+                    cx.redraw(win);
+                }
+            }
             "tab-to" => {
                 if let Some((shell, target)) = arg.split_once(':').and_then(|(a, b)| Some((number(a)?, number(b)?))) {
                     self.move_tab_to(cx, win, shell, target);
@@ -1476,7 +1514,7 @@ impl Terminal {
         }) else {
             let (cols, rows) = (self.settings.cols, self.settings.rows);
             let options = self.window_options(cols, rows);
-            self.add(cx, options, Size { cols, rows }, Some((cols, rows)), starts, saved.active, (vec![saved.group], vec![(Some(0), false); n]));
+            self.add(cx, options, Size { cols, rows }, Some((cols, rows)), starts, saved.active, (vec![saved.group], vec![(Some(0), false, false); n]));
             return;
         };
         let tabs: Vec<Tab> = starts.into_iter().map(|s| self.start(cx, Size { cols, rows }, s)).collect();
@@ -1855,6 +1893,8 @@ impl Terminal {
             .shift_key("d")
             .enabled(several)
             .checked(t.tiled && several)
+            .item(if t.tab().hidden_tiled { "Show Tab When Tiled" } else { "Hide Tab When Tiled" }, format!("tab-tile-hide:{shell}"))
+            .enabled(several)
             .separator();
         for (i, tab) in t.tabs.iter().enumerate() {
             let label = match (tab.agent, tab.rang) {
@@ -1963,6 +2003,7 @@ impl Terminal {
                         // Back to one at a time: each tab takes the window's grid.
                         t.snap_to = None;
                     }
+                    t.type_into_a_tile();
                     cx.redraw(window);
                 }
             }
@@ -2235,6 +2276,7 @@ impl Terminal {
                         tab_groups: live.iter().map(|x| x.group).collect(),
                         own: live.iter().map(|x| x.own_grouping).collect(),
                         agent_titles: if live.iter().any(|x| x.agent_title.is_some()) { live.iter().map(|x| x.agent_title.clone()).collect() } else { Vec::new() },
+                        hidden_tiled: if live.iter().any(|x| x.hidden_tiled) { live.iter().map(|x| x.hidden_tiled).collect() } else { Vec::new() },
                     })
                 }
                 _ => None,
@@ -2528,6 +2570,22 @@ fn shell_quote(s: &str) -> String {
     if !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b"/-._+,:@%=".contains(&b)) { s.to_owned() } else { format!("'{}'", s.replace('\'', "'\\''")) }
 }
 
+/// Tile All Tabs' rows (`TermWin::tile_rows`) of tabs each in a group
+/// or none and hidden when tiled or not, groups `chosen` of `groups`.
+fn tile_rows_of(tabs: &[(Option<usize>, bool)], chosen: &[usize], groups: usize) -> Vec<Vec<usize>> {
+    let mut rows: Vec<(Option<usize>, Vec<usize>)> = Vec::new();
+    for (i, &(group, _)) in tabs.iter().enumerate().filter(|(_, (_, hidden))| !hidden) {
+        match rows.iter_mut().find(|(g, _)| *g == group) {
+            Some((_, row)) => row.push(i),
+            None => rows.push((group, vec![i])),
+        }
+    }
+    if !chosen.is_empty() && chosen.len() < groups {
+        rows.retain(|(g, _)| g.is_some_and(|g| chosen.contains(&g)));
+    }
+    rows.into_iter().map(|(_, row)| row).collect()
+}
+
 /// Tile All Tabs' chosen groups (`chosen`, of `all`; none: every one)
 /// once `name`'s header is clicked: tiled, it leaves (the last one tiled
 /// stays); not, it's back; all chosen is none.
@@ -2565,6 +2623,35 @@ mod tile_group_tests {
         assert_eq!(t(&c, &all, "c"), c);
         // A group gone since is let go.
         assert_eq!(shown(&t(&["c".into(), "gone".into()], &all, "a")), ["a", "c"]);
+    }
+
+    #[test]
+    #[ignore]
+    fn tile_rows_cost() {
+        let tabs: Vec<(Option<usize>, bool)> = (0..12).map(|i| (Some(i % 3), i == 4)).collect();
+        let n = 1_000_000;
+        let t = std::time::Instant::now();
+        let mut k = 0;
+        for _ in 0..n {
+            k += std::hint::black_box(super::tile_rows_of(std::hint::black_box(&tabs), &[], 3)).len();
+        }
+        eprintln!("tile_rows_of, 12 tabs: {:?} a call ({k})", t.elapsed() / n);
+    }
+
+    #[test]
+    fn a_tab_hidden_when_tiled_is_left_out_of_every_row() {
+        use super::tile_rows_of as rows;
+        // Two in group 0 (the second hidden), one in none, one in group 1.
+        let tabs = [(Some(0), false), (Some(0), true), (None, false), (Some(1), false)];
+        assert_eq!(rows(&tabs, &[], 2), [vec![0], vec![2], vec![3]]);
+        // A group whose every tab is hidden has no row.
+        let tabs = [(Some(0), true), (Some(1), false), (Some(1), false)];
+        assert_eq!(rows(&tabs, &[], 2), [vec![1, 2]]);
+        // With groups chosen, still none of the hidden.
+        let tabs = [(Some(0), false), (Some(1), true), (Some(1), false)];
+        assert_eq!(rows(&tabs, &[1], 2), [vec![2]]);
+        // Every tab hidden: no tiles (the one typed into shows alone).
+        assert!(rows(&[(None, true), (None, true)], &[], 0).is_empty());
     }
 }
 

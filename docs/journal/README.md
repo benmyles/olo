@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-03
 
+### Terminal: Hide When Tiled
+
+*21:35* — A tab's menu hides it from Tile All Tabs: it stays in the strip with its icon and title faded, and the tiles share the window without it.
+
+![Terminal: Hide When Tiled](2026-11-03/213544-terminal-hide-when-tiled.png)
+
 ### Terminal: tile mode's group headers selected while their groups show
 
 *21:26* — With every group tiled (the default), each group's header is drawn selected; a click takes that group out of the tiles and another brings it back.
