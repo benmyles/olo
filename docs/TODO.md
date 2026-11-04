@@ -7,6 +7,12 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
+- **Activity: a 10–11 ms frame opening its panels** (found 2026-11-04,
+  bench at 2× on the ThinkPad P1 Gen 9: "14 panels", 1 of ~208 frames
+  over 8.3 ms, all of it the UI's; there before the column-dragging
+  change as after). Find which panel's first frame it is (its graphs'
+  first layout, a table's first rows?) and bring it under budget.
+
 - **Voice processing's input model: SIMD throughout, lowest latency**
   (Ben, 2026-11-04: "ensure that the voice processing model for input is
   fully SIMD accelerated and ultra-optimized for low latency (not gpu)").
