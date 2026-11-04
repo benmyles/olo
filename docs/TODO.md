@@ -7,18 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Preferences ▸ GPUs: each GPU and every knob it has** (Ben,
-  2026-11-04: "if there are any knobs etc. that can be tweaked for the
-  nvidia gpu, e.g. to make it run cooler/slower or hotter/faster or any
-  other things then please add a new GPUs preferences app with each GPU
-  and a full set of knobs/tuning options in there"). NVIDIA's through
-  NVML (power limit within its range, locked GPU and memory clocks,
-  persistence, what it's doing now), Intel's xe through sysfs (minimum
-  and maximum clock, its power profile), AMD's (power profile, clocks);
-  root through a privileged helper (Doctor's way), kept and set again at
-  login; presets (Cooler and Quieter, Balanced, Fastest) beside the
-  knobs; agents read and set them.
-
 - **Columns moved by dragging, remembered per table** (Ben, 2026-11-04:
   "columns in a table like in the activity monitor should be orderable by
   dragging their positions (and this should be at the ui kit level) and
@@ -986,6 +974,23 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Preferences ▸ GPUs: each GPU and every knob it has**~~ (Ben,
+  2026-11-04: "if there are any knobs etc. that can be tweaked for the
+  nvidia gpu, e.g. to make it run cooler/slower or hotter/faster or any
+  other things then please add a new GPUs preferences app with each GPU
+  and a full set of knobs/tuning options in there"). A box for each GPU:
+  presets (Cooler and Quieter, Balanced, Fastest) and its knobs. Intel's
+  xe: lowest and highest clock, power-saving profile. NVIDIA's (NVML):
+  highest GPU clock (locked clocks), power limit where it can be given
+  one (the P1 Gen 9's RTX PRO 2000 can't: a laptop's is the platform's;
+  tried, NotSupported), persistence. Applied by `olo-gpu-tune set`
+  through polkit, kept in /etc/olo/gpus.json and set again at start by a
+  udev rule running a root-owned copy; agents: `olo-gpu-tune show`. Tried
+  as root: xe Cooler (1600 MHz, power_saving) and back to its own
+  limits; NVIDIA's clock capped at 2100 MHz and reset. Not tried yet:
+  the udev rule at a real start, and whether NVIDIA keeps its clock cap
+  through its sleep (D3cold), to see under load.
 
 - ~~**Date & Time's worker asks timedated every 2 s**~~ (found
   2026-11-04): it read timedated's status every 2 seconds for as long as

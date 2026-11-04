@@ -18,6 +18,7 @@ pub mod edid;
 pub mod env;
 pub mod fingerprint;
 pub mod github;
+pub mod gpu_tuning;
 pub mod gpus;
 pub mod hid_monitor;
 pub mod keyring_prompt;

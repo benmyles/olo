@@ -4996,6 +4996,35 @@ themselves, or `__NV_PRIME_RENDER_OFFLOAD=1`: those are left alone. To
 check: NVIDIA's `power/runtime_status` stays `suspended` and its
 `power/runtime_active_time` doesn't move through a launch.
 
+### Each GPU's tuning (Preferences ▸ GPUs, `olo-gpu-tune`)
+
+Preferences ▸ GPUs has a box for each GPU (`olo_system::gpus`): what it
+drives, whether it's awake, a preset (Cooler and Quieter, Balanced,
+Fastest: `gpu_tuning::preset`) and its knobs, set by hand ("Custom"):
+
+- Intel's xe: the render GT's lowest and highest clock
+  (`freq0/min_freq`, `max_freq`, within `rpn_freq`..`rp0_freq`) and
+  every GT's power profile (`power_profile`).
+- NVIDIA's, through NVML in process: its highest GPU clock (locked
+  clocks, from its rest clock), its power limit where it can be given
+  one (a laptop's can't: the platform sets it, and NVML can't read the
+  limit either, which is how that's known), and persistence (its driver
+  kept ready: it never sleeps then).
+
+What a GPU allows is read without root (`gpu_tuning::caps`); a sleeping
+NVIDIA GPU isn't asked (it would wake): what it said last time is shown
+(`~/.cache/olo/gpus/`), or "Ask It". Apply runs `olo-gpu-tune set`
+through pkexec (only in the person's own session: `OLO_REAL_SESSION`),
+which keeps the tuning in `/etc/olo/gpus.json` (the computer's: it's the
+hardware's), notes each GPU's limits as its driver had them before it
+was first tuned (xe keeps whatever is written, and its own lowest clock
+isn't one it says: Balanced writes those back), applies it, and installs
+a root-owned copy of itself (`/usr/local/libexec/olo-gpu-tune`) and
+`/etc/udev/rules.d/73-olo-gpu-tune.rules`, which applies it again as
+each GPU appears at start (a rule running a program the person's account
+could change would run anything as root). Agents read it all with
+`olo-gpu-tune show` (JSON; `--wake` asks a sleeping GPU too).
+
 ## The touch screen (app_server input_handler.rs)
 
 A touch screen (a laptop's, as the ThinkPad P1 Gen 9's Wacom panel) is

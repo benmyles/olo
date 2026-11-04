@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-04
 
+### Preferences ▸ GPUs
+
+*04:00* — A new panel: each GPU, what it drives, and its tuning. Presets (Cooler and Quieter, Balanced, Fastest) or the knobs by hand: Intel's lowest and highest clock and power-saving profile; NVIDIA's highest clock, power limit where it can be given one (not on a laptop) and persistence. Applied through polkit, kept for the computer and set again at every start. A sleeping NVIDIA GPU isn't asked (that would wake it): what it said last is shown.
+
+![Preferences ▸ GPUs](2026-11-04/040036-preferences-gpus.png)
+
 ### Fitting windows open at their size
 
 *03:17* — A window that fits what it shows (here Preferences ▸ Display, with its displays and GPUs, which come from app_server just after it opens) is no longer shown at its designed size and then grown: frames drawn at a size about to change aren't shown, and what it asks for as it opens holds its first showing for up to 150 ms. Display opens at 940×607 at once (before: 520, then 607). Its Graphics box's labels now level with their values.

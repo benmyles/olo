@@ -7511,6 +7511,7 @@ dependencies = [
  "libc",
  "libloading",
  "num-bigint 0.4.8",
+ "nvml-wrapper",
  "olo-protocol",
  "olo-sync",
  "pulseaudio",

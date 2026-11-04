@@ -19,6 +19,7 @@ mod datetime;
 mod default_apps;
 mod display;
 mod form;
+mod gpus;
 mod integrations;
 mod keyboard;
 #[cfg(test)]

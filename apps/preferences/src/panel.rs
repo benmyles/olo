@@ -9,8 +9,8 @@ use olo_ui::{
 };
 
 use crate::{
-    PanelView, about, ai, airpods, appearance, backup, bluetooth, datetime, default_apps, display, form::Ui, integrations, keyboard, network, notifications, performance, power, screensaver, security,
-    sound, terminal, themes, touchid, touchpad, tracker, windows, workspaces,
+    PanelView, about, ai, airpods, appearance, backup, bluetooth, datetime, default_apps, display, form::Ui, gpus, integrations, keyboard, network, notifications, performance, power, screensaver,
+    security, sound, terminal, themes, touchid, touchpad, tracker, windows, workspaces,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,6 +26,8 @@ pub enum Panel {
     DateTime,
     DefaultApps,
     Display,
+    /// Each GPU's tuning.
+    Gpus,
     Integrations,
     Keyboard,
     Network,
@@ -55,6 +57,7 @@ impl Panel {
         Panel::DateTime,
         Panel::DefaultApps,
         Panel::Display,
+        Panel::Gpus,
         Panel::Integrations,
         Panel::Keyboard,
         Panel::Network,
@@ -78,6 +81,7 @@ impl Panel {
         Panel::ALL.iter().copied().find(|p| p.arg() == s).or(match s {
             "mouse" | "trackpad" => Some(Panel::Touchpad),
             "screen" | "displays" => Some(Panel::Display),
+            "gpu" | "graphics" | "nvidia" => Some(Panel::Gpus),
             "screen-saver" | "screensavers" => Some(Panel::ScreenSaver),
             "background" => Some(Panel::Backgrounds),
             "export" | "import" | "backups" => Some(Panel::Backup),
@@ -109,6 +113,7 @@ impl Panel {
             Panel::DateTime => "datetime",
             Panel::DefaultApps => "default-apps",
             Panel::Display => "display",
+            Panel::Gpus => "gpus",
             Panel::Integrations => "integrations",
             Panel::Keyboard => "keyboard",
             Panel::Network => "network",
@@ -140,6 +145,7 @@ impl Panel {
             Panel::DateTime => "Date & Time",
             Panel::DefaultApps => "Default Apps",
             Panel::Display => "Display",
+            Panel::Gpus => "GPUs",
             Panel::Integrations => "Integrations",
             Panel::Keyboard => "Keyboard",
             Panel::Network => "Network",
@@ -171,6 +177,7 @@ impl Panel {
             Panel::DateTime => "datetime",
             Panel::DefaultApps => "default-apps",
             Panel::Display => "display",
+            Panel::Gpus => "gpu",
             Panel::Integrations => "integrations",
             Panel::Keyboard => "keyboard",
             Panel::Network => "network-prefs",
@@ -208,6 +215,8 @@ impl Panel {
             // With its panel beside it: what it is, how Olo draws for it
             // and why. As tall as the display's rows (`Fit`).
             Panel::Display => (940, 520),
+            // Two GPUs side by side, each its presets and knobs.
+            Panel::Gpus => (900, 448),
             Panel::Integrations => (460, 600),
             Panel::Keyboard => (520, 736),
             Panel::Network => (460, 318),
@@ -247,6 +256,7 @@ impl Panel {
                 | Panel::Backup
                 | Panel::Integrations
                 | Panel::DefaultApps
+                | Panel::Gpus
         )
     }
 
@@ -266,6 +276,7 @@ impl Panel {
                 | Panel::Backup
                 | Panel::Integrations
                 | Panel::DefaultApps
+                | Panel::Gpus
         )
     }
 
@@ -324,7 +335,8 @@ impl Panel {
             | Panel::Notifications
             | Panel::Performance
             | Panel::Integrations
-            | Panel::DefaultApps => {}
+            | Panel::DefaultApps
+            | Panel::Gpus => {}
         }
     }
 }
@@ -335,6 +347,7 @@ pub enum State {
     Keyboard(keyboard::State),
     Backgrounds(workspaces::BackgroundsState),
     Display(display::State),
+    Gpus(Box<gpus::State>),
     Sound(sound::State),
     DateTime(Box<datetime::State>),
     DefaultApps(Box<default_apps::State>),
@@ -358,6 +371,7 @@ impl State {
             Panel::Keyboard => State::Keyboard(keyboard::State::new(cx)),
             Panel::Backgrounds => State::Backgrounds(Default::default()),
             Panel::Display => State::Display(Default::default()),
+            Panel::Gpus => State::Gpus(Box::new(gpus::State::new())),
             Panel::Sound => State::Sound(sound::State::new(cx)),
             Panel::DateTime => State::DateTime(Box::new(datetime::State::new(cx))),
             Panel::DefaultApps => State::DefaultApps(Box::new(default_apps::State::new(cx))),
@@ -414,6 +428,7 @@ fn layout(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView>) -
         (Panel::Appearance, _) => appearance::ui(&mut ui),
         (Panel::Backgrounds, State::Backgrounds(st)) => workspaces::backgrounds_ui(&mut ui, st),
         (Panel::Display, State::Display(st)) => display::ui(&mut ui, &outputs, power, &server, st),
+        (Panel::Gpus, State::Gpus(st)) => gpus::ui(&mut ui, st),
         (Panel::Keyboard, State::Keyboard(st)) => keyboard::ui(&mut ui, power, &server, st),
         (Panel::Power, State::Power(st)) => power::ui(&mut ui, power, &server, st),
         (Panel::ScreenSaver, State::ScreenSaver(st)) => screensaver::ui(&mut ui, &server, st),
