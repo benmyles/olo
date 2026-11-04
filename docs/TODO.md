@@ -7,16 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Voice processing's input model: SIMD throughout, lowest latency**
-  (Ben, 2026-11-04: "ensure that the voice processing model for input is
-  fully SIMD accelerated and ultra-optimized for low latency (not gpu)").
-  The microphone's model (crates/voice, olo-voice; DeepFilterNet's,
-  vendor/deep_filter) on the CPU only: every hot loop vectorised (AVX2 /
-  AVX-512 on x86, NEON on ARM, chosen at run time), no allocation per
-  frame, the smallest frame and look-ahead that keep quality, measured
-  (latency per frame and end to end, CPU) before and after on the
-  ThinkPad and the MacBook.
-
 - **The ThinkPad P1 Gen 9, on the machine: everything in it first-class**
   (Ben, 2026-11-03, now running Olo on it: "olo doesn't recognize my
   builtin display. please fix." then "please do a full audit on all my
@@ -904,6 +894,14 @@ of Finished; a new one goes where its priority puts it.
   pre-scaled icon for the device size, on whole device pixels, never
   resampled; checked by the layout review at every scale.
 
+- **The voice model's weights in f16 or int8, if voices stay as clear**
+  (from the SIMD work, 2026-11-04): a live frame is 553–588 µs against
+  388 back to back because its 8 MB of f32 weights fall out of the
+  caches between frames; half or a quarter of that would stay. Try
+  tract's f16 weights (F16C on x86, NEON's fp16) and int8, and keep one
+  only if the voice trials (crates/voice tests, the AirPods chain) say
+  quality holds. Measure on the ThinkPad and the MacBook.
+
 ## Maybe one day
 
 Tabled (Ben, 2026-11-02): "performance seems pretty solid now in olo so
@@ -964,6 +962,32 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Voice processing's input model: SIMD throughout, lowest latency**~~
+  (Ben, 2026-11-04: "ensure that the voice processing model for input is
+  fully SIMD accelerated and ultra-optimized for low latency (not
+  gpu)"). Measured on the ThinkPad P1 Gen 9 (Core Ultra 7 356H: AVX2 and
+  FMA, no AVX-512), release, `cargo test --release -p olo-voice
+  live_frame_time allocations_a_frame -- --ignored --nocapture`:
+  - CPU only, nothing on a GPU. A 10 ms frame: 388 µs back to back
+    (99th 418), 553–588 µs paced as live (a frame every 10 ms, the
+    processor idle between: cold caches and clocks; 99th 1.2 ms); on
+    the E-cores 709, the low-power ones 1.99 ms; the realtime thread is
+    kept on a fast core already (`util_min_self`). Echo 2–35 µs, noise
+    290, level 20.
+  - The hot loops are vectorised and chosen at run time: perf shows
+    tract's AVX2+FMA kernels (`fma_mmm_f32_64x1` 38 %, `8x8` 12 %:
+    the GRUs' matrix-vector products), pffft and rustfft's SIMD;
+    DeepFilterNet's own loops are under 10 µs a frame. NEON on ARM.
+  - Allocations: 871 a frame, 98 % inside tract's inference (each op's
+    output: tract 0.23 has no arena), ~4 % of the frame by perf
+    (malloc and free); DeepFilterNet's own ~10, echo 2, level 11.
+  - The DF decoder on its own thread beside the ERB decoder: 388 →
+    270 µs back to back, but paced as live 582 → 601 µs (99th 1.19 →
+    1.42 ms): waking a thread each frame costs more than it saves.
+    Not kept.
+  - The 30 ms look-ahead stays (the 10 ms model chops voices: lib.rs).
+  What's left is weights small enough to stay in cache: next item.
 
 - ~~**Activity: a 10–11 ms frame opening its panels**~~ (found
   2026-11-04 in the bench at 2×, 1 of ~208 frames in 2 of 4 runs).

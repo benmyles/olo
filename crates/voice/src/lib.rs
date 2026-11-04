@@ -426,6 +426,70 @@ mod tests {
         assert!(!accelerated_by().is_empty());
     }
 
+    /// Counts the heap's allocations, each thread its own (other tests
+    /// run beside: `allocations_a_frame`).
+    struct Counting;
+    thread_local! {
+        static ALLOCATIONS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    }
+    fn counted() -> u64 {
+        ALLOCATIONS.with(|a| a.get())
+    }
+    unsafe impl std::alloc::GlobalAlloc for Counting {
+        unsafe fn alloc(&self, l: std::alloc::Layout) -> *mut u8 {
+            let _ = ALLOCATIONS.try_with(|a| a.set(a.get() + 1));
+            unsafe { std::alloc::System.alloc(l) }
+        }
+        unsafe fn dealloc(&self, p: *mut u8, l: std::alloc::Layout) {
+            unsafe { std::alloc::System.dealloc(p, l) }
+        }
+        unsafe fn realloc(&self, p: *mut u8, l: std::alloc::Layout, n: usize) -> *mut u8 {
+            let _ = ALLOCATIONS.try_with(|a| a.set(a.get() + 1));
+            unsafe { std::alloc::System.realloc(p, l, n) }
+        }
+    }
+    #[global_allocator]
+    static COUNTING: Counting = Counting;
+
+    /// The heap's allocations a frame on the live path, every stage on
+    /// (`cargo test --release -p olo-voice allocations_a_frame -- --ignored
+    /// --nocapture`).
+    #[test]
+    #[ignore]
+    fn allocations_a_frame() {
+        for (what, settings) in [
+            ("all", Settings { enabled: true, echo_cancellation: true, ..Settings::default() }),
+            ("echo", Settings { enabled: true, echo_cancellation: true, noise: Noise::Off, normalize: false, ..Settings::default() }),
+            ("noise", Settings { enabled: true, echo_cancellation: false, normalize: false, ..Settings::default() }),
+            ("level", Settings { enabled: true, echo_cancellation: false, noise: Noise::Off, ..Settings::default() }),
+        ] {
+            allocations_with(what, settings);
+        }
+    }
+
+    fn allocations_with(what: &str, settings: Settings) {
+        let input = sample(5.0);
+        let mut v = Voice::new(settings).unwrap();
+        let (mut f, mut o) = ([0.0f32; FRAME], [0.0f32; FRAME]);
+        let far = [0.01f32; FRAME];
+        // (Warmed up first: what's made once.)
+        for chunk in input.chunks_exact(FRAME).take(50) {
+            f.copy_from_slice(chunk);
+            v.render(&far);
+            v.capture(&f, &mut o);
+        }
+        let before = counted();
+        let mut frames = 0;
+        for chunk in input.chunks_exact(FRAME).skip(50) {
+            f.copy_from_slice(chunk);
+            v.render(&far);
+            v.capture(&f, &mut o);
+            frames += 1;
+        }
+        let n = counted() - before;
+        eprintln!("{what}: {:.1} allocations a frame ({n} in {frames})", n as f64 / frames as f64);
+    }
+
     /// The live path's time a frame, not measuring (`cargo test --release
     /// -p olo-voice live_frame_time -- --ignored --nocapture`).
     #[test]
@@ -443,5 +507,33 @@ mod tests {
         }
         times.sort();
         eprintln!("live frame: median {:?}, 99th {:?}", times[times.len() / 2], times[times.len() * 99 / 100]);
+        // As live: a frame every 10 ms, the processor idle between.
+        let mut v = Voice::new(Settings { enabled: true, echo_cancellation: false, ..Settings::default() }).unwrap();
+        let mut times = Vec::new();
+        let start = Instant::now();
+        for (i, chunk) in input.chunks_exact(FRAME).take(300).enumerate() {
+            let due = start + Duration::from_millis(10 * i as u64);
+            if let Some(wait) = due.checked_duration_since(Instant::now()) {
+                std::thread::sleep(wait);
+            }
+            f.copy_from_slice(chunk);
+            let t = Instant::now();
+            v.capture(&f, &mut o);
+            times.push(t.elapsed());
+        }
+        times.sort();
+        eprintln!("paced frame (every 10 ms): median {:?}, 99th {:?}, worst {:?}", times[times.len() / 2], times[times.len() * 99 / 100], times[times.len() - 1]);
+        // Each stage's share (measured, echo cancellation on too).
+        let mut v = Voice::new(Settings { enabled: true, echo_cancellation: true, ..Settings::default() }).unwrap();
+        v.measure();
+        let silence = [0.0f32; FRAME];
+        for chunk in input.chunks_exact(FRAME) {
+            f.copy_from_slice(chunk);
+            v.render(&silence);
+            v.capture(&f, &mut o);
+        }
+        let m = v.measured().unwrap();
+        let per = |s: &Stage| s.ns as f64 / s.frames.max(1) as f64 / 1000.0;
+        eprintln!("a frame: echo {:.0} µs, noise {:.0} µs, level {:.0} µs ({})", per(&m.echo), per(&m.noise), per(&m.level), accelerated_by());
     }
 }
