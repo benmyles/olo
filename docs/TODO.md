@@ -1075,16 +1075,6 @@ of Finished; a new one goes where its priority puts it.
   source, as other compositors do) and its own grabs; in the kit
   (`olo_ui::dnd`, GPUI's drags) for drags within a window.
 
-- **Tracker: a drag that starts on a name sometimes doesn't take** (Ben,
-  2026-11-04): "in tracker when trying to drag and starting on the
-  filename sometimes it doesn't register and i have to try again". A
-  press on an icon's name that moves past the drag distance must drag,
-  every time, as one on its icon does; look at `icon_release`'s
-  click-to-rename (`on_label`, `pending_edit`, apps/tracker/src/
-  folder.rs) and the press's drag threshold on the label, and test it
-  on an Agent Screen (a press on the name, moved 3, 4, 10 points, in
-  each view and at each scale).
-
 - **Other programs' file handling through Olo, fixed** (Ben,
   2026-11-04): "the gtk/qt integration doesn't seem to be working
   properly e.g. even in olo chrome i can't click on the folder for a
@@ -1176,6 +1166,24 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Tracker: a drag that starts on a name sometimes doesn't take**~~ (Ben,
+  2026-11-04): "in tracker when trying to drag and starting on the
+  filename sometimes it doesn't register and i have to try again". A
+  press on an icon's name that moves past the drag distance must drag,
+  every time, as one on its icon does; look at `icon_release`'s
+  click-to-rename (`on_label`, `pending_edit`, apps/tracker/src/
+  folder.rs) and the press's drag threshold on the label, and test it
+  on an Agent Screen (a press on the name, moved 3, 4, 10 points, in
+  each view and at each scale). *Done*: not the
+  name: any quick drag (press, one quick move, let go) was dropped on
+  nothing, from an icon too, in any app. The app asks app_server to
+  start the drag once the pointer has gone its drag distance; by then
+  the pointer was over where it went and didn't move again, and the
+  drag only learned of a target on the next move. app_server now tells
+  the drag where the pointer is as it starts (`dnd_requested`). Tested:
+  three quick drags from the name and one from the icon, all moved
+  (none did before).
 
 - ~~**Tracker: Back and Forward, from the keyboard and the mouse**~~ (Ben,
   2026-11-04): "in tracker, it should support forward and back via

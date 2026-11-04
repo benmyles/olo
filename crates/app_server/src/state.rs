@@ -367,6 +367,14 @@ impl<BackendData: Backend> WaylandDndGrabHandler for AnvilState<BackendData> {
                 let pointer = seat.get_pointer().unwrap();
                 let start_data = pointer.grab_start_data().unwrap();
                 pointer.set_grab(self, DnDGrab::new_pointer(&self.display_handle, start_data, source, seat), serial, Focus::Keep);
+                // Where the pointer is now, told the drag at once: the app
+                // asks once the pointer has gone its drag distance, and in
+                // a quick drag the pointer is already over where it goes,
+                // and still; the drag heard of no target until it moved
+                // again, and was let go onto nothing (Ben, 2026-11-04: "in
+                // tracker when trying to drag and starting on the filename
+                // sometimes it doesn't register and i have to try again").
+                self.warp_pointer(pointer.current_location());
             }
             GrabType::Touch => {
                 let touch = seat.get_touch().unwrap();

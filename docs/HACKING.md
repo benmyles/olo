@@ -670,7 +670,11 @@ fn main() {
 ### Drag and drop (`olo_ui::dnd`, GPUI's drops)
 
 Over Wayland's data device, so it works within a window, between
-Olo's apps and with any other Wayland program. As in BeOS (the Be
+Olo's apps and with any other Wayland program. (app_server tells a drag
+where the pointer is as it starts, `dnd_requested`: an app asks once the
+pointer has gone its drag distance, and in a quick drag the pointer is
+already over where it goes, and still; until it moved again the drag
+had no target, and was let go onto nothing.) As in BeOS (the Be
 Book's `DragAndDrop.md`), a drag carries the same data in several types
 and offers actions; where it is dropped picks the type and the action.
 
