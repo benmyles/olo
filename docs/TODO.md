@@ -115,8 +115,12 @@ of Finished; a new one goes where its priority puts it.
     keyring: … /org/freedesktop/secrets/collection/login"): this
     computer's login made no login keyring (gnome-keyring started with
     no default collection). `secrets::store` now makes it, as GNOME
-    does, its password asked for. Left: a login keyring made and
-    unlocked at login (PAM), and a Doctor check for it.
+    does, its password asked for. Found why nothing opens it at login:
+    GDM's stack has `pam_gnome_keyring.so` only optionally, and Fedora
+    45 doesn't install it with gnome-keyring (`gnome-keyring-pam`; only
+    `pam_oo7.so` is there, for oo7, which isn't the Secret Service
+    running). Doctor now says so and installs it ("Install the
+    Keyring's Login Module"). Left: Ben to press it and log in again.
   - The palette opened on files: ⌘ Space's ⌘ (Ctrl to apps), let go
     after the palette opened, counted as a tap of Ctrl. A tap now counts
     only once Ctrl has been up since it opened; files are searched only
@@ -147,8 +151,16 @@ of Finished; a new one goes where its priority puts it.
     the IOMMU guarding memory, so boltd lets devices in itself; Olo
     Doctor finds one plugged in and left waiting and allows it (Allow
     It: the kernel's `authorized`, root). Left: try with a dock.
-  - Left, not started: the IR camera (face sign-in), the proximity
-    sensor.
+  - The presence sensor (in the camera module, Chicony 04f2:b8b3, HID
+    sensor hub): one instance fails to probe, but `iio:device0` "prox"
+    works: `in_proximity0_raw` (someone there), `in_attention_input`
+    (looking at the screen). iio-sensor-proxy exits at boot without it.
+    To do: a udev rule giving the session `/dev/iio:device0` with its
+    buffer on (no polling sysfs: reading `_raw` asks the sensor each
+    time), `olo_system::presence` reading it, and Preferences ▸ Power:
+    lock when you walk away, wake when you come back, dim when you look
+    away.
+  - Left, not started: the IR camera (face sign-in).
 
 - **The palm trainer, full screen and driven from the keyboard** (Ben,
   2026-11-02, with a screenshot of its last step, "Try it", at 2× in

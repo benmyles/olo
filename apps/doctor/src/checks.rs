@@ -424,6 +424,7 @@ pub fn scan(roots: &Roots) -> Report {
     gpu_driver(roots, &gpus, &mut r);
     builtin_sound(roots, &gpus, &mut r);
     thunderbolt(roots, &mut r);
+    login_keyring(roots, &mut r);
     stale(roots, &procs, &mut r);
     login_entry(roots, &mut r);
     r
@@ -1035,6 +1036,38 @@ fn soundwire_part(mfg: &str, part: &str) -> Option<&'static str> {
     })
 }
 
+/// The login keyring opened at login: gnome-keyring keeps the secrets
+/// (Passwords' key, Chrome's, Wi-Fi's), and only its PAM module, given
+/// the password as GDM logs one in, opens it (makes it, the first time).
+/// Without the module (Fedora's `gnome-keyring-pam`, not installed with
+/// gnome-keyring) the keyring stays locked and asks for its password, or
+/// is never made: Passwords couldn't keep its key (the ThinkPad P1
+/// Gen 9, 2026-11-04).
+fn login_keyring(roots: &Roots, r: &mut Report) {
+    if !roots.fs.join("usr/bin/gnome-keyring-daemon").exists() {
+        return;
+    }
+    let module = ["usr/lib64/security", "usr/lib/security", "lib64/security", "usr/lib/x86_64-linux-gnu/security", "usr/lib/aarch64-linux-gnu/security"]
+        .iter()
+        .any(|d| roots.fs.join(d).join("pam_gnome_keyring.so").exists());
+    if module {
+        r.fine.push(Fine { title: "The login keyring opens when you log in".into(), detail: "gnome-keyring's PAM module is installed: logging in opens it with your password.".into() });
+        return;
+    }
+    r.findings.push(Finding {
+        id: "keyring:pam".into(),
+        severity: Severity::Problem,
+        title: "The login keyring doesn't open when you log in".into(),
+        detail: format!(
+            "gnome-keyring keeps the secrets apps keep (Passwords' key, Chrome's, Wi-Fi passwords), and logging in opens it only through its PAM module, which isn't installed ({KEYRING_PAM}). So it stays locked and asks for its password, or was never made. The fix installs it; the keyring then opens at your next login, if its password is your login password."
+        ),
+        fix: Some(Fix { label: "Install the Keyring's Login Module".into(), root: true, steps: vec![Step::InstallPackages { names: vec![KEYRING_PAM.into()] }] }),
+    });
+}
+
+/// gnome-keyring's PAM module, as Fedora packages it.
+const KEYRING_PAM: &str = "gnome-keyring-pam";
+
 /// Thunderbolt devices plugged in but not let in: on a computer whose
 /// Thunderbolt asks first (security "user" or "secure"), a dock or a
 /// drive does nothing until it's allowed. boltd allows those it knows
@@ -1381,6 +1414,28 @@ mod tests {
     /// A ThinkPad P1 Gen 9: Intel graphics it started on, an NVIDIA card
     /// nouveau couldn't start, kept awake, and SoundWire sound chips with
     /// no card made of them.
+    #[test]
+    fn the_login_keyring_opens_at_login() {
+        let (fs, roots) = machine("keyring");
+        let w = |p: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, "").unwrap();
+        };
+        // gnome-keyring, without its PAM module (pam_oo7 beside it).
+        w("usr/bin/gnome-keyring-daemon");
+        w("usr/lib64/security/pam_oo7.so");
+        let mut r = Report::default();
+        login_keyring(&roots, &mut r);
+        let f = r.find("keyring:pam").expect("the module missing");
+        assert_eq!(f.fix.as_ref().unwrap().steps, vec![Step::InstallPackages { names: vec!["gnome-keyring-pam".into()] }]);
+        w("usr/lib64/security/pam_gnome_keyring.so");
+        let mut r = Report::default();
+        login_keyring(&roots, &mut r);
+        assert!(r.findings.is_empty());
+        assert_eq!(r.fine[0].title, "The login keyring opens when you log in");
+    }
+
     #[test]
     fn a_thunderbolt_dock_waiting_is_allowed() {
         let (fs, roots) = machine("thunderbolt");
