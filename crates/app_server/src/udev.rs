@@ -641,6 +641,10 @@ impl Backend for UdevData {
         let set = set_connector_color(backend, id.crtc);
         // Night light's ramp for the signal it now takes (PQ or not).
         set_gamma(backend, id.crtc, self.white_point);
+        // Its next frame now (turning it on again, if HDR's change took it
+        // off).
+        let (node, crtc) = (id.device_id, id.crtc);
+        self.loop_handle.insert_idle(move |state| state.render(node, Some(crtc), state.clock.now()));
         set
     }
 
@@ -732,6 +736,17 @@ fn set_connector_color(backend: &mut BackendData, crtc: crtc::Handle) -> Result<
     if !hdr && meta_now == 0 && space_now == space {
         return Ok(());
     }
+    // (A change: the display off first, so the next frame enables it whole.
+    // Intel's driver switches an eDP panel's HDR decoding, and sets its
+    // brightness, only as it enables the display: changed while on, the
+    // ThinkPad's OLED kept decoding SDR from a PQ signal, then went dark
+    // as HDR went off. As idle sleep does: `clear`, the next frame on.)
+    let off = |surface: &mut SurfaceData| {
+        if let Err(e) = surface.drm_output.with_compositor(|c| c.clear()) {
+            warn!(?e, "couldn't turn the display off to change its HDR");
+        }
+        surface.drm_output.reset_buffers();
+    };
     let meta = if hdr {
         let display = crate::color::of(&output).map(|c| c.display.clone()).unwrap_or_default();
         let bytes = crate::color::hdr_metadata(&display);
@@ -739,12 +754,14 @@ fn set_connector_color(backend: &mut BackendData, crtc: crtc::Handle) -> Result<
         if meta_now != 0 && space_now == space && fd.get_property_blob(meta_now).is_ok_and(|b| b == bytes) {
             return Ok(());
         }
+        off(surface);
         match fd.create_property_blob(&bytes) {
             Ok(property::Value::Blob(b)) => b,
             Ok(_) => return Err("no HDR metadata blob".into()),
             Err(e) => return Err(format!("HDR metadata blob: {e}")),
         }
     } else {
+        off(surface);
         0
     };
     let mut req = AtomicModeReq::new();
@@ -756,7 +773,7 @@ fn set_connector_color(backend: &mut BackendData, crtc: crtc::Handle) -> Result<
             if old != 0 && old != meta {
                 let _ = fd.destroy_property_blob(old);
             }
-            info!(output = output.name(), hdr, "HDR signal");
+            info!(output = output.name(), hdr, "HDR signal (the display on again with the next frame)");
             Ok(())
         }
         Err(e) => {

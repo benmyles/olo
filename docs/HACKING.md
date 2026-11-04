@@ -2844,7 +2844,12 @@ Colour, kept per monitor in its `OutputConfig`):
   into PQ (`color::HdrFrame`, `HdrElement`); the connector gets HDR
   metadata (the display's own primaries and luminance) and BT.2020
   colorimetry in a modeset commit of its own (`set_connector_color`,
-  again at vblank if a flip was in flight). SDR's white is
+  again at vblank if a flip was in flight), with the display off: the
+  next frame enables it whole, as after idle sleep. Intel's driver
+  switches an eDP panel's HDR decoding (DPCD 0x344) and sets its
+  brightness only as it enables the display; changed while it was on,
+  the ThinkPad's OLED kept decoding SDR from the PQ signal, then went
+  dark as HDR went off (tried on the machine, 2026-11-04). SDR's white is
   "Everything else's brightness" (203 cd/m², BT.2408's, unless set);
   Preferences' band reverts HDR unless kept, as it does a resolution.
 
