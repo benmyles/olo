@@ -185,6 +185,24 @@ of Finished; a new one goes where its priority puts it.
   Waiting on the machine: NVIDIA for apps and external displays, HDR and
   wide colour, VRR, the haptic touchpad, IR face sign-in.
 
+- **Choose the GPU Olo draws with** (Ben, 2026-11-03): "when there are
+  multiple GPUs available, in prefs -> display (or wherever it's most
+  appropriate) provide an option to choose the GPU that should be used
+  for olo (e.g. integrated intel or discrete nvidia). the available
+  GPUs should be properly detected and shown with their full make/model
+  info and capabilities, and switching between them should be seamless
+  and not require an olo restart or anything." So: every GPU found
+  (DRM render nodes, by PCI id and the driver's name, Vulkan's device
+  properties: make and model, memory, what it can do: Vulkan version,
+  video decode and encode, which displays are wired to it), shown where
+  it fits best (Displays, beside the displays each drives, or a
+  Graphics pane); app_server's renderer moved to the one chosen while
+  it runs (its textures made again there, the displays wired to the
+  other GPU still shown through it), and apps told so they move too
+  (a new main device in `linux-dmabuf` feedback, as GPUI's blade
+  surfaces take it); no restart, no frame dropped; the choice kept.
+  Tried on the ThinkPad (Intel and NVIDIA) once it's here.
+
 - **AirPods and voice processing, tried on the real things** (Ben,
   2026-11-02; what's left of "AirPods, natively" and "Voice processing
   for every microphone", below): built and measured headless and in
