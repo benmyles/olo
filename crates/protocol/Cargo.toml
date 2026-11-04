@@ -11,3 +11,4 @@ serde_json.workspace = true
 thiserror.workspace = true
 olo-theme.workspace = true
 olo-xdg.workspace = true
+olo-color.workspace = true

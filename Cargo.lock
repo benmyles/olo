@@ -7371,6 +7371,7 @@ dependencies = [
 name = "olo-protocol"
 version = "0.1.0"
 dependencies = [
+ "olo-color",
  "olo-theme",
  "olo-xdg",
  "serde",
@@ -7520,6 +7521,7 @@ dependencies = [
  "libloading",
  "num-bigint 0.4.8",
  "nvml-wrapper",
+ "olo-color",
  "olo-protocol",
  "olo-sync",
  "pulseaudio",
@@ -10345,6 +10347,7 @@ dependencies = [
  "libc",
  "libloading",
  "libseat",
+ "olo-color",
  "olo-sync",
  "pixman",
  "pkg-config",

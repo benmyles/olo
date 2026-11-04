@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod airpods;
 pub mod app_keys;
+pub mod color;
 pub mod doctor;
 pub mod mice;
 pub mod notifications;

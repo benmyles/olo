@@ -11,6 +11,17 @@ use std::sync::Arc;
 pub struct GlesTexture(pub(super) Arc<GlesTextureInternal>);
 
 impl GlesTexture {
+    /// Say what its colours are in (a client's surface described in
+    /// another colour space than sRGB): drawn converted from it.
+    pub fn set_color_source(&self, source: Option<super::color::ColorSource>) {
+        *self.0.color.lock().unwrap_or_else(|e| e.into_inner()) = source;
+    }
+
+    /// What its colours are in (None: sRGB).
+    pub fn color_source(&self) -> Option<super::color::ColorSource> {
+        *self.0.color.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// Create a GlesTexture from a raw gl texture id.
     ///
     /// It is expected to not be external or y_inverted.
@@ -37,6 +48,7 @@ impl GlesTexture {
             size,
             egl_images: None,
             destruction_callback_sender: renderer.gles_cleanup().sender.clone(),
+            color: Default::default(),
         }))
     }
 
@@ -170,6 +182,8 @@ pub(super) struct GlesTextureInternal {
     pub(super) size: Size<i32, BufferCoord>,
     pub(super) egl_images: Option<Vec<EGLImage>>,
     pub(super) destruction_callback_sender: Sender<CleanupResource>,
+    /// What its colours are in (`color.rs`): None, sRGB.
+    pub(super) color: std::sync::Mutex<Option<super::color::ColorSource>>,
 }
 unsafe impl Send for GlesTextureInternal {}
 unsafe impl Sync for GlesTextureInternal {}

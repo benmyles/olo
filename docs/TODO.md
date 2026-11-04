@@ -7,6 +7,13 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
+- **Auto-tile: a click on a zoomed window's tab unzooms it** (Ben,
+  2026-11-04): "on a workspace in auto tile mode i zoomed the passwords
+  app. it worked correctly, but then when i click the passwords yellow
+  title bar (not on either of the buttons just the bar itself) it looses
+  zoom. it should only loose the zoom if i click the zoom button again."
+  A plain click on the tab (no drag) must leave the zoom as it is.
+
 - **The ThinkPad P1 Gen 9, on the machine: everything in it first-class**
   (Ben, 2026-11-03, now running Olo on it: "olo doesn't recognize my
   builtin display. please fix." then "please do a full audit on all my

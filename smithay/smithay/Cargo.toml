@@ -17,6 +17,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 olo-sync = { path = "../../crates/sync" }
+olo-color = { path = "../../crates/color" }
 appendlist = "1.4"
 ash = { version = "0.38.0", optional = true }
 bitflags = "2.2.1"

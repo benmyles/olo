@@ -23,6 +23,7 @@ use std::{
 };
 use tracing::{Level, debug, error, info, info_span, instrument, span, span::EnteredSpan, trace, warn};
 
+pub mod color;
 pub mod element;
 mod error;
 pub mod format;
@@ -405,6 +406,15 @@ pub struct GlesRenderer {
     // shaders
     tex_program: GlesTexProgram,
     solid_program: GlesSolidProgram,
+    /// The texture program converting colours (`color.rs`), made when
+    /// first needed.
+    color_program: Option<GlesTexProgram>,
+
+    // colour management (`color.rs`)
+    color_target: Option<color::ColorTarget>,
+    /// The colour program's uniforms for the last source drawn into the
+    /// target (most textures are sRGB): kept, not worked out each draw.
+    color_uniforms: Option<(color::ColorSource, Option<Vec<Uniform<'static>>>)>,
 
     // caches
     buffers: Vec<GlesBuffer>,
@@ -507,6 +517,47 @@ extern "system" fn gl_debug_log(
 }
 
 impl GlesRenderer {
+    /// What frames draw into from now ([`color::ColorTarget`]): textures
+    /// are converted into it from what they hold (sRGB unless they say),
+    /// solid colours too. None: as given, as without colour management.
+    pub fn set_color_target(&mut self, target: Option<color::ColorTarget>) {
+        if self.color_target != target {
+            self.color_target = target;
+            self.color_uniforms = None;
+        }
+    }
+
+    /// What frames draw into ([`GlesRenderer::set_color_target`]).
+    pub fn color_target(&self) -> Option<color::ColorTarget> {
+        self.color_target
+    }
+
+    /// The colour program's uniforms for drawing `source` into the
+    /// target (None: nothing to convert), and the program, made if need be.
+    fn color_for(
+        &mut self,
+        source: Option<color::ColorSource>,
+    ) -> Result<Option<Vec<Uniform<'static>>>, GlesError> {
+        if self.color_target.is_none() && source.is_none() {
+            return Ok(None);
+        }
+        let source = source.unwrap_or(color::ColorSource::SRGB);
+        let uniforms = match &self.color_uniforms {
+            Some((s, u)) if *s == source => u.clone(),
+            _ => {
+                let u = color::uniforms(&source, &self.color_target.unwrap_or(color::ColorTarget::SRGB));
+                self.color_uniforms = Some((source, u.clone()));
+                u
+            }
+        };
+        if uniforms.is_some() && self.color_program.is_none() {
+            let src = shaders::FRAGMENT_SHADER.replace("//_DEFINES_", "#define COLOR\n//_DEFINES_");
+            let sender = self.tex_program.0.destruction_callback_sender.clone();
+            self.color_program =
+                Some(unsafe { texture_program(&self.gl, &src, &color::uniform_names(), sender)? });
+        }
+        Ok(uniforms)
+    }
     /// Get the supported [`Capabilities`](Capability) of the renderer
     ///
     /// # Safety
@@ -747,6 +798,9 @@ impl GlesRenderer {
 
             tex_program,
             solid_program,
+            color_program: None,
+            color_target: None,
+            color_uniforms: None,
             vbos,
             min_filter: TextureFilter::Linear,
             max_filter: TextureFilter::Linear,
@@ -958,6 +1012,7 @@ impl ImportMemWl for GlesRenderer {
                             size: (width, height).into(),
                             egl_images: None,
                             destruction_callback_sender: self.gles_cleanup().sender.clone(),
+                            color: Default::default(),
                         });
                         if let Some(cache) = surface_lock.as_mut() {
                             cache.insert(id, new.clone());
@@ -1128,6 +1183,7 @@ impl ImportMem for GlesRenderer {
                 size,
                 egl_images: None,
                 destruction_callback_sender: self.gles_cleanup().sender.clone(),
+                color: Default::default(),
             }
         }));
 
@@ -1273,6 +1329,7 @@ impl ImportEgl for GlesRenderer {
             size: egl.size,
             egl_images: Some(egl.into_images()),
             destruction_callback_sender: self.gles_cleanup().sender.clone(),
+            color: Default::default(),
         }));
 
         Ok(texture)
@@ -1323,6 +1380,7 @@ impl ImportDma for GlesRenderer {
                 size: buffer.size(),
                 egl_images: Some(vec![image]),
                 destruction_callback_sender: self.gles_cleanup().sender.clone(),
+                color: Default::default(),
             }));
             self.dmabuf_cache.insert(buffer.weak(), texture.clone());
             Ok(texture)
@@ -2647,6 +2705,11 @@ impl GlesFrame<'_, '_> {
         if damage.is_empty() {
             return Ok(());
         }
+        // (Into the target's colours, as textures are.)
+        let color = match &self.renderer.color_target {
+            Some(t) => Color32F::from(color::convert(color.components(), &color::ColorSource::SRGB, t)),
+            None => color,
+        };
 
         let mut mat = Mat3::IDENTITY;
         mat = self.current_projection * mat;
@@ -2976,9 +3039,23 @@ impl GlesFrame<'_, '_> {
         } else {
             ffi::TEXTURE_2D
         };
+        // Colour management: the default program converts when the
+        // texture's colours aren't the target's (`color.rs`).
+        let color_uniforms = if program.is_none() && self.tex_program_override.is_none() {
+            let source = tex.color_source();
+            self.renderer.color_for(source)?
+        } else {
+            None
+        };
         let (tex_program, additional_uniforms) = program
             .map(|p| (p, additional_uniforms))
             .or_else(|| self.tex_program_override.as_ref().map(|(p, a)| (p, &**a)))
+            .or_else(|| {
+                color_uniforms
+                    .as_deref()
+                    .zip(self.renderer.color_program.as_ref())
+                    .map(|(u, p)| (p, u))
+            })
             .unwrap_or((&self.renderer.tex_program, &[]));
         let program_variant = tex_program.variant_for_format(
             if !tex.0.is_external { tex.0.format } else { None },
