@@ -984,6 +984,17 @@ of Finished; a new one goes where its priority puts it.
   only if the voice trials (crates/voice tests, the AirPods chain) say
   quality holds. Measure on the ThinkPad and the MacBook.
 
+- **The command palette's suggestions from a tiny model, as the
+  Terminal's** (Ben, 2026-11-04): "similar to the terminal commands tiny
+  autocomplete model, make the command pallette suggestions also use a
+  tiny simd accelerated model. they should get similar features like
+  time of day, available commands, what the user has typed so far and so
+  on. make sure it also auto trains/fine tunes periodically like the
+  terminal one, keeping track of what the user types and ultimately
+  selects and so on. if the fine tuning / training is super fast and
+  lightweight then just do it after each new sample is collected." On
+  the CPU's SIMD (never the NVIDIA GPU), measured per keystroke.
+
 ## Maybe one day
 
 Tabled (Ben, 2026-11-02): "performance seems pretty solid now in olo so

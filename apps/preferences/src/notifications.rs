@@ -343,7 +343,7 @@ fn apps_ui(ui: &mut Ui, st: &mut State, s: &NotificationSettings) {
                 set_column(s, app, k, v);
             }
         });
-        row = row.child(div().w(px(COLUMN)).flex().justify_center().child(CheckBox::new("", on == all.len()).mixed(on > 0 && on < all.len()).on_toggle(toggle)));
+        row = row.child(div().w(px(COLUMN)).flex().justify_center().child(CheckBox::new("", on == all.len()).id(format!("all-apps-{k}")).mixed(on > 0 && on < all.len()).on_toggle(toggle)));
     }
     // (Its marks over the apps' in the scroll view below: the view's
     // frame and its bar, as the heading.)
@@ -356,7 +356,7 @@ fn apps_ui(ui: &mut Ui, st: &mut State, s: &NotificationSettings) {
         for (k, v) in columns(&a).into_iter().enumerate() {
             let name = app.clone();
             let toggle = set(ui, move |s, v: bool| set_column(s, &name, k, v));
-            r = r.child(div().w(px(COLUMN)).flex().justify_center().child(CheckBox::new("", v).on_toggle(toggle)));
+            r = r.child(div().w(px(COLUMN)).flex().justify_center().child(CheckBox::new("", v).id(format!("app-{app}-{k}")).on_toggle(toggle)));
         }
         rows.push(r);
     }

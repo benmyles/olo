@@ -302,6 +302,10 @@ impl CheckBox {
 
 impl RenderOnce for CheckBox {
     fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
+        // Its id is its label unless given one: check boxes without a
+        // label (a table's columns) shared the id "", and a click on one
+        // was lost among them (Preferences ▸ Notifications' apps).
+        debug_assert!(!self.id.is_empty(), "a CheckBox without a label needs an id of its own (CheckBox::id)");
         let tw = f32::from(style::text_width(window, self.label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))).ceil();
         let w = m::MARK_SIZE + m::MARK_GAP + tw;
         let (label, checked, mixed) = (self.label.clone(), self.checked, self.mixed);
@@ -392,6 +396,8 @@ impl RadioButton {
 
 impl RenderOnce for RadioButton {
     fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
+        // (As a CheckBox: without a label, an id of its own.)
+        debug_assert!(!self.id.is_empty(), "a RadioButton without a label needs an id of its own (RadioButton::id)");
         let tw = f32::from(style::text_width(window, self.label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))).ceil();
         let w = 13.0 + m::MARK_GAP + tw;
         let (label, selected) = (self.label.clone(), self.selected);
