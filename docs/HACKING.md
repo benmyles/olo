@@ -5064,9 +5064,15 @@ A touch screen (a laptop's, as the ThinkPad P1 Gen 9's Wacom panel) is
 mapped to the built-in display (eDP, else the first). Where a finger
 comes down on a client that has `wl_touch` (Chrome, GTK), it gets
 touch; anywhere else (every GPUI app, so every Olo app, and app_server's
-own frames, tabs and menus) the finger is the pointer, the left button
-held while it's down (`takes_touch`, `touch_pointer`: one finger at a
-time), so windows move, menus open and buttons click as with a mouse.
+own frames, tabs and menus) the finger is the pointer (`takes_touch`,
+`touch_pointer`, `TouchPointer`): a tap clicks where it lands, a finger
+that moves past 6 points drags (its button pressed where it came down),
+so windows move, menus open and buttons click as with a mouse; a second
+finger before the first has pressed makes the two scroll what's under
+them (their middle's movement as a finger scroll, inverted: the content
+follows the fingers; a lift stops it). The pointer hides while a finger
+is it, and shows again as a mouse or touchpad moves
+(`touch_hides_pointer`).
 The pen is a tablet tool (`zwp_tablet_v2`). Agents and tests touch with
 `SyntheticEvent::Touch { slot, phase, x, y }` (`tsession touch NAME X Y`,
 `tsession touchdrag NAME X1 Y1 X2 Y2`), which goes the same way.

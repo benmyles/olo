@@ -142,11 +142,14 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// The pinch going on reaches the window under the pointer (as
     /// Preferences ▸ Touchpad said when it began).
     pub pinching: bool,
-    /// The touch screen's finger being the pointer (its slot), with the
-    /// left button held: where it went down takes no touch (an app with
-    /// no `wl_touch`, as every GPUI app, or app_server's own frames and
-    /// tabs). `input_handler::on_touch_down`.
-    pub touch_pointer: Option<i32>,
+    /// The touch screen's fingers being the pointer where they went down
+    /// on what takes no touch (an app with no `wl_touch`, as every GPUI
+    /// app, or app_server's own frames and tabs): one drags or taps, two
+    /// scroll. `input_handler::touch_down`.
+    pub touch_pointer: Option<crate::input_handler::TouchPointer>,
+    /// The pointer hidden: a finger has been the pointer since a mouse or
+    /// touchpad last moved it.
+    pub touch_hides_pointer: bool,
     /// Which way the fingers' scroll goes (natural or not), for clients.
     pub scroll_direction: (smithay::backend::input::AxisRelativeDirection, smithay::backend::input::AxisRelativeDirection),
     /// A finger scroll's stop held back from a Chromium window, and when
@@ -1103,6 +1106,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             pacer: Default::default(),
             pinching: false,
             touch_pointer: None,
+            touch_hides_pointer: false,
             scroll_direction: (smithay::backend::input::AxisRelativeDirection::Identical, smithay::backend::input::AxisRelativeDirection::Identical),
             held_stop: None,
             last_paced_move: None,

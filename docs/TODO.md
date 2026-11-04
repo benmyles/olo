@@ -73,10 +73,12 @@ of Finished; a new one goes where its priority puts it.
   (Ben: "just do the upgrade for me this time"):
   - Touch screen: a finger is the pointer where touch isn't taken (Olo's
     apps, app_server's frames), touch where it is; `SyntheticEvent::Touch`
-    and `tsession touch`/`touchdrag` for agents and tests. Left: try it
-    on the panel (headless only so far); gestures (two-finger scroll,
-    pinch) for apps without touch; hide the pointer while touching; the
-    pen's pressure in Olo's apps.
+    and `tsession touch`/`touchdrag` for agents and tests. Since: a tap
+    clicks, a move drags, two fingers scroll apps without touch, and the
+    pointer hides while a finger is it (tried headless: a window dragged
+    by its tab, a tap opening Activity's Processes, two fingers scrolling
+    its list). Left: try it on the panel; pinch for apps without touch;
+    the pen's pressure in Olo's apps.
   - The panel: Samsung's ATNA panels are OLED (`OLED_PANELS`), so no
     stripes. Left: HDR, P3 and the panel's calibration; VRR 40–120 Hz.
   - Windows fit what they show: `WindowOptions::fits_content` in the

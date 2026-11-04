@@ -962,17 +962,30 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     /// A finger down on the touch screen at `touch_location` (a real one,
     /// or `SyntheticEvent::Touch`).
-    fn touch_down(&mut self, slot: input::TouchSlot, touch_location: Point<f64, Logical>, time: InputTime) {
-        let under = self.surface_under(touch_location);
-        // A finger on what takes no touch is the pointer, the left button
-        // pressed where it came down (one finger at a time: another while
-        // it is down is left out).
-        if !self.takes_touch(&under) {
-            if self.touch_pointer.is_none() {
-                self.touch_pointer = Some(i32::from(slot));
-                self.touch_pointer_to(touch_location, time);
-                self.pointer_button(BTN_LEFT, wl_pointer::ButtonState::Pressed, time);
+    fn touch_down(&mut self, touch_slot: input::TouchSlot, touch_location: Point<f64, Logical>, time: InputTime) {
+        let slot = i32::from(touch_slot);
+        // (The pointer hides while a finger works: until a mouse moves.)
+        self.touch_hides_pointer = true;
+        // A second finger while one is the pointer: the two scroll (the
+        // button, if the first had pressed it, let go first).
+        if let Some(mut tp) = self.touch_pointer {
+            if tp.scroll.is_none() && !tp.lifting {
+                if tp.pressed {
+                    self.pointer_button(BTN_LEFT, wl_pointer::ButtonState::Released, time);
+                    tp.pressed = false;
+                }
+                tp.scroll = Some([(tp.slot, tp.at), (slot, touch_location)]);
+                self.touch_pointer = Some(tp);
             }
+            return;
+        }
+        let under = self.surface_under(touch_location);
+        // A finger on what takes no touch is the pointer, moved there; its
+        // button pressed only once it moves (a drag) or at the lift (a
+        // tap), so a second finger first scrolls instead.
+        if !self.takes_touch(&under) {
+            self.touch_pointer = Some(TouchPointer { slot, down_at: touch_location, at: touch_location, pressed: false, scroll: None, lifting: false });
+            self.touch_pointer_to(touch_location, time);
             return;
         }
         let Some(handle) = self.seat.get_touch() else {
@@ -980,13 +993,38 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         };
         let serial = SCOUNTER.next_serial();
         self.update_keyboard_focus(touch_location, serial);
-        handle.down(self, under, &DownEvent { slot, location: touch_location, serial, time });
+        handle.down(self, under, &DownEvent { slot: touch_slot, location: touch_location, serial, time });
     }
 
     fn touch_up(&mut self, slot: input::TouchSlot, time: InputTime) {
-        if self.touch_pointer == Some(i32::from(slot)) {
-            self.touch_pointer = None;
-            self.pointer_button(BTN_LEFT, wl_pointer::ButtonState::Released, time);
+        let id = i32::from(slot);
+        if let Some(mut tp) = self.touch_pointer {
+            if let Some(fingers) = tp.scroll {
+                if fingers.iter().any(|(s, _)| *s == id) {
+                    // One of the two lifts: the scroll stops, and the other
+                    // does nothing until it lifts too.
+                    if !tp.lifting {
+                        let frame = AxisFrame::new(time).source(AxisSource::Finger).stop(Axis::Horizontal).stop(Axis::Vertical);
+                        let pointer = self.pointer.clone();
+                        pointer.axis(self, frame);
+                        pointer.frame(self);
+                        tp.lifting = true;
+                        tp.scroll = Some(fingers.map(|f| if f.0 == id { (-1, f.1) } else { f }));
+                        self.touch_pointer = Some(tp);
+                    } else {
+                        self.touch_pointer = None;
+                    }
+                }
+                return;
+            }
+            if tp.slot == id {
+                // A tap: pressed and let go where it was.
+                if !tp.pressed {
+                    self.pointer_button(BTN_LEFT, wl_pointer::ButtonState::Pressed, time);
+                }
+                self.pointer_button(BTN_LEFT, wl_pointer::ButtonState::Released, time);
+                self.touch_pointer = None;
+            }
             return;
         }
         let Some(handle) = self.seat.get_touch() else {
@@ -997,8 +1035,48 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     fn touch_motion(&mut self, slot: input::TouchSlot, touch_location: Point<f64, Logical>, time: InputTime) {
-        if self.touch_pointer == Some(i32::from(slot)) {
-            self.touch_pointer_to(touch_location, time);
+        let id = i32::from(slot);
+        if let Some(mut tp) = self.touch_pointer {
+            match tp.scroll {
+                Some(mut fingers) => {
+                    if tp.lifting {
+                        return;
+                    }
+                    let Some(i) = fingers.iter().position(|(s, _)| *s == id) else { return };
+                    let middle = |f: &[(i32, Point<f64, Logical>); 2]| (f[0].1 + f[1].1).downscale(2.0);
+                    let before = middle(&fingers);
+                    fingers[i].1 = touch_location;
+                    let moved = middle(&fingers) - before;
+                    tp.scroll = Some(fingers);
+                    self.touch_pointer = Some(tp);
+                    // The content follows the fingers (a touch screen's
+                    // scroll is direct: inverted, as natural scrolling).
+                    let mut frame = AxisFrame::new(time).source(AxisSource::Finger);
+                    if moved.x != 0.0 {
+                        frame = frame.relative_direction(Axis::Horizontal, smithay::backend::input::AxisRelativeDirection::Inverted).value(Axis::Horizontal, -moved.x);
+                    }
+                    if moved.y != 0.0 {
+                        frame = frame.relative_direction(Axis::Vertical, smithay::backend::input::AxisRelativeDirection::Inverted).value(Axis::Vertical, -moved.y);
+                    }
+                    let pointer = self.pointer.clone();
+                    pointer.axis(self, frame);
+                    pointer.frame(self);
+                }
+                None if tp.slot == id => {
+                    tp.at = touch_location;
+                    // Moved past a few points: a drag, pressed where the
+                    // finger came down.
+                    if !tp.pressed && (touch_location - tp.down_at).to_f64().x.hypot((touch_location - tp.down_at).y) > TOUCH_DRAG {
+                        tp.pressed = true;
+                        self.touch_pointer = Some(tp);
+                        self.touch_pointer_to(tp.down_at, time);
+                        self.pointer_button(BTN_LEFT, wl_pointer::ButtonState::Pressed, time);
+                    }
+                    self.touch_pointer = Some(tp);
+                    self.touch_pointer_to(touch_location, time);
+                }
+                None => {}
+            }
             return;
         }
         let Some(handle) = self.seat.get_touch() else {
@@ -1017,7 +1095,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     fn on_touch_cancel<B: InputBackend>(&mut self, _evt: B::TouchCancelEvent) {
         // (The finger being the pointer lets go.)
-        if self.touch_pointer.take().is_some() {
+        if self.touch_pointer.take().is_some_and(|tp| tp.pressed) {
             self.pointer_button(BTN_LEFT, wl_pointer::ButtonState::Released, InputTime::now());
         }
         let Some(handle) = self.seat.get_touch() else {
@@ -1512,6 +1590,8 @@ impl AnvilState<UdevData> {
 
     fn on_pointer_move<B: InputBackend>(&mut self, _dh: &DisplayHandle, evt: B::PointerMotionEvent) {
         self.stop_glide();
+        // (A mouse or a touchpad: the pointer shows again.)
+        self.touch_hides_pointer = false;
         let mut pointer_location = self.pointer.current_location();
         let serial = SCOUNTER.next_serial();
 
@@ -1607,6 +1687,7 @@ impl AnvilState<UdevData> {
     }
 
     fn on_pointer_move_absolute<B: InputBackend>(&mut self, _dh: &DisplayHandle, evt: B::PointerMotionAbsoluteEvent) {
+        self.touch_hides_pointer = false;
         let serial = SCOUNTER.next_serial();
 
         // An absolute device (a tablet, a VM's pointer) spans every screen.
@@ -1843,4 +1924,24 @@ impl<BackendData: Backend> VirtualKeyboardHandler for AnvilState<BackendData> {
             _ => (),
         }
     }
+}
+
+/// How far (points) a finger being the pointer moves before it's a drag
+/// (its button pressed where it came down), not a tap.
+const TOUCH_DRAG: f64 = 6.0;
+
+/// The touch screen's fingers being the pointer (`AnvilState::touch_pointer`).
+#[derive(Debug, Clone, Copy)]
+pub struct TouchPointer {
+    /// The finger that is the pointer.
+    pub slot: i32,
+    /// Where it came down, and where it is.
+    pub down_at: Point<f64, Logical>,
+    pub at: Point<f64, Logical>,
+    /// Its button is pressed (it moved: a drag).
+    pub pressed: bool,
+    /// A second finger came: the two scroll, each one's slot and place.
+    pub scroll: Option<[(i32, Point<f64, Logical>); 2]>,
+    /// One of the two lifted: nothing until the other does.
+    pub lifting: bool,
 }

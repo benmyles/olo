@@ -2289,7 +2289,8 @@ impl AnvilState<UdevData> {
             &mut self.backend_data.pointer_element,
             &self.dnd_icon,
             &mut self.cursor_status,
-            self.saver.running(),
+            // (Hidden while a finger is the pointer, too.)
+            self.saver.running() || self.touch_hides_pointer,
             self.overview.as_ref(),
             desktop_color,
             overlays,
