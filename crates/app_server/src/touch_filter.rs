@@ -170,7 +170,9 @@ mod tests {
             lua.load(format!(
                 "evdev = {{ ABS_MT_SLOT = {SLOT}, ABS_MT_TOUCH_MAJOR = {MAJOR}, ABS_MT_TOUCH_MINOR = {MINOR}, \
                  ABS_MT_TRACKING_ID = {ID}, ABS_MT_PRESSURE = {PRESSURE}, ABS_PRESSURE = 0x30018, BTN_LEFT = {BTN_LEFT}, \
-                 ABS_MT_POSITION_X = {POS_X}, ABS_MT_POSITION_Y = {POS_Y}, ABS_MT_ORIENTATION = 0x30034, ABS_MT_WIDTH_MAJOR = 0x30032, KEY_ESC = 0x10001, KEY_A = 0x1001e, KEY_SPACE = 0x10039, BTN_MISC = 0x10100 }}
+                 ABS_MT_POSITION_X = {POS_X}, ABS_MT_POSITION_Y = {POS_Y}, ABS_MT_ORIENTATION = 0x30034, ABS_MT_WIDTH_MAJOR = 0x30032, KEY_ESC = 0x10001, KEY_A = 0x1001e, KEY_SPACE = 0x10039 }}
+                 -- (A name libinput's table hasn't is nil there: an error here.)
+                 setmetatable(evdev, {{ __index = function(_, k) error('libinput names no ' .. k) end }})
                  hooks = {{}}
                  resolution = {{ [{PRESSURE}] = 1, [0x30018] = 1 }}
                  libinput = {{ register = function() end, log_info = function() end,
@@ -221,6 +223,23 @@ mod tests {
     /// What a frame costs the filter, the palm model off and on (two
     /// fingers moving, a palm resting): `cargo test --release -p
     /// app_server frame_cost -- --ignored --nocapture`.
+    #[test]
+    fn a_keyboards_keys_are_noted_with_names_libinput_has() {
+        // libinput's evdev table has no BTN_MISC (an alias): the plugin
+        // compared a key with nil and libinput unloaded it at the first
+        // key pressed, on every start of the ThinkPad's session.
+        let pad = Pad::new(&TouchpadSettings::default());
+        pad.lua
+            .load(
+                "local kb = { name = function() return 'Magic Keyboard' end, usages = function() return { [evdev.KEY_A] = true } end,
+                              connect = function(_, _, f) hooks.key = f end }
+                 hooks.new(kb)
+                 hooks.key(kb, { { usage = evdev.KEY_A, value = 1 } }, 1000)",
+            )
+            .exec()
+            .unwrap();
+    }
+
     #[test]
     #[ignore]
     fn frame_cost() {

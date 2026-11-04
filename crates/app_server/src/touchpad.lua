@@ -32,6 +32,9 @@ local CONFIG = {} -- @CONFIG@ (replaced by app_server)
 
 -- When a key was last pressed on any keyboard (microseconds; palms rest
 -- while typing), for the palm model.
+-- The keyboard's keys: KEY_ESC up to the buttons (BTN_MISC, 0x100, which
+-- libinput's evdev table doesn't name: an alias, so nil there).
+local KEYS_END = evdev.KEY_ESC - 1 + 0x100
 local last_key = nil
 
 libinput:register({1})
@@ -397,7 +400,7 @@ libinput:connect("new-evdev-device", function(device)
     if usages[evdev.KEY_A] or usages[evdev.KEY_SPACE] then
         device:connect("evdev-frame", function(_, frame, time)
             for _, e in ipairs(frame) do
-                if e.value == 1 and e.usage >= evdev.KEY_ESC and e.usage < evdev.BTN_MISC then
+                if e.value == 1 and e.usage >= evdev.KEY_ESC and e.usage < KEYS_END then
                     last_key = time
                 end
             end
