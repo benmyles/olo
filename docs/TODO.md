@@ -7,20 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **A tile too small for its window's least size, off its part**
-  (found 2026-11-03 by `wm-fuzz --tiles`, seeds 5 and 9, the build
-  before the drag-round fixes too): `tsession start fz
-  2560x1600,1920x1080 --session --shell`, `tools/dev/wm-fuzz fz --seed 9
-  --steps 46 --tiles`: step 44, Styled Edit on the smaller display
-  tiled to the centre third (256 px) and on through tile-left and
-  tile-top-right, ends 290 wide (its least) at x 268 rather than its
-  part at 264: it grew 34 px but moved right, not inwards as
-  `give_way` has it (seed 5, step 193: 290 wide at 1766, its part 1800
-  and 256 wide). Find which of the three commands leaves it there, have
-  a window too big for its tile give way the same every time (and
-  wm-fuzz's check take a window at its least size, given way, as in its
-  tile), and keep both seeds passing 200 steps with `--tiles`.
-
 - **The palm trainer, full screen and driven from the keyboard** (Ben,
   2026-11-02, with a screenshot of its last step, "Try it", at 2× in
   dark mode): "so the training modal/flow needs work: for one i can't
@@ -972,6 +958,30 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**A tile too small for its window's least size, off its part**~~
+  (found 2026-11-03 by `wm-fuzz --tiles`, seeds 5 and 9, the build
+  before the drag-round fixes too): `tsession start fz
+  2560x1600,1920x1080 --session --shell`, `tools/dev/wm-fuzz fz --seed 9
+  --steps 46 --tiles`: step 44, Styled Edit on the smaller display
+  tiled to the centre third (256 px) and on through tile-left and
+  tile-top-right, ends 290 wide (its least) at x 268 rather than its
+  part at 264: it grew 34 px but moved right, not inwards as
+  `give_way` has it (seed 5, step 193: 290 wide at 1766, its part 1800
+  and 256 wide). Find which of the three commands leaves it there, have
+  a window too big for its tile give way the same every time (and
+  wm-fuzz's check take a window at its least size, given way, as in its
+  tile), and keep both seeds passing 200 steps with `--tiles`.
+  *Done* 2026-11-03: app_server was right; the check wasn't. A window
+  whose app won't be as small as its tile gives way as `give_way` says
+  (one side held, the tile's own with its half gap: x 268, not the bare
+  part's 264; moved in from the area's edge it would cross: 1766), and
+  wm-fuzz's check now gives way the same, from the window list's
+  `least`. The runs that found it had also restored the person's
+  Terminal windows into the test (four Terminals for one opened), which
+  made new windows miss the keyboard and groups' frames differ: test
+  sessions now keep their apps' state and caches in their own directory
+  (tsession), and seeds 5 and 9 pass 200 steps with `--tiles`.
 
 - ~~**Backup: Wi-Fi networks too**~~ (the rest of Ben's backup audit,
   2026-11-03): saved Wi-Fi networks and their passwords live in

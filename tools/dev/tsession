@@ -6,7 +6,9 @@
                                                under olo-session, so `reload` works;
                                                --shell also starts Deskbar and the desktop;
                                                --home: HOME for the session and its apps,
-                                               so tests that save files stay out of yours;
+                                               so tests that save files stay out of yours
+                                               (without it, what apps keep between runs
+                                               and their caches are in the session's dir);
                                                --scale: the screens' scale, 2 by default)
   tsession reload NAME                         restart app_server in place (session only)
   tsession run NAME [VAR=VAL...] CMD [ARGS...] start a client in it (log: DIR/<cmd>.log);
@@ -88,7 +90,7 @@ def private_bus(d):
 
 def as_owner(cmd, **kw):
     if os.getuid() == 0 and OWNER.pw_uid != 0:
-        cmd = ["sudo", "-u", OWNER.pw_name, "--preserve-env=WAYLAND_DISPLAY,OLO_SOCKET,XDG_RUNTIME_DIR,XDG_CONFIG_HOME,RUST_LOG,OLO_THEME,OLO_DATA,OLO_SESSION,OLO_SESSION_PID,HOME,PATH,PULSE_SERVER,OLO_PAM_CONFDIR,OLO_PAM_SERVICE,OLO_PASSWORDS_KEYFILE,OLO_WLPROXY_DEBUG,OLO_UDISKS_BUS,DBUS_SESSION_BUS_ADDRESS"] + cmd
+        cmd = ["sudo", "-u", OWNER.pw_name, "--preserve-env=WAYLAND_DISPLAY,OLO_SOCKET,XDG_RUNTIME_DIR,XDG_CONFIG_HOME,XDG_STATE_HOME,XDG_CACHE_HOME,RUST_LOG,OLO_THEME,OLO_DATA,OLO_SESSION,OLO_SESSION_PID,HOME,PATH,PULSE_SERVER,OLO_PAM_CONFDIR,OLO_PAM_SERVICE,OLO_PASSWORDS_KEYFILE,OLO_WLPROXY_DEBUG,OLO_UDISKS_BUS,DBUS_SESSION_BUS_ADDRESS"] + cmd
     return cmd
 
 def sdir(name):
@@ -180,6 +182,15 @@ def start(name, args):
     session = "--session" in args
     # sudo resets HOME, so a sandbox home goes in through env(1).
     home = next((args[i + 1] for i, a in enumerate(args[:-1]) if a == "--home"), None)
+    # What the session's apps keep between runs (Terminal's windows and
+    # shells, app_server's layouts, histories) and their caches, in the
+    # session's own directory unless it has a home of its own: never the
+    # person's (a test Terminal wrote over their windows.json, so their
+    # next login would have brought back the test's windows).
+    own = {} if home else {"XDG_STATE_HOME": os.path.join(d, "state"), "XDG_CACHE_HOME": os.path.join(d, "cache")}
+    for v in own.values():
+        os.makedirs(v, exist_ok=True)
+    env.update(own)
     if home:
         os.makedirs(home, exist_ok=True)
         subprocess.run(["chown", f"{OWNER.pw_uid}:{OWNER.pw_gid}", home]) if os.getuid() == 0 else None
@@ -210,6 +221,7 @@ def start(name, args):
                  "XDG_CONFIG_HOME": os.path.join(d, "config"), "DBUS_SESSION_BUS_ADDRESS": env["DBUS_SESSION_BUS_ADDRESS"], "pid": p.pid}
             if home:
                 e["HOME"] = os.path.abspath(home)
+            e.update(own)
             if session:
                 e["OLO_SESSION"] = "1"
                 pidfile = os.path.join(RUNTIME, f"olo-session-{m.group(1)}.pid")

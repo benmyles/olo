@@ -312,9 +312,10 @@ class Fuzz:
 
     def check_tiles(self, wins, cur):
         """A tiled window on the active display is where its tile's part
-        says (`part`), within a gap; else it jumps there when its tiles
-        are next laid out (its workspace shown again). Reported, with
-        --tiles failing on it."""
+        says (`part`), within a gap, given way where its app won't be that
+        small (`give_way`); else it jumps there when its tiles are next
+        laid out (its workspace shown again). Reported, with --tiles
+        failing on it."""
         if self.trace_tiles:
             for w in wins.values():
                 now = (tuple(round(v, 3) for v in w["part"]) if w.get("part") else None, fr(w), w["workspace"], w.get("group"), w["minimized"])
@@ -330,7 +331,7 @@ class Fuzz:
                 continue
             x, y, cw, ch = fr(w)
             px, py, pw, ph = w["part"]
-            want = (round(ax + px * aw), round(ay + py * ah), round(pw * aw), round(ph * ah))
+            want = give_way((round(ax + px * aw), round(ay + py * ah), round(pw * aw), round(ph * ah)), w.get("least"), area)
             if max(abs(x - want[0]), abs(y - want[1]), abs(x + cw - want[0] - want[2]), abs(y + ch - want[1] - want[3])) > 12:
                 key = (w["id"], tuple(w["part"]), fr(w))
                 if key not in self.tile_seen:
@@ -1355,6 +1356,20 @@ def state(wins):
 def rect(f):
     return (f["x"], f["y"], f["width"], f["height"])
 
+
+def give_way(want, least, area):
+    """`want` (x, y, w, h), a tile's part, as app_server gives way for a
+    window that can't be that small (tiling.rs `give_way`): its least
+    size (`least`, the window list's), kept inside `area` (one side held,
+    else moved in from the edge it would cross)."""
+    if not least:
+        return want
+    (x, y, w, h), (lw, lh), (ax, ay, aw, ah) = want, least, area
+    W, H = max(w, lw), max(h, lh)
+    if (W, H) == (w, h):
+        return want
+    inside = lambda pos, n, lo, span: min(max(pos, lo), lo + span - n) if n <= span else lo
+    return (inside(x, W, ax, aw), inside(y, H, ay, ah), W, H)
 
 def fr(w):
     """Its frame; None while it is hidden or on another workspace."""

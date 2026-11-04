@@ -2567,7 +2567,12 @@ test's notifications, run its own centre:
 
 sudo resets HOME, so without `--home` a session and its apps use the real
 home folder: pass `--home` whenever a test saves files (Screenshot,
-Tracker, StyledEdit…). Sessions are always silent (`PULSE_SERVER` points at
+Tracker, StyledEdit…). What apps keep between runs and their caches are
+the session's own even so (`XDG_STATE_HOME`, `XDG_CACHE_HOME` in
+`/tmp/olo-dev/NAME`, in its env.json for `run`): a test Terminal (the
+fuzzers open them) once restored the person's windows and wrote its own
+over their `windows.json`, which their next login would have brought
+back. Sessions are always silent (`PULSE_SERVER` points at
 a dead socket), so tests never reach the real speakers or volume. To
 test sound, run `olo-fakesound SOCKET` (olo-preview): it speaks the
 PulseAudio protocol, plays nothing, and logs each stream once a second
