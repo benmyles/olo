@@ -27,6 +27,17 @@ of Finished; a new one goes where its priority puts it.
   processes to end, and Preferences' panels, in a session that doesn't
   depend on what may be broken; leaving it puts everything back.
 
+- **Preferences ▸ Backup: choose what goes in, exporting and importing**
+  (Ben, 2026-11-04; next, after Rescue): "in prefs -> backups made it
+  so that i can choose each type of thing i want included in an export
+  and when importing. e.g. maybe i have an export with everything but i
+  just want to include token pooler settings/accounts for my import".
+  Each kind of thing a backup holds (the desktop's settings, each app's,
+  Token Pool's accounts and settings, passwords, …) a check box, all on
+  at first: exporting writes only those checked; importing reads what
+  the file has, offers only those (with what each holds), and restores
+  only those checked, leaving the rest as they are.
+
 - **Grouped and tiled windows come back in their order** (Ben,
   2026-11-04): "grouped windows and tiled tabs/windows should remember
   their order so that after e.g. an upgrade they come back in the same
