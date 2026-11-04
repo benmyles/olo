@@ -5,6 +5,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-04
 
+### Banner actions stack when they don't fit side by side
+
+*15:47* — Two long actions, one above another at the card's width, at 1×, 1.5× and 2×; a label cut with … only when even a row of its own is too narrow.
+
+![Banner actions stack when they don't fit side by side](2026-11-04/154740-banner-actions-stack-when-they-don-t-fit-side-by.png)
+
+### A notification for each new suggestion, once
+
+*15:47* — Olo Suggestions tells of a suggestion once ever; at 1×, 1.5× and 2×. Its action used to be cut off past the banner's edge: banner actions now fit, stacked when they must.
+
+![A notification for each new suggestion, once](2026-11-04/154739-a-notification-for-each-new-suggestion-once.png)
+
+### Olo Suggestions: just, uv, mise and worktrunk
+
+*15:47* — Programs worth having, suggested while they're not installed: just and uv from Fedora's repositories, mise and worktrunk from their makers' GitHub releases (SHA-256 checked, native); and worktrunk set to make worktrees where Terminal does.
+
+![Olo Suggestions: just, uv, mise and worktrunk](2026-11-04/154737-olo-suggestions-just-uv-mise-and-worktrunk.png)
+
 ### Backup chooses what goes in
 
 *13:51* — Preferences ▸ Backup: a check box for each part of a backup (each app's settings with the passwords and sign-ins that go with them, and the Wi-Fi networks), exporting and importing: a backup of everything can bring back the Token Pool alone. The rest stays as it is.

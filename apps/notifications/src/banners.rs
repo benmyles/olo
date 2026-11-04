@@ -21,7 +21,7 @@ use olo_ui::{
     },
     style::{self, Align},
     theme,
-    widgets::{Button, TextControl, TextField, TextFieldEvent},
+    widgets::{Button, TextControl, TextField, TextFieldEvent, button_width},
 };
 
 use crate::{
@@ -68,7 +68,12 @@ struct Placed {
     progress: Option<f32>,
     picture: Option<pictures::Source>,
     failed: bool,
-    buttons: Vec<(String, String)>,
+    /// Its actions as laid out: key, label (cut short only when even a
+    /// row of its own is too narrow) and width.
+    buttons: Vec<(String, String, f32)>,
+    /// One above another, each the card's width: side by side they
+    /// wouldn't fit.
+    stacked: bool,
     reply: Option<Entity<TextField>>,
     pinned: bool,
 }
@@ -141,6 +146,35 @@ fn buttons(card: &Card) -> Vec<(String, String)> {
     card.note.actions.iter().filter(|(k, l)| k != "default" && !l.is_empty() && !web::browser_action(card.note.via.as_deref(), k)).cloned().collect()
 }
 
+/// `actions` laid out in a card: side by side at their own widths, as
+/// in an alert, when they fit its width; else one above another, each
+/// the card's width ("Show in Olo Suggestions" is wider than half of
+/// Deskbar's width), a label cut short with "…" only if even that is too
+/// narrow. Whether they're stacked.
+fn lay_buttons(window: &mut Window, actions: Vec<(String, String)>) -> (Vec<(String, String, f32)>, bool) {
+    let room = WIDTH - 2.0 * PAD;
+    let widths: Vec<f32> = actions.iter().map(|(_, l)| button_width(window, l, false)).collect();
+    let row = widths.iter().sum::<f32>() + actions.len().saturating_sub(1) as f32 * m::SPACING;
+    if row <= room {
+        return (actions.into_iter().zip(widths).map(|((k, l), w)| (k, l, w)).collect(), false);
+    }
+    let font = style::ui_font(FontWeight::NORMAL);
+    let laid = actions.into_iter().map(|(k, l)| {
+        let fits = style::fit(window, l.into(), style::PLAIN_SIZE, &font, px(room - 2.0 * m::CONTROL_PAD)).to_string();
+        (k, fits, room)
+    });
+    (laid.collect(), true)
+}
+
+/// The height a card's actions take, with the gap above them.
+fn buttons_height(buttons: &[(String, String, f32)], stacked: bool) -> f32 {
+    match buttons.len() {
+        0 => 0.0,
+        n if stacked => n as f32 * m::CONTROL_HEIGHT + (n - 1) as f32 * m::SPACING + PAD,
+        _ => m::CONTROL_HEIGHT + PAD,
+    }
+}
+
 impl Banners {
     pub fn new(app: Entity<Notifications>, cx: &mut Context<Self>) -> Banners {
         let sub = cx.observe(&app, |_, _, cx| cx.notify());
@@ -183,6 +217,7 @@ impl Banners {
                     laid
                 }
             };
+            let (laid_buttons, stacked) = lay_buttons(window, buttons(card));
             placed.push(Placed {
                 id,
                 rect: Bounds::default(),
@@ -194,7 +229,8 @@ impl Banners {
                 progress: card.note.progress,
                 picture: card.picture.clone(),
                 failed: card.note.kind == Kind::Error,
-                buttons: buttons(card),
+                buttons: laid_buttons,
+                stacked,
                 reply: card.reply.clone(),
                 pinned: app.history.newest(id).is_some_and(|e| e.pinned),
             });
@@ -230,9 +266,7 @@ impl Banners {
                     if c.reply.is_some() {
                         h += m::CONTROL_HEIGHT + PAD;
                     }
-                    if !c.buttons.is_empty() {
-                        h += m::CONTROL_HEIGHT + PAD;
-                    }
+                    h += buttons_height(&c.buttons, c.stacked);
                     c.rect = Bounds::new(point(px(0.0), px(y)), size(px(WIDTH), px(h.ceil())));
                     y += h.ceil();
                 }
@@ -507,17 +541,21 @@ impl Render for Banners {
                 // Actions along the bottom, right to left as in an alert.
                 let mut by = c.rect.bottom() - px(PAD + m::CONTROL_HEIGHT);
                 if !c.buttons.is_empty() {
+                    // Side by side from the right; stacked, the last at
+                    // the bottom (where the right-most would be).
                     let mut bx = c.rect.right() - px(PAD);
-                    // In the narrow column they share the width when they must.
-                    let n = c.buttons.len() as f32;
-                    let share = ((WIDTH - 2.0 * PAD - (n - 1.0) * m::SPACING) / n).floor();
-                    for (key, label) in c.buttons.iter().rev() {
-                        let w = (f32::from(style::text_width(window, label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))) + 24.0).max(m::BUTTON_MIN_WIDTH).min(share).ceil();
-                        let key = key.clone();
-                        let me = me.clone();
+                    for (key, label, w) in c.buttons.iter().rev() {
+                        let (key, me, w) = (key.clone(), me.clone(), *w);
                         let button = Button::new(label.clone()).min_width(w).on_click(move |window, cx| me.update(cx, |b, cx| b.did(id, Did::Action(key.clone()), window, cx)));
                         root = root.child(div().absolute().left(bx - px(w)).top(by).w(px(w)).occlude().child(button));
-                        bx -= px(w + m::SPACING);
+                        if c.stacked {
+                            by -= px(m::CONTROL_HEIGHT + m::SPACING);
+                        } else {
+                            bx -= px(w + m::SPACING);
+                        }
+                    }
+                    if c.stacked {
+                        by += px(m::CONTROL_HEIGHT + m::SPACING);
                     }
                     by -= px(m::CONTROL_HEIGHT + PAD);
                 }

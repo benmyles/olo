@@ -6981,7 +6981,9 @@ dependencies = [
 name = "olo-doctor"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "libc",
+ "liblzma",
  "memchr",
  "olo-kit-base",
  "olo-protocol",
@@ -6990,9 +6992,14 @@ dependencies = [
  "olo-theme",
  "olo-ui",
  "olo-xdg",
+ "rustls",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
+ "tar",
+ "toml_edit",
  "tracing",
+ "ureq",
 ]
 
 [[package]]

@@ -83,6 +83,14 @@ pub enum Step {
     UpdatePackages {
         names: Vec<String>,
     },
+    /// Install `name` from its maker's latest GitHub release, its
+    /// published SHA-256 checked, to `to` (`crate::releases`): a program
+    /// the system's repositories don't carry (mise, worktrunk).
+    InstallRelease {
+        name: String,
+        release: crate::releases::Release,
+        to: PathBuf,
+    },
 }
 
 impl Step {
@@ -112,6 +120,7 @@ impl Step {
             Step::SetLoginShell { user, shell } => format!("Making {} {user}'s login shell", shell.display()),
             Step::InstallPackages { names } => format!("Installing {}", names.join(", ")),
             Step::UpdatePackages { names } => format!("Updating {}", short_list(names)),
+            Step::InstallRelease { name, release, .. } => format!("Installing {name} from github.com/{}", release.repo),
         }
     }
 
@@ -135,6 +144,18 @@ impl Step {
                 let waiting = olo_system::packages::updates().map_err(|e| format!("{}: {e}", self.describe()))?;
                 let ids: Vec<String> = waiting.into_iter().filter(|p| names.iter().any(|n| n == p.name())).map(|p| p.id).collect();
                 olo_system::packages::update(ids, &mut said).map_err(|e| format!("{}: {e}", self.describe()))
+            }
+            Step::InstallRelease { release, to, .. } => {
+                let mut last = 0;
+                crate::releases::install(release, to, &mut |done, total| {
+                    let percent = if total > 0 { done * 100 / total } else { 0 };
+                    if percent != last {
+                        last = percent;
+                        progress(format!("{percent}%"));
+                    }
+                })
+                .map(|_| ())
+                .map_err(|e| format!("{}: {e}", self.describe()))
             }
             _ => self.run(),
         }
@@ -161,7 +182,7 @@ impl Step {
             Step::AddKernelArgument { arg } => add_kernel_argument(Path::new("/"), arg).map_err(failed),
             Step::TryShell { path } => try_shell(path),
             Step::SetLoginShell { user, shell } => set_login_shell(user, shell).map_err(|e| format!("{}: {e}", self.describe())),
-            Step::InstallPackages { .. } | Step::UpdatePackages { .. } => self.run_with(&mut |_| {}),
+            Step::InstallPackages { .. } | Step::UpdatePackages { .. } | Step::InstallRelease { .. } => self.run_with(&mut |_| {}),
         }
     }
 }

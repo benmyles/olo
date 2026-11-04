@@ -112,6 +112,8 @@ enum Msg {
     Scanned(Report),
     /// A fix run as this user: the finding and its steps' outcomes.
     Ran(String, Vec<Result<(), String>>),
+    /// How a fix run as this user is going (a download's share).
+    Progress(String, String),
     Helper(Option<FromHelper>),
 }
 
@@ -210,7 +212,10 @@ impl Doctor {
                 root.push((id.clone(), fix.steps.clone()));
             } else {
                 let (proxy, id, steps) = (self.proxy.clone(), id.clone(), fix.steps.clone());
-                std::thread::spawn(move || proxy.send(Msg::Ran(id, helper::run_steps(&steps))));
+                std::thread::spawn(move || {
+                    let results = helper::run_steps_with(&steps, &mut |text| proxy.send(Msg::Progress(id.clone(), text)));
+                    proxy.send(Msg::Ran(id, results))
+                });
             }
         }
         if !root.is_empty() {
@@ -311,7 +316,16 @@ impl Doctor {
         let Ok(msg) = message.downcast::<Msg>() else { return };
         match *msg {
             Msg::Scanned(r) => self.scanned(r, cx),
-            Msg::Ran(id, results) => self.finished(id, results, cx),
+            Msg::Ran(id, results) => {
+                self.progress.remove(&id);
+                self.finished(id, results, cx)
+            }
+            Msg::Progress(id, text) => {
+                if self.outcomes.get(&id) == Some(&Outcome::Fixing) {
+                    self.progress.insert(id, text);
+                    cx.notify();
+                }
+            }
             Msg::Helper(m) => self.heard(m, cx),
         }
     }
@@ -583,15 +597,20 @@ fn fix_from_the_command_line(ids: &[String]) -> i32 {
     }
     let all = ids.iter().any(|i| i == "all");
     let chosen: Vec<(&str, &str, &Fix, bool)> = fixable.iter().copied().filter(|(id, _, _, undo)| (all && !undo) || ids.iter().any(|i| i == id)).collect();
-    for id in ids.iter().filter(|i| *i != "all") {
-        if !chosen.iter().any(|(c, ..)| c == id) {
+    // One asked for that isn't there (mistyped, an option it doesn't
+    // take): nothing is done.
+    let unknown: Vec<&String> = ids.iter().filter(|i| *i != "all" && !chosen.iter().any(|(c, ..)| c == i)).collect();
+    if !unknown.is_empty() {
+        for id in unknown {
             eprintln!("{program}: {id}: no such finding with a fix now");
         }
+        eprintln!("{program}: nothing was done");
+        return 1;
     }
     // SAFETY: geteuid has no preconditions.
     let root = unsafe { libc::geteuid() } == 0;
     let mut helper: Option<(Helper, std::sync::mpsc::Receiver<Option<FromHelper>>)> = None;
-    let mut failed = chosen.len() < ids.iter().filter(|i| *i != "all").count();
+    let mut failed = false;
     for (n, (id, title, fix, _)) in chosen.iter().enumerate() {
         println!("{title}: {}", fix.label);
         kind().before(id);

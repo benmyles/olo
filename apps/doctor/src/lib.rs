@@ -8,6 +8,7 @@ pub mod checks;
 pub mod fix;
 pub mod helper;
 pub mod notify;
+pub mod releases;
 pub mod suggest;
 
 pub use app::{Kind, run};

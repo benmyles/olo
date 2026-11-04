@@ -6277,6 +6277,49 @@ applied` shows them all applied, made up, to look at headless.
   opens) saw a tab `cd`'d into a worktree as still in its first folder.
   olo-brush's `prompt` hook (vendor/brush-interactive's, called as each
   prompt shows) moves the process there, as other shells move on `cd`.
+- **Programs worth having** (`TOOLS`, `tool_list`): just, uv, mise and
+  worktrunk (`wt`), each suggested while it's on no folder of PATH nor
+  in ~/.local/bin or ~/.cargo/bin (where installers put them, which a
+  session's PATH may not have), else said to be installed, and where.
+  just and uv come from the system's repositories (`Step::InstallPackages`
+  as root, PackageKit); mise and worktrunk, which Fedora doesn't carry,
+  from their makers' latest GitHub release (`Step::InstallRelease`, as
+  the person, to ~/.local/bin): `releases.rs` asks GitHub's API for the
+  latest tag, downloads the asset (`{tag}` filled in: mise's bare
+  `mise-{tag}-linux-x64`, worktrunk's `…-unknown-linux-musl.tar.xz`)
+  and the SHA-256 its maker published (a SHASUMS256.txt, or the asset's
+  own `.sha256`), refuses it if they differ, takes the program out of
+  the archive (tar with liblzma or flate2) and puts it in place whole
+  (written beside it as `.partial`, 0755, then renamed). Nothing is
+  shelled out to; the download's share shows under the suggestion as it
+  goes (`Msg::Progress`: a fix run as the person tells how it's going as
+  the root helper's does). Olo doesn't take them away again. `cargo test
+  -p olo-doctor installs_from_github -- --ignored` installs both, for
+  real, into a scratch folder.
+- **worktrunk's worktrees where Terminal makes them** (with `wt`
+  there): its `worktree-path` in ~/.config/worktrunk/config.toml
+  (`$XDG_CONFIG_HOME`'s if set) set to Terminal's place
+  (`settings.terminal.worktrees`, asked of app_server) as worktrunk's
+  template, `<place>/{{ repo }}/{{ branch | sanitize }}`: the folder
+  Terminal's New Worktree… makes for any name it allows (no `/`, so
+  `sanitize` changes nothing). Written with toml_edit, the rest of the
+  file (comments too) as it was; the value it had is kept in
+  suggestions.json for the undo (none: the key taken out again).
+
+Each new suggestion is told once, ever, in a notification from Olo
+Suggestions (`notify.rs`, run by the session's `olo-doctor --watch` at
+each of its looks, after Olo Doctor's): "Olo has N suggestions" with
+their titles, a click (or Show Suggestions) opening its window. What's
+told is remembered by id and title (`Told::suggested` in
+~/.local/state/olo/doctor.json, never forgotten, so one not taken isn't
+told again, and Update brush after Use brush is), and one with nothing
+to apply yet (brush before Olo's build of it) waits until it has. A look
+costs under 10 ms (`olo-suggestions --apply` lists them: the whole
+program, 0.00 s), four times an hour.
+
+`--apply` with an id that isn't there (mistyped, or an option it
+doesn't take) does nothing at all and exits 1, rather than applying the
+ones it knows.
 - **brush's suggestions from Olo's model (olo-complete)**: with
   Preferences ▸ Terminal ▸ Command Suggestions on
   (`~/.config/olo/complete.json` `enabled`, read by brush and the daemon
@@ -7504,6 +7547,13 @@ or fitted whole), kept, and the windows drawn again as each comes.
   and with no icon of its
   own the site's mark is a monogram tile (`web::tile`: the last word's
   first letter on its colour, or on one its name picks).
+- A banner's actions (`banners::lay_buttons`, when the card is
+  measured, so its height counts them): side by side from the right at
+  their own widths (`widgets::button_width`), as in an alert, when
+  they fit Deskbar's width; else one above another, each the card's
+  width, the last at the bottom, and a label cut short with "…" only if
+  even that is too narrow. (Before, a label wider than its share pushed
+  its button past the card's edge.)
 - look.rs: what a note shows, the same on screen and in the history's
   cards: its picture (square; round for a `Message`; large for `Media`),
   the title, a line with its badge and subtitle, the body (in a balloon

@@ -3094,5 +3094,23 @@
   "title": "Backup chooses what goes in",
   "caption": "Preferences \u25b8 Backup: a check box for each part of a backup (each app's settings with the passwords and sign-ins that go with them, and the Wi-Fi networks), exporting and importing: a backup of everything can bring back the Token Pool alone. The rest stays as it is.",
   "image": "2026-11-04/135106-backup-chooses-what-goes-in.png"
+ },
+ {
+  "time": "2026-11-04T15:47:37",
+  "title": "Olo Suggestions: just, uv, mise and worktrunk",
+  "caption": "Programs worth having, suggested while they're not installed: just and uv from Fedora's repositories, mise and worktrunk from their makers' GitHub releases (SHA-256 checked, native); and worktrunk set to make worktrees where Terminal does.",
+  "image": "2026-11-04/154737-olo-suggestions-just-uv-mise-and-worktrunk.png"
+ },
+ {
+  "time": "2026-11-04T15:47:39",
+  "title": "A notification for each new suggestion, once",
+  "caption": "Olo Suggestions tells of a suggestion once ever; at 1\u00d7, 1.5\u00d7 and 2\u00d7. Its action used to be cut off past the banner's edge: banner actions now fit, stacked when they must.",
+  "image": "2026-11-04/154739-a-notification-for-each-new-suggestion-once.png"
+ },
+ {
+  "time": "2026-11-04T15:47:40",
+  "title": "Banner actions stack when they don't fit side by side",
+  "caption": "Two long actions, one above another at the card's width, at 1\u00d7, 1.5\u00d7 and 2\u00d7; a label cut with \u2026 only when even a row of its own is too narrow.",
+  "image": "2026-11-04/154740-banner-actions-stack-when-they-don-t-fit-side-by.png"
  }
 ]

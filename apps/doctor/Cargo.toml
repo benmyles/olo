@@ -29,3 +29,13 @@ serde_json.workspace = true
 libc = "0.2"
 memchr = "2"
 tracing.workspace = true
+# Olo Suggestions' programs from their makers' releases (releases.rs):
+# GitHub over HTTPS, the SHA-256 checked, .tar.xz and .tar.gz opened.
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "platform-verifier"] }
+sha2 = "0.11"
+liblzma = { version = "0.4", features = ["static"] }
+flate2 = "1"
+tar = "0.4"
+# worktrunk's config, one key set (suggest.rs).
+toml_edit = "0.25"
