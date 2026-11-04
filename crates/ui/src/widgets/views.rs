@@ -195,8 +195,12 @@ impl RenderOnce for BBox {
                 // label's row.
                 let top = px((label_h / 2.0).floor());
                 let frame = Bounds::from_corners(point(b.left(), b.top() + top), b.bottom_right());
-                // (What's in it must fit inside the frame's inset.)
-                crate::review::container(window, Bounds::from_corners(point(frame.left() + px(pad), frame.top()), point(frame.right() - px(pad), frame.bottom() - px(pad))));
+                // (What's in it must fit inside the frame's inset: on the
+                // device pixels layout puts its children on, which it
+                // rounds to; unrounded, a child flush with the inset read
+                // as a point past it at 1.25× and 1.75×.)
+                let on = |v: Pixels| style::snap_coord(window, v);
+                crate::review::container(window, Bounds::from_corners(point(on(frame.left() + px(pad)), frame.top()), point(on(frame.right() - px(pad)), on(frame.bottom() - px(pad)))));
                 // (Gaps in the top line for the label and the action, as
                 // far from them as from the frame's inset.)
                 let gaps = [label_w.map(|w| (frame.left() + px(pad - 4.0), frame.left() + px(pad + w + 4.0))), action_w.map(|w| (frame.right() - px(pad + w + 4.0), frame.right() - px(pad - 4.0)))];

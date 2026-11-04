@@ -403,6 +403,129 @@ impl RenderOnce for Graph {
     }
 }
 
+/// One spectrum of a [`Spectrum`]: its name, colour and level in each
+/// band (dB), lowest band first.
+#[derive(Clone)]
+pub struct SpectrumSeries {
+    pub name: SharedString,
+    pub color: Hsla,
+    pub levels: Rc<[f32]>,
+    pub fill: bool,
+}
+
+impl SpectrumSeries {
+    pub fn new(name: impl Into<SharedString>, color: Hsla, levels: impl Into<Rc<[f32]>>) -> SpectrumSeries {
+        SpectrumSeries { name: name.into(), color, levels: levels.into(), fill: false }
+    }
+
+    /// A faint fill under the line.
+    pub fn fill(mut self, on: bool) -> Self {
+        self.fill = on;
+        self
+    }
+}
+
+/// Spectra, in a [`Graph`]'s look (a sunken well, a faint grid): each
+/// series' level in bands spaced evenly in log frequency from `low` to
+/// `high` Hz, as a line (over a faint fill if asked), from `floor` dB at
+/// the bottom to 0 at the top; lines at 100 Hz, 1 kHz and 10 kHz, named
+/// under the well (it keeps [`SPECTRUM_LABELS`] of its height for them),
+/// and every 20 dB. What a sound is doing as it plays: Preferences ▸ Sound
+/// ▸ Voice Processing ▸ Try It, the original and the processed. Agents
+/// read each series' loudest band.
+#[derive(IntoElement)]
+pub struct Spectrum {
+    series: Rc<[SpectrumSeries]>,
+    low: f32,
+    high: f32,
+    floor: f32,
+}
+
+/// The height under a [`Spectrum`]'s well for its frequencies.
+pub const SPECTRUM_LABELS: f32 = m::LABEL_ROW;
+
+impl Spectrum {
+    pub fn new(series: impl Into<Rc<[SpectrumSeries]>>, low: f32, high: f32) -> Spectrum {
+        Spectrum { series: series.into(), low, high, floor: -90.0 }
+    }
+
+    /// The level at the bottom, dB (−90 unless set).
+    pub fn floor(mut self, db: f32) -> Self {
+        self.floor = db;
+        self
+    }
+}
+
+/// A frequency as said: "800 Hz", "1.2 kHz".
+fn hertz(f: f32) -> String {
+    if f >= 1000.0 { format!("{:.1} kHz", f / 1000.0).replace(".0 kHz", " kHz") } else { format!("{f:.0} Hz") }
+}
+
+impl RenderOnce for Spectrum {
+    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+        let Spectrum { series, low, high, floor } = self;
+        canvas(
+            |_, _, _| {},
+            move |b, _, window, cx| {
+                let p = theme::palette(cx);
+                let well = Bounds::new(b.origin, size(b.size.width, (b.size.height - px(SPECTRUM_LABELS)).max(px(0.0))));
+                let rect = style::snap(window, well);
+                let inner = style::inset(window, rect, 2.0);
+                style::fill_rect(window, inner, style::c(p.document_background));
+                style::sunken(window, rect, &p, false);
+                let (w, h) = (f32::from(inner.size.width), f32::from(inner.size.height));
+                let span = (high / low).ln().max(1e-6);
+                let x_of = |f: f32| inner.left() + px((f / low).ln() / span * w);
+                let y_of = |db: f32| inner.bottom() - px(1.5 + ((db - floor) / -floor).clamp(0.0, 1.0) * (h - 3.0));
+                let grid = style::c(olo_theme::mix(p.document_text, p.document_background, 0.9));
+                let dim = style::disabled_text(&p);
+                let decades: Vec<f32> = [100.0, 1000.0, 10_000.0].into_iter().filter(|f| (low..=high).contains(f)).collect();
+                window.with_content_mask(Some(gpui::ContentMask { bounds: inner }), |window| {
+                    window.paint_layer(inner, |window| {
+                        let mut db = -20.0;
+                        while db > floor {
+                            style::hline(window, inner.left(), inner.right(), y_of(db), grid);
+                            db -= 20.0;
+                        }
+                        for f in &decades {
+                            style::vline(window, x_of(*f), inner.top(), inner.bottom(), grid);
+                        }
+                        // (A silent one isn't drawn: no line along the floor.)
+                        for line in series.iter().filter(|l| l.levels.iter().any(|v| *v > floor)) {
+                            let n = line.levels.len().max(1);
+                            let pts: Vec<Point<Pixels>> = line.levels.iter().enumerate().map(|(i, db)| point(inner.left() + px((i as f32 + 0.5) / n as f32 * w), y_of(*db))).collect();
+                            if line.fill {
+                                for pair in pts.windows(2) {
+                                    window.paint_area(pair[0], pair[1], inner.bottom(), line.color.opacity(40.0 / 255.0));
+                                }
+                            }
+                            for pair in pts.windows(2) {
+                                window.paint_segment(pair[0], pair[1], px(1.5), true, line.color);
+                            }
+                        }
+                    });
+                });
+                // The frequencies under the well, each under its line.
+                let baseline = style::baseline_at(window, rect.bottom() + px(SPECTRUM_LABELS / 2.0), style::SMALL_SIZE);
+                for f in &decades {
+                    style::label_on_baseline(window, cx, x_of(*f), baseline, style::Align::Center, hertz(*f), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), dim);
+                }
+                let ratio = (high / low).powf(1.0 / series.first().map_or(1, |s| s.levels.len().max(1)) as f32);
+                let said = series
+                    .iter()
+                    .map(|s| match s.levels.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)) {
+                        Some((i, db)) if *db > floor => format!("{}: loudest at {}, {:.0} dB", s.name, hertz(low * ratio.powf(i as f32 + 0.5)), db),
+                        _ => format!("{}: silent", s.name),
+                    })
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                agent::record(window, cx, agent::Node { role: "Figure", name: Some("Spectrum".into()), value: Some(said.into()), bounds: rect, enabled: true, ..Default::default() });
+            },
+        )
+        .size_full()
+    }
+}
+
 /// When a window's graphs move: one clock for all of them, so they move
 /// together. Each graph drawn says how often its samples move a device
 /// pixel; the clock ticks at the finest of those (a minute across 600

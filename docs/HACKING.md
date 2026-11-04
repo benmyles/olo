@@ -1604,6 +1604,16 @@ event reaches it.
   ticking at the finest step of those drawn (graphs of many sizes each
   on its own timer drew a frame for each: twice the frames); each
   graph's grid, fills (`paint_area`) and lines are one layer.
+  `widgets::Spectrum::new(series, low, high)` is a `Graph`'s look for
+  sound: each `SpectrumSeries` (a name, a colour, a level in dB a band,
+  bands spaced evenly in log frequency from `low` to `high` Hz, a fill
+  if asked) as a line, `floor(db)` at the bottom and 0 dB at the top,
+  lines at 100 Hz, 1 kHz and 10 kHz named under the well
+  (`SPECTRUM_LABELS` of its height) and every 20 dB; a silent series
+  isn't drawn; agents read each series' loudest band. The levels are
+  the app's (`olo_voice::spectrum` makes them from samples): it draws
+  what it's given, so a live one is drawn each frame by a small view of
+  its own, the rest of the window cached (Try Voice Processing).
   `GraphLayer::new(shelf, now)` draws graphs over a view that stays
   still: the view puts each with `graph.on_layer(&shelf)` (it keeps the
   graph's place and says where it is, and its clip, as it's laid out)
@@ -1965,10 +1975,15 @@ event reaches it.
   contrast; a grid of its own for the review), `style::stop_mark`
   (BAlert's stop sign, small: an error's title), `style::latch` (a
   folding group's triangle), `style::close_box` (a ×, crisp at any
-  scale). `CheckBox::height(h)` gives a check box a row's height, so it
-  centres on the same device pixel as a field beside it at fractional
+  scale). `CheckBox::height(h)` and `RadioButton::height(h)` give a
+  check box or a radio button a row's height, so it centres on the same
+  device pixel as a field, a button or a label beside it at fractional
   scales (elements of different heights centred in one row round their
-  tops apart).
+  tops apart: a radio beside a button was a device pixel off at 1.25×).
+  A `BBox` tells the review where its inset is on the device pixels
+  layout rounds its children to; measured unrounded, anything flush
+  with the inset (a full-width note, a button at the right) read as a
+  point past it at 1.25× and 1.75×.
 - Wrapping (Olo's GPUI): a space after a word hangs past the edge rather
   than pushing that word down a row, as typesetters and CSS wrap
   ("…with Ann at" fits when "at" does); leading spaces still count. The

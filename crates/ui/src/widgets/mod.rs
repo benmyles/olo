@@ -32,7 +32,7 @@ pub use alert::{
 };
 pub use banner::{Banner, Tone, banner_back, banner_height, verdict_mark};
 pub use buttons::{Button, CheckBox, LinkButton, RadioButton, button_width, check_box_look, link_button_width};
-pub use charts::{CellGrid, Graph, GraphLayer, GraphShelf, GridCell, LegendItem, Series, legend, legend_height, nice_ceiling};
+pub use charts::{CellGrid, Graph, GraphLayer, GraphShelf, GridCell, LegendItem, SPECTRUM_LABELS, Series, Spectrum, SpectrumSeries, legend, legend_height, nice_ceiling};
 pub use color::{ColorControl, ColorWell, color_control_height};
 pub use control::{Control, ControlState, control};
 pub use image_view::{ImageView, image_view};

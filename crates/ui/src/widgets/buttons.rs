@@ -355,13 +355,23 @@ pub struct RadioButton {
     label: SharedString,
     selected: bool,
     enabled: bool,
+    height: f32,
     on_select: Option<Handler>,
 }
 
 impl RadioButton {
     pub fn new(label: impl Into<SharedString>, selected: bool) -> RadioButton {
         let label = label.into();
-        RadioButton { id: label.clone(), label, selected, enabled: true, on_select: None }
+        RadioButton { id: label.clone(), label, selected, enabled: true, height: m::MARK_ROW, on_select: None }
+    }
+
+    /// As tall as what's beside it, as [`CheckBox::height`]: beside a
+    /// label or a button (`metrics::CONTROL_HEIGHT`), its text and theirs
+    /// share a baseline at every scale (20 points tall, centred beside 24,
+    /// it was a device pixel off at 1.25× and 1.75×).
+    pub fn height(mut self, h: f32) -> Self {
+        self.height = h;
+        self
     }
 
     pub fn id(mut self, id: impl Into<SharedString>) -> Self {
@@ -385,7 +395,7 @@ impl RenderOnce for RadioButton {
         let tw = f32::from(style::text_width(window, self.label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))).ceil();
         let w = 13.0 + m::MARK_GAP + tw;
         let (label, selected) = (self.label.clone(), self.selected);
-        let mut c = control(self.id.clone(), w, m::MARK_ROW, move |r, s, window, cx| {
+        let mut c = control(self.id.clone(), w, self.height, move |r, s, window, cx| {
             let p = theme::palette(cx);
             let bg = p.panel_background;
             let cx0 = r.left() + px(6.5);
