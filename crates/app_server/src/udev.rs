@@ -145,6 +145,34 @@ pub struct UdevData {
     /// (`contacts`), and each pad's watch on the loop.
     pads_opened: smithay::reexports::calloop::channel::Sender<crate::contacts::Pad>,
     pad_watches: HashMap<std::path::PathBuf, RegistrationToken>,
+    /// GPUs left asleep: nothing is plugged into them (`left_asleep`).
+    /// Opened when a display is.
+    dormant: HashMap<DrmNode, std::path::PathBuf>,
+}
+
+/// Whether the GPU whose card is `path` is left asleep: NVIDIA's (beside
+/// the primary GPU), with no display plugged into it. Opening it (its
+/// DRM device, its EGL display: NVIDIA's EGL driver) woke it from its
+/// sleep (D3cold) and waited for it, ~2.3 s, at every app_server start,
+/// a reload's too, and it slept again with nothing to do. Its
+/// connectors' status, as sysfs keeps it, is read without asking the
+/// GPU; one never probed ("unknown") counts as plugged in.
+fn left_asleep(path: &Path) -> bool {
+    let Some(card) = path.file_name().and_then(|n| n.to_str()) else { return false };
+    let sys = Path::new("/sys/class/drm").join(card);
+    let driver = std::fs::read_link(sys.join("device/driver")).ok().and_then(|d| d.file_name().map(|n| n.to_string_lossy().into_owned()));
+    if driver.as_deref() != Some("nvidia") {
+        return false;
+    }
+    let prefix = format!("{card}-");
+    let statuses: Vec<String> = std::fs::read_dir("/sys/class/drm")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().starts_with(&prefix))
+        .map(|e| std::fs::read_to_string(e.path().join("status")).unwrap_or_default().trim().to_owned())
+        .collect();
+    statuses.iter().all(|s| s == "disconnected")
 }
 
 impl UdevData {
@@ -901,6 +929,7 @@ pub fn run_udev() {
         filter_restart: 0,
         pads_opened,
         pad_watches: HashMap::new(),
+        dormant: HashMap::new(),
     };
     let mut state = AnvilState::init(display, event_loop.handle(), data, true);
 
@@ -993,6 +1022,13 @@ pub fn run_udev() {
     let primary_device_id = primary_device.map(|(device_id, _)| device_id);
     for (device_id, path) in udev_backend.device_list() {
         if Some(device_id) == primary_device_id {
+            continue;
+        }
+        if left_asleep(path)
+            && let Ok(node) = DrmNode::from_dev_id(device_id)
+        {
+            info!("{} left asleep: nothing is plugged into it", path.display());
+            state.backend_data.dormant.insert(node, path.to_owned());
             continue;
         }
 
@@ -1104,11 +1140,24 @@ pub fn run_udev() {
             }
             UdevEvent::Changed { device_id } => {
                 if let Ok(node) = DrmNode::from_dev_id(device_id) {
+                    // A GPU left asleep with a display plugged in now:
+                    // opened, and the display lit.
+                    if let Some(path) = data.backend_data.dormant.get(&node).cloned() {
+                        if !left_asleep(&path) {
+                            data.backend_data.dormant.remove(&node);
+                            info!("{}: a display plugged in, opening it", path.display());
+                            if let Err(err) = data.device_added(node, &path) {
+                                error!("Skipping device {device_id}: {err}");
+                            }
+                        }
+                        return;
+                    }
                     data.device_changed(node)
                 }
             }
             UdevEvent::Removed { device_id } => {
                 if let Ok(node) = DrmNode::from_dev_id(device_id) {
+                    data.backend_data.dormant.remove(&node);
                     data.device_removed(node)
                 }
             }
@@ -2460,5 +2509,19 @@ mod tests {
         assert_eq!(super::mouse_dpi("400 *800 1600@1000"), Some(800));
         assert_eq!(super::mouse_dpi("1600"), Some(1600));
         assert_eq!(super::mouse_dpi(""), None);
+    }
+
+    /// This computer's GPUs: which app_server leaves asleep
+    /// (`cargo test -p app_server left_asleep -- --ignored --nocapture`).
+    #[test]
+    #[ignore]
+    fn left_asleep_here() {
+        for e in std::fs::read_dir("/sys/class/drm").unwrap().flatten() {
+            let n = e.file_name().to_string_lossy().into_owned();
+            if n.starts_with("card") && !n.contains('-') {
+                let path = std::path::Path::new("/dev/dri").join(&n);
+                eprintln!("{n}: left asleep {}", super::left_asleep(&path));
+            }
+        }
     }
 }

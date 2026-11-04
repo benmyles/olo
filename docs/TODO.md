@@ -7,27 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Nothing routine wakes the NVIDIA GPU; local models run on the CPU's
-  SIMD** (Ben, 2026-11-04: "make sure that nothing in olo is going to
-  try to use the nvidia gpu for routine things like window display etc.
-  that would cause a sleep lag, and for any local models we have for e.g.
-  voice processing, touchpad, brush completion -- make sure they use SIMD
-  instead of nvidia"; "it's fine if it uses it for windows/drawing if
-  it's the composing gpu on an external hdmi but otherwise it
-  shouldn't"). Waking it costs a sleep lag (hundreds of ms out of
-  D3cold) and battery. So: apps' renderers (Blade/Vulkan in GPUI) pick
-  the GPU composing their display, never a discrete one by default
-  (Vulkan's device order puts NVIDIA's first: check every
-  `Instance`/adapter choice, `ZED_DEVICE_ID` already ignored); app_server
-  opens NVIDIA's node only to compose a display wired to it (and lets it
-  sleep when that display goes); Activity asks NVML only while it's
-  awake (done); the voice input model, the palm model, olo-complete's
-  model and any other in-process model run on the CPU with SIMD (no
-  CUDA/Vulkan compute), measured. A check that proves it: with only the
-  built-in panel, NVIDIA's `power/runtime_status` stays `suspended`
-  through a session's start, every app's launch, the bench and an hour
-  idle (Doctor's idle-GPU check says so too).
-
 - **Date & Time's worker asks timedated every 2 s** (found 2026-11-04):
   `apps/preferences/src/datetime.rs`'s `link` thread reads timedated's
   status on a 2-second timeout for as long as Preferences runs, which
@@ -1018,6 +997,26 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Nothing routine wakes the NVIDIA GPU; local models run on the
+  CPU's SIMD**~~ (Ben, 2026-11-04: "make sure that nothing in olo is
+  going to try to use the nvidia gpu for routine things like window
+  display etc. that would cause a sleep lag, and for any local models we
+  have for e.g. voice processing, touchpad, brush completion -- make
+  sure they use SIMD instead of nvidia"; "it's fine if it uses it for
+  windows/drawing if it's the composing gpu on an external hdmi but
+  otherwise it shouldn't"). Found: every GPUI app loaded NVIDIA's Vulkan
+  driver to list devices, which woke the sleeping GPU and waited for it
+  (DeskCalc's first window 2530 ms; now 77 ms); Chrome's GPU process
+  the same (and kept it awake); app_server opened its card at every
+  start. Now GPUI leaves NVIDIA's driver out as it makes its context,
+  `olo-chrome` starts Chrome without NVIDIA's Vulkan and EGL drivers
+  (`olo_kit_base::gpu::asleep_env`), and app_server opens NVIDIA's card
+  only once a display is plugged into it (`left_asleep`; tried on the
+  sysfs here, the live session's reload to come). No local model has a
+  GPU to run on (no GPU compute crate in the build: tract and plain
+  Rust); their SIMD is the "Voice processing's input model" item's.
+  HACKING.md: "The discrete GPU stays asleep".
 
 - ~~**A window that fits what it shows opens at its size, at once**~~
   (Ben, 2026-11-04: "when the adaptive/auto-sizing windows open they

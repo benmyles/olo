@@ -216,6 +216,10 @@ fn activation_token() -> Option<String> {
 fn chrome_command(chrome: &Path, args: &[String], token: Option<&str>) -> std::process::Command {
     let mut cmd = std::process::Command::new(chrome);
     cmd.args(chrome_args(args));
+    // Its GPU process leaves a sleeping NVIDIA GPU asleep (loading
+    // NVIDIA's drivers woke it, 2.4 s, and kept it awake: the displays'
+    // GPU draws Chrome's pages).
+    cmd.envs(olo_kit_base::gpu::asleep_env());
     if let Some(token) = token {
         cmd.env("XDG_ACTIVATION_TOKEN", token);
     }

@@ -4967,6 +4967,35 @@ primary GPU (the one the computer started on) and copied, at 8-bit
 they come. Display's Graphics box (two or more GPUs, `Request::Gpus`:
 `olo_system::gpus`) says what each drives.
 
+### The discrete GPU stays asleep
+
+NVIDIA's GPU on a hybrid laptop sleeps (D3cold) while nothing uses it,
+and whatever loads NVIDIA's drivers wakes it and waits for it, ~2.3 s:
+every GPUI app's start took 2.5 s instead of 77 ms (DeskCalc, its
+first window), Chrome's GPU process the same, and each app_server start
+(a reload's too) opened it. Nothing routine may wake it:
+
+- app_server leaves NVIDIA's card unopened while nothing is plugged
+  into it (`left_asleep`: its connectors' status, as sysfs keeps it,
+  read without asking the GPU), and opens it when a udev change says a
+  display is.
+- GPUI's apps make their Vulkan context without NVIDIA's driver
+  (`blade_context::asleep_aside`: `VK_LOADER_DRIVERS_DISABLE=*nvidia*`
+  for the moment the loader looks, put back at once so nothing the app
+  starts inherits it); they draw on the GPU the displays use, and a
+  window on NVIDIA's HDMI display is imported there.
+- Programs Olo starts get `olo_kit_base::gpu::asleep_env()` (Vulkan's
+  loader and glvnd's EGL without NVIDIA's): `olo-chrome` does.
+- Activity asks NVIDIA's library only while the GPU is awake, Doctor
+  and `olo_system::gpus` read sysfs attributes only (never a PCI
+  device's `config`, which wakes it), and no local model (voice,
+  palm, olo-complete) has a GPU to run on: the CPU's SIMD.
+
+The person decides otherwise by setting Vulkan's or glvnd's variables
+themselves, or `__NV_PRIME_RENDER_OFFLOAD=1`: those are left alone. To
+check: NVIDIA's `power/runtime_status` stays `suspended` and its
+`power/runtime_active_time` doesn't move through a launch.
+
 ## The touch screen (app_server input_handler.rs)
 
 A touch screen (a laptop's, as the ThinkPad P1 Gen 9's Wacom panel) is

@@ -8,6 +8,7 @@
 pub mod clipboard;
 pub mod commands;
 pub mod files;
+pub mod gpu;
 pub mod instance;
 pub mod keys;
 pub mod layout_review;

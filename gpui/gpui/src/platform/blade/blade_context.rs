@@ -74,20 +74,22 @@ impl BladeContext {
                 None
             }
         };
-        let gpu = Arc::new(
-            unsafe {
-                gpu::Context::init(gpu::ContextDesc {
-                    presentation: true,
-                    validation: false,
-                    // Olo: each pass timed on the GPU, printed a frame at
-                    // a time by the renderer (for measuring).
-                    timing: super::gpu_timings(),
-                    device_id: device_id_forced.unwrap_or(0),
-                    ..Default::default()
-                })
-            }
-            .map_err(|e| anyhow::anyhow!("{e:?}"))?,
-        );
+        // Olo: a discrete GPU asleep beside the one the displays use is
+        // left asleep: its Vulkan driver isn't loaded (`asleep_aside`).
+        let aside = asleep_aside();
+        let made = unsafe {
+            gpu::Context::init(gpu::ContextDesc {
+                presentation: true,
+                validation: false,
+                // Olo: each pass timed on the GPU, printed a frame at
+                // a time by the renderer (for measuring).
+                timing: super::gpu_timings(),
+                device_id: device_id_forced.unwrap_or(0),
+                ..Default::default()
+            })
+        };
+        drop(aside);
+        let gpu = Arc::new(made.map_err(|e| anyhow::anyhow!("{e:?}"))?);
         let atlas = Arc::new(super::BladeAtlas::new(&gpu));
         Ok(Self {
             gpu,
@@ -95,6 +97,59 @@ impl BladeContext {
             atlas,
         })
     }
+}
+
+/// Olo: NVIDIA's Vulkan driver, loaded to list the devices, wakes its GPU
+/// from its sleep (D3cold) and waits for it: every app's start took 2.3 s
+/// longer on a laptop whose NVIDIA GPU slept (a ThinkPad P1 Gen 9,
+/// 2026-11-04), and kept it awake (power) for a GPU it never draws with:
+/// windows are drawn by the GPU the displays are composed on, the
+/// integrated one. So while the context is made, the Vulkan loader
+/// leaves NVIDIA's driver out (`VK_LOADER_DRIVERS_DISABLE`), when there
+/// is another GPU to draw with and the person hasn't chosen drivers or
+/// asked for NVIDIA (PRIME offload); the variable is put back as it was
+/// as soon as the loader has found its drivers, so nothing the app
+/// starts inherits it.
+fn asleep_aside() -> Option<impl Drop> {
+    const DISABLE: &str = "VK_LOADER_DRIVERS_DISABLE";
+    let chosen = [
+        DISABLE,
+        "VK_LOADER_DRIVERS_SELECT",
+        "VK_DRIVER_FILES",
+        "VK_ICD_FILENAMES",
+        "__NV_PRIME_RENDER_OFFLOAD",
+    ];
+    if chosen.iter().any(|v| std::env::var_os(v).is_some()) {
+        return None;
+    }
+    // (sysfs only: nothing here wakes a GPU.)
+    let drivers: Vec<String> = std::fs::read_dir("/sys/class/drm")
+        .ok()?
+        .flatten()
+        .filter(|e| {
+            let n = e.file_name();
+            let n = n.to_string_lossy();
+            n.starts_with("card") && !n.contains('-')
+        })
+        .filter_map(|e| std::fs::read_link(e.path().join("device/driver")).ok())
+        .filter_map(|d| d.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .collect();
+    if !drivers.iter().any(|d| d == "nvidia") || !drivers.iter().any(|d| d != "nvidia") {
+        return None;
+    }
+    struct Restore;
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            // SAFETY: as below.
+            unsafe { std::env::remove_var(DISABLE) };
+        }
+    }
+    // SAFETY: set for the moment the loader reads it, then removed, as
+    // the app starts. Another thread may read the environment meanwhile:
+    // glibc keeps an environment array it replaces, so such a reader sees
+    // the variable or not (one only Vulkan's loader reads).
+    unsafe { std::env::set_var(DISABLE, "*nvidia*") };
+    Some(Restore)
 }
 
 fn parse_pci_id(id: &str) -> anyhow::Result<u32> {
