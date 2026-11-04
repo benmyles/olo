@@ -2263,6 +2263,7 @@ mod tests {
             brightness: None,
             number: None,
             panel: None,
+            vrr: None,
         };
         let one = [out("eDP-1", 0, None), out("HDMI-A-1", 0, Some("eDP-1"))];
         assert_eq!(display_number(&one, "eDP-1"), None);
